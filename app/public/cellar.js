@@ -1193,8 +1193,8 @@ export function createCellar({ popOut = null } = {}) {
       <div class="people-box"></div>
     </div>`;
   // 1.5.181 "Memory kept for Windows" (built-in graphics only): how much free memory a brain load leaves alone.
-  const holdbackHtml = () => { const v = settings.apuHoldbackGB ?? 4; return `<div class="srow"><label class="pick"><strong>Memory kept for Windows: <b data-holdbacklabel>${v} GB</b></strong><input type="range" min="0" max="8" step="0.5" data-holdback value="${v}" aria-describedby="holdback-hint"></label>
-      <p class="muted" id="holdback-hint">With built-in graphics, a brain shares memory with Windows. Before loading one, Bob leaves this much free memory alone (4 GB to start with). Lower lets bigger brains load on a small machine. <strong>At 0, Windows may slow down, or Bob may close, if memory runs out.</strong></p></div>`; };
+  const holdbackHtml = () => { const v = settings.apuHoldbackGB ?? 2; return `<div class="srow"><label class="pick"><strong>Memory kept for Windows: <b data-holdbacklabel>${v} GB</b></strong><input type="range" min="0" max="8" step="0.5" data-holdback value="${v}" aria-describedby="holdback-hint"></label>
+      <p class="muted" id="holdback-hint">With built-in graphics, a brain shares memory with Windows. Before loading one, Bob leaves this much free memory alone (2 GB to start with), on top of what the brain itself needs, and at least 1 GB always stays free. Lower lets bigger brains load on a small machine. <strong>At 0, Windows may slow down, or Bob may close, if memory runs out.</strong></p></div>`; };
   // 1.5.98: old panel ids (Help links, cards, remembered open panels) land on the new panels.
   const ADV_MOVED = { 'adv-connections': 'adv-bobnet' };
   const ADV = [

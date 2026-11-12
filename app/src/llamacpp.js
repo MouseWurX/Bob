@@ -25,6 +25,7 @@ import { stretchOn, stretchMax as stretchMost, stretchPlan, yarnArgs, needBytes,
 import { scutEnv, linkEnv } from './share-card.js'; // SCUT, the fast link to lent cards
 import { LinkLog } from './link-log.js'; // what the link to a lent card carried, kept in a file and the logbook
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
+import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
 import { memArgs, copyGuessArgs, draftNumArgs, laptopThreads } from './engine-extras.js'; // list items 94-100
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
@@ -106,9 +107,13 @@ export const SPREAD_UBATCH = 512;
 export const SPREAD_MBPS = 4; // a slow Wi-Fi's MB per second, so the wait is long enough the first time
 export const spreadLoadSeconds = (sizeGB, base = 300) => Math.min(7200, Math.max(base, base + Math.ceil((Number(sizeGB) || 0) * 1000 / SPREAD_MBPS)));
 // The flags a spread load adds (unless set by hand): room kept free on each card, and smaller steps.
-export function spreadArgs(args) {
+// Nov 12 (apu-fit.js lendRoom): a lent card on built-in graphics says how much its engine should leave free on it
+// (marginMB), since it reports its whole budget as free even with the RAM behind it short (the Go refused a 1001 MiB
+// first buffer while it held a brain). Lent cards come first in the engine's device order, this machine's after.
+export function spreadArgs(args, margins = null) {
   const add = [];
-  if (args.includes('--fit') && !args.some((a) => ['--fit-target', '-fitt'].includes(a))) add.push('--fit-target', String(SPREAD_FIT_TARGET_MIB));
+  const own = Array.isArray(margins) && margins.some((m) => Number(m) > 0) ? [...margins.map((m) => Math.max(SPREAD_FIT_TARGET_MIB, Math.ceil(Number(m) || 0))), SPREAD_FIT_TARGET_MIB].join(',') : String(SPREAD_FIT_TARGET_MIB);
+  if (args.includes('--fit') && !args.some((a) => ['--fit-target', '-fitt'].includes(a))) add.push('--fit-target', own);
   if (!args.some((a) => ['-ub', '--ubatch-size'].includes(a))) add.push('-ub', String(SPREAD_UBATCH));
   return add;
 }
@@ -195,6 +200,8 @@ export class LlamaCpp {
     this.speeds = new SpeedWatch(this.careData.speeds);
     this.textCallWatch = new TextCallWatch();
     this.shrunk = {};      // 221: model|cpu|asked ctx -> the smaller chat memory it really runs with
+    this.careData.apuFit ||= {}; // Nov 12 (apu-fit.js): per brain, what fits on built-in graphics after running out of memory
+    this.noReuse = new Set(); // Nov 12: brains loaded without --cache-reuse after an "Invalid input batch" (until Bob restarts)
     this.careNotes = [];   // one-line notes for the chat (the brain shows them as announcements)
     this.reloadWanted = new Set(); // 225/228: brains to load fresh before their next job
     this.basePort = this.port;
@@ -418,7 +425,9 @@ export class LlamaCpp {
   realCtx(model, ctx, cpu = false) {
     const asked = ctx || this.lc.ctx || DEFAULT_CTX;
     const s = this.shrunk[`${model}|${cpu ? 1 : 0}|${asked}`];
-    return s ? s.got : ctx;
+    if (s) return s.got;
+    const most = this.apuMaxCtx(model);
+    return most && asked > most ? most : ctx;
   }
   // One-line notes for the chat, taken once (brain.js shows them as announcements).
   takeNotes() { const n = this.careNotes; this.careNotes = []; return n; }
@@ -567,7 +576,8 @@ export class LlamaCpp {
     // Nov 11 (item 2): when an old tool result in the middle of a chat gets shortened, the engine moves the rest of what it
     // already read into place instead of reading it all again (llama.cpp's KV shifting; b4500 and newer). Brains that
     // can't (some memory layouts, picture readers) are switched back by the engine itself, with a line in its log.
-    if (this.buildNo() >= 4500 && !args.includes('--cache-reuse')) args.push('--cache-reuse', String(CACHE_REUSE));
+    // Nov 12: not for a brain whose engine said "Invalid input batch" this run (a reply's reading gone out of step).
+    if (this.buildNo() >= 4500 && !args.includes('--cache-reuse') && !this.noReuse.has(model)) args.push('--cache-reuse', String(CACHE_REUSE));
     args.push(...this.templateArgs(model, gguf, args));
     // Speculative decoding: a small "draft" model guesses ahead and the big one checks, often 1.5-2x faster.
     // 1.5.16x Turbo per brain (the Lab's Turbo page, Settings): wins over the one draft for every brain. The brain's own
@@ -799,11 +809,20 @@ export class LlamaCpp {
     }
     const asked = opts.ctx || this.lc.ctx || DEFAULT_CTX;
     const sk = `${model}|${cpu ? 1 : 0}|${asked}`;
-    const o = { ...opts, ...(this.shrunk[sk] ? { ctx: this.shrunk[sk].got } : {}) };
+    const most = this.apuMaxCtx(model);
+    const o = { ...opts, ...(this.shrunk[sk] ? { ctx: this.shrunk[sk].got } : most && asked > most ? { ctx: most } : {}) };
     try { return await this.startEngine(model, signal, o); }
     catch (e) {
       if (signal?.aborted || /^Stopped\.$/.test(e.message) || e.fellBack) throw e;
-      const out = `${this.lastLoadOut || ''}\n${e.message}`;
+      let out = `${this.lastLoadOut || ''}\n${e.message}`;
+      // Nov 12 (apu-fit.js): on built-in graphics a load that ran out of memory first puts less on the graphics (half,
+      // then the processor alone) at the chat memory asked for, and that is remembered for this brain.
+      for (let i = 0; i < 2 && this.cfg.sharedGraphics === true && !cpu && e.code !== 'no_room' && memoryFailure(out); i++) {
+        const step = this.apuStepDown(model, { cpu, ctx: o.ctx || asked, why: plainEngineError(out) || 'out of memory while loading', shareOnly: true });
+        if (!step) break;
+        try { return await this.startEngine(model, signal, { ...o, roomChecked: true }); }
+        catch (e2) { if (signal?.aborted || /^Stopped\.$/.test(e2.message) || e2.fellBack) throw e2; e = e2; out = `${this.lastLoadOut || ''}\n${e2.message}`; }
+      }
       // 220/221: no room, or the engine ran out of memory: once more with a smaller chat memory.
       if (e.code === 'no_room' || memoryFailure(out)) {
         const from = o.ctx || asked;
@@ -858,6 +877,78 @@ export class LlamaCpp {
     return { ...memCheck({ fileBytes: size, kvFor, ctx, cardFreeMB: card.freeMB, ramFreeBytes: this.freeRam ? this.freeRam() : os.freemem(), cardOnly }), cardFreeMB: card.freeMB };
   }
 
+  // ---------- Nov 12: brains on built-in graphics (apu-fit.js) ----------
+  // What this brain needs at a chat memory size: { card, cpu } in bytes, or null when the file can't be read.
+  apuNeed(model, ctx) {
+    let gguf, size = 0;
+    try { gguf = this.resolve(model).gguf; size = fs.statSync(gguf).size; } catch { return null; }
+    let shape = null;
+    try { shape = ggufInfo(gguf)?.shape; } catch {}
+    const c = ctx || this.lc.ctx || DEFAULT_CTX;
+    const kv = kvBytes(shape, c, memArgs(this.cfg, model, this.lc.args)) ?? Math.min(c, 131072) * 60 * 1024;
+    return apuNeed({ fileBytes: size, kvBytes: kv, ubatch: this.lc.ubatch || 512 });
+  }
+  apuMaxCtx(model) { return this.cfg.sharedGraphics === true ? Number(this.careData.apuFit?.[model]?.maxCtx) || 0 : 0; }
+  // A placement set by hand (layers, experts, the Brains page, flags in the config file) is never changed.
+  handPlaced(model) {
+    const lc = this.lc;
+    let modelArgs = [];
+    try { modelArgs = this.resolve(model).args || lc.modelArgs?.[model] || []; } catch {}
+    const hand = [...(lc.preArgs || []), ...(Array.isArray(lc.args) ? lc.args : []), ...modelArgs];
+    if (Number.isInteger(lc.gpuLayers) || Number.isInteger(lc.nCpuMoe?.[model]) || lc.fit === false) return true;
+    let gguf = null;
+    try { gguf = this.resolve(model).gguf; } catch {}
+    if (placeArgs(this.cfg, model, { cpu: false, layers: (gguf && ggufInfo(gguf)?.shape?.layers) || 0 }).length) return true;
+    return hand.some((a) => ['-ngl', '--n-gpu-layers', '--gpu-layers', '--fit', '-ot', '--override-tensor', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-dev', '--device', '-ts', '--tensor-split'].includes(a));
+  }
+  // Where the brain goes on built-in graphics, right before the engine starts (after the last brain let go): wholly on
+  // the graphics when it fits with room to spare, else as many layers as fit, else the processor alone. Changes args.
+  apuFit(model, args, ctx) {
+    if (this.cfg.sharedGraphics !== true || this.role === BESIDE || this.handPlaced(model)) return null;
+    const need = this.apuNeed(model, ctx);
+    if (!need) return null;
+    let layers = 0;
+    try { layers = ggufInfo(this.resolve(model).gguf)?.shape?.layers || 0; } catch {}
+    const rec = this.careData.apuFit?.[model];
+    const share = rec && Number.isFinite(rec.share) ? rec.share : 1;
+    const free = this.freeRam ? this.freeRam() : os.freemem();
+    const plan = apuPlace({ need, layers, freeBytes: free, keepBytes: apuKeepBytes(this.cfg), carveBytes: Math.max(0, ((Number(this.cfg.reservedGraphicsGB) || 0) - 0.5) * 1024 ** 3), budgetBytes: cardGB(this.cfg) * 1024 ** 3, share });
+    if (!plan) return null;
+    const drop = (flag, value = true) => { for (let i = args.length - 1; i >= 0; i--) if (args[i] === flag) args.splice(i, value ? 2 : 1); };
+    for (const f of ['-ngl', '--n-gpu-layers', '--fit', '--fit-target', '-fitt', '-dev', '--device']) drop(f);
+    if (plan.place === 'card') args.push('-ngl', '999');
+    else {
+      args.push('-ngl', String(plan.layers));
+      if (plan.place === 'cpu' && this.buildNo() >= 5000) args.push('--device', 'none'); // nothing on the graphics at all
+      // The processor's part is read from the drive as needed (memory-mapped), so Windows can let go of it.
+      if (this.lc.loadMode !== 'whole') { drop('--load-mode'); drop('--no-mmap', false); }
+    }
+    const gb = (b) => Math.round((b / 1024 ** 3) * 10) / 10;
+    const where = plan.place === 'card' ? 'wholly on the graphics' : plan.place === 'split' ? `${plan.layers} of ${layers} layers on the graphics, the rest on the processor` : 'on the processor alone';
+    this.apuNow = { model, place: plan.place, layers: plan.layers, share };
+    try { this.log?.('engine', `${model}: built-in graphics, ${where} (needs ~${gb(need.card)} GB on the graphics or ~${gb(need.cpu)} GB on the processor at ${Math.round((ctx || this.lc.ctx || DEFAULT_CTX) / 1024)}K; ${gb(free)} GB free, graphics room ~${gb(plan.cardRoom)} GB${share < 1 ? `, ${Math.round(share * 100)}% share after running out of memory before` : ''})`); } catch {}
+    return plan;
+  }
+  // Ran out of memory on built-in graphics: the next load of this brain uses less (half the graphics room, then the
+  // processor alone, then half the chat memory), remembered in engine-care.json and said in the logbook. shareOnly: only
+  // the graphics share may change (a load retried at the chat memory asked for). Returns the step, or null.
+  apuStepDown(model, { cpu = false, ctx = 0, why = '', shareOnly = false } = {}) {
+    if (this.cfg.sharedGraphics !== true || !model) return null;
+    const rec = this.careData.apuFit[model] || {};
+    const share = Number.isFinite(rec.share) ? rec.share : 1;
+    const placedCpu = cpu || this.role === BESIDE || this.handPlaced(model) || (this.apuNow?.model === model && this.apuNow.place === 'cpu');
+    const step = nextStep({ share: placedCpu ? 0 : share, ctx: Math.min(Number(ctx) || this.lc.ctx || DEFAULT_CTX, rec.maxCtx || Infinity), cpu: placedCpu });
+    if (!step || (shareOnly && step.share === undefined)) return null;
+    this.careData.apuFit[model] = { ...rec, ...(step.share !== undefined ? { share: step.share } : { share: 0, maxCtx: step.ctx }), at: new Date().toISOString().slice(0, 16).replace('T', ' '), why: String(why || '').slice(0, 120) };
+    this.saveCare();
+    if (!shareOnly) this.reloadWanted.add(model);
+    try { this.log?.('engine', `${model}: ran out of memory on built-in graphics (${String(why || 'out of memory').slice(0, 120)}); loading it ${stepWords(step)} from now on`); } catch {}
+    if (step.ctx) this.note(shrinkLine(this.label(model), Math.min(Number(ctx) || DEFAULT_CTX, rec.maxCtx || Infinity), step.ctx).replace('Long chats get trimmed sooner until Bob restarts.', 'Long chats get trimmed sooner on this machine.'));
+    return step;
+  }
+  // The engine's last words (crash or failed reply), for telling an out-of-memory failure from others.
+  lastWords() { return this.outTail ? this.outTail() : ''; }
+
   // 218: the engine stopped by itself after its brain loaded.
   crashed({ model, code, sig, tail, opts }) {
     if (code !== 0) { try { this.onCrash?.({ model, code, tail }); } catch {} } // Catch crashes (crash-catch.js, off unless switched on)
@@ -872,6 +963,7 @@ export class LlamaCpp {
       return;
     }
     if (this.active > 0) return; // the reply that was running loads it again itself (brain.chatRetry)
+    if (memoryFailure(tail)) this.apuStepDown(model, { cpu: opts?.cpu, ctx: opts?.ctx, why: reason }); // Nov 12: built-in graphics only
     const t = setTimeout(() => {
       if ((this.child && this.child.exitCode === null) || this.current !== model || this.starting) return; // something else loaded meanwhile
       this.log?.('engine', `${model}: restarting the engine by itself`);
@@ -970,12 +1062,14 @@ export class LlamaCpp {
           if (fi < 0) args.push('--fit', 'on'); else args[fi + 1] = 'on';
           try { this.log?.('engine', `${model}: the hand-set split (-ts) was left out for this spread; each card's share is sized to fit instead`); } catch {}
         }
-        args.push('--rpc', helpers.join(','), ...spreadArgs(args));
+        args.push('--rpc', helpers.join(','), ...spreadArgs(args, this.spread?.fitTargets?.() || null));
         this.spreadNow = true; // item 14: a reply over Wi-Fi may pause longer
         const mins = Math.ceil(spreadLoadSeconds(sizeGB, this.lc.loadTimeoutSeconds || 300) / 60);
         try { this.log?.('engine', `${model}: spread over ${helpers.length} other Bob${helpers.length > 1 ? 's' : ''}' card${helpers.length > 1 ? 's' : ''} (${helpers.join(', ')}). The first time, part of the brain is sent over the network: over Wi-Fi that can take a while (I'll wait up to ${mins} min), and a network cable is much faster. Later loads only send what's missing.`); } catch {}
       }
     }
+    // Nov 12 (apu-fit.js): on built-in graphics, the brain goes where it really fits, read with the memory free now.
+    if (!helpers.length && !cpu && card !== 'none') this.apuFit(model, args, ctx || this.lc.ctx || DEFAULT_CTX);
     // A llama-server left over from a crash would hold the port: stop it first.
     const pidFile = path.join(this.cfg.dataDir, `llama-server${this.tag}.pid`);
     try {
@@ -1012,6 +1106,7 @@ export class LlamaCpp {
     // The link log: with a lent card in use, the engine's [link] and [scut] lines go to bob-net-link.log and the logbook.
     const link = helpers.length ? new LinkLog(this.cfg, { who: 'borrowed card', log: (...a) => this.log?.(...a) }) : null;
     const keep = (d) => { log = (log + d).slice(-4000); if (full.length < LOAD_LOG_MAX) full += d; link?.feed(d); };
+    this.outTail = () => log; // Nov 12: the engine's last words after a reply failed (out of memory or not)
     child.stdout.on('data', keep);
     child.stderr.on('data', keep);
     const failFile = path.join(this.cfg.dataDir, `llama-server${this.tag}-load-failed.txt`);

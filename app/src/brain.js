@@ -59,6 +59,8 @@ import { SAVE_AS, namedType, saveAs } from './save-as.js';
 import { recordCall, learnedLine, loadLearning, toolLearnOn } from './tool-learn.js';
 import { CORE, groupsFor, groupOf, guessGroups, allToolsOn, useToolsTool, fillUseTools, tidySchema, STICKY_TURNS, toolboxPrompt, saysCant, onlyGroups } from './toolbox.js';
 import { presetFor, presetGroups, presetBrain, presetPrompt, LimitedGroups } from './presets.js';
+import { apuHoldbackGB, apuKeepBytes } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
+import { memoryFailure } from './engine-care.js';
 import { backoffMs, carryOnTokens, causeLine, engineFailKind, pause, toolErrorText, ToolStrikes, STRIKES, STRIKE_NOTE, STRUCK_OUT, fixOffer, ErrorTally, sideJob, halfDone, badAddress } from './retry.js'; // reliability items 193-207, always on
 import { Gate, Ledger, safeToResume, interruptedNote, withRetry, slimHandoff, carryOnPlan, carryOnLine, finishedSteps, MAX_AUTO_RESUMES, isBareOk, NOTHING_TO_OK, NOTHING_TO_OK_BUSY, queuedLine, plainDoing } from './handoff.js';
 import { expectFrom, verifyOutput, afterTool, afterTurn } from './verify.js';
@@ -180,16 +182,23 @@ function sideBrainBytes(brain) {
 // sizes (no file to measure) go the old way. Settings review: approved 2026-11-06.
 export const APU_MIN_CTX = 8192;
 // 1.5.181 (two-Bob trial, Legion Go on UMA Auto: 6.6 of 15.2 GB free, and even a 3 GB brain was refused): how much
-// free memory a load leaves for Windows is the owner's to set, Settings, Brains, "Memory kept for Windows" (0 to 8 GB,
-// 4 by default, as before). The free figure already leaves out what Windows is using, so a small machine can go lower.
-// (The 4 GB in platform.js, for how much the graphics may borrow, is a different sum and stays.)
-export const APU_HOLDBACK_DEFAULT_GB = 4;
-export const apuHoldbackGB = (cfg) => { const v = Number(cfg?.apuHoldbackGB); return Number.isFinite(v) && v >= 0 && v <= 8 ? v : APU_HOLDBACK_DEFAULT_GB; };
+// free memory a load leaves for Windows is the owner's to set, Settings, Brains, "Memory kept for Windows" (0 to 8 GB).
+// Nov 12 (apu-fit.js): 2 GB to start with, now that a brain's need counts its working buffers and the driver too, and
+// at least 1 GB is always kept. (The 4 GB in platform.js, for how much the graphics may borrow, is a different sum.)
+export { APU_HOLDBACK_DEFAULT_GB, apuHoldbackGB } from './apu-fit.js';
 export const APU_CARVE_MARGIN_GB = 0.5; // 1.5.133: kept free inside the set-aside for the picture reader and the driver
 export const APU_NO_ROOM = (needGB, freeGB, holdGB = 1) => `That brain needs about ${needGB} GB and only about ${freeGB} GB is free${holdGB > 0 ? ' once Windows keeps its share' : ''}, so I haven't loaded it. Close something or pick a smaller brain in Settings, Brains.`;
 export async function apuRoom(brain, model, ctx, { freeMem = freeMemNow(), loaded = null, minCtx = APU_MIN_CTX } = {}) {
   if (!brain?.cfg?.sharedGraphics || !model) return { ok: true, ctx };
-  const bytes = (c) => brain.gate?.brainBytes?.(model, { ctx: c });
+  // Nov 12 (apu-fit.js): the engine's honest figure when it has one: { card } wholly on the graphics (file, chat memory,
+  // working buffers, driver) and { cpu } on the processor alone, where the file is read from the drive as needed. The
+  // engine puts the brain where it fits (apuFit), so the room check only says no when neither way fits.
+  const bytes = (c) => {
+    const e = brain.engine?.apuNeed?.(model, c);
+    if (e) return e;
+    const g = brain.gate?.brainBytes?.(model, { ctx: c });
+    return g ? { card: g, cpu: g } : null;
+  };
   let need = bytes(ctx);
   if (!need) return { ok: true, ctx };
   let dropping = 0;
@@ -200,19 +209,21 @@ export async function apuRoom(brain, model, ctx, { freeMem = freeMemNow(), loade
   } catch {}
   // 1.5.133 (Legion Go, UMA 8 GB: every brain was refused): the memory set aside for graphics is where the brain goes
   // first, and Windows never counts it as free. So a brain up to the set-aside (less a small margin) needs no system RAM,
-  // and only what spills past it is checked against free RAM less Windows's 4 GB. On Auto the set-aside is tiny and the
+  // and only what spills past it is checked against free RAM less Windows's share. On Auto the set-aside is tiny and the
   // sum is the same as before. The brain being dropped frees its set-aside part and gives back only what it spilled.
   const carve = Math.max(0, (Number(brain.cfg.reservedGraphicsGB) || 0) * GB - APU_CARVE_MARGIN_GB * GB);
-  const ram = freeMem + Math.max(0, dropping - carve) - apuHoldbackGB(brain.cfg) * GB;
+  const ram = freeMem + Math.max(0, dropping - carve) - apuKeepBytes(brain.cfg);
   const room = carve + Math.max(0, ram);
-  const fits = (n) => Math.max(0, n - carve) <= Math.max(0, ram); // RAM short of Windows's share still leaves the set-aside
+  // RAM short of Windows's share still leaves the set-aside. On the processor the set-aside doesn't help.
+  const fits = (n) => Math.max(0, n.card - carve) <= Math.max(0, ram) || n.cpu <= ram;
+  const least = (n) => Math.min(n.card, n.cpu);
   const start = ctx || 32768;
   let c = start;
   const floor = Math.max(1024, Math.min(APU_MIN_CTX, Number(minCtx) || APU_MIN_CTX));
-  while (!fits(need) && c > floor) { c = Math.max(floor, Math.floor(c / 2)); need = bytes(c); }
+  while (!fits(need) && c > floor) { c = Math.max(floor, Math.floor(c / 2)); need = bytes(c) || need; }
   const gb = (b) => Math.round((Math.max(0, b) / GB) * 10) / 10;
-  if (fits(need)) return { ok: true, ctx: c === start ? ctx : c, shortened: c !== start, needGB: gb(need), roomGB: gb(room) };
-  return { ok: false, ctx, needGB: gb(need), roomGB: gb(room), line: APU_NO_ROOM(gb(need), gb(room), apuHoldbackGB(brain.cfg)) };
+  if (fits(need)) return { ok: true, ctx: c === start ? ctx : c, shortened: c !== start, needGB: gb(least(need)), roomGB: gb(room) };
+  return { ok: false, ctx, needGB: gb(least(need)), roomGB: gb(room), line: APU_NO_ROOM(gb(least(need)), gb(room), apuHoldbackGB(brain.cfg)) };
 }
 
 // A side-lane reply: always the small brain on the processor, so it never touches the card the painter holds.
@@ -1228,18 +1239,29 @@ export class Brain {
       }
     }
     const e = lastErr;
-    const kind = engineFailKind(e);
+    let kind = engineFailKind(e);
+    // Nov 12 (Legion Go): the reply only said it failed, or that its batch was out of step, but the engine's own last
+    // words say it ran out of memory (vk::Device::allocateMemory): that is an out-of-memory failure.
+    if (kind !== 'memory' && kind !== 'busy' && this.cfg.sharedGraphics === true && memoryFailure(this.engine.lastWords?.() || '')) kind = 'memory';
     let alive = true;
     try { alive = await this.engine.isLoaded(model, { cpu: opts.cpu, ctx: opts.ctx, beside: opts.beside }); } catch { alive = false; }
-    if (alive && kind !== 'dropped' && kind !== 'memory') throw e;
-    this.log('handoff', `${model} ${kind === 'memory' ? 'ran out of memory' : 'dropped out'} mid-answer (${causeLine(e).slice(0, 200)}); loading it again`);
+    if (alive && kind !== 'dropped' && kind !== 'memory' && kind !== 'state') throw e;
+    this.log('handoff', `${model} ${kind === 'memory' ? 'ran out of memory' : kind === 'state' ? 'lost its place in the chat' : 'dropped out'} mid-answer (${causeLine(e).slice(0, 200)}); loading it again`);
     ledger?.step('retry', { what: model, why: e.message }).done();
     this.setState('loading', 'My brain dropped out; loading it again', model);
     emit?.({ type: 'retry-note', text: 'My brain dropped out there. Loading it again and carrying on.' });
-    if (kind === 'memory') await this.engine.unload?.(model, { cpu: opts.cpu, ...(opts.beside ? { beside: true } : {}) })?.catch?.(() => {});
+    // Nov 12 (apu-fit.js): on built-in graphics the next load uses less memory (less on the graphics, then a shorter
+    // chat memory), and the brain keeps that. An engine out of step starts fresh, without reusing its old reading.
+    if (kind === 'memory' && !opts.beside) this.engine.apuStepDown?.(model, { cpu: opts.cpu, ctx: opts.ctx, why: causeLine(e) });
+    if (kind === 'state' && !opts.beside && this.engine.noReuse && !this.engine.noReuse.has(model)) { this.engine.noReuse.add(model); this.log('handoff', `${model}: starting its engine fresh without reusing its earlier reading of the chat (until Bob restarts)`); }
+    if (kind === 'memory' || kind === 'state') await this.engine.unload?.(model, { cpu: opts.cpu, ...(opts.beside ? { beside: true } : {}) })?.catch?.(() => {});
     const load = (m, o) => this.ensureModel(m, emit || (() => {}), opts.signal, who, o);
     model = (await load(model, { cpu: opts.cpu, ctx: opts.ctx, ...(opts.beside ? { beside: true } : {}) })) || model;
-    try { return await call({ ...opts, model }); }
+    // A shorter chat memory than before: the chat is fitted to it again.
+    let again2 = { ...opts, model };
+    const real = !opts.beside && opts.ctx ? this.engine?.realCtx?.(model, opts.ctx, opts.cpu) : null;
+    if (real && real < opts.ctx) again2 = { ...again2, ctx: real, messages: fitContext(opts.messages, real, opts.tools, 0.75, this.engine?.charsPerToken?.(model) || 3) };
+    try { return await call(again2); }
     catch (e2) {
       if (opts.signal?.aborted || !engineFailKind(e2)) throw e2;
       // Item 201: this brain keeps failing the job. The next brain that fits takes it, once, and says so.

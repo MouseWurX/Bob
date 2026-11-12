@@ -57,6 +57,9 @@ export function causeLine(e) {
 //   busy     503 or "loading model": it is there but not ready; wait a little and ask again, no reload
 // ---------------------------------------------------------------------------------------------------------------
 const BUSY = /\b(?:503|429)\b|service unavailable|too many requests|server (?:is )?busy|no (?:free |available )?slots? (?:is )?(?:available|free)|slot unavailable|loading model|model is (?:still )?loading|still loading/i;
+// Nov 12 (Legion Go): after a reply ran out of memory, the engine's reading of the chat could be out of step with what it
+// was sent next ("Invalid input batch.", "Compute error."): the engine is started fresh and asked once more.
+const OUT_OF_STEP = /invalid input batch|compute error/i;
 const MEMORY = /out of memory|\bOOM\b|failed to allocate|cudaMalloc|ErrorOutOfDeviceMemory|OutOfDeviceMemory|insufficient memory|not enough memory|alloc(?:ation)? failed|unable to allocate/i;
 const DROPPED = /ECONNRESET|ECONNREFUSED|EPIPE|socket hang up|fetch failed|terminated|other side closed|stopped mid-answer|UND_ERR_SOCKET|connection (?:was )?(?:reset|closed|lost)/i;
 export function engineFailKind(e) {
@@ -65,6 +68,7 @@ export function engineFailKind(e) {
   if (Number(e?.status) === 503 || Number(e?.status) === 429 || BUSY.test(all)) return 'busy';
   if (MEMORY.test(all)) return 'memory';
   if (DROPPED.test(all)) return 'dropped';
+  if (OUT_OF_STEP.test(all)) return 'state';
   return '';
 }
 
