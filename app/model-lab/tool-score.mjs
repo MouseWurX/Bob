@@ -9,13 +9,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { opts, locate, startServer, chat, stamp, readJsonl, moeShape } from './common.mjs';
+import { opts, locate, startServer, chat, stamp, readJsonl, moeShape, AGENT } from './common.mjs';
 
 const o = opts({ ctx: 16384 });
 if (o.url) process.env.LAB_URL = String(o.url);   // build 18: score a brain served elsewhere (the Forge's card); --models "label=served"
 const remote = Boolean(process.env.LAB_URL);
 const L = locate(o);
-const lessonsDir = o.lessons || path.join(L.out, 'lessons');
+// 11 Nov: with --out pointing somewhere else (the Forge's benchmark folder), the lessons still live under the lab's own out/lessons
+const lessonsDir = o.lessons || [path.join(L.out, 'lessons'), path.join(AGENT, 'bob-model-lab', 'out', 'lessons')].find((d) => fs.existsSync(path.join(d, 'toolsets.json'))) || path.join(L.out, 'lessons');
 const HOLDOUT = 0.05;
 const isHoldout = (id) => parseInt(crypto.createHash('md5').update(String(id)).digest('hex').slice(0, 8), 16) / 0xFFFFFFFF < HOLDOUT;
 

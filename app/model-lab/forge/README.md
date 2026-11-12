@@ -47,6 +47,12 @@ See plans\24-18.json. `rungs[].from` is `teacher` or an earlier rung's name; `ke
 `heal.experts`: `lora` (default), `full` (small Bobs only; 8-bit AdamW) or `frozen`.
 Specialists: point `counts` at the coding or thinking counts file and name the rung e.g. `8Bob Cypher`.
 
+**Names (the owner's rule, 10 November 2026).** A name belongs to one model. A job, skill, lesson set, step or persona never
+carries a model's name, and a model is never named after a job: model names (Bob, Bobert, Riker, Bill, any NBob) and job or
+skill names (coding, codefix, recover, clarify, review, ...) stay disjoint, in plans, keep lists, logs, cards, Help and Bob's own
+lines ("the reviewer checks the answer", never "Bobert checks the answer"). A shared name leaves a log or a plan ambiguous
+about which thing is meant. Outside lesson sets keep their source's name, which must not be a model name either.
+
 ## Untested until the first pod
 
 prune.py and the runner were tested here (fake model, fake pod). heal.py, lora.py, teacher.py, count.py and
@@ -149,3 +155,21 @@ The Lab's fNRI scan (Playground) can also be made on a rented card, for a brain 
   4. Asks the questions and writes `out/aifeui/recording.json`, the same file the Lab writes.
   5. Puts the viewer beside it (`out/aifeui/viewer`, `watch.html?file=recording.json`; `AIFEUI_SERVE=1` serves it on port 7778).
 - At home: the viewer's **Open a recording file** plays `recording.json`.
+
+## 10 November 2026: a lesson set from the drive
+
+`plan.lessons_set "<key>"` takes the lesson set an earlier run kept on the drive (`lessons/<key>/`) in place of the PC's upload, so the teacher-score key is the same by construction and the scores under it are reused; the run stops before any pass if the plan's teacher, top, max_len or general budget would give another key. With it set the PC's extra sets are not sent. `plan.data_centers` pins where a card may be taken, `plan.volume_new: false` (and every `plan.rebuild` run) never makes a new drive, `plan.drive_delete` removes `bobs/<name>/gguf` folders once Hugging Face hosts them, and `node forge.mjs --drop-volume <id>` deletes a drive Forge made by mistake. A `rebuild.models[]` entry with `weights_only: true` and `source: "volume:<path>"` uploads a Bob's full-size weights from the drive and nothing else.
+
+**A benchmark on its own.** `plan.benchmark_only: true` rents a card, serves the brains in `plan.benchmark.models` and lets the PC run the test commands, then ends: no teacher, no lessons, no odds, no drive. Each brain is given as `hf:<repo>:<path>` and is fetched with the PC's Hugging Face token (so a private page works); `rebuild`, `volume:` and `out:` are refused, since they need a teacher, a drive or a run. Because no drive is needed the card can be in any data centre, even while another run holds ours. The cost is the llama-server build (10-15 minutes) plus the tests; `plans/bench-bobert.json` is the example (two files of one Bob on the cheapest 48 GB card, cap $12).
+
+**FNRI scans on a rebuild run.** `plan.scan` ({from, brains, stock, keep}) adds the Lab's brain scans to the end of a `plan.rebuild` run: the PC sends the folder `from` (one sub-folder per brain with the scan tool's `pod/aifeui.sh`, its plan, the engine patches and the viewer) as `in/scan.tgz`; the pod makes the stock brain's Q4_K_M from the teacher (`stock/<name>-Q4_K_M.gguf`, kept on the drive), runs each brain in turn (the first builds the traced engine on the drive, the rest reuse it; a failed brain is logged and the next runs), fetches each `keep` list beside its recording, and lists `out/fnri/` in `files.json`, which forge.mjs brings home to `out/fnri/<run>/` and, with `zip`, bundles into one zip at that path. `plans/publish-bill.json` is the example.
+
+**The pod deletes itself at the end.** Bill's run (10 November) reached "done" while the PC's Forge window had died, and the pod billed two idle hours waiting for a delete that never came. Now every run type ends with `run_done`: the pod marks the status, waits for the PC's `in/pc-finished` (forge.mjs sends it before its own delete) or `plan.done_grace_minutes` (default 120, room for the downloads on a home line), then deletes itself. The time-cap watchdog stands behind both.
+
+**Making the scan bundle.** `fnri-bundle/` is made fresh before a scan run and is not kept in the repo (an old copy would
+carry old engine patches and an old viewer). From `app/`:
+
+    node model-lab/forge/aifeui-bundle.mjs --brain /workspace/stock/Qwen3.6-35B-A3B-Q4_K_M.gguf --name "Qwen 3.6 35B-A3B" --per 6 --out model-lab/forge/fnri-bundle/qwen
+    node model-lab/forge/aifeui-bundle.mjs --brain hf:MouseWurX/28Bob-Riker:28Bob-Q4_K_M.gguf --name Riker --per 6 --out model-lab/forge/fnri-bundle/riker
+    node model-lab/forge/aifeui-bundle.mjs --brain /workspace/bobs/35Bob/gguf/35Bob-Q4_K_M.gguf --name Bobert --per 6 --out model-lab/forge/fnri-bundle/bobert
+    node model-lab/forge/aifeui-bundle.mjs --brain /workspace/bobs/20Bob/gguf/20Bob-Q4_K_M.gguf --name Bill --per 6 --out model-lab/forge/fnri-bundle/bill

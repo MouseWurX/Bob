@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 // The lab sits next to Bob's source tree: <parent>/bob/model-lab, so the parent is two levels up.
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-export const AGENT = process.env.BOB_AGENT_DIR || path.resolve(here, '..', '..');
+// 11 Nov: an installed lab sits one level below the install folder, the repo copy two (app/model-lab)
+export const AGENT = process.env.BOB_AGENT_DIR || (path.basename(here) === 'bob-model-lab' ? path.resolve(here, '..') : path.resolve(here, '..', '..'));
 const exe = (n) => (process.platform === 'win32' ? `${n}.exe` : n);
 
 // --key value and --flag on the command line, over the defaults.

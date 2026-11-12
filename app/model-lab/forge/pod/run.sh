@@ -19,6 +19,20 @@ json.dump(st,open(p,"w"))
 PY
 echo "== $(date -u +%H:%M:%S) $*"; }
 die() { status failed "$*"; echo "FAILED: $*"; exit 1; }
+# pod_delete: the pod removes itself through the rental service's API (the same call the time-cap watchdog makes)
+pod_delete() { python3 -c "import os,urllib.request; r=urllib.request.Request('https://rest.runpod.io/v1/pods/'+os.environ['RUNPOD_POD_ID'], method='DELETE', headers={'Authorization':'Bearer '+os.environ.get('FORGE_RUNPOD_KEY', os.environ.get('RUNPOD_API_KEY',''))}); print(urllib.request.urlopen(r).read()[:200])" >> $OUT/watchdog.log 2>&1; }
+# run_done <detail>: the run's last word. 10 Nov: Bill's run finished at "done" and the PC's watcher window had died, so nobody deleted
+# the pod and it billed for two idle hours. Now the pod deletes ITSELF: as soon as the PC says it has everything (in/pc-finished,
+# which forge.mjs sends before its own delete), or after plan.done_grace_minutes (default 120, enough for a 13 GB download on a
+# home line) if the PC never answers. The time-cap watchdog still stands behind both.
+run_done() {
+  status done "$*"
+  local GRACE; GRACE=$(plan ".get('done_grace_minutes',120)")
+  ( for i in $(seq 1 $(python3 -c "print(max(6, int($GRACE*6)))")); do [ -f $IN/pc-finished ] && break; sleep 10; done
+    echo "== $(date -u +%H:%M:%S) done: $([ -f $IN/pc-finished ] && echo 'the PC has everything' || echo "no word from the PC in $GRACE minutes"); the pod deletes itself" >> $OUT/run.log 2>/dev/null
+    pod_delete ) > /dev/null 2>&1 &
+  disown $! 2>/dev/null || true
+}
 # drive_list: which Forge-made brains are REALLY usable as teacher_model on the volume (bobs/<name>/model/config.json present AND
 # bobs/<name>/adapter.pt beside it; a dangling link to a dead pod disk does not count). Written to out/drive.json at setup and on
 # every exit, so the PC's Lab only offers brains that exist (9 Nov: Bobert's full model never fit the 100 GB drive, only his adapter).
@@ -194,7 +208,8 @@ kernels() {
 }
 LESSONS_ONLY=$(plan ".get('lessons_only','')")
 TG=$(plan ".get('teacher_gguf','')")
-if [ -z "${FORGE_SETUP_ONLY:-}" ] && [ -z "$LESSONS_ONLY" ] && ! grep -q "kernels done 0" $OUT/kernels.log 2>/dev/null; then ( kernels > $OUT/kernels.log 2>&1 ) & KERN=$!; else echo "kernels done 0 (not needed)" >> $OUT/kernels.log; KERN=""; fi
+BENCH_ONLY=$(plan ".get('benchmark_only','')")
+if [ -z "${FORGE_SETUP_ONLY:-}" ] && [ -z "$LESSONS_ONLY" ] && [ "$BENCH_ONLY" != "True" ] && ! grep -q "kernels done 0" $OUT/kernels.log 2>/dev/null; then ( kernels > $OUT/kernels.log 2>&1 ) & KERN=$!; else echo "kernels done 0 (not needed)" >> $OUT/kernels.log; KERN=""; fi
 # wait for the kernels (up to 30 min); a failed build is reported and the run goes on without them (slower, not wrong)
 kernels_ready() {
   if [ -n "${KERN:-}" ] && kill -0 $KERN 2>/dev/null; then status setup "waiting for the fast kernels to finish building"; for i in $(seq 1 180); do kill -0 $KERN 2>/dev/null || break; sleep 10; done; fi
@@ -210,6 +225,91 @@ if [ -n "$(plan ".get('benchmark')")" ] || [ -n "$TG" ]; then
   if [ -f $S/llama-server-ready ] && [ -x $S/llama.cpp/build-cuda/bin/llama-server ]; then echo "CUDA llama-server already built"; else rm -f $S/llama-server-failed; ( bash $POD/llama-server-build.sh $S $(plan ".get('llama_tag','b11669')") > $OUT/llama-server-build.log 2>&1 ) & fi
 fi
 [ -n "${FORGE_SETUP_ONLY:-}" ] && { kill $WD 2>/dev/null; wait; cat $OUT/llama-setup.log; status done "setup only"; exit 0; }
+# --- benchmark on the card (build 18): the same brains, the same tests, a big card. The pod serves one brain at a time with a CUDA
+# llama-server on port 8001 (the PC runs its own test scripts over the URL, so home and rental numbers come from identical tests);
+# a brain can be rebuilt from the stock teacher + keep list + adapter (the owner's point, 8 Nov: no 17 GB upload from the PC).
+# plan.benchmark: {"models":[{"name":"28Bob","nickname":"Riker","file":"rebuild","keep_file":"hf:MouseWurX/28Bob-Riker:28Bob-keep.json",
+#   "adapter":"hf:MouseWurX/28Bob-Riker:28Bob-adapter.pt","cards":"hf:MouseWurX/28Bob-Riker","quant":"Q4_K_M","slots":1,"ctx":32768,"extra":""},
+#   {"name":"35Bob","file":"volume:bobs/35Bob/gguf/35Bob-Q4_K_M.gguf"}, {"name":"20Bob","file":"out:20Bob/20Bob-Q4_K_M.gguf"}], "hours_each":2}
+# file: rebuild | hf:<repo>:<path> | volume:<path on the drive> | out:<path in this run's out>. keep_file/adapter: hf:<repo>:<path> or a file the PC sent to in/.
+run_bench() {
+  for i in $(seq 1 120); do [ -f $S/llama-server-ready ] || [ -f $S/llama-server-failed ] && break; sleep 20; done
+  LS=$S/llama.cpp/build-cuda/bin/llama-server; export LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}"
+  [ -f $S/llama-server-cmake.log ] && cp -f $S/llama-server-cmake.log $OUT/ 2>/dev/null || true
+  if [ -f $S/llama-server-ready ] && [ -x $LS ]; then
+    NB=$(plan "['benchmark']['models']" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"); mkdir -p $W/bench $OUT/bench
+    for b in $(seq 0 $((NB-1))); do
+      BN=$(plan "['benchmark']['models'][$b]['name']"); BF=$(plan "['benchmark']['models'][$b].get('file','')"); BQ=$(plan "['benchmark']['models'][$b].get('quant','Q4_K_M')"); BNICK=$(plan "['benchmark']['models'][$b].get('nickname','')")
+      case "$BF" in
+        rebuild)
+          BFILE=$S/bobs/$BN/gguf/$BN-$BQ.gguf
+          if [ ! -f "$BFILE" ]; then
+            KFP=$(resolve_in "$(plan "['benchmark']['models'][$b].get('keep_file','')")" $W/bench/in-$BN); ADP=$(resolve_in "$(plan "['benchmark']['models'][$b].get('adapter','')")" $W/bench/in-$BN)
+            [ -f $S/bobs/$BN/bob-keep.json ] && [ ! -f "$KFP" ] && KFP=$S/bobs/$BN/bob-keep.json; [ -f $S/bobs/$BN/adapter.pt ] && [ ! -f "$ADP" ] && ADP=$S/bobs/$BN/adapter.pt
+            { [ -f "$KFP" ] && [ -f "$ADP" ]; } || { echo "bench $BN: keep list or adapter missing (plan keep_file/adapter, or volume bobs/$BN); skipped"; continue; }
+            status bench "$BN: rebuilding from the stock teacher, his keep list and his adapter"
+            python3 rebuild.py --teacher $S/teacher --keep-file "$KFP" --adapter "$ADP" --dst $W/bench/rebuilt-$BN --name $BN > $OUT/bench/$BN-rebuild.log 2>&1 || { echo "bench $BN: rebuild failed (see out/bench/$BN-rebuild.log)"; continue; }
+            mkdir -p $S/bobs/$BN && cp "$KFP" $S/bobs/$BN/bob-keep.json && cp "$ADP" $S/bobs/$BN/adapter.pt
+            status export "$BN: making the GGUF files again"
+            rm -rf "${OUT:?}"/"${BN:?}"; python3 export.py --model $W/bench/rebuilt-$BN --out $OUT/$BN --name "$BN" --nickname "$BNICK" --teacher "$TEACHER" --jobs "$(plan ".get('jobs','bob,deep,tinker,reviewer,office,ledger,scout')")" --llama $S/llama.cpp --quants $(plan ".get('quants','Q4_K_M')") --pending > $OUT/bench/$BN-export.log 2>&1 || { echo "bench $BN: export failed (see out/bench/$BN-export.log)"; continue; }
+            rm -rf "${W:?}"/bench/rebuilt-"${BN:?}"
+            # the home benchmark block comes from the scored cards (plan cards: hf:<repo> or cards the PC sent to in/); the rebuilt files get it
+            CSRC=$(plan "['benchmark']['models'][$b].get('cards','')"); mkdir -p $W/bench/cards-$BN
+            case "$CSRC" in hf:*) for f in $OUT/$BN/*.bob.json; do hf_get "${CSRC#hf:}" "$(basename $f)" $W/bench/cards-$BN || true; done ;; *) cp $IN/$BN-*.bob.json $W/bench/cards-$BN/ 2>/dev/null ;; esac
+            python3 - $OUT/$BN $W/bench/cards-$BN <<'PY'
+import json,glob,os,sys; d,c=sys.argv[1:3]
+for f in glob.glob(f"{d}/*.bob.json"):
+    o=os.path.join(c,os.path.basename(f))
+    if os.path.exists(o):
+        new=json.load(open(f)); old=json.load(open(o))
+        if old.get("benchmark"): new["benchmark"]=old["benchmark"]; json.dump(new,open(f,"w"),indent=1); print("benchmark block kept for",os.path.basename(f))
+PY
+            keep_bob $BN "$BN" "$BNICK"
+            # the PC already has this Bob: every file stays on the volume (nothing re-downloaded)
+            [ -f $OUT/$BN/$BN-files.json.pending ] && python3 - $OUT/$BN/$BN-files.json.pending $BN <<'PY'
+import json,sys; p,d=sys.argv[1:3]; j=json.load(open(p))
+for f in j["files"]:
+    if f["file"].endswith(".gguf") and not f.get("published"): f["volume"]=f"bobs/{d}/gguf/{f['file']}"
+json.dump(j,open(p,"w"),indent=1)
+PY
+            release_files $BN "$BN"
+          fi ;;
+        hf:*) REPO=$(echo "$BF" | cut -d: -f2); FP=$(echo "$BF" | cut -d: -f3); status bench "$BN: downloading $FP from Hugging Face"
+          hf_get "$REPO" "$FP" $W/bench/hf-$BN || { echo "bench $BN: download failed"; continue; }; BFILE=$W/bench/hf-$BN/$FP ;;
+        volume:*) BFILE=$S/${BF#volume:} ;;
+        out:*) BFILE=$OUT/${BF#out:} ;;
+        *) echo "bench $BN: unknown file spec '$BF'"; continue ;;
+      esac
+      [ -f "$BFILE" ] || { echo "bench $BN: $BFILE is missing; skipped"; continue; }
+      SLOTS=$(plan "['benchmark']['models'][$b].get('slots',1)"); CTX=$(plan "['benchmark']['models'][$b].get('ctx',32768)")
+      status bench "$BN: loading on the card ($(basename $BFILE))"
+      LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" $LS -m "$BFILE" --host 0.0.0.0 --port 8001 --api-key "$FORGE_TOKEN" -c $CTX --jinja -fa on -ctk q8_0 -ctv q8_0 -np $SLOTS -ngl 999 $(plan "['benchmark']['models'][$b].get('extra','')") > $OUT/bench/$BN-server.log 2>&1 &
+      BS=$!
+      for i in $(seq 1 90); do curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8001/health 2>/dev/null | grep -q 200 && break; kill -0 $BS 2>/dev/null || break; sleep 10; done
+      kill -0 $BS 2>/dev/null || { echo "bench $BN: llama-server died (see out/bench/$BN-server.log)"; tail -3 $OUT/bench/$BN-server.log; continue; }
+      rm -f $IN/bench-done-$BN
+      status bench "$BN ready: the PC runs the tests now (port 8001, $SLOTS slot(s), ctx $CTX)"
+      BH=$(plan "['benchmark'].get('hours_each',2)")
+      for i in $(seq 1 $(python3 -c "print(int($BH*120))")); do [ -f $IN/bench-done-$BN ] && break; kill -0 $BS 2>/dev/null || { echo "bench $BN: the server died during the tests"; break; }; sleep 30; done
+      kill $BS 2>/dev/null; wait $BS 2>/dev/null; sleep 3
+      if [ -f $IN/bench-done-$BN ]; then echo "bench $BN: the PC finished its tests"; else echo "bench $BN: time ran out (hours_each $BH)"; fi
+    done
+    status bench "finished: the reports are on the PC under out/bench"
+  else echo "bench: no CUDA llama-server (see out/llama-server-build.log); skipped"; status bench "skipped: no CUDA llama-server"; fi
+}
+# --- benchmark only (10 Nov): plan.benchmark_only true = rent a card, serve the listed brains, let the PC run its tests, done.
+# No teacher, no lessons, no odds, no volume needed: a brain given as hf:<repo>:<path> comes from Hugging Face with the pod's token
+# (private repos too), so the card can be in any data centre, even while another run holds the drive. "rebuild" needs the teacher
+# and is refused here. The pod's whole cost is the llama-server build (~10-15 min) plus the tests.
+if [ "$(plan ".get('benchmark_only',False)")" = "True" ]; then
+  [ -n "$(plan ".get('benchmark')")" ] || die "benchmark_only: plan.benchmark is missing"
+  for f in $(plan "['benchmark']['models']" | python3 -c "import json,sys; print(' '.join(m.get('file','') for m in json.load(sys.stdin)))"); do
+    case "$f" in rebuild|volume:*|out:*) die "benchmark_only: '$f' needs a teacher, a drive or a run; give the brain as hf:<repo>:<path>";; esac
+  done
+  run_bench
+  rm -f $IN/hf-token
+  run_done "benchmark finished: the reports are on the PC under out/bench"; exit 0
+fi
 TEACHER=$(plan "['teacher']")
 TREV=$(plan ".get('teacher_revision','')"); REV=(); [ -n "$TREV" ] && REV=(--revision "$TREV")   # pin the teacher to one HF revision (the Lab sets it when the owner gives one)
 dl() { hf download "$@" >/dev/null 2>$OUT/hf-dl.log || { echo "download retry (plain)"; HF_HUB_ENABLE_HF_TRANSFER=0 hf download "$@" >/dev/null 2>>$OUT/hf-dl.log; }; }
@@ -282,7 +382,7 @@ if { [ -n "$WL" ] || [ -f $IN/lessons-ready ]; } && [ ! -f $IN/lessons-merged ];
     N=$(cat $IN/lessons-ready 2>/dev/null || echo 0)
     if [ "$S" != "$W" ]; then LD=$S/lessons/$(plan ".get('run','run')"); mkdir -p $LD; cp $IN/lessons-extra-*.jsonl $IN/toolsets-extra-*.json $LD/ 2>/dev/null; cp $OUT/*.log $LD/ 2>/dev/null; echo "lessons kept on the volume at $LD"; fi
     rm -f $IN/hf-token
-    status done "lessons only: $N lessons written; they are on the PC"
+    run_done "lessons only: $N lessons written; they are on the PC"
     exit 0
   fi
   status lessons "merging the extra lessons"
@@ -376,7 +476,7 @@ for f in sorted(os.listdir(d)):
 json.dump({"name":"counts","files":files},open(f"{d}/counts-files.json","w"))
 PY
   [ "$S" != "$W" ] && mkdir -p $S/counts && cp $OUT/counts/*.json $OUT/counts/ladder.md $S/counts/ 2>/dev/null
-  status done "counts finished"; exit 0
+  run_done "counts finished"; exit 0
 fi
 
 # --- rebuild and publish (9 Nov): bring finished Bobs back from the stock teacher + keep list + adapter, make their GGUF files, and put
@@ -463,6 +563,47 @@ PY
   rm -f $IN/hf-token
   [ "$RB_OK" -gt 0 ] || die "rebuild: no Bob was rebuilt"
   [ -z "$RB_WFAIL" ] || echo "FULL-SIZE WEIGHTS MISSING on Hugging Face for:$RB_WFAIL (see out/publish/*.log); a weights_only plan uploads them from the drive"
+  # a rebuild run can benchmark too (10 Nov): the same block as the end of a training run, so Bill's missed head-to-head can be
+  # made up on the publish run (file: hf:<repo>:<path> | volume:<path> | out:<name>/<file> for a Bob rebuilt just above)
+  if [ -n "$(plan ".get('benchmark')")" ]; then run_bench; fi
+  # --- FNRI scans (10 Nov): plan.scan {"from":"<PC folder>","brains":["qwen","riker","bobert","bill"],"stock":"Qwen3.6-35B-A3B",
+  #   "keep":{"riker":"hf:MouseWurX/28Bob-Riker:28Bob-keep.json"}}. The PC sends the folder as in/scan.tgz (one sub-folder per brain, each
+  # with pod/aifeui.sh, its plan, the engine patches and the viewer); the pod unpacks it onto the drive, makes the stock brain's Q4_K_M from
+  # the teacher if asked (stock/<name>-Q4_K_M.gguf, kept on the drive), runs each brain's scan in turn (the first builds the traced engine
+  # in aifeui-engine on the drive, the rest reuse it), and lists everything under out/fnri/ in out/fnri/files.json for the PC to bring home.
+  # A failed brain is logged and the next one runs. The scan tool itself belongs to the FNRI thread; this only drives it.
+  if [ -n "$(plan ".get('scan')")" ]; then
+    # 11 Nov: the scan's engine build clones llama.cpp with git, which the rental image lacks (the first scan run stopped at its preflight)
+    command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; } >/dev/null 2>&1 || echo "git could not be installed; the scans will say so"
+    [ -f $IN/scan.tgz ] || die "scan: in/scan.tgz is missing (the PC sends plan.scan.from)"
+    mkdir -p $S/fnri-in $OUT/fnri && tar xzf $IN/scan.tgz -C $S/fnri-in || die "scan: unpacking in/scan.tgz"
+    STOCK=$(plan "['scan'].get('stock','')")
+    if [ -n "$STOCK" ]; then
+      if [ -f $S/stock/$STOCK-Q4_K_M.gguf ]; then echo "scan: stock $STOCK Q4_K_M already on the drive"; else
+        status scan "making the stock $STOCK Q4_K_M from the teacher (for a fair comparison)"
+        for i in $(seq 1 90); do [ -f $S/llama-ready ] || [ -f $S/llama-failed ] && break; sleep 20; done
+        if [ -f $S/llama-ready ]; then python3 export.py --model $S/teacher --out $S/stock --name "$STOCK" --teacher "$TEACHER" --llama $S/llama.cpp --quants Q4_K_M --what "The stock $STOCK, as released." > $OUT/fnri/stock.log 2>&1 || { echo "scan: stock GGUF failed (out/fnri/stock.log)"; tail -3 $OUT/fnri/stock.log; }
+        else echo "scan: llama tools unavailable, no stock GGUF (out/llama-setup.log)"; fi
+      fi
+    fi
+    for b in $(plist "['scan'].get('brains',[])" | tr , ' '); do
+      [ -f $S/fnri-in/$b/pod/aifeui.sh ] || { echo "scan $b: no $b/pod/aifeui.sh in the bundle; skipped"; continue; }
+      status scan "$b: FNRI scan on the card"
+      mkdir -p $OUT/fnri/$b
+      if FORGE_ROOT=$S AIFEUI_IN=$S/fnri-in/$b AIFEUI_OUT=$OUT/fnri/$b bash $S/fnri-in/$b/pod/aifeui.sh > $OUT/fnri/$b/run.log 2>&1; then echo "scan $b: done"
+      else echo "scan $b FAILED (out/fnri/$b/run.log)"; tail -3 $OUT/fnri/$b/run.log; fi
+      KS=$(plan "['scan'].get('keep',{}).get('$b','')"); [ -n "$KS" ] && { K=$(resolve_in "$KS" $OUT/fnri/$b); [ -f "$K" ] && echo "scan $b: keep list beside the recording" || echo "scan $b: keep list $KS not found"; }
+    done
+    python3 - $OUT/fnri <<'PY'
+import json,os,sys; d=sys.argv[1]; files=[]
+for r,_,fs in os.walk(d):
+    for f in fs:
+        p=os.path.join(r,f); rel=os.path.relpath(p,d).replace(os.sep,'/')
+        if rel!='files.json' and not rel.endswith('.part'): files.append({"file":rel,"bytes":os.path.getsize(p)})
+json.dump({"files":files},open(os.path.join(d,'files.json'),'w'),indent=1); print(len(files),"scan files listed")
+PY
+    status scan "finished: recordings under out/fnri"
+  fi
   # plan.drive_delete ["bobs/35Bob/gguf", ...]: drive folders the owner wants gone once Hugging Face hosts them. Only when every upload in
   # this run succeeded, only under bobs/ or runs/ (never the teacher, the odds, an adapter or a keep list), and what was removed is listed.
   if [ -z "$RB_WFAIL" ] && [ "$RB_OK" = "$NR" ] && [ "$S" != "$W" ]; then
@@ -471,7 +612,7 @@ PY
     done
     drive_list
   fi
-  status done "rebuild finished: $RB_OK of $NR Bobs on Hugging Face${RB_WFAIL:+; full-size weights FAILED for$RB_WFAIL}"; exit 0
+  run_done "rebuild finished: $RB_OK of $NR Bobs on Hugging Face${RB_WFAIL:+; full-size weights FAILED for$RB_WFAIL}"; exit 0
 fi
 
 # --- teach-it (9 Nov): plan.odds false with no rungs = an adapter-only fine-tune of the full teacher (train_teacher above) and nothing
@@ -482,7 +623,7 @@ if [ "$(plan ".get('odds','')")" = "False" ] && [ "$(plan "['rungs'].__len__()")
   publish_tested
   if [ "$S" != "$W" ]; then RT=$S/runs/$(plan ".get('run','run')")-$(date -u +%Y%m%dT%H%M); mkdir -p $RT; cp $OUT/*.log $OUT/*.json $OUT/*.txt $RT/ 2>/dev/null; for d in $OUT/*/; do [ -d "$d" ] && { mkdir -p $RT/$(basename $d); cp $d/*.json $d/*.md $d/*.txt $RT/$(basename $d)/ 2>/dev/null; }; done; echo "run files kept on the volume at $RT"; fi
   rm -f $IN/hf-token
-  status done "teach-it finished: ${TNAME:-the taught Bob} is ready"; exit 0
+  run_done "teach-it finished: ${TNAME:-the taught Bob} is ready"; exit 0
 fi
 
 # --- teacher pass (once per lesson set, build 15): what the full Qwen thinks at every answer word (loaded in this process, no server) ---
@@ -490,6 +631,16 @@ fi
 # data centre skips the pass), and on the PC (out/teacher/<key>/, downloaded as soon as they exist; a later pod with a fresh
 # volume gets them uploaded back instead of redoing the pass). The key names the lesson set exactly: the merged lessons +
 # toolsets, the teacher, top, max_len and the general-text budget. Rental 2 lost 2.5 h of this when the card deleted itself.
+# plan.lessons_set "<key>" (10 Nov): take the lesson set an earlier run kept on the drive (lessons/<key>/) instead of the PC's upload,
+# so the key is the same by construction and the teacher scores under it are reused. A PC copy that drifted by one byte would
+# otherwise cost a whole new teacher pass. The plan's teacher, top, max_len and general budget must still match: checked below.
+LSET=$(plan ".get('lessons_set','')")
+if [ -n "$LSET" ]; then
+  if [ "$S" != "$W" ] && [ -f $S/lessons/$LSET/lessons.jsonl ] && [ -f $S/lessons/$LSET/toolsets.json ]; then
+    cp $S/lessons/$LSET/lessons.jsonl $IN/lessons.jsonl && cp $S/lessons/$LSET/toolsets.json $IN/toolsets.json || die "copying lesson set $LSET from the drive"
+    echo "lesson set $LSET taken from the drive ($(wc -l < $IN/lessons.jsonl) lessons); the PC's set is not used"
+  else echo "lesson set $LSET is not on this drive (lessons/$LSET/): the PC's set is used and must give the same key"; fi
+fi
 KEY=$(python3 - $IN "$TEACHER_ID" "$(plan ".get('top',32)")" "$(plan ".get('max_len',8192)")" "$GENERAL_TOKENS" <<'PY'
 import hashlib,sys; h=hashlib.sha256()
 for f in ("lessons.jsonl","toolsets.json"):
@@ -497,6 +648,7 @@ for f in ("lessons.jsonl","toolsets.json"):
 h.update("|".join(sys.argv[2:]).encode()); print(h.hexdigest()[:16])
 PY
 )
+[ -n "$LSET" ] && [ "$KEY" != "$LSET" ] && die "lessons_set $LSET was asked for but this plan's key is $KEY: the teacher, top, max_len or general_tokens differ from the run that made it (fix the plan; no pass was started)"
 TDIR=$OUT/teacher; mkdir -p $TDIR; TPT=$TDIR/teacher.pt; CACHE=$TDIR/lessons-tok.pt; TC=$S/teacher-cache/$KEY
 echo "$KEY" > $TDIR/teacher-key.txt
 # keep the whole lesson set on the network volume beside its scores (the owner wants every input and output kept)
@@ -649,79 +801,8 @@ PY
   # free disk: keep only the newest healed Bob (the next rung is cut from it)
   [ "$FROM" != "teacher" ] && [[ "$FROM" != */* ]] && [ -z "$(plan ".get('keep_healed','')")" ] && rm -rf $W/healed-$FROM   # keep_healed: every healed Bob stays (on a network volume, for the next session)
 done
-# --- benchmark on the card (build 18): the same brains, the same tests, a big card. The pod serves one brain at a time with a CUDA
-# llama-server on port 8001 (the PC runs its own test scripts over the URL, so home and rental numbers come from identical tests);
-# a brain can be rebuilt from the stock teacher + keep list + adapter (the owner's point, 8 Nov: no 17 GB upload from the PC).
-# plan.benchmark: {"models":[{"name":"28Bob","nickname":"Riker","file":"rebuild","keep_file":"hf:MouseWurX/28Bob-Riker:28Bob-keep.json",
-#   "adapter":"hf:MouseWurX/28Bob-Riker:28Bob-adapter.pt","cards":"hf:MouseWurX/28Bob-Riker","quant":"Q4_K_M","slots":1,"ctx":32768,"extra":""},
-#   {"name":"35Bob","file":"volume:bobs/35Bob/gguf/35Bob-Q4_K_M.gguf"}, {"name":"20Bob","file":"out:20Bob/20Bob-Q4_K_M.gguf"}], "hours_each":2}
-# file: rebuild | hf:<repo>:<path> | volume:<path on the drive> | out:<path in this run's out>. keep_file/adapter: hf:<repo>:<path> or a file the PC sent to in/.
-if [ -n "$(plan ".get('benchmark')")" ]; then
-  for i in $(seq 1 120); do [ -f $S/llama-server-ready ] || [ -f $S/llama-server-failed ] && break; sleep 20; done
-  LS=$S/llama.cpp/build-cuda/bin/llama-server; export LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}"
-  [ -f $S/llama-server-cmake.log ] && cp -f $S/llama-server-cmake.log $OUT/ 2>/dev/null || true
-  if [ -f $S/llama-server-ready ] && [ -x $LS ]; then
-    NB=$(plan "['benchmark']['models']" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"); mkdir -p $W/bench $OUT/bench
-    for b in $(seq 0 $((NB-1))); do
-      BN=$(plan "['benchmark']['models'][$b]['name']"); BF=$(plan "['benchmark']['models'][$b].get('file','')"); BQ=$(plan "['benchmark']['models'][$b].get('quant','Q4_K_M')"); BNICK=$(plan "['benchmark']['models'][$b].get('nickname','')")
-      case "$BF" in
-        rebuild)
-          BFILE=$S/bobs/$BN/gguf/$BN-$BQ.gguf
-          if [ ! -f "$BFILE" ]; then
-            KFP=$(resolve_in "$(plan "['benchmark']['models'][$b].get('keep_file','')")" $W/bench/in-$BN); ADP=$(resolve_in "$(plan "['benchmark']['models'][$b].get('adapter','')")" $W/bench/in-$BN)
-            [ -f $S/bobs/$BN/bob-keep.json ] && [ ! -f "$KFP" ] && KFP=$S/bobs/$BN/bob-keep.json; [ -f $S/bobs/$BN/adapter.pt ] && [ ! -f "$ADP" ] && ADP=$S/bobs/$BN/adapter.pt
-            { [ -f "$KFP" ] && [ -f "$ADP" ]; } || { echo "bench $BN: keep list or adapter missing (plan keep_file/adapter, or volume bobs/$BN); skipped"; continue; }
-            status bench "$BN: rebuilding from the stock teacher, his keep list and his adapter"
-            python3 rebuild.py --teacher $S/teacher --keep-file "$KFP" --adapter "$ADP" --dst $W/bench/rebuilt-$BN --name $BN > $OUT/bench/$BN-rebuild.log 2>&1 || { echo "bench $BN: rebuild failed (see out/bench/$BN-rebuild.log)"; continue; }
-            mkdir -p $S/bobs/$BN && cp "$KFP" $S/bobs/$BN/bob-keep.json && cp "$ADP" $S/bobs/$BN/adapter.pt
-            status export "$BN: making the GGUF files again"
-            rm -rf "${OUT:?}"/"${BN:?}"; python3 export.py --model $W/bench/rebuilt-$BN --out $OUT/$BN --name "$BN" --nickname "$BNICK" --teacher "$TEACHER" --jobs "$(plan ".get('jobs','bob,deep,tinker,reviewer,office,ledger,scout')")" --llama $S/llama.cpp --quants $(plan ".get('quants','Q4_K_M')") --pending > $OUT/bench/$BN-export.log 2>&1 || { echo "bench $BN: export failed (see out/bench/$BN-export.log)"; continue; }
-            rm -rf "${W:?}"/bench/rebuilt-"${BN:?}"
-            # the home benchmark block comes from the scored cards (plan cards: hf:<repo> or cards the PC sent to in/); the rebuilt files get it
-            CSRC=$(plan "['benchmark']['models'][$b].get('cards','')"); mkdir -p $W/bench/cards-$BN
-            case "$CSRC" in hf:*) for f in $OUT/$BN/*.bob.json; do hf_get "${CSRC#hf:}" "$(basename $f)" $W/bench/cards-$BN || true; done ;; *) cp $IN/$BN-*.bob.json $W/bench/cards-$BN/ 2>/dev/null ;; esac
-            python3 - $OUT/$BN $W/bench/cards-$BN <<'PY'
-import json,glob,os,sys; d,c=sys.argv[1:3]
-for f in glob.glob(f"{d}/*.bob.json"):
-    o=os.path.join(c,os.path.basename(f))
-    if os.path.exists(o):
-        new=json.load(open(f)); old=json.load(open(o))
-        if old.get("benchmark"): new["benchmark"]=old["benchmark"]; json.dump(new,open(f,"w"),indent=1); print("benchmark block kept for",os.path.basename(f))
-PY
-            keep_bob $BN "$BN" "$BNICK"
-            # the PC already has this Bob: every file stays on the volume (nothing re-downloaded)
-            [ -f $OUT/$BN/$BN-files.json.pending ] && python3 - $OUT/$BN/$BN-files.json.pending $BN <<'PY'
-import json,sys; p,d=sys.argv[1:3]; j=json.load(open(p))
-for f in j["files"]:
-    if f["file"].endswith(".gguf") and not f.get("published"): f["volume"]=f"bobs/{d}/gguf/{f['file']}"
-json.dump(j,open(p,"w"),indent=1)
-PY
-            release_files $BN "$BN"
-          fi ;;
-        hf:*) REPO=$(echo "$BF" | cut -d: -f2); FP=$(echo "$BF" | cut -d: -f3); status bench "$BN: downloading $FP from Hugging Face"
-          hf_get "$REPO" "$FP" $W/bench/hf-$BN || { echo "bench $BN: download failed"; continue; }; BFILE=$W/bench/hf-$BN/$FP ;;
-        volume:*) BFILE=$S/${BF#volume:} ;;
-        out:*) BFILE=$OUT/${BF#out:} ;;
-        *) echo "bench $BN: unknown file spec '$BF'"; continue ;;
-      esac
-      [ -f "$BFILE" ] || { echo "bench $BN: $BFILE is missing; skipped"; continue; }
-      SLOTS=$(plan "['benchmark']['models'][$b].get('slots',1)"); CTX=$(plan "['benchmark']['models'][$b].get('ctx',32768)")
-      status bench "$BN: loading on the card ($(basename $BFILE))"
-      LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" $LS -m "$BFILE" --host 0.0.0.0 --port 8001 --api-key "$FORGE_TOKEN" -c $CTX --jinja -fa on -ctk q8_0 -ctv q8_0 -np $SLOTS -ngl 999 $(plan "['benchmark']['models'][$b].get('extra','')") > $OUT/bench/$BN-server.log 2>&1 &
-      BS=$!
-      for i in $(seq 1 90); do curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8001/health 2>/dev/null | grep -q 200 && break; kill -0 $BS 2>/dev/null || break; sleep 10; done
-      kill -0 $BS 2>/dev/null || { echo "bench $BN: llama-server died (see out/bench/$BN-server.log)"; tail -3 $OUT/bench/$BN-server.log; continue; }
-      rm -f $IN/bench-done-$BN
-      status bench "$BN ready: the PC runs the tests now (port 8001, $SLOTS slot(s), ctx $CTX)"
-      BH=$(plan "['benchmark'].get('hours_each',2)")
-      for i in $(seq 1 $(python3 -c "print(int($BH*120))")); do [ -f $IN/bench-done-$BN ] && break; kill -0 $BS 2>/dev/null || { echo "bench $BN: the server died during the tests"; break; }; sleep 30; done
-      kill $BS 2>/dev/null; wait $BS 2>/dev/null; sleep 3
-      if [ -f $IN/bench-done-$BN ]; then echo "bench $BN: the PC finished its tests"; else echo "bench $BN: time ran out (hours_each $BH)"; fi
-    done
-    status bench "finished: the reports are on the PC under out/bench"
-  else echo "bench: no CUDA llama-server (see out/llama-server-build.log); skipped"; status bench "skipped: no CUDA llama-server"; fi
-fi
+if [ -n "$(plan ".get('benchmark')")" ]; then run_bench; fi
 # every log and report of this run stays on the volume too
 if [ "$S" != "$W" ]; then RT=$S/runs/$(plan ".get('run','run')")-$(date -u +%Y%m%dT%H%M); mkdir -p $RT; cp $OUT/*.log $OUT/*.json $OUT/*.txt $RT/ 2>/dev/null; for d in $OUT/*/; do [ -d "$d" ] && { mkdir -p $RT/$(basename $d); cp $d/*.json $d/*.md $d/*.txt $RT/$(basename $d)/ 2>/dev/null; }; done; echo "run files kept on the volume at $RT"; fi
 rm -f $IN/hf-token
-status done "all rungs finished"
+run_done "all rungs finished"
