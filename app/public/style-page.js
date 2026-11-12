@@ -70,6 +70,7 @@ export function createStylePage({ api, redraw, flash }) {
       </div>
       <div><strong>Bob's look</strong> ${tip(`Every one blinks and talks. ${AVATAR_GROUPS.reduce((n, g) => n + g.count, 0) + Object.keys(LOOKS).length} to pick from, all drawn on this replicant matrix, or make your own from parts.`, 'Bob\'s look')}
         <p><button type="button" data-makelook aria-expanded="${making}">🧍 ${LOOK_ID.startsWith('c:') ? 'Change your own design' : 'Make your own look'}</button> <span class="muted">Body, build, hair, outfit, armour and weapon. This one's me, so the bodies are man, robot and alien; your Adventure character gets the full set.</span></p>
+        <div class="ttabs" role="radiogroup" aria-label="Bob's picture">${opt('avatar', 'pixel', 'Pixel Bob', style.avatar !== 'cube')}${opt('avatar', 'cube', 'fNRI cube', style.avatar === 'cube')}</div> ${tip(`My picture in the corner. Pixel Bob is the one you pick below, blinking and talking. fNRI cube shows my brain instead: it builds itself when I load a brain, rests with the odd spark, glows while I think, and takes itself apart when I let the brain go. It's lighter on your computer than Pixel Bob, and while it shows, the brain-swap machine sits out. The glow is for show; switch Real experts on in Bob's thinking (Now running) for the experts I really used. In Adventure the pixel Bob comes back.`, 'Bob\'s picture')}
         ${making ? '<div class="char-box"></div>' : ''}
         ${avatarsHtml()}</div>
     </section>`;
@@ -113,6 +114,7 @@ export function createStylePage({ api, redraw, flash }) {
   async function onClick(b, settings) {
     const style = settings.style || {};
     if (b.dataset.motion) { await save(settings, { motion: b.dataset.motion }); redraw(); return true; }
+    if (b.dataset.avatar) { await save(settings, { avatar: b.dataset.avatar === 'cube' ? 'cube' : 'pixel' }); redraw(); return true; } // 1.5.209: themes.js tells app.js, which swaps the picture
     if (b.dataset.nowneed) { await save(settings, { openNowOnNeed: b.dataset.nowneed === '1' }); redraw(); return true; }
     if (b.dataset.theme) { draft = null; await save(settings, { theme: b.dataset.theme }); redraw(); return true; }
     if (b.dataset.look) { const r = await api('/api/settings', { look: b.dataset.look }); setLook(b.dataset.look); settings.look = b.dataset.look; if (r.lookText) settings.lookText = r.lookText; redraw(); return true; }

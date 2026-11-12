@@ -43,8 +43,10 @@ export const CUBE_IN_MS = 1600, CUBE_OUT_MS = 1100, VASE_IN_MS = 3200, DRAIN_OUT
 // The colours: when this brain has an fNRI scan, Bob sends that scan's map along and every expert gets its skill's
 // colour (all-rounders a dashed white outline); with no scan the cube is one colour and says how to get the rest.
 // els: { box, canvas, says, open, key, mono, colour, colourBox, details, load, unload, loadBox, spin, lines, linesBox }. still() = animations are off (the last word is shown, nothing moves).
-export function createMindCube({ box, canvas, says, open, key = null, mono = null, colour = null, colourBox = null, details = null, load = null, unload = null, loadBox = null, spin = null, lines = null, linesBox = null }, { still = () => false, onWhy = null, live = () => false, EventSourceImpl = globalThis.EventSource } = {}) {
-  const view = createView(canvas);
+export function createMindCube({ box, canvas, says, open, key = null, mono = null, colour = null, colourBox = null, details = null, load = null, unload = null, loadBox = null, spin = null, lines = null, linesBox = null }, { still = () => false, onWhy = null, live = () => false, EventSourceImpl = globalThis.EventSource, avatar = false, fog = false } = {}) {
+  // avatar: Bob's picture in the corner is this cube (Style, Bob's look). Drawn small and never turning, so it costs
+  // less than the pixel Bob it stands in for; the same life (builds on load, sparks, glows while he thinks, drains, sign).
+  const view = createView(canvas, avatar ? { min: [32, 32] } : {});
   let es = null, traces = [], rec = null, sp = null, clip = -1, t = 0, raf = 0, last = 0, why = '', look = null;
   // Before the first reply (and on an engine that can't report experts) the cube is the brain's empty shape in one
   // colour, built block by block as the brain loads, then still until Bob thinks. shell = { label, experts, layers, kind }.
@@ -61,10 +63,11 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   let signNow = '';
   const showSign = (on) => { if (on && !signNow) signNow = pickSign(); if (!on) signNow = ''; sign.textContent = signNow; sign.hidden = !on; };
   view.set({ glow: 0.6, glass: 0.3, edges: true }); // edges: a faint outline, so it reads as a cube. Glow: bright enough to see the experts in use, still short of the white flash (above 0.6)
+  if (fog) view.set({ fog: true }); // the porthole into a foggy room, the fog lit by the firing
   // Turning: on to begin with, at the big viewer's slowest speed (0.05 a second, about two minutes a turn). Remembered.
   // Never while animations are off.
   const SPIN = 0.05;
-  let turning = true; try { turning = localStorage.getItem('bob-cube-spin') !== '0'; } catch {}
+  let turning = !avatar; try { if (!avatar) turning = localStorage.getItem('bob-cube-spin') !== '0'; } catch {}
   let connected = false, spinRaf = 0, spinLast = 0;
   function spinTick(now) {
     spinRaf = 0;

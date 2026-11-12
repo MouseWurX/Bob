@@ -2157,3 +2157,11 @@ html.readable-font code, html.readable-font pre, html.readable-font kbd { font-f
 .file-link.file-place { white-space: nowrap; }
 .vdoc .flash, .vslide.flash { outline: 2px solid var(--accent); outline-offset: 2px; }
 .vcode mark.vat { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; }
+
+/* 1.5.209 Bob's picture as the fNRI cube (Style, Bob's look): the same size and place as the pixel Bob, on the sprite background, theme colours only */
+.mind-cube.bob-cube { margin: 0; gap: 0; }
+.mind-cube.bob-cube canvas { width: 56px; height: 56px; border: none; border-radius: var(--r); background: var(--sprite-bg); cursor: pointer; }
+.side-top .mind-cube.bob-cube canvas { width: 44px; height: 44px; }
+body.left-folded .side-top .mind-cube.bob-cube canvas { width: 36px; height: 36px; }
+.mind-cube.bob-cube canvas:hover, .mind-cube.bob-cube canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mind-cube.bob-cube p.mind-cube-sign { height: 100%; font-size: 9px; letter-spacing: 0; text-align: center; line-height: 1; }
