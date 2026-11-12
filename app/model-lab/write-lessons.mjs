@@ -48,6 +48,10 @@ const JOBS = [
   ['selfcheck', 'tasks where Bob checks his own answer before sending it: re-reads the request, tests a claim or a calculation a second way, runs the code, or asks the reviewer, then corrects himself if needed and says what he checked', 0],
   ['research', 'looking something up properly: a question that needs several sources or files, where Bob searches or reads more than one place, compares what they say, pulls out what matters, says what is uncertain and where each point came from', 0],
   ['understand', 'a pasted text, log, message or described problem that must be understood before acting: Bob restates what it says and what is being asked in his own words, points out what is missing or unclear, and only then answers or asks', 0],
+  // 12 Nov: aimed at what the benchmark showed every Bob gets wrong (tools called on plain chat, arguments, long jobs)
+  ['restraint', 'messages that mention files, the web, code, reminders or apps but only want an explanation, an opinion, advice or a quick fact Bob already knows ("what is a zip file?", "is it safe to delete temp files?", "how do reminders usually work?", "what does this error usually mean?"): Bob answers directly from his own knowledge and calls NO tool', 0],
+  ['precise', 'jobs full of exact details Bob must copy into the tool call exactly: file and folder names with spaces or odd characters, full paths, dates and times ("next Tuesday at 7:30pm"), amounts, units, quoted text, several items at once', 0],
+  ['agent', 'bigger jobs that need three to six tool calls in a row, where each step depends on what the last one returned (find the files, read them, summarise, save the summary, remind me later): Bob says a one-line plan, does it, checks each result and finishes with a short summary of what he did', 0],
   ['science', 'physics, maths, chemistry and electronics: how things work, worked calculations, circuits and components, units, formulas, explaining a concept plainly, checking a calculation', 0],
   ['plans', 'planning: trips, projects, study plans, step-by-step plans for a big job', 4],
   ['reminders', 'reminders, to-do lists and the notice board: add, change, list, clear', 4],
@@ -65,6 +69,13 @@ const JOBS = [
 const onlyJobs = o.jobs ? String(o.jobs).split(',').map((x) => x.trim()).filter(Boolean) : null;
 const SCI_ANGLES = ['physics: motion, energy, forces, heat, light, with a worked calculation', 'electronics: circuits, Ohm\'s law, resistors, capacitors, transistors, microcontrollers, power supplies', 'chemistry: reactions, moles, acids and bases, materials, safety', 'maths beyond arithmetic: algebra, geometry, trig, probability, a bit of calculus', 'checking a calculation or unit conversion the person already did', 'explaining a science concept in plain words to a curious adult', 'practical engineering: batteries, motors, 3D printing materials, soldering, sensors'];
 const thinkMode = String(o.think || 'half');
+// --review: the teacher reads each finished lesson and grades it; a failed one goes to rejected.jsonl (with why), not lessons.jsonl
+const review = Boolean(o.review);
+// --avoid <folders>: requests already in these lesson folders are never written again (first user message, lowercased, gaps squeezed)
+const norm = (t) => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const avoid = new Set();
+for (const d of String(o.avoid || '').split(',').filter(Boolean)) for (const f of ['lessons.jsonl', 'heldout.jsonl']) for (const l of readJsonl(path.join(d, f))) { const u = l.messages?.find((m) => m.role === 'user'); if (typeof u?.content === 'string') avoid.add(norm(u.content)); }
+if (avoid.size) console.log(`avoiding ${avoid.size} requests already in the given lesson folders`);
 const dropTools = new Set(String(o['drop-tools'] || o.dropTools || '').split(',').filter(Boolean)); // --drop-tools ask_specialist,pick_session: these tools are not offered, so the teacher answers itself
 const CODE_ANGLES = ['fixing a bug in pasted code (include the code)', 'writing a small complete program from scratch', 'explaining what a piece of code does', 'JavaScript or TypeScript for a web page or Node', 'Python scripts and data handling', 'C++ or Rust, memory and performance', 'Unreal Engine C++ and Blueprints', 'Kotlin for Android apps', 'Blender Python add-ons and scripts', 'shell, PowerShell or batch scripts on Windows', 'SQL and databases', 'reading or writing files on the PC, then running the result', 'tests, refactors and code review', 'git, builds, packaging and errors from tools', 'software design: how to structure a small program, data layout, which approach and why', 'debugging a described problem step by step (crash, wrong output, slow code) without the code pasted', 'explaining a software engineering idea plainly (big-O, concurrency, APIs, memory, version control)'];
 const STYLES = ['short and casual', 'polite and detailed', 'with small typos', 'very brief, a few words', 'a bit frustrated', 'curious, asking why', 'in a hurry', 'chatty, with some context first', 'from a beginner', 'from an expert'];
@@ -84,7 +95,7 @@ process.on('SIGINT', () => stop(0));
 // ---- stage 1: ideas (what people say) ----
 let ideas = readJsonl(F.ideas);
 const seen = new Set(ideas.map((i) => i.text.toLowerCase()));
-const add = (job, text, extra = {}) => { const t = String(text || '').trim(); if (t.length < 2 || t.length > 600 || seen.has(t.toLowerCase())) return; seen.add(t.toLowerCase()); const i = { id: `i${ideas.length}`, job, text: t, ...extra }; ideas.push(i); appendJsonl(F.ideas, i); };
+const add = (job, text, extra = {}) => { const t = String(text || '').trim(); if (t.length < 2 || t.length > 600 || seen.has(t.toLowerCase()) || avoid.has(norm(t))) return; seen.add(t.toLowerCase()); const i = { id: `i${ideas.length}`, job, text: t, ...extra }; ideas.push(i); appendJsonl(F.ideas, i); };
 if (!ideas.length && !onlyJobs) for (const p of kit.phrasings.filter((p) => !p.pic && !p.recent)) add(p.job, p.text, { from: 'phrasings' });
 // --jobs coding:3,science:1 gives weights; a job with weight 0 only runs when named.
 const jobW = Object.fromEntries((onlyJobs || []).map((x) => x.split(':')).map(([k, w]) => [k, Number(w) || null]));
@@ -100,7 +111,7 @@ for (const [job, what, w] of JOBS2) {
     const style = STYLES[tries % STYLES.length];
     const angle = job === 'coding' ? ` Focus this batch on ${CODE_ANGLES[tries % CODE_ANGLES.length]}. Each message is 2 to 4 sentences and names the language and what they are building, with enough detail (or pasted code) to answer properly.` : job === 'science' ? ` Focus this batch on ${SCI_ANGLES[tries % SCI_ANGLES.length]}.` : job === 'languages' ? ` This batch all in ${['French (Canada)', 'Spanish', 'German', 'Ukrainian', 'Tagalog', 'Punjabi', 'French', 'Portuguese'][tries % 8]}.` : job === 'formats' ? ` Each message must state the exact output shape it wants.` : '';
     try {
-      const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `Write 25 different messages a person might type to their desktop AI assistant about: ${what}.${angle} Make them ${style}. Each one different in topic and wording. Use neutral or no names. Reply with only a JSON array of strings.` }], max: 2500, temperature: 1.0 });
+      const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `Write 25 different messages a person might type to their desktop AI assistant about: ${what}.${angle} Make them ${style}. Each one different in topic and wording. Make them real and specific, the way a person with an actual task types: concrete file names, numbers, places, times or pasted snippets where they fit, not generic examples. Mix easy and tricky ones, including a few where the right move is less obvious. Use neutral or no names. Reply with only a JSON array of strings.` }], max: 2500, temperature: 1.0 });
       const arr = JSON.parse((msg.content || '').match(/\[[\s\S]*\]/)?.[0] || '[]');
       for (const t of arr) add(job, t);
     } catch (e) { console.log(`ideas ${job}: ${e.message.slice(0, 80)}`); }
@@ -168,7 +179,21 @@ async function one(idea, think, room = 1) { // room 2 = a second try with twice 
   }
   const last = saved[saved.length - 1];
   if (last.role !== 'assistant' || !String(last.content || '').trim()) throw new Error('no final answer (ran out of steps)');
+  if (review) {
+    const v = await grade(idea, saved);
+    if (!v.ok) { appendJsonl(path.join(dir, 'rejected.jsonl'), { idea: idea.id, job: idea.job, think, why: v.why, messages: saved }); throw new Error(`review: ${v.why}`); }
+  }
   appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, messages: saved });
+}
+// The teacher as a strict reviewer: right tool or rightly none, exact arguments, results read, a final answer that does the job.
+const RULES = { restraint: 'This message only wants an answer Bob knows: calling any tool is a FAIL.', precise: 'Every detail from the request (names, paths, dates, amounts) must appear exactly in the tool arguments.', agent: 'Each step must use what the previous result returned; the final answer must sum up what was done.' };
+async function grade(idea, saved) {
+  const text = saved.map((m) => `${m.role.toUpperCase()}${m.name ? ` (${m.name})` : ''}: ${m.tool_calls ? `[calls ${m.tool_calls.map((c) => `${c.function.name} ${String(c.function.arguments).slice(0, 400)}`).join('; ')}] ` : ''}${String(m.content || '').slice(0, 1500)}`).join('\n');
+  try {
+    const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `You review training lessons for a desktop AI assistant called Bob. Be strict. FAIL the lesson if Bob called a tool when a plain answer was enough, skipped a tool the request clearly needed, put wrong or made-up details in tool arguments, ignored or misread a tool result, looped, or ended without actually doing what was asked. ${RULES[idea.job] || ''}\n\n${text}\n\nReply with only JSON: {"ok": true or false, "why": "one short reason"}` }], max: 300, temperature: 0 });
+    const j = JSON.parse((msg.content || '').match(/\{[\s\S]*\}/)?.[0] || '{}');
+    return { ok: j.ok === true, why: String(j.why || '').slice(0, 200) };
+  } catch (e) { return { ok: true, why: `review failed: ${e.message.slice(0, 60)}` }; } // a reviewer hiccup never throws a lesson away
 }
 // --parallel N: N lessons at once (a rented server handles many together; the PC's llama-server is best at 1).
 async function worker() {
