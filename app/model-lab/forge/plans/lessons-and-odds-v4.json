@@ -1,6 +1,7 @@
 {
  "run": "lessons-and-odds-v4",
  "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
  "teacher_model": "bobs/35Bob/model",
  "lessons": "out/lessons-none",
  "gpus": [
