@@ -59,6 +59,7 @@ export function createHelp() {
     box.focus(); box.setSelectionRange(pos, pos);
   });
   dlg.addEventListener('click', (e) => {
+    if (e.target.closest('[data-help-shortcuts]')) { window.dispatchEvent(new CustomEvent('bob-shortcuts')); return; } // app.js draws the list
     const a = e.target.closest('[data-helpgo]');
     if (!a) return;
     e.preventDefault();

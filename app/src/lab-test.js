@@ -4,6 +4,7 @@
 import { spawn } from 'node:child_process';
 import net from 'node:net';
 import { genBody } from './lab-gen.js'; // 1.5.168 Professional mode settings
+import { ENTRY_JOBS, entryTools, runEntryJob, serverAsk } from './lab-entry.js'; // Nov 11: the real entry test
 
 export const QUIZ = {
   general: [
@@ -20,21 +21,21 @@ export const QUIZ = {
     ['How many minutes are in two hours? Number only.', /\b120\b/],
     ['What language is mostly spoken in Brazil? One word.', /portuguese/i]
   ],
-  tools: [
-    ['What\'s the weather like in Lisbon right now?', 'get_weather'],
-    ['Make me a picture of a cat wearing a hat.', 'make_picture'],
-    ['Remind me to call my mum at 6 pm.', 'set_reminder'],
-    ['Find the file where I wrote my shopping list.', 'search_files'],
-    ['Draw a castle on a hill at sunset.', 'make_picture'],
-    ['Is it going to rain in Paris tomorrow?', 'get_weather'],
-    ['Look through my documents for the invoice from March.', 'search_files'],
-    ['Tell me tomorrow morning to take the bins out.', 'set_reminder']
-  ],
+  // Nov 11: Bob's real tools, round his real loop (src/lab-entry.js). The old 8 one-shot picks are PICK_BASICS below.
+  tools: ENTRY_JOBS,
+  // Nov 11: 10 coding asks, not 4. JavaScript ones carry [fn, cases]: run in the sandbox when it holds, else the
+  // pattern decides (Python and SQL are always the pattern).
   coding: [
-    ['Write a JavaScript function named add that returns the sum of its two arguments. Reply with only the code.', /function\s+add\s*\(|(const|let|var)\s+add\s*=/],
+    ['Write a JavaScript function named add that returns the sum of its two arguments. Reply with only the code.', /function\s+add\s*\(|(const|let|var)\s+add\s*=/, ['add', [[[2, 3], 5], [[-1, 1], 0]]]],
     ['Write a Python function named reverse_text that returns its string argument reversed. Reply with only the code.', /def\s+reverse_text\s*\(/],
     ['In SQL, write a query that selects every column from a table named users. Reply with only the query.', /select\s+\*\s+from\s+users/i],
-    ['Write a Python list comprehension that makes a list of the squares of 0 to 9. Reply with only the code.', /\[\s*\w+\s*\*\*\s*2\s+for\s+\w+\s+in\s+range\(\s*10\s*\)\s*\]|\[\s*(\w+)\s*\*\s*\1\s+for\s+\1\s+in\s+range\(\s*10\s*\)\s*\]/]
+    ['Write a Python list comprehension that makes a list of the squares of 0 to 9. Reply with only the code.', /\[\s*\w+\s*\*\*\s*2\s+for\s+\w+\s+in\s+range\(\s*10\s*\)\s*\]|\[\s*(\w+)\s*\*\s*\1\s+for\s+\1\s+in\s+range\(\s*10\s*\)\s*\]/],
+    ['Write a JavaScript function named isPalindrome(s) that returns true when s reads the same backwards, ignoring case, spaces and punctuation. Reply with only the code.', /function\s+isPalindrome\s*\(|isPalindrome\s*=/, ['isPalindrome', [[['Race car'], true], [['A man, a plan, a canal: Panama'], true], [['hello'], false]]]],
+    ['Write a JavaScript function named countVowels(s) that returns how many of a, e, i, o, u (either case) are in s. Reply with only the code.', /function\s+countVowels\s*\(|countVowels\s*=/, ['countVowels', [[['Hello World'], 3], [['xyz'], 0], [['AEIOU'], 5]]]],
+    ['Write a JavaScript function named unique(list) that returns the list without repeats, keeping the first of each in order. Reply with only the code.', /function\s+unique\s*\(|unique\s*=/, ['unique', [[[[3, 1, 3, 2, 1]], [3, 1, 2]], [[['a', 'a']], ['a']]]]],
+    ['Write a JavaScript function named chunk(list, size) that splits the list into pieces of that size (the last piece may be shorter). Reply with only the code.', /function\s+chunk\s*\(|chunk\s*=/, ['chunk', [[[[1, 2, 3, 4, 5], 2], [[1, 2], [3, 4], [5]]], [[[], 3], []]]]],
+    ['Write a JavaScript function named snakeCase(s) that turns camelCase into snake_case, so "userName" becomes "user_name". Reply with only the code.', /function\s+snakeCase\s*\(|snakeCase\s*=/, ['snakeCase', [[['userName'], 'user_name'], [['totalItemCount'], 'total_item_count'], [['plain'], 'plain']]]],
+    ['Write a Python function named fib(n) that returns the n-th Fibonacci number, with fib(0) = 0 and fib(1) = 1. Reply with only the code.', /def\s+fib\s*\(/]
   ],
   following: [
     ['Reply with exactly the word "banana" in lower case and nothing else.', (t) => t.trim().replace(/[."']/g, '') === 'banana'],
@@ -43,6 +44,18 @@ export const QUIZ = {
     ['Reply with a single number: how many days are in a week?', (t) => /^\s*7\s*\.?\s*$/.test(t)]
   ]
 };
+
+// The old tool part: 8 one-shot picks between 4 made-up tools. The Pick the tool challenge still asks these.
+export const PICK_BASICS = [
+  ['What\'s the weather like in Lisbon right now?', 'get_weather'],
+  ['Make me a picture of a cat wearing a hat.', 'make_picture'],
+  ['Remind me to call my mum at 6 pm.', 'set_reminder'],
+  ['Find the file where I wrote my shopping list.', 'search_files'],
+  ['Draw a castle on a hill at sunset.', 'make_picture'],
+  ['Is it going to rain in Paris tomorrow?', 'get_weather'],
+  ['Look through my documents for the invoice from March.', 'search_files'],
+  ['Tell me tomorrow morning to take the bins out.', 'set_reminder']
+];
 
 export const TOOLS = [
   { type: 'function', function: { name: 'get_weather', description: 'The weather now or the forecast for a city.', parameters: { type: 'object', properties: { city: { type: 'string' }, when: { type: 'string' } }, required: ['city'] } } },
@@ -60,9 +73,10 @@ export async function freePort() {
 }
 
 // Start a llama-server for one brain. Tries the card first (--fit on), then the processor.
-export async function startServer({ exe, gguf, mmproj, ctx = 8192, args = [], cpuOk = true, signal, log = () => {}, spawnFn = spawn, timeoutMs = 10 * 60e3, extra = [] }) { // 1.5.164 `extra` and 1.5.167 `args`: more llama-server flags; cpuOk=false skips the processor-only try
+export async function startServer({ exe, gguf, mmproj, ctx = 8192, args = [], cpuOk = true, signal, log = () => {}, spawnFn = spawn, timeoutMs = 10 * 60e3, extra = [], place = null }) { // 1.5.164 `extra` and 1.5.167 `args`: more llama-server flags; cpuOk=false skips the processor-only try
   const more = [...args, ...extra];
-  const tries = cpuOk ? [['--fit', 'on'], ['-ngl', '0']] : [['--fit', 'on']];
+  // 1.5.205 `place`: a placement set outright (calibration tries --n-cpu-moe N), in place of --fit and with no second try.
+  const tries = place ? [place] : cpuOk ? [['--fit', 'on'], ['-ngl', '0']] : [['--fit', 'on']];
   let last = '';
   for (const extra of tries) {
     const port = await freePort();
@@ -97,20 +111,39 @@ async function ask(url, messages, tools, signal, gen = null, repeat = 0) {
 }
 
 // The quiz on a running server. onStep(done, total) as it goes. Returns { parts: { id: { right, of, score } }, score, tps }.
-export async function runQuiz(url, { signal, onStep = () => {}, quiz = QUIZ, gen = null, repeat = 0, log = null } = {}) {
+// Nov 11: the tools part goes round Bob's loop with his real tools (lab-entry.js); `tools` swaps the tool list (tests).
+// `sandbox` ({ run(code, fn, cases) }, the one Code it uses) runs the JavaScript coding answers on fixed inputs; without
+// it the pattern decides, and the result says so (codeChecked: false).
+export async function runQuiz(url, { signal, onStep = () => {}, quiz = QUIZ, gen = null, repeat = 0, log = null, tools = null, sandbox = null } = {}) {
   const total = Object.values(quiz).reduce((a, l) => a + l.length, 0);
   let done = 0; const speeds = [], reads = []; const parts = {}; const misses = [];
+  const realTools = quiz.tools?.length ? tools || await entryTools() : [];
+  const loopAsk = serverAsk(url, { signal, body: gen ? genBody(gen, 700, repeat) : {} });
+  let codeRan = 0;
   for (const [part, list] of Object.entries(quiz)) {
     let right = 0;
-    for (const [q, want] of list) {
+    for (const [q, want, run] of list) {
       if (signal?.aborted) throw new Error('Stopped.');
       let ok = false, ans = '';
       try {
-        const a = await ask(url, [{ role: 'user', content: q }], part === 'tools' ? TOOLS : null, signal, gen, repeat);
-        ans = a.calls?.length ? `(called ${a.calls.join(', ')}) ${a.text}` : a.text;
-        if (a.tps) speeds.push(a.tps);
-        if (a.prefillTps) reads.push(a.prefillTps);
-        ok = part === 'tools' ? a.calls[0] === want : typeof want === 'function' ? want(a.text) : want.test(a.text);
+        if (part === 'tools' && Array.isArray(want)) {
+          const j = await runEntryJob([q, want], realTools, loopAsk, { signal });
+          ok = j.ok; ans = `(ran ${j.ran.join(', ') || 'no tool'}${j.bounced ? `, ${j.bounced} sent back` : ''}${j.mended ? `, ${j.mended} mended` : ''}, ${j.steps} steps) ${j.answer}`;
+          if (j.tps) speeds.push(j.tps);
+        } else {
+          const a = await ask(url, [{ role: 'user', content: q }], part === 'tools' ? TOOLS : null, signal, gen, repeat);
+          ans = a.calls?.length ? `(called ${a.calls.join(', ')}) ${a.text}` : a.text;
+          if (a.tps) speeds.push(a.tps);
+          if (a.prefillTps) reads.push(a.prefillTps);
+          if (part === 'tools') ok = a.calls[0] === want;
+          else if (part === 'coding' && run && sandbox) {
+            const [fn, cases] = run;
+            const code = (String(a.text).match(/```(?:[a-zA-Z]*)\n?([\s\S]*?)```/) || [null, a.text])[1].trim();
+            const res = await sandbox.run(code, fn, cases.map((c) => c[0]));
+            ok = Array.isArray(res) && res.length === cases.length && res.every((r, i) => r.ok && JSON.stringify(r.v) === JSON.stringify(cases[i][1]));
+            codeRan++;
+          } else ok = typeof want === 'function' ? want(a.text) : want.test(a.text);
+        }
       } catch (e) { if (signal?.aborted) throw e; }
       log?.({ q, answer: ans, ok });
       if (ok) right++; else misses.push({ part, q });
@@ -121,5 +154,5 @@ export async function runQuiz(url, { signal, onStep = () => {}, quiz = QUIZ, gen
   const score = Math.round(Object.values(parts).reduce((a, p) => a + p.score, 0) / Object.keys(parts).length);
   const tps = speeds.length ? Math.round((10 * speeds.reduce((a, b) => a + b, 0)) / speeds.length) / 10 : 0;
   const prefillTps = reads.length ? Math.round(reads.reduce((a, b) => a + b, 0) / reads.length) : 0;
-  return { parts, score, tps, prefillTps, misses };
+  return { parts, score, tps, prefillTps, misses, codeChecked: codeRan > 0 };
 }

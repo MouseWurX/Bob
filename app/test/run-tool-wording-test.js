@@ -24,7 +24,10 @@ const longP = params.filter(([, d]) => d.length > 240).map(([n, d]) => `${n} ${d
 check('every input is described in at most 240 characters', !longP.length, longP.join(', '));
 check('every tool has a description', all.every((f) => f.description.trim().length > 10), all.filter((f) => f.description.trim().length <= 10).map((f) => f.name).join(', '));
 // Before the wording pass: all tools ~47,500 characters, the starting core ~8,800.
-check('all tools together stay under 42,000 characters', size(all) < 42000, String(size(all)));
+// 1.5.204: seven new tools (3D model and part, tool packs x3, look_at_job, pass_note), all off until switched on,
+// took the total from 39,000 to about 42,800. Each one is still under the per-tool limits above.
+// Sort and rename (sort_files, off until switched on) adds about 430.
+check('all tools together stay under 43,500 characters', size(all) < 43500, String(size(all)));
 const core = all.filter((f) => CORE.includes(f.name));
 check('the tools every chat starts with stay under 8,000 characters', size(core) < 8000, String(size(core)));
 check('no tool talks about GPU plumbing the brain can\'t act on', !all.some((f) => /steps out of the GPU/.test(f.description)));

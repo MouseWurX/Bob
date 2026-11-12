@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Brain } from '../src/brain.js';
-import { cleanHousekeeping, memoryRepeats, parseJson } from '../src/housekeeping.js';
+import { cleanHousekeeping, memoryRepeats, parseJson, folderRefusal, oldFolderFiles, cleanFolder } from '../src/housekeeping.js';
 import { mayRecycle, recycle, trashDir } from '../src/recycle.js';
 import { readChat, readOlder, chatFile, stampMessages, writeChat } from '../src/chats.js';
 import { search } from '../src/search.js';
@@ -21,7 +21,7 @@ const cfg = {
   agentDir: tmp, innDir: inn, dataDir: path.join(inn, 'bob'), painterDir: path.join(inn, 'painter'), archiveDir: path.join(inn, 'archive'),
   logbook: path.join(inn, 'logbook.md'), memoryFile: path.join(inn, 'bob-memory.md'), noticeBoard: path.join(inn, 'notice-board.md'),
   ollamaUrl: 'http://127.0.0.1:1', engine: 'ollama', models: { bob: 'fake:1b' }, userName: 'Sam', timeZone: 'America/Edmonton',
-  readRoots: [inn], readOnlyRoots: [], recycleBin: false, housekeeping: { enabled: false }
+  readRoots: [inn], readOnlyRoots: [], recycleBin: false, housekeeping: { enabled: false, chosen: true }
 };
 for (const d of [cfg.dataDir, cfg.painterDir, cfg.archiveDir, path.join(inn, 'references')]) fs.mkdirSync(d, { recursive: true });
 const events = [];
@@ -43,7 +43,11 @@ brain.engine = {
 // ---- settings ----
 {
   const d = cleanHousekeeping({});
-  check('housekeeping is off by default, every kind asks first', d.enabled === false && Object.values(d).filter((x) => typeof x === 'object').every((k) => k.mode === 'ask'));
+  check('housekeeping is ON by default (Nov 11), every kind asks first, no added folders', d.enabled === true && d.extraFolders.length === 0 && Object.values(d).filter((x) => x && typeof x === 'object' && !Array.isArray(x)).every((k) => k.mode === 'ask'));
+  check('an old enabled:false the user never chose turns on; one the user chose stays off', cleanHousekeeping({ enabled: false }).enabled === true && cleanHousekeeping({ enabled: false, chosen: true }).enabled === false);
+  check('added folders can never be set to tidy automatically', cleanHousekeeping({ folders: { mode: 'auto' } }).folders.mode === 'ask');
+  check('only full paths, not a whole drive, are kept as folders', cleanFolder('C:\\Users\\you\\Downloads\\') === 'C:\\Users\\you\\Downloads' && cleanFolder('/home/you/dl/') === '/home/you/dl' && !cleanFolder('C:\\') && !cleanFolder('/') && !cleanFolder('downloads'));
+  check('the same folder is kept once', cleanHousekeeping({ extraFolders: ['/a/b', '/a/b/', '/A/B'] }).extraFolders.length === 1);
   const c = cleanHousekeeping({ enabled: true, chats: { n: -4, unit: 'years', mode: 'auto' }, pictures: { n: 2, unit: 'weeks' } });
   check('bad limits fall back to defaults; "auto" is kept only when chosen', c.enabled && c.chats.n === 3 && c.chats.unit === 'months' && c.chats.mode === 'auto' && c.pictures.n === 2 && c.pictures.unit === 'weeks' && c.pictures.mode === 'ask');
   check('the model\'s JSON is found inside other words', parseJson('Sure! {"a":1} done')?.a === 1 && parseJson('nope') === null);
@@ -181,7 +185,7 @@ const old = Date.now() - 400 * DAY;
   writeChat(cfg, 'autochat', [{ role: 'user', content: 'auto me', id: 'a1', at: old }, { role: 'assistant', content: 'ok', id: 'a2', at: old }]);
   const p2 = path.join(cfg.painterDir, '2025-02-02-ask.png'); fs.writeFileSync(p2, 'x'); fs.utimesSync(p2, old / 1000, old / 1000);
   brain.lastActivity = Date.now() - 60e3;
-  check('with housekeeping off nothing happens', (await hk.tick()).skipped === true);
+  check('with housekeeping turned off by the user nothing happens', (await hk.tick()).skipped === true);
   cfg.housekeeping = { enabled: true, chats: { n: 1, unit: 'months', mode: 'auto' } };
   check('not idle yet (quiet less than 10 minutes): nothing happens', (await hk.tick()).skipped === true);
   brain.lastActivity = Date.now() - 11 * 60e3;
@@ -196,6 +200,32 @@ const old = Date.now() - 400 * DAY;
   await hk.tick();
   check('mentioned at most once a day', !events.some((e) => e.type === 'tidy'));
   brain.housekeeper.pause();
+}
+
+// ---- Folders the user points him to (Nov 11) ----
+{
+  const userTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-hk-user-')), mine = path.join(userTmp, 'sam'), dl = path.join(mine, 'Downloads');
+  fs.mkdirSync(path.join(dl, 'deep', '.hidden'), { recursive: true });
+  const oldT = (Date.now() - 400 * DAY) / 1000;
+  for (const f of ['old.zip', 'deep/old2.iso', 'deep/.hidden/secret.txt', '.dotfile']) { const p = path.join(dl, f); fs.writeFileSync(p, 'x'); fs.utimesSync(p, oldT, oldT); }
+  fs.writeFileSync(path.join(dl, 'new.zip'), 'x');
+  const opts = { home: mine };
+  check('a folder inside home is allowed', folderRefusal(cfg, dl, opts) === '');
+  check('the whole home folder is refused', /whole home/.test(folderRefusal(cfg, mine, opts)));
+  check('system folders are refused', /system/.test(folderRefusal(cfg, 'C:\\Windows\\System32', opts)) && /system/.test(folderRefusal(cfg, '/usr/share', opts)) && /system/.test(folderRefusal(cfg, '/etc', opts)));
+  check('a folder holding Bob, or one of his own, is refused', /holds Bob/.test(folderRefusal(cfg, tmp, opts)) && /own folders/.test(folderRefusal(cfg, path.join(inn, 'painter'), opts)));
+  check('a folder that is not there is refused', /can't find/.test(folderRefusal(cfg, path.join(mine, 'nope'), opts)));
+  const found = oldFolderFiles([dl], Date.now() - 180 * DAY).map((x) => path.relative(dl, x.file).replace(/\\/g, '/'));
+  check('old files in an added folder are found, hidden ones and new ones are not', found.includes('old.zip') && found.includes('deep/old2.iso') && !found.some((f) => /hidden|dotfile|new\.zip/.test(f)), JSON.stringify(found));
+  cfg.housekeeping = { enabled: true, chosen: true, extraFolders: [dl], folders: { n: 6, unit: 'months', mode: 'auto' } };
+  const items = hk.scan().filter((i) => i.kind === 'folders');
+  check('Tidy up lists them under "Files in folders you added", asking first', items.length === 2 && items.every((i) => i.def === 'delete' && i.paths?.length === 1));
+  check('they may go to the Recycle Bin (inside an added folder)', mayRecycle(cfg, path.join(dl, 'old.zip')) && !mayRecycle(cfg, dl));
+  cfg.housekeeping = { enabled: true, chosen: true };
+  check('with no folders added, nothing of the user\'s is listed', !hk.scan().some((i) => i.kind === 'folders') && !mayRecycle(cfg, path.join(dl, 'old.zip')));
+  const src = fs.readFileSync(new URL('../src/housekeeping.js', import.meta.url), 'utf8');
+  check('added folders are never tidied by themselves', /i\.kind !== 'folders'\); \/\/ added folders: always ask/.test(src));
+  fs.rmSync(userTmp, { recursive: true, force: true });
 }
 
 hk.stop();

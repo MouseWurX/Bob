@@ -5,6 +5,7 @@ import path from 'node:path';
 import { ttsReady } from './tts.js';
 import { audioReady } from './audio.js';
 import { workshopOn } from './workshop.js';
+import { model3dOn, model3dReady } from './model3d.js';
 import { exeName } from './platform.js';
 
 const exists = (p) => Boolean(p) && fs.existsSync(p);
@@ -39,5 +40,5 @@ export function capabilities(cfg) {
   const video = sdcppReady(cfg, 'video') || Boolean(cfg.maestro?.enabled && cfg.maestro?.video);
   // Edit models keep a reference's look (same character, new pose). Without one, references are still used as start pictures.
   const edits = sdcppReady(cfg, 'edit');
-  return { hearing, pictures: pictures || edits, video, edits, voice: ttsReady(cfg), music: audioReady(cfg).music, sfx: audioReady(cfg).sfx, workshop: workshopOn(cfg) };
+  return { hearing, pictures: pictures || edits, video, edits, voice: ttsReady(cfg), music: audioReady(cfg).music, sfx: audioReady(cfg).sfx, model3d: model3dOn(cfg) && model3dReady(cfg), workshop: workshopOn(cfg) };
 }

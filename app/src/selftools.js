@@ -63,7 +63,7 @@ function saveApproved(cfg, all) {
 }
 
 // Every file in a tool's folder that counts (not its work folder), with its sha256.
-function hashFiles(dir) {
+export function hashFiles(dir) {
   const out = {};
   const walk = (d, rel = '') => {
     let list = [];
@@ -78,7 +78,7 @@ function hashFiles(dir) {
   walk(dir);
   return out;
 }
-const sameHashes = (a = {}, b = {}) => { const ka = Object.keys(a).sort(), kb2 = Object.keys(b).sort(); return ka.length === kb2.length && ka.every((k, i) => k === kb2[i] && a[k] === b[k]); };
+export const sameHashes = (a = {}, b = {}) => { const ka = Object.keys(a).sort(), kb2 = Object.keys(b).sort(); return ka.length === kb2.length && ka.every((k, i) => k === kb2[i] && a[k] === b[k]); };
 
 function readSpec(dir) {
   try { return JSON.parse(fs.readFileSync(path.join(dir, 'tool.json'), 'utf8')); } catch { return null; }
@@ -256,7 +256,8 @@ function sandboxEnv(work) {
 
 // Runs a tool's code in the sandbox. dir = the tool's folder (tool.mjs, files\, work\). Resolves
 // { ok, out, error, blocked, timedOut, log } and never throws for the tool's own failure.
-export function runSandboxed({ dir, input = {}, reads = [], writes = [], internet = false, timeoutSec = 60, signal } = {}) {
+// file: the code file inside dir to run (tool.mjs for the tools Bob made; a tool pack names its own, toolpacks.js).
+export function runSandboxed({ dir, file: codeFile = 'tool.mjs', input = {}, reads = [], writes = [], internet = false, timeoutSec = 60, signal } = {}) {
   // Real paths only: on a Mac the temp folder (/var/folders/...) goes through the link /var -> /private/var, and
   // following that link to load the tool is itself a read the sandbox refuses (it stopped "FileSystemRead: /var").
   const real = (f) => { try { return fs.realpathSync(f); } catch { return f; } };
@@ -274,7 +275,7 @@ export function runSandboxed({ dir, input = {}, reads = [], writes = [], interne
     const args = ['--permission', `--allow-fs-read=${runner}`, `--allow-fs-read=${dir}`, ...[...reads, ...writes].map((f) => `--allow-fs-read=${f}`),
       `--allow-fs-write=${work}`, ...writes.map((f) => `--allow-fs-write=${f}`), '--max-old-space-size=512', '--disable-proto=throw'];
     if (internet && netGuard()) args.push('--allow-net');
-    args.push(runner, path.join(dir, 'tool.mjs'), inFile, outFile, internet ? '1' : '0');
+    args.push(runner, path.join(dir, ...String(codeFile).split('/')), inFile, outFile, internet ? '1' : '0');
     let log = '', timedOut = false, done = false, child;
     const finish = (r) => {
       if (done) return; done = true;

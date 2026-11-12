@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { cleanAddress, cleanSharePatch, saveShare, shareView, wantsBorrow, lendRefusal, cleanLendRequest, lendChat, Lenders } from '../src/share-brains.js';
+import { openCopy } from '../src/secret-box.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { if (ok) { pass++; console.log(`PASS ${name}`); } else { fail++; console.log(`FAIL ${name}${extra ? `: ${extra}` : ''}`); } };
@@ -34,7 +35,7 @@ fs.writeFileSync(file, JSON.stringify({ port: 7777, other: 1 }));
 const sc = { configFile: file };
 saveShare(sc, one);
 const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
-check('saved in config.json, other keys untouched', raw.share.borrow.bobs[0].passcode === '87654321' && raw.other === 1 && sc.share === one);
+check('saved in config.json, the passcode locked (🔐 Locked secrets), other keys untouched', raw.share.borrow.bobs[0].passcode.startsWith('bobsecret1:') && !JSON.stringify(raw).includes('87654321') && openCopy(raw).share.borrow.bobs[0].passcode === '87654321' && raw.other === 1 && sc.share === one);
 fs.rmSync(dir, { recursive: true, force: true });
 
 // ---------- when to borrow ----------
@@ -161,7 +162,7 @@ check('no first word by the hard limit: too slow, even while loading', forever =
 await new Promise((r) => setTimeout(r, 200));
 check('and that lender stopped loading too', lender.lending === null);
 
-// SCUT, Bob's fast link for Bigger Bobs: off unless switched on, with a speed cap of 50, 100 or 300 Mbit/s.
+// SCUT, Bob's fast link for Bigger Bobs: off unless switched on, with a speed cap of 50, 100, 300 or 400 Mbit/s.
 {
   check('SCUT is off unless switched on, cap 100', shareView(base).scut === false && shareView(base).scutMbps === 100);
   const on = cleanSharePatch(base, { scut: true, scutMbps: 300 });

@@ -100,7 +100,7 @@ const run = async (text) => { const { jobId } = brain.enqueue('main', text); awa
   script = [{ role: 'assistant', content: 'The moon is about 3,747 km across.' }];
   await run('how big is the moon?');
   check('off: the tool isn\'t offered', seen.length && !seen.at(-1).names.includes('edit_my_message'));
-  check('off: no ids sent ahead', !events.some((e) => e.type === 'said'));
+  check('off: his message still gets its id, for the ... menu on it (msg-menu.js)', events.some((e) => e.type === 'said'));
   cfg.editOwn = true;
   script = [call('edit_my_message', { find: '3,747', replace: '3,474' }), { role: 'assistant', content: 'Fixed that above.' }];
   await run('are you sure about that number?');
@@ -147,7 +147,7 @@ const run = async (text) => { const { jobId } = brain.enqueue('main', text); awa
   const app = read('public/app.js');
   check('the window marks the bubble with its id as he says it', /case 'said':/.test(app) && /dataset\.mid = /.test(app));
   check('the window redraws a changed message in place, with "edited" to show what it said first', /case 'edited': editedMsg\(ev\)/.test(app) && /First said:/.test(app) && /aria-expanded/.test(app));
-  check('a reloaded chat shows "edited" too', /if \(m\.edited\) markEdited\(el, m\.was\)/.test(app));
+  check('a reloaded chat shows "edited" too', /if \(m\.edited\) markEdited\(el, m\.was[,)]/.test(app));
   check('no extra tool line for an edit', /ev\.name !== 'edit_my_message'/.test(app));
   check('Telegram gets the fix', /case 'edited':/.test(read('src/telegram.js')));
   check('the phone app gets the fix', /ev\.type === 'edited'/.test(read('android/app/src/main/assets/www/phone.js')));

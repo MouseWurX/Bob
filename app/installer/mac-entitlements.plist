@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- What Bob.app may do under Apple's hardened runtime, used only when it is signed with a Developer ID
+     (installer/make-release-mac.sh, docs/SIGNING-MAC.md). The ad hoc build doesn't use it.
+     allow-jit, allow-unsigned-executable-memory: Electron's JavaScript engine compiles code as it runs.
+     disable-library-validation: Electron and the engines Bob fetches later load libraries signed by someone else.
+     device.audio-input: the microphone, only when you press it or turn on Hey Bob (NSMicrophoneUsageDescription).
+     Nothing else: no debugging hook (get-task-allow), no sandbox exceptions. -->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+</dict>
+</plist>

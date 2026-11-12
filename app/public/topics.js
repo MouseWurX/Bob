@@ -1,8 +1,11 @@
 // Topics: Bob's glossary of what's been talked about, grouped by project, with a note on where each one landed.
 // Also past chats (open, pin) and one search box over chats, summaries, topics, pictures and notes.
 // Drag a message onto another topic to move it. Forget a topic with a preview first.
+// With "Save chats as files and bring chats in" on (src/chat-files.js), Past chats can save a chat as Markdown, JSON or
+// PDF, and bring in chats exported from ChatGPT, Claude or Open WebUI (the file is looked at, then you tick which).
 import { esc } from './rich.js';
 import { tip } from './tips.js';
+import { drawPicture, saveBlob } from './chat-share.js';
 
 const $ = (id) => document.getElementById(id);
 const day = (ms) => (ms ? new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '');
@@ -12,6 +15,10 @@ export function createTopics({ api, openChat }) {
   const dlg = $('topics'), body = $('topics-body');
   $('topics-close').onclick = () => dlg.close();
   let tab = 'topics', topics = [], open = new Set(), q = '', timer = null, msg = '';
+  // picking: what's in the file being brought in { token, chats, more, name }; sharing: { id, hide, last, data } while
+  // the Share preview is up.
+  let filesOn = false, picking = null, sharing = null;
+  const FROM = { chatgpt: 'ChatGPT', claude: 'Claude', openwebui: 'Open WebUI', bob: 'a saved chat', transcript: 'a transcript' };
 
   async function load() {
     try { topics = await api('/api/topics'); } catch (e) { topics = []; msg = e.message; }
@@ -58,12 +65,60 @@ export function createTopics({ api, openChat }) {
       ${[...groups].map(([g, list]) => `<section class="topic-group"><h3>${esc(g)}</h3>${list.map(topicCard).join('')}</section>`).join('')}`;
   }
 
+  // The Save as row under a chat: plain links, so the browser, Bob's window or the phone saves the file its own way.
+  const saveRow = (id) => `<span class="row chat-save" aria-label="Save this chat as a file">Save as ${[['md', 'Markdown', 'reads anywhere, keeps everything'], ['json', 'JSON', 'everything, for other programs or to bring back in'], ['pdf', 'PDF', 'for printing and sharing']].map(([f, l, t]) => `<a class="mini button" href="/api/chats/save?id=${encodeURIComponent(id)}&as=${f}" download title="${esc(t)}" aria-label="Save as ${l}: ${esc(t)}">${l}</a>`).join('')}</span>`;
+
+  function bringInHtml() {
+    if (!filesOn) return `<p class="muted chat-files-off">Saving chats as files and bringing chats in from ChatGPT, Claude or Open WebUI is off. <button type="button" class="mini" data-chatfileson>Turn it on</button> (or Settings, How Bob works, <strong>Save chats as files and bring chats in</strong>).</p>`;
+    if (!picking) return `<div class="row wrap chat-bring"><button type="button" data-bringin>Bring in chats…</button> <span class="muted">A file exported from ChatGPT, Claude or Open WebUI, or a chat Bob saved. You pick which chats to keep.</span><input type="file" id="chat-file" accept=".json,.jsonl,.md,.txt,application/json,text/markdown,text/plain" hidden></div>`;
+    const fresh = picking.chats.filter((c) => !c.here);
+    return `<section class="chat-pick" aria-label="Chats in ${esc(picking.name)}"><p><strong>${picking.chats.length} chat${picking.chats.length === 1 ? '' : 's'} in ${esc(picking.name)}</strong>${picking.more ? ` (the first ${picking.chats.length}; ${picking.more} more not listed)` : ''}. Tick the ones to bring in.</p>
+      <div class="row"><button type="button" class="mini" data-tickall>Tick all</button><button type="button" class="mini" data-ticknone>Tick none</button></div>
+      <ol class="chat-list">${picking.chats.map((c) => `<li><label class="switch"><input type="checkbox" data-pick="${c.n}" ${c.here ? 'disabled' : 'checked'}><span><strong>${esc(c.title)}</strong><br><span class="muted">${c.messages} messages${c.at ? ' · ' + esc(day(c.at)) : ''} · from ${esc(c.from)}${c.here ? ' · already in Past chats' : ''}</span></span></label></li>`).join('')}</ol>
+      <div class="row"><button type="button" class="get" data-dobringin ${fresh.length ? '' : 'disabled'}>Bring in the ticked chats</button><button type="button" data-cancelpick>Cancel</button></div></section>`;
+  }
+
+  // Share: the tidied chat as the page it will be, before anything is saved.
+  function shareHtml() {
+    const d = sharing.data;
+    if (!d) return '<p class="muted">Tidying the chat…</p>';
+    return `<section class="chat-share-box" aria-label="Share a chat"><h3>Share "${esc(d.title)}"</h3>
+      <p class="muted">I took out names, folders, this replicant matrix's name, home network addresses, email addresses and keys${d.changed ? ` (${d.changed} message${d.changed === 1 ? '' : 's'} changed)` : ' (none found)'}. Read it through below before you save it: nothing is saved or sent until you press a Save button.</p>
+      <div class="row wrap"><label class="pick">Also hide <input data-sharehide maxlength="300" placeholder="a project, a place, a name" value="${esc(sharing.hide)}"></label>
+        <label class="pick">Messages <select data-sharelast>${[[0, `all ${d.total}`], [10, 'the last 10'], [20, 'the last 20'], [50, 'the last 50']].filter(([n]) => !n || n < d.total).map(([n, l]) => `<option value="${n}" ${sharing.last === n ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <button type="button" class="mini" data-shareagain>Tidy again</button></div>
+      <iframe class="share-preview" title="How the shared page looks" sandbox srcdoc="${esc(d.html)}"></iframe>
+      <div class="row wrap"><button type="button" class="get" data-sharepage title="One file that opens in any browser">Save as a page</button><button type="button" class="get" data-sharepic title="A picture for a message or a post">Save as a picture</button><button type="button" data-shareback>Back</button></div></section>`;
+  }
+
+  async function loadShare() {
+    sharing.data = null; draw();
+    try { sharing.data = await api('/api/chats/share', { id: sharing.id, hide: sharing.hide.split(',').map((w) => w.trim()).filter(Boolean), last: sharing.last }); } catch (e) { msg = e.message; sharing = null; }
+    draw();
+  }
+
   async function chatsHtml() {
     let d = { chats: [], tidied: [] };
     try { d = await api('/api/chats'); } catch {}
-    return `<ol class="chat-list">${d.chats.map((c) => `<li data-chat="${esc(c.id)}"><div><strong>${esc(c.title)}</strong><br><span class="muted">${c.messages} messages · last talked ${esc(day(c.lastTouched))}</span>${c.summary ? `<br><span class="muted">${esc(c.summary.slice(0, 200))}</span>` : ''}</div>
-        <span class="row"><button type="button" class="mini" data-openchat>Open</button><button type="button" class="mini" data-cpin aria-pressed="${c.pinned}">${c.pinned ? '★ Pinned' : '☆ Pin'}</button></span></li>`).join('') || '<li class="muted">No chats yet.</li>'}</ol>
+    try { filesOn = (await api('/api/settings')).chatFiles === true; } catch {}
+    if (sharing && filesOn) return shareHtml();
+    return `${bringInHtml()}<ol class="chat-list">${d.chats.map((c) => `<li data-chat="${esc(c.id)}"><div><strong>${esc(c.title)}</strong>${c.from ? ` <span class="tag">from ${esc(FROM[c.from] || c.from)}</span>` : ''}<br><span class="muted">${c.messages} messages · last talked ${esc(day(c.lastTouched))}</span>${c.summary ? `<br><span class="muted">${esc(c.summary.slice(0, 200))}</span>` : ''}${filesOn ? `<br>${saveRow(c.id)}` : ''}</div>
+        <span class="row"><button type="button" class="mini" data-openchat>Open</button>${filesOn ? '<button type="button" class="mini" data-share title="A tidy page or picture to send someone, with names and folders taken out">Share…</button>' : ''}<button type="button" class="mini" data-cpin aria-pressed="${c.pinned}">${c.pinned ? '★ Pinned' : '☆ Pin'}</button></span></li>`).join('') || '<li class="muted">No chats yet.</li>'}</ol>
       ${d.tidied.length ? `<h3>Tidied away</h3><p class="muted">These chats went to the Recycle Bin; their summaries stay here.</p><ol class="chat-list">${d.tidied.map((s) => `<li><div><strong>${esc(s.title)}</strong> <span class="muted">${esc(day(s.from))} to ${esc(day(s.to))}</span><br>${esc(s.summary)}</div></li>`).join('')}</ol>` : ''}`;
+  }
+
+  // Send the picked file to Bob as it is; he lists what's in it and keeps nothing yet.
+  async function lookAt(file) {
+    msg = 'Reading the file…'; draw();
+    let r;
+    try {
+      const res = await fetch('/api/chats/look', { method: 'POST', headers: { 'content-type': 'application/octet-stream', 'x-bob': '1', 'x-file-name': encodeURIComponent(file.name) }, body: file });
+      r = await res.json().catch(() => ({ error: `Error ${res.status}` }));
+      if (!res.ok) throw new Error(r.error || `Error ${res.status}`);
+    } catch (e) { msg = e.message; picking = null; return draw(); }
+    if (!r.ok) { msg = r.why; picking = null; return draw(); }
+    picking = { token: r.token, chats: r.chats, more: r.more, name: file.name };
+    draw();
   }
 
   async function searchHtml() {
@@ -114,9 +169,30 @@ export function createTopics({ api, openChat }) {
     if (!b) return;
     const card = b.closest('[data-topic]'), id = card?.dataset.topic;
     const t = topics.find((x) => x.id === id);
-    if (b.dataset.ttab) { tab = b.dataset.ttab; q = ''; return draw(); }
+    if (b.dataset.ttab) { tab = b.dataset.ttab; q = ''; sharing = null; return draw(); }
     if (b.dataset.hitTopic) { q = ''; tab = 'topics'; open.add(b.dataset.hitTopic); return draw(); }
     if ('openchat' in b.dataset) { const sid = b.dataset.chat || b.closest('[data-chat]')?.dataset.chat; const mid = b.closest('[data-mid]')?.dataset.mid; if (sid) { dlg.close(); openChat(sid, mid); } return; }
+    if ('chatfileson' in b.dataset) { try { filesOn = (await api('/api/settings', { chatFiles: true })).chatFiles === true; msg = filesOn ? 'On. Save a chat with the buttons under it, or bring chats in.' : ''; } catch (err) { msg = err.message; } return draw(); }
+    if ('bringin' in b.dataset) { const inp = $('chat-file'); inp.value = ''; inp.onchange = () => { if (inp.files[0]) lookAt(inp.files[0]); }; inp.click(); return; }
+    if ('tickall' in b.dataset || 'ticknone' in b.dataset) { for (const c of body.querySelectorAll('[data-pick]:not(:disabled)')) c.checked = 'tickall' in b.dataset; return; }
+    if ('share' in b.dataset) { sharing = { id: b.closest('[data-chat]').dataset.chat, hide: '', last: 0, data: null }; return loadShare(); }
+    if ('shareagain' in b.dataset) { sharing.hide = body.querySelector('[data-sharehide]').value; sharing.last = Number(body.querySelector('[data-sharelast]').value) || 0; return loadShare(); }
+    if ('shareback' in b.dataset) { sharing = null; return draw(); }
+    if ('sharepage' in b.dataset && sharing?.data) { saveBlob(new Blob([sharing.data.html], { type: 'text/html' }), sharing.data.name); msg = `Saving ${sharing.data.name}.`; return draw(); }
+    if ('sharepic' in b.dataset && sharing?.data) {
+      const cv = drawPicture(sharing.data);
+      cv.toBlob((blob) => { if (blob) saveBlob(blob, sharing.data.name.replace(/\.html$/, '.png')); }, 'image/png');
+      return;
+    }
+    if ('cancelpick' in b.dataset) { picking = null; return draw(); }
+    if ('dobringin' in b.dataset) {
+      const picks = [...body.querySelectorAll('[data-pick]:checked:not(:disabled)')].map((c) => Number(c.dataset.pick));
+      if (!picks.length) { msg = 'Tick at least one chat.'; return draw(); }
+      b.disabled = true;
+      try { const r = await api('/api/chats/bring-in', { token: picking.token, picks }); msg = `Brought in ${r.done.length} chat${r.done.length === 1 ? '' : 's'}${r.skipped.length ? ` (${r.skipped.length} already here)` : ''}. They're below, with the date they were last talked about.`; } catch (err) { msg = err.message; }
+      picking = null;
+      return draw();
+    }
     if ('cpin' in b.dataset) { const sid = b.closest('[data-chat]').dataset.chat; await act('/api/pin', { kind: 'chats', id: sid, pinned: b.getAttribute('aria-pressed') !== 'true' }); return; }
     if ('runnow' in b.dataset) { const r = await act('/api/hk/run', {}); msg = r?.busy ? 'Bob is already on it.' : 'Bob is sorting your chats into topics. This page fills in as he goes (it can take a few minutes; he needs his brain loaded).'; return draw(); }
     if (!t) return;
@@ -188,7 +264,7 @@ export function createTopics({ api, openChat }) {
   });
 
   return {
-    async open(which) { if (which) tab = which; dlg.showModal(); body.innerHTML = '<p class="muted">Loading…</p>'; await load(); $('topics-q')?.focus(); },
+    async open(which) { if (which) tab = which; sharing = null; dlg.showModal(); body.innerHTML = '<p class="muted">Loading…</p>'; await load(); $('topics-q')?.focus(); },
     refresh() { if (dlg.open) load(); }
   };
 }

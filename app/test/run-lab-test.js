@@ -519,7 +519,7 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
 }
 {
   const lab3 = read('public/lab.js'), save = read('public/lab-save.js'), learn3 = read('public/lab-learn.js');
-  check('the Challenges tab is a real tab now, with the reviewed words', /\['challenges', 'Challenges'\]/.test(lab3) && ['Run the challenges', 'Scoreboard', 'Which brain?', 'Press a column\'s name to sort by it.'].every((w) => lab3.includes(w)) && !/Challenges <span class="lab-later">/.test(lab3));
+  check('Challenges is a real page (on the Test tab now), with the reviewed words', /test: \['challenges', 'smaller', 'longer', 'faster'\]/.test(lab3) && /challenges: 'Challenges'/.test(lab3) && ['Run the challenges', 'Scoreboard', 'Which brain?', 'Press a column\'s name to sort by it.'].every((w) => lab3.includes(w)) && !/Challenges <span class="lab-later">/.test(lab3));
   check('the scoreboard sorts with buttons in the column headers and says which way', /aria-sort=/.test(lab3) && /data-sort=/.test(lab3));
   check('Save offers a picture, text, a spreadsheet and data, and the hardware only if ticked', ['Picture', 'Text', 'Spreadsheet', 'Data', 'Include my graphics card and memory', 'Never file paths, your chats or your name'].every((w) => save.includes(w)) && /hardware: false/.test(lab3) && /hardware: false/.test(learn3));
   check('every Learn card can be saved', ['learn-tokens', 'learn-next', 'learn-temperature'].every((k) => learn3.includes(`saveBox('${k}')`)));
@@ -551,7 +551,7 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   check('a brain that isn\'t here can\'t start a ladder', plLab.planLadder('nope').problems.length === 1);
   check('Professional picks the sizes: three types make a three-rung plan with less disk; none picked means all six; unknown types are refused', plLab.planLadder('test-moe', ['Q8_0', 'Q4_K_M', 'Q2_K']).steps.length === 3 && ladderDiskGB(8, LADDER.filter((x) => ['Q8_0', 'Q4_K_M', 'Q2_K'].includes(x.type))) < ladderDiskGB(8) && plLab.planLadder('test-moe', []).steps.length === LADDER.length && plLab.planLadder('test-moe', ['Q9']).problems.some((x) => /Pick from Q8 down to Q2/.test(x)));
   check('the Playground sends the picked sizes and shows the picker only in Professional', /api\('\/api\/lab\/ladder', \{ from, types, unload/.test(read('public/lab-playground.js')) && /pro\(\) \? `<fieldset class="lab-pro"><legend>Which sizes to make \(Professional\)/.test(read('public/lab-playground.js')));
-  { const lj = read('public/lab.js'); check('the mode switch says what it changes on each tab', ['make', 'forge', 'learn', 'challenges', 'playground'].every((t) => new RegExp(`\\n  ${t}: \\{ simple: '`).test(lj)) && /MODE_NOTES\[tab\]\?\.\[pro \? 'pro' : 'simple'\]/.test(lj) && /same in both modes/.test(lj)); }
+  { const lj = read('public/lab.js'); check('the mode switch says what Professional adds on each tab, in one line', ['make', 'teach', 'test', 'inside', 'learn', 'forge', 'mine'].every((t) => new RegExp(`\\n  ${t}: '`).test(lj)) && /MODE_NOTES\[tab\]/.test(lj) && /same in both modes/.test(lj)); }
   check('Make a brain says what opens up once a brain is ticked', /Tick one brain above to go on\./.test(read('public/lab.js')));
   { const css = read('public/style.css'); check('every clickable thing in the Lab gets the same outline on mouse-over and keyboard focus, and greyed-out ones stay quiet', /\.lab-dlg button:not\(:disabled\):hover, \.lab-dlg summary:hover, \.lab-dlg a:hover/.test(css) && /\.lab-dlg button:focus-visible, \.lab-dlg summary:focus-visible/.test(css) && /\.lab-dlg \.lab-opt:focus-within \{ outline: 2px solid var\(--accent\); outline-offset: 2px; \}/.test(css) && /forced-colors: active\) \{ \.lab-dlg button:not\(:disabled\):hover/.test(css)); }
   check('the pick-a-brain hint counts the steps of the job picked, not always 2 to 5', read('public/lab.js').includes('Steps 2 to ${steps().length}') && !/Steps 2 to 5 and Next/.test(read('public/lab.js')));
@@ -736,20 +736,35 @@ check('looking at a comparison works from another device', sent[3][0] === 200 &&
 await labRoute({ req: fakeReq('GET'), res: {}, p: '/api/lab/measures', isLocal: true, lab, body: async () => ({}), send: (res, code, j) => sent.push([code, j]) });
 check('the measures list has no file contents or paths', sent[4][0] === 200 && sent[4][1].measures.length === lab.measures().length && !JSON.stringify(sent[4][1]).includes(tmp) && !('rec' in sent[4][1].measures[0]));
 
-// The quiz, against a fake server.
+// The quiz, against a fake server. Nov 11: the tool part goes round Bob's loop with his real tools, so the fake
+// answers a tool job with the call it needs (one at a time), then in words once a tool result is back.
 const fakeFetch = globalThis.fetch;
+const { ENTRY_JOBS, entryTools } = await import('../src/lab-entry.js');
+const realTools = await entryTools();
 globalThis.fetch = async (url, o) => {
-  const q = JSON.parse(o.body).messages[0].content;
-  const tool = (n) => ({ choices: [{ message: { content: '', tool_calls: [{ function: { name: n } }] } }], timings: { predicted_per_second: 20 } });
+  const b = JSON.parse(o.body), msgs = b.messages;
+  const q = msgs.find((m) => m.role === 'user').content;
   const say = (t) => ({ choices: [{ message: { content: `<think>hmm</think>${t}` } }], timings: { predicted_per_second: 20 } });
-  const hit = QUIZ.tools.find(([x]) => x === q);
-  const body = hit ? tool(hit[1]) : /capital of France/.test(q) ? say('Paris') : /banana/.test(q) ? say('banana') : say('no idea');
-  return { ok: true, json: async () => body };
+  const job = ENTRY_JOBS.find(([x]) => x === q);
+  if (job) {
+    const done = msgs.filter((m) => m.role === 'tool').length;
+    const next = job[1][done];
+    const args = { web_search: { query: 'x' }, fetch_page: { url: 'https://example.com/news' }, read_file: { path: 'notes.txt' }, list_folder: { path: 'inn' }, write_file: { path: 'tower.txt', content: '330 m' }, edit_file: { path: 'report.txt', find: 'Total: 9', replace: 'Total: 7' }, search_files: { text: 'shopping' }, notice_board: { action: 'write', content: '- buy bread' }, remember: { fact: 'x' }, reminders: { action: 'add', time: 'tomorrow 9:00', text: 'feed Patches' }, save_spreadsheet: { name: 'releases', csv: 'a,b' }, make_image: { prompt: 'cat in a hat' } };
+    if (!next || !b.tools) return { ok: true, json: async () => say('Done.') };
+    // the first call goes in with its main input under another name, to show the loop mends it
+    const a = done === 0 && next === 'web_search' ? { q: 'x' } : args[next];
+    return { ok: true, json: async () => ({ choices: [{ message: { content: '', tool_calls: [{ function: { name: next, arguments: JSON.stringify(a) } }] } }], timings: { predicted_per_second: 20 } }) };
+  }
+  return { ok: true, json: async () => (/capital of France/.test(q) ? say('Paris') : /banana/.test(q) ? say('banana') : say('no idea')) };
 };
-const quiz = await runQuiz('http://fake');
+const quizLog = [];
+const quiz = await runQuiz('http://fake', { log: (x) => quizLog.push(x) });
 globalThis.fetch = fakeFetch;
-check('the quiz marks tool picks and answers, thinking stripped', quiz.parts.tools.score === 100 && quiz.parts.general.right === 1 && quiz.parts.following.right === 1 && quiz.tps === 20 && quiz.score > 0 && quiz.score < 100, JSON.stringify(quiz.parts));
-check('the quiz tools are made up, not Bob\'s real ones', TOOLS.every((t) => !/hands|files_|run_/.test(t.function.name)));
+check('the quiz marks tool jobs and answers, thinking stripped', quiz.parts.general.right === 1 && quiz.parts.following.right === 1 && quiz.tps === 20 && quiz.score > 0 && quiz.score < 100, JSON.stringify(quiz.parts));
+check('the tool part is Bob\'s real tools, round his loop', realTools.length >= 10 && realTools.every((t) => !['get_weather', 'make_picture', 'set_reminder'].includes(t.function.name)) && quiz.parts.tools.of === ENTRY_JOBS.length, JSON.stringify(quiz.parts.tools));
+check('jobs that need a call the fake can make all pass, the mended one too', quiz.parts.tools.right === ENTRY_JOBS.length, JSON.stringify(quizLog.filter((x) => x.answer.startsWith('(ran') && !x.ok).map((x) => x.answer)));
+check('the quiz has 10 coding asks and says when the code wasn\'t run', QUIZ.coding.length === 10 && quiz.codeChecked === false);
+check('the old one-shot tool picks stay for the Pick the tool challenge', TOOLS.every((t) => !/hands|files_|run_/.test(t.function.name)));
 
 // ---- 1.5.151 Learn: experiments on the loaded brain, against a pretend llama-server ----
 {
@@ -810,7 +825,7 @@ check('the quiz tools are made up, not Bob\'s real ones', TOOLS.every((t) => !/h
   await labRoute({ req: fakeReq('GET'), res: {}, p: '/api/lab/learn', isLocal: false, lab: { cfg: { computerLab: true }, brain: brainFor({ engine: 'llamacpp' }) }, body: async () => ({}), send: (res, code, j) => sent.push([code, j]) });
   check('the Learn view names the loaded brain the friendly way and lists the cards, from any device Bob lets in', sent[1][0] === 200 && sent[1][1].ready && sent[1][1].brain === 'Friendly qwen' && sent[1][1].cards.length === 3 && sent[1][1].on, JSON.stringify(sent[1]));
   const page2 = read('public/lab-learn.js'), lab2 = read('public/lab.js');
-  check('the Lab page has real tabs, Playground among them', /role="tablist"/.test(lab2) && /role="tab"/.test(lab2) && /aria-selected/.test(lab2) && /\['playground', 'Playground'\]/.test(lab2) && /ArrowRight/.test(lab2));
+  check('the Lab page has real tabs, with the Playground pages sorted under them', /role="tablist"/.test(lab2) && /role="tab"/.test(lab2) && /aria-selected/.test(lab2) && /\['test', 'Test'\]/.test(lab2) && /\['inside', 'Look inside'\]/.test(lab2) && /pg\.html\(runsHtml\(\), subNav\(\), tab\)/.test(lab2) && /ArrowRight/.test(lab2));
   check('the Learn cards use the reviewed words, a live result, and a slider with a number box', ['What is a token?', 'How do I pick the next word?', 'What does temperature do?', 'Split it', 'Show my odds', 'Let me choose', 'Write it three times', 'More knobs', 'Cut the long tail', 'Only the likeliest', 'What you just saw'].every((w) => page2.includes(w)) && /aria-live="polite"/.test(page2) && /id="learn-tp" type="range"[\s\S]{0,200}id="learn-tp-n" type="number"/.test(page2));
   check('token chips take turns solid and dashed, not colour alone, and the odds are in text as well as bars', /learn-tok\.a \{[^}]*solid/.test(read('public/style.css')) && /learn-tok\.b \{[^}]*dashed/.test(read('public/style.css')) && /pct\(x\.odds\)/.test(page2));
   check('Help has a Learn page in Bob\'s voice', /id: 'lab-learn'/.test(read('public/help-content.js')) && /Nothing you do here changes how I answer/.test(read('public/help-content.js')));

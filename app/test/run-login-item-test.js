@@ -40,6 +40,24 @@ fs.writeFileSync(file, text.replace('X-GNOME-Autostart-enabled=true', 'X-GNOME-A
 check('Linux: switched off in the desktop\'s own settings reads as off', lin.get() === false);
 lin.set(false);
 check('Linux: switching off removes the file', !fs.existsSync(file) && lin.get() === false);
+
+// The .deb: Bob is /opt/Bob/bob (passed in, never the tester's own program).
+const deb = loginItem(null, { platform: 'linux', env: { XDG_CONFIG_HOME: xdg }, exe: '/opt/Bob/bob' });
+deb.set(true);
+check('Linux .deb: it starts /opt/Bob/bob hidden', fs.readFileSync(file, 'utf8').includes('Exec="/opt/Bob/bob" --hidden'));
+deb.set(false);
+
+// The Flatpak: the real ~/.config/autostart (not the sandbox's XDG_CONFIG_HOME), started through Flatpak.
+const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-home-'));
+const fp = loginItem(null, { platform: 'linux', env: { FLATPAK_ID: 'ca.mousewurx.bob', XDG_CONFIG_HOME: path.join(fakeHome, '.var', 'app', 'ca.mousewurx.bob', 'config') }, home: fakeHome });
+const fpFile = path.join(fakeHome, '.config', 'autostart', 'ca.mousewurx.bob.desktop');
+check('Linux Flatpak: the file goes in the desktop\'s own autostart folder, not the sandbox\'s', fp.file === fpFile);
+fp.set(true);
+const fpText = fs.existsSync(fpFile) ? fs.readFileSync(fpFile, 'utf8') : '';
+check('Linux Flatpak: it starts through flatpak run, hidden, with the Flatpak\'s icon', /^Exec=flatpak run ca\.mousewurx\.bob --hidden$/m.test(fpText) && /^Icon=ca\.mousewurx\.bob$/m.test(fpText));
+fp.set(false);
+check('Linux Flatpak: switching off removes it', !fs.existsSync(fpFile));
+fs.rmSync(fakeHome, { recursive: true, force: true });
 fs.rmSync(xdg, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

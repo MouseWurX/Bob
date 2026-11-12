@@ -10,6 +10,7 @@
 // Everything outside (GitHub, the loaded brains, the downloads, the chat) comes in as functions, so tests use fakes.
 import fs from 'node:fs';
 import path from 'node:path';
+import { wasBlocked } from './app-control.js';
 import { ENGINES, engineFor, installedMarker, brainsEngineNow, sharedDir, TESTED_LLAMA, brainEnginePin, brainEngineStale, engineBlocked } from './engines.js';
 
 export const KEEPER_ENGINES = ['brainengine', 'llamacpp'];
@@ -81,6 +82,8 @@ export class EngineKeeper {
     // 1.5.203: Windows blocked this very build and Bob went back from it: don't fetch it again (Try again in Settings).
     const blocked = engineBlocked(this.cfg, 'brainengine');
     if (blocked && blocked.version === pin.tag && (!blocked.print || blocked.print === pin.print)) return null;
+    // 1.5.204: the trial before the swap (app-control.js) found Windows stops this build: don't fetch it at every start.
+    if (wasBlocked(this.cfg, 'brainengine', { version: pin.tag, print: pin.print || '' })) return null;
     let r = null;
     try { r = await this.d.check('brainengine'); } catch (err) { this.state.lastError = `Brain Engine: ${err.message}`.slice(0, 300); this.write(); return null; }
     if (!r || (r.print && r.print === mark.print && r.latest === mark.version)) return null;
@@ -130,7 +133,7 @@ export class EngineKeeper {
       if (this.pending.has(e.id)) continue;
       if (e.id === 'brainengine' && pin) continue; // 1.5.196: Brain Engine goes with Bob (withBob), not on its own
       if (engineBlocked(this.cfg, e.id)) continue; // 1.5.203: went back from a blocked build; Try again first
-      try { const due = await dueUpdate(this.cfg, e, { check: this.d.check, tested: this.d.tested ?? TESTED_LLAMA }); if (due) this.pending.set(e.id, { ...due, queued: false, saidWait: false }); }
+      try { const due = await dueUpdate(this.cfg, e, { check: this.d.check, tested: this.d.tested ?? TESTED_LLAMA }); if (due && !wasBlocked(this.cfg, e.id, { version: due.to })) this.pending.set(e.id, { ...due, queued: false, saidWait: false }); }
       catch (err) { this.state.lastError = `${e.name}: ${err.message}`.slice(0, 300); }
     }
     this.write();

@@ -21,6 +21,7 @@ import { readJsonFile } from './util.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { rentKeyEnv } from './rental.js'; // process env, Windows user variables, or ~/.config/bob/env on Mac and Linux
+import { readConfigFile, writeConfigFile } from './config.js';
 
 export const TOKEN_ENV = 'BOB_TELEGRAM_TOKEN';
 export const TELEGRAM_SESSION = 'telegram';
@@ -40,10 +41,10 @@ export function telegramSettings(cfg) {
 // can open this door. Only the Settings page on this PC calls this.
 export function saveTelegram(cfg, patch) {
   // 1.5.201: an unreadable config.json stops the save (it used to be taken as empty and written over, losing the rest).
-  const raw = readJsonFile(cfg.configFile);
+  const raw = readConfigFile(cfg);
   raw.telegram = { ...(raw.telegram || {}), ...patch };
   for (const k of Object.keys(raw.telegram)) if (raw.telegram[k] === undefined) delete raw.telegram[k];
-  fs.writeFileSync(cfg.configFile, JSON.stringify(raw, null, 2));
+  writeConfigFile(cfg, raw);
   cfg.telegram = raw.telegram;
 }
 

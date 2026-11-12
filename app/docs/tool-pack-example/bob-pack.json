@@ -1,0 +1,39 @@
+{
+  "bobPack": 1,
+  "id": "word-tools",
+  "name": "Word tools",
+  "version": "1.0.0",
+  "by": "Bob's helpers",
+  "what": "Counts the words in some text or a text file, and tidies a list of words.",
+  "tools": [
+    {
+      "name": "count_words",
+      "what": "Counts the words, lines and characters in some text.",
+      "file": "tools/count_words.mjs",
+      "inputs": {
+        "text": { "type": "string", "description": "The text to count." }
+      }
+    },
+    {
+      "name": "count_file_words",
+      "what": "Counts the words, lines and characters in a plain text file.",
+      "file": "tools/count_file_words.mjs",
+      "files": "read",
+      "inputs": {
+        "file": { "type": "path", "description": "Full path of a .txt or .md file." }
+      }
+    }
+  ],
+  "jobs": [
+    {
+      "name": "Tidy a word list",
+      "when": "Someone asks to tidy, sort or de-duplicate a list of words.",
+      "steps": [
+        "Read the list the person gave you, or the file they named.",
+        "Take out empty lines and repeats, ignoring capitals.",
+        "Sort what is left from A to Z.",
+        "Show the tidy list, and say how many repeats you took out."
+      ]
+    }
+  ]
+}

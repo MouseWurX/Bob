@@ -15,6 +15,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { readCounts, coverageKeep } from './lab-gguf.js';
 import { QUIZ, TOOLS, PARTS } from './lab-test.js';
+import { entryToolsNow, SYSTEM as ENTRY_SYSTEM } from './lab-entry.js'; // the tool part uses Bob's real tools (Nov 11)
 import { labOn, labDir, lessonSkills, lessonSets, slugOf, sha256File, inspect, cutSizes, maskFor } from './lab.js';
 import { gaming } from './sessions.js';
 
@@ -42,7 +43,7 @@ export function usageOptions(cfg) {
 // The quiz part as the brain sees it (Qwen's chat layout), the tool list included for the tools part.
 function quizText(part) {
   const list = QUIZ[part] || [];
-  const sys = part === 'tools' ? `<|im_start|>system\nYou can call these tools:\n${JSON.stringify(TOOLS)}<|im_end|>\n` : '';
+  const sys = part === 'tools' ? `<|im_start|>system\n${ENTRY_SYSTEM}\nYou can call these tools:\n${JSON.stringify(entryToolsNow() || TOOLS)}<|im_end|>\n` : '';
   return list.map(([q]) => `${sys}<|im_start|>user\n${q}<|im_end|>\n<|im_start|>assistant\n`).join('\n');
 }
 

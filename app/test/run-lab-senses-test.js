@@ -248,7 +248,7 @@ check('the card mentions the cheap ears: Bob\'s own ears and voice', /Bob's own 
 check('the card speaks of Bob in the third person', !/\b(my own|one of mine|my sample|my built-in|My picture pack|my voice)\b/.test(ui));
 check('taking a pair out asks first, with Take it out and Keep it', /data-senses-forgetgo/.test(ui) && /Take it out<\/button>/.test(ui) && /Keep it<\/button>/.test(ui) && /a file of yours stays/.test(ui));
 check('placeholders use no Bob names, and the file one fits the system', !/riker|28Bob/i.test(ui) && /~\/brains\/mmproj-F16\.gguf/.test(ui));
-check('the Forge tab places the card after the ways', /fg\.html\(sn\.html\(\)\)/.test(read('public/lab.js')) && /\$\{extra\}/.test(read('public/lab-forge.js')));
+check('the Forge tab places the card after the ways', /fg\.html\(`<details class="lab-fold" data-fold="senses"[^`]*\$\{sn\.html\(\)\}<\/details>`\)/.test(read('public/lab.js')) && /\$\{extra\}/.test(read('public/lab-forge.js')));
 check('the card\'s events go before the Forge form\'s', read('public/lab.js').indexOf('sn.click(b)') < read('public/lab.js').indexOf('fg.click(b)') && read('public/lab.js').indexOf('sn.change(el)') < read('public/lab.js').indexOf('fg.change(el)'));
 check('every control has a label, and results are announced', !/<input(?![^>]*(aria-label|type="file"|type="checkbox"|type="radio"|id="senses-))[^>]*>/.test(ui.replace(/<label[^>]*>[^<]*<input/g, '')) && /role="status"/.test(ui) && /role="alert"/.test(ui));
 check('no names the house rules keep out', !/bobiverse|thoth/i.test(ui + read('src/lab-senses.js') + read('src/lab-senses-route.js')));

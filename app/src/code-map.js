@@ -6,7 +6,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export const MAP_SKIP = new Set(['.git', 'node_modules', 'Binaries', 'Intermediate', 'Saved', 'DerivedDataCache', 'build', '.gradle', '.idea', '.vs', 'Build', 'dist', 'out', 'vendor', '__pycache__', '.venv', 'venv', 'target', 'coverage']);
-export const CODE_EXT = /\.(c|h|hpp|cpp|cc|cs|rs|kt|kts|java|py|js|mjs|cjs|ts|tsx|jsx|go|swift|lua|gd|sh|ps1)$/i;
+export const CODE_EXT = /\.(c|h|hpp|cpp|cc|cs|rs|kt|kts|java|py|js|mjs|cjs|ts|tsx|jsx|go|swift|lua|gd|sh|ps1|patch|diff)$/i;
+export const PATCH_EXT = /\.(patch|diff)$/i;
 const MAX_FILES = 2000;
 export const MAP_CHARS = 14000; // about 4,000 tokens: fits a small brain's context with room to work
 
@@ -39,6 +40,36 @@ export function namesIn(text) {
 
 const lineCount = (text) => String(text).split('\n').length;
 
+// 1.5.204 (the owner, Nov 11: map the engine code): a patch file (Brain Engine's engine/patches/*.patch, or any
+// .patch/.diff) is mapped by what it changes: the files it touches upstream, lines added and taken out, what it says
+// it is for (a Subject: line, or the first comment it adds) and the main names it adds (API functions, functions,
+// server endpoints). Read-only, like the rest of the map.
+export function patchInfo(text) {
+  const t = String(text).replace(/\r\n/g, '\n');
+  const files = [];
+  let plus = 0, minus = 0, subject = '';
+  const added = [];
+  for (const l of t.split('\n')) {
+    const g = /^diff --git a\/(\S+) b\/(\S+)/.exec(l);
+    if (g) { if (!files.includes(g[2])) files.push(g[2]); continue; }
+    const pp = /^\+\+\+ b\/(\S+)/.exec(l);
+    if (pp) { if (!files.includes(pp[1])) files.push(pp[1]); continue; }
+    if (!subject) { const m = /^Subject:\s*(?:\[PATCH[^\]]*\]\s*)?(.+)/.exec(l); if (m) subject = m[1].trim(); }
+    if (l.startsWith('---') || l.startsWith('+++')) continue;
+    if (l.startsWith('+')) { plus++; added.push(l.slice(1)); }
+    else if (l.startsWith('-')) minus++;
+  }
+  const body = added.join('\n');
+  const what = subject || purposeOf(body);
+  const names = [];
+  const add = (n) => { if (n && !names.includes(n) && !/^(if|for|while|switch|return|sizeof|defined)$/.test(n)) names.push(n); };
+  for (const m of body.matchAll(/\b(?:LLAMA_API|GGML_API|GGML_BACKEND_API)\s+[\w\s*]+?\b([A-Za-z_]\w*)\s*\(/g)) add(m[1]);
+  for (const m of body.matchAll(/^(?:static\s+|inline\s+)*[A-Za-z_][\w:<>]*[\s*&]+([A-Za-z_][\w:]*)\s*\([^;]*$/gm)) add(m[1].split('::').pop());
+  for (const m of body.matchAll(/"(\/[a-z][\w\-/]*)"/g)) add(m[1]);
+  for (const n of namesIn(body)) add(n);
+  return { files, plus, minus, what, names };
+}
+
 export function codeMap(root, { skip = () => false, maxChars = MAP_CHARS } = {}) {
   const files = [];
   const walk = (dir) => {
@@ -62,7 +93,12 @@ export function codeMap(root, { skip = () => false, maxChars = MAP_CHARS } = {})
     try { if (fs.statSync(f).size > 2e6) continue; text = fs.readFileSync(f, 'utf8'); } catch { continue; }
     const n = lineCount(text);
     total += n;
-    items.push({ rel: path.relative(root, f).split(path.sep).join('/'), n, what: purposeOf(text), names: namesIn(text) });
+    const rel = path.relative(root, f).split(path.sep).join('/');
+    if (PATCH_EXT.test(f)) {
+      const p = patchInfo(text);
+      const touch = p.files.length ? ` {changes ${p.files.slice(0, 4).join(', ')}${p.files.length > 4 ? `, +${p.files.length - 4} more` : ''}; +${p.plus}/-${p.minus}}` : '';
+      items.push({ rel, n, what: p.what, names: p.names, touch });
+    } else items.push({ rel, n, what: purposeOf(text), names: namesIn(text), touch: '' });
   }
   if (!items.length) return `No source files in ${root}.`;
   const head = `${items.length} source files, ${total} lines, in ${root}. Open only the file you need with read_file (with line for an error's file:line).\n`;
@@ -70,7 +106,7 @@ export function codeMap(root, { skip = () => false, maxChars = MAP_CHARS } = {})
   // Shorter and shorter until it fits: full lines, then shorter notes, then names only, then one line per folder.
   const tiers = [[110, 8], [60, 3], [40, 2], [55, 0], [0, 4], [0, 0]];
   for (const [w, k] of tiers) {
-    const body = items.map((x) => `${x.rel} (${x.n})${w && x.what ? `: ${cut(x.what, w)}` : ''}${k && x.names.length ? ` [${x.names.slice(0, k).join(', ')}${x.names.length > k ? ', …' : ''}]` : ''}`).join('\n');
+    const body = items.map((x) => `${x.rel} (${x.n})${w && x.what ? `: ${cut(x.what, w)}` : ''}${w && x.touch ? x.touch : ''}${k && x.names.length ? ` [${x.names.slice(0, k).join(', ')}${x.names.length > k ? ', …' : ''}]` : ''}`).join('\n');
     if (head.length + body.length <= maxChars) return head + body;
   }
   const byDir = new Map();

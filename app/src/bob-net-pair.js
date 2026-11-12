@@ -10,7 +10,8 @@
 // before the passcode check, because the whole point is that the asker doesn't know the passcode yet:
 //   GET  /api/pair/hello              -> { bob: true, pair: 1, name, device, version, door: true }
 //   POST /api/pair/ask    { pair, name, address, code }  -> { id }   (card shown here; address must be the caller's own)
-//   POST /api/pair/status { id }      -> { state: 'waiting' | 'no' | 'gone' } or { state: 'yes', passcode, name, address }
+//   POST /api/pair/status { id }      -> { state: 'waiting' | 'no' | 'gone' } or { state: 'yes', passcode, name, address, linkKey }
+//                                        (linkKey, from 1.5.205: the pair's key for sealed SCUT packets, src/scut-seal.js)
 //   POST /api/pair/finish { id, passcode? } -> { ok }  (the asker's own passcode, only after a yes, so a Bob that says
 //                                                   no never learns it; empty when the asker's door is off)
 // Limits: 3 asks a minute, one waiting card per caller, cards and answers forgotten after 3 minutes, the passcode is
@@ -20,6 +21,7 @@ import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { isTailscaleIp, tailscaleExe } from './phone-access.js';
 import { cleanSharePatch, saveShare, doorOpen, cleanAddress } from './share-brains.js';
+import { newLinkKey, saveLinkKey, KEY_RE } from './scut-seal.js'; // sealed SCUT packets: a link key per pair
 
 export const PAIR = 1;
 export const ASK_FOR_MS = 3 * 60000;
@@ -128,7 +130,10 @@ export class Pairing {
     if (a.handed) return { state: 'gone' };
     a.handed = true; // the passcode goes out once
     const mine = this.ownAddresses()[0] || '';
-    return { state: 'yes', passcode: String(this.cfg.remote?.passcode || ''), name: myName(), address: mine };
+    // Sealed SCUT packets: the pair's link key, made here, kept by both, handed over once with the passcode.
+    const linkKey = newLinkKey();
+    const kept = saveLinkKey(this.cfg, a.ip, linkKey);
+    return { state: 'yes', passcode: String(this.cfg.remote?.passcode || ''), name: myName(), address: mine, ...(kept ? { linkKey } : {}) };
   }
 
   // The asker's own passcode, after our yes. Puts him in My other Bobs here. Without one (his door is off) he can use
@@ -212,6 +217,7 @@ export class Pairing {
       const out = cleanSharePatch(this.cfg, { addBob: { name, address, passcode: them } });
       if (out.error) { job.state = 'failed'; job.why = out.error; await post('/api/pair/finish', { id }); return; }
       saveShare(this.cfg, out.share);
+      if (KEY_RE.test(String(s.linkKey || ''))) saveLinkKey(this.cfg, address, s.linkKey); // an older Bob sends none: made at the first lend
       // Ours goes over only now, after their yes, and only if our door is open (else they couldn't use it anyway).
       const ours = doorOpen(this.cfg) ? String(this.cfg.remote.passcode) : '';
       await post('/api/pair/finish', { id, passcode: ours });

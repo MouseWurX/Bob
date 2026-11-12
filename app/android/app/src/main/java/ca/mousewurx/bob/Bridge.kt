@@ -45,6 +45,7 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
     private var ttsReady = false
     private var micCall: String? = null
     private var photoCall: String? = null
+    private var fileCall: String? = null // Back up and move: a phone backup picked to restore
     @Volatile private var photo: ByteArray? = null // the picked photo, until it's sent or cleared
     private var pendingMicStart: (() -> Unit)? = null
     private var pendingNotify: (() -> Unit)? = null
@@ -55,6 +56,8 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
         const val MIC_PERMISSION = 7002
         const val NOTIFY_PERMISSION = 7003
         const val PHOTO_REQUEST = 7004
+        const val FILE_REQUEST = 7005
+        const val MAX_BACKUP_BYTES = 64L * 1024 * 1024
         const val CHANNEL = "bob"
     }
 
@@ -90,6 +93,15 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                             .onFailure { photoCall = null; fail(id, "this phone has no photo picker") }
                     }
                     "photo.clear" -> { photo = null; answer(id, true) }
+                    // ---- Back up and move: pick a phone backup (Android's own file picker: no permission needed) ----
+                    "file.pick" -> activity.runOnUiThread {
+                        fileCall?.let { fail(it, "replaced") }
+                        fileCall = id
+                        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+                            .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/json", "text/plain", "application/octet-stream"))
+                        runCatching { activity.startActivityForResult(i, FILE_REQUEST) }
+                            .onFailure { fileCall = null; fail(id, "this phone has no file picker") }
+                    }
                     "photo.upload" -> {
                         val bytes = photo ?: throw IllegalStateException("no photo picked")
                         val name = URLEncoder.encode(o.optString("name", "Photo from the phone").take(60), "UTF-8")
@@ -192,6 +204,22 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
     }
 
     fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == FILE_REQUEST) {
+            val id = fileCall ?: return
+            fileCall = null
+            val uri = data?.data ?: return answer(id, null) // picker closed: nothing picked
+            scope.launch {
+                try {
+                    val bytes = activity.contentResolver.openInputStream(uri)?.use { s ->
+                        val out = ByteArrayOutputStream(); val buf = ByteArray(65536); var total = 0L
+                        while (true) { val n = s.read(buf); if (n < 0) break; total += n; if (total > MAX_BACKUP_BYTES) throw IllegalStateException("too big"); out.write(buf, 0, n) }
+                        out.toByteArray()
+                    } ?: throw IllegalStateException("unreadable")
+                    answer(id, String(bytes, Charsets.UTF_8))
+                } catch (e: Exception) { fail(id, if (e.message == "too big") "that file is bigger than a phone backup" else "that file wouldn't open") }
+            }
+            return
+        }
         if (requestCode == PHOTO_REQUEST) {
             val id = photoCall ?: return
             photoCall = null

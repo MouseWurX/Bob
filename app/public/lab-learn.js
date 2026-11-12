@@ -2,6 +2,7 @@
 // is one question, one control, one result, and a line from Bob about what you just saw. Nothing is saved.
 import { esc } from './rich.js';
 import { saveHtml, saveResult } from './lab-save.js'; // 1.5.153
+import { goBtn } from './lab-go.js'; // a button to where the message points
 
 const TOKEN_START = 'Bob\'s favourite cheese is Wensleydale, obviously.';
 const WORD_START = 'The best thing about living by the sea is';
@@ -73,7 +74,7 @@ export function createLearn({ api, info = () => null, saves = () => ({}) }) {
 
   function html() {
     if (!view) return `<p class="muted">${esc(msg || 'Loading...')}</p>`;
-    const head = view.ready ? `<p class="muted">These run on the brain I have loaded right now: <strong>${esc(view.brain)}</strong>. Nothing you do here changes how I answer in the chat, and nothing is saved.</p>` : `<p class="learn-why" role="status">${esc(view.why)}</p>`;
+    const head = view.ready ? `<p class="muted">These run on the brain I have loaded right now: <strong>${esc(view.brain)}</strong>. Nothing you do here changes how I answer in the chat, and nothing is saved.</p>` : `<p class="learn-why" role="status">${esc(view.why)}${view.wake ? goBtn('chat') : /Settings, Engines/.test(view.why || '') ? goBtn('engines') : ''}</p>`;
     return `<div class="learn">${head}${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}${view.ready ? tokensCard() + nextCard() + temperatureCard() : ''}</div>`;
   }
 
