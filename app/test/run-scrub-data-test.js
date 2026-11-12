@@ -22,7 +22,7 @@ check('the name in file names and any case', S('ZORVIK.vbs zorvik.txt') === 'you
 check('a private word with its own stand-in, longest first', S('D:\\zorvikdrive\\x') === 'D:\\mydrive\\x', S('D:\\zorvikdrive\\x'));
 check('a two-word private name', S('in secret place now') === 'in private now');
 check('the PC name where it is a host', S('\\\\box7\\share, box7.local, box7:7777, http://box7/x') === '\\\\my-pc\\share, my-pc.local, my-pc:7777, http://my-pc/x', S('\\\\box7\\share, box7.local, box7:7777, http://box7/x'));
-check('a short PC name that is also an ordinary word stays ("Hero")', scrubValue('As a hero inside a PC', scrubber({ host: 'hero' })) === 'As a hero inside a PC');
+check('a short PC name as an ordinary word stays (Bob\'s "NPC")', scrubValue('As an NPC inside a PC', scrubber({ host: 'npc' })) === 'As an NPC inside a PC');
 const lan = [192, 168, 4, 9].join('.'), mail = ['z', 'mail.org'].join('@');
 check('home-network and Tailscale addresses, e-mails, keys', S(`${lan} 100.101.2.3 ${mail} hf_${'a'.repeat(30)}`) === `${[192, 168, 0, 10].join('.')} 100.64.0.1 ${['you', 'example.com'].join('@')} [key removed]`);
 
@@ -35,6 +35,8 @@ check('the server\'s own odds shape too', !/zor|vik/i.test(JSON.stringify(S([{ t
 
 { const k = scrubber({ user: 'zorv', keep: ['zorvy'] });
   check('an ordinary word that holds the name stays ("keep:")', scrubValue('a zorvy hinge, zorv.txt, Zorv', k) === 'a zorvy hinge, you.txt, you', scrubValue('a zorvy hinge, zorv.txt, Zorv', k)); }
+check('"many users" or a "Users" line in a listing before a written-out line break is not a folder', findLeaks('shared across many users\\n- Heavy work and 12. Users\\n13. Windows', mk()).length === 0 && S('many users\\n- ok') === 'many users\\n- ok', S('many users\\n- ok'));
+check('real folders after it are still caught', findLeaks('E:\\Users\\nick\\x /home/nora/y', mk()).length > 0);
 check('a cut-off name after a user folder (grader notes clipped at 160)', S('see E:\\Users\\zo\u2026') === 'see E:\\Users\\you');
 const sc = mk();
 check('the check finds a name split over tokens', findLeaks(odds, sc).some((l) => /odds joined/.test(l)));

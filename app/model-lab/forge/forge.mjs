@@ -374,7 +374,10 @@ async function writeLessonsOnPod() {
 async function writeOneSet(w, i) {
   const dir = w.dir || 'lessons-extra';
   const url = args.local ? 'http://127.0.0.1:8001' : `https://${podId}-8001.proxy.runpod.net`;
-  const argv = ['write-lessons.mjs', '--url', url, '--parallel', String(w.parallel || 16), '--jobs', w.jobs || 'coding', '--think', w.think || 'all', '--dir', dir, '--count', String(w.count || 800), '--hours', String(w.hours || 1.5), ...(w.drop_tools ? ['--drop-tools', w.drop_tools] : []), ...(w.persona ? ['--persona', path.resolve(here, '..', w.persona)] : [])];
+  const argv = ['write-lessons.mjs', '--url', url, '--parallel', String(w.parallel || 16), '--jobs', w.jobs || 'coding', '--think', w.think || 'all', '--dir', dir, '--count', String(w.count || 800), '--hours', String(w.hours || 1.5), ...(w.drop_tools ? ['--drop-tools', w.drop_tools] : []), ...(w.persona ? ['--persona', path.resolve(here, '..', w.persona)] : []),
+    // 12 Nov: --review (the teacher grades each lesson, failures kept apart as right-vs-wrong material) and --avoid (folders of lessons already
+    // made, so no request is written twice)
+    ...(w.review ? ['--review'] : []), ...(w.tag ? ['--tag', w.tag] : []), ...(w.avoid ? ['--avoid', (Array.isArray(w.avoid) ? w.avoid : [w.avoid]).map((d) => path.resolve(here, '..', d)).join(',')] : [])];
   log(`writing ${w.count || 800} extra lessons through the pod (${w.jobs || 'coding'}, thinking ${w.think || 'all'})`);
   const { spawn } = await import('node:child_process');
   const code = await new Promise((res) => spawn(process.execPath, argv, { cwd: path.join(here, '..'), stdio: 'inherit', env: { ...process.env, LAB_API_KEY: hdr['X-Forge-Token'], LAB_MODEL_NAME: 'teacher', LAB_REMOTE: '1' } }).on('exit', res));
