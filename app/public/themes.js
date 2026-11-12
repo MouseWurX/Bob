@@ -146,7 +146,7 @@ export function motionOff(style = current) {
 
 // 1.5.210: Bob's three looks (Style > Look). Shapes, spacing and motion only (looks.css); colours stay the theme's.
 export const LOOK_IDS = ['classic', 'lamplight', 'terminal'];
-export const DEFAULT_LOOK = 'classic';
+export const DEFAULT_LOOK = 'classic'; // upgrades that never picked a look stay Classic; new installs get Lamplight from config.example.json
 export function lookId(style = current) { return LOOK_IDS.includes(style?.look) ? style.look : DEFAULT_LOOK; }
 function applyLook(style) {
   const id = lookId(style), b = document.body;

@@ -607,6 +607,11 @@ const bobMenu = createBobMenu({
   getNames: async () => Object.fromEntries((((await (await fetch('/api/roles')).json()).options || {}).llm || []).map((o) => [o.value, o.label])),
   saidNow: () => statusEl.title || statusEl.textContent
 });
+// 1.5.211: a new install starts in Lamplight, where Now running is a drawer that starts closed. Only the first time:
+// once you've opened or hidden it yourself, that choice is remembered and kept.
+function tuckNowForLamp(style) {
+  try { if (style?.look === 'lamplight' && localStorage.getItem('bob-right') === null && !document.body.classList.contains('right-hidden')) $('hideRight')?.click(); } catch {}
+}
 // The fNRI cube avatar (when it is on) opens the same menu.
 document.addEventListener('click', (e) => { const c = e.target.closest?.('#bobCubeBox'); if (c && lampLook()) bobMenu.toggle(c); }); // Lamplight: the cube opens Bob's menu
 // 1.5.210 Find anything: every page, menu tool, Settings card and Help topic by name, plus your chats.
@@ -1914,7 +1919,7 @@ async function start() {
     if (!s.ollama) note('I can\'t reach my engine (' + (s.engine || 'Ollama') + ') right now. Is it running? (The AI Toggle shortcut turns Ollama on.)', 'error');
   } catch {}
   try {
-    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
+    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
     if (st.setupDone && !st.wantsAsked) offerWants(); // once, for Bobs set up before the Welcome had "Do you want me to:"
     everyday = startEveryday({ add, note, settings: st, version: st.version?.label || '' }); // 🗓 today card, tour, ⏱ Focus, tray dot (each only when on)

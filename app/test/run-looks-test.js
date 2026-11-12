@@ -25,7 +25,8 @@ check('an unknown look is dropped', !('look' in cleanStyle({ look: 'neon<script>
 const themes = read('public/themes.js'), cfg = read('src/config.js');
 const ids = (s, re) => (s.match(re) || [])[1];
 check('page and server agree on the looks', ids(themes, /LOOK_IDS = \[([^\]]+)\]/) === ids(cfg, /\[('classic', 'lamplight', 'terminal')\]\.includes\(st\.look\)/));
-check('Classic is the look Bob starts with (new things are off by default)', /DEFAULT_LOOK = 'classic'/.test(themes));
+check('an upgrade that never picked a look stays Classic', /DEFAULT_LOOK = 'classic'/.test(themes));
+check('a new install starts in Lamplight with the cube', (() => { const ex = JSON.parse(read('config.example.json')); return ex.style?.look === 'lamplight' && ex.style?.avatar === 'cube'; })());
 const css = read('public/looks.css');
 check('every look has styles', ['look-classic', 'look-lamplight', 'look-terminal'].every((c) => css.includes(`body.${c}`)));
 check('Lamplight motion stops with animations off and for reduced motion', css.includes('body.look-lamplight.still') && /prefers-reduced-motion[^{]*\{[^}]*look-lamplight/.test(css));
