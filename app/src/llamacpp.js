@@ -22,7 +22,7 @@ import { ggufInfo } from './gguf.js';
 import { placeArgs } from './brain-place.js';
 import { selfWorkOn } from './self-work.js';
 import { stretchOn, stretchMax as stretchMost, stretchPlan, yarnArgs, needBytes, roomBytes, kvBytes } from './model-ctx.js';
-import { scutEnv, linkEnv } from './share-card.js'; // SCUT, the fast link to lent cards
+import { scutEnv, linkEnv, linkLive } from './share-card.js'; // SCUT, the fast link to lent cards
 import { LinkLog } from './link-log.js'; // what the link to a lent card carried, kept in a file and the logbook
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { memArgs, copyGuessArgs, draftNumArgs, laptopThreads } from './engine-extras.js'; // list items 94-100
@@ -971,6 +971,9 @@ export class LlamaCpp {
           try { this.log?.('engine', `${model}: the hand-set split (-ts) was left out for this spread; each card's share is sized to fit instead`); } catch {}
         }
         args.push('--rpc', helpers.join(','), ...spreadArgs(args));
+        // Watch the link live: llama-server files the card-sharing code's [link] and [scut] lines one level below what it
+        // shows by default, so on the borrowing side they only appear with -lv 4 (found in the PC and handheld test).
+        if (linkLive(this.cfg) && !args.includes('-lv')) args.push('-lv', '4');
         this.spreadNow = true; // item 14: a reply over Wi-Fi may pause longer
         const mins = Math.ceil(spreadLoadSeconds(sizeGB, this.lc.loadTimeoutSeconds || 300) / 60);
         try { this.log?.('engine', `${model}: spread over ${helpers.length} other Bob${helpers.length > 1 ? 's' : ''}' card${helpers.length > 1 ? 's' : ''} (${helpers.join(', ')}). The first time, part of the brain is sent over the network: over Wi-Fi that can take a while (I'll wait up to ${mins} min), and a network cable is much faster. Later loads only send what's missing.`); } catch {}

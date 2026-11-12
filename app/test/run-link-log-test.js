@@ -73,5 +73,6 @@ const OLD = '[scut] SCUT on: udp ' + H + ':50052, cap 100 Mbit/s, round trip 3.0
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });
+ok(/if \(linkLive\(this\.cfg\) && !args\.includes\('-lv'\)\) args\.push\('-lv', '4'\)/.test(read('src', 'llamacpp.js')), 'with Watch the link live on, the borrowing engine is told to show its link lines');
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
