@@ -187,7 +187,7 @@ export function createDownloads({ api, post }) {
     const open = items.filter((d) => !['done', 'cancelled'].includes(d.state));
     const finished = items.filter((d) => ['done', 'cancelled'].includes(d.state));
     headTip(document.getElementById('downloads-title'), `Everything you've said yes to downloading. ${settings.concurrent === 2 ? 'Two run' : 'One runs'} at a time, top first; drag one up to have it next. Pause keeps what has downloaded, so a 20 GB model doesn't start over. Cancel deletes the half-done file.`, 'Downloads');
-    body.innerHTML = `      <ol class="tlist">${open.map(downloadRow).join('') || '<li class="muted">Nothing downloading. Get them from Get models in the left menu.</li>'}</ol>
+    body.innerHTML = `      <ol class="tlist">${open.map(downloadRow).join('') || '<li class="muted tasks-empty">Nothing downloading. Models come from Get models, and wait here while they download. <button type="button" class="mini" data-getmodels>Open Get models</button></li>'}</ol>
       ${finished.length ? `<div class="ttabs"><strong>Finished</strong><span class="spacer"></span><button type="button" data-clear>Clear finished</button></div><ol class="tlist">${finished.slice().reverse().map(downloadRow).join('')}</ol>` : ''}
       <div class="dl-settings">
         <strong>Settings</strong>
@@ -200,6 +200,7 @@ export function createDownloads({ api, post }) {
     const b = e.target.closest('button');
     if (!b) return;
     if ('clear' in b.dataset) return post('/api/models/clear', {});
+    if ('getmodels' in b.dataset) { dlg.close(); document.getElementById('cellarBtn')?.click(); return; }
     const id = b.closest('[data-id]')?.dataset.id, d = b.dataset.d;
     if (!id || !d) return;
     if (d === 'up' || d === 'down') {

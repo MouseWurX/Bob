@@ -2277,3 +2277,46 @@ body.left-folded .side-top .mind-cube.bob-cube.porthole .port { width: 36px; hei
 .mind-cube.bob-cube.porthole .port canvas { inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px); }
 .mind-cube.bob-cube.porthole .port::after { inset: 3px; box-shadow: inset 0 0 6px rgba(0, 0, 0, .8); }
 .mind-cube.bob-cube canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- 1.5.210 pages (item B): Settings, Get models, Tasks, Downloads, Tidy up and Help, on the Lamplight page
+   frame (looks.css). Page-scoped only; the shared frame belongs to looks.css. ---------- */
+/* Settings in its own window has no top bar, so the page takes the whole window. */
+html.settings-window body.look-lamplight .cellar.page[open] { inset: 0; }
+/* Settings, Simple: the eight cards are quiet outlines that light up, in one centred grid. */
+body.look-lamplight .set-cards { max-width: 1000px; gap: var(--s3, 12px); }
+body.look-lamplight .set-card { background: transparent; border: 1px solid var(--line); border-radius: 14px; box-shadow: none; transition: border-color .15s, box-shadow .15s; }
+body.look-lamplight .set-card:hover, body.look-lamplight .set-card:focus-visible { border-color: var(--accent); box-shadow: 0 0 22px -10px var(--accent); }
+body.look-lamplight .set-card .set-card-now { color: var(--muted); }
+body.look-lamplight.still .set-card { transition: none; }
+/* Get models: the two rows of boxed buttons become two rows of words with a lit underline. */
+body.look-lamplight .cellar-tabs { background: none; border: 0; border-bottom: 1px solid var(--line); padding: 0 0 var(--s2, 8px); gap: 0; }
+body.look-lamplight .cellar-tabs .tabs-row { gap: 0; flex-wrap: wrap; }
+body.look-lamplight .cellar-tabs .tabs-label { color: var(--muted); font-size: var(--t-xs, 12px); text-transform: uppercase; letter-spacing: .08em; min-width: 7em; }
+body.look-lamplight .cellar-tabs [role="tab"] { background: none !important; border: 0 !important; border-radius: 0; box-shadow: none; padding: var(--s2, 8px) var(--s3, 12px); color: var(--muted); font-weight: 400; }
+body.look-lamplight .cellar-tabs [role="tab"]:hover { color: var(--text); }
+body.look-lamplight .cellar-tabs [role="tab"][aria-selected="true"] { color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+/* Tasks (and Finished in Downloads): the filter buttons read as tabs too. */
+body.look-lamplight .ttabs { gap: 0; border-bottom: 1px solid var(--line); margin-bottom: var(--s3, 12px); }
+body.look-lamplight .ttabs [data-f] { background: none !important; border: 0 !important; border-radius: 0; color: var(--muted); padding: var(--s2, 8px) var(--s3, 12px); }
+body.look-lamplight .ttabs [data-f][aria-pressed="true"] { color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+body.look-lamplight .tlist .titem { background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+body.look-lamplight .tasks-empty { list-style: none; max-width: 60ch; color: var(--muted); padding: var(--s4, 16px) 0; }
+body.look-lamplight .tasks-empty strong { color: var(--text); }
+/* Downloads: its settings sit under a hairline, as one quiet group. */
+body.look-lamplight .dl-settings { border-top: 1px solid var(--line); margin-top: var(--s6, 24px); padding-top: var(--s4, 16px); }
+/* Help: the contents on the left, the words on the right at a readable width. */
+body.look-lamplight .help-cols { grid-template-columns: 240px minmax(0, 72ch); gap: var(--s6, 32px); }
+body.look-lamplight .help-toc { top: 0; max-height: calc(100dvh - 140px); padding-right: var(--s3, 12px); border-right: 1px solid var(--line); }
+body.look-lamplight .help-toc a { color: var(--muted); text-decoration: none; }
+body.look-lamplight .help-toc a:hover, body.look-lamplight .help-toc a:focus-visible, body.look-lamplight .help-toc a[aria-current] { color: var(--accent); }
+@media (max-width: 700px) { body.look-lamplight .help-cols { grid-template-columns: 1fr; } body.look-lamplight .help-toc { border: 0; max-height: none; } }
+body.look-lamplight #help[open] { width: 100vw; }
+html.settings-window body.look-lamplight .cellar.page[open] { height: 100dvh; max-height: none; }
+@media (max-width: 640px) {
+  body.look-lamplight .cellar-tabs .tabs-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  body.look-lamplight .cellar-tabs [role="tab"] { flex: none; white-space: nowrap; }
+  body.look-lamplight .cellar-tabs .tabs-label { min-width: 0; flex: none; white-space: nowrap; margin-right: var(--s2, 8px); position: static; }
+  body.look-lamplight .cellar select { width: 100%; min-width: 0; }
+  body.look-lamplight .ttabs { flex-wrap: nowrap; overflow-x: auto; }
+  body.look-lamplight .ttabs [data-f] { flex: none; white-space: nowrap; }
+}
