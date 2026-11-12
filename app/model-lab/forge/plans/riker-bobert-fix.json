@@ -44,8 +44,8 @@
       }
     ],
     "commands": [
-      "node experts-test.mjs --bob \"C:\\Unreal Projects\\bob-test 208\\app\" --url {{url}} --counts 12 --out {{out}}",
-      "node experts-test.mjs --bob \"C:\\Unreal Projects\\bob-test 208fix\\app\" --howtos \"C:\\Unreal Projects\\Agent 00\\bob-model-lab\\out\\bench\\riker-fix\\howtos-seed.json\" --url {{url}} --counts 12 --out {{out}}",
+      "node experts-test.mjs --bob \"../../bob-test 208/app\" --url {{url}} --counts 12 --out {{out}}",
+      "node experts-test.mjs --bob \"../../bob-test 208fix/app\" --howtos \"out/bench/riker-fix/howtos-seed.json\" --url {{url}} --counts 12 --out {{out}}",
       "node tool-score.mjs --url {{url}} --models \"{{name}}=served\" --no-think --lessons {{lessons}} --out {{out}}"
     ]
   }

@@ -72,8 +72,8 @@
       }
     ],
     "commands": [
-      "node experts-test.mjs --bob \"C:\\Unreal Projects\\bob-test 207c\\app\" --url {{url}} --counts 8 --out {{out}}",
-      "node experts-test.mjs --bob \"C:\\Unreal Projects\\bob-test 208\\app\" --url {{url}} --counts 8 --out {{out}}",
+      "node experts-test.mjs --bob \"../../bob-test 207c/app\" --url {{url}} --counts 8 --out {{out}}",
+      "node experts-test.mjs --bob \"../../bob-test 208/app\" --url {{url}} --counts 8 --out {{out}}",
       "node tool-score.mjs --url {{url}} --models \"{{name}}=served\" --no-think --lessons {{lessons}} --out {{out}}"
     ]
   }
