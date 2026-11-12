@@ -117,10 +117,16 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 
 Every new switch is off until you turn it on.
 
-<p align="center">
-  <img src="app/docs/screens/journey.png" width="460" alt="Journey: a pixel-art village on a tile map, the hero in the square among villagers, a message box reading Welcome to the Brindle Vale, and hearts for the hero and Bob below">
-  <br><b>Journey.</b> Arrow keys walk, Enter talks, opens chests and swings.
-</p>
+| | |
+|:---:|:---:|
+| ![Journey: Bob's Inn, a wooden tavern with tables, the hero by the bar and the innkeeper](app/docs/screens/journey-inn.png) | ![Journey: the world map with mountains, a road and travellers walking it](app/docs/screens/journey-world.png) |
+| **Bob's Inn.** Every journey starts here. | **The world.** Rolled from a seed; guards walk the roads. |
+| ![Journey: a village of red-roofed houses outside the castle gate, guards at the wall](app/docs/screens/journey-castle.png) | ![Journey: the keep's throne hall with a red carpet and knights along the walls](app/docs/screens/journey-keep.png) |
+| **Outside the castle gate.** | **The keep.** A king, a queen, knights and guards. |
+| ![Journey: a dark cave with a chest](app/docs/screens/journey-cave.png) | ![Journey: a turn-based fight against two guards in a town square](app/docs/screens/journey-fight.png) |
+| **Caves** hide chests with good kit. | **Fights** drop coin and whatever the foe carried. |
+
+<p align="center"><b>Journey.</b> Arrow keys walk, Enter talks, opens chests and swings. Bob's Inn, the rolled world, castles and patrols arrive in 1.5.211.</p>
 
 <details>
 <summary><b>Earlier:</b> 1.5.204 to 1.5.206, and before</summary>
