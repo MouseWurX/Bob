@@ -128,6 +128,7 @@ export function applyTheme(t, root = document.documentElement) {
   root.style.colorScheme = isLight(c.bg) ? 'light' : 'dark';
   document.body?.classList.toggle('blueprint', Boolean(t.blueprint));
   document.body?.classList.toggle('outlined', Boolean(t.outlined));
+  document.body?.classList.toggle('theme-light', isLight(c.bg)); // 1.5.210: Lamplight keeps light themes light
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.content = c.panel;
 }
@@ -143,10 +144,21 @@ export function motionOff(style = current) {
   return false;
 }
 
+// 1.5.210: Bob's three looks (Style > Look). Shapes, spacing and motion only (looks.css); colours stay the theme's.
+export const LOOK_IDS = ['classic', 'lamplight', 'terminal'];
+export const DEFAULT_LOOK = 'classic';
+export function lookId(style = current) { return LOOK_IDS.includes(style?.look) ? style.look : DEFAULT_LOOK; }
+function applyLook(style) {
+  const id = lookId(style), b = document.body;
+  if (!b) return;
+  for (const l of LOOK_IDS) b.classList.toggle(`look-${l}`, l === id);
+}
+
 export function applyStyle(style = {}) {
   current = style || {};
   applyTheme(resolve(current));
   document.body?.classList.toggle('still', motionOff(current));
+  applyLook(current);
   try { localStorage.setItem('bob-style', JSON.stringify(current)); } catch {} // so the next start shows the right colours at once
   if (!watching && globalThis.matchMedia) {
     watching = true;
