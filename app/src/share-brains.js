@@ -164,8 +164,9 @@ export function cleanLendRequest(b) {
   const roles = new Set(['system', 'user', 'assistant', 'tool']);
   const messages = [].concat(b?.messages || []).slice(-200).filter((m) => m && roles.has(m.role)).map((m) => {
     const o = { role: m.role, content: typeof m.content === 'string' ? m.content.slice(0, 60000) : '' };
-    if (m.role === 'assistant' && Array.isArray(m.tool_calls)) o.tool_calls = m.tool_calls.slice(0, 16).map((c) => ({ function: { name: String(c?.function?.name || '').slice(0, 80), arguments: c?.function?.arguments && typeof c.function.arguments === 'object' ? c.function.arguments : {} } }));
+    if (m.role === 'assistant' && Array.isArray(m.tool_calls)) o.tool_calls = m.tool_calls.slice(0, 16).map((c) => ({ ...(typeof c?.id === 'string' && /^[\w.-]{1,80}$/.test(c.id) ? { id: c.id } : {}), function: { name: String(c?.function?.name || '').slice(0, 80), arguments: c?.function?.arguments && typeof c.function.arguments === 'object' ? c.function.arguments : {} } }));
     if (m.role === 'tool' && m.tool_name) o.tool_name = String(m.tool_name).slice(0, 80);
+    if (m.role === 'tool' && typeof m.tool_call_id === 'string' && /^[\w.-]{1,80}$/.test(m.tool_call_id)) o.tool_call_id = m.tool_call_id; // item 165
     return o;
   });
   const tools = [].concat(b?.tools || []).slice(0, 128).filter((t) => t?.type === 'function' && /^[\w.-]{1,80}$/.test(String(t.function?.name || '')));

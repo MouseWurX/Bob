@@ -25,6 +25,7 @@ A big one: eleven more games and a walking Journey, a steadier loop with better 
 ### Changed
 
 - **Steadier loop.** The instructions stay the same between turns, so the chat stays cached and replies start sooner. History grows with the brain's memory, steps follow Effort, long tool results keep the lines that match the question, and a reply that goes quiet for 90 seconds is retried.
+- **Steadier tools, always on.** Each tool's answer goes back to the call that asked for it, every tool has its own time limit, huge results keep their start and end, an empty search says so plainly, overwrite and Undo cards show the real change, a restarted job never does its last finished step twice, and a connected app that forgot the connection reconnects (one that fails three times in a row waits 3 minutes). None of it adds to what my brain reads.
 - **Outside text is marked.** After I read a web page, file or search result, nothing skips its approval card for the rest of that job, and remembering asks first.
 - **Memory clashes are flagged** when something new disagrees with an old line.
 - **Web look-ups** time out after 20 seconds and fall back to a second search engine.

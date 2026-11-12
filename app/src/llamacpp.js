@@ -810,13 +810,17 @@ export class LlamaCpp {
   }
 
   // Bob's history uses Ollama's message shape; llama-server speaks the OpenAI shape.
+  // Nov 12 (items 165, 166): a call keeps its own id (the engine's, or one made once in brain.js), and a result goes
+  // with the call whose id it names, so two calls to the same tool in one reply can't swap results, and the same chat
+  // reads the same way on every request (the engine can reuse what it already read). Older chats saved without ids
+  // still match by tool name, in order.
   static toOpenAI(messages) {
     const out = [];
     let pending = [];
     let n = 0;
     for (const m of messages) {
       if (m.role === 'assistant' && m.tool_calls?.length) {
-        pending = m.tool_calls.map((c) => ({ id: `call_${++n}`, name: c.function?.name }));
+        pending = m.tool_calls.map((c) => ({ id: typeof c.id === 'string' && c.id ? c.id : `call_${++n}`, name: c.function?.name }));
         out.push({
           role: 'assistant', content: m.content || '',
           tool_calls: m.tool_calls.map((c, i) => ({
@@ -825,8 +829,9 @@ export class LlamaCpp {
           }))
         });
       } else if (m.role === 'tool') {
-        const i = pending.findIndex((p) => p.name === m.tool_name);
-        const id = i >= 0 ? pending.splice(i, 1)[0].id : `call_${++n}`;
+        let i = m.tool_call_id ? pending.findIndex((p) => p.id === m.tool_call_id) : -1;
+        if (i < 0) i = pending.findIndex((p) => p.name === m.tool_name);
+        const id = i >= 0 ? pending.splice(i, 1)[0].id : (m.tool_call_id || `call_${++n}`);
         out.push({ role: 'tool', tool_call_id: id, content: m.content });
       } else {
         // Pictures go as OpenAI image parts (llama-server needs the model's mmproj file for these).
@@ -978,6 +983,7 @@ export class LlamaCpp {
         for (const tc of d.tool_calls || []) {
           const i = tc.index ?? calls.length;
           calls[i] = calls[i] || { name: '', args: '' };
+          if (tc.id && !calls[i].id) calls[i].id = String(tc.id); // item 166: the engine's own id is kept
           if (tc.function?.name) calls[i].name += tc.function.name;
           if (tc.function?.arguments) calls[i].args += tc.function.arguments;
           // 95 Load the next brain early: the brain hears a hand-off while it is still being written.
@@ -990,7 +996,7 @@ export class LlamaCpp {
       let args = {}, raw;
       try { args = c.args ? JSON.parse(c.args) : {}; } catch { args = {}; raw = c.args; }
       // Nov 11: broken JSON is kept as written, so the call can be mended before it runs (loop-help.js).
-      return { function: { name: c.name, arguments: args, ...(raw !== undefined ? { raw } : {}) } };
+      return { ...(c.id ? { id: c.id } : {}), function: { name: c.name, arguments: args, ...(raw !== undefined ? { raw } : {}) } };
     });
     if (!tool_calls.length && tools?.length) {
       const names = new Set(tools.map((t) => t.function?.name).filter(Boolean));

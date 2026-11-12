@@ -14,6 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { codeCopyRoot, bigBrainOk, repoSlug } from './self-work.js';
+import { giveIds, toolMessage } from './tool-kinds.js';
 
 export const NOTES_MAX = 24000; // characters (~6K tokens); past this the notes are compressed
 export const NOTES_TARGET = 9000;
@@ -147,10 +148,11 @@ export async function helperTask(brain, helper, brief, ctx, { steps = 20, tools 
     messages.push(reply);
     final = reply.content || final;
     if (!reply.tool_calls) break;
+    giveIds(reply.tool_calls); // item 165: each result names its call
     for (const call of reply.tool_calls) {
       const name = call.function?.name;
       const res = tools.includes(name) ? await brain.runTool(name, call.function?.arguments, ctx) : { text: 'Error: only reading tools on this task.' };
-      messages.push({ role: 'tool', tool_name: name, content: String(res.text || '') });
+      messages.push(toolMessage(call, String(res.text || ''), res.ok));
     }
     compactMessages(messages, charsFor(helper.ctx || 32768));
   }

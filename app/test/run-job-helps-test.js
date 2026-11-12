@@ -322,6 +322,8 @@ const run = async (text, sid = 'main') => { const { jobId } = brain.enqueue(sid,
 {
   // Remember a no: the card's Deny with a reason stays in the chat.
   brain.cfg.jobHelps = cleanJobHelps({ rememberNo: true });
+  // A test-only tool, in no group: offered by having every tool on (Nov 12, item 173: a tool this job can't be offered doesn't run).
+  brain.cfg.allTools = true;
   brain.tools.tidy_desk = { schema: { type: 'function', function: { name: 'tidy_desk', description: 'Tidy the desk', parameters: { type: 'object', properties: {}, required: [] } } }, check: () => 'tidy your desk', run: async () => 'Tidied.', summary: () => 'tidy the desk' };
   seen.length = 0; events.length = 0;
   script = [call('tidy_desk'), { role: 'assistant', content: 'OK, I left it.' }];
@@ -333,6 +335,7 @@ const run = async (text, sid = 'main') => { const { jobId } = brain.enqueue(sid,
   await done;
   check('the no and its reason stay in the chat, hidden', brain.session('main').some((m) => m.role === 'system' && m.hidden && /Sam said no to: tidy the desk \(their reason: "I like the mess"\)/.test(m.content)));
   delete brain.tools.tidy_desk;
+  brain.cfg.allTools = false;
 }
 {
   // Run the tests after code edits: an edit in a project with tests gets one note before he says done.

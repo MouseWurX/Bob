@@ -417,7 +417,14 @@ export function buildTools(cfg) {
       const exists = fs.existsSync(file);
       // New files in the inn need no OK, except in the code copy of Bob's own code (self-work.js): every change there shows its card.
       if (isInside(cfg.innDir, file) && !exists && !isInside(codeCopyRoot(cfg), file)) return false;
-      return `${exists ? 'Overwrite' : 'Create'} ${file} (${Buffer.byteLength(content || '')} bytes)`;
+      const head = `${exists ? 'Overwrite' : 'Create'} ${file} (${Buffer.byteLength(content || '')} bytes)`;
+      // Item 174 (Nov 12): overwriting shows what really changes, like an edit does, so the card shows the real change.
+      if (!exists) return head;
+      let was = '';
+      try { if (fs.statSync(file).size <= 2_000_000) was = fs.readFileSync(file, 'utf8'); } catch { return head; }
+      const d = lineChanges(was, String(content || ''));
+      if (!d) return { text: `${head}: it already holds exactly this`, diff: '' };
+      return { text: `${head}: ${d.summary}`, diff: d.diff };
     },
     approvalGroup: 'edit',
     async run({ path: p, content }) {
@@ -796,4 +803,18 @@ export function buildTools(cfg) {
   t.make_diagram = diagramTool(); // 1.5.95 flowcharts and diagrams (diagram.js)
   t.save_as = saveAsTool(); // 1.5.95 keep something Bob made as another file type (save-as.js)
   return t;
+}
+
+// Item 174 (Nov 12): what overwriting a file really changes, for the card: the lines between the same start and the same
+// end, as - and + lines (cut short), and a count. null when nothing changes.
+export function lineChanges(before, after, { show = 12 } = {}) {
+  const a = String(before ?? '').replace(/\r\n/g, '\n').split('\n'), b = String(after ?? '').replace(/\r\n/g, '\n').split('\n');
+  if (a.join('\n') === b.join('\n')) return null;
+  let top = 0; while (top < a.length && top < b.length && a[top] === b[top]) top++;
+  let end = 0; while (end < a.length - top && end < b.length - top && a[a.length - 1 - end] === b[b.length - 1 - end]) end++;
+  const gone = a.slice(top, a.length - end), added = b.slice(top, b.length - end);
+  const clip = (l) => (l.length > 200 ? l.slice(0, 200) + '…' : l);
+  const lines = [...gone.slice(0, show).map((l) => `- ${clip(l)}`), ...(gone.length > show ? [`- ... ${gone.length - show} more`] : []),
+    ...added.slice(0, show).map((l) => `+ ${clip(l)}`), ...(added.length > show ? [`+ ... ${added.length - show} more`] : [])];
+  return { summary: `${gone.length} line${gone.length === 1 ? '' : 's'} out, ${added.length} in, from line ${top + 1}`, diff: `@@ line ${top + 1}\n${lines.join('\n')}`, gone: gone.length, added: added.length, from: top + 1 };
 }

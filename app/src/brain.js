@@ -44,7 +44,7 @@ import { selfToolsTools } from './selftools.js';
 import { Made, madePaths, showMadeTool } from './made.js';
 import { imageInfoOf, sizeLike } from './imageinfo.js';
 import { scheduleTools } from './hands-schedules.js';
-import { toolsOff, HANDS, handOn, handOffWhy, freeOn, computerWord, todayOn, todayKey, endOfDay } from './hands-settings.js';
+import { toolsOff, HANDS, handOn, handOffWhy, freeOn, computerWord, todayOn, todayKey, endOfDay, handsSettings } from './hands-settings.js';
 import { gate as qGate, after as qAfter, maybeAsk as qAsk, noteStrike, copyHeld } from './quarantine.js';
 import { wantsPictureEdit, recentPicture, editHint } from './intent.js';
 import { SAVE_AS, namedType, saveAs } from './save-as.js';
@@ -77,6 +77,7 @@ import { freeMemNow } from './platform.js';
 import { selfWorkOn, readyRepos } from './self-work.js';
 import { compactMessages, charsFor } from './self-work-plan.js';
 import { asDoc, asQuery, embedModel, vecKey } from './embed-prefix.js';
+import { lastFinished, riskOf, isVolatile, limitMs, capResult, cleanResult, NOTHING_FOUND, failedResult, giveIds, toolMessage, NOT_OFFERED, NOT_FOR_JOB } from './tool-kinds.js';
 import { fixCalls, errorHint, promisesAction, PROMISE_NUDGE, PROMISE_LOG, nearKey, onTrackNote, LAST_ROUND_NOTE, tidyOld, togetherCalls, meaningPick, GroupVectors } from './loop-help.js';
 import { HowTos, howtoTools, howtosOn, trailStep, worthOffering, howtoPrompt, usingLine } from './howtos.js';
 import { NEEDS, planFor, SetupOffers, switchFor, applySwitch, SWITCH_KEYS } from './setup-offer.js';
@@ -356,8 +357,8 @@ export function traceStep({ name, summary, ok, ms, text, brain }) {
 export const TOO_LONG = /exceeds? the available context|context (size|length|window) (exceeded|is too)|maximum context length|too many tokens/i;
 
 export function staleHandErrors(msgs, turnStart) {
-  return msgs.map((m, i) => (i < turnStart && m.role === 'tool' && HAND_TOOLS.has(m.tool_name) && /^Error:/.test(String(m.content))
-    ? { ...m, content: `(An earlier try failed: ${String(m.content).slice(7, 200)}. That may be out of date, because Bob's Hands can be fixed or switched on since. To do it now, call the tool again; don't repeat this.)` }
+  return msgs.map((m, i) => (i < turnStart && m.role === 'tool' && HAND_TOOLS.has(m.tool_name) && failedResult(m)
+    ? { ...m, content: `(An earlier try failed: ${String(m.content).replace(/^Error:\s*/, '').slice(0, 193)}. That may be out of date, because Bob's Hands can be fixed or switched on since. To do it now, call the tool again; don't repeat this.)` }
     : m));
 }
 // "I've opened Notepad" with no Hands tool done this turn.
@@ -401,7 +402,7 @@ export function realPcPrompt(cfg) {
 export const ALT_ROUTE_NUDGE = (who) => ` (If another route could still do this, try ONE other way now: for example, if a file or command tool failed, do it in the app with the Apps hand; if the Apps hand failed, use write_file, the Files Hand or the Run Hand. Then tell ${who} which way worked, or say plainly that neither did.)`;
 export const ALT_ROUTE_DONE = (who) => ` (You already tried another way this turn. Stop here and tell ${who} plainly what failed, in the tools' own words.)`;
 const DOING_TOOLS = new Set(['write_file', 'edit_file', 'save_spreadsheet']);
-const isLook = (name) => ['app_look', 'list_schedules'].includes(name);
+const isLook = (name) => isVolatile(name); // looks whose answer changes between calls (tool-kinds.js, item 172)
 
 // 1.5.20 quick hand-back: the line Bob shows with a finished picture or clip when the brain had to leave the card for
 // the painter and nothing else was asked for. null = reply the usual way (brain loads back and talks about it).
@@ -1441,8 +1442,7 @@ export class Brain {
       ctx.ledger?.begin?.(name, args); // 1.5.38: so a restart knows this step was cut off
       let text;
       ctx.offeredNow = false;
-      try { text = String(await tool.run(args, ctx)); }
-      catch (e) { if (ctx.signal.aborted) throw e; text = `Error: ${e.message}`; }
+      text = await this.runLimited(name, args, ctx, tool);
       // The system checks it really happened (verify.js): a missing or broken output, or an action that didn't take,
       // gets one more go before Bob is told it failed. Approvals aren't asked twice.
       if (ctx.ledger) ctx.ledger.toolStart = startedAt;
@@ -1454,8 +1454,7 @@ export class Brain {
         ctx.ledger?.step('retry', { what: name, why: v.why || '' }).done();
         ctx.ledger?.action(name, args, false, text, startedAt, v);
         if (ctx.ledger) ctx.ledger.toolStart = Date.now();
-        try { text = String(await tool.run(args, ctx)); }
-        catch (e) { if (ctx.signal.aborted) throw e; text = `Error: ${e.message}`; }
+        text = await this.runLimited(name, args, ctx, tool);
         v = await this.checkTool(name, args, text, ctx);
         if (v.retry) v = { ...v, ok: false, text: v.text || `Error: ${name} was tried twice and still didn't take (${v.why || 'no proof it worked'}).` };
       }
@@ -1477,13 +1476,46 @@ export class Brain {
         const items = paths.map((p) => { try { return this.made.add(p, { tool: name, chat: ctx.sessionId }); } catch { return null; } }).filter(Boolean);
         if (items.length) ctx.emit({ type: 'made', items });
       }
-      return { text, endsTurn: tool.endsTurn };
+      return { text, endsTurn: tool.endsTurn, ok }; // item 167: ok or failed in a field, not only in the words
     } catch (e) {
       ctx.currentTool = null;
       if (ctx.signal.aborted) throw e;
       this.log('error', `${name}: ${e.message}`);
-      return { text: `Error: ${e.message}` };
+      return { text: `Error: ${e.message}`, ok: false };
     }
+  }
+
+  // One run of a tool, the same for every tool (Nov 12, items 168, 169, 175, 178):
+  //  - it has a time limit of its own (tool-kinds.js); past it, the turn stops waiting and the step fails plainly.
+  //    The tool keeps the job's own Stop signal (the graphics card's line is keyed by it), so Stop still ends it.
+  //  - what it hands back is turned into plain text (a broken tool can't send junk to the brain)
+  //  - a look that gives back nothing says so in one fixed form
+  //  - a very long result is cut here, keeping its start and its end, before it fills memory
+  async runLimited(name, args, ctx, tool) {
+    const limit = this.toolLimitMs ? this.toolLimitMs(name, tool) : limitMs(name, tool, { ownMin: Number(handsSettings(this.cfg).timeoutMin) || 0 });
+    let timer = null, raw;
+    try {
+      const run = Promise.resolve().then(() => tool.run(args, ctx));
+      run.catch(() => {}); // after a time-out the tool may still fail later: nothing is waiting for it then
+      raw = limit > 0
+        ? await Promise.race([run, new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error('time'), { overTime: true })), limit); timer.unref?.(); })])
+        : await run;
+    } catch (e) {
+      if (ctx.signal?.aborted) throw e;
+      if (e?.overTime) {
+        const mins = Math.round(limit / 60_000 * 10) / 10;
+        this.log('error', `${name} ran past its own ${mins}-minute limit; stopped waiting for it`);
+        return `Error: ${name} didn't finish within ${mins} minute${mins === 1 ? '' : 's'}, so Bob stopped waiting for it. It may still finish, or may have done part of the job.`;
+      }
+      return `Error: ${e?.message || e}`;
+    } finally { clearTimeout(timer); }
+    const clean = cleanResult(raw);
+    if (clean.fixed) this.log('tool', `${name} ${clean.fixed}; passed on as plain text`);
+    let text = clean.text;
+    if (!text.trim() && riskOf(name, tool) === 'look') text = NOTHING_FOUND(name);
+    const capped = capResult(text);
+    if (capped.cut) this.log('tool', `${name} gave back ${text.length.toLocaleString('en')} characters; kept the start and the end (${capped.cut.toLocaleString('en')} cut)`);
+    return capped.text;
   }
 
   // verify.js's check of one tool run; a check that itself breaks never breaks the turn.
@@ -1692,6 +1724,26 @@ export class Brain {
     const sum = fixCalls(calls, this.tools, { bounced: (ctx.bounced ||= new Map()) });
     for (const c of calls) if (c.fixed) this.log('tool', `${c.function?.name}: mended the call (${c.fixed.join(', ')})`);
     return sum;
+  }
+
+  // Item 173 (Nov 12): a call to a tool that this step can't offer doesn't run: a helper's tool outside its own list,
+  // any action once a step has no tools, or a tool in no group this job has. Looks still run (they change nothing).
+  notOffered(calls, offered, ctx, { hat = false } = {}) {
+    const names = new Set((offered || []).map((t) => t?.function?.name).filter(Boolean));
+    let n = 0;
+    for (const c of calls || []) {
+      const name = c?.function?.name;
+      if (c.bounce || !name || names.has(name) || !this.tools[name] || riskOf(name, this.tools[name]) === 'look') continue;
+      if (hat) c.bounce = NOT_FOR_JOB(name);
+      else if (ctx.noTools) c.bounce = '(Not run: no tools are offered for this step. Answer with what you have.)';
+      // A tool from a group this job can have but hasn't added yet still runs, as before (small brains often call one
+      // straight away; sending it back would cost a whole step). Only a tool this job can't be offered goes back.
+      else if (groupOf(this, name)) continue;
+      else c.bounce = NOT_OFFERED(name);
+      n++;
+      this.log('tool', `${name} wasn't offered this step; not run`);
+    }
+    return n;
   }
 
   // Nov 11: two or more look-ups in one reply (web_search, fetch_page, read_file...) run side by side. Only tools that
@@ -2392,6 +2444,10 @@ export class Brain {
       return sent;
     };
     const ctx = { emit: emitMade, signal, brain: this, cfg: this.cfg, allowAll: new Set(), pics, picNote, msgs, turnText: text, job, sessionId, wantsEdit, editFrom: wantsEdit ? recent : null, wantType: namedType(text), saves: [], savedAs: [], trace: [] };
+    // Item 171 (Nov 12): an action key for each action. After a restart, the last action that already finished is
+    // remembered, so the same write or command asked for again first thing hands back its result instead of running twice.
+    const lastDone = lastFinished(job?.before, this.tools);
+    if (lastDone) ctx.lastDoing = { key: callKey(lastDone.name, lastDone.args), text: `${lastDone.text} (this finished before Bob was closed)` };
     if (!job?.guest) (this.traces ||= new Map()).set(sessionId, ctx.trace); // item 10: How I got here
     // The ledger (handoff.js): what was asked for, every load, tool and output this turn, kept by the system.
     ctx.ledger = new Ledger({ job, expect: expectFrom(text, { pics }), save: () => this.saveQueue() });
@@ -2658,7 +2714,7 @@ export class Brain {
       if (this.cfg.lookChange) { try { saveSettings(this.cfg, { lookChange: null }); } catch {} this.cfg.lookChange = null; }
       msgs.push(reply);
       // Nov 11 (loop-help.js): what goes into each call is checked against the tool, and mended where that's sure.
-      if (reply.tool_calls?.length) this.mendCalls(reply.tool_calls, ctx);
+      if (reply.tool_calls?.length) { giveIds(reply.tool_calls); this.mendCalls(reply.tool_calls, ctx); this.notOffered(reply.tool_calls, tools, ctx); }
       // What he just said gets its id now, so the window can find the bubble: for the "..." menu on it (Edit, Delete;
       // msg-menu.js), and if he changes it later (Let Bob fix his own messages).
       if (!job?.guest && typeof reply.content === 'string' && reply.content.trim()) { reply.id ||= newMsgId(); reply.at ||= Date.now(); emit({ type: 'said', id: reply.id }); }
@@ -2756,7 +2812,7 @@ export class Brain {
       // 1.5.78: "Show Bob's plan before big jobs": a big job waits for its plan card (plan.js).
       const held = await planGate(this, reply.tool_calls, ctx);
       if (held) {
-        for (const call of reply.tool_calls) msgs.push({ role: 'tool', tool_name: call.function?.name, content: held.hold });
+        for (const call of reply.tool_calls) msgs.push(toolMessage(call, held.hold));
         ctx.retrying = true;
         continue;
       }
@@ -2767,8 +2823,8 @@ export class Brain {
       for (const call of reply.tool_calls) {
         const name = call.function?.name;
         // 1.5.41: once Bob has picked a new session, the rest of this round waits for it (the job runs again there).
-        if (ctx.switchTo) { msgs.push({ role: 'tool', tool_name: name, content: '(Not done yet: you are switching session first.)' }); continue; }
-        if (ctx.repeatStop) { msgs.push({ role: 'tool', tool_name: name, content: '(Not run: the turn stopped after the same call came three times.)' }); continue; }
+        if (ctx.switchTo) { msgs.push(toolMessage(call, '(Not done yet: you are switching session first.)')); continue; }
+        if (ctx.repeatStop) { msgs.push(toolMessage(call, '(Not run: the turn stopped after the same call came three times.)')); continue; }
         // A tool from a group that isn't added yet: small brains sometimes call it straight away. Add its group and run it.
         const g = name === 'use_tools' ? null : groupOf(this, name);
         if (g) { ctx.loaded.add(g); used.add(g); }
@@ -2809,7 +2865,7 @@ export class Brain {
           if (doing || HAND_TOOLS.has(name)) seen.clear();
           if (!isLook(name)) seen.set(key, { count: 1, text: res.text });
           if (doing) {
-            const failed = /^Error:/.test(String(res.text));
+            const failed = typeof res.ok === 'boolean' ? !res.ok : /^Error:/.test(String(res.text)); // item 167
             const who = this.cfg.userName || 'the user';
             // A failure after a success this turn: make him say both.
             if (failed && ctx.doneThisTurn?.length) res.text += ` (Earlier this turn this worked: ${ctx.doneThisTurn.slice(-2).map((x) => x.slice(0, 160)).join(' / ')}. Tell ${who} what really happened: what worked, then what failed.)`;
@@ -2825,7 +2881,7 @@ export class Brain {
           }
         }
         if (name === 'use_tools') { let a = call.function?.arguments; if (typeof a === 'string') { try { a = JSON.parse(a); } catch { a = {}; } } const id = String(a?.group || '').toLowerCase().trim(); if (ctx.loaded.has(id)) used.add(id); }
-        msgs.push({ role: 'tool', tool_name: name, content: res.text });
+        msgs.push(toolMessage(call, res.text, call.bounce ? false : res.ok)); // item 165: the result names its call
         if (howtosOn(this.cfg)) { // 1.5.79: the job's steps, in case it's worth a how-to
           let a = call.function?.arguments; if (typeof a === 'string') { try { a = JSON.parse(a); } catch { a = {}; } }
           let sum = name; try { sum = this.tools[name]?.summary ? this.tools[name].summary(a || {}) : name; } catch {}
@@ -3098,13 +3154,15 @@ export class Brain {
       messages.push(reply);
       final += reply.content;
       if (!reply.tool_calls) break;
+      giveIds(reply.tool_calls); // item 165
       this.mendCalls(reply.tool_calls, ctx); // Nov 11 (loop-help.js)
+      this.notOffered(reply.tool_calls, stepTools, ctx, { hat: true }); // item 173
       await askTogether(this, reply.tool_calls.filter((c) => !c.bounce), ctx); // 1.5.41: one card for every OK in this reply
       const early = await this.lookTogether(reply.tool_calls, ctx);
       for (const call of reply.tool_calls) {
         let res = call.bounce ? { text: call.bounce } : early.get(call) || await this.runTool(call.function?.name, call.function?.arguments, ctx);
         if (!this.helpOff('hint') && /^Error:/.test(String(res.text))) res = { ...res, text: String(res.text) + errorHint(call.function?.name, res.text) };
-        messages.push({ role: 'tool', tool_name: call.function?.name, content: res.text });
+        messages.push(toolMessage(call, res.text, call.bounce ? false : res.ok));
         let a = call.function?.arguments; if (typeof a === 'string') { try { a = JSON.parse(a); } catch { a = {}; } }
         const where = a?.path || a?.url || a?.query || a?.name || '';
         did.push(`${call.function?.name}${where ? ` ${String(where).slice(0, 160)}` : ''}: ${String(res.text).replace(/\s+/g, ' ').slice(0, 240)}`);

@@ -10,6 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { HANDS } from './hands-settings.js';
+import { kindOf, repeatSafe } from './tool-kinds.js';
 
 // ---------------------------------------------------------------- what was asked for
 
@@ -126,8 +127,8 @@ export async function verifyOutput(file, type = typeOfFile(file), { settleMs = 2
 
 const MEDIA = { make_image: 'image', make_video: 'video', make_music: 'audio', make_sound: 'audio', workshop_run: null };
 const MEDIA_EXT = /\.(?:png|jpe?g|webp|bmp|gif|mp4|webm|mov|avi|mkv|wav|mp3|ogg|flac|m4a)$/i;
-// Running these again can't do harm: they make a new file or write the same content again.
-const RETRY_SAFE = new Set([...Object.keys(MEDIA), 'write_file', 'save_spreadsheet']);
+// Running these again can't do harm: they make a new file or write the same content again (tool-kinds.js, item 170).
+const RETRY_SAFE = { has: (name) => kindOf(name).risk !== 'look' && repeatSafe(name) };
 // Worth one more go: the engine was busy, slow, out of memory or not up yet.
 const TRANSIENT = /time(?:d)? ?out|didn'?t finish in time|out of memory|\bOOM\b|ECONNREFUSED|ECONNRESET|EPIPE|EBUSY|EAGAIN|socket hang up|fetch failed|network|not ready|still loading|loading the model|busy|exited|crashed|stopped unexpectedly|no output|code \d+|temporar|try again|503|502|500\b/i;
 const PERMANENT = /isn'?t set up|isn'?t installed|isn'?t hooked up|switched off|is off\b|are off\b|not allowed|off limits|no reference called|said no|read-only|don'?t (?:write|edit)|isn'?t in the file|appears \d+ times|doesn'?t exist|Hands are stopped|Stopped by the user|Stopped\.$/i;
