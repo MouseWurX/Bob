@@ -5,6 +5,8 @@
 //  - prompt-words.js: saved prompts' words part (public/prompt-words.js), word for word, as globalThis.BobPrompts
 //  - avatars.js: the character screen's parts and composer (public/avatars.js), word for word, as a plain script
 //    (globalThis.BobAvatars), so the phone draws your Adventure character exactly as the desktop does (1.5.122)
+//  - journey-rules.js, journey-sides.js, journey-play.js, journey.css: 🧭 Journey, Adventure's tile-map game (1.5.206),
+//    word for word, the scripts as plain scripts (globalThis.BobJourneyRules, BobJourneySides, BobJourneyPlay)
 //  - public/phone/: the same phone screen for iPhone (and any phone browser), served by desktop Bob at /phone/ and
 //    added to the Home Screen like an app. Copied word for word; only index.html gains the web parts (1.5.204)
 // Run: node android/tools/make-shared.mjs   (test/run-android-test.js fails if shared.js or avatars.js is stale)
@@ -18,6 +20,7 @@ export const OUT = path.join(root, 'android/app/src/main/assets/www/shared.js');
 export const OUT_AVATARS = path.join(root, 'android/app/src/main/assets/www/avatars.js');
 export const OUT_PROMPTS = path.join(root, 'android/app/src/main/assets/www/prompt-words.js');
 export const OUT_TABLE_FX = path.join(root, 'android/app/src/main/assets/www/table-fx.js');
+export const OUT_ADV_TABLE = path.join(root, 'android/app/src/main/assets/www/adv-table.js');
 
 // One section of CORE, from its heading line up to the next blank-line-separated heading.
 function section(heading) {
@@ -85,7 +88,7 @@ export function buildPromptWords() {
 // Icons, fonts, Mermaid and diagram-core.js aren't copied: the server hands /phone/shared/, /phone/vendor/ and
 // /phone/diagram-core.js out of public/ (they're the same files).
 export const WEB_DIR = path.join(root, 'public/phone');
-export const WEB_COPIED = ['phone.js', 'phone.css', 'logic.js', 'help.js', 'shared.js', 'avatars.js', 'prompt-words.js', 'table-fx.js', 'math-core.js', 'model-core.js', 'lock.js']; // every script www/index.html loads except diagram-core.js (served from desktop Bob). lock.js too: the phone screen keeps its chats in the browser, so it gets the same passcode lock (it says so when the browser can't scramble)
+export const WEB_COPIED = ['phone.js', 'phone.css', 'logic.js', 'help.js', 'shared.js', 'avatars.js', 'prompt-words.js', 'table-fx.js', 'math-core.js', 'model-core.js', 'lock.js', 'adv-table.js', 'journey-rules.js', 'journey-sides.js', 'journey-play.js', 'journey.css']; // every script www/index.html loads except diagram-core.js (served from desktop Bob). lock.js too: the phone screen keeps its chats in the browser, so it gets the same passcode lock (it says so when the browser can't scramble)
 export function buildWebPhone() {
   const www = path.join(root, 'android/app/src/main/assets/www');
   const read = (f) => fs.readFileSync(path.join(www, f), 'utf8').replace(/\r\n/g, '\n');
@@ -124,7 +127,37 @@ export function buildTableFx() {
   return `// Made by android/tools/make-shared.mjs from public/table-fx.js. Don't edit.\n(function () {\n${body}\nglobalThis.BobTableFx = { ${names.join(', ')} };\n})();\n`;
 }
 
+// 1.5.206: public/adventure-table.js (the Adventure map and rules card), word for word, as globalThis.BobAdvTable.
+export function buildAdvTable() {
+  const src = fs.readFileSync(path.join(root, 'public/adventure-table.js'), 'utf8').replace(/\r\n/g, '\n');
+  if (/^import\s/m.test(src)) throw new Error('public/adventure-table.js imports something now: update make-shared.mjs');
+  const names = [...src.matchAll(/^export (?:const|function) ([A-Za-z_]\w*)/gm)].map((m) => m[1]);
+  if (!names.includes('mapSvg') || !names.includes('rulesCard')) throw new Error('public/adventure-table.js no longer exports mapSvg/rulesCard: update make-shared.mjs');
+  const body = src.replace(/^export (const|function) /gm, '$1 ');
+  return `// Made by android/tools/make-shared.mjs from public/adventure-table.js. Don't edit.\n(function () {\n${body}\nglobalThis.BobAdvTable = { ${names.join(', ')} };\n})();\n`;
+}
+
+// 1.5.206 🧭 Journey: the rules, the four-sided figures and the screen, each word for word as one global, and the CSS.
+export const JOURNEY = { 'journey-rules.js': ['BobJourneyRules', 'makeWorld'], 'journey-sides.js': ['BobJourneySides', 'drawFigure'], 'journey-play.js': ['BobJourneyPlay', 'mountJourney'] };
+export function buildJourney() {
+  const out = {};
+  for (const [f, [global, must]] of Object.entries(JOURNEY)) {
+    const src = fs.readFileSync(path.join(root, 'public', f), 'utf8').replace(/\r\n/g, '\n');
+    if (/^import\s/m.test(src)) throw new Error(`public/${f} imports something now: update make-shared.mjs`);
+    const names = [...src.matchAll(/^export (?:const|function) ([A-Za-z_]\w*)/gm)].map((m) => m[1]);
+    if (!names.includes(must)) throw new Error(`public/${f} no longer exports ${must}: update make-shared.mjs`);
+    const body = src.replace(/^export (const|function) /gm, '$1 ');
+    out[f] = `// Made by android/tools/make-shared.mjs from public/${f}. Don't edit.\n(function () {\n${body}\nglobalThis.${global} = { ${names.join(', ')} };\n})();\n`;
+  }
+  out['journey.css'] = `/* Made by android/tools/make-shared.mjs from public/journey.css. Don't edit. */\n${fs.readFileSync(path.join(root, 'public/journey.css'), 'utf8').replace(/\r\n/g, '\n')}`;
+  return out;
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  fs.writeFileSync(OUT_ADV_TABLE, buildAdvTable());
+  console.log(`wrote ${path.relative(root, OUT_ADV_TABLE)}`);
+  for (const [f, text] of Object.entries(buildJourney())) fs.writeFileSync(path.join(root, 'android/app/src/main/assets/www', f), text);
+  console.log('wrote android/app/src/main/assets/www/journey-*.js and journey.css');
   fs.writeFileSync(OUT, buildShared());
   console.log(`wrote ${path.relative(root, OUT)}`);
   fs.writeFileSync(OUT_AVATARS, buildAvatars());

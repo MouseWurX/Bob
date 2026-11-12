@@ -20,6 +20,8 @@ import { appsDoorHtml, mountAppsDoor } from './apps-door.js';
 import { claudeDoorHtml, mountClaudeDoor } from './claude-door.js'; // Let Claude use Bob's hands
 import { checkinsHtml, mountCheckins } from './checkins.js';
 import { promptsHtml, mountPrompts } from './prompts.js'; // saved prompts and the / menu
+import { mountHarness } from './harness.js'; // items 62 to 72: Health and history, Quiet hours and shortcut, Chat extras
+import { mountEveryday, applyReading, TEXT_MIN, TEXT_MAX, TEXT_STEP } from './everyday.js'; // 🗓 Everyday helpers
 import { adventureSettingsHtml, mountAdventureSettings } from './adventure.js';
 import { gamesSettingsHtml, mountGamesSettings } from './games.js';
 import { shareBrainsHtml, mountShareBrains } from './share-brains.js';
@@ -48,7 +50,7 @@ export function createCellar({ popOut = null } = {}) {
   const dlg = $('cellar');
   const backup = makeBackupPanel({ api, redraw: () => { const y = dlg.scrollTop; draw(); dlg.scrollTop = y; } }); // Back up and move
   let speedModel = '';
-  let speedRuns = [];
+  let speedRuns = [], speedLogData = null; // speedLogData: 96 Speed history (/api/speed-log)
   let rent = { services: [], rentals: [], caps: {}, running: [], leftover: [], recent: [] }; // 1.5.127 rented brains
   let rentPickOpen = false; // 1.5.137: Add a rental opens by itself when you come from the catalogue's "Rented brains" link
   // 1.5.137: fills Add a rental from the brain picked in "Pick a brain from Bob's list", for the service picked.
@@ -718,6 +720,7 @@ export function createCellar({ popOut = null } = {}) {
       ${sswitch('docMeaning', settings.docMeaning === true, 'Search my documents by meaning', 'Off unless you turn it on. Works with reading and searching documents on. A search also finds files that mean what you asked in other words. While Bob is idle he makes an index of your documents with the Memory slot\'s embedding model; it stays on this replicant matrix, holds numbers and file names but not the words, and is deleted when you turn this off.')}
       ${settings.docIndex ? `<div class="srow muted" data-docindex>${settings.docIndex.files ? `${settings.docIndex.files} ${settings.docIndex.files === 1 ? 'document' : 'documents'} in the index${settings.docIndex.building ? ', adding more now' : ''}.` : (settings.docIndex.building ? 'Making the index now.' : 'The index is made while Bob is idle.')}</div>` : ''}
       ${sswitch('docView', settings.docView === true, 'Show documents in the side panel', 'Off unless you turn it on. Word, Excel, PowerPoint, OpenDocument, e-book and Rich Text files open in the panel beside the chat as their words, tables and slides, and a PDF as its pages where this window can draw them. Nothing extra to install, nothing kept on disk. Off: these files get an Open in its app button.')}
+      ${sswitch('toolHelp', settings.toolHelp !== false, 'Better tool calling', 'On unless you turn it off. Before a tool runs, Bob checks the call and mends sure slips (broken brackets, a field under another name, "5" for 5). After common errors he adds one plain hint. On long jobs he keeps a short "where we are" note and makes the last step an answer. Look-ups run side by side, and old tool results in long chats shrink to one line. Most useful with a small brain.')}
       ${sswitch('toolLearning', settings.toolLearning === true, 'Let Bob learn from his tools', 'Off unless you turn it on. When a tool fails and then works, Bob keeps one line on what fixed it and reads it next time. He also counts what works and what fails, and offers to fix a tool that keeps failing. It all stays on this replicant matrix.')}
       ${settings.toolLearning ? `<div class="srow">${(settings.toolScores || []).length ? `<span class="muted">${settings.toolScores.slice(0, 6).map((t) => `${esc(t.name.replace(/^use_my_tool:/, ''))} ${t.wins}✓ ${t.misses}✗${t.often ? ' (keeps failing)' : ''}`).join(' · ')}</span> <button type="button" data-forgettools>Forget what he learned</button>` : '<span class="muted">Nothing learned yet.</span>'}</div>` : ''}
       ${sswitch('chatFiles', settings.chatFiles === true, 'Save chats as files and bring chats in', 'Off unless you turn it on. Topics, Past chats gets Save as Markdown, JSON or PDF and Share (a tidy page or picture, names and folders taken out) under every chat, and Bring in chats, for a file exported from ChatGPT, Claude or Open WebUI. You tick which chats to keep; they join Past chats like any other. Nothing goes online.')}
@@ -779,7 +782,42 @@ export function createCellar({ popOut = null } = {}) {
       ${sswitch('memoryRecall', settings.memoryRecall === true, 'Remember only what fits', 'With each message, Bob reads only the memories that fit it (up to 8), not his whole memory file, so chats stay light. Off: he reads all of it every time.')}
       ${more('Each project gets its own memory bank: while you talk about one project, Bob leaves the other projects\' memories out. To have him read a line every time, add [always] to it in his memory file. He matches by meaning when the 🗂 Memory (finding past chats) model is downloaded (it runs on the processor, never in the Gaming session), and by words otherwise.')}
       ${settings.memoryRecall ? memoryBanksHtml() : ''}
+      ${engineExtrasHtml()}
       ${speedTestHtml()}`;
+  }
+
+  // List items 94-98: engine and speed extras, each off unless turned on. (99 sits in Engines, 100 on the Brains page.)
+  function engineExtrasHtml() {
+    const bat = settings.onBattery === true ? 'On battery right now.' : settings.onBattery === false ? 'Plugged in right now.' : settings.laptopMode ? 'No battery found, so nothing changes here.' : '';
+    return `<div class="tune engine-extras"><strong>Engine extras</strong> <span class="tag">off unless you turn it on</span>
+         ${tip('Each switch is separate. They work with Brain Engine and llama.cpp; Ollama runs its own way, so only the speed history and Laptop mode reach it. Bob\'s Android app runs its own small engine and isn\'t changed by these.', 'Engine extras')}
+        ${sswitch('copyGuess', settings.copyGuess === true, 'Guess ahead by copying from the chat', 'When Bob rewrites code or a document, most of the words are already in the chat. The engine guesses them by copying and the brain checks each guess, so edits come out faster and the answer is the same. No second brain needed. Not used while Turbo is on for that brain.')}
+        ${sswitch('preloadNext', settings.preloadNext === true, 'Load the next brain early', 'When Bob hands a job to another brain (like the coder), he reads that brain\'s file into memory while the first one is still writing, so the swap is quicker. Only when there\'s room: the brain plus 4 GB free.')}
+        ${sswitch('laptopMode', settings.laptopMode === true, 'Laptop mode', `On battery, Bob's Quick brain answers the chat and the engine uses half the cores. Plugged in, nothing changes.${bat ? ' ' + keep(bat) : ''}`)}
+        ${sswitch('newCardTest', settings.newCardTest === true, 'Test a new graphics card by itself', 'When Bob starts and sees a different graphics card, he runs the one-minute speed test once he\'s free, and puts brains set by hand on the Brains page back on Auto.')}
+        ${sswitch('speedLog', settings.speedLog === true, 'Keep a speed history', 'After each reply, Bob adds its words per second to one line per day, brain and engine version. Only the numbers are kept, here, for 90 days.')}
+        ${speedLogHtml()}
+      </div>`;
+  }
+
+  // 96 Speed history: one small line chart per brain, words a second by day, with a mark where the engine changed.
+  function speedLogHtml() {
+    if (!settings.speedLog) return '';
+    const brains = speedLogData?.brains || [];
+    if (!brains.length) return '<p class="muted">No replies counted yet. The chart starts with the next one.</p>';
+    const W = 260, H = 60;
+    const chart = (b) => {
+      const pts = b.points.slice(-30), top = Math.max(...pts.map((p) => p.avg), 1);
+      const x = (i) => (pts.length > 1 ? (i * W) / (pts.length - 1) : W / 2), y = (v) => H - 4 - (v / top) * (H - 8);
+      const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.avg).toFixed(1)}`).join(' ');
+      const marks = pts.map((p, i) => (i && p.engine !== pts[i - 1].engine ? `<line x1="${x(i).toFixed(1)}" x2="${x(i).toFixed(1)}" y1="0" y2="${H}" class="speed-mark"><title>${esc(p.engine || 'engine')} from ${esc(p.day)}</title></line>` : '')).join('');
+      const last = pts[pts.length - 1];
+      const words = `${esc(b.model)}: ${last.avg} words a second on ${esc(last.day)}, highest ${top}.`;
+      return `<figure class="speed-log"><figcaption><strong>${esc(b.model)}</strong> <span class="muted">${last.avg} words/s · ${esc(last.engine || '')}</span></figcaption>
+        <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${words}">${marks}<path d="${line}" class="speed-line" fill="none"/></svg>
+        ${b.slower ? `<p class="speed-slower">⚠ Slower since ${esc(b.slower.engine || 'the engine changed')}: ${b.slower.after} words a second, was ${b.slower.before} on ${esc(b.slower.from || 'the one before')}. Go back in Settings, Engines puts the old engine back.</p>` : ''}</figure>`;
+    };
+    return `<div class="speed-logs">${brains.map(chart).join('')}</div>`;
   }
 
   // 1.5.98: Engines (the rest of Engines & speed). The fine-tuning sits under More.
@@ -846,6 +884,7 @@ export function createCellar({ popOut = null } = {}) {
       ${labEngineHtml()}
       <div><strong>Engine downloads</strong> ${tip('The programs that run the models, from their official GitHub pages (Brain Engine from Bob\'s own), matched to your graphics card. Update swaps a new build in and keeps the one before, so Go back puts it straight back without downloading. Bob checks a download\'s checksum, so a rebuilt engine with the same name still shows as an update.', 'Engine downloads')}
         <div class="row"><button type="button" data-checkall>Check all for updates</button></div>
+        ${sswitch('engineNotes', settings.engineNotes === true, 'Tell me what engine updates change', `Off unless you turn it on. When an engine update finishes, Bob adds one or two plain lines to his message in the chat: what it changes for you.${settings.engineNotes && settings.engineNote ? ` The engine you have now: ${esc(settings.engineNote)}` : ''}`)}
         ${sswitch('engineAuto', settings.engineUpdates?.auto !== false, 'Keep engines up to date', 'On unless you turn it off. When Bob starts and about once a day, he checks the plain llama.cpp that stands in for Brain Engine and updates it by himself, only while no brain is loaded on it. Brain Engine updates with Bob himself, whatever this says. Go back puts the old build back. The other engines wait until you press Check for updates.')}
         ${groups}</div>
       ${qwenHtml()}
@@ -1000,7 +1039,18 @@ export function createCellar({ popOut = null } = {}) {
   function bobNetHtml() {
     return `<h4 class="ssub">This Bob</h4>
       ${phoneAccessHtml()}
-      ${shareBrainsHtml()}`;
+      ${shareBrainsHtml()}
+      <h4 class="ssub">Chats and your phone</h4>
+      ${sswitch('carryIn', settings.carryIn === true, 'Take chats from my other Bobs', 'Off unless you turn it on. Your other Bobs and your phone can hand a chat over to this Bob with Carry on on another Bob, and you keep going here. It lands in Past chats as a new chat; the original stays where it was. Only what you and Bob said comes over: no files, pictures or memory.')}
+      ${sswitch('phoneGlance', settings.phoneGlance === true, 'Let my phone see how I\'m doing', 'Off unless you turn it on. Bob for Android\'s Your Bobs page (and its home-screen widget) can show whether this Bob is up or busy, his brain, the graphics card\'s heat and memory, the jobs running and your next reminder. Only your signed-in phone and your other Bobs can ask, over Tailscale; the card is read at most every 20 seconds.')}`;
+  }
+
+  // A voice per Bob: one menu per Bob on the Bob-Net list. "Bob picks" uses a voice from his name.
+  function netVoicesHtml() {
+    const names = settings.netBobs || [];
+    if (!names.length) return '<p class="muted">No other Bobs on your Bob-Net list yet, so there are no voices to pick.</p>';
+    const map = settings.netVoiceMap || {};
+    return `<div class="net-voices">${names.map((n) => `<label class="pick-inline"><span>${esc(n)}</span><select data-netvoice="${esc(n)}" aria-label="Voice for ${esc(n)}"><option value="auto">Bob picks one from his name</option>${(settings.kokoroVoices || []).map(([id, label]) => `<option value="${esc(id)}" ${map[n] === id ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>`).join('')}</div>`;
   }
 
   function voiceDetailsHtml() {
@@ -1009,16 +1059,56 @@ export function createCellar({ popOut = null } = {}) {
     return `<div class="voice-settings">${voiceHtml()}</div>
       ${prox('ear', 'Listen for "Hey Bob"', 'Only while this window is open. Same as Listen in the left menu.')}
       ${prox('speak', 'Read replies aloud', 'Same as Read aloud in the left menu.')}
+      ${sswitch('talkOver', settings.talkOver === true, 'Talk over Bob', 'Off unless you turn it on. While Bob reads aloud, the microphone stays open: start speaking and he stops and listens. "Stop" on its own just stops him; anything else is sent as your next message. Headphones work best, so he doesn\'t hear himself. Only while this window is open.')}
+      ${sswitch('readDocs', settings.readDocs === true, 'Read documents aloud', 'Off unless you turn it on. A document in the side panel gets 🔊 Read aloud: Play, Pause, Back, Next and a speed, in Bob\'s voice (or this computer\'s voice). He remembers where you stopped in each document, on this computer.')}
+      ${sswitch('netVoices', settings.netVoices === true, 'A voice per Bob', 'Off unless you turn it on. A reply another of your Bobs thought (a borrowed brain) is read aloud in his own voice, so you can hear who\'s talking. Pick each Bob\'s voice below, or leave it to Bob, who picks one from his name. Needs the Kokoro voice; with another voice every Bob sounds the same.')}
+      ${netVoicesHtml()}
       <p class="muted">Hearing you and the other voices are on the <button type="button" class="link" data-tab="speech">💬 Voice &amp; conversation</button> page.</p>`;
   }
 
   function lookExtrasHtml() {
     const st = settings.style || {};
     const opt = (val, label, on) => `<button type="button" role="radio" aria-checked="${on}" data-nowneed="${val}">${label}</button>`;
-    return `<div><strong>Now running</strong><div class="ttabs" role="radiogroup" aria-label="Open Now running when a task needs me">${opt('0', 'Leave Now running as it is', st.openNowOnNeed !== true)}${opt('1', 'Open Now running when a task needs me', st.openNowOnNeed === true)}</div></div>
+    const ts = settings.textSize || 100;
+    return `<div class="srow"><label class="pick"><strong>Text size: <b data-textsizelabel>${ts}%</b></strong><input type="range" min="${TEXT_MIN}" max="${TEXT_MAX}" step="${TEXT_STEP}" data-textsize value="${ts}" aria-describedby="textsize-hint"></label>
+      <p class="muted" id="textsize-hint">The chat, the message box and Settings, bigger or smaller. 100% to start with. Saved for this Bob, on every window.</p></div>
+      ${sswitch('readableFont', settings.readableFont === true, 'Easier-to-read font', 'Off to start with. A plainer font with more space between letters, words and lines, for the chat and Settings. Good for tired eyes and for dyslexia.')}
+      <div><strong>Now running</strong><div class="ttabs" role="radiogroup" aria-label="Open Now running when a task needs me">${opt('0', 'Leave Now running as it is', st.openNowOnNeed !== true)}${opt('1', 'Open Now running when a task needs me', st.openNowOnNeed === true)}</div></div>
       <div><strong>Your own theme</strong><p class="muted">Make or edit a theme on the <button type="button" class="link" data-tab="style">🎨 Style</button> page (Make your own theme).</p></div>`;
   }
 
+  // Settings, Jobs (src/job-helps.js): how Bob works through a job. Eleven switches, all off unless you turn them on.
+  const jobsHtml = () => {
+    const j = settings.jobHelps || {};
+    const sw = (k, label, note) => sswitch('jh' + k[0].toUpperCase() + k.slice(1), j[k] === true, label, note);
+    return `<p class="muted">How I work through a job. All off unless you turn them on.</p>
+      ${sw('steer', 'Steer Bob mid-job', 'Type in the chat while I work on a job there, and I read it before my next step instead of after the whole job.')}
+      ${sw('softStop', 'Show Stop after this step', 'A softer button beside Stop: the step running now finishes and keeps its result, then I tell you what I did and what\'s left.')}
+      ${sw('timeLimit', 'Give each job a time limit', 'A bar shows the time left. When it runs out, a card asks whether to give me more; with no answer in 2 minutes I wrap up.')}
+      <div class="srow"><label class="pick"><strong>Time limit</strong> <select data-jhminutes aria-label="Time limit">${[5, 10, 15, 20, 30, 45, 60].map((m) => `<option value="${m}" ${(j.minutes || 10) === m ? 'selected' : ''}>${m} minutes</option>`).join('')}</select></label></div>
+      ${sw('receipt', 'Show a receipt after each job', 'Files changed, commands run and pages read, each with Open or Undo. Undo works for a week, while the file still holds what I wrote.')}
+      ${sw('runTests', 'Run the tests after code edits', 'In a project with tests, I run them after changing its code and fix what fails before I say done. The command still asks you first.')}
+      ${sw('askFirst', 'Ask one question before a vague big job', 'If a big ask could mean two things, I ask you to pick one first, instead of guessing and doing the wrong thing.')}
+      ${sw('rememberNo', 'Remember a no for the whole chat', 'When you deny a step I remember it, with your reason if you type one, and don\'t offer the same thing again in other words.')}
+      ${sw('lookupCache', 'Reuse look-ups for an hour', 'The same search or page within an hour comes from my memory, not the web again.')}
+      ${sw('sources', 'Show sources under web answers', 'Numbered links to the pages I actually read, under the answer.')}
+      ${sw('howSure', 'Say how sure Bob is', 'When pages disagree or results are thin, one line saying how sure I am.')}
+      ${sw('fileLinks', 'Make file:line links clickable', 'A file and line in my replies about code opens your editor there. On this replicant matrix only, not the phone.')}
+      <div class="srow"><label class="pick"><strong>Open file:line links in</strong> <select data-jheditor aria-label="Open file:line links in">${[['vscode', 'VS Code'], ['cursor', 'Cursor'], ['vscodium', 'VSCodium'], ['system', 'Show it in its folder']].map(([v, n]) => `<option value="${v}" ${(j.editor || 'vscode') === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>`;
+  };
+  // 🗓 Everyday helpers (everyday.js): each switch off to start with. The boxes below fill themselves (mountEveryday).
+  const dailyHtml = () => `<div class="everyday-box">
+      ${sswitch('todayCard', settings.todayCard === true, 'Show a today card when Bob opens', 'Off to start with. Once a day, the first time his window opens: the weather, today\'s reminders and scheduled jobs, and what the last check-in found.')}
+      <div class="srow"><label class="pick"><strong>Place for the weather</strong><input data-todayplace maxlength="60" value="${esc(settings.todayPlace || '')}" placeholder="Your town" aria-describedby="todayplace-hint" style="width:14em"></label>
+      <p class="muted" id="todayplace-hint">Empty: no weather. With a town here, only its name goes to open-meteo.com (free, no account), once a day.</p></div>
+      ${sswitch('focusTimer', settings.focusTimer === true, 'Focus timer', 'Off to start with. Shows ⏱ Focus beside Effort. Pick 15, 25, 45 or 60 minutes: Bob keeps his check-ins, reminders and other notes to himself until it ends, then says how it went. Replies to what you ask still come.')}
+      ${sswitch('receipts', settings.receipts === true, 'Keep a spending sheet from receipts', 'Off to start with. Attach a photo of a receipt and say "add this receipt": Bob reads it and adds the date, shop, total and a category. The sheet stays on this replicant matrix, always locked. Needs a brain that can see pictures.')}
+      <div class="spend-box"></div>
+      ${sswitch('updateTour', settings.updateTour === true, 'Show what\'s new after an update', 'Off to start with. After an update, up to three cards in the chat for the new switches, each with Turn on. Once per version.')}
+      ${sswitch('trayDot', settings.trayDot === true, 'Show a dot on the tray icon', `Off to start with. A dot on Bob\'s tray icon when a reply is ready or something needs you while his window is hidden. Windows also shows it on the taskbar button, a Mac on the Dock icon. Gone when you look.${settings.trayHere ? '' : ' Only in Bob\'s own window: in a browser this does nothing.'}`)}
+      ${sswitch('profilesOn', settings.profilesOn === true, 'Profiles for other people', 'Off to start with. On a shared replicant matrix, each person gets their own chats and memory, locked with their own passcode. They pick their name on the lock screen. Needs the passcode lock with Lock my chats and memory.')}
+      <div class="people-box"></div>
+    </div>`;
   // 1.5.181 "Memory kept for Windows" (built-in graphics only): how much free memory a brain load leaves alone.
   const holdbackHtml = () => { const v = settings.apuHoldbackGB ?? 4; return `<div class="srow"><label class="pick"><strong>Memory kept for Windows: <b data-holdbacklabel>${v} GB</b></strong><input type="range" min="0" max="8" step="0.5" data-holdback value="${v}" aria-describedby="holdback-hint"></label>
       <p class="muted" id="holdback-hint">With built-in graphics, a brain shares memory with Windows. Before loading one, Bob leaves this much free memory alone (4 GB to start with). Lower lets bigger brains load on a small machine. <strong>At 0, Windows may slow down, or Bob may close, if memory runs out.</strong></p></div>`; };
@@ -1034,18 +1124,23 @@ export function createCellar({ popOut = null } = {}) {
       ${sswitch('allTools', settings.allTools, 'Give Bob all his tools at once', 'Sends every tool with each message, which leaves less room for the chat. Leave off to keep chats light.')}`],
     ['house', '🖋 House style', 'house style defaults default length mood genre music picture style shape clip video sound effects morning time evening night times of day', () => `<p class="muted">Your defaults for music, pictures, clips, sound effects and times of day live on Equip Bob, next to each slot.</p><button type="button" data-gohouse>Open House style on Equip Bob</button>`],
     ['presets', '🎭 Assistant presets', 'assistant presets preset per chat instructions system prompt persona character role brain effort temperature tools talking only', () => '<div class="presets-box"></div>'],
-    ['voice', '🔊 Voice details', 'kokoro chatterbox speed hey bob read aloud listen', () => voiceDetailsHtml()],
+    ['voice', '🔊 Voice details', 'kokoro chatterbox speed hey bob read aloud listen talk over interrupt stop barge in read documents aloud a voice per bob voices bob-net', () => voiceDetailsHtml()],
     ['look', '🌓 Look & feel', 'theme editor now running layout', () => lookExtrasHtml()],
-    ['speed', '⚡ Speed & memory', 'speed memory free memory quiet keep alive unload idle graphics card quick answers processor pictures without waiting ready while you type games go first picture settings gaming graphics card borrow automatic never always remember only what fits memory banks recall speed test', () => speedMemoryHtml()],
-    ['engines', '⚙ Engines', 'engine engines brain engine lab engine gear update updates go back remove check all ollama llama.cpp downloads newer build tested build fit to free graphics memory speculative decoding draft flags threads batch', () => enginesHtml()],
-    ['bobnet', '🌐 Bob-Net', 'bob-net bobnet phone android tailscale address passcode firewall let my phone in let my other replicant matrices in other bobs share brains lend borrow take jobs send jobs', () => bobNetHtml()],
+    ['speed', '⚡ Speed & memory', 'speed memory free memory quiet keep alive unload idle graphics card quick answers processor pictures without waiting ready while you type games go first picture settings gaming graphics card borrow automatic never always remember only what fits memory banks recall speed test engine extras guess ahead copying load the next brain early laptop mode battery new graphics card speed history chart', () => speedMemoryHtml()],
+    ['engines', '⚙ Engines', 'engine engines brain engine lab engine gear update updates go back remove check all ollama llama.cpp downloads newer build tested build fit to free graphics memory speculative decoding draft flags threads batch tell me what engine updates change plain words', () => enginesHtml()],
+    ['bobnet', '🌐 Bob-Net', 'bob-net bobnet phone android tailscale address passcode firewall let my phone in let my other replicant matrices in other bobs share brains lend borrow take jobs send jobs carry on take chats move chat phone see how doing your bobs widget card heat', () => bobNetHtml()],
     ['online', '☁ Online services', 'online internet cloud helpers api key anthropic openai gemini openrouter telegram discord bot token pairing wake phrase rented brains rent hire runpod vast lambda together spending cap limit machine', () => onlineHtml()],
     ['apps', '🔌 Other apps', 'other apps comfyui workflows port unreal blender mcp openai compatible api vs code continue opencode command line terminal cli key claude claude code desktop connect hands key', () => otherAppsHtml()],
     ['hands', '✋ Hands', 'files run commands schedules apps permission quarantine reviewer', () => handsSettingsHtml() + quarantineSettingsHtml()],
     ['housekeeping', '🧹 Housekeeping', 'tidy old chats pictures logs', () => housekeepingHtml()],
     ['adventure', '🎲 Adventure', 'adventure game tabletop role-playing dice game master party bobs cards plot armour campaign', () => `<div class="adventure-box">${adventureSettingsHtml(settings.adventure || {})}</div>`],
     ['games', '🧩 Games', 'games twenty questions hangman word ladder five letters story dice quick brain banter chip in', () => `<div class="games-box">${gamesSettingsHtml(settings.games || {})}</div>`],
+    ['jobs', '🔁 Jobs', 'jobs job steer mid-job stop after this step time limit minutes receipt undo run tests after code edits question vague remember no deny reason reuse look-ups cache sources how sure file line links editor vs code cursor', () => jobsHtml()],
     ['prompts', '📝 Saved prompts', 'saved prompts prompt library slash / menu template templates reuse snippets blanks variables {file} curly brackets', () => sswitch('promptMenu', settings.promptMenu === true, 'Pull up saved prompts with /', 'Off unless you turn it on. Type / at the start of the message box to pick a saved prompt. Its words go in the box for you to finish and send. Words in {curly brackets} are blanks: type over them, and Tab goes to the next one.') + promptsHtml()],
+    ['health', '🩺 Health and history', 'health page crash crashes catch crash report safe start opt-in switches put back undo settings changes put it back history weekly week what bob did counts statistics engine card disk errors', () => '<div class="harness-box" data-part="health"></div>'], // public/harness.js
+    ['quiet', '🌙 Quiet hours and shortcut', 'quiet hours do not disturb night sleep notifications pop-ups sounds urgent reminders shortcut hotkey global key ctrl space ask box anywhere', () => '<div class="harness-box" data-part="quiet"></div>'],
+    ['chatx', '💬 Chat extras', 'try from here branch fork copy chat pin pinned message keep in mind guest chat incognito private nothing saved chat places engine memory switch chats quick', () => '<div class="harness-box" data-part="chats"></div>'],
+    ['daily', '🗓 Everyday helpers', 'everyday helpers today card weather reminders morning focus timer pomodoro quiet do not disturb receipt receipts spending sheet expenses budget csv profiles people family shared pc guest tour what\'s new after an update tray dot badge text size font', () => dailyHtml()],
     ['checkins', '🔔 Check-ins', 'check in heartbeat schedule morning every day weekday hours notify alert tap shoulder downloads stuck failed tasks disk space own checks build finished', () => checkinsHtml()],
     ['remove', '🗑 Remove Bob', 'uninstall remove', () => settings.features?.uninstall === false ? macRemoveHtml() : `<div class="remove-bob">${more('Takes off Bob\'s program, his Start menu shortcut and "Launch on start-up". His chats, settings and models stay unless you tick them. Nothing else in the inn folder or in Windows is touched.')}<button data-removebob>Remove Bob…</button><div class="remove-confirm" hidden></div></div>`]
   ];
@@ -1214,6 +1309,8 @@ export function createCellar({ popOut = null } = {}) {
     mountCheckins(dlg.querySelector('.checkins-box')); // 1.5.78 Check-ins
     mountPresets(dlg.querySelector('.presets-box')); // Assistant presets for chats (loads its own list)
     mountPrompts(dlg.querySelector('.prompts-box')); // 📝 Saved prompts
+    for (const b of dlg.querySelectorAll('.harness-box')) mountHarness(b); // items 62 to 72 (public/harness.js)
+    mountEveryday(dlg.querySelector('.everyday-box'), { settings, flash: (el, m) => flash(el, m) }); // 🗓 Everyday helpers
     mountAdventureSettings(dlg.querySelector('.adventure-box'), { api, settings }); // 1.5.117 🎲 Adventure
     mountGamesSettings(dlg.querySelector('.games-box'), { api, settings }); // 1.5.121 🧩 Games
     mountShareBrains(dlg.querySelector('.share-box')); // Bob-Net: My other Bobs and What they share
@@ -1249,6 +1346,7 @@ export function createCellar({ popOut = null } = {}) {
     [data, hw, settings, roles, cloud, caps, bctx, rent] = await Promise.all([api('/api/models'), api('/api/hardware'), api('/api/settings'), api('/api/roles'), api('/api/cloud'), api('/api/capabilities').catch(() => ({})), api('/api/brain-ctx').catch(() => ({ on: false, brains: [] })), api('/api/rent').catch(() => rent)]);
     await placeLoad(); calWatch(); // 1.5.205 the Brains page: each brain's placement and calibration
     speedRuns = (await api('/api/speed-test').catch(() => ({}))).history || [];
+    speedLogData = await api('/api/speed-log').catch(() => null); // 96
     voices = (await api('/api/voice/samples').catch(() => ({}))).voices || [];
     job = data.job;
     await applyStarter().catch(() => {});
@@ -1586,6 +1684,7 @@ export function createCellar({ popOut = null } = {}) {
       // 1.5.205 one brain's Set up page: open, back, and Auto or By hand.
       if ('brainsetup' in b.dataset) { setUpBrain = b.dataset.brainsetup; if (setUpBrain) await placeLoad(); draw(); if (setUpBrain) dlg.scrollTop = 0; else dlg.querySelector('#brain-' + CSS.escape(b.dataset.brainsetup || ''))?.scrollIntoView({ block: 'nearest' }); return; }
       if (b.dataset.placemode) { await placeSave(b.dataset.model, { mode: b.dataset.placemode }); draw(); return; }
+      if (b.dataset.memtype) { await api('/api/settings', { brainMemType: { [b.dataset.model]: b.dataset.memtype } }); await placeLoad(); draw(); return; } // 100
       // 1.5.205 setups on the Brains page: show the list of changes first; Apply saves them one job at a time.
       if ('setup' in b.dataset) { setupAsk = b.dataset.setup; draw(); dlg.querySelector('.setup-ask')?.scrollIntoView({ block: 'nearest' }); return; }
       if ('setupbobnet' in b.dataset) { setupAsk = ''; sampler.stop(); setTab('settings'); jumpTo = 'adv-bobnet'; draw(); return; }
@@ -1833,7 +1932,7 @@ export function createCellar({ popOut = null } = {}) {
   dlg.addEventListener('input', (e) => { const d = e.target.dataset || {}; if (d.placemoe) { const n = dlg.querySelector('[data-placemoenum]'); if (n) n.value = e.target.value; } else if (d.placemoenum) { const r = dlg.querySelector('[data-placemoe]'); if (r) r.value = e.target.value; } }); // 1.5.205 slider and number box stay in step
   dlg.addEventListener('input', (e) => { backup.onInput(e.target); if (e.target.id === 'proj-path') projAddState(); if (e.target.id === 'save-path') saveDirState(); });
   dlg.addEventListener('input', (e) => { const k = e.target.dataset?.rentadd; if (k === 'model' || k === 'name') delete e.target.dataset.auto; }); // 1.5.137: what you type yourself stays
-  dlg.addEventListener('input', (e) => { if (tab === 'style') stylePage.onInput(e.target); if (e.target.dataset?.ssearch !== undefined) { settingsQuery = e.target.value; if (settingsQuery.trim()) applyView(); else { draw(); const box = dlg.querySelector('[data-ssearch]'); box?.focus(); } } if (e.target.dataset?.dial) showDials(dialValues()); if (e.target.dataset?.holdback !== undefined) { const lab = dlg.querySelector('[data-holdbacklabel]'); if (lab) lab.textContent = `${e.target.value} GB`; } });
+  dlg.addEventListener('input', (e) => { if (tab === 'style') stylePage.onInput(e.target); if (e.target.dataset?.ssearch !== undefined) { settingsQuery = e.target.value; if (settingsQuery.trim()) applyView(); else { draw(); const box = dlg.querySelector('[data-ssearch]'); box?.focus(); } } if (e.target.dataset?.dial) showDials(dialValues()); if (e.target.dataset?.holdback !== undefined) { const lab = dlg.querySelector('[data-holdbacklabel]'); if (lab) lab.textContent = `${e.target.value} GB`; } if (e.target.dataset?.textsize !== undefined) { const lab = dlg.querySelector('[data-textsizelabel]'); if (lab) lab.textContent = `${e.target.value}%`; } });
 
   // 1.5.135: ➕ Your own brains, the Add form.
   dlg.addEventListener('submit', async (e) => {
@@ -1923,8 +2022,23 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.sctx) { const v = el.value ? Number(el.value) : null; const r = await api('/api/settings', { sessionCtx: { [el.dataset.sctx]: v } }); settings.sessionCtx = r.sessionCtx; flash(el, 'Saved. Applies when the brain next loads.'); return; }
       if (el.dataset.sbrain) { const r = await api('/api/settings', { sessionBrains: { [el.dataset.sbrain]: el.value } }); settings.sessionBrains = r.sessionBrains; flash(el, 'Saved.'); return; }
       if (el.dataset.set === 'pictureNoWait') { const r = await api('/api/settings', { pictureNoWait: el.checked }); settings.pictureNoWait = r.pictureNoWait; el.checked = r.pictureNoWait; return; }
+      // List items 94-99: engine and speed extras, each saved on its own.
+      if (['copyGuess', 'preloadNext', 'laptopMode', 'newCardTest', 'speedLog', 'engineNotes'].includes(el.dataset.set)) {
+        const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k];
+        if ('onBattery' in r) settings.onBattery = r.onBattery; if ('engineNote' in r) settings.engineNote = r.engineNote; if (k === 'engineNotes') { const y = dlg.scrollTop; draw(); dlg.scrollTop = y; }
+        if (k === 'speedLog') { speedLogData = await api('/api/speed-log').catch(() => speedLogData); const y = dlg.scrollTop; draw(); dlg.scrollTop = y; }
+        flash(el, !r[k] ? 'Off.' : k === 'copyGuess' ? 'On. Applies the next time a brain loads.' : k === 'laptopMode' ? (r.onBattery === true ? 'On. On battery now: applies the next time a brain loads.' : r.onBattery === false ? 'On. Plugged in now, so nothing changes yet.' : 'On. No battery found here, so nothing changes.') : k === 'newCardTest' ? 'On. Bob looks for a new card each time he starts.' : 'On.');
+        return;
+      }
       if (['readyWhileTyping', 'gamesFirst', 'pictureFit'].includes(el.dataset.set)) { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k]; flash(el, 'Saved. Applies when the brain or picture model next loads.'); return; }
       if (el.dataset.set === 'autoSession') { const r = await api('/api/settings', { autoSession: el.checked }); settings.autoSession = r.autoSession; el.checked = r.autoSession; window.dispatchEvent(new CustomEvent('bob-auto-session', { detail: { autoSession: r.autoSession } })); flash(el, r.autoSession ? 'On. Bob picks the session himself.' : 'Off. The session only changes when you pick one.'); return; }
+      if (/^jh[A-Z]/.test(el.dataset.set || '') || el.dataset.jhminutes !== undefined || el.dataset.jheditor !== undefined) { // Settings, Jobs
+        const k = el.dataset.set ? el.dataset.set[2].toLowerCase() + el.dataset.set.slice(3) : '';
+        const r = await api('/api/settings', { jobHelps: k ? { [k]: el.checked } : el.dataset.jhminutes !== undefined ? { minutes: Number(el.value) } : { editor: el.value } });
+        settings.jobHelps = r.jobHelps; if (k) el.checked = r.jobHelps?.[k] === true;
+        window.dispatchEvent(new CustomEvent('bob-jobhelps', { detail: r.jobHelps }));
+        flash(el, 'Saved.'); return;
+      }
       if (el.dataset.set === 'language') { const r = await api('/api/settings', { language: el.value }); settings.language = pickLang(r.language); try { localStorage.setItem(LANG_KEY, settings.language); } catch {} location.reload(); return; }
       if (el.dataset.set === 'tray' || el.dataset.set === 'lookIcon') { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k]; return; }
       if (el.dataset.set === 'selfWork') { const r = await api('/api/settings', { selfWork: { enabled: el.checked } }); settings.selfWork = r.selfWork; draw(); return; }
@@ -1940,9 +2054,17 @@ export function createCellar({ popOut = null } = {}) {
         box.outerHTML = gamingCardHtml();
         flash(dlg.querySelector('.seg3'), 'Saved.'); return;
       }
+      if (el.dataset.textsize !== undefined) { const r = await api('/api/settings', { textSize: Number(el.value) }); settings.textSize = r.textSize; el.value = r.textSize; applyReading(settings); window.dispatchEvent(new CustomEvent('bob-display', { detail: { textSize: r.textSize } })); flash(el.closest('.srow'), 'Saved.'); return; }
+      if (['readableFont', 'todayCard', 'focusTimer', 'receipts', 'updateTour', 'trayDot', 'profilesOn'].includes(el.dataset.set)) { // 🗓 Everyday helpers
+        const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k] === true; el.checked = settings[k];
+        applyReading(settings); window.dispatchEvent(new CustomEvent('bob-display', { detail: { [k]: settings[k] } }));
+        const SAY = { readableFont: ['On. The plainer font is on the chat and Settings.', 'Off. The theme\'s own font is back.'], todayCard: ['On. The card shows the next time Bob\'s window opens (once a day).', 'Off.'], focusTimer: ['On. ⏱ Focus is beside Effort, under the chat.', 'Off.'], receipts: ['On. Attach a receipt photo and say "add this receipt".', 'Off. The sheet is kept, locked.'], updateTour: ['On. After the next update, a few cards show what\'s new.', 'Off.'], trayDot: ['On. A dot shows on the tray icon when something waits for you.', 'Off.'], profilesOn: ['On. Add people below; they pick their name on the lock screen.', 'Off. The lock screen only asks for the owner\'s passcode. People and their chats are kept.'] };
+        flash(el, SAY[k][settings[k] ? 0 : 1]); if (k === 'profilesOn') mountEveryday(dlg.querySelector('.everyday-box'), { settings, flash: (x, m) => flash(x, m) }); return;
+      }
       if (el.dataset.holdback !== undefined) { const r = await api('/api/settings', { apuHoldbackGB: Number(el.value) }); settings.apuHoldbackGB = r.apuHoldbackGB; el.value = r.apuHoldbackGB; const lab = dlg.querySelector('[data-holdbacklabel]'); if (lab) lab.textContent = `${r.apuHoldbackGB} GB`; flash(el.closest('.srow'), 'Saved.'); return; }
       if (el.dataset.set === 'quickNotes') { const r = await api('/api/settings', { quickNotes: el.checked }); settings.quickNotes = r.quickNotes; el.checked = r.quickNotes; draw(); flash(dlg.querySelector('[data-set="quickNotes"]') || dlg, r.quickNotes ? 'On. Say "note:" and Bob writes it down.' : 'Off. Your notes file stays where it is.'); return; }
       if (el.dataset.set === 'smartNotes') { const r = await api('/api/settings', { smartNotes: el.checked }); settings.smartNotes = r.smartNotes; el.checked = r.smartNotes; flash(el, r.smartNotes ? 'On. Bob notes what\'s worth keeping and says 📝 Noted.' : 'Off. Bob only notes what you ask him to.'); return; }
+      if (el.dataset.set === 'toolHelp') { const r = await api('/api/settings', { toolHelp: el.checked }); settings.toolHelp = r.toolHelp; el.checked = r.toolHelp; return; }
       if (el.dataset.set === 'toolLearning') { const r = await api('/api/settings', { toolLearning: el.checked }); settings.toolLearning = r.toolLearning; el.checked = r.toolLearning; draw(); flash(dlg.querySelector('[data-set="toolLearning"]') || dlg, r.toolLearning ? 'On. Bob learns from what works and what fails.' : 'Off. Bob keeps what he learned but stops using it.'); return; }
       if (el.dataset.set === 'docTools') { const r = await api('/api/settings', { docTools: el.checked }); settings.docTools = r.docTools; el.checked = r.docTools; flash(el, r.docTools ? 'On. Bob can read and search your documents.' : 'Off. Bob reads plain text files only.'); return; }
       if (el.dataset.set === 'docMeaning') { const r = await api('/api/settings', { docMeaning: el.checked }); settings.docMeaning = r.docMeaning; el.checked = r.docMeaning; flash(el, r.docMeaning ? (settings.docTools ? 'On. Bob is making the index; searches find more as it grows.' : 'On. It starts once Read and search my documents is on too.') : 'Off. The index is deleted; searches match words only.'); return; }
@@ -1953,6 +2075,9 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.set === 'model3d') { const r = await api('/api/settings', { model3d: el.checked }); settings.model3d = r.model3d; settings.model3dHere = r.model3dHere; el.checked = r.model3d; flash(el, r.model3d ? (r.model3dHere ? 'On. Ask Bob for a 3D model of anything.' : 'On. Bob needs the 3D workshop too: he offers it the first time you ask.') : 'Off. Bob doesn\'t make 3D models from pictures.'); return; }
       if (el.dataset.set === 'parts3d') { const r = await api('/api/settings', { parts3d: el.checked }); settings.parts3d = r.parts3d; settings.openscadHere = r.openscadHere; el.checked = r.parts3d; flash(el, r.parts3d ? (r.openscadHere ? 'On. Ask Bob for a part and he makes it.' : 'On. Bob needs OpenSCAD too: he offers it the first time you ask for a part.') : 'Off. Bob doesn\'t make 3D parts.'); return; }
       if (el.dataset.set === 'sandboxCode') { const r = await api('/api/settings', { sandboxCode: el.checked }); settings.sandboxCode = r.sandboxCode; el.checked = r.sandboxCode; flash(el, r.sandboxWhy || (r.sandboxCode ? (r.sandboxNet ? 'On. Bob works sums out in the sandbox, with the internet switched off.' : 'On. Bob works sums out in the sandbox. This Bob can\'t switch the internet off by itself, so code is checked for it instead.') : 'Off. Bob works sums out in his head.')); return; }
+      // Voice, phone and Bob-Net (items 133 to 142): plain switches, off unless turned on.
+      if (['talkOver', 'readDocs', 'netVoices', 'carryIn', 'phoneGlance'].includes(el.dataset.set)) { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k] === true; window.dispatchEvent(new CustomEvent('bob-voice-net', { detail: { [k]: r[k] === true } })); flash(el, r[k] ? 'On.' : 'Off.'); return; }
+      if (el.dataset.netvoice) { const r = await api('/api/settings', { netVoiceMap: { [el.dataset.netvoice]: el.value } }); settings.netVoiceMap = r.netVoiceMap || {}; window.dispatchEvent(new CustomEvent('bob-voice-net', { detail: {} })); flash(el, 'Saved.'); return; }
       if (el.dataset.set === 'editOwn') { const r = await api('/api/settings', { editOwn: el.checked }); settings.editOwn = r.editOwn; el.checked = r.editOwn; flash(el, r.editOwn ? 'On. Bob can fix his own earlier messages.' : 'Off. Bob sends a new message for any fix.'); return; }
       if (el.dataset.set === 'chatRedo') { const r = await api('/api/settings', { chatRedo: el.checked }); settings.chatRedo = r.chatRedo; el.checked = r.chatRedo; window.dispatchEvent(new CustomEvent('bob-chat-redo', { detail: r.chatRedo })); flash(el, r.chatRedo ? 'On. Try again, Edit and Delete are in each message\'s … menu.' : 'Off. The … menu has Copy only.'); return; }
       if (el.dataset.set === 'netReview') { const r = await api('/api/settings', { netReview: el.checked }); settings.netReview = r.netReview; el.checked = r.netReview; return; }

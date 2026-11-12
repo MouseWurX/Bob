@@ -258,7 +258,7 @@ const fakeRes = () => { const r = { code: 0, headers: {}, body: '', on() {}, wri
 {
   const brainSrc = read('src/brain.js');
   check('Bob\'s own cards name the app that asked', /if \(need && ctx\.via\) need = /.test(brainSrc));
-  check('"work without asking" never skips the card for another app', /!ctx\.alwaysAsk && freeOn\(this\.cfg\)/.test(brainSrc));
+  check('"work without asking" never skips the card for another app', /!ctx\.alwaysAsk && (!afterOutside && )?freeOn\(this\.cfg\)/.test(brainSrc));
   const server = read('src/server.js');
   check('the door is only at /mcp, before the page checks', server.indexOf("if (p === '/mcp') return doorRoute") > 0 && server.indexOf("if (p === '/mcp') return doorRoute") < server.indexOf("req.headers['x-bob'] !== '1'"));
   check('✋ Hands and Stop everything stop Claude\'s calls too', (read('src/hands.js').match(/stopDoorCalls\(\)/g) || []).length === 2);

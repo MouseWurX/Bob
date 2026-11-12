@@ -28,6 +28,7 @@ check('the chat line says where and why', switchLine('coding', 'for the fix') ==
   const fake = (cfg, extra = {}) => ({ cfg, turns: new Map([['talk', {}]]), readCard: async () => ({ util: 85, freeMB: 2000 }), ...extra });
   const d1 = await decidePick(fake({ session: 'normal' }), { session: 'coding', why: 'for the fix' }, {});
   check('a pick switches', d1.switchTo === 'coding' && d1.why === 'for the fix');
+  check('Art only for pictures, clips, music and sound (a dinner plan stays put)', !(await decidePick(fake({ session: 'normal' }), { session: 'art' }, { job: { text: 'plan a dinner for six on Saturday' } })).switchTo && (await decidePick(fake({ session: 'normal' }), { session: 'art' }, { job: { text: 'paint me a dragon' } })).switchTo === 'art');
   check('same session: carry on', !(await decidePick(fake({ session: 'coding' }), { session: 'coding' }, {})).switchTo);
   check('setting off: refused', /off/.test((await decidePick(fake({ session: 'normal', autoSession: false }), { session: 'art' }, {})).text));
   check('just switched for this job: no second switch', !(await decidePick(fake({ session: 'art' }), { session: 'coding' }, { job: { switchedTo: 'art' } })).switchTo);
@@ -35,7 +36,7 @@ check('the chat line says where and why', switchLine('coding', 'for the fix') ==
   check('something else running: stays put', !(await decidePick(two, { session: 'coding' }, {})).switchTo);
   check('in Gaming with a game on the card: stays, no question', /stay in Gaming/.test((await decidePick(fake({ session: 'light' }), { session: 'normal' }, {})).text));
   const free = fake({ session: 'light' }, { readCard: async () => ({ util: 2, freeMB: 14000 }) });
-  check('in Gaming with the card free: leaves by himself', (await decidePick(free, { session: 'art' }, {})).switchTo === 'art');
+  check('in Gaming with the card free: leaves by himself', (await decidePick(free, { session: 'art' }, { job: { text: 'make a picture of a cat' } })).switchTo === 'art');
   check('🎮 lock: refused even with the card free', !(await decidePick(fake({ session: 'light', gamingLock: true }, { readCard: async () => ({ util: 0, freeMB: 15000 }) }), { session: 'normal' }, {})).switchTo);
 }
 

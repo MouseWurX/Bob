@@ -55,6 +55,20 @@ class MainActivity : AppCompatActivity() {
             }
         })
         web.loadUrl("file:///android_asset/www/index.html")
+        handle(intent)
+    }
+
+    // Share to Bob and the home-screen widget reach Bob here (singleTask: the Bob that's open, not a second one).
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handle(intent)
+    }
+
+    private fun handle(i: Intent?) {
+        if (i == null || !::bridge.isInitialized) return
+        if (i.action == Intent.ACTION_SEND) bridge.takeShare(i)
+        i.getStringExtra(AskWidget.EXTRA)?.let { bridge.widgetTap(it); i.removeExtra(AskWidget.EXTRA) }
     }
 
     @Deprecated("Activity result for the microphone")
