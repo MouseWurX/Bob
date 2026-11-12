@@ -2,7 +2,7 @@
 
 This is the guide to what Brain Engine changes in llama.cpp, where each change hooks in, and what to re-check when moving to a newer llama.cpp. [README.md](README.md) says what each patch is for and how to build and move it. This page is the "where and how" for whoever does the rebase.
 
-Brain Engine 4 is llama.cpp **b12282** plus the six patches below, about +2,160/-13 lines across 21 files. Only 0004, 0005 and 0006 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
+Brain Engine 4 is llama.cpp **b12282** plus the first six patches below (0007 is for the next build), about +2,160/-13 lines across 21 files. Only 0004, 0005 and 0006 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
 
 Bob's own code map lists these patches too: one line each, with the files they change, the lines they add and take out, and the main names they add.
 
@@ -90,6 +90,13 @@ Then run `engine/try-newer.sh <tag>`. Every patch must go on, and the Linux buil
 - **Bob callers:** `src/scut-seal.js` (link keys, kept locked with `src/secret-box.js`), `src/bob-net-pair.js` (a key made at pairing), `src/share-card.js` and `src/share-brains.js` (pass the keys), `src/tools.js` (the key file is on the never-touch list).
 - **Re-check on rebase:** 0005 must go on first. A sealed Bob and an unsealed one must fall back to the plain link, never a link one side can't read. Same answers sealed or not.
 - **Tests:** `test/run-scut-seal-test.js` (keys, pairing, locked key file). The PC test is Bigger Bobs over Wi-Fi with SCUT on, sealed (the default) and unsealed.
+
+### 0007-expert-trace-stream: the trace while the reply is written
+
+- `tools/server/server-task.h`: `expert_trace_stream` in the request params; `expert_trace_part` (json, null unless asked) on a streamed partial result.
+- `tools/server/server-schema.cpp`: the `expert_trace_stream` field.
+- `tools/server/server-context.cpp`: `server_expert_trace` remembers how far the pieces sent so far reach (`sent_tag`, `sent_out`, `sent_rows`, reset in `clear()`). `send_partial_response()` fills `expert_trace_part` from the new `expert_trace_part(slot)`, which builds the rows since the last piece the same way `expert_trace_end()` builds all of them, and waits for the next piece when a layer is behind. Only on top of 0002.
+- `tools/server/server-task.cpp`: the piece goes into the plain and the chat-stream JSON of a partial result.
 
 ## What's not covered yet
 

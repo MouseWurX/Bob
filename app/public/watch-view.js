@@ -37,7 +37,7 @@ export function layoutOf(rec, parts) {
   const W = sideOf(E + core) + ((sideOf(E + core) - side) % 2 ? 1 : 0); // so the square sits dead centre
   const D = Math.ceil((E + core) / W) + ((Math.ceil((E + core) / W) - side) % 2 ? 1 : 0);
   // No grey core, and the experts don't fill the last rows (128 experts on a 12 by 12 floor leave 16 holes): the holes
-  // become a grey block dead centre instead (4 by 4 there, 2 by 2 for 60 or 32), so the cube is whole. Squeak, Nov 12.
+  // become a grey block dead centre instead (4 by 4 there, 2 by 2 for 60 or 32), so the cube is whole.
   let fw = side, fd = side, fill = false;
   const holes = W * D - E - core;
   if (!core && holes > 0) {

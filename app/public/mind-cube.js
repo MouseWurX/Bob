@@ -183,7 +183,29 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
     words();
   }
   const showLit = () => show.map((w) => ({ e: w.e, age: Math.max(0, w.a) / SHOW_TRAIL })); // the made-up glow as it stands, for a frame drawn by the turning
-  function stopShow() { clearTimeout(showTimer); showTimer = 0; show = []; }
+  function stopShow() { clearTimeout(showTimer); showTimer = 0; show = []; clearTimeout(liveTimer); liveTimer = 0; liveQ = []; }
+  // 1.5.210 Real experts, live: Brain Engine 5 sends the picks with every word, so the cube lights up with the experts
+  // he really uses as he reads and writes, not after. A long prompt arrives at once and plays fast; then a word at a time.
+  let liveQ = [], liveTimer = 0, streamed = false;
+  function part(p) {
+    const fits = (x) => x && x.experts === p.experts && x.layers === p.layers;
+    if (!(rec ? fits(rec.brain) : fits(shell))) return; // a brain of another shape: the full trace at the end sets it up
+    streamed = true; cancelAnimationFrame(raf); raf = 0;
+    p.e.forEach((e, i) => liveQ.push({ e, w: p.words[i] || '', reading: p.from + i < p.prompt }));
+    if (still()) { const last = liveQ[liveQ.length - 1]; liveQ = []; show = [{ e: last.e, a: 0 }]; view.draw([{ e: last.e, age: 0 }]); return; }
+    if (!liveTimer) liveTimer = setTimeout(liveTick, 0);
+  }
+  function liveTick() {
+    liveTimer = 0;
+    show = show.map((w) => ({ e: w.e, a: w.a + 1 })).filter((w) => w.a < SHOW_TRAIL);
+    if (liveQ.length) {
+      const n = liveQ.length > 12 ? Math.ceil(liveQ.length / 6) : 1, got = liveQ.splice(0, n), last = got[got.length - 1];
+      show.push({ e: last.e, a: 0 });
+      if (showDetails || !avatar) says.textContent = `${last.reading ? 'Reading' : 'Writing'}: …${got.map((x) => x.w).join('').replace(SPECIAL, '').replace(/\s+/g, ' ').slice(-60)} (the experts he's using right now)`;
+    }
+    view.draw(show.map((w) => ({ e: w.e, age: w.a / SHOW_TRAIL })));
+    if (liveQ.length || show.length) liveTimer = setTimeout(liveTick, SHOW_MS);
+  }
   function add(tr) {
     const map = tr.map || null; if (map) { tr = { ...tr }; delete tr.map; }
     traces.push(tr); traces = traces.slice(-6);
@@ -191,6 +213,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
     stopShow();
     const built = !rec && shell && shell.label === (tr.label || 'Bob') && shell.experts === tr.experts && shell.layers === tr.layers; // the empty shape is already up
     const fresh = !built && (!rec || whose !== (tr.label || 'Bob')); whose = tr.label || 'Bob'; gen++; shell = null;
+    const was = streamed; streamed = false; // this reply already played live, word by word: no replay
     rec = r; clip = rec.clips.length - 1;
     look = mapLook(map, { experts: rec.brain.experts, layers: rec.brain.layers, kind: rec.brain.kind });
     sp = look ? look.sp : specialise(rec);
@@ -207,6 +230,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
     // a brain's first reply: the block builds itself block by block, then the reply plays
     spinGo();
     if (fresh && !still()) { readLoad(); const g = gen; view.set({ reveal: 0 }); words(); view.sweep(1, inMs()).then(() => { if (g === gen) play(); }); return; }
+    if (was) { t = rec.clips[clip].e.length - 1; view.draw(lit()); words(); return; }
     play();
   }
   // The brain was let go: the block comes apart block by block until nothing is left, then waits for the next reply.
@@ -253,7 +277,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
     if (j?.type === 'token') { setPhase('run'); return; }
     if (j?.type === 'done' || j?.type === 'error') { setPhase('idle'); return; }
     if (j?.type === 'status') { const on = j.state === 'thinking' || j.state === 'busy'; if (!on) setPhase('idle'); else if (phase === 'idle') setPhase('run'); return; } // work that isn't a chat reply runs too
-    if (j?.type === 'cube') { why = j.ok ? '' : String(j.why || ''); words(); try { onWhy?.(why); } catch {} } else if (j?.type === 'trace' && live()) { why = ''; add(j); }
+    if (j?.type === 'cube') { why = j.ok ? '' : String(j.why || ''); words(); try { onWhy?.(why); } catch {} } else if (j?.type === 'trace' && live()) { why = ''; add(j); } else if (j?.type === 'trace-part' && live()) part(j);
   }
   open.onclick = () => {
     if (!rec) return;
