@@ -298,6 +298,36 @@ export function mountJourney(root, deps) {
     lastLand = { key, world: w };
     return w;
   }
+  // On a phone the computer makes the land and the phone holds only the pieces near the party (Wm.pieceWorld).
+  const pieced = () => Boolean(deps.phone && Wm.pieceWorld && deps.api);
+  async function landFor(seed, size, style) {
+    if (!pieced()) return makeLand(seed, size, style);
+    if (lastLand?.key === `${seed}|${size}`) return lastLand.world;
+    const r = await deps.api('/api/adventure/journey/land', { seed, size });
+    if (!r?.land) throw new Error('Your other Bob didn\'t send the land.');
+    const w = Wm.pieceWorld(r.land);
+    lastLand = { key: `${seed}|${size}`, world: w };
+    return w;
+  }
+  const asking = new Set();
+  async function fetchPieces(w, x, y, wide) {
+    if (!w?.pieced) return;
+    const want = w.need(x, y, wide).filter(([cx, cy]) => !asking.has(`${cx},${cy}`));
+    await Promise.all(want.map(async ([cx, cy]) => {
+      const key = `${cx},${cy}`; asking.add(key);
+      try { const r = await deps.api('/api/adventure/journey/piece', { seed: w.seed, size: w.size, cx, cy }); if (lastLand?.world === w) w.addPiece(r?.piece); } catch {} finally { asking.delete(key); }
+    }));
+  }
+  // After each step: ask for the pieces coming into reach, and let go of the ones left behind.
+  function landUpdate() {
+    if (!world?.pieced || !j || lobby) return;
+    const map = R.mapOf(world, j);
+    const at = map.kind === 'world' ? { x: j.x, y: j.y } : world.sites.find((s2) => s2.id === (map.site || map.id)) || null;
+    if (!at) return;
+    const wide = map.kind === 'world' && j.alt === 'sky';
+    world.drop(at.x, at.y, wide);
+    fetchPieces(world, at.x, at.y, wide);
+  }
   let savedRaw = null;
   async function loadSave() {
     try { const r = await deps.api('/api/adventure/journey'); savedRaw = r?.journey || null; saved = savedRaw ? R.cleanJourney(savedRaw) : null; } catch (e) { msg = e.message; saved = null; savedRaw = null; }
@@ -321,13 +351,15 @@ export function mountJourney(root, deps) {
     drawPanel();
   }
   // The big lands take a few seconds to make, so the screen says so first.
-  const later = (fn) => { msg = 'Rolling the land…'; drawPanel(); sayLive(msg); setTimeout(fn, 40); };
+  const later = (fn) => { msg = 'Rolling the land…'; drawPanel(); sayLive(msg); setTimeout(async () => { try { await fn(); } catch (e) { msg = `I couldn't make the land: ${e.message}`; drawPanel(); } }, 40); };
   function rollNew() {
     if (deps.phone && Wm.SIZES[newSize]?.desktopOnly) newSize = 'campaign';
-    later(() => {
+    later(async () => {
       if (closed) return;
       const seed = String(Date.now() % 1e9);
-      world = makeLand(seed, newSize, newStyle);
+      const w = await landFor(seed, newSize, newStyle);
+      if (w.pieced) { const home = w.sites.find((x) => x.id === w.home) || w.start; await fetchPieces(w, home.x, home.y); }
+      world = w;
       j = R.newJourney({ seed, size: newSize, style: newStyle, party: lobbyParty() }, world);
       lobby = false; trail = []; shop = null; mode = 'walk'; msg = ''; tileArt.clear();
       drawPanel();
@@ -339,10 +371,13 @@ export function mountJourney(root, deps) {
   }
   function resume() {
     if (!saved) return;
-    later(() => {
+    later(async () => {
       if (closed) return;
-      if (savedRaw) { j = R.cleanJourney(savedRaw, makeLand); savedRaw = null; saved = j; } else j = saved;
-      world = makeLand(j.seed, j.size, j.style);
+      const src = savedRaw || saved;
+      const w = await landFor(src.seed, src.size, src.style);
+      if (w.pieced) { const home = w.sites.find((x) => x.id === (src.at === 'world' ? '' : src.at)) || w.sites.find((x) => x.id === w.home); const at = src.at === 'world' ? src : home || w.start; await fetchPieces(w, at.x, at.y, src.alt === 'sky'); }
+      if (savedRaw) { j = R.cleanJourney(savedRaw, () => w); savedRaw = null; saved = j; } else j = saved;
+      world = w;
       lobby = false; trail = []; shop = null; mode = 'walk'; msg = ''; tileArt.clear();
       drawPanel();
       talkTo([`Welcome back. ${R.mapOf(world, j).name}. ${R.fmtCoin(j.coin)} in the purse.`]);
@@ -384,6 +419,7 @@ export function mountJourney(root, deps) {
     if (dir === 'left' || dir === 'right') sideFacing = dir;
     if (r.moved) {
       stepPhase = (stepPhase + 1) % 4;
+      landUpdate();
       if (r.door) { trail = []; swoops.clear(); landFx.length = 0; heightFx = null; announce(); arrive(r.door); return; }
       trail.unshift({ x: from.x, y: from.y, facing: j.facing });
       trail = trail.slice(0, 16); // the party, then the pets and mounts that follow
@@ -391,7 +427,8 @@ export function mountJourney(root, deps) {
       if (r.splash && !still()) landFx.push({ kind: 'splash', x: j.x, y: j.y, t0: now(), dur: 600 });
       if (r.splash === 'in') sayLive(`${R.leaderMount(j)?.name || 'Your mount'} carries you into the water.`);
       if (r.battle) setTimeout(() => startFight(r.battle, { helpers: r.helpers, chase: r.chase }), still() ? 0 : 170);
-    } else if (r.bump?.kind === 'boss') bossTalk(r.bump.boss);
+    } else if (world?.pieced && r.bump?.kind === 'tile' && r.bump.tile === undefined) { landUpdate(); sayLive('The land ahead is still on its way from your other Bob…'); }
+    else if (r.bump?.kind === 'boss') bossTalk(r.bump.boss);
     else if (r.bump?.kind === 'closed') say('Bob: The door\'s stuck until you roll a New adventure. The buttons are along the bottom.');
     else if (r.bump?.kind === 'tile' && ['S', 'A'].includes(r.bump.tile) && j.alt === 'ground') sayLive(r.bump.tile === 'S' ? 'A city in the clouds, far overhead. Only a flier can reach it: fly up (⤒ or E) on a pegasus, griffin or wyvern.' : 'A city under the waves. Only a swimmer can reach it: dive (⤓ or Q) on a dolphin.');
   }
@@ -403,7 +440,7 @@ export function mountJourney(root, deps) {
     heightFx = still() ? null : { kind: r.anim, t0: now(), dur: r.anim === 'surface' ? 700 : 1000 };
     if (r.anim === 'land' && !still()) setTimeout(() => landFx.push({ kind: 'dust', x: j.x, y: j.y, t0: now(), dur: 500 }), 800);
     if ((r.anim === 'dive' || r.anim === 'surface') && !still()) landFx.push({ kind: 'ripple', x: j.x, y: j.y, t0: now(), dur: 900 });
-    R.seeSites(world, j); announce(); save(true);
+    R.seeSites(world, j); announce(); landUpdate(); save(true);
   }
   function rise() { if (mode !== 'walk' || anim || !j || lobby) return; height(R.rise(world, j)); }
   function sink() { if (mode !== 'walk' || anim || !j || lobby) return; height(R.sink(world, j)); }
@@ -670,11 +707,18 @@ export function mountJourney(root, deps) {
   }
   // A figure standing in water shows from the chest up, with a ripple round it.
   function wading(map, tx, ty) { return map.kind === 'world' && '~r'.includes(map.rows[ty]?.[tx] || '.'); }
-  function inWater(x, y, w, draw, t) {
-    ctx.save(); ctx.beginPath(); ctx.rect(x - 12, y - 40, w + 24, 52); ctx.clip(); draw(); ctx.restore();
+  function inWater(x, y, w, draw, t, cut = 12) {
+    ctx.save(); ctx.beginPath(); ctx.rect(x - 12, y - 60, w + 24, 60 + cut); ctx.clip(); draw(); ctx.restore();
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
     const k = Math.floor(t / 250) % 2;
-    ctx.fillRect(x + 1 + k, y + 12, w - 4, 1); ctx.fillRect(x - 1 - k, y + 13, 3, 1); ctx.fillRect(x + w - 2 + k, y + 13, 3, 1);
+    ctx.fillRect(x + 1 + k, y + cut, w - 4, 1); ctx.fillRect(x - 1 - k, y + cut + 1, 3, 1); ctx.fillRect(x + w - 2 + k, y + cut + 1, 3, 1);
+  }
+  // Where a rider sits on a mount: the first row of the mount's picture that's broad enough to be a back.
+  const backRow = new Map();
+  function seatOf(ml, side) {
+    const key = `${ml.id}|${side}`;
+    if (!backRow.has(key)) { let r = 10; try { const f = S.figure(ml, { facing: side, compose: A.compose }); const i = f.rows.findIndex((row) => (row.match(/[^.]/g) || []).length >= 6); if (i >= 0) r = i; } catch {} backRow.set(key, r); }
+    return backRow.get(key);
   }
   function drawWorld(t) {
     if (voyage) { drawVoyage(t); return; }
@@ -770,9 +814,11 @@ export function mountJourney(root, deps) {
       if (riding) {
         const mt = R.mountOf(lead), ml = rideLook(mt), side = j.facing === 'left' || j.facing === 'right' ? j.facing : sideFacing;
         const flier = R.FOES[mt.type]?.fly, beat = flier && (j.alt === 'sky' || heightFx?.kind === 'takeoff') ? Math.floor(t / 90) % 4 : step;
-        const mount = () => drawFig(ml, fx, fy + 6, 1, { facing: side, step: beat });
-        const rider = () => { ctx.save(); ctx.beginPath(); ctx.rect(fx - 12, fy - 40, 40, 48); ctx.clip(); drawFig(memberLook(lead), fx + pix - 1, fy - 3, pix, { facing: j.facing === 'up' || j.facing === 'down' ? side : j.facing, step: 0, weapon: base(lead.weapon), shield: base(lead.shield), weaponTint: kitTint(lead.weapon), shieldTint: kitTint(lead.shield), angle }); ctx.restore(); extras(fx, fy - 3, pix, { ...memberExtras(lead), flap }); };
-        if (water && !deep) inWater(fx, fy + 6, 16, () => { mount(); rider(); }, t); else { mount(); rider(); }
+        const my = fy + 4, back = seatOf(ml, side), ry = my + back - 11;
+        const mount = () => drawFig(ml, fx, my, 1, { facing: side, step: beat });
+        // The rider from the waist up, sitting into the mount's back (their legs are hidden by it).
+        const rider = () => { ctx.save(); ctx.beginPath(); ctx.rect(fx - 12, ry - 30, 40, 30 + 13); ctx.clip(); drawFig(memberLook(lead), fx + (side === 'left' ? 1 : -1), ry, pix, { facing: j.facing === 'up' || j.facing === 'down' ? side : j.facing, step: 0, weapon: base(lead.weapon), shield: base(lead.shield), weaponTint: kitTint(lead.weapon), shieldTint: kitTint(lead.shield), angle }); ctx.restore(); extras(fx, ry, pix, { ...memberExtras(lead), flap }); };
+        if (water && !deep) inWater(fx, my, 16, () => { mount(); rider(); }, t, back + 4); else { mount(); rider(); }
         return;
       }
       const go = () => { drawFig(memberLook(lead), fx + (pix < 1 ? 1 : 0), fy + (pix < 1 ? 3 : 0), pix, { facing: j.facing, step, weapon: base(lead.weapon), shield: base(lead.shield), weaponTint: kitTint(lead.weapon), shieldTint: kitTint(lead.shield), angle }); extras(fx, fy, pix, { ...memberExtras(lead), flap }); };
@@ -826,7 +872,7 @@ export function mountJourney(root, deps) {
     const bx = -40 + (W + 40) * k, by = (flier ? H * 0.22 : H * 0.42) + Math.sin(t / 220) * 2;
     drawFig(beastLookFor(voyage.art), bx, by, 2.5, { facing: 'right', step: Math.floor(t / 200) % 4 });
     ctx.fillStyle = '#ffffff'; ctx.font = '8px monospace'; ctx.fillText(T(`To ${voyage.name}…`), 8, H - 10);
-    if (k >= 1) { const to = voyage.to; voyage = null; trail = []; announce(); arrive(to); drawPanel(); }
+    if (k >= 1) { const to = voyage.to; voyage = null; trail = []; announce(); landUpdate(); arrive(to); drawPanel(); }
   }
   // The loot from a chest or a fight, drawn as a little row of pictures rising over the screen.
   function drawLoot(t) {
@@ -1109,7 +1155,7 @@ export function mountJourney(root, deps) {
   const LAND_COLOURS = { '~': [42, 90, 168], r: [58, 120, 200], '.': [90, 160, 74], '"': [78, 148, 64], F: [47, 106, 42], T: [47, 106, 42], '^': [140, 140, 150], d: [230, 201, 138], w: [74, 106, 58], ',': [224, 207, 143], ':': [200, 166, 106], '=': [138, 90, 43] };
   function landPicture() {
     if (landPictures.has(world)) return landPictures.get(world);
-    const m = world.map('world');
+    const m = world.picture ? { w: world.picture.rows[0]?.length || 1, h: world.picture.rows.length, rows: world.picture.rows } : world.map('world');
     const c = doc.createElement('canvas'); c.width = m.w; c.height = m.h;
     const g = c.getContext('2d'); const img = g.createImageData(m.w, m.h);
     for (let y = 0; y < m.h; y++) { const row = m.rows[y] || ''; for (let x = 0; x < m.w; x++) { const col = LAND_COLOURS[row[x]] || [90, 160, 74]; const i = (y * m.w + x) * 4; img.data[i] = col[0]; img.data[i + 1] = col[1]; img.data[i + 2] = col[2]; img.data[i + 3] = 255; } }

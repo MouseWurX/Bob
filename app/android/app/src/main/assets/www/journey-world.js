@@ -835,5 +835,63 @@ function reachable(map, from) {
   return seen;
 }
 
-globalThis.BobJourneyWorld = { SIZES, OLD_SIZES, sizeFactor, INN_W, TILES, SITE_TILES, SITE_WORDS, WILD_ON, HILL_WILD, DUNGEON_BOSSES, CAVE_BOSSES, seeded, personParts, makeInn, makeWorld, innOnly, makeSite, KIN_PLACES, kinLook, reachable };
+// ---------- A land in pieces (Journey v1.2, for the phone) ----------
+// The computer makes the land; the phone asks only for the 32×32 pieces near the party (about two screens each
+// way) and lets go of the ones it has walked away from. Places (towns, caves, cities) are still built on the phone
+// when you walk in, from the list of places. landSkeleton and landPiece run on the computer; pieceWorld on the phone.
+const PIECE = 32;
+const PICTURE = 240; // the land view's picture: at most this many dots across
+function landSkeleton(world) {
+  const home = world.sites.find((s) => s.id === world.home) || { id: world.home, x: world.start.x, y: world.start.y, exit: world.start };
+  const m = world.map('world');
+  const k = Math.max(1, Math.ceil(Math.max(world.w, world.h) / PICTURE));
+  const picture = { k, rows: [] };
+  for (let y = 0; y < world.h; y += k) { let r = ''; for (let x = 0; x < world.w; x += k) r += m.rows[y][x]; picture.rows.push(r); }
+  return { seed: world.seed, size: world.size, w: world.w, h: world.h, sites: world.sites, roads: world.roads, home: { id: home.id, x: home.x, y: home.y, exit: { ...home.exit } }, piece: PIECE, picture };
+}
+function landPiece(world, cx, cy) {
+  const m = world.map('world');
+  const x0 = cx * PIECE, y0 = cy * PIECE;
+  if (!(cx >= 0 && cy >= 0 && x0 < world.w && y0 < world.h)) return null;
+  const rows = [];
+  for (let y = y0; y < Math.min(world.h, y0 + PIECE); y++) rows.push(m.rows[y].slice(x0, x0 + PIECE));
+  const people = m.people.filter((p) => Math.floor((p.homeX ?? p.x) / PIECE) === cx && Math.floor((p.homeY ?? p.y) / PIECE) === cy);
+  return { cx, cy, rows, people };
+}
+// The phone's land: the same land, but its rows only answer for the pieces it holds (anywhere else is "not here
+// yet", which nobody can walk onto). need(x, y, zoomedOut) says which pieces to ask for; drop(x, y) lets go of the far ones.
+function pieceWorld(skel) {
+  const { w, h, piece = PIECE } = skel;
+  const pieces = new Map(); // "cx,cy" -> { rows, people }
+  const people = [];
+  const rowViews = new Map();
+  const tileAt = (x, y) => { const pc = pieces.get(`${Math.floor(x / piece)},${Math.floor(y / piece)}`); return pc ? pc.rows[y % piece]?.[x % piece] : undefined; };
+  const rowView = (y) => {
+    let v = rowViews.get(y);
+    if (!v) { v = new Proxy({}, { get: (_, k) => (k === 'length' ? w : typeof k === 'string' && /^\d+$/.test(k) ? tileAt(Number(k), y) : undefined) }); rowViews.set(y, v); }
+    return v;
+  };
+  const rows = new Proxy([], { get: (t, k) => (k === 'length' ? h : typeof k === 'string' && /^\d+$/.test(k) ? (Number(k) < h ? rowView(Number(k)) : undefined) : t[k]) });
+  const world = worldOf({ seed: skel.seed, size: skel.size, w, h, rows, sites: skel.sites, people, roads: skel.roads || [], home: skel.home });
+  const restock = () => { people.length = 0; for (const pc of pieces.values()) people.push(...pc.people); };
+  // The pieces that cover two screens each way round (x, y): 15×11 tiles on screen, more when zoomed out in the sky.
+  const around = (x, y, wide) => {
+    const rx = wide ? 22 : 15, ry = wide ? 16 : 11, out = [];
+    for (let cy = Math.max(0, Math.floor((y - ry) / piece)); cy <= Math.min(Math.ceil(h / piece) - 1, Math.floor((y + ry) / piece)); cy++)
+      for (let cx = Math.max(0, Math.floor((x - rx) / piece)); cx <= Math.min(Math.ceil(w / piece) - 1, Math.floor((x + rx) / piece)); cx++) out.push(`${cx},${cy}`);
+    return out;
+  };
+  Object.assign(world, {
+    pieced: true, picture: skel.picture,
+    need(x, y, wide) { return around(x, y, wide).filter((key) => !pieces.has(key)).map((key) => key.split(',').map(Number)); },
+    has(x, y) { return pieces.has(`${Math.floor(x / piece)},${Math.floor(y / piece)}`); },
+    addPiece(pc) { if (!pc || !Array.isArray(pc.rows)) return; pieces.set(`${pc.cx},${pc.cy}`, { rows: pc.rows.map(String), people: Array.isArray(pc.people) ? pc.people : [] }); restock(); },
+    // Let go of every piece more than a piece beyond the two screens (so a step back and forth doesn't fetch again).
+    held() { return pieces.size; },
+    drop(x, y, wide) { const keep = new Set(around(x, y, wide)); let gone = 0; for (const key of [...pieces.keys()]) { const [cx, cy] = key.split(',').map(Number); const near = [...keep].some((k2) => { const [a, b] = k2.split(',').map(Number); return Math.abs(a - cx) <= 1 && Math.abs(b - cy) <= 1; }); if (!near) { pieces.delete(key); gone++; } } if (gone) { restock(); rowViews.clear(); } return gone; }
+  });
+  return world;
+}
+
+globalThis.BobJourneyWorld = { SIZES, OLD_SIZES, sizeFactor, INN_W, TILES, SITE_TILES, SITE_WORDS, WILD_ON, HILL_WILD, DUNGEON_BOSSES, CAVE_BOSSES, seeded, personParts, makeInn, makeWorld, innOnly, makeSite, KIN_PLACES, kinLook, reachable, PIECE, landSkeleton, landPiece, pieceWorld };
 })();

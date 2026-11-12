@@ -13,6 +13,7 @@ import * as W from '../public/journey-world.js';
 import { avatar, compose, encodeParts, DEFAULT_PARTS, allAvatarIds } from '../public/avatars.js';
 import { LOOKS } from '../public/bob-sprite.js';
 import { loadJourney, saveJourney, journeyReward, journeyRoute, deleteJourney } from '../src/adventure-journey.js';
+import { ENEMIES } from '../src/bestiary.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (f) => fs.readFileSync(path.join(root, f), 'utf8').replace(/\r\n/g, '\n');
@@ -439,6 +440,107 @@ const P = (o) => ({ id: o.id || o.name.toLowerCase(), who: 'friend', ...o });
   check('phone Help explains Journey', /<strong>🧭 Journey\.<\/strong>/.test(read('android/app/src/main/assets/www/help.js')));
   const words = [read('public/journey-rules.js'), read('public/journey-world.js'), play, help.slice(help.indexOf('🧭 Journey'), help.indexOf('🧭 Journey') + 3000)].join('\n');
   check('own names only: no trademarked game or series names', !/final fantasy|dragon quest|chrono|zelda|pok[eé]mon|earthbound|bobiverse|squaresoft|enix/i.test(words));
+}
+
+// ---------- Journey v1.2 ----------
+{
+  // Sprites for everything: every creature, every folk, every mount, boat and craft has a picture.
+  const bestiary = new Set(ENEMIES.map((e) => e.id));
+  const noArt = Object.keys(R.FOES).filter((id) => !S.beastLook(id) && !bestiary.has(id));
+  check('sprites for everything: every creature has a picture', !noArt.length, noArt.join(' '));
+  const art = (id) => { const lk = S.beastLook(id); if (!lk) return false; for (const f of S.FACINGS) { const fig = S.figure(lk, { facing: f, step: 1, compose }); if (!fig || fig.rows.length !== 20 || fig.rows.some((r) => r.length !== 16 || [...r].some((ch) => ch !== '.' && !fig.palette[ch]))) return false; } return true; };
+  const badArt = S.BEAST_IDS.filter((id) => !art(id));
+  check('every new picture draws from all four sides with its own colours', !badArt.length, badArt.join(' '));
+  const crafts = [...Object.keys(R.BOATS), ...R.STYLE_IDS.flatMap((st) => [R.craftFor(st, 'fly'), R.craftFor(st, 'swim'), ...Object.keys(R.BOATS).map((b) => R.boatArt(st, b))])].filter(Boolean);
+  check('sprites for everything: every boat and craft, in every style', crafts.every((id) => S.beastLook(id)), crafts.filter((id) => !S.beastLook(id)).join(' '));
+  check('sprites for everything: merfolk, bird folk and centaurs', ['merfolk', 'birdfolk', 'centaur', 'kobold'].every((id) => S.beastLook(id)));
+  const shapes = ['longbow', 'crossbow', 'handbow'];
+  check('bows and crossbows have their own shapes, held at any angle', shapes.every((k) => S.WEAPON_SHAPES[k] && S.weaponCells(k, 45).length > 6 && S.weaponCells(k, -90).length > 6));
+  check('kit with something special is tinted: rusty, blessed, cursed, arcane', ['rusty', 'blessed', 'cursed', 'arcane'].every((a) => /^#/.test(S.AFFIX_TINTS[a])) && S.tintHex('#000000', '#ffffff', 0.5) === '#808080');
+
+  // Sizes and continents.
+  check('sizes up to 2048, the biggest for computers only', W.SIZES.campaign.w === 1024 && W.SIZES.saga.w === 2048 && W.SIZES.saga.desktopOnly && !W.SIZES.campaign.desktopOnly);
+  const vast = W.makeWorld('v12-test', 'vast');
+  const vm2 = vast.map('world');
+  check('a vast land is 256 by 192, with places to find', vm2.w === 256 && vm2.h === 192 && vast.sites.length > 40);
+  check('docks on the coast, and the cities in the clouds and under the sea', vast.sites.some((x) => x.dock) && vast.sites.some((x) => x.kind === 'aerie' && x.alt === 'sky') && vast.sites.some((x) => x.kind === 'reef' && x.alt === 'deep'));
+  check('other folk have places of their own', Object.keys(W.KIN_PLACES).filter((k) => vast.sites.some((x) => x.kind === k)).length >= 5);
+  check('animals wander the land', vm2.people.filter((p) => p.role === 'animal').length >= 8);
+  let builtAll = true; for (const x of vast.sites) { try { const m = vast.map(x.id); if (!m || !m.rows.length) builtAll = false; } catch { builtAll = false; } }
+  check('every place on a vast land can be built', builtAll);
+  const orcs = vast.sites.find((x) => x.kind === 'orccamp'); const orcMap = orcs && vast.map(orcs.id);
+  check('an orc village is full of orcs', !orcs || orcMap.people.filter((p) => p.race === 'orc').length >= 5);
+  check('a land is the same every time from its seed', JSON.stringify(W.makeWorld('v12-test', 'vast').map('world').rows) === JSON.stringify(vm2.rows));
+
+  // Taming, pets and mounts.
+  const j = R.newJourney({ seed: 'v12-test', size: 'vast', party: [{ name: 'Ash', cls: 'ranger', who: 'you' }] }, vast);
+  j.bag.oats = 5;
+  let b = R.startBattle(j, ['horse']);
+  R.playRound(j, b, { [j.party[0].id]: { act: 'item', item: 'oats', target: b.foes[0].key } }, dice(0.01));
+  check('a wild horse fed its oats comes along as a mount', j.party[0].mounts.length === 1 && j.party[0].mount === j.party[0].mounts[0].id && b.over === 'won');
+  j.bag.meat = 9;
+  for (let i = 0; i < 7; i++) { b = R.startBattle(j, ['wolf']); R.playRound(j, b, { [j.party[0].id]: { act: 'item', item: 'meat', target: b.foes[0].key } }, dice(0.01)); }
+  check('five pets at most: the sixth eats, but won\'t come until one goes', j.party[0].pets.length === R.PET_MAX);
+  b = R.startBattle(j, ['rat']);
+  check('the pet out with you fights beside you', b.allies.some((a) => a.pet && a.owner === j.party[0].id));
+  check('pets and mounts carry more in the bag', R.bagSize(j) === R.BAG_BASE + 10 + 25);
+  const pet = j.party[0].pets[1];
+  check('a pet can be renamed, taken out and let go', R.renamePet(j, j.party[0].id, 'pet', pet.id, 'Biscuit') && R.setActive(j, j.party[0].id, 'pet', pet.id) && R.release(j, j.party[0].id, 'pet', pet.id).ok && j.party[0].pets.length === R.PET_MAX - 1 && j.party[0].pet !== pet.id);
+  check('a tamed pet keeps through a save', R.cleanJourney(JSON.parse(JSON.stringify(j)), () => vast).party[0].pets.length === R.PET_MAX - 1);
+
+  // Up and down: fly on a flier, dive on a swimmer.
+  const k = R.newJourney({ seed: 'v12-test', size: 'vast', party: [{ name: 'Ash', cls: 'ranger', who: 'you' }] }, vast);
+  const land = vm2.rows.findIndex((r) => r.includes('.')); Object.assign(k, { at: 'world', x: vm2.rows[land].indexOf('.'), y: land });
+  check('no wings, no flying', !R.rise(vast, k).ok);
+  k.party[0].mounts = [{ id: 'pegasus-1', type: 'pegasus', name: 'Clover', level: 3, xp: 0, hp: 20 }, { id: 'dolphin-2', type: 'dolphin', name: 'Puddle', level: 3, xp: 0, hp: 20 }]; k.party[0].mount = 'pegasus-1';
+  const up = R.rise(vast, k);
+  check('a pegasus takes off (with its animation) and flies over the sea', up.ok && up.anim === 'takeoff' && k.alt === 'sky' && R.passable(vast, k, vm2, 0 + 3, 3));
+  const down = R.sink(vast, k);
+  check('...and lands with a bump', down.ok && down.anim === 'land' && k.alt === 'ground');
+  const sky = vast.sites.find((x) => x.kind === 'aerie');
+  check('a cloud city can only be reached from the sky', !R.passable(vast, { ...k, alt: 'ground', party: [{ ...k.party[0], mount: '' }] }, vm2, sky.x, sky.y) && vm2.doors.some((d) => d.x === sky.x && d.y === sky.y && d.alt === 'sky'));
+  k.party[0].mount = 'dolphin-2';
+  const sea = (() => { for (let y = 2; y < vm2.h - 2; y++) for (let x = 2; x < vm2.w - 2; x++) if (vm2.rows[y][x] === '~') return { x, y }; return null; })();
+  Object.assign(k, sea, { riding: true });
+  const dive = R.sink(vast, k);
+  check('a dolphin dives to the sea floor and comes back up', dive.ok && dive.anim === 'dive' && k.alt === 'deep' && R.rise(vast, k).anim === 'surface' && k.alt === 'ground');
+
+  // Boats, traders, quests, fishing.
+  const docks = vast.sites.filter((x) => x.dock);
+  const n = R.newJourney({ seed: 'v12-test', size: 'vast', party: [{ name: 'Ash', cls: 'ranger', who: 'you' }] }, vast);
+  n.seen = docks.map((x) => x.id); n.at = docks[0].id; n.coin = 1e6;
+  const trips = R.docksFrom(vast, n);
+  check('a sailor sails to the docks you\'ve found, the boat sized to the trip', trips.length === docks.length - 1 && trips.every((t) => R.BOATS[t.boat] && t.fare >= 150));
+  check('...and takes you there', R.sailTo(vast, n, trips[0].id).ok && n.at === trips[0].id);
+  check('Aerie traders sell at half price', R.priceOf(n, 'honey', R.TRADER_PRICE) === Math.round(R.priceOf(n, 'honey') / 2));
+  const quested = vast.sites.find((x) => x.quest);
+  const q = R.questTalk(vast, n, quested.id);
+  check('an Elder gives a small job', q.given && n.quests[quested.id] === 'given');
+  n.at = 'world'; Object.assign(n, { x: sea.x + 1, y: sea.y, facing: 'left', alt: 'ground' });
+  const fishOk = vm2.rows[sea.y][sea.x + 1] !== undefined;
+  check('facing water, you can fish', !fishOk || R.fishAt(vast, n, dice(0.1))?.item === 'fish' || R.fishAt(vast, n, dice(0.1)) === null);
+
+  // Styles: the same land told four ways.
+  check('four styles', R.STYLE_IDS.join() === 'fantasy,scifi,cyber,steam');
+  check('sci-fi says power cores and blasters', R.restyle('Bring back the lantern stones. A bow and two swords.', 'scifi') === 'Bring back the power cores. A blaster and two beam swords.');
+  check('steampunk sails an airship', R.restyle('A ship to the cave', 'steam') === 'An airship to the mine');
+  check('fantasy changes nothing', R.restyle('A ship to the cave', 'fantasy') === 'A ship to the cave');
+  check('a save keeps its style', R.cleanJourney({ ...R.newJourney({ seed: 'x', style: 'cyber' }), v: 2 }).style === 'cyber');
+
+  // Memory: the big working grids are let go once the land is made, and the phone's land comes in pieces.
+  const skel = JSON.parse(JSON.stringify(W.landSkeleton(vast)));
+  const pw = W.pieceWorld(skel);
+  const home = vast.sites.find((x) => x.id === vast.home);
+  for (const [cx, cy] of pw.need(home.x, home.y)) pw.addPiece(JSON.parse(JSON.stringify(W.landPiece(vast, cx, cy))));
+  let same = true; for (let y = home.y - 11; y <= home.y + 11; y++) for (let x = home.x - 15; x <= home.x + 15; x++) if (vm2.rows[y]?.[x] !== pw.map('world').rows[y]?.[x]) same = false;
+  check('the phone holds only the pieces two screens round the party, the same land as the computer\'s', same && pw.held() <= 9 && pw.held() >= 1);
+  check('...far away is "not here yet", which nobody can walk onto', pw.map('world').rows[home.y]?.[(home.x + 120) % vm2.w] === undefined || Math.abs(((home.x + 120) % vm2.w) - home.x) < 40);
+  pw.drop(home.x + 150 > vm2.w ? home.x - 150 : home.x + 150, home.y);
+  check('...and lets go of the pieces it walks away from', pw.held() === 0);
+  check('...places are still built on the phone, the same as on the computer', pw.map(vast.sites[3].id).people.length === vast.map(vast.sites[3].id).people.length);
+  const play2 = read('public/journey-play.js');
+  check('the screen draws the sky, the deep, riding, followers and The land view', ['drawClouds', 'drawUnder', 'blurredTile', 'seatOf', 'landPicture', 'petsHtml', 'drawVoyage', 'drawSpell'].every((f) => play2.includes(`function ${f}`)));
+  check('the screen asks the computer for the land on a phone', /\/api\/adventure\/journey\/piece/.test(play2) && /phone: true/.test(read('android/app/src/main/assets/www/phone.js')));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

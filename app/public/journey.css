@@ -18,6 +18,10 @@
 .jy-pad .jy-a { grid-column: 6; grid-row: 2; border-radius: 50%; height: 52px; font-weight: 700; }
 .jy-pad .jy-b { grid-column: 5; grid-row: 3; border-radius: 50%; height: 46px; font-weight: 700; }
 .jy-pad .jy-f { grid-column: 5; grid-row: 1; border-radius: 50%; height: 40px; }
+.jy-pad .jy-up { grid-column: 3; grid-row: 1; font-size: 16px; }
+.jy-pad .jy-down { grid-column: 3; grid-row: 3; font-size: 16px; }
+.jy-pad .jy-ride { grid-column: 1; grid-row: 3; font-size: 16px; }
+.jy-land-view canvas { image-rendering: pixelated; max-width: 100%; border-radius: 6px; }
 @media (hover: hover) and (pointer: fine) { .jy-pad { grid-template-rows: repeat(3, 30px); } .jy-pad button { min-height: 30px; font-size: 14px; } .jy-pad .jy-a { height: 40px; } .jy-pad .jy-b { height: 36px; } }
 .jy-party { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 12px; }
 .jy-party li { padding: 4px 8px; border-radius: 6px; border: 1px solid transparent; display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; }

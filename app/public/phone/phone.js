@@ -1641,7 +1641,7 @@ ${chatOut}
     $('adventure').classList.add('hidden');
     $('journey').classList.remove('hidden');
     advJourney = J.mountJourney($('journey-body'), {
-      R, W, S, A: AV, party, bobLook: 'robot-3',
+      R, W, S, A: AV, party, bobLook: 'robot-3', phone: true, // v1.2: the computer makes the land; the phone holds the pieces near you
       enemyLooks: Object.fromEntries((adv.v?.enemies || []).map((e) => [e.id, e.look])),
       lookOf: (id) => AV.avatar(id), api: (p, body) => advApi(p, body),
       still: () => matchMedia('(prefers-reduced-motion: reduce)').matches,
