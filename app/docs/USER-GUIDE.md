@@ -278,7 +278,7 @@ These are fixes, so there's no switch, and none of them adds anything to what Bo
 - An OK card nobody answered in 10 minutes isn't a no: the job waits in Tasks, and Carry on asks again.
 - An action is only tried again after the app checks it didn't half-happen.
 - Tool errors come in plain words with what to try next. A check that breaks is logged as a broken check.
-- The same tool failing twice in a row in a job is set aside for the rest of it. A brain that keeps failing hands the job to the next brain that fits, once. Another Bob that fails twice isn't asked for an hour. A rented brain that fails hands back once, and the record says the answer came from here.
+- The same tool failing three times in a row in a job is set aside for the rest of it, and after the job Bob offers to look at it harder and fix it. A brain that keeps failing hands the job to the next brain that fits, once. Another Bob that fails twice isn't asked for an hour. A rented brain that fails hands back once, and the record says the answer came from here.
 - An uncaught error marks the job it left on Working as failed, and the chat says so. Side jobs (memory, notes, how-tos) never break a reply.
 - The Health page shows tools failing today against their usual day, and the logbook keeps each error's first cause.
 

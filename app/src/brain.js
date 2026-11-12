@@ -51,7 +51,7 @@ import { SAVE_AS, namedType, saveAs } from './save-as.js';
 import { recordCall, learnedLine, loadLearning, toolLearnOn } from './tool-learn.js';
 import { CORE, groupsFor, groupOf, guessGroups, allToolsOn, useToolsTool, fillUseTools, tidySchema, STICKY_TURNS, toolboxPrompt, saysCant, onlyGroups } from './toolbox.js';
 import { presetFor, presetGroups, presetBrain, presetPrompt, LimitedGroups } from './presets.js';
-import { backoffMs, carryOnTokens, causeLine, engineFailKind, pause, toolErrorText, ToolStrikes, STRIKE_NOTE, STRUCK_OUT, ErrorTally, sideJob, halfDone } from './retry.js'; // reliability items 193-207, always on
+import { backoffMs, carryOnTokens, causeLine, engineFailKind, pause, toolErrorText, ToolStrikes, STRIKES, STRIKE_NOTE, STRUCK_OUT, fixOffer, ErrorTally, sideJob, halfDone } from './retry.js'; // reliability items 193-207, always on
 import { Gate, Ledger, safeToResume, interruptedNote, withRetry, slimHandoff, carryOnPlan, carryOnLine, finishedSteps, MAX_AUTO_RESUMES, isBareOk, NOTHING_TO_OK, NOTHING_TO_OK_BUSY, queuedLine, plainDoing } from './handoff.js';
 import { expectFrom, verifyOutput, afterTool, afterTurn } from './verify.js';
 import { brainMode, chatBrain, holdsChatBrain, bigSession, isBobs, sameModel, sleepAfterText, bigGraceMs, msText } from './brain-mode.js';
@@ -1495,8 +1495,8 @@ export class Brain {
       const hand = Object.entries(HANDS).find(([, h]) => h.tools.includes(name))?.[0];
       return { text: hand ? handOffWhy(this.cfg, hand) : `Error: ${name} can't be used on this replicant matrix right now.` };
     }
-    // Item 200: this tool failed twice in a row in this job, so it's set aside (no card, no run).
-    if (ctx && ctx.strikes?.blocked(name)) { this.log('tool', `${name} not run: it failed twice in this job`); return { text: STRUCK_OUT(name, this.cfg.userName || 'the user', ctx.strikes.lastError(name)), hinted: true, struck: true }; }
+    // Item 200: this tool failed three times in a row in this job, so it's set aside (no card, no run).
+    if (ctx && ctx.strikes?.blocked(name)) { this.log('tool', `${name} not run: it failed three times in this job`); return { text: STRUCK_OUT(name, this.cfg.userName || 'the user', ctx.strikes.lastError(name)), hinted: true, struck: true }; }
     // 1.5.34 House style: what the call left out comes from the defaults set on Equip Bob, and the chat says so.
     const house = applyHouseStyle(name, args, this.cfg.houseStyle);
     args = house.args;
@@ -1592,8 +1592,8 @@ export class Brain {
       let strikeNote = '';
       if (!v.declined) {
         if (!ok) this.noteToolError(name); // item 206
-        // Item 200: the second failure in a row of this tool in this job: one other route, then it's set aside.
-        if ((ctx.strikes ||= new ToolStrikes()).record(name, ok, text) === 2) { strikeNote = STRIKE_NOTE(name, this.cfg.userName || 'the user'); this.log('tool', `${name} failed twice in this job; set aside for the rest of it`); }
+        // Item 200: the third failure in a row of this tool in this job: it's set aside, and offered for fixing after.
+        if ((ctx.strikes ||= new ToolStrikes()).record(name, ok, text) === STRIKES) { strikeNote = STRIKE_NOTE(name, this.cfg.userName || 'the user'); this.log('tool', `${name} failed three times in this job; set aside for the rest of it`); }
       }
       const hinted = Boolean(ctx.toolError?.hinted) || Boolean(strikeNote);
       ctx.toolError = null;
@@ -1622,6 +1622,19 @@ export class Brain {
   // verify.js's check of one tool run; a check that itself breaks never breaks the turn.
   async checkTool(name, args, text, ctx) {
     try { return (await afterTool(name, args, text, ctx)) || { ok: true }; } catch (e) { this.brokenCheck(ctx, `check of ${name}`, e); return { ok: true, unchecked: true, why: 'not checked (the check broke)' }; }
+  }
+
+  // Item 200 (three strikes): the job is done; a tool it set aside gets one line under the answer offering a harder look.
+  offerToolFix(ctx, reply) {
+    try {
+      const off = [...(ctx?.strikes?.off || [])];
+      if (!off.length || ctx.fixOffered || !reply || ctx.job?.guest) return;
+      ctx.fixOffered = true;
+      const line = fixOffer(off);
+      ctx.emit?.({ type: 'token', text: `\n\n${line}` });
+      reply.content = `${String(reply.content || '')}\n\n${line}`;
+      this.log('tool', `offered to look at ${off.join(', ')} after the job`);
+    } catch {}
   }
 
   // Item 199: a check that breaks is a broken check in the logbook and the job's record, never a quiet "all fine".
@@ -2916,7 +2929,7 @@ export class Brain {
         const tests = testsNudge(this, ctx);
         if (tests) { const g = groupOf(this, 'run_command'); if (g) ctx.loaded.add(g); msgs.push({ role: 'system', content: tests, hidden: true }); ctx.retrying = true; emit({ type: 'token', text: '\n\n' }); continue; }
       }
-      if (!reply.tool_calls) { this.checkSaid(ctx, reply); sideJob((k, t) => this.log(k, t), 'sources and receipt under the answer', () => afterAnswer(this, ctx, reply)); this.keepGroups(sessionId, used); return; }
+      if (!reply.tool_calls) { this.checkSaid(ctx, reply); sideJob((k, t) => this.log(k, t), 'sources and receipt under the answer', () => afterAnswer(this, ctx, reply)); this.offerToolFix(ctx, reply); this.keepGroups(sessionId, used); return; }
       let ended = false;
       ctx.painted = null; // what the painter made in this round (for the quick hand-back below)
       // 1.5.78: "Show Bob's plan before big jobs": a big job waits for its plan card (plan.js).
@@ -3044,6 +3057,7 @@ export class Brain {
         if (ctx.hatNotes) { last.content = `${last.content}\n\n${ctx.hatNotes}`; ctx.hatNotes = ''; }
         this.checkTurn(ctx, msgs.at(-1), false); // a hat answered: no second go, but never a silent miss
         sideJob((k, t) => this.log(k, t), 'sources and receipt under the answer', () => afterAnswer(this, ctx, msgs.at(-1)));
+        this.offerToolFix(ctx, msgs.at(-1));
         this.keepGroups(sessionId, used);
         return;
       }

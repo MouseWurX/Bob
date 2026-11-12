@@ -6,7 +6,7 @@
 //   engineFailKind        which engine failures are worth another go: dropped, busy (503), out of memory (195)
 //   carryOnTokens         a retry after a drop-out doesn't show the words already on screen twice (193)
 //   toolErrorText         a tool's error in plain words with what to try next, from the error's own code (198)
-//   ToolStrikes           two failures of the same tool in a job: one other route, then it's set aside (200)
+//   ToolStrikes           three failures of the same tool in a job: it's set aside, and Bob offers to fix it after (200)
 //   rootCause / causeLine the first error, not the last wrapper, in the logbook (207)
 //   ErrorTally            error lines counted per tool per day, so a tool that breaks after an update shows up (206)
 //   sideJob               memory, notes and how-tos never break the reply; each failure is one logbook line (204)
@@ -138,7 +138,9 @@ export function toolErrorText(e) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// 200: the same tool failing twice in a row in one job is set aside for the rest of it. A success clears its count.
+// 200: three strikes (the owner's rule, Nov 12): the same tool failing three times in a row in one job is set aside for
+// the rest of it. A success clears its count. After the job, Bob offers once to look at it harder and fix it.
+export const STRIKES = 3;
 // ---------------------------------------------------------------------------------------------------------------
 const NEVER_STRUCK = new Set(['use_tools', 'ask_user', 'show_plan', 'ask_together', 'offer_setup']);
 export class ToolStrikes {
@@ -152,12 +154,20 @@ export class ToolStrikes {
     this.last.set(tool, String(text || '').replace(/^Error:\s*/, '').replace(/\s+/g, ' ').slice(0, 160));
     const n = (this.fails.get(tool) || 0) + 1;
     this.fails.set(tool, n);
-    if (n >= 2) this.off.add(tool);
+    if (n >= STRIKES) this.off.add(tool);
     return n;
   }
 }
-export const STRIKE_NOTE = (tool, who) => ` (${tool} has failed twice in this job, so it's set aside now: try one other way, or tell ${who} plainly what's in the way.)`;
-export const STRUCK_OUT = (tool, who, last = '') => `Error: not run. ${tool} failed twice in this job${last ? ` (last time: ${last})` : ''}, so it isn't tried again. Use another way, or tell ${who} what failed.`;
+export const STRIKE_NOTE = (tool, who) => ` (${tool} has failed three times in this job, so it's set aside now: try one other way, or tell ${who} plainly what's in the way.)`;
+export const STRUCK_OUT = (tool, who, last = '') => `Error: not run. ${tool} failed three times in this job${last ? ` (last time: ${last})` : ''}, so it isn't tried again. Use another way, or tell ${who} what failed.`;
+// After the job: one line under the answer, offering to look at the tools set aside. Only when one was.
+export function fixOffer(tools) {
+  const list = [...new Set(tools)].filter(Boolean).slice(0, 4);
+  if (!list.length) return '';
+  const names = list.length === 1 ? list[0] : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}`;
+  const it = list.length === 1 ? 'it' : 'them';
+  return `🔧 ${names} kept failing on this job, so I set ${it} aside. Want me to look at ${it} harder and try to fix ${it}?`;
+}
 
 // ---------------------------------------------------------------------------------------------------------------
 // 206: error lines counted per tool per day (dataDir/tool-errors.json, the last 30 days). Counts only, never words.

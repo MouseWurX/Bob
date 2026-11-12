@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Brain, NO_ANSWER_NOTE, NO_ANSWER_PARKED } from '../src/brain.js';
-import { backoffMs, jitter, rootCause, causeLine, engineFailKind, carryOnTokens, toolError, toolErrorText, ToolStrikes, STRIKE_NOTE, STRUCK_OUT, ErrorTally, sideJob, halfDone, pause } from '../src/retry.js';
+import { backoffMs, jitter, rootCause, causeLine, engineFailKind, carryOnTokens, toolError, toolErrorText, ToolStrikes, STRIKES, STRIKE_NOTE, STRUCK_OUT, fixOffer, ErrorTally, sideJob, halfDone, pause } from '../src/retry.js';
 import { Lenders, SKIP_MS } from '../src/share-brains.js';
 import { fetchRetry } from '../src/tools.js';
 import { healthChecks } from '../src/health.js';
@@ -91,14 +91,16 @@ const seq = (...xs) => { let i = 0; return () => xs[Math.min(i++, xs.length - 1)
   check('198 the check after a tool goes by the code when there is one', v1.retry === false && v2.retry === true, JSON.stringify([v1, v2]));
 }
 
-// ---------- 200: two failures of the same tool ----------
+// ---------- 200: three strikes for a tool (the owner's rule) ----------
 {
   const s = new ToolStrikes();
   check('200 one failure: not set aside', s.record('read_file', false) === 1 && !s.blocked('read_file'));
   check('200 a success clears it', s.record('read_file', true) === 0 && s.record('read_file', false) === 1);
-  check('200 two in a row: set aside', s.record('read_file', false) === 2 && s.blocked('read_file'));
+  check('200 two in a row: still not set aside', s.record('read_file', false) === 2 && !s.blocked('read_file'));
+  check('200 three in a row: set aside', STRIKES === 3 && s.record('read_file', false) === 3 && s.blocked('read_file'));
   check('200 asking the user never counts', s.record('ask_user', false) === 0 && s.record('ask_user', false) === 0 && !s.blocked('ask_user'));
   check('200 the notes are one line each', !/\n/.test(STRIKE_NOTE('x', 'Sam')) && !/\n/.test(STRUCK_OUT('x', 'Sam')));
+  check('200 the offer after the job is one line, naming the tools', fixOffer(['read_file']) === '🔧 read_file kept failing on this job, so I set it aside. Want me to look at it harder and try to fix it?' && /web_search and read_file .* set them aside/.test(fixOffer(['web_search', 'read_file'])) && fixOffer([]) === '');
 }
 
 // ---------- 206: errors counted per tool per day ----------
@@ -222,7 +224,7 @@ const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls:
 // 198 / 200 / 206 / 207 through a real tool (read_file on a missing file)
 {
   const missing = path.join(innDir, 'nope.txt');
-  let script = [call('read_file', { path: missing }), call('read_file', { path: missing + '2' }), call('read_file', { path: missing + '3' }), { role: 'assistant', content: 'It is not there.' }];
+  let script = [call('read_file', { path: missing }), call('read_file', { path: missing + '2' }), call('read_file', { path: missing + '3' }), call('read_file', { path: missing + '4' }), { role: 'assistant', content: 'It is not there.' }];
   chatImpl = async () => script.shift() || { role: 'assistant', content: 'Done.' };
   const msgs = [];
   logs.length = 0;
@@ -231,9 +233,12 @@ const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls:
   const results = msgs.filter((m) => m.role === 'tool' && m.tool_name === 'read_file').map((m) => m.content);
   check('198 the tool\'s error is plain words with what to try next', /^Error: ".*nope\.txt" isn't there\. Next: check the name and folder with list_files/.test(results[0] || ''), results[0]);
   check('198 ...and the guessed hint isn\'t added on top', !/\(Hint:/.test(results[0] || ''));
-  check('200 the second failure in a row says it is set aside', results[1]?.includes('failed twice in this job, so it\'s set aside'), results[1]);
-  check('200 the third call isn\'t run', results[2]?.startsWith('Error: not run. read_file failed twice in this job'), results[2]);
-  check('206 each error is counted for its tool today (not the one that wasn\'t run)', (brain.errorTally.today().read_file || 0) - before === 2);
+  check('200 the second failure isn\'t set aside yet', !/set aside/.test(results[1] || ''), results[1]);
+  check('200 the third failure in a row says it is set aside', results[2]?.includes('failed three times in this job, so it\'s set aside'), results[2]);
+  check('200 the fourth call isn\'t run', results[3]?.startsWith('Error: not run. read_file failed three times in this job'), results[3]);
+  const last = msgs.at(-1)?.content || '';
+  check('200 after the job, one line offers to look at the tool harder and fix it', last.startsWith('It is not there.') && last.endsWith(fixOffer(['read_file'])) && logs.some((l) => /offered to look at read_file after the job/.test(l)), last);
+  check('206 each error is counted for its tool today (not the one that wasn\'t run)', (brain.errorTally.today().read_file || 0) - before === 3);
   check('207 the logbook keeps the first error (ENOENT) under the plain words', logs.some((l) => /^error: read_file: ENOENT/.test(l)), logs.join(' | '));
 }
 
@@ -382,7 +387,7 @@ const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls:
   chatImpl = async ({ messages }) => { sys.push(messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n')); return { role: 'assistant', content: 'Hi.' }; };
   brain.rentals = { current: () => null, view: () => ({ rentals: [] }), turnDone() {} };
   await brain.runOn([], 'hello', () => {}, new AbortController().signal, [], null, 'quiet-start');
-  check('nothing new in the start-of-job prompt', !/set aside|failed twice|timed out|first error|Next:/.test(sys.join('\n')));
+  check('nothing new in the start-of-job prompt', !/set aside|failed three times|timed out|first error|Next:|🔧/.test(sys.join('\n')));
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });
