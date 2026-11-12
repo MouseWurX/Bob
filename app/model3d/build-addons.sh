@@ -73,6 +73,9 @@ wheel() {
     # 1e-6d and 0.0d are a gcc-only way to write a double; Visual Studio wants plain 1e-6 and 0.0
     sed -i -E 's/\b(1e-6|0\.0)d\b/\1/g' "$dir/src/convert/flexible_dual_grid.cpp"
     if grep -qE '\b(1e-6|0\.0)d\b' "$dir/src/convert/flexible_dual_grid.cpp"; then echo "o-voxel patch didn't take"; exit 1; fi
+    # torch::zeros({N, C}) with size_t N and C is a narrowing error in Visual Studio: say int64_t
+    sed -i -E 's/torch::zeros\(\{(\w+), (\w+)\}/torch::zeros({(int64_t)\1, (int64_t)\2}/g' "$dir/src/io/filter_neighbor.cpp" "$dir/src/io/filter_parent.cpp"
+    if [ "$(grep -c 'torch::zeros({(int64_t)' "$dir/src/io/filter_neighbor.cpp" "$dir/src/io/filter_parent.cpp" | awk -F: '{s+=$2} END {print s}')" != 4 ]; then echo "o-voxel patch didn't take"; exit 1; fi
   fi
   echo "::group::building $name"
   "$py" -m pip wheel --no-build-isolation --no-deps -w "$out" "$dir"
