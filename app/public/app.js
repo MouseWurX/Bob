@@ -1,4 +1,5 @@
 // Bob's panel: chat, approvals, status, taskbar badge, read-aloud, and the brain-swap machine.
+import './sample-data.js'; // 1.5.210 sample-data mode (?sample=1 in the address only): made-up brains, nothing saved
 import { drawBob, setLook } from './bob-sprite.js';
 import { secretNoteHtml, wireSecretNote } from './more-tools.js'; // 🧰 More tools: a password Bob made
 import { applyStyle, applySavedStyle } from './themes.js';
@@ -440,7 +441,7 @@ notifyBtn.onclick = async () => {
 };
 syncNotify();
 
-$('cellarBtn').onclick = () => cellar.open('shop', 'roles');
+$('cellarBtn').onclick = () => cellar.open('shop', 'catalogue'); // 1.5.210 opens on the Brain catalogue (brains are picked in Settings, Brains)
 $('settingsBtn').onclick = () => cellar.open('settings');
 // Saved prompts: "/" at the start of the message box (off unless turned on in Settings, How Bob works).
 createPromptMenu(input, { openSettings: () => cellar.open('settings', null, { jump: 'adv-prompts' }) });
@@ -497,17 +498,17 @@ $('helpBtn').onclick = () => helpPage.open();
 window.addEventListener('bob-tidy', () => tidyPage.open());
 // Settings, Where my memories came from: Open the chat a memory was learned in (memory-more.js).
 window.addEventListener('bob-open-chat', (e) => { const id = String(e.detail?.id || '').replace(/[^a-zA-Z0-9-]/g, ''); if (!id) return; if ($('cellar').open) $('cellar').close(); openChat(id); try { window.focus(); } catch {} });
-// "Ask Bob what he thinks" (Equip Bob, Attributes): puts the question in the chat and sends it.
+// "Ask Bob what he thinks" (Settings, Personality): puts the question in the chat and sends it.
 window.addEventListener('bob-ask', (e) => { const t = String(e.detail || '').slice(0, 300); if (!t) return; $('input').value = t; $('composer').requestSubmit(); });
 // 1.5.207 Click Bob (or press Enter on him) for his small menu: what he's doing, the brain loaded, and doors to
-// Settings, Brains, Style and Get models. The old Equip Bob screen no longer opens from here.
+// Settings, Brains, Style and Get models.
 bobCanvas.tabIndex = 0;
 bobCanvas.setAttribute('role', 'button');
 bobCanvas.title = 'Bob: what I\'m doing, my brain, and my settings';
 bobCanvas.setAttribute('aria-label', 'Bob. Open my menu');
 createBobMenu({
   anchor: bobCanvas,
-  doors: { brains: () => cellar.open('settings', null, { jump: 'adv-brains' }), style: () => cellar.open('shop', 'style'), models: () => cellar.open('shop', 'roles') },
+  doors: { brains: () => cellar.open('settings', null, { jump: 'adv-brains' }), style: () => cellar.open('shop', 'style'), models: () => cellar.open('shop', 'catalogue') },
   getStatus: async () => (await fetch('/api/status')).json(),
   getNames: async () => Object.fromEntries((((await (await fetch('/api/roles')).json()).options || {}).llm || []).map((o) => [o.value, o.label])),
   saidNow: () => statusEl.title || statusEl.textContent
@@ -859,9 +860,9 @@ function onEvent(ev) {
       if (!/^hat:/.test(ev.summary) && ev.name !== 'edit_my_message') note(`· ${ev.summary}`); // an edit shows as "edited" on the message itself
       endReply(ev);
       break;
-    case 'house': { // 1.5.34: "Used your house style: 30 seconds · Change" (House style on Equip Bob)
+    case 'house': { // 1.5.34: "Used your house style: 30 seconds · Change" (Settings, House style)
       const el = add('note house', `${esc(ev.text)} · <button type="button" class="link" data-house="${esc(ev.group || '')}">Change</button>`);
-      el.querySelector('[data-house]')?.addEventListener('click', () => cellar.open('shop', 'roles', { house: ev.group }));
+      el.querySelector('[data-house]')?.addEventListener('click', () => cellar.open('settings', null, { house: ev.group, jump: 'adv-house' })); // 1.5.210 House style is in Settings
       break;
     }
     case 'image': { addMedia(ev, 'image'); ping('Bob finished a picture', ev.file || ''); break; }

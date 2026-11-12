@@ -1,5 +1,5 @@
 // 1.5.207 The small menu on Bob's picture (the owner's pick): what Bob is doing, the brain that is loaded, and
-// doors to Settings, Brains, Style and Get models. It replaces the old Equip Bob screen that opened from there.
+// doors to Settings, Brains, Style and Get models.
 // bobMenuHtml is a pure builder (tests give it made-up status); createBobMenu wires one picture to it.
 import { esc } from './util.js';
 
@@ -16,7 +16,7 @@ export function bobMenuHtml(status, { said = '', names = {} } = {}) {
   return `<p class="bob-menu-now" role="status"><strong>${esc(doing)}</strong><br><span class="muted">${esc(status ? loadedLine(status, names) : 'Checking which brain is loaded…')}</span></p>
     ${door('brains', '🧠', 'Brains', 'Which brain does what, Set up and Calibrate')}
     ${door('style', '🎨', 'Style', 'My look, colours and animations')}
-    ${door('models', '📚', 'Get models', 'The catalogue and the paper doll')}`;
+    ${door('models', '📚', 'Get models', 'The catalogue and every model shop')}`;
 }
 
 // anchor: Bob's picture. doors: { brains(), style(), models() }. getStatus(): the latest status, names(): labels.

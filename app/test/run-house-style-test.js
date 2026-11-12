@@ -5,7 +5,7 @@ import path from 'node:path';
 import { HOUSE, cleanHouseStyle, houseStylePrompt, applyHouseStyle, usedLine, houseStyleHtml, houseGroupOf } from '../public/house-style.js';
 import { replaceSettings, mergeSettings, cleanProjects } from '../src/config.js';
 import { pickFolder } from '../src/pick-folder.js';
-import { equipHtml } from '../public/equip.js';
+import { kitHtml, SLOTS } from '../public/equip.js';
 import { HELP } from '../public/help-content.js';
 import { settingsNow } from '../src/self-help.js';
 
@@ -50,8 +50,11 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-house-'));
   check('box shows saved values, open, with labels', /value="chiptune"/.test(h) && /value="30"/.test(h) && /<details class="house-style" id="house-music" open>/.test(h) && /<label for="hs-music-style">/.test(h));
   check('empty box says Bob picks, closed', /\(Bob picks\)/.test(houseStyleHtml('sfx', {})) && !/ open>/.test(houseStyleHtml('sfx', {})));
   check('values are escaped', !/<script>/.test(houseStyleHtml('pictures', { pictures: { style: '"><script>' } })));
-  const page = equipHtml({ selected: 'music', roles: { current: {}, options: {} }, models: [], houseStyle: { times: { evening: '18:00' } } });
-  check('Equip Bob shows the Music house style and the times-of-day box', page.includes('id="house-music"') && page.includes('id="house-times"') && page.includes('value="18:00"'));
+  // 1.5.210 the boxes live in Settings, House style (every group, times of day too); a maker job's kit has a door to them.
+  const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+  check('Settings, House style draws every group, times of day too', /\['house', '🖋 House style'[^\n]*Object\.keys\(HOUSE\)\.map\(\(g\) => houseStyleHtml\(g, settings\.houseStyle\)\)/.test(cellar) && Object.keys(HOUSE).includes('times'));
+  const kit = kitHtml(SLOTS.find((s) => s.id === 'music'), { selected: 'music', roles: { current: {}, options: {} }, models: [], houseStyle: { music: { seconds: 30 } } });
+  check('the Music job has a door to House style, and no second copy of the boxes', /data-gohouse="music"/.test(kit) && !kit.includes('id="house-music"'));
 }
 
 // Saving whole, and Projects
@@ -92,7 +95,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-house-'));
   const ids = HELP.map((e) => e.id);
   check('Help covers House style and Settings: Projects', ids.includes('house-style') && ids.includes('settings-projects'));
   const now = settingsNow({ houseStyle: { music: { seconds: 30 } }, projects: { Game: '/x' }, defaultProject: 'Game' });
-  check('Bob can read his house style and projects', /House style \(Equip Bob\): music: 30 seconds/.test(now) && /Projects \(Settings\): Game; main project Game/.test(now));
+  check('Bob can read his house style and projects', /House style \(Settings\): music: 30 seconds/.test(now) && /Projects \(Settings\): Game; main project Game/.test(now));
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

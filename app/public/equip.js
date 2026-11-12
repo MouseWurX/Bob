@@ -1,12 +1,11 @@
-// "Equip Bob": a paper-doll screen. Bob stands in the middle with a slot for every job; the models on this PC
-// are his kit. Pick a slot, then click a model in the kit (or drag it onto the slot) to equip it. Only kit that
-// fits a slot goes in it. Empty slots say what Bob can't do yet, with a Get button for a recommended model.
-// Nothing is ever equipped by itself. Pure HTML builders; cellar.js handles the clicks.
+// Bob's jobs (slots) and what can fill each one, the starter sets and the Get me ready list. 1.5.210: the paper-doll
+// screen that used to show these is gone; Settings, Brains (brains.js) is the one place a brain or sense is picked,
+// and it uses the slots, kits and tips here. Nothing is ever equipped by itself. Pure HTML builders; cellar.js
+// handles the clicks.
 import { packFor, packsFor, canDo, suit, pickFor } from './fit.js';
-import { houseStyleHtml, houseGroupOf } from './house-style.js';
+import { houseGroupOf } from './house-style.js';
 import { tip } from './tips.js';
 import { esc, gb } from './util.js';
-import { kindWord, kindIcon, when, thumbImg } from './viewer.js';
 export { packFor };
 
 // side: which column around Bob. how: where the choice is saved (job = Model roles, brain = a session brain,
@@ -85,21 +84,6 @@ const stats = (e, fallback = '') => {
   return [e.sizeGB != null && `Size ${gb(e.sizeGB)}`, e.vramGB ? `uses ${gb(e.vramGB)} of graphics memory` : 'runs on the processor', e.license && `licence ${e.license}${e.commercial === false ? ' (personal use)' : ''}`].filter(Boolean).join(' · ');
 };
 
-function slotHtml(slot, ctx) {
-  const cur = equipped(slot, ctx);
-  const opt = cur && [...(ctx.roles?.options?.[slot.kind] || [])].find((o) => o.value === cur);
-  const e = entryOf(ctx.models, cur);
-  const name = slot.how === 'rent' ? (ctx.rent?.rentals || []).find((r) => r.id === cur)?.name || cur : (opt && opt.label !== cur ? opt.label : e?.name) || cur; // 1.5.127
-  const sel = ctx.selected === slot.id;
-  const canOff = cur && slot.off && !(slot.off === 'windows' && cur === 'windows');
-  const covers = cur && slot.kind === 'llm' ? allSlots().filter((s) => s.kind === 'llm' && equipped(s, ctx) === cur).length : 0;
-  return `<div class="slot${cur && cur !== 'windows' ? ' on' : ''}${sel ? ' sel' : ''}" data-slot="${esc(slot.id)}" data-kind="${esc(slot.kind)}">
-    <button type="button" class="slot-pick" data-slotpick="${esc(slot.id)}" aria-pressed="${sel}" title="${esc(slot.does)}">
-      <span class="slot-icon" aria-hidden="true">${slot.icon}</span>
-      <span class="slot-text"><strong>${esc(slot.name)}</strong><br>${cur && !(slot.off === 'windows' && cur === 'windows') ? `<span>${esc(name)}</span>${e?.vramGB ? ` <span class="weight">${gb(e.vramGB)}</span>` : ''}${covers > 1 ? ` <span class="tag good" title="One model doing several jobs loads once">covers ${covers} slots</span>` : ''}` : `<span class="muted">${esc(slot.empty)}</span>`}</span>
-    </button>${canOff ? `<button type="button" class="mini unequip" data-unequip="${esc(slot.id)}" title="Take it off" aria-label="Take ${esc(name)} off ${esc(slot.name)}">✕</button>` : ''}</div>`;
-}
-
 const REC_TAG = '<span class="tag rec">★ Recommended for this job on your replicant matrix</span>';
 const FIT_TAG = '<span class="tag">Fits your card</span>';
 function fitTags(f, ctx = {}) {
@@ -131,7 +115,7 @@ export function shownKit(slot, ctx) {
 }
 
 export function kitHtml(slot, ctx) {
-  if (!slot) return '<p class="muted">Pick a slot around Bob to see what fits it.</p>';
+  if (!slot) return '<p class="muted">Press Pick or Change on a job to see what fits it.</p>';
   if (slot.how === 'rent') return rentKitHtml(slot, ctx); // 1.5.127
   const cur = equipped(slot, ctx);
   // Bob's pick first, then what fits, then the rest. What's equipped stays where it is in that order.
@@ -160,7 +144,8 @@ export function kitHtml(slot, ctx) {
   const engine = slot.engine && !(ctx.roles?.options?.[slot.kind] || []).length
     ? `<div class="model engine-step"><p>${esc(slot.name)} comes with the audio tools.</p><button class="get" data-engine="${esc(slot.engine)}">Get the audio tools</button><div class="confirm" hidden></div></div>` : '';
   const embedTip = slot.how === 'embed' && !all.length ? '<p class="muted">Nothing here yet. Nomic Embed Text (in the catalogue, about 0.3 GB) shows up here once it is downloaded.</p>' : '';
-  const house = houseGroupOf(slot.id) ? houseStyleHtml(houseGroupOf(slot.id), ctx.houseStyle) : ''; // 1.5.34 House style
+  // 1.5.34 House style; 1.5.210 its boxes live in Settings, House style (one place, so two copies never fight), with a door from here.
+  const house = houseGroupOf(slot.id) ? `<p class="muted house-door">Your defaults for this job (length, style and so on) are in Settings, House style. <button type="button" class="mini" data-gohouse="${esc(houseGroupOf(slot.id))}">Open House style</button></p>` : '';
   return `<h3>${slot.icon} ${esc(slot.name)} ${tipHtml(slot.does, `About ${slot.name}`)}</h3>${house}${engine}${embedTip}<ol class="kit-list">${items || (engine || embedTip ? '' : '<li class="muted">Nothing active for this job yet.</li>')}</ol>${more}${getMore}`;
 }
 
@@ -179,20 +164,6 @@ export function rentKitHtml(slot, ctx) {
     <p class="get-more"><button type="button" class="get-more-btn" data-rentsettings>☁ Set up rented brains in Settings</button></p>`;
 }
 const money = (n) => `$${(Math.round((Number(n) || 0) * 100) / 100).toFixed(2)}`;
-
-// Everything equipped against the card: they don't all have to be loaded at once (Bob swaps), but it shows what fits together.
-function weightHtml(ctx) {
-  const seen = new Map();
-  for (const s of SLOTS) { const e = entryOf(ctx.models, equipped(s, ctx)); if (e?.vramGB) seen.set(e.id, e); }
-  const total = [...seen.values()].reduce((n, e) => n + e.vramGB, 0);
-  const card = ctx.vramGB;
-  if (!card) return `<p class="muted">Equipped: about ${gb(total)} of graphics memory in all.</p>`;
-  const pct = Math.min(100, Math.round((total / card) * 100));
-  // Over the card in total is normal (Bob swaps); red only when one equipped model can't fit on the card at all.
-  const tooBig = [...seen.values()].find((e) => e.vramGB > card);
-  return `<div class="weight-bar" title="Everything equipped, if it were all loaded at once"><div class="meter${tooBig ? ' over' : ''}"><i style="width:${pct}%"></i></div>
-    <span>${tooBig ? `${esc(tooBig.name)} alone needs more than your ${gb(card)} card, so it runs slowly.` : total > card ? `${gb(total)} equipped in total. Your card holds ${gb(card)}, so Bob loads what each job needs (about 20 seconds a swap).` : `${gb(total)} equipped in total. Your card holds ${gb(card)}, so all of it fits at once.`}</span></div>`;
-}
 
 // ---- Starter sets: a few models picked for the graphics card, as one button. Every download is still confirmed. ----
 
@@ -277,57 +248,6 @@ export function starterHtml(ctx) {
     ${pack.times ? `<p class="muted">⏱ ${esc(pack.times)}</p>` : ''}
     <div class="row"><button type="button" class="get" data-starter="${esc(pack.id)}" ${picked.size ? '' : 'disabled'}>Equip starter set${ids.length ? ` (${gb(total)} to download)` : ''}</button></div>
     <div class="confirm starter-confirm" hidden></div></details>`;
-}
-
-// 1.5.125 The chest: what Bob has made (the Made by Bob list) as little pictures with names, on the paper doll
-// screen under Bob, and the folder new things go to with a Change folder button (the same picker as Settings,
-// Where Bob saves things). ctx.chest = { items, loaded, error }, ctx.saveDir = Settings' saveDir view.
-export const CHEST_SHOW = 24;
-export function chestTile(ctx) {
-  const n = ctx.chest?.items?.length;
-  const sel = ctx.selected === 'chest';
-  return `<button type="button" class="chest-tile${sel ? ' sel' : ''}" data-chest aria-pressed="${sel}" aria-label="Chest: what Bob made${n ? `, ${n}${n >= CHEST_SHOW ? ' or more' : ''} thing${n === 1 ? '' : 's'}` : ''}" title="What I've made, and where new things are saved"><span class="chest-icon" aria-hidden="true">${sel ? '📂' : '🧰'}</span><span class="chest-label">Chest</span>${n ? `<span class="chest-count">${n}${n >= CHEST_SHOW ? '+' : ''}</span>` : ''}</button>`;
-}
-export function chestItemHtml(x) {
-  const kind = x.kind === 'text' ? 'document' : x.kind || 'file';
-  const name = x.title || x.name || '';
-  const data = `data-view data-view-url="${esc(x.url || '')}" data-view-kind="${esc(kind)}" data-view-name="${esc(x.name || '')}" data-view-path="${esc(x.path || x.url || '')}" data-view-bytes="${esc(x.bytes ?? '')}"`;
-  const pic = kind === 'image' || kind === 'video' ? thumbImg(x, kind) : `<span class="made-ico" aria-hidden="true">${kindIcon(kind, x.name)}</span>`;
-  return `<li><button type="button" class="chest-item" ${data} aria-label="Open ${esc(name)}: ${esc(kindWord(kind, x.name).toLowerCase())}, ${esc(when(x.at))}" title="${esc(x.name || '')}">${pic}<span class="chest-name">${esc(name)}</span><span class="muted chest-when">${esc(kindWord(kind, x.name))} · ${esc(when(x.at))}</span></button></li>`;
-}
-export function chestHtml(ctx) {
-  const c = ctx.chest || {};
-  const sd = ctx.saveDir || {};
-  const items = c.items || [];
-  const folder = `<div class="chest-folder"><p><strong>New things are saved in</strong> <span class="save-path">${esc(sd.folder || '')}</span> ${sd.custom ? '' : '<span class="tag good">Bob\'s own folder</span>'}${sd.missing ? `<br><span class="error">I can't find ${esc(sd.picked)} right now (an unplugged drive, maybe). Until it's back, I save in my own folder.</span>` : ''}</p>
-    <div class="row"><button type="button" class="mini" data-chestbrowse>Change folder…</button>${sd.custom ? '<button type="button" class="mini" data-saveown>Use Bob\'s own folder</button>' : ''}<button type="button" class="mini" data-saveopen>Show in folder</button></div>
-    <p class="error chest-error" hidden></p></div>`;
-  const grid = c.error ? `<p class="error">${esc(c.error)}</p>`
-    : !c.loaded ? '<p class="muted">Opening the chest…</p>'
-      : !items.length ? '<p class="muted">Empty so far. Pictures, clips, songs, sounds and files I make land here, newest first.</p>'
-        : `<ul class="chest-grid" role="list" aria-label="What Bob made, newest first">${items.slice(0, CHEST_SHOW).map(chestItemHtml).join('')}</ul>`;
-  return `<h3>🧰 Chest ${tipHtml('Everything I\'ve made or saved, newest first, as little pictures with their names. Click one to open it beside the chat. Change folder… picks where new pictures, clips, songs and sounds go (the same as Settings, Where Bob saves things); older ones stay where they are and still show here. Documents and spreadsheets still go where you ask for them.', 'About the chest')}</h3>
-    ${folder}
-    ${grid}
-    <p class="row"><button type="button" class="mini" data-chestall>Open Made by Bob${items.length >= CHEST_SHOW ? ' (everything, with search)' : ''}</button>${c.loaded ? '<button type="button" class="mini" data-chestreload aria-label="Look again">↻</button>' : ''}</p>`;
-}
-
-export function equipHtml(ctx) {
-  const sel = allSlots().find((s) => s.id === ctx.selected);
-  const col = (side) => SLOTS.filter((s) => s.side === side).map((s) => slotHtml(s, ctx)).join('');
-  return `<div class="equip-top"><p class="muted">Pick a slot, then a model for it. ${tipHtml('Click a model in the kit, or drag it onto the slot. Each slot only lists active models that can do its job; Get more opens the Brain catalogue. Nothing is equipped without you.', 'How Equip Bob works')} <button type="button" class="mini help-link" data-help="recommended" aria-label="Help: how Bob picks models">? How Bob picks</button></p>
-      <button type="button" class="link" data-eqview="list">Plain list instead</button></div>
-    ${starterHtml(ctx)}
-    ${weightHtml(ctx)}
-    <div class="equip-page">
-      ${ctx.attributes || ''}
-      <div class="equip-mid">
-        <div class="doll"><div class="doll-col">${col('L')}</div><div class="doll-mid"><canvas class="doll-bob" width="160" height="160" aria-label="Bob"></canvas><div class="muted">Bob</div><button type="button" class="mini" data-golook>Change his look</button>${chestTile(ctx)}</div><div class="doll-col">${col('R')}</div></div>
-        <details class="helpers"${HELPERS.some((h) => h.id === ctx.selected) ? ' open' : ''}><summary>Helpers (optional: each uses the main brain unless you pick one)</summary><div class="helper-row">${HELPERS.map((s) => slotHtml(s, ctx)).join('')}</div></details>
-        ${houseStyleHtml('times', ctx.houseStyle)}
-      </div>
-      <section class="kit-panel" aria-live="polite"><div class="kit-head muted">${ctx.selected === 'chest' ? 'Chest' : 'Inventory'}</div>${ctx.selected === 'chest' ? chestHtml(ctx) : kitHtml(sel, ctx)}</section>
-    </div>`;
 }
 
 // 1.5.74 "engines first": what first start gets before anything else, so Bob can talk and help with the rest.

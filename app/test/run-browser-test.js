@@ -52,7 +52,7 @@ check('single keys only, by name', keyFor('Enter') === 'enter' && keyFor('Escape
 // ---------- Eyes ----------
 check('the verdict is the first word: yes, no, unsure', eyesVerdict('Yes. The page shows results.') === 'yes' && eyesVerdict('no - still the home page') === 'no' && eyesVerdict('Unsure, the picture is dark') === 'unsure' && eyesVerdict('Not sure.') === 'unsure' && eyesVerdict('The page shows a cat') === null);
 check('the question asks for one word first, or answers a free question from what it sees', /exactly one word: yes, no or unsure/.test(eyesPrompt({ expect: 'the results show' })) && /saying only what you can see: Is there an error\?/.test(eyesPrompt({ ask: 'Is there an error?' })));
-check('without an eyes brain the check is skipped with a plain reason that names the slot', /no eyes brain is in its slot \(Equip Bob, "Seeing pictures"\)/.test(eyesWhy({ userName: 'Sam', models: {} })) && !eyesOn({ models: {} }));
+check('without an eyes brain the check is skipped with a plain reason that names the slot', /no eyes brain is in its slot \(Settings, Brains, "Seeing pictures"\)/.test(eyesWhy({ userName: 'Sam', models: {} })) && !eyesOn({ models: {} }));
 check('with the setting off it says so', /is off in Settings, Hands/.test(eyesWhy({ models: { eyes: 'gemma4:e4b' }, hands: { eyesCheck: false } })) && eyesOn({ models: { eyes: 'gemma4:e4b' }, hands: {} }));
 {
   const pic = path.join(tmp, 'p.png'); fs.writeFileSync(pic, Buffer.from('89504e470d0a1a0a', 'hex'));

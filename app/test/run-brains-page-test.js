@@ -50,14 +50,15 @@ const ctx = { roles, models, brains: { small: 'gemma4-e4b', deep: 'bobert-35b' }
   check('an empty job says what happens meanwhile and offers a brain or the catalogue', /data-jobbrain="office"/.test(html) && /data-catjob="office"/.test(html) && /Uses the Spreadsheets helper or the main brain/.test(html));
   check('senses: every one listed with Change or Pick; nothing chosen shows no kit', senseSlots().every((s) => html.includes(`data-slotpick="${s.id}"`)) && /<section class="kit-panel" aria-live="polite"><\/section>/.test(html));
   check('picking a sense opens its choices right there', /<section class="kit-panel" aria-live="polite"><h3>🎨 Painter/.test(brainsHtml({ ...ctx, selected: 'image' })));
-  check('the paper doll and the plain list are one press away, and the catalogue too', /data-eqview="doll"/.test(html) && /data-eqview="list"/.test(html) && /data-tab="catalogue"/.test(html));
+  check('the plain list is one press away, and the catalogue too; the paper doll is gone (1.5.210)', !/data-eqview="doll"/.test(html) && /data-eqview="list"/.test(html) && /data-tab="catalogue"/.test(html));
   check('the chest is not on this page (it belongs to the Adventure page)', !/data-chest\b/.test(html) && !/chest-tile/.test(html));
   check('no computer specs yet: the page still draws', /Brains in use/.test(brainsHtml({ ...ctx, vramGB: null, ramGB: null })));
 }
 {
   const cellar = read('public/cellar.js');
-  check('Equip Bob opens on the Brains page unless another view was chosen', /getItem\('bob-brains-view'\) \|\| 'brains'/.test(cellar) && /brainsHtml\(brainsCtx\(\)\)/.test(cellar));
-  check('the two menus save through the same call the doll uses', /el\.dataset\.brainjob && el\.value\) \{[^}]*await equip\(el\.value, el\.dataset\.brainjob/.test(cellar) && /el\.dataset\.jobbrain && el\.value\) \{[^}]*await equip\(el\.dataset\.jobbrain, el\.value/.test(cellar));
+  check('the Brains page is the one place: Get models, Brains and the old Equip Bob page id open Settings, Brains', /if \(id === 'roles'\) \{ tab = 'settings'; jumpTo = 'adv-brains'; return; \}/.test(cellar) && !/label: 'Equip Bob'/.test(cellar) && /brainsHtml\(brainsCtx\(\{ inSettings: true \}\)\)/.test(cellar));
+  check('a remembered paper doll view lands on the Brains page', /getItem\('bob-brains-view'\) === 'list' \? 'list' : 'brains'/.test(cellar));
+  check('the two menus save through the same equip call as the plain list', /el\.dataset\.brainjob && el\.value\) \{[^}]*await equip\(el\.value, el\.dataset\.brainjob/.test(cellar) && /el\.dataset\.jobbrain && el\.value\) \{[^}]*await equip\(el\.dataset\.jobbrain, el\.value/.test(cellar));
   check('Help has the page, in Bob\'s voice, and the glossary names it', HELP.some((h) => h.id === 'brains-page' && /I load one big brain at a time/.test(h.html)) && /<dt>Brains page<\/dt>/.test(HELP.find((h) => h.id === 'glossary').html));
 }
 // ---- 1.5.207: the Brains page lives in Settings, Brains, and the plain list has the same tools ----

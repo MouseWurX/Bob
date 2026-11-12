@@ -48,7 +48,7 @@ Verdicts are **Approved**, **Approved with edits** (make the listed edits, no se
 | Colours | theme (on Everyday pages; "theme" is fine in the theme editor) |
 | Bob's look | avatar, sprite |
 | Hands | tools, actions |
-| Equip Bob | model roles, who does what |
+| Brains (Settings) | model roles, who does what |
 | Graphics memory, graphics card | VRAM (on Everyday pages) |
 | RAM | system memory, main memory |
 | Settings / Simple, Advanced | preferences, config |

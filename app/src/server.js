@@ -670,7 +670,7 @@ const server = http.createServer(async (req, res) => {
       } catch (e) { return send(res, 400, { error: e.message }); }
       return send(res, 404, { error: 'no' });
     }
-    // What an Ollama model can do (completion, vision, audio, tools, thinking), for Equip Bob's "also use it for".
+    // What an Ollama model can do (completion, vision, audio, tools, thinking), for the Brains page's "also use it for".
     if (req.method === 'GET' && p === '/api/models/caps') {
       const name = String(url.searchParams.get('name') || '');
       if (!/^[\w.:/-]{1,120}$/.test(name)) return send(res, 400, { error: 'bad name' });
@@ -964,7 +964,7 @@ const server = http.createServer(async (req, res) => {
             cfg.userName = name || cfg.windowsName;
             out.userName = cfg.userName; out.callMe = name;
           }
-          // 1.5.34 House style (Equip Bob) and Projects (Settings): saved whole, so an emptied box really clears.
+          // 1.5.34 House style (Settings) and Projects (Settings): saved whole, so an emptied box really clears.
           if (b.houseStyle && typeof b.houseStyle === 'object') { replaceSettings(cfg, { houseStyle: b.houseStyle }); out.houseStyle = cleanHouseStyle(cfg.houseStyle); }
           if (Array.isArray(b.projectList)) {
             const list = cleanProjects(b.projectList);

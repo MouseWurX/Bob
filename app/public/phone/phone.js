@@ -2028,7 +2028,7 @@ ${chatOut}
     let items = [];
     try { items = await advApi('/api/made?limit=24'); } catch (e) { body.textContent = ''; body.append(el('p', { class: 'help-line', text: `I couldn't open the chest: ${e.message}` })); return; }
     body.textContent = '';
-    body.append(el('p', { class: 'help-line', text: `What ${b.name} has made, newest first. Tap one to see it here; Save to this phone keeps a copy. To change the folder new things are saved in, open Equip Bob on your other replicant matrix and press the chest under Bob.` }));
+    body.append(el('p', { class: 'help-line', text: `What ${b.name} has made, newest first. Tap one to see it here; Save to this phone keeps a copy. To change the folder new things are saved in, open Settings, Where Bob saves things, on your other replicant matrix.` }));
     if (!items.length) { body.append(el('p', { class: 'dim', text: 'Empty so far. Pictures, clips, songs and files he makes land here.' })); return; }
     const addr = b.address;
     const grid = el('div', { class: 'chest-grid', role: 'list', 'aria-label': 'What Bob made, newest first' });

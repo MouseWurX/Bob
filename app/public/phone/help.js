@@ -88,7 +88,7 @@ globalThis.BobHelp = {
     {
       id: 'chest', title: 'Chest',
       html: `<p>Menu, <strong>Chest</strong>: the newest things your other Bob has made (pictures, clips, songs, sounds, documents), as little pictures with their names, newest first. Tap one to see it right here, and <strong>Save to this phone</strong> keeps a copy in your Pictures or Music. Nothing is kept on the phone unless you save it; the chest itself lives on your other replicant matrix, so it needs a Bob on your Bob-Net.</p>
-<p>Where new things are saved is set on your other replicant matrix: open Equip Bob, press the chest under Bob, then <strong>Change folder…</strong>. Documents and spreadsheets still go wherever you asked for them.</p>`
+<p>Where new things are saved is set on your other replicant matrix: Settings, <strong>Where Bob saves things</strong>, then <strong>Change folder…</strong>. Documents and spreadsheets still go wherever you asked for them.</p>`
     },
     {
       id: 'memory', title: 'What Bob remembers',
@@ -279,7 +279,7 @@ globalThis.BobHelp = {
 <dt>Low-data mode</dt><dd>Text only: what your other Bob makes waits for your tap. Settings, Data.</dd>
 <dt>Bob on your network</dt><dd>A Bob running on one of your replicant matrices that lets this phone in. He does the heavy lifting.</dd>
 <dt>Phone brain</dt><dd>A small AI model that runs on this phone, without the internet.</dd>
-<dt>Chest</dt><dd>The newest things your other Bob made, shown as little pictures with names. Menu, Chest here; under Bob on Equip Bob on your other replicant matrix.</dd>
+<dt>Chest</dt><dd>The newest things your other Bob made, shown as little pictures with names. Menu, Chest here; Made by Bob on your other replicant matrix.</dd>
 <dt>Tailscale</dt><dd>A free app that makes a private, scrambled link between your own devices, wherever they are.</dd>
 <dt>Model family</dt><dd>Models made by the same team and built the same way, like Qwen or Gemma. One family comes in many sizes, from phone-sized to big. Under Phone brain each family has its own header you open and close.</dd>
 <dt>Replicant matrix</dt><dd>What I call the computer a Bob runs on. Here that's this replicant matrix (this phone); your other Bobs each live on their own, like your other replicant matrix at home. It's still your computer or phone; it's just my name for it.</dd>

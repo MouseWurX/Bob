@@ -315,7 +315,7 @@ let win = null;
 // desktop's tray, where it has one). Closing or minimising his window hides it there; Quit Bob in its menu closes
 // him fully. Started hidden at sign-in ("Launch Bob on start-up"), he always shows the tray icon, so there's a way in.
 // "Use Bob's look as his icon" (on unless turned off since 1.5.134): the tray, taskbar/Dock and window icon show his
-// avatar, redrawn the moment a look is saved (Style, or Equip Bob's "Change his look"). A shortcut pinned to the Windows
+// avatar, redrawn the moment a look is saved (Style, or Change look in Settings, Personality). A shortcut pinned to the Windows
 // taskbar may keep the usual icon: Windows draws pinned buttons from the shortcut, not from the window.
 // The brain sends both switches and the pictures (src/app-icon.js windowState) at start-up and on every change.
 const STARTED_HIDDEN = process.argv.includes('--hidden');

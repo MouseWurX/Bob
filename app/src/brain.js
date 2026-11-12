@@ -185,7 +185,7 @@ export const APU_MIN_CTX = 8192;
 export const APU_HOLDBACK_DEFAULT_GB = 4;
 export const apuHoldbackGB = (cfg) => { const v = Number(cfg?.apuHoldbackGB); return Number.isFinite(v) && v >= 0 && v <= 8 ? v : APU_HOLDBACK_DEFAULT_GB; };
 export const APU_CARVE_MARGIN_GB = 0.5; // 1.5.133: kept free inside the set-aside for the picture reader and the driver
-export const APU_NO_ROOM = (needGB, freeGB, holdGB = 1) => `That brain needs about ${needGB} GB and only about ${freeGB} GB is free${holdGB > 0 ? ' once Windows keeps its share' : ''}, so I haven't loaded it. Close something or pick a smaller brain in Equip Bob.`;
+export const APU_NO_ROOM = (needGB, freeGB, holdGB = 1) => `That brain needs about ${needGB} GB and only about ${freeGB} GB is free${holdGB > 0 ? ' once Windows keeps its share' : ''}, so I haven't loaded it. Close something or pick a smaller brain in Settings, Brains.`;
 export async function apuRoom(brain, model, ctx, { freeMem = freeMemNow(), loaded = null, minCtx = APU_MIN_CTX } = {}) {
   if (!brain?.cfg?.sharedGraphics || !model) return { ok: true, ctx };
   const bytes = (c) => brain.gate?.brainBytes?.(model, { ctx: c });
@@ -678,7 +678,7 @@ export class Brain {
   }
 
   // ---------- Share jobs (1.5.72) ----------
-  // A big brain for Medium-and-up work that's really here (the file is on disk), not just picked in Equip Bob.
+  // A big brain for Medium-and-up work that's really here (the file is on disk), not just picked in Settings, Brains.
   guestBigBrain() { const d = draftBrain(this.cfg, 'medium'); if (!d?.model) return false; return this.cfg.engine === 'llamacpp' ? runnable(this, d.model) : true; }
   guestCanNow() { const can = this.jobCan(); return NEEDS_LIST.filter((n) => canHere(this, n, { can, webOn: webOn(this.cfg) })); }
   // 1.5.133 lost-song fix: what this Bob can really make right now. capabilities() says music once the audio workshop is
@@ -1633,7 +1633,7 @@ export class Brain {
     }
     // Item 200: this tool failed three times in a row in this job, so it's set aside (no card, no run).
     if (ctx && ctx.strikes?.blocked(name)) { this.log('tool', `${name} not run: it failed three times in this job`); return { text: STRUCK_OUT(name, this.cfg.userName || 'the user', ctx.strikes.lastError(name)), hinted: true, struck: true }; }
-    // 1.5.34 House style: what the call left out comes from the defaults set on Equip Bob, and the chat says so.
+    // 1.5.34 House style: what the call left out comes from the defaults set in Settings, House style, and the chat says so.
     const house = applyHouseStyle(name, args, this.cfg.houseStyle);
     args = house.args;
     ctx.emit({ type: 'tool', name, summary: tool.summary ? tool.summary(args) : name });
@@ -3069,7 +3069,7 @@ export class Brain {
     let rented = null;
     if (job?.rent && !job.side && !job.guest) {
       const rental = this.rentals.current();
-      if (!rental) emit({ type: 'announce', text: 'No rented brain is in its slot (Equip Bob), so I\'m doing this one here.' });
+      if (!rental) emit({ type: 'announce', text: 'No rented brain is in its slot (Settings, Brains), so I\'m doing this one here.' });
       else if (!this.rentals.approved(rental, job)) {
         const r = this.offerRent(ctx, { why: 'You asked for the rented brain.' });
         emit({ type: 'announce', text: r?.blocked ? `I can't hire ${rental.name} yet: ${r.blocked}` : `Press Hire it on the card below and I'll run this on ${rental.name}.` });
@@ -3951,8 +3951,8 @@ export class Brain {
     }
     const waiting = await this.editModelWaiting();
     const fix = waiting
-      ? `${waiting} is on this replicant matrix but isn't assigned to "Picture edits": Get models, Equip Bob, the Picture editor slot (one click).`
-      : 'No picture-edit model is on this replicant matrix yet: Get models, Pictures & video, a picture-edit model (Qwen Image Edit), then Equip Bob, the Picture editor slot.';
+      ? `${waiting} is on this replicant matrix but isn't assigned to "Picture edits": Settings, Brains, the Picture editor job (one click).`
+      : 'No picture-edit model is on this replicant matrix yet: Get models, Pictures & video, a picture-edit model (Qwen Image Edit), then Settings, Brains, the Picture editor job.';
     return `Didn't paint anything. Editing ${what} and keeping it looking the same needs a picture-edit model. ${fix} Tell the user that plainly. Offer the alternative too: rework the picture from itself (make_image with mode start_from), where the look can drift.`;
   }
 

@@ -119,7 +119,7 @@ export function createTeachPage({ api }) {
     if ('tchremovego' in d) { try { await api('/api/lab/teach/trainer/remove', {}); confirmRemove = false; await load(); } catch (e) { msg = e.message; } return 'draw'; }
     if ('tchtrainer' in d) { try { await api('/api/lab/teach/trainer', {}); } catch (e) { msg = e.message; } return 'load'; }
     if ('tchrented' in d) { try { done = (await api('/api/lab/teach/rented', out())).line; } catch (e) { msg = e.message; } return 'draw'; }
-    if (d.tchuse) { try { await api('/api/lab/teach/use', { id: d.tchuse }); done = 'It\'s in Bob now: Equip Bob lists it, and you pick it when you want it.'; await load(); } catch (e) { msg = e.message; } return 'draw'; }
+    if (d.tchuse) { try { await api('/api/lab/teach/use', { id: d.tchuse }); done = 'It\'s in Bob now: the Brains page lists it, and you pick it when you want it.'; await load(); } catch (e) { msg = e.message; } return 'draw'; }
     if ('tchmistakes' in d) { // Nov 11: Teach it from my mistakes
       mMsg = '';
       try { const r = await api('/api/lab/mistakes', { teacher: mTeacher, unload: mUnload }); mUnload = Boolean(r.needUnload); mMsg = r.needUnload ? `${r.names.join(', ')} is on the card. Press Write the lessons again to unload it and start.` : 'Writing them now: Lab jobs shows how far it is. Then pick "From my mistakes" above.'; } catch (e) { mMsg = e.message; }

@@ -132,7 +132,7 @@ export function greeting(p, user = 'there') {
   return text.trim();
 }
 
-// ---- The Attributes panel on Equip Bob: his look, what he makes of it, the dials, and how he'd say hello. ----
+// ---- The Personality panel (Settings, Personality; 1.5.210, it was on the paper doll): his look, what he makes of it, the dials, and how he'd say hello. ----
 
 // Bob's first impression of a look, in his own words. (In chat he gives his real opinion; this is the quick take.)
 const TAKES = {

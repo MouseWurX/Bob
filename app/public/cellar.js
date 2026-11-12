@@ -4,7 +4,7 @@ import { brainEngineName } from './engine-name.js';
 import { progressHtml, animateWorkers } from './progress.js';
 import { createStylePage } from './style-page.js';
 import { createSampler, sampleButton, sampleHint } from './voice-samples.js';
-import { equipHtml, allSlots, HELPERS, equipped, entryOf, packFor, starterTicks, starterPlan, enginesFor, readyPlan, slotValue, slotTakes, isActive, tipHtml, readyList, readyDefaults, readyToggle, readyOrder, CHEST_SHOW, SPLITS, splitPicks } from './equip.js';
+import { allSlots, HELPERS, equipped, entryOf, packFor, starterTicks, starterPlan, enginesFor, readyPlan, slotValue, slotTakes, isActive, tipHtml, readyList, readyDefaults, readyToggle, readyOrder, SPLITS, splitPicks } from './equip.js';
 import { brainsHtml, setupPlan, canCalibrate, brainsInUse, listTopHtml, listRowHtml, listSetUpHtml } from './brains.js';
 import { hasExperts } from './place.js';
 import { suit as fitSuit, picksOf, unsuited, jobNames, SLOT_NAMES, canDo, packsFor } from './fit.js';
@@ -29,6 +29,8 @@ import { gamesSettingsHtml, mountGamesSettings } from './games.js';
 import { shareBrainsHtml, mountShareBrains } from './share-brains.js';
 import { findTheme, DEFAULT_THEME } from './themes.js';
 import { tip, noteOrTip, stripTags, keep } from './tips.js';
+import { HOUSE, houseStyleHtml } from './house-style.js';
+import { sortOf, SORT_KEY } from './fit-sort.js';
 import { attributesHtml, cleanPersonality, greeting, PRESETS, DEFAULTS, isDefault } from './personality.js';
 import { esc, gb } from './util.js';
 import { wantsHtml, wantPatch, wantSaved } from './wants.js';
@@ -79,7 +81,7 @@ export function createCellar({ popOut = null } = {}) {
     const cardName = (rent.cards || []).find((c) => c.id === p.card)?.name || `${p.card} GB card`;
     say(p.cards > 1 ? (s.kind === 'machine' ? `${p.name} needs ${p.cards} × ${cardName} on one machine. Set Cards on the machine to ${p.cards}: Bob shows what that costs first.` : `${p.name} needs ${p.cards} cards on one machine, so it wants a machine-by-the-minute service, not serverless.`) : `Card size set to ${cardName}.`);
   }
-  let data = null, hw = null, settings = null, roles = null, cloud = [], caps = {}, bctx = { on: false, brains: [] }, tab = 'roles', job = null, mode = 'shop', voices = [];
+  let data = null, hw = null, settings = null, roles = null, cloud = [], caps = {}, bctx = { on: false, brains: [] }, tab = 'catalogue', job = null, mode = 'shop', voices = [];
   const sampler = createSampler();
   const live = new Map(); // downloads running now (one or two), by id
   const stylePage = createStylePage({
@@ -105,6 +107,8 @@ export function createCellar({ popOut = null } = {}) {
   const shownModels = () => visibleModels(data?.models || [], naughtyOn());
   // 1.5.133: three sides, Well behaved / Community / Naughty list (catView), remembered in this browser.
   let catView = (() => { try { const v = localStorage.getItem('bob-cat-view'); return VIEWS.includes(v) ? v : 'well'; } catch { return 'well'; } })();
+  // 1.5.210 the catalogue's Sort: my pick first, or best fit first (fit-sort.js), remembered in this browser.
+  let catSort = (() => { try { return sortOf(localStorage.getItem(SORT_KEY)); } catch { return 'pick'; } })();
   const setCatView = (v) => { catView = VIEWS.includes(v) ? v : 'well'; try { localStorage.setItem('bob-cat-view', catView); } catch {} };
   // 1.5.135: ➕ Your own brains: the Add form in progress (a picked .gguf, its name, an optional picture reader).
   let ownForm = null;
@@ -241,7 +245,8 @@ export function createCellar({ popOut = null } = {}) {
   const SUB_LABEL = { chat: 'Planning and talking (his everyday brain)', voice: 'Hearing you', speech: 'Talking (Bob\'s voice)', images: 'Pictures', video: 'Video' };
   const groupOf = (id) => GROUPS.find((g) => g.parts.includes(id));
   let jumpTo = '';
-  function setTab(id) { const g = groupOf(id); tab = g ? g.id : id; jumpTo = g ? id : ''; }
+  // 1.5.210: the paper doll is gone. Its old page id ('roles') lands on Settings, Brains, the one place brains are picked.
+  function setTab(id) { if (id === 'roles') { tab = 'settings'; jumpTo = 'adv-brains'; return; } const g = groupOf(id); tab = g ? g.id : id; jumpTo = g ? id : ''; }
   // A category's models: Bob's picks first, then what fits, then the rest. Downloads that don't suit this PC
   // wait behind "Show models that don't suit this PC".
   function modelList(id) {
@@ -286,16 +291,16 @@ export function createCellar({ popOut = null } = {}) {
     if (groupOf(tab)) setTab(tab);
     const cats = [], seen = new Set();
     for (const c of data.categories) { const g = groupOf(c.id); const item = g || c; if (!seen.has(item.id)) { seen.add(item.id); cats.push(item); } }
-    const tabs = [{ id: 'roles', label: 'Equip Bob', icon: '🧰' }, { id: 'catalogue', label: 'Brain catalogue', icon: '📚' }, ...cats, { id: 'found', label: 'On this replicant matrix', icon: '🔎' }, { id: 'style', label: 'Style', icon: '🎨' }, { id: 'settings', label: 'Settings', icon: '⚙' }];
+    const tabs = [{ id: 'catalogue', label: 'Brain catalogue', icon: '📚' }, ...cats, { id: 'found', label: 'On this replicant matrix', icon: '🔎' }, { id: 'roles', label: 'Brains', icon: '🧠' }, { id: 'style', label: 'Style', icon: '🎨' }, { id: 'settings', label: 'Settings', icon: '⚙' }];
     // 1.5.117: two labelled rows, so Settings and Style don't read as the last two "Get models" pages.
     const tabBtn = (c) => `<button role="tab" aria-selected="${c.id === tab}" data-tab="${c.id}">${c.icon} ${esc(c.label)}</button>`;
-    const setup = new Set(['style', 'settings']);
+    const setup = new Set(['roles', 'style', 'settings']); // 1.5.210 Brains opens Settings, Brains
     const bar = `<nav class="tabs cellar-tabs" role="tablist" aria-label="Get models, Style and Settings pages"><span class="tabs-row"><span class="tabs-label" aria-hidden="true">Get models:</span>${tabs.filter((c) => !setup.has(c.id)).map(tabBtn).join('')}</span><span class="tabs-row"><span class="tabs-label" aria-hidden="true">Set up:</span>${tabs.filter((c) => setup.has(c.id)).map(tabBtn).join('')}</span></nav>`;
     let body = '';
     if (tab === 'settings') body = settingsHtml();
     else if (tab === 'style') body = stylePage.html(settings);
-    else if (tab === 'roles') body = eqView === 'list' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${rolesHtml()}` : !roles ? '<p class="muted">Loading...</p>' : eqView === 'doll' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${equipHtml(eqCtx())}` : brainsHtml(brainsCtx()); // 1.5.205 the Brains page comes first
-    else if (tab === 'catalogue') body = roles ? catalogueHtml({ ...eqCtx(), models: data?.models || [], removed: data?.removed || [], bobNet: data?.bobNet || [], naughtyOn: naughtyOn(), catView, ownForm, addPage, action: catAction, focus: catFocus }) : '<p class="muted">Loading...</p>'; // 1.5.56; 1.5.132 the catalogue gets every entry and sorts the naughty ones itself
+    // 1.5.210 'roles' (the old Equip Bob page) never stays the tab: setTab sends it to Settings, Brains.
+    else if (tab === 'catalogue') body = roles ? catalogueHtml({ ...eqCtx(), models: data?.models || [], removed: data?.removed || [], bobNet: data?.bobNet || [], naughtyOn: naughtyOn(), catView, catSort, ownForm, addPage, action: catAction, focus: catFocus }) : '<p class="muted">Loading...</p>'; // 1.5.56; 1.5.132 the catalogue gets every entry and sorts the naughty ones itself
     else if (tab === 'found') body = `<p class="muted">Scanned ${data.scannedAt ? new Date(data.scannedAt).toLocaleString() : 'never'}. <button data-scan>Look again</button></p>${extrasHtml() || '<p>Nothing extra found.</p>'}`;
     else if (GROUPS.some((g) => g.id === tab)) body = groupHtml(GROUPS.find((g) => g.id === tab));
     else {
@@ -306,7 +311,7 @@ export function createCellar({ popOut = null } = {}) {
   }
 
   // 1.5.207 Settings, Brains opens on the Brains page (the owner's ask): each brain, its jobs, Set up and Calibrate.
-  // The plain list of menus is one link away, as on Equip Bob.
+  // The plain list of menus is one link away.
   const brainsCtx = (more = {}) => ({ ...eqCtx(), bobNet: data?.bobNet || [], setupAsk, setUp: setUpBrain, place: placeData, honesty, calAsk, labScores, ...more });
   function brainsPanelHtml() {
     if (eqView === 'list') return `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${rolesHtml()}`;
@@ -353,7 +358,7 @@ export function createCellar({ popOut = null } = {}) {
       <h3>Thinking (writes, plans, codes, writes prompts)</h3><table class="roles">${thinkers.map(row).join('')}</table>
       <h3>Making (does the actual work)</h3><table class="roles">${makers.map(row).join('')}</table>
       ${fold('Session brains', [['small', 'Quick'], ['gaming', 'Gaming'], ['deep', 'Deep thinking'], ['coding', 'Coding'], ['office', 'Office']].map(([k, l]) => `${l}: ${settings.sessionBrains?.[k] ? (entryOf(data.models, settings.sessionBrains[k])?.name || settings.sessionBrains[k]) : 'Bob\'s pick'}`).join(', '), `<p class="muted">Pick a session from the menu next to Bob's name. Each one keeps a set of brains that fit in your graphics card together, so there are no swaps. Art runs the small brain on the processor so the painter keeps the card.</p>
-      <table class="roles">${[['small', 'Quick brain', 'The Art session', 'small'], ['gaming', 'Gaming', 'Chats on the processor while you play (Qwen3 4B Instruct 2507)', 'gaming'], ['deep', 'Deep thinking', 'Medium, High and Extreme effort', 'deep'], ['coding', 'Coding session', 'The brain used when the session is Coding. The Coding slot on the paper doll is the copy Bob hands code jobs to in any session.', 'tinker'], ['office', 'Office', 'Does everything in an Office session', 'office']].map(([k, label, what, job]) => {
+      <table class="roles">${[['small', 'Quick brain', 'The Art session', 'small'], ['gaming', 'Gaming', 'Chats on the processor while you play (Qwen3 4B Instruct 2507)', 'gaming'], ['deep', 'Deep thinking', 'Medium, High and Extreme effort', 'deep'], ['coding', 'Coding session', 'The brain used when the session is Coding. The Coding job on the Brains page is the copy Bob hands code jobs to in any session.', 'tinker'], ['office', 'Office', 'Does everything in an Office session', 'office']].map(([k, label, what, job]) => {
         const cur = settings.sessionBrains?.[k] || '';
         const list = listFor('llm', job, cur);
         return `<tr><th scope="row">${esc(label)} ${tipHtml(what, `About ${label}`)}</th><td><select data-sbrain="${k}" aria-label="${esc(label)}">${list.some((o) => o.value === cur) || !cur ? '' : `<option value="${esc(cur)}" selected>${esc(entryOf(data.models, cur)?.name || cur)} (not downloaded)</option>`}${optsHtml(list, cur)}</select>${getMore(job)}</td></tr>`;
@@ -627,7 +632,7 @@ export function createCellar({ popOut = null } = {}) {
   let view = (() => { try { return startView(localStorage.getItem(VIEW_KEY), localStorage.getItem('bob-settings-advanced')); } catch { return 'simple'; } })();
   let curTopic = (() => { try { return topicFor(localStorage.getItem('bob-settings-topic') || '') || 'ev-bob'; } catch { return 'ev-bob'; } })(); // Advanced: the section showing
   let curCard = ''; // Simple: '' is the cards, else the card that's open
-  let lastTab = 'roles'; // the page to stay on when Settings opens in its own window
+  let lastTab = 'catalogue'; // the page to stay on when Settings opens in its own window
   let settingsQuery = '';
   function voiceNow() {
     const t = settings.tts || {};
@@ -1044,7 +1049,7 @@ export function createCellar({ popOut = null } = {}) {
     const pickSel = picks.length ? `<label class="pick"><strong>Pick a brain from Bob's list</strong><select data-rentadd="pick" aria-label="Pick a brain from Bob's list"><option value="">None: I'll type the model's name</option>${bigs.length ? `<optgroup label="Really big brains">${bigs.map(pickOpt).join('')}</optgroup>` : ''}${tooBig.length ? `<optgroup label="Too big for your Bobs">${tooBig.map(pickOpt).join('')}</optgroup>` : ''}</select></label>` : '';
     const svcOpts = (r.services || []).map((s) => `<option value="${esc(s.id)}" ${s.enabled ? '' : 'disabled'}>${esc(s.name)}${s.enabled ? '' : ' (switch it on first)'}</option>`).join('');
     return `<div class="rent-block"><strong>Rented brains</strong> <span class="tag">off unless you turn one on</span>
-      ${more('Hire a big brain for a big job, from any service you have an account with. A rental is a service plus a model (for example Qwen 3.6 35B on OpenRouter, or a full-size 24Bob on a RunPod card). Put one in the Rented brain slot on Equip Bob, then use it from the 🏗 Rented brain switch under the chat, or when Bob offers it for a job too big for this replicant matrix. You press a card before anything is spent, and it says the cost and exactly what leaves this replicant matrix: the chat of that job, the files you attach to it, Bob\'s instructions and what he remembers about you. Keys are environment variables Bob only reads (on Mac and Linux they can also go in ~/.config/bob/env); he never stores or shows one. Bob\'s figures are estimates from the service\'s price list; the service\'s own billing page is the real bill.')}
+      ${more('Hire a big brain for a big job, from any service you have an account with. A rental is a service plus a model (for example Qwen 3.6 35B on OpenRouter, or a full-size 24Bob on a RunPod card). Put one in the Rented brain job in Settings, Brains, then use it from the 🏗 Rented brain switch under the chat, or when Bob offers it for a job too big for this replicant matrix. You press a card before anything is spent, and it says the cost and exactly what leaves this replicant matrix: the chat of that job, the files you attach to it, Bob\'s instructions and what he remembers about you. Keys are environment variables Bob only reads (on Mac and Linux they can also go in ~/.config/bob/env); he never stores or shows one. Bob\'s figures are estimates from the service\'s price list; the service\'s own billing page is the real bill.')}
       <h4 class="ssub">Spending limits</h4>
       <p class="muted">Every limit starts at 0. Nothing can be hired until you set the ones a rental needs.</p>
       <label class="pick"><strong>The most Bob may spend on rented brains this month</strong> $<input data-rentcap="month" inputmode="decimal" value="${esc(String(caps.month ?? 0))}" aria-label="Month cap in dollars" style="width:6em"> <span class="muted">Spent this month: ${esc(r.spentText || '$0.00')}. Resets on the 1st.</span></label>
@@ -1171,7 +1176,10 @@ export function createCellar({ popOut = null } = {}) {
       ${sswitch('quickSeesJob', settings.quickSeesJob === true, 'Let Bob\'s Quick brain see the big job', keep('Off unless you turn it on. When Bob chats beside a long job, his Quick brain knows what the big brain is on: the job, how long it has run and its last step. Ask, and it shows you the steps so far, or passes the big brain a note from you, which it reads at its next step. Stopping a job is still your Stop button. Works while Keep chatting while Bob is busy is on.'))}
       ${hw?.gpu?.integrated ? holdbackHtml() : ''}
       ${sswitch('allTools', settings.allTools, 'Give Bob all his tools at once', 'Sends every tool with each message, which leaves less room for the chat. Leave off to keep chats light.')}`],
-    ['house', '🖋 House style', 'house style defaults default length mood genre music picture style shape clip video sound effects morning time evening night times of day', () => `<p class="muted">Your defaults for music, pictures, clips, sound effects and times of day live on Equip Bob, next to each slot.</p><button type="button" data-gohouse>Open House style on Equip Bob</button>`],
+    // 1.5.210 House style lives here now (it sat beside the slots on the old paper doll): every group, times of day too.
+    ['house', '🖋 House style', 'house style defaults default length mood genre music picture style shape clip video sound effects morning time evening night times of day', () => `<p class="muted">Your defaults for music, pictures, clips, sound effects and times of day. Empty boxes mean Bob picks. He says when he used one, with a Change link back here.</p>${Object.keys(HOUSE).map((g) => houseStyleHtml(g, settings.houseStyle)).join('')}`],
+    // 1.5.210 Bob's personality (the dials, presets and how he'd greet you) moved here from the old paper doll.
+    ['personality', '🎚 Personality', 'personality attributes dials preset greeting warm funny formal chatty look comments call me name what he makes of his look', () => attributesHtml({ personality: settings.personality, look: settings.look, lookText: settings.lookText, lookComments: settings.lookComments, user: settings.userName, callMe: settings.callMe, windowsName: settings.windowsName })],
     ['presets', '🎭 Assistant presets', 'assistant presets preset per chat instructions system prompt persona character role brain effort temperature tools talking only', () => '<div class="presets-box"></div>'],
     ['voice', '🔊 Voice details', 'kokoro chatterbox speed hey bob read aloud listen talk over interrupt stop barge in read documents aloud a voice per bob voices bob-net', () => voiceDetailsHtml()],
     ['look', '🌓 Look & feel', 'theme editor now running layout', () => lookExtrasHtml()],
@@ -1323,8 +1331,8 @@ export function createCellar({ popOut = null } = {}) {
       ${short ? `<p class="error">Not enough free disk: free up ${short} GB, or untick something, then press Try again.</p>` : ''}
       ${job ? progress() : ''}
       <div class="row">${moving ? '<button data-readypause>Pause</button><button data-readystop>Stop</button>' : paused ? '<button class="get" data-readyresume>Resume</button><button data-readystop>Stop</button>' : short ? '<button class="get" data-readyrecheck>Try again</button>' : order.ids.length ? `<button class="get" data-getready>Get Bob ready (about ${gb(order.sizeGB)})</button>` : ''}</div>
-      <p class="muted">You can change any of this later in Get models (left menu). If you skip something and ask me for it, I'll offer to set it up right there in the chat.</p></section>
-      ${wantsHtml(settings || {}, esc)}
+      <p class="muted">You can change any of this later in Settings, Brains. If you skip something and ask me for it, I'll offer to set it up right there in the chat.</p></section>
+      ${wantsHtml(settings || {}, esc, { full: jumpTo === 'wants' })}
       <div class="row welcome-end"><button data-skip>${order.ids.length && !moving ? 'Skip the downloads for now' : 'Done'}</button></div>
     </div>`;
   }
@@ -1340,13 +1348,12 @@ export function createCellar({ popOut = null } = {}) {
     if (divert() && !dlg.open) return;
     if (!data) { $('cellar-body').innerHTML = '<p class="muted">Loading...</p>'; return; }
     $('cellar-body').innerHTML = mode === 'welcome' ? welcomeHtml() : shopHtml();
-    if (mode === 'welcome') dlg.querySelector('[data-getready]')?.focus(); // 1.5.75: the first button is Get Bob ready
+    // 1.5.75: the first button is Get Bob ready. 1.5.210: focused without scrolling, so the Welcome opens at the top
+    // (its name box and Get me ready), not half way down the page.
+    if (mode === 'welcome') { dlg.querySelector('[data-getready]')?.focus({ preventScroll: true }); if (jumpTo !== 'wants') dlg.scrollTop = 0; }
     stylePage.paintPreviews(dlg, settings);
-    const doll = dlg.querySelector('.doll-bob');
-    if (doll) { const c = doll.getContext('2d'); c.imageSmoothingEnabled = false; try { drawBob(c, 160, {}, settings?.look); } catch {} }
     const mini = dlg.querySelector('.attr-avatar');
     if (mini) { const c = mini.getContext('2d'); c.imageSmoothingEnabled = false; try { drawBob(c, 64, {}, settings?.look); } catch {} }
-    dlg.classList.toggle('wide', mode === 'shop' && tab === 'roles' && eqView !== 'list');
     mountHandsSettings(dlg.querySelector('.hands-box')); // loads its own data; does nothing off the Settings tab
     mountQuarantineSettings(dlg.querySelector('.q-box'));
     mountSecrets(dlg.querySelector('.secrets-box')); // This replicant matrix: 🔐 Locked secrets
@@ -1370,7 +1377,7 @@ export function createCellar({ popOut = null } = {}) {
     $('cellar-title').textContent = page;
     dlg.dataset.page = page; // the Settings window shows no page tabs while it's on Settings
     for (const [id, on] of [['cellarBtn', page === 'Get models'], ['settingsBtn', page === 'Settings'], ['styleBtn', page === 'Style'], ['chatBtn', false]]) $(id)?.classList.toggle('on', on);
-    // The page tabs stay pinned under the title, so Settings, Style and every model page are one click away even after scrolling down to the paper doll.
+    // The page tabs stay pinned under the title, so Settings, Style and every model page are one click away even after scrolling down.
     const head = dlg.querySelector('.cellar-head'); if (head) dlg.style.setProperty('--cellar-head-h', head.offsetHeight + 'px');
     const bar = dlg.querySelector('.cellar-tabs'); dlg.style.setProperty('--cellar-tabs-h', (bar ? bar.offsetHeight : 0) + 'px');
     if (mode === 'shop' && tab === 'settings') applyView();
@@ -1409,20 +1416,13 @@ export function createCellar({ popOut = null } = {}) {
     draw();
   }
 
-  // ---- Equip Bob ----
+  // ---- Brains and the catalogue ----
   let catFocus = ''; // 1.5.56: which job the Brain catalogue opened at
   // 1.5.101: which model families are open in the Brain catalogue (job:family -> true). All start closed.
   const FAM_KEY = 'bob-cat-families';
   let famOpen = (() => { try { const v = JSON.parse(localStorage.getItem(FAM_KEY)); return v && typeof v === 'object' ? v : {}; } catch { return {}; } })();
   const saveFam = () => { try { localStorage.setItem(FAM_KEY, JSON.stringify(famOpen)); } catch {} };
   let houseFocus = null; // 1.5.34: "Change" on a "Used your house style" line opens that House style box
-  // 1.5.125 The chest on Equip Bob: the newest things Bob made (the Made by Bob list), loaded when the chest is opened.
-  let chestState = { items: [], loaded: false, error: '' };
-  async function loadChest() {
-    try { chestState = { items: await api(`/api/made?limit=${CHEST_SHOW}`), loaded: true, error: '' }; }
-    catch (e) { chestState = { items: [], loaded: true, error: `I couldn't open the chest: ${e.message}` }; }
-    if (eqSelected === 'chest') { const y = dlg.scrollTop; draw(); dlg.scrollTop = y; }
-  }
   // 1.5.125 Bob's home folder: sizes and warnings come from /api/home when the panel is opened.
   let homeInfo = null, homeAsk = null; // homeAsk: a folder waiting for "Yes, move everything"
   async function loadHome() {
@@ -1443,7 +1443,7 @@ export function createCellar({ popOut = null } = {}) {
       await placeLoad();
       const on = placeData?.job?.state === 'running';
       if (!on) { clearInterval(calTimer); calTimer = null; }
-      if (dlg.open !== false && mode === 'shop' && ((tab === 'roles' && eqView !== 'doll') || tab === 'settings') && !dlg.querySelector('select:focus, input:focus, textarea:focus')) draw();
+      if (dlg.open !== false && mode === 'shop' && tab === 'settings' && !dlg.querySelector('select:focus, input:focus, textarea:focus')) draw();
     }, 2500);
   };
   const calStart = async (unload) => {
@@ -1458,13 +1458,12 @@ export function createCellar({ popOut = null } = {}) {
     await placeLoad(); calWatch();
   };
   let setupAsk = ''; // 1.5.205 the Brains page: the setup whose list of changes is showing
-  let eqSelected = 'bob', eqView = (() => { try { return localStorage.getItem('bob-brains-view') || 'brains'; } catch { return 'brains'; } })();
+  let eqSelected = 'bob', eqView = (() => { try { return localStorage.getItem('bob-brains-view') === 'list' ? 'list' : 'brains'; } catch { return 'brains'; } })(); // 1.5.210 a remembered paper doll view lands on the Brains page
   function eqCtx() {
     return { roles, models: shownModels(), brains: settings?.sessionBrains || {}, embed: roles?.current?.embed || '', selected: eqSelected, vramGB: hw?.vramGB || hw?.gpu?.vramGB || null, unified: Boolean(hw?.gpu?.unified), integrated: Boolean(hw?.gpu?.integrated), arm: hw?.board === 'arm', ramGB: hw?.ramGB || null, freeGB: hw?.freeGB ?? null, platform: settings?.platform, showUnsuited,
       famOpen, packs: data?.packs || [], packId: starterPack, picks: starterPicks, engines: data?.engines || [], starterOpen,
-      houseStyle: settings?.houseStyle || {}, active: settings?.activeModels || {}, chest: chestState, saveDir: settings?.saveDir || {}, // 1.5.125 the chest
-      rent, // 1.5.127 the Rented brain slot
-      attributes: settings ? attributesHtml({ personality: settings.personality, look: settings.look, lookText: settings.lookText, lookComments: settings.lookComments, user: settings.userName, callMe: settings.callMe, windowsName: settings.windowsName }) : '' };
+      houseStyle: settings?.houseStyle || {}, active: settings?.activeModels || {}, saveDir: settings?.saveDir || {},
+      rent }; // 1.5.127 the Rented brain slot
   }
   // Starter set: which set, what's ticked (null = the defaults), and what still has to be equipped once it's downloaded.
   let starterPack = null, starterPicks = null, starterOpen = null;
@@ -1571,6 +1570,7 @@ export function createCellar({ popOut = null } = {}) {
       if ('lookcomments' in b.dataset) { const on = b.getAttribute('aria-checked') !== 'true'; const r = await api('/api/settings', { lookComments: on }); settings.lookComments = r.lookComments; b.setAttribute('aria-checked', String(r.lookComments)); b.querySelector('.st').textContent = r.lookComments ? 'On' : 'Off'; return; }
       if ('unsuited' in b.dataset) { setShowUnsuited(!showUnsuited); draw(); return; }
       // 1.5.132: the catalogue's Well behaved / Naughty list toggle, and "Show the naughty list" (the same setting as in Settings).
+      if (b.dataset.catsort) { catSort = sortOf(b.dataset.catsort); try { localStorage.setItem(SORT_KEY, catSort); } catch {} const y = dlg.scrollTop; draw(); dlg.scrollTop = y; return; }
       if (b.dataset.catview) { if (b.dataset.catview === 'naughty' && !naughtyOn()) return; setCatView(b.dataset.catview); draw(); return; }
       // 1.5.135: ➕ Your own brains. Pick the file (a window on this replicant matrix), name it, add it; or take one off the list.
       if ('ownadd' in b.dataset) { b.disabled = true; const r = await ownPick('gguf'); if (!r) return; if (!r.file) { b.disabled = false; return; } ownForm = r.error ? { file: r.file, name: '', error: r.error } : { file: r.file, name: r.name, params: r.params, sizeGB: r.sizeGB, mmproj: r.mmproj || '', card: r.card || null }; draw(); dlg.querySelector('[data-ownname]')?.focus(); return; }
@@ -1609,7 +1609,7 @@ export function createCellar({ popOut = null } = {}) {
         if (r.needsEngine) askEngine(b.closest('td') || b.parentElement); else draw();
         return;
       }
-      if ('gohouse' in b.dataset) { eqView = 'doll'; eqSelected = 'music'; houseFocus = 'music'; setTab('roles'); draw(); await load().catch(() => {}); return; }
+      if ('gohouse' in b.dataset) { houseFocus = b.dataset.gohouse || 'music'; if (popOut && popOut('adv-house')) return; setTab('settings'); jumpTo = 'adv-house'; draw(); return; } // 1.5.210 House style is in Settings
       // 1.5.41 Where Bob saves things.
       if ('savebrowse' in b.dataset) { const r = await api('/api/pick-folder', { purpose: 'save' }); const box = dlg.querySelector('#save-path'); if (r.folder && box) { box.value = r.folder; saveDirState(); await saveDirTo(r.folder); } else if (r.error) { const eb = dlg.querySelector('.save-error'); if (eb) { eb.textContent = r.error; eb.hidden = false; } } return; }
       if ('savedir' in b.dataset) { const v = dlg.querySelector('#save-path')?.value.trim(); if (v) await saveDirTo(v); return; }
@@ -1763,10 +1763,6 @@ export function createCellar({ popOut = null } = {}) {
         setupAsk = ''; await eqReload(); draw(); return;
       }
       if (b.dataset.slotpick) { eqSelected = b.dataset.slotpick; draw(); dlg.querySelector('.kit-panel')?.scrollIntoView({ block: 'nearest' }); return; }
-      // 1.5.125 the chest
-      if ('chest' in b.dataset) { eqSelected = 'chest'; chestState = { ...chestState, loaded: false }; draw(); dlg.querySelector('.kit-panel')?.scrollIntoView({ block: 'nearest' }); loadChest(); return; }
-      if ('chestreload' in b.dataset) { chestState = { ...chestState, loaded: false }; draw(); loadChest(); return; }
-      if ('chestall' in b.dataset) { $('madeBtn')?.click(); return; }
       // 1.5.127 rented brains
       if ('rentuse' in b.dataset) { rent = await api('/api/rent/settings', { current: b.dataset.rentuse }); window.dispatchEvent(new CustomEvent('bob-rent-slot', { detail: { rental: (rent.rentals || []).find((x) => x.id === rent.current)?.name || '' } })); draw(); return; }
       if ('rentsettings' in b.dataset) { rentPickOpen = Boolean(b.closest('.too-big-note')); sampler.stop(); setTab('settings'); jumpTo = 'adv-online'; draw(); return; }
@@ -1957,34 +1953,6 @@ export function createCellar({ popOut = null } = {}) {
     } catch (err) { alertIn(b, err.message); }
   });
 
-  // Drag a model from the kit onto a slot. Only slots that can do that job light up and take it.
-  let dragKit = null;
-  const takes = (sl) => dragKit && sl.dataset.kind === dragKit.kind && slotTakes(allSlots().find((x) => x.id === sl.dataset.slot), dragKit.value, eqCtx());
-  dlg.addEventListener('dragstart', (e) => {
-    const li = e.target.closest?.('li.kit[draggable]');
-    if (!li) return;
-    dragKit = { value: li.dataset.equip, kind: li.dataset.kind };
-    e.dataTransfer.effectAllowed = 'copy';
-    try { e.dataTransfer.setData('text/plain', dragKit.value); } catch {}
-    for (const sl of dlg.querySelectorAll('.slot')) sl.classList.toggle('can-drop', takes(sl));
-  });
-  dlg.addEventListener('dragend', () => { dragKit = null; for (const sl of dlg.querySelectorAll('.slot')) sl.classList.remove('can-drop', 'drop-here'); });
-  dlg.addEventListener('dragover', (e) => {
-    const sl = e.target.closest?.('.slot');
-    if (!sl || !takes(sl)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-    sl.classList.add('drop-here');
-  });
-  dlg.addEventListener('dragleave', (e) => { e.target.closest?.('.slot')?.classList.remove('drop-here'); });
-  dlg.addEventListener('drop', async (e) => {
-    const sl = e.target.closest?.('.slot');
-    if (!sl || !takes(sl)) return;
-    e.preventDefault();
-    const kit = dragKit; dragKit = null;
-    try { await equip(sl.dataset.slot, kit.value); } catch (err) { alertIn(sl, err.message); }
-  });
-
   // The dials: the greeting updates as you slide; the setting saves when you let go.
   const dialValues = () => cleanPersonality(Object.fromEntries([...dlg.querySelectorAll('[data-dial]')].map((x) => [x.dataset.dial, Number(x.value)])));
   function showDials(p) {
@@ -2046,7 +2014,7 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.jobbrain && el.value) { const y = dlg.scrollTop; await equip(el.dataset.jobbrain, el.value, { offer: false }); dlg.scrollTop = y; return; }
       if (el.dataset.proxy) { const side = $(el.dataset.proxy); if (side && (side.getAttribute('aria-pressed') === 'true') !== el.checked) side.click(); setTimeout(() => { el.checked = side?.getAttribute('aria-pressed') === 'true'; }, 300); return; }
       if (el.dataset.mainproject !== undefined) { await saveProjects(settings.projectList || [], el.dataset.mainproject); return; }
-      if (el.dataset.hs) { // 1.5.34 House style boxes (Equip Bob): the whole group is saved, so an emptied box clears
+      if (el.dataset.hs) { // 1.5.34 House style boxes (Settings, House style): the whole group is saved, so an emptied box clears
         const group = el.dataset.hs.split('.')[0];
         const vals = {};
         for (const i of dlg.querySelectorAll(`[data-hs^="${group}."]`)) { const k = i.dataset.hs.split('.')[1]; if (i.value !== '') vals[k] = i.type === 'number' ? Number(i.value) : i.value; }
@@ -2274,7 +2242,7 @@ export function createCellar({ popOut = null } = {}) {
   dlg.addEventListener('close', () => { mid?.classList.remove('paged'); for (const id of ['cellarBtn', 'settingsBtn', 'styleBtn']) $(id)?.classList.remove('on'); $('chatBtn')?.classList.add('on'); sampler.stop(); stylePage.closing(settings); window.dispatchEvent(new Event('bob-caps')); });
 
   return {
-    async open(which = 'shop', pickTab, opts = {}) { mode = which; if (opts.house) { const slot = { music: 'music', pictures: 'image', video: 'video', sfx: 'sfx' }[opts.house]; if (slot) eqSelected = slot; eqView = 'doll'; houseFocus = opts.house; } if (pickTab) setTab(pickTab); else if (which === 'settings') { mode = 'shop'; setTab('settings'); } if (opts.jump && /^(adv|ev)-[\w-]+$/.test(opts.jump)) { mode = 'shop'; setTab('settings'); jumpTo = opts.jump; } /* 1.5.141: open Settings at one advanced section (the Bob-Net heading in Now running) */ if (which === 'welcome' && opts.jump === 'wants') jumpTo = 'wants'; /* the chat's one-time "Do you want me to" offer */ if (divert() && !dlg.open) return; if (!dlg.open) { mid?.classList.add('paged'); mid ? dlg.show() : dlg.showModal(); } dlg.scrollTop = 0; draw(); await load().catch((e) => { $('cellar-body').innerHTML = `<p class="error">${esc(e.message)}</p>`; }); },
+    async open(which = 'shop', pickTab, opts = {}) { mode = which; if (opts.house && /^[a-z]+$/.test(opts.house)) { houseFocus = opts.house; mode = 'shop'; setTab('settings'); jumpTo = 'adv-house'; } /* 1.5.210 House style is in Settings */ if (pickTab) setTab(pickTab); else if (which === 'settings') { mode = 'shop'; setTab('settings'); } if (opts.jump && /^(adv|ev)-[\w-]+$/.test(opts.jump)) { mode = 'shop'; setTab('settings'); jumpTo = opts.jump; } /* 1.5.141: open Settings at one advanced section (the Bob-Net heading in Now running) */ if (which === 'welcome' && opts.jump === 'wants') jumpTo = 'wants'; /* the chat's one-time "Do you want me to" offer */ if (divert() && !dlg.open) return; if (!dlg.open) { mid?.classList.add('paged'); mid ? dlg.show() : dlg.showModal(); } dlg.scrollTop = 0; draw(); await load().catch((e) => { $('cellar-body').innerHTML = `<p class="error">${esc(e.message)}</p>`; }); },
     async firstRun() {
       try { const s = await api('/api/settings'); if (!s.setupDone) this.open('welcome'); } catch {}
     },

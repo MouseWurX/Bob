@@ -181,7 +181,7 @@ export function configuredGguf(cfg, entry) {
 }
 
 // 1.5.131: the bracket after a model Bob downloaded himself (a file in his models folder, run on his own engine), as
-// Equip Bob and the Settings menus show it. Until 1.5.130 it said "(Bob's own engine)", which read as "Bob's own brain"
+// The Brains page and the brain menus show it. Until 1.5.130 it said "(Bob's own engine)", which read as "Bob's own brain"
 // on every stock Qwen and Gemma. Only a catalogue entry marked madeByBob: true (a brain made for Bob, none shipped yet)
 // gets "Bob's own brain"; a fuzzy name match never does. Ollama's models get their Ollama name instead (roles()).
 export const MADE_BY_BOB = "Bob's own brain";
@@ -765,7 +765,7 @@ export class ModelShop {
       const m = this.catalog.models.find((x) => x.ollama === n);
       return { value: n, label: m ? `${m.name} (${n})` : n };
     });
-    // Brains not in Bob's list: ask the engine what each can do (vision, tools...), so Equip Bob only offers
+    // Brains not in Bob's list: ask the engine what each can do (vision, tools...), so the Brains page only offers
     // them for jobs they can do. Asked once per name.
     await Promise.all(llms.filter((o) => !this.catalog.models.some((x) => x.ollama === o.value)).map(async (o) => { o.caps = await this.capsOf(o.value); }));
     const ownEmbed = []; // 1.5.72: an embedding model downloaded as a file (nomic-embed-text), for Bob's own engine

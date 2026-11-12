@@ -575,35 +575,17 @@ button.danger { background: #a8432f; color: #fff; border-color: #a8432f; }
 .subsection > h3 { margin: 0 0 4px; }
 .voice-settings { margin-bottom: 10px; }
 
-/* 1.2.0 Equip Bob: the paper doll */
-.equip-top { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; }
-.doll { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: start; margin: 10px 0; }
-.doll-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.doll-mid { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 40px; position: sticky; top: 0; }
-.doll-bob { width: 160px; height: 160px; image-rendering: pixelated; background: var(--sprite-bg); border-radius: calc(var(--r) * 2); border: 1px solid var(--line); }
-.slot { position: relative; display: flex; align-items: stretch; border: 1px dashed var(--line); border-radius: var(--r); background: var(--bg); }
-.slot.on { border-style: solid; background: var(--card); box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 35%, transparent); }
-.slot.sel { outline: 2px solid var(--accent); outline-offset: 1px; }
-.slot.can-drop { border-color: var(--good); }
-.slot.drop-here { background: var(--good-bg); }
-.slot-pick { flex: 1; display: flex; gap: 8px; align-items: center; text-align: left; border: 0; background: transparent; padding: 6px 8px; min-width: 0; }
-.slot-icon { font-size: 22px; width: 28px; text-align: center; flex: none; }
-.slot-text { font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
-.slot .unequip { align-self: center; margin-right: 6px; font-size: 12px; padding: 1px 7px; background: transparent; color: var(--muted); }
-.slot .weight { color: var(--muted); font-size: 12px; }
+/* 1.2.0 Kits: the choices for one job (the Brains page). 1.5.210 the paper doll they sat beside is gone. */
 .helpers { margin: 8px 0; }
-.helper-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 6px; margin-top: 6px; }
 .kit-panel { border-top: 1px solid var(--line); padding-top: 8px; }
 .kit-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .kit { border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
-.kit[draggable="true"] { cursor: grab; }
 .kit.worn { border-color: var(--good); }
 .kit.heavy { opacity: 0.8; }
 .kit-btn { width: 100%; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; text-align: left; border: 0; background: transparent; padding: 8px 10px; }
 .kit.shop { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; padding: 8px 10px; border-style: dashed; }
 .kit.shop .confirm { flex-basis: 100%; }
 .kit-name { font-weight: 600; }
-.weight-bar { margin: 8px 0; font-size: 13px; color: var(--muted); }
 .meter.over i { background: var(--bad); }
 .confirm.also { border: 1px solid var(--accent); border-radius: var(--r); padding: 8px 10px; margin-bottom: 8px; }
 .also-row { display: block; padding: 2px 0; }
@@ -626,15 +608,9 @@ button.danger { background: #a8432f; color: #fff; border-color: #a8432f; }
 .hands-limits label.switch { margin-top: 6px; }
 .hands-limits label.switch input, .hands-free label.switch input { flex-shrink: 0; }
 .hands-free.on { border-left: 3px solid var(--warn); padding-left: 8px; }
-@media (max-width: 720px) {
-  .doll { grid-template-columns: 1fr; }
-  .doll-mid { order: -1; padding-top: 0; position: static; }
-}
 
 /* 1.3.0: Attributes on the left, Bob and his slots in the middle, inventory on the right */
 .cellar.wide { width: min(1400px, 98vw); }
-.equip-page { display: grid; grid-template-columns: 250px minmax(0, 1fr) 280px; gap: 14px; align-items: start; }
-.equip-page .kit-panel { border-top: 0; border-left: 1px solid var(--line); padding: 0 0 0 12px; position: sticky; top: 56px; max-height: 75vh; overflow: auto; }
 .kit-head { text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; }
 .attributes { border-right: 1px solid var(--line); padding-right: 12px; }
 .attributes summary { list-style: none; cursor: pointer; }
@@ -654,10 +630,8 @@ p.small, .muted.small { font-size: 12px; }
 #bob { cursor: pointer; border-radius: var(--r); }
 #bob:hover, #bob:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 1100px) {
-  .equip-page { grid-template-columns: 1fr; }
   .attributes { border-right: 0; padding-right: 0; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
   .attributes summary h3::after { content: " (tap to fold)"; text-transform: none; letter-spacing: 0; }
-  .equip-page .kit-panel { border-left: 0; padding-left: 0; position: static; max-height: none; border-top: 1px solid var(--line); padding-top: 8px; }
 }
 
 /* 1.3.1: what Bob calls you */
@@ -751,16 +725,11 @@ details.more > summary:hover { color: var(--accent); }
 @media (max-width: 640px) { .srow { grid-template-columns: 1fr; } .srow .sact { justify-content: flex-start; } }
 /* The page is narrower than the window (menu and Now running sit beside it), so Equip Bob folds by the page's own width. */
 .cellar.page #cellar-body { container-type: inline-size; }
-.cellar.page .equip-page .kit-panel { top: calc(var(--cellar-head-h, 56px) + var(--cellar-tabs-h, 0px) + 8px); }
 @container (max-width: 1100px) {
-  .equip-page { grid-template-columns: 1fr; }
   .attributes { border-right: 0; padding-right: 0; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
   .attributes summary h3::after { content: " (tap to fold)"; text-transform: none; letter-spacing: 0; }
-  .equip-page .kit-panel { border-left: 0; padding-left: 0; position: static; max-height: none; border-top: 1px solid var(--line); padding-top: 8px; }
 }
 @container (max-width: 720px) {
-  .doll { grid-template-columns: 1fr; }
-  .doll-mid { order: -1; padding-top: 0; position: static; }
   .srow { grid-template-columns: 1fr; } .srow .sact { justify-content: flex-start; }
 }
 
@@ -1143,7 +1112,7 @@ video.out-media { max-height: 240px; border-radius: calc(var(--r) * 0.75); }
 .spanel .mini { padding: 4px 12px; }
 .cellar .settings { padding-bottom: 160px; }
 
-/* 1.5.34 House style boxes (Equip Bob) and Projects (Settings) */
+/* 1.5.34 House style boxes and Projects (both in Settings) */
 .house-style { margin: 8px 0; padding: 6px 10px; border: 1px solid var(--line, #444); border-radius: 8px; }
 .house-style summary { cursor: pointer; font-weight: 600; }
 .hs-grid { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 10px; align-items: center; }
@@ -1628,12 +1597,7 @@ button.gm-sq:hover, button.gm-sq:focus-visible { background: #a9cdf0; outline: 2
 .adv-char canvas { width: 64px; height: 64px; flex: none; image-rendering: pixelated; background: var(--sprite-bg); border-radius: var(--r); }
 .adv-char .row { margin-top: 4px; }
 
-/* 1.5.125 The chest on Equip Bob: what Bob made, as little pictures with names, under Bob on the paper doll. */
-.chest-tile { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 6px 12px; border: 1px dashed var(--line); border-radius: var(--r); background: var(--bg); font-size: 13px; min-height: 32px; }
-.chest-tile:hover, .chest-tile:focus-visible { border-color: var(--accent); }
-.chest-tile.sel { outline: 2px solid var(--accent); outline-offset: 1px; border-style: solid; background: var(--card); }
-.chest-icon { font-size: 22px; line-height: 1; }
-.chest-count { background: var(--accent); color: var(--bg); border-radius: 999px; padding: 0 7px; font-size: 12px; font-weight: 600; min-width: 20px; text-align: center; }
+/* 1.5.125 Little pictures with names for what Bob made (1.5.210: the chest tile on the paper doll is gone). */
 .chest-folder { margin: 6px 0 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
 .chest-folder p { margin: 0 0 6px; }
 .chest-folder .row { gap: 6px; flex-wrap: wrap; }
@@ -2157,3 +2121,15 @@ html.readable-font code, html.readable-font pre, html.readable-font kbd { font-f
 .file-link.file-place { white-space: nowrap; }
 .vdoc .flash, .vslide.flash { outline: 2px solid var(--accent); outline-offset: 2px; }
 .vcode mark.vat { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; }
+
+/* 1.5.210 First run: the four switches that help most, then everything else folded below. */
+.want-top { margin-bottom: 8px; }
+.wants-more > summary { cursor: pointer; padding: 6px 0; font-weight: 600; }
+.wants-more[open] > summary { margin-bottom: 6px; }
+/* 1.5.210 the catalogue's Sort (my pick first / best fit first) and the Fits your card badge */
+.cat-sort { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; }
+.cat-sort button[aria-checked="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tag.fit-tag { cursor: help; }
+.house-door { margin: 6px 0; }
+/* 1.5.210 sample-data mode: a plain bar along the top so a screenshot can never pass for the real thing */
+.sample-banner { position: sticky; top: 0; z-index: 1000; padding: 6px 16px; background: var(--warn); color: var(--bg); font-weight: 600; text-align: center; }

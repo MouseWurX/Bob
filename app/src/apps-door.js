@@ -107,7 +107,7 @@ export function pickBrain(brain, id) {
   const gaming = currentSession(cfg).id === 'light';
   if (!want || want === 'bob' || /^bob[:/]/i.test(want)) {
     const c = chatBrain(cfg);
-    return c.model ? { model: c.model, cpu: Boolean(c.cpu), ctx: c.ctx || 32768, think: c.think } : { error: 'Bob has no chat brain yet. Pick one in Equip Bob.', code: 503 };
+    return c.model ? { model: c.model, cpu: Boolean(c.cpu), ctx: c.ctx || 32768, think: c.think } : { error: 'Bob has no chat brain yet. Pick one in Settings, Brains.', code: 503 };
   }
   const hit = appModels(brain).find((m) => m.id !== 'bob' && (m.id === want || sameModel(m.id, want)));
   if (!hit) return { error: `Bob has no brain called "${want.slice(0, 80)}". Ask GET /v1/models for the list, or use "bob".`, code: 404 };
@@ -236,7 +236,7 @@ export async function embedRoute(brain, res, b) {
     const rows = await brain.housekeeper.embed(input);
     return json(res, 200, { object: 'list', model, data: rows.map((embedding, index) => ({ object: 'embedding', index, embedding })), usage: { prompt_tokens: rough(input), total_tokens: rough(input) } });
   } catch (e) {
-    return json(res, 503, err(`Bob's Memory brain (${model}) isn't ready: ${String(e?.message || e).slice(0, 200)}. Get it in Equip Bob, Memory.`, 'unavailable'));
+    return json(res, 503, err(`Bob's Memory brain (${model}) isn't ready: ${String(e?.message || e).slice(0, 200)}. Get it in Settings, Brains, Memory.`, 'unavailable'));
   }
 }
 

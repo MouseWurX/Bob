@@ -97,7 +97,7 @@ Every new switch is off until you turn it on.
 | 🗂 **Sort and rename** | A Hand that renames and files a whole music, video or photo collection by rules you set. Every change goes on a card first, nothing is overwritten, and Undo puts it all back. |
 | 🎲 **Adventure grows up** | Enemies sit on the table with their hearts. Characters get stronger and keep it. A quest log and a world book, friends at the table, the odds on every card, your turn in your own words or by voice, and a storybook of the finished game. |
 | 🧪 **A simpler, busier Lab** | Its own window, tabs sorted by task, one place to start, and **My Lab** for everything you've made. A queue runs jobs overnight, **Show the wobble** shows how much a score moves, and every brain takes an entry test with Bob's real tools. |
-| 🧠 **Brains page** | Equip Bob shows how each brain runs here: on your card, with memory, with storage, with another Bob's help, or too big, with its Lab scores underneath. Add a model from a Hugging Face page. |
+| 🧠 **Brains page** | Settings, Brains is the one place to pick brains. It shows how each brain runs here: on your card, with memory, with storage, with another Bob's help, or too big, with its Lab scores underneath. Add a model from a Hugging Face page. |
 | 🧊 **3D models** | STL, OBJ and GLB open in the side panel. Bob makes a part from an OpenSCAD recipe, or a textured model from one picture. |
 | 🔎 **Search by meaning** | Bob finds documents, memories and topics that are close in meaning, not only by exact words. |
 | 🔌 **Doors for other apps** | VS Code, Open WebUI and scripts use Bob's brains at `localhost:7777/v1`. The Claude app and Claude Code use Bob's Hands, every call on a card. Tool packs add other people's tools, in the sandbox. |
@@ -119,8 +119,8 @@ The [changelog](CHANGELOG.md) has every release.
 |---|---|
 | ![A chat about a garden budget on the left, and the spreadsheet open in the side panel on the right](app/docs/screens/documents.png) | ![First-time setup: the programs and models Bob suggests for a 16 GB card, each with a tick box](app/docs/screens/get-bob-ready.png) |
 | **Documents beside the chat.** Sheets, slides, pages and PDFs. | **Ready in one button.** Bob reads your card and fetches what fits. |
-| ![Equip Bob: Bob in the middle with a slot for every job around him](app/docs/screens/equip-bob.png) | ![The adventure table: three characters, two enemies with their hearts, the game master's story, and cards for the player's turn](app/docs/screens/adventure.png) |
-| **Equip Bob.** A slot for every job, a model for every slot. | **Adventure.** Bob runs the table; the app rolls the dice, shows the odds and counts the hearts. |
+| ![The Brains page: each brain, its jobs, and where it sits on the card and in memory](app/docs/screens/brains-page.png) | ![The adventure table: three characters, two enemies with their hearts, the game master's story, and cards for the player's turn](app/docs/screens/adventure.png) |
+| **Brains.** Each brain, the jobs it does, and where it sits on your card. | **Adventure.** Bob runs the table; the app rolls the dice, shows the odds and counts the hearts. |
 
 - **Work:** plans and reminders, web research with sources, code written, run and fixed, documents and spreadsheets read, searched and written.
 - **Make:** pictures painted and edited, short clips, songs and sound effects, 3D parts and models, and a voice (22 Kokoro voices and more).
@@ -286,7 +286,7 @@ Bob's program and his things live apart, so updating never touches your models o
 
 - **You pick the folder when Bob is installed or first opened.** Bob suggests a `Bob` folder in your user folder and takes any drive. He refuses temporary places like AppData, because models are 10 to 60 GB. A cloud-synced folder (OneDrive, Dropbox, Google Drive, iCloud) is allowed, but Bob always recommends against it: every model would be uploaded.
 - **To move it later:** Settings, **Bob's home folder**, then **Move here…**.
-- **His pictures, clips and songs** go to the folder shown in the **chest** under Bob on Equip Bob, with a **Change folder…** button.
+- **His pictures, clips and songs** go to the folder in Settings, **Where Bob saves things**, with a **Change folder…** button. **Made by Bob** lists them all.
 
 ## Using Bob
 

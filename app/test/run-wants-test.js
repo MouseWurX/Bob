@@ -82,7 +82,18 @@ check('updates go under updates', JSON.stringify(wantPatch('autoCheck', true)) =
 }
 
 // ---------- On the Welcome, rerun from Settings, offered once to older Bobs ----------
-check('the Welcome shows the list', cellar.includes('${wantsHtml(settings || {}, esc)}'));
+check('the Welcome shows the list', cellar.includes("${wantsHtml(settings || {}, esc, { full: jumpTo === 'wants' })}"));
+// 1.5.210 First run fits on one screen: the four that help most on top, the rest folded below (open when the chat's offer jumps there).
+{
+  const { WANTS_TOP } = await import('../public/wants.js');
+  const html = wantsHtml({}, esc);
+  const topList = html.slice(0, html.indexOf('<details'));
+  check('first run: exactly four switches before the fold, and each is a real one', WANTS_TOP.length === 4 && (topList.match(/data-want="/g) || []).length === 4 && WANTS_TOP.every((k) => WANTS.some((w) => w.key === k)));
+  check('first run: the four are the ones that help the work (web, documents, sandbox, carry on after a restart)', ['webSearch', 'docTools', 'sandboxCode', 'resumeJobs'].every((k) => WANTS_TOP.includes(k)));
+  check('first run: every other switch is still on the page, folded, and nothing shows twice', WANTS.every((w) => (html.match(new RegExp(`data-want="${w.key}"`, 'g')) || []).length === 1) && /<details class="wants-more">/.test(html));
+  check('first run: the fold opens when the chat offer jumps to the list', /<details class="wants-more" open>/.test(wantsHtml({}, esc, { full: true })));
+  check('first run: the Welcome opens at the top (Get Bob ready is focused without scrolling)', /data-getready\]'\)\?\.focus\(\{ preventScroll: true \}\)/.test(cellar) && /if \(jumpTo !== 'wants'\) dlg\.scrollTop = 0/.test(cellar));
+}
 check('the Welcome closes after the list', cellar.indexOf('${wantsHtml(settings || {}, esc)}') < cellar.indexOf('<div class="row welcome-end"><button data-skip>'));
 check('Run first-time setup is still in Settings', cellar.includes('data-welcome>Run first-time setup'));
 check('wantsAsked only true when saved true', mergeSettings({}, { wantsAsked: 'yes' }).wantsAsked === false && mergeSettings({}, { wantsAsked: true }).wantsAsked === true && SETTING_KEYS.includes('wantsAsked'));

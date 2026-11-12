@@ -1,6 +1,6 @@
 // 1.5.135: brains of your own. A GGUF file already on this replicant matrix (made by hand, downloaded elsewhere, or a
 // model Bob's list doesn't have) joins Bob's model list under "Your own brains": it gets an Active switch, sits in the
-// Equip Bob slots and the brain menus like any other, and runs on Bob's built-in engine (llama.cpp) from where it is. Bob
+// Brains page jobs and the brain menus like any other, and runs on Bob's built-in engine (llama.cpp) from where it is. Bob
 // never moves, copies or deletes the file; "Remove" only takes it off his list. Marked with an explicit `own: true`
 // on the entry, never guessed from a name. Settings: cfg.ownModels = [{ id, name, gguf, mmproj }].
 import fs from 'node:fs';
