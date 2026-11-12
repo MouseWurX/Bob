@@ -265,6 +265,7 @@ Same tests, same rented card, each Bob served from his public Q4 file. Riker mat
 | [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) | The lessons the Bobs learned from: chat, tool calls, thinking on and off. CC BY-SA 4.0. |
 | [bob-odds](https://huggingface.co/datasets/MouseWurX/bob-odds) | The teacher's next-word odds used to teach each cut brain back. |
 | [How they're made](app/docs/BOBS-OWN-MODELS.md) | The method, every result, and what went wrong along the way. |
+| [What we've learned](app/docs/MAKING-SMALLER-MODELS.md) | Best practices for making smaller brains from bigger ones: cutting, REAP, teaching back, lessons, fitting the device and renting cards. |
 | [What they cost](app/docs/COSTS.md) | Every rental, itemized, failures included. |
 | [Brain races](app/docs/BRAIN-RACES.md) · [test results](app/docs/test-results/README.md) | How other brains score on the same tests and the same PC. |
 
