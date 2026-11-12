@@ -4,6 +4,7 @@ import { progressHtml, animateWorkers } from './progress.js';
 import { createStylePage } from './style-page.js';
 import { createSampler, sampleButton, sampleHint } from './voice-samples.js';
 import { equipHtml, allSlots, HELPERS, equipped, entryOf, packFor, starterTicks, starterPlan, enginesFor, readyPlan, slotValue, slotTakes, isActive, tipHtml, readyList, readyDefaults, readyToggle, readyOrder, CHEST_SHOW, SPLITS, splitPicks } from './equip.js';
+import { cleanFilters } from './cat-sort.js';
 import { brainsHtml, setupPlan, canCalibrate, brainsInUse, listTopHtml, listRowHtml, listSetUpHtml } from './brains.js';
 import { hasExperts } from './place.js';
 import { suit as fitSuit, picksOf, unsuited, jobNames, SLOT_NAMES, canDo, packsFor } from './fit.js';
@@ -101,6 +102,9 @@ export function createCellar({ popOut = null } = {}) {
   const shownModels = () => visibleModels(data?.models || [], naughtyOn());
   // 1.5.133: three sides, Well behaved / Community / Naughty list (catView), remembered in this browser.
   let catView = (() => { try { const v = localStorage.getItem('bob-cat-view'); return VIEWS.includes(v) ? v : 'well'; } catch { return 'well'; } })();
+  // 1.5.208 the catalogue's sort and filters, remembered in this browser.
+  let catFilters = (() => { try { return cleanFilters(JSON.parse(localStorage.getItem('bob-cat-filters') || '{}')); } catch { return cleanFilters({}); } })();
+  const setCatFilters = (f) => { catFilters = cleanFilters(f); try { localStorage.setItem('bob-cat-filters', JSON.stringify(catFilters)); } catch {} };
   const setCatView = (v) => { catView = VIEWS.includes(v) ? v : 'well'; try { localStorage.setItem('bob-cat-view', catView); } catch {} };
   // 1.5.135: ➕ Your own brains: the Add form in progress (a picked .gguf, its name, an optional picture reader).
   let ownForm = null;
@@ -291,7 +295,7 @@ export function createCellar({ popOut = null } = {}) {
     if (tab === 'settings') body = settingsHtml();
     else if (tab === 'style') body = stylePage.html(settings);
     else if (tab === 'roles') body = eqView === 'list' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${rolesHtml()}` : !roles ? '<p class="muted">Loading...</p>' : eqView === 'doll' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${equipHtml(eqCtx())}` : brainsHtml(brainsCtx()); // 1.5.205 the Brains page comes first
-    else if (tab === 'catalogue') body = roles ? catalogueHtml({ ...eqCtx(), models: data?.models || [], removed: data?.removed || [], bobNet: data?.bobNet || [], naughtyOn: naughtyOn(), catView, ownForm, addPage, action: catAction, focus: catFocus }) : '<p class="muted">Loading...</p>'; // 1.5.56; 1.5.132 the catalogue gets every entry and sorts the naughty ones itself
+    else if (tab === 'catalogue') body = roles ? catalogueHtml({ ...eqCtx(), models: data?.models || [], removed: data?.removed || [], bobNet: data?.bobNet || [], naughtyOn: naughtyOn(), catView, filters: catFilters, ownForm, addPage, action: catAction, focus: catFocus }) : '<p class="muted">Loading...</p>'; // 1.5.56; 1.5.132 the catalogue gets every entry and sorts the naughty ones itself
     else if (tab === 'found') body = `<p class="muted">Scanned ${data.scannedAt ? new Date(data.scannedAt).toLocaleString() : 'never'}. <button data-scan>Look again</button></p>${extrasHtml() || '<p>Nothing extra found.</p>'}`;
     else if (GROUPS.some((g) => g.id === tab)) body = groupHtml(GROUPS.find((g) => g.id === tab));
     else {
@@ -1433,6 +1437,7 @@ export function createCellar({ popOut = null } = {}) {
       if ('lookcomments' in b.dataset) { const on = b.getAttribute('aria-checked') !== 'true'; const r = await api('/api/settings', { lookComments: on }); settings.lookComments = r.lookComments; b.setAttribute('aria-checked', String(r.lookComments)); b.querySelector('.st').textContent = r.lookComments ? 'On' : 'Off'; return; }
       if ('unsuited' in b.dataset) { setShowUnsuited(!showUnsuited); draw(); return; }
       // 1.5.132: the catalogue's Well behaved / Naughty list toggle, and "Show the naughty list" (the same setting as in Settings).
+      if ('catfilterReset' in b.dataset) { setCatFilters({}); draw(); return; }
       if (b.dataset.catview) { if (b.dataset.catview === 'naughty' && !naughtyOn()) return; setCatView(b.dataset.catview); draw(); return; }
       // 1.5.135: ➕ Your own brains. Pick the file (a window on this replicant matrix), name it, add it; or take one off the list.
       if ('ownadd' in b.dataset) { b.disabled = true; const r = await ownPick('gguf'); if (!r) return; if (!r.file) { b.disabled = false; return; } ownForm = r.error ? { file: r.file, name: '', error: r.error } : { file: r.file, name: r.name, params: r.params, sizeGB: r.sizeGB, mmproj: r.mmproj || '', card: r.card || null }; draw(); dlg.querySelector('[data-ownname]')?.focus(); return; }
@@ -1887,6 +1892,7 @@ export function createCellar({ popOut = null } = {}) {
       // 1.5.205 Set up: the slider and the number box save the same value.
       if (el.dataset.placemoe || el.dataset.placemoenum) { const max = Number(el.max) || 0; const n = Math.max(0, Math.min(max, Math.round(Number(el.value) || 0))); await placeSave(el.dataset.placemoe || el.dataset.placemoenum, { cpuMoe: n }); draw(); return; }
       // 1.5.205 the Brains page: give a brain another job, or pick a brain for an empty job.
+      if (el.dataset.catfilter) { const y = dlg.scrollTop; setCatFilters({ ...catFilters, [el.dataset.catfilter]: el.value }); draw(); dlg.scrollTop = y; dlg.querySelector(`[data-catfilter="${el.dataset.catfilter}"]`)?.focus(); return; } // 1.5.208
       if (el.dataset.brainjob && el.value) { const y = dlg.scrollTop; await equip(el.value, el.dataset.brainjob, { offer: false }); dlg.scrollTop = y; return; }
       if (el.dataset.jobbrain && el.value) { const y = dlg.scrollTop; await equip(el.dataset.jobbrain, el.value, { offer: false }); dlg.scrollTop = y; return; }
       if (el.dataset.proxy) { const side = $(el.dataset.proxy); if (side && (side.getAttribute('aria-pressed') === 'true') !== el.checked) side.click(); setTimeout(() => { el.checked = side?.getAttribute('aria-pressed') === 'true'; }, 300); return; }

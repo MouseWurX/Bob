@@ -2,6 +2,7 @@
 // Equip Bob), with its size, how it suits this PC and smaller machines, and where it comes from (an exact Hugging Face
 // commit, or Ollama). Each model has an Active switch: active models show in the slots and menus, the rest stay here,
 // so the pickers stay short. Pure HTML builders; cellar.js handles the clicks.
+import { officialTag, reapTag, REAP_LINE, isReap, fitsHere, applyFilters, sortModels, filterBarHtml, filtersOn, cleanFilters } from './cat-sort.js'; // 1.5.208 sorting, filters, maker tags
 import { placeFor, quantOf, sizeLine } from './place.js';
 import { canDo, suit, pickFor, deviceFit, sourceOf, SLOT_NAMES, roomOn, tooBigEverywhere } from './fit.js';
 import { allSlots, isActive, tipHtml, slotValue, equipped } from './equip.js';
@@ -90,10 +91,12 @@ function rowHtml(m, job, ctx) {
   // 1.5.205: a brain bigger than the card says how it would run here (card + memory, + storage, with another Bob's
   // help) instead of "doesn't suit". Blocked ones and squeezed files for smaller cards keep their own words.
   const place = isBrain(m) && (s.level === 'slow' || s.level === 'no') && !s.squeezed && ctx.ramGB ? placeFor(m, ctx, ctx.bobNet) : null;
-  const placeTag = place && place.where !== 'card' && place.where !== 'rent' ? `<span class="tag warn place-tag" tabindex="0" data-tip="${esc(place.why)}">${esc(place.word)}</span>` : '';
+  // 1.5.208: the tag says how it fits (the owner: "tagging it appropriately"): with memory, with experts on the drive, or with another Bob.
+  const fit = place ? fitsHere(m, ctx, ctx.bobNet) : null;
+  const placeTag = place && place.where !== 'card' && place.where !== 'rent' ? `<span class="tag warn place-tag" tabindex="0" data-tip="${esc(place.why)}">${esc(fit?.ok && fit.word ? fit.word : place.word)}</span>` : '';
   const quant = quantOf(m);
-  const tip = [m.what, communityLine(m), distilledLine(m), m.thinks ? THINKS_LINE : '', where, out, isNew ? 'New: one of the five newest releases in its family.' : '', dated, m.trial ? `${TRIAL_LINE} ${m.trialNote || ''}`.trim() : '', m.bench || '', quant ? `Squeezed to ${quant} (how tightly the file is packed; a lower number is smaller and a little less sharp).` : '', place && placeTag ? place.why : s.why, roomy ? `Fits ${roomy} on your Bob-Net.` : '', fits, `Licence ${m.license}${m.commercial === false ? ' (personal use only)' : ''}`].filter(Boolean).join('\n');
-  const tags = `${recTag}${makerTag(m)}${isOwn(m) ? (m.madeByBob ? '<span class="tag own-bob" tabindex="0" data-tip="Its brain card says it was made for Bob in his own workshop. Bob runs it from where it is and leaves the pick to you.">Bob\'s own brain</span>' : '<span class="tag" data-tip="A brain you added from a file on this replicant matrix. Bob runs it from where it is and never recommends it over the ones he knows.">Your own file</span>') : ''}${isNew ? `<span class="tag new-tag" tabindex="0" data-tip="${esc(`New: one of the five newest releases in the ${familyOf(m)} family.${out ? ` ${out}.` : ''}`)}">New</span>` : ''}${dated ? `<span class="tag dated-tag" tabindex="0" data-tip="${esc(dated)}">Dated</span>` : ''}${!rec && s.level !== 'ok' ? placeTag || LEVEL_TAG[s.level] || '' : ''}${here ? '<span class="tag good">On this replicant matrix</span>' : ''}`;
+  const tip = [m.what, communityLine(m), distilledLine(m), m.thinks ? THINKS_LINE : '', where, out, isNew ? 'New: one of the five newest releases in its family.' : '', dated, m.trial ? `${TRIAL_LINE} ${m.trialNote || ''}`.trim() : '', m.bench || '', isReap(m) ? REAP_LINE : '', quant ? `Squeezed to ${quant} (how tightly the file is packed; a lower number is smaller and a little less sharp).` : '', place && placeTag ? place.why : s.why, roomy ? `Fits ${roomy} on your Bob-Net.` : '', fits, `Licence ${m.license}${m.commercial === false ? ' (personal use only)' : ''}`].filter(Boolean).join('\n');
+  const tags = `${recTag}${makerTag(m)}${officialTag(m)}${reapTag(m)}${isOwn(m) ? (m.madeByBob ? '<span class="tag own-bob" tabindex="0" data-tip="Its brain card says it was made for Bob in his own workshop. Bob runs it from where it is and leaves the pick to you.">Bob\'s own brain</span>' : '<span class="tag" data-tip="A brain you added from a file on this replicant matrix. Bob runs it from where it is and never recommends it over the ones he knows.">Your own file</span>') : ''}${isNew ? `<span class="tag new-tag" tabindex="0" data-tip="${esc(`New: one of the five newest releases in the ${familyOf(m)} family.${out ? ` ${out}.` : ''}`)}">New</span>` : ''}${dated ? `<span class="tag dated-tag" tabindex="0" data-tip="${esc(dated)}">Dated</span>` : ''}${!rec && s.level !== 'ok' ? placeTag || LEVEL_TAG[s.level] || '' : ''}${here ? '<span class="tag good">On this replicant matrix</span>' : ''}`;
   const on = isActive({ entry: m, value: m.id, installed: here }, ctx.active);
   const sw = job.id === 'phone' ? '<span class="muted">In the phone app</span>'
     : `<button type="button" class="mini-switch" role="switch" aria-checked="${on}" data-active="${esc(m.id)}" aria-label="Active: ${esc(m.name)}">Active <span class="st">${on ? 'On' : 'Off'}</span></button>`;
@@ -239,12 +242,14 @@ function jobHtml(job, ctx) {
   // Families in the order of their best model (the one with Bob's pick first), then by name.
   const fams = new Map();
   for (const m of shown) { const f = familyOf(m); if (!fams.has(f)) fams.set(f, []); fams.get(f).push(m); }
+  const sortBy = cleanFilters(ctx.filters).sort;
+  const flat = sortBy === 'bob' ? '' : `<ul class="kit-list cat-list cat-flat">${sortModels(shown, sortBy).map((m) => rowHtml(m, job, ctx)).join('')}</ul>`; // 1.5.208 a picked sort lists the job's models in one run, not by family
   const famOrder = [...fams.entries()].sort((a, b) => Math.min(...a[1].map(rank)) - Math.min(...b[1].map(rank)) || a[0].localeCompare(b[0]));
   const note = hide.length ? `<p class="muted unsuited-note">${ctx.showUnsuited ? '' : `${hide.length} more ${hide.length === 1 ? 'doesn\'t' : 'don\'t'} suit this replicant matrix. `}<button type="button" class="link" data-unsuited>${ctx.showUnsuited ? 'Hide the ones that don\'t suit' : 'Show them'}</button></p>` : '';
   const rentNote = away ? `<p class="muted too-big-note">${away} more ${away === 1 ? 'is' : 'are'} too big for this replicant matrix${ctx.bobNet?.length ? ' and every Bob on your Bob-Net' : ''}. ${away === 1 ? 'It\'s' : 'They\'re'} listed under <button type="button" class="link" data-rentsettings>Rented brains</button>, where a rented graphics card can run ${away === 1 ? 'it' : 'them'}.</p>` : '';
   const rule = job.id === 'gaming' ? '<p class="muted">Only brains timed answering quickly on a busy processor are listed here. Gemma 4 E4B isn\'t: it takes about half a minute there.</p>' : '';
   return `<section class="cat-job" id="catjob-${esc(job.id)}"><h3>${job.icon} ${esc(SLOT_NAMES[job.id] || job.name)} ${tipHtml(job.does, `About ${job.name}`)}</h3>${rule}
-    ${famOrder.map(([f, ms]) => familyHtml(job, f, ms, ctx)).join('') || '<ul class="kit-list cat-list"><li class="muted">Nothing in Bob\'s list for this job yet.</li></ul>'}${note}${rentNote}</section>`;
+    ${(shown.length && flat) || famOrder.map(([f, ms]) => familyHtml(job, f, ms, ctx)).join('') || `<ul class="kit-list cat-list"><li class="muted">${filtersOn(ctx.filters) ? 'Nothing here matches the filters above.' : 'Nothing in Bob\'s list for this job yet.'}</li></ul>`}${note}${rentNote}</section>`;
 }
 
 // 1.5.135: ➕ Your own brains: GGUF files on this replicant matrix that you put on Bob's list yourself. The rows
@@ -296,7 +301,9 @@ export function modelsForView(models, view, naughtyOn) {
 export function catalogueHtml(ctx0) {
   // 1.5.132: the Well behaved / Naughty list toggle; 1.5.133 adds Community in the middle and a red devil for the list.
   const view = ctx0.naughtyOn === true && (ctx0.naughtyView === true || ctx0.catView === 'naughty') ? 'naughty' : ctx0.catView === 'community' ? 'community' : 'well';
-  const shownModels = modelsForView(ctx0.models, view, ctx0.naughtyOn);
+  const viewModels = modelsForView(ctx0.models, view, ctx0.naughtyOn);
+  const shownModels = applyFilters(viewModels, ctx0.filters, ctx0, ctx0.bobNet); // 1.5.208
+  const bar = filterBarHtml(ctx0.filters, viewModels.filter((m) => m.jobs), shownModels.filter((m) => m.jobs).length);
   const ctx = { ...ctx0, models: shownModels, allModels: ctx0.models || [], naughtyPick: view === 'naughty', newIds: newIds(shownModels.filter((m) => !tooBigEverywhere(m, ctx0, ctx0.bobNet, ctx0.platform)), { now: ctx0.now || Date.now() }) };
   const jobs = catJobs();
   const card = ctx.vramGB ? `${ctx.vramGB} GB graphics card${ctx.ramGB ? `, ${ctx.ramGB} GB RAM` : ''}` : 'no graphics card found';
@@ -307,15 +314,15 @@ export function catalogueHtml(ctx0) {
   const famBtns = '<button type="button" class="mini" data-famall="open">Open all families</button> <button type="button" class="mini" data-famall="close">Close all</button>';
   if (view === 'naughty') {
     return `<div class="cat-top">${toggle}<p class="warn-text naughty-note">${devil('Naughty list')} ${esc(NAUGHTY_WARNING)} <button type="button" class="mini help-link" data-help="faq-naughty" aria-label="Help: the naughty list">? Help</button></p>
-    <p class="muted">By the job each one does. Turn <strong>Active</strong> on for the ones you want to see in Equip Bob and the brain menus. ${tipHtml(`A red devil on its own, where ★ Recommended would be, is my quiet pick for that job among the naughty list: it does the job well on this replicant matrix (${card}). Brains not tried on a real replicant matrix yet aren't picked.`, 'About the quiet pick')} ${keep('Downloads always ask first, with the size.')} ${famBtns}</p>${nav}</div>
+    <p class="muted">By the job each one does. Turn <strong>Active</strong> on for the ones you want to see in Equip Bob and the brain menus. ${tipHtml(`A red devil on its own, where ★ Recommended would be, is my quiet pick for that job among the naughty list: it does the job well on this replicant matrix (${card}). Brains not tried on a real replicant matrix yet aren't picked.`, 'About the quiet pick')} ${keep('Downloads always ask first, with the size.')} ${famBtns}</p>${bar}${nav}</div>
     ${jobs.filter((j) => modelsFor(j, ctx.models).length).map((j) => jobHtml(j, ctx)).join('') || '<p class="muted">Nothing on the naughty list yet.</p>'}`;
   }
   if (view === 'community') {
-    return `<div class="cat-top">${toggle}<p class="muted">Builds other people made from stock brains that still behave: a fine-tune, a distillation or a repack. Not the makers' own releases; each row's <strong>i</strong> says who made it and from what. They're in the Well behaved list too. ${tipHtml(`A community build can be ★ Recommended like any other, once it has been tried on a real replicant matrix and does its job well there. Ones not tried yet are listed but not picked until then. Picked for this replicant matrix: ${card}.`, 'How community builds are picked')} ${keep('Downloads always ask first, with the size.')} <button type="button" class="mini help-link" data-help="faq-community" aria-label="Help: community builds">? Help</button> ${famBtns}</p>${nav}</div>
+    return `<div class="cat-top">${toggle}<p class="muted">Builds other people made from stock brains that still behave: a fine-tune, a distillation or a repack. Not the makers' own releases; each row's <strong>i</strong> says who made it and from what. They're in the Well behaved list too. ${tipHtml(`A community build can be ★ Recommended like any other, once it has been tried on a real replicant matrix and does its job well there. Ones not tried yet are listed but not picked until then. Picked for this replicant matrix: ${card}.`, 'How community builds are picked')} ${keep('Downloads always ask first, with the size.')} <button type="button" class="mini help-link" data-help="faq-community" aria-label="Help: community builds">? Help</button> ${famBtns}</p>${bar}${nav}</div>
     ${jobs.filter((j) => modelsFor(j, ctx.models).length).map((j) => jobHtml(j, ctx)).join('') || '<p class="muted">No community builds in Bob\'s list yet.</p>'}`;
   }
   return `<div class="cat-top">${toggle}<p class="muted">Every model Bob knows, by the job it does, then by family. Press a family's name to open its list. Turn <strong>Active</strong> on for the ones you want to see in Equip Bob and the brain menus. ${tipHtml(`Picked for this replicant matrix: ${card}. ★ Recommended is Bob's pick for that job here. Brains not tried on a real replicant matrix yet are listed but not recommended. New means one of the five newest releases in its family; Dated means newer brains do its job better (it stays on the list). Turning Active off only hides a model; it stays on this replicant matrix (your computer). Turning it on for a model you don't have yet shows it in Equip Bob with a Get button.`, 'How the catalogue works')} ${keep('Downloads always ask first, with the size.')} ${famBtns} <button type="button" class="mini help-link" data-help="catalogue" aria-label="Help: the Brain catalogue">? Help</button></p>
-    ${nav}</div>
+    ${bar}${nav}</div>
     ${jobs.map((j) => jobHtml(j, ctx)).join('')}${ownHtml(ctx)}${addPageHtml(ctx)}${othersHtml(ctx)}${removedHtml(ctx)}`;
 }
 

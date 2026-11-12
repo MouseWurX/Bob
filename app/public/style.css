@@ -1986,3 +1986,10 @@ a.mini.button:focus-visible { outline: 2px solid var(--accent); outline-offset: 
 .hands-sort .sort-rule { border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; padding: 6px 10px 8px; }
 .hands-sort .sort-rule legend input[type="text"] { font-weight: 600; }
 .hands-sort .sort-rule .pick input[type="text"] { width: 100%; max-width: 420px; }
+
+/* 1.5.208 the catalogue's sort and filter bar, and the maker and REAP tags */
+.cat-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 12px; margin: 8px 0; }
+.cat-filter { display: grid; gap: 2px; font-size: 12px; color: var(--muted); }
+.cat-filter select { min-height: 36px; max-width: 100%; }
+.tag.official-tag { border-color: var(--accent); }
+.tag.reap-tag { border-style: dashed; }
