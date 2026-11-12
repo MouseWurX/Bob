@@ -189,7 +189,7 @@ function setAvatarCube(on) { cubeWanted = Boolean(on); store.set('bob-avatar-cub
 window.setAvatarCube = (on) => { setAvatarCube(on); api('/api/settings', { style: { avatar: on ? 'cube' : 'pixel' } }).catch(() => {}); }; // the Style page's looks call this
 window.addEventListener('bob-avatar', (e) => setAvatarCube(e.detail?.cube === true));
 window.addEventListener('bob-cube-live', () => { if (cubeAvatarOn && cubeAvatar) cubeAvatar.relive(); }); // Real experts switched in Bob's thinking
-setAvatarCube(store.get('bob-avatar-cube', '0') === '1'); // at once, before the settings arrive, so the picture never flips
+setAvatarCube(store.get('bob-avatar-cube', '1') === '1'); // at once, before the settings arrive, so the picture never flips
 if (advDlg && globalThis.MutationObserver) new MutationObserver(showCubeAvatar).observe(advDlg, { attributes: true, attributeFilter: ['open'] });
 // 1.5.210 Lamplight on a phone: the left menu is a sheet, so the porthole moves to the top of the chat with Bob's
 // name beside it (the same element, so it keeps its fog, glow and clicks). Everywhere else it sits where Bob sits.

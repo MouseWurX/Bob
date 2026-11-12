@@ -158,7 +158,7 @@ export function applyStyle(style = {}) {
   current = style || {};
   applyTheme(resolve(current));
   document.body?.classList.toggle('still', motionOff(current));
-  try { globalThis.dispatchEvent?.(new CustomEvent('bob-avatar', { detail: { cube: current.avatar === 'cube' } })); } catch {} // 1.5.209: the fNRI cube as Bob's picture (app.js)
+  try { globalThis.dispatchEvent?.(new CustomEvent('bob-avatar', { detail: { cube: current.avatar !== 'pixel' } })); } catch {} // 1.5.209: the fNRI cube as Bob's picture (app.js); 1.5.211: the cube unless you picked Pixel Bob
   applyLook(current);
   try { localStorage.setItem('bob-style', JSON.stringify(current)); } catch {} // so the next start shows the right colours at once
   if (!watching && globalThis.matchMedia) {
