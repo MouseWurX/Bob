@@ -404,11 +404,11 @@ ${set('Pop out', 'Button', 'Opens the small window on top as well, for a second 
     html: `<p>No. With <strong>Let Bob pick the session</strong> on (it starts on), I pick it from what we're doing and go back to Normal when I'm done. Press <strong>🎮 Gaming</strong> when you want the card cleared at once for a game. More in ${go('auto-session', 'How Bob picks his session')}.</p>` },
 
   // ---------------- Menu pages ----------------
-  { id: 'tasks', group: 'Menu pages', title: 'Tasks', words: 'tasks queue queued in progress delegated completed reorder drag clear completed try again cancel waiting',
+  { id: 'tasks', group: 'Menu pages', title: 'Tasks', words: 'tasks queue queued in progress delegated completed reorder drag clear completed try again cancel waiting remove failed take off the list delete',
     html: `<p><strong>Tasks</strong> is my to-do list for you: everything I'm doing, waiting to do and have done, top to bottom in the order I do them. Now running shows the same list in short, with <strong>See all</strong>.</p>
 <ul><li>Each task shows <em>Queued</em>, <em>In progress</em>, <em>Delegated</em> (and to which of my copies), <em>Waiting</em> (for you, or for the Gaming session to end) or <em>Completed</em>, with times.</li>
 <li><strong>Drag</strong> a waiting task, or use ▲ ▼, to change what I do next.</li>
-<li><strong>Stop</strong> or <strong>Cancel</strong> ends one task; <strong>Try again</strong> runs a failed one again. A task that was <em>Interrupted</em> (I was closed partway through) has <strong>Carry on</strong> instead, which picks up from where it stopped.</li>
+<li><strong>Stop</strong> or <strong>Cancel</strong> ends one task; <strong>Try again</strong> runs a failed one again. A task that was <em>Interrupted</em> (I was closed partway through) has <strong>Carry on</strong> instead, which picks up from where it stopped. Don't want it at all? <strong>✕</strong> takes a failed, cancelled or interrupted task off the list, here and in Now running, without running it again.</li>
 <li><em>Waiting for a download</em>: the task needs a model you said yes to downloading, and runs by itself when it's done.</li>
 <li>Completed tasks stay for a week. <strong>Clear completed</strong> tidies them away now.</li></ul>` },
 

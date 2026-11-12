@@ -154,11 +154,14 @@ function applyLook(style) {
   for (const l of LOOK_IDS) b.classList.toggle(`look-${l}`, l === id);
 }
 
+// 1.5.211: the cube is Bob's picture for everyone. Pixel Bob shows only when picked from 1.5.211 on (avatarKept), so an
+// older pick, made when Pixel Bob was simply the default, doesn't hide the cube.
+export const pixelKept = (style) => style?.avatar === 'pixel' && style?.avatarKept === true;
 export function applyStyle(style = {}) {
   current = style || {};
   applyTheme(resolve(current));
   document.body?.classList.toggle('still', motionOff(current));
-  try { globalThis.dispatchEvent?.(new CustomEvent('bob-avatar', { detail: { cube: current.avatar !== 'pixel' } })); } catch {} // 1.5.209: the fNRI cube as Bob's picture (app.js); 1.5.211: the cube unless you picked Pixel Bob
+  try { globalThis.dispatchEvent?.(new CustomEvent('bob-avatar', { detail: { cube: !pixelKept(current) } })); } catch {} // 1.5.209: the fNRI cube as Bob's picture (app.js); 1.5.211: the cube unless you picked Pixel Bob
   applyLook(current);
   try { localStorage.setItem('bob-style', JSON.stringify(current)); } catch {} // so the next start shows the right colours at once
   if (!watching && globalThis.matchMedia) {

@@ -55,8 +55,11 @@ export function createLayout({ post, openTasks, openDownloads }) {
     mindListen();
   }
   setLeft(store.get('bob-left', window.innerWidth < 700 ? 'folded' : 'open') === 'folded', false);
+  // 1.5.211: the chat has the whole window to begin with. Now running is a drawer that starts closed in every look, and
+  // once on the update to 1.5.211 an old "open" is forgotten, so the new layout shows; after that your choice is kept.
+  if (store.get('bob-layout-211', '') !== '1') { try { localStorage.removeItem('bob-right'); } catch {} store.set('bob-layout-211', '1'); }
   // A narrow window starts with the panel tucked away, whatever was remembered, so it never covers the chat by surprise.
-  setRight(narrow() || store.get('bob-right', window.innerWidth < 1100 ? 'hidden' : 'open') === 'hidden', false);
+  setRight(narrow() || store.get('bob-right', 'hidden') === 'hidden', false);
   const w = Number(store.get('bob-now-w', '300'));
   if (w >= 220 && w <= 560) body.style.setProperty('--now-w', `${w}px`);
 

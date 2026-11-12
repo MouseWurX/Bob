@@ -487,7 +487,8 @@ export function cleanStyle(st) {
   if (typeof st.theme === 'string' && THEME_ID.test(st.theme)) out.theme = OLD_THEME_IDS[st.theme] || st.theme;
   if (['on', 'system', 'off'].includes(st.motion)) out.motion = st.motion;
   if (typeof st.openNowOnNeed === 'boolean') out.openNowOnNeed = st.openNowOnNeed;
-  if (['pixel', 'cube'].includes(st.avatar)) out.avatar = st.avatar; // 1.5.209 Bob's look: the pixel Bob (to begin with) or the fNRI cube
+  if (['pixel', 'cube'].includes(st.avatar)) out.avatar = st.avatar;
+  if (st.avatarKept === true) out.avatarKept = true; // 1.5.211: Pixel Bob picked on purpose (public/themes.js pixelKept) // 1.5.209 Bob's look: the pixel Bob (to begin with) or the fNRI cube
   if (['classic', 'lamplight', 'terminal'].includes(st.look)) out.look = st.look; // 1.5.210: Style > Look (mirrors public/themes.js LOOK_IDS)
   if (Array.isArray(st.custom)) {
     out.custom = st.custom.slice(0, 24).filter((t) => t && typeof t === 'object' && THEME_ID.test(String(t.id)) && String(t.id).startsWith('my-')).map((t) => {

@@ -6,6 +6,8 @@ import { cleanStyle } from '../src/config.js';
 import { HELP } from '../public/help-content.js';
 import { rankFind } from '../public/find.js';
 import { bobMenuHtml } from '../public/bob-menu.js';
+import { taskRow } from '../public/lists.js';
+const pixelKeptT = (st) => st?.avatar === 'pixel' && st?.avatarKept === true; // mirrors public/themes.js pixelKept (themes.js needs a page)
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -38,13 +40,17 @@ check('the Style page has the Look picker', page.includes('data-uilook') && page
 
 check('Lamplight puts the menu across the top on a computer, phones keep the bottom bar', /@media \(min-width: 641px\) \{\s*body\.look-lamplight \.app \{ display: grid/.test(css) && /body\.look-lamplight \.side \{ grid-column: 1 \/ -1/.test(css));
 check('every tool in the top bar keeps its name for screen readers', ['newchat', 'cellarBtn', 'dlBtn', 'tidyBtn', 'settingsBtn', 'styleBtn', 'helpBtn', 'ear', 'speak', 'notify'].every((id) => new RegExp(`id="${id}"[^>]*aria-label="[^"]+"`).test(read('public/index.html'))));
-check('picking Lamplight tucks Now running away and offers the cube, without forcing either', page.includes("getElementById('hideRight')?.click()") && page.includes('!settings.style?.avatar'));
+check('picking Lamplight tucks Now running away and offers the cube, without forcing either', page.includes("getElementById('hideRight')?.click()") && page.includes('!pixelKept(settings.style)'));
 
 // ---- the Lamplight layout: Bob's menu, Find anything, the status line ----
 const r = rankFind([{ label: 'Downloads', kind: 'Tool' }, { label: 'Tasks', kind: 'Page' }, { label: 'Brains and speed', kind: 'Settings', words: 'memory engines' }, { label: 'Style', kind: 'Help', words: 'glow' }], 'engine');
 check('Find anything finds a Settings card by the words inside it', r.length === 1 && r[0].label === 'Brains and speed');
 check('Find anything with nothing typed lists the pages and tools', rankFind([{ label: 'Tasks', kind: 'Page' }, { label: 'Style', kind: 'Help' }], '').map((i) => i.label).join() === 'Tasks');
 check('a Help topic found only by its search words still shows', rankFind([{ label: 'My Bobs are on Wi-Fi. How do I get them on the best band?', kind: 'Help', words: 'wifi calibrate' }], 'calibrate').length === 1);
+check('a failed job in Now running can be taken off the list without trying again', taskRow({ id: 'j1', state: 'failed', name: 'x', error: 'no' }, { movable: false, full: false }).includes('data-t="remove"') && !taskRow({ id: 'j2', state: 'working', name: 'y' }, { movable: false, full: false }).includes('data-t="remove"'));
+check('themes.js keeps the same Pixel Bob rule', read('public/themes.js').includes("export const pixelKept = (style) => style?.avatar === 'pixel' && style?.avatarKept === true;"));
+check('an old Pixel Bob pick no longer hides the cube; one made from 1.5.211 on is kept', !pixelKeptT({ avatar: 'pixel' }) && pixelKeptT({ avatar: 'pixel', avatarKept: true }) && cleanStyle({ avatar: 'pixel', avatarKept: true }).avatarKept === true);
+check('Now running starts closed in every look, and an old open is forgotten once on the update', read('public/layout.js').includes("store.get('bob-right', 'hidden')") && read('public/layout.js').includes("'bob-layout-211'"));
 check('a page beats a Help topic of the same name', rankFind([{ label: 'Tasks', kind: 'Help' }, { label: 'Tasks', kind: 'Page' }], 'tasks')[0].kind === 'Page');
 const menu = bobMenuHtml({ loaded: [] }, { tools: [{ id: 'settingsBtn', icon: '⚙', label: 'Settings' }, { id: 'speak', icon: '🔊', label: 'Read aloud', st: 'On' }], session: { value: 'b', options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B<' }] } });
 check("Bob's menu carries the tools, each pressing its own button", menu.includes('data-bobtool="settingsBtn"') && menu.includes('data-bobtool="speak"') && menu.includes('>On<'));
