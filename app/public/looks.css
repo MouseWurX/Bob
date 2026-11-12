@@ -232,3 +232,9 @@ body.look-lamplight .effort .brain-switch { min-height: 32px; }
 @media (prefers-reduced-motion: no-preference) { .find-dlg[open] { animation: find-in .16s var(--ease); } }
 @keyframes find-in { from { opacity: 0; transform: translateY(-6px); } }
 body.still .find-dlg[open] { animation: none; }
+/* Lamplight: Effort, Gaming and Web are quiet words in the typing box; a lit word means on (the switch's role and state still say so to screen readers) */
+body.look-lamplight .effort .brain-switch, body.look-lamplight .effort .effort-btn { border: 0; background: none; box-shadow: none; color: var(--muted); padding: var(--s1) var(--s2); }
+body.look-lamplight .effort .brain-switch .st { display: none; }
+body.look-lamplight .effort .brain-switch[aria-checked="true"], body.look-lamplight .effort .brain-switch[aria-pressed="true"] { color: var(--accent); text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent); }
+/* Lamplight: the version sits at the end of the status line's row, on wide screens */
+@media (min-width: 1200px) { body.look-lamplight .ver { display: block; position: fixed; right: var(--s5); bottom: var(--s3); padding: 0; border: 0; background: none; font: var(--t-xs)/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--muted); opacity: .7; } }
