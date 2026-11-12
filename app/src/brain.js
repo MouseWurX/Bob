@@ -497,6 +497,7 @@ export class Brain {
     this.broadcast = broadcast;
     this.engine = cfg.engine === 'llamacpp' ? new LlamaCpp(cfg) : new Ollama(cfg);
     this.engine.log = (kind, text) => this.log(kind, text); // 1.5.35: the engine can note things in the logbook
+    this.engine.brainLabel = (m) => this.brainLabel(m); // reliability 218-228: the engine's chat notes name brains as the person knows them
     // 1.5.53: a second brain joined or left (chat page: Bob's head grows / shrinks; see public docs in the HANDOFF).
     this.engine.onBeside = (ev) => { this.broadcast({ type: 'second-brain', ...ev, label: ev.model ? this.brainLabel(ev.model) : '' }); this.broadcast({ type: 'brain' }); };
     this.sleepy = { since: 0, recent: [] }; // Gaming-session asides (public/sleepy.js)
@@ -937,7 +938,17 @@ export class Brain {
     });
     this.state.model = used;
     if (this.state.state === 'loading' || this.state.state === 'waiting') { this.log('model', `loaded ${used}`); this.setState('thinking', '', used); }
+    this.engineNotes(emit);
     return used;
+  }
+
+  // Reliability 218-228: what the engine did on its own (a smaller chat memory, last good settings, a crash hold, a
+  // slow or text-calling brain loaded fresh) is one line in the chat, never words for the brain.
+  engineNotes(emit) {
+    if (typeof emit !== 'function') return;
+    for (const e of [this.engine, this.engine?.beside]) {
+      for (const text of e?.takeNotes?.() || []) { try { emit({ type: 'announce', text }); } catch {} }
+    }
   }
 
   // 1.5.51: the tip about "Let the reviewer sit beside Bob's main brain" shows the first time a moot swaps, then never
@@ -1053,10 +1064,12 @@ export class Brain {
     // 1.5.53: while a "Bob's thinking" window is open, his thinking streams to it, a few times a second (never saved).
     const mind = emit && this.mindWatchers?.() ? thinkStream(emit, who, opts.model) : null;
     if (mind) opts = { ...opts, onThink: mind.push };
+    // Reliability 221: a brain that loaded with a smaller chat memory (memory was short) is fitted to what it really has.
+    if (!opts.beside && opts.ctx) { const real = this.engine?.realCtx?.(opts.model, opts.ctx, opts.cpu); if (real && real !== opts.ctx) opts = { ...opts, ctx: real }; }
     const per = this.engine?.charsPerToken?.(opts.model) || 3; // item 3: the brain's own figure once known
     const fitted = fitContext(opts.messages, opts.ctx, opts.tools, 0.75, per);
     if (fitted !== opts.messages) { this.log('chat', `shortened tool results so the chat fits in ${opts.model}'s memory (${opts.ctx} tokens)`); opts = { ...opts, messages: fitted }; }
-    try { return await this.chatRetry(opts, { emit, who }); }
+    try { const r = await this.chatRetry(opts, { emit, who }); this.engineNotes(emit); return r; }
     catch (e) {
       // Still too long (the guess at token counts was low): once more, with every tool result cut harder.
       if (opts.signal?.aborted || !TOO_LONG.test(String(e?.message)) || !(Number(opts.ctx) > 0)) throw e;

@@ -306,7 +306,7 @@ export class Gate {
           st?.fail(e);
           if (signal?.aborted) throw new Error('Stopped.');
           last = e;
-          if (NO_RETRY.test(e.message)) break;
+          if (NO_RETRY.test(e.message) || e.noRetry) break; // reliability 218-228: the engine already tried what helps (smaller memory, last good settings)
           // 1.5.113: timed out because another program holds the card: one try, not three five-minute ones.
           if (!o.cpu && await this.brain.cardTaken?.(e, null).catch?.(() => false)) { last = Object.assign(new Error(this.brain.cardHeld.line), { code: 'card_held' }); break; }
         } finally { this.loading = null; }

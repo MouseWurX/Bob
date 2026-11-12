@@ -24,6 +24,7 @@ import { stretchOn, stretchMax as stretchMost, stretchPlan, yarnArgs, needBytes,
 import { scutEnv } from './share-card.js'; // SCUT, the fast link to lent cards
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { memArgs, copyGuessArgs, draftNumArgs, laptopThreads } from './engine-extras.js'; // list items 94-100
+import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
 
 // 1.5.19: the context a brain gets when nothing else picks one. 32K fits a 26B brain on a 16 GB card.
 
@@ -151,6 +152,8 @@ export function catalogFileFor(cfg, id) {
 
 // Item 2: the smallest piece (in tokens) the engine reuses from earlier in the chat after a change in the middle.
 export const CACHE_REUSE = 256;
+// 222: one flag's value set in a list of engine flags (added when missing).
+export const withFlag = (args, flag, value) => { const a = [...args]; const i = a.indexOf(flag); if (i >= 0) a[i + 1] = value; else a.push(flag, value); return a; };
 // Item 14: how long a reply may go quiet after its first words before the engine counts as hung (llamacpp.stallSeconds changes it).
 export const STALL_MS = 90_000;
 
@@ -177,6 +180,18 @@ export class LlamaCpp {
     this.idleTimer.unref?.();
     this.timesFile = path.join(cfg.dataDir, `load-times-llamacpp${this.tag}.json`);
     try { this.loadTimes = JSON.parse(fs.readFileSync(this.timesFile, 'utf8')); } catch { this.loadTimes = {}; }
+    // Reliability 218-228 (engine-care.js): crash budget, last good settings, usual speeds, template swaps.
+    this.careFile = path.join(cfg.dataDir, `engine-care${this.tag}.json`);
+    this.careData = readJson(this.careFile, {});
+    if (!this.careData || typeof this.careData !== 'object') this.careData = {};
+    this.careData.lastGood ||= {}; this.careData.templates ||= []; this.careData.speeds ||= {};
+    this.crashes = new CrashBudget({ now: () => this.now() });
+    this.speeds = new SpeedWatch(this.careData.speeds);
+    this.textCallWatch = new TextCallWatch();
+    this.shrunk = {};      // 221: model|cpu|asked ctx -> the smaller chat memory it really runs with
+    this.careNotes = [];   // one-line notes for the chat (the brain shows them as announcements)
+    this.reloadWanted = new Set(); // 225/228: brains to load fresh before their next job
+    this.basePort = this.port;
     const stop = () => { try { this.child && this.child.kill(); } catch {} };
     process.on('exit', stop);
     for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { stop(); process.exit(0); });
@@ -190,6 +205,7 @@ export class LlamaCpp {
       this.beside.log = (k, t) => this.log?.(k, t);
       this.beside.resolve = (m) => this.resolve(m); // same model files (tests replace resolve on the main engine)
       this.beside.catalogFile = (id) => this.catalogFile(id);
+      this.beside.brainLabel = (m) => this.brainLabel?.(m) || `${m} brain`; // 218-228: plain names in the chat notes
       this.beside.main = this; // so a card reader set on the main engine (tests) also counts for the second server
       // fNRI's small cube: a brain answering on the second server is traced too, and told to the same cube
       this.beside.wantTrace = () => this.wantTrace?.() || false; this.beside.onTrace = (raw, model) => this.onTrace?.(raw, model);
@@ -378,8 +394,30 @@ export class LlamaCpp {
   async isLoaded(model, { ctx, cpu = false, beside = false } = {}) {
     const b = this.route({ beside });
     if (b) return b.isLoaded(model, { ctx, cpu: true });
-    return this.current === model && (!ctx || this.currentCtx === ctx) && Boolean(this.currentCpu) === Boolean(cpu) && this.child && this.child.exitCode === null && (await this.health());
+    if (this.role === BESIDE) cpu = true;
+    // 225/228: a brain marked to load fresh counts as not loaded until it is (never in the middle of a reply), so the
+    // gate loads it again before the next job.
+    if (this.reloadWanted.has(model) && this.current === model && this.active === 0) return false;
+    const want = this.realCtx(model, ctx, cpu); // 221: a brain loaded with a smaller chat memory still counts as the one asked for
+    const same = this.current === model && (!want || this.currentCtx === want) && Boolean(this.currentCpu) === Boolean(cpu) && this.child && this.child.exitCode === null;
+    if (!same) return false;
+    // 219: the health check before each turn. A running engine that doesn't answer it is named, and started fresh.
+    if (await this.health()) return true;
+    if (this.child && this.child.exitCode === null && this.loadedOk) this.log?.('engine', `${model}: the engine is running but didn't answer its health check; starting it fresh`);
+    return false;
   }
+
+  // 221: the chat memory a brain really runs with for the size asked (smaller after a load that ran out of memory).
+  realCtx(model, ctx, cpu = false) {
+    const asked = ctx || this.lc.ctx || DEFAULT_CTX;
+    const s = this.shrunk[`${model}|${cpu ? 1 : 0}|${asked}`];
+    return s ? s.got : ctx;
+  }
+  // One-line notes for the chat, taken once (brain.js shows them as announcements).
+  takeNotes() { const n = this.careNotes; this.careNotes = []; return n; }
+  note(text) { if (text && !this.careNotes.includes(text)) this.careNotes.push(text); if (this.careNotes.length > 5) this.careNotes.shift(); }
+  label(model) { try { return this.brainLabel?.(model) || `${model} brain`; } catch { return `${model} brain`; } }
+  saveCare() { writeJson(this.careFile, this.careData); }
 
   // --fit came in with newer llama.cpp builds; older ones would refuse to start with it.
   fitOn() {
@@ -550,7 +588,8 @@ export class LlamaCpp {
   // the format the brain was trained on instead of llama.cpp's generic ChatML fallback.
   templateArgs(model, gguf, args = []) {
     if (args.some((a) => ['--chat-template', '--chat-template-file'].includes(a))) return [];
-    try { const t = templateFor(this.lc, model, gguf); return t ? ['--chat-template-file', t] : []; } catch { return []; }
+    // 228: a brain that kept writing tool calls as text uses its family's template even though its file has one.
+    try { const t = templateFor(this.lc, model, gguf, { force: this.careData.templates.includes(model) }); return t ? ['--chat-template-file', t] : []; } catch { return []; }
   }
 
   // 1.5.32: the family's recommended sampling for this request ({} = llama-server's own defaults).
@@ -684,10 +723,169 @@ export class LlamaCpp {
     await new Promise((r) => { c.once('exit', r); c.kill(); setTimeout(r, 5000); });
   }
 
-  async preload(model, signal, { ctx, cpu = false, beside = false, reserveMB = 0, place = null, noSpread = false } = {}) {
-    const b = this.route({ beside });
-    if (b) return b.preload(model, signal, { ctx, cpu: true, reserveMB, place });
+  async preload(model, signal, opts = {}) {
+    const b = this.route({ beside: opts.beside });
+    if (b) return b.preload(model, signal, { ctx: opts.ctx, cpu: true, reserveMB: opts.reserveMB || 0, place: opts.place ?? null });
+    // 223: one engine start at a time. A second job asking for the same brain waits for that load and uses it;
+    // a job asking for another brain waits its turn instead of starting the engine over the first one.
+    const key = `${model}|${opts.ctx || ''}|${this.role === BESIDE || opts.cpu ? 1 : 0}`;
+    while (this.starting) {
+      const s = this.starting;
+      let failed = null;
+      try { await s.p; } catch (e) { failed = e; }
+      if (signal?.aborted) throw new Error('Stopped.');
+      if (this.starting === s) this.starting = null;
+      if (s.key !== key) continue;
+      if (!failed && (await this.isLoaded(model, { ctx: opts.ctx, cpu: opts.cpu }))) {
+        this.lastUse = this.now();
+        this.log?.('engine', `${model}: another job was already loading it; using that load`);
+        return this.loadTimes[model] || 0;
+      }
+      if (failed && !/^Stopped\.$/.test(failed.message)) throw failed; // the same load just failed: say why, don't start it again at once
+    }
+    const me = { key, p: this.startCareful(model, signal, opts) };
+    this.starting = me;
+    try { return await me.p; } finally { if (this.starting === me) this.starting = null; }
+  }
+
+  // 218/220/221/222/226/227 around one engine start (startEngine).
+  async startCareful(model, signal, opts = {}) {
+    const cpu = this.role === BESIDE || Boolean(opts.cpu);
+    const label = this.label(model);
+    const stop = (e, extra = {}) => Object.assign(e, { noRetry: true }, extra); // the gate's own retries won't help these
+    // 218: crashed too often lately: not again until the window passes.
+    if (this.crashes.spent(model)) throw stop(new Error(crashHoldLine(label, this.crashes.recent(model).length, this.crashReason?.[model] || '', Math.ceil(this.crashes.waitMs(model) / 60000))), { code: 'crash_hold' });
+    // 227: the file looks like a brain file and still matches its download.
+    let gguf = null;
+    try { gguf = this.resolve(model).gguf; } catch {}
+    if (gguf) {
+      const bad = await checkBrainFile(this.cfg, gguf, { log: (t) => this.log?.('engine', t), ...(this.hashFile ? { hash: this.hashFile } : {}) });
+      if (bad) { this.log?.('engine', `${model}: not loading it: ${bad}`); throw stop(new Error(`The ${label} can't load: ${bad}.`), { code: 'bad_file' }); }
+    }
+    const asked = opts.ctx || this.lc.ctx || DEFAULT_CTX;
+    const sk = `${model}|${cpu ? 1 : 0}|${asked}`;
+    const o = { ...opts, ...(this.shrunk[sk] ? { ctx: this.shrunk[sk].got } : {}) };
+    try { return await this.startEngine(model, signal, o); }
+    catch (e) {
+      if (signal?.aborted || /^Stopped\.$/.test(e.message) || e.fellBack) throw e;
+      const out = `${this.lastLoadOut || ''}\n${e.message}`;
+      // 220/221: no room, or the engine ran out of memory: once more with a smaller chat memory.
+      if (e.code === 'no_room' || memoryFailure(out)) {
+        const from = o.ctx || asked;
+        const to = e.code === 'no_room' ? e.fitsCtx : shrinkCtx(from);
+        if (to && to < from && !this.shrunk[sk]) {
+          this.log?.('engine', `${model}: not enough memory at ${from} (chat memory); trying once more at ${to}`);
+          try {
+            const secs = await this.startEngine(model, signal, { ...o, ctx: to, roomChecked: true });
+            this.shrunk[sk] = { got: to, at: this.now() };
+            this.note(shrinkLine(label, from, to));
+            return secs;
+          } catch (e2) { if (signal?.aborted || /^Stopped\.$/.test(e2.message)) throw e2; e = e2; }
+        }
+        if (e.code === 'no_room') throw stop(e);
+        throw stop(this.plainError(model, e, `${this.lastLoadOut || ''}\n${e.message}`));
+      }
+      // 222: the settings that started this brain last time, once, when today's differ.
+      const good = this.careData.lastGood[`${model}|${cpu ? 1 : 0}`];
+      if (good?.args?.length && this.lastArgs && !opts.args && !sameSettings(this.lastArgs, good.args)) {
+        this.log?.('engine', `${model} didn't start (${plainEngineError(out) || e.message.slice(0, 160)}); trying the settings that worked on ${good.at}: ${settingsDiff(this.lastArgs, good.args)}`);
+        try {
+          const secs = await this.startEngine(model, signal, { ...o, args: good.args });
+          this.note(lastGoodLine(label, good.at));
+          return secs;
+        } catch (e2) { if (signal?.aborted || /^Stopped\.$/.test(e2.message)) throw e2; throw stop(this.plainError(model, e, out)); }
+      }
+      throw this.plainError(model, e, out);
+    }
+  }
+
+  // 226: the engine's own last words, as the plain reason; the original message stays after it for the logbook.
+  plainError(model, e, out) {
+    const why = plainEngineError(out);
+    if (!why || String(e.message).includes(why)) return e;
+    return Object.assign(new Error(`The ${this.label(model)} wouldn't start: ${why}. (${String(e.message).slice(0, 400)})`), { code: e.code, noRetry: e.noRetry, fellBack: e.fellBack, reason: why });
+  }
+
+  // 220: is there room for this brain right now? Read from the card and the RAM free at this moment, after the last
+  // brain was let go. Only decides when the brain is read in whole (card plus RAM) or must sit on the card alone; a
+  // brain read from the drive as needed (bigger than memory) can't be judged this way. null: no reading.
+  async roomNow(model, ctx, args, cpu) {
+    let gguf, size = 0;
+    try { gguf = this.resolve(model).gguf; size = fs.statSync(gguf).size; } catch { return null; }
+    if (cpu || !size || this.biggerThanMemory(gguf)) return null;
+    const cardOnly = args.includes('-ngl') && args[args.indexOf('-ngl') + 1] === '999' && !args.includes('--fit');
+    if (!cardOnly && !this.readsWhole(args, cpu, gguf)) return null;
+    const card = await (this.cardReaders?.card || this.main?.cardReaders?.card || (process.env.BOB_TEST ? async () => null : readCard))().catch(() => null); // tests never read the real card
+    if (!card || !Number.isFinite(card.freeMB)) return null;
+    let shape = null;
+    try { shape = ggufInfo(gguf)?.shape; } catch {}
+    const kvFor = (c) => kvBytes(shape, c, memArgs(this.cfg, model, this.lc.args)) || 0;
+    return { ...memCheck({ fileBytes: size, kvFor, ctx, cardFreeMB: card.freeMB, ramFreeBytes: this.freeRam ? this.freeRam() : os.freemem(), cardOnly }), cardFreeMB: card.freeMB };
+  }
+
+  // 218: the engine stopped by itself after its brain loaded.
+  crashed({ model, code, sig, tail, opts }) {
+    if (code !== 0) { try { this.onCrash?.({ model, code, tail }); } catch {} } // Catch crashes (crash-catch.js, off unless switched on)
+    const n = this.crashes.note(model);
+    const reason = plainEngineError(tail);
+    (this.crashReason ||= {})[model] = reason;
+    this.log?.('engine', `${model}: the engine stopped by itself (${sig || `code ${code}`})${reason ? `: ${reason}` : ''}; ${n} crash${n === 1 ? '' : 'es'} in the last 10 min`);
+    if (this.crashes.spent(model)) {
+      const line = crashHoldLine(this.label(model), n, reason, Math.ceil(this.crashes.waitMs(model) / 60000));
+      this.log?.('engine', `${model}: not restarting it again for now`);
+      this.note(line);
+      return;
+    }
+    if (this.active > 0) return; // the reply that was running loads it again itself (brain.chatRetry)
+    const t = setTimeout(() => {
+      if ((this.child && this.child.exitCode === null) || this.current !== model || this.starting) return; // something else loaded meanwhile
+      this.log?.('engine', `${model}: restarting the engine by itself`);
+      this.preload(model, undefined, opts).then(() => this.log?.('engine', `${model}: back up after the crash`)).catch((e) => this.log?.('engine', `${model}: couldn't restart it (${e.message.slice(0, 200)})`));
+    }, this.restartDelayMs ?? 1500);
+    t.unref?.();
+  }
+
+  // 225: one reply's speed against this brain's usual.
+  speedNote(model, timings, promptTokens) {
+    if (this.spreadNow || gaming(this.cfg) || !timings) return;
+    const m = this.current || model;
+    const hit = this.speeds.add(speedKey({ model: m, cpu: this.currentCpu, ctx: this.currentCtx }), speedBucket(promptTokens), Number(timings.predicted_per_second) || 0, Number(timings.predicted_n) || 0);
+    if (this.now() - (this.speedSaved || 0) > 60_000) { this.speedSaved = this.now(); this.saveCare(); }
+    if (!hit) return;
+    this.log?.('engine', `${m}: answering at ${hit.now} tok/s, under ${Math.round(hit.usual * 0.4)} (its usual is ${hit.usual}); loading it fresh before the next job`);
+    this.reloadWanted.add(m);
+    this.note(slowLine(this.label(m), hit.now, hit.usual));
+  }
+
+  // 228: tool calls written as text, reply after reply.
+  textCallNote(model, r) {
+    if (!this.textCallWatch.note(model, r)) return;
+    const d = this.careData;
+    d.templatesTried ||= [];
+    if (d.templates.includes(model)) {
+      d.templates = d.templates.filter((x) => x !== model);
+      this.saveCare();
+      this.reloadWanted.add(model);
+      this.log?.('engine', `${model}: its family's chat template didn't stop the text tool calls; back to its own template`);
+      return;
+    }
+    if (d.templatesTried.includes(model)) return;
+    let gguf = null;
+    try { gguf = this.resolve(model).gguf; } catch { return; }
+    const fam = templateFor(this.lc, model, gguf, { force: true });
+    if (!fam || fam === templateFor(this.lc, model, gguf)) { this.log?.('engine', `${model}: writes its tool calls as text, and there is no family template to try (Bob still reads those calls)`); d.templatesTried.push(model); this.saveCare(); return; }
+    d.templates.push(model); d.templatesTried.push(model);
+    this.saveCare();
+    this.reloadWanted.add(model);
+    this.log?.('engine', `${model}: wrote its tool calls as text ${3} replies in a row; loading it with its family's template (${path.basename(fam)}) from the next job`);
+    this.note(templateLine(this.label(model)));
+  }
+
+  // The engine start itself.
+  async startEngine(model, signal, { ctx, cpu = false, beside = false, reserveMB = 0, place = null, noSpread = false, args: fixedArgs = null, roomChecked = false } = {}) {
     if (this.role === BESIDE) cpu = true;
+    this.lastLoadOut = '';
+    if (this.reloadWanted.delete(model)) this.log?.('engine', `${model}: loading it fresh, as planned`);
     const t0 = Date.now();
     this.lastUse = this.now();
     // 1.5.32: in the Gaming session the "Gaming: graphics card" switch decides how much of the card the brain may use.
@@ -698,7 +896,9 @@ export class LlamaCpp {
     if (this.role === BESIDE && place === 'none') { try { this.log?.('engine', `second brain ${model}: on the processor, chat memory ${ctx || this.lc.ctx || DEFAULT_CTX} (kept off the card beside a job)`); } catch {} }
     const card = this.role === BESIDE ? (place === 'none' ? 'none' : fresh || (await this.besidePlace(model, ctx, { reserveMB }))) : cpu && gaming(this.cfg) ? await this.gamingCardPlan(model) : null;
     this.placed = null;
-    const args = this.buildArgs(model, { ctx, cpu, card });
+    // 222: settings that worked before come in whole; the chat memory asked for now still goes in.
+    const args = fixedArgs ? withFlag(fixedArgs, '-c', String(ctx || this.lc.ctx || DEFAULT_CTX)) : this.buildArgs(model, { ctx, cpu, card });
+    this.lastArgs = args;
     await this.stopServer();
     // Bob-Net: a brain too big for this replicant matrix can go over your other Bobs' lent cards (src/share-card.js).
     // Off unless "Spread big brains over my other Bobs' cards" is on; none answering means it loads here like always.
@@ -723,6 +923,18 @@ export class LlamaCpp {
       fs.rmSync(pidFile, { force: true });
       if (old && old !== process.pid && /llama-server/i.test(await commandLineOf(old))) { process.kill(old, 'SIGTERM'); await new Promise((r) => setTimeout(r, 800)); }
     } catch {}
+    // 224: the port is really free (another program can hold it too, and its answers would look like the engine's).
+    const avoid = this.role === BESIDE ? [] : [this.lc.besidePort || this.basePort + 1, this.lc.embedPort || this.basePort + 2];
+    const port = await pickPort(this.basePort, { avoid, ...(this.portCheck ? { isFree: this.portCheck } : {}) });
+    if (port === null) throw Object.assign(new Error(`Something else is using port ${this.basePort} and the spare ones after it, so my engine can't start. Restarting the PC frees them.`), { noRetry: true });
+    if (port !== this.port) { this.log?.('engine', `port ${this.basePort} is taken by another program; starting the engine on ${port}`); this.port = port; this.url = `http://127.0.0.1:${port}`; }
+    if (args.includes('--port')) args[args.indexOf('--port') + 1] = String(this.port);
+    // 220: the real free memory now, after the last brain let go. Too little: say so, or try a smaller chat memory.
+    if (!roomChecked && this.role !== BESIDE && !helpers.length) {
+      const room = await this.roomNow(model, ctx || this.lc.ctx || DEFAULT_CTX, args, cpu).catch(() => null);
+      if (room) this.log?.('engine', `${model}: card has ${Math.round(room.cardFreeMB)} MB free; needs about ${room.needGB} GB of ${room.haveGB} GB free${room.ok ? '' : ' (not enough)'}`);
+      if (room && !room.ok) throw Object.assign(new Error(noRoomLine(this.label(model), room.needGB, room.haveGB)), { code: 'no_room', fitsCtx: room.fitsCtx, noRetry: true });
+    }
     const exe = this.exePath();
     // The exact command, so speed settings can be checked (e.g. that the draft model really went in).
     try { fs.writeFileSync(path.join(this.cfg.dataDir, `llama-server${this.tag}-args.txt`), [exe, ...args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ') + '\n'); } catch {}
@@ -783,22 +995,25 @@ export class LlamaCpp {
     try {
       await Promise.race([ready, started]);
     } catch (e) {
+      this.lastLoadOut = full; // 226: the engine's own words, for the plain reason
       await this.stopServer();
       // 1.5.189: a spread that failed loads here like always, instead of leaving no brain.
       if (helpers.length && !signal?.aborted) {
         try { this.log?.('engine', `${model}: spreading over Bob-Net didn't work, so I'm loading it here instead`); } catch {}
-        return this.preload(model, signal, { ctx, cpu, beside, reserveMB, place, noSpread: true });
+        return this.startEngine(model, signal, { ctx, cpu, beside, reserveMB, place, noSpread: true, args: fixedArgs, roomChecked });
       }
       if (e.fellBack && !signal?.aborted) {
         try { this.log?.('engine', e.message); } catch {}
-        return this.preload(model, signal, { ctx, cpu, beside, reserveMB, place, noSpread });
+        return this.startEngine(model, signal, { ctx, cpu, beside, reserveMB, place, noSpread, args: fixedArgs, roomChecked });
       }
       throw e;
     }
     started.catch(() => {}); // later exits are handled by isLoaded()
     this.loadedOk = true;
-    // Catch crashes (crash-catch.js, off unless switched on): the engine stopping by itself after the brain loaded.
-    child.once('exit', (code) => { if (this.child === child && code !== 0) { try { this.onCrash?.({ model, code, tail: log }); } catch {} } });
+    // 218: the engine stopping by itself after the brain loaded (our own stops clear this.child first).
+    child.once('exit', (code, sig) => { if (this.child === child) this.crashed({ model, code, sig, tail: log, opts: { ctx, cpu, reserveMB, place } }); });
+    // 222: these settings started this brain: kept as the ones to go back to.
+    if (!helpers.length) { this.careData.lastGood[`${model}|${cpu ? 1 : 0}`] = { args, at: new Date().toISOString().slice(0, 16).replace('T', ' ') }; this.saveCare(); }
     this.primedHash = null;
     // A saved reading of this brain's instructions comes back in about a second instead of being read again.
     if (cpu && tuning(this.cfg).readyWhileTyping) await this.restoreStart(model, ctx);
@@ -962,6 +1177,7 @@ export class LlamaCpp {
         if (ev.expert_trace && this.onTrace) { traced = true; try { this.onTrace(ev.expert_trace, model); } catch (e) { this.log?.('engine', `fNRI cube: couldn't read ${model}'s trace: ${e.message}`); } }
         // Nov 11 (item 3): the engine's own count of what it read teaches Bob how many characters make a token for this brain.
         if (ev.timings) { const n = (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0); const k = this.current || model; const per = learnPer(this.perToken[k], promptChars(messages, tools), n); if (per) this.perToken[k] = per; }
+        if (ev.timings) this.speedNote(model, ev.timings, (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0)); // 225
         if (ev.timings) this.lastStats = this.statsOut(replyStats({ model: this.current || model, messages, promptTokens: (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0), outTokens: ev.timings.predicted_n, tokPerSec: ev.timings.predicted_per_second, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX })) || this.lastStats;
         const d = ev.choices?.[0]?.delta || {};
         if (budget && d.reasoning_content && ++thought > budget && !content) onOver(); // stop.over marks it, so real errors aren't retried
@@ -995,8 +1211,9 @@ export class LlamaCpp {
     if (!tool_calls.length && tools?.length) {
       const names = new Set(tools.map((t) => t.function?.name).filter(Boolean));
       const rescued = textCalls(content, names);
+      this.textCallNote(model, { offered: true, rescued: Boolean(rescued) }); // 228
       if (rescued) return { role: 'assistant', content: rescued.text, tool_calls: rescued.calls };
-    }
+    } else if (tool_calls.length) this.textCallNote(model, { offered: true, real: true });
     if (held) onToken && onToken(cleanHarmony(held)); // it wasn't a call after all: show it now
     if (held && /<\|(channel|message|start|end)\|>/.test(content)) content = cleanHarmony(content);
     return { role: 'assistant', content, tool_calls: tool_calls.length ? tool_calls : undefined };

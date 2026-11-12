@@ -1,6 +1,7 @@
 // Bob's model shop: what models exist, which are already on this PC (Ollama, ComfyUI, Maestro...),
 // downloading new ones one at a time with progress and a checksum, and switching Bob over to them.
 // Every download starts from a click in Bob's window. Bob never downloads a model on his own.
+import { recordBrainFile } from './engine-care.js';
 import { ownEntries, ownModels, ownResolve } from './own-models.js';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -695,6 +696,7 @@ export class ModelShop {
       if (h.f.bytes && got !== h.f.bytes) { fs.rmSync(part, { force: true }); throw new Error(`${name} came through the wrong size. I deleted it; try again.`); }
       if (h.sha && digest !== h.sha) { fs.rmSync(part, { force: true }); throw new Error(`${name} came through damaged (checksum didn't match). I deleted it; try again.`); }
       fs.renameSync(part, final);
+      recordBrainFile(this.cfg, final, { bytes: got, sha256: digest }); // reliability 227: checked again before it loads if it changes
       pub.done = base + got;
       if (!entry.into) this.found.files.push({ path: final, name, size: got, kind: entry.category, owner: 'Bob' });
     }

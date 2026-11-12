@@ -330,7 +330,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     const riker = spreadLoadSeconds(17.5);
     ok(riker > 413 + 2.63e3 / 6.6 && riker >= 60 * 60 && riker <= 7200, 'spread: the wait grows with the brain (Riker over Wi-Fi gets over an hour, not 5 minutes)', riker);
     ok(spreadLoadSeconds(0) === 300 && spreadLoadSeconds(0, 900) === 900 && spreadLoadSeconds(1e4) === 7200, 'spread: never less than the usual wait, never more than two hours');
-    ok(/return this\.preload\(model, signal, \{[^}]*noSpread: true \}\)/.test(llamacpp) && /!noSpread/.test(llamacpp), 'spread: a spread that failed loads here like always instead');
+    ok(/return this\.(preload|startEngine)\(model, signal, \{[^}]*noSpread: true[^}]*\}\)/.test(llamacpp) && /!noSpread/.test(llamacpp), 'spread: a spread that failed loads here like always instead');
     ok(/still loading over Bob-Net/.test(llamacpp) && /network cable is much faster/.test(llamacpp), 'spread: a long first load says how it is going, and that a cable is faster');
   }
 }

@@ -29,13 +29,15 @@ const TEMPLATE_FILE = { gemma4: 'gemma4.jinja', 'gpt-oss': 'gpt-oss.jinja', qwen
 
 // The --chat-template-file to pass, or null to let the file's own template stand.
 // lc.templates[model] (a path) always wins; "own" there means never replace it.
-export function templateFor(lc, model, gguf) {
+// force (reliability 228): the family's template even when the file has its own (a brain that kept writing its tool
+// calls as text). A template set by hand still wins.
+export function templateFor(lc, model, gguf, { force = false } = {}) {
   const set = lc?.templates?.[model];
   if (set === 'own') return null;
   if (typeof set === 'string' && set) return set;
   const info = ggufInfo(gguf);
   if (!info) return null; // can't read it: leave llama.cpp to it, as before
-  if (info.template || info.toolTemplate) return null;
+  if ((info.template || info.toolTemplate) && !force) return null;
   const fam = familyOf(model, info);
   // Gemma 4's small models (E2B, E4B) have their own template: no empty thought block when thinking is off.
   const file = fam === 'gemma4' && /\be[24]b\b/i.test(`${model} ${info.name}`) ? 'gemma4-small.jinja' : TEMPLATE_FILE[fam];
