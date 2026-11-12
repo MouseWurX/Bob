@@ -40,6 +40,7 @@ import { createViewer, outCard, fillPeeks } from './viewer.js';
 import { songListHtml, wireSongs } from './song-player.js';
 import { moreBar } from './more-bar.js';
 import { createPromptMenu } from './prompts.js'; // saved prompts: the / menu in the message box
+import { createBobMenu } from './bob-menu.js'; // 1.5.207 the small menu on Bob's picture
 import { diagramHtml, saveRowsHtml, setupSaveAs, watchSaveAs } from './save-as.js';
 import './math-core.js'; // Show maths as formulas: KaTeX, loaded only while the switch is on
 import { installShortcuts, listHtml as shortcutListHtml } from './shortcuts.js';
@@ -444,15 +445,19 @@ $('helpBtn').onclick = () => helpPage.open();
 window.addEventListener('bob-tidy', () => tidyPage.open());
 // "Ask Bob what he thinks" (Equip Bob, Attributes): puts the question in the chat and sends it.
 window.addEventListener('bob-ask', (e) => { const t = String(e.detail || '').slice(0, 300); if (!t) return; $('input').value = t; $('composer').requestSubmit(); });
-// Click Bob (or press Enter on him) to open Equip Bob.
+// 1.5.207 Click Bob (or press Enter on him) for his small menu: what he's doing, the brain loaded, and doors to
+// Settings, Brains, Style and Get models. The old Equip Bob screen no longer opens from here.
 bobCanvas.tabIndex = 0;
 bobCanvas.setAttribute('role', 'button');
-bobCanvas.title = 'Settings, Brains: which brain does what';
-bobCanvas.setAttribute('aria-label', 'Bob. Open Settings, Brains');
-// 1.5.207 Bob's picture opens Settings, Brains (the Brains page), not the old Equip Bob doll.
-const openBrains = () => cellar.open('settings', null, { jump: 'adv-brains' });
-bobCanvas.addEventListener('click', openBrains);
-bobCanvas.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openBrains(); } });
+bobCanvas.title = 'Bob: what I\'m doing, my brain, and my settings';
+bobCanvas.setAttribute('aria-label', 'Bob. Open my menu');
+createBobMenu({
+  anchor: bobCanvas,
+  doors: { brains: () => cellar.open('settings', null, { jump: 'adv-brains' }), style: () => cellar.open('shop', 'style'), models: () => cellar.open('shop', 'roles') },
+  getStatus: async () => (await fetch('/api/status')).json(),
+  getNames: async () => Object.fromEntries((((await (await fetch('/api/roles')).json()).options || {}).llm || []).map((o) => [o.value, o.label])),
+  saidNow: () => statusEl.title || statusEl.textContent
+});
 // A past chat from Topics or search: switch to it and show its recent part (older parts are summed up).
 async function openChat(id, msgId) {
   if (busy) { note('Bob is busy in this chat. Open the other one when he has finished.'); return; }

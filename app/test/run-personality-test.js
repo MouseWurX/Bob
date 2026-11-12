@@ -71,7 +71,7 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
   const page = equipHtml({ roles: { current: {}, options: {} }, models: [], brains: {}, embed: '', selected: 'bob', vramGB: 16, attributes: html });
   check('Equip Bob: attributes left, Bob and slots in the middle, inventory right', page.indexOf('class="attributes"') < page.indexOf('class="equip-mid"') && page.indexOf('class="equip-mid"') < page.indexOf('class="kit-panel"'));
   const app = read('public/app.js');
-  check('clicking Bob (or Enter on him) opens Settings, Brains', /const openBrains = \(\) => cellar\.open\('settings', null, \{ jump: 'adv-brains' \}\)/.test(app) && /bobCanvas\.addEventListener\('click', openBrains\)/.test(app) && /bobCanvas\.tabIndex = 0/.test(app) && /e\.key === 'Enter'/.test(app));
+  check('clicking Bob (or Enter on him) opens his small menu', /createBobMenu\(\{\s*anchor: bobCanvas/.test(app) && /e\.key === 'Enter'/.test(read('public/bob-menu.js')) && /bobCanvas\.tabIndex = 0/.test(app) && /e\.key === 'Enter'/.test(app));
   check('Ask Bob sends the question in the chat', /addEventListener\('bob-ask'/.test(app) && /requestSubmit/.test(app));
   const css = read('public/style.css');
   check('three columns when wide, stacked when narrow', /\.equip-page \{ display: grid; grid-template-columns: 250px minmax\(0, 1fr\) 280px/.test(css) && /@media \(max-width: 1100px\)[^@]*\.equip-page \{ grid-template-columns: 1fr/.test(css));

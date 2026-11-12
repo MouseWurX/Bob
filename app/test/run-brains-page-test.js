@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setUpHtml, handLock, SETUPS, setupOf, setupPlan, duoNeedsQuick, brainsHtml, brainsInUse, emptyJobs, spareBrains, jobsFor, placeBarHtml, budget, brainJobs, senseSlots, listTopHtml, listRowHtml, listSetUpHtml } from '../public/brains.js';
 import { HELP } from '../public/help-content.js';
+import { bobMenuHtml, loadedLine } from '../public/bob-menu.js';
 import { readyList, readyDefaults, readyOrder, SPLITS, splitPicks } from '../public/equip.js';
 
 let pass = 0, fail = 0;
@@ -75,7 +76,12 @@ const ctx = { roles, models, brains: { small: 'gemma4-e4b', deep: 'bobert-35b' }
   check('the list in cellar.js uses them', /listSetUpHtml\(brainsCtx\(\)\)/.test(cellar) && /\$\{listTopHtml\(bx\)\}/.test(cellar) && /listRowHtml\(cur, \{ \.\.\.bx, rowId: j\.id \}\)/.test(cellar));
   check('Settings, Brains opens on the Brains page', /\['brains', '🧠 Brains', [^\n]*\(\) => brainsPanelHtml\(\) \+/.test(cellar) && /brainsHtml\(brainsCtx\(\{ inSettings: true \}\)\)/.test(cellar));
   check('in Settings the page offers the plain list, not the paper doll', !/data-eqview="doll"/.test(brainsHtml({ ...ctx, inSettings: true })) && /data-eqview="list"/.test(brainsHtml({ ...ctx, inSettings: true })));
-  check('Bob\'s picture opens Settings, Brains', /cellar\.open\('settings', null, \{ jump: 'adv-brains' \}\)/.test(app) && !/cellar\.open\('shop', 'roles'\)[^\n]*bobCanvas/.test(app));
+  const menu = bobMenuHtml({ state: 'idle', loaded: [{ name: 'bobert-35b' }] }, { said: 'Coffee in hand.', names: { 'bobert-35b': '35Bob Bobert' } });
+  check('Bob\'s picture opens a small menu: what he is doing, the brain loaded, and three doors', /Coffee in hand\./.test(menu) && /Brain loaded: 35Bob Bobert/.test(menu) && ['brains', 'style', 'models'].every((d) => menu.includes(`data-bobmenu="${d}"`)) && (menu.match(/role="menuitem"/g) || []).length === 3);
+  check('the menu says so when no brain is loaded, uses the file name for a brain it has no label for, and never draws raw text', /No brain loaded/.test(loadedLine({ loaded: [] })) && loadedLine({ loaded: [{ name: 'x.gguf' }, { name: 'y' }] }) === 'Brains loaded: x.gguf, y' && !/<script>/.test(bobMenuHtml({ loaded: [{ name: '<script>' }] }, { said: '<script>' })));
+  check('its Brains door is Settings, Brains; the old screen no longer opens from the picture', /brains: \(\) => cellar\.open\('settings', null, \{ jump: 'adv-brains' \}\)/.test(app) && !/bobCanvas\.addEventListener\('click', \(\) => cellar\.open/.test(app));
+  check('the menu closes on Esc and outside clicks, and tells screen readers it is a menu', /e\.key === 'Escape'/.test(read('public/bob-menu.js')) && /pointerdown/.test(read('public/bob-menu.js')) && /aria-haspopup/.test(read('public/bob-menu.js')) && /aria-expanded/.test(read('public/bob-menu.js')));
+  check('Help has the menu: an FAQ and a glossary entry', HELP.some((h) => h.id === 'faq-bob-picture') && /<dt>Bob's menu<\/dt>/.test(HELP.find((h) => h.id === 'glossary').html));
   check('Help says where the page is', /Settings, Brains/.test(HELP.find((h) => h.id === 'brains-page').html) && /brains-page/.test(HELP.find((h) => h.id === 'settings-brains').html));
 }
 // ---- first-time setup: How should I split my brains? ----
