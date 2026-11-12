@@ -30,6 +30,15 @@ Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf and its mmproj under `<parent>/models` (found by
    mass patch gives pick counts only, and the script says so. Switching experts off saves no memory by itself. For a big
    brain, run it on a rented card through the Forge (`--url` and `LAB_API_KEY`). The mask is put back to all-on at the end.
 
+6. `node make-datasets.mjs --from <kept folder> --lessons out\lessons --out <folder> [--bob <Bob source>] [--private "word,word"]`:
+   sorts a benchmark's kept data into publishable sets without touching the raw folder. Clean set: chats and quiz answers
+   that were right (same tool and arguments as the full Qwen3.6, or correctly no tool), each kept once. `full\`: every
+   answer, marked right or wrong with the kind of mistake. `pairs-right-vs-wrong.jsonl`: each wrong answer next to the
+   recorded right one, for preference training. REAP scores, experts by layer, keep lists and calibrations each get their
+   own file. Odds (top 5 words per step) come along when the run saved them; tool-score and experts-test save every
+   answer with its odds and a right/wrong mark unless `--no-odds`. `--private` refuses to finish while any output holds one
+   of those words.
+
 The scripts were first tested against a fake llama-server and a fake llama-imatrix (flow, files and parsing), then for real on the project's test machine. What they found is on the models page.
 
 Lesson results: use_tools and bob_help are Bob's own answers. The cards he shows (offer_setup, pick_session, show_plan,

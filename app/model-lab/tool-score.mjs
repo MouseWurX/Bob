@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { opts, locate, startServer, chat, stamp, readJsonl, appendJsonl, moeShape, AGENT } from './common.mjs';
+import { parseArgs, sameArgs, judgeTurn } from './tool-judge.mjs';
 
 const o = opts({ ctx: 16384 });
 if (o.url) process.env.LAB_URL = String(o.url);   // build 18: score a brain served elsewhere (the Forge's card); --models "label=served"
@@ -47,20 +48,6 @@ function history(lesson, k) {
   if (system === null) return null;
   return { messages: [{ role: 'system', content: system }, ...out], tools };
 }
-const norm = (v) => (typeof v === 'string' ? v.trim().toLowerCase().replace(/\s+/g, ' ') : JSON.stringify(v));
-function parseArgs(a) { if (a && typeof a === 'object') return a; try { return JSON.parse(a || '{}'); } catch { return { input: String(a) }; } }
-function sameArgs(want, got) {
-  // every argument the original gave must be there with the same value (extra optional ones are fine); long free text only needs to overlap
-  for (const [k, v] of Object.entries(want)) {
-    if (!(k in got)) return false;
-    const a = norm(v), b = norm(got[k]);
-    if (a === b) continue;
-    if (a.length > 40 && b.length > 40) { const wa = new Set(a.split(/\W+/)); const hit = b.split(/\W+/).filter((w) => wa.has(w)).length; if (hit / wa.size >= 0.6) continue; }
-    return false;
-  }
-  return true;
-}
-
 async function score(m) {
   const shape = fs.existsSync(m.file) ? moeShape(m.file) : { key: null };
   const srv = await startServer({ server: L.server, model: m.file, mmproj: null, ctx: Number(o.ctx), extra: [...extra, ...(o.experts && shape.key ? ['--override-kv', `${shape.key}=int:${o.experts}`] : [])], logFile: path.join(L.out, 'llama-server-lab.log') });
@@ -83,8 +70,8 @@ async function score(m) {
         try { ({ msg, timings, logprobs } = await chat(srv.url, { messages: h.messages, tools: h.tools, think, max: think ? 6000 : 1500, temperature: 0, ...(o['no-odds'] ? {} : { logprobs: true, top_logprobs: 5 }) })); }
         catch (e) { r.errors++; r.misses.push(`${l.idea}/${k}: error ${e.message.slice(0, 80)}`); continue; }
         if (timings?.predicted_per_second) r.tps.push(timings.predicted_per_second);
-        try { appendJsonl(keepFile, { brain: m.name, idea: l.idea, turn: k, think, answer: { content: msg.content || '', reasoning: msg.reasoning_content || undefined, tool_calls: msg.tool_calls || undefined }, ...(logprobs ? { odds: (logprobs.content || []).map((x) => ({ t: x.token, p: x.logprob, top: (x.top_logprobs || []).map((y) => [y.token, y.logprob]) })) } : {}) }); } catch {}
         const got = (msg.tool_calls || []).map((c) => ({ name: c.function?.name, args: parseArgs(c.function?.arguments) }));
+        try { appendJsonl(keepFile, { brain: m.name, idea: l.idea, turn: k, think, ok: judgeTurn(wantCalls, got), want: wantCalls.length ? 'tool' : 'no-tool', answer: { content: msg.content || '', reasoning: msg.reasoning_content || undefined, tool_calls: msg.tool_calls || undefined }, ...(logprobs ? { odds: (logprobs.content || []).map((x) => ({ t: x.token, p: x.logprob, top: (x.top_logprobs || []).map((y) => [y.token, y.logprob]) })) } : {}) }); } catch {}
         if (!wantCalls.length) {
           r.noToolTurns++;
           if (!got.length) r.rightNoTool++; else r.misses.push(`${l.idea}/${k}: expected no tool, got ${got.map((g) => g.name).join(',')}`);
