@@ -88,6 +88,16 @@ export function taskRow(j, { movable, full }) {
   </li>`;
 }
 
+// 1.5.210: an empty list says what a task is and gives one to try, instead of a bare one-line "nothing"
+export const TASK_EXAMPLE = 'Make a spreadsheet of my monthly bills';
+export function emptyTasks(filter, total = 0) {
+  if (filter === 'completed') return '<li class="muted tasks-empty">Nothing finished yet. Finished tasks wait here until you clear them.</li>';
+  if (filter === 'problems') return '<li class="muted tasks-empty">Nothing stopped or failed. Good.</li>';
+  if (filter === 'open' && total) return '<li class="muted tasks-empty">Nothing waiting. Everything you asked for is done or stopped (see the other tabs).</li>';
+  return `<li class="tasks-empty"><p><strong>No tasks yet.</strong> A task is anything you ask Bob to do. Each message you send becomes one, and he works through them top to bottom. While one runs you can keep chatting; new ones wait their turn here.</p>
+        <p>For example: <q>${TASK_EXAMPLE}</q> <button type="button" class="mini" data-try>Try it</button></p></li>`;
+}
+
 export function createTasks({ post }) {
   const dlg = document.getElementById('tasks'), body = document.getElementById('tasks-body');
   let jobs = [], filter = 'open';
@@ -107,13 +117,14 @@ export function createTasks({ post }) {
         <span class="spacer"></span>
         ${done.length || other.some((j) => j.state === 'cancelled') ? '<button type="button" data-clear>Clear completed</button>' : ''}
       </div>
-      <ol class="tlist">${shown.map((j) => taskRow(j, { movable: j.state === 'waiting', full: true })).join('') || '<li class="muted">Nothing here.</li>'}</ol>`;
+      <ol class="tlist">${shown.map((j) => taskRow(j, { movable: j.state === 'waiting', full: true })).join('') || emptyTasks(filter, jobs.length)}</ol>`;
   }
   body.addEventListener('click', async (e) => {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.f) { filter = b.dataset.f; return draw(); }
     if ('clear' in b.dataset) return post('/api/queue/clear', {});
+    if ('try' in b.dataset) { const box = document.getElementById('input'); dlg.close(); if (box) { box.value = TASK_EXAMPLE; box.focus(); box.dispatchEvent(new Event('input', { bubbles: true })); } return; }
     const id = b.closest('[data-id]')?.dataset.id;
     if (!id) return;
     const t = b.dataset.t;

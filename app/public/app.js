@@ -26,6 +26,7 @@ import { createHelp } from './help.js';
 import { handsApproval, togetherApproval, onHandsEvent } from './hands.js';
 import { planApproval } from './plan-card.js';
 import { createBrainBar } from './brain-bar.js';
+import { createStatusChip } from './status-chip.js'; // 1.5.210: one status chip, and the phone's bottom bar
 import { createHandsSwitch } from './hands-switch.js';
 import { installTips } from './tips.js';
 import { createWebSwitch } from './web-switch.js';
@@ -84,6 +85,7 @@ const brainBar = createBrainBar({ post: (u, d) => post(u, d), note: (t, k) => no
 const handsSwitch = createHandsSwitch({ note: (t, k) => note(t, k) });
 const jobHelps = createJobHelps({ api: (u, d) => api(u, d), add: (c, h) => add(c, h), note: (t, k) => note(t, k), log, stopBtn, scrollDown: () => scrollDown() });
 const quickSwitches = createQuickSwitches({ note: (t, k) => note(t, k) });
+createStatusChip({ setLeft: layout.setLeft, leftFolded: layout.leftFolded });
 const webSwitch = createWebSwitch({ note: (t, k) => note(t, k) });
 const rentSwitch = createRentSwitch({ note: (t, k) => note(t, k) });
 const gameLock = createGameLock({ note: (t, k) => note(t, k) }); // 1.5.41 the 🎮 Gaming button

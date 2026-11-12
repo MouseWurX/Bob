@@ -2157,3 +2157,66 @@ html.readable-font code, html.readable-font pre, html.readable-font kbd { font-f
 .file-link.file-place { white-space: nowrap; }
 .vdoc .flash, .vslide.flash { outline: 2px solid var(--accent); outline-offset: 2px; }
 .vcode mark.vat { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; }
+
+/* ---------- 1.5.210 (UX item B): one status chip, a grouped menu, a bottom bar on phones. Display only. ---------- */
+/* The chip: Bob's brain line, then the icons of any quick switch that is on, then ▾. Its panel holds the switches. */
+.brain-pill .status-on { font-size: 12px; letter-spacing: 1px; }
+.brain-pill .status-on[hidden] { display: none; }
+.brain-pill .status-more { font-size: 10px; color: var(--muted); }
+.brain-pill[aria-expanded="true"] .status-more { transform: rotate(180deg); }
+.brain-pill:focus-visible, .brain-switch:focus-visible, .nav-item:focus-visible, .nav-new:focus-visible, .bar-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.brain-pop { width: max-content; max-width: min(380px, calc(100vw - 24px)); display: grid; gap: 8px; box-shadow: 0 8px 24px rgb(0 0 0 / .4); }
+.brain-pop[hidden] { display: none; }
+.brain-pop-text { margin: 0; color: var(--text); }
+.status-switches { display: grid; gap: 6px; }
+.status-switches .brain-switch { justify-content: space-between; width: 100%; }
+.status-switches .brain-switch[hidden] { display: none; }
+.brain-pop .free-confirm { margin: 0; }
+.brain-switch.hands-quick { color: var(--text); border-color: var(--bad); font-weight: 600; }
+/* Faint words, fixed: an Off badge is the quiet colour on the panel itself (at least 4.5 to 1 in every theme), with a
+   thin border, instead of quiet on grey (as low as 1.3 to 1 in the high-contrast themes). On stays filled. */
+.brain-switch .st, .nav-item .st, .tb .st, .pill-switch .st { background: transparent; color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+.brain-switch[aria-checked="true"] .st, .nav-item[aria-pressed="true"] .st, .pill-switch[aria-checked="true"] .st { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+.brain-switch.hands-btn[data-on="true"] .st, .brain-switch.hands-btn[data-state="stopped"] .st { box-shadow: none; }
+.brain-switch.hands-btn[data-state="settings-off"] { opacity: 1; border-style: dashed; }
+.brain-switch.free-btn[data-free="true"] .st { box-shadow: none; }
+.ver { opacity: 1; color: var(--muted); }
+
+/* The left menu in four groups: Chat, Play, Lab, Setup. Folded, each heading is a thin line between the groups. */
+.nav-head:has(+ #labBtn[hidden]) { display: none; }
+body.left-folded .nav-head { display: block; height: 1px; padding: 0; margin: 6px 10px; background: var(--line); font-size: 0; overflow: hidden; }
+body.left-folded .nav-head:has(+ #labBtn[hidden]) { display: none; }
+
+/* The bottom bar: phones and narrow windows only. */
+.bottom-bar { display: none; }
+@media (max-width: 640px) {
+  .bottom-bar { display: flex; justify-content: space-around; gap: 2px; padding: 4px 4px calc(4px + env(safe-area-inset-bottom, 0px)); background: var(--panel); border-top: 1px solid var(--line); }
+  .bar-item { position: relative; flex: 1 1 0; min-width: 0; min-height: 48px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px 2px; font-size: 11px; color: var(--text); background: none; border: 1px solid transparent; border-radius: var(--r); }
+  .bar-item .ico { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .bar-item .lbl { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-item.on, .bar-item[aria-expanded="true"] { color: var(--accent); background: var(--card); }
+  .bar-item .badge { position: absolute; top: 2px; right: calc(50% - 22px); min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
+  .bar-item .badge[hidden] { display: none; }
+  /* The left menu is a sheet that More opens, with its words, over the chat. Closed, it takes no room at all. */
+  body.left-folded .side { display: none; }
+  body:not(.left-folded) .side { position: fixed; top: 0; bottom: 0; left: 0; z-index: 21; width: min(300px, 86vw); box-shadow: 8px 0 24px rgb(0 0 0 / .55); }
+  .ver { display: none; }
+  /* One chip on top: the brain line, cut short to fit, with Now running beside it. */
+  .ctx { gap: 6px; padding: 4px 8px; }
+  .ctx-title { display: none; }
+  .brain-pill { max-width: 62vw; }
+  #brainPillText { overflow: hidden; text-overflow: ellipsis; }
+  .brain-pop { position: fixed; top: 48px; left: 12px; right: 12px; max-width: none; width: auto; max-height: 70vh; overflow-y: auto; }
+  .now-toggle .lbl { display: none; }
+  /* The typing box gets the whole width; the buttons sit in a row under it. */
+  .composer { flex-wrap: wrap; padding: 8px; gap: 6px; }
+  .composer > textarea { order: -1; flex: 1 1 100%; min-height: 48px; }
+  .composer .mic { width: 44px; min-height: 40px; }
+  .composer .buttons { flex-direction: row; margin-left: auto; }
+  .composer .send, .composer .stop { min-height: 40px; }
+  /* The effort row and the prompt chips stay one line each and scroll sideways. */
+  .effort { flex-wrap: nowrap; overflow-x: auto; padding: 6px 8px 0; }
+  .effort > * { flex: none; }
+  .chips { padding: 6px 8px 0; }
+}
+.tasks-empty p { margin: 4px 0; } .tasks-empty q { font-style: italic; }

@@ -38,6 +38,19 @@ export function showWord(prev, layers, experts, used, rnd = Math.random) {
   return out;
 }
 
+// 1.5.210: the cube's state in a few plain words, for its screen-reader label.
+export function cubeState({ why = '', rec = null, leaving = false, shell = null, loadingNow = '', phase = 'idle', busy = false, empty = false } = {}) {
+  const name = shell?.label ? ` (${shell.label})` : '';
+  if (why) return 'Bob\'s brain cube: nothing to show for this brain.';
+  if (rec) return `Bob's brain cube${name}: showing the experts his last reply used.`;
+  if (leaving && shell) return `Bob's brain cube${name}: letting go of the brain.`;
+  if (!shell) return empty ? 'Bob\'s brain cube: no brain loaded.' : 'Bob\'s brain cube: waiting for a brain.';
+  if (loadingNow && loadingNow === shell.label) return `Bob's brain cube${name}: loading.`;
+  if (phase === 'wait') return `Bob's brain cube${name}: thinking.`;
+  if (busy) return `Bob's brain cube${name}: answering.`;
+  return `Bob's brain cube${name}: ready.`;
+}
+
 export const CUBE_IN_MS = 1600, CUBE_OUT_MS = 1100, VASE_IN_MS = 3200, DRAIN_OUT_MS = 2200; // the block building itself when a brain's first reply arrives (Vase, then fill and Drain take about twice as long, so the water can be seen sloshing), and coming apart when the brain is let go
 
 // The colours: when this brain has an fNRI scan, Bob sends that scan's map along and every expert gets its skill's
@@ -113,7 +126,12 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   showD();
   if (mono) mono.onclick = () => { one = !one; try { localStorage.setItem('bob-cube-mono', one ? '1' : '0'); } catch {} showOne(); if (rec) view.draw(lit()); };
 
-  function words() {
+  // 1.5.210: a screen reader hears the cube's state in a few words, once each time it changes (not every word of a
+  // reply, which the line under the cube follows), and the picture's own label says the same.
+  const srLive = typeof document !== 'undefined' ? document.getElementById?.('mindCubeState') ?? null : null;
+  let srLast = '';
+  function words() { wordsNow(); const now = cubeState({ why, rec, leaving, shell, loadingNow, phase, busy, empty: known && !anyLoaded }); if (now !== srLast) { srLast = now; canvas.setAttribute?.('aria-label', now); if (srLive) srLive.textContent = now; } }
+  function wordsNow() {
     const shape = shell ? ` ${shell.label}: ${shell.layers} floors of ${shell.experts} ${shell.kind === 'neurons' ? 'neuron groups' : 'experts'}.` : '';
     if (why) { says.textContent = why + shape; return; }
     const empty = known && !anyLoaded;

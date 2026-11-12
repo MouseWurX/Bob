@@ -467,6 +467,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
   document.addEventListener('visibilitychange', pollGpu);
 
   return {
+    setLeft, leftFolded, // 1.5.210: the phone's bottom bar opens and closes the menu as a sheet (status-chip.js)
     jobs(list) { jobs = list; draw(); },
     downloads(list) { dls = list; draw(); },
     tick(ev) { const d = dls.find((x) => x.id === ev.id); if (d) { Object.assign(d, { done: ev.done, total: ev.total || d.total, rate: ev.rate, eta: ev.eta }); if (!dl.querySelector('.dragging')) draw(); } },

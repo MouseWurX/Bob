@@ -60,6 +60,8 @@ Bob's window has three parts:
 
 At the top of the chat, the brain label shows how much memory **Bob's brain** takes. The Memory meters in Now running show the **whole** graphics card and RAM (Windows, games, other apps and Bob's picture model too), so the meters are bigger. The line under the meters shows Bob's share, and his brain there matches the label.
 
+The brain label is the one chip at the top of the chat. Press it for the quick switches: Free memory when Bob is idle, ✋ Hands, 🔓 Autonomy, 🖥 Screen use and 💭 Bob's thinking. ✋, 🔓 or 🖥 show on the label while that switch is on, and while Hands are on a **✋ Stop Hands** button sits beside it. On a phone or a window 640 pixels wide or less, a bar along the bottom has Chat, New, Tasks, Topics, Settings and More (the whole menu). The left menu is grouped into Chat, Play, Lab and Setup.
+
 Handy things in the chat:
 
 - Every message and every piece of code has a **Copy** button. This helps a lot over remote desktop apps, where right-click and Ctrl+C often don't work.
@@ -256,7 +258,7 @@ High and Extreme end with **moot minutes**: who checked what, and what's still o
 
 ### Watching Bob think
 
-**💭 Bob's thinking**, at the top of the chat, opens a small window that stays on top of your other windows. It shows, live: what Bob is doing, which brains he holds and where (graphics card or processor), his thinking as it streams (his copies too, so you can watch a moot), brain loads and swaps, each tool step and the notes he keeps for himself. Low effort replies skip thinking, so there you mostly see steps. Bob only sends his thinking along while the window is open, and nothing in it is saved.
+**💭 Bob's thinking** (press the brain label at the top of the chat) opens a small window that stays on top of your other windows. It shows, live: what Bob is doing, which brains he holds and where (graphics card or processor), his thinking as it streams (his copies too, so you can watch a moot), brain loads and swaps, each tool step and the notes he keeps for himself. Low effort replies skip thinking, so there you mostly see steps. Bob only sends his thinking along while the window is open, and nothing in it is saved.
 
 ### How Bob keeps his tool calls on track (on unless you turn it off)
 
