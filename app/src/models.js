@@ -28,6 +28,15 @@ export function hostAllowed(u) {
     return url.protocol === 'https:' && ALLOWED_HOSTS.some((r) => r.test(url.hostname));
   } catch { return false; }
 }
+// 1.5.207 Model files may also come from ModelScope (modelscope.cn itself; it serves the file with no second host).
+// Only model downloads use this list: engines and Bob's own updates keep hostAllowed.
+const MODEL_HOSTS = [...ALLOWED_HOSTS, /^(www\.)?modelscope\.cn$/];
+export function modelHostAllowed(u) {
+  try {
+    const url = new URL(u);
+    return url.protocol === 'https:' && MODEL_HOSTS.some((r) => r.test(url.hostname));
+  } catch { return false; }
+}
 
 // Guess what a loose model file is for, from its folder and name.
 export function guessKind(p) {
@@ -135,7 +144,7 @@ export async function headFile(url, signal) {
     const loc = r.headers.get('location');
     if (!loc) return r;
     const next = new URL(loc, u);
-    if (next.host !== new URL(u).host || !hostAllowed(next.href)) return r;
+    if (next.host !== new URL(u).host || !modelHostAllowed(next.href)) return r;
     u = next.href;
   }
   return r;
@@ -629,7 +638,7 @@ export class ModelShop {
     // Ask each link for its size and checksum first, so a broken link or a full disk is caught before anything downloads.
     const heads = [];
     for (const f of todo) {
-      if (!hostAllowed(f.url)) throw new Error(`I only download from Hugging Face and GitHub. ${f.url} isn't one of those.`);
+      if (!modelHostAllowed(f.url)) throw new Error(`I only download from Hugging Face, ModelScope and GitHub. ${f.url} isn't one of those.`);
       // 1.5.32: follow a renamed repo's redirect (Hugging Face answers 307 with a relative address and no file details)
       // until a hop names the file's size; the storage hop itself (another host) isn't asked.
       const r = await headFile(f.url, signal);
@@ -674,7 +683,7 @@ export class ModelShop {
       }
       const base = pub.done;
       let res = await fetch(h.f.url, { headers: have ? { range: `bytes=${have}-` } : {}, redirect: 'follow', signal });
-      if (!hostAllowed(res.url)) throw new Error('The download was redirected somewhere I don\'t trust. Stopped.');
+      if (!modelHostAllowed(res.url)) throw new Error('The download was redirected somewhere I don\'t trust. Stopped.');
       // The server ignored the Range request: start this file again from nothing.
       if (have && res.status === 200) { have = 0; hash.destroy?.(); fs.rmSync(part, { force: true }); return this.fetchFiles(entry, pub, signal, tick); }
       if (!res.ok && res.status !== 206) throw new Error(res.status === 401 || res.status === 403 || res.status === 404 ? linkError(name, res.status) : `Download of ${name} failed (${res.status}).`);

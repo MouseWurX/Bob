@@ -117,9 +117,9 @@ function rowHtml(m, job, ctx) {
 // 1.5.205 Add a model page: paste a model's page, then pick which of its files (one per quantization) to add.
 export function addPageHtml(ctx) {
   const a = ctx.addPage || {};
-  return `<section class="cat-job add-page" id="catjob-addpage"><h3>🔗 Add a model page ${tipHtml('Paste a model\'s Hugging Face page and I list its .gguf files, one per quantization. Tick the ones you want and they join this replicant matrix\'s list with a Get button. Each is pinned to the page as it is today and checked after it downloads. I haven\'t tried them, so I never recommend one over the brains I know.', 'About adding a model page')}</h3>
+  return `<section class="cat-job add-page" id="catjob-addpage"><h3>🔗 Add a model page ${tipHtml('Paste a model\'s Hugging Face or ModelScope page and I list its .gguf files, one per quantization. Tick the ones you want and they join this replicant matrix\'s list with a Get button. Each is pinned to the page as it is today and checked after it downloads. I haven\'t tried them, so I never recommend one over the brains I know.', 'About adding a model page')}</h3>
     <p class="muted">A model I don't list? Paste its page and pick which sizes to add. Only this replicant matrix's list changes. <button type="button" class="mini help-link" data-help="faq-add-page" aria-label="Help: adding a model page">? Help</button></p>
-    <form class="own-form" data-addpageform><label>Model page <input type="text" data-addpageurl maxlength="400" placeholder="https://huggingface.co/owner/name-GGUF" value="${esc(a.url || '')}" required></label>
+    <form class="own-form" data-addpageform><label>Model page <input type="text" data-addpageurl maxlength="400" placeholder="https://huggingface.co/owner/name-GGUF or a modelscope.cn page" value="${esc(a.url || '')}" required></label>
       ${a.error ? `<p class="error" role="alert">${esc(a.error)}</p>` : ''}${a.done ? `<p class="muted" role="status">${esc(a.done)}</p>` : ''}
       <div class="row"><button type="submit" class="get" ${a.busy ? 'disabled' : ''}>${a.busy ? 'Reading the page…' : 'Show its files'}</button></div></form></section>`;
 }

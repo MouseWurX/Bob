@@ -7,7 +7,8 @@ import { parsePage, groupQuants, readPage, makeEntry, cleanAdded, mergeAdded, sw
 import { mergeSettings, SETTING_KEYS } from '../src/config.js';
 import { splitRemoved } from '../src/catalog-removed.js';
 import { addPageHtml, pagePickHtml, catalogueHtml } from '../public/catalogue.js';
-import { pickFor } from '../public/fit.js';
+import { pickFor, sourceOf } from '../public/fit.js';
+import { hostAllowed, modelHostAllowed } from '../src/models.js';
 import { quantOf } from '../public/place.js';
 
 let pass = 0, fail = 0;
@@ -25,7 +26,7 @@ const fake = (status, j) => async (u, o) => { asked.push([u, o]); return { statu
   check('a page link, a file link on the page, a short link and a plain name all mean the page',
     ['https://huggingface.co/o/Thing-9B-GGUF', 'https://huggingface.co/o/Thing-9B-GGUF/blob/main/Thing-9B-Q4_K_M.gguf?download=true', 'https://hf.co/o/Thing-9B-GGUF/', 'o/Thing-9B-GGUF'].every((x) => { const r = parsePage(x); return r?.host === 'hf' && r.repo === 'o/Thing-9B-GGUF' && r.revision === ''; }));
   check('a branch is kept', parsePage('https://huggingface.co/o/n/tree/v2').revision === 'v2');
-  check('other sites are told apart, and nonsense is nothing', parsePage('https://modelscope.cn/models/Qwen/x').host === 'modelscope' && parsePage('https://www.modelscope.ai/models/a/b').host === 'modelscope' && parsePage('https://example.com/a/b').host === 'other' && parsePage('https://huggingface.co/datasets/a/b').host === 'other' && parsePage('hello') === null && parsePage('') === null && parsePage('../../etc') === null);
+  check('other sites are told apart, and nonsense is nothing', parsePage('https://www.modelscope.ai/models/a/b').host === 'other' && parsePage('https://example.com/a/b').host === 'other' && parsePage('https://huggingface.co/datasets/a/b').host === 'other' && parsePage('hello') === null && parsePage('') === null && parsePage('../../etc') === null);
 }
 {
   const page = await readPage('o/Thing-9B-GGUF', { fetchFn: fake(200, SITE) });
@@ -68,9 +69,27 @@ const fake = (status, j) => async (u, o) => { asked.push([u, o]); return { statu
     check(`a page that can't be added says so plainly (${word.source})`, r.ok === false && word.test(r.error));
   }
   const n = asked.length;
-  const ms = await readPage('https://modelscope.cn/models/Qwen/x', { fetchFn: fake(200, SITE) });
   const off = await readPage('https://example.com/a/b', { fetchFn: fake(200, SITE) });
-  check('ModelScope and other sites are answered without asking them anything', !ms.ok && /ModelScope/.test(ms.error) && !off.ok && asked.length === n);
+  check('other sites are answered without asking them anything', !off.ok && /Hugging Face and ModelScope/.test(off.error) && asked.length === n);
+
+  // ModelScope (the shape its file list really answers with)
+  const REV = 'c'.repeat(40), REV2 = 'd'.repeat(40);
+  const msFile = (Path, Size, Revision = REV, Sha256 = SHA) => ({ CommitMessage: 'x', CommittedDate: 1, CommitterName: 'y', InCheck: false, IsLFS: true, Mode: '100644', Name: Path.split('/').pop(), Path, Revision, Sha256, Size, Type: 'blob' });
+  const MS = { Code: 200, Success: true, Message: 'success', RequestId: 'r', Data: { IsVisual: false, LatestCommitter: {}, Files: [msFile('README.md', 10), { Name: 'sub', Path: 'sub', Type: 'tree' }, msFile('Thing-9B-Q4_K_M.gguf', 5_600_000_000), msFile('Thing-9B-Q8_0.gguf', 9_000_000_000, REV2), msFile('Thing-9B-Q2_K.gguf', 2e9, 'master'), msFile('mmproj-F16.gguf', 8e8, REV2)] } };
+  check('a ModelScope page link means the page, with or without a tab after it', ['https://modelscope.cn/models/Qwen/Thing-9B-GGUF', 'https://www.modelscope.cn/models/Qwen/Thing-9B-GGUF/files', 'https://modelscope.cn/models/Qwen/Thing-9B-GGUF/file/view/master/x.gguf?status=2'].every((x) => { const r = parsePage(x); return r?.host === 'ms' && r.repo === 'Qwen/Thing-9B-GGUF'; }));
+  const mp = await readPage('https://modelscope.cn/models/Qwen/Thing-9B-GGUF', { fetchFn: fake(200, MS) });
+  check('ModelScope\'s file list is asked, and only that', asked[asked.length - 1][0] === 'https://modelscope.cn/api/v1/models/Qwen/Thing-9B-GGUF/repo/files?Revision=master&Recursive=true' && asked.length === n + 1);
+  check('its choices come with sizes, and one with no commit to pin stays locked', mp.ok && mp.host === 'ms' && mp.choices.map((c) => `${c.quant}:${c.can}`).join() === 'Q2_K:false,Q4_K_M:true,Q8_0:true');
+  const me = makeEntry(mp, mp.choices[2]);
+  check('each file is pinned to its own commit on modelscope.cn, with size and checksum', me.files[0].url === `https://modelscope.cn/models/Qwen/Thing-9B-GGUF/resolve/${REV2}/Thing-9B-Q8_0.gguf` && me.files[0].sha256 === SHA && me.files[0].bytes === 9_000_000_000 && me.files[1].url.includes(`/resolve/${REV2}/mmproj-F16.gguf`) && me.source.host === 'ms' && me.source.commit === REV2);
+  check('it says where it came from, is not tried, and can\'t collide with the same name from Hugging Face', /on ModelScope\./.test(me.what) && me.trial === true && me.id.startsWith('added-ms-') && me.id !== addedId('Qwen/Thing-9B-GGUF', mp.choices[2].key));
+  check('settings keep a ModelScope entry as made, and drop one on another host', JSON.stringify(cleanAdded([me])[0]) === JSON.stringify(me) && cleanAdded([{ ...me, files: [{ ...me.files[0], url: me.files[0].url.replace('modelscope.cn', 'modelscope.cn.example.com') }] }]).length === 0);
+  check('the row links back to its ModelScope page', sourceOf(me)?.url === 'https://modelscope.cn/models/Qwen/Thing-9B-GGUF' && /ModelScope/.test(sourceOf(me).label));
+  check('model downloads may come from modelscope.cn itself, nothing that only looks like it; Bob\'s own updates may not', modelHostAllowed(me.files[0].url) && modelHostAllowed(e.files[0].url) && !modelHostAllowed('https://modelscope.cn.example.com/x') && !modelHostAllowed('http://modelscope.cn/x') && !hostAllowed(me.files[0].url));
+  for (const [status, j, word] of [[404, {}, /no model called/], [200, { Code: 404, Message: 'model not exist' }, /no model called/], [200, { Code: 200, Data: { Files: [msFile('a.safetensors', 5)] } }, /no \.gguf/], [500, {}, /answered 500/]]) {
+    const r = await readPage('https://modelscope.cn/models/a/b', { fetchFn: fake(status, j) });
+    check(`a ModelScope page that can't be added says so plainly (${word.source})`, r.ok === false && word.test(r.error));
+  }
   check('the site being unreachable is said plainly', /couldn't be reached/.test((await readPage('o/n', { fetchFn: async () => { throw new Error('x'); } })).error));
 
   // The page
