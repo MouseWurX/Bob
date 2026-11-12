@@ -146,6 +146,8 @@ const token = crypto.randomBytes(16).toString('hex');
 let podId = args.resume || args.restart || args['send-plan'] || args['send-token'], price = 0, base = args.local || '';
 const hdr = { 'X-Forge-Token': token };
 // build 19: one pod record per run (two Forge windows can run side by side without touching each other's rental); an older run's single pod-token.json still works for --resume/--send-*
+// 12 Nov: files sent to the pod are named per run, so two rentals can start side by side without swapping plans
+const RUNID = String(plan.run || 'run').replace(/[^\w.-]/g, '_');
 const runTokenFile = path.join(outDir, 'forge', `pod-token-${String(plan.run || 'run').replace(/[^\w.-]/g, '_')}.json`), legacyTokenFile = path.join(outDir, 'forge', 'pod-token.json');
 const tokenFile = (podId && !fs.existsSync(runTokenFile) && fs.existsSync(legacyTokenFile)) ? legacyTokenFile : runTokenFile;
 if (podId) { const t = JSON.parse(fs.readFileSync(tokenFile, 'utf8')); hdr['X-Forge-Token'] = t.token; }
@@ -302,31 +304,31 @@ if (args['send-token']) {
   // in/hf-token only at upload time, so this works any time before the odds or a listed Bob go up
   const tok = hfToken();
   if (!tok) { log('no Hugging Face token: put it in forge/hf-token.txt (one line) or HF_TOKEN'); process.exit(1); }
-  const tmp = path.join(outDir, 'forge', 'hf-token'); fs.writeFileSync(tmp, tok); await upload('hf-token', tmp); fs.unlinkSync(tmp);
+  const tmp = path.join(outDir, 'forge', `hf-token-${RUNID}`); fs.writeFileSync(tmp, tok); await upload('hf-token', tmp); fs.unlinkSync(tmp);
   log('Hugging Face token is on the pod; uploads the plan allows will use it'); process.exit(0);
 }
 if (args['send-plan']) {
   // update plan.json on a running pod without touching the run (run.sh reads the plan again at the start of each rung)
   // same shape as the start path: keep files live on the pod by their bare names (build 14i)
   const podPlan = { ...plan, counts: 'counts.json', rungs: plan.rungs.map((r) => r.keep_file ? { ...r, keep_file: path.basename(r.keep_file) } : r) }; delete podPlan.counts_file; delete podPlan.lessons;
-  fs.writeFileSync(path.join(outDir, 'forge', 'plan-sent.json'), JSON.stringify(podPlan, null, 1));
-  await upload('plan.json', path.join(outDir, 'forge', 'plan-sent.json'));
+  fs.writeFileSync(path.join(outDir, 'forge', `plan-sent-${RUNID}.json`), JSON.stringify(podPlan, null, 1));
+  await upload('plan.json', path.join(outDir, 'forge', `plan-sent-${RUNID}.json`));
   log('plan sent; the next rung will use it'); process.exit(0);
 }
 if (args.restart) {
-  const tgz = path.join(outDir, 'forge', 'forge.tgz');
+  const tgz = path.join(outDir, 'forge', `forge-${RUNID}.tgz`);
   const { execSync } = await import('node:child_process');
   execSync(`tar czf "${tgz}" --exclude=__pycache__ -C "${here}" pod`, { stdio: 'inherit' });
   let r = await get('/stop', { method: 'POST' }); log(`stopped the old run: ${await r.text()}`);
   await sleep(5000);
   await upload('forge.tgz', tgz);
   const podPlan = { ...plan, counts: 'counts.json' }; delete podPlan.counts_file; delete podPlan.lessons;
-  fs.writeFileSync(path.join(outDir, 'forge', 'plan-sent.json'), JSON.stringify(podPlan, null, 1));
-  await upload('plan.json', path.join(outDir, 'forge', 'plan-sent.json'));
+  fs.writeFileSync(path.join(outDir, 'forge', `plan-sent-${RUNID}.json`), JSON.stringify(podPlan, null, 1));
+  await upload('plan.json', path.join(outDir, 'forge', `plan-sent-${RUNID}.json`));
   r = await get('/go', { method: 'POST' }); log(`restarted: ${await r.text()}`);
 } else if (!args.resume) {
   // pack the pod scripts
-  const tgz = path.join(outDir, 'forge', 'forge.tgz');
+  const tgz = path.join(outDir, 'forge', `forge-${RUNID}.tgz`);
   const { execSync } = await import('node:child_process');
   execSync(`tar czf "${tgz}" --exclude=__pycache__ -C "${here}" pod`, { stdio: 'inherit' });
   await upload('forge.tgz', tgz);
@@ -336,7 +338,7 @@ if (args.restart) {
   if (plan.publish || plan.benchmark_only) { // build 17: the pod uploads the GGUF files to Hugging Face itself; the token lives in forge/hf-token.txt (never in the plan or the repo). 10 Nov: a benchmark-only run gets it too, so a brain on a private page can be fetched
     const tok = hfToken();
     if (!tok) log(plan.publish ? 'plan.publish is set but there is no Hugging Face token (forge/hf-token.txt, one line, or HF_TOKEN): the pod will keep the files for download instead' : 'no Hugging Face token (forge/hf-token.txt or HF_TOKEN): a brain on a private page cannot be fetched for the benchmark');
-    else { const tmp = path.join(outDir, 'forge', 'hf-token'); fs.writeFileSync(tmp, tok); await upload('hf-token', tmp); fs.unlinkSync(tmp); log(plan.publish ? `Hugging Face token sent to the pod (uploads go to ${plan.publish.user}/...)` : 'Hugging Face token sent to the pod (to fetch the benchmark brains; nothing is uploaded)'); }
+    else { const tmp = path.join(outDir, 'forge', `hf-token-${RUNID}`); fs.writeFileSync(tmp, tok); await upload('hf-token', tmp); fs.unlinkSync(tmp); log(plan.publish ? `Hugging Face token sent to the pod (uploads go to ${plan.publish.user}/...)` : 'Hugging Face token sent to the pod (to fetch the benchmark brains; nothing is uploaded)'); }
   }
   for (const r of plan.rungs) if (r.keep_file) await upload(path.basename(r.keep_file), path.resolve(here, '..', r.keep_file)); // cut exactly like an earlier Bob
   if (plan.scan?.from) { // 10 Nov: the FNRI scan bundle (a folder per brain) goes up as in/scan.tgz; run.sh unpacks it on the drive
@@ -355,8 +357,8 @@ if (args.restart) {
     await upload(`lessons-extra-pc${i}.jsonl`, lf); await upload(`toolsets-extra-pc${i}.json`, tf);
   }
   const podPlan = { ...plan, counts: 'counts.json', rungs: plan.rungs.map((r) => r.keep_file ? { ...r, keep_file: path.basename(r.keep_file) } : r) }; delete podPlan.counts_file; delete podPlan.lessons;
-  fs.writeFileSync(path.join(outDir, 'forge', 'plan-sent.json'), JSON.stringify(podPlan, null, 1));
-  await upload('plan.json', path.join(outDir, 'forge', 'plan-sent.json'));
+  fs.writeFileSync(path.join(outDir, 'forge', `plan-sent-${RUNID}.json`), JSON.stringify(podPlan, null, 1));
+  await upload('plan.json', path.join(outDir, 'forge', `plan-sent-${RUNID}.json`));
   const r = await get('/go', { method: 'POST' }); log(`started: ${await r.text()}`);
 }
 let lessonsSent = false;

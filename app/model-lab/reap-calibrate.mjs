@@ -10,7 +10,7 @@
 // Switching experts off saves no memory by itself; the keep and priority lists say what a smaller load should hold.
 //
 // node reap-calibrate.mjs --url http://host:port [--lessons out/lessons] [--score 200] [--steps 1,0.75,0.5,0.35]
-//      [--by mass|reap|counts] [--margin 2] [--quick] [--out out/calibrate] [--test "extra tool-score args"]
+//      [--by mass|reap|counts] [--margin 2] [--quick] [--no-think] [--out out/calibrate] [--test "extra tool-score args"]
 // The server must be Brain Engine with the expert trace (0002) and, for true REAP, the expert-mass patch; without
 // mass it falls back to pick counts and says so. Set LAB_API_KEY for a server with a key (the Forge's rented card).
 import fs from 'node:fs';
@@ -76,7 +76,7 @@ fs.writeFileSync(path.join(out, 'priority.json'), JSON.stringify({ by, experts: 
 console.log(`${s.lessons} lessons, ${s.tokens} tokens, ${s.layers.length} layers x ${s.experts} experts (${s.used} per word), ranked by ${by}`);
 
 // ---- 2. step down ----
-const scoreArgs = (o.test ? String(o.test).split(/\s+/).filter(Boolean) : []).concat(o.quick ? ['--quick'] : []);
+const scoreArgs = (typeof o.test === 'string' ? o.test.split(/\s+/).filter(Boolean) : []).concat(o.quick ? ['--quick'] : [], o['no-think'] ? ['--no-think'] : []);
 const steps = [];
 for (const share of String(o.steps).split(',').map(Number).filter((x) => x > 0 && x <= 1).sort((a, b) => b - a)) {
   const keep = keepLists(s, share, by), n = keep.find(Boolean)?.length || s.experts;

@@ -222,7 +222,10 @@ if [ -f $S/llama-ready ]; then echo "llama tools already built"; else
 fi
 # build 18: a CUDA llama-server for the benchmark phase, built in the background while the run trains (kept on the volume)
 if [ -n "$(plan ".get('benchmark')")" ] || [ -n "$TG" ]; then
-  if [ -f $S/llama-server-ready ] && [ -x $S/llama.cpp/build-cuda/bin/llama-server ]; then echo "CUDA llama-server already built"; else rm -f $S/llama-server-failed; ( bash $POD/llama-server-build.sh $S $(plan ".get('llama_tag','b11669')") > $OUT/llama-server-build.log 2>&1 ) & fi
+  # 12 Nov: benchmark.brain_engine {"ref": "<Bob commit>", "patches": ["0001-expert-mask", ...]} serves the brains with Brain Engine
+  # (llama.cpp plus Bob's patches, fetched from Bob's public repo at that commit), for the live expert switch and REAP scores
+  BEP=$(plan ".get('benchmark',{}).get('brain_engine') or {}" | python3 -c "import json,sys; b=json.load(sys.stdin); print(' '.join('https://raw.githubusercontent.com/MouseWurX/Bob/%s/app/engine/patches/%s.patch' % (b['ref'], n) for n in b.get('patches',[])) if b else '')")
+  if [ -f $S/llama-server-ready ] && [ -x $S/llama.cpp/build-cuda/bin/llama-server ] && [ "$(cat $S/llama.cpp/.bob-patches 2>/dev/null)" = "$BEP" ]; then echo "CUDA llama-server already built"; else rm -f $S/llama-server-ready $S/llama-server-failed; ( bash $POD/llama-server-build.sh $S $(plan ".get('llama_tag','b11669')") "$BEP" > $OUT/llama-server-build.log 2>&1 ) & fi
 fi
 [ -n "${FORGE_SETUP_ONLY:-}" ] && { kill $WD 2>/dev/null; wait; cat $OUT/llama-setup.log; status done "setup only"; exit 0; }
 # --- benchmark on the card (build 18): the same brains, the same tests, a big card. The pod serves one brain at a time with a CUDA

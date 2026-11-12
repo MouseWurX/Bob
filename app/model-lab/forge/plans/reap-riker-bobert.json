@@ -1,0 +1,67 @@
+{
+  "run": "reap-riker-bobert",
+  "note": "12 Nov: REAP calibration of Riker (28Bob) and Bobert (35Bob) Q4 at 12 experts per word, served by Brain Engine (live expert switch + expert mass). For each: the quick quiz on Bob 1.5.208 and on 1.5.208 with the tool fixes (every tool group on, four seeded how-tos), then reap-calibrate: REAP scores on 100 training lessons, then 100/75/50/35% of each layer's experts kept, each step judged on the held-out chats. No file is cut. About 3.5 h on an A40, about $2-2.50; caps 4.5 h / $5.",
+  "benchmark_only": true,
+  "teacher": "Qwen/Qwen3.6-35B-A3B",
+  "counts": "expert-counts-2026-11-04T23-23-19.json",
+  "lessons": "out/lessons",
+  "gpus": [
+    "NVIDIA A40",
+    "NVIDIA RTX A6000",
+    "NVIDIA L40S",
+    "NVIDIA RTX 6000 Ada Generation"
+  ],
+  "step_up": [
+    "NVIDIA A100 80GB PCIe",
+    "NVIDIA H100 80GB HBM3"
+  ],
+  "step_up_note": "a benchmark only: any card with room for a 20 GB file will do, the list is cheapest first",
+  "volume_wait_minutes": 15,
+  "disk_gb": 80,
+  "general_tokens": 0,
+  "rungs": [],
+  "hours_max": 4.5,
+  "dollars_max": 5,
+  "rent_minutes": 60,
+  "download_quants": [],
+  "benchmark": {
+    "note": "the quiz runs are minutes apart, so their time-stamped reports don't collide; reap-calibrate puts the mask back to all-on before the pod moves to the next brain",
+    "hours_each": 2.2,
+    "models": [
+      {
+        "name": "28Bob-e12",
+        "nickname": "Riker",
+        "file": "hf:MouseWurX/28Bob-Riker:28Bob-Q4_K_M.gguf",
+        "quant": "Q4_K_M",
+        "extra": "--override-kv qwen35moe.expert_used_count=int:12"
+      },
+      {
+        "name": "35Bob-e12",
+        "nickname": "Bobert",
+        "file": "hf:MouseWurX/35Bob-Bobert:35Bob-Q4_K_M.gguf",
+        "quant": "Q4_K_M",
+        "extra": "--override-kv qwen35moe.expert_used_count=int:12"
+      }
+    ],
+    "commands": [
+      "node experts-test.mjs --bob \"../../bob-test 208/app\" --url {{url}} --counts 12 --out {{out}}",
+      "node experts-test.mjs --bob \"../../bob-test 208fix/app\" --howtos \"howtos-seed.json\" --url {{url}} --counts 12 --out {{out}}",
+      "node reap-calibrate.mjs --url {{url}} --lessons {{lessons}} --out {{out}}/calibrate --score 100 --steps 1,0.75,0.5,0.35 --no-think"
+    ],
+    "brain_engine": {
+      "ref": "787c2b828a505bfd54710ce41065f4f750548e80",
+      "patches": [
+        "0001-expert-mask",
+        "0002-expert-trace",
+        "0003-dials",
+        "0004-rpc-wifi",
+        "0005-scut",
+        "0006-scut-seal",
+        "0007-expert-trace-stream",
+        "0009-expert-mass"
+      ],
+      "note": "Brain Engine as the next build will be (patches 0001-0007 plus 0009, expert mass), fetched from Bob's public repo at this commit and compiled on the card (10-15 min)"
+    }
+  },
+  "llama_tag": "b12282"
+}
