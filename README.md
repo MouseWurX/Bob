@@ -41,13 +41,13 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.207-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.207-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.207-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.207-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.207-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.207-linux-x86_64.AppImage) |
-| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.207-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.207-linux-amd64.deb) |
-| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.207-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.207-linux-x86_64.flatpak) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.207-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.207-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
-| **Android phone** | [`Bob-1.5.207-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.207-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.208-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.208-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.208-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.208-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.208-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.208-linux-x86_64.AppImage) |
+| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.208-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.208-linux-amd64.deb) |
+| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.208-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.208-linux-x86_64.flatpak) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.208-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.208-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
+| **Android phone** | [`Bob-1.5.208-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.208-android.apk) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 
@@ -55,21 +55,61 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 
 ## What's new
 
-**In 1.5.204.** Everything new starts switched off, except Try again and Edit.
+**In 1.5.208:**
 
 | | |
 |---|---|
-| 🎲 **Adventure grows up** | Enemies sit on the table with their hearts. Characters get stronger and keep it. A quest log, friends at the table, your turn in your own words or by voice, and optional dice, sounds, pictures and music. |
-| 🧪 **A simpler Lab** | Its own window, tabs sorted by task, one place to start, and **My Lab** for everything you've made. |
-| 🧠 **Brains page** | Equip Bob shows how each brain runs here: on your card, with memory, with storage, with another Bob's help, or too big. Add a model from a Hugging Face page. |
+| 💬 **Answers between steps** | Send a message while Bob works on a long job and he answers it when the step he's on is done, then carries on. "Stop" stops the job. |
+| 🛠 **A hundred reliability fixes** | Saves that are whole or not at all, a loop that can't run away, tools set aside after three fails, an engine that restarts itself, and honest reporting. Always on, and nothing added to what his brain reads. |
+| 🧰 **More tools** | A calculator, passwords, repeating reminders, read-only email and calendar, page watch, web services, data questions, charts, spelling, meeting notes and file compare. Each one off until you tick it. |
+| 🧠 **Memory and documents** | Where each memory came from, memories that run out, project memories, fresh documents, page and line, notes apps and a Sunday digest. |
+| 🧊 **The cube's whole life** | It fills as a brain loads, sparks while it waits, thinks while he answers, and drains when the brain goes. |
+
+**In 1.5.207:**
+
+| | |
+|---|---|
+| 🧭 **Journey** | Adventure as an old console game. Walk a tile map, open chests, talk to the village and fight turn-based battles. No brain needed. |
+| 🧩 **Eleven more games** | Chess, Sudoku, a daily mini crossword, Four in a row, Hidden fleet, Liar's dice, Trivia night and more. Easy, Normal or Hard, two players on one screen, and a puzzle of the day. |
+| 🔁 **Jobs you can steer** | Steer Bob mid-job, stop after this step, set a time limit, and get a receipt with Open and Undo. **How I got here** under each answer lists the tools he used. |
+| 🛠 **Steadier work, better tools** | Replies start sooner. Bob asks one question on a card when he needs to, reads PDF and Office links, and looks at git history. If he says something is done when it isn't, a note puts it right. |
+| 🩺 **Health and history** | Crash catching with a safe start, the last 20 Settings changes with Put it back, a Health page with fix buttons, quiet hours, and a shortcut from anywhere. |
+| 🗓 **Everyday helpers** | A today card, a focus timer, a spending sheet from receipt photos, profiles for a shared computer, bigger text and an easier-to-read font. |
+| 🎲 **Adventure table rules** | A map that grows, portraits, coins and shops, riddle rooms, Easy to Hard, and campaigns you can send to a friend. |
+| 🧪 **More Lab** | A blind taste test that ranks brains, Save to Lab from the chat, before and after Teach it, and recipe files to share. |
+| ⚡ **Engine and speed** | Load the next brain early, a speed history chart, laptop mode on battery, and a chat memory type for each brain. |
+| 🗣 **Voice and phone** | Talk over Bob while he reads aloud, have documents read aloud, and carry a chat on to another Bob. On Android: Share to Bob, a home-screen widget and hands-free. |
+
+Every new switch is off until you turn it on.
+
+<p align="center">
+  <img src="app/docs/screens/journey.png" width="460" alt="Journey: a pixel-art village on a tile map, the hero in the square among villagers, a message box reading Welcome to the Brindle Vale, and hearts for the hero and Bob below">
+  <br><b>Journey.</b> Arrow keys walk, Enter talks, opens chests and swings.
+</p>
+
+<details>
+<summary><b>Earlier:</b> 1.5.204 to 1.5.206, and before</summary>
+
+| | |
+|---|---|
+| 💬 **A better chat** | A **…** menu on every message for Try again, Edit, Copy and Delete. A preset for each chat, saved prompts on a / menu, maths drawn as formulas, keyboard shortcuts, and chats saved, shared or brought in from ChatGPT, Claude and Open WebUI. |
+| 🛠 **Steadier small brains** | Bob checks each tool call before it runs and mends what he's sure of, so a small brain slips less on long jobs. Always on. |
+| 🗂 **Sort and rename** | A Hand that renames and files a whole music, video or photo collection by rules you set. Every change goes on a card first, nothing is overwritten, and Undo puts it all back. |
+| 🎲 **Adventure grows up** | Enemies sit on the table with their hearts. Characters get stronger and keep it. A quest log and a world book, friends at the table, the odds on every card, your turn in your own words or by voice, and a storybook of the finished game. |
+| 🧪 **A simpler, busier Lab** | Its own window, tabs sorted by task, one place to start, and **My Lab** for everything you've made. A queue runs jobs overnight, **Show the wobble** shows how much a score moves, and every brain takes an entry test with Bob's real tools. |
+| 🧠 **Brains page** | Equip Bob shows how each brain runs here: on your card, with memory, with storage, with another Bob's help, or too big, with its Lab scores underneath. Add a model from a Hugging Face page. |
 | 🧊 **3D models** | STL, OBJ and GLB open in the side panel. Bob makes a part from an OpenSCAD recipe, or a textured model from one picture. |
-| 💬 **A better chat** | Try again and Edit, a preset for each chat, saved prompts on a / menu, maths drawn as formulas, keyboard shortcuts, and chats saved, shared or brought in from ChatGPT, Claude and Open WebUI. |
-| 🔎 **Search by meaning** | Bob finds documents that are close in meaning, not only by exact words. |
+| 🔎 **Search by meaning** | Bob finds documents, memories and topics that are close in meaning, not only by exact words. |
 | 🔌 **Doors for other apps** | VS Code, Open WebUI and scripts use Bob's brains at `localhost:7777/v1`. The Claude app and Claude Code use Bob's Hands, every call on a card. Tool packs add other people's tools, in the sandbox. |
-| 🔒 **Lock, back up, move** | A passcode lock that scrambles chats and memory on disk. One zip backs Bob up and restores him on another computer. |
+| 🔒 **Lock, back up, move** | Every password and key Bob saves is locked on disk by your computer's own key store. A passcode lock scrambles chats and memory. One zip backs Bob up and restores him on another computer. |
+| ⚡ **Brain Engine 4** | SCUT packets between your Bobs are signed and scrambled, and a lost packet is rebuilt at once. SCUT is still experimental. |
 | 🌍 **More places, more languages** | Screens in French and Spanish. Bob on the iPhone Home Screen. A .deb and a Flatpak for Linux. |
 
-**Before that:** documents beside the chat · notes that take themselves · Settings in its own window, Simple or Advanced · the "Do you want me to:" list · **SCUT** and **SUDDAR** for Bobs sharing a brain over Wi-Fi (experimental) · Onyx, Bob's recommended voice · Brain Engine 3.
+Housekeeping is now on: it touches only Bob's own files unless you add folders, and it always asks first.
+
+**Before that:** documents beside the chat · notes that take themselves · Settings in its own window, Simple or Advanced · the "Do you want me to:" list · **SCUT** and **SUDDAR** for Bobs sharing a brain over Wi-Fi · Onyx, Bob's recommended voice.
+
+</details>
 
 The [changelog](CHANGELOG.md) has every release.
 
@@ -80,15 +120,15 @@ The [changelog](CHANGELOG.md) has every release.
 | ![A chat about a garden budget on the left, and the spreadsheet open in the side panel on the right](app/docs/screens/documents.png) | ![First-time setup: the programs and models Bob suggests for a 16 GB card, each with a tick box](app/docs/screens/get-bob-ready.png) |
 | **Documents beside the chat.** Sheets, slides, pages and PDFs. | **Ready in one button.** Bob reads your card and fetches what fits. |
 | ![Equip Bob: Bob in the middle with a slot for every job around him](app/docs/screens/equip-bob.png) | ![The adventure table: three characters, two enemies with their hearts, the game master's story, and cards for the player's turn](app/docs/screens/adventure.png) |
-| **Equip Bob.** A slot for every job, a model for every slot. | **Adventure.** Bob runs the table; the app rolls the dice and counts the hearts. |
+| **Equip Bob.** A slot for every job, a model for every slot. | **Adventure.** Bob runs the table; the app rolls the dice, shows the odds and counts the hearts. |
 
 - **Work:** plans and reminders, web research with sources, code written, run and fixed, documents and spreadsheets read, searched and written.
 - **Make:** pictures painted and edited, short clips, songs and sound effects, 3D parts and models, and a voice (22 Kokoro voices and more).
-- **Hands (opt-in):** tidy files, run scripts you approve, keep a schedule, click around other apps, use his own browser window, and work inside Blender or Unreal Engine through MCP. Every action shows a card first. Tool packs add tools other people made.
+- **Hands (opt-in):** tidy files, sort and rename a music, video or photo collection, run scripts you approve, keep a schedule, click around other apps, use his own browser window, and work inside Blender or Unreal Engine through MCP. Every action shows a card first. Tool packs add tools other people made.
 - **Remember:** Topics, notes and memory banks keep what matters between chats. Exact sums are worked out in a locked sandbox, not guessed.
 - **Lots of context:** 256K tokens (about 195,000 words) on a 16 GB card, and up to 1M with Long memory.
 - **A character:** eleven personality dials, 133 avatars, a cat named Patches, and opinions about your code.
-- **Play:** a tabletop adventure with enemies, a quest log and friends at the table, plus five word games.
+- **Play:** a tabletop adventure with enemies, a quest log, a world book and friends at the table, Journey on a tile map, and sixteen games from hangman to chess.
 - **Works with your other tools (opt-in):** other apps use Bob's brains through an OpenAI-style address, and Claude can use Bob's Hands.
 - **Yours to keep:** a passcode lock, backups that move Bob to another computer, and screens in English, French or Spanish.
 - **Big brains when you want them:** rent one for a single job from a service you have an account with. Off to start, with spending limits that start at $0.
@@ -100,11 +140,11 @@ The [changelog](CHANGELOG.md) has every release.
 |---|---|
 | ![Settings, Simple: eight cards such as Bob himself, How Bob works and Brains and speed](app/docs/screens/settings.png) | ![Settings, Advanced: every section in a side list, with Bob himself open](app/docs/screens/settings-advanced.png) |
 | **Settings, Simple:** eight cards. | **Settings, Advanced:** every section, with search. |
-| ![Do you want me to: tick boxes for quick notes, reading documents, the sandbox and more](app/docs/screens/do-you-want.png) | ![Games: twenty questions, hangman, word ladder, five letters and story dice](app/docs/screens/games.png) |
-| **"Do you want me to:"** Everything optional, in one list. | **Games:** five word games that run on a small brain. |
+| ![Do you want me to: tick boxes for quick notes, reading documents, the sandbox and more](app/docs/screens/do-you-want.png) | ![Games: twenty questions, hangman and word ladder, each with its choices, Easy to Hard and Today's puzzle](app/docs/screens/games.png) |
+| **"Do you want me to:"** Everything optional, in one list. | **Games:** sixteen, from twenty questions to chess. The app checks every move. |
 | ![The bestiary: goblins, skeletons, wolves and friends with hearts and a line from Bob](app/docs/screens/bestiary.png) | ![Style: themes such as Moondust, Nightside and Otterbend](app/docs/screens/style.png) |
 | **The bestiary:** the usual suspects, drawn as they appear. | **Style:** themes named after worlds, or build your own. |
-| ![Help, written by Bob: a search box, topics on the left, Getting started on the right](app/docs/screens/help.png) | ![Starting an adventure: panels for the story, your character, who plays, how long and table extras](app/docs/screens/adventure-start.png) |
+| ![Help, written by Bob: a search box, topics on the left, Getting started on the right](app/docs/screens/help.png) | ![Starting an adventure: panels for the story and its tone, your character, who plays, how long and table extras](app/docs/screens/adventure-start.png) |
 | **Help (F1):** written by Bob, with a glossary and FAQ. | **Starting an adventure:** pick a story, a character and who plays. |
 
 </details>
@@ -119,7 +159,7 @@ Most AI apps are for talking to a model or for building one. Bob does both. **�
 |---|---|
 | **Make a brain** | Starts with one question: **What do you want to do?** Make it smaller, cut experts, take out sight or hearing, just test, or everything step by step. Each job shows only the steps it needs, and **Use in Bob** only appears after the test. |
 | **Teach** | **Teach it** teaches a brain a lesson set, here if it fits your card. **Best answers** has a bigger brain judge a smaller one's answers, then teaches it its best. |
-| **Test** | **Challenges** are short tests out of 100, with a scoreboard by size. **Smaller**, **Longer** and **Faster** show how small, how long and how fast a brain can go. |
+| **Test** | **Challenges** are short tests out of 100, with a scoreboard by size. **Smaller**, **Longer** and **Faster** show how small, how long and how fast a brain can go. **Taste test** ranks brains by the answers you prefer, names hidden. A queue runs Challenges, Smaller and fNRI scans one after another overnight. |
 | **Look inside** | **Peek inside** shows which experts your work uses. **fNRI** scans a brain while it answers and plays it back in 3D. |
 | **Learn** | Hands-on cards on how a brain works, run on the brain Bob has loaded. |
 | **Forge** | Every way to make a brain, side by side: smaller, cut, mixed, stacked, or taught back on a rented card. |

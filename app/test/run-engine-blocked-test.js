@@ -106,7 +106,7 @@ off();
 
 // Wiring: every engine start goes through safeSpawn; the brain loads again on the old engine; chat and Settings.
 const lc = read('src/llamacpp.js'), emb = read('src/embedder.js'), sc = read('src/share-card.js'), server = read('src/server.js'), cellar = read('public/cellar.js');
-check(/const child = safeSpawn\(spawn, exe, args,/.test(lc) && /const back = fallBackIfBlocked\(this\.cfg, exe, e\);/.test(lc) && /if \(e\.fellBack && !signal\?\.aborted\) \{[\s\S]{0,120}return this\.preload\(model, signal,/.test(lc), 'the brain (and the talker beside a job) goes back and loads again on the old engine');
+check(/const child = safeSpawn\(spawn, exe, args,/.test(lc) && /const back = fallBackIfBlocked\(this\.cfg, exe, e\);/.test(lc) && /if \(e\.fellBack && !signal\?\.aborted\) \{[\s\S]{0,120}return this\.(preload|startEngine)\(model, signal,/.test(lc), 'the brain (and the talker beside a job) goes back and loads again on the old engine');
 check(/safeSpawn\(spawn, this\.exe\(\)/.test(emb) && /safeSpawn\(this\.spawnFn, t\.path/.test(sc), 'the memory helper and the card-sharing server don\'t throw either');
 check(/onEngineFallback\(\(r\) => \{ try \{ brain\.log\('engine', r\.say\); broadcast\(\{ type: 'announce', text: r\.say \}\);/.test(server), 'the words go to the chat');
 check(/e\.blocked \? `<button data-engineback="\$\{esc\(e\.id\)\}">Try again<\/button>`/.test(cellar) && /Windows blocked the new build/.test(cellar), 'Settings, Engines says Windows blocked it and offers Try again');

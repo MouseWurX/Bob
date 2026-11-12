@@ -1,0 +1,14 @@
+{
+  "ask": "what's the weather in Lisbon tomorrow?",
+  "replies": [
+    { "content": "", "calls": [{ "name": "web_search", "args": { "query": "Lisbon weather tomorrow" } }] },
+    { "content": "", "calls": [{ "name": "web_search", "args": { "query": "Lisbon weather tomorrow" } }] },
+    { "content": "Tomorrow in Lisbon: sunny, 21 degrees.", "calls": [] }
+  ],
+  "results": [
+    { "name": "web_search", "text": "Lisbon tomorrow: sunny, high 21 C, low 14 C." },
+    { "name": "web_search", "text": "(Not done again: that exact call already ran this turn.)" }
+  ],
+  "answer": "Tomorrow in Lisbon: sunny, 21 degrees.",
+  "expect": { "ran": ["web_search"], "asks": 3 }
+}

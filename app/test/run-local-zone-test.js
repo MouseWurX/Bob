@@ -52,5 +52,15 @@ check('quiet hours read the picked zone: 21:30 on the PC, not 03:30 UTC', minute
 const stamp = new Intl.DateTimeFormat('en-CA', { timeZone: pc, dateStyle: 'short', timeStyle: 'short', hour12: false }).format(winter);
 check('the logbook stamp reads 21:30 the day before', /2026-11-11.*21:30/.test(stamp), stamp);
 
+// 1.5.208 PC check: the zone shows read-only in Settings (This replicant matrix), with the time there now, and in
+// Bob's own list of his settings, so a wrong zone is seen at once.
+{
+  const fs = await import('node:fs');
+  const read = (f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8');
+  const cellar = read('../public/cellar.js'), server = read('../src/server.js');
+  check('Settings shows the time zone as a read-only line, with the time there now', /srow\('Time zone', zoneLine\(settings\)/.test(cellar) && /timeZone: z, hour: '2-digit'/.test(cellar) && !/data-set="timeZone"/.test(cellar));
+  check('the settings read gives the zone and whether it was set by hand', /timeZone: cfg\.timeZone \|\| '', timeZoneSet: cfg\.timeZoneSet === true/.test(server));
+  check("Bob's own list of his settings names the zone", /`Time zone: \$\{cfg\.timeZone \|\| 'not read yet'\}/.test(read('../src/self-help.js')));
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

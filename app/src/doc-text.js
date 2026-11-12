@@ -357,14 +357,25 @@ function fontMaps(buf, streams) {
     for (const m of body.matchAll(/\/Font\s*<<([\s\S]*?)>>/g)) addDict(m[1]);
     for (const m of body.matchAll(/\/Font\s+(\d+)\s+\d+\s+R/g)) addDict(objects.get(Number(m[1])) || '');
   }
-  return { names, metrics, any: fontMap.size };
+  return { names, metrics, any: fontMap.size, objects };
 }
 
 export function pdfText(buf) {
+  const text = tidy(pdfPages(buf).join('\n\n'));
+  const letters = (text.match(/[\p{L}\p{N}\s.,;:!?'"()-]/gu) || []).length;
+  // 1.5.207 PC check: the W3C test file says only "Dummy PDF file" and was called a scan. A few real words are kept.
+  if (!/[\p{L}\p{N}]{2,}/u.test(text)) throw new DocError(`I found no words in that PDF. It's probably a scan (pictures of pages): attach a page as a picture and an eyes brain can read it.`);
+  if (text.length >= 20 && letters / text.length < 0.7) throw new DocError(`That PDF keeps its words in a way I can't untangle without help. ${OFFICE_HINT}`);
+  return text;
+}
+
+// The words of each page of a PDF, in order (pages with no words left out). "Show the page and line" (my-docs.js)
+// uses it to say which page a find is on.
+export function pdfPages(buf) {
   if (!buf.subarray(0, 1024).toString('latin1').includes('%PDF')) throw new DocError('That doesn\'t look like a PDF inside.');
   if (/\/Encrypt\s/.test(buf.toString('latin1', Math.max(0, buf.length - 4096)))) throw new DocError(`That PDF is locked (encrypted), so I can't read its words. ${OFFICE_HINT}`);
   const streams = pdfStreams(buf);
-  const { names, metrics } = fontMaps(buf, streams);
+  const { names, metrics, objects } = fontMaps(buf, streams);
   const merged = new Map(); // for a font we couldn't place: every map in the file, first one wins
   for (const c of names.values()) for (const [k, v] of c) if (!merged.has(k)) merged.set(k, v);
   const widthsOf = new Map();
@@ -384,7 +395,7 @@ export function pdfText(buf) {
     return Buffer.from(bytes).toString('latin1');
   };
   const pages = [];
-  for (const { text: st } of streams) {
+  for (const st of pageOrder(objects, streams)) {
     if (!/\bBT\b/.test(st) || !/T[Jj*'"]/.test(st)) continue;
     let out = '';
     const tok = /\((?:[^()\\]|\\[\s\S]|\((?:[^()\\]|\\[\s\S])*\))*\)|<[0-9a-fA-F\s]*>|\[|\]|-?\d*\.?\d+|\/[^\s/<>[\]()]+|[A-Za-z*'"]+/g;
@@ -392,6 +403,12 @@ export function pdfText(buf) {
     // How far the text shown since the line start has moved, in text space: glyph widths when the font has them,
     // else a guess of half an em a letter. A Td on the same line is a space only when it leaves a real gap.
     let size = 1, cs = 0, met = null, runW = 0, pendW = 0, guess = false;
+    // Where the line is (1.5.208 PC check: arXiv 1706.03762 came out "[\n13\n]"): a move up or down by less than
+    // about half a letter, or a new text block on the same baseline, is the same line (a citation, a footnote mark,
+    // x squared, a word in a link's own block), not a new one. Line height is in page units: Tm's scale times the size.
+    let scale = 1, lineX = 0, lineY = 0, baseY = null, brk = false, endX = 0;
+    const near = (y) => baseY !== null && Math.abs(y - baseY) < 0.45 * size * scale;
+    const newLine = (y) => { if (out && !out.endsWith('\n')) out += '\n'; baseY = y; brk = false; };
     const widthOf = (b, str) => {
       if (!met) { guess = true; return [...str].length * 0.5 * size + [...str].length * cs; }
       let w = 0, n = 0;
@@ -408,28 +425,63 @@ export function pdfText(buf) {
       if (/^-?\d*\.?\d+$/.test(t)) { if (arr) { if (Number(t) < -180) arr.push(' '); pendW -= (Number(t) / 1000) * size; } else nums.push(Number(t)); continue; }
       if (t === 'Tf') { font = names.get(lastName) || merged; met = metrics.get(lastName) || null; size = Math.abs(nums[nums.length - 1] || size) || 1; nums = []; continue; }
       if (t === 'Tc') { cs = nums[nums.length - 1] || 0; nums = []; continue; }
-      if (t === 'Tj' || t === 'TJ') { out += pend; pend = ''; runW += pendW; pendW = 0; }
+      if (t === 'BT') { scale = 1; lineX = 0; lineY = 0; nums = []; continue; }
+      if (t === 'Tj' || t === 'TJ') { if (brk) newLine(lineY); if (baseY === null) baseY = lineY; out += pend; pend = ''; runW += pendW; pendW = 0; }
       else if (t === '\'' || t === '"') { out += '\n' + pend; pend = ''; runW = pendW; pendW = 0; }
       else if (t === 'T*') { out += '\n'; runW = 0; }
       else if (t === 'Td' || t === 'TD') {
         const ty = nums[nums.length - 1] || 0; const tx = nums[nums.length - 2] || 0;
         const gap = tx - runW;
-        if (ty) out += out.endsWith('\n') ? '' : '\n';
-        else if (tx > 0 && !/\s$/.test(out) && gap > (guess && !met ? 0.3 : 0.15) * size) out += ' ';
+        const atBlock = brk; // the first move after a new text block (BT) on the same line: measured from where the last block ended
+        lineX += tx * scale; lineY += ty * scale;
+        const room = (guess && !met ? 0.3 : 0.15) * size;
+        if (ty && !near(lineY) || brk && !near(lineY)) newLine(lineY);
+        else if (atBlock) { if (out && !/\s$/.test(out) && lineX - endX > room * scale) out += ' '; brk = false; }
+        else if (!/\s$/.test(out) && out && tx > 0 && gap > room) out += ' ';
         runW = 0; guess = false;
       }
-      else if ((t === 'Tm' || t === 'ET') && out && !out.endsWith('\n')) { out += '\n'; runW = 0; }
-      else if (t === 'Tm') runW = 0;
+      else if (t === 'Tm') {
+        const [, , , d, e, f] = nums.slice(-6);
+        const was = brk ? endX : lineX + runW * scale;
+        scale = Math.abs(d) || 1; lineX = Number(e) || 0; lineY = Number(f) || 0;
+        if (!near(lineY)) newLine(lineY);
+        else if (out && !/\s$/.test(out) && lineX - was > (guess && !met ? 0.3 : 0.15) * size * scale) out += ' ';
+        brk = false; runW = 0;
+      }
+      else if (t === 'ET') { if (out && !out.endsWith('\n')) { brk = true; endX = lineX + runW * scale; } runW = 0; }
       nums = [];
     }
     if (out.trim()) pages.push(tidy(out));
   }
-  const text = tidy(pages.join('\n\n'));
-  const letters = (text.match(/[\p{L}\p{N}\s.,;:!?'"()-]/gu) || []).length;
-  // 1.5.207 PC check: the W3C test file says only "Dummy PDF file" and was called a scan. A few real words are kept.
-  if (!/[\p{L}\p{N}]{2,}/u.test(text)) throw new DocError(`I found no words in that PDF. It's probably a scan (pictures of pages): attach a page as a picture and an eyes brain can read it.`);
-  if (text.length >= 20 && letters / text.length < 0.7) throw new DocError(`That PDF keeps its words in a way I can't untangle without help. ${OFFICE_HINT}`);
-  return text;
+  return pages;
+}
+
+// The page streams in reading order (1.5.208 PC check: arXiv 1706.03762 lost its first page). Files that were changed
+// after they were made (arXiv stamps its id on page 1) keep the new page 1 at the end of the file, so file order put
+// the title and abstract last, or read the old copy. The page tree says the real order; the newest copy of an object
+// wins. A file whose tree can't be followed is read in file order, as before.
+function pageOrder(objects, streams) {
+  const byNum = new Map(streams.map((x) => [x.num, x.text])); // a later copy (an update) replaces an earlier one
+  const fileOrder = streams.map((x) => x.text);
+  const refs = (s) => [...String(s || '').matchAll(/(\d+)\s+\d+\s+R/g)].map((m) => Number(m[1]));
+  const root = [...objects.values()].map((b) => b.match(/\/Type\s*\/Catalog\b[\s\S]*?\/Pages\s+(\d+)\s+\d+\s+R|\/Pages\s+(\d+)\s+\d+\s+R[\s\S]*?\/Type\s*\/Catalog\b/)).filter(Boolean).pop(); // the newest catalog
+  if (!root) return fileOrder;
+  const out = [], seen = new Set();
+  const walk = (n, depth) => {
+    if (seen.has(n) || depth > 64 || out.length > 20000) return;
+    seen.add(n);
+    const body = objects.get(n) || '';
+    if (/\/Type\s*\/Pages\b/.test(body)) { for (const k of refs(body.match(/\/Kids\s*\[([^\]]*)\]/)?.[1])) walk(k, depth + 1); return; }
+    if (!/\/Type\s*\/Page\b/.test(body)) return;
+    const c = body.match(/\/Contents\s*(\[[^\]]*\]|\d+\s+\d+\s+R)/)?.[1] || '';
+    let list = refs(c);
+    if (list.length === 1 && !byNum.has(list[0])) list = refs((objects.get(list[0]) || '').match(/\[([^\]]*)\]/)?.[1]); // a Contents array kept in its own object
+    const text = list.map((k) => byNum.get(k)).filter((x) => x != null).join('\n');
+    if (text) out.push(text);
+  };
+  walk(Number(root[1] || root[2]), 0);
+  // No page text found that way (words kept in forms, or a broken tree): file order, as before.
+  return out.some((x) => /\bBT\b/.test(x)) ? out : fileOrder;
 }
 
 // ---------------------------------------------------------------- the one way in

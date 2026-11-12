@@ -6,6 +6,7 @@
 // Hugging Face at pinned revisions and the big files are checked too. Meta's DINOv3 picture reader comes from an exact,
 // ungated copy (camenduru's, with Meta's licence file in it), so nobody needs a Hugging Face account or token.
 // Macs, AMD and Intel cards and the phone: send the job to a PC Bob over Bob-Net.
+import { deadline as withDeadline } from './hang-guard.js'; // item 212: every network call has a deadline
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -160,7 +161,7 @@ async function fetchCode(cfg, { signal, fetchImpl }) {
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('TRELLIS.2 isn\'t pinned to a checked version, so I won\'t install it.');
   const dest = codeDir(cfg);
   try { if (readJson(path.join(dest, 'bob-trellis2.json')).commit === commit) return; } catch {}
-  const res = await fetchImpl(`https://codeload.github.com/microsoft/TRELLIS.2/zip/${commit}`, { signal, headers: { 'user-agent': 'Bob' } });
+  const res = await fetchImpl(`https://codeload.github.com/microsoft/TRELLIS.2/zip/${commit}`, { signal: withDeadline(signal, 15 * 60_000), headers: { 'user-agent': 'Bob' } });
   if (!res.ok) throw new Error(`Couldn't fetch TRELLIS.2 (${res.status}).`);
   const zip = path.join(shopDir(cfg), 'trellis2.zip');
   fs.writeFileSync(zip, Buffer.from(await res.arrayBuffer()));

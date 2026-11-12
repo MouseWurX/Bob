@@ -16,6 +16,7 @@ import { insideAny } from './config.js';
 import { isSensitive } from './tools.js';
 import { DOC_EXT, MAX_DOC_BYTES, docText } from './doc-text.js';
 import { docMeaningOn } from './doc-index.js';
+import { docPlacesOn, placeOf, placeWords, inVault, obsidianText } from './doc-more.js'; // items 91 and 92, off by default
 
 export const docToolsOn = (cfg) => cfg?.docTools === true;
 export const TEXT_EXT = ['txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'log', 'html', 'htm', 'xml', 'yml', 'yaml', 'ini', 'toml', 'tex', 'srt', 'vtt'];
@@ -40,6 +41,7 @@ function wordsOf(file, st, read = docText) {
   return text;
 }
 export const clearDocCache = () => cache.clear();
+export const forgetWords = (file) => cache.delete(file); // "Keep my documents fresh": a changed file is read again
 
 function snippet(text, ts, n = 200) {
   const s = String(text || '').replace(/\s+/g, ' ');
@@ -82,15 +84,18 @@ export async function walkFiles(cfg, roots, want, visit, { signal, now = () => D
 }
 
 // The words of a file, within the size limits ('' when too big or unreadable). Documents go through the cache.
-export function readWords(file, st, read) {
+// cfg: with an Obsidian vault picked (Search my notes apps too), its notes are read without links' brackets and tags' #.
+export function readWords(file, st, read, cfg = null) {
   const isDocFile = DOC_EXT.includes(extOf(file));
   if (isDocFile ? st.size > Math.min(LIMITS.docBytes, MAX_DOC_BYTES) : st.size > LIMITS.textBytes) return '';
   if (isDocFile) return wordsOf(file, st, read);
-  try { return fs.readFileSync(file, 'utf8'); } catch { return ''; }
+  let text = '';
+  try { text = fs.readFileSync(file, 'utf8'); } catch { return ''; }
+  return cfg && inVault(cfg, file) ? obsidianText(text) : text;
 }
 
 // The search itself. roots: folders to walk. Returns { hits: [{ file, where, snippet }], scanned, stopped }.
-export async function findInDocuments(cfg, roots, q, { kind = 'any', signal, now = () => Date.now(), read } = {}) {
+export async function findInDocuments(cfg, roots, q, { kind = 'any', signal, now = () => Date.now(), read, readPdf } = {}) {
   const ts = terms(q);
   if (!ts.length) throw new Error('Give me a word or two to look for (at least 2 letters).');
   const want = kind === 'documents' ? DOC_EXT : kind === 'text' ? TEXT_EXT : [...DOC_EXT, ...TEXT_EXT];
@@ -98,17 +103,20 @@ export async function findInDocuments(cfg, roots, q, { kind = 'any', signal, now
   const { scanned, stopped } = await walkFiles(cfg, roots, want, (full, st) => {
     if (hits.length >= LIMITS.hits) return 'hits';
     const name = path.basename(full).toLowerCase().replace(/[-_.]/g, ' ');
-    const text = readWords(full, st, read);
+    const text = readWords(full, st, read, cfg);
     const low = text.toLowerCase();
     if (!ts.every((w) => low.includes(w) || name.includes(w))) return;
     const inText = ts.some((w) => low.includes(w));
-    hits.push({ file: full, where: inText ? 'inside' : 'name', snippet: inText ? snippet(text, ts.filter((w) => low.includes(w))) : '' });
+    const first = ts.find((w) => low.includes(w));
+    // "Show the page and line" (doc-more.js): where in the file, for the first 10 finds (a PDF is read again for its pages).
+    const place = inText && docPlacesOn(cfg) && hits.length < 10 ? placeOf(full, text, first, readPdf ? { readPdf } : {}) : null;
+    hits.push({ file: full, where: inText ? 'inside' : 'name', snippet: inText ? snippet(text, ts.filter((w) => low.includes(w))) : '', place });
   }, { signal, now });
   return { hits, scanned, stopped };
 }
 
 // The meaning finds that the word search didn't already give, with a snippet read from the file now.
-function meaningHits(list, hits, kind) {
+function meaningHits(list, hits, kind, cfg = null) {
   if (!list?.length) return '';
   const have = new Set(hits.map((h) => h.file));
   const want = kind === 'documents' ? DOC_EXT : kind === 'text' ? TEXT_EXT : null;
@@ -117,7 +125,7 @@ function meaningHits(list, hits, kind) {
     if (have.has(m.file) || (want && !want.includes(extOf(m.file)))) continue;
     let st;
     try { st = fs.statSync(m.file); } catch { continue; }
-    const text = readWords(m.file, st).slice(m.at, m.at + m.len).replace(/\s+/g, ' ').trim();
+    const text = readWords(m.file, st, undefined, cfg).slice(m.at, m.at + m.len).replace(/\s+/g, ' ').trim();
     rows.push(`${m.file} (${Math.round(m.score * 100)}% alike)${text ? `\n  ${text.slice(0, 200)}${text.length > 200 ? '…' : ''}` : ''}`);
   }
   return rows.join('\n');
@@ -147,8 +155,9 @@ export function findDocsTool(cfg, { keeper = () => null } = {}) {
       const meaning = docMeaningOn(cfg) ? Promise.resolve(keeper()?.docsByMeaning(words, folder ? roots : null)).catch(() => null) : null;
       const r = await findInDocuments(cfg, roots, words, { kind: kind || 'any', signal: ctx.signal });
       const tail = [r.stopped ? STOPPED[r.stopped] : '', `${r.scanned} ${r.scanned === 1 ? 'file' : 'files'} looked at.`].filter(Boolean).join(' ');
-      const found = r.hits.length ? `${r.hits.map((h) => `${h.file}${h.where === 'name' ? ' (in the name)' : `\n  ${h.snippet}`}`).join('\n')}\n\n${tail}` : `Nothing has all of "${words}". ${tail}`;
-      const near = meaningHits(await meaning, r.hits, kind);
+      const at = (h) => (h.place ? ` (${placeWords(h.place)})` : '');
+      const found = r.hits.length ? `${r.hits.map((h) => `${h.file}${h.where === 'name' ? ' (in the name)' : `${at(h)}\n  ${h.snippet}`}`).join('\n')}\n\n${tail}${r.hits.some((h) => h.place) ? '\nWhen you name one of these files in your answer, keep its place right after the path, like "(page 3)", so a click opens it there.' : ''}` : `Nothing has all of "${words}". ${tail}`;
+      const near = meaningHits(await meaning, r.hits, kind, cfg);
       if (!near) return found + (meaning && !(await meaning) ? '\n(Meaning search isn\'t ready: the document index is empty or still being made, or the Memory slot\'s embedding model isn\'t on this replicant matrix.)' : '');
       return `${found}\n\nClose in meaning (other words, same idea):\n${near}`;
     },

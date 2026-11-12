@@ -238,7 +238,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-jobs-'));
 {
   const brainSrc = read('../src/brain.js'), server = read('../src/server.js'), cellar = read('../public/cellar.js'), app = read('../public/app.js'), main = read('../electron/main.cjs'), phone = read('../android/app/src/main/assets/www/phone.js');
   check('enqueue steers before anything else answers', brainSrc.indexOf('steerNote(this, sessionId') > 0 && brainSrc.indexOf('steerNote(this, sessionId') < brainSrc.indexOf('const quickAnswer = this.jobAnswer('));
-  check('the tools go through the receipt, the cache and the no', /cachedLook\(this, name, args, ctx\) \|\| await this\.runToolNow/.test(brainSrc) && /receiptAfter\(this, name, args, res, ctx, before\)/.test(brainSrc) && /noteNo\(this, ctx, name, args, res\?\.text\)/.test(brainSrc));
+  check('the tools go through the receipt, the cache and the no', /cachedLook\(this, name, args, ctx\) \|\| await (?:(?:inChangeTurn|inTurn)\(scope, async \(\) => \{ try \{ return await )?this\.runToolNow/.test(brainSrc) && /receiptAfter\(this, name, args, res, ctx, before\)/.test(brainSrc) && /noteNo\(this, ctx, name, args, res\?\.text\)/.test(brainSrc));
   check('the server saves it and has the three routes', /jobHelps: cleanJobHelps\(cfg\.jobHelps\)/.test(server) && /p === '\/api\/stop-after'/.test(server) && /p === '\/api\/jobs\/undo'/.test(server) && /p === '\/api\/open-at'/.test(server));
   check('Undo and open-at only on this replicant matrix', /\(p === '\/api\/jobs\/undo' \|\| p === '\/api\/open-at'\)\) \{\n\s+if \(!isLocal\) return send\(res, 403/.test(server));
   check('the reason typed on Deny is kept', /if \(allow === false && typeof note === 'string' && note\.trim\(\)\) keepDenyNote\(brain, note\)/.test(server));
@@ -322,6 +322,8 @@ const run = async (text, sid = 'main') => { const { jobId } = brain.enqueue(sid,
 {
   // Remember a no: the card's Deny with a reason stays in the chat.
   brain.cfg.jobHelps = cleanJobHelps({ rememberNo: true });
+  // A test-only tool, in no group: offered by having every tool on (Nov 12, item 173: a tool this job can't be offered doesn't run).
+  brain.cfg.allTools = true;
   brain.tools.tidy_desk = { schema: { type: 'function', function: { name: 'tidy_desk', description: 'Tidy the desk', parameters: { type: 'object', properties: {}, required: [] } } }, check: () => 'tidy your desk', run: async () => 'Tidied.', summary: () => 'tidy the desk' };
   seen.length = 0; events.length = 0;
   script = [call('tidy_desk'), { role: 'assistant', content: 'OK, I left it.' }];
@@ -333,6 +335,7 @@ const run = async (text, sid = 'main') => { const { jobId } = brain.enqueue(sid,
   await done;
   check('the no and its reason stay in the chat, hidden', brain.session('main').some((m) => m.role === 'system' && m.hidden && /Sam said no to: tidy the desk \(their reason: "I like the mess"\)/.test(m.content)));
   delete brain.tools.tidy_desk;
+  brain.cfg.allTools = false;
 }
 {
   // Run the tests after code edits: an edit in a project with tests gets one note before he says done.

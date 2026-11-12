@@ -21,8 +21,13 @@ import { Topics, normName, topicText } from './topics.js';
 import { Embedder } from './embedder.js';
 import { asDoc, embedModel, vecKey, freshVec } from './embed-prefix.js';
 import { recallOn, parseMemory, MemoryVectors } from './recall.js';
+import { fromTag, expiryOn, dropExpired } from './memory-more.js';
 import { gaming } from './sessions.js';
 import { DocIndex, docMeaningOn, queryVector } from './doc-index.js';
+import { DocWatcher, docFreshOn } from './doc-more.js'; // "Keep my documents fresh", off by default
+import { forgetWords, TEXT_EXT } from './my-docs.js';
+import { DOC_EXT } from './doc-text.js';
+import { Digest, digestOn } from './digest.js'; // "A Sunday digest", off by default
 import { catalogFileFor } from './llamacpp.js';
 import {
   chatIds, chatInfo, chatFiles, wholeChat, readChat, readOlder, writeChat, writeOlder, readSummary, writeSummary,
@@ -51,7 +56,7 @@ const dateOf = (ms) => new Date(ms).toISOString().slice(0, 10);
 export { parseJson };
 
 // Memory lines are "- fact (date)" or "- fact (date) [topic: Name]". Repeats compare without the date and tag.
-const memKey = (line) => normName(line.replace(/^\s*-\s*/, '').replace(/\[(?:topic|project):[^\]]*\]|\[always\]/gi, '').replace(/\(\d{4}-\d{2}-\d{2}\)/g, ''));
+const memKey = (line) => normName(line.replace(/^\s*-\s*/, '').replace(/\[(?:topic|project|from|until):[^\]]*\]|\[always\]/gi, '').replace(/\(\d{4}-\d{2}-\d{2}\)/g, ''));
 export function memoryRepeats(text) {
   const seen = new Set();
   let n = 0;
@@ -117,9 +122,11 @@ export class Housekeeper {
     this.now = () => Date.now();
     this.timer = setInterval(() => this.tick().catch(() => {}), 5 * 60e3);
     this.timer.unref?.();
+    this.watchSoon = setTimeout(() => { try { this.syncDocWatch(); } catch {} }, 5000); // "Keep my documents fresh"
+    this.watchSoon.unref?.();
   }
 
-  stop() { clearInterval(this.timer); this.pause(); }
+  stop() { clearInterval(this.timer); clearTimeout(this.watchSoon); this.docWatch?.stop(); this.pause(); }
   // The user is back: anything the housekeeper is asking the brain stops at once.
   pause() { this.controller?.abort(); this.docStop?.abort(); }
 
@@ -300,7 +307,7 @@ export class Housekeeper {
       const text = readText(cfg.memoryFile);
       const { repeats, text: tidy } = memoryRepeats(text);
       backupMemory(cfg);
-      writeText(cfg, cfg.memoryFile, tidy);
+      writeText(cfg, cfg.memoryFile, tidy, { who: 'housekeeping' });
       return `${repeats} repeated memory lines (the old memory file is in the Recycle Bin)`;
     }
     if (it.kind === 'topics') { this.forget(it.ref, { mode: 'note' }); return `the chat parts of "${it.label}" (its note stays)`; }
@@ -341,15 +348,16 @@ export class Housekeeper {
 
   // Facts Bob should keep go to the memory file, tagged with their topic, without repeats.
   // 1.5.79: with "Remember only what fits" on, a fact from a project's topic goes to that project's memory bank.
-  addFacts(facts, topic = '', project = '') {
+  // from: the chat the facts came from (tagged only with "Note where each memory came from" on, memory-more.js).
+  addFacts(facts, topic = '', project = '', from = '') {
     const list = [].concat(facts || []).map((f) => String(f).replace(/\s+/g, ' ').trim()).filter((f) => f.length > 3 && f.length < 300).slice(0, 8);
     if (!list.length) return 0;
     let text = '';
     try { text = readText(this.cfg.memoryFile); } catch {}
     const have = new Set(text.split('\n').map(memKey).filter(Boolean));
     const day = dateOf(Date.now());
-    const add = list.filter((f) => { const k = memKey(f); if (have.has(k)) return false; have.add(k); return true; }).map((f) => `- ${f} (${day})${topic ? ` [topic: ${topic.replace(/[\][]/g, '')}]` : ''}${project && recallOn(this.cfg) ? ` [project: ${String(project).replace(/[\][]/g, '').slice(0, 60)}]` : ''}\n`);
-    if (add.length) appendText(this.cfg, this.cfg.memoryFile, (text && !text.endsWith('\n') ? '\n' : '') + add.join(''));
+    const add = list.filter((f) => { const k = memKey(f); if (have.has(k)) return false; have.add(k); return true; }).map((f) => `- ${f} (${day})${topic ? ` [topic: ${topic.replace(/[\][]/g, '')}]` : ''}${project && recallOn(this.cfg) ? ` [project: ${String(project).replace(/[\][]/g, '').slice(0, 60)}]` : ''}${fromTag(this.cfg, from)}\n`);
+    if (add.length) appendText(this.cfg, this.cfg.memoryFile, (text && !text.endsWith('\n') ? '\n' : '') + add.join(''), { who: 'housekeeping' });
     return add.length;
   }
 
@@ -363,7 +371,7 @@ export class Housekeeper {
     const r = await this.ask(`Here is the summary so far of the early part of a chat between ${this.cfg.userName || 'the user'} and Bob (their AI helper), then more of that early part.\nUpdate the summary. Keep decisions, facts, plans and open to-dos; drop small talk.\nAlso list lasting facts about ${this.cfg.userName || 'the user'} worth remembering for months (preferences, projects, plans). Never secrets or passwords.\nAnswer as {"summary": "under 200 words", "facts": ["..."]}.\n\nSUMMARY SO FAR:\n${prev.summary || '(none)'}\n\nMORE OF THE CHAT:\n${text}`);
     if (!r.summary) return false;
     writeSummary(this.cfg, id, { summary: String(r.summary).slice(0, 2500), upto: older.length, updated: Date.now() });
-    const n = this.addFacts(r.facts);
+    const n = this.addFacts(r.facts, '', '', id);
     this.log(`summed up the early part of chat ${id}${n ? `; ${n} fact${n === 1 ? '' : 's'} to memory` : ''}`);
     return true;
   }
@@ -392,7 +400,7 @@ export class Housekeeper {
         return best;
       }
     });
-    for (const g of groups) this.addFacts(g.facts, g.name, g.project);
+    for (const g of groups) this.addFacts(g.facts, g.name, g.project, id);
     this.topics.setCursor(id, Math.max(...fresh.map((m) => m.at || 0)));
     await this.refreshVectors();
     if (touched.length) this.log(`filed chat ${id} under ${touched.length} topic${touched.length === 1 ? '' : 's'}`);
@@ -416,7 +424,7 @@ export class Housekeeper {
       const prev = readSummary(this.cfg, id)?.summary || '';
       const r = await this.ask(`Write one paragraph (under 120 words) saying what this chat was about and where it landed, plus lasting facts about ${this.cfg.userName || 'the user'} worth remembering (never secrets).\nAnswer as {"summary":"","facts":[""]}.\n\n${prev ? `EARLIER PART, SUMMED UP:\n${prev}\n\n` : ''}CHAT:\n${text}`);
       summary = String(r.summary || '').slice(0, 1500);
-      this.addFacts(r.facts);
+      this.addFacts(r.facts, '', '', id);
     } catch { /* no brain right now: keep the title and dates only */ }
     const list = this.summaries();
     list.unshift({ id, title: all.length ? chatTitleOf(all) : id, summary: summary || '(Bob had no brain loaded when this chat was tidied, so only its title and dates were kept.)', from: all[0]?.at || 0, to: all.at(-1)?.at || 0, removed: Date.now() });
@@ -472,7 +480,7 @@ export class Housekeeper {
       try {
         const text = readText(this.cfg.memoryFile);
         const kept = text.split('\n').filter((l) => tagOf(l) !== normName(t.name));
-        if (kept.length !== text.split('\n').length) { backupMemory(this.cfg); writeText(this.cfg, this.cfg.memoryFile, kept.join('\n')); }
+        if (kept.length !== text.split('\n').length) { backupMemory(this.cfg); writeText(this.cfg, this.cfg.memoryFile, kept.join('\n'), { who: 'housekeeping' }); }
       } catch {}
       this.topics.remove(id);
     } else {
@@ -571,12 +579,49 @@ export class Housekeeper {
     const v = await queryVector(this, q, this.docIndex.load().model);
     return v ? this.docIndex.search(v, { roots: roots || this.docRoots() }) : null;
   }
+  // "Keep my documents fresh" (doc-more.js): listen for changes in the folders Bob may read while the switch is on,
+  // and stop listening when it goes off. Called when the settings change and on every housekeeping tick.
+  syncDocWatch() {
+    if (!docFreshOn(this.cfg)) { this.docWatch?.stop(); return []; }
+    this.docWatch ||= new DocWatcher(this.cfg, (files) => this.docsChanged(files), { exts: [...DOC_EXT, ...TEXT_EXT] });
+    return this.docWatch.sync(this.docRoots());
+  }
+  // Changed documents: their words are read again next time, and their meaning numbers are made again now. Never in
+  // the Gaming session; while Bob is answering, they wait for the next round.
+  async docsChanged(files) {
+    for (const f of files) forgetWords(f);
+    if (!docFreshOn(this.cfg) || gaming(this.cfg)) return null;
+    if (this.brain?.turns?.size || this.docIndex?.building) { this.docWatch?.again(files); return { later: files.length }; }
+    this.docIndex ||= new DocIndex(this.cfg);
+    const r = await this.docIndex.refreshFiles(files, (texts) => this.embed(texts), this.cfg.housekeeping?.embedModel || 'nomic-embed-text');
+    if (r.busy) { this.docWatch?.again(files); return r; }
+    if (r.added || r.dropped) this.log(`kept documents fresh: ${r.added} read again, ${r.dropped} gone`);
+    return r;
+  }
+  digestKeeper() { return (this.digest ||= new Digest(this.cfg, { hk: this, broadcast: (e) => this.brain?.broadcast?.(e) })); }
   docIndexView() { return docMeaningOn(this.cfg) ? (this.docIndex ||= new DocIndex(this.cfg)).view() : null; }
-  forgetDocIndex() { this.docStop?.abort(); (this.docIndex ||= new DocIndex(this.cfg)).clear(); }
+  forgetDocIndex() { this.docStop?.abort(); (this.docIndex ||= new DocIndex(this.cfg)).clear(); this.syncDocWatch(); }
+
+  // "Let memories run out" (memory-more.js): lines whose [until: day] has passed leave the memory file, the old file
+  // going to the Recycle Bin first. Bob already stopped reading them that day; this only keeps the file tidy.
+  dropExpiredMemories(day = '') {
+    if (!expiryOn(this.cfg)) return 0;
+    let text = '';
+    try { text = readText(this.cfg.memoryFile); } catch { return 0; }
+    const r = dropExpired(text, day || new Intl.DateTimeFormat('en-CA', { timeZone: this.cfg.timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()));
+    if (!r.gone.length) return 0;
+    try { backupMemory(this.cfg); } catch {}
+    writeText(this.cfg, this.cfg.memoryFile, r.text);
+    this.log(`${r.gone.length} memor${r.gone.length === 1 ? 'y' : 'ies'} ran out and left the memory file`);
+    return r.gone.length;
+  }
 
   async tick({ force = false } = {}) {
     if (vaultOn(this.cfg) && !hasKey()) return { skipped: true, locked: true }; // 🔒 chats are locked until the passcode is typed
     if (this.cfg.profileNow) return { skipped: true, profile: true }; // 👥 housekeeping only tidies the owner's things (profiles.js)
+    if (expiryOn(this.cfg) && (force || this.idle()) && !this.working) { try { this.dropExpiredMemories(); } catch {} }
+    try { this.syncDocWatch(); } catch {}
+    if (digestOn(this.cfg)) { try { this.digestKeeper().check(); } catch {} } // plain code, no brain: any time it's due
     if (recallOn(this.cfg) && (force || this.idle()) && !this.working) { try { await this.fillMemoryVectors(); } catch {} }
     if (docMeaningOn(this.cfg) && (force || this.idle()) && !this.working) { try { await this.fillDocIndex(); } catch {} }
     if ((this.settings.enabled || recallOn(this.cfg)) && (force || this.idle()) && !this.working) { try { await this.refreshOldVectors(); } catch {} }

@@ -4,6 +4,7 @@ import { appendText, readText, writeText } from './vault.js'; // 🔒 Lock my ch
 import { clashes, clashNote } from './memory-clash.js';
 import fs from 'node:fs';
 import path from 'node:path';
+import { saveFile, saveJson, oneWriter, readSaved } from './saving.js'; // items 229, 231, 233
 import { isInside, insideAny, appDir, findOutput } from './config.js';
 import { HATS } from './persona.js';
 import { cloudHelpers, askCloud } from './cloud.js';
@@ -12,6 +13,7 @@ import { limitOn, readOnlyRoots, handOn } from './hands-settings.js';
 import { listWorkflows, workshopDir } from './workshop.js';
 import { bobHelp } from './self-help.js';
 import { recallOn, tagLine } from './recall.js';
+import { expiryOn, untilTag, fromTag } from './memory-more.js'; // memory items 87 and 88, off by default
 import { diagramTool } from './diagram.js';
 import { saveAsTool } from './save-as.js';
 import { isPrivateHost } from './security-web.js';
@@ -26,6 +28,7 @@ import { GIT_LOOKS, gitArgs, runGit, gitAnswer } from './git-look.js';
 import { mainText, docKind, parseDdg, parseMojeek, resultLines, WEB_TIMEOUT_MS, MAX_DOC_DOWNLOAD } from './page-text.js';
 import { docToolsOn } from './my-docs.js';
 import { codeMap, linesAround } from './code-map.js';
+import { backoffMs, engineFailKind, pause } from './retry.js'; // item 194
 
 const MAX_READ = 20000;
 // Runnable file types Bob won't write outside a project, on every platform (Windows, Mac and Linux kinds together).
@@ -42,7 +45,24 @@ async function readBytes(res, max) {
   return Buffer.concat(parts).subarray(0, max);
 }
 export const webSignal = (signal, ms = WEB_TIMEOUT_MS) => (signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms));
-async function readCapped(res, max) {
+// Item 194: a look-up that failed for a reason a second try can fix (the connection dropped, or the site said 429, 502,
+// 503 or 504) goes once more, after a short wait with a bit of randomness (or the site's own Retry-After, up to 5 s).
+// A time-out isn't tried again: it already waited long enough. Only for reading (GET), never for anything that acts.
+export async function fetchRetry(url, opts = {}, signal, { fetchImpl = (...a) => fetch(...a), waitMs = () => backoffMs(0, { base: 1500 }) } = {}) {
+  for (let i = 0; ; i++) {
+    let r;
+    try { r = await fetchImpl(url, { ...opts, signal: webSignal(signal) }); }
+    catch (e) { if (signal?.aborted || i > 0 || e?.name === 'TimeoutError' || engineFailKind(e) !== 'dropped') throw e; await pause(waitMs(), signal); continue; }
+    if (i === 0 && [429, 502, 503, 504].includes(r.status)) {
+      const after = Number(r.headers?.get?.('retry-after'));
+      try { await r.body?.cancel?.(); } catch {}
+      await pause(Number.isFinite(after) && after > 0 ? Math.min(5000, after * 1000) : waitMs(), signal);
+      continue;
+    }
+    return r;
+  }
+}
+export async function readCapped(res, max) {
   const parts = []; let n = 0;
   for await (const chunk of res.body || []) { parts.push(chunk); n += chunk.length; if (n >= max) break; }
   return Buffer.concat(parts).subarray(0, max).toString('utf8');
@@ -174,7 +194,7 @@ function resolveUserPath(p) {
   return path.resolve(p);
 }
 
-function htmlToText(html) {
+export function htmlToText(html) {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -201,11 +221,54 @@ export function zonedToEpoch(local, timeZone) {
   return t;
 }
 
-export function loadReminders(cfg) {
-  try { return JSON.parse(fs.readFileSync(path.join(cfg.dataDir, 'reminders.json'), 'utf8')); } catch { return []; }
+// A reminders file that won't read is set aside (not read as empty and written over); a list is the only shape kept.
+export const remindersFile = (cfg) => path.join(cfg.dataDir, 'reminders.json');
+export function loadReminders(cfg, { log } = {}) {
+  return readSaved(remindersFile(cfg), [], { check: Array.isArray, log: log || ((t) => console.error(`Bob: ${t}`)) });
 }
 export function saveReminders(cfg, list) {
-  fs.writeFileSync(path.join(cfg.dataDir, 'reminders.json'), JSON.stringify(list, null, 2));
+  saveJson(remindersFile(cfg), list, 2);
+}
+// Read, change and save the list as one step (item 231): another Bob on the same folder waits its turn.
+export const changeReminders = (cfg, fn) => oneWriter(remindersFile(cfg), () => { const list = loadReminders(cfg); const r = fn(list); saveReminders(cfg, list); return r; });
+
+// 🧰 More tools, "Let reminders repeat": how a repeating reminder moves on, in the wall-clock time it was set in
+// (so 9:00 stays 9:00 across a clock change). Month ends stick to the last day (31 Jan, 28 Feb, 31 Mar).
+export const REPEATS = ['day', 'weekday', 'weekend', 'week', '2 weeks', 'month', 'year'];
+const pad2 = (n) => String(n).padStart(2, '0');
+function partsOf(local) {
+  const m = String(local).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})/);
+  if (!m) throw new Error('Time must look like 2026-11-01T15:30');
+  return { y: +m[1], mo: +m[2], d: +m[3], h: +m[4], mi: +m[5], day: +m[3] };
+}
+const localOf = ({ y, mo, d, h, mi }) => `${y}-${pad2(mo)}-${pad2(d)}T${pad2(h)}:${pad2(mi)}`;
+const weekdayOf = ({ y, mo, d }) => new Date(Date.UTC(y, mo - 1, d)).getUTCDay(); // 0 Sunday
+const daysIn = (y, mo) => new Date(Date.UTC(y, mo, 0)).getUTCDate();
+function addDays(p, n) { const t = new Date(Date.UTC(p.y, p.mo - 1, p.d + n)); return { ...p, y: t.getUTCFullYear(), mo: t.getUTCMonth() + 1, d: t.getUTCDate() }; }
+const fits = (p, every) => (every === 'weekday' ? ![0, 6].includes(weekdayOf(p)) : every === 'weekend' ? [0, 6].includes(weekdayOf(p)) : true);
+// The first time for a weekday or weekend reminder is the first such day from the time asked.
+export function firstRepeat(local, every) {
+  let p = partsOf(local);
+  for (let i = 0; i < 7 && !fits(p, every); i++) p = addDays(p, 1);
+  return localOf(p);
+}
+export function nextRepeat(local, every, day) {
+  const p = partsOf(local);
+  const keep = day || p.d;
+  if (every === 'day') return localOf(addDays(p, 1));
+  if (every === 'week') return localOf(addDays(p, 7));
+  if (every === '2 weeks') return localOf(addDays(p, 14));
+  if (every === 'weekday' || every === 'weekend') { let q = addDays(p, 1); for (let i = 0; i < 7 && !fits(q, every); i++) q = addDays(q, 1); return localOf(q); }
+  if (every === 'month') { let y = p.y, mo = p.mo + 1; if (mo > 12) { mo = 1; y++; } return localOf({ ...p, y, mo, d: Math.min(keep, daysIn(y, mo)) }); }
+  if (every === 'year') { const y = p.y + 1; return localOf({ ...p, y, d: Math.min(keep, daysIn(y, p.mo)) }); }
+  throw new Error(`I can't repeat "${every}".`);
+}
+// A repeating reminder that went off (or was missed while Bob was closed): its next time after now.
+export function moveOn(r, timeZone, now = Date.now()) {
+  let local = r.local, at = r.at;
+  const day = r.day || partsOf(r.local).d;
+  for (let i = 0; i < 2000 && at <= now; i++) { local = nextRepeat(local, r.every, day); at = zonedToEpoch(local, timeZone); }
+  return { ...r, local, at, day };
 }
 
 export function cloudProviders(cfg) {
@@ -225,16 +288,18 @@ export function buildTools(cfg) {
       const file = cfg.noticeBoard;
       if (action !== 'write') return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : BOARD_EMPTY;
       if (!content) throw new Error('No board content given.');
+      return oneWriter(file, () => { // item 231: one writer at a time
       if (fs.existsSync(file)) {
         const old = fs.readFileSync(file, 'utf8');
         const m = old.match(/Notice board,?\s*(\d{4}-\d{2}-\d{2})/);
         if (m && m[1] !== today(cfg)) {
           const arch = path.join(cfg.archiveDir, `${m[1]}.md`);
-          if (!fs.existsSync(arch)) fs.writeFileSync(arch, old);
+          if (!fs.existsSync(arch)) saveFile(arch, old);
         }
       }
-      fs.writeFileSync(file, content);
+      saveFile(file, content);
       return 'Notice board saved.';
+      });
     },
     summary: ({ action }) => `notice board: ${action}`
   };
@@ -247,10 +312,12 @@ export function buildTools(cfg) {
       return fn('remember', 'Save a lasting fact about {{USER}}, like a preference or a plan. Never secrets or passwords.', {
         fact: str('One short sentence.'),
         replaces: str('Optional: the earlier memory this corrects, word for word, once the user said which is right.'),
-        ...(recallOn(cfg) ? { project: str(`Only for a fact about one project: its name${banks.length ? ` (${banks.join(', ')})` : ''}. Leave out for anything general.`) } : {})
+        ...(recallOn(cfg) ? { project: str(`Only for a fact about one project: its name${banks.length ? ` (${banks.join(', ')})` : ''}. Leave out for anything general.`) } : {}),
+        // "Let memories run out" (memory-more.js): only offered while that switch is on.
+        ...(expiryOn(cfg) ? { keep: str('Only when {{USER}} says how long: day, week, month, "3 days", or a date (YYYY-MM-DD). Leave out to keep it.') } : {})
       }, ['fact']);
     },
-    async run({ fact, project, replaces }) {
+    async run({ fact, project, replaces, keep }, ctx = {}) {
       if (!fact) throw new Error('Nothing to remember.');
       const clean = String(fact).replace(/\s+/g, ' ').trim();
       let before = '';
@@ -264,44 +331,52 @@ export function buildTools(cfg) {
         if (at >= 0) { dropped = lines[at]; lines.splice(at, 1); writeText(cfg, cfg.memoryFile, lines.join('\n')); before = lines.join('\n'); }
       }
       const clash = dropped ? [] : clashes(clean, before);
-      const line = `- ${recallOn(cfg) ? tagLine(`${clean} (${today(cfg)})`, project) : `${clean} (${today(cfg)})`}\n`;
+      const until = untilTag(cfg, keep, today(cfg));
+      const line = `- ${recallOn(cfg) ? tagLine(`${clean} (${today(cfg)})`, project) : `${clean} (${today(cfg)})`}${until}${fromTag(cfg, ctx.sessionId)}\n`;
       // The second call (with replaces) after a clash doesn't add the fact a second time.
       const already = before.replace(/\r\n/g, '\n').split('\n').some((l) => l.replace(/^\s*-\s*/, '').replace(/\s*\[[^\]]*\]\s*$/, '').replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '').trim() === clean);
       if (!already) appendText(cfg, cfg.memoryFile, line);
       const done = recallOn(cfg) && project ? `Remembered, in the ${String(project).replace(/[\][]/g, '').trim()} memory bank.` : 'Remembered.';
-      return `${done}${dropped ? ' The earlier line it corrects is gone.' : ''}${clashNote(clash, cfg.userName || 'the user')}`;
+      const till = until ? ` I'll stop reading it after ${until.match(/\d{4}-\d{2}-\d{2}/)[0]}.` : '';
+      return `${done}${till}${dropped ? ' The earlier line it corrects is gone.' : ''}${clashNote(clash, cfg.userName || 'the user')}`;
     },
     summary: ({ fact, project }) => `remember: ${String(fact).slice(0, 80)}${project ? ` (${project})` : ''}`
   };
 
   t.reminders = {
-    schema: fn('reminders', "Set, list or cancel a reminder. Bob pops up at the time, while the PC is on.", {
-      action: str('add, list or cancel', { enum: ['add', 'list', 'cancel'] }),
-      time: str('add: local time, YYYY-MM-DDTHH:mm.'),
-      text: str('add: what to remind about.'),
-      id: str('cancel: the id from list.'),
-      urgent: { type: 'boolean', description: 'add: true only if the user says urgent (shows in quiet hours).' }
-    }, ['action']),
-    async run({ action, time, text, id, urgent }) {
-      const list = loadReminders(cfg);
+    // 🧰 More tools, "Let reminders repeat" (off by default): an `every` field, and the list shows it.
+    get schema() {
+      const rep = cfg.moreTools?.repeatReminders === true;
+      return fn('reminders', `Set, list or cancel a reminder. Bob pops up at the time, while the PC is on.${rep ? ' A reminder can repeat.' : ''}`, {
+        action: str('add, list or cancel', { enum: ['add', 'list', 'cancel'] }),
+        time: str(rep ? 'add: local time, YYYY-MM-DDTHH:mm. For a repeating one, the first time.' : 'add: local time, YYYY-MM-DDTHH:mm.'),
+        text: str('add: what to remind about.'),
+        ...(rep ? { every: str('add, only to repeat: day, weekday, weekend, week, 2 weeks, month or year. "Every Monday at 9" = the next Monday 09:00 and week.', { enum: REPEATS }) } : {}),
+        id: str('cancel: the id from list.'),
+        urgent: { type: 'boolean', description: 'add: true only if the user says urgent (shows in quiet hours).' }
+      }, ['action']);
+    },
+    async run({ action, time, text, id, urgent, every }) {
       if (action === 'add') {
         if (!text) throw new Error('What should I remind about?');
         const at = zonedToEpoch(time, cfg.timeZone);
         if (at < Date.now() - 60000) throw new Error('That time has already passed.');
-        const r = { id: Math.random().toString(36).slice(2, 8), at, local: time, text: String(text).slice(0, 300), ...(urgent === true || urgent === 'true' ? { urgent: true } : {}) };
-        list.push(r);
-        saveReminders(cfg, list);
-        return `Reminder ${r.id} set for ${time}${r.urgent ? ' (urgent)' : ''}: ${r.text}`;
+        const rep = every && cfg.moreTools?.repeatReminders === true && REPEATS.includes(every) ? every : '';
+        if (every && !rep && cfg.moreTools?.repeatReminders !== true) throw new Error('Repeating reminders are off. They\'re in Settings, How Bob works, 🧰 More tools: "Let reminders repeat". Set a one-off one, and say so.');
+        const r = { id: Math.random().toString(36).slice(2, 8), at, local: time, text: String(text).slice(0, 300), ...(rep ? { every: rep } : {}), ...(urgent === true || urgent === 'true' ? { urgent: true } : {}) };
+        if (rep) { r.local = firstRepeat(time, rep); r.at = zonedToEpoch(r.local, cfg.timeZone); }
+        changeReminders(cfg, (list) => { list.push(r); }); // item 231: one read-change-save step
+        return `Reminder ${r.id} set for ${r.local}${rep ? `, then every ${rep}` : ''}${r.urgent ? ' (urgent)' : ''}: ${r.text}`;
       }
       if (action === 'cancel') {
-        const left = list.filter((r) => r.id !== id);
-        if (left.length === list.length) throw new Error('No reminder with that id.');
-        saveReminders(cfg, left);
+        const gone = changeReminders(cfg, (list) => { const at = list.findIndex((r) => r.id === id); if (at < 0) return false; list.splice(at, 1); return true; });
+        if (!gone) throw new Error('No reminder with that id.');
         return 'Cancelled.';
       }
-      return list.length ? list.map((r) => `${r.id}: ${r.local} - ${r.text}`).join('\n') : 'No reminders set.';
+      const list = loadReminders(cfg);
+      return list.length ? list.map((r) => `${r.id}: ${r.local}${r.every ? ` (every ${r.every})` : ''} - ${r.text}`).join('\n') : 'No reminders set.';
     },
-    summary: ({ action, time }) => `reminder: ${action}${time ? ' ' + time : ''}`
+    summary: ({ action, time, every }) => `reminder: ${action}${time ? ' ' + time : ''}${every ? ` (every ${every})` : ''}`
   };
 
   t.list_folder = {
@@ -421,14 +496,20 @@ export function buildTools(cfg) {
       const exists = fs.existsSync(file);
       // New files in the inn need no OK, except in the code copy of Bob's own code (self-work.js): every change there shows its card.
       if (isInside(cfg.innDir, file) && !exists && !isInside(codeCopyRoot(cfg), file)) return false;
-      return `${exists ? 'Overwrite' : 'Create'} ${file} (${Buffer.byteLength(content || '')} bytes)`;
+      const head = `${exists ? 'Overwrite' : 'Create'} ${file} (${Buffer.byteLength(content || '')} bytes)`;
+      // Item 174 (Nov 12): overwriting shows what really changes, like an edit does, so the card shows the real change.
+      if (!exists) return head;
+      let was = '';
+      try { if (fs.statSync(file).size <= 2_000_000) was = fs.readFileSync(file, 'utf8'); } catch { return head; }
+      const d = lineChanges(was, String(content || ''));
+      if (!d) return { text: `${head}: it already holds exactly this`, diff: '' };
+      return { text: `${head}: ${d.summary}`, diff: d.diff };
     },
     approvalGroup: 'edit',
     async run({ path: p, content }) {
       const file = resolveUserPath(p);
       backup(file);
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, content ?? '');
+      saveFile(file, content ?? ''); // whole or not at all (item 229)
       return `Saved ${file}.`;
     },
     summary: ({ path: p }) => `write ${p}`
@@ -442,7 +523,7 @@ export function buildTools(cfg) {
     async run({ name, csv }) {
       if (!csv || !csv.trim()) throw new Error('The CSV is empty.');
       const file = uniquePath(path.join(cfg.ledgerDir, `${safeName(name)}-${today(cfg)}.csv`));
-      fs.writeFileSync(file, '\ufeff' + csv.trim() + '\r\n');
+      saveFile(file, '\ufeff' + csv.trim() + '\r\n');
       const rows = csv.trim().split(/\r?\n/).length;
       return `Saved ${file} (${rows} lines including the header). Double-click it to open in Excel.`;
     },
@@ -467,12 +548,12 @@ export function buildTools(cfg) {
       // nothing (it changed, or it turned Bob away), Mojeek is asked instead, and the answer says so.
       let list = [], why = '';
       try {
-        const res = await fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query) + (df ? `&df=${df}` : ''), { headers: UA, signal: webSignal(signal) });
+        const res = await fetchRetry('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query) + (df ? `&df=${df}` : ''), { headers: UA }, signal);
         if (res.ok) list = parseDdg(await res.text()); else why = `DuckDuckGo answered ${res.status}`;
       } catch (e) { if (signal?.aborted) throw e; why = e.name === 'TimeoutError' ? 'DuckDuckGo took too long' : `DuckDuckGo: ${e.message}`; }
       if (list.length) return resultLines(list);
       try {
-        const res = await fetch('https://www.mojeek.com/search?q=' + encodeURIComponent(query), { headers: UA, signal: webSignal(signal) });
+        const res = await fetchRetry('https://www.mojeek.com/search?q=' + encodeURIComponent(query), { headers: UA }, signal);
         if (res.ok) list = parseMojeek(await res.text());
       } catch (e) { if (signal?.aborted) throw e; }
       if (list.length) return `(From Mojeek: ${why || 'DuckDuckGo found nothing'}${df ? '; no date filter there' : ''}.)\n${resultLines(list)}`;
@@ -493,7 +574,7 @@ export function buildTools(cfg) {
       for (let hop = 0; ; hop++) {
         if (!/^https?:$/.test(u.protocol)) throw new Error('Only http and https links.');
         if (isPrivateHost(u.hostname)) throw new Error('I don\'t open addresses on the home network.');
-        res = await fetch(u, { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bob/0.1' }, redirect: 'manual', signal: webSignal(signal) });
+        res = await fetchRetry(u, { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bob/0.1' }, redirect: 'manual' }, signal);
         const next = res.status >= 300 && res.status < 400 && res.headers.get('location');
         if (!next) break;
         if (hop >= 5) throw new Error('That link redirects too many times.');
@@ -750,7 +831,7 @@ export function buildTools(cfg) {
       const edits = editList({ find, replace, more });
       const out = applyEdits(fs.readFileSync(file, 'utf8'), edits);
       backup(file);
-      fs.writeFileSync(file, out);
+      saveFile(file, out);
       return `Edited ${file}${edits.length > 1 ? ` (${edits.length} changes)` : ''}. (Backup kept in the inn.)`;
     },
     summary: ({ path: p }) => `edit ${p}`
@@ -800,4 +881,18 @@ export function buildTools(cfg) {
   t.make_diagram = diagramTool(); // 1.5.95 flowcharts and diagrams (diagram.js)
   t.save_as = saveAsTool(); // 1.5.95 keep something Bob made as another file type (save-as.js)
   return t;
+}
+
+// Item 174 (Nov 12): what overwriting a file really changes, for the card: the lines between the same start and the same
+// end, as - and + lines (cut short), and a count. null when nothing changes.
+export function lineChanges(before, after, { show = 12 } = {}) {
+  const a = String(before ?? '').replace(/\r\n/g, '\n').split('\n'), b = String(after ?? '').replace(/\r\n/g, '\n').split('\n');
+  if (a.join('\n') === b.join('\n')) return null;
+  let top = 0; while (top < a.length && top < b.length && a[top] === b[top]) top++;
+  let end = 0; while (end < a.length - top && end < b.length - top && a[a.length - 1 - end] === b[b.length - 1 - end]) end++;
+  const gone = a.slice(top, a.length - end), added = b.slice(top, b.length - end);
+  const clip = (l) => (l.length > 200 ? l.slice(0, 200) + '…' : l);
+  const lines = [...gone.slice(0, show).map((l) => `- ${clip(l)}`), ...(gone.length > show ? [`- ... ${gone.length - show} more`] : []),
+    ...added.slice(0, show).map((l) => `+ ${clip(l)}`), ...(added.length > show ? [`+ ... ${added.length - show} more`] : [])];
+  return { summary: `${gone.length} line${gone.length === 1 ? '' : 's'} out, ${added.length} in, from line ${top + 1}`, diff: `@@ line ${top + 1}\n${lines.join('\n')}`, gone: gone.length, added: added.length, from: top + 1 };
 }

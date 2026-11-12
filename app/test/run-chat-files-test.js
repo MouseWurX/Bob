@@ -143,6 +143,7 @@ check('the file is sent as it is with the page\'s header', /fetch\('\/api\/chats
 check('the switch is in Settings, How Bob works', cellar.includes("sswitch('chatFiles', settings.chatFiles === true, 'Save chats as files and bring chats in'"));
 const help = HELP.find((e) => e.id === 'chat-files'), faq = HELP.find((e) => e.id === 'faq-chat-files'), gl = HELP.find((e) => e.id === 'glossary');
 check('Help says how, for ChatGPT, Claude and Open WebUI, and where it works', help && ['ChatGPT', 'Claude', 'Open WebUI', 'Markdown', 'JSON', 'PDF', 'Windows, Mac, Linux', 'Android', 'off unless you turn it on', 'Share…', 'Save as a picture'].every((w) => help.html.includes(w)));
+check('Bring in imports MAX_CHATS where it uses it (it was used without an import, so picking chats failed)', /import \{[^}]*\bMAX_CHATS\b[^}]*\} from '\.\/chat-files\.js'/.test(server) && server.includes('.slice(0, MAX_CHATS)'));
 check('an FAQ and glossary words', faq && /\?$/.test(faq.title) && gl.html.includes('<dt>Bring in chats</dt>') && gl.html.includes('<dt>Export (a chat)</dt>') && gl.html.includes('<dt>Share (a chat)</dt>'));
 
 fs.rmSync(tmp, { recursive: true, force: true });

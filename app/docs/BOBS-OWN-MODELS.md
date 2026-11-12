@@ -2,7 +2,7 @@
 
 *The day-by-day record, every run's numbers and the routes not taken yet are in [the Forge journal](FORGE-JOURNAL.md); the raw run files are in [forge-runs/](forge-runs/). The plan as a business proposal, with milestones, what has been invested and what is already in hand, is [Bob's own models: the proposal](PROPOSAL.md).*
 
-*This page is the plan, the method and the results so far, including the mistakes. It is updated as each model lands. The first one, Riker, is out on Hugging Face (links in his section below); the rest go up as each one passes its tests.*
+*This page is the plan, the method and the results so far, including the mistakes. It is updated as each model lands. Riker, Bobert and Bill are out on Hugging Face ([28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker), [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert), [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill)); the rest go up as each one passes its tests.*
 
 > **11 November 2026: Bill (20Bob) is out, and the three kept Bobs are benchmarked side by side.** Riker and Bobert tie; Bill is best at tool decisions and weakest at facts and code; see [the three side by side](#the-three-side-by-side). Bill's files: [MouseWurX/20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill), download [20Bob-Q4_K_M.gguf](https://huggingface.co/MouseWurX/20Bob-Bill/resolve/main/20Bob-Q4_K_M.gguf) (12.7 GB) or [20Bob-Q3_K_M.gguf](https://huggingface.co/MouseWurX/20Bob-Bill/resolve/main/20Bob-Q3_K_M.gguf).
 
@@ -21,9 +21,9 @@ Qwen3.6-35B-A3B is a mixture-of-experts model: each of its 40 layers holds 256 s
 | Model | Nickname | Experts kept per layer (of 256) | File at Q4 | Meant for |
 |---|---|---|---|---|
 | Qwen3.6-35B-A3B (the teacher) | | 256 | 22.4 GB | a 16 GB card with experts spilling into RAM |
-| **35Bob** | Bobert | 256, no cut: the teacher trained on every lesson | ~21 GB (Q3 ~17 GB) | 24 GB cards, or a 16 GB card with experts in RAM; the teacher of every Bob below him |
+| **35Bob** | Bobert | 256, no cut: the teacher trained on every lesson | ~21 GB (Q3 ~17 GB) | 24 GB cards, or a 16 GB card with experts in RAM; the teacher of every Bob below him. Made and published. |
 | **28Bob** | Riker | 208 | 17.5 GB (Q3 13.9 GB) | a 16 GB card with some experts in RAM, or the Q3 file: the everyday brain. Made and kept. |
-| **20Bob** | Bill | 144 | ~12.7 GB | a 16 GB card entirely, with room for long chats |
+| **20Bob** | Bill | 144 | 12.7 GB | a 16 GB card entirely, with room for long chats. Made and published; best at tool decisions, weaker at facts and code. |
 | **14Bob** | Homer | 96 | ~9 GB | 8 GB cards and gaming handhelds |
 | **10Bob** | Milo | 64 | ~6.6 GB | small cards and big phones |
 | **7Bob** | Luke | 40 | ~4.6 GB | phones |
@@ -173,6 +173,13 @@ The full itemized list, including every rung still to come, is on [What Bob cost
 | Lessons and counts, failed first try | H200 SXM + drive | 2,329 coding lessons kept | US $9.27 |
 | Lessons and counts | H200 SXM + drive | 2,898 lessons, 24 skill counts | US $8.88 |
 | 28Bob Riker | H200 SXM, no drive | Riker (the Bill step stopped on a Forge bug) | US $51.79 |
+| 35Bob Bobert | H200 SXM + 300 GB drive, about 20 hours | about 9,000 lessons, Bobert, his next-word odds for about half the pieces | US $108.75 |
+| Riker and Bobert rebuilt and published | H200 SXM + drive, 1 hour | their files on Hugging Face | US $5.44 |
+| 20Bob Bill | H200 SXM + drive, 18.2 hours | Bill, healed against Bobert's odds, and his Q4 and Q3 on Hugging Face | US $96.27 |
+| Bill's full-size weights published | H200 SXM + drive, 1.3 hours | Bill's full-size weights, adapter and cards on Hugging Face | US $6.84 |
+| The three side by side | A40, 1.5 hours | the table above | US $0.86 |
+
+Six short failed or upload-only rentals and a tail of disk minutes ($8.02 together) are itemized on the costs page. Every rental so far comes to US $403.24.
 
 ## What went wrong with the first cut
 
@@ -217,16 +224,16 @@ Q3 files are about 80% of the Q4 size. What the table says:
 
 Bill is cut from Bobert and healed against Bobert's odds; Homer and the rest are cut from the healed Bob above them. Each Bob's own coverage numbers are published with it.
 
-**What it costs.** The new lessons and the per-skill counts cost $18.15 across two short rentals, one of them a failed first try. Riker's re-cut cost $51.79 on an H200. Bobert and Bill come next in one combined run, estimated at about $135. The costs page lists the wasted run as a lesson learned, each new run as its own line, and the projected total raised to match.
+**What it costs.** The new lessons and the per-skill counts cost $18.15 across two short rentals, one of them a failed first try. Riker's re-cut cost $51.79 on an H200. Bobert ($108.75) and Bill ($96.27) followed in a run each. The costs page lists the wasted run as a lesson learned, each new run as its own line, and the projected total raised to match.
 
 ## What comes next
 
 1. **The coverage cut and Riker**: done (above). Riker is kept; the first four Bobs are deleted.
-2. **One combined run, when the owner gives the word**: about 9,000 more lessons written on the card, one teacher pass, then **35Bob Bobert**, the full model trained on every lesson in a full pass (about 16 hours), and **20Bob Bill** at 144 experts, cut from Bobert with the full 99% rule for tools, coding and formats and healed against Bobert's odds. About 24 to 26 hours on an H200. Bobert and Bill are each tested at home before anything else is built on them.
-3. **Then Homer**, cut from the healed Bill. Then decide whether line A is worth continuing at all.
+2. **Bobert and Bill**: done (above). About 9,000 more lessons were written on the card, then **35Bob Bobert**, the full model trained on every lesson in a full pass, and **20Bob Bill** at 144 experts, cut from Bobert and healed against Bobert's odds in his own run. All three kept Bobs are tested side by side and published.
+3. **Next is Homer**, cut from the healed Bill, when the owner gives the word. Then decide whether line A is worth continuing at all.
 4. **Down the ladder**: Milo, Luke and Calvin, each cut from the healed Bob above, then the specialists, and 2Bob Bender last.
 5. **In the app.** Bob's own models become the default brains: when Bob suggests a starter set, a Bob is picked before a stock model of the same size. The Forge and the model lab are in this repository under [`model-lab/`](../model-lab/) (GPL, like the rest of Bob); the lessons, counts and finished Bobs they make stay on the machine that made them. The engine will turn on expert-in-RAM offloading by itself when a Bob is bigger than the card. Every Bob gets the "experts per word" dial (4 to 8).
-6. **Release.** The first release is three models, Bobert, Riker and Bill, on Hugging Face with model cards that say exactly what each Bob is cut from, how it was healed and how it scored, and pinned download links in Bob's catalogue. Until then: tested, not yet released.
+6. **Release.** The first three models, Bobert, Riker and Bill, are on Hugging Face with model cards that say exactly what each Bob is cut from, how it was healed and how it scored. Every later Bob goes up the same way once it passes its tests.
 
 ## Expectations, honestly
 

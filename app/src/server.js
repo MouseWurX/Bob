@@ -1,6 +1,8 @@
 // Bob's local server: serves the panel and a small API. Only listens on this PC.
 import { caseFor, saveTest } from './my-tests.js';
 import { readText, writeText, vaultOn } from './vault.js'; // 🔒 Lock my chats and memory
+import { chatIds, chatInfo } from './chats.js'; // "Note where each memory came from": the chat titles
+import { today } from './tools.js';
 import { ramNow, memGB } from './server-ram.js';
 import { cpuLoad } from './speed-stats.js';
 import os from 'node:os';
@@ -10,7 +12,7 @@ import { lookText, LOOK_ID_RE } from './look.js';
 import { cleanPersonality } from '../public/personality.js';
 import { cleanHouseStyle } from '../public/house-style.js';
 import { pickFolder } from './pick-folder.js';
-import { pickFile, inspectOwn, ownModels, ownId, cleanOwnModels, ownEntries } from './own-models.js';
+import { pickFile, ownEntries } from './own-models.js';
 import { selfWorkView, gatherBrains, makeCodeCopy, applyCodeCopy, cleanSelfWork, repoNamed, codeCopyRoot } from './self-work.js'; // "Let Bob work on repositories"
 import { catalogFileFor } from './llamacpp.js';
 import { ensureTool } from './self-work-tools.js'; // 1.5.135 brains of your own
@@ -23,7 +25,6 @@ import { presetsView, presetsOn, pickPreset } from './presets.js';
 import { Brain, apuHoldbackGB } from './brain.js';
 import { redo, redoOn } from './redo.js';
 import { msgMenu } from './msg-menu.js';
-import { transcribe } from './stt.js';
 import { ModelShop } from './models.js';
 import { CatalogUpdates } from './catalog-update.js';
 import { readPage, makeEntry, cleanAdded, mergeAdded, sweepAdded, ADDED_MAX } from './catalog-added.js';
@@ -42,9 +43,9 @@ import { capabilities } from './capabilities.js';
 import { cloudStatus } from './cloud.js';
 import { rentRoute } from './rental-routes.js'; // 1.5.127 rented brains
 import { Lab, labRoute, labOn, labRoom } from './lab.js'; // 1.5.141 Computer Science Lab
-import { startCalibrate, useCalibrated, calResult } from './brain-calibrate.js'; // 1.5.205
+import { startCalibrate, useCalibrated, calResult, calibrated } from './brain-calibrate.js'; // 1.5.205
 import { splitRemoved } from './catalog-removed.js'; // 1.5.205
-import { say, KOKORO_VOICES, DEFAULT_KOKORO_VOICE, stopVoices, netVoiceFor } from './tts.js';
+import { KOKORO_VOICES, DEFAULT_KOKORO_VOICE, stopVoices } from './tts.js';
 import { receiveCarry, sendCarry, carryInOn } from './carry.js'; // Carry on on another Bob (item 140, off unless turned on)
 import { glanceView, glanceOn, GLANCE_OFF, cardReader } from './glance.js'; // Your Bobs on the phone (item 141, off unless turned on)
 import { loadReminders } from './tools.js';
@@ -56,20 +57,17 @@ import { autoSessionOn } from './auto-session.js';
 import { ctxOn, stretchOn, choicesFor, pickedCtx, bobsPick, ctxGuide, SAFE_CTX } from './model-ctx.js';
 import { SLOT_NAMES } from '../public/fit.js';
 import { gamingCard, GAMING_CARD } from './gaming-card.js';
-import { plan as uninstallPlan, startUninstall } from './uninstall.js';
-import { voiceList, publicView, sampleFor, clearSamples } from './voice-samples.js';
-import { checkAll, startAny, updateStatus, requestRestart } from './update.js';
-import { describe as describeFile, openFile, peek as peekFile, docPeek, pdfFile } from './files.js';
-import { wavePeaks } from './wave.js';
-import { thumbFor, canThumb } from './thumbs.js';
-import { homeView, homeProblem, synced, cloudWarning } from './home.js';
+import { describe as describeFile, docPeek, pdfFile } from './files.js';
 import { refuseForeign } from './guard.js';
-import { search } from './search.js';
-import { hkSettings, cleanHousekeeping, cleanFolder, folderRefusal, KINDS, UNITS } from './housekeeping.js';
+import { hkSettings, cleanHousekeeping, cleanFolder, folderRefusal, KINDS } from './housekeeping.js';
 import { banks as memoryBanks, recallOn } from './recall.js';
+import { memorySources, forgetLine, sourcesOn } from './memory-more.js'; // memory items 87 to 89, off by default
+import { cleanNotesFolders, isVault } from './doc-more.js'; // documents items 90 to 92, off by default
+import { digestOn } from './digest.js'; // "A Sunday digest", off by default
 import { handsRoute } from './hands-routes.js';
-import { ownKitView, ownKitCounts, ownKitDelete, ownKitRestore, ownKitPurge } from './own-kit.js';
+import { ownKitCounts } from './own-kit.js';
 import { quarantineRoute } from './quarantine-routes.js';
+import { moreToolsRoute } from './more-tools-routes.js'; // 🧰 More tools (Settings, How Bob works)
 import { schedulesRoute, startSchedules } from './hands-schedules.js';
 import { checkinsRoute, startCheckins } from './checkins.js';
 import { adventureRoute } from './adventure.js';
@@ -95,10 +93,8 @@ import { guestRoute, answerAway } from './share-jobs.js';
 import { Pairing, myName } from './bob-net-pair.js';
 import { partyView, Introductions } from './bob-net-party.js';
 import { OS, features } from './platform.js';
-import { saveExport } from './diagram.js';
-import { saveAs } from './save-as.js';
-import { chatFilesOn, CHAT_FILES_OFF, FORMATS, MAX_IMPORT_BYTES, saveChat, lookAtFile, bringIn, shareChat } from './chat-files.js';
-import { saveHelpBundle, bundleBytes, revealFile } from './help-bundle.js';
+import { chatFilesOn, CHAT_FILES_OFF, FORMATS, MAX_IMPORT_BYTES, MAX_CHATS, saveChat, lookAtFile, bringIn, shareChat } from './chat-files.js';
+import { revealFile } from './help-bundle.js';
 import { BackupKeeper, backupView, makeBackup, readBackup, stageRestore, cleanBackup, isInsideDir, PART_IDS } from './backup.js';
 import { rentKeyEnv } from './rental.js';
 import { notesFile, ensureNotesFile } from './notes.js';
@@ -120,8 +116,20 @@ import { watchSettings } from './config.js';
 import { everydayView, everydaySettings, Focus } from './everyday.js'; // 🗓 Everyday helpers (all off by default)
 import { everydayRoute, trayDot } from './everyday-routes.js';
 import { Profiles } from './profiles.js'; // 👥 Profiles on a shared replicant matrix
+import { sweepTemp, startCheck } from './saving.js'; // items 229-240: saving safely, starting clean
+import { changedTurns, undoTurn, undoLine, pruneTurns } from './turn-changes.js'; // item 238: Undo a whole turn
+import { startWatchdog, frozeLine } from './hang-guard.js'; // item 214: a watchdog for Bob himself
 
 const cfg = loadConfig();
+import { howtosRoute } from './howtos-routes.js';
+import { ownModelsRoute } from './own-models-routes.js';
+import { saveRoute } from './save-routes.js';
+import { voiceRoute } from './voice-routes.js';
+import { refsRoute } from './refs-routes.js';
+import { queueRoute } from './queue-routes.js';
+import { updateRoute } from './update-routes.js';
+import { tidyRoute } from './tidy-routes.js';
+import { filesRoute } from './files-routes.js';
 // Catch crashes and Safe start (crash-catch.js): the "Bob is running" marker; a report of an unclean last end (switch on).
 const logTail = () => { try { const t = fs.readFileSync(cfg.logbook, 'utf8'); return t.slice(-20000); } catch { return ''; } };
 const crashState = watchRuns(cfg, { version: VERSION.label, logText: logTail });
@@ -175,7 +183,28 @@ function broadcast(ev) {
 }
 
 const brain = new Brain(cfg, broadcast);
+// Item 214: a helper thread notices when this server stops answering for a minute (it notes it in the logbook), and
+// when it answers again the window hears about it, with a Restart button where Bob can restart himself.
+startWatchdog({ logbook: cfg.logbook, timeZone: cfg.timeZone, onBack: ({ secs }) => {
+  brain.log('watchdog', `back after not answering for ${secs} s`);
+  broadcast({ type: 'froze', secs, text: frozeLine(secs), canRestart: typeof globalThis.bobHome?.restart === 'function' });
+} });
 pruneReceipts(cfg); // Settings, Jobs: a receipt's Undo lasts a week
+pruneTurns(cfg); // item 238: a turn's Undo lasts a week
+process.on('exit', () => { try { brain.flushQueue(); } catch {} }); // item 230: steps not saved yet go in now
+// Items 233, 234, 239 and 240: what start-up set aside or put back, old temp files cleared, and the start-up check: one
+// line in the logbook; a note in the chat only when something is wrong.
+for (const t of cfg.saveNotes || []) brain.log('saving', t);
+if (cfg.settingsFixed?.length) brain.log('settings', `went back to the default for ${cfg.settingsFixed.join(', ')} (the saved value was the wrong kind)`);
+{
+  const swept = sweepTemp([cfg.innDir, cfg.dataDir, cfg.painterDir]);
+  if (swept.files) brain.log('saving', `cleared ${swept.files} temp file${swept.files === 1 ? '' : 's'} left by a save that was cut off`);
+  let check = null; try { check = startCheck(cfg); } catch {}
+  if (check) {
+    brain.log('saving', check.line);
+    if (!check.ok) { const t = setTimeout(() => { for (const p of check.problems) broadcast({ type: 'announce', text: `⚠️ ${p}` }); }, 20e3); t.unref?.(); }
+  }
+}
 if (brain.engine) brain.engine.onCrash = (x) => engineCrashed(cfg, { ...x, version: VERSION.label, logText: logTail() }); // Catch crashes
 // A shortcut from anywhere (electron/main.cjs): Bob.exe registers the key while the switch is on. Nothing in a browser.
 const applyShortcut = (g) => { try { globalThis.bobGlobalAsk?.(g, cfg.port); } catch {} };
@@ -203,7 +232,7 @@ async function cubeBrainsNow() {
     const now = await brain.engine.loaded(), labels = cubeBrains(now, friendlyName);
     // the shapes too, so the cube builds itself in one colour as a brain loads and waits there for the first reply
     const st = brain.state || {}, loading = ['waking', 'loading'].includes(st.state) && st.model ? String(st.model) : '';
-    let shapes = []; try { shapes = cubeShapes(lab, [...now.map((m) => m?.name), loading], friendlyName); } catch {}
+    let shapes = []; try { shapes = cubeShapes(lab, [...now.map((m) => m?.name), loading], friendlyName, (m) => brain.engine.resolve?.(m)?.gguf); } catch {}
     const data = `data: ${JSON.stringify({ type: 'cube-brains', labels, shapes, loading: loading ? friendlyName(loading) : '' })}\n\n`; for (const res of cubeClients) res.write(data);
   } catch {}
 }
@@ -479,7 +508,7 @@ const server = http.createServer(async (req, res) => {
       const mind = url.searchParams.get('mind') === '1';
       if (mind) mindClients.add(res);
       if (isLocal && url.searchParams.get('cube') === '1') { const live = url.searchParams.get('live') === '1', why = live ? cubeWhy() : ''; cubeClients.add(res); if (live) liveCubes.add(res); res.write(`data: ${JSON.stringify({ type: 'cube', ok: !why, why, live })}\n\n`); cubeBrainsNow(); }
-      const ping = setInterval(() => res.write(': ping\n\n'), 20000);
+      const ping = setInterval(() => res.write('data: {"type":"beat"}\n\n'), 20000); // item 214: the window can tell a quiet Bob from a stuck one
       req.on('close', () => { clearInterval(ping); clients.delete(res); mindClients.delete(res); cubeClients.delete(res); liveCubes.delete(res); });
       return;
     }
@@ -496,34 +525,7 @@ const server = http.createServer(async (req, res) => {
       } catch {}
       return send(res, 200, st);
     }
-    // 1.5.79 How-tos: the list (Settings), the chat card's answer (the phone too), and the person's own edits (PC only). Stored on this PC only.
-    if (req.method === 'GET' && p === '/api/howtos') return send(res, 200, { on: cfg.howtos === true, howtos: brain.howtos.list() });
-    if (req.method === 'POST' && p === '/api/howtos/answer') {
-      const b = await body(req);
-      return send(res, 200, await brain.answerHowto(String(b.id || ''), b.save === true, typeof b.name === 'string' ? b.name : ''));
-    }
-    if (req.method === 'POST' && p === '/api/howtos/edit') {
-      if (!isLocal) return send(res, 403, { error: 'How-tos can only be changed on this replicant matrix itself.' });
-      const b = await body(req);
-      try { return send(res, 200, { ok: true, howto: brain.howtos.edit(String(b.id || ''), { name: b.name, when: b.when, steps: b.steps }) }); }
-      catch (e) { return send(res, 400, { error: e.message }); }
-    }
-    if (req.method === 'POST' && p === '/api/howtos/delete') {
-      if (!isLocal) return send(res, 403, { error: 'How-tos can only be changed on this replicant matrix itself.' });
-      const b = await body(req);
-      return send(res, 200, { ok: brain.howtos.remove(String(b.id || '')) });
-    }
-    // 1.5.144 🧰 Tools and how-tos Bob made (src/own-kit.js): the list, Delete (to the shelf, 30 days), Put back,
-    // Delete for good. Delete and Put back work from a paired phone too; Delete for good only on this PC.
-    if (req.method === 'GET' && p === '/api/own-kit') return send(res, 200, ownKitView(cfg, brain));
-    if (req.method === 'POST' && (p === '/api/own-kit/delete' || p === '/api/own-kit/restore' || p === '/api/own-kit/purge')) {
-      if (p === '/api/own-kit/purge' && !isLocal) return send(res, 403, { error: 'Delete for good only works on this replicant matrix itself. From the phone you can delete (30 days to put it back) and put back.' });
-      const b = await body(req);
-      try {
-        const did = p.endsWith('/delete') ? ownKitDelete(cfg, brain, b) : p.endsWith('/restore') ? ownKitRestore(cfg, brain, b) : ownKitPurge(cfg, brain, b);
-        return send(res, 200, { ...did, view: ownKitView(cfg, brain) });
-      } catch (e) { return send(res, 400, { error: e.message }); }
-    }
+    if ((await howtosRoute({ req, res, p, isLocal, cfg, brain, body, send })) !== false) return;
     if (req.method === 'POST' && p === '/api/more-pictures') {
       // "Make another picture?" in the chat box: { id, more }. An old card (timed out, replaced) just says so.
       const b = await body(req);
@@ -584,6 +586,14 @@ const server = http.createServer(async (req, res) => {
       const b = await body(req).catch(() => ({}));
       const r = redo(brain, String(b.sessionId || 'main'), { ...(b.id ? { id: String(b.id) } : {}), ...(b.last === true ? { last: true } : {}), ...(typeof b.text === 'string' ? { text: b.text } : {}) });
       return send(res, r.error ? 400 : 200, r);
+    }
+    // Item 238: Undo a whole turn from the … menu on your message. Which of a chat's messages have changes to undo.
+    if (req.method === 'GET' && p === '/api/turn-changes') return send(res, 200, { asks: changedTurns(cfg, String(url.searchParams.get('session') || 'main')) });
+    if (req.method === 'POST' && p === '/api/turn-undo') {
+      const b = await body(req).catch(() => ({}));
+      const r = undoTurn(cfg, String(b.sessionId || 'main'), String(b.askId || ''));
+      if (!r.error) brain.log('saving', `undid a turn: ${r.restored.length} put back${r.skipped.length ? `, ${r.skipped.length} left as they were` : ''}`);
+      return send(res, r.error ? 400 : 200, r.error ? r : { ...r, text: undoLine(r) });
     }
     // The "..." menu on a chat message (msg-menu.js): Edit on Bob's message, Delete on any. { sessionId, id, text? }.
     if (req.method === 'POST' && (p === '/api/chat/msg-edit' || p === '/api/chat/msg-delete')) {
@@ -648,6 +658,7 @@ const server = http.createServer(async (req, res) => {
     // 1.5.87: each equipped brain, the most it was made for, Bob's pick and the size picked by hand (Settings > Brains).
     if (req.method === 'GET' && p === '/api/brain-ctx') return send(res, 200, await brainCtxView());
     if (req.method === 'GET' && p === '/api/brain-place') return send(res, 200, brainPlaceView()); // 1.5.205
+    if (req.method === 'GET' && p === '/api/honesty') return send(res, 200, { scores: brain.honesty?.view() || {} }); // Nov 12, item 192: for the Brains page, read-only
     // 1.5.205 Calibrate: time a brain a few ways and recommend one. Started only from this replicant matrix itself.
     if (req.method === 'POST' && p.startsWith('/api/brain-place/')) {
       if (!isLocal) return send(res, 403, { error: 'Calibrating can only be started on this replicant matrix itself for now.' });
@@ -682,7 +693,7 @@ const server = http.createServer(async (req, res) => {
     // 1.5.74: whether the core engines start (first-run step 1, and Settings, Engines).
     if (req.method === 'GET' && p === '/api/engines/check') return send(res, 200, { checks: await Promise.all(['llamacpp', 'sdcpp', 'whispercpp'].map((id) => checkEngine(cfg, id))) });
     if (req.method === 'GET' && p === '/api/settings') {
-      return send(res, 200, { jobHelps: cleanJobHelps(cfg.jobHelps), apuHoldbackGB: apuHoldbackGB(cfg), lockSecrets: cfg.lockSecrets !== false, autostart: autostartOn(), tray: cfg.tray !== false, lookIcon: cfg.lookIcon !== false, catalogUpdates: cfg.catalogUpdates === true, computerLab: labOn(cfg), labSaveQuestions: labOn(cfg) && cfg.labExtras?.saveQuestions === true, computerLabRoom: labRoom(), qwenPresets: cleanPresets(cfg.qwenPresets), qwenDefaults: Object.fromEntries(Object.entries(QWEN_PRESETS).map(([id, p]) => [id, { label: p.label, ...qwenPreset(id) }])), trayHere: Boolean(globalThis.bobWindow), setupDone: Boolean(cfg.setupDone), wantsAsked: cfg.wantsAsked === true, look: cfg.look || null, lookText: lookText(cfg.look), personality: cleanPersonality(cfg.personality), lookComments: cfg.lookComments === true, userName: cfg.userName || '', callMe: cfg.callMe || '', windowsName: cfg.windowsName || '', engine: cfg.engine, workshop: workshopView(), catName: cfg.catName || 'Patches', language: LANGUAGES.includes(cfg.language) ? cfg.language : 'en', version: VERSION, oneBrain: cfg.oneBrain === true, allTools: cfg.allTools === true, memoryRecall: cfg.memoryRecall === true, memoryBanks: memoryBanksView(), resumeJobs: cfg.resumeJobs === true, planFirst: cfg.planFirst === true, autoSession: autoSessionOn(cfg), gamingLock: cfg.gamingLock === true, sessionBy: cfg.sessionBy === 'bob' ? 'bob' : 'you', quickOnCpu: cfg.quickOnCpu === true, chatWhileBusy: cfg.chatWhileBusy !== false, mootBeside: cfg.mootBeside === true, netReview: cfg.netReview === true, webSearch: cfg.webSearch === true, naughtyList: cfg.naughtyList === true, howtos: cfg.howtos === true, editOwn: cfg.editOwn === true, quickNotes: cfg.quickNotes === true, quickSeesJob: cfg.quickSeesJob === true, ...Object.fromEntries(EXTRA_SWITCHES.map((k) => [k, cfg[k] === true])), brainMemType: cfg.brainMemType || {}, onBattery: batteryNow(), engineNote: cfg.engineNotes === true ? currentEngineNote(cfg) : '', docMeaning: cfg.docMeaning === true, docIndex: brain.housekeeper?.docIndexView() || null, chatPresets: presetsOn(cfg), chatRedo: cfg.chatRedo !== false, docView: cfg.docView === true, parts3d: cfg.parts3d === true, openscadHere: Boolean(findOpenscad(cfg)), model3d: cfg.model3d === true, model3dHere: model3dReady(cfg), promptMenu: cfg.promptMenu === true, mathView: cfg.mathView === true, talkOver: cfg.talkOver === true, readDocs: cfg.readDocs === true, netVoices: cfg.netVoices === true, netVoiceMap: cfg.netVoiceMap || {}, netBobs: (brain.lenders?.bobs?.() || []).map((x) => x.name).slice(0, 30), carryIn: cfg.carryIn === true, phoneGlance: cfg.phoneGlance === true, shortcuts: cfg.shortcuts === true, chatFiles: cfg.chatFiles === true, smartNotes: cfg.smartNotes === true, quickNotesFile: notesFile(cfg), docTools: cfg.docTools === true, sandboxCode: cfg.sandboxCode === true, toolLearning: cfg.toolLearning === true, toolScores: cfg.toolLearning === true ? scorecard(cfg).slice(0, 12) : [], howtoCount: brain.howtos?.load().length || 0, ownKit: ownKitCounts(cfg, brain), gamingCard: gamingCard(cfg), gamingCardNow: brain.engine?.currentCard || null, pictureNoWait: cfg.pictureNoWait !== false, ...tuning(cfg), downloads: { concurrent: cfg.downloads?.concurrent === 2 ? 2 : 1, resumeOnStart: cfg.downloads?.resumeOnStart === true }, updates: { autoCheck: cfg.updates?.autoCheck === true }, engineUpdates: engineKeeper.view(), ollamaKeepAlive: keepTime(cfg), brainMode: brainMode(cfg), tts: { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice || DEFAULT_KOKORO_VOICE, speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '', voicesFolder: path.join(cfg.innDir, 'voices') }, kokoroVoices: KOKORO_VOICES, kokoroDefault: DEFAULT_KOKORO_VOICE, session: currentSession(cfg), sessions: Object.entries(SESSIONS).map(([id, x]) => ({ id, ...x, ...(OS === 'mac' && x.whatMac ? { what: x.whatMac } : {}) })), sessionBrains: sessionBrains(cfg), activeModels: cfg.activeModels || {}, sessionCtx: cfg.sessionCtx || {}, brainCtxOn: cfg.brainCtxOn === true, brainCtxStretch: cfg.brainCtxStretch === true, brainCtx: cfg.brainCtx || {}, speed: speedView(), style: cfg.style || {}, painter: cfg.painter?.engine || 'comfy', platform: process.platform, os: OS, features: features(), home: cfg.agentDir, housekeeping: hkSettings(cfg), hands: handsSettings(cfg), houseStyle: cleanHouseStyle(cfg.houseStyle), projectList: Object.entries(cfg.projects || {}).filter(([, p]) => !isInside(codeCopyRoot(cfg), p)).map(([name, p]) => ({ name, path: p, missing: !fs.existsSync(p) })), selfWork: selfWorkNow(), defaultProject: cfg.defaultProject || '', saveDir: saveDirView(), toolHelp: cfg.toolHelp !== false, passcodeLock: lockView(cfg), ...everydayView(cfg), focusNow: focus.view(), profiles: profiles.view() });
+      return send(res, 200, { timeZone: cfg.timeZone || '', timeZoneSet: cfg.timeZoneSet === true, jobHelps: cleanJobHelps(cfg.jobHelps), apuHoldbackGB: apuHoldbackGB(cfg), lockSecrets: cfg.lockSecrets !== false, autostart: autostartOn(), tray: cfg.tray !== false, lookIcon: cfg.lookIcon !== false, catalogUpdates: cfg.catalogUpdates === true, computerLab: labOn(cfg), labSaveQuestions: labOn(cfg) && cfg.labExtras?.saveQuestions === true, computerLabRoom: labRoom(), qwenPresets: cleanPresets(cfg.qwenPresets), qwenDefaults: Object.fromEntries(Object.entries(QWEN_PRESETS).map(([id, p]) => [id, { label: p.label, ...qwenPreset(id) }])), trayHere: Boolean(globalThis.bobWindow), setupDone: Boolean(cfg.setupDone), wantsAsked: cfg.wantsAsked === true, look: cfg.look || null, lookText: lookText(cfg.look), personality: cleanPersonality(cfg.personality), lookComments: cfg.lookComments === true, userName: cfg.userName || '', callMe: cfg.callMe || '', windowsName: cfg.windowsName || '', engine: cfg.engine, workshop: workshopView(), catName: cfg.catName || 'Patches', language: LANGUAGES.includes(cfg.language) ? cfg.language : 'en', version: VERSION, oneBrain: cfg.oneBrain === true, allTools: cfg.allTools === true, memoryRecall: cfg.memoryRecall === true, memoryBanks: memoryBanksView(), resumeJobs: cfg.resumeJobs === true, planFirst: cfg.planFirst === true, autoSession: autoSessionOn(cfg), gamingLock: cfg.gamingLock === true, sessionBy: cfg.sessionBy === 'bob' ? 'bob' : 'you', quickOnCpu: cfg.quickOnCpu === true, chatWhileBusy: cfg.chatWhileBusy !== false, mootBeside: cfg.mootBeside === true, netReview: cfg.netReview === true, webSearch: cfg.webSearch === true, naughtyList: cfg.naughtyList === true, howtos: cfg.howtos === true, editOwn: cfg.editOwn === true, quickNotes: cfg.quickNotes === true, quickSeesJob: cfg.quickSeesJob === true, ...Object.fromEntries(EXTRA_SWITCHES.map((k) => [k, cfg[k] === true])), brainMemType: cfg.brainMemType || {}, onBattery: batteryNow(), engineNote: cfg.engineNotes === true ? currentEngineNote(cfg) : '', docMeaning: cfg.docMeaning === true, docIndex: brain.housekeeper?.docIndexView() || null, chatPresets: presetsOn(cfg), chatRedo: cfg.chatRedo !== false, docView: cfg.docView === true, parts3d: cfg.parts3d === true, openscadHere: Boolean(findOpenscad(cfg)), model3d: cfg.model3d === true, model3dHere: model3dReady(cfg), promptMenu: cfg.promptMenu === true, mathView: cfg.mathView === true, talkOver: cfg.talkOver === true, readDocs: cfg.readDocs === true, netVoices: cfg.netVoices === true, netVoiceMap: cfg.netVoiceMap || {}, netBobs: (brain.lenders?.bobs?.() || []).map((x) => x.name).slice(0, 30), carryIn: cfg.carryIn === true, phoneGlance: cfg.phoneGlance === true, shortcuts: cfg.shortcuts === true, chatFiles: cfg.chatFiles === true, smartNotes: cfg.smartNotes === true, quickNotesFile: notesFile(cfg), docTools: cfg.docTools === true, sandboxCode: cfg.sandboxCode === true, toolLearning: cfg.toolLearning === true, toolScores: cfg.toolLearning === true ? scorecard(cfg).slice(0, 12) : [], howtoCount: brain.howtos?.load().length || 0, ownKit: ownKitCounts(cfg, brain), gamingCard: gamingCard(cfg), gamingCardNow: brain.engine?.currentCard || null, pictureNoWait: cfg.pictureNoWait !== false, ...tuning(cfg), downloads: { concurrent: cfg.downloads?.concurrent === 2 ? 2 : 1, resumeOnStart: cfg.downloads?.resumeOnStart === true }, updates: { autoCheck: cfg.updates?.autoCheck === true }, engineUpdates: engineKeeper.view(), ollamaKeepAlive: keepTime(cfg), brainMode: brainMode(cfg), tts: { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice || DEFAULT_KOKORO_VOICE, speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '', voicesFolder: path.join(cfg.innDir, 'voices') }, kokoroVoices: KOKORO_VOICES, kokoroDefault: DEFAULT_KOKORO_VOICE, session: currentSession(cfg), sessions: Object.entries(SESSIONS).map(([id, x]) => ({ id, ...x, ...(OS === 'mac' && x.whatMac ? { what: x.whatMac } : {}) })), sessionBrains: sessionBrains(cfg), activeModels: cfg.activeModels || {}, sessionCtx: cfg.sessionCtx || {}, brainCtxOn: cfg.brainCtxOn === true, brainCtxStretch: cfg.brainCtxStretch === true, brainCtx: cfg.brainCtx || {}, speed: speedView(), style: cfg.style || {}, painter: cfg.painter?.engine || 'comfy', platform: process.platform, os: OS, features: features(), home: cfg.agentDir, housekeeping: hkSettings(cfg), hands: handsSettings(cfg), houseStyle: cleanHouseStyle(cfg.houseStyle), projectList: Object.entries(cfg.projects || {}).filter(([, p]) => !isInside(codeCopyRoot(cfg), p)).map(([name, p]) => ({ name, path: p, missing: !fs.existsSync(p) })), selfWork: selfWorkNow(), defaultProject: cfg.defaultProject || '', saveDir: saveDirView(), toolHelp: cfg.toolHelp !== false, passcodeLock: lockView(cfg), ...everydayView(cfg), focusNow: focus.view(), profiles: profiles.view(), memorySources: cfg.memorySources === true, memoryExpiry: cfg.memoryExpiry === true, memoryWhere: cfg.memoryWhere === true, docFresh: cfg.docFresh === true, docPlaces: cfg.docPlaces === true, notesFolders: cleanNotesFolders(cfg.notesFolders).map((n) => ({ ...n, missing: !fs.existsSync(n.path), vault: n.kind === 'obsidian' && isVault(n.path) })), weeklyDigest: cfg.weeklyDigest === true, answerMidJob: cfg.answerMidJob !== false });
     }
     // 🔒 Passcode lock (Settings, This replicant matrix). Only from this replicant matrix, only once you're in.
     if (p === '/api/lock' && (req.method === 'GET' || req.method === 'POST')) {
@@ -701,10 +712,35 @@ const server = http.createServer(async (req, res) => {
       try {
         if (req.method === 'GET') { let text = ''; try { text = readText(cfg.memoryFile); } catch (e) { if (e.code === 'VAULT_LOCKED') throw e; } return send(res, 200, { text, locked: vaultOn(cfg) }); }
         const b = await body(req);
-        writeText(cfg, cfg.memoryFile, String(b.text ?? '').slice(0, 500000));
+        writeText(cfg, cfg.memoryFile, String(b.text ?? '').slice(0, 500000), { who: 'you, in Settings' }); // item 237: logged
         brain.log('settings', "Bob's memory edited in Settings (your click)");
         return send(res, 200, { ok: true });
       } catch (e) { return send(res, e.code === 'VAULT_LOCKED' ? 401 : 500, { error: e.message }); }
+    }
+    // "Note where each memory came from" (memory-more.js): every memory with the chat it came from, and Forget this one.
+    if (p === '/api/memory/sources' && req.method === 'GET') {
+      if (!isLocal) return send(res, 403, { error: 'Bob\'s memory can only be looked through on this replicant matrix itself.' });
+      try {
+        const text = readText(cfg.memoryFile);
+        const tidied = new Map((brain.housekeeper?.summaries() || []).map((x) => [x.id, x.title]));
+        const ids = new Set(chatIds(cfg)), seen = new Map();
+        const titleOf = (id) => { if (!seen.has(id)) seen.set(id, ids.has(id) ? { title: chatInfo(cfg, id).title } : tidied.has(id) ? { title: tidied.get(id), gone: true } : null); return seen.get(id); };
+        return send(res, 200, { on: sourcesOn(cfg), rows: memorySources(text, { chatTitle: titleOf, today: today(cfg) }) });
+      } catch (e) { return send(res, e.code === 'VAULT_LOCKED' ? 401 : e.code === 'ENOENT' ? 200 : 500, e.code === 'ENOENT' ? { on: sourcesOn(cfg), rows: [] } : { error: e.message }); }
+    }
+    if (p === '/api/memory/forget' && req.method === 'POST') {
+      if (!isLocal) return send(res, 403, { error: 'Bob\'s memory can only be changed on this replicant matrix itself.' });
+      try {
+        const b = await body(req);
+        const r = forgetLine(readText(cfg.memoryFile), String(b.key || ''));
+        if (r.n) { writeText(cfg, cfg.memoryFile, r.text); brain.log('settings', 'one memory forgotten in Settings (your click)'); }
+        return send(res, 200, { ok: true, forgot: r.n });
+      } catch (e) { return send(res, e.code === 'VAULT_LOCKED' ? 401 : 500, { error: e.message }); }
+    }
+    // "A Sunday digest" (digest.js): Settings, Make this week's digest now.
+    if (p === '/api/digest/now' && req.method === 'POST') {
+      try { const d = brain.housekeeper?.digestKeeper().build(); if (!d) return send(res, 409, { error: 'Housekeeping isn\'t running yet.' }); brain.housekeeper.digestKeeper().show(d); return send(res, 200, { ok: true, title: d.title, file: d.file, counts: d.counts, on: digestOn(cfg) }); }
+      catch (e) { return send(res, e.code === 'VAULT_LOCKED' ? 401 : 500, { error: e.message }); }
     }
     if (p === '/api/lock/now' && req.method === 'POST') {
       if (!isLocal || !lockOn(cfg)) return send(res, 400, { error: 'The passcode lock is off.' });
@@ -855,30 +891,7 @@ const server = http.createServer(async (req, res) => {
       if (!isLocal) return send(res, 403, { error: 'Folders can only be picked on this replicant matrix itself.' });
       try { const b = await body(req).catch(() => ({})); return send(res, 200, { folder: await pickFolder({ purpose: ['save', 'home'].includes(b?.purpose) ? b.purpose : 'project' }) }); } catch (e) { return send(res, 200, { error: e.message }); }
     }
-    // 1.5.135: brains of your own. Pick a .gguf on this replicant matrix (local window only), add it to Bob's list, or take it off.
-    if (req.method === 'POST' && p === '/api/own-models/pick') {
-      if (!isLocal) return send(res, 403, { error: 'A file can only be picked on this replicant matrix itself.' });
-      try { const b = await body(req).catch(() => ({})); const kind = ['mmproj', 'docs'].includes(b?.kind) ? b.kind : 'gguf'; const file = await pickFile({ kind }); return send(res, 200, file ? { file, ...(kind === 'gguf' ? inspectOwn(file) : {}) } : { file: '' }); } catch (e) { return send(res, 200, { error: e.message }); }
-    }
-    if (req.method === 'POST' && p === '/api/own-models/inspect') {
-      if (!isLocal) return send(res, 403, { error: `Brains of your own can only be added or removed on ${myName() || "the Bob's own replicant matrix"} itself, not from the phone.` });
-      const b = await body(req).catch(() => ({})); return send(res, 200, inspectOwn(b?.file));
-    }
-    if (req.method === 'POST' && p === '/api/own-models') {
-      if (!isLocal) return send(res, 403, { error: `Brains of your own can only be added or removed on ${myName() || "the Bob's own replicant matrix"} itself, not from the phone.` });
-      const b = await body(req).catch(() => ({}));
-      const seen = inspectOwn(b?.gguf);
-      if (seen.error) return send(res, 400, { error: seen.error });
-      if (b?.mmproj) { const mm = inspectOwn(b.mmproj); if (mm.error) return send(res, 400, { error: `The picture reader: ${mm.error}` }); }
-      const list = ownModels(cfg);
-      if (list.some((o) => o.gguf.toLowerCase() === seen.file.toLowerCase())) return send(res, 400, { error: 'That file is already on Bob\'s list.' });
-      const name = String(b?.name || '').trim() || seen.name;
-      const next = cleanOwnModels([...list, { id: ownId(name, list), name, gguf: seen.file, mmproj: b?.mmproj || '' }]);
-      if (next.length === list.length) return send(res, 400, { error: 'Bob couldn\'t add that one (the list is full, or the name is empty).' });
-      saveSettings(cfg, { ownModels: next });
-      brain.catalogNames = null;
-      return send(res, 200, { ownModels: next, added: next[next.length - 1] });
-    }
+    if ((await ownModelsRoute({ req, res, p, isLocal, cfg, brain, body, send })) !== false) return;
     // 1.5.205 Add a model page: look at a page's files, then add the picked ones to this replicant matrix's own list.
     if (req.method === 'POST' && (p === '/api/catalog-added/look' || p === '/api/catalog-added/add')) {
       if (!isLocal) return send(res, 403, { error: `Model pages can only be added on ${myName() || "the Bob's own replicant matrix"} itself, not from the phone.` });
@@ -899,20 +912,6 @@ const server = http.createServer(async (req, res) => {
       mergeAdded(shop.shipped, cfg); if (shop.catalog !== shop.shipped) mergeAdded(shop.catalog, cfg);
       brain.catalogNames = null;
       return send(res, 200, { ok: true, added: picked.map((x) => ({ id: x.id, name: x.name })) });
-    }
-    if (req.method === 'POST' && p === '/api/own-models/remove') {
-      if (!isLocal) return send(res, 403, { error: `Brains of your own can only be added or removed on ${myName() || "the Bob's own replicant matrix"} itself, not from the phone.` });
-      const b = await body(req).catch(() => ({}));
-      const list = ownModels(cfg);
-      const gone = list.find((o) => o.id === b?.id);
-      if (!gone) return send(res, 404, { error: 'That brain isn\'t on Bob\'s list.' });
-      // Only the list entry goes; the file stays where it is. Any slot wearing it is emptied (the Brain falls back to the main pick).
-      const models = Object.fromEntries(Object.entries(cfg.models || {}).filter(([, v]) => v === gone.id).map(([k]) => [k, '']));
-      const patch = { ownModels: list.filter((o) => o.id !== gone.id) };
-      if (Object.keys(models).length) patch.models = models;
-      saveSettings(cfg, patch);
-      brain.catalogNames = null;
-      return send(res, 200, { ownModels: patch.ownModels, cleared: Object.keys(models) });
     }
     if (req.method === 'POST' && p.startsWith('/api/models/') || req.method === 'POST' && p === '/api/settings') {
       if (!isLocal) return send(res, 403, { error: 'Downloads and settings can only be changed on this replicant matrix itself.' });
@@ -1047,6 +1046,7 @@ const server = http.createServer(async (req, res) => {
           for (const k of EXTRA_SWITCHES) if (typeof b[k] === 'boolean') { saveSettings(cfg, { [k]: b[k] }); out[k] = cfg[k] === true; if (k === 'laptopMode') { extras.laptopChanged(); out.onBattery = batteryNow(); } if (k === 'newCardTest' && b[k]) extras.cardCheck({ saveSettings }).catch(() => {}); if (k === 'engineNotes') out.engineNote = b[k] ? currentEngineNote(cfg) : ''; } // list items 94-100
           if (b.brainMemType && typeof b.brainMemType === 'object' && !Array.isArray(b.brainMemType)) { saveSettings(cfg, { brainMemType: b.brainMemType }); out.brainMemType = cfg.brainMemType || {}; } // 100
           if (b.jobHelps && typeof b.jobHelps === 'object' && !Array.isArray(b.jobHelps)) { saveSettings(cfg, { jobHelps: cleanJobHelps({ ...cleanJobHelps(cfg.jobHelps), ...b.jobHelps }) }); out.jobHelps = cleanJobHelps(cfg.jobHelps); } // Settings, Jobs
+          if (typeof b.answerMidJob === 'boolean') { saveSettings(cfg, { answerMidJob: b.answerMidJob }); out.answerMidJob = cfg.answerMidJob !== false; }
           if (typeof b.quickSeesJob === 'boolean') { saveSettings(cfg, { quickSeesJob: b.quickSeesJob }); out.quickSeesJob = cfg.quickSeesJob === true; }
           if (typeof b.chatRedo === 'boolean') { saveSettings(cfg, { chatRedo: b.chatRedo }); out.chatRedo = cfg.chatRedo !== false; }
           if (typeof b.quickNotes === 'boolean') { saveSettings(cfg, { quickNotes: b.quickNotes }); out.quickNotes = cfg.quickNotes === true; if (out.quickNotes) { try { ensureNotesFile(cfg); } catch {} } } // notes.js
@@ -1056,6 +1056,14 @@ const server = http.createServer(async (req, res) => {
           if (b.toolLearningForget === true) { forgetLearning(cfg); out.toolScores = []; }
           if (typeof b.docTools === 'boolean') { saveSettings(cfg, { docTools: b.docTools }); out.docTools = cfg.docTools === true; if (!out.docTools) { clearDocCache(); brain.housekeeper?.forgetDocIndex(); } } // my-docs.js; off also deletes the meaning index
           if (typeof b.docMeaning === 'boolean') { saveSettings(cfg, { docMeaning: b.docMeaning }); out.docMeaning = cfg.docMeaning === true; const hk = brain.housekeeper; if (hk) { if (!out.docMeaning) hk.forgetDocIndex(); else { hk.noEmbed = false; hk.fillDocIndex().catch(() => {}); } } } // doc-index.js: off deletes the index
+          // Memory and documents, items 87 to 93 (memory-more.js, doc-more.js, digest.js): each off unless turned on.
+          if (typeof b.memorySources === 'boolean') { saveSettings(cfg, { memorySources: b.memorySources }); out.memorySources = cfg.memorySources === true; } // memory-more.js
+          if (typeof b.memoryExpiry === 'boolean') { saveSettings(cfg, { memoryExpiry: b.memoryExpiry }); out.memoryExpiry = cfg.memoryExpiry === true; }
+          if (typeof b.memoryWhere === 'boolean') { saveSettings(cfg, { memoryWhere: b.memoryWhere }); out.memoryWhere = cfg.memoryWhere === true; }
+          if (typeof b.docPlaces === 'boolean') { saveSettings(cfg, { docPlaces: b.docPlaces }); out.docPlaces = cfg.docPlaces === true; } // doc-more.js
+          if (typeof b.weeklyDigest === 'boolean') { saveSettings(cfg, { weeklyDigest: b.weeklyDigest }); out.weeklyDigest = cfg.weeklyDigest === true; } // digest.js
+          if (typeof b.docFresh === 'boolean') { saveSettings(cfg, { docFresh: b.docFresh }); out.docFresh = cfg.docFresh === true; try { brain.housekeeper?.syncDocWatch(); } catch {} } // starts or stops listening
+          if (Array.isArray(b.notesFolders)) { saveSettings(cfg, { notesFolders: b.notesFolders }); out.notesFolders = cleanNotesFolders(cfg.notesFolders).map((n) => ({ ...n, missing: !fs.existsSync(n.path), vault: n.kind === 'obsidian' && isVault(n.path) })); try { brain.housekeeper?.syncDocWatch(); } catch {} }
           if (typeof b.chatFiles === 'boolean') { saveSettings(cfg, { chatFiles: b.chatFiles }); out.chatFiles = cfg.chatFiles === true; if (!out.chatFiles) chatImport = null; } // chat-files.js
           if (typeof b.mathView === 'boolean') { saveSettings(cfg, { mathView: b.mathView }); out.mathView = cfg.mathView === true; } // public/math-core.js
           if (typeof b.shortcuts === 'boolean') { saveSettings(cfg, { shortcuts: b.shortcuts }); out.shortcuts = cfg.shortcuts === true; } // public/shortcuts.js
@@ -1182,50 +1190,7 @@ const server = http.createServer(async (req, res) => {
       } catch (e) { return send(res, 200, { ok: false, error: e.message }); }
       return send(res, 404, { error: 'not found' });
     }
-    if (p === '/api/help-bundle') {
-      const deps = { brain, shop, checkEngine, speedHistory, capabilities };
-      if (req.method === 'GET') {
-        try {
-          const z = await bundleBytes(cfg, deps);
-          brain.log('settings', `help bundle sent to ${isLocal ? 'this replicant matrix' : 'a paired device'} (${z.brainNote ? "with Bob's own note" : 'automatic'})`);
-          res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Length': z.data.length, 'Content-Disposition': `attachment; filename="${z.name}"` });
-          return res.end(z.data);
-        } catch (e) { return send(res, 500, { error: e.message }); }
-      }
-      if (req.method === 'POST') {
-        if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
-        const b = await body(req).catch(() => ({}));
-        let folder = '', picked = true;
-        try { folder = await pickFolder({ purpose: 'bundle' }); } catch { picked = false; }
-        if (picked && !folder) return send(res, 200, { ok: false, cancelled: true });
-        if (!folder) folder = path.join(cfg.painterDir || cfg.innDir, 'help-bundles'); // no folder picker here: Bob's own folder
-        try {
-          const r = await saveHelpBundle(cfg, folder, { ...deps, brainNote: b.brain === false ? false : undefined });
-          brain.log('settings', `help bundle saved: ${path.basename(r.file)} (${r.brainNote ? "with Bob's own note" : `automatic: ${r.why}`})`);
-          const shown = revealFile(r.file);
-          return send(res, 200, { ...r, shown, pickedFolder: picked });
-        } catch (e) { return send(res, 200, { ok: false, why: e.message }); }
-      }
-    }
-    // 1.5.95 Save as: keep something Bob made as another file type (pictures, clips, songs; save-as.js).
-    if (req.method === 'POST' && p === '/api/save-as') {
-      const b = await body(req);
-      try {
-        const r = await saveAs(cfg, { name: b.name, format: b.format }, brain.saveAsOpts || {});
-        if (r.need === 'ffmpeg') { let offer = null; await brain.offerSetup('ffmpeg', { emit: (ev) => { offer = ev; } }, { quiet: true }).catch(() => ''); return send(res, 200, { ok: false, need: 'ffmpeg', offer }); }
-        try { brain.made.add(r.file, { tool: 'save_as' }); } catch {}
-        return send(res, 200, { ok: true, ...r });
-      } catch (e) { return send(res, 200, { ok: false, why: e.message }); }
-    }
-    // 1.5.95: a diagram drawn in a chat window, saved as PNG, SVG or PDF next to its text (diagram.js).
-    if (req.method === 'POST' && p === '/api/diagram/save') {
-      try {
-        const b = await bigBody(req);
-        const r = saveExport(cfg, { name: b.name, format: b.format, data: b.data });
-        try { brain.made.add(r.file, { tool: 'make_diagram' }); } catch {}
-        return send(res, 200, { ok: true, ...r });
-      } catch (e) { return send(res, 200, { ok: false, why: e.message }); }
-    }
+    if ((await saveRoute({ req, res, p, isLocal, cfg, brain, shop, body, bigBody, send })) !== false) return;
     // 1.5.91: the chat's Set it up card (the phone's too, like approval cards: the card's id is the permission).
     if (req.method === 'POST' && p === '/api/setup/answer') {
       const b = await body(req);
@@ -1251,51 +1216,10 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/hands/schedules' && await schedulesRoute({ req, res, p, isLocal, brain, body, send })) return;
     if (p.startsWith('/api/hands') && await handsRoute({ req, res, p, isLocal, brain, cfg, body, send })) return;
     if (p.startsWith('/api/quarantine') && await quarantineRoute({ req, res, p, isLocal, brain, cfg, body, send })) return;
-    if (req.method === 'POST' && p === '/api/transcribe') {
-      const chunks = [];
-      let size = 0;
-      for await (const c of req) { size += c.length; if (size > 15e6) return send(res, 413, { error: 'Recording too long.' }); chunks.push(c); }
-      try { return send(res, 200, { text: await transcribe(cfg, Buffer.concat(chunks)) }); }
-      catch (e) { return send(res, 502, { error: e.message }); }
-    }
-    // The reference shelf. Uploads are raw image bytes; name, kind and notes ride in the query string.
-    if (req.method === 'GET' && p === '/api/refs') return send(res, 200, brain.refs.list().map((r) => ({ ...r, ...brain.refs.info(r), url: `/refs/${r.file}` })));
-    // An upright copy of a picture that was stored on its side (phone photos), made by Bob's window.
-    if (req.method === 'POST' && p === '/api/refs/upright') {
-      const chunks = [];
-      let size = 0;
-      for await (const c of req) { size += c.length; if (size > 15e6) return send(res, 413, { error: 'That picture is too big (15 MB max).' }); chunks.push(c); }
-      try {
-        const r = brain.refs.replace(String(url.searchParams.get('id') || ''), Buffer.concat(chunks));
-        brain.log('refs', `turned ${r.name} upright`);
-        return send(res, 200, { ...r, url: `/refs/${r.file}` });
-      } catch (e) { return send(res, 400, { error: e.message }); }
-    }
-    if (req.method === 'POST' && p === '/api/refs') {
-      const chunks = [];
-      let size = 0;
-      for await (const c of req) { size += c.length; if (size > 15e6) return send(res, 413, { error: 'That picture is too big (15 MB max).' }); chunks.push(c); }
-      try {
-        const q = url.searchParams;
-        const r = brain.refs.add(Buffer.concat(chunks), { name: q.get('name'), kind: q.get('kind'), notes: q.get('notes') });
-        brain.log('refs', `added ${r.name} (${r.kind})`);
-        return send(res, 200, { ...r, url: `/refs/${r.file}` });
-      } catch (e) { return send(res, 400, { error: e.message }); }
-    }
-    if (req.method === 'POST' && (p === '/api/refs/update' || p === '/api/refs/delete')) {
-      const b = await body(req);
-      try {
-        if (p === '/api/refs/delete') return send(res, 200, { removed: brain.refs.remove(String(b.id)) });
-        const r = brain.refs.update(String(b.id), { name: b.name, kind: b.kind, notes: b.notes });
-        return send(res, 200, { ...r, url: `/refs/${r.file}` });
-      } catch (e) { return send(res, 400, { error: e.message }); }
-    }
-    if (req.method === 'GET' && p.startsWith('/refs/')) {
-      const f = path.basename(decodeURIComponent(p.slice(6)));
-      if (!/^[0-9a-f]{8}\.(png|jpg|webp)$/.test(f)) return send(res, 404, { error: 'not found' });
-      return serveFile(res, brain.refs.dir, f);
-    }
-    if (req.method === 'GET' && p === '/api/queue') return send(res, 200, brain.queueView());
+    if (p === '/api/more-tools' && await moreToolsRoute({ req, res, p, isLocal, brain, cfg, body, send })) return;
+    if ((await voiceRoute({ req, res, p, isLocal, cfg, shop, body, send, TYPES })) !== false) return;
+    if ((await refsRoute({ req, res, p, url, brain, body, send, serveFile })) !== false) return;
+    if ((await queueRoute({ req, res, p, brain, body, send })) !== false) return;
     if (req.method === 'GET' && p === '/api/downloads') return send(res, 200, shop.downloadsView());
     if (req.method === 'GET' && p === '/api/gpu') {
       // The whole graphics card (every app) and system memory (1.5.3). Bob's own brain line in Now running comes
@@ -1310,68 +1234,14 @@ const server = http.createServer(async (req, res) => {
       out.costMs = { wait: Math.round((performance.now() - t0) * 10) / 10, bobCpu: Math.round((c.user + c.system) / 100) / 10, cardCheck: gpuCache.ms ?? null };
       return send(res, 200, out);
     }
-    if (req.method === 'GET' && p === '/api/update/check') return send(res, 200, await checkAll());
-    if (req.method === 'GET' && p === '/api/update/status') return send(res, 200, updateStatus(cfg) || {});
-    if (req.method === 'POST' && p === '/api/update/restart') {
-      if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
-      const { when } = await body(req);
-      try { return send(res, 200, requestRestart(cfg, when, { isBusy: () => brain.turns.size > 0 || brain.queue.some((j) => j.state === 'waiting') || Boolean(shop.job) })); } catch (e) { return send(res, 409, { error: e.message }); }
+    if ((await updateRoute({ req, res, p, isLocal, cfg, brain, shop, body, send })) !== false) return;
+    // Item 214: the Restart button under "I froze for a while" (only on this replicant matrix, only in Bob's own window).
+    if (req.method === 'POST' && p === '/api/watchdog/restart') {
+      if (!isLocal || typeof globalThis.bobHome?.restart !== 'function') return send(res, 200, { ok: false, error: 'Close Bob and open him again.' });
+      brain.log('watchdog', 'restarting (your click)');
+      setTimeout(() => globalThis.bobHome.restart(), 600);
+      return send(res, 200, { ok: true });
     }
-    // "Remove Bob" (Settings): only on the PC itself, after the window's confirm.
-    if (req.method === 'GET' && p === '/api/uninstall') { const pl = uninstallPlan(cfg); return send(res, 200, { canRun: pl.canRun, why: pl.why, app: pl.app, inn: pl.inn, models: pl.models }); }
-    if (req.method === 'POST' && p === '/api/uninstall') {
-      if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
-      const { confirm, notes, models } = await body(req);
-      if (confirm !== 'remove') return send(res, 400, { error: 'Confirm first.' });
-      try {
-        if (autostartOn()) await setAutostart(cfg, false); // take the login item away before the program goes
-        const r = startUninstall(cfg, { notes: notes === true, models: models === true });
-        brain.log('settings', `removing Bob (notes ${notes === true}, models ${models === true})`);
-        brain.broadcast({ type: 'announce', text: 'Packing up. A small window finishes removing me once I have closed. It was a pleasure.' });
-        send(res, 200, r);
-        setTimeout(() => (globalThis.bobQuit ? globalThis.bobQuit() : process.exit(0)), 1500);
-        return;
-      } catch (e) { return send(res, 409, { error: e.message }); }
-    }
-    if (req.method === 'POST' && (p === '/api/update/start' || p === '/api/quit')) {
-      if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
-      if (p === '/api/quit') { brain.log('settings', 'closing for an update'); brain.broadcast({ type: 'announce', text: 'Closing for a moment to switch to the new Bob. Back in a few seconds.' }); send(res, 200, { ok: true }); setTimeout(() => (globalThis.bobQuit ? globalThis.bobQuit() : process.exit(0)), 300); return; }
-      try { const r = await startAny(cfg); brain.log('settings', `update started (${r.via}): ${r.from.label} -> ${r.to?.label}`); return send(res, 200, r); }
-      catch (e) { return send(res, 409, { error: e.message }); }
-    }
-    if (req.method === 'POST' && (p === '/api/queue/cancel' || p === '/api/queue/retry')) {
-      const { id } = await body(req);
-      const ok = p.endsWith('cancel') ? brain.cancelJob(String(id)) : brain.retryJob(String(id));
-      return send(res, ok ? 200 : 404, { ok });
-    }
-    if (req.method === 'POST' && p === '/api/queue/move') {
-      const { id, before } = await body(req);
-      const ok = brain.moveJob(String(id), before ? String(before) : null);
-      return send(res, ok ? 200 : 404, { ok });
-    }
-    if (req.method === 'POST' && p === '/api/queue/remove') {
-      const { id } = await body(req);
-      const ok = brain.removeJob(String(id));
-      return send(res, ok ? 200 : 404, { ok });
-    }
-    if (req.method === 'POST' && p === '/api/queue/clear') return send(res, 200, { ok: brain.clearCompleted() });
-    if (req.method === 'POST' && p === '/api/speak') {
-      const { text, bob } = await body(req); // bob: the Bob-Net name of the Bob who thought this reply (A voice per Bob)
-      try { return send(res, 200, await say(cfg, String(text || ''), { voice: netVoiceFor(cfg, bob) }), 'audio/wav'); }
-      catch (e) { return send(res, 409, { error: e.message }); }
-    }
-    // Voice samples: listing looks at files only; a sample is made (or found) only when asked for.
-    if (req.method === 'GET' && p === '/api/voice/samples') return send(res, 200, { voices: publicView(voiceList(cfg, shop)) });
-    if (req.method === 'POST' && p === '/api/voice/sample') {
-      const { engine, voice } = await body(req);
-      try {
-        const r = await sampleFor(cfg, shop, String(engine || ''), String(voice || ''));
-        if (r.file) return send(res, 200, fs.readFileSync(r.file), TYPES[path.extname(r.file).toLowerCase()] || 'audio/wav');
-        return send(res, 200, r);
-      } catch (e) { return send(res, 409, { error: e.message }); }
-    }
-    if (req.method === 'POST' && p === '/api/voice/samples/clear') { if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' }); clearSamples(cfg); return send(res, 200, { ok: true }); }
-    if (req.method === 'POST' && p === '/api/stop') return send(res, 200, { stopped: brain.stop() });
     // Settings, Jobs (job-helps.js): Stop after this step; Undo a file change from a job's receipt; open a file:line link.
     if (req.method === 'POST' && p === '/api/stop-after') { const b = await body(req); return send(res, 200, { ok: stopAfterStep(brain, typeof b.id === 'string' ? b.id : '') }); }
     if (req.method === 'POST' && (p === '/api/jobs/undo' || p === '/api/open-at')) {
@@ -1384,8 +1254,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     // Housekeeping, topics, past chats and search. Reading works from the phone too; changes only on the PC.
-    const hk = brain.housekeeper;
-    if (req.method === 'GET' && p === '/api/chats') return send(res, 200, { chats: hk.chats(), tidied: hk.summaries().slice(0, 200) });
+    if ((await tidyRoute({ req, res, p, url, isLocal, cfg, brain, body, send, broadcast })) !== false) return;
     // "Save chats as files and bring chats in" (chat-files.js, off unless turned on). Saving works from the phone too;
     // bringing chats in only on this replicant matrix itself. The file is looked at first and nothing is kept until
     // the owner ticks which chats to bring in.
@@ -1424,61 +1293,8 @@ const server = http.createServer(async (req, res) => {
       brain.log('chats', `brought in ${r.done.length} chat${r.done.length === 1 ? '' : 's'}${r.skipped.length ? `, ${r.skipped.length} already here` : ''}`);
       return send(res, 200, { ok: true, ...r });
     }
-    if (req.method === 'GET' && p === '/api/topics') return send(res, 200, hk.topics.list());
-    if (req.method === 'GET' && p === '/api/topics/messages') {
-      const t = hk.topics.get(String(url.searchParams.get('id') || ''));
-      if (!t) return send(res, 404, { error: 'No such topic.' });
-      return send(res, 200, hk.topicMessages(t));
-    }
-    if (req.method === 'GET' && p === '/api/topics/forget-preview') {
-      try { return send(res, 200, hk.forgetPreview(String(url.searchParams.get('id') || ''), { mode: url.searchParams.get('mode') === 'all' ? 'all' : 'note' })); }
-      catch (e) { return send(res, 404, { error: e.message }); }
-    }
-    if (req.method === 'GET' && p === '/api/search') return send(res, 200, search(cfg, { topics: hk.topics, summaries: hk.summaries() }, String(url.searchParams.get('q') || '').slice(0, 200)));
-    if (req.method === 'GET' && p === '/api/hk') { const st = hk.state(); return send(res, 200, { settings: hkSettings(cfg), kinds: KINDS, units: Object.keys(UNITS), items: hk.publicItems(), lastRun: st.lastRun, lastScan: st.lastScan, working: hk.working }); }
-    if (req.method === 'POST' && (p.startsWith('/api/hk/') || p.startsWith('/api/topics/') || p === '/api/pin')) {
-      if (!isLocal) return send(res, 403, { error: 'Tidying and topics can only be changed on this replicant matrix itself.' });
-      const b = await body(req);
-      try {
-        if (p === '/api/hk/scan') return send(res, 200, { items: hk.publicItems(hk.scan()) });
-        if (p === '/api/hk/tidy') { if (!hk.items.length) hk.scan(); return send(res, 200, { results: await hk.tidy([].concat(b.choices || []).slice(0, 2000)), items: hk.publicItems() }); }
-        if (p === '/api/hk/run') {
-          if (hk.working) return send(res, 200, { busy: true });
-          hk.tick({ force: true }).then((did) => broadcast({ type: 'tidy-done', ...did })).catch((e) => broadcast({ type: 'tidy-done', error: e.message }));
-          return send(res, 200, { started: true });
-        }
-        if (p === '/api/pin') return send(res, 200, { pins: hk.pin(String(b.kind), String(b.id), b.pinned === true) });
-        const id = String(b.id || '');
-        if (p === '/api/topics/rename') return send(res, 200, hk.topics.rename(id, b.name, b.project));
-        if (p === '/api/topics/edit') return send(res, 200, hk.topics.edit(id, { note: b.note, summary: b.summary, open: b.open }));
-        if (p === '/api/topics/pin') return send(res, 200, hk.topics.pin(id, b.pinned === true));
-        if (p === '/api/topics/fade') return send(res, 200, hk.topics.fade(id, b.after && UNITS[b.after.unit] ? { n: Number(b.after.n), unit: b.after.unit } : null));
-        if (p === '/api/topics/merge') { const into = hk.topics.merge(id, String(b.into || '')); brain.log('topics', `merged a topic into ${into}`); return send(res, 200, { id: into }); }
-        if (p === '/api/topics/move') return send(res, 200, { ok: hk.topics.moveMessage(String(b.session || ''), String(b.msgId || ''), String(b.to || '')) });
-        if (p === '/api/topics/forget') return send(res, 200, hk.forget(id, { mode: b.mode === 'all' ? 'all' : 'note', pictures: b.pictures === true }));
-        if (p === '/api/topics/accept') return send(res, 200, hk.topics.change(id, (t) => { if (t.suggested) { t.note = t.suggested.note || t.note; t.summary = t.suggested.summary || t.summary; t.suggested = undefined; } }));
-        return send(res, 404, { error: 'not found' });
-      } catch (e) { return send(res, 409, { error: e.message }); }
-    }
 
-    // Files Bob mentions: a preview in the chat, plus Open / Show in folder / Copy (open and copy only on the PC itself).
-    if (req.method === 'POST' && p === '/api/file/info') {
-      const b = await body(req);
-      return send(res, 200, [].concat(b.paths || []).slice(0, 20).map((x) => { const d = describeFile(cfg, x); return { mention: String(x).slice(0, 1000), ...d, path: isLocal ? d.path : undefined }; }));
-    }
-    if (req.method === 'GET' && p === '/api/file') {
-      const d = describeFile(cfg, url.searchParams.get('path') || '');
-      if (!d.ok || d.kind === 'folder' || (!isLocal && !d.path.startsWith(path.resolve(cfg.innDir) + path.sep))) return send(res, 404, { error: 'not found' });
-      // A page or picture Bob wrote is shown, never run: no scripts, no reaching Bob's own pages.
-      return serveFile(res, path.dirname(d.path), path.basename(d.path), { 'content-security-policy': 'sandbox; default-src \'none\'; img-src \'self\' data:; media-src \'self\'; style-src \'unsafe-inline\'' });
-    }
-    // The side panel: the start of a text file, and the list of everything Bob made.
-    if (req.method === 'GET' && p === '/api/file/peek') {
-      const d = describeFile(cfg, url.searchParams.get('path') || '');
-      if (!d.ok || (!isLocal && !d.path.startsWith(path.resolve(cfg.innDir) + path.sep))) return send(res, 404, { error: 'not found' });
-      const r = peekFile(cfg, d.path, url.searchParams.get('max'));
-      return r.ok ? send(res, 200, r) : send(res, 404, { error: 'not found' });
-    }
+    if ((await filesRoute({ req, res, p, url, isLocal, cfg, brain, body, send, serveFile })) !== false) return;
     // "Show documents in the side panel": a document's words, tables and slides (files.js docPeek, off unless turned on),
     // and a PDF as its pages for windows that can draw them. Same rules as /api/file: over the home network only the inn.
     if (req.method === 'GET' && p === '/api/file/doc') {
@@ -1493,13 +1309,6 @@ const server = http.createServer(async (req, res) => {
       // Always sent as a PDF (never sniffed as a page), never framed by another site.
       return serveFile(res, path.dirname(d.path), path.basename(d.path), { 'x-content-type-options': 'nosniff', 'x-frame-options': 'SAMEORIGIN', 'content-disposition': 'inline' });
     }
-    // 1.5.41: a song's player: its title, style and lyrics (from the Made by Bob list) and the bars of its shape (wave.js).
-    if (req.method === 'GET' && p === '/api/song') {
-      const d = describeFile(cfg, url.searchParams.get('path') || '');
-      if (!d.ok || d.kind !== 'audio' || (!isLocal && !d.path.startsWith(path.resolve(cfg.innDir) + path.sep) && !brain.made.has(d.path))) return send(res, 404, { error: 'not found' });
-      const w = wavePeaks(d.path, url.searchParams.get('bars'));
-      return send(res, 200, { ok: true, name: d.name, bytes: d.bytes, ...(brain.made.songInfo(d.path) || {}), seconds: w.seconds, peaks: w.peaks });
-    }
     // 1.5.79: the memories that fit a message, for a chat the phone answers with its own brain (Android app note).
     // Empty while "Remember only what fits" is off. Phone access already guards every /api call.
     if (req.method === 'POST' && p === '/api/memory/recall') {
@@ -1508,63 +1317,6 @@ const server = http.createServer(async (req, res) => {
       const text = String(b.text || '').slice(0, 4000);
       const r = await brain.recall(String(b.session || '').replace(/[^\w-]/g, '').slice(0, 64) || null, text).catch(() => '');
       return send(res, 200, { on: true, text: r, always: brain.memory() });
-    }
-    // 1.5.125: a small picture for the chest and Made by Bob, made once and kept (src/thumbs.js). 404 means "show the
-    // file itself or the kind's icon". Same rules as /api/file: over the home network only what's in the inn or on the Made list.
-    if (req.method === 'GET' && p === '/api/thumb') {
-      const d = describeFile(cfg, url.searchParams.get('path') || '');
-      if (!d.ok || d.kind === 'folder' || !canThumb(d.name) || (!isLocal && !d.path.startsWith(path.resolve(cfg.innDir) + path.sep) && !brain.made.has(d.path))) return send(res, 404, { error: 'not found' });
-      const t = await thumbFor(cfg, d.path);
-      if (!t.ok) return send(res, 404, { error: t.why });
-      return serveFile(res, path.dirname(t.file), path.basename(t.file), { 'cache-control': 'private, max-age=86400' });
-    }
-    // 1.5.125 Bob's home folder: his home folder (models, programs, notes, settings) and a move to another one.
-    if (req.method === 'GET' && p === '/api/home') {
-      if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
-      return send(res, 200, homeView(cfg));
-    }
-    if (req.method === 'POST' && p === '/api/home') {
-      if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
-      const b = await body(req);
-      const folder = String(b.folder || '').trim();
-      const why = homeProblem(folder, { current: cfg.agentDir });
-      if (why) return send(res, 200, { ok: false, error: why });
-      if (path.resolve(folder).toLowerCase() === path.resolve(cfg.agentDir).toLowerCase()) return send(res, 200, { ok: true, same: true });
-      // The chosen folder goes AFTER homeView's spread (whose `folder` is the current home), so the confirm card and the move
-      // itself name the folder that was picked (PC test 2026-11-06: the card read "Move everything to <current home>?").
-      if (!b.confirm) return send(res, 200, { ok: true, ready: true, ...homeView(cfg), folder: path.resolve(folder), pickedCloud: synced(folder), pickedCloudWarning: cloudWarning(synced(folder)) });
-      if (!globalThis.bobHome?.move) return send(res, 200, { ok: false, error: 'Moving only works from Bob\'s own window (Bob.exe, Bob.app, or Bob on Linux), not from a browser.' });
-      brain.log('settings', `moving Bob's home to ${folder}`);
-      brain.broadcast({ type: 'announce', text: `Moving my things to ${folder}. I'll close, copy everything across and open again. Big models take a while.` });
-      send(res, 200, { ok: true, moving: true });
-      setTimeout(() => globalThis.bobHome.move(path.resolve(folder)), 800);
-      return;
-    }
-    if (req.method === 'GET' && p === '/api/made') {
-      const list = brain.made.list({ kind: url.searchParams.get('kind') || '', q: url.searchParams.get('q') || '', limit: Math.min(200, Number(url.searchParams.get('limit')) || 60) });
-      const inn = path.resolve(cfg.innDir) + path.sep;
-      // 1.5.133: over the door, the same rule as /images/ below: anything Bob made that the door would hand out (his own
-      // inn\ folder, or a Made by Bob file in any save folder), so a Bob whose save folder was moved no longer shows the
-      // phone an empty Chest. Paths never leave this Bob.
-      const servable = (x) => { try { return path.resolve(findOutput(cfg, path.basename(x.path))) === path.resolve(x.path); } catch { return false; } };
-      return send(res, 200, isLocal ? list : list.filter((x) => x.path && (x.path.startsWith(inn) || servable(x))).map((x) => ({ ...x, path: undefined })));
-    }
-    if (req.method === 'POST' && (p === '/api/open' || p === '/api/clipboard')) {
-      if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
-      const b = await body(req);
-      if (p === '/api/clipboard') {
-        if (!globalThis.bobShell?.copy) return send(res, 200, { ok: false });
-        globalThis.bobShell.copy(String(b.text ?? '').slice(0, 2e6));
-        return send(res, 200, { ok: true });
-      }
-      try { const r = openFile(cfg, String(b.path || ''), { reveal: b.reveal === true }); brain.log('open', `${b.reveal ? 'showed in folder' : 'opened'} ${path.basename(r.file)}`); return send(res, 200, { ok: true }); }
-      catch (e) { return send(res, 409, { error: e.message }); }
-    }
-    if (req.method === 'GET' && p.startsWith('/images/')) {
-      const f = findOutput(cfg, decodeURIComponent(p.slice(8))); // 1.5.41: where Bob saves now, his own folder, or an older pick
-      // Over the home network, a folder the user picked only gives out what Bob made there (it can hold their own files too).
-      if (!isLocal && path.resolve(path.dirname(f)) !== path.resolve(cfg.defaultPainterDir) && !brain.made.has(f)) return send(res, 404, { error: 'not found' });
-      return serveFile(res, path.dirname(f), path.basename(f));
     }
     // Bob for iPhone (public/phone/, made by android/tools/make-shared.mjs): the phone screen, added to the Home Screen
     // like an app. Its icons, fonts, Mermaid and diagram drawer are desktop Bob's own files, not copies.
@@ -1629,8 +1381,9 @@ function applyRemote() {
 }
 setInterval(() => { if (remoteOn && !startedWide) applyRemote(); }, 60_000).unref();
 // One bad request or background job must never take Bob down: log it and keep serving.
-process.on('unhandledRejection', (e) => { console.error('Unhandled:', e); try { brain.log('error', String(e && e.stack || e).slice(0, 500)); } catch {} });
-process.on('uncaughtException', (e) => { console.error('Uncaught:', e); try { brain.log('error', String(e && e.stack || e).slice(0, 500)); } catch {} });
+// Item 203: logged with the real cause, and a job it left on Working is marked failed and its chat told (brain.onUncaught).
+process.on('unhandledRejection', (e) => { console.error('Unhandled:', e); try { brain.log('error', String(e && e.stack || e).slice(0, 500)); brain.onUncaught?.(e); } catch {} });
+process.on('uncaughtException', (e) => { console.error('Uncaught:', e); try { brain.log('error', String(e && e.stack || e).slice(0, 500)); brain.onUncaught?.(e); } catch {} });
 
 
 // 1.5.87: the equipped brains for "How much each brain keeps in mind": one row per model file, with the jobs it does.
@@ -1646,7 +1399,8 @@ function inUseIds() { return new Set([...Object.values(cfg.models || {}), ...Obj
 // 1.5.205 For the Brains page's Set up: each brain in use, how many layers its file has (null when the built-in
 // engine doesn't run it), and what was set by hand. Reading it changes nothing.
 function brainPlaceView() {
-  const models = new Set([...Object.values(cfg.models || {}), ...Object.values(sessionBrains(cfg) || {})].filter((m) => typeof m === 'string' && m));
+  // every brain in a slot, plus any brain with a setting of its own or a calibration result (1.5.207)
+  const models = new Set([...Object.values(cfg.models || {}), ...Object.values(sessionBrains(cfg) || {}), ...Object.keys(cfg.brainPlace || {}), ...calibrated(cfg)].filter((m) => typeof m === 'string' && m));
   const brains = {};
   for (const model of models) {
     const info = cfg.engine === 'llamacpp' ? brain.engine?.placeInfo?.(model) || null : null;
@@ -1691,7 +1445,7 @@ async function healthProbes() {
   // 1.5.207 PC check: status() has `loaded` (the brains on the engine) and `ollama` (the engine answered); its
   // `models` is the saved role map, not a list, and the page got a 500.
   const chatBrain = st?.models?.bob || '';
-  return { engineOk: st ? st.ollama !== false : false, engineName: brain.engineName, models: Array.isArray(st?.loaded) ? st.loaded : [], chatBrain, chatBrainName: friendlyName(chatBrain), card: g, diskFreeGB, peers, logText: logTail() };
+  return { engineOk: st ? st.ollama !== false : false, engineName: brain.engineName, models: Array.isArray(st?.loaded) ? st.loaded : [], chatBrain, chatBrainName: friendlyName(chatBrain), card: g, diskFreeGB, peers, logText: logTail(), ...(brain.loopStats ? { loopWeek: brain.loopStats.week(), loopReleases: brain.loopStats.releases() } : {}) };
 }
 
 // A model id by its friendly catalog name (model ids stay in Advanced).

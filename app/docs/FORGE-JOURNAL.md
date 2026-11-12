@@ -56,13 +56,13 @@ The order agreed on paper: finish v3, benchmark it at home, then the by-the-word
 ### 4 November: step 0, free, on the PC
 
 - **Experts-per-word test on the full model** ([report](forge-runs/benchmarks/experts-per-word-full-qwen-2026-11-04.md)): with 8, 6 or 4 experts per word the tool quiz, facts and code held steady (45/97, 20/20, 6/6); 3 hurt (26/97, 4/6); 2 collapsed (1/97, 0/6). Speed 82.7, 92.1, 102.5 tok/s. So cutting looked promising, and Bob's "experts per word" setting gets the range 4 to 8.
-- **Lesson writing** on the PC ran at about 60 s a lesson (79 overnight). The same job on a rented H100 served by vLLM wrote 3,753 lessons in 1.03 h, about 1.5 a second with 24 in parallel ([log](forge-runs/2026-11-04-lessons-night/lesson-writer.log)). 3,832 lessons in all, 88 ideas skipped for running out of room.
+- **Lesson writing** on the PC ran at about 60 s a lesson (79 overnight). The same job on a rented H100 served by vLLM wrote 3,753 lessons in 1.03 h, about 1.5 a second with 24 in parallel. 3,832 lessons in all, 88 ideas skipped for running out of room.
 - **Expert counts** (llama.cpp's importance counter, on the PC): the work is spread wide. Keeping the busiest 48 experts per layer covers 51.5% of picks (32: 39.6%, 16: 24.3%, 8: 14.4%); 90, 95 and 99% coverage need 155, 187 and 227 of 256. Coding's busiest 48 overlap the general top 48 by 80%, deep thinking's by 73%: specialists are worth it at small sizes.
 - **Decision**: build the Forge (Node on the PC, Python on the pod) and rent by the hour; nothing is rented until the owner types yes.
 
 ### 4 to 5 November, night: three failed attempts
 
-Each one a few minutes of card time and one lesson ([logs](forge-runs/2026-11-05-failed-attempts/)):
+Each one a few minutes of card time and one lesson:
 
 1. The machine image had no `git`, so the tool download broke. Fix: fetch with Python's own HTTP, pin llama.cpp to a tag.
 2. The prebuilt `llama-quantize` would not run on the image (archive ownership errors, a too-strict exit-code check). Fix: build the llama tools in the background, never fatally; export BF16 only if they fail.
@@ -93,25 +93,25 @@ Each one a few minutes of card time and one lesson ([logs](forge-runs/2026-11-05
 
 ### 5 to 6 November: line B, v2 (Riker + Bill), one H200 141 GB, with the drive
 
-[Watcher log](forge-runs/2026-11-05-lineB-v2/forge-watcher.log), [Riker v2 report](forge-runs/2026-11-05-lineB-v2/24Bob-Riker-v2-heal-report.json), [Bill v2 report](forge-runs/2026-11-05-lineB-v2/18Bob-Bill-v2-heal-report.json).
+[Riker v2 report](forge-runs/2026-11-05-lineB-v2/24Bob-Riker-v2-heal-report.json), [Bill v2 report](forge-runs/2026-11-05-lineB-v2/18Bob-Bill-v2-heal-report.json).
 
 - The full model, served on the card, wrote 717 coding and software-engineering lessons in 16 min (16 in parallel; the idea list ran out at 751).
 - Teacher pass: 78 min; 4,315 train and 234 held-out pieces, 24.9M tokens; max length 16,384, nothing trimmed.
 - 24Bob Riker v2: full pass, 524 of 524 steps, 4.8 h, 35.5M tokens seen. Lessons ce 0.389 to 0.356, kd 0.073 to 0.060; general 2.245 to 2.220. Coverage of the keep list: 128 experts would keep 89% of its routing, 80: 69%, 48: 50%, 32: 38%.
 - 18Bob Bill v2 (cut from healed Riker v2): 524 steps, 4.5 h. Lessons ce 0.586 to 0.487, kd 0.287 to 0.186; general 2.319 to 2.300. Adapters (1.5 GB and 1.1 GB) came home for the first time.
-- **Benchmarks** ([tool score](forge-runs/benchmarks/tool-score-riker-v2-bill-v2-2026-11-06.md), [Riker v2 experts test](forge-runs/benchmarks/experts-test-24Bob-Riker-v2-2026-11-06.md), [Bill v2](forge-runs/benchmarks/experts-test-18Bob-Bill-v2-2026-11-06.md), [coding race](forge-runs/benchmarks/coding-race-riker-v2-2026-11-05.log)): tool score Riker v2 206/314 (66%), Bill v2 208/314 (66%); experts test Riker v2 48/97, 20/20, 3/6, Bill v2 45/97, 11/20, 0/6; coding race Riker v2 6/13 thinking and 6/13 not, no better than v1.
+- **Benchmarks** ([tool score](forge-runs/benchmarks/tool-score-riker-v2-bill-v2-2026-11-06.md), [Riker v2 experts test](forge-runs/benchmarks/experts-test-24Bob-Riker-v2-2026-11-06.md), [Bill v2](forge-runs/benchmarks/experts-test-18Bob-Bill-v2-2026-11-06.md); the coding race has no published file): tool score Riker v2 206/314 (66%), Bill v2 208/314 (66%); experts test Riker v2 48/97, 20/20, 3/6, Bill v2 45/97, 11/20, 0/6; coding race Riker v2 6/13 thinking and 6/13 not, no better than v1.
 - **What went wrong, found the same day**: 37% of the coding lessons taught the model to hand code off to a specialist tool rather than write it, so a full pass of them could not lift coding; and the keep list had been the busiest-overall experts, protecting no skill in particular. Both are written up on [Bob's own models](BOBS-OWN-MODELS.md#what-went-wrong-with-the-first-cut). Decision: re-cut Riker and Bill with a coverage rule and clean lessons (v3), measure what every size keeps first.
 
 ### 6 November: the counts-only run, failed once, then done
 
 - First attempt ([logs](forge-runs/2026-11-06-counts-v3-failed-attempt/)): the lesson writer gave the new skill jobs a weight of zero, so they wrote nothing, and the Forge stopped the card to limit the loss. 2,329 improved coding lessons from it were kept after cleaning (hand-off answers removed).
-- Second run ([watcher log](forge-runs/2026-11-06-counts-v3/forge-watcher.log)): 2,898 lessons across 14 skill sets written on the card, then every one of 24 skills counted on the full model in one load. Result: [ladder.md](forge-runs/2026-11-06-counts-v3/ladder.md), the kept share per skill at every size, average layer and worst layer.
+- Second run: 2,898 lessons across 14 skill sets written on the card, then every one of 24 skills counted on the full model in one load. Result: [ladder.md](forge-runs/2026-11-06-counts-v3/ladder.md), the kept share per skill at every size, average layer and worst layer.
 - **Findings**: 23 of the 24 skills move together (at 208 experts: 97 to 98% average, 92 to 93% in the worst layer; at 144: 87 to 90% / 75 to 77%; at 96: 74 to 77% / 58 to 61%). General knowledge, counted on the outside text, breaks first (208: 90/84; 144: 66/56; 96: 48/38). The worst layer is layer 2 for every skill, an early layer with spread-out routing. The v1 keep lists were within a point of the new rule at the same size, so the v2 coding gap was the lessons, not the cut.
 - **Decision**: Riker v3 at 208 experts (28Bob), Bill v3 at 144 (20Bob), with the keep lists built on the PC from these counts; cover 95%, 99% for tools, coding and formats.
 
 ### 6 to 7 November: line B, v3, first half (28Bob Riker made, 20Bob Bill not), one H200
 
-[Watcher log](forge-runs/2026-11-06-lineB-v3-riker/forge-watcher.log), [pod log](forge-runs/2026-11-06-lineB-v3-riker/pod-log.txt), [phases](forge-runs/2026-11-06-lineB-v3-riker/pod-status.json), [Riker v3 report](forge-runs/2026-11-06-lineB-v3-riker/28Bob-heal-report.json).
+[Pod log](forge-runs/2026-11-06-lineB-v3-riker/pod-log.txt), [phases](forge-runs/2026-11-06-lineB-v3-riker/pod-status.json), [Riker v3 report](forge-runs/2026-11-06-lineB-v3-riker/28Bob-heal-report.json).
 
 - No H200 was free in the drive's data centre for 25 minutes, so the Forge, as it was then written, took one in another data centre **without the drive**. Everything that follows was therefore on the pod's own disk only.
 - Lessons merged: 5,227 extra lessons from 15 sets on top of the base set; 3,450 tool sets.
@@ -176,9 +176,9 @@ No card. Work on the lesson set and the Forge, all on paper and on the PC.
 
 | | Count |
 |---|---|
-| Bobs made | 5: Riker v1, Bill v1, Riker v2, Bill v2 (all four retired and deleted 8 Nov), and Riker (28Bob) |
-| Bobs that are the current plan | Riker (28Bob), kept; Bobert (35Bob) and Bill (20Bob) next |
-| Failed paid attempts | 6 (three on 4 to 5 Nov, one on 6 Nov, two on 9 Nov) plus the stopped Bill step of 6 to 7 Nov |
+| Bobs made | 7: Riker v1, Bill v1, Riker v2, Bill v2 (all four retired and deleted 8 Nov), then Riker (28Bob), Bobert (35Bob) and Bill (20Bob) |
+| Bobs that are the current plan | Riker (28Bob), Bobert (35Bob) and Bill (20Bob), all public on Hugging Face; Homer (14Bob) is next |
+| Failed paid attempts | 6 (three on 4 to 5 Nov, one on 6 Nov, two on 9 Nov) plus the stopped Bill step of 6 to 7 Nov; Bobert's weights went up at the third try on 10 Nov |
 | Outside lesson sets dropped for quality | 1 of 5 (GLM-5.1 agent traces, 8 Nov) |
 | Lessons written | about 9,500 across 17 sets (Bob's own); plus 9,059 taken from other teachers' published sets after a quality pass |
 | Card time | on the costs page |
@@ -213,3 +213,14 @@ No card. Work on the lesson set and the Forge, all on paper and on the PC.
 - **Published from a card, not trained.** A new Forge run type puts a finished Bob back together from the stock model, his keep list and his adapter (a merge of about fifteen minutes on an H200, no training), exports Q4 and Q3, and uploads everything to Hugging Face: the GGUF files, the brain cards, the adapter, the keep list, a README, and the full-size weights. Riker (28Bob), tested at home and kept, is public: [MouseWurX/28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker). Bobert (35Bob) went up private and stays so until he passes his home test; his full-size weights did not upload with the rest. The run came to $5.44 and the card deleted itself. A second, upload-only try that afternoon ($0.34) found the reason: Hugging Face's private storage limit for the account was reached (public repos such as Riker's do not count), so Bobert's weights wait on the drive until he is public after his home test.
 - **A false start, and two rules made hard.** The first try could not get a card in the data centre that holds the drive. The renter then did what it was built to do for a training run, which was wrong for this one: it made empty drives in two other data centres and took a card in one of them, where Bobert's adapter is not, and a shell ordering mistake (a helper used before it was defined) stopped it in its first minute. $0.40 lost; the two empty drives were deleted the same hour. Now a rebuild run never makes a drive, a plan can pin the data centres it may rent in, a missing input stops the run before anything else is waited for, and a drive made by mistake can be deleted from the Forge command line.
 - **Still to come:** Bobert's full-size weights, his home test, then Bill.
+
+### 10 November: everything public, Bill's run, and three new run types
+
+- **Bobert's weights, third time lucky.** The two failed uploads of 9 November had one cause, found only when the publish log was kept: the account's private storage limit. Public pages are not counted, which is why Riker's weights had landed. The owner's answer was to make everything public at once: Bobert's page, the teacher odds, and Bill when he is made. With Bobert public, the same upload-only run put his 21 shards up in seven minutes for $0.44. Bobert is now complete on Hugging Face: GGUF files, cards, adapter, full-size weights.
+- **Bill's run reuses the odds.** `plan.lessons_set` names the lesson set a run kept on the drive, so the teacher-score key is the same by construction and the scores under it are reused; the run stops before any pass if the plan would give another key. Bill (144 experts, the keep list built at home) is cut from Bobert and healed against Bobert's odds with no teacher pass, which saves about six hours and $30. His GGUF files go public at export; his full-size weights and adapter follow from the drive in a short rebuild run, as Riker's did.
+- **Two more run types.** `plan.benchmark_only` rents any card, serves brains straight from Hugging Face and runs the home tests against them, with no teacher, lessons or drive. `plan.scan` adds the Lab's brain scans (the FNRI imager) to the end of a rebuild run: the stock model's Q4 is made from the teacher so every brain is the same quant, each brain is scanned in turn, and the recordings come home in one zip. Both are built and tested on paper; the scan has not yet run on a card.
+- **Bill is made (11 November, early).** 20Bob Bill, 144 experts per layer cut from Bobert, healed in one full pass of 2,018 steps (11.3 hours) against Bobert's odds: his distance from the teacher fell from 0.387 to 0.227, his lesson loss from 0.647 to 0.490 (Bobert's own: 0.290), and his general-text loss improved slightly, 2.491 to 2.362. His Q4 and Q3 went straight to his public page. $96.27 for the run.
+- **What went wrong, and the fix.** The Forge window on the owner's PC was closed from outside mid-heal (the log simply stops; no error). The card finished everything on its own, but two things need that window: the benchmark tests run from it, so the head-to-head of Riker, Bobert and Bill was served and never measured; and the card's delete came from it, so the card sat idle for two hours at the end, about $11. Now every run ends with the card deleting itself (after the PC says it has everything, or after a grace period), a rebuild run can carry the benchmark, and one bad minute no longer ends the window. The missed benchmark goes on Bill's publish run with the brain scans.
+- **Bill's weights, and the head-to-head at last (11 November, night).** A short rebuild run put Bill's full-size weights, adapter and cards on his public page ($6.84). Its benchmark failed on the PC side three ways in a row: a missing import, the space in the install folder cutting the output path, and the PC's own test files being older than the Forge's, so the tests ignored the rented card and quietly tested the full model on the owner's card instead (a result first taken for Bill's and thrown out). Its four brain scans stopped at their checks because the rental image had no git. All four are fixed, and the next run was rented only after both test commands passed on the PC against a stand-in server: a benchmark-only run on an A40, $0.86, which tested Riker, Bobert and Bill with the same two tests. Riker and Bobert tie at 65% on the held-out chats; Bill leads at 68% but drops to 12 of 20 facts and 1 of 6 code tasks. Table and verdict on [Bob's own models](BOBS-OWN-MODELS.md#the-three-side-by-side). The scans need their own short run.
+- **A rule written down.** No PC-side command goes on a paid card before it has run on the PC against a stand-in server, with a folder name that has a space in it.
+- **Two rules written down.** A name belongs to one model and never to a job (the app's checker is called by its plain word now). And a job paused on the owner's PC goes onto a checklist: an overnight benchmark paused for the two-Bob trial was never resumed, and the owner woke to no numbers.

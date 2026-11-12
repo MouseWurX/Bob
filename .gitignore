@@ -20,3 +20,4 @@ app/model-lab/forge/hf-token.txt
 app/model-lab/forge/hf-token.locked
 __pycache__/
 *.pyc
+app/model-lab/forge/fnri-bundle/

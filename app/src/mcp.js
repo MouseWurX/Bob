@@ -27,6 +27,7 @@ import { limitOn, readOnlyRoots, handOn, handOffWhy, handsSettings } from './han
 import { safeEnv, launchPlan, killTree, checkCommand, textProblem } from './hands-run.js';
 import { exeName } from './platform.js';
 import { theBox, lockOn, sealCopy, openCopy, BoxStuck, ensureBox } from './secret-box.js';
+import { backoffMs, pause } from './retry.js'; // item 194
 
 const WIN = process.platform === 'win32';
 export const IDLE_MS = 5 * 60_000; // a server Bob started stops after 5 minutes unused
@@ -280,7 +281,7 @@ class Conn {
       const w = this.pending.get(one.id);
       if (!w) continue;
       this.pending.delete(one.id);
-      if (one.error) w.reject(new Error(String(one.error.message || 'The app said no.').slice(0, 500)));
+      if (one.error) w.reject(Object.assign(new Error(String(one.error.message || 'The app said no.').slice(0, 500)), { appSaid: true }));
       else w.resolve(one.result);
     }
   }
@@ -307,7 +308,7 @@ class Conn {
     const r = await fetch(this.s.url, { method: 'POST', headers: this.headers(), body: JSON.stringify(msg), signal });
     const sid = r.headers.get('mcp-session-id');
     if (sid) this.session = sid;
-    if (r.status === 404 && this.session && msg.method !== 'initialize') throw new Error('The app forgot this connection (it restarted?). Try again.');
+    if (r.status === 404 && this.session && msg.method !== 'initialize') throw Object.assign(new Error('The app forgot this connection (it restarted?). Try again.'), { forgot: true, code: 'mcp_session_lost' });
     if (!r.ok && r.status !== 202) throw new Error(`The app answered ${r.status}${r.status === 405 || r.status === 404 ? ' (is that the right address? Bob speaks the newer "Streamable HTTP" kind)' : ''}.`);
     return r;
   }
@@ -355,7 +356,7 @@ async function readHttpReply(r, id) {
   const type = r.headers.get('content-type') || '';
   const pick = (m) => {
     for (const one of [].concat(m)) {
-      if (one && one.id === id) { if (one.error) throw new Error(String(one.error.message || 'The app said no.').slice(0, 500)); return { found: true, result: one.result }; }
+      if (one && one.id === id) { if (one.error) throw Object.assign(new Error(String(one.error.message || 'The app said no.').slice(0, 500)), { appSaid: true }); return { found: true, result: one.result }; }
     }
     return { found: false };
   };
@@ -561,6 +562,45 @@ function codeIn(inputs) {
 }
 
 // ---- The tools Bob sees ----
+// Items 176 and 177 (Nov 12), always on.
+// An app that forgot the connection (it answered 404 for our session: it restarted) is connected again, once, and
+// the call is tried once more: the app never saw the first try, so nothing happens twice.
+// An app that fails PAUSE_AFTER times in a row (no answer, not running, a broken reply) is paused for PAUSE_MS, so one
+// broken app can't fill a job with errors. The app's own "no" to a call is an answer, not a failure.
+export const PAUSE_AFTER = 3;
+export const PAUSE_MS = 3 * 60_000;
+const trips = new Map(); // server id -> { fails, until }
+export function appPaused(id, now = Date.now()) { const t = trips.get(id); return t && t.until > now ? t.until - now : 0; }
+export function appOk(id) { trips.delete(id); }
+export function appFailed(id, now = Date.now()) {
+  const t = trips.get(id) || { fails: 0, until: 0 };
+  t.fails++;
+  if (t.fails >= PAUSE_AFTER) { t.until = now + PAUSE_MS; t.fails = 0; }
+  trips.set(id, t);
+  return t.until > now;
+}
+export function resetPauses() { trips.clear(); }
+// Run one use of an app with both rules. use(conn, tools) does the work.
+export async function withApp(s, signal, open, use, log = () => {}) {
+  const left = appPaused(s.id);
+  if (left) throw new Error(`${s.name} is paused for ${Math.ceil(left / 60_000)} more minute${Math.ceil(left / 60_000) === 1 ? '' : 's'}: it failed ${PAUSE_AFTER} times in a row. Say so; don't call it again until then.`);
+  try {
+    let out;
+    try { out = await use(await open()); }
+    catch (e) {
+      if (!e?.forgot || signal?.aborted) throw e;
+      log('hands', `connected app ${s.name} forgot the connection; connecting again and trying once more`);
+      stopServer(s.id);
+      out = await use(await open());
+    }
+    appOk(s.id);
+    return out;
+  } catch (e) {
+    if (!signal?.aborted && !e?.appSaid && appFailed(s.id)) log('hands', `connected app ${s.name} failed ${PAUSE_AFTER} times in a row; paused for ${Math.round(PAUSE_MS / 60_000)} minutes`);
+    throw e;
+  }
+}
+
 export function mcpTools(brain, { track } = {}) {
   const cfg = brain.cfg;
   const log = (k, t) => brain.log?.(k, t);
@@ -574,10 +614,23 @@ export function mcpTools(brain, { track } = {}) {
     return s;
   };
   // The app's full tool list, from the app itself (cached on the connection while it runs).
-  const toolsOf = async (s, signal) => {
+  const toolsOnce = async (s, signal) => {
     const conn = await connect(cfg, s, deps);
     if (!conn.tools) { conn.tools = await listTools(conn, { signal }); remember(cfg, s.id, { tools: conn.tools.map(brief), checked: Date.now(), error: '' }); }
     return { conn, tools: conn.tools };
+  };
+  // Item 194: the app restarted (it forgot the connection, or the connection closed): connect afresh and ask once more,
+  // after a short wait with a bit of randomness. Only for reading its tool list, or a call the app never ran.
+  const lost = (e) => e?.code === 'mcp_session_lost' || /connection is closed|forgot this connection|ECONNRESET|socket hang up/i.test(String(e?.message));
+  const toolsOf = async (s, signal) => {
+    try { return await toolsOnce(s, signal); }
+    catch (e) {
+      if (signal?.aborted || !lost(e)) throw e;
+      log('hands', `connected app ${s.name}: ${e.message}; connecting again`);
+      stopServer(s.id);
+      await pause(backoffMs(0, { base: 1000 }), signal);
+      return toolsOnce(s, signal);
+    }
   };
   const parseInputs = (v) => {
     if (v === undefined || v === null || v === '') return {};
@@ -600,7 +653,7 @@ export function mcpTools(brain, { track } = {}) {
         return list.map((s) => `${s.name}: ${s.on ? 'on' : 'switched off'}${s.tools.length ? `, ${s.tools.length} tools` : ''}`).join('\n');
       }
       const s = pickServer(args.app);
-      const { tools } = await toolsOf(s, ctx?.signal);
+      const { tools } = await withApp(s, ctx?.signal, () => toolsOf(s, ctx?.signal), (x) => x, log);
       const words = String(args.find || '').toLowerCase().split(/\W+/).filter((w) => w.length > 2);
       const shown = words.length ? tools.filter((x) => words.some((w) => `${x.name} ${x.description || ''}`.toLowerCase().includes(w))) : tools;
       if (!shown.length) return `${s.name} has no tool matching "${args.find}". Its tools: ${tools.map((x) => x.name).join(', ')}.`;
@@ -635,7 +688,7 @@ export function mcpTools(brain, { track } = {}) {
       off();
       const s = pickServer(args.app);
       const inputs = parseInputs(args.inputs);
-      const { tools } = await toolsOf(s, ctx?.signal);
+      const { tools } = await withApp(s, ctx?.signal, () => toolsOf(s, ctx?.signal), (x) => x, log);
       const tool = tools.find((x) => x.name === args.tool) || tools.find((x) => x.name.toLowerCase() === String(args.tool || '').toLowerCase());
       if (!tool) throw new Error(`${s.name} has no tool called "${args.tool}". Call mcp_tools to see them. Some of its tools: ${tools.slice(0, 30).map((x) => x.name).join(', ')}.`);
       const need = (Array.isArray(tool.inputSchema?.required) ? tool.inputSchema.required : []).filter((k) => !(k in inputs));
@@ -660,14 +713,17 @@ export function mcpTools(brain, { track } = {}) {
       off();
       const s = pickServer(args.app);
       const inputs = parseInputs(args.inputs);
-      const { conn, tools } = await toolsOf(s, ctx?.signal);
-      const name = ctx?.mcpTool || tools.find((x) => x.name.toLowerCase() === String(args.tool || '').toLowerCase())?.name || args.tool;
+      const picked = ctx?.mcpTool;
       if (ctx) ctx.mcpTool = null;
-      const why = inputsProblem(cfg, inputs, brief(tools.find((x) => x.name === name) || {}));
-      if (why) throw new Error(`That's refused: ${why}`); // checked again right before it runs
-      log('hands', `connected app ${s.name}: ${name} ${JSON.stringify(inputs).slice(0, 300)}`);
-      const timeoutMs = handsSettings(cfg).timeoutMin * 60_000;
-      const r = await conn.request('tools/call', { name, arguments: inputs }, { timeoutMs, signal: ctx?.signal });
+      let name = picked || args.tool;
+      const r = await withApp(s, ctx?.signal, () => toolsOf(s, ctx?.signal), async ({ conn, tools }) => {
+        name = picked || tools.find((x) => x.name.toLowerCase() === String(args.tool || '').toLowerCase())?.name || args.tool;
+        const why = inputsProblem(cfg, inputs, brief(tools.find((x) => x.name === name) || {}));
+        if (why) throw Object.assign(new Error(`That's refused: ${why}`), { appSaid: true }); // checked again right before it runs
+        log('hands', `connected app ${s.name}: ${name} ${JSON.stringify(inputs).slice(0, 300)}`);
+        const timeoutMs = handsSettings(cfg).timeoutMin * 60_000;
+        return conn.request('tools/call', { name, arguments: inputs }, { timeoutMs, signal: ctx?.signal });
+      }, log);
       touch(s.id);
       const saved = [];
       const text = resultText(cfg, s, name, r, saved);

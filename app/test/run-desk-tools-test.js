@@ -130,6 +130,23 @@ fs.writeFileSync(path.join(docs, 'Report.pdf'), makePdf());
   const far = 'BT /F2 10 Tf 72 712 Td (Two) Tj 40 0 Td (words) Tj 45 0 Td (apart) Tj ET';
   const nofont = Buffer.from(`%PDF-1.4\n1 0 obj << /Length ${far.length} >>\nstream\n${far}\nendstream\nendobj\n%%EOF`, 'latin1');
   check('with no widths in the file, a wide move is still a space', pdfText(nofont) === 'Two words apart', JSON.stringify(pdfText(nofont)));
+  // 1.5.208 PC check (arXiv 1706.03762): citations and maths came out one piece a line ("[\n13\n]"). A new text block
+  // on the same baseline, or a small move up or down (a footnote mark, x squared), stays on the line.
+  const even = Array.from({ length: 95 }, () => 500).join(' ');
+  const cite = 'BT /F1 10 Tf 72 700 Td (Attention [) Tj ET BT /F1 10 Tf 127 700 Td (13) Tj ET BT /F1 10 Tf 137 700 Td (]) Tj 0 3.5 Td (2) Tj 0 -3.5 Td ( is all) Tj ET BT /F1 10 Tf 72 688 Td (next line) Tj ET BT /F1 1 Tf 10 0 0 10 72 676 Tm (by) Tj ET BT /F1 1 Tf 10 0 0 10 90 676 Tm (Tm) Tj ET';
+  const citePdf = Buffer.from(`%PDF-1.4\n1 0 obj << /Length ${cite.length} >>\nstream\n${cite}\nendstream\nendobj\n2 0 obj << /Type /Font /Subtype /TrueType /FirstChar 32 /LastChar 126 /Widths [${even}] >>\nendobj\n3 0 obj << /Type /Page /Resources << /Font << /F1 2 0 R >> >> /Contents 1 0 R >>\nendobj\n%%EOF`, 'latin1');
+  check('a citation in its own text blocks and a raised 2 stay on their line; a lower line is a new line', pdfText(citePdf) === 'Attention [13]2 is all\nnext line\nby Tm', JSON.stringify(pdfText(citePdf)));
+  // …and the first page came out last or not at all: arXiv stamps page 1 after the file is made, so the new page 1
+  // sits at the end of the file (an update), and an old copy stays inside. The page tree gives the order.
+  const pg = (s, y = 712) => `BT /F1 12 Tf 72 ${y} Td (${s}) Tj ET`;
+  const st = (n, s) => `${n} 0 obj << /Length ${s.length} >>\nstream\n${s}\nendstream\nendobj\n`;
+  const updated = Buffer.from('%PDF-1.5\n1 0 obj << /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj << /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>\nendobj\n'
+    + '4 0 obj << /Type /Page /Parent 2 0 R /Contents 6 0 R >>\nendobj\n' + st(6, pg('Page two words')) + '3 0 obj << /Type /Page /Parent 2 0 R /Contents 5 0 R >>\nendobj\n' + st(5, pg('An old copy of page one'))
+    + 'trailer << /Root 1 0 R >>\n%%EOF\n' + st(5, pg('Attention Is All You Need')) + '1 0 obj << /Type /Catalog /Pages 2 0 R >>\nendobj\ntrailer << /Root 1 0 R /Prev 9 >>\n%%EOF\n', 'latin1');
+  const { pdfPages } = await import('../src/doc-text.js');
+  check('pages come in the page tree\'s order, and an updated page 1 replaces the old copy', JSON.stringify(pdfPages(updated)) === JSON.stringify(['Attention Is All You Need', 'Page two words']), JSON.stringify(pdfPages(updated)));
+  const tree = Buffer.from('%PDF-1.5\n1 0 obj << /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj << /Type /Page /Parent 2 0 R /Contents [5 0 R 6 0 R] >>\nendobj\n' + st(6, pg('second half', 698)) + st(5, pg('First half')) + '%%EOF\n', 'latin1');
+  check('a page made of two streams reads them in the order the page lists', pdfText(tree) === 'First half\nsecond half', JSON.stringify(pdfText(tree)));
   try { docTextFrom(Buffer.from('x'), 'doc'); why = ''; } catch (err) { why = err.message; }
   check('an old .doc points at the Office documents Hand', /Office documents Hand/.test(why), why);
   try { zipEntries(Buffer.from('not a zip at all, sorry, not one bit')); why = ''; } catch (err) { why = err instanceof DocError ? err.message : ''; }

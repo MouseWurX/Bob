@@ -334,7 +334,7 @@ const reset = () => { ran.length = 0; events.length = 0; seen.length = 0; slow =
     await until(() => lines.some((l) => /carried on with the same ask|Lisbon/.test(l) && lines.filter((x) => /Lisbon|carried on/.test(x)).length > 1));
     await until(() => brain.queue.every((j) => ['done', 'failed'].includes(j.state)));
     brain.log = logWas; brain.saveHands = saveWas;
-    const asked = lines.filter((l) => /^chat: .*: what is the weather in Lisbon tomorrow\?/.test(l)).length;
+    const asked = lines.filter((l) => /^chat: Sam: (?:what is the weather in Lisbon tomorrow\?|a message \(39 characters\))/.test(l)).length;
     check('after Switch it on, the job carries on and its chat line is logged once', pressed?.ok && asked === 1 && lines.some((l) => /carried on with the same ask/.test(l)), JSON.stringify({ card: Boolean(card), pressed, asked, lines: lines.filter((l) => /^chat|setup/.test(l)).slice(-8) }));
     cfg.webSearch = webWas;
   }

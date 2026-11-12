@@ -44,9 +44,9 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   for (const t of ['llama-bench', 'llama-gguf-split', 'ggml-rpc-server', 'llama-diffusion-cli']) ok((wf.match(new RegExp(t, 'g')) || []).length >= 4, `Brain Engine build: builds and packs ${t} (Windows and Linux)`);
   ok((wf.match(/-DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON/g) || []).length === 2, 'Brain Engine build: RPC and the examples (the diffusion runner) on, both systems');
   ok((wf.match(/set\(BUILD_NUMBER \$\{tag#b\}\)/g) || []).length === 2, 'Brain Engine build: --version says the tag\'s build number, not "build 1" from the one-commit clone, both systems');
-  ok((wf.match(/out=brain-engine-\$BEV-/g) || []).length === 2 && (wf.match(/publish\.sh "\$BEV" "\$TAG"/g) || []).length === 2 && /bob\.brainEngineVersion/.test(wf), 'Brain Engine build: files and release take its own version number (brain-engine-v<N>), built on the tested llama.cpp tag');
+  ok((wf.match(/out=brain-engine-\$BEV-/g) || []).length === 2 && (wf.match(/publish\.sh "\$BEV" "\$TAG"/g) || []).length === 2 && /bob\.brainEngineVersion/.test(wf), 'Brain Engine build: files and release take its own name (brain-engine-<N>b<llama.cpp build>), built on the tested llama.cpp tag');
   const pub = read(path.join(here, '..', 'engine', 'publish.sh'));
-  ok(/ver="\$1"; tag="\$2"; file="\$3"/.test(pub) && /rel="brain-engine-\$ver"/.test(pub) && /Brain Engine \$\{ver#v\} \(built on llama\.cpp \$tag/.test(pub), 'publish.sh names the release by Brain Engine\'s own version');
+  ok(/ver="\$1"; tag="\$2"; file="\$3"/.test(pub) && /rel="brain-engine-\$ver"/.test(pub) && /Brain Engine \$\{ver#v\} \(Brain Engine \$\{ver%%b\*\} on llama\.cpp \$tag/.test(pub), 'publish.sh names the release by Brain Engine\'s own version');
   const pkg = JSON.parse(read(path.join(here, '..', 'package.json')));
   ok(Number.isInteger(pkg.bob.brainEngineVersion) && pkg.bob.brainEngineVersion >= 3, 'package.json carries Brain Engine\'s own version number');
   const cel = read(path.join(here, '..', 'public', 'cellar.js'));
@@ -330,7 +330,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     const riker = spreadLoadSeconds(17.5);
     ok(riker > 413 + 2.63e3 / 6.6 && riker >= 60 * 60 && riker <= 7200, 'spread: the wait grows with the brain (Riker over Wi-Fi gets over an hour, not 5 minutes)', riker);
     ok(spreadLoadSeconds(0) === 300 && spreadLoadSeconds(0, 900) === 900 && spreadLoadSeconds(1e4) === 7200, 'spread: never less than the usual wait, never more than two hours');
-    ok(/return this\.preload\(model, signal, \{[^}]*noSpread: true \}\)/.test(llamacpp) && /!noSpread/.test(llamacpp), 'spread: a spread that failed loads here like always instead');
+    ok(/return this\.(preload|startEngine)\(model, signal, \{[^}]*noSpread: true[^}]*\}\)/.test(llamacpp) && /!noSpread/.test(llamacpp), 'spread: a spread that failed loads here like always instead');
     ok(/still loading over Bob-Net/.test(llamacpp) && /network cable is much faster/.test(llamacpp), 'spread: a long first load says how it is going, and that a cable is faster');
   }
 }

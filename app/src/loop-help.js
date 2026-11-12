@@ -10,6 +10,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { asDoc, asQuery, embedModel } from './embed-prefix.js';
 import { writeJsonAtomic } from './util.js';
+import { kindOf, isReadOnly, isVolatile } from './tool-kinds.js';
 
 // ---------------------------------------------------------------------------------------------------------------
 // 1. What goes into a call
@@ -330,9 +331,10 @@ export function tidyOld(list, turnStart, ctxTokens, { at = TIDY_AT } = {}) {
 // 7. Look-ups side by side
 // ---------------------------------------------------------------------------------------------------------------
 // Only tools that read and never ask for an OK; each runs once, the rest of the loop handles its result as usual.
-export const LOOK_TOGETHER = new Set(['web_search', 'fetch_page', 'search_files', 'find_in_documents', 'bob_help', 'code_map', 'list_folder', 'read_file']);
+// Nov 12 (item 180): any look in tool-kinds.js that doesn't wait on a person and doesn't change between calls.
+export const LOOK_TOGETHER = { has: (name) => isReadOnly(name) && !kindOf(name).waits && !isVolatile(name) && name !== 'use_tools' };
 export function togetherCalls(calls, tools, { skip = () => false } = {}) {
-  const picked = (calls || []).filter((c) => !c.bounce && LOOK_TOGETHER.has(c.function?.name) && tools[c.function.name] && !tools[c.function.name].check && !skip(c));
+  const picked = (calls || []).filter((c) => !c.bounce && LOOK_TOGETHER.has(c.function?.name) && tools[c.function.name] && !tools[c.function.name].check && !kindOf(c.function.name, tools[c.function.name]).waits && isReadOnly(c.function.name, tools[c.function.name]) && !skip(c));
   return picked.length >= 2 ? picked : [];
 }
 

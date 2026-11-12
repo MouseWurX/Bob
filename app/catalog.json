@@ -449,6 +449,36 @@
       }
     },
     {
+      "id": "gpt-oss-120b-mxfp4",
+      "family": "GPT-OSS",
+      "category": "coding",
+      "jobs": ["deep", "reviewer", "tinker", "bob", "office"],
+      "name": "gpt-oss 120B",
+      "published": "2025-08-05",
+      "what": "gpt-oss 20B's big brother: a careful thinker. Far bigger than a home graphics card, so most of it waits in memory and on the drive. Slow, but it runs.",
+      "sizeGB": 63.4,
+      "vramGB": 66,
+      "params": 117,
+      "activeParams": 5,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "trial": true,
+      "files": [
+        {
+          "url": "https://huggingface.co/ggml-org/gpt-oss-120b-GGUF/resolve/7200b74bea78b0a2964ef9f3897eefa401e890ff/gpt-oss-120b-MXFP4.gguf",
+          "role": "gguf",
+          "verify": true,
+          "sha256": "582bd40f6886200101f4c4ed9f25f3fe80cc14c86e9e2b37746cd8904a0c622d",
+          "bytes": 63387346208
+        }
+      ],
+      "use": {
+        "models": {
+          "deep": "$model"
+        }
+      }
+    },
+    {
       "id": "qwen2.5-coder-7b",
       "family": "Qwen",
       "category": "coding",
@@ -2639,7 +2669,10 @@
           "role": "gguf",
           "verify": true,
           "bytes": 17494120544,
-          "sha256": "c96ae59c62b6e1802788d07e2d3e2edb540b3a765dd71689d92a1b546e4439e7"
+          "sha256": "c96ae59c62b6e1802788d07e2d3e2edb540b3a765dd71689d92a1b546e4439e7",
+          "aka": [
+            "28Bob-Riker-Q4_K_M.gguf"
+          ]
         }
       ],
       "use": {
@@ -2678,7 +2711,10 @@
           "role": "gguf",
           "verify": true,
           "bytes": 13873840224,
-          "sha256": "d3b65bbc3ae8529f721675350b2f2a6e12e3205269345eaf6066d3e535684267"
+          "sha256": "d3b65bbc3ae8529f721675350b2f2a6e12e3205269345eaf6066d3e535684267",
+          "aka": [
+            "28Bob-Riker-Q3_K_M.gguf"
+          ]
         }
       ],
       "use": {

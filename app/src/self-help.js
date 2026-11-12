@@ -2,6 +2,7 @@
 // set him up"). The bob_help tool searches the same Help text the window shows (public/help-content.js) and adds
 // what is set right now, so Bob can say exactly where a switch is and whether it's on. Read-only: it changes nothing.
 import { harnessNow } from './harness.js';
+import { moreToolsLine } from './more-tools.js';
 import { houseStylePrompt } from '../public/house-style.js';
 import { HELP } from '../public/help-content.js';
 import { webOn } from './web.js';
@@ -52,11 +53,16 @@ export function settingsNow(cfg) {
     `Let Bob learn how-tos: ${onOff(cfg.howtos === true)}`,
     `Let Bob fix his own messages: ${onOff(cfg.editOwn === true)}`,
     `Show Try again, Edit and Delete in the chat: ${onOff(cfg.chatRedo !== false)}`,
+    `Answer messages between steps: ${onOff(cfg.answerMidJob !== false)}`,
     `Let Bob's Quick brain see the big job: ${onOff(cfg.quickSeesJob === true)}`,
     `Engine extras (Speed & memory): Guess ahead by copying from the chat: ${onOff(cfg.copyGuess === true)}; Load the next brain early: ${onOff(cfg.preloadNext === true)}; Laptop mode: ${onOff(cfg.laptopMode === true)}; Test a new graphics card by itself: ${onOff(cfg.newCardTest === true)}; Keep a speed history: ${onOff(cfg.speedLog === true)}; Tell me what engine updates change (Engines): ${onOff(cfg.engineNotes === true)}; Chat memory type picked for ${Object.values(cfg.brainMemType || {}).filter((t) => t !== 'standard').length} brain(s), the rest Standard`,
     harnessNow(cfg), // items 62 to 72: crashes, safe start, undo, quiet hours, weekly, shortcut, chat extras
     `Let Bob take quick notes: ${onOff(cfg.quickNotes === true)} (Let Bob notice what's worth noting: ${onOff(cfg.smartNotes === true)}); Read and search my documents: ${onOff(cfg.docTools === true)} (Search my documents by meaning: ${onOff(cfg.docMeaning === true)}); Show documents in the side panel: ${onOff(cfg.docView === true)}; Save chats as files and bring chats in: ${onOff(cfg.chatFiles === true)}; Show maths as formulas: ${onOff(cfg.mathView === true)}; Keyboard shortcuts: ${onOff(cfg.shortcuts === true)}; Pull up saved prompts with /: ${onOff(cfg.promptMenu === true)}; Let Bob work things out in a sandbox: ${onOff(cfg.sandboxCode === true)}; Assistant presets for chats: ${onOff(cfg.chatPresets === true)} (${(cfg.presetList || []).length} saved); Let Bob make 3D parts: ${onOff(cfg.parts3d === true)}; Let Bob turn pictures into 3D models: ${onOff(cfg.model3d === true)}`,
     `Text size: ${cfg.textSize || 100}%; Easier-to-read font: ${onOff(cfg.readableFont === true)}; Show a today card when Bob opens: ${onOff(cfg.todayCard === true)}${cfg.todayPlace ? ' (weather for the place typed)' : ''}; Focus timer: ${onOff(cfg.focusTimer === true)}; Keep a spending sheet from receipts: ${onOff(cfg.receipts === true)}; Show what's new after an update: ${onOff(cfg.updateTour === true)}; Show a dot on the tray icon: ${onOff(cfg.trayDot === true)}; Profiles for other people: ${onOff(cfg.profilesOn === true)}`,
+    `Keep my documents fresh: ${onOff(cfg.docFresh === true)}; Show the page and line: ${onOff(cfg.docPlaces === true)}; Search my notes apps too: ${(cfg.notesFolders || []).length} folder(s); A Sunday digest: ${onOff(cfg.weeklyDigest === true)}`,
+    `Note where each memory came from: ${onOff(cfg.memorySources === true)}; Let memories run out: ${onOff(cfg.memoryExpiry === true)}; Keep project memories to their project: ${onOff(cfg.memoryWhere === true)}`,
+    moreToolsLine(cfg),
+    `Time zone: ${cfg.timeZone || 'not read yet'} (${cfg.timeZoneSet ? 'set by hand in config.json' : 'read from this computer\'s clock'}; shown in Settings, This replicant matrix, read-only)`,
     `Let Bob work on repositories: ${onOff(cfg.selfWork?.enabled === true)} (his own app first, then ${(cfg.selfWork?.repos || []).length} of yours); Let my other Bobs help: ${onOff(cfg.selfWork?.helpers === true)}`,
     `Session: ${currentSession(cfg).label}; Let Bob pick the session: ${onOff(cfg.autoSession !== false)}; 🎮 Gaming button (chat page): ${onOff(cfg.gamingLock === true)}`,
     `Free memory when Bob is idle: ${onOff(brainMode(cfg) !== 'always')}`,

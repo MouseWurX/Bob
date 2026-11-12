@@ -16,7 +16,7 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import { insideAny, isInside, appDir } from './config.js';
 import { HANDS, LIMITS, handOn, handOffWhy, handsSettings, cleanHands, readOnlyRoots, freeOn, limitOn, handsHere, handsOs, computerWord, handHere } from './hands-settings.js';
-import { planFiles, planCard, applyFiles, undoJob, loadJournal, handsRoots } from './hands-files.js';
+import { planFiles, planCard, applyFiles, undoJob, loadJournal, handsRoots, undoPreview } from './hands-files.js';
 import { planSort, sortSummary } from './sort-library.js';
 import { exampleFor, TOKENS } from './sort-names.js';
 import { checkCommand, runCommand, safeEnv } from './hands-run.js';
@@ -188,7 +188,10 @@ export function handsTools(brain, opts = {}) {
       const j = id ? loadJournal(cfg).find((x) => x.id === id) : [...loadJournal(cfg)].reverse().find((x) => !x.undone);
       if (!j) throw new Error('There is no file job to undo.');
       if (j.undone) throw new Error('That job was already undone.');
-      return `Undo "${j.label}" (${j.steps.length} step${j.steps.length === 1 ? '' : 's'}): moved things go back, things I made go to the Recycle Bin.`;
+      // Item 174 (Nov 12): a dry run first, so the card lists what will really happen, and what can't.
+      const rows = undoPreview(j);
+      const cant = rows.filter((r) => r.cant).length;
+      return { text: `Undo "${j.label}" (${j.steps.length} step${j.steps.length === 1 ? '' : 's'}): moved things go back, things I made go to the Recycle Bin.${cant ? ` ${cant} can't be undone as things are now.` : ''}`, diff: rows.slice(0, 20).map((r) => `${r.cant ? '✗' : '•'} ${r.line}`).join('\n') + (rows.length > 20 ? `\n... ${rows.length - 20} more` : '') };
     },
     async run({ id }) {
       offUndo(cfg);

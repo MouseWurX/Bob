@@ -29,9 +29,9 @@ export const MIN_PASSCODE = 8;
 // What a backup can hold, in the order Settings lists it. Paths are inside the inn folder ('/' at the end = a folder).
 export const PARTS = [
   { id: 'chats', label: 'Chats', what: 'Every chat, its summary and which ones are pinned.', paths: ['bob/sessions/', 'bob/chat-summaries.json', 'bob/topics.json', 'bob/housekeeping.json', 'bob/my-tests.jsonl'] },
-  { id: 'settings', label: 'Settings', what: 'Everything set in Settings, check-ins, reminders, scheduled jobs, apps you connected, his voice sample and what he calls you.', paths: ['bob/settings.json', 'saved-prompts.json', 'bob/chat-presets.json', 'bob/chat-start/', 'bob/schedules.json', 'bob/reminders.json', 'bob/checkins.json', 'bob/mcp-servers.json', 'bob/hands-recipes.json', 'bob/clan.json', 'bob/about-me.md', 'bob/backstory.md', 'bob/equip-plan.json', 'voices/'] },
-  { id: 'memory', label: 'Memory', what: 'What Bob remembers about you, his how-tos, the notice board and his logbook.', paths: ['bob-memory.md', 'bob/memory-vectors.json', 'bob/howtos.json', 'notice-board.md', 'logbook.md', 'archive/'] },
-  { id: 'notes', label: 'Notes and records', what: 'Quick notes and the records (ledgers) he keeps for you.', paths: ['quick-notes.md', 'ledger/'] },
+  { id: 'settings', label: 'Settings', what: 'Everything set in Settings, check-ins, reminders, scheduled jobs, apps you connected, his voice sample and what he calls you.', paths: ['bob/settings.json', 'saved-prompts.json', 'bob/chat-presets.json', 'bob/chat-start/', 'bob/schedules.json', 'bob/page-watches.json', 'bob/reminders.json', 'bob/checkins.json', 'bob/mcp-servers.json', 'bob/hands-recipes.json', 'bob/clan.json', 'bob/about-me.md', 'bob/backstory.md', 'bob/equip-plan.json', 'voices/'] },
+  { id: 'memory', label: 'Memory', what: 'What Bob remembers about you, his how-tos, the notice board and his logbook.', paths: ['bob-memory.md', 'memory-changes.jsonl', 'bob/memory-vectors.json', 'bob/howtos.json', 'notice-board.md', 'logbook.md', 'archive/'] },
+  { id: 'notes', label: 'Notes and records', what: 'Quick notes, Sunday digests and the records (ledgers) he keeps for you.', paths: ['quick-notes.md', 'digests/', 'ledger/'] },
   { id: 'tools', label: 'Tools Bob made', what: 'The little tools he wrote himself. They come back switched off until you OK them again.', paths: ['tools/'] },
   { id: 'made', label: 'List of things Bob made', what: 'The Made by Bob list (names, dates, song words). The pictures, clips and songs themselves stay where they are: copy that folder yourself.', paths: ['bob/made.json'] }
 ];
@@ -42,24 +42,30 @@ export const PART_IDS = PARTS.map((p) => p.id);
 // Bob's code names in inn\bob or inn is either in a part above or here, so nothing new is forgotten.
 export const NOT_BACKED_UP = [
   'bob/update-status.json', 'bob/update-launch-log.txt', 'bob/github-update/', 'bob/catalog-latest.json', 'bob/model-scan.json',
-  'bob/tidy-backups/', 'bob/backups/', 'bob/trash/', 'bob/thumbs/', 'bob/voice-samples/', 'bob/speed-tests.json', 'bob/speed-log.json', 'bob/card-seen.json', 'bob/load-times.json',
+  'bob/tidy-backups/', 'bob/tool-results/', 'bob/backups/', 'bob/trash/', 'bob/thumbs/', 'bob/voice-samples/', 'bob/speed-tests.json', 'bob/speed-log.json', 'bob/card-seen.json', 'bob/load-times.json',
   'bob/selftools.json', 'bob/quarantine.json', 'bob/lab/', 'bob/hands-runs.json', 'bob/hands-journal.json', 'bob/downloads.json',
-  'bob/queue.json', 'bob/electron/', 'bob/doc-index.json', 'bob/tool-group-vectors.json', 'bob/receipts/', 'bob/claude-door.json', 'bob/tool-packs.json', 'tool-packs/', 'bob/sd-server-args.txt', 'bob/backup-state.json', 'bob/restore-result.json',
+  'bob/queue.json', 'bob/electron/', 'bob/doc-index.json', 'bob/digest.json', 'bob/tool-group-vectors.json', 'bob/receipts/', 'bob/claude-door.json', 'bob/tool-packs.json', 'tool-packs/', 'bob/sd-server-args.txt', 'bob/backup-state.json', 'bob/restore-result.json',
   'bob/seeded-brains.json', 'bob/keys.json', 'bob/bob-net-link-keys.json', // brains seeded on a lent card (worked out again); locked secrets and Bob-Net link keys are locked to this computer (keys travel in the locked part; Bobs pair again)
-  'bob/running.json', 'bob/crash-reports/', 'bob/before-safe-start.json', 'bob/settings-undo.json', 'bob/weekly.json', 'bob/chat-places/', // items 62 to 72: worked out again on this computer, or about this computer only
+  'bob/saved-formats.json', 'bob/turn-changes/', // items 232 and 238: worked out again; a turn's Undo is about this computer's files
+  'bob/running.json', 'bob/crash-reports/', 'bob/before-safe-start.json', 'bob/settings-undo.json', 'bob/weekly.json', 'bob/chat-places/', 'bob/tool-errors.json', // items 62 to 72 (and reliability item 206's error counts): worked out again on this computer, or about this computer only
+  'bob/brain-files.json', 'bob/engine-care.json', 'bob/engine-care-beside.json', // reliability 218-228: about this computer's engine and files
+  'bob/honesty.json', // Nov 12, item 192: each brain's honesty score on this computer, counted again from new answers
   'bob/spending.json', 'profiles/', // 🧾 the spending sheet and 👥 profiles are locked with keys that belong to this computer (or a person's passcode kept in config.json): save the sheet as a CSV to move it
-  'painter/', 'references/', 'workshop/', 'own-code/', 'documents/', 'tools/_scratch/', 'restore-waiting/', 'restore-waiting.new/'
+  'painter/', 'references/', 'workshop/', 'own-code/', 'documents/', 'tools/_scratch/', 'tools/_pyscratch/', 'restore-waiting/', 'restore-waiting.new/'
 ];
 
 // The names of keys Bob reads from the computer's own variables (Windows: your user variables; Mac and Linux:
 // ~/.config/bob/env). Only these, plus a typed-in "Another service" key name, ever go in the locked part.
-export const KEY_NAMES = ['BOB_DISCORD_TOKEN', 'BOB_TELEGRAM_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'TOGETHER_API_KEY', 'LAMBDA_API_KEY', 'RUNPOD_API_KEY', 'VAST_API_KEY', 'HF_TOKEN'];
+export const KEY_NAMES = ['BOB_DISCORD_TOKEN', 'BOB_TELEGRAM_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'TOGETHER_API_KEY', 'LAMBDA_API_KEY', 'RUNPOD_API_KEY', 'VAST_API_KEY', 'HF_TOKEN', 'BOB_EMAIL_PASSWORD'];
 const KEY_NAME_RE = /^[A-Z][A-Z0-9_]{2,63}$/;
 
 export function keyNames(cfg = {}) {
   const extra = [];
   for (const r of [].concat(cfg.rentals?.list || [])) if (KEY_NAME_RE.test(r?.keyEnv || '')) extra.push(r.keyEnv);
   for (const c of [].concat(cfg.cloud || [])) if (KEY_NAME_RE.test(c?.apiKeyEnv || '')) extra.push(c.apiKeyEnv);
+  // 🧰 More tools: each calendar link and web-service key (more-tools.js names them).
+  for (const c of [].concat(cfg.moreTools?.calendars || [])) if (/^[a-z0-9]{1,12}$/.test(c?.id || '')) extra.push(`BOB_CALENDAR_${c.id.toUpperCase()}`);
+  for (const a of [].concat(cfg.moreTools?.apis || [])) if (/^[a-z0-9]{1,12}$/.test(a?.id || '')) extra.push(`BOB_API_${a.id.toUpperCase()}`);
   return [...new Set([...KEY_NAMES, ...extra])];
 }
 

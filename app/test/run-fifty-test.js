@@ -112,7 +112,7 @@ check('13: the meter and the button are on the chat page', /id="chatFill"/.test(
 // ---------- 14. A reply that stops sending words ----------
 {
   const l = src('llamacpp.js');
-  check('14: a quiet spell after the first words lets the engine go and says "terminated"', /onChunk\(\); \/\/ item 14/.test(l) && /throw new Error\(`terminated: the brain stopped answering/.test(l) && /await this\.unloadAll\(\)/.test(l));
+  check('14: a quiet spell after the first words lets the engine go and says "terminated"', /onChunk\(\); \/\/ item 14/.test(l) && /`terminated: the brain stopped answering/.test(l) && /await this\.stopServer\(\)/.test(l)); // item 209 (Nov 12): only the stalled brain goes
 }
 
 // ---------- 16. Memory that disagrees with itself ----------
@@ -217,7 +217,8 @@ const job = (extra = {}) => ({ brain, emit: (e) => events.push(e), signal: new A
   check('21: DuckDuckGo results read', JSON.stringify(parseDdg(ddg)) === JSON.stringify([{ title: 'Example A', url: 'https://example.org/a', snippet: 'About & more' }]));
   const mj = '<li><h2><a class="title" href="https://example.org/b">Example B</a></h2><p class="s">Some <strong>words</strong></p></li>';
   check('21: Mojeek results read', JSON.stringify(parseMojeek(mj)) === JSON.stringify([{ title: 'Example B', url: 'https://example.org/b', snippet: 'Some words' }]));
-  check('20: every look-up has a time limit', /signal: webSignal\(signal\)/.test(src('tools.js')) && (src('tools.js').match(/webSignal\(signal\)/g) || []).length >= 3);
+  // Item 194: the look-ups go through fetchRetry, which puts the same webSignal time limit on every try.
+  check('20: every look-up has a time limit', /signal: webSignal\(signal\)/.test(src('tools.js')) && (src('tools.js').match(/webSignal\(signal\)|fetchRetry\([^\n]*\bsignal\);/g) || []).length >= 3);
 }
 { // 17 how big the front desk's start is
   const { messages, tools } = brain.startPrompt();

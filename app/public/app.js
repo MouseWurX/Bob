@@ -1,5 +1,6 @@
 // Bob's panel: chat, approvals, status, taskbar badge, read-aloud, and the brain-swap machine.
 import { drawBob, setLook } from './bob-sprite.js';
+import { secretNoteHtml, wireSecretNote } from './more-tools.js'; // 🧰 More tools: a password Bob made
 import { applyStyle, applySavedStyle } from './themes.js';
 applySavedStyle();
 import { startI18n, followSaved } from './i18n.js';
@@ -41,6 +42,7 @@ import { createViewer, outCard, fillPeeks } from './viewer.js';
 import { songListHtml, wireSongs } from './song-player.js';
 import { moreBar } from './more-bar.js';
 import { createPromptMenu } from './prompts.js'; // saved prompts: the / menu in the message box
+import { createBobMenu } from './bob-menu.js'; // 1.5.207 the small menu on Bob's picture
 import { diagramHtml, saveRowsHtml, setupSaveAs, watchSaveAs } from './save-as.js';
 import './math-core.js'; // Show maths as formulas: KaTeX, loaded only while the switch is on
 import { installShortcuts, listHtml as shortcutListHtml } from './shortcuts.js';
@@ -248,7 +250,31 @@ function addMade(ev) {
   if (fresh.length) { r.media.push(...fresh.map((x) => ({ type: 'file', kind: x.kind, url: x.url, name: x.name, path: x.path }))); drawReply(r); scrollDown(); }
   viewer.made(ev.items, { show: ev.show === true });
 }
-function endReply(ev) { replies.delete(ev?.turnId || '-'); }
+function endReply(ev) {
+  // Item 190 (Nov 12): a correction ends the bubble; if Bob then tries again in this turn, these words get folded
+  // away as replaced (see 'token').
+  const rep = ev?.type === 'correction' ? replies.get(ev.turnId || '-') : null;
+  if (rep?.el && String(rep.text || '').trim()) correctedBubbles.set(ev.turnId || '-', rep.el);
+  replies.delete(ev?.turnId || '-');
+}
+// Item 190 (Nov 12): a reply the app corrected and Bob then answered again folds away as "replaced", so the wrong
+// words aren't left above the right ones. One press shows them again. Live (correctedBubbles) and after a reload.
+const correctedBubbles = new Map();
+function markReplaced(el) {
+  if (!el || el.classList.contains('replaced')) return;
+  el.classList.add('replaced');
+  const keepTools = el.querySelector(':scope > .msg-tools');
+  const box = document.createElement('div');
+  box.className = 'replaced-body';
+  box.hidden = true;
+  for (const n of [...el.childNodes]) if (n !== keepTools) box.appendChild(n);
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'link mini replaced-toggle'; b.setAttribute('aria-expanded', 'false');
+  b.textContent = 'Bob\'s first try, replaced by the answer below (show it)';
+  b.onclick = () => { box.hidden = !box.hidden; b.setAttribute('aria-expanded', String(!box.hidden)); b.textContent = box.hidden ? 'Bob\'s first try, replaced by the answer below (show it)' : 'Bob\'s first try, replaced by the answer below (hide it)'; };
+  el.insertBefore(box, keepTools || null);
+  el.insertBefore(b, box);
+}
 
 // ---------- Status, badge, notifications ----------
 const STATUS_TEXT = {
@@ -469,15 +495,23 @@ $('gamesBtn').onclick = () => gamesPage.open();
 const helpPage = createHelp();
 $('helpBtn').onclick = () => helpPage.open();
 window.addEventListener('bob-tidy', () => tidyPage.open());
+// Settings, Where my memories came from: Open the chat a memory was learned in (memory-more.js).
+window.addEventListener('bob-open-chat', (e) => { const id = String(e.detail?.id || '').replace(/[^a-zA-Z0-9-]/g, ''); if (!id) return; if ($('cellar').open) $('cellar').close(); openChat(id); try { window.focus(); } catch {} });
 // "Ask Bob what he thinks" (Equip Bob, Attributes): puts the question in the chat and sends it.
 window.addEventListener('bob-ask', (e) => { const t = String(e.detail || '').slice(0, 300); if (!t) return; $('input').value = t; $('composer').requestSubmit(); });
-// Click Bob (or press Enter on him) to open Equip Bob.
+// 1.5.207 Click Bob (or press Enter on him) for his small menu: what he's doing, the brain loaded, and doors to
+// Settings, Brains, Style and Get models. The old Equip Bob screen no longer opens from here.
 bobCanvas.tabIndex = 0;
 bobCanvas.setAttribute('role', 'button');
-bobCanvas.title = 'Equip Bob: his models, attributes and look';
-bobCanvas.setAttribute('aria-label', 'Bob. Open Equip Bob');
-bobCanvas.addEventListener('click', () => cellar.open('shop', 'roles'));
-bobCanvas.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cellar.open('shop', 'roles'); } });
+bobCanvas.title = 'Bob: what I\'m doing, my brain, and my settings';
+bobCanvas.setAttribute('aria-label', 'Bob. Open my menu');
+createBobMenu({
+  anchor: bobCanvas,
+  doors: { brains: () => cellar.open('settings', null, { jump: 'adv-brains' }), style: () => cellar.open('shop', 'style'), models: () => cellar.open('shop', 'roles') },
+  getStatus: async () => (await fetch('/api/status')).json(),
+  getNames: async () => Object.fromEntries((((await (await fetch('/api/roles')).json()).options || {}).llm || []).map((o) => [o.value, o.label])),
+  saidNow: () => statusEl.title || statusEl.textContent
+});
 // A past chat from Topics or search: switch to it and show its recent part (older parts are summed up).
 async function openChat(id, msgId) {
   if (busy) { note('Bob is busy in this chat. Open the other one when he has finished.'); return; }
@@ -492,7 +526,13 @@ async function openChat(id, msgId) {
   if (el) { el.scrollIntoView({ block: 'center' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2500); }
   else if (msgId) note('That message is in the older part of this chat, which Bob keeps summed up. The Topics page shows it in full.');
 }
+// Item 238: your messages whose turn changed files, notes or memory (the … menu offers Undo changes on them).
+const turnUndo = new Set();
+async function loadTurnUndo() {
+  try { const r = await (await fetch('/api/turn-changes?session=' + encodeURIComponent(sessionId))).json(); turnUndo.clear(); for (const id of r.asks || []) turnUndo.add(id); } catch {}
+}
 async function loadHistory(n = 20) {
+  loadTurnUndo();
   try {
     const h = await (await fetch('/api/history?session=' + encodeURIComponent(sessionId))).json();
     for (const m of h.slice(-n)) {
@@ -505,6 +545,7 @@ async function loadHistory(n = 20) {
       if (m.edited) markEdited(el, m.was, m.editedBy);
       if (m.versions?.length) markVersions(el, m.versions);
       if (m.steps?.length) markSteps(el, m.steps);
+      if (m.replaced) markReplaced(el); // item 190: a corrected reply that was tried again
       if (m.correction) note(m.correction, 'error');
     }
   } catch {}
@@ -580,6 +621,12 @@ window.addEventListener('bob-mind-dock', (e) => mindTitle(e.detail.docked));
 let brainSoon = null;
 const shownCards = new Set(); // approval card ids already on this page
 function onEvent(ev) {
+  if (ev.type === 'beat') return; // item 214: only proof Bob is still answering (connect() watches for it)
+  if (ev.type === 'froze') { // item 214: Bob was stuck for a while and is back
+    const el = note(ev.text, 'announce');
+    if (ev.canRestart) { const b = document.createElement('button'); b.type = 'button'; b.className = 'link'; b.textContent = 'Restart Bob'; b.onclick = () => { b.disabled = true; post('/api/watchdog/restart', {}).catch(() => {}); }; el.append(' ', b); }
+    return;
+  }
   if (ev.type === 'brain' || ev.type === 'status') { clearTimeout(brainSoon); brainSoon = setTimeout(() => brainBar.refresh(), 250); }
   if (ev.type === 'brain') return;
   if (ev.type === 'status') return setStatus(ev);
@@ -702,6 +749,9 @@ function onEvent(ev) {
       note(ev.text, 'announce');
       scrollDown();
       return;
+    case 'reply-break': // Answer messages mid-job: the job's next words go in a new bubble, under the quick reply
+      endReply(ev);
+      return;
     case 'start':
       endReply(ev);
       running.add(ev.turnId);
@@ -720,6 +770,8 @@ function onEvent(ev) {
       return;
     case 'token': {
       if (!replies.has(ev.turnId || '-') && !ev.text.trim()) break;
+      // Item 190: the first new words after a correction in this turn: the corrected reply above is replaced.
+      if (ev.text.trim() && correctedBubbles.has(ev.turnId || '-')) { markReplaced(correctedBubbles.get(ev.turnId || '-')); correctedBubbles.delete(ev.turnId || '-'); }
       const r = ensureReply(ev);
       r.text += ev.text;
       drawReply(r);
@@ -727,6 +779,16 @@ function onEvent(ev) {
       scrollDown();
       break;
     }
+    case 'token-undo': { // item 193: a retry went another way; the words that differ are taken back
+      const r = replies.get(ev.turnId || '-');
+      const n = Math.max(0, Number(ev.chars) || 0);
+      if (r && n) { r.text = r.text.slice(0, Math.max(0, r.text.length - n)); drawReply(r); }
+      break;
+    }
+    case 'retry-note': // item 193: the brain dropped out and is loading again; a line, not words in the answer
+      note(ev.text, 'announce');
+      scrollDown();
+      break;
     case 'answer-id': { // item 11: the answer just given now has its id (Save as a test, Try again)
       const last = [...log.querySelectorAll(':scope > .msg.bob:not(.aside-msg)')].pop();
       if (last && !last.dataset.mid && ev.id) { last.dataset.mid = ev.id; drawRedo(); }
@@ -873,13 +935,24 @@ function onEvent(ev) {
     case 'carried': // Carry on on another Bob (src/carry.js): another of your Bobs or your phone handed a chat over
       add('note borrow', `📡 ${esc(ev.from || 'Another of your Bobs')} handed over a chat: <strong>${esc(ev.title || '')}</strong>. <button type="button" class="link" data-carried="${esc(ev.id || '')}">Open it</button>`);
       break;
+    case 'secret-note': { // 🧰 More tools, "Let Bob make passwords": shown here once, never saved, never spoken
+      const el = add('approval', secretNoteHtml(ev));
+      wireSecretNote(el, ev);
+      break;
+    }
     case 'reminder':
-      add('approval', `<p><strong>Reminder:</strong> ${esc(ev.text)}</p><div class="done">${esc(ev.local || '')}</div>`);
+      add('approval', `<p><strong>${ev.watch ? 'Page watch' : 'Reminder'}:</strong> ${esc(ev.text)}</p><div class="done">${esc([ev.local, ev.every ? `repeats every ${ev.every}` : ''].filter(Boolean).join(' · '))}</div>`);
       if (ev.quiet && !ev.urgent) break; // Quiet hours: in the chat only, unless it's urgent
       speak('Reminder: ' + ev.text);
       badge(true);
       try { if ('Notification' in window && Notification.permission === 'granted' && store.get('bob-alerts', '1') === '1') new Notification('Bob: reminder', { body: ev.text, icon: '/icons/bob-192.png', requireInteraction: true }); } catch {}
       break;
+    case 'digest': {
+      // A Sunday digest (src/digest.js): the week in one short note, also saved in the digests folder.
+      add('approval', `<p><strong>Sunday digest:</strong> ${esc(ev.title || '')}</p>${render(String(ev.text || '').replace(/^# .*\n+/, '').replace(/^## (.*)$/gm, '**$1**'))}${ev.file ? `<div class="row"><button type="button" class="mini" data-open="${esc(ev.file)}">Open the note</button></div>` : ''}`);
+      badge(true);
+      break;
+    }
     case 'checkin': {
       // 1.5.78 Check-ins: only sent when something needs you (src/checkins.js). Nothing is changed by it.
       const items = ev.items || [];
@@ -900,6 +973,7 @@ function onEvent(ev) {
     }
     case 'edited': editedMsg(ev); return;
     case 'msg-edited': editedMsg(ev); return; // you changed Bob's words with the ... menu (msg-menu.js), here or in another window
+    case 'turn-changed': if (ev.askId) turnUndo.add(ev.askId); return; // item 238
     case 'asked': { // Try again and Edit: the id of the message you sent, so Edit can find it in the saved chat
       const bub = jobBubbles.get(ev.turnId);
       if (bub && ev.id) { bub.dataset.mid = ev.id; drawRedo(); }
@@ -927,6 +1001,7 @@ function onEvent(ev) {
       break;
     }
     case 'done': {
+      correctedBubbles.delete(ev.turnId || '-'); // item 190: a correction with no second try stays as it is
       const rep = replies.get(ev.turnId || '-');
       const finished = rep?.text;
       // Never leave an empty Bob bubble (nothing said, nothing made).
@@ -947,11 +1022,17 @@ function onEvent(ev) {
 
 function connect() {
   const es = new EventSource('/api/events');
-  es.onmessage = (m) => { try { onEvent(JSON.parse(m.data)); } catch (e) { console.error(e); } };
+  // Item 214: Bob sends a beat every 20 s. A minute with nothing at all while still connected means he's stuck.
+  let heard = Date.now(), quiet = false, lastStatus = null;
+  es.onmessage = (m) => {
+    heard = Date.now();
+    try { const ev = JSON.parse(m.data); if (ev.type === 'status') lastStatus = ev; if (quiet) { quiet = false; if (lastStatus) setStatus(lastStatus); } onEvent(ev); } catch (e) { console.error(e); }
+  };
+  setInterval(() => { if (!dropped && !quiet && es.readyState === 1 && Date.now() - heard > 65000) { quiet = true; statusEl.textContent = 'Bob hasn\'t answered for a minute. If this lasts, close Bob and open him again.'; statusEl.className = 'status waiting'; } }, 10000);
   let dropped = false;
   es.onerror = () => { dropped = true; statusEl.textContent = 'Bob\'s brain isn\'t answering. Retrying...'; statusEl.className = 'status waiting'; };
   // Back after a gap: anything Bob made meanwhile is in his saved replies, so show what this window missed.
-  es.onopen = () => { if (dropped) { dropped = false; catchUpMedia(); } };
+  es.onopen = () => { if (dropped) { dropped = false; catchUpMedia(); } heard = Date.now(); };
 }
 async function catchUpMedia() {
   try {
@@ -1159,14 +1240,14 @@ function markVersions(el, list) {
 // Item 10 (Nov 11): "How I got here" under a reply: each step, whether it worked, how long it took, how much came back and
 // which brain was thinking. Folded until pressed; Copy puts it on the clipboard as plain lines for a bug report.
 function stepsText(list) {
-  return list.map((x, i) => `${i + 1}. ${x.ok ? '✓' : '✗'} ${x.what || x.tool} · ${(x.ms / 1000).toFixed(1)} s · ${Number(x.chars || 0).toLocaleString()} characters back${x.brain ? ` · ${x.brain}` : ''}`).join('\n');
+  return list.map((x, i) => (x.correction ? `${i + 1}. ⚠ ${x.what || 'App\'s note'}${x.brain ? ` · ${x.brain}` : ''}` : `${i + 1}. ${x.ok ? '✓' : '✗'} ${x.what || x.tool} · ${(x.ms / 1000).toFixed(1)} s · ${Number(x.chars || 0).toLocaleString()} characters back${x.brain ? ` · ${x.brain}` : ''}`)).join('\n');
 }
 function markSteps(el, list) {
   el.querySelector(':scope > .steps-note')?.remove();
   if (!list?.length) return;
   const box = document.createElement('div');
   box.className = 'versions-note steps-note';
-  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false" title="Each step Bob took for this answer. Press to see them.">How I got here (${list.length} step${list.length === 1 ? '' : 's'})</button><div hidden><ol class="steps-list">${list.map((x) => `<li>${x.ok ? '✓' : '✗'} ${esc(x.what || x.tool)} <span class="muted">· ${(x.ms / 1000).toFixed(1)} s · ${esc(Number(x.chars || 0).toLocaleString())} characters back${x.brain ? ` · ${esc(x.brain)}` : ''}</span></li>`).join('')}</ol><button type="button" class="mini" data-copy-steps>Copy</button></div>`;
+  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false" title="Each step Bob took for this answer. Press to see them.">How I got here (${list.length} step${list.length === 1 ? '' : 's'})</button><div hidden><ol class="steps-list">${list.map((x) => (x.correction ? `<li class="step-correction">⚠ ${esc(x.what || 'App\'s note')}${x.brain ? ` <span class="muted">· ${esc(x.brain)}</span>` : ''}</li>` : `<li>${x.ok ? '✓' : '✗'} ${esc(x.what || x.tool)} <span class="muted">· ${(x.ms / 1000).toFixed(1)} s · ${esc(Number(x.chars || 0).toLocaleString())} characters back${x.brain ? ` · ${esc(x.brain)}` : ''}</span></li>`)).join('')}</ol><button type="button" class="mini" data-copy-steps>Copy</button></div>`;
   const b = box.querySelector('button'), w = box.querySelector('div');
   b.onclick = () => { w.hidden = !w.hidden; b.setAttribute('aria-expanded', String(!w.hidden)); };
   box.querySelector('[data-copy-steps]').onclick = () => navigator.clipboard?.writeText(stepsText(list)).then(() => note('Copied the steps.')).catch(() => {});
@@ -1270,6 +1351,7 @@ const msgMenu = (() => {
     if (on) list.push([you ? 'edit-msg' : 'edit-bob', 'Edit', wait ? why : you ? 'Change what you said and send it again' : 'Change Bob\'s words. Nothing is sent.', wait]);
     list.push(['copy-msg', 'Copy', 'Copy this message']);
     if (on) list.push(['del-msg', 'Delete', wait ? why : you ? 'Delete this message and Bob\'s answer to it' : 'Delete this answer', wait]);
+    if (you && id && turnUndo.has(id)) list.push(['undo-turn', 'Undo changes', wait ? why : 'Put back the files, notes and memory Bob changed for this message', wait]); // item 238
     return list;
   }
   function draw(box, list) {
@@ -1299,6 +1381,19 @@ const msgMenu = (() => {
       open.box.innerHTML = `<p class="msg-menu-ask">${you ? 'Delete this message and Bob\'s answer to it?' : 'Delete this answer?'}${msg.querySelector('img, video, audio, .out-card') ? ' What he made stays in its folder.' : ''}</p><button type="button" role="menuitem" data-m="del-yes" class="danger">Delete</button><button type="button" role="menuitem" data-m="del-no">Keep it</button>`;
       open.box.querySelector('[data-m="del-no"]').focus();
       return;
+    }
+    if (k === 'undo-turn') { // item 238: asked in the menu itself, like Delete
+      open.box.innerHTML = `<p class="msg-menu-ask">Put back everything Bob changed for this message? A file changed since is left as it is.</p><button type="button" role="menuitem" data-m="undo-yes" class="danger">Undo changes</button><button type="button" role="menuitem" data-m="del-no">Keep them</button>`;
+      open.box.querySelector('[data-m="del-no"]').focus();
+      return;
+    }
+    if (k === 'undo-yes') {
+      close();
+      const askId = (msg.dataset.mid || '').trim();
+      const r = await post('/api/turn-undo', { sessionId, askId }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob\'s brain. Is it running?' } }));
+      if (!r.ok) { note(r.data.error || 'Something went wrong.', 'error'); return; }
+      turnUndo.delete(askId);
+      return note(r.data.text);
     }
     if (k === 'del-no') return close(true);
     if (k === 'del-yes') { close(); return deleteMsg(msg); }
@@ -1423,6 +1518,14 @@ log.addEventListener('click', async (e) => {
   if ('copyCode' in b.dataset) return copyText(b.parentElement.querySelector('code')?.textContent || '', b);
   if (b.dataset.copyLink) return copyText(b.dataset.copyLink, b);
   if (b.dataset.copyPath) return copyText(b.dataset.copyPath, b);
+  // "Show the page and line" (src/doc-more.js): "(page 3)" after a file opens it beside the chat, at that place.
+  if (b.dataset.at && b.dataset.file) {
+    e.preventDefault();
+    const [kind, n] = b.dataset.at.split(':');
+    const file = b.dataset.file, name = file.split(/[\\/]/).pop();
+    viewer.open({ path: file, name, kind: 'text', url: `/api/file?path=${encodeURIComponent(file)}`, at: { kind, n: Number(n) } });
+    return;
+  }
   const which = b.dataset.open ?? b.dataset.reveal ?? b.dataset.file;
   if (which != null) {
     e.preventDefault();

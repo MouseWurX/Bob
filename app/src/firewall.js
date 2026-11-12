@@ -20,15 +20,18 @@ export const MARK = '[Switched off by Bob] ';
 // Does the rule need this home network too? Yes with "Also over the home network" (phone access), and also when
 // this Bob lends his graphics card with Bigger Bobs' "Use the home network first" (on unless switched off), since
 // the other Bob then reaches the card's gate (CARD_PORT) over the home network, not Tailscale.
-// SCUT (src/share-card.js): a lent card's gate also takes UDP on CARD_PORT, so the rule gets a UDP half for that port.
-export const firewallUdp = (cfg) => cfg?.share?.lendCard === true && cfg?.share?.scut === true;
+// SCUT (src/share-card.js): a lent card's gate also takes UDP on CARD_PORT, so the rule has a UDP half for that port.
+// 1.5.208 (the replicant matrix test): it's always there now, not only with "Lend my card" and SCUT both on, so a Bob
+// whose rule was made before SCUT (or on the other side of the link) isn't left on TCP only, and turning SCUT on
+// later needs no second admin prompt. Same addresses as the TCP half: Tailscale, and the home network when that's on.
+export const firewallUdp = () => true;
 export const firewallHome = (cfg, remoteHome = false) => remoteHome === true || (cfg?.share?.lendCard === true && cfg?.share?.homeNet !== false);
 
 const ps = (s) => `'${String(s).replace(/'/g, "''")}'`;
 // The commands run as admin: replace Bob's rule (so a changed port is picked up), and lift the block rules
 // Windows made for Bob's own program if its "allow this app" prompt was once answered with Cancel. Those are only
 // switched off (marked with MARK), never deleted, and Remove switches them back on.
-export function ruleScript(port, exe = '', { home = false, udp = false } = {}) {
+export function ruleScript(port, exe = '', { home = false, udp = true } = {}) {
   const p = Number(port);
   if (!Number.isInteger(p) || p < 1 || p > 65535) throw new Error('That isn\'t a port number.');
   const lines = [
@@ -54,7 +57,7 @@ function runFile(file, args, opts = {}) {
 }
 
 // Is Bob's rule there? Reading the rules needs no admin.
-export async function firewallState(port, { os_ = OS, run = runFile, home = false, udp = false } = {}) {
+export async function firewallState(port, { os_ = OS, run = runFile, home = false, udp = true } = {}) {
   if (os_ === 'mac') return { os: 'mac', canAdd: false, note: 'mac' };
   if (os_ === 'linux') {
     const ufw = await run('systemctl', ['is-active', '--quiet', 'ufw']);
@@ -67,13 +70,14 @@ export async function firewallState(port, { os_ = OS, run = runFile, home = fals
   const r = await run('netsh', ['advfirewall', 'firewall', 'show', 'rule', `name=${RULE}`, 'verbose']);
   const has = (q) => new RegExp(`\\b${q}\\b`).test(r.out); // the labels are in Windows' own language, the ports aren't
   const here = r.ok && has(Number(port));
-  // An older rule (Bob's port only), or one without the home network when that's on: offered again, to bring it up to date.
+  // An older rule (Bob's port only, or TCP only with no UDP half for SCUT), or one without the home network when
+  // that's on: offered again, as Bring up to date.
   const behind = here && (!has(CARD_PORT) || (home && !/LocalSubnet/i.test(r.out)) || (udp && !/\bUDP\b/i.test(r.out)));
   return { os: 'win', canAdd: true, ruleHere: here && !behind, behind, otherPort: r.ok && !here, home: home === true, udp: udp === true };
 }
 
 // Add (or remove) the rule as admin. Windows shows its prompt; resolves { ok, why }.
-export async function changeRule(port, { add = true, exe = '', run = runFile, os_ = OS, home = false, udp = false } = {}) {
+export async function changeRule(port, { add = true, exe = '', run = runFile, os_ = OS, home = false, udp = true } = {}) {
   if (os_ !== 'win') return { ok: false, why: 'Only Windows needs this from me.' };
   const inner = encode(add ? ruleScript(port, exe, { home, udp }) : removeScript());
   const outer = `$p = Start-Process -FilePath powershell.exe -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList '-NoProfile','-NonInteractive','-EncodedCommand','${inner}'; exit $p.ExitCode`;

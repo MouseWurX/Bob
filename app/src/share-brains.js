@@ -38,6 +38,9 @@ export const FIRST_WORD_MAX_MS = 45000;
 // alive, the asker waits up to this long; a refusal, a dropped line or a long silence still falls back at once.
 export const REVIEW_WAIT_MS = 15 * 60000;
 const GOOD_FOR = 30000, DOWN_FOR = 60000;
+// Item 202: a Bob that fails twice (not reachable, too slow, broke mid-answer) is skipped for an hour, not asked again
+// every step. Saying "busy" or "too long" is a polite no, not a failure. Always on.
+export const SKIP_AFTER = 2, SKIP_MS = 60 * 60 * 1000;
 const MAX_BOBS = 6;
 const TS_NAME = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.ts\.net$/;
 
@@ -164,8 +167,9 @@ export function cleanLendRequest(b) {
   const roles = new Set(['system', 'user', 'assistant', 'tool']);
   const messages = [].concat(b?.messages || []).slice(-200).filter((m) => m && roles.has(m.role)).map((m) => {
     const o = { role: m.role, content: typeof m.content === 'string' ? m.content.slice(0, 60000) : '' };
-    if (m.role === 'assistant' && Array.isArray(m.tool_calls)) o.tool_calls = m.tool_calls.slice(0, 16).map((c) => ({ function: { name: String(c?.function?.name || '').slice(0, 80), arguments: c?.function?.arguments && typeof c.function.arguments === 'object' ? c.function.arguments : {} } }));
+    if (m.role === 'assistant' && Array.isArray(m.tool_calls)) o.tool_calls = m.tool_calls.slice(0, 16).map((c) => ({ ...(typeof c?.id === 'string' && /^[\w.-]{1,80}$/.test(c.id) ? { id: c.id } : {}), function: { name: String(c?.function?.name || '').slice(0, 80), arguments: c?.function?.arguments && typeof c.function.arguments === 'object' ? c.function.arguments : {} } }));
     if (m.role === 'tool' && m.tool_name) o.tool_name = String(m.tool_name).slice(0, 80);
+    if (m.role === 'tool' && typeof m.tool_call_id === 'string' && /^[\w.-]{1,80}$/.test(m.tool_call_id)) o.tool_call_id = m.tool_call_id; // item 165
     return o;
   });
   const tools = [].concat(b?.tools || []).slice(0, 128).filter((t) => t?.type === 'function' && /^[\w.-]{1,80}$/.test(String(t.function?.name || '')));
@@ -266,6 +270,15 @@ export class Lenders {
     this.inUse = new Map();
     this.live = new Map(); // 1.5.123: address -> 'thinking' while a reply streams from him (for the Bob-Net party in Now running)
   }
+  // Item 202: skipped for an hour after two failures in a row.
+  skipped(address) { return (this.state.get(address)?.skipUntil || 0) > this.now(); }
+  strike(bob, why) {
+    const s = this.state.get(bob.address) || { ok: false, at: this.now() };
+    s.strikes = (s.strikes || 0) + 1;
+    if (s.strikes >= SKIP_AFTER) { s.strikes = 0; s.skipUntil = this.now() + SKIP_MS; try { this.onSkip?.(bob, why); } catch {} }
+    this.state.set(bob.address, s);
+  }
+  cleared(bob) { const s = this.state.get(bob.address); if (s) { s.strikes = 0; s.skipUntil = 0; } }
   busyHere(address) { const t = this.inUse.get(address); return t !== undefined && t > this.now(); }
   hold(address, ms = 15000) { this.inUse.set(address, this.now() + ms); }
   release(address) { this.inUse.delete(address); }
@@ -338,14 +351,17 @@ export class Lenders {
     const seen = this.state.get(bob.address);
     if (seen?.measured) out.measured = seen.measured; // what we timed ourselves outlives a hello
     if (seen?.reviewDownUntil) out.reviewDownUntil = seen.reviewDownUntil; // #30: a review he couldn't do, too
+    if (seen?.strikes) out.strikes = seen.strikes; // item 202
+    if (seen?.skipUntil) out.skipUntil = seen.skipUntil;
     if (!out.look && seen?.look) out.look = seen.look; // his avatar stays on the Bob-Net list while he's away
     out.at = this.now();
     this.state.set(bob.address, out);
+    if (!out.ok && out.why === 'not reachable') this.strike(bob, 'not reachable'); // item 202
     return out;
   }
 
   // Keeps what he told us he can do (his room, his jobs) and what we timed; only today's yes becomes a no.
-  markDown(bob, why) { const s = this.state.get(bob.address) || {}; this.state.set(bob.address, { ...s, ok: false, why, at: this.now() }); }
+  markDown(bob, why, { failed = false } = {}) { const s = this.state.get(bob.address) || {}; this.state.set(bob.address, { ...s, ok: false, why, at: this.now() }); if (failed) this.strike(bob, why); }
 
   // The first of your Bobs (in your order) that says yes and isn't already thinking for us, or null.
   // `skip`: addresses already tried for this reply. The pick is held for a moment, so a second reply at the same time
@@ -356,7 +372,7 @@ export class Lenders {
   // the last 10 minutes, so he doesn't read it all again) goes first, then the fastest, going by what we timed ourselves
   // or what he says. Your order breaks ties.
   async pick({ skip = [], tokens = 0 } = {}) {
-    const list = this.bobs().filter((b) => !skip.includes(b.address) && !this.busyHere(b.address));
+    const list = this.bobs().filter((b) => !skip.includes(b.address) && !this.busyHere(b.address) && !this.skipped(b.address));
     const seen = await Promise.all(list.map((b) => this.hello(b).catch(() => ({ ok: false }))));
     const fits = list.map((bob, i) => ({ bob, s: seen[i], i })).filter(({ s }) => s.ok && (!s.ctx || !tokens || tokens + REPLY_ROOM <= s.ctx));
     if (!fits.length) return null;
@@ -373,7 +389,7 @@ export class Lenders {
   // 1.5.72: the Bob for a whole job: he must say he takes jobs, list this kind as one he can do right now, and not be
   // gaming or full. The least busy goes first (fewest jobs in his Tasks), your order breaking ties.
   async pickForJob(need) {
-    const list = this.bobs().filter((b) => !this.busyHere(`job:${b.address}`));
+    const list = this.bobs().filter((b) => !this.busyHere(`job:${b.address}`) && !this.skipped(b.address));
     const seen = await Promise.all(list.map((b) => this.hello(b).catch(() => ({}))));
     const can = list.map((bob, i) => ({ bob, s: seen[i], i })).filter(({ s }) => s.takesJobs && s.jobs?.includes(need) && !s.jobsBusy && !(s.jobsDownUntil > this.now()));
     can.sort((a, b) => ((a.s.queue || 0) - (b.s.queue || 0)) || (a.i - b.i));
@@ -385,7 +401,7 @@ export class Lenders {
   // #30: the Bob to check work on his Review brain: he says he reviews, isn't thinking for us already, and his Review brain
   // is good enough (its file at least `minGB`, so a phone's small brain never signs off on a big brain's work). Your order.
   async pickForReview({ minGB = 0, log = null } = {}) {
-    const list = this.bobs().filter((b) => !this.busyHere(b.address));
+    const list = this.bobs().filter((b) => !this.busyHere(b.address) && !this.skipped(b.address));
     const seen = await Promise.all(list.map((b) => this.hello(b).catch(() => ({}))));
     // Two-Bob trial (Test D): the logbook says why a Bob was passed over, not only that he was.
     if (log) list.forEach((bob, i) => { const until = seen[i]?.reviewDownUntil; if (until > this.now()) log(`skipping ${bob.name} for ${Math.max(1, Math.ceil((until - this.now()) / 60000))} more min after he couldn't finish a check`); });
@@ -455,13 +471,14 @@ export class Lenders {
       }
       if (!reply) throw new Error('stopped mid-answer');
       const secs = (this.now() - (firstAt || t0)) / 1000;
+      this.cleared(bob); // item 202: it worked, so the count starts over
       this.note(bob, { lastUsed: this.now(), firstWordMs: (firstAt || this.now()) - t0, ...(words > 8 && secs > 0.2 ? { tokPerSec: Math.round((words / secs) * 10) / 10 } : {}) });
       const calls = Array.isArray(reply.tool_calls) ? reply.tool_calls.filter((c) => c?.function?.name).map((c) => ({ function: { name: String(c.function.name), arguments: c.function.arguments && typeof c.function.arguments === 'object' ? c.function.arguments : {} } })) : [];
       return { role: 'assistant', content: String(reply.content || ''), tool_calls: calls.length ? calls : undefined };
     } catch (e) {
       if (signal?.aborted) throw e;
       if (checking) checkDown(this, bob); // his quick replies are still fine
-      else if (e.why !== 'too long') this.markDown(bob, e.busy ? (e.why || 'busy') : quiet.signal.aborted ? 'too slow' : 'not reachable'); // too long: he's still fine for shorter chats
+      else if (e.why !== 'too long') this.markDown(bob, e.busy ? (e.why || 'busy') : quiet.signal.aborted ? 'too slow' : 'not reachable', { failed: !e.busy }); // too long: he's still fine for shorter chats
       throw quiet.signal.aborted ? new Error('too slow') : e;
     } finally { clearTimeout(timer); clearTimeout(cap); this.live.delete(bob.address); this.hold(bob.address, 5000); }
   }

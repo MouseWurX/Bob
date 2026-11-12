@@ -1,5 +1,6 @@
 // Bob's engines (the programs that run models): llama.cpp, stable-diffusion.cpp, whisper.cpp, Piper.
 // Fetched from their official GitHub releases, only when someone clicks "Get" in the cellar.
+import { deadline as withDeadline, quietGuard } from './hang-guard.js'; // item 212: every network call has a deadline
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -32,6 +33,7 @@ const PIPER_ARM64_SHA = 'fea0fd2d87c54dbc7078d0f878289f404bd4d6eea6e7444a77835d1
 // bundled in the download). Get and Get Bob ready install this one; "Check for a newer build" can still fetch the newest.
 // Brain Engine has its own version numbers (1.5.203: Brain Engine 3, built on llama.cpp bundledLlamaTag); Bob downloads
 // the release his pin names (bob.brainEngine.tag). Builds from before then were named after their llama.cpp tag.
+// From build 5 a release is named N1bN2 (brain-engine-5b12282: build 5 on llama.cpp b12282; public/engine-name.js).
 const PIN_TAG = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.brainEngine?.tag || ''; } catch { return ''; } })();
 export const TESTED_LLAMA = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.bundledLlamaTag || ''; } catch { return ''; } })();
 // LibreOffice comes from The Document Foundation's own archive, not GitHub.
@@ -376,8 +378,9 @@ export function pickAsset(assets, e, nvidia) {
 export async function grab(asset, folder, pub, signal, tick, { allowed = hostAllowed, unpack = true } = {}) {
   if (!allowed(asset.browser_download_url)) throw new Error('That download isn\'t from where it should be. Stopped.');
   const zip = path.join(folder, asset.name + '.part');
-  const res = await fetch(asset.browser_download_url, { redirect: 'follow', signal, headers: { 'user-agent': 'Bob' } });
-  if (!res.ok) throw new Error(`Download failed (${res.status}).`);
+  const q = quietGuard(signal); // two quiet minutes and the download stops
+  const res = await fetch(asset.browser_download_url, { redirect: 'follow', signal: q.signal, headers: { 'user-agent': 'Bob' } }).catch((e) => { q.done(); throw e; });
+  if (!res.ok) { q.done(); throw new Error(`Download failed (${res.status}).`); }
   if (!allowed(res.url)) throw new Error('The download was redirected somewhere I don\'t trust. Stopped.');
   const hash = crypto.createHash('sha256');
   const out = fs.createWriteStream(zip);
@@ -386,12 +389,14 @@ export async function grab(asset, folder, pub, signal, tick, { allowed = hostAll
   pub.file = asset.name; pub.phase = 'downloading'; tick();
   try {
     for await (const c of res.body) {
+      q.poke();
       hash.update(c); got += c.length;
       if (!out.write(c)) await new Promise((r) => out.once('drain', r));
       pub.done = base + got;
       if (Date.now() - last > 500) { last = Date.now(); tick(); }
     }
-  } finally { await new Promise((r) => out.end(r)); }
+  } catch (e) { if (q.quiet() && !signal?.aborted) throw new Error('The download stopped coming (nothing for 2 minutes). Try again.'); throw e; }
+  finally { q.done(); await new Promise((r) => out.end(r)); }
   pub.phase = 'checking'; tick();
   const want = String(asset.digest || asset.pinnedSha256 || '').replace(/^sha256:/, '');
   // GitHub publishes a sha256 for every release file; no checksum means we can't trust it.
@@ -503,7 +508,7 @@ export async function findRelease(e, nvidia, signal, fetchImpl = fetch) {
   const get = async (u) => {
     // Release builds only (installer/bundle-engine.mjs in CI): the workflow's token, against GitHub's rate limit.
     const auth = process.env.BOB_BUNDLE_TOKEN ? { authorization: `Bearer ${process.env.BOB_BUNDLE_TOKEN}` } : {};
-    const r = await fetchImpl(u, { headers: { 'user-agent': 'Bob', accept: 'application/vnd.github+json', ...auth }, signal });
+    const r = await fetchImpl(u, { headers: { 'user-agent': 'Bob', accept: 'application/vnd.github+json', ...auth }, signal: withDeadline(signal, 30_000) });
     if (!r.ok) throw new Error(`GitHub didn't answer for ${e.name} (${r.status}). Try again in a few minutes.`);
     return r.json();
   };

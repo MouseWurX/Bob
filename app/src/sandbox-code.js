@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { runSandboxed, sandboxHolds, codeProblems } from './selftools.js';
+import { runPython, hasPython } from './py-sandbox.js'; // 🧰 More tools: Python in the same box
 
 export const sandboxOn = (cfg) => cfg?.sandboxCode === true;
 export const MAX_SANDBOX_CODE = 20000;
@@ -55,19 +56,29 @@ export async function runInSandbox(cfg, code, input = {}, { signal, holds = sand
 
 export function sandboxTool(brain) {
   const cfg = brain.cfg;
+  // 🧰 More tools, "Let Bob use Python in the sandbox": the same box, with Python (py-sandbox.js) as well.
+  const pyOn = () => cfg.moreTools?.python === true;
   return {
-    schema: fn('run_in_sandbox', 'Work something out exactly with a few lines of JavaScript in a locked sandbox: sums, money, dates, units, counting, sorting, patterns. No files, internet or programs; 20 seconds.', {
-      code: { type: 'string', description: 'The body of async function run(input), ending in return. Like: return (new Date("2026-12-25") - new Date("2026-11-11")) / 864e5;' },
-      input: { type: 'object', description: 'Optional: data the code reads as input.' }
-    }, ['code']),
-    async run({ code, input }, ctx = {}) {
-      if (!sandboxOn(cfg)) return 'The sandbox is off. It\'s in Settings, How Bob works: "Let Bob work things out in a sandbox".';
-      const r = await runInSandbox(cfg, code, input || {}, { signal: ctx.signal });
-      const printed = String(r.log || '').trim().slice(-3000);
-      brain.log?.('sandbox', `${r.ok ? 'ran' : 'refused or failed'}: ${String(code).replace(/\s+/g, ' ').slice(0, 120)}`);
-      if (!r.ok) return `Error: ${r.error}${printed ? `\nPrinted:\n${printed}` : ''}`;
-      return `Result: ${r.out}${printed ? `\nPrinted:\n${printed}` : ''}`;
+    get schema() {
+      const py = pyOn();
+      return fn('run_in_sandbox', `Work something out exactly with a few lines of ${py ? 'JavaScript or Python' : 'JavaScript'} in a locked sandbox: sums, money, dates, units, counting, sorting, patterns${py ? ', tables of data, statistics' : ''}. No files, internet or programs; ${py ? '30' : '20'} seconds.`, {
+        code: { type: 'string', description: py ? 'JavaScript: the body of async function run(input), ending in return. Python: a script; set result = the answer (the input is in data).' : 'The body of async function run(input), ending in return. Like: return (new Date("2026-12-25") - new Date("2026-11-11")) / 864e5;' },
+        ...(py ? { language: { type: 'string', enum: ['javascript', 'python'], description: 'Default javascript. Python has its standard library (statistics, decimal, fractions, datetime, csv, json, re), no numpy.' } } : {}),
+        input: { type: 'object', description: 'Optional: data the code reads as input (Python: data).' }
+      }, ['code']);
     },
-    summary: ({ code }) => `sandbox: ${String(code || '').replace(/\s+/g, ' ').slice(0, 160)}`
+    async run({ code, input, language }, ctx = {}) {
+      if (!sandboxOn(cfg)) return 'The sandbox is off. It\'s in Settings, How Bob works: "Let Bob work things out in a sandbox".';
+      const python = String(language || '').toLowerCase() === 'python';
+      if (python && !pyOn()) return 'Python in the sandbox is off. It\'s in Settings, How Bob works, 🧰 More tools: "Let Bob use Python in the sandbox". Use JavaScript instead.';
+      if (python && !hasPython(cfg)) return 'Python isn\'t here yet: Settings, How Bob works, 🧰 More tools, Get Python. Use JavaScript for now.';
+      const r = python ? await runPython(cfg, code, input || {}, { signal: ctx.signal }) : await runInSandbox(cfg, code, input || {}, { signal: ctx.signal });
+      const printed = String(r.log || '').trim().slice(-3000);
+      brain.log?.('sandbox', `${python ? 'python ' : ''}${r.ok ? 'ran' : 'refused or failed'}: ${String(code).replace(/\s+/g, ' ').slice(0, 120)}`);
+      if (!r.ok) return `Error: ${r.error}${printed ? `\nPrinted:\n${printed}` : ''}`;
+      const out = typeof r.out === 'string' ? r.out : JSON.stringify(r.out);
+      return `Result: ${out}${printed ? `\nPrinted:\n${printed}` : ''}`;
+    },
+    summary: ({ code, language }) => `sandbox${String(language || '').toLowerCase() === 'python' ? ' (python)' : ''}: ${String(code || '').replace(/\s+/g, ' ').slice(0, 160)}`
   };
 }

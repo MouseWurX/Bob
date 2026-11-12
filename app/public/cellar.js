@@ -1,10 +1,11 @@
 // The cellar: Bob's model shop and settings. Every download starts from a click here, with its size shown first.
 import { setLook } from './bob-sprite.js';
+import { brainEngineName } from './engine-name.js';
 import { progressHtml, animateWorkers } from './progress.js';
 import { createStylePage } from './style-page.js';
 import { createSampler, sampleButton, sampleHint } from './voice-samples.js';
 import { equipHtml, allSlots, HELPERS, equipped, entryOf, packFor, starterTicks, starterPlan, enginesFor, readyPlan, slotValue, slotTakes, isActive, tipHtml, readyList, readyDefaults, readyToggle, readyOrder, CHEST_SHOW, SPLITS, splitPicks } from './equip.js';
-import { brainsHtml, setupPlan, canCalibrate, brainsInUse } from './brains.js';
+import { brainsHtml, setupPlan, canCalibrate, brainsInUse, listTopHtml, listRowHtml, listSetUpHtml } from './brains.js';
 import { hasExperts } from './place.js';
 import { suit as fitSuit, picksOf, unsuited, jobNames, SLOT_NAMES, canDo, packsFor } from './fit.js';
 import { catalogueHtml, pagePickHtml, familyOf, visibleModels, isNaughty, VIEWS, dayWords, rentPicks } from './catalogue.js';
@@ -14,6 +15,7 @@ import { quarantineSettingsHtml, mountQuarantineSettings } from './quarantine.js
 import { phoneAccessHtml, mountPhoneAccess } from './phone-access.js';
 import { lockSettingsHtml, mountLockSettings, lockSummary } from './lock-settings.js'; // 🔒 Passcode lock
 import { secretsHtml, mountSecrets } from './secrets.js';
+import { moreToolsHtml, mountMoreTools } from './more-tools.js';
 import { telegramHtml, mountTelegram } from './telegram.js';
 import { discordHtml, mountDiscord } from './discord.js';
 import { appsDoorHtml, mountAppsDoor } from './apps-door.js';
@@ -292,7 +294,7 @@ export function createCellar({ popOut = null } = {}) {
     let body = '';
     if (tab === 'settings') body = settingsHtml();
     else if (tab === 'style') body = stylePage.html(settings);
-    else if (tab === 'roles') body = eqView === 'list' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${rolesHtml()}` : !roles ? '<p class="muted">Loading...</p>' : eqView === 'doll' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${equipHtml(eqCtx())}` : brainsHtml({ ...eqCtx(), bobNet: data?.bobNet || [], setupAsk, setUp: setUpBrain, place: placeData, calAsk, labScores }); // 1.5.205 the Brains page comes first
+    else if (tab === 'roles') body = eqView === 'list' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${rolesHtml()}` : !roles ? '<p class="muted">Loading...</p>' : eqView === 'doll' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${equipHtml(eqCtx())}` : brainsHtml(brainsCtx()); // 1.5.205 the Brains page comes first
     else if (tab === 'catalogue') body = roles ? catalogueHtml({ ...eqCtx(), models: data?.models || [], removed: data?.removed || [], bobNet: data?.bobNet || [], naughtyOn: naughtyOn(), catView, ownForm, addPage, action: catAction, focus: catFocus }) : '<p class="muted">Loading...</p>'; // 1.5.56; 1.5.132 the catalogue gets every entry and sorts the naughty ones itself
     else if (tab === 'found') body = `<p class="muted">Scanned ${data.scannedAt ? new Date(data.scannedAt).toLocaleString() : 'never'}. <button data-scan>Look again</button></p>${extrasHtml() || '<p>Nothing extra found.</p>'}`;
     else if (GROUPS.some((g) => g.id === tab)) body = groupHtml(GROUPS.find((g) => g.id === tab));
@@ -303,8 +305,18 @@ export function createCellar({ popOut = null } = {}) {
     return `${bar}<div class="pane">${body}</div>`;
   }
 
+  // 1.5.207 Settings, Brains opens on the Brains page (the owner's ask): each brain, its jobs, Set up and Calibrate.
+  // The plain list of menus is one link away, as on Equip Bob.
+  const brainsCtx = (more = {}) => ({ ...eqCtx(), bobNet: data?.bobNet || [], setupAsk, setUp: setUpBrain, place: placeData, honesty, calAsk, labScores, ...more });
+  function brainsPanelHtml() {
+    if (eqView === 'list') return `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${rolesHtml()}`;
+    if (!roles) return '<p class="muted">Loading...</p>';
+    return brainsHtml(brainsCtx({ inSettings: true }));
+  }
   function rolesHtml() {
     if (!roles) return '<p class="muted">Loading...</p>';
+    const setUpPage = listSetUpHtml(brainsCtx()); // 1.5.207 Set up opens from the list too
+    if (setUpPage) return setUpPage;
     // 1.5.56: only active models that can do the job are listed (the Brain catalogue's Active switches); what's picked
     // now always stays. Get more opens the catalogue at that job.
     const listFor = (kind, job, cur) => (roles.options[kind] || []).filter((o) => o.value === cur || ((kind !== 'llm' || canDo(job, { entry: entryOf(data.models, o.value), name: o.value, caps: o.caps }))
@@ -321,6 +333,7 @@ export function createCellar({ popOut = null } = {}) {
       return [...groups].map(([f, os]) => (f ? `<optgroup label="${esc(f)}">${os.map(one).join('')}</optgroup>` : os.map(one).join(''))).join('');
     };
     const getMore = (job) => `<button type="button" class="mini get-more-btn" data-catjob="${esc(job)}">📚 Get more</button>`;
+    const bx = brainsCtx();
     const row = (j) => {
       const cur = roles.current[j.id] || '';
       const opts = listFor(j.kind, j.id, cur);
@@ -331,11 +344,12 @@ export function createCellar({ popOut = null } = {}) {
           ${has || !cur ? '' : `<option value="${esc(cur)}" selected>${esc(entryOf(data.models, cur)?.name || cur)} (not downloaded)</option>`}
           ${cur ? '' : '<option value="" selected>Pick one</option>'}
           ${optsHtml(list, cur, j.kind)}
-        </select>${getMore(j.id)}${j.id === 'speech' && cur ? nestedVoiceHtml() : ''}${!cur && opts.length && j.kind !== 'llm' ? `<div class="ready-hint"><span class="tag good">On this replicant matrix, not assigned yet</span> <button data-userole="${esc(j.id)}" data-value="${esc(opts[0].value)}">Use ${esc(opts[0].label)}</button></div>` : ''}</td></tr>`;
+        </select>${getMore(j.id)}${j.kind === 'llm' ? listRowHtml(cur, { ...bx, rowId: j.id }) : ''}${j.id === 'speech' && cur ? nestedVoiceHtml() : ''}${!cur && opts.length && j.kind !== 'llm' ? `<div class="ready-hint"><span class="tag good">On this replicant matrix, not assigned yet</span> <button data-userole="${esc(j.id)}" data-value="${esc(opts[0].value)}">Use ${esc(opts[0].label)}</button></div>` : ''}</td></tr>`;
     };
     const thinkers = roles.jobs.filter((j) => j.kind === 'llm');
     const makers = roles.jobs.filter((j) => j.kind !== 'llm');
     return `<p class="muted">Pick which brain thinks for each job, and which model makes the pictures, clips and hearing. ${tipHtml('Using one brain for several jobs is faster; a different brain means a short swap (the brain machine), usually 10 to 20 seconds.', 'About swaps')} Only active models are listed: the <button type="button" class="link" data-tab="catalogue">📚 Brain catalogue</button> has every model, sorted by job.</p>
+      ${listTopHtml(bx)}
       <h3>Thinking (writes, plans, codes, writes prompts)</h3><table class="roles">${thinkers.map(row).join('')}</table>
       <h3>Making (does the actual work)</h3><table class="roles">${makers.map(row).join('')}</table>
       ${fold('Session brains', [['small', 'Quick'], ['gaming', 'Gaming'], ['deep', 'Deep thinking'], ['coding', 'Coding'], ['office', 'Office']].map(([k, l]) => `${l}: ${settings.sessionBrains?.[k] ? (entryOf(data.models, settings.sessionBrains[k])?.name || settings.sessionBrains[k]) : 'Bob\'s pick'}`).join(', '), `<p class="muted">Pick a session from the menu next to Bob's name. Each one keeps a set of brains that fit in your graphics card together, so there are no swaps. Art runs the small brain on the processor so the painter keeps the card.</p>
@@ -622,6 +636,8 @@ export function createCellar({ popOut = null } = {}) {
     if (t.provider === 'piper') { const v = voices.find((x) => x.engine === 'piper' && x.installed); return { name: v ? `${v.label} (Piper)` : 'Piper', play: v ? hear('piper', v.voice, 'Play sample') : '' }; }
     return { name: 'The voice built into Windows', play: sampleButton('windows', 'default', 'Play sample', 'The voice built into Windows.') };
   }
+  // 1.5.208 PC check: the time zone Bob uses, read-only, with the time it is there now (so a wrong zone shows at once).
+  const zoneLine = (s) => { const z = s?.timeZone; if (!z) return '<span class="muted">Not read yet</span>'; let now = ''; try { now = new Intl.DateTimeFormat(undefined, { timeZone: z, hour: '2-digit', minute: '2-digit' }).format(new Date()); } catch {} return `<span data-no-translate>${esc(z)}</span>${now ? ` <span class="muted">· ${esc(now)} there now</span>` : ''}`; };
   const srow = (label, value, actions = '', id = '') => `<div class="srow"${id ? ` id="${id}"` : ''}><span class="slabel">${label}</span><span class="svalue">${value}</span><span class="sact">${actions}</span></div>`;
   // 1.5.56: the note moves behind ⓘ unless it's a warning, a live value or has a button in it.
   const sswitch = (key, on, label, note = '', extra = '') => `<label class="switch srow-switch"><input type="checkbox" data-set="${key}" ${on ? 'checked' : ''} ${extra}><span><strong>${label}</strong>${noteOrTip(note, label)}</span></label>`;
@@ -693,6 +709,7 @@ export function createCellar({ popOut = null } = {}) {
     const pcSum = `<span class="pc-ver">Bob ${esc(settings.version?.label || '')}</span> <button type="button" class="mini" data-checkupdate>Check for updates</button> <span class="update-out"></span><span class="pc-spec">· ${esc(hw?.spec || 'specs not read yet')} · graphics card: ${hw?.gpu ? `${esc(hw.gpu.name)}, ${hw.gpu.vramGB} GB` : 'not detected'} · ${hw?.freeGB ?? '?'} GB free</span>`;
     return `<div class="everyday">${panel('ev-pc', '💻 This replicant matrix and updates', pcSum, `
       <div class="updates srow-foot"><span class="muted">${hw?.gpu?.integrated && hw.installedRamGB ? `Built-in graphics: ${esc(hw.gpu.name.replace(/ \(shared memory\)$/, ''))} · Memory: ${hw.installedRamGB} GB ${hw.reservedGraphicsGB >= 2 ? `shared, ${hw.reservedGraphicsGB} GB set aside for graphics` : 'shared with graphics as needed'} (about ${hw.gpu.vramGB} GB of it for models)` : hw?.gpu?.integrated ? `Built-in graphics: ${esc(hw.gpu.name.replace(/ \(shared memory\)$/, ''))}, about ${hw.gpu.vramGB} GB of memory shared with it` : hw?.gpu?.unified ? `Chip: ${esc(hw.gpu.name)}, about ${hw.gpu.vramGB} GB of it for graphics` : `Graphics card: ${hw?.gpu ? `${esc(hw.gpu.name)}, ${hw.gpu.vramGB} GB` : 'not detected'}`} · Free disk: ${hw?.freeGB ?? '?'} GB</span>
+        ${srow('Time zone', zoneLine(settings), tip(settings.timeZoneSet ? 'Set by hand in Bob\'s config file, so he keeps it.' : `Read from ${settings.platform === 'win32' ? 'Windows\'' : 'this replicant matrix\'s'} own clock when Bob starts, and again every half hour. Change the clock's time zone there and Bob follows. Quiet hours, reminders and the logbook use it.`, 'Time zone'), 'pc-zone')}
         ${sswitch('autoCheck', settings.updates?.autoCheck, 'Check for updates when Bob starts', 'Off unless you turn it on. Bob looks at his GitHub page for a newer version and only tells you; updating always takes your click.')}
         <div class="row"><button type="button" data-welcome>Run first-time setup</button><button type="button" data-helpbundle>Save a help bundle</button>${tip('Saves one zip with Bob\'s logs, the last chats, errors and this replicant matrix\'s facts, scrubbed of passcodes, keys and your name, so an agent or a person can work out what\'s wrong. Nothing is sent anywhere: you pick where it goes.', 'Save a help bundle')}${settings.features?.pcCheck === false ? '' : '<button type="button" data-pccheck>Check this replicant matrix</button>'}</div>
         <div class="help-bundle muted" aria-live="polite"></div><div class="update-steps"></div><div class="pc-check" aria-live="polite"></div></div>`, '', true)}${panel('ev-bob', '🙂 Bob himself', bobSum, `
@@ -719,6 +736,11 @@ export function createCellar({ popOut = null } = {}) {
       ${sswitch('docTools', settings.docTools === true, 'Read and search my documents', 'Off unless you turn it on. Bob reads Word, Excel, PowerPoint, OpenDocument, PDF, e-book and Rich Text files with nothing extra installed, and can search inside them for words in the folders he may read (Documents, Desktop and Downloads). Nothing leaves this replicant matrix and nothing is kept on disk. Old .doc, .xls and .ppt files need the Office documents Hand.')}
       ${sswitch('docMeaning', settings.docMeaning === true, 'Search my documents by meaning', 'Off unless you turn it on. Works with reading and searching documents on. A search also finds files that mean what you asked in other words. While Bob is idle he makes an index of your documents with the Memory slot\'s embedding model; it stays on this replicant matrix, holds numbers and file names but not the words, and is deleted when you turn this off.')}
       ${settings.docIndex ? `<div class="srow muted" data-docindex>${settings.docIndex.files ? `${settings.docIndex.files} ${settings.docIndex.files === 1 ? 'document' : 'documents'} in the index${settings.docIndex.building ? ', adding more now' : ''}.` : (settings.docIndex.building ? 'Making the index now.' : 'The index is made while Bob is idle.')}</div>` : ''}
+      ${sswitch('docFresh', settings.docFresh === true, 'Keep my documents fresh', 'Off unless you turn it on. Works with Search my documents by meaning on. When a document is saved, added or deleted in a folder Bob may read, he reads it again (or drops it) within a minute, instead of waiting until he\'s idle. Never in the Gaming session or while he\'s answering.')}
+      ${sswitch('docPlaces', settings.docPlaces === true, 'Show the page and line', 'Off unless you turn it on. Works with reading and searching documents on. When Bob finds something in your documents, he says where: the page of a PDF, the slide, the sheet, the paragraph of a Word file, or the line of a text file. Click that place in his answer to open the file beside the chat, at that spot.')}
+      ${notesFoldersHtml()}
+      ${sswitch('weeklyDigest', settings.weeklyDigest === true, 'A Sunday digest', 'Off unless you turn it on. Every Sunday from 9 in the morning (or the next time Bob is open, up to Tuesday), Bob puts one short note in the chat: the week\'s chats, the reminders that went off, and what he noticed. It\'s saved in the digests folder too. No brain is loaded for it and nothing goes online.')}
+      <div class="srow"><button type="button" data-digestnow>Make this week's digest now</button> <span class="muted digest-out"></span></div>
       ${sswitch('docView', settings.docView === true, 'Show documents in the side panel', 'Off unless you turn it on. Word, Excel, PowerPoint, OpenDocument, e-book and Rich Text files open in the panel beside the chat as their words, tables and slides, and a PDF as its pages where this window can draw them. Nothing extra to install, nothing kept on disk. Off: these files get an Open in its app button.')}
       ${sswitch('toolHelp', settings.toolHelp !== false, 'Better tool calling', 'On unless you turn it off. Before a tool runs, Bob checks the call and mends sure slips (broken brackets, a field under another name, "5" for 5). After common errors he adds one plain hint. On long jobs he keeps a short "where we are" note and makes the last step an answer. Look-ups run side by side, and old tool results in long chats shrink to one line. Most useful with a small brain.')}
       ${sswitch('toolLearning', settings.toolLearning === true, 'Let Bob learn from his tools', 'Off unless you turn it on. When a tool fails and then works, Bob keeps one line on what fixed it and reads it next time. He also counts what works and what fails, and offers to fix a tool that keeps failing. It all stays on this replicant matrix.')}
@@ -783,6 +805,10 @@ export function createCellar({ popOut = null } = {}) {
       ${more('Each project gets its own memory bank: while you talk about one project, Bob leaves the other projects\' memories out. To have him read a line every time, add [always] to it in his memory file. He matches by meaning when the 🗂 Memory (finding past chats) model is downloaded (it runs on the processor, never in the Gaming session), and by words otherwise.')}
       ${settings.memoryRecall ? memoryBanksHtml() : ''}
       ${engineExtrasHtml()}
+      ${sswitch('memorySources', settings.memorySources === true, 'Note where each memory came from', 'Off unless you turn it on. Each new memory keeps a link to the chat it was learned in. Below, Where my memories came from lists them with Open the chat and Forget, so a wrong one is easy to trace and fix.')}
+      ${sswitch('memoryExpiry', settings.memoryExpiry === true, 'Let memories run out', 'Off unless you turn it on. Say "remember this for the week" (or for a day, a month, or until a date) and Bob stops reading that memory once the time is up, then takes it out of his memory file when he\'s idle. The old file goes to the Recycle Bin first.')}
+      ${sswitch('memoryWhere', settings.memoryWhere === true, 'Keep project memories to their project', 'Off unless you turn it on. Works with Remember only what fits on. A memory in a project\'s bank comes back only while Bob works on that project: you name it, or he opens a file in its folder or repository. In other chats he reads only your general memories.')}
+      <div class="srow memory-sources"><button type="button" data-memsources>Where my memories came from</button> <span class="muted">Every memory, newest first, with the chat it came from.</span><div class="mem-src"></div></div>
       ${speedTestHtml()}`;
   }
 
@@ -846,10 +872,12 @@ export function createCellar({ popOut = null } = {}) {
         <select data-labengine aria-label="Engine for the Lab">${[['', 'Same as Bob\'s brains'], ['brainengine', 'Brain Engine'], ['llamacpp', 'llama.cpp']].map(([v, l]) => `<option value="${v}" ${v === lab ? 'selected' : ''}>${l}</option>`).join('')}</select>
         <span class="muted">Which engine the Computer Science Lab makes, tests and runs brains with, from its next job. If a tool is only in one engine's download (the direction finder, say), the Lab still finds it there. The Lab page shows the same choice at the top.</span></label>`;
   }
-  // Brain Engine is Bob's own engine: its builds are named by the llama.cpp they're built on, said that way.
-  const verName = (e, v) => (e.id !== 'brainengine' ? v : String(v || '').replace(/^brain-engine-v(\d+)$/, (m, n) => `version ${n}${e.basedOn ? `, built on llama.cpp ${e.basedOn}` : ''}`).replace(/^brain-engine-(b\d+)$/, 'built on llama.cpp $1'));
+  // Brain Engine is Bob's own engine. From build 5 a build is named N1bN2 (its own number, then the llama.cpp build
+  // under it: "5b12282"), read from the installed build's release name (public/engine-name.js); older ones as before.
+  const newName = (v) => (/^brain-engine-\d+b\d+$/.test(String(v || '')) ? brainEngineName(v) : '');
+  const verName = (e, v) => (e.id !== 'brainengine' ? v : newName(v) || String(v || '').replace(/^brain-engine-v(\d+)$/, (m, n) => `version ${n}${e.basedOn ? `, built on llama.cpp ${e.basedOn}` : ''}`).replace(/^brain-engine-(b\d+)$/, 'built on llama.cpp $1'));
   // 1.5.203: the Go back button names the build plainly: "the previous engine (llama.cpp b12282)" or "(version 3)".
-  const prevName = (e, v) => String(v || '').replace(/^brain-engine-v(\d+)$/, 'version $1').replace(/^brain-engine-(b\d+)$/, 'llama.cpp $1');
+  const prevName = (e, v) => newName(v) || String(v || '').replace(/^brain-engine-v(\d+)$/, 'version $1').replace(/^brain-engine-(b\d+)$/, 'llama.cpp $1');
   function engineCard(e) {
     const ch = data.engineChoices || {};
     const inUse = [ch.brainsNow === e.id ? 'runs the brains' : '', e.id !== 'llamacpp' && e.id !== 'brainengine' ? '' : (ch.lab === e.id || (!ch.lab && ch.brainsNow === e.id)) ? 'the Lab uses it' : ''].filter(Boolean);
@@ -923,6 +951,26 @@ export function createCellar({ popOut = null } = {}) {
     const again = dlg.querySelector('[data-qbox]');
     flash(again, msg || (settings.qwenPresets.on ? 'Saved. Used from the next reply.' : 'Off. Bob uses Qwen\'s settings again.'));
     again.querySelector(el.dataset.qfield ? `[data-qpreset="${el.closest('[data-qpreset]')?.dataset.qpreset}"] [data-qfield="${el.dataset.qfield}"]` : el.dataset.qreset ? `[data-qreset="${el.dataset.qreset}"]` : '[data-set="qwenPresetsOn"]')?.focus();
+  }
+
+  // Search my notes apps too (doc-more.js): an Obsidian vault or a folder of OneNote exports joins the folders Bob reads.
+  function notesFoldersHtml() {
+    const list = settings.notesFolders || [];
+    const rows = list.map((n, i) => `<li><strong>${n.kind === 'onenote' ? 'OneNote export' : 'Obsidian vault'}:</strong> ${esc(n.path)}${n.missing ? ' <span class="muted">(not found)</span>' : n.kind === 'obsidian' && !n.vault ? ' <span class="muted">(no .obsidian folder here, read as plain notes)</span>' : ''} <button type="button" class="mini" data-notesdrop="${i}">Take off</button></li>`).join('');
+    return `<div class="srow notes-folders"><strong>Search my notes apps too</strong> <span class="muted">Works with reading and searching documents on. Add an Obsidian vault, or a folder you exported OneNote notebooks into (OneNote: File, Export, as Word or PDF). Bob then searches them like your documents. Nothing is changed in them.</span>
+      ${rows ? `<ul class="packlist">${rows}</ul>` : '<p class="muted">No notes folders yet.</p>'}
+      <button type="button" data-notesadd="obsidian">Add an Obsidian vault…</button> <button type="button" data-notesadd="onenote">Add a OneNote export folder…</button> <span class="muted notes-out"></span></div>`;
+  }
+
+  // Note where each memory came from (memory-more.js): the list, opened from Speed & memory.
+  async function showMemorySources(box) {
+    box.innerHTML = '<p class="muted">Reading the memory file…</p>';
+    let r;
+    try { r = await api('/api/memory/sources'); } catch (err) { box.innerHTML = `<p class="muted">${esc(err.message)}</p>`; return; }
+    const rows = r.rows || [];
+    if (!rows.length) { box.innerHTML = '<p class="muted">Bob\'s memory file is empty.</p>'; return; }
+    const from = (x) => (x.from ? (x.chatGone ? `From a chat that was tidied away${x.title ? `: ${esc(x.title)}` : ''}.` : `<button type="button" class="mini" data-memchat="${esc(x.from)}">Open the chat</button> ${esc(x.title || '')}`) : '<span class="muted">Where it came from wasn\'t noted.</span>');
+    box.innerHTML = `${r.on ? '' : '<p class="muted">Note where each memory came from is off, so new memories won\'t say where they came from.</p>'}<ul class="packlist mem-src-list">${rows.map((x) => `<li data-memkey="${esc(x.key)}"><strong>${esc(x.text)}</strong>${x.project ? ` <span class="muted">[${esc(x.project)}]</span>` : ''}${x.until ? ` <span class="muted">${x.expired ? 'ran out' : 'until'} ${esc(x.until)}</span>` : ''}<br>${from(x)} <button type="button" class="mini" data-memforget="${esc(x.key)}">Forget</button></li>`).join('')}</ul>`;
   }
 
   // 1.5.79: the memory banks, shown under "Remember only what fits" while it's on.
@@ -1085,7 +1133,7 @@ export function createCellar({ popOut = null } = {}) {
       ${sw('steer', 'Steer Bob mid-job', 'Type in the chat while I work on a job there, and I read it before my next step instead of after the whole job.')}
       ${sw('softStop', 'Show Stop after this step', 'A softer button beside Stop: the step running now finishes and keeps its result, then I tell you what I did and what\'s left.')}
       ${sw('timeLimit', 'Give each job a time limit', 'A bar shows the time left. When it runs out, a card asks whether to give me more; with no answer in 2 minutes I wrap up.')}
-      <div class="srow"><label class="pick"><strong>Time limit</strong> <select data-jhminutes aria-label="Time limit">${[5, 10, 15, 20, 30, 45, 60].map((m) => `<option value="${m}" ${(j.minutes || 10) === m ? 'selected' : ''}>${m} minutes</option>`).join('')}</select></label></div>
+      <div class="srow"><label class="pick"><strong>Time limit</strong> <select data-jhminutes aria-label="Time limit">${[5, 10, 15, 20, 30, 45, 60].map((m) => `<option value="${m}" ${(j.minutes || 10) === m ? 'selected' : ''}>${m} minutes</option>`).join('')}</select></label> <span class="muted">This also stops any work that runs past it, switch on or off, so I never run away.</span></div>
       ${sw('receipt', 'Show a receipt after each job', 'Files changed, commands run and pages read, each with Open or Undo. Undo works for a week, while the file still holds what I wrote.')}
       ${sw('runTests', 'Run the tests after code edits', 'In a project with tests, I run them after changing its code and fix what fails before I say done. The command still asks you first.')}
       ${sw('askFirst', 'Ask one question before a vague big job', 'If a big ask could mean two things, I ask you to pick one first, instead of guessing and doing the wrong thing.')}
@@ -1115,10 +1163,11 @@ export function createCellar({ popOut = null } = {}) {
   // 1.5.98: old panel ids (Help links, cards, remembered open panels) land on the new panels.
   const ADV_MOVED = { 'adv-connections': 'adv-bobnet' };
   const ADV = [
-    ['brains', '🧠 Brains', 'model roles session brains context thinking making reviewer beside moot keep chatting busy quick brain see big job meanwhile note all tools at once', () => rolesHtml() + `
+    ['brains', '🧠 Brains', 'model roles session brains context thinking making reviewer beside moot keep chatting busy answer messages between steps mid-job interrupt quick brain see big job meanwhile note all tools at once', () => brainsPanelHtml() + `
       ${sswitch('mootBeside', settings.mootBeside === true, 'Let the reviewer sit beside Bob\'s main brain', keep('Off to start with. At High and Extreme effort the reviewer normally swaps in for Bob\'s main brain. On: if there\'s room, it loads beside it instead (on the processor if the card is full, which is slower), so Bob carries on straight after the check. With no room, a paired Bob can check over Bob-Net if Borrow a brain is on. Not in the Gaming session.'))}
       ${sswitch('netReview', settings.netReview === true, 'Ask my other Bobs for a quick second look', keep('Off to start with. At Low and Medium effort there\'s normally no review. On (with Borrow a brain on): a free Bob on Bob-Net with a big enough Review brain checks Bob\'s longer replies once. If none is free, there\'s no check. Chit-chat is never checked.'))}
-      ${sswitch('chatWhileBusy', settings.chatWhileBusy !== false, 'Keep chatting while Bob is busy', keep('While Bob makes a picture, clip, song or sound, or works on a long job, his small brain (Qwen3 4B, if downloaded) answers plain chat beside it, if there\'s free memory. On the processor, replies can take up to half a minute to start. Messages with a picture, or at Medium effort and up, still wait. Off: every message waits for the job.'))}
+      ${sswitch('chatWhileBusy', settings.chatWhileBusy !== false, 'Keep chatting while Bob is busy', keep('While Bob makes a picture, clip, song or sound (or works on a long job, when Answer messages between steps is off), his small brain (Qwen3 4B, if downloaded) answers plain chat beside it, if there\'s free memory. On the processor, replies can take up to half a minute to start. Messages with a picture, or at Medium effort and up, still wait. Off: every message waits for the job.'))}
+      ${sswitch('answerMidJob', settings.answerMidJob !== false, 'Answer messages between steps', keep('On to start with. A message you send while Bob works on a long job is answered by the brain that\'s already loaded, between two steps of the job, so you don\'t wait for the whole job. A question gets a short reply. New work goes in Tasks for after the job. In the job\'s own chat, "also…" or "use the other file" is added to the job, and "stop" stops it after the step it\'s on. Then he carries on from the same step. If a step runs long, he says he got your message. Off: messages wait for the job, or go to the small brain beside it.'))}
       ${sswitch('quickSeesJob', settings.quickSeesJob === true, 'Let Bob\'s Quick brain see the big job', keep('Off unless you turn it on. When Bob chats beside a long job, his Quick brain knows what the big brain is on: the job, how long it has run and its last step. Ask, and it shows you the steps so far, or passes the big brain a note from you, which it reads at its next step. Stopping a job is still your Stop button. Works while Keep chatting while Bob is busy is on.'))}
       ${hw?.gpu?.integrated ? holdbackHtml() : ''}
       ${sswitch('allTools', settings.allTools, 'Give Bob all his tools at once', 'Sends every tool with each message, which leaves less room for the chat. Leave off to keep chats light.')}`],
@@ -1141,6 +1190,7 @@ export function createCellar({ popOut = null } = {}) {
     ['quiet', '🌙 Quiet hours and shortcut', 'quiet hours do not disturb night sleep notifications pop-ups sounds urgent reminders shortcut hotkey global key ctrl space ask box anywhere', () => '<div class="harness-box" data-part="quiet"></div>'],
     ['chatx', '💬 Chat extras', 'try from here branch fork copy chat pin pinned message keep in mind guest chat incognito private nothing saved chat places engine memory switch chats quick', () => '<div class="harness-box" data-part="chats"></div>'],
     ['daily', '🗓 Everyday helpers', 'everyday helpers today card weather reminders morning focus timer pomodoro quiet do not disturb receipt receipts spending sheet expenses budget csv profiles people family shared pc guest tour what\'s new after an update tray dot badge text size font', () => dailyHtml()],
+    ['tools', '🧰 More tools', 'more tools calculator sums units convert python sandbox password passphrase pin reminders repeat every phone email mail imap calendar ics webcal watch page web api key service csv database sql query chart graph spelling grammar meeting recording transcript notes speakers compare files diff what changed', () => moreToolsHtml()],
     ['checkins', '🔔 Check-ins', 'check in heartbeat schedule morning every day weekday hours notify alert tap shoulder downloads stuck failed tasks disk space own checks build finished', () => checkinsHtml()],
     ['remove', '🗑 Remove Bob', 'uninstall remove', () => settings.features?.uninstall === false ? macRemoveHtml() : `<div class="remove-bob">${more('Takes off Bob\'s program, his Start menu shortcut and "Launch on start-up". His chats, settings and models stay unless you tick them. Nothing else in the inn folder or in Windows is touched.')}<button data-removebob>Remove Bob…</button><div class="remove-confirm" hidden></div></div>`]
   ];
@@ -1300,6 +1350,7 @@ export function createCellar({ popOut = null } = {}) {
     mountHandsSettings(dlg.querySelector('.hands-box')); // loads its own data; does nothing off the Settings tab
     mountQuarantineSettings(dlg.querySelector('.q-box'));
     mountSecrets(dlg.querySelector('.secrets-box')); // This replicant matrix: 🔐 Locked secrets
+    mountMoreTools(dlg.querySelector('.more-tools-box')); // How Bob works: 🧰 More tools
     mountPhoneAccess(dlg.querySelector('.phone-box')); // Bob-Net, This Bob: Let my other replicant matrices in
     mountLockSettings(dlg.querySelector('.lock-box'), { onChange: (v) => { if (settings) settings.passcodeLock = v; const n = dlg.querySelector('[data-panel="ev-lock"] .spanel-note'); if (n) n.textContent = lockSummary(v); } }); // 🔒 Passcode lock
     mountTelegram(dlg.querySelector('.telegram-box')); // Online services: Talk to Bob on Telegram
@@ -1324,7 +1375,7 @@ export function createCellar({ popOut = null } = {}) {
     const bar = dlg.querySelector('.cellar-tabs'); dlg.style.setProperty('--cellar-tabs-h', (bar ? bar.offsetHeight : 0) + 'px');
     if (mode === 'shop' && tab === 'settings') applyView();
     if (houseFocus) { const d = dlg.querySelector(`#house-${houseFocus}`); if (d) { d.open = true; d.scrollIntoView({ block: 'center' }); d.querySelector('input, select')?.focus(); houseFocus = null; } }
-    if (jumpTo) { const el = dlg.querySelector('#sub-' + CSS.escape(ADV_MOVED[jumpTo] || jumpTo)); jumpTo = ''; const top = el?.closest(TOP_PANELS); if (top) showTopic(top.dataset.panel); if (el?.tagName === 'DETAILS') el.open = true; if (el && el === top && view === 'advanced') dlg.scrollTop = 0; else el?.scrollIntoView({ block: 'start' }); }
+    if (jumpTo) { const el = dlg.querySelector('#sub-' + CSS.escape(ADV_MOVED[jumpTo] || jumpTo)); jumpTo = ''; const top = el?.closest(TOP_PANELS); if (top) showTopic(top.dataset.panel); if (el?.tagName === 'DETAILS') { el.open = true; if (el.dataset.panel) openPanels.add(el.dataset.panel); } if (el && el === top && view === 'advanced') dlg.scrollTop = 0; else el?.scrollIntoView({ block: 'start' }); }
     if (mode !== 'shop' || tab !== 'settings') lastTab = mode === 'shop' ? tab : lastTab;
   }
 
@@ -1381,7 +1432,8 @@ export function createCellar({ popOut = null } = {}) {
   }
   let setUpBrain = '', placeData = null; // 1.5.205 the brain whose Set up page is open, and /api/brain-place
   let labScores = null; // Nov 11: Lab scores on the Brains page (only when the Lab is on and has scored a brain)
-  const placeLoad = async () => { [placeData, labScores] = await Promise.all([api('/api/brain-place').catch(() => placeData), api('/api/lab/brain-scores').then((j) => j?.scores || null).catch(() => labScores)]); };
+  let honesty = null; // Nov 12, item 192: each brain's honesty score (always on)
+  const placeLoad = async () => { [placeData, labScores, honesty] = await Promise.all([api('/api/brain-place').catch(() => placeData), api('/api/lab/brain-scores').then((j) => j?.scores || null).catch(() => labScores), api('/api/honesty').then((j) => j?.scores || null).catch(() => honesty)]); };
   const placeSave = async (model, patch) => { const cur = placeData?.brains?.[model]?.set || { mode: 'auto' }; await api('/api/settings', { brainPlace: { [model]: { ...cur, ...patch } } }); await placeLoad(); };
   // 1.5.205 Calibrate: the question before it starts ({ models, needUnload, names, error }), and a slow poll while it runs.
   let calAsk = null, calTimer = null;
@@ -1391,7 +1443,7 @@ export function createCellar({ popOut = null } = {}) {
       await placeLoad();
       const on = placeData?.job?.state === 'running';
       if (!on) { clearInterval(calTimer); calTimer = null; }
-      if (dlg.open !== false && mode === 'shop' && tab === 'roles' && eqView === 'brains' && !dlg.querySelector('select:focus, input:focus')) draw();
+      if (dlg.open !== false && mode === 'shop' && ((tab === 'roles' && eqView !== 'doll') || tab === 'settings') && !dlg.querySelector('select:focus, input:focus, textarea:focus')) draw();
     }, 2500);
   };
   const calStart = async (unload) => {
@@ -1406,7 +1458,7 @@ export function createCellar({ popOut = null } = {}) {
     await placeLoad(); calWatch();
   };
   let setupAsk = ''; // 1.5.205 the Brains page: the setup whose list of changes is showing
-  let eqSelected = 'bob', eqView = (() => { try { return localStorage.getItem('bob-equip-view') || 'brains'; } catch { return 'brains'; } })();
+  let eqSelected = 'bob', eqView = (() => { try { return localStorage.getItem('bob-brains-view') || 'brains'; } catch { return 'brains'; } })();
   function eqCtx() {
     return { roles, models: shownModels(), brains: settings?.sessionBrains || {}, embed: roles?.current?.embed || '', selected: eqSelected, vramGB: hw?.vramGB || hw?.gpu?.vramGB || null, unified: Boolean(hw?.gpu?.unified), integrated: Boolean(hw?.gpu?.integrated), arm: hw?.board === 'arm', ramGB: hw?.ramGB || null, freeGB: hw?.freeGB ?? null, platform: settings?.platform, showUnsuited,
       famOpen, packs: data?.packs || [], packId: starterPack, picks: starterPicks, engines: data?.engines || [], starterOpen,
@@ -1571,6 +1623,22 @@ export function createCellar({ popOut = null } = {}) {
         return;
       }
       if ('memsave' in b.dataset) { const box = b.closest('.mem-edit'); try { await api('/api/memory/text', { text: box.querySelector('textarea').value }); box.querySelector('.mem-out').textContent = 'Saved.'; } catch (err) { flash(b, err.message); } return; }
+      if ('memsources' in b.dataset) { const box = b.closest('.memory-sources')?.querySelector('.mem-src'); if (box) await showMemorySources(box); return; }
+      if (b.dataset.memchat) { window.dispatchEvent(new CustomEvent('bob-open-chat', { detail: { id: b.dataset.memchat } })); flash(b, 'Opened in the chat window.'); return; }
+      if (b.dataset.memforget) { try { await api('/api/memory/forget', { key: b.dataset.memforget }); b.closest('li')?.remove(); } catch (err) { flash(b, err.message); } return; }
+      if (b.dataset.notesadd) {
+        const r = await api('/api/pick-folder', {});
+        const out = dlg.querySelector('.notes-out');
+        if (r.error) { if (out) out.textContent = r.error; return; }
+        if (!r.folder) return;
+        const list = [...(settings.notesFolders || []).map(({ kind, path }) => ({ kind, path })), { kind: b.dataset.notesadd, path: r.folder }];
+        const s2 = await api('/api/settings', { notesFolders: list }); settings.notesFolders = s2.notesFolders || []; draw(); return;
+      }
+      if (b.dataset.notesdrop != null) {
+        const list = (settings.notesFolders || []).map(({ kind, path }) => ({ kind, path })).filter((_, i) => String(i) !== b.dataset.notesdrop);
+        const s2 = await api('/api/settings', { notesFolders: list }); settings.notesFolders = s2.notesFolders || []; draw(); return;
+      }
+      if ('digestnow' in b.dataset) { const out = b.parentElement.querySelector('.digest-out'); try { const r = await api('/api/digest/now', {}); if (out) out.textContent = `Done: ${r.counts.chats} chats, ${r.counts.reminders} reminders, ${r.counts.noticed} things noticed. It's in the chat and in the digests folder.`; } catch (err) { if (out) out.textContent = err.message; } return; }
       if ('openmemory' in b.dataset) { try { await api('/api/open', { path: settings?.memoryBanks?.file || '' }); } catch (err) { flash(b, err.message); } return; }
       if ('saveopen' in b.dataset) { try { await api('/api/open', { path: settings?.saveDir?.folder || '' }); } catch (err) { const eb = dlg.querySelector('.save-error'); if (eb) { eb.textContent = err.message; eb.hidden = false; } } return; }
       if ('projbrowse' in b.dataset) { const r = await api('/api/pick-folder', {}); const box = dlg.querySelector('#proj-path'); if (r.folder && box) { box.value = r.folder; projAddState(); const nm = dlg.querySelector('#proj-name'); if (nm && !nm.value) nm.value = r.folder.split(/[\\/]/).filter(Boolean).pop() || ''; } else if (r.error) { const eb = dlg.querySelector('.proj-error'); if (eb) { eb.textContent = r.error; eb.hidden = false; } } return; }
@@ -1758,7 +1826,7 @@ export function createCellar({ popOut = null } = {}) {
       if ('homego' in b.dataset) { if (!homeAsk) return; b.disabled = true; b.textContent = 'Moving…'; const r = await api('/api/home', { folder: homeAsk.folder, confirm: true }); if (!r.ok) { homeError(r.error || 'Couldn\'t move.'); b.disabled = false; b.textContent = homeAsk?.pickedCloud ? 'Move there anyway' : 'Yes, move everything'; } return; }
       if (b.dataset.equip && b.tagName === 'BUTTON') { await equip(eqSelected, b.dataset.equip); return; }
       if (b.dataset.unequip) { const sl = allSlots().find((s) => s.id === b.dataset.unequip); await equip(sl.id, sl.off === 'windows' ? 'windows' : '', { offer: false }); return; }
-      if (b.dataset.eqview) { eqView = b.dataset.eqview; try { localStorage.setItem('bob-equip-view', eqView); } catch {} draw(); return; }
+      if (b.dataset.eqview) { eqView = b.dataset.eqview; try { localStorage.setItem('bob-brains-view', eqView); } catch {} draw(); return; }
       if ('alsono' in b.dataset) { b.closest('.also').remove(); return; }
       if ('alsogo' in b.dataset) {
         const picks = [...b.closest('.also').querySelectorAll('input[data-also]:checked')];
@@ -2083,10 +2151,12 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.set === 'netReview') { const r = await api('/api/settings', { netReview: el.checked }); settings.netReview = r.netReview; el.checked = r.netReview; return; }
       if (el.dataset.set === 'mootBeside') { const r = await api('/api/settings', { mootBeside: el.checked }); settings.mootBeside = r.mootBeside; el.checked = r.mootBeside; return; }
       if (el.dataset.set === 'chatWhileBusy') { const r = await api('/api/settings', { chatWhileBusy: el.checked }); settings.chatWhileBusy = r.chatWhileBusy; el.checked = r.chatWhileBusy; return; }
+      if (el.dataset.set === 'answerMidJob') { const r = await api('/api/settings', { answerMidJob: el.checked }); settings.answerMidJob = r.answerMidJob; el.checked = r.answerMidJob; flash(el, r.answerMidJob ? 'On. Bob answers between steps of a long job.' : 'Off. Messages wait for the job, or go to the small brain beside it.'); return; }
       if (el.dataset.set === 'quickSeesJob') { const r = await api('/api/settings', { quickSeesJob: el.checked }); settings.quickSeesJob = r.quickSeesJob; el.checked = r.quickSeesJob; flash(el, r.quickSeesJob ? 'On. Ask how the job is going while Bob works.' : 'Off. Quick replies don\'t see the job.'); return; }
       if (el.dataset.set === 'quickOnCpu') { const r = await api('/api/settings', { quickOnCpu: el.checked }); settings.quickOnCpu = r.quickOnCpu; el.checked = r.quickOnCpu; return; }
       if (el.dataset.set === 'planFirst') { const r = await api('/api/settings', { planFirst: el.checked }); settings.planFirst = r.planFirst; el.checked = r.planFirst; return; }
       if (el.dataset.set === 'resumeJobs') { const r = await api('/api/settings', { resumeJobs: el.checked }); settings.resumeJobs = r.resumeJobs; el.checked = r.resumeJobs; return; }
+      if (['memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPlaces', 'weeklyDigest'].includes(el.dataset.set)) { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k] === true; el.checked = settings[k]; flash(el, settings[k] ? 'On.' : 'Off.'); return; }
       if (el.dataset.set === 'memoryRecall') { const r = await api('/api/settings', { memoryRecall: el.checked }); settings.memoryRecall = r.memoryRecall; settings.memoryBanks = r.memoryBanks; draw(); return; }
       if (el.dataset.set === 'allTools') { const r = await api('/api/settings', { allTools: el.checked }); settings.allTools = r.allTools; el.checked = r.allTools; return; }
       if (el.dataset.set === 'oneBrain') { const r = await api('/api/settings', { oneBrain: el.checked }); settings.oneBrain = r.oneBrain; el.checked = r.oneBrain; return; }

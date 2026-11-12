@@ -499,7 +499,8 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   { const { SIGNS, pickSign } = await import('../public/mind-cube.js');
     check('with no brain loaded the cube shows one of five neon signs, picked at random, and says it in words', SIGNS.length === 5 && SIGNS.includes('VACANCY') && pickSign(() => 0) === 'VACANCY' && pickSign(() => 0.999) === 'Brain not found' && /The sign says: \$\{signNow\}/.test(cubeJs) && /\.still \.mind-cube p\.mind-cube-sign \{ animation: none; \}/.test(read('public/style.css')) && !/prefers-reduced-motion: reduce\) \{ \.mind-cube p\.mind-cube-sign/.test(read('public/style.css')));
     const fakeLab = { brains: () => [{ id: 'riker', name: 'Riker', gguf: '/x/28Bob-Q4_K_M.gguf' }] };
-    check('the cube gets each loaded brain\'s empty shape, and builds it in one colour before the first reply, still until Bob thinks', /function ready\(shapes, loading = ''\)/.test(cubeJs) && /const built = !rec && shell && shell\.label ===/.test(cubeJs) && /shapes = cubeShapes\(lab, \[\.\.\.now\.map\(\(m\) => m\?\.name\), loading\], friendlyName\)/.test(server) && cubeShapes(fakeLab, ['nothing-here']).length === 0 && CUBE_GROUPS === 256);
+    check('1.5.208: the sign shows only when Bob holds no brain (and isn\'t loading one), never over a loaded brain whose shape is unknown', /anyLoaded = \(Array\.isArray\(j\.labels\) && j\.labels\.length > 0\) \|\| Boolean\(j\.loading\)/.test(cubeJs) && /const empty = known && !anyLoaded;\n\s+showSign\(!rec && !shell && empty\)/.test(cubeJs) && !/!shell && known \?/.test(cubeJs));
+    check('the cube gets each loaded brain\'s empty shape, and builds it in one colour before the first reply, still until Bob thinks', /function ready\(shapes, loading = ''\)/.test(cubeJs) && /const built = !rec && shell && shell\.label ===/.test(cubeJs) && /shapes = cubeShapes\(lab, \[\.\.\.now\.map\(\(m\) => m\?\.name\), loading\], friendlyName, \(m\) => brain\.engine\.resolve\?\.\(m\)\?\.gguf\)/.test(server) && cubeShapes(fakeLab, ['nothing-here']).length === 0 && CUBE_GROUPS === 256);
     { const { showWord, sparkWord, SHOW_MS, SHOW_TRAIL, SPARK_MS } = await import('../public/mind-cube.js');
     let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
     const w1 = showWord(null, 3, 16, 4, rnd), w2 = showWord(w1, 3, 16, 4, rnd);
@@ -520,7 +521,7 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
     check('Help, the glossary and the FAQ explain the glow for show and Real experts', /<dt>Real experts<\/dt>/.test(help) && /id: 'faq-cube-speed'/.test(help) && /<em>glows for show<\/em>/.test(help) && !/my replies come a little slower while it's on/.test(help));
   }
   check('a frame stamped before play() began never runs the cube backwards', /dt = Math\.max\(0, Math\.min\(0\.1,/.test(cubeJs)); }
-  check('the small cube comes apart when its brain is let go, told by Bob to cube pages only', /type === 'cube-brains'\) \{ known = true; gone\(j\.labels, j\.shapes, j\.loading\)/.test(cubeJs) && /ev\?\.type === 'brain' && cubeClients\.size\) cubeBrainsNow\(\)/.test(server) && /for \(const res of cubeClients\) res\.write\(data\);\s*\} catch/.test(server));
+  check('the small cube comes apart when its brain is let go, told by Bob to cube pages only', /type === 'cube-brains'\) \{ known = true; anyLoaded = [^;]+; gone\(j\.labels, j\.shapes, j\.loading\)/.test(cubeJs) && /ev\?\.type === 'brain' && cubeClients\.size\) cubeBrainsNow\(\)/.test(server) && /for \(const res of cubeClients\) res\.write\(data\);\s*\} catch/.test(server));
   check('Help explains load in and load out, and the glossary has both', /<strong>Load in and load out\.<\/strong>/.test(help) && /<dt>Load in<\/dt>/.test(help) && /<dt>Load out<\/dt>/.test(help) && /Vase, then fill/.test(help) && /Drain/.test(help) && /Erode/.test(help) && /Dissolve/.test(help) && !/Archimedean|Rectilinear|Concentric/.test(help));
 }
 
@@ -600,6 +601,8 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   await make(A, 4, (L, e) => (e + 1) * (L + 1));
   await make(B, 4, (L, e) => (e + 1) * (L + 1) * (L === 1 && e === 2 ? 1.5 : 1));
   await make(C, 3, (L, e) => ([0, 2, 3][e] + 1) * (L + 1)); // a cut keeping experts 0, 2 and 3
+  { const none = { brains: () => [] }, sh = cubeShapes(none, ['picked-by-hand'], (n) => n, (m) => (m === 'picked-by-hand' ? A : null));
+    check('1.5.208: a loaded brain the Lab\'s list doesn\'t know still gets its shape from the engine\'s file, so the cube builds it instead of showing the sign', sh.length === 1 && sh[0].label === 'picked-by-hand' && sh[0].layers === 2 && cubeShapes(none, ['picked-by-hand']).length === 0 && cubeShapes(none, ['x'], (n) => n, () => { throw new Error('no'); }).length === 0); }
   const shape = { kind: 'experts', experts: 4, layers: 2 };
   const wm = await weightMap(A, shape);
   check('the weight map is each expert\'s strength, floor by floor', wm.format === WEIGHTS_FORMAT && wm.kind === 'weights' && wm.layers.length === 2 && wm.layers.every((fl, L) => fl.every((v, e) => near(v, (e + 1) * (L + 1)))) && wm.read === 2 * 4 * 3 * ROWS);

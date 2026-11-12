@@ -122,6 +122,7 @@ export const WORDS = {
   "Voice, look, theme, house style and presets.": "Voix, apparence, thème, style maison et préréglages.",
   "How Bob works": "Comment Bob travaille",
   "Sessions, plans, notes, jobs, saved prompts, start-up, check-ins.": "Sessions, plans, notes, tâches, messages enregistrés, démarrage, points réguliers.",
+  "🧰 More tools": "🧰 Autres outils",
   "Brains and speed": "Cerveaux et vitesse",
   "Which brain does what, memory and engines.": "Quel cerveau fait quoi, mémoire et moteurs.",
   "My other Bobs": "Mes autres Bob",

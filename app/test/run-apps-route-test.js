@@ -62,7 +62,10 @@ fake('app_act', [new Error('Windows refused: x'), new Error('Windows refused: y'
 m = await turn('type it in notepad', [call(['app_act', { window: 'notepad', action: 'type', text: 'a' }]), call(['app_act', { window: 'notepad', action: 'type', text: 'b' }])]);
 const [r1, r2] = toolResults(m);
 check('after a failure Bob is asked to try ONE other way and say which worked', r1.includes(ALT_ROUTE_NUDGE('Sam').trim()) && /try ONE other way now/.test(r1) && /which way worked, or say plainly that neither did/.test(r1));
-check('…and the tools for the other routes are added (documents, the Hands that are on)', seen.at(-1).names.includes('write_file') && seen.at(-1).names.includes('app_act'));
+check('…and the tools for the other routes are added (documents, the Hands that are on)', seen[1].names.includes('write_file') && seen[1].names.includes('app_act'));
+// After the other way fails too he is told to stop (below), and the turn ends with his words. (The safety net's
+// own stop for all-failed rounds is four rounds since 1.5.208: a tool is set aside after three fails, item 200.)
+check('…and after the other way fails too, the turn ends with his answer', seen.length === 3, seen.map((x) => x.names.length).join());
 check('after the second failure he is told to stop and say plainly what failed', /You already tried another way this turn\. Stop here/.test(r2) && !/try ONE other way/.test(r2));
 fake('app_look', [new Error('That window has closed.')]);
 m = await turn('look at notepad', [call(['app_look', { window: 'notepad' }])]);

@@ -152,8 +152,11 @@ if (podId) { const t = JSON.parse(fs.readFileSync(tokenFile, 'utf8')); hdr['X-Fo
 
 async function rent() {
   const boot = zlib.gzipSync(fs.readFileSync(path.join(here, 'pod', 'bootstrap.py'))).toString('base64');
-  const rungs = plan.rebuild ? ((plan.rebuild.models || []).every((m) => m.weights_only) ? `upload the full-size weights of ${(plan.rebuild.models || []).map((m) => `${m.name}${m.nickname ? ` (${m.nickname}, ${m.private === false ? 'PUBLIC' : 'private'})` : ''}`).join(' and ')} from the drive to Hugging Face (${plan.publish?.user}); nothing is rebuilt or trained, nothing comes down to this PC` : `rebuild ${(plan.rebuild.models || []).map((m) => `${m.name}${m.nickname ? ` (${m.nickname}, ${m.private === false ? 'PUBLIC' : 'private'})` : ''}`).join(' and ')} from the stock teacher + adapter and put GGUFs, full weights, adapters and cards on Hugging Face (${plan.publish?.user}); nothing is trained, nothing comes down to this PC`) : plan.lessons_only ? `lessons only: ${plan.teacher_gguf ? `the GGUF teacher ${plan.teacher_gguf.repo} (${plan.teacher_gguf.file})` : 'the full Qwen'} writes them, nothing is scored, cut or healed` : (plan.train_teacher ? `${plan.train_teacher.name || '35Bob'} (the full Qwen trained on every lesson, no cut)${plan.rungs.length ? ', then ' : ''}` : '') + (plan.rungs.length ? plan.rungs.map((r) => r.name).join(', ') : plan.train_teacher ? '' : plan.skills ? 'expert counts per skill only (no Bob is cut; the counts come back for the differential table)' : 'lessons and the teacher scores only (no Bob is cut)') + (plan.publish ? ` -- Hugging Face (${plan.publish.user}, private): ${[plan.publish.odds ? 'the teacher odds' : '', ...(plan.publish.models || []).map((m) => `${m} (tested, from the drive)`)].filter(Boolean).join(', ') || 'nothing this run'}; no untested Bob is uploaded` : '') + (plan.download_quants ? `; only ${plan.download_quants.join(', ')} GGUF files come down to this PC, the rest stay on the drive` : '');
+  const rungs = plan.benchmark_only ? `benchmark only: the card serves ${(plan.benchmark?.models || []).map((m) => `${m.name}${m.nickname ? ` (${m.nickname})` : ''} from ${String(m.file || '').replace(/^hf:/, 'Hugging Face ')}`).join(' and ')} and this PC runs ${(plan.benchmark?.commands || []).length || 1} test command(s) against each; nothing is trained, cut, uploaded or downloaded but the reports` : plan.rebuild ? ((plan.rebuild.models || []).every((m) => m.weights_only) ? `upload the full-size weights of ${(plan.rebuild.models || []).map((m) => `${m.name}${m.nickname ? ` (${m.nickname}, ${m.private === false ? 'PUBLIC' : 'private'})` : ''}`).join(' and ')} from the drive to Hugging Face (${plan.publish?.user}); nothing is rebuilt or trained, nothing comes down to this PC` : `rebuild ${(plan.rebuild.models || []).map((m) => `${m.name}${m.nickname ? ` (${m.nickname}, ${m.private === false ? 'PUBLIC' : 'private'})` : ''}`).join(' and ')} from the stock teacher + adapter and put GGUFs, full weights, adapters and cards on Hugging Face (${plan.publish?.user}); nothing is trained, nothing comes down to this PC`) : plan.lessons_only ? `lessons only: ${plan.teacher_gguf ? `the GGUF teacher ${plan.teacher_gguf.repo} (${plan.teacher_gguf.file})` : 'the full Qwen'} writes them, nothing is scored, cut or healed` : (plan.train_teacher ? `${plan.train_teacher.name || '35Bob'} (the full Qwen trained on every lesson, no cut)${plan.rungs.length ? ', then ' : ''}` : '') + (plan.rungs.length ? plan.rungs.map((r) => r.name).join(', ') : plan.train_teacher ? '' : plan.skills ? 'expert counts per skill only (no Bob is cut; the counts come back for the differential table)' : 'lessons and the teacher scores only (no Bob is cut)') + (plan.publish ? ` -- Hugging Face (${plan.publish.user}, private): ${[plan.publish.odds ? 'the teacher odds' : '', ...(plan.publish.models || []).map((m) => `${m} (tested, from the drive)`)].filter(Boolean).join(', ') || 'nothing this run'}; no untested Bob is uploaded` : '') + (plan.download_quants ? `; only ${plan.download_quants.join(', ')} GGUF files come down to this PC, the rest stay on the drive` : '');
   console.log(`\nAbout to rent ONE GPU on RunPod to make: ${rungs}`);
+  // 10 Nov: a rebuild run can carry a benchmark and the brain scans; the yes-prompt must say so (the PC's check caught a summary that did not)
+  if (plan.rebuild && plan.benchmark) console.log(`Then a benchmark on the same card: it serves ${(plan.benchmark.models || []).map((m) => `${m.name}${m.nickname ? ` (${m.nickname})` : ''}`).join(', ')} in turn (${plan.benchmark.hours_each || 2} h cap each) and this PC runs ${(plan.benchmark.commands || []).length || 1} test command(s) against each; the reports land under out/bench. This window must stay open for that.`);
+  if (plan.scan) console.log(`Then brain scans (FNRI): the card builds a patched llama.cpp, makes the stock ${plan.scan.stock || 'teacher'} Q4 from the teacher, scans ${(plan.scan.brains || []).join(', ')} one by one, and the recordings come down to this PC as ${plan.scan.zip || 'a zip under out/fnri'}. About 1 to 1.5 hours of card time.`);
   console.log(`Caps: ${hoursMax} hours or $${dollarsMax}, whichever comes first; the pod is deleted when the Bobs are downloaded, or at the cap.`);
   if (plan.volume) { const kv = knownVolumes(); console.log(`Network volume: ${plan.volume.gb || 100} GB kept between sessions (about $${((plan.volume.gb || 100) * 0.07).toFixed(2)} a month each, a standing charge until deleted). Have: ${kv.length ? kv.map((v) => `${v.id} in ${v.name || v.dataCenterId}`).join(', ') : 'none'}. ${plan.data_centers ? `Only in: ${plan.data_centers.join(', ')} (plan.data_centers).` : 'A card is only taken in a data centre with a volume'}${plan.volume_new === false || plan.rebuild ? '; NO new volume is made this run' : '; a new volume is made where the card is if ours are out'}.`); }
   const stepUpShown = stepUpFor(plan.gpus || GPUS);
@@ -240,6 +243,8 @@ async function salvage() {
 async function kill(why) {
   log(`deleting pod ${podId} (${why})`);
   if (args.local) return;
+  // 10 Nov: tell the pod the PC has everything, so its own self-delete (run.sh `run_done`) does not wait out the grace period if this delete fails
+  try { const mk = path.join(outDir, 'forge', 'pc-finished'); fs.writeFileSync(mk, new Date().toISOString()); await upload('pc-finished', mk); } catch {}
   if (!/downloaded/.test(why)) await salvage();
   for (let i = 0; i < 5; i++) { try { await rp('DELETE', `/pods/${podId}`); log('pod deleted'); return; } catch (e) { log(e.message.slice(0, 120)); await sleep(5000); } }
 }
@@ -328,19 +333,24 @@ if (args.restart) {
   await upload('lessons.jsonl', path.join(lessonsDir, 'lessons.jsonl'));
   await upload('toolsets.json', path.join(lessonsDir, 'toolsets.json'));
   await upload('counts.json', countsFile);
-  if (plan.publish) { // build 17: the pod uploads the GGUF files to Hugging Face itself; the token lives in forge/hf-token.txt (never in the plan or the repo)
+  if (plan.publish || plan.benchmark_only) { // build 17: the pod uploads the GGUF files to Hugging Face itself; the token lives in forge/hf-token.txt (never in the plan or the repo). 10 Nov: a benchmark-only run gets it too, so a brain on a private page can be fetched
     const tok = hfToken();
-    if (!tok) log('plan.publish is set but there is no Hugging Face token (forge/hf-token.txt, one line, or HF_TOKEN): the pod will keep the files for download instead');
-    else { const tmp = path.join(outDir, 'forge', 'hf-token'); fs.writeFileSync(tmp, tok); await upload('hf-token', tmp); fs.unlinkSync(tmp); log(`Hugging Face token sent to the pod (uploads go to ${plan.publish.user}/...)`); }
+    if (!tok) log(plan.publish ? 'plan.publish is set but there is no Hugging Face token (forge/hf-token.txt, one line, or HF_TOKEN): the pod will keep the files for download instead' : 'no Hugging Face token (forge/hf-token.txt or HF_TOKEN): a brain on a private page cannot be fetched for the benchmark');
+    else { const tmp = path.join(outDir, 'forge', 'hf-token'); fs.writeFileSync(tmp, tok); await upload('hf-token', tmp); fs.unlinkSync(tmp); log(plan.publish ? `Hugging Face token sent to the pod (uploads go to ${plan.publish.user}/...)` : 'Hugging Face token sent to the pod (to fetch the benchmark brains; nothing is uploaded)'); }
   }
   for (const r of plan.rungs) if (r.keep_file) await upload(path.basename(r.keep_file), path.resolve(here, '..', r.keep_file)); // cut exactly like an earlier Bob
+  if (plan.scan?.from) { // 10 Nov: the FNRI scan bundle (a folder per brain) goes up as in/scan.tgz; run.sh unpacks it on the drive
+    const from = path.resolve(here, plan.scan.from); if (!fs.existsSync(from)) { log(`plan.scan.from is missing: ${from}`); process.exit(1); }
+    const stgz = path.join(outDir, 'forge', 'scan.tgz'); execSync(`tar czf "${stgz}" -C "${from}" .`, { stdio: 'inherit' }); await upload('scan.tgz', stgz); log(`scan bundle sent (${plan.scan.brains?.join(', ') || 'no brains listed'})`);
+  }
   // build 18: a benchmark brain rebuilt from his keep list + adapter: files not on Hugging Face (no hf: prefix) go up from out/bobs/<name>/
   for (const m of plan.benchmark?.models || []) if (m.file === 'rebuild') {
     for (const k of ['keep_file', 'adapter']) if (m[k] && !/^hf:/.test(m[k])) await upload(m[k], path.join(outDir, 'bobs', m.name, m[k]));
     if (!m.cards) for (const c of fs.existsSync(path.join(outDir, 'bobs', m.name)) ? fs.readdirSync(path.join(outDir, 'bobs', m.name)).filter((f) => f.endsWith('.bob.json')) : []) await upload(c, path.join(outDir, 'bobs', m.name, c));
   }
   // lesson sets already on the PC (e.g. out/lessons-coding) go up as extra sets too; the pod merges them with the rest
-  for (const [i, d] of (plan.extra_lessons || []).entries()) { // a folder (its lessons.jsonl) or a .jsonl file (with the toolsets.json beside it)
+  if (plan.lessons_set) log(`lessons_set ${plan.lessons_set}: the pod takes that lesson set from the drive; the PC's extra sets are not sent`);
+  for (const [i, d] of (plan.lessons_set ? [] : (plan.extra_lessons || [])).entries()) { // a folder (its lessons.jsonl) or a .jsonl file (with the toolsets.json beside it)
     const dd = path.resolve(here, '..', d); const lf = d.endsWith('.jsonl') ? dd : path.join(dd, 'lessons.jsonl'); const tf = path.join(path.dirname(lf), 'toolsets.json');
     await upload(`lessons-extra-pc${i}.jsonl`, lf); await upload(`toolsets-extra-pc${i}.json`, tf);
   }
@@ -395,12 +405,16 @@ async function answerTeacherKey() {
 // in), saves what they print under out/bench/<run>/<name>/, then tells the pod to move on (in/bench-done-<name>).
 const benchDone = new Set();
 async function benchOnPod(name) {
+  const { spawn } = await import('node:child_process'); // 11 Nov: was missing; Bill's publish run looped on 'spawn is not defined' at the first benchmark
   const url = args.local ? 'http://127.0.0.1:8001' : `https://${podId}-8001.proxy.runpod.net`;
   const dir = path.join(outDir, 'bench', plan.run || 'run', name); fs.mkdirSync(dir, { recursive: true });
   const cmds = plan.benchmark.commands?.length ? plan.benchmark.commands : ['node experts-test.mjs --url {{url}} --counts 8 --out {{out}}'];
   log(`benchmark: ${name} is served by the card; running ${cmds.length} test command(s) on this PC`);
   for (const [i, c] of cmds.entries()) {
-    const cmd = c.replace(/{{url}}/g, url).replace(/{{name}}/g, name).replace(/{{out}}/g, dir).replace(/{{run}}/g, plan.run || 'run');
+    // 11 Nov: {{out}} is quoted (the install folder has a space, and the command runs through the shell: an unquoted path was cut at the space,
+    // so the tests wrote to the wrong place and tool-score could not find the lessons); {{lessons}} is the lab's lessons folder for tool-score
+    const q = (v) => `"${String(v).replace(/"/g, '')}"`;
+    const cmd = c.replace(/{{url}}/g, url).replace(/{{name}}/g, name).replace(/"?{{out}}"?/g, q(dir)).replace(/"?{{lessons}}"?/g, q(path.join(outDir, 'lessons'))).replace(/{{run}}/g, plan.run || 'run');
     const lf = path.join(dir, `${String(i + 1).padStart(2, '0')}.log`); fs.writeFileSync(lf, `$ ${cmd}\n`);
     log(`  ${cmd}`);
     const code = await new Promise((res) => { const ch = spawn(cmd, { cwd: path.join(here, '..'), shell: true, windowsHide: true, env: { ...process.env, LAB_URL: url, LAB_API_KEY: hdr['X-Forge-Token'], LAB_MODEL_NAME: name, LAB_REMOTE: '1', LAB_OUT: dir } }); const w = (d) => { fs.appendFileSync(lf, d); process.stdout.write(d); }; ch.stdout.on('data', w); ch.stderr.on('data', w); ch.on('exit', res); ch.on('error', (e) => { w(`${e.message}\n`); res(1); }); });
@@ -409,11 +423,34 @@ async function benchOnPod(name) {
   const mk = path.join(outDir, 'forge', `bench-done-${name}`); fs.writeFileSync(mk, new Date().toISOString()); await upload(`bench-done-${name}`, mk);
   benchDone.add(name); log(`benchmark: ${name} done; reports in ${dir}`);
 }
+// 10 Nov: the FNRI recordings (out/fnri/files.json lists them) come home to out/fnri/<run>/ once the pod says done
+let scanDone = false;
+async function fetchScan() {
+  if (!plan.scan || scanDone) return; scanDone = true;
+  try {
+    const r = await get('/out/fnri/files.json'); if (!r.ok) { log(`scan: no files.json on the pod (${r.status}); nothing to bring home`); return; }
+    const list = await r.json(); const dir = path.join(outDir, 'fnri', plan.run || 'run');
+    for (const f of list.files || []) await download(`fnri/${f.file}`, path.join(dir, f.file), f.bytes, null);
+    log(`FNRI recordings are on the PC: ${dir} (${(list.files || []).filter((f) => f.file.endsWith('recording.json')).length} recording(s))`);
+    if (plan.scan.zip) { // the owner, 10 Nov: "download videos when complete bundled in a zip" -- one zip of everything that came home, where the plan says
+      const zip = path.resolve(here, plan.scan.zip); fs.mkdirSync(path.dirname(zip), { recursive: true }); fs.rmSync(zip, { force: true });
+      const { execSync } = await import('node:child_process');
+      try { execSync(process.platform === 'win32' ? `tar -a -c -f "${zip}" -C "${dir}" .` : `cd "${dir}" && zip -qr "${zip}" .`, { stdio: 'inherit' }); log(`FNRI zip: ${zip}`); } catch (e) { log(`FNRI zip failed: ${e.message.slice(0, 120)}; the files are still in ${dir}`); }
+    }
+  } catch (e) { log(`scan download: ${e.message.slice(0, 160)}`); }
+}
 let driveBytes = -1; // 9 Nov: out/drive.json from the pod = the Forge-made brains really usable on the drive; kept at out/forge/drive.json for the Lab
 while (true) {
   await sleep(args.local ? 3000 : 60000);
   let st = null;
   try { const r = await get('/status'); if (r.ok) st = await r.json(); } catch (e) { log(`status: ${e.message.slice(0, 80)}`); }
+  // 10 Nov: Bill's run lost its watcher mid-way (an error inside one pass of this loop ended the process), so the benchmark never ran
+  // and the pod sat idle at "done". One bad pass is now logged and the next minute tries again; only the loop's own breaks end it.
+  let ended = false;
+  try { ended = await pass(st); } catch (e) { log(`watcher: ${(e && e.stack) || e}; trying again next minute`); }
+  if (ended) break;
+}
+async function pass(st) {
   if (st) {
     const ph = `${st.status?.phase || '?'}: ${st.status?.detail || ''}`;
     if (ph !== lastPhase) { lastPhase = ph; log(`[pod] ${ph}`); }
@@ -455,14 +492,17 @@ while (true) {
     const gotTrained = !trained || done.has(trained);
     const noOdds = plan.odds === false && !plan.rungs.length; // 9 Nov: a teach-it run (train_teacher, no rungs, odds: false) ends when the taught Bob is back; no teacher scores are made
     const rebuildOnly = Boolean(plan.rebuild); // 9 Nov: a rebuild-and-publish run puts everything on Hugging Face; nothing is downloaded, so the pod's "done" is the end
-    const finished = plan.lessons_only ? lessonsSent : rebuildOnly ? true : gotTrained && (scoresOnly ? (noOdds ? true : done.has('teacher')) : [...done].filter((n) => n !== 'teacher' && n !== trained).length >= Math.max(1, plan.rungs.length));
-    if (st.status?.phase === 'done' && finished) { await kill(plan.lessons_only ? 'lessons written; they are on this PC' : rebuildOnly ? 'rebuild finished; the Bobs are on Hugging Face' : noOdds ? 'the taught Bob is back; no odds were made (odds: false)' : plan.rungs.length ? 'all Bobs downloaded' : scoresOnly ? 'teacher scores downloaded' : 'counts downloaded'); break; }
+    const benchOnly = plan.benchmark_only === true; // 10 Nov: a benchmark-only run ends when the pod says done; the reports are already on this PC
+    const finished = plan.lessons_only ? lessonsSent : rebuildOnly || benchOnly ? true : gotTrained && (scoresOnly ? (noOdds ? true : done.has('teacher')) : [...done].filter((n) => n !== 'teacher' && n !== trained).length >= Math.max(1, plan.rungs.length));
+    if (st.status?.phase === 'done' && plan.scan) await fetchScan();
+    if (st.status?.phase === 'done' && finished) { await kill(plan.lessons_only ? 'lessons written; they are on this PC' : rebuildOnly ? 'rebuild finished; the Bobs are on Hugging Face' : benchOnly ? `benchmark finished; the reports are in ${path.join(outDir, 'bench', plan.run || 'run')}` : noOdds ? 'the taught Bob is back; no odds were made (odds: false)' : plan.rungs.length ? 'all Bobs downloaded' : scoresOnly ? 'teacher scores downloaded' : 'counts downloaded'); return true; }
     if (st.status?.phase === 'failed' || (st.exit !== null && st.exit !== undefined && !st.running)) {
       log(`the pod run stopped (${st.status?.detail || 'exit ' + st.exit}). Last log lines:\n${st.log}`);
       if (!args['keep-on-fail']) { await kill('run failed'); } else log('pod kept for a look (--keep-on-fail)');
-      break;
+      return true;
     }
   }
-  if ((Date.now() - t0) / 3.6e6 > hoursMax || cost() > dollarsMax) { log(`cap reached ($${cost().toFixed(2)}, ${((Date.now() - t0) / 3.6e6).toFixed(1)} h)`); await kill('cap'); break; }
+  if ((Date.now() - t0) / 3.6e6 > hoursMax || cost() > dollarsMax) { log(`cap reached ($${cost().toFixed(2)}, ${((Date.now() - t0) / 3.6e6).toFixed(1)} h)`); await kill('cap'); return true; }
+  return false;
 }
 log(`finished: ${[...done].join(', ') || 'nothing downloaded'}; about $${cost().toFixed(2)} spent on this pod${plan.volume ? '; the network volume stays (healed Bobs + teacher kept for next time)' : ''}`);

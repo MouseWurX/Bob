@@ -194,6 +194,8 @@ export function sourceOf(m) {
   const f = (m.files || []).find((x) => /^https:\/\/huggingface\.co\//.test(x.url || ''));
   const hit = f && f.url.match(/^https:\/\/huggingface\.co\/([\w.-]+\/[\w.-]+)\/resolve\/([0-9a-f]{40})\//);
   if (hit) return { url: `https://huggingface.co/${hit[1]}/tree/${hit[2]}`, label: `${hit[1]} @ ${hit[2].slice(0, 7)}` };
+  const ms = (m.files || []).map((x) => String(x.url || '').match(/^https:\/\/modelscope\.cn\/models\/([\w.-]+\/[\w.-]+)\/resolve\/([0-9a-f]{40})\//)).find(Boolean);
+  if (ms) return { url: `https://modelscope.cn/models/${ms[1]}`, label: `ModelScope: ${ms[1]} @ ${ms[2].slice(0, 7)}` };
   if (m.ollama) { const name = m.ollama.split(':')[0]; return { url: `https://ollama.com/library/${encodeURIComponent(name)}`, label: `Ollama: ${m.ollama}` }; }
   return null;
 }

@@ -14,7 +14,7 @@ const remote = Boolean(process.env.LAB_URL);
 const L = locate(o);
 if (!L.model && !remote) { console.error('Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf not found under <parent>/models. Pass --model.'); process.exit(1); }
 if (!remote) checkFree(o);
-const shape = L.model && fs.existsSync(L.model) ? moeShape(L.model) : { name: process.env.LAB_MODEL_NAME || 'served brain', layers: '?', experts: 256, used: Number(String(o.counts).split(',')[0]) || 8, key: null };
+const shape = !remote && L.model && fs.existsSync(L.model) ? moeShape(L.model) : { name: process.env.LAB_MODEL_NAME || 'served brain', layers: '?', experts: 256, used: Number(String(o.counts).split(',')[0]) || 8, key: null };
 console.log(`${shape.name}: ${shape.layers} layers, ${shape.experts} experts, ${shape.used} per word (key ${shape.key})`);
 const kit = await loadBob(L.bob);
 
@@ -62,13 +62,17 @@ async function quiz(url) {
     } catch (e) { r.misses.push(`[${p.job}] "${p.text}" -> error ${e.message.slice(0, 80)}`); }
   }
   for (const [q, re] of FACTS) {
-    const { msg } = await chat(url, { messages: [{ role: 'user', content: q }], max: 64, temperature: 0 });
-    if (re.test(msg.content || '')) r.fact++; else r.misses.push(`fact "${q}" -> ${(msg.content || '').slice(0, 60)}`);
+    try {
+      const { msg } = await chat(url, { messages: [{ role: 'user', content: q }], max: 64, temperature: 0 });
+      if (re.test(msg.content || '')) r.fact++; else r.misses.push(`fact "${q}" -> ${(msg.content || '').slice(0, 60)}`);
+    } catch (e) { r.misses.push(`fact "${q}" -> error ${e.message.slice(0, 80)}`); } // 11 Nov: one failed request no longer loses the whole report
   }
   for (const [q, name, test] of CODE) {
-    const { msg, timings } = await chat(url, { messages: [{ role: 'user', content: q }], max: 600, temperature: 0 });
-    if (timings.predicted_per_second) r.tps.push(timings.predicted_per_second);
-    if (runCode(msg.content || '', name, test)) r.code++; else r.misses.push(`code ${name} failed`);
+    try {
+      const { msg, timings } = await chat(url, { messages: [{ role: 'user', content: q }], max: 600, temperature: 0 });
+      if (timings.predicted_per_second) r.tps.push(timings.predicted_per_second);
+      if (runCode(msg.content || '', name, test)) r.code++; else r.misses.push(`code ${name} failed`);
+    } catch (e) { r.misses.push(`code ${name} -> error ${e.message.slice(0, 80)}`); }
   }
   r.tpsAvg = r.tps.length ? r.tps.reduce((a, b) => a + b, 0) / r.tps.length : 0;
   delete r.tps;

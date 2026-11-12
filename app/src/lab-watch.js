@@ -559,12 +559,15 @@ export async function watchRoute({ req, p, isLocal, lab, b, send, res }) {
 // experts the neuron groups Brain Engine reports (up to 256 a floor, engine patch 0002). It is drawn in one colour as
 // soon as the brain loads, before any reply, and on an engine that can't report experts at all.
 export const CUBE_GROUPS = 256;
-export function cubeShapes(lab, models, friendly = (n) => n) {
+// locate(model) -> the brain's file, from the engine: a loaded brain the Lab's list doesn't know (another
+// category, a file picked by hand) still gets its shape, so the cube builds it instead of showing the sign.
+export function cubeShapes(lab, models, friendly = (n) => n, locate = null) {
   const base = (p) => path.basename(String(p || '')).replace(/\.gguf$/i, '');
   const out = [];
   for (const model of [...new Set((models || []).filter(Boolean).map(String))]) {
     const label = String(friendly(model));
-    const brain = lab.brains().find((b) => b.id === model || base(b.gguf) === base(model) || b.name === label);
+    let brain = lab.brains().find((b) => b.id === model || base(b.gguf) === base(model) || b.name === label);
+    if (!brain && locate) { try { const g = locate(model); if (g) brain = { gguf: String(g), mmproj: null }; } catch {} }
     let f = null; try { f = brain ? inspect(brain) : null; } catch {}
     if (!f?.layers) continue;
     out.push({ label, experts: f.experts || CUBE_GROUPS, layers: f.layers, kind: f.experts ? 'experts' : 'neurons', used: Number(f.used) || 0 }); // used: how many experts a word picks, for the cube's made-up glow

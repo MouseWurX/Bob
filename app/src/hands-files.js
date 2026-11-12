@@ -361,3 +361,19 @@ export function undoJob(cfg, id) {
   saveJournal(cfg, list);
   return { job, done, failed, manual };
 }
+
+// Item 174 (Nov 12): what undoJob would do, without doing it, for the card. Each row: { line, cant }.
+export function undoPreview(job) {
+  const rows = [];
+  for (const s of [...(job?.steps || [])].reverse()) {
+    if (s.op === 'move') {
+      const caseOnly = String(s.to).toLowerCase() === String(s.from).toLowerCase();
+      if (!fs.existsSync(s.to)) rows.push({ line: `${s.to} isn't there any more`, cant: true });
+      else if (fs.existsSync(s.from) && !caseOnly) rows.push({ line: `Something is at ${s.from} again, so ${path.basename(s.to)} stays`, cant: true });
+      else rows.push({ line: `Move back: ${s.to} → ${s.from}` });
+    } else if (s.op === 'create') rows.push(fs.existsSync(s.path) ? { line: `To the Recycle Bin: ${s.path}` } : { line: `Already gone: ${s.path}` });
+    else if (s.op === 'recycle') rows.push(s.trashedTo && fs.existsSync(s.trashedTo) && !fs.existsSync(s.from) ? { line: `Put back: ${s.from}` } : { line: `${s.from}: restore it from the Recycle Bin yourself`, cant: true });
+    else if (s.op === 'deleted') rows.push({ line: `${s.from} was deleted for good`, cant: true });
+  }
+  return rows;
+}

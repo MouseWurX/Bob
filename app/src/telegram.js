@@ -16,6 +16,7 @@
 //
 // What goes through Telegram's servers while it's on: your messages to the bot, Bob's replies, card texts (only
 // with the OK switch), and pictures (only with the pictures switch). Nothing else from your chats.
+import { deadline as withDeadline } from './hang-guard.js'; // item 212: every network call has a deadline
 import fs from 'node:fs';
 import { readJsonFile } from './util.js';
 import path from 'node:path';
@@ -138,8 +139,8 @@ export class TelegramBridge {
     const token = this.token();
     if (!token) throw new Error(`No ${TOKEN_ENV} found.`);
     const r = await this.fetch(`${API}/bot${token}/${method}`, form
-      ? { method: 'POST', body: form, signal }
-      : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}), signal });
+      ? { method: 'POST', body: form, signal: withDeadline(signal, 120_000) }
+      : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}), signal: withDeadline(signal, ((Number(body?.timeout) || 0) + 30) * 1000) }); // item 212: long polls get their wait plus 30 s
     const j = await r.json().catch(() => ({}));
     // The token is part of the address, so errors never repeat the address, only Telegram's own words.
     if (!j.ok) throw new Error(String(j.description || `Telegram said ${r.status}`).replace(token, '…').slice(0, 200));

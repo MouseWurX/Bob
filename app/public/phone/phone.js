@@ -624,6 +624,8 @@
     const mine = current && current.kind === 'net' && current.base === base && ev.sessionId === `phone-${current.chatId}`;
     if (ev.type === 'approval' && String(ev.sessionId || '').startsWith('phone-')) return approvalCard(base, ev);
     if (ev.type === 'checkin') return checkinCard(base, ev);
+    if (ev.type === 'digest') return digestCard(base, ev); // A Sunday digest from that Bob (src/digest.js)
+    if (ev.type === 'reminder' && ev.phone) return reminderCard(base, ev); // 🧰 "Show reminders on my phone" (set on the replicant matrix)
     if (ev.type === 'howto-offer' && String(ev.sessionId || '').startsWith('phone-')) return howtoCard(base, ev);
     if (ev.type === 'offer-setup' && String(ev.sessionId || '').startsWith('phone-')) return setupCard(base, ev); // 1.5.91
     if (ev.type === 'offer-rent' && String(ev.sessionId || '').startsWith('phone-')) return rentCard(base, ev); // 1.5.127 rented brains
@@ -631,7 +633,14 @@
     if (ev.type === 'approval-result') { document.querySelector(`[data-approval="${CSS.escape(String(ev.id))}"]`)?.remove(); return; }
     if (!mine) return;
     if (ev.type === 'start') current.turnId = ev.turnId;
-    else if (ev.type === 'token') grow(ev.text || '');
+    else if (ev.type === 'token') {
+      // Item 190 (Nov 12): new words after a correction in this reply: the corrected words above are replaced by one
+      // short line (the correction note stays), so the wrong words aren't left above the right ones.
+      if (current.corrected && String(ev.text || '').trim()) { const c = current.corrected; current.corrected = null; if (current.text.slice(0, c.at).trim()) current.text = `*(Bob's first try was corrected and is replaced by the answer below.)*${current.text.slice(c.at)}`; }
+      grow(ev.text || '');
+    }
+    else if (ev.type === 'secret-note') secretCard(ev); // 🧰 a password Bob made: shown once, not kept in the chat
+    else if (ev.type === 'token-undo') { const n = Math.max(0, Number(ev.chars) || 0); if (n) { current.text = current.text.slice(0, Math.max(0, current.text.length - n)); grow(''); } } // item 193
     else if (ev.type === 'diagram') { const x = { kind: 'diagram', url: ev.url, base, title: ev.title || '' }; current.media.push(x); current.node.append(mediaNode(x)); }
     else if (ev.type === 'image' || ev.type === 'video') { const x = { kind: ev.type, url: ev.url, base }; current.media.push(x); current.node.append(mediaNode(x)); }
     else if (ev.type === 'made') {
@@ -644,7 +653,8 @@
     }
     else if (ev.type === 'tool') { if (ev.name !== 'edit_my_message') toast(`${bobName(base)}: ${ev.summary || ev.name}`); }
     else if (ev.type === 'error') grow(`\n\n*(${ev.text})*`);
-    else if (ev.type === 'correction' || ev.type === 'busy-note' || ev.type === 'announce' || ev.type === 'aside') grow(`\n\n*${ev.text}*`);
+    else if (ev.type === 'correction') { current.corrected = { at: current.text.length }; grow(`\n\n*${ev.text}*`); }
+    else if (ev.type === 'busy-note' || ev.type === 'announce' || ev.type === 'aside') grow(`\n\n*${ev.text}*`);
     else if (ev.type === 'receipt' && Array.isArray(ev.items)) grow(`\n\n*🧾 What this job did:*\n${ev.items.slice(0, 20).map((i) => `- ${i.what} ${i.path || i.text || i.url || ''}`).join('\n')}`); // Settings, Jobs (Open and Undo are on the computer)
     else if (ev.type === 'waiting-line') { if (!seenWaits.has(ev.id)) { seenWaits.add(ev.id); grow(`\n\n*${ev.text}*`); } } // 1.5.97: once per wait
     else if (ev.type === 'steps') { if (current.msg && Array.isArray(ev.list)) current.msg.steps = ev.list.slice(0, 30); } // item 10
@@ -716,6 +726,29 @@
     card.scrollIntoView({ block: 'end' });
   }
 
+  // 🧰 "Show reminders on my phone" (Settings, How Bob works, 🧰 More tools on the replicant matrix): a reminder set on your other
+  // Bob pops up here too. In the background, Android shows it as a notification (Bridge.kt).
+  function reminderCard(base, ev) {
+    const card = el('div', { class: 'card' },
+      el('div', { class: 'q' }, el('strong', { text: `⏰ Reminder from "${bobName(base)}"` }), el('div', { text: String(ev.text || '') })),
+      ev.every ? el('p', { class: 'help-line', text: `Repeats every ${String(ev.every)}.` }) : null,
+      el('div', { class: 'row' }, el('button', { text: 'Got it', onclick: () => card.remove() })));
+    $('chat').append(card);
+    card.scrollIntoView({ block: 'end' });
+  }
+
+  // 🧰 "Let Bob make passwords": shown here once, with Copy. Not kept in the chat, not read aloud.
+  function secretCard(ev) {
+    const items = Array.isArray(ev.items) ? ev.items.slice(0, 10).map(String) : [];
+    const card = el('div', { class: 'card' },
+      el('div', { class: 'q' }, el('strong', { text: `🔑 ${String(ev.title || 'Your password')}` })),
+      ...items.map((s) => el('div', { class: 'row' }, el('code', { text: s }), el('button', { text: 'Copy', onclick: (e) => { navigator.clipboard?.writeText(s).then(() => { e.target.textContent = 'Copied'; }).catch(() => {}); } }))),
+      el('p', { class: 'help-line', text: String(ev.note || 'Only shown here, once.') }),
+      el('div', { class: 'row' }, el('button', { text: 'Done', onclick: () => card.remove() })));
+    $('chat').append(card);
+    card.scrollIntoView({ block: 'end' });
+  }
+
   // A networked Bob's check-in (set up on the PC): what needs you, shown in chat like a reminder. Read-only here.
   function checkinCard(base, ev) {
     const items = Array.isArray(ev.items) ? ev.items.slice(0, 20) : [];
@@ -723,6 +756,18 @@
     const card = el('div', { class: 'card' },
       el('div', { class: 'q' }, el('strong', { text: `"${bobName(base)}" check-in` })),
       el('ul', {}, items.map((it) => el('li', {}, el('strong', { text: String(it.title || '') }), it.detail ? el('div', { text: String(it.detail) }) : null))),
+      el('div', { class: 'row' }, el('button', { text: 'Got it', onclick: () => card.remove() })));
+    $('chat').append(card);
+    card.scrollIntoView({ block: 'end' });
+  }
+
+  // A networked Bob's Sunday digest (switched on on that replicant matrix): the week in one short note. Read-only here.
+  function digestCard(base, ev) {
+    const lines = String(ev.text || '').split('\n').slice(1, 60).filter((l) => l.trim());
+    if (!lines.length) return;
+    const card = el('div', { class: 'card' },
+      el('div', { class: 'q' }, el('strong', { text: `"${bobName(base)}" Sunday digest: ${String(ev.title || '')}` })),
+      el('div', {}, lines.map((l) => (/^## /.test(l) ? el('strong', { text: l.slice(3) }) : el('div', { text: l.replace(/^- /, '• ') })))),
       el('div', { class: 'row' }, el('button', { text: 'Got it', onclick: () => card.remove() })));
     $('chat').append(card);
     card.scrollIntoView({ block: 'end' });

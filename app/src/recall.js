@@ -25,12 +25,14 @@ const PROJECT_TAG = /\[project:\s*([^\]]+)\]/i;
 const ALWAYS_TAG = /\[always\]/i;
 export const projectOf = (line) => { const m = String(line).match(PROJECT_TAG); return m ? m[1].trim() : ''; };
 // What a line says, without the bullet, date and tags (what's matched and what's keyed).
-export const factText = (line) => String(line).replace(/^\s*[-*]\s*/, '').replace(/\[(?:topic|project):[^\]]*\]/gi, '').replace(/\[always\]/gi, '').replace(/\(\d{4}-\d{2}-\d{2}\)/g, '').replace(/\s+/g, ' ').trim();
+export const factText = (line) => String(line).replace(/^\s*[-*]\s*/, '').replace(/\[(?:topic|project|from|until):[^\]]*\]/gi, '').replace(/\[always\]/gi, '').replace(/\(\d{4}-\d{2}-\d{2}\)/g, '').replace(/\s+/g, ' ').trim();
 export const lineKey = (line) => crypto.createHash('sha1').update(normName(factText(line))).digest('hex').slice(0, 16);
 
 // The memory file as lines Bob can pick from (headings and blank lines left out).
-export function parseMemory(text) {
+// today (YYYY-MM-DD, with "Let memories run out" on): lines whose [until: day] has passed are left out (memory-more.js).
+export function parseMemory(text, { today = '' } = {}) {
   return String(text || '').split('\n').map((raw) => raw.trimEnd()).filter((raw) => raw.trim() && !/^\s*#/.test(raw) && factText(raw).length > 3)
+    .filter((raw) => { if (!today) return true; const u = raw.match(/\[until:\s*(\d{4}-\d{2}-\d{2})\]/i); return !u || u[1] >= today; })
     .map((raw, i) => ({ raw, i, text: factText(raw), project: projectOf(raw), always: ALWAYS_TAG.test(raw), key: lineKey(raw) }));
 }
 
@@ -60,9 +62,10 @@ export function activeProject(cfg, text, { sticky = '', topicProject = '', bankN
 }
 
 // The lines for one message. lines from parseMemory; vecs: { key: vector } (may be empty); qvec: the message's vector.
-export function pickMemories(lines, { text = '', project = '', qvec = null, vecs = {}, k = RECALL_K, maxChars = RECALL_CHARS } = {}) {
+// strict ("Keep project memories to their project", memory-more.js): on no project, only the general lines.
+export function pickMemories(lines, { text = '', project = '', qvec = null, vecs = {}, k = RECALL_K, maxChars = RECALL_CHARS, strict = false } = {}) {
   // On a project: its bank and the general lines only. On no project: every bank, general lines first on a near tie.
-  const inBank = (l) => !l.project || !project || normName(l.project) === normName(project);
+  const inBank = (l) => !l.project || (!project && !strict) || (project && normName(l.project) === normName(project));
   const pool = lines.filter(inBank);
   const always = pool.filter((l) => l.always);
   const rest = pool.filter((l) => !l.always);
@@ -93,8 +96,8 @@ export function recallText(picked, { project = '', user = 'the user' } = {}) {
 }
 
 // What stays in the instructions when recall is on: only the lines the user marked [always].
-export function alwaysText(text) {
-  return parseMemory(text).filter((l) => l.always).map((l) => `- ${l.text}`).join('\n');
+export function alwaysText(text, { today = '' } = {}) {
+  return parseMemory(text, { today }).filter((l) => l.always).map((l) => `- ${l.text}`).join('\n');
 }
 
 // Tag a fact for a project's bank (or leave it general).

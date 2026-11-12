@@ -1,12 +1,14 @@
 // "Save as a test" (item 11, Nov 11): a reply that went wrong becomes a test case, so the loop test grows from Bob's
 // real mistakes instead of only the questions written for it. Kept in <data>/my-tests.jsonl, one case a line:
-//   { job: 'mine', id, at, text, need: [tools], used: [tools], answer, why }
+//   { job: 'mine', id, at, text, need: [tools], used: [tools], answer, why, tape }
+// tape (item 241, replay.js): the turn's replies and tool results, so the test can replay it with no brain.
 // text is what you asked; used is what Bob ran then; need starts as the tools that worked, and the Lab can change it.
 // model-lab/loop-test.mjs --mine <that file> runs them with the rest; the Lab's "Teach it from my mistakes" reads them.
 // Nothing leaves the PC. Pure apart from the one file.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { tapeFrom } from './replay.js';
 
 export const TESTS_FILE = 'my-tests.jsonl';
 export const MAX_TESTS = 500;
@@ -29,7 +31,8 @@ export function caseFor(messages, id, { why = '', now = Date.now() } = {}) {
   return {
     job: 'mine', id: crypto.createHash('sha1').update(`${said(list[q])}\n${now}`).digest('hex').slice(0, 12), at: now,
     text: said(list[q]).slice(0, 4000), need: worked, used: steps.length ? steps.map((s) => s.tool) : used,
-    answer: said(list[at]).slice(0, 1500), why: String(why || '').slice(0, 500)
+    answer: said(list[at]).slice(0, 1500), why: String(why || '').slice(0, 500),
+    ...(tapeFrom(list, id) ? { tape: tapeFrom(list, id) } : {})
   };
 }
 

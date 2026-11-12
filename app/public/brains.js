@@ -157,13 +157,17 @@ export function labLine(b, ctx) {
   const bits = [s.tools != null && `tools ${s.tools}`, s.coding != null && `coding ${s.coding}`, s.tps && `${s.tps} words a second here`].filter(Boolean);
   return bits.length ? `Lab: ${bits.join(' · ')}${s.when ? ` (${s.when})` : ''}` : '';
 }
+// Nov 12, item 192: how often this brain's answers stood with no correction from the app's checks. ctx.honesty =
+// { "<model>": { answers, corrected, score, line } } from /api/honesty.
+export function honestyLineOf(b, ctx) { const s = ctx.honesty?.[b.value] || ctx.honesty?.[b.entry?.id]; return s?.line || ''; }
+const honestyHtml = (b, ctx) => { const t = honestyLineOf(b, ctx); return t ? `<br><span class="muted honesty-line" title="Out of 100: the share of this brain's answers that needed no correction from the app's honesty checks on this replicant matrix">🧭 ${esc(t)}</span>` : ''; };
 const labLineHtml = (b, ctx) => { const t = labLine(b, ctx); return t ? `<br><span class="muted lab-line" title="Scores out of 100 from the Lab's tests on this replicant matrix">🧪 ${esc(t)}</span>` : ''; };
 function brainRowHtml(b, ctx) {
   const chips = b.jobs.map((s) => `<span class="job-chip" title="${esc(s.does)}">${s.icon} ${esc(s.name)}${s.off ? `<button type="button" class="chip-x" data-unequip="${esc(s.id)}" aria-label="Take ${esc(b.name)} off ${esc(s.name)}">✕</button>` : ''}</span>`).join('');
   const trial = b.entry?.trial ? '<span class="tag">Not tried yet</span>' : '';
-  return `<li class="brain-row" id="brain-${esc(b.value)}"><div class="brain-name"><strong>${esc(b.name)}</strong> ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span>${labLineHtml(b, ctx)}</div>
+  return `<li class="brain-row" id="brain-${esc(b.value)}"><div class="brain-name"><strong>${esc(b.name)}</strong> ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span>${labLineHtml(b, ctx)}${honestyHtml(b, ctx)}</div>
     <div class="brain-jobs">${chips}${jobSelect(b.value, jobsFor(b.value, ctx), `Give ${b.name} another job`)}</div>
-    <div class="brain-place">${placeBarHtml(b.entry, ctx)}<div class="brain-act"><span class="muted">${handOn(b.value, ctx) ? 'By hand' : 'Auto'}</span><span><button type="button" class="mini" data-calibrate="${esc(b.value)}" ${calLock(b, ctx) || ctx.place?.job?.state === 'running' ? 'disabled' : ''} aria-label="Calibrate ${esc(b.name)}"${calLock(b, ctx) ? ` title="${esc(calLock(b, ctx))}"` : ''}>⏱ Calibrate</button> <button type="button" class="mini" data-brainsetup="${esc(b.value)}" aria-label="Set up ${esc(b.name)}">Set up</button></span></div></div></li>`;
+    <div class="brain-place">${placeBarHtml(b.entry, ctx)}${actHtml(b, ctx)}</div></li>`;
 }
 
 // ---- Set up: one brain's own page. Its jobs, and where it sits (Auto, or by hand for a brain made of experts). ----
@@ -272,6 +276,24 @@ function senseRowHtml(slot, ctx) {
   return `<li class="sense-row${sel ? ' sel' : ''}"><span>${slot.icon} <strong>${esc(slot.name)}</strong> ${has ? esc(name) : `<span class="muted">${esc(slot.empty)}</span>`}</span><span class="cat-act"><button type="button" class="mini" data-slotpick="${esc(slot.id)}" aria-pressed="${sel}">${has ? 'Change' : 'Pick'}</button></span></li>`;
 }
 
+// 1.5.207 The plain list has the same tools as the Brains page (the owner's ask): the setups and Calibrate all on
+// top, and on every thinking job that has a brain, where it sits, Auto or By hand, Calibrate and Set up.
+const calAllHtml = (ctx) => `<button type="button" class="mini" data-calibrate="*" ${canCalibrate(ctx).length && ctx.place?.job?.state !== 'running' ? '' : 'disabled'} title="${canCalibrate(ctx).length ? 'Time every brain that can be calibrated, one after another' : 'No brain in use can be calibrated here: only brains made of experts that my built-in engine runs'}">⏱ Calibrate all</button>`;
+const actHtml = (b, ctx) => `<div class="brain-act"><span class="muted">${handOn(b.value, ctx) ? 'By hand' : 'Auto'}</span><span><button type="button" class="mini" data-calibrate="${esc(b.value)}" ${calLock(b, ctx) || ctx.place?.job?.state === 'running' ? 'disabled' : ''} aria-label="Calibrate ${esc(b.name)}"${calLock(b, ctx) ? ` title="${esc(calLock(b, ctx))}"` : ''}>⏱ Calibrate</button> <button type="button" class="mini" data-brainsetup="${esc(b.value)}" aria-label="Set up ${esc(b.name)}">Set up</button></span></div>`;
+// The Set up page of the brain that is open, or '' (the list shows instead).
+export function listSetUpHtml(ctx) {
+  const one = ctx.setUp ? brainsInUse(ctx).find((b) => b.value === ctx.setUp) : null;
+  return one ? setUpHtml(one, ctx) : '';
+}
+export function listTopHtml(ctx) {
+  return `<div class="brains-page">${setupsHtml(ctx)}<section class="brains-panel"><div class="panel-head"><h3>Calibrate</h3>${calAllHtml(ctx)}</div><p class="muted">Times each brain a few ways on this replicant matrix and recommends where it should sit. Nothing changes until you say so.</p>${calStatusHtml(ctx)}</section></div>`;
+}
+// One job's brain in the list: where it sits and its two buttons. '' when the job has no brain.
+export function listRowHtml(value, ctx) {
+  const b = value ? brainsInUse(ctx).find((x) => x.value === value) : null;
+  return b ? `<div class="brain-place list-place" id="brain-${esc(b.value)}-${esc(ctx.rowId || '')}">${placeBarHtml(b.entry, ctx)}${actHtml(b, ctx)}</div>` : '';
+}
+
 export function brainsHtml(ctx) {
   const used = brainsInUse(ctx), empty = emptyJobs(ctx), spare = spareBrains(ctx);
   const one = ctx.setUp ? used.find((b) => b.value === ctx.setUp) : null;
@@ -279,12 +301,12 @@ export function brainsHtml(ctx) {
   const sel = senseSlots().find((s) => s.id === ctx.selected) || null;
   const word = placeWord('card', hwOf(ctx));
   return `<div class="equip-top"><p class="muted">Each brain, the jobs it does, and where it sits on this replicant matrix. ${tipHtml(`One brain doing several jobs is faster: I only swap brains when a job needs a different one. "${word}" is quickest; a brain that spills into memory or the drive still runs, slower.`, 'How the Brains page works')} <button type="button" class="mini help-link" data-help="brains-page" aria-label="Help: the Brains page">? Help</button></p>
-      <span><button type="button" class="link" data-eqview="doll">Paper doll</button> · <button type="button" class="link" data-eqview="list">Plain list</button></span></div>
+      <span>${ctx.inSettings ? '' : '<button type="button" class="link" data-eqview="doll">Paper doll</button> · '}<button type="button" class="link" data-eqview="list">Plain list</button></span></div>
     ${starterHtml(ctx)}
     <div class="brains-page">
     ${budgetHtml(ctx)}
     ${setupsHtml(ctx)}
-    <section class="brains-panel"><div class="panel-head"><h3>Brains in use</h3><button type="button" class="mini" data-calibrate="*" ${canCalibrate(ctx).length && ctx.place?.job?.state !== 'running' ? '' : 'disabled'} title="${canCalibrate(ctx).length ? 'Time every brain that can be calibrated, one after another' : 'No brain in use can be calibrated here: only brains made of experts that my built-in engine runs'}">⏱ Calibrate all</button></div>
+    <section class="brains-panel"><div class="panel-head"><h3>Brains in use</h3>${calAllHtml(ctx)}</div>
       ${calStatusHtml(ctx)}
       ${used.length ? `<ul class="brain-list">${used.map((b) => brainRowHtml(b, ctx)).join('')}</ul>` : '<p class="muted">No brain yet. Pick one for a job below, or get one from the catalogue.</p>'}
       ${empty.length ? `<h4>Jobs with no brain of their own</h4><ul class="brain-list">${empty.map((s) => emptyJobHtml(s, ctx)).join('')}</ul>` : ''}</section>

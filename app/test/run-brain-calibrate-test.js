@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { calTries, calBest, calLock, calResult, startCalibrate, useCalibrated, CAL_CTX } from '../src/brain-calibrate.js';
+import { calTries, calBest, calLock, calResult, calibrated, startCalibrate, useCalibrated, CAL_CTX } from '../src/brain-calibrate.js';
 import { brainsHtml, calLock as pageLock, canCalibrate, brainsInUse } from '../public/brains.js';
 
 let pass = 0, fail = 0;
@@ -43,6 +43,7 @@ const wait = async (lab) => { for (let i = 0; i < 300 && lab.job; i++) await new
   check('it starts as one job with a step for every try', r.started?.kind === 'calibrate' && r.started.steps.length === 7 && r.started.name === 'Calibrate Big Brain');
   await wait(lab);
   const rec = calResult(lab.cfg, 'big');
+  check('a calibrated brain is listed for the Set up page, in a slot or not', calibrated(lab.cfg).join() === 'big' && calibrated({ ...lab.cfg, dataDir: path.join(os.tmpdir(), 'bob-no-such-folder') }).length === 0 && /\.\.\.calibrated\(cfg\)/.test(read('src/server.js')));
   check('every try ran in its own trial engine, which was stopped again', lab.served.length === 7 && lab.served.stopped === 6);
   check('Auto is timed with the engine fitting it (no processor-only second try); by hand passes the number and offers every layer to the card', lab.served[0].place === undefined && lab.served[0].cpuOk === false && lab.served[2].place.join(' ') === '--n-cpu-moe 8 -ngl 999' && lab.served.every((o) => o.ctx === CAL_CTX));
   check('a try that didn\'t fit is written down as such, not as a speed', rec.rows.find((x) => x.id === 'm0').failed && !rec.rows.find((x) => x.id === 'm0').tps);

@@ -10,7 +10,13 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
 // ---------- SCUT: the lent card's gate on UDP too ----------
 {
   const fake = (out, ok = true) => async () => ({ ok, out, err: '' });
-  check('SCUT off: the rule stays TCP only', !ruleScript(7777).includes('-Protocol UDP') && !firewallUdp({ share: { lendCard: true } }) && !firewallUdp({ share: { scut: true } }));
+  // 1.5.208 (the replicant matrix test): the rule only opened TCP 7777 and 50052, and SCUT needs UDP 50052 too.
+  check('the rule always has the UDP half for the card port (SCUT), whatever the switches', /-Protocol UDP -LocalPort 50052/.test(ruleScript(7777)) && firewallUdp({}) && firewallUdp({ share: { lendCard: true } }) && firewallUdp({ share: { scut: true } }));
+  check('…only for the card port: Bob\'s own port stays TCP', !/-Protocol UDP -LocalPort 7777/.test(ruleScript(7777)));
+  {
+    const old = await firewallState(7777, { os_: 'win', run: fake(`Rule Name: ${RULE}\nLocalPort: 7777,50052\nProtocol: TCP\n`) });
+    check('a TCP-only rule (made before) is behind with no switches on: Bring up to date shows', old.behind === true && old.ruleHere === false, JSON.stringify(old));
+  }
   const u = ruleScript(7777, '', { udp: true });
   check('SCUT on with a lent card: a UDP half for the card port only, under the same name (Remove takes both)', firewallUdp({ share: { lendCard: true, scut: true } }) && /-Protocol UDP -LocalPort 50052 -RemoteAddress 100\.64\.0\.0\/10 /.test(u) && (u.match(new RegExp(`-DisplayName '${RULE.replace(/[()]/g, '\\$&')}'`, 'g')) || []).length === 3);
   let st = await firewallState(7777, { os_: 'win', udp: true, run: fake(`Rule Name: ${RULE}\nLocalPort: 7777,50052\nProtocol: TCP\n`) });
@@ -45,13 +51,13 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
 // ---------- Reading the state (no admin) ----------
 {
   const fake = (out, ok = true) => async () => ({ ok, out, err: '' });
-  let st = await firewallState(7777, { os_: 'win', run: fake(`Rule Name: ${RULE}\nLocalPort: 7777,50052\n`) });
+  let st = await firewallState(7777, { os_: 'win', run: fake(`Rule Name: ${RULE}\nLocalPort: 7777,50052\nProtocol: TCP\nRule Name: ${RULE}\nLocalPort: 50052\nProtocol: UDP\n`) });
   check('Windows: rule found by its ports (labels are localized)', st.ruleHere === true && st.canAdd === true);
   st = await firewallState(7777, { os_: 'win', run: fake(`Rule Name: ${RULE}\nLocalPort: 7777\n`) });
   check('Windows: an older rule without the card\'s port is offered again', st.ruleHere === false && st.behind === true);
   st = await firewallState(7777, { os_: 'win', home: true, run: fake(`Rule Name: ${RULE}\nLocalPort: 7777,50052\nRemoteIP: 100.64.0.0/255.192.0.0\n`) });
   check('Windows: with the home network on, a rule without it is offered again', st.behind === true);
-  st = await firewallState(7777, { os_: 'win', home: true, run: fake(`Rule Name: ${RULE}\nLocalPort: 7777,50052\nRemoteIP: 100.64.0.0/255.192.0.0,LocalSubnet\n`) });
+  st = await firewallState(7777, { os_: 'win', home: true, run: fake(`Rule Name: ${RULE}\nLocalPort: 7777,50052\nRemoteIP: 100.64.0.0/255.192.0.0,LocalSubnet\nProtocol: TCP\nRule Name: ${RULE}\nLocalPort: 50052\nProtocol: UDP\n`) });
   check('Windows: with the home network in the rule, all set', st.ruleHere === true);
   check('the home network counts for phone access ("Also over the home network")', firewallHome({}, true) === true && firewallHome({}, false) === false);
   check('a lent card with "Use the home network first" needs the home network in the rule too', firewallHome({ share: { lendCard: true } }) === true && firewallHome({ share: { lendCard: true, homeNet: true } }) === true);
@@ -63,9 +69,9 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
   st = await firewallState(7777, { os_: 'win', run: fake('Regelname: x\nLokaler Port: 8888\n') });
   check('Windows: a rule for another port counts as missing', st.ruleHere === false && st.otherPort === true);
   st = await firewallState(7777, { os_: 'linux', run: async (f, a) => ({ ok: a.includes('ufw'), out: '' }) });
-  check('Linux with ufw: the one line to run', st.line === 'sudo ufw allow in on tailscale0 to any port 7777,50052 proto tcp' && !st.canAdd);
+  check('Linux with ufw: the one line to run', st.line === 'sudo ufw allow in on tailscale0 to any port 7777,50052 proto tcp && sudo ufw allow in on tailscale0 to any port 50052 proto udp' && !st.canAdd);
   st = await firewallState(7777, { os_: 'linux', run: async (f, a) => ({ ok: a.includes('firewalld'), out: '' }) });
-  check('Linux with firewalld: the one line to run', st.line === `sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="100.64.0.0/10" port port="7777" protocol="tcp" accept' && sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="100.64.0.0/10" port port="50052" protocol="tcp" accept' && sudo firewall-cmd --reload` && !/trusted/.test(st.line));
+  check('Linux with firewalld: the one line to run', st.line === `sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="100.64.0.0/10" port port="7777" protocol="tcp" accept' && sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="100.64.0.0/10" port port="50052" protocol="tcp" accept' && sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="100.64.0.0/10" port port="50052" protocol="udp" accept' && sudo firewall-cmd --reload` && !/trusted/.test(st.line));
   st = await firewallState(7777, { os_: 'linux', run: async () => ({ ok: false, out: '' }) });
   check('Linux, no firewall on: nothing to do', st.line === '');
   st = await firewallState(7777, { os_: 'mac' });
@@ -79,7 +85,7 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
   const run = async (file, args) => {
     calls.push([file, args]);
     if (file === 'powershell.exe') { ruleThere = true; return { ok: true, out: '', err: '' }; }
-    return { ok: true, out: ruleThere ? 'LocalPort: 7777,50052' : 'nothing', err: '' };
+    return { ok: true, out: ruleThere ? 'LocalPort: 7777,50052\nProtocol: TCP\nLocalPort: 50052\nProtocol: UDP' : 'nothing', err: '' };
   };
   const r = await changeRule(7777, { add: true, exe: 'C:\\Bob\\Bob.exe', os_: 'win', run });
   const ps = calls.find((c) => c[0] === 'powershell.exe');

@@ -198,6 +198,12 @@ export function createViewer({ post, note }) {
         stage.querySelector('iframe').srcdoc = j.text;
         return;
       }
+      if (t.at?.kind === 'line' && t.at.n > 0) { // "Show the page and line": the text with that line marked, scrolled to it
+        const lines = String(j.text).split('\n');
+        stage.innerHTML = `<pre class="vcode"><code>${lines.map((l, i) => (i === t.at.n - 1 ? `<mark class="vat">${esc(l) || ' '}</mark>` : esc(l))).join('\n')}</code></pre>${cut}`;
+        try { stage.querySelector('.vat')?.scrollIntoView({ block: 'center' }); } catch {}
+        return;
+      }
       if (j.ext === '.md') { stage.innerHTML = `<div class="vmd">${render(j.text)}</div>${cut}`; return; }
       if (j.ext === '.csv' || j.ext === '.tsv') { stage.innerHTML = tableHtml(j.text, j.ext === '.tsv' ? '\t' : ',') + cut; return; }
       stage.innerHTML = `<pre class="vcode"><code>${esc(j.text)}</code></pre>${cut}`;
@@ -231,6 +237,7 @@ export function createViewer({ post, note }) {
       tabs.push(t);
       if (tabs.length > 8) tabs.shift(); // keep it light: the oldest tab closes
     }
+    t.at = item.at || null; // "Show the page and line": where in the file to open it
     active = t.key;
     show(true);
     draw();

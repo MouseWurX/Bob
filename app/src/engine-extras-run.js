@@ -2,6 +2,7 @@
 // Every part checks its own switch each time, so turning one off in Settings stops it at once, with no restart.
 import fs from 'node:fs';
 import { ENGINES, engineFor, installedMarker, brainsEngineNow } from './engines.js';
+import { brainEngineName } from '../public/engine-name.js';
 import { logReply } from './speed-log.js';
 import { modelFor } from './sessions.js';
 import { freeMemNow } from './platform.js';
@@ -11,13 +12,16 @@ import { plainEngineNotes, extraOn, handoffHat, warmRoom, warmFile, onBattery, s
 export const BATTERY_MS = 60e3; // how often Laptop mode looks at the battery
 export const CARD_WAIT_MS = 30e3; // a new card's test waits until Bob has been free this long
 
-// The engine's name and version, for the speed history ("Brain Engine brain-engine-v4", "llama.cpp b12282", "Ollama").
+// The engine's name and version, for the speed history ("Brain Engine 5b12282", "Brain Engine brain-engine-v4", "llama.cpp b12282", "Ollama").
 export function engineLabel(cfg) {
   const id = brainsEngineNow(cfg);
   if (id === 'ollama') return 'Ollama';
   const e = engineFor(ENGINES.find((x) => x.id === id));
   let v = '';
   try { v = installedMarker(cfg, e)?.version || ''; } catch {}
+  // From build 5 the installed build's own name ("Brain Engine 5b12282"). Older builds keep their old label, so the
+  // speed history doesn't see an engine change where there was none.
+  if (id === 'brainengine' && /^brain-engine-\d+b\d+$/.test(v)) return brainEngineName(v);
   return `${e?.name || id}${v ? ` ${v}` : ''}`;
 }
 

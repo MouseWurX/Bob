@@ -162,7 +162,7 @@ export class CheckIns {
     let log = [];
     try {
       const lines = fs.readFileSync(this.cfg.logbook, 'utf8').split(/\r?\n/).filter((l) => l.startsWith('- '));
-      log = lines.slice(-LOG_LINES).map((l) => short(l, 200));
+      log = lines.slice(-LOG_LINES).map((l) => short(l.replace(/ \| turn \w{1,8}$/, ''), 200)); // item 247's turn ids are for people, not the brain's read
     } catch {}
     return [`Now: ${tm(this.now())}. Last check-in: ${since ? tm(since) : 'never'}.`,
       `Found by the built-in checks:\n${found.length ? found.map((f) => `- ${f.title}`).join('\n') : '- nothing'}`,

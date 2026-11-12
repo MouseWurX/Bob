@@ -14,6 +14,7 @@
 //            one for this user (or the whole computer, whichever it was) and opens him again.
 // Only ever on a click ("Check for updates", "Update Bob"), or at start-up if "Check for updates when Bob starts"
 // is on, and then only to look. Nothing is downloaded or installed without a click.
+import { deadline as withDeadline, quietGuard } from './hang-guard.js'; // item 212
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -96,7 +97,7 @@ export function selfUpdate(env = process.env, platform = process.platform, execP
 // The Latest release and the file for this computer. Throws in plain words when GitHub can't be reached.
 export async function latestRelease({ fetchImpl = fetch, signal, platform = process.platform, arch = process.arch, env = process.env, execPath = process.execPath, exists = fs.existsSync } = {}) {
   let res;
-  try { res = await fetchImpl(API, { headers: { 'user-agent': 'Bob', accept: 'application/vnd.github+json' }, signal }); }
+  try { res = await fetchImpl(API, { headers: { 'user-agent': 'Bob', accept: 'application/vnd.github+json' }, signal: withDeadline(signal, 30_000) }); } // item 212
   catch { throw new Error(`Couldn't reach GitHub (no internet?). Try again later, or download the newest release from github.com/${REPO}/releases.`); }
   if (!res.ok) throw new Error(res.status === 403 || res.status === 429 ? 'GitHub says I\'ve asked too often for now. Try again in an hour.' : `GitHub didn't answer (${res.status}). Try again in a few minutes.`);
   const rel = await res.json();
@@ -135,26 +136,29 @@ function writeStatus(cfg, st) {
 // Downloads url to file, hashing as it goes. Only from GitHub (also after redirects).
 async function download(url, file, { fetchImpl, signal, onBytes }) {
   if (!hostAllowed(url)) throw new Error('That download isn\'t from GitHub. Stopped.');
-  const res = await fetchImpl(url, { redirect: 'follow', signal, headers: { 'user-agent': 'Bob' } });
-  if (!res.ok) throw new Error(`The download failed (${res.status}). Try again.`);
-  if (res.url && !hostAllowed(res.url)) throw new Error('The download was sent somewhere other than GitHub. Stopped.');
+  const q = quietGuard(signal); // item 212: a download that goes quiet for 2 minutes is stopped, not waited on forever
+  const res = await fetchImpl(url, { redirect: 'follow', signal: q.signal, headers: { 'user-agent': 'Bob' } });
+  if (!res.ok) { q.done(); throw new Error(`The download failed (${res.status}). Try again.`); }
+  if (res.url && !hostAllowed(res.url)) { q.done(); throw new Error('The download was sent somewhere other than GitHub. Stopped.'); }
   const hash = crypto.createHash('sha256');
   const out = fs.createWriteStream(file);
   let got = 0;
   try {
     for await (const c of res.body) {
+      q.poke();
       const b = Buffer.from(c);
       hash.update(b); got += b.length;
       if (!out.write(b)) await new Promise((r) => out.once('drain', r));
       onBytes?.(got);
     }
-  } finally { await new Promise((r) => out.end(r)); }
+  } catch (e) { if (q.quiet() && !signal?.aborted) throw new Error('The download stopped coming (nothing for 2 minutes). Try again.'); throw e; }
+  finally { q.done(); await new Promise((r) => out.end(r)); }
   return hash.digest('hex');
 }
 
 async function fetchText(url, { fetchImpl, signal }) {
   if (!hostAllowed(url)) throw new Error('That checksum file isn\'t from GitHub. Stopped.');
-  const res = await fetchImpl(url, { redirect: 'follow', signal, headers: { 'user-agent': 'Bob' } });
+  const res = await fetchImpl(url, { redirect: 'follow', signal: withDeadline(signal, 60_000), headers: { 'user-agent': 'Bob' } });
   if (!res.ok) throw new Error(`I couldn't get the checksum file (${res.status}).`);
   if (res.url && !hostAllowed(res.url)) throw new Error('The checksum file was sent somewhere other than GitHub. Stopped.');
   return res.text();

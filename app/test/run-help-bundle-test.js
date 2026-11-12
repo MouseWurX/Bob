@@ -1,5 +1,6 @@
 // 1.5.118 Save a help bundle: one zip for whoever helps with this Bob. The scrubbing, the no-brain fallback, the
 // brain's own note when the chat brain is loaded and idle, the zip itself, the button, the route and the Help.
+import { serverText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -148,7 +149,7 @@ const scrub = scrubber(cfg, scrubOpts);
 
 // ---- the window, the route, the picker, the Help
 {
-  const cellar = read('public/cellar.js'), server = read('src/server.js'), picker = read('src/pick-folder.js'), css = read('public/style.css');
+  const cellar = read('public/cellar.js'), server = serverText(), picker = read('src/pick-folder.js'), css = read('public/style.css');
   const pc = cellar.slice(cellar.indexOf("panel('ev-pc'"), cellar.indexOf('function macRemoveHtml'));
   check('Save a help bundle sits after Run first-time setup in This replicant matrix and updates (Check for updates is on the panel line since 1.5.117), with its hint behind ⓘ', /<button type="button" data-welcome>Run first-time setup<\/button><button type="button" data-helpbundle>Save a help bundle<\/button>\$\{tip\('Saves one zip with Bob\\'s logs, the last chats, errors and this replicant matrix\\'s facts, scrubbed of passcodes, keys and your name, so an agent or a person can work out what\\'s wrong\. Nothing is sent anywhere: you pick where it goes\.', 'Save a help bundle'\)\}/.test(pc));
   check('the button says what happened, falls back to a download from another device, and never says "debug"', /'helpbundle' in b\.dataset/.test(cellar) && /api\('\/api\/help-bundle', \{\}\)/.test(cellar) && /r\.cancelled\) box\.textContent = 'Nothing saved: you closed the folder window\.'/.test(cellar) && /location\.href = '\/api\/help-bundle'/.test(cellar) && /My brain couldn\\'t add a note, so the bundle was put together automatically/.test(cellar) && !/debug/i.test(pc) && /\.help-bundle:not\(:empty\)/.test(css));

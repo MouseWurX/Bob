@@ -20,6 +20,7 @@
 // reach, with Put back and Delete for good; after 30 days (or Delete for good) its folder goes to the Recycle Bin.
 // Light: nothing runs in the background, the tools aren't in Bob's prompt until a job needs them (toolbox.js), and the
 // reviewer brain loads only while a tool is being made.
+import { quietGuard, trackChild } from './hang-guard.js'; // items 212, 213
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -289,6 +290,7 @@ export function runSandboxed({ dir, file: codeFile = 'tool.mjs', input = {}, rea
     try {
       child = spawn(file, args, { cwd: work, env: { ...sandboxEnv(work), ...env }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, detached: !WIN, shell: false });
     } catch (e) { return finish(`It couldn't start: ${e.message}`); }
+    trackChild(child, signal, 'a made tool'); // item 213
     const keep = (d) => { log += d; if (log.length > 40000) log = log.slice(-20000); };
     child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
     child.stdout.on('data', keep); child.stderr.on('data', keep);
@@ -388,21 +390,24 @@ function writeDraft(cfg, spec, code) {
 }
 
 async function download(d, dest, signal) {
-  const r = await fetch(d.url, { signal, redirect: 'follow' });
-  if (!r.ok) throw new Error(`${d.file}: the website answered ${r.status}.`);
+  const q = quietGuard(signal); // item 212
+  const r = await fetch(d.url, { signal: q.signal, redirect: 'follow' }).catch((e) => { q.done(); throw e; });
+  if (!r.ok) { q.done(); throw new Error(`${d.file}: the website answered ${r.status}.`); }
   const hash = crypto.createHash('sha256');
   let n = 0;
   const tmp = dest + '.part';
   const out = fs.createWriteStream(tmp);
   try {
     for await (const chunk of r.body) {
+      q.poke();
       n += chunk.length;
       if (n > d.bytes) throw new Error(`${d.file} is bigger than its pinned size, so I stopped.`);
       hash.update(chunk);
       if (!out.write(chunk)) await new Promise((ok) => out.once('drain', ok));
     }
     await new Promise((ok, no) => out.end((e) => (e ? no(e) : ok())));
-  } catch (e) { out.destroy(); fs.rmSync(tmp, { force: true }); throw e; }
+  } catch (e) { out.destroy(); fs.rmSync(tmp, { force: true }); throw q.quiet() && !signal?.aborted ? new Error(`${d.file} stopped coming (nothing for 2 minutes).`) : e; }
+  finally { q.done(); }
   if (n !== d.bytes || hash.digest('hex') !== d.sha256) { fs.rmSync(tmp, { force: true }); throw new Error(`${d.file} isn't the pinned file (size or checksum differs), so I didn't keep it.`); }
   fs.renameSync(tmp, dest);
 }

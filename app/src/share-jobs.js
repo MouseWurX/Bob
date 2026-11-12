@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { cleanAddress, NEEDS, PROTOCOL, guestRefusal } from './share-brains.js';
+import { jitter } from './retry.js'; // item 194
 export const NEEDS_LIST = NEEDS;
 
 // ---------- What a job needs ----------
@@ -194,7 +195,7 @@ async function fetchFile(lenders, lender, remoteId, url, { tries = 3, pause = [2
       const fr = await lenders.call(lender, `/api/guest/jobs/${remoteId}/file?url=${encodeURIComponent(url)}`, { timeout: 15000 });
       if (!fr.ok) throw new Error(`answered ${fr.status}`);
       return Buffer.from(await fr.arrayBuffer());
-    } catch (e) { last = e; if (i < tries - 1) await new Promise((r) => setTimeout(r, pause[i] ?? pause.at(-1))); }
+    } catch (e) { last = e; if (i < tries - 1) await new Promise((r) => setTimeout(r, jitter(pause[i] ?? pause.at(-1)))); }
   }
   throw last;
 }
@@ -240,6 +241,7 @@ export async function sendAway(brain, job, plan, { lenders = brain.lenders, time
     after = Math.max(after, Number(ev.n) || 0);
     if (ev.type === 'start') { started = true; return; }
     if (ev.type === 'token' && typeof ev.text === 'string') { reply += ev.text; return emit({ type: 'token', text: ev.text }); }
+    if (ev.type === 'token-undo') { const n = Math.max(0, Number(ev.chars) || 0); reply = reply.slice(0, Math.max(0, reply.length - n)); return emit({ type: 'token-undo', chars: n }); } // item 193
     if (ev.type === 'approval') { brain.awayApprovals.set(String(ev.id), { jobId: job.id }); return emit(ev); }
     if (ev.type === 'approval-result') { brain.awayApprovals.delete(String(ev.id)); return emit(ev); }
     if (['image', 'video', 'audio'].includes(ev.type) && typeof ev.url === 'string') {

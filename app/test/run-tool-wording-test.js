@@ -29,8 +29,10 @@ check('every tool has a description', all.every((f) => f.description.trim().leng
 // Nov 11 (the 50 improvements): git_look and ask_user are new, and edit_file, search_files, list_folder and remember
 // each gained an optional input, so the cap moved from 43,000 to 45,000. Sort and rename (sort_files, off until
 // switched on) adds about 430 more, and the Everyday helpers' spending_sheet (off until switched on, and hidden
-// while off) about 640.
-check('all tools together stay under 46,200 characters', size(all) < 46200, String(size(all)));
+// while off) about 640. 1.5.208: eleven 🧰 More tools (calculator, passwords, email, calendar, page watch, web
+// services, data, charts, spelling, meeting notes, compare) add about 7,100. All start off and are taken out while
+// off, and once on each comes in only when a message needs it (toolbox groups), so a normal turn doesn't carry them.
+check('all tools together stay under 53,500 characters', size(all) < 53500, String(size(all)));
 const core = all.filter((f) => CORE.includes(f.name));
 // 1.5.207: reminders gained urgent (quiet hours) and offer_setup's list grew with the new opt-in switches; the
 // descriptions were trimmed to make room, and the cap moved from 8,000 to 8,100.

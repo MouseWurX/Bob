@@ -2,6 +2,7 @@
 // an explicit own: true marker; Bob runs it from where it is, never moves or deletes it and never recommends it over
 // the brains he knows. This checks the list tidying, the file reading, the jobs offered, the file-picker commands per
 // platform, the catalogue section and that the Help says it all in Bob's voice.
+import { serverText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -109,7 +110,7 @@ fs.writeFileSync(junk, 'not a brain');
 
 // ---- the app wiring ----
 {
-  const models = read('src/models.js'), server = read('src/server.js'), cellar = read('public/cellar.js'), brain = read('src/brain.js');
+  const models = read('src/models.js'), server = serverText(), cellar = read('public/cellar.js'), brain = read('src/brain.js');
   check('the model list, the slot menus and equipping know about own brains', /ownEntries\(this\.cfg\)/.test(models) && /\(your own file\)/.test(models) && /ownResolve\(own\)/.test(models));
   check('review: inspect, add and remove are local only too (not just pick)', ["p === '/api/own-models/inspect') {", "p === '/api/own-models') {", "p === '/api/own-models/remove') {"].every((r) => server.includes(r) && server.slice(server.indexOf(r), server.indexOf(r) + 200).includes('if (!isLocal) return send(res, 403')));
   {

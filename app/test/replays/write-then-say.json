@@ -1,0 +1,9 @@
+{
+  "ask": "save my shopping list (oat milk, bread) to shopping.txt",
+  "replies": [
+    { "content": "", "calls": [{ "name": "write_file", "args": { "path": "shopping.txt", "content": "oat milk\nbread" } }] },
+    { "content": "Saved your list to shopping.txt.", "calls": [] }
+  ],
+  "results": [{ "name": "write_file", "text": "Wrote shopping.txt (14 bytes)." }],
+  "answer": "Saved your list to shopping.txt."
+}
