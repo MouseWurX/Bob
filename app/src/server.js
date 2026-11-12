@@ -26,6 +26,7 @@ import { transcribe } from './stt.js';
 import { ModelShop } from './models.js';
 import { CatalogUpdates } from './catalog-update.js';
 import { readPage, makeEntry, cleanAdded, mergeAdded, sweepAdded, ADDED_MAX } from './catalog-added.js';
+import { findModels } from './catalog-find.js';
 import { checkEngine, seedBundledEngine, goBackEngine, removeEngine, brainsEngineSettings, engineChoices, brainsEngineNow } from './engines.js';
 import { onEngineFallback } from './engine-blocked.js';
 import { sacNoticeOnce } from './app-control.js';
@@ -781,6 +782,14 @@ const server = http.createServer(async (req, res) => {
       saveSettings(cfg, { ownModels: next });
       brain.catalogNames = null;
       return send(res, 200, { ownModels: next, added: next[next.length - 1] });
+    }
+    // 1.5.209 Find more models: one search of Hugging Face or ModelScope, only when the owner presses Search. A hit is
+    // only a page to look at; adding goes through Add a model page below.
+    if (req.method === 'POST' && p === '/api/catalog-find') {
+      if (!isLocal) return send(res, 403, { error: `Finding models only works on ${myName() || "the Bob's own replicant matrix"} itself, not from the phone.` });
+      const b = await body(req).catch(() => ({}));
+      const found = await findModels({ host: b?.host, q: b?.q, sort: b?.sort, cursor: b?.cursor });
+      return send(res, found.ok ? 200 : 502, found.ok ? found : { error: found.error });
     }
     // 1.5.205 Add a model page: look at a page's files, then add the picked ones to this replicant matrix's own list.
     if (req.method === 'POST' && (p === '/api/catalog-added/look' || p === '/api/catalog-added/add')) {

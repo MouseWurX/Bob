@@ -2,6 +2,7 @@
 // Equip Bob), with its size, how it suits this PC and smaller machines, and where it comes from (an exact Hugging Face
 // commit, or Ollama). Each model has an Active switch: active models show in the slots and menus, the rest stay here,
 // so the pickers stay short. Pure HTML builders; cellar.js handles the clicks.
+import { findHtml } from './cat-find.js'; // 1.5.209 Find more models
 import { officialTag, reapTag, REAP_LINE, isReap, fitsHere, applyFilters, sortModels, filterBarHtml, filtersOn, cleanFilters } from './cat-sort.js'; // 1.5.208 sorting, filters, maker tags
 import { placeFor, quantOf, sizeLine } from './place.js';
 import { canDo, suit, pickFor, deviceFit, sourceOf, SLOT_NAMES, roomOn, tooBigEverywhere } from './fit.js';
@@ -323,7 +324,7 @@ export function catalogueHtml(ctx0) {
   }
   return `<div class="cat-top">${toggle}<p class="muted">Every model Bob knows, by the job it does, then by family. Press a family's name to open its list. Turn <strong>Active</strong> on for the ones you want to see in Equip Bob and the brain menus. ${tipHtml(`Picked for this replicant matrix: ${card}. ★ Recommended is Bob's pick for that job here. Brains not tried on a real replicant matrix yet are listed but not recommended. New means one of the five newest releases in its family; Dated means newer brains do its job better (it stays on the list). Turning Active off only hides a model; it stays on this replicant matrix (your computer). Turning it on for a model you don't have yet shows it in Equip Bob with a Get button.`, 'How the catalogue works')} ${keep('Downloads always ask first, with the size.')} ${famBtns} <button type="button" class="mini help-link" data-help="catalogue" aria-label="Help: the Brain catalogue">? Help</button></p>
     ${bar}${nav}</div>
-    ${jobs.map((j) => jobHtml(j, ctx)).join('')}${ownHtml(ctx)}${addPageHtml(ctx)}${othersHtml(ctx)}${removedHtml(ctx)}`;
+    ${jobs.map((j) => jobHtml(j, ctx)).join('')}${ownHtml(ctx)}${findHtml(ctx)}${addPageHtml(ctx)}${othersHtml(ctx)}${removedHtml(ctx)}`;
 }
 
 // 1.5.137: the brains Rented brains offers to fill in Add a rental: the really big ones (catalog.json bigBrains, too big

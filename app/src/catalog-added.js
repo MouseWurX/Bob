@@ -104,6 +104,11 @@ const whatOf = (host, repo) => `Added by you from ${repo} on ${SITES[host]}. Not
 export const addedId = (repo, key, host = 'hf') => `added-${host === 'ms' ? 'ms-' : ''}${slug(repo.split('/')[1])}-${slug(key.split('/').pop())}`.slice(0, 110);
 
 // One list entry from a page and one of its choices, shaped like a catalogue entry.
+// 1.5.209 A page whose name says the refusals were cut out goes on the naughty list, so it hides with that switch like
+// the ones Bob ships. Only those words: a REAP cut (experts taken out, refusals untouched) is not naughty.
+// Kept the same as NAUGHTY_WORDS in public/cat-sort.js (a test compares them).
+export const NAUGHTY_WORDS = /abliterat|heretic|uncensored|derestrict|decensor|no[-_ ]?refus/i;
+const naughtyBits = (repo) => (NAUGHTY_WORDS.test(repo) ? { naughty: true, community: { by: String(repo).split('/')[0], kind: 'uncensored' } } : {});
 export function makeEntry(page, choice) {
   const f = choice.files[0];
   const base = page.repo.split('/')[1].replace(/[-_.]?GGUF$/i, '');
@@ -118,7 +123,7 @@ export function makeEntry(page, choice) {
     name: `${base}${choice.quant ? ` ${choice.quant}` : ''}`.slice(0, 80), quant: choice.quant || '',
     what: whatOf(host, page.repo),
     sizeGB, vramGB: Math.ceil(sizeGB + 1), license: page.license || '', trial: true, added: true,
-    source: { host, repo: page.repo, commit }, files,
+    source: { host, repo: page.repo, commit }, files, ...naughtyBits(page.repo),
   };
 }
 
@@ -138,7 +143,7 @@ export function cleanAdded(list) {
     seen.add(e.id);
     out.push({ id: e.id, family: ADDED_FAMILY, category: 'chat', jobs: jobsOf(sizeGB), name: txt(e.name, 80), quant: txt(e.quant, 20),
       what: whatOf(host, src.repo),
-      sizeGB, vramGB: Math.ceil(sizeGB + 1), license: txt(e.license, 60), trial: true, added: true, source: { host, repo: src.repo, commit: src.commit }, files });
+      sizeGB, vramGB: Math.ceil(sizeGB + 1), license: txt(e.license, 60), trial: true, added: true, source: { host, repo: src.repo, commit: src.commit }, files, ...naughtyBits(src.repo) });
   }
   return out;
 }
