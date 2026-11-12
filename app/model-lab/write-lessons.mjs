@@ -19,6 +19,10 @@ if (!L.model) { console.error('Qwen3.6 GGUF not found. Pass --model.'); process.
 const remoteUrl = o.url ? String(o.url).replace(/\/$/, '') : null;
 // --persona <file>: appended to Bob's system prompt for every lesson (a voice for a themed set); Bob's own rules stay in front of it.
 const persona = o.persona ? fs.readFileSync(path.resolve(String(o.persona)), 'utf8').trim() : '';
+// --tag "Think: Sherlock" (12 Nov): a short switch line added to Bob's system prompt in BOTH the teacher's prompt and the saved
+// lesson, while the --persona text (how that style thinks) is only shown to the teacher. The student learns to think that
+// way from the short line alone, so the style can be picked at chat time (a "switch"), tool turns included.
+const tag = o.tag ? String(o.tag).replace(/[\r\n]+/g, ' ').trim().slice(0, 80) : '';
 if (remoteUrl) process.env.LAB_REMOTE = '1'; else checkFree(o);
 const parallel = Math.max(1, Number(o.parallel) || 1);
 const kit = await loadBob(L.bob);
@@ -163,8 +167,9 @@ async function one(idea, think, room = 1) { // room 2 = a second try with twice 
   let failNext = idea.job === 'recover' || idea.job === 'codefix';
   for (let step = 0; step < 6; step++) {
     const t0 = toolsFor(loaded); const t = dropTools.size ? { ...t0, tools: (t0.tools || []).filter((x) => !dropTools.has(x.function?.name || x.name)), system: String(t0.system || '').split('\n').filter((ln) => ![...dropTools].some((d) => ln.includes(d))).join('\n') } : t0; // dropped tools leave the offer AND the prompt text
-    const set = setKey(t.system, t.tools);
-    const { msg, finish } = await chat(srv.url, { messages: [{ role: 'system', content: persona ? `${t.system}\n\n${persona}` : t.system }, ...live], tools: t.tools, think, max: (think ? 6000 : 2000) * room });
+    const sys = tag ? `${t.system}\n\n${tag}` : t.system;
+    const set = setKey(sys, t.tools);
+    const { msg, finish } = await chat(srv.url, { messages: [{ role: 'system', content: persona ? `${sys}\n\n${persona}` : sys }, ...live], tools: t.tools, think, max: (think ? 6000 : 2000) * room });
     if (finish === 'length') throw new Error('ran out of room');
     const a = { role: 'assistant', content: msg.content || '', ...(msg.reasoning_content ? { reasoning: msg.reasoning_content } : {}), ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}), set };
     saved.push(a); live.push({ role: 'assistant', content: a.content, ...(a.tool_calls ? { tool_calls: a.tool_calls } : {}) });
