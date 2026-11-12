@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Also put the two files on a test pre-release (brain-engine-v<brainEngineVersion>), for Get models, Engines'
+        description: 'Also put the two files on a test pre-release (brain-engine-<brainEngineVersion>b<llama.cpp build>), for Get models, Engines'
         type: boolean
         default: false
 
@@ -37,8 +37,9 @@ jobs:
         run: |
           tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
           echo "TAG=$tag" >> "$GITHUB_ENV"
-          # Brain Engine's own version number names the release and the files (brain-engine-v3-win-x64.zip); TAG stays the llama.cpp it's built on.
-          echo "BEV=v$(node -p "require('./app/package.json').bob.brainEngineVersion")" >> "$GITHUB_ENV"
+          # The build's name, N1bN2: Brain Engine's own number, "b", the llama.cpp build it's built on (5b12282 names the
+          # release and the files, brain-engine-5b12282-win-x64.zip). TAG stays the llama.cpp tag. Builds 3 and 4 were vN.
+          echo "BEV=$(node -p "require('./app/package.json').bob.brainEngineVersion")b${tag#b}" >> "$GITHUB_ENV"
           git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
           # A one-commit clone counts "build 1"; say the tag's number instead, so --version reads like llama.cpp's own builds.
           sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${tag#b})/" llama.cpp/cmake/build-info.cmake
@@ -121,8 +122,9 @@ jobs:
         run: |
           tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
           echo "TAG=$tag" >> "$GITHUB_ENV"
-          # Brain Engine's own version number names the release and the files (brain-engine-v3-win-x64.zip); TAG stays the llama.cpp it's built on.
-          echo "BEV=v$(node -p "require('./app/package.json').bob.brainEngineVersion")" >> "$GITHUB_ENV"
+          # The build's name, N1bN2: Brain Engine's own number, "b", the llama.cpp build it's built on (5b12282 names the
+          # release and the files, brain-engine-5b12282-win-x64.zip). TAG stays the llama.cpp tag. Builds 3 and 4 were vN.
+          echo "BEV=$(node -p "require('./app/package.json').bob.brainEngineVersion")b${tag#b}" >> "$GITHUB_ENV"
           git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
           # A one-commit clone counts "build 1"; say the tag's number instead, so --version reads like llama.cpp's own builds.
           sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${tag#b})/" llama.cpp/cmake/build-info.cmake

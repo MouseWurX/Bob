@@ -12,6 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { MEM_TYPES, memTypeTrade } from '../public/mem-types.js';
+import { brainEngineBuild } from '../public/engine-name.js';
 
 export const EXTRA_SWITCHES = ['copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes'];
 export const extraOn = (cfg, key) => cfg?.[key] === true;
@@ -166,7 +167,8 @@ export const BRAIN_ENGINE_NOTES = {
   3: 'Built on a newer llama.cpp (b12282), with CUDA 13.5 on NVIDIA cards. Adds SCUT, a faster Wi-Fi link for sharing a card between Bobs, and the SUDDAR scan.',
   4: 'Every SCUT packet between your Bobs is sealed, so nobody else on the network can read or change it.'
 };
-export const brainEngineNumber = (tag) => { const m = /^brain-engine-v(\d+)$/.exec(String(tag || '')); return m ? Number(m[1]) : 0; };
+// Brain Engine's own build number from its release name (brain-engine-5b12282 or the older brain-engine-v4; public/engine-name.js).
+export const brainEngineNumber = (tag) => brainEngineBuild(tag)?.n || 0;
 // llama.cpp: its release notes are written for programmers, so only the parts that matter to you are picked out.
 const PLAIN = [
   [/\b(cuda|nvidia|cublas)\b/i, 'Changes for NVIDIA graphics cards.'],

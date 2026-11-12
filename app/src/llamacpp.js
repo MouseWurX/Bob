@@ -16,6 +16,7 @@ import { gamingCard, decideCard, readCard, CARD_BUSY_PCT, CARD_MIN_FREE_MB } fro
 import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts, cardGB } from './tuning.js';
 import { chatPlacesOn, placesDir, placeFile, tidyPlaces } from './chat-places.js'; // Each chat keeps its place in the engine (off unless switched on)
 import { exeName } from './platform.js';
+import { buildMatches, brainEngineName, brainEngineBuild } from '../public/engine-name.js';
 import { Embedder } from './embedder.js';
 import { ggufInfo } from './gguf.js';
 import { placeArgs } from './brain-place.js';
@@ -391,6 +392,20 @@ export class LlamaCpp {
   exePath() { return this.lc.exe || path.join(this.cfg.agentDir, 'llama.cpp', exeName('llama-server')); }
   // llama.cpp build number (0 when unknown). 1.5.91: the marker next to the exe first (the bundled engine and an
   // engine set by hand carry their own), then the one in Bob's engine folder.
+  // Nov 12 (the owner: "make sure it reads the right label, and that the label is the right model"): a Brain Engine
+  // build named N1bN2 says which llama.cpp it is built on; the running engine says the same in /props build_info. If
+  // they differ, the files in the folder aren't the build its marker names, so Bob says so once (Health logbook).
+  checkBuild(buildInfo) {
+    let mark = null;
+    try { mark = JSON.parse(fs.readFileSync(path.join(path.dirname(this.exePath()), 'bob-brainengine.json'), 'utf8')); } catch { return null; }
+    const ok = buildMatches(mark?.version, buildInfo);
+    if (ok === false && this.buildWarned !== mark.version) {
+      this.buildWarned = mark.version;
+      this.log?.('engine', `${brainEngineName(mark.version)} is named for llama.cpp ${brainEngineBuild(mark.version).llama}, but the engine running says it is ${String(buildInfo).split('-')[0]}. The files in its folder may be from another build: Settings, Engines, Update puts the right one in.`);
+    }
+    this.buildOk = ok;
+    return ok;
+  }
   buildNo() {
     for (const dir of [path.dirname(this.exePath()), path.join(this.cfg.agentDir, 'llama.cpp')]) {
       try { const n = Number(String(JSON.parse(fs.readFileSync(path.join(dir, 'bob-llamacpp.json'), 'utf8')).version).replace(/^b/, '')); if (n) return n; } catch {}
@@ -874,6 +889,7 @@ export class LlamaCpp {
       this.templateRead.add(model);
       try {
         const props = await (await fetch(this.url + '/props', { signal: AbortSignal.timeout(3000) })).json();
+        this.checkBuild?.(props?.build_info);
         if (MID_SYSTEM_REFUSED.test(String(props?.chat_template || ''))) {
           this.noMidSystem.add(model);
           this.log?.('engine', `${model}: its chat template only takes a system message first, so Bob's notes go in as user notes`);

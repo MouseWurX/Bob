@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
+import { brainEngineName } from '../public/engine-name.js';
 import { ENGINES, engineFor, installedMarker, previousDir, goBackEngine, engineBlocked, BLOCKED_FILE } from './engines.js';
 
 export const FRESH_MS = 2 * 864e5; // "right after an engine update"
@@ -28,9 +29,10 @@ export function engineOf(cfg, exe) {
   }
   return '';
 }
-// "version 3" / "built on llama.cpp b12282" / a plain tag, for the words Bob says.
+// "Brain Engine 5b12282" / "version 3" / "built on llama.cpp b12282" / a plain tag, for the words Bob says.
 export function buildWords(v) {
   const s = String(v || '');
+  if (/^brain-engine-\d+b\d+$/.test(s)) return brainEngineName(s); // from build 5: "Brain Engine 5b12282"
   let m = /^brain-engine-v(\d+)$/.exec(s); if (m) return `version ${m[1]}`;
   m = /^brain-engine-(b\d+)$/.exec(s); if (m) return `the one built on llama.cpp ${m[1]}`;
   return s || 'the one before';

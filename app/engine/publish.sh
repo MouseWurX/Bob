@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Puts one Brain Engine file on the test pre-release brain-engine-<version> (v3 and on; built on llama.cpp <tag>) (made if it isn't there yet), with a
+# Puts one Brain Engine file on the test pre-release brain-engine-<version> (from 5: N1bN2, Brain Engine's number then the llama.cpp build it's built on, like 5b12282) (made if it isn't there yet), with a
 # .sha256 beside it. A pre-release is never GitHub's "latest", so Bob's own update check (releases/latest) never
 # sees it. Run by .github/workflows/brain-engine.yml only when started by hand with "publish" ticked.
 set -euo pipefail
@@ -17,6 +17,6 @@ NOTES
 )
 for i in 1 2 3; do
   gh release view "$rel" -R "$repo" > /dev/null 2>&1 && break
-  gh release create "$rel" --target "$GITHUB_SHA" --title "Brain Engine ${ver#v} (built on llama.cpp $tag, test build)" --notes "$notes" --prerelease --latest=false -R "$repo" && break || sleep 10
+  gh release create "$rel" --target "$GITHUB_SHA" --title "Brain Engine ${ver#v} (Brain Engine ${ver%%b*} on llama.cpp $tag, test build)" --notes "$notes" --prerelease --latest=false -R "$repo" && break || sleep 10
 done
 gh release upload "$rel" "$file" "$file.sha256" --clobber -R "$repo"

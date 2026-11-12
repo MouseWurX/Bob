@@ -1,5 +1,6 @@
 // The cellar: Bob's model shop and settings. Every download starts from a click here, with its size shown first.
 import { setLook } from './bob-sprite.js';
+import { brainEngineName } from './engine-name.js';
 import { progressHtml, animateWorkers } from './progress.js';
 import { createStylePage } from './style-page.js';
 import { createSampler, sampleButton, sampleHint } from './voice-samples.js';
@@ -846,10 +847,12 @@ export function createCellar({ popOut = null } = {}) {
         <select data-labengine aria-label="Engine for the Lab">${[['', 'Same as Bob\'s brains'], ['brainengine', 'Brain Engine'], ['llamacpp', 'llama.cpp']].map(([v, l]) => `<option value="${v}" ${v === lab ? 'selected' : ''}>${l}</option>`).join('')}</select>
         <span class="muted">Which engine the Computer Science Lab makes, tests and runs brains with, from its next job. If a tool is only in one engine's download (the direction finder, say), the Lab still finds it there. The Lab page shows the same choice at the top.</span></label>`;
   }
-  // Brain Engine is Bob's own engine: its builds are named by the llama.cpp they're built on, said that way.
-  const verName = (e, v) => (e.id !== 'brainengine' ? v : String(v || '').replace(/^brain-engine-v(\d+)$/, (m, n) => `version ${n}${e.basedOn ? `, built on llama.cpp ${e.basedOn}` : ''}`).replace(/^brain-engine-(b\d+)$/, 'built on llama.cpp $1'));
+  // Brain Engine is Bob's own engine. From build 5 a build is named N1bN2 (its own number, then the llama.cpp build
+  // under it: "5b12282"), read from the installed build's release name (public/engine-name.js); older ones as before.
+  const newName = (v) => (/^brain-engine-\d+b\d+$/.test(String(v || '')) ? brainEngineName(v) : '');
+  const verName = (e, v) => (e.id !== 'brainengine' ? v : newName(v) || String(v || '').replace(/^brain-engine-v(\d+)$/, (m, n) => `version ${n}${e.basedOn ? `, built on llama.cpp ${e.basedOn}` : ''}`).replace(/^brain-engine-(b\d+)$/, 'built on llama.cpp $1'));
   // 1.5.203: the Go back button names the build plainly: "the previous engine (llama.cpp b12282)" or "(version 3)".
-  const prevName = (e, v) => String(v || '').replace(/^brain-engine-v(\d+)$/, 'version $1').replace(/^brain-engine-(b\d+)$/, 'llama.cpp $1');
+  const prevName = (e, v) => newName(v) || String(v || '').replace(/^brain-engine-v(\d+)$/, 'version $1').replace(/^brain-engine-(b\d+)$/, 'llama.cpp $1');
   function engineCard(e) {
     const ch = data.engineChoices || {};
     const inUse = [ch.brainsNow === e.id ? 'runs the brains' : '', e.id !== 'llamacpp' && e.id !== 'brainengine' ? '' : (ch.lab === e.id || (!ch.lab && ch.brainsNow === e.id)) ? 'the Lab uses it' : ''].filter(Boolean);

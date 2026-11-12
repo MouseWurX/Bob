@@ -32,6 +32,7 @@ const PIPER_ARM64_SHA = 'fea0fd2d87c54dbc7078d0f878289f404bd4d6eea6e7444a77835d1
 // bundled in the download). Get and Get Bob ready install this one; "Check for a newer build" can still fetch the newest.
 // Brain Engine has its own version numbers (1.5.203: Brain Engine 3, built on llama.cpp bundledLlamaTag); Bob downloads
 // the release his pin names (bob.brainEngine.tag). Builds from before then were named after their llama.cpp tag.
+// From build 5 a release is named N1bN2 (brain-engine-5b12282: build 5 on llama.cpp b12282; public/engine-name.js).
 const PIN_TAG = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.brainEngine?.tag || ''; } catch { return ''; } })();
 export const TESTED_LLAMA = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.bundledLlamaTag || ''; } catch { return ''; } })();
 // LibreOffice comes from The Document Foundation's own archive, not GitHub.
