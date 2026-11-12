@@ -39,6 +39,7 @@ import { labPhone } from './lab-plus.js'; // Lab item 110: Lab jobs tell your ph
 import { recheckTick, QUIET_MIN } from './lab-recheck.js'; // Nov 11: check again after engine updates
 import { EngineKeeper, keeperOn } from './engine-keeper.js';
 import { autostartOn, setAutostart } from './autostart.js';
+import { makePacker } from './pack-send.js'; // 1.5.211: pages sent packed (gzip) when the browser asks
 import { applyWindowState } from './app-icon.js';
 import { capabilities } from './capabilities.js';
 import { cloudStatus } from './cloud.js';
@@ -327,12 +328,16 @@ function send(res, code, body, type = 'application/json', extra = {}) {
   res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 }
 
+const packFile = makePacker();
 function serveFile(res, dir, rel, extra = {}) {
   const file = path.resolve(dir, '.' + path.sep + rel);
   if (!file.startsWith(path.resolve(dir) + path.sep)) return send(res, 404, { error: 'not found' });
   fs.readFile(file, (err, buf) => {
     if (err) return send(res, 404, { error: 'not found' });
-    send(res, 200, buf, TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', extra);
+    const type = TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream';
+    const gz = packFile(res.req?.headers?.['accept-encoding'], file, buf, type);
+    if (gz) return send(res, 200, gz, type, { ...extra, 'content-encoding': 'gzip', vary: 'Accept-Encoding' });
+    send(res, 200, buf, type, extra);
   });
 }
 

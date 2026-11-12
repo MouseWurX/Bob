@@ -73,8 +73,15 @@ const WEAPONS = {
   hammer: { name: 'Hammer', power: 5, smash: true, acc: -4, mods: { might: 1, wits: -1 } },
   spear: { name: 'Spear', power: 4, first: true, acc: 2 },
   staff: { name: 'Staff', power: 1, magic: 3, acc: 0, mods: { wits: 1, might: -1 } },
-  bow: { name: 'Bow', power: 3, crit: 0.06, acc: 10 }
+  bow: { name: 'Bow', power: 3, crit: 0.06, acc: 10, shot: true },
+  // Journey v1.2: more to shoot with. A longbow reaches further and needs a strong arm; a crossbow hits hardest and
+  // reloads slowly; a hand crossbow is quick to the first shot.
+  longbow: { name: 'Longbow', power: 4, crit: 0.08, acc: 12, shot: true, mods: { might: -1 } },
+  crossbow: { name: 'Crossbow', power: 6, crit: 0.1, acc: 6, slow: 1, shot: true },
+  handbow: { name: 'Hand crossbow', power: 3, crit: 0.08, acc: 9, first: true, shot: true }
 };
+// The kit's shape on the character screen's looks (public/avatars.js): the new bows wear the bow's look there.
+const lookKit = (key) => ({ longbow: 'bow', crossbow: 'bow', handbow: 'bow' }[kitBase(key)] || kitBase(key));
 const ARMOURS = {
   none: { name: 'No armour', guard: 0, eva: 4 },
   robe: { name: 'Robe', guard: 1, magic: 2, eva: 2, mods: { wits: 1 } },
@@ -109,7 +116,7 @@ function kitStats(kind, key) {
   for (const k of ['power', 'guard', 'magic', 'acc', 'eva', 'crit', 'slow']) out[k] = (b[k] || 0) + (a?.[k] || 0);
   out.mods = { ...(b.mods || {}) };
   for (const [s, v] of Object.entries(a?.mods || {})) out.mods[s] = (out.mods[s] || 0) + v;
-  out.first = Boolean(b.first); out.smash = Boolean(b.smash);
+  out.first = Boolean(b.first); out.smash = Boolean(b.smash); out.shot = Boolean(b.shot);
   return out;
 }
 const kitName = (key) => { const k = kitKind(key); return k ? kitStats(k, key).name : (WEAPONS[key] || ARMOURS[key] || SHIELDS[key])?.name || key; };
@@ -138,18 +145,40 @@ const ITEMS = {
   scroll_heal: { name: 'Scroll of mending', what: 'Read once: heals the whole party. Works on the road too.', price: 500, spell: 'rally', scroll: true, field: true },
   scroll_raise: { name: 'Scroll of raising', what: 'Read once: brings a fallen friend back. Works on the road too.', price: 900, spell: 'raise', scroll: true, field: true },
   scroll_sleep: { name: 'Scroll of lullaby', what: 'Read once: every foe may fall asleep.', price: 450, spell: 'lullaby', scroll: true },
-  scroll_ward: { name: 'Scroll of warding', what: 'Read once: the party takes less harm this fight.', price: 400, spell: 'shieldwall', scroll: true }
+  scroll_ward: { name: 'Scroll of warding', what: 'Read once: the party takes less harm this fight.', price: 400, spell: 'shieldwall', scroll: true },
+  // Food (Journey v1.2). Feed a wild animal the food it loves, in a fight, and it may come along as a pet or a mount.
+  // On the road, food heals your pets and mounts a little.
+  meat: { name: 'Dried meat', what: 'Food. Wolves, foxes, hawks and wyverns love it.', price: 40, food: true, field: true },
+  fish: { name: 'Fish', what: 'Food. Crabs, lynxes, gulls and dolphins love it.', price: 40, food: true, field: true },
+  berries: { name: 'Wild berries', what: 'Food. Bats and crows love them.', price: 20, food: true, field: true },
+  oats: { name: 'Sack of oats', what: 'Food. Horses love them.', price: 30, food: true, field: true },
+  honey: { name: 'Honeycomb', what: 'Food. Bears and griffins love it.', price: 80, food: true, field: true },
+  greens: { name: 'Sweet greens', what: 'Food. Rabbits, tortoises and rams love them.', price: 20, food: true, field: true },
+  grubs: { name: 'Jar of grubs', what: 'Food. Toads, owls, spiders and striders love them.', price: 25, food: true, field: true },
+  cheese: { name: 'Hard cheese', what: 'Food. Rats love it. So does everybody.', price: 35, food: true, field: true },
+  mushrooms: { name: 'Cave mushrooms', what: 'Food. Boars and giant beetles love them.', price: 50, food: true, field: true },
+  apples: { name: 'Red apples', what: 'Food. Elks and pegasi love them.', price: 25, food: true, field: true },
+  dates: { name: 'Dates', what: 'Food. Camels love them.', price: 45, food: true, field: true }
 };
+const FOODS = Object.keys(ITEMS).filter((k) => ITEMS[k].food);
 const SCROLLS = Object.keys(ITEMS).filter((k) => ITEMS[k].scroll);
-const KIT_PRICES = { dagger: 200, sword: 500, spear: 550, axe: 800, hammer: 800, staff: 400, bow: 600, leather: 300, chain: 900, plate: 2500, robe: 450, round: 250, tall: 700 };
+const KIT_PRICES = { dagger: 200, sword: 500, spear: 550, axe: 800, hammer: 800, staff: 400, bow: 600, longbow: 900, crossbow: 1400, handbow: 1000, leather: 300, chain: 900, plate: 2500, robe: 450, round: 250, tall: 700 };
 const kitPrice = (key) => { const { base, affix } = splitKit(key); return Math.round((KIT_PRICES[base] || 100) * (affix ? AFFIXES[affix].price : 1)); };
 // What each kind of seller has, by how big the place is.
 function wares(role, tier) {
   const big = tier === 'town' || tier === 'castle';
-  if (role === 'peddler') return ['tonic', 'water', 'antidote', 'ember', 'scroll_sleep'];
-  if (role === 'shop') return big ? ['tonic', 'bigtonic', 'water', 'salts', 'antidote', 'ember', 'scroll_heal', 'scroll_fire', 'scroll_ward'] : ['tonic', 'bigtonic', 'water', 'salts', 'antidote', 'ember'];
-  if (role === 'smith') return big ? ['dagger', 'sword', 'spear', 'axe', 'hammer', 'bow', 'staff', 'leather', 'chain', 'plate', 'robe', 'round', 'tall', 'sword~fine', 'chain~sturdy', 'bow~fine'] : ['dagger', 'sword', 'spear', 'bow', 'staff', 'leather', 'chain', 'robe', 'round'];
+  if (role === 'peddler') return ['tonic', 'water', 'antidote', 'ember', 'scroll_sleep', 'berries', 'honey', 'cheese', 'dates', 'grubs'];
+  if (role === 'shop') return big ? ['tonic', 'bigtonic', 'water', 'salts', 'antidote', 'ember', 'scroll_heal', 'scroll_fire', 'scroll_ward', 'meat', 'fish', 'oats', 'apples', 'greens', 'mushrooms'] : ['tonic', 'bigtonic', 'water', 'salts', 'antidote', 'ember', 'meat', 'fish', 'oats', 'apples', 'greens'];
+  if (role === 'smith' && tier === 'dwarfhold') return ['axe~fine', 'hammer~fine', 'hammer~mighty', 'chain~sturdy', 'plate', 'plate~sturdy', 'tall~sturdy', 'crossbow', 'axe', 'hammer'];
+  if (role === 'shop' && tier === 'burrow') return ['tonic', 'bigtonic', 'cheese', 'apples', 'greens', 'oats', 'berries', 'honey', 'meat', 'fish', 'mushrooms', 'dates', 'grubs'];
+  if (role === 'shop' && ['glade', 'aerie'].includes(tier)) return ['water', 'water', 'bigtonic', 'salts', 'scroll_heal', 'scroll_sleep', 'scroll_ward', 'berries', 'honey', 'apples'];
+  if (role === 'smith') return big ? ['dagger', 'sword', 'spear', 'axe', 'hammer', 'bow', 'longbow', 'crossbow', 'handbow', 'staff', 'leather', 'chain', 'plate', 'robe', 'round', 'tall', 'sword~fine', 'chain~sturdy', 'bow~fine'] : ['dagger', 'sword', 'spear', 'bow', 'handbow', 'staff', 'leather', 'chain', 'robe', 'round'];
+  if (role === 'sailor') return ['fish', 'meat', 'tonic', 'water'];
   if (role === 'priest') return ['salts', 'antidote', 'scroll_raise', 'scroll_heal'];
+  // Journey v1.2: the bowyer (elves), the tinker (gnomes) and the Aerie traders, who sell the good stuff cheap.
+  if (role === 'bowyer') return ['bow', 'longbow', 'crossbow', 'handbow', 'bow~fine', 'longbow~keen', 'longbow~light', 'leather~swift'];
+  if (role === 'tinker') return ['crossbow', 'handbow', 'crossbow~fine', 'handbow~keen', 'hammer~heavy', 'chain~sturdy', 'ember', 'antidote'];
+  if (role === 'trader') return ['sword~blessed', 'staff~arcane', 'longbow~fine', 'robe~blessed', 'plate~light', 'tall~sturdy', 'scroll_raise', 'scroll_storm', 'scroll_fire', 'honey', 'apples', 'bigtonic'];
   return [];
 }
 
@@ -341,8 +370,51 @@ const FOES = {
   orc: { name: 'Orc', hp: 48, atk: 13, def: 6, spd: 3, xp: 20, coin: 150, zone: 3, kit: ['axe', 'leather', 'round'] },
   ghost: { name: 'Ghost', hp: 30, atk: 11, def: 2, spd: 6, xp: 18, coin: 100, weak: ['holy', 'mind', 'fire', 'storm', 'wild', 'star'], tough: ['sword', 'axe', 'dagger', 'hammer', 'spear', 'bow', 'staff', 'none'], drain: true, zone: 3 },
   troll: { name: 'Troll', hp: 70, atk: 15, def: 7, spd: 2, xp: 30, coin: 240, regen: 6, weak: ['fire'], zone: 4 },
-  dragon: { name: 'Dragon', hp: 90, atk: 17, def: 8, spd: 5, xp: 50, coin: 600, breath: true, zone: 5 }
+  dragon: { name: 'Dragon', hp: 90, atk: 17, def: 8, spd: 5, xp: 50, coin: 600, breath: true, zone: 5 },
+  // Journey v1.2: animals (tame: 'pet' or 'mount', with the food they love), the stranger things of the land, the
+  // sea and the sky. They're drawn from public/journey-sides.js (beastLook). fly: carries you up; swim: carries you
+  // down. venom: a bite that poisons; spores: a puff that puts you to sleep.
+  rabbit: { name: 'Wild rabbit', hp: 10, atk: 3, def: 1, spd: 7, xp: 3, coin: 0, zone: 1, animal: true, flees: true, tame: 'pet', food: 'greens' },
+  fox: { name: 'Fox', hp: 16, atk: 6, def: 2, spd: 7, xp: 6, coin: 0, zone: 1, animal: true, flees: true, tame: 'pet', food: 'meat' },
+  crab: { name: 'Shore crab', hp: 18, atk: 5, def: 5, spd: 2, xp: 5, coin: 10, zone: 1, animal: true, tame: 'pet', food: 'fish' },
+  toad: { name: 'Marsh toad', hp: 16, atk: 5, def: 2, spd: 4, xp: 5, coin: 0, zone: 1, animal: true, tame: 'pet', food: 'grubs', venom: true },
+  crow: { name: 'Crow', hp: 12, atk: 5, def: 1, spd: 8, xp: 4, coin: 5, zone: 1, animal: true, flees: true, tame: 'pet', food: 'berries', bird: true },
+  gull: { name: 'Gull', hp: 12, atk: 4, def: 1, spd: 8, xp: 4, coin: 0, zone: 1, animal: true, flees: true, tame: 'pet', food: 'fish', bird: true },
+  hawk: { name: 'Hawk', hp: 18, atk: 8, def: 2, spd: 9, xp: 9, coin: 0, zone: 2, animal: true, tame: 'pet', food: 'meat', bird: true },
+  owl: { name: 'Owl', hp: 20, atk: 7, def: 2, spd: 6, xp: 9, coin: 0, zone: 2, animal: true, tame: 'pet', food: 'grubs', bird: true },
+  bat: { name: 'Cave bat', hp: 16, atk: 7, def: 1, spd: 8, xp: 7, coin: 0, zone: 2, animal: true, tame: 'pet', food: 'berries', drain: true },
+  tortoise: { name: 'Old tortoise', hp: 34, atk: 5, def: 9, spd: 1, xp: 10, coin: 0, zone: 2, animal: true, tame: 'pet', food: 'greens' },
+  boar: { name: 'Wild boar', hp: 32, atk: 10, def: 4, spd: 4, xp: 12, coin: 0, zone: 2, animal: true, tame: 'pet', food: 'mushrooms' },
+  lynx: { name: 'Lynx', hp: 32, atk: 11, def: 3, spd: 8, xp: 16, coin: 0, zone: 3, animal: true, tame: 'pet', food: 'fish' },
+  bear: { name: 'Bear', hp: 70, atk: 15, def: 6, spd: 3, xp: 30, coin: 0, zone: 4, animal: true, tame: 'pet', food: 'honey' },
+  horse: { name: 'Wild horse', hp: 36, atk: 7, def: 3, spd: 8, xp: 10, coin: 0, zone: 1, animal: true, flees: true, tame: 'mount', food: 'oats' },
+  camel: { name: 'Camel', hp: 44, atk: 8, def: 4, spd: 4, xp: 14, coin: 0, zone: 2, animal: true, tame: 'mount', food: 'dates' },
+  ram: { name: 'Mountain ram', hp: 40, atk: 11, def: 5, spd: 5, xp: 16, coin: 0, zone: 3, animal: true, tame: 'mount', food: 'greens' },
+  elk: { name: 'Elk', hp: 46, atk: 10, def: 4, spd: 6, xp: 18, coin: 0, zone: 3, animal: true, tame: 'mount', food: 'apples' },
+  strider: { name: 'Marsh strider', hp: 44, atk: 11, def: 5, spd: 6, xp: 18, coin: 0, zone: 3, animal: true, tame: 'mount', food: 'grubs' },
+  beetle: { name: 'Giant beetle', hp: 56, atk: 12, def: 9, spd: 3, xp: 24, coin: 0, zone: 4, animal: true, tame: 'mount', food: 'mushrooms' },
+  pegasus: { name: 'Pegasus', hp: 50, atk: 11, def: 5, spd: 9, xp: 30, coin: 0, zone: 4, animal: true, flees: true, tame: 'mount', food: 'apples', fly: true },
+  griffin: { name: 'Griffin', hp: 64, atk: 15, def: 6, spd: 7, xp: 36, coin: 0, zone: 4, animal: true, tame: 'mount', food: 'honey', fly: true },
+  wyvern: { name: 'Wyvern', hp: 80, atk: 17, def: 7, spd: 6, xp: 50, coin: 0, zone: 5, animal: true, tame: 'mount', food: 'meat', fly: true, breath: true },
+  dolphin: { name: 'Dolphin', hp: 40, atk: 8, def: 3, spd: 9, xp: 16, coin: 0, zone: 2, animal: true, flees: true, tame: 'mount', food: 'fish', swim: true, sea: true },
+  scorpion: { name: 'Giant scorpion', hp: 34, atk: 11, def: 6, spd: 5, xp: 17, coin: 60, zone: 3, venom: true },
+  mimic: { name: 'Mimic', hp: 44, atk: 13, def: 6, spd: 3, xp: 24, coin: 600, zone: 3 },
+  wisp: { name: 'Marsh wisp', hp: 20, atk: 8, def: 1, spd: 9, xp: 14, coin: 50, zone: 2, drain: true, weak: ['holy', 'mind'], tough: ['sword', 'axe', 'dagger', 'hammer', 'spear'] },
+  shroom: { name: 'Stumpcap', hp: 28, atk: 8, def: 3, spd: 2, xp: 12, coin: 40, zone: 2, spores: true, weak: ['fire'] },
+  gargoyle: { name: 'Gargoyle', hp: 50, atk: 14, def: 10, spd: 4, xp: 28, coin: 200, zone: 4, weak: ['hammer', 'storm'], tough: ['sword', 'dagger', 'bow', 'longbow', 'crossbow', 'handbow'] },
+  golem: { name: 'Stone golem', hp: 90, atk: 17, def: 12, spd: 1, xp: 45, coin: 300, zone: 5, weak: ['storm', 'hammer'], tough: ['dagger', 'bow', 'longbow', 'handbow', 'fire'] },
+  serpent: { name: 'Shore serpent', hp: 40, atk: 12, def: 4, spd: 6, xp: 20, coin: 120, zone: 3, venom: true },
+  lurker: { name: 'Bog lurker', hp: 52, atk: 14, def: 5, spd: 3, xp: 26, coin: 150, zone: 4 },
+  shark: { name: 'Shark', hp: 50, atk: 14, def: 4, spd: 7, xp: 24, coin: 0, zone: 3, sea: true },
+  eel: { name: 'Shock eel', hp: 28, atk: 9, def: 3, spd: 6, xp: 12, coin: 0, zone: 2, sea: true, shock: true },
+  jelly: { name: 'Drift jelly', hp: 22, atk: 8, def: 1, spd: 2, xp: 10, coin: 0, zone: 2, sea: true, venom: true },
+  kobold: { name: 'Kobold', hp: 16, atk: 6, def: 2, spd: 5, xp: 6, coin: 50, zone: 1, flees: true, kit: ['spear', 'none', 'none'] }
 };
+// The four from the first Journey that can be tamed too.
+Object.assign(FOES.rat, { tame: 'pet', food: 'cheese', animal: true });
+Object.assign(FOES.wolf, { tame: 'pet', food: 'meat', animal: true });
+Object.assign(FOES.spider, { tame: 'pet', food: 'grubs' });
+Object.assign(FOES.slime, { tame: 'pet', food: 'any' });
 // The bosses. The three keepers hold the lantern stones and are in every land; the rest live in the other dungeons
 // (each where the land suits it) and the caves. base is the bestiary creature they're drawn from; tint recolours it.
 const GUARDIANS = {
@@ -362,12 +434,24 @@ const GUARDIANS = {
   bigslime: { base: 'slime', name: 'The Great Slime', hp: 90, atk: 8, def: 4, spd: 1, xp: 28, coin: 1800, regen: 4, tint: 'moss', cave: true, drop: 'round~sturdy' },
   broodqueen: { base: 'spider', name: 'The Brood Queen', hp: 85, atk: 10, def: 4, spd: 5, xp: 30, coin: 2000, web: true, tint: 'red', cave: true, drop: 'bow~fine' },
   oldtusk: { base: 'wolf', name: 'Old Tusk', hp: 90, atk: 11, def: 5, spd: 5, xp: 30, coin: 1500, tint: 'war', cave: true, drop: 'leather~sturdy' },
+  koboldking: { base: 'kobold', name: 'Skrit, the kobold king', hp: 95, atk: 10, def: 4, spd: 6, xp: 30, coin: 2500, tint: 'gold', cave: true, steals: true, drop: 'handbow~fine' },
+  stormroc: { base: 'griffin', name: 'The Storm Roc', hp: 210, atk: 18, def: 7, spd: 7, xp: 120, coin: 18000, tint: 'gold', breath: true, sky: true, drop: 'longbow~fine', scroll: 'scroll_storm' },
+  leviathan: { base: 'serpent', name: 'The Leviathan', hp: 240, atk: 18, def: 8, spd: 5, xp: 130, coin: 20000, tint: 'sea', venom: true, deep: true, drop: 'crossbow~keen', scroll: 'scroll_heal' },
   cavetroll: { base: 'troll', name: 'The Cave Troll', hp: 110, atk: 13, def: 6, spd: 2, xp: 40, coin: 2500, regen: 5, tint: 'ice', cave: true, drop: 'hammer~fine' }
 };
 const LANTERN_KEEPERS = ['boss1', 'boss2', 'boss3'];
 const ZONE_FOES = { 1: ['rat', 'slime', 'goblin'], 2: ['wolf', 'bandit', 'spider', 'goblin'], 3: ['skeleton', 'cultist', 'spider', 'bandit'], 4: ['orc', 'ghost', 'cultist', 'skeleton'], 5: ['troll', 'orc', 'ghost', 'dragon'] };
 // What lives where on the land: forests have wolves and spiders, swamps slimes and ghosts, and so on.
 const LAND_FOES = { F: ['wolf', 'spider'], w: ['slime', 'ghost', 'cultist'], d: ['bandit', 'skeleton', 'dragon'], '"': ['goblin', 'wolf'], _: ['rat', 'spider', 'slime', 'troll'], z: ['skeleton', 'cultist', 'ghost', 'orc'] };
+// Journey v1.2: the animals and stranger things that live in each kind of land, the foothills, the sea and the sky.
+const LAND_BEASTS = {
+  '.': ['rabbit', 'horse', 'fox', 'crow'], '"': ['rabbit', 'fox', 'horse', 'hawk'], F: ['fox', 'boar', 'owl', 'elk', 'lynx', 'bear', 'shroom'],
+  d: ['camel', 'scorpion'], w: ['toad', 'strider', 'wisp', 'lurker'], ',': ['crab', 'gull', 'serpent'], ':': ['crow', 'horse'],
+  _: ['bat', 'beetle', 'shroom'], z: ['mimic', 'gargoyle', 'bat']
+};
+const HILL_BEASTS = ['ram', 'hawk', 'golem', 'griffin', 'pegasus'];
+const SEA_FOES = ['eel', 'jelly', 'shark', 'dolphin', 'serpent', 'crab'];
+const SKY_FOES = ['hawk', 'crow', 'gull', 'griffin', 'pegasus', 'wyvern', 'gargoyle'];
 
 // People as foes: numbers by what they do. Guards are tougher than folk; knights and the castle captain far more.
 const NPC_ROLES = {
@@ -383,7 +467,13 @@ const NPC_ROLES = {
   guard: { hp: 46, atk: 11, def: 6, spd: 4, xp: 16, coin: [100, 400] },
   captain: { hp: 80, atk: 15, def: 9, spd: 4, xp: 35, coin: [500, 2000] },
   knight: { hp: 90, atk: 17, def: 11, spd: 3, xp: 40, coin: [800, 3000] },
-  ruler: { hp: 70, atk: 12, def: 6, spd: 4, xp: 60, coin: [100000, 300000] }
+  ruler: { hp: 70, atk: 12, def: 6, spd: 4, xp: 60, coin: [100000, 300000] },
+  sailor: { hp: 30, atk: 8, def: 3, spd: 4, xp: 8, coin: [200, 800] },
+  elder: { hp: 14, atk: 4, def: 1, spd: 2, xp: 3, coin: [50, 300] },
+  trader: { hp: 40, atk: 10, def: 3, spd: 8, xp: 15, coin: [2000, 8000] },
+  bowyer: { hp: 36, atk: 12, def: 3, spd: 6, xp: 14, coin: [200, 800] },
+  tinker: { hp: 24, atk: 7, def: 3, spd: 4, xp: 8, coin: [200, 900] },
+  lost: { hp: 14, atk: 4, def: 1, spd: 3, xp: 2, coin: [5, 50] }
 };
 // Who can't be fought, and what they say when you try.
 const PEACEFUL = { keeper: 'Bob catches your wrist without looking up from the glass he\'s polishing. "Not in my inn."', cat: 'Patches looks at you. You think better of it.' };
@@ -422,11 +512,84 @@ function member(b = {}, level = 1) {
   for (const s of STATS) m.use[s] = clamp(Math.floor(Number(b.use?.[s])) || 0, 0, 1e6);
   for (const s of ['acc', 'eva']) m.trained[s] = clamp(Math.floor(Number(b.trained?.[s])) || 0, 0, 30);
   m.taught = Array.isArray(b.taught) ? b.taught.filter((t) => typeof t === 'string').slice(0, 50) : [];
+  // Journey v1.2: the animals that came along. Up to five pets and three mounts each; one of each goes with them.
+  m.pets = cleanPets(b.pets, 'pet'); m.mounts = cleanPets(b.mounts, 'mount');
+  m.pet = m.pets.some((p) => p.id === b.pet) ? b.pet : b.pet === '' ? '' : m.pets[0]?.id || '';
+  m.mount = m.mounts.some((p) => p.id === b.mount) ? b.mount : b.mount === '' ? '' : m.mounts[0]?.id || '';
   refresh(m);
   m.hp = Number.isInteger(b.hp) ? clamp(b.hp, 0, m.maxHp) : m.maxHp;
   m.sp = Number.isInteger(b.sp) ? clamp(b.sp, 0, m.maxSp) : m.maxSp;
   return m;
 }
+// ---------- Pets and mounts (Journey v1.2) ----------
+const PET_MAX = 5, MOUNT_MAX = 3;
+const PET_NAMES = ['Biscuit', 'Pepper', 'Moss', 'Juniper', 'Pip', 'Nettle', 'Clover', 'Sorrel', 'Tumble', 'Ember', 'Wisp', 'Bramble', 'Thistle', 'Hazel', 'Sprocket', 'Marlow', 'Dapple', 'Fern', 'Rook', 'Puddle'];
+function cleanPets(list, kind) {
+  const out = [], ids = new Set();
+  for (const p of Array.isArray(list) ? list : []) {
+    if (!p || typeof p !== 'object' || FOES[p.type]?.tame !== kind) continue;
+    let id = String(p.id || `${p.type}${out.length}`).slice(0, 40); while (ids.has(id)) id += 'x'; ids.add(id);
+    const pet = { id, type: p.type, name: String(p.name || FOES[p.type].name).slice(0, 24), level: clamp(Math.floor(Number(p.level)) || 1, 1, 50), xp: clamp(Math.floor(Number(p.xp)) || 0, 0, 1e7) };
+    const st = petStats(pet);
+    pet.hp = Number.isInteger(p.hp) ? clamp(p.hp, 0, st.maxHp) : st.maxHp;
+    out.push(pet);
+    if (out.length >= (kind === 'pet' ? PET_MAX : MOUNT_MAX)) break;
+  }
+  return out;
+}
+// A pet's numbers from its kind and level: a little softer than in the wild, and growing as it levels.
+function petStats(p) {
+  const b = FOES[p.type] || FOES.rat, L = p.level || 1;
+  const spd = b.spd;
+  return { maxHp: Math.round(b.hp * FOE_HP * 0.55 * (1 + 0.1 * (L - 1))), atk: Math.round(b.atk * FOE_ATK * 0.55 * (1 + 0.08 * (L - 1))), def: b.def + Math.floor(L / 3), spd, acc: 80 + spd * 2 + L, eva: spd * 2 };
+}
+const petOf = (m) => m.pets?.find((p) => p.id === m.pet) || null;
+const mountOf = (m) => m.mounts?.find((p) => p.id === m.mount) || null;
+const kindOfPet = (type) => FOES[type]?.tame || '';
+// What the leader rides, and what it can do: fly (over everything, and up to the cloud cities) or swim.
+const leaderMount = (j) => mountOf(j.party[0] || {});
+const canFly = (j) => Boolean(FOES[leaderMount(j)?.type]?.fly);
+const canSwim = (j) => Boolean(FOES[leaderMount(j)?.type]?.swim);
+function setActive(j, memberId, kind, id) {
+  const m = j.party.find((p) => p.id === memberId); if (!m) return false;
+  const list = kind === 'mount' ? m.mounts : m.pets;
+  if (id !== '' && !list.some((p) => p.id === id)) return false;
+  m[kind === 'mount' ? 'mount' : 'pet'] = id;
+  if (kind === 'mount' && m === j.party[0] && (j.alt !== 'ground' || !canFly(j) && !canSwim(j) && !id)) { j.riding = Boolean(id) && j.riding; }
+  return true;
+}
+function release(j, memberId, kind, id) {
+  const m = j.party.find((p) => p.id === memberId); if (!m) return { ok: false, text: 'Who?' };
+  if (kind === 'mount' && m === j.party[0] && m.mount === id && j.alt !== 'ground') return { ok: false, text: 'Not up here! Land first.' };
+  const list = kind === 'mount' ? m.mounts : m.pets;
+  const p = list.find((x) => x.id === id); if (!p) return { ok: false, text: 'Nobody by that name.' };
+  list.splice(list.indexOf(p), 1);
+  const key = kind === 'mount' ? 'mount' : 'pet';
+  if (m[key] === id) m[key] = list[0]?.id || '';
+  if (kind === 'mount' && m === j.party[0] && !m.mount) j.riding = false;
+  return { ok: true, text: `${p.name} looks back once, then trots off into the wild.` };
+}
+function renamePet(j, memberId, kind, id, name) {
+  const m = j.party.find((p) => p.id === memberId); const p = (kind === 'mount' ? m?.mounts : m?.pets)?.find((x) => x.id === id);
+  const n = String(name || '').replace(/[<>]/g, '').trim().slice(0, 24);
+  if (!p || !n) return false; p.name = n; return true;
+}
+// The chance a hungry animal comes along: better the more it's hurt, with charm, for a Ranger, and each time you feed it.
+function tameChance(m, f) {
+  return clamp(0.3 + (1 - f.hp / f.maxHp) * 0.35 + statOf(m, 'charm') * 0.03 + (m.classes.includes('ranger') ? 0.15 : 0) + ((f.fed || 1) - 1) * 0.15, 0.05, 0.95);
+}
+// Bag room (Journey v1.2): forty things, ten more for each pet along and twenty-five for each mount. Pets and mounts
+// carry the extra loot.
+const BAG_BASE = 40;
+const bagCount = (j) => Object.values(j.bag || {}).reduce((n, k) => n + (k || 0), 0);
+const bagSize = (j) => BAG_BASE + j.party.reduce((n, m) => n + (petOf(m)?.hp > 0 ? 10 : 0) + (mountOf(m) ? 25 : 0), 0);
+const bagRoom = (j) => Math.max(0, bagSize(j) - bagCount(j));
+function addItem(j, item, n = 1) {
+  const k = Math.min(n, bagRoom(j), 99 - (j.bag[item] || 0));
+  if (k > 0) j.bag[item] = (j.bag[item] || 0) + k;
+  return Math.max(0, k);
+}
+
 // Everything always on, added up: passives, combos, the trio, the pure-caster bonus.
 function passivesOf(m) {
   const out = { hp: 0, sp: 0, guard: 0, magic: 0, acc: 0, eva: 0, crit: 0, poison: 1, wild: 1, coin: 0, haggle: 0, costCut: 0, spell: 0, regen: 0, swing: 0, all: 0 };
@@ -468,7 +631,9 @@ const xpFor = (level) => Math.round(18 * Math.pow(level, 1.6));
 
 // ---------- A journey ----------
 // A new journey: in Bob's Inn by the front door, a new land waiting outside, three tonics and 5 silver.
-function newJourney({ seed = String(Date.now()), size = 'medium', party = [] } = {}, world) {
+const STYLE_IDS = ['fantasy', 'scifi', 'cyber', 'steam'];
+const SIZE_IDS = ['small', 'medium', 'large', 'vast', 'epic', 'campaign', 'saga'];
+function newJourney({ seed = String(Date.now()), size = 'medium', party = [], style = 'fantasy' } = {}, world) {
   const p = party.slice(0, 4).map((b) => member(b));
   if (!p.length) p.push(member({ name: 'Hero', cls: 'fighter', who: 'you' }));
   const ids = new Set();
@@ -478,7 +643,8 @@ function newJourney({ seed = String(Date.now()), size = 'medium', party = [] } =
   const inn = world?.map?.('inn');
   return {
     v: SAVE_VERSION, seed: String(seed).slice(0, 40), size, at: 'inn', x: inn?.start.x ?? 21, y: inn?.start.y ?? 29, facing: 'up',
-    party: p, bag: { tonic: 3, water: 1 }, owned, coin: 500, steps: 0, danger: 0, next: 14, opened: [], beaten: [], talked: [], felled: [], wanted: {}, fines: 0, battles: 0, won: false
+    party: p, bag: { tonic: 3, water: 1 }, owned, coin: 500, steps: 0, danger: 0, next: 14, opened: [], beaten: [], talked: [], felled: [], wanted: {}, fines: 0, battles: 0, won: false,
+    style: STYLE_IDS.includes(style) ? style : 'fantasy', alt: 'ground', riding: false, quests: {}, found: [], seen: [], tamed: 0
   };
 }
 // Cleans a save from disk (or from the page) into a journey this file can play. Unknown things are dropped.
@@ -486,13 +652,15 @@ function newJourney({ seed = String(Date.now()), size = 'medium', party = [] } =
 function cleanJourney(s, makeWorld) {
   if (!s || typeof s !== 'object' || !s.seed) return null;
   const old = !(Number(s.v) >= 2);
-  const size = ['small', 'medium', 'large'].includes(s.size) ? s.size : 'medium';
-  const world = makeWorld ? makeWorld(String(s.seed).slice(0, 40), size) : null;
-  const j = newJourney({ seed: String(s.seed).slice(0, 40), size, party: Array.isArray(s.party) ? s.party : [] }, world);
+  const size = SIZE_IDS.includes(s.size) ? s.size : 'medium';
+  const style = STYLE_IDS.includes(s.style) ? s.style : 'fantasy';
+  const world = makeWorld ? makeWorld(String(s.seed).slice(0, 40), size, style) : null;
+  const j = newJourney({ seed: String(s.seed).slice(0, 40), size, style, party: Array.isArray(s.party) ? s.party : [] }, world);
   if (!old && world) {
     const map = world.map(String(s.at));
     const x = Number(s.x), y = Number(s.y);
-    if (map && Number.isInteger(x) && Number.isInteger(y) && world.tiles[map.rows[y]?.[x]]?.walk) Object.assign(j, { at: map.id, x, y });
+    const alt = ['sky', 'deep'].includes(s.alt) && map?.kind === 'world' ? s.alt : 'ground';
+    if (map && Number.isInteger(x) && Number.isInteger(y) && (alt !== 'ground' ? x > 0 && y > 0 && x < map.w - 1 && y < map.h - 1 : world.tiles[map.rows[y]?.[x]]?.walk || '~r'.includes(map.rows[y]?.[x]))) Object.assign(j, { at: map.id, x, y, alt, riding: s.riding === true });
   }
   j.facing = ['down', 'up', 'left', 'right'].includes(s.facing) ? s.facing : 'down';
   j.bag = {}; for (const [k, n] of Object.entries(s.bag || {})) if (ITEMS[k] && Number.isInteger(n) && n > 0) j.bag[k] = Math.min(n, 99);
@@ -502,7 +670,9 @@ function cleanJourney(s, makeWorld) {
   if (old) return j;
   j.danger = Math.max(0, Number(s.danger) || 0); j.next = clamp(Number(s.next) || 14, 6, 40);
   const strs = (v, n) => (Array.isArray(v) ? v : []).filter((x) => typeof x === 'string').slice(0, n);
-  j.opened = strs(s.opened, 400); j.talked = strs(s.talked, 200); j.felled = strs(s.felled, 600);
+  j.opened = strs(s.opened, 4000); j.talked = strs(s.talked, 2000); j.felled = strs(s.felled, 8000);
+  j.found = strs(s.found, 400); j.seen = strs(s.seen, 4000); j.tamed = clamp(Math.floor(Number(s.tamed)) || 0, 0, 1e6);
+  j.quests = {}; for (const [k, v] of Object.entries(s.quests || {})) if (typeof k === 'string' && ['given', 'done'].includes(v)) j.quests[k.slice(0, 40)] = v;
   j.beaten = strs(s.beaten, 40).filter((v) => GUARDIANS[v]);
   j.wanted = {}; for (const [k, n] of Object.entries(s.wanted || {})) if (typeof k === 'string' && Number(n) > 0) j.wanted[k.slice(0, 20)] = Math.min(400, Math.floor(Number(n)));
   j.won = s.won === true;
@@ -513,7 +683,12 @@ function cleanJourney(s, makeWorld) {
 const STEP = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const mapOf = (world, j) => world.map(j.at) || world.map('inn');
 // The people on a map who are still standing.
-const peopleOn = (world, j, map = mapOf(world, j)) => map.people.filter((p) => !j.felled.includes(p.id));
+// (A big land has thousands of animals on it, so the fallen are looked up in a set kept beside the journey.)
+const felledSets = new WeakMap();
+const felledSet = (j) => { let c = felledSets.get(j); if (!c || c.list !== j.felled || c.n !== j.felled.length) { c = { list: j.felled, n: j.felled.length, set: new Set(j.felled) }; felledSets.set(j, c); } return c.set; };
+// Someone who visits (an Aerie trader) is only there some of the time: a while in every few hundred steps.
+const visitingNow = (j, p) => { let h = 0; const key = `${p.id}:${Math.floor((j.steps || 0) / 240)}`; for (const c of key) h = (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0; return h % 100 < 30; };
+const peopleOn = (world, j, map = mapOf(world, j)) => { const f = felledSet(j); return map.people.filter((p) => !f.has(p.id) && (!p.visiting || visitingNow(j, p))); };
 // Who or what stands on a tile: a person, a chest, or a boss.
 function thingAt(world, j, x, y) {
   const map = mapOf(world, j);
@@ -522,7 +697,17 @@ function thingAt(world, j, x, y) {
   if (map.boss && map.boss.x === x && map.boss.y === y && !j.beaten.includes(map.boss.id)) return { kind: 'boss', boss: map.boss };
   return null;
 }
-const canStand = (world, j, x, y) => { const map = mapOf(world, j); return world.tiles[map.rows[y]?.[x]]?.walk === true && !thingAt(world, j, x, y); };
+// Where you can be: the ground anywhere you can walk; the sea too with a swimming mount; anywhere at all in the sky;
+// only open water down in the deep.
+function passable(world, j, map, x, y) {
+  const t = map.rows[y]?.[x];
+  if (t === undefined) return false;
+  if (map.kind === 'world' && j.alt === 'sky') return x > 0 && y > 0 && x < map.w - 1 && y < map.h - 1;
+  if (map.kind === 'world' && j.alt === 'deep') return t === '~' || t === 'r' || t === 'A';
+  if (map.kind === 'world' && (t === '~' || t === 'r') && canSwim(j)) return true;
+  return world.tiles[t]?.walk === true;
+}
+const canStand = (world, j, x, y) => { const map = mapOf(world, j); return passable(world, j, map, x, y) && (j.alt !== 'ground' && map.kind === 'world' ? true : !thingAt(world, j, x, y)); };
 const near = (a, b, d) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y) <= d;
 
 // One press of an arrow key. Turns to face that way; steps if the way is clear. Returns what happened:
@@ -536,26 +721,38 @@ function walk(world, j, dir, rnd = Math.random) {
   if (!canStand(world, j, x, y)) return { moved: false, bump: thingAt(world, j, x, y) || { kind: 'tile', tile: map.rows[y]?.[x] } };
   j.x = x; j.y = y; j.steps++;
   for (const k of Object.keys(j.wanted)) if (k !== map.id && k !== siteKey(map)) { j.wanted[k]--; if (j.wanted[k] <= 0) delete j.wanted[k]; }
-  const door = map.doors.find((d) => d.x === x && d.y === y);
+  const alt = map.kind === 'world' ? j.alt || 'ground' : 'ground';
+  const door = map.doors.find((d) => d.x === x && d.y === y && (d.alt || 'ground') === alt);
   if (door) {
     const to = world.map(door.to);
     if (!to) { j.x -= dx; j.y -= dy; return { moved: false, bump: { kind: 'closed' } }; }
     j.at = to.id; j.x = door.tx ?? to.start.x; j.y = door.ty ?? to.start.y;
     j.danger = 0;
-    return { moved: true, door: to.id };
+    // Into a place you walk; back out of a cloud city into the sky (or a merfolk city into the deep) on your mount.
+    if (to.kind === 'world') { j.alt = door.alt || 'ground'; j.riding = j.alt !== 'ground' ? true : j.riding && !canSwim(j); }
+    else { j.alt = 'ground'; j.riding = false; }
+    return { moved: true, door: to.id, alt: j.alt };
   }
-  const caught = tick(world, j, rnd);
-  if (caught) return { moved: true, battle: caught, chase: true };
-  const tile = ['world', 'cave', 'dungeon'].includes(map.kind) ? world.tiles[map.rows[y][x]] : { wild: 0 }; // nothing jumps out in a settlement
-  const patrol = peopleOn(world, j, map).some((p) => p.patrol && near(p, j, 6));
+  // In and out of the water with a swimming mount: it carries you when you step in and waits when you step out.
+  let splash = '';
+  if (map.kind === 'world' && alt === 'ground') {
+    const wet = '~r'.includes(map.rows[y][x]), was = '~r'.includes(map.rows[j.y - dy]?.[j.x - dx]);
+    if (wet && !was) { j.riding = true; splash = 'in'; } else if (!wet && was && canSwim(j)) { j.riding = false; splash = 'out'; }
+  }
+  if (map.kind === 'world') seeSites(world, j);
+  const caught = alt === 'ground' ? tick(world, j, rnd) : null;
+  if (caught) return { moved: true, battle: caught, chase: true, splash };
+  const tile = alt === 'sky' ? { wild: 0.7 } : alt === 'deep' ? { wild: 1.2 } : ['world', 'cave', 'dungeon'].includes(map.kind) ? world.tiles[map.rows[y][x]] || { wild: 1 } : { wild: 0 }; // nothing jumps out in a settlement
+  const swimming = alt === 'ground' && '~r'.includes(map.rows[y][x]);
+  const patrol = alt === 'ground' && peopleOn(world, j, map).some((p) => p.patrol && near(p, j, 6));
   const p = Math.min(...j.party.map((m) => passivesOf(m).wild));
-  j.danger += (tile.wild || 0) * (patrol ? 0.3 : 1) * p;
-  if (tile.wild && j.danger >= j.next) {
+  j.danger += (swimming ? 0.8 : tile.wild || 0) * (patrol ? 0.3 : 1) * p * (j.riding && alt === 'ground' && !swimming ? 0.6 : 1);
+  if ((tile.wild || swimming) && j.danger >= j.next) {
     j.danger = 0; j.next = 10 + Math.floor(rnd() * 16);
-    const helpers = peopleOn(world, j, map).filter((q) => q.patrol && near(q, j, 6) && !j.wanted.world).slice(0, 2);
-    return { moved: true, battle: encounter(world, j, rnd), helpers };
+    const helpers = alt === 'ground' ? peopleOn(world, j, map).filter((q) => q.patrol && near(q, j, 6) && !j.wanted.world).slice(0, 2) : [];
+    return { moved: true, battle: encounter(world, j, rnd), helpers, splash };
   }
-  return { moved: true };
+  return { moved: true, splash };
 }
 const siteKey = (map) => (map.kind === 'world' ? 'world' : map.site || map.id);
 
@@ -563,7 +760,8 @@ const siteKey = (map) => (map.kind === 'world' ? 'world' : map.site || map.id);
 // the party is wanted here the guards come for them. Returns foe specs when a guard catches up.
 function tick(world, j, rnd = Math.random) {
   const map = mapOf(world, j);
-  const live = peopleOn(world, j, map);
+  // Only the people near enough to matter move (a big land has thousands).
+  const live = peopleOn(world, j, map).filter((p) => map.kind !== 'world' || near(p, j, 30));
   const taken = (x, y, who) => (x === j.x && y === j.y) || live.some((q) => q !== who && q.x === x && q.y === y) || map.chests.some((c) => c.x === x && c.y === y);
   const wanted = j.wanted[siteKey(map)] > 0;
   for (const p of live) {
@@ -586,9 +784,9 @@ function tick(world, j, rnd = Math.random) {
       const [f, [dx, dy]] = pick(rnd, Object.entries(STEP));
       const x = p.x + dx, y = p.y + dy;
       p.facing = f;
-      const home = p.homeX ?? (p.homeX = p.x, p.x), homeY = p.homeY ?? (p.homeY = p.y, p.y);
+      const home = p.homeX ?? (p.homeX = p.x, p.x), homeY = p.homeY ?? (p.homeY = p.y, p.y), roam = p.role === 'animal' ? 6 : 3;
       const t = map.rows[y]?.[x];
-      if (world.tiles[t]?.walk && !'e=G'.includes(t) && !map.doors.some((d) => d.x === x && d.y === y) && Math.abs(x - home) + Math.abs(y - homeY) <= 3 && !taken(x, y, p)) { p.x = x; p.y = y; }
+      if (world.tiles[t]?.walk && !'e=G:'.slice(0, p.role === 'animal' ? 4 : 3).includes(t) && !map.doors.some((d) => d.x === x && d.y === y) && Math.abs(x - home) + Math.abs(y - homeY) <= roam && !taken(x, y, p)) { p.x = x; p.y = y; }
     }
   }
   return null;
@@ -604,10 +802,76 @@ function encounter(world, j, rnd = Math.random) {
   const zone = zoneAt(world, j);
   const map = mapOf(world, j);
   const tile = map.rows[j.y]?.[j.x];
-  const land = (LAND_FOES[tile] || []).filter((id) => FOES[id].zone <= zone + 1);
+  const fits = (id) => FOES[id].zone <= zone + 1;
+  if (map.kind === 'world' && (j.alt === 'sky' || j.alt === 'deep' || '~r'.includes(tile))) {
+    const list = (j.alt === 'sky' ? SKY_FOES : SEA_FOES).filter(fits);
+    return Array.from({ length: 1 + Math.floor(rnd() * Math.min(3, zone)) }, () => pick(rnd, list.length ? list : ['eel']));
+  }
+  const hills = map.kind === 'world' && [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2]].some(([dx, dy]) => map.rows[j.y + dy]?.[j.x + dx] === '^');
+  const land = [...(LAND_FOES[tile] || []), ...(LAND_BEASTS[tile] || []), ...(hills ? HILL_BEASTS : [])].filter(fits);
   const list = [...(ZONE_FOES[zone] || ZONE_FOES[1]), ...land];
   const n = 1 + Math.floor(rnd() * Math.min(3, 1 + zone + (j.party.length > 2 ? 1 : 0)));
   return Array.from({ length: Math.min(n, 4) }, () => pick(rnd, list));
+}
+
+// ---------- Up and down (Journey v1.2) ----------
+// On a flying mount you can climb into the sky (over sea and mountains, to the cloud cities) and land where there's
+// room; on a swimming mount you can dive from open water to the merfolk cities and come back up.
+function rise(world, j) {
+  const map = mapOf(world, j);
+  if (map.kind !== 'world') return { ok: false, text: 'Not in here. Go outside first.' };
+  if (j.alt === 'deep') { j.alt = 'ground'; j.riding = true; return { ok: true, alt: 'ground', anim: 'surface', text: 'You burst up through the waves.' }; }
+  if (j.alt === 'sky') return { ok: false, text: 'This is as high as it goes.' };
+  if (!canFly(j)) return { ok: false, text: leaderMount(j) ? `${leaderMount(j).name} can't fly.` : 'You need a flying mount for that. Pegasi, griffins and wyverns live up in the high country.' };
+  j.alt = 'sky'; j.riding = true; j.danger = 0;
+  return { ok: true, alt: 'sky', anim: 'takeoff', text: `${leaderMount(j).name} beats its wings and the ground falls away.` };
+}
+function sink(world, j) {
+  const map = mapOf(world, j);
+  if (map.kind !== 'world') return { ok: false, text: 'Not in here.' };
+  const t = map.rows[j.y]?.[j.x];
+  if (j.alt === 'sky') {
+    if (!world.tiles[t]?.walk && !(canSwim(j) && t === '~')) return { ok: false, text: 'Nowhere to land here. Find open ground.' };
+    if (peopleOn(world, j, map).some((p) => p.x === j.x && p.y === j.y)) return { ok: false, text: 'Someone is standing right there. Land a step over.' };
+    j.alt = 'ground'; j.danger = 0;
+    return { ok: true, alt: 'ground', anim: 'land', text: 'You come down in a spiral and land with a bump.' };
+  }
+  if (j.alt === 'deep') return { ok: false, text: 'This is the sea floor. Down is sand.' };
+  if (t !== '~' || !canSwim(j)) return { ok: false, text: canSwim(j) ? 'Swim out to open sea first.' : 'You need a swimming mount for that. Dolphins play in the open sea.' };
+  j.alt = 'deep'; j.riding = true; j.danger = 0;
+  return { ok: true, alt: 'deep', anim: 'dive', text: `${leaderMount(j).name} dives. The light goes green, then blue.` };
+}
+function ride(world, j) {
+  const m = j.party[0], mt = mountOf(m || {});
+  if (!mt) return { ok: false, text: 'No mount yet. Tame one: feed a wild horse its oats, mid-fight.' };
+  if (mapOf(world, j).kind !== 'world') return { ok: false, text: `${mt.name} waits outside.` };
+  if (j.alt !== 'ground') return { ok: false, text: 'Not up here!' };
+  if (FOES[mt.type].swim && !'~r'.includes(mapOf(world, j).rows[j.y][j.x])) return { ok: false, text: `${mt.name} can't go on land. Walk into the water and ${mt.name} will carry you.` };
+  j.riding = !j.riding;
+  return { ok: true, riding: j.riding, text: j.riding ? `You climb up on ${mt.name}.` : `You hop down. ${mt.name} follows along.` };
+}
+// The places you've seen (for the world view): anything within a few steps, and anywhere you've been.
+function seeSites(world, j) {
+  const r = j.alt === 'sky' ? 14 : 8;
+  for (const s of world.sites) if (!j.seen.includes(s.id) && Math.abs(s.x - j.x) + Math.abs(s.y - j.y) <= r && (!s.alt || s.alt === j.alt || j.alt === 'sky' && s.alt === 'sky')) j.seen.push(s.id);
+}
+// Boats: a dockside sailor takes you to any other dock. A rowboat for a short hop, a sloop along the coast and a
+// ship across the open ocean, priced by the distance.
+const BOATS = { rowboat: { name: 'rowboat', upTo: 80 }, sloop: { name: 'sloop', upTo: 250 }, ship: { name: 'ship', upTo: Infinity } };
+const boatFor = (d) => (d < BOATS.rowboat.upTo ? 'rowboat' : d < BOATS.sloop.upTo ? 'sloop' : 'ship');
+const fareFor = (d) => Math.max(150, Math.round(d * 12));
+function docksFrom(world, j) {
+  const here = world.sites.find((s) => s.id === j.at);
+  return world.sites.filter((s) => s.dock && s !== here && j.seen.includes(s.id)).map((s) => { const d = here ? Math.abs(s.x - here.x) + Math.abs(s.y - here.y) : 0; return { id: s.id, name: s.name, boat: boatFor(d), fare: fareFor(d), d }; }).sort((a, b) => a.d - b.d);
+}
+function sailTo(world, j, toId) {
+  const trip = docksFrom(world, j).find((d) => d.id === toId);
+  if (!trip) return { ok: false, text: '"Never heard of it. Find it on foot first, then I can take you."' };
+  if (j.coin < trip.fare) return { ok: false, text: `"That's ${fmtCoin(trip.fare)}. Come back with it."` };
+  j.coin -= trip.fare;
+  const to = world.map(toId);
+  j.at = toId; j.x = to.start.x; j.y = to.start.y; j.facing = 'up'; j.alt = 'ground'; j.riding = false; j.danger = 0;
+  return { ok: true, boat: trip.boat, fare: trip.fare, text: `You board the ${BOATS[trip.boat].name} and sail for ${trip.name}. ${fmtCoin(trip.fare)} well spent.` };
 }
 
 // ---------- Fights ----------
@@ -617,6 +881,8 @@ const FOE_HP = 2.6, FOE_ATK = 1.8;
 // places a little tougher.
 function foe(spec, i = 0, zone = 1) {
   if (spec && typeof spec === 'object' && spec.person) return personFoe(spec.person, i, zone);
+  // An animal walking the land: the creature, and who it was on the map (so it's gone once beaten or tamed).
+  if (spec && typeof spec === 'object' && spec.animal) { const f = foe(spec.animal.beast, i, zone); if (f) { f.mapId = spec.animal.id; if (spec.animal.lost) f.lost = spec.animal.lost; } return f; }
   const id = String(spec);
   const g = GUARDIANS[id];
   const base = FOES[g ? g.base : id];
@@ -636,7 +902,7 @@ function personFoe(p, i, zone) {
   const kit = { weapon: p.parts?.weapon || 'none', armour: p.parts?.armour || 'none', shield: p.parts?.shield || 'none' };
   const w = kitStats('weapon', kit.weapon), a = kitStats('armour', kit.armour), s = kitStats('shield', kit.shield);
   const f = {
-    key: `${p.id}-${i}`, id: p.id, type: 'person', person: p, name: p.title ? `${p.title} ${p.name}` : p.name, role: p.role, parts: p.parts,
+    key: `${p.id}-${i}`, id: p.id, type: 'person', person: p, name: p.title ? `${p.title} ${p.name}` : p.name, role: p.role, parts: p.parts, beast: p.beast, tint: p.tint, scale: p.scale,
     hp: Math.round(r.hp * FOE_HP * 0.7 * up), atk: Math.round((r.atk + w.power) * FOE_ATK * 0.6 * up), def: r.def + a.guard + s.guard, spd: r.spd,
     xp: Math.round(r.xp * up), coinRange: r.coin, weak: [], tough: [], heals: r.heals, magic: r.magic, kit, flees: ['folk', 'shop', 'inn', 'bard', 'peddler'].includes(p.role)
   };
@@ -652,6 +918,12 @@ function startBattle(j, specs, opts = {}) {
   const seen = {};
   for (const f of foes) if (count[f.type] > 1 && !f.guardian) { seen[f.type] = (seen[f.type] || 0) + 1; f.name = `${f.name} ${'ABCD'[seen[f.type] - 1]}`; }
   const allies = (opts.helpers || []).slice(0, 2).map((p, i) => { const f = personFoe(p, i, zone); return { ...f, key: `ally-${p.id}`, ally: true, hp: Math.round(f.hp * 0.8), maxHp: Math.round(f.hp * 0.8) }; });
+  // Each member's pet fights beside them (Journey v1.2).
+  for (const m of j.party) {
+    const pet = petOf(m); if (!pet || pet.hp <= 0 || opts.noPets) continue;
+    const st = petStats(pet);
+    allies.push({ ...st, key: `pet-${m.id}`, ally: true, pet: true, owner: m.id, petId: pet.id, type: pet.type, id: pet.type, name: pet.name, hp: Math.min(pet.hp, st.maxHp), maxHp: st.maxHp, kit: { weapon: 'none', armour: 'none', shield: 'none' }, weak: [], tough: [] });
+  }
   j.battles++;
   return { foes, allies, round: 0, buff: 0, ward: 0, haste: 0, over: '', spar: Boolean(opts.spar), people: foes.some((f) => f.person), site: opts.site || '', guardian: foes.some((f) => f.guardian), log: [] };
 }
@@ -710,11 +982,16 @@ function playRound(j, b, commands = {}, rnd = Math.random) {
     if (f.regen && !f.burned && f.hp > 0) { const h = Math.min(f.regen, f.maxHp - f.hp); if (h > 0) { f.hp += h; say({ who: f.key, side: 'foe', act: 'regen', heal: h, text: `${f.name} knits back together (+${h}).` }); } }
   }
   for (const m of alive(party)) { const r = passivesOf(m).regen; if (r && m.sp < m.maxSp) { const g = Math.min(r, m.maxSp - m.sp); m.sp += g; } }
+  for (const m of alive(party)) if (m.poison && m.poisonLeft > 0) { const d = Math.min(m.hp - 1, m.poison); if (d > 0) { m.hp -= d; say({ who: m.id, side: 'party', act: 'poison', dmg: d, text: `Poison stings ${m.name} (${d}).` }); } m.poisonLeft--; if (m.poisonLeft <= 0) m.poison = 0; }
+  syncPets();
   for (const f of b.foes) f.burned = false;
   if (!b.over && !alive(b.foes).length) b.over = 'won';
   if (b.over === 'won') win();
   if (b.over === 'lost' && b.spar) for (const m of party) m.hp = Math.max(1, m.hp);
+  syncPets();
   return ev;
+
+  function syncPets() { for (const a of b.allies || []) if (a.pet) { const m = party.find((x) => x.id === a.owner); const pet = m?.pets.find((x) => x.id === a.petId); if (pet) pet.hp = Math.max(0, a.hp); } }
 
   function targetFoe(key) { const live = alive(b.foes); return live.find((f) => f.key === key) || live[0]; }
   function friend(id, wantDown = false) { return party.find((p) => p.id === id && (wantDown ? p.hp <= 0 : p.hp > 0)); }
@@ -856,7 +1133,7 @@ function playRound(j, b, commands = {}, rnd = Math.random) {
       for (const f of list) {
         if (f.stolen || rnd() < 0.35 - statOf(m, 'luck') * 0.02) { say({ who: m.id, side: 'party', act: 'skill', skill: id, target: f.key, miss: true, text: `${m.name} comes away with nothing from ${f.name}.` }); continue; }
         f.stolen = true; practise(m, 'luck', say);
-        if (rnd() < 0.4) { const item = pick(rnd, ['tonic', 'tonic', 'water', 'antidote', ...(rnd() < 0.2 ? SCROLLS : [])]); j.bag[item] = Math.min(99, (j.bag[item] || 0) + 1); say({ who: m.id, side: 'party', act: 'skill', skill: id, target: f.key, item, text: `${m.name} pinches ${an(ITEMS[item].name)} from ${f.name}.` }); }
+        if (rnd() < 0.4) { const item = pick(rnd, ['tonic', 'tonic', 'water', 'antidote', ...(rnd() < 0.2 ? SCROLLS : [])]); if (addItem(j, item)) say({ who: m.id, side: 'party', act: 'skill', skill: id, target: f.key, item, text: `${m.name} pinches ${an(ITEMS[item].name)} from ${f.name}.` }); else say({ who: m.id, side: 'party', act: 'skill', skill: id, target: f.key, miss: true, text: `${m.name} pinches something, but the bag is full.` }); }
         else { const c = between(rnd, f.coinRange || [10, 60]); j.coin += c; say({ who: m.id, side: 'party', act: 'skill', skill: id, target: f.key, coin: c, text: `${m.name} pinches ${fmtCoin(c)} from ${f.name}.` }); }
       }
     }
@@ -864,10 +1141,36 @@ function playRound(j, b, commands = {}, rnd = Math.random) {
   function useItem(m, item, target) {
     const it = ITEMS[item];
     if (!it || !(j.bag[item] > 0)) { say({ who: m.id, side: 'party', act: 'item', miss: true, text: `${m.name} rummages, but the bag is out of that.` }); return; }
+    if (it.food) return feed(m, item, target);
     if (it.scroll) { j.bag[item]--; say({ who: m.id, side: 'party', act: 'item', item, text: `${m.name} unrolls ${an(it.name)}. The ink burns away as they read.` }); return cast(m, it.spell, target, true); }
     if (it.fire) { const f = targetFoe(target); if (!f) return; j.bag[item]--; const r = hurt(f, it.fire, 'fire'); f.burned = true; f.hp = Math.max(0, f.hp - r.dmg); say({ who: m.id, side: 'party', act: 'item', item, target: f.key, dmg: r.dmg, element: 'fire', text: `${m.name} throws an Ember jar at ${f.name}: ${r.dmg} fire.${f.hp <= 0 ? ` ${f.name} is beaten.` : ''}` }); return; }
     const res = drinkOn(j, item, target || m.id, m);
     say({ who: m.id, side: 'party', act: 'item', item, target: res.target, heal: res.heal, miss: !res.ok, text: res.text });
+  }
+  // Feeding a wild animal mid-fight (Journey v1.2): the food it loves may win it over, and then it comes along.
+  function feed(m, item, target) {
+    const f = alive(b.foes).find((x) => x.key === target);
+    if (!f) { say({ who: m.id, side: 'party', act: 'item', miss: true, text: `${m.name} waves the ${ITEMS[item].name.toLowerCase()} about. Nobody's hungry.` }); return; }
+    if (!f.tame || f.guardian || f.person) { say({ who: m.id, side: 'party', act: 'item', item, target: f.key, miss: true, text: `${f.name} wants nothing to do with it.` }); return; }
+    const kind = f.tame, list = kind === 'mount' ? m.mounts : m.pets;
+    j.bag[item]--;
+    const liked = f.food === item || f.food === 'any';
+    if (!liked) { const calm = rnd() < 0.4; if (calm) f.asleep = 1; say({ who: m.id, side: 'party', act: 'feed', item, target: f.key, miss: true, text: `${f.name} sniffs the ${ITEMS[item].name.toLowerCase()} and turns up its nose.${calm ? ' It does stop to look at you, though.' : ''}` }); return; }
+    f.fed = (f.fed || 0) + 1;
+    if (list.length >= (kind === 'mount' ? MOUNT_MAX : PET_MAX)) { f.asleep = 1; say({ who: m.id, side: 'party', act: 'feed', item, target: f.key, miss: true, text: `${f.name} eats happily, but ${m.name} already has ${list.length} ${kind}s. Let one go first (Menu, Pets).` }); return; }
+    if (rnd() < tameChance(m, f)) {
+      const pet = { id: `${f.type}-${++j.tamed}`, type: f.type, name: pick(rnd, PET_NAMES), level: Math.max(1, FOES[f.type].zone * 2 - 1), xp: 0 };
+      pet.hp = petStats(pet).maxHp;
+      list.push(pet);
+      if (!m[kind === 'mount' ? 'mount' : 'pet']) m[kind === 'mount' ? 'mount' : 'pet'] = pet.id;
+      f.hp = 0; f.tamed = m.id;
+      if (f.mapId && !j.felled.includes(f.mapId)) j.felled.push(f.mapId);
+      (b.tamed = b.tamed || []).push({ name: f.name, pet: pet.name, kind, by: m.name });
+      say({ who: m.id, side: 'party', act: 'tame', item, target: f.key, text: `${f.name} eats from ${m.name}'s hand and trots over. ${m.name} names it ${pet.name}. ${kind === 'mount' ? 'A mount!' : 'A new pet!'}` });
+      return;
+    }
+    f.asleep = 1;
+    say({ who: m.id, side: 'party', act: 'feed', item, target: f.key, text: `${f.name} gulps it down and watches ${m.name}, closer now. Again, maybe?` });
   }
   function allyTurn(a) {
     const f = pick(rnd, alive(b.foes)); if (!f) return;
@@ -896,6 +1199,9 @@ function playRound(j, b, commands = {}, rnd = Math.random) {
     if (f.magic && rnd() < 0.35) return takeHit(f, p, Math.round(atk * 1.2), 'spell', true);
     takeHit(f, p, atk, f.chant && atk > f.atk ? 'curse' : 'hit');
     if (f.web && p.hp > 0 && rnd() < 0.25) { p.asleep = 1; say({ who: f.key, side: 'foe', act: 'web', target: p.id || p.key, text: `${p.name} is caught in a web.` }); }
+    if (f.spores && p.hp > 0 && rnd() < 0.25) { p.asleep = 1; say({ who: f.key, side: 'foe', act: 'spores', target: p.id || p.key, text: `${f.name} puffs spores. ${p.name} gets drowsy.` }); }
+    if (f.shock && p.hp > 0 && rnd() < 0.2) { p.asleep = 1; say({ who: f.key, side: 'foe', act: 'shock', element: 'storm', target: p.id || p.key, text: `A jolt! ${p.name} can't move.` }); }
+    if (f.venom && p.hp > 0 && !p.ally && rnd() < 0.3) { p.poison = 3 + Math.round(f.atk / 6); p.poisonLeft = 3; say({ who: f.key, side: 'foe', act: 'venom', target: p.id, text: `${p.name} is poisoned.` }); }
     if (f.drain && p.sp > 0) { const d = Math.min(p.sp, 3); p.sp -= d; say({ who: f.key, side: 'foe', act: 'drain', target: p.id, text: `The cold touch drains ${d} spirit from ${p.name}.` }); }
   }
   function takeHit(f, p, atk, act, spell = false) {
@@ -910,19 +1216,30 @@ function playRound(j, b, commands = {}, rnd = Math.random) {
     say({ who: f.key, side: 'foe', act, target: ally ? p.key : p.id, dmg, element: spell ? 'mind' : undefined, text: `${f.name} hits ${p.name} for ${dmg}.${p.hp <= 0 ? ` ${p.name} falls!` : ''}` });
   }
   function win() {
-    const beaten = b.foes.filter((f) => !f.fled);
+    const beaten = b.foes.filter((f) => !f.fled && !f.tamed);
     const xp = beaten.reduce((n, f) => n + f.xp, 0);
     const bonus = Math.max(...party.map((m) => passivesOf(m).coin));
     const coin = b.spar ? 0 : Math.round(beaten.reduce((n, f) => n + between(rnd, f.coinRange || [0, 0]), 0) * (1 + bonus));
     j.coin += coin;
-    b.reward = { xp: b.spar ? Math.round(xp / 2) : xp, coin, ups: [], drops: [], items: [] };
+    b.reward = { xp: b.spar ? Math.round(xp / 2) : xp, coin, ups: [], drops: [], items: [], tamed: b.tamed || [], finds: [], left: [], petUps: [] };
     for (const m of party) {
       if (m.hp <= 0) continue; // you have to be standing at the end to learn from it
       m.xp += b.reward.xp;
       while (m.xp >= xpFor(m.level)) { m.xp -= xpFor(m.level); b.reward.ups.push(levelUp(m)); }
     }
     if (!b.spar) {
-      for (const f of beaten) for (const d of dropsOf(f, rnd)) { if (d.kit) gainKit(j, d.kit); else j.bag[d.item] = Math.min(99, (j.bag[d.item] || 0) + 1); b.reward[d.kit ? 'drops' : 'items'].push(d.kit || d.item); }
+      for (const f of beaten) for (const d of dropsOf(f, rnd)) { if (d.kit) { gainKit(j, d.kit); b.reward.drops.push(d.kit); } else if (addItem(j, d.item)) b.reward.items.push(d.item); else b.reward.left.push(d.item); }
+      for (const f of beaten) if (f.mapId && !j.felled.includes(f.mapId)) j.felled.push(f.mapId);
+      // Pets learn too, and nose out something extra (they carry the loot as well).
+      for (const a of (b.allies || []).filter((x) => x.pet && x.hp > 0)) {
+        const owner = party.find((x) => x.id === a.owner), pet = owner?.pets.find((x) => x.id === a.petId); if (!pet) continue;
+        pet.xp += Math.round(b.reward.xp / 2);
+        while (pet.xp >= xpFor(pet.level) && pet.level < 50) { pet.xp -= xpFor(pet.level); pet.level++; pet.hp = petStats(pet).maxHp; b.reward.petUps.push({ name: pet.name, level: pet.level }); }
+        if (rnd() < 0.35) {
+          if (rnd() < 0.5) { const c = 20 + Math.floor(rnd() * 80) * Math.max(1, beaten.length); j.coin += c; b.reward.finds.push({ pet: pet.name, coin: c }); }
+          else { const it = pick(rnd, ['tonic', 'water', 'antidote', ...FOODS]); if (addItem(j, it)) b.reward.finds.push({ pet: pet.name, item: it }); }
+        }
+      }
       for (const f of beaten) if (f.guardian && !j.beaten.includes(f.id)) j.beaten.push(f.id);
       for (const f of beaten) if (f.person && !j.felled.includes(f.person.id)) j.felled.push(f.person.id);
       if (LANTERN_KEEPERS.every((g) => j.beaten.includes(g))) j.won = true;
@@ -959,6 +1276,14 @@ function drinkOn(j, item, targetId, by) {
   if (it.revive) {
     if (p.hp > 0) return { ok: false, target: p.id, text: `${p.name} is already up.` };
     j.bag[item]--; p.hp = Math.ceil(p.maxHp * it.revive); return { ok: true, target: p.id, heal: p.hp, text: `The salts do their work. ${p.name} is back up!` };
+  }
+  if (it.food) {
+    const pet = petOf(p);
+    if (!pet) return { ok: false, target: p.id, text: `${p.name} has no pet along to feed. (In a fight, food goes to a wild animal.)` };
+    const st = petStats(pet);
+    if (pet.hp >= st.maxHp) return { ok: false, target: p.id, text: `${pet.name} is full and happy already.` };
+    j.bag[item]--; const h = Math.min(st.maxHp - pet.hp, 25 + st.maxHp / 4 | 0); pet.hp += h;
+    return { ok: true, target: p.id, heal: h, text: `${pet.name} gobbles the ${it.name.toLowerCase()} (+${h}).` };
   }
   if (p.hp <= 0) return { ok: false, target: p.id, text: `${p.name} needs Waking salts or Raise first.` };
   if (it.cleanse) { j.bag[item]--; p.asleep = 0; p.poison = 0; p.blind = 0; return { ok: true, target: p.id, text: `${p.name} chews the Clearroot. Their head clears.` }; }
@@ -1073,23 +1398,25 @@ function wakeAtInn(world, j) {
   const inn = world.map('inn');
   j.at = 'inn'; j.x = inn.start.x; j.y = inn.start.y - 6; j.facing = 'down';
   j.coin = Math.floor(j.coin / 2);
-  for (const m of j.party) { m.hp = m.maxHp; m.sp = m.maxSp; m.asleep = 0; }
-  j.danger = 0;
+  for (const m of j.party) { m.hp = m.maxHp; m.sp = m.maxSp; m.asleep = 0; m.poison = 0; for (const p of [...m.pets, ...m.mounts]) p.hp = petStats(p).maxHp; }
+  j.danger = 0; j.alt = 'ground'; j.riding = false;
 }
 const INN_PRICE = 30;
 function rest(j, price = INN_PRICE) {
   if (j.coin < price) return false;
   j.coin -= price;
-  for (const m of j.party) { m.hp = m.maxHp; m.sp = m.maxSp; m.asleep = 0; }
+  for (const m of j.party) { m.hp = m.maxHp; m.sp = m.maxSp; m.asleep = 0; m.poison = 0; for (const p of [...m.pets, ...m.mounts]) p.hp = petStats(p).maxHp; }
   return true;
 }
-function priceOf(j, what) {
+function priceOf(j, what, mult = 1) {
   const haggle = Math.max(0, ...j.party.map((p) => passivesOf(p).haggle));
-  return Math.round((ITEMS[what] ? ITEMS[what].price : kitPrice(what)) * (1 - haggle));
+  return Math.max(1, Math.round((ITEMS[what] ? ITEMS[what].price : kitPrice(what)) * (1 - haggle) * mult));
 }
-function buy(j, what) {
-  const price = priceOf(j, what);
-  if (ITEMS[what]) { if (j.coin < price) return false; j.coin -= price; j.bag[what] = Math.min(99, (j.bag[what] || 0) + 1); return true; }
+// Aerie traders sell at half price.
+const TRADER_PRICE = 0.5;
+function buy(j, what, mult = 1) {
+  const price = priceOf(j, what, mult);
+  if (ITEMS[what]) { if (j.coin < price || !bagRoom(j) || (j.bag[what] || 0) >= 99) return false; j.coin -= price; j.bag[what] = (j.bag[what] || 0) + 1; return true; }
   const kind = kitKind(what);
   if (!kind || j.owned[kind].includes(what) || j.coin < price) return false;
   j.coin -= price; j.owned[kind].push(what); return true;
@@ -1133,7 +1460,7 @@ function openChest(world, j, chest) {
   for (const g of got) {
     if (g.coin) { j.coin += g.coin; words.push(fmtCoin(g.coin)); }
     if (g.kit) { gainKit(j, g.kit); words.push(`${an(kitName(g.kit).toLowerCase())} (${kitWords(g.kit)})`); }
-    if (g.item) { j.bag[g.item] = Math.min(99, (j.bag[g.item] || 0) + 1); words.push(an(ITEMS[g.item].name)); }
+    if (g.item) { if (addItem(j, g.item)) words.push(an(ITEMS[g.item].name)); else words.push(`${an(ITEMS[g.item].name)} (no room in the bag, so it's left behind)`); }
   }
   return { text: `Inside: ${words.join(', ')}!${got.some((g) => g.kit) ? ' Put it on in Kit.' : ''}`, got };
 }
@@ -1192,5 +1519,128 @@ function direction(from, to) {
   return `${ns}${ew}` || 'north';
 }
 
-globalThis.BobJourneyRules = { SAVE_VERSION, STATS, STAT_NAMES, STAT_CAP, COIN, COIN_ORDER, coinParts, fmtCoin, RACES, RACE_IDS, CLASSES, CLASS_IDS, SECOND_CLASS_LEVEL, WEAPONS, ARMOURS, SHIELDS, AFFIXES, splitKit, kitKind, kitBase, kitStats, kitName, kitWords, ITEMS, SCROLLS, KIT_PRICES, kitPrice, wares, SKILLS, COMBOS, TRIOS, ALL_SKILLS, PURE_CASTER, isPureCaster, treeOf, comboFor, trioFor, knownSkills, canLearn, learn, canAddClass, addClass, FOES, GUARDIANS, LANTERN_KEEPERS, ZONE_FOES, LAND_FOES, NPC_ROLES, PEACEFUL, seeded, member, passivesOf, statOf, refresh, attackOf, guardOf, magicOf, speedOf, accuracyOf, evasionOf, critOf, hitChance, costOf, xpFor, newJourney, cleanJourney, STEP, mapOf, peopleOn, thingAt, canStand, walk, tick, zoneAt, encounter, FOE_HP, foe, startBattle, playRound, dropsOf, gainKit, drinkOn, fieldSkills, castField, levelUp, TRAINABLE, trainPrice, canTrain, train, hermitTeach, attackPerson, fineFor, payFine, isWanted, wakeAtInn, INN_PRICE, rest, priceOf, buy, sell, chestLoot, openChest, equip, FOLK_LINES, ROLE_LINES, questLine, elderLine, direction };
+
+// ---------- Journey v1.2: more to say, and small jobs ----------
+FOLK_LINES.push(
+  'Feed a wild animal the food it loves and it might follow you home. My cousin did that with a bear once. Once.',
+  'Horses love oats, rabbits love greens, and bears will do anything for honey. Anything.',
+  'There are cities in the clouds. Bird folk live there. Sometimes one flies down to the square and sells things for next to nothing.',
+  'The sailor at the dock will take you anywhere you\'ve already been. Rowboat, sloop or a proper ship, depending how far.',
+  'They say there\'s a city under the sea. Merfolk. You\'d need something that swims to get there.',
+  'Fish in the river if you\'re hungry. Face the water and press the button. Patience is the bait.',
+  'Dwarves keep to the mountains, elves to the deep woods, and halflings to the long grass. Orcs keep to wherever they like.',
+  'The roads are safer. Not safe. Safer.'
+);
+Object.assign(ROLE_LINES, {
+  sailor: ['Tides wait for no one. I do, for a fee.', 'Seen a lot of water. Most of it wet.', 'Where to? Anywhere you\'ve found on foot.'],
+  elder: ['I remember when this was all long grass.', 'Sit, sit. I have a favour to ask.'],
+  trader: ['Fresh down from the clouds! Everything half price, for today only. Every day is today only.', 'Feathers? Don\'t touch the feathers.'],
+  bowyer: ['A bow is a promise you keep at a distance.', 'Yew for strength, ash for speed, and patience for both.'],
+  tinker: ['Cogs! Springs! Mind your fingers.', 'Everything is better with a crank on it.'],
+  lost: ['Oh thank goodness. I got turned around in the dark and then something growled.', 'Is it safe? Is anything ever safe?']
+});
+// What folk say depends on whose place it is.
+const KIN_LINES = {
+  orc: ['You fight well? We will see. Or we will trade. Either is good.', 'Orc bread. Very hard. Builds the jaw.', 'The chief says strangers are welcome. Today.'],
+  dwarf: ['Mind the step. Mind every step. It\'s a mountain.', 'Good stone, good beer, good grudges. That\'s a hold.', 'Our smith is the best in the land. Ask anyone. Ask a dwarf.'],
+  elf: ['The trees remember you. They don\'t say much about it.', 'Walk softly. The bridges are older than your grandparents.', 'Our bowyer makes the finest bows there are. We have had time to practise.'],
+  halfling: ['Second breakfast is at ten. You\'re welcome to it.', 'Best food in the land, and the best food for your pets, too.', 'Adventures make you late for supper.'],
+  pixie: ['Mind the mushrooms. Some of them are people.', 'Spirit flows here like water. Drink deep.', 'Big folk! How do you fit through doors?'],
+  lizard: ['Warm mud, good fishing. What more is there?', 'Striders carry our loads. They like grubs. Who doesn\'t?'],
+  gnome: ['Have you tried adding a crank to it?', 'Crossbows! Our design. Probably.', 'Explosions are just enthusiastic engineering.'],
+  centaur: ['The plains are wide. So are we.', 'We run with the wild horses. Sometimes they let us win.'],
+  giant: ['SMALL ONE. HELLO.', 'Mind feet. Ours, not yours.', 'We eat many goats. Goats do not like this.'],
+  goblin: ['Everything for sale! Some of it even ours!', 'Don\'t ask where it came from. It came from here now.'],
+  aerie: ['The wind tells us everything. It gossips terribly.', 'Down there, you walk? How tiring.', 'The Roc nests above the city. Do not wake the Roc.'],
+  merfolk: ['Air-breather! How strange you look.', 'The Leviathan sleeps in the trench. Mostly.', 'We trade pearls for stories. Do you have stories?']
+};
+const ROAD_LINES = {
+  guard: ['Patrol. Keep moving and so will we.', 'The road\'s clear as far as the bridge.', 'Wolves in the long grass this morning. Stay on the road.'],
+  knight: ['Riding the road for the crown. All quiet.', 'If trouble finds you, shout. We\'ll come.'],
+  folk: ['Off to market. Or back from it. I forget which.', 'Long walk. Good boots. That\'s the secret.'],
+  peddler: ['Wares on the road! Cheaper than town, if you don\'t ask why.']
+};
+// What a wild animal does when you walk up to it: a hint of the food it loves.
+function animalLine(p) {
+  const f = FOES[p.beast]; if (!f) return 'It watches you.';
+  if (p.lost) return `${p.name} looks lost, and very glad to see someone.`;
+  const food = f.food && f.food !== 'any' ? ITEMS[f.food].name.toLowerCase() : 'anything at all';
+  return f.tame ? `The ${f.name.toLowerCase().replace(/^wild /, '')} eyes your bag. It looks hungry for ${food}.` : `The ${f.name.toLowerCase()} doesn't look friendly.`;
+}
+// A settlement's small job (world.sites[].quest): given by the Elder, done when the thing is done, paid once.
+function questTalk(world, j, siteId) {
+  const s = world.sites.find((x) => x.id === siteId), q = s?.quest;
+  if (!q) return { lines: ['"Nothing needs doing. Enjoy the quiet."'] };
+  const state = j.quests[siteId];
+  const target = q.target ? world.sites.find((x) => x.id === q.target) : null;
+  const where = target ? `${target.name}, to the ${direction(s, target)}` : `somewhere to the ${direction(s, q)}`;
+  const done = q.kind === 'clear' || q.kind === 'bounty' ? j.beaten.includes(q.keeper) : j.found.includes(q.id);
+  const reward = (1 + (s.zone || 1)) * 1500;
+  if (state === 'done') return { lines: ['"You\'re always welcome here. Always."'] };
+  if (state === 'given' && done) {
+    j.quests[siteId] = 'done'; j.coin += reward;
+    const item = q.kind === 'lostpet' ? 'honey' : q.kind === 'missing' ? 'scroll_raise' : 'bigtonic';
+    const got = addItem(j, item);
+    return { lines: [`"You did it! Here: ${fmtCoin(reward)}${got ? `, and ${an(ITEMS[item].name)}` : ''}. Thank you."`], reward, done: true };
+  }
+  if (state === 'given') return { lines: [`"Still waiting on that. ${q.kind === 'lostpet' ? `${q.name} was last seen ${where}.` : q.kind === 'missing' ? `${q.who} went into ${where}.` : `It's ${GUARDIANS[q.keeper]?.name || 'the thing'} in ${where}.`}"`] };
+  j.quests[siteId] = 'given';
+  const ask = {
+    clear: `"Something nasty has moved into ${where}. ${GUARDIANS[q.keeper]?.name || 'It'}. Clear it out and the village will pay."`,
+    bounty: `"There's a bounty on ${GUARDIANS[q.keeper]?.name || 'a monster'}, in ${where}. Bring it down."`,
+    lostpet: `"Our ${FOES[q.animal]?.name.toLowerCase().replace(/^wild /, '') || 'pet'}, ${q.name}, wandered off ${where}. Find ${q.name}? Just walk up and ${q.name} will come home."`,
+    missing: `"${q.who} went into ${where} and hasn't come back. Please. Find them."`
+  }[q.kind];
+  return { lines: [ask, `"There's ${fmtCoin(reward)} in it for you."`], given: true };
+}
+// Finding someone lost (a pet on the land, or a person in a cave): they go home, and the job can be handed in.
+function findLost(j, p) {
+  const id = p.lost ? p.id : p.role === 'lost' ? p.id : '';
+  if (!id || j.found.includes(id)) return null;
+  j.found.push(id); if (!j.felled.includes(p.id)) j.felled.push(p.id);
+  return p.role === 'lost' ? `${p.name} grabs your hand. "I know the way from here. Thank you!" They hurry home.` : `${p.name} wags, sniffs your hand, and trots off home.`;
+}
+// Fishing (Journey v1.2): face water and wait. Sometimes a fish, sometimes a boot.
+function fishAt(world, j, rnd = Math.random) {
+  const map = mapOf(world, j); const [dx, dy] = STEP[j.facing] || [0, 1];
+  const t = map.rows[j.y + dy]?.[j.x + dx];
+  if (!'~r'.includes(t || 'x') || map.kind !== 'world') return null;
+  if (rnd() < 0.45) { if (!addItem(j, 'fish')) return { ok: false, text: 'A fish! But the bag is full, so back it goes.' }; return { ok: true, item: 'fish', text: 'A tug! You land a fish.' }; }
+  return { ok: false, text: pick(rnd, ['Nothing bites.', 'A boot. You throw it back.', 'Something big gets away. Probably.', 'Weed. Lots of weed.']) };
+}
+
+// ---------- Journey v1.2: the four styles ----------
+// The same land and the same rules, told four ways. Each style swaps words on the screen (never the save or the
+// rules), tints the land, and brings its own craft: what you sail in and what a flier or swimmer looks like ridden.
+const W_ = (pairs) => pairs.map(([a, b]) => [new RegExp(`\\b${a}(s?)\\b`, 'g'), b]);
+const STYLES = {
+  fantasy: { name: 'Fantasy', words: [], intro: 'Bob: Swords, spells, and a road out of my front door.', craft: { boats: { rowboat: 'rowboat', sloop: 'sloop', ship: 'ship' } } },
+  scifi: {
+    name: 'Sci-fi', tint: ['#7ae0ff', 0.22], intro: 'Bob: The colony beacons went dark when three warlords took the power cores. My cantina still has the lights on, at least.',
+    craft: { fly: 'shuttle', swim: 'submarine', boats: { rowboat: 'hoverbike', sloop: 'shuttle', ship: 'shuttle' } },
+    words: W_([['lantern stone', 'power core'], ['Lantern stone', 'Power core'], ['lantern', 'beacon'], ['Lantern', 'Beacon'], ['Hand crossbow', 'Hand blaster'], ['hand crossbow', 'hand blaster'], ['Longbow', 'Rail rifle'], ['longbow', 'rail rifle'], ['Crossbow', 'Bolt caster'], ['crossbow', 'bolt caster'], ['Bow', 'Blaster'], ['bow', 'blaster'], ['Sword', 'Beam sword'], ['sword', 'beam sword'], ['Dagger', 'Vibro-knife'], ['dagger', 'vibro-knife'], ['Spear', 'Pulse lance'], ['spear', 'pulse lance'], ['Axe', 'Plasma axe'], ['axe', 'plasma axe'], ['Hammer', 'Grav hammer'], ['hammer', 'grav hammer'], ['Staff', 'Psi staff'], ['Robe', 'Flight suit'], ['Chain mail', 'Mesh armour'], ['Plate', 'Power armour'], ['Round shield', 'Deflector'], ['Tall shield', 'Barrier field'], ['Castle', 'Citadel'], ['castle', 'citadel'], ['Village', 'Colony'], ['village', 'colony'], ['Hamlet', 'Outpost'], ['hamlet', 'outpost'], ['Town', 'Dome'], ['Dungeon', 'Derelict'], ['dungeon', 'derelict'], ['Cave', 'Crater'], ['cave', 'crater'], ['King', 'Governor'], ['Queen', 'Governor'], ['Cloud city', 'Orbital station'], ['cloud city', 'orbital station'], ['cities in the clouds', 'stations in orbit'], ['rowboat', 'skimmer'], ['sloop', 'shuttle'], ['Tonic', 'Medi-gel'], ['tonic', 'medi-gel'], ['Scroll', 'Data chip'], ['scroll', 'data chip']])
+  },
+  cyber: {
+    name: 'Cyberpunk', tint: ['#ff3ad8', 0.2], dark: 0.3, intro: 'Bob: Three gangs jacked the city\'s data shards and the grid went dark. Drinks are still cold in here. Mostly.',
+    craft: { fly: 'hoverbike', swim: 'submarine', boats: { rowboat: 'hoverbike', sloop: 'submarine', ship: 'ship' } },
+    words: W_([['lantern stone', 'data shard'], ['Lantern stone', 'Data shard'], ['lantern', 'uplink'], ['Lantern', 'Uplink'], ['Hand crossbow', 'Holdout pistol'], ['hand crossbow', 'holdout pistol'], ['Longbow', 'Sniper rifle'], ['longbow', 'sniper rifle'], ['Crossbow', 'Rail gun'], ['crossbow', 'rail gun'], ['Bow', 'Smart pistol'], ['bow', 'smart pistol'], ['Sword', 'Mono-katana'], ['sword', 'mono-katana'], ['Dagger', 'Mono-blade'], ['dagger', 'mono-blade'], ['Robe', 'Trench coat'], ['Leather', 'Synth-leather'], ['Chain mail', 'Kevlar'], ['Plate', 'Cyber-plate'], ['Castle', 'Corp tower'], ['castle', 'corp tower'], ['Village', 'Block'], ['village', 'block'], ['Hamlet', 'Squat'], ['hamlet', 'squat'], ['Town', 'District'], ['Dungeon', 'Black site'], ['dungeon', 'black site'], ['Cave', 'Sewer'], ['cave', 'sewer'], ['King', 'CEO'], ['Queen', 'CEO'], ['Cloud city', 'Sky-tower'], ['cloud city', 'sky-tower'], ['cities in the clouds', 'towers above the smog'], ['rowboat', 'jet-ski'], ['sloop', 'speedboat'], ['ship', 'mag-ferry'], ['Tonic', 'Stim'], ['tonic', 'stim'], ['Scroll', 'Hack'], ['scroll', 'hack']])
+  },
+  steam: {
+    name: 'Steampunk', tint: ['#c8a060', 0.28], intro: 'Bob: Three rogues stole the aether valves and the great engines went cold. The kettle\'s still on, though.',
+    craft: { fly: 'airship', swim: 'submarine', boats: { rowboat: 'paddleboat', sloop: 'paddleboat', ship: 'airship' } },
+    words: W_([['lantern stone', 'aether valve'], ['Lantern stone', 'Aether valve'], ['lantern', 'great engine'], ['Lantern', 'Great engine'], ['Hand crossbow', 'Derringer'], ['hand crossbow', 'derringer'], ['Longbow', 'Rifle'], ['longbow', 'rifle'], ['Crossbow', 'Blunderbuss'], ['crossbow', 'blunderbuss'], ['Bow', 'Pistol'], ['bow', 'pistol'], ['Sword', 'Sabre'], ['sword', 'sabre'], ['Spear', 'Bayonet'], ['spear', 'bayonet'], ['Staff', 'Tesla rod'], ['Hammer', 'Steam hammer'], ['hammer', 'steam hammer'], ['Robe', 'Frock coat'], ['Plate', 'Brass plate'], ['Castle', 'Clocktower'], ['castle', 'clocktower'], ['Village', 'Mill town'], ['village', 'mill town'], ['Town', 'Borough'], ['Dungeon', 'Foundry'], ['dungeon', 'foundry'], ['Cave', 'Mine'], ['cave', 'mine'], ['King', 'Lord Mayor'], ['Queen', 'Lady Mayor'], ['Cloud city', 'Sky-pirate dock'], ['cloud city', 'sky-pirate dock'], ['cities in the clouds', 'sky-pirate docks in the clouds'], ['rowboat', 'paddle skiff'], ['sloop', 'paddle steamer'], ['ship', 'airship'], ['Tonic', 'Elixir'], ['tonic', 'elixir'], ['Scroll', 'Blueprint'], ['scroll', 'blueprint']])
+  }
+};
+// Text on the screen, in the journey's style. Plurals follow along (swords -> sabres).
+function restyle(text, style) {
+  const st = STYLES[style]; if (!st || !st.words.length || !text) return text;
+  let out = String(text);
+  for (const [re, to] of st.words) out = out.replace(re, (_, s) => `${to}${s ? (/[sx]$/.test(to) ? 'es' : 's') : ''}`);
+  return out.replace(/\b([Aa]) ([aeiouAEIOU])/g, '$1n $2');
+}
+// What a boat or a ridden flier or swimmer is drawn as, in this style.
+const craftFor = (style, kind) => STYLES[style]?.craft?.[kind] || null;
+const boatArt = (style, boat) => STYLES[style]?.craft?.boats?.[boat] || boat;
+
+globalThis.BobJourneyRules = { SAVE_VERSION, STATS, STAT_NAMES, STAT_CAP, COIN, COIN_ORDER, coinParts, fmtCoin, RACES, RACE_IDS, CLASSES, CLASS_IDS, SECOND_CLASS_LEVEL, WEAPONS, lookKit, ARMOURS, SHIELDS, AFFIXES, splitKit, kitKind, kitBase, kitStats, kitName, kitWords, ITEMS, FOODS, SCROLLS, KIT_PRICES, kitPrice, wares, SKILLS, COMBOS, TRIOS, ALL_SKILLS, PURE_CASTER, isPureCaster, treeOf, comboFor, trioFor, knownSkills, canLearn, learn, canAddClass, addClass, FOES, GUARDIANS, LANTERN_KEEPERS, ZONE_FOES, LAND_FOES, LAND_BEASTS, HILL_BEASTS, SEA_FOES, SKY_FOES, NPC_ROLES, PEACEFUL, seeded, member, PET_MAX, PET_NAMES, petStats, petOf, mountOf, kindOfPet, leaderMount, canFly, canSwim, setActive, release, renamePet, tameChance, BAG_BASE, bagCount, bagSize, bagRoom, addItem, passivesOf, statOf, refresh, attackOf, guardOf, magicOf, speedOf, accuracyOf, evasionOf, critOf, hitChance, costOf, xpFor, STYLE_IDS, SIZE_IDS, newJourney, cleanJourney, STEP, mapOf, visitingNow, peopleOn, thingAt, passable, canStand, walk, tick, zoneAt, encounter, rise, sink, ride, seeSites, BOATS, boatFor, fareFor, docksFrom, sailTo, FOE_HP, foe, startBattle, playRound, dropsOf, gainKit, drinkOn, fieldSkills, castField, levelUp, TRAINABLE, trainPrice, canTrain, train, hermitTeach, attackPerson, fineFor, payFine, isWanted, wakeAtInn, INN_PRICE, rest, priceOf, TRADER_PRICE, buy, sell, chestLoot, openChest, equip, FOLK_LINES, ROLE_LINES, questLine, elderLine, direction, KIN_LINES, ROAD_LINES, animalLine, questTalk, findLost, fishAt, STYLES, restyle, craftFor, boatArt };
 })();

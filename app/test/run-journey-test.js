@@ -86,7 +86,8 @@ const nextTo = (set, x, y) => set.has(`${x},${y}`) || [[1, 0], [-1, 0], [0, 1], 
   for (const seed of ['a', 'b', 'c', 'd', 'e', '1', '2', '99']) for (const size of ['small', 'medium', 'large']) {
     const w = W.makeWorld(seed, size), wm = w.map('world');
     const r = reach(wm, w.start);
-    for (const s of w.sites) if (!r.has(`${s.x},${s.y}`)) bad ||= `${seed} ${size} ${s.kind} unreachable`;
+    for (const s of w.sites) if (!s.alt && !r.has(`${s.x},${s.y}`)) bad ||= `${seed} ${size} ${s.kind} unreachable`;
+    for (const s of w.sites) if (s.alt && !(s.alt === 'sky' ? 'S' : 'A').includes(wm.rows[s.y][s.x])) bad ||= `${seed} ${size} ${s.kind} not marked`;
     if (['boss1', 'boss2', 'boss3'].some((id) => !w.sites.some((s) => s.keeper === id && s.kind === 'dungeon'))) bad ||= `${seed} ${size} keepers`;
     for (const s of w.sites) {
       const mm = w.map(s.id), rr = reach(mm, mm.start);
@@ -98,7 +99,8 @@ const nextTo = (set, x, y) => set.has(`${x},${y}`) || [[1, 0], [-1, 0], [0, 1], 
   }
   check('on many seeds and every size: every place can be walked to, every person, chest and boss reached, and the three keepers are in dungeons', !bad, bad);
   check('roads join the settlements, with bridges over rivers', m.rows.some((r) => r.includes(':')) && world.roads.length >= 4 && W.makeWorld('b', 'large').map('world').rows.some((r) => r.includes('=')));
-  check('patrols and travellers walk the roads', m.people.length === world.roads.length && m.people.some((p) => p.patrol) && m.people.every((p) => p.route?.length > 4 && W.TILES[m.rows[p.y][p.x]].walk));
+  const walkers = m.people.filter((p) => p.route);
+  check('patrols and travellers walk the roads', walkers.length === world.roads.length && walkers.some((p) => p.patrol) && walkers.every((p) => p.route.length > 4 && W.TILES[m.rows[p.y][p.x]].walk));
   check('every dungeon and cave has a boss; the extra bosses fit the land and never repeat', world.sites.filter((s) => s.kind === 'dungeon' || s.kind === 'cave').every((s) => R.GUARDIANS[s.keeper]) && new Set(world.sites.map((s) => s.keeper).filter(Boolean)).size === world.sites.filter((s) => s.keeper).length);
   const castle = world.map(world.sites.find((s) => s.kind === 'castle').id);
   const roles = (mm) => mm.people.map((p) => p.role);
@@ -165,7 +167,7 @@ const P = (o) => ({ id: o.id || o.name.toLowerCase(), who: 'friend', ...o });
   check('the further from home, the harder the creatures (and caves are a step harder than the land outside)', z(world.start.x, world.start.y) === 1 && Math.max(...world.sites.map((s) => z(s.x, s.y))) >= 3);
   const patrol = m.people.find((p) => p.patrol);
   const before = `${patrol.x},${patrol.y}`;
-  const t = R.newJourney({ seed: 'test-seed' }, world); Object.assign(t, { at: 'world', x: 0, y: 0 });
+  const t = R.newJourney({ seed: 'test-seed' }, world); Object.assign(t, { at: 'world', x: patrol.x + 12, y: patrol.y });
   for (let i = 0; i < 6; i++) R.tick(world, t, () => 0.1);
   check('patrols walk their road as you go', `${patrol.x},${patrol.y}` !== before && patrol.route.some((s) => s.x === patrol.x && s.y === patrol.y));
 }

@@ -1,6 +1,6 @@
 // Made by android/tools/make-shared.mjs from public/journey-play.js. Don't edit.
 (function () {
-// 🧭 Journey v1.1: the screen. It opens in Bob's Inn, a tavern you walk around; the buttons along the bottom roll a
+// 🧭 Journey v1.2: the screen. It opens in Bob's Inn, a tavern you walk around; the buttons along the bottom roll a
 // New adventure or Resume the saved one. Walk with the arrow keys (or the pad on a phone), talk and open chests with
 // Enter, F to pick a fight with whoever is in front of you, Esc for the menu, and fight in turn-based battles drawn
 // side-on: the party on the right, what jumped out on the left. Every figure is drawn from its own look, from the side
@@ -18,6 +18,7 @@
 //   enemyLooks: { goblin: lookId, ... } from the bestiary; still(): true when Animations are off
 //   editLook(member, done(lookId)): optional, opens the character screen for your character
 //   onClose(): the ✕ button
+//   phone: true on a phone (the biggest land, Saga, is for computers)
 function mountJourney(root, deps) {
   const { R, S, A } = deps;
   const Wm = deps.W;
@@ -34,13 +35,19 @@ function mountJourney(root, deps) {
   let shop = null; // { kind: 'shop'|'smith'|'inn'|'priest'|'peddler'|'trainer'|'hermit'|'captain'|'guard'|'new', who, person }
   let held = null, heldAt = 0, frameReq = 0, lastTick = 0, stepPhase = 0, armed = null;
   const fxNumbers = []; // floating numbers in battle: { x, y, text, colour, t0 }
+  // Journey v1.2: going up and down ({ kind: takeoff|land|dive|surface, t0, dur }), little effects on the land
+  // (ripples, dust, splashes: { kind, x, y, t0, dur } in tiles), a boat trip, and Aerie traders swooping in.
+  let heightFx = null, voyage = null, sideFacing = 'left', armedRelease = '';
+  const landFx = [];
+  const swoops = new Map();
+  const T = (text) => (j ? R.restyle(text, j.style) : text);
   const lookCache = new Map();
 
   root.innerHTML = `<div class="jy" tabindex="-1">
     <div class="jy-top"><span class="jy-where" aria-live="polite"></span><span class="jy-gold"></span><span class="jy-spacer"></span>
       <button type="button" class="mini" data-jy="menu" title="Menu (Esc)">☰ Menu</button><button type="button" class="mini" data-jy="save" title="Save the journey">💾 Save</button><button type="button" class="icon" data-jy="close" aria-label="Close Journey">✕</button></div>
     <div class="jy-stage"><canvas class="jy-canvas" width="${W}" height="${H}" role="img" aria-label="The Journey screen"></canvas><div class="jy-box" role="status" aria-live="polite" hidden></div></div>
-    <div class="jy-pad" aria-label="Walking pad"><button type="button" data-dir="up" aria-label="Walk up">▲</button><button type="button" data-dir="left" aria-label="Walk left">◀</button><button type="button" data-dir="down" aria-label="Walk down">▼</button><button type="button" data-dir="right" aria-label="Walk right">▶</button><button type="button" class="jy-a" data-key="act" aria-label="Talk or open (Enter)">A</button><button type="button" class="jy-f" data-key="fight" aria-label="Pick a fight (F)">⚔</button><button type="button" class="jy-b" data-key="menu" aria-label="Menu (Esc)">B</button></div>
+    <div class="jy-pad" aria-label="Walking pad"><button type="button" data-dir="up" aria-label="Walk up">▲</button><button type="button" data-dir="left" aria-label="Walk left">◀</button><button type="button" data-dir="down" aria-label="Walk down">▼</button><button type="button" data-dir="right" aria-label="Walk right">▶</button><button type="button" class="jy-a" data-key="act" aria-label="Talk or open (Enter)">A</button><button type="button" class="jy-f" data-key="fight" aria-label="Pick a fight (F)">⚔</button><button type="button" class="jy-b" data-key="menu" aria-label="Menu (Esc)">B</button><button type="button" class="jy-up" data-key="rise" aria-label="Fly up, or come up from the deep (E)">⤒</button><button type="button" class="jy-down" data-key="sink" aria-label="Land, or dive (Q)">⤓</button><button type="button" class="jy-ride" data-key="ride" aria-label="Ride or walk (R)">🐎</button></div>
     <div class="jy-panel"></div>
     <p class="jy-msg muted" role="status"></p>
   </div>`;
@@ -65,7 +72,7 @@ function mountJourney(root, deps) {
     return lk;
   }
   // Bosses are their bestiary creature recoloured: swamp green, desert sand, ice blue, gold, rust and so on.
-  const TINTS = { swamp: '#5a7a3a', sand: '#d8b46a', ice: '#9ad8ff', moss: '#3d7f34', gold: '#ffd166', rust: '#a0522d', sea: '#3a78c8', war: '#8a2a2a', red: '#d0303a' };
+  const TINTS = { swamp: '#5a7a3a', sand: '#d8b46a', ice: '#9ad8ff', moss: '#3d7f34', gold: '#ffd166', rust: '#a0522d', sea: '#3a78c8', war: '#8a2a2a', red: '#d0303a', orc: '#5a8a3a', lizard: '#3a9a6a', goblin: '#8aaa3a' };
   function tinted(lk, tint) {
     const t = TINTS[tint]; if (!t) return lk;
     const mix = (c) => { const a = /^#([0-9a-f]{6})$/i.exec(c); if (!a) return c; const n = parseInt(a[1], 16), m = parseInt(t.slice(1), 16); const ch = (s) => Math.round(((n >> s) & 255) * 0.45 + ((m >> s) & 255) * 0.55); return `#${[16, 8, 0].map((s) => ch(s).toString(16).padStart(2, '0')).join('')}`; };
@@ -76,11 +83,32 @@ function mountJourney(root, deps) {
   function memberLook(m) {
     const id = m.look || (m.who === 'bob' ? deps.bobLook : '') || A.encodeParts({ body: 'm', outfit: 'tee' });
     const p = String(id).startsWith('c:') ? A.decodeParts(id) : null;
-    if (p) return lookFor(A.encodeParts({ ...p, armour: base(m.armour), weapon: base(m.weapon), shield: base(m.shield) }));
+    if (p) return lookFor(A.encodeParts({ ...p, armour: base(m.armour), weapon: R.lookKit(m.weapon), shield: base(m.shield) }));
     return lookFor(id) || lookFor('robot-0');
   }
-  const foeLook = (f) => (f.parts ? lookFor(A.encodeParts(f.parts)) : lookFor(deps.enemyLooks?.[f.type], f.tint) || lookFor(A.encodeParts({ body: 'blob', skin: '0' }), f.tint));
-  const personLook = (p) => (p.role === 'keeper' ? lookFor(deps.bobLook) : lookFor(A.encodeParts(p.parts || {})));
+  // Journey's own creatures, folk and craft (public/journey-sides.js), tinted like the rest.
+  function beastLookFor(id, tint) {
+    if (!id) return null;
+    const key = `beast:${id}|${tint || ''}`;
+    if (lookCache.has(key)) return lookCache.get(key);
+    let lk = null; try { lk = S.beastLook?.(id) || null; } catch {}
+    if (lk && tint) lk = tinted(lk, tint);
+    lookCache.set(key, lk);
+    return lk;
+  }
+  const personLook = (p) => (p.role === 'keeper' ? lookFor(deps.bobLook) : p.beast ? beastLookFor(p.beast, p.tint) : lookFor(A.encodeParts(p.parts || {}), p.tint));
+  const foeLook = (f) => (f.person ? personLook(f.person) : f.parts ? lookFor(A.encodeParts(f.parts)) : lookFor(deps.enemyLooks?.[f.type], f.tint) || beastLookFor(f.type, f.tint) || lookFor(A.encodeParts({ body: 'blob', skin: '0' }), f.tint));
+  // What a pet or mount looks like, and what the leader rides (in sci-fi, cyberpunk and steampunk a flier or a
+  // swimmer is ridden as that style's own craft: a shuttle, a hoverbike, an airship, a submarine).
+  const petLook = (p) => beastLookFor(p.type);
+  function rideLook(mt) {
+    const f = R.FOES[mt.type] || {};
+    const craft = R.craftFor(j?.style, f.fly ? 'fly' : f.swim ? 'swim' : '');
+    return (craft && beastLookFor(craft)) || petLook(mt);
+  }
+  // Rusty, blessed, cursed and arcane kit is drawn in its colour.
+  const kitTint = (key) => S.AFFIX_TINTS?.[R.splitKit(key).affix] || '';
+  const SHOT = new Set(['bow', 'longbow', 'crossbow', 'handbow']);
   function drawFig(look, x, y, px, o = {}) { try { return S.drawFigure(ctx, x, y, px, look, { compose: A.compose, ...o }); } catch { return null; } }
   // Extras drawn over a figure: a crown for the King and Queen, wings for a Pixie, a floating crystal for a Psionist.
   function extras(x, y, px, o) {
@@ -93,8 +121,16 @@ function mountJourney(root, deps) {
   // ---------- Tiles, drawn once each ----------
   const tileArt = new Map();
   const hash = (x, y, n = 0) => { let h = (x * 374761393 + y * 668265263 + n * 1442695041) >>> 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
-  function tileCanvas(ch, frame = 0) {
-    const key = `${ch}${frame}`;
+  // Whose place it is changes how the houses look (theme: the kind of place), and the style tints everything.
+  const THEMES = {
+    orccamp: { roof: '#6a4a2a', wall: '#8a6a4a', shape: 'tent' }, dwarfhold: { roof: '#5a5a64', wall: '#9a9aa4' }, elfwood: { roof: '#3d8a38', wall: '#d8e8c0', shape: 'leaf' },
+    burrow: { roof: '#4e9440', wall: '#8a6a3a', shape: 'mound' }, glade: { roof: '#d0303a', wall: '#efe6d2', shape: 'mushroom' }, stilts: { roof: '#8a7a3a', wall: '#8a6a3a', shape: 'stilts' },
+    gnome: { roof: '#2a7a8a', wall: '#e8d8b0' }, centaur: { roof: '#c8a66a', wall: '#a07a4a', shape: 'tent' }, giant: { roof: '#4a4a54', wall: '#7a7a84' },
+    goblin: { roof: '#8a3a6a', wall: '#a08a5a', shape: 'tent' }, aerie: { roof: '#ffe680', wall: '#f4f8ff', shape: 'dome' }, reef: { roof: '#ff9a8a', wall: '#c8f0ff', shape: 'dome' }
+  };
+  function tileCanvas(ch, frame = 0, theme = '') {
+    const style = j?.style || 'fantasy';
+    const key = `${ch}${frame}${theme}|${style}`;
     if (tileArt.has(key)) return tileArt.get(key);
     const c = doc.createElement('canvas'); c.width = TILE; c.height = TILE;
     const g = c.getContext('2d');
@@ -106,7 +142,21 @@ function mountJourney(root, deps) {
     const boards = (a, b) => { fill(a); for (let y = 0; y < 16; y += 4) rect(0, y, 16, 1, b); for (let y = 0; y < 16; y += 4) rect((y * 3) % 16, y, 1, 4, b); };
     const stone = (a, b) => { fill(a); for (let y = 0; y < 16; y += 4) { rect(0, y, 16, 1, b); for (let x = (y % 8 ? 4 : 0); x < 16; x += 8) rect(x, y, 1, 4, b); } };
     const water = (deep, light) => { fill(deep); for (let i = 0; i < 3; i++) { const y = 3 + i * 5, x = ((i * 5) + frame * 3) % 12; rect(x, y, 4, 1, light); } };
-    const building = (roof, wall, sign) => { fill('#b8a07a'); rect(1, 6, 14, 10, wall); g.fillStyle = roof; g.beginPath(); g.moveTo(0, 7); g.lineTo(8, 0); g.lineTo(16, 7); g.fill(); rect(7, 11, 3, 5, '#6b4423'); sign?.(); };
+    const th = THEMES[theme];
+    const building = (roof, wall, sign) => {
+      fill(theme === 'aerie' ? '#e8eef8' : theme === 'reef' ? '#5a7a9a' : '#b8a07a');
+      if (th) { roof = th.roof; wall = th.wall; }
+      const shape = th?.shape;
+      if (shape === 'mound') { g.fillStyle = roof; g.beginPath(); g.arc(8, 13, 9, Math.PI, 0); g.fill(); g.fillStyle = '#6b4423'; g.beginPath(); g.arc(8, 13, 3, Math.PI, 0); g.fill(); rect(5, 13, 6, 3, roof); g.fillStyle = '#ffd166'; g.fillRect(8, 11, 1, 1); sign?.(); return; }
+      if (shape === 'tent') { g.fillStyle = roof; g.beginPath(); g.moveTo(1, 16); g.lineTo(8, 1); g.lineTo(15, 16); g.fill(); g.fillStyle = wall; g.beginPath(); g.moveTo(6, 16); g.lineTo(8, 9); g.lineTo(10, 16); g.fill(); rect(7, 0, 2, 2, '#6b4423'); sign?.(); return; }
+      if (shape === 'mushroom') { rect(4, 8, 8, 8, wall); g.fillStyle = roof; g.beginPath(); g.ellipse(8, 7, 8, 6, 0, Math.PI, 0); g.fill(); rect(0, 6, 16, 2, roof); for (const [x, y] of [[4, 3], [9, 2], [12, 5], [6, 6]]) rect(x, y, 2, 1, '#ffffff'); rect(7, 11, 2, 5, '#6b4423'); sign?.(); return; }
+      if (shape === 'dome') { rect(2, 7, 12, 9, wall); g.fillStyle = roof; g.beginPath(); g.ellipse(8, 7, 7, 6, 0, Math.PI, 0); g.fill(); rect(7, 0, 2, 2, roof); rect(7, 11, 2, 5, theme === 'reef' ? '#2a5aa8' : '#c8a040'); sign?.(); return; }
+      if (shape === 'stilts') { fill('#3a78c8'); rect(3, 10, 1, 6, '#6b4423'); rect(12, 10, 1, 6, '#6b4423'); rect(1, 4, 14, 7, wall); g.fillStyle = roof; g.beginPath(); g.moveTo(0, 5); g.lineTo(8, 0); g.lineTo(16, 5); g.fill(); rect(7, 7, 2, 4, '#3a2410'); sign?.(); return; }
+      rect(1, 6, 14, 10, wall); g.fillStyle = roof; g.beginPath(); g.moveTo(0, 7); g.lineTo(8, 0); g.lineTo(16, 7); g.fill();
+      if (shape === 'leaf') { g.fillStyle = '#2f6a2a'; g.beginPath(); g.arc(4, 3, 3, 0, Math.PI * 2); g.arc(12, 3, 3, 0, Math.PI * 2); g.fill(); }
+      rect(7, 11, 3, 5, '#6b4423'); sign?.();
+    };
+    const kinSite = (body) => { grass(); body(); };
     switch (ch) {
       case '.': grass(); break;
       case '"': fill('#4e9440'); for (let i = 0; i < 9; i++) { const x = Math.floor(hash(i, 11) * 14) + 1, y = Math.floor(hash(11, i) * 12) + 3; px(x, y, '#2f6a2a'); px(x, y - 1, '#3d7f34'); px(x + 1, y - 2, '#6cb85a'); } break;
@@ -163,12 +213,49 @@ function mountJourney(root, deps) {
       case 'D': grass(); rect(2, 4, 12, 12, '#4a4a54'); rect(2, 4, 12, 2, '#6a6a74'); for (let x = 2; x < 14; x += 3) rect(x, 2, 2, 2, '#4a4a54'); rect(6, 9, 4, 7, '#14110f'); px(7, 7, '#7dff9a'); px(8, 7, '#7dff9a'); break;
       case 'H': grass(); rect(3, 8, 10, 8, '#6b4423'); g.fillStyle = '#8a7a3a'; g.beginPath(); g.moveTo(1, 9); g.lineTo(8, 2); g.lineTo(15, 9); g.fill(); rect(7, 11, 2, 5, '#3a2410'); rect(11, 3, 2, 3, '#4a4a54'); px(12, 1, '#c8c8c8'); break;
       case 'I': grass(); rect(1, 6, 14, 10, '#8a5a2b'); g.fillStyle = '#6a2a2a'; g.beginPath(); g.moveTo(0, 7); g.lineTo(8, 0); g.lineTo(16, 7); g.fill(); rect(6, 10, 4, 6, '#3a2410'); rect(2, 8, 3, 3, '#ffd166'); rect(11, 8, 3, 3, '#ffd166'); rect(12, 3, 3, 2, '#ffd166'); break;
+      // Journey v1.2: the cities in the sky and under the sea, their floors, and the folk's own places on the land.
+      case 'S': fill('#7ec8ff'); g.fillStyle = '#ffffff'; for (const [x, y, r] of [[4, 12, 4], [9, 11, 5], [13, 13, 3]]) { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); } rect(5, 3, 2, 8, '#f4f8ff'); rect(9, 1, 2, 10, '#f4f8ff'); rect(9, 0, 2, 1, '#ffd166'); rect(5, 2, 2, 1, '#ffd166'); rect(12, 5, 2, 6, '#e8eef8'); break;
+      case 'A': water('#1a4a98', '#6aa0e0'); g.fillStyle = 'rgba(200,240,255,0.55)'; g.beginPath(); g.arc(8, 11, 6, Math.PI, 0); g.fill(); rect(6, 7, 1, 4, '#ff9a8a'); rect(9, 6, 1, 5, '#ff9a8a'); px(8, 4, '#ffffff'); break;
+      case '%': fill('#f4f8ff'); specks('#dfe8f4', 16, 81); specks('#ffffff', 8, 83); break;
+      case '&': fill('#7ec8ff'); g.fillStyle = 'rgba(255,255,255,0.6)'; g.beginPath(); g.arc(4 + frame * 2, 10, 4, 0, Math.PI * 2); g.arc(11 + frame, 6, 3, 0, Math.PI * 2); g.fill(); break;
+      case '$': fill('#c8b88a'); specks('#a8986a', 12, 91); specks('#e8dcb0', 6, 93); px(4, 6, '#ff9a8a'); px(11, 12, '#ffffff'); break;
+      case '+': fill('#2a5aa8'); for (const [x, col] of [[2, '#ff7a8a'], [7, '#ffb04a'], [12, '#c070ff']]) { rect(x, 6, 2, 10, col); rect(x - 1, 8, 1, 3, col); rect(x + 2, 5, 1, 3, col); } break;
+      case 'X': kinSite(() => { for (const x of [1, 9]) { g.fillStyle = '#6a4a2a'; g.beginPath(); g.moveTo(x, 15); g.lineTo(x + 3, 6); g.lineTo(x + 6, 15); g.fill(); } rect(0, 14, 16, 2, '#8a5a2b'); rect(7, 3, 1, 8, '#6b4423'); rect(8, 3, 3, 2, '#8a2a2a'); }); break;
+      case 'L': fill('#7e8a96'); g.fillStyle = '#14110f'; g.beginPath(); g.arc(8, 12, 4, Math.PI, 0); g.fill(); rect(4, 12, 8, 4, '#14110f'); px(6, 10, '#ffd166'); px(10, 10, '#ffd166'); rect(2, 2, 2, 2, '#c8a66a'); rect(12, 3, 2, 2, '#c8a66a'); break;
+      case 'N': fill('#7e8a96'); rect(3, 4, 10, 12, '#5a5a64'); rect(3, 4, 10, 2, '#9a9aa4'); rect(6, 8, 4, 8, '#14110f'); rect(6, 8, 4, 1, '#ffd166'); for (const x of [3, 6, 9, 12]) rect(x, 2, 1, 2, '#5a5a64'); break;
+      case 'E': fill('#3d7f34'); rect(7, 6, 2, 10, '#6b4423'); g.fillStyle = '#245a22'; g.beginPath(); g.arc(8, 5, 6, 0, Math.PI * 2); g.fill(); rect(3, 8, 4, 3, '#d8e8c0'); rect(9, 4, 4, 3, '#d8e8c0'); px(4, 9, '#ffd166'); px(10, 5, '#ffd166'); break;
+      case 'M': grass(); for (const x of [4, 11]) { g.fillStyle = '#4e9440'; g.beginPath(); g.arc(x, 12, 5, Math.PI, 0); g.fill(); g.fillStyle = '#c8a040'; g.beginPath(); g.arc(x, 12, 2, 0, Math.PI * 2); g.fill(); } break;
+      case 'J': grass(); for (const [x, y, col] of [[4, 9, '#d0303a'], [11, 11, '#c070ff'], [8, 5, '#ff9ae0']]) { rect(x - 1, y, 2, 4, '#efe6d2'); g.fillStyle = col; g.beginPath(); g.ellipse(x, y, 4, 3, 0, Math.PI, 0); g.fill(); } px(3, 3, '#fff6c0'); px(13, 4, '#fff6c0'); break;
+      case '1': fill('#4a6a3a'); rect(0, 11, 16, 5, '#3a78c8'); for (const x of [2, 9]) { rect(x + 1, 9, 1, 6, '#6b4423'); rect(x + 4, 9, 1, 6, '#6b4423'); rect(x, 4, 6, 5, '#8a6a3a'); g.fillStyle = '#8a7a3a'; g.beginPath(); g.moveTo(x - 1, 5); g.lineTo(x + 3, 1); g.lineTo(x + 7, 5); g.fill(); } break;
+      case '2': grass(); rect(2, 6, 12, 10, '#e8d8b0'); rect(2, 4, 12, 3, '#2a7a8a'); rect(11, 0, 2, 5, '#5a5a64'); g.strokeStyle = '#ffd166'; g.lineWidth = 1; g.beginPath(); g.arc(6, 10, 2.5, 0, Math.PI * 2); g.stroke(); rect(10, 11, 2, 5, '#6b4423'); break;
+      case '3': grass(); for (const x of [1, 9]) { g.fillStyle = '#c8a66a'; g.beginPath(); g.moveTo(x, 15); g.lineTo(x + 3, 4); g.lineTo(x + 6, 15); g.fill(); rect(x + 3, 2, 1, 3, '#6b4423'); } rect(7, 0, 1, 3, '#d0303a'); break;
+      case '4': fill('#7e8a96'); rect(0, 3, 16, 13, '#4a4a54'); rect(0, 3, 16, 2, '#7a7a84'); rect(5, 7, 6, 9, '#14110f'); rect(1, 1, 3, 2, '#4a4a54'); rect(12, 1, 3, 2, '#4a4a54'); break;
+      case '5': grass(); for (const [x, col] of [[1, '#8a3a6a'], [6, '#3a6a8a'], [11, '#8a6a2a']]) { rect(x, 6, 4, 9, '#a08a5a'); rect(x - 1, 4, 6, 3, col); } px(3, 9, '#ffd166'); px(13, 9, '#c0c0c0'); break;
       default: fill('#000');
     }
+    // The style's colour, laid over the whole land: cool blue for sci-fi, neon pink in the dark for cyberpunk,
+    // brass for steampunk.
+    const st = R.STYLES?.[style];
+    if (st?.dark) { g.globalCompositeOperation = 'source-atop'; g.fillStyle = `rgba(10,8,24,${st.dark})`; g.fillRect(0, 0, TILE, TILE); }
+    if (st?.tint) { g.globalCompositeOperation = 'source-atop'; g.globalAlpha = st.tint[1]; g.fillStyle = st.tint[0]; g.fillRect(0, 0, TILE, TILE); g.globalAlpha = 1; }
+    g.globalCompositeOperation = 'source-over';
     tileArt.set(key, c);
     return c;
   }
-  const ANIMATED = new Set(['~', 'r', 'p']);
+  // The land seen from under the sea: soft, dim and far away (made once per tile).
+  function blurredTile(ch, frame) {
+    const key = `${ch}${frame}~blur|${j?.style}`;
+    if (tileArt.has(key)) return tileArt.get(key);
+    const c = doc.createElement('canvas'); c.width = TILE; c.height = TILE;
+    const g = c.getContext('2d');
+    try { g.filter = 'blur(1.2px)'; } catch {}
+    g.globalAlpha = 0.75; g.drawImage(tileCanvas(ch, frame), 0, 0);
+    try { g.filter = 'none'; } catch {}
+    g.globalAlpha = 1; g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(20,60,140,0.45)'; g.fillRect(0, 0, TILE, TILE);
+    tileArt.set(key, c);
+    return c;
+  }
+  const ANIMATED = new Set(['~', 'r', 'p', 'A', '&']);
   function drawChest(x, y, open, good) {
     ctx.fillStyle = good ? '#4a4a54' : '#6b4423'; ctx.fillRect(x + 3, y + 7, 10, 7);
     ctx.fillStyle = open ? '#2a1d14' : good ? '#7a7a84' : '#8a5a2b'; ctx.fillRect(x + 3, y + 5, 10, open ? 3 : 4);
@@ -185,6 +272,8 @@ function mountJourney(root, deps) {
     }
     if (what.item) {
       const it = R.ITEMS[what.item];
+      const FOOD_COLOURS = { meat: '#a0522d', fish: '#8ab0c8', berries: '#8a3ab8', oats: '#e0c070', honey: '#ffb02a', greens: '#5ab04a', grubs: '#c8b080', cheese: '#ffe070', mushrooms: '#c8a088', apples: '#d0303a', dates: '#7a4a24' };
+      if (it?.food) { ctx.fillStyle = '#14110f'; ctx.fillRect(x, y + 1, 8, 7); ctx.fillStyle = FOOD_COLOURS[what.item] || '#c8a066'; ctx.fillRect(x + 1, y + 2, 6, 5); ctx.fillStyle = '#ffffff'; ctx.fillRect(x + 2, y + 3, 1, 1); return 9; }
       if (it?.scroll) { ctx.fillStyle = '#efe6d2'; ctx.fillRect(x + 1, y, 6, 8); ctx.fillStyle = '#c8a66a'; ctx.fillRect(x, y, 8, 2); ctx.fillRect(x, y + 6, 8, 2); ctx.fillStyle = '#c070ff'; ctx.fillRect(x + 3, y + 3, 2, 2); }
       else { ctx.fillStyle = '#efe6d2'; ctx.fillRect(x + 3, y, 2, 2); ctx.fillStyle = it?.spirit ? '#7ae0ff' : it?.revive ? '#ffd166' : it?.fire ? '#ff8a3a' : it?.cleanse ? '#a0e070' : '#7dff9a'; ctx.fillRect(x + 1, y + 2, 6, 6); }
       return 9;
@@ -200,20 +289,32 @@ function mountJourney(root, deps) {
   }
 
   // ---------- The save and the start ----------
+  // Making a land takes a moment (a few seconds for the biggest), so the last one made is kept, and the save is only
+  // read for its summary until you Resume.
+  let lastLand = null;
+  function makeLand(seed, size, style) {
+    const key = `${seed}|${size}`;
+    if (lastLand?.key === key) return lastLand.world;
+    lastLand = null; // let the old one go before making the new one
+    const w = Wm.makeWorld(seed, size, style);
+    lastLand = { key, world: w };
+    return w;
+  }
+  let savedRaw = null;
   async function loadSave() {
-    try { const r = await deps.api('/api/adventure/journey'); saved = r?.journey ? R.cleanJourney(r.journey, Wm.makeWorld) : null; } catch (e) { msg = e.message; saved = null; }
+    try { const r = await deps.api('/api/adventure/journey'); savedRaw = r?.journey || null; saved = savedRaw ? R.cleanJourney(savedRaw) : null; } catch (e) { msg = e.message; saved = null; savedRaw = null; }
     drawPanel();
   }
   async function save(quiet) {
     if (!j || lobby) return;
-    try { await deps.api('/api/adventure/journey', { journey: j }); saved = j; if (!quiet) say('Saved. The land will wait for you.'); }
+    try { await deps.api('/api/adventure/journey', { journey: j }); saved = j; savedRaw = null; if (!quiet) say('Saved. The land will wait for you.'); }
     catch (e) { say(`I couldn't save: ${e.message}`); }
   }
   // Who comes along: up to four, from your character, Bob and saved characters, each with a race and class to pick.
   const pickedIds = new Set();
   const choices = {}; // id -> { race, cls }
   (deps.party || []).slice(0, 2).forEach((p) => pickedIds.add(p.id));
-  let newSize = 'medium';
+  let newSize = 'medium', newStyle = 'fantasy';
   function lobbyParty() { const list = (deps.party || []).filter((p) => pickedIds.has(p.id)).slice(0, 4); return (list.length ? list : (deps.party || []).slice(0, 1)).map((p) => ({ ...p, ...(choices[p.id] || {}) })); }
   function enterLobby() {
     world = Wm.innOnly();
@@ -221,23 +322,34 @@ function mountJourney(root, deps) {
     lobby = true; trail = []; mode = 'walk';
     drawPanel();
   }
+  // The big lands take a few seconds to make, so the screen says so first.
+  const later = (fn) => { msg = 'Rolling the land…'; drawPanel(); sayLive(msg); setTimeout(fn, 40); };
   function rollNew() {
-    const seed = String(Date.now() % 1e9);
-    world = Wm.makeWorld(seed, newSize);
-    j = R.newJourney({ seed, size: newSize, party: lobbyParty() }, world);
-    lobby = false; trail = []; shop = null; mode = 'walk';
-    drawPanel();
-    talkTo([`Bob: A new land's rolled out past my front door: ${Wm.SIZES[newSize].name.toLowerCase()}, by the look of it. ${R.questLine(world, j)}`, 'Arrow keys (or the pad) walk, Enter talks and opens things, F picks a fight, Esc opens the menu. The way out is the door at the bottom.']);
-    save(true);
-    focus();
+    if (deps.phone && Wm.SIZES[newSize]?.desktopOnly) newSize = 'campaign';
+    later(() => {
+      if (closed) return;
+      const seed = String(Date.now() % 1e9);
+      world = makeLand(seed, newSize, newStyle);
+      j = R.newJourney({ seed, size: newSize, style: newStyle, party: lobbyParty() }, world);
+      lobby = false; trail = []; shop = null; mode = 'walk'; msg = ''; tileArt.clear();
+      drawPanel();
+      const st = R.STYLES[newStyle];
+      talkTo([newStyle !== 'fantasy' ? st.intro : '', `Bob: A new land's rolled out past my front door: ${Wm.SIZES[newSize].name.toLowerCase()}, by the look of it. ${R.questLine(world, j)}`, 'Arrow keys (or the pad) walk, Enter talks and opens things, F picks a fight, Esc opens the menu. The way out is the door at the bottom.']);
+      save(true);
+      focus();
+    });
   }
   function resume() {
     if (!saved) return;
-    j = saved; world = Wm.makeWorld(j.seed, j.size);
-    lobby = false; trail = []; shop = null; mode = 'walk';
-    drawPanel();
-    talkTo([`Welcome back. ${R.mapOf(world, j).name}. ${R.fmtCoin(j.coin)} in the purse.`]);
-    focus();
+    later(() => {
+      if (closed) return;
+      if (savedRaw) { j = R.cleanJourney(savedRaw, makeLand); savedRaw = null; saved = j; } else j = saved;
+      world = makeLand(j.seed, j.size, j.style);
+      lobby = false; trail = []; shop = null; mode = 'walk'; msg = ''; tileArt.clear();
+      drawPanel();
+      talkTo([`Welcome back. ${R.mapOf(world, j).name}. ${R.fmtCoin(j.coin)} in the purse.`]);
+      focus();
+    });
   }
   const focus = () => { try { shell.focus({ preventScroll: true }); } catch {} };
 
@@ -249,7 +361,7 @@ function mountJourney(root, deps) {
     if (cur) out.push(cur);
     return out;
   }
-  function talkTo(lines, then) { talk = { lines: lines.filter(Boolean).flatMap(pages), i: 0, shown: still() ? 1e9 : 0, then }; mode = mode === 'battle' ? 'battle' : 'talk'; showBox(); }
+  function talkTo(lines, then) { talk = { lines: lines.filter(Boolean).map(T).flatMap(pages), i: 0, shown: still() ? 1e9 : 0, then }; mode = mode === 'battle' ? 'battle' : 'talk'; showBox(); }
   function say(text) { talkTo([text]); }
   function showBox() {
     if (!talk) { box.hidden = true; return; }
@@ -270,17 +382,34 @@ function mountJourney(root, deps) {
     if (mode !== 'walk' || anim || !j) return;
     const from = { x: j.x, y: j.y, at: j.at };
     const r = R.walk(world, j, dir);
-    armed = null;
+    armed = null; armedRelease = '';
+    if (dir === 'left' || dir === 'right') sideFacing = dir;
     if (r.moved) {
       stepPhase = (stepPhase + 1) % 4;
-      if (r.door) { trail = []; announce(); arrive(r.door); return; }
+      if (r.door) { trail = []; swoops.clear(); landFx.length = 0; heightFx = null; announce(); arrive(r.door); return; }
       trail.unshift({ x: from.x, y: from.y, facing: j.facing });
-      trail = trail.slice(0, 4);
-      anim = { from, t0: now(), dur: still() ? 0 : 150 };
+      trail = trail.slice(0, 16); // the party, then the pets and mounts that follow
+      anim = { from, t0: now(), dur: still() ? 0 : j.riding && j.alt === 'ground' ? 110 : 150 };
+      if (r.splash && !still()) landFx.push({ kind: 'splash', x: j.x, y: j.y, t0: now(), dur: 600 });
+      if (r.splash === 'in') sayLive(`${R.leaderMount(j)?.name || 'Your mount'} carries you into the water.`);
       if (r.battle) setTimeout(() => startFight(r.battle, { helpers: r.helpers, chase: r.chase }), still() ? 0 : 170);
     } else if (r.bump?.kind === 'boss') bossTalk(r.bump.boss);
     else if (r.bump?.kind === 'closed') say('Bob: The door\'s stuck until you roll a New adventure. The buttons are along the bottom.');
+    else if (r.bump?.kind === 'tile' && ['S', 'A'].includes(r.bump.tile) && j.alt === 'ground') sayLive(r.bump.tile === 'S' ? 'A city in the clouds, far overhead. Only a flier can reach it: fly up (⤒ or E) on a pegasus, griffin or wyvern.' : 'A city under the waves. Only a swimmer can reach it: dive (⤓ or Q) on a dolphin.');
   }
+  // ---------- Up, down and riding (Journey v1.2) ----------
+  function height(r) {
+    sayLive(r.text);
+    if (!r.ok) return;
+    trail = [];
+    heightFx = still() ? null : { kind: r.anim, t0: now(), dur: r.anim === 'surface' ? 700 : 1000 };
+    if (r.anim === 'land' && !still()) setTimeout(() => landFx.push({ kind: 'dust', x: j.x, y: j.y, t0: now(), dur: 500 }), 800);
+    if ((r.anim === 'dive' || r.anim === 'surface') && !still()) landFx.push({ kind: 'ripple', x: j.x, y: j.y, t0: now(), dur: 900 });
+    R.seeSites(world, j); announce(); save(true);
+  }
+  function rise() { if (mode !== 'walk' || anim || !j || lobby) return; height(R.rise(world, j)); }
+  function sink() { if (mode !== 'walk' || anim || !j || lobby) return; height(R.sink(world, j)); }
+  function rideToggle() { if (mode !== 'walk' || anim || !j || lobby) return; const r = R.ride(world, j); sayLive(r.text); if (r.ok) { trail = []; announce(); save(true); } }
   const BOB_LINES = { cave: 'Bob: Dark, damp, and smells of something. My three least favourite things, in order.', dungeon: 'Bob: Old stones and older bones. I would like it on record that I said this was a bad idea.', castle: 'Bob: A castle! Wipe your feet. And don\'t pick a fight with the knights. Please.', hermit: 'Bob: Someone actually lives out here? On purpose?' };
   function arrive(id) {
     const map = world.map(id);
@@ -295,16 +424,21 @@ function mountJourney(root, deps) {
   function announce() {
     const map = R.mapOf(world, j);
     const zone = map.kind === 'world' ? ` · danger ${R.zoneAt(world, j)}` : '';
-    root.querySelector('.jy-where').textContent = `${map.name}${zone}${R.isWanted?.(world, j) ? ' · ⚠ wanted' : ''}`;
+    const alt = map.kind === 'world' && j.alt === 'sky' ? ' · in the sky' : map.kind === 'world' && j.alt === 'deep' ? ' · under the sea' : j.riding ? ' · riding' : '';
+    root.querySelector('.jy-where').textContent = T(`${map.name}${zone}${alt}${R.isWanted?.(world, j) ? ' · ⚠ wanted' : ''}`);
   }
   function front() { const [dx, dy] = R.STEP[j.facing]; return R.thingAt(world, j, j.x + dx, j.y + dy); }
   function act() {
     if (mode === 'talk' || (mode === 'battle' && talk)) { advanceTalk(); return; }
     if (mode !== 'walk' || anim) return;
+    if (j.alt !== 'ground' && R.mapOf(world, j).kind === 'world') { sayLive(j.alt === 'sky' ? 'Nobody to talk to up here but the wind. Land first (⤓ or Q).' : 'Bubbles. Come up first (⤒ or E) to talk.'); return; }
     const t = front();
     const [dx, dy] = R.STEP[j.facing];
     if (!t) {
       if (R.mapOf(world, j).rows[j.y + dy]?.[j.x + dx] === 'n') { shop = { kind: 'new' }; mode = 'shop'; drawPanel(); return; }
+      // Facing water on the land, the button fishes.
+      const fish = j.alt === 'ground' && !lobby ? R.fishAt(world, j) : null;
+      if (fish) { if (fish.ok) { lastLoot = [{ item: 'fish' }]; lastLootAt = now(); save(true); } if (!still()) landFx.push({ kind: 'ripple', x: j.x + dx, y: j.y + dy, t0: now(), dur: 700 }); talkTo([fish.text]); return; }
       swing = { t0: now() }; return;
     }
     if (t.kind === 'chest') { const r = R.openChest(world, j, t.chest); lastLoot = r.got || null; lastLootAt = now(); talkTo([r.text]); save(true); return; }
@@ -315,10 +449,13 @@ function mountJourney(root, deps) {
   // F: pick a fight with whoever is in front. Asks once first, because it can't be taken back.
   function fight() {
     if (mode !== 'walk' || anim || !j) return;
+    if (j.alt !== 'ground' && R.mapOf(world, j).kind === 'world') { swing = { t0: now() }; return; }
     const t = front();
     if (!t || t.kind !== 'person') { swing = { t0: now() }; return; }
     const p = t.person;
     if (R.PEACEFUL[p.role]) { say(R.PEACEFUL[p.role]); return; }
+    // A wild animal: no guards care, so no asking first. (A lost pet goes home instead.)
+    if (p.role === 'animal') { if (p.lost) { animalTalk(p); return; } armed = null; startFight([{ animal: p }], { zone: R.zoneAt(world, j) }); return; }
     if (armed !== p.id) { armed = p.id; say(`Pick a fight with ${p.title ? `${p.title} ${p.name}` : p.name}? ${['guard', 'knight', 'captain', 'ruler'].includes(p.role) ? 'The guard will come for you.' : 'The guards will remember.'} Press F (or ⚔) again to fight.`); return; }
     armed = null;
     const r = R.attackPerson(world, j, p);
@@ -326,13 +463,19 @@ function mountJourney(root, deps) {
     p.facing = { up: 'down', down: 'up', left: 'right', right: 'left' }[j.facing];
     startFight(r.battle, { site: r.site, zone: r.zone, people: true });
   }
+  function animalTalk(p) {
+    if (p.lost) { const r = R.findLost(j, p); talkTo([r || `${p.name} is already on the way home.`]); save(true); return; }
+    p.facing = j.x < p.x ? 'left' : 'right';
+    talkTo([R.animalLine(p), R.FOES[p.beast]?.tame ? 'Press F (or ⚔) to try your luck. Mid-fight, feed it the food it loves (Items), and it may come along.' : '']);
+  }
   function personTalk(p) {
+    if (p.role === 'animal') { animalTalk(p); return; }
     p.facing = { up: 'down', down: 'up', left: 'right', right: 'left' }[j.facing];
     const name = p.title ? `${p.title} ${p.name}` : p.name;
     const wanted = R.isWanted(world, j);
     const map = R.mapOf(world, j);
     const tier = map.kind;
-    const open = (kind, line) => talkTo([`${name}: ${line}`], () => { shop = { kind, who: name, person: p, tier }; mode = 'shop'; drawPanel(); });
+    const open = (kind, line, mult = 1) => talkTo([`${name}: ${line}`], () => { shop = { kind, who: name, person: p, tier, mult }; mode = 'shop'; drawPanel(); });
     if (p.role === 'keeper') {
       if (lobby) { talkTo(['Bob: Welcome to my inn. Sit anywhere that isn\'t on fire.', 'Bob: When you\'re ready for the road, the buttons along the bottom roll a New adventure, or Resume the one you saved. The notice board by the door does the same.']); return; }
       open('inn', `Back again! A bed is ${R.fmtCoin(R.INN_PRICE)} for the whole party. ${R.questLine(world, j)}`); return;
@@ -341,6 +484,14 @@ function mountJourney(root, deps) {
     if (wanted && ['inn', 'shop', 'smith', 'priest', 'trainer', 'peddler'].includes(p.role)) { talkTo([`${name}: I don't serve your sort. Pay your fine to a guard first.`]); return; }
     if (wanted && ['guard', 'knight', 'captain'].includes(p.role)) { const key = map.kind === 'world' ? 'world' : map.site || map.id; open('fine', `You're wanted here. The fine is ${R.fmtCoin(R.fineFor(world, j, key))}. Pay up, or we do this the hard way.`); return; }
     if (p.role === 'ruler') { talkTo([`${name}: ${R.questLine(world, j)}`]); return; }
+    if (p.role === 'lost') { const r = R.findLost(j, p); talkTo([`${name}: ${R.ROLE_LINES.lost[p.line % R.ROLE_LINES.lost.length]}`, r || '']); save(true); return; }
+    if (p.role === 'elder') { const q = R.questTalk(world, j, map.site || map.id); talkTo(q.lines.map((l) => `${name}: ${l}`)); if (q.done) { lastLoot = [{ coin: q.reward }]; lastLootAt = now(); } save(true); return; }
+    if (p.role === 'sailor') { open('docks', `${R.ROLE_LINES.sailor[p.line % 3]} Where to?`); return; }
+    if (p.role === 'trader') { open('trader', 'Fresh down from the clouds! Everything half price, today only. Every day is today only.', R.TRADER_PRICE); return; }
+    if (p.role === 'bowyer') { open('bowyer', R.ROLE_LINES.bowyer[p.line % 2]); return; }
+    if (p.role === 'tinker') { open('tinker', R.ROLE_LINES.tinker[p.line % 2]); return; }
+    if (p.role === 'folk' && R.KIN_LINES[p.race]) { const kl = R.KIN_LINES[p.race]; talkTo([`${name}: ${kl[p.line % kl.length]}`]); return; }
+    if (map.kind === 'world' && R.ROAD_LINES[p.role] && p.role !== 'peddler') { const rl = R.ROAD_LINES[p.role]; talkTo([`${name}: ${rl[p.line % rl.length]}`]); return; }
     if (p.role === 'inn') { open('inn', `A bed for the night is ${R.fmtCoin(innPrice(tier))} for the whole party. Everyone wakes up whole.`); return; }
     if (p.role === 'shop') { open('shop', 'Tonics, salts and things that go bang. Have a look.'); return; }
     if (p.role === 'peddler') { open('shop', 'Bits and bobs! Tonics and scrolls! Mostly tonics.'); return; }
@@ -384,11 +535,13 @@ function mountJourney(root, deps) {
     if (talk && mode === 'talk') { talk = null; box.hidden = true; }
     shop = null; menu = null;
     const b = R.startBattle(j, specs, { zone: opts.zone || R.zoneAt(world, j), helpers: opts.helpers, site: opts.site, spar: opts.spar });
-    battle = { b, picks: {}, who: 0, stage: 'act', queue: [], busy: false, t0: now(), anim: null, fx: [], where: R.mapOf(world, j).kind, land: R.mapOf(world, j).rows[j.y]?.[j.x] };
+    battle = { b, picks: {}, who: 0, stage: 'act', queue: [], busy: false, t0: now(), anim: null, fx: [], where: R.mapOf(world, j).kind, land: R.mapOf(world, j).rows[j.y]?.[j.x], alt: R.mapOf(world, j).kind === 'world' ? j.alt : 'ground' };
     mode = 'battle';
     const names = b.foes.map((f) => f.name);
     battle.intro = opts.spar ? `${names[0]} squares up for a friendly bout.` : opts.chase ? `${names.join(' and ')} catch${names.length > 1 ? '' : 'es'} up with you!` : `${names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]} ${b.guardian ? 'blocks the way!' : b.people ? (names.length > 1 ? 'square up!' : 'squares up!') : names.length > 1 ? 'jump out!' : 'jumps out!'}`;
-    if (b.allies.length) battle.intro += ` ${b.allies.map((a) => a.name).join(' and ')} from the patrol join${b.allies.length > 1 ? '' : 's'} in!`;
+    const helpers = b.allies.filter((a) => !a.pet), pets = b.allies.filter((a) => a.pet);
+    if (helpers.length) battle.intro += ` ${helpers.map((a) => a.name).join(' and ')} from the patrol join${helpers.length > 1 ? '' : 's'} in!`;
+    if (pets.length) battle.intro += ` ${pets.map((a) => a.name).join(' and ')} ${pets.length > 1 ? 'are' : 'is'} at your side.`;
     sayLive(battle.intro);
     nextPicker(0);
   }
@@ -412,6 +565,10 @@ function mountJourney(root, deps) {
       const lines = [b.spar ? `A good bout! ${r.xp} experience.` : `You win! ${r.xp} experience${r.coin ? ` and ${R.fmtCoin(r.coin)}` : ''}.`];
       if (r.drops.length) lines.push(`Dropped kit: ${r.drops.map((k) => `${R.kitName(k)} (${R.kitWords(k)})`).join('; ')}. It's in Kit on the menu.`);
       if (r.items.length) lines.push(`Picked up: ${r.items.map((i) => R.ITEMS[i].name).join(', ')}.`);
+      if (r.left?.length) lines.push(`No room in the bag for: ${r.left.map((i) => R.ITEMS[i].name).join(', ')}. A pet or a mount carries more.`);
+      for (const tm of r.tamed || []) lines.push(`${tm.pet} the ${tm.name.replace(/ [A-D]$/, '').toLowerCase()} comes along with ${tm.by}! Pets and mounts are in Pets on the menu.`);
+      for (const fd of r.finds || []) lines.push(fd.coin ? `${fd.pet} noses out ${R.fmtCoin(fd.coin)}.` : `${fd.pet} digs up ${R.ITEMS[fd.item]?.name || 'something'}.`);
+      for (const pu of r.petUps || []) lines.push(`${pu.name} is now level ${pu.level}!`);
       for (const u of r.ups) lines.push(`${u.name} is now level ${u.level}! +${u.hp} health, +${u.sp} spirit${u.stat ? `, +1 ${R.STAT_NAMES[u.stat]}` : ''}, and a skill point to spend in Skills.${u.newClass ? ` They can take a ${u.newClass} class now, in Skills.` : ''}`);
       const boss = b.foes.find((f) => f.guardian);
       if (boss) {
@@ -421,7 +578,7 @@ function mountJourney(root, deps) {
       }
       const felled = b.foes.filter((f) => f.person && !f.fled);
       if (felled.some((f) => f.role === 'ruler')) lines.push('The castle will not forget this.');
-      lastLoot = [...(r.coin ? [{ coin: r.coin }] : []), ...r.drops.map((k) => ({ kit: k })), ...r.items.map((i) => ({ item: i }))];
+      lastLoot = [...(r.coin ? [{ coin: r.coin }] : []), ...r.drops.map((k) => ({ kit: k })), ...r.items.map((i) => ({ item: i })), ...(r.finds || []).map((fd) => (fd.coin ? { coin: fd.coin } : { item: fd.item }))];
       lastLootAt = now();
       drawPanel();
       talkTo(lines, endFight);
@@ -441,14 +598,14 @@ function mountJourney(root, deps) {
     if (!charId) return;
     try { await deps.api('/api/adventure/journey/reward', { charId, guardian: id }); } catch {}
   }
-  function sayLive(text) { const p = root.querySelector('.jy-msg'); if (p) p.textContent = text; }
+  function sayLive(text) { const p = root.querySelector('.jy-msg'); if (p) p.textContent = T(text); }
 
   // One event, animated: the attacker steps in and swings, the target flashes, a number floats up.
   function animate(e) {
     sayLive(e.text);
     if (still()) { if (e.dmg || e.heal || e.miss) pop(e); return Promise.resolve(); }
     return new Promise((done) => {
-      const isFight = ['fight', 'skill', 'hit', 'curse', 'breath', 'item', 'spell'].includes(e.act);
+      const isFight = ['fight', 'skill', 'hit', 'curse', 'breath', 'item', 'spell', 'feed', 'tame'].includes(e.act);
       const dur = isFight ? (e.element ? 700 : 620) : 520;
       battle.anim = { e, t0: now(), dur };
       setTimeout(() => { if (e.dmg || e.heal || (e.miss && e.target)) pop(e); }, dur * 0.55);
@@ -472,7 +629,8 @@ function mountJourney(root, deps) {
       out.set(f.key, { x, y, w: 16 * scale, h: 20 * scale, scale, side: 'foe' });
     });
     j.party.forEach((m, i) => { out.set(m.id, { x: 172 + (i % 2) * 18, y: 44 + i * 30 - (j.party.length > 3 ? 8 : 0), w: 32, h: 40, scale: 2, side: 'party' }); });
-    (battle.b.allies || []).forEach((a, i) => out.set(a.key, { x: 212, y: 40 + i * 60, w: 24, h: 30, scale: 1.5, side: 'ally' }));
+    // Helpers from the patrol and pets stand behind the party, in a column (two columns when there are many).
+    (battle.b.allies || []).forEach((a, i) => out.set(a.key, { x: 214 - (i >= 3 ? 20 : 0), y: 30 + (i % 3) * 50, w: 24, h: 30, scale: a.pet ? 1.3 : 1.5, side: 'ally' }));
     return out;
   }
   function spotOf(id) { return battle ? spots().get(id) : null; }
@@ -496,50 +654,181 @@ function mountJourney(root, deps) {
     const cy = map.h * TILE <= H ? (map.h * TILE - H) / 2 : Math.max(0, Math.min(map.h * TILE - H, py - H / 2 + TILE / 2));
     return { cx: Math.round(cx), cy: Math.round(cy) };
   }
+  // How high the party is, as the screen sees it: zoom (the land shrinks as you climb), lift (how far above the
+  // ground the leader is drawn, in pixels), and how far under the sea it is (0 to 1).
+  function heightNow(t) {
+    const map = R.mapOf(world, j);
+    const sky = map.kind === 'world' && j.alt === 'sky', deep = map.kind === 'world' && j.alt === 'deep';
+    let zoom = sky ? 0.72 : 1, lift = sky ? 12 : 0, under = deep ? 1 : 0, hop = 0;
+    if (heightFx) {
+      const k = Math.min(1, (t - heightFx.t0) / heightFx.dur);
+      if (k >= 1) heightFx = null;
+      else if (heightFx.kind === 'takeoff') { const up = Math.max(0, (k - 0.3) / 0.7); zoom = 1 - 0.28 * up; lift = 12 * up; hop = k < 0.3 ? Math.abs(Math.sin(k * 40)) * 2 : 0; }
+      else if (heightFx.kind === 'land') { const dn = Math.min(1, k / 0.8); zoom = 0.72 + 0.28 * dn; lift = 12 * (1 - dn); hop = k > 0.8 ? Math.sin((k - 0.8) / 0.2 * Math.PI) * 3 : 0; }
+      else if (heightFx.kind === 'dive') { under = k; hop = k < 0.4 ? Math.sin(k / 0.4 * Math.PI) * 10 : 0; }
+      else if (heightFx.kind === 'surface') { under = 1 - k; hop = Math.sin(k * Math.PI) * 16; }
+    }
+    return { zoom, lift, under, hop };
+  }
+  // A figure standing in water shows from the chest up, with a ripple round it.
+  function wading(map, tx, ty) { return map.kind === 'world' && '~r'.includes(map.rows[ty]?.[tx] || '.'); }
+  function inWater(x, y, w, draw, t) {
+    ctx.save(); ctx.beginPath(); ctx.rect(x - 12, y - 40, w + 24, 52); ctx.clip(); draw(); ctx.restore();
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    const k = Math.floor(t / 250) % 2;
+    ctx.fillRect(x + 1 + k, y + 12, w - 4, 1); ctx.fillRect(x - 1 - k, y + 13, 3, 1); ctx.fillRect(x + w - 2 + k, y + 13, 3, 1);
+  }
   function drawWorld(t) {
+    if (voyage) { drawVoyage(t); return; }
     const map = R.mapOf(world, j);
     let p = 1;
     if (anim) { p = anim.dur ? Math.min(1, (t - anim.t0) / anim.dur) : 1; if (p >= 1) anim = null; }
     const from = anim?.from || { x: j.x, y: j.y };
     const lx = (from.x + (j.x - from.x) * p) * TILE, ly = (from.y + (j.y - from.y) * p) * TILE;
     const { cx, cy } = camera(lx, ly, map);
-    ctx.fillStyle = map.kind === 'world' ? '#2a5aa8' : '#14110f'; ctx.fillRect(0, 0, W, H);
+    const hgt = heightNow(t);
+    const z = hgt.zoom, deep = hgt.under > 0.5;
+    ctx.fillStyle = map.kind === 'world' ? '#2a5aa8' : map.kind === 'aerie' ? '#7ec8ff' : map.kind === 'reef' ? '#1a4a98' : '#14110f'; ctx.fillRect(0, 0, W, H);
+    // Higher up the land shrinks round the middle of the screen.
+    ctx.save();
+    if (z !== 1) { ctx.translate(W / 2, H / 2); ctx.scale(z, z); ctx.translate(-W / 2, -H / 2); }
     const tick2 = Math.floor(t / 500) % 2;
-    const x0 = Math.floor(cx / TILE), y0 = Math.floor(cy / TILE);
-    for (let y = y0; y <= y0 + VIEW_H; y++) for (let x = x0; x <= x0 + VIEW_W; x++) {
+    const more = z < 1 ? Math.ceil((1 / z - 1) * VIEW_W / 2) + 1 : 0, moreY = z < 1 ? Math.ceil((1 / z - 1) * VIEW_H / 2) + 1 : 0;
+    const x0 = Math.floor(cx / TILE) - more, y0 = Math.floor(cy / TILE) - moreY;
+    const theme = THEMES[map.kind] ? map.kind : '';
+    for (let y = y0; y <= y0 + VIEW_H + moreY * 2; y++) for (let x = x0; x <= x0 + VIEW_W + more * 2; x++) {
       const ch = map.rows[y]?.[x]; if (!ch) continue;
-      ctx.drawImage(tileCanvas(ch, ANIMATED.has(ch) && !still() ? tick2 : 0), x * TILE - cx, y * TILE - cy);
+      const fr = ANIMATED.has(ch) && !still() ? tick2 : 0;
+      // Under the sea: the sea is the floor you swim over, and the land above is a blur.
+      const art = deep && map.kind === 'world' ? ('~r'.includes(ch) ? tileCanvas('$', 0) : ch === 'A' ? tileCanvas('A', fr) : blurredTile(ch, fr)) : tileCanvas(ch, fr, theme);
+      ctx.drawImage(art, x * TILE - cx, y * TILE - cy);
     }
     for (const c of map.chests) drawChest(c.x * TILE - cx, c.y * TILE - cy, j.opened.includes(`${map.id}:${c.id}`), c.loot !== 'gift' && /deep|hoard/.test(c.loot));
     // Everyone who stands on the map, back to front so the lower ones overlap the higher.
     const figs = [];
+    const flap = Math.floor(t / 150) % 2;
     if (map.boss && !j.beaten.includes(map.boss.id)) { const f = R.foe(map.boss.id); figs.push({ y: map.boss.y * TILE, draw: () => drawFig(foeLook(f), map.boss.x * TILE - cx - 4, map.boss.y * TILE - cy - 12, 1.5, { facing: 'down', step: Math.floor(t / 400) % 4 }) }); }
-    for (const q of R.peopleOn(world, j, map)) {
-      if (q.x * TILE - cx < -TILE || q.x * TILE - cx > W || q.y * TILE - cy < -TILE * 2 || q.y * TILE - cy > H + TILE) continue;
-      const qx = q.x * TILE - cx, qy = q.y * TILE - cy - 4, small = q.role === 'cat';
-      figs.push({ y: q.y * TILE, draw: () => { drawFig(personLook(q), qx + (small ? 3 : 0), qy + (small ? 6 : 0), small ? 0.6 : 1, { facing: q.facing || 'down', step: q.route ? stepPhase : 0 }); if (q.crown) extras(qx, qy, 1, { crown: true }); } });
+    const onGround = !(map.kind === 'world' && j.alt !== 'ground');
+    const pad = more * TILE;
+    if (!deep) for (const q of R.peopleOn(world, j, map)) {
+      if (q.x * TILE - cx < -TILE - pad || q.x * TILE - cx > W + pad || q.y * TILE - cy < -TILE * 2 - pad || q.y * TILE - cy > H + TILE + pad) continue;
+      let qx = q.x * TILE - cx, qy = q.y * TILE - cy - 4;
+      const sc = q.role === 'cat' ? 0.6 : q.scale || 1;
+      const dx = 8 * (1 - sc), dy = 20 * (1 - sc) + (q.beast ? 4 : 0);
+      // An Aerie trader swoops down when you first see them, and lands with a puff of dust.
+      let swoopK = 1;
+      if (q.visiting && !still()) { const key = `${map.id}:${q.id}`; if (!swoops.has(key)) swoops.set(key, t); swoopK = Math.min(1, (t - swoops.get(key)) / 1100); qx += (1 - swoopK) * 50; qy -= (1 - swoopK) ** 2 * 110; }
+      const facing = q.role === 'animal' || q.beast ? (q.facing === 'right' ? 'right' : 'left') : q.facing || 'down';
+      const step = q.route || q.role === 'animal' ? stepPhase : swoopK < 1 ? flap * 2 : 0;
+      const water = wading(map, q.x, q.y);
+      figs.push({ y: q.y * TILE, draw: () => {
+        const go = () => { drawFig(personLook(q), qx + dx, qy + dy, sc, { facing, step }); if (q.wings) extras(qx + dx, qy + dy, sc, { wings: true, flap }); if (q.crown) extras(qx, qy, 1, { crown: true }); };
+        if (water) inWater(qx, qy + 4, 16, go, t); else go();
+        if (swoopK < 1 && swoopK > 0.85) puff(qx + 8, qy + 22, (swoopK - 0.85) / 0.15);
+      } });
     }
+    // The party walks in a line behind the leader; pets and mounts follow on behind. In the sky or under the sea the
+    // others ride along with the leader and aren't drawn.
     const walking = Boolean(anim) || (held && mode === 'walk');
-    j.party.forEach((m, i) => {
-      let x, y, facing;
-      if (i === 0) { x = lx; y = ly; facing = j.facing; }
-      else {
-        const spot = trail[i - 1]; const prev = i === 1 ? { x: j.x, y: j.y } : trail[i - 2];
-        if (!spot) return;
-        const fromSpot = trail[i] || spot;
-        x = (anim ? fromSpot.x + (spot.x - fromSpot.x) * p : spot.x) * TILE; y = (anim ? fromSpot.y + (spot.y - fromSpot.y) * p : spot.y) * TILE;
-        facing = prev ? (prev.x > spot.x ? 'right' : prev.x < spot.x ? 'left' : prev.y < spot.y ? 'up' : 'down') : spot.facing;
+    const lead = j.party[0];
+    const riding = map.kind === 'world' && j.riding && R.mountOf(lead || {});
+    const followers = [];
+    if (onGround) {
+      for (const m of j.party.slice(1)) followers.push({ kind: 'member', m });
+      for (const m of j.party) { const pet = R.petOf(m); if (pet && pet.hp > 0) followers.push({ kind: 'pet', pet }); }
+      if (map.kind === 'world') for (const m of j.party) { const mt = R.mountOf(m); if (mt && !(m === lead && j.riding)) followers.push({ kind: 'mount', pet: mt }); }
+    }
+    const spotAt = (i) => { // i: 0 is the leader, 1.. the followers along the trail
+      if (i === 0) return { x: lx, y: ly, facing: j.facing, tx: j.x, ty: j.y };
+      const spot = trail[i - 1]; const prev = i === 1 ? { x: j.x, y: j.y } : trail[i - 2];
+      if (!spot) return null;
+      const fromSpot = trail[i] || spot;
+      return { x: (anim ? fromSpot.x + (spot.x - fromSpot.x) * p : spot.x) * TILE, y: (anim ? fromSpot.y + (spot.y - fromSpot.y) * p : spot.y) * TILE, facing: prev ? (prev.x > spot.x ? 'right' : prev.x < spot.x ? 'left' : prev.y < spot.y ? 'up' : 'down') : spot.facing, tx: spot.x, ty: spot.y };
+    };
+    const step = walking ? (stepPhase + Math.floor(p * 2)) % 4 : 0;
+    followers.forEach((fw, k) => {
+      const at = spotAt(k + 1); if (!at) return;
+      const fx = Math.round(at.x - cx), fy = Math.round(at.y - cy - 4);
+      const water = wading(map, at.tx, at.ty);
+      if (fw.kind === 'member') {
+        const m = fw.m, pix = m.race === 'pixie' ? 0.85 : 1;
+        const go = () => { drawFig(memberLook(m), fx + (pix < 1 ? 1 : 0), fy + (pix < 1 ? 3 : 0), pix, { facing: at.facing, step, weapon: base(m.weapon), shield: base(m.shield), weaponTint: kitTint(m.weapon), shieldTint: kitTint(m.shield) }); extras(fx, fy, pix, { ...memberExtras(m), flap }); };
+        figs.push({ y: at.y + k * 0.01, draw: () => (water ? inWater(fx, fy, 16, go, t) : go()) });
+      } else {
+        const sc = fw.kind === 'pet' ? 0.75 : 1, side = at.facing === 'right' ? 'right' : at.facing === 'left' ? 'left' : sideFacing;
+        const go = () => drawFig(petLook(fw.pet), fx + 8 * (1 - sc), fy + 4 + 16 * (1 - sc), sc, { facing: side, step });
+        figs.push({ y: at.y + k * 0.01, draw: () => (water && !R.FOES[fw.pet.type]?.swim ? inWater(fx, fy + 4, 16, go, t) : go()) });
       }
-      const step = walking ? (stepPhase + Math.floor(p * 2)) % 4 : 0;
-      let angle;
-      if (i === 0 && swing) { const k = Math.floor((t - swing.t0) / 60); const arc = S.swingAngles(facing); if (k >= arc.length || still()) swing = null; else angle = arc[k]; }
-      const fx = Math.round(x - cx), fy = Math.round(y - cy - 4), pix = m.race === 'pixie' ? 0.85 : 1;
-      figs.push({ y: y + i * 0.01, draw: () => { drawFig(memberLook(m), fx + (pix < 1 ? 1 : 0), fy + (pix < 1 ? 3 : 0), pix, { facing, step, weapon: base(m.weapon), shield: base(m.shield), angle }); extras(fx, fy, pix, { ...memberExtras(m), flap: Math.floor(t / 150) % 2 }); } });
     });
+    // Little effects on the land: ripples, splashes, dust.
+    for (let i = landFx.length - 1; i >= 0; i--) { const fx = landFx[i], k = (t - fx.t0) / fx.dur; if (k >= 1) { landFx.splice(i, 1); continue; } figs.push({ y: fx.y * TILE + 15, draw: () => drawLandFx(fx, fx.x * TILE - cx + 8, fx.y * TILE - cy + 14, k) }); }
+    // The leader: walking, swinging, or riding (on the ground the leader is drawn with everyone else).
+    const leaderDraw = (sx, sy, lift) => {
+      let angle;
+      if (swing) { const k = Math.floor((t - swing.t0) / 60); const arc = S.swingAngles(j.facing); if (k >= arc.length || still()) swing = null; else angle = arc[k]; }
+      const pix = lead.race === 'pixie' ? 0.85 : 1;
+      const fx = Math.round(sx), fy = Math.round(sy - 4 - lift - hgt.hop);
+      const water = onGround && wading(map, j.x, j.y);
+      if (riding) {
+        const mt = R.mountOf(lead), ml = rideLook(mt), side = j.facing === 'left' || j.facing === 'right' ? j.facing : sideFacing;
+        const flier = R.FOES[mt.type]?.fly, beat = flier && (j.alt === 'sky' || heightFx?.kind === 'takeoff') ? Math.floor(t / 90) % 4 : step;
+        const mount = () => drawFig(ml, fx, fy + 6, 1, { facing: side, step: beat });
+        const rider = () => { ctx.save(); ctx.beginPath(); ctx.rect(fx - 12, fy - 40, 40, 48); ctx.clip(); drawFig(memberLook(lead), fx + pix - 1, fy - 3, pix, { facing: j.facing === 'up' || j.facing === 'down' ? side : j.facing, step: 0, weapon: base(lead.weapon), shield: base(lead.shield), weaponTint: kitTint(lead.weapon), shieldTint: kitTint(lead.shield), angle }); ctx.restore(); extras(fx, fy - 3, pix, { ...memberExtras(lead), flap }); };
+        if (water && !deep) inWater(fx, fy + 6, 16, () => { mount(); rider(); }, t); else { mount(); rider(); }
+        return;
+      }
+      const go = () => { drawFig(memberLook(lead), fx + (pix < 1 ? 1 : 0), fy + (pix < 1 ? 3 : 0), pix, { facing: j.facing, step, weapon: base(lead.weapon), shield: base(lead.shield), weaponTint: kitTint(lead.weapon), shieldTint: kitTint(lead.shield), angle }); extras(fx, fy, pix, { ...memberExtras(lead), flap }); };
+      if (water) inWater(fx, fy, 16, go, t); else go();
+    };
+    if (lead && onGround && !hgt.lift) figs.push({ y: ly - 0.001, draw: () => leaderDraw(lx - cx, ly - cy, 0) });
     figs.sort((a, b) => a.y - b.y).forEach((f) => f.draw());
+    // A shadow on the ground far below a flier.
+    if (lead && (hgt.lift || !onGround) && !deep) { ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(lx - cx + 8, ly - cy + 14, 6 * Math.max(0.5, z), 2, 0, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+    // Up in the sky the clouds drift past; under the sea it goes blue, light falls in rays and bubbles rise.
+    const sky = map.kind === 'world' && (j.alt === 'sky' || heightFx?.kind === 'takeoff' || heightFx?.kind === 'land');
+    if (sky) { const a = 1 - (z - 0.72) / 0.28; drawClouds(t, cx, cy, Math.max(0, Math.min(1, j.alt === 'sky' ? Math.max(a, 0.6) : a))); }
+    if (hgt.under > 0) drawUnder(t, hgt.under);
+    // The leader up in the air (or under the sea) is drawn last, at the middle of the shrunken land.
+    if (lead && (hgt.lift || !onGround)) leaderDraw(W / 2 + (lx - cx - W / 2) * z, H / 2 + (ly - cy - H / 2) * z, hgt.lift);
     if (lastLoot && t - lastLootAt < 2200) drawLoot(t);
     if (talk) drawTalk(t);
     root.querySelector('.jy-gold').textContent = lobby ? '' : `🪙 ${R.fmtCoin(j.coin, true)}`;
+  }
+  function puff(x, y, k) { ctx.fillStyle = `rgba(230,220,200,${0.7 * (1 - k)})`; for (let i = 0; i < 5; i++) { const a = i * 1.26, r = 3 + k * 8; ctx.beginPath(); ctx.arc(x + Math.cos(a) * r, y + Math.sin(a) * r * 0.4, 2 + k * 2, 0, Math.PI * 2); ctx.fill(); } }
+  function drawLandFx(fx, x, y, k) {
+    if (fx.kind === 'dust') { puff(x, y, k); return; }
+    if (fx.kind === 'ripple') { ctx.strokeStyle = `rgba(255,255,255,${0.8 * (1 - k)})`; ctx.lineWidth = 1; for (let i = 0; i < 2; i++) { const r = 3 + (k * 14 + i * 5); ctx.beginPath(); ctx.ellipse(x, y, r, r * 0.4, 0, 0, Math.PI * 2); ctx.stroke(); } return; }
+    if (fx.kind === 'splash') { ctx.fillStyle = `rgba(200,240,255,${1 - k})`; for (let i = 0; i < 6; i++) { const dx = (i - 2.5) * 3, h = Math.sin(k * Math.PI) * (6 + (i % 3) * 3); ctx.fillRect(Math.round(x + dx * (1 + k)), Math.round(y - h), 2, 2); } }
+  }
+  function drawClouds(t, cx, cy, a) {
+    if (a <= 0) return;
+    ctx.fillStyle = `rgba(255,255,255,${0.55 * a})`;
+    for (let k = 0; k < 7; k++) {
+      const sx = ((k * 97 - cx * 1.4 - t / (30 + k * 6)) % (W + 80) + W + 80) % (W + 80) - 40, sy = ((k * 61 - cy * 1.4) % (H + 40) + H + 40) % (H + 40) - 20;
+      ctx.beginPath(); ctx.ellipse(sx, sy, 26 + k * 2, 8, 0, 0, Math.PI * 2); ctx.ellipse(sx + 14, sy - 5, 14, 7, 0, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  function drawUnder(t, k) {
+    ctx.fillStyle = `rgba(20,70,160,${0.35 * k})`; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = `rgba(200,240,255,${0.12 * k})`;
+    for (let i = 0; i < 4; i++) { const x = ((i * 70 + t / 50) % (W + 60)) - 30; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + 14, 0); ctx.lineTo(x - 20, H); ctx.lineTo(x - 34, H); ctx.fill(); }
+    if (still()) return;
+    ctx.fillStyle = `rgba(220,245,255,${0.7 * k})`;
+    for (let i = 0; i < 10; i++) { const bx = (i * 29 + Math.sin(t / 400 + i) * 4) % W, by = H - ((t / 20 + i * 41) % H); ctx.fillRect(Math.round(bx), Math.round(by), 2, 2); }
+  }
+  // A boat trip: the boat (in the style's own look) crosses the sea, then you step off at the other dock.
+  function drawVoyage(t) {
+    const k = Math.min(1, (t - voyage.t0) / voyage.dur);
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#7ec8ff'); g.addColorStop(0.45, '#bfe6ff'); g.addColorStop(0.46, '#3a78c8'); g.addColorStop(1, '#1a4a98');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#9ac8f0';
+    for (let i = 0; i < 14; i++) { const wx = ((i * 41 - t / 12) % (W + 20) + W + 20) % (W + 20) - 10, wy = H * 0.5 + (i * 23) % (H * 0.45); ctx.fillRect(Math.round(wx), Math.round(wy), 6, 1); }
+    const flier = voyage.art === 'airship' || voyage.art === 'shuttle';
+    const bx = -40 + (W + 40) * k, by = (flier ? H * 0.22 : H * 0.42) + Math.sin(t / 220) * 2;
+    drawFig(beastLookFor(voyage.art), bx, by, 2.5, { facing: 'right', step: Math.floor(t / 200) % 4 });
+    ctx.fillStyle = '#ffffff'; ctx.font = '8px monospace'; ctx.fillText(T(`To ${voyage.name}…`), 8, H - 10);
+    if (k >= 1) { const to = voyage.to; voyage = null; trail = []; announce(); arrive(to); drawPanel(); }
   }
   // The loot from a chest or a fight, drawn as a little row of pictures rising over the screen.
   function drawLoot(t) {
@@ -572,6 +861,21 @@ function mountJourney(root, deps) {
   // The backdrop fits where the fight is: grass, forest, swamp, desert, snowy foothills, a cave, a dungeon, a town.
   function backdrop() {
     const where = battle.where, land = battle.land;
+    if (battle.alt === 'sky' || where === 'aerie') { // among the clouds
+      const g2 = ctx.createLinearGradient(0, 0, 0, H); g2.addColorStop(0, '#5aa8f0'); g2.addColorStop(1, '#d8f0ff'); ctx.fillStyle = g2; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(255,255,255,0.8)'; const t = now() / 60;
+      for (let k = 0; k < 6; k++) { const cx = ((k * 53 + t * (k % 2 ? 1 : 0.6)) % (W + 60)) - 30, cy = 20 + (k * 37) % (H - 40); ctx.beginPath(); ctx.ellipse(cx, cy, 22, 7, 0, 0, Math.PI * 2); ctx.ellipse(cx + 12, cy - 4, 12, 6, 0, 0, Math.PI * 2); ctx.fill(); }
+      if (where === 'aerie') { ctx.fillStyle = '#f4f8ff'; ctx.fillRect(0, H - 40, W, 40); }
+      return;
+    }
+    if (battle.alt === 'deep' || where === 'reef' || (where === 'world' && '~r'.includes(land || '.'))) { // under (or in) the water
+      const deep = battle.alt === 'deep' || where === 'reef';
+      const g2 = ctx.createLinearGradient(0, 0, 0, H); g2.addColorStop(0, deep ? '#1a4a98' : '#7ec8ff'); g2.addColorStop(deep ? 1 : 0.25, deep ? '#0a1a40' : '#bfe6ff'); if (!deep) { g2.addColorStop(0.26, '#3a78c8'); g2.addColorStop(1, '#1a4a98'); } ctx.fillStyle = g2; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(200,240,255,0.5)'; const t = now() / 40;
+      for (let k = 0; k < 12; k++) { const bx = (k * 23) % W, by = H - ((t + k * 31) % H); ctx.fillRect(bx, by, 2, 2); }
+      if (deep) { ctx.fillStyle = '#c8b88a'; ctx.fillRect(0, H - 22, W, 22); ctx.fillStyle = '#ff7a8a'; for (let x = 6; x < W; x += 34) ctx.fillRect(x, H - 34, 3, 14); }
+      return;
+    }
     const g = ctx.createLinearGradient(0, 0, 0, H);
     const sky = (top, ground, ground2) => { g.addColorStop(0, top); g.addColorStop(0.24, '#bfe6ff'); g.addColorStop(0.25, ground); g.addColorStop(1, ground2); };
     if (where === 'cave' || where === 'dungeon') { g.addColorStop(0, '#14110f'); g.addColorStop(1, where === 'dungeon' ? '#34343c' : '#3a2c22'); }
@@ -588,6 +892,33 @@ function mountJourney(root, deps) {
     else if (where !== 'world') { ctx.fillStyle = '#efe6d2'; for (let x = 0; x < W; x += 40) { ctx.fillRect(x + 6, 26, 24, 18); ctx.fillStyle = '#9a3a2a'; ctx.beginPath(); ctx.moveTo(x + 3, 28); ctx.lineTo(x + 18, 16); ctx.lineTo(x + 33, 28); ctx.fill(); ctx.fillStyle = '#efe6d2'; } }
     else { ctx.fillStyle = land === 'w' ? '#3a5a2e' : '#2f6a2a'; for (let x = 0; x < W; x += 24) { ctx.beginPath(); ctx.arc(x + 12, 44, 12, Math.PI, 0); ctx.fill(); } }
   }
+  // The weapon someone shoots with, if they shoot (a party member's bow, or a foe's).
+  function shooterWeapon(id) {
+    const m = j.party.find((x) => x.id === id); if (m) { const w = base(m.weapon); return SHOT.has(w) ? w : ''; }
+    const f = battle?.b.foes.find((x) => x.key === id) || battle?.b.allies.find((x) => x.key === id);
+    const w = f?.kit ? base(f.kit.weapon) : ''; return SHOT.has(w) ? w : '';
+  }
+  // Fire climbs, frost falls in shards, storm strikes as lightning, holy is a pillar of light, shadow swirls in,
+  // wild bursts into leaves, mind ripples out in rings, and stars rain down.
+  function drawSpell(e, from, to, p, t) {
+    const col = ELEMENT_COLOURS[e.element] || '#ffffff';
+    ctx.fillStyle = col;
+    if (from && to && p < 0.45 && from !== to && !['holy', 'star', 'storm'].includes(e.element)) { const k = (p - 0.1) / 0.35; const bx = from.x + (to.x + to.w / 2 - from.x) * k, by = from.y + 16 + (to.y + to.h / 2 - from.y - 16) * k; for (let n = 0; n < 4; n++) ctx.fillRect(Math.round(bx - n * 3 * Math.sign(to.x - from.x)), Math.round(by), 3 - (n > 1 ? 1 : 0), 3 - (n > 1 ? 1 : 0)); }
+    if (!to || p < 0.4) return;
+    const cx = to.x + to.w / 2, cy = to.y + to.h / 2, q = (p - 0.4) / 0.6;
+    const R2 = Math.round;
+    switch (e.element) {
+      case 'fire': for (let k = 0; k < 14; k++) { const fx = cx - 12 + (k * 7) % 24, fy = to.y + to.h - ((q * 50 + k * 9) % to.h); ctx.fillStyle = k % 3 ? '#ff8a3a' : '#ffd166'; ctx.fillRect(R2(fx), R2(fy), 2, 3); } break;
+      case 'frost': for (let k = 0; k < 10; k++) { const fx = to.x + (k * 11) % to.w, fy = to.y - 10 + ((q * 60 + k * 7) % (to.h + 10)); ctx.fillStyle = k % 2 ? '#c8f0ff' : '#ffffff'; ctx.fillRect(R2(fx), R2(fy), 1, 4); ctx.fillRect(R2(fx) - 1, R2(fy) + 1, 3, 1); } ctx.fillStyle = `rgba(200,240,255,${0.25 * (1 - q)})`; ctx.fillRect(to.x - 4, to.y - 4, to.w + 8, to.h + 8); break;
+      case 'storm': { ctx.fillStyle = '#ffffff'; let x = cx, y = 0; while (y < cy) { const nx = x + ((Math.floor(t / 40) + y) % 3 - 1) * 4, ny = y + 6; ctx.fillRect(R2(Math.min(x, nx)), R2(y), Math.abs(nx - x) + 2, 7); x = nx; y = ny; } ctx.fillStyle = '#7ae0ff'; for (let k = 0; k < 8; k++) ctx.fillRect(R2(cx + Math.cos(k) * 10), R2(cy + Math.sin(k) * 10), 2, 2); if (q < 0.3) { ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(0, 0, W, H); } break; }
+      case 'holy': ctx.fillStyle = `rgba(255,230,128,${0.55 * (1 - q)})`; ctx.fillRect(R2(cx - 8), 0, 16, to.y + to.h); ctx.fillStyle = '#ffffff'; for (let k = 0; k < 6; k++) ctx.fillRect(R2(cx - 6 + k * 2), R2(to.y + to.h - q * 40 - k * 4), 1, 2); break;
+      case 'shadow': for (let k = 0; k < 16; k++) { const a = k * 0.8 - t / 90, r = 20 * (1 - q) + 2; ctx.fillStyle = k % 2 ? '#8a5aff' : '#2a1a4a'; ctx.fillRect(R2(cx + Math.cos(a) * r), R2(cy + Math.sin(a) * r), 3, 3); } break;
+      case 'wild': for (let k = 0; k < 12; k++) { const a = k * 0.52, r = 4 + q * 22; ctx.fillStyle = k % 2 ? '#7dff9a' : '#3d8a38'; ctx.fillRect(R2(cx + Math.cos(a) * r), R2(cy + Math.sin(a) * r + q * 6), 3, 2); } break;
+      case 'mind': ctx.strokeStyle = col; ctx.lineWidth = 1; for (let k = 0; k < 3; k++) { const r = ((q * 30) + k * 8) % 26 + 2; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke(); } break;
+      case 'star': for (let k = 0; k < 10; k++) ctx.fillRect(R2((k * 37 + p * 200) % 130), R2(((p - 0.3) * 260 + k * 17) % H), 2, 4); break;
+      default: for (let k = 0; k < 16; k++) { const ang = k * 0.9 + t / 120, r = 4 + ((p - 0.4) * 40 + k * 3) % 18; ctx.fillRect(R2(cx + Math.cos(ang) * r), R2(cy + Math.sin(ang) * r), 2, 2); }
+    }
+  }
   function drawBattle(t) {
     backdrop();
     ctx.fillStyle = 'rgba(0,0,0,0.22)';
@@ -595,7 +926,7 @@ function mountJourney(root, deps) {
     const sp = spots();
     const a = battle.anim, e = a?.e;
     const p = a ? Math.min(1, (t - a.t0) / a.dur) : 0;
-    const shove = (id) => { if (!e || e.who !== id || !['fight', 'skill', 'hit', 'curse', 'item'].includes(e.act)) return 0; const k = p < 0.3 ? p / 0.3 : p > 0.75 ? (1 - p) / 0.25 : 1; return Math.round(k * 18); };
+    const shove = (id) => { if (!e || e.who !== id || !['fight', 'skill', 'hit', 'curse', 'item', 'feed', 'tame'].includes(e.act) || (shooterWeapon(id) && !e.element && e.act !== 'item')) return 0; const k = p < 0.3 ? p / 0.3 : p > 0.75 ? (1 - p) / 0.25 : 1; return Math.round(k * 18); };
     const hitNow = (id) => e && e.target === id && !e.miss && e.dmg && p > 0.5 && p < 0.8 && Math.floor(t / 60) % 2 === 0;
     const swingAt = (id, facing) => { if (!e || e.who !== id || !['fight', 'skill', 'hit', 'curse'].includes(e.act) || (e.element && e.act === 'skill' && !e.weapon)) return undefined; const arc = S.swingAngles(facing); const k = Math.max(0, Math.min(arc.length - 1, Math.floor(((p - 0.25) / 0.5) * arc.length))); return p < 0.25 ? arc[0] : arc[k]; };
     const dodge = (id) => (e && e.target === id && e.miss && p > 0.4 && p < 0.8 ? -6 : 0);
@@ -616,19 +947,27 @@ function mountJourney(root, deps) {
       const facing = win ? S.FACINGS[Math.floor((t - battle.victory) / 220) % 4] : 'left';
       const angle = win ? 0 : swingAt(m.id, 'left') ?? (e?.who === m.id && e.element ? -150 : undefined);
       const fx = s.x - shove(m.id) - (picking ? 6 : 0) - dodge(m.id), fy = s.y + (down ? 10 : 0);
-      drawFig(memberLook(m), fx, fy, 2, { facing: down ? 'up' : facing, step: win ? Math.floor(t / 120) % 4 : 0, weapon: base(m.weapon), shield: base(m.shield), angle: down ? undefined : angle, flash: hitNow(m.id), alpha: down ? 0.45 : 1 });
+      drawFig(memberLook(m), fx, fy, 2, { facing: down ? 'up' : facing, step: win ? Math.floor(t / 120) % 4 : 0, weapon: base(m.weapon), shield: base(m.shield), weaponTint: kitTint(m.weapon), shieldTint: kitTint(m.shield), angle: down ? undefined : angle, flash: hitNow(m.id), alpha: down ? 0.45 : 1 });
       if (!down) extras(fx, fy, 2, { ...memberExtras(m), flap: Math.floor(t / 150) % 2 });
       if (picking && Math.floor(t / 300) % 2) { ctx.fillStyle = '#ffd166'; ctx.beginPath(); ctx.moveTo(s.x - 14, s.y + 16); ctx.lineTo(s.x - 9, s.y + 20); ctx.lineTo(s.x - 14, s.y + 24); ctx.fill(); }
     });
     for (const al of battle.b.allies || []) { const s = sp.get(al.key); if (al.hp <= 0) continue; drawFig(foeLook(al), s.x - shove(al.key), s.y, s.scale, { facing: 'left', weapon: base(al.kit.weapon), shield: base(al.kit.shield), angle: swingAt(al.key, 'left'), flash: hitNow(al.key) }); }
-    // Spells: a bolt flies from the caster, then a burst of sparks in the spell's colour on the target.
-    if (e && e.element && p > 0.1) {
-      const from = sp.get(e.who), to = sp.get(e.target);
-      ctx.fillStyle = ELEMENT_COLOURS[e.element] || '#ffffff';
-      if (from && to && p < 0.45 && from !== to) { const k = (p - 0.1) / 0.35; const bx = from.x + (to.x + to.w / 2 - from.x) * k, by = from.y + 16 + (to.y + to.h / 2 - from.y - 16) * k; for (let n = 0; n < 4; n++) ctx.fillRect(Math.round(bx - n * 3 * Math.sign(to.x - from.x)), Math.round(by), 3 - (n > 1 ? 1 : 0), 3 - (n > 1 ? 1 : 0)); }
-      if (to && p >= 0.4) for (let k = 0; k < 16; k++) { const ang = k * 0.9 + t / 120, r = 4 + ((p - 0.4) * 40 + k * 3) % 18; ctx.fillRect(Math.round(to.x + to.w / 2 + Math.cos(ang) * r), Math.round(to.y + to.h / 2 + Math.sin(ang) * r), 2, 2); }
-      if (e.element === 'star' && p > 0.3) for (let k = 0; k < 10; k++) ctx.fillRect(Math.round((k * 37 + p * 200) % 130), Math.round(((p - 0.3) * 260 + k * 17) % H), 2, 4);
+    // Arrows and bolts: a shot weapon looses one across the field instead of stepping in.
+    if (e && ['fight', 'skill', 'hit'].includes(e.act) && !e.element && p > 0.15 && p < 0.55) {
+      const from = sp.get(e.who), to = sp.get(e.target), w = shooterWeapon(e.who);
+      if (from && to && w) {
+        const k = (p - 0.15) / 0.4, dir = Math.sign(to.x - from.x) || 1;
+        const ax = from.x + 8 + (to.x + to.w / 2 - from.x - 8) * k, ay = from.y + 22 + (to.y + to.h / 2 - from.y - 22) * k - Math.sin(k * Math.PI) * (w === 'longbow' ? 14 : 6);
+        const len = w === 'crossbow' || w === 'handbow' ? 5 : 8;
+        ctx.fillStyle = '#c8a66a'; ctx.fillRect(Math.round(ax - (dir > 0 ? len : 0)), Math.round(ay), len, 1);
+        ctx.fillStyle = '#d8dee6'; ctx.fillRect(Math.round(dir > 0 ? ax : ax - 2), Math.round(ay) - 1, 2, 3);
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(dir > 0 ? ax - len - 2 : ax + len), Math.round(ay) - 1, 2, 1);
+      }
     }
+    // Spells: each element looks like itself. A bolt flies from the caster, then the element lands on the target.
+    if (e && e.element && p > 0.1) drawSpell(e, sp.get(e.who), sp.get(e.target), p, t);
+    // Feeding and taming: hearts.
+    if (e && (e.act === 'tame' || (e.act === 'feed' && !e.miss)) && p > 0.3) { const s2 = sp.get(e.target); if (s2) { ctx.fillStyle = '#ff7ad8'; for (let k = 0; k < (e.act === 'tame' ? 6 : 3); k++) { const hx = s2.x + 6 + k * 7, hy = s2.y + 6 - (p - 0.3) * 40 - (k % 2) * 6; ctx.fillRect(hx, hy, 2, 2); ctx.fillRect(hx + 3, hy, 2, 2); ctx.fillRect(hx, hy + 1, 5, 2); ctx.fillRect(hx + 1, hy + 3, 3, 1); ctx.fillRect(hx + 2, hy + 4, 1, 1); } } }
     if (e && e.heal && p > 0.25) { const s = sp.get(e.target); if (s) { ctx.fillStyle = '#7dff9a'; for (let k = 0; k < 8; k++) ctx.fillRect(s.x + ((k * 7) % s.w), s.y + s.h - ((p - 0.25) * 60 + k * 5) % s.h, 2, 2); } }
     if (e && e.act === 'breath' && p > 0.2) { ctx.fillStyle = `rgba(255,120,40,${0.45 * (1 - p)})`; ctx.fillRect(120, 0, W - 120, H); }
     if (e && (e.coin || e.act === 'steal') && p > 0.3) { const s = sp.get(e.target) || sp.get(e.who); if (s) drawIcon(s.x + 6, s.y - 8 - p * 10, { coin: e.coin || 150 }); }
@@ -651,14 +990,22 @@ function mountJourney(root, deps) {
   const sheet = (m, on) => `<li class="${on ? 'on' : ''}${m.hp <= 0 ? ' down' : ''}"><strong>${esc(m.name)}</strong> <span class="muted">${esc(classWords(m))} · Lv ${m.level}${m.points ? ` · ${m.points} skill point${m.points > 1 ? 's' : ''}` : ''}</span>
     <span class="jy-hp">❤ ${m.hp}/${m.maxHp} ${bar(m.hp, m.maxHp, 'hp')}</span><span class="jy-sp">✦ ${m.sp}/${m.maxSp} ${bar(m.sp, m.maxSp, 'sp')}</span></li>`;
   function drawPanel() {
-    root.querySelector('.jy-msg').textContent = msg;
+    root.querySelector('.jy-msg').textContent = T(msg);
     if (!j) { panel.innerHTML = ''; return; }
     announce();
-    if (mode === 'battle' && battle) { panel.innerHTML = battleHtml(); panel.querySelector('button:not([disabled])')?.focus({ preventScroll: true }); return; }
-    if (mode === 'menu' && menu) { panel.innerHTML = menuHtml(); mountDolls(); return; }
-    if (mode === 'shop' && shop) { panel.innerHTML = shopHtml(); panel.querySelector('button')?.focus({ preventScroll: true }); return; }
+    if (mode === 'battle' && battle) { panel.innerHTML = battleHtml(); restyleIn(panel); panel.querySelector('button:not([disabled])')?.focus({ preventScroll: true }); return; }
+    if (mode === 'menu' && menu) { panel.innerHTML = menuHtml(); restyleIn(panel); mountDolls(); mountLand(); return; }
+    if (mode === 'shop' && shop) { panel.innerHTML = shopHtml(); restyleIn(panel); panel.querySelector('button')?.focus({ preventScroll: true }); return; }
     const atInn = j.at === 'inn';
-    panel.innerHTML = `<ul class="jy-party">${j.party.map((m) => sheet(m)).join('')}</ul>${atInn ? innButtons() : ''}<p class="muted jy-keys">Arrow keys walk · Enter talks and opens chests · F picks a fight · Esc opens the menu</p>`;
+    const mt = R.mountOf(j.party[0] || {});
+    panel.innerHTML = `<ul class="jy-party">${j.party.map((m) => sheet(m)).join('')}</ul>${atInn ? innButtons() : ''}<p class="muted jy-keys">Arrow keys walk · Enter talks, opens chests and fishes · F picks a fight · Esc opens the menu${mt ? ` · R rides ${esc(mt.name)}${R.canFly(j) ? ' · E flies up, Q lands' : R.canSwim(j) ? ' · Q dives, E comes up' : ''}` : ''}</p>`;
+    restyleIn(panel);
+  }
+  // The words on the panel in the journey's style (only the words people read; never the buttons' own names).
+  function restyleIn(el) {
+    if (!j || !j.style || j.style === 'fantasy' || !doc.createTreeWalker) return;
+    const w = doc.createTreeWalker(el, 4); let n;
+    while ((n = w.nextNode())) { const v = R.restyle(n.nodeValue, j.style); if (v !== n.nodeValue) n.nodeValue = v; }
   }
   // Bob's Inn: the buttons along the bottom.
   function innButtons() {
@@ -674,9 +1021,11 @@ function mountJourney(root, deps) {
       <fieldset class="jy-who"><legend>Who comes along (up to four)</legend>${list.map((p) => { const c = choices[p.id] || {}; return `<div class="jy-who-pick"><label><input type="checkbox" data-pick="${esc(p.id)}" ${pickedIds.has(p.id) ? 'checked' : ''}> ${esc(p.name)}${p.who === 'you' ? ' (you)' : p.who === 'bob' ? ' (Bob)' : ''}</label>
         <label class="muted">Race <select data-race="${esc(p.id)}">${opt(R.RACES, c.race || 'human')}</select></label>
         <label class="muted">Class <select data-cls="${esc(p.id)}">${opt(R.CLASSES, c.cls || (R.CLASSES[p.cls] ? p.cls : 'fighter'))}</select></label></div>`; }).join('')}</fieldset>
-      <label>Size of the land <select data-size>${Object.entries(Wm.SIZES).map(([id, s]) => `<option value="${id}" ${newSize === id ? 'selected' : ''}>${s.name} (${s.w}×${s.h})</option>`).join('')}</select></label>
+      <label>Size of the land <select data-size>${Object.entries(Wm.SIZES).filter(([, s]) => !(s.desktopOnly && deps.phone)).map(([id, s]) => `<option value="${id}" ${newSize === id ? 'selected' : ''}>${s.name} (${s.w}×${s.h})</option>`).join('')}</select></label>
+      <label>Style <select data-style>${R.STYLE_IDS.map((id) => `<option value="${id}" ${newStyle === id ? 'selected' : ''}>${esc(R.STYLES[id].name)}</option>`).join('')}</select></label>
+      ${['epic', 'campaign', 'saga'].includes(newSize) ? `<p class="muted">A ${esc(Wm.SIZES[newSize].name)} land is for a long campaign: it takes a few seconds to roll${newSize === 'saga' ? ', and is for computers only' : ''}.</p>` : ''}
       <div class="row"><button type="button" class="yes" data-jy="roll">🎲 Roll the land</button><button type="button" data-shop="leave">Not yet</button></div>
-      <p class="muted">Every land is new: seas, rivers, mountains, forests, swamps and deserts; hamlets, villages, towns and a castle on the roads; caves, dungeons and a hermit out in the wild. No brain needed.</p></div>`;
+      <p class="muted">Every land is new: continents and seas, rivers, mountains, forests, swamps and deserts; hamlets, villages, towns and a castle on the roads; orc villages, dwarf holds, elf tree villages and more; caves, dungeons, a hermit, cities in the clouds and under the sea; and animals to tame. The style changes the words, the colours and what you sail and fly in. No brain needed.</p></div>`;
   }
   function battleHtml() {
     const b = battle.b, m = j.party[battle.who];
@@ -706,7 +1055,7 @@ function mountJourney(root, deps) {
     return list;
   }
   function menuHtml() {
-    const tabs = [['party', '👥 Party'], ['skills', '✨ Skills'], ['kit', '🧍 Kit'], ['bag', '🎒 Bag'], ['save', '💾 Save']];
+    const tabs = [['party', '👥 Party'], ['skills', '✨ Skills'], ['kit', '🧍 Kit'], ['bag', '🎒 Bag'], ['pets', '🐾 Pets'], ['land', '🧭 The land'], ['save', '💾 Save']];
     const head = `<div class="jy-tabs" role="tablist">${tabs.map(([id, n]) => `<button type="button" role="tab" aria-selected="${menu.tab === id}" data-tab="${id}">${n}</button>`).join('')}<button type="button" data-jy="resume">▶ Back to the map</button></div>`;
     const who = `<div class="jy-who-row" role="radiogroup" aria-label="Who">${j.party.map((x, i) => `<button type="button" role="radio" aria-checked="${i === (menu.who || 0)}" data-who="${i}">${esc(x.name)}</button>`).join('')}</div>`;
     const m = j.party[menu.who || 0] || j.party[0];
@@ -733,14 +1082,76 @@ function mountJourney(root, deps) {
         ${m.who === 'you' && deps.editLook ? '<button type="button" class="mini" data-jy="look">🧍 Change the look</button>' : ''}</div></div>
         <p class="muted">Kit from chests, fights and the smith is shared by the party. Some kit gives bonuses and some has drawbacks: heavy armour soaks hits but makes you easier to hit.</p></div>`;
     }
+    if (menu.tab === 'pets') return `${head}${who}${petsHtml(m)}`;
+    if (menu.tab === 'land') return `${head}${landHtml()}`;
     if (menu.tab === 'bag') {
       const items = Object.entries(j.bag).filter(([, n]) => n > 0);
-      return `${head}${items.length ? `<ul class="jy-bag">${items.map(([id, n]) => { const it = R.ITEMS[id]; const usable = it.field; return `<li><strong>${esc(it.name)}</strong> ×${n} <span class="muted">${esc(it.what)}</span> ${usable ? j.party.map((x) => `<button type="button" class="mini" data-use="${id}" data-on="${esc(x.id)}">${esc(x.name)}</button>`).join('') : '<span class="muted">(in a fight)</span>'}</li>`; }).join('')}</ul>` : '<p class="muted">The bag is empty.</p>'}`;
+      return `${head}<p class="muted">The bag holds ${R.bagCount(j)} of ${R.bagSize(j)} things. Each pet out with you carries 10 more and each mount 25.</p>${items.length ? `<ul class="jy-bag">${items.map(([id, n]) => { const it = R.ITEMS[id]; const usable = it.field; return `<li><strong>${esc(it.name)}</strong> ×${n} <span class="muted">${esc(it.what)}</span> ${usable ? j.party.map((x) => `<button type="button" class="mini" data-use="${id}" data-on="${esc(x.id)}">${esc(x.name)}</button>`).join('') : '<span class="muted">(in a fight)</span>'}</li>`; }).join('')}</ul>` : '<p class="muted">The bag is empty.</p>'}`;
     }
     return `${head}<div class="row"><button type="button" class="yes" data-jy="save">💾 Save now</button><button type="button" data-jy="leave">🚪 Save and leave</button></div><p class="muted">The journey also saves itself after every chest and every fight. Seed ${esc(j.seed)} · ${esc(Wm.SIZES[j.size]?.name || '')}</p>`;
   }
+  // Pets and mounts (Journey v1.2): who's out with you, a name of your own, and letting one go (asks twice).
+  function petsHtml(m) {
+    const row = (kind, p) => {
+      const f = R.FOES[p.type] || {}, st = R.petStats(p), on = (kind === 'mount' ? m.mount : m.pet) === p.id;
+      const what = [f.name, `Lv ${p.level}`, kind === 'pet' ? `❤ ${p.hp}/${st.maxHp}` : f.fly ? 'flies' : f.swim ? 'swims' : 'rides', f.food && f.food !== 'any' ? `likes ${R.ITEMS[f.food]?.name.toLowerCase()}` : ''].filter(Boolean).join(' · ');
+      return `<li class="${on ? 'on' : ''}"><strong>${esc(p.name)}</strong> <span class="muted">${esc(what)}</span>
+        ${on ? `<span>✓ ${kind === 'mount' ? 'Riding this one' : 'Out with you'}</span>` : `<button type="button" class="mini" data-petset="${kind}:${esc(p.id)}">${kind === 'mount' ? 'Ride this one' : 'Take this one'}</button>`}
+        <label class="muted">Name <input type="text" maxlength="24" data-petname="${kind}:${esc(p.id)}" value="${esc(p.name)}"></label><button type="button" class="mini" data-petrename="${kind}:${esc(p.id)}">Rename</button>
+        <button type="button" class="mini" data-petgo="${kind}:${esc(p.id)}">${armedRelease === `${kind}:${p.id}` ? 'Press again to let go' : 'Let go'}</button></li>`;
+    };
+    const pets = m.pets || [], mounts = m.mounts || [];
+    return `<p><strong>${esc(m.name)}</strong>'s pets (${pets.length} of ${R.PET_MAX}) and mounts (${mounts.length} of ${R.MOUNT_MAX}). The pet out with you fights beside you, finds things, and carries 10 more in the bag; a mount carries 25 more, and the leader's can be ridden (R).</p>
+      ${pets.length ? `<ul class="jy-bag">${pets.map((p) => row('pet', p)).join('')}</ul>` : '<p class="muted">No pets yet. Mid-fight, feed a wild animal the food it loves (Items) and it may come along.</p>'}
+      ${mounts.length ? `<ul class="jy-bag">${mounts.map((p) => row('mount', p)).join('')}</ul>` : '<p class="muted">No mounts yet. Horses love oats, camels love dates, and the fliers of the high country love apples and honey.</p>'}
+      ${pets.length || mounts.length ? `<button type="button" class="mini" data-petset="pet:">Leave the pet at home</button>` : ''}`;
+  }
+  // The land, seen whole: the ground drawn once (a dot for every tile), the places you've found, and you.
+  const landPictures = new WeakMap();
+  const LAND_COLOURS = { '~': [42, 90, 168], r: [58, 120, 200], '.': [90, 160, 74], '"': [78, 148, 64], F: [47, 106, 42], T: [47, 106, 42], '^': [140, 140, 150], d: [230, 201, 138], w: [74, 106, 58], ',': [224, 207, 143], ':': [200, 166, 106], '=': [138, 90, 43] };
+  function landPicture() {
+    if (landPictures.has(world)) return landPictures.get(world);
+    const m = world.map('world');
+    const c = doc.createElement('canvas'); c.width = m.w; c.height = m.h;
+    const g = c.getContext('2d'); const img = g.createImageData(m.w, m.h);
+    for (let y = 0; y < m.h; y++) { const row = m.rows[y] || ''; for (let x = 0; x < m.w; x++) { const col = LAND_COLOURS[row[x]] || [90, 160, 74]; const i = (y * m.w + x) * 4; img.data[i] = col[0]; img.data[i + 1] = col[1]; img.data[i + 2] = col[2]; img.data[i + 3] = 255; } }
+    g.putImageData(img, 0, 0);
+    landPictures.set(world, c);
+    return c;
+  }
+  function landHtml() {
+    if (lobby) return '<p class="muted">No land yet: roll a New adventure first.</p>';
+    const here = R.mapOf(world, j).kind === 'world' ? { x: j.x, y: j.y } : world.sites.find((s) => s.id === j.at) || world.sites.find((s) => s.id === world.home) || { x: 0, y: 0 };
+    const seen = world.sites.filter((s) => j.seen.includes(s.id) || s.id === j.at).map((s) => ({ s, d: Math.abs(s.x - here.x) + Math.abs(s.y - here.y) })).sort((a, b) => a.d - b.d).slice(0, 40);
+    return `<div class="jy-land-view"><canvas class="jy-land" width="240" height="180" role="img" aria-label="The whole land, with the places you've found and where you are"></canvas>
+      <p class="muted">${esc(Wm.SIZES[j.size]?.name || '')} land, ${world.w}×${world.h}. You've found ${j.seen.length} of ${world.sites.length} places. The blinking dot is you.</p>
+      <ul class="jy-bag">${seen.map(({ s, d }) => `<li><strong>${esc(s.name)}</strong> <span class="muted">${esc(Wm.SITE_WORDS?.[s.kind] || s.kind)}${s.dock ? ' · ⚓ dock' : ''}${s.alt === 'sky' ? ' · in the clouds' : s.alt === 'deep' ? ' · under the sea' : ''} · ${d ? `${d} steps ${R.direction(here, s)}` : 'here'}</span></li>`).join('')}</ul></div>`;
+  }
+  let landTimer = 0;
+  function mountLand() {
+    clearInterval(landTimer);
+    const c = panel.querySelector('.jy-land'); if (!c || lobby) return;
+    const g = c.getContext('2d');
+    const m = world.map('world');
+    const k = Math.min(c.width / m.w, c.height / m.h), ox = (c.width - m.w * k) / 2, oy = (c.height - m.h * k) / 2;
+    const here = R.mapOf(world, j).kind === 'world' ? { x: j.x, y: j.y } : world.sites.find((s) => s.id === j.at) || { x: world.start.x, y: world.start.y };
+    const SITE_COL = { castle: '#ffd166', town: '#efe6d2', village: '#efe6d2', hamlet: '#efe6d2', cave: '#14110f', dungeon: '#4a4a54', aerie: '#ffffff', reef: '#7ae0ff', bobsinn: '#ff8a3a' };
+    let blink = 0;
+    const paint = () => {
+      g.fillStyle = '#14110f'; g.fillRect(0, 0, c.width, c.height);
+      g.imageSmoothingEnabled = true; g.drawImage(landPicture(), ox, oy, m.w * k, m.h * k); g.imageSmoothingEnabled = false;
+      for (const s of world.sites) if (j.seen.includes(s.id)) { g.fillStyle = SITE_COL[s.kind] || '#d8a0ff'; g.fillRect(Math.round(ox + s.x * k) - 1, Math.round(oy + s.y * k) - 1, 3, 3); }
+      if (blink++ % 2 === 0 || still()) { g.fillStyle = '#ff3a3a'; g.fillRect(Math.round(ox + here.x * k) - 2, Math.round(oy + here.y * k) - 2, 5, 5); g.fillStyle = '#ffffff'; g.fillRect(Math.round(ox + here.x * k), Math.round(oy + here.y * k), 1, 1); }
+    };
+    paint();
+    if (!still()) landTimer = setInterval(() => { if (!c.isConnected) { clearInterval(landTimer); return; } paint(); }, 450);
+  }
   function shopHtml() {
     if (shop.kind === 'new') return newHtml();
+    if (shop.kind === 'docks') {
+      const trips = R.docksFrom(world, j);
+      return `<p><strong>${esc(shop.who)}</strong> · You have ${esc(R.fmtCoin(j.coin))}.</p>${trips.length ? `<ul class="jy-bag">${trips.map((d) => `<li><button type="button" data-sail="${esc(d.id)}" ${j.coin < d.fare ? 'disabled' : ''}>To ${esc(d.name)} by ${esc(R.BOATS[d.boat].name)} · ${esc(R.fmtCoin(d.fare, true))}</button> <span class="muted">${d.d} steps ${R.direction(world.sites.find((x) => x.id === j.at) || d, world.sites.find((x) => x.id === d.id) || d)}</span></li>`).join('')}</ul>` : '<p class="muted">"I only sail to docks you\'ve found on foot. Walk the coast; when you\'ve seen another dock, I can take you."</p>'}<button type="button" data-shop="leave">Leave</button>`;
+    }
     const purse = `You have ${esc(R.fmtCoin(j.coin))}.`;
     const leave = '<button type="button" data-shop="leave">Leave</button>';
     if (shop.kind === 'inn') { const price = shop.person?.role === 'keeper' ? R.INN_PRICE : innPrice(shop.tier); return `<p><strong>${esc(shop.who)}</strong>: ${esc(R.fmtCoin(price))} for the night. ${purse}</p><div class="row"><button type="button" class="yes" data-shop="rest" ${j.coin < price ? 'disabled' : ''}>🛏 Rest</button>${leave}</div>`; }
@@ -758,9 +1169,10 @@ function mountJourney(root, deps) {
     }
     const role = shop.person?.role || shop.kind;
     const ids = R.wares(role === 'peddler' ? 'peddler' : shop.kind, shop.tier);
-    const list = ids.map((id) => (R.ITEMS[id] ? [id, R.ITEMS[id].name, R.priceOf(j, id), R.ITEMS[id].what, false] : [id, R.kitName(id), R.priceOf(j, id), R.kitWords(id), j.owned[R.kitKind(id)].includes(id)]));
+    const mult = shop.mult || 1;
+    const list = ids.map((id) => (R.ITEMS[id] ? [id, R.ITEMS[id].name, R.priceOf(j, id, mult), R.ITEMS[id].what, false] : [id, R.kitName(id), R.priceOf(j, id, mult), R.kitWords(id), j.owned[R.kitKind(id)].includes(id)]));
     const sellable = shop.kind === 'smith' ? ['weapon', 'armour', 'shield'].flatMap((k) => j.owned[k].filter((key) => !j.party.some((m) => m[k] === key))) : [];
-    return `<p><strong>${esc(shop.who)}</strong> · ${purse}</p>${buyList(list)}${sellable.length ? `<p><strong>Sell</strong> <span class="muted">(kit nobody is wearing, for a third of its price)</span></p><ul class="jy-bag">${sellable.map((key) => `<li><button type="button" data-sell="${esc(key)}">${esc(R.kitName(key))} · ${esc(R.fmtCoin(Math.round(R.kitPrice(key) / 3), true))}</button></li>`).join('')}</ul>` : ''}${leave}`;
+    return `<p><strong>${esc(shop.who)}</strong> · ${purse}${mult < 1 ? ' <span class="muted">(everything half price)</span>' : ''}</p>${buyList(list)}${sellable.length ? `<p><strong>Sell</strong> <span class="muted">(kit nobody is wearing, for a third of its price)</span></p><ul class="jy-bag">${sellable.map((key) => `<li><button type="button" data-sell="${esc(key)}">${esc(R.kitName(key))} · ${esc(R.fmtCoin(Math.round(R.kitPrice(key) / 3), true))}</button></li>`).join('')}</ul>` : ''}${leave}`;
   }
   const buyList = (list) => `<ul class="jy-bag">${list.map(([id, name, price, what, have]) => `<li><button type="button" data-buy="${esc(id)}" ${have || j.coin < price ? 'disabled' : ''}>${esc(name)} · ${esc(R.fmtCoin(price, true))}</button> <span class="muted">${have ? 'You have this.' : esc(what)}</span></li>`).join('')}</ul>`;
   let dollTimer = 0;
@@ -789,6 +1201,13 @@ function mountJourney(root, deps) {
     if (d.jy === 'leave') { await save(true); await close(); return; }
     if (d.jy === 'look') { const m = j.party[menu.who || 0]; deps.editLook?.(m, (id) => { if (id) { m.look = id; lookCache.clear(); save(true); } drawPanel(); }); return; }
     if (d.key === 'act') { act(); return; }
+    if (d.key === 'rise') { rise(); return; }
+    if (d.key === 'sink') { sink(); return; }
+    if (d.key === 'ride') { rideToggle(); return; }
+    if (d.sail) { const st = world.sites.find((x) => x.id === d.sail); const r = R.sailTo(world, j, d.sail); if (!r.ok) { msg = r.text; drawPanel(); return; } shop = null; mode = 'walk'; msg = ''; trail = []; voyage = still() ? null : { art: R.boatArt(j.style, r.boat), name: st?.name || '', to: d.sail, t0: now(), dur: 1800 }; sayLive(r.text); if (!voyage) { announce(); arrive(d.sail); } drawPanel(); save(true); return; }
+    if (d.petset !== undefined) { const [kind, id] = d.petset.split(':'); const m = j.party[menu?.who || 0]; R.setActive(j, m.id, kind, id || ''); armedRelease = ''; drawPanel(); save(true); return; }
+    if (d.petrename) { const [kind, id] = d.petrename.split(':'); const m = j.party[menu?.who || 0]; const inp = panel.querySelector(`[data-petname="${globalThis.CSS?.escape ? globalThis.CSS.escape(d.petrename) : d.petrename}"]`); msg = R.renamePet(j, m.id, kind, id, inp?.value) ? 'Renamed.' : 'That name won\'t do.'; drawPanel(); save(true); return; }
+    if (d.petgo) { if (armedRelease !== d.petgo) { armedRelease = d.petgo; msg = 'Press Let go again to release them into the wild. They won\'t come back.'; drawPanel(); return; } const [kind, id] = d.petgo.split(':'); const m = j.party[menu?.who || 0]; const r = R.release(j, m.id, kind, id); armedRelease = ''; msg = r.text; drawPanel(); if (r.ok) save(true); return; }
     if (d.key === 'fight') { fight(); return; }
     if (d.tab) { menu.tab = d.tab; drawPanel(); return; }
     if (d.who) { menu.who = Number(d.who); drawPanel(); return; }
@@ -797,7 +1216,7 @@ function mountJourney(root, deps) {
     if (d.addclass) { const m = j.party[menu.who || 0]; msg = R.addClass(m, d.addclass) ? `${m.name} is now also a ${R.CLASSES[d.addclass].name}.` : R.canAddClass(m, d.addclass); drawPanel(); save(true); return; }
     if (d.cast) { const r = R.castField(j, j.party[menu.who || 0].id, d.cast, d.on); msg = r.text; drawPanel(); if (r.ok) save(true); return; }
     if (d.use) { const it = R.ITEMS[d.use]; const r = it?.scroll ? R.castField(j, d.on, d.use, d.on) : R.drinkOn(j, d.use, d.on); msg = r.text; drawPanel(); if (r.ok) save(true); return; }
-    if (d.buy) { msg = R.buy(j, d.buy) ? `Bought: ${R.ITEMS[d.buy]?.name || R.kitName(d.buy)}.` : "You can't afford that."; drawPanel(); save(true); return; }
+    if (d.buy) { msg = R.buy(j, d.buy, shop?.mult || 1) ? `Bought: ${R.ITEMS[d.buy]?.name || R.kitName(d.buy)}.` : R.ITEMS[d.buy] && !R.bagRoom(j) ? 'The bag is full. A pet or a mount carries more.' : "You can't afford that."; drawPanel(); save(true); return; }
     if (d.sell) { const got = R.sell(j, d.sell); msg = got ? `Sold for ${R.fmtCoin(got)}.` : 'Someone is wearing that.'; drawPanel(); save(true); return; }
     if (d.train) { msg = R.train(j, j.party[shop.who2 || 0].id, d.train).text; drawPanel(); save(true); return; }
     if (d.teach) { const r = R.hermitTeach(j, j.party[shop.who2 || 0].id, d.teach); msg = r.text; drawPanel(); if (r.ok) save(true); return; }
@@ -824,7 +1243,7 @@ function mountJourney(root, deps) {
         const it = R.ITEMS[d.item];
         const spell = it.scroll ? R.ALL_SKILLS[it.spell] : null;
         if (spell && (spell.kind === 'all' || spell.all || ['healAll', 'ward', 'buff'].includes(spell.kind))) return choose({ act: 'item', item: d.item });
-        battle.act = { act: 'item', item: d.item, side: it.fire || (spell && spell.kind === 'hit') ? 'foe' : 'party', down: Boolean(it.revive || spell?.kind === 'revive') };
+        battle.act = { act: 'item', item: d.item, side: it.fire || it.food || (spell && spell.kind === 'hit') ? 'foe' : 'party', down: Boolean(it.revive || spell?.kind === 'revive') };
         return pickTarget();
       }
       if (d.target) { choose({ ...battle.act, target: d.target }); return; }
@@ -841,7 +1260,9 @@ function mountJourney(root, deps) {
     const rc = e.target.closest('select[data-race], select[data-cls]');
     if (rc) { const id = rc.dataset.race || rc.dataset.cls; choices[id] = { ...(choices[id] || {}), [rc.dataset.race ? 'race' : 'cls']: rc.value }; if (lobby) enterLobbyKeepPlace(); return; }
     const sz = e.target.closest('select[data-size]');
-    if (sz) { newSize = Wm.SIZES[sz.value] ? sz.value : 'medium'; return; }
+    if (sz) { newSize = Wm.SIZES[sz.value] ? sz.value : 'medium'; drawPanel(); return; }
+    const sty = e.target.closest('select[data-style]');
+    if (sty) { newStyle = R.STYLE_IDS.includes(sty.value) ? sty.value : 'fantasy'; return; }
     const k = e.target.closest('select[data-kit]');
     if (k && j) { const m = j.party[menu.who || 0]; if (R.equip(j, m.id, k.dataset.kit, k.value)) { lookCache.clear(); drawPanel(); save(true); } }
   });
@@ -867,6 +1288,9 @@ function mountJourney(root, deps) {
     }
     if (KEYS[e.key] && (mode === 'walk')) { e.preventDefault(); if (held !== KEYS[e.key]) { held = KEYS[e.key]; heldAt = now(); tryWalk(held); } return; }
     if ((e.key === 'f' || e.key === 'F') && mode === 'walk') { e.preventDefault(); fight(); return; }
+    if ((e.key === 'e' || e.key === 'E' || e.key === 'PageUp') && mode === 'walk') { e.preventDefault(); rise(); return; }
+    if ((e.key === 'q' || e.key === 'Q' || e.key === 'PageDown') && mode === 'walk') { e.preventDefault(); sink(); return; }
+    if ((e.key === 'r' || e.key === 'R') && mode === 'walk') { e.preventDefault(); rideToggle(); return; }
     if ((e.key === 'Enter' || e.key === ' ' || e.key === 'z' || e.key === 'Z') && (mode === 'walk' || mode === 'talk' || talk)) { if (e.target?.tagName === 'BUTTON' && !talk && mode !== 'walk') return; if (e.target?.tagName === 'BUTTON' && mode === 'walk' && panel.contains(e.target)) return; e.preventDefault(); act(); }
   }
   function onKeyUp(e) { if (KEYS[e.key] === held) held = null; }
@@ -884,7 +1308,7 @@ function mountJourney(root, deps) {
     deps.onClose?.();
   }
   function stop() {
-    closed = true; clearInterval(dollTimer);
+    closed = true; clearInterval(dollTimer); clearInterval(landTimer);
     doc.removeEventListener('keydown', onKey, true); doc.removeEventListener('keyup', onKeyUp, true);
     if (frameReq) (globalThis.cancelAnimationFrame || clearTimeout)(frameReq);
   }
@@ -893,7 +1317,7 @@ function mountJourney(root, deps) {
   talkTo(['Bob\'s Inn. A fire, a bar, a cat, and Bob behind it.', 'Walk about with the arrow keys. When you\'re ready, the buttons along the bottom roll a New adventure or Resume your saved one.']);
   loadSave();
   frame();
-  return { stop, save, get journey() { return j; }, get world() { return world; }, get mode() { return mode; }, get lobby() { return lobby; }, startFight, walk: tryWalk, act, fight, rollNew, resume };
+  return { stop, save, get journey() { return j; }, get world() { return world; }, get mode() { return mode; }, get lobby() { return lobby; }, startFight, walk: tryWalk, act, fight, rollNew, resume, rise, sink, ride: rideToggle };
 }
 
 globalThis.BobJourneyPlay = { mountJourney };

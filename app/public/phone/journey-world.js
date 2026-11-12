@@ -9,7 +9,18 @@
 // No imports and no page: the phone uses this same file as a plain script (globalThis.BobJourneyWorld), made by
 // android/tools/make-shared.mjs. The rules (public/journey-rules.js) never draw either; the screen does that.
 
-const SIZES = { small: { name: 'Small', w: 64, h: 48 }, medium: { name: 'Medium', w: 96, h: 72 }, large: { name: 'Large', w: 128, h: 96 } };
+// The first three are the 1.5.211 sizes, rolled exactly as before; the bigger ones (Journey v1.2) are for long
+// campaigns: Vast is bigger than the old consoles' overworlds, Campaign is a million tiles, and Saga (four million)
+// is for a computer, not a phone (desktopOnly).
+const SIZES = {
+  small: { name: 'Small', w: 64, h: 48 }, medium: { name: 'Medium', w: 96, h: 72 }, large: { name: 'Large', w: 128, h: 96 },
+  vast: { name: 'Vast', w: 256, h: 192 }, epic: { name: 'Epic', w: 512, h: 512 }, campaign: { name: 'Campaign', w: 1024, h: 1024 },
+  saga: { name: 'Saga', w: 2048, h: 2048, desktopOnly: true }
+};
+const OLD_SIZES = ['small', 'medium', 'large'];
+// How many more places a bigger land gets than a Medium one: by the square root of its area, so a huge land has
+// many more towns and dungeons but more wild country between them too.
+const sizeFactor = (size) => { const s = SIZES[size] || SIZES.medium; return Math.sqrt((s.w * s.h) / (96 * 72)); };
 const INN_W = 44, INN_H = 32;
 
 // Every tile: walk (you can stand on it), wild (how fast creatures find you there, 0 = never), cost (for roads).
@@ -41,10 +52,22 @@ const TILES = {
   // Bob's Inn.
   'o': { name: 'floorboards', walk: true, wild: 0 }, 'B': { name: 'a timber wall', walk: false }, 'b': { name: 'a table', walk: false }, 'c': { name: 'a stool', walk: true, wild: 0 },
   'k': { name: 'the bar', walk: false }, 'p': { name: 'the fireplace', walk: false }, 'q': { name: 'a barrel', walk: false }, 'n': { name: 'the notice board', walk: false },
-  'u': { name: 'a rug', walk: true, wild: 0 }, 'l': { name: 'a bed', walk: false }, 'j': { name: 'the stage', walk: true, wild: 0 }
+  'u': { name: 'a rug', walk: true, wild: 0 }, 'l': { name: 'a bed', walk: false }, 'j': { name: 'the stage', walk: true, wild: 0 },
+  // Journey v1.2: the cloud cities (only from the sky) and the merfolk cities (only from under the sea), and inside them.
+  'S': { name: 'a cloud city', walk: false }, 'A': { name: 'a city under the sea', walk: false },
+  'X': { name: 'an orc village', walk: true, wild: 0 }, 'L': { name: 'a kobold lair', walk: true, wild: 0 }, 'N': { name: 'a dwarf hold', walk: true, wild: 0 }, 'E': { name: 'an elf tree village', walk: true, wild: 0 },
+  'M': { name: 'halfling burrows', walk: true, wild: 0 }, 'J': { name: 'a pixie glade', walk: true, wild: 0 }, '1': { name: 'a lizardfolk village', walk: true, wild: 0 },
+  '2': { name: 'a gnome tinker town', walk: true, wild: 0 }, '3': { name: 'a centaur camp', walk: true, wild: 0 }, '4': { name: 'a giant hall', walk: true, wild: 0 }, '5': { name: 'a goblin market', walk: true, wild: 0 },
+  '%': { name: 'cloud', walk: true, wild: 0 }, '&': { name: 'open sky', walk: false }, '$': { name: 'the sea floor', walk: true, wild: 0 }, '+': { name: 'coral', walk: false }
 };
-const SITE_TILES = { bobsinn: 'I', hamlet: 'v', village: 'V', town: 'O', castle: 'K', cave: 'C', dungeon: 'D', hermit: 'H' };
-const SITE_WORDS = { bobsinn: "Bob's Inn", hamlet: 'Hamlet', village: 'Village', town: 'Town', castle: 'Castle', cave: 'Cave', dungeon: 'Dungeon', hermit: "Hermit's hut" };
+const SITE_TILES = { bobsinn: 'I', hamlet: 'v', village: 'V', town: 'O', castle: 'K', cave: 'C', dungeon: 'D', hermit: 'H', aerie: 'S', reef: 'A', orccamp: 'X', kobold: 'L', dwarfhold: 'N', elfwood: 'E', burrow: 'M', glade: 'J', stilts: '1', gnome: '2', centaur: '3', giant: '4', goblin: '5' };
+const SITE_WORDS = { bobsinn: "Bob's Inn", hamlet: 'Hamlet', village: 'Village', town: 'Town', castle: 'Castle', cave: 'Cave', dungeon: 'Dungeon', hermit: "Hermit's hut", aerie: 'Cloud city', reef: 'Merfolk city', orccamp: 'Orc village', kobold: 'Kobold lair', dwarfhold: 'Dwarf hold', elfwood: 'Elf tree village', burrow: 'Halfling burrows', glade: 'Pixie glade', stilts: 'Lizardfolk village', gnome: 'Gnome tinker town', centaur: 'Centaur camp', giant: 'Giant hall', goblin: 'Goblin market' };
+// The animals that wander each kind of land (and the least danger zone they show up in). Walk up and say hello.
+const WILD_ON = {
+  '.': [['rabbit', 1], ['horse', 1], ['fox', 1], ['crow', 1]], '"': [['rabbit', 1], ['fox', 1], ['horse', 1], ['hawk', 2]],
+  F: [['fox', 1], ['boar', 2], ['owl', 2], ['elk', 3], ['lynx', 3], ['bear', 4]], d: [['camel', 2], ['scorpion', 3]], w: [['toad', 1], ['strider', 3]], ',': [['crab', 1], ['gull', 1]]
+};
+const HILL_WILD = [['ram', 3], ['griffin', 4], ['pegasus', 4]];
 
 // The bosses beyond the three keepers, and where they like to live (tiles they need nearby). The rules
 // (journey-rules.js) give them their numbers; their base is one of the bestiary's creatures, for the look.
@@ -163,19 +186,41 @@ function makeInn(day = 'today') {
 // them with bridges over the rivers; caves in the foothills, dungeons in the wild, the hermit far from everyone.
 function makeWorld(seed, size = 'medium') {
   const sz = SIZES[size] || SIZES.medium;
+  const big = Boolean(SIZES[size]) && !OLD_SIZES.includes(size), f = sizeFactor(size);
   const rnd = seeded(`world:${seed}:${size}`);
   const w = sz.w, h = sz.h;
-  const height = fbm(rnd, w, h, [w / 4, w / 8, w / 16]), wet = fbm(rnd, w, h, [w / 5, w / 12]), warm = fbm(rnd, w, h, [w / 6]);
-  const elev = grid(w, h, 0);
-  const all = [];
+  // A big land keeps the same size of hills and woods as a small one (the noise is measured in tiles, not in land).
+  const height = big ? fbm(rnd, w, h, [96, 40, 16, 7]) : fbm(rnd, w, h, [w / 4, w / 8, w / 16]);
+  const wet = big ? fbm(rnd, w, h, [80, 28]) : fbm(rnd, w, h, [w / 5, w / 12]), warm = big ? fbm(rnd, w, h, [120]) : fbm(rnd, w, h, [w / 6]);
+  const elev = Array.from({ length: h }, () => new Float64Array(w)); // numbers packed in rows, not boxed in arrays
+  const all = new Float64Array(w * h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const nx = (x / (w - 1)) * 2 - 1, ny = (y / (h - 1)) * 2 - 1;
     const edge = Math.max(Math.abs(nx), Math.abs(ny));
     elev[y][x] = height(x, y) - edge ** 3 * 0.55;
-    all.push(elev[y][x]);
+    all[y * w + x] = elev[y][x];
   }
-  const sorted = [...all].sort((a, b) => a - b);
-  const sea = sorted[Math.floor(sorted.length * 0.36)], peak = sorted[Math.floor(sorted.length * 0.93)];
+  // A big land is several continents with open sea between them (Journey v1.2): each one a rise in the ground.
+  const continents = [];
+  if (big) {
+    const crnd = seeded(`continents:${seed}`);
+    const n = clamp(Math.round(f / 1.6), 2, 9);
+    for (let i = 0, tries = 0; continents.length < n && tries < 400; tries++) {
+      const c = { x: w * (0.15 + crnd() * 0.7), y: h * (0.15 + crnd() * 0.7), r: Math.min(w, h) * (0.16 + crnd() * 0.14) };
+      if (continents.every((o) => Math.hypot(o.x - c.x, o.y - c.y) > (o.r + c.r) * 0.95)) { continents.push(c); i++; }
+    }
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      // The coast wanders: the distance to a continent's middle is bent by the noise, and the middle is a broad
+      // plateau rather than a peak, so the mountains still come from the noise.
+      const bx = x + (wet(x, y) - 0.5) * Math.min(w, 400) * 0.3, by = y + (height(x, y) - 0.5) * Math.min(h, 400) * 0.3;
+      let rise = 0;
+      for (const c of continents) rise = Math.max(rise, clamp((1 - Math.hypot(bx - c.x, by - c.y) / c.r) * 2.4, 0, 1));
+      elev[y][x] = elev[y][x] + rise * 0.55 - (1 - rise) * 0.35;
+      all[y * w + x] = elev[y][x];
+    }
+  }
+  const sorted = all.sort();
+  const sea = sorted[Math.floor(sorted.length * (big ? 0.55 : 0.36))], peak = sorted[Math.floor(sorted.length * (big ? 0.95 : 0.93))];
   const g = grid(w, h, '.');
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const e = elev[y][x];
@@ -187,7 +232,7 @@ function makeWorld(seed, size = 'medium') {
   // Beaches.
   for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) if (g[y][x] !== '~' && g[y][x] !== '^' && N4.some(([dx, dy]) => g[y + dy][x + dx] === '~')) g[y][x] = ',';
   // Rivers: from a foothill, always downhill (or the lowest way on) until the sea or another river.
-  const rivers = { small: 3, medium: 5, large: 8 }[size] || 5;
+  const rivers = { small: 3, medium: 5, large: 8 }[size] || Math.round(5 * f * 1.4);
   const foot = [];
   for (let y = 2; y < h - 2; y++) for (let x = 2; x < w - 2; x++) if (g[y][x] !== '^' && g[y][x] !== '~' && N4.some(([dx, dy]) => g[y + dy][x + dx] === '^')) foot.push([x, y]);
   for (let r = 0; r < rivers && foot.length; r++) {
@@ -210,15 +255,21 @@ function makeWorld(seed, size = 'medium') {
     while (q.length) { const [a, b] = q.pop(); n++; for (const [dx, dy] of N4) { const c = a + dx, d = b + dy; if (comp[d]?.[c] === -1 && g[d][c] !== '~' && g[d][c] !== '^') { comp[d][c] = id; q.push([c, d]); } } }
     if (n > bestSize) { bestSize = n; best = id; }
   }
-  const main = (x, y) => comp[y]?.[x] === best;
+  // On a big land every continent big enough for a few places counts, not just the biggest one.
+  const sizes = new Map();
+  if (big) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (comp[y][x] >= 0) sizes.set(comp[y][x], (sizes.get(comp[y][x]) || 0) + 1);
+  const lands = new Set(big ? [...sizes].filter(([, n]) => n >= bestSize * 0.12).map(([id]) => id) : [best]);
+  const main = (x, y) => lands.has(comp[y]?.[x]);
   const nearRiver = (x, y, r = 2) => { for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (g[y + dy]?.[x + dx] === 'r') return true; return false; };
   const nearMountain = (x, y) => N4.some(([dx, dy]) => g[y + dy]?.[x + dx] === '^');
   const sites = [];
-  const spacing = Math.round(w / 9);
+  const spacing = big ? Math.round(Math.sqrt((w * h) / (19 * f)) * 0.75) : Math.round(w / 9);
   const farFromSites = (x, y, d = spacing) => sites.every((s) => Math.abs(s.x - x) + Math.abs(s.y - y) >= d);
   const okTile = (x, y) => main(x, y) && '."F,dw'.includes(g[y][x]) && x > 2 && y > 2 && x < w - 3 && y < h - 3 && N4.some(([dx, dy]) => TILES[g[y + dy][x + dx]]?.walk && g[y + dy][x + dx] !== 'r');
   const land = [];
-  for (let y = 3; y < h - 3; y++) for (let x = 3; x < w - 3; x++) if (okTile(x, y)) land.push([x, y]);
+  // A big land only looks at every few tiles for a place to build (the same land, much quicker).
+  const stride = big ? Math.max(1, Math.round(Math.sqrt((w * h) / 60000))) : 1;
+  for (let y = 3; y < h - 3; y += stride) for (let x = 3; x < w - 3; x += stride) if (okTile(x, y)) land.push([x, y]);
   const place = (kind, n, score, d) => {
     const cand = land.map(([x, y]) => [x, y, score(x, y) + rnd() * 0.8]).sort((a, b) => b[2] - a[2]);
     let placed = 0;
@@ -226,22 +277,25 @@ function makeWorld(seed, size = 'medium') {
   };
   const cx = w / 2, cy = h / 2;
   const settle = (x, y) => ({ '.': 1.2, '"': 1, ',': 0.7, 'F': 0.3, 'd': 0.1, 'w': -0.5 }[g[y][x]] || 0) + (nearRiver(x, y) ? 1 : 0);
-  const counts = { small: [1, 1, 3, 3, 2, 3], medium: [1, 2, 4, 5, 3, 4], large: [1, 3, 5, 7, 4, 5] }[size] || [1, 2, 4, 5, 3, 4];
+  const counts = { small: [1, 1, 3, 3, 2, 3], medium: [1, 2, 4, 5, 3, 4], large: [1, 3, 5, 7, 4, 5] }[size] || [Math.max(1, Math.round(f / 2.5)), ...[2, 4, 5, 3, 4].map((n) => Math.round(n * f))];
   place('castle', counts[0], (x, y) => settle(x, y) + 2 - (Math.abs(x - cx) + Math.abs(y - cy)) / w * 3, spacing);
   place('town', counts[1], settle, spacing);
   place('village', counts[2], settle, spacing);
   place('hamlet', counts[3], (x, y) => settle(x, y) * 0.5, Math.round(spacing * 0.8));
   place('cave', counts[4], (x, y) => (nearMountain(x, y) ? 3 : -5), Math.round(spacing * 0.7));
   place('dungeon', Math.max(3, counts[5]), (x, y) => ({ F: 1, w: 1.5, d: 1.2 }[g[y][x]] || 0) + Math.min(...sites.filter((s) => s.kind !== 'cave').map((s) => Math.abs(s.x - x) + Math.abs(s.y - y))) / w * 4, Math.round(spacing * 0.7));
-  place('hermit', 1, (x, y) => (g[y][x] === 'F' ? 1 : 0) + (nearMountain(x, y) ? 1 : 0) + Math.min(...sites.map((s) => Math.abs(s.x - x) + Math.abs(s.y - y))) / w * 6, Math.round(spacing * 0.6));
+  place('hermit', big ? Math.max(1, Math.round(f / 3)) : 1, (x, y) => (g[y][x] === 'F' ? 1 : 0) + (nearMountain(x, y) ? 1 : 0) + Math.min(...sites.map((s) => Math.abs(s.x - x) + Math.abs(s.y - y))) / w * 6, Math.round(spacing * 0.6));
   // Roads: every settlement joined to its nearest neighbour already on the network (a spanning tree), by the cheapest
   // way over the ground; a road over a river is a bridge. Caves, dungeons and the hut get a footpath to the nearest
   // settlement, which only needs bridges.
   const towns = sites.filter((s) => ['castle', 'town', 'village', 'hamlet'].includes(s.kind));
-  const path = (a, b) => cheapest(g, w, h, a, b);
-  const joined = [towns[0]];
+  // On a big land a road only looks for its way in a box round its two ends (roads don't wander far anyway).
+  const path = (a, b) => cheapest(g, w, h, a, b, big ? Math.max(24, Math.round((Math.abs(a.x - b.x) + Math.abs(a.y - b.y)) / 2)) : 0);
   const roads = [];
-  const rest = towns.slice(1);
+  const groups = big ? [...lands].map((id) => towns.filter((t) => comp[t.y][t.x] === id)).filter((gr) => gr.length) : [towns];
+  for (const group of groups) {
+  const joined = [group[0]];
+  const rest = group.slice(1);
   while (rest.length) {
     let bi = 0, bj = 0, bd = Infinity;
     rest.forEach((s, i) => joined.forEach((t, k) => { const d = Math.abs(s.x - t.x) + Math.abs(s.y - t.y); if (d < bd) { bd = d; bi = i; bj = k; } }));
@@ -251,8 +305,10 @@ function makeWorld(seed, size = 'medium') {
     if (road.length > 4) roads.push({ from: s, to: joined[bj], steps: road });
     joined.push(s);
   }
+  }
   for (const s of sites.filter((x) => !towns.includes(x))) {
-    const near = [...towns].sort((a, b) => Math.abs(a.x - s.x) + Math.abs(a.y - s.y) - Math.abs(b.x - s.x) - Math.abs(b.y - s.y))[0];
+    const near = [...towns].filter((t) => !big || comp[t.y][t.x] === comp[s.y][s.x]).sort((a, b) => Math.abs(a.x - s.x) + Math.abs(a.y - s.y) - Math.abs(b.x - s.x) - Math.abs(b.y - s.y))[0];
+    if (!near) continue;
     for (const [x, y] of path(s, near) || []) if (g[y][x] === 'r') g[y][x] = '=';
   }
   // Names, the tile on the map, and the step you come out on.
@@ -260,7 +316,8 @@ function makeWorld(seed, size = 'medium') {
   const used = new Set();
   sites.forEach((s, i) => {
     s.i = i; s.id = `site${i}`;
-    let n = placeName(nameRnd); while (used.has(n)) n = placeName(nameRnd); used.add(n);
+    // A huge land runs out of plain names, so later ones get a second word (Ashford Under Hill).
+    let n = placeName(nameRnd), tries = 0; while (used.has(n)) n = tries++ < 30 ? placeName(nameRnd) : `${placeName(nameRnd)} ${pick(nameRnd, ['Major', 'Minor', 'Under Hill', 'Upon Sea', 'End', 'Cross', 'Green', 'Deep'])}`; used.add(n);
     s.name = s.kind === 'castle' ? `Castle ${n}` : s.kind === 'cave' ? `${n} Cave` : s.kind === 'dungeon' ? `The ${pick(nameRnd, ['Sunken', 'Forgotten', 'Black', 'Hollow', 'Drowned', 'Old'])} ${pick(nameRnd, ['Keep', 'Crypt', 'Halls', 'Tower', 'Barrow', 'Temple'])} of ${n}` : s.kind === 'hermit' ? "The hermit's hut" : n;
     g[s.y][s.x] = SITE_TILES[s.kind];
   });
@@ -270,7 +327,7 @@ function makeWorld(seed, size = 'medium') {
   }
   // Where you start: the settlement furthest from the castle's opposite... simply the village (or hamlet) that is
   // most central to the rest, so there's somewhere to go in every direction. Danger grows with distance from it.
-  const homes = sites.filter((s) => s.kind === 'village').concat(sites.filter((s) => s.kind === 'hamlet'));
+  const homes = sites.filter((s) => s.kind === 'village').concat(sites.filter((s) => s.kind === 'hamlet')).filter((s) => !big || comp[s.y][s.x] === best);
   const home = homes.sort((a, b) => sum(a) - sum(b))[0] || towns[0];
   function sum(s) { return towns.reduce((t, o) => t + Math.abs(o.x - s.x) + Math.abs(o.y - s.y), 0); }
   const zoneOf = (x, y) => clamp(1 + Math.floor((Math.abs(x - home.x) + Math.abs(y - home.y)) / (w / 6)), 1, 5);
@@ -307,6 +364,111 @@ function makeWorld(seed, size = 'medium') {
     inn.exit = [[0, 1], [1, 0], [-1, 0], [0, -1]].map(([dx, dy]) => ({ x: x + dx, y: y + dy })).find((p) => TILES[g[p.y][p.x]]?.walk && !Object.values(SITE_TILES).includes(g[p.y][p.x])) || { x, y: y + 1 };
     sites.push(inn);
   }
+  // ---------- Journey v1.2: more places, on their own dice so the places above never change ----------
+  const xrnd = seeded(`more:${seed}:${size}`);
+  const nameMore = seeded(`morenames:${seed}`);
+  const extra = [];
+  const more = big ? Math.max(1, Math.round(f / 2)) : 1;
+  const free = (x, y, d) => [...sites, ...extra].every((o) => Math.abs(o.x - x) + Math.abs(o.y - y) >= d);
+  const nearPeak = (x, y, r = 2) => { for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (g[y + dy]?.[x + dx] === '^') return true; return false; };
+  const n8 = (x, y, t) => { let n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (t.includes(g[y + dy]?.[x + dx])) n++; return n; };
+  // The folk of other kinds, each where they'd live: orcs on the plains and the badlands, kobolds dug into the
+  // foothills, dwarves at a door in the mountains, elves deep in the forest, halflings in the long grass, pixies in
+  // forest glades and lizardfolk on stilts over the swamp.
+  const KIN = [
+    ['orccamp', (x, y) => ('d.'.includes(g[y][x]) ? 1 : 0) + (n8(x, y, 'd') > 2 ? 1 : 0)],
+    ['kobold', (x, y) => (nearPeak(x, y) && '."F,d'.includes(g[y][x]) ? 2 : 0)],
+    ['dwarfhold', (x, y) => (nearPeak(x, y) && '."F,'.includes(g[y][x]) ? 1 + n8(x, y, '^') / 4 : 0)],
+    ['elfwood', (x, y) => (g[y][x] === 'F' ? n8(x, y, 'F') / 3 : 0)],
+    ['burrow', (x, y) => (g[y][x] === '"' ? 1 + n8(x, y, '"') / 4 : 0)],
+    ['glade', (x, y) => (g[y][x] === 'F' ? n8(x, y, 'F') / 3 + (nearRiver(x, y, 3) ? 1 : 0) : 0)],
+    ['stilts', (x, y) => (g[y][x] === 'w' ? 1 + n8(x, y, 'w') / 3 : 0)],
+    ['gnome', (x, y) => ('".'.includes(g[y][x]) && nearRiver(x, y, 3) ? 1 + (nearMountain(x, y) ? 1 : 0) : 0)],
+    ['centaur', (x, y) => (g[y][x] === '.' ? 1 + n8(x, y, '.') / 4 : 0)],
+    ['giant', (x, y) => (nearPeak(x, y) && '."F,d'.includes(g[y][x]) ? 1 + n8(x, y, '^') / 2 : 0)],
+    ['goblin', (x, y) => ('F"w'.includes(g[y][x]) ? 1 : 0)]
+  ];
+  const landNow = [];
+  for (let y = 3; y < h - 3; y += stride) for (let x = 3; x < w - 3; x += stride) if (main(x, y) && TILES[g[y][x]]?.walk && !Object.values(SITE_TILES).includes(g[y][x]) && g[y][x] !== ':' && g[y][x] !== '=') landNow.push([x, y]);
+  // A small land has room for only some of them; which ones is up to the dice.
+  const kinHere = size === 'small' ? [...KIN].sort(() => xrnd() - 0.5).slice(0, 5) : size === 'medium' ? [...KIN].sort(() => xrnd() - 0.5).slice(0, 8) : KIN;
+  for (const [kind, score] of kinHere) {
+    const cand = landNow.map(([x, y]) => [x, y, score(x, y)]).filter((c) => c[2] > 0).map((c) => [c[0], c[1], c[2] + xrnd() * 0.8]).sort((a, b) => b[2] - a[2]);
+    let n = 0;
+    for (const [x, y] of cand) { if (n >= more) break; if (!free(x, y, Math.round(spacing * 0.6))) continue; extra.push({ kind, x, y }); n++; }
+  }
+  // Ports: a settlement by the sea has a dock (and every continent with people gets at least one).
+  const coastal = (s, r = 3) => { for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (g[s.y + dy]?.[s.x + dx] === '~') return true; return false; };
+  for (const t of towns) if (coastal(t)) t.dock = true;
+  for (const id of lands) {
+    const here = towns.filter((t) => comp[t.y][t.x] === id);
+    if (here.length && !here.some((t) => t.dock)) { here.sort((a, b) => Number(coastal(b, 8)) - Number(coastal(a, 8))); here[0].dock = true; }
+  }
+  // The cloud cities float over the peaks or the sea; the merfolk cities lie under open sea, far from any shore.
+  const skyAt = [], reefAt = [];
+  for (let y = 4; y < h - 4; y += stride) for (let x = 4; x < w - 4; x += stride) {
+    if (g[y][x] === '^' && n8(x, y, '^') >= 8) skyAt.push([x, y]);
+    if (g[y][x] === '~' && n8(x, y, '~') === 9 && N4.every(([dx, dy]) => g[y + dy * 3]?.[x + dx * 3] === '~')) reefAt.push([x, y]);
+  }
+  const farHome = (x, y) => Math.abs(x - home.x) + Math.abs(y - home.y);
+  for (const [kind, list] of [['aerie', skyAt.length ? skyAt : reefAt], ['reef', reefAt]]) {
+    const cand = list.map(([x, y]) => [x, y, farHome(x, y) / w + xrnd() * 0.6]).sort((a, b) => b[2] - a[2]);
+    let n = 0;
+    for (const [x, y] of cand) { if (n >= more) break; if (!free(x, y, spacing)) continue; extra.push({ kind, x, y }); n++; }
+  }
+  extra.forEach((e, i) => {
+    e.id = `${e.kind}${i}`; e.i = sites.length;
+    const n = placeName(nameMore);
+    e.name = { orccamp: `${n} Warcamp`, gnome: `${n} Cogworks`, centaur: `${n} Run`, giant: `${n} Steading`, goblin: `${n} Market`, kobold: `The ${n} Warren`, dwarfhold: `${n} Hold`, elfwood: `${n} Boughs`, burrow: `${n} Burrows`, glade: `${n} Glade`, stilts: `${n} Stilts`, aerie: `${n} Aerie`, reef: `${n} Deep` }[e.kind];
+    e.zone = Math.max(e.kind === 'aerie' || e.kind === 'reef' ? 3 : 1, zoneOf(e.x, e.y));
+    if (e.kind === 'aerie') { e.alt = 'sky'; e.keeper = 'stormroc'; }
+    if (e.kind === 'reef') { e.alt = 'deep'; e.keeper = 'leviathan'; }
+    if (e.kind === 'kobold') e.keeper = 'koboldking';
+    g[e.y][e.x] = SITE_TILES[e.kind];
+    e.exit = e.alt ? { x: e.x, y: e.y } : N4.map(([dx, dy]) => ({ x: e.x + dx, y: e.y + dy })).find((p) => TILES[g[p.y][p.x]]?.walk && !Object.values(SITE_TILES).includes(g[p.y][p.x])) || { x: e.x, y: e.y + 1 };
+    sites.push(e);
+    if (!e.alt) { const near = towns.filter((t) => comp[t.y][t.x] === comp[e.y][e.x]).sort((a, b) => Math.abs(a.x - e.x) + Math.abs(a.y - e.y) - Math.abs(b.x - e.x) - Math.abs(b.y - e.y))[0]; if (near) for (const [x, y] of path(e, near) || []) if (g[y][x] === 'r') g[y][x] = '='; }
+  });
+  // Small jobs, one in most settlements: clear a cave, take down a boss for a bounty, find a lost pet, or find
+  // someone who went into a cave or dungeon and didn't come back.
+  const qrnd = seeded(`quests:${seed}`);
+  const lost = [];
+  const caves = sites.filter((x) => x.kind === 'cave' || x.kind === 'kobold'), dens = sites.filter((x) => x.kind === 'dungeon' && !['boss1', 'boss2', 'boss3'].includes(x.keeper));
+  const nearest = (s, list) => list.filter((o) => !big || comp[o.y]?.[o.x] === comp[s.y][s.x]).sort((a, b) => Math.abs(a.x - s.x) + Math.abs(a.y - s.y) - Math.abs(b.x - s.x) - Math.abs(b.y - s.y))[0];
+  for (const t of towns) {
+    if (t.kind === 'castle' || qrnd() < 0.2) continue;
+    const kinds = ['lostpet', 'missing'];
+    if (caves.length) kinds.push('clear'); if (dens.length) kinds.push('bounty');
+    const kind = pick(qrnd, kinds);
+    if (kind === 'clear' || kind === 'bounty') { const tg = nearest(t, kind === 'clear' ? caves : dens); if (tg?.keeper) t.quest = { kind, target: tg.id, keeper: tg.keeper }; }
+    else if (kind === 'missing') { const tg = nearest(t, [...caves, ...dens]); if (tg) { t.quest = { kind, target: tg.id, who: personName(qrnd), id: `missing-${t.id}` }; tg.missing = { id: `missing-${t.id}`, name: t.quest.who, from: t.id }; } }
+    else {
+      const animal = pick(qrnd, ['fox', 'rabbit', 'crow', 'tortoise', 'boar']);
+      for (let tries = 0; tries < 60; tries++) {
+        const x = t.x + Math.round((qrnd() - 0.5) * spacing * 2), y = t.y + Math.round((qrnd() - 0.5) * spacing * 2);
+        if (!main(x, y) || !'."F,dw'.includes(g[y]?.[x])) continue;
+        const name = pick(qrnd, ['Biscuit', 'Pip', 'Turnip', 'Nutmeg', 'Old Bess', 'Mopsy', 'Clover', 'Bramble']);
+        t.quest = { kind, id: `lost-${t.id}`, animal, name, x, y };
+        lost.push({ id: `lost-${t.id}`, name, role: 'animal', beast: animal, lost: t.id, x, y, facing: 'left', wander: true });
+        break;
+      }
+    }
+  }
+  // Animals wander the land, by the kind of ground (and only the tamer ones near home).
+  const wrnd = seeded(`wild:${seed}`);
+  const wild = [];
+  const wildCount = clamp(Math.round(landNow.length * stride * stride / 260), 8, 2500);
+  for (let i = 0, tries = 0; wild.length < wildCount && tries < wildCount * 6; tries++) {
+    const [x, y] = landNow[Math.floor(wrnd() * landNow.length)] || [];
+    if (x === undefined) break;
+    const t = g[y][x];
+    if (!TILES[t]?.walk || t === ':' || t === '=' || Object.values(SITE_TILES).includes(t)) continue;
+    const z = zoneOf(x, y);
+    const list = [...(WILD_ON[t] || []), ...(nearMountain(x, y) ? HILL_WILD : [])].filter(([, mz]) => mz <= z + 1);
+    if (!list.length) continue;
+    const [beast] = pick(wrnd, list);
+    wild.push({ id: `wild${i++}`, name: '', role: 'animal', beast, x, y, facing: pick(wrnd, ['left', 'right']), wander: true });
+  }
   // Folk on the roads: patrols from the castle and towns walk the roads back and forth, with travellers and a
   // peddler or two. Creatures rarely jump out near a patrol, and a patrol close by joins your fight.
   const roadRnd = seeded(`roads:${seed}`);
@@ -320,20 +482,30 @@ function makeWorld(seed, size = 'medium') {
     walkers.push(p);
   });
   const rows = toRows(g);
-  const worldMap = { id: 'world', kind: 'world', name: 'The land', w, h, rows, chests: [], people: walkers, doors: sites.map((s) => ({ x: s.x, y: s.y, to: s.id })), start: { ...home.exit }, zoneOf };
-  const cache = { world: worldMap };
+  const people = [...walkers, ...lost, ...wild];
+  const roadList = roads.map((r) => ({ from: r.from.id, to: r.to.id, length: r.steps.length }));
+  return worldOf({ seed: String(seed), size: SIZES[size] ? size : 'medium', w, h, rows, sites, people, roads: roadList, home: { id: home.id, x: home.x, y: home.y, exit: { ...home.exit } } });
+}
+// The finished land. Built out here, away from makeWorld, so the big working grids (heights, wetness, paths) are
+// let go as soon as the land is made: a closure inside makeWorld would keep them all alive for as long as you play.
+// Places (towns, caves, cities) are built the first time you walk in, and only the last few are kept.
+const KEEP_PLACES = 6;
+function worldOf({ seed, size, w, h, rows, sites, people, roads, home }) {
+  const zoneOf = (x, y) => clamp(1 + Math.floor((Math.abs(x - home.x) + Math.abs(y - home.y)) / (w / 6)), 1, 5);
+  const worldMap = { id: 'world', kind: 'world', name: 'The land', w, h, rows, chests: [], people, doors: sites.map((s) => ({ x: s.x, y: s.y, to: s.id, ...(s.alt ? { alt: s.alt } : {}) })), start: { ...home.exit }, zoneOf };
+  const cache = new Map();
   const world = {
-    seed: String(seed), size: SIZES[size] ? size : 'medium', tiles: TILES, zoneOf, w, h, sites, roads: roads.map((r) => ({ from: r.from.id, to: r.to.id, length: r.steps.length })), home: home.id, start: { ...home.exit },
+    seed, size, tiles: TILES, zoneOf, w, h, sites, roads, home: home.id, start: { ...home.exit },
     map(id) {
-      if (id === 'inn') {
-        if (!cache.inn) { const s = sites.find((x) => x.id === 'inn') || home; cache.inn = makeInn(`${seed}`); cache.inn.doors.forEach((d) => { d.tx = s.exit.x; d.ty = s.exit.y; }); cache.inn.zone = 1; }
-        return cache.inn;
-      }
-      if (cache[id]) return cache[id];
-      const s = sites.find((x) => x.id === id);
-      if (!s) return null;
-      cache[id] = makeSite(world, s);
-      return cache[id];
+      if (id === 'world') return worldMap;
+      if (cache.has(id)) { const m = cache.get(id); cache.delete(id); cache.set(id, m); return m; }
+      let m = null;
+      if (id === 'inn') { const s = sites.find((x) => x.id === 'inn') || sites.find((x) => x.id === home.id); m = makeInn(`${seed}`); m.doors.forEach((d) => { d.tx = s.exit.x; d.ty = s.exit.y; }); m.zone = 1; }
+      else { const s = sites.find((x) => x.id === id); if (!s) return null; m = makeSite(world, s); }
+      cache.set(id, m);
+      // People in a place move about while you're there; a place you left long ago is built fresh (the same) next time.
+      while (cache.size > KEEP_PLACES) cache.delete(cache.keys().next().value);
+      return m;
     }
   };
   return world;
@@ -347,7 +519,16 @@ function innOnly() {
 }
 
 // The cheapest walk from a to b over the ground (no sea, no mountains); rivers cost a lot, roads very little.
-function cheapest(g, w, h, a, b) {
+function cheapest(g, w, h, a, b, pad = 0) {
+  if (pad > 0) {
+    // Search a box round the two ends, in the box's own coordinates, then move the way back onto the land.
+    const x0 = Math.max(0, Math.min(a.x, b.x) - pad), y0 = Math.max(0, Math.min(a.y, b.y) - pad);
+    const x1 = Math.min(w - 1, Math.max(a.x, b.x) + pad), y1 = Math.min(h - 1, Math.max(a.y, b.y) + pad);
+    const box = [];
+    for (let y = y0; y <= y1; y++) box.push(g[y].slice(x0, x1 + 1));
+    const out = cheapest(box, x1 - x0 + 1, y1 - y0 + 1, { x: a.x - x0, y: a.y - y0 }, { x: b.x - x0, y: b.y - y0 }, 0);
+    return out ? out.map(([x, y]) => [x + x0, y + y0]) : null;
+  }
   const cost = (x, y) => { const t = g[y][x]; if (t === '~' || t === '^') return Infinity; if (Object.values(SITE_TILES).includes(t)) return 1; return TILES[t]?.cost ?? 1; };
   const dist = new Float64Array(w * h).fill(Infinity), from = new Int32Array(w * h).fill(-1);
   const heap = [[0, a.y * w + a.x]];
@@ -377,9 +558,100 @@ function cheapest(g, w, h, a, b) {
 const TIER_SIZE = { hamlet: [22, 16], village: [28, 20], town: [38, 28] };
 function makeSite(world, s) {
   const rnd = seeded(`${world.seed}:${s.id}`);
-  if (s.kind === 'cave' || s.kind === 'dungeon') return makeDeep(world, s, rnd);
+  if (s.kind === 'cave' || s.kind === 'dungeon' || s.kind === 'kobold') return makeDeep(world, s, rnd);
   if (s.kind === 'hermit') return makeHut(world, s, rnd);
-  return makeSettlement(world, s, rnd);
+  if (s.kind === 'aerie' || s.kind === 'reef') return withExtras(world, s, makeCity(world, s, rnd));
+  if (KIN_PLACES[s.kind]) return withExtras(world, s, makeKin(world, s, rnd));
+  return withExtras(world, s, makeSettlement(world, s, rnd));
+}
+// Journey v1.2 additions to a settlement, on their own dice so the place itself never changes: the dock's sailor,
+// the one with a job for you, and now and then an Aerie trader who has flown down to sell (people with visiting
+// are only there some of the time; the rules say when).
+function withExtras(world, s, map) {
+  const rnd = seeded(`${world.seed}:${s.id}:v12`);
+  const g = map.rows.map((r) => [...r]);
+  const open = (x, y) => world.tiles[g[y]?.[x]]?.walk && !'eG'.includes(g[y][x]) && !map.people.some((p) => p.x === x && p.y === y) && !map.doors.some((d) => d.x === x && d.y === y);
+  const spot = (x0, y0) => { for (let r = 0; r < 12; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (Math.abs(dx) + Math.abs(dy) === r && open(x0 + dx, y0 + dy)) return { x: x0 + dx, y: y0 + dy }; return null; };
+  const add = (role, at, extra) => { if (!at) return null; const p = person(rnd, role, at.x, at.y, { id: `${s.id}-${role}-x${map.people.length}`, home: s.id, tier: s.kind, ...extra }); map.people.push(p); return p; };
+  if (s.dock) add('sailor', spot(map.start.x + 3, map.start.y - 1), { facing: 'left' });
+  if (s.quest) add('elder', spot(Math.floor(map.w / 2) - 3, Math.floor(map.h / 2)), { facing: 'down', title: 'Elder' });
+  if (!['aerie', 'reef', 'kobold'].includes(s.kind)) add('trader', spot(Math.floor(map.w / 2) + 2, Math.floor(map.h / 2) - 1), { facing: 'down', beast: 'birdfolk', visiting: true, wander: false });
+  return map;
+}
+// The other folk's places. size, the edge (trees, a fence, stone, water), the buildings, and who lives there.
+const KIN_PLACES = {
+  orccamp: { size: [30, 22], edge: 'f', build: ['i', 's', 'm', 'a', 'h', 'h', 'h', 'h'], race: 'orc', folk: 7, guards: 3, ruler: 'Chief', trees: 0.3 },
+  dwarfhold: { size: [34, 26], edge: 'W', build: ['i', 's', 'm', 'm', 't', 'a', 'h', 'h', 'h'], race: 'dwarf', folk: 8, guards: 3, ruler: 'King', trees: 0 },
+  elfwood: { size: [32, 24], edge: 'T', build: ['i', 's', 'm', 't', 'a', 'h', 'h', 'h', 'h'], race: 'elf', folk: 7, guards: 2, ruler: 'Lady', trees: 3, smith: 'bowyer' },
+  burrow: { size: [28, 20], edge: 'T', build: ['i', 's', 's', 'h', 'h', 'h', 'h', 'h'], race: 'halfling', folk: 8, guards: 1, trees: 1 },
+  glade: { size: [24, 18], edge: 'T', build: ['s', 't', 'a', 'h', 'h'], race: 'pixie', folk: 6, guards: 0, trees: 2 },
+  stilts: { size: [28, 20], edge: 'r', build: ['i', 's', 'a', 'h', 'h', 'h', 'h'], race: 'lizard', folk: 6, guards: 2, trees: 0 },
+  gnome: { size: [28, 20], edge: 'f', build: ['i', 's', 'm', 'm', 'a', 'h', 'h', 'h'], race: 'gnome', folk: 7, guards: 1, trees: 0, smith: 'tinker' },
+  centaur: { size: [30, 22], edge: 'f', build: ['s', 'a', 'h', 'h', 'h'], race: 'centaur', folk: 6, guards: 2, ruler: 'Herd-mother', trees: 1 },
+  giant: { size: [36, 28], edge: 'W', build: ['i', 'm', 'h', 'h'], race: 'giant', folk: 4, guards: 2, ruler: 'Jarl', trees: 0 },
+  goblin: { size: [30, 22], edge: 'f', build: ['s', 's', 's', 'i', 'h', 'h', 'h', 'h'], race: 'goblin', folk: 9, guards: 2, trees: 1 }
+};
+// How each kind of folk looks: the character generator's parts with a few changes, a tint, and how big they're drawn.
+function kinLook(rnd, role, race, parts = personParts(rnd, role)) {
+  const p = { ...parts };
+  if (race === 'orc') Object.assign(p, { body: 'giant', skin: '0', face: '6', beard: 'none', glasses: '0' });
+  if (race === 'dwarf') Object.assign(p, { build: 'broad', beard: p.body === 'm' ? pick(rnd, ['full', 'full', 'mustache']) : 'none' });
+  if (race === 'elf') Object.assign(p, { build: 'slim', hair: pick(rnd, ['long', 'tied', 'braids']), beard: 'none' });
+  if (race === 'lizard') Object.assign(p, { body: 'alien', skin: '1', face: '6', hair: 'bald', beard: 'none', glasses: '0' });
+  if (race === 'gnome') Object.assign(p, { glasses: '1', hair: pick(rnd, ['tied', 'curly', 'bun']), beard: p.body === 'm' ? 'full' : 'none', outfit: 'apron' });
+  if (race === 'goblin') Object.assign(p, { body: 'alien', skin: '0', face: '6', beard: 'none' });
+  if (race === 'giant') Object.assign(p, { build: 'broad', beard: p.body === 'm' ? 'full' : 'none', armour: role === 'guard' ? 'chain' : p.armour });
+  return { parts: p, tint: { orc: 'orc', lizard: 'lizard', goblin: 'goblin' }[race] || '', scale: { dwarf: 0.85, halfling: 0.75, pixie: 0.6, gnome: 0.7, goblin: 0.8, giant: 1.4 }[race] || 0, wings: race === 'pixie', beast: race === 'centaur' ? 'centaur' : undefined };
+}
+function makeKin(world, s, rnd) {
+  const k = KIN_PLACES[s.kind];
+  const [w, h] = k.size, g = grid(w, h, 'g'), mid = Math.floor(w / 2);
+  for (let x = 0; x < w; x++) { g[0][x] = k.edge; g[h - 1][x] = k.edge; }
+  for (let y = 0; y < h; y++) { g[y][0] = k.edge; g[y][w - 1] = k.edge; }
+  g[h - 1][mid - 1] = 'e'; g[h - 1][mid] = 'e';
+  for (let y = h - 2; y >= Math.floor(h / 2); y--) { g[y][mid - 1] = ':'; g[y][mid] = ':'; }
+  const sq = { x0: mid - 3, x1: mid + 2, y0: Math.floor(h / 2) - 2, y1: Math.floor(h / 2) + 1 };
+  for (let y = sq.y0; y <= sq.y1; y++) for (let x = sq.x0; x <= sq.x1; x++) g[y][x] = '*';
+  if (k.ruler) { g[2][mid - 1] = 'Y'; g[2][mid] = 'Y'; for (let y = 3; y < sq.y0; y++) { g[y][mid - 1] = 'u'; g[y][mid] = 'u'; } }
+  const people = [];
+  const add = (role, x, y, extra = {}) => {
+    if (!world.tiles[g[y]?.[x]]?.walk || g[y][x] === 'e' || people.some((p) => p.x === x && p.y === y)) return null;
+    const look = kinLook(rnd, role, k.race);
+    const p = person(rnd, role, x, y, { parts: look.parts, race: k.race, tint: look.tint, scale: look.scale, wings: look.wings, ...(look.beast ? { beast: look.beast } : {}), ...extra });
+    people.push(p); return p;
+  };
+  if (k.ruler) add('ruler', mid - 1, 3, { facing: 'down', title: k.ruler, crown: true });
+  placeBuildings(g, rnd, { x0: 2, y0: 2, x1: w - 3, y1: h - 3 }, k.build, add, people);
+  if (k.smith) for (const p of people) if (p.role === 'smith') p.role = k.smith;
+  for (let i = 0; i < k.trees; i++) scatterTrees(g, rnd, w, h, people);
+  addFolk(g, rnd, w, h, k.folk, add);
+  for (let i = 0; i < k.guards; i++) add('guard', mid + (i % 2 ? 1 : -2), h - 3 - Math.floor(i / 2) * 2, { facing: 'down' });
+  return finishSettlement(world, s, g, w, h, people, { x: mid, y: h - 2 });
+}
+// A cloud city or a merfolk city: a settlement on cloud (or the sea floor) with open sky (or coral) all round, its
+// own folk, and a great beast nesting at the top. You leave the way you came: into the sky, or into the deep.
+function makeCity(world, s, rnd) {
+  const sky = s.kind === 'aerie';
+  const w = 32, h = 26, g = grid(w, h, 'g'), mid = Math.floor(w / 2);
+  const edge = sky ? '&' : '+', floor = sky ? '%' : '$';
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const d = Math.hypot((x - mid) / (w / 2), (y - h / 2) / (h / 2)); if (d > 0.98 + Math.sin(x * 1.7 + y) * 0.04) g[y][x] = edge; }
+  for (let x = 0; x < w; x++) { g[0][x] = edge; g[h - 1][x] = edge; }
+  for (let y = h - 4; y < h; y++) { g[y][mid - 1] = 'g'; g[y][mid] = 'g'; }
+  g[h - 1][mid - 1] = 'e'; g[h - 1][mid] = 'e';
+  const sq = { x0: mid - 3, x1: mid + 2, y0: Math.floor(h / 2), y1: Math.floor(h / 2) + 3 };
+  for (let y = sq.y0; y <= sq.y1; y++) for (let x = sq.x0; x <= sq.x1; x++) g[y][x] = '*';
+  for (let y = 3; y < sq.y0; y++) { g[y][mid - 1] = '*'; g[y][mid] = '*'; }
+  const people = [];
+  const beast = sky ? 'birdfolk' : 'merfolk';
+  const add = (role, x, y, extra = {}) => { if (!world.tiles[g[y]?.[x]]?.walk || g[y][x] === 'e' || people.some((p) => p.x === x && p.y === y)) return null; const p = person(rnd, role, x, y, { beast, race: sky ? 'aerie' : 'merfolk', ...extra }); people.push(p); return p; };
+  placeBuildings(g, rnd, { x0: 3, y0: 5, x1: w - 4, y1: h - 4 }, ['i', 's', 't', 'a', 'h', 'h', 'h', 'h'], add, people);
+  addFolk(g, rnd, w, h, 7, add);
+  add('guard', mid - 2, h - 3, { facing: 'down' }); add('guard', mid + 1, h - 3, { facing: 'down' }); add('guard', mid - 2, sq.y0 - 3, {});
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (g[y][x] === 'g') g[y][x] = floor;
+  const map = finishSettlement(world, s, g, w, h, people, { x: mid, y: h - 2 });
+  for (const d of map.doors) { d.tx = s.x; d.ty = s.y; d.alt = s.alt; }
+  map.boss = { id: s.keeper, x: mid, y: 2 };
+  return map;
 }
 function exitDoors(g, w, h, s) {
   const doors = [];
@@ -507,7 +779,7 @@ function makeHut(world, s, rnd) {
 // Caves and dungeons: rooms cut out of rock (a dungeon's are old stone) joined by tunnels, the way out in the first
 // room. Caves have good chests and no keeper; a dungeon with a lantern stone has its keeper in the last room.
 function makeDeep(world, s, rnd) {
-  const dungeon = s.kind === 'dungeon';
+  const dungeon = s.kind === 'dungeon', lair = s.kind === 'kobold';
   const w = dungeon ? 34 : 26, h = dungeon ? 24 : 18;
   const wallCh = dungeon ? 'Z' : '#', floor = dungeon ? 'z' : '_';
   const g = grid(w, h, wallCh);
@@ -543,6 +815,7 @@ function makeDeep(world, s, rnd) {
   const map = { id: s.id, kind: s.kind, name: s.name, w, h, rows: toRows(g), chests, people: [], doors: exitDoors(g, w, h, s), start: { x: first.x, y: h - 2 }, zone, site: s.id };
   if (s.keeper) {
     map.boss = { id: s.keeper, x: last.x, y: last.y };
+    if (s.missing) { const r = rooms[Math.max(1, Math.floor(rooms.length / 2))] || rooms[0]; const lostOne = person(seeded(`${world.seed}:${s.id}:v12`), 'lost', r.x, r.y + r.h - 1, { id: s.missing.id, name: s.missing.name, home: s.missing.from, tier: 'lost', facing: 'down', wander: false }); if (!(lostOne.x === last.x && lostOne.y === last.y)) map.people.push(lostOne); }
     if (s.keeper === 'boss3') chests.push({ id: `${s.id}-hoard`, x: last.x + 1 < w - 1 && g[last.y][last.x + 1] === floor ? last.x + 1 : last.x, y: last.y - 1 >= 1 && g[last.y - 1][last.x] === floor ? last.y - 1 : last.y + 1, loot: 'hoard' });
   }
   return map;
@@ -562,5 +835,5 @@ function reachable(map, from) {
   return seen;
 }
 
-globalThis.BobJourneyWorld = { SIZES, INN_W, TILES, SITE_TILES, SITE_WORDS, DUNGEON_BOSSES, CAVE_BOSSES, seeded, personParts, makeInn, makeWorld, innOnly, makeSite, reachable };
+globalThis.BobJourneyWorld = { SIZES, OLD_SIZES, sizeFactor, INN_W, TILES, SITE_TILES, SITE_WORDS, WILD_ON, HILL_WILD, DUNGEON_BOSSES, CAVE_BOSSES, seeded, personParts, makeInn, makeWorld, innOnly, makeSite, KIN_PLACES, kinLook, reachable };
 })();
