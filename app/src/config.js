@@ -14,6 +14,7 @@ import { cleanPresets } from './model-family.js';
 import { cleanSelfWork, applyCodeCopy } from './self-work.js';
 import fs from 'node:fs';
 import { writeJsonAtomic, readJsonFile } from './util.js';
+import { readSaved, oneWriter, setAside, checkFormats } from './saving.js'; // items 231, 233 and 234
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -118,6 +119,8 @@ export function loadConfig() {
   for (const d of [cfg.innDir, cfg.dataDir, cfg.ledgerDir, cfg.painterDir, cfg.archiveDir]) {
     fs.mkdirSync(d, { recursive: true });
   }
+  // Item 232: which format each saved file is in. A file a newer Bob saved in a format this one doesn't know is only read.
+  try { cfg.formatCheck = checkFormats(cfg, { version: VERSION?.label || '', log: (t) => (cfg.saveNotes ||= []).push(t) }); } catch {}
   // Back up and move: a restore picked in Settings waits until now, before anything below reads Bob's files.
   try { cfg.restored = applyWaitingRestore(cfg); if (cfg.restored) console.error(`Restored ${cfg.restored.placed} file(s) from a backup${cfg.restored.failed.length ? `, ${cfg.restored.failed.length} couldn't go in` : ''}.`); } catch (e) { console.error(`The waiting restore didn't go in: ${e.message}`); }
   // Choices made in Bob's window (models, painter, voice, autostart) live in inn\bob\settings.json,
@@ -133,7 +136,17 @@ export function loadConfig() {
   }
   cfg.settingsFile = path.join(cfg.dataDir, 'settings.json');
   const hand = { engine: cfg.engine, brainEngine: cfg.llamacpp?.brainEngine }; // what config.json itself says
-  try { mergeSettings(cfg, readJsonFile(cfg.settingsFile)); } catch {}
+  // Items 233 and 234: a settings.json that won't read is kept aside (settings.json.broken-<time>) and Bob starts from
+  // his defaults, instead of reading it as empty and writing over it at the next change. A saved value of the wrong
+  // kind (words where a switch belongs) goes back to its default, and the logbook says which (cfg.settingsFixed).
+  {
+    const notes = (cfg.saveNotes ||= []);
+    const saved = readSaved(cfg.settingsFile, {}, { check: (v) => v && typeof v === 'object' && !Array.isArray(v), log: (t) => notes.push(t) });
+    const { kept, fixed } = checkSettings(cfg, saved);
+    cfg.settingsFixed = fixed;
+    if (fixed.length) { try { writeJsonAtomic(cfg.settingsFile, kept, 2); } catch {} } // fixed once, not at every start
+    try { mergeSettings(cfg, kept); } catch (e) { notes.push(`settings.json couldn't be applied (${e.message}); using the defaults`); }
+  }
   // 1.5.196: Brain Engine is the only engine for Bob's brains (onlyBrainEngine, below). An older pick of plain llama.cpp
   // or Ollama in Settings is set aside here, after settings.json, and the program is picked again with that.
   cfg.engineMoved = onlyBrainEngine(cfg, { hand });
@@ -567,13 +580,39 @@ function tellWatcher(before, cfg, keys) { if (!before) return; try { settingsWat
 export function replaceSettings(cfg, patch) {
   const safe = clean(patch);
   const before = settingsWatcher ? snap(cfg, Object.keys(safe)) : null;
-  let saved = {};
-  try { saved = readJsonFile(cfg.settingsFile); } catch {}
-  for (const [k, v] of Object.entries(safe)) { saved[k] = v; cfg[k] = v; }
-  writeJsonAtomic(cfg.settingsFile, saved, 2);
+  const saved = oneWriter(cfg.settingsFile, () => {
+    const saved = savedSettings(cfg);
+    for (const [k, v] of Object.entries(safe)) { saved[k] = v; cfg[k] = v; }
+    writeJsonAtomic(cfg.settingsFile, saved, 2);
+    return saved;
+  });
   applyProjects(cfg);
   tellWatcher(before, cfg, Object.keys(safe));
   return saved;
+}
+// settings.json as saved. Unreadable: kept aside first (item 233), so a change never writes over settings it couldn't read.
+function savedSettings(cfg) {
+  try { return readJsonFile(cfg.settingsFile); } catch (e) {
+    if (e.code !== 'ENOENT' && fs.existsSync(cfg.settingsFile)) setAside(cfg.settingsFile, e.message, { log: (t) => console.error(`Bob: ${t}`) });
+    return {};
+  }
+}
+
+// Item 234: each saved setting whose default (config.json and Bob's own) is a switch, a number, words, a list or a
+// group must be the same kind; anything else goes back to its default. Settings with no default are left to clean().
+const kindOf = (v) => (v === null || v === undefined ? '' : Array.isArray(v) ? 'list' : typeof v === 'number' ? (Number.isFinite(v) ? 'number' : 'bad') : typeof v);
+export function checkSettings(defaults, saved, at = '') {
+  const kept = {}, fixed = [];
+  for (const [k, v] of Object.entries(saved || {})) {
+    const d = defaults?.[k], want = kindOf(d), got = kindOf(v);
+    if (!want || got === '' || want === got) {
+      if (want === 'object' && got === 'object') { const r = checkSettings(d, v, `${at}${k}.`); kept[k] = r.kept; fixed.push(...r.fixed); }
+      else kept[k] = v;
+      continue;
+    }
+    fixed.push(`${at}${k}`);
+  }
+  return { kept, fixed };
 }
 
 // Apply a change now and remember it.
@@ -589,10 +628,12 @@ export function saveRemote(cfg, remote) {
 export function saveSettings(cfg, patch) {
   const safe = clean(patch);
   const before = settingsWatcher ? snap(cfg, Object.keys(safe)) : null;
-  let saved = {};
-  try { saved = readJsonFile(cfg.settingsFile); } catch {}
-  deepMerge(saved, safe);
-  writeJsonAtomic(cfg.settingsFile, saved, 2);
+  const saved = oneWriter(cfg.settingsFile, () => { // item 231: another Bob on the same folder waits its turn
+    const saved = savedSettings(cfg);
+    deepMerge(saved, safe);
+    writeJsonAtomic(cfg.settingsFile, saved, 2);
+    return saved;
+  });
   deepMerge(cfg, safe);
   tellWatcher(before, cfg, Object.keys(safe));
   return saved;

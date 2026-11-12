@@ -56,7 +56,7 @@ export class Ledger {
     this.job = job; this.expect = expect; this.save = save;
     this.steps = []; this.outputs = []; this.actions = []; this.nudged = 0; this.reply = '';
     this.current = null; // 1.5.38: the tool running right now, so a restart knows which step was cut off
-    this.persist();
+    this.persist(true);
   }
   step(kind, info = {}) {
     const st = { kind, ...Object.fromEntries(Object.entries(info).map(([k, v]) => [k, typeof v === 'string' ? clip(v) : v])), state: 'running', at: Date.now() };
@@ -70,16 +70,19 @@ export class Ledger {
   output(o, tool = null) { this.outputs.push({ type: o.type, file: o.file || null, url: o.url || null, tool, at: Date.now() }); this.persist(); }
   // at: when the tool started.
   // extra: what verify.js found (why, files, info, declined), so the end-of-turn check can use it.
-  begin(name, args) { this.current = { name, args: clip(typeof args === 'string' ? args : JSON.stringify(args || {}), 300), at: Date.now() }; this.persist(); }
+  // Item 235: a step's whole input (up to 2,000 characters) and its result (up to 1,000) are kept, not just its name, so
+  // Carry on after a restart knows exactly what each finished step did. Item 230: a step that changes something outside
+  // Bob saves at once (a restart must know it started); the rest are saved with the next save, within a second.
+  begin(name, args) { this.current = { name, args: clip(typeof args === 'string' ? args : JSON.stringify(args || {}), STEP_IN), at: Date.now() }; this.persist(changesThings(name)); }
   action(name, args, ok, text, at = Date.now(), extra = {}) {
     this.current = null;
     const keep = Object.fromEntries(Object.entries(extra || {}).filter(([k, v]) => ['why', 'files', 'info', 'declined', 'partly'].includes(k) && v != null));
-    this.actions.push({ name, args: clip(typeof args === 'string' ? args : JSON.stringify(args || {}), 300), ok, text: clip(text, 300), at, ...keep });
-    this.persist();
+    this.actions.push({ name, args: clip(typeof args === 'string' ? args : JSON.stringify(args || {}), STEP_IN), ok, text: clip(text, STEP_OUT), at, ...keep });
+    this.persist(changesThings(name));
   }
   // The part that's saved with the job (queue file): small, and enough for a restart to see what was done.
   view() { return { expect: this.expect, steps: this.steps.slice(-30), outputs: this.outputs.slice(-24), actions: this.actions.slice(-40), current: this.current }; }
-  persist() { if (this.job) { this.job.handoff = this.view(); try { this.save(); } catch {} } }
+  persist(now = false) { if (this.job) { this.job.handoff = this.view(); try { this.save(now); } catch {} } }
 }
 
 // A finished job keeps what it asked for, what it made and what it did (short), not every load step: the queue file
@@ -89,6 +92,8 @@ export function slimHandoff(h) {
   return { expect: h.expect || null, outputs: (h.outputs || []).slice(-12).map(({ type, file, tool }) => ({ type, file, tool })), actions: (h.actions || []).slice(-12).map(({ name, ok, at }) => ({ name, ok, at })) };
 }
 
+export const STEP_IN = 2000, STEP_OUT = 1000; // item 235
+const changesThings = (name) => SIDE_EFFECT.test(String(name || '')) || WAIT_IF_CUT.test(String(name || ''));
 // Tools that change something outside Bob's own chat (a restart must not redo these blindly).
 export const SIDE_EFFECT = /^(app_|open_app|convert_file|strip_metadata|defender_scan|office_make|office_edit|edit_file|write_file|file_hands|sort_files|undo_files|move_|copy_|rename_|delete_|recycle|zip|unzip|run_command|run_recipe|save_|schedule_|make_|mcp_use)/; // file_hands/undo_files: 1.5.38
 // A job that was cut off by a restart can be picked up again on its own when nothing it did changed the PC.
@@ -132,7 +137,7 @@ export function carryOnPlan(job) {
   const lines = ['[Bob note, not from the user: Bob was closed (an update, a restart or a crash) while working on this message, and has opened again. Carry on from where you stopped. Don\'t greet the user again or start over.'];
   if (done.length) {
     lines.push('Already finished. Do NOT do these again:');
-    done.forEach((a, i) => lines.push(`${i + 1}. ${a.name} ${a.args || '{}'} -> ${String(a.text || 'done').slice(0, 160)}`));
+    done.forEach((a, i) => lines.push(`${i + 1}. ${a.name} ${String(a.args || '{}').slice(0, 300)} -> ${String(a.text || 'done').slice(0, 160)}`));
   }
   if (outputs.length) lines.push(`Files already made: ${outputs.join(', ')}`);
   if (cut) lines.push(`Cut off before it finished: ${cut.name} ${cut.args || '{}'}. Do that step again with the same settings (it may have half happened, so check first if it changes files), then finish the rest.`);

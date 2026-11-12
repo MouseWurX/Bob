@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
+import { saveFile } from './saving.js';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // One line of text, at most n characters.
@@ -29,11 +30,10 @@ export function freeName(p, taken = new Set()) {
 }
 // Write a JSON file so a crash or power cut mid-write never leaves a half file: the text goes to
 // a sibling .part file first, then takes the real name in one step (rename is atomic on every platform).
+// Since item 229 (saving.js): a temp name of its own per save, flushed to the disk before the rename, and a retry when
+// Windows holds the old file for a moment.
 export function writeJsonAtomic(file, value, spaces = 1) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const part = `${file}.part`;
-  fs.writeFileSync(part, JSON.stringify(value, null, spaces));
-  fs.renameSync(part, file);
+  saveFile(file, JSON.stringify(value, null, spaces));
 }
 
 // The command line of a running process ('' when it is gone or can't be read), so a stale pid file never

@@ -95,7 +95,7 @@ check('the new one opens the same chats', Boolean(lock.unlock('biscuit').token) 
 check("the lock can't go off while chats are locked", /Turn off Lock my chats/.test(lock.change({ enabled: false }).error || ''));
 
 const off = lock.change({ encrypt: false });
-check('encryption off puts every file back to plain', !off.error && off.changed === 4 && !isSealed(fs.readFileSync(chatFile(cfg, 'chat-1'))) && fs.readFileSync(cfg.memoryFile, 'utf8').includes('has a cat'), JSON.stringify(off));
+check('encryption off puts every file back to plain (the memory change log too)', !off.error && off.changed === 5 && fs.existsSync(path.join(path.dirname(cfg.memoryFile), 'memory-changes.jsonl')) && !isSealed(fs.readFileSync(path.join(path.dirname(cfg.memoryFile), 'memory-changes.jsonl'))) && !isSealed(fs.readFileSync(chatFile(cfg, 'chat-1'))) && fs.readFileSync(cfg.memoryFile, 'utf8').includes('has a cat'), JSON.stringify(off));
 check('then the lock can go off', !lock.change({ enabled: false }).error && !lockOn(cfg) && lock.allowed({ headers: {} }));
 
 // Key wrapping on its own.

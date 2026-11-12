@@ -30,7 +30,7 @@ export const MIN_PASSCODE = 8;
 export const PARTS = [
   { id: 'chats', label: 'Chats', what: 'Every chat, its summary and which ones are pinned.', paths: ['bob/sessions/', 'bob/chat-summaries.json', 'bob/topics.json', 'bob/housekeeping.json', 'bob/my-tests.jsonl'] },
   { id: 'settings', label: 'Settings', what: 'Everything set in Settings, check-ins, reminders, scheduled jobs, apps you connected, his voice sample and what he calls you.', paths: ['bob/settings.json', 'saved-prompts.json', 'bob/chat-presets.json', 'bob/chat-start/', 'bob/schedules.json', 'bob/reminders.json', 'bob/checkins.json', 'bob/mcp-servers.json', 'bob/hands-recipes.json', 'bob/clan.json', 'bob/about-me.md', 'bob/backstory.md', 'bob/equip-plan.json', 'voices/'] },
-  { id: 'memory', label: 'Memory', what: 'What Bob remembers about you, his how-tos, the notice board and his logbook.', paths: ['bob-memory.md', 'bob/memory-vectors.json', 'bob/howtos.json', 'notice-board.md', 'logbook.md', 'archive/'] },
+  { id: 'memory', label: 'Memory', what: 'What Bob remembers about you, his how-tos, the notice board and his logbook.', paths: ['bob-memory.md', 'memory-changes.jsonl', 'bob/memory-vectors.json', 'bob/howtos.json', 'notice-board.md', 'logbook.md', 'archive/'] },
   { id: 'notes', label: 'Notes and records', what: 'Quick notes and the records (ledgers) he keeps for you.', paths: ['quick-notes.md', 'ledger/'] },
   { id: 'tools', label: 'Tools Bob made', what: 'The little tools he wrote himself. They come back switched off until you OK them again.', paths: ['tools/'] },
   { id: 'made', label: 'List of things Bob made', what: 'The Made by Bob list (names, dates, song words). The pictures, clips and songs themselves stay where they are: copy that folder yourself.', paths: ['bob/made.json'] }
@@ -46,6 +46,7 @@ export const NOT_BACKED_UP = [
   'bob/selftools.json', 'bob/quarantine.json', 'bob/lab/', 'bob/hands-runs.json', 'bob/hands-journal.json', 'bob/downloads.json',
   'bob/queue.json', 'bob/electron/', 'bob/doc-index.json', 'bob/tool-group-vectors.json', 'bob/receipts/', 'bob/claude-door.json', 'bob/tool-packs.json', 'tool-packs/', 'bob/sd-server-args.txt', 'bob/backup-state.json', 'bob/restore-result.json',
   'bob/seeded-brains.json', 'bob/keys.json', 'bob/bob-net-link-keys.json', // brains seeded on a lent card (worked out again); locked secrets and Bob-Net link keys are locked to this computer (keys travel in the locked part; Bobs pair again)
+  'bob/saved-formats.json', 'bob/turn-changes/', // items 232 and 238: worked out again; a turn's Undo is about this computer's files
   'bob/running.json', 'bob/crash-reports/', 'bob/before-safe-start.json', 'bob/settings-undo.json', 'bob/weekly.json', 'bob/chat-places/', // items 62 to 72: worked out again on this computer, or about this computer only
   'bob/spending.json', 'profiles/', // 🧾 the spending sheet and 👥 profiles are locked with keys that belong to this computer (or a person's passcode kept in config.json): save the sheet as a CSV to move it
   'painter/', 'references/', 'workshop/', 'own-code/', 'documents/', 'tools/_scratch/', 'restore-waiting/', 'restore-waiting.new/'

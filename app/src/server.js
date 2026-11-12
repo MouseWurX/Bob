@@ -120,6 +120,8 @@ import { watchSettings } from './config.js';
 import { everydayView, everydaySettings, Focus } from './everyday.js'; // 🗓 Everyday helpers (all off by default)
 import { everydayRoute, trayDot } from './everyday-routes.js';
 import { Profiles } from './profiles.js'; // 👥 Profiles on a shared replicant matrix
+import { sweepTemp, startCheck } from './saving.js'; // items 229-240: saving safely, starting clean
+import { changedTurns, undoTurn, undoLine, pruneTurns } from './turn-changes.js'; // item 238: Undo a whole turn
 
 const cfg = loadConfig();
 // Catch crashes and Safe start (crash-catch.js): the "Bob is running" marker; a report of an unclean last end (switch on).
@@ -176,6 +178,21 @@ function broadcast(ev) {
 
 const brain = new Brain(cfg, broadcast);
 pruneReceipts(cfg); // Settings, Jobs: a receipt's Undo lasts a week
+pruneTurns(cfg); // item 238: a turn's Undo lasts a week
+process.on('exit', () => { try { brain.flushQueue(); } catch {} }); // item 230: steps not saved yet go in now
+// Items 233, 234, 239 and 240: what start-up set aside or put back, old temp files cleared, and the start-up check: one
+// line in the logbook; a note in the chat only when something is wrong.
+for (const t of cfg.saveNotes || []) brain.log('saving', t);
+if (cfg.settingsFixed?.length) brain.log('settings', `went back to the default for ${cfg.settingsFixed.join(', ')} (the saved value was the wrong kind)`);
+{
+  const swept = sweepTemp([cfg.innDir, cfg.dataDir, cfg.painterDir]);
+  if (swept.files) brain.log('saving', `cleared ${swept.files} temp file${swept.files === 1 ? '' : 's'} left by a save that was cut off`);
+  let check = null; try { check = startCheck(cfg); } catch {}
+  if (check) {
+    brain.log('saving', check.line);
+    if (!check.ok) { const t = setTimeout(() => { for (const p of check.problems) broadcast({ type: 'announce', text: `⚠️ ${p}` }); }, 20e3); t.unref?.(); }
+  }
+}
 if (brain.engine) brain.engine.onCrash = (x) => engineCrashed(cfg, { ...x, version: VERSION.label, logText: logTail() }); // Catch crashes
 // A shortcut from anywhere (electron/main.cjs): Bob.exe registers the key while the switch is on. Nothing in a browser.
 const applyShortcut = (g) => { try { globalThis.bobGlobalAsk?.(g, cfg.port); } catch {} };
@@ -585,6 +602,14 @@ const server = http.createServer(async (req, res) => {
       const r = redo(brain, String(b.sessionId || 'main'), { ...(b.id ? { id: String(b.id) } : {}), ...(b.last === true ? { last: true } : {}), ...(typeof b.text === 'string' ? { text: b.text } : {}) });
       return send(res, r.error ? 400 : 200, r);
     }
+    // Item 238: Undo a whole turn from the … menu on your message. Which of a chat's messages have changes to undo.
+    if (req.method === 'GET' && p === '/api/turn-changes') return send(res, 200, { asks: changedTurns(cfg, String(url.searchParams.get('session') || 'main')) });
+    if (req.method === 'POST' && p === '/api/turn-undo') {
+      const b = await body(req).catch(() => ({}));
+      const r = undoTurn(cfg, String(b.sessionId || 'main'), String(b.askId || ''));
+      if (!r.error) brain.log('saving', `undid a turn: ${r.restored.length} put back${r.skipped.length ? `, ${r.skipped.length} left as they were` : ''}`);
+      return send(res, r.error ? 400 : 200, r.error ? r : { ...r, text: undoLine(r) });
+    }
     // The "..." menu on a chat message (msg-menu.js): Edit on Bob's message, Delete on any. { sessionId, id, text? }.
     if (req.method === 'POST' && (p === '/api/chat/msg-edit' || p === '/api/chat/msg-delete')) {
       const b = await body(req).catch(() => ({}));
@@ -701,7 +726,7 @@ const server = http.createServer(async (req, res) => {
       try {
         if (req.method === 'GET') { let text = ''; try { text = readText(cfg.memoryFile); } catch (e) { if (e.code === 'VAULT_LOCKED') throw e; } return send(res, 200, { text, locked: vaultOn(cfg) }); }
         const b = await body(req);
-        writeText(cfg, cfg.memoryFile, String(b.text ?? '').slice(0, 500000));
+        writeText(cfg, cfg.memoryFile, String(b.text ?? '').slice(0, 500000), { who: 'you, in Settings' }); // item 237: logged
         brain.log('settings', "Bob's memory edited in Settings (your click)");
         return send(res, 200, { ok: true });
       } catch (e) { return send(res, e.code === 'VAULT_LOCKED' ? 401 : 500, { error: e.message }); }

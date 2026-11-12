@@ -5,13 +5,16 @@ import { readText, writeJson } from './vault.js'; // 🔒 Lock my chats and memo
 import { ownModels } from './own-models.js';
 import fs from 'node:fs';
 import { writeJsonAtomic } from './util.js';
+import { readSaved } from './saving.js'; // item 233
+import { inTurn, afterChanges } from './turn-changes.js'; // items 237-238: what a turn changed, for Undo
+import { jobHome, homeOpen, HOME_WAIT } from './job-home.js'; // item 236
 import path from 'node:path';
 import crypto from 'node:crypto';
 import os from 'node:os';
 import { Ollama } from './ollama.js';
 import { memGB } from './server-ram.js';
 import { LlamaCpp } from './llamacpp.js';
-import { buildTools, today, loadReminders, saveReminders } from './tools.js';
+import { buildTools, today, loadReminders, changeReminders } from './tools.js';
 import { systemPrompt, HATS } from './persona.js';
 import { lookPrompt } from './look.js';
 import { applyHouseStyle, usedLine, houseStylePrompt } from '../public/house-style.js';
@@ -86,6 +89,7 @@ import { pinsPrompt } from './pins.js'; // Pin messages (off unless switched on)
 import { isQuiet } from './quiet-hours.js'; // Quiet hours (off unless switched on)
 
 const MAX_STEPS = 8;
+const QUEUE_SAVE_MS = 1000; // item 230
 // Nov 11 (item 5): bigger jobs get more steps. Low effort (the usual chat) keeps 8; Medium, High and Extreme get more
 // room before the last step (no tools, answer with what he has). The "where we are" note keeps a long job on track.
 export const STEPS_BY_EFFORT = { low: 8, medium: 12, high: 16, extreme: 24 };
@@ -721,10 +725,9 @@ export class Brain {
   }
 
   checkReminders() {
-    const list = loadReminders(this.cfg);
-    const due = list.filter((r) => r.at <= Date.now());
-    if (!due.length) return;
-    saveReminders(this.cfg, list.filter((r) => r.at > Date.now()));
+    if (!loadReminders(this.cfg, { log: (t) => this.log('saving', t) }).some((r) => r.at <= Date.now())) return;
+    // item 231: read, take the due ones out and save as one step, so a reminder added by another Bob isn't lost
+    const due = changeReminders(this.cfg, (list) => { const d = list.filter((r) => r.at <= Date.now()); const keep = list.filter((r) => r.at > Date.now()); list.splice(0, list.length, ...keep); return d; });
     for (const r of due) {
       this.broadcast({ type: 'reminder', text: r.text, local: r.local, ...(r.urgent ? { urgent: true } : {}), quiet: isQuiet(this.cfg) }); // Quiet hours: only urgent ones pop up and speak
       this.log('reminder', r.text);
@@ -1345,7 +1348,10 @@ export class Brain {
       this.watch.step(ctx.job, sum);
     }
     const before = receiptBefore(this, name, args, ctx); // Jobs (job-helps.js): what a file held, for the receipt's Undo
-    const res = cachedLook(this, name, args, ctx) || await this.runToolNow(name, args, ctx, tool); // Jobs: Reuse look-ups
+    // Items 237-238: every save the tool makes is tied to this turn (Undo takes the whole turn back; memory changes say
+    // which turn wrote them). Not for another Bob's, Telegram's or Discord's jobs.
+    const scope = ctx?.askId && !ctx.job?.guest ? { cfg: this.cfg, sessionId: ctx.sessionId, askId: ctx.askId, jobId: ctx.job?.id, tool: name } : null;
+    const res = cachedLook(this, name, args, ctx) || await inTurn(scope, async () => { try { return await this.runToolNow(name, args, ctx, tool); } finally { if (scope && afterChanges(scope)) { ctx.changed = true; ctx.emit?.({ type: 'turn-changed', askId: ctx.askId }); } } }); // Jobs: Reuse look-ups
     keepLook(this, name, args, res);
     receiptAfter(this, name, args, res, ctx, before);
     noteNo(this, ctx, name, args, res?.text); // Jobs: Remember a "no" for the whole chat
@@ -1747,8 +1753,9 @@ export class Brain {
   get queueFile() { return path.join(this.cfg.dataDir, 'queue.json'); }
 
   loadQueue() {
-    let q = [];
-    try { q = JSON.parse(fs.readFileSync(this.queueFile, 'utf8')); } catch {}
+    // Item 233: a queue file that won't read is kept aside (queue.json.broken-<time>), never read as empty and written over.
+    let q = readSaved(this.queueFile, [], { check: Array.isArray, log: (t) => this.log?.('saving', t) });
+    q = q.filter((j) => j && typeof j === 'object');
     // A job that was running when Bob closed may have half-finished: don't redo it blindly. Its ledger says what it did.
     // 1.5.38: with "Pick up where Bob left off after a restart" on (off by default), it carries on from the last finished
     // step: finished steps aren't done again, and the step that was cut off is done again from the start. A cut-off
@@ -1770,7 +1777,18 @@ export class Brain {
     return q.filter((j) => j && j.id && j.text);
   }
 
+  // Item 230: a step of the running job (a load, a look-up, an output) saves the list at most once a second; a change of
+  // state (queued, started, finished), and a step that changes something outside Bob, saves it at once. Bob closing
+  // saves what's waiting (server.js flushQueue).
+  saveQueueSoon(ms = QUEUE_SAVE_MS) {
+    if (this.queueTimer) return;
+    this.queueTimer = setTimeout(() => { this.queueTimer = null; this.saveQueue(); }, ms);
+    this.queueTimer.unref?.();
+  }
+  flushQueue() { if (this.queueTimer) this.saveQueue(); }
+
   saveQueue() {
+    if (this.queueTimer) { clearTimeout(this.queueTimer); this.queueTimer = null; }
     // The list's order is the order jobs run in (the user can drag them). Finished jobs stay for a week
     // (at most 200) so the Tasks panel can show what's been completed.
     const keep = Date.now() - 7 * 864e5;
@@ -1783,7 +1801,7 @@ export class Brain {
   }
 
   queueView() {
-    return this.queue.map(({ id, sessionId, text, state, at, error, refs, kind, startedAt, doneAt, steps, effort, after, pickUp, away, guest, rent, rentOk, sentTo }) => {
+    return this.queue.map(({ id, sessionId, text, state, at, error, refs, kind, startedAt, doneAt, steps, effort, after, pickUp, away, guest, rent, rentOk, sentTo, home }) => {
       const out = (steps || []).find((x) => x.state === 'in progress');
       // Plain status for the Tasks panel: Queued, In progress, Delegated (to which copy), Completed...
       const awayNow = state === 'working' && away?.name; // 1.5.72: with another of your Bobs
@@ -1791,7 +1809,8 @@ export class Brain {
       const status = state === 'waiting' ? 'queued' : state === 'working' ? (out || awayNow ? 'delegated' : rent && rentOk ? 'rented' : 'in progress') : state === 'done' ? 'completed' : state; // 1.5.127 rented
       return { id, sessionId, kind, text: (guest ? `From ${guest.from}: ` : '') + text.slice(0, 140), state, status, at, startedAt, doneAt, error, pics: (refs || []).length,
         delegatedTo: awayNow ? { hat: 'away', label: 'another of your Bobs', copy: away.name, sent: true } : out ? { hat: out.hat, label: out.label, copy: out.copy } : sentTo && state !== 'waiting' && state !== 'working' ? { hat: 'away', label: 'another of your Bobs', copy: sentTo, sent: true } : null, gaming: state === 'waiting' && !away && waitsForGaming(this.cfg, { kind, effort }) ? { tag: GAMING_TAG, hint: GAMING_HINT } : undefined, steps: (steps || []).slice(-8), effort: effort || 'low',
-        waitsFor: state === 'waiting' && after ? after.name : undefined, pickUp: state === 'waiting' && pickUp ? true : undefined };
+        waitsFor: state === 'waiting' && after ? after.name : undefined, pickUp: state === 'waiting' && pickUp ? true : undefined,
+        home: home && !guest ? { title: home.title || '', folder: home.folder || '' } : undefined }; // item 236
     });
   }
 
@@ -1858,7 +1877,7 @@ export class Brain {
     if (quickAnswer) return quickAnswer;
     this.housekeeper?.pause(); // anything the housekeeper was asking the brain gives way at once
     this.endMore(null, 'new job'); // a new message answers "Make another picture?"; the job loads what it needs
-    const job = { id: crypto.randomUUID(), sessionId, text, refs: [].concat(attach || []).slice(0, 4), state: 'waiting', at: Date.now(), kind: extra.kind || Brain.guessKind(text, [].concat(attach || []).length > 0), effort: cleanEffort(effort), ...(extra.guest ? { guest: extra.guest } : {}), ...(extra.rent ? { rent: true } : {}), ...(extra.redo === 'again' || extra.redo === 'edit' ? { redo: extra.redo } : {}) }; // 1.5.127 rent: the 🏗 switch on the chat page
+    const job = { id: crypto.randomUUID(), sessionId, text, refs: [].concat(attach || []).slice(0, 4), state: 'waiting', at: Date.now(), kind: extra.kind || Brain.guessKind(text, [].concat(attach || []).length > 0), effort: cleanEffort(effort), ...(extra.guest ? { guest: extra.guest } : {}), ...(extra.rent ? { rent: true } : {}), ...(extra.redo === 'again' || extra.redo === 'edit' ? { redo: extra.redo } : {}), home: jobHome(this.cfg, sessionId, { project: this.memProject?.get?.(sessionId) || '' }) }; // 1.5.127 rent: the 🏗 switch on the chat page; item 236 home
     this.queue.push(job);
     this.saveQueue();
     if (isGuestId(sessionId)) { const gw = (this.guestWords ||= new Map()); gw.set(job.id, String(text)); while (gw.size > 20) gw.delete(gw.keys().next().value); } // kept in memory only, never written
@@ -2123,6 +2142,7 @@ export class Brain {
         }
       }
       if (job.away) continue; // with another Bob (or being sent)
+      if (!homeOpen(this.cfg, job)) { if (!job.homeWait) { job.homeWait = true; this.log('queue', HOME_WAIT); } continue; } // item 236: another person's job waits for them
       if (waitsForGaming(this.cfg, job)) { this.gamingProbe?.(); continue; } // 1.5.23: waits in Tasks until the session isn't Gaming
       if (job.after && !this.downloadReady(job)) continue; // 1.5.38: waits for the download it needs
       let lane = laneOf(this.cfg, job);
@@ -2391,10 +2411,10 @@ export class Brain {
       if (['image', 'video', 'audio'].includes(ev?.type) && ev.file && ctx?.wantType) this.autoSaveAs(ev, ctx); // 1.5.95 "a song as an mp3"
       return sent;
     };
-    const ctx = { emit: emitMade, signal, brain: this, cfg: this.cfg, allowAll: new Set(), pics, picNote, msgs, turnText: text, job, sessionId, wantsEdit, editFrom: wantsEdit ? recent : null, wantType: namedType(text), saves: [], savedAs: [], trace: [] };
+    const ctx = { emit: emitMade, signal, brain: this, cfg: this.cfg, allowAll: new Set(), pics, picNote, msgs, turnText: text, job, sessionId, wantsEdit, editFrom: wantsEdit ? recent : null, wantType: namedType(text), saves: [], savedAs: [], trace: [], askId: (again ? lastUser?.id : user.id) || null }; // askId: item 238
     if (!job?.guest) (this.traces ||= new Map()).set(sessionId, ctx.trace); // item 10: How I got here
     // The ledger (handoff.js): what was asked for, every load, tool and output this turn, kept by the system.
-    ctx.ledger = new Ledger({ job, expect: expectFrom(text, { pics }), save: () => this.saveQueue() });
+    ctx.ledger = new Ledger({ job, expect: expectFrom(text, { pics }), save: (now) => (now ? this.saveQueue() : this.saveQueueSoon()) }); // item 230
     this.gate.track(signal, ctx.ledger);
     ctx.loaded = this.startGroups(sessionId, text); // toolbox groups this turn (use_tools adds more)
     // Assistant presets (presets.js, off unless switched on): this chat's preset, if it has one. Its tool groups are a

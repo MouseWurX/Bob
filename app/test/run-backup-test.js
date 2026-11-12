@@ -216,7 +216,7 @@ check('a key with a line break is refused', /isn't a key/.test(badKey));
 // ---------- wiring ----------
 const server = read('src/server.js'), cfgjs = read('src/config.js'), main = read('electron/main.cjs');
 check('server: backups only on this replicant matrix itself', /p\.startsWith\('\/api\/backup'\)\) \{\s*if \(!isLocal\) return send\(res, 403/.test(server));
-check('config: the waiting restore goes in before settings are read', cfgjs.indexOf('applyWaitingRestore(cfg)') > 0 && cfgjs.indexOf('applyWaitingRestore(cfg)') < cfgjs.indexOf('mergeSettings(cfg, readJsonFile(cfg.settingsFile))'));
+check('config: the waiting restore goes in before settings are read', cfgjs.indexOf('applyWaitingRestore(cfg)') > 0 && cfgjs.indexOf('applyWaitingRestore(cfg)') < cfgjs.indexOf('readSaved(cfg.settingsFile'));
 check('config: the backup setting is cleaned', /'backup', /.test(cfgjs) && /out\.backup = cleanBackup/.test(cfgjs));
 check('Bob\'s window can restart for a restore', /restart: \(\) => \{ app\.relaunch\(\)/.test(main));
 check('Settings: Back up and move is on the This replicant matrix card', allTopics().includes('ev-backup') && cardOf('ev-backup')?.id === 'pc');

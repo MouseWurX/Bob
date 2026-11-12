@@ -15,6 +15,8 @@
 //   - the notes that fit a message (up to 3) are put in front of him, so he brings them up without being asked.
 import fs from 'node:fs';
 import path from 'node:path';
+import { saveFile, oneWriter } from './saving.js'; // items 229 and 231
+import { beforeChange, afterChange } from './turn-changes.js';
 import { overlap, words } from './topics.js';
 
 export const notesOn = (cfg) => cfg?.quickNotes === true;
@@ -66,7 +68,9 @@ export function sameNote(cfg, text) {
 
 // Adds a note; returns { n, replaced } (replaced = the old note it took the place of, or null).
 // tag: added when the note has no #tag of its own. noticed: Bob noted it on his own. merge: replace a near-copy.
-export function addNote(cfg, text, { now = new Date(), tag = '', noticed = false, merge = false } = {}) {
+// Item 231: one writer at a time (another Bob on the same folder waits its turn).
+export const addNote = (cfg, text, opts) => oneWriter(notesFile(cfg), () => addNoteNow(cfg, text, opts));
+function addNoteNow(cfg, text, { now = new Date(), tag = '', noticed = false, merge = false } = {}) {
   let clean = String(text || '').replace(/\s+/g, ' ').trim().slice(0, MAX_NOTE);
   if (!clean) throw new Error('There was nothing to note down.');
   if (tag && !/#[\p{L}\p{N}]/u.test(clean)) clean += ` ${tag}`;
@@ -80,11 +84,13 @@ export function addNote(cfg, text, { now = new Date(), tag = '', noticed = false
     fs.appendFileSync(arch, `- replaced ${stamp(cfg, now)}: ${old.text}\n`);
     const raw = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').split('\n');
     let seen = 0;
-    fs.writeFileSync(file, raw.map((l) => (/^- \S/.test(l) && ++seen === old.n ? line : l)).join('\n'));
+    saveFile(file, raw.map((l) => (/^- \S/.test(l) && ++seen === old.n ? line : l)).join('\n'));
     return { n: old.n, replaced: old };
   }
   const before = fs.readFileSync(file, 'utf8');
+  beforeChange(file); // item 238: Undo of the turn takes the note back out
   fs.appendFileSync(file, `${before.endsWith('\n') ? '' : '\n'}${line}\n`);
+  afterChange(file);
   return { n: loadNotes(cfg).length, replaced: null };
 }
 
@@ -117,7 +123,8 @@ export function findNotes(cfg, q) {
 
 // Takes note n out of the file, after copying it to the removed-notes file. `check` must be part of its words, so a
 // list that changed since Bob last read it can't take the wrong note.
-export function removeNote(cfg, n, check = '', { now = new Date() } = {}) {
+export const removeNote = (cfg, n, check, opts) => oneWriter(notesFile(cfg), () => removeNoteNow(cfg, n, check, opts));
+function removeNoteNow(cfg, n, check = '', { now = new Date() } = {}) {
   const all = loadNotes(cfg);
   const hit = all.find((x) => x.n === Number(n));
   if (!hit) throw new Error(`There's no note number ${n}. List the notes first.`);
@@ -128,7 +135,7 @@ export function removeNote(cfg, n, check = '', { now = new Date() } = {}) {
   const raw = fs.readFileSync(notesFile(cfg), 'utf8').replace(/\r\n/g, '\n').split('\n');
   let seen = 0;
   const kept = raw.filter((l) => !(/^- \S/.test(l) && ++seen === hit.n));
-  fs.writeFileSync(notesFile(cfg), kept.join('\n'));
+  saveFile(notesFile(cfg), kept.join('\n'));
   return hit;
 }
 

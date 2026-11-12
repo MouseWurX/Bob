@@ -4,6 +4,7 @@ import { appendText, readText, writeText } from './vault.js'; // 🔒 Lock my ch
 import { clashes, clashNote } from './memory-clash.js';
 import fs from 'node:fs';
 import path from 'node:path';
+import { saveFile, saveJson, oneWriter, readSaved } from './saving.js'; // items 229, 231, 233
 import { isInside, insideAny, appDir, findOutput } from './config.js';
 import { HATS } from './persona.js';
 import { cloudHelpers, askCloud } from './cloud.js';
@@ -198,12 +199,16 @@ export function zonedToEpoch(local, timeZone) {
   return t;
 }
 
-export function loadReminders(cfg) {
-  try { return JSON.parse(fs.readFileSync(path.join(cfg.dataDir, 'reminders.json'), 'utf8')); } catch { return []; }
+// A reminders file that won't read is set aside (not read as empty and written over); a list is the only shape kept.
+export const remindersFile = (cfg) => path.join(cfg.dataDir, 'reminders.json');
+export function loadReminders(cfg, { log } = {}) {
+  return readSaved(remindersFile(cfg), [], { check: Array.isArray, log: log || ((t) => console.error(`Bob: ${t}`)) });
 }
 export function saveReminders(cfg, list) {
-  fs.writeFileSync(path.join(cfg.dataDir, 'reminders.json'), JSON.stringify(list, null, 2));
+  saveJson(remindersFile(cfg), list, 2);
 }
+// Read, change and save the list as one step (item 231): another Bob on the same folder waits its turn.
+export const changeReminders = (cfg, fn) => oneWriter(remindersFile(cfg), () => { const list = loadReminders(cfg); const r = fn(list); saveReminders(cfg, list); return r; });
 
 export function cloudProviders(cfg) {
   return cloudHelpers(cfg);
@@ -221,16 +226,18 @@ export function buildTools(cfg) {
       const file = cfg.noticeBoard;
       if (action !== 'write') return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '(The notice board is empty. No file yet.)';
       if (!content) throw new Error('No board content given.');
+      return oneWriter(file, () => { // item 231: one writer at a time
       if (fs.existsSync(file)) {
         const old = fs.readFileSync(file, 'utf8');
         const m = old.match(/Notice board,?\s*(\d{4}-\d{2}-\d{2})/);
         if (m && m[1] !== today(cfg)) {
           const arch = path.join(cfg.archiveDir, `${m[1]}.md`);
-          if (!fs.existsSync(arch)) fs.writeFileSync(arch, old);
+          if (!fs.existsSync(arch)) saveFile(arch, old);
         }
       }
-      fs.writeFileSync(file, content);
+      saveFile(file, content);
       return 'Notice board saved.';
+      });
     },
     summary: ({ action }) => `notice board: ${action}`
   };
@@ -279,22 +286,20 @@ export function buildTools(cfg) {
       urgent: { type: 'boolean', description: 'add: true only if the user says urgent (shows in quiet hours).' }
     }, ['action']),
     async run({ action, time, text, id, urgent }) {
-      const list = loadReminders(cfg);
       if (action === 'add') {
         if (!text) throw new Error('What should I remind about?');
         const at = zonedToEpoch(time, cfg.timeZone);
         if (at < Date.now() - 60000) throw new Error('That time has already passed.');
         const r = { id: Math.random().toString(36).slice(2, 8), at, local: time, text: String(text).slice(0, 300), ...(urgent === true || urgent === 'true' ? { urgent: true } : {}) };
-        list.push(r);
-        saveReminders(cfg, list);
+        changeReminders(cfg, (list) => { list.push(r); });
         return `Reminder ${r.id} set for ${time}${r.urgent ? ' (urgent)' : ''}: ${r.text}`;
       }
       if (action === 'cancel') {
-        const left = list.filter((r) => r.id !== id);
-        if (left.length === list.length) throw new Error('No reminder with that id.');
-        saveReminders(cfg, left);
+        const gone = changeReminders(cfg, (list) => { const at = list.findIndex((r) => r.id === id); if (at < 0) return false; list.splice(at, 1); return true; });
+        if (!gone) throw new Error('No reminder with that id.');
         return 'Cancelled.';
       }
+      const list = loadReminders(cfg);
       return list.length ? list.map((r) => `${r.id}: ${r.local} - ${r.text}`).join('\n') : 'No reminders set.';
     },
     summary: ({ action, time }) => `reminder: ${action}${time ? ' ' + time : ''}`
@@ -423,8 +428,7 @@ export function buildTools(cfg) {
     async run({ path: p, content }) {
       const file = resolveUserPath(p);
       backup(file);
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, content ?? '');
+      saveFile(file, content ?? ''); // whole or not at all (item 229)
       return `Saved ${file}.`;
     },
     summary: ({ path: p }) => `write ${p}`
@@ -438,7 +442,7 @@ export function buildTools(cfg) {
     async run({ name, csv }) {
       if (!csv || !csv.trim()) throw new Error('The CSV is empty.');
       const file = uniquePath(path.join(cfg.ledgerDir, `${safeName(name)}-${today(cfg)}.csv`));
-      fs.writeFileSync(file, '\ufeff' + csv.trim() + '\r\n');
+      saveFile(file, '\ufeff' + csv.trim() + '\r\n');
       const rows = csv.trim().split(/\r?\n/).length;
       return `Saved ${file} (${rows} lines including the header). Double-click it to open in Excel.`;
     },
@@ -746,7 +750,7 @@ export function buildTools(cfg) {
       const edits = editList({ find, replace, more });
       const out = applyEdits(fs.readFileSync(file, 'utf8'), edits);
       backup(file);
-      fs.writeFileSync(file, out);
+      saveFile(file, out);
       return `Edited ${file}${edits.length > 1 ? ` (${edits.length} changes)` : ''}. (Backup kept in the inn.)`;
     },
     summary: ({ path: p }) => `edit ${p}`

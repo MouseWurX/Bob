@@ -492,7 +492,13 @@ async function openChat(id, msgId) {
   if (el) { el.scrollIntoView({ block: 'center' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2500); }
   else if (msgId) note('That message is in the older part of this chat, which Bob keeps summed up. The Topics page shows it in full.');
 }
+// Item 238: your messages whose turn changed files, notes or memory (the … menu offers Undo changes on them).
+const turnUndo = new Set();
+async function loadTurnUndo() {
+  try { const r = await (await fetch('/api/turn-changes?session=' + encodeURIComponent(sessionId))).json(); turnUndo.clear(); for (const id of r.asks || []) turnUndo.add(id); } catch {}
+}
 async function loadHistory(n = 20) {
+  loadTurnUndo();
   try {
     const h = await (await fetch('/api/history?session=' + encodeURIComponent(sessionId))).json();
     for (const m of h.slice(-n)) {
@@ -900,6 +906,7 @@ function onEvent(ev) {
     }
     case 'edited': editedMsg(ev); return;
     case 'msg-edited': editedMsg(ev); return; // you changed Bob's words with the ... menu (msg-menu.js), here or in another window
+    case 'turn-changed': if (ev.askId) turnUndo.add(ev.askId); return; // item 238
     case 'asked': { // Try again and Edit: the id of the message you sent, so Edit can find it in the saved chat
       const bub = jobBubbles.get(ev.turnId);
       if (bub && ev.id) { bub.dataset.mid = ev.id; drawRedo(); }
@@ -1270,6 +1277,7 @@ const msgMenu = (() => {
     if (on) list.push([you ? 'edit-msg' : 'edit-bob', 'Edit', wait ? why : you ? 'Change what you said and send it again' : 'Change Bob\'s words. Nothing is sent.', wait]);
     list.push(['copy-msg', 'Copy', 'Copy this message']);
     if (on) list.push(['del-msg', 'Delete', wait ? why : you ? 'Delete this message and Bob\'s answer to it' : 'Delete this answer', wait]);
+    if (you && id && turnUndo.has(id)) list.push(['undo-turn', 'Undo changes', wait ? why : 'Put back the files, notes and memory Bob changed for this message', wait]); // item 238
     return list;
   }
   function draw(box, list) {
@@ -1299,6 +1307,19 @@ const msgMenu = (() => {
       open.box.innerHTML = `<p class="msg-menu-ask">${you ? 'Delete this message and Bob\'s answer to it?' : 'Delete this answer?'}${msg.querySelector('img, video, audio, .out-card') ? ' What he made stays in its folder.' : ''}</p><button type="button" role="menuitem" data-m="del-yes" class="danger">Delete</button><button type="button" role="menuitem" data-m="del-no">Keep it</button>`;
       open.box.querySelector('[data-m="del-no"]').focus();
       return;
+    }
+    if (k === 'undo-turn') { // item 238: asked in the menu itself, like Delete
+      open.box.innerHTML = `<p class="msg-menu-ask">Put back everything Bob changed for this message? A file changed since is left as it is.</p><button type="button" role="menuitem" data-m="undo-yes" class="danger">Undo changes</button><button type="button" role="menuitem" data-m="del-no">Keep them</button>`;
+      open.box.querySelector('[data-m="del-no"]').focus();
+      return;
+    }
+    if (k === 'undo-yes') {
+      close();
+      const askId = (msg.dataset.mid || '').trim();
+      const r = await post('/api/turn-undo', { sessionId, askId }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob\'s brain. Is it running?' } }));
+      if (!r.ok) { note(r.data.error || 'Something went wrong.', 'error'); return; }
+      turnUndo.delete(askId);
+      return note(r.data.text);
     }
     if (k === 'del-no') return close(true);
     if (k === 'del-yes') { close(); return deleteMsg(msg); }

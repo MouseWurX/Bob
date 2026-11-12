@@ -300,7 +300,7 @@ export class Housekeeper {
       const text = readText(cfg.memoryFile);
       const { repeats, text: tidy } = memoryRepeats(text);
       backupMemory(cfg);
-      writeText(cfg, cfg.memoryFile, tidy);
+      writeText(cfg, cfg.memoryFile, tidy, { who: 'housekeeping' });
       return `${repeats} repeated memory lines (the old memory file is in the Recycle Bin)`;
     }
     if (it.kind === 'topics') { this.forget(it.ref, { mode: 'note' }); return `the chat parts of "${it.label}" (its note stays)`; }
@@ -349,7 +349,7 @@ export class Housekeeper {
     const have = new Set(text.split('\n').map(memKey).filter(Boolean));
     const day = dateOf(Date.now());
     const add = list.filter((f) => { const k = memKey(f); if (have.has(k)) return false; have.add(k); return true; }).map((f) => `- ${f} (${day})${topic ? ` [topic: ${topic.replace(/[\][]/g, '')}]` : ''}${project && recallOn(this.cfg) ? ` [project: ${String(project).replace(/[\][]/g, '').slice(0, 60)}]` : ''}\n`);
-    if (add.length) appendText(this.cfg, this.cfg.memoryFile, (text && !text.endsWith('\n') ? '\n' : '') + add.join(''));
+    if (add.length) appendText(this.cfg, this.cfg.memoryFile, (text && !text.endsWith('\n') ? '\n' : '') + add.join(''), { who: 'housekeeping' });
     return add.length;
   }
 
@@ -472,7 +472,7 @@ export class Housekeeper {
       try {
         const text = readText(this.cfg.memoryFile);
         const kept = text.split('\n').filter((l) => tagOf(l) !== normName(t.name));
-        if (kept.length !== text.split('\n').length) { backupMemory(this.cfg); writeText(this.cfg, this.cfg.memoryFile, kept.join('\n')); }
+        if (kept.length !== text.split('\n').length) { backupMemory(this.cfg); writeText(this.cfg, this.cfg.memoryFile, kept.join('\n'), { who: 'housekeeping' }); }
       } catch {}
       this.topics.remove(id);
     } else {
