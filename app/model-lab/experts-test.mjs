@@ -1,7 +1,7 @@
 // Phase 0, step 1: how does Qwen3.6 hold up with fewer experts per word?
 // Runs the same quiz at 8 (the model's own), 6, 4, 3 and 2 experts per word: picking Bob's right tool for plain
 // requests, short facts, and small coding jobs checked by running the code. Thinking off (instruct first).
-// node experts-test.mjs [--counts 8,6,4,3,2] [--bob <Bob source>] [--model <gguf>] [--llama <folder>] [--quick]
+// node experts-test.mjs [--counts 8,6,4,3,2] [--bob <Bob source>] [--model <gguf>] [--llama <folder>] [--quick] [--howtos <how-to file>]
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -16,7 +16,7 @@ if (!L.model && !remote) { console.error('Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf not fo
 if (!remote) checkFree(o);
 const shape = !remote && L.model && fs.existsSync(L.model) ? moeShape(L.model) : { name: process.env.LAB_MODEL_NAME || 'served brain', layers: '?', experts: 256, used: Number(String(o.counts).split(',')[0]) || 8, key: null };
 console.log(`${shape.name}: ${shape.layers} layers, ${shape.experts} experts, ${shape.used} per word (key ${shape.key})`);
-const kit = await loadBob(L.bob);
+const kit = await loadBob(L.bob, { howtos: o.howtos ? String(o.howtos) : '' });
 let bobVersion = ""; try { bobVersion = JSON.parse(fs.readFileSync(path.join(L.bob, "package.json"), "utf8")).version || ""; } catch {}
 
 // ---- the quiz ----

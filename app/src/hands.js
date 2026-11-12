@@ -142,7 +142,7 @@ export function handsTools(brain, opts = {}) {
   const t = {};
 
   t.file_hands = {
-    schema: fn('file_hands', "Move, copy, rename (one or many), zip, unzip, tidy a folder into subfolders by kind, or recycle files, in the folders {{USER}} allowed. Never overwrites; all but delete undo. Use recycle; delete is for good, only when told and only if {{USER}} turned off Recycle Bin only.", {
+    schema: fn('file_hands', "Move, copy, rename (one or many), zip, unzip, tidy a folder into subfolders by kind, or recycle files, in the folders {{USER}} allowed. Act directly; no need to list the folder first. Never overwrites; all but delete undo. Use recycle; delete is for good, only when told and only if {{USER}} turned off Recycle Bin only.", {
       action: str('What to do', { enum: ['move', 'copy', 'rename', 'tidy', 'zip', 'unzip', 'recycle', 'delete'] }),
       paths: list('Full paths (tidy: the folder; unzip: the zip).'),
       to: str('move/copy: the folder to put them in. zip: the new zip (optional). unzip: where to unpack (optional).'),
@@ -248,7 +248,7 @@ export function handsTools(brain, opts = {}) {
   const runCard = (c, cwd, why) => ({ text: `Run this ${c.kind}${why ? ` (${String(why).slice(0, 200)})` : ''}. Output shows live, with a Stop button. Not as administrator.`, command: c.line, cwd });
 
   t.run_command = {
-    schema: fn('run_command', 'Run one program or script in a folder. No shell: give the program and its arguments apart (cmd "npm", args ["run","build"]). Never as administrator; password prompts won\'t work. Use file_hands for moving, zipping or deleting files.', {
+    schema: fn('run_command', 'Run one program or script in a folder. No shell: give the program and its arguments apart (cmd "npm", args ["run","build"]). Never as administrator; password prompts won\'t work. Use file_hands for moving, zipping or deleting files. For run, build, test, install or start, run it directly; no need to look with git first.', {
       cmd: str('The program, like "git", "npm" or "python".'),
       args: list('Its arguments, one per item.'),
       cwd: str('Full path of the folder to run it in.'),

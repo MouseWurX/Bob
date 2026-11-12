@@ -5,7 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export async function loadBob(bobDir) {
+// howtos: a how-to file ({ howtos: [{ name, when, steps }] }) put in the throwaway Bob first, so the quiz can see them.
+export async function loadBob(bobDir, { howtos = '' } = {}) {
   const src = (f) => pathToFileURL(path.join(bobDir, 'src', f)).href;
   if (!fs.existsSync(path.join(bobDir, 'src', 'brain.js'))) throw new Error(`No Bob source tree at ${bobDir} (src/brain.js missing). Pass --bob <folder>.`);
   const { Brain } = await import(src('brain.js'));
@@ -26,10 +27,14 @@ export async function loadBob(bobDir) {
     readRoots: [innDir], readOnlyRoots: [], recycleBin: false,
     models: { bob: 'qwen3.6-35b-a3b' }, engine: 'llamacpp', ollamaUrl: 'http://127.0.0.1:1',
     painter: { engine: 'sdcpp', sdcpp }, stt: { provider: 'http' },
-    hands: { enabled: true, ...hands, folders: [innDir] }, howtos: { on: true },
+    hands: { enabled: true, ...hands, folders: [innDir] }, howtos: true, // 12 Nov: Bob reads cfg.howtos === true; { on: true } left the how-to tools out of every quiz
     // Web search on, so fresh-facts lessons teach web_search (with it off, Bob offers the switch instead).
     webSearch: true
   };
+  if (howtos) {
+    const list = (JSON.parse(fs.readFileSync(howtos, 'utf8')).howtos || []).map((r, i) => ({ id: 'seed-' + i, made: Date.now(), used: 0, ...r }));
+    fs.writeFileSync(path.join(dataDir, 'howtos.json'), JSON.stringify({ howtos: list }, null, 1));
+  }
   const brain = new Brain(cfg, () => {});
   clearInterval(brain.reminderTimer);
   for (const k of Object.keys(brain)) { const v = brain[k]; if (v && typeof v === 'object' && v.timer) try { clearInterval(v.timer); } catch {} }
