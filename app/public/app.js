@@ -173,7 +173,7 @@ function showCubeAvatar() {
   if (!box) return;
   bobCanvas.hidden = on;
   if (on) {
-    if (!cubeAvatar) cubeAvatar = createMindCube({ box, canvas: $('bobCube'), says: $('bobCubeSays'), open: $('bobCubeOpen') }, { avatar: true, still: () => document.body.classList.contains('still'), live: () => store.get('bob-cube-live', '0') === '1' });
+    if (!cubeAvatar) cubeAvatar = createMindCube({ box, canvas: $('bobCube'), says: $('bobCubeSays'), open: $('bobCubeOpen') }, { avatar: true, lamp: () => true, still: () => document.body.classList.contains('still'), live: () => store.get('bob-cube-live', '0') === '1' });
     cubeAvatar.connect(); hideSwap();
   } else if (cubeAvatar) { cubeAvatar.disconnect(); cubeAvatar.hide(); lastFrame = ''; }
 }

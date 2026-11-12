@@ -88,9 +88,10 @@ export function createView(canvas, { still = false, min = [240, 200] } = {}) { /
   // Load in and load out: `reveal` runs 0..1 and a voxel is drawn once it has passed that voxel's place in the order
   // (lab-watch-math.js loadOrder). 1 = the whole block, which is also where it rests.
   let edges = false; // a faint line along the block's twelve edges
-  // fog: the block seen through a round porthole into a foggy room, the fog lit by the experts as they fire (2D soft
-  // glows only, drawn with the frames the cube already draws, so it costs next to nothing; nothing moves at rest)
-  let fog = false;
+  // fog: the block seen through a round porthole into a foggy room (public/fog.js draws the room on its own canvas
+  // behind this one): this canvas stays see-through, and the experts as they fire light the fog (soft 2D glows here,
+  // and fogLight tells the room where and in what colour)
+  let fog = false, fogLight = null;
   let reveal = 1, order = null, orderIn = null, orderOut = null, load = 'vase', unload = 'drain', going = 1, seed = 1, sweepRaf = 0, sweepEnd = null;
   const reorder = () => { const box = lay ? { W: lay.W, D: lay.D, floors: lay.L + lay.baseFloors, seed } : null; orderIn = box ? loadOrder(load, box) : null; orderOut = box ? loadOrder(unload, box) : null; order = going === 1 ? orderIn : orderOut; };
   const shown = (floor, i) => reveal >= 1 || (order ? order[floor * lay.W * lay.D + i] < reveal : false);
@@ -114,7 +115,7 @@ export function createView(canvas, { still = false, min = [240, 200] } = {}) { /
     });
   }
   function setData(r, s, parts) { rec = r; sp = s; lay = layoutOf(r, parts); dirty = true; picked = null; reorder(); }
-  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'lines') lines = Math.max(0, Math.min(1, Number(v) || 0)); else if (k === 'key') key = v !== false; else if (k === 'dials') { dials = v && v.size ? v : null; } else if (k === 'load') { load = loadStyle(v); reorder(); } else if (k === 'unload') { unload = unloadStyle(v); reorder(); } else if (k === 'reveal') { reveal = Math.max(0, Math.min(1, v)); } else if (k === 'mono') mono = v === true; else if (k === 'edges') edges = v === true; else if (k === 'fog') fog = v === true; else if (k === 'heat') heat = v && Array.isArray(v.vals) ? v : null; else if (k === 'monoColour') monoColour = /^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v) : ''; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'solid') solid = v; else if (k === 'mark') mark = ['glow', 'outline', 'both'].includes(v) ? v : 'glow'; else if (k === 'glow') glow = Math.max(0, Math.min(1.5, Number(v) || 0)); else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
+  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'lines') lines = Math.max(0, Math.min(1, Number(v) || 0)); else if (k === 'key') key = v !== false; else if (k === 'dials') { dials = v && v.size ? v : null; } else if (k === 'load') { load = loadStyle(v); reorder(); } else if (k === 'unload') { unload = unloadStyle(v); reorder(); } else if (k === 'reveal') { reveal = Math.max(0, Math.min(1, v)); } else if (k === 'mono') mono = v === true; else if (k === 'edges') edges = v === true; else if (k === 'fog') fog = v === true; else if (k === 'fogLight') fogLight = typeof v === 'function' ? v : null; else if (k === 'heat') heat = v && Array.isArray(v.vals) ? v : null; else if (k === 'monoColour') monoColour = /^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v) : ''; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'solid') solid = v; else if (k === 'mark') mark = ['glow', 'outline', 'both'].includes(v) ? v : 'glow'; else if (k === 'glow') glow = Math.max(0, Math.min(1.5, Number(v) || 0)); else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
   const get = () => ({ yaw, tilt, gap, zoom, glass, glow, lines });
   // the gap between floors that makes the whole block as tall as it is wide: a cube
   const cubeGap = () => (lay ? Math.max(0.2, Math.min(5, Math.max(lay.W, lay.D) / Math.max(1, lay.L + lay.baseFloors))) : 0.9);
@@ -175,20 +176,6 @@ export function createView(canvas, { still = false, min = [240, 200] } = {}) { /
     return { color: lookOf(top)[0], alpha: (0.28 + 0.72 * Math.min(1, sp.strength[l][e] * 1.6)) * (solid.get(top) ?? 1), even }; // solid: each skill's own opacity
   }
 
-  // The foggy room: the background colour, a lighter haze in the middle and a few still banks of fog, darker at the rim
-  function fogRoom(c, k) {
-    const w = canvas.width, h = canvas.height, r = Math.hypot(w, h) / 2, acc = oneColour();
-    let g = c.createRadialGradient(w / 2, h * 0.5, 0, w / 2, h * 0.5, r);
-    g.addColorStop(0, mixHex(k.bg, acc, 0.10)); g.addColorStop(0.55, mixHex(k.bg, k.text, 0.05)); g.addColorStop(1, mixHex(k.bg, '#000000', 0.35));
-    c.fillStyle = g; c.fillRect(0, 0, w, h);
-    let s = 7; const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
-    for (let i = 0; i < 7; i++) {
-      const x = w * (0.1 + 0.8 * rnd()), y = h * (0.25 + 0.6 * rnd()), rr = Math.min(w, h) * (0.18 + 0.22 * rnd());
-      g = c.createRadialGradient(x, y, 0, x, y, rr); g.addColorStop(0, mixHex(mixHex(k.bg, k.text, 0.16), acc, 0.12)); g.addColorStop(1, 'rgba(0,0,0,0)');
-      c.globalAlpha = 0.55; c.fillStyle = g; c.fillRect(0, 0, w, h);
-    }
-    c.globalAlpha = 1;
-  }
   // The fog lit by the firing: one soft glow per colour, at the middle of that colour's lit experts, as strong as how many fired
   function fogLit(lit) {
     const g = geom, by = new Map();
@@ -202,6 +189,8 @@ export function createView(canvas, { still = false, min = [240, 200] } = {}) { /
       }
     }
     const R = Math.min(canvas.width, canvas.height) * 0.42, total = [...by.values()].reduce((t, b) => t + b.n, 0) || 1;
+    let top = null; for (const [color, b] of by) if (!top || b.n > top[1].n) top = [color, b];
+    if (top && fogLight) { try { fogLight(top[0], Math.min(0.8, 0.25 + top[1].n / 60), top[1].x / top[1].n / canvas.width, top[1].y / top[1].n / canvas.height); } catch {} }
     for (const [color, b] of by) {
       const x = b.x / b.n, y = b.y / b.n, k = Math.min(1, b.n / 24) * Math.max(0.35, b.n / total);
       const rg = ctx.createRadialGradient(x, y, 0, x, y, R * (0.6 + 0.6 * Math.min(1, b.n / 40)));
@@ -215,8 +204,7 @@ export function createView(canvas, { still = false, min = [240, 200] } = {}) { /
     if (!staticCanvas) staticCanvas = document.createElement('canvas');
     staticCanvas.width = canvas.width; staticCanvas.height = canvas.height;
     const c = staticCanvas.getContext('2d'), k = css();
-    c.fillStyle = k.bg; c.fillRect(0, 0, canvas.width, canvas.height);
-    if (fog) fogRoom(c, k);
+    if (fog) c.clearRect(0, 0, canvas.width, canvas.height); else { c.fillStyle = k.bg; c.fillRect(0, 0, canvas.width, canvas.height); }
     const { W, D, L, grey, base, baseFloors, cellExpert, coreRank } = lay;
     const full = !fast && g.s > 3;
     const voxel = (x, y, color, alpha, outline) => {
@@ -288,6 +276,7 @@ export function createView(canvas, { still = false, min = [240, 200] } = {}) { /
     if (dirty || !staticCanvas) drawStatic();
     const g = geom, k = css();
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+    if (fog) ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(staticCanvas, 0, 0);
     if (edges && reveal > 0) { // the block's own edges, very faint, so it reads as a cube (the small cube asks for them)
       const { W, D } = lay, y0 = 0.5 - Math.min(0.34, gap * 0.45), y1 = (g.floors - 1) * gap + 0.5, xs = [0.1, W - 0.1], zs = [0.1, D - 0.1];
@@ -337,7 +326,7 @@ export function createView(canvas, { still = false, min = [240, 200] } = {}) { /
         }
         if (now && paths && lines > 0 && prev && pts.length && prev.length) { // drawn plainly in the theme's text colour, so they show on light themes too
           const was = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'source-over';
-          ctx.globalAlpha = 0.7 * lines; ctx.strokeStyle = k.text; ctx.lineWidth = Math.max(1, g.s * (0.04 + 0.06 * lines));
+          ctx.globalAlpha = 0.7 * lines * (fog ? 0.2 + 0.8 * l / Math.max(1, lay.L - 1) : 1); ctx.strokeStyle = k.text; // in the porthole the signal brightens as it climbs the floors ctx.lineWidth = Math.max(1, g.s * (0.04 + 0.06 * lines));
           ctx.beginPath(); for (const p of prev) for (const q of pts) { ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); } ctx.stroke();
           ctx.globalCompositeOperation = was;
         }
@@ -415,5 +404,5 @@ export function createView(canvas, { still = false, min = [240, 200] } = {}) { /
   }
 
   const setFloors = (a) => { floorsNow = Array.isArray(a) ? a : null; }; // every frame, so it doesn't redraw the block
-  return { setData, set, get, oneColour, cubeGap, draw, sweep, loading: () => reveal < 1, setFloors, pick, setCaption, resize, layout: () => lay, still: () => still };
+  return { setData, set, get, oneColour, cubeGap, draw, sweep, loading: () => reveal < 1, reveal: () => reveal, setFloors, pick, setCaption, resize, layout: () => lay, still: () => still };
 }
