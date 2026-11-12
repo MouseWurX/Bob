@@ -21,7 +21,7 @@ check('the body keeps Check for updates when Bob starts and Run first-time setup
 check('updates is closed to start with (only Bob himself opens)', /new Set\(\['ev-bob'\]\)/.test(ui));
 
 // 4. Two labelled rows.
-check('the page strip is two labelled rows: Get models and Set up', /class="tabs-label" aria-hidden="true">Get models:<\/span>/.test(ui) && /class="tabs-label" aria-hidden="true">Set up:<\/span>\$\{tabs\.filter\(\(c\) => setup\.has\(c\.id\)\)/.test(ui) && /const setup = new Set\(\['style', 'settings'\]\);/.test(ui) && /\.tabs \.tabs-row \{ display: flex/.test(css));
+check('the page strip is two labelled rows: Get models and Set up (Brains, Style, Settings)', /class="tabs-label" aria-hidden="true">Get models:<\/span>/.test(ui) && /class="tabs-label" aria-hidden="true">Set up:<\/span>\$\{tabs\.filter\(\(c\) => setup\.has\(c\.id\)\)/.test(ui) && /const setup = new Set\(\['roles', 'style', 'settings'\]\);/.test(ui) && /\.tabs \.tabs-row \{ display: flex/.test(css));
 
 // 5. The subheadings show as headings.
 check('How Bob works has its three subheadings, styled as headings inside a panel', /<h4 class="ssub">How he works<\/h4>/.test(every) && /<h4 class="ssub">Starting and closing<\/h4>/.test(every) && /<h4 class="ssub">Going online<\/h4>/.test(every) && /\.spanel-body \.ssub, \.hands-box \.ssub \{ color: inherit; font-size: 14px/.test(css));

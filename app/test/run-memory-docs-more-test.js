@@ -237,6 +237,8 @@ const KEYS = ['memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPl
   const made = keeper.check();
   check('on: made, saved and shown on Sunday', made && fs.existsSync(path.join(inn, 'digests', 'digest-2026-11-15.md')) && shown.length === 1 && shown[0].type === 'digest');
   check('and not again that week', keeper.check() === null && shown.length === 1);
+  const thu = new Digest(dcfg, { now: () => at('2026-11-12T15:00:00Z') }).build();
+  check('"Make this week\'s digest now" on a Thursday is this week, Monday to the coming Sunday', thu.sunday === '2026-11-15' && /Week of 2026-11-09 to 2026-11-15/.test(thu.title));
   check('the chat and the phone app show it', /case 'digest':/.test(read('public/app.js')) && /ev\.type === 'digest'\) return digestCard/.test(read('android/app/src/main/assets/www/phone.js')) && /ev\.type === 'digest'\) return digestCard/.test(read('public/phone/phone.js')));
 }
 

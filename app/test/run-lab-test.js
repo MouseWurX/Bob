@@ -1,6 +1,7 @@
 // 1.5.141 Computer Science Lab (Lab 1): Bob's own GGUF cutter on small made-up brain files (experts cut byte for
 // byte, settings copied, a sound reader taken out of a combined reader), the recipe checks, the whole job with fake
 // steps, Use in Bob, the switch (off unless turned on, greyed out on small replicant matrices) and the page's words.
+import { labText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -848,7 +849,7 @@ check('the settings inventory has the row', /Show the Computer Science Lab/.test
 check('the Bob-Net heading opens Bob-Net settings', /id="nowNetHead"[^>]*aria-label="Open Bob-Net settings"/.test(html) && /nowNetHead[\s\S]{0,200}jump: 'adv-bobnet'/.test(app) && /opts\.jump/.test(cellar) && /Press Bob-Net to set it up/.test(html));
 
 // review: the card size falls back to the hardware scan's reading; the quiz uses a neutral city; the route comment is right
-check('the card size is the set one, or the card the hardware scan found', /Number\(this\.cfg\.gpuVramGB\) \|\| Number\(this\.cfg\.cardGB\) \|\| 0/.test(read('src/lab.js')));
+check('the card size is the set one, or the card the hardware scan found', /Number\(this\.cfg\.gpuVramGB\) \|\| Number\(this\.cfg\.cardGB\) \|\| 0/.test(labText()));
 check('the Lab test\'s weather question uses a neutral city', /weather like in Lisbon/.test(read('src/lab-test.js')));
 // 1.5.164 more Challenges packs and Guard rails: test your own brain
 {
@@ -908,7 +909,7 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   check('Long thread: the brain sees the whole twenty turns and is marked on the last answer', th.score === 100);
   const noSandbox = await P.runExtraPack('http://fake', 'finish', { askFn: goodTools });
   check('the code packs are skipped, with the reason, when the sandbox isn\'t working', noSandbox.score === null && /sandbox/.test(noSandbox.skipped));
-  check('the Lab starts the sandbox for every pack that runs code, and hands Guard rails your own refusal lessons', /NEEDS_SANDBOX\.includes\(id\)/.test(read('src/lab.js')) && /ownRefusalAsks\(lessonSets\(this\.cfg\)/.test(read('src/lab.js')) && /sandbox, holdAsks, gen/.test(read("src/lab.js")));
+  check('the Lab starts the sandbox for every pack that runs code, and hands Guard rails your own refusal lessons', /NEEDS_SANDBOX\.includes\(id\)/.test(labText()) && /ownRefusalAsks\(lessonSets\(this\.cfg\)/.test(labText()) && /sandbox, holdAsks, gen/.test(labText()));
   // Guard rails
   check('a decline is seen, and an answer isn\'t taken for one', G.declined('I can\'t help with that.') && G.declined('I\'m sorry, but I won\'t write that.') && !G.declined('Run kill -9 with the process id.') && !G.declined('Here is a speech: "You cannot hide, little kingdom!"'));
   const gdir = path.join(tmp, 'guard-lessons'); fs.mkdirSync(path.join(gdir, 'a'), { recursive: true });
@@ -937,7 +938,7 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   const gc = await guardChat(fakeBrain, { system: 'Rules.', messages: [{ role: 'user', content: 'hello' }] }, { fetch: async (u, o) => { sent = { u, b: JSON.parse(o.body) }; return { ok: true, json: async () => ({ choices: [{ message: { content: '<think>x</think>Hi there.' } }] }) }; } });
   check('the sandbox talks to the brain Bob has loaded, with your system prompt first', gc.ok && gc.text === 'Hi there.' && sent.u === 'http://brain/v1/chat/completions' && sent.b.messages[0].role === 'system' && sent.b.messages[0].content === 'Rules.');
   check('and says why when no brain is loaded', (await guardChat({ cfg: { engine: 'llamacpp' }, engine: { url: 'http://b' } }, { messages: [{ role: 'user', content: 'hi' }] })).ok === false);
-  check('saving from the sandbox is only for this replicant matrix itself', read('src/lab.js').indexOf("'/api/lab/guard/save'") > read('src/lab.js').indexOf('Lab jobs can only be started on this replicant matrix itself') && read('src/lab.js').indexOf("'/api/lab/guard/chat'") < read('src/lab.js').indexOf('Lab jobs can only be started on this replicant matrix itself'));
+  check('saving from the sandbox is only for this replicant matrix itself', labText().indexOf("'/api/lab/guard/save'") > labText().indexOf('Lab jobs can only be started on this replicant matrix itself') && labText().indexOf("'/api/lab/guard/chat'") < labText().indexOf('Lab jobs can only be started on this replicant matrix itself'));
   const { packGroups, guardPartsLine } = await import('../public/lab-guard.js');
   check('the Challenges list shows the first packs, then More challenges', packGroups(C.PACKS).map((g) => `${g.id}:${g.packs.length}`).join() === 'first:6,more:20');
   check('the three Guard rails numbers read as words', guardPartsLine({ held: { score: null }, answered: { score: 90 }, page: { score: 50 } }) === 'Didn\'t over-refuse: 90 · Ignored planted orders: 50 · Held the line: not run');
@@ -1201,7 +1202,7 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   while (pLab.job) await new Promise((r) => setTimeout(r, 20));
   check('a Simple run still goes on the scoreboard', pLab.scores().length === 1 && pLab.runs.at(-1).report.ranked === true);
   check('the page gets the mode, the settings and your packs, never their questions', pLab.view().mode === 'simple' && pLab.view().pro.gen.temperature === 0 && Array.isArray(pLab.view().myPacks) && pLab.view().myPacks.every((m) => !m.items));
-  check('your packs and the log are for this replicant matrix itself', ["'/api/lab/mypack/import'", "'/api/lab/challenge/log'"].every((k) => read('src/lab.js').indexOf(k) > read('src/lab.js').indexOf('Lab jobs can only be started on this replicant matrix itself')));
+  check('your packs and the log are for this replicant matrix itself', ["'/api/lab/mypack/import'", "'/api/lab/challenge/log'"].every((k) => labText().indexOf(k) > labText().indexOf('Lab jobs can only be started on this replicant matrix itself')));
 }
 // 1.5.171 the challenge line names the viewer's own card
 {

@@ -1,5 +1,5 @@
 // 1.5.127: the "🏗 Rented brain" switch on the chat page, in the Effort row. It only shows while a rented brain is in
-// its slot (Equip Bob, Rented brain). On: every message you send runs on the rented brain. The first one shows the
+// its slot (Settings, Brains, Rented brain). On: every message you send runs on the rented brain. The first one shows the
 // Hire it card with the cost; after that it carries on without asking until about a dollar more is spent, or you
 // switch it off. Off: everything runs on this replicant matrix. It is per window and goes back to Off when Bob starts.
 const $ = (id) => document.getElementById(id);

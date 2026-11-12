@@ -6,7 +6,6 @@ import path from 'node:path';
 import { DIALS, DEFAULTS, PRESETS, cleanPersonality, isDefault, personalityPrompt, greeting, attributesHtml, bobTake } from '../public/personality.js';
 import { lookText, lookPrompt } from '../src/look.js';
 import { systemPrompt } from '../src/persona.js';
-import { equipHtml } from '../public/equip.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -68,13 +67,13 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
   check('Reset is greyed out when he is already plain Bob', /data-resetbob disabled/.test(attributesHtml({ personality: {}, look: 'sysop', lookText: 'x' })));
   check('a mix that matches no preset says "Your own mix"', /Your own mix/.test(html) && !/Your own mix/.test(attributesHtml({ personality: PRESETS[2].set, look: 'sysop', lookText: 'x' })));
   check('names are escaped', !/<script/.test(attributesHtml({ personality: {}, look: 'sysop', lookText: '<script>x</script>', user: '<script>' })));
-  const page = equipHtml({ roles: { current: {}, options: {} }, models: [], brains: {}, embed: '', selected: 'bob', vramGB: 16, attributes: html });
-  check('Equip Bob: attributes left, Bob and slots in the middle, inventory right', page.indexOf('class="attributes"') < page.indexOf('class="equip-mid"') && page.indexOf('class="equip-mid"') < page.indexOf('class="kit-panel"'));
+  // 1.5.210 the Attributes panel moved to Settings, Personality (on the Bob himself card) when the paper doll went.
+  const cellar = read('public/cellar.js'), map = read('public/settings-map.js');
+  check('Settings, Personality draws the attributes panel, and is on the map', /\['personality', '🎚 Personality'[^\n]*attributesHtml\(/.test(cellar) && /'adv-personality'/.test(map));
   const app = read('public/app.js');
   check('clicking Bob (or Enter on him) opens his small menu', /createBobMenu\(\{\s*anchor: bobCanvas/.test(app) && /e\.key === 'Enter'/.test(read('public/bob-menu.js')) && /bobCanvas\.tabIndex = 0/.test(app) && /e\.key === 'Enter'/.test(app));
   check('Ask Bob sends the question in the chat', /addEventListener\('bob-ask'/.test(app) && /requestSubmit/.test(app));
-  const css = read('public/style.css');
-  check('three columns when wide, stacked when narrow', /\.equip-page \{ display: grid; grid-template-columns: 250px minmax\(0, 1fr\) 280px/.test(css) && /@media \(max-width: 1100px\)[^@]*\.equip-page \{ grid-template-columns: 1fr/.test(css));
+
 }
 
 // ---- 1.3.1: what Bob calls you ----

@@ -22,7 +22,8 @@ import { ggufInfo } from './gguf.js';
 import { placeArgs } from './brain-place.js';
 import { selfWorkOn } from './self-work.js';
 import { stretchOn, stretchMax as stretchMost, stretchPlan, yarnArgs, needBytes, roomBytes, kvBytes } from './model-ctx.js';
-import { scutEnv } from './share-card.js'; // SCUT, the fast link to lent cards
+import { scutEnv, linkEnv } from './share-card.js'; // SCUT, the fast link to lent cards
+import { LinkLog } from './link-log.js'; // what the link to a lent card carried, kept in a file and the logbook
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { memArgs, copyGuessArgs, draftNumArgs, laptopThreads } from './engine-extras.js'; // list items 94-100
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
@@ -80,6 +81,8 @@ export function thinkBudget(model, think) {
 
 // How long a brain may sit unused in memory: the shared setting ollamaKeepAlive ("10m", "30m", "1h", or "-1" for never).
 // Both engines use it: Ollama through keep_alive, Bob's own engine through the idle check below (1.5.2).
+// 1.5.210 (208 PC check): the logbook said "2 min" for a 1 min keep-alive. Minutes and seconds, as it really was.
+export const idleFor = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ''}`; };
 export function keepAliveMs(cfg) {
   const k = String(cfg?.ollamaKeepAlive ?? '5m');
   if (k === '-1') return Infinity;
@@ -179,7 +182,7 @@ export class LlamaCpp {
     this.isBusy = () => false; // the brain sets this: a turn or a queued job that is working
     this.holdModel = () => null; // the brain sets this: the model "Always on" keeps loaded (never idle-unloaded)
     // Unload the brain once it has been idle longer than the keep-alive, so a quiet Bob gives the graphics card back.
-    this.idleTimer = setInterval(() => { this.idleTick().catch(() => {}); }, 60_000);
+    this.idleTimer = setInterval(() => { this.idleTick().catch(() => {}); }, 15_000); // 1.5.210: every 15 s, so a 1 min keep-alive lets go near 1 min, not up to 2
     this.idleTimer.unref?.();
     this.timesFile = path.join(cfg.dataDir, `load-times-llamacpp${this.tag}.json`);
     try { this.loadTimes = JSON.parse(fs.readFileSync(this.timesFile, 'utf8')); } catch { this.loadTimes = {}; }
@@ -211,7 +214,7 @@ export class LlamaCpp {
       this.beside.brainLabel = (m) => this.brainLabel?.(m) || `${m} brain`; // 218-228: plain names in the chat notes
       this.beside.main = this; // so a card reader set on the main engine (tests) also counts for the second server
       // fNRI's small cube: a brain answering on the second server is traced too, and told to the same cube
-      this.beside.wantTrace = () => this.wantTrace?.() || false; this.beside.onTrace = (raw, model) => this.onTrace?.(raw, model);
+      this.beside.wantTrace = () => this.wantTrace?.() || false; this.beside.onTrace = (raw, model) => this.onTrace?.(raw, model); this.beside.onTracePart = (raw, model) => this.onTracePart?.(raw, model);
       // 1.5.53: the brain hears when a second brain joins or leaves (chat page: second-brain events, Bob's head grows).
       this.beside.changed = (ev) => { try { this.onBeside?.(ev); } catch {} };
     }
@@ -380,7 +383,7 @@ export class LlamaCpp {
     if (hold && hold === this.current) { this.lastUse = this.now(); return false; }
     if (this.now() - this.lastUse <= keepAliveMs(this.cfg)) return false;
     this.idleUnloaded = this.current;
-    try { this.log?.('engine', `${this.current}: let go after ${Math.round((this.now() - this.lastUse) / 60000)} min unused${this.role === BESIDE ? ' (second brain)' : ''}`); } catch {} // 1.5.133
+    try { this.log?.('engine', `${this.current}: let go after ${idleFor(this.now() - this.lastUse)} unused (kept for ${String(this.cfg?.ollamaKeepAlive ?? '5m')})${this.role === BESIDE ? ' (second brain)' : ''}`); } catch {} // 1.5.133
     await this.stopServer();
     try { this.onIdleGone?.(); } catch {} // the brain was let go on its own: Bob tells the pages (the fNRI cube takes itself apart)
     return true;
@@ -914,7 +917,23 @@ export class LlamaCpp {
   }
 
   // The engine start itself.
-  async startEngine(model, signal, { ctx, cpu = false, beside = false, reserveMB = 0, place = null, noSpread = false, args: fixedArgs = null, roomChecked = false, retried = false } = {}) {
+  // 1.5.210 (Go Wi-Fi test): Stop with no chat job running (a load from Settings, a warm-up) returned stopped:false
+  // and the "still loading over Bob-Net" wait ran on. Every load now has its own stop, and stopLoad() ends them all.
+  async startEngine(model, signal, opts = {}) {
+    const ctl = new AbortController();
+    (this.loadCtls ||= new Set()).add(ctl);
+    try { return await this.startEngineNow(model, signal ? AbortSignal.any([signal, ctl.signal]) : ctl.signal, opts); }
+    finally { this.loadCtls.delete(ctl); }
+  }
+  stopLoad() {
+    const all = [...(this.loadCtls || [])];
+    for (const c of all) c.abort();
+    const b = this.beside?.stopLoad?.() || false;
+    if (all.length) { try { this.log?.('engine', 'Stop pressed while a brain was loading: the load ended'); } catch {} }
+    return all.length > 0 || b;
+  }
+
+  async startEngineNow(model, signal, { ctx, cpu = false, beside = false, reserveMB = 0, place = null, noSpread = false, args: fixedArgs = null, roomChecked = false, retried = false } = {}) {
     if (this.role === BESIDE) cpu = true;
     this.lastLoadOut = '';
     if (this.reloadWanted.delete(model)) this.log?.('engine', `${model}: loading it fresh, as planned`);
@@ -942,6 +961,15 @@ export class LlamaCpp {
       try { file = this.resolve(model).gguf; sizeGB = fs.statSync(file).size / 1e9; } catch {}
       helpers = await this.spread.open({ sizeGB, file }).catch(() => []);
       if (helpers.length) {
+        // 1.5.210 (Go Wi-Fi test): a hand split (-ts) put a 1 GB buffer on a handheld whose card shares the computer's
+        // memory, and it refused it with 6 GB free. A spread lets --fit size each card's share instead.
+        const ts = args.findIndex((a) => ['-ts', '--tensor-split'].includes(a));
+        if (ts >= 0 && this.fitOn()) {
+          args.splice(ts, 2);
+          const fi = args.indexOf('--fit');
+          if (fi < 0) args.push('--fit', 'on'); else args[fi + 1] = 'on';
+          try { this.log?.('engine', `${model}: the hand-set split (-ts) was left out for this spread; each card's share is sized to fit instead`); } catch {}
+        }
         args.push('--rpc', helpers.join(','), ...spreadArgs(args));
         this.spreadNow = true; // item 14: a reply over Wi-Fi may pause longer
         const mins = Math.ceil(spreadLoadSeconds(sizeGB, this.lc.loadTimeoutSeconds || 300) / 60);
@@ -976,12 +1004,14 @@ export class LlamaCpp {
     this.slotDir = args.includes('--slot-save-path') ? args[args.indexOf('--slot-save-path') + 1] : ''; // where this engine run saves readings
     this.placeChat = null; // a fresh engine holds no chat's reading yet
     let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
-    if (helpers.length) env = { ...env, ...scutEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
+    if (helpers.length) env = { ...env, ...scutEnv(this.cfg), ...linkEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
     // 1.5.203: spawn throws when Windows blocks the program (Smart App Control); safeSpawn turns that into 'error'.
     const child = safeSpawn(spawn, exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });
     // 1.5.24 "Let games go first": on the processor, the engine yields to games (below normal priority).
     if (this.role === BESIDE || (cpu && cpuPlan(this.cfg)?.lowPriority)) { try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {} }
-    const keep = (d) => { log = (log + d).slice(-4000); if (full.length < LOAD_LOG_MAX) full += d; };
+    // The link log: with a lent card in use, the engine's [link] and [scut] lines go to bob-net-link.log and the logbook.
+    const link = helpers.length ? new LinkLog(this.cfg, { who: 'borrowed card', log: (...a) => this.log?.(...a) }) : null;
+    const keep = (d) => { log = (log + d).slice(-4000); if (full.length < LOAD_LOG_MAX) full += d; link?.feed(d); };
     child.stdout.on('data', keep);
     child.stderr.on('data', keep);
     const failFile = path.join(this.cfg.dataDir, `llama-server${this.tag}-load-failed.txt`);
@@ -1018,20 +1048,28 @@ export class LlamaCpp {
     const dl = loadDeadline(this.loadTimes[model], this.lc.loadTimeoutSeconds || 300);
     const soft = !retried && !helpers.length && dl.soft < dl.hard ? t0 + dl.soft * 1000 : 0;
     let said = Date.now(); // a spread load says how it's going once a minute, so a long first load isn't silent
+    // Nov 12: once the load is over (loaded, failed or stopped) this watch ends too. It used to run on to its deadline
+    // after the engine had already stopped, saying "still loading over Bob-Net" every minute for a load that was gone.
+    let over = false;
     const ready = (async () => {
       while (Date.now() < deadline) {
+        if (over) return;
         if (signal?.aborted) throw new Error('Stopped.');
         if (soft && Date.now() > soft) throw Object.assign(new Error(`${model} took more than twice its usual ${Math.round(this.loadTimes[model])} s to load`), { slow: true });
         if (await this.health()) return;
         if (helpers.length && Date.now() - said >= 60000) { said = Date.now(); try { this.log?.('engine', `${model}: still loading over Bob-Net, ${Math.round((Date.now() - t0) / 60000)} min so far`); } catch {} }
         await new Promise((r) => setTimeout(r, 500));
       }
+      if (over) return;
       saveFail('took too long to load');
       throw new Error(`${model} took too long to load.`);
     })();
     try {
       await Promise.race([ready, started]);
+      over = true;
     } catch (e) {
+      over = true;
+      ready.catch(() => {});
       this.lastLoadOut = full; // 226: the engine's own words, for the plain reason
       await this.stopServer();
       // 1.5.189: a spread that failed loads here like always, instead of leaving no brain.
@@ -1200,7 +1238,7 @@ export class LlamaCpp {
         // 1.5.16: a quick reply asks the chat template to skip thinking (templates that don't know the switch ignore it).
         ...(think === false ? { chat_template_kwargs: { enable_thinking: false } } : {}),
         // fNRI's small cube in Bob's thinking: only while someone has it open, and only Brain Engine answers it
-        ...(this.wantTrace?.() ? { expert_trace: true } : {}) }),
+        ...(this.wantTrace?.() ? { expert_trace: true, expert_trace_stream: true } : {}) }), // 1.5.210: Brain Engine 5 also sends the picks with every word (older builds ignore the ask)
       signal
     });
   }
@@ -1230,6 +1268,7 @@ export class LlamaCpp {
         if (!ev) { if (asked && data.includes('"expert_trace"')) this.log?.('engine', `fNRI cube: ${model}'s trace came back unreadable (${data.length.toLocaleString()} characters)`); continue; } // a cut or odd line from the server: skip it rather than lose the whole reply
         if (ev.error) throw new Error('llama-server: ' + (ev.error.message || JSON.stringify(ev.error)));
         // 1.5.30: llama-server puts the reply's timings on its last chunk; kept for Now running.
+        if (ev.expert_trace_part && this.onTracePart) { try { this.onTracePart(ev.expert_trace_part, model); } catch {} } // the picks so far, while he writes
         if (ev.expert_trace && this.onTrace) { traced = true; try { this.onTrace(ev.expert_trace, model); } catch (e) { this.log?.('engine', `fNRI cube: couldn't read ${model}'s trace: ${e.message}`); } }
         // Nov 11 (item 3): the engine's own count of what it read teaches Bob how many characters make a token for this brain.
         if (ev.timings) { const n = (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0); const k = this.current || model; const per = learnPer(this.perToken[k], promptChars(messages, tools), n); if (per) this.perToken[k] = per; }

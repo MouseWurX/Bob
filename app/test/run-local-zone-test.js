@@ -62,5 +62,11 @@ check('the logbook stamp reads 21:30 the day before', /2026-11-11.*21:30/.test(s
   check('the settings read gives the zone and whether it was set by hand', /timeZone: cfg\.timeZone \|\| '', timeZoneSet: cfg\.timeZoneSet === true/.test(server));
   check("Bob's own list of his settings names the zone", /`Time zone: \$\{cfg\.timeZone \|\| 'not read yet'\}/.test(read('../src/self-help.js')));
 }
+// 1.5.210 (208 PC check): the time line names the zone, from settings, so the brain never guesses it.
+{
+  const { Brain } = await import('../src/brain.js');
+  const zb = Object.create(Brain.prototype); zb.cfg = { timeZone: 'America/Edmonton' };
+  check('the time Bob is given names the zone from settings', /\(America\/Edmonton\)$/.test(zb.now()), zb.now());
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

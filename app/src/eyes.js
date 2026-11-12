@@ -1,4 +1,4 @@
-// Eyes checks: Bob looks at a picture of the screen with his eyes brain (Equip Bob, "Seeing pictures",
+// Eyes checks: Bob looks at a picture of the screen with his eyes brain (Settings, Brains, "Seeing pictures",
 // cfg.models.eyes) and answers one question about it. Used by the Apps hand (after an action: "did it work?",
 // and app_look's ask) and the Browser hand (the same two). Nothing new to download: any vision brain in the
 // eyes slot does, and when none is equipped the check is skipped and the result says so.
@@ -13,7 +13,7 @@ export const eyesModel = (cfg) => String(cfg?.models?.eyes || '').trim();
 export const eyesOn = (cfg) => Boolean(eyesModel(cfg)) && handsSettings(cfg).eyesCheck !== false;
 // Why a check can't happen right now, for the tool result (empty when it can).
 export function eyesWhy(cfg) {
-  if (!eyesModel(cfg)) return `no eyes brain is in its slot (Equip Bob, "Seeing pictures"), so Bob can't check his work by looking; ${cfg?.userName || 'the user'} can equip a vision brain there`;
+  if (!eyesModel(cfg)) return `no eyes brain is in its slot (Settings, Brains, "Seeing pictures"), so Bob can't check his work by looking; ${cfg?.userName || 'the user'} can equip a vision brain there`;
   if (handsSettings(cfg).eyesCheck === false) return '"Bob checks his work with his eyes" is off in Settings, Hands';
   return '';
 }

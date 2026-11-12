@@ -1,11 +1,11 @@
 // 1.5.34 House style: defaults for what small brains kept asking about instead of doing (tool check, 2026-11-02).
-// The owner's idea: set them once on the Equip Bob page, next to the slot they belong to, and Bob uses them when a
+// The owner's idea: set them once in Settings, House style, and Bob uses them when a
 // request doesn't say. Every box starts empty; empty means Bob picks something sensible and says what he picked.
 // Shared by the page (boxes), the server (cleaning what's saved) and the brain (prompt line, tool defaults).
 import { esc } from './util.js';
 
 
-// slot: the Equip Bob slot the boxes sit next to. Each field: label, kind (text | seconds | choice), limits.
+// slot: the job (Brains page) the group belongs to; its kit links to the boxes. Each field: label, kind (text | seconds | choice), limits.
 export const HOUSE = {
   music: { slot: 'music', title: 'House style for music', fields: {
     style: { label: 'Genre and mood', kind: 'text', hint: 'like "chiptune, upbeat"' },
@@ -99,7 +99,7 @@ export function applyHouseStyle(tool, args, hs) {
 // The chat line when defaults were used, with a way to change them.
 export const usedLine = (used) => (used.length ? `Used your house style: ${used.join(', ')}` : '');
 
-// The boxes for one group, for the Equip Bob page. data-hs="group.field" is saved on change by cellar.js.
+// The boxes for one group, for Settings, House style. data-hs="group.field" is saved on change by cellar.js.
 export function houseStyleHtml(group, hs) {
   const g = HOUSE[group];
   if (!g) return '';
@@ -117,5 +117,5 @@ export function houseStyleHtml(group, hs) {
     <div class="hs-grid">${Object.entries(g.fields).map(field).join('')}</div></details>`;
 }
 
-// Which group belongs to an Equip Bob slot (null for slots without a house style).
+// Which group belongs to a job (null for slots without a house style).
 export const houseGroupOf = (slotId) => Object.entries(HOUSE).find(([, g]) => g.slot === slotId)?.[0] || null;

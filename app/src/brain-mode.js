@@ -30,7 +30,7 @@ export function bigSession(cfg) { return BIG_SESSIONS.includes(currentSession(cf
 // Whether Bob keeps his chat brain loaded between jobs.
 export function holdsChatBrain(cfg) { return brainMode(cfg) === 'always' && !bigSession(cfg); }
 
-// Every brain Bob himself uses (picked in Equip Bob or for a session). Anything else loaded in Ollama
+// Every brain Bob himself uses (picked in Settings, Brains or for a session). Anything else loaded in Ollama
 // (Open WebUI, another app) is not Bob's, so he never unloads it or counts it.
 export function bobsBrains(cfg) {
   const names = [...Object.values(cfg?.models || {}), ...Object.values(sessionBrains(cfg || {}))].filter((x) => typeof x === 'string' && x);

@@ -88,6 +88,16 @@ export function taskRow(j, { movable, full }) {
   </li>`;
 }
 
+// 1.5.210: an empty list says what a task is and gives one to try, instead of a bare one-line "nothing"
+export const TASK_EXAMPLE = 'Make a spreadsheet of my monthly bills';
+export function emptyTasks(filter, total = 0) {
+  if (filter === 'completed') return '<li class="muted tasks-empty">Nothing finished yet. Finished tasks wait here until you clear them.</li>';
+  if (filter === 'problems') return '<li class="muted tasks-empty">Nothing stopped or failed. Good.</li>';
+  if (filter === 'open' && total) return '<li class="muted tasks-empty">Nothing waiting. Everything you asked for is done or stopped (see the other tabs).</li>';
+  return `<li class="tasks-empty"><p><strong>No tasks yet.</strong> A task is anything you ask Bob to do. Each message you send becomes one, and he works through them top to bottom. While one runs you can keep chatting; new ones wait their turn here.</p>
+        <p>For example: <q>${TASK_EXAMPLE}</q> <button type="button" class="mini" data-try>Try it</button></p></li>`;
+}
+
 export function createTasks({ post }) {
   const dlg = document.getElementById('tasks'), body = document.getElementById('tasks-body');
   let jobs = [], filter = 'open';
@@ -107,13 +117,14 @@ export function createTasks({ post }) {
         <span class="spacer"></span>
         ${done.length || other.some((j) => j.state === 'cancelled') ? '<button type="button" data-clear>Clear completed</button>' : ''}
       </div>
-      <ol class="tlist">${shown.map((j) => taskRow(j, { movable: j.state === 'waiting', full: true })).join('') || '<li class="muted">Nothing here.</li>'}</ol>`;
+      <ol class="tlist">${shown.map((j) => taskRow(j, { movable: j.state === 'waiting', full: true })).join('') || emptyTasks(filter, jobs.length)}</ol>`;
   }
   body.addEventListener('click', async (e) => {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.f) { filter = b.dataset.f; return draw(); }
     if ('clear' in b.dataset) return post('/api/queue/clear', {});
+    if ('try' in b.dataset) { const box = document.getElementById('input'); dlg.close(); if (box) { box.value = TASK_EXAMPLE; box.focus(); box.dispatchEvent(new Event('input', { bubbles: true })); } return; }
     const id = b.closest('[data-id]')?.dataset.id;
     if (!id) return;
     const t = b.dataset.t;
@@ -176,7 +187,7 @@ export function createDownloads({ api, post }) {
     const open = items.filter((d) => !['done', 'cancelled'].includes(d.state));
     const finished = items.filter((d) => ['done', 'cancelled'].includes(d.state));
     headTip(document.getElementById('downloads-title'), `Everything you've said yes to downloading. ${settings.concurrent === 2 ? 'Two run' : 'One runs'} at a time, top first; drag one up to have it next. Pause keeps what has downloaded, so a 20 GB model doesn't start over. Cancel deletes the half-done file.`, 'Downloads');
-    body.innerHTML = `      <ol class="tlist">${open.map(downloadRow).join('') || '<li class="muted">Nothing downloading. Get them from Get models in the left menu.</li>'}</ol>
+    body.innerHTML = `      <ol class="tlist">${open.map(downloadRow).join('') || '<li class="muted tasks-empty">Nothing downloading. Models come from Get models, and wait here while they download. <button type="button" class="mini" data-getmodels>Open Get models</button></li>'}</ol>
       ${finished.length ? `<div class="ttabs"><strong>Finished</strong><span class="spacer"></span><button type="button" data-clear>Clear finished</button></div><ol class="tlist">${finished.slice().reverse().map(downloadRow).join('')}</ol>` : ''}
       <div class="dl-settings">
         <strong>Settings</strong>
@@ -189,6 +200,7 @@ export function createDownloads({ api, post }) {
     const b = e.target.closest('button');
     if (!b) return;
     if ('clear' in b.dataset) return post('/api/models/clear', {});
+    if ('getmodels' in b.dataset) { dlg.close(); document.getElementById('cellarBtn')?.click(); return; }
     const id = b.closest('[data-id]')?.dataset.id, d = b.dataset.d;
     if (!id || !d) return;
     if (d === 'up' || d === 'down') {

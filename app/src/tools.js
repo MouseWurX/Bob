@@ -870,7 +870,7 @@ export function buildTools(cfg) {
     }, []),
     async run({ why }, ctx) {
       const r = ctx.brain?.offerRent?.(ctx, { why: String(why || '').slice(0, 200) });
-      if (!r) return 'There is no rented brain in its slot (Equip Bob, Rented brain). Say so in one line and carry on here.';
+      if (!r) return 'There is no rented brain in its slot (Settings, Brains, Rented brain). Say so in one line and carry on here.';
       if (r.already) return 'The Hire it card is already under the chat. Don\'t call this again now.';
       return `A card with a "Hire it" button is now under this chat (${r.est}). Tell ${cfg.userName || 'the user'} in one line why this job needs the rented brain and that one press runs it there; stop after that and don't do the job here.`;
     },

@@ -340,7 +340,7 @@ Reply with PASS or FAIL as the very first word, then at most 6 short lines of re
 
 export async function reviewTool(brain, spec, code, test, ctx = {}) {
   const rb = reviewBrain(brain.cfg);
-  if (!rb) return { ok: false, text: 'No brain is set to check it (Equip Bob: the Review slot, Deep thinking or the main Brain).' };
+  if (!rb) return { ok: false, text: 'No brain is set to check it (Settings, Brains: the Review slot, Deep thinking or the main Brain).' };
   const who = copyName(brain.cfg, 'reviewer', 'second look');
   // Clear in the chat: it's a moot, said in so many words, not "spinning up a copy".
   ctx.emit?.({ type: 'announce', text: `🛰 Bob calls a moot in The Idle Process: ${who} reads the new tool ${spec.name} (on ${rb.model}) before it can be added.` });

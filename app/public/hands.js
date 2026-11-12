@@ -58,7 +58,7 @@ function officeLine(o, on) {
 // what Bob's own browser window knows.
 function browserHtml(bw, s, on) {
   if (!bw) return '';
-  const eyes = bw.eyes ? `✓ Eyes brain: ${esc(bw.eyes)}` : '✗ No eyes brain in its slot: Equip Bob, "Seeing pictures", any vision brain. Until then Bob can\'t check his work by looking.';
+  const eyes = bw.eyes ? `✓ Eyes brain: ${esc(bw.eyes)}` : '✗ No eyes brain in its slot: Settings, Brains, "Seeing pictures", any vision brain. Until then Bob can\'t check his work by looking.';
   return `<div class="hands-browser muted${on ? '' : ' dim'}"><strong>Bob's browser and eyes</strong><br>
     ${bw.available ? '✓ Bob\'s own browser window is here (a window titled "Bob is browsing"; separate from your browser and its sign-ins).' : '✗ Bob\'s browser window only exists in Bob\'s app window, so it\'s not here when Bob runs in a browser tab or as a background service.'}
     <button type="button" data-hbrowserforget ${bw.available ? '' : 'disabled'}>Forget what Bob's browser knows</button><br>

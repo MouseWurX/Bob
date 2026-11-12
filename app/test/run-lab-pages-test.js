@@ -1,6 +1,7 @@
 // 1.5.16x The Playground's Longer, Faster and Teach it pages (thinking-paths.md sec 15): the sums, the plans, each job
 // with fake steps (no engine, no Python, no downloads), Use this in Bob, the fit rule, where brains and lessons come
 // from, the Forge plan for rented teaching (caps 0, never started), and the Turbo flags Bob's engine gets.
+import { labText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -290,7 +291,7 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
   await pagesRoute({ req: req('POST'), res: {}, p: '/api/lab/teach/plan', isLocal: false, lab, body: async () => ({}), send });
   check('the views are read-only for any device; starting a job is only on this replicant matrix', out[0][0] === 200 && out[0][1].brains.length >= 4 && out[1][0] === 403 && out[2][0] === 403);
   check('other Lab paths are left to the Lab', (await pagesRoute({ req: req('GET'), res: {}, p: '/api/lab/forge', isLocal: true, lab, body: async () => ({}), send })) === false);
-  check('the Lab mounts these pages', /pagesRoute\(\{ req, res, p, isLocal, lab, body, send \}\)/.test(read('src/lab.js')));
+  check('the Lab mounts these pages', /pagesRoute\(\{ req, res, p, isLocal, lab, body, send \}\)/.test(labText()));
 }
 
 // ---- the trainer script and the pages ----

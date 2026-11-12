@@ -689,7 +689,7 @@ export function createLab({ api, note, go, page = false }) {
       }
       if ('stop' in b.dataset) await api('/api/lab/stop', {});
       if ('save' in b.dataset) await api('/api/lab/recipe', { recipe: r });
-      if (b.dataset.use) { const u = await api('/api/lab/use', { run: b.dataset.use }); note?.(`${u.name} is in Bob now. Pick it in Equip Bob or the brain menus.`); }
+      if (b.dataset.use) { const u = await api('/api/lab/use', { run: b.dataset.use }); note?.(`${u.name} is in Bob now. Pick it in Settings, Brains or the brain menus.`); }
     } catch (err) { msg = err.message; }
     await load();
   });

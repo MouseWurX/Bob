@@ -34,7 +34,7 @@ export function makeBackupPanel({ api, redraw }) {
   function saveHtml() {
     const parts = info.parts || [];
     const ticks = parts.map((p) => `<label class="switch srow-switch"><input type="checkbox" data-bkpart="${esc(p.id)}" ${st.parts?.has(p.id) ? 'checked' : ''}><span><strong>${esc(p.label)}</strong>${noteOrTip(esc(p.what), p.label)}</span></label>`).join('');
-    const keysWhat = `Off unless you tick it. The API keys, bot tokens and phone passcode on this replicant matrix (${info.keysHere || 0} found), locked with a passcode you type here. Nobody can read them without it, Bob included, so keep it somewhere safe. Restoring keys needs the same passcode.`;
+    const keysWhat = `Off unless you tick it. The API keys, bot tokens, the keys of apps you connected and the phone passcode on this replicant matrix (${info.keysHere || 0} found), locked with a passcode you type here. Nobody can read them without it, Bob included, so keep it somewhere safe. Restoring keys needs the same passcode.`;
     return `<h4 class="ssub">Save a backup</h4>
       <p class="muted">One zip of what makes this Bob yours. Brains and programs aren't in it: they download again on the new replicant matrix.</p>
       ${ticks}
@@ -54,7 +54,7 @@ export function makeBackupPanel({ api, redraw }) {
     if (st.pick) {
       const p = st.pick, names = Object.fromEntries((info.parts || []).map((x) => [x.id, x.label]));
       const ticks = p.parts.map((id) => `<label class="switch srow-switch"><input type="checkbox" data-bkrpart="${esc(id)}" ${st.rparts?.has(id) ? 'checked' : ''}><span><strong>${esc(names[id] || id)}</strong> <span class="muted">${p.counts[id]} file${p.counts[id] === 1 ? '' : 's'}</span></span></label>`).join('');
-      const keys = p.keys ? `<label class="switch srow-switch"><input type="checkbox" data-bkrkeys ${st.rkeys ? 'checked' : ''}><span><strong>Keys and passcodes</strong>${noteOrTip('Puts the locked keys back where Bob reads them (Windows: your user variables; Mac and Linux: ~/.config/bob/env). A key this replicant matrix already has is kept as it is.', 'Keys and passcodes')}</span></label>
+      const keys = p.keys ? `<label class="switch srow-switch"><input type="checkbox" data-bkrkeys ${st.rkeys ? 'checked' : ''}><span><strong>Keys and passcodes</strong>${noteOrTip('Puts the keys back with Bob\'s saved keys and the apps you connected, locked again on this replicant matrix. A key this replicant matrix already has is kept as it is.', 'Keys and passcodes')}</span></label>
         <div class="save-pick"><label for="bk-rpass">Passcode for the keys</label><input id="bk-rpass" type="password" autocomplete="off" data-bkrpass value="${esc(st.rpass)}"></div>` : '<p class="muted">No keys in this backup: type them again in Settings where each one is used.</p>';
       const brains = p.brains?.length ? `<p class="muted">Brains that Bob used: ${esc(p.brains.join(', '))}. They aren't in a backup: get them again from Get models.</p>` : '';
       card = `<div class="confirm"><p><strong>${esc(p.file.split(/[\\/]/).pop())}</strong>: made ${esc(when(p.made))}${p.version ? ` by Bob ${esc(p.version)}` : ''}${OS_NAMES[p.platform] ? ` on ${OS_NAMES[p.platform]}` : ''}${p.auto ? ' (automatic)' : ''}.</p>

@@ -43,7 +43,7 @@ export function createQuickSwitches({ note }) {
     screenBtn.hidden = ids.length === 0;
     screenSt.textContent = s.held && onCount ? 'Paused' : on ? (eyes ? 'On' : 'On, no eyes') : s.enabled && onCount ? 'Partly' : 'Off';
     const which = ids.includes('apps') ? 'open and use apps and his own browser' : 'use his own browser';
-    screenBtn.title = on ? `Screen use is on: Bob can ${which}, one approved step at a time${eyes ? ', and looks at the window with his eyes brain to check each step' : '. He has no eyes brain, so he can\'t check by looking: equip one in Equip Bob, "Seeing pictures"'}. Press to turn it off.`
+    screenBtn.title = on ? `Screen use is on: Bob can ${which}, one approved step at a time${eyes ? ', and looks at the window with his eyes brain to check each step' : '. He has no eyes brain, so he can\'t check by looking: pick one in Settings, Brains, "Seeing pictures"'}. Press to turn it off.`
       : s.enabled && onCount ? 'Screen use is partly on: only some of the apps and browser Hands are on. Press to turn on the rest.'
       : `Screen use is off. Press to let Bob ${which}, checking each step by looking at the window. Every step still shows a card unless Autonomy is on, and the hard limits (no sending out, no password fields) still apply.`;
   }
@@ -88,7 +88,7 @@ export function createQuickSwitches({ note }) {
       if (on) note('Screen use is off. Bob won\'t use apps or his browser.');
       else {
         const eyes = Boolean(r.browser?.eyes);
-        note(`Screen use is on. Bob can ${ids.includes('apps') ? 'use apps and his own browser' : 'use his own browser'}; each step shows a card${r.settings.free ? ' (except Autonomy is on, so he won\'t ask)' : ''}.${eyes ? '' : ' He has no eyes brain yet, so he can\'t check his work by looking: equip one in Equip Bob, "Seeing pictures".'}${r.woke?.length ? ` Hands were off, so these ticked ones work again too: ${r.woke.join(', ')}.` : ''}`);
+        note(`Screen use is on. Bob can ${ids.includes('apps') ? 'use apps and his own browser' : 'use his own browser'}; each step shows a card${r.settings.free ? ' (except Autonomy is on, so he won\'t ask)' : ''}.${eyes ? '' : ' He has no eyes brain yet, so he can\'t check his work by looking: pick one in Settings, Brains, "Seeing pictures".'}${r.woke?.length ? ` Hands were off, so these ticked ones work again too: ${r.woke.join(', ')}.` : ''}`);
       }
     } catch (err) { note(err.message || 'Screen use can only be switched on at this replicant matrix itself.', 'error'); }
     screenBtn.disabled = false;

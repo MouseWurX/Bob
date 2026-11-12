@@ -258,6 +258,15 @@ export function liveTrace(raw, { keepPrompt = LIVE_PROMPT, max = LIVE_WORDS } = 
   return { kind: raw.kind === 'neurons' ? 'neurons' : 'experts', experts: Number(raw.n_expert) || 0, layers: Number(raw.n_layer) || 0, used: Number(raw.n_expert_used) || 0, neurons: Number(raw.n_ff) || 0,
     prompt: Math.min(rows.length, P - from), words: rows.map((r) => String(r?.t ?? '').slice(0, 80)), e: rows.map((r) => (Array.isArray(r?.e) ? r.e : [])), last: String(raw.last ?? '').slice(0, 80) };
 }
+// 1.5.210 Real experts, live: a piece of the trace as Brain Engine streams it (Brain Engine 5 and later), the rows read
+// since the last piece. A long prompt comes in one big piece; only its last LIVE_PROMPT rows are kept, as the cube
+// only has time to show those. null when the piece is empty or not a trace.
+export function liveTracePart(raw, { keep = LIVE_PROMPT } = {}) {
+  if (!raw || !Array.isArray(raw.rows) || !raw.rows.length) return null;
+  const rows = raw.rows.slice(-keep);
+  return { kind: raw.kind === 'neurons' ? 'neurons' : 'experts', experts: Number(raw.n_expert) || 0, layers: Number(raw.n_layer) || 0, used: Number(raw.n_expert_used) || 0,
+    from: Math.max(0, Number(raw.from) || 0) + raw.rows.length - rows.length, prompt: Math.max(0, Number(raw.n_prompt) || 0), words: rows.map((r) => String(r?.t ?? '').slice(0, 80)), e: rows.map((r) => (Array.isArray(r?.e) ? r.e : [])) };
+}
 // The cube's recording: Bob's last few replies as clips of one "skill". null when there is nothing to show.
 export function liveRecording(traces, name = 'Bob') {
   const last = traces[traces.length - 1]; if (!last || !last.experts || !last.layers) return null;

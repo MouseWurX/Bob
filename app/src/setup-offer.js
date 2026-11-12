@@ -11,7 +11,7 @@ import { HANDS, handsSettings, handHere, cleanHands } from './hands-settings.js'
 import { saveSettings } from './config.js';
 
 // Each capability: which slot it fills, which catalog models can do it, and an engine it always needs.
-// say = Bob's words for it ("I can't ___ yet"). The job names match Equip Bob's slots.
+// say = Bob's words for it ("I can't ___ yet"). The job names match the Brains page jobs.
 export const NEEDS = {
   pictures: { slot: 'image', cats: ['images'], edit: false, say: 'make pictures', what: 'a picture maker' },
   edits: { slot: 'edit', cats: ['images'], edit: true, say: 'change a picture and keep its look', what: 'a picture editor' },

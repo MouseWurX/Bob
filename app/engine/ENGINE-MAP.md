@@ -2,7 +2,7 @@
 
 This is the guide to what Brain Engine changes in llama.cpp, where each change hooks in, and what to re-check when moving to a newer llama.cpp. [README.md](README.md) says what each patch is for and how to build and move it. This page is the "where and how" for whoever does the rebase.
 
-Brain Engine 4 is llama.cpp **b12282** plus the six patches below, about +2,160/-13 lines across 21 files. Only 0004, 0005 and 0006 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
+Brain Engine 5 (named 5b12282) is llama.cpp **b12282** plus the eight patches below (Brain Engine 4 had the first six; 0007 is live expert picks, 0008 the link log and SCUT that retunes itself). Only 0004, 0005, 0006 and 0008 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
 
 Bob's own code map lists these patches too: one line each, with the files they change, the lines they add and take out, and the main names they add.
 
@@ -90,6 +90,25 @@ Then run `engine/try-newer.sh <tag>`. Every patch must go on, and the Linux buil
 - **Bob callers:** `src/scut-seal.js` (link keys, kept locked with `src/secret-box.js`), `src/bob-net-pair.js` (a key made at pairing), `src/share-card.js` and `src/share-brains.js` (pass the keys), `src/tools.js` (the key file is on the never-touch list).
 - **Re-check on rebase:** 0005 must go on first. A sealed Bob and an unsealed one must fall back to the plain link, never a link one side can't read. Same answers sealed or not.
 - **Tests:** `test/run-scut-seal-test.js` (keys, pairing, locked key file). The PC test is Bigger Bobs over Wi-Fi with SCUT on, sealed (the default) and unsealed.
+
+### 0007-expert-trace-stream: the trace while the reply is written
+
+- `tools/server/server-task.h`: `expert_trace_stream` in the request params; `expert_trace_part` (json, null unless asked) on a streamed partial result.
+- `tools/server/server-schema.cpp`: the `expert_trace_stream` field.
+- `tools/server/server-context.cpp`: `server_expert_trace` remembers how far the pieces sent so far reach (`sent_tag`, `sent_out`, `sent_rows`, reset in `clear()`). `send_partial_response()` fills `expert_trace_part` from the new `expert_trace_part(slot)`, which builds the rows since the last piece the same way `expert_trace_end()` builds all of them, and waits for the next piece when a layer is behind. Running counts (`seen_tag`, `seen_out`, `seen_prompt`) keep each piece's cost the same at any context length, and a piece carries at most `part_max_rows` (64) rows: a long prompt arrives as one piece, so only its end is sent and `from` says where it starts (the full trace at the end is unchanged). Only on top of 0002.
+- `tools/server/server-task.cpp`: the piece goes into the plain and the chat-stream JSON of a partial result.
+
+### 0008-scut-live: the link log, and SCUT that retunes itself
+- **Upstream files:** `ggml/src/ggml-rpc/ggml-rpc.cpp`, `transport.{h,cpp}`, and SCUT's own `scut.{h,cpp}`.
+- **Hooks:**
+  - `rpc_dispatcher::work()` times every command, writes the `[link]` lines every `GGML_RPC_STATS` seconds, and wakes from its queue wait (`message_queue::pop_for`) to write the last one when commands stop.
+  - `rpc_serve_client()` does the same on the lending side (a guard object, so the last lines are written however the loop ends); `send_msg` and `rpc_server::sync_all_backends` add up sending and card time.
+  - `socket_t` gains `bytes_sent`, `bytes_received`, `link_name` and `link_note`; `impl::get_caps` / `update_caps` keep the reason SCUT isn't in use (`scut_why()`).
+  - `scut.cpp`: counters and `note()`; receive reports (`T_RXR`, offer flag `OF_TUNE`), `on_report()` (the tuning), `flush()` sends a repair per `fec_k` packets, `judge()` only slows for lateness when the line was being filled.
+- **Environment:** `GGML_RPC_STATS` (seconds, default 10, 0 = off), `GGML_RPC_SCUT_TUNE` (default 1).
+- **Bob callers:** `src/link-log.js` (keeps the lines in `bob-net-link.log` and the logbook), `src/share-card.js` (`linkEnv`, the lender's output), `src/llamacpp.js` (the borrower's output), `src/server.js` (`/api/share-brains/link-log`), `public/share-brains.js` (Watch the link live, Link log).
+- **Re-check on rebase:** 0005 and 0006 first. If upstream changes `rpc_dispatcher::work()` or the `rpc_serve_client` loop, the timing hooks move with them; the probe uses `RPC_CMD_GET_ALIGNMENT` for device 0, which must stay a command the server answers without touching the card.
+- **Tests:** `test/run-link-log-test.js`. SCUT alone can be built without llama.cpp (scut.cpp, scut.h, scut-seal.h and a four-line stand-in for log.h) and run through a pretend Wi-Fi; do that after any change to the tuning. The PC test is Bigger Bobs over Wi-Fi with the Link log open on both Bobs.
 
 ## What's not covered yet
 

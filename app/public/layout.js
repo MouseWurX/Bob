@@ -11,6 +11,7 @@ import { drawBob } from './bob-sprite.js'; // the avatars on the Bob-Net list
 import { createMindCube } from './mind-cube.js';
 import { createMindView } from './mind-view.js'; // 1.5.138: Bob's thinking, docked
 import { DEFAULT_ORDER, SECTION_NAME, applyOrder, dropBefore } from './now-sections.js';
+import { createPanels } from './panels.js'; // 1.5.210: panels you build from Now running's sections
 
 
 const $ = (id) => document.getElementById(id);
@@ -34,6 +35,8 @@ export function createLayout({ post, openTasks, openDownloads }) {
   const hist = []; // the last 5 minutes of samples, for the graph (kept in this window only)
   try { showGraph = localStorage.getItem('bob-now-graph') === '1'; } catch {}
   let gpuAt = 0, brainSt = null; // 1.5.26: up here, because pollGpu() can run before the graphics-card section below
+  let panels = null; // 1.5.210: a section can live in a panel of its own (panels.js); it's seen there with Now running shut
+  const seen = (...ids) => !body.classList.contains('right-hidden') || ids.some((id) => panels?.visible(id));
   let docked = false, mindView = null; // 1.5.138: up here too, because setRight() runs before the docked-thinking section below
 
   // ---- folding ----
@@ -183,7 +186,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
   docked = store.get('bob-mind-dock', '1') === '1'; // open to begin with, so the cube is there (1.5.196)
   function mindListen() {
     if (!mindView) return;
-    const on = docked && !body.classList.contains('right-hidden') && !document.hidden;
+    const on = docked && seen('mind') && !document.hidden;
     if (on) mindView.connect(); else mindView.disconnect();
   }
   function drawDock() {
@@ -203,27 +206,30 @@ export function createLayout({ post, openTasks, openDownloads }) {
   let cubeLive = store.get('bob-cube-live', '0') === '1';
   const drawLive = () => { if (!liveBtn) return; liveBtn.setAttribute('aria-checked', String(cubeLive)); liveBtn.querySelector('.st').textContent = cubeLive ? 'On' : 'Off'; };
   drawLive();
-  if (liveBtn) liveBtn.onclick = () => { cubeLive = !cubeLive; store.set('bob-cube-live', cubeLive ? '1' : '0'); drawLive(); cubeOk = true; if (cube) cube.relive(); cubeListen(); };
+  if (liveBtn) liveBtn.onclick = () => { cubeLive = !cubeLive; store.set('bob-cube-live', cubeLive ? '1' : '0'); drawLive(); cubeOk = true; if (cube) cube.relive(); cubeListen(); window.dispatchEvent(new CustomEvent('bob-cube-live')); }; // the cube avatar (app.js) follows it too
   let cubeOn = store.get('bob-mind-cube', '1') === '1', cube = null, cubeOk = true; // the cube is how thinking shows to begin with; the text is the other choice
   function cubeListen() {
     cubeBtn.setAttribute('aria-checked', String(cubeOn)); cubeBtn.querySelector('.st').textContent = cubeOn ? 'On' : 'Off';
-    const on = cubeOn && docked && !body.classList.contains('right-hidden') && !document.hidden;
-    if (cubeOn && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), open: $('mindCubeOpen'), key: $('mindCubeKey'), mono: $('mindCubeMono'), colour: $('mindCubeColour'), colourBox: $('mindCubeColourBox'), details: $('mindCubeDetails'), load: $('mindCubeLoad'), unload: $('mindCubeUnload'), loadBox: $('mindCubeLoadBox'), spin: $('mindCubeSpin'), lines: $('mindCubeLines'), linesBox: $('mindCubeLinesBox') }, { onWhy: (why) => { cubeOk = !why; cubeListen(); }, still: () => body.classList.contains('still'), live: () => cubeLive });
+    // 1.5.209: with the cube as Bob's picture (Style), his brain shows once, in the corner; here the written thinking shows
+    const shown = cubeOn && globalThis.bobCubeAvatarOn !== true;
+    const on = shown && docked && seen('mind') && !document.hidden;
+    if (shown && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), open: $('mindCubeOpen'), key: $('mindCubeKey'), mono: $('mindCubeMono'), colour: $('mindCubeColour'), colourBox: $('mindCubeColourBox'), details: $('mindCubeDetails'), load: $('mindCubeLoad'), unload: $('mindCubeUnload'), loadBox: $('mindCubeLoadBox'), spin: $('mindCubeSpin'), lines: $('mindCubeLines'), linesBox: $('mindCubeLinesBox') }, { onWhy: (why) => { cubeOk = !why; cubeListen(); }, still: () => body.classList.contains('still'), live: () => cubeLive, lamp: () => globalThis.bobCubeAvatarOn !== true }); // the lamplight follows this cube unless the corner one is Bob's picture
     // with the cube showing, the written thinking steps aside; it comes back when the cube is off or can't work here
-    $('mindDockBody').classList.toggle('cube-view', cubeOn && cubeOk);
+    $('mindDockBody').classList.toggle('cube-view', shown && cubeOk);
     if (!cube) return;
     if (on) cube.connect(); else cube.disconnect();
-    if (!cubeOn) cube.hide();
+    if (!shown) cube.hide();
   }
   cubeBtn.onclick = () => { cubeOn = !cubeOn; store.set('bob-mind-cube', cubeOn ? '1' : '0'); cubeListen(); };
   document.addEventListener('visibilitychange', cubeListen);
   window.addEventListener('bob-mind-dock', cubeListen);
+  window.addEventListener('bob-avatar-shown', cubeListen);
   cubeListen();
   drawDock();
 
   // ---- the panel's lists ----
   function draw() {
-    if (body.classList.contains('right-hidden')) return badgeOnly();
+    if (!seen('tasks', 'downloads')) return badgeOnly();
     const open = jobs.filter((j) => j.state === 'waiting' || j.state === 'working');
     const shownJobs = open.map((j) => (j.state === 'working' && needsYou ? { ...j, status: 'needs you' } : j));
     const recent = jobs.filter((j) => (j.state === 'failed' || j.state === 'interrupted') && Date.now() - (j.doneAt || j.at) < 3600e3);
@@ -377,7 +383,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
   };
   async function pollGpu() {
     clearTimeout(gpuTimer);
-    if (body.classList.contains('right-hidden') || document.hidden) return;
+    if (!seen('memory', 'graph') || document.hidden) return;
     gpuAt = Date.now();
     pausedLine(false);
     try {
@@ -455,7 +461,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
   drawAvatarsBtn();
   async function pollNet() {
     clearTimeout(netTimer);
-    if (body.classList.contains('right-hidden') || document.hidden) return;
+    if (!seen('net') || document.hidden) return;
     try { drawNet(await (await fetch('/api/bob-net/party')).json()); } catch {}
     netTimer = setTimeout(pollNet, brainSt?.session === 'Gaming' ? 30000 : 15000);
   }
@@ -466,7 +472,10 @@ export function createLayout({ post, openTasks, openDownloads }) {
   window.addEventListener('bob-brain-status', (e) => { brainSt = e.detail; try { bay(brainSt); } catch {} if (Date.now() - gpuAt > 1500) pollGpu(); else brainLine(); });
   document.addEventListener('visibilitychange', pollGpu);
 
+  panels = createPanels({ changed: () => { draw(); pollGpu(); pollNet(); mindListen(); cubeListen(); } });
   return {
+    panels,
+    setLeft, leftFolded, // 1.5.210: the phone's bottom bar opens and closes the menu as a sheet (status-chip.js)
     jobs(list) { jobs = list; draw(); },
     downloads(list) { dls = list; draw(); },
     tick(ev) { const d = dls.find((x) => x.id === ev.id); if (d) { Object.assign(d, { done: ev.done, total: ev.total || d.total, rate: ev.rate, eta: ev.eta }); if (!dl.querySelector('.dragging')) draw(); } },

@@ -80,7 +80,7 @@ export function createReader({ hush = () => {}, ownVoice = () => true, onTalk = 
     playPiece(c);
   }
   function browserSay(text, speed, c) {
-    if (!('speechSynthesis' in window)) { c.playing = false; draw('This window has no voice to read with. Set up Bob\'s voice on Equip Bob.'); return Promise.resolve(false); }
+    if (!('speechSynthesis' in window)) { c.playing = false; draw('This window has no voice to read with. Set up Bob\'s voice in Settings, Brains.'); return Promise.resolve(false); }
     return new Promise((res) => {
       const u = new SpeechSynthesisUtterance(text);
       u.rate = speed;

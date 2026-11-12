@@ -74,7 +74,8 @@ export class Digest {
   build(sunday = '') {
     const cfg = this.cfg;
     const { date, dow } = localParts(cfg, this.now());
-    const sun = sunday || addDays(date, -dow);
+    // 1.5.210 (208 PC check): "Make this week's digest now" is this week, Monday to the coming Sunday, not last week.
+    const sun = sunday || (dow === 0 ? date : addDays(date, 7 - dow));
     const chats = [];
     for (const id of chatIds(cfg).slice(0, 400)) { try { chats.push(chatInfo(cfg, id)); } catch {} }
     let log = [];

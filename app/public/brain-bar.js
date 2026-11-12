@@ -5,7 +5,7 @@
 const $ = (id) => document.getElementById(id);
 
 export function createBrainBar({ post, note }) {
-  const pill = $('brainPill'), pillText = $('brainPillText'), pop = $('brainPop'), sw = $('brainFree'), swSt = $('brainFreeSt');
+  const pill = $('brainPill'), pillText = $('brainPillText'), pop = $('brainPop'), popText = $('brainPopText'), sw = $('brainFree'), swSt = $('brainFreeSt');
   const swLabel = sw;
   let st = null, timer = null, lastWake = 0;
 
@@ -44,8 +44,7 @@ export function createBrainBar({ post, note }) {
       title = `In memory: ${list()}. ` + (!on && !st.bigSession ? 'Stays loaded (Free memory when Bob is idle is off).' : st.bigSession ? `Freed ${st.bigGrace || '2 minutes'} after the job.` : `Freed after ${st.sleepAfter || '5 minutes'} quiet.`) + whole;
     } else { text = 'Brain: memory freed'; title = on || st.bigSession ? `Nothing on the graphics card. Typing loads the small brain (${secs(st.wakeSeconds)}).` : 'Loading the small brain shortly.'; }
     pillText.textContent = text;
-    pill.title = title;
-    pop.textContent = title;
+    popText.textContent = title; // 1.5.210: the quick switches sit under these words, in the same panel
     pill.className = `brain-pill ${st.engineOk ? st.state : 'off'}`;
   }
 

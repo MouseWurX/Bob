@@ -158,6 +158,10 @@ export class ToolStrikes {
     return n;
   }
 }
+// 1.5.210 (208 PC check): an address that doesn't exist (a name no DNS knows, a .invalid test name, a 404) is the
+// address's fault, not the tool's: it isn't a strike and isn't counted as the tool breaking.
+export const BAD_ADDRESS = /\bENOTFOUND\b|getaddrinfo|ERR_NAME_NOT_RESOLVED|no such host|name (?:or service )?not (?:known|resolved)|could not resolve host|\.invalid\b|\b404\b[^.\n]{0,20}not found|\bnot found \(404\)/i;
+export const badAddress = (text) => BAD_ADDRESS.test(String(text || ''));
 export const STRIKE_NOTE = (tool, who) => ` (${tool} has failed three times in this job, so it's set aside now: try one other way, or tell ${who} plainly what's in the way.)`;
 export const STRUCK_OUT = (tool, who, last = '') => `Error: not run. ${tool} failed three times in this job${last ? ` (last time: ${last})` : ''}, so it isn't tried again. Use another way, or tell ${who} what failed.`;
 // After the job: one line under the answer, offering to look at the tools set aside. Only when one was.
