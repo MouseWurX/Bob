@@ -112,7 +112,7 @@ check('13: the meter and the button are on the chat page', /id="chatFill"/.test(
 // ---------- 14. A reply that stops sending words ----------
 {
   const l = src('llamacpp.js');
-  check('14: a quiet spell after the first words lets the engine go and says "terminated"', /onChunk\(\); \/\/ item 14/.test(l) && /throw new Error\(`terminated: the brain stopped answering/.test(l) && /await this\.unloadAll\(\)/.test(l));
+  check('14: a quiet spell after the first words lets the engine go and says "terminated"', /onChunk\(\); \/\/ item 14/.test(l) && /`terminated: the brain stopped answering/.test(l) && /await this\.stopServer\(\)/.test(l)); // item 209 (Nov 12): only the stalled brain goes
 }
 
 // ---------- 16. Memory that disagrees with itself ----------

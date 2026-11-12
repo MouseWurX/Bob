@@ -73,7 +73,8 @@ import { Rentals, currentRental, saveEndpoint, estimateText } from './rental.js'
 import { GuestJobs, awayPlan, sendAway, stopAway, guestTools, guestNote, GUEST_TOOLS, canHere, NEEDS_LIST, awayWaitLine } from './share-jobs.js';
 import { askTogether, takeEarlier, askTogetherTool } from './together.js';
 import { showPlanTool, planGate, planOn, planPrompt } from './plan.js';
-import { freeMemNow } from './platform.js';
+import { freeMemNow, killTree as killProcTree } from './platform.js';
+import { CUT_CALL, CUT_REPLY_NOTE, timersFor, raceTimeout, awakeTimeout, afterStop, deadline as withDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { selfWorkOn, readyRepos } from './self-work.js';
 import { compactMessages, charsFor } from './self-work-plan.js';
 import { asDoc, asQuery, embedModel, vecKey } from './embed-prefix.js';
@@ -696,7 +697,7 @@ export class Brain {
   // For the label on the chat page: asleep, waking, awake or working, and how much memory Bob's brains hold.
   async brainStatus() {
     let loaded = [], engineOk = true;
-    try { loaded = await Promise.race([this.engine.loaded(), new Promise((r) => setTimeout(() => r([]), 3000))]); } catch { engineOk = false; }
+    try { loaded = await raceTimeout(this.engine.loaded(), 3000, []); } catch { engineOk = false; }
     const chat = chatBrain(this.cfg);
     const mine = loaded.filter((m) => isBobs(this.cfg, m.name) || sameModel(m.name, chat.model));
     const gb = memGB; // same unit as the graphics card meter in Now running (1.5.26)
@@ -927,8 +928,11 @@ export class Brain {
         const plan = await this.engine.loadPlan?.(m, opts).catch(() => null) || null;
         const mode = loadMode(plan);
         const text = attempt ? `That didn't load right. Trying the ${this.brainLabel(m, who)} again, about ${secs} ${secs === 1 ? 'second' : 'seconds'}.` : loadLine({ mode, who, model: m, from: plan?.drop?.[0] || plan?.keep?.[0] || '', copy: who === 'reviewer' ? copyName(this.cfg, 'reviewer', 'second look') : '', secs, label: (x, w) => this.brainLabel(x, w), single: Boolean(plan?.single), beside: Boolean(plan?.beside), onCard: Boolean(plan?.onCard), besideOn: this.cfg.mootBeside === true, tip: who === 'reviewer' && mode === 'swap' && Boolean(plan?.single) && this.cfg.mootBeside !== true && this.besideTipOnce(), ...(opts?.what ? { what: opts.what } : {}) });
-        emit({ type: 'announce', text, seconds: secs });
-        this.setState('loading', text, m, { mode: attempt ? 'swap' : mode, from: plan?.drop?.[0] || plan?.keep?.[0] || '', ...(plan?.beside ? { beside: true } : {}) });
+        // Item 216: a long load says how long it gets before it is stopped and tried once more.
+        const limit = secs >= 60 ? await Promise.resolve(this.engine.loadLimit?.(m, opts)).catch(() => 0) : 0;
+        const said = limit > secs ? `${text} If it isn't in after ${limit < 120 ? `${limit} seconds` : `${Math.round(limit / 60)} minutes`}, I'll stop it and try once more.` : text;
+        emit({ type: 'announce', text: said, seconds: secs, ...(limit > secs ? { deadline: limit } : {}) });
+        this.setState('loading', said, m, { mode: attempt ? 'swap' : mode, from: plan?.drop?.[0] || plan?.keep?.[0] || '', ...(plan?.beside ? { beside: true } : {}) });
       }
     }).catch((e) => {
       if (/^Stopped\.$/.test(e.message)) throw e;
@@ -1105,8 +1109,9 @@ export class Brain {
     if (hand) this.handApprovals.add(id);
     let picked = null, steps = null, note = '';
     const allowed = await new Promise((resolve) => {
-      const timer = setTimeout(() => done(false), APPROVAL_TIMEOUT_MS); // through done(), so the card leaves the list too
-      const done = (v, rows, items, said) => { clearTimeout(timer); this.approvals.delete(id); this.waitingCards?.delete(id); this.handApprovals.delete(id); picked = rows ?? null; steps = items ?? null; note = typeof said === 'string' ? said.slice(0, 500) : ''; resolve(v); };
+      // Item 217: the 10 minutes don't count time the PC spent asleep; item 215: the timer goes with the turn.
+      const timer = awakeTimeout(() => done(false), APPROVAL_TIMEOUT_MS, { bag: timersFor(signal) }); // through done(), so the card leaves the list too
+      const done = (v, rows, items, said) => { timer.clear(); this.approvals.delete(id); this.waitingCards?.delete(id); this.handApprovals.delete(id); picked = rows ?? null; steps = items ?? null; note = typeof said === 'string' ? said.slice(0, 500) : ''; resolve(v); };
       this.approvals.set(id, done);
       signal.addEventListener('abort', () => done(false), { once: true });
     });
@@ -1144,8 +1149,8 @@ export class Brain {
     this.setState('waiting', q);
     ctx.emit({ type: 'approval', id, text: q, ask: { question: q, choices: list }, sessionId: ctx.sessionId });
     const said = await new Promise((resolve) => {
-      const timer = setTimeout(() => done(false), APPROVAL_TIMEOUT_MS);
-      const done = (v, rows, items, note) => { clearTimeout(timer); this.approvals.delete(id); resolve(v ? String(note || '').trim().slice(0, 500) : ''); };
+      const timer = awakeTimeout(() => done(false), APPROVAL_TIMEOUT_MS, { bag: timersFor(ctx.signal) }); // items 215, 217
+      const done = (v, rows, items, note) => { timer.clear(); this.approvals.delete(id); resolve(v ? String(note || '').trim().slice(0, 500) : ''); };
       this.approvals.set(id, done);
       ctx.signal?.addEventListener('abort', () => done(false), { once: true });
     });
@@ -1209,6 +1214,9 @@ export class Brain {
   stop(id) {
     let hit = false;
     for (const t of this.turns.values()) if (!id || t.turnId === id) { t.controller.abort(); hit = true; }
+    // Item 213: Stop really stops. A few seconds on, any command or helper a stopped job started that is still running
+    // is forced to end, and an engine still busy with a reply nobody is waiting for is restarted.
+    if (hit) afterStop({ kill: killProcTree, log: (k, t) => this.log(k, t), engine: this.engine instanceof LlamaCpp ? { busy: () => this.engine.stuckAfterStop(), reset: () => this.engine.resetStuck() } : null }).catch(() => {});
     return hit;
   }
 
@@ -1682,12 +1690,25 @@ export class Brain {
   // Nov 12 (the owner): ON by default, with a Settings switch to turn them off, "Better tool calling" (cfg.toolHelp).
   // Off, Bob's loop works the way it did before Nov 11. The embedding-openings fix stays on either way (it's a bug fix).
   get plainLoop() { return this.cfg?.toolHelp === false || this.cfg?.loopHelpOff === true; }
+  // Item 210: an answer that stopped at the length limit says so under it (the person's note, not the brain's), once.
+  cutNote(reply, emit) {
+    if (reply?.cut !== 'length') return;
+    delete reply.cut;
+    if (reply.tool_calls?.length) return; // a cut call gets its own line back (mendCalls)
+    this.log('chat', 'the answer hit the length limit');
+    emit?.({ type: 'correction', text: CUT_REPLY_NOTE });
+    reply.correction = reply.correction ? `${reply.correction}\n${CUT_REPLY_NOTE}` : CUT_REPLY_NOTE;
+  }
+
   helpOff(name) { const o = this.cfg?.loopHelpOff; return this.cfg?.toolHelp === false || o === true || (Array.isArray(o) && o.includes(name)); }
 
   // Nov 11 (loop-help.js): check each call against its tool before it runs. Sure fixes are made (mended JSON, a field
   // under another name, "5" for 5, "Week" for "week"); a call still missing what it needs gets call.bounce, the
   // line handed back instead of running it (with an example call the second time the same tool bounces).
   mendCalls(calls, ctx) {
+    // Item 210: a call cut off at the length limit never runs, whatever the mend switches say; one line goes back.
+    for (const c of calls) if (c.cut) { c.bounce = CUT_CALL(c.function?.name); delete c.cut; this.log('tool', `${c.function?.name}: cut off at the length limit; not run`); }
+    calls = calls.filter((c) => !c.bounce);
     if (this.helpOff('mend')) { for (const c of calls) delete c.function?.raw; return { fixed: 0, bounced: 0 }; }
     const sum = fixCalls(calls, this.tools, { bounced: (ctx.bounced ||= new Map()) });
     for (const c of calls) if (c.fixed) this.log('tool', `${c.function?.name}: mended the call (${c.fixed.join(', ')})`);
@@ -1722,7 +1743,7 @@ export class Brain {
     if (!hk || this.helpOff('meaning') || gaming(this.cfg) || !(hkSettings(this.cfg).enabled || recallOn(this.cfg)) || String(text || '').trim().length < 6) return [];
     const groups = groupsFor(this);
     if (!Object.keys(groups).length) return [];
-    const limit = (p) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), 1500).unref?.())]);
+    const limit = (p) => raceTimeout(p, 1500, null); // item 215: the timer goes when the wait ends
     this.groupVecs ||= new GroupVectors(this.cfg);
     const fill = this.groupVecsFill ||= this.groupVecs.for(Object.fromEntries(Object.entries(groups).map(([id, g]) => [id, { what: g.what }])), (t) => hk.embed(t)).finally(() => { this.groupVecsFill = null; });
     const vecs = await limit(fill.catch(() => null));
@@ -2206,6 +2227,7 @@ export class Brain {
         const switchTo = job?.switchTo && job.state === 'done' ? job.switchTo : null;
         if (switchTo) { job.switchTo = undefined; job.switchedTo = switchTo.id; Object.assign(job, { state: 'waiting', error: undefined, doneAt: undefined, steps: [] }); this.queue = [job, ...this.queue.filter((x) => x !== job)]; }
         this.turns.delete(lane);
+        { const left = timersFor(controller.signal).close(); if (left) this.log('timers', `cleared ${left} timer${left === 1 ? '' : 's'} the turn left waiting`); } // item 215
         if (watched) { const left = this.watch.takeNotes(watched); if (left.length) emit({ type: 'announce', text: noteMissedLine(left) }); this.watch.end(watched.id); }
         this.rentals?.turnDone(job); // 1.5.127: a hired machine stops once no job uses it
         this.lastActivity = Date.now();
@@ -2314,7 +2336,7 @@ export class Brain {
     // Its meaning, for matching, only when the Memory model is in use anyway (never started just for this).
     try {
       const hk = this.housekeeper;
-      if (hk && hkSettings(this.cfg).enabled) Promise.race([hk.embed([asDoc(embedModel(this.cfg), `${r.name}. ${r.when}`)]), new Promise((ok) => setTimeout(() => ok(null), 3000))]).then((v) => { if (v?.[0]) this.howtos.setVec(r.id, v[0]); }).catch(() => {});
+      if (hk && hkSettings(this.cfg).enabled) raceTimeout(hk.embed([asDoc(embedModel(this.cfg), `${r.name}. ${r.when}`)]), 3000, null).then((v) => { if (v?.[0]) this.howtos.setVec(r.id, v[0]); }).catch(() => {});
     } catch {}
     return { ok: true, saved: r };
   }
@@ -2334,11 +2356,11 @@ export class Brain {
       // 1.5.79: "Remember only what fits" embeds the message too (same 1.5 s limit; words are matched if it's slow).
       const wantVec = hk && (hkSettings(this.cfg).enabled || recall) && !gaming(this.cfg);
       if (hk && hk.topics.load().topics.length) {
-        if (wantVec) vec = (await Promise.race([hk.embed([asQuery(embedModel(this.cfg), text)]), new Promise((r) => setTimeout(() => r(null), 1500))]))?.[0] || null;
+        if (wantVec) vec = (await raceTimeout(hk.embed([asQuery(embedModel(this.cfg), text)]), 1500, null))?.[0] || null;
         const notes = hk.topics.relevant(text, { vec, k: 3 });
         topicProject = notes[0]?.project || '';
         if (notes.length) parts.push(`Notes from earlier talks (topics; the user can edit these):\n${notes.map((t) => `- ${t.project ? t.project + ' > ' : ''}${t.name}: ${(t.note || t.summary).slice(0, 600)}${t.open?.length ? ` Open: ${t.open.join('; ')}` : ''}`).join('\n')}`);
-      } else if (recall && wantVec) vec = (await Promise.race([hk.embed([asQuery(embedModel(this.cfg), text)]), new Promise((r) => setTimeout(() => r(null), 1500))]))?.[0] || null;
+      } else if (recall && wantVec) vec = (await raceTimeout(hk.embed([asQuery(embedModel(this.cfg), text)]), 1500, null))?.[0] || null;
       this.recallVec = { text, vec }; // the turn's vector, reused by other matches this turn (how-tos)
       if (recall) { const mem = await this.recallMemories(sessionId, text, { vec, topicProject }); if (mem) parts.push(mem); }
       // Let Bob notice what's worth noting (notes.js): the quick notes that fit, and the project for a note's #tag.
@@ -2657,6 +2679,7 @@ export class Brain {
       // He's seen the new look once; that's enough.
       if (this.cfg.lookChange) { try { saveSettings(this.cfg, { lookChange: null }); } catch {} this.cfg.lookChange = null; }
       msgs.push(reply);
+      this.cutNote(reply, emit); // item 210
       // Nov 11 (loop-help.js): what goes into each call is checked against the tool, and mended where that's sure.
       if (reply.tool_calls?.length) this.mendCalls(reply.tool_calls, ctx);
       // What he just said gets its id now, so the window can find the bubble: for the "..." menu on it (Edit, Delete;
@@ -3096,6 +3119,7 @@ export class Brain {
         onToken: (t) => ctx.emit({ type: 'token', text: t })
       }, { emit: ctx.emit, who: hat });
       messages.push(reply);
+      this.cutNote(reply, ctx.emit); // item 210
       final += reply.content;
       if (!reply.tool_calls) break;
       this.mendCalls(reply.tool_calls, ctx); // Nov 11 (loop-help.js)
@@ -3344,7 +3368,7 @@ export class Brain {
     const base = c.url.replace(/\/$/, '');
     const q = await fetch(base + '/prompt', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ prompt: wf, client_id: 'bob' }), signal: ctx.signal
+      body: JSON.stringify({ prompt: wf, client_id: 'bob' }), signal: withDeadline(ctx.signal, 60_000) // item 212
     });
     if (!q.ok) throw new Error(`ComfyUI refused the job (${q.status}): ${(await q.text()).slice(0, 300)}`);
     const { prompt_id } = await q.json();
@@ -3353,7 +3377,7 @@ export class Brain {
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 1500));
       if (ctx.signal.aborted) throw new Error('Stopped.');
-      const h = await (await fetch(`${base}/history/${prompt_id}`, { signal: ctx.signal })).json();
+      const h = await (await fetch(`${base}/history/${prompt_id}`, { signal: withDeadline(ctx.signal, 30_000) })).json();
       const entry = h[prompt_id];
       if (entry?.status?.status_str === 'error') throw new Error('ComfyUI hit an error while painting.');
       if (entry?.outputs) {
@@ -3365,7 +3389,7 @@ export class Brain {
     const saved = [];
     for (const img of images) {
       const url = `${base}/view?filename=${encodeURIComponent(img.filename)}&subfolder=${encodeURIComponent(img.subfolder || '')}&type=${encodeURIComponent(img.type || 'output')}`;
-      const buf = Buffer.from(await (await fetch(url, { signal: ctx.signal })).arrayBuffer());
+      const buf = Buffer.from(await (await fetch(url, { signal: withDeadline(ctx.signal, 5 * 60_000) })).arrayBuffer());
       const name = `${today(this.cfg)}-${crypto.randomUUID().slice(0, 8)}${path.extname(img.filename) || '.png'}`;
       fs.writeFileSync(path.join(this.cfg.painterDir, name), buf);
       saved.push(name);

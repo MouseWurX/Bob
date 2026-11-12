@@ -3,6 +3,7 @@
 // Workflows are ComfyUI "Export (API)" files dropped into inn\workshop. Bob fills in the prompt, any
 // reference picture and a fresh seed, runs it, and brings the results back into the chat.
 // ComfyUI is only ever reached on this PC (127.0.0.1); only the port can be changed.
+import { deadline as withDeadline } from './hang-guard.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -78,7 +79,7 @@ async function upload(cfg, file, signal) {
   const fd = new FormData();
   fd.append('image', new Blob([fs.readFileSync(file)]), `bob-${path.basename(file)}`);
   fd.append('overwrite', 'true');
-  const r = await fetch(comfyBase(cfg) + '/upload/image', { method: 'POST', body: fd, signal });
+  const r = await fetch(comfyBase(cfg) + '/upload/image', { method: 'POST', body: fd, signal: withDeadline(signal, 60_000) });
   if (!r.ok) throw new Error(`ComfyUI wouldn't take the reference picture (${r.status}).`);
   return (await r.json()).name;
 }
@@ -103,7 +104,7 @@ export async function runWorkflow(cfg, name, { prompt, negative, refs = [] }, { 
     for (const k of ['seed', 'noise_seed']) if (n?.inputs && typeof n.inputs[k] === 'number') n.inputs[k] = Math.floor(Math.random() * 2 ** 31);
   }
 
-  const q = await fetch(base + '/prompt', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt: wf, client_id: 'bob' }), signal });
+  const q = await fetch(base + '/prompt', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt: wf, client_id: 'bob' }), signal: withDeadline(signal, 60_000) });
   if (!q.ok) throw new Error(`ComfyUI refused the job (${q.status}): ${(await q.text()).slice(0, 300)}`);
   const { prompt_id } = await q.json();
   const t0 = Date.now();
@@ -114,7 +115,7 @@ export async function runWorkflow(cfg, name, { prompt, negative, refs = [] }, { 
       await new Promise((r) => setTimeout(r, 1500));
       if (signal?.aborted) throw new Error('Stopped.');
       onProgress?.(Math.round((Date.now() - t0) / 1000));
-      const h = await (await fetch(`${base}/history/${prompt_id}`, { signal })).json();
+      const h = await (await fetch(`${base}/history/${prompt_id}`, { signal: withDeadline(signal, 30_000) })).json();
       const entry = h[prompt_id];
       if (entry?.status?.status_str === 'error') {
         const msg = (entry.status.messages || []).find((m) => m[0] === 'execution_error')?.[1];
@@ -123,7 +124,7 @@ export async function runWorkflow(cfg, name, { prompt, negative, refs = [] }, { 
       if (entry?.status?.completed || (entry?.outputs && Object.keys(entry.outputs).length && entry?.status?.status_str === 'success')) { outputs = entry.outputs; break; }
     }
   } catch (e) {
-    if (signal?.aborted) { try { await fetch(base + '/interrupt', { method: 'POST' }); } catch {} }
+    if (signal?.aborted) { try { await fetch(base + '/interrupt', { method: 'POST', signal: withDeadline(null, 5000) }); } catch {} }
     throw e;
   }
   if (!outputs) throw new Error('ComfyUI didn\'t finish in time.');
@@ -138,7 +139,7 @@ export async function runWorkflow(cfg, name, { prompt, negative, refs = [] }, { 
   const made = [];
   for (const f of files.slice(0, 12)) {
     const url = `${base}/view?filename=${encodeURIComponent(f.filename)}&subfolder=${encodeURIComponent(f.subfolder || '')}&type=${encodeURIComponent(f.type || 'output')}`;
-    const buf = Buffer.from(await (await fetch(url, { signal })).arrayBuffer());
+    const buf = Buffer.from(await (await fetch(url, { signal: withDeadline(signal, 5 * 60_000) })).arrayBuffer());
     const ext = (path.extname(f.filename) || '.png').toLowerCase().replace(/[^.a-z0-9]/g, '');
     const nm = `${new Date().toISOString().slice(0, 10)}-${crypto.randomUUID().slice(0, 8)}${ext}`;
     fs.writeFileSync(path.join(cfg.painterDir, nm), buf);

@@ -580,6 +580,12 @@ window.addEventListener('bob-mind-dock', (e) => mindTitle(e.detail.docked));
 let brainSoon = null;
 const shownCards = new Set(); // approval card ids already on this page
 function onEvent(ev) {
+  if (ev.type === 'beat') return; // item 214: only proof Bob is still answering (connect() watches for it)
+  if (ev.type === 'froze') { // item 214: Bob was stuck for a while and is back
+    const el = note(ev.text, 'announce');
+    if (ev.canRestart) { const b = document.createElement('button'); b.type = 'button'; b.className = 'link'; b.textContent = 'Restart Bob'; b.onclick = () => { b.disabled = true; post('/api/watchdog/restart', {}).catch(() => {}); }; el.append(' ', b); }
+    return;
+  }
   if (ev.type === 'brain' || ev.type === 'status') { clearTimeout(brainSoon); brainSoon = setTimeout(() => brainBar.refresh(), 250); }
   if (ev.type === 'brain') return;
   if (ev.type === 'status') return setStatus(ev);
@@ -947,11 +953,17 @@ function onEvent(ev) {
 
 function connect() {
   const es = new EventSource('/api/events');
-  es.onmessage = (m) => { try { onEvent(JSON.parse(m.data)); } catch (e) { console.error(e); } };
+  // Item 214: Bob sends a beat every 20 s. A minute with nothing at all while still connected means he's stuck.
+  let heard = Date.now(), quiet = false, lastStatus = null;
+  es.onmessage = (m) => {
+    heard = Date.now();
+    try { const ev = JSON.parse(m.data); if (ev.type === 'status') lastStatus = ev; if (quiet) { quiet = false; if (lastStatus) setStatus(lastStatus); } onEvent(ev); } catch (e) { console.error(e); }
+  };
+  setInterval(() => { if (!dropped && !quiet && es.readyState === 1 && Date.now() - heard > 65000) { quiet = true; statusEl.textContent = 'Bob hasn\'t answered for a minute. If this lasts, close Bob and open him again.'; statusEl.className = 'status waiting'; } }, 10000);
   let dropped = false;
   es.onerror = () => { dropped = true; statusEl.textContent = 'Bob\'s brain isn\'t answering. Retrying...'; statusEl.className = 'status waiting'; };
   // Back after a gap: anything Bob made meanwhile is in his saved replies, so show what this window missed.
-  es.onopen = () => { if (dropped) { dropped = false; catchUpMedia(); } };
+  es.onopen = () => { if (dropped) { dropped = false; catchUpMedia(); } heard = Date.now(); };
 }
 async function catchUpMedia() {
   try {

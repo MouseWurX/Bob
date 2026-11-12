@@ -25,6 +25,7 @@
 // in Settings, or type your user ID there. Then your DMs to the bot get the full Bob, like his window (a "Discord" chat
 // here, kept like any other), with two more switches, both off: send what he makes to your DMs, and answer OK cards
 // there with Allow and Deny buttons. Anyone else who DMs the bot gets silence. No account is ever assumed.
+import { deadline as withDeadline } from './hang-guard.js'; // item 212: every network call has a deadline
 import fs from 'node:fs';
 import { readJsonFile } from './util.js';
 import os from 'node:os';
@@ -323,7 +324,8 @@ export class DiscordBridge {
       const r = await this.fetch(`${API}${route}`, {
         method,
         headers: { authorization: `Bot ${token}`, 'user-agent': 'DiscordBot (https://github.com/MouseWurX/Bob, 1.5)', ...(form ? {} : { 'content-type': 'application/json' }) },
-        body: form || (body ? JSON.stringify(body) : undefined)
+        body: form || (body ? JSON.stringify(body) : undefined),
+        signal: withDeadline(null, form ? 120_000 : 30_000) // item 212
       });
       if (r.status === 429 && i === 0) { const j = await r.json().catch(() => ({})); await this.wait(Math.min(10, Number(j.retry_after) || 1) * 1000); continue; }
       if (r.status === 204) return null;

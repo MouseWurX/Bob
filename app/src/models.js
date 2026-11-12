@@ -1,6 +1,7 @@
 // Bob's model shop: what models exist, which are already on this PC (Ollama, ComfyUI, Maestro...),
 // downloading new ones one at a time with progress and a checksum, and switching Bob over to them.
 // Every download starts from a click in Bob's window. Bob never downloads a model on his own.
+import { deadline as withDeadline, quietGuard } from './hang-guard.js'; // item 212
 import { ownEntries, ownModels, ownResolve } from './own-models.js';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -130,7 +131,7 @@ export function linkError(name, status) {
 export async function headFile(url, signal) {
   let u = url, r;
   for (let hop = 0; hop < 6; hop++) {
-    r = await fetch(u, { method: 'HEAD', redirect: 'manual', signal });
+    r = await fetch(u, { method: 'HEAD', redirect: 'manual', signal: withDeadline(signal, 30_000) }); // item 212
     if (![301, 302, 307, 308].includes(r.status) || r.headers.get('x-linked-size')) return r;
     const loc = r.headers.get('location');
     if (!loc) return r;
@@ -148,7 +149,7 @@ export async function hfFileInfo(url, signal) {
   const [, repo, rev, file] = m;
   const dir = file.includes('/') ? file.slice(0, file.lastIndexOf('/')) : '';
   try {
-    const r = await fetch(`https://huggingface.co/api/models/${repo}/tree/${rev}${dir ? '/' + dir.split('/').map(encodeURIComponent).join('/') : ''}`, { signal });
+    const r = await fetch(`https://huggingface.co/api/models/${repo}/tree/${rev}${dir ? '/' + dir.split('/').map(encodeURIComponent).join('/') : ''}`, { signal: withDeadline(signal, 30_000) });
     if (!r.ok) return null;
     const hit = (await r.json()).find((x) => x.path === decodeURIComponent(file));
     if (!hit) return null;
@@ -598,15 +599,18 @@ export class ModelShop {
   async pullOllama(entry, pub, signal, tick) {
     pub.file = entry.ollama;
     pub.phase = 'downloading';
+    const q = quietGuard(signal, 10 * 60_000); // item 212: ten quiet minutes (checking a big file can be quiet a while)
+    try {
     const res = await fetch(this.cfg.ollamaUrl.replace(/\/$/, '') + '/api/pull', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model: entry.ollama, stream: true }), signal
+      body: JSON.stringify({ model: entry.ollama, stream: true }), signal: q.signal
     });
     if (!res.ok) throw new Error(`Ollama said ${res.status}.`);
     let buf = '', last = 0;
     const layers = {};
     const dec = new TextDecoder();
     for await (const chunk of res.body) {
+      q.poke();
       buf += dec.decode(chunk, { stream: true });
       let nl;
       while ((nl = buf.indexOf('\n')) >= 0) {
@@ -620,6 +624,8 @@ export class ModelShop {
         if (Date.now() - last > 500) { last = Date.now(); tick(); }
       }
     }
+    } catch (e) { if (q.quiet() && !signal?.aborted) throw new Error('Ollama\'s download went quiet for 10 minutes. Try again; it picks up where it stopped.'); throw e; }
+    finally { q.done(); }
   }
 
   async fetchFiles(entry, pub, signal, tick) {
@@ -673,7 +679,9 @@ export class ModelShop {
         for await (const c of fs.createReadStream(part)) { hash.update(c); have += c.length; }
       }
       const base = pub.done;
-      let res = await fetch(h.f.url, { headers: have ? { range: `bytes=${have}-` } : {}, redirect: 'follow', signal });
+      const q = quietGuard(signal); // item 212: two quiet minutes and the download stops (it resumes from here next time)
+      let res;
+      try { res = await fetch(h.f.url, { headers: have ? { range: `bytes=${have}-` } : {}, redirect: 'follow', signal: q.signal }); } catch (e) { q.done(); throw q.quiet() && !signal?.aborted ? new Error(`Download of ${name} didn't start (nothing for 2 minutes). Try again; it picks up where it stopped.`) : e; }
       if (!hostAllowed(res.url)) throw new Error('The download was redirected somewhere I don\'t trust. Stopped.');
       // The server ignored the Range request: start this file again from nothing.
       if (have && res.status === 200) { have = 0; hash.destroy?.(); fs.rmSync(part, { force: true }); return this.fetchFiles(entry, pub, signal, tick); }
@@ -682,13 +690,15 @@ export class ModelShop {
       let last = 0, got = have;
       try {
         for await (const c of res.body) {
+          q.poke();
           hash.update(c);
           got += c.length;
           if (!out.write(c)) await new Promise((r) => out.once('drain', r));
           pub.done = base + got;
           if (Date.now() - last > 500) { last = Date.now(); tick(); }
         }
-      } finally { await new Promise((r) => out.end(r)); }
+      } catch (e) { if (q.quiet() && !signal?.aborted) throw new Error(`Download of ${name} stopped coming (nothing for 2 minutes). Try again; it picks up where it stopped.`); throw e; }
+      finally { q.done(); await new Promise((r) => out.end(r)); }
       pub.phase = 'checking';
       tick();
       const digest = hash.digest('hex');

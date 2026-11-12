@@ -120,6 +120,7 @@ import { watchSettings } from './config.js';
 import { everydayView, everydaySettings, Focus } from './everyday.js'; // 🗓 Everyday helpers (all off by default)
 import { everydayRoute, trayDot } from './everyday-routes.js';
 import { Profiles } from './profiles.js'; // 👥 Profiles on a shared replicant matrix
+import { startWatchdog, frozeLine } from './hang-guard.js'; // item 214: a watchdog for Bob himself
 
 const cfg = loadConfig();
 // Catch crashes and Safe start (crash-catch.js): the "Bob is running" marker; a report of an unclean last end (switch on).
@@ -175,6 +176,12 @@ function broadcast(ev) {
 }
 
 const brain = new Brain(cfg, broadcast);
+// Item 214: a helper thread notices when this server stops answering for a minute (it notes it in the logbook), and
+// when it answers again the window hears about it, with a Restart button where Bob can restart himself.
+startWatchdog({ logbook: cfg.logbook, timeZone: cfg.timeZone, onBack: ({ secs }) => {
+  brain.log('watchdog', `back after not answering for ${secs} s`);
+  broadcast({ type: 'froze', secs, text: frozeLine(secs), canRestart: typeof globalThis.bobHome?.restart === 'function' });
+} });
 pruneReceipts(cfg); // Settings, Jobs: a receipt's Undo lasts a week
 if (brain.engine) brain.engine.onCrash = (x) => engineCrashed(cfg, { ...x, version: VERSION.label, logText: logTail() }); // Catch crashes
 // A shortcut from anywhere (electron/main.cjs): Bob.exe registers the key while the switch is on. Nothing in a browser.
@@ -479,7 +486,7 @@ const server = http.createServer(async (req, res) => {
       const mind = url.searchParams.get('mind') === '1';
       if (mind) mindClients.add(res);
       if (isLocal && url.searchParams.get('cube') === '1') { const live = url.searchParams.get('live') === '1', why = live ? cubeWhy() : ''; cubeClients.add(res); if (live) liveCubes.add(res); res.write(`data: ${JSON.stringify({ type: 'cube', ok: !why, why, live })}\n\n`); cubeBrainsNow(); }
-      const ping = setInterval(() => res.write(': ping\n\n'), 20000);
+      const ping = setInterval(() => res.write('data: {"type":"beat"}\n\n'), 20000); // item 214: the window can tell a quiet Bob from a stuck one
       req.on('close', () => { clearInterval(ping); clients.delete(res); mindClients.delete(res); cubeClients.delete(res); liveCubes.delete(res); });
       return;
     }
@@ -1372,6 +1379,13 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && p === '/api/voice/samples/clear') { if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' }); clearSamples(cfg); return send(res, 200, { ok: true }); }
     if (req.method === 'POST' && p === '/api/stop') return send(res, 200, { stopped: brain.stop() });
+    // Item 214: the Restart button under "I froze for a while" (only on this replicant matrix, only in Bob's own window).
+    if (req.method === 'POST' && p === '/api/watchdog/restart') {
+      if (!isLocal || typeof globalThis.bobHome?.restart !== 'function') return send(res, 200, { ok: false, error: 'Close Bob and open him again.' });
+      brain.log('watchdog', 'restarting (your click)');
+      setTimeout(() => globalThis.bobHome.restart(), 600);
+      return send(res, 200, { ok: true });
+    }
     // Settings, Jobs (job-helps.js): Stop after this step; Undo a file change from a job's receipt; open a file:line link.
     if (req.method === 'POST' && p === '/api/stop-after') { const b = await body(req); return send(res, 200, { ok: stopAfterStep(brain, typeof b.id === 'string' ? b.id : '') }); }
     if (req.method === 'POST' && (p === '/api/jobs/undo' || p === '/api/open-at')) {

@@ -11,6 +11,7 @@ import { insideAny, isInside } from './config.js';
 import { isSensitive } from './tools.js';
 import { limitOn, readOnlyRoots } from './hands-settings.js';
 import { killTree as stopTree } from './platform.js';
+import { trackChild } from './hang-guard.js'; // item 213: Stop really stops
 
 const MAX_OUT = 200_000; // characters of output kept for Bob (the chat gets all of it live)
 const WIN = process.platform === 'win32';
@@ -234,6 +235,7 @@ export function runCommand({ cmd, args = [], cwd, timeoutMs = 15 * 60_000, signa
     try {
       child = spawn(plan.file, plan.args, { cwd, env: env || safeEnv(), stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, detached: !WIN, shell: false, windowsVerbatimArguments: Boolean(plan.verbatim) });
     } catch (e) { return resolve({ code: null, out: '', killed: '', why: e.message }); }
+    trackChild(child, signal, path.basename(cmd));
     try { onStart(child.pid); } catch {}
     const decoder = (stream) => { stream.setEncoding('utf8'); stream.on('data', (d) => { const t = d.replace(ANSI, ''); keep(t); try { onOutput(t); } catch {} }); };
     decoder(child.stdout); decoder(child.stderr);
