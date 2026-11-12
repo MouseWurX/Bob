@@ -91,7 +91,8 @@ for (const f of files.filter((x) => /answers-.*\.jsonl$/.test(path.basename(x)))
       const mistake = ok ? null : !wantCalls.length ? 'tool called for nothing' : !got.length ? 'no tool when one was needed'
         : [...new Set(wantCalls.map((c) => c.name))].sort().join() !== [...new Set(got.map((c) => c.name))].sort().join() ? 'wrong tool' : 'wrong arguments';
       usedSets.add(h.set);
-      const base = { brain, step, idea: row.idea, turn: row.turn, think: row.think, toolset: h.set, messages: h.messages };
+      // split: 'holdout' rows are Bob's test set (never train on them); 'train' rows came from a harvest run (--split train)
+      const base = { brain, step, split: row.split || 'holdout', idea: row.idea, turn: row.turn, think: row.think, toolset: h.set, messages: h.messages };
       // full: every answer, marked; clean: right ones only, the same answer from several brains kept once
       put(`full/chats-${kind}.jsonl`, { ...base, ok, ...(mistake ? { mistake } : {}), answer: row.answer, ...odds, source: file });
       if (!ok) {

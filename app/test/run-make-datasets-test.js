@@ -41,6 +41,7 @@ check('the full set keeps every answer, marked', full.length === 3 && full.filte
 check('a tool called for nothing is named so', read('full/chats-no-tool.jsonl').find((x) => !x.ok).mistake === 'tool called for nothing');
 const pairs = read('pairs-right-vs-wrong.jsonl');
 check('each wrong answer becomes a right-vs-wrong pair', pairs.length === 2 && pairs[0].chosen.tool_calls[0].function.name === 'file_hands');
+check('rows say which split they came from (old rows: held-out)', read('chats-tool-calls.jsonl')[0].split === 'holdout');
 check('odds come along', read('chats-tool-calls.jsonl')[0].odds?.length === 1);
 check('quiz: right fact kept, wrong one only in full', read('quiz-facts.jsonl').length === 1 && read('full/quiz-facts.jsonl').length === 2);
 check('REAP files each their own', ['reap-scores-riker.json', 'experts-by-layer-riker.json', 'keep-riker-75.json'].every((f) => fs.existsSync(path.join(tmp, 'ds', f))));

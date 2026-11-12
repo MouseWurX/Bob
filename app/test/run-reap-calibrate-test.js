@@ -73,6 +73,14 @@ const run = (extra) => new Promise((resolve) => {
 });
 const tracedBefore = seen.traced, out2 = path.join(tmp, 'cal2');
 const code2 = await run(['--out', out2, '--scores', path.join(out, 'scores.json'), '--steps', '0.25']);
+const harvest = path.join(tmp, 'harvest');
+const code3 = await new Promise((resolve) => {
+  const p = spawn(process.execPath, [path.join(here, '..', 'model-lab', 'tool-score.mjs'), '--url', url, '--models', 'h=served', '--lessons', lessonsDir, '--out', harvest, '--split', 'train', '--sample', '5', '--no-think', '--no-odds'], { env: { ...process.env, BOB_AGENT_DIR: tmp }, stdio: ['ignore', 'pipe', 'pipe'] });
+  let log = ''; p.stdout.on('data', (d) => (log += d)); p.stderr.on('data', (d) => (log += d));
+  p.on('close', (c) => { if (c) console.log(log); resolve(c); });
+});
+const kept = fs.readdirSync(harvest).filter((f) => /^answers-.*\.jsonl$/.test(f)).flatMap((f) => fs.readFileSync(path.join(harvest, f), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)));
+check('a harvest run (--split train) uses only training lessons, evenly sampled, and marks its rows', code3 === 0 && kept.length === 5 && kept.every((r) => r.split === 'train' && !isHoldout(r.idea)), `${code3} ${kept.length}`);
 srv.close();
 check('reusing scores: the run finishes without scoring again', code2 === 0 && seen.traced === tracedBefore);
 const cal2 = JSON.parse(fs.readFileSync(path.join(out2, 'calibration.json'), 'utf8'));
