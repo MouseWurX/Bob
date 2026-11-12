@@ -392,10 +392,11 @@ export class Lenders {
 
   // 1.5.72: the Bob for a whole job: he must say he takes jobs, list this kind as one he can do right now, and not be
   // gaming or full. The least busy goes first (fewest jobs in his Tasks), your order breaking ties.
-  async pickForJob(need) {
+  // room: a group's job (Discord); only a Bob who says he takes those (1.5.211 and up) gets one.
+  async pickForJob(need, { room = false } = {}) {
     const list = this.bobs().filter((b) => !this.busyHere(`job:${b.address}`) && !this.skipped(b.address));
     const seen = await Promise.all(list.map((b) => this.hello(b).catch(() => ({}))));
-    const can = list.map((bob, i) => ({ bob, s: seen[i], i })).filter(({ s }) => s.takesJobs && s.jobs?.includes(need) && !s.jobsBusy && !(s.jobsDownUntil > this.now()));
+    const can = list.map((bob, i) => ({ bob, s: seen[i], i })).filter(({ s }) => s.takesJobs && s.jobs?.includes(need) && (!room || s.jobs?.includes('room')) && !s.jobsBusy && !(s.jobsDownUntil > this.now()));
     can.sort((a, b) => ((a.s.queue || 0) - (b.s.queue || 0)) || (a.i - b.i));
     const pick = can[0];
     if (!pick) return null;
@@ -522,7 +523,8 @@ export const bobNetRooms = (L) => (L?.bobs?.() || []).map((b) => ({ b, s: L.stat
 // can really do on this computer right now. Never a job he'd have to fake: no picture model, no pictures.
 export function helloFor(brain, { why, quick, can, version, label, webOn, bigBrain, name = '', room = null, review = null, check = {} }) {
   const takesJobs = brain.cfg.share?.takeJobs === true && doorOpen(brain.cfg);
-  const jobs = takesJobs ? [can.pictures && 'pictures', can.video && 'video', can.music && 'music', can.sfx && 'sfx', webOn && bigBrain && 'web', bigBrain && 'think'].filter(Boolean) : [];
+  // 'room' (1.5.211): he takes a group's job (Discord) with its strict limits. Older Bobs don't say it, so never get one.
+  const jobs = takesJobs ? ['room', can.pictures && 'pictures', can.video && 'video', can.music && 'music', can.sfx && 'sfx', webOn && bigBrain && 'web', bigBrain && 'think'].filter(Boolean) : [];
   return {
     protocol: PROTOCOL, lend: why !== 'off', busy: why === 'off' ? undefined : why || undefined,
     brain: quick ? label(quick.model) : '', ctx: quick?.ctx || 0, speed: brain.engine?.lastStats?.tokPerSec || 0,

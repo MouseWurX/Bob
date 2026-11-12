@@ -42,7 +42,7 @@ const gb = (cfg, extra = {}) => ({ cfg: { ...door, ...cfg }, queue: [], lendDeps
 check('takes jobs only when switched on', guestRefusal(gb({ share: {} })) === 'off' && guestRefusal(gb({ share: { takeJobs: true } })) === '');
 check('never while gaming, never with a full queue', guestRefusal(gb({ share: { takeJobs: true }, session: 'light' })) === 'gaming' && guestRefusal(gb({ share: { takeJobs: true } }, { queue: [{ guest: {}, state: 'working' }, { guest: {}, state: 'waiting' }] })) === 'busy');
 const hello = helloFor(gb({ share: { takeJobs: true }, webSearch: false }), { why: 'off', quick: null, can: { pictures: true, video: false, music: true, sfx: false }, version: 'x', label: (m) => m, webOn: false, bigBrain: true });
-check('hello lists only what he really has', hello.takesJobs === true && hello.jobs.join() === 'pictures,music,think');
+check('hello lists only what he really has (and, from 1.5.211, that he takes group jobs)', hello.takesJobs === true && hello.jobs.join() === 'room,pictures,music,think');
 check('no switch, no jobs listed', helloFor(gb({ share: {} }), { why: 'off', quick: null, can: { pictures: true }, version: 'x', label: (m) => m, webOn: true, bigBrain: true }).jobs.length === 0);
 check('abilities are cleaned', cleanAbilities({ ctx: 'x', jobs: ['pictures', 'rm -rf'], takesJobs: true }).jobs.join() === 'pictures' && cleanAbilities({ ctx: 'x' }).ctx === 0);
 

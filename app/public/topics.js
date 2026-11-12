@@ -6,6 +6,7 @@
 import { esc } from './rich.js';
 import { tip } from './tips.js';
 import { drawPicture, saveBlob } from './chat-share.js';
+import { createRoomChat } from './room-chat.js';
 
 const $ = (id) => document.getElementById(id);
 const day = (ms) => (ms ? new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '');
@@ -18,6 +19,7 @@ export function createTopics({ api, openChat }) {
   // picking: what's in the file being brought in { token, chats, more, name }; sharing: { id, hide, last, data } while
   // the Share preview is up.
   let filesOn = false, picking = null, sharing = null;
+  const roomChat = createRoomChat({ api }); let inRoom = false; // 1.5.211 the Discord group's own chat
   const FROM = { chatgpt: 'ChatGPT', claude: 'Claude', openwebui: 'Open WebUI', bob: 'a saved chat', transcript: 'a transcript', 'bob-net': 'another of your Bobs' };
 
   async function load() {
@@ -108,7 +110,9 @@ export function createTopics({ api, openChat }) {
     try { d = await api('/api/chats'); } catch {}
     try { filesOn = (await api('/api/settings')).chatFiles === true; } catch {}
     if (sharing && filesOn) return shareHtml();
-    return `${bringInHtml()}<ol class="chat-list">${d.chats.map((c) => `<li data-chat="${esc(c.id)}"><div><strong>${esc(c.title)}</strong>${c.from ? ` <span class="tag">from ${esc(FROM[c.from] || c.from)}</span>` : ''}<br><span class="muted">${c.messages} messages · last talked ${esc(day(c.lastTouched))}</span>${c.summary ? `<br><span class="muted">${esc(c.summary.slice(0, 200))}</span>` : ''}${filesOn ? `<br>${saveRow(c.id)}` : ''}</div>
+    if (inRoom) return roomChat.html();
+    const roomRow = await roomChat.rowHtml();
+    return `${roomRow}${bringInHtml()}<ol class="chat-list">${d.chats.map((c) => `<li data-chat="${esc(c.id)}"><div><strong>${esc(c.title)}</strong>${c.from ? ` <span class="tag">from ${esc(FROM[c.from] || c.from)}</span>` : ''}<br><span class="muted">${c.messages} messages · last talked ${esc(day(c.lastTouched))}</span>${c.summary ? `<br><span class="muted">${esc(c.summary.slice(0, 200))}</span>` : ''}${filesOn ? `<br>${saveRow(c.id)}` : ''}</div>
         <span class="row"><button type="button" class="mini" data-openchat>Open</button>${filesOn ? '<button type="button" class="mini" data-share title="A tidy page or picture to send someone, with names and folders taken out">Share…</button>' : ''}<button type="button" class="mini" data-cpin aria-pressed="${c.pinned}">${c.pinned ? '★ Pinned' : '☆ Pin'}</button>${netBobs.length ? '<button type="button" class="mini" data-carry title="Move this chat to another of your Bobs and keep going there">Carry on on…</button>' : ''}</span>${carrying?.id === c.id ? carryHtml(c) : ''}</li>`).join('') || '<li class="muted">No chats yet.</li>'}</ol>
       ${d.tidied.length ? `<h3>Tidied away</h3><p class="muted">These chats went to the Recycle Bin; their summaries stay here.</p><ol class="chat-list">${d.tidied.map((s) => `<li><div><strong>${esc(s.title)}</strong> <span class="muted">${esc(day(s.from))} to ${esc(day(s.to))}</span><br>${esc(s.summary)}</div></li>`).join('')}</ol>` : ''}`;
   }
@@ -175,7 +179,8 @@ export function createTopics({ api, openChat }) {
     if (!b) return;
     const card = b.closest('[data-topic]'), id = card?.dataset.topic;
     const t = topics.find((x) => x.id === id);
-    if (b.dataset.ttab) { tab = b.dataset.ttab; q = ''; sharing = null; return draw(); }
+    if (b.dataset.ttab) { tab = b.dataset.ttab; q = ''; sharing = null; inRoom = false; return draw(); }
+    if (b.closest('[data-room], .room-chat')) { const r = await roomChat.click(b); if (r === 'open') inRoom = true; if (r === 'back') inRoom = false; if (r) return draw(); }
     if (b.dataset.hitTopic) { q = ''; tab = 'topics'; open.add(b.dataset.hitTopic); return draw(); }
     if ('openchat' in b.dataset) { const sid = b.dataset.chat || b.closest('[data-chat]')?.dataset.chat; const mid = b.closest('[data-mid]')?.dataset.mid; if (sid) { dlg.close(); openChat(sid, mid); } return; }
     if ('chatfileson' in b.dataset) { try { filesOn = (await api('/api/settings', { chatFiles: true })).chatFiles === true; msg = filesOn ? 'On. Save a chat with the buttons under it, or bring chats in.' : ''; } catch (err) { msg = err.message; } return draw(); }
