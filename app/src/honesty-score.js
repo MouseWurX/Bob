@@ -18,7 +18,7 @@ const clip = (t, n) => String(t ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
 // 191: a correction as a step for "How I got here" (the same shape as brain.js traceStep, marked as a correction).
 export function correctionStep(text, kind = 'other', brain = '') {
-  return { tool: 'correction', what: `Corrected: ${clip(text, 150)}`, ok: false, ms: 0, chars: 0, correction: true, kind: KIND_WORDS[kind] ? kind : 'other', ...(brain ? { brain: clip(brain, 80) } : {}) };
+  return { tool: 'correction', what: `App's note: ${clip(text, 150)}`, ok: false, ms: 0, chars: 0, correction: true, kind: KIND_WORDS[kind] ? kind : 'other', ...(brain ? { brain: clip(brain, 80) } : {}) };
 }
 
 // 190: the turn's messages (msgs.slice(base)). An answer with words and a correction that has a later answer with

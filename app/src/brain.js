@@ -1477,7 +1477,7 @@ export class Brain {
       if (v.text) text = v.text;
       // Items 186-188: the turn's results in full (the ledger keeps 300 characters), so numbers, quotes and links in
       // the answer can be checked against them. In memory only, at most about 400,000 characters a turn.
-      if (!/^Error:/.test(text)) { const seen = (ctx.seen ||= []); if (seen.reduce((n, x) => n + x.length, 0) < 4e5) seen.push(String(text).slice(0, 1e5)); }
+      if (!/^Error:/.test(text)) { const seen = (ctx.seen ||= []); if (seen.reduce((n, x) => n + x.length, 0) < 4e5) seen.push(String(text).slice(0, 1e5)); if (name === 'run_in_sandbox') (ctx.sandboxOut ||= []).push(String(text).slice(0, 2e4)); }
       // Item 9: what came from outside is marked as information, and the rest of the turn asks before acting.
       if (isOutside(name) && !/^Error:/.test(text) && !this.plainLoop) { text = markOutside(name, text); ctx.outsideRead = true; }
       for (const o of v.show || []) if (o?.file) await this.deliver(ctx, o.type || 'image', o.file);
@@ -1972,7 +1972,7 @@ export class Brain {
     try {
       const actions = [...(ctx.job?.before || []).map((a) => ({ ...a, ok: true })), ...(ctx.ledger?.actions || [])];
       const chat = (ctx.msgs || []).filter((m) => m && m !== reply && (m.role === 'user' || m.role === 'tool')).slice(-40).map((m) => String(m.text ?? m.content ?? ''));
-      v = checkRecord(reply.content, { actions, seen: ctx.seen || [], chat });
+      v = checkRecord(reply.content, { actions, seen: ctx.seen || [], chat, sandbox: ctx.sandboxOut || [] });
     } catch (e) { this.log('honesty', `the record check broke: ${e.message}`); }
     if (!v) return;
     const note = v.notes.join(' ');

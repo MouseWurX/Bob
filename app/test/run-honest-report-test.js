@@ -97,6 +97,21 @@ check('186 a count no result holds is flagged', unbackedNumbers('I found 340 fil
 check('186 a count he could count off the list is fine', unbackedNumbers('I found 3 files in there.', ['a.txt\nb.txt\nc.txt']).length === 0);
 check('186 a size written another way is fine', unbackedNumbers('It takes 2.5 GB.', ['size: 2684354560 bytes']).length === 0);
 check('186 a size no result holds is flagged', unbackedNumbers('It takes 9.1 GB.', ['size: 2684354560 bytes']).length === 1);
+check('186 a number he worked out from the results is not flagged (a sum)', unbackedNumbers('The two files hold 340 lines in all.', ['a: 120 lines', 'b: 220 lines']).length === 0);
+check('186 ...nor a percentage of two results', unbackedNumbers('That leaves 15 files to go.', ['done 5', 'total 20']).length === 0);
+check('186 ...nor one result\'s total', unbackedNumbers('Together that is 60 files.', ['10\n20\n30']).length === 0);
+{
+  const box = ['Result: 44'];
+  check('sandbox diff: the answer\'s number matches the sandbox', unbackedNumbers('It is 44 days until Christmas.', box, box, box).mismatch.length === 0);
+  const v = unbackedNumbers('It is 45 days until Christmas.', box, box, box);
+  check('sandbox diff: a number close to the sandbox\'s but not it is shown as a difference', v.mismatch[0]?.said === '45' && v.mismatch[0]?.got === 44);
+  check('sandbox diff: rounding as written is fine (3.14 for 3.14159)', unbackedNumbers('That is 3.14.', ['Result: 3.14159'], [], ['Result: 3.14159']).mismatch.length === 0);
+  check('sandbox diff: money is exact to its cents', unbackedNumbers('The total is $1,237.50.', ['Result: 1234.5'], [], ['Result: 1234.5']).mismatch.length === 1);
+  check('sandbox diff: years and numbers far from it are left alone', unbackedNumbers('In 2026, step 3 gives 44.', box, box, box).mismatch.length === 0);
+  const r = checkRecord('It is 45 days until Christmas.', { actions: [{ name: 'run_in_sandbox', ok: true }], seen: box, sandbox: box });
+  check('sandbox diff: the note says what each one says, not who is right', r?.notes[0] === 'The answer says 45; the sandbox gave 44.' && !/wrong|right|correct|incorrect|isn't true/i.test(r.notes[0]), r?.notes?.[0]);
+}
+check('the notes never say right or wrong', [...read('src/honest.js').matchAll(/notes\.push\(([^\n]+)\);/g)].every((m) => !/wrong|incorrect|isn't right|not true|lied/i.test(m[1])));
 check('186 a number with thousands commas matches', unbackedNumbers('There are 1,234 rows.', ['rows=1234']).length === 0);
 check('187 a quote that is in the page is fine', unseenQuotes('It says "the quick brown fox jumps over the lazy dog".', ['The quick brown fox jumps over the lazy dog, it said.']).length === 0);
 check('187 a quote that isn\'t is flagged', unseenQuotes('It says "the slow red fox naps under the busy dog".', ['The quick brown fox jumps over the lazy dog.']).length === 1);
@@ -106,7 +121,7 @@ check('188 a link a search returned is fine', unseenLinks('See https://example.c
 check('188 a bare site name and this computer\'s own pages are fine', unseenLinks('Try https://python.org or http://localhost:7777/x/y', []).length === 0);
 {
   const r = checkRecord('I\'ve run the tests. See https://example.com/a/b for more.', { actions: [], seen: [], chat: [] });
-  check('the whole check: at most two notes, the record first, strike for a claim', r?.notes.length === 2 && /^Not done:/.test(r.notes[0]) && r.strike === true && r.kinds[0] === 'record');
+  check('the whole check: at most two notes, the record first, strike for a claim', r?.notes.length === 2 && /^The answer says "I've run the tests\." No step this turn did that\.$/.test(r.notes[0]) && r.strike === true && r.kinds[0] === 'record');
   check('the whole check: nothing to say, null', checkRecord('The moon is about 3,474 km across.', { actions: [], seen: [], chat: [] }) === null);
   check('numbers and quotes only once he got results', checkRecord('I found 340 files.', { actions: [], seen: [] }) === null);
 }
@@ -132,7 +147,7 @@ check('189 a switch that is on is left alone', saidNotDone('The sandbox is now o
 // ---- 191: the record shows corrections
 {
   const step = correctionStep('Not done: Bob said "I\'ve run the tests", but no step did that.', 'record', 'Riker');
-  check('191 a correction is a step in How I got here', step.correction === true && step.ok === false && /^Corrected: Not done/.test(step.what) && step.brain === 'Riker');
+  check('191 a correction is a step in How I got here', step.correction === true && step.ok === false && /^App's note: Not done/.test(step.what) && step.brain === 'Riker');
   const job = {};
   const l = new Ledger({ job });
   l.correction('Nothing was saved.', 'claims', 'riker:q4');

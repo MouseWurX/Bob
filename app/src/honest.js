@@ -147,24 +147,67 @@ const NUM = '(\\d{1,3}(?:[,\\s\\u202f]\\d{3})+|\\d+)(?:[.,](\\d+))?';
 const SIZE_RX = rx(`\\b<${NUM}\\s?(bytes?|b|kib|kb|mib|mb|gib|gb|tib|tb|ko|mo|go|to)\\b>`, 'giu');
 const COUNT_RX = rx(`\\b<${NUM}\\s+(?:[\\p{L}-]+\\s+)?(${COUNT_NOUN})\\b>`, 'giu');
 const toNum = (int, frac) => Number(`${String(int).replace(/[,\s\u202f]/g, '')}${frac ? `.${frac}` : ''}`);
-export function unbackedNumbers(reply, sources = [], lists = sources) {
+// Nov 12 (the owner asked): the honesty note is a diff between the answer and the results, the sandbox's above all. A number Bob
+// worked out from his results isn't made up, so before a number is flagged the app redoes the simple sums a brain
+// does with them (each pair added, taken away, multiplied, divided, as a percentage; each result's total, average
+// and count) and compares at the precision he wrote it. And when the sandbox worked something out this turn, every
+// number in the answer is diffed against what the sandbox gave back: one that's close to it but not it is a mismatch.
+const SEEN_NUM = /\d{1,3}(?:[,\s ]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?/g;
+const numOf = (t) => Number(String(t).replace(/[,\s ](?=\d{3}(?!\d))/g, '').replace(',', '.'));
+export const numbersIn = (t) => [...plain(t).matchAll(SEEN_NUM)].map((m) => numOf(m[0])).filter(Number.isFinite);
+const shownDecimals = (frac) => String(frac || '').length;
+// Written with decimals: exact to those decimals. A whole number: rounding allowed ("about 1,240" for 1,237).
+const near = (n, v, d = 0) => Math.abs(n - v) <= (d > 0 ? 0.5 * 10 ** -d + 1e-9 : Math.max(0.5, Math.abs(v) * 0.005));
+// Can n (written with d decimals) be got from the results' numbers? groups: the numbers of each result, apart.
+export function workedOut(n, groups = [], d = 0) {
+  const all = [...new Set(groups.flat())].slice(0, 80);
+  if (all.some((a) => near(n, a, d))) return true;
+  for (const g of groups) {
+    if (!g.length) continue;
+    const sum = g.reduce((x, y) => x + y, 0);
+    if (near(n, sum, d) || near(n, sum / g.length, d) || near(n, g.length, d)) return true;
+  }
+  for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
+    const a = all[i], b = all[j];
+    for (const v of [a + b, a - b, b - a, a * b, b ? a / b : NaN, a ? b / a : NaN, b ? (100 * a) / b : NaN, a ? (100 * b) / a : NaN]) if (Number.isFinite(v) && near(n, v, d)) return true;
+  }
+  return false;
+}
+// Plain numbers in an answer (not part of a word, a version, a time, a date or a path): { n, d, text }.
+const PLAIN_NUM = /(?<![\p{L}\p{N}_.,:/\\-])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?![\p{L}\p{N}_]|[.,:/-]\p{N})/gu;
+function plainNumbers(t) {
+  return [...t.matchAll(PLAIN_NUM)].map((m) => ({ n: toNum(m[1], m[2]), d: shownDecimals(m[2]), text: m[0], at: m.index }))
+    .filter((x) => Number.isFinite(x.n) && !(x.d === 0 && x.n >= 1900 && x.n <= 2100) && !/^\s*$/.test(t.slice(Math.max(0, t.lastIndexOf('\n', x.at) + 1), x.at)));
+}
+export function unbackedNumbers(reply, sources = [], lists = sources, sandbox = []) {
   const t = plain(reply).replace(/```[\s\S]*?```/g, ' ').replace(URL_RX, ' ').replace(/(?:[A-Za-z]:\\|\/)[^\s]+/g, ' ');
   const seen = plain(sources.join('\n'));
-  const nums = new Set([...seen.matchAll(/\d{1,3}(?:[,\s\u202f]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?/g)].map((m) => Number(m[0].replace(/[,\s\u202f](?=\d{3}(?!\d))/g, '').replace(',', '.'))));
+  const nums = new Set(numbersIn(seen));
+  const groups = sources.map(numbersIn).filter((g) => g.length);
   const sizes = [...seen.matchAll(SIZE_RX)].map((m) => toNum(m[1], m[2]) * SIZE[m[3].toLowerCase()]).concat([...nums].filter((n) => n >= 1024));
   const lines = Math.max(0, ...lists.map((s) => String(s).split('\n').filter((l) => l.trim()).length));
-  const out = [];
+  const out = [], mismatch = [];
   for (const m of t.matchAll(SIZE_RX)) {
     const n = toNum(m[1], m[2]), bytes = n * SIZE[m[3].toLowerCase()];
-    if (nums.has(n) || sizes.some((s) => Math.abs(s - bytes) <= bytes * 0.06)) continue;
+    if (nums.has(n) || sizes.some((s) => Math.abs(s - bytes) <= bytes * 0.06) || workedOut(n, groups, shownDecimals(m[2]))) continue;
     out.push(m[0].trim());
   }
   for (const m of t.matchAll(COUNT_RX)) {
     const n = toNum(m[1], m[2]);
-    if (nums.has(n) || n <= lines + 1) continue;
+    if (nums.has(n) || n <= lines + 1 || workedOut(n, groups, shownDecimals(m[2]))) continue;
     out.push(m[0].trim());
   }
-  return [...new Set(out)].slice(0, 3);
+  // The diff against the sandbox: its numbers, and what can be worked out from them and the other results.
+  const box = sandbox.map(numbersIn).filter((g) => g.length);
+  if (box.length) {
+    const boxAll = box.flat();
+    for (const x of plainNumbers(t)) {
+      if (workedOut(x.n, [...box, ...groups], x.d)) continue;
+      const close = boxAll.find((v) => v && Math.abs(x.n - v) <= Math.abs(v) * 0.25);
+      if (close != null) mismatch.push({ said: x.text, got: close });
+    }
+  }
+  return Object.assign([...new Set(out)].slice(0, 3), { mismatch: mismatch.slice(0, 2) });
 }
 
 // ---------------------------------------------------------------- 189: more switches
@@ -190,7 +233,7 @@ export function moreSwitchesOff(cfg = {}) {
 // All of the above for one finished answer. Returns { notes: [...], kinds: [...], strike } or null.
 // actions: the turn's tool runs; seen: the turn's tool results in full; chat: what was said in the chat (the user's
 // words, earlier tool results), so a link or number he was given counts as seen.
-export function checkRecord(reply, { actions = [], seen = [], chat = [] } = {}) {
+export function checkRecord(reply, { actions = [], seen = [], chat = [], sandbox = [] } = {}) {
   const text = String(reply || '');
   if (!text.trim()) return null;
   const notes = [], kinds = [];
@@ -198,19 +241,21 @@ export function checkRecord(reply, { actions = [], seen = [], chat = [] } = {}) 
   if (claims.length) {
     kinds.push('record');
     const c = claims[0];
-    notes.push(c.file ? `Not done: Bob said "${c.said}", but no step touched ${c.file}.` : `Not done: Bob said "${c.said}", but no step did that.`);
+    notes.push(c.file ? `The answer says "${c.said}" No step this turn touched ${c.file}.` : `The answer says "${c.said}" No step this turn did that.`);
   }
   const sources = [...seen, ...chat];
   const links = unseenLinks(text, sources);
-  if (links.length) { kinds.push('link'); notes.push(`Bob didn't read ${links.length === 1 ? 'this link' : 'these links'} anywhere, so check before you use ${links.length === 1 ? 'it' : 'them'}: ${links.slice(0, 2).join(' ')}`); }
+  if (links.length) { kinds.push('link'); notes.push(`The answer gives ${links.length === 1 ? 'a link' : 'links'} no search or page this turn showed: ${links.slice(0, 2).join(' ')}`); }
   const readSomething = actions.some((a) => okRun(a) && /read|fetch|search|browse|look|recall|find|office_read|inspect|git_look|code_map|list/.test(String(a.name || '')));
   if (readSomething && seen.length) {
     const quotes = unseenQuotes(text, sources);
-    if (quotes.length) { kinds.push('quote'); notes.push(`This quote isn't in what Bob read: "${quotes[0]}"`); }
+    if (quotes.length) { kinds.push('quote'); notes.push(`The answer quotes "${quotes[0]}" That isn't word for word in what Bob read this turn.`); }
   }
   if (seen.length) {
-    const nums = unbackedNumbers(text, sources, seen);
-    if (nums.length) { kinds.push('number'); notes.push(`Check ${nums.length === 1 ? 'this number' : 'these numbers'}: ${nums.map((n) => `"${n}"`).join(', ')}. No result Bob got shows ${nums.length === 1 ? 'it' : 'them'}.`); }
+    const nums = unbackedNumbers(text, sources, seen, sandbox);
+    const fmt = (v) => (Number.isInteger(v) ? v.toLocaleString('en') : String(+v.toFixed(6)));
+    if (nums.mismatch.length) { kinds.push('number'); notes.push(`The answer says ${nums.mismatch[0].said}; the sandbox gave ${fmt(nums.mismatch[0].got)}.`); }
+    else if (nums.length) { kinds.push('number'); notes.push(`The answer says ${nums.map((n) => `"${n}"`).join(', ')}; no result this turn has ${nums.length === 1 ? 'that number' : 'those numbers'}, and ${nums.length === 1 ? 'it' : 'they'} can't be worked out from the results.`); }
   }
   if (!notes.length) return null;
   return { notes: notes.slice(0, 2), kinds, strike: claims.length > 0 };

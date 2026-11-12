@@ -1187,14 +1187,14 @@ function markVersions(el, list) {
 // Item 10 (Nov 11): "How I got here" under a reply: each step, whether it worked, how long it took, how much came back and
 // which brain was thinking. Folded until pressed; Copy puts it on the clipboard as plain lines for a bug report.
 function stepsText(list) {
-  return list.map((x, i) => (x.correction ? `${i + 1}. ⚠ ${x.what || 'Corrected'}${x.brain ? ` · ${x.brain}` : ''}` : `${i + 1}. ${x.ok ? '✓' : '✗'} ${x.what || x.tool} · ${(x.ms / 1000).toFixed(1)} s · ${Number(x.chars || 0).toLocaleString()} characters back${x.brain ? ` · ${x.brain}` : ''}`)).join('\n');
+  return list.map((x, i) => (x.correction ? `${i + 1}. ⚠ ${x.what || 'App\'s note'}${x.brain ? ` · ${x.brain}` : ''}` : `${i + 1}. ${x.ok ? '✓' : '✗'} ${x.what || x.tool} · ${(x.ms / 1000).toFixed(1)} s · ${Number(x.chars || 0).toLocaleString()} characters back${x.brain ? ` · ${x.brain}` : ''}`)).join('\n');
 }
 function markSteps(el, list) {
   el.querySelector(':scope > .steps-note')?.remove();
   if (!list?.length) return;
   const box = document.createElement('div');
   box.className = 'versions-note steps-note';
-  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false" title="Each step Bob took for this answer. Press to see them.">How I got here (${list.length} step${list.length === 1 ? '' : 's'})</button><div hidden><ol class="steps-list">${list.map((x) => (x.correction ? `<li class="step-correction">⚠ ${esc(x.what || 'Corrected')}${x.brain ? ` <span class="muted">· ${esc(x.brain)}</span>` : ''}</li>` : `<li>${x.ok ? '✓' : '✗'} ${esc(x.what || x.tool)} <span class="muted">· ${(x.ms / 1000).toFixed(1)} s · ${esc(Number(x.chars || 0).toLocaleString())} characters back${x.brain ? ` · ${esc(x.brain)}` : ''}</span></li>`)).join('')}</ol><button type="button" class="mini" data-copy-steps>Copy</button></div>`;
+  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false" title="Each step Bob took for this answer. Press to see them.">How I got here (${list.length} step${list.length === 1 ? '' : 's'})</button><div hidden><ol class="steps-list">${list.map((x) => (x.correction ? `<li class="step-correction">⚠ ${esc(x.what || 'App\'s note')}${x.brain ? ` <span class="muted">· ${esc(x.brain)}</span>` : ''}</li>` : `<li>${x.ok ? '✓' : '✗'} ${esc(x.what || x.tool)} <span class="muted">· ${(x.ms / 1000).toFixed(1)} s · ${esc(Number(x.chars || 0).toLocaleString())} characters back${x.brain ? ` · ${esc(x.brain)}` : ''}</span></li>`)).join('')}</ol><button type="button" class="mini" data-copy-steps>Copy</button></div>`;
   const b = box.querySelector('button'), w = box.querySelector('div');
   b.onclick = () => { w.hidden = !w.hidden; b.setAttribute('aria-expanded', String(!w.hidden)); };
   box.querySelector('[data-copy-steps]').onclick = () => navigator.clipboard?.writeText(stepsText(list)).then(() => note('Copied the steps.')).catch(() => {});
