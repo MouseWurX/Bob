@@ -2,7 +2,7 @@
 
 This is the guide to what Brain Engine changes in llama.cpp, where each change hooks in, and what to re-check when moving to a newer llama.cpp. [README.md](README.md) says what each patch is for and how to build and move it. This page is the "where and how" for whoever does the rebase.
 
-Brain Engine 4 is llama.cpp **b12282** plus the six patches below, about +2,160/-13 lines across 21 files. Only 0004, 0005 and 0006 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
+Brain Engine 4 is llama.cpp **b12282** plus patches 0001 to 0006 below, about +2,160/-13 lines across 21 files. Only 0004, 0005 and 0006 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us. 0007 (expert mass) is new and goes into the next Brain Engine build; it changes only the server.
 
 Bob's own code map lists these patches too: one line each, with the files they change, the lines they add and take out, and the main names they add.
 
@@ -90,6 +90,16 @@ Then run `engine/try-newer.sh <tag>`. Every patch must go on, and the Linux buil
 - **Bob callers:** `src/scut-seal.js` (link keys, kept locked with `src/secret-box.js`), `src/bob-net-pair.js` (a key made at pairing), `src/share-card.js` and `src/share-brains.js` (pass the keys), `src/tools.js` (the key file is on the never-touch list).
 - **Re-check on rebase:** 0005 must go on first. A sealed Bob and an unsealed one must fall back to the plain link, never a link one side can't read. Same answers sealed or not.
 - **Tests:** `test/run-scut-seal-test.js` (keys, pairing, locked key file). The PC test is Bigger Bobs over Wi-Fi with SCUT on, sealed (the default) and unsealed.
+
+### 0007-expert-mass: how much each expert really wrote (REAP)
+- **Upstream files:** `tools/server/server-context.cpp`, `tools/server/server-task.h`, `tools/server/server-schema.cpp`. Server only; no ggml or card backend change. Sits on top of 0002's expert trace.
+- **Hooks:**
+  - New request field `expert_trace_mass` (with `expert_trace`). The trace's eval callback also reads each layer's `ffn_moe_weighted-<layer>` node (w · f(x)) and adds up the L2 norm of every picked expert's row.
+  - Every expert trace now carries `experts` and `layers` (picks per expert per layer); with mass on, `mass` laid out the same. That is the Forge's counts file shape, so `pod/keep.py` reads it as it is.
+  - A brain that weighs the experts' input instead of their output (llama4) gets `"mass": null` and `mass_why`.
+- **Bob callers:** none in the app yet. The Forge's `pod/reap.py` and `pod/keep.py` (`--by counts`, `mass` or `reap`) use the same numbers on a rented card; this lets a home scan make them too.
+- **Re-check on rebase:** the node name `ffn_moe_weighted` in `llama-graph.cpp` (`build_moe_ffn`), and that w there is the weight after the brain's own renormalising. Requests that don't ask must be unchanged.
+- **Tests:** none automatic (see below). The PC check is one `expert_trace_mass` request on Riker: `mass` has one list per layer, and every expert with picks has mass above 0.
 
 ## What's not covered yet
 
