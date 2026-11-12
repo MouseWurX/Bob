@@ -1,0 +1,280 @@
+diff --git a/include/llama.h b/include/llama.h
+index d92cd9c..95290a9 100644
+--- a/include/llama.h
++++ b/include/llama.h
+@@ -1167,6 +1167,15 @@ extern "C" {
+     // The callback sees every graph node; while one is set, the graph is computed step by step, which is slower.
+     LLAMA_API void llama_set_eval_callback(struct llama_context * ctx, ggml_backend_sched_eval_callback cb_eval, void * cb_eval_user_data);
+ 
++    // Brain Engine: keep every layer's expert picks ("ffn_moe_topk-<layer>" and the node it views) alive until the
++    // step ends, so an eval callback can read them all once, at the last layer, instead of stopping at every layer.
++    // Changing it rebuilds the graph. Waits for pending work first.
++    LLAMA_API void llama_set_keep_expert_ids(struct llama_context * ctx, bool keep);
++
++    // Brain Engine: copy n tensors of the step being computed (from inside an eval callback) to host memory, queued
++    // together and waited for once. sizes[i] bytes from the start of ts[i] go to dsts[i].
++    LLAMA_API void llama_get_tensors(struct llama_context * ctx, struct ggml_tensor * const * ts, void * const * dsts, const size_t * sizes, int32_t n);
++
+     // Wait until all computations are finished
+     // This is automatically done when using one of the functions below to obtain the computation results
+     // and is not necessary to call it explicitly in most cases
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index cec32c0..24c01e2 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -1411,6 +1411,38 @@ void llama_context::set_eval_callback(ggml_backend_sched_eval_callback cb_eval,
+     ggml_backend_sched_set_eval_callback(sched.get(), cb_eval, cb_eval_user_data);
+ }
+ 
++void llama_context::set_keep_expert_ids(bool keep) {
++    synchronize();
++
++    // the graph is rebuilt on the next step (graph reuse compares this), and the scheduler lays out its memory again:
++    // a layout made without the picks kept would let a later layer write over an earlier layer's picks
++    if (cparams.keep_expert_ids != keep) {
++        sched_need_reserve = true;
++    }
++    cparams.keep_expert_ids = keep;
++}
++
++void llama_context::get_tensors(ggml_tensor * const * ts, void * const * dsts, const size_t * sizes, int32_t n) {
++    std::vector<ggml_backend_t> used;
++    for (int32_t i = 0; i < n; i++) {
++        if (!ts[i] || !dsts[i] || sizes[i] == 0) {
++            continue;
++        }
++        ggml_backend_t backend = ggml_backend_sched_get_tensor_backend(sched.get(), ts[i]);
++        if (!backend) {
++            ggml_backend_tensor_get(ts[i], dsts[i], 0, sizes[i]);
++            continue;
++        }
++        ggml_backend_tensor_get_async(backend, ts[i], dsts[i], 0, sizes[i]);
++        if (std::find(used.begin(), used.end(), backend) == used.end()) {
++            used.push_back(backend);
++        }
++    }
++    for (auto * backend : used) {
++        ggml_backend_synchronize(backend);
++    }
++}
++
+ void llama_context::set_abort_callback(bool (*abort_callback)(void * data), void * abort_callback_data) {
+     LLAMA_LOG_DEBUG("%s: call\n", __func__);
+ 
+@@ -4735,6 +4767,14 @@ void llama_set_eval_callback(llama_context * ctx, ggml_backend_sched_eval_callba
+     ctx->set_eval_callback(cb_eval, cb_eval_user_data);
+ }
+ 
++void llama_set_keep_expert_ids(llama_context * ctx, bool keep) {
++    ctx->set_keep_expert_ids(keep);
++}
++
++void llama_get_tensors(llama_context * ctx, ggml_tensor * const * ts, void * const * dsts, const size_t * sizes, int32_t n) {
++    ctx->get_tensors(ts, dsts, sizes, n);
++}
++
+ void llama_set_abort_callback(llama_context * ctx, bool (*abort_callback)(void * data), void * abort_callback_data) {
+     ctx->set_abort_callback(abort_callback, abort_callback_data);
+ }
+diff --git a/src/llama-context.h b/src/llama-context.h
+index 4ae993d..d7696d5 100644
+--- a/src/llama-context.h
++++ b/src/llama-context.h
+@@ -120,6 +120,8 @@ struct llama_context {
+ 
+     void set_abort_callback(bool (*abort_callback)(void * data), void * abort_callback_data);
+     void set_eval_callback(ggml_backend_sched_eval_callback cb_eval, void * cb_eval_user_data);
++    void set_keep_expert_ids(bool keep);
++    void get_tensors(ggml_tensor * const * ts, void * const * dsts, const size_t * sizes, int32_t n);
+ 
+     void set_embeddings (bool value);
+     void set_embeddings_nextn(bool value, bool masked);
+diff --git a/src/llama-cparams.h b/src/llama-cparams.h
+index 7ac1513..451804f 100644
+--- a/src/llama-cparams.h
++++ b/src/llama-cparams.h
+@@ -54,6 +54,7 @@ struct llama_cparams {
+     bool auto_fkvr;
+     bool no_perf;
+     bool warmup;             // TODO: remove [TAG_LLAMA_GRAPH_NO_WARMUP]
++    bool keep_expert_ids = false; // Brain Engine: keep every layer's expert picks until the step ends
+     bool op_offload;
+     bool kv_unified;
+     bool pipeline_parallel;
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index cc92e61..73e63c4 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -2383,6 +2383,11 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+         cb(selected_experts->src[0], "ffn_moe_argsort", il);
+     }
+     cb(selected_experts, "ffn_moe_topk", il);
++    if (cparams.keep_expert_ids) {
++        // Brain Engine: keep the picks until the step is done, so a trace can read every layer's at once at the end
++        // instead of stopping the card at every layer
++        ggml_set_output(selected_experts->view_src ? selected_experts->view_src : selected_experts);
++    }
+ 
+     if (arch == LLM_ARCH_GROVEMOE && n_expert != hparams.n_expert) {
+         // TODO: Use scalar div instead when/if implemented
+diff --git a/src/llama-graph.h b/src/llama-graph.h
+index 0002ced..610ad48 100644
+--- a/src/llama-graph.h
++++ b/src/llama-graph.h
+@@ -910,6 +910,7 @@ struct llm_graph_params {
+             cparams.embeddings_nextn        == other.cparams.embeddings_nextn        &&
+             cparams.embeddings_nextn_masked == other.cparams.embeddings_nextn_masked &&
+             cparams.causal_attn             == other.cparams.causal_attn             &&
++            cparams.keep_expert_ids         == other.cparams.keep_expert_ids         &&
+             layer_inp_dev == other.layer_inp_dev &&
+             layer_inp_src == other.layer_inp_src &&
+             h_nextn_dev   == other.h_nextn_dev   &&
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 028ba4d..4cf09ef 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -202,6 +202,8 @@ struct server_expert_trace {
+         seen_tag = 0;
+         seen_out = 0;
+         seen_prompt = 0;
++        last_moe_il = -1;
++        pending.clear();
+     }
+ 
+     // Brain Engine, streamed trace: how far the pieces sent so far reach (in tags, in tokens with an output, and in
+@@ -218,6 +220,16 @@ struct server_expert_trace {
+     // and "from" says where that end starts)
+     static constexpr size_t part_max_rows = 64;
+ 
++    // Brain Engine, read once per step: with llama_set_keep_expert_ids on, every layer's picks stay on the card until
++    // the step ends, so the callback only stops at the last layer with experts and reads them all there with one wait
++    // (stopping the card at every layer cost Riker about a fifth of his word speed). last_moe_il is learned on the
++    // first step, which still stops at every layer.
++    llama_context * ctx = nullptr;
++    bool keep = false;
++    int32_t last_moe_il = -1;
++    std::vector<struct ggml_tensor *> pending;
++    std::vector<std::vector<int32_t>> pbuf;
++
+     // the hidden neurons of a layer's feed-forward block, after the activation: [n_ff, n_tokens]
+     static int neuron_layer(const char * name) {
+         static const char * const names[] = {
+@@ -313,31 +325,78 @@ struct server_expert_trace {
+         if (strncmp(t->name, prefix, sizeof(prefix) - 1) != 0) {
+             return ask ? false : true;
+         }
++        const int il = atoi(t->name + sizeof(prefix) - 1);
+         if (ask) {
+-            return tr->on;
++            if (!tr->on) {
++                return false;
++            }
++            if (!tr->keep) {
++                return true;
++            }
++            std::lock_guard<std::mutex> lock(tr->mutex);
++            tr->pending.push_back(t); // read with the rest at the last layer
++            return il >= tr->last_moe_il;
+         }
+         std::lock_guard<std::mutex> lock(tr->mutex);
+         if (!tr->on) {
++            tr->pending.clear();
+             return true;
+         }
+-        const int il = atoi(t->name + sizeof(prefix) - 1);
+-        // the node is a view of the first k rows of the argsort, [k, n_tokens] over [n_expert, n_tokens]
+-        const struct ggml_tensor * src = t->view_src ? t->view_src : t;
+-        const int64_t k = t->ne[0], n_tok = t->ne[1], stride = src->ne[0];
+-        if (il < 0 || il >= (int) tr->cols.size() || t->type != GGML_TYPE_I32 || src->type != GGML_TYPE_I32 ||
+-                k <= 0 || stride < k || src->ne[1] != n_tok || t->ne[2] != 1 || t->ne[3] != 1 || t->view_offs != 0 ||
+-                (tr->n_used != 0 && tr->n_used != k)) {
++        if (!tr->keep) {
++            tr->pending.assign(1, t);
++        }
++        // every layer waiting to be read, fetched together with one wait
++        const size_t n = tr->pending.size();
++        std::vector<struct ggml_tensor *> srcs(n, nullptr);
++        std::vector<void *> dsts(n, nullptr);
++        std::vector<size_t> sizes(n, 0);
++        tr->pbuf.resize(std::max(tr->pbuf.size(), n));
++        bool ok = true;
++        for (size_t j = 0; j < n; j++) {
++            struct ggml_tensor * p = tr->pending[j];
++            struct ggml_tensor * src = p->view_src ? p->view_src : p;
++            const int pil = atoi(p->name + sizeof(prefix) - 1);
++            const int64_t k = p->ne[0], n_tok = p->ne[1], stride = src->ne[0];
++            // the node is a view of the first k rows of the argsort, [k, n_tokens] over [n_expert, n_tokens]
++            if (pil < 0 || pil >= (int) tr->cols.size() || p->type != GGML_TYPE_I32 || src->type != GGML_TYPE_I32 ||
++                    k <= 0 || stride < k || src->ne[1] != n_tok || p->ne[2] != 1 || p->ne[3] != 1 || p->view_offs != 0 ||
++                    (tr->n_used != 0 && tr->n_used != k)) {
++                ok = false;
++                break;
++            }
++            tr->pbuf[j].resize(stride*n_tok);
++            srcs[j]  = src;
++            dsts[j]  = tr->pbuf[j].data();
++            sizes[j] = tr->pbuf[j].size()*sizeof(int32_t);
++        }
++        if (!ok) {
+             tr->bad = true;
++            tr->pending.clear();
+             return true;
+         }
+-        tr->n_used = (int32_t) k;
+-        tr->buf.resize(stride*n_tok);
+-        ggml_backend_tensor_get(src, tr->buf.data(), 0, tr->buf.size()*sizeof(int32_t));
+-        auto & out = tr->cols[il];
+-        for (int64_t i = 0; i < n_tok; i++) {
+-            out.insert(out.end(), tr->buf.begin() + i*stride, tr->buf.begin() + i*stride + k);
++        if (tr->keep && tr->ctx) {
++            llama_get_tensors(tr->ctx, srcs.data(), dsts.data(), sizes.data(), (int32_t) n);
++        } else {
++            for (size_t j = 0; j < n; j++) {
++                if (sizes[j] > 0) {
++                    ggml_backend_tensor_get(srcs[j], dsts[j], 0, sizes[j]);
++                }
++            }
+         }
+-        tr->n_cols[il] += (int32_t) n_tok;
++        for (size_t j = 0; j < n; j++) {
++            const struct ggml_tensor * p = tr->pending[j];
++            const int pil = atoi(p->name + sizeof(prefix) - 1);
++            const int64_t k = p->ne[0], n_tok = p->ne[1], stride = (p->view_src ? p->view_src : p)->ne[0];
++            tr->n_used = (int32_t) k;
++            auto & out = tr->cols[pil];
++            const auto & b = tr->pbuf[j];
++            for (int64_t i = 0; i < n_tok; i++) {
++                out.insert(out.end(), b.begin() + i*stride, b.begin() + i*stride + k);
++            }
++            tr->n_cols[pil] += (int32_t) n_tok;
++            tr->last_moe_il = std::max(tr->last_moe_il, (int32_t) pil);
++        }
++        tr->pending.clear();
+         return true;
+     }
+ };
+@@ -5090,6 +5149,13 @@ private:
+             etrace.neurons = !etrace.heads && llama_model_n_expert(model_tgt) <= 0;
+             etrace.clear(want ? llama_model_n_layer(model_tgt) : 0);
+         }
++        {
++            // Brain Engine: with experts, read the picks once per step (see server_expert_trace::keep)
++            std::lock_guard<std::mutex> lock(etrace.mutex);
++            etrace.ctx  = ctx_tgt;
++            etrace.keep = want && !etrace.neurons && !etrace.heads;
++        }
++        llama_set_keep_expert_ids(ctx_tgt, etrace.keep);
+         if (want) {
+             llama_set_eval_callback(ctx_tgt, server_expert_trace::cb_eval, &etrace);
+         }
+@@ -5181,8 +5247,10 @@ private:
+         }
+         if (!expert_trace_wanted(&slot)) {
+             llama_set_eval_callback(ctx_tgt, nullptr, nullptr);
++            llama_set_keep_expert_ids(ctx_tgt, false);
+             std::lock_guard<std::mutex> lock(etrace.mutex);
+             etrace.on = false;
++            etrace.keep = false;
+             etrace.clear(0);
+         }
+         return out;

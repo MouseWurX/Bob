@@ -25,7 +25,7 @@
     "branch": "",
     "build": 261,
     "bundledLlamaTag": "b12282",
-    "brainEngineVersion": 5,
+    "brainEngineVersion": 6,
     "brainEngine": {
       "tag": "brain-engine-v4",
       "win-x64": "sha256:102ca9af5ba68a533edc88efcee8869b7a6a5ad221fb8df83c233d14bf30c8b9",

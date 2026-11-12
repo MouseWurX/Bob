@@ -2,7 +2,7 @@
 
 This is the guide to what Brain Engine changes in llama.cpp, where each change hooks in, and what to re-check when moving to a newer llama.cpp. [README.md](README.md) says what each patch is for and how to build and move it. This page is the "where and how" for whoever does the rebase.
 
-Brain Engine 5 (named 5b12282) is llama.cpp **b12282** plus the eight patches below (Brain Engine 4 had the first six; 0007 is live expert picks, 0008 the link log and SCUT that retunes itself). Only 0004, 0005, 0006 and 0008 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
+Brain Engine 6 (named 6b12282) is llama.cpp **b12282** plus the nine patches below (Brain Engine 4 had the first six, Brain Engine 5 the first eight; 0007 is live expert picks, 0008 the link log and SCUT that retunes itself, 0009 the expert trace read once per word). Only 0004, 0005, 0006 and 0008 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
 
 Bob's own code map lists these patches too: one line each, with the files they change, the lines they add and take out, and the main names they add.
 
@@ -109,6 +109,17 @@ Then run `engine/try-newer.sh <tag>`. Every patch must go on, and the Linux buil
 - **Bob callers:** `src/link-log.js` (keeps the lines in `bob-net-link.log` and the logbook), `src/share-card.js` (`linkEnv`, the lender's output), `src/llamacpp.js` (the borrower's output), `src/server.js` (`/api/share-brains/link-log`), `public/share-brains.js` (Watch the link live, Link log).
 - **Re-check on rebase:** 0005 and 0006 first. If upstream changes `rpc_dispatcher::work()` or the `rpc_serve_client` loop, the timing hooks move with them; the probe uses `RPC_CMD_GET_ALIGNMENT` for device 0, which must stay a command the server answers without touching the card.
 - **Tests:** `test/run-link-log-test.js`. SCUT alone can be built without llama.cpp (scut.cpp, scut.h, scut-seal.h and a four-line stand-in for log.h) and run through a pretend Wi-Fi; do that after any change to the tuning. The PC test is Bigger Bobs over Wi-Fi with the Link log open on both Bobs.
+
+### 0009-expert-trace-once: the trace read once per word
+
+- **Upstream files:** `include/llama.h`, `src/llama-context.{h,cpp}`, `src/llama-cparams.h`, `src/llama-graph.{h,cpp}`, `tools/server/server-context.cpp`.
+- **Hooks:**
+  - `llama_cparams::keep_expert_ids`, set by `llama_set_keep_expert_ids()` (marks the scheduler for a new memory layout, `sched_need_reserve`); `llm_graph_params::allow_reuse` compares it, so the graph is rebuilt when it changes.
+  - `llm_graph_context::build_moe_ffn()`: with it on, `ggml_set_output()` on the node `ffn_moe_topk` views, so no later layer is given its memory.
+  - `llama_get_tensors()`: queues every copy with `ggml_backend_tensor_get_async()` on the tensor's own backend, then one `ggml_backend_synchronize()` per backend used.
+  - `server_expert_trace::cb_eval()`: while asked, it remembers every `ffn_moe_topk-<layer>` it passes (`pending`) and only asks to stop at the last layer with experts (`last_moe_il`, learned on each request's first step); there it reads all of them with `llama_get_tensors()`. `expert_trace_begin()` turns `keep` on for expert traces only; the end of a trace turns it off.
+- **Bob callers:** none new; the same `expert_trace` requests (`src/llamacpp.js`) get it.
+- **Only on top of 0002 and 0007.**
 
 ## What's not covered yet
 
