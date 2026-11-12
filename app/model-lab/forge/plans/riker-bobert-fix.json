@@ -1,0 +1,52 @@
+{
+  "run": "riker-bobert-fix",
+  "note": "12 Nov, later: Riker (28Bob) and Bobert (35Bob) Q4 at 12 experts per word (the best count from riker-experts). The quick quiz runs on Bob 1.5.208 as it is and on 1.5.208 with the tool-fix list (bob-wip/riker-experts/tool-fix-list.md) plus four seeded how-tos, with every tool group switched on in the quiz kit (how-tos were hidden before), so the numbers are not comparable with riker-experts. Then the held-out chats. About 2 h on an A40, about $1.20; caps 3 h / $5.",
+  "benchmark_only": true,
+  "teacher": "Qwen/Qwen3.6-35B-A3B",
+  "counts": "expert-counts-2026-11-04T23-23-19.json",
+  "lessons": "out/lessons",
+  "gpus": [
+    "NVIDIA A40",
+    "NVIDIA RTX A6000",
+    "NVIDIA L40S",
+    "NVIDIA RTX 6000 Ada Generation"
+  ],
+  "step_up": [
+    "NVIDIA A100 80GB PCIe",
+    "NVIDIA H100 80GB HBM3"
+  ],
+  "step_up_note": "a benchmark only: any card with room for a 20 GB file will do, the list is cheapest first",
+  "volume_wait_minutes": 15,
+  "disk_gb": 80,
+  "general_tokens": 0,
+  "rungs": [],
+  "hours_max": 3,
+  "dollars_max": 5,
+  "rent_minutes": 60,
+  "download_quants": [],
+  "benchmark": {
+    "note": "the two quiz runs are minutes apart, so their time-stamped reports don't collide; each report names its Bob version",
+    "hours_each": 1,
+    "models": [
+      {
+        "name": "28Bob-e12",
+        "nickname": "Riker",
+        "file": "hf:MouseWurX/28Bob-Riker:28Bob-Q4_K_M.gguf",
+        "quant": "Q4_K_M",
+        "extra": "--override-kv qwen35moe.expert_used_count=int:12"
+      },
+      {
+        "name": "35Bob-e12",
+        "nickname": "Bobert",
+        "file": "hf:MouseWurX/35Bob-Bobert:35Bob-Q4_K_M.gguf",
+        "quant": "Q4_K_M",
+        "extra": "--override-kv qwen35moe.expert_used_count=int:12"
+      }
+    ],
+    "commands": [
+      "node experts-test.mjs --bob \"C:\\Unreal Projects\\bob-test 208\\app\" --url {{url}} --counts 12 --out {{out}}",
+      "node experts-test.mjs --bob \"C:\\Unreal Projects\\bob-test 208fix\\app\" --howtos \"C:\\Unreal Projects\\Agent 00\\bob-model-lab\\out\\bench\\riker-fix\\howtos-seed.json\" --url {{url}} --counts 12 --out {{out}}",
+      "node tool-score.mjs --url {{url}} --models \"{{name}}=served\" --no-think --lessons {{lessons}} --out {{out}}"
+    ]
+  }
+}
