@@ -17,6 +17,7 @@ if (!remote) checkFree(o);
 const shape = !remote && L.model && fs.existsSync(L.model) ? moeShape(L.model) : { name: process.env.LAB_MODEL_NAME || 'served brain', layers: '?', experts: 256, used: Number(String(o.counts).split(',')[0]) || 8, key: null };
 console.log(`${shape.name}: ${shape.layers} layers, ${shape.experts} experts, ${shape.used} per word (key ${shape.key})`);
 const kit = await loadBob(L.bob);
+let bobVersion = ""; try { bobVersion = JSON.parse(fs.readFileSync(path.join(L.bob, "package.json"), "utf8")).version || ""; } catch {}
 
 // ---- the quiz ----
 const TOOL_JOBS = kit.phrasings.filter((p) => p.group && !p.pic && !p.recent);
@@ -42,6 +43,7 @@ const CODE = [
   ['Write a JavaScript function named camel(s) turning "hello world foo" into "helloWorldFoo". Only the code.', 'camel', (f) => f('hello world foo') === 'helloWorldFoo' && f('bob') === 'bob'],
   ['Write a JavaScript function named countVowels(s) returning how many of a, e, i, o, u (any case) are in s. Only the code.', 'countVowels', (f) => f('Patches the CAT') === 4 && f('xyz') === 0]
 ];
+const CANT = /\b(i can(?:'|\u2019)?t|i cannot|i'm (?:not able|unable)|i am (?:not able|unable)|i don(?:'|\u2019)?t have (?:access|the ability)|not able to)\b/i;
 const quick = Boolean(o.quick);
 const toolSet = quick ? TOOL_JOBS.filter((_, i) => i % 4 === 0) : TOOL_JOBS;
 
@@ -51,12 +53,17 @@ function runCode(text, name, test) {
 }
 
 async function quiz(url) {
-  const r = { tool: 0, toolN: toolSet.length, fact: 0, factN: FACTS.length, code: 0, codeN: CODE.length, tps: [], misses: [] };
+  const r = { tool: 0, toolN: toolSet.length, fact: 0, factN: FACTS.length, code: 0, codeN: CODE.length, tps: [], misses: [], startTokens: 0, answerMs: [], cant: 0 };
   for (const p of toolSet) {
     try {
-      const { msg, timings } = await chat(url, { messages: [{ role: 'system', content: system }, { role: 'user', content: p.text }], tools, max: 512 });
+      const t0 = Date.now();
+      const { msg, timings, usage } = await chat(url, { messages: [{ role: 'system', content: system }, { role: 'user', content: p.text }], tools, max: 512 });
+      r.answerMs.push(Date.now() - t0);
+      // 12 Nov: the size of Bob's front desk (system prompt + tools + one short request), and false "I can't" answers to plain tool requests
+      if (!r.startTokens) r.startTokens = usage.prompt_tokens || timings.prompt_n || 0;
       if (timings.predicted_per_second) r.tps.push(timings.predicted_per_second);
       const names = (msg.tool_calls || []).map((c) => c.function?.name);
+      if (!names.length && CANT.test(msg.content || '')) r.cant++;
       const ok = names.some((n) => kit.groupOf(n) === p.group || (n === 'use_tools' && JSON.parse(msg.tool_calls.find((c) => c.function.name === 'use_tools').function.arguments || '{}').group === p.group));
       if (ok) r.tool++; else r.misses.push(`[${p.job}] "${p.text}" -> ${names.join(',') || 'no tool'}`);
     } catch (e) { r.misses.push(`[${p.job}] "${p.text}" -> error ${e.message.slice(0, 80)}`); }
@@ -75,7 +82,8 @@ async function quiz(url) {
     } catch (e) { r.misses.push(`code ${name} -> error ${e.message.slice(0, 80)}`); }
   }
   r.tpsAvg = r.tps.length ? r.tps.reduce((a, b) => a + b, 0) / r.tps.length : 0;
-  delete r.tps;
+  const ms = [...r.answerMs].sort((a, b) => a - b); r.answerMedianMs = ms.length ? ms[Math.floor(ms.length / 2)] : 0;
+  delete r.tps; delete r.answerMs;
   return r;
 }
 
@@ -87,7 +95,7 @@ for (const n of counts) {
   try {
     const r = await quiz(srv.url);
     results.push({ experts: n, ...r, loadSec: srv.loadSec });
-    console.log(`tools ${r.tool}/${r.toolN}, facts ${r.fact}/${r.factN}, code ${r.code}/${r.codeN}, ${r.tpsAvg.toFixed(1)} tok/s`);
+    console.log(`tools ${r.tool}/${r.toolN}, facts ${r.fact}/${r.factN}, code ${r.code}/${r.codeN}, ${r.tpsAvg.toFixed(1)} tok/s, front desk ${r.startTokens} tokens, median tool answer ${(r.answerMedianMs / 1000).toFixed(1)} s, false can't ${r.cant}/${r.toolN}${bobVersion ? `, Bob ${bobVersion}` : ''}`);
   } finally { await srv.stop(); }
 }
 kit.done();
@@ -96,8 +104,9 @@ const when = stamp();
 fs.writeFileSync(path.join(L.out, `experts-test-${when}.json`), JSON.stringify({ model: shape, results }, null, 2));
 const pct = (a, b) => `${a}/${b} (${Math.round((100 * a) / Math.max(b, 1))}%)`;
 const md = [`# Experts-per-word test, ${when}`, '', `Model: ${shape.name} (${shape.layers} layers, ${shape.experts} experts, ${shape.used} per word by default). Thinking off. Tool quiz: Bob's real prompt and all his tools, ${toolSet.length} plain requests from test/phrasings.js.`, '',
-  '| Experts per word | Right tool | Facts | Code runs | Writing speed |', '|---|---|---|---|---|',
-  ...results.map((r) => `| ${r.experts} | ${pct(r.tool, r.toolN)} | ${pct(r.fact, r.factN)} | ${pct(r.code, r.codeN)} | ${r.tpsAvg.toFixed(1)} tok/s |`), '',
+  `Bob ${bobVersion || '?'}.`, '',
+  '| Experts per word | Right tool | Facts | Code runs | Writing speed | Front desk | Median tool answer | False "can\'t" |', '|---|---|---|---|---|---|---|---|',
+  ...results.map((r) => `| ${r.experts} | ${pct(r.tool, r.toolN)} | ${pct(r.fact, r.factN)} | ${pct(r.code, r.codeN)} | ${r.tpsAvg.toFixed(1)} tok/s | ${r.startTokens} tokens | ${(r.answerMedianMs / 1000).toFixed(1)} s | ${r.cant} of ${r.toolN} |`), '',
   '## Misses', ...results.flatMap((r) => [`### ${r.experts} per word`, ...r.misses.map((m) => `- ${m}`), ''])].join('\n');
 fs.writeFileSync(path.join(L.out, `experts-test-${when}.md`), md);
 console.log(`\nReport: ${path.join(L.out, `experts-test-${when}.md`)}`);
