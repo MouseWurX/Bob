@@ -230,7 +230,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
   // ---- the panel's lists ----
   function draw() {
     if (!seen('tasks', 'downloads')) return badgeOnly();
-    const open = jobs.filter((j) => j.state === 'waiting' || j.state === 'working');
+    const open = jobs.filter((j) => j.state === 'waiting' || j.state === 'working' || j.state === 'paused');
     const shownJobs = open.map((j) => (j.state === 'working' && needsYou ? { ...j, status: 'needs you' } : j));
     const recent = jobs.filter((j) => (j.state === 'failed' || j.state === 'interrupted') && Date.now() - (j.doneAt || j.at) < 3600e3);
     tl.innerHTML = [...shownJobs, ...recent].map((j) => taskRow(j, { movable: j.state === 'waiting', full: false })).join('') || `<li class="muted">Nothing running. Ask Bob for something.</li><li class="muted cat-moment">🐈 ${esc(catMoment(cat))}.</li>`;

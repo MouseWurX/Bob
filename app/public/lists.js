@@ -54,7 +54,7 @@ export function neighbour(ids, id, dir) {
 }
 
 // ---------- Tasks ----------
-const STATUS = { 'needs you': 'Needs you', queued: 'Queued', 'in progress': 'In progress', delegated: 'Delegated', rented: 'Rented', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled', interrupted: 'Interrupted' };
+const STATUS = { 'needs you': 'Needs you', queued: 'Queued', 'in progress': 'In progress', delegated: 'Delegated', rented: 'Rented', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled', interrupted: 'Interrupted', paused: 'Paused' };
 const ICON = { chat: '💬', picture: '🎨', video: '🎬', research: '🔎', code: '🛠', data: '📊' };
 
 export function taskRow(j, { movable, full }) {
@@ -69,15 +69,18 @@ export function taskRow(j, { movable, full }) {
     : status === 'queued' ? `Added ${when(j.at)}`
     : status === 'in progress' ? `Started ${when(j.startedAt)}`
     : status === 'needs you' ? 'Bob is waiting for your OK in the chat'
+    : status === 'paused' ? `Paused ${when(j.pausedAt || j.at)}. ${j.pausedFrom === 'working' ? 'Resume carries on from where it stopped' : 'Resume puts it back in line'}`
     : j.error ? esc(j.error) : `${esc(STATUS[status] || status)} ${when(j.doneAt || j.at)}`;
   const trail = full && j.steps?.length ? `<ol class="steps-trail">${j.steps.map((s) => `<li>Handed to ${esc(s.copy)} (${esc(s.label)}): ${esc(s.state)}${s.doneAt ? ` at ${when(s.doneAt)}` : ''}</li>`).join('')}</ol>` : '';
   const btns = [
     movable ? '<button type="button" data-t="up" title="Move up" aria-label="Move up">▲</button><button type="button" data-t="down" title="Move down" aria-label="Move down">▼</button>' : '',
     // 1.5.38: an interrupted job carries on from where it stopped; a failed or cancelled one starts over.
     status === 'interrupted' ? '<button type="button" data-t="retry">Carry on</button>' : ['failed', 'cancelled'].includes(status) ? '<button type="button" data-t="retry">Try again</button>' : '',
-    status === 'queued' ? '<button type="button" data-t="cancel">Remove</button>' : '',
+    // Nov 12: Pause and Resume on any task Bob runs here, and Remove (✕) on every task, whatever its state.
+    ['queued', 'in progress', 'needs you'].includes(status) && !j.waitsFor ? '<button type="button" data-t="pause" title="Pause: keep it, but hold it for now" aria-label="Pause">⏸ Pause</button>' : '',
+    status === 'paused' ? '<button type="button" data-t="resume" title="Resume: carry on" aria-label="Resume">▶ Resume</button>' : '',
     ['in progress', 'delegated', 'needs you'].includes(status) ? '<button type="button" data-t="cancel">Stop</button>' : '',
-    full && !['queued', 'in progress', 'delegated', 'needs you'].includes(status) ? '<button type="button" data-t="remove" title="Take it off the list" aria-label="Take it off the list">✕</button>' : ''
+    '<button type="button" data-t="remove" title="Remove: take it off the list (a running task stops first)" aria-label="Remove">✕</button>'
   ].join('');
   return `<li class="titem" data-id="${esc(j.id)}" ${movable ? 'draggable="true"' : ''}>
     <span class="grip" aria-hidden="true">${movable ? '⋮⋮' : ''}</span>
@@ -101,7 +104,7 @@ export function emptyTasks(filter, total = 0) {
 export function createTasks({ post }) {
   const dlg = document.getElementById('tasks'), body = document.getElementById('tasks-body');
   let jobs = [], filter = 'open';
-  const isOpen = (j) => j.state === 'waiting' || j.state === 'working';
+  const isOpen = (j) => j.state === 'waiting' || j.state === 'working' || j.state === 'paused';
   function draw() {
     if (!dlg.open) return;
     const open = jobs.filter(isOpen);

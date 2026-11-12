@@ -74,6 +74,7 @@ export const turnParts = {
           Object.assign(job, { requeued: true, noBeside: true, side: false, beside: false });
         }
         else if (controller.signal.aborted && job?.parked) this.parkJob(job, emit); // 1.5.41: the 🎮 Gaming button, not a stop
+        else if (controller.signal.aborted && job?.pausing && !job.dropAfter) this.pauseHere(job, emit); // Nov 12: Pause in Tasks, not a stop
         else if (controller.signal.aborted) { emit({ type: 'token', text: '\n\n*(Stopped.)*' }); if (job) job.state = 'cancelled'; }
         else {
           emit({ type: 'error', text: e.message }); inTurn(tstore, () => this.log('error', causeLine(e).slice(0, 500))); // item 207: the real cause in the logbook
@@ -103,7 +104,8 @@ export const turnParts = {
         this.gate.done(controller.signal); // the graphics card goes to the next job waiting for it
         if (job?.handoff) job.handoff = slimHandoff(job.handoff); // finished: keep what it did, drop the load-by-load steps
         // 1.5.38: carried on (or not) once; the note isn't used again. A job told to wait for a download goes back in line.
-        if (job && job.state !== 'interrupted' && !job.after && !job.parked) { job.carryOn = null; job.before = undefined; job.cutStep = undefined; job.pickUp = false; }
+        if (job) job.pausing = undefined; // Pause pressed just as the reply finished: it simply finished
+        if (job && job.state !== 'interrupted' && job.state !== 'paused' && !job.after && !job.parked) { job.carryOn = null; job.before = undefined; job.cutStep = undefined; job.pickUp = false; }
         if (job?.requeued) { job.requeued = false; Object.assign(job, { state: 'waiting', error: undefined, steps: [] }); this.queue = [job, ...this.queue.filter((x) => x !== job)]; }
         if (job?.again && job.state !== 'cancelled') { job.carryOn = job.again; job.again = undefined; Object.assign(job, { state: 'waiting', error: undefined, doneAt: undefined, steps: [], at: Date.now() }); this.queue = [...this.queue.filter((x) => x !== job), job]; } // 1.5.91: Set it up pressed while this reply was still going
         if (job?.after && job.state !== 'cancelled') { job.state = 'waiting'; job.error = undefined; job.at = Date.now(); this.queue = [...this.queue.filter((x) => x !== job), job]; }

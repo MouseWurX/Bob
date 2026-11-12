@@ -15,6 +15,9 @@ import { midJobFits, ACK_LINE, ACK_AFTER_MS } from './mid-job.js';
 import { autoSessionOn } from './auto-session.js';
 import { stopAway, awayPlan, awayWaitLine, sendAway } from './share-jobs.js';
 import { webOn } from './web.js';
+
+// What the job's chat says when Pause stops it partway. Shown under the reply; never sent to the brain.
+export const PAUSED_LINE = 'Paused. It waits in Tasks; Resume carries on from the last finished step.';
 import { QUEUE_SAVE_MS, Brain } from './brain.js';
 import { mainJob, SIDE_LANE, sideOk, besideBigOk, isTalker, besideOk, besideLater } from './brain-lanes.js';
 
@@ -62,7 +65,9 @@ export const queueParts = {
     // The list's order is the order jobs run in (the user can drag them). Finished jobs stay for a week
     // (at most 200) so the Tasks panel can show what's been completed.
     const keep = Date.now() - 7 * 864e5;
-    const finished = this.queue.filter((j) => !(j.state === 'waiting' || j.state === 'working'));
+    // Remove pressed on a running job: it leaves the list once it has stopped. A paused job is kept like a waiting one.
+    this.queue = this.queue.filter((j) => !(j.dropAfter && j.state !== 'working'));
+    const finished = this.queue.filter((j) => !(j.state === 'waiting' || j.state === 'working' || j.state === 'paused'));
     const drop = new Set(finished.filter((j) => (j.doneAt || j.at) < keep).map((j) => j.id));
     for (const j of finished.slice(0, Math.max(0, finished.length - 200))) drop.add(j.id);
     this.queue = this.queue.filter((j) => !drop.has(j.id));
@@ -70,7 +75,7 @@ export const queueParts = {
     this.broadcast({ type: 'queue', jobs: this.queueView() });
   },
   queueView() {
-    return this.queue.map(({ id, sessionId, text, state, at, error, refs, kind, startedAt, doneAt, steps, effort, after, pickUp, away, guest, rent, rentOk, sentTo, home, ranHere }) => {
+    return this.queue.filter((j) => !j.dropAfter).map(({ id, sessionId, text, state, at, error, refs, kind, startedAt, doneAt, steps, effort, after, pickUp, away, guest, rent, rentOk, sentTo, home, ranHere, pausedFrom, pausedAt }) => {
       const out = (steps || []).find((x) => x.state === 'in progress');
       // Plain status for the Tasks panel: Queued, In progress, Delegated (to which copy), Completed...
       const awayNow = state === 'working' && away?.name; // 1.5.72: with another of your Bobs
@@ -79,7 +84,7 @@ export const queueParts = {
       return { id, sessionId, kind, text: (guest ? `From ${guest.from}: ` : '') + text.slice(0, 140), state, status, at, startedAt, doneAt, error, pics: (refs || []).length,
         delegatedTo: awayNow ? { hat: 'away', label: 'another of your Bobs', copy: away.name, sent: true } : out ? { hat: out.hat, label: out.label, copy: out.copy } : sentTo && state !== 'waiting' && state !== 'working' ? { hat: 'away', label: 'another of your Bobs', copy: sentTo, sent: true } : null, gaming: state === 'waiting' && !away && waitsForGaming(this.cfg, { kind, effort }) ? { tag: GAMING_TAG, hint: GAMING_HINT } : undefined, steps: (steps || []).slice(-8), effort: effort || 'low',
         waitsFor: state === 'waiting' && after ? after.name : undefined, pickUp: state === 'waiting' && pickUp ? true : undefined,
-        home: home && !guest ? { title: home.title || '', folder: home.folder || '' } : undefined, ...(ranHere ? { ranHere: true } : {}) }; // items 236, 205
+        home: home && !guest ? { title: home.title || '', folder: home.folder || '' } : undefined, ...(ranHere ? { ranHere: true } : {}), ...(state === 'paused' ? { pausedFrom, pausedAt } : {}) }; // items 236, 205
     });
   },
   // Drag and drop: move a waiting job in front of another waiting job (or to the end of the line).
@@ -95,14 +100,7 @@ export const queueParts = {
     this.saveQueue();
     return true;
   },
-  // Take a finished job off the list, or clear every completed one.
-  removeJob(id) {
-    const n = this.queue.length;
-    this.queue = this.queue.filter((j) => !(j.id === id && !['waiting', 'working'].includes(j.state)));
-    if (n === this.queue.length) return false;
-    this.saveQueue();
-    return true;
-  },
+  // Clear every completed one (Remove, for one task in any state, is further down).
   clearCompleted() {
     this.queue = this.queue.filter((j) => !['done', 'cancelled'].includes(j.state));
     this.saveQueue();
@@ -189,6 +187,56 @@ export const queueParts = {
     this.pump();
     return true;
   },
+  // Nov 12 (the owner): Remove works on any task, whatever its state. A waiting, paused or finished one goes at once;
+  // a running one is stopped (or the other Bob is told to stop) and leaves the list when it has.
+  removeJob(id) {
+    const j = this.queue.find((x) => x.id === id);
+    if (!j) return false;
+    if (j.state === 'working' || j.away) {
+      j.dropAfter = true;
+      if (!(j.away && stopAway(this, j.id)) && j.state === 'working') this.stop(j.id);
+      this.saveQueue(); // it leaves the list now; the stopped turn's own save drops it from queue.json
+      return true;
+    }
+    this.waitOver(j);
+    this.queue = this.queue.filter((x) => x !== j);
+    this.saveQueue();
+    return true;
+  },
+  // Nov 12 (the owner): Pause and Resume. A waiting task is held where it is in line. A running one stops after
+  // Bob lets go and keeps what it has done: Resume carries on from its last finished step, the same way as after a
+  // restart. A task sent to another of your Bobs can't be paused (Stop or Remove it instead).
+  pauseJob(id) {
+    const j = this.queue.find((x) => x.id === id);
+    if (!j || j.away) return false;
+    if (j.state === 'waiting') {
+      j.state = 'paused'; j.pausedFrom = 'waiting'; j.pausedAt = Date.now();
+      this.waitOver(j);
+      this.saveQueue();
+      return true;
+    }
+    if (j.state !== 'working') return false;
+    j.pausing = true; // the turn's end (brain-turns.js) sees this and calls pauseHere instead of marking it Stopped
+    return this.stop(j.id) || ((j.pausing = undefined), false);
+  },
+  // The running turn was stopped for Pause: note what it finished, so Resume can carry on from there.
+  pauseHere(job, emit) {
+    job.pausing = undefined;
+    const plan = carryOnPlan(job);
+    job.before = finishedSteps(job); job.cutStep = plan.cut; job.carryOn = plan.note;
+    Object.assign(job, { state: 'paused', pausedFrom: 'working', pausedAt: Date.now(), error: undefined });
+    emit({ type: 'token', text: `\n\n*(${PAUSED_LINE})*` });
+  },
+  resumeJob(id) {
+    const j = this.queue.find((x) => x.id === id);
+    if (!j || j.state !== 'paused') return false;
+    j.pickUp = j.pausedFrom === 'working' && Boolean(j.carryOn);
+    if (j.pausedFrom === 'working') { j.steps = []; j.resumed = 0; }
+    Object.assign(j, { state: 'waiting', pausedFrom: undefined, pausedAt: undefined, error: undefined, at: Date.now() }); // keeps its place in line
+    this.saveQueue();
+    this.pump();
+    return true;
+  },
   // Put a job back in line straight away with a note (nothing to download first).
   carryOnNow(jobId, note) {
     const j = this.queue.find((x) => x.id === jobId);
@@ -241,7 +289,7 @@ export const queueParts = {
     if (this.switching) return; // 1.5.41: Bob is changing session; the jobs start once the new session is set
     const seen = new Set();
     for (const job of this.queue) {
-      if (job.state !== 'waiting') continue;
+      if (job.state !== 'waiting' || job.dropAfter) continue; // Remove pressed while it ran (Gaming put it back in line)
       if (job.parked && this.cfg.gamingLock === true) continue; // 1.5.41: put aside by the 🎮 Gaming button, waits for it to go off
       // 1.5.72 Share jobs: a job this Bob can't do, or that would wait, goes to one of your Bobs who says he can do it.
       if (job.awayHold && job.awayHold > Date.now()) continue; // waiting for one of your Bobs who can do it
