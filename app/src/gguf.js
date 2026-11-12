@@ -72,7 +72,7 @@ export function ggufInfo(file) {
     r.pos = 4;
     const version = r.u32();
     if (version < 2) throw new Error('GGUF v1 is not supported');
-    r.u64(); // tensor count
+    const tensors = r.u64();
     const kvs = r.u64();
     const kv = {};
     for (let i = 0; i < kvs; i++) {
@@ -96,6 +96,18 @@ export function ggufInfo(file) {
       origin: kv['general.source.huggingface.repository'] || kv['general.base_model.0.repo_url'] || kv['general.source.url'] || '',
       mtp: Number(kv[`${kv['general.architecture']}.nextn_predict_layers`]) || 0
     };
+    // 1.5.207 PC check: a cut Riker says nextn_predict_layers = 1 in its header but has no guesser tensors, and Brain
+    // Engine 4 stopped with "MTP block missing nextn.eh_proj". The guesser counts only when its tensors are there.
+    if (out.mtp) {
+      let found = false;
+      for (let i = 0; i < Math.min(tensors, 200000) && !found; i++) {
+        const name = r.str();
+        const dims = r.u32();
+        r.pos += 8 * dims + 4 + 8; // the sizes, the type and the offset
+        if (/\.nextn\.eh_proj\b/.test(name)) found = true;
+      }
+      if (!found) { out.mtpInHeader = out.mtp; out.mtp = 0; }
+    }
   } catch { out = null; } finally { if (fd !== undefined) try { fs.closeSync(fd); } catch {} }
   cache.set(key, out);
   return out;

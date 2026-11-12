@@ -4,4 +4,9 @@
     <string name="lend_channel">Lend my brain</string>
     <string name="lend_title">Bob is lending his brain</string>
     <string name="lend_stop">Stop lending</string>
+    <string name="widget_ask">Ask Bob</string>
+    <string name="widget_talk">Talk to Bob</string>
+    <string name="widget_no_reminder">Tap to ask Bob</string>
+    <string name="widget_about">Ask Bob from your home screen, and see your next reminder.</string>
+    <string name="share_label">Bob</string>
 </resources>

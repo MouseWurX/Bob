@@ -141,7 +141,8 @@ const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls:
   const job = { id: 'q1', side: true, sidePick: { model: 'small:latest', cpu: true }, kind: 'chat', text: 'how is it going?', sessionId: 'side-chat' };
   const msgs = [{ role: 'user', content: 'how is it going?' }];
   await brain.runOn(msgs, 'how is it going?', (e) => events.push(e), new AbortController().signal, [], job, 'side-chat').catch((e) => console.log(e.message));
-  const sys = seen[0]?.messages?.[0]?.content || '';
+  // Item 1 (Nov 11): the turn's changing lines ride in a note before the latest message, so read every system message.
+  const sys = (seen[0]?.messages || []).filter((m) => m.role === 'system').map((m) => m.content).join('\n');
   check('the quick reply gets the Meanwhile line beside Right now', /Right now \(real, from the app\)/.test(sys) && /Meanwhile \(real, from the app\): the job running right now is "Build the photo album"/.test(sys) && /4 minutes in, step 1/.test(sys));
   check('the quick reply gets look_at_job and pass_note', seen[0]?.names.includes('look_at_job') && seen[0]?.names.includes('pass_note'));
   cfg.quickSeesJob = false;

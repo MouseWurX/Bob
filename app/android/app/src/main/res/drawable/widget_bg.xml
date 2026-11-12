@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Moondust, Bob's starting theme: the widget's card. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#F0121212" />
+    <corners android:radius="20dp" />
+</shape>
