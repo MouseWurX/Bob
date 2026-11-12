@@ -290,3 +290,5 @@ body.look-lamplight .cellar.page[open] { position: fixed; inset: 64px 0 0 0; z-i
 body.look-lamplight .cellar.page .cellar-head { padding-inline: 0; }
 @media (max-width: 640px) { body.look-lamplight .cellar.page[open] { inset: 0 0 calc(56px + env(safe-area-inset-bottom, 0px)) 0; padding: 0 var(--s4) var(--s5); } }
 html.lab-window body.look-lamplight .cellar.page[open] { inset: 0; }
+/* the Settings and Lab windows have no top bar: their page fills the window */
+:is(html.settings-window, html.lab-window) body.look-lamplight .cellar.page[open] { inset: 0; height: 100dvh; }
