@@ -198,19 +198,26 @@ async function one(idea, think, room = 1) { // room 2 = a second try with twice 
   if (last.role !== 'assistant' || !String(last.content || '').trim()) throw new Error('no final answer (ran out of steps)');
   if (review) {
     const v = await grade(idea, saved);
+    // 12 Nov (later): a review that couldn't be read is neither kept nor rejected; it waits in needs-review.jsonl for a second look
+    if (v.unparsed) { appendJsonl(path.join(dir, 'needs-review.jsonl'), { idea: idea.id, job: idea.job, think, why: v.why, messages: saved }); throw new Error('review unparsed'); }
     if (!v.ok) { appendJsonl(path.join(dir, 'rejected.jsonl'), { idea: idea.id, job: idea.job, think, why: v.why, messages: saved }); throw new Error(`review: ${v.why}`); }
   }
   appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, messages: saved });
 }
 // The teacher as a strict reviewer: right tool or rightly none, exact arguments, results read, a final answer that does the job.
 const RULES = { restraint: 'This message only wants an answer Bob knows: calling any tool is a FAIL.', precise: 'Every detail from the request (names, paths, dates, amounts) must appear exactly in the tool arguments.', agent: 'Each step must use what the previous result returned; the final answer must sum up what was done.' };
+// 12 Nov (later): the reviewer is told Bob's own rules (it failed right behaviour, e.g. saving in Bob's folders) and sees the
+// whole lesson (tool results were cut at 1,500 characters, so it judged on half a result). Still strict on the real problems.
+const BOB_RULES = 'How Bob works (this is CORRECT, never a reason to fail): he saves files inside the folders he is allowed to use and asks first before writing anywhere else; tools that change things may show an OK card first; the tool results in the lesson are the truth (the reviewer does not doubt them).';
 async function grade(idea, saved) {
-  const text = saved.map((m) => `${m.role.toUpperCase()}${m.name ? ` (${m.name})` : ''}: ${m.tool_calls ? `[calls ${m.tool_calls.map((c) => `${c.function.name} ${String(c.function.arguments).slice(0, 400)}`).join('; ')}] ` : ''}${String(m.content || '').slice(0, 1500)}`).join('\n');
+  const text = saved.map((m) => `${m.role.toUpperCase()}${m.name ? ` (${m.name})` : ''}: ${m.tool_calls ? `[calls ${m.tool_calls.map((c) => `${c.function.name} ${String(c.function.arguments).slice(0, 2000)}`).join('; ')}] ` : ''}${String(m.content || '').slice(0, 6000)}`).join('\n');
   try {
-    const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `You review training lessons for a desktop AI assistant called Bob. Be strict. FAIL the lesson if Bob called a tool when a plain answer was enough, skipped a tool the request clearly needed, put wrong or made-up details in tool arguments, ignored or misread a tool result, looped, or ended without actually doing what was asked. ${RULES[idea.job] || ''}\n\n${text}\n\nReply with only JSON: {"ok": true or false, "why": "one short reason"}` }], max: 300, temperature: 0 });
-    const j = JSON.parse((msg.content || '').match(/\{[\s\S]*\}/)?.[0] || '{}');
+    const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `You review training lessons for a desktop AI assistant called Bob. Be strict about real problems only. FAIL the lesson if Bob called a tool when a plain answer was enough (plain chat with a tool call always fails), skipped a tool the request clearly needed, called a wrong or an extra tool, put wrong or made-up details in tool arguments, misread what a tool result says, looped, or ended without a final answer that actually does what was asked. Small wording or style issues are NOT a reason to fail. ${BOB_RULES} ${RULES[idea.job] || ''}\n\n${text}\n\nReply with only JSON: {"ok": true or false, "why": "one short reason"}` }], max: 500, temperature: 0 });
+    const raw = (msg.content || '').match(/\{[\s\S]*\}/)?.[0];
+    let j = null; try { j = raw ? JSON.parse(raw) : null; } catch {}
+    if (!j || typeof j.ok !== 'boolean') return { ok: false, unparsed: true, why: 'review unparsed' };
     return { ok: j.ok === true, why: String(j.why || '').slice(0, 200) };
-  } catch (e) { return { ok: true, why: `review failed: ${e.message.slice(0, 60)}` }; } // a reviewer hiccup never throws a lesson away
+  } catch (e) { return { ok: false, unparsed: true, why: `review failed: ${e.message.slice(0, 60)}` }; } // a reviewer hiccup: kept aside for a second look
 }
 // --parallel N: N lessons at once (a rented server handles many together; the PC's llama-server is best at 1).
 async function worker() {
