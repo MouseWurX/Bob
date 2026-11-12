@@ -52,3 +52,10 @@ The scripts were first tested against a fake llama-server and a fake llama-imatr
 Lesson results: use_tools and bob_help are Bob's own answers. The cards he shows (offer_setup, pick_session, show_plan,
 ask_together) get fixed answers. Every other tool's result is made up by the teacher. Web search is on in the lesson
 Bob. Lessons are not filtered yet: before training, drop the ones where the tool doesn't fit the job (a later step).
+8. `node make-probes.mjs --url <teacher server> --lessons out\lessons --out out\probes [--twins 200] [--families 31] [--per 20] [--fails <kept answers folder>]`:
+   new tests that also make training data. Twins: a request rewritten with one detail changed so it flips between
+   "needs a tool" and "no tool", kept only when the teacher's own answers really flip. Families: the requests every brain
+   got wrong (`--fails`), each in 20 new phrasings the teacher answers with Bob's real prompt and tools. Every probe has
+   its own split (20% held out; a twin pair stays together), so `tool-score --lessons out\probes --split train` harvests
+   and `--split holdout` tests on phrasings the brain never trained on. Seeds never come from the benchmark's held-out 5%.
+   `tool-score --split train --sample N` does the same harvest on Bob's ordinary training lessons.

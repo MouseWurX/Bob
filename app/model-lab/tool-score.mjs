@@ -27,7 +27,8 @@ const sets = JSON.parse(fs.readFileSync(path.join(lessonsDir, 'toolsets.json'), 
 // held-out 5%, so the benchmark stays clean), --sample N spread evenly. The kept answers (right ones and right-vs-wrong
 // pairs, via make-datasets) can be trained on; the score from a train run is not the benchmark.
 const split = o.split === 'train' ? 'train' : 'holdout';
-let lessons = readJsonl(path.join(lessonsDir, 'lessons.jsonl')).filter((l) => l.idea !== undefined && (split === 'train') !== isHoldout(l.idea) && l.messages?.some((m) => m.role === 'assistant'));
+// a lesson that carries its own split (make-probes) keeps it; others use the id hash
+let lessons = readJsonl(path.join(lessonsDir, 'lessons.jsonl')).filter((l) => l.idea !== undefined && (l.split || (isHoldout(l.idea) ? 'holdout' : 'train')) === split && l.messages?.some((m) => m.role === 'assistant'));
 if (o.sample && Number(o.sample) < lessons.length) { const n = Number(o.sample), step = lessons.length / n; lessons = Array.from({ length: n }, (_, i) => lessons[Math.floor(i * step)]); }
 if (o.quick) lessons = lessons.filter((_, i) => i % 5 === 0);
 if (!lessons.length) { console.error(`no ${split === 'train' ? 'training' : 'held-out'} lessons in ${lessonsDir}`); process.exit(1); }
