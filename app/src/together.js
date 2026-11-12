@@ -118,7 +118,7 @@ export async function askOnce(brain, items, ctx, { why = '' } = {}) {
   // Bob's own words about the job stay off the card: they can't be checked against the steps, and the card must
   // never promise or hide anything. The steps themselves are the whole story.
   const text = 'Here they all are, so you can see the whole job before any of it starts.';
-  if (why) brain.log('approval', `together, Bob says it's for: ${String(why).slice(0, 300)}`);
+  if (why) brain.log('approval', `together, Bob gave a reason (${String(why).length} characters)`); // item 248: his words stay in the chat
   const answer = await brain.approve({ text, together: items }, ctx.emit, ctx.signal, null, { hand: true, id });
   return keepAnswers(brain, items, answer, ctx);
 }

@@ -21,7 +21,9 @@ import { catPrompt, catMoment, catTurn } from '../public/patches.js';
 import { sleepyAfterReply, sleepySwitch, SLEEPY_SESSION } from '../public/sleepy.js';
 import { cleanEffort, careful, bigThinker, draftBrain, hatBrain, effortPrompt, mootOpening, runMoot, phasedWork, reviewBrain } from './moot.js';
 import { brainBillions, wantsBorrowedCheck, pickChecker, checkDown, checkingOnLine, checkBackLine } from './bob-net-check.js'; // 1.5.185
-import { saveSettings, outputDirs, findOutput } from './config.js';
+import { saveSettings, outputDirs, findOutput, VERSION } from './config.js';
+import { inTurn, turnNow, turnField, endWhy, whyLine, turnSummary, LoopStats } from './turn-log.js';
+import { doneBefore, doneBeforeNote } from './handoff.js';
 import { paint, paintingAvailable, stepsFor } from './painter.js';
 import { PainterServer } from './painter-server.js';
 import { readCardUse, busyByOther, cardBusyLine, isLoadTimeout, RECHECK_MS, CARD_STILL_BUSY } from './card-busy.js';
@@ -497,6 +499,7 @@ export class Brain {
     this.broadcast = broadcast;
     this.engine = cfg.engine === 'llamacpp' ? new LlamaCpp(cfg) : new Ollama(cfg);
     this.engine.log = (kind, text) => this.log(kind, text); // 1.5.35: the engine can note things in the logbook
+    this.loopStats = new LoopStats(cfg, { version: VERSION.label }); // items 246 and 250 (turn-log.js): numbers only
     // 1.5.53: a second brain joined or left (chat page: Bob's head grows / shrinks; see public docs in the HANDOFF).
     this.engine.onBeside = (ev) => { this.broadcast({ type: 'second-brain', ...ev, label: ev.model ? this.brainLabel(ev.model) : '' }); this.broadcast({ type: 'brain' }); };
     this.sleepy = { since: 0, recent: [] }; // Gaming-session asides (public/sleepy.js)
@@ -727,7 +730,7 @@ export class Brain {
     saveReminders(this.cfg, list.filter((r) => r.at > Date.now()));
     for (const r of due) {
       this.broadcast({ type: 'reminder', text: r.text, local: r.local, ...(r.urgent ? { urgent: true } : {}), quiet: isQuiet(this.cfg) }); // Quiet hours: only urgent ones pop up and speak
-      this.log('reminder', r.text);
+      this.log('reminder', `a reminder came due (${String(r.text || '').length} characters)`); // item 248: no chat words in the logbook
     }
   }
 
@@ -801,7 +804,7 @@ export class Brain {
       const bit = w.replace(/\s+/g, ' ').trim().slice(0, 24);
       if (bit.length >= 4 && said.includes(bit)) said = said.split(bit).join('(guest words)');
     }
-    const line = `- ${stamp} | ${kind} | ${said.slice(0, 200)}\n`;
+    const line = `- ${stamp} | ${kind} | ${said.slice(0, 200)}${turnField()}\n`; // item 247: which turn wrote it
     try {
       if (!fs.existsSync(this.cfg.logbook)) fs.writeFileSync(this.cfg.logbook, "# Bob's logbook\n\nEverything Bob did, newest at the bottom.\n\n");
       fs.appendFileSync(this.cfg.logbook, line);
@@ -1056,6 +1059,7 @@ export class Brain {
     const per = this.engine?.charsPerToken?.(opts.model) || 3; // item 3: the brain's own figure once known
     const fitted = fitContext(opts.messages, opts.ctx, opts.tools, 0.75, per);
     if (fitted !== opts.messages) { this.log('chat', `shortened tool results so the chat fits in ${opts.model}'s memory (${opts.ctx} tokens)`); opts = { ...opts, messages: fitted }; }
+    { const t = turnNow(); if (t) t.asks++; } // item 246: steps per job
     try { return await this.chatRetry(opts, { emit, who }); }
     catch (e) {
       // Still too long (the guess at token counts was low): once more, with every tool result cut harder.
@@ -1151,7 +1155,7 @@ export class Brain {
     });
     ctx.emit({ type: 'approval-result', id, allowed: Boolean(said) });
     this.setState(prev.state === 'waiting' ? 'thinking' : prev.state, '', prev.model);
-    this.log('approval', said ? `asked "${q}": ${said}` : `asked "${q}": no answer`);
+    this.log('approval', `asked a question with ${list.length} choices: ${said ? 'answered' : 'no answer'}`); // item 248: the question and answer stay in the chat
     return said ? `${who} picked: ${said}` : `${who} didn't answer. Carry on with your best guess and say which you picked.`;
   }
 
@@ -1804,7 +1808,7 @@ export class Brain {
     let at = before ? this.queue.findIndex((j) => j.id === before && j.state === 'waiting') : -1;
     if (at < 0) { at = this.queue.length; } // to the back of the line
     this.queue.splice(at, 0, job);
-    this.log('queue', `moved: ${isGuestId(job.sessionId) ? GUEST_LOG : job.text.slice(0, 60)}`);
+    this.log('queue', `moved: ${isGuestId(job.sessionId) ? GUEST_LOG : `a job (${job.text.length} characters)`}`); // item 248
     this.saveQueue();
     return true;
   }
@@ -1862,7 +1866,7 @@ export class Brain {
     this.queue.push(job);
     this.saveQueue();
     if (isGuestId(sessionId)) { const gw = (this.guestWords ||= new Map()); gw.set(job.id, String(text)); while (gw.size > 20) gw.delete(gw.keys().next().value); } // kept in memory only, never written
-    this.log('queue', `${job.kind}: ${isGuestId(sessionId) ? GUEST_LOG : text}`);
+    this.log('queue', `${job.kind}: ${isGuestId(sessionId) ? GUEST_LOG : `a message (${String(text || '').length} characters)`}`); // item 248: sizes, not words
     const ahead = this.queue.filter((j) => j.state === 'waiting' && j.id !== job.id).length + this.turns.size;
     // 1.5.37: a message sent while Bob is making a picture, song or clip waits for the card. Say so straight away
     // (a plain line, no brain needed), so a long job never looks like Bob has stopped answering.
@@ -2071,7 +2075,7 @@ export class Brain {
       Object.assign(j, { state: 'waiting', error: undefined, doneAt: undefined, sentTo: undefined, steps: [], at: Date.now() });
       this.queue = [...this.queue.filter((x) => x !== j), j];
     }
-    this.log('queue', `waits for the ${name} download: ${isGuestId(j.sessionId) ? GUEST_LOG : j.text.slice(0, 60)}`);
+    this.log('queue', `waits for the ${name} download: ${isGuestId(j.sessionId) ? GUEST_LOG : `a job (${j.text.length} characters)`}`); // item 248
     this.saveQueue();
     return true;
   }
@@ -2149,12 +2153,14 @@ export class Brain {
     const turnId = job?.id || crypto.randomUUID();
     const controller = new AbortController();
     let flagged = false; // an error or correction note under this reply: no sleepy aside (never joke about a real failure)
+    const tstore = { id: turnId, asks: 0, corrections: 0, at: Date.now(), ctx: null, error: null }; // items 246-249 (turn-log.js)
     // Let Bob's Quick brain see the big job: the main lane's job gets a record (meanwhile.js), and its thinking (only
     // passed along while Bob's thinking window is open) and copies go in it too.
     if (lane === 'talk' && job && !job.side) this.watch.start(job, { session: currentSession(this.cfg).label });
     const watched = lane === 'talk' && job && !job.side ? job : null;
     const emit = (ev) => {
       if (['error', 'correction', 'held', 'waiting'].includes(ev.type)) flagged = true;
+      if (ev.type === 'correction') tstore.corrections++;
       if (watched && ev.type === 'think') this.watch.think(watched, ev.text);
       if (watched && ev.type === 'token') this.watch.wrote(watched, ev.text);
       if (watched && ev.type === 'hat' && ev.copy) this.watch.step(watched, `${ev.copy} took over (${ev.label || 'a copy'})`);
@@ -2165,12 +2171,13 @@ export class Brain {
     if (job?.pickUp) emit({ type: 'announce', text: carryOnLine(job) }); // 1.5.38: picked up after a restart
     const pics = [].concat(attach || []).map((id) => this.refs.find(String(id))).filter(Boolean).slice(0, 4);
     let ok = false;
-    (async () => {
+    inTurn(tstore, async () => { // item 247: every logbook line this turn writes carries its id
       if (await this.cardStillTaken(job)) throw Object.assign(new Error(this.cardLineFor(sessionId)), { code: 'card_busy' });
       return this.run(sessionId, text, emit, controller.signal, pics, job);
-    })()
+    })
       .then(() => { ok = true; if (job) job.state = 'done'; })
       .catch(async (e) => {
+        tstore.error = e || new Error('unknown');
         // 1.5.113: a load that timed out because another program holds the card ends with the plain ⚠ line, once per chat.
         if (!controller.signal.aborted && e?.code !== 'card_busy' && (e?.code === 'card_held' || await this.cardTaken(e, null).catch(() => false)) && this.cardHeld) e = Object.assign(new Error(this.cardLineFor(sessionId)), { code: 'card_busy' });
         if (e?.code === 'beside' && job && !controller.signal.aborted) { // 1.5.51: the second brain wouldn't start: wait in line
@@ -2181,12 +2188,21 @@ export class Brain {
         else if (controller.signal.aborted && job?.parked) this.parkJob(job, emit); // 1.5.41: the 🎮 Gaming button, not a stop
         else if (controller.signal.aborted) { emit({ type: 'token', text: '\n\n*(Stopped.)*' }); if (job) job.state = 'cancelled'; }
         else {
-          emit({ type: 'error', text: e.message }); this.log('error', e.message); if (job) { job.state = 'failed'; job.error = e.message.slice(0, 200); }
+          emit({ type: 'error', text: e.message }); inTurn(tstore, () => this.log('error', e.message)); if (job) { job.state = 'failed'; job.error = e.message.slice(0, 200); }
           // The chat keeps the failure as a note under the question (it used to be a live line only, gone after a reload).
           if (!job?.guest) { const sess = this.session(sessionId); const last = sess[sess.length - 1]; if (!(last?.role === 'assistant' && last.failed)) sess.push({ role: 'assistant', content: '', correction: `⚠ ${String(e.message).slice(0, 400)}`, failed: true, at: Date.now() }); }
         }
       })
       .finally(() => {
+        // Items 249 and 246: why the turn stopped, in the logbook (with the turn's id) and on the job; the numbers go in
+        // loop-stats.json. Never chat words. A broken count never breaks the turn.
+        try {
+          const why = endWhy({ ok, aborted: controller.signal.aborted, parked: Boolean(job?.parked), error: controller.signal.aborted ? null : tstore.error, ctx: tstore.ctx, switched: Boolean(job?.switchTo) });
+          const sum = turnSummary({ why, ms: Date.now() - tstore.at, asks: tstore.asks, corrections: tstore.corrections, ledger: tstore.ctx?.ledger });
+          inTurn(tstore, () => this.log('turn', whyLine(why, { ...sum, error: tstore.error?.message })));
+          if (job) job.stopWhy = why;
+          this.loopStats?.record(sum);
+        } catch {}
         // Item 10: the steps go with the answer, so "How I got here" is there after a reload too.
         const steps = this.traces?.get(sessionId);
         if (steps) this.traces.delete(sessionId);
@@ -2382,7 +2398,7 @@ export class Brain {
     else { msgs.push(user); if (!job?.guest) emit({ type: 'asked', id: user.id }); } // the window marks your bubble, for Edit (redo.js)
     if (job) job.rentAgain = false;
     const turnStart = again ? msgs.map((m) => m.role).lastIndexOf('user') : msgs.length - 1;
-    this.log('chat', `${this.cfg.userName || 'User'}: ${isGuestId(sessionId) ? GUEST_LOG : text}`);
+    this.log('chat', `${this.cfg.userName || 'User'}: ${isGuestId(sessionId) ? GUEST_LOG : `a message (${String(text || '').length} characters${pics.length ? `, ${pics.length} picture${pics.length === 1 ? '' : 's'}` : ''})`}`); // item 248: sizes, not words
     // The turn's pictures travel with it, so a hat Bob hands the job to can see them too.
     // Every picture, clip or sound he makes goes on the Made by Bob list as it's announced.
     const emitMade = (ev) => {
@@ -2393,6 +2409,7 @@ export class Brain {
     };
     const ctx = { emit: emitMade, signal, brain: this, cfg: this.cfg, allowAll: new Set(), pics, picNote, msgs, turnText: text, job, sessionId, wantsEdit, editFrom: wantsEdit ? recent : null, wantType: namedType(text), saves: [], savedAs: [], trace: [] };
     if (!job?.guest) (this.traces ||= new Map()).set(sessionId, ctx.trace); // item 10: How I got here
+    { const t = turnNow(); if (t && !t.ctx) t.ctx = ctx; } // item 249: the end of the turn reads why it stopped
     // The ledger (handoff.js): what was asked for, every load, tool and output this turn, kept by the system.
     ctx.ledger = new Ledger({ job, expect: expectFrom(text, { pics }), save: () => this.saveQueue() });
     this.gate.track(signal, ctx.ledger);
@@ -2551,11 +2568,12 @@ export class Brain {
     // Jobs, One question before a vague big job (job-helps.js): a hint to ask once with ask_user before starting.
     if (!again) { const ask = askFirstNote(this, ctx, text); if (ask) msgs.push({ role: 'system', content: ask, hidden: true }); }
     for (let step = 0; step < maxSteps; step++) {
+      if (signal?.aborted) throw Object.assign(new Error('Stopped.'), { name: 'AbortError' }); // item 244: Stop during a card or a tool that didn't notice
       // Jobs (job-helps.js): "Stop after this step" pressed, or the job's time limit used up: no more tools, he wraps up.
       if (!ctx.lastRound && step > 0) {
         const who = this.cfg.userName || 'the user';
-        if (job?.stopAfter && !ctx.softStopped) { ctx.softStopped = true; ctx.noTools = true; ctx.lastRound = true; msgs.push({ role: 'system', content: SOFT_STOP_NOTE(who), hidden: true }); emit({ type: 'announce', text: SOFT_STOP_LINE }); }
-        else if (await timeCheck(this, ctx) === 'wrap') { ctx.noTools = true; ctx.lastRound = true; msgs.push({ role: 'system', content: TIME_UP_NOTE(who, cleanJobHelps(this.cfg.jobHelps).minutes), hidden: true }); }
+        if (job?.stopAfter && !ctx.softStopped) { ctx.softStopped = true; ctx.endWhy = 'stop-after'; ctx.noTools = true; ctx.lastRound = true; msgs.push({ role: 'system', content: SOFT_STOP_NOTE(who), hidden: true }); emit({ type: 'announce', text: SOFT_STOP_LINE }); }
+        else if (await timeCheck(this, ctx) === 'wrap') { ctx.endWhy = 'time'; ctx.noTools = true; ctx.lastRound = true; msgs.push({ role: 'system', content: TIME_UP_NOTE(who, cleanJobHelps(this.cfg.jobHelps).minutes), hidden: true }); }
       } else if (step === 0) await timeCheck(this, ctx);
       if (step === maxSteps - 1 && !this.helpOff('last') && !ctx.noTools && msgs.slice(turnStart).some((m) => m.role === 'tool')) { ctx.noTools = true; ctx.lastRound = true; this.log('tool', 'the last step: no more tools, so he answers with what he has'); }
       const tools = ctx.noTools ? [] : guestTools(job, this.withWatchTools(this.frontDeskTools(ctx.loaded), job)); // #57 stopgap: after repeats, answer
@@ -2766,6 +2784,7 @@ export class Brain {
       const early = await this.lookTogether(reply.tool_calls, ctx); // Nov 11: look-ups in one reply run side by side
       for (const call of reply.tool_calls) {
         const name = call.function?.name;
+        if (signal?.aborted) { msgs.push({ role: 'tool', tool_name: name, content: '(Not run: Stop was pressed.)' }); continue; } // item 244: the rest of the round doesn't run
         // 1.5.41: once Bob has picked a new session, the rest of this round waits for it (the job runs again there).
         if (ctx.switchTo) { msgs.push({ role: 'tool', tool_name: name, content: '(Not done yet: you are switching session first.)' }); continue; }
         if (ctx.repeatStop) { msgs.push({ role: 'tool', tool_name: name, content: '(Not run: the turn stopped after the same call came three times.)' }); continue; }
@@ -2782,6 +2801,10 @@ export class Brain {
           // Nov 11: a call that can't run as it is (a missing input, no such tool) goes back with what to fix.
           res = { text: call.bounce };
           this.log('tool', `${name}: not run, ${call.bounce.slice(9, 160)}`);
+        } else if (doneBefore(job, name, call.function?.arguments)) {
+          // Item 245: this exact action finished before Bob restarted. It isn't done twice.
+          res = { text: doneBeforeNote(doneBefore(job, name, call.function?.arguments)) };
+          this.log('tool', `${name}: not run again, it finished before the restart`);
         } else if (again === 'stop') {
           ctx.repeatStop = true;
           res = { text: '(Not run: this exact call came three times this turn, so the turn has stopped.)' };
@@ -2883,6 +2906,7 @@ export class Brain {
       emit({ type: 'token', text: '\n\n' });
     }
     this.keepGroups(sessionId, used);
+    ctx.endWhy = 'steps'; // item 249
     emit({ type: 'token', text: '\n\n(I went round in circles there. Could you say that another way?)' });
   }
 

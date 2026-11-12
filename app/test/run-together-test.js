@@ -55,7 +55,7 @@ const run = (cmd, args) => ({ tool: 'run_command', args: { cmd, args, cwd: work 
   check('one card with all three OKs on it', cards.length === 1 && cards[0].together?.length === 3, JSON.stringify(cards));
   check('the card shows each step\'s real details (rows, the exact command)', Array.isArray(cards[0].together[0].plan) && cards[0].together[2].command === 'node --version', JSON.stringify(cards[0].together));
   check('the card can be stopped by Stop everything (it is a Hands card)', cards[0].hand === true);
-  check('Bob\'s own reason stays off the card (it can\'t be checked against the steps), and goes in the logbook', !cards[0].text.includes('Back up two notes') && logs.some((l) => /Bob says it's for: Back up two notes/.test(l)));
+  check('Bob\'s own reason stays off the card (it can\'t be checked against the steps); the logbook notes it by size, not words (item 248)', !cards[0].text.includes('Back up two notes') && logs.some((l) => /Bob gave a reason \(\d+ characters\)/.test(l)) && !logs.some((l) => /Back up two notes/.test(l)));
   check('the card doesn\'t leak the internal step keys', cards[0].together.every((i) => !('key' in i)));
   check('Bob is told all three are allowed', /Allowed 3 of 3/.test(res.text), res.text);
   await fake.runTool('file_hands', steps[0].args, ctx);

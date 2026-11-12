@@ -7,8 +7,12 @@
 //   disk        free space where Bob keeps his things
 //   bobnet      your other Bobs on Bob-Net, how many answer
 //   errors      the last errors in the logbook
+//   reliability this week's jobs: finished, failed, corrected, retried, the tool that failed most, and whether this
+//               version does worse than the last (items 246 and 250, turn-log.js)
 // level: 'ok' (fine), 'info' (nothing wrong, worth knowing), 'warn' (worth a look), 'bad' (needs you).
 // fix: { id, label } where id is a server fix (POST /api/health { fix }) or a place in Bob (go:...).
+import { reliabilityCheck } from './turn-log.js';
+
 export const DISK_WARN_GB = 10;
 export const DISK_BAD_GB = 2;
 export const CARD_WARN = 0.92;
@@ -43,6 +47,7 @@ export function healthChecks(p = {}) {
   out.push(errs.length
     ? { id: 'errors', label: 'Last errors', level: 'info', says: `The last ${errs.length === 1 ? 'error' : `${errs.length} errors`} in my logbook:`, lines: errs, fix: { id: 'go:help-bundle', label: 'Save a help bundle' } }
     : { id: 'errors', label: 'Last errors', level: 'ok', says: 'No errors in my logbook.' });
+  if (p.loopWeek) out.push(reliabilityCheck(p.loopWeek, p.loopReleases || {}));
   if (p.crashes) out.push({ id: 'crashes', label: 'Crash reports', level: 'warn', says: `${p.crashes} crash report${p.crashes === 1 ? '' : 's'} saved.`, fix: { id: 'go:crashes', label: 'Show them' } });
   const worst = out.some((c) => c.level === 'bad') ? 'bad' : out.some((c) => c.level === 'warn') ? 'warn' : 'ok';
   return { checks: out, worst };

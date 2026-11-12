@@ -1691,7 +1691,7 @@ async function healthProbes() {
   // 1.5.207 PC check: status() has `loaded` (the brains on the engine) and `ollama` (the engine answered); its
   // `models` is the saved role map, not a list, and the page got a 500.
   const chatBrain = st?.models?.bob || '';
-  return { engineOk: st ? st.ollama !== false : false, engineName: brain.engineName, models: Array.isArray(st?.loaded) ? st.loaded : [], chatBrain, chatBrainName: friendlyName(chatBrain), card: g, diskFreeGB, peers, logText: logTail() };
+  return { engineOk: st ? st.ollama !== false : false, engineName: brain.engineName, models: Array.isArray(st?.loaded) ? st.loaded : [], chatBrain, chatBrainName: friendlyName(chatBrain), card: g, diskFreeGB, peers, logText: logTail(), ...(brain.loopStats ? { loopWeek: brain.loopStats.week(), loopReleases: brain.loopStats.releases() } : {}) };
 }
 
 // A model id by its friendly catalog name (model ids stay in Advanced).

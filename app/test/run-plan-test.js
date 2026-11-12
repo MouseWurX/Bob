@@ -100,7 +100,7 @@ const call = (s) => ({ function: { name: s.tool, arguments: JSON.stringify(s.arg
   check('Bob gets the change in the person\'s words, and is told to plan again', /Use my Backups folder instead/.test(res.text) && /call show_plan again/.test(res.text), res.text);
   check('nothing was allowed on that card', !ctx.preOk?.size);
   check('the card closed as not allowed', events.some((e) => e.type === 'approval-result' && e.allowed === false));
-  check('the change is noted in the logbook', logs.some((l) => /asked for a change: Use my Backups folder instead/.test(l)));
+  check('the change is noted in the logbook, by size, not words (item 248)', logs.some((l) => /asked for a change \(\d+ characters\)/.test(l)) && !logs.some((l) => /Backups folder/.test(l)));
 }
 
 // ---------- Not now ----------

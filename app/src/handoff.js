@@ -91,6 +91,20 @@ export function slimHandoff(h) {
 
 // Tools that change something outside Bob's own chat (a restart must not redo these blindly).
 export const SIDE_EFFECT = /^(app_|open_app|convert_file|strip_metadata|defender_scan|office_make|office_edit|edit_file|write_file|file_hands|sort_files|undo_files|move_|copy_|rename_|delete_|recycle|zip|unzip|run_command|run_recipe|save_|schedule_|make_|mcp_use)/; // file_hands/undo_files: 1.5.38
+// Item 245 (Nov 12): after a restart, the brain is told which steps finished, but it could still ask for one again.
+// An action (SIDE_EFFECT) that already finished before the restart, with the same input, is never done twice: the
+// call gets its earlier result back instead. Inputs match when they are the same JSON (key order doesn't matter), or
+// the same as saved (the ledger keeps the first 300 characters).
+const stable = (v) => (Array.isArray(v) ? `[${v.map(stable).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable(v[k])}`).join(',')}}` : JSON.stringify(v ?? null));
+const asObj = (x) => { if (x && typeof x === 'object') return x; try { return JSON.parse(String(x ?? '') || '{}'); } catch { return undefined; } };
+export function doneBefore(job, name, args) {
+  if (!job?.before?.length || !name || !SIDE_EFFECT.test(name)) return null;
+  const raw = clip(typeof args === 'string' ? args : JSON.stringify(args || {}), 300);
+  const mine = asObj(args);
+  return job.before.find((b) => b?.name === name && (b.args === raw || (mine !== undefined && asObj(b.args) !== undefined && stable(asObj(b.args)) === stable(mine)))) || null;
+}
+export const doneBeforeNote = (b) => `(Not done again: this exact step already finished before Bob was restarted. Its result then: ${String(b?.text ?? '').slice(0, 300)}) Carry on from the next step.`;
+
 // A job that was cut off by a restart can be picked up again on its own when nothing it did changed the PC.
 export function safeToResume(job) {
   const done = job?.handoff?.actions || [];

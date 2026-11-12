@@ -1,0 +1,9 @@
+{
+  "ask": "How tall is the Eiffel Tower?",
+  "replies": [
+    { "content": "", "calls": [{ "name": "web_search", "args": { "query": "Eiffel Tower height" } }] },
+    { "content": "It's about 330 metres tall, antenna included.", "calls": [] }
+  ],
+  "results": [{ "name": "web_search", "text": "1. Eiffel Tower - 330 m (1,083 ft) tall since a new antenna in 2022." }],
+  "answer": "It's about 330 metres tall, antenna included."
+}
