@@ -513,6 +513,7 @@ export class Brain {
     this.engine.log = (kind, text) => this.log(kind, text); // 1.5.35: the engine can note things in the logbook
     // 1.5.53: a second brain joined or left (chat page: Bob's head grows / shrinks; see public docs in the HANDOFF).
     this.engine.onBeside = (ev) => { this.broadcast({ type: 'second-brain', ...ev, label: ev.model ? this.brainLabel(ev.model) : '' }); this.broadcast({ type: 'brain' }); };
+    this.engine.onIdleGone = () => this.broadcast({ type: 'brain' }); // the idle timer let the brain go: the label and the fNRI cube hear at once
     this.sleepy = { since: 0, recent: [] }; // Gaming-session asides (public/sleepy.js)
     // Bob's own engine unloads its brain when idle; it asks here first so it never does that mid-job.
     if (this.engine instanceof LlamaCpp) this.engine.isBusy = () => this.turns.size > 0 || this.queue.some((j) => j.state === 'working');

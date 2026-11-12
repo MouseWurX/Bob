@@ -363,6 +363,7 @@ export class LlamaCpp {
     this.idleUnloaded = this.current;
     try { this.log?.('engine', `${this.current}: let go after ${Math.round((this.now() - this.lastUse) / 60000)} min unused${this.role === BESIDE ? ' (second brain)' : ''}`); } catch {} // 1.5.133
     await this.stopServer();
+    try { this.onIdleGone?.(); } catch {} // the brain was let go on its own: Bob tells the pages (the fNRI cube takes itself apart)
     return true;
   }
 

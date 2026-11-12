@@ -203,7 +203,7 @@ async function cubeBrainsNow() {
     const now = await brain.engine.loaded(), labels = cubeBrains(now, friendlyName);
     // the shapes too, so the cube builds itself in one colour as a brain loads and waits there for the first reply
     const st = brain.state || {}, loading = ['waking', 'loading'].includes(st.state) && st.model ? String(st.model) : '';
-    let shapes = []; try { shapes = cubeShapes(lab, [...now.map((m) => m?.name), loading], friendlyName); } catch {}
+    let shapes = []; try { shapes = cubeShapes(lab, [...now.map((m) => m?.name), loading], friendlyName, (m) => brain.engine.resolve?.(m)?.gguf); } catch {}
     const data = `data: ${JSON.stringify({ type: 'cube-brains', labels, shapes, loading: loading ? friendlyName(loading) : '' })}\n\n`; for (const res of cubeClients) res.write(data);
   } catch {}
 }

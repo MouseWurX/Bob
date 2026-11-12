@@ -49,6 +49,8 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   // Before the first reply (and on an engine that can't report experts) the cube is the brain's empty shape in one
   // colour, built block by block as the brain loads, then still until Bob thinks. shell = { label, experts, layers, kind }.
   let shell = null, loadingNow = '', known = false, lastShapes = null, lastLoading = '';
+  // anyLoaded: Bob holds (or is loading) a brain right now. The sign shows only when he holds none, never over a loaded brain.
+  let anyLoaded = false, leaving = false; // leaving: the block is coming apart because its brain was let go
   // Real experts off: from the moment a message is sent until Bob's first word the cube pulses ('wait', a CSS fade, so
   // nothing is redrawn); once he writes it glows word by word ('run'); then it fades and rests ('idle'). busy = 'run'.
   let phase = 'idle', busy = false, show = [], showTimer = 0, sparkTimer = 0, showing = false;
@@ -114,11 +116,13 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   function words() {
     const shape = shell ? ` ${shell.label}: ${shell.layers} floors of ${shell.experts} ${shell.kind === 'neurons' ? 'neuron groups' : 'experts'}.` : '';
     if (why) { says.textContent = why + shape; return; }
-    showSign(!rec && !shell && known);
+    const empty = known && !anyLoaded;
+    showSign(!rec && !shell && empty);
     if (!rec) {
       open.hidden = true; if (key) key.hidden = true;
-      if (!live()) { says.textContent = !shell && known ? `No brain is loaded right now. The sign says: ${signNow}. The cube builds itself when Bob loads one.` : shell ? (phase === 'wait' ? `Thinking it over.${shape} The cube pulses until he starts to answer.` : busy ? `Answering.${shape} The glow is for show, not the experts he really uses (Real experts shows those).` : loadingNow === shell.label ? `Loading${shape} The cube glows while he thinks.` : `Ready.${shape} The cube glows while he thinks.`) : 'Waiting for Bob to load a brain. The cube builds itself when he does, and glows while he thinks.'; return; }
-      says.textContent = !shell && known ? `No brain is loaded right now. The sign says: ${signNow}. The cube builds itself when Bob loads one.` : shell ? (loadingNow === shell.label ? `Loading${shape} The cube lights up with the experts he used when he finishes a reply.` : `Ready.${shape} The cube lights up with the experts he used when he finishes a reply.`) : 'Waiting for Bob\'s next reply. The cube lights up with the experts he used when he finishes it. Replies come slower while Real experts is on.'; return;
+      if (leaving && shell) { says.textContent = `Letting go of the brain.${shape} The cube takes itself apart.`; return; }
+      if (!live()) { says.textContent = !shell && empty ? `No brain is loaded right now. The sign says: ${signNow}. The cube builds itself when Bob loads one.` : shell ? (phase === 'wait' ? `Thinking it over.${shape} The cube pulses until he starts to answer.` : busy ? `Answering.${shape} The glow is for show, not the experts he really uses (Real experts shows those).` : loadingNow === shell.label ? `Loading${shape} The cube glows while he thinks.` : `Ready.${shape} The cube glows while he thinks.`) : known && anyLoaded ? 'A brain is loaded, but Bob can\'t read its shape, so the cube has nothing to build.' : 'Waiting for Bob to load a brain. The cube builds itself when he does, and glows while he thinks.'; return; }
+      says.textContent = !shell && empty ? `No brain is loaded right now. The sign says: ${signNow}. The cube builds itself when Bob loads one.` : shell ? (loadingNow === shell.label ? `Loading${shape} The cube lights up with the experts he used when he finishes a reply.` : `Ready.${shape} The cube lights up with the experts he used when he finishes a reply.`) : 'Waiting for Bob\'s next reply. The cube lights up with the experts he used when he finishes it. Replies come slower while Real experts is on.'; return;
     }
     const c = rec.clips[clip], w = Math.min(c.e.length - 1, Math.floor(t));
     const pt = partOf(c, w), text = c.words.slice(pt.from, w + 1).join('').replace(SPECIAL, '').replace(/\s+/g, ' ').trim();
@@ -217,7 +221,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
     let esp = null; try { esp = specialise(empty); } catch { esp = null; }
     if (!esp) { shell = null; return false; }
     esp = { ...esp, top: esp.top.map((r) => r.map(() => 0)) }; // the whole shape in the one colour (the theme's, or the person's own), not only the glow
-    gen++; look = null; stopShow(); tint(); view.setData(empty, esp, null); view.set({ gap: view.cubeGap(), key: false, mono: true });
+    gen++; leaving = false; look = null; stopShow(); tint(); view.setData(empty, esp, null); view.set({ gap: view.cubeGap(), key: false, mono: true });
     if (key) key.hidden = true; open.hidden = true; showOne();
     const draw = () => view.draw([]);
     if (still()) { view.set({ reveal: 1 }); draw(); } else { readLoad(); view.set({ reveal: 0 }); view.sweep(1, inMs()).then(draw); }
@@ -227,9 +231,9 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   function gone(labels, shapes = null, loading = '') {
     if (!rec && shell) { // only the empty shape is up: it goes when its brain does, or becomes the new one
       const keep = (Array.isArray(labels) && labels.includes(shell.label)) || loading === shell.label;
-      if (keep) { loadingNow = String(loading || ''); words(); return; }
-      const g = ++gen; const next = shapes; stopShow();
-      view.sweep(0, outMs(), still()).then(() => { if (g !== gen) return; shell = null; const c = canvas.getContext('2d'); c.clearRect(0, 0, canvas.width, canvas.height); if (!ready(next, loading)) words(); });
+      if (keep) { if (leaving) { leaving = false; ++gen; readLoad(); view.sweep(1, inMs(), still()).then(() => view.draw([])); } loadingNow = String(loading || ''); words(); return; } // back before it was gone: it builds itself again
+      const g = ++gen; const next = shapes; stopShow(); leaving = true; words();
+      view.sweep(0, outMs(), still()).then(() => { if (g !== gen) return; leaving = false; shell = null; const c = canvas.getContext('2d'); c.clearRect(0, 0, canvas.width, canvas.height); if (!ready(next, loading)) words(); });
       return;
     }
     if (!rec) { ready(shapes, loading); return; }
@@ -240,7 +244,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   }
   function on(ev) {
     let j = null; try { j = JSON.parse(ev.data); } catch { return; }
-    if (j?.type === 'cube-brains') { known = true; gone(j.labels, j.shapes, j.loading); words(); return; }
+    if (j?.type === 'cube-brains') { known = true; anyLoaded = (Array.isArray(j.labels) && j.labels.length > 0) || Boolean(j.loading); gone(j.labels, j.shapes, j.loading); words(); return; }
     // the glow for show: a pulse from the message sent to his first word, then running while he writes
     if (j?.type === 'start') { setPhase('wait'); return; }
     if (j?.type === 'token') { setPhase('run'); return; }
