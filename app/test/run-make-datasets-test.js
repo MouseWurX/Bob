@@ -30,7 +30,7 @@ W('kept/riker/calibrate/priority.json', JSON.stringify({ layers: [[3, 2, 1, 0]] 
 W('kept/riker/calibrate/keep-75.json', JSON.stringify({ share: 0.75, keep: [[1, 2, 3]] }));
 W('kept/riker/answers-quiz-riker-x.jsonl', JSON.stringify({ kind: 'fact', q: 'What is 17 times 23? Just the number.', answer: { content: '391' } }) + '\n' + JSON.stringify({ kind: 'fact', q: 'What is 17 times 23? Just the number.', answer: { content: '400' } }) + '\n');
 const before = JSON.stringify(fs.readdirSync(path.join(tmp, 'kept'), { recursive: true }).sort());
-const run = (extra = []) => spawnSync(process.execPath, [path.join(here, '..', 'model-lab', 'make-datasets.mjs'), '--from', path.join(tmp, 'kept'), '--lessons', path.join(tmp, 'lessons'), '--out', path.join(tmp, 'ds'), ...extra], { encoding: 'utf8' });
+const run = (extra = []) => spawnSync(process.execPath, [path.join(here, '..', 'model-lab', 'make-datasets.mjs'), '--from', path.join(tmp, 'kept'), '--lessons', path.join(tmp, 'lessons'), '--out', path.join(tmp, 'ds'), '--user', 'zorvik', '--host', 'box7', ...extra], { encoding: 'utf8' });
 const r = run();
 check('it finishes', r.status === 0, r.stderr);
 const read = (f) => fs.readFileSync(path.join(tmp, 'ds', f), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
@@ -46,7 +46,8 @@ check('quiz: right fact kept, wrong one only in full', read('quiz-facts.jsonl').
 check('REAP files each their own', ['reap-scores-riker.json', 'experts-by-layer-riker.json', 'keep-riker-75.json'].every((f) => fs.existsSync(path.join(tmp, 'ds', f))));
 check('the raw folder is untouched', JSON.stringify(fs.readdirSync(path.join(tmp, 'kept'), { recursive: true }).sort()) === before);
 fs.rmSync(path.join(tmp, 'ds'), { recursive: true });
-check('a private word stops it', run(['--private', 'zip my']).status === 2);
+{ const r2 = run(['--private', 'zip my']); const all = fs.readdirSync(path.join(tmp, 'ds'), { recursive: true }).filter((f) => /\.jsonl?$/.test(f)).map((f) => fs.readFileSync(path.join(tmp, 'ds', f), 'utf8')).join('');
+  check('a private word is scrubbed out of every file, and the check after passes', r2.status === 0 && !/zip my/i.test(all) && /private project/.test(all), r2.stderr); }
 check('the output may not sit inside the raw folder', spawnSync(process.execPath, [path.join(here, '..', 'model-lab', 'make-datasets.mjs'), '--from', path.join(tmp, 'kept'), '--lessons', path.join(tmp, 'lessons'), '--out', path.join(tmp, 'kept', 'ds')]).status === 1);
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

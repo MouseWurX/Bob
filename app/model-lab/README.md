@@ -36,8 +36,16 @@ Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf and its mmproj under `<parent>/models` (found by
    answer, marked right or wrong with the kind of mistake. `pairs-right-vs-wrong.jsonl`: each wrong answer next to the
    recorded right one, for preference training. REAP scores, experts by layer, keep lists and calibrations each get their
    own file. Odds (top 5 words per step) come along when the run saved them; tool-score and experts-test save every
-   answer with its odds and a right/wrong mark unless `--no-odds`. `--private` refuses to finish while any output holds one
-   of those words.
+   answer with its odds and a right/wrong mark unless `--no-odds`. Every row goes through the privacy scrub below, and it
+   refuses (exit 2) if anything private is left.
+7. `node scrub-data.mjs --in <folder> --out <new folder>` (or `--check` to only look): the privacy scrub for anything
+   that leaves the PC (Hugging Face, a release zip). Swaps the user name (anywhere, any case, also in folder listings and
+   file names), any `Users\<someone>` or `/home/<someone>` folder, the PC's name where it is a host, home-network and
+   Tailscale addresses, e-mails, keys, and private words for stand-ins. Names spread over odds tokens are joined, put back
+   as the stand-in, and the other choices at those steps dropped. Then it checks the copy again (including odds with the
+   gaps taken out) and exits 2 if anything is left. Private words: `--words "a,b"`, `--words-file`, or
+   `bob-model-lab\private-words.txt` beside the install (one per line, `word => stand-in` to choose the stand-in).
+   Never put them in the repository.
 
 The scripts were first tested against a fake llama-server and a fake llama-imatrix (flow, files and parsing), then for real on the project's test machine. What they found is on the models page.
 

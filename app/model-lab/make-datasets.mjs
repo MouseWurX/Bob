@@ -12,10 +12,15 @@
 // Every answer keeps its odds (top 5 words per step) when the run saved them.
 //
 // node make-datasets.mjs --from <kept folder> --lessons <out/lessons> --out <folder> [--bob <Bob source, to judge older quiz tool answers>]
-//      [--private "word,word"] (refuses to finish while any output file contains one of these words; give private names here, never in the repo)
+//      [--user <name>] [--host <name>] (default: this computer's) [--private "word,word"] [--words-file <file>]
+// Every row goes through the privacy scrub (scrub-data.mjs: the user name, PC name, folders, addresses, private words,
+// names spread over odds), then the output is checked again and it refuses (exit 2) if anything private is left.
+// Give private names on the command line or in <install>/bob-model-lab/private-words.txt, never in the repo.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { opts, readJsonl } from './common.mjs';
+import { opts, readJsonl, AGENT } from './common.mjs';
+import { scrubber, scrubValue, scrubFolder, privateWordsFrom, splitKeep } from './scrub-data.mjs';
 import { parseArgs, judgeTurn } from './tool-judge.mjs';
 import { FACTS, CODE, runCode } from './quiz-items.mjs';
 
@@ -54,8 +59,14 @@ function history(lesson, k) {
   return null;
 }
 
+const sc = scrubber({
+  user: typeof o.user === 'string' ? o.user : (() => { try { return os.userInfo().username; } catch { return ''; } })(),
+  host: typeof o.host === 'string' ? o.host : os.hostname(),
+  ...splitKeep(privateWordsFrom({ words: o.private, wordsFile: o['words-file'], agentDir: AGENT }))
+});
 const writers = new Map();
-const put = (name, row) => { if (!writers.has(name)) writers.set(name, fs.openSync(path.join(out, name), 'w')); fs.writeSync(writers.get(name), JSON.stringify(row) + '\n'); };
+const put = (name, row) => { if (!writers.has(name)) writers.set(name, fs.openSync(path.join(out, name), 'w')); fs.writeSync(writers.get(name), JSON.stringify(scrubValue(row, sc)) + '\n'); };
+const copyScrubbed = (f, to) => fs.writeFileSync(to, JSON.stringify(scrubValue(JSON.parse(fs.readFileSync(f, 'utf8')), sc)));
 const count = {};
 const tally = (k) => (count[k] = (count[k] || 0) + 1);
 const usedSets = new Set(), seen = new Set();
@@ -110,22 +121,21 @@ for (const f of files.filter((x) => /answers-.*\.jsonl$/.test(path.basename(x)))
   }
 }
 for (const fd of writers.values()) fs.closeSync(fd);
-if (usedSets.size) fs.writeFileSync(path.join(out, 'toolsets.json'), JSON.stringify(Object.fromEntries([...usedSets].map((k) => [k, sets[k]]))));
+if (usedSets.size) fs.writeFileSync(path.join(out, 'toolsets.json'), JSON.stringify(scrubValue(Object.fromEntries([...usedSets].map((k) => [k, sets[k]])), sc)));
 
 // ---- REAP files, each its own file ----
 for (const f of files) {
   const b = path.basename(f), brain = brainOf(f);
-  if (b === 'scores.json') { const s = JSON.parse(fs.readFileSync(f, 'utf8')); fs.writeFileSync(path.join(out, `reap-scores-${brain}.json`), JSON.stringify({ brain, by: s.by, experts: s.experts, used: s.used, lessons: s.lessons, tokens: s.tokens, picks: s.layers, mass: s.mass })); tally('reap scores'); }
-  else if (b === 'priority.json') { fs.copyFileSync(f, path.join(out, `experts-by-layer-${brain}.json`)); tally('experts by layer'); }
-  else if (/^keep-\d+\.json$/.test(b)) { fs.copyFileSync(f, path.join(out, `keep-${brain}-${b.match(/\d+/)[0]}.json`)); tally('keep lists'); }
-  else if (b === 'calibration.json') { fs.copyFileSync(f, path.join(out, `calibration-${brain}.json`)); tally('calibrations'); }
+  if (b === 'scores.json') { const s = JSON.parse(fs.readFileSync(f, 'utf8')); fs.writeFileSync(path.join(out, `reap-scores-${brain}.json`), JSON.stringify(scrubValue({ brain, by: s.by, experts: s.experts, used: s.used, lessons: s.lessons, tokens: s.tokens, picks: s.layers, mass: s.mass }, sc))); tally('reap scores'); }
+  else if (b === 'priority.json') { copyScrubbed(f, path.join(out, `experts-by-layer-${brain}.json`)); tally('experts by layer'); }
+  else if (/^keep-\d+\.json$/.test(b)) { copyScrubbed(f, path.join(out, `keep-${brain}-${b.match(/\d+/)[0]}.json`)); tally('keep lists'); }
+  else if (b === 'calibration.json') { copyScrubbed(f, path.join(out, `calibration-${brain}.json`)); tally('calibrations'); }
 }
 
-// ---- nothing private goes out ----
-const words = String(o.private || '').split(',').map((w) => w.trim().toLowerCase()).filter(Boolean);
-const hits = [];
-if (words.length) for (const f of walk(out)) { const t = fs.readFileSync(f, 'utf8').toLowerCase(); for (const w of words) if (t.includes(w)) hits.push(`${f}: "${w}"`); }
+// ---- nothing private goes out: everything was scrubbed on the way in; now check what was written ----
+const { leaks } = scrubFolder(out, null, sc);
+for (const [k, v] of Object.entries(sc.counts)) count[`scrubbed: ${k}`] = v;
 fs.writeFileSync(path.join(out, 'counts.json'), JSON.stringify(count, null, 1));
 console.log(Object.entries(count).map(([k, v]) => `${k}: ${v}`).join('\n'));
 for (const f of walk(out)) console.log(`  ${path.relative(out, f)}  ${(fs.statSync(f).size / 1e6).toFixed(2)} MB`);
-if (hits.length) { console.error(`PRIVATE WORDS FOUND, do not publish:\n${hits.join('\n')}`); process.exit(2); }
+if (leaks.length) { console.error(`STILL PRIVATE, do not publish (${leaks.length}):\n${leaks.slice(0, 40).join('\n')}`); process.exit(2); }
