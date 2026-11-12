@@ -230,6 +230,17 @@ label.field { display: block; margin: 10px 0 4px; font-weight: 600; }
 .board { display: flex; flex-direction: column; gap: 4px; align-items: center; margin-bottom: 8px; }
 .tiles { display: flex; gap: 4px; }
 .tile { width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; font: 700 20px/1 system-ui, sans-serif; border: 1px solid var(--line); border-radius: 6px; }
+/* 1.5.206 games drop 2 */
+.four-cols, .four-board { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; max-width: 340px; margin: 0 auto; }
+.four-cols button { padding: 6px 0; }
+.four-board { background: #6b4f36; padding: 5px; border-radius: 10px; margin-top: 4px; }
+.four-cell { aspect-ratio: 1; border-radius: 50%; background: var(--bg); }
+.four-cell.you { background: #3aa564; } .four-cell.bob { background: #f08a24; } .four-cell.win { outline: 3px solid #fff; outline-offset: -3px; }
+.sea { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 2px; max-width: 340px; margin: 4px auto; }
+.sq { aspect-ratio: 1; border-radius: 3px; background: #cfe3f7; border: 1px solid #9cbfe3; padding: 0; min-height: 0; font-size: 12px; display: grid; place-items: center; color: #123; }
+.sq.ship { background: #7d8a99; } .sq.miss { background: #e9f2fb; } .sq.hit { background: #f08a7a; color: #fff; } .sq.sunk { background: #9b2a2a; color: #fff; }
+.dicerow { display: flex; gap: 4px; font-size: 32px; line-height: 1; margin-bottom: 6px; }
+.choices { display: grid; gap: 6px; } .choices button { text-align: left; }
 .tile.g { background: var(--good); color: #122; border-color: var(--good); } .tile.y { background: var(--warn); color: #221; border-color: var(--warn); } .tile.b { background: var(--raise); color: var(--dim); }
 .tile.hint { border-style: dashed; color: var(--dim); }
 .chip.die { display: inline-flex; align-items: center; min-height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; }
@@ -282,3 +293,47 @@ input[type="number"] { min-height: 44px; border-radius: 10px; border: 1px solid 
 .fx-die.nat20 .fx-face { box-shadow: 0 0 24px var(--accent); } .fx-die.gone { opacity: 0; }
 @keyframes fx-tumble { from { transform: rotate(0); } to { transform: rotate(60deg); } }
 @media (prefers-reduced-motion: reduce) { .fx-die .fx-face, .adv-member.hit { animation: none; } }
+/* 1.5.206 Adventure table rules: the map that grows, the rules card, portraits */
+.adv-map-svg { display: block; width: 100%; max-height: 260px; margin-top: 6px; color: var(--text); font-size: 12px; }
+.adv-map-link { stroke: var(--dim); stroke-width: 3; }
+.adv-map-stub { stroke: var(--dim); stroke-width: 2; stroke-dasharray: 4 4; }
+.adv-map-exit { fill: var(--dim); font-size: 11px; }
+.adv-map-place circle { fill: var(--raise); stroke: currentColor; stroke-width: 2; }
+.adv-map-place text { fill: currentColor; }
+.adv-map-here circle { fill: var(--accent); stroke: var(--accent); }
+.adv-rules-card { border: 1px solid var(--accent); border-radius: 8px; padding: 6px 10px; margin: 6px 0; font-size: 13px; }
+.adv-rules-card p { margin: 4px 0; }
+img.adv-portrait { border-radius: 6px; object-fit: cover; }
+
+/* 🧩 Games, the second set (items 123 to 132) */
+#games-body .chess { display: grid; grid-template-columns: repeat(8, 1fr); max-width: 360px; border: 2px solid var(--line, #555); }
+#games-body .chess .sq { aspect-ratio: 1; padding: 0; border: 0; border-radius: 0; font-size: 26px; line-height: 1; color: #111; min-height: 0; }
+#games-body .chess .light { background: #eeeed2; } #games-body .chess .dark { background: #8ca2ad; }
+#games-body .chess .pick { box-shadow: inset 0 0 0 3px #4fb3bf; } #games-body .chess .last { box-shadow: inset 0 0 0 3px #e8c547aa; }
+#games-body .chess .to::after { content: ''; display: block; width: 28%; height: 28%; margin: auto; border-radius: 50%; background: #0005; }
+#games-body .sudoku { display: grid; grid-template-columns: repeat(9, 1fr); max-width: 360px; border: 2px solid currentColor; }
+#games-body .sudoku .cell { aspect-ratio: 1; padding: 0; border-radius: 0; border: 1px solid #8886; font-size: 17px; min-height: 0; }
+#games-body .sudoku .given { font-weight: 700; } #games-body .sudoku .sel { background: #4fb3bf44; } #games-body .sudoku .focus { box-shadow: inset 0 0 0 2px #e8c547; }
+#games-body .sudoku .rb { border-right: 2px solid currentColor; } #games-body .sudoku .bb { border-bottom: 2px solid currentColor; }
+#games-body .cross { display: grid; grid-template-columns: repeat(5, 52px); gap: 2px; }
+#games-body .cross .xblock { background: currentColor; } #games-body .cross .xcell { position: relative; }
+#games-body .cross input { width: 52px; height: 52px; text-align: center; font-size: 22px; text-transform: uppercase; padding: 0; }
+#games-body .cross .n { position: absolute; left: 3px; top: 1px; font-size: 10px; opacity: .7; } #games-body .cross .wrong input { background: #c0392b33; }
+#games-body .lgrid { display: grid; grid-template-columns: repeat(4, 56px); gap: 6px; }
+#games-body .lgrid span { display: grid; place-items: center; height: 56px; border-radius: 8px; border: 1px solid #8886; font: 700 24px monospace; }
+#games-body .noughts { display: grid; grid-template-columns: repeat(3, 76px); gap: 6px; } #games-body .noughts button { height: 76px; font-size: 36px; padding: 0; }
+#games-body .noughts .win { background: #4fb3bf44; } #games-body .code-row { font-size: 26px; letter-spacing: 4px; }
+
+/* Everyday helpers: Text size (80% to 160%) on the chat, the message box and Settings, and the easier-to-read font. */
+:root { --text-zoom: 1; }
+#chat > *, #text, #settings .body > * { zoom: var(--text-zoom); }
+html.readable-font body, html.readable-font button, html.readable-font input, html.readable-font select, html.readable-font textarea { font-family: Verdana, "Atkinson Hyperlegible", "DejaVu Sans", Roboto, sans-serif; letter-spacing: .02em; word-spacing: .08em; }
+html.readable-font .msg, html.readable-font .help-line { line-height: 1.7; }
+input[type="range"] { width: 100%; min-height: 44px; }
+
+/* Voice, phone and Bob-Net (2026-11-11) */
+.handsfree .hf-state { font-size: 1.6rem; text-align: center; margin: 1.2rem 0 .4rem; }
+.handsfree .hf-buttons { display: grid; gap: .8rem; margin: 1rem 0; }
+.handsfree .hf-big { font-size: 1.5rem; min-height: 4.5rem; border-radius: 1.2rem; }
+.handsfree #hf-talk[aria-pressed="true"] { outline: 3px solid var(--accent); }
+.low-data-tap { margin: .4rem 0; }

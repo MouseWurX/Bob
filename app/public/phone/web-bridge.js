@@ -83,10 +83,16 @@
     return true;
   }
 
-  function say(text) {
+  // rate, pitch (A voice per Bob) and sid, so Read aloud and Hands-free hear when a piece starts and ends, like on Android.
+  function say(text, { rate = 1, pitch = 1, sid = 'bob', add = false } = {}) {
     if (!('speechSynthesis' in window)) throw new Error("This browser can't read aloud.");
-    speechSynthesis.cancel();
-    speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+    if (!add) speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = Math.min(2, Math.max(0.5, Number(rate) || 1));
+    u.pitch = Math.min(2, Math.max(0.5, Number(pitch) || 1));
+    const said = (state) => send({ event: 'said', sid: String(sid || 'bob'), state });
+    u.onstart = () => said('start'); u.onend = () => said('done'); u.onerror = (e) => said(e?.error === 'interrupted' || e?.error === 'canceled' ? 'stop' : 'error');
+    speechSynthesis.speak(u);
     return true;
   }
   function hear() {
@@ -138,13 +144,13 @@
     },
     copy: ({ text }) => copy(String(text || '')),
     open: ({ url }) => { window.open(url, '_blank', 'noopener'); return true; },
-    'speech.say': ({ text }) => say(String(text || '')),
+    'speech.say': ({ text, rate, pitch, sid, add }) => say(String(text || ''), { rate, pitch, sid, add }),
     'speech.listen': hear,
     'speech.quiet': () => { try { speechSynthesis.cancel(); } catch {} return true; },
     // Back up and move: a phone backup picked with the browser's own file picker, read as text, capped at 64 MB.
-    'file.pick': () => new Promise((resolve, reject) => {
+    'file.pick': ({ kind } = {}) => new Promise((resolve, reject) => {
       const input = document.createElement('input');
-      input.type = 'file'; input.accept = '.json,application/json,text/plain';
+      input.type = 'file'; input.accept = kind === 'text' ? '.txt,.md,.markdown,.csv,.json,text/*' : '.json,application/json,text/plain'; // text: Read aloud's own pick
       input.addEventListener('change', () => {
         const file = input.files?.[0];
         if (!file) return resolve(null);
@@ -158,7 +164,19 @@
     // Bob for Android only: answered so the page draws, refused when asked to do something.
     'brain.status': () => ({ files: {}, loaded: null, busy: false }),
     'lend.status': () => ({}),
-    'pair.waiting': () => []
+    'pair.waiting': () => [],
+    // Voice, phone and Bob-Net (2026-11-11): Bob's ears, the Share menu and the home-screen widget are Bob for Android's.
+    // Hands-free and Talk over Bob need the ears; on an iPhone the keyboard's own microphone types what you say.
+    'ears.start': () => { throw new Error('listening by himself needs Bob for Android. On an iPhone, use the keyboard\'s microphone'); },
+    'ears.stop': () => true,
+    'share.state': () => false,
+    'share.on': () => { throw new Error('On an iPhone, Bob can\'t be in the Share menu: copy and paste instead.'); },
+    'share.take': () => null,
+    'widget.count': () => 0,
+    'widget.set': () => 0,
+    'widget.take': () => null,
+    // Low-data mode, Only on mobile data: the browser's own Data Saver hint where it has one (Safari has none).
+    'net.metered': () => navigator.connection?.saveData === true || navigator.connection?.type === 'cellular'
   };
 
   globalThis.BobPhone = {

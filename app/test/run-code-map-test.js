@@ -51,7 +51,7 @@ try { await t.code_map.run({ folder: os.homedir() === tmp ? '/' : path.join(path
 check('code_map won\'t map a folder Bob may not read', /not allowed|no folder/.test(err), err);
 const r = await t.read_file.run({ path: path.join(proj, 'src/waves.js'), line: 2 });
 check('read_file with line jumps to it', /2> export function spawnWave/.test(r), r);
-check('the code_map tool is in the documents group and on the workbench', /'code_map'\]/.test(fs.readFileSync(new URL('../src/toolbox.js', import.meta.url), 'utf8')) && /tinker: \['list_folder', 'code_map'/.test(fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8')));
+check('the code_map tool is in the documents group and on the workbench', /'code_map'(, 'git_look')?\]/.test(fs.readFileSync(new URL('../src/toolbox.js', import.meta.url), 'utf8')) && /tinker: \['list_folder', 'code_map'/.test(fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8')));
 
 // 1.5.204 (the owner: map the engine code): patch files are mapped by what they change.
 {

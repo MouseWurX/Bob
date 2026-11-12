@@ -97,6 +97,7 @@ export class Lock {
   // only by someone already in. Returns { view } or { error }.
   change(b = {}) {
     const cfg = this.cfg, cur = cfg.lock || {};
+    if (cfg.profileNow) return { error: 'Only the owner can change the passcode lock. Lock Bob and open him with the owner\'s passcode.' }; // 👥 profiles.js
     const out = {};
     if ('idleMinutes' in b) { const n = Math.round(Number(b.idleMinutes)); if (!Number.isFinite(n) || n < 0 || n > MAX_IDLE) return { error: `Pick 0 to ${MAX_IDLE} minutes.` }; out.idleMinutes = n; }
     if ('newPasscode' in b) {
@@ -133,7 +134,8 @@ export class Lock {
 }
 
 // What the window shows while Bob is locked. `next` is where to go after.
-export function lockPage({ next = '/', wrong = '', encrypt = false } = {}) {
+// people: 👥 profiles (profiles.js), [{ id, name }]; with any, the screen asks "Who's this?" first.
+export function lockPage({ next = '/', wrong = '', encrypt = false, people = [] } = {}) {
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const safeNext = /^\/[a-zA-Z0-9/_.?=&%-]*$/.test(next) && !next.startsWith('//') ? next : '/';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Bob is locked</title><link rel="icon" href="/icons/bob-32.png"><style>
@@ -141,10 +143,11 @@ export function lockPage({ next = '/', wrong = '', encrypt = false } = {}) {
 @media (prefers-color-scheme: light){:root{--bg:#f6efe4;--card:#fffaf2;--ink:#2b1d14;--line:#c9b39a;--accent:#b0661a;--bad:#a3261a}}
 body{background:var(--bg);color:var(--ink);font:16px "Segoe UI",system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0}
 form{background:var(--card);padding:24px;border-radius:12px;display:grid;gap:12px;width:min(320px,calc(100vw - 32px));box-sizing:border-box}
-input,button{font:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);min-height:44px}input{background:var(--bg);color:var(--ink)}
+input,button,select{font:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);min-height:44px}input,select{background:var(--bg);color:var(--ink)}
 button{background:var(--accent);color:var(--card);font-weight:700;border:none;cursor:pointer}p{margin:0}.bad{color:var(--bad)}.muted{opacity:.8;font-size:14px}
 </style></head><body><form method="post" action="/unlock"><img src="/icons/bob-192.png" width="64" height="64" alt="">
 <h1 style="font-size:20px;margin:0">🔒 Bob is locked</h1>
+${people.length ? `<label for="w">Who's this?</label><select id="w" name="who"><option value="main">The owner</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>` : ''}
 <label for="c">Passcode</label><input id="c" name="code" type="password" autocomplete="current-password" required autofocus>
 <input type="hidden" name="next" value="${esc(safeNext)}">
 ${wrong ? `<p class="bad" role="alert">${esc(wrong)}</p>` : ''}

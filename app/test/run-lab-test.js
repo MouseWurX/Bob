@@ -367,7 +367,7 @@ const saved = lab.saveRecipe({ ...recipe, lessons: { kind: 'file', file: path.jo
 check('a saved recipe keeps choices, not paths', !JSON.stringify(saved).includes(tmp) && saved.at(-1).smaller.cut.keep === 4);
 
 // ---- 1.5.153 Challenges and Save ----
-check('the first six packs, then the extra ones, each with questions, a title and a time', PACKS.length === 22 && PACK_IDS.slice(0, 6).join() === 'quiz,reasoning,sums,rules,tools,code' && PACKS.every((x) => x.title && x.what && x.count > 0 && x.minutes > 0));
+check('the first six packs, then the extra ones, each with questions, a title and a time', PACKS.length === 26 && PACK_IDS.slice(0, 6).join() === 'quiz,reasoning,sums,rules,tools,code' && PACKS.every((x) => x.title && x.what && x.count > 0 && x.minutes > 0));
 check('every reasoning question has four choices and a letter answer', REASONING.every(([q, a]) => /A\) [\s\S]*B\) [\s\S]*C\) [\s\S]*D\) /.test(q) && /^[ABCD]$/.test(a)) && REASONING.length >= 20);
 check('every sum has a whole-number answer', SUMS.every(([, a]) => Number.isInteger(a)) && SUMS.length >= 15);
 check('the letter in a reply is found, with or without brackets, and thinking is ignored', letterOf('B') === 'B' && letterOf('(C)') === 'C' && letterOf('D) Gravity') === 'D' && letterOf('The answer is A.') === 'A' && letterOf('<think>A or B?</think>C') === 'C' && letterOf('no idea') === '');
@@ -519,7 +519,7 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
 }
 {
   const lab3 = read('public/lab.js'), save = read('public/lab-save.js'), learn3 = read('public/lab-learn.js');
-  check('Challenges is a real page (on the Test tab now), with the reviewed words', /test: \['challenges', 'smaller', 'longer', 'faster'\]/.test(lab3) && /challenges: 'Challenges'/.test(lab3) && ['Run the challenges', 'Scoreboard', 'Which brain?', 'Press a column\'s name to sort by it.'].every((w) => lab3.includes(w)) && !/Challenges <span class="lab-later">/.test(lab3));
+  check('Challenges is a real page (on the Test tab now), with the reviewed words', /test: \['challenges', 'taste', 'smaller', 'longer', 'faster'\]/.test(lab3) && /challenges: 'Challenges'/.test(lab3) && ['Run the challenges', 'Scoreboard', 'Which brain?', 'Press a column\'s name to sort by it.'].every((w) => lab3.includes(w)) && !/Challenges <span class="lab-later">/.test(lab3));
   check('the scoreboard sorts with buttons in the column headers and says which way', /aria-sort=/.test(lab3) && /data-sort=/.test(lab3));
   check('Save offers a picture, text, a spreadsheet and data, and the hardware only if ticked', ['Picture', 'Text', 'Spreadsheet', 'Data', 'Include my graphics card and memory', 'Never file paths, your chats or your name'].every((w) => save.includes(w)) && /hardware: false/.test(lab3) && /hardware: false/.test(learn3));
   check('every Learn card can be saved', ['learn-tokens', 'learn-next', 'learn-temperature'].every((k) => learn3.includes(`saveBox('${k}')`)));
@@ -857,8 +857,8 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   const G = await import('../src/lab-guard.js');
   const C = await import('../src/lab-challenges.js');
   const ids = P.EXTRA_IDS;
-  check('sixteen extra packs, version 1, each with questions, a title and a time', ids.length === 16 && P.EXTRA_PACKS.every((x) => x.version === 1 && x.title && x.what && x.count > 0 && x.minutes > 0) && ids.every((id) => C.PACK_IDS.includes(id)));
-  check('Guard rails is shown but never counted in Overall', C.PACKS.find((x) => x.id === 'guard').ranked === false && !C.RANKED_IDS.includes('guard') && C.RANKED_IDS.length === C.PACKS.length - 1);
+  check('twenty extra packs (four from Lab items 105 to 107), version 1, each with questions, a title and a time', ids.length === 20 && P.EXTRA_PACKS.every((x) => x.version === 1 && x.title && x.what && x.count > 0 && x.minutes > 0) && ids.every((id) => C.PACK_IDS.includes(id)));
+  check('Guard rails is shown but never counted in Overall', C.PACKS.find((x) => x.id === 'guard').ranked === false && !C.RANKED_IDS.includes('guard') && C.RANKED_IDS.length === C.PACKS.length - 5); // Guard rails plus En français, En español, Job speed, Still refuses
   const all = Object.fromEntries(C.RANKED_IDS.map((id) => [id, { score: 80, right: 8, of: 10 }]));
   const row = C.scoreboard([C.mergeScores(null, { name: 'A', paramsB: 4, packs: { ...all, guard: { score: 10, right: 1, of: 10, parts: { held: { score: 0, right: 0, of: 5 }, answered: { score: 100, right: 15, of: 15 }, page: { score: 50, right: 3, of: 6 } } } }, when: '2026-11-09' })])[0];
   check('a low Guard rails score leaves Overall and "ran them all" alone, and its three numbers are kept', row.overall === 80 && row.all === true && row.guard?.held?.score === 0 && row.guard?.answered?.score === 100);
@@ -939,7 +939,7 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   check('and says why when no brain is loaded', (await guardChat({ cfg: { engine: 'llamacpp' }, engine: { url: 'http://b' } }, { messages: [{ role: 'user', content: 'hi' }] })).ok === false);
   check('saving from the sandbox is only for this replicant matrix itself', read('src/lab.js').indexOf("'/api/lab/guard/save'") > read('src/lab.js').indexOf('Lab jobs can only be started on this replicant matrix itself') && read('src/lab.js').indexOf("'/api/lab/guard/chat'") < read('src/lab.js').indexOf('Lab jobs can only be started on this replicant matrix itself'));
   const { packGroups, guardPartsLine } = await import('../public/lab-guard.js');
-  check('the Challenges list shows the first packs, then More challenges', packGroups(C.PACKS).map((g) => `${g.id}:${g.packs.length}`).join() === 'first:6,more:16');
+  check('the Challenges list shows the first packs, then More challenges', packGroups(C.PACKS).map((g) => `${g.id}:${g.packs.length}`).join() === 'first:6,more:20');
   check('the three Guard rails numbers read as words', guardPartsLine({ held: { score: null }, answered: { score: 90 }, page: { score: 50 } }) === 'Didn\'t over-refuse: 90 · Ignored planted orders: 50 · Held the line: not run');
 }
 

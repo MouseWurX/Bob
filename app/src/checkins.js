@@ -20,6 +20,7 @@ import { saveSettings } from './config.js';
 import { sessionBrains, gaming } from './sessions.js';
 import { brainMode } from './brain-mode.js';
 import { parseJson } from './util.js';
+import { isQuiet } from './quiet-hours.js'; // Quiet hours: check-ins wait until they end
 
 export { CHECKS, cleanCheckins, checkinSettings };
 export const STALL_MS = 15 * 60e3; // a download that hasn't moved for 15 minutes "stopped moving"
@@ -251,6 +252,7 @@ ${this.facts(since, found)}`;
   // Once a minute: watch downloads, and run a check-in when it's due (or your own lines once Bob's free).
   async tick() {
     if (!this.settings.enabled) { this.seen.clear(); return null; }
+    if (isQuiet(this.cfg)) return null; // Quiet hours (quiet-hours.js): check-ins wait until they end
     this.watchDownloads();
     if (this.working) return null;
     const st = this.state(), due = this.nextDue(st);

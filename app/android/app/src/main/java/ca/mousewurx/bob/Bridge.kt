@@ -14,6 +14,9 @@ import android.provider.MediaStore
 import android.util.Base64
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
+import android.content.ComponentName
+import android.provider.OpenableColumns
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.core.app.NotificationCompat
@@ -50,6 +53,11 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
     private var pendingMicStart: (() -> Unit)? = null
     private var pendingNotify: (() -> Unit)? = null
     @Volatile private var inBackground = false
+    // Voice items (2026-11-11): Bob's ears without the 🎙 window (Talk over Bob, Hey Bob, Hands-free). Off until the page asks.
+    private val ears = Ears(activity) { send(it) }
+    private var pendingEars: (() -> Unit)? = null
+    // Share to Bob: what another app shared, kept until the page takes it.
+    @Volatile private var pendingShare: JSONObject? = null
 
     companion object {
         const val MIC_REQUEST = 7001
@@ -57,6 +65,8 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
         const val NOTIFY_PERMISSION = 7003
         const val PHOTO_REQUEST = 7004
         const val FILE_REQUEST = 7005
+        const val EARS_PERMISSION = 7006
+        const val MAX_SHARE_TEXT = 512L * 1024 // a shared text file bigger than this isn't read into the chat
         const val MAX_BACKUP_BYTES = 64L * 1024 * 1024
         const val CHANNEL = "bob"
     }
@@ -97,8 +107,10 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                     "file.pick" -> activity.runOnUiThread {
                         fileCall?.let { fail(it, "replaced") }
                         fileCall = id
+                        // kind "text": Read aloud's own pick (any text file); otherwise a phone backup.
+                        val types = if (o.optString("kind") == "text") arrayOf("text/*", "application/json", "application/octet-stream") else arrayOf("application/json", "text/plain", "application/octet-stream")
                         val i = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
-                            .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/json", "text/plain", "application/octet-stream"))
+                            .putExtra(Intent.EXTRA_MIME_TYPES, types)
                         runCatching { activity.startActivityForResult(i, FILE_REQUEST) }
                             .onFailure { fileCall = null; fail(id, "this phone has no file picker") }
                     }
@@ -166,8 +178,21 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
 
                     // ---- Microphone and voice (Android's own) ----
                     "speech.listen" -> activity.runOnUiThread { listen(id) }
-                    "speech.say" -> activity.runOnUiThread { say(o.getString("text"), o.optDouble("rate", 1.0)); answer(id, true) }
+                    "speech.say" -> activity.runOnUiThread { say(o.getString("text"), o.optDouble("rate", 1.0), o.optDouble("pitch", 1.0), o.optString("sid", "bob"), o.optBoolean("add", false)); answer(id, true) }
                     "speech.quiet" -> activity.runOnUiThread { tts?.stop(); answer(id, true) }
+                    // ---- Ears: Talk over Bob, Hey Bob, Hands-free (each off unless switched on in Settings) ----
+                    "ears.start" -> activity.runOnUiThread { earsStart(id, o.getString("mode")) }
+                    "ears.stop" -> activity.runOnUiThread { ears.stop(); answer(id, true) }
+                    // ---- Share to Bob (off unless switched on): Bob shows up in other apps' Share menu only while it's on ----
+                    "share.on" -> { setShareTarget(o.getBoolean("on")); answer(id, shareTargetOn()) }
+                    "share.state" -> answer(id, shareTargetOn())
+                    "share.take" -> { val s = pendingShare; pendingShare = null; answer(id, s ?: JSONObject.NULL) }
+                    // ---- The home-screen widget: what it shows comes from the page (your next reminder, or nothing) ----
+                    "widget.set" -> { AskWidget.save(activity, o.optString("text"), o.optString("when")); answer(id, AskWidget.count(activity)) }
+                    "widget.count" -> answer(id, AskWidget.count(activity))
+                    "widget.take" -> { val t = pendingTap; pendingTap = null; answer(id, t ?: JSONObject.NULL) }
+                    // ---- Low-data mode: is this connection one Android counts as metered (mobile data)? ----
+                    "net.metered" -> answer(id, activity.getSystemService(android.net.ConnectivityManager::class.java)?.isActiveNetworkMetered == true)
 
                     // ---- Phone bits ----
                     "notify" -> activity.runOnUiThread { notifyNow(o.getString("title"), o.getString("text")); answer(id, true) }
@@ -289,15 +314,82 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
         when (requestCode) {
             MIC_PERMISSION -> { val go = pendingMicStart; pendingMicStart = null; if (ok) go?.invoke() else { micCall?.let { fail(it, "microphone not allowed") }; micCall = null } }
             NOTIFY_PERMISSION -> { val go = pendingNotify; pendingNotify = null; if (ok) go?.invoke() }
+            EARS_PERMISSION -> { val go = pendingEars; pendingEars = null; if (ok) go?.invoke() else { earsCall?.let { fail(it, "microphone not allowed") } }; earsCall = null }
         }
     }
 
     // ---- Read aloud: Android's own voices ----
-    private fun say(text: String, rate: Double) {
-        val speak = { tts?.setSpeechRate(rate.toFloat().coerceIn(0.5f, 2f)); tts?.speak(text.take(4000), TextToSpeech.QUEUE_FLUSH, null, "bob") }
-        if (tts == null) tts = TextToSpeech(activity) { st -> ttsReady = st == TextToSpeech.SUCCESS; if (ttsReady) { tts?.language = Locale.getDefault(); speak() } }
+    // pitch: A voice per Bob (1 is the phone's own). sid: the page's name for this piece, so it hears when it starts and
+    // ends (Read aloud, Hands-free, Talk over Bob). add: queue after what's being read instead of cutting it off.
+    private fun say(text: String, rate: Double, pitch: Double = 1.0, sid: String = "bob", add: Boolean = false) {
+        val speak = {
+            tts?.setSpeechRate(rate.toFloat().coerceIn(0.5f, 2f))
+            tts?.setPitch(pitch.toFloat().coerceIn(0.5f, 2f))
+            tts?.speak(text.take(4000), if (add) TextToSpeech.QUEUE_ADD else TextToSpeech.QUEUE_FLUSH, null, sid.take(60).ifEmpty { "bob" })
+        }
+        if (tts == null) tts = TextToSpeech(activity) { st ->
+            ttsReady = st == TextToSpeech.SUCCESS
+            if (ttsReady) { tts?.language = Locale.getDefault(); tts?.setOnUtteranceProgressListener(saidListener); speak() }
+        }
         else if (ttsReady) speak()
     }
+
+    private fun said(sid: String?, state: String) = send(JSONObject().put("event", "said").put("sid", sid ?: "").put("state", state))
+    private val saidListener = object : UtteranceProgressListener() {
+        override fun onStart(utteranceId: String?) = said(utteranceId, "start")
+        override fun onDone(utteranceId: String?) = said(utteranceId, "done")
+        override fun onStop(utteranceId: String?, interrupted: Boolean) = said(utteranceId, "stop")
+        @Deprecated("Deprecated in Java")
+        override fun onError(utteranceId: String?) = said(utteranceId, "error")
+        override fun onError(utteranceId: String?, errorCode: Int) = said(utteranceId, "error")
+    }
+
+    // ---- Ears (the microphone without the 🎙 window) ----
+    private fun earsStart(id: String, mode: String) {
+        val go = { ears.start(mode); answer(id, ears.available) }
+        if (ContextCompat.checkSelfPermission(activity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) go()
+        else { pendingEars = go; earsCall = id; activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), EARS_PERMISSION) }
+    }
+    private var earsCall: String? = null
+
+    // ---- Share to Bob: the Share menu entry is its own switch-off-able door (ShareToBob in the manifest, off to start) ----
+    private val shareDoor get() = ComponentName(activity, "ca.mousewurx.bob.ShareToBob")
+    private fun shareTargetOn() = activity.packageManager.getComponentEnabledSetting(shareDoor) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+    private fun setShareTarget(on: Boolean) = activity.packageManager.setComponentEnabledSetting(shareDoor,
+        if (on) PackageManager.COMPONENT_ENABLED_STATE_ENABLED else PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
+
+    /** Another app shared something with Bob (only possible while Share to Bob is on). Words and links go to the page;
+     *  a picture becomes the photo for Bob on your network, like 📎; a small text file is read as words. Nothing is sent
+     *  anywhere until you tap Send. */
+    fun takeShare(i: Intent) {
+        if (i.action != Intent.ACTION_SEND) return
+        val out = JSONObject().put("text", i.getStringExtra(Intent.EXTRA_TEXT).orEmpty().take(20000)).put("subject", i.getStringExtra(Intent.EXTRA_SUBJECT).orEmpty().take(200))
+        @Suppress("DEPRECATION")
+        val uri: Uri? = if (Build.VERSION.SDK_INT >= 33) i.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java) else i.getParcelableExtra(Intent.EXTRA_STREAM)
+        val type = i.type.orEmpty()
+        scope.launch {
+            try {
+                if (uri != null) {
+                    val name = runCatching { activity.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null } }.getOrNull().orEmpty().take(120)
+                    if (type.startsWith("image/")) out.put("photo", readPhoto(uri))
+                    else if (type.startsWith("text/") || Regex("\\.(txt|md|markdown|csv|tsv|json|log|xml|ya?ml|ini|toml|srt|vtt)$", RegexOption.IGNORE_CASE).containsMatchIn(name)) {
+                        val bytes = activity.contentResolver.openInputStream(uri)?.use { s ->
+                            val buf = ByteArrayOutputStream(); val b = ByteArray(65536); var total = 0L
+                            while (true) { val n = s.read(b); if (n < 0) break; total += n; if (total > MAX_SHARE_TEXT) throw IllegalStateException("big"); buf.write(b, 0, n) }
+                            buf.toByteArray()
+                        }
+                        out.put("file", JSONObject().put("name", name).put("text", String(bytes ?: ByteArray(0), Charsets.UTF_8)))
+                    } else out.put("file", JSONObject().put("name", name).put("type", type).put("unsupported", true))
+                }
+            } catch (e: Exception) { out.put("error", if (e.message == "big") "that file is too big to read into the chat" else "that file wouldn't open") }
+            pendingShare = out
+            send(JSONObject().put("event", "share"))
+        }
+    }
+
+    /** The widget was tapped: "ask" opens the message box, "talk" starts the 🎙. */
+    fun widgetTap(what: String) { pendingTap = what; send(JSONObject().put("event", "widget")) }
+    @Volatile private var pendingTap: String? = null
 
     // ---- Notifications: only while Bob's screen isn't showing ----
     private fun maybeNotify(ev: JSONObject) {
@@ -310,6 +402,8 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                 if (titles.isNotEmpty()) notifyNow("Bob: check-in", titles.joinToString(", ").take(140))
             }
             "done" -> send(JSONObject().put("event", "net-done-bg").put("turnId", ev.optString("turnId")))
+            // Lab item 110: "Tell my phone when a Lab job ends" (the Lab's My Lab tab, off unless ticked) marks these phone = true.
+            "lab-done" -> if (ev.optBoolean("phone")) notifyNow(if (ev.optBoolean("ok")) "Bob: Lab job done" else "Bob: Lab job stopped", (if (ev.optBoolean("ok")) ev.optString("name") else ev.optString("name") + ": " + ev.optString("error")).take(140))
         }
     }
 
@@ -327,7 +421,8 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
         else if (!inBackground) { pendingNotify = go; activity.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFY_PERMISSION) }
     }
 
-    fun onBackground() { inBackground = true; send(JSONObject().put("event", "app").put("visible", false)) }
+    // Hey Bob only listens while Bob's screen is showing: the ears stop when it goes, and the page starts them again.
+    fun onBackground() { if (ears.mode == "wake") ears.stop(); inBackground = true; send(JSONObject().put("event", "app").put("visible", false)) }
     fun onForeground() { inBackground = false; send(JSONObject().put("event", "app").put("visible", true)) }
 
     fun close() {
@@ -335,6 +430,7 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
         app.pair.listener = null
         listening.keys.forEach { listening[it] = false }
         tts?.shutdown()
+        ears.close()
         scope.cancel()
     }
 }
