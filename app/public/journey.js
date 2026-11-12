@@ -3,6 +3,7 @@
 // jumps out, and the character screen for changing your look. Nothing runs until 🧭 Journey is pressed.
 import * as R from './journey-rules.js';
 import * as S from './journey-sides.js';
+import * as W from './journey-world.js';
 import * as A from './avatars.js';
 import { mountJourney } from './journey-play.js';
 import { getLook, LOOK_ID } from './bob-sprite.js';
@@ -29,7 +30,7 @@ export function openJourney({ api, you = {}, characters = [], enemies = [], bobN
   ];
   const enemyLooks = Object.fromEntries((enemies || []).map((e) => [e.id, e.look]));
   game = mountJourney(dlg.querySelector('.journey-root'), {
-    R, S, A, party, enemyLooks, bobLook: LOOK_ID,
+    R, W, S, A, party, enemyLooks, bobLook: LOOK_ID,
     lookOf: (id) => getLook(id),
     api: (path, body) => api(path, body),
     still: () => motionOff(),

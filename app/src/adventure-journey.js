@@ -1,6 +1,6 @@
-// 🧭 Journey (1.5.206): the server side of Adventure's tile-map game (public/journey-rules.js has the rules and
+// 🧭 Journey (1.5.206, v1.1 in 1.5.211): the server side of Adventure's tile-map game (public/journey-rules.js has the rules and
 // public/journey-play.js the screen). The game plays in the page; this only keeps the one save on disk and writes
-// a line on your saved character's sheet when a cave's keeper is beaten. No brain, nothing loads.
+// a line on your saved character's sheet when a boss is beaten. No brain, nothing loads.
 //   GET  /api/adventure/journey          -> { journey }   (null when there's none)
 //   POST /api/adventure/journey          { journey }     -> { ok }  (cleaned by the rules before it's written)
 //   POST /api/adventure/journey/delete                   -> { ok }
@@ -8,15 +8,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cleanJourney, GUARDIANS, STATS } from '../public/journey-rules.js';
+import { makeWorld } from '../public/journey-world.js';
 
 export const journeyFile = (cfg) => path.join(cfg.dataDir || '.', 'adventures', 'journey.json');
 export const MAX_SAVE = 200_000; // bytes; a journey is a few KB
 
 export function loadJourney(cfg) {
-  try { return cleanJourney(JSON.parse(fs.readFileSync(journeyFile(cfg), 'utf8').replace(/^﻿/, ''))); } catch { return null; }
+  try { return cleanJourney(JSON.parse(fs.readFileSync(journeyFile(cfg), 'utf8').replace(/^﻿/, '')), makeWorld); } catch { return null; }
 }
 export function saveJourney(cfg, j) {
-  const clean = cleanJourney(j);
+  const clean = cleanJourney(j, makeWorld);
   if (!clean) throw new Error("That isn't a journey I can save.");
   const text = JSON.stringify(clean);
   if (text.length > MAX_SAVE) throw new Error('That journey is too big to save.');
