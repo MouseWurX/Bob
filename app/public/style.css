@@ -2153,7 +2153,6 @@ html.readable-font code, html.readable-font pre, html.readable-font kbd { font-f
 .vdoc .flash, .vslide.flash { outline: 2px solid var(--accent); outline-offset: 2px; }
 .vcode mark.vat { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; }
 
-<<<<<<< HEAD
 /* ---------- 1.5.210 (UX item B): one status chip, a grouped menu, a bottom bar on phones. Display only. ---------- */
 /* The chip: Bob's brain line, then the icons of any quick switch that is on, then ▾. Its panel holds the switches. */
 .brain-pill .status-on { font-size: 12px; letter-spacing: 1px; }
@@ -2216,7 +2215,6 @@ body.left-folded .nav-head:has(+ #labBtn[hidden]) { display: none; }
   .chips { padding: 6px 8px 0; }
 }
 .tasks-empty p { margin: 4px 0; } .tasks-empty q { font-style: italic; }
-=======
 /* 1.5.210 The porthole: the fNRI cube seen through a round window into a foggy room (public/fog.js draws the fog on its own
    canvas behind the cube's). The rim is the theme's colours, so it fits every look. */
 .mind-cube.porthole .port { position: relative; width: 220px; height: 220px; margin: 0 auto; border-radius: 50%; padding: 6px; box-sizing: border-box;
@@ -2243,4 +2241,3 @@ body.left-folded .side-top .mind-cube.bob-cube.porthole .port { width: 36px; hei
 .mind-cube.bob-cube.porthole .port canvas { inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px); }
 .mind-cube.bob-cube.porthole .port::after { inset: 3px; box-shadow: inset 0 0 6px rgba(0, 0, 0, .8); }
 .mind-cube.bob-cube canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
->>>>>>> fac11e201219d71aadf6c2e9210cf2bebc088db6

@@ -188,8 +188,27 @@ window.addEventListener('bob-avatar', (e) => setAvatarCube(e.detail?.cube === tr
 window.addEventListener('bob-cube-live', () => { if (cubeAvatarOn && cubeAvatar) cubeAvatar.relive(); }); // Real experts switched in Bob's thinking
 setAvatarCube(store.get('bob-avatar-cube', '0') === '1'); // at once, before the settings arrive, so the picture never flips
 if (advDlg && globalThis.MutationObserver) new MutationObserver(showCubeAvatar).observe(advDlg, { attributes: true, attributeFilter: ['open'] });
-$('bobCube')?.addEventListener('click', () => cellar.open('shop', 'roles'));
-$('bobCube')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cellar.open('shop', 'roles'); } });
+// 1.5.210 Lamplight on a phone: the left menu is a sheet, so the porthole moves to the top of the chat with Bob's
+// name beside it (the same element, so it keeps its fog, glow and clicks). Everywhere else it sits where Bob sits.
+const lampPhone = globalThis.matchMedia?.('(max-width: 640px)');
+function placeCube() {
+  const box = $('bobCubeBox'), ctx = document.querySelector('.ctx'), wrap = document.querySelector('.side-top .bob-wrap');
+  if (!box || !ctx || !wrap) return;
+  const top = document.body.classList.contains('look-lamplight') && Boolean(lampPhone?.matches);
+  let head = $('lampHead');
+  if (top && !head) { head = document.createElement('span'); head.id = 'lampHead'; head.className = 'lamp-head'; head.innerHTML = '<span class="lamp-name">Bob</span>'; }
+  if (top && box.parentElement !== head) { ctx.prepend(head); head.prepend(box); }
+  else if (!top && head && box.parentElement === head) { wrap.insertBefore(box, bobCanvas.nextSibling); head.remove(); }
+}
+let lampWas = '';
+const lampCheck = () => { const k = document.body.className.includes('look-lamplight') + ':' + Boolean(lampPhone?.matches); if (k !== lampWas) { lampWas = k; placeCube(); } };
+if (globalThis.MutationObserver) new MutationObserver(lampCheck).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+lampPhone?.addEventListener?.('change', lampCheck);
+lampCheck();
+// In Lamplight the cube is the menu button (Bob's menu, below); in the other looks it opens Equip Bob as before.
+const lampLook = () => document.body.classList.contains('look-lamplight');
+$('bobCube')?.addEventListener('click', () => { if (!lampLook()) cellar.open('shop', 'roles'); });
+$('bobCube')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (lampLook()) bobMenu.toggle($('bobCubeBox')); else cellar.open('shop', 'roles'); } });
 // Two brains loaded at once (from the brain readings): a bigger head. Back to one: normal again.
 window.addEventListener('bob-brain-status', (e) => { const n = (e.detail?.models || []).filter((m) => m?.name).length; life.brains(n); });
 // A dozing Bob wakes when you come back to the window.
@@ -558,7 +577,7 @@ const bobMenu = createBobMenu({
   saidNow: () => statusEl.title || statusEl.textContent
 });
 // The fNRI cube avatar (when it is on) opens the same menu.
-document.addEventListener('click', (e) => { const c = e.target.closest?.('#bobCubeBox'); if (c && e.target !== bobCanvas) bobMenu.toggle(c); });
+document.addEventListener('click', (e) => { const c = e.target.closest?.('#bobCubeBox'); if (c && lampLook()) bobMenu.toggle(c); }); // Lamplight: the cube opens Bob's menu
 // 1.5.210 Find anything: every page, menu tool, Settings card and Help topic by name, plus your chats.
 const PAGE_BTNS = ['chatBtn', 'tasksBtn', 'topicsBtn', 'madeBtn', 'adventureBtn', 'gamesBtn', 'labBtn', 'shelfBtn', 'cellarBtn', 'dlBtn', 'tidyBtn', 'settingsBtn', 'styleBtn', 'helpBtn', 'newchat'];
 const findBox = createFind({
