@@ -15,6 +15,7 @@
 <link rel="apple-touch-icon" href="shared/icons/bob-192.png">
 <link rel="stylesheet" href="phone.css">
 <link rel="stylesheet" href="web.css">
+<link rel="stylesheet" href="journey.css">
 </head>
 <body>
 <header>
@@ -46,6 +47,10 @@
   <button data-go="chats"><span class="ico">🗂</span>Past chats</button>
   <button data-go="bobs"><span class="ico">🌐</span>Bob-Net</button>
   <button data-go="brain"><span class="ico">📱</span>Phone brain</button>
+  <button data-go="glance"><span class="ico">📊</span>Your Bobs</button>
+  <button data-go="carry"><span class="ico">📡</span>Carry on on another Bob</button>
+  <button data-go="handsfree"><span class="ico">🗣</span>Hands-free</button>
+  <button data-go="reader"><span class="ico">📖</span>Read aloud</button>
   <button data-go="memory"><span class="ico">📝</span>What Bob remembers</button>
   <button data-go="adventure"><span class="ico">🎲</span>Adventure</button>
   <button data-go="games"><span class="ico">🧩</span>Games</button>
@@ -93,6 +98,7 @@
   <p class="help-line" id="brain-ram"></p>
 </div></section>
 
+<section class="panel hidden" id="journey"><div class="top"><h2>🧭 Journey</h2></div><div class="body"><div id="journey-body"></div></div></section>
 <section class="panel hidden" id="adventure"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Adventure</h2></div><div class="body">
   <div id="adv-body"></div>
 </div></section>
@@ -122,7 +128,20 @@
   <input type="text" id="user-name" maxlength="40" placeholder="Your name">
   <h3>Voice</h3>
   <label class="switch"><div class="words"><strong>Read replies aloud</strong><p class="help-line">Uses your phone's own voice. Off to start with.</p></div><span class="pill"><input type="checkbox" id="read-aloud"><span></span></span></label>
+  <label class="switch"><div class="words"><strong>Talk over Bob</strong><p class="help-line">While Bob reads aloud, start speaking and he stops and listens. "Stop" on its own just stops him. Headphones work best. Off to start with.</p></div><span class="pill"><input type="checkbox" id="talk-over"><span></span></span></label>
+  <label class="switch"><div class="words"><strong>Listen for "Hey Bob" while Bob is open</strong><p class="help-line">Say "Hey Bob" and what you want, with no tap. Only while Bob's screen is showing; it uses more battery. Off to start with.</p></div><span class="pill"><input type="checkbox" id="wake-on"><span></span></span></label>
+  <label class="switch"><div class="words"><strong>A voice per Bob</strong><p class="help-line">Replies from each of your Bobs are read in their own pitch and pace, so you can hear who's talking. Off to start with.</p></div><span class="pill"><input type="checkbox" id="net-voices"><span></span></span></label>
+  <h3>Sharing and the widget</h3>
+  <label class="switch"><div class="words"><strong>Take shares from other apps</strong><p class="help-line">Puts Bob in other apps' Share menu. A link or words land in the message box, a picture is attached like 📎, and a small text file's words come in. Nothing is sent until you tap Send. Off to start with.</p></div><span class="pill"><input type="checkbox" id="share-on"><span></span></span></label>
+  <label class="switch"><div class="words"><strong>Show my next reminder on the widget</strong><p class="help-line">Bob's home-screen widget shows your next reminder from your other Bob (he needs Let my phone see how I'm doing on). Updated while Bob is open. Off to start with.</p></div><span class="pill"><input type="checkbox" id="widget-reminder"><span></span></span></label>
+  <h3>Data</h3>
+  <label class="field" for="low-data">Low-data mode</label>
+  <select id="low-data"><option value="off">Off (to start with)</option><option value="mobile">Only on mobile data</option><option value="always">Always</option></select>
+  <p class="help-line">Text only: pictures, clips and songs in the chat wait for your tap instead of coming down by themselves.</p>
   <h3>Look</h3>
+  <label class="field" for="text-size">Text size: <b id="text-size-now">100%</b></label>
+  <input type="range" id="text-size" min="80" max="160" step="10" value="100" aria-describedby="text-size-hint"><p class="help-line" id="text-size-hint">The chat, the message box and Settings, bigger or smaller. 100% to start with.</p>
+  <label class="switch"><div class="words"><strong>Easier-to-read font</strong><p class="help-line">Plainer letters with more room between letters, words and lines. Off to start with.</p></div><span class="pill"><input type="checkbox" id="readable-font"><span></span></span></label>
   <label class="switch"><div class="words"><strong>Show maths as formulas</strong><p class="help-line">Maths in replies shows as real formulas instead of code. Drawn on the phone. Off to start with.</p></div><span class="pill"><input type="checkbox" id="math-view"><span></span></span></label>
   <label class="field" for="theme">Theme</label>
   <select id="theme"><option value="moondust">Moondust (dark)</option><option value="inn">Bob's Inn (dark)</option><option value="light">Light</option><option value="phone">Follow the phone</option></select>
@@ -160,6 +179,38 @@
   <label class="switch"><div class="words"><strong>Pick up where Bob left off</strong><p class="help-line">If Android closes Bob in the middle of a phone-brain reply, he asks again when you come back. Off to start with.</p></div><span class="pill"><input type="checkbox" id="resume"><span></span></span></label>
 </div></section>
 
+<section class="panel hidden" id="glance"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Your Bobs</h2></div><div class="body">
+  <p class="help-line">How each of your Bobs is doing: up or busy, his brain, the graphics card's heat and memory, the jobs running and your next reminder. Each Bob shares this only with Settings, Bob-Net, <strong>Let my phone see how I'm doing</strong> on there.</p>
+  <div id="glance-list" class="gap"></div>
+</div></section>
+
+<section class="panel hidden" id="carry"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Carry on on another Bob</h2></div><div class="body">
+  <p class="help-line">Hand this chat to one of your Bobs and keep going: he gets everything said so far, and answers this chat from then on. That Bob needs Settings, Bob-Net, <strong>Take chats from my other Bobs</strong> on. Only the words travel, never files or memory.</p>
+  <div id="carry-list" class="gap"></div>
+</div></section>
+
+<section class="panel hidden handsfree" id="handsfree"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Hands-free</h2></div><div class="body">
+  <p class="hf-state" id="hf-state" role="status" aria-live="polite">Tap Talk, then say what you want.</p>
+  <p class="help-line" id="hf-said"></p>
+  <div class="hf-buttons">
+    <button class="main hf-big" id="hf-talk" aria-pressed="false">🎙 Talk</button>
+    <button class="hf-big" id="hf-stop">■ Stop</button>
+    <button class="hf-big" id="hf-repeat">🔁 Say it again</button>
+  </div>
+  <label class="switch"><div class="words"><strong>Listen again after Bob answers</strong><p class="help-line">On in Hands-free: when he finishes talking, he listens for your next words by himself.</p></div><span class="pill"><input type="checkbox" id="hf-again"><span></span></span></label>
+</div></section>
+
+<section class="panel hidden" id="reader"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Read aloud</h2></div><div class="body">
+  <p class="help-line">Bob reads a document to you in your phone's voice, with play, pause and speed, and remembers where you stopped.</p>
+  <div class="btns"><button id="reader-file">Pick a text file</button><button id="reader-last">Bob's last reply</button></div>
+  <textarea id="reader-text" rows="5" placeholder="Or paste words here" aria-label="Words to read aloud"></textarea>
+  <div class="btns"><button id="reader-paste">Read these words</button></div>
+  <div id="reader-controls" class="hidden"><div class="btns"><button class="main" id="reader-play">▶ Play</button><button id="reader-back" aria-label="Back one piece">⏮</button><button id="reader-next" aria-label="Next piece">⏭</button></div></div>
+  <label class="field" for="reader-speed">Speed</label>
+  <select id="reader-speed"><option value="0.75">0.75×</option><option value="1">1× (to start with)</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select>
+  <p class="help-line" id="reader-msg" role="status"></p>
+</div></section>
+
 <section class="panel hidden" id="help"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Help</h2></div><div class="body help">
   <input type="text" id="help-search" placeholder="Search help" aria-label="Search help">
   <div id="help-body"></div>
@@ -170,6 +221,10 @@
 <script src="avatars.js"></script>
 <script src="prompt-words.js"></script>
 <script src="table-fx.js"></script>
+<script src="adv-table.js"></script>
+<script src="journey-rules.js"></script>
+<script src="journey-sides.js"></script>
+<script src="journey-play.js"></script>
 <script src="logic.js"></script>
 <script src="help.js"></script>
 <script src="diagram-core.js"></script>

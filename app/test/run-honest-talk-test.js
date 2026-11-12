@@ -42,7 +42,8 @@ const msgs = [];
 await brain.runOn(msgs, "so what's good, bob?", (e) => events.push(e), new AbortController().signal, [], null, 't1');
 check('the made-up observation gets the app\'s correction note', events.some((e) => e.type === 'correction' && e.text === OBSERVE_CORRECTION));
 check('Bob gets one more go, told to use only real things', seen.length === 2 && seen[1].some((m) => m.role === 'system' && /no tool ran this turn, so it was invented/.test(m.content)));
-check('the system prompt carries the real-state line', /Right now \(real, from the app\): you're thinking on small:latest/.test(seen[0][0].content));
+// Item 1 (Nov 11): the real-state line rides in the turn note before the latest message, so the steady instructions stay cached.
+check('the prompt carries the real-state line (in the turn note)', /Right now \(real, from the app\): you're thinking on small:latest/.test(seen[0].filter((m) => m.role === 'system').map((m) => m.content).join('\n')));
 check('the correction is kept with the reply (for reloads)', msgs.some((m) => m.correction === OBSERVE_CORRECTION));
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

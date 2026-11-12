@@ -62,9 +62,13 @@ Update this file in the same handover as any change to settings.
 | 🎲 Adventure | Which brain is the game master | The game needs one good storyteller. Biggest brain is the Deep thinking slot, or the main Brain when nothing is in it; always on the graphics card, thinking on. It loads when a game starts and is let go on Pause or End. | Biggest brain | ok (approved with edits, 1.5.119) |
 | 🎲 Adventure | Who plays the other Bobs | Their own Bob: a Bob on your Bob-Net list thinks his own turns over there, in his own voice, through the same door as Lend my brain. What goes to him: the scene so far and his character's sheet, over Tailscale to your own Bob only; nothing else from this replicant matrix. When he can't (gaming, busy, not reachable), the game master brain plays him that turn and says so. The game master brain: every Bob at the table is played here. | Their own Bob when reachable | ok (approved with edits, 1.5.119) |
 | 🎲 Adventure (menu page) | Start a new game / Setting / Your character / Who plays / Plot armour / How long / Continue a campaign | The game page; nothing loads until Start a new game is pressed | nothing on | ok (approved with edits, 1.5.119) |
+| 🎲 Adventure (start card) | 📋 Table rules: A map that grows / Coins and shops / Catch your breath / Secret notes / Riddle rooms / Badges, plus How hard (Easy / Normal / Hard). Saved as adventure.rules and adventure.difficulty; Bob can say them. Also 🧰 Table extras: A portrait of every character (needs Pictures). | all off, Normal | new (1.5.206) |
 | 🎲 Adventure (start card) | 🧰 Table extras: Dice you can see / Sounds / Read it aloud / Pictures / A new picture every scene (needs Pictures) / Music. Saved as adventure.extras; Bob can say them. Pictures and music need their models from Get models, made before the game (Skip the rest). Also on the start card: Tonight's story (8 ready-made openings or Make one up), ➕ Add a friend (up to 3). Phone: This phone plays. | all off | new (1.5.204) |
 | 🧩 Games | Which brain plays games | Quick brain: my small brain, the one that answers quick messages; it loads in a few seconds and a game needs nothing bigger. In the Gaming session it's the Gaming brain on the processor, so a game never touches the graphics card. Main Brain: the brain the chat uses, for wittier lines at the cost of a longer load. Either way it loads when a game starts and is let go when the game ends. | Quick brain | ok (approved with edits, 1.5.121) |
-| 🧩 Games | How often Bob chips in | In Hangman, Word ladder and Five letters the app runs the game and I comment. After every move: a line after each guess. Now and then: about every other move. Only at the end: the app keeps quiet until the game is over, which is quickest on a slow replicant matrix. Twenty questions and Story dice are all talk, so this doesn't change them. | After every move | ok (approved with edits, 1.5.121) |
+| 🧩 Games | Keep an unfinished game | When Bob closes in the middle of a game, the game is saved in my data folder and comes back when you open 🧩 Games again. Off: closing Bob ends the game. | Off | new (1.5.206) |
+| 🧩 Games | Kid mode | For playing with young children. Easier words in Hangman, Five letters and Twenty questions, the gentlest levels in Chess, Noughts and crosses, Code breaker and the Letter grid, and I only ever tease kindly. | Off | new (1.5.206) |
+| 🧩 Games | How often Bob chips in | In Hangman, Word ladder, Five letters, Four in a row, Hidden fleet, Liar's dice and Trivia night the app runs the game and I comment. After every move: a line after each guess. Now and then: about every other move. Only at the end: the app keeps quiet until the game is over, which is quickest on a slow replicant matrix. Twenty questions and Story dice are all talk, so this doesn't change them. | After every move | ok (approved with edits, 1.5.121) |
+| 🧩 Games (menu page, 1.5.206) | Easy · Normal · Hard / 📅 Today's puzzle / Ask Bob for new words · Ask Bob for new things · Forget them / You go first · I go first / You bid first · I bid first / Ones are wild / Ask the Bobs on my Bob-Net to play / Carry on / Fire · Shuffle my fleet / Bid · Liar! | Four more games and the extras; nothing loads until ▶ Start; Bob-Net Bobs only when ticked | nothing on | new (1.5.206) |
 | 🧩 Games (menu page) | ▶ Start per game / I think, you guess · You think, I guess / Shelf / You climb, I cheer · Climb together, turn about / I open · You open / 🏁 Stop / Hint / Back a rung / Wrap it up / Scoreboard | The games page; nothing loads until ▶ Start is pressed | nothing on | ok (approved with edits, 1.5.121) |
 | Remove Bob | Remove Bob (keeps chats, settings and models unless ticked) | More text | | ok |
 
@@ -123,6 +127,9 @@ Update this file in the same handover as any change to settings.
 | Help, Sessions and Effort | "Session: what the graphics card is kept for. Effort: how hard Bob works on each message." | — | ok |
 | Settings > Speed & memory > Speed for this replicant matrix | Get Bob ready while you type · Let games go first · Match picture settings to my graphics card | all off | ok (approved with edits, hw tuning) |
 | Settings > Speed & memory | Test Bob's speed (button + last 6 results) | | ok (approved with edits) |
+| Settings > Speed & memory > Engine extras | Guess ahead by copying from the chat · Load the next brain early · Laptop mode · Test a new graphics card by itself · Keep a speed history (with a chart per brain) | all off unless turned on (list items 94-98) |
+| Settings > Engines | Tell me what engine updates change | off unless turned on (list item 99) |
+| Brains page > Set up | Chat memory type: Standard · Sharper · Smaller | Standard unless picked (list item 100) |
 | Settings > Everyday footer | Check this replicant matrix (read-only tips) | | ok (approved with edits) |
 | Settings > This replicant matrix and updates (1.5.118) | **Save a help bundle** (button). ⓘ: "Saves one zip with Bob's logs, the last chats, errors and this replicant matrix's facts, scrubbed of passcodes, keys and your name, so an agent or a person can work out what's wrong. Nothing is sent anywhere: you pick where it goes." Manual: nothing happens until the click; the folder picker chooses where; the folder opens afterwards. Help "Save a help bundle", glossary Help bundle / Handoff file, FAQ "How do I get help with my Bob?" | — | ok (placement and wording by the settings thread, 2026-11-05) |
 | Get models > Equip Bob > Attributes | He comments once when you change his look | off (1.5.116; on before) | ok (approved) |
@@ -133,6 +140,9 @@ Update this file in the same handover as any change to settings.
 | Settings > Everyday (How Bob works > Brains), and the top of the Lab | Lab: Professional mode (Keep it simple / Professional): "Off is Keep it simple: each Lab tab shows the usual choices. On: every control a tab has..." Saved as labPro, off unless switched on; the Lab's own two buttons set the same thing. | 1.5.168 |
 | Computer Science Lab > Forge tab > Start a run | Let the Lab start Forge runs: "Off unless you turn it on. Each run still needs your press on its purchase card, and costs money by the hour on the rental service." Without it, plans can be written and saved but not started. Needs RUNPOD_API_KEY in the environment (Settings > Rented brains) (`labForgeStart`). | off | ok (approved with edits, 1.5.160) |
 | Computer Science Lab > Test tab > Challenges (Nov 11) | Check my main brain after engine updates: "When the engine updates, I run the Lab test on my main brain once I've been quiet for 10 minutes, and tell you if its score or speed dropped." Saved as labRecheck. Also on Challenges, per run: Show the wobble (three runs, ± beside the score), and Add to the queue. | off | new, not yet reviewed |
+| Computer Science Lab > My Lab tab > Lab extras (Nov 11) | Show word meanings: "Lab words like expert, quant and LoRA get a dotted line. Hover, tap or Tab to one for a one-line meaning." (`labExtras.hoverWords`) | off | new, not yet reviewed |
+| Computer Science Lab > My Lab tab > Lab extras (Nov 11) | Tell my phone when a Lab job ends: "Bob for Android, or a phone browser with Bob open, gets a notification when a Lab job finishes or fails." (`labExtras.tellPhone`) | off | new, not yet reviewed |
+| Computer Science Lab > My Lab tab > Lab extras (Nov 11) | Save to Lab in the chat: "A Save to Lab button under your messages turns a question into a Lab challenge, with what a good answer needs." Saves into the pack My questions. (`labExtras.saveQuestions`) | off | new, not yet reviewed |
 | Get models / Brain catalogue | 😇 Well behaved / 🤝 Community / Naughty list toggle (which side of the list shows; the Naughty side, marked with Bob's own red devil, only once the setting is on; remembered in this browser). On the Naughty side a red devil on its own where ★ Recommended would be is Bob's quiet pick | Well behaved | ok (approved with edits, 1.5.133) |
 | Get models / Brain catalogue | ➕ Your own brains: **Add a brain from a file** (file window on this replicant matrix; name; optional picture reader; **Add to Bob's list**), per row **Remove from Bob's list** (confirm: "The file stays where it is; only Bob forgets it. Any slot wearing it is emptied."). Stored as `ownModels`; the file is never moved or deleted | empty list | ok (approved with edits, 1.5.135) |
 | Settings > Everyday (How Bob works) | Show Bob's plan before big jobs: "Off unless you turn it on. Before a job with several steps, or any step that changes files or runs programs, Bob shows every step on one card and waits for you. Any OKs the job needs are ticked on the same card." Closed panel: "Plans before big jobs: on/off". Chat card: Go ahead / Go ahead with ticked (n of m OKs) / Change something (What should Bob change? + Send to Bob / Back) / Not now (Bob drops this job) | off | ok (approved with edits, plan card) |
@@ -314,6 +324,7 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 
 | Where | What it says | Default | Notes |
 | --- | --- | --- | --- |
+| Settings > Everyday > How Bob works | Better tool calling: "On unless you turn it off. Before a tool runs, Bob checks the call and mends sure slips…" (Nov 12: the loop helps from 1.5.206, now with a switch) | On | Off = the loop as before 1.5.206. |
 | Settings > Everyday > How Bob works | Let Bob learn from his tools: "Off unless you turn it on. When a tool fails and then works, Bob keeps one line on what fixed it and reads it next time. He also counts what works and what fails, and offers to fix a tool that keeps failing. It all stays on this replicant matrix." | Off | While on: the scorecard (tool, ✓ wins, ✗ misses, "keeps failing") and **Forget what he learned**. Also on the Welcome's "Do you want me to:" list. |
 
 ## Added with Let Bob's Quick brain see the big job
@@ -352,3 +363,56 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 | Welcome, Do you want me to: | "Turn pictures into 3D models" (same switch) | off | new |
 | Settings > Engines (senses) | 3D workshop: Get (only where model3d/addons-pins.json has checked add-ons; Windows and Linux x64 with an NVIDIA card), about 22 GB with the models; Mac and ARM say to send the job to a PC Bob | not installed | new |
 | Settings > Bob-Net | Send/Take jobs: "3D models" is a new kind of job a PC Bob can take | — | new |
+
+## Added with Jobs (items 51 to 61)
+
+| Where | Setting / text | Default | Status |
+|---|---|---|---|
+| Settings > Jobs | Steer Bob mid-job: "Type in the chat while I work on a job there, and I read it before my next step instead of after the whole job." | Off | new |
+| Settings > Jobs | Show Stop after this step: "A softer button beside Stop: the step running now finishes and keeps its result, then I tell you what I did and what's left." | Off | new |
+| Settings > Jobs | Give each job a time limit: "A bar shows the time left. When it runs out, a card asks whether to give me more; with no answer in 2 minutes I wrap up." | Off | new |
+| Settings > Jobs | Time limit: "5, 10, 15, 20, 30, 45 or 60 minutes" | 10 minutes | new |
+| Settings > Jobs | Show a receipt after each job: "Files changed, commands run and pages read, each with Open or Undo. Undo works for a week, while the file still holds what I wrote." | Off | new |
+| Settings > Jobs | Run the tests after code edits: "In a project with tests, I run them after changing its code and fix what fails before I say done. The command still asks you first." | Off | new |
+| Settings > Jobs | Ask one question before a vague big job: "If a big ask could mean two things, I ask you to pick one first, instead of guessing and doing the wrong thing." | Off | new |
+| Settings > Jobs | Remember a no for the whole chat: "When you deny a step I remember it, with your reason if you type one, and don't offer the same thing again in other words." | Off | new |
+| Settings > Jobs | Reuse look-ups for an hour: "The same search or page within an hour comes from my memory, not the web again." | Off | new |
+| Settings > Jobs | Show sources under web answers: "Numbered links to the pages I actually read, under the answer." | Off | new |
+| Settings > Jobs | Say how sure Bob is: "When pages disagree or results are thin, one line saying how sure I am." | Off | new |
+| Settings > Jobs | Make file:line links clickable: "A file and line in my replies about code opens your editor there. On this replicant matrix only, not the phone." | Off | new |
+| Settings > Jobs | Open file:line links in: "VS Code, Cursor, VSCodium or Show it in its folder" | VS Code | new |
+| Chat, beside Stop | Stop after this step (only with its switch on) | — | new |
+| Chat, plain OK card | Why not? (optional, I'll remember for this chat) (only with Remember a no on) | — | new |
+| Chat, under a job | 🧾 What this job did: … with Open and Undo | — | new |
+
+## Health and history, Quiet hours and shortcut, Chat extras (harness items 62 to 72)
+
+| Where | Setting (key) | Default | Status |
+|---|---|---|---|
+| Settings > This replicant matrix > 🩺 Health and history | 🩺 Open the Health page (button, no switch: it only looks) | n/a | new, awaiting review |
+| same | Catch crashes (`crashCatcher`) | off | new, awaiting review |
+| same | Crash reports list: Show, Delete, Delete them all | n/a | new, awaiting review |
+| same | Offer a safe start after two crashes (`safeStart`), plus Put my switches back | off | new, awaiting review |
+| same | Keep the last 20 Settings changes (`settingsUndo`), Last Settings changes list with Put it back, Clear the list | off | new, awaiting review |
+| same | Count what Bob did each week (`weeklyReport`), 📅 What Bob did this week, Clear the counts | off | new, awaiting review |
+| Settings > How Bob works > 🌙 Quiet hours and shortcut | Quiet hours (`quietHours.on`), From / To (`quietHours.from`, `.to`) | off, 22:00 to 07:00 | new, awaiting review |
+| same | A shortcut from anywhere (`globalAsk.on`), The key (`globalAsk.key`) | off, Ctrl+Shift+Space | new, awaiting review |
+| Settings > How Bob works > 💬 Chat extras | Try from here (`tryFromHere`) | off | new, awaiting review |
+| same | Pin messages (`pinMessages`) | off | new, awaiting review |
+| same | Guest chats (`guestChat`) | off | new, awaiting review |
+| same | Each chat keeps its place in the engine (`chatPlaces`), Saved chat places count, Clear them | off | new, awaiting review |
+| Welcome, "Do you want me to:" | three buttons: Chat extras, Quiet hours and shortcut, Health and history | n/a | new, awaiting review |
+
+## Settings: Look & feel and 🗓 Everyday helpers (items 143 to 150)
+| Setting | Hint | Default | Review |
+|---|---|---|---|
+| Settings > Bob himself > 🌓 Look & feel | Text size (`textSize`, 80 to 160 in steps of 10): "The chat, the message box and Settings, bigger or smaller. 100% to start with. Saved for this Bob, on every window." | 100% | new, awaiting review |
+| Settings > Bob himself > 🌓 Look & feel | Easier-to-read font (`readableFont`): "Off to start with. A plainer font with more space between letters, words and lines, for the chat and Settings. Good for tired eyes and for dyslexia." | Off | new, awaiting review |
+| Settings > How Bob works > 🗓 Everyday helpers | Show a today card when Bob opens (`todayCard`) | Off | new, awaiting review |
+| Settings > How Bob works > 🗓 Everyday helpers | Place for the weather (`todayPlace`, text): empty = no weather; only the place name goes to open-meteo.com | Empty | new, awaiting review |
+| Settings > How Bob works > 🗓 Everyday helpers | Focus timer (`focusTimer`): the ⏱ Focus button beside Effort, 15/25/45/60 minutes | Off | new, awaiting review |
+| Settings > How Bob works > 🗓 Everyday helpers | Keep a spending sheet from receipts (`receipts`); the sheet, totals, Delete (press twice) and Save as a spreadsheet (CSV) sit under it, on or off. Kept locked in inn/bob/spending.json | Off | new, awaiting review |
+| Settings > How Bob works > 🗓 Everyday helpers | Show what's new after an update (`updateTour`, with `tourSeen`) | Off | new, awaiting review |
+| Settings > How Bob works > 🗓 Everyday helpers | Show a dot on the tray icon (`trayDot`); in a browser the line says it's only in Bob's own window | Off | new, awaiting review |
+| Settings > How Bob works > 🗓 Everyday helpers | Profiles for other people (`profilesOn`); people list, ＋ Add a person (Name, Their passcode), Remove (press twice). People kept in config.json `profiles`, their chats in inn/profiles/ | Off | new, awaiting review |
+| Android > Settings > Look | Text size (slider) and Easier-to-read font, kept on the phone | 100%, Off | new, awaiting review |

@@ -193,7 +193,7 @@ export function officeTools(brain, { env = process.env } = {}) {
   const t = {};
 
   t.convert_file = {
-    schema: fn('convert_file', 'Convert files: documents to each other or to PDF, and pictures, sound and video to other types (or a video to just its sound). The original stays; the new file goes next to it. {{USER}} sees a card first.', {
+    schema: fn('convert_file', 'Convert files: documents to each other or to PDF, and pictures, sound and video to other types (or a video to just its sound). The new file goes next to the original.', {
       paths: list('Full paths of the files to convert.'),
       to: str('The new ending, like pdf, docx, png, mp3, mp4.'),
       folder: str('Optional: the folder to save the new files in.'),
@@ -256,7 +256,7 @@ export function officeTools(brain, { env = process.env } = {}) {
   };
 
   t.office_make = {
-    schema: fn('office_make', 'Make a new document, spreadsheet or presentation (Word, Excel, PowerPoint or LibreOffice), or a PDF. No path = your Documents folder.', {
+    schema: fn('office_make', 'Make a new document, spreadsheet, presentation or PDF. No path = your Documents folder.', {
       kind: str('writer, calc or impress', { enum: ['writer', 'calc', 'impress'] }),
       path: str('Optional: full path ending in .docx, .odt, .xlsx, .ods, .pptx, .odp or .pdf. Never overwrites.'),
       name: str('Optional, when there is no path: a short file name.'),
@@ -288,7 +288,7 @@ export function officeTools(brain, { env = process.env } = {}) {
   };
 
   t.office_edit = {
-    schema: fn('office_edit', 'Change a document, spreadsheet or presentation, or fill a template. Read it with office_read first. Documents: replace, append. Spreadsheets: replace, set_cells, add_rows, add_sheet. Presentations: replace, add_slide, delete_slide. {{USER}} sees the changes on a card; the original is backed up.', {
+    schema: fn('office_edit', 'Change a document, spreadsheet or presentation, or fill a template (office_read it first). Documents: replace, append. Spreadsheets: also set_cells, add_rows, add_sheet. Presentations: also add_slide, delete_slide. The original is backed up.', {
       path: str('Full path of the file.'),
       changes: { type: 'array', description: 'The changes, in order.', items: { type: 'object', properties: {
         op: { type: 'string', enum: ['replace', 'append', 'set_cells', 'add_rows', 'add_sheet', 'add_slide', 'delete_slide'] },

@@ -1,4 +1,5 @@
 // Bob's local server: serves the panel and a small API. Only listens on this PC.
+import { caseFor, saveTest } from './my-tests.js';
 import { readText, writeText, vaultOn } from './vault.js'; // 🔒 Lock my chats and memory
 import { ramNow, memGB } from './server-ram.js';
 import { cpuLoad } from './speed-stats.js';
@@ -32,6 +33,7 @@ import { sacNoticeOnce } from './app-control.js';
 import { liveTrace } from '../public/lab-watch-math.js';
 import { cubeMap, cubeBrains, cubeShapes, listRecordings, startWatch } from './lab-watch.js';
 import { LabQueue } from './lab-queue.js'; // Nov 11: the Lab's job queue
+import { labPhone } from './lab-plus.js'; // Lab item 110: Lab jobs tell your phone
 import { recheckTick, QUIET_MIN } from './lab-recheck.js'; // Nov 11: check again after engine updates
 import { EngineKeeper, keeperOn } from './engine-keeper.js';
 import { autostartOn, setAutostart } from './autostart.js';
@@ -42,10 +44,14 @@ import { rentRoute } from './rental-routes.js'; // 1.5.127 rented brains
 import { Lab, labRoute, labOn, labRoom } from './lab.js'; // 1.5.141 Computer Science Lab
 import { startCalibrate, useCalibrated, calResult } from './brain-calibrate.js'; // 1.5.205
 import { splitRemoved } from './catalog-removed.js'; // 1.5.205
-import { say, KOKORO_VOICES, DEFAULT_KOKORO_VOICE, stopVoices } from './tts.js';
+import { say, KOKORO_VOICES, DEFAULT_KOKORO_VOICE, stopVoices, netVoiceFor } from './tts.js';
+import { receiveCarry, sendCarry, carryInOn } from './carry.js'; // Carry on on another Bob (item 140, off unless turned on)
+import { glanceView, glanceOn, GLANCE_OFF, cardReader } from './glance.js'; // Your Bobs on the phone (item 141, off unless turned on)
+import { loadReminders } from './tools.js';
+import { wholeChat as wholeChatOf, chatTitle as chatTitleOf } from './chats.js';
 process.on('exit', () => stopVoices()); // never leave a voice holding the graphics card
 import { workshopDir, listWorkflows, ensureWorkshop } from './workshop.js';
-import { SESSIONS, currentSession, sessionBrains } from './sessions.js';
+import { SESSIONS, currentSession, sessionBrains, gaming as gamingOn } from './sessions.js';
 import { autoSessionOn } from './auto-session.js';
 import { ctxOn, stretchOn, choicesFor, pickedCtx, bobsPick, ctxGuide, SAFE_CTX } from './model-ctx.js';
 import { SLOT_NAMES } from '../public/fit.js';
@@ -76,6 +82,9 @@ import { handsSettings } from './hands-settings.js';
 import { tuning, TUNING_KEYS, pictureFitReset } from './tuning.js';
 import { gatherFacts, tipsFrom } from './pc-check.js';
 import { speedTest, speedHistory } from './speed-test.js';
+import { startEngineExtras, currentEngineNote } from './engine-extras-run.js'; // list items 94-100
+import { EXTRA_SWITCHES, batteryNow } from './engine-extras.js';
+import { readSpeedLog, speedSeries } from './speed-log.js';
 import { trainerState } from './lab-teach.js'; // 1.5.16x the Lab's Trainer pack, shown in Settings so it can be removed
 import { phoneView, cleanPhonePatch, findAddresses, newPasscode, isTailscaleIp } from './phone-access.js';
 import { firewallState, changeRule, firewallHome, firewallUdp } from './firewall.js';
@@ -101,8 +110,24 @@ import { Lock, lockOn, lockView, lockPage, OPEN_WHILE_LOCKED } from './lock.js';
 import { findOpenscad } from './parts3d.js';
 import { model3dReady } from './model3d.js';
 import { lockAtStart, secretsPatch, secretsView } from './secret-settings.js'; // 🔐 Locked secrets
+import { cleanJobHelps, stopAfterStep, undoReceipt, keepDenyNote, pruneReceipts } from './job-helps.js'; // Settings, Jobs (items 51-61)
+import { openAt } from './job-open.js';
+import { harnessRoute } from './harness-routes.js'; // items 62 to 72 (src/harness.js), all off unless switched on
+import { watchRuns, endRun, engineCrashed } from './crash-catch.js'; // Catch crashes, Safe start
+import { undoWatcher } from './settings-undo.js'; // Keep the last 20 Settings changes
+import { Weekly } from './weekly.js'; // Count what Bob did each week
+import { watchSettings } from './config.js';
+import { everydayView, everydaySettings, Focus } from './everyday.js'; // 🗓 Everyday helpers (all off by default)
+import { everydayRoute, trayDot } from './everyday-routes.js';
+import { Profiles } from './profiles.js'; // 👥 Profiles on a shared replicant matrix
 
 const cfg = loadConfig();
+// Catch crashes and Safe start (crash-catch.js): the "Bob is running" marker; a report of an unclean last end (switch on).
+const logTail = () => { try { const t = fs.readFileSync(cfg.logbook, 'utf8'); return t.slice(-20000); } catch { return ''; } };
+const crashState = watchRuns(cfg, { version: VERSION.label, logText: logTail });
+globalThis.bobCleanExit = () => endRun(cfg); // Bob.exe says so when it quits on purpose
+watchSettings(undoWatcher(cfg)); // Keep the last 20 Settings changes: records only while its switch is on
+const weekly = new Weekly(cfg); // Count what Bob did each week: counts only while its switch is on
 // 1.5.76: the basic llama.cpp that comes inside Bob's download goes into his engine folder, if he has none yet.
 try { if (seedBundledEngine(cfg)) console.error('Bob: set up the llama.cpp that came with him.'); } catch {}
 const publicDir = path.join(appDir, 'public');
@@ -134,24 +159,34 @@ const liveCubes = new Set(); // the cube pages with Real experts on: only these 
 let telegram = null; // Talk to Bob on Telegram (src/telegram.js), set once Bob's brain is ready
 let discord = null; // Bob on Discord (src/discord.js), set once Bob's brain is ready
 let cubeLoading = ''; // the brain fNRI's small cube last saw starting to load
+const PROFILE_PRIVATE = ['/api/events', '/api/history', '/api/chat', '/api/chats', '/api/topics', '/api/search', '/api/memory', '/api/made', '/api/queue', '/api/everyday'];
+let focus = null; // ⏱ the focus timer (everyday.js): holds taps on the shoulder until it ends
 function broadcast(ev) {
+  if (focus?.hold(ev)) return;
   if (ev?.type === 'think-start' && ev.model) ev = { ...ev, label: friendlyName(ev.model) }; // "Qwen 3.8 27B", not the raw tag
   const data = `data: ${JSON.stringify(ev)}\n\n`;
   for (const res of ev?.type === 'think' || ev?.type === 'think-start' ? mindClients : clients) res.write(data);
   if (ev?.type === 'status') { const l = ['waking', 'loading'].includes(ev.state) ? String(ev.model || '') : ''; if (l !== cubeLoading) { cubeLoading = l; if (l && cubeClients.size) cubeBrainsNow(); } } // once as a brain starts loading, not every progress line
   if (ev?.type === 'brain' && cubeClients.size) cubeBrainsNow(); // fNRI's small cube takes itself apart when its brain is let go
+  try { weekly.watch(ev, () => brain.engine?.current || ''); } catch {} // Count what Bob did each week (numbers only)
   try { telegram?.watch(ev); } catch {} // Talk to Bob on Telegram: only the Telegram chat's events, and only while it's on
   try { discord?.watch(ev); } catch {} // Bob on Discord: only Discord jobs' own events
   if (ev?.type === 'pair-done') try { introductions.soon(); } catch {} // 1.5.123: a new Bob on the list meets the others
 }
 
 const brain = new Brain(cfg, broadcast);
+pruneReceipts(cfg); // Settings, Jobs: a receipt's Undo lasts a week
+if (brain.engine) brain.engine.onCrash = (x) => engineCrashed(cfg, { ...x, version: VERSION.label, logText: logTail() }); // Catch crashes
+// A shortcut from anywhere (electron/main.cjs): Bob.exe registers the key while the switch is on. Nothing in a browser.
+const applyShortcut = (g) => { try { globalThis.bobGlobalAsk?.(g, cfg.port); } catch {} };
+setTimeout(() => applyShortcut(cfg.globalAsk), 1500).unref?.();
 const appsRoute = makeAppsRoute({ brain, cfg, version: VERSION.label || String(VERSION) });
 lockAtStart(cfg, (k, t) => brain.log(k, t)); // 🔐 Locked secrets: notes from opening the box, then any plain keys from an older Bob locked away
 if (cfg.engineMoved?.length) brain.log('settings', `brains now run on ${cfg.llamacpp.brainEngine !== false && brainsEngineNow(cfg) === 'brainengine' ? 'Brain Engine' : 'plain llama.cpp'} (was set to ${cfg.engineMoved.join(' and ')}; Brain Engine is the only engine for my brains now)`); // 1.5.196
 // 1.5.97 Pair with my other Bobs (src/bob-net-pair.js): find them on Tailscale, a Yes card there, passcodes swapped.
 const pairing = new Pairing(cfg, { broadcast, log: (k, t) => brain.log(k, t), version: VERSION, ownAddresses: () => tailscaleIps().map((ip) => `${ip}:${cfg.port}`), vouched: (a, t) => introductions.vouched(a, t) });
 // 1.5.123 Pass my Bob-Net along (src/bob-net-party.js): your Bobs introduce each other; also the party in Now running.
+const readCardNow = cardReader(); // Your Bobs on the phone: one card reading every 20 s at most
 const introductions = new Introductions(cfg, { lenders: brain.lenders, pairing, log: (k, t) => brain.log(k, t) });
 setTimeout(() => introductions.soon(0), 60_000).unref(); // once Bob is up, and then every hour
 setInterval(() => introductions.soon(0), 3600_000).unref();
@@ -179,7 +214,7 @@ if (brain.engine) {
 }
 // 1.5.38: when Downloads change, a job waiting for one (a song waiting for the music models) may be able to go.
 const shop = new ModelShop(cfg, (ev) => { broadcast(ev); if (ev?.type === 'downloads') brain.downloadsChanged(); }, brain.engine);
-const lab = new Lab(cfg, { shop, brain, broadcast }); // 1.5.141
+const lab = new Lab(cfg, { shop, brain, broadcast: labPhone(broadcast, () => lab.cfg) }); // 1.5.141; labPhone: "Tell my phone" (Lab item 110)
 lab.version = VERSION.label; // 1.5.153 the foot of a saved Lab result
 // Nov 11: the Lab's job queue (lab-queue.js), its fNRI scans for My Lab, and the check after engine updates.
 lab.listScans = () => lab.brains().flatMap((b) => listRecordings(cfg, b).map((x) => ({ brain: b.name, brainId: b.id, id: x.id, name: x.name, when: x.when, at: x.at, skills: x.skills.length }))).sort((a, b) => b.at - a.at);
@@ -204,6 +239,10 @@ const engineKeeper = new EngineKeeper(cfg, {
   download: (id) => shop.dl.find((d) => d.id === 'engine:' + id) || null,
   say: (text) => { brain.log('settings', text); broadcast({ type: 'announce', text }); }
 }).start();
+// List items 94-100 (src/engine-extras-run.js): speed history, the next brain read ahead, Laptop mode and the new card
+// test. Each part does nothing until its switch is on in Settings.
+const extras = startEngineExtras({ cfg, brain, hardware: () => shop.hardware(), say: (text) => { brain.log('settings', text); broadcast({ type: 'announce', text }); } });
+extras.cardCheck({ saveSettings }).catch(() => {});
 // Back up and move (src/backup.js): the automatic backup checks once an hour and only saves with its switch on.
 const backupKeeper = new BackupKeeper(cfg, { log: (t) => brain.log('settings', t), version: VERSION.label });
 if (cfg.restored) brain.log('settings', `restore went in at start: ${cfg.restored.placed} file(s) from ${cfg.restored.from || 'a backup'}${cfg.restored.kept ? `, what they replaced is in ${cfg.restored.keptIn}` : ''}${cfg.restored.failed.length ? `, ${cfg.restored.failed.length} couldn't go in` : ''}`);
@@ -304,6 +343,9 @@ readRemote();
 const startedWide = Boolean(remoteOn && remote.bindAddress);
 const loginTries = [];
 const winLock = new Lock(cfg, { log: (k, t) => brain.log(k, t) });
+const profiles = new Profiles(cfg, { brain, log: (k, t) => brain.log(k, t) }); // 👥 off unless turned on
+focus = new Focus({ send: broadcast });
+{ const t = setInterval(() => focus.tick(), 5000); t.unref?.(); }
 
 // Phone access over Tailscale only: loopback or the Tailscale range (100.64.0.0/10).
 function fromTailscaleOrLocal(addr) {
@@ -389,8 +431,15 @@ const server = http.createServer(async (req, res) => {
         for await (const c of req) { raw += c; if (raw.length > 2000) break; }
         const form = new URLSearchParams(raw);
         const next = form.get('next') || '/';
-        const r = winLock.unlock(form.get('code') || '');
-        if (r.error) { brain.log('settings', 'passcode lock: a wrong passcode was typed'); return send(res, r.code, lockPage({ next, wrong: r.error, encrypt: vaultOn(cfg) }), 'text/html; charset=utf-8'); }
+        const who = form.get('who') || 'main';
+        // 👥 a person's own passcode opens only their chats and memory (profiles.js); the owner's opens the owner's.
+        // When the person changes, every other window is locked out first, so nobody sees someone else's chats.
+        const before = profiles.current();
+        const r = who !== 'main' ? profiles.open(who, form.get('code') || '') : winLock.unlock(form.get('code') || '');
+        if (r.error) { brain.log('settings', 'passcode lock: a wrong passcode was typed'); return send(res, r.code, lockPage({ next, wrong: r.error, encrypt: vaultOn(cfg), people: profiles.people() }), 'text/html; charset=utf-8'); }
+        if (who === 'main') profiles.useMain();
+        if (profiles.current() !== before) { winLock.lockNow(); for (const c of [...clients, ...mindClients]) { try { c.end(); } catch {} } } // open windows of the one before hear nothing more
+        if (profiles.current() !== before || !r.token) r.token = winLock.grant();
         res.writeHead(303, { location: /^\/[^/]/.test(next) || next === '/' ? next : '/', 'set-cookie': winLock.cookie(r.token), 'cache-control': 'no-store' });
         return res.end();
       }
@@ -399,11 +448,14 @@ const server = http.createServer(async (req, res) => {
         if (req.method === 'GET' && p === '/api/lock/state') return send(res, 200, { enabled: true, locked: true });
         if (!OPEN_WHILE_LOCKED(req.method, p)) {
           if (p.startsWith('/api/')) return send(res, 401, { error: 'Bob is locked.', locked: true });
-          return send(res, 401, lockPage({ next: req.method === 'GET' ? req.url : '/', encrypt: vaultOn(cfg) }), 'text/html; charset=utf-8');
+          return send(res, 401, lockPage({ next: req.method === 'GET' ? req.url : '/', encrypt: vaultOn(cfg), people: profiles.people() }), 'text/html; charset=utf-8');
         }
       } else if (req.method === 'POST') winLock.touch(req);
     }
     if (req.method === 'GET' && p === '/api/lock/state') return send(res, 200, { enabled: isLocal && lockOn(cfg), locked: false });
+    // 👥 While a person's profile is open (profiles.js), the owner's phone and other doors from outside never see their
+    // chats, memory, live replies or spending sheet. Bob-Net's machine-to-machine doors (lend, pair, guest jobs) carry on.
+    if (!isLocal && cfg.profileNow && PROFILE_PRIVATE.some((x) => p === x || p.startsWith(x + '/'))) return send(res, 423, { error: 'Someone is using Bob on the computer under their own profile right now. Try again when they\'ve locked him.' });
 
     if (req.method === 'POST' && req.headers['x-bob'] !== '1') return send(res, 403, { error: 'missing header' });
     // More locks on the same door (the x-bob header alone already makes a browser ask first, and Bob never says yes):
@@ -512,6 +564,22 @@ const server = http.createServer(async (req, res) => {
     }
     // Try again and Edit (redo.js): takes back the answer (or changes your message), keeps what was there as an earlier
     // version, and says what to send. { sessionId, id?, text? }: no text is Try again; text is Edit (by id, or last: true).
+    // Item 13 "Sum up and carry on": the older part of this chat is moved aside and summed up now (brain.compactChat).
+    if (req.method === 'POST' && p === '/api/chat/compact') {
+      const b = await body(req).catch(() => ({}));
+      const r = await brain.compactChat(String(b.sessionId || 'main'));
+      return send(res, r.error ? 409 : 200, r);
+    }
+    // Item 11 "Save as a test" (my-tests.js): the Bob answer with this id and the question before it, kept as a loop-test case.
+    if (req.method === 'POST' && p === '/api/chat/save-test') {
+      if (!isLocal) return send(res, 403, { error: 'Tests can only be saved on this replicant matrix itself.' });
+      const b = await body(req).catch(() => ({}));
+      const c = caseFor(brain.session(String(b.sessionId || 'main')), String(b.id || ''), { why: typeof b.why === 'string' ? b.why : '' });
+      if (!c) return send(res, 400, { error: 'That answer is in the older part of the chat, or has no question before it.' });
+      const n = saveTest(cfg, c);
+      brain.log('lab', `saved a test from the chat: "${c.text.slice(0, 80)}" (${n} saved)`);
+      return send(res, 200, { ok: true, count: n });
+    }
     if (req.method === 'POST' && p === '/api/chat/redo') {
       const b = await body(req).catch(() => ({}));
       const r = redo(brain, String(b.sessionId || 'main'), { ...(b.id ? { id: String(b.id) } : {}), ...(b.last === true ? { last: true } : {}), ...(typeof b.text === 'string' ? { text: b.text } : {}) });
@@ -604,6 +672,7 @@ const server = http.createServer(async (req, res) => {
       const bobPids = [brain.engine?.child?.pid, brain.painter?.child?.pid].filter(Boolean);
       return send(res, 200, tipsFrom(await gatherFacts(cfg, { bobPids })));
     }
+    if (req.method === 'GET' && p === '/api/speed-log') return send(res, 200, { on: cfg.speedLog === true, brains: speedSeries(readSpeedLog(cfg)) }); // 96 Speed history
     if (req.method === 'GET' && p === '/api/speed-test') return send(res, 200, { history: speedHistory(cfg), running: Boolean(brain.speedTesting) });
     if (req.method === 'POST' && p === '/api/speed-test') {
       try { return send(res, 200, { result: await speedTest(brain), history: speedHistory(cfg) }); }
@@ -613,7 +682,7 @@ const server = http.createServer(async (req, res) => {
     // 1.5.74: whether the core engines start (first-run step 1, and Settings, Engines).
     if (req.method === 'GET' && p === '/api/engines/check') return send(res, 200, { checks: await Promise.all(['llamacpp', 'sdcpp', 'whispercpp'].map((id) => checkEngine(cfg, id))) });
     if (req.method === 'GET' && p === '/api/settings') {
-      return send(res, 200, { apuHoldbackGB: apuHoldbackGB(cfg), lockSecrets: cfg.lockSecrets !== false, autostart: autostartOn(), tray: cfg.tray !== false, lookIcon: cfg.lookIcon !== false, catalogUpdates: cfg.catalogUpdates === true, computerLab: labOn(cfg), computerLabRoom: labRoom(), qwenPresets: cleanPresets(cfg.qwenPresets), qwenDefaults: Object.fromEntries(Object.entries(QWEN_PRESETS).map(([id, p]) => [id, { label: p.label, ...qwenPreset(id) }])), trayHere: Boolean(globalThis.bobWindow), setupDone: Boolean(cfg.setupDone), wantsAsked: cfg.wantsAsked === true, look: cfg.look || null, lookText: lookText(cfg.look), personality: cleanPersonality(cfg.personality), lookComments: cfg.lookComments === true, userName: cfg.userName || '', callMe: cfg.callMe || '', windowsName: cfg.windowsName || '', engine: cfg.engine, workshop: workshopView(), catName: cfg.catName || 'Patches', language: LANGUAGES.includes(cfg.language) ? cfg.language : 'en', version: VERSION, oneBrain: cfg.oneBrain === true, allTools: cfg.allTools === true, memoryRecall: cfg.memoryRecall === true, memoryBanks: memoryBanksView(), resumeJobs: cfg.resumeJobs === true, planFirst: cfg.planFirst === true, autoSession: autoSessionOn(cfg), gamingLock: cfg.gamingLock === true, sessionBy: cfg.sessionBy === 'bob' ? 'bob' : 'you', quickOnCpu: cfg.quickOnCpu === true, chatWhileBusy: cfg.chatWhileBusy !== false, mootBeside: cfg.mootBeside === true, netReview: cfg.netReview === true, webSearch: cfg.webSearch === true, naughtyList: cfg.naughtyList === true, howtos: cfg.howtos === true, editOwn: cfg.editOwn === true, quickNotes: cfg.quickNotes === true, quickSeesJob: cfg.quickSeesJob === true, docMeaning: cfg.docMeaning === true, docIndex: brain.housekeeper?.docIndexView() || null, chatPresets: presetsOn(cfg), chatRedo: cfg.chatRedo !== false, docView: cfg.docView === true, parts3d: cfg.parts3d === true, openscadHere: Boolean(findOpenscad(cfg)), model3d: cfg.model3d === true, model3dHere: model3dReady(cfg), promptMenu: cfg.promptMenu === true, mathView: cfg.mathView === true, shortcuts: cfg.shortcuts === true, chatFiles: cfg.chatFiles === true, smartNotes: cfg.smartNotes === true, quickNotesFile: notesFile(cfg), docTools: cfg.docTools === true, sandboxCode: cfg.sandboxCode === true, toolLearning: cfg.toolLearning === true, toolScores: cfg.toolLearning === true ? scorecard(cfg).slice(0, 12) : [], howtoCount: brain.howtos?.load().length || 0, ownKit: ownKitCounts(cfg, brain), gamingCard: gamingCard(cfg), gamingCardNow: brain.engine?.currentCard || null, pictureNoWait: cfg.pictureNoWait !== false, ...tuning(cfg), downloads: { concurrent: cfg.downloads?.concurrent === 2 ? 2 : 1, resumeOnStart: cfg.downloads?.resumeOnStart === true }, updates: { autoCheck: cfg.updates?.autoCheck === true }, engineUpdates: engineKeeper.view(), ollamaKeepAlive: keepTime(cfg), brainMode: brainMode(cfg), tts: { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice || DEFAULT_KOKORO_VOICE, speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '', voicesFolder: path.join(cfg.innDir, 'voices') }, kokoroVoices: KOKORO_VOICES, kokoroDefault: DEFAULT_KOKORO_VOICE, session: currentSession(cfg), sessions: Object.entries(SESSIONS).map(([id, x]) => ({ id, ...x, ...(OS === 'mac' && x.whatMac ? { what: x.whatMac } : {}) })), sessionBrains: sessionBrains(cfg), activeModels: cfg.activeModels || {}, sessionCtx: cfg.sessionCtx || {}, brainCtxOn: cfg.brainCtxOn === true, brainCtxStretch: cfg.brainCtxStretch === true, brainCtx: cfg.brainCtx || {}, speed: speedView(), style: cfg.style || {}, painter: cfg.painter?.engine || 'comfy', platform: process.platform, os: OS, features: features(), home: cfg.agentDir, housekeeping: hkSettings(cfg), hands: handsSettings(cfg), houseStyle: cleanHouseStyle(cfg.houseStyle), projectList: Object.entries(cfg.projects || {}).filter(([, p]) => !isInside(codeCopyRoot(cfg), p)).map(([name, p]) => ({ name, path: p, missing: !fs.existsSync(p) })), selfWork: selfWorkNow(), defaultProject: cfg.defaultProject || '', saveDir: saveDirView(), passcodeLock: lockView(cfg) });
+      return send(res, 200, { jobHelps: cleanJobHelps(cfg.jobHelps), apuHoldbackGB: apuHoldbackGB(cfg), lockSecrets: cfg.lockSecrets !== false, autostart: autostartOn(), tray: cfg.tray !== false, lookIcon: cfg.lookIcon !== false, catalogUpdates: cfg.catalogUpdates === true, computerLab: labOn(cfg), labSaveQuestions: labOn(cfg) && cfg.labExtras?.saveQuestions === true, computerLabRoom: labRoom(), qwenPresets: cleanPresets(cfg.qwenPresets), qwenDefaults: Object.fromEntries(Object.entries(QWEN_PRESETS).map(([id, p]) => [id, { label: p.label, ...qwenPreset(id) }])), trayHere: Boolean(globalThis.bobWindow), setupDone: Boolean(cfg.setupDone), wantsAsked: cfg.wantsAsked === true, look: cfg.look || null, lookText: lookText(cfg.look), personality: cleanPersonality(cfg.personality), lookComments: cfg.lookComments === true, userName: cfg.userName || '', callMe: cfg.callMe || '', windowsName: cfg.windowsName || '', engine: cfg.engine, workshop: workshopView(), catName: cfg.catName || 'Patches', language: LANGUAGES.includes(cfg.language) ? cfg.language : 'en', version: VERSION, oneBrain: cfg.oneBrain === true, allTools: cfg.allTools === true, memoryRecall: cfg.memoryRecall === true, memoryBanks: memoryBanksView(), resumeJobs: cfg.resumeJobs === true, planFirst: cfg.planFirst === true, autoSession: autoSessionOn(cfg), gamingLock: cfg.gamingLock === true, sessionBy: cfg.sessionBy === 'bob' ? 'bob' : 'you', quickOnCpu: cfg.quickOnCpu === true, chatWhileBusy: cfg.chatWhileBusy !== false, mootBeside: cfg.mootBeside === true, netReview: cfg.netReview === true, webSearch: cfg.webSearch === true, naughtyList: cfg.naughtyList === true, howtos: cfg.howtos === true, editOwn: cfg.editOwn === true, quickNotes: cfg.quickNotes === true, quickSeesJob: cfg.quickSeesJob === true, ...Object.fromEntries(EXTRA_SWITCHES.map((k) => [k, cfg[k] === true])), brainMemType: cfg.brainMemType || {}, onBattery: batteryNow(), engineNote: cfg.engineNotes === true ? currentEngineNote(cfg) : '', docMeaning: cfg.docMeaning === true, docIndex: brain.housekeeper?.docIndexView() || null, chatPresets: presetsOn(cfg), chatRedo: cfg.chatRedo !== false, docView: cfg.docView === true, parts3d: cfg.parts3d === true, openscadHere: Boolean(findOpenscad(cfg)), model3d: cfg.model3d === true, model3dHere: model3dReady(cfg), promptMenu: cfg.promptMenu === true, mathView: cfg.mathView === true, talkOver: cfg.talkOver === true, readDocs: cfg.readDocs === true, netVoices: cfg.netVoices === true, netVoiceMap: cfg.netVoiceMap || {}, netBobs: (brain.lenders?.bobs?.() || []).map((x) => x.name).slice(0, 30), carryIn: cfg.carryIn === true, phoneGlance: cfg.phoneGlance === true, shortcuts: cfg.shortcuts === true, chatFiles: cfg.chatFiles === true, smartNotes: cfg.smartNotes === true, quickNotesFile: notesFile(cfg), docTools: cfg.docTools === true, sandboxCode: cfg.sandboxCode === true, toolLearning: cfg.toolLearning === true, toolScores: cfg.toolLearning === true ? scorecard(cfg).slice(0, 12) : [], howtoCount: brain.howtos?.load().length || 0, ownKit: ownKitCounts(cfg, brain), gamingCard: gamingCard(cfg), gamingCardNow: brain.engine?.currentCard || null, pictureNoWait: cfg.pictureNoWait !== false, ...tuning(cfg), downloads: { concurrent: cfg.downloads?.concurrent === 2 ? 2 : 1, resumeOnStart: cfg.downloads?.resumeOnStart === true }, updates: { autoCheck: cfg.updates?.autoCheck === true }, engineUpdates: engineKeeper.view(), ollamaKeepAlive: keepTime(cfg), brainMode: brainMode(cfg), tts: { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice || DEFAULT_KOKORO_VOICE, speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '', voicesFolder: path.join(cfg.innDir, 'voices') }, kokoroVoices: KOKORO_VOICES, kokoroDefault: DEFAULT_KOKORO_VOICE, session: currentSession(cfg), sessions: Object.entries(SESSIONS).map(([id, x]) => ({ id, ...x, ...(OS === 'mac' && x.whatMac ? { what: x.whatMac } : {}) })), sessionBrains: sessionBrains(cfg), activeModels: cfg.activeModels || {}, sessionCtx: cfg.sessionCtx || {}, brainCtxOn: cfg.brainCtxOn === true, brainCtxStretch: cfg.brainCtxStretch === true, brainCtx: cfg.brainCtx || {}, speed: speedView(), style: cfg.style || {}, painter: cfg.painter?.engine || 'comfy', platform: process.platform, os: OS, features: features(), home: cfg.agentDir, housekeeping: hkSettings(cfg), hands: handsSettings(cfg), houseStyle: cleanHouseStyle(cfg.houseStyle), projectList: Object.entries(cfg.projects || {}).filter(([, p]) => !isInside(codeCopyRoot(cfg), p)).map(([name, p]) => ({ name, path: p, missing: !fs.existsSync(p) })), selfWork: selfWorkNow(), defaultProject: cfg.defaultProject || '', saveDir: saveDirView(), toolHelp: cfg.toolHelp !== false, passcodeLock: lockView(cfg), ...everydayView(cfg), focusNow: focus.view(), profiles: profiles.view() });
     }
     // 🔒 Passcode lock (Settings, This replicant matrix). Only from this replicant matrix, only once you're in.
     if (p === '/api/lock' && (req.method === 'GET' || req.method === 'POST')) {
@@ -716,6 +785,34 @@ const server = http.createServer(async (req, res) => {
       if (!isRemote) return send(res, 403, { error: 'only from another of your Bobs' });
       const r = introductions.receive(await body(req).catch(() => ({})), req.socket.remoteAddress);
       return send(res, r.code, r);
+    }
+    // Your Bobs on the phone (src/glance.js, item 141): how this Bob is doing, for the phone's Your Bobs page and its
+    // widget. Signed in through the door, or here; only with "Let my phone see how I'm doing" on.
+    if (req.method === 'GET' && p === '/api/bob-net/glance') {
+      if (!glanceOn(cfg)) return send(res, 409, { error: GLANCE_OFF, off: true });
+      let loaded = [];
+      try { loaded = await brain.engine.loaded(); } catch {}
+      return send(res, 200, glanceView(brain, { cfg, card: await readCardNow(), loaded, reminders: loadReminders(cfg), version: VERSION, name: myName(), gaming: gamingOn(cfg) }));
+    }
+    // Carry on on another Bob (src/carry.js, item 140). Taking a chat: from another of your Bobs or your phone, through
+    // the door, only with "Take chats from my other Bobs" on. Sending one: from this window only.
+    if (req.method === 'POST' && p === '/api/bob-net/carry') {
+      if (!isRemote) return send(res, 403, { error: 'only from another of your Bobs' });
+      const b = await body(req).catch(() => ({}));
+      const r = receiveCarry(cfg, b, { fromPhone: /^phone-/.test(String(b?.sessionId || '')) });
+      if (r.ok) { brain.log('bob-net', `took a chat from ${r.from}: "${r.title}" (${r.messages} messages)`); brain.broadcast({ type: 'carried', id: r.id, title: r.title, from: r.from }); }
+      const { code, ...answer } = r;
+      return send(res, code, answer);
+    }
+    if (p === '/api/bob-net/carry-out' && (req.method === 'GET' || req.method === 'POST')) {
+      if (!isLocal) return send(res, 403, { error: 'Chats can only be sent from this replicant matrix itself.' });
+      if (req.method === 'GET') return send(res, 200, { bobs: (brain.lenders?.bobs?.() || []).map((x) => ({ name: x.name, address: x.address })), carryIn: carryInOn(cfg) });
+      const b = await body(req).catch(() => ({}));
+      const id = String(b.sessionId || '');
+      const msgs = wholeChatOf(cfg, id);
+      const r = await sendCarry({ lenders: brain.lenders, msgs, title: chatTitleOf(msgs), from: myName() || 'Bob', address: String(b.address || '') });
+      if (r.ok) brain.log('bob-net', `carried chat ${id.slice(0, 40)} over to ${r.to} (${r.messages} messages)`);
+      return send(res, r.ok ? 200 : 400, r);
     }
     // 1.5.97 Pair with my other Bobs: Find, Pair, and the Yes/No card. Only on this replicant matrix itself.
     if (p === '/api/bob-net/find' || p === '/api/bob-net/pair' || p === '/api/bob-net/answer') {
@@ -942,12 +1039,19 @@ const server = http.createServer(async (req, res) => {
           if (typeof b.naughtyList === 'boolean') { saveSettings(cfg, { naughtyList: b.naughtyList }); out.naughtyList = cfg.naughtyList === true; } // 1.5.132
           if (typeof b.catalogUpdates === 'boolean') { saveSettings(cfg, { catalogUpdates: b.catalogUpdates }); out.catalogUpdates = cfg.catalogUpdates === true; shop.catalog = mergeAdded(listUpdates.merge(shop.shipped), cfg); if (out.catalogUpdates) out.listCheck = await checkList(); } // 1.5.137
           if (typeof b.computerLab === 'boolean') { if (b.computerLab && !labRoom().ok) out.computerLabWhy = labRoom().why; else saveSettings(cfg, { computerLab: b.computerLab }); out.computerLab = labOn(cfg); } // 1.5.141
+          // Voice, phone and Bob-Net (items 133 to 142): off unless turned on.
+          for (const k of ['talkOver', 'readDocs', 'netVoices', 'carryIn', 'phoneGlance']) if (typeof b[k] === 'boolean') { saveSettings(cfg, { [k]: b[k] }); out[k] = cfg[k] === true; }
+          if (b.netVoiceMap && typeof b.netVoiceMap === 'object') { saveSettings(cfg, { netVoiceMap: b.netVoiceMap }); out.netVoiceMap = cfg.netVoiceMap || {}; }
           if (typeof b.howtos === 'boolean') { saveSettings(cfg, { howtos: b.howtos }); out.howtos = cfg.howtos === true; }
           if (typeof b.editOwn === 'boolean') { saveSettings(cfg, { editOwn: b.editOwn }); out.editOwn = cfg.editOwn === true; }
+          for (const k of EXTRA_SWITCHES) if (typeof b[k] === 'boolean') { saveSettings(cfg, { [k]: b[k] }); out[k] = cfg[k] === true; if (k === 'laptopMode') { extras.laptopChanged(); out.onBattery = batteryNow(); } if (k === 'newCardTest' && b[k]) extras.cardCheck({ saveSettings }).catch(() => {}); if (k === 'engineNotes') out.engineNote = b[k] ? currentEngineNote(cfg) : ''; } // list items 94-100
+          if (b.brainMemType && typeof b.brainMemType === 'object' && !Array.isArray(b.brainMemType)) { saveSettings(cfg, { brainMemType: b.brainMemType }); out.brainMemType = cfg.brainMemType || {}; } // 100
+          if (b.jobHelps && typeof b.jobHelps === 'object' && !Array.isArray(b.jobHelps)) { saveSettings(cfg, { jobHelps: cleanJobHelps({ ...cleanJobHelps(cfg.jobHelps), ...b.jobHelps }) }); out.jobHelps = cleanJobHelps(cfg.jobHelps); } // Settings, Jobs
           if (typeof b.quickSeesJob === 'boolean') { saveSettings(cfg, { quickSeesJob: b.quickSeesJob }); out.quickSeesJob = cfg.quickSeesJob === true; }
           if (typeof b.chatRedo === 'boolean') { saveSettings(cfg, { chatRedo: b.chatRedo }); out.chatRedo = cfg.chatRedo !== false; }
           if (typeof b.quickNotes === 'boolean') { saveSettings(cfg, { quickNotes: b.quickNotes }); out.quickNotes = cfg.quickNotes === true; if (out.quickNotes) { try { ensureNotesFile(cfg); } catch {} } } // notes.js
           if (typeof b.smartNotes === 'boolean') { saveSettings(cfg, { smartNotes: b.smartNotes, ...(b.smartNotes ? { quickNotes: true } : {}) }); out.smartNotes = cfg.smartNotes === true; out.quickNotes = cfg.quickNotes === true; if (out.quickNotes) { try { ensureNotesFile(cfg); } catch {} } } // notes.js: needs quick notes, so turning it on turns them on too
+          if (typeof b.toolHelp === 'boolean') { saveSettings(cfg, { toolHelp: b.toolHelp }); out.toolHelp = cfg.toolHelp !== false; } // loop-help.js, on unless turned off
           if (typeof b.toolLearning === 'boolean') { saveSettings(cfg, { toolLearning: b.toolLearning }); out.toolLearning = cfg.toolLearning === true; } // tool-learn.js
           if (b.toolLearningForget === true) { forgetLearning(cfg); out.toolScores = []; }
           if (typeof b.docTools === 'boolean') { saveSettings(cfg, { docTools: b.docTools }); out.docTools = cfg.docTools === true; if (!out.docTools) { clearDocCache(); brain.housekeeper?.forgetDocIndex(); } } // my-docs.js; off also deletes the meaning index
@@ -968,8 +1072,12 @@ const server = http.createServer(async (req, res) => {
           if (b.selfWork && typeof b.selfWork === 'object') { saveSettings(cfg, { selfWork: cleanSelfWork({ ...(cfg.selfWork || {}), ...b.selfWork }) }); applyCodeCopy(cfg); out.selfWork = selfWorkNow(); }
           // 1.5.94 tray and icon: saved, then handed straight to the window program, so they work without a restart.
           if (typeof b.tray === 'boolean') { saveSettings(cfg, { tray: b.tray }); out.tray = cfg.tray !== false; }
+          everydaySettings(cfg, b, saveSettings, out); // 🗓 Everyday helpers: text size, font, profiles, today card, focus timer, receipts, tour, tray dot
+          if (b.trayDot === false) trayDot(cfg, false);
+          if (b.focusTimer === false && focus.on) focus.finish(false);
           if (typeof b.lookIcon === 'boolean') { saveSettings(cfg, { lookIcon: b.lookIcon }); out.lookIcon = cfg.lookIcon !== false; }
           if ('tray' in b || 'lookIcon' in b || 'look' in b) applyWindowState(cfg);
+          else if ('trayDot' in b) applyWindowState(cfg); // 🗓 the tray dot's pictures
           if (GAMING_CARD.includes(b.gamingCard)) { saveSettings(cfg, { gamingCard: b.gamingCard }); out.gamingCard = gamingCard(cfg); out.gamingCardNow = brain.engine?.currentCard || null; }
           if (typeof b.mootBeside === 'boolean') { saveSettings(cfg, { mootBeside: b.mootBeside }); out.mootBeside = cfg.mootBeside === true; }
           if (typeof b.apuHoldbackGB === 'number' && b.apuHoldbackGB >= 0 && b.apuHoldbackGB <= 8) { saveSettings(cfg, { apuHoldbackGB: Math.round(b.apuHoldbackGB * 2) / 2 }); out.apuHoldbackGB = apuHoldbackGB(cfg); } // 1.5.181
@@ -1126,11 +1234,14 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && p === '/api/approve') {
       const { id, allow, rows, items, note } = await body(req);
       if (brain.awayApprovals.has(String(id))) return send(res, (await answerAway(brain, id, allow, rows, items)) ? 200 : 502, { ok: true }); // 1.5.72: a card from a job on another Bob
+      if (allow === false && typeof note === 'string' && note.trim()) keepDenyNote(brain, note); // Jobs, Remember a "no": the reason typed on Deny
       return send(res, brain.answerApproval(id, allow, rows, items, note) ? 200 : 404, { ok: true });
     }
     if (p === '/api/checkins' && await checkinsRoute({ req, res, p, isLocal, brain, body, send })) return;
+    if (p.startsWith('/api/everyday/') && await everydayRoute({ req, res, p, isLocal, cfg, brain, focus, profiles, body, send })) return; // 🗓 Everyday helpers
     if (p.startsWith('/api/adventure') && await adventureRoute({ req, res, p, isLocal, brain, body, send })) return; // 1.5.117 🎲 Adventure
     if (p.startsWith('/api/games') && await gamesRoute({ req, res, p, isLocal, brain, body, send })) return; // 1.5.121 🧩 Games
+    if (/^\/api\/(harness|crash|settings-undo|health|quiet|weekly|pins|chat\/try|guest)(\/|$)/.test(p) && await harnessRoute({ req, res, p, url, isLocal, cfg, brain, body, send, saveSettings, replaceSettings, weekly, crashState, applyShortcut, nameOf: friendlyName, probes: healthProbes })) return; // items 62 to 72
     if (p === '/api/prompts' && await promptsRoute({ req, res, p, isLocal, cfg, body, send, saveSettings, log: (k, t) => brain.log(k, t) })) return; // saved prompts and the / menu
     if (p === '/api/telegram' && await telegramRoute({ req, res, p, isLocal, brain, body, send })) return;
     if (p === '/api/discord' && await discordRoute({ req, res, p, isLocal, brain, body, send })) return;
@@ -1245,8 +1356,8 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && p === '/api/queue/clear') return send(res, 200, { ok: brain.clearCompleted() });
     if (req.method === 'POST' && p === '/api/speak') {
-      const { text } = await body(req);
-      try { return send(res, 200, await say(cfg, String(text || '')), 'audio/wav'); }
+      const { text, bob } = await body(req); // bob: the Bob-Net name of the Bob who thought this reply (A voice per Bob)
+      try { return send(res, 200, await say(cfg, String(text || ''), { voice: netVoiceFor(cfg, bob) }), 'audio/wav'); }
       catch (e) { return send(res, 409, { error: e.message }); }
     }
     // Voice samples: listing looks at files only; a sample is made (or found) only when asked for.
@@ -1261,6 +1372,16 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && p === '/api/voice/samples/clear') { if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' }); clearSamples(cfg); return send(res, 200, { ok: true }); }
     if (req.method === 'POST' && p === '/api/stop') return send(res, 200, { stopped: brain.stop() });
+    // Settings, Jobs (job-helps.js): Stop after this step; Undo a file change from a job's receipt; open a file:line link.
+    if (req.method === 'POST' && p === '/api/stop-after') { const b = await body(req); return send(res, 200, { ok: stopAfterStep(brain, typeof b.id === 'string' ? b.id : '') }); }
+    if (req.method === 'POST' && (p === '/api/jobs/undo' || p === '/api/open-at')) {
+      if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
+      const b = await body(req);
+      try {
+        if (p === '/api/jobs/undo') { const r = undoReceipt(cfg, String(b.id || '')); brain.log('jobs', `undo from a receipt (your click): ${r.file}`); return send(res, 200, { ok: true, ...r }); }
+        const r = openAt(cfg, String(b.path || ''), Number(b.line) || 0); brain.log('open', `opened ${r.file}${b.line ? ` at line ${Number(b.line)}` : ''} (${r.how})`); return send(res, 200, { ok: true, how: r.how });
+      } catch (e) { return send(res, 409, { error: e.message }); }
+    }
 
     // Housekeeping, topics, past chats and search. Reading works from the phone too; changes only on the PC.
     const hk = brain.housekeeper;
@@ -1530,7 +1651,7 @@ function brainPlaceView() {
   for (const model of models) {
     const info = cfg.engine === 'llamacpp' ? brain.engine?.placeInfo?.(model) || null : null;
     const cal = calResult(cfg, model);
-    brains[model] = { layers: info?.layers || null, set: cfg.brainPlace?.[model] || { mode: 'auto' }, pinned: Number.isInteger(cfg.llamacpp?.nCpuMoe?.[model]), cal: cal ? { when: cal.when, best: cal.best, rows: cal.rows } : null };
+    brains[model] = { layers: info?.layers || null, set: cfg.brainPlace?.[model] || { mode: 'auto' }, memType: cfg.brainMemType?.[model] || 'standard', kv32: cfg.engine === 'llamacpp' ? brain.engine?.kvGB?.(model, 32768) ?? null : null, memEngine: cfg.engine === 'llamacpp', pinned: Number.isInteger(cfg.llamacpp?.nCpuMoe?.[model]), cal: cal ? { when: cal.when, best: cal.best, rows: cal.rows } : null };
   }
   const run = lab.job?.run?.kind === 'calibrate' ? lab.runView(lab.job.run) : null;
   return { engine: cfg.engine || '', brains, job: run, busy: Boolean(lab.job) && !run, engineHere: cfg.engine === 'llamacpp' && lab.tools().server.found };
@@ -1557,6 +1678,20 @@ async function brainCtxView() {
     brains.push({ model, name: friendlyName(model), jobs: labels, max, choices, room, bobPick: max ? Math.min(pick, max) : Math.min(pick, SAFE_CTX), picked: pickedCtx({ ...cfg, brainCtxOn: true }, model, max, { stretch }), guide: ctxGuide(max, pick, { gaming: labels.includes(SLOT_NAMES.gaming), stretch }) });
   }
   return { on: ctxOn(cfg), stretch: stretchOn(cfg), canStretch: anyStretch && cfg.engine === 'llamacpp', brains };
+}
+
+// The 🩺 Health page's facts (health.js): read when the page asks, nothing changed.
+async function healthProbes() {
+  const st = await Promise.race([brain.status(), new Promise((r) => setTimeout(() => r(null), 4000))]).catch(() => null);
+  const g = (await gpuNow().catch(() => null))?.gpu || null;
+  let diskFreeGB = NaN;
+  try { const s = fs.statfsSync(cfg.agentDir || cfg.innDir); diskFreeGB = Math.round((Number(s.bavail) * Number(s.bsize)) / 1e8) / 10; } catch {}
+  const bobs = brain.lenders?.bobs?.() || [];
+  const peers = await Promise.all(bobs.map((b) => Promise.race([brain.lenders.hello(b).then((h) => ({ name: b.name || b.address, ok: Boolean(h?.ok) })), new Promise((r) => setTimeout(() => r({ name: b.name || b.address, ok: false }), 2500))]).catch(() => ({ name: b.name || b.address, ok: false }))));
+  // 1.5.207 PC check: status() has `loaded` (the brains on the engine) and `ollama` (the engine answered); its
+  // `models` is the saved role map, not a list, and the page got a 500.
+  const chatBrain = st?.models?.bob || '';
+  return { engineOk: st ? st.ollama !== false : false, engineName: brain.engineName, models: Array.isArray(st?.loaded) ? st.loaded : [], chatBrain, chatBrainName: friendlyName(chatBrain), card: g, diskFreeGB, peers, logText: logTail() };
 }
 
 // A model id by its friendly catalog name (model ids stay in Advanced).

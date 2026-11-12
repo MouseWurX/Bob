@@ -366,7 +366,7 @@ export function packsTools(brain) {
     summary: ({ pack }) => (pack ? `Looking at the ${pack} pack` : 'Listing tool packs')
   };
   t.use_pack_tool = {
-    schema: fn('use_pack_tool', 'Use one tool from a tool pack (from pack_tools): the pack, the tool name and its inputs. {{USER}} sees it on a card first, every time.', {
+    schema: fn('use_pack_tool', 'Use one tool from a tool pack (from pack_tools): the pack, the tool name and its inputs.', {
       pack: str('The pack, by name or id.'),
       tool: str('The tool name, as pack_tools listed it.'),
       inputs: { type: 'object', description: 'The tool\'s inputs, like {"text": "..."}. Paths are full paths.' },

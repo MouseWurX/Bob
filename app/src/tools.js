@@ -1,6 +1,7 @@
 // Bob's tools. Each tool has a JSON schema for the model, an optional approval check,
 // and a run function. Anything risky goes through approval; the inn folder is Bob's own space.
-import { appendText } from './vault.js'; // 🔒 Lock my chats and memory
+import { appendText, readText, writeText } from './vault.js'; // 🔒 Lock my chats and memory
+import { clashes, clashNote } from './memory-clash.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { isInside, insideAny, appDir, findOutput } from './config.js';
@@ -20,7 +21,9 @@ import { ownEntries } from './own-models.js';
 import { ensureTool } from './self-work-tools.js';
 import { catalogFileFor } from './llamacpp.js';
 import { ctxLabel } from './model-ctx.js';
-import { isDoc, docText, OLD_EXT, MAX_DOC_BYTES } from './doc-text.js';
+import { isDoc, docText, docTextFrom, OLD_EXT, MAX_DOC_BYTES } from './doc-text.js';
+import { GIT_LOOKS, gitArgs, runGit, gitAnswer } from './git-look.js';
+import { mainText, docKind, parseDdg, parseMojeek, resultLines, WEB_TIMEOUT_MS, MAX_DOC_DOWNLOAD } from './page-text.js';
 import { docToolsOn } from './my-docs.js';
 import { codeMap, linesAround } from './code-map.js';
 
@@ -32,6 +35,13 @@ const MAX_READ_BYTES = 20 * 1024 * 1024;
 // fetch_page stops reading a page after this many bytes, and hands it over 15,000 characters at a time.
 const MAX_PAGE_BYTES = 2 * 1024 * 1024;
 const MAX_PAGE = 15000;
+// Items 18 and 20: bytes as they are (a document), and the user's Stop together with a time limit on every look-up.
+async function readBytes(res, max) {
+  const parts = []; let n = 0;
+  for await (const chunk of res.body || []) { parts.push(chunk); n += chunk.length; if (n >= max) break; }
+  return Buffer.concat(parts).subarray(0, max);
+}
+export const webSignal = (signal, ms = WEB_TIMEOUT_MS) => (signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms));
 async function readCapped(res, max) {
   const parts = []; let n = 0;
   for await (const chunk of res.body || []) { parts.push(chunk); n += chunk.length; if (n >= max) break; }
@@ -40,6 +50,47 @@ async function readCapped(res, max) {
 
 // #48: a long page or file comes in parts, so Bob can read past the first piece instead of fetching the top again.
 // part = 1, 2, 3 ...; find = a word or phrase: give the part it is in. The note says the size and the exact next call.
+// Item 23 (Nov 11): search_files' text: plain words (any case), or /a pattern/ (with an i after it for any case).
+// What an empty notice board read gives back: the layout to write it in.
+const BOARD_EMPTY = '(The notice board is empty. No file yet.) Layout: "# Notice board, YYYY-MM-DD", "XP today: N", then sections Main quest (only one), Side quests, Daily chores, Later, Done, using "- [ ]" and "- [x]" items with time and XP estimates.';
+
+export function searchMatcher(text) {
+  const t = String(text ?? '');
+  const m = t.match(/^\/(.+)\/([i]?)$/s);
+  if (m) {
+    let re;
+    try { re = new RegExp(m[1], m[2] || 'i'); } catch (e) { throw new Error(`That pattern doesn't work: ${e.message}`); }
+    return (s) => re.test(s);
+  }
+  const needle = t.toLowerCase();
+  if (needle.length < 2) throw new Error('Give me at least 2 characters to look for.');
+  return (s) => s.toLowerCase().includes(needle);
+}
+// "*.cs", "*.md, *.txt", "notes*" -> a test on file names; nothing -> null (the usual text files).
+export function filePattern(files) {
+  const parts = String(files || '').split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean).slice(0, 8);
+  if (!parts.length) return null;
+  const one = (g) => g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
+  return new RegExp(`^(?:${parts.map(one).join('|')})$`, 'i');
+}
+// Item 22 (Nov 11): edit_file takes several changes to one file in one call, all or none, on one card.
+export function editList({ find, replace, more } = {}) {
+  const list = [{ find, replace }, ...(Array.isArray(more) ? more : [])].slice(0, 20);
+  return list.map((e) => ({ find: String(e?.find ?? ''), replace: String(e?.replace ?? '') }));
+}
+// Each change in turn, on the text as the earlier ones left it. Throws, naming the change, when one doesn't fit.
+export function applyEdits(body, edits) {
+  let out = String(body);
+  edits.forEach((e, i) => {
+    const which = edits.length > 1 ? ` (change ${i + 1} of ${edits.length}; nothing was changed)` : '';
+    const count = e.find ? out.split(e.find).length - 1 : 0;
+    if (!count) throw new Error(`The find text isn't in the file${which}. Read the file again and copy the text exactly.`);
+    if (count > 1) throw new Error(`The find text appears ${count} times${which}. Include more surrounding lines so it is unique.`);
+    out = out.replace(e.find, () => e.replace);
+  });
+  return out;
+}
+
 export function pieceOf(text, { part, find } = {}, size, again) {
   const total = Math.max(1, Math.ceil(text.length / size));
   let n = Math.max(1, Math.floor(Number(part)) || 1), note = '';
@@ -88,8 +139,20 @@ const fn = (name, description, properties, required = Object.keys(properties)) =
 });
 const str = (description, extra = {}) => ({ type: 'string', description, ...extra });
 
-export function today(cfg) {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: cfg.timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+export function today(cfg, at = Date.now()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: cfg.timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(at));
+}
+
+// Item 26 list_folder: folders first (by name), then files in the order asked, each with size and date; "and N more"
+// when there are more than max. With "only", folders stay so the brain can look inside them.
+export const LIST_MAX = 300;
+export function listRows(rows, { sort = 'name', max = LIST_MAX, day = (ms) => new Date(ms).toISOString().slice(0, 10) } = {}) {
+  const folders = rows.filter((r) => r.folder).sort((a, b) => a.name.localeCompare(b.name));
+  const files = rows.filter((r) => !r.folder).sort(sort === 'newest' ? (a, b) => b.at - a.at : sort === 'biggest' ? (a, b) => b.size - a.size : (a, b) => a.name.localeCompare(b.name));
+  const all = sort === 'name' || !sort ? [...folders, ...files] : [...files, ...folders];
+  const shown = all.slice(0, max).map((r) => (r.folder ? `[folder] ${r.name}` : `${r.name} (${r.size >= 1e6 ? `${(r.size / 1e6).toFixed(1)} MB` : `${Math.round(r.size / 1024)} KB`}${r.at ? `, ${day(r.at)}` : ''})`));
+  if (!shown.length) return '(empty folder)';
+  return all.length > max ? `${shown.join('\n')}\n(and ${all.length - max} more not shown: ask with only or sort to narrow it)` : shown.join('\n');
 }
 
 function safeName(s) {
@@ -153,13 +216,14 @@ export function buildTools(cfg) {
   const t = {};
 
   t.notice_board = {
+    // The board's layout comes with an empty board, not in every prompt (less context is better, 1.5.207).
     schema: fn('notice_board', "Read or rewrite {{USER}}'s notice board (their to-do list). To change it, read it first, then write the whole board.", {
       action: str('read or write', { enum: ['read', 'write'] }),
       content: str('write: the whole new board, in Markdown.')
     }, ['action']),
     async run({ action, content }) {
       const file = cfg.noticeBoard;
-      if (action !== 'write') return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '(The notice board is empty. No file yet.)';
+      if (action !== 'write') return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : BOARD_EMPTY;
       if (!content) throw new Error('No board content given.');
       if (fs.existsSync(file)) {
         const old = fs.readFileSync(file, 'utf8');
@@ -182,15 +246,30 @@ export function buildTools(cfg) {
       const banks = recallOn(cfg) ? Object.keys(cfg.projects || {}) : [];
       return fn('remember', 'Save a lasting fact about {{USER}}, like a preference or a plan. Never secrets or passwords.', {
         fact: str('One short sentence.'),
+        replaces: str('Optional: the earlier memory this corrects, word for word, once the user said which is right.'),
         ...(recallOn(cfg) ? { project: str(`Only for a fact about one project: its name${banks.length ? ` (${banks.join(', ')})` : ''}. Leave out for anything general.`) } : {})
       }, ['fact']);
     },
-    async run({ fact, project }) {
+    async run({ fact, project, replaces }) {
       if (!fact) throw new Error('Nothing to remember.');
       const clean = String(fact).replace(/\s+/g, ' ').trim();
+      let before = '';
+      try { before = readText(cfg.memoryFile); } catch {}
+      // Item 16 (memory-clash.js): an earlier line this corrects goes (word for word only); others that may disagree are named.
+      let dropped = '';
+      if (replaces && before) {
+        const want = String(replaces).replace(/^\s*-\s*/, '').trim();
+        const lines = before.replace(/\r\n/g, '\n').split('\n');
+        const at = lines.findIndex((l) => l.replace(/^\s*-\s*/, '').trim() === want);
+        if (at >= 0) { dropped = lines[at]; lines.splice(at, 1); writeText(cfg, cfg.memoryFile, lines.join('\n')); before = lines.join('\n'); }
+      }
+      const clash = dropped ? [] : clashes(clean, before);
       const line = `- ${recallOn(cfg) ? tagLine(`${clean} (${today(cfg)})`, project) : `${clean} (${today(cfg)})`}\n`;
-      appendText(cfg, cfg.memoryFile, line);
-      return recallOn(cfg) && project ? `Remembered, in the ${String(project).replace(/[\][]/g, '').trim()} memory bank.` : 'Remembered.';
+      // The second call (with replaces) after a clash doesn't add the fact a second time.
+      const already = before.replace(/\r\n/g, '\n').split('\n').some((l) => l.replace(/^\s*-\s*/, '').replace(/\s*\[[^\]]*\]\s*$/, '').replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '').trim() === clean);
+      if (!already) appendText(cfg, cfg.memoryFile, line);
+      const done = recallOn(cfg) && project ? `Remembered, in the ${String(project).replace(/[\][]/g, '').trim()} memory bank.` : 'Remembered.';
+      return `${done}${dropped ? ' The earlier line it corrects is gone.' : ''}${clashNote(clash, cfg.userName || 'the user')}`;
     },
     summary: ({ fact, project }) => `remember: ${String(fact).slice(0, 80)}${project ? ` (${project})` : ''}`
   };
@@ -200,18 +279,19 @@ export function buildTools(cfg) {
       action: str('add, list or cancel', { enum: ['add', 'list', 'cancel'] }),
       time: str('add: local time, YYYY-MM-DDTHH:mm.'),
       text: str('add: what to remind about.'),
-      id: str('cancel: the id from list.')
+      id: str('cancel: the id from list.'),
+      urgent: { type: 'boolean', description: 'add: true only if the user says urgent (shows in quiet hours).' }
     }, ['action']),
-    async run({ action, time, text, id }) {
+    async run({ action, time, text, id, urgent }) {
       const list = loadReminders(cfg);
       if (action === 'add') {
         if (!text) throw new Error('What should I remind about?');
         const at = zonedToEpoch(time, cfg.timeZone);
         if (at < Date.now() - 60000) throw new Error('That time has already passed.');
-        const r = { id: Math.random().toString(36).slice(2, 8), at, local: time, text: String(text).slice(0, 300) };
+        const r = { id: Math.random().toString(36).slice(2, 8), at, local: time, text: String(text).slice(0, 300), ...(urgent === true || urgent === 'true' ? { urgent: true } : {}) };
         list.push(r);
         saveReminders(cfg, list);
-        return `Reminder ${r.id} set for ${time}: ${r.text}`;
+        return `Reminder ${r.id} set for ${time}${r.urgent ? ' (urgent)' : ''}: ${r.text}`;
       }
       if (action === 'cancel') {
         const left = list.filter((r) => r.id !== id);
@@ -225,18 +305,23 @@ export function buildTools(cfg) {
   };
 
   t.list_folder = {
-    schema: fn('list_folder', "List the files in a folder. {{USER}}'s home folder is {{HOME}}; never guess another.", { path: str('Full folder path.') }),
-    async run({ path: p }) {
+    schema: fn('list_folder', "List the files in a folder. {{USER}}'s home folder is {{HOME}}; never guess another.", {
+      path: str('Full folder path.'),
+      sort: str('Optional.', { enum: ['name', 'newest', 'biggest'] }),
+      only: str('Optional: like *.pdf')
+    }, ['path']),
+    async run({ path: p, sort, only }) {
       const dir = resolveUserPath(p);
       if (!insideAny(cfg.readRoots, dir)) throw new Error(`I'm not allowed to look in ${dir}. Allowed: ${cfg.readRoots.join('; ')}`);
       if (isSensitive(cfg, dir)) throw new Error(SECRET_MSG);
-      const entries = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => !isSensitive(cfg, path.join(dir, e.name))).slice(0, 300);
-      return entries.map((e) => {
-        if (e.isDirectory()) return `[folder] ${e.name}`;
-        let size = '';
-        try { size = ` (${Math.round(fs.statSync(path.join(dir, e.name)).size / 1024)} KB)`; } catch {}
-        return `${e.name}${size}`;
-      }).join('\n') || '(empty folder)';
+      // Item 26 (Nov 11): dates, sorting and a file filter, and it says how many weren't shown instead of cutting quietly.
+      const want = filePattern(only);
+      const rows = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => !isSensitive(cfg, path.join(dir, e.name)) && (!want || e.isDirectory() || want.test(e.name))).map((e) => {
+        let st = null;
+        try { st = fs.statSync(path.join(dir, e.name)); } catch {}
+        return { name: e.name, folder: e.isDirectory(), size: st && !e.isDirectory() ? st.size : 0, at: st ? st.mtimeMs : 0 };
+      });
+      return listRows(rows, { sort, max: LIST_MAX, day: (ms) => today({ timeZone: cfg.timeZone }, ms) });
     },
     summary: ({ path: p }) => `list ${p}`
   };
@@ -275,6 +360,36 @@ export function buildTools(cfg) {
   };
 
   // Nov 11: the code map (code-map.js): one line per source file, so a small brain finds the right file first.
+  // Item 25 (Nov 11): a question with choices on a card, instead of a question buried in a reply that ends the job.
+  t.ask_user = {
+    schema: fn('ask_user', 'Ask {{USER}} one question with 2 to 6 choices on a card and wait. Only when a wrong guess would waste the job.', {
+      question: str('Short.'),
+      choices: { type: 'array', items: { type: 'string' }, description: '2 to 6.' }
+    }),
+    async run({ question, choices }, ctx) { return ctx.brain.askUser({ question, choices }, ctx); },
+    summary: ({ question }) => `ask: ${String(question || '').slice(0, 80)}`
+  };
+
+  // Item 24 (git-look.js): what changed in a project, read-only, no card.
+  t.git_look = {
+    schema: fn('git_look', 'See what changed in a project folder with git: status (changed files), changes (line by line) or history (recent commits). Read-only.', {
+      what: str('status, changes or history', { enum: GIT_LOOKS }),
+      project: str('Optional: project name. Leave out for the main project.', { enum: Object.keys(cfg.projects || {}) }),
+      folder: str('Optional: a full folder path instead.'),
+      file: str('Optional: one file, for changes or history.')
+    }, ['what']),
+    async run({ what, project, folder, file }, ctx = {}) {
+      const all = cfg.projects || {};
+      if (project && !all[project]) throw new Error(`Unknown project. I know: ${Object.keys(all).join(', ') || 'none yet'}`);
+      const root = folder ? resolveUserPath(folder) : all[project] || all[cfg.defaultProject] || Object.values(all)[0];
+      if (!root) throw new Error('No project is set up yet. Name a folder.');
+      if (!insideAny(cfg.readRoots, root)) throw new Error(`I'm not allowed to look in ${root}.`);
+      if (isSensitive(cfg, root) || (file && isSensitive(cfg, path.resolve(root, String(file))))) throw new Error(SECRET_MSG);
+      return gitAnswer(what, await (ctx.runGit || runGit)(gitArgs(what, file), root));
+    },
+    summary: ({ what, project, folder, file }) => `git ${what}: ${folder || project || 'main project'}${file ? ` (${file})` : ''}`
+  };
+
   t.code_map = {
     schema: fn('code_map', 'Map a codebase: one line per source file with what it is for and the main names in it. Call it first on a big project, then read only the file you need.', {
       project: str('Optional: project name. Leave out for the main project.', { enum: Object.keys(cfg.projects || {}) }),
@@ -336,7 +451,7 @@ export function buildTools(cfg) {
 
   // Bob knows his own settings and features (self-help.js): the same Help text as the window, plus what's set now.
   t.bob_help = {
-    schema: fn('bob_help', "Look up how you (Bob) work: your settings, switches, pages and features, where each is and what is set now. When {{USER}} asks about a setting, a feature or one of your own words (Bob-Net, the Lab, fNRI, the Forge, the moot, sessions, Hands), look here first, before searching files or the web, and name the exact place to press.", {
+    schema: fn('bob_help', "Look up how you (Bob) work: settings, switches, pages, features, where each is and what is set now. For a setting, feature or one of your own words (Bob-Net, the Lab, fNRI, the Forge, the moot, Hands), look here first, before searching files or the web, and name the exact place to press.", {
       topic: str('What to look up, like "web search switch".')
     }),
     async run({ topic }) { return bobHelp(cfg, String(topic || '')); },
@@ -347,27 +462,27 @@ export function buildTools(cfg) {
     schema: fn('web_search', 'Search the web. Returns titles, links and snippets. Operators work: "exact phrase", -word, site:, filetype:, intitle:, OR.', { query: str('Search words.'), when: str('Optional: only the past day, week, month or year.', { enum: ['day', 'week', 'month', 'year'] }) }, ['query']),
     async run({ query, when }, { signal }) {
       const df = { day: 'd', week: 'w', month: 'm', year: 'y' }[String(when || '').toLowerCase()];
-      const res = await fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query) + (df ? `&df=${df}` : ''), {
-        headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bob/0.1' }, signal
-      });
-      const html = await res.text();
-      const out = [];
-      const re = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
-      let m;
-      while ((m = re.exec(html)) && out.length < 8) {
-        let url = m[1].replace(/&amp;/g, '&');
-        const u = url.match(/[?&]uddg=([^&]+)/);
-        if (u) url = decodeURIComponent(u[1]);
-        if (url.startsWith('//')) url = 'https:' + url;
-        out.push(`${out.length + 1}. ${htmlToText(m[2])}\n   ${url}\n   ${htmlToText(m[3])}`);
-      }
-      return out.length ? out.join('\n') : 'No results (or the search page changed). Try different words.';
+      const UA = { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bob/0.1' };
+      // Item 20: a look-up that hangs stops on its own after WEB_TIMEOUT_MS. Item 21: when DuckDuckGo's plain page gives
+      // nothing (it changed, or it turned Bob away), Mojeek is asked instead, and the answer says so.
+      let list = [], why = '';
+      try {
+        const res = await fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query) + (df ? `&df=${df}` : ''), { headers: UA, signal: webSignal(signal) });
+        if (res.ok) list = parseDdg(await res.text()); else why = `DuckDuckGo answered ${res.status}`;
+      } catch (e) { if (signal?.aborted) throw e; why = e.name === 'TimeoutError' ? 'DuckDuckGo took too long' : `DuckDuckGo: ${e.message}`; }
+      if (list.length) return resultLines(list);
+      try {
+        const res = await fetch('https://www.mojeek.com/search?q=' + encodeURIComponent(query), { headers: UA, signal: webSignal(signal) });
+        if (res.ok) list = parseMojeek(await res.text());
+      } catch (e) { if (signal?.aborted) throw e; }
+      if (list.length) return `(From Mojeek: ${why || 'DuckDuckGo found nothing'}${df ? '; no date filter there' : ''}.)\n${resultLines(list)}`;
+      return 'No results (or the search pages changed). Try different words.';
     },
     summary: ({ query, when }) => `search: ${query}${when ? ` (past ${when})` : ''}`
   };
 
   t.fetch_page = {
-    schema: fn('fetch_page', 'Read a web page as text. A long page comes in parts; each part says how to get the next.', {
+    schema: fn('fetch_page', 'Read a web page, PDF or document online as text. A long one comes in parts; each part says how to get the next.', {
       url: str('http or https link.'),
       part: { type: 'integer', description: 'Optional: which part, 1, 2, 3... Default 1.' },
       find: str('Optional: words to look for; you get the part they are in.')
@@ -378,16 +493,25 @@ export function buildTools(cfg) {
       for (let hop = 0; ; hop++) {
         if (!/^https?:$/.test(u.protocol)) throw new Error('Only http and https links.');
         if (isPrivateHost(u.hostname)) throw new Error('I don\'t open addresses on the home network.');
-        res = await fetch(u, { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bob/0.1' }, redirect: 'manual', signal });
+        res = await fetch(u, { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bob/0.1' }, redirect: 'manual', signal: webSignal(signal) });
         const next = res.status >= 300 && res.status < 400 && res.headers.get('location');
         if (!next) break;
         if (hop >= 5) throw new Error('That link redirects too many times.');
         u = new URL(next, u);
       }
       const type = res.headers.get('content-type') || '';
-      if (!/text|html|json|xml/.test(type)) return `That link is a ${type || 'file'}, not a page. I won't download it.`;
+      // Item 18: a PDF or Office document is read like one on the drive (doc-text.js), up to MAX_DOC_DOWNLOAD.
+      const doc = docKind(type, u);
+      if (doc) {
+        const buf = Buffer.from(await readBytes(res, MAX_DOC_DOWNLOAD));
+        let words = '';
+        try { words = docTextFrom(buf, doc); } catch (e) { return `That link is a .${doc} file I couldn't read: ${e.message}`; }
+        if (!words.trim()) return `That link is a .${doc} file with no text in it (perhaps only pictures of pages).`;
+        return pieceOf(words, { part, find }, MAX_PAGE, 'fetch_page again with the same url and');
+      }
+      if (!/text|html|json|xml/.test(type)) return `That link is a ${type || 'file'}, not a page or a document I read. I won't download it.`;
       const raw = await readCapped(res, MAX_PAGE_BYTES);
-      const text = isPlain(type, u) ? raw : htmlToText(raw);
+      const text = isPlain(type, u) ? raw : mainText(raw); // item 19: the page's own words, not its menus
       return pieceOf(text, { part, find }, MAX_PAGE, 'fetch_page again with the same url and');
     },
     summary: ({ url, part, find }) => `read page: ${url}${find ? ` (looking for ${find})` : part > 1 ? ` (part ${part})` : ''}`
@@ -395,11 +519,11 @@ export function buildTools(cfg) {
 
   t.make_image = {
     schema: fn('make_image', "Paint a picture, or change one (give a reference).", {
-      prompt: str('New picture: the full prompt. Edit: only what to change, like "Swap his hard hat for a silver tiara". Don\'t describe the whole picture again, or it gets repainted.'),
+      prompt: str('New picture: the full prompt. Edit: only what to change, like "Swap his hat for a tiara", or it gets repainted.'),
       width: { type: 'integer', description: 'Default 1024. Leave out for edits.' },
       height: { type: 'integer', description: 'Default 1024. Leave out for edits.' },
-      reference: { type: 'array', items: { type: 'string' }, description: 'Optional: up to 4 pictures to edit or paint from: a shelf or attached name, "last" (your newest) or a painted file name.' },
-      mode: str('With a reference: keep_look = edit it, same character or scene (default); start_from = rework the picture itself (the look can drift); new = paint something new anyway.', { enum: ['keep_look', 'start_from', 'new'] }),
+      reference: { type: 'array', items: { type: 'string' }, description: 'Up to 4 pictures to edit or paint from: a shelf or attached name, "last" (your newest) or a painted file.' },
+      mode: str('With a reference: keep_look = edit it, same look (default); start_from = rework the picture (the look can drift); new = paint anew.', { enum: ['keep_look', 'start_from', 'new'] }),
       strength: { type: 'number', description: 'start_from only: how much changes, 0.1 to 0.95. Default 0.6.' }
     }, ['prompt']),
     async run(args, ctx) { return ctx.brain.makeImage(args, ctx); },
@@ -483,8 +607,8 @@ export function buildTools(cfg) {
 
   t.ask_specialist = {
     schema: fn('ask_specialist', "Hand a focused job to a specialist hat with its own brain. The answer goes straight to {{USER}}.", {
-      hat: str('tinker = code, bugs and crashes; ledger = data and spreadsheets; scout = web research with sources; painter = picture and video prompts; reviewer = a careful second look', { enum: Object.keys(HATS) }),
-      task: str('The whole job: the request plus any details or pasted text, as given. The workbench finds files itself; don\'t ask for paths first.')
+      hat: str('tinker = code and bugs; ledger = data, spreadsheets; scout = web research with sources; painter = picture/video prompts; reviewer = a careful second look', { enum: Object.keys(HATS) }),
+      task: str('The whole job as given, with any details or pasted text. The workbench finds files itself; don\'t ask for paths first.')
     }),
     async run({ hat, task }, ctx) { return ctx.brain.runHat(hat, task, ctx); },
     summary: ({ hat }) => `hat: ${hat}`,
@@ -554,18 +678,26 @@ export function buildTools(cfg) {
   t.search_files = {
     // 1.5.32: project is optional. Brains kept asking "which project?" when the user didn't say; now leaving it out
     // searches every project (results say which file each hit is in).
-    schema: fn('search_files', "Search the text in {{USER}}'s project source files. Returns matching lines with file and line number.", {
+    schema: fn('search_files', "Search the text in {{USER}}'s files: projects, or a folder. Returns matching lines with file and line number.", {
       project: str('Optional: project name. Leave out unless {{USER}} named one: it searches all.', { enum: Object.keys(cfg.projects || {}) }),
-      text: str('Text to look for.')
+      folder: str('Optional: a full folder path to search instead of the projects.'),
+      text: str('Text to look for. Starts and ends with / for a pattern, like /todo|fixme/.'),
+      files: str('Optional: which files, like *.cs or *.md.')
     }, ['text']),
-    async run({ project, text }) {
+    async run({ project, folder, text, files }) {
       const all = cfg.projects || {};
       if (project && !all[project]) throw new Error(`Unknown project. I know: ${Object.keys(all).join(', ')}`);
+      // Item 23 (Nov 11): any folder Bob may read, a file pattern, and /patterns/ as well as plain words.
+      if (folder) {
+        const dir = resolveUserPath(folder);
+        if (!insideAny(cfg.readRoots, dir)) throw new Error(`I'm not allowed to look in ${dir}. Allowed: ${cfg.readRoots.join('; ')}`);
+        if (isSensitive(cfg, dir)) throw new Error(SECRET_MSG);
+      }
       // 1.5.34: the main project (Settings > Projects) is searched first.
-      const roots = project ? [all[project]] : [...new Set([all[cfg.defaultProject], ...Object.values(all)].filter(Boolean))];
+      const roots = folder ? [resolveUserPath(folder)] : project ? [all[project]] : [...new Set([all[cfg.defaultProject], ...Object.values(all)].filter(Boolean))];
+      const match = searchMatcher(text);
+      const want = filePattern(files);
       if (!roots.length) throw new Error('No projects are set up yet, so there\'s nothing to search. I\'ll look in a folder instead: tell me which one, or I\'ll start with Documents. (For you, Bob: use list_folder and read_file. Projects live under "projects" in config.json; there is no switch for them in the app yet.)');
-      const needle = String(text || '').toLowerCase();
-      if (needle.length < 2) throw new Error('Give me at least 2 characters to look for.');
       const hits = [];
       let scanned = 0;
       const walk = (dir) => {
@@ -576,49 +708,50 @@ export function buildTools(cfg) {
           if (hits.length >= 60) return;
           const full = path.join(dir, e.name);
           if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) walk(full); continue; }
-          if (!TEXT_EXT.test(e.name) || isSensitive(cfg, full)) continue;
+          if (!(want ? want.test(e.name) : TEXT_EXT.test(e.name)) || isSensitive(cfg, full)) continue;
           scanned++;
           let body;
           try { if (fs.statSync(full).size > 1e6) continue; body = fs.readFileSync(full, 'utf8'); } catch { continue; }
-          if (!body.toLowerCase().includes(needle)) continue;
+          if (!match(body)) continue;
           body.split(/\r?\n/).forEach((line, i) => {
-            if (hits.length < 60 && line.toLowerCase().includes(needle)) hits.push(`${full}:${i + 1}: ${line.trim().slice(0, 200)}`);
+            if (hits.length < 60 && match(line)) hits.push(`${full}:${i + 1}: ${line.trim().slice(0, 200)}`);
           });
         }
       };
       for (const root of roots) walk(root);
       return hits.length ? hits.join('\n') : `No matches in ${scanned} files.`;
     },
-    summary: ({ project, text }) => `search ${project || 'all projects'} for "${text}"`
+    summary: ({ project, folder, text, files }) => `search ${folder || project || 'all projects'}${files ? ` (${files})` : ''} for "${text}"`
   };
 
   t.edit_file = {
-    schema: fn('edit_file', "Replace one exact piece of text in a file. find must appear exactly once (add nearby lines to make it unique). {{USER}} approves each change.", {
+    schema: fn('edit_file', "Replace exact text in a file. find must appear exactly once (add nearby lines to make it unique); more changes to the same file go in more. {{USER}} approves each change.", {
       path: str('Full file path.'),
       find: str('The exact text, copied from the file.'),
-      replace: str('The new text.')
-    }),
+      replace: str('The new text.'),
+      more: { type: 'array', description: 'Optional: more changes, in order, all or none.', items: { type: 'object', properties: { find: { type: 'string' }, replace: { type: 'string' } }, required: ['find', 'replace'] } }
+    }, ['path', 'find', 'replace']),
     approvalGroup: 'edit',
-    check({ path: p, find, replace }) {
+    check({ path: p, find, replace, more }) {
       const file = resolveUserPath(p);
       if (isSensitive(cfg, file)) throw new Error(SECRET_MSG);
       if (BLOCKED_EXT.has(path.extname(file).toLowerCase()) && !projectOf(file)) throw new Error('I don\'t edit program or script files outside a project.');
       if (insideAny(readOnlyRoots(cfg), file)) throw new Error(`${file} is in a read-only project.`);
       if (!insideAny(cfg.readRoots, file)) throw new Error('I\'m not allowed to edit files there.');
       if (!fs.existsSync(file)) throw new Error('That file doesn\'t exist. Use write_file to create it.');
-      const body = fs.readFileSync(file, 'utf8');
-      const count = body.split(find).length - 1;
-      if (!find || count === 0) throw new Error('The find text isn\'t in the file. Read the file again and copy the text exactly.');
-      if (count > 1) throw new Error(`The find text appears ${count} times. Include more surrounding lines so it is unique.`);
+      const edits = editList({ find, replace, more });
+      applyEdits(fs.readFileSync(file, 'utf8'), edits); // throws the plain reason when one doesn't fit
       const clip = (s) => (s.length > 700 ? s.slice(0, 700) + '\n...' : s);
-      return { text: `Edit ${file}`, diff: `- ${clip(find).replace(/\n/g, '\n- ')}\n+ ${clip(replace).replace(/\n/g, '\n+ ')}` };
+      const one = (e) => `- ${clip(e.find).replace(/\n/g, '\n- ')}\n+ ${clip(e.replace).replace(/\n/g, '\n+ ')}`;
+      return { text: edits.length > 1 ? `Edit ${file} (${edits.length} changes)` : `Edit ${file}`, diff: edits.map(one).join('\n\n') };
     },
-    async run({ path: p, find, replace }) {
+    async run({ path: p, find, replace, more }) {
       const file = resolveUserPath(p);
-      const body = fs.readFileSync(file, 'utf8');
+      const edits = editList({ find, replace, more });
+      const out = applyEdits(fs.readFileSync(file, 'utf8'), edits);
       backup(file);
-      fs.writeFileSync(file, body.replace(find, () => replace));
-      return `Edited ${file}. (Backup kept in the inn.)`;
+      fs.writeFileSync(file, out);
+      return `Edited ${file}${edits.length > 1 ? ` (${edits.length} changes)` : ''}. (Backup kept in the inn.)`;
     },
     summary: ({ path: p }) => `edit ${p}`
   };

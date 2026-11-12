@@ -116,6 +116,20 @@ fs.writeFileSync(path.join(docs, 'Report.pdf'), makePdf());
   let why = '';
   try { pdfText(scan); } catch (err) { why = err.message; }
   check('a PDF with no words says it is probably a scan and how to read it', /no words/.test(why) && /picture/.test(why), why);
+  const dummy = Buffer.from('%PDF-1.4\n1 0 obj << /Length 44 >>\nstream\nBT /F1 12 Tf 72 712 Td (Dummy PDF file) Tj ET\nendstream\nendobj\n%%EOF', 'latin1');
+  check('a PDF with only a few words is read, not called a scan (the W3C test file)', pdfText(dummy) === 'Dummy PDF file');
+  // Round 3 (PC): the real file sets words in pieces moved along with Td ("Dumm" "y", the fi ligature then "le") and
+  // read "Dumm y PDF fi le". The glyph widths say which moves are real spaces.
+  const widths = Array.from({ length: 95 }, (_, i) => (i + 32 === 109 ? 833 : i === 0 ? 250 : 500)).join(' ');
+  const body = 'BT /F1 1 Tf 18 0 0 18 56.8 721.4 Tm (Dumm) Tj 2.666 0 Td (y) Tj 0.75 0 Td (PDF) Tj 1.75 0 Td (fi) Tj 1 0 Td (le) Tj ET';
+  const pieces = Buffer.from(`%PDF-1.4\n1 0 obj << /Length ${body.length} >>\nstream\n${body}\nendstream\nendobj\n2 0 obj << /Type /Font /Subtype /TrueType /BaseFont /Arial /FirstChar 32 /LastChar 126 /Widths [${widths}] >>\nendobj\n3 0 obj << /Type /Page /Resources << /Font << /F1 2 0 R >> >> /Contents 1 0 R >>\nendobj\n%%EOF`, 'latin1');
+  check('a word set in pieces stays one word; real gaps are spaces (Dummy PDF file, not "Dumm y PDF fi le")', pdfText(pieces) === 'Dummy PDF file', JSON.stringify(pdfText(pieces)));
+  const kern = 'BT /F1 12 Tf 72 712 Td [(Dumm) 20 (y) -250 (PDF) -250 (fi) 15 (le)] TJ ET';
+  const kerned = Buffer.from(`%PDF-1.4\n1 0 obj << /Length ${kern.length} >>\nstream\n${kern}\nendstream\nendobj\n2 0 obj << /Type /Font /Subtype /TrueType /FirstChar 32 /Widths [${widths}] >>\nendobj\n3 0 obj << /Type /Page /Resources << /Font << /F1 2 0 R >> >> >>\nendobj\n%%EOF`, 'latin1');
+  check('…and the same with kerning inside one TJ', pdfText(kerned) === 'Dummy PDF file', JSON.stringify(pdfText(kerned)));
+  const far = 'BT /F2 10 Tf 72 712 Td (Two) Tj 40 0 Td (words) Tj 45 0 Td (apart) Tj ET';
+  const nofont = Buffer.from(`%PDF-1.4\n1 0 obj << /Length ${far.length} >>\nstream\n${far}\nendstream\nendobj\n%%EOF`, 'latin1');
+  check('with no widths in the file, a wide move is still a space', pdfText(nofont) === 'Two words apart', JSON.stringify(pdfText(nofont)));
   try { docTextFrom(Buffer.from('x'), 'doc'); why = ''; } catch (err) { why = err.message; }
   check('an old .doc points at the Office documents Hand', /Office documents Hand/.test(why), why);
   try { zipEntries(Buffer.from('not a zip at all, sorry, not one bit')); why = ''; } catch (err) { why = err instanceof DocError ? err.message : ''; }

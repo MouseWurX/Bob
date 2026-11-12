@@ -18,7 +18,7 @@ check('processor load needs two readings', a.pct === null);
 check('processor load is the busy share between readings', cpuLoad(a.snap, cpus(130, 170)).pct === 70);
 
 const ollama = read('src/ollama.js'), llama = read('src/llamacpp.js'), server = read('src/server.js'), layout = read('public/layout.js'), brain = read('src/brain.js');
-check('speeds come from the end-of-reply numbers the engines already send', /if \(ev\.done\) this\.lastStats = replyStats/.test(ollama) && /if \(ev\.timings\) this\.lastStats = replyStats/.test(llama) && /speed: this\.engine\.lastStats/.test(brain));
+check('speeds come from the end-of-reply numbers the engines already send', /if \(ev\.done\) this\.lastStats = [^\n]*replyStats\(/.test(ollama) && /if \(ev\.timings\) this\.lastStats = [^\n]*replyStats\(/.test(llama) && /speed: this\.engine\.lastStats/.test(brain));
 check('card load rides on the same nvidia-smi call (no extra program)', /memory\.used,memory\.total,utilization\.gpu/.test(server) && (server.match(/--query-gpu=/g) || []).length === 1);
 check('the reading reports its own cost, for checking on a real PC', /out\.costMs = \{ wait:/.test(server) && /cardCheck: gpuCache\.ms/.test(server));
 check('slower in the Gaming session, and only while Now running is open', /brainSt\?\.session === 'Gaming' \? 15000 : 5000/.test(layout) && /right-hidden'\) \|\| document\.hidden\) return;/.test(layout));

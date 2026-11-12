@@ -8,11 +8,16 @@ import { watchLock } from './lock-settings.js';
 import { createHelp } from './help.js';
 import { installTips } from './tips.js';
 import { CHANNEL, RELAY, jumpFromHash, message } from './settings-link.js';
+import { applyReading } from './everyday.js';
 
 applySavedStyle();
 startI18n();
 installTips();
 watchLock(); // 🔒 back to the lock screen once Bob locks
+// 🗓 Text size and the easier-to-read font apply here too, and follow a change made on this page.
+let reading = {};
+fetch('/api/settings').then((r) => r.json()).then((st) => { reading = { textSize: st.textSize, readableFont: st.readableFont }; applyReading(reading); }).catch(() => {});
+window.addEventListener('bob-display', (e) => { const d = e.detail || {}; if ('textSize' in d || 'readableFont' in d) { reading = { ...reading, ...d }; applyReading(reading); } });
 
 const chan = 'BroadcastChannel' in window ? new BroadcastChannel(CHANNEL) : null;
 const tell = (name, detail) => { try { chan?.postMessage(message(name, detail)); } catch {} };

@@ -356,7 +356,7 @@ export async function startTeach(lab, c = {}, { unload = false } = {}) {
     const now = await fx.quiz(lab, after, signal);
     set('quiz', 'done');
     let sizeGB = 0; try { sizeGB = Math.round((fs.statSync(after).size / 1e9) * 10) / 10; } catch {}
-    r.files = { gguf: after }; r.sizeGB = sizeGB;
+    r.files = { gguf: after }; r.sizeGB = sizeGB; r.before = p.brain.gguf || before; // the start brain's file, for Before and after (Lab item 103)
     writeJson(path.join(work, 'teach.json'), { name: p.name, from: p.brain.name, repo: p.brain.repo, lessons: [p.lessons.name], learned, skipped, epochs: p.epochs, madeHere: true, before: was?.score ?? null, after: now.score, at: lab.now() });
     return { made: { score: now.score, tps: now.tps }, from: was ? { score: was.score } : null, sizeGB, madeHere: true, lessons: [p.lessons.name], learned, skipped, loss: lastLoss };
   });
@@ -393,7 +393,7 @@ async function squeezeRun(lab, p, r, { base, lessonsFile, work, fx, signal, log,
   const now = await fx.quiz(lab, aware, signal);
   set('quiz', 'done');
   let sizeGB = 0; try { sizeGB = Math.round((fs.statSync(aware).size / 1e9) * 10) / 10; } catch {}
-  r.files = { gguf: aware }; r.sizeGB = sizeGB;
+  r.files = { gguf: aware }; r.sizeGB = sizeGB; r.before = plain; // the same size, untaught, for Before and after (Lab item 103)
   const squeeze = { type: p.squeeze, drift, surprise };
   writeJson(path.join(work, 'teach.json'), { name: p.name, from: p.brain.name, repo: p.brain.repo, lessons: [p.lessons.name], way: 'squeeze', squeeze, learned, epochs: p.epochs, madeHere: true, before: was?.score ?? null, after: now.score, at: lab.now() });
   return { made: { score: now.score, tps: now.tps }, from: was ? { score: was.score } : null, sizeGB, madeHere: true, lessons: [p.lessons.name], learned, skipped: 0, loss: lastLoss, squeeze };

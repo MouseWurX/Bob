@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1c1c1c">
+<title>Ask Bob</title>
+<link rel="icon" href="/icons/bob-32.png">
+<link rel="stylesheet" href="/style.css">
+<style>
+  body.ask-page { margin: 0; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; height: 100vh; box-sizing: border-box; }
+  .ask-page form { display: flex; gap: 8px; }
+  .ask-page textarea { flex: 1; resize: none; font: inherit; padding: 8px; min-height: 2.6em; }
+  .ask-page #askOut { flex: 1; overflow: auto; white-space: pre-wrap; line-height: 1.45; }
+  .ask-page .ask-foot { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+</style>
+</head>
+<body class="ask-page">
+  <form id="askForm">
+    <label class="sr-only" for="askIn">Ask Bob</label>
+    <textarea id="askIn" rows="2" placeholder="Ask Bob something. Enter sends, Esc puts this away." autofocus></textarea>
+    <button type="submit">Ask</button>
+  </form>
+  <div id="askOut" role="log" aria-live="polite"></div>
+  <div class="ask-foot">
+    <span class="muted" id="askNote">This box keeps its own chat, "Ask box", in Past chats.</span>
+    <button type="button" id="askOpen" class="link">Open in Bob</button>
+  </div>
+  <script type="module" src="/ask.js"></script>
+</body>
+</html>

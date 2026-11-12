@@ -39,11 +39,27 @@ export function wakeWord(text) {
   return m ? { woke: true, rest: text.slice(m[0].length).trim() } : { woke: false, rest: text };
 }
 
-export function createVoice({ transcribe, onText, onState, isQuiet }) {
+// Talk over Bob (item 135, off unless turned on): what was said while he read aloud. "Stop" on its own only stops
+// him; anything longer stops him and is sent. The phone app uses the same rule (logic.js talkOver).
+export function talkOverWords(text) {
+  const t = String(text || '').trim();
+  if (!t) return { stop: false, send: '' };
+  if (/^\W*(?:(?:ok(?:ay)?|bob|please)\W+)*(?:stop|quiet|hush|shush|enough|that'?s enough|be quiet|pause)(?:\W+(?:please|bob|now|it))*\W*$/i.test(t)) return { stop: true, send: '' };
+  return { stop: true, send: wakeWord(t).rest || t };
+}
+
+// How loud and how long counts as you talking over him: louder than the "Hey Bob" listener needs, for about a third
+// of a second, so his own voice coming back through the speakers (echo cancelling takes most of it out) and a cough
+// don't stop him.
+export const BARGE_RMS = 0.045;
+export const BARGE_SECS = 0.35;
+
+export function createVoice({ transcribe, onText, onState, isQuiet, talkOver = () => false, onBarge = () => {} }) {
   let ctx = null, stream = null, node = null, source = null;
   let mode = 'off';            // off | ptt | wake
   let parts = [], speaking = false, silentFor = 0, heardFor = 0, armed = false;
   let pttTimer = 0;
+  let barge = false, bargeParts = [], bargeLoud = 0, bargeHeard = false;
 
   async function open() {
     if (ctx) return;
@@ -65,6 +81,22 @@ export function createVoice({ transcribe, onText, onState, isQuiet }) {
   function tick(chunk) {
     const secs = chunk.length / RATE;
     const loud = rms(chunk) > 0.015;
+    // Talk over Bob: while he reads aloud, a voice loud enough for long enough stops him, and what follows is heard
+    // like the 🎙 button (the start of it is kept, so the first words aren't lost).
+    if (barge && mode !== 'ptt') {
+      bargeParts.push(chunk);
+      while (bargeParts.length > 6) bargeParts.shift();
+      bargeLoud = rms(chunk) > BARGE_RMS ? bargeLoud + secs : Math.max(0, bargeLoud - secs / 2);
+      if (bargeLoud < BARGE_SECS) return;
+      barge = false; bargeHeard = true;
+      try { onBarge(); } catch {}
+      parts = bargeParts; bargeParts = []; heardFor = bargeLoud; silentFor = 0; bargeLoud = 0;
+      mode = 'ptt';
+      onState('ptt');
+      clearTimeout(pttTimer);
+      pttTimer = setTimeout(finishPtt, 31000);
+      return;
+    }
     if (mode === 'ptt') {
       parts.push(chunk);
       heardFor += loud ? secs : 0;
@@ -108,10 +140,12 @@ export function createVoice({ transcribe, onText, onState, isQuiet }) {
     mode = wakeWanted ? 'wake' : 'off';
     if (mode === 'off') close();
     onState('transcribing');
+    const wasBarge = bargeHeard; bargeHeard = false;
     try {
       const text = audio.length / RATE > 0.3 ? await transcribe(encodeWav(audio)) : '';
       onState(mode);
-      if (text) onText(text);
+      if (text && wasBarge) { const w = talkOverWords(text); if (w.send) onText(w.send, { barge: true }); else onState(mode, ''); }
+      else if (text) onText(text);
       else onState(mode, 'I didn\'t catch that.');
     } catch (e) { onState(mode, e.message); }
   }
@@ -126,6 +160,15 @@ export function createVoice({ transcribe, onText, onState, isQuiet }) {
       mode = 'ptt';
       onState('ptt');
       pttTimer = setTimeout(finishPtt, 31000);
+    },
+    // Bob started or stopped reading aloud. With Talk over Bob on, the microphone is open while he talks.
+    async speaking(on) {
+      if (on && talkOver() && mode !== 'ptt') {
+        try { await open(); } catch { return; }
+        barge = true; bargeParts = []; bargeLoud = 0;
+        return;
+      }
+      if (!on) { barge = false; bargeParts = []; bargeLoud = 0; if (mode === 'off' && !wakeWanted && !bargeHeard) close(); }
     },
     async setWake(on) {
       wakeWanted = on;

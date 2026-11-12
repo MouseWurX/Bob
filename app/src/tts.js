@@ -33,6 +33,22 @@ export const KOKORO_VOICES = [
   ['bf_emma', 'Emma (British woman)'], ['bf_isabella', 'Isabella (British woman)'], ['bf_alice', 'Alice (British woman)'], ['bf_lily', 'Lily (British woman)']
 ];
 
+// A voice per Bob (item 139, off unless turned on): a reply another of your Bobs thought is read in his own voice, so
+// you can hear who's talking. The owner's pick for that Bob (Settings, Bob-Net), otherwise one picked from his name,
+// never Bob's own voice. Only Kokoro has more than one voice; with Piper or Chatterbox every Bob sounds the same.
+export const NET_VOICES = ['bm_george', 'am_puck', 'bm_lewis', 'am_eric', 'bm_daniel', 'am_liam', 'af_nova', 'bf_emma'];
+export function netVoiceFor(cfg, name) {
+  const n = String(name || '').trim();
+  if (!n || cfg?.netVoices !== true) return '';
+  const picked = cfg.netVoiceMap?.[n];
+  if (picked && KOKORO_VOICES.some(([id]) => id === picked)) return picked;
+  const own = cfg.tts?.voice || DEFAULT_KOKORO_VOICE;
+  const list = NET_VOICES.filter((v) => v !== own);
+  let h = 2166136261;
+  for (const c of n.toLowerCase()) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  return list[h % list.length];
+}
+
 // One Python process for Kokoro or Chatterbox, kept while Bob is talking and stopped after 10 quiet
 // minutes (Chatterbox holds about 4 GB of the graphics card while it's up).
 const workers = new Map();
@@ -78,11 +94,11 @@ function worker(cfg, engine) {
 
 export function stopVoices() { for (const w of workers.values()) { try { w.child.kill(); } catch {} } workers.clear(); }
 
-async function sayPython(cfg, engine, words, signal) {
+async function sayPython(cfg, engine, words, signal, voice = '') {
   const t = cfg.tts || {};
   const out = path.join(os.tmpdir(), `bob-say-${crypto.randomUUID().slice(0, 8)}.wav`);
   const job = { id: crypto.randomUUID().slice(0, 8), engine, text: words, out, speed: t.speed || 1 };
-  if (engine === 'kokoro') Object.assign(job, { model: t.model, voices: t.voices, voice: t.voice || DEFAULT_KOKORO_VOICE });
+  if (engine === 'kokoro') Object.assign(job, { model: t.model, voices: t.voices, voice: (voice && KOKORO_VOICES.some(([id]) => id === voice) ? voice : '') || t.voice || DEFAULT_KOKORO_VOICE });
   if (engine === 'chatterbox') {
     // Copying a voice: a clear 10 to 20 second recording at <inn>\voices\bob.wav (or tts.ref).
     const ref = t.ref || path.join(cfg.innDir, 'voices', 'bob.wav');
@@ -110,12 +126,12 @@ export function speakable(text) {
 }
 
 // Returns a WAV file as a Buffer.
-export function say(cfg, text, { signal } = {}) {
+export function say(cfg, text, { signal, voice = '' } = {}) {
   const t = cfg.tts || {};
   if (!ttsReady(cfg)) return Promise.reject(new Error('Bob\'s own voice isn\'t set up. Pick one in Models and settings (left menu, Equip Bob, Voice slot).'));
   const words = speakable(text);
   if (!words) return Promise.reject(new Error('Nothing to say.'));
-  if (t.provider === 'kokoro' || t.provider === 'chatterbox') return sayPython(cfg, t.provider, words, signal);
+  if (t.provider === 'kokoro' || t.provider === 'chatterbox') return sayPython(cfg, t.provider, words, signal, voice);
   const out = path.join(os.tmpdir(), `bob-say-${crypto.randomUUID().slice(0, 8)}.wav`);
   const args = [...(t.preArgs || []), '--model', t.model, '--config', t.config || `${t.model}.json`, '--output_file', out];
   if (t.speed && t.speed !== 1) args.push('--length_scale', String(Math.min(2, Math.max(0.5, 1 / t.speed))));

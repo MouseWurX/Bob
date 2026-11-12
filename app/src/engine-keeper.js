@@ -11,6 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { wasBlocked } from './app-control.js';
+import { engineNoteLine } from './engine-extras.js'; // 99 Engine updates in plain words (opt-in)
 import { ENGINES, engineFor, installedMarker, brainsEngineNow, sharedDir, TESTED_LLAMA, brainEnginePin, brainEngineStale, engineBlocked } from './engines.js';
 
 export const KEEPER_ENGINES = ['brainengine', 'llamacpp'];
@@ -146,7 +147,7 @@ export class EngineKeeper {
       const dl = this.d.download?.(id);
       if (!dl || ['queued', 'downloading'].includes(dl.state)) continue;
       this.pending.delete(id);
-      if (dl.state === 'done') this.d.say(`${nameOf(id)} is up to date (${p.rebuilt ? `rebuilt ${p.to}` : p.to}). I use it the next time a brain loads. If it gives trouble, Go back in Settings, Engines puts the old one back.`);
+      if (dl.state === 'done') this.d.say(`${nameOf(id)} is up to date (${p.rebuilt ? `rebuilt ${p.to}` : p.to}). I use it the next time a brain loads. If it gives trouble, Go back in Settings, Engines puts the old one back.${engineNoteLine(this.cfg, id, p.to)}`);
       else if (dl.state === 'failed') this.d.say(`The ${nameOf(id)} update didn't work (${dl.error || 'no reason given'}), so I kept the one you have. I'll try again tomorrow.`);
     }
   }

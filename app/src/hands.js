@@ -142,7 +142,7 @@ export function handsTools(brain, opts = {}) {
   const t = {};
 
   t.file_hands = {
-    schema: fn('file_hands', "Move, copy, rename (one or many), zip, unzip, tidy a folder into subfolders by kind, or recycle files, in the folders {{USER}} allowed. Nothing is overwritten and all but delete can be undone. Use recycle; delete is for good, only when told, and only if {{USER}} turned off Recycle Bin only.", {
+    schema: fn('file_hands', "Move, copy, rename (one or many), zip, unzip, tidy a folder into subfolders by kind, or recycle files, in the folders {{USER}} allowed. Never overwrites; all but delete undo. Use recycle; delete is for good, only when told and only if {{USER}} turned off Recycle Bin only.", {
       action: str('What to do', { enum: ['move', 'copy', 'rename', 'tidy', 'zip', 'unzip', 'recycle', 'delete'] }),
       paths: list('Full paths (tidy: the folder; unzip: the zip).'),
       to: str('move/copy: the folder to put them in. zip: the new zip (optional). unzip: where to unpack (optional).'),
@@ -150,7 +150,7 @@ export function handsTools(brain, opts = {}) {
       find: str('rename many: text to find in each name.'),
       replace: str('rename many: what to put instead.'),
       prefix: str('rename many: text to put in front.'),
-      suffix: str('rename many: text to put at the end (before the extension).'),
+      suffix: str('rename many: text to put before the extension.'),
       pattern: str('rename many: a pattern like "Holiday {n}" ({n} = 1, 2, 3...; {name} = the old name).')
     }, ['action', 'paths']),
     approvalGroup: 'files',
@@ -245,7 +245,7 @@ export function handsTools(brain, opts = {}) {
   const runCard = (c, cwd, why) => ({ text: `Run this ${c.kind}${why ? ` (${String(why).slice(0, 200)})` : ''}. Output shows live, with a Stop button. Not as administrator.`, command: c.line, cwd });
 
   t.run_command = {
-    schema: fn('run_command', 'Run one program or script in a folder. No shell: give the program and its arguments apart (cmd "npm", args ["run","build"]). {{USER}} sees and approves the exact command. Never as administrator; password prompts won\'t work. Use file_hands for moving, zipping or deleting files.', {
+    schema: fn('run_command', 'Run one program or script in a folder. No shell: give the program and its arguments apart (cmd "npm", args ["run","build"]). Never as administrator; password prompts won\'t work. Use file_hands for moving, zipping or deleting files.', {
       cmd: str('The program, like "git", "npm" or "python".'),
       args: list('Its arguments, one per item.'),
       cwd: str('Full path of the folder to run it in.'),
@@ -258,7 +258,7 @@ export function handsTools(brain, opts = {}) {
   };
 
   t.run_recipe = {
-    schema: fn('run_recipe', 'Run one of {{USER}}\'s saved commands (recipes) by name, or list them. {{USER}} approves each run.', {
+    schema: fn('run_recipe', 'Run one of {{USER}}\'s saved commands (recipes) by name, or list them.', {
       action: str('run or list', { enum: ['run', 'list'] }),
       name: str('The recipe name (for run).')
     }, ['action']),
@@ -308,10 +308,10 @@ export function handsPrompt(cfg, { hat = null } = {}) {
   const roots = handsRoots(cfg);
   const askLine = freeOn(cfg)
     ? ` ${Who} switched on "work without asking": there are no approval cards right now, so just do the job step by step with the tools and say what you did. Don't ask in words first either. The hard limits still apply: when a tool refuses, say why plainly and don't try a way round it.${limitsLine(cfg)}`
-    : ` Every action shows a card and waits for a click, so describe the plan briefly and call the tool; don't ask in words first.${hat ? '' : ` When a job needs two or more of these OKs, call ask_together first with every one of those steps (the exact tool and arguments), so ${who} sees the whole job on one card, then do the steps with the same arguments.`} If ${who} says no, don't try another way round.`;
+    : ` Every action shows a card and waits for a click, so describe the plan briefly and call the tool; don't ask in words first.${hat ? '' : ` When a job needs two or more OKs, call ask_together first.`} If ${who} says no, don't try another way round.`;
   if (hat) return `\n\nHands ${who} switched on: ${on.map(([, h]) => h.label).join('; ')}.${askLine}${realLine}`;
   const secWhere = handsOs() === 'win' ? 'in Windows Security' : 'in the system\'s own security settings';
-  return `\n\nHands ${who} switched on: ${on.map(([, h]) => h.label).join('; ')}.${handOn(cfg, 'files') ? ` Files: only in ${roots.join('; ') || '(no folders ticked yet)'}. To undo a file job, call undo_files; it keeps the record, so don't answer from memory.` : ''}${handOn(cfg, 'sort') ? ` Sort and rename: sort_files works in ${roots.join('; ') || '(no folders ticked yet)'} with ${cfg.userName || 'the user'}'s rules (${handsSettings(cfg).sortRules.filter((r) => r.on && r.pattern).map((r) => `${r.label}: ${r.pattern}${r.dest ? ` into ${r.dest}` : ''}`).join('; ') || 'none on'}). Rules are changed in Settings, not by you.` : ''}${handOn(cfg, 'office') ? ` Office: convert_file converts (documents with LibreOffice, sound and video with FFmpeg); read Word, Excel, PowerPoint or PDF with office_read, not read_file; office_make makes new ones; office_edit changes them (read first). It saves in ${[...roots, path.join(cfg.innDir || '', 'documents')].join('; ')}.` : ''}${handOn(cfg, 'security') ? ` Security: you are a defensive sidekick. security_check reads the PC's protection (changes nothing); inspect_file checks a file or pasted email/command without opening it; strip_metadata makes clean copies; osint_lookup checks sites, links, senders and IPs from public records; read security_tips before giving safety advice. Never switch protection off, allow or restore threats, or research private people; say how the user does those first ones ${secWhere}.` : ''}${handOn(cfg, 'apps') ? ' Apps: open with open_app, read the window with app_look, then do one step at a time with app_act using the names app_look gave you. Pass expect on a step that should change the window so your eyes check it; when app_look finds nothing readable, ask it a question with ask (a picture goes to your eyes brain) and click by place with click_at.' : ''}${browserPrompt(cfg)}${mcpPrompt(cfg)}${packsPrompt(cfg)}${makerPrompt(cfg)}${askLine}${realLine}${offLine}`;
+  return `\n\nHands ${who} switched on: ${on.map(([, h]) => h.label).join('; ')}.${handOn(cfg, 'files') ? ` Files: only in ${roots.join('; ') || '(no folders ticked yet)'}. To undo a file job, call undo_files; it keeps the record, so don't answer from memory.` : ''}${handOn(cfg, 'sort') ? ` Sort and rename: sort_files works in ${roots.join('; ') || '(no folders ticked yet)'} with ${cfg.userName || 'the user'}'s rules from Settings (${handsSettings(cfg).sortRules.filter((r) => r.on && r.pattern).map((r) => r.label).join(', ') || 'none on'}); only they change them.` : ''}${handOn(cfg, 'office') ? ` Office: read Word, Excel, PowerPoint or PDF with office_read, not read_file; office_edit after reading. Saves in ${[...roots, path.join(cfg.innDir || '', 'documents')].join('; ')}.` : ''}${handOn(cfg, 'security') ? ` Security: you defend only; read security_tips before safety advice. Never switch protection off, allow or restore threats, or research private people; say how the user does those first ones ${secWhere}.` : ''}${browserPrompt(cfg)}${mcpPrompt(cfg)}${packsPrompt(cfg)}${makerPrompt(cfg)}${askLine}${realLine}${offLine}`;
 }
 
 // Hard limits the user switched off, so Bob knows what he may now do (and that nothing else changed).

@@ -37,12 +37,41 @@
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
             android:exported="true"
+            android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Share to Bob (2026-11-11): Bob in other apps' Share menu. Off to start with (enabled="false"); Settings,
+             "Take shares from other apps" switches this door on and off. Shared things land in the message box and
+             wait for your Send. -->
+        <activity-alias
+            android:name=".ShareToBob"
+            android:enabled="false"
+            android:exported="true"
+            android:label="@string/share_label"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/*" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="application/json" />
+            </intent-filter>
+        </activity-alias>
+        <!-- The home-screen widget (AskWidget.kt): only there if you put it on your home screen. -->
+        <receiver
+            android:name=".AskWidget"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_ask_info" />
+        </receiver>
         <service
             android:name=".LendService"
             android:exported="false"

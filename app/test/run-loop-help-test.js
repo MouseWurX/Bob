@@ -302,13 +302,76 @@ const reset = () => { ran.length = 0; events.length = 0; seen.length = 0; slow =
   brain.approvals.get('card-1')(true);
   await p;
   check('a waiting OK card is kept until it is answered, then dropped', kept?.type === 'approval' && kept.sessionId === 's1' && !brain.waitingCards.has('card-1'));
+  { // 1.5.207 PC check: a guest chat's words landed in the logbook ("| queue | chat: GUESTMARKER-7781: ...")
+    const lines = []; const was = brain.log; brain.log = function (k, t) { lines.push(t); return was.call(this, k, t); };
+    const lb = path.join(tmp, 'guest-logbook.md'); const lbWas = cfg.logbook; cfg.logbook = lb;
+    script = [call('web_search', { q: 'GUESTMARKER-7781 moon' }), { role: 'assistant', content: 'About 3,474 km.' }];
+    const { jobId } = brain.enqueue('guest-abc123', 'GUESTMARKER-7781: how big is the moon?');
+    await until(() => ['done', 'failed'].includes(brain.queue.find((j) => j.id === jobId)?.state));
+    brain.log = was; cfg.logbook = lbWas;
+    const book = fs.existsSync(lb) ? fs.readFileSync(lb, 'utf8') : '';
+    check('a guest chat\'s words stay out of the logbook (queue line and tool lines)', book.length > 0 && !/GUESTMARKER/.test(book) && /a guest chat; its words are not logged/.test(book), book.slice(-400));
+  }
+  { // 1.5.207 PC check: "Web search is now on" while its card still waited
+    reset();
+    const webWas = cfg.webSearch; cfg.webSearch = false;
+    events.length = 0;
+    const rt = brain.runTool; brain.runTool = async (name, args, c) => (name === 'offer_setup' ? { text: await brain.offerSetup(args.what, c) } : rt(name, args, c));
+    script = [call('offer_setup', { what: 'web' }), { role: 'assistant', content: 'Web search is now on! Let me find that for you.' }];
+    const lines = []; const logWas = brain.log; brain.log = function (k, t) { lines.push(`${k}: ${t}`); return logWas.call(this, k, t); };
+    await run('what is the weather in Lisbon tomorrow?');
+    brain.runTool = rt;
+    const fix = events.find((e) => e.type === 'correction' && /^Not yet: Let Bob search the web is still off/.test(e.text || ''));
+    check('said but not done: the reply that says web search is on gets a short correction', Boolean(fix), JSON.stringify(events.filter((e) => e.type === 'correction')));
+    const saved = brain.session('main').findLast((m) => m.role === 'assistant' && /Web search is now on/.test(String(m.content || '')));
+    check('the correction is kept with the reply', /Not yet:/.test(saved?.correction || ''), JSON.stringify(saved));
+    check('the tool result says plainly it is not on yet', /^Not on yet: "Let Bob search the web" stays off until/.test(String(brain.session('main').findLast((m) => m.role === 'tool')?.content || '')));
+    // PC check, round 3: pressing Switch it on carried the job on and wrote its chat line in the logbook a second time.
+    const card = events.find((e) => e.type === 'offer-setup' && e.carryOn);
+    const saveWas = brain.saveHands; brain.saveHands = () => {};
+    script = [{ role: 'assistant', content: 'Sunny, 21 degrees.' }];
+    const pressed = card ? await brain.answerSetup(card.id, true) : null;
+    await until(() => lines.some((l) => /carried on with the same ask|Lisbon/.test(l) && lines.filter((x) => /Lisbon|carried on/.test(x)).length > 1));
+    await until(() => brain.queue.every((j) => ['done', 'failed'].includes(j.state)));
+    brain.log = logWas; brain.saveHands = saveWas;
+    const asked = lines.filter((l) => /^chat: .*: what is the weather in Lisbon tomorrow\?/.test(l)).length;
+    check('after Switch it on, the job carries on and its chat line is logged once', pressed?.ok && asked === 1 && lines.some((l) => /carried on with the same ask/.test(l)), JSON.stringify({ card: Boolean(card), pressed, asked, lines: lines.filter((l) => /^chat|setup/.test(l)).slice(-8) }));
+    cfg.webSearch = webWas;
+  }
+  { // PC check, round 3: one link ask read the page twice (the app opened it first, then the brain called fetch_page again).
+    reset();
+    const webWas = cfg.webSearch; cfg.webSearch = true;
+    const ft = brain.tools.fetch_page, runWas = ft.run; let reads = 0;
+    ft.run = async () => { reads++; return 'Example Domain. This domain is for use in examples.'; };
+    const rtWas = brain.runTool, realRun = Object.getPrototypeOf(brain).runTool;
+    brain.runTool = (n, a, c) => (n === 'fetch_page' ? realRun.call(brain, n, a, c) : rtWas(n, a, c));
+    script = [call('fetch_page', { url: 'https://Example.com/' }), { role: 'assistant', content: 'It is a page for examples.' }];
+    await run('what is on https://example.com ?');
+    ft.run = runWas; cfg.webSearch = webWas; brain.runTool = rtWas;
+    const tools = brain.session('main').filter((m) => m.role === 'tool').slice(-2).map((m) => String(m.content || ''));
+    check('a link is read once: the brain\'s own fetch_page of the page the app opened is answered from above', reads === 1 && /already open above/.test(tools.at(-1) || ''), JSON.stringify({ reads, tools }));
+    const { linkKey } = await import('../src/brain.js');
+    check('the same page however it is written', linkKey('https://Example.com/') === linkKey('http://example.com') && linkKey('https://example.com/a#top') === linkKey('example.com/a') && linkKey('https://example.com/A') !== linkKey('https://example.com/a'));
+  }
   const srv = fs.readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
   check('/api/events hands waiting cards to a page as it connects', /for \(const c of brain\.waitingCards\?\.values\(\) \|\| \[\]\) res\.write/.test(srv));
+  { const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+    check('a card from another chat shows in this one, with a way to open that chat (PC check 1.5.207)', /const foreignCard = elsewhere && ev\.id && \(ev\.type === 'approval'/.test(app) && /if \(elsewhere && ev\.type !== 'reminder' && !foreignCard\) return;/.test(app) && /A job in another chat needs your OK/.test(app) && /openChat\(ev\.sessionId\)/.test(app)); }
   check('the page shows each card once', /if \(ev\.id && shownCards\.has\(ev\.id\)\) break;/.test(fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8')));
   const src = fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8');
   check('a retry thinks only for the long coders (thinking on every retry cost answers on the PC)', /ctx\.retrying && think === false && \(LONG_CODER\.test\(String\(model \|\| ''\)\) \|\| \(this\.cfg\?\.loopHelpOn \|\| \[\]\)\.includes\('think'\)\)\)/.test(src));
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });
+{
+  // Nov 12 (the owner): "Better tool calling" is on by default, with a Settings switch to turn it off.
+  const was = cfg.toolHelp; delete cfg.toolHelp;
+  check('on by default', brain.plainLoop === false && brain.helpOff('mend') === false);
+  cfg.toolHelp = false;
+  check('switched off: the loop works the old way', brain.plainLoop === true && brain.helpOff('mend') === true);
+  if (was === undefined) delete cfg.toolHelp; else cfg.toolHelp = was;
+  const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  check('the switch is in Settings, on unless turned off', /sswitch\('toolHelp', settings\.toolHelp !== false, 'Better tool calling', 'On unless you turn it off\./.test(cellar));
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

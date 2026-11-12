@@ -532,7 +532,7 @@ export function selfToolsTools(brain) {
   const t = {};
 
   t.make_tool = {
-    schema: fn('make_tool', "Make yourself a new tool when none of yours fits. Write an ES module using only Node's built-in parts (no packages, require or child_process) that does `export async function run(input, { workDir, filesDir }) { ... return 'answer'; }`. In its sandbox it reads its own folder and reads, and writes its work folder and writes. A test, your reviewer and {{USER}}'s OK come first. The same name replaces it.", {
+    schema: fn('make_tool', "Make yourself a new tool when none of yours fits. Write an ES module using only Node's built-in parts (no packages, require or child_process) that does `export async function run(input, { workDir, filesDir }) { ... return 'answer'; }`. Its sandbox reads its folder and reads, and writes its work folder and writes. A test, your reviewer and {{USER}}'s OK come first; the same name replaces it.", {
       name: str('Short name, lower case with _, like csv_to_json.'),
       what: str('One plain line: what it does.'),
       when: str('One line: when to use it, like "{{USER}} gives a CSV and wants JSON".'),
@@ -669,7 +669,7 @@ export function selfToolsTools(brain) {
 // One line for Bob's prompt while this Hand is on.
 export function makerPrompt(cfg) {
   if (!handOn(cfg, 'maker')) return '';
-  return ` Own tools: when no tool of yours fits a job, you may make one with make_tool (plain JavaScript using only Node's built-in parts, in a sandbox); a test, your reviewer and ${cfg.userName || 'the user'}'s OK come first. Use the ones you made with use_my_tool. Never claim a tool was added unless make_tool said so.`;
+  return ` Own tools: make_tool when none fits; use yours with use_my_tool. Never claim a tool was added unless make_tool said so.`;
 }
 
 // For the Settings page.

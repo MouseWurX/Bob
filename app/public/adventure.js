@@ -12,6 +12,8 @@ import { tip } from './tips.js';
 import { motionOff } from './themes.js';
 import { createVoice } from './voice.js';
 import { rollDie, createSounds, createMusic, createReader } from './table-fx.js';
+import { mapSvg, rulesCard } from './adventure-table.js'; // 1.5.206 the map that grows and the rules card (the phone has the same file)
+import { openJourney } from './journey.js'; // 1.5.206 🧭 Journey
 
 const $ = (id) => document.getElementById(id);
 export const CARD_ICONS = { attack: '⚔', defend: '🛡', sneak: '🤫', talk: '💬', magic: '✨', item: '🎒', look: '🔍', help: '🤝', run: '🏃', other: '✍' };
@@ -42,6 +44,9 @@ export function createAdventure({ api }) {
   // 1.5.204: friends at the table, the table extras being ticked, the say-it box, Ask, the mic and the effects.
   const friends = []; // { name, cls, armour }
   let ex = null; // the start card's ticks (from Bob's last choice)
+  // 1.5.206 Table rules on the start card (all off until ticked, Normal difficulty), and the table's Map, Rules card,
+  // secret note and riddle boxes.
+  let rl = null, diff = '', mapOpen = false, rulesOpen = false, noteOpen = false, noteDraft = '', riddleDraft = '';
   let askOpen = false, sayDraft = '', micOn = false, micNote = '', hush = false;
   const hitFlash = new Set();
   const micOk = Boolean(globalThis.navigator?.mediaDevices?.getUserMedia);
@@ -56,6 +61,8 @@ export function createAdventure({ api }) {
   async function load() {
     try { v = await api('/api/adventure'); if (!st.userName) st = await api('/api/settings').catch(() => st); } catch (e) { msg = e.message; }
     if (!ex) ex = { ...(v?.extras || {}) };
+    if (!rl) rl = { ...(v?.settings?.rules || {}) };
+    if (!diff) diff = v?.settings?.difficulty || 'normal';
     if (!v?.game && !players) {
       body.innerHTML = '<p class="muted">Looking for your other Bobs…</p>';
       try { players = (await api('/api/adventure/players')).players; } catch { players = []; }
@@ -107,7 +114,7 @@ export function createAdventure({ api }) {
         <label>Plot armour ${armourSel(you.armour, 'data-you="armour"')}</label>
       </div></div>
       ${grown}
-      <div class="row adv-row"><button type="button" class="mini" data-you-look aria-expanded="${lookOpen}">🧍 ${lookOpen ? 'Close the character screen' : 'Change the look'}</button><button type="button" class="mini" data-roll-you>🎲 Roll one for me</button><button type="button" class="mini" data-chars-open>📖 Characters</button></div>
+      <div class="row adv-row"><button type="button" class="mini" data-you-look aria-expanded="${lookOpen}">🧍 ${lookOpen ? 'Close the character screen' : 'Change the look'}</button><button type="button" class="mini" data-roll-you>🎲 Roll one for me</button><button type="button" class="mini" data-chars-open>📖 Characters</button><button type="button" class="mini" data-journey title="Walk a tile map with the arrow keys and fight in turn-based battles">🧭 Journey</button></div>
       ${lookOpen ? '<div class="char-box"></div>' : ''}
       <div class="adv-chars">${chars.length ? `<label>Saved characters <select data-saved-char aria-label="Saved characters"><option value="">Pick one…</option>${chars.map((c) => `<option value="${esc(c.id)}" ${c.id === you.savedId ? 'selected' : ''}>${esc(c.name)} (${esc(CLASSES[c.cls] || c.cls)})${c.gains?.length ? ` ⭐${c.gains.length}` : ''}</option>`).join('')}</select></label>` : ''}
         <button type="button" class="mini" data-save-char>💾 Save this character</button>${you.savedId ? (delAsk === you.savedId ? `<span>Delete ${esc(sv?.name || 'this character')}?</span> <button type="button" class="mini danger" data-del-char="${esc(you.savedId)}">Delete for good</button><button type="button" class="link" data-del-keep>Keep it</button>` : `<button type="button" class="mini" data-del-ask="${esc(you.savedId)}">Delete this character</button>`) : ''} ${tip('Saved characters keep the name, class, the one thing about them, plot armour and the look, and whatever they earned in play (stat points, hearts, tricks, spells), so the same hero comes back stronger. They live beside the saved campaigns on this replicant matrix.', 'Saved characters')}</div>`);
@@ -134,16 +141,26 @@ export function createAdventure({ api }) {
     ['voice', 'Read the story aloud', () => 'The game master\'s words, in my reading voice. You can also speak your turn.'],
     ['pictures', 'Pictures behind the story', (can) => can.pictures ? 'Painted before the game, one for each kind of scene, shown faded behind the story.' : 'Needs a picture model first (Get models).'],
     ['scenePics', 'A new picture for every scene', (can) => can.pictures ? 'Slower: the game master steps aside for about half a minute each new scene.' : 'Needs a picture model first (Get models).'],
+    ['portraits', 'A portrait of every character', (can) => can.pictures ? 'Painted once before the game, from each character\'s class, trait and gear, and shown at the table.' : 'Needs a picture model first (Get models).'],
     ['music', 'Music', (can) => can.music ? 'Two tunes made before the game, one for exploring and one for fights.' : 'Needs the music models first (Get models).']
   ];
   function extrasPanel() {
     const can = v?.can || {};
-    const heavy = (ex.pictures && can.pictures) || (ex.music && can.music) || (ex.sounds && can.madeSounds);
+    const heavy = (ex.pictures && can.pictures) || (ex.portraits && can.pictures) || (ex.music && can.music) || (ex.sounds && can.madeSounds);
     return panel('✨', 'Table extras', `<ul class="adv-extras">${EXTRA_ROWS.map(([id, label, note]) => {
-      const off = (id === 'pictures' || id === 'scenePics') ? !can.pictures : id === 'music' ? !can.music : false;
+      const off = (id === 'pictures' || id === 'scenePics' || id === 'portraits') ? !can.pictures : id === 'music' ? !can.music : false;
       const dis = off || (id === 'scenePics' && !ex.pictures);
       return `<li class="${dis ? 'dim' : ''}"><label><input type="checkbox" data-extra="${id}" ${ex[id] && !off ? 'checked' : ''} ${dis ? 'disabled' : ''}> <strong>${esc(label)}</strong></label><span class="muted">${esc(note(can))}</span></li>`; }).join('')}</ul>
       ${heavy ? '<p class="adv-note">Setting the table takes a few minutes on this replicant matrix before the first scene: the graphics card paints and composes first, then the game master loads. You can skip it.</p>' : ''}`);
+  }
+  // 1.5.206 Table rules: each one off until ticked; difficulty Normal until picked. Bob remembers the last choice.
+  function rulesPanel() {
+    const names = v?.rules || {}, ds = v?.difficulties || {};
+    return panel('📋', 'Table rules', `<p class="adv-sub">How hard</p><div class="adv-choices" role="radiogroup" aria-label="How hard">${Object.entries(ds).map(([id, d]) => `<button type="button" role="radio" aria-checked="${diff === id}" data-difficulty="${id}">${esc(d.name)}</button>`).join('')}</div>
+      <p class="muted">${esc(ds[diff]?.what || '')}</p>
+      <ul class="adv-extras">${Object.entries(names).map(([id, r]) => `<li><label><input type="checkbox" data-rule="${id}" ${rl?.[id] ? 'checked' : ''}> <strong>${esc(r.name)}</strong></label><span class="muted">${esc(r.what)}</span></li>`).join('')}</ul>
+      <div class="row adv-row"><button type="button" class="mini" data-rules-card aria-expanded="${rulesOpen}">📋 ${rulesOpen ? 'Hide the rules card' : 'Show the rules card'}</button> ${tip('Every rule here is off until you tick it, and your ticks are remembered for the next game. The game master is told only about the ones you tick; the app keeps the purse, the riddle answers and the badges itself, so they can\'t drift.', 'Table rules')}</div>
+      ${rulesOpen ? rulesCard({ rules: rl, difficulty: diff, names: { rules: names, difficulties: ds } }) : ''}`);
   }
   function startHtml() {
     const saved = v?.saved || [];
@@ -151,10 +168,11 @@ export function createAdventure({ api }) {
     return `<section class="adv-start">
       ${refusal}
       <p class="adv-intro">I run the table. You play a character, and so do my other Bobs and your friends. ${tip('Every action is rolled by the app: d20 plus a stat. 15 or more is a hit, 10 to 14 a hit at a cost, under 10 a miss. Long travel is skipped. Nothing loads until you press Start a new game.', 'How a game works')}</p>
-      <div class="adv-panels"><div class="adv-col">${storyPanel()}${youPanel()}</div><div class="adv-col">${playersPanel()}${pacePanel()}${extrasPanel()}</div></div>
+      <div class="adv-panels"><div class="adv-col">${storyPanel()}${youPanel()}</div><div class="adv-col">${playersPanel()}${pacePanel()}${extrasPanel()}${rulesPanel()}</div></div>
       <div class="row adv-go"><button type="button" class="big yes" data-start ${v?.refusal ? 'disabled' : ''}>🎲 Start a new game</button><span class="muted">Loads the game master brain. Pause or End lets it go again. The first turn takes longest: the game master reads the rules and the party first.</span></div>
       ${msg ? `<p class="adv-msg" role="alert">${esc(msg)}</p>` : ''}
-      ${saved.length ? panel('📜', 'Continue a campaign', `<ul class="adv-saved">${saved.map((g) => `<li><div><strong>${esc(g.title)}</strong><br><span class="muted">${esc(g.setting)} · ${g.scenes} scene${g.scenes === 1 ? '' : 's'} · ${esc(g.party.join(', '))}${g.status === 'over' ? ' · ended' : ''}</span></div><span class="adv-fill"></span><button type="button" class="mini yes" data-continue="${esc(g.id)}" ${v?.refusal ? 'disabled' : ''}>Continue</button> <button type="button" class="mini" data-storybook="${esc(g.id)}">📕 Storybook</button> <button type="button" class="mini" data-delete="${esc(g.id)}">Delete</button></li>`).join('')}</ul><p class="muted">Continue starts with "Last time…": the game master reminds the table where things stand. Storybook opens the story so far as one page, with its pictures, to keep or share.</p>`, 'adv-wide') : ''}
+      ${saved.length ? panel('📜', 'Continue a campaign', `<ul class="adv-saved">${saved.map((g) => `<li><div><strong>${esc(g.title)}</strong><br><span class="muted">${esc(g.setting)} · ${g.scenes} scene${g.scenes === 1 ? '' : 's'} · ${esc(g.party.join(', '))}${g.status === 'over' ? ' · ended' : ''}</span></div><span class="adv-fill"></span><button type="button" class="mini yes" data-continue="${esc(g.id)}" ${v?.refusal ? 'disabled' : ''}>Continue</button> <button type="button" class="mini" data-storybook="${esc(g.id)}">📕 Storybook</button> <a class="mini button" href="/api/adventure/export/${esc(g.id)}" download title="Save this campaign as one file, to send to a friend's Bob">📤 Send to a friend</a> <button type="button" class="mini" data-delete="${esc(g.id)}">Delete</button></li>`).join('')}</ul><p class="muted">Continue starts with "Last time…": the game master reminds the table where things stand. Storybook opens the story so far as one page, with its pictures, to keep or share. Send to a friend saves the campaign as one file their Bob can carry on.</p>`, 'adv-wide') : ''}
+      <div class="row adv-row"><label class="mini button adv-import">📥 Bring in a campaign from a friend <input type="file" accept=".json,application/json" data-import></label> ${tip('A campaign file from a friend\'s Bob (📤 Send to a friend on theirs): the story, the party, badges, the quest log, the world book and the map. It lands under Continue a campaign. Pictures, tunes and secret notes stay on their replicant matrix.', 'Bring in a campaign')}</div>
     </section>`;
   }
   // ---------- The Characters page (1.5.124) ----------
@@ -176,12 +194,12 @@ export function createAdventure({ api }) {
           <div class="char-box"></div>`;
       } else {
         bodyHtml = `<p class="muted">Your heroes, kept for the next game. Pick one on the start card under Saved characters.</p>
-          <ul class="adv-char-list">${list.map((c) => card(c.look, c.name, `${esc(CLASSES[c.cls] || c.cls)} · plot armour ${esc(ARMOUR[c.armour]?.[0] || 'Some')}${c.trait ? ` · ${esc(c.trait)}` : ''}${c.gains?.length ? `<br>⭐ Earned: ${esc(c.gains.join(', '))}` : ''}`, `<div class="row"><button type="button" class="mini" data-chars-edit="${esc(c.id)}">Edit</button>${chars.ask === c.id ? `<span>Delete ${esc(c.name)}?</span> <button type="button" class="mini danger" data-chars-del="${esc(c.id)}">Delete for good</button><button type="button" class="link" data-chars-keep>Keep it</button>` : `<button type="button" class="mini" data-chars-ask="${esc(c.id)}">Delete this character</button>`}</div>`)).join('')}</ul>
+          <ul class="adv-char-list">${list.map((c) => card(c.look, c.name, `${esc(CLASSES[c.cls] || c.cls)} · plot armour ${esc(ARMOUR[c.armour]?.[0] || 'Some')}${c.trait ? ` · ${esc(c.trait)}` : ''}${c.gains?.length ? `<br>⭐ Earned: ${esc(c.gains.join(', '))}` : ''}${badgeLine(c)}`, `<div class="row"><button type="button" class="mini" data-chars-edit="${esc(c.id)}">Edit</button>${chars.ask === c.id ? `<span>Delete ${esc(c.name)}?</span> <button type="button" class="mini danger" data-chars-del="${esc(c.id)}">Delete for good</button><button type="button" class="link" data-chars-keep>Keep it</button>` : `<button type="button" class="mini" data-chars-ask="${esc(c.id)}">Delete this character</button>`}</div>`)).join('')}</ul>
           <div class="row"><button type="button" class="yes" data-chars-edit="new">➕ New character</button></div>`;
       }
     } else if (chars.tab === 'party') {
       const g = v?.game || v?.lastParty;
-      bodyHtml = g ? `<p class="muted">${v?.game ? 'At the table now' : `The last game, ${esc(g.title)}`}. Each Bob plays with his own look.</p><ul class="adv-char-list">${g.party.map((c) => card(isHumanSeat(c) ? (c.look || encodeParts(DEFAULT_PARTS)) : c.who === 'net' ? 'bot' : (settings().look || 'sysop'), c.name, `${esc(c.className)}${c.who === 'you' ? ' · you' : c.who === 'friend' ? ' · a friend' : c.who === 'net' ? ' · his own Bob' : ' · played by the game master'} · <span aria-label="${c.hearts} of ${c.max || 5} hearts">${hearts(c.hearts, c.max || 5)}</span>${c.trait ? `<br>${esc(c.trait)}` : ''}${c.items?.length ? `<br>Carries ${esc(c.items.join(', '))}` : ''}${c.spells?.length ? `<br>Knows ${esc(c.spells.join(', '))}` : ''}${c.tricks?.length ? `<br>Tricks: ${esc(c.tricks.join(', '))}` : ''}${c.gains?.length ? `<br>⭐ Earned: ${esc(c.gains.join(', '))}` : ''}`)).join('')}</ul>` : '<p class="muted">No party yet. Start a game and they turn up here.</p>';
+      bodyHtml = g ? `<p class="muted">${v?.game ? 'At the table now' : `The last game, ${esc(g.title)}`}. Each Bob plays with his own look.</p><ul class="adv-char-list">${g.party.map((c) => card(isHumanSeat(c) ? (c.look || encodeParts(DEFAULT_PARTS)) : c.who === 'net' ? 'bot' : (settings().look || 'sysop'), c.name, `${esc(c.className)}${c.who === 'you' ? ' · you' : c.who === 'friend' ? ' · a friend' : c.who === 'net' ? ' · his own Bob' : ' · played by the game master'} · <span aria-label="${c.hearts} of ${c.max || 5} hearts">${hearts(c.hearts, c.max || 5)}</span>${c.trait ? `<br>${esc(c.trait)}` : ''}${c.items?.length ? `<br>Carries ${esc(c.items.join(', '))}` : ''}${c.spells?.length ? `<br>Knows ${esc(c.spells.join(', '))}` : ''}${c.tricks?.length ? `<br>Tricks: ${esc(c.tricks.join(', '))}` : ''}${c.gains?.length ? `<br>⭐ Earned: ${esc(c.gains.join(', '))}` : ''}${badgeLine(c)}`)).join('')}</ul>` : '<p class="muted">No party yet. Start a game and they turn up here.</p>';
     } else if (chars.tab === 'met') {
       const list = v?.game?.met?.length ? v.game.met : (v?.met || []);
       bodyHtml = list.length ? `<p class="muted">${v?.game?.met?.length ? 'Everyone the game master has brought on in this game.' : 'Everyone and everything you have run into, across your games.'} Drawn by me the moment they're named.</p><ul class="adv-char-list">${list.map((m) => card(m.look, m.name, `${m.kind === 'enemy' ? `⚔ ${esc(v?.enemies?.find((e) => e.id === m.type)?.name || 'enemy')}` : m.kind === 'creature' ? 'creature' : 'person'}${m.scene ? ` · met at ${esc(m.scene)}` : ''}${m.game && !v?.game ? ` · ${esc(m.game)}` : ''}`, v?.game ? '' : `<div class="row">${chars.ask === m.id ? `<span>Forget ${esc(m.name)}?</span> <button type="button" class="mini danger" data-met-forget="${esc(m.id)}">Forget for good</button><button type="button" class="link" data-chars-keep>Keep it</button>` : `<button type="button" class="mini" data-chars-ask="${esc(m.id)}">Forget</button>`}</div>`)).join('')}</ul>` : '<p class="muted">Nobody yet. Whoever the game master names in a scene lands here, drawn.</p>';
@@ -193,18 +211,48 @@ export function createAdventure({ api }) {
 
   // ---------- The table ----------
   const isHuman = (c) => c?.who === 'you' || c?.who === 'friend';
+  // 1.5.206 Badges on the character sheet: the icons, with their names for screen readers and on hover.
+  function badgeLine(c) {
+    const list = (c?.badges || []).map((id) => v?.badges?.[id]).filter(Boolean);
+    return list.length ? `<br><span class="adv-badges">🏅 ${list.map((b) => `<span title="${esc(b.name)}" aria-label="${esc(b.name)}">${b.icon}</span>`).join(' ')}</span> <span class="muted">${esc(list.map((b) => b.name).join(', '))}</span>` : '';
+  }
+  // A portrait painted for this game, else the character's sprite.
+  function face(c, g, size = 48) {
+    const url = g?.props?.[`portrait:${c.id}`];
+    return url ? `<img class="adv-face adv-portrait" src="${esc(url)}" width="${size}" height="${size}" alt="">` : sprite(c, size);
+  }
+  // 1.5.206 The map that grows, the shop, a secret note and the riddle.
+  function mapHtml(g) {
+    if (!g.map?.nodes?.length) return '<div class="adv-mapbox"><strong>🗺 Map</strong><p class="muted">Nothing on it yet. Each new place the party reaches is drawn here, joined to where they came from.</p></div>';
+    return `<div class="adv-mapbox"><strong>🗺 Map</strong> <span class="muted">${g.map.nodes.length} place${g.map.nodes.length === 1 ? '' : 's'}; the ringed one is where the party is, dashed lines are the ways on.</span>${mapSvg(g.map, { exits: g.exits || [] })}</div>`;
+  }
+  function shopHtml(g) {
+    if (!g.shop || g.status !== 'playing') return '';
+    return `<div class="adv-shop"><strong>🪙 For sale here</strong> <span class="muted">The party has ${g.coins} coin${g.coins === 1 ? '' : 's'}. Buying doesn't use a turn.</span><div class="adv-cards">${Object.entries(g.shop).map(([item, price]) => `<button type="button" class="adv-card" data-buy="${esc(item)}" ${price > g.coins ? 'disabled' : ''}>${esc(item)}<span class="muted">${price} coin${price === 1 ? '' : 's'}</span></button>`).join('')}</div></div>`;
+  }
+  function noteHtml(g) {
+    if (!g.rules?.secrets || g.status !== 'playing') return '';
+    const meId = g.party.find((c) => c.who === 'you')?.id;
+    const mine = (g.secrets || []).filter((x) => x.id === meId);
+    return `<div class="adv-note-box">${noteOpen ? `<label><strong>🤫 A secret note to the game master</strong> <span class="muted">The other players don't see it, and it doesn't use your turn.</span><textarea rows="2" maxlength="300" data-note aria-label="Your secret note" placeholder="I pocket the ring while nobody's looking.">${esc(noteDraft)}</textarea></label><div class="row"><button type="button" class="yes" data-note-go>Pass the note</button><button type="button" data-note-close>Never mind</button></div>` : `<button type="button" class="mini" data-note-open aria-expanded="false">🤫 Secret note</button>`}${mine.length ? `<p class="muted">Your notes so far: ${mine.map((x) => `“${esc(x.text)}”`).join(' · ')}</p>` : ''}</div>`;
+  }
+  function riddleHtml(g) {
+    const r = g.riddle;
+    if (!r?.open || g.status !== 'playing') return '';
+    return `<div class="adv-riddle" role="region" aria-label="Riddle"><p><strong>🧩 ${esc(r.ask)}</strong> <span class="muted">${r.left} tr${r.left === 1 ? 'y' : 'ies'} left. The app checks the answer; the game master doesn't know it.</span></p><div class="row"><input type="text" data-riddle maxlength="80" aria-label="Your answer" placeholder="Your answer" value="${esc(riddleDraft)}"><button type="button" class="yes" data-riddle-go>Answer</button><button type="button" data-riddle-give>Give up</button></div></div>`;
+  }
   function logHtml(g) {
     return g.log.map((l) => {
       if (l.who === 'gm') return `<div class="adv-gm"><span class="adv-who">🎲 Game master${l.recap ? ' <span class="tag">Last time</span>' : ''}</span>${render(l.text)}</div>`;
       if (l.who === 'ooc') return `<div class="adv-ooc"><span class="adv-who">❓ You asked: ${esc(l.q)}</span>${render(l.text)}</div>`;
-      if (l.who === 'app') return `<p class="adv-app ${l.reward ? 'adv-reward' : 'muted'}">${esc(l.text)}</p>`;
+      if (l.who === 'app') return `<p class="adv-app ${l.reward ? 'adv-reward' : l.riddle ? 'adv-riddle-line' : 'muted'}">${esc(l.text)}</p>`;
       const who = g.party.find((c) => c.id === l.id);
       return `<div class="adv-turn ${l.who === 'you' ? 'you' : ''}"><span class="adv-who">${esc(l.name)}${l.by === 'net' ? ' <span class="tag">his own Bob</span>' : l.who === 'player' ? ' <span class="tag">played by the game master</span>' : who?.who === 'friend' ? ' <span class="tag">a friend</span>' : ''}</span><p>${esc(l.text)}</p>${l.dice ? `<p class="adv-dice">🎲 ${esc(l.dice)}</p>` : ''}</div>`;
     }).join('');
   }
   const heartsSpan = (n, max, who) => `<span class="adv-hearts" aria-label="${esc(who)}: ${n} of ${max} hearts">${hearts(n, max)}</span>`;
   function partyHtml(g) {
-    return `<ul class="adv-party" aria-label="The party">${g.party.map((c, i) => `<li class="${i === g.turn && g.status === 'playing' ? 'turn' : ''}${c.out ? ' out' : ''}" title="${esc(c.trait)}">${sprite(c)}<div><strong>${esc(c.name)}</strong><br><span class="muted">${esc(c.className)}${c.who === 'you' ? ' · you' : c.who === 'friend' ? ' · a friend' : ''}${c.gains?.length ? ` · ⭐${c.gains.length}` : ''}</span><br>${heartsSpan(c.hearts, c.max || 5, c.name)}${c.out ? '<br><span class="tag">out</span>' : ''}${i === g.turn && g.status === 'playing' ? '<br><span class="tag">turn</span>' : ''}</div></li>`).join('')}</ul>`;
+    return `<ul class="adv-party" aria-label="The party">${g.party.map((c, i) => `<li class="${i === g.turn && g.status === 'playing' ? 'turn' : ''}${c.out ? ' out' : ''}" title="${esc(c.trait)}">${face(c, g)}<div><strong>${esc(c.name)}</strong><br><span class="muted">${esc(c.className)}${c.who === 'you' ? ' · you' : c.who === 'friend' ? ' · a friend' : ''}${c.gains?.length ? ` · ⭐${c.gains.length}` : ''}${c.badges?.length ? ` · 🏅${c.badges.length}` : ''}</span><br>${heartsSpan(c.hearts, c.max || 5, c.name)}${c.out ? '<br><span class="tag">out</span>' : ''}${i === g.turn && g.status === 'playing' ? '<br><span class="tag">turn</span>' : ''}</div></li>`).join('')}</ul>`;
   }
   // 1.5.204 Fights you can see: the enemies in the scene with their hearts (the app keeps the count).
   function foesHtml(g) {
@@ -227,7 +275,7 @@ export function createAdventure({ api }) {
       ${open.length || done.length ? `<ul class="adv-quests">${open.map((q) => `<li>☐ ${esc(q.text)}${q.scene ? ` <span class="muted">(${esc(q.scene)})</span>` : ''}</li>`).join('')}${done.map((q) => `<li class="done">☑ <s>${esc(q.text)}</s></li>`).join('')}</ul>` : '<p class="muted">Nothing on it yet. The game master adds what the party sets out to do.</p>'}
       ${worldHtml(g)}
       <strong>The story so far</strong><p>${esc(g.summary || 'Nothing written down yet; I sum things up every three scenes.')}</p>
-      ${me.map((c) => `<p><strong>${esc(c.name)}</strong> <span class="muted">${esc(c.className)} · Might ${c.stats.might} · Wits ${c.stats.wits} · Charm ${c.stats.charm} · Luck ${c.stats.luck}</span>${c.items?.length ? `<br>🎒 ${esc(c.items.join(', '))}` : ''}${c.spells?.length ? `<br>✨ ${esc(c.spells.join(', '))}` : ''}${c.tricks?.length ? `<br>🃏 ${esc(c.tricks.join(', '))}` : ''}${c.gains?.length ? `<br>⭐ ${esc(c.gains.join(', '))}` : ''}</p>`).join('')}
+      ${me.map((c) => `<p><strong>${esc(c.name)}</strong> <span class="muted">${esc(c.className)} · Might ${c.stats.might} · Wits ${c.stats.wits} · Charm ${c.stats.charm} · Luck ${c.stats.luck}</span>${c.items?.length ? `<br>🎒 ${esc(c.items.join(', '))}` : ''}${c.spells?.length ? `<br>✨ ${esc(c.spells.join(', '))}` : ''}${c.tricks?.length ? `<br>🃏 ${esc(c.tricks.join(', '))}` : ''}${c.gains?.length ? `<br>⭐ ${esc(c.gains.join(', '))}` : ''}${badgeLine(c)}</p>`).join('')}
       ${g.scenes.length ? `<p class="muted">${g.scenes.map((s) => `Scene ${s.n}: ${esc(s.title)}`).join(' · ')}</p>` : ''}</div>`;
   }
   function askHtml() {
@@ -261,7 +309,7 @@ export function createAdventure({ api }) {
     }
     return `<div class="adv-hand"><p><strong>${esc(me?.name || 'Your')}'s turn.</strong>${whose} <span class="muted">Pick a card; the app rolls for you. Cards that don't fit this scene are left out.</span></p>
       <p class="muted adv-odds-note">The number on a card is what the die needs for a hit, and about how likely that is. ${tip('d20 plus the stat: 15 or more is a hit. So with Might 4 the die needs 11 or more, about 50%. Plot armour is counted in. A good line of flair adds +2 on top.', 'Odds on the cards')}</p>
-      <div class="adv-cards">${cards.map((c) => `<button type="button" class="adv-card ${c === 'other' ? 'other' : ''}" data-card="${c}"><span class="adv-ico">${CARD_ICONS[c]}</span>${CARD_NAMES[c]}<span class="muted">${CARD_STATS[c]}${g.second?.[c] ? ' ›' : ''}</span>${g.odds?.[c] ? `<span class="adv-odds" title="${esc(g.odds[c].words)}">${g.odds[c].need > 20 ? '—' : `${g.odds[c].need}+`} · ${g.odds[c].hit}%</span>` : ''}</button>`).join('')}</div>
+      <div class="adv-cards">${cards.map((c) => `<button type="button" class="adv-card ${c === 'other' ? 'other' : ''}" data-card="${c}"><span class="adv-ico">${CARD_ICONS[c]}</span>${CARD_NAMES[c]}<span class="muted">${CARD_STATS[c]}${g.second?.[c] ? ' ›' : ''}</span>${g.odds?.[c] ? `<span class="adv-odds" title="${esc(g.odds[c].words)}">${g.odds[c].need > 20 ? '—' : `${g.odds[c].need}+`} · ${g.odds[c].hit}%</span>` : ''}</button>`).join('')}${g.breath ? '<button type="button" class="adv-card" data-breath title="Spend this turn to get one heart back. Once a scene, no roll."><span class="adv-ico">🫁</span>Catch your breath<span class="muted">+1 heart, no roll</span></button>' : ''}</div>
       ${sayHtml()}
       <div class="row adv-row"><button type="button" class="mini" data-ask-open aria-expanded="${askOpen}" ${v.asking ? 'disabled' : ''}>❓ Ask the game master</button></div>
       ${askHtml()}</div>`;
@@ -279,15 +327,19 @@ export function createAdventure({ api }) {
     const bg = backdrop(g);
     const hasMusic = g.extras?.music && (g.props?.['music:calm'] || g.props?.['music:fight']);
     return `<section class="adv-game${bg ? ' adv-has-bg' : ''}"${bg ? ` style="--adv-bg:url('${esc(bg)}')"` : ''}>
-      <div class="adv-top"><div><strong>${esc(g.title)}</strong><br><span class="muted">${esc(g.settingText)}${scene ? ` · Scene ${scene.n}: ${esc(scene.title)}` : ''} · round ${g.round}</span></div>
+      <div class="adv-top"><div><strong>${esc(g.title)}</strong><br><span class="muted">${esc(g.settingText)}${scene ? ` · Scene ${scene.n}: ${esc(scene.title)}` : ''} · round ${g.round}${g.coins !== null && g.coins !== undefined ? ` · 🪙 ${g.coins}` : ''}${g.difficulty && g.difficulty !== 'normal' ? ` · ${esc(v.difficulties?.[g.difficulty]?.name || '')}` : ''}</span></div>
         <span class="adv-fill"></span>
         ${g.status === 'playing' ? '<button type="button" data-pause>⏸ Pause</button>' : g.status === 'paused' ? '<button type="button" class="yes" data-resume>▶ Resume</button>' : ''}
         ${hasMusic || g.extras?.sounds || g.extras?.voice ? `<button type="button" data-hush aria-pressed="${hush}" title="Quiet: music, sounds and reading aloud stop until you press it again">${hush ? '🔇 Quiet' : '🔊 Sound'}</button>` : ''}
         <button type="button" data-journal aria-pressed="${journal}">📓 Journal</button>
+        ${g.map ? `<button type="button" data-map aria-pressed="${mapOpen}">🗺 Map</button>` : ''}
+        <button type="button" data-rules aria-pressed="${rulesOpen}">📋 Rules</button>
         <button type="button" data-chars-open>📖 Characters</button>
         ${g.status === 'over' ? `<button type="button" data-storybook="${esc(g.id)}">📕 Storybook</button>` : ''}
         <button type="button" data-end>${g.status === 'over' ? 'Close' : '🏁 End game'}</button></div>
       ${journal ? journalHtml(g) : ''}
+      ${mapOpen && g.map ? mapHtml(g) : ''}
+      ${rulesOpen ? rulesCard({ rules: g.rules, difficulty: g.difficulty, names: { rules: v.rules, difficulties: v.difficulties } }) : ''}
       ${prep ? `<div class="adv-prep" role="status"><strong>🎨 Setting the table:</strong> ${esc(prep.what || 'getting ready')} <span class="muted">(${Math.min(prep.done + 1, prep.total)} of ${prep.total})</span><span class="adv-fill"></span><button type="button" class="mini" data-skip-prep>Skip the rest</button></div>` : ''}
       ${partyHtml(g)}
       ${foesHtml(g)}
@@ -295,7 +347,10 @@ export function createAdventure({ api }) {
       ${busy ? `<p class="adv-busy muted">${busy}</p>` : ''}
       ${v.fate ? `<div class="adv-hand adv-fate"><p><strong>${esc(v.fate.name)} is at zero hearts.</strong> Your call.</p><div class="row"><button type="button" class="big" data-fate="style">Go out in style</button><button type="button" class="big yes" data-fate="captured">Wake up captured</button></div></div>` : ''}
       ${v.takeBack && g.status === 'playing' ? `<div class="adv-hand adv-takeback" role="status"><p><strong>The dice roll in a moment.</strong> <span class="muted">Picked the wrong card?</span></p><div class="row"><button type="button" class="big" data-take-back>↩ Take that back</button><button type="button" class="yes" data-roll-now>🎲 Roll now</button></div></div>` : ''}
+      ${riddleHtml(g)}
       ${g.status === 'playing' ? handHtml(g) : ''}
+      ${shopHtml(g)}
+      ${noteHtml(g)}
       ${msg ? `<p class="adv-msg" role="alert">${esc(msg)}</p>` : ''}
     </section>`;
   }
@@ -371,6 +426,7 @@ export function createAdventure({ api }) {
     if (t.dataset.pace) { you.pace = t.dataset.pace; draw(); return; }
     if ('youLook' in t.dataset) { lookOpen = !lookOpen; draw(); return; }
     if ('charsOpen' in t.dataset) { chars = { tab: 'you' }; draw(); return; }
+    if ('journey' in t.dataset) { openJourney({ api, you, characters: v?.characters || [], enemies: v?.enemies || [] }); return; } // 1.5.206
     if ('charsBack' in t.dataset) { chars = null; draw(); return; }
     if (t.dataset.charsTab) { chars = { tab: t.dataset.charsTab }; draw(); return; }
     if (t.dataset.charsEdit) { chars.edit = t.dataset.charsEdit; chars.draft = null; draw(); return; }
@@ -386,7 +442,7 @@ export function createAdventure({ api }) {
     if ('start' in t.dataset) {
       const bobs = (players || []).filter((p) => party.get(p.address || p.name)?.ticked && p.ok !== false).map((p) => { const st = party.get(p.address || p.name); return { who: p.who, name: p.name, address: p.address || '', armour: st.armour, cls: st.cls }; });
       t.disabled = true;
-      await call('/api/adventure/start', { setting: you.setting || 'fantasy', settingText: body.querySelector('[data-setting-text]')?.value || you.settingText || '', story: you.story || '', tone: you.tone || 'normal', keepOut: body.querySelector('[data-keep-out]')?.value || you.keepOut || '', pace: you.pace || 'evening', you: { name: you.name || 'Hero', cls: you.cls, trait: you.trait, armour: you.armour, look: you.look || '', charId: you.savedId || '' }, friends: friends.map((f, i) => ({ name: f.name || `Friend ${i + 1}`, cls: f.cls, armour: f.armour })), bobs, extras: ex || {} });
+      await call('/api/adventure/start', { setting: you.setting || 'fantasy', settingText: body.querySelector('[data-setting-text]')?.value || you.settingText || '', story: you.story || '', tone: you.tone || 'normal', keepOut: body.querySelector('[data-keep-out]')?.value || you.keepOut || '', pace: you.pace || 'evening', you: { name: you.name || 'Hero', cls: you.cls, trait: you.trait, armour: you.armour, look: you.look || '', charId: you.savedId || '' }, friends: friends.map((f, i) => ({ name: f.name || `Friend ${i + 1}`, cls: f.cls, armour: f.armour })), bobs, extras: ex || {}, rules: rl || {}, difficulty: diff || 'normal' });
       spokenGame = ''; syncFx();
       return;
     }
@@ -395,6 +451,17 @@ export function createAdventure({ api }) {
     if ('pause' in t.dataset) { fx.music.stop(); fx.reader.stop(); return call('/api/adventure/pause', {}); }
     if ('resume' in t.dataset) return call('/api/adventure/resume', {});
     if ('journal' in t.dataset) { journal = !journal; draw(); return; }
+    // 1.5.206 Table rules
+    if (t.dataset.difficulty) { diff = t.dataset.difficulty; draw(); return; }
+    if ('rulesCard' in t.dataset || 'rules' in t.dataset) { rulesOpen = !rulesOpen; draw(); return; }
+    if ('map' in t.dataset) { mapOpen = !mapOpen; draw(); return; }
+    if (t.dataset.buy) return call('/api/adventure/buy', { item: t.dataset.buy });
+    if ('breath' in t.dataset) { picked = { card: 'breath', done: true }; return call('/api/adventure/act', { card: 'breath' }); }
+    if ('noteOpen' in t.dataset) { noteOpen = true; draw(); body.querySelector('[data-note]')?.focus(); return; }
+    if ('noteClose' in t.dataset) { noteOpen = false; draw(); return; }
+    if ('noteGo' in t.dataset) { const text = (body.querySelector('[data-note]')?.value || '').trim(); if (!text) return; noteDraft = ''; noteOpen = false; return call('/api/adventure/secret', { text }); }
+    if ('riddleGo' in t.dataset) { const answer = (body.querySelector('[data-riddle]')?.value || '').trim(); if (!answer) return; riddleDraft = ''; return call('/api/adventure/riddle', { answer }); }
+    if ('riddleGive' in t.dataset) { if (!confirm('Give up on the riddle? The answer is shown, and the way opens at a cost.')) return; riddleDraft = ''; return call('/api/adventure/riddle', { giveUp: true }); }
     if ('end' in t.dataset) { if (v.game.status !== 'over' && !confirm('End the game? The campaign stays saved under Continue.')) return; fx.music.stop(); fx.reader.stop(); await call('/api/adventure/end', { keep: true }); players = null; return load(); }
     if (t.dataset.fate) { v.fate = null; return call('/api/adventure/fate', { choice: t.dataset.fate }); }
     if (t.dataset.card) { picked = { card: t.dataset.card }; draw(); return; }
@@ -412,6 +479,8 @@ export function createAdventure({ api }) {
     if (el.dataset.you) { you[el.dataset.you] = el.value; if (el.dataset.you === 'cls') draw(); return; }
     if (el.dataset.draft && chars?.draft) { chars.draft[el.dataset.draft] = el.value; return; }
     if ('savedChar' in el.dataset) { const c = (v?.characters || []).find((x) => x.id === el.value); if (c) { Object.assign(you, { name: c.name, cls: c.cls, trait: c.trait, armour: c.armour, look: c.look || you.look, savedId: c.id }); } draw(); return; }
+    if (el.dataset.rule) { rl = { ...(rl || {}), [el.dataset.rule]: el.checked }; draw(); return; } // 1.5.206
+    if ('import' in el.dataset && el.files?.[0]) { const f = el.files[0]; if (v) delete v.imported; f.text().then((text) => call('/api/adventure/import', { file: text })).then(() => { if (v?.imported) msg = `Brought in “${v.imported.title}”. It's under Continue a campaign.`; draw(); }).catch((x) => { msg = x.message; draw(); }); return; }
     if (el.dataset.extra) { ex = { ...(ex || {}), [el.dataset.extra]: el.checked }; if (el.dataset.extra === 'pictures' && !el.checked) ex.scenePics = false; draw(); return; }
     if (el.dataset.friend && el.dataset.fk) { const f = friends[Number(el.dataset.friend)]; if (f) f[el.dataset.fk] = el.value; return; }
     if (el.dataset.player) { party.get(el.dataset.player).ticked = el.checked; return; }
@@ -421,12 +490,15 @@ export function createAdventure({ api }) {
   body.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && e.ctrlKey && e.target.matches('[data-flair]')) body.querySelector('[data-go]')?.click();
     if (e.key === 'Enter' && e.ctrlKey && e.target.matches('[data-say]')) body.querySelector('[data-say-go]')?.click();
+    if (e.key === 'Enter' && e.target.matches('[data-riddle]')) { e.preventDefault(); body.querySelector('[data-riddle-go]')?.click(); }
     if (e.key === 'Enter' && e.target.matches('[data-ask-q]')) { e.preventDefault(); body.querySelector('[data-ask-go]')?.click(); }
   });
   // Typing survives a redraw: the say-it box, a friend's name and your own setting are kept as you type.
   body.addEventListener('input', (e) => {
     const el = e.target;
     if (el.matches('[data-say]')) sayDraft = el.value;
+    else if (el.matches('[data-note]')) noteDraft = el.value;
+    else if (el.matches('[data-riddle]')) riddleDraft = el.value;
     else if (el.matches('[data-setting-text]')) you.settingText = el.value;
     else if (el.matches('[data-keep-out]')) you.keepOut = el.value;
     else if (el.dataset.friend && el.dataset.fk === 'name') { const f = friends[Number(el.dataset.friend)]; if (f) f.name = el.value; }

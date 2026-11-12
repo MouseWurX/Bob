@@ -95,7 +95,7 @@ export function diagramTool() {
           type: 'object',
           properties: {
             title: { type: 'string', description: 'A short title, 2 to 6 words.' },
-            mermaid: { type: 'string', description: 'Mermaid, starting with its type: "flowchart TD" (or LR), sequenceDiagram, mindmap, timeline, gantt, pie, classDiagram, erDiagram, stateDiagram-v2. Quote labels that have brackets or punctuation: A["Start (here)"].' },
+            mermaid: { type: 'string', description: 'Mermaid, starting with its type: "flowchart TD" (or LR), sequenceDiagram, mindmap, timeline, gantt, pie, classDiagram, erDiagram, stateDiagram-v2.' },
             format: { type: 'string', enum: Object.keys(FORMATS), description: 'Only if {{USER}} named png, svg or pdf.' }
           },
           required: ['mermaid']

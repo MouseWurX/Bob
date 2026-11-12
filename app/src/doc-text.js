@@ -321,20 +321,50 @@ function fontMaps(buf, streams) {
     const tu = body.match(/\/ToUnicode\s+(\d+)\s+\d+\s+R/)?.[1];
     if (tu && byNum.has(Number(tu))) fontMap.set(num, cmapOf(byNum.get(Number(tu))));
   }
+  // Glyph widths (1.5.207 PC check: the W3C dummy.pdf read "Dumm y PDF fi le"): a word set in pieces is moved along
+  // with Td, and only the widths say whether the move is a real space or just the next piece of the same word.
+  const widthMap = new Map(); // font object -> { two, w: Map(code -> width in 1/1000 em), dw }
+  const arrOf = (body, key) => { const m = body.match(new RegExp(`/${key}\\s*(?:\\[([^\\]]*)\\]|(\\d+)\\s+\\d+\\s+R)`)); if (!m) return null; return m[1] != null ? m[1] : (objects.get(Number(m[2])) || '').replace(/^[^[]*\[|\][^\]]*$/g, ''); };
+  for (const [num, body] of objects) {
+    if (!/\/Type\s*\/Font\b/.test(body)) continue;
+    try {
+      const w = new Map();
+      if (/\/Subtype\s*\/Type0\b/.test(body)) {
+        const dn = body.match(/\/DescendantFonts\s*(?:\[\s*(\d+)\s+\d+\s+R|(\d+)\s+\d+\s+R)/);
+        let d = dn ? objects.get(Number(dn[1] || dn[2])) || '' : '';
+        if (dn?.[2] && !/\/W\b/.test(d)) { const inner = d.match(/(\d+)\s+\d+\s+R/); d = inner ? objects.get(Number(inner[1])) || '' : d; }
+        const raw = arrOf(d, 'W') || '';
+        const toks = raw.match(/\[|\]|-?\d*\.?\d+/g) || [];
+        for (let i = 0; i < toks.length;) {
+          const c = Number(toks[i++]);
+          if (toks[i] === '[') { i++; let k = c; while (i < toks.length && toks[i] !== ']') w.set(k++, Number(toks[i++])); i++; }
+          else { const c2 = Number(toks[i++]), v = Number(toks[i++]); for (let k = c; k <= c2 && k - c < 65536; k++) w.set(k, v); }
+        }
+        widthMap.set(num, { two: true, w, dw: Number(d.match(/\/DW\s+(\d+)/)?.[1] || 1000) });
+      } else {
+        const first = Number(body.match(/\/FirstChar\s+(\d+)/)?.[1]);
+        const raw = arrOf(body, 'Widths');
+        if (raw == null || !Number.isFinite(first)) continue;
+        (raw.match(/-?\d*\.?\d+/g) || []).forEach((v, i) => w.set(first + i, Number(v)));
+        widthMap.set(num, { two: false, w, dw: Number(body.match(/\/MissingWidth\s+(\d+)/)?.[1] || 500) });
+      }
+    } catch {}
+  }
   const names = new Map(); // /F1 -> cmap
-  const addDict = (d) => { for (const m of d.matchAll(/\/([^\s/<>[\]()]+)\s+(\d+)\s+\d+\s+R/g)) { const c = fontMap.get(Number(m[2])); if (c && !names.has(m[1])) names.set(m[1], c); } };
+  const metrics = new Map(); // /F1 -> widths
+  const addDict = (d) => { for (const m of d.matchAll(/\/([^\s/<>[\]()]+)\s+(\d+)\s+\d+\s+R/g)) { const c = fontMap.get(Number(m[2])); if (c && !names.has(m[1])) names.set(m[1], c); const w = widthMap.get(Number(m[2])); if (w && !metrics.has(m[1])) metrics.set(m[1], w); } };
   for (const body of objects.values()) {
     for (const m of body.matchAll(/\/Font\s*<<([\s\S]*?)>>/g)) addDict(m[1]);
     for (const m of body.matchAll(/\/Font\s+(\d+)\s+\d+\s+R/g)) addDict(objects.get(Number(m[1])) || '');
   }
-  return { names, any: fontMap.size };
+  return { names, metrics, any: fontMap.size };
 }
 
 export function pdfText(buf) {
   if (!buf.subarray(0, 1024).toString('latin1').includes('%PDF')) throw new DocError('That doesn\'t look like a PDF inside.');
   if (/\/Encrypt\s/.test(buf.toString('latin1', Math.max(0, buf.length - 4096)))) throw new DocError(`That PDF is locked (encrypted), so I can't read its words. ${OFFICE_HINT}`);
   const streams = pdfStreams(buf);
-  const { names } = fontMaps(buf, streams);
+  const { names, metrics } = fontMaps(buf, streams);
   const merged = new Map(); // for a font we couldn't place: every map in the file, first one wins
   for (const c of names.values()) for (const [k, v] of c) if (!merged.has(k)) merged.set(k, v);
   const widthsOf = new Map();
@@ -359,28 +389,46 @@ export function pdfText(buf) {
     let out = '';
     const tok = /\((?:[^()\\]|\\[\s\S]|\((?:[^()\\]|\\[\s\S])*\))*\)|<[0-9a-fA-F\s]*>|\[|\]|-?\d*\.?\d+|\/[^\s/<>[\]()]+|[A-Za-z*'"]+/g;
     let m, arr = null, nums = [], pend = '', font = merged, lastName = '';
+    // How far the text shown since the line start has moved, in text space: glyph widths when the font has them,
+    // else a guess of half an em a letter. A Td on the same line is a space only when it leaves a real gap.
+    let size = 1, cs = 0, met = null, runW = 0, pendW = 0, guess = false;
+    const widthOf = (b, str) => {
+      if (!met) { guess = true; return [...str].length * 0.5 * size + [...str].length * cs; }
+      let w = 0, n = 0;
+      for (let i = 0; i < b.length; i += met.two ? 2 : 1) { const code = met.two ? (b[i] << 8) | (b[i + 1] || 0) : b[i]; w += met.w.get(code) ?? met.dw; n++; }
+      return (w / 1000) * size + n * cs;
+    };
     while ((m = tok.exec(st))) {
       const t = m[0];
-      if (t[0] === '(') { const [b] = pdfString(t, 0); const str = decode(b, false, font); if (arr) arr.push(str); else pend = str; nums = []; continue; }
-      if (t[0] === '<' && t[1] !== '<') { const str = decode(hexBytes(t.slice(1, -1)), true, font); if (arr) arr.push(str); else pend = str; nums = []; continue; }
-      if (t === '[') { arr = []; continue; }
+      if (t[0] === '(') { const [b] = pdfString(t, 0); const str = decode(b, false, font); const w = widthOf(b, str); if (arr) { arr.push(str); pendW += w; } else { pend = str; pendW = w; } nums = []; continue; }
+      if (t[0] === '<' && t[1] !== '<') { const b = hexBytes(t.slice(1, -1)); const str = decode(b, true, font); const w = widthOf(b, str); if (arr) { arr.push(str); pendW += w; } else { pend = str; pendW = w; } nums = []; continue; }
+      if (t === '[') { arr = []; pendW = 0; continue; }
       if (t === ']') { pend = arr ? arr.join('') : ''; arr = null; continue; }
       if (t[0] === '/') { lastName = t.slice(1); continue; }
-      if (/^-?\d*\.?\d+$/.test(t)) { if (arr) { if (Number(t) < -180) arr.push(' '); } else nums.push(Number(t)); continue; }
-      if (t === 'Tf') { font = names.get(lastName) || merged; nums = []; continue; }
-      if (t === 'Tj' || t === 'TJ') { out += pend; pend = ''; }
-      else if (t === '\'' || t === '"') { out += '\n' + pend; pend = ''; }
-      else if (t === 'T*') out += '\n';
-      else if (t === 'Td' || t === 'TD') { const ty = nums[nums.length - 1] || 0; const tx = nums[nums.length - 2] || 0; out += ty ? (out.endsWith('\n') ? '' : '\n') : tx > 0 && !/\s$/.test(out) ? ' ' : ''; }
-      else if ((t === 'Tm' || t === 'ET') && out && !out.endsWith('\n')) out += '\n';
+      if (/^-?\d*\.?\d+$/.test(t)) { if (arr) { if (Number(t) < -180) arr.push(' '); pendW -= (Number(t) / 1000) * size; } else nums.push(Number(t)); continue; }
+      if (t === 'Tf') { font = names.get(lastName) || merged; met = metrics.get(lastName) || null; size = Math.abs(nums[nums.length - 1] || size) || 1; nums = []; continue; }
+      if (t === 'Tc') { cs = nums[nums.length - 1] || 0; nums = []; continue; }
+      if (t === 'Tj' || t === 'TJ') { out += pend; pend = ''; runW += pendW; pendW = 0; }
+      else if (t === '\'' || t === '"') { out += '\n' + pend; pend = ''; runW = pendW; pendW = 0; }
+      else if (t === 'T*') { out += '\n'; runW = 0; }
+      else if (t === 'Td' || t === 'TD') {
+        const ty = nums[nums.length - 1] || 0; const tx = nums[nums.length - 2] || 0;
+        const gap = tx - runW;
+        if (ty) out += out.endsWith('\n') ? '' : '\n';
+        else if (tx > 0 && !/\s$/.test(out) && gap > (guess && !met ? 0.3 : 0.15) * size) out += ' ';
+        runW = 0; guess = false;
+      }
+      else if ((t === 'Tm' || t === 'ET') && out && !out.endsWith('\n')) { out += '\n'; runW = 0; }
+      else if (t === 'Tm') runW = 0;
       nums = [];
     }
     if (out.trim()) pages.push(tidy(out));
   }
   const text = tidy(pages.join('\n\n'));
   const letters = (text.match(/[\p{L}\p{N}\s.,;:!?'"()-]/gu) || []).length;
-  if (text.replace(/\s/g, '').length < 20) throw new DocError(`I found no words in that PDF. It's probably a scan (pictures of pages): attach a page as a picture and an eyes brain can read it.`);
-  if (letters / text.length < 0.7) throw new DocError(`That PDF keeps its words in a way I can't untangle without help. ${OFFICE_HINT}`);
+  // 1.5.207 PC check: the W3C test file says only "Dummy PDF file" and was called a scan. A few real words are kept.
+  if (!/[\p{L}\p{N}]{2,}/u.test(text)) throw new DocError(`I found no words in that PDF. It's probably a scan (pictures of pages): attach a page as a picture and an eyes brain can read it.`);
+  if (text.length >= 20 && letters / text.length < 0.7) throw new DocError(`That PDF keeps its words in a way I can't untangle without help. ${OFFICE_HINT}`);
   return text;
 }
 

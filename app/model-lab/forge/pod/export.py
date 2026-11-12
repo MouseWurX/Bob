@@ -13,6 +13,37 @@ def sha(p):
         for b in iter(lambda: f.read(1 << 24), b""): h.update(b)
     return h.hexdigest()
 
+MTP_KEYS = ("num_nextn_predict_layers", "mtp_num_hidden_layers", "num_mtp_layers", "mtp_num_layers")
+
+def no_ghost_guesser(model):
+    """1.5.207 PC check: a cut brain kept "mtp_num_hidden_layers": 1 in its config.json after its guesser (MTP)
+    weights were left out, so the GGUF said nextn_predict_layers = 1 with no nextn tensors and Brain Engine 4 stopped
+    with "MTP block missing nextn.eh_proj". When the weights don't have it, the config says 0 before converting."""
+    cp = os.path.join(model, "config.json")
+    try: cfg = json.load(open(cp))
+    except Exception: return
+    keys = [k for k in MTP_KEYS if isinstance(cfg.get(k), int) and cfg.get(k) > 0]
+    sub = cfg.get("text_config") if isinstance(cfg.get("text_config"), dict) else {}
+    subkeys = [k for k in MTP_KEYS if isinstance(sub.get(k), int) and sub.get(k) > 0]
+    if not keys and not subkeys: return
+    names = []
+    idx = os.path.join(model, "model.safetensors.index.json")
+    if os.path.exists(idx):
+        try: names = list(json.load(open(idx)).get("weight_map", {}).keys())
+        except Exception: return
+    else:
+        try:
+            from safetensors import safe_open
+            for f in os.listdir(model):
+                if f.endswith(".safetensors"):
+                    with safe_open(os.path.join(model, f), "pt") as h: names += list(h.keys())
+        except Exception: return
+    if any(("mtp" in n.lower()) or ("nextn" in n.lower()) for n in names): return
+    for k in keys: cfg[k] = 0
+    for k in subkeys: sub[k] = 0
+    json.dump(cfg, open(cp, "w"), indent=2)
+    print(f"no guesser (MTP) weights in this brain: set {', '.join(keys + subkeys)} to 0 so the GGUF doesn't claim one", flush=True)
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True); ap.add_argument("--out", required=True); ap.add_argument("--name", required=True)
@@ -25,6 +56,7 @@ def main():
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     bf16 = os.path.join(a.out, f"{a.name}-BF16.gguf")
+    no_ghost_guesser(a.model)
     conv = os.path.join(a.llama, "convert_hf_to_gguf.py")
     r = subprocess.run([sys.executable, conv, a.model, "--outfile", bf16, "--outtype", "bf16"])
     if r.returncode != 0:

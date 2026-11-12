@@ -1,10 +1,13 @@
 // Loads config.json and works out the folders Bob uses.
+import { cleanJobHelps } from './job-helps.js';
+import { cleanTextSize, cleanPlace } from './everyday.js';
 import { cleanOwnModels } from './own-models.js';
 import { cleanHouseStyle } from '../public/house-style.js';
 import { cleanPresetList } from './presets.js';
 import { cleanHousekeeping } from './hk-settings.js';
 import { cleanBrainCtx } from './model-ctx.js';
 import { cleanBrainPlace } from './brain-place.js';
+import { EXTRA_SWITCHES, cleanMemType } from './engine-extras.js'; // list items 94-100
 import { cleanCheckins } from './checkin-settings.js';
 import { cleanHands } from './hands-settings.js';
 import { cleanPresets } from './model-family.js';
@@ -15,11 +18,13 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { exeName, onPath } from './platform.js';
+import { applyZone } from './local-zone.js';
 import { cleanRentals } from './rental.js'; // 1.5.127 rented brains
 import { cleanAdded } from './catalog-added.js'; // 1.5.205 model pages added by the owner
 import { cleanBackup } from './backup-settings.js'; // Back up and move
 import { applyWaitingRestore } from './backup-apply.js';
 import { openBox, useBox, lockOn, mapSecrets, plainCount, writeSecretJson, openCopy, useKeysFile, memoryKeeper, IN_TEST, ensureBox } from './secret-box.js';
+import { HARNESS_KEYS, cleanHarness } from './harness.js'; // items 62 to 72
 
 // Where Ollama keeps its models on this PC: OLLAMA_MODELS if it's set, else Bob's own models folder if Ollama's files
 // are there (how the installer sets Ollama up), else Ollama's usual folder in the user's home (~/.ollama/models).
@@ -100,7 +105,10 @@ export function loadConfig() {
   // The name Bob falls back to: the one in config.json, else the Windows user name.
   cfg.windowsName = cfg.userName || (os.userInfo().username || 'friend').replace(/^./, (c) => c.toUpperCase());
   cfg.userName = cfg.windowsName;
-  cfg.timeZone = cfg.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  // 1.5.207: Windows' own offset wins when Node's zone library can't match the Windows zone (local-zone.js).
+  // A zone set by hand in config.json stays as it is. Never UTC on a computer whose clock isn't UTC.
+  Object.defineProperty(cfg, 'timeZoneSet', { enumerable: false, value: Boolean(cfg.timeZone), writable: true });
+  applyZone(cfg);
   cfg.comfy = cfg.comfy || {};
   if (cfg.comfy.workflowFile && !path.isAbsolute(cfg.comfy.workflowFile)) {
     cfg.comfy.workflowFile = path.join(appDir, cfg.comfy.workflowFile);
@@ -230,7 +238,7 @@ export const VERSION = (() => {
 // Languages Bob's screens come in (public/i18n.js has the names and words). English is the default.
 export const LANGUAGES = ['en', 'fr', 'es'];
 export const cleanRemoved = (v) => [...new Set((Array.isArray(v) ? v : []).filter((k) => typeof k === 'string' && /^[\w.:/-]{1,100}$/.test(k)))].slice(0, 500);
-export const SETTING_KEYS = ['language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labRecheck', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', 'apuHoldbackGB'];
+export const SETTING_KEYS = ['copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'brainMemType', 'language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'toolHelp', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labRecheck', 'labExtras', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', ...HARNESS_KEYS, 'jobHelps', 'textSize', 'readableFont', 'profilesOn', 'todayCard', 'todayPlace', 'focusTimer', 'receipts', 'updateTour', 'tourSeen', 'trayDot', 'talkOver', 'readDocs', 'netVoices', 'netVoiceMap', 'carryIn', 'phoneGlance', 'apuHoldbackGB'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -276,13 +284,18 @@ function clean(patch) {
   if ('computerLab' in out) out.computerLab = out.computerLab !== false; // 1.5.172 "Show the Computer Science Lab", on unless switched off (was off until 1.5.171)
   if ('labForgeStart' in out) out.labForgeStart = out.labForgeStart === true; // 1.5.160 "Let the Lab start Forge runs", off unless switched on
   if ('labEngine' in out) out.labEngine = ['brainengine', 'llamacpp'].includes(out.labEngine) ? out.labEngine : ''; // 1.5.17x the Lab's engine: '' = the same as Bob's brains
+  if ('labExtras' in out) out.labExtras = Object.fromEntries(['hoverWords', 'tellPhone', 'saveQuestions'].map((k) => [k, out.labExtras?.[k] === true])); // Lab items 109, 110, 102: the Lab's three small switches, each off unless switched on
   if ('labRecheck' in out) out.labRecheck = out.labRecheck === true; // Nov 11 "Check my main brain after engine updates", off unless switched on
   if ('labPro' in out) out.labPro = out.labPro === true; // 1.5.168 the Lab's Professional mode: more controls on every tab; off = Keep it simple
   if ('qwenPresets' in out) out.qwenPresets = cleanPresets(out.qwenPresets); // 1.5.148 "Choose my own word settings", off unless switched on
   if ('selfWork' in out) out.selfWork = cleanSelfWork(out.selfWork); // "Let Bob work on repositories" (self-work.js), off by default
   if ('howtos' in out) out.howtos = out.howtos === true; // 1.5.79 "Let Bob learn how-tos", off by default
   if ('wantsAsked' in out) out.wantsAsked = out.wantsAsked === true; // the chat's one-time "Do you want me to" offer (wants.js)
+  // List items 94-100, engine and speed extras (engine-extras.js), each off unless switched on
+  for (const k of EXTRA_SWITCHES) if (k in out) out[k] = out[k] === true;
+  if ('brainMemType' in out) out.brainMemType = cleanMemType(out.brainMemType); // 100 memory type per brain; Standard when not set
   if ('quickSeesJob' in out) out.quickSeesJob = out.quickSeesJob === true; // "Let Bob's Quick brain see the big job", off by default (meanwhile.js)
+  if ('jobHelps' in out) out.jobHelps = cleanJobHelps(out.jobHelps); // Settings, Jobs: eleven switches, all off by default (job-helps.js)
   if ('editOwn' in out) out.editOwn = out.editOwn === true; // "Let Bob fix his own messages", off by default (edit-own.js)
   if ('chatRedo' in out) out.chatRedo = out.chatRedo !== false; // "Show Try again, Edit and Delete in the chat", ON unless turned off (owner's exception, redo.js)
   if ('quickNotes' in out) out.quickNotes = out.quickNotes === true; // "Let Bob take quick notes", off by default (notes.js)
@@ -290,12 +303,25 @@ function clean(patch) {
   if ('docTools' in out) out.docTools = out.docTools === true; // "Read and search my documents", off by default (my-docs.js)
   if ('docMeaning' in out) out.docMeaning = out.docMeaning === true; // "Search my documents by meaning", off by default (doc-index.js)
   if ('chatFiles' in out) out.chatFiles = out.chatFiles === true; // "Save chats as files and bring chats in", off by default (chat-files.js)
+  // Voice, phone and Bob-Net (items 133 to 142, 2026-11-11): every switch off unless turned on.
+  if ('talkOver' in out) out.talkOver = out.talkOver === true; // "Talk over Bob" (public/voice.js)
+  if ('readDocs' in out) out.readDocs = out.readDocs === true; // "Read documents aloud" (public/read-aloud.js)
+  if ('netVoices' in out) out.netVoices = out.netVoices === true; // "A voice per Bob" (src/tts.js netVoiceFor)
+  if ('netVoiceMap' in out) out.netVoiceMap = cleanVoiceMap(out.netVoiceMap);
+  if ('carryIn' in out) out.carryIn = out.carryIn === true; // "Take chats from my other Bobs" (src/carry.js)
+  if ('phoneGlance' in out) out.phoneGlance = out.phoneGlance === true; // "Let my phone see how I'm doing" (src/glance.js)
   if ('mathView' in out) out.mathView = out.mathView === true; // "Show maths as formulas", off by default (public/math-core.js)
   if ('shortcuts' in out) out.shortcuts = out.shortcuts === true; // "Keyboard shortcuts", off by default (public/shortcuts.js)
   if ('docView' in out) out.docView = out.docView === true; // "Show documents in the side panel", off by default (files.js docPeek)
   if ('toolLearning' in out) out.toolLearning = out.toolLearning === true; // "Let Bob learn from his tools", off by default (tool-learn.js)
   if ('chatPresets' in out) out.chatPresets = out.chatPresets === true; // "Assistant presets for chats", off by default (presets.js)
   if ('presetList' in out) out.presetList = cleanPresetList(out.presetList); // the saved presets (presets.js)
+  for (const k of HARNESS_KEYS) if (k in out) out[k] = cleanHarness(k, out[k]); // items 62 to 72 (src/harness.js), all off unless switched on
+  // 🗓 Everyday helpers (everyday.js), all off by default; text size 100% unless moved.
+  for (const k of ['readableFont', 'profilesOn', 'todayCard', 'focusTimer', 'receipts', 'updateTour', 'trayDot']) if (k in out) out[k] = out[k] === true;
+  if ('textSize' in out) out.textSize = cleanTextSize(out.textSize);
+  if ('todayPlace' in out) out.todayPlace = cleanPlace(out.todayPlace);
+  if ('tourSeen' in out) out.tourSeen = typeof out.tourSeen === 'string' && /^\d+\.\d+\.\d+$/.test(out.tourSeen) ? out.tourSeen : '';
   if ('promptMenu' in out) out.promptMenu = out.promptMenu === true; // "Pull up saved prompts with /", off by default (prompts.js)
   if ('sandboxCode' in out) out.sandboxCode = out.sandboxCode === true; // "Let Bob work things out in a sandbox", off by default (sandbox-code.js)
   if ('parts3d' in out) out.parts3d = out.parts3d === true; // "Let Bob make 3D parts", off by default (parts3d.js)
@@ -317,8 +343,8 @@ function clean(patch) {
   if ('engineUpdates' in out) out.engineUpdates = { auto: out.engineUpdates?.auto !== false }; // 1.5.184 Keep engines up to date, on unless switched off
   if ('housekeeping' in out) out.housekeeping = cleanHousekeeping(out.housekeeping || {});
   if ('checkins' in out) out.checkins = cleanCheckins(out.checkins || {}); // 1.5.78 Check-ins, off unless switched on
-  if ('games' in out) { const g = out.games || {}; out.games = { brain: g.brain === 'main' ? 'main' : 'quick', talk: ['every', 'some', 'end'].includes(g.talk) ? g.talk : 'every' }; } // 1.5.121 🧩 Games (defaults, nothing on)
-  if ('adventure' in out) { const a = out.adventure || {}; const x = a.extras || {}; const extras = Object.fromEntries(['dice', 'sounds', 'voice', 'pictures', 'scenePics', 'music'].map((k) => [k, x[k] === true])); if (!extras.pictures) extras.scenePics = false; out.adventure = { gm: a.gm === 'main' ? 'main' : 'biggest', players: a.players === 'gm' ? 'gm' : 'own', extras }; } // 1.5.117 🎲 Adventure (defaults, nothing on); 1.5.204 table extras, all off unless ticked
+  if ('games' in out) { const g = out.games || {}; out.games = { brain: g.brain === 'main' ? 'main' : 'quick', talk: ['every', 'some', 'end'].includes(g.talk) ? g.talk : 'every', keep: g.keep === true, kid: g.kid === true }; } // 1.5.121 🧩 Games (defaults, nothing on); 1.5.206 Keep an unfinished game, off; Kid mode, off
+  if ('adventure' in out) { const a = out.adventure || {}; const x = a.extras || {}; const extras = Object.fromEntries(['dice', 'sounds', 'voice', 'pictures', 'scenePics', 'portraits', 'music'].map((k) => [k, x[k] === true])); if (!extras.pictures) extras.scenePics = false; const r = a.rules || {}; const rules = Object.fromEntries(['map', 'coins', 'breath', 'secrets', 'riddles', 'badges'].map((k) => [k, r[k] === true])); out.adventure = { gm: a.gm === 'main' ? 'main' : 'biggest', players: a.players === 'gm' ? 'gm' : 'own', extras, rules, difficulty: ['easy', 'hard'].includes(a.difficulty) ? a.difficulty : 'normal' }; } // 1.5.206 table rules (all off) and difficulty (Normal) // 1.5.117 🎲 Adventure (defaults, nothing on); 1.5.204 table extras, all off unless ticked
   if ('hands' in out) out.hands = cleanHands(out.hands || {});
   if ('quarantine' in out) out.quarantine = { on: out.quarantine?.on === true };
   if ('downloads' in out) { const d = out.downloads || {}; out.downloads = { concurrent: Number(d.concurrent) === 2 ? 2 : 1, resumeOnStart: d.resumeOnStart === true }; }
@@ -451,6 +477,17 @@ export function cleanStyle(st) {
   return out;
 }
 
+// A voice per Bob: { "Bob on the laptop": "bm_george" }. Names as they are on the Bob-Net list, voices from Kokoro's list.
+export function cleanVoiceMap(m) {
+  const out = {};
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return out;
+  for (const [k, v] of Object.entries(m).slice(0, 30)) {
+    const name = String(k).replace(/[\u0000-\u001f<>"'`]/g, '').trim().slice(0, 40);
+    if (name && (v === 'auto' || /^[a-z]{2}_[a-z]{2,12}$/.test(String(v)))) out[name] = String(v); // 'auto': picked from his name
+  }
+  return out;
+}
+
 export function mergeSettings(cfg, patch) {
   return applyProjects(deepMerge(cfg, clean(patch)));
 }
@@ -524,13 +561,22 @@ function applyProjects(cfg) {
 }
 
 // Settings saved whole (not merged key by key), so an emptied box or a removed project really goes away.
+// "Keep the last 20 Settings changes" (src/settings-undo.js) listens here while it's on: the keys a change touched,
+// as they were and as they are now. One listener; it never changes what is saved.
+let settingsWatcher = null;
+export const watchSettings = (fn) => { settingsWatcher = typeof fn === 'function' ? fn : null; };
+const snap = (cfg, keys) => Object.fromEntries(keys.map((k) => [k, cfg[k] === undefined ? undefined : JSON.parse(JSON.stringify(cfg[k]))]));
+function tellWatcher(before, cfg, keys) { if (!before) return; try { settingsWatcher?.(before, snap(cfg, keys)); } catch {} }
+
 export function replaceSettings(cfg, patch) {
   const safe = clean(patch);
+  const before = settingsWatcher ? snap(cfg, Object.keys(safe)) : null;
   let saved = {};
   try { saved = readJsonFile(cfg.settingsFile); } catch {}
   for (const [k, v] of Object.entries(safe)) { saved[k] = v; cfg[k] = v; }
   writeJsonAtomic(cfg.settingsFile, saved, 2);
   applyProjects(cfg);
+  tellWatcher(before, cfg, Object.keys(safe));
   return saved;
 }
 
@@ -546,11 +592,13 @@ export function saveRemote(cfg, remote) {
 
 export function saveSettings(cfg, patch) {
   const safe = clean(patch);
+  const before = settingsWatcher ? snap(cfg, Object.keys(safe)) : null;
   let saved = {};
   try { saved = readJsonFile(cfg.settingsFile); } catch {}
   deepMerge(saved, safe);
   writeJsonAtomic(cfg.settingsFile, saved, 2);
   deepMerge(cfg, safe);
+  tellWatcher(before, cfg, Object.keys(safe));
   return saved;
 }
 
