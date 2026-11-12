@@ -1,0 +1,286 @@
+diff --git a/ggml/src/ggml-rpc/ggml-rpc.cpp b/ggml/src/ggml-rpc/ggml-rpc.cpp
+index c9c5efd..f92bc37 100644
+--- a/ggml/src/ggml-rpc/ggml-rpc.cpp
++++ b/ggml/src/ggml-rpc/ggml-rpc.cpp
+@@ -693,6 +693,37 @@ private:
+     std::condition_variable cvar;
+ };
+ 
++// Brain Engine 0011: read ahead. A lent card that holds some of a brain's layers is asked for its results after every
++// word: one GRAPH_RECOMPUTE, then one GET_TENSOR for each tensor the next card needs. Each GET_TENSOR waited for its own
++// answer, so a word cost that many round trips (three, in the PC and handheld test). The reads after a graph are the
++// same every word, so once the same list has been seen twice in a row for a graph, the dispatcher sends those reads
++// right behind the next GRAPH_RECOMPUTE of that graph, all of them before waiting for any answer, and hands each answer
++// to the GET_TENSOR that asks for it. One round trip a word instead of several. Nothing changes on the wire: the lent
++// card sees the same commands in the same order, so it works with any card server. A read that wasn't foreseen is
++// sent the old way; answers that turn out not to be wanted are dropped. GGML_RPC_AHEAD=0 turns it off.
++static const size_t RPC_AHEAD_MAX      = 8;           // reads foreseen after one graph
++static const size_t RPC_AHEAD_MAX_SIZE = 1024 * 1024; // each at most this big: results between cards, not whole caches
++
++static bool rpc_ahead_on() {
++    static const bool on = [] {
++        const char * env = std::getenv("GGML_RPC_AHEAD");
++        return !(env != nullptr && env[0] == '0');
++    }();
++    return on;
++}
++
++struct rpc_ahead_item {
++    rpc_msg_get_tensor_req   req;
++    std::vector<uint8_t>     buf;
++    std::shared_future<void> done;
++    bool                     used = false;
++};
++
++static bool rpc_ahead_same(const rpc_msg_get_tensor_req & a, const rpc_msg_get_tensor_req & b) {
++    return a.tensor.data == b.tensor.data && a.tensor.buffer == b.tensor.buffer && a.tensor.type == b.tensor.type &&
++           a.offset == b.offset && a.size == b.size;
++}
++
+ class rpc_dispatcher {
+ public:
+     rpc_dispatcher() {
+@@ -709,6 +740,7 @@ public:
+     void busy_spin_acquire();
+     void busy_spin_release();
+     void graph_compute(uint32_t device, const ggml_cgraph * cgraph);
++    void get_tensor(std::shared_ptr<rpc_msg_get_tensor_req> request, void * data, size_t size, bool wait = true); // Brain Engine 0011
+ 
+     bool start(const std::string & endpoint);
+     void work();
+@@ -727,6 +759,7 @@ private:
+         const void                  * payload      = nullptr;
+         size_t                        payload_size = 0;
+         std::promise<void>            completion;
++        std::vector<std::shared_ptr<rpc_ahead_item>> ahead; // Brain Engine 0011: reads sent together, ahead of being asked for
+     };
+     using rpc_msg_ptr   = std::shared_ptr<rpc_msg>;
+     using rpc_msg_queue = message_queue<rpc_msg_ptr>;
+@@ -739,6 +772,22 @@ private:
+     std::mutex graph_mutex;
+     std::unordered_map<uint32_t, std::unordered_set<uint64_t>> graph_uids;
+ 
++    // Brain Engine 0011: read ahead
++    struct ahead_list {
++        std::vector<rpc_msg_get_tensor_req> reqs;
++        bool                                twice = false; // the same list two graphs in a row: worth asking ahead
++    };
++    void ahead_forget();
++    void ahead_learn();
++    void ahead_ask(uint64_t key);
++    std::mutex                                   ahead_mutex;
++    std::unordered_map<uint64_t, ahead_list>     ahead_learned; // graph -> the reads that followed it last time
++    std::vector<rpc_msg_get_tensor_req>          ahead_seen;    // the reads since the last graph
++    std::vector<std::shared_ptr<rpc_ahead_item>> ahead_stash;   // asked ahead, not yet taken
++    uint64_t                                     ahead_graph = 0; // the last graph sent (0: none worth learning from)
++    std::atomic<uint64_t>                        ahead_n_asked{0};
++    std::atomic<uint64_t>                        ahead_n_used{0};
++
+     rpc_msg_queue queue;
+     socket_ptr    sock;
+     std::string   link_endpoint; // Brain Engine 0008: the link log
+@@ -765,11 +814,107 @@ void rpc_dispatcher::send(enum rpc_cmd cmd, std::shared_ptr<const void> input, s
+     msg->output_size = output_size;
+     msg->payload = payload;
+     msg->payload_size = payload_size;
++    if (cmd != RPC_CMD_GET_TENSOR && cmd != RPC_CMD_GET_TENSOR_2D && cmd != RPC_CMD_GET_ALLOC_SIZE && cmd != RPC_CMD_GET_DEVICE_MEMORY) {
++        ahead_forget(); // Brain Engine 0011: this may change what a tensor holds
++    }
+     GGML_ASSERT(queue.push(msg));
+     auto future = msg->completion.get_future();
+     future.wait();
+ }
+ 
++// Brain Engine 0011: read ahead (see rpc_ahead_on)
++void rpc_dispatcher::ahead_forget() {
++    std::lock_guard<std::mutex> lock(ahead_mutex);
++    ahead_stash.clear(); // answers still on their way are kept alive by their message, and dropped when they arrive
++}
++
++// A graph is about to be sent: what was read since the last one is what follows that graph.
++void rpc_dispatcher::ahead_learn() {
++    std::lock_guard<std::mutex> lock(ahead_mutex);
++    if (ahead_graph != 0) {
++        bool fits = !ahead_seen.empty() && ahead_seen.size() <= RPC_AHEAD_MAX;
++        for (const auto & r : ahead_seen) {
++            fits = fits && r.size > 0 && r.size <= RPC_AHEAD_MAX_SIZE;
++        }
++        if (!fits) {
++            ahead_learned.erase(ahead_graph);
++        } else {
++            ahead_list & l = ahead_learned[ahead_graph];
++            bool same = l.reqs.size() == ahead_seen.size();
++            for (size_t i = 0; same && i < l.reqs.size(); i++) {
++                same = rpc_ahead_same(l.reqs[i], ahead_seen[i]);
++            }
++            l.twice = same;
++            if (!same) {
++                l.reqs = ahead_seen;
++            }
++        }
++        if (ahead_learned.size() > 256) {
++            ahead_learned.clear();
++        }
++    }
++    ahead_seen.clear();
++    ahead_stash.clear();
++    ahead_graph = 0;
++}
++
++// The graph has been sent: ask now for what is read after it every time, all in one message.
++void rpc_dispatcher::ahead_ask(uint64_t key) {
++    std::lock_guard<std::mutex> lock(ahead_mutex);
++    ahead_graph = key;
++    if (key == 0 || !rpc_ahead_on()) {
++        return;
++    }
++    auto it = ahead_learned.find(key);
++    if (it == ahead_learned.end() || !it->second.twice) {
++        return;
++    }
++    auto msg = std::make_shared<rpc_msg>();
++    msg->cmd = RPC_CMD_GET_TENSOR;
++    msg->input_size = 0;
++    msg->output = nullptr;
++    msg->output_size = 0;
++    auto done = msg->completion.get_future().share();
++    for (const auto & r : it->second.reqs) {
++        auto item = std::make_shared<rpc_ahead_item>();
++        item->req = r;
++        item->buf.resize(r.size);
++        item->done = done;
++        msg->ahead.push_back(item);
++    }
++    ahead_stash = msg->ahead;
++    ahead_n_asked += msg->ahead.size();
++    GGML_ASSERT(queue.push(msg));
++}
++
++void rpc_dispatcher::get_tensor(std::shared_ptr<rpc_msg_get_tensor_req> request, void * data, size_t size, bool wait) {
++    std::shared_ptr<rpc_ahead_item> hit;
++    {
++        std::lock_guard<std::mutex> lock(ahead_mutex);
++        for (auto & item : ahead_stash) {
++            if (!item->used && item->buf.size() == size && rpc_ahead_same(item->req, *request)) {
++                item->used = true;
++                hit = item;
++                break;
++            }
++        }
++        if (ahead_graph != 0 && ahead_seen.size() <= RPC_AHEAD_MAX) {
++            ahead_seen.push_back(*request);
++        }
++    }
++    if (hit) {
++        hit->done.wait();
++        memcpy(data, hit->buf.data(), size);
++        ahead_n_used++;
++        return;
++    }
++    if (wait) {
++        send(RPC_CMD_GET_TENSOR, request, sizeof(*request), nullptr, 0, data, size);
++    } else {
++        send_async(RPC_CMD_GET_TENSOR, request, sizeof(*request), data, size);
++    }
++}
++
+ void rpc_dispatcher::send_async(enum rpc_cmd cmd, std::shared_ptr<const void> input, size_t input_size, void * output, size_t output_size) {
+     auto msg = std::make_shared<rpc_msg>();
+     msg->cmd = cmd;
+@@ -777,6 +922,9 @@ void rpc_dispatcher::send_async(enum rpc_cmd cmd, std::shared_ptr<const void> in
+     msg->input_size = input_size;
+     msg->output = output;
+     msg->output_size = output_size;
++    if (cmd != RPC_CMD_GRAPH_COMPUTE && cmd != RPC_CMD_GRAPH_RECOMPUTE && cmd != RPC_CMD_GET_TENSOR) {
++        ahead_forget(); // Brain Engine 0011 (graph_compute does its own, around the graph it sends)
++    }
+     GGML_ASSERT(queue.push(msg));
+ }
+ 
+@@ -888,7 +1036,21 @@ void rpc_dispatcher::work() {
+                      rpc_log_format_size(msg_ptr->input_size).c_str(), rpc_log_format_size(msg_ptr->output_size).c_str());
+             const bool trace = rpc_log_debug_level() >= 3;
+             const auto t0 = std::chrono::steady_clock::now();
+-            if (msg_ptr->output) {
++            if (!msg_ptr->ahead.empty()) {
++                // Brain Engine 0011: every question first, then the answers in the order asked
++                for (const auto & item : msg_ptr->ahead) {
++                    bool status = send_rpc_cmd(sock, RPC_CMD_GET_TENSOR, &item->req, sizeof(item->req));
++                    RPC_STATUS_ASSERT(status);
++                }
++                for (const auto & item : msg_ptr->ahead) {
++                    const auto a0 = std::chrono::steady_clock::now();
++                    uint64_t out_size = 0;
++                    bool status = sock->recv_data(&out_size, sizeof(out_size)) && out_size == item->buf.size() &&
++                                  sock->recv_data(item->buf.data(), item->buf.size());
++                    RPC_STATUS_ASSERT(status);
++                    link_log.add(RPC_CMD_GET_TENSOR, 9 + sizeof(item->req) + 8 + item->buf.size(), rpc_ms_since(a0), 0, true);
++                }
++            } else if (msg_ptr->output) {
+                 bool status = send_rpc_cmd(sock, msg_ptr->cmd, msg_ptr->input.get(), msg_ptr->input_size, msg_ptr->output, msg_ptr->output_size);
+                 RPC_STATUS_ASSERT(status);
+             } else {
+@@ -900,11 +1062,13 @@ void rpc_dispatcher::work() {
+                 LOG_DBG3("[%s] %s done in %.3f ms\n", __func__, rpc_cmd_name(msg_ptr->cmd), elapsed.count());
+             }
+             // Brain Engine 0008: the link log
+-            link_log.add(msg_ptr->cmd, 9 + msg_ptr->input_size + msg_ptr->payload_size + (msg_ptr->output ? 8 + msg_ptr->output_size : 0), rpc_ms_since(t0), 0, msg_ptr->output != nullptr);
++            if (msg_ptr->ahead.empty()) {
++                link_log.add(msg_ptr->cmd, 9 + msg_ptr->input_size + msg_ptr->payload_size + (msg_ptr->output ? 8 + msg_ptr->output_size : 0), rpc_ms_since(t0), 0, msg_ptr->output != nullptr);
++            }
+             if (link_log.due()) {
+                 // right after an answer the other side has nothing left to do, so a tiny question times the link alone
+                 double round_trip_ms = -1;
+-                if (msg_ptr->output) {
++                if (msg_ptr->output || !msg_ptr->ahead.empty()) {
+                     rpc_msg_get_alignment_req  probe = {};
+                     rpc_msg_get_alignment_rsp  probe_rsp = {};
+                     for (int i = 0; i < 3; i++) {
+@@ -918,6 +1082,10 @@ void rpc_dispatcher::work() {
+                     }
+                 }
+                 link_log.report_client(link_endpoint, sock, round_trip_ms);
++                const uint64_t asked = ahead_n_asked.exchange(0), used = ahead_n_used.exchange(0);
++                if (asked > 0) {
++                    LOG_INFO("[link]   read ahead: %" PRIu64 " answers were asked for together with the work, before they were needed; %" PRIu64 " of them were used\n", asked, used);
++                }
+             }
+         } else {
+             LOG_DBG3("[%s] sync barrier\n", __func__);
+@@ -1161,7 +1329,7 @@ static void ggml_backend_rpc_buffer_get_tensor(ggml_backend_buffer_t buffer, con
+     request->tensor = serialize_tensor(tensor);
+     request->offset = offset;
+     request->size = size;
+-    ctx->dispatcher->send(RPC_CMD_GET_TENSOR, request, sizeof(*request), nullptr, 0, data, size);
++    ctx->dispatcher->get_tensor(request, data, size); // Brain Engine 0011: may already be on its way
+ }
+ 
+ static bool ggml_backend_rpc_buffer_cpy_tensor(ggml_backend_buffer_t buffer, const ggml_tensor * src, ggml_tensor * dst) {
+@@ -1427,7 +1595,7 @@ static void ggml_backend_rpc_get_tensor_async(ggml_backend_t backend, const ggml
+     request->tensor = serialize_tensor(tensor);
+     request->offset = offset;
+     request->size = size;
+-    ctx->dispatcher->send_async(RPC_CMD_GET_TENSOR, request, sizeof(*request), data, size);
++    ctx->dispatcher->get_tensor(request, data, size, false); // Brain Engine 0011: may already be on its way
+ }
+ 
+ static void ggml_backend_rpc_synchronize(ggml_backend_t backend) {
+@@ -1490,6 +1658,10 @@ void rpc_dispatcher::graph_compute(uint32_t device, const ggml_cgraph * cgraph)
+     GGML_ASSERT(cgraph->n_nodes > 0);
+     auto & device_graph_uids = graph_uids[device];
+     bool reuse = cgraph->uid != 0 && device_graph_uids.count(cgraph->uid) > 0;
++    // Brain Engine 0011: what was read since the last graph belongs to that graph; then, once this one is sent, ask for
++    // what follows it every time
++    const uint64_t ahead_key = cgraph->uid == 0 ? 0 : ((uint64_t(device) + 1) * 0x9E3779B97F4A7C15ull) ^ cgraph->uid;
++    ahead_learn();
+     LOG_DBG("[%s] device: %u, uid: %" PRIu64 ", n_nodes: %u, reuse: %s\n", __func__, device, cgraph->uid, cgraph->n_nodes, reuse ? "yes" : "no");
+     if (reuse) {
+         auto request = std::make_shared<rpc_msg_graph_recompute_req>();
+@@ -1511,6 +1683,7 @@ void rpc_dispatcher::graph_compute(uint32_t device, const ggml_cgraph * cgraph)
+         std::shared_ptr<uint8_t> input_ptr(input, std::default_delete<uint8_t[]>());
+         send_async(RPC_CMD_GRAPH_COMPUTE, input_ptr, input_size);
+     }
++    ahead_ask(ahead_key);
+ }
+ 
+ static enum ggml_status ggml_backend_rpc_graph_compute(ggml_backend_t backend, ggml_cgraph * cgraph) {

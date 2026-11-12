@@ -110,6 +110,18 @@ Then run `engine/try-newer.sh <tag>`. Every patch must go on, and the Linux buil
 - **Re-check on rebase:** 0005 and 0006 first. If upstream changes `rpc_dispatcher::work()` or the `rpc_serve_client` loop, the timing hooks move with them; the probe uses `RPC_CMD_GET_ALIGNMENT` for device 0, which must stay a command the server answers without touching the card.
 - **Tests:** `test/run-link-log-test.js`. SCUT alone can be built without llama.cpp (scut.cpp, scut.h, scut-seal.h and a four-line stand-in for log.h) and run through a pretend Wi-Fi; do that after any change to the tuning. The PC test is Bigger Bobs over Wi-Fi with the Link log open on both Bobs.
 
+### 0011-rpc-read-ahead: one trip a word instead of several
+- **Upstream files:** `ggml/src/ggml-rpc/ggml-rpc.cpp` only (the client half).
+- **Hooks:**
+  - `rpc_dispatcher::graph_compute()` calls `ahead_learn()` before it sends a graph (the reads since the last graph are what follows that graph) and `ahead_ask()` after (one message carrying every read foreseen for this graph).
+  - `rpc_dispatcher::get_tensor()` is what `ggml_backend_rpc_buffer_get_tensor` and `ggml_backend_rpc_get_tensor_async` now call: it takes the answer from what was asked ahead when there is one, and sends the read as before when there isn't.
+  - `rpc_dispatcher::work()`: a message with `ahead` items sends every `GET_TENSOR` request first, then reads the answers in order.
+  - `send()` / `send_async()` call `ahead_forget()` for anything that isn't a read or a graph.
+- **Environment:** `GGML_RPC_AHEAD` (default 1, 0 = off).
+- **Bob callers:** none; `src/link-log.js` keeps the `[link]   read ahead: ...` line like any other.
+- **Re-check on rebase:** it leans on graphs keeping their `uid` from one word to the next (that is what makes upstream send `GRAPH_RECOMPUTE`), and on the card server answering commands in the order they arrive. If upstream changes either, or adds its own batching of reads, drop this patch rather than port it.
+- **Tests:** `engine/tests/rpc-ahead.cpp` (build it against the engine's libraries; run it against `ggml-rpc-server` with `GGML_RPC_AHEAD` 0 and 1, straight and through a slow link). `test/run-link-log-test.js` checks the patch is listed.
+
 ## What's not covered yet
 
 No patch is tested automatically against a real engine build. A Brain Engine build that compiles but put a hunk in the wrong place would only show up in the PC test. Proposed for a later Brain Engine build: a short engine test in `brain-engine.yml` (ready-for-review PRs and main only, never drafts). It would load a tiny MoE GGUF and check five things:
