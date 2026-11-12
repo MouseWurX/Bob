@@ -1911,12 +1911,7 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 /* fNRI's small cube in Bob's thinking (Now running) */
 .mind-cube { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
 .mind-cube canvas { width: 100%; height: 220px; display: block; border: 1px solid var(--line); border-radius: var(--r); }
-/* No brain loaded: a neon sign over the empty cube, flickering now and then (still when animations are off) */
 .mind-cube { position: relative; }
-.mind-cube p.mind-cube-sign { position: absolute; left: 0; right: 0; top: 0; height: 220px; display: flex; align-items: center; justify-content: center; margin: 0; pointer-events: none; font: 600 26px/1.1 system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; text-align: center; color: var(--accent); text-shadow: 0 0 4px currentColor, 0 0 12px currentColor, 0 0 28px currentColor; animation: mind-cube-neon 6s steps(1) infinite; }
-.mind-cube p.mind-cube-sign[hidden] { display: none; }
-@keyframes mind-cube-neon { 0%, 61%, 63%, 66%, 100% { opacity: 1; } 62%, 65% { opacity: .25; } 64% { opacity: .8; } 88% { opacity: .35; } 89% { opacity: 1; } }
-.still .mind-cube p.mind-cube-sign { animation: none; }
 /* the cube's pulse from a message sent to Bob's first word: opacity only, so the card does it without redrawing anything */
 @keyframes mind-cube-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 .mind-cube.pulse canvas { animation: mind-cube-pulse 1.4s ease-in-out infinite; }
@@ -2256,3 +2251,29 @@ body.left-folded .nav-head:has(+ #labBtn[hidden]) { display: none; }
 }
 .mod-panel[data-state="collapsed"] .panel-states { display: grid; width: 100%; }
 .mod-panel[data-state="collapsed"] .panel-states .mini { text-align: left; }
+/* 1.5.210 The porthole: the fNRI cube seen through a round window into a foggy room (public/fog.js draws the fog on its own
+   canvas behind the cube's). The rim is the theme's colours, so it fits every look. */
+.mind-cube.porthole .port { position: relative; width: 220px; height: 220px; margin: 0 auto; border-radius: 50%; padding: 6px; box-sizing: border-box;
+  background: radial-gradient(circle at 35% 28%, color-mix(in srgb, var(--text) 55%, var(--panel)), color-mix(in srgb, var(--line) 80%, black) 58%, color-mix(in srgb, var(--bg) 70%, black));
+  box-shadow: 0 3px 12px rgba(0, 0, 0, .55); }
+.mind-cube.porthole .port canvas { position: absolute; inset: 6px; width: calc(100% - 12px); height: calc(100% - 12px); border: none; border-radius: 50%; display: block; }
+.mind-cube.porthole .port canvas.fog { image-rendering: auto; filter: blur(1px); }
+.mind-cube.porthole .port::after { content: ""; position: absolute; inset: 6px; border-radius: 50%; pointer-events: none;
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, .8); background: radial-gradient(circle at 30% 22%, rgba(255, 255, 255, .14), transparent 38%); }
+.mind-cube.porthole .port { --glint: var(--cube, var(--accent)); --glint-a: 0; transition: box-shadow .5s ease-out; }
+.mind-cube.porthole .port { box-shadow: 0 3px 12px rgba(0, 0, 0, .55), 0 0 calc(14px * var(--glint-a)) calc(2px * var(--glint-a)) color-mix(in srgb, var(--glint) calc(70% * var(--glint-a)), transparent); }
+.mind-cube.porthole .port::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; pointer-events: none; z-index: 1; border: 2px solid var(--cube, var(--accent)); opacity: 0; transform: scale(.2); }
+.mind-cube.porthole .port.ripple::before { animation: porthole-ripple 1.2s ease-out; }
+@keyframes porthole-ripple { 0% { opacity: .7; transform: scale(.2); } 100% { opacity: 0; transform: scale(1); } }
+.still .mind-cube.porthole .port::before { animation: none; }
+.mind-cube.porthole.pulse .port canvas:not(.fog) { animation: mind-cube-pulse 1.4s ease-in-out infinite; }
+.mind-cube.porthole.pulse canvas.fog { animation: none; }
+
+/* 1.5.209 Bob's picture as the fNRI cube (Style, Bob's look): the same size and place as the pixel Bob, in its own small porthole, theme colours only */
+.mind-cube.bob-cube { margin: 0; gap: 0; }
+.mind-cube.bob-cube.porthole .port { width: 56px; height: 56px; padding: 3px; cursor: pointer; }
+.side-top .mind-cube.bob-cube.porthole .port { width: 44px; height: 44px; }
+body.left-folded .side-top .mind-cube.bob-cube.porthole .port { width: 36px; height: 36px; padding: 2px; }
+.mind-cube.bob-cube.porthole .port canvas { inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px); }
+.mind-cube.bob-cube.porthole .port::after { inset: 3px; box-shadow: inset 0 0 6px rgba(0, 0, 0, .8); }
+.mind-cube.bob-cube canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

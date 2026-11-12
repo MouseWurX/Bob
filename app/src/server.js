@@ -31,7 +31,7 @@ import { readPage, makeEntry, cleanAdded, mergeAdded, sweepAdded, ADDED_MAX } fr
 import { checkEngine, seedBundledEngine, goBackEngine, removeEngine, brainsEngineSettings, engineChoices, brainsEngineNow } from './engines.js';
 import { onEngineFallback } from './engine-blocked.js';
 import { sacNoticeOnce } from './app-control.js';
-import { liveTrace } from '../public/lab-watch-math.js';
+import { liveTrace, liveTracePart } from '../public/lab-watch-math.js';
 import { cubeMap, cubeBrains, cubeShapes, listRecordings, startWatch } from './lab-watch.js';
 import { LabQueue } from './lab-queue.js'; // Nov 11: the Lab's job queue
 import { labPhone } from './lab-plus.js'; // Lab item 110: Lab jobs tell your phone
@@ -240,6 +240,8 @@ if (brain.engine) {
   brain.engine.wantTrace = () => liveCubes.size > 0 && !cubeWhy();
   brain.engine.onTrace = (raw, model) => { const t = liveTrace(raw); if (!t) return; let map = null; try { map = cubeMap(lab, { model, label: friendlyName(model), experts: t.experts, layers: t.layers, kind: t.kind }); } catch {} // the colours, from this brain's newest scan
     const data = `data: ${JSON.stringify({ type: 'trace', label: friendlyName(model), ...t, ...(map ? { map } : {}) })}\n\n`; for (const res of liveCubes) res.write(data); }; // the real picks go to Real experts pages only
+  // 1.5.210: the picks as he goes, word by word (Brain Engine 5 and later streams them), to Real experts pages only
+  brain.engine.onTracePart = (raw, model) => { const t = liveTracePart(raw); if (!t || !liveCubes.size) return; const data = `data: ${JSON.stringify({ type: 'trace-part', label: friendlyName(model), ...t })}\n\n`; for (const res of liveCubes) res.write(data); };
 }
 // 1.5.38: when Downloads change, a job waiting for one (a song waiting for the music models) may be able to go.
 const shop = new ModelShop(cfg, (ev) => { broadcast(ev); if (ev?.type === 'downloads') brain.downloadsChanged(); }, brain.engine);

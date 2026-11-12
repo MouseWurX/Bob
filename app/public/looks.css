@@ -238,3 +238,55 @@ body.look-lamplight .effort .brain-switch .st { display: none; }
 body.look-lamplight .effort .brain-switch[aria-checked="true"], body.look-lamplight .effort .brain-switch[aria-pressed="true"] { color: var(--accent); text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent); }
 /* Lamplight: the version sits at the end of the status line's row, on wide screens */
 @media (min-width: 1200px) { body.look-lamplight .ver { display: block; position: fixed; right: var(--s5); bottom: var(--s3); padding: 0; border: 0; background: none; font: var(--t-xs)/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--muted); opacity: .7; } }
+/* 1.5.210 Lamplight on a phone: the porthole cube and Bob's name lead the top line (the left menu is a sheet there) */
+.lamp-head { display: inline-flex; align-items: center; gap: var(--s2); flex: none; }
+.lamp-head .lamp-name { font-weight: 600; font-size: var(--t-md); }
+.lamp-head .lamp-name:only-child { display: none; }
+.lamp-head .mind-cube.bob-cube.porthole .port { width: 36px; height: 36px; padding: 2px; }
+/* Lamplight: the porthole stands alone at top left (the cat keeps to the other looks) */
+body.look-lamplight .side-top #cat { display: none; }
+
+/* ---------- 1.5.210 Lamplight pages: every page (Settings, Tasks, Topics, Help, the Lab, Adventure, Games, References,
+   Downloads, Tidy up) opens as the whole room instead of a box over the chat: the same dark room and glow, one readable
+   column, a quiet title with "Back", and one button style. Page-scoped rules (item B and this thread) build on this frame. ---------- */
+body.look-lamplight dialog.cellar:not(.page)[open] { position: fixed; inset: 0; width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; border: 0; border-radius: 0; box-sizing: border-box; padding: 0 max(var(--s5), calc((100vw - 860px) / 2)) var(--s6); overflow: auto; background: var(--deep); }
+body.look-lamplight dialog.cellar.wide:not(.page)[open] { padding-inline: max(var(--s5), calc((100vw - 1200px) / 2)); }
+body.look-lamplight dialog.cellar::backdrop { background: var(--deep); }
+body.look-lamplight .cellar.page, body.look-lamplight .cellar.page .cellar-head { background: transparent; }
+body.look-lamplight .cellar-head { background: color-mix(in srgb, var(--deep) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 0; padding: var(--s5) 0 var(--s3); margin-bottom: var(--s3); }
+body.look-lamplight .cellar.page .cellar-head { padding-inline: max(var(--s5), calc((100% - 860px) / 2)); }
+body.look-lamplight .cellar-head h2 { font-size: var(--t-xl); font-weight: 600; letter-spacing: -.01em; }
+body.look-lamplight .cellar :is(h3, h4) { font-size: var(--t-sm); font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: var(--s6) 0 var(--s2); }
+body.look-lamplight .cellar { font-size: var(--t-md); line-height: 1.55; }
+/* one button: quiet outline, lit on hover; the main action keeps the accent fill */
+body.look-lamplight .cellar :is(button:not([class]), button.mini, button.big:not(.yes):not(.warn), .row > button:not([class*="gm-"]):not(.get):not(.yes):not(.warn)) { background: transparent; border: 1px solid var(--line); border-radius: 10px; }
+body.look-lamplight .cellar button:not(.link):hover { border-color: var(--accent); color: var(--text); }
+body.look-lamplight .cellar :is(button.get, button.yes) { border-radius: 10px; box-shadow: 0 0 18px -6px var(--accent); }
+/* the close button reads as the way back */
+body.look-lamplight .cellar-head :is(.icon, .back) { border: 0 !important; color: var(--muted); font-size: var(--t-sm); padding: var(--s2) var(--s3); }
+body.look-lamplight .cellar-head .icon::before { content: "← Back"; }
+body.look-lamplight .cellar-head .icon { font-size: 0; width: auto; height: auto; }
+body.look-lamplight .cellar-head .icon::before { font-size: var(--t-sm); }
+/* fewer boxes: cards and fieldsets inside pages lose their fill and keep a hairline */
+body.look-lamplight .cellar :is(.card, fieldset, details) { background: transparent; box-shadow: none; }
+body.look-lamplight .cellar details > summary { cursor: pointer; padding: var(--s2) 0; font-weight: 600; }
+/* tabs inside pages: words with a lit underline, like the top bar */
+body.look-lamplight .cellar [role="tab"] { background: none; border: 0; border-radius: 0; padding: var(--s2) var(--s3); color: var(--muted); }
+body.look-lamplight .cellar [role="tab"][aria-selected="true"] { color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+body.look-lamplight .cellar input:is([type="text"], [type="search"], [type="number"]), body.look-lamplight .cellar select, body.look-lamplight .cellar textarea { background: color-mix(in srgb, var(--deep) 60%, var(--panel)); border-radius: 10px; }
+@media (max-width: 640px) { body.look-lamplight dialog.cellar:not(.page)[open] { padding: 0 var(--s4) var(--s5); } }
+@media (prefers-reduced-motion: no-preference) { body.look-lamplight:not(.still) dialog.cellar[open] { animation: lamp-page-in .2s var(--ease); } }
+@keyframes lamp-page-in { from { opacity: 0; } }
+/* Games and Adventure: each game or part is a section divided by a hairline, not a box in a box */
+body.look-lamplight .cellar :is(.gm-games > li, .adv-panel, .adv-char) { background: transparent; border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; padding-inline: 0; }
+body.look-lamplight .cellar .adv-panel :is(.adv-char, .adv-who) { border: 0; background: transparent; padding-inline: 0; }
+body.look-lamplight .cellar :is(.adv-refusal, .gm-refusal) { background: transparent; border: 0; border-left: 2px solid var(--bad); border-radius: 0; color: var(--text); }
+/* the little "i" for more: a quiet letter, no ring */
+body.look-lamplight .tip-i { border: 0 !important; background: none !important; color: var(--muted); opacity: .7; }
+body.look-lamplight .tip-i:hover, body.look-lamplight .tip-i[aria-expanded="true"] { color: var(--accent); opacity: 1; }
+body.look-lamplight .tip-i::before { border-color: transparent; background: none; }
+/* pages that open in place (Settings, Style, Get models): the room under the top bar, so the tabs stay in reach */
+body.look-lamplight .cellar.page[open] { position: fixed; inset: 64px 0 0 0; z-index: 15; width: auto; background: var(--deep); padding: 0 max(var(--s5), calc((100vw - 1000px) / 2)) var(--s6); box-sizing: border-box; }
+body.look-lamplight .cellar.page .cellar-head { padding-inline: 0; }
+@media (max-width: 640px) { body.look-lamplight .cellar.page[open] { inset: 0 0 calc(56px + env(safe-area-inset-bottom, 0px)) 0; padding: 0 var(--s4) var(--s5); } }
+html.lab-window body.look-lamplight .cellar.page[open] { inset: 0; }

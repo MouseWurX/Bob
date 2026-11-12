@@ -11,7 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pickSkills, WATCH_WORDS, WATCH_WORDS_THINK } from '../../src/lab-watch.js';
 
-export const VIEWER_FILES = ['watch.html', 'watch.js', 'watch.css', 'watch-view.js', 'lab-watch-math.js', 'themes.js', 'style.css'];
+export const VIEWER_FILES = ['watch.html', 'watch.js', 'watch.css', 'watch-view.js', 'lab-watch-math.js', 'themes.js', 'style.css', 'looks.css'];
 const app = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 export function llamaTag() {

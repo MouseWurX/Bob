@@ -211,7 +211,7 @@ export class LlamaCpp {
       this.beside.brainLabel = (m) => this.brainLabel?.(m) || `${m} brain`; // 218-228: plain names in the chat notes
       this.beside.main = this; // so a card reader set on the main engine (tests) also counts for the second server
       // fNRI's small cube: a brain answering on the second server is traced too, and told to the same cube
-      this.beside.wantTrace = () => this.wantTrace?.() || false; this.beside.onTrace = (raw, model) => this.onTrace?.(raw, model);
+      this.beside.wantTrace = () => this.wantTrace?.() || false; this.beside.onTrace = (raw, model) => this.onTrace?.(raw, model); this.beside.onTracePart = (raw, model) => this.onTracePart?.(raw, model);
       // 1.5.53: the brain hears when a second brain joins or leaves (chat page: second-brain events, Bob's head grows).
       this.beside.changed = (ev) => { try { this.onBeside?.(ev); } catch {} };
     }
@@ -1200,7 +1200,7 @@ export class LlamaCpp {
         // 1.5.16: a quick reply asks the chat template to skip thinking (templates that don't know the switch ignore it).
         ...(think === false ? { chat_template_kwargs: { enable_thinking: false } } : {}),
         // fNRI's small cube in Bob's thinking: only while someone has it open, and only Brain Engine answers it
-        ...(this.wantTrace?.() ? { expert_trace: true } : {}) }),
+        ...(this.wantTrace?.() ? { expert_trace: true, expert_trace_stream: true } : {}) }), // 1.5.210: Brain Engine 5 also sends the picks with every word (older builds ignore the ask)
       signal
     });
   }
@@ -1230,6 +1230,7 @@ export class LlamaCpp {
         if (!ev) { if (asked && data.includes('"expert_trace"')) this.log?.('engine', `fNRI cube: ${model}'s trace came back unreadable (${data.length.toLocaleString()} characters)`); continue; } // a cut or odd line from the server: skip it rather than lose the whole reply
         if (ev.error) throw new Error('llama-server: ' + (ev.error.message || JSON.stringify(ev.error)));
         // 1.5.30: llama-server puts the reply's timings on its last chunk; kept for Now running.
+        if (ev.expert_trace_part && this.onTracePart) { try { this.onTracePart(ev.expert_trace_part, model); } catch {} } // the picks so far, while he writes
         if (ev.expert_trace && this.onTrace) { traced = true; try { this.onTrace(ev.expert_trace, model); } catch (e) { this.log?.('engine', `fNRI cube: couldn't read ${model}'s trace: ${e.message}`); } }
         // Nov 11 (item 3): the engine's own count of what it read teaches Bob how many characters make a token for this brain.
         if (ev.timings) { const n = (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0); const k = this.current || model; const per = learnPer(this.perToken[k], promptChars(messages, tools), n); if (per) this.perToken[k] = per; }

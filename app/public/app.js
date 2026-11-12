@@ -2,6 +2,7 @@
 import { drawBob, setLook } from './bob-sprite.js';
 import { secretNoteHtml, wireSecretNote } from './more-tools.js'; // 🧰 More tools: a password Bob made
 import { applyStyle, applySavedStyle } from './themes.js';
+import { createMindCube } from './mind-cube.js'; // 1.5.209: Bob's picture as the fNRI cube
 applySavedStyle();
 import { startI18n, followSaved } from './i18n.js';
 startI18n();
@@ -157,8 +158,57 @@ let lastFrame = '', lastProp = '';
     propEl.className = `bob-prop${f.prop ? ` p-${f.propClass}` : ''}`;
     propEl.hidden = !f.prop;
   }
-  setTimeout(animate, document.hidden ? 1000 : 80);
+  setTimeout(animate, document.hidden || cubeAvatarOn ? 1000 : 80); // 1.5.209: the cube avatar stands in, so the pixel Bob only ticks once a second
 })();
+// ---------- Bob's picture as the fNRI cube (1.5.209, Style, Bob's look; the pixel Bob to begin with) ----------
+// A small fNRI cube in place of the pixel Bob: it builds itself when a brain loads, rests with the odd spark, glows
+// while he thinks and drains away when the brain is let go, with the neon sign when none is loaded. It glows for show,
+// so it costs the engine nothing; with Real experts on (Bob's thinking) it shows the experts he really used. It draws
+// small and never turns, and while it shows the pixel Bob's loop slows right down and the brain-swap machine rests.
+// In Adventure the pixel Bob comes back (the small characters are the game's).
+var cubeAvatarOn = false; // var: the pixel loop above reads it before this line runs
+let cubeAvatar = null, cubeWanted = false;
+const advDlg = $('adventure');
+function showCubeAvatar() {
+  const on = cubeWanted && !advDlg?.open;
+  if (on === cubeAvatarOn) return;
+  cubeAvatarOn = on;
+  globalThis.bobCubeAvatarOn = on; window.dispatchEvent(new CustomEvent('bob-avatar-shown', { detail: { on } })); // shown once: Bob's thinking (layout.js) steps its own cube aside
+  const box = $('bobCubeBox');
+  if (!box) return;
+  bobCanvas.hidden = on;
+  if (on) {
+    if (!cubeAvatar) cubeAvatar = createMindCube({ box, canvas: $('bobCube'), says: $('bobCubeSays'), open: $('bobCubeOpen') }, { avatar: true, lamp: () => true, still: () => document.body.classList.contains('still'), live: () => store.get('bob-cube-live', '0') === '1' });
+    cubeAvatar.connect(); hideSwap();
+  } else if (cubeAvatar) { cubeAvatar.disconnect(); cubeAvatar.hide(); lastFrame = ''; }
+}
+function setAvatarCube(on) { cubeWanted = Boolean(on); store.set('bob-avatar-cube', cubeWanted ? '1' : '0'); showCubeAvatar(); }
+window.setAvatarCube = (on) => { setAvatarCube(on); api('/api/settings', { style: { avatar: on ? 'cube' : 'pixel' } }).catch(() => {}); }; // the Style page's looks call this
+window.addEventListener('bob-avatar', (e) => setAvatarCube(e.detail?.cube === true));
+window.addEventListener('bob-cube-live', () => { if (cubeAvatarOn && cubeAvatar) cubeAvatar.relive(); }); // Real experts switched in Bob's thinking
+setAvatarCube(store.get('bob-avatar-cube', '0') === '1'); // at once, before the settings arrive, so the picture never flips
+if (advDlg && globalThis.MutationObserver) new MutationObserver(showCubeAvatar).observe(advDlg, { attributes: true, attributeFilter: ['open'] });
+// 1.5.210 Lamplight on a phone: the left menu is a sheet, so the porthole moves to the top of the chat with Bob's
+// name beside it (the same element, so it keeps its fog, glow and clicks). Everywhere else it sits where Bob sits.
+const lampPhone = globalThis.matchMedia?.('(max-width: 640px)');
+function placeCube() {
+  const box = $('bobCubeBox'), ctx = document.querySelector('.ctx'), wrap = document.querySelector('.side-top .bob-wrap');
+  if (!box || !ctx || !wrap) return;
+  const top = document.body.classList.contains('look-lamplight') && Boolean(lampPhone?.matches);
+  let head = $('lampHead');
+  if (top && !head) { head = document.createElement('span'); head.id = 'lampHead'; head.className = 'lamp-head'; head.innerHTML = '<span class="lamp-name">Bob</span>'; }
+  if (top && box.parentElement !== head) { ctx.prepend(head); head.prepend(box); }
+  else if (!top && head && box.parentElement === head) { wrap.insertBefore(box, bobCanvas.nextSibling); head.remove(); }
+}
+let lampWas = '';
+const lampCheck = () => { const k = document.body.className.includes('look-lamplight') + ':' + Boolean(lampPhone?.matches); if (k !== lampWas) { lampWas = k; placeCube(); } };
+if (globalThis.MutationObserver) new MutationObserver(lampCheck).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+lampPhone?.addEventListener?.('change', lampCheck);
+lampCheck();
+// In Lamplight the cube is the menu button (Bob's menu, below); in the other looks it opens Equip Bob as before.
+const lampLook = () => document.body.classList.contains('look-lamplight');
+$('bobCube')?.addEventListener('click', () => { if (!lampLook()) cellar.open('shop', 'roles'); });
+$('bobCube')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (lampLook()) bobMenu.toggle($('bobCubeBox')); else cellar.open('shop', 'roles'); } });
 // Two brains loaded at once (from the brain readings): a bigger head. Back to one: normal again.
 window.addEventListener('bob-brain-status', (e) => { const n = (e.detail?.models || []).filter((m) => m?.name).length; life.brains(n); });
 // A dozing Bob wakes when you come back to the window.
@@ -339,7 +389,7 @@ function ping(title, body) {
 document.addEventListener('visibilitychange', () => { if (!document.hidden) badge(false); });
 
 function showSwap(from, to, mode = 'swap') {
-  if (swapEl) return;
+  if (swapEl || cubeAvatarOn) return; // the cube avatar builds itself as the brain loads instead
   swapEl = document.createElement('div');
   swapEl.className = 'note announce';
   const c = document.createElement('canvas');
@@ -527,7 +577,7 @@ const bobMenu = createBobMenu({
   saidNow: () => statusEl.title || statusEl.textContent
 });
 // The fNRI cube avatar (when it is on) opens the same menu.
-document.addEventListener('click', (e) => { const c = e.target.closest?.('#bobCubeBox'); if (c && e.target !== bobCanvas) bobMenu.toggle(c); });
+document.addEventListener('click', (e) => { const c = e.target.closest?.('#bobCubeBox'); if (c && lampLook()) bobMenu.toggle(c); }); // Lamplight: the cube opens Bob's menu
 // 1.5.210 Find anything: every page, menu tool, Settings card and Help topic by name, plus your chats.
 const PAGE_BTNS = ['chatBtn', 'tasksBtn', 'topicsBtn', 'madeBtn', 'adventureBtn', 'gamesBtn', 'labBtn', 'shelfBtn', 'cellarBtn', 'dlBtn', 'tidyBtn', 'settingsBtn', 'styleBtn', 'helpBtn', 'newchat'];
 const findBox = createFind({
