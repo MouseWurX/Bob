@@ -1,6 +1,80 @@
 {
   "note": "The 3D workshop add-on wheels for each computer, with their sha256, from Bob's own GitHub pre-release. Filled in by installer/pin-model3d.js <release> after .github/workflows/model3d-addons.yml was run by hand with publish ticked. While a computer's list is empty Bob offers no download there.",
-  "release": "",
-  "win-x64": [],
-  "linux-x64": []
+  "release": "model3d-addons-16",
+  "win-x64": [
+    {
+      "name": "utils3d-0.0.2-py3-none-any.whl",
+      "url": "https://github.com/MouseWurX/Bob/releases/download/model3d-addons-16/utils3d-0.0.2-py3-none-any.whl",
+      "sha256": "be0f5a729f9ba23ebb9bd80349b1769044335d44ae483fa4e74e2943ca0dbd68",
+      "bytes": 88960
+    },
+    {
+      "name": "cumesh-0.0.1-cp312-cp312-win_amd64.whl",
+      "url": "https://github.com/MouseWurX/Bob/releases/download/model3d-addons-16/cumesh-0.0.1-cp312-cp312-win_amd64.whl",
+      "sha256": "9f51384214123ad50ee2809d6dc4eebbd2de80152706d07ac1aa36ea4e83bf06",
+      "bytes": 5588369
+    },
+    {
+      "name": "flex_gemm-1.0.0-cp312-cp312-win_amd64.whl",
+      "url": "https://github.com/MouseWurX/Bob/releases/download/model3d-addons-16/flex_gemm-1.0.0-cp312-cp312-win_amd64.whl",
+      "sha256": "83ddd4626ef5681c62bcc1d1e07f453be793af774c6b3919b1f22370c2066ffb",
+      "bytes": 503936
+    },
+    {
+      "name": "nvdiffrast-0.4.0-cp312-cp312-win_amd64.whl",
+      "url": "https://github.com/MouseWurX/Bob/releases/download/model3d-addons-16/nvdiffrast-0.4.0-cp312-cp312-win_amd64.whl",
+      "sha256": "2ac982291b86170d5f88eb22564a65c5547ea0ed75dc283ca2654062258c4998",
+      "bytes": 2382639
+    },
+    {
+      "name": "nvdiffrec_render-0.0.0-cp312-cp312-win_amd64.whl",
+      "url": "https://github.com/MouseWurX/Bob/releases/download/model3d-addons-16/nvdiffrec_render-0.0.0-cp312-cp312-win_amd64.whl",
+      "sha256": "ebaebd8b89bb99974d79c796f6d9aaeb1b51b58dacf64d85eee2cbf3e9dafd8b",
+      "bytes": 1139610
+    },
+    {
+      "name": "o_voxel-0.0.1-cp312-cp312-win_amd64.whl",
+      "url": "https://github.com/MouseWurX/Bob/releases/download/model3d-addons-16/o_voxel-0.0.1-cp312-cp312-win_amd64.whl",
+      "sha256": "ccc65d0cd1d70b14d4219203da44415c3bbf1e4257a83f731779a088e7fbc243",
+      "bytes": 283232
+    }
+  ],
+  "linux-x64": [
+    {
+      "name": "utils3d-0.0.2-py3-none-any.whl",
+      "url": "https://github.com/MouseWurX/Bob/releases/download/model3d-addons-16/utils3d-0.0.2-py3-none-any.whl",
+      "sha256": "be0f5a729f9ba23ebb9bd80349b1769044335d44ae483fa4e74e2943ca0dbd68",
+      "bytes": 88960
+    },
+    {
+      "name": "cumesh-0.0.1-cp312-cp312-linux_x86_64.whl",
+      "url": "https://github.com/MouseWurX/Bob/releases/download/model3d-addons-16/cumesh-0.0.1-cp312-cp312-linux_x86_64.whl",
+      "sha256": "67b338db01b6e9be2d31463f54371f2c500d95e31f4c67f013b0397079a9d318",
+      "bytes": 17941140
+    },
+    {
+      "name": "flex_gemm-1.0.0-cp312-cp312-linux_x86_64.whl",
+      "url": "https://github.com/MouseWurX/Bob/releases/download/model3d-addons-16/flex_gemm-1.0.0-cp312-cp312-linux_x86_64.whl",
+      "sha256": "4c76b3dafdf32d9a2c28b1f0fe4af3662e41abf0fcc489f0833a3d5aed98250d",
+      "bytes": 3439821
+    },
+    {
+      "name": "nvdiffrast-0.4.0-cp312-cp312-linux_x86_64.whl",
+      "url": "https://github.com/MouseWurX/Bob/releases/download/model3d-addons-16/nvdiffrast-0.4.0-cp312-cp312-linux_x86_64.whl",
+      "sha256": "fd02bccdd71ad119f3257737fd31145dda0a4e1a0d92b7643b7c71cbaeaeab22",
+      "bytes": 17462065
+    },
+    {
+      "name": "nvdiffrec_render-0.0.0-cp312-cp312-linux_x86_64.whl",
+      "url": "https://github.com/MouseWurX/Bob/releases/download/model3d-addons-16/nvdiffrec_render-0.0.0-cp312-cp312-linux_x86_64.whl",
+      "sha256": "ffebbea9c92f3facecb27407420565436d46cece04d5a70a291f1babb213d9ca",
+      "bytes": 4440627
+    },
+    {
+      "name": "o_voxel-0.0.1-cp312-cp312-linux_x86_64.whl",
+      "url": "https://github.com/MouseWurX/Bob/releases/download/model3d-addons-16/o_voxel-0.0.1-cp312-cp312-linux_x86_64.whl",
+      "sha256": "25ddf8b96110a0b7dd27fe132e93ea2ccb952d9bb4dc95145d17b3a17a7d6fa9",
+      "bytes": 17796778
+    }
+  ]
 }

@@ -1,6 +1,7 @@
 // 1.5.104: fixes from the live test on the replicant matrix. One request gets one Set it up card, a card is never a
 // failure, a chat queued behind a picture gets the ⏳ line (and "ok" after it the plain answer), the start of a
 // picture doesn't read "Painting 82/82", and brains and programs set by hand in config.json count as here.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -26,7 +27,7 @@ const read = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8')
   await Brain.prototype.offerSetup.call(fake, 'web', ctx2);
   check('a new request gets its own card', events.filter((e) => e.type === 'offer-setup').length === 2);
 }
-const brainSrc = read('src/brain.js');
+const brainSrc = brainText();
 check('a tool that offered a card is not checked or tried again', /ctx\.offeredNow = false;\s*\n\s*text = await this\.runLimited\(name, args, ctx, tool\);/.test(brainSrc) && /let v = ctx\.offeredNow \? \{ ok: true \} : await this\.checkTool\(name, args, text, ctx\);/.test(brainSrc));
 
 // 2. The ⏳ line for a chat queued behind a picture, clip, song or sound.

@@ -230,7 +230,7 @@ Just ask: "paint a lighthouse at dusk", "make this picture look like winter", "a
 **3D:**
 
 - **Let Bob make 3D parts** (off): ask for a bracket, a box or a spacer. Bob writes it as an OpenSCAD recipe in millimetres and makes an STL for a 3D printer. OpenSCAD is about 30 MB from Settings, Engines.
-- **Let Bob turn pictures into 3D models** (off): ask for a figurine or a prop; TRELLIS.2 turns a picture into a textured GLB model in 1 to 5 minutes. Needs an NVIDIA card (16 GB is best) and the 3D workshop (about 22 GB). On a Mac, send the job to a PC Bob over Bob-Net.
+- **Let Bob turn pictures into 3D models** (off): ask for a figurine or a prop; TRELLIS.2 turns a picture into a textured GLB model in 1 to 5 minutes. Needs an NVIDIA card (16 GB is best; not RTX 50-series yet) and the 3D workshop (about 28 GB). On a Mac, send the job to a PC Bob over Bob-Net.
 - The side panel's **3D viewer** opens STL, OBJ and GLB files: drag to turn, scroll to zoom.
 
 **Advanced workshop:** if you use ComfyUI, Bob can run its workflows for you (Settings, Other apps).
@@ -436,7 +436,7 @@ A **queue** runs jobs overnight, **Show the wobble** shows how much a score move
 
 - **Personality** (Settings, 🎚 Personality): the eleven dials (Dry wit, Puns, Tangents, Outlook, Nerd references, Talkative, Manner, Copied-mind musings, Builder itch, Curiosity, Ambition), each 0 to 4. His greeting changes as you move them. Presets include *Replicant on a deadline*, *Butler mode* and *Pun-dit*. **Reset to Bob** puts it all back.
 - **Assistant presets for chats** (off): save presets with a name, your own instructions, a brain, a starting effort and which tools he may use, then pick one from **🎭 Preset** next to Effort. A preset never switches on a tool that is off.
-- **Style:** themes, avatars, animations and layout. **Look** picks how the whole page is drawn: **Classic** (to begin with), **Lamplight** (a dark room lit by Bob's cube, with Find anything on Ctrl+K) or **Terminal**. **Bob's look** can make his picture the fNRI cube in a small porthole instead of the pixel Bob. **🧍 Make your own look** builds Bob's avatar from parts.
+- **Style:** themes, avatars, animations and layout. **Look** picks how the whole page is drawn: **Lamplight** (a dark room lit by Bob's cube, with Find anything on Ctrl+K; new installs start here), **Classic** (where earlier installs stay until you pick) or **Terminal**. **Bob's look** puts the fNRI cube in a small porthole as his picture (to begin with), or the pixel Bob if you'd rather. **🧍 Make your own look** builds Bob's avatar from parts.
 - **Language** (Settings, Bob himself): English, Français or Español for Bob's screens. Bob answers in whatever language you write in.
 - **Text size** and **Easier-to-read font** (Look & feel): 80% to 160%, and a plainer font.
 - **Choose my own word settings** (Engines; off): your own temperature and top P for Qwen brains.

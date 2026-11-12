@@ -377,6 +377,25 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   await ls2.hello(go, { force: true });
   ok(ls2.nearOf(go) === '', 'home door: another network\'s address, or a public one, is never used');
   {
+    // Two shared networks (Wi-Fi and a cable between them): each path is timed and the quickest wins, for the door and for a lent card.
+    const both = [{ address: H(192, 168, 4, 185), netmask: '255.255.255.0' }, { address: H(10, 77, 0, 1), netmask: '255.255.255.0' }];
+    const timed = [];
+    const trip = async ({ host }) => { timed.push(host); return host === H(10, 77, 0, 3) ? 0.4 : 30; };
+    const l3 = new Lenders({ share: { borrow: { bobs: [go] } } }, { home: () => both, trip, fetchFn: async () => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ lend: true, home: [`${H(192, 168, 4, 189)}:7777`, `${H(10, 77, 0, 3)}:7777`] }) }) });
+    await l3.hello(go, { force: true });
+    ok(l3.nearOf(go) === `${H(10, 77, 0, 3)}:7777` && l3.nearMine.get(go.address)[0] === H(10, 77, 0, 1) && timed.length === 6, 'home door: with Wi-Fi and a cable both shared, the quicker path is used');
+    await l3.hello(go, { force: true });
+    ok(timed.length === 6, 'home door: the paths aren\'t timed again at every hello');
+    const dead = new Lenders({ share: { borrow: { bobs: [go] } } }, { home: () => both, trip: async ({ host }) => (host === H(10, 77, 0, 3) ? null : 30), fetchFn: async () => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ lend: true, home: [`${H(10, 77, 0, 3)}:7777`, `${H(192, 168, 4, 189)}:7777`] }) }) });
+    await dead.hello(go, { force: true });
+    ok(dead.nearOf(go) === `${H(192, 168, 4, 189)}:7777`, 'home door: a path that doesn\'t answer loses to one that does');
+    ok(pickHome(both, [H(10, 77, 0, 3), H(192, 168, 4, 189)]).host === H(10, 77, 0, 1) && pickHome(both, [H(192, 168, 4, 189), H(10, 77, 0, 3)]).host === H(192, 168, 4, 185), 'card: the asker\'s order decides which shared network the gate opens on');
+    let asked = null;
+    const cb = new CardBorrower({ share: { spread: 'toobig' }, gpuVramGB: 16 }, { bobs: () => [go], nearMine: l3.nearMine, call: async (b, p, o) => { asked = o.body.home; return { ok: true, json: async () => ({ ok: false, why: 'off' }) }; } }, { home: () => both });
+    await cb.open({ sizeGB: 200 });
+    ok(asked && asked[0] === H(10, 77, 0, 1) && asked.length === 2, 'spread: the asker names his address on the quickest path first');
+  }
+  {
     let sends = 0;
     const slow = new Lenders({}, { fetchFn: async (url) => { if (url.includes(H(192, 168))) { sends++; const e = new Error('timeout'); e.name = 'TimeoutError'; throw e; } sends++; return { ok: true, status: 200 }; }, home: () => myHome });
     slow.near.set(go.address, `${H(192, 168, 4, 189)}:7777`);

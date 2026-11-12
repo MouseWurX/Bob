@@ -57,7 +57,7 @@ check('job type of a request', jobTypeOf('draw a dragon', brain.constructor.gues
 let b = new DiscordBridge(brain, { fetchImpl, WebSocketImpl: FakeWS, env: { [TOKEN_ENV]: TOKEN }, wait: async () => {} });
 b.sync();
 check('off by default: no connection and no request at all', sockets.length === 0 && calls.length === 0 && !b.running);
-saveDiscord(brain.cfg, { enabled: true });
+saveDiscord(brain.cfg, { enabled: true, autoAccept: true }); // 1.5.211: the job path itself; the gate is tested at the end
 const nt = new DiscordBridge(brain, { fetchImpl, WebSocketImpl: FakeWS, env: {} });
 nt.sync();
 check('on but no token: still no connection', sockets.length === 0 && nt.status === 'no token' && discordView(nt).tokenFound === false);
@@ -232,6 +232,83 @@ saveDiscord(brain.cfg, { enabled: false, dmEnabled: false });
 const c = new DiscordBridge(brain, { fetchImpl, WebSocketImpl: FakeWS, env: { [TOKEN_ENV]: TOKEN } });
 c.running = true; c.sync();
 check('turning it off stops Bob listening', !c.running && c.status === 'off');
+
+// 1.5.211 the room gate: group requests wait for the owner's OK in the group's own chat, unless Auto-accept is on.
+{
+  const { RoomGate, MAX_PER_PERSON } = await import('../src/room-gate.js');
+  const { waitsForGaming } = await import('../src/sessions.js');
+  const { roomNeed, jobNeed, GuestJobs } = await import('../src/share-jobs.js');
+  const gdir = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-room-'));
+  saveDiscord(brain.cfg, { enabled: true, dmEnabled: false, autoAccept: false, channels: [CH], people: [] });
+  check('Auto-accept is off unless switched on', discordSettings({}).autoAccept === false && cleanDiscordPatch({ autoAccept: true }).autoAccept === true);
+  const gate = new RoomGate({ room: 'discord', dir: gdir });
+  const g = new DiscordBridge(brain, { fetchImpl, WebSocketImpl: FakeWS, env: { [TOKEN_ENV]: TOKEN }, gate });
+  g.running = true;
+  const before = queue.length; calls.length = 0;
+  const m1 = msg('hey bob tell me a story', { author: SAM });
+  await g.handle(m1);
+  check('a group request makes no job until the owner says OK', queue.length === before && gate.waiting().length === 1);
+  check('it gets a ⏳ on Discord, and no message', calls.some((c) => c.method === 'PUT' && c.url.includes(`/messages/${m1.id}/reactions/${encodeURIComponent('⏳')}/@me`)) && posts().length === 0);
+  check('it is kept in the group chat file, not with the chats', fs.existsSync(path.join(gdir, 'rooms', 'discord.json')) && JSON.parse(fs.readFileSync(path.join(gdir, 'rooms', 'discord.json'), 'utf8')).lines[0].text === 'tell me a story');
+  check('it stays through a restart until answered', new RoomGate({ room: 'discord', dir: gdir }).waiting().length === 1);
+  const id = gate.waiting()[0].id;
+  check('Decline: no job, ❌ on Discord', (await g.answer(id, false)).ok && queue.length === before && calls.some((c) => c.url.includes(encodeURIComponent('❌'))));
+  check('an answered request can\'t be answered again', Boolean((await g.answer(id, true)).error) && queue.length === before);
+  g.lastAsk.clear();
+  await g.handle(msg('hey bob what is 2+2', { author: SAM }));
+  const id2 = gate.waiting()[0].id;
+  await g.answer(id2, true);
+  const job = queue[queue.length - 1];
+  check('Accept: the same strict guest job as before', queue.length === before + 1 && job.guest?.public === true && job.text.includes('what is 2+2'));
+  g.watch({ type: 'token', turnId: job.id, sessionId: job.sessionId, text: '4' });
+  g.watch({ type: 'done', turnId: job.id, sessionId: job.sessionId });
+  await tick();
+  const v = gate.view();
+  check('Bob\'s reply lands in the group chat next to the request', v.lines.some((l) => l.kind === 'bob' && l.text === '4' && l.to === id2) && gate.get(id2).state === 'done');
+  check('the view never carries Discord message ids', !JSON.stringify(v).includes('"ref"'));
+  for (let i = 0; i < MAX_PER_PERSON + 1; i++) { g.lastAsk.clear(); await g.handle(msg(`hey bob q${i}`, { author: PAT })); }
+  check('one person can only have a few waiting', gate.waiting().filter((l) => l.who === PAT).length === MAX_PER_PERSON);
+  saveDiscord(brain.cfg, { autoAccept: true });
+  g.lastAsk.clear(); queue.length = 0;
+  await g.handle(msg('hey bob hello', { author: SAM }));
+  check('Auto-accept on: it runs straight away, and still shows in the group chat', queue.length === 1 && gate.view().lines.some((l) => l.auto && l.text === 'hello'));
+  gate.clear();
+  check('emptying the chat keeps what still waits', gate.waiting().length === MAX_PER_PERSON && gate.view().lines.length === MAX_PER_PERSON);
+  // Gaming: a group job never runs on a Bob that's gaming; it may go to another Bob once, as a "room" job.
+  const pub = { guest: { from: 'Discord', public: true, tools: ['use_tools'] }, kind: 'chat', effort: 'low' };
+  check('a group job waits while this Bob is gaming, even a small one', waitsForGaming({ session: 'light' }, pub) && !waitsForGaming({ session: 'light' }, { kind: 'chat', effort: 'low' }) && !waitsForGaming({ session: 'normal' }, pub));
+  check('it can go to another Bob as a room job', roomNeed(pub) === 'room' && jobNeed(pub) === 'room' && roomNeed({ ...pub, kind: 'picture' }) === 'pictures');
+  check('a room job taken from another Bob never goes on again', jobNeed({ ...pub, guest: { ...pub.guest, taken: true } }) === null && jobNeed({ guest: { from: 'x' } }) === null);
+  const took = [];
+  const other = { cfg: { share: { takeJobs: true }, remote: { enabled: true, passcode: 'test-pass-123' } }, queue: [], sessions: new Map(), log() {}, lendDeps: { currentSession: () => ({ id: 'normal' }) }, enqueue(sid, text, a, effort, extra) { took.push({ sid, text, effort, ...extra }); return { jobId: 'r1' }; } };
+  const gj = new GuestJobs(other, { canNow: () => [] });
+  const r = gj.start({ need: 'room', text: 'Pat (on Discord): hi', effort: 'high', room: { from: 'Discord', tools: ['use_tools', 'read_file', 'make_image'] } });
+  const t0 = took[0];
+  check('the other Bob runs it as the same strict public job', r.status === 200 && t0?.guest?.public === true && t0.guest.taken === true && t0.effort === 'low' && t0.guest.tools.join() === 'use_tools,make_image', JSON.stringify(r));
+  check('a room job without its room limits is refused', gj.start({ need: 'room', text: 'hi' }).status === 400);
+  fs.rmSync(gdir, { recursive: true, force: true });
+}
+
+// 1.5.211 Keep this replicant matrix awake while Bob is on Discord (off): a helper only while connected, gone when off.
+{
+  const { KeepAwake, awakeCommand } = await import('../src/keep-awake.js');
+  const spawned = [];
+  const fakeSpawn = (cmd, args) => { const c = { cmd, args, killed: false, on() {}, kill() { this.killed = true; } }; spawned.push(c); return c; };
+  check('off by default', discordSettings({}).keepAwake === false && cleanDiscordPatch({ keepAwake: true }).keepAwake === true);
+  check('each system gets its own helper, tied to Bob\'s process', awakeCommand('win32', 42)[1].join(' ').includes('Get-Process -Id 42') && awakeCommand('darwin', 42)[1].join() === '-i,-w,42' && awakeCommand('linux', 42)[0] === 'systemd-inhibit' && awakeCommand('android', 42) === null);
+  const ka = new KeepAwake({ spawn: fakeSpawn, platform: 'linux' });
+  saveDiscord(brain.cfg, { enabled: true, keepAwake: false });
+  const k = new DiscordBridge(brain, { fetchImpl, WebSocketImpl: FakeWS, env: { [TOKEN_ENV]: TOKEN }, awake: ka });
+  k.sync(); clearInterval(k.beat);
+  check('switch off: nothing keeps the computer awake', spawned.length === 0);
+  saveDiscord(brain.cfg, { keepAwake: true }); k.sync();
+  check('switch on while connected: one helper', spawned.length === 1 && ka.on);
+  k.sync();
+  check('asking again doesn\'t start a second one', spawned.length === 1);
+  k.stop();
+  check('Discord off: the helper is stopped', spawned[0].killed && !ka.on);
+  saveDiscord(brain.cfg, { enabled: false, keepAwake: false });
+}
 
 fs.rmSync(dir, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

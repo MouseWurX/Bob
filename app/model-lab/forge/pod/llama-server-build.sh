@@ -13,12 +13,13 @@
 # whose CMakeLists.txt add_subdirectory()s a submodule path (vendor/), configure then dies with "source 'vendor' which is not
 # an existing directory" before any compile. We detect a missing submodule dir and fill it from a complete recursive checkout
 # of the same tag (installing git if the image lacks it), leaving the rest of the archive tree untouched.
-W=$1; TAG=${2:-b11669}; L=$W/llama.cpp; B=$L/build-cuda/bin; CL=$W/llama-server-cmake.log
+W=$1; TAG=${2:-b11669}; PATCHES=${3:-}; L=$W/llama.cpp; B=$L/build-cuda/bin; CL=$W/llama-server-cmake.log
+# 12 Nov: $3 = Bob's engine patches as URLs (Brain Engine for the benchmark: live expert switch, expert trace, REAP mass)
 rm -f $W/llama-server-ready $W/llama-server-failed
 for i in $(seq 1 90); do [ -f $L/CMakeLists.txt ] && break; sleep 10; done
 [ -f $L/CMakeLists.txt ] || { echo "no llama.cpp source yet (llama-tools.sh fetches it)"; touch $W/llama-server-failed; exit 1; }
 run_ok() { LD_LIBRARY_PATH="$B:${LD_LIBRARY_PATH:-}" "$B/llama-server" --version >/dev/null 2>&1; }
-if [ -x $B/llama-server ] && run_ok; then echo "CUDA llama-server already built and runs"; touch $W/llama-server-ready; exit 0; fi
+if [ -x $B/llama-server ] && run_ok && [ "$(cat $L/.bob-patches 2>/dev/null)" = "$PATCHES" ]; then echo "CUDA llama-server already built and runs"; touch $W/llama-server-ready; exit 0; fi
 # The archive tarball omits submodules; fill any missing/empty submodule dir from a complete recursive checkout of the tag.
 if [ ! -d $L/vendor ] || [ -z "$(ls -A $L/vendor 2>/dev/null)" ]; then
   echo "source tree is missing submodule dirs (the archive omits them); fetching a complete checkout of $TAG"
@@ -36,6 +37,19 @@ if [ ! -d $L/vendor ] || [ -z "$(ls -A $L/vendor 2>/dev/null)" ]; then
   fi
 fi
 if [ ! -d $L/vendor ]; then echo "still missing vendor/ for $TAG; the server source is incomplete, not building"; touch $W/llama-server-failed; exit 1; fi
+if [ -n "$PATCHES" ]; then
+  # A fresh copy of the source for Brain Engine, so the llama tools built from $L in the background are left alone
+  # 12 Nov: cp -r, not cp -a (a rented drive that refuses to keep permissions made cp -a fail, so the patches went on the shared tree)
+  rm -rf $W/llama-be; cp -r --no-preserve=mode,ownership $L $W/llama-be 2>/dev/null || cp -r $L $W/llama-be
+  [ -f $W/llama-be/CMakeLists.txt ] || { echo "couldn't copy the llama.cpp source for Brain Engine"; touch $W/llama-server-failed; exit 1; }
+  L=$W/llama-be; B=$L/build-cuda/bin; rm -rf $L/build-cuda
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; } >/dev/null 2>&1
+  for u in $PATCHES; do
+    f=$W/$(basename $u); curl -fsSL "$u" -o "$f" || { echo "couldn't fetch $u"; touch $W/llama-server-failed; exit 1; }
+    ( cd $L && git apply "$f" ) || { echo "Bob's engine patch $(basename $f) doesn't apply to llama.cpp $TAG"; touch $W/llama-server-failed; exit 1; }
+    echo "applied $(basename $f)"
+  done
+fi
 command -v cmake >/dev/null || pip install -q cmake 2>&1 | tail -1
 command -v nvcc >/dev/null || export PATH=$PATH:/usr/local/cuda/bin
 ARCH=$(python3 -c "import torch; print(''.join(map(str, torch.cuda.get_device_capability())))" 2>/dev/null || echo 90)
@@ -45,8 +59,13 @@ echo "building CUDA llama-server (tag $TAG, sm_$ARCH); nvcc: $(command -v nvcc |
 # avoids both the static-lib configure bug and any tag where the server lives under examples/ rather than tools/.
 ( cd $L && cmake -B build-cuda -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=$ARCH -DLLAMA_CURL=OFF > $CL 2>&1 \
   && cmake --build build-cuda --target llama-server -j $(nproc) >> $CL 2>&1 )
-if [ -x $B/llama-server ] && run_ok; then
-  echo "CUDA llama-server ready (sm_$ARCH)"; touch $W/llama-server-ready
+SERVE=$W/llama.cpp/build-cuda/bin   # where run.sh serves from
+if [ -x $B/llama-server ] && run_ok && [ "$B" != "$SERVE" ]; then
+  rm -rf $W/llama.cpp/build-cuda; mkdir -p $SERVE; cp -r $B/. $SERVE/; B=$SERVE
+fi
+if [ -x $SERVE/llama-server ] && [ "$B" = "$SERVE" ] && run_ok; then
+  echo "$PATCHES" > $W/llama.cpp/.bob-patches
+  echo "CUDA llama-server ready (sm_$ARCH)${PATCHES:+, Brain Engine}"; touch $W/llama-server-ready
 else
   echo "CUDA llama-server build failed; last 80 lines of the cmake log:"; tail -80 $CL 2>/dev/null
   touch $W/llama-server-failed

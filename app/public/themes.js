@@ -146,7 +146,7 @@ export function motionOff(style = current) {
 
 // 1.5.210: Bob's three looks (Style > Look). Shapes, spacing and motion only (looks.css); colours stay the theme's.
 export const LOOK_IDS = ['classic', 'lamplight', 'terminal'];
-export const DEFAULT_LOOK = 'classic';
+export const DEFAULT_LOOK = 'classic'; // upgrades that never picked a look stay Classic; new installs get Lamplight from config.example.json
 export function lookId(style = current) { return LOOK_IDS.includes(style?.look) ? style.look : DEFAULT_LOOK; }
 function applyLook(style) {
   const id = lookId(style), b = document.body;
@@ -154,11 +154,14 @@ function applyLook(style) {
   for (const l of LOOK_IDS) b.classList.toggle(`look-${l}`, l === id);
 }
 
+// 1.5.211: the cube is Bob's picture for everyone. Pixel Bob shows only when picked from 1.5.211 on (avatarKept), so an
+// older pick, made when Pixel Bob was simply the default, doesn't hide the cube.
+export const pixelKept = (style) => style?.avatar === 'pixel' && style?.avatarKept === true;
 export function applyStyle(style = {}) {
   current = style || {};
   applyTheme(resolve(current));
   document.body?.classList.toggle('still', motionOff(current));
-  try { globalThis.dispatchEvent?.(new CustomEvent('bob-avatar', { detail: { cube: current.avatar === 'cube' } })); } catch {} // 1.5.209: the fNRI cube as Bob's picture (app.js)
+  try { globalThis.dispatchEvent?.(new CustomEvent('bob-avatar', { detail: { cube: !pixelKept(current) } })); } catch {} // 1.5.209: the fNRI cube as Bob's picture (app.js); 1.5.211: the cube unless you picked Pixel Bob
   applyLook(current);
   try { localStorage.setItem('bob-style', JSON.stringify(current)); } catch {} // so the next start shows the right colours at once
   if (!watching && globalThis.matchMedia) {

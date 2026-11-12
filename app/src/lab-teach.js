@@ -194,6 +194,16 @@ export async function readBrainSource(lab, s = {}, { fetchFn = lab.hfFetch || fe
   if (s.kind === 'lab') {
     const b = lab.brains().find((x) => x.id === String(s.id || '')); if (!b) { out.problems.push('That brain isn\'t here any more.'); return out; }
     fromGguf(b.gguf, b.name); out.license = b.license || ''; out.labId = b.id;
+    if (!out.repo) { // 1.5.211 a brain made in the Lab: its file doesn't name an original, but Bob remembers what it was made from
+      const made = readJson(path.join(labDir(lab.cfg), 'made.json'), []).find((m) => m.id === b.id);
+      const run = (lab.runs || []).find((r) => r.origin && (r.files?.gguf === b.gguf || `lab-${r.slug}` === b.id));
+      const origin = made?.origin || run?.origin || '';
+      if (origin) {
+        out.problems = out.problems.filter((x) => !/doesn't say where its full weights are/.test(x));
+        out.repo = origin;
+        out.notes.push(`${out.name} was made here from ${origin}, and its own full weights weren't kept, so Bob teaches ${origin} again; what ${out.name} learned before isn't carried over. To build on it instead, teach from a folder of its full weights.`);
+      }
+    }
     if (out.repo && !(out.paramsB >= 0.5)) { const i = await hfLookup(parseHfRef(out.repo, 'model'), { fetchFn }).catch(() => null); if (i?.ok) { out.paramsB = i.paramsB || out.paramsB; out.moe = out.moe || Boolean(i.moe); out.license ||= i.license || ''; } }
     return out;
   }
@@ -329,6 +339,7 @@ export async function startTeach(lab, c = {}, { unload = false } = {}) {
     : [['brain', `Get ${p.brain.name}'s full weights`], ['lessons', `Get the lessons (${p.lessons.name})`], ['teach', `Teach the adapter${p.hours ? ` (about ${p.hours} h)` : ''}`], ['fold', 'Fold it into a new brain file'], ['quiz', 'Quick quiz, before and after']];
   return runJob(lab, { kind: 'teach', name: p.name, from: p.brain.labId || '', fromName: p.brain.name, steps, stopped: 'You stopped it. Nothing was put into Bob; the work folder is kept until you delete it.' }, async (r, { set, signal, progress }) => {
     r.slug = `teach-${p.slug}`;
+    r.origin = p.brain.repo || '';
     fs.mkdirSync(work, { recursive: true });
     fs.writeFileSync(path.join(tr.dir, 'teach.py'), TEACH_PY); fs.writeFileSync(path.join(tr.dir, 'fetch.py'), FETCH_PY);
     set('brain', 'running');
@@ -450,7 +461,7 @@ export function useTaught(lab, runId) {
   const file = path.join(labDir(lab.cfg), 'made.json');
   const list = readJson(file, []);
   const e = list.find((m) => m.id === `lab-${r.slug}`);
-  if (e) { e.madeHere = true; e.lessons = r.report?.lessons || []; e.what = `Taught here from ${r.fromName} with ${e.lessons.join(', ')}. ${e.what || ''}`.trim(); writeJson(file, list); }
+  if (e) { e.madeHere = true; e.origin = r.origin || ''; e.lessons = r.report?.lessons || []; e.what = `Taught here from ${r.fromName} with ${e.lessons.join(', ')}. ${e.what || ''}`.trim(); writeJson(file, list); }
   return out;
 }
 

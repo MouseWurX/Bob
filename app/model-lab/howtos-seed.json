@@ -1,0 +1,9 @@
+{
+ "note": "Lab quiz only (experts-test --howtos model-lab/howtos-seed.json): four how-tos for jobs Riker knew the tool for but not the steps (12 Nov 2026 run). Not shipped to anyone's Bob.",
+ "howtos": [
+  { "name": "Turn a video into an mp3", "when": "convert an mp4 or other video to mp3 or audio only", "steps": [{ "tool": "convert_file", "did": "convert the video to mp3 (audio only)" }, { "tool": "show_made", "did": "show the mp3" }] },
+  { "name": "Shrink a video for email", "when": "make a video smaller to email or send, compress a clip", "steps": [{ "tool": "convert_file", "did": "convert the video to a smaller mp4 (lower size)" }, { "tool": "show_made", "did": "show the smaller file and its size" }] },
+  { "name": "Total a column in a spreadsheet", "when": "add up, sum or total a column in an Excel or csv file", "steps": [{ "tool": "office_read", "did": "read the sheet" }, { "did": "add up the column and give the total" }] },
+  { "name": "Rename photos by date", "when": "rename pictures or photos by the date they were taken", "steps": [{ "tool": "file_hands", "did": "rename each photo to its date (YYYY-MM-DD), one rename for all" }] }
+ ]
+}

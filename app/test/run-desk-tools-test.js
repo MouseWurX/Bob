@@ -1,6 +1,7 @@
 // Three opt-in helpers (all off unless turned on): Read and search my documents (doc-text.js, my-docs.js),
 // Let Bob take quick notes (notes.js) and Let Bob work things out in a sandbox (sandbox-code.js), plus their
 // settings, tools, toolbox groups, Help, FAQ and glossary. Everything runs in a temporary folder with made-up files.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -251,7 +252,7 @@ fs.writeFileSync(path.join(docs, 'Report.pdf'), makePdf());
   check('a #tag named in a message finds its notes', fittingNotes(cfg, 'any ideas for later?').some((x) => /#ideas/.test(x.text)));
   check('they go in front of him only with the switch on', /From the user's quick notes/.test(notesPrompt(cfg, 'the boss fight')) && notesPrompt({ ...cfg, smartNotes: false }, 'the boss fight') === '');
   check('nothing unrelated is put in front of him', notesPrompt(cfg, 'what is the weather like') === '');
-  const brain = read('src/brain.js');
+  const brain = brainText();
   check('the brain adds fitting notes to what he carries, only with smart notes on', /if \(smartNotesOn\(this\.cfg\)\) \{[\s\S]{0,400}notesPrompt\(this\.cfg, text/.test(brain));
   const cellar = read('public/cellar.js'), server = read('src/server.js');
   check('the switch sits under quick notes, always shown, off unless turned on', cellar.includes("${sswitch('smartNotes', settings.smartNotes === true, 'Let Bob notice what\\'s worth noting', 'Off unless you turn it on."));

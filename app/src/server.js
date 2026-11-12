@@ -39,6 +39,7 @@ import { labPhone } from './lab-plus.js'; // Lab item 110: Lab jobs tell your ph
 import { recheckTick, QUIET_MIN } from './lab-recheck.js'; // Nov 11: check again after engine updates
 import { EngineKeeper, keeperOn } from './engine-keeper.js';
 import { autostartOn, setAutostart } from './autostart.js';
+import { makePacker } from './pack-send.js'; // 1.5.211: pages sent packed (gzip) when the browser asks
 import { applyWindowState } from './app-icon.js';
 import { capabilities } from './capabilities.js';
 import { cloudStatus } from './cloud.js';
@@ -90,7 +91,9 @@ import { firewallState, changeRule, firewallHome, firewallUdp } from './firewall
 import { shareView, cleanSharePatch, saveShare, lendChat, lendRefusal, reviewRefusal, helloFor, bobNetRooms } from './share-brains.js';
 import { lendCardRoute, homeIps, isHomeIp, sameNet } from './share-card.js'; // Bob-Net: Lend my graphics card
 import { tailLinkLog } from './link-log.js'; // Bob-Net: the link log
-import { wifiView, wifiSays, calibrate, putBack, cleanWifiWas } from './wifi-tune.js'; // Bob-Net: Calibrate Wi-Fi
+import { wifiView, wifiSays, calibrate, putBack, cleanWifiWas, tcpTrip } from './wifi-tune.js'; // Bob-Net: Calibrate Wi-Fi
+import { LinksCache, kindOfAddress, linksSay } from './links.js'; // Bob-Net: Check links
+import { machineWord } from './platform.js';
 import { checkHello } from './bob-net-check.js'; // 1.5.185 a bigger Bob checks the harder jobs
 import { guestRoute, answerAway } from './share-jobs.js';
 import { Pairing, myName } from './bob-net-pair.js';
@@ -187,6 +190,7 @@ function broadcast(ev) {
 }
 
 const brain = new Brain(cfg, broadcast);
+brain.linksCache = new LinksCache(); // which links this machine has, read in the background for the hello (src/links.js)
 // Item 214: a helper thread notices when this server stops answering for a minute (it notes it in the logbook), and
 // when it answers again the window hears about it, with a Restart button where Bob can restart himself.
 startWatchdog({ logbook: cfg.logbook, timeZone: cfg.timeZone, onBack: ({ secs }) => {
@@ -327,12 +331,16 @@ function send(res, code, body, type = 'application/json', extra = {}) {
   res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 }
 
+const packFile = makePacker();
 function serveFile(res, dir, rel, extra = {}) {
   const file = path.resolve(dir, '.' + path.sep + rel);
   if (!file.startsWith(path.resolve(dir) + path.sep)) return send(res, 404, { error: 'not found' });
   fs.readFile(file, (err, buf) => {
     if (err) return send(res, 404, { error: 'not found' });
-    send(res, 200, buf, TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', extra);
+    const type = TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream';
+    const gz = packFile(res.req?.headers?.['accept-encoding'], file, buf, type);
+    if (gz) return send(res, 200, gz, type, { ...extra, 'content-encoding': 'gzip', vary: 'Accept-Encoding' });
+    send(res, 200, buf, type, extra);
   });
 }
 
@@ -806,6 +814,19 @@ const server = http.createServer(async (req, res) => {
     }
     // Calibrate Wi-Fi (src/wifi-tune.js). GET: what Bob sees (no admin). POST { calibrate } tries each band and sets the
     // best (Windows asks once); POST { putBack } restores the card's setting. This machine only, and only on a click.
+    // Check links (src/links.js): what links this machine has, every path to each Bob with its trip time, and what
+    // would be faster. Reads only; this machine only.
+    if (p === '/api/share-brains/links' && req.method === 'GET') {
+      if (!isLocal) return send(res, 403, { error: 'The links can only be checked on this replicant matrix itself.' });
+      const me = await brain.linksCache.fresh();
+      const list = brain.lenders.bobs();
+      await Promise.all(list.map((x) => brain.lenders.hello(x, { force: true }).catch(() => null)));
+      const bobs = await Promise.all(list.map(async (x) => {
+        const paths = await Promise.all((brain.lenders.nearAll.get(x.address) || []).map(async (f) => { let best = Infinity; for (let i = 0; i < 3; i++) { const t = await tcpTrip({ host: f.host, port: f.port }, 600); if (t === null) break; best = Math.min(best, t); } return { kind: kindOfAddress(f.mine, me), ms: best }; }));
+        return { name: x.name || 'Your other Bob', links: brain.lenders.state.get(x.address)?.links || null, paths };
+      }));
+      return send(res, 200, { ok: true, text: linksSay({ me, machine: machineWord(), bobs }) });
+    }
     if (p === '/api/share-brains/wifi' && (req.method === 'GET' || req.method === 'POST')) {
       if (!isLocal) return send(res, 403, { error: 'The Wi-Fi can only be calibrated on this replicant matrix itself.' });
       if (req.method === 'GET') { const view = await wifiView(); return send(res, 200, { ok: view.ok, text: wifiSays(view) }); }
@@ -1250,7 +1271,7 @@ const server = http.createServer(async (req, res) => {
     if (/^\/api\/(harness|crash|settings-undo|health|quiet|weekly|pins|chat\/try|guest)(\/|$)/.test(p) && await harnessRoute({ req, res, p, url, isLocal, cfg, brain, body, send, saveSettings, replaceSettings, weekly, crashState, applyShortcut, nameOf: friendlyName, probes: healthProbes })) return; // items 62 to 72
     if (p === '/api/prompts' && await promptsRoute({ req, res, p, isLocal, cfg, body, send, saveSettings, log: (k, t) => brain.log(k, t) })) return; // saved prompts and the / menu
     if (p === '/api/telegram' && await telegramRoute({ req, res, p, isLocal, brain, body, send })) return;
-    if (p === '/api/discord' && await discordRoute({ req, res, p, isLocal, brain, body, send })) return;
+    if ((p === '/api/discord' || p === '/api/rooms/discord') && await discordRoute({ req, res, p, isLocal, brain, body, send })) return;
     if (p === '/api/claude-door' && await doorSettingsRoute({ req, res, p, isLocal, brain, cfg, body, send })) return;
     if (p.startsWith('/api/lab') && await labRoute({ req, res, p, isLocal, lab, body, send })) return; // 1.5.141 Computer Science Lab
     if (p.startsWith('/api/rent') && await rentRoute({ req, res, p, isLocal, brain, cfg, body, send })) return; // 1.5.127 rented brains

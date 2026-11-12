@@ -35,10 +35,39 @@ check('a completed task carries when it finished', v[3].doneAt === 5 && v[3].del
   const l = borrowedLine('Go', 1040);
   check('a borrowed reply leaves a logbook line: who and how long, no words', l.includes('Go thought this reply') && l.includes('1.0 s to first word'), l); }
 
-const f2 = { queue: [job('w', 'waiting'), job('x', 'done'), job('y', 'cancelled'), job('z', 'failed')], saveQueue() {} };
+const f2 = { queue: [job('w', 'waiting'), job('x', 'done'), job('y', 'cancelled'), job('z', 'failed')], saveQueue() {}, waitOver() {} };
 P.clearCompleted.call(f2);
 check('"Clear completed" keeps waiting and failed tasks', f2.queue.map((j) => j.id).join(',') === 'w,z');
-check('a waiting task can\'t be removed with ✕ (use Remove, which cancels it)', !P.removeJob.call(f2, 'w') && P.removeJob.call(f2, 'z') && f2.queue.length === 1);
+check('Remove takes any task off the list: a failed one, and a waiting one', P.removeJob.call(f2, 'z') && P.removeJob.call(f2, 'w') && f2.queue.length === 0 && !P.removeJob.call(f2, 'nope'));
+
+// Nov 12: Remove, Pause and Resume on any task.
+{
+  const stopped = [];
+  const { mkdtempSync } = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
+  const dataDir = mkdtempSync(path.join(os.tmpdir(), 'bob-queue-'));
+  const mk = (q, more = {}) => Object.assign(Object.create(P), { queue: q, cfg: { dataDir }, waitOver() {}, broadcast() {}, pump() {}, stop(id) { stopped.push(id); return true; } }, more);
+  const r = mk([job('run', 'working'), job('w', 'waiting'), job('w2', 'waiting')]);
+  check('Remove on a running task stops it and hides it at once', P.removeJob.call(r, 'run') && stopped.join() === 'run' && !P.queueView.call(r).some((j) => j.id === 'run'));
+  r.queue[0].state = 'cancelled'; P.saveQueue.call(r);
+  check('...and it leaves the list once the turn has stopped', !r.queue.some((j) => j.id === 'run'));
+  check('Pause holds a waiting task in its place', P.pauseJob.call(r, 'w') && r.queue[0].state === 'paused' && r.queue[0].pausedFrom === 'waiting');
+  const started = [];
+  const g = mk(r.queue, { turns: new Map(), cfg: { dataDir, session: 'normal' }, startTurn(s, t, a, j) { started.push(j.id); this.turns.set('talk', {}); } });
+  P.pump.call(g);
+  check('a paused task is skipped; the next one starts', started.join() === 'w2', started.join());
+  r.queue[1].state = 'done';
+  check('Resume puts it back in line where it was, with no carry-on', P.resumeJob.call(r, 'w') && r.queue[0].state === 'waiting' && r.queue[0].id === 'w' && !r.queue[0].pickUp);
+  check('Resume only works on a paused task', !P.resumeJob.call(r, 'w'));
+  const run = job('p', 'working', { steps: [] }); r.queue.push(run);
+  check('Pause on a running task stops its turn and marks it', P.pauseJob.call(r, 'p') && stopped.includes('p') && run.pausing === true);
+  const said = [];
+  P.pauseHere.call(r, run, (ev) => said.push(ev.text));
+  check('the stopped turn becomes Paused, says so in its chat', run.state === 'paused' && run.pausedFrom === 'working' && !run.pausing && /Paused\./.test(said.join()));
+  const keep = mk([job('oldp', 'paused', { at: 1, doneAt: 1 })]); keep.saveQueue();
+  check('a paused task is never tidied away as old', keep.queue.length === 1);
+  check('Tasks shows when it was paused and how', P.queueView.call(r).find((j) => j.id === 'p')?.pausedFrom === 'working');
+  check('a task sent to another Bob can\'t be paused', !P.pauseJob.call({ queue: [job('a', 'working', { away: { name: 'Go' } })] }, 'a'));
+}
 
 // Retry goes to the back of the line.
 const f3 = { queue: [job('f', 'failed'), job('w1', 'waiting')], saveQueue() {}, pump() {} };

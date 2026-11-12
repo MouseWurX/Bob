@@ -1,5 +1,6 @@
 // 1.5.116: the code review's fixes. Atomic JSON saves, fetch_page checking every redirect hop, read_file's size cap,
 // runnable file types blocked on every platform, real paths in the folder rules, and a timed-out OK card leaving the list.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -23,7 +24,7 @@ check('no .part file is left behind', !fs.existsSync(f + '.part'));
 writeJsonAtomic(f, [1, 2], 0);
 check('a second write replaces the first', fs.readFileSync(f, 'utf8') === '[1,2]');
 const savers = ['src/config.js', 'src/brain.js', 'src/mcp.js', 'src/refs.js', 'src/hands.js', 'src/made.js', 'src/recall.js', 'src/clan.js', 'src/housekeeping.js'];
-for (const s of savers) check(`${s} saves its JSON through writeJsonAtomic`, read(s).includes('writeJsonAtomic('));
+for (const s of savers) check(`${s} saves its JSON through writeJsonAtomic`, (s === 'src/brain.js' ? brainText() : read(s)).includes('writeJsonAtomic('));
 check('settings.json is no longer written in place', !/writeFileSync\(cfg\.settingsFile/.test(read('src/config.js')) && !/writeFileSync\(cfg\.configFile/.test(read('src/config.js')));
 
 // ---------- Tools ----------
@@ -80,7 +81,7 @@ check('a stale pid file is checked against the process name before anything is s
 check('commandLineOf answers "" for a pid that is gone', await commandLineOf(2 ** 22 - 7) === '' || typeof await commandLineOf(2 ** 22 - 7) === 'string');
 check('the engine swap downloads first, removes the bundled build after', (() => { const s = read('src/engines.js'); return s.indexOf('await grab(asset, stage') < s.indexOf('try { swapIn(folder, stage); }'); })());
 check('music setup unpacks with Bob\'s own unzip, not tar', /unzip\(zip, tmp\)/.test(read('src/audio.js')) && !/run\('tar', \['-xf', zip/.test(read('src/audio.js')));
-check('a timed-out OK card leaves the list', /awakeTimeout\(\(\) => done\(false\), APPROVAL_TIMEOUT_MS/.test(read('src/brain.js')));
+check('a timed-out OK card leaves the list', /awakeTimeout\(\(\) => done\(false\), APPROVAL_TIMEOUT_MS/.test(brainText()));
 check('the door at start-up never binds every address', !/'0\.0\.0\.0'/.test(read('src/server.js')));
 check('He comments once when you change his look is opt-in', /lookComments !== true/.test(read('src/look.js')) && /lookComments: cfg\.lookComments === true/.test(read('src/server.js')));
 

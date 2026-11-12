@@ -88,7 +88,7 @@ export function buildPromptWords() {
 // Icons, fonts, Mermaid and diagram-core.js aren't copied: the server hands /phone/shared/, /phone/vendor/ and
 // /phone/diagram-core.js out of public/ (they're the same files).
 export const WEB_DIR = path.join(root, 'public/phone');
-export const WEB_COPIED = ['phone.js', 'phone.css', 'logic.js', 'help.js', 'shared.js', 'avatars.js', 'prompt-words.js', 'table-fx.js', 'math-core.js', 'model-core.js', 'lock.js', 'adv-table.js', 'journey-rules.js', 'journey-sides.js', 'journey-play.js', 'journey.css']; // every script www/index.html loads except diagram-core.js (served from desktop Bob). lock.js too: the phone screen keeps its chats in the browser, so it gets the same passcode lock (it says so when the browser can't scramble)
+export const WEB_COPIED = ['phone.js', 'phone.css', 'logic.js', 'help.js', 'shared.js', 'avatars.js', 'prompt-words.js', 'table-fx.js', 'math-core.js', 'model-core.js', 'lock.js', 'adv-table.js', 'journey-rules.js', 'journey-world.js', 'journey-sides.js', 'journey-play.js', 'journey.css']; // every script www/index.html loads except diagram-core.js (served from desktop Bob). lock.js too: the phone screen keeps its chats in the browser, so it gets the same passcode lock (it says so when the browser can't scramble)
 export function buildWebPhone() {
   const www = path.join(root, 'android/app/src/main/assets/www');
   const read = (f) => fs.readFileSync(path.join(www, f), 'utf8').replace(/\r\n/g, '\n');
@@ -137,8 +137,8 @@ export function buildAdvTable() {
   return `// Made by android/tools/make-shared.mjs from public/adventure-table.js. Don't edit.\n(function () {\n${body}\nglobalThis.BobAdvTable = { ${names.join(', ')} };\n})();\n`;
 }
 
-// 1.5.206 🧭 Journey: the rules, the four-sided figures and the screen, each word for word as one global, and the CSS.
-export const JOURNEY = { 'journey-rules.js': ['BobJourneyRules', 'makeWorld'], 'journey-sides.js': ['BobJourneySides', 'drawFigure'], 'journey-play.js': ['BobJourneyPlay', 'mountJourney'] };
+// 1.5.206 🧭 Journey: the rules, the places (v1.1), the four-sided figures and the screen, each word for word as one global, and the CSS.
+export const JOURNEY = { 'journey-rules.js': ['BobJourneyRules', 'newJourney'], 'journey-world.js': ['BobJourneyWorld', 'makeWorld'], 'journey-sides.js': ['BobJourneySides', 'drawFigure'], 'journey-play.js': ['BobJourneyPlay', 'mountJourney'] };
 export function buildJourney() {
   const out = {};
   for (const [f, [global, must]] of Object.entries(JOURNEY)) {

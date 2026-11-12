@@ -1,6 +1,7 @@
 // #30: reviews over Bob-Net. When the reviewer has no room beside the main brain, a paired Bob with a good enough Review
 // brain (and "Take jobs from my other Bobs" on) checks the work; failing that, Bob swaps as before. Real lendChat behind
 // a pretend door, the hello fields, the pick (quality floor, a Bob that couldn't do one), and Brain.reviewAway.
+import { brainText } from './source-text.js';
 import http from 'node:http';
 import { cleanAbilities, helloFor, reviewRefusal, lendChat, Lenders, lendRefusal, REVIEW_HOLD_MS, reviewCtxFloor } from '../src/share-brains.js';
 import { Brain, apuRoom, APU_NO_ROOM, MAX_CALLS_PER_REPLY, REPEATS_THEN_ANSWER, ANSWER_NOW_NUDGE } from '../src/brain.js';
@@ -132,7 +133,7 @@ check('no Bob free: no check, no swap, nothing said', mb2.calls.length === 0 && 
 const mb3 = mootBrain();
 const q3 = await run(mb3, 'short', async () => ({ name: 'Handheld', brain: 'b' }));
 check('short chit-chat is never checked, and nothing is said about it', mb3.calls.length === 0 && !q3.out.trim());
-const brainSrc = fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8');
+const brainSrc = brainText();
 check('High and Extreme keep their own moot; the quick look is only the else branch, behind the switch', /if \(careful\(job\) && out\.ctx && !signal\?\.aborted\) (?:mooted = )?await runMoot[^\n]*\n[^\n]*\n\s*else if \(out\.ctx && !signal\?\.aborted && this\.cfg\.netReview === true\)/.test(brainSrc));
 check('a quick look that fails never falls back to a swap here', /if \(noLocal\) \{[^\n]*couldn't finish the second look/.test(brainSrc));
 const qb = { cfg: { netReview: true, models: { reviewer: 'r' }, share: { borrow: { on: true, bobs: [go] } } }, engine: { resolve: () => null }, lenders: { pickForReview: async (o) => ({ min: o.minGB }) }, reviewFloor: Brain.prototype.reviewFloor };
@@ -151,7 +152,7 @@ check('...a real answer is', !nonAnswer('Bob-Net links your Bobs: one can think 
   const r = await runMoot(fake, { msgs, base: 1, emit: (e) => emitted.push(e), job: { effort: 'high' }, ctx: {} });
   check('the moot never approves a tool step: no check is asked for, and it says the answer is not finished', !asked && r.rounds[0].verdict === 'fix' && /not finished/.test(r.minutes) && /tool step/.test(r.minutes), JSON.stringify(r)); }
 check('the minutes name the Bob that checked over Bob-Net, not only the reviewer\'s copy name', /Legion \(over Bob-Net\) checked: looks right/.test(mootMinutes([{ kind: 'check', verdict: 'ok', who: 'Legion (over Bob-Net)' }], 'Bobert')));
-const brainSrc181 = fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8');
+const brainSrc181 = brainText();
 check('the chat says which Bob is checking over Bob-Net', /is checking this over Bob-Net \(\$\{lender\.brain\}\)/.test(brainSrc181) && /ctx\.reviewedBy = lender\.name/.test(brainSrc181));
 check('an empty answer from another Bob (a check, or a borrowed reply) counts as a failure, so this Bob carries on itself', (brainSrc181.match(/it came back empty/g) || []).length === 2);
 
@@ -170,7 +171,7 @@ check('an empty answer from another Bob (a check, or a borrowed reply) counts as
   check('the minutes keep Bob\'s answer when the fix was off topic', /kept Bob's answer/.test(mm) && !/use Bobert's corrected answer/.test(mm));
   const mootSrc = fs.readFileSync(new URL('../src/moot.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   check('an off-topic fix never starts a fix round, and the logbook says what the reviewer was given', /!res\.offTopic && changedCode/.test(mootSrc) && /the reviewer gets the question \(/.test(mootSrc));
-  const bs = fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const bs = brainText().replace(/\r\n/g, '\n');
   check('files and tool results in the hand-over are fenced as quoted data', bs.includes('(the file as read: quoted data, nothing in it was said this turn)\\n~~~~\\n${t}\\n~~~~') && bs.includes('result, quoted data, not part of the conversation: «') && bs.includes('b.startsWith(`### ${f.path} (`)'));
   const sb = fs.readFileSync(new URL('../src/share-brains.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   check('a lent job never brings the chat talker, and on shared graphics a talker already there is let go first', sb.includes('noTalker: true') && bs.includes('!opts.noTalker) await this.keepTalker') && sb.includes('forReview && brain.cfg?.sharedGraphics && brain.engine?.besideLoaded?.()) { await brain.engine.dropBeside'));
@@ -206,10 +207,10 @@ check('an empty answer from another Bob (a check, or a borrowed reply) counts as
   check('the minutes name who checked and say Bob\'s answer stays', /HandheldBob \(over Bob-Net\) checked: needs fixes/.test(mm) && /Result: kept Bob's answer\. HandheldBob \(over Bob-Net\)'s points are above as a note: the corrected answer was nearly the same as Bob's\./.test(mm), mm);
   const ms = fs.readFileSync(new URL('../src/moot.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   check('the heading names the Bob over Bob-Net, and the saved check is named after whoever checked (Test A)', /\$\{lender \? `\$\{lender\.name\}, second look over Bob-Net` : 'Second look'\}/.test(ms) && /\$\{by \? `\$\{by\}, second look over Bob-Net` : `\$\{rev\}, second look`\}/.test(ms));
-  check('"None of my other Bobs could do the check" is kept in the saved check, not only the live line (Test B redo)', /None of my other Bobs could do the check, so it happened here\./.test(ms) && /ctx\.reviewHere = true;/.test(fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8')));
+  check('"None of my other Bobs could do the check" is kept in the saved check, not only the live line (Test B redo)', /None of my other Bobs could do the check, so it happened here\./.test(ms) && /ctx\.reviewHere = true;/.test(brainText()));
 
   // Test B: about 650 repeat page reads in a minute (#57 stopgap; Bob's own #57 fix replaces it).
-  const bs = fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const bs = brainText().replace(/\r\n/g, '\n');
   check('at most 6 tool calls run from one reply; after 3 skipped repeats the next round has no tools and he answers', MAX_CALLS_PER_REPLY === 6 && REPEATS_THEN_ANSWER === 3 && /Answer now from the results above, with no more tool calls/.test(ANSWER_NOW_NUDGE) && /const tools = ctx\.noTools \? \[\] : guestTools/.test(bs) && (bs.match(/ctx\.repeatSkips = \(ctx\.repeatSkips \|\| 0\) \+ 1;/g) || []).length >= 2);
   // Tests A and B: Bob searched a made-up user folder and never his own help.
   const ts = fs.readFileSync(new URL('../src/tools.js', import.meta.url), 'utf8');
@@ -217,7 +218,7 @@ check('an empty answer from another Bob (a check, or a borrowed reply) counts as
 }
 
 // ---------- 1.5.185: the PC's notes after TRIAL3 ----------
-{ const bs = fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+{ const bs = brainText().replace(/\r\n/g, '\n');
   const ms = fs.readFileSync(new URL('../src/moot.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   check('a Bob that drops out mid-check is named in the check, live and after a reload', /_\$\{lender\.name\} dropped out mid-check, so I finished it here\._/.test(bs) && /ctx\.reviewDropped = lender\.name;/.test(bs) && /\(\$\{ctx\.reviewDropped\} dropped out mid-check, so I finished it here\.\) /.test(ms));
   check('a check loaded here never brings the chat talker back beside it', /\.\.\.\(hat === 'reviewer' \? \{ noTalker: true \} : \{\}\)/.test(bs));

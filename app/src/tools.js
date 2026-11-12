@@ -447,7 +447,7 @@ export function buildTools(cfg) {
 
   // Item 24 (git-look.js): what changed in a project, read-only, no card.
   t.git_look = {
-    schema: fn('git_look', 'See what changed in a project folder with git: status (changed files), changes (line by line) or history (recent commits). Read-only.', {
+    schema: fn('git_look', 'See what changed in a project folder with git: status (changed files), changes (line by line) or history (recent commits). Read-only; never for running, building, testing or installing.', {
       what: str('status, changes or history', { enum: GIT_LOOKS }),
       project: str('Optional: project name. Leave out for the main project.', { enum: Object.keys(cfg.projects || {}) }),
       folder: str('Optional: a full folder path instead.'),
@@ -599,7 +599,7 @@ export function buildTools(cfg) {
   };
 
   t.make_image = {
-    schema: fn('make_image', "Paint a picture, or change one (give a reference).", {
+    schema: fn('make_image', "Paint a picture, or change one (give a reference). Also posters, banners, logos and thumbnails.", {
       prompt: str('New picture: the full prompt. Edit: only what to change, like "Swap his hat for a tiara", or it gets repainted.'),
       width: { type: 'integer', description: 'Default 1024. Leave out for edits.' },
       height: { type: 'integer', description: 'Default 1024. Leave out for edits.' },

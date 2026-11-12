@@ -17,7 +17,7 @@
 // "Spread big brains over my other Bobs' cards" (this Bob borrows): when a brain is loaded that's too big (the choice
 // says what too big means), Bob asks each Bob on the list whose card is lent and adds the ones that say yes to the
 // engine (--rpc). llama.cpp then puts part of the brain on each card. If none says yes, the brain loads here like always.
-import { sealOn, sealAsk, cleanSealAsk, lenderSeal, borrowerSeal, keysEnv } from './scut-seal.js'; // sealed SCUT packets (0006)
+import { sealOn, sealAsk, cleanSealAsk, lenderSeal, borrowerSeal, keysEnv, keyId } from './scut-seal.js'; // sealed SCUT packets (0006)
 import { isTailscaleIp } from './phone-access.js';
 import { findTool, missingWords } from './llama-tools.js';
 import { spawn } from 'node:child_process';
@@ -28,6 +28,7 @@ import os from 'node:os';
 import net from 'node:net';
 import dgram from 'node:dgram';
 import fs from 'node:fs';
+import { lendRoom, LEND_MIN_MB } from './apu-fit.js'; // Nov 12: a lent card on built-in graphics says what it really has
 
 export const RPC_PORT = 50052; // the gate other Bobs reach
 export const INNER_PORT = 50053; // the card server itself, on 127.0.0.1 only
@@ -92,13 +93,16 @@ const plainIp = (a) => String(a || '').replace(/^::ffff:/i, '');
 const quad = (a) => { const m = String(a || '').match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/); return m && m.slice(1).every((x) => +x <= 255) ? m.slice(1).map(Number) : null; };
 const num = (q) => ((q[0] << 24) >>> 0) + (q[1] << 16) + (q[2] << 8) + q[3];
 // A home-network (private) address: 10.x, 172.16-31.x or 192.168.x. Tailscale's 100.64-127.x are not.
-export const isHomeIp = (a) => { const q = quad(plainIp(a)); return Boolean(q && (q[0] === 10 || (q[0] === 172 && q[1] >= 16 && q[1] <= 31) || (q[0] === 192 && q[1] === 168))); };
+// Also 169.254.x.x: the address two machines give themselves over a cable straight between them (a network cable,
+// or USB4 / Thunderbolt), or through a switch with no router. Such an address only reaches what's on that same cable.
+export const isHomeIp = (a) => { const q = quad(plainIp(a)); return Boolean(q && (q[0] === 10 || (q[0] === 172 && q[1] >= 16 && q[1] <= 31) || (q[0] === 192 && q[1] === 168) || (q[0] === 169 && q[1] === 254))); };
 export const sameNet = (a, b, mask) => { const x = quad(plainIp(a)), y = quad(plainIp(b)), m = quad(mask); return Boolean(x && y && m && (num(x) & num(m)) === (num(y) & num(m))); };
 // This machine's own home-network addresses: [{ address, netmask }].
 export const homeIps = (ifaces = os.networkInterfaces()) => { const out = []; for (const list of Object.values(ifaces)) for (const n of list || []) if (n.family === 'IPv4' && !n.internal && isHomeIp(n.address)) out.push({ address: n.address, netmask: n.netmask || '255.255.255.0' }); return out; };
-// Mine and theirs on the same home network: { host (mine), peer (theirs) }, or null.
+// Mine and theirs on the same home network: { host (mine), peer (theirs) }, or null. The asker lists his addresses
+// quickest path first (Lenders.learnNear timed them), so his order decides when more than one network is shared.
 export function pickHome(mine, theirs) {
-  for (const m of mine || []) for (const t of theirs || []) if (isHomeIp(t) && sameNet(m.address, t, m.netmask)) return { host: m.address, peer: plainIp(t) };
+  for (const t of theirs || []) for (const m of mine || []) if (isHomeIp(t) && sameNet(m.address, t, m.netmask)) return { host: m.address, peer: plainIp(t) };
   return null;
 }
 export const homeFirst = (cfg) => cfg.share?.homeNet !== false; // on unless switched off (it only matters with the card lent or spread)
@@ -158,8 +162,8 @@ export function wantsSpread(cfg, { sizeGB, cardGB = Number(cfg.gpuVramGB) || Num
 
 // ---------- Lending ----------
 export class CardLender {
-  constructor(cfg, { spawnFn = spawn, tool = () => findTool(cfg, 'rpc'), ips = tailscaleIps, home = homeIps, gate = openGate, gaming = () => false, freeOwn = async () => false, now = Date.now, log = () => {}, env = process.env, findBrain = (b) => findOwnBrain(cfg, b), free = freeBytes, seedMs = SEED_MS } = {}) {
-    Object.assign(this, { cfg, spawnFn, tool, ips, home, gate, gaming, freeOwn, now, log, env, findBrain, free, seedMs });
+  constructor(cfg, { spawnFn = spawn, tool = () => findTool(cfg, 'rpc'), ips = tailscaleIps, home = homeIps, gate = openGate, gaming = () => false, freeOwn = async () => false, now = Date.now, log = () => {}, env = process.env, findBrain = (b) => findOwnBrain(cfg, b), free = freeBytes, seedMs = SEED_MS, freeMem = () => os.freemem() } = {}) {
+    Object.assign(this, { cfg, spawnFn, tool, ips, home, gate, gaming, freeOwn, now, log, env, findBrain, free, seedMs, freeMem });
     this.seeded = this.loadSeeded(); this.seeding = null;
     this.child = null; this.gateway = null; this.host = ''; this.allow = ''; this.via = ''; this.port = 0; this.last = 0; this.from = ''; this.timer = null;
   }
@@ -227,11 +231,19 @@ export class CardLender {
     const near = homeFirst(this.cfg) && Array.isArray(home) ? pickHome(this.home(), home.slice(0, 8)) : null;
     const host = near ? near.host : plainIp(localAddr), allow = near ? near.peer : plainIp(remoteAddr), via = near || isHomeIp(host) ? 'home' : 'tailscale';
     if (!allow) return { ok: false, why: 'failed', error: 'Bob couldn\'t tell who was asking.' };
-    if (this.child && this.host === host && this.allow === allow) { this.keep(); return { ok: true, host, port: this.port, via, ...(this.sealReply ? { seal: { salt: this.sealReply.salt } } : {}) }; }
+    // 1.5.211 (SCUT thread): a running card server only serves an ask that names the link key it was started with;
+    // a new or different key (a fresh test home, a key just agreed) starts it again, or the two engines would disagree.
+    const sameSeal = !seal || !scutSealOn(this.cfg) || (!seal.newKey && Boolean(this.sealKid) && seal.kid === this.sealKid);
+    if (this.child && this.host === host && this.allow === allow && sameSeal) { this.keep(); return { ok: true, host, port: this.port, via, ...(this.marginMB ? { marginMB: this.marginMB } : {}), ...(this.sealReply ? { seal: { salt: this.sealReply.salt } } : {}) }; }
     this.close();
     // 1.5.210 (Go Wi-Fi test): a Bob holding its own brain said yes with about 1 GB free, and the first buffer was
     // refused. Its own idle brain is let go first, so the lent card really has its room. Not when it's busy answering.
     try { if (await this.freeOwn()) this.log('bob-net', 'lent graphics card: let go of my own brain first, so the card has room for the lend'); } catch {}
+    // Nov 12 (apu-fit.js): built-in graphics report their whole budget as free even when the RAM behind it is short (the
+    // Go refused a 1001 MiB first buffer while it held a brain). So the lend says how much the asking Bob's engine
+    // should leave free here, and says no when there's too little to be worth it. A real card reports truly: nothing.
+    const room = lendRoom(this.cfg, { freeBytes: this.freeMem() });
+    if (room && room.roomMB < LEND_MIN_MB) { this.log('bob-net', `lent graphics card: said no, only about ${Math.round(room.roomMB / 102.4) / 10} GB could be spared right now (built-in graphics share this machine's memory)`); return { ok: false, why: 'no room', error: 'no room' }; }
     const seeded = await this.seed(brain);
     if (this.refusal(localAddr)) return { ok: false, why: this.refusal(localAddr), error: this.refusal(localAddr) }; // Gaming started (or the switch went off) while it filled
     const t = this.tool();
@@ -253,10 +265,10 @@ export class CardLender {
     try { gateway = await this.gate({ host, port: RPC_PORT, allow, inner: INNER_PORT, udp: scutOn(this.cfg), log: this.log }); }
     catch (e) { try { child.kill(); } catch {} return { ok: false, why: 'failed', error: `The card-sharing gate didn't open on ${host}:${RPC_PORT} (${String(e.message || e).slice(0, 120)}).` }; }
     child.once('exit', () => { if (this.child === child) { this.close(); this.log('bob-net', 'lent graphics card: the card-sharing server stopped'); } });
-    Object.assign(this, { child, gateway, host, allow, via, port: RPC_PORT, from: String(from).slice(0, 40), sealReply: sealed.reply });
+    Object.assign(this, { child, gateway, host, allow, via, port: RPC_PORT, from: String(from).slice(0, 40), sealReply: sealed.reply, sealKid: sealed.sealed ? (sealed.reply?.linkKey ? keyId(sealed.reply.linkKey) : String(seal?.kid || '')) : '', marginMB: room?.marginMB || 0 });
     this.keep();
-    this.log('bob-net', `lent graphics card to ${this.from || 'another Bob'} over ${via === 'home' ? 'the home network' : 'Tailscale'} (${host}:${RPC_PORT}, only ${allow} let in${gateway.udp ? `, SCUT ready${sealed.sealed ? ', sealed' : ''}` : ''})`);
-    return { ok: true, host, port: RPC_PORT, via, ...(seeded ? { seeded } : {}), ...(sealed.reply ? { seal: sealed.reply } : {}) };
+    this.log('bob-net', `lent graphics card to ${this.from || 'another Bob'} over ${via === 'home' ? 'the home network' : 'Tailscale'} (${host}:${RPC_PORT}, only ${allow} let in${gateway.udp ? `, SCUT ready${sealed.sealed ? ', sealed' : ''}` : ''}${room ? `, about ${Math.round(room.roomMB / 102.4) / 10} GB to spare` : ''})`);
+    return { ok: true, host, port: RPC_PORT, via, ...(room?.marginMB ? { marginMB: room.marginMB } : {}), ...(seeded ? { seeded } : {}), ...(sealed.reply ? { seal: sealed.reply } : {}) };
   }
 
   keep() {
@@ -270,7 +282,7 @@ export class CardLender {
 
   close() {
     clearTimeout(this.timer); this.timer = null;
-    const c = this.child, g = this.gateway; this.child = null; this.gateway = null; this.host = ''; this.allow = ''; this.via = ''; this.port = 0; this.from = ''; this.sealReply = null;
+    const c = this.child, g = this.gateway; this.child = null; this.gateway = null; this.host = ''; this.allow = ''; this.via = ''; this.port = 0; this.from = ''; this.sealReply = null; this.sealKid = ''; this.marginMB = 0;
     try { g?.close(); } catch {}
     if (c && c.exitCode === null) { try { c.kill(); } catch {} }
   }
@@ -294,7 +306,7 @@ export function cleanBrain(b) {
 
 // ---------- Borrowing ----------
 // Why a Bob didn't lend, in plain words (CardLender.refusal's reasons).
-export const LEND_NO = { off: 'lending is off there', gaming: 'it\'s in Gaming', 'not tailscale': 'asked on an address it doesn\'t lend on', 'no tool': 'its card server is missing', failed: 'it couldn\'t start' };
+export const LEND_NO = { off: 'lending is off there', gaming: 'it\'s in Gaming', 'no room': 'its memory is too full to lend right now', 'not tailscale': 'asked on an address it doesn\'t lend on', 'no tool': 'its card server is missing', failed: 'it couldn\'t start' };
 export class CardBorrower {
   // lenders: the Bob-Net list (src/share-brains.js Lenders: bobs(), call()).
   constructor(cfg, lenders, { now = Date.now, log = () => {}, name = () => os.hostname(), home = homeIps } = {}) {
@@ -320,7 +332,9 @@ export class CardBorrower {
     for (const [addr, until] of this.down) if (until > this.now()) { const b = (this.lenders?.bobs?.() || []).find((x) => x.address === addr); if (b) skipped.push(`${b.name} (a load with that card failed a few minutes ago)`); }
     const tries = await Promise.all(bobs.map(async (bob) => {
       try {
-        const home = this.homeDown.get(bob.address) > this.now() ? [] : mine.map((m) => m.address);
+        // My addresses, the one on the quickest path to this Bob first (a cable before Wi-Fi), so he opens the gate there.
+        const quick = this.lenders?.nearMine?.get(bob.address) || [];
+        const home = this.homeDown.get(bob.address) > this.now() ? [] : [...mine.map((m) => m.address)].sort((a, b) => (quick.indexOf(a) + 1 || 99) - (quick.indexOf(b) + 1 || 99));
         const seal = scutSealOn(this.cfg) ? sealAsk(this.cfg, bob.address) : null;
         const r = await this.lenders.call(bob, '/api/lend/card', { method: 'POST', body: { action: 'open', from: this.name(), home, ...(brain ? { brain } : {}), ...(seal ? { seal } : {}) }, timeout: brain ? SEED_MS + 15000 : 8000 });
         const j = await r.json().catch(() => ({}));
@@ -328,10 +342,11 @@ export class CardBorrower {
         if (!(r.ok && j.ok && Number(j.port) > 0)) { skipped.push(`${bob.name} (${LEND_NO[j.why] || (r.status === 401 ? 'the passcode was turned down' : 'said no')})`); return null; }
         // Sealed SCUT packets: this lend's key from his salt, or 'off' (he doesn't seal, so no SCUT with him).
         const key = seal ? borrowerSeal(this.cfg, { address: bob.address, reply: j.seal && typeof j.seal === 'object' ? j.seal : null, asked: seal }) : '';
-        if (key === 'off') this.log('bob-net', `${bob.name} doesn't seal SCUT packets, so his card uses the usual link`);
+        if (key === 'off') this.log('bob-net', j.seal?.unknownKey === true ? `${bob.name} and I don't share a SCUT key yet (he couldn't keep a new one), so his card uses the usual link this time; the next lend agrees one` : `${bob.name} doesn't seal SCUT packets (an older Bob, or sealing is off there), so his card uses the usual link`);
         // Over the home network: his gate must be on our own home network. Otherwise on the Tailscale address we reach him on.
-        if (j.via === 'home') return here.some((m) => isHomeIp(j.host) && sameNet(m.address, j.host, m.netmask)) ? { bob, via: 'home', at: `${j.host}:${Number(j.port)}`, key } : null;
-        if (j.host === host || !isTailscaleIp(host)) return { bob, via: 'tailscale', at: `${j.host}:${Number(j.port)}`, key };
+        const marginMB = Math.max(0, Math.min(1 << 20, Math.ceil(Number(j.marginMB) || 0))); // Nov 12: room to leave on his card
+        if (j.via === 'home') return here.some((m) => isHomeIp(j.host) && sameNet(m.address, j.host, m.netmask)) ? { bob, via: 'home', at: `${j.host}:${Number(j.port)}`, key, marginMB } : null;
+        if (j.host === host || !isTailscaleIp(host)) return { bob, via: 'tailscale', at: `${j.host}:${Number(j.port)}`, key, marginMB };
         return null;
       } catch { skipped.push(`${bob.name} (not reachable)`); return null; }
     }));
@@ -351,6 +366,9 @@ export class CardBorrower {
   failed({ route = false } = {}) { for (const u of this.using) (route && u.via === 'home' ? this.homeDown : this.down).set(u.bob.address, this.now() + DOWN_MS); this.close(); }
 
   view() { return this.using.map((u) => u.bob.name); }
+  // Nov 12: how much the engine should leave free on each lent card, in the order they're handed to it (--rpc), or
+  // null when none said (every card then keeps the usual room).
+  fitTargets() { return this.using.some((u) => u.marginMB > 0) ? this.using.map((u) => u.marginMB || 0) : null; }
 
   close() {
     clearInterval(this.timer); this.timer = null;

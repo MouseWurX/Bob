@@ -3,6 +3,7 @@
 // replicant matrix and every Bob on the Bob-Net leave the catalogue's job lists for Rented brains; the really big brains
 // are listed in Add a rental; Bob can fetch his newest brain list from GitHub (off unless switched on); and a file Bob
 // downloaded himself has no "(downloaded by Bob)" bracket. Run: node test/run-catalogue-list-test.js
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -170,7 +171,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 }
 
 // ---- no "(downloaded by Bob)" ----
-check('a file Bob downloaded himself is just its name', fileLabel({ name: 'Qwen3 4B' }) === 'Qwen3 4B' && !/downloaded by Bob\)|Bob's downloaded copy\)/.test(read('src/models.js') + read('src/brain.js')));
+check('a file Bob downloaded himself is just its name', fileLabel({ name: 'Qwen3 4B' }) === 'Qwen3 4B' && !/downloaded by Bob\)|Bob's downloaded copy\)/.test(read('src/models.js') + brainText()));
 
 // ---- Help ----
 {

@@ -1,6 +1,7 @@
 // The Browser Hand (src/hands-browser.js), the eyes checks (src/eyes.js) and the Apps hand's new bits (expect, ask,
 // click_at). The browser window itself (electron/browser-window.cjs) is stood in for by a fake driver with a made-up
 // page; the eyes brain by a fake chatSafe. Run: node test/run-browser-test.js
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -255,7 +256,7 @@ const hp = read('public/hands.js');
 check('the Settings page shows Bob\'s browser and eyes: the window, Forget, and the eyes switch', /browserHtml\(v\.browser/.test(hp) && /data-hbrowserforget/.test(hp) && /data-heyes/.test(hp) && /Forget what Bob's browser knows/.test(hp) && /Bob checks his work with his eyes/.test(hp));
 check('the routes take forget and eyesCheck', /\/api\/hands\/browser/.test(read('src/hands-routes.js')) && /eyesCheck/.test(read('src/hands-routes.js')));
 check('the user guide and README mention the browser and the eyes', /### Use a browser/.test(read('docs/USER-GUIDE.md')) && /his own browser window/.test(read('../README.md')));
-check('offer_setup knows hand:browser', SWITCH_KEYS.includes('hand:browser') && /SWITCH_KEYS/.test(read('src/brain.js')));
+check('offer_setup knows hand:browser', SWITCH_KEYS.includes('hand:browser') && /SWITCH_KEYS/.test(brainText()));
 check('the release note is there', fs.readdirSync(path.join(here, '..', 'docs', 'releases')).some((f) => /Use a browser/.test(read(`docs/releases/${f}`))));
 
 console.log(`${pass} passed, ${fail} failed`);

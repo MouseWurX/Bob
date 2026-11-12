@@ -20,8 +20,42 @@ Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf and its mmproj under `<parent>/models` (found by
    stand-in tools that touch nothing, plus 8 jobs that take several steps. Add `--plain` for a second run without the loop helps
    (src/loop-help.js) to compare. `--quick` runs a quarter of the quiz. Report: out\loop-test-*.md.
 
+5. `node reap-calibrate.mjs --url <Brain Engine server>`: tune a stock mixture-of-experts brain down without cutting a file.
+   It scores every expert of every layer on the training lessons (REAP: router weight times the size of what the expert adds,
+   from Brain Engine's expert trace with mass), then switches the weakest off live (`/expert-mask`) at 100, 75, 50 and 35%
+   of each layer (`--steps`) and runs the held-out tool score at each step. It keeps the smallest share within `--margin`
+   points (default 2) of the full brain. Output in out\calibrate\: `keep-NN.json` (POST it to /expert-mask),
+   `priority.json` (each layer's experts, strongest first, for keeping the best on the card and the rest in RAM) and
+   calibration.md. Works for any family Brain Engine runs (Qwen, gpt-oss, GLM, DeepSeek, Mixtral). An engine without the
+   mass patch gives pick counts only, and the script says so. Switching experts off saves no memory by itself. For a big
+   brain, run it on a rented card through the Forge (`--url` and `LAB_API_KEY`). The mask is put back to all-on at the end.
+
+6. `node make-datasets.mjs --from <kept folder> --lessons out\lessons --out <folder> [--bob <Bob source>] [--private "word,word"]`:
+   sorts a benchmark's kept data into publishable sets without touching the raw folder. Clean set: chats and quiz answers
+   that were right (same tool and arguments as the full Qwen3.6, or correctly no tool), each kept once. `full\`: every
+   answer, marked right or wrong with the kind of mistake. `pairs-right-vs-wrong.jsonl`: each wrong answer next to the
+   recorded right one, for preference training. REAP scores, experts by layer, keep lists and calibrations each get their
+   own file. Odds (top 5 words per step) come along when the run saved them; tool-score and experts-test save every
+   answer with its odds and a right/wrong mark unless `--no-odds`. Every row goes through the privacy scrub below, and it
+   refuses (exit 2) if anything private is left.
+7. `node scrub-data.mjs --in <folder> --out <new folder>` (or `--check` to only look): the privacy scrub for anything
+   that leaves the PC (Hugging Face, a release zip). Swaps the user name (anywhere, any case, also in folder listings and
+   file names), any `Users\<someone>` or `/home/<someone>` folder, the PC's name where it is a host, home-network and
+   Tailscale addresses, e-mails, keys, and private words for stand-ins. Names spread over odds tokens are joined, put back
+   as the stand-in, and the other choices at those steps dropped. Then it checks the copy again (including odds with the
+   gaps taken out) and exits 2 if anything is left. Private words: `--words "a,b"`, `--words-file`, or
+   `bob-model-lab\private-words.txt` beside the install (one per line, `word => stand-in` to choose the stand-in).
+   Never put them in the repository.
+
 The scripts were first tested against a fake llama-server and a fake llama-imatrix (flow, files and parsing), then for real on the project's test machine. What they found is on the models page.
 
 Lesson results: use_tools and bob_help are Bob's own answers. The cards he shows (offer_setup, pick_session, show_plan,
 ask_together) get fixed answers. Every other tool's result is made up by the teacher. Web search is on in the lesson
 Bob. Lessons are not filtered yet: before training, drop the ones where the tool doesn't fit the job (a later step).
+8. `node make-probes.mjs --url <teacher server> --lessons out\lessons --out out\probes [--twins 200] [--families 31] [--per 20] [--fails <kept answers folder>]`:
+   new tests that also make training data. Twins: a request rewritten with one detail changed so it flips between
+   "needs a tool" and "no tool", kept only when the teacher's own answers really flip. Families: the requests every brain
+   got wrong (`--fails`), each in 20 new phrasings the teacher answers with Bob's real prompt and tools. Every probe has
+   its own split (20% held out; a twin pair stays together), so `tool-score --lessons out\probes --split train` harvests
+   and `--split holdout` tests on phrasings the brain never trained on. Seeds never come from the benchmark's held-out 5%.
+   `tool-score --split train --sample N` does the same harvest on Bob's ordinary training lessons.

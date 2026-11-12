@@ -1,5 +1,6 @@
 // 1.5.30: Now running's extra readings: Bob vs everything else, processor and card load, speed, context, graph.
 // Readings must cost well under a tenth of a second and never get in a game's way.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import { replyStats, promptSplit, cpuLoad } from '../src/speed-stats.js';
 
@@ -17,7 +18,7 @@ const a = cpuLoad(null, cpus(100, 100));
 check('processor load needs two readings', a.pct === null);
 check('processor load is the busy share between readings', cpuLoad(a.snap, cpus(130, 170)).pct === 70);
 
-const ollama = read('src/ollama.js'), llama = read('src/llamacpp.js'), server = read('src/server.js'), layout = read('public/layout.js'), brain = read('src/brain.js');
+const ollama = read('src/ollama.js'), llama = read('src/llamacpp.js'), server = read('src/server.js'), layout = read('public/layout.js'), brain = brainText();
 check('speeds come from the end-of-reply numbers the engines already send', /if \(ev\.done\) this\.lastStats = [^\n]*replyStats\(/.test(ollama) && /if \(ev\.timings\) this\.lastStats = [^\n]*replyStats\(/.test(llama) && /speed: this\.engine\.lastStats/.test(brain));
 check('card load rides on the same nvidia-smi call (no extra program)', /memory\.used,memory\.total,utilization\.gpu/.test(server) && (server.match(/--query-gpu=/g) || []).length === 1);
 check('the reading reports its own cost, for checking on a real PC', /out\.costMs = \{ wait:/.test(server) && /cardCheck: gpuCache\.ms/.test(server));

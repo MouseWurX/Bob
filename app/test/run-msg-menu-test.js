@@ -1,6 +1,7 @@
 // The "..." menu on a chat message (src/msg-menu.js): Copy always; Edit on Bob's message changes his words without
 // sending anything; Delete takes your message out with Bob's answer to it, or just one answer of his; tool steps stay
 // readable; the switch, a busy chat and the older part of a chat stop it; the window, Help, glossary and FAQ have it.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -89,7 +90,7 @@ const fakeBrain = (cfg = {}, extra = {}) => {
 {
   const server = read('src/server.js');
   check('the server has the two routes', /\/api\/chat\/msg-edit/.test(server) && /\/api\/chat\/msg-delete/.test(server) && /msgMenu\(brain/.test(server));
-  const brain = read('src/brain.js');
+  const brain = brainText();
   check('every answer Bob says gets its id at once (so the menu works on it before a reload)', /if \(!job\?\.guest && typeof reply\.content === 'string' && reply\.content\.trim\(\)\) \{ reply\.id \|\|= newMsgId\(\)/.test(brain));
   check('the saved chat says who edited a message', /editedBy: 'you'/.test(brain));
   const app = read('public/app.js');

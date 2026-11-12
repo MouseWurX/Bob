@@ -1,7 +1,7 @@
 // Share jobs with my other Bobs (src/share-jobs.js) and the smarter pick (src/share-brains.js, 1.5.72): what a job
 // needs, when it leaves, who gets it, and a real round trip over HTTP: a picture job sent to another Bob, his OK card
 // answered here, the file copied back, the chat kept here.
-import { serverText } from './source-text.js';
+import { serverText, brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -42,7 +42,7 @@ const gb = (cfg, extra = {}) => ({ cfg: { ...door, ...cfg }, queue: [], lendDeps
 check('takes jobs only when switched on', guestRefusal(gb({ share: {} })) === 'off' && guestRefusal(gb({ share: { takeJobs: true } })) === '');
 check('never while gaming, never with a full queue', guestRefusal(gb({ share: { takeJobs: true }, session: 'light' })) === 'gaming' && guestRefusal(gb({ share: { takeJobs: true } }, { queue: [{ guest: {}, state: 'working' }, { guest: {}, state: 'waiting' }] })) === 'busy');
 const hello = helloFor(gb({ share: { takeJobs: true }, webSearch: false }), { why: 'off', quick: null, can: { pictures: true, video: false, music: true, sfx: false }, version: 'x', label: (m) => m, webOn: false, bigBrain: true });
-check('hello lists only what he really has', hello.takesJobs === true && hello.jobs.join() === 'pictures,music,think');
+check('hello lists only what he really has (and, from 1.5.211, that he takes group jobs)', hello.takesJobs === true && hello.jobs.join() === 'room,pictures,music,think');
 check('no switch, no jobs listed', helloFor(gb({ share: {} }), { why: 'off', quick: null, can: { pictures: true }, version: 'x', label: (m) => m, webOn: true, bigBrain: true }).jobs.length === 0);
 check('abilities are cleaned', cleanAbilities({ ctx: 'x', jobs: ['pictures', 'rm -rf'], takesJobs: true }).jobs.join() === 'pictures' && cleanAbilities({ ctx: 'x' }).ctx === 0);
 
@@ -216,7 +216,7 @@ laptopCan = { pictures: true };
 // Wiring: the hello and the job pick only promise music when the music models are really there; the phone names the Bob
 // that has a chart it couldn't get, and shows the chart's text when it can't draw it; the Chest follows a moved folder.
 const src = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8');
-check('hello and the pick say music only with the models there', /jobCan\(\)\s*\{[^\n]*aceMissingFiles/.test(src('src/brain.js')) && /can: this\.jobCan\(\)/.test(src('src/brain.js')) && /can: brain\.jobCan\(\)/.test(serverText()));
+check('hello and the pick say music only with the models there', /jobCan\(\)\s*\{[^\n]*aceMissingFiles/.test(brainText()) && /can: this\.jobCan\(\)/.test(brainText()) && /can: brain\.jobCan\(\)/.test(serverText()));
 check('the phone never says "your other replicant matrix" about a lost chart', !/It's on your other replicant matrix/.test(src('android/app/src/main/assets/www/phone.js')) && /Couldn't get this diagram from \$\{who\}/.test(src('android/app/src/main/assets/www/phone.js')) && /class: 'diagram-text', text/.test(src('android/app/src/main/assets/www/phone.js')));
 check("the Chest lists what the door hands out, even in a moved folder", /x\.path\.startsWith\(inn\) \|\| servable\(x\)/.test(serverText()));
 
