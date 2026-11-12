@@ -102,7 +102,9 @@ const cards = () => events.filter((e) => e.type === 'approval');
   // 1.5.102: Hands that are simply off share one "turn them on" line instead of one each.
   check('with some Hands on, the off ones are still explained', /off right now[^\n]*Open and use apps/.test(p1) && /Sam can turn them on in Settings, Hands\./.test(p1) && !/Show advanced settings/.test(p1));
 }
-check("Bob's prompt explains look-then-act when the Apps hand is on", /app_look/.test(handsPrompt(cfg)) && !/app_look/.test(handsPrompt({ ...cfg, hands: { ...cfg.hands, apps: { on: false } } })));
+// 1.5.207 (less context): the look-then-act order is said once, in the drive line, not again in the Hands paragraph.
+{ const { realPcPrompt } = await import('../src/brain.js');
+  check("Bob's prompt explains look-then-act when the Apps hand is on", /open_app, then app_look, then app_act/.test(realPcPrompt(cfg)) && !/app_look/.test(realPcPrompt({ ...cfg, hands: { ...cfg.hands, apps: { on: false } } })) && !/app_look/.test(handsPrompt(cfg).replace(/app_look[^.]*hands? is off/g, ''))); }
 {
   const offCfg = { ...cfg, hands: { ...cfg.hands, apps: { on: false } } };
   const offTools = handsTools({ cfg: offCfg, log() {} }, { apps: { driver: new AppsDriver({ command: [process.execPath, path.join(here, 'mock-apps-driver.js')] }) } });

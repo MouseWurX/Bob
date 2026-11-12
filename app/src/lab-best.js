@@ -19,6 +19,7 @@ import { TEACH_PY, FETCH_PY } from './lab-teach-script.js';
 import { watchDir, listRecordings, readRecording } from './lab-watch.js';
 import { specialise } from '../public/lab-watch-math.js';
 import { readJson, writeJson, canStart, makeRoom, runJob, runTool, pageLog } from './lab-jobs.js';
+import { judgeTrust } from './lab-plus.js'; // Lab item 111: Check the judge first
 
 export const ANSWERS = [2, 4, 8];          // answers the small brain gives to each question
 export const ANSWERS_DEFAULT = 4;
@@ -186,6 +187,7 @@ export async function planBest(lab, c = {}) {
   const judgeS = n * (answers * 15 + 40) / tpsOf(jf?.sizeGB) + n * 4;
   const minutes = Math.max(1, Math.round((answerS + judgeS) / 60));
   const teachHours = t.where === 'here' ? Math.max(0.1, Math.round(((taught * (way === 'pairs' ? 3 : way === 'both' ? 4 : 1)) / lessonsPerHour(t.brain.paramsB)) * 10) / 10) : null;
+  if (judge && lab.cfg) { const t = judgeTrust(lab.cfg, judge.id); notes.push(t ? `Checked against your own picks: ${t.line}` : `${judge.name} hasn't been checked against your own picks yet. Test, Taste test, Check the judge shows how far to trust it.`); } // Lab item 111
   if (jf && lab.cfg && jf.sizeGB > (Number(lab.cfg.gpuVramGB) || 99)) notes.push(`${judge.name} is bigger than the card, so part of it runs from RAM while it judges: slower, the same scores.`);
   notes.push(`Of ${n} questions, ${held} are held back: never taught, asked before and after, so you see whether it really got better and didn't just learn the test.`);
   if (rescue) notes.push(`When none of ${learner?.name || 'its'} answers scores ${GOOD} or more, ${judge?.name || 'the judge'} writes its own answer for that question instead, and that's taught.`);

@@ -123,7 +123,9 @@ const ctx = () => ({ emit: (e) => { events.push(e); if (e.type === 'approval') s
 const cards = () => events.filter((e) => e.type === 'approval');
 
 check("Bob's prompt explains open, read, act and expect when the Browser hand is on", /browser_read/.test(handsPrompt(cfg)) && /expect/.test(browserPrompt(cfg)) && /search boxes/.test(browserPrompt(cfg)) && browserPrompt({ ...cfg, hands: { ...cfg.hands, browser: { on: false } } }) === '');
-check("the Apps line tells Bob about expect, ask and click_at", /click_at/.test(handsPrompt(cfg)) && /ask/.test(handsPrompt(cfg)));
+// 1.5.207 (less context): expect, ask and click_at are told in the Apps tools themselves, not again in the prompt.
+{ const t = Object.values(handsTools(cfg)).map((x) => JSON.stringify(x.schema)).join(' ');
+  check("the Apps tools tell Bob about expect, ask and click_at", /click_at/.test(t) && /"ask"/.test(t) && /"expect"/.test(t)); }
 check('the words that load the browser group', guessGroups(fake, 'open the blender.org website and find the downloads').includes('browser') && guessGroups(fake, 'log in to github for me').includes('browser') && guessGroups(fake, 'fill in the form on that page').includes('browser') && !guessGroups(fake, 'what is the capital of France').includes('browser') && /browser window/.test(groupsFor(fake).browser.what));
 
 // browser_open
@@ -146,7 +148,7 @@ check("a page that won't open gives the browser's reason and says not to claim i
 const nC = cards().length;
 const r1 = await fake.runTool('browser_read', {}, ctx());
 check('reading needs no card (the page is already in Bob\'s window)', cards().length === nC);
-check('it lists where Bob can type first, with the search box named', /^Page: "Example" \(example\.com\)\nhttps:\/\/example\.com\/\nYou can type in: 2 \(field "Search this site", a search box\); 4 \(field "Email address"\)/.test(r1.text), r1.text.slice(0, 200));
+check('it lists where Bob can type first, with the search box named', /^(\[Outside text starts[^\n]*\n)?Page: "Example" \(example\.com\)\nhttps:\/\/example\.com\/\nYou can type in: 2 \(field "Search this site", a search box\); 4 \(field "Email address"\)/.test(r1.text), r1.text.slice(0, 200));
 check('every usable thing is numbered with its kind, and password and file pickers are marked', /\n2\. field "Search this site" \(search box: you can type here\)/.test(r1.text) && /\n5\. field "Password" \(password field: never typed in\)/.test(r1.text) && /\n8\. file "Choose file" \(file picker: not used\)/.test(r1.text) && /\n7\. select "Colour" = "Red" options: "Red", "Green", "Blue"/.test(r1.text) && /\n10\. checkbox "Remember me" \(not ticked\)/.test(r1.text) && /\n9\. link "Downloads" -> https:\/\/example\.com\/downloads/.test(r1.text));
 check('a long page comes in parts, with the exact next call', /Page text:\nWelcome to Example\./.test(r1.text) && /\[Part 1 of 3: characters 1 to 15,000/.test(r1.text) && /call browser_read again with part: 2/.test(r1.text), r1.text.slice(-300));
 const r2 = await fake.runTool('browser_read', { part: 3 }, ctx());

@@ -177,7 +177,7 @@ export function askTogetherTool(brain) {
       type: 'function',
       function: {
         name: 'ask_together',
-        description: 'Before a job that needs several OKs, list those steps here with the exact tool and args. {{USER}} allows or denies them on one card; then call them with the same args and they won\'t ask again. Leave out steps that need no OK.',
+        description: 'Before a job needing several OKs, list those steps with the exact tool and args. {{USER}} answers them on one card; call them after with the same args and they won\'t ask again. Leave out steps needing no OK.',
         parameters: {
           type: 'object',
           properties: {

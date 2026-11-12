@@ -1,6 +1,7 @@
 // Bob's own engine: runs llama.cpp's llama-server.exe himself, one model at a time.
 // Same interface as the Ollama client, so the brain doesn't care which engine is in use.
 // Models are found by Ollama name in Ollama's model folder (no duplicate downloads), or set by path in config.
+import { learnPer, promptChars, perFor } from './token-count.js';
 import { replyStats } from './speed-stats.js';
 import fs from 'node:fs';
 import { commandLineOf } from './util.js';
@@ -13,14 +14,16 @@ import { templateFor, samplingFor, replyTokens } from './model-family.js';
 import { gaming, LONG_CODER } from './sessions.js';
 import { gamingCard, decideCard, readCard, CARD_BUSY_PCT, CARD_MIN_FREE_MB } from './gaming-card.js';
 import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts, cardGB } from './tuning.js';
+import { chatPlacesOn, placesDir, placeFile, tidyPlaces } from './chat-places.js'; // Each chat keeps its place in the engine (off unless switched on)
 import { exeName } from './platform.js';
 import { Embedder } from './embedder.js';
 import { ggufInfo } from './gguf.js';
 import { placeArgs } from './brain-place.js';
 import { selfWorkOn } from './self-work.js';
-import { stretchOn, stretchMax as stretchMost, stretchPlan, yarnArgs, needBytes, roomBytes } from './model-ctx.js';
+import { stretchOn, stretchMax as stretchMost, stretchPlan, yarnArgs, needBytes, roomBytes, kvBytes } from './model-ctx.js';
 import { scutEnv } from './share-card.js'; // SCUT, the fast link to lent cards
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
+import { memArgs, copyGuessArgs, draftNumArgs, laptopThreads } from './engine-extras.js'; // list items 94-100
 
 // 1.5.19: the context a brain gets when nothing else picks one. 32K fits a 26B brain on a 16 GB card.
 
@@ -146,11 +149,17 @@ export function catalogFileFor(cfg, id) {
   } catch { return null; }
 }
 
+// Item 2: the smallest piece (in tokens) the engine reuses from earlier in the chat after a change in the middle.
+export const CACHE_REUSE = 256;
+// Item 14: how long a reply may go quiet after its first words before the engine counts as hung (llamacpp.stallSeconds changes it).
+export const STALL_MS = 90_000;
+
 export class LlamaCpp {
   // Read fresh each time, so speed settings changed in the app apply to the next brain load.
   get lc() { return this.cfg.llamacpp || {}; }
 
   constructor(cfg, { role = 'main' } = {}) {
+    this.perToken = {}; // Nov 11 (item 3): characters per token, per brain, learned from the engine's own counts
     this.cfg = cfg;
     this.role = role;
     this.tag = role === BESIDE ? '-beside' : '';
@@ -229,6 +238,10 @@ export class LlamaCpp {
   // 1.5.87: the longest context a model was made for, from its GGUF header, so nothing asks for more (null: unknown).
   // 1.5.205 What the Brains page needs to offer a by-hand placement: how many layers the file has. null when this
   // engine can't find the file (then the page keeps the control locked and says why).
+  // 100: the chat memory this brain needs at a context with the Standard (8-bit) type, in GB (null: can't read it).
+  kvGB(model, ctx) {
+    try { const b = kvBytes(ggufInfo(this.resolve(model).gguf)?.shape, ctx, ['-ctk', 'q8_0', '-ctv', 'q8_0']); return b ? Math.round((b / 1024 ** 3) * 10) / 10 : null; } catch { return null; }
+  }
   placeInfo(model) {
     try { const layers = ggufInfo(this.resolve(model).gguf)?.shape?.layers || 0; return layers ? { layers } : null; } catch { return null; }
   }
@@ -250,7 +263,7 @@ export class LlamaCpp {
     const gb = (b) => Math.round((b / 1024 ** 3) * 10) / 10;
     try {
       const f = this.resolve(model).gguf;
-      const need = needBytes(fs.statSync(f).size, ggufInfo(f)?.shape, ctx, this.lc.args || ['-ctk', 'q8_0', '-ctv', 'q8_0']);
+      const need = needBytes(fs.statSync(f).size, ggufInfo(f)?.shape, ctx, memArgs(this.cfg, model, this.lc.args)); // 100: the brain's memory type
       if (!need) return { fits: null };
       const room = roomBytes(ramBytes, cardBytes);
       return { fits: need <= room, needGB: gb(need), roomGB: gb(room) };
@@ -281,6 +294,9 @@ export class LlamaCpp {
     if (!gguf) throw new Error(`${model} has no model file in its manifest.`);
     return { gguf, mmproj: blob('projector') };
   }
+
+  // Item 3: how many characters make one token for this brain (3 until a reply has taught Bob better).
+  charsPerToken(model) { return perFor(this.perToken, model); }
 
   async health() {
     try { return (await fetch(this.url + '/health', { signal: AbortSignal.timeout(2000) })).ok; } catch { return false; }
@@ -457,11 +473,13 @@ export class LlamaCpp {
       // Long memory: past what the brain was made for, its positions are stretched (YaRN) to the size picked.
       ...this.stretchArgs(gguf, ctx || lc.ctx || DEFAULT_CTX),
       ...(mmproj && lc.vision !== false && !(lc.noEyes || []).includes(model) ? ['--mmproj', mmproj] : []), // Lab: "Load without eyes and ears" for one brain
-      ...(lc.args || ['-fa', 'on', '-ctk', 'q8_0', '-ctv', 'q8_0']),
-      ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : num(lc.threads, '-t')),
+      // 100 (opt-in, the Brains page): the brain's chat memory type, Standard (8-bit) unless picked. Flags set by hand win.
+      ...memArgs(this.cfg, model, lc.args),
+      // 98 Laptop mode (opt-in): on battery, half the cores. Games-first and threads set by hand win.
+      ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : laptopThreads(this.cfg) ? ['-t', String(laptopThreads(this.cfg))] : num(lc.threads, '-t')),
       ...num(lc.batch, '-b'), ...num(lc.ubatch, '-ub'),
       // 1.5.24 "Get Bob ready while you type": on the processor, his reading of the instructions is kept on disk.
-      ...(cpu && tuning(this.cfg).readyWhileTyping ? ['--slot-save-path', startDir(this.cfg)] : []),
+      ...(cpu && tuning(this.cfg).readyWhileTyping ? ['--slot-save-path', startDir(this.cfg)] : chatPlacesOn(this.cfg) && this.role !== BESIDE ? ['--slot-save-path', placesDir(this.cfg)] : []), // or each chat's place (chat-places.js)
       ...(modelArgs || lc.modelArgs?.[model] || []),
       // Mixture-of-experts models: keep this many layers' experts in system RAM so the rest fits the card.
       ...(Number.isInteger(lc.nCpuMoe?.[model]) ? ['--n-cpu-moe', String(lc.nCpuMoe[model])]
@@ -487,22 +505,31 @@ export class LlamaCpp {
     else if (!cpu && this.buildNo() >= 12032 && !args.some((a) => ['-nr', '--no-repack', '--repack'].includes(a)) && args.some((a) => ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'].includes(a)) && this.biggerThanMemory(gguf)) args.push('--no-repack');
     // 1.5.19: one conversation at a time, so it gets the whole context (more slots split it into small pieces).
     if (!args.some((a) => ['-np', '--parallel'].includes(a))) args.push('-np', '1');
+    // Nov 11 (item 2): when an old tool result in the middle of a chat gets shortened, the engine moves the rest of what it
+    // already read into place instead of reading it all again (llama.cpp's KV shifting; b4500 and newer). Brains that
+    // can't (some memory layouts, picture readers) are switched back by the engine itself, with a line in its log.
+    if (this.buildNo() >= 4500 && !args.includes('--cache-reuse')) args.push('--cache-reuse', String(CACHE_REUSE));
     args.push(...this.templateArgs(model, gguf, args));
     // Speculative decoding: a small "draft" model guesses ahead and the big one checks, often 1.5-2x faster.
     // 1.5.16x Turbo per brain (the Lab's Turbo page, Settings): wins over the one draft for every brain. The brain's own
     // built-in guesser (a multi-token head) needs no second brain; a draft brain is named, never a path.
     const tb = lc.turbo?.[model];
     if (tb?.on && !cpu && (tb.mtp || (tb.draft && tb.draft !== model))) {
-      if (tb.mtp) args.push('--spec-type', 'draft-mtp', '--draft-max', String(tb.max || 8));
-      else { let dg = null; try { dg = this.resolve(tb.draft).gguf; } catch {} if (dg) args.push('-md', dg, '--draft-max', String(tb.max || 8), '--draft-min', '0', '-ngld', '99'); }
+      // Engines from about b9530 refuse the old --draft-max/--draft-min and won't start (draftNumArgs picks the names).
+      // 1.5.207 PC check: a saved "own guesser" on a brain whose file has none stopped Engine 4. Leave it out then.
+      if (tb.mtp && !(ggufInfo(gguf)?.mtp > 0)) { this.log?.('engine', `${model}: Turbo's own guesser is set, but this brain's file has none; starting without it`); return args; }
+      if (tb.mtp) args.push('--spec-type', 'draft-mtp', ...draftNumArgs(this.buildNo(), tb.max || 8));
+      else { let dg = null; try { dg = this.resolve(tb.draft).gguf; } catch {} if (dg) args.push('-md', dg, ...draftNumArgs(this.buildNo(), tb.max || 8, 0), '-ngld', '99'); }
       return args;
     }
     const d = lc.draft;
     if (d?.model && d.model !== model && d.enabled !== false && !cpu) {
       // A file path (a .gguf, or a draft blob inside Ollama's models folder) or an Ollama model name.
       const draft = path.isAbsolute(d.model) || /\.gguf$/i.test(d.model) ? d.model : this.resolve(d.model).gguf;
-      args.push('-md', draft, ...num(d.max ?? 16, '--draft-max'), ...num(d.min ?? 1, '--draft-min'), '-ngld', String(d.ngld ?? 99));
+      args.push('-md', draft, ...draftNumArgs(this.buildNo(), d.max ?? 16, d.min ?? 1), '-ngld', String(d.ngld ?? 99));
     }
+    // 94 Guess-ahead from the chat (opt-in): with no draft brain, the engine guesses by copying what the chat holds.
+    args.push(...copyGuessArgs(this.cfg, { build: this.buildNo(), args }));
     return args;
   }
 
@@ -539,6 +566,24 @@ export class LlamaCpp {
   async slotAction(action, filename) {
     const res = await fetch(`${this.url}/slots/0?action=${action}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ filename }), signal: AbortSignal.timeout(60000) });
     if (!res.ok) throw new Error(`slot ${action}: ${res.status}`);
+  }
+
+  // Each chat keeps its place in the engine (chat-places.js, off unless switched on): before another chat's reply, the
+  // reading the engine holds for the last chat is saved to disk, and the new chat's saved reading (if any) comes back.
+  // The engine only reuses the part of a saved reading that still matches the chat, so an edited chat is safe.
+  async switchPlace(chatId, model) {
+    if (this.role === BESIDE || !this.slotDir || this.slotDir !== placesDir(this.cfg) || this.current !== model || !this.loadedOk || !this.child || this.child.exitCode !== null) return 'none';
+    if (this.placeChat === chatId) return 'same';
+    if (await this.hasVision(model)) return 'none';
+    const ctx = this.currentCtx || this.lc.ctx || DEFAULT_CTX;
+    const was = this.placeChat;
+    this.placeChat = chatId;
+    const name = placeFile(chatId, model, ctx);
+    if (was) { await this.slotAction('save', placeFile(was, model, ctx)); tidyPlaces(this.slotDir, { keepName: [placeFile(was, model, ctx), name] }); }
+    if (!fs.existsSync(path.join(this.slotDir, name))) return was ? 'saved' : 'new';
+    await this.slotAction('restore', name);
+    try { const now = new Date(); fs.utimesSync(path.join(this.slotDir, name), now, now); } catch {}
+    return 'restored';
   }
 
   // Loads the saved reading for this brain, if there is one. Pictures-capable brains can't save one (llama-server).
@@ -659,12 +704,14 @@ export class LlamaCpp {
     // Off unless "Spread big brains over my other Bobs' cards" is on; none answering means it loads here like always.
     let helpers = [];
     let sizeGB = 0;
+    if (this.role !== BESIDE) this.spreadNow = false;
     if (this.spread && !noSpread && this.role !== BESIDE && !cpu && card !== 'none') {
       let file = '';
       try { file = this.resolve(model).gguf; sizeGB = fs.statSync(file).size / 1e9; } catch {}
       helpers = await this.spread.open({ sizeGB, file }).catch(() => []);
       if (helpers.length) {
         args.push('--rpc', helpers.join(','), ...spreadArgs(args));
+        this.spreadNow = true; // item 14: a reply over Wi-Fi may pause longer
         const mins = Math.ceil(spreadLoadSeconds(sizeGB, this.lc.loadTimeoutSeconds || 300) / 60);
         try { this.log?.('engine', `${model}: spread over ${helpers.length} other Bob${helpers.length > 1 ? 's' : ''}' card${helpers.length > 1 ? 's' : ''} (${helpers.join(', ')}). The first time, part of the brain is sent over the network: over Wi-Fi that can take a while (I'll wait up to ${mins} min), and a network cable is much faster. Later loads only send what's missing.`); } catch {}
       }
@@ -681,7 +728,9 @@ export class LlamaCpp {
     try { fs.writeFileSync(path.join(this.cfg.dataDir, `llama-server${this.tag}-args.txt`), [exe, ...args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ') + '\n'); } catch {}
     let log = '';
     let full = ''; // 1.5.133: the whole output (up to 256 KB) goes to a file when a load fails; the message keeps the end
-    if (args.includes('--slot-save-path')) { try { fs.mkdirSync(startDir(this.cfg), { recursive: true }); } catch {} }
+    if (args.includes('--slot-save-path')) { try { fs.mkdirSync(args[args.indexOf('--slot-save-path') + 1] || startDir(this.cfg), { recursive: true }); } catch {} }
+    this.slotDir = args.includes('--slot-save-path') ? args[args.indexOf('--slot-save-path') + 1] : ''; // where this engine run saves readings
+    this.placeChat = null; // a fresh engine holds no chat's reading yet
     let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
     if (helpers.length) env = { ...env, ...scutEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
     // 1.5.203: spawn throws when Windows blocks the program (Smart App Control); safeSpawn turns that into 'error'.
@@ -748,6 +797,8 @@ export class LlamaCpp {
     }
     started.catch(() => {}); // later exits are handled by isLoaded()
     this.loadedOk = true;
+    // Catch crashes (crash-catch.js, off unless switched on): the engine stopping by itself after the brain loaded.
+    child.once('exit', (code) => { if (this.child === child && code !== 0) { try { this.onCrash?.({ model, code, tail: log }); } catch {} } });
     this.primedHash = null;
     // A saved reading of this brain's instructions comes back in about a second instead of being read again.
     if (cpu && tuning(this.cfg).readyWhileTyping) await this.restoreStart(model, ctx);
@@ -790,6 +841,7 @@ export class LlamaCpp {
   async chat(opts) {
     const b = this.route(opts);
     if (b) return b.chat({ ...opts, beside: false, cpu: true });
+    if (opts?.chatId && chatPlacesOn(this.cfg)) await this.switchPlace(opts.chatId, opts.model).catch((e) => { try { this.log?.('engine', `couldn't swap chat places (${e.message})`); } catch {} });
     this.active++;
     this.lastUse = this.now();
     try { return await this.chatOnce(opts); } finally { this.active--; this.lastUse = this.now(); }
@@ -829,7 +881,29 @@ export class LlamaCpp {
       } catch {}
     }
     if (this.noMidSystem.has(model)) messages = foldSystem(messages);
-    const res = await this.post(model, messages, tools, signal, think, task, temperature);
+    // Item 14 (Nov 11): a reply that stops sending words is stopped, not waited on until someone presses Stop. Once
+    // words are coming, a quiet spell longer than STALL_MS (twice that when the brain is spread over other Bobs' cards)
+    // means the engine hung: it is let go and the error says "terminated", so Bob loads it again and asks once more.
+    // Before the first word nothing is timed: reading a long chat can take minutes on the processor.
+    const watch = new AbortController();
+    const both = signal ? AbortSignal.any([signal, watch.signal]) : watch.signal;
+    const stallMs = (this.lc.stallSeconds > 0 ? this.lc.stallSeconds * 1000 : STALL_MS) * (this.spreadNow ? 2 : 1);
+    let timer = null;
+    const arm = () => { clearTimeout(timer); timer = setTimeout(() => watch.abort(), stallMs); timer.unref?.(); };
+    try {
+      const res = await this.post(model, messages, tools, both, think, task, temperature);
+      return await this.readReply(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver, task, temperature, onChunk: arm });
+    } catch (e) {
+      if (watch.signal.aborted && !signal?.aborted) {
+        this.log?.('engine', `${model} stopped sending words for ${Math.round(stallMs / 1000)} s; letting it go so it loads again`);
+        await this.unloadAll().catch(() => {});
+        throw new Error(`terminated: the brain stopped answering for ${Math.round(stallMs / 1000)} seconds`);
+      }
+      throw e;
+    } finally { clearTimeout(timer); }
+  }
+
+  async readReply(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver, task, temperature, onChunk }) {
     if (!res.ok) {
       // 1.5.60: the template's refusal sits deep in a long error (after the template source), so look at all of it.
       const full = await res.text();
@@ -842,7 +916,7 @@ export class LlamaCpp {
       if (MID_SYSTEM_REFUSED.test(full)) this.log?.('engine', `${model}: refused a system message even after folding (roles ${(messages || []).map((m) => (m.role || '?')[0]).join('')}, ${full.length} chars of error)`);
       throw new Error(`llama-server returned ${res.status}: ${text}`);
     }
-    return this.readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver });
+    return this.readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver, onChunk });
   }
 
   // `temperature`: an assistant preset's own (presets.js); otherwise the brain's usual word settings decide.
@@ -861,7 +935,10 @@ export class LlamaCpp {
     });
   }
 
-  async readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver }) {
+  // 96 Speed history: each reply's numbers are passed on (server.js keeps them when the switch is on).
+  statsOut(st) { if (st) { try { (this.onStats || this.main?.onStats)?.(st); } catch {} } return st; }
+
+  async readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver, onChunk = () => {} }) {
     let content = '';
     let held = null; // null: not decided yet; false: streaming normally; a string: held back
     let thought = 0, traced = false; const asked = this.wantTrace?.() === true; // fNRI's small cube: was the trace asked for, and did it come
@@ -869,6 +946,7 @@ export class LlamaCpp {
     let buf = '';
     const decoder = new TextDecoder();
     for await (const chunk of res.body) {
+      onChunk(); // item 14: words are coming; the stall timer starts again
       buf += decoder.decode(chunk, { stream: true });
       let nl;
       while ((nl = buf.indexOf('\n')) >= 0) {
@@ -882,7 +960,9 @@ export class LlamaCpp {
         if (ev.error) throw new Error('llama-server: ' + (ev.error.message || JSON.stringify(ev.error)));
         // 1.5.30: llama-server puts the reply's timings on its last chunk; kept for Now running.
         if (ev.expert_trace && this.onTrace) { traced = true; try { this.onTrace(ev.expert_trace, model); } catch (e) { this.log?.('engine', `fNRI cube: couldn't read ${model}'s trace: ${e.message}`); } }
-        if (ev.timings) this.lastStats = replyStats({ model: this.current || model, messages, promptTokens: (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0), outTokens: ev.timings.predicted_n, tokPerSec: ev.timings.predicted_per_second, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX }) || this.lastStats;
+        // Nov 11 (item 3): the engine's own count of what it read teaches Bob how many characters make a token for this brain.
+        if (ev.timings) { const n = (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0); const k = this.current || model; const per = learnPer(this.perToken[k], promptChars(messages, tools), n); if (per) this.perToken[k] = per; }
+        if (ev.timings) this.lastStats = this.statsOut(replyStats({ model: this.current || model, messages, promptTokens: (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0), outTokens: ev.timings.predicted_n, tokPerSec: ev.timings.predicted_per_second, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX })) || this.lastStats;
         const d = ev.choices?.[0]?.delta || {};
         if (budget && d.reasoning_content && ++thought > budget && !content) onOver(); // stop.over marks it, so real errors aren't retried
         if (d.reasoning_content && onThink) onThink(d.reasoning_content); // 1.5.53: only while the thinking window is open
@@ -900,6 +980,8 @@ export class LlamaCpp {
           calls[i] = calls[i] || { name: '', args: '' };
           if (tc.function?.name) calls[i].name += tc.function.name;
           if (tc.function?.arguments) calls[i].args += tc.function.arguments;
+          // 95 Load the next brain early: the brain hears a hand-off while it is still being written.
+          if (this.onToolCall && calls[i].name) { try { this.onToolCall(calls[i].name, calls[i].args); } catch {} }
         }
       }
     }

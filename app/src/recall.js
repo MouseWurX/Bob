@@ -106,13 +106,16 @@ export function tagLine(fact, project) {
 // The vectors for memory lines: inn\bob\memory-vectors.json, { model, vecs: { key: [..] } }. Lines that change get a
 // new key; keys whose line is gone are dropped on the next fill. Rebuilt from scratch if the embedding model changes.
 export class MemoryVectors {
-  constructor(cfg) { this.cfg = cfg; this.file = path.join(cfg.dataDir, 'memory-vectors.json'); this.cache = null; }
+  // While a profile is open (profiles.js) its vectors are kept in Bob's memory only, never in the owner's file.
+  constructor(cfg) { this.cfg = cfg; this.file = path.join(cfg.dataDir, 'memory-vectors.json'); this.cache = null; this.who = ''; }
   load(model) {
+    const who = this.cfg.profileNow || '';
+    if (who !== this.who) { this.who = who; this.cache = who ? { model, vecs: {} } : null; }
     if (!this.cache) { try { this.cache = JSON.parse(fs.readFileSync(this.file, 'utf8')); } catch { this.cache = {}; } }
     if (!this.cache.vecs || (model && this.cache.model && this.cache.model !== model)) this.cache = { model, vecs: {} };
     return this.cache.vecs;
   }
-  save() { try { writeJsonAtomic(this.file, this.cache, 0); } catch {} }
+  save() { if (this.cfg.profileNow) return; try { writeJsonAtomic(this.file, this.cache, 0); } catch {} }
   // embed(texts) -> vectors or null. Returns how many lines got a vector.
   async fill(lines, embed, model) {
     const vecs = this.load(model);

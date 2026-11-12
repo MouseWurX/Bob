@@ -284,7 +284,7 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
   const t = {};
 
   t.open_app = {
-    schema: fn('open_app', 'Open an app by its Start menu name (like "Notepad" or "Blender"). {{USER}} approves first. Not terminals or admin tools.', { name: str('The app\'s name as it shows in the Start menu.') }),
+    schema: fn('open_app', 'Open an app by its Start menu name (like "Notepad" or "Blender"). Not terminals or admin tools.', { name: str('The app\'s name as it shows in the Start menu.') }),
     approvalGroup: (a) => `apps-open:${String(a.name || '').toLowerCase()}`,
     async check(args, ctx) {
       off(); notStopped(ctx);
@@ -325,7 +325,7 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
   };
 
   t.app_look = {
-    schema: fn('app_look', 'List the open windows (leave window empty), or read one: its buttons, fields, menus and text. Never reads password fields. {{USER}} approves each look.', {
+    schema: fn('app_look', 'List the open windows (leave window empty), or read one: its buttons, fields, menus and text. Never reads password fields.', {
       window: str('Part of the window title or program name. Empty lists the windows.'),
       picture: { type: 'boolean', description: 'Also show a picture of the window in the chat.' },
       ask: str('A question about how the window looks, answered from a picture (for canvases, games and unnamed buttons). Its pixels are the x, y for app_act click_at.')
@@ -368,18 +368,18 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
   };
 
   t.app_act = {
-    schema: fn('app_act', 'Do one thing in an open window: click, type, press keys, or click_at x, y when nothing has names. Get the names from app_look first. {{USER}} approves each action and can stop you with the mouse or Esc. Never in password fields. Give expect so Bob\'s eyes check the result.', {
+    schema: fn('app_act', 'Do one thing in an open window, using the names from app_look (click_at x, y when nothing has names). {{USER}} can stop you with the mouse or Esc. Never in password fields.', {
       window: str('Part of the window title, or the program name.'),
       action: str('What to do', { enum: ['click', 'type', 'keys', 'focus', 'click_at'] }),
       type: str('The kind, as app_look listed it (Button, Edit, MenuItem...).'),
       name: str('Its name, as app_look listed it.'),
       id: str('Its id, if listed (use it when names repeat).'),
       nth: { type: 'integer', description: 'If several match, which (1 = first).' },
-      text: str('type: the text. A one-line field is replaced; a document gets it at the end (the window alone is enough).'),
+      text: str('type: the text (replaces a one-line field; a document gets it at the end).'),
       keys: str('keys: like "Enter" or "Ctrl+S".'),
-      x: { type: 'integer', description: 'click_at: pixels from the left of the picture.' },
-      y: { type: 'integer', description: 'click_at: pixels from the top of the picture.' },
-      expect: str('What should be true afterwards, in one sentence. Bob\'s eyes check it.')
+      x: { type: 'integer', description: 'click_at: pixels from the left.' },
+      y: { type: 'integer', description: 'click_at: pixels from the top.' },
+      expect: str('What should be true afterwards; Bob\'s eyes check it.')
     }, ['window', 'action']),
     approvalGroup: (a) => `apps-act:${String(a.window || '').toLowerCase()}`,
     async check(args, ctx) {

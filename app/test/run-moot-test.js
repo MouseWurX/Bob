@@ -31,7 +31,8 @@ let scripts = { desk: [], tinker: [], reviewer: [] };
 const who = (sys) => (/second-look copy/.test(sys) ? 'reviewer' : /workbench copy/.test(sys) ? 'tinker' : 'desk');
 brain.engine = { chat: async ({ model, messages, cpu, think }) => {
   const w = who(messages[0].content);
-  calls.push({ w, model, cpu: Boolean(cpu), think, sys: messages[0].content, last: messages.at(-1).content });
+  // Item 1 (Nov 11): the effort line rides in the turn note before the latest message, not in the steady instructions.
+  calls.push({ w, model, cpu: Boolean(cpu), think, sys: messages[0].content, all: messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n'), last: messages.at(-1).content });
   return scripts[w].shift() || { role: 'assistant', content: w === 'reviewer' ? 'Looks right. Nothing to fix.' : 'done' };
 }, unloadAll: async () => {} };
 const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls: [{ function: { name, arguments: args } }] });
@@ -55,7 +56,7 @@ async function turn(text, effort, s) {
   const g = await turn('write me a paragraph about cats', 'low', { desk: [say(LONG)] });
   check('Low with "Low effort runs on the processor" off: the main Brain on the graphics card, as before', g.calls[0].model === 'main:latest' && !g.calls[0].cpu, g.calls[0].model);
   cfg.quickOnCpu = true;
-  check('Low: no effort note in the prompt, no moot', !/Effort is/.test(r.calls[0].sys) && !r.events.some((e) => e.type === 'announce' && /moot/.test(e.text)));
+  check('Low: no effort note in the prompt, no moot', !/Effort is/.test(r.calls[0].all) && !r.events.some((e) => e.type === 'announce' && /moot/.test(e.text)));
   check('unknown effort values are Low', cleanEffort('turbo') === 'low' && cleanEffort(undefined) === 'low' && effortPrompt('low') === '');
   const j = brain.enqueue('x', 'hi', [], 'nonsense'); brain.cancelJob(j.jobId);
   check('the queue stores a clean effort', brain.queue.find((q) => q.id === j.jobId).effort === 'low' && brain.queueView?.() !== null);
@@ -65,7 +66,7 @@ async function turn(text, effort, s) {
 {
   const r = await turn('write me a paragraph about cats', 'medium', { desk: [say(LONG)] });
   check('Medium: one big brain (Deep thinking) on the graphics card, thinking on a budget (1.5.19)', r.calls.length === 1 && r.calls[0].model === 'deep:latest' && !r.calls[0].cpu && r.calls[0].think === 'medium', JSON.stringify(r.calls.map((c) => [c.model, c.cpu, c.think])));
-  check('Medium: no moot, no reviewer, a short effort note', !r.calls.some((c) => c.w === 'reviewer') && !r.events.some((e) => e.type === 'announce' && /moot/.test(e.text)) && /Effort is Medium/.test(r.calls[0].sys) && effortPrompt('medium').length < 250);
+  check('Medium: no moot, no reviewer, a short effort note', !r.calls.some((c) => c.w === 'reviewer') && !r.events.some((e) => e.type === 'announce' && /moot/.test(e.text)) && /Effort is Medium/.test(r.calls[0].all) && effortPrompt('medium').length < 250);
   check('Medium is a real level', cleanEffort('medium') === 'medium');
   cfg.session = 'light';
   // 1.5.23: Gaming keeps the card free. Medium jobs wait in Tasks (see run-sessions-test); Low chats on the Gaming brain, on the processor.
@@ -78,7 +79,7 @@ async function turn(text, effort, s) {
 {
   const r = await turn('write me a paragraph about cats', 'high', { desk: [say(LONG)], reviewer: [say('Needs fixes:\n- Too repetitive.\nCorrected answer:\nCats are great.')] });
   check('High: the draft comes from the big brain (Deep thinking)', r.calls[0].w === 'desk' && r.calls[0].model === 'deep:latest', r.calls[0].model);
-  check('High: the front desk is told the effort, in one short paragraph', /Effort is High/.test(r.calls[0].sys) && effortPrompt('high').length < 600);
+  check('High: the front desk is told the effort, in one short paragraph', /Effort is High/.test(r.calls[0].all) && effortPrompt('high').length < 600);
   const rev = r.calls.find((c) => c.w === 'reviewer');
   check('High: the reviewer checks on the Review slot brain (Qwen 3.8)', rev && rev.model === 'qwen3.8:27b', rev?.model);
   check('High: the reviewer sees the draft', rev && rev.last.includes('Here is a careful answer') && /Looks right\.|Needs fixes:/.test(rev.last));

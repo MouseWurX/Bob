@@ -209,7 +209,7 @@ export function securityTools(brain, { env = process.env, fetchImpl, resolver, p
     schema: LINUX ? fn('defender_scan', 'Scan with ClamAV, if it is installed (Linux has no Defender). quick = the Downloads and Desktop folders; file = one file or folder (like a download). ClamAV only reports what it finds; it moves nothing. full and update need administrator rights on Linux, so they are left to the user. {{USER}} sees a card first.', {
       kind: str('quick or file', { enum: ['quick', 'file'] }),
       path: str('file only: full path of the file or folder to scan.')
-    }, ['kind']) : fn('defender_scan', 'Start a Microsoft Defender scan or update its virus definitions. quick = a few minutes, the usual places; full = the whole PC, an hour or more, runs in the background; file = one file or folder (like a download); update = fetch the newest definitions. Defender deals with anything it finds as it is set to. {{USER}} sees a card first.', {
+    }, ['kind']) : fn('defender_scan', 'Start a Microsoft Defender scan or update its virus definitions. quick = the usual places, minutes; full = the whole PC, an hour or more, in the background; file = one file or folder; update = newest definitions. Defender handles finds as it is set to.', {
       kind: str('quick, full, file or update', { enum: ['quick', 'full', 'file', 'update'] }),
       path: str('file only: full path of the file or folder to scan.')
     }, ['kind']),
@@ -239,7 +239,7 @@ export function securityTools(brain, { env = process.env, fetchImpl, resolver, p
   };
 
   t.inspect_file = {
-    schema: fn('inspect_file', 'Check if a download, script, email (.eml), Office file, PDF, picture or shortcut looks dangerous, WITHOUT opening it: what it really is, name tricks, origin, signature, risky code, phishing signs, hidden details. Or check pasted text: an email with headers, a command or a script.', {
+    schema: fn('inspect_file', 'Check if a file (download, script, .eml, Office, PDF, picture, shortcut) looks dangerous, WITHOUT opening it: real type, name tricks, origin, signature, risky code, phishing, hidden details. Or check pasted text: an email with headers, a command or a script.', {
       path: str('Full path of the file.'),
       text: str('Or: pasted text to check (an email with its headers, a command, a script, a link).')
     }, []),
@@ -254,7 +254,7 @@ export function securityTools(brain, { env = process.env, fetchImpl, resolver, p
   };
 
   t.strip_metadata = {
-    schema: fn('strip_metadata', 'Make clean copies of photos and Office files (and sound or video, with FFmpeg) without hidden details: GPS, camera, author, company, AI prompt. Originals stay; copies end in -clean. {{USER}} sees a card first.', {
+    schema: fn('strip_metadata', 'Make clean copies of photos and Office files (and sound or video, with FFmpeg) without hidden details: GPS, camera, author, company, AI prompt. Copies end in -clean.', {
       paths: { type: 'array', items: { type: 'string' }, description: 'Full paths of the files.' },
       folder: str('Optional: the folder for the clean copies.')
     }, ['paths']),
@@ -293,7 +293,7 @@ export function securityTools(brain, { env = process.env, fetchImpl, resolver, p
   };
 
   t.osint_lookup = {
-    schema: fn('osint_lookup', 'Check from public records whether something is genuine. site = a website\'s age, owner, certificates, look-alikes and breaches; link = where a link really goes; sender = the domain behind an email address; ip = who owns an internet address. Never for researching private people.', {
+    schema: fn('osint_lookup', 'Check from public records whether something is genuine. site = age, owner, certificates, look-alikes, breaches; link = where it really goes; sender = the domain behind an email address; ip = who owns it. Never for researching private people.', {
       kind: str('site, link, sender or ip', { enum: ['site', 'link', 'sender', 'ip'] }),
       value: str('The website, link, email address or IP address.'),
       follow: { type: 'boolean', description: 'link only: follow its redirects (contacts the link\'s site).' }
