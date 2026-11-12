@@ -88,7 +88,7 @@ import { partyView, Introductions } from './bob-net-party.js';
 import { OS, features } from './platform.js';
 import { saveExport } from './diagram.js';
 import { saveAs } from './save-as.js';
-import { chatFilesOn, CHAT_FILES_OFF, FORMATS, MAX_IMPORT_BYTES, saveChat, lookAtFile, bringIn, shareChat } from './chat-files.js';
+import { chatFilesOn, CHAT_FILES_OFF, FORMATS, MAX_IMPORT_BYTES, MAX_CHATS, saveChat, lookAtFile, bringIn, shareChat } from './chat-files.js';
 import { saveHelpBundle, bundleBytes, revealFile } from './help-bundle.js';
 import { BackupKeeper, backupView, makeBackup, readBackup, stageRestore, cleanBackup, isInsideDir, PART_IDS } from './backup.js';
 import { rentKeyEnv } from './rental.js';
