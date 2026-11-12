@@ -89,6 +89,7 @@ import { firewallState, changeRule, firewallHome, firewallUdp } from './firewall
 import { shareView, cleanSharePatch, saveShare, lendChat, lendRefusal, reviewRefusal, helloFor, bobNetRooms } from './share-brains.js';
 import { lendCardRoute, homeIps, isHomeIp, sameNet } from './share-card.js'; // Bob-Net: Lend my graphics card
 import { tailLinkLog } from './link-log.js'; // Bob-Net: the link log
+import { wifiView, wifiSays, calibrate, putBack, cleanWifiWas } from './wifi-tune.js'; // Bob-Net: Calibrate Wi-Fi
 import { checkHello } from './bob-net-check.js'; // 1.5.185 a bigger Bob checks the harder jobs
 import { guestRoute, answerAway } from './share-jobs.js';
 import { Pairing, myName } from './bob-net-pair.js';
@@ -798,6 +799,25 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/share-brains/link-log' && req.method === 'GET') {
       if (!isLocal) return send(res, 403, { error: 'The link log can only be read on this replicant matrix itself.' });
       return send(res, 200, { text: tailLinkLog(cfg, Number(url.searchParams.get('lines')) || 120), live: cfg.share?.linkDebug === true });
+    }
+    // Calibrate Wi-Fi (src/wifi-tune.js). GET: what Bob sees (no admin). POST { calibrate } tries each band and sets the
+    // best (Windows asks once); POST { putBack } restores the card's setting. This machine only, and only on a click.
+    if (p === '/api/share-brains/wifi' && (req.method === 'GET' || req.method === 'POST')) {
+      if (!isLocal) return send(res, 403, { error: 'The Wi-Fi can only be calibrated on this replicant matrix itself.' });
+      if (req.method === 'GET') { const view = await wifiView(); return send(res, 200, { ok: view.ok, text: wifiSays(view) }); }
+      const b = await body(req);
+      const keep = (was) => saveShare(cfg, { ...(cfg.share || {}), wifiWas: cleanWifiWas(was) });
+      const log = (k, t) => brain.log(k, t);
+      if (b.putBack === true) { const r = await putBack(cfg, { save: keep, log }); return send(res, 200, { ...r, wifiWas: Boolean(cfg.share?.wifiWas) }); }
+      if (b.calibrate !== true) return send(res, 400, { error: 'Nothing asked.' });
+      // Each try drops the Wi-Fi for a few seconds, which would cut a brain that's spread over a lent card.
+      if (brain.cardLender?.child || brain.engine?.spread?.using?.length) return send(res, 200, { ok: false, text: 'A graphics card is being shared right now, and calibrating drops the Wi-Fi for a few seconds at each try. Unload that brain first, then press Calibrate.', wifiWas: Boolean(cfg.share?.wifiWas) });
+      // Time the trip to another Bob on this home network when there is one; otherwise to the router.
+      await Promise.all(brain.lenders.bobs().map((x) => brain.lenders.hello(x).catch(() => null)));
+      let target = null;
+      for (const x of brain.lenders.bobs()) { const m = String(brain.lenders.nearOf(x) || '').match(/^([\d.]+):(\d{1,5})$/); if (m) { target = { host: m[1], port: Number(m[2]), name: x.name || 'your other Bob' }; break; } }
+      const r = await calibrate(cfg, { target, save: keep, log });
+      return send(res, 200, { ok: r.ok, text: r.text, changed: r.changed === true, wifiWas: Boolean(cfg.share?.wifiWas) });
     }
     if (p === '/api/share-brains' && (req.method === 'GET' || req.method === 'POST')) {
       if (!isLocal) return send(res, 403, { error: 'Sharing brains can only be changed on this replicant matrix itself.' });

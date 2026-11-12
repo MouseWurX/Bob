@@ -41,7 +41,7 @@ const PAIRING = {
 
 export async function mountShareBrains(box) {
   if (!box) return;
-  let v, msg = '', found = null, finding = false, poll = null, linkText = null; // linkText: the link log's last notes, null until asked for
+  let v, msg = '', found = null, finding = false, poll = null, linkText = null, wifiText = '', wifiBusy = false; // linkText: the link log's last notes, null until asked for
   const pairRow = (f) => {
     const p = found.pairing?.[f.address];
     const state = p ? PAIRING[p.state]?.(p, f.device) || '' : '';
@@ -113,6 +113,8 @@ export async function mountShareBrains(box) {
         <label class="switch"><input type="checkbox" data-share-linkdebug ${v.linkDebug ? 'checked' : ''}><span><strong>Watch the link live</strong> <span class="tag">off unless you turn it on</span> ${tip('For finding out why pooled cards are slow. Bob always notes what the link between two cards carried, every 10 seconds it\'s busy. With this on he notes it every 2 seconds, on the next brain he loads over another Bob\'s card. Turn it on on both Bobs to see both ends.', 'Watch the link live')}<br><span class="muted keep">Each note says which link is in use (SCUT, or the usual one and why), how much went over it, how long each answer took, and how much of that wait was the network and how much the other card working. Kept on this machine only.</span></span></label>
         <div class="row"><strong>Link log:</strong> <button type="button" data-link-log-show>${linkText === null ? 'Show it' : 'Read it again'}</button> ${linkText ? '<button type="button" data-link-log-copy>Copy</button>' : ''} <span class="muted">The last notes, newest at the bottom. The whole log is the file bob-net-link.log in Bob's data folder.</span></div>
         ${linkText === null ? '' : `<pre class="link-log" data-link-log tabindex="0" aria-label="Link log" style="max-height:16em;overflow:auto;white-space:pre-wrap">${esc(linkText || 'Nothing yet. It fills in while a brain runs over another Bob\'s card.')}</pre>`}
+        <div class="row"><strong>Wi-Fi band:</strong> <button type="button" data-wifi-check ${wifiBusy ? 'disabled' : ''}>Check</button> <button type="button" data-wifi-cal ${wifiBusy ? 'disabled' : ''}>Calibrate</button> ${v.wifiWas ? `<button type="button" data-wifi-back ${wifiBusy ? 'disabled' : ''}>Put it back</button>` : ''} ${tip('Pooled cards send every word over your home network and back, so the Wi-Fi band matters a lot. Windows picks the band by itself, and often picks a slow or weak one. Check shows which band this replicant matrix is on and what your router offers. Calibrate tries each band that\'s strong enough, times the trip to your other Bob on each, and sets the Wi-Fi card to the quickest. Windows only.', 'Calibrate Wi-Fi')} <span class="muted">Calibrate changes one setting of this replicant matrix's Wi-Fi card, so Windows asks once. The Wi-Fi drops for a few seconds at each try, so anything using the network pauses. Do it on each Bob that's on Wi-Fi.</span></div>
+        ${wifiText ? `<p class="muted" role="status" aria-live="polite" data-wifi-say>${esc(wifiText)}</p>` : ''}
       <label class="switch"><input type="checkbox" data-share-homenet ${v.homeNet !== false ? 'checked' : ''}><span><strong>Use the home network first</strong> ${tip('When two of your Bobs are on the same home network, the brain\'s numbers go straight over it, which is quicker. Otherwise, or if that doesn\'t work, they go over Tailscale. The asking always goes over Tailscale with the passcode.', 'Use the home network first')}<br><span class="muted keep">While a card is lent, its gate is open on the home network for the Bob that asked, and turns everything else away.</span></span></label>
         <div class="row"><strong>Spread big brains over my other Bobs' cards:</strong> <select data-share-spread>${SPREAD.map(([id, label]) => `<option value="${id}" ${(v.spread || 'off') === id ? 'selected' : ''}>${label}</option>`).join('')}</select>
           <span class="muted">${esc(SPREAD.find((w) => w[0] === (v.spread || 'off'))?.[2] || '')} Your other Bobs need <strong>Lend my graphics card</strong> on. If none says yes, the brain loads here.</span></div>
@@ -134,6 +136,12 @@ export async function mountShareBrains(box) {
   };
   const load = async () => { v = await api('/api/share-brains'); draw(); };
   // The link log: read when asked, and every 2 seconds after that while it's showing and "Watch the link live" is on.
+  // Calibrate Wi-Fi (src/wifi-tune.js): Check reads, Calibrate tries each band and sets the best, Put it back undoes it.
+  const wifi = async (data, wait) => {
+    wifiBusy = true; wifiText = wait; draw();
+    try { const j = await api('/api/share-brains/wifi', data); wifiText = j.text || ''; if ('wifiWas' in j) v.wifiWas = j.wifiWas; } catch (e) { wifiText = e.message; }
+    wifiBusy = false; draw();
+  };
   const readLink = async () => {
     try { const j = await api('/api/share-brains/link-log'); if (j.text === linkText) return; linkText = j.text || ''; } catch { return; }
     const at = box.querySelector('[data-link-log]'), low = !at || at.scrollTop + at.clientHeight >= at.scrollHeight - 8;
@@ -175,6 +183,9 @@ export async function mountShareBrains(box) {
   });
   box.addEventListener('click', (e) => {
     if (e.target.closest('[data-link-log-show]')) { if (linkText === null) linkText = ''; readLink().then(draw); return; }
+    if (e.target.closest('[data-wifi-check]')) { wifi(undefined, 'Looking…'); return; }
+    if (e.target.closest('[data-wifi-cal]')) { wifi({ calibrate: true }, 'Calibrating. Windows asks once, then I try each band; it takes about a minute and the Wi-Fi drops for a few seconds at each try.'); return; }
+    if (e.target.closest('[data-wifi-back]')) { wifi({ putBack: true }, 'Windows asks once…'); return; }
     if (e.target.closest('[data-link-log-copy]')) { navigator.clipboard?.writeText(linkText || '').catch(() => {}); return; }
     const rm = e.target.closest('[data-share-rm]'), up = e.target.closest('[data-share-up]');
     if (rm) change({ removeBob: rm.dataset.shareRm });

@@ -1,5 +1,5 @@
 diff --git a/ggml/src/ggml-rpc/ggml-rpc.cpp b/ggml/src/ggml-rpc/ggml-rpc.cpp
-index 2ec7036..1876a61 100644
+index 2ec7036..c9c5efd 100644
 --- a/ggml/src/ggml-rpc/ggml-rpc.cpp
 +++ b/ggml/src/ggml-rpc/ggml-rpc.cpp
 @@ -343,14 +343,165 @@ static uint64_t fnv_hash(const uint8_t * data, size_t len, uint64_t hash = 0xcbf
@@ -122,11 +122,11 @@ index 2ec7036..1876a61 100644
 +            }
 +        }
 +        const uint64_t tx = sock->bytes_sent(), rx = sock->bytes_received();
-+        char share[160] = "";
++        char share[256] = "";
 +        if (round_trip_ms > 0 && n_answers > 0 && wait_ms > 0) {
 +            const double link = std::min(100.0, 100.0 * round_trip_ms * n_answers / wait_ms);
-+            snprintf(share, sizeof(share), "; the link's round trip is %.1f ms, so about %.0f%% of that wait is the link and %.0f%% the other card working",
-+                     round_trip_ms, link, 100.0 - link);
++            snprintf(share, sizeof(share), "; one small packet's round trip is %.1f ms (%.0f%% of that wait), the rest is the other card working or packets held up on the air: its own line says how long the card worked",
++                     round_trip_ms, link);
 +        }
 +        LOG_INFO("[link] %s over %s, %.1f s: %" PRIu64 " messages, %s sent, %s received; %.1f s spent on this card, %.1f s of it waiting for %" PRIu64 " answers (%.1f ms each, longest %.1f)%s\n",
 +                 endpoint.c_str(), sock->link_name().c_str(), secs, n_all, rpc_log_format_size(tx - tx_mark).c_str(), rpc_log_format_size(rx - rx_mark).c_str(),
@@ -242,7 +242,7 @@ index 2ec7036..1876a61 100644
 +                if (msg_ptr->output) {
 +                    rpc_msg_get_alignment_req  probe = {};
 +                    rpc_msg_get_alignment_rsp  probe_rsp = {};
-+                    for (int i = 0; i < 2; i++) {
++                    for (int i = 0; i < 3; i++) {
 +                        const auto p0 = std::chrono::steady_clock::now();
 +                        if (!send_rpc_cmd(sock, RPC_CMD_GET_ALIGNMENT, &probe, sizeof(probe), &probe_rsp, sizeof(probe_rsp))) {
 +                            round_trip_ms = -1;
@@ -321,7 +321,7 @@ index 2ec7036..1876a61 100644
              // fail fast if the command is invalid
              LOG_ERROR("Unknown command: %d\n", cmd);
 diff --git a/ggml/src/ggml-rpc/scut.cpp b/ggml/src/ggml-rpc/scut.cpp
-index 9391819..8b7754a 100644
+index 9391819..ead3193 100644
 --- a/ggml/src/ggml-rpc/scut.cpp
 +++ b/ggml/src/ggml-rpc/scut.cpp
 @@ -37,6 +37,7 @@ static void bl_close(scut_fd_t s) { close(s); }
@@ -389,7 +389,7 @@ index 9391819..8b7754a 100644
  struct scut {
      bool server = false;
      scut_fd_t tcp = BL_INVALID;
-@@ -188,6 +218,23 @@ struct scut {
+@@ -188,6 +218,26 @@ struct scut {
  
      // counters, printed at the end with GGML_RPC_DEBUG
      uint64_t n_sent = 0, n_resent = 0, n_recv = 0, n_dropped_test = 0, n_fec_sent = 0, n_fec_fixed = 0;
@@ -410,10 +410,13 @@ index 9391819..8b7754a 100644
 +    int64_t  trial_end = 0, trial_next = 0, trial_prev = 0;
 +    double   trial_srtt = 0;
 +    uint64_t n_tuned = 0;
++    double   rtt_sum = 0, rtt_avg = 0, trial_sum = 0; // the round trip averaged over each second (one late packet isn't a trend)
++    uint32_t rtt_n = 0, trial_n = 0;
++    int      slow_secs = 0;
      int64_t  last_tx = 0;            // anything sent at all: data, acks, repair packets
      uint32_t burst_first = 0;        // first segment since the last flush: one message's burst
      // receiver side of the repair packets: copies of the last segments (in order or not) and the repairs waiting
-@@ -215,6 +262,7 @@ struct scut {
+@@ -215,6 +265,7 @@ struct scut {
      void raw_send(const void * p, size_t n) {
          if (test_drop && (rng() % 1000) < test_drop) { n_dropped_test++; return; }
          xmit(p, n);
@@ -421,7 +424,7 @@ index 9391819..8b7754a 100644
          last_tx = now_us();
      }
      // 0006: every datagram leaves through here: data, acks, repair packets, pings, pongs, close, and SUDDAR's probes.
-@@ -303,6 +351,7 @@ struct scut {
+@@ -303,6 +354,7 @@ struct scut {
          fecs.erase(it);
          hdr_t h = {}; h.seq = missing; h.len = len; h.ts = ack_ts;
          n_fec_fixed++;
@@ -429,7 +432,7 @@ index 9391819..8b7754a 100644
          on_data(h, x.data(), len);
      }
  
-@@ -310,7 +359,7 @@ struct scut {
+@@ -310,7 +362,7 @@ struct scut {
      double rto_us() const {
          double r = srtt > 0 ? srtt + 4 * rttvar : 50000;
          r = std::max(std::max(8000.0, srtt * 1.25 + 2000), std::min(250000.0, r)); // still far under TCP's 200-300 ms
@@ -438,7 +441,7 @@ index 9391819..8b7754a 100644
      }
      void refill(int64_t t) {
          if (!tokens_at) tokens_at = t;
-@@ -349,7 +398,7 @@ struct scut {
+@@ -349,7 +401,7 @@ struct scut {
              if (tokens <= 0) return;
              bool timed_out = (double) (t - s.sent_at) > rto_us();
              bool hole = s.seq + 2 < highest_sacked && (double) (t - s.sent_at) > std::max(2000.0, srtt * 0.5);
@@ -447,15 +450,18 @@ index 9391819..8b7754a 100644
          }
          if (any_timeout) rto_backoff++;
          if (lost) judge(t);
-@@ -370,9 +419,14 @@ struct scut {
+@@ -369,10 +421,16 @@ struct scut {
+     void judge(int64_t t) {
          double span = std::max(srtt, 5000.0);
          if ((double) (t - win_start) < span) return;
-         bool crowded = win_sent >= 20 && win_lost * 20 > win_sent;                       // over 5% lost
+-        bool crowded = win_sent >= 20 && win_lost * 20 > win_sent;                       // over 5% lost
 -        bool queueing = min_rtt > 0 && win_min > min_rtt + std::max(15000.0, min_rtt);  // even the quietest one is 15 ms late
 +        // 0008: a late round trip only means a queue when this side was filling the line. With a word's few packets
 +        // going out now and then, lateness is the air (a weak signal, a radio retrying), and slowing down doesn't help:
 +        // it only made the next big message crawl. So the slow-down for lateness needs at least half the pace in use.
++        // The same goes for losses: a few words' packets lost on a bad patch of air aren't this side crowding the line.
 +        bool filling = (double) win_sent * SEG >= rate * ((double) (t - win_start) / 1e6) * 0.5;
++        bool crowded = filling && win_sent >= 20 && win_lost * 20 > win_sent;            // over 5% lost
 +        bool queueing = filling && min_rtt > 0 && win_min > min_rtt + std::max(15000.0, min_rtt);  // even the quietest one is 15 ms late
          if ((crowded || queueing) && (double) (t - last_loss_cut) >= span) {
              rate = std::max(1e6, rate * (crowded ? 0.7 : 0.9));
@@ -463,7 +469,15 @@ index 9391819..8b7754a 100644
              for (double & b : bw_ring) b = std::min(b, rate);
              last_loss_cut = t;
          }
-@@ -424,14 +478,106 @@ struct scut {
+@@ -417,6 +475,7 @@ struct scut {
+         }
+     }
+     void rtt_sample(double r) {
++        if (r > 0) { rtt_sum += r; rtt_n++; }
+         if (r > 0 && (min_rtt <= 0 || r < min_rtt)) min_rtt = r;
+         if (r > 0 && (win_min <= 0 || r < win_min)) win_min = r;
+         if (srtt <= 0) { srtt = r; rttvar = r / 2; return; }
+@@ -424,14 +483,113 @@ struct scut {
          srtt = 0.875 * srtt + 0.125 * r;
      }
  
@@ -511,7 +525,7 @@ index 9391819..8b7754a 100644
 +        // a resend nobody needed, and never past one and a half times)
 +        if (tw.resent >= 4 && tw.dup * 2 > tw.resent && tw.resent * 33 > tw.sent && rto_scale < 1.5) {
 +            rto_scale = std::min(1.5, rto_scale * 1.25);
-+            snprintf(why, sizeof(why), "a longer resend timer, %llu of %llu resends weren't needed (the packets were only late)", (unsigned long long) tw.dup, (unsigned long long) tw.resent);
++            snprintf(why, sizeof(why), "a longer resend timer, %llu of %llu resends weren't needed (the packets were only late)", (unsigned long long) std::min(tw.dup, tw.resent), (unsigned long long) tw.resent);
 +            tuned(why);
 +        } else if (tw.timeouts >= 2 && tw.dup == 0 && rto_scale > 0.75) {
 +            rto_scale = std::max(0.75, rto_scale * 0.9);
@@ -529,12 +543,18 @@ index 9391819..8b7754a 100644
 +            }
 +        }
 +        // 4. the keep-awake ping: when the round trip sits well above its quietest while words flow, try a faster beat
-+        if (awake && min_rtt > 0 && t - last_data_activity < 1000000) {
-+            const bool slow = srtt > 2 * min_rtt + 3000;
++        if (rtt_n >= 4) rtt_avg = rtt_sum / rtt_n;
++        const bool fresh = rtt_n >= 4;
++        if (trial_end) { trial_sum += rtt_sum; trial_n += rtt_n; }
++        rtt_sum = 0; rtt_n = 0;
++        if (awake && min_rtt > 0 && fresh && t - last_data_activity < 1000000) {
++            const bool slow = rtt_avg > 2 * min_rtt + 3000;
++            slow_secs = slow ? slow_secs + 1 : 0;
 +            if (trial_end) {
 +                if (t >= trial_end) {
-+                    if (srtt < 0.8 * trial_srtt) {
-+                        snprintf(why, sizeof(why), "a faster keep-awake ping, the round trip fell from %.1f to %.1f ms", trial_srtt / 1000, srtt / 1000);
++                    const double got = trial_n ? trial_sum / trial_n : rtt_avg;
++                    if (got < 0.7 * trial_srtt) {
++                        snprintf(why, sizeof(why), "a faster keep-awake ping, the round trip fell from %.1f to %.1f ms", trial_srtt / 1000, got / 1000);
 +                        tuned(why);
 +                    } else {
 +                        awake_us = trial_prev;
@@ -542,8 +562,9 @@ index 9391819..8b7754a 100644
 +                    }
 +                    trial_end = 0;
 +                }
-+            } else if (slow && awake_us > AWAKE_MIN && t >= trial_next) {
-+                trial_prev = awake_us; trial_srtt = srtt;
++            } else if (slow_secs >= 3 && awake_us > AWAKE_MIN && t >= trial_next) {
++                // slow for three seconds running: this second's average is what the trial has to beat
++                trial_prev = awake_us; trial_srtt = rtt_avg; trial_sum = 0; trial_n = 0;
 +                awake_us = std::max(AWAKE_MIN, awake_us / 2);
 +                trial_end = t + 2000000;
 +                calm_secs = 0;
@@ -571,7 +592,7 @@ index 9391819..8b7754a 100644
          if (fec) {
              recent[h.seq].assign(body, body + h.len);
              while (recent.size() > 4 * FEC_MAX) recent.erase(recent.begin());
-@@ -449,6 +595,7 @@ struct scut {
+@@ -449,6 +607,7 @@ struct scut {
              ooo.erase(it);
              rcv_next++;
          }
@@ -579,7 +600,7 @@ index 9391819..8b7754a 100644
          if (fec && !fecs.empty()) { std::vector<uint32_t> ks; for (auto & kv : fecs) ks.push_back(kv.first); for (uint32_t k : ks) try_fec(k); }
      }
      void deliver(std::vector<uint8_t> && v) {
-@@ -508,6 +655,7 @@ struct scut {
+@@ -508,6 +667,7 @@ struct scut {
                      if (from.sin_addr.s_addr != peer.sin_addr.s_addr) continue;
                      if (!unseal(buf.data(), n)) continue; // 0006: checked before anything in it is used
                      n_recv++;
@@ -587,7 +608,7 @@ index 9391819..8b7754a 100644
                      last_heard = t;
                      const uint8_t * body = buf.data() + sizeof(hdr_t);
                      size_t bn = (size_t) n - sizeof(hdr_t);
-@@ -517,6 +665,7 @@ struct scut {
+@@ -517,6 +677,7 @@ struct scut {
                          case T_ACK:  on_ack(h, body, bn, t); break;
                          case T_PING: { hdr_t o = h; o.type = T_PONG; raw_send(&o, sizeof(o)); break; }
                          case T_PONG: { uint32_t s = (uint32_t) t - h.ts; if (s < 5000000) rtt_sample((double) s); break; }
@@ -595,7 +616,7 @@ index 9391819..8b7754a 100644
                          case T_CLOSE: dead = true; cv_rx.notify_all(); cv_tx.notify_all(); break;
                          default: break;
                      }
-@@ -524,8 +673,13 @@ struct scut {
+@@ -524,8 +685,13 @@ struct scut {
                  if (ack_due) send_ack();
              }
              pump(t);
@@ -610,7 +631,7 @@ index 9391819..8b7754a 100644
                  hdr_t h = {}; h.magic = PKT_MAGIC; h.type = T_PING; h.conn = conn; h.seq = ping_seq++; h.ts = (uint32_t) t;
                  raw_send(&h, sizeof(h));
                  last_ping = t;
-@@ -553,6 +707,7 @@ struct scut {
+@@ -553,6 +719,7 @@ struct scut {
      bool send(const void * data, size_t size) {
          const uint8_t * p = (const uint8_t *) data;
          std::unique_lock<std::mutex> lk(mu);
@@ -618,7 +639,7 @@ index 9391819..8b7754a 100644
          while (size > 0) {
              if (dead) return false;
              if (!have_cur) { cur.seq = snd_next++; cur.len = 0; cur.sent = false; cur.sacked = false; cur.tries = 0; have_cur = true; }
-@@ -570,13 +725,18 @@ struct scut {
+@@ -570,13 +737,18 @@ struct scut {
          std::unique_lock<std::mutex> lk(mu);
          if (have_cur && cur.len > 0 && !queue_cur(lk)) return false;
          pump(now_us()); // send now from this thread: no waiting for the I/O thread to wake up
@@ -638,7 +659,7 @@ index 9391819..8b7754a 100644
          while (size > 0) {
              cv_rx.wait(lk, [&] { return dead || rx_bytes > 0; });
              if (rx_bytes == 0) return false;
-@@ -590,6 +750,25 @@ struct scut {
+@@ -590,6 +762,25 @@ struct scut {
          }
          return true;
      }
@@ -664,7 +685,7 @@ index 9391819..8b7754a 100644
  };
  
  void scut_ptr_deleter::operator()(scut * b) const { delete b; }
-@@ -640,13 +819,16 @@ static int scut_key_for(scut_fd_t tcp_fd, bool server, uint8_t key[32]) {
+@@ -640,13 +831,16 @@ static int scut_key_for(scut_fd_t tcp_fd, bool server, uint8_t key[32]) {
  
  scut_ptr scut_prepare(scut_fd_t tcp_fd, bool server, uint8_t * caps, size_t caps_size) {
      if (caps_size < sizeof(offer_t)) return nullptr;
@@ -681,7 +702,7 @@ index 9391819..8b7754a 100644
          // a key that was meant to be there but can't be read: never fall back to an unsealed SCUT link
          LOG_WARN("[scut] the SCUT key isn't 64 hex digits, so SCUT stays off (the usual link is used)\n");
          return nullptr;
-@@ -691,8 +873,10 @@ scut_ptr scut_prepare(scut_fd_t tcp_fd, bool server, uint8_t * caps, size_t caps
+@@ -691,8 +885,10 @@ scut_ptr scut_prepare(scut_fd_t tcp_fd, bool server, uint8_t * caps, size_t caps
      if (server) { uint32_t pp = env_u32("GGML_RPC_SCUT_PUBLIC_PORT", 0); if (pp > 0 && pp < 65536) o.udp_port = htons((uint16_t) pp); }
      o.mbps = env_u32("GGML_RPC_SCUT_MBPS", 300);
      if (env_u32("GGML_RPC_SCUT_FEC", 1) != 0) o.flags |= OF_FEC;
@@ -692,7 +713,7 @@ index 9391819..8b7754a 100644
      return b;
  }
  
-@@ -727,7 +911,9 @@ static bool read_byte_with_pings(scut * b, uint8_t & out, int timeout_ms) {
+@@ -727,7 +923,9 @@ static bool read_byte_with_pings(scut * b, uint8_t & out, int timeout_ms) {
  }
  
  bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size) {
@@ -702,7 +723,7 @@ index 9391819..8b7754a 100644
      offer_t ro; memcpy(&ro, remote_caps, sizeof(ro));
      sockaddr_in tpeer = {}; socklen_compat_t pl = sizeof(tpeer);
      if (getpeername(b->tcp, (sockaddr *) &tpeer, &pl) != 0) return false;
-@@ -740,6 +926,7 @@ bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size) {
+@@ -740,6 +938,7 @@ bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size) {
      // for sealed packets never gets plain ones. Both sides see both offers, so both decide the same without a word.
      bool theirs_sealed = ro.version == VERSION_SEALED && (ro.flags & OF_SEAL);
      if (theirs_sealed != b->have_key) {
@@ -710,7 +731,7 @@ index 9391819..8b7754a 100644
          LOG_WARN("[scut] %s, so SCUT stays off and the usual link is used\n", b->have_key ? "the other side doesn't seal its packets (no key there, or an older Brain Engine)" : "the other side seals its packets and there's no key here");
          return false;
      }
-@@ -762,6 +949,7 @@ bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size) {
+@@ -762,6 +961,7 @@ bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size) {
        if (it != g_pace.end()) { b->rate = std::min<double>(b->cap_bps, std::max(2e6, it->second)); for (double & v : b->bw_ring) v = it->second * 0.8; } }
      b->awake = env_u32("GGML_RPC_SCUT_AWAKE", 1) != 0;
      b->fec = (ro.flags & OF_FEC) && env_u32("GGML_RPC_SCUT_FEC", 1) != 0;
@@ -718,7 +739,7 @@ index 9391819..8b7754a 100644
      b->test_drop = env_u32("GGML_RPC_SCUT_TEST_DROP", 0);
      b->rng.seed((uint32_t) b->my_nonce);
  
-@@ -792,6 +980,7 @@ bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size) {
+@@ -792,6 +992,7 @@ bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size) {
          if (!read_byte_with_pings(b, yes, 3000)) return false;
      }
      if (!yes) {
@@ -726,7 +747,7 @@ index 9391819..8b7754a 100644
          LOG_WARN("[scut] the UDP path didn't answer (a firewall?), staying on TCP\n");
          return false;
      }
-@@ -800,10 +989,14 @@ bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size) {
+@@ -800,10 +1001,14 @@ bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size) {
  #endif
      b->last_heard = b->last_data_activity = now_us();
      b->io = std::thread([b] { b->loop(); });

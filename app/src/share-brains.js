@@ -12,6 +12,7 @@
 // (a quick chat beside a big job counts).
 // Addresses must be Tailscale ones (100.64.0.0/10 or a *.ts.net name). Passcodes live in config.json only, like the
 // phone door's, and are never sent back to the page.
+import { cleanWifiWas } from './wifi-tune.js';
 import fs from 'node:fs';
 import { readJsonFile } from './util.js';
 import { isTailscaleIp } from './phone-access.js';
@@ -72,6 +73,7 @@ export function shareView(cfg) {
     scut: s.scut === true, // SCUT, the fast link for Bigger Bobs (src/share-card.js), off unless switched on
     scutMbps: SCUT_MBPS.includes(Number(s.scutMbps)) ? Number(s.scutMbps) : 100,
     scutSeal: s.scutSeal !== false, // Seal SCUT packets (src/scut-seal.js): on unless switched off
+    wifiWas: Boolean(cleanWifiWas(s.wifiWas)), // Calibrate Wi-Fi changed the card's band setting (src/wifi-tune.js): Put it back shows
     linkDebug: s.linkDebug === true, // Watch the link live (src/link-log.js): the link log every 2 seconds instead of 10
     mode: s.lendCard === true || ['toobig', 'big'].includes(s.spread) ? 'bigger' : 'more',
     doorOpen: doorOpen(cfg),
@@ -85,7 +87,7 @@ export const doorOpen = (cfg) => Boolean(cfg.remote?.enabled && String(cfg.remot
 export function cleanSharePatch(cfg, b) {
   const cur = cfg.share || {};
   const cb = cur.borrow || {};
-  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendChecks: cur.lendChecks === true, homeNet: cur.homeNet !== false, scut: cur.scut === true, scutMbps: SCUT_MBPS.includes(Number(cur.scutMbps)) ? Number(cur.scutMbps) : 100, scutSeal: cur.scutSeal !== false, linkDebug: cur.linkDebug === true, spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
+  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendChecks: cur.lendChecks === true, homeNet: cur.homeNet !== false, scut: cur.scut === true, scutMbps: SCUT_MBPS.includes(Number(cur.scutMbps)) ? Number(cur.scutMbps) : 100, scutSeal: cur.scutSeal !== false, linkDebug: cur.linkDebug === true, ...(cleanWifiWas(cur.wifiWas) ? { wifiWas: cleanWifiWas(cur.wifiWas) } : {}), spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
   if ('lend' in b) next.lend = b.lend === true;
   if ('takeJobs' in b) next.takeJobs = b.takeJobs === true; // 1.5.72, off unless switched on
   if ('passAlong' in b) next.passAlong = b.passAlong === true; // 1.5.123, off unless switched on
