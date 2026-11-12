@@ -49,7 +49,8 @@ export function groupQuants(files = []) {
   const choices = [...groups.entries()].map(([key, parts]) => {
     const bytes = parts.reduce((t, f) => t + (Number(f.bytes) || 0), 0);
     const pinned = parts.every((f) => Number.isInteger(f.bytes) && f.bytes > 0 && SHA.test(f.sha256 || '') && (f.rev === undefined || COMMIT.test(f.rev)));
-    const why = parts.length > 1 ? `In ${parts.length} parts. I can't join those yet.` : !pinned ? 'The site gave no checksum for it, so I can\'t check the download.' : '';
+    const helper = /(^|[-_.])(eagle\d*|draft|mtp)([-_.]|$)/i.test(key.split('/').pop());
+    const why = helper ? 'A helper file that speeds up another brain, not a brain to chat with.' : parts.length > 1 ? `In ${parts.length} parts. I can't join those yet.` : !pinned ? 'The site gave no checksum for it, so I can\'t check the download.' : '';
     return { key, quant: quantOf({ files: [{ name: key }] }), bytes, sizeGB: r1(bytes / 1e9), parts: parts.length, can: !why, why, files: parts.map((f) => ({ name: f.name, bytes: f.bytes, sha256: f.sha256, ...(f.rev ? { rev: f.rev } : {}) })) };
   }).sort((a, b) => a.bytes - b.bytes).slice(0, 80);
   const readers = ggufs.filter((f) => isMm(f) && Number.isInteger(f.bytes) && SHA.test(f.sha256 || '') && (f.rev === undefined || COMMIT.test(f.rev))).sort((a, b) => a.bytes - b.bytes);

@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 // 1.5.205 Calibrate (the Brains page): time one brain on this replicant matrix a few ways and say which was fastest.
 // Each try starts the brain in a trial engine of its own, asks one fixed question, reads the words a second, and
 // stops it again: first as Auto does it (the engine fits the brain to the card), then by hand with more and more
@@ -50,6 +51,11 @@ export function calLock(lab, model, { experts = true } = {}) {
   return '';
 }
 
+// Every brain that has a calibration result on this replicant matrix (its id, from the newest record of each file).
+export function calibrated(cfg) {
+  let names = []; try { names = fs.readdirSync(calibrateDir(cfg)); } catch { return []; }
+  return names.filter((n) => n.endsWith('.json')).map((n) => readJson(path.join(calibrateDir(cfg), n), [])[0]?.model).filter((m) => typeof m === 'string' && m).slice(0, 64);
+}
 export const calResult = (cfg, model) => readJson(path.join(calibrateDir(cfg), `${slugOf(model)}.json`), [])[0] || null;
 
 // Start one job that calibrates each brain in `brains` ([{ model, name, experts }]) in turn. One brain or all of them.

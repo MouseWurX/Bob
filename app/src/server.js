@@ -40,7 +40,7 @@ import { capabilities } from './capabilities.js';
 import { cloudStatus } from './cloud.js';
 import { rentRoute } from './rental-routes.js'; // 1.5.127 rented brains
 import { Lab, labRoute, labOn, labRoom } from './lab.js'; // 1.5.141 Computer Science Lab
-import { startCalibrate, useCalibrated, calResult } from './brain-calibrate.js'; // 1.5.205
+import { startCalibrate, useCalibrated, calResult, calibrated } from './brain-calibrate.js'; // 1.5.205
 import { splitRemoved } from './catalog-removed.js'; // 1.5.205
 import { say, KOKORO_VOICES, DEFAULT_KOKORO_VOICE, stopVoices } from './tts.js';
 process.on('exit', () => stopVoices()); // never leave a voice holding the graphics card
@@ -1525,7 +1525,8 @@ function inUseIds() { return new Set([...Object.values(cfg.models || {}), ...Obj
 // 1.5.205 For the Brains page's Set up: each brain in use, how many layers its file has (null when the built-in
 // engine doesn't run it), and what was set by hand. Reading it changes nothing.
 function brainPlaceView() {
-  const models = new Set([...Object.values(cfg.models || {}), ...Object.values(sessionBrains(cfg) || {})].filter((m) => typeof m === 'string' && m));
+  // every brain in a slot, plus any brain with a setting of its own or a calibration result (1.5.207)
+  const models = new Set([...Object.values(cfg.models || {}), ...Object.values(sessionBrains(cfg) || {}), ...Object.keys(cfg.brainPlace || {}), ...calibrated(cfg)].filter((m) => typeof m === 'string' && m));
   const brains = {};
   for (const model of models) {
     const info = cfg.engine === 'llamacpp' ? brain.engine?.placeInfo?.(model) || null : null;

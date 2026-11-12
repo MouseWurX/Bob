@@ -9,7 +9,7 @@ import { splitRemoved } from '../src/catalog-removed.js';
 import { addPageHtml, pagePickHtml, catalogueHtml } from '../public/catalogue.js';
 import { pickFor, sourceOf } from '../public/fit.js';
 import { hostAllowed, modelHostAllowed } from '../src/models.js';
-import { quantOf } from '../public/place.js';
+import { quantOf, placeFor } from '../public/place.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok ? '' : ' ' + extra}`); };
@@ -93,6 +93,17 @@ const fake = (status, j) => async (u, o) => { asked.push([u, o]); return { statu
   check('the site being unreachable is said plainly', /couldn't be reached/.test((await readPage('o/n', { fetchFn: async () => { throw new Error('x'); } })).error));
 
   // The page
+  { // found on a real page: helper files for speed sit beside the brain, and are not brains
+    const g = groupQuants([{ name: 'eagle3-gpt-oss-20b-Q8_0.gguf', bytes: 9e8, sha256: SHA }, { name: 'gpt-oss-20b-MXFP4.gguf', bytes: 12e9, sha256: SHA }, { name: 'thing-draft-Q4_K_M.gguf', bytes: 5e8, sha256: SHA }]);
+    check('a helper file (a draft or eagle model) stays listed but locked, and says why', g.choices.filter((c) => !c.can).length === 2 && g.choices.find((c) => /MXFP4/.test(c.key)).can && /helper file/.test(g.choices[0].why));
+  }
+  { // the big one is a real download now, pinned, not yet recommended, and Riker is found under either file name
+    const cat = JSON.parse(read('catalog.json'));
+    const big = cat.models.find((m) => m.id === 'gpt-oss-120b-mxfp4'), f = big?.files?.[0] || {};
+    check('GPT-OSS 120B is a pinned download, marked not tried', Boolean(big) && big.trial === true && !big.pick && /resolve\/[0-9a-f]{40}\/gpt-oss-120b-MXFP4\.gguf$/.test(f.url) && f.bytes === 63387346208 && /^[0-9a-f]{64}$/.test(f.sha256));
+    check('on a 16 GB card with 32 GB of memory it runs from card, memory and storage', placeFor(big, { vramGB: 16, ramGB: 32 }).where === 'storage' && pickFor('deep', cat.models.map((m) => ({ ...m, status: { state: 'missing' } })), { vramGB: 16, ramGB: 32, freeGB: 500 })?.id !== big.id);
+    check('Riker is found under the file name his own page uses too', ['riker-28b', 'riker-28b-q3'].every((id) => /^28Bob-Riker-Q[34]_K_M\.gguf$/.test(cat.models.find((m) => m.id === id).files[0].aka?.[0] || '')));
+  }
   const view = { repo: page.repo, commit: page.commit, license: page.license, reader: { name: 'mmproj-F16.gguf', sizeGB: 0.8 }, choices: page.choices.map((c) => ({ key: c.key, quant: c.quant, sizeGB: c.sizeGB, parts: c.parts, can: c.can, why: c.why, added: c.quant === 'Q6_K' })) };
   const pop = pagePickHtml(view, { vramGB: 16, ramGB: 32 });
   check('the pop-up lists every choice with its size and where it would run', (pop.match(/data-pickkey=/g) || []).length === 4 && /<strong>Q4_K_M<\/strong>/.test(pop) && /5\.6 GB/.test(pop) && /On your card/.test(pop));
