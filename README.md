@@ -127,7 +127,10 @@ Most AI apps are for talking to a model or for building one. Bob does both. **ðŸ
 
 - **Keep it simple or Professional.** Simple fills in Bob's defaults. Professional shows every control and its proper name. **Show the recipe** prints every command the Lab runs.
 - **Brain Engine** is Bob's own engine. It switches a brain's experts on and off while it's loaded, so the Lab can try a cut before writing a file.
-- **fNRI** (functional Neural Response Imager) shows a brain as a 3D block: one floor per layer, every expert coloured by the skill that used it most.
+- **fNRI** (functional Neural Response Imager) shows a brain as a 3D block: one floor per layer, every expert coloured by the skill that used it most. Its **weight map** colours the block by the brain's own weights instead: how strong each expert is, or how much it differs from another brain.
+
+  ![fNRI's weight map of Riker, and the same block coloured by how much each expert differs from stock Qwen3.6-35B-A3B](app/docs/screens/fnri-weight-maps-riker.jpg)  
+  *Riker's weights. Top: how strong each expert is for its floor (purple weaker, yellow stronger). Bottom: how much each expert changed from stock Qwen3.6-35B-A3B. The glow is the experts answering a question.*
 
 <details>
 <summary><b>More pictures:</b> Teach, Test, Forge and My Lab</summary>
