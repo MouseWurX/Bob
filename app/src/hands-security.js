@@ -128,7 +128,7 @@ export function planStrip(cfg, args, env = process.env) {
     try {
       row.from = canRead(cfg, p);
       const ext = extOf(row.from);
-      if (!CLEANABLE.includes(ext) && !(MEDIA.includes(ext) && ffmpeg)) throw new Error(MEDIA.includes(ext) ? 'sound and video need FFmpeg (Settings, Show advanced settings, Engines)' : ext === 'pdf' ? 'I can\'t clean PDFs yet; re-save it from the app that made it with its "remove personal information" option' : `I can clean pictures (jpg, png, webp), Word, Excel and PowerPoint files${ffmpeg ? ', and sound and video' : ''}, not .${ext}`);
+      if (!CLEANABLE.includes(ext) && !(MEDIA.includes(ext) && ffmpeg)) throw new Error(MEDIA.includes(ext) ? 'sound and video need FFmpeg (Settings, Engines)' : ext === 'pdf' ? 'I can\'t clean PDFs yet; re-save it from the app that made it with its "remove personal information" option' : `I can clean pictures (jpg, png, webp), Word, Excel and PowerPoint files${ffmpeg ? ', and sound and video' : ''}, not .${ext}`);
       const { name } = path.parse(row.from);
       const want = path.join(args.folder ? path.resolve(String(args.folder)) : path.dirname(row.from), `${name}-clean.${ext}`);
       let to;
@@ -209,7 +209,7 @@ export function securityTools(brain, { env = process.env, fetchImpl, resolver, p
     schema: LINUX ? fn('defender_scan', 'Scan with ClamAV, if it is installed (Linux has no Defender). quick = the Downloads and Desktop folders; file = one file or folder (like a download). ClamAV only reports what it finds; it moves nothing. full and update need administrator rights on Linux, so they are left to the user. {{USER}} sees a card first.', {
       kind: str('quick or file', { enum: ['quick', 'file'] }),
       path: str('file only: full path of the file or folder to scan.')
-    }, ['kind']) : fn('defender_scan', 'Start a Microsoft Defender scan or update its virus definitions. quick = a few minutes, the usual places; full = the whole PC, an hour or more, runs in the background; file = one file or folder (like a download); update = fetch the newest definitions. Defender deals with anything it finds as it is set to. {{USER}} sees a card first.', {
+    }, ['kind']) : fn('defender_scan', 'Start a Microsoft Defender scan or update its virus definitions. quick = the usual places, minutes; full = the whole PC, an hour or more, in the background; file = one file or folder; update = newest definitions. Defender handles finds as it is set to.', {
       kind: str('quick, full, file or update', { enum: ['quick', 'full', 'file', 'update'] }),
       path: str('file only: full path of the file or folder to scan.')
     }, ['kind']),
@@ -239,7 +239,7 @@ export function securityTools(brain, { env = process.env, fetchImpl, resolver, p
   };
 
   t.inspect_file = {
-    schema: fn('inspect_file', 'Check whether a download, script, email (.eml), Office file, PDF, picture or shortcut looks dangerous, WITHOUT opening or running it: what it really is, tricks in its name, where it came from, its signature, risky code, phishing signs, and hidden details (GPS, author) someone could read if it is shared. Or pass text: a pasted email (with headers), command or script.', {
+    schema: fn('inspect_file', 'Check if a file (download, script, .eml, Office, PDF, picture, shortcut) looks dangerous, WITHOUT opening it: real type, name tricks, origin, signature, risky code, phishing, hidden details. Or check pasted text: an email with headers, a command or a script.', {
       path: str('Full path of the file.'),
       text: str('Or: pasted text to check (an email with its headers, a command, a script, a link).')
     }, []),
@@ -254,7 +254,7 @@ export function securityTools(brain, { env = process.env, fetchImpl, resolver, p
   };
 
   t.strip_metadata = {
-    schema: fn('strip_metadata', 'Make clean copies of photos (jpg, png, webp), Word, Excel and PowerPoint files (and sound or video, if FFmpeg is set up) without their hidden details: GPS location, camera, author, company, AI prompt. The originals stay as they are; copies are named name-clean. {{USER}} sees a card first.', {
+    schema: fn('strip_metadata', 'Make clean copies of photos and Office files (and sound or video, with FFmpeg) without hidden details: GPS, camera, author, company, AI prompt. Copies end in -clean.', {
       paths: { type: 'array', items: { type: 'string' }, description: 'Full paths of the files.' },
       folder: str('Optional: the folder for the clean copies.')
     }, ['paths']),
@@ -293,10 +293,10 @@ export function securityTools(brain, { env = process.env, fetchImpl, resolver, p
   };
 
   t.osint_lookup = {
-    schema: fn('osint_lookup', 'Research from public records, to tell whether something is genuine: site = a website\'s age, registrar, certificate history, email settings, look-alike names and breaches; link = where a link really goes (follow: true also follows short links hop by hop without loading the page); sender = the domain behind an email address; ip = which network owns an internet address. Never for researching private people.', {
+    schema: fn('osint_lookup', 'Check from public records whether something is genuine. site = age, owner, certificates, look-alikes, breaches; link = where it really goes; sender = the domain behind an email address; ip = who owns it. Never for researching private people.', {
       kind: str('site, link, sender or ip', { enum: ['site', 'link', 'sender', 'ip'] }),
       value: str('The website, link, email address or IP address.'),
-      follow: { type: 'boolean', description: 'link only: also follow its redirects (this contacts the link\'s site).' }
+      follow: { type: 'boolean', description: 'link only: follow its redirects (contacts the link\'s site).' }
     }, ['kind', 'value']),
     async run({ kind, value, follow }, ctx) {
       off(cfg);
@@ -333,13 +333,13 @@ export function securityTools(brain, { env = process.env, fetchImpl, resolver, p
   };
 
   t.check_exposure = {
-    schema: fn('check_exposure', '{{USER}}\'s own exposure. site = has a website (one they have an account with) been breached, and what leaked; email = how to check their own email address for breaches; password = how to check a password safely (never ask for a password in chat); footprint = how to see what is public about themselves.', {
+    schema: fn('check_exposure', 'Check {{USER}}\'s own exposure. site = was a site they use breached, and what leaked; email = how to check their email for breaches; password = how to check one safely (never ask for it in chat); footprint = how to see what is public about them.', {
       kind: str('site, email, password or footprint', { enum: ['site', 'email', 'password', 'footprint'] }),
       value: str('site: the website, like adobe.com.')
     }, ['kind']),
     async run({ kind, value }, ctx) {
       off(cfg);
-      if (kind === 'password') return 'Never type a password into the chat (it would be saved in the chat history). Use the "Check a password safely" box under the Security and privacy Hand in Settings, Show advanced settings, Hands: it scrambles the password on this replicant matrix and only sends the first 5 characters of the scramble to Have I Been Pwned, so the password itself never leaves.';
+      if (kind === 'password') return 'Never type a password into the chat (it would be saved in the chat history). Use the "Check a password safely" box under the Security and privacy Hand in Settings, Hands: it scrambles the password on this replicant matrix and only sends the first 5 characters of the scramble to Have I Been Pwned, so the password itself never leaves.';
       if (kind === 'email') return 'Your email: go to haveibeenpwned.com and type it in (free on their site), and switch on their "Notify me" alerts. Mozilla Monitor does the same with removal help. I don\'t send your email address anywhere myself. For every breach it lists, change that site\'s password and any place you reused it, and turn on two-step sign-in. Want me to check a particular site\'s breaches? Give me its name.';
       if (kind === 'footprint') return tipsFor('footprint');
       needWeb(cfg);
@@ -351,7 +351,7 @@ export function securityTools(brain, { env = process.env, fetchImpl, resolver, p
   };
 
   t.security_tips = {
-    schema: fn('security_tips', 'Your notes on staying safe and researching well. Topics: phishing, passwords, 2fa, updates, backups, wifi, router, sharing, scams, defender, hacked, ransomware, accounts, devices, privacy, opsec, search (search operators), osint (checking what\'s real), footprint. Read the topic before advising.', {
+    schema: fn('security_tips', 'Read your notes on a safety topic before advising: phishing, passwords, 2fa, updates, backups, wifi, router, sharing, scams, defender, hacked, ransomware, accounts, devices, privacy, opsec, search, osint, footprint.', {
       topic: str('A topic from the list, or a few words.')
     }),
     async run({ topic }) { off(cfg); return tipsFor(topic); },

@@ -4,6 +4,446 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.209
+
+A quick one for the firewall.
+
+### Fixed
+
+- **Bring up to date shows when the firewall rule has no UDP half.** In 1.5.208 my check read every rule Windows gave back, so Windows' own rule for my program (UDP, any port) made my TCP-only rule look current, and SCUT stayed on TCP. Now only my own rule counts: it needs UDP on the card port (50052) itself. On a computer that still has the old rule, Settings shows **Bring up to date**; press it and OK Windows' prompt.
+- **"A song as an MP3" says the MP3 too, every time.** The extra copy I keep in the type you named is now always named in what I'm told, even when the save starts a moment late, so I can tell you about it.
+
+**Where it works:** the firewall fix is Windows only; Mac and Linux are unchanged (macOS asks by itself; on Linux the line to run already has the UDP part). The MP3 fix is everywhere.
+
+## 1.5.208
+
+A steadier one: a hundred reliability fixes that are always on and add nothing to what my brain reads at the start of a job, answers to your messages between the steps of a long job, the cube following my brain's whole life, a Brains page inside Settings, more memory and document switches, and fourteen small tools. Every new switch is off until you turn it on, except Answer messages between steps.
+
+### New
+
+- **Answer messages between steps** (Settings, Brains; on to start with). A message you send while I work on a long job doesn't wait for the whole job. When the step I'm on is done I look at it: a question gets a quick answer and the job carries on, "also …" joins the job, and "stop" stops it. On the brain that's already loaded, so nothing reloads. A long step gets a one-line "seen it" at once.
+- **🧰 More tools** (Settings, How Bob works). Fourteen small tools that each do one job with code instead of guesses: an exact calculator and unit changes, Python in the sandbox, passwords made by your computer's own random numbers (shown once, never kept), repeating reminders and reminders on your phone, your email read-only, calendar links, watching a page for changes, web services with a key, CSV and database questions, charts, an offline spelling check, meeting notes from a recording, and comparing two files. Each one is off until you tick it.
+- **Memory and documents** (all off until you turn them on). Note where each memory came from, memories that run out after a day, a week or a date, and project memories that stay with their project. Keep my documents fresh as you save them, show the page and line a find came from, search your notes apps too (Obsidian vaults and exported notebooks), and a Sunday digest of the week in one short note.
+- **Brains page in Settings.** Settings, Brains opens on the Brains page, in Simple and Advanced. The plain list has the same tools: setups, Calibrate all, the place bar, Calibrate and Set up for each job. Pressing my picture opens a small menu: what I'm doing, the brain loaded, and doors to Brains, Style and Get models. Add a model reads ModelScope pages too (each file pinned to its commit there), and GPT-OSS 120B is in the catalogue as a download.
+- **The cube follows my brain's whole life.** It fills while a brain loads, sparks now and then while it waits, thinks while I answer, and drains when the brain is unloaded. The VACANCY sign only shows when no brain is loaded at all.
+
+### Changed
+
+- **Steadier loop, always on.** Each job carries a budget of steps and calls, a job that goes round in circles or keeps failing ends with a plain note instead of running on, and every turn has a time ceiling (the job time limit's minutes; card waits and quick answers between steps don't count).
+- **Steadier tools, always on.** Each tool's answer goes back to the call that asked for it, every tool has its own time limit, huge results keep their start, their end and the lines that match the ask or look like a problem (the whole result is saved for 3 days so I can read the rest), an empty search says so plainly, overwrite and Undo cards show the real change, a restarted job never does its last finished step twice, and a connected app that forgot the connection reconnects (one that fails three times in a row waits 3 minutes).
+- **When something fails** (always on): a brain that drops out mid-answer no longer shows its words twice; retries wait a little longer each time, with a bit of randomness, and cover "busy" and "out of memory" too; an OK card nobody answered is a time-out, not a no, and the job waits in Tasks; an action is only tried again after checking it didn't half-happen; tool errors say what to try next; a tool that fails three times in a row in a job is set aside, and I offer to fix it after; a failing brain, Bob-Net Bob or rented brain hands the job on once; nothing stays stuck on Working after an uncaught error; side jobs never break a reply; the Health page shows tools failing today; and the logbook keeps each error's first cause.
+- **My engine looks after itself.** It starts again by itself after a crash (three in ten minutes and I stop and say why), tries a smaller chat memory once when it runs short, goes back to the last settings that worked, picks another port when one is taken, checks a brain file's size and checksum before loading, and reloads when it slows right down. One line in the chat when it does something, nothing when all is well.
+- **Honest reporting.** When I finish, my app checks what I said against what really happened. Numbers I worked out are worked out again, numbers are compared with the sandbox's own, and a correction replaces my first try instead of sitting above it. Each brain gets an honesty score on the Brains page.
+- **Engine names say both numbers.** From the next Brain Engine build, its name says both numbers: Brain Engine 5b12282 is build 5 on llama.cpp b12282.
+- **Time zone in Settings.** Settings, This replicant matrix shows the time zone I use and the time it is there now, read-only, so a wrong zone shows at once. My own list of my settings names it too.
+
+### Fixed
+
+- **Saves are whole or not at all.** Every save (files I write, the notice board, notes, memory, reminders, settings, chats) goes to a temp file, is flushed to the disk, then takes the real name in one step. A crash mid-save leaves the old file as it was. If Windows holds a file for a moment, I try again.
+- **One writer at a time.** Two copies of me on the same folder take turns saving settings, reminders, notes and the notice board.
+- **Bad saved files are kept, not lost.** A settings, queue or reminders file that won't read is kept beside its old name (`.broken-` and the time) and I start a fresh one. Before, an unreadable settings.json was read as empty and saved over at the next change.
+- **Settings are checked at start.** A saved setting of the wrong kind goes back to its default, and the logbook says which.
+- **Files from a newer Bob are left alone.** Going back to an older version, I read but never write a file a newer one saved in a layout I don't know.
+- **Tasks saves less often:** a step of the running job is saved within a second instead of rewriting the whole list every time. A step that changes files is still saved at once.
+- **Carry on after a restart** keeps each step's whole input and result, not just its name.
+- **A job stays with its chat.** It keeps its chat, folder and person. With Profiles on, a job one person sent waits until they open me again, instead of answering in someone else's chats.
+- **Undo changes** in the … menu on your message puts back every file, note and memory line I changed for that message (for a week). A file changed since is left as it is.
+- **Memory changes are logged** in memory-changes.jsonl beside the memory file, with the chat and message that made each one.
+- **A check at start:** old temp files cleared, then folders, disk space, the engine and saved files checked. One line in the logbook; a note in the chat only when something is wrong.
+- **When I get stuck, I notice.** A reply that sends no first word for far longer than the chat needs, or stops partway, is asked again, and only that brain reloads. An answer that hits the length limit says so, and a tool call cut off that way isn't run. Stop checks a few seconds later that commands and the engine really ended. A load that takes twice its usual time is tried once more. Downloads, updates, Bob-Net and Telegram calls all have deadlines. If I stop answering the window for a minute I say so when I'm back, with a Restart button. OK cards don't count time the computer was asleep.
+- **Long PDFs keep their first page.** A PDF changed after it was made (arXiv stamps its id on page 1) kept its new first page at the end of the file, so I read the title and abstract last or not at all. I follow the PDF's own page order now. Citations, footnote marks and maths no longer come out one piece a line ("[13]", not "[", "13", "]").
+- **Notepad's old tabs are left alone.** Windows 11 Notepad opens again on the tabs left open last time, unsaved notes and all, and I typed into one. Now I open a new blank tab when that happens, and I never type into a page that was already open.
+- **"Don't save the file" is honoured.** When your message says not to save, I don't save a file or offer one, and a long text that's too slow to type is offered in parts instead of as a file.
+- **The firewall rule lets SCUT through.** Bob's rule opened only TCP on his port and the card port, and SCUT also needs UDP on the card port, so SCUT fell back to TCP. The rule now always has the UDP half (same addresses: Tailscale, and the home network when that's on), and a rule made before shows **Bring up to date**.
+- **Bring in chats** works again (a missing import stopped it).
+
+**Where it works:** Windows, Mac, Linux and Bob for Android, unless a line says otherwise. The Notepad fix is Windows only. Email, calendar and page watch need the internet; everything else in More tools works offline. Help covers each new part.
+
+## 1.5.207
+
+A big one: eleven more games and a walking Journey, a steadier loop with better tools, a Jobs panel, engine and speed extras, health and history, everyday helpers, more Lab, Adventure table rules, and voice and phone extras. Every new switch is off until you turn it on.
+
+### New
+
+- **🧭 Journey.** Adventure played like an old console game, from the start card's Your character row. Walk the Brindle Vale on a tile map with the arrow keys, WASD or the phone pad. Open chests, talk to the village, and fight turn-based battles. Every look now walks from four sides. Beat the three keepers to bring the lantern stones home. No brain needed, and it saves itself.
+- **Eleven more games on 🧩 Games.** Four in a row, Hidden fleet, Liar's dice, Trivia night (your Bob-Net Bobs can join), Chess at the strength you pick, Sudoku with hints that explain the step, a daily Mini crossword, Letter grid against the clock, Noughts and crosses, Code breaker and Riddles. Easy, Normal and Hard; 📅 Today's puzzle with a streak; two players on one screen; 📜 Keep this story for a finished Story dice story. The app checks every move and keeps every secret. **Keep an unfinished game** and **Kid mode** are off until you tick them.
+- **"How I got here"** under each answer lists the tools I used, what they did and how long they took. **Save as a test** keeps a reply for the Lab, and **Try again, thinking harder** appears when I give up on repeats.
+- **New tools:** `ask_user` (one question with a few choices on a card), `git_look` (status, changes and history, read-only). `fetch_page` reads PDF, Word, Excel and PowerPoint links and drops menus and cookie banners. `edit_file` makes several changes on one card. `search_files` and `list_folder` do more.
+- **Settings, 🔁 Jobs** (eleven switches): steer me mid-job, Stop after this step, a time limit per job, a 🧾 receipt with Open and Undo, run the tests after code edits, one question before a vague big job, remember a no for the whole chat, reuse look-ups for an hour, sources under web answers, say how sure I am, and clickable file:line links.
+- **Engine and speed extras:** guess ahead by copying from the chat, load the next brain early, a speed history chart, a speed test when the graphics card changes, laptop mode on battery, plain lines on what an engine update changes, and a chat memory type for each brain (Standard, Sharper or Smaller).
+- **🩺 Health and history** (Settings, This replicant matrix): catch crashes, a safe start after two crashes, the last 20 Settings changes with Put it back, a weekly count, and a Health page with fix buttons. **🌙 Quiet hours** and **a shortcut from anywhere** (Ctrl+Shift+Space). **💬 Chat extras:** Try from here, 📌 pins, 👤 guest chats that are never saved, and each chat keeping its place in the engine.
+- **🗓 Everyday helpers:** a today card, a ⏱ Focus timer, a locked spending sheet from receipt photos, what's new after an update, a dot on the tray icon, and profiles so each person on a shared computer has their own locked chats and memory. Plus **text size** and an **easier-to-read font** (Settings, Look & feel), on the phone too.
+- **Adventure table rules:** a map that grows, portraits, coins and shops, catch your breath, secret notes, a rules card, Easy/Normal/Hard, riddle rooms, sending and bringing in a campaign file, and badges.
+- **More Lab:** a blind taste test with an Elo ranking, Save to Lab from the chat, before and after Teach it, run again with one change, French and Spanish packs, a job-speed score, a safety check after Take out the refusal habit, recipe files to share, word meanings, a phone note when a Lab job ends, a check of the judge, and clean repeats.
+- **Voice and phone:** talk over me while I read aloud, read documents aloud, a voice for each Bob in a Bob-Net party, carry a chat on to another Bob, and your Bobs at a glance on the phone. On Android: Share to Bob, a home-screen widget, hands-free, "Hey Bob" while the app is showing, and low-data mode.
+
+### Changed
+
+- **Steadier loop.** The instructions stay the same between turns, so the chat stays cached and replies start sooner. History grows with the brain's memory, steps follow Effort, long tool results keep the lines that match the question, and a reply that goes quiet for 90 seconds is retried.
+- **Outside text is marked.** After I read a web page, file or search result, nothing skips its approval card for the rest of that job, and remembering asks first.
+- **Memory clashes are flagged** when something new disagrees with an old line.
+- **Web look-ups** time out after 20 seconds and fall back to a second search engine.
+
+### Fixed
+
+- **My clock on Windows.** When Windows names a time zone my clock library doesn't know yet, I now use the offset Windows itself reports, so quiet hours, reminders and logbook times are local again. I never fall back to UTC on a computer whose clock isn't UTC.
+- **Less to read before a job starts.** With every switch on, what my brain reads first is about 3,000 characters smaller. I cut lines that repeated what each tool already says. The size test now checks Windows, Mac and Linux.
+- **PDF words.** A word that a PDF sets in pieces stays one word ("Dummy PDF file", not "Dumm y PDF fi le").
+- The Health page calls my own engine Brain Engine. After you press Switch it on, the logbook doesn't list your question twice. A link in your message is read once, not twice.
+- **Said but not done.** If I say a switch is on while it's still off, or that I sent or looked something up when nothing did, a short note under my answer puts it right. The app checks this after I answer, so it adds nothing to what my brain reads.
+- **Better tool calling** (Settings, How Bob works) is the switch for 1.5.206's tool-call checks. It's on unless you turn it off.
+- **The Mac build** is back: "Folders you point me to" refused every folder in the Mac's temporary space as a system folder.
+- **The Health page** couldn't open (it read the list of loaded brains wrong).
+- **Quiet hours** could follow UTC instead of your computer's clock.
+- **A guest chat's words** could land in the logbook.
+- **Sharper and Smaller chat memory** did nothing with the engine flags Bob ships with.
+- **Turbo offered a guesser a brain doesn't really have**, and Brain Engine 4 stopped. I check the file for it first now.
+- **A PDF with only a few words** was called a scan.
+- **I moved a dinner plan into the Art session.** Art is only for pictures, clips, music and sound now.
+- **An OK card from another chat** (a schedule, the phone) now shows in the chat you have open, with Open that chat.
+- **Turbo and the draft brain could stop the engine from starting** on newer llama.cpp builds, which refuse the old draft flags. I use the new names now.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android, unless a line says otherwise. The shortcut, the tray dot and profiles are desktop only. The phone screen on an iPhone has no ears, share option or widget. Card heat needs an NVIDIA card. Help covers each new part.
+
+## 1.5.206
+
+A … menu on every message, steadier tool work from small brains, housekeeping on by default, a new Hand that sorts and renames whole collections, Adventure round 3, and a busier Lab.
+
+### New
+
+- **The … menu on a message.** Hover a message (or Tab to it) and a small **…** shows at its top right. On touch screens it's always there. It holds **Try again**, **Edit**, **Copy** (and **Copy links**) and **Delete**. Edit on your message sends it again. Edit on mine changes my words without sending anything, and I read the new words from then on, marked "edited". Delete asks once, inside the menu. On your message it takes out your message and my answer to it. It's on the phone screen and in the Android app too. The switch is now called **Show Try again, Edit and Delete in the chat** (on unless you turn it off).
+- **Sort and rename** (Settings, Hands; off unless you turn it on). I rename and move a whole music, video or photo collection to naming rules you set for each kind of file, like `{albumartist}/{album}/{track} {title}` for music or `{show}/Season {season}/...` for TV. Each rule can also send new files from Downloads into your library. I read the tags straight from the files (MP3, FLAC, Ogg/Opus, M4A/M4V, photo dates). Every rename goes on the usual Files card with a tick for each row, nothing is overwritten, and **Undo** puts it all back.
+- **Folders you point me to** (Settings, Housekeeping). Add folders and I'll offer their old files in Tidy up. They always ask first and go to the Recycle Bin. System folders, your whole home folder and my own folders are refused.
+- **Adventure, round 3.** 🎭 **Tone** (Cosy, Normal, Grim) and a **Keep out of the story** line on the start card. 🎯 **Odds on the cards** ("11+ · 50%"). ↩ **Take that back** for five seconds after a card, before the dice roll. 📚 A **World book** in the Journal, where the game master keeps people, places, promises and open threads, so long campaigns don't forget. 📕 A **Storybook**: a finished game becomes one page you can save as a single .html file.
+- **The Lab, round 2.** 📋 A **queue** for Challenges, Smaller and fNRI jobs, so they run one after another overnight, each when the Lab is free and nobody is chatting. ± **Show the wobble** runs each challenge three times and shows how much the score moves. 🧪 **Lab scores on the Brains page** under each tested brain. **Teach it from my mistakes** turns replies saved with Save as a test into a lesson set. fNRI scans show in My Lab. **Check my main brain after engine updates** (off unless you tick it).
+
+### Changed
+
+- **Housekeeping is on by default**, and it touches only my own files unless you add folders. Every kind still asks first, and I never load a brain just for it. If you had switched it off yourself, it stays off. An older saved "off" that you never picked turns on.
+- **Small brains make fewer tool slips. This is always on, with no setting.** I check each tool call before it runs and mend what I'm sure of (broken JSON, a field under another name, "5" for 5). I give one plain hint after common errors. On long jobs I keep a short "where we are" note and make sure the last step is an answer. Repeat searches are spotted, look-ups run side by side, and older tool results in long chats shrink to one line each.
+- **A real Lab entry test.** Every brain the Lab tests now does 16 jobs with my real tools, round my real loop, plus 10 coding asks (JavaScript ones run in the sandbox). Older Quick quiz scores show greyed until run again. The Forge points Make it smaller and Cut experts at Make a brain.
+- **Memory, topics and how-tos match by meaning better.** They now use the same search openings as document search. Old entries are remade while I'm idle.
+
+### Fixed
+
+- **Adventure:** the game master's hidden notes are mended when broken, a new enemy's hearts fit the party, a Bob-Net player who takes more than 45 seconds has his turn played by the game master, and starting a new game right after ending one no longer pauses it.
+- **The phone screen on iPhone stopped on load**, because four of its files weren't copied over. They are now.
+- **The phone screen had no passcode lock**, because lock.js wasn't copied to it. It is now, and a test checks every file the page loads.
+- **A retry could end with no answer.** Thinking on every second try sometimes used the whole reply on thinking. Only the long coding brains think on a retry again.
+- **Adventure's Keep out list holds.** The rule rides on the latest message too, a kept-out word shows as … while I'm writing, and a turn that brings one in is written again.
+- **An OK card made while Bob's window was shut** now shows when you open it.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android, unless a line says otherwise. Sort and rename runs on the computer I run on; on Android you approve the card there. Help: "The … menu on a message", "Sort and rename", "Will housekeeping touch my own files?".
+
+## 1.5.205
+
+Brain Engine 4, with sealed SCUT packets, and every password and key I keep is now locked on disk.
+
+### New
+
+- **Brain Engine 4.** My engine's next version, still built on llama.cpp b12282. It downloads by itself right after you update me, once. Every Bob that shares a card needs this version.
+- **Sealed SCUT packets** (Settings, Bob-Net: **Seal SCUT packets**, on unless you turn it off). When your Bobs pool their cards over SCUT, every packet is now signed and scrambled with ChaCha20-Poly1305 and checked before it's read. A packet that was changed, made up or replayed is thrown away. Two Bobs make a link key when they pair, and Bobs paired before this get one the first time one of them lends his card. Each lend gets a fresh key. In tests the seal cost no speed I could measure. Both Bobs need Brain Engine 4. If only one of them seals, they use the usual link.
+- **SCUT round 2** (still experimental). Each burst of packets gets one repair packet, so a single lost packet is rebuilt at once instead of being sent again. The lender loads its share of the brain from its own copy first, the keep-awake ping only goes out when the line is quiet, and the speed cap can go up to 400 Mbit/s and is always shown. Over a pretend poor Wi-Fi, words went from about 6 a second to about 11.
+- **My passwords and keys are locked on disk** (Settings, This replicant matrix; on unless you turn it off). Every passcode, bot token and key I save is encrypted with AES-256-GCM. The key that opens them is kept by your computer's own key store, for your account only: Windows' DPAPI, the Mac Keychain, or Linux's Secret Service. A small Pi without one gets a key file outside my folder. On the phone, the Android Keystore does it. Keys already saved, in my settings or my keys file, are locked the first time I start. My link keys for sealed SCUT are locked the same way.
+- **Show avatars** in Now running, under Bob-Net (off unless you turn it on): each of your Bobs shows the avatar picked on his Style page.
+
+### Changed
+
+- **The thinking cube takes your theme's colour, all of it**, and changes the moment you change the theme. It loads in with **Vase, then fill**, with the inside sloshing in like water, or **Dissolve**. It leaves with **Drain** (the default) or **Erode**, both pickable in the small cube and the big viewer. The small cube has faint edges so it reads as a cube, and the big viewer has an **Edges** switch, off to begin with.
+- **The brain picker for Let Bob work on repositories lists every text brain**: your own tuned ones, the catalogue and the ones doing a job, grouped. Until you pick one, I use the biggest brain that is actually here, never one you would have to download.
+
+### Fixed
+
+- **The Linux .deb and Flatpak go up with each release.** For 1.5.204 the Flatpak's build check stumbled when it put the same Flatpak in a second time, and that held back the .deb too. Now each package goes up when its own check passes. **Update Bob** on a Flatpak also takes the old Bob out and puts the new one in when your Flatpak won't install over the top. Your settings stay.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android, unless a line says otherwise. Sealed SCUT and Brain Engine 4: Windows and Linux on a PC, like Brain Engine itself. Help: "What are SCUT and SUDDAR?", "Can someone on my network read or change what SCUT sends?", "Locked secrets: how I keep your passwords and keys".
+
+## 1.5.204
+
+A big one: Adventure grows up, I can make 3D parts and read maths, I come in French and Spanish, and a lot of new switches, every one of them off until you turn it on (except Try again and Edit).
+
+### New
+
+- **Enemies you can see.** Every enemy in the scene sits on the table with its hearts, and the app keeps the count. An attack that lands takes one heart off the enemy you **Aim at** (two on a natural 20); I take more off for a good spell or a clever idea. At zero they're down, and they stay behind when the party moves on.
+- **Characters who get stronger.** After a big moment I may reward one character: a stat point, one more heart (up to eight), a new trick or a new spell, once a scene at most. Your character keeps it: it's saved with them, so next game they start where they left off.
+- **A quest log.** 📓 Journal opens on what the party means to do or find out, ticked off when it's settled. It reminds me too, with the enemies standing and everyone you've met, so loose ends don't get lost.
+- **Say it your way.** Type what you do in your own words instead of picking a card, or press 🎤 **Speak it** and say it. I work out which stat it rolls, the same as for a Bob player.
+- **Ask the game master.** On your turn, ask me anything out of character: a rule, what's in the room, who that was again. It doesn't use your turn.
+- **Tonight's story.** Eight ready-made openings across the settings (The miller's daughter, The dragon sends a bill, The market under the hill and five more), or Make one up.
+- **"Last time..."** A continued campaign opens with a short reminder of where things stand.
+- **Friends at the table.** ➕ **Add a friend** (up to three) gives a real person a character and turns of their own. They can share this screen, or play from their own phone in Bob for Android, where **This phone plays** picks their character.
+- **🧰 Table extras**, all off until you tick them on the start card: **Dice you can see** (a die tumbles and lands), **Sounds** (dice, steel, spells, doors), **Read it aloud** (my voice reads the game master's lines), **Pictures** (backdrops painted before the game), **A new picture every scene**, and **Music** (a calm tune and a fight tune). Pictures and music need their models from Get models; without them I say so and play on. While I make them you see what I'm on, and **Skip the rest** starts the game sooner. 🔊 / 🔇 at the table hushes it all.
+- **Let Bob make 3D models** (Settings, How Bob works; both off). STL, OBJ and GLB files open in a 3D viewer in the side panel and on the phone, with nothing to install. **Let Bob make 3D parts** turns an OpenSCAD recipe into an STL (Windows uses OpenSCAD 2021.01, checked on every download). **Let Bob turn pictures into 3D models** sends one picture through TRELLIS.2 for a textured model, with a new **3D workshop** engine (about 17 GB).
+- **Let Bob's Quick brain see the big job** (Settings, Brains, under Keep chatting; off). While a long job runs, the Quick brain knows what it's on, can look at the steps, and can pass it a note. A note never stops the job.
+- **Brains page.** Equip Bob opens on what this replicant matrix holds and which brain does which job. Each brain says how it runs here (on your card, card + memory, card + memory + storage, with another Bob's help, or too big). Each brain gets a Set up page with Auto or By hand and **Calibrate**. In the catalogue you can **Remove** an entry from your own list, or **Add a model** from a Hugging Face page (pinned, and never my pick until it's tried).
+- **Search my documents by meaning** (under Read and search my documents; off). An index made while I'm idle finds files that are close in meaning, after the exact-word finds.
+- **Let other apps use Bob's brains** (Settings, Other apps; off). VS Code, Open WebUI and scripts can use my brains at `localhost:7777/v1`, with a key. A small command line comes too: `bob ask`, `bob status` and `bob models`.
+- **Let Claude use Bob's hands** (Settings, Other apps; off). The Claude app and Claude Code can use my Hands and tools on this computer, and every call shows my OK card. Connect buttons set it up with no terminal.
+- **Assistant presets** (Settings, Bob himself; off). A different me per chat: instructions, brain, effort, temperature and which tools. Pick one from 🎭 Preset in the chat, or on the phone.
+- **Try again and Edit in the chat** (on unless you turn it off). Try again under my latest answer, and Edit under your messages. What was there before is kept as earlier versions. A round button takes you back to the newest message, and new words no longer pull you down while you read.
+- **Save chats as files and bring chats in** (off). Save a chat as Markdown, JSON or PDF, or **Share…** it with names, folders and keys taken out. **Bring in chats…** reads ChatGPT, Claude and Open WebUI exports.
+- **Language** (Settings, Bob himself): English, Français or Español for my screens. Help stays in English for now, and I answer in whatever language you write in.
+- **Show maths as formulas** (off) draws maths in my replies as real formulas, on the phone too. **Keyboard shortcuts** (off) adds Ctrl+Shift+O for a new chat, Ctrl+K to search, Esc to stop and more, with a list in the app.
+- **Saved prompts and a / menu** (off). Type / in the message box to pull up a saved prompt, with blanks to fill in. On the phone too.
+- **🔒 Passcode lock** (Settings, This replicant matrix; off). Ask for a passcode to open me, lock again after a while, and keep chats and memory scrambled on disk. On the phone too.
+- **Bob for iPhone.** Your Bob on a computer serves the phone screen at `/phone/`. Add it to the Home Screen in Safari over Tailscale. There's nothing to download, and it needs **Let my other replicant matrices in** on.
+- **Tool packs from other people**, a Hand that's off to start with. Add a folder or .zip of tools and jobs. Every pack comes in switched off, runs in the sandbox, and every use shows a card. The guide for pack makers is `app/docs/TOOL-PACKS.md`.
+- **Linux .deb and Flatpak** downloads beside the AppImage, for x86_64 and arm64. **Update Bob** fetches the same kind you have.
+- **🗄 Back up and move** (Settings, This replicant matrix). **Save a backup…** makes one zip of chats, settings, memory, notes and what I made. Keys go in only if you tick it, locked with a passcode. **Restore from a backup** puts it in at the next start, and keeps what it replaces. **Back up by itself** is off. The phone gets its own backup and restore.
+- **The engine code map.** My code map now lists Brain Engine's patches, and `app/engine/ENGINE-MAP.md` says where each one hooks into llama.cpp and what to check when moving to a newer one.
+
+### Changed
+- **The Adventure page has the Settings look**: the start card is in panels (Story, Your character, Who plays, How long, Table extras, Continue a campaign), wider on a big screen and one column on a small one.
+- **The phone's Adventure screen has all of it too**: story ideas, friends, This phone plays, enemies, rewards, the quest log, Say it your way with the phone's microphone, Ask, and the table extras with the phone's own voice.
+- **The Lab has its own window** on a computer, with tabs sorted by task (Make a brain, Teach, Test, Look inside, Learn, Forge, My Lab), one place to start, and a button on every "nothing here yet" message. **My Lab** shows what you've made, with scores.
+- **The thinking cube glows for show by default**, so it no longer slows replies down. **Real experts** (beside Show the cube; off) brings back the live view of which experts fire.
+- **New engines are tried before they replace the old one** (Windows). A new engine build runs once in its side folder first. If Windows stops it, or it can't see your graphics card, the old one stays and I say why. **Check this PC** says whether Smart App Control is on, and I never change it. `docs/SIGNING.md` says what's signed and what isn't.
+- **Mac signing is built in and switched off**, ready for when there's an Apple Developer ID. Until then Macs still ask once for Open Anyway.
+- **The README is rewritten so it's easier to scan**, with today's pictures, the fNRI clips playing in the page, and the scores side by side.
+
+### Fixed
+- **The Adventure settings now keep the table-extra ticks** between games.
+- **Go back on an engine now stays put.** After you press Go back in Settings, Engines, I don't fetch the newer build again at the next start. **Try again**, a build you get by hand, or a newer Brain Engine in a new Bob ends it.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android, unless a line says otherwise. Adventure: Windows, Mac, Linux and Bob for Android (through the Bob on your replicant matrix). Pictures and music are made where the painter and the music models are. With Animations off, the die doesn't tumble and the enemies don't shake. Help: "Adventure: I run a tabletop game", "Can a friend play an Adventure with me?", "Do Adventure characters get stronger?".
+
+## 1.5.203
+
+My engine gets its own name and its own version numbers, Bigger Bobs gets a fast link made for Wi-Fi, and I've got a new voice to recommend.
+
+### Changed
+
+- **Brain Engine is my engine, and I call it that.** Help, Settings, the Lab, Get Bob ready and the guides no longer say I run on "my own llama.cpp". Brain Engine is my own engine for brains. It's built on the open-source llama.cpp, and the credit and its MIT licence stay where they belong: the Brain Engine Help page, the glossary, the README and the third-party notices. Plain llama.cpp is still named where it's really used: on a Mac or an ARM board, and as the stand-in until Brain Engine has downloaded. In Settings, Engines, Brain Engine's version now reads "built on llama.cpp b12282" instead of its file tag. The speed boxes say "the engine's default" and "Engine flags".
+- **It's spelled fNRI now**, after the fMRI scan it's named for, everywhere you read it.
+- **The "Do you want me to:" list on the Welcome is grouped like the Settings cards**, with two more ticks (one brain for everything, and reading only the memories that fit), buttons for Check-ins, Adventure, Games and Housekeeping beside Hands, Bob-Net and Online services, and a few Coming soon lines for things still being built. A button opens the Settings window and the Welcome stays open. **Notice what's worth noting** and **Learn from what works and what fails** are ticks there too.
+- **Brain Engine has its own version numbers.** This one is **Brain Engine 3**, built on llama.cpp b12282. Its numbers don't follow llama.cpp's any more, so a new Brain Engine on the same llama.cpp is simply the next number. Settings, Engines says "version 3, built on llama.cpp b12282". It downloads by itself right after you update Bob, once. The two builds before it keep their old names.
+- **Shorter, plainer words in the Lab and Settings.** Each description now says what the thing does, in a line or two. The expert switch in Peek inside is now **Turn off unused experts**, **Turn off these instead** and **Turn them all back on**.
+- **Shorter, plainer descriptions for my tools.** The notes I read about each tool say what it does in fewer words (about 11,200 tokens for all of them, from about 13,200), so a small brain has more room to think. Nothing a tool does has changed. A new test, `test/run-tool-wording-test.js`, keeps them short.
+- **Moondust is the starting theme everywhere.** On the phone too, with grey status and navigation bars; phones still on the old default move to it once, and a theme you picked stays. Desktop windows open in Moondust grey instead of a brown flash.
+- **The cube's One colour starts as your theme's accent colour**, on every theme, and on Moondust as a deep teal (#03666d). If you've picked your own colour, I keep it.
+- **My thinking cube turns slowly by itself** (Stop turning under Show details; never while animations are off), and **its lines are brighter**, in the theme's text colour so they show on light themes too, with a **Lines** slider in the thinking pane and the big viewer.
+- **Onyx is my recommended voice.** Kokoro's Onyx is deep, calm and a little dry, which is how I hear myself. It's what I use until you pick another, and it has a ★ Recommended tag in Settings, Voice. If you've already picked a voice, I keep it. Help: "Which voice should Bob use?". Tests in `test/run-tts-test.js`.
+- **Let Bob learn from his tools**, one switch under How Bob works, off unless you turn it on. When a tool fails and then works, I keep one line on what fixed it and read it next time, and Settings shows a scorecard of what worked and what didn't (Forget it clears it). Tools I make for myself get a "use me when" line, so I pick them at the right time. Help: "Let Bob learn from his tools".
+- **Code map and jump-to-line.** A new read-only tool, code_map, lists a code file's parts with their line numbers, and read_file can start at a line, so a small brain can find an error without reading a whole file.
+
+### Fixed
+
+- **When Windows blocks my new engine, I go back to the one before by myself.** Windows 11's Smart App Control can stop an engine build that isn't signed yet, and then no brain could wake. Now I go back to the engine I had before the update, say so once in chat, and keep working. I don't try the blocked one on every load or download it again. **Try again** in Settings, Engines puts it back in. The undo button now reads "Go back to the previous engine (llama.cpp b12282)". Help explains Smart App Control.
+- **Every setting is always there.** Nothing in Settings appears, disappears or greys out because another box isn't ticked. You can set things up first, and they wait until you turn their main switch on.
+- **Peek inside says Riker has 40 layers**, the ones that run, not the 41 in the file (the extra one is a built-in guesser that an ordinary answer never uses). The scan list counts the same way.
+
+### New
+
+- **SCUT (Signals and Communications - Universal Transceiver): my fast link for Bigger Bobs, made for Wi-Fi. Experimental.** When your Bobs pool their graphics cards, the usual link can wait up to a third of a second each time a bit goes missing on the air, which Wi-Fi does a lot. SCUT sends just the missing bit again within a few milliseconds. Same brain, same answers, faster words: in a test over a pretend everyday Wi-Fi, about 9 words a second went up to about 15. It keeps under the **SCUT speed cap** (up to 100 Mbit/s unless you pick another) and slows down by itself when the network gets busy, so your other devices aren't crowded out. Off unless you turn it on, on both Bobs. If either has it off, or a firewall stops it, they use the usual link and nothing breaks. It uses the card's port (50052) on UDP as well as TCP, so on Windows press the firewall button again. It's in Brain Engine 3, so both Bobs need this version. Help: "What are SCUT and SUDDAR?".
+- **SUDDAR (Signal and Uplink Delay Detection and Ranging) scan** (it was Check them, and it's experimental) on the Bob-Net list calls each of your Bobs and times his answer, so you can see how far away each one is: under 8 ms is close, up to 40 ms is Wi-Fi close, more is far. It also shows who lends his card, and whether with SCUT.
+- **Documents in the side panel (off until you turn it on).** Word, Excel, PowerPoint, OpenDocument, e-book and Rich Text files open beside the chat as their words, tables and slides, and a PDF shows its real pages in my own window. Nothing in the file runs and nothing is sent anywhere. It's in Settings, How Bob works.
+- **Note things worth keeping on my own** on the Welcome list now turns quick notes on with it, so ticking one box is enough.
+
+**Where it works:** Brain Engine 3 and SCUT on Windows and x64 Linux. A Mac and an ARM board keep plain llama.cpp and the usual link. The naming and the voice change everywhere.
+
+## 1.5.202
+
+Brain Engine moves onto a newer llama.cpp, the Lab can switch a gpt-oss brain's experts off right in the file, and quick notes can notice things on their own.
+
+### Changed
+
+- **Brain Engine and the built-in llama.cpp are on llama.cpp b12282** (from b12032, 250 builds newer). Everything llama.cpp added in that time comes along: faster brain sharing between Bobs, support for newer brains, and many fixes. Brain Engine's own changes (the expert switch, Peek inside's trace, FNRI's dials and quicker card sharing over Wi-Fi) are all on it. The new Brain Engine downloads by itself right after you update Bob, and Go back in Settings, Engines puts the old one back. The Windows CUDA download is now built for CUDA 13.5 (it was 13.4).
+- **Bobs that share graphics cards need the same version of Bob.** This llama.cpp changes how cards talk to each other, so a Bob still on an older version can't lend his card to one on this one, or the other way round. If it happens, the brain loads on its own Bob like always. Update every Bob that takes part. New line in Help: "Can my Bobs run one big brain together?".
+
+### New
+
+- **Lab, Peek inside: Switch these off in the file**, for brains whose router has a bias, like gpt-oss. The experts you don't keep get a router number so low the router never picks them, in any engine. Nothing is cut: the file keeps its shape and size, each layer can keep a different number, and an expert that's never picked is never read from the drive. Before anything changes, the original numbers are saved beside the brain, and **Switch them all back on** puts the file back byte for byte. It uses the same keep lists as Cut these out. It refuses a layer that would keep fewer experts than the brain uses per word, and asks to unload my own brain first. Help: "Can I switch experts off without cutting the brain?". Tests in `test/run-lab-switch-test.js`.
+- **Quick notes got smarter, if you want them to.** Under quick notes there's a new switch, **Let Bob notice what's worth noting**, off unless you turn it on. With it on, I write down decisions, numbers, dates, plans, names, links and ideas as they come up, and say 📝 Noted each time. Notes I take on my own end in "(noticed by Bob)". A note with no #tag gets the project we're on. A note that says much the same as an earlier one replaces it, and the old wording goes to the removed-notes file. When you ask about something later, up to three notes that fit come back up. Help: Quick notes. Tests in `test/run-desk-tools-test.js`.
+- **Lab: Fold instead of drop is built** (the proper name is expert merging). Under Cut experts there's a new tick, **Fold the rest in**, off unless you tick it. The **Fold instead of drop** goal and the **Merge experts** template work now too. Instead of throwing away the experts a cut doesn't keep, I blend each one into the kept expert most like it: I line their neurons up, then average them, each weighted by how much your lessons use it. It runs here for free, on the brain's full-size file (F16 or BF16), and takes longer than a plain cut. It's new and not yet tried on a real brain, and one published study found folding did worse than dropping when nothing is taught back, so make both, test both, and keep the winner. Help: "What does folding experts do, and is it better than cutting?".
+- **Forge: REAP scoring for expert cuts on a rented card**, off unless the run's plan says `"score": "reap"` or `"score": "mass"`. It weighs how hard each expert pushes when it's picked, not only how often. Help: "Does Bob use REAP when he cuts experts?".
+- **A weekly check for a newer llama.cpp** (for the people who build Bob, not in the app). Every Monday GitHub tries Brain Engine's changes on the newest llama.cpp and builds it. When it works, it opens one issue, "New Brain Engine ready on llama.cpp bNNNN - rebuild it?". Nothing in Bob changes until someone says yes. See `app/engine/README.md`, "Moving to a newer llama.cpp".
+
+### Fixed
+
+- **Cutting experts from a gpt-oss brain makes a file that loads.** Its router has a number per expert (a bias), and the cut left it at the old expert count, so the cut brain wouldn't load. The cut now trims it with the experts.
+- **First-time setup offers Brain Engine, not plain llama.cpp,** wherever Brain Engine has a build (Windows and x64 Linux). Since 1.5.196 it's the only engine for brains there, so Get me ready now lists Brain Engine under Programs. A Mac and an ARM board still get llama.cpp. whisper.cpp and the picture engine are the same as before.
+- **One outline for everything in the Lab.** Tabs, steps, the What do you want to do? cards, Use this way links, folds, tick-box rows, menus and boxes all show the same outline when the mouse is over them and when you reach them with the keyboard. Before, some had it and some didn't. A greyed-out control stays quiet, and in high-contrast mode the outline uses the system highlight colour.
+
+- **The Trainer pack gets a PyTorch that sees the newest NVIDIA cards.** It now comes from PyTorch's CUDA 13.0 builds (it was 12.8, which came up without the card on a 50-series). The install also ends by asking PyTorch whether it can see your NVIDIA card. If it can't, the install stops there and says to update the NVIDIA driver, instead of failing hours later in the middle of teaching. Machines with no NVIDIA card skip the check. Its brain-file converters now come from llama.cpp b12282 too, the same as the rest of Bob. Tests in `test/run-lab-pages-test.js`.
+- **Peek inside, Keep only these, works on brains with their own guesser layer** (Riker, and other Qwen3.5/3.6 brains). The file counts the guesser as one more layer (41 for Riker), but Brain Engine on this llama.cpp runs 40, so it turned the list down with "keep has 41 layers, the model has 40". The list now leaves the guesser's layer off. The same goes for the usage map's and the cutter's test runs.
+- **Peek inside unloads my chat brain first, on Windows too.** On Windows the NVIDIA tool often can't say how much of the card one program holds, so the Lab thought my chat brain wasn't on the card and started a second copy beside it, which spilled into RAM and ran slowly. Every Lab job that asks to unload me first now goes by whether I was started on the card.
+- **Peek inside's speed is rounded** to one place ("18.3 words a second").
+- **Brain Engine's --version will say its llama.cpp build number** (b12282 says build 12282, not build 1) from its next build on.
+
+**Where it works:** Brain Engine on Windows and x64 Linux; a Mac and an ARM board move to llama.cpp b12282's official build. The Lab switch works wherever the Lab runs.
+
+## 1.5.201
+
+The Lab's Trainer pack installs on Windows with Smart App Control on, a settings file saved by PowerShell no longer sends Bob to the wrong home, and first-time setup asks what you'd like switched on.
+
+### New
+
+- **"Do you want me to:" in first-time setup.** Under Get me ready, the Welcome now lists the everyday switches that start off: quick notes, reading your documents, the sandbox, web search, the plan card, fixing my own messages, how-tos, picking up after a restart, starting at sign-in, the update check and the brain list. Each tick turns that switch on in Settings right away. Hands, Bob-Net and Online services get buttons to their own Settings sections. If I was already set up before this, I offer the list once in the chat. Settings, Run first-time setup shows it any time. Tests in `test/run-wants-test.js`.
+
+### Fixed
+
+- **Lab, Teach it: the Trainer pack no longer stops at "Get Python" on Windows.** It used to make a Python venv, and the venv's python.exe is an unsigned launcher. Smart App Control blocked it ("An Application Control policy has blocked this file", os error 4551), so Teach it and Best answers couldn't teach anything here. On Windows the trainer now runs from its own private copy of Bob's signed Python (the Python Software Foundation's package, the one Bob's voices already use), and the training libraries are installed into that copy only. Mac and Linux keep their venv as before. A Trainer pack from an older Bob on Windows shows as not installed, so press Get it once more.
+- **Plain words when Windows blocks a program.** If Smart App Control blocks anything while the trainer installs or teaches, Bob says so, changes no security setting, and points to Try again or Teach it rented. Tests in `test/run-lab-pages-test.js`.
+- **FNRI's cube builds itself and comes apart again even when Windows has animation effects off.** The cube in Bob's thinking and the big viewer followed Windows' setting instead of Bob's own **Animations** in Settings, Style. So with Windows effects off, the block just popped in and out, and Turn slowly did nothing. Now they follow Bob's setting like the rest of Bob: On plays them, Off stops them, and Follow Windows goes by Windows. Tests in `test/run-lab-watch-test.js`.
+- **A home.json or config.json saved by Windows PowerShell is read properly.** PowerShell puts an invisible mark at the start of the file. Bob couldn't read home.json because of it, and quietly went looking in the folders above him instead, so a test Bob opened on the main Bob's home. Now the mark is skipped. A home.json that's there but still can't be read stops Bob with a message naming the file, instead of a guess. Saving Discord, Telegram or Bob-Net settings no longer writes over a config.json it couldn't read. Tests in `test/run-home-bom-test.js`.
+
+**Where it works:** the Trainer fix is for Windows; Mac and Linux are unchanged, and Android and the Raspberry Pi still teach rented. The settings-file fix works on Windows, Mac and Linux.
+
+## 1.5.200
+
+A new Brain Engine comes with this Bob: the cube now works for brains without experts, and card sharing over Wi-Fi re-sends almost nothing on a reload. And FNRI can colour a brain by its own weights, or by what changed from another brain.
+
+### A new Brain Engine, with Bob
+
+- **Bob now points at the rebuilt Brain Engine** (same release name, brain-engine-b12032, new files). Right after you update Bob, the matching Brain Engine downloads by itself, beside the one you have. Go back in Settings, Engines puts the old one back.
+- **The cube for brains without experts (like Qwen3 4B).** The old build dropped their whole trace once a prompt was longer than one step of reading, which every real chat is. With this build the cube lights for them too. Mixture-of-experts brains were never affected.
+- **Card sharing over Wi-Fi re-sends almost nothing on a reload.** When a brain spread over another Bob's card loads a second time, only what's missing goes over the network. The first load is the same as before. The original sharing protocol is kept, and nothing else on your network is touched.
+- **On Bob 1.5.196 to 1.5.199:** they keep the Brain Engine they have. A fresh Get Brain Engine there downloads this new build, checks it against its published checksum and installs it normally. They don't try again and again.
+
+### FNRI: weight map and difference map
+
+- **Weight map.** In FNRI's viewer, **Colour by** has **How strong each expert's weights are**. Every block is coloured from dark blue (weaker than the rest of its floor) to yellow (stronger), read straight from the brain file. The glow still shows what the brain used, so you can watch thinking run over the weights.
+- **Difference map.** **How much each expert differs from another brain** colours every block by how far its weights moved from a brain you pick. Pick the one it was made from: a cut brain lines up with it through its keep list, so you see what healing changed and where.
+- Both read a few rows of every block from the files, with no engine and no graphics card, and change nothing. A big brain takes about a minute the first time. After that the map is kept beside the scans. They read Q2_K to Q8_0, F16 and BF16 files (not the IQ kinds yet), and work on expert and neuron scans. Where it works: Windows, Mac and Linux, wherever the Lab runs. Android's Bob doesn't have the Lab. Tests in `test/run-lab-watch-test.js`.
+
+### Three new switches in How Bob works (all off until you want them)
+
+- **Let Bob take quick notes.** Say "note:" anywhere you talk to me (this window, the phone, Discord DMs) and I write it down, with the date and time, in one file. **Open my notes** shows it. My search box finds notes too. A note I remove is copied to the archive first. Help: Quick notes.
+- **Read and search my documents.** I read Word, Excel, PowerPoint, OpenDocument, PDF, RTF and e-books with nothing extra installed (no LibreOffice), and find which file in Documents, Desktop or Downloads says what. Nothing leaves this replicant matrix, and secret and hidden files are skipped. A scanned PDF has no words in it; attach a page as a picture instead. Help: Read and search my documents.
+- **Let Bob work things out in a sandbox.** When you ask for a sum, I work it out exactly in a locked, empty folder with no internet, no programs and none of your files, instead of guessing. It only switches on where the sandbox really holds on this replicant matrix, and the switch says how the internet is kept out here. Help: Sandbox.
+- None of the three is offered to other Bobs or Discord channels. Tests in `test/run-desk-tools-test.js`.
+
+### Pictures
+
+- **FNRI's cube in the README:** a short recording of stock Qwen3.6-35B-A3B answering, its experts glowing in the cube.
+
+## 1.5.199
+
+Help is tidier, and the Lab's tests and methods have their proper names.
+
+### Changed
+
+- **Proper names in the Lab's Professional mode.** Every job, Forge way, Playground page and challenge now leads with the name people in the field use, with Bob's plain words after it in brackets: quantization, MoE expert pruning, importance matrix (imatrix), abliteration, linear merge, SLERP, TIES-merging, passthrough merge, LoRA, QLoRA, supervised fine-tuning, quantization-aware distillation, best-of-N rejection sampling, DPO, speculative decoding, KV cache quantization, YaRN, needle in a haystack and more. Challenges say which kind of test they are: ARC-style, GSM8K-style, IFEval-style, HumanEval-style, BFCL-style, HellaSwag-style, WinoGrande-style, MMLU-style, XSTest-style. "-style" means written for Bob in that style, never copied, so the score isn't that benchmark's score. Keep it simple is unchanged: plain words only.
+- **Help names them too.** Each Lab Help page gives the proper name once, beside the plain one, and the search finds a page by its proper name.
+- **The glossary is A to Z**, with 13 new entries: benchmark names, distillation, expert pruning, fine-tuning (SFT), full-size weights, importance matrix, KV cache, LoRA and QLoRA, mixture of experts, model merging, needle in a haystack, perplexity and temperature.
+
+### Fixed in Help
+
+- **Engine updates said two opposite things.** "Off: nothing is checked or downloaded by itself" sat next to "Brain Engine comes along even with the switch off". Now: Brain Engine always updates with Bob; the switch is for llama.cpp. The FAQ "Does Bob update his engines by himself?" is rewritten as two clear rules, and the repeated "no Mac build" lines are said once.
+- **The glossary called llama.cpp "my built-in engine for brains"** while Brain Engine is the only one where it has a build. Both entries now say what's true.
+- **Out-of-date Lab lines**: "Teach it back is still marked later" and "the Lab can't start a rented card yet" are gone; Teach it and the Forge's Start on a rented card… do those now.
+- **Repeats trimmed**: the Adventure page no longer copies its two settings from Settings: Adventure, the home-network FAQ no longer copies the Bob-Net page, and "Bob says he's still on the last job" points to the one list of what waits.
+
+## 1.5.198
+
+"Keep busy experts on the graphics card" is gone. It made big brains write slower, not faster.
+
+### Removed
+
+- **Keep busy experts on the graphics card** (from 1.5.193) is taken out. On the test PC (gpt-oss 120B, a 16 GB card, 32 GB of RAM), every size we tried, from 2 to 8 GB, made writing about 2.5 to 3 times slower than with it off. Each word picks different experts, so the card spent its time copying them instead of working. The switch, its setting and its Help are gone. If you had it on, nothing to do: it's simply off now.
+
+### Kept
+
+- **A brain bigger than your card and RAM together still runs.** It stays on your drive and Bob reads the parts he needs as he goes. New in Help: "Can Bob run a brain bigger than my graphics card and RAM together?", with the measured speeds (about 17 words a second writing for a 63 GB brain on that PC), and a glossary entry, "Read from the drive". Tests in `test/run-tuning-test.js`.
+
+## 1.5.197
+
+Bob stops asking for the same thing over and over.
+
+### Fixed
+
+- **No more asking the same thing again and again in one reply.** Before, if Bob called a tool with exactly the same request twice in one reply, only some tools caught it, and a stuck brain could use up all eight steps repeating itself. Now every tool is covered. A repeat gets back the first answer instead of running again. On the third identical call, Bob stops and says: "(I asked for the same thing three times, so I've stopped. Could you point me at what I'm missing?)" Looking at an app and listing schedules are never counted. After Bob does something (a doing tool or a Hand), the count starts over, so read, write, read again still reads fresh. The cap of six calls per reply and the round with no tools stay as they were. Tests in `test/run-repeat-guard-test.js`.
+
+Co-authored-by: Bob. He planned this one himself on his second try at issue #57, and Claude finished it.
+
+### FNRI cube
+
+- **A brain answering on Bob's second server** (beside the main one) now lights the cube too. A reply that comes back without the experts it used leaves a line in the logbook saying so.
+- **Where Brain Engine lives:** messages in the Lab that said to get or update Brain Engine under "Get models, Engines" now say Settings, Engines, where it really is. Tests in `test/run-lab-watch-test.js`.
+- **Bob's thinking is the top section of Now running, and it starts open**, so the cube is the first thing there. If you already moved or folded it, your own order stays. Tests in `test/run-mind-test.js`.
+- **A trace piece that can't be read now leaves a line in the logbook**, to help find why the cube stays dark on some machines.
+- **Coming with the next Brain Engine build: the cube for brains without experts (like Qwen3 4B).** Brain Engine dropped the whole trace for those brains once a prompt was longer than one step of reading (512 words' worth by default), which every real chat is. The fix is in Brain Engine's patch 0002. It reaches you when the next Brain Engine build comes out with a Bob release. Mixture-of-experts brains were never affected.
+
+## 1.5.196
+
+Brain Engine is now the only engine for Bob's brains. The FNRI cube is there before the first reply. Plus four Bob-Net fixes from the Tailscale test between two of your Bobs.
+
+### Brain Engine is the only engine for brains
+
+- **One engine for Bob's brains: Brain Engine.** The other engines don't fit him any more, so Settings > Engines no longer offers llama.cpp or Ollama for brains. It just says what runs them. If you'd picked llama.cpp or Ollama before, Bob moves over by himself the next time he starts and notes it in the logbook. Until Brain Engine is downloaded, the llama.cpp already here stands in. Help: Engine for brains. Tests in `test/run-engines-rework-test.js`.
+- **Not yet on a Mac or an ARM board (Raspberry Pi).** Brain Engine has no build there yet, so Bob runs his brains on his own llama.cpp until it does. Ollama is no longer used for brains anywhere.
+- **Brain Engine updates with Bob, not on its own.** Each Bob now names the Brain Engine build that goes with him. Right after he starts, he compares it with the one here, using the engine's own record of its build and checksum, not Bob's version. If they differ, the matching build comes along by itself, even with Keep engines up to date off. That's the gap that left a PC on a new Bob with an old engine today. Keep engines up to date is now for llama.cpp. Help: Keep engines up to date. Tests in `test/run-engine-keeper-test.js`.
+- An engine written by hand into config.json itself still wins, as before.
+
+### FNRI's small cube says when Brain Engine needs updating
+
+- **The cube in Bob's thinking no longer stays dark on an older Brain Engine.** Bob runs on an older Brain Engine build until you press Update under Engines, and that build can't report which experts it used. The cube used to stay blank with no reason. Now it says to press Update on Brain Engine in Settings > Engines, and lights up with the next reply once you have.
+- **The cube is there before the first reply.** As soon as a brain starts loading, the cube builds itself block by block in one colour, in that brain's own shape (floors and experts, or neuron groups for a brain without experts). Then it sits still until Bob thinks. That works on an older Brain Engine too.
+- **No brain loaded: a neon sign.** One of five, picked at random each time, flickering now and then (still when animations are off).
+- Where it works: Windows and Linux on a PC, wherever Brain Engine runs. Tests in `test/run-lab-watch-test.js`.
+
+### Bob-Net
+
+- **A job sent to another of your Bobs still says so when it's done.** Tasks showed "Sent to …" while it ran, then forgot once it finished. Now a finished job reads "Completed … by Go" (or whichever Bob ran it). Try again clears it. Tests in `test/run-queue-test.js`.
+- **A borrowed reply leaves a line in the logbook.** When Borrow a brain worked, the logbook said nothing, so it looked like nothing happened. Now there's one line per reply, like "📡 Go thought this reply (1.0 s to first word)". It never has the words. Tests in `test/run-queue-test.js`.
+- **No more long reload after a short lend.** After thinking one quick reply for another Bob, a lender went straight back to loading its own quick brain, which took 78 s on the test machine. Now it lets go of what the lend loaded and waits until you type. "Always on" still keeps the brain loaded, as before. Help: Lend my brain. Tests in `test/run-share-brains-test.js`.
+- **Borrow a brain: who switched it off.** On one test Bob the switch was found off. Every other Bob-Net change (mode, Lend my card, Spread, adding or removing a Bob, and the rest) is now tested to leave it on. A flip of the switch now writes what changed it in the logbook, so if it happens again we'll see why. Tests in `test/run-share-brains-test.js`.
+
+## 1.5.195
+
+A fourth famous style in the Lab: Raider. A handheld no longer spreads a small brain over Bob-Net.
+
+### Lab: Raider, a DeepSeek-like thought path
+
+- **Raider (DeepSeek-like)** joins Sherlock, Watson and Vulcan under Famous styles in Teach it a way of thinking. It's the long, dig-in-and-think-out-loud style. Try a path, stop and say "wait" when something looks off, and try another way. Circle the detail that doesn't fit, then bring back a short clean answer. Like the other three, it's taught with lessons my own teacher brain writes in that style. Nothing comes from the model's own thoughts, and DeepSeek isn't involved. Help: Teach it a way of thinking. Tests in `test/run-lab-test.js`.
+
+### Fixed
+
+- **A handheld with built-in graphics no longer spreads a small brain over Bob-Net.** On a machine whose graphics share its memory, or where no card size is known, Bob couldn't judge "bigger than my card". So with Bigger Bobs on, a handheld spread its own 2.3 GB chat brain over Wi-Fi to another Bob's card, and its chats waited behind that. Now, on such a machine, only a brain too big for its memory spreads, even with **Any brain bigger than my card**. A brain that fits stays here. Tests in `test/run-llama-tools-test.js`.
+
+## 1.5.194
+
+My own brains take over as the defaults.
+
+### Riker and Bobert are Bob's default brains
+
+- **28Bob Riker (quick)** is my everyday brain on 16 GB cards. It's the smaller Riker file. On my tests it scores within a point of the bigger file, and it answers about half again as fast: ARC-Challenge 94.3% against 93.9%, 170 against 111 tokens a second. The bigger Riker file stays in the list for anyone who wants it.
+- **35Bob Bobert**, the whole Qwen3.6 35B taught my ways, does Coding and Deep thinking on 16 GB cards. His smaller file is the coder for 8 GB cards, ticked in that starter set, in place of Qwen3 Coder 30B. Both files are pinned to the exact version on Hugging Face and checked when they download.
+- Starter sets: 16 GB is Riker (quick) for chat, Bobert for coding and deep thinking, and Gemma 4 26B for office work. 8 GB gets Bobert's smaller file for coding.
+- The Qwen brains they took over from stay in the Brain catalogue.
+- Help: the FAQ **Why is Riker or Bobert my pick?** says all this.
+
+### New: Let Bob fix his own messages (off)
+
+- **Settings, How Bob works: Let Bob fix his own messages.** It's off unless you turn it on. When it's on and I get something wrong, or a status line I posted goes out of date, I change my earlier message instead of posting a new one. The chat window marks the message **edited**, and pressing that shows what it said first. It works the same in Discord DMs, Telegram and the phone app. I can only change my own messages, never yours. Help covers it in the glossary, and the user guide has it too. Tests in `test/run-edit-own-test.js`.
+
+## 1.5.193
+
+A brain bigger than your card and memory together now loads from the drive instead of failing, and Bob can keep a big brain's busy experts on the graphics card.
+
+### Fixed
+
+- **Very big brains load.** Since 1.5.90, a brain that sits partly in memory is read in whole when it loads. For a brain bigger than the card's share plus memory, like gpt-oss 120B (about 63 GB) on a 16 GB card with 32 GB of memory, that ran out of memory, so the brain never loaded. Now such a brain is read from the drive as it goes. The card takes its share, the busiest parts stay in memory, and the rest is read from the drive when the words need it. It's slow, but it runs. Brains that fit load exactly as before. Tests in `test/run-tuning-test.js`.
+
+### New (experimental, off)
+
+- **Keep busy experts on the graphics card** (Settings, Engines, Speed). This works for brains made of many small experts (Qwen 3.6, gpt-oss and the like) that don't fit on the card. Each word uses only a few experts, and some get picked far more often than others. With this on, part of the card holds the experts picked most, so most of each word runs on the card. This uses llama.cpp's MoE cache and needs llama.cpp b12032 or newer. **Room for busy experts (MB)** sets how much of the card it may use. Left empty, it uses a quarter of the card. A brain bigger than card and memory together also has its experts read from the drive as they're needed. Help: the FAQ **Can a brain bigger than my card run quickly?** and a glossary entry. Tests in `test/run-tuning-test.js`.
+
+## 1.5.192
+
+### FNRI: two brains side by side
+
+- **Two brains side by side** (in the FNRI viewer, under Before and after): Compare with now lists scans of other brains with the same floors too, and **Or open a scan file** takes a scan from anywhere, like one made on a rented card. Asked the same questions, the two play word for word with their names over them, and Bob says how many answers were the same and how many picks went to different experts. A cut brain is lined up with the brain it was cut from by its keep list (beside the brain's file, or inside the scan); without one, Bob says so.
+- **Save as a video** saves both pictures in one video when two are showing, and every video is named model-skill-quantization (riker-coding-q4_k_m, riker-vs-qwen-3.6-35b-a3b-coding-q4_k_m). Pick a skill in the player first for one skill's video.
+- A scan file opened beside the viewer (watch.html?file=…) now plays; it used to sit still. `&vs=other.json` opens a second scan beside it.
+- **For rented cards:** `model-lab/forge/pod/aifeui.sh` takes `AIFEUI_IN` and `AIFEUI_OUT`, so one card can scan several brains in turn, and `model-lab/forge/fnri-remote.mjs` scans a brain served elsewhere over HTTP (a forge benchmark step).
+
+Where it works: the viewer on any computer that runs Bob; scans as before.
+
+### Also
+
+- **FNRI's page says "Reading this brain…"** while it reads a brain you picked. If an answer for an earlier pick lands late, Bob drops it, so the box under **Which brain?** always says something.
+
 ## 1.5.191
 
 Teach it learns squeeze-aware, Best answers' parts-only teaching changes the chosen weights directly, and FNRI finds the trace in newer Brain Engine builds.

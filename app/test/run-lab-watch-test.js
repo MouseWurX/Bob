@@ -1,4 +1,4 @@
-// FNRI (the Lab's Playground): the scan of which experts a mixture-of-experts brain picks, and its viewer window.
+// fNRI (the Lab's Playground): the scan of which experts a mixture-of-experts brain picks, and its viewer window.
 // The sums (which skill each expert leans to, the timeline, one expert up close), reading a recording from a file
 // that isn't trusted, Brain Engine's trace in the shape the engine patch gives it, the scan as a Lab job with a fake
 // engine (no brain is loaded, nothing on this replicant matrix is read), the routes, and that the pieces are wired:
@@ -11,9 +11,9 @@ import { fileURLToPath } from 'node:url';
 import { Lab } from '../src/lab.js';
 import { readGguf } from '../src/lab-gguf.js';
 import { readTrace, askTraced, tallyTrace, NO_TRACE, traceBuilt } from '../src/lab-peek.js';
-import { WATCH_SKILLS, PER_CHOICES, pickSkills, partsOf, clipOf, watchView, startWatch, readRecording, deleteRecording, listRecordings, watchRoute, cubeMap, cubeBrains, NO_HEADS, NO_DIALS, saveTargets, listTargets, readTargets, WATCH_WORDS, WATCH_WORDS_THINK, cleanKeep } from '../src/lab-watch.js';
+import { WATCH_SKILLS, PER_CHOICES, pickSkills, partsOf, clipOf, watchView, startWatch, readRecording, deleteRecording, listRecordings, watchRoute, cubeMap, cubeBrains, cubeShapes, CUBE_GROUPS, NO_HEADS, NO_DIALS, saveTargets, listTargets, readTargets, keepBeside, WATCH_WORDS, WATCH_WORDS_THINK, cleanKeep } from '../src/lab-watch.js';
 import { pagesRoute } from '../src/lab-pages.js';
-import { NAME, LONG_NAME, FORMAT, VERSION, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, SKILL_LOOKS, sideOf, LEANS, partOf, PART_LABEL, say, cutOf, cutEffect, keepList, setColour, resetColours, liveTrace, liveRecording, skillMap, mapLook, litSkills, coverKeep, cutSteps, EVEN_PICKS, findPatterns, PATTERN_CHOICES, hasFloors, floorScale, floorsAt, isHeads, LOAD_STYLES, loadStyle, loadOrder, cleanDials, skillDials, dialWords, dialScale, dialKey, compareScans, compareWords, DIAL_MAX, movedBlocks, targetsOf, TARGET_FORMAT } from '../public/lab-watch-math.js';
+import { NAME, LONG_NAME, FORMAT, VERSION, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, SKILL_LOOKS, sideOf, LEANS, partOf, PART_LABEL, say, cutOf, cutEffect, keepList, setColour, resetColours, liveTrace, liveRecording, skillMap, mapLook, litSkills, coverKeep, cutSteps, EVEN_PICKS, findPatterns, PATTERN_CHOICES, hasFloors, floorScale, floorsAt, isHeads, LOAD_STYLES, UNLOAD_STYLES, loadStyle, unloadStyle, loadOrder, slosh, cleanDials, skillDials, dialWords, dialScale, dialKey, compareScans, compareWords, DIAL_MAX, movedBlocks, targetsOf, TARGET_FORMAT, keepMap, lineUp, pairUp, pairWords, videoName } from '../public/lab-watch-math.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -80,7 +80,7 @@ check('the timeline is every word of every question in order, or only one skill\
 { const d = expertDetail(rec, sp, 0, 0); check('one expert up close: its picks, its split between the skills, and the words it was picked for', d.picks === 40 && d.top === 0 && d.shares[0].skill === 0 && d.shares[0].pct === 100 && d.words[0].text === 'cat' && d.words[0].n === 37, JSON.stringify(d)); }
 check('every skill has its own colour and letter, sixteen of each', SKILL_LOOKS.length === 16 && new Set(SKILL_LOOKS.map((x) => x[0])).size === 16 && new Set(SKILL_LOOKS.map((x) => x[1])).size === 16 && lookOf(17)[1] === 'B');
 check('a floor is as near square as the expert count allows', sideOf(256) === 16 && sideOf(128) === 12 && sideOf(8) === 3);
-check('the name lives in one place', NAME === 'FNRI' && LONG_NAME === 'Functional Neural Response Imager');
+check('the name lives in one place', NAME === 'fNRI' && LONG_NAME === 'Functional Neural Response Imager');
 
 // ---- a recording from a file is not trusted ----
 check('a file that isn\'t a recording is refused in plain words', (() => { try { cleanRecording({ hello: 1 }); return false; } catch (e) { return /isn't an expert recording/.test(e.message); } })());
@@ -155,7 +155,7 @@ check('a scan needs a brain and at least one skill', await startWatch(lab, {}).t
   const ask = await startWatch(lab, { brain: 'moe', skills: ['coding', 'chat'], per: 2 });
   check('Bob\'s own brain leaves the card only after asking', ask.needUnload && ask.names[0] === 'Main' && !lab.job && served === 0);
   const r = await startWatch(lab, { brain: 'moe', skills: ['coding', 'chat'], per: 2 }, { unload: true });
-  check('the scan starts as a Lab job, with a step for each skill', r.started.kind === 'watch' && r.started.name === 'FNRI: Test MoE' && r.started.steps.length === 4 && lab.unloaded === true);
+  check('the scan starts as a Lab job, with a step for each skill', r.started.kind === 'watch' && r.started.name === 'fNRI: Test MoE' && r.started.steps.length === 4 && lab.unloaded === true);
   check('a second job is refused while it runs', await startWatch(lab, { brain: 'moe' }).then(() => false, (e) => /already busy/.test(e.message)));
   await wait(lab);
   const run = lab.runs[lab.runs.length - 1];
@@ -199,7 +199,7 @@ check('a scan needs a brain and at least one skill', await startWatch(lab, {}).t
 for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watch.js', 'public/watch-view.js', 'src/lab-watch.js', 'public/lab-playground.js']) { check(`${f} parses`, spawnSync(process.execPath, ['--check', fileURLToPath(new URL(`../${f}`, import.meta.url))]).status === 0); check(`${f} names no private brain`, !/thoth|heretic/i.test(read(f))); }
 {
   const pg = read('public/lab-playground.js'), page = read('public/lab-watch.js'), html = read('public/watch.html'), js = read('public/watch.js'), view = read('public/watch-view.js'), css = read('public/watch.css'), main = read('electron/main.cjs');
-  check('the Playground has the FNRI page, right after Peek inside', /\['peek', 'Peek inside'\], \['watch', 'FNRI'\]/.test(pg) && /watch: createWatchPage\(\{ api \}\)/.test(pg));
+  check('the Playground has the fNRI page, right after Peek inside', /\['peek', 'Peek inside'\], \['watch', 'fNRI'\]/.test(pg) && /watch: createWatchPage\(\{ api \}\)/.test(pg));
   check('the page opens the viewer in its own window and says so if pop-ups are blocked', page.includes("window.open(`/watch.html${q}`, 'bob-watch'") && /pop-ups/.test(page));
   check('Bob.exe lets the viewer open as its own window, one at a time, and keeps it on Bob\'s own page', /url === base \+ '\/watch\.html' \|\| url\.startsWith\(base \+ '\/watch\.html\?'\)/.test(main) && /watchWin\.loadURL\(url\)/.test(main) && /if \(!url\.startsWith\(base \+ '\/watch\.html'\)\) e\.preventDefault\(\)/.test(main));
   check('the viewer has no outside scripts or styles', !/https?:\/\//.test(html) && !/https?:\/\/(?!x)/.test(js.replace(/\/\/.*$/gm, '')) && /<script type="module" src="\/watch\.js">/.test(html));
@@ -207,7 +207,7 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   check('three zoom levels: the whole brain, one floor, one expert', ['The whole brain', 'One floor', 'One expert'].every((t) => html.includes(t)) && /function floorHtml/.test(js) && /function expertHtml/.test(js));
   check('the picture is never the only way: a label on the canvas, the same in words, letters as well as colours, every control with a name', /role="img" aria-label=/.test(html) && /What this shows, in words/.test(html) && /aria-valuetext/.test(js) && /aria-label="\$\{esc\(label/.test(js) && ['watchLeft', 'watchRight', 'watchUp', 'watchDown', 'watchIn', 'watchOut', 'watchPrev', 'watchNext'].every((id) => new RegExp(`id="${id}"[^>]*aria-label=`).test(html)));
   check('it turns with the keyboard as well as a drag, and plays with the space bar', /ArrowLeft/.test(js) && /ev\.key === ' '/.test(js) && /tabindex="0"/.test(html));
-  check('with animations off it never turns by itself', /if \(spin && !still\(\)/.test(js) && /prefers-reduced-motion/.test(js));
+  check('with animations off it never turns by itself, and that follows Bob\'s own Style setting (motion On plays even when Windows has animation effects off)', /if \(spin && !still\(\)/.test(js) && /const still = \(\) => document\.body\.classList\.contains\('still'\);/.test(js) && !/prefers-reduced-motion/.test(js) && /still: \(\) => body\.classList\.contains\('still'\), live: \(\) => cubeLive \}/.test(read('public/layout.js')) && !/prefers-reduced-motion/.test(read('public/layout.js')));
   check('Save as a video records the picture itself, and says so where a browser can\'t', /captureStream/.test(js) && /MediaRecorder/.test(js) && /save a video of the picture/.test(js));
   check('a scan can be saved as a file and opened from one, checked on the way in', /expert-recording\.json/.test(js) && /load\(JSON\.parse\(await f\.text\(\)\)\)/.test(js) && /cleanRecording\(j\)/.test(js));
   check('the grey parts are a core up the middle with the experts around it, and a base under the first floor', /coreCells/.test(view) && /expertCell/.test(view) && /baseFloors/.test(view));
@@ -259,7 +259,7 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   const lines = inWords(c5, specialise(c5));
   check('the words say neuron groups, never experts, and that the groups are a way of slicing', /mixture-of-experts/.test(lines[0]) && /way of slicing/.test(lines[0]) && lines.slice(1).every((x) => !/expert/i.test(x)) && /neuron groups/.test(lines[1]) && say(c5, lines[0]) === lines[0]);
   check('a plain brain has no router, and its blend line makes no claim measured on experts', say(c5, 'Attention, the router, the tuning rows and the word tables') === 'Attention, the tuning rows and the word tables' && say(c5, 'Not an expert: attention, the router and the tuning rows') === 'Not a neuron group: attention and the tuning rows' && say(c5, 'the grey squares in the middle are not experts') === 'the grey squares in the middle are not in the neuron groups' && !/That's normal/.test(read('public/lab-watch-math.js').match(/isNeurons\(rec\) \? `[^`]*`/)?.[0] || 'That\'s normal'));
-  check('the Lab page speaks of Bob in the third person', /Bob asks it a few simple questions for each skill and records/.test(read('public/lab-watch.js')) && /Bob lights the busiest groups of neurons/.test(read('public/lab-watch.js')) && !/I ask it a few|I light the busiest/.test(read('public/lab-watch.js')));
+  check('the Lab page speaks of Bob in the third person', /Bob asks it a few questions per skill/.test(read('public/lab-watch.js')) && /show their busiest neurons/.test(read('public/lab-watch.js')) && !/I ask it a few|I light the busiest/.test(read('public/lab-watch.js')));
   { const wj = read('public/watch.js'); check('Try a cut names the crossed-out ring, the rescan button says it unloads, and a neuron scan says why there is no rescan', !/(?<!crossed-out )a red ring/.test(wj + read('public/help-content.js')) && /\(the crossed-out rings\)/.test(wj) && /Unload Bob\\'s brain and scan again/.test(wj) && /Press Unload Bob's brain and scan again to start\. It loads again the next time you chat\./.test(wj) && !/Press the button again/.test(wj) && !/askedUnload = true/.test(wj) && /setAsk\(true\)/.test(wj) && /Neuron groups can\\'t be switched off in Brain Engine, so this is a picture only\./.test(wj)); }
   check('all-rounders are drawn dashed, not only fainter, so they never look like the outline of an expert in use', /setLineDash\(\[dash, dash \* 0\.8\]\)/.test(read('public/watch-view.js')) && /\.watch-skill \.sw\.even \{ border: 1\.5px dashed/.test(read('public/watch.css')) && /\.mind-cube-key \.sw\.even \{ border: 1\.5px dashed/.test(read('public/style.css')) && !/soft white outline/.test(read('public/help-content.js') + read('public/watch.js') + read('public/lab-watch-math.js')) && /dashed white outline/.test(read('public/help-content.js')));
   { const hr = { brain: { kind: 'heads' } }; check('a heads scan never calls the grey parts attention, and the written thinking stays for a screen reader under the cube', say(hr, 'Attention, the router, the tuning rows and the word tables') === 'The feed-forward layers, the tuning rows and the word tables' && say(hr, 'Not an expert: attention, the router and the tuning rows') === 'Not an attention head: the feed-forward layers and the tuning rows' && say(hr, 'the grey squares are not experts') === 'the grey squares are not attention heads' && /hd \? `the feed-forward layers/.test(read('public/watch.js')) && /\.cube-view \.mind-log, \.cube-view \.mind-empty \{ position: absolute !important;[^}]*clip-path: inset\(50%\)/.test(read('public/style.css')) && !/\.cube-view \.mind-(log|empty)[^{]*\{ display: none/.test(read('public/style.css')) && /How Bob's thinking shows here\. On: a cube of Bob's brain/.test(read('public/index.html')) && /Bob sorts the words/.test(read('public/watch.html')) && /Brain Engine \(test build\), then scan again/.test(read('src/lab-watch.js'))); }
@@ -277,6 +277,8 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
     fs.writeFileSync(path.join(so, 'llama-server'), 'elf'); fs.writeFileSync(path.join(so, 'libllama-server-impl.so'), 'expert_trace');
     check('on Linux the same, from libllama-server-impl.so; a missing program is still unknown', traceBuilt(path.join(so, 'llama-server'))?.experts === true && traceBuilt(path.join(so, 'llama-server'))?.heads === false && traceBuilt(path.join(tmp, 'nope', 'llama-server.exe')) === null);
   }
+  { const pg = read('public/lab-watch.js');
+    check('while a brain is read the fNRI page says so, and a late answer for an older pick is dropped (PC test of 1.5.189)', /Reading this brain…/.test(pg) && /if \(n === asking && want === brain\) bv = r;/.test(pg)); }
   check('an expert scan\'s words are left as they were', say({ brain: { kind: 'experts' } }, 'Not experts') === 'Not experts' && say(c5, 'Not experts') === 'Other parts' && say(c5, '<div class="watch-expert">One expert</div>') === '<div class="watch-expert">One neuron group</div>');
   const html = read('public/watch.html'), view = read('public/watch-view.js'), js = read('public/watch.js');
   check('the viewer starts as a cube of coloured glass, with a slider for how see-through', /id="watchGlass"/.test(html) && /id="watchCube"/.test(html) && /cubeGap/.test(view) && /glass/.test(view) && /data-solid=/.test(js) && /id="watchGlow" min="0" max="1.5" step="0.05" value="0.5"/.test(html) && /glow = 0\.5/.test(view) && /solid\.get\(top\)/.test(view) && /cube\(\);/.test(js));
@@ -322,8 +324,15 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
     check('every dial as built is refused, and so is a dial the brain has no part for', await startWatch(l7, { brain: 'moe', again: first.id, dials: [{ kind: 'ffn', layer: 0, scale: 1 }] }).then(() => false, (e) => /every dial is as built/.test(e.message)) && await startWatch(l7, { brain: 'moe', again: first.id, dials: [{ kind: 'expert', layer: 0, index: 999, scale: 0 }] }).then(() => false, (e) => /experts 0 to/.test(e.message)));
     l7.stepFns.peekDials = async () => { throw new Error(NO_DIALS); };
     await startWatch(l7, { brain: 'moe', again: first.id, dials: [{ kind: 'ffn', layer: 0, scale: 0.5 }] }); await wait(l7);
-    check('an older Brain Engine with no dials says so in plain words', /can't turn parts up or down yet/.test(NO_DIALS) && /Update it under Get models, Engines/.test(NO_DIALS));
+    check('an older Brain Engine with no dials says so in plain words', /can't turn parts up or down yet/.test(NO_DIALS) && /Update it under Settings, Engines/.test(NO_DIALS));
     delete l7.stepFns.peekDials;
+  }
+  { // the keep list beside a cut brain's file is found and checked; one that doesn't fit is ignored
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-keep-')), g = path.join(d, '28Bob-Q4_K_M.gguf');
+    fs.writeFileSync(path.join(d, '28Bob-keep.json'), JSON.stringify({ name: '28Bob', experts: 2, layers: [[3, 7], [0, 5]] }));
+    const k = keepBeside({ gguf: g }, { layers: 2, experts: 2 });
+    check('a cut brain\'s keep list beside its file is found, and one that doesn\'t fit the brain is ignored', k?.layers[0][1] === 7 && k.experts === 8 && keepBeside({ gguf: g }, { layers: 3, experts: 2 }) === null && keepBeside({ gguf: g }, { layers: 2, experts: 4 }) === null && keepBeside({ gguf: '' }) === null);
+    fs.rmSync(d, { recursive: true, force: true });
   }
   { // use these for training: a list of blocks saved beside the recordings, read back checked, never taken for a recording
     const before = listRecordings(cfg, { id: 'moe', name: 'Test MoE' }).length;
@@ -356,6 +365,17 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   check('the engine is Bob\'s: the patches must apply, and the trace is proven before any question', /git apply/.test(sh) && /doesn't apply to llama\.cpp/.test(sh) && sh.indexOf('selftest') < sh.indexOf('" scan ') && /doesn't report the trace/.test(sh));
   check('the card writes the same recording the Lab does, and leaves the viewer beside it', py.includes(`FORMAT, VERSION = '${FORMAT}', ${VERSION}`) && /watch\.html\?file=recording\.json/.test(sh) && /q\.get\('file'\)/.test(read('public/watch.js')));
   check('the pack and the card scripts rent nothing and hold no keys', !/RUNPOD|api[_-]?key/i.test(sh + py + read('model-lab/forge/aifeui-bundle.mjs')));
+  check('one card can scan several brains in turn: the folder in and out can be named, the engine build is shared', /IN=\$\{AIFEUI_IN:-\$W\/in\}/.test(sh) && /OUT=\$\{AIFEUI_OUT:-\$W\/out\/aifeui\}/.test(sh) && /L=\$W\/aifeui-engine/.test(sh));
+  { // the scan against a brain served elsewhere (a forge benchmark step): the same questions, the key on every request
+    const { remoteScan, slug } = await import('../model-lab/forge/fnri-remote.mjs');
+    const auth = new Set(); let asked = 0;
+    const fetchImpl = async (u, o) => { auth.add(o.headers?.authorization || ''); if (u.endsWith('/apply-template')) return { ok: true, json: async () => ({ prompt: 'p' }) }; asked++; return { ok: true, json: async () => ({ content: 'ok', expert_trace: { n_layer: 2, n_expert: 8, n_expert_used: 2, n_prompt: 1, last: '.', rows: [{ t: 'q', e: [[0, 1], [2, 3]] }, { t: ' a', e: [[4, 5], [6, 7]] }] } }) }; };
+    const r = await remoteScan({ url: 'http://pod:8001/', name: 'Riker', quant: 'Q4_K_M', out: path.join(tmp, 'remote'), key: 'k', skills: ['coding', 'maths'], per: 2, fetchImpl, now: () => 5e12 });
+    const j = JSON.parse(fs.readFileSync(r.file, 'utf8'));
+    check('a scan of a brain served on a rented card writes the Lab\'s recording, named brain-fnri-quant, with the key on every request', path.basename(r.file) === 'riker-fnri-q4-k-m.json' && asked === 4 && [...auth].every((h) => h === 'Bearer k') && j.format === FORMAT && j.brain.experts === 8 && j.brain.layers === 2 && j.clips.length === 4 && cleanRecording(j).clips.length === 4 && slug('Qwen 3.6 35B-A3B') === 'qwen-3.6-35b-a3b');
+    const plain = async (u) => (u.endsWith('/apply-template') ? { ok: true, json: async () => ({ prompt: 'p' }) } : { ok: true, json: async () => ({ content: 'ok' }) });
+    check('a plain llama.cpp is found out on the first question', await remoteScan({ url: 'http://x', name: 'x', out: path.join(tmp, 'remote'), fetchImpl: plain }).then(() => false, (e) => e.message === NO_TRACE));
+  }
 }
 
 // ---- colours of your own, outline instead of glow, and the small cube in Bob's thinking ----
@@ -376,8 +396,10 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   const cubeJs = read('public/mind-cube.js'), index = read('public/index.html'), layout = read('public/layout.js'), server = read('src/server.js'), llama = read('src/llamacpp.js');
   check('a scan holds up to sixteen skills, and says so', await startWatch(mk(), { brain: 'moe', skills: WATCH_SKILLS.map((x) => x.id) }).then(() => false, (e) => /up to 16 skills/.test(e.message)) && /watch-over/.test(read('public/lab-watch.js')));
   check('the small cube is how Bob\'s thinking shows to begin with, with the written thinking one switch away and whenever the cube can\'t work', /id="mindDockCube"[^>]*aria-checked="true"/.test(index) && /id="mindCubeBox" class="mind-cube" hidden/.test(index) && /store\.get\('bob-mind-cube', '1'\) === '1'/.test(layout) && /createMindCube/.test(layout) && /classList\.toggle\('cube-view', cubeOn && cubeOk\)/.test(layout) && /\.cube-view \.mind-log, \.cube-view \.mind-empty \{ position: absolute !important;/.test(read('public/style.css')));
-  check('Bob asks the engine for the trace only while a cube is open, and only on Brain Engine', /cubeClients\.size > 0 && !cubeWhy\(\)/.test(server) && /this\.wantTrace\?\.\(\) \? \{ expert_trace: true \}/.test(llama) && /brainsEngineNow\(cfg\) === 'brainengine'/.test(server));
-  check('only this replicant matrix\'s own pages can turn the cube on, and it says why when the engine can\'t do it', /isLocal && url\.searchParams\.get\('cube'\) === '1'/.test(server) && /type: 'cube', ok: !cubeWhy\(\), why: cubeWhy\(\)/.test(server) && /cubeClients\.delete\(res\)/.test(server));
+  check('a brain answering on the second server is traced for the cube too, and a reply without a trace leaves a line in the logbook', /this\.beside\.wantTrace = \(\) => this\.wantTrace\?\.\(\) \|\| false; this\.beside\.onTrace = \(raw, model\) => this\.onTrace\?\.\(raw, model\);/.test(llama) && /if \(asked && !traced\) this\.log\?\.\('engine', `fNRI cube: /.test(llama));
+  check('Bob asks the engine for the trace only while a cube with Real experts on is open, and only on Brain Engine', /wantTrace = \(\) => liveCubes\.size > 0 && !cubeWhy\(\)/.test(server) && /for \(const res of liveCubes\) res\.write\(data\); \};/.test(server) && /this\.wantTrace\?\.\(\) \? \{ expert_trace: true \}/.test(llama) && /brainsEngineNow\(cfg\) !== 'brainengine'/.test(server));
+  check('an older Brain Engine build makes the cube say to press Update, instead of staying dark (1.5.193 on the owner\'s machines)', /lab\.traceProbe\?\.\(\)\?\.experts === false \? 'This Brain Engine build is too old/.test(server));
+  check('only this replicant matrix\'s own pages can turn the cube on, and it says why when the engine can\'t do it', /isLocal && url\.searchParams\.get\('cube'\) === '1'/.test(server) && /const live = url\.searchParams\.get\('live'\) === '1', why = live \? cubeWhy\(\) : ''/.test(server) && /type: 'cube', ok: !why, why, live/.test(server) && /cubeClients\.delete\(res\); liveCubes\.delete\(res\);/.test(server));
   check('the cube says in words what it shows, stays still when animations are off, and can open the big viewer', /says\.textContent/.test(cubeJs) && /if \(still\(\)\)/.test(cubeJs) && /bobWatch\?\.load/.test(cubeJs) && /role="img" aria-label=/.test(index));
   check('the chat endpoint of Brain Engine carries the trace with the last piece of a reply', /with the last piece of a streamed chat reply/.test(read('engine/patches/0002-expert-trace.patch')));
 }
@@ -454,23 +476,53 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
 {
   const box = { W: 5, D: 4, floors: 3, seed: 7 }, n = 60, per = 20;
   const seqOf = (r) => [...r].map((v, i) => [v, i]).sort((a, b) => a[0] - b[0]).map((p) => p[1]);
-  check('every load style but All at once gives each place in the block its own turn', LOAD_STYLES.filter(([id]) => id !== 'none').every(([id]) => { const r = loadOrder(id, box); return r.length === n && new Set(r).size === n && Math.min(...r) === 0 && Math.max(...r) < 1; }));
-  check('All at once shows everything from the first moment, and an unknown style is Random', loadOrder('none', box).every((v) => v === 0) && loadStyle('nonsense') === 'random' && loadStyle('vase') === 'vase');
-  check('Random is the same for the same seed and different for another', String(loadOrder('random', box)) === String(loadOrder('random', box)) && String(loadOrder('random', box)) !== String(loadOrder('random', { ...box, seed: 8 })));
-  check('Random mixes the floors, the printer styles build from the bottom floor up', seqOf(loadOrder('random', box)).slice(0, per).some((s) => s >= per) && ['spiral', 'lines', 'rings'].every((id) => seqOf(loadOrder(id, box)).every((s, k) => Math.floor(s / per) === Math.floor(k / per))));
+  check('Load in is Dissolve or Vase, then fill; Load out is Drain or Erode, and every one gives each place its own turn', String(LOAD_STYLES.map(([, l]) => l)) === 'Dissolve,Vase, then fill' && String(UNLOAD_STYLES.map(([, l]) => l)) === 'Drain,Erode' && ['random', 'vase', 'drain', 'erode'].every((id) => { const r = loadOrder(id, box); return r.length === n && new Set(r).size === n && Math.min(...r) === 0 && Math.max(...r) < 1; }));
+  check('an unknown or unpicked style is Vase, then fill coming in and Drain going out (the ones Bob starts with)', loadOrder('none', box).every((v) => v === 0) && loadStyle('nonsense') === 'vase' && loadStyle(null) === 'vase' && loadStyle('spiral') === 'vase' && unloadStyle(null) === 'drain' && unloadStyle('erode') === 'erode' && unloadStyle('vase') === 'drain');
+  check('Dissolve is the same for the same seed, different for another, and mixes the floors', String(loadOrder('random', box)) === String(loadOrder('random', box)) && String(loadOrder('random', box)) !== String(loadOrder('random', { ...box, seed: 8 })) && seqOf(loadOrder('random', box)).slice(0, per).some((s) => s >= per));
+  check('Drain is Vase, then fill run backwards: the water goes down first, then the wall', String(loadOrder('drain', box)) === String(loadOrder('vase', box)));
+  { const B = { W: 8, D: 8, floors: 8, seed: 3 }, r = loadOrder('erode', B), depth = (k) => { const f = Math.floor(k / 64), i = k % 64, x = i % 8, z = Math.floor(i / 8); return Math.min(x, 7 - x, z, 7 - z, f, 7 - f); };
+    const avg = (d) => { const v = [...r].filter((_, k) => depth(k) === d); return v.reduce((a, b) => a + b, 0) / v.length; };
+    check('Erode wears it away from the outside in: the surface goes first when it comes apart', avg(0) > avg(1) && avg(1) > avg(3)); }
   { const wall = (s) => { const i = s % per, x = i % 5, z = Math.floor(i / 5); return x === 0 || x === 4 || z === 0 || z === 3; }; const q = seqOf(loadOrder('vase', box));
     check('Vase, then fill: the outer wall of every floor first, then the inside', q.slice(0, 42).every(wall) && q.slice(42).every((s) => !wall(s)) && Math.floor(q[41] / per) === 2 && Math.floor(q[42] / per) === 0); }
-  { const q = seqOf(loadOrder('spiral', { W: 5, D: 5, floors: 1 })); const far = (s) => Math.hypot(s % 5 - 2, Math.floor(s / 5) - 2);
-    check('Archimedean spiral starts in the middle of the floor and ends at a corner', q[0] === 12 && far(q[24]) > 2.8 && far(q[1]) === 1); }
-  { const q = seqOf(loadOrder('lines', box)); check('Rectilinear goes back and forth: each block is next to the one before it within a floor', q.slice(0, per).every((s, k) => k === 0 || Math.abs(s % 5 - q[k - 1] % 5) + Math.abs(Math.floor(s / 5) - Math.floor(q[k - 1] / 5)) === 1)); }
+  { const B = { W: 16, D: 16, floors: 24 }, P = 256, r = loadOrder('vase', B); let up = true, tipped = false;
+    for (let i = 0; i < P; i++) for (let f = 1; f < 24; f++) if (r[f * P + i] <= r[(f - 1) * P + i]) up = false;
+    for (let f = 1; f < 24 && !tipped; f++) for (let i = 0; i < P && !tipped; i++) for (let j = 0; j < P; j++) { const x = i % 16, z = Math.floor(i / 16), x2 = j % 16, z2 = Math.floor(j / 16); if (x && x < 15 && z && z < 15 && x2 && x2 < 15 && z2 && z2 < 15 && r[f * P + i] < r[(f - 1) * P + j]) { tipped = true; break; } }
+    check('Vase, then fill pours the inside in like water: the surface sloshes, but every column still fills from the bottom up', up && tipped && typeof slosh === 'function'); }
   check('the cube is told which brains are loaded, by the names it shows', String(cubeBrains([{ name: 'a.gguf' }, { name: 'b.gguf', beside: true }, { name: 'a.gguf' }, null], (x) => x.toUpperCase())) === 'A.GGUF,B.GGUF' && cubeBrains(null).length === 0);
   const view = read('public/watch-view.js'), js = read('public/watch.js'), cubeJs = read('public/mind-cube.js'), html = read('public/watch.html'), index = read('public/index.html'), server = read('src/server.js'), help = read('public/help-content.js');
   check('the drawing leaves out the blocks whose turn has not come, and nothing lights up meanwhile', /if \(!shown\(l \+ baseFloors, i\)\) continue;/.test(view) && /if \(reveal < 1\) lit = \[\];/.test(view) && /sweep, loading:/.test(view));
-  check('with animations off the block simply appears', /if \(!rec \|\| !raf \|\| stillNow \|\| load === 'none' \|\| ms <= 0\) \{ reveal = to;/.test(view) && /view\.sweep\(1, LOAD_IN_MS, still\(\)\)/.test(js) && /if \(fresh && !still\(\)\)/.test(cubeJs) && /view\.sweep\(0, CUBE_OUT_MS, still\(\)\)/.test(cubeJs));
-  check('the viewer takes the old block apart before the next scan loads in', /if \(rec && !still\(\) && !view\.loading\(\)\) \{ view\.sweep\(0, LOAD_OUT_MS\)/.test(js) && /loadIn\(\);\n\}/.test(js));
-  check('Load in is a picker in the viewer and in the small cube\'s details, remembered under one name', /<select id="watchLoad"/.test(html) && /id="mindCubeLoadBox" class="muted" hidden/.test(index) && (js.match(/bob-fnri-load/g) || []).length === 2 && /bob-fnri-load/.test(cubeJs) && /loadBox\.hidden = !showDetails/.test(cubeJs));
-  check('the small cube comes apart when its brain is let go, told by Bob to cube pages only', /type === 'cube-brains'\) \{ gone\(j\.labels\)/.test(cubeJs) && /ev\?\.type === 'brain' && cubeClients\.size\) cubeBrainsNow\(\)/.test(server) && /for \(const res of cubeClients\) res\.write\(data\); \} catch/.test(server));
-  check('Help explains load in and load out, and the glossary has it', /<strong>Load in and load out\.<\/strong>/.test(help) && /<dt>Load in<\/dt>/.test(help) && /Vase, then fill/.test(help));
+  check('with animations off the block simply appears', /if \(!rec \|\| !raf \|\| stillNow \|\| load === 'none' \|\| ms <= 0\) \{ reveal = to;/.test(view) && /view\.sweep\(1, LOAD_IN_MS, still\(\)\)/.test(js) && /if \(fresh && !still\(\)\)/.test(cubeJs) && /view\.sweep\(0, outMs\(\), still\(\)\)/.test(cubeJs));
+  check('the viewer takes the old block apart before the next scan loads in', /if \(rec && !still\(\) && !view\.loading\(\)\) \{ view\.sweep\(0, outMs\(\)\)/.test(js) && /loadIn\(\);\n\}/.test(js));
+  check('Load in and Load out are pickers in the viewer and in the small cube\'s details, each remembered under one name', /<select id="watchLoad"/.test(html) && /<select id="watchUnload"/.test(html) && /id="mindCubeLoadBox" class="muted" hidden/.test(index) && /<select id="mindCubeUnload"/.test(index) && (js.match(/bob-fnri-load/g) || []).length === 2 && (js.match(/bob-fnri-unload/g) || []).length === 2 && /bob-fnri-load/.test(cubeJs) && /bob-fnri-unload/.test(cubeJs) && /unload: \$\('mindCubeUnload'\)/.test(read('public/layout.js')) && /loadBox\.hidden = !showDetails/.test(cubeJs));
+  check('the big viewer has an Edges switch, off to begin with and remembered', /id="watchEdges" type="button" class="brain-switch" role="switch" aria-checked="false"/.test(html) && /bob-fnri-edges/.test(js) && /view\.set\(\{ edges: on \}\)/.test(js));
+  { const { SIGNS, pickSign } = await import('../public/mind-cube.js');
+    check('with no brain loaded the cube shows one of five neon signs, picked at random, and says it in words', SIGNS.length === 5 && SIGNS.includes('VACANCY') && pickSign(() => 0) === 'VACANCY' && pickSign(() => 0.999) === 'Brain not found' && /The sign says: \$\{signNow\}/.test(cubeJs) && /\.still \.mind-cube p\.mind-cube-sign \{ animation: none; \}/.test(read('public/style.css')) && !/prefers-reduced-motion: reduce\) \{ \.mind-cube p\.mind-cube-sign/.test(read('public/style.css')));
+    const fakeLab = { brains: () => [{ id: 'riker', name: 'Riker', gguf: '/x/28Bob-Q4_K_M.gguf' }] };
+    check('1.5.208: the sign shows only when Bob holds no brain (and isn\'t loading one), never over a loaded brain whose shape is unknown', /anyLoaded = \(Array\.isArray\(j\.labels\) && j\.labels\.length > 0\) \|\| Boolean\(j\.loading\)/.test(cubeJs) && /const empty = known && !anyLoaded;\n\s+showSign\(!rec && !shell && empty\)/.test(cubeJs) && !/!shell && known \?/.test(cubeJs));
+    check('the cube gets each loaded brain\'s empty shape, and builds it in one colour before the first reply, still until Bob thinks', /function ready\(shapes, loading = ''\)/.test(cubeJs) && /const built = !rec && shell && shell\.label ===/.test(cubeJs) && /shapes = cubeShapes\(lab, \[\.\.\.now\.map\(\(m\) => m\?\.name\), loading\], friendlyName, \(m\) => brain\.engine\.resolve\?\.\(m\)\?\.gguf\)/.test(server) && cubeShapes(fakeLab, ['nothing-here']).length === 0 && CUBE_GROUPS === 256);
+    { const { showWord, sparkWord, SHOW_MS, SHOW_TRAIL, SPARK_MS } = await import('../public/mind-cube.js');
+    let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const w1 = showWord(null, 3, 16, 4, rnd), w2 = showWord(w1, 3, 16, 4, rnd);
+    const kept = w2.reduce((a, l, i) => a + l.filter((e) => w1[i].includes(e)).length, 0);
+    check('the glow for show picks the brain\'s own number of experts on every floor, all different and in range, and drifts from the word before', w1.length === 3 && w1.every((l) => l.length === 4 && new Set(l).size === 4 && l.every((e) => e >= 0 && e < 16)) && kept > 0 && kept < 12 && showWord(null, 2, 128, 0, rnd)[0].length === 8 && showWord(null, 1, 4, 99, rnd)[0].length === 4 && showWord(null, 0, 8, 2, rnd).length === 0);
+    check('the cube pulses from a message sent to Bob\'s first word, runs while he writes, and rests when he\'s done', /if \(j\?\.type === 'start'\) \{ setPhase\('wait'\); return; \}/.test(cubeJs) && /if \(j\?\.type === 'token'\) \{ setPhase\('run'\); return; \}/.test(cubeJs) && /if \(j\?\.type === 'done' \|\| j\?\.type === 'error'\) \{ setPhase\('idle'\); return; \}/.test(cubeJs) && /pulse\(p === 'wait' && !live\(\) && !rec\)/.test(cubeJs));
+    check('the pulse is an opacity fade the card does alone, and holds still with animations off', /\.mind-cube\.pulse canvas \{ animation: mind-cube-pulse 1\.4s ease-in-out infinite; \}/.test(read('public/style.css')) && /\.still \.mind-cube\.pulse canvas \{ animation: none;/.test(read('public/style.css')));
+    check('the glow for show is drawn about 14 times a second, only while Bob writes, and fades out after', SHOW_MS === 70 && SHOW_TRAIL === 6 && /if \(busy \|\| show\.length\) showTimer = setTimeout\(showTick, SHOW_MS\); else view\.draw\(\[\]\);/.test(cubeJs) && /stopShow\(\); busy = false; phase = 'idle'; pulse\(false\); showing = false;/.test(cubeJs));
+    const sp1 = sparkWord(40, 128, rnd), lit1 = sp1.reduce((a, l) => a + l.length, 0);
+    check('resting, a few neurons fire now and then: 1 to 3, every few seconds, only while the section shows', sp1.length === 40 && lit1 >= 1 && lit1 <= 3 && sparkWord(0, 8, rnd).length === 0 && SPARK_MS[0] >= 2000 && SPARK_MS[1] > SPARK_MS[0] && /if \(!showing \|\| phase !== 'idle' \|\| live\(\) \|\| rec \|\| still\(\)\) return;/.test(cubeJs));
+    check('with animations off the glow for show is one still frame and nothing sparks', /if \(still\(\)\) \{ show = \[\]; view\.draw\(on \? \[\{ e: showWord\(null/.test(cubeJs));
+    check('the glow for show takes the theme\'s cube colour unless you picked a colour of your own', /getPropertyValue\('--cube'\)/.test(read('public/watch-view.js')) && /const tint = \(\) => \{ if \(ownColour\) return;/.test(cubeJs) && /ownColour = true;/.test(cubeJs) && /const showLit = /.test(cubeJs));
+    check('the whole cube, not only its glow, is in the theme\'s colour, and it changes the moment the theme does', /esp = \{ \.\.\.esp, top: esp\.top\.map\(\(r\) => r\.map\(\(\) => 0\)\) \}/.test(cubeJs) && /new MutationObserver\(retint\)/.test(cubeJs) && /const retint = \(\) => \{ tint\(\); view\.set\(\{\}\);/.test(cubeJs));
+    check('the small cube has faint edges so it reads as a cube; the big viewer leaves them off', /edges: true \}\); \/\/ edges/.test(cubeJs) && /let edges = false;/.test(read('public/watch-view.js')) && /ctx\.globalAlpha = 0\.16 \* Math\.min\(1, reveal \* 1\.5\)/.test(read('public/watch-view.js')));
+    check('Real experts is a switch beside Show the cube, off to begin with, and only it asks for the trace', /id="mindCubeLive"[^>]*aria-checked="false"/.test(index) && /id="mindCubeLive"[^>]*title="[^"]*roughly 10 to 30% slower/.test(index) && /store\.get\('bob-cube-live', '0'\) === '1'/.test(read('public/layout.js')) && /'\/api\/events\?cube=1&live=1' : '\/api\/events\?cube=1'/.test(cubeJs) && /type === 'trace' && live\(\)/.test(cubeJs) && /cube\.relive\(\)/.test(read('public/layout.js')));
+    check('the cube is told how many experts a word picks, for the glow for show', /used: Number\(f\.used\) \|\| 0/.test(read('src/lab-watch.js')));
+    const help = read('public/help-content.js');
+    check('Help, the glossary and the FAQ explain the glow for show and Real experts', /<dt>Real experts<\/dt>/.test(help) && /id: 'faq-cube-speed'/.test(help) && /<em>glows for show<\/em>/.test(help) && !/my replies come a little slower while it's on/.test(help));
+  }
+  check('a frame stamped before play() began never runs the cube backwards', /dt = Math\.max\(0, Math\.min\(0\.1,/.test(cubeJs)); }
+  check('the small cube comes apart when its brain is let go, told by Bob to cube pages only', /type === 'cube-brains'\) \{ known = true; anyLoaded = [^;]+; gone\(j\.labels, j\.shapes, j\.loading\)/.test(cubeJs) && /ev\?\.type === 'brain' && cubeClients\.size\) cubeBrainsNow\(\)/.test(server) && /for \(const res of cubeClients\) res\.write\(data\);\s*\} catch/.test(server));
+  check('Help explains load in and load out, and the glossary has both', /<strong>Load in and load out\.<\/strong>/.test(help) && /<dt>Load in<\/dt>/.test(help) && /<dt>Load out<\/dt>/.test(help) && /Vase, then fill/.test(help) && /Drain/.test(help) && /Erode/.test(help) && /Dissolve/.test(help) && !/Archimedean|Rectilinear|Concentric/.test(help));
 }
 
 // ---- dials, and before and after ----
@@ -492,6 +544,16 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   check('before and after: questions are matched, the picks compared word for word over the question, answers as text', cmp.clips.length === 2 && cmp.clips[0].moved === 3 / 8 && cmp.clips[0].sameAnswer === false && cmp.clips[1].moved === 0 && cmp.clips[1].sameAnswer === true && cmp.same === 1 && cmp.changed === 1 && cmp.moved === 3 / 16 && cmp.per[0].moved === 3 / 8 && cmp.clips[1].before === 1);
   check('the same scan against itself moves nothing', compareScans(before, before).moved === 0 && compareScans(before, before).changed === 0);
   check('the comparison is said in words', /1 of 2 answers changed\. Reading the same questions, 19% of the picks moved to other blocks\. A moved most \(38%\), B least \(0%\)\./.test(compareWords(cmp)) && /don't share any questions/.test(compareWords(compareScans(mkRec([]), after))));
+  { // two brains side by side: a cut brain lined up with the brain it was cut from by its keep list
+    const stock = { ...before, brain: { name: 'Qwen 3.6 35B-A3B Q4_K_M', experts: 8, layers: 2, used: 2, kind: 'experts' } };
+    const E = stock.brain.experts, L = stock.brain.layers, half = Math.floor(E / 2);
+    const keep = { experts: E, layers: Array.from({ length: L }, (_, l) => Array.from({ length: half }, (_, x) => (x * 2 + l) % E)) };
+    const cut = { ...stock, brain: { ...stock.brain, name: 'Riker Q4_K_M', experts: half }, clips: stock.clips.map((c) => ({ ...c, e: c.e.map((row) => row.map((ids, l) => ids.map((x) => keep.layers[l].indexOf(x)).filter((x) => x >= 0))) })) };
+    const p = pairUp(stock, cut, { keepB: keep }), r = p.a ? compareScans(p.a, p.b) : null;
+    check('a cut brain is lined up with its stock brain by its keep list, and where it kept the experts the picks match', p.lined === 'b' && p.b.brain.experts === E && r.clips.length === stock.clips.length && lineUp(cut, keep.layers, E).clips[0].e[0][0].every((x) => keep.layers[0].includes(x)) && /gave the same answer to/.test(pairWords(r, 'Qwen', 'Riker')));
+    check('without a keep list, with a wrong one, or with different floors, two brains are refused in words', /no list of which experts/.test(pairUp(stock, cut).why) && keepMap({ layers: keep.layers.slice(1) }, { layers: L, experts: half }) === null && keepMap({ layers: keep.layers.map((k) => k.map(() => 0)) }, { layers: L, experts: half }) === null && /different number of floors/.test(pairUp(stock, { ...cut, brain: { ...cut.brain, layers: L + 1 } }).why));
+    check('videos are named model-skill-quantization, and model-vs-model for two brains', videoName(cut, { skill: 'coding' }) === 'riker-coding-q4_k_m' && videoName(cut, { other: stock }) === 'riker-vs-qwen-3.6-35b-a3b-all-skills-q4_k_m' && videoName({ brain: { name: 'Bill' }, name: 'Bill, 12 skills' }, { skill: 'maths' }) === 'bill-maths');
+  }
   { const mv = movedBlocks(before, after, { n: 3 }); check('the experts that moved most between two scans are found, biggest change first', mv.length === 3 && mv.every((t) => t.kind === 'expert') && mv.some((t) => t.layer === 0 && t.index === 1) && mv.some((t) => t.layer === 0 && t.index === 5) && movedBlocks(before, before).length === 0 && targetsOf([{ kind: 'ffn', layer: 1, index: 4, scale: 2 }])[0].index === 0); }
   const view = read('public/watch-view.js'), js = read('public/watch.js'), html = read('public/watch.html'), patch3 = read('engine/patches/0003-dials.patch'), readme = read('engine/README.md'), help = read('public/help-content.js'), srv = read('src/lab-watch.js');
   check('Brain Engine has the dials patch: experts, heads, attention and feed-forward, set over /dials and cleared with the prompt caches', /llama_set_dials/.test(patch3) && /LLAMA_DIAL_EXPERT/.test(patch3) && /LLAMA_DIAL_HEAD/.test(patch3) && /"\/dials"/.test(patch3) && /ffn_moe_weights_dialed/.test(patch3) && /cached prompts were computed with the old dials/.test(patch3) && /0003-dials\.patch/.test(readme) && !/thoth|heretic/i.test(patch3));
@@ -501,6 +563,75 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   check('the dials reach the engine only for the scan, after the experts mask', /if \(dials\) await \(lab\.stepFns\.peekDials \|\| setDials\)\(srv\.url, dials\);/.test(srv) && /res\.status === 404\) throw new Error\(NO_DIALS\)/.test(srv));
   check('Before and after: a second picture that follows the first, opened by itself for a scan made from another', /id="watchCanvasB"/.test(html) && /id="watchCmpWith"/.test(html) && /class="watch-cmp" hidden aria-live="polite"/.test(html) && /function cmpFollow\(\)/.test(js) && /viewB\.draw\(litForB\(i, frac\)\)/.test(js) && /sel\.value = from; cmpWith\(from\);/.test(js));
   check('Help explains dials and before and after, with an FAQ and a glossary entry', /<strong>Dials: turn a part up or down\.<\/strong>/.test(help) && /<strong>Before and after\.<\/strong>/.test(help) && /id: 'faq-aifeui-dials'/.test(help) && /<dt>Dial<\/dt>/.test(help));
+}
+
+// ---- the weight map and the difference map (src/lab-weights.js): the brain file's own weights, read without an engine ----
+{
+  const { unpackRow, weightMap, changeMap, shade, planOf, sampleRows, ROWS, WEIGHTS_FORMAT } = await import('../src/lab-weights.js');
+  const { weightsFor } = await import('../src/lab-watch.js');
+  const { writeGgufFrom } = await import('../src/lab-gguf.js');
+  // one block of each packed kind, with what llama.cpp's own gguf-py unpacks it to (sum, sum of squares, first four)
+  const BLOCKS = [
+    [2, 'c22ae5f1a94106a0956a26afbccdafe562f9', 0.316772, 1.99017, [-0.158386, -0.369568, 0.0527954, -0.369568]],
+    [6, '503193c64551370e99b2d74c3427fa48d732a1df70ac', -8.4668, 80.837, [1.16211, 2.32422, -1.16211, -2.32422]],
+    [8, '7a2b59015e19a621f9bd0ccc21397c1ec795ca7748dc03d17a88934d85527357a2e6', 10.8644, 662.907, [5.19855, 0.0584106, 5.4906, 1.46027]],
+    [10, '92c58efd5185f0711ef7677a1f132a818d882195a100b28d6b236b82481bd9fe630dc3ce3be4ebcab72f45b35223479f6e794d57037e2cfde9e15a7789781e3721a557d8e5a703296dcb81db3f65cf9c4c24e72e', -161.382, 188.085, [-0.937073, -0.970642, -0.937073, -0.937073]],
+    [11, '8fc83f0bfe4363f82f4759778955f6ced681cbea7179ced2c8f814a13472ff70ce369d8385452a44f318337f08cd1e614f235d3f83bc45fee9ee0403a79be118544441317c9311f85e0429b19f7ec0e156f65a3322e791b880ee995e3f0d307d2fbaf400693a179e0d027ed4ca2b', 9.0061, 2700.43, [-0.121704, 0.121704, -0.0608521, -0.182556]],
+    [12, 'd02fff2feb6603f7b2725de11fe6ac2f88a68182869793f0aad6ded8116e3ab51681c4a374fec70a68b3e4bdc92b387987416c17ec90963ec766888ab4b80eba7c5cfd81121bea9cee1810dfd5169faf26cd7b5c30c8aba44d972299e8c7b41b9a1d2b0f180600a974d63b6332202c998e82b2522c49c4394c7d73265b6aaf61b288fbd0aecfa766616223611e764c93', 7410.36, 427592, [35.7452, 25.2472, -0.997925, 4.2511]],
+    [13, 'ac29b231b8fa197271be53a3442b128cdad72bad0f8aeef42a0b9a26d74fc78f2562b8701097a55b5510543d27ed600de3200a6749307fd37899c118819af6674394c3f7aa5f93f32c810a37ca7bf1013ccdf8ab8ab4a6039954e84cbe3b3f7f1183c3df8375c517b4e786a9aadf7488f892b12191387ad86aca56d8531c927b931fe8f16e795b9b331767e712dbe8f5331dd9917f01e64710dd3c25f4d21690a049453135550ec0193a8bed1783d53e', 5366.57, 235013, [-1.27661, 30.9822, 55.7966, 48.3523]],
+    [14, 'c944658d79a131f8130b3ea4bd2f5d95e57bd791436d840f4e6654608135bbfb885d346959a49b36402a4f3dcc489fb6511fbe09e5d72bf834e04fe028ca4991e02abd77279fedc206d2318ca8b8287a6f4b795209575d7277d456c0f6e81a0e584d730660f56bb8b588475f7066c1cd7109c5079a933ee857db751ff223726ad90697f749f7c61bd80163a8c9a356ba91d79f6d24ee3a14ebd41386d8faef6e9e6c70df41dba9aeb5301e5824b7db0e504f1d970686934768f005af0d5a23ddb465fc5a489b43e76ea3e384969be487d931', 2546.47, 2.14389e+07, [97.2173, -55.5527, -291.652, -402.757]]
+  ];
+  const near = (a, b) => Math.abs(a - b) <= 1e-4 * Math.max(1, Math.abs(b));
+  const bad = BLOCKS.filter(([t, hex, sum, sq, first]) => { const y = unpackRow(Buffer.from(hex, 'hex'), t, t >= 10 ? 256 : 32); let s = 0, q = 0; for (const v of y) { s += v; q += v * v; } return !(near(s, sum) && near(q, sq) && first.every((v, i) => near(y[i], v))); });
+  check('the weight map unpacks Q4_0, Q5_0, Q8_0 and Q2_K to Q6_K exactly as llama.cpp does', bad.length === 0, bad.map((b) => b[0]).join(','));
+  check('the rows read are spread evenly and are the same in every brain of that shape', JSON.stringify(sampleRows(16, 8, 4)) === '[17,19,21,23]' && sampleRows(0, 3).length === 3 && ROWS === 8);
+
+  // a made-up brain: 2 floors of 4 experts, each expert's numbers all (e + 1) * (floor + 1); F32 so it's exact
+  const W = 32, R = 8;
+  const make = async (file, n, val) => {
+    const tensors = [];
+    for (let L = 0; L < 2; L++) for (const k of ['gate', 'up', 'down']) {
+      const f = new Float32Array(W * R * n); for (let e = 0; e < n; e++) f.fill(val(L, e), e * W * R, (e + 1) * W * R);
+      const buf = Buffer.from(f.buffer); tensors.push({ name: `blk.${L}.ffn_${k}_exps.weight`, dims: [W, R, n], type: 0, bytes: buf.length, data: async () => buf });
+    }
+    await writeGgufFrom(file, { kvs: [{ key: 'general.architecture', type: 8, value: 'qwen3moe' }, { key: 'qwen3moe.block_count', type: 4, value: 2 }, { key: 'qwen3moe.expert_count', type: 4, value: n }], tensors });
+  };
+  const wd = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-weights-'));
+  const A = path.join(wd, 'a.gguf'), B = path.join(wd, 'b.gguf'), C = path.join(wd, 'cut-Q4_K_M.gguf');
+  await make(A, 4, (L, e) => (e + 1) * (L + 1));
+  await make(B, 4, (L, e) => (e + 1) * (L + 1) * (L === 1 && e === 2 ? 1.5 : 1));
+  await make(C, 3, (L, e) => ([0, 2, 3][e] + 1) * (L + 1)); // a cut keeping experts 0, 2 and 3
+  { const none = { brains: () => [] }, sh = cubeShapes(none, ['picked-by-hand'], (n) => n, (m) => (m === 'picked-by-hand' ? A : null));
+    check('1.5.208: a loaded brain the Lab\'s list doesn\'t know still gets its shape from the engine\'s file, so the cube builds it instead of showing the sign', sh.length === 1 && sh[0].label === 'picked-by-hand' && sh[0].layers === 2 && cubeShapes(none, ['picked-by-hand']).length === 0 && cubeShapes(none, ['x'], (n) => n, () => { throw new Error('no'); }).length === 0); }
+  const shape = { kind: 'experts', experts: 4, layers: 2 };
+  const wm = await weightMap(A, shape);
+  check('the weight map is each expert\'s strength, floor by floor', wm.format === WEIGHTS_FORMAT && wm.kind === 'weights' && wm.layers.length === 2 && wm.layers.every((fl, L) => fl.every((v, e) => near(v, (e + 1) * (L + 1)))) && wm.read === 2 * 4 * 3 * ROWS);
+  const sh = shade(wm);
+  check('strength is shaded against the other experts on the same floor', sh.every((fl) => near(fl[0], 0) && near(fl[3], 1) && fl[1] < fl[2]));
+  const cm = await changeMap(B, A, shape);
+  check('the difference map finds the one expert that changed, and by how much', near(cm.layers[1][2], 0.5) && cm.layers.flat().filter((v) => v > 1e-9).length === 1 && shade(cm)[1][2] === 1 && shade(cm)[0][0] === 0);
+  const ck = await changeMap(C, A, { kind: 'experts', experts: 3, layers: 2 }, { keep: { experts: 4, layers: [[0, 2, 3], [0, 2, 3]] } });
+  check('a cut brain is lined up with the brain it came from through its keep list', ck.layers.flat().every((v) => v === 0));
+  let threw = ''; try { await changeMap(C, A, { kind: 'experts', experts: 3, layers: 2 }); } catch (e) { threw = e.message; }
+  check('two brains that aren\'t built alike are refused in plain words', /aren't built alike/.test(threw));
+  check('a brain without experts is mapped by neuron groups, like its trace', (() => { const g = { tensors: [{ name: 'blk.0.ffn_up.weight', dims: [16, 512], type: 0, offset: 0 }, { name: 'blk.0.ffn_down.weight', dims: [512, 16], type: 0, offset: 0 }] }; const p = planOf(g, { kind: 'neurons', experts: 256, layers: 1 }); return p[0].length === 256 && p[0].every((v) => v.length === 1 && v[0].rows.length === 2) && p[0][255][0].rows[1] === 511; })());
+  // the route's helper, with the keep list beside the cut brain and the map kept for a second look
+  fs.writeFileSync(path.join(wd, 'cut-keep.json'), JSON.stringify({ experts_before: 4, layers: [[0, 2, 3], [0, 2, 3]] }));
+  const brains = [{ id: 'a', name: 'Stock', gguf: A }, { id: 'c', name: 'Cut', gguf: C }];
+  const fakeLab = { cfg: { dataDir: wd }, brains: () => brains };
+  const r1 = await weightsFor(fakeLab, { brain: 'c', vs: 'a', kind: 'experts', experts: 3, layers: 2 });
+  check('the difference map of a cut brain uses the keep list beside it, and says what it compared with', r1.kind === 'change' && r1.vs === 'Stock' && r1.raw.flat().every((v) => v === 0));
+  const kept = fs.readdirSync(path.join(wd, 'lab', 'watch', 'c'));
+  const r2 = await weightsFor(fakeLab, { brain: 'c', vs: 'a', kind: 'experts', experts: 3, layers: 2 });
+  check('a map is kept beside the scans and isn\'t taken for a scan', kept.some((f) => /^weightmap-a-experts\.json$/.test(f)) && JSON.stringify(r2.raw) === JSON.stringify(r1.raw) && listRecordings({ dataDir: wd }, brains[1]).length === 0);
+  let why = ''; try { await weightsFor(fakeLab, { brain: 'a', vs: 'a', kind: 'experts', experts: 4, layers: 2 }); } catch (e) { why = e.message; }
+  let why2 = ''; try { await weightsFor(fakeLab, { brain: 'a', kind: 'heads', experts: 4, layers: 2 }); } catch (e) { why2 = e.message; }
+  check('a brain against itself, and a scan of attention heads, are turned down in plain words', /always the same as itself/.test(why) && /expert or neuron scan/.test(why2));
+  fs.rmSync(wd, { recursive: true, force: true });
+  const view = read('public/watch-view.js'), js = read('public/watch.js'), html = read('public/watch.html'), help = read('public/help-content.js'), srv = read('src/lab-watch.js');
+  check('the viewer colours by the weights on request, with a colour-blind-safe ramp and a key that says what low and high mean', /How strong each expert\\'s weights are/.test(js) && /How much each expert differs from another brain/.test(js) && /'\/api\/lab\/watch\/weights'/.test(js) && /viridis/.test(view) && /if \(key && heat\)/.test(view) && html.includes('id="watchByVs"') && /role="status"/.test(html.match(/<p id="watchBySays"[^>]*>/)[0]));
+  check('the weight maps are read only on this replicant matrix itself', srv.indexOf("'/api/lab/watch/weights'") > srv.indexOf('if (!isLocal)'));
+  check('Help explains the weight map and the difference map, with an FAQ and a glossary entry', /<strong>Weight map and difference map\.<\/strong>/.test(help) && /id: 'faq-aifeui-weights'/.test(help) && /<dt>Weight map<\/dt>/.test(help));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

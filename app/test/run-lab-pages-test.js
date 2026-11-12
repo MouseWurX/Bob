@@ -11,7 +11,7 @@ import { ggufInfo } from '../src/gguf.js';
 import { meter, fitLines, fitsAnswer, ladderSizes, keptFrom, squeezeOf, GiB, STOPS } from '../public/lab-context-math.js';
 import { haystack, found, contextView, planContext, startContext, useContext, contextSaw, forgetTurns, FORGET_FACTS } from '../src/lab-context.js';
 import { draftsFor, planTurbo, startTurbo, useTurbo, bestGuess, turboSaw, turboView } from '../src/lab-turbo.js';
-import { teachFit, SQUEEZE_TYPES, lessonsPerHour, teachDiskGB, readBrainSource, readLessonSource, planTeach, saveTeachPlan, startTeach, useTaught, trainerState, startTrainerInstall, removeTrainer, uvUrl, FIT_ROWS, TRAINER } from '../src/lab-teach.js';
+import { NO_CUDA, teachFit, SQUEEZE_TYPES, lessonsPerHour, teachDiskGB, readBrainSource, readLessonSource, planTeach, saveTeachPlan, startTeach, useTaught, trainerState, startTrainerInstall, removeTrainer, blockedWords, uvUrl, FIT_ROWS, TRAINER } from '../src/lab-teach.js';
 import { TEACH_PY, FETCH_PY } from '../src/lab-teach-script.js';
 import { pagesRoute } from '../src/lab-pages.js';
 import { LlamaCpp } from '../src/llamacpp.js';
@@ -31,8 +31,8 @@ function kv(key, type, value) {
   else { v = Buffer.alloc(4); v.writeUInt32LE(value); }
   return Buffer.concat([h, v]);
 }
-function makeGguf(file, kvs, padBytes = 0) {
-  const t = { name: 'token_embd.weight', dims: [4, 4] };
+function makeGguf(file, kvs, padBytes = 0, tname = 'token_embd.weight') {
+  const t = { name: tname, dims: [4, 4] };
   const parts = [Buffer.alloc(24)]; parts[0].write('GGUF', 0, 'latin1'); parts[0].writeUInt32LE(3, 4); parts[0].writeBigUInt64LE(1n, 8); parts[0].writeBigUInt64LE(BigInt(kvs.length), 16);
   for (const [k, ty, v] of kvs) parts.push(kv(k, ty, v));
   const n = Buffer.from(t.name); const b = Buffer.alloc(8 + n.length + 4 + 16 + 12);
@@ -45,7 +45,8 @@ const shape = (arch, ctx) => [['general.architecture', 8, arch], [`${arch}.conte
 const bigFile = path.join(tmp, 'big.gguf'), smallFile = path.join(tmp, 'small.gguf'), mtpFile = path.join(tmp, 'mtp.gguf'), lonely = path.join(tmp, 'lonely.gguf');
 makeGguf(bigFile, [...shape('qwen3', 40960), ['general.name', 8, 'Big'], ['general.base_model.0.repo_url', 8, 'https://huggingface.co/Qwen/Qwen3-8B']], 9000);
 makeGguf(smallFile, [...shape('qwen3', 40960), ['general.name', 8, 'Small']], 100);
-makeGguf(mtpFile, [...shape('qwen35moe', 262144), ['qwen35moe.nextn_predict_layers', 4, 1]], 500);
+makeGguf(mtpFile, [...shape('qwen35moe', 262144), ['qwen35moe.nextn_predict_layers', 4, 1]], 500, 'blk.3.nextn.eh_proj.weight');
+const noGuesser = path.join(tmp, 'no-guesser.gguf'); makeGguf(noGuesser, [...shape('qwen35moe', 262144), ['qwen35moe.nextn_predict_layers', 4, 1]], 500); // 1.5.207: the header says so, the tensors aren't there
 makeGguf(lonely, [...shape('llama', 8192)], 50);
 
 // ---- the Lab, with a made-up catalogue and engine folder ----
@@ -86,6 +87,7 @@ const per = 4 * 8 * 256; // 4 layers x 8 heads x (128 + 128)
 }
 
 // ---- the brain file's own facts ----
+check('a header that says nextn but has no guesser tensors is no guesser (Engine 4 crashed on Riker)', ggufInfo(noGuesser).mtp === 0 && ggufInfo(noGuesser).mtpInHeader === 1);
 check('Bob reads whether a brain carries its own guesser, and where its full weights are', ggufInfo(mtpFile).mtp === 1 && ggufInfo(smallFile).mtp === 0 && ggufInfo(bigFile).origin === 'https://huggingface.co/Qwen/Qwen3-8B');
 
 // ---- the long-context job, fake engine ----
@@ -129,18 +131,18 @@ check('Bob reads whether a brain carries its own guesser, and where its full wei
   const seen = [];
   const tlab = mk({
     serve: async (o) => { seen.push(o); return { url: 'http://fake', where: 'card', stop: () => {} }; },
-    chat: async () => { const o = seen[seen.length - 1]; const n = Number(o.args[o.args.indexOf('--draft-max') + 1]) || 0; return { text: 'def avg(): pass', timings: { predicted_per_second: n ? (n === 8 ? 70 : 40 + n) : 40, ...(n ? { draft_n: 100, draft_n_accepted: 100 - n * 5 } : {}) } }; }
+    chat: async () => { const o = seen[seen.length - 1]; const n = Number(o.args[o.args.indexOf('--spec-draft-n-max') + 1]) || 0; return { text: 'def avg(): pass', timings: { predicted_per_second: n ? (n === 8 ? 70 : 40 + n) : 40, ...(n ? { draft_n: 100, draft_n_accepted: 100 - n * 5 } : {}) } }; }
   });
   await startTurbo(tlab, { brain: 'big', draft: 'small', guess: [2, 8, 16] }); await wait(tlab);
   const run = tlab.runs[tlab.runs.length - 1];
   const rec = run.report?.turbo;
-  check('Try it runs Off then each guess length, with the draft brain', run.state === 'done' && seen.length === 4 && seen[0].args.length === 0 && seen[1].args.join(' ').includes(`-md ${smallFile} --draft-max 2`) && seen[1].cpuOk === false, run.error || '');
+  check('Try it runs Off then each guess length, with the draft brain', run.state === 'done' && seen.length === 4 && seen[0].args.length === 0 && seen[1].args.join(' ').includes(`-md ${smallFile} --spec-draft-n-max 2`) && seen[1].cpuOk === false, run.error || '');
   check('each row has words a second, the accept rate and whether the words were the same', rec.rows.length === 4 && rec.rows[0].accept === null && rec.rows[1].accept === 90 && rec.rows.every((r) => r.same));
   check('the best length is picked, and the line explains why more isn\'t always faster', rec.best.guess === 8 && /1\.75x/.test(run.report.saw) && /isn't always faster/.test(run.report.saw), run.report.saw);
   check('no gain is said plainly', bestGuess([{ guess: 0, tps: 40 }, { guess: 4, tps: 40.5 }]) === null && /didn't make/.test(turboSaw({ brain: { name: 'X' }, rows: [{ guess: 0, tps: 40, same: true }], best: null })));
   seen.length = 0;
   await startTurbo(tlab, { brain: 'mtp', guesser: 'own', guess: [4] }); await wait(tlab);
-  check('a brain with its own guesser runs with --spec-type draft-mtp and nothing else loaded', seen[1].args.join(' ') === '--spec-type draft-mtp --draft-max 4');
+  check('a brain with its own guesser runs with --spec-type draft-mtp and nothing else loaded', seen[1].args.join(' ') === '--spec-type draft-mtp --spec-draft-n-max 4');
   const u = useTurbo(tlab, { brain: 'big', draft: 'small', guess: 8 });
   check('Use this in Bob saves that brain\'s Turbo row (a name, never a path)', cfg.llamacpp.turbo.big.on === true && cfg.llamacpp.turbo.big.draft === 'small' && cfg.llamacpp.turbo.big.max === 8 && /Turbo is on for Big/.test(u.line));
   saveSettings(cfg, { llamacpp: { turbo: { evil: { on: true, draft: 'C:\\x\\y.gguf' }, self: { on: true, draft: 'self' } } } });
@@ -149,7 +151,7 @@ check('Bob reads whether a brain carries its own guesser, and where its full wei
   clearInterval(e.idleTimer);
   e.resolve = (m) => ({ gguf: files[m] || bigFile });
   const ab = e.buildArgs('big').join(' '), am = e.buildArgs('mtp').join(' '), ao = e.buildArgs('lonely').join(' ');
-  check('Bob\'s engine gets the per-brain Turbo, the built-in guesser, or the old one-draft setting', ab.includes(`-md ${smallFile} --draft-max 8 --draft-min 0 -ngld 99`) && am.includes('--spec-type draft-mtp --draft-max 4') && !am.includes('-md') && ao.includes(`-md ${smallFile} --draft-max 16`), `${ab} | ${am} | ${ao}`);
+  check('Bob\'s engine gets the per-brain Turbo, the built-in guesser, or the old one-draft setting', ab.includes(`-md ${smallFile} --spec-draft-n-max 8 --spec-draft-n-min 0 -ngld 99`) && am.includes('--spec-type draft-mtp --spec-draft-n-max 4') && !am.includes('-md') && ao.includes(`-md ${smallFile} --spec-draft-n-max 16`), `${ab} | ${am} | ${ao}`);
   useTurbo(tlab, { brain: 'big', off: true });
   check('Turbo can be switched off again for one brain', !cfg.llamacpp.turbo.big);
 }
@@ -209,10 +211,11 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
 // ---- Teach it here, fake trainer ----
 {
   const tr = path.join(tmp, 'trainer');
-  const calls = [];
+  const calls = []; let noCuda = false;
   const lab = mk({
     tool: async (exe, args, o) => {
       calls.push([path.basename(exe), args]);
+      if (noCuda && args[0] === '-c') throw new Error('exit 3');
       if (args.includes('-xf') || args.includes('-xzf')) { const to = args[args.indexOf('-C') + 1]; fs.mkdirSync(to, { recursive: true }); fs.writeFileSync(path.join(to, exe.endsWith('tar.exe') || exe === 'tar' ? (args.includes('-xzf') ? 'convert_hf_to_gguf.py' : exe.endsWith('.exe') ? 'uv.exe' : 'uv') : 'x'), ''); }
       if (args[0] === 'venv') { const py = process.platform === 'win32' ? path.join(args[3], 'Scripts', 'python.exe') : path.join(args[3], 'bin', 'python'); fs.mkdirSync(path.dirname(py), { recursive: true }); fs.writeFileSync(py, ''); }
       const out = args[args.indexOf('-o') + 1] || args[args.indexOf('--outfile') + 1];
@@ -223,7 +226,8 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
       return '';
     },
     download: async (url, out) => { fs.mkdirSync(path.dirname(out), { recursive: true }); fs.writeFileSync(out, ''); return 1; },
-    quiz: async (l, gguf) => ({ score: /before/.test(gguf) || gguf === bigFile ? 50 : 62, tps: 30 })
+    quiz: async (l, gguf) => ({ score: /before/.test(gguf) || gguf === bigFile ? 50 : 62, tps: 30 }),
+    ownPython: async () => { const d = path.join(tmp, 'own-python'); fs.mkdirSync(path.join(d, 'Lib'), { recursive: true }); fs.writeFileSync(path.join(d, 'python.exe'), 'signed'); return path.join(d, 'python.exe'); }
   });
   lab.hfFetch = async () => ({ ok: true, status: 200, json: async () => ({ cardData: { license: 'apache-2.0' }, safetensors: { total: 4.0e9 }, siblings: [{ rfilename: 'model.safetensors' }] }) });
   lab.gpuInfo = async () => ({ name: 'NVIDIA GeForce RTX 5070 Ti', vramGB: 16 });
@@ -232,7 +236,20 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
   check('the Trainer pack isn\'t here until it\'s fetched', !trainerState(cfg).ok && trainerState(cfg).dir === tr && uvUrl('win', 'x64').endsWith(`/${TRAINER.uv}/uv-x86_64-pc-windows-msvc.zip`));
   await startTrainerInstall(lab); await wait(lab);
   const irun = lab.runs[lab.runs.length - 1];
-  check('getting the Trainer pack is its own Lab job: uv, Python, the libraries (pinned), the converters', irun.state === 'done' && trainerState(cfg).ok && calls.some(([, a]) => a[0] === 'pip' && a.includes('torch==2.14.1')) && calls.some(([, a]) => a[0] === 'venv' && a.includes(TRAINER.python)), irun.error || '');
+  check('getting the Trainer pack is its own Lab job: uv, Python, the libraries (pinned), the converters', irun.state === 'done' && trainerState(cfg).ok && calls.some(([, a]) => a[0] === 'pip' && a.includes('torch==2.14.1')) && !calls.some(([, a]) => a[0] === 'venv'), irun.error || '');
+  const signedPy = path.join(tr, 'python-signed', 'python.exe');
+  check('on Windows the trainer runs from a private copy of Bob\'s own signed Python, not a venv (Smart App Control blocks the venv launcher)', trainerState(cfg).python === signedPy && fs.readFileSync(signedPy, 'utf8') === 'signed' && calls.some(([, a]) => a[0] === 'pip' && a[a.indexOf('--python') + 1] === signedPy));
+  check('the Trainer pack\'s converters come from the same llama.cpp Bob runs', TRAINER.llamacpp === JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob.bundledLlamaTag);
+  check('torch comes from the CUDA 13.0 index, and on an NVIDIA card the install ends by asking torch whether it sees the card', TRAINER.torchIndex.endsWith('/whl/cu130') && calls.some(([, a]) => a[0] === 'pip' && a.includes(TRAINER.torchIndex)) && calls.some(([e, a]) => e === 'python.exe' && a[0] === '-c' && /torch\.cuda\.is_available\(\)/.test(a[1])));
+  removeTrainer(lab); calls.length = 0; noCuda = true;
+  await startTrainerInstall(lab); await wait(lab); noCuda = false;
+  const nrun = lab.runs[lab.runs.length - 1];
+  check('a torch that can\'t see the NVIDIA card stops the install with plain words, and the pack isn\'t marked ready', nrun.state !== 'done' && nrun.error === NO_CUDA && /NVIDIA driver/.test(NO_CUDA) && !trainerState(cfg).ok, nrun.error || '');
+  const gi = lab.gpuInfo; lab.gpuInfo = async () => ({ name: 'AMD Radeon RX 7800 XT', vramGB: 16 }); removeTrainer(lab); calls.length = 0;
+  await startTrainerInstall(lab); await wait(lab); lab.gpuInfo = gi;
+  check('with no NVIDIA card there\'s no card check', lab.runs[lab.runs.length - 1].state === 'done' && !calls.some(([, a]) => a[0] === '-c'));
+  removeTrainer(lab); await startTrainerInstall(lab); await wait(lab);
+  check('a Smart App Control block is said in plain words, with no security change', /Smart App Control blocked/.test(blockedWords(new Error('An Application Control policy has blocked this file. (os error 4551)')).message) && /doesn't change Windows security/.test(blockedWords(new Error('os error 4551')).message) && blockedWords(new Error('other')).message === 'other');
   calls.length = 0;
   const res = await startTeach(lab, { name: 'Taught Big', brain: { kind: 'lab', id: 'big' }, lessons: { kind: 'set', id: 'my-set' } });
   await wait(lab);
@@ -256,6 +273,10 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
   check('a run that doesn\'t fit here won\'t start here', await startTeach(lab, { name: 'Huge', brain: { kind: 'hf', repo: 'Qwen/Qwen3-4B' }, lessons: { kind: 'set', id: 'my-set' }, where: 'rented' }).then(() => false, (e) => /goes rented/.test(e.message)));
   removeTrainer(lab);
   check('the Trainer pack can be removed, and only from its own folder', !fs.existsSync(tr) && !trainerState(cfg).ok);
+  lab.platform = () => ({ os: 'linux', arch: 'x64' }); calls.length = 0;
+  await startTrainerInstall(lab); await wait(lab);
+  check('on Linux and Mac it makes its own venv with uv\'s Python, as before', lab.runs[lab.runs.length - 1].state === 'done' && calls.some(([, a]) => a[0] === 'venv' && a.includes(TRAINER.python)) && trainerState(cfg, { os: 'linux', arch: 'x64' }).python === path.join(tr, 'venv', 'bin', 'python'), lab.runs[lab.runs.length - 1].error || '');
+  removeTrainer(lab);
 }
 
 // ---- the route ----

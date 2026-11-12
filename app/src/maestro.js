@@ -1,6 +1,7 @@
 // Bridge to Maestro (Wan2GP) so Bob can use its video and picture models while Maestro is running.
 // Maestro listens only on this PC (127.0.0.1:42003). Bob submits a job, follows its progress,
 // and copies the finished file into the inn's painter folder.
+import { deadline as withDeadline } from './hang-guard.js'; // item 212: every network call has a deadline
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -98,7 +99,7 @@ async function collect(cfg, f, signal) {
   const ext = path.extname(base).toLowerCase() || '.mp4';
   const name = `${new Date().toISOString().slice(0, 10)}-maestro-${crypto.randomUUID().slice(0, 8)}${ext}`;
   const dest = path.join(cfg.painterDir, name);
-  const res = await fetch(`${maestroUrl(cfg)}/api/v1/file/${encodeURIComponent(base)}`, { signal });
+  const res = await fetch(`${maestroUrl(cfg)}/api/v1/file/${encodeURIComponent(base)}`, { signal: withDeadline(signal, 10 * 60_000) });
   if (res.ok) {
     fs.writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
   } else {

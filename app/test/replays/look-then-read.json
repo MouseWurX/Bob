@@ -1,0 +1,13 @@
+{
+  "ask": "what's in my notes file?",
+  "replies": [
+    { "content": "", "calls": [{ "name": "list_folder", "args": { "path": "." } }] },
+    { "content": "", "calls": [{ "name": "read_file", "args": { "path": "notes.txt" } }] },
+    { "content": "Your notes say: buy oat milk, call the vet on Friday.", "calls": [] }
+  ],
+  "results": [
+    { "name": "list_folder", "text": "notes.txt  12 bytes  2026-11-10" },
+    { "name": "read_file", "text": "buy oat milk\ncall the vet on Friday" }
+  ],
+  "answer": "Your notes say: buy oat milk, call the vet on Friday."
+}

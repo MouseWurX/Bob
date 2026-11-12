@@ -81,6 +81,13 @@ fs.mkdirSync(path.join(tmp, 'data'), { recursive: true });
   const has = (args, ...xs) => xs.every((x) => args.includes(x));
   lc.cfg.llamacpp.fit = true; ver('b12032');
   check(has(lc.buildArgs('qwen3:4b', {}), '--fit', '--load-mode', 'none'), 'fit on: the brain is read in at load (--load-mode none)');
+  // A brain bigger than the card's share plus RAM stays memory-mapped, so the rest is read from the drive (gpt-oss 120B on 16 GB + 32 GB).
+  lc.totalRam = () => 32e9; lc.cfg.gpuVramGB = 16;
+  check(has(lc.buildArgs('qwen3:4b', {}), '--fit', '--load-mode', 'none'), 'a brain that fits card and RAM is still read in at load');
+  lc.totalRam = () => 6e9 + 1; lc.cfg.gpuVramGB = 0;
+  check(lc.buildArgs('qwen3:4b', {}).includes('--fit') && !lc.buildArgs('qwen3:4b', {}).includes('--load-mode'), 'bigger than card and RAM: left memory-mapped (the rest from the drive)');
+  check(!lc.biggerThanMemory(path.join(tmp, 'no-such.gguf')), 'a file that is not there is not too big');
+  lc.totalRam = () => 64e9; delete lc.cfg.gpuVramGB;
   ver('b11500'); lc.cfg.llamacpp.fit = false; lc.cfg.llamacpp.nCpuMoe = { 'qwen3:4b': 8 };
   check(has(lc.buildArgs('qwen3:4b', {}), '--n-cpu-moe', '--no-mmap'), 'older build with experts in RAM: --no-mmap');
   delete lc.cfg.llamacpp.nCpuMoe;
@@ -91,6 +98,11 @@ fs.mkdirSync(path.join(tmp, 'data'), { recursive: true });
   delete lc.cfg.llamacpp.loadMode; lc.cfg.llamacpp.args = ['-fa', 'on', '--mmap'];
   check(!lc.buildArgs('qwen3:4b', {}).includes('--load-mode'), 'a load mode set by hand wins');
   delete lc.cfg.llamacpp.args;
+  // A brain bigger than card and RAM keeps its experts as they are in the file (no repacking into RAM).
+  lc.totalRam = () => 6e9 + 1; lc.cfg.gpuVramGB = 0;
+  check(lc.buildArgs('qwen3:4b', {}).includes('--no-repack'), 'bigger than card and RAM: --no-repack, so the drive can be read');
+  lc.totalRam = () => 64e9; delete lc.cfg.gpuVramGB;
+  check(!lc.buildArgs('qwen3:4b', {}).includes('--no-repack'), 'fits: repacking as usual');
   // 1.5.91: no marker anywhere (bundled engine, an exe set by hand): no guessed flag, so b12032 still starts.
   fs.rmSync(path.join(tmp, 'llama.cpp'), { recursive: true, force: true }); lc._loadFlag = null;
   check(lc.buildArgs('qwen3:4b', {}).includes('--fit') && !lc.buildArgs('qwen3:4b', {}).some((x) => ['--load-mode', '--no-mmap'].includes(x)), 'no build marker: no load flag at all (b12032 refuses --no-mmap)');
@@ -128,7 +140,7 @@ cfg.readRoots = []; cfg.readOnlyRoots = [];
 fs.writeFileSync(path.join(tmp, 'config.json'), JSON.stringify(cfg));
 const PORT = 7811;
 const bob = spawn(process.execPath, [path.join(here, '..', 'src', 'server.js')], {
-  env: { ...process.env, BOB_CONFIG: path.join(tmp, 'config.json'), BOB_AGENT_DIR: path.join(tmp, 'Bob home'), BOB_PORT: String(PORT) },
+  env: { ...process.env, BOB_TEST: '1', BOB_CONFIG: path.join(tmp, 'config.json'), BOB_AGENT_DIR: path.join(tmp, 'Bob home'), BOB_PORT: String(PORT) },
   stdio: ['ignore', 'pipe', 'inherit']
 });
 await new Promise((r) => bob.stdout.once('data', r));

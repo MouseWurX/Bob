@@ -53,7 +53,7 @@
     ]
   },
   "scan": {
-    "note": "10 Nov, the owner: FNRI scans of stock Qwen, Riker, Bobert and Bill on the same rental, after Bill's rebuild and upload. The bundle in fnri-bundle/ (one folder per brain, made by aifeui-bundle.mjs in the FNRI thread) goes up as in/scan.tgz; the stock Q4_K_M is made from the teacher first so all four are the same quant. About 1-1.2 h: ~15 min engine build, ~30 min stock conversion, ~5 min a brain. zip: where the PC puts one zip of all the recordings when they are home (relative to the forge folder).",
+    "note": "10 Nov, the owner: FNRI scans of stock Qwen, Riker, Bobert and Bill on the same rental, after Bill's rebuild and upload. The bundle in fnri-bundle/ (one folder per brain; it is not kept in the repo, make it fresh with the four aifeui-bundle.mjs lines in forge/README.md, so it carries today's engine patches and viewer) goes up as in/scan.tgz; the stock Q4_K_M is made from the teacher first so all four are the same quant. About 1-1.2 h: ~15 min engine build, ~30 min stock conversion, ~5 min a brain. zip: where the PC puts one zip of all the recordings when they are home (relative to the forge folder).",
     "from": "fnri-bundle",
     "brains": [
       "qwen",

@@ -137,7 +137,7 @@ export function ownEntry(o, { stat = fs.statSync, info = ggufInfo, read = fs.rea
   const cardJobs = card?.jobs?.filter((j) => j !== 'eyes' || vision) || [];
   const cut = card?.cutFrom?.name ? `Cut from ${card.cutFrom.by ? `${card.cutFrom.by}'s ` : ''}${card.cutFrom.name}${card.expertsKept ? `, keeping ${card.expertsKept} experts` : ''}.` : '';
   const diffusionBrain = isDiffusion(i?.arch); // Dream, LLaDA and friends: only the Lab's Playground runs them
-  const what = diffusionBrain ? `${where} A diffusion brain (${i.arch}): it writes a whole block at once, which Bob's chat can't run. Try it in the Lab's Playground, Diffusion brains.`
+  const what = diffusionBrain ? `${where} A diffusion brain (${i.arch}): it writes a whole block at once, which Bob's chat can't run. Try it in the Lab: Learn, Diffusion brains.`
     : card
     ? [card.what, cut, `${where} Its brain card says what it's for.`].filter(Boolean).join(' ')
     : `${where} Bob only knows what the file says: ${params ? `about ${params}B` : 'size unknown'}${i?.arch ? `, ${i.arch}` : ''}${i?.ctxTrain ? `, made for up to ${Math.round(i.ctxTrain / 1024)}K` : ''}. How well it does its jobs is for you to judge.`;
@@ -163,22 +163,23 @@ export const ownResolve = (o) => (o.mmproj ? { gguf: o.gguf, mmproj: o.mmproj } 
 export const PS_OWNER = ['Add-Type -AssemblyName System.Drawing',
   "$owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true; ShowInTaskbar = $false; StartPosition = 'Manual'; Location = New-Object System.Drawing.Point(-32000, -32000); Size = New-Object System.Drawing.Size(1, 1) }",
   '$owner.Show()', '$owner.Activate()'];
-const TITLE = { gguf: 'Pick the brain file (.gguf)', mmproj: 'Pick its picture reader (mmproj .gguf), or Cancel for none', docs: 'Pick a document or chat log for the lesson builder' };
+const TITLE = { gguf: 'Pick the brain file (.gguf)', mmproj: 'Pick its picture reader (mmproj .gguf), or Cancel for none', docs: 'Pick a document or chat log for the lesson builder', backup: 'Pick the Bob backup to restore (.zip)' };
 // 1.5.152: kind 'docs' (the Lab's lesson builder) shows every file, not only brains.
 export function pickFileArgs(kind, platform) {
   const title = TITLE[kind] || TITLE.gguf;
   const any = kind === 'docs';
+  const zip = kind === 'backup'; // Back up and move: one of Bob's backups
   if (platform === 'win32') return ['powershell.exe', ['-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-Command', [
     '[Console]::OutputEncoding = [Text.Encoding]::UTF8', 'Add-Type -AssemblyName System.Windows.Forms',
     ...PS_OWNER,
-    '$d = New-Object System.Windows.Forms.OpenFileDialog', `$d.Title = '${title}'`, any ? "$d.Filter = 'Documents and chat logs|*.txt;*.md;*.docx;*.doc;*.odt;*.rtf;*.pdf;*.epub;*.html;*.htm;*.json;*.jsonl|All files (*.*)|*.*'" : "$d.Filter = 'Brain files (*.gguf)|*.gguf'", '$d.Multiselect = $false',
+    '$d = New-Object System.Windows.Forms.OpenFileDialog', `$d.Title = '${title}'`, zip ? "$d.Filter = 'Bob backups (*.zip)|*.zip|All files (*.*)|*.*'" : any ? "$d.Filter = 'Documents and chat logs|*.txt;*.md;*.docx;*.doc;*.odt;*.rtf;*.pdf;*.epub;*.html;*.htm;*.json;*.jsonl|All files (*.*)|*.*'" : "$d.Filter = 'Brain files (*.gguf)|*.gguf'", '$d.Multiselect = $false',
     "if ($d.ShowDialog($owner) -eq 'OK') { [Console]::Out.Write($d.FileName) }", '$owner.Dispose()'].join('; ')]];
   if (platform === 'darwin') return ['/usr/bin/osascript', ['-e', `POSIX path of (choose file with prompt "${title}")`]];
-  return [['zenity', ['--file-selection', '--title', title, ...(any ? [] : ['--file-filter=Brain files (*.gguf) | *.gguf *.GGUF'])]], ['kdialog', ['--getopenfilename', '.', any ? '*|All files' : '*.gguf|Brain files', '--title', title]]];
+  return [['zenity', ['--file-selection', '--title', title, ...(any ? [] : zip ? ['--file-filter=Bob backups (*.zip) | *.zip *.ZIP'] : ['--file-filter=Brain files (*.gguf) | *.gguf *.GGUF'])]], ['kdialog', ['--getopenfilename', '.', any ? '*|All files' : zip ? '*.zip|Bob backups' : '*.gguf|Brain files', '--title', title]]];
 }
 // 1.5.177: in Bob's own window (Bob.exe), Electron's picker, on top of his window (globalThis.bobPick, lent by
 // electron/main.cjs). The helpers below are only for Bob running without his window (a browser on this replicant matrix).
-export const PICK_FILTERS = { gguf: [{ name: 'Brain files', extensions: ['gguf'] }], mmproj: [{ name: 'Brain files', extensions: ['gguf'] }], docs: [{ name: 'Documents and chat logs', extensions: ['txt', 'md', 'docx', 'doc', 'odt', 'rtf', 'pdf', 'epub', 'html', 'htm', 'json', 'jsonl'] }, { name: 'All files', extensions: ['*'] }] };
+export const PICK_FILTERS = { gguf: [{ name: 'Brain files', extensions: ['gguf'] }], mmproj: [{ name: 'Brain files', extensions: ['gguf'] }], backup: [{ name: 'Bob backups', extensions: ['zip'] }], docs: [{ name: 'Documents and chat logs', extensions: ['txt', 'md', 'docx', 'doc', 'odt', 'rtf', 'pdf', 'epub', 'html', 'htm', 'json', 'jsonl'] }, { name: 'All files', extensions: ['*'] }] };
 export function pickFile({ kind = 'gguf', run = execFile, platform = process.platform, pick = globalThis.bobPick } = {}) {
   if (typeof pick === 'function') return Promise.resolve(pick({ title: TITLE[kind] || TITLE.gguf, filters: PICK_FILTERS[kind] || PICK_FILTERS.gguf })).then((f) => String(f || ''));
   const args = pickFileArgs(kind, platform);

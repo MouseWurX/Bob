@@ -1,0 +1,19 @@
+{
+  "note": "The exact OpenSCAD download for each computer and its sha256, for Settings, Engines, OpenSCAD (Let Bob make 3D parts). Filled in by installer/pin-openscad.js on a computer with internet, from files.openscad.org and its own .sha256 files. While a computer's entry is empty Bob offers no download there and uses an OpenSCAD that's already installed. Windows 2021.01 is pinned (hash matches the Scoop Extras manifest; Bob checks it on every download). Linux stays empty for now: install openscad from the package manager and Bob finds it.",
+  "version": "2021.01",
+  "win-x64": {
+    "url": "https://files.openscad.org/OpenSCAD-2021.01-x86-64.zip",
+    "sha256": "fb0caabf5bbc89f8f2f80c10b79ae64d697aaff6efd58b2756f5d6270edb7ba7",
+    "bytes": 21884613
+  },
+  "linux-x64": {
+    "url": "",
+    "sha256": "",
+    "bytes": 0
+  },
+  "linux-arm64": {
+    "url": "",
+    "sha256": "",
+    "bytes": 0
+  }
+}

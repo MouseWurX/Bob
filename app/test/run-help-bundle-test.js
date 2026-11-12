@@ -1,5 +1,6 @@
 // 1.5.118 Save a help bundle: one zip for whoever helps with this Bob. The scrubbing, the no-brain fallback, the
 // brain's own note when the chat brain is loaded and idle, the zip itself, the button, the route and the Help.
+import { serverText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -148,13 +149,13 @@ const scrub = scrubber(cfg, scrubOpts);
 
 // ---- the window, the route, the picker, the Help
 {
-  const cellar = read('public/cellar.js'), server = read('src/server.js'), picker = read('src/pick-folder.js'), css = read('public/style.css');
+  const cellar = read('public/cellar.js'), server = serverText(), picker = read('src/pick-folder.js'), css = read('public/style.css');
   const pc = cellar.slice(cellar.indexOf("panel('ev-pc'"), cellar.indexOf('function macRemoveHtml'));
   check('Save a help bundle sits after Run first-time setup in This replicant matrix and updates (Check for updates is on the panel line since 1.5.117), with its hint behind ⓘ', /<button type="button" data-welcome>Run first-time setup<\/button><button type="button" data-helpbundle>Save a help bundle<\/button>\$\{tip\('Saves one zip with Bob\\'s logs, the last chats, errors and this replicant matrix\\'s facts, scrubbed of passcodes, keys and your name, so an agent or a person can work out what\\'s wrong\. Nothing is sent anywhere: you pick where it goes\.', 'Save a help bundle'\)\}/.test(pc));
   check('the button says what happened, falls back to a download from another device, and never says "debug"', /'helpbundle' in b\.dataset/.test(cellar) && /api\('\/api\/help-bundle', \{\}\)/.test(cellar) && /r\.cancelled\) box\.textContent = 'Nothing saved: you closed the folder window\.'/.test(cellar) && /location\.href = '\/api\/help-bundle'/.test(cellar) && /My brain couldn\\'t add a note, so the bundle was put together automatically/.test(cellar) && !/debug/i.test(pc) && /\.help-bundle:not\(:empty\)/.test(css));
   check('the route: POST on this replicant matrix picks a folder, writes and shows the zip; GET gives the zip to a paired device', /p === '\/api\/help-bundle'/.test(server) && /pickFolder\(\{ purpose: 'bundle' \}\)/.test(server) && /saveHelpBundle\(cfg, folder/.test(server) && /revealFile\(r\.file\)/.test(server) && /'Content-Type': 'application\/zip'/.test(server) && /if \(!isLocal\) return send\(res, 403, \{ error: 'Only on this replicant matrix itself\.' \}\);\n\s+const b = await body\(req\)\.catch/.test(server));
   check('a cancelled picker saves nothing; no picker means Bob\'s own folder', /if \(picked && !folder\) return send\(res, 200, \{ ok: false, cancelled: true \}\)/.test(server) && /'help-bundles'\)/.test(server));
-  check('the folder picker has a bundle purpose on Windows, Mac and Linux', (picker.match(/Pick where Bob saves the help bundle/g) || []).length >= 3 && /bundle: 'Pick where Bob saves the help bundle'/.test(picker) && /\['save', 'bundle', 'home'\]\.includes\(purpose\) \? '\$d\.ShowNewFolderButton = \$true'/.test(picker));
+  check('the folder picker has a bundle purpose on Windows, Mac and Linux', (picker.match(/Pick where Bob saves the help bundle/g) || []).length >= 3 && /bundle: 'Pick where Bob saves the help bundle'/.test(picker) && /\['save', 'bundle', 'home'(, 'backup')?\]\.includes\(purpose\) \? '\$d\.ShowNewFolderButton = \$true'/.test(picker));
   const help = HELP.find((e) => e.id === 'help-bundle'), faq = HELP.find((e) => e.id === 'faq-get-help'), trouble = HELP.find((e) => e.id === 'trouble'), glossary = HELP.find((e) => e.id === 'glossary'), everyday = HELP.find((e) => e.id === 'settings-everyday');
   check('Help: a Save a help bundle entry in Bob\'s voice says what is in it, the two ways it is written, what is scrubbed and where to take it', help && help.group === 'Troubleshooting' && /HANDOFF\.md/.test(help.html) && /Two ways it gets written/.test(help.html) && /What's taken out/.test(help.html) && /github\.com\/MouseWurX\/Bob\/issues/.test(help.html) && /I never load a brain for this/.test(help.html) && /phone app/.test(help.html));
   check('Help: the everyday page lists the buttons without a count and links the entry', !/four buttons|three buttons/.test(everyday.html) && /data-helpgo="help-bundle"/.test(everyday.html) && /help bundle/.test(everyday.words));

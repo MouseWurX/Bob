@@ -101,8 +101,13 @@
       .replace(/\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]{1,500})\)/g, (_, t, u) => `<a href="#" data-link="${u}">${t}</a>`)
       .replace(/(^|[\s(])(https?:\/\/[^\s<)]{3,500})/g, (_, pre, u) => `${pre}<a href="#" data-link="${u}">${u}</a>`);
   }
-  function markdown(text) {
+  // Formulas (math-core.js) are drawn while Show maths as formulas is on: each one is held aside as a placeholder
+  // so the escaping and the bold and italics can't touch it, then put back.
+  function markdown(text, opts = {}) {
     const out = [];
+    const math = 'math' in opts ? opts.math : globalThis.BobMath?.renderer?.() || null;
+    const keep = [];
+    const restore = (s) => s.replace(/\u0001(\d+)\u0002/g, (m, i) => keep[Number(i)] ?? '');
     const parts = String(text || '').split(/```/);
     parts.forEach((part, i) => {
       if (i % 2 === 1) {
@@ -110,19 +115,21 @@
         out.push(`<pre><button class="copy" data-copy>Copy</button><code>${esc(body.replace(/\n$/, ''))}</code></pre>`);
         return;
       }
-      const lines = esc(part).split('\n');
+      const held = math && globalThis.BobMath ? globalThis.BobMath.find(part).map((p) => (p.tex == null ? p.text : `\u0001${keep.push(math(p.tex, p.display)) - 1}\u0002`)).join('') : part;
+      const lines = esc(held).split('\n');
       let list = null;
       for (const line of lines) {
         const li = line.match(/^\s*(?:[-*•]|\d+[.)])\s+(.*)$/);
         if (li) { if (!list) { list = []; } list.push(`<li>${inline(li[1])}</li>`); continue; }
         if (list) { out.push(`<ul>${list.join('')}</ul>`); list = null; }
+        if (/^\s*\u0001\d+\u0002\s*$/.test(line) && /^<div/.test(restore(line.trim()))) { out.push(line.trim()); continue; } // a formula on its own line
         const h = line.match(/^#{1,4}\s+(.*)$/);
         if (h) out.push(`<p><strong>${inline(h[1])}</strong></p>`);
         else if (line.trim()) out.push(`<p>${inline(line)}</p>`);
       }
       if (list) out.push(`<ul>${list.join('')}</ul>`);
     });
-    return out.join('');
+    return restore(out.join(''));
   }
 
   // Short title for a chat from its first message.
@@ -144,5 +151,143 @@
     return { ok: ramTotalMB - needMB >= 2500, tight: ramTotalMB - needMB < 4000 };
   }
 
-  globalThis.BobLogic = { netAddress, bigJob, BIG_JOBS, pickAnswerer, canDo, phoneSystem, markdown, esc, chatTitle, size, fits };
+  // Back up and move: this phone's own things as one file. Never a passcode or a sign-in (those stay with Android).
+  const PHONE_BACKUP_SETTINGS = ['mode', 'phoneModel', 'freeWhenIdle', 'idleMinutes', 'readAloud', 'userName', 'theme', 'effort', 'resume'];
+  function phoneBackup({ settings = {}, chats = [], memory = '', bobs = [], made = '' } = {}) {
+    const s = {};
+    for (const k of PHONE_BACKUP_SETTINGS) if (k in settings) s[k] = settings[k];
+    return { kind: 'bob-phone-backup', format: 1, made, settings: s, chats: chats.slice(0, 200), memory: String(memory || ''), bobs: bobs.map((b) => ({ name: String(b.name || ''), address: String(b.address || ''), base: String(b.base || '') })) };
+  }
+  // Puts a phone backup into what's here: chats by id (the backup's copy wins), memory lines not here yet, Bobs not in the
+  // list yet (checked like any typed address), settings from the backup. The phone brain stays off: it downloads again.
+  function phoneRestore(here = {}, text = '') {
+    let b;
+    try { b = JSON.parse(String(text)); } catch { return { error: "That file isn't a phone backup (it isn't readable)." }; }
+    if (b?.kind === 'bob-backup') return { error: "That's a backup of Bob on a computer. Restore it there, in Settings, This replicant matrix, Back up and move." };
+    if (b?.kind !== 'bob-phone-backup') return { error: "That file isn't one of Bob's phone backups." };
+    if (Number(b.format) > 1) return { error: 'That backup was made by a newer Bob. Update this one first.' };
+    const settings = {};
+    for (const k of PHONE_BACKUP_SETTINGS) if (b.settings && k in b.settings && typeof b.settings[k] !== 'object') settings[k] = b.settings[k];
+    settings.phoneOn = false;
+    const ok = (c) => c && typeof c.id === 'string' && Array.isArray(c.msgs);
+    const theirs = [].concat(b.chats || []).filter(ok).map((c) => ({ id: c.id.slice(0, 40), title: String(c.title || 'Chat').slice(0, 120), at: Number(c.at) || 0, msgs: c.msgs.filter((m) => m && typeof m === 'object').map((m) => ({ who: m.who === 'you' ? 'you' : 'bob', text: String(m.text || ''), ...(m.by ? { by: String(m.by).slice(0, 60) } : {}) })) }));
+    const ids = new Set(theirs.map((c) => c.id));
+    const chats = [...theirs, ...[].concat(here.chats || []).filter((c) => !ids.has(c.id))].sort((x, y) => y.at - x.at).slice(0, 200);
+    const added = theirs.length;
+    const have = String(here.memory || '');
+    const lines = have.split('\n').map((l) => l.trim());
+    const extra = String(b.memory || '').split('\n').filter((l) => l.trim() && !lines.includes(l.trim()));
+    const memory = [have.trimEnd(), ...extra].filter(Boolean).join('\n');
+    const bobs = [...[].concat(here.bobs || [])];
+    let newBobs = 0;
+    for (const x of [].concat(b.bobs || [])) {
+      const base = netAddress(x?.address || x?.base || '');
+      if (!base || bobs.some((y) => y.base === base)) continue;
+      bobs.push({ name: String(x.name || 'Bob').slice(0, 60), address: String(x.address || base), base });
+      newBobs++;
+    }
+    return { settings, chats, memory, bobs, added, newBobs };
+  }
+
+  // ---------- Voice, phone and Bob-Net (items 133 to 142; every switch starts off) ----------
+
+  // "Hey Bob" at the start of what was heard: strips it and says whether it was there. Same rule as desktop
+  // Bob's public/voice.js, so the phone and the computer wake on the same words.
+  function wakeWord(text) {
+    const t = String(text || '');
+    const m = t.match(/^\W*(?:(?:hey|hi|ok|okay|yo)\W+)?bob\b\W*/i);
+    return m ? { woke: true, rest: t.slice(m[0].length).trim() } : { woke: false, rest: t };
+  }
+
+  // Talk over him: what you said while he was reading aloud. "Stop" (and friends) on its own only stops him;
+  // anything longer stops him and is sent as your next message.
+  function talkOver(text) {
+    const t = String(text || '').trim();
+    if (!t) return { stop: false, send: '' };
+    if (/^\W*(?:(?:ok(?:ay)?|bob|please)\W+)*(?:stop|quiet|hush|shush|enough|that'?s enough|be quiet|pause)(?:\W+(?:please|bob|now|it))*\W*$/i.test(t)) return { stop: true, send: '' };
+    return { stop: true, send: wakeWord(t).rest || t };
+  }
+
+  // Talk over Bob without headphones: the phone may hear his own voice from its speaker. Words that are mostly in
+  // what he's reading right now are taken as his echo, not you.
+  function selfEcho(heard, saying) {
+    const words = (t) => String(t || '').toLowerCase().match(/[a-z0-9']+/g) || [];
+    const h = words(heard);
+    if (!h.length) return true;
+    const said = new Set(words(saying));
+    return h.filter((w) => said.has(w)).length / h.length >= 0.6;
+  }
+
+  // A voice per Bob: each Bob gets his own pitch and pace from his name, so you can hear who's talking. The same
+  // name always gets the same voice; the phone brain keeps the phone's normal voice.
+  function voiceFor(name) {
+    const n = String(name || '').trim().toLowerCase();
+    if (!n) return { pitch: 1, rate: 1 };
+    let h = 2166136261;
+    for (const c of n) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; }
+    const PITCH = [0.8, 0.88, 0.95, 1.08, 1.16, 1.25];
+    const RATE = [0.94, 1, 1.06];
+    return { pitch: PITCH[h % PITCH.length], rate: RATE[(h >>> 8) % RATE.length] };
+  }
+
+  // Read a document aloud: the words cut into pieces of whole sentences (at most `max` characters), so play,
+  // pause and "where you left off" can go by piece. Code blocks and links are skipped like Read aloud does.
+  function readPieces(text, max = 400) {
+    const plain = String(text || '').replace(/```[\s\S]*?```/g, ' (code) ').replace(/https?:\/\/\S+/g, 'a link').replace(/[*_#>|`~]/g, '').replace(/\r/g, '');
+    const out = [];
+    for (const para of plain.split(/\n\s*\n/)) {
+      const words = para.replace(/\s+/g, ' ').trim();
+      if (!words) continue;
+      const sentences = words.match(/[^.!?]+(?:[.!?]+["')\]]*|$)\s*/g) || [words];
+      let cur = '';
+      for (let s of sentences) {
+        s = s.trim();
+        while (s.length > max) { const cut = s.lastIndexOf(' ', max) > max / 2 ? s.lastIndexOf(' ', max) : max; if (cur) { out.push(cur); cur = ''; } out.push(s.slice(0, cut).trim()); s = s.slice(cut).trim(); }
+        if (!s) continue;
+        if (cur && cur.length + 1 + s.length > max) { out.push(cur); cur = s; } else cur = cur ? `${cur} ${s}` : s;
+      }
+      if (cur) out.push(cur);
+    }
+    return out;
+  }
+
+  // Low-data mode: 'off' (the starting position), 'mobile' (only on mobile data) or 'always'.
+  function lowData(setting, metered) {
+    return setting === 'always' || (setting === 'mobile' && metered === true);
+  }
+
+  // Your Bobs on the phone: one Bob's glance (GET /api/bob-net/glance) as plain words for the panel.
+  function glanceWords(g) {
+    if (!g || typeof g !== 'object') return { state: "Can't reach right now", heat: '', jobs: [], brain: '', reminder: '' };
+    const c = g.card || null;
+    const t = Number(c?.tempC);
+    const heat = Number.isFinite(t) && t > 0 ? `${Math.round(t)} °C, ${t >= 83 ? 'hot' : t >= 70 ? 'warm' : 'cool'}` : '';
+    const mem = c && c.totalMB > 0 ? `${(c.usedMB / 1024).toFixed(1)} of ${(c.totalMB / 1024).toFixed(1)} GB in use` : '';
+    const jobs = [].concat(g.jobs || []).slice(0, 8).map((j) => `${String(j.what || 'A job').slice(0, 80)}${j.state === 'waiting' ? ' (waiting)' : ''}`);
+    return {
+      state: g.gaming ? 'Up, gaming' : g.busy ? 'Up, busy' : 'Up, ready',
+      heat, mem, card: String(c?.name || ''),
+      brain: String(g.brain || ''),
+      jobs,
+      reminder: g.nextReminder?.text ? `${String(g.nextReminder.local || '')}: ${String(g.nextReminder.text).slice(0, 120)}`.replace(/^: /, '') : ''
+    };
+  }
+
+  // Carry on on another Bob: a phone chat as the messages that Bob keeps (POST /api/bob-net/carry). Only what you
+  // and Bob said, the last 80, each at most 6,000 characters.
+  function carryMsgs(chat) {
+    return [].concat(chat?.msgs || []).filter((m) => (m.who === 'you' || m.who === 'bob') && String(m.text || '').trim())
+      .slice(-80).map((m) => ({ role: m.who === 'you' ? 'user' : 'assistant', content: String(m.text).slice(0, 6000) }));
+  }
+
+  // Share to Bob: what another app shared, as words for the message box.
+  function shareWords(s) {
+    if (!s || typeof s !== 'object') return '';
+    const subject = String(s.subject || '').trim().slice(0, 200);
+    const text = String(s.text || '').trim().slice(0, 20000);
+    const file = s.file && s.file.text != null ? `${s.file.name ? `${String(s.file.name).slice(0, 120)}:\n` : ''}\`\`\`\n${String(s.file.text).slice(0, 20000)}\n\`\`\`` : '';
+    return [subject && !text.startsWith(subject) ? subject : '', text, file].filter(Boolean).join('\n\n');
+  }
+
+  globalThis.BobLogic = { netAddress, bigJob, BIG_JOBS, pickAnswerer, canDo, phoneSystem, markdown, esc, chatTitle, size, fits, phoneBackup, phoneRestore, wakeWord, talkOver, selfEcho, voiceFor, readPieces, lowData, glanceWords, carryMsgs, shareWords };
 })();

@@ -1,8 +1,8 @@
 diff --git a/include/llama.h b/include/llama.h
-index 39fb97c..aa2d112 100644
+index 0fab46c..d92cd9c 100644
 --- a/include/llama.h
 +++ b/include/llama.h
-@@ -757,6 +757,30 @@ extern "C" {
+@@ -758,6 +758,30 @@ extern "C" {
                     const uint8_t * keep,
                            size_t   len);
  
@@ -228,10 +228,10 @@ index 94cfae6..7e1345d 100644
  // llama_adapter_lora
  //
 diff --git a/src/llama-context.cpp b/src/llama-context.cpp
-index b3c26d1..b88d65b 100644
+index c7ede4a..cec32c0 100644
 --- a/src/llama-context.cpp
 +++ b/src/llama-context.cpp
-@@ -177,6 +177,7 @@ llama_context::llama_context(
+@@ -184,6 +184,7 @@ llama_context::llama_context(
      model(model),
      cvec(std::make_unique<llama_adapter_cvec>()),
      emask(std::make_unique<llama_adapter_emask>()),
@@ -239,7 +239,7 @@ index b3c26d1..b88d65b 100644
      loras(std::make_unique<llama_adapter_loras>()),
      // MTP uses the embd input for the hidden state
      balloc(std::make_unique<llama_batch_allocr>(model.hparams.n_pos_per_embd(),
-@@ -1541,6 +1542,14 @@ bool llama_context::set_expert_mask(const uint8_t * keep, size_t len) {
+@@ -1855,6 +1856,14 @@ bool llama_context::set_expert_mask(const uint8_t * keep, size_t len) {
      return res;
  }
  
@@ -254,7 +254,7 @@ index b3c26d1..b88d65b 100644
  llm_graph_result * llama_context::process_ubatch(const llama_ubatch & ubatch, llm_graph_type gtype, llama_memory_context_i * mctx, ggml_status & ret) {
      if (mctx && !mctx->apply()) {
          LLAMA_LOG_ERROR("%s: failed to apply memory context\n", __func__);
-@@ -2739,6 +2748,7 @@ llm_graph_params llama_context::graph_params(
+@@ -3135,6 +3144,7 @@ llm_graph_params llama_context::graph_params(
          /*.backend_cpu =*/ backend_cpu,
          /*.cvec        =*/ cvec.get(),
          /*.emask       =*/ emask.get(),
@@ -262,7 +262,7 @@ index b3c26d1..b88d65b 100644
          /*.loras       =*/ loras.get(),
          /*.mctx        =*/ mctx,
          /*.cross       =*/ &cross,
-@@ -4470,6 +4480,15 @@ int32_t llama_set_adapter_cvec(
+@@ -4936,6 +4946,15 @@ int32_t llama_set_adapter_cvec(
      return res ? 0 : -1;
  }
  
@@ -279,10 +279,10 @@ index b3c26d1..b88d65b 100644
          llama_context * ctx,
          const uint8_t * keep,
 diff --git a/src/llama-context.h b/src/llama-context.h
-index 3521601..e14a254 100644
+index 9d122f2..4ae993d 100644
 --- a/src/llama-context.h
 +++ b/src/llama-context.h
-@@ -138,6 +138,8 @@ struct llama_context {
+@@ -154,6 +154,8 @@ struct llama_context {
  
      bool set_expert_mask(const uint8_t * keep, size_t len);
  
@@ -291,7 +291,7 @@ index 3521601..e14a254 100644
      // process a single ubatch with a specific graph type
      // if memory_context is provided, it will be applied first to the context's memory
      // ret contains the status of the graph computation
-@@ -306,6 +308,7 @@ private:
+@@ -344,6 +346,7 @@ private:
  
      llama_adapter_cvec_ptr  cvec;
      llama_adapter_emask_ptr emask;
@@ -300,10 +300,10 @@ index 3521601..e14a254 100644
  
      llama_cross cross; // TODO: tmp for handling cross-attention - need something better probably
 diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
-index 826ea06..4949f1d 100644
+index df2db39..cc92e61 100644
 --- a/src/llama-graph.cpp
 +++ b/src/llama-graph.cpp
-@@ -1504,6 +1504,7 @@ llm_graph_context::llm_graph_context(const llm_graph_params & params) :
+@@ -1578,6 +1578,7 @@ llm_graph_context::llm_graph_context(const llm_graph_params & params) :
      backend_cpu      (params.backend_cpu),
      cvec             (params.cvec),
      emask            (params.emask),
@@ -311,7 +311,7 @@ index 826ea06..4949f1d 100644
      loras            (params.loras),
      mctx             (params.mctx),
      cross            (params.cross),
-@@ -2078,6 +2079,12 @@ ggml_tensor * llm_graph_context::build_ffn(
+@@ -2190,6 +2191,12 @@ ggml_tensor * llm_graph_context::build_ffn(
          cb(cur, "ffn_down_s", il);
      }
  
@@ -324,7 +324,7 @@ index 826ea06..4949f1d 100644
      return cur;
  }
  
-@@ -2308,6 +2315,14 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+@@ -2422,6 +2429,14 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
          cb(weights, "ffn_moe_weights_scaled", il);
      }
  
@@ -339,7 +339,7 @@ index 826ea06..4949f1d 100644
      //call early so that topk-moe can be used
      ggml_build_forward_expand(gf, weights);
  
-@@ -2536,6 +2551,11 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+@@ -2669,6 +2684,11 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
  
      cb(moe_out, "ffn_moe_out", il);
  
@@ -351,7 +351,7 @@ index 826ea06..4949f1d 100644
      return moe_out;
  }
  
-@@ -3039,6 +3059,20 @@ ggml_tensor * llm_graph_context::build_attn_mha(
+@@ -3204,6 +3224,20 @@ ggml_tensor * llm_graph_context::build_attn_mha(
          }
      }
  
@@ -373,7 +373,7 @@ index 826ea06..4949f1d 100644
  
      return cur;
 diff --git a/src/llama-graph.h b/src/llama-graph.h
-index 4582d24..54245c0 100644
+index ef1caa0..0002ced 100644
 --- a/src/llama-graph.h
 +++ b/src/llama-graph.h
 @@ -803,6 +803,7 @@ struct llm_graph_params {
@@ -384,7 +384,7 @@ index 4582d24..54245c0 100644
      const llama_adapter_loras    * loras;
      const llama_memory_context_i * mctx;
      const llama_cross            * cross;
-@@ -907,6 +908,7 @@ struct llm_graph_params {
+@@ -917,6 +918,7 @@ struct llm_graph_params {
              gtype == other.gtype &&
              cvec  == other.cvec  &&
              emask == other.emask &&
@@ -392,7 +392,7 @@ index 4582d24..54245c0 100644
              loras == other.loras &&
              cross == other.cross;
      }
-@@ -1063,6 +1065,7 @@ struct llm_graph_context {
+@@ -1080,6 +1082,7 @@ struct llm_graph_context {
  
      const llama_adapter_cvec     * cvec;
      const llama_adapter_emask    * emask;
@@ -401,10 +401,10 @@ index 4582d24..54245c0 100644
      const llama_memory_context_i * mctx;
      const llama_cross            * cross;
 diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
-index 9487f53..1629bad 100644
+index 10e9ca2..1457f9a 100644
 --- a/tools/server/server-context.cpp
 +++ b/tools/server/server-context.cpp
-@@ -1273,6 +1273,7 @@ private:
+@@ -1289,6 +1289,7 @@ private:
      std::unique_ptr<server_prompt_cache> prompt_cache;
  
      std::vector<uint8_t> expert_keep; // empty = all experts on
@@ -412,7 +412,7 @@ index 9487f53..1629bad 100644
      server_expert_trace etrace;
  
      server_metrics metrics;
-@@ -3588,11 +3589,89 @@ private:
+@@ -3612,11 +3613,89 @@ private:
                      res->data = expert_mask_json();
                      queue_results.send(std::move(res));
                  } break;
@@ -502,7 +502,7 @@ index 9487f53..1629bad 100644
      // body: {"keep": null} = all on, {"keep": [ids]} = same experts in every layer, {"keep": [[ids], ...]} = one list per layer (null = all)
      std::string set_expert_mask(const json & body) {
          const int64_t n_layer  = llama_model_n_layer(model_tgt);
-@@ -7189,6 +7268,44 @@ void server_routes::init_routes() {
+@@ -7133,6 +7212,44 @@ void server_routes::init_routes() {
          return res;
      };
  
@@ -548,10 +548,10 @@ index 9487f53..1629bad 100644
          return expert_mask_handler(req, nullptr);
      };
 diff --git a/tools/server/server-context.h b/tools/server/server-context.h
-index f1031f5..5e88f18 100644
+index bf2f025..fbe3752 100644
 --- a/tools/server/server-context.h
 +++ b/tools/server/server-context.h
-@@ -138,6 +138,8 @@ struct server_routes {
+@@ -140,6 +140,8 @@ struct server_routes {
      server_http_context::handler_t post_lora_adapters;
      server_http_context::handler_t get_expert_mask;
      server_http_context::handler_t post_expert_mask;
@@ -561,7 +561,7 @@ index f1031f5..5e88f18 100644
      // to be used in router mode
      json get_model_info() const;
 diff --git a/tools/server/server-task.h b/tools/server/server-task.h
-index 3c4f0f4..ac96dd4 100644
+index 9494cdd..616c20a 100644
 --- a/tools/server/server-task.h
 +++ b/tools/server/server-task.h
 @@ -32,6 +32,7 @@ enum server_task_type {
@@ -572,7 +572,7 @@ index 3c4f0f4..ac96dd4 100644
      SERVER_TASK_TYPE_TTS,
  };
  
-@@ -247,6 +248,9 @@ struct server_task {
+@@ -249,6 +250,9 @@ struct server_task {
      // used by SERVER_TASK_TYPE_EXPERT_MASK, null = only read the mask
      json expert_mask;
  
@@ -583,10 +583,10 @@ index 3c4f0f4..ac96dd4 100644
      mtmd_helper::gen_audio::inp tts_inp;
  
 diff --git a/tools/server/server.cpp b/tools/server/server.cpp
-index cd75982..2c22fab 100644
+index 1a5d790..286ff08 100644
 --- a/tools/server/server.cpp
 +++ b/tools/server/server.cpp
-@@ -211,6 +211,8 @@ static void server_register_routes(server_http_context & ctx_http, server_routes
+@@ -213,6 +213,8 @@ static void server_register_routes(server_http_context & ctx_http, server_routes
      ctx_http.post("/lora-adapters",            ex_wrapper(routes.post_lora_adapters));
      ctx_http.get ("/expert-mask",              ex_wrapper(routes.get_expert_mask));
      ctx_http.post("/expert-mask",              ex_wrapper(routes.post_expert_mask));
@@ -595,7 +595,7 @@ index cd75982..2c22fab 100644
      // Save & load slots
      ctx_http.get ("/slots",                    ex_wrapper(routes.get_slots));
      ctx_http.post("/slots/:id_slot",           ex_wrapper(routes.post_slots));
-@@ -523,6 +525,8 @@ static int server_run_router(common_params & params, int argc, char ** argv, con
+@@ -526,6 +528,8 @@ static int server_run_router(common_params & params, int argc, char ** argv, con
      routes.post_lora_adapters          = models_routes->proxy_post;
      routes.get_expert_mask             = models_routes->proxy_get;
      routes.post_expert_mask            = models_routes->proxy_post;

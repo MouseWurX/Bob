@@ -4,7 +4,7 @@
 // The questions are plain data here so anyone can read them.
 import fs from 'node:fs';
 import path from 'node:path';
-import { QUIZ, TOOLS, runQuiz } from './lab-test.js';
+import { QUIZ, TOOLS, PICK_BASICS, runQuiz } from './lab-test.js';
 import { EXTRA_PACKS, EXTRA_IDS, runExtraPack } from './lab-packs.js';
 import { genBody } from './lab-gen.js'; // 1.5.168 Professional mode settings // 1.5.164 more packs and Guard rails
 
@@ -76,7 +76,7 @@ export const RULES = [
 ];
 
 export const PICK_TOOL = [
-  ...QUIZ.tools,
+  ...PICK_BASICS,
   ['Paint me a watercolour of a lighthouse.', 'make_picture'],
   ['Do I need an umbrella in Oslo this afternoon?', 'get_weather'],
   ['Ping me at 9 tomorrow about the dentist.', 'set_reminder'],
@@ -99,7 +99,7 @@ export const CODE = [
 
 // The packs, in the order the scoreboard shows them. `minutes` is a rough guess on a 16 GB card.
 export const PACKS = [
-  { id: 'quiz', title: 'Quick quiz', what: 'The Lab test: general knowledge, picking the right tool, coding and following instructions.', count: Object.values(QUIZ).reduce((a, l) => a + l.length, 0), minutes: 2 },
+  { id: 'quiz', title: 'Quick quiz', what: 'The Lab test: general knowledge, jobs with Bob\'s real tools, coding and following instructions.', count: Object.values(QUIZ).reduce((a, l) => a + l.length, 0), minutes: 5, version: 2 }, // v2 (Nov 11): real tools and loop, 10 coding asks
   { id: 'reasoning', title: 'Riddles and reasoning', what: 'Short puzzles and everyday science, multiple choice.', count: REASONING.length, minutes: 2 },
   { id: 'sums', title: 'Sums', what: 'Word problems with a whole-number answer.', count: SUMS.length, minutes: 2 },
   { id: 'rules', title: 'Follow the rules', what: '"Answer only with..." tasks: format, length, case.', count: RULES.length, minutes: 1 },
@@ -150,7 +150,7 @@ const same = (a, b) => (typeof a === 'number' && typeof b === 'number' ? Math.ab
 // unavailable on this machine, so the pack is skipped and says why). Returns { right, of, score, misses, tps, prefillTps }.
 export async function runPack(url, id, { signal, onStep = () => {}, sandbox = null, holdAsks = [], gen = null, repeat = 0, log = null } = {}) {
   if (EXTRA_IDS.includes(id)) return runExtraPack(url, id, { signal, onStep, sandbox, holdAsks, gen, repeat, log });
-  if (id === 'quiz') { const q = await runQuiz(url, { signal, onStep, gen, repeat, log }); return { right: Object.values(q.parts).reduce((a, p) => a + p.right, 0), of: Object.values(q.parts).reduce((a, p) => a + p.of, 0), score: q.score, misses: q.misses.map((m) => m.q), tps: q.tps, prefillTps: q.prefillTps }; }
+  if (id === 'quiz') { const q = await runQuiz(url, { signal, onStep, gen, repeat, log, sandbox }); return { right: Object.values(q.parts).reduce((a, p) => a + p.right, 0), of: Object.values(q.parts).reduce((a, p) => a + p.of, 0), score: q.score, misses: q.misses.map((m) => m.q), tps: q.tps, prefillTps: q.prefillTps, quizParts: q.parts }; }
   const list = { reasoning: REASONING, sums: SUMS, rules: RULES, tools: PICK_TOOL, code: CODE }[id];
   if (!list) throw new Error(`There's no challenge called ${id}.`);
   if (id === 'code' && !sandbox) return { right: 0, of: list.length, score: null, skipped: 'My sandbox isn\'t working on this replicant matrix, so I won\'t run code a brain wrote. Self-made tools say why.', misses: [], tps: 0, prefillTps: 0 };
@@ -179,13 +179,25 @@ export async function runPack(url, id, { signal, onStep = () => {}, sandbox = nu
 
 // The scoreboard file for one brain: <lab>/scores/<slug>.json. One row per brain, newest result per pack kept.
 export function scoreFile(dir, slug) { return path.join(dir, `${slug}.json`); }
-export function mergeScores(old, { name, sha256, sizeGB, quant, paramsB, activeB, experts, madeHere, packs, tps, prefillTps, when, engine, where, bench }) {
-  const out = { brain: { ...(old?.brain || {}), name, ...(sha256 ? { sha256 } : {}), ...(sizeGB ? { sizeGB } : {}), ...(quant ? { quant } : {}), ...(paramsB ? { paramsB } : {}), ...(activeB ? { activeB } : {}), ...(experts ? { experts } : {}), ...(madeHere ? { madeHere: true } : {}) }, packs: { ...(old?.packs || {}) }, when, ...(engine ? { engine } : {}), ...(where ? { where } : {}) };
-  for (const [id, p] of Object.entries(packs)) out.packs[id] = { score: p.score, right: p.right, of: p.of, v: PACK_VERSION[id] || 1, ...(p.skipped ? { skipped: p.skipped } : {}), ...(p.parts ? { parts: Object.fromEntries(Object.entries(p.parts).map(([k, x]) => [k, { score: x.score, right: x.right, of: x.of }])) } : {}), when };
+export function mergeScores(old, { name, brainId, sha256, sizeGB, quant, paramsB, activeB, experts, madeHere, packs, tps, prefillTps, when, engine, where, bench }) {
+  const out = { brain: { ...(old?.brain || {}), name, ...(brainId ? { id: brainId } : {}), ...(sha256 ? { sha256 } : {}), ...(sizeGB ? { sizeGB } : {}), ...(quant ? { quant } : {}), ...(paramsB ? { paramsB } : {}), ...(activeB ? { activeB } : {}), ...(experts ? { experts } : {}), ...(madeHere ? { madeHere: true } : {}) }, packs: { ...(old?.packs || {}) }, when, ...(engine ? { engine } : {}), ...(where ? { where } : {}) };
+  for (const [id, p] of Object.entries(packs)) out.packs[id] = { score: p.score, right: p.right, of: p.of, v: PACK_VERSION[id] || 1, ...(p.skipped ? { skipped: p.skipped } : {}), ...(p.seconds != null ? { seconds: p.seconds, steps: p.steps } : {}), ...(p.parts || p.quizParts ? { parts: Object.fromEntries(Object.entries(p.parts || p.quizParts).map(([k, x]) => [k, { score: x.score, right: x.right, of: x.of }])) } : {}), when };
   const speed = { ...(old?.speed || {}) };
   if (tps) speed.tps = tps; if (prefillTps) speed.prefillTps = prefillTps;
   if (bench && (bench.read != null || bench.write != null)) speed.bench = { read: bench.read, write: bench.write, prompt: bench.prompt, gen: bench.gen, ...(bench.build ? { build: bench.build } : {}), when }; // the standard speed test (llama-bench)
   if (Object.keys(speed).length) out.speed = speed;
+  if (old?.wobble) out.wobble = old.wobble; // Show the wobble: kept until the next wobble run of that pack
+  return out;
+}
+// Show the wobble (Nov 11): a pack run three times differs by luck. ± is half the gap between the lowest and highest.
+export const wobbleOf = (sp) => (sp && sp.runs > 1 ? Math.ceil((sp.high - sp.low) / 2) : null);
+// The wobble of each pack, written beside the brain's scores (a wobble run never changes the score itself).
+export function mergeWobble(old, { name, brainId, packs, when }) {
+  const out = old && typeof old === 'object' ? { ...old } : { brain: { name }, packs: {} };
+  out.brain = { ...(out.brain || {}), name, ...(brainId ? { id: brainId } : {}) };
+  out.packs ||= {};
+  out.wobble = { ...(out.wobble || {}) };
+  for (const [id, sp] of Object.entries(packs)) { const w = wobbleOf(sp); if (w !== null) out.wobble[id] = { pm: w, runs: sp.runs, low: sp.low, high: sp.high, v: PACK_VERSION[id] || 1, when }; }
   return out;
 }
 export function readScores(dir) {
@@ -202,7 +214,8 @@ export function scoreboard(list) {
     // The overall mark counts packs not run as missing, never as skipped: a brain can't win by leaving out the hard one.
     const overall = counted.length ? Math.round(counted.reduce((a, x) => a + x, 0) / counted.length) : null;
     const b = s.brain;
-    return { id: s.id, name: b.name, sizeGB: b.sizeGB ?? null, quant: b.quant || '', paramsB: b.paramsB ?? null, activeB: b.activeB ?? null, moe: Boolean(b.experts), madeHere: Boolean(b.madeHere), cls: classOf(b.paramsB), tps: s.speed?.tps ?? null, bench: s.speed?.bench || null, when: s.when || '', scores, old, overall, ran: counted.length, all: counted.length === RANKED_IDS.length, ...(s.packs?.guard?.parts && cur('guard') ? { guard: s.packs.guard.parts } : {}) };
+    const wob = Object.fromEntries(Object.entries(s.wobble || {}).filter(([id, w]) => (w.v || 1) === PACK_VERSION[id]).map(([id, w]) => [id, w.pm]));
+    return { id: s.id, brainId: b.id || '', wobble: wob, name: b.name, sizeGB: b.sizeGB ?? null, quant: b.quant || '', paramsB: b.paramsB ?? null, activeB: b.activeB ?? null, moe: Boolean(b.experts), madeHere: Boolean(b.madeHere), cls: classOf(b.paramsB), tps: s.speed?.tps ?? null, bench: s.speed?.bench || null, when: s.when || '', scores, old, overall, ran: counted.length, all: counted.length === RANKED_IDS.length, ...(s.packs?.guard?.parts && cur('guard') ? { guard: s.packs.guard.parts } : {}), ...(cur('jobspeed')?.seconds != null ? { jobSec: cur('jobspeed').seconds } : {}) };
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
 // One class's board: brains that ran every current challenge first (so skipping the hard one never wins),
@@ -210,4 +223,23 @@ export function scoreboard(list) {
 export const boardOrder = (a, b) => Number(Boolean(b.all)) - Number(Boolean(a.all)) || (b.overall ?? -1) - (a.overall ?? -1) || (b.tps ?? 0) - (a.tps ?? 0) || (a.sizeGB ?? 0) - (b.sizeGB ?? 0);
 export function classBoard(rows, cls) {
   return rows.filter((r) => r.cls === cls).sort(boardOrder);
+}
+
+// Lab scores on the Brains page (Nov 11): tool skill, coding and speed on this computer for each brain the Lab has
+// scored, keyed by the brain's id (by name for scores kept before ids were). Tool skill is the Lab test's real-tools
+// part; coding is Code it (run in the sandbox) when it was run, else the Lab test's coding part.
+export function brainScores(files, brains) {
+  const out = {};
+  for (const s of files) {
+    const b = brains.find((x) => (s.brain.id && x.id === s.brain.id)) || brains.find((x) => x.name === s.brain.name);
+    if (!b) continue;
+    const cur = (id) => { const p = s.packs?.[id]; return p && (p.v || 1) === PACK_VERSION[id] ? p : null; };
+    const quiz = cur('quiz');
+    const tools = quiz?.parts?.tools?.score ?? null;
+    const coding = cur('code')?.score ?? quiz?.parts?.coding?.score ?? null;
+    const row = scoreboard([s])[0];
+    if (tools == null && coding == null && row.overall == null && !s.speed?.tps) continue;
+    out[b.id] = { tools, coding, overall: row.overall, tps: s.speed?.tps ?? null, when: s.when || '', wobble: row.wobble?.quiz ?? null };
+  }
+  return out;
 }

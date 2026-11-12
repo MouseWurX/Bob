@@ -1,0 +1,96 @@
+# Builds the CUDA add-ons for picture to 3D (TRELLIS.2): app/model3d/build-addons.sh, from the commits pinned in
+# app/model3d/sources.json, for CUDA 12.8 (RTX 20 to RTX 50 cards), Python 3.12, PyTorch 2.7.1.
+# They are compiled here, once, so nothing is ever compiled on the user's computer.
+# Runs when app/model3d/ or this file changes in a pull request that is ready for review, and by hand.
+# Pushes to work branches and draft pull requests run nothing, like build.yml. Publishing happens only by hand.
+name: 3D workshop add-ons
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths: ['app/model3d/sources.json', 'app/model3d/build-addons.sh', '.github/workflows/model3d-addons.yml']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Also put the wheels on a pre-release (model3d-addons-<run number>) for the 3D workshop Get button'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    # draft pull requests run nothing
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    runs-on: windows-2022 # VS 2022: CUDA 12.8 doesn't know newer Visual Studios
+    timeout-minutes: 240
+    permissions:
+      contents: write # only used by the publish step, which runs only when asked for by hand
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install CUDA 12.8 (compiler and headers only)
+        shell: pwsh
+        run: |
+          # The full installer (about 3 GB): the network one fetches each part again and failed quietly here.
+          $url = 'https://developer.download.nvidia.com/compute/cuda/12.8.1/local_installers/cuda_12.8.1_572.61_windows.exe'
+          Invoke-WebRequest $url -OutFile cuda.exe
+          (Get-Item cuda.exe).Length
+          # names from NVIDIA's Toolkit Subpackages table for 12.8 (an unknown name makes the whole install fail)
+          $parts = 'nvcc_12.8','cudart_12.8','cuda_profiler_api_12.8','nvjitlink_12.8','nvrtc_12.8','nvrtc_dev_12.8','nvtx_12.8','thrust_12.8','cublas_12.8','cublas_dev_12.8','cusparse_12.8','cusparse_dev_12.8','cusolver_12.8','cusolver_dev_12.8','curand_12.8','curand_dev_12.8','cufft_12.8','cufft_dev_12.8'
+          $p = Start-Process -Wait -PassThru -FilePath .\cuda.exe -ArgumentList (@('-s') + $parts)
+          "installer exit code: $($p.ExitCode)"
+          $cuda = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8'
+          if (-not (Test-Path "$cuda\bin\nvcc.exe")) { Get-ChildItem 'C:\Program Files\NVIDIA GPU Computing Toolkit' -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 40 FullName; throw 'CUDA did not install' }
+          "CUDA_PATH=$cuda" | Out-File -Append $env:GITHUB_ENV
+          "CUDA_HOME=$cuda" | Out-File -Append $env:GITHUB_ENV
+          "$cuda\bin" | Out-File -Append $env:GITHUB_PATH
+      - name: Install uv
+        run: pip install uv==0.8.0
+      - name: Build the wheels
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          nvcc --version
+          "C:\Program Files\Git\bin\bash.exe" app/model3d/build-addons.sh win-x64
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: model3d-addons-win-x64
+          path: wheels/
+      - name: Publish to the pre-release (by hand only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash app/model3d/publish.sh "model3d-addons-${{ github.run_number }}" wheels/*
+
+  linux:
+    # draft pull requests run nothing
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    # Ubuntu 22.04 inside, so the wheels also run on older Linux (glibc 2.35)
+    container: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    timeout-minutes: 240
+    permissions:
+      contents: write # only used by the publish step, which runs only when asked for by hand
+    steps:
+      - name: Tools
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git curl ca-certificates python3-pip nodejs gh
+          pip3 install uv==0.8.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the wheels
+        run: |
+          git config --global --add safe.directory '*'
+          nvcc --version
+          bash app/model3d/build-addons.sh linux-x64
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: model3d-addons-linux-x64
+          path: wheels/
+      - name: Publish to the pre-release (by hand only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash app/model3d/publish.sh "model3d-addons-${{ github.run_number }}" wheels/*

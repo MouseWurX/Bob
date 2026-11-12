@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#2b1d14">
-<title>FNRI</title>
+<meta name="theme-color" content="#1c1c1c">
+<title>fNRI</title>
 <link rel="icon" href="/icons/bob-32.png">
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/watch.css">
 </head>
 <body class="watch-page">
   <header class="watch-head">
-    <h1 id="watchTitle">FNRI <span class="muted">Functional Neural Response Imager</span></h1>
+    <h1 id="watchTitle">fNRI <span class="muted">Functional Neural Response Imager</span></h1>
     <p id="watchSub" class="muted">A scan of a brain's experts lighting up as it works: one floor of voxels for each layer, coloured by skill.</p>
   </header>
   <div class="watch-main">
     <aside class="watch-side" aria-label="Controls">
       <section id="watchEmpty">
-        <p>Nothing is loaded yet. Make a scan in the Lab (Playground, FNRI), or open a recording file here.</p>
+        <p>Nothing is loaded yet. Make a scan in the Lab (Look inside, fNRI), or open a recording file here.</p>
       </section>
       <section id="watchControls" hidden>
         <fieldset id="watchSkills"><legend>Show these</legend></fieldset>
@@ -51,9 +51,10 @@
           <button type="button" id="watchTrainSave" class="get">Save for training</button>
           <p id="watchTrainSays" class="muted" role="status"></p>
         </fieldset>
-        <fieldset id="watchCmpBox" hidden><legend>Before and after</legend>
+        <fieldset id="watchCmpBox" hidden><legend>Before and after, or two brains</legend>
           <label>Compare with <select id="watchCmpWith" aria-describedby="watchCmpHint"></select></label>
-          <span id="watchCmpHint" class="muted">Another scan of this brain with the same questions. The two blocks play side by side, word for word.</span>
+          <label class="watch-open-b">Or open a scan file <input type="file" id="watchCmpFile" accept=".json,application/json"></label>
+          <span id="watchCmpHint" class="muted">Another scan with the same questions: of this brain, or of another brain with the same floors (a cut of it, or the brain it was cut from). The two blocks play side by side, word for word.</span>
           <p id="watchCmpSays" class="muted" role="status"></p>
         </fieldset>
         <label for="watchZoom">How close</label>
@@ -86,14 +87,23 @@
         <label for="watchFace">Look from</label>
         <select id="watchFace"><option value="">(pick a side)</option><option value="corner">A corner</option><option value="front">The front</option><option value="side">The side</option><option value="back">The back</option><option value="top">Above</option></select>
         <label id="watchByBox">Colour by <select id="watchBy" aria-describedby="watchByHint"></select></label>
+        <label id="watchByVsBox" hidden>Differ from <select id="watchByVs" aria-describedby="watchByVsHint"></select></label>
+        <span id="watchByVsHint" class="muted" hidden>The brain this one was made from works best: a cut lines up with it through its keep list. Bob reads a few rows of every block from both files, so a big brain takes a minute the first time.</span>
+        <p id="watchBySays" class="muted" role="status"></p>
         <span id="watchByHint" class="muted">Patterns: Bob sorts the words by which blocks they light, with nobody telling him what the groups should be, and name each group by its most typical words. It's worked out here, from this scan.</span>
         <button id="watchFloors" type="button" class="brain-switch" role="switch" aria-checked="false" hidden title="The whole floor glows by how hard it is working for the word being read, instead of single blocks. Each floor is measured against its own usual range."><span class="lbl">Floors only</span><span class="st">Off</span></button>
         <button id="watchMono" type="button" class="brain-switch" role="switch" aria-checked="false" title="Every expert the same colour, so only what lights up stands out. The skills keep their tick boxes."><span class="lbl">One colour</span><span class="st">Off</span></button>
         <label id="watchMonoColourBox" hidden>The one colour <input type="color" id="watchMonoColour" value="#e69f00"></label>
         <label for="watchLoad">Load in</label>
         <select id="watchLoad" aria-describedby="watchLoadHint"></select>
-        <span id="watchLoadHint" class="muted">How the block builds itself when a scan opens, and how it comes apart when the next one loads. Picking one plays it.</span>
+        <span id="watchLoadHint" class="muted">How the block builds itself when a scan opens. Picking one plays it.</span>
+        <label for="watchUnload">Load out</label>
+        <select id="watchUnload" aria-describedby="watchUnloadHint"></select>
+        <span id="watchUnloadHint" class="muted">How it comes apart when the next scan loads. Picking one plays it, then builds it back.</span>
+        <button id="watchEdges" type="button" class="brain-switch" role="switch" aria-checked="false" title="A faint line along the block's edges, so it reads as a cube."><span class="lbl">Edges</span><span class="st">Off</span></button>
         <button id="watchPaths" type="button" class="brain-switch" role="switch" aria-checked="true"><span class="lbl">Lines between the experts in use</span><span class="st">On</span></button>
+        <label for="watchLines">How bright the lines are</label>
+        <input type="range" id="watchLines" min="0" max="1" step="0.05" value="0.5">
         <details id="watchWordsBox"><summary>What this shows, in words</summary><ul id="watchWords" class="tlist"></ul></details>
       </section>
       <section class="watch-files">

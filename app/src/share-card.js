@@ -17,12 +17,16 @@
 // "Spread big brains over my other Bobs' cards" (this Bob borrows): when a brain is loaded that's too big (the choice
 // says what too big means), Bob asks each Bob on the list whose card is lent and adds the ones that say yes to the
 // engine (--rpc). llama.cpp then puts part of the brain on each card. If none says yes, the brain loads here like always.
+import { sealOn, sealAsk, cleanSealAsk, lenderSeal, borrowerSeal, keysEnv } from './scut-seal.js'; // sealed SCUT packets (0006)
 import { isTailscaleIp } from './phone-access.js';
 import { findTool, missingWords } from './llama-tools.js';
 import { spawn } from 'node:child_process';
+import { safeSpawn } from './engine-blocked.js'; // 1.5.203: a blocked program comes back as 'error', not a throw
 import path from 'node:path';
 import os from 'node:os';
 import net from 'node:net';
+import dgram from 'node:dgram';
+import fs from 'node:fs';
 
 export const RPC_PORT = 50052; // the gate other Bobs reach
 export const INNER_PORT = 50053; // the card server itself, on 127.0.0.1 only
@@ -31,6 +35,48 @@ export const KEEP_MS = 60000; // the asker says "still using it" this often
 export const SPREAD = ['off', 'toobig', 'big'];
 const DOWN_MS = 10 * 60000; // a Bob whose card failed a load isn't asked again for this long
 
+// SCUT (Brain Engine patch 0005): Bob's own fast link for the brain's numbers, off unless switched on. Both Bobs need it
+// on; the engines agree on it when they connect and stay on the usual link (TCP) if either side doesn't, or if the
+// UDP path doesn't answer. It paces itself under a speed cap so the rest of the home network isn't crowded.
+export const SCUT_MBPS = [50, 100, 300, 400];
+export const scutOn = (cfg) => cfg.share?.scut === true;
+// Sealed SCUT packets (Brain Engine 0006, src/scut-seal.js): on with SCUT unless "Seal SCUT packets" is switched off.
+export const scutSealOn = (cfg) => scutOn(cfg) && sealOn(cfg);
+export const SEED_MS = 20 * 60000; // the most a lender spends filling its card store from its own copy of a brain
+const SEED_SPARE = 10e9; // the disk room a seed always leaves free
+
+// Where the card server keeps the weights it was sent (llama.cpp's cache folder, then rpc), as the engine finds it.
+export function cardStoreDir(env = process.env, platform = process.platform, home = os.homedir()) {
+  if (env.LLAMA_CACHE) return path.join(env.LLAMA_CACHE, 'rpc');
+  const base = platform === 'win32' ? env.LOCALAPPDATA || path.join(home, 'AppData', 'Local')
+    : platform === 'darwin' ? path.join(home, 'Library', 'Caches') : env.XDG_CACHE_HOME || path.join(home, '.cache');
+  return path.join(base, 'llama.cpp', 'rpc');
+}
+
+// "Send the brain early": this Bob's own copy of the brain another Bob is about to spread (same file name, same size),
+// or ''. Looked for in Bob's brains folder and in the files picked with Equip; never anywhere else on the disk.
+export function findOwnBrain(cfg, { file, bytes } = {}) {
+  const name = path.basename(String(file || ''));
+  if (!/\.gguf$/i.test(name) || !(Number(bytes) > 0)) return '';
+  const root = cfg.bobModelsDir || path.join(cfg.agentDir || '.', 'models', 'bob');
+  const tries = [];
+  for (const v of Object.values(cfg.llamacpp?.models || {})) { const g = typeof v === 'string' ? v : v?.gguf; if (g) tries.push(g); }
+  try { for (const d of fs.readdirSync(root, { withFileTypes: true })) if (d.isDirectory()) tries.push(path.join(root, d.name, name)); } catch {}
+  return tries.find((p) => { try { return path.basename(p) === name && fs.statSync(p).size === Number(bytes) && !fs.existsSync(p + '.part'); } catch { return false; } }) || '';
+}
+
+// Free bytes on the drive that holds dir (or its nearest folder that exists), or -1 when unknown.
+export function freeBytes(dir) {
+  for (let d = dir, i = 0; i < 12; i++, d = path.dirname(d)) {
+    try { const s = fs.statfsSync(d); return s.bavail * s.bsize; } catch {}
+    if (path.dirname(d) === d) break;
+  }
+  return -1;
+}
+
+export const scutMbps = (cfg) => (SCUT_MBPS.includes(Number(cfg.share?.scutMbps)) ? Number(cfg.share.scutMbps) : 100);
+// What the engine is started with. lend: the card server, behind the gate, says the gate's port (UDP too) in its offer.
+export const scutEnv = (cfg, { lend = false } = {}) => (scutOn(cfg) ? { GGML_RPC_SCUT: '1', GGML_RPC_SCUT_MBPS: String(scutMbps(cfg)), ...(lend ? { GGML_RPC_SCUT_PUBLIC_PORT: String(RPC_PORT) } : {}) } : {});
 export const lendCardOn = (cfg) => cfg.share?.lendCard === true && Boolean(cfg.remote?.enabled && String(cfg.remote?.passcode || '').length >= 6);
 export const spreadOf = (cfg) => (SPREAD.includes(cfg.share?.spread) ? cfg.share.spread : 'off');
 // This machine's own Tailscale addresses.
@@ -54,7 +100,9 @@ export const homeFirst = (cfg) => cfg.share?.homeNet !== false; // on unless swi
 export const admit = (allow, remote) => Boolean(allow) && plainIp(remote) === allow;
 
 // The gate: listens on host:port and passes only `allow` through to the card server on 127.0.0.1. Gives { close }.
-export function openGate({ host, port = RPC_PORT, allow, inner = INNER_PORT, log = () => {} }) {
+// udp (SCUT): the same port on UDP too, passed the same way: only `allow`'s datagrams go in, and the card server's
+// answers go back to it. If UDP can't open, the gate still works and SCUT stays on TCP by itself.
+export function openGate({ host, port = RPC_PORT, allow, inner = INNER_PORT, udp = false, log = () => {} }) {
   return new Promise((resolve, reject) => {
     const socks = new Set();
     const srv = net.createServer((sock) => {
@@ -64,7 +112,30 @@ export function openGate({ host, port = RPC_PORT, allow, inner = INNER_PORT, log
       sock.pipe(up); up.pipe(sock);
     });
     srv.once('error', reject);
-    srv.listen(port, host, () => { srv.off('error', reject); resolve({ port: srv.address().port, close: () => { srv.close(); for (const s of socks) s.destroy(); } }); });
+    srv.listen(port, host, async () => {
+      srv.off('error', reject);
+      const got = srv.address().port;
+      const relay = udp ? await udpRelay({ host, port: got, allow, inner, log }).catch((e) => { log('bob-net', `lent graphics card: SCUT's UDP side didn't open (${String(e.message || e).slice(0, 80)}), so it stays on the usual link`); return null; }) : null;
+      resolve({ port: got, udp: Boolean(relay), close: () => { srv.close(); for (const s of socks) s.destroy(); relay?.close(); } });
+    });
+  });
+}
+
+// The gate's UDP half: outer on host:port (only `allow` in), inner on 127.0.0.1 towards the card server.
+export function udpRelay({ host, port, allow, inner = INNER_PORT, log = () => {} }) {
+  return new Promise((resolve, reject) => {
+    const outer = dgram.createSocket('udp4'), back = dgram.createSocket('udp4');
+    let peer = null, turned = 0;
+    const close = () => { for (const s of [outer, back]) { try { s.close(); } catch {} } };
+    outer.on('message', (m, r) => {
+      if (!admit(allow, r.address)) { if (turned++ === 0) log('bob-net', `lent graphics card: turned away UDP from ${plainIp(r.address)}`); return; }
+      peer = { address: r.address, port: r.port };
+      back.send(m, inner, '127.0.0.1');
+    });
+    back.on('message', (m) => { if (peer) outer.send(m, peer.port, peer.address); });
+    for (const s of [outer, back]) s.on('error', () => {});
+    outer.once('error', (e) => { close(); reject(e); });
+    outer.bind(port, host, () => back.bind(0, '127.0.0.1', () => resolve({ port: outer.address().port, close })));
   });
 }
 
@@ -73,14 +144,18 @@ export function openGate({ host, port = RPC_PORT, allow, inner = INNER_PORT, log
 export function wantsSpread(cfg, { sizeGB, cardGB = Number(cfg.gpuVramGB) || Number(cfg.cardGB) || 0, ramGB = os.totalmem() / 1e9 } = {}) {
   const how = spreadOf(cfg);
   if (how === 'off' || !(sizeGB > 0)) return false;
-  if (how === 'big') return sizeGB > cardGB * 0.9;
-  return sizeGB > cardGB * 0.9 + Math.max(0, ramGB - 8);
+  // 1.5.195: built-in graphics share the memory (the handheld), and an unknown card can't be judged, so "bigger than
+  // my card" counts only on a real card. There, and on 'toobig', a brain that fits this machine stays here: the
+  // handheld spread its own 2.3 GB chat brain over Wi-Fi to another Bob's card, and its chats waited behind that.
+  if (how === 'big' && cardGB > 0 && cfg.sharedGraphics !== true) return sizeGB > cardGB * 0.9;
+  return sizeGB > (cfg.sharedGraphics === true ? 0 : cardGB * 0.9) + Math.max(0, ramGB - 8);
 }
 
 // ---------- Lending ----------
 export class CardLender {
-  constructor(cfg, { spawnFn = spawn, tool = () => findTool(cfg, 'rpc'), ips = tailscaleIps, home = homeIps, gate = openGate, gaming = () => false, now = Date.now, log = () => {} } = {}) {
-    Object.assign(this, { cfg, spawnFn, tool, ips, home, gate, gaming, now, log });
+  constructor(cfg, { spawnFn = spawn, tool = () => findTool(cfg, 'rpc'), ips = tailscaleIps, home = homeIps, gate = openGate, gaming = () => false, now = Date.now, log = () => {}, env = process.env, findBrain = (b) => findOwnBrain(cfg, b), free = freeBytes, seedMs = SEED_MS } = {}) {
+    Object.assign(this, { cfg, spawnFn, tool, ips, home, gate, gaming, now, log, env, findBrain, free, seedMs });
+    this.seeded = this.loadSeeded(); this.seeding = null;
     this.child = null; this.gateway = null; this.host = ''; this.allow = ''; this.via = ''; this.port = 0; this.last = 0; this.from = ''; this.timer = null;
   }
 
@@ -98,18 +173,63 @@ export class CardLender {
 
   view() { return { lending: Boolean(this.child), to: this.from, via: this.via, since: this.child ? this.last : 0 }; }
 
+  get seededFile() { return this.cfg.dataDir ? path.join(this.cfg.dataDir, 'seeded-brains.json') : ''; }
+  loadSeeded() { try { return new Set(JSON.parse(fs.readFileSync(this.seededFile, 'utf8')).filter((x) => typeof x === 'string').slice(-50)); } catch { return new Set(); } }
+
+  // "Send the brain early" (with SCUT on): before the card server starts, fill its store from this machine's own copy
+  // of the brain, so the first load doesn't push gigabytes over Wi-Fi. The asking Bob still offers each weight's
+  // hash first and sends only what isn't here, so a copy that differs just means those weights travel as before.
+  // Once per brain (remembered); never when the disk would be left with less than 10 GB.
+  async seed(brain) {
+    if (!scutOn(this.cfg) || !brain || typeof brain !== 'object') return '';
+    const bytes = Number(brain.bytes), key = `${path.basename(String(brain.file || ''))}:${bytes}`;
+    if (this.seeded.has(key)) return 'already';
+    const file = this.findBrain({ file: brain.file, bytes });
+    if (!file) return 'no copy';
+    const room = this.free(cardStoreDir(this.env));
+    if (room >= 0 && room < bytes + SEED_SPARE) { this.log('bob-net', `lent graphics card: not loading ${path.basename(file)} from this machine's own copy, the disk is too full`); return 'no room'; }
+    if (this.seeding) return this.seeding;
+    const t = this.tool();
+    this.log('bob-net', `lent graphics card: loading ${path.basename(file)} from this machine's own copy first, so it doesn't cross the network`);
+    this.seeding = new Promise((resolve) => {
+      let child, out = '';
+      try { child = safeSpawn(this.spawnFn, t.path, ['--seed', file, '-c'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], cwd: path.dirname(t.path), env: this.env }); }
+      catch { resolve('failed'); return; }
+      const look = (d) => { out = (out + d).slice(-2000); };
+      child.stdout?.on('data', look); child.stderr?.on('data', look);
+      const timer = setTimeout(() => { try { child.kill(); } catch {} }, this.seedMs);
+      const done = (v) => { clearTimeout(timer); resolve(v); };
+      child.once('error', () => done('failed'));
+      child.once('exit', (code) => done(code === 0 ? 'seeded' : 'failed'));
+    }).then((v) => {
+      this.seeding = null;
+      if (v === 'seeded') {
+        this.seeded.add(key);
+        try { if (this.seededFile) fs.writeFileSync(this.seededFile, JSON.stringify([...this.seeded].slice(-50))); } catch {}
+        this.log('bob-net', `lent graphics card: ${path.basename(file)} is ready on this card's store`);
+      } else this.log('bob-net', `lent graphics card: couldn't load ${path.basename(file)} from this machine's own copy, so it comes over the network as usual`);
+      return v;
+    });
+    return this.seeding;
+  }
+
   // localAddr / remoteAddr: the two ends of the door request (over Tailscale). home: the asker's home-network
   // addresses, when it would like the home network.
-  async open({ localAddr, remoteAddr, from = '', home = [] } = {}) {
+  // seal: the asker's cleanSealAsk() (sealed SCUT packets), or null from an older Bob.
+  async open({ localAddr, remoteAddr, from = '', home = [], brain = null, seal = null } = {}) {
     const why = this.refusal(localAddr);
     if (why) return { ok: false, why, error: why === 'no tool' ? missingWords('rpc') : why };
     const near = homeFirst(this.cfg) && Array.isArray(home) ? pickHome(this.home(), home.slice(0, 8)) : null;
     const host = near ? near.host : plainIp(localAddr), allow = near ? near.peer : plainIp(remoteAddr), via = near || isHomeIp(host) ? 'home' : 'tailscale';
     if (!allow) return { ok: false, why: 'failed', error: 'Bob couldn\'t tell who was asking.' };
-    if (this.child && this.host === host && this.allow === allow) { this.keep(); return { ok: true, host, port: this.port, via }; }
+    if (this.child && this.host === host && this.allow === allow) { this.keep(); return { ok: true, host, port: this.port, via, ...(this.sealReply ? { seal: { salt: this.sealReply.salt } } : {}) }; }
     this.close();
+    const seeded = await this.seed(brain);
+    if (this.refusal(localAddr)) return { ok: false, why: this.refusal(localAddr), error: this.refusal(localAddr) }; // Gaming started (or the switch went off) while it filled
     const t = this.tool();
-    const child = this.spawnFn(t.path, ['-H', '127.0.0.1', '-p', String(INNER_PORT), '-c'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], cwd: path.dirname(t.path) });
+    // Sealed SCUT packets: this lend's key for the card server, made from the pair's link key and a fresh salt.
+    const sealed = lenderSeal(this.cfg, { on: scutSealOn(this.cfg), ask: seal, asker: plainIp(remoteAddr), log: this.log });
+    const child = safeSpawn(this.spawnFn, t.path, ['-H', '127.0.0.1', '-p', String(INNER_PORT), '-c'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], cwd: path.dirname(t.path), env: { ...this.env, ...scutEnv(this.cfg, { lend: true }), ...sealed.env } });
     let out = '';
     const ready = await new Promise((resolve) => {
       const done = (v) => { clearTimeout(timer); resolve(v); };
@@ -121,13 +241,13 @@ export class CardLender {
     });
     if (!ready) { try { child.kill(); } catch {} return { ok: false, why: 'failed', error: `The card-sharing server didn't start${out ? ` (${out.trim().split(/\r?\n/).pop().slice(0, 160)})` : ''}.` }; }
     let gateway;
-    try { gateway = await this.gate({ host, port: RPC_PORT, allow, inner: INNER_PORT, log: this.log }); }
+    try { gateway = await this.gate({ host, port: RPC_PORT, allow, inner: INNER_PORT, udp: scutOn(this.cfg), log: this.log }); }
     catch (e) { try { child.kill(); } catch {} return { ok: false, why: 'failed', error: `The card-sharing gate didn't open on ${host}:${RPC_PORT} (${String(e.message || e).slice(0, 120)}).` }; }
     child.once('exit', () => { if (this.child === child) { this.close(); this.log('bob-net', 'lent graphics card: the card-sharing server stopped'); } });
-    Object.assign(this, { child, gateway, host, allow, via, port: RPC_PORT, from: String(from).slice(0, 40) });
+    Object.assign(this, { child, gateway, host, allow, via, port: RPC_PORT, from: String(from).slice(0, 40), sealReply: sealed.reply });
     this.keep();
-    this.log('bob-net', `lent graphics card to ${this.from || 'another Bob'} over ${via === 'home' ? 'the home network' : 'Tailscale'} (${host}:${RPC_PORT}, only ${allow} let in)`);
-    return { ok: true, host, port: RPC_PORT, via };
+    this.log('bob-net', `lent graphics card to ${this.from || 'another Bob'} over ${via === 'home' ? 'the home network' : 'Tailscale'} (${host}:${RPC_PORT}, only ${allow} let in${gateway.udp ? `, SCUT ready${sealed.sealed ? ', sealed' : ''}` : ''})`);
+    return { ok: true, host, port: RPC_PORT, via, ...(seeded ? { seeded } : {}), ...(sealed.reply ? { seal: sealed.reply } : {}) };
   }
 
   keep() {
@@ -141,7 +261,7 @@ export class CardLender {
 
   close() {
     clearTimeout(this.timer); this.timer = null;
-    const c = this.child, g = this.gateway; this.child = null; this.gateway = null; this.host = ''; this.allow = ''; this.via = ''; this.port = 0; this.from = '';
+    const c = this.child, g = this.gateway; this.child = null; this.gateway = null; this.host = ''; this.allow = ''; this.via = ''; this.port = 0; this.from = ''; this.sealReply = null;
     try { g?.close(); } catch {}
     if (c && c.exitCode === null) { try { c.kill(); } catch {} }
   }
@@ -153,7 +273,14 @@ export function lendCardRoute(lender, req, b = {}) {
   if (!action) return Promise.resolve({ status: 400, body: { error: 'no' } });
   if (action === 'keep') return Promise.resolve({ status: 200, body: { ok: lender.keep() } });
   if (action === 'close') { lender.close(); return Promise.resolve({ status: 200, body: { ok: true } }); }
-  return lender.open({ localAddr: req.socket?.localAddress, remoteAddr: req.socket?.remoteAddress, from: b.from, home: Array.isArray(b.home) ? b.home.map(String) : [] }).then((r) => ({ status: 200, body: r }));
+  return lender.open({ localAddr: req.socket?.localAddress, remoteAddr: req.socket?.remoteAddress, from: b.from, home: Array.isArray(b.home) ? b.home.map(String) : [], brain: cleanBrain(b.brain), seal: cleanSealAsk(b.seal) }).then((r) => ({ status: 200, body: r }));
+}
+
+// The brain an asking Bob is about to spread: { file: name only, bytes }, or null.
+export function cleanBrain(b) {
+  if (!b || typeof b !== 'object') return null;
+  const file = path.basename(String(b.file || '')).slice(0, 200), bytes = Math.floor(Number(b.bytes));
+  return /\.gguf$/i.test(file) && bytes > 0 && bytes < 2e12 ? { file, bytes } : null;
 }
 
 // ---------- Borrowing ----------
@@ -164,23 +291,34 @@ export class CardBorrower {
     this.using = []; this.down = new Map(); this.homeDown = new Map(); this.timer = null;
   }
 
+  // Sealed SCUT packets: the keys llama-server needs for the lent cards in use (GGML_RPC_SCUT_KEYS), or {}.
+  sealEnv() { return scutSealOn(this.cfg) ? keysEnv(this.using.filter((u) => u.key).map((u) => ({ at: u.at, key: u.key }))) : {}; }
+
   // The helpers for one load: ['host:50052', ...], or [] (load here like always). Each Bob is asked over Tailscale;
   // his card is reached over the home network when we're both on it, else over Tailscale.
-  async open({ sizeGB } = {}) {
+  // file: the brain's own file here; with SCUT on, its name and size go along so a lender with its own copy loads
+  // from that (the call then waits longer, as long as that takes).
+  async open({ sizeGB, file = '' } = {}) {
     this.close();
+    let brain = null;
+    if (scutOn(this.cfg) && file) { try { brain = cleanBrain({ file, bytes: fs.statSync(file).size }); } catch {} }
     if (!wantsSpread(this.cfg, { sizeGB })) return [];
     const bobs = (this.lenders?.bobs?.() || []).filter((b) => !(this.down.get(b.address) > this.now()));
     const here = this.home(), mine = homeFirst(this.cfg) ? here : [];
     const tries = await Promise.all(bobs.map(async (bob) => {
       try {
         const home = this.homeDown.get(bob.address) > this.now() ? [] : mine.map((m) => m.address);
-        const r = await this.lenders.call(bob, '/api/lend/card', { method: 'POST', body: { action: 'open', from: this.name(), home }, timeout: 8000 });
+        const seal = scutSealOn(this.cfg) ? sealAsk(this.cfg, bob.address) : null;
+        const r = await this.lenders.call(bob, '/api/lend/card', { method: 'POST', body: { action: 'open', from: this.name(), home, ...(brain ? { brain } : {}), ...(seal ? { seal } : {}) }, timeout: brain ? SEED_MS + 15000 : 8000 });
         const j = await r.json().catch(() => ({}));
         const host = bob.address.split(':')[0];
         if (!(r.ok && j.ok && Number(j.port) > 0)) return null;
+        // Sealed SCUT packets: this lend's key from his salt, or 'off' (he doesn't seal, so no SCUT with him).
+        const key = seal ? borrowerSeal(this.cfg, { address: bob.address, reply: j.seal && typeof j.seal === 'object' ? j.seal : null, asked: seal }) : '';
+        if (key === 'off') this.log('bob-net', `${bob.name} doesn't seal SCUT packets, so his card uses the usual link`);
         // Over the home network: his gate must be on our own home network. Otherwise on the Tailscale address we reach him on.
-        if (j.via === 'home') return here.some((m) => isHomeIp(j.host) && sameNet(m.address, j.host, m.netmask)) ? { bob, via: 'home', at: `${j.host}:${Number(j.port)}` } : null;
-        if (j.host === host || !isTailscaleIp(host)) return { bob, via: 'tailscale', at: `${j.host}:${Number(j.port)}` };
+        if (j.via === 'home') return here.some((m) => isHomeIp(j.host) && sameNet(m.address, j.host, m.netmask)) ? { bob, via: 'home', at: `${j.host}:${Number(j.port)}`, key } : null;
+        if (j.host === host || !isTailscaleIp(host)) return { bob, via: 'tailscale', at: `${j.host}:${Number(j.port)}`, key };
         return null;
       } catch { return null; }
     }));

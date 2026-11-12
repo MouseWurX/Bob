@@ -23,7 +23,7 @@ export function canStart(lab, { room = true } = {}) {
 // Bob's own brain leaves the card first, but only after asking. Returns { needUnload, names } to ask, or null to go.
 export async function makeRoom(lab, unload) {
   if (!lab.brain?.engine?.loaded) return null;
-  const loaded = (await lab.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
+  const loaded = (await lab.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard || m.usesCard);
   if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
   if (loaded.length) await lab.brain.engine.unloadAll().catch(() => {});
   return null;

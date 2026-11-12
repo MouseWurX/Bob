@@ -1,6 +1,7 @@
 // Bob's audio workshop: music and sound effects from a private Python that Bob sets up himself (with uv),
 // in <Bob's folder>\audio-workshop. Nothing to do with Pinokio, Maestro or any Python already on the PC.
 // Set up only when the user clicks "Get" in the cellar; model weights come on the first use of each kind.
+import { deadline as withDeadline, quietGuard } from './hang-guard.js'; // item 212: every network call has a deadline
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -133,7 +134,9 @@ export async function getOwnPython(cfg, { pub = {}, tick = () => {}, signal, fet
   }
   if (!nugetAllowed(OWN_PYTHON.url)) throw new Error('That Python download isn\'t from where it should be. Stopped.');
   pub.file = `Python ${OWN_PYTHON.version} (signed by the Python Software Foundation)`; pub.phase = 'downloading'; tick();
-  const res = await fetchImpl(OWN_PYTHON.url, { redirect: 'follow', signal, headers: { 'user-agent': 'Bob' } });
+  const q = quietGuard(signal);
+  const res = await fetchImpl(OWN_PYTHON.url, { redirect: 'follow', signal: q.signal, headers: { 'user-agent': 'Bob' } }).catch((e) => { q.done(); throw e; });
+  if (!res.ok) q.done();
   if (!res.ok) throw new Error(`The Python download failed (${res.status}). Press Try again.`);
   if (res.url && !nugetAllowed(res.url)) throw new Error('The Python download was redirected somewhere I don\'t trust. Stopped.');
   const part = path.join(cfg.agentDir, 'python.nupkg.part');
@@ -142,8 +145,9 @@ export async function getOwnPython(cfg, { pub = {}, tick = () => {}, signal, fet
   const base = pub.done || 0;
   let got = 0;
   try {
-    for await (const c of res.body) { hash.update(c); got += c.length; if (!out.write(c)) await new Promise((r) => out.once('drain', r)); pub.done = base + got; tick(); }
-  } finally { await new Promise((r) => out.end(r)); }
+    for await (const c of res.body) { q.poke(); hash.update(c); got += c.length; if (!out.write(c)) await new Promise((r) => out.once('drain', r)); pub.done = base + got; tick(); }
+  } catch (e) { if (q.quiet() && !signal?.aborted) throw new Error('The Python download stopped coming (nothing for 2 minutes). Press Try again.'); throw e; }
+  finally { q.done(); await new Promise((r) => out.end(r)); }
   pub.phase = 'checking'; tick();
   if (hash.digest('hex') !== OWN_PYTHON.sha256) { fs.rmSync(part, { force: true }); throw new Error('The Python download came through damaged (checksum didn\'t match). Press Try again.'); }
   pub.phase = 'unpacking'; tick();
@@ -232,7 +236,7 @@ async function fetchAce(cfg, { pub, tick, signal }) {
   if (!/^[0-9a-f]{40}$/.test(PINS.ACE_STEP_15_COMMIT)) throw new Error('The music package isn\'t pinned to a checked version, so I won\'t install it.');
   if (fs.existsSync(path.join(aceDir(cfg), 'pyproject.toml'))) return;
   const url = `https://codeload.github.com/ACE-Step/ACE-Step-1.5/zip/${PINS.ACE_STEP_15_COMMIT}`;
-  const res = await fetch(url, { signal, headers: { 'user-agent': 'Bob' } });
+  const res = await fetch(url, { signal: withDeadline(signal, 15 * 60_000), headers: { 'user-agent': 'Bob' } });
   if (!res.ok) throw new Error(`Couldn't fetch ACE-Step 1.5 (${res.status}).`);
   const zip = path.join(workshopDir(cfg), 'ace-step-1.5.zip');
   const buf = Buffer.from(await res.arrayBuffer());
@@ -389,7 +393,7 @@ async function makeMusic(cfg, job, { signal, onProgress }) {
       if (!first?.file) { const found = newestSong(cfg, t0 - 5000); if (found) { fs.copyFileSync(found, job.out); onProgress?.(100, 100); return { file: job.out, name: path.basename(job.out) }; } throw Object.assign(new Error('The music engine said the song was finished but didn\'t hand over a file. Ask me again; if it keeps happening, restart Bob.'), { details: `query_result finished with no file: ${JSON.stringify(item).slice(0, 300)}` }); }
       const audioUrl = new URL(first.file, aceBase(cfg));
       if (!/^(127\.0\.0\.1|localhost)$/.test(audioUrl.hostname)) throw new Error('The music engine pointed somewhere other than this replicant matrix.');
-      const buf = Buffer.from(await (await fetch(audioUrl, { signal })).arrayBuffer());
+      const buf = Buffer.from(await (await fetch(audioUrl, { signal: withDeadline(signal, 5 * 60_000) })).arrayBuffer());
       fs.writeFileSync(job.out, buf);
       onProgress?.(100, 100);
       return { file: job.out, name: path.basename(job.out) };
@@ -432,7 +436,7 @@ export function songFileName(title, now = new Date()) {
 // kind: 'music' | 'sfx'. Returns { file, name }.
 export async function makeAudio(cfg, kind, { prompt, lyrics, seconds, title }, { signal, onProgress }) {
   const can = audioReady(cfg);
-  if (!can[kind]) throw new Error(kind === 'music' ? 'Music isn\'t set up yet. Get the audio tools in Settings (left menu), Show advanced settings, Engines.' : 'Sound effects aren\'t set up yet. Get the audio tools in Settings (left menu), Show advanced settings, Engines.');
+  if (!can[kind]) throw new Error(kind === 'music' ? 'Music isn\'t set up yet. Get the audio tools in Settings (left menu), Engines.' : 'Sound effects aren\'t set up yet. Get the audio tools in Settings (left menu), Engines.');
   fs.mkdirSync(cfg.painterDir, { recursive: true });
   const name = songFileName(songTitle({ title, prompt }, kind));
   const out = path.join(cfg.painterDir, name);

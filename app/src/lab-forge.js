@@ -14,7 +14,7 @@ import { pathByName, PERSONALITY, TEACH, clashes } from '../public/lab-thinking-
 // `ready`: what works today. `tab`/`step` say where Use this way leads.
 export const METHODS = [
   { id: 'smaller', title: 'Make it smaller', what: 'The same brain in a smaller file, Q8 down to Q2.', where: 'here', ready: true, use: 'make',
-    tips: ['Make the small file from the full-size one, never from another small file.', 'Q4 is the usual sweet spot; the Playground ladder shows where your brain starts to slip.'] },
+    tips: ['Make the small file from the full-size one, never from another small file.', 'Q4 is the usual sweet spot; the Smaller ladder (Test tab) shows where your brain starts to slip.'] },
   { id: 'cut', title: 'Cut experts', what: 'A smaller brain with fewer experts in each layer, keeping every skill covered or the busiest experts.', where: 'both', ready: true, use: 'make',
     tips: ['Count the experts on work like yours before you cut, so the right ones stay.', 'A small cut can run as it is. A big one needs teaching back afterwards.'] },
   { id: 'heal', title: 'Teach a cut brain back', what: 'A cut brain taught back towards the brain it came from, so the gaps close.', where: 'rented', ready: false, why: 'Needs a rented card. Write the plan here; you start each run yourself, with the caps you type.', use: 'forge',
@@ -94,7 +94,7 @@ export function forgePlans(dir) {
   return files.map((f) => { try { const p = JSON.parse(fs.readFileSync(path.join(pdir, f), 'utf8')); return { id: f.replace(/\.json$/, ''), rungs: (p.rungs || []).map((r) => r.nickname || r.name), note: String(p.note || '').slice(0, 300) }; } catch { return null; } }).filter((p) => p && p.rungs.length);
 }
 
-const RUNG_KEYS = ['name', 'nickname', 'from', 'keep', 'keep_n', 'cover', 'max', 'keep_file', 'experts', 'hours'];
+const RUNG_KEYS = ['name', 'nickname', 'from', 'keep', 'keep_n', 'cover', 'max', 'keep_file', 'experts', 'hours', 'fold'];
 const QUANTS = ['Q4_K_M', 'Q3_K_M', 'Q5_K_M', 'Q6_K', 'Q8_0'];
 const word = (v, max = 40) => String(v ?? '').replace(/[^\w .-]/g, '').trim().slice(0, max);
 const num = (v, lo, hi) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : null; };

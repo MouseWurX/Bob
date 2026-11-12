@@ -1,4 +1,5 @@
 // Talks to the local Ollama server: chat streaming, what's loaded, loading and unloading.
+import { deadline as withDeadline, replyEnd, EARLY_END } from './hang-guard.js'; // items 210-212
 import { replyStats } from './speed-stats.js';
 import { readCard } from './gaming-card.js';
 import { MID_SYSTEM_REFUSED, foldSystem } from './system-notes.js';
@@ -20,7 +21,7 @@ export class Ollama {
       method: body ? 'POST' : 'GET',
       headers: body ? { 'content-type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
-      signal
+      signal: withDeadline(signal, /generate|chat|pull|create/.test(p) ? 15 * 60_000 : 30_000) // item 212: loads may take a while; look-ups don't
     });
     if (!res.ok) throw new Error(`Ollama ${p} returned ${res.status}: ${(await res.text()).slice(0, 300)}`);
     return res.json();
@@ -183,12 +184,12 @@ export class Ollama {
     }
   }
 
-  async chatOnce({ model, messages, tools, signal, onToken, onThink, cpu = false, think, ctx }) {
+  async chatOnce({ model, messages, tools, signal, onToken, onThink, cpu = false, think, ctx, temperature }) {
     const thinkSend = await this.thinkField(model, think);
     const res = await fetch(this.url + '/api/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model, messages, tools: tools && tools.length ? tools : undefined, stream: true, keep_alive: this.keepAlive(model), options: this.opts(cpu, ctx),
+      body: JSON.stringify({ model, messages, tools: tools && tools.length ? tools : undefined, stream: true, keep_alive: this.keepAlive(model), options: Number.isFinite(temperature) ? { ...this.opts(cpu, ctx), temperature } : this.opts(cpu, ctx), // an assistant preset's own temperature
         // Deep thought: gpt-oss takes a reasoning level; other models don't all understand "think", so it's only sent to gpt-oss.
         think: thinkSend }),
       signal
@@ -197,6 +198,7 @@ export class Ollama {
     let content = '';
     const toolCalls = [];
     let buf = '';
+    let done = false, finish = ''; // items 210, 211 (hang-guard.js): how the reply ended
     const decoder = new TextDecoder();
     for await (const chunk of res.body) {
       buf += decoder.decode(chunk, { stream: true });
@@ -212,10 +214,13 @@ export class Ollama {
         if (msg.thinking && onThink) onThink(msg.thinking);
         if (msg.content) { content += msg.content; onToken && onToken(msg.content); }
         if (msg.tool_calls) toolCalls.push(...msg.tool_calls);
+        if (ev.done) { done = true; finish = ev.done_reason || ''; }
         // 1.5.30: the last line carries the reply's numbers; kept for Now running (no extra work for Ollama).
-        if (ev.done) this.lastStats = replyStats({ model, messages, promptTokens: ev.prompt_eval_count, outTokens: ev.eval_count, tokPerSec: ev.eval_duration ? ev.eval_count / (ev.eval_duration / 1e9) : 0, ctx: ctx || this.ctxOf?.[model] }) || this.lastStats;
+        if (ev.done) this.lastStats = ((st) => { if (st) { try { this.onStats?.(st); } catch {} } return st; })(replyStats({ model, messages, promptTokens: ev.prompt_eval_count, outTokens: ev.eval_count, tokPerSec: ev.eval_duration ? ev.eval_count / (ev.eval_duration / 1e9) : 0, ctx: ctx || this.ctxOf?.[model] })) || this.lastStats; // 96 Speed history hears each reply
       }
     }
-    return { role: 'assistant', content, tool_calls: toolCalls.length ? toolCalls : undefined };
+    const end = replyEnd({ done, finish });
+    if (end === 'early') { this.log?.('engine', `${model}'s reply stopped before Ollama said it was done (${content.length.toLocaleString()} characters so far)`); throw new Error(EARLY_END); }
+    return { role: 'assistant', content, tool_calls: toolCalls.length ? toolCalls : undefined, ...(end === 'length' ? { cut: 'length' } : {}) };
   }
 }

@@ -1,6 +1,7 @@
 // 1.5.152 Lab 2c, the lesson builder: files into passages (text, Markdown, web pages, transcripts, ChatGPT and Claude
 // exports, Bob sessions), the held-back net, the survey, the three lesson kinds against a fake teacher, the sample,
 // the whole job through the Lab with fake steps, the viewer, removing lessons, the scrubbed export, and the page's words.
+import { serverText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -198,7 +199,7 @@ const win = pickFileArgs('docs', 'win32');
 check('the file picker has a documents kind that shows every file', /Documents and chat logs/.test(win[1].join(' ')) && /All files/.test(win[1].join(' ')) && !pickFileArgs('docs', 'linux')[0][1].some((a) => /gguf/.test(a)));
 
 // ---- the page's words ----
-const page = read('public/lab.js'), help = HELP.find((e) => e.id === 'lab'), faq = HELP.find((e) => e.id === 'faq-share-built-set'), css = read('public/style.css'), server = read('src/server.js');
+const page = read('public/lab.js'), help = HELP.find((e) => e.id === 'lab'), faq = HELP.find((e) => e.id === 'faq-share-built-set'), css = read('public/style.css'), server = serverText();
 check('the page has the builder: files and folders, the three kinds, the survey, sample lessons, Not like this, Build the set, the viewer and Export', ['Build a new set from my files', 'Add a folder', 'Add a file', 'Survey my files', 'sample lessons', 'Not like this', 'Build the set', 'Open the set', 'Export as a file', 'Remove this lesson', 'data-bkind', 'lab-b-count-n', 'aria-live'].every((w) => page.includes(w)));
 check('the page offers no upload anywhere and says so', /No upload anywhere/.test(page) && !/upload/i.test(page.replace(/No upload anywhere[^<]*/, '')));
 check('the rented teacher is "later", never offered', /later\('A big rented brain as the teacher'/.test(page));

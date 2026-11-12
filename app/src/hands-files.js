@@ -47,7 +47,7 @@ export function guardPath(cfg, p, { mustExist = true, what = 'that' } = {}) {
   if (cfg.settingsFile && path.resolve(cfg.settingsFile) === full) throw new Error("That's my own settings file, which I can't change.");
   if (insideAny([...readOnlyRoots(cfg), appDir, cfg.dataDir].filter(Boolean), full)) throw new Error(`${full} is read-only for me.`);
   const roots = handsRoots(cfg);
-  if (!insideAny(roots, full)) throw new Error(roots.length ? `I can only work with files in: ${roots.join('; ')}. You can tick more folders in Settings, Show advanced settings, Hands.` : 'No folders are ticked for the Files Hand yet. Tick some in Settings, Show advanced settings, Hands.');
+  if (!insideAny(roots, full)) throw new Error(roots.length ? `I can only work with files in: ${roots.join('; ')}. You can tick more folders in Settings, Hands.` : 'No folders are ticked for the Files Hand yet. Tick some in Settings, Hands.');
   if (mustExist && !fs.existsSync(full)) throw new Error(`${what === 'that' ? full : what} doesn't exist.`);
   return full;
 }
@@ -291,6 +291,21 @@ export function applyFiles(cfg, plan, picked = null) {
       done.push(r);
     } catch (e) { failed.push({ ...r, why: e.message }); }
   }
+  // Sort and rename (plan.prune): folders a move left empty are removed, up to (not including) the sorted folder.
+  // Undo puts them back first. Folders holding anything at all (even hidden files) stay.
+  if (plan.prune?.length && done.length) {
+    const tops = plan.prune.map((r) => path.resolve(r));
+    const dirs = [...new Set(done.map((r) => path.dirname(r.from)))].sort((a, b) => b.length - a.length);
+    const gone = new Set();
+    for (let d of dirs) {
+      while (tops.some((t) => isInside(t, d) && t !== path.resolve(d)) && !gone.has(d)) {
+        try { if (fs.readdirSync(d).length) break; fs.rmdirSync(d); } catch { break; }
+        gone.add(d);
+        job.steps.push({ op: 'rmdir', path: d });
+        d = path.dirname(d);
+      }
+    }
+  }
   if (job.steps.length) saveJob(cfg, job);
   return { job: job.steps.length ? job : null, done, failed };
 }
@@ -329,6 +344,8 @@ export function undoJob(cfg, id) {
         const r = recycle(cfg, [s.path], { roots: roots.length ? roots : [path.dirname(s.path)] });
         if (!r.gone.length) throw new Error(`Couldn't put ${s.path} in the Recycle Bin.`);
         done.push(`To the Recycle Bin: ${s.path}`);
+      } else if (s.op === 'rmdir') {
+        fs.mkdirSync(s.path, { recursive: true });
       } else if (s.op === 'mkdir') {
         try { fs.rmdirSync(s.path); done.push(`Removed the empty folder ${s.path}`); } catch { /* not empty any more: leave it */ }
       } else if (s.op === 'recycle') {
@@ -343,4 +360,20 @@ export function undoJob(cfg, id) {
   job.undoneAt = Date.now();
   saveJournal(cfg, list);
   return { job, done, failed, manual };
+}
+
+// Item 174 (Nov 12): what undoJob would do, without doing it, for the card. Each row: { line, cant }.
+export function undoPreview(job) {
+  const rows = [];
+  for (const s of [...(job?.steps || [])].reverse()) {
+    if (s.op === 'move') {
+      const caseOnly = String(s.to).toLowerCase() === String(s.from).toLowerCase();
+      if (!fs.existsSync(s.to)) rows.push({ line: `${s.to} isn't there any more`, cant: true });
+      else if (fs.existsSync(s.from) && !caseOnly) rows.push({ line: `Something is at ${s.from} again, so ${path.basename(s.to)} stays`, cant: true });
+      else rows.push({ line: `Move back: ${s.to} → ${s.from}` });
+    } else if (s.op === 'create') rows.push(fs.existsSync(s.path) ? { line: `To the Recycle Bin: ${s.path}` } : { line: `Already gone: ${s.path}` });
+    else if (s.op === 'recycle') rows.push(s.trashedTo && fs.existsSync(s.trashedTo) && !fs.existsSync(s.from) ? { line: `Put back: ${s.from}` } : { line: `${s.from}: restore it from the Recycle Bin yourself`, cant: true });
+    else if (s.op === 'deleted') rows.push({ line: `${s.from} was deleted for good`, cant: true });
+  }
+  return rows;
 }

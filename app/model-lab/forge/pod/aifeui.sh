@@ -1,5 +1,5 @@
 #!/bin/bash
-# FNRI on a rented card: scan a brain there and bring the recording home. Driven by in/aifeui-plan.json.
+# fNRI on a rented card: scan a brain there and bring the recording home. Driven by in/aifeui-plan.json.
 #   Step 0 checks EVERYTHING the run needs before anything is downloaded or built: the tools, the card, the disk, the
 #   plan, Bob's engine patches, Bob's viewer, and that the brain can be reached. One failed check stops the run there.
 #   Step 1 gets Brain Engine: llama.cpp at the pinned tag with Bob's patches applied (the expert mask and the trace).
@@ -9,7 +9,9 @@
 #          (AIFEUI_SERVE=1 serves it on port 7778) or at home (the viewer's "Open a recording file").
 # Made by: node model-lab/forge/aifeui-bundle.mjs (it packs this folder, the patches, the viewer and the plan).
 set -u
-W=${FORGE_ROOT:-/workspace}; IN=$W/in; OUT=$W/out/aifeui; POD=$(cd "$(dirname "$0")" && pwd)
+# AIFEUI_IN / AIFEUI_OUT pick another folder in and out, so one card can scan several brains in turn (the engine
+# build is shared in $W/aifeui-engine).
+W=${FORGE_ROOT:-/workspace}; IN=${AIFEUI_IN:-$W/in}; OUT=${AIFEUI_OUT:-$W/out/aifeui}; POD=$(cd "$(dirname "$0")" && pwd)
 PLAN=$IN/aifeui-plan.json; PATCHES=$IN/engine-patches; VIEWER=$IN/viewer
 mkdir -p "$OUT"
 say() { echo "[aifeui] $*"; }

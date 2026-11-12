@@ -83,7 +83,7 @@ const a = lc.buildArgs('big', { ctx: 32768 });
 const at = (f) => a[a.indexOf(f) + 1];
 check('llama.cpp: session context size is used', at('-c') === '32768');
 check('llama.cpp: threads, batch and micro-batch', at('-t') === '8' && at('-b') === '4096' && at('-ub') === '1024');
-check('llama.cpp: speculative decoding with the draft brain', at('-md') === small && at('--draft-max') === '16' && at('--draft-min') === '2' && at('-ngld') === '99');
+check('llama.cpp: speculative decoding with the draft brain', at('-md') === small && at('--spec-draft-n-max') === '16' && at('--spec-draft-n-min') === '2' && at('-ngld') === '99');
 check('llama.cpp: per-model flags', a.includes('--n-cpu-moe') && at('--n-cpu-moe') === '8');
 check('llama.cpp: the draft brain gets no draft of its own', !lc.buildArgs('small').includes('-md'));
 { const c = lc.buildArgs('big', { cpu: true }); check('llama.cpp on the processor: no layers on the card, no --fit, no draft brain', c[c.indexOf('-ngl') + 1] === '0' && !c.includes('--fit') && !c.includes('-md')); }
@@ -113,11 +113,13 @@ check('session context reaches the brain', modelFor({ ...cfg({ session: 'coding'
 check('Normal chat defaults to 32K; coding copies keep the long default', modelFor(cfg(), 'bob').ctx === 32768 && modelFor(cfg(), 'tinker').ctx === null);
 check('--fit is off on an old llama.cpp (no version file)', !lc.buildArgs('small').includes('--fit'));
 check('1.5.177: an unknown llama.cpp keeps its own page flags untouched (no --no-webui), so it still starts', !lc.buildArgs('small').includes('--no-webui'));
+check('item 2: an unknown llama.cpp gets no --cache-reuse either', !lc.buildArgs('small').includes('--cache-reuse'));
 fs.mkdirSync(path.join(tmp, 'llama.cpp'), { recursive: true });
 fs.writeFileSync(path.join(tmp, 'llama.cpp', 'bob-llamacpp.json'), JSON.stringify({ version: 'b12032' }));
 check('--fit on with b12032 when nothing is pinned', (() => { const x = lc.buildArgs('small'); return x[x.indexOf('--fit') + 1] === 'on'; })());
 check('--fit stays off when a brain has a pinned split', !lc.buildArgs('big').includes('--fit'));
 check('1.5.177: the engine\'s own chat page is switched off (--no-webui), so only Bob\'s page chats', lc.buildArgs('small').includes('--no-webui') && lc.buildArgs('big').includes('--no-webui'));
+check('item 2: the engine reuses what it already read after a change mid-chat (--cache-reuse 256) on b12032', (() => { const x = lc.buildArgs('small'); return x[x.indexOf('--cache-reuse') + 1] === '256'; })());
 lcfg.llamacpp.fit = false;
 check('--fit can be switched off', !lc.buildArgs('small').includes('--fit'));
 fs.rmSync(tmp, { recursive: true, force: true });

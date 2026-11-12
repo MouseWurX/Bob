@@ -1,4 +1,4 @@
-// Check-ins (Settings, Show advanced settings, 🔔 Check-ins): on a schedule you pick, Bob looks over his own
+// Check-ins (Settings, 🔔 Check-ins): on a schedule you pick, Bob looks over his own
 // state and only taps you on the shoulder when something needs you. Off unless you turn it on.
 //
 // Two kinds of checks:
@@ -20,6 +20,7 @@ import { saveSettings } from './config.js';
 import { sessionBrains, gaming } from './sessions.js';
 import { brainMode } from './brain-mode.js';
 import { parseJson } from './util.js';
+import { isQuiet } from './quiet-hours.js'; // Quiet hours: check-ins wait until they end
 
 export { CHECKS, cleanCheckins, checkinSettings };
 export const STALL_MS = 15 * 60e3; // a download that hasn't moved for 15 minutes "stopped moving"
@@ -161,7 +162,7 @@ export class CheckIns {
     let log = [];
     try {
       const lines = fs.readFileSync(this.cfg.logbook, 'utf8').split(/\r?\n/).filter((l) => l.startsWith('- '));
-      log = lines.slice(-LOG_LINES).map((l) => short(l, 200));
+      log = lines.slice(-LOG_LINES).map((l) => short(l.replace(/ \| turn \w{1,8}$/, ''), 200)); // item 247's turn ids are for people, not the brain's read
     } catch {}
     return [`Now: ${tm(this.now())}. Last check-in: ${since ? tm(since) : 'never'}.`,
       `Found by the built-in checks:\n${found.length ? found.map((f) => `- ${f.title}`).join('\n') : '- nothing'}`,
@@ -251,6 +252,7 @@ ${this.facts(since, found)}`;
   // Once a minute: watch downloads, and run a check-in when it's due (or your own lines once Bob's free).
   async tick() {
     if (!this.settings.enabled) { this.seen.clear(); return null; }
+    if (isQuiet(this.cfg)) return null; // Quiet hours (quiet-hours.js): check-ins wait until they end
     this.watchDownloads();
     if (this.working) return null;
     const st = this.state(), due = this.nextDue(st);

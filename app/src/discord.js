@@ -25,14 +25,17 @@
 // in Settings, or type your user ID there. Then your DMs to the bot get the full Bob, like his window (a "Discord" chat
 // here, kept like any other), with two more switches, both off: send what he makes to your DMs, and answer OK cards
 // there with Allow and Deny buttons. Anyone else who DMs the bot gets silence. No account is ever assumed.
+import { deadline as withDeadline } from './hang-guard.js'; // item 212: every network call has a deadline
 import fs from 'node:fs';
+import { readJsonFile } from './util.js';
 import os from 'node:os';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
 import crypto from 'node:crypto';
 import { rentKeyEnv } from './rental.js';
 import { scrubber } from './help-bundle.js';
 import { outputDirs } from './config.js';
+import { readConfigFile, writeConfigFile } from './config.js';
+import { saveKey, forgetPlainKey } from './secret-box.js';
 
 export const TOKEN_ENV = 'BOB_DISCORD_TOKEN';
 export const DISCORD_SESSION = 'discord'; // session ids are discord-<channel id>
@@ -95,12 +98,12 @@ export function cleanWake(w) {
 // Lives in config.json only, never in settings.json, like Telegram: nothing that can write Bob's settings file can
 // open this door. Only the Settings page on this PC calls this.
 export function saveDiscord(cfg, patch) {
-  let raw = {};
-  try { raw = JSON.parse(fs.readFileSync(cfg.configFile, 'utf8')); } catch {}
+  // 1.5.201: an unreadable config.json stops the save (it used to be taken as empty and written over, losing the rest).
+  const raw = readConfigFile(cfg);
   raw.discord = { ...(raw.discord || {}), ...patch };
   for (const k of Object.keys(raw.discord)) if (raw.discord[k] === undefined) delete raw.discord[k];
   delete raw.discord.token; // never kept here
-  fs.writeFileSync(cfg.configFile, JSON.stringify(raw, null, 2));
+  writeConfigFile(cfg, raw);
   cfg.discord = raw.discord;
 }
 
@@ -177,28 +180,20 @@ export function chunks(text, max = MAX_TEXT) {
   return out;
 }
 
-// Saves the pasted token where Bob reads keys from: the Windows user variables, or ~/.config/bob/env.
-export function storeToken(token, { platform = process.platform, home = os.homedir(), run = execFile } = {}) {
+// Saves the pasted token in Bob's locked store (🔐 Locked secrets, inn\bob\keys.json, src/secret-box.js), where his
+// key lookups find it, and takes away any plain copy an older Bob left (the Windows user variable, or its line in
+// ~/.config/bob/env). With Locked secrets switched off it is kept in keys.json plain.
+export function storeToken(token, { cfg, platform = process.platform, home = os.homedir(), run } = {}) {
   return new Promise((resolve, reject) => {
-    if (platform === 'win32') {
-      return run('reg', ['add', 'HKCU\\Environment', '/v', TOKEN_ENV, '/t', 'REG_SZ', '/d', token, '/f'], { windowsHide: true, timeout: 5000 }, (e) => (e ? reject(new Error('Windows didn\'t save it.')) : resolve()));
-    }
-    try {
-      const dir = path.join(home, '.config', 'bob');
-      fs.mkdirSync(dir, { recursive: true });
-      const f = path.join(dir, 'env');
-      let lines = [];
-      try { lines = fs.readFileSync(f, 'utf8').split(/\r?\n/).filter((l) => l && !new RegExp(`^\\s*(export\\s+)?${TOKEN_ENV}\\s*=`).test(l)); } catch {}
-      lines.push(`${TOKEN_ENV}=${token}`);
-      fs.writeFileSync(f, lines.join('\n') + '\n', { mode: 0o600 });
-      try { fs.chmodSync(f, 0o600); } catch {}
-      resolve();
-    } catch (e) { reject(new Error(`Couldn't save it: ${e.code || 'error'}`)); }
+    try { saveKey(cfg, TOKEN_ENV, token); }
+    catch (e) { return reject(new Error(e.code === 'BOX_STUCK' ? e.message : `Couldn't save it: ${e.code || e.message || 'error'}`)); }
+    forgetPlainKey(TOKEN_ENV, { platform, home, ...(run ? { run } : {}) });
+    resolve();
   });
 }
 
 export class DiscordBridge {
-  constructor(brain, { fetchImpl = globalThis.fetch, WebSocketImpl = globalThis.WebSocket, env = rentKeyEnv(), now = Date.now, wait = (ms) => new Promise((r) => setTimeout(r, ms)), store = storeToken, cleanOpts } = {}) {
+  constructor(brain, { fetchImpl = globalThis.fetch, WebSocketImpl = globalThis.WebSocket, env = rentKeyEnv(), now = Date.now, wait = (ms) => new Promise((r) => setTimeout(r, ms)), store, cleanOpts } = {}) {
     this.brain = brain;
     this.cfg = brain.cfg;
     this.fetch = fetchImpl;
@@ -206,7 +201,7 @@ export class DiscordBridge {
     this.env = env;
     this.now = now;
     this.wait = wait;
-    this.store = store;
+    this.store = store || ((t) => storeToken(t, { cfg: this.cfg }));
     this.clean = cleaner(this.cfg, cleanOpts);
     this.pasted = ''; // a token pasted this run, until Windows hands it to new processes
     this.running = false;
@@ -329,7 +324,8 @@ export class DiscordBridge {
       const r = await this.fetch(`${API}${route}`, {
         method,
         headers: { authorization: `Bot ${token}`, 'user-agent': 'DiscordBot (https://github.com/MouseWurX/Bob, 1.5)', ...(form ? {} : { 'content-type': 'application/json' }) },
-        body: form || (body ? JSON.stringify(body) : undefined)
+        body: form || (body ? JSON.stringify(body) : undefined),
+        signal: withDeadline(null, form ? 120_000 : 30_000) // item 212
       });
       if (r.status === 429 && i === 0) { const j = await r.json().catch(() => ({})); await this.wait(Math.min(10, Number(j.retry_after) || 1) * 1000); continue; }
       if (r.status === 204) return null;
@@ -461,9 +457,26 @@ export class DiscordBridge {
     const ch = await this.dmChannel();
     if (!ch) return;
     const pieces = chunks(text);
+    const sent = [];
     for (let i = 0; i < pieces.length; i++) {
-      await this.rest('POST', `/channels/${ch}/messages`, { content: pieces[i], allowed_mentions: { parse: [] }, ...(i === pieces.length - 1 ? extra : {}) }).catch((e) => this.log(`couldn't send to your DMs: ${e.message}`));
+      const m = await this.rest('POST', `/channels/${ch}/messages`, { content: pieces[i], allowed_mentions: { parse: [] }, ...(i === pieces.length - 1 ? extra : {}) }).catch((e) => this.log(`couldn't send to your DMs: ${e.message}`));
+      if (m?.id) sent.push({ channel: ch, id: String(m.id) });
     }
+    return sent;
+  }
+
+  // Let Bob fix his own messages (src/edit-own.js) in your DMs. Still being written: the fix goes into the words before
+  // they're sent. Already sent as one DM that held only that message: that DM is changed. Otherwise one short DM with the new words.
+  async dmEdited(ev, turnId) {
+    const before = String(ev.before || ''), after = String(ev.text || '');
+    const open = this.turns.get(turnId);
+    if (open != null && before && open.includes(before)) { this.turns.set(turnId, open.replace(before, after)); return 'buffer'; }
+    const was = this.dmSent?.get(ev.id);
+    if (was && chunks(after).length === 1) {
+      try { await this.rest('PATCH', `/channels/${was.channel}/messages/${was.id}`, { content: after, allowed_mentions: { parse: [] } }); return 'patched'; } catch (e) { this.log(`couldn't change the DM: ${e.message}`); }
+    }
+    await this.dm(`✏️ Fixed an earlier message. It now says:\n${after}`);
+    return 'sent';
   }
 
   // Allow / Deny on an OK card in your DMs. Only your account, only with the switch on.
@@ -499,6 +512,8 @@ export class DiscordBridge {
     const id = ev.turnId || '-';
     switch (ev.type) {
       case 'token': this.turns.set(id, (this.turns.get(id) || '') + String(ev.text || '')); break;
+      case 'said': if (ev.id) (this.saidIds ||= new Map()).set(id, [...(this.saidIds.get(id) || []), String(ev.id)]); break;
+      case 'edited': this.dmEdited(ev, id).catch(() => {}); break;
       case 'busy-note': case 'announce': this.dm(String(ev.text || '')); break;
       case 'waiting-line': if (!(this.waitSaid ||= new Set()).has(ev.id)) { this.waitSaid.add(ev.id); this.dm(String(ev.text || '')); } break;
       case 'error': this.dm(`That didn't work: ${String(ev.text || ev.error || 'something went wrong').slice(0, 500)}`); break;
@@ -517,7 +532,14 @@ export class DiscordBridge {
       case 'done': {
         const text = (this.turns.get(id) || '').trim();
         this.turns.delete(id);
-        if (text) this.dm(text);
+        const ids = this.saidIds?.get(id) || [];
+        this.saidIds?.delete(id);
+        // One message of his, sent as one DM: remembered, so a later fix can change that DM (the last 50).
+        if (text) this.dm(text).then((sent) => {
+          if (ids.length !== 1 || sent?.length !== 1) return;
+          (this.dmSent ||= new Map()).set(ids[0], sent[0]);
+          if (this.dmSent.size > 50) this.dmSent.delete(this.dmSent.keys().next().value);
+        }).catch(() => {});
         break;
       }
       default: break;

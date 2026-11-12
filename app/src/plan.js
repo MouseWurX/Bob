@@ -42,11 +42,11 @@ export async function showPlan(brain, { goal = '', time = '', steps = [] }, ctx,
   goal = clip(goal, 200);
   time = clip(time, 60);
   const text = goal ? `Bob's plan: ${goal}` : "Bob's plan for this job";
-  brain.log('plan', `showing ${lines.length} steps${fromSystem ? ' (put together by the system: Bob started without one)' : ''}: ${lines.map((l) => l.text).join(' / ').slice(0, 600)}`);
+  brain.log('plan', `showing ${lines.length} steps${fromSystem ? ' (put together by the system: Bob started without one)' : ''}${steps.some((x) => x?.tool) ? `, tools: ${[...new Set(steps.slice(0, MAX_STEPS).map((x) => String(x?.tool || '')).filter(Boolean))].join(', ').slice(0, 300)}` : ''}`); // item 248: no chat words in the logbook
   const answer = await brain.approve({ text, planCard: { goal, time, steps: lines, fromSystem }, ...(items.length ? { together: items } : {}) }, ctx.emit, ctx.signal, null, { hand: true });
   const note = clip(answer?.note, 500);
   if (note) {
-    brain.log('plan', `${who(brain)} asked for a change: ${note}`);
+    brain.log('plan', `${who(brain)} asked for a change (${note.length} characters)`); // item 248
     ctx.planNudged = true;
     return `${who(brain)} wants a change before you start: "${note}". Nothing has been done. Make a new plan with that change and call show_plan again (or ask one short question if the change isn't clear).`;
   }
@@ -74,7 +74,7 @@ export function showPlanTool(brain) {
       type: 'function',
       function: {
         name: 'show_plan',
-        description: 'Before a big job, show {{USER}} your plan on one card and wait: every step in plain words, in order. For a step that needs an OK (files, commands, apps, edits, schedules, cloud helpers), add the exact tool and args you will use, so its OK is on the same card. {{USER}} can say go ahead, ask for a change, or say not now.',
+        description: 'Before a big job, show {{USER}} your plan on one card and wait. Give every step in plain words; for a step that needs an OK, add the exact tool and args, so its OK is on the card too.',
         parameters: {
           type: 'object',
           properties: {

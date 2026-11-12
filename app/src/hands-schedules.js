@@ -11,7 +11,7 @@ export const SCHEDULE_SESSION = 'schedules';
 
 const fn = (name, description, properties, required = Object.keys(properties)) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } });
 const str = (description, extra = {}) => ({ type: 'string', description, ...extra });
-const off = (cfg) => { if (!handOn(cfg, 'schedules')) throw new Error(`The ${HANDS.schedules.label} Hand is switched off. ${cfg.userName || 'The user'} can turn it on in Settings, Show advanced settings, Hands.`); };
+const off = (cfg) => { if (!handOn(cfg, 'schedules')) throw new Error(`The ${HANDS.schedules.label} Hand is switched off. ${cfg.userName || 'The user'} can turn it on in Settings, Hands.`); };
 
 export function schedulesFor(brain) {
   if (!brain.schedules) brain.schedules = new Schedules(brain.cfg, { isOn: () => handOn(brain.cfg, 'schedules'), log: (k, t) => brain.log?.(k, t) });
@@ -30,9 +30,9 @@ export function scheduleTools(brain) {
   const S = () => schedulesFor(brain);
   const t = {};
   t.schedule_job = {
-    schema: fn('schedule_job', 'Set up a job Bob does by himself on a schedule (once, daily, weekly, or every N minutes, in local time). The job is plain words, like a chat request. {{USER}} approves the schedule, and every action inside each run still asks for an OK.', {
+    schema: fn('schedule_job', 'Set up a job Bob does by himself: once, daily, weekly or every N minutes, local time. {{USER}} approves the schedule, and each action in a run still asks.', {
       name: str('Short name, like "Tidy Downloads".'),
-      task: str('What to do, in words, as you would ask yourself.'),
+      task: str('What to do, in plain words, like a chat request.'),
       type: str('How often', { enum: ['once', 'daily', 'weekly', 'interval'] }),
       at: str('Time of day, 24 hour, like 09:00 (not for interval).'),
       date: str('once: the date, YYYY-MM-DD.'),
@@ -50,7 +50,7 @@ export function scheduleTools(brain) {
     async run(args) {
       off(cfg);
       const e = S().add({ name: args.name, job: { kind: 'chat', task: String(args.task).trim().slice(0, 2000) }, when: whenFrom(args), enabled: true });
-      return `Scheduled "${e.name}" (${e.says}). Next: ${e.nextDue ? new Date(e.nextDue).toLocaleString() : 'none'}. It can be switched off or removed in Settings, Show advanced settings, Hands.`;
+      return `Scheduled "${e.name}" (${e.says}). Next: ${e.nextDue ? new Date(e.nextDue).toLocaleString() : 'none'}. It can be switched off or removed in Settings, Hands.`;
     },
     summary: ({ name }) => `schedule: ${name}`
   };
@@ -64,7 +64,7 @@ export function scheduleTools(brain) {
     summary: () => 'list schedules'
   };
   t.change_schedule = {
-    schema: fn('change_schedule', 'Switch a schedule on or off, or remove it. Use the id from list_schedules.', {
+    schema: fn('change_schedule', 'Switch a schedule on or off, or remove it, by its id from list_schedules.', {
       id: str('The schedule id.'),
       action: str('What to do', { enum: ['on', 'off', 'remove'] })
     }),

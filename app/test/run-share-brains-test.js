@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { cleanAddress, cleanSharePatch, saveShare, shareView, wantsBorrow, lendRefusal, cleanLendRequest, lendChat, Lenders } from '../src/share-brains.js';
+import { openCopy } from '../src/secret-box.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { if (ok) { pass++; console.log(`PASS ${name}`); } else { fail++; console.log(`FAIL ${name}${extra ? `: ${extra}` : ''}`); } };
@@ -34,7 +35,7 @@ fs.writeFileSync(file, JSON.stringify({ port: 7777, other: 1 }));
 const sc = { configFile: file };
 saveShare(sc, one);
 const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
-check('saved in config.json, other keys untouched', raw.share.borrow.bobs[0].passcode === '87654321' && raw.other === 1 && sc.share === one);
+check('saved in config.json, the passcode locked (🔐 Locked secrets), other keys untouched', raw.share.borrow.bobs[0].passcode.startsWith('bobsecret1:') && !JSON.stringify(raw).includes('87654321') && openCopy(raw).share.borrow.bobs[0].passcode === '87654321' && raw.other === 1 && sc.share === one);
 fs.rmSync(dir, { recursive: true, force: true });
 
 // ---------- when to borrow ----------
@@ -60,10 +61,10 @@ check('a lent request needs a question', cleanLendRequest({ messages: [{ role: '
 
 // ---------- a pretend lender: the real lendChat behind a door like server.js's ----------
 const logs = [];
-let mode = 'ok', settled = 0, hung = 0, aborted = 0, released = 0;
+let settleOpts; let mode = 'ok', settled = 0, hung = 0, aborted = 0, released = 0;
 const lender = {
   cfg: { share: { lend: true }, remote: { enabled: true, passcode: 'lend-1234' } }, turns: new Map(), queue: [], lending: null,
-  log: (k, t) => logs.push(`${k}: ${t}`), broadcast: () => {}, settle: async () => { settled++; }, gate: { done: (sig) => { if (sig) released++; } },
+  log: (k, t) => logs.push(`${k}: ${t}`), broadcast: () => {}, settle: async (o) => { settled++; settleOpts = o; }, gate: { done: (sig) => { if (sig) released++; } },
   brainLabel: () => 'Gemma 4 E2B', fitCtx: async (m, c) => c,
   ensureModel: async (m, _p, signal) => { if (mode === 'cold' || mode === 'forever') await new Promise((r) => { const t = setTimeout(r, mode === 'cold' ? 500 : 5000); signal?.addEventListener('abort', () => { clearTimeout(t); r(); }); }); return m; },
   chatSafe: async ({ messages, tools, onToken, signal }) => {
@@ -101,11 +102,13 @@ const L = new Lenders({ share: { borrow: { on: true, when: 'gaming', bobs: [bob]
 const picked = await L.pick();
 check('logs in and says hello', picked?.name === 'Phone' && picked.brain === 'Gemma 4 E2B' && L.cookies.get(bob.address) === COOKIE);
 check('likely() after a good hello', L.likely() === true);
+check('SUDDAR: a good hello is timed, there and back', Number.isFinite(L.state.get(bob.address).ms) && L.state.get(bob.address).ms >= 0 && L.state.get(bob.address).ms < 5000);
 let streamed = '';
 const r1 = await L.chat(picked, { messages: [{ role: 'system', content: 'sys' }, { role: 'user', content: 'hi', images: ['x'] }], tools: [], onToken: (t) => { streamed += t; } });
 check('the reply streams back', streamed === 'Hello from the phone' && r1.content === 'Hello from the phone (hi)' && !r1.tool_calls);
 check('the lender keeps no words in his logbook', logs.length === 1 && !logs[0].includes('hi') && /thought a reply/.test(logs[0]));
 check('the lender goes back to light after', await new Promise((r) => setTimeout(() => r(settled === 1), 20)));
+check('1.5.196: after a lend he does not load his own quick brain back (that waits until his owner types)', settleOpts?.noWake === true);
 check('the lender is free again', lender.lending === null);
 check('the lender gives the graphics card back after lending', released === 1, `released ${released}`);
 mode = 'tool';
@@ -158,6 +161,25 @@ try { await new Lenders({ share: { borrow: { on: true, bobs: [bob] } } }, { fetc
 check('no first word by the hard limit: too slow, even while loading', forever === 'too slow', forever);
 await new Promise((r) => setTimeout(r, 200));
 check('and that lender stopped loading too', lender.lending === null);
+
+// SCUT, Bob's fast link for Bigger Bobs: off unless switched on, with a speed cap of 50, 100, 300 or 400 Mbit/s.
+{
+  check('SCUT is off unless switched on, cap 100', shareView(base).scut === false && shareView(base).scutMbps === 100);
+  const on = cleanSharePatch(base, { scut: true, scutMbps: 300 });
+  check('SCUT switches on, with its cap', on.share.scut === true && on.share.scutMbps === 300);
+  check('a cap that isn\'t on the list is refused', Boolean(cleanSharePatch(base, { scutMbps: 1000 }).error));
+  check('other changes keep SCUT as it was', cleanSharePatch({ ...base, share: on.share }, { homeNet: false }).share.scut === true);
+}
+
+// 1.5.196 (Tailscale test: Borrow a brain switched itself off on the Go). Every other change keeps it on.
+{
+  const on = { ...base, share: cleanSharePatch(base, { addBob: { name: 'Go', address: '100.101.2.9', passcode: '87654321' }, borrow: true }).share };
+  for (const patch of [{ mode: 'bigger' }, { mode: 'more' }, { lendCard: true }, { lendCard: false }, { spread: 'big' }, { homeNet: false }, { scut: true }, { scutMbps: 50 }, { lend: true }, { takeJobs: true }, { passAlong: true }, { lendChecks: true }, { askChecks: true }, { sendJobs: true }, { when: 'always' }, { addBob: { name: 'Pi', address: '100.101.2.10', passcode: '12345678' } }, { removeBob: '100.101.2.10' }, { order: ['100.101.2.9:7777'] }, { check: true }]) {
+    const out = cleanSharePatch(on, patch);
+    check(`Borrow a brain stays on through ${Object.keys(patch).join(', ')}`, !out.error && out.share.borrow.on === true, out.error || '');
+  }
+  check('only the Borrow switch turns it off', cleanSharePatch(on, { borrow: false }).share.borrow.on === false);
+}
 
 srv.close();
 console.log(`\n${pass} passed, ${fail} failed`);

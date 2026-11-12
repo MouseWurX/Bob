@@ -20,7 +20,9 @@ export const NEEDS = {
   sfx: { slot: 'sfx', engine: 'audio', say: 'make sound effects', what: 'the sound effects maker' },
   voice: { slot: 'speech', cats: ['speech'], say: 'read replies aloud', what: 'a voice' },
   hearing: { slot: 'voice', cats: ['voice'], say: 'hear you talk', what: 'ears (speech to text)' },
-  ffmpeg: { engine: 'ffmpeg', say: 'save things in other file types (MP3, JPG, WebM...)', what: 'FFmpeg, the converter' } // 1.5.95 Save as
+  ffmpeg: { engine: 'ffmpeg', say: 'save things in other file types (MP3, JPG, WebM...)', what: 'FFmpeg, the converter' }, // 1.5.95 Save as
+  openscad: { engine: 'openscad', say: 'make 3D parts', what: 'OpenSCAD, the 3D part maker' }, // Let Bob make 3D parts (parts3d.js)
+  model3d: { engine: 'model3d', say: 'turn pictures into 3D models', what: 'the 3D workshop (TRELLIS.2, about 22 GB)' } // Let Bob turn pictures into 3D models (model3d.js)
 };
 // The tool that does each job, so a call to it can be turned into an offer.
 export const TOOL_NEED = { make_image: 'pictures', make_video: 'video', make_music: 'music', make_sound: 'sfx' };
@@ -41,14 +43,14 @@ export const HAND_CAN = {
 };
 export function switchFor(cfg, key) {
   if (key === 'web') return cfg.webSearch === true ? null : { key, name: 'Let Bob search the web', where: 'Settings, How Bob works', what: 'look things up on the internet', privacy: 'Only the search words and page addresses leave your replicant matrix (your computer).', patch: { webSearch: true } };
-  if (key === 'workshop') return cfg.workshop?.enabled === true ? null : { key, name: 'Advanced workshop (ComfyUI)', where: 'Settings, Show advanced settings, Other apps', what: 'run your ComfyUI workflows', patch: { workshop: { ...(cfg.workshop || {}), enabled: true } } };
+  if (key === 'workshop') return cfg.workshop?.enabled === true ? null : { key, name: 'Advanced workshop (ComfyUI)', where: 'Settings, Other apps', what: 'run your ComfyUI workflows', patch: { workshop: { ...(cfg.workshop || {}), enabled: true } } };
   const m = /^hand:(\w+)$/.exec(key || '');
   if (m && HANDS[m[1]]) {
     const id = m[1], h = handsSettings(cfg), hand = HANDS[id];
     if (!handHere(id)) return null;
     if (h.held) return { key, name: hand.label, held: true, where: 'the ✋ Hands switch on the chat page', what: HAND_CAN[id] || hand.label };
     if (h.enabled && h[id]?.on === true) return null;
-    return { key, name: `Let Bob use Hands, ${hand.label}`, where: 'Settings, Show advanced settings, Hands', what: HAND_CAN[id] || hand.label, hands: cleanHands({ ...h, enabled: true, [id]: { on: true } }), free: h.free === true, folders: id === 'files' && !(h.folders || []).length };
+    return { key, name: `Let Bob use Hands, ${hand.label}`, where: 'Settings, Hands', what: HAND_CAN[id] || hand.label, hands: cleanHands({ ...h, enabled: true, [id]: { on: true } }), free: h.free === true, folders: id === 'files' && !(h.folders || []).length };
   }
   return null;
 }

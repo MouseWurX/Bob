@@ -87,10 +87,12 @@ check('show_made is one of the core tools (no group needed to call things up)', 
   // A picture announced by the painter is recorded too.
   fs.writeFileSync(path.join(painterDir, 'sunrise.png'), 'png');
   const events = [];
+  brain.cfg.allTools = true; // a test-only tool in no group is offered this way (Nov 12, item 173)
   brain.tools.fake_paint = { schema: { type: 'function', function: { name: 'fake_paint', description: 'x', parameters: { type: 'object', properties: {} } } }, async run(a, ctx) { ctx.emit({ type: 'image', url: '/images/sunrise.png', file: path.join(painterDir, 'sunrise.png') }); return 'Painted.'; } };
   script = [call('fake_paint'), { role: 'assistant', content: 'Here it is.' }];
   await brain.run('s-pic', 'paint', (ev) => events.push(ev), new AbortController().signal);
   check('a picture Bob paints goes on the list as it is announced', brain.made.list({ kind: 'image' })[0]?.name === 'sunrise.png' && brain.made.load().some((x) => x.tool === 'image'));
+  brain.cfg.allTools = false;
   delete brain.tools.fake_paint;
 }
 {

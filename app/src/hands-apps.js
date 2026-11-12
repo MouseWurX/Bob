@@ -11,6 +11,7 @@
 // Never: the Run hand's jobs (terminals, PowerShell, cmd), admin tools (Registry Editor, Task Manager, MMC),
 // password managers, Windows sign-in or security prompts, password fields, or Bob's own window (so he can
 // never approve his own cards).
+import { saysNoSave } from './no-save.js'; // 1.5.208: "do not save the file"
 import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
@@ -108,6 +109,11 @@ export function plainText(md) {
 export const LONG_TYPING = 1500;
 // Loose title match: Notepad renames "Untitled - Notepad" to "*hello - Notepad" after the first typing.
 const tidyTitle = (t) => String(t || '').toLowerCase().replace(/^\*\s*/, '').trim();
+// 1.5.208 PC check: Windows 11 Notepad opens again on the tabs left open last time, unsaved notes and all, and Bob
+// typed into the owner's own note. In a plain-text app Bob only types into a new blank page, or one he typed himself.
+const NEW_PAGE = /^(untitled|sans titre|sin t[ií]tulo|sem t[ií]tulo|unbenannt|senza titolo|naamloos|bez tytu[łl]u|無題|无标题|제목 없음)(\s|-|$)/i;
+const NEW_TAB_KEYS = /^\^[nt]$/i; // ctrl+n / ctrl+t: a new blank tab
+const plainApp = (w) => PLAIN_TEXT_APPS.includes(String(w?.process || '').toLowerCase().replace(/\.exe$/, ''));
 
 // ---- The helper process ----
 export class AppsDriver {
@@ -204,6 +210,9 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
   const ownPids = [process.pid, process.ppid].filter(Boolean);
   const state = { stoppedCtx: null, windows: new Map(), lastCtx: null, untrack: null, driving: false, seen: new Map() };
   // Every title a window has had (by hwnd), so a window Bob opened or looked at is still found after it renames itself.
+  state.own = new Map(); // window -> the titles of pages Bob typed himself
+  const ownPage = (w) => !plainApp(w) || NEW_PAGE.test(tidyTitle(w.title)) || Boolean(state.own.get(String(w.hwnd))?.has(tidyTitle(w.title)));
+  const notTheirs = (w) => `That ${w.process === 'notepad' ? 'Notepad' : w.process} window is showing "${String(w.title).replace(/\s*-\s*[^-]*$/, '').replace(/^\*\s*/, '')}", a page that was already open (maybe an unsaved note of ${cfg.userName || 'the user'}'s), so Bob won't type into it. For a new blank page: app_act keys "ctrl+n" in that window, then type there. Don't touch the old page.`;
   const remember = (w) => { if (!w) return; const k = String(w.hwnd); if (!state.seen.has(k)) state.seen.set(k, new Set()); state.seen.get(k).add(tidyTitle(w.title)); };
 
   const onEvent = (m) => {
@@ -284,7 +293,7 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
   const t = {};
 
   t.open_app = {
-    schema: fn('open_app', 'Open an app from {{USER}}\'s Start menu by its name (like "Notepad", "Paint", "Calculator", "Blender"). {{USER}} approves it first. Not terminals or admin tools (commands go through run_command).', { name: str('The app\'s name as it shows in the Start menu.') }),
+    schema: fn('open_app', 'Open an app by its Start menu name (like "Notepad" or "Blender"). Not terminals or admin tools.', { name: str('The app\'s name as it shows in the Start menu.') }),
     approvalGroup: (a) => `apps-open:${String(a.name || '').toLowerCase()}`,
     async check(args, ctx) {
       off(); notStopped(ctx);
@@ -312,9 +321,24 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
         await new Promise((r) => setTimeout(r, openWaitMs));
         const fresh = (await windows()).filter((w) => !before.has(String(w.hwnd)));
         if (fresh.length) {
-          const w = fresh[0];
+          let w = fresh[0];
           remember(w);
           log('hands', `apps: opened ${hit.name} (${label(w)})`);
+          // Notepad came back on an old page (last time's tabs): a new blank tab, so nothing of yours is typed over.
+          if (plainApp(w) && !ownPage(w)) {
+            const old = w.title;
+            try {
+              await drv.request('drive', { on: true });
+              await drv.request('act', { hwnd: w.hwnd, action: 'keys', target: {}, text: '', keys: '^n', expect: '', allowPassword: false });
+            } catch (e) { log('hands', `apps: a new blank tab in ${hit.name} failed: ${e.message}`); }
+            finally { await drv.request('drive', { on: false }).catch(() => {}); }
+            await new Promise((r) => setTimeout(r, openWaitMs));
+            w = (await windows()).find((x) => String(x.hwnd) === String(w.hwnd)) || w;
+            remember(w);
+            if (!ownPage(w)) return `${hit.name} opened, but on a page that was already there ("${old}"), and a new blank tab didn't come. Don't type into it: tell ${cfg.userName || 'the user'}, and ask them to open a new tab (ctrl+n) or close the old one first.`;
+            log('hands', `apps: ${hit.name} came back on an old page, so Bob opened a new blank tab`);
+            return `Opened ${hit.name}. It came back on a page that was already there, so Bob opened a new blank tab ("${w.title}") and left the old one alone. Use app_look on it before clicking or typing.`;
+          }
           return `Opened ${hit.name}: its window "${w.title}" is open. Use app_look on it before clicking or typing.`;
         }
       }
@@ -325,10 +349,10 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
   };
 
   t.app_look = {
-    schema: fn('app_look', 'See which windows are open (leave window empty), or read one window: the names of its buttons, fields, menus and text, so you can say what to click. Password fields are never read. {{USER}} approves each look.', {
-      window: str('Part of the window title, or the program name (like "notepad"). Leave empty to list open windows.'),
-      picture: { type: 'boolean', description: 'Also take a picture of that window and show it in the chat.' },
-      ask: str('A question about how the window looks, answered by Bob\'s eyes brain from a picture (for canvases, games, viewports and apps whose buttons have no names). The picture\'s pixels are the x, y for app_act click_at.')
+    schema: fn('app_look', 'List the open windows (leave window empty), or read one: its buttons, fields, menus and text. Never reads password fields.', {
+      window: str('Part of the window title or program name. Empty lists the windows.'),
+      picture: { type: 'boolean', description: 'Also show a picture of the window in the chat.' },
+      ask: str('A question about how the window looks, answered from a picture (for canvases, games and unnamed buttons). Its pixels are the x, y for app_act click_at.')
     }, []),
     approvalGroup: (a) => `apps-look:${String(a.window || '*').toLowerCase()}`,
     async check(args, ctx) {
@@ -368,18 +392,18 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
   };
 
   t.app_act = {
-    schema: fn('app_act', 'Do one thing in an open window: click a button, menu item, tab, checkbox or list item; type text into a field; press a key (like "Enter" or "Ctrl+S"); or click_at a place (x, y in the pixels of the picture app_look took) when the window has no named controls. Find names with app_look first. {{USER}} approves each action, and can stop you by moving the mouse or pressing Esc. Never in password fields. Give expect so Bob\'s eyes check the result.', {
+    schema: fn('app_act', 'Do one thing in an open window, using the names from app_look (click_at x, y when nothing has names). {{USER}} can stop you with the mouse or Esc. Never in password fields.', {
       window: str('Part of the window title, or the program name.'),
       action: str('What to do', { enum: ['click', 'type', 'keys', 'focus', 'click_at'] }),
-      type: str('The kind of thing, as app_look listed it (Button, Edit, MenuItem, TabItem, CheckBox, ListItem...).'),
+      type: str('The kind, as app_look listed it (Button, Edit, MenuItem...).'),
       name: str('Its name, as app_look listed it.'),
-      id: str('Its id, if app_look showed one (use it when names repeat).'),
-      nth: { type: 'integer', description: 'If several match, which one (1 = first).' },
-      text: str('type: the text. A one-line field gets it in place of what is there; a document (like Notepad\'s page) gets it added at the end. For a document you can give the window and leave type and name empty.'),
-      keys: str('keys: the key or combination, like "Enter", "Tab", "Ctrl+S".'),
-      x: { type: 'integer', description: 'click_at: how many pixels from the left edge of the window picture.' },
-      y: { type: 'integer', description: 'click_at: how many pixels from the top edge of the window picture.' },
-      expect: str('What should be true of the window afterwards, in one plain sentence (like "the document shows the word hello"). Bob checks it with his eyes brain and tells you yes or no.')
+      id: str('Its id, if listed (use it when names repeat).'),
+      nth: { type: 'integer', description: 'If several match, which (1 = first).' },
+      text: str('type: the text (replaces a one-line field; a document gets it at the end).'),
+      keys: str('keys: like "Enter" or "Ctrl+S".'),
+      x: { type: 'integer', description: 'click_at: pixels from the left.' },
+      y: { type: 'integer', description: 'click_at: pixels from the top.' },
+      expect: str('What should be true afterwards; Bob\'s eyes check it.')
     }, ['window', 'action']),
     approvalGroup: (a) => `apps-act:${String(a.window || '').toLowerCase()}`,
     async check(args, ctx) {
@@ -403,6 +427,7 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
         real = r.label || '';
         if (r.swapped) note = ` (${plain(r.swapped)} doesn't accept typing, so Bob will type into the window's main text area instead)`;
       }
+      if ((args.action === 'type' || (args.action === 'keys' && !NEW_TAB_KEYS.test(keysFor(args.keys)))) && !ownPage(w)) throw new Error(notTheirs(w));
       const sent = sendOutBlock(cfg, w, args.action, { name: `${target.name} ${real}`, id: target.id });
       if (sent) throw new Error(sent);
       const tt = () => plain(real || targetText(target)); // ids stay off the card (they're for Bob, not you)
@@ -414,7 +439,7 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
         let text = String(args.text);
         // Plain-text windows get plain text: no literal ** and # marks.
         if (PLAIN_TEXT_APPS.includes(String(w.process).toLowerCase().replace(/\.exe$/, ''))) text = plainText(text);
-        if (text.length > LONG_TYPING) { const mins = Math.max(1, Math.ceil(text.length / 100 / 60)); const who = cfg.userName || 'the user'; throw new Error(`That's ${text.length} characters, too long to type key by key (it would take about ${mins} minute${mins === 1 ? '' : 's'}). Offer ${who} to save it as a .txt file instead (one approval) and open it in Notepad, then say where it is. (For you: use write_file. Never name tools like write_file to ${who}.)`); }
+        if (text.length > LONG_TYPING) { const mins = Math.max(1, Math.ceil(text.length / 100 / 60)); const who = cfg.userName || 'the user'; throw new Error(`That's ${text.length} characters, too long to type key by key (it would take about ${mins} minute${mins === 1 ? '' : 's'}). ${saysNoSave(ctx?.turnText) ? `${who} said not to save a file, so don't offer one: type it in parts of up to ${LONG_TYPING} characters (one card each), or ask ${who} whether a shorter version will do.` : `Offer ${who} to save it as a .txt file instead (one approval) and open it in Notepad, then say where it is. (For you: use write_file. Never name tools like write_file to ${who}.)`}`); }
         if (ctx) ctx.appsText = text;
         const said = `${text.slice(0, 300)}${text.length > 300 ? '...' : ''}`;
         // A one-line field gets the text in place of what is there; a document gets it added at the end (same as the helper).
@@ -440,6 +465,7 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
       // Check the window again right before acting: it may have changed title (a password prompt) or closed.
       const now = (await windows()).find((x) => String(x.hwnd) === String(w.hwnd));
       const b = blockedWindow(now, { ownPids }); if (b) throw new Error(b);
+      if ((args.action === 'type' || (args.action === 'keys' && !NEW_TAB_KEYS.test(keys))) && now && !ownPage(now)) throw new Error(`${notTheirs(now)} (The page changed since the card. Nothing was typed.)`);
       const group = `apps-act:${String(args.window || '').toLowerCase()}`;
       const streak = Boolean(ctx?.allowAll?.has?.(group));
       await drv.request('drive', { on: true });
@@ -465,6 +491,10 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
         }
       }
       log('hands', `apps: ${args.action} ${at ? `at ${at.x}, ${at.y}` : targetText(target)} in ${label(w)}: ${r.did || 'done'}`);
+      if (args.action === 'type' && plainApp(w)) { // the page's new name ("*Shopping list - Notepad") is Bob's own page
+        const after = (await windows().catch(() => [])).find((x) => String(x.hwnd) === String(w.hwnd));
+        if (after) { const k = String(w.hwnd); if (!state.own.has(k)) state.own.set(k, new Set()); state.own.get(k).add(tidyTitle(after.title)); remember(after); }
+      }
       const eyes = await eyesAfter(w, args.expect, ctx);
       if (/wasn't there/.test(r.did || '')) return `Not sure it worked: ${r.did}. Have a look at the window to check. (Bob: say so plainly and use app_look before trying again.)${eyes}`;
       return `Done: ${r.did || args.action}. Use app_look to check the result if it matters.${eyes}`;

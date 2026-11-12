@@ -1,5 +1,6 @@
 // 1.5.80 How-tos: Bob keeps the steps of a job that worked (one card, your click) and follows them next time.
 // Off by default; nothing is offered, used or added to his tools or prompt while the switch is off.
+import { serverText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -64,7 +65,8 @@ clearInterval(brain.reminderTimer);
 brain.ensureModel = async () => {}; brain.fitCtx = async () => 8192;
 const seen = [];
 let script = [];
-brain.engine = { chat: async ({ tools, messages }) => { seen.push({ names: tools.map((t) => t.function.name), sys: messages[0].content }); return script.shift() || { role: 'assistant', content: 'Done.' }; }, unloadAll: async () => {}, isLoaded: async () => true };
+// Item 1 (Nov 11): the turn's changing lines ride in a note before the latest message, so read every system message.
+brain.engine = { chat: async ({ tools, messages }) => { seen.push({ names: tools.map((t) => t.function.name), sys: messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n') }); return script.shift() || { role: 'assistant', content: 'Done.' }; }, unloadAll: async () => {}, isLoaded: async () => true };
 const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls: [{ function: { name, arguments: args } }] });
 // Three steps that need no OK card: list a folder, read a file, list another folder (use_tools in between isn't a step).
 const job3 = () => [call('list_folder', { path: innDir }), call('read_file', { path: path.join(innDir, 'note.txt') }), call('use_tools', { group: 'documents' }), call('list_folder', { path: dataDir })];
@@ -134,7 +136,7 @@ let offer;
 
 // ---------- Settings, server, the card, Help, docs (all desktop builds share these files) ----------
 {
-  const cellar = read('public/cellar.js'), app = read('public/app.js'), server = read('src/server.js'), help = HELP.map((e) => e.html).join('\n');
+  const cellar = read('public/cellar.js'), app = read('public/app.js'), server = serverText(), help = HELP.map((e) => e.html).join('\n');
   check('Settings: the switch on How Bob works, off unless turned on', /sswitch\('howtos', settings\.howtos === true, 'Let Bob learn how-tos', 'Off unless you turn it on\./.test(cellar));
   check('Settings: how-tos in the 🧰 Tools and how-tos Bob made panel with Edit and a two-step Delete (no pop-up; 1.5.144)', /'🧰 Tools and how-tos Bob made'/.test(cellar) && /How-tos he kept/.test(cellar) && /data-howtoedit/.test(cellar) && /Keep it/.test(cellar) && !/confirm\(/.test(cellar.slice(cellar.indexOf('function ownKitHtml'), cellar.indexOf('function ownKitHtml') + 8000)));
   check('the chat card has Save how-to and Not now', /Keep the steps as a how-to\?/.test(app) && /Save how-to/.test(app) && /Not now/.test(app));

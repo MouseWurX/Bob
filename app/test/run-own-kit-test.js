@@ -1,6 +1,7 @@
 // 1.5.144 🧰 Tools and how-tos Bob made: one Settings panel (and phone screen) for the tools Bob wrote and the how-tos
 // he kept. Delete asks first, then the thing waits 30 days on the Recently deleted shelf (Undo, Put back), and
 // Delete for good drops it now. Bob stops using a deleted thing at once.
+import { serverText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -128,7 +129,7 @@ function plantTool(name, what) {
 
 // ---------- the PC page, the phone and Help ----------
 {
-  const ui = read('public/cellar.js'), server = read('src/server.js'), hands = read('public/hands.js'), phone = read('android/app/src/main/assets/www/phone.js'), phtml = read('android/app/src/main/assets/www/index.html'), phelp = read('android/app/src/main/assets/www/help.js');
+  const ui = read('public/cellar.js'), server = serverText(), hands = read('public/hands.js'), phone = read('android/app/src/main/assets/www/phone.js'), phtml = read('android/app/src/main/assets/www/index.html'), phelp = read('android/app/src/main/assets/www/help.js');
   check('one panel for both, in the everyday page, with counts on its line', /\['ev-howtos', '🧰 Tools and how-tos Bob made'/.test(ui) && /recently deleted/.test(ui) && !/'📒 How-tos'/.test(ui));
   check('both lists, with a Show code and an Edit', /<h4 class="ssub">🔧 Tools he wrote/.test(ui) && /<h4 class="ssub">📒 How-tos he kept/.test(ui) && /data-owncode=/.test(ui) && /data-howtoedit=/.test(ui));
   check('Delete asks on the row (Delete / Keep it), no pop-up', /data-ownask=/.test(ui) && /data-owndel=/.test(ui) && /data-owncancel>Keep it/.test(ui) && !/confirm\(/.test(ui.slice(ui.indexOf('function ownKitHtml'), ui.indexOf('const EVERY_EXTRA'))));

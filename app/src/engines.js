@@ -1,5 +1,6 @@
 // Bob's engines (the programs that run models): llama.cpp, stable-diffusion.cpp, whisper.cpp, Piper.
 // Fetched from their official GitHub releases, only when someone clicks "Get" in the cellar.
+import { deadline as withDeadline, quietGuard } from './hang-guard.js'; // item 212: every network call has a deadline
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -9,17 +10,31 @@ import { setupWorkshop, setupVoice, audioReady, voicesReady } from './audio.js';
 import { findOffice, findFfmpeg } from './office.js';
 import { OS, exeName, onPath } from './platform.js';
 import { unzip } from './zip.js';
+import { brainEngineBuilt } from './config.js';
 import { fileURLToPath } from 'node:url';
+import { tryEngine, noteBlocked, clearBlocked } from './app-control.js';
+import { findOpenscad, openscadPins, openscadAllowed } from './parts3d.js';
+import { setupModel3d, model3dReady, model3dWhy } from './model3d.js';
 
 // The opt-in office helpers are pinned to exact versions and checksums (src/office-pins.json, installer/pin-office.js).
 export function officePins() {
   try { return JSON.parse(fs.readFileSync(new URL('./office-pins.json', import.meta.url), 'utf8')); } catch { return {}; }
 }
 const PIN = officePins();
+// 🧊 OpenSCAD for "Let Bob make 3D parts" (parts3d.js): one checked version per computer (src/openscad-pins.json,
+// filled in by installer/pin-openscad.js). Until a computer's pin is filled in there's no Get button for it.
+const SCAD_PIN = openscadPins();
+export const scadPinFor = (key, pins = SCAD_PIN) => { const p = pins?.[key]; return p && openscadAllowed(p.url) && /^[0-9a-f]{64}$/.test(p.sha256 || '') ? { version: pins.version || '', ...p } : null; };
+const SCAD_SELF = 'Install it from openscad.org yourself and Bob finds it by himself.';
+const scadWhy = (key) => (scadPinFor(key) ? undefined : `OpenSCAD isn't pinned to a checked download for this replicant matrix in this build of Bob yet. ${SCAD_SELF}`);
 // Piper's ARM Linux file has no GitHub checksum; this pin was computed in CI (installer/check-linux-engines.js, 2026-11-04).
 const PIPER_ARM64_SHA = 'fea0fd2d87c54dbc7078d0f878289f404bd4d6eea6e7444a77835d1537ab88eb';
 // 1.5.83: the llama.cpp release every speed test and brain race used (package.json bob.bundledLlamaTag, also the one
 // bundled in the download). Get and Get Bob ready install this one; "Check for a newer build" can still fetch the newest.
+// Brain Engine has its own version numbers (1.5.203: Brain Engine 3, built on llama.cpp bundledLlamaTag); Bob downloads
+// the release his pin names (bob.brainEngine.tag). Builds from before then were named after their llama.cpp tag.
+// From build 5 a release is named N1bN2 (brain-engine-5b12282: build 5 on llama.cpp b12282; public/engine-name.js).
+const PIN_TAG = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.brainEngine?.tag || ''; } catch { return ''; } })();
 export const TESTED_LLAMA = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.bundledLlamaTag || ''; } catch { return ''; } })();
 // LibreOffice comes from The Document Foundation's own archive, not GitHub.
 const TDF_HOSTS = [/^downloadarchive\.documentfoundation\.org$/, /^download\.documentfoundation\.org$/];
@@ -48,11 +63,11 @@ export const ENGINES = [
     // same tag (base), in its own folder: Bob's built-in llama.cpp is never touched. 1.5.169: the default engine for
     // brains, listed for everyone (not only while the Lab is on). When it's here Bob runs his brains on it
     // (config.js pickLlamaExe); Settings, Engines can switch back to plain llama.cpp.
-    id: 'brainengine', name: 'Brain Engine', what: 'Bob\'s default engine for brains: his own fork of llama.cpp, made to give him more room to work with brains (it can switch experts off without reloading, for the Lab). Based on llama.cpp, not an official build. When it\'s here, Bob runs his brains on it. It has its own folder, so the built-in llama.cpp stays as it is.',
-    repo: 'MouseWurX/Bob', tag: TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : '', base: 'llamacpp', dir: 'brain-engine', exe: 'llama-server.exe',
+    id: 'brainengine', name: 'Brain Engine', what: 'Bob\'s own engine for brains, made to give him more room to work with them (it can switch experts off without reloading, for the Lab). Built on the open-source llama.cpp, not an official llama.cpp build. When it\'s here, Bob runs his brains on it. It has its own folder, so the plain llama.cpp that came with Bob stays as it is.',
+    repo: 'MouseWurX/Bob', tag: PIN_TAG || (TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : ''), base: 'llamacpp', dir: 'brain-engine', exe: 'llama-server.exe',
     nvidia: [], other: [/^brain-engine-.*-win-x64\.zip$/], runtime: () => null,
     mac: { unavailable: 'Brain Engine has no Mac build yet.' },
-    linux: { tag: TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : '', other: [/^brain-engine-.*-linux-x64\.tar\.gz$/] },
+    linux: { tag: PIN_TAG || (TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : ''), other: [/^brain-engine-.*-linux-x64\.tar\.gz$/] },
     linuxArm64: { unavailable: 'Brain Engine has no ARM Linux build yet.' }
   },
   {
@@ -101,6 +116,21 @@ export const ENGINES = [
     linuxArm64: { other: [/^uv-aarch64-unknown-linux-gnu\.tar\.gz$/] },
     after: setupWorkshop,
     ready: (cfg) => { const a = audioReady(cfg); return a.music || a.sfx; }
+  },
+  {
+    // 🧊 Picture to 3D (model3d.js): the same uv, a private Python 3.12, PyTorch for CUDA 12.8, add-ons GitHub compiled
+    // for Bob (pinned in model3d/addons-pins.json, sha256-checked), TRELLIS.2 at its pinned commit and its weights.
+    id: 'model3d', name: '3D workshop', what: `Picture to 3D: TRELLIS.2 (Microsoft, MIT) turns one picture into a textured 3D model. Needs an NVIDIA graphics card; 16 GB is best, smaller cards may run out of memory. About 22 GB with the models. Meta's DINOv3 picture reader comes under Meta's DINOv3 licence (no military or weapons use). NVIDIA's nvdiffrast part is for non-commercial use.`,
+    repo: 'astral-sh/uv', dir: 'audio-workshop', exe: 'uv.exe',
+    nvidia: [], other: [/^uv-x86_64-pc-windows-msvc\.zip$/],
+    runtime: () => null,
+    // getters: model3d.js may not be loaded yet when this list is made (audio.js and model3d.js import each other's neighbours)
+    get unavailable() { return model3dWhy('win', 'x64'); },
+    mac: { get unavailable() { return model3dWhy('mac', 'arm64'); } },
+    linux: { other: [/^uv-x86_64-unknown-linux-gnu\.tar\.gz$/], get unavailable() { return model3dWhy('linux', 'x64'); } },
+    linuxArm64: { get unavailable() { return model3dWhy('linux', 'arm64'); } },
+    after: (cfg, o) => setupModel3d(cfg, o, { grab }),
+    ready: (cfg) => model3dReady(cfg)
   },
   {
     // Same uv as the audio tools; only the small Kokoro package is added. The voice files come from Voice & conversation, Talking.
@@ -162,6 +192,21 @@ export const ENGINES = [
     // The Mac download is a disk image to drag into Applications, which is the user's to do; Bob finds it there.
     mac: { unavailable: 'On a Mac, install LibreOffice from libreoffice.org (drag it into Applications), and Bob finds it by himself.' },
     linux: { unavailable: 'On Linux, install LibreOffice from your software centre (most distros already have it), and Bob finds it by himself.' }
+  },
+  {
+    // 🧊 OpenSCAD (GPL-2.0) for "Let Bob make 3D parts" (parts3d.js). Windows: the official zip, unpacked into Bob's
+    // folder (nothing installed). Linux: the official AppImage. Mac: the user drags it into Applications. One already
+    // on the replicant matrix counts. Runs only while it makes a part.
+    id: 'openscad', name: 'OpenSCAD', what: 'Makes exact 3D parts (STL files for a 3D printer) from the recipes Bob writes, for "Let Bob make 3D parts". About 30 MB. Runs only while it makes a part. If OpenSCAD is already on your replicant matrix, Bob uses that one.',
+    pinned: true, anyOS: true, dir: 'openscad', exe: 'openscad.exe',
+    unavailable: scadWhy('win-x64'),
+    ready: (cfg) => Boolean(findOpenscad(cfg)),
+    found: (cfg) => { const f = findOpenscad(cfg); return f && f.where !== 'own' ? `found on this replicant matrix (${f.exe})` : ''; },
+    version: () => null,
+    install: installOpenscad,
+    mac: { unavailable: 'On a Mac, install OpenSCAD from openscad.org (drag it into Applications), and Bob finds it by himself.' },
+    linux: { exe: 'openscad', unavailable: scadWhy('linux-x64') },
+    linuxArm64: { exe: 'openscad', unavailable: scadWhy('linux-arm64') }
   }
 ];
 
@@ -211,6 +256,16 @@ export const assetPrint = (a) => (a?.digest ? String(a.digest) : `${a?.id ?? ''}
 // Is the release on GitHub newer than the marker? A different release name, or the same name with a different file
 // (Brain Engine is rebuilt under the same name). Markers from before 1.5.17x have no print: then a file uploaded after
 // the install counts as newer.
+// 1.5.196 (the owner: "it should update with Bob himself, not standalone"): each Bob names the Brain Engine build that
+// goes with him (package.json bob.brainEngine: the release and each file's checksum). null where it has no build.
+export const BRAIN_ENGINE_PIN = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.brainEngine || null; } catch { return null; } })();
+export function brainEnginePin(pins = BRAIN_ENGINE_PIN, platform = process.platform, arch = process.arch) {
+  const key = platform === 'win32' ? 'win-x64' : platform === 'linux' && arch === 'x64' ? 'linux-x64' : '';
+  return pins?.tag && key && pins[key] ? { tag: pins.tag, print: pins[key] } : null;
+}
+// Is Brain Engine here a different build from the one that goes with this Bob? Read from the engine's own marker
+// (bob-brainengine.json), never from Bob's version, so a stale engine is caught even when Bob himself is up to date.
+export const brainEngineStale = (mark, pin) => Boolean(pin && mark?.version && (mark.version !== pin.tag || mark.print !== pin.print));
 export function isNewer(mark, rel, asset) {
   if (!mark?.version) return true;
   if (mark.version !== rel.tag_name) return true;
@@ -222,8 +277,15 @@ export function isNewer(mark, rel, asset) {
 export const sharedDir = (e) => ENGINES.filter((x) => x.dir === e.dir).length > 1;
 // The build kept from before the last update, for Go back.
 export const previousDir = (cfg, e) => path.join(cfg.agentDir, e.dir + '.previous');
+// 1.5.203: a new build Windows wouldn't run, that Bob went back from by himself (engine-blocked.js). Kept until Try
+// again (Go back) is pressed, so he doesn't try it on every load and the update doesn't fetch it again.
+export const BLOCKED_FILE = 'engine-blocked.json';
+export function engineBlocked(cfg, id) {
+  try { const r = JSON.parse(fs.readFileSync(path.join(cfg.agentDir, BLOCKED_FILE), 'utf8')); return r && r.engine && (!id || r.engine === id) ? r : null; } catch { return null; }
+}
+export const clearEngineBlocked = (cfg) => { try { fs.rmSync(path.join(cfg.agentDir, BLOCKED_FILE), { force: true }); } catch {} };
 // Where each engine sits on the Engines page.
-export const ENGINE_GROUP = { brainengine: 'thinking', llamacpp: 'thinking', sdcpp: 'senses', whispercpp: 'senses', audio: 'senses', piper: 'voices', kokoro: 'voices', chatterbox: 'voices', uv: 'helpers', ffmpeg: 'helpers', libreoffice: 'helpers' };
+export const ENGINE_GROUP = { brainengine: 'thinking', llamacpp: 'thinking', sdcpp: 'senses', whispercpp: 'senses', audio: 'senses', piper: 'voices', kokoro: 'voices', chatterbox: 'voices', uv: 'helpers', ffmpeg: 'helpers', libreoffice: 'helpers', openscad: 'helpers', model3d: 'senses' };
 // Put a freshly unpacked build (stage) in the engine's place in one step. The build that was there moves to
 // <folder>.previous (one older build is kept, for Go back), unless keep is false.
 // PC test of 1.5.184: a Brain Engine download that held only Bob's own 19 files (no ggml libraries) went in as a
@@ -244,6 +306,20 @@ export function engineWhole(stage, e, old = null) {
 }
 export const NOT_WHOLE = (name, why) => `The new ${name} download isn't a whole engine (${why}), so I kept the one you have. Nothing changed.`;
 
+// 1.5.204 Smart App Control (app-control.js): a new llama.cpp-family build is tried in its side folder before it takes
+// the old one's place. If Windows stops it, or it can't see the graphics card the old one could, the old one stays,
+// the build is remembered (so it isn't fetched again by itself) and the reason comes back in plain words.
+// Tests swap the trial for a fake with setEngineTrial.
+let engineTrial = tryEngine;
+export const setEngineTrial = (f) => { engineTrial = f || tryEngine; };
+export async function trialOrKeep(cfg, e, stage, folder, mark) {
+  const t = await engineTrial(stage, e, { old: fs.existsSync(folder) ? folder : null });
+  if (t?.ok !== false) { clearBlocked(cfg, e.id); return; }
+  fs.rmSync(stage, { recursive: true, force: true });
+  noteBlocked(cfg, e.id, mark, t.why);
+  const err = new Error(t.words); err.blocked = t.why; throw err;
+}
+
 export function swapIn(folder, stage, { keep = true } = {}) {
   const prev = folder + '.previous';
   if (fs.existsSync(folder)) {
@@ -256,13 +332,13 @@ export function swapIn(folder, stage, { keep = true } = {}) {
 
 // 1.5.72: rough download sizes (GB), so the one-click Welcome total counts the programs too. llama.cpp's is the
 // NVIDIA build with its CUDA runtime (other builds are smaller); the rest follow each engine's own "About" text.
-export const ENGINE_GB = { llamacpp: 0.6, brainengine: 0.7, sdcpp: 0.5, whispercpp: 0.1, piper: 0.1, audio: 12, kokoro: 0.1, chatterbox: 4, ffmpeg: 0.1, libreoffice: 0.35 };
+export const ENGINE_GB = { llamacpp: 0.6, brainengine: 0.7, sdcpp: 0.5, whispercpp: 0.1, piper: 0.1, audio: 12, kokoro: 0.1, chatterbox: 4, ffmpeg: 0.1, libreoffice: 0.35, openscad: 0.03, model3d: 22 };
 export function engineStatus(cfg) {
-  return ENGINES.filter((e0) => !e0.labOnly || cfg.computerLab !== false).map((e0) => engineFor(e0)).map((e) => ({ id: e.id, name: e.name, what: e.what, sizeGB: ENGINE_GB[e.id] ?? 0.1, available: !e.unavailable && !(OS !== 'win' && e.install), note: e.unavailable || '', installed: e.ready ? Boolean(e.ready(cfg)) : Boolean(engineExe(cfg, e)), bundled: e.id === 'llamacpp' && bundledEngine(cfg), version: installedVersion(cfg, e) || e.version?.(cfg) || null, pinned: Boolean(e.pinned || e.sha256 || (e.tag && !e.base)), tested: e.tested || null, group: ENGINE_GROUP[e.id] || 'helpers', canSwap: !sharedDir(e) && !e.install && !e.after, previous: !sharedDir(e) ? (installedMarker(cfg, e, previousDir(cfg, e))?.version || (fs.existsSync(previousDir(cfg, e)) ? 'the one before' : null)) : null, own: !sharedDir(e) && !e.install && fs.existsSync(path.join(cfg.agentDir, e.dir)) && !e.found?.(cfg), found: e.found?.(cfg) || '', pin: e.id === 'libreoffice' ? (PIN.libreoffice?.version || '') : e.id === 'ffmpeg' ? (PIN.ffmpeg?.tag || '') : '', folder: path.join(cfg.agentDir, e.dir), incomplete: (() => { const h = !sharedDir(e) && cfg.agentDir ? incompleteUpdate(cfg, e) : null; return h ? { missing: h.missing, what: partsText(h.missing), version: h.mark?.version || '' } : null; })() }));
+  return ENGINES.filter((e0) => !e0.labOnly || cfg.computerLab !== false).map((e0) => engineFor(e0)).map((e) => ({ id: e.id, name: e.name, what: e.what, sizeGB: ENGINE_GB[e.id] ?? 0.1, available: !e.unavailable && !(OS !== 'win' && e.install && !e.anyOS), note: e.unavailable || '', installed: e.ready ? Boolean(e.ready(cfg)) : Boolean(engineExe(cfg, e)), bundled: e.id === 'llamacpp' && bundledEngine(cfg), version: installedVersion(cfg, e) || e.version?.(cfg) || null, pinned: Boolean(e.pinned || e.sha256 || (e.tag && !e.base)), tested: e.tested || null, basedOn: e.base ? installedMarker(cfg, e)?.base || null : null, group: ENGINE_GROUP[e.id] || 'helpers', canSwap: !sharedDir(e) && !e.install && !e.after, previous: !sharedDir(e) ? (installedMarker(cfg, e, previousDir(cfg, e))?.version || (fs.existsSync(previousDir(cfg, e)) ? 'the one before' : null)) : null, own: !sharedDir(e) && !e.install && fs.existsSync(path.join(cfg.agentDir, e.dir)) && !e.found?.(cfg), found: e.found?.(cfg) || '', pin: e.id === 'libreoffice' ? (PIN.libreoffice?.version || '') : e.id === 'ffmpeg' ? (PIN.ffmpeg?.tag || '') : '', folder: path.join(cfg.agentDir, e.dir), blocked: (() => { const b = engineBlocked(cfg, e.id); return b ? { version: b.version || '', windows: b.windows === true, manual: b.manual === true } : null; })(), incomplete: (() => { const h = !sharedDir(e) && cfg.agentDir ? incompleteUpdate(cfg, e) : null; return h ? { missing: h.missing, what: partsText(h.missing), version: h.mark?.version || '' } : null; })() }));
 }
 // 1.5.17x Engines rework: which engine runs the brains now, which one is picked for next time, and the Lab's.
 export function engineChoices(cfg) {
-  return { brainsNow: brainsEngineNow(cfg), brainsPick: brainsEnginePick(cfg), lab: LAB_ENGINES.includes(cfg.labEngine) ? cfg.labEngine : '' };
+  return { brainsNow: brainsEngineNow(cfg), brainsPick: brainsEnginePick(cfg), only: brainsEngineOnly(), lab: LAB_ENGINES.includes(cfg.labEngine) ? cfg.labEngine : '' };
 }
 
 // The newest release with a Windows build, for "Get newer build". Same rules as installing.
@@ -280,7 +356,7 @@ export async function latestEngine(cfg, id, nvidia, fetchImpl = fetch) {
   }
   // A rebuilt release (same name, new file) says so, so the button can say "rebuilt" rather than repeat the name.
   const rebuilt = Boolean(!unmarked && mark?.version && mark.version === rel.tag_name && isNewer(mark, rel, asset));
-  return { id, installed: unmarked ? null : (mark?.version || null), tested: e.tested || null, latest: rel.tag_name, asset: asset.name, newer: isNewer(mark, rel, asset), rebuilt };
+  return { id, installed: unmarked ? null : (mark?.version || null), tested: e.tested || null, latest: rel.tag_name, asset: asset.name, print: assetPrint(asset), newer: isNewer(mark, rel, asset), rebuilt };
 }
 
 // Pick the right zip from a release's asset list for this graphics card. Highest CUDA version wins.
@@ -302,8 +378,9 @@ export function pickAsset(assets, e, nvidia) {
 export async function grab(asset, folder, pub, signal, tick, { allowed = hostAllowed, unpack = true } = {}) {
   if (!allowed(asset.browser_download_url)) throw new Error('That download isn\'t from where it should be. Stopped.');
   const zip = path.join(folder, asset.name + '.part');
-  const res = await fetch(asset.browser_download_url, { redirect: 'follow', signal, headers: { 'user-agent': 'Bob' } });
-  if (!res.ok) throw new Error(`Download failed (${res.status}).`);
+  const q = quietGuard(signal); // two quiet minutes and the download stops
+  const res = await fetch(asset.browser_download_url, { redirect: 'follow', signal: q.signal, headers: { 'user-agent': 'Bob' } }).catch((e) => { q.done(); throw e; });
+  if (!res.ok) { q.done(); throw new Error(`Download failed (${res.status}).`); }
   if (!allowed(res.url)) throw new Error('The download was redirected somewhere I don\'t trust. Stopped.');
   const hash = crypto.createHash('sha256');
   const out = fs.createWriteStream(zip);
@@ -312,12 +389,14 @@ export async function grab(asset, folder, pub, signal, tick, { allowed = hostAll
   pub.file = asset.name; pub.phase = 'downloading'; tick();
   try {
     for await (const c of res.body) {
+      q.poke();
       hash.update(c); got += c.length;
       if (!out.write(c)) await new Promise((r) => out.once('drain', r));
       pub.done = base + got;
       if (Date.now() - last > 500) { last = Date.now(); tick(); }
     }
-  } finally { await new Promise((r) => out.end(r)); }
+  } catch (e) { if (q.quiet() && !signal?.aborted) throw new Error('The download stopped coming (nothing for 2 minutes). Try again.'); throw e; }
+  finally { q.done(); await new Promise((r) => out.end(r)); }
   pub.phase = 'checking'; tick();
   const want = String(asset.digest || asset.pinnedSha256 || '').replace(/^sha256:/, '');
   // GitHub publishes a sha256 for every release file; no checksum means we can't trust it.
@@ -429,7 +508,7 @@ export async function findRelease(e, nvidia, signal, fetchImpl = fetch) {
   const get = async (u) => {
     // Release builds only (installer/bundle-engine.mjs in CI): the workflow's token, against GitHub's rate limit.
     const auth = process.env.BOB_BUNDLE_TOKEN ? { authorization: `Bearer ${process.env.BOB_BUNDLE_TOKEN}` } : {};
-    const r = await fetchImpl(u, { headers: { 'user-agent': 'Bob', accept: 'application/vnd.github+json', ...auth }, signal });
+    const r = await fetchImpl(u, { headers: { 'user-agent': 'Bob', accept: 'application/vnd.github+json', ...auth }, signal: withDeadline(signal, 30_000) });
     if (!r.ok) throw new Error(`GitHub didn't answer for ${e.name} (${r.status}). Try again in a few minutes.`);
     return r.json();
   };
@@ -503,7 +582,7 @@ export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, n
   // 1.5.17x: any engine with its own folder (not the shared uv one) updates the same way, keeping the old build for Go back.
   const replacing = (id === 'llamacpp' && Boolean(bundledEngine(cfg))) || (!sharedDir(e0) && !e0.after && Boolean(engineExe(cfg, e0)) && fs.existsSync(path.join(cfg.agentDir, e0.dir)));
   if (e.unavailable) throw new Error(e.unavailable);
-  if (e.install && e.os !== 'win') throw new Error(`${e.name} can't be fetched on this replicant matrix. Install it yourself and Bob finds it.`);
+  if (e.install && e.os !== 'win' && !e.anyOS) throw new Error(`${e.name} can't be fetched on this replicant matrix. Install it yourself and Bob finds it.`);
   if (e.install) return e.install(cfg, { pub, signal, tick });
   if (e.base) return installOverlay(cfg, e, { nvidia, pub, signal, tick });
   // Office helpers: only the exact pinned release with its checksum, never "the newest".
@@ -531,6 +610,7 @@ export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, n
   fs.rmSync(incompleteDir(cfg, e), { recursive: true, force: true });
   if (replacing) {
     try { fs.writeFileSync(path.join(stage, `bob-${e.id}.json`), JSON.stringify(mark, null, 2)); } catch {}
+    await trialOrKeep(cfg, e, stage, folder, mark);
     try { swapIn(folder, stage); }
     catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Press Unload everything (or wait for the brain to go idle), then Try again.`); }
   }
@@ -540,6 +620,7 @@ export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, n
   const sdCli = path.join(folder, exeName('sd-cli', e.os)), sdOld = path.join(folder, exeName('sd', e.os));
   if (e.id === 'sdcpp' && !fs.existsSync(sdCli) && fs.existsSync(sdOld)) fs.copyFileSync(sdOld, sdCli);
   try { fs.writeFileSync(path.join(folder, `bob-${e.id}.json`), JSON.stringify({ version: rel.tag_name, asset: asset.name, print: assetPrint(asset), at: new Date().toISOString() }, null, 2)); } catch {}
+  if (engineBlocked(cfg, e.id)?.manual) clearEngineBlocked(cfg); // 1.5.204: a build fetched by hand ends a Go back hold
   return { version: rel.tag_name, asset: asset.name };
 }
 
@@ -581,6 +662,7 @@ async function installOverlay(cfg, e, { nvidia, pub, signal, tick }) {
   if (missing.length) holdIncomplete(cfg, e, stage, missing, mark);
   fs.writeFileSync(path.join(stage, `bob-${e.id}.json`), JSON.stringify(mark, null, 2));
   fs.rmSync(incompleteDir(cfg, e), { recursive: true, force: true });
+  await trialOrKeep(cfg, e, stage, folder, mark);
   try { swapIn(folder, stage); }
   catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Wait for the Lab job to finish (or press Unload everything), then try again.`); }
   return { version: own.rel.tag_name, asset: own.asset.name };
@@ -623,6 +705,7 @@ export async function fetchMissing(cfg, id, { nvidia, pub, signal, tick, find = 
   }
   fs.writeFileSync(path.join(dir, `bob-${e.id}.json`), JSON.stringify({ ...held.mark, at: new Date().toISOString() }, null, 2));
   const folder = path.join(cfg.agentDir, e.dir);
+  await trialOrKeep(cfg, e, dir, folder, held.mark);
   try { swapIn(folder, dir); }
   catch (err) { throw new Error(`${e.name} is in use right now (${err.code || err.message}). Press Unload everything, then press Download the missing files again.`); }
   fs.rmSync(path.join(folder, 'bob-incomplete.json'), { force: true });
@@ -631,6 +714,29 @@ export async function fetchMissing(cfg, id, { nvidia, pub, signal, tick, find = 
 
 // LibreOffice: the official installer (pinned version and sha256) from TDF's archive, unpacked into Bob's folder
 // with msiexec /a (an "administrative image": files only, no install, no admin rights, no Start menu entries).
+// 🧊 OpenSCAD: the pinned official download for this computer, checked against its sha256. Windows: the zip,
+// unpacked by Bob's own unzip into his openscad folder. Linux: the AppImage, kept as it is and marked runnable.
+async function installOpenscad(cfg, { pub, signal, tick }) {
+  const key = OS === 'win' ? 'win-x64' : OS === 'linux' ? (ARCH === 'arm64' ? 'linux-arm64' : 'linux-x64') : '';
+  const pin = key ? scadPinFor(key) : null;
+  if (!pin) throw new Error(`OpenSCAD isn't pinned to a checked download for this replicant matrix in this build of Bob yet, so I won't download it. ${SCAD_SELF}`);
+  const folder = path.join(cfg.agentDir, 'openscad');
+  const tmp = path.join(cfg.agentDir, 'openscad-download');
+  fs.mkdirSync(tmp, { recursive: true });
+  pub.total = pin.bytes || 0; pub.done = 0;
+  const file = await grab({ name: path.basename(new URL(pin.url).pathname), browser_download_url: pin.url, size: pin.bytes, pinnedSha256: pin.sha256 }, tmp, pub, signal, tick, { allowed: openscadAllowed, unpack: false });
+  pub.phase = 'unpacking'; tick();
+  fs.rmSync(folder, { recursive: true, force: true });
+  fs.mkdirSync(folder, { recursive: true });
+  if (/\.zip$/i.test(file)) unzip(file, folder);
+  else { const to = path.join(folder, path.basename(file)); fs.renameSync(file, to); fs.chmodSync(to, 0o755); }
+  fs.rmSync(tmp, { recursive: true, force: true });
+  const f = findOpenscad(cfg);
+  if (!f || f.where !== 'own') throw new Error(`OpenSCAD unpacked, but its program isn't where I expected. ${SCAD_SELF}`);
+  try { fs.writeFileSync(path.join(folder, 'bob-openscad.json'), JSON.stringify({ version: pin.version, asset: path.basename(pin.url), at: new Date().toISOString() }, null, 2)); } catch {}
+  return { version: pin.version, asset: path.basename(pin.url) };
+}
+
 async function installLibreOffice(cfg, { pub, signal, tick }) {
   const pin = PIN.libreoffice || {};
   if (!pin.version || !tdfAllowed(pin.url) || !/^[0-9a-f]{64}$/.test(pin.sha256 || '')) throw new Error('LibreOffice isn\'t pinned to a checked version in this build of Bob yet, so I won\'t download it. You can install it yourself from libreoffice.org (or use OpenOffice): I find either by myself.');
@@ -659,6 +765,7 @@ export function goBackEngine(cfg, id) {
   if (sharedDir(e)) throw new Error(`${e.name} shares its folder with other engines, so it has no build to go back to.`);
   const folder = path.join(cfg.agentDir, e.dir), prev = previousDir(cfg, e), tmp = folder + '.swap';
   if (!fs.existsSync(prev)) throw new Error(`There's no earlier ${e.name} build kept on this replicant matrix.`);
+  const before = installedMarker(cfg, e);
   fs.rmSync(tmp, { recursive: true, force: true });
   try {
     if (fs.existsSync(folder)) fs.renameSync(folder, tmp);
@@ -667,6 +774,14 @@ export function goBackEngine(cfg, id) {
   } catch (err) {
     if (!fs.existsSync(folder) && fs.existsSync(tmp)) { try { fs.renameSync(tmp, folder); } catch {} }
     throw new Error(`${e.name} is in use right now (${err.code || err.message}). Press Unload everything, then try again.`);
+  }
+  if (engineBlocked(cfg, id)) clearEngineBlocked(cfg); // Try again: the blocked build is back in, and gets another go
+  else {
+    // 1.5.204: Go back pressed by hand holds: the build left is not fetched again (at the next start, or by the daily
+    // check) until Try again, a build fetched by hand, or a new Brain Engine pin in a new Bob.
+    const now = installedMarker(cfg, e);
+    const rec = { engine: id, version: before?.version || '', print: before?.print || '', previous: now?.version || '', windows: false, manual: true, why: 'Went back by hand in Settings, Engines.', at: new Date().toISOString() };
+    try { fs.writeFileSync(path.join(cfg.agentDir, BLOCKED_FILE), JSON.stringify(rec, null, 2)); } catch {}
   }
   return { version: installedMarker(cfg, e)?.version || null, previous: installedMarker(cfg, e, prev)?.version || null };
 }
@@ -697,16 +812,16 @@ export function brainsEngineNow(cfg) {
   return r && !r.startsWith('..') && !path.isAbsolute(r) ? 'brainengine' : 'llamacpp';
 }
 // What Settings > Engines' ⚙ picker shows as picked: what Bob was told to use (it takes effect when he next starts).
-export function brainsEnginePick(cfg) {
-  if (cfg.engine === 'ollama') return 'ollama';
-  return cfg.llamacpp?.brainEngine === false ? 'llamacpp' : 'brainengine';
+// 1.5.196: the only engine Bob's brains may use here: Brain Engine where it has a build, else Bob's own llama.cpp.
+export const brainsEngineOnly = (built = brainEngineBuilt()) => built ? 'brainengine' : 'llamacpp';
+export function brainsEnginePick(cfg, built = brainEngineBuilt()) {
+  return brainsEngineOnly(built);
 }
-// The settings one picker choice stands for.
-export function brainsEngineSettings(pick) {
-  if (pick === 'ollama') return { engine: 'ollama' };
-  if (pick === 'llamacpp') return { engine: 'llamacpp', llamacpp: { brainEngine: false } };
-  if (pick === 'brainengine') return { engine: 'llamacpp', llamacpp: { brainEngine: true } };
-  return null;
+// The settings one picker choice stands for. 1.5.196: only the one engine Bob may use here; anything else is refused.
+export function brainsEngineSettings(pick, built = brainEngineBuilt()) {
+  if (pick !== brainsEngineOnly(built)) return null;
+  if (pick === 'llamacpp') return { engine: 'llamacpp' };
+  return { engine: 'llamacpp', llamacpp: { brainEngine: true } };
 }
 
 // 1.5.17x The Lab's engine: labEngine '' (same as Bob's brains), 'brainengine' or 'llamacpp'. The folders the Lab

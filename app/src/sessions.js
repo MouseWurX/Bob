@@ -2,6 +2,8 @@
 // "Normal" is the old behaviour (each job uses the brain picked for it in Model roles).
 // 1.5.41: with "Let Bob pick the session" on (the default) Bob switches himself, see auto-session.js; off, he only suggests.
 
+import { laptopSaving } from './engine-extras.js';
+
 export const SESSIONS = {
   normal: { label: 'Normal', icon: '☕', what: 'Each job uses the brain picked for it in Equip Bob. Bob swaps brains when a job needs another one.' },
   art: { label: 'Art', icon: '🎨', what: 'The graphics card is kept for pictures, video and sound. Bob chats on his small brain on the processor, so he keeps talking while a picture paints.', brain: 'small', cpu: true, parallel: true },
@@ -10,7 +12,7 @@ export const SESSIONS = {
   // 1.5.23: Deep thought is gone (Effort Medium/High does that job); Light is now Gaming, and keeps Effort on Low.
   // Gaming (some games use 14 of 16 GB): nothing loads on the card. Chat and hearing run on the processor;
   // pictures, video, music and Medium-and-up jobs wait in Tasks until the session changes.
-  light: { label: 'Gaming', icon: '🎮', what: 'Keeps the graphics card for your games. Bob chats and listens on the processor with a small brain, which usually starts answering within a few seconds. Pictures and big jobs wait until you switch back. How much of the card he may borrow is set in Settings, Show advanced settings, Speed & memory (Automatic to start with).', whatMac: 'Keeps memory free for your games. Bob chats and listens on the processor with a small brain, which usually starts answering within a few seconds. Pictures and big jobs wait until you switch back.', brain: 'gaming', cpu: true, effortLow: true }
+  light: { label: 'Gaming', icon: '🎮', what: 'Keeps the graphics card for your games. Bob chats and listens on the processor with a small brain, which usually starts answering within a few seconds. Pictures and big jobs wait until you switch back. How much of the card he may borrow is set in Settings, Speed & memory (Automatic to start with).', whatMac: 'Keeps memory free for your games. Bob chats and listens on the processor with a small brain, which usually starts answering within a few seconds. Pictures and big jobs wait until you switch back.', brain: 'gaming', cpu: true, effortLow: true }
 };
 
 // Which model each session's brain is. the user can change these on the Sessions tab; the defaults come
@@ -76,6 +78,8 @@ export function modelFor(cfg, hat) {
   const s = currentSession(cfg);
   const ctx = sessionCtx(cfg, s.id, hat);
   if (s.id === 'normal' && hat === 'bob' && quickOnCpu(cfg)) return { model: sessionBrains(cfg).small, cpu: true, ctx };
+  // 98 Laptop mode (opt-in): on battery, the Quick brain answers the chat, on the card. Jobs keep their own brains.
+  if (s.id === 'normal' && hat === 'bob' && laptopSaving(cfg)) return { model: sessionBrains(cfg).small, cpu: false, ctx };
   if (s.id === 'normal') {
     const model = cfg.oneBrain ? cfg.models.bob : (cfg.models[hat] || cfg.models.bob);
     // 1.5.67: Qwen3.6's long context (256K since 1.5.86) applies here too, not only inside a job, so waking or priming the chat brain after a

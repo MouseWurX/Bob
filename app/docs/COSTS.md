@@ -26,13 +26,13 @@ Every rental, including the ones that made nothing. Times are the owner's local 
 | 9 Nov 2026, morning | 1x H200 141 GB SXM, wrong data centre | 5 min | $5.29/h | **Failed attempt 5.** The rebuild-and-publish run below, first try. The renter could not get a card where the drive is, so it made two empty drives elsewhere (deleted the same hour) and took a card in one of them, where Bobert's adapter is not; a shell ordering bug then stopped it in its first minute. Nothing made. Both fixed in Forge before the second try. | $0.40 |
 | 9 Nov 2026, morning | 1x H200 141 GB SXM + the rented network drive | 1.0 h | $5.29/h | **Riker and Bobert rebuilt and published.** No training: each Bob was put back together from the stock model, his keep list and his adapter, exported to Q4 and Q3, and uploaded to Hugging Face with his cards, adapter and keep list. Riker (28Bob) went up public with his full-size weights as well ([MouseWurX/28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker)). Bobert (35Bob) went up private until his home test; his full-size weights did not upload (see the next row). Card time plus the drive's share. | $5.44 |
 | 9 Nov 2026, afternoon | 1x H100 80 GB SXM + the rented network drive | 8 min | $3.99/h | **Bobert's full-size weights, second try.** An upload-only run from the drive; Hugging Face refused both tries: the account's private storage limit was reached (public repos such as Riker's are not counted). The weights stay safe on the drive; they go up once Bobert is public after his home test, or if the account gets more private room. The card deleted itself. | $0.34 |
-| 10 to 11 Nov 2026 | 1x H200 141 GB SXM + the rented network drive | 18.2 h | $5.29/h | **20Bob Bill, made and published.** Cut from Bobert (144 experts per layer, the keep list built on the owner's PC) and healed against Bobert's saved next-word odds in one full pass (2,018 steps, 11.3 h): the odds from the Bobert run were reused, so no teacher pass. His Q4 and Q3 went to Hugging Face public ([MouseWurX/20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill)). Two things went wrong on the PC side: the Forge window there was closed from outside mid-heal, so the benchmark the card served was never measured, and the card then sat idle at the end for about two hours (about $11 of this row) until a new window deleted it. The Forge now deletes the card itself when a run ends. Cap 28 h / $150. | $96.27 |
+| 10 to 11 Nov 2026 | 1x H200 141 GB SXM + the rented network drive | 18.2 h | $5.29/h | **20Bob Bill, made and published.** Cut from Bobert (144 experts per layer, the keep list built on the owner's PC) and healed against Bobert's saved next-word odds in one full pass (2,018 steps, 11.3 h): the odds from the Bobert run were reused, so no teacher pass. His Q4 and Q3 went to Hugging Face public ([MouseWurX/20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill)). Two things went wrong on the PC side: the Forge window there was closed from outside mid-heal, so the benchmark the card served was never measured, and the card then sat idle at the end for about two hours (about $11 of this row) until a new window deleted it. The Forge now deletes the card itself when a run ends. | $96.27 |
 | 10 Nov 2026, morning | 1x H100 80 GB SXM + the rented network drive | 7 min | $3.99/h | **Bobert's full-size weights, third try: up.** The owner made the page public, which lifted the private storage limit, and the same upload-only run put all 21 shards on [MouseWurX/35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert). The card deleted itself; Bill's run on the same drive was not touched. | $0.44 |
 | 11 Nov 2026, night | 1x H200 141 GB SXM + the rented network drive | 1.3 h | $5.29/h | **Bill's full-size weights published; benchmark and scans missed.** Bill was rebuilt from Bobert, his keep list and his adapter, and his full-size weights, adapter and cards went up to [MouseWurX/20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill). The head-to-head benchmark the card served failed on the PC side (a missing import, then the install folder's space cutting a path, then the PC's test files being older than the Forge's), and the four brain scans stopped at their checks because the rental image had no git. All fixed before the next run. The card deleted itself. | $6.84 |
 | 11 Nov 2026, night | 1x A40 48 GB, no drive | 1.5 h | $0.59/h | **Riker, Bobert and Bill benchmarked side by side.** A benchmark-only run: each Bob's Q4 was served straight from his public page and the owner's PC ran the same two tests against each (results on [Bob's own models](BOBS-OWN-MODELS.md#the-three-side-by-side)). Both test commands were tried on the PC with a stand-in server before the card was rented. The card deleted itself. | $0.86 |
-| | | **about 61 h of card time** | | **Six failed attempts: $16.55, plus the stopped Bill step above. Seven Bobs made; Riker (28Bob), Bobert (35Bob) and Bill (20Bob) are kept, the first Riker and Bill (v1 and v2) are retired and deleted.** | **$306.53** |
+| | | **about 79 h of card time** | | **Six failed attempts: $16.55, plus the stopped Bill step above. Seven Bobs made; Riker (28Bob), Bobert (35Bob) and Bill (20Bob) are kept, the first Riker and Bill (v1 and v2) are retired and deleted.** | **$403.24** |
 
-The total is taken from the rental service's statement; the lines above are rounded to the cent. Card time is paid from **prepaid credit**: the owner loads a balance onto the rental account in advance and each session draws it down, so that money is spent on the day it is loaded and used only when a card runs. The unused part is not shown here (no balances on these pages); it is already earmarked for the rungs still to make. A 100 GB network drive rented from the same service (it keeps the teacher weights, general text and adapters between sessions, so a session needs no re-download) costs about $7 a month while it exists; Bobert's run used it at 300 GB (about $21 a month), and Bill's run will need it again.
+The total is taken from the rental service's statement; the lines above are rounded to the cent. Card time is paid from **prepaid credit**: the owner loads a balance onto the rental account in advance and each session draws it down, so that money is spent on the day it is loaded and used only when a card runs. The unused part is not shown here (no balances on these pages); it is already earmarked for the rungs still to make. A 100 GB network drive rented from the same service (it keeps the teacher weights, general text and adapters between sessions, so a session needs no re-download) costs about $7 a month while it exists, and more as it grows: Bobert's run used it at 300 GB (about $21 a month) and Bill's at 500 GB (about $35 a month). It is 500 GB now, and it draws on the same prepaid credit every day it exists, run or no run: about $1.17 a day. That is counted as its own line in the totals below.
 
 ### Tools and subscriptions
 
@@ -46,7 +46,7 @@ The total is taken from the rental service's statement; the lines above are roun
 
 ## Projected: the rest of the family
 
-> **Revised 9 November 2026.** The first cut rule protected no skill and the coding lessons were weak (see [What went wrong with the first cut](BOBS-OWN-MODELS.md#what-went-wrong-with-the-first-cut)), so Riker and Bill are cut and healed again before Homer, with new lessons. Riker and **35Bob Bobert** (the full model trained on every lesson, no cut) are both done and paid for ($51.79 and $108.75, above). Next, when the owner gives the word, is **20Bob Bill**, cut from Bobert and healed in its own run of about 5 to 5.5 hours. The rungs below follow the current plan, a ladder of six redrawn on 6 November after the coverage table: Mario and Goku are dropped and Luke moves to 7Bob.
+> **Revised 12 November 2026.** The first cut rule protected no skill and the coding lessons were weak (see [What went wrong with the first cut](BOBS-OWN-MODELS.md#what-went-wrong-with-the-first-cut)), so the ladder was started again with new lessons. **28Bob Riker**, **35Bob Bobert** (the full model trained on every lesson, no cut) and **20Bob Bill** (cut from Bobert) are all done, published and paid for ($51.79, $108.75 and $96.27, above). Next, when the owner gives the word, is **14Bob Homer**. The rungs below follow the current plan, a ladder of six redrawn on 6 November after the coverage table: Mario and Goku are dropped and Luke moves to 7Bob.
 
 These are estimates. They assume one full-pass heal with nothing trimmed at the 16k lesson length, about 5 to 5.5 hours of card time per rung, at by-the-hour rental rates from November 2026 that move weekly; each line is re-checked on the day it is rented.
 
@@ -56,13 +56,13 @@ These are estimates. They assume one full-pass heal with nothing trimmed at the 
 |---|---|---|---|---|
 | 35Bob | Bobert | 256, no cut: trained on every lesson | done (above) | $0 |
 | 28Bob | Riker | 208, coverage cut | done (above) | $0 |
-| 20Bob | Bill | 144, coverage cut, cut from Bobert | its own run (planned), H200 or H100 | $50 to $55 |
+| 20Bob | Bill | 144, coverage cut, cut from Bobert | done (above) | $0 |
 | 14Bob | Homer | 96 | H200 | $29 |
 | 10Bob | Milo | 64 | H100 | $20 |
 | 7Bob | Luke | 40 | H100 | $20 |
 | 5Bob | Calvin | 24, kept only if it beats a stock 4B model | H100 | $20 |
 | 2Bob | Bender | 8, plus depth and width cuts (a stretch goal) | H100, longest heal | $30 to $40 |
-| | **Line B, remaining rungs** | | | **$169 to $184** |
+| | **Line B, remaining rungs** | | | **$119 to $129** |
 
 ### Specialists (line B, each cut from the general Bob one size up with its own expert count)
 
@@ -92,8 +92,8 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 
 | What | Projected |
 |---|---|
-| Rented network drive, about 2 more months (100 GB at about $7 a month, or 300 GB at about $21 during the Bobert and Bill runs) | $14 to $42 |
-| Benchmarks, exports and the Hugging Face uploads | about $6 a Bob when done on a card (Riker and Bobert, 9 Nov: $5.84 with the false start); $0 when done on the owner's PC |
+| Rented network drive, about 2 more months at 500 GB (about $35 a month, from the prepaid credit, whether or not a card is running) | about $70 |
+| Benchmarks, exports and the Hugging Face uploads | about $6 a Bob when done on a card (Riker and Bobert, 9 Nov: $5.84 with the false start; Bill, 11 Nov: $6.84); $0 when done on the owner's PC |
 | Re-runs: one per rung if a heal scores badly | up to $20 each |
 | Code signing, when the project is visible enough | $0 (reapply to the SignPath Foundation, a free signing service for open-source projects), or about $10 a month for a cloud code-signing service, or $100 to $400 a year for a code-signing certificate |
 
@@ -104,23 +104,23 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 | | |
 |---|---|
 | GPU servers rented by the hour (every session above, failures included) | $403.24 |
-| Rented network drive so far | included in the line B session line above |
+| Rented network drive between sessions, 5 to 12 Nov 2026 (100 GB, then 300, then 500; worked out from its size and rate until the next statement) | about $4.00 |
 | Claude subscription, November 2026 | $200.00 |
 | Claude extra usage, bought from 5 Nov 2026 on | $800.00 |
 | Code signing, hosting | $0.00 |
-| **Total spent so far** | **$1,403.24** |
+| **Total spent so far** | **about $1,407** |
 
 **Projected, whole plan**
 
 | | Low | High |
 |---|---|---|
-| Spent so far (above) | $1,403.24 | $1,403.24 |
+| Spent so far (above) | $1,407 | $1,407 |
 | Line B remaining rungs (Homer to Bender) | $119 | $129 |
 | Four brain scans (stock Qwen, Riker, Bobert, Bill) on one short rental (planned) | $10 | $14 |
 | Specialists (four, with their lessons) | $100 | $100 |
-| Rented network drive, about 2 more months (100 to 300 GB) | $14 | $42 |
+| Rented network drive, about 2 more months at 500 GB | $70 | $70 |
 | Re-runs allowed (one per rung if a heal scores badly) | $0 | $60 |
 | Claude subscription while the family is finished, about 1 more month | $200 | $200 |
-| **Projected total, line B complete** | **about $1,781** | **about $1,883** |
+| **Projected total, line B complete** | **about $1,906** | **about $1,980** |
 | Line A as well, if the comparison after Homer earns it | +$179 | +$189 |
-| **Projected total, both lines** | **about $1,960** | **about $2,072** |
+| **Projected total, both lines** | **about $2,085** | **about $2,169** |

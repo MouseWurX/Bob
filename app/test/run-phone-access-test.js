@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { cleanHost, cleanPhonePatch, findAddresses, newPasscode, phoneView, isTailscaleIp, tailscaleExe } from '../src/phone-access.js';
 import { saveRemote, mergeSettings } from '../src/config.js';
+import { openCopy } from '../src/secret-box.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { if (ok) { pass++; console.log(`PASS ${name}`); } else { fail++; console.log(`FAIL ${name}${extra ? `: ${extra}` : ''}`); } };
@@ -30,7 +31,7 @@ fs.writeFileSync(file, JSON.stringify({ port: 7777, remote: { enabled: false, pa
 const c = { configFile: file, remote: {} };
 saveRemote(c, ok.remote);
 const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
-check('saved to config.json, other keys untouched', raw.remote.enabled === true && raw.remote.passcode === '12345678' && raw.other === 1 && raw.remote.bindAddress === '0.0.0.0');
+check('saved to config.json with the passcode locked (🔐 Locked secrets), open in memory, other keys untouched', raw.remote.enabled === true && raw.remote.passcode.startsWith('bobsecret1:') && openCopy(raw).remote.passcode === '12345678' && c.remote.passcode === '12345678' && raw.other === 1 && raw.remote.bindAddress === '0.0.0.0');
 const c2 = { remote: { enabled: false } };
 mergeSettings(c2, { remote: { enabled: true, passcode: 'x', hosts: ['a:1'] } });
 check('settings.json still cannot turn phone access on', c2.remote.enabled === false);

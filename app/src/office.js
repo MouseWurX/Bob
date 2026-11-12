@@ -193,8 +193,8 @@ export function officeJob(cfg, job, { signal, timeoutMs = 180_000, office = find
   }));
 }
 
-export const OFFICE_MISSING = 'There\'s no LibreOffice (or OpenOffice) on this PC that I can use. The user can install LibreOffice from libreoffice.org, or get it in Settings, Show advanced settings, Engines, Engine downloads, "LibreOffice" (about 350 MB, opt-in). I find either by myself.';
-export const FFMPEG_MISSING = 'Audio, video and WebP conversions need FFmpeg, which isn\'t set up. The user can get it in Settings, Show advanced settings, Engines, Engine downloads, "FFmpeg" (about 100 MB, opt-in).';
+export const OFFICE_MISSING = 'There\'s no LibreOffice (or OpenOffice) on this PC that I can use. The user can install LibreOffice from libreoffice.org, or get it in Settings, Engines, Engine downloads, "LibreOffice" (about 350 MB, opt-in). I find either by myself.';
+export const FFMPEG_MISSING = 'Audio, video and WebP conversions need FFmpeg, which isn\'t set up. The user can get it in Settings, Engines, Engine downloads, "FFmpeg" (about 100 MB, opt-in).';
 
 // ---------------------------------------------------------------- pictures, with what Windows has
 

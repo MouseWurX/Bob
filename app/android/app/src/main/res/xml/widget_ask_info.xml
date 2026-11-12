@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Bob's home-screen widget. It never refreshes by itself (updatePeriodMillis 0): Bob writes to it while he's open. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_about"
+    android:initialLayout="@layout/widget_ask"
+    android:minWidth="250dp"
+    android:minHeight="80dp"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

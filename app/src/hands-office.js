@@ -34,7 +34,7 @@ function full(p) {
 export function canRead(cfg, p) {
   const f = full(p);
   if (isSensitive(cfg, f)) throw new Error('That file holds keys or passwords, so it stays off-limits to me.');
-  if (!insideAny([...(cfg.readRoots || []), ...handsRoots(cfg), officeDir(cfg)], f)) throw new Error(`I'm not allowed to open files in ${path.dirname(f)}. You can tick that folder in Settings, Show advanced settings, Hands.`);
+  if (!insideAny([...(cfg.readRoots || []), ...handsRoots(cfg), officeDir(cfg)], f)) throw new Error(`I'm not allowed to open files in ${path.dirname(f)}. You can tick that folder in Settings, Hands.`);
   if (!fs.existsSync(f)) throw new Error(`There's no file at ${f}.`);
   if (fs.statSync(f).isDirectory()) throw new Error(`${f} is a folder. Give me a file.`);
   return f;
@@ -47,7 +47,7 @@ export function canWrite(cfg, p) {
   if (cfg.settingsFile && path.resolve(cfg.settingsFile) === f) throw new Error("That's my own settings file, which I can't change.");
   if (insideAny([...readOnlyRoots(cfg), appDir, cfg.dataDir].filter(Boolean), f)) throw new Error(`${f} is read-only for me.`);
   const roots = [...handsRoots(cfg), officeDir(cfg)];
-  if (!insideAny(roots, f)) throw new Error(`I can only save in: ${roots.join('; ')}. You can tick more folders in Settings, Show advanced settings, Hands.`);
+  if (!insideAny(roots, f)) throw new Error(`I can only save in: ${roots.join('; ')}. You can tick more folders in Settings, Hands.`);
   return f;
 }
 
@@ -193,9 +193,9 @@ export function officeTools(brain, { env = process.env } = {}) {
   const t = {};
 
   t.convert_file = {
-    schema: fn('convert_file', 'Convert files to another kind: Word/Excel/PowerPoint/OpenDocument to and from each other or to PDF (with LibreOffice), pictures (png, jpg, webp, gif, bmp, tiff, or a PDF), sound (mp3, wav, ogg, flac, m4a) and video (mp4, webm, mkv, mov, gif, or just its sound). The original is never changed; the new file goes next to it (or in folder). {{USER}} sees every file on a card first.', {
+    schema: fn('convert_file', 'Convert files: documents to each other or to PDF, and pictures, sound and video to other types (or a video to just its sound). The new file goes next to the original.', {
       paths: list('Full paths of the files to convert.'),
-      to: str('What to turn them into: the new ending, like pdf, docx, xlsx, png, mp3, mp4.'),
+      to: str('The new ending, like pdf, docx, png, mp3, mp4.'),
       folder: str('Optional: the folder to save the new files in.'),
       width: { type: 'number', description: 'Optional, pictures and video: the largest width in pixels.' },
       start: str('Optional, sound and video: start at this time, like 1:30.'),
@@ -256,12 +256,12 @@ export function officeTools(brain, { env = process.env } = {}) {
   };
 
   t.office_make = {
-    schema: fn('office_make', 'Make a new Word/Writer document, Excel/Calc spreadsheet or PowerPoint/Impress presentation (or save it straight to PDF). Leave path out to save it in your own Documents folder.', {
+    schema: fn('office_make', 'Make a new document, spreadsheet, presentation or PDF. No path = your Documents folder.', {
       kind: str('writer, calc or impress', { enum: ['writer', 'calc', 'impress'] }),
-      path: str('Optional: full path of the new file, ending in .docx, .odt, .xlsx, .ods, .pptx, .odp or .pdf. Never overwrites.'),
+      path: str('Optional: full path ending in .docx, .odt, .xlsx, .ods, .pptx, .odp or .pdf. Never overwrites.'),
       name: str('Optional, when there is no path: a short file name.'),
-      text: str('writer: the text, in simple Markdown: # headings, - bullets, | tables |, **bold**, ---page--- for a new page.'),
-      sheets: { type: 'array', description: 'calc: the sheets.', items: { type: 'object', properties: { name: { type: 'string' }, rows: { type: 'array', description: 'Rows of cells; the first row is the header. A cell starting with = is a formula, like =SUM(B2:B9).', items: { type: 'array', items: {} } } } } },
+      text: str('writer: simple Markdown: # headings, - bullets, | tables |, **bold**, ---page--- for a new page.'),
+      sheets: { type: 'array', description: 'calc: the sheets.', items: { type: 'object', properties: { name: { type: 'string' }, rows: { type: 'array', description: 'Rows; the first is the header. A cell starting with = is a formula.', items: { type: 'array', items: {} } } } } },
       slides: { type: 'array', description: 'impress: the slides.', items: { type: 'object', properties: { title: { type: 'string' }, bullets: { type: 'array', items: { type: 'string' } }, notes: { type: 'string', description: 'Speaker notes.' } } } }
     }, ['kind']),
     approvalGroup: 'office',
@@ -288,7 +288,7 @@ export function officeTools(brain, { env = process.env } = {}) {
   };
 
   t.office_edit = {
-    schema: fn('office_edit', 'Change a Word/Excel/PowerPoint/OpenDocument file. Text documents: replace, append. Spreadsheets: replace, set_cells, add_rows, add_sheet. Presentations: replace, add_slide, delete_slide. Fill a template by replacing its placeholders. Read it with office_read first. {{USER}} sees the changes on a card first; the original is backed up.', {
+    schema: fn('office_edit', 'Change a document, spreadsheet or presentation, or fill a template (office_read it first). Documents: replace, append. Spreadsheets: also set_cells, add_rows, add_sheet. Presentations: also add_slide, delete_slide. The original is backed up.', {
       path: str('Full path of the file.'),
       changes: { type: 'array', description: 'The changes, in order.', items: { type: 'object', properties: {
         op: { type: 'string', enum: ['replace', 'append', 'set_cells', 'add_rows', 'add_sheet', 'add_slide', 'delete_slide'] },

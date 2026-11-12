@@ -109,7 +109,7 @@ export function chatReadout(msgs, scrub, max = CHAT_MESSAGES) {
 
 // Everything the bundle knows, without a brain. Each lookup is separate and a failed one is written as such.
 export async function gatherFacts(cfg, { brain, shop, checkEngine, speedHistory, capabilities } = {}) {
-  const facts = { bob: { version: VERSION.label, build: VERSION.build, engine: cfg.engine === 'ollama' ? 'Ollama' : "Bob's own (llama.cpp)", agentDir: cfg.agentDir, innDir: cfg.innDir, appDir: cfg.appDir || '', port: cfg.port, electron: Boolean(globalThis.bobWindow), at: new Date().toISOString() } };
+  const facts = { bob: { version: VERSION.label, build: VERSION.build, engine: cfg.engine === 'ollama' ? 'Ollama' : "Brain Engine, Bob's own", agentDir: cfg.agentDir, innDir: cfg.innDir, appDir: cfg.appDir || '', port: cfg.port, electron: Boolean(globalThis.bobWindow), at: new Date().toISOString() } };
   facts.platform = { os: process.platform, release: os.release(), arch: process.arch, node: process.versions.node, electron: process.versions.electron || null, ramGB: Math.round(os.totalmem() / 1024 ** 3), freeRamGB: Math.round(os.freemem() / 1024 ** 3 * 10) / 10, cpus: os.cpus().length, cpu: os.cpus()[0]?.model || '' };
   const tryGet = async (name, fn) => { try { facts[name] = await fn(); } catch (e) { facts[name] = { failed: e.message }; } };
   await tryGet('hardware', () => shop?.hardware ? shop.hardware() : null);
@@ -216,6 +216,7 @@ ${note?.text ? `Written by Bob's own brain (${note.model}) when the bundle was s
 - bob/logbook.md: the last ${LOG_LINES} lines of Bob's logbook
 - bob/settings.json: the owner's settings, with every passcode, key and token removed
 - bob/facts.json: everything above as data (hardware, engines, brains, queue, capabilities, last speed tests)
+- bob/loop-stats.json (when there is one): jobs, steps, retries, corrections, time and failed tools, per day and per Bob version; each logbook line of one job ends with the same "| turn" id
 - chats/: the last ${chats.length} chat${chats.length === 1 ? '' : 's'} (${CHAT_MESSAGES} messages each)${chats.length ? `: ${chats.join(', ')}` : ''}
 
 Scrubbed before saving: the owner's name and user name, the home folder, the machine name, passcodes, API keys, bot tokens and Tailscale addresses. If something personal slipped through, it is a bug: please report it at ${REPO}/issues.
@@ -255,6 +256,8 @@ export async function buildBundle(cfg, deps = {}) {
     { name: 'bob/settings.json', text: JSON.stringify(settings, null, 2) },
     { name: 'bob/facts.json', text: scrub(JSON.stringify(scrubObject(facts, scrub), null, 2)) },
     ...chats,
+    // Items 246 and 250 (turn-log.js): the loop's numbers per day and per version, numbers and tool names only.
+    ...(() => { try { return [{ name: 'bob/loop-stats.json', text: fs.readFileSync(path.join(cfg.dataDir || '', 'loop-stats.json'), 'utf8') }]; } catch { return []; } })(),
     // 1.5.133: the engine's whole output from the last load that fell over (main and second brain), when there is one.
     ...['', '-beside'].map((tag) => { try { return { name: `bob/llama-server${tag}-load-failed.txt`, text: scrub(tail(fs.readFileSync(path.join(cfg.dataDir || '', `llama-server${tag}-load-failed.txt`), 'utf8'), 2000)) }; } catch { return null; } }).filter(Boolean)
   ];

@@ -1,7 +1,7 @@
 // The Hands part of Bob's API. Changing settings, recipes and Undo only work on the PC itself; Stop works from
 // anywhere Bob's window is open (stopping is always allowed).
 //   GET  /api/hands            settings, the list of Hands, folders, recipes, recent file jobs and runs, what's running
-//   POST /api/hands/settings   { enabled?, free?, limits: { <limit>: bool }?, files: { on }?, run: { on }?, folders?, timeoutMin? }
+//   POST /api/hands/settings   { enabled?, free?, limits: { <limit>: bool }?, files: { on }?, run: { on }?, folders?, timeoutMin?, sortRules? }
 //                              free = "Let Bob work without asking"; limits = the hard limits (hands-settings.js LIMITS)
 //   POST /api/hands/stop       { runId }  stop one running command
 //   POST /api/hands/stop-all   stop everything a Hand is doing, deny waiting Hand cards, all Hands off
@@ -18,6 +18,8 @@
 //   POST /api/hands/sandbox    check again that the sandbox for Bob's own tools holds on this PC
 //   POST /api/hands/mcp        connected apps (src/mcp.js): { add: { name, cmd, args, cwd } | { name, url } } | { paste: text }
 //                              | { id, on } | { id, remove: true } | { id, check: true }  (new apps come in switched off)
+//   POST /api/hands/packs      tool packs from other people (src/toolpacks.js): { add: path of a folder or .zip } (comes in
+//                              switched off) | { id, on } | { id, remove: true } | { id, tool, code: true }
 //   POST /api/hands/browser    { forget: true } clears what Bob's own browser window knows (its cookies, sign-ins, cache)
 //                              | { eyesCheck: bool } "Bob checks his work with his eyes" (src/eyes.js)
 //   POST /api/hands/quick      the two chat-page buttons (public/quick-switches.js): { free: bool } = Autonomy ("Let Bob
@@ -32,6 +34,7 @@ import { selfTest } from './hands-selftest.js';
 import { pwnedRange } from './security-web.js';
 import { setToolOn, deleteTool, toolCode, sandboxHolds } from './selftools.js';
 import { addServer, importSetup, setServerOn, removeServer, checkServer } from './mcp.js';
+import { addPack, setPackOn, removePack, packCode } from './toolpacks.js';
 import { track } from './hands.js';
 import { VERSION } from './config.js';
 const isDir = (f) => { try { return fs.statSync(f).isDirectory(); } catch { return false; } };
@@ -52,6 +55,7 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
       const next = { ...cur };
       if ('enabled' in b) next.enabled = b.enabled === true;
       if ('free' in b) next.free = b.free === true;
+      if ('today' in b) next.today = b.today === true; // item 12
       const limitNotes = [];
       if (b.limits && typeof b.limits === 'object') {
         next.limits = { ...cur.limits };
@@ -64,6 +68,7 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
       if (Array.isArray(b.folders)) next.folders = b.folders.filter((f) => typeof f === 'string' && isDir(f)); // only folders that exist
       if (Array.isArray(b.readOnlyFolders)) next.readOnlyFolders = b.readOnlyFolders.filter((f) => typeof f === 'string' && isDir(f)); // 1.5.117
       if ('timeoutMin' in b) next.timeoutMin = b.timeoutMin;
+      if (Array.isArray(b.sortRules)) next.sortRules = b.sortRules.length ? b.sortRules : null; // Sort and rename rules; [] = back to the defaults
       if ('eyesCheck' in b) next.eyesCheck = b.eyesCheck !== false;
       const clean = cleanHands(next);
       brain.saveHands(clean);
@@ -103,6 +108,23 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
         const r = await checkServer(cfg, String(b.id), { log: (k, t) => brain.log(k, t), track, version: VERSION.label });
         brain.log('hands', `connected app ${b.id} checked: ${r.ok ? `${r.tools} tools` : r.why}`);
         note = r.ok ? `Reached it: ${r.tools} tool${r.tools === 1 ? '' : 's'}.` : `Couldn't reach it: ${r.why}`;
+      }
+      send(res, 200, { note, ...handsView(cfg) });
+      return true;
+    }
+    if (p === '/api/hands/packs') {
+      let note = '';
+      if (b.id && b.code) { send(res, 200, { id: b.id, tool: b.tool, code: packCode(cfg, String(b.id), String(b.tool || '')) }); return true; }
+      if (typeof b.add === 'string') {
+        try {
+          const r = addPack(cfg, b.add);
+          brain.log('hands', `tool pack ${r.updated ? 'updated' : 'added'} (switched off): ${r.pack.name} ${r.pack.version} by ${r.pack.by}`);
+          note = `${r.updated ? 'Updated' : 'Added'} ${r.pack.name}, switched off. Look at what it adds (Show code on each tool), then switch it on.`;
+        } catch (e) { send(res, 200, { note: e.message, problems: e.problems || [], ...handsView(cfg) }); return true; }
+      } else if (b.id && b.remove) { removePack(cfg, String(b.id)); brain.log('hands', `tool pack removed: ${b.id}`); note = 'Removed.'; }
+      else if (b.id && 'on' in b) {
+        try { const pk = await setPackOn(cfg, String(b.id), b.on === true); brain.log('hands', `tool pack ${pk.name} switched ${b.on ? 'on' : 'off'}`); note = b.on ? `On. Bob asks before every use of ${pk.name}'s tools.` : 'Off.'; }
+        catch (e) { note = e.message; }
       }
       send(res, 200, { note, ...handsView(cfg) });
       return true;

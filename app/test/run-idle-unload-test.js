@@ -48,7 +48,9 @@ eng.lastUse = t;
 t += 10 * 60_000 + 1000;
 const pid = eng.child.pid;
 const idleSaid = []; eng.log = (k, t) => idleSaid.push(`${k}: ${t}`);
+let toldGone = 0; eng.onIdleGone = () => { toldGone++; };
 check('over 10 minutes idle: unloaded, the graphics card is free', await eng.idleTick() && !alive() && eng.current === null && (await eng.loaded()).length === 0);
+check('1.5.208: the idle unload tells Bob straight away, once (the label and the fNRI cube\'s unload animation hear it)', toldGone === 1);
 check('1.5.133: the unload is logged, with how long it sat unused', idleSaid.some((l) => /^engine: .+: let go after \d+ min unused$/.test(l)), idleSaid.join(' | '));
 await new Promise((r) => setTimeout(r, 300));
 let gone = false; try { process.kill(pid, 0); } catch { gone = true; }
@@ -62,13 +64,14 @@ cfg.ollamaKeepAlive = '5m';
 t += 5 * 60_000 + 1;
 check('the setting applies straight away (5 minutes)', await eng.idleTick() && !alive());
 check('nothing to do when nothing is loaded', !(await eng.idleTick()));
+check('the brain passes an idle unload on to the pages as a brain change', /this\.engine\.onIdleGone = \(\) => this\.broadcast\(\{ type: 'brain' \}\)/.test(fs.readFileSync(path.join(here, '..', 'src', 'brain.js'), 'utf8')));
 check('the check runs every minute and does not keep Bob open on its own', eng.idleTimer && eng.idleTimer.hasRef?.() === false);
 
 // The brain tells the engine when it's busy; the setting is in Advanced, Speed & memory.
 const brain = fs.readFileSync(path.join(here, '..', 'src', 'brain.js'), 'utf8');
 const ui = fs.readFileSync(path.join(here, '..', 'public', 'cellar.js'), 'utf8');
 check('the brain wires isBusy: a running turn or a working queue job', /this\.engine\.isBusy = \(\) => this\.turns\.size > 0 \|\| this\.queue\.some\(\(j\) => j\.state === 'working'\)/.test(brain));
-check('one setting for both engines, in Settings, Show advanced settings, Speed & memory: 1, 2, 2½, 5, 10, 15, 30 minutes, 1 hour, no Never (the chat-page switch covers that)', /data-set="keepAlive"/.test(ui) && /\['1m', '1 minute'\], \['2m', '2 minutes'\], \['150s', '2½ minutes'\], \['5m', '5 minutes'\], \['10m', '10 minutes'\], \['15m', '15 minutes'\], \['30m', '30 minutes'\], \['1h', '1 hour'\]\]/.test(ui) && !/Never \(keep/.test(ui) && /ollamaKeepAlive: el\.value/.test(ui));
+check('one setting for both engines, in Settings, Speed & memory: 1, 2, 2½, 5, 10, 15, 30 minutes, 1 hour, no Never (the chat-page switch covers that)', /data-set="keepAlive"/.test(ui) && /\['1m', '1 minute'\], \['2m', '2 minutes'\], \['150s', '2½ minutes'\], \['5m', '5 minutes'\], \['10m', '10 minutes'\], \['15m', '15 minutes'\], \['30m', '30 minutes'\], \['1h', '1 hour'\]\]/.test(ui) && !/Never \(keep/.test(ui) && /ollamaKeepAlive: el\.value/.test(ui));
 check('2½ minutes ("150s") works for Bob\'s own engine too', keepAliveMs({ ollamaKeepAlive: '150s' }) === 150000 && keepAliveMs({ ollamaKeepAlive: '1m' }) === 60000);
 
 clearInterval(eng.idleTimer);

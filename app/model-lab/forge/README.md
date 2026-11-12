@@ -110,7 +110,7 @@ deletes the pod, and the loss is the time spent (a few dollars).
 ## Build 17 (8 November 2026, untested on a card)
 
 - **Train the teacher.** `plan.train_teacher` ({name, nickname, hours, experts, epochs}) trains the full teacher on every lesson by plain next-word training (heal.py with alpha 0 and no odds file) before anything else, keeps the result on the volume as `bobs/<name>/model` plus its adapter, exports its GGUF files and brain cards, and makes it the teacher for the odds and the cuts. The lesson-set key includes the trained teacher's adapter hash, so stock-teacher scores and trained-teacher scores never mix. A later plan names him with `teacher_model: "bobs/35Bob/model"`.
-- **Hugging Face from the card, by the owner's rules.** `plan.publish` ({user, private, odds, models}). Every GGUF and card is kept on the volume (`bobs/<name>/gguf/`); `download_quants` names which quant files come down to the PC (the rest stay on the drive and the watcher skips them). `odds: true` uploads the teacher scores as a private dataset (`<user>/bob-odds/<key>/`). A Bob is uploaded only when the owner has tested him at home and listed his name in `models` (then the next run uploads him from the volume with a generated model card, private). The token is read from `forge/hf-token.txt` (one line, gitignored) or `HF_TOKEN` on the PC and sent to the pod as `in/hf-token`; it is never in a plan, a log or the repo. `export.py --pending` holds the file list back until the files are marked.
+- **Hugging Face from the card, by the owner's rules.** `plan.publish` ({user, private, odds, models}). Every GGUF and card is kept on the volume (`bobs/<name>/gguf/`); `download_quants` names which quant files come down to the PC (the rest stay on the drive and the watcher skips them). `odds: true` uploads the teacher scores as a private dataset (`<user>/bob-odds/<key>/`). A Bob is uploaded only when the owner has tested him at home and listed his name in `models` (then the next run uploads him from the volume with a generated model card, private). The token is read from `HF_TOKEN`, or `forge/hf-token.txt` (one line, gitignored), which the Forge locks on first read into `forge/hf-token.locked` (Windows DPAPI, this account only; gitignored), and sent to the pod as `in/hf-token`; it is never in a plan, a log or the repo. `export.py --pending` holds the file list back until the files are marked.
 
 ## Build 18 (8 November 2026, untested on a card)
 
@@ -123,9 +123,29 @@ deletes the pod, and the loss is the time spent (a few dollars).
 
 A teacher that only writes lessons can be any GGUF model on Hugging Face (`plan.teacher_gguf: {repo, file, slots, ctx, extra}`): the pod builds its CUDA llama-server, downloads the file (a split file loads from its first part), serves it on port 8001, and the PC's lesson writer talks to it exactly as it talks to vLLM. `plan.lessons_only: true` ends the run once the lessons are on the PC: nothing is scored, cut or healed, and the run is held to its own caps. The lesson writer takes `--persona <file>` (a `persona` key on a `write_lessons` set), appended after Bob's own system prompt. Two Forge windows can run side by side: each run keeps its own pod record (`out/forge/pod-token-<run>.json`), the pod carries the run's name, and `--kill <podId>` deletes one pod instead of every Forge pod. A cold pod with no network volume gets a longer door wait (`plan.door_minutes`, default 25 without a volume) since it must pull its image before it can answer.
 
-## FNRI on a rented card
+## Build 20 (11 November 2026, untested on a card): REAP scoring, off unless the plan asks
 
-The Lab's FNRI scan (Playground) can also be made on a rented card, for a brain too big for the home card. Nothing in the app rents a card for this yet; these are the pieces.
+Every Bob so far was cut by counting how often the router picks each expert. REAP (Router-weighted Expert Activation Pruning, arXiv 2510.13999) also weighs how hard an expert pushes: the router's weight for it times the size of what it wrote.
+
+- `plan.score`: `"counts"` (default, nothing changes), `"reap"` (the paper's score: that product averaged over the expert's picks) or `"mass"` (the same product summed, so how often and how hard both count).
+- `pod/reap.py`: one scorer shared by `count.py` and `countskills.py`. With `--reap` (run.sh adds it when `score` is not `counts`) each count file also carries a `mass` table beside `layers`; the counts are unchanged. A count file made before this has no `mass`, and is counted again when a scored run needs it. The scorer runs each picked expert a second time to measure its output, about twice the expert work of the counting pass. If the model's expert weights are not laid out as one tensor per layer it says so once in the log, switches itself off and the counts carry on.
+- `pod/keep.py --by counts|reap|mass`: what the keep list is built from. The report's kept shares stay shares of the routing counts whichever is chosen, so a REAP list and a counted list can be read side by side. `--by reap` ranks experts but does not size the cut, so the rung needs `keep_n`; `--by mass` works with the coverage rule's own size. The keep file records `by`.
+- `pod/prune.py --by`: the same choice for a plain `keep: N` rung. run.sh only passes the score when that rung's counts file has a `mass` table (one counted on the PC does not) and otherwise cuts by counts.
+- `keep.py` and `countskills.py`, which run.sh has called since build 14, are now in this folder; they were missing from the repository.
+- Checked without a card: `keep.py` on made-up count files (each `--by`, the refusals), and the scorer against a brute-force sum on a tiny made-up model. The hook on the real model's expert module is untested until a run.
+
+## Build 21 (11 November 2026, untested on a card): fold instead of drop
+
+- A rung (or the plan) with `"fold": true` runs `pod/fold.py` straight after the cut and before the heal. It goes back to the uncut model for the experts the cut dropped and blends each into the kept expert most like it, in place in the cut model: the target is the kept expert with the most alike router row (cosine); the neurons are lined up first (greedy, the most alike pair first, on a sample of 128 in and 128 out weights each); then a weighted average, each expert weighing what it's used. A coverage rung weighs by its skill counts (every skill the same); any other rung by its counts file; with none, the kept expert weighs half. The router row is blended the same way.
+- The same rule as the Lab's `src/lab-fold.js`, which folds a full-size GGUF at home for free. The Lab's goal **Fold instead of drop** and template **Merge experts** print a rung with `fold: true`.
+- A cut that was folded is marked in its `config.json` (`bob.folded`). A restart reuses a finished cut only when that mark matches what the rung asks for, so a half-folded cut is made again.
+- Needs the experts as one tensor per layer; otherwise it stops the rung and says so (it does not quietly fall back to a plain cut, since the plan asked for a fold).
+- Checked without a card: `prune.py` then `fold.py` on a tiny made-up model (a shuffled copy folded back in leaves the expert as it was; use-weighted blend; router rows; other tensors and the number type untouched).
+- Unknown until it is tried: whether a folded and healed brain beats a dropped and healed one. The first use should make one rung both ways and compare.
+
+## fNRI on a rented card
+
+The Lab's fNRI scan (Playground) can also be made on a rented card, for a brain too big for the home card. Nothing in the app rents a card for this yet; these are the pieces.
 
 - `node model-lab/forge/aifeui-bundle.mjs --brain hf:<repo>:<file.gguf> --out <folder>` packs one folder: the questions (`aifeui-plan.json`), the card scripts (`pod/`), Brain Engine as patches (`engine-patches/`) and Bob's viewer (`viewer/`). It rents and uploads nothing.
 - On the card, with that folder as `/workspace/in`: `bash /workspace/in/pod/aifeui.sh`.
@@ -145,3 +165,11 @@ The Lab's FNRI scan (Playground) can also be made on a rented card, for a brain 
 **FNRI scans on a rebuild run.** `plan.scan` ({from, brains, stock, keep}) adds the Lab's brain scans to the end of a `plan.rebuild` run: the PC sends the folder `from` (one sub-folder per brain with the scan tool's `pod/aifeui.sh`, its plan, the engine patches and the viewer) as `in/scan.tgz`; the pod makes the stock brain's Q4_K_M from the teacher (`stock/<name>-Q4_K_M.gguf`, kept on the drive), runs each brain in turn (the first builds the traced engine on the drive, the rest reuse it; a failed brain is logged and the next runs), fetches each `keep` list beside its recording, and lists `out/fnri/` in `files.json`, which forge.mjs brings home to `out/fnri/<run>/` and, with `zip`, bundles into one zip at that path. `plans/publish-bill.json` is the example.
 
 **The pod deletes itself at the end.** Bill's run (10 November) reached "done" while the PC's Forge window had died, and the pod billed two idle hours waiting for a delete that never came. Now every run type ends with `run_done`: the pod marks the status, waits for the PC's `in/pc-finished` (forge.mjs sends it before its own delete) or `plan.done_grace_minutes` (default 120, room for the downloads on a home line), then deletes itself. The time-cap watchdog stands behind both.
+
+**Making the scan bundle.** `fnri-bundle/` is made fresh before a scan run and is not kept in the repo (an old copy would
+carry old engine patches and an old viewer). From `app/`:
+
+    node model-lab/forge/aifeui-bundle.mjs --brain /workspace/stock/Qwen3.6-35B-A3B-Q4_K_M.gguf --name "Qwen 3.6 35B-A3B" --per 6 --out model-lab/forge/fnri-bundle/qwen
+    node model-lab/forge/aifeui-bundle.mjs --brain hf:MouseWurX/28Bob-Riker:28Bob-Q4_K_M.gguf --name Riker --per 6 --out model-lab/forge/fnri-bundle/riker
+    node model-lab/forge/aifeui-bundle.mjs --brain /workspace/bobs/35Bob/gguf/35Bob-Q4_K_M.gguf --name Bobert --per 6 --out model-lab/forge/fnri-bundle/bobert
+    node model-lab/forge/aifeui-bundle.mjs --brain /workspace/bobs/20Bob/gguf/20Bob-Q4_K_M.gguf --name Bill --per 6 --out model-lab/forge/fnri-bundle/bill

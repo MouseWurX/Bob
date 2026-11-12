@@ -27,7 +27,7 @@ const read = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8')
   check('a new request gets its own card', events.filter((e) => e.type === 'offer-setup').length === 2);
 }
 const brainSrc = read('src/brain.js');
-check('a tool that offered a card is not checked or tried again', /ctx\.offeredNow = false;\s*\n\s*try \{ text = String\(await tool\.run\(args, ctx\)\); \}/.test(brainSrc) && /let v = ctx\.offeredNow \? \{ ok: true \} : await this\.checkTool\(name, args, text, ctx\);/.test(brainSrc));
+check('a tool that offered a card is not checked or tried again', /ctx\.offeredNow = false;\s*\n\s*text = await this\.runLimited\(name, args, ctx, tool\);/.test(brainSrc) && /let v = ctx\.offeredNow \? \{ ok: true \} : await this\.checkTool\(name, args, text, ctx\);/.test(brainSrc));
 
 // 2. The ⏳ line for a chat queued behind a picture, clip, song or sound.
 check('queued line says what Bob is on and that nothing is needed', queuedLine('Painting 12/30') === "⏳ I'm still on the last job (Painting 12/30). Nothing for you to do; I'll answer this as soon as it's done. If it can't wait, stop that job in Tasks.");

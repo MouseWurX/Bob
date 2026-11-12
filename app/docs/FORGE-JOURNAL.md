@@ -56,13 +56,13 @@ The order agreed on paper: finish v3, benchmark it at home, then the by-the-word
 ### 4 November: step 0, free, on the PC
 
 - **Experts-per-word test on the full model** ([report](forge-runs/benchmarks/experts-per-word-full-qwen-2026-11-04.md)): with 8, 6 or 4 experts per word the tool quiz, facts and code held steady (45/97, 20/20, 6/6); 3 hurt (26/97, 4/6); 2 collapsed (1/97, 0/6). Speed 82.7, 92.1, 102.5 tok/s. So cutting looked promising, and Bob's "experts per word" setting gets the range 4 to 8.
-- **Lesson writing** on the PC ran at about 60 s a lesson (79 overnight). The same job on a rented H100 served by vLLM wrote 3,753 lessons in 1.03 h, about 1.5 a second with 24 in parallel ([log](forge-runs/2026-11-04-lessons-night/lesson-writer.log)). 3,832 lessons in all, 88 ideas skipped for running out of room.
+- **Lesson writing** on the PC ran at about 60 s a lesson (79 overnight). The same job on a rented H100 served by vLLM wrote 3,753 lessons in 1.03 h, about 1.5 a second with 24 in parallel. 3,832 lessons in all, 88 ideas skipped for running out of room.
 - **Expert counts** (llama.cpp's importance counter, on the PC): the work is spread wide. Keeping the busiest 48 experts per layer covers 51.5% of picks (32: 39.6%, 16: 24.3%, 8: 14.4%); 90, 95 and 99% coverage need 155, 187 and 227 of 256. Coding's busiest 48 overlap the general top 48 by 80%, deep thinking's by 73%: specialists are worth it at small sizes.
 - **Decision**: build the Forge (Node on the PC, Python on the pod) and rent by the hour; nothing is rented until the owner types yes.
 
 ### 4 to 5 November, night: three failed attempts
 
-Each one a few minutes of card time and one lesson ([logs](forge-runs/2026-11-05-failed-attempts/)):
+Each one a few minutes of card time and one lesson:
 
 1. The machine image had no `git`, so the tool download broke. Fix: fetch with Python's own HTTP, pin llama.cpp to a tag.
 2. The prebuilt `llama-quantize` would not run on the image (archive ownership errors, a too-strict exit-code check). Fix: build the llama tools in the background, never fatally; export BF16 only if they fail.
@@ -93,25 +93,25 @@ Each one a few minutes of card time and one lesson ([logs](forge-runs/2026-11-05
 
 ### 5 to 6 November: line B, v2 (Riker + Bill), one H200 141 GB, with the drive
 
-[Watcher log](forge-runs/2026-11-05-lineB-v2/forge-watcher.log), [Riker v2 report](forge-runs/2026-11-05-lineB-v2/24Bob-Riker-v2-heal-report.json), [Bill v2 report](forge-runs/2026-11-05-lineB-v2/18Bob-Bill-v2-heal-report.json).
+[Riker v2 report](forge-runs/2026-11-05-lineB-v2/24Bob-Riker-v2-heal-report.json), [Bill v2 report](forge-runs/2026-11-05-lineB-v2/18Bob-Bill-v2-heal-report.json).
 
 - The full model, served on the card, wrote 717 coding and software-engineering lessons in 16 min (16 in parallel; the idea list ran out at 751).
 - Teacher pass: 78 min; 4,315 train and 234 held-out pieces, 24.9M tokens; max length 16,384, nothing trimmed.
 - 24Bob Riker v2: full pass, 524 of 524 steps, 4.8 h, 35.5M tokens seen. Lessons ce 0.389 to 0.356, kd 0.073 to 0.060; general 2.245 to 2.220. Coverage of the keep list: 128 experts would keep 89% of its routing, 80: 69%, 48: 50%, 32: 38%.
 - 18Bob Bill v2 (cut from healed Riker v2): 524 steps, 4.5 h. Lessons ce 0.586 to 0.487, kd 0.287 to 0.186; general 2.319 to 2.300. Adapters (1.5 GB and 1.1 GB) came home for the first time.
-- **Benchmarks** ([tool score](forge-runs/benchmarks/tool-score-riker-v2-bill-v2-2026-11-06.md), [Riker v2 experts test](forge-runs/benchmarks/experts-test-24Bob-Riker-v2-2026-11-06.md), [Bill v2](forge-runs/benchmarks/experts-test-18Bob-Bill-v2-2026-11-06.md), [coding race](forge-runs/benchmarks/coding-race-riker-v2-2026-11-05.log)): tool score Riker v2 206/314 (66%), Bill v2 208/314 (66%); experts test Riker v2 48/97, 20/20, 3/6, Bill v2 45/97, 11/20, 0/6; coding race Riker v2 6/13 thinking and 6/13 not, no better than v1.
+- **Benchmarks** ([tool score](forge-runs/benchmarks/tool-score-riker-v2-bill-v2-2026-11-06.md), [Riker v2 experts test](forge-runs/benchmarks/experts-test-24Bob-Riker-v2-2026-11-06.md), [Bill v2](forge-runs/benchmarks/experts-test-18Bob-Bill-v2-2026-11-06.md); the coding race has no published file): tool score Riker v2 206/314 (66%), Bill v2 208/314 (66%); experts test Riker v2 48/97, 20/20, 3/6, Bill v2 45/97, 11/20, 0/6; coding race Riker v2 6/13 thinking and 6/13 not, no better than v1.
 - **What went wrong, found the same day**: 37% of the coding lessons taught the model to hand code off to a specialist tool rather than write it, so a full pass of them could not lift coding; and the keep list had been the busiest-overall experts, protecting no skill in particular. Both are written up on [Bob's own models](BOBS-OWN-MODELS.md#what-went-wrong-with-the-first-cut). Decision: re-cut Riker and Bill with a coverage rule and clean lessons (v3), measure what every size keeps first.
 
 ### 6 November: the counts-only run, failed once, then done
 
 - First attempt ([logs](forge-runs/2026-11-06-counts-v3-failed-attempt/)): the lesson writer gave the new skill jobs a weight of zero, so they wrote nothing, and the Forge stopped the card to limit the loss. 2,329 improved coding lessons from it were kept after cleaning (hand-off answers removed).
-- Second run ([watcher log](forge-runs/2026-11-06-counts-v3/forge-watcher.log)): 2,898 lessons across 14 skill sets written on the card, then every one of 24 skills counted on the full model in one load. Result: [ladder.md](forge-runs/2026-11-06-counts-v3/ladder.md), the kept share per skill at every size, average layer and worst layer.
+- Second run: 2,898 lessons across 14 skill sets written on the card, then every one of 24 skills counted on the full model in one load. Result: [ladder.md](forge-runs/2026-11-06-counts-v3/ladder.md), the kept share per skill at every size, average layer and worst layer.
 - **Findings**: 23 of the 24 skills move together (at 208 experts: 97 to 98% average, 92 to 93% in the worst layer; at 144: 87 to 90% / 75 to 77%; at 96: 74 to 77% / 58 to 61%). General knowledge, counted on the outside text, breaks first (208: 90/84; 144: 66/56; 96: 48/38). The worst layer is layer 2 for every skill, an early layer with spread-out routing. The v1 keep lists were within a point of the new rule at the same size, so the v2 coding gap was the lessons, not the cut.
 - **Decision**: Riker v3 at 208 experts (28Bob), Bill v3 at 144 (20Bob), with the keep lists built on the PC from these counts; cover 95%, 99% for tools, coding and formats.
 
 ### 6 to 7 November: line B, v3, first half (28Bob Riker made, 20Bob Bill not), one H200
 
-[Watcher log](forge-runs/2026-11-06-lineB-v3-riker/forge-watcher.log), [pod log](forge-runs/2026-11-06-lineB-v3-riker/pod-log.txt), [phases](forge-runs/2026-11-06-lineB-v3-riker/pod-status.json), [Riker v3 report](forge-runs/2026-11-06-lineB-v3-riker/28Bob-heal-report.json).
+[Pod log](forge-runs/2026-11-06-lineB-v3-riker/pod-log.txt), [phases](forge-runs/2026-11-06-lineB-v3-riker/pod-status.json), [Riker v3 report](forge-runs/2026-11-06-lineB-v3-riker/28Bob-heal-report.json).
 
 - No H200 was free in the drive's data centre for 25 minutes, so the Forge, as it was then written, took one in another data centre **without the drive**. Everything that follows was therefore on the pod's own disk only.
 - Lessons merged: 5,227 extra lessons from 15 sets on top of the base set; 3,450 tool sets.
@@ -176,8 +176,8 @@ No card. Work on the lesson set and the Forge, all on paper and on the PC.
 
 | | Count |
 |---|---|
-| Bobs made | 5: Riker v1, Bill v1, Riker v2, Bill v2 (all four retired and deleted 8 Nov), and Riker (28Bob) |
-| Bobs that are the current plan | Riker (28Bob) and Bobert (35Bob), both public on Hugging Face; Bill (20Bob) in the making |
+| Bobs made | 7: Riker v1, Bill v1, Riker v2, Bill v2 (all four retired and deleted 8 Nov), then Riker (28Bob), Bobert (35Bob) and Bill (20Bob) |
+| Bobs that are the current plan | Riker (28Bob), Bobert (35Bob) and Bill (20Bob), all public on Hugging Face; Homer (14Bob) is next |
 | Failed paid attempts | 6 (three on 4 to 5 Nov, one on 6 Nov, two on 9 Nov) plus the stopped Bill step of 6 to 7 Nov; Bobert's weights went up at the third try on 10 Nov |
 | Outside lesson sets dropped for quality | 1 of 5 (GLM-5.1 agent traces, 8 Nov) |
 | Lessons written | about 9,500 across 17 sets (Bob's own); plus 9,059 taken from other teachers' published sets after a quality pass |

@@ -2,6 +2,7 @@
 // Forge's past runs, and a form that writes a Forge plan. Its own module, like the Playground: the Lab page only
 // places it and hands over its events. Nothing here starts a rental.
 import { esc } from './rich.js';
+import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
 import { PATH_GROUPS, BUNDLES, PERSONALITY, TEACH } from './lab-thinking-paths.js'; // 1.5.160
 import { createHomeWays } from './lab-home-ways.js'; // 1.5.164 Mix two brains, Stack layers, Take out the refusal habit: here, free
 import { newSource, sourceRowHtml, sourceOut, sourceEvent } from './lab-source.js'; // 1.5.163 one chooser for where things come from
@@ -21,14 +22,18 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
   const sendForm = () => ({ ...form, brain: { pick: form.brain.pick, source: form.brain.pick === 'source' ? sourceOut(form.brain.source) : null }, lessons: form.lessons.map(sourceOut).filter(Boolean), thinking: { mode: form.thinking.mode, paths: Object.entries(form.thinking.shares).filter(([, v]) => v > 0).map(([name, share]) => ({ name, share })), own: form.thinking.own, ownShare: form.thinking.ownShare, personality: form.thinking.personality } });
   async function recheck() { check = null; saved = ''; if (!fv?.found) return; try { check = await api('/api/lab/forge/plan', { form: sendForm() }); } catch (e) { fmsg = e.message; } }
 
-  const card = (m) => `<li class="forge-card${m.ready ? '' : ' dim'}"><h4 id="forge-m-${m.id}">${esc(m.title)}</h4>
+  const card = (m) => `<li class="forge-card${m.ready ? '' : ' dim'}"><h4 id="forge-m-${m.id}">${nameNow(m.title)}</h4>
     <p class="muted"><span class="forge-where">${esc(WHERE[m.where] || m.where)}</span></p>
     <p>${esc(m.what)}</p>
-    <p class="forge-tips-h"><strong>Best practice</strong></p><ul class="forge-tips">${m.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+    <details class="forge-tips-d"><summary>Best practice</summary><ul class="forge-tips">${m.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></details>
     ${m.ready && m.use === 'make' ? `<button type="button" class="link" data-forgeuse="make" data-method="${m.id}" aria-describedby="forge-m-${m.id}">Use this way</button>`
       : m.ready && m.use === 'home' ? `<button type="button" class="link" data-forgeuse="home" data-method="${m.id}" aria-describedby="forge-m-${m.id}" aria-expanded="${hw.isOpen() === m.id}">${hw.isOpen() === m.id ? 'Close it' : 'Use this way'}</button>`
       : m.use === 'forge' ? `<button type="button" class="link" data-forgeuse="form" aria-describedby="forge-m-${m.id}">Write a plan for it</button><p class="muted">${esc(m.why || '')}</p>`
       : `<p class="muted">${esc(m.why || '')}</p>`}</li>`;
+
+  // Nov 11: Make it smaller and Cut experts are Make a brain jobs, so they're one line here that opens that page, not
+  // cards repeating it.
+  const makeLine = () => { const ms = fv.methods.filter((m) => m.ready && m.use === 'make'); return ms.length ? `<p class="forge-make">${ms.map((m) => `<button type="button" class="link" data-forgeuse="make" data-method="${m.id}">${nameNow(m.title)}</button>`).join(' · ')} <span class="muted">are on Make a brain.</span></p>` : ''; };
 
   function runsHtml() {
     if (!fv.found) return '<p class="muted">The Forge isn\'t next to this copy of Bob. It lives in the model-lab folder of Bob\'s source; run Bob from there and its runs show here.</p>';
@@ -149,7 +154,7 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
       ${lessonsHtml()}
       ${thinkingHtml()}
       ${proOnly(`<fieldset><legend>Teaching back</legend>
-        ${[['lora', 'Light (recommended)', 'Teaches small add-ons to every layer and the experts.'], ['full', 'Full', 'Teaches every weight. Small brains only.'], ['frozen', 'Experts left alone', 'Only the rest of the brain is taught.']].map(([v, l, h]) => `<label class="lab-opt"><input type="radio" name="forge-experts" value="${v}" ${form.heal.experts === v ? 'checked' : ''}> <span><strong>${esc(l)}</strong><br><span class="muted">${esc(h)}</span></span></label>`).join('')}
+        ${[['lora', 'Light (recommended)', 'Teaches small add-ons to every layer and the experts.'], ['full', 'Full', 'Teaches every weight. Small brains only.'], ['frozen', 'Experts left alone', 'Only the rest of the brain is taught.']].map(([v, l, h]) => `<label class="lab-opt"><input type="radio" name="forge-experts" value="${v}" ${form.heal.experts === v ? 'checked' : ''}> <span><strong>${nameNow(l)}</strong><br><span class="muted">${esc(h)}</span></span></label>`).join('')}
         ${num('forge-epochs', 'Passes over the lessons', form.heal.epochs, 0.25, 3, 0.25, 'One full pass is the rule. Bob sets each brain\'s time limit a third above the estimate, so a pass is never cut short.')}
       </fieldset>`)}
       <fieldset><legend>Caps</legend>
@@ -185,8 +190,8 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
   function html(extra = '') { // extra: the Give it eyes / Give it ears card (public/lab-senses.js), placed after the ways
     if (!fv) { if (!loading) load().then(() => document.dispatchEvent(new CustomEvent('lab-forge-ready'))); return `<div id="lab-page-forge" role="tabpanel" aria-labelledby="lab-tab-forge"><p class="muted">${esc(fmsg || 'Loading…')}</p></div>`; }
     return `<div id="lab-page-forge" role="tabpanel" aria-labelledby="lab-tab-forge">
-      <p class="muted">The Forge makes brains on a rented graphics card, from a plan. Here are all the ways to make a new brain, here or on a rented card, each with what works best. Then your Forge runs so far, and a form that writes a plan for the next one.</p>
-      <section aria-labelledby="forge-ways-h"><h3 id="forge-ways-h">Ways to make a brain</h3><ul class="forge-cards">${fv.methods.map(card).join('')}</ul>
+      <p class="muted">Every way to make a new brain, here or on a rented card. Below them: your Forge runs, and the form that writes the next plan.</p>
+      <section aria-labelledby="forge-ways-h"><h3 id="forge-ways-h">Ways to make a brain</h3>${makeLine()}<ul class="forge-cards">${fv.methods.filter((m) => !(m.ready && m.use === 'make')).map(card).join('')}</ul>
         ${hw.isOpen() || (view()?.runs || []).some((x) => ['mix', 'stack', 'refusals', 'refusals-try'].includes(x.kind)) ? runs() : ''}${hw.html()}
         <details><summary>Ideas left out, and why</summary><dl class="forge-left">${fv.leftOut.map(([t, w]) => `<dt>${esc(t)}</dt><dd>${esc(w)}</dd>`).join('')}</dl></details></section>
       ${extra}

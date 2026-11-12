@@ -1,4 +1,5 @@
-// Hands settings (no imports, so config.js can use it). Hands are the things Bob can do on the PC beyond chatting:
+import { cleanSortRules } from './sort-names.js'; // no imports of its own, so config.js can still use this file
+// Hands settings (no other imports, so config.js can use it). Hands are the things Bob can do on the PC beyond chatting:
 // work with files, run commands, schedules, and open and use apps. Every Hand is OFF until the user turns it on,
 // and there is one master switch over all of them. Bob asks before every action unless the user switches on
 // "Let Bob work without asking" (free, off by default). The hard limits (LIMITS) are each on by default and each
@@ -6,6 +7,7 @@
 //
 // platforms (optional): the computers a Hand works on ('win', 'mac', 'linux'). Elsewhere it is hidden and stays off.
 // whatOn (optional): a different description for one computer, e.g. { mac: '...' }.
+// shares (optional): another Hand's tools this one needs too (Sort and rename uses Files' Undo).
 // toolsOnlyOn (optional): tools inside a Hand that only exist on some computers, e.g. { defender_scan: ['win'] }.
 //
 // To add a Hand, add an entry to HANDS. Its switch, its line in Settings and its tool filtering all follow from it.
@@ -14,6 +16,12 @@ export const HANDS = {
     label: 'Files',
     what: 'Move, copy and rename files, zip and unzip, and tidy a folder such as Downloads. Only in the folders you tick below. Things he throws away go to the Recycle Bin (unless you switch off the "Recycle Bin only" limit), and every job can be undone.',
     tools: ['file_hands', 'undo_files']
+  },
+  sort: {
+    label: 'Sort and rename',
+    what: 'Sorts and renames big groups of files, such as music, videos or photos, to the naming pattern you set for each kind of file below. He reads song tags and episode numbers, and can send each kind to its own folder (so Downloads can feed your library). Only in the folders ticked below. Every rename is shown first, nothing is overwritten, and the whole job can be undone.',
+    tools: ['sort_files'],
+    shares: ['undo_files'] // Files owns Undo; it stays while this Hand is on too (toolsOff, toolbox groupsFor)
   },
   run: {
     label: 'Run programs and scripts',
@@ -33,7 +41,7 @@ export const HANDS = {
   },
   office: {
     label: 'Office documents and converting',
-    what: 'Converts files (Word, Excel, PowerPoint, PDF, pictures, sound, video), reads office files, and makes or changes documents, spreadsheets and slides. Every file he makes or changes is shown on a card first; he never overwrites and backs up before changing. Documents use LibreOffice (or OpenOffice) and sound and video use FFmpeg, found on your replicant matrix or got in Settings, Show advanced settings, Engines; each runs only while it has a job. He saves only in the folders ticked below, plus his own Documents folder.',
+    what: 'Converts files (Word, Excel, PowerPoint, PDF, pictures, sound, video), reads office files, and makes or changes documents, spreadsheets and slides. Every file he makes or changes is shown on a card first; he never overwrites and backs up before changing. Documents use LibreOffice (or OpenOffice) and sound and video use FFmpeg, found on your replicant matrix or got in Settings, Engines; each runs only while it has a job. He saves only in the folders ticked below, plus his own Documents folder.',
     tools: ['convert_file', 'office_read', 'office_make', 'office_edit']
   },
   security: {
@@ -57,6 +65,11 @@ export const HANDS = {
     label: 'Connected apps (MCP)',
     what: 'Works inside apps that offer Bob their tools through MCP, such as Unreal Engine or Blender with their MCP add-on: placing things in a level, changing a scene, reading what is there. You add each app below and switch it on; Bob starts or reaches it only when a job needs it and lets it go after 5 minutes unused. Every step shows a card with the app, the tool and its exact inputs. Only apps on this replicant matrix while "Don\'t send anything out" is on.',
     tools: ['mcp_tools', 'mcp_use']
+  },
+  packs: {
+    label: 'Tool packs from other people',
+    what: 'Use tools and jobs that someone else made for Bob, from a folder or .zip you add below. Each pack comes in switched off and is checked first: plain JavaScript only, no programs. Its tools run in the same locked sandbox as the tools Bob makes himself, see only the files named on their card, and ask you every time, even when Bob works without asking. A job is written steps that Bob follows with his own Hands, each asking as usual.',
+    tools: ['pack_tools', 'use_pack_tool', 'pack_job']
   }
 };
 
@@ -88,9 +101,11 @@ const isAbs = (p) => typeof p === 'string' && p.length < 400 && !p.includes('\0'
 // Hands that Settings has on, never switch anything on. Each Hand has { on }. folders = where the Files hand may work.
 export function cleanHands(v = {}) {
   // free = "Let Bob work without asking". Off unless the user turns it on.
-  const out = { enabled: v.enabled === true, held: v.held === true, free: v.free === true };
+  // today = item 12 (Nov 11): command cards also offer "Allow this here for today". Off unless the user turns it on.
+  const out = { enabled: v.enabled === true, held: v.held === true, free: v.free === true, today: v.today === true };
   for (const id of Object.keys(HANDS)) out[id] = { on: v[id]?.on === true };
   out.folders = [...new Set([].concat(v.folders || []).filter(isAbs))].slice(0, 30);
+  out.sortRules = cleanSortRules(v.sortRules); // Sort and rename: the naming rule for each kind of file (sort-names.js)
   out.readOnlyFolders = [...new Set([].concat(v.readOnlyFolders || []).filter(isAbs))].slice(0, 30); // 1.5.117: read-only projects added in Settings
   out.limits = {};
   for (const k of Object.keys(LIMITS)) out.limits[k] = v.limits?.[k] !== false;
@@ -106,6 +121,14 @@ export function handOn(cfg, id) {
   return handHere(id) && h.enabled && !h.held && h[id]?.on === true;
 }
 // Is Bob working without asking right now? Needs the master switch, the free switch, and the ✋ switch not stopped.
+// Item 12: may a command card offer "Allow this here for today"? Needs the master switch and its own switch.
+export function todayOn(cfg) {
+  const h = handsSettings(cfg);
+  return h.enabled && h.today && !h.held;
+}
+// The key for one exact command in one folder, and when "for today" ends (midnight on this replicant matrix's clock).
+export const todayKey = (command, cwd) => `${String(cwd || '')}\n${String(command || '')}`;
+export function endOfDay(now = Date.now()) { const d = new Date(now); d.setHours(24, 0, 0, 0); return d.getTime(); }
 export function freeOn(cfg) {
   const h = handsSettings(cfg);
   return h.enabled && h.free && !h.held;
@@ -125,18 +148,22 @@ export function handOffWhy(cfg, id) {
   const label = HANDS[id].label;
   if (!handHere(id)) return `The "${label}" Hand only works on ${HANDS[id].platforms.map((o) => ({ win: 'Windows', mac: 'a Mac', linux: 'Linux' })[o]).join(' and ')}, so it isn't on this replicant matrix.`;
   if (h.enabled && h.held && h[id]?.on) return `Hands are stopped with the Hands switch on the chat page. ${who} can switch them back on there.`;
-  if (!h.enabled && h[id]?.on) return `Hands are off in Settings (the "Let Bob use Hands" switch). ${who} can turn it on in Settings, Show advanced settings, Hands.`;
-  if (!h.enabled) return `Hands are off in Settings. ${who} can turn on "Let Bob use Hands" and "${label}" in Settings, Show advanced settings, Hands.`;
-  return `The "${label}" Hand is off. ${who} can turn it on in Settings, Show advanced settings, Hands.`;
+  if (!h.enabled && h[id]?.on) return `Hands are off in Settings (the "Let Bob use Hands" switch). ${who} can turn it on in Settings, Hands.`;
+  if (!h.enabled) return `Hands are off in Settings. ${who} can turn on "Let Bob use Hands" and "${label}" in Settings, Hands.`;
+  return `The "${label}" Hand is off. ${who} can turn it on in Settings, Hands.`;
 }
 
 // The tool names that belong to Hands that are off right now (brain.toolSchemas hides them; each tool checks again when run).
 export function toolsOff(cfg) {
   const off = [];
   const os_ = handsOs();
+  const on = new Set();
   for (const [id, hand] of Object.entries(HANDS)) {
     if (!handOn(cfg, id)) off.push(...hand.tools);
-    else for (const [tool, where] of Object.entries(hand.toolsOnlyOn || {})) if (!where.includes(os_)) off.push(tool);
+    else {
+      for (const t of [...hand.tools, ...(hand.shares || [])]) on.add(t);
+      for (const [tool, where] of Object.entries(hand.toolsOnlyOn || {})) if (!where.includes(os_)) off.push(tool);
+    }
   }
-  return off;
+  return [...new Set(off)].filter((t) => !on.has(t)); // undo_files belongs to Files and to Sort and rename
 }

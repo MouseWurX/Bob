@@ -38,8 +38,10 @@ export const RECIPES = [
     help: 'Keeps 90% of each skill\'s work and 99% for tools and chat, takes out sight and hearing, and makes a Q3 file for devices with 8 GB or less. General knowledge goes first at this size.'
   },
   {
-    id: 'fold', title: 'Fold instead of drop', for: 'Small sizes that lose too much when experts are dropped.', later: true,
-    protect: [], cover: 0.95, heal: '', help: 'Folds each rarely used expert into the kept expert most like it, instead of dropping it, then teaches it back. Needs a rented card. Not built yet.'
+    id: 'fold', title: 'Fold instead of drop', for: 'Small sizes that lose too much when experts are dropped.', fold: true,
+    protect: ['tools', 'coding', 'codefix', 'formats', 'Picking the right tool', 'Coding', 'Following instructions'], cover: 0.95,
+    heal: 'Bob\'s whole lesson set, 70% the teacher\'s odds and 30% the words. A folded brain needs the teaching back as much as a cut one.',
+    help: 'Blends each expert that isn\'t kept into the kept expert most like it, instead of dropping it. The fold runs here on a full-size file; the teaching back needs a rented card.'
   },
   {
     id: 'measure', title: 'Just measure', for: 'No cut: see which experts this brain uses for what.', measureOnly: true,

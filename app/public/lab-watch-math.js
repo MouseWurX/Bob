@@ -1,4 +1,4 @@
-// 🧪 Computer Science Lab, Playground: FNRI. The sums, shared by the page (it plays a recording with no
+// 🧪 Computer Science Lab, Playground: fNRI. The sums, shared by the page (it plays a recording with no
 // round trip, even one opened from a file) and the server and tests (the same numbers).
 // A recording (format "bob-expert-recording", version 1) is what a mixture-of-experts brain's routers picked while it
 // read a set of simple questions, a few for each skill, and wrote the answers:
@@ -9,7 +9,7 @@
 // own answer being read back (the experts lit while reading a word are the ones that wrote the next; `last` is the
 // final word written, which nothing read). Anything that writes this shape can be played: this Lab, or a rented card.
 // The name, in one place: the short one for tabs and titles, the long one where there's room.
-export const NAME = 'FNRI', LONG_NAME = 'Functional Neural Response Imager';
+export const NAME = 'fNRI', LONG_NAME = 'Functional Neural Response Imager';
 export const FORMAT = 'bob-expert-recording';
 export const VERSION = 1;
 export const MAX_CLIPS = 200, MAX_WORDS = 400, MAX_LAYERS = 400, MAX_EXPERTS = 4096, MAX_SKILLS = 16;
@@ -370,38 +370,47 @@ export function findPatterns(rec, { k = PATTERN_DEFAULT } = {}) {
 // it goes. The order is the person's pick, named after the ways a 3D printer lays plastic down. loadOrder gives every
 // place in the block (floor f, cell i of a W x D floor: f * W * D + i) a number from 0 to 1: a voxel is drawn once
 // the load has passed its number. 'none' is everything at once.
-export const LOAD_STYLES = [['random', 'Random'], ['spiral', 'Archimedean spiral'], ['lines', 'Rectilinear'], ['rings', 'Concentric'], ['vase', 'Vase, then fill'], ['none', 'All at once']];
-export const loadStyle = (s) => (LOAD_STYLES.some(([id]) => id === s) ? s : 'random');
+// Load in: how the block builds itself; Load out: how it comes apart. The owner's picks: Dissolve or Vase, then fill
+// coming in (Vase to begin with), Drain or Erode going out (Drain to begin with).
+export const LOAD_STYLES = [['random', 'Dissolve'], ['vase', 'Vase, then fill']];
+export const UNLOAD_STYLES = [['drain', 'Drain'], ['erode', 'Erode']];
+export const loadStyle = (s) => (LOAD_STYLES.some(([id]) => id === s) ? s : 'vase');
+export const unloadStyle = (s) => (UNLOAD_STYLES.some(([id]) => id === s) ? s : 'drain');
 function seeded(seed) { let a = (seed >>> 0) || 1; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+// Vase, then fill: the inside rises like water poured in, its surface tipping one way then the other as it climbs and
+// settling as it nears the top. slosh = how high the water must be (in floors) before this place is under it. The tip
+// turns slower than the water climbs, so every column still fills from the bottom up (nothing floats).
+export function slosh(f, x, z, W, D, floors) {
+  const nx = W > 1 ? x / (W - 1) - 0.5 : 0, nz = D > 1 ? z / (D - 1) - 0.5 : 0, k = floors > 1 ? f / (floors - 1) : 0;
+  const tip = Math.min(3, Math.max(1, floors * 0.12)) * (1 - 0.7 * k), turn = f * 0.45;
+  return f + tip * (Math.cos(turn) * nx + Math.sin(turn) * 0.7 * nz) + 0.35 * Math.sin(nx * 9 + f * 0.9) * Math.cos(nz * 7 - f * 0.6) * (1 - 0.5 * k);
+}
+// The order the blocks come in (rank 0..1 for every place; taken apart, it runs backwards: the highest rank goes first).
+// random = Dissolve; vase = Vase, then fill; drain = the same order, so going out the water drains down, sloshing, then
+// the wall unwinds; erode = the inside first, the surface last, so going out it wears away from the outside in.
+const ORDERS = ['random', 'vase', 'drain', 'erode', 'none'];
 export function loadOrder(style, { W, D, floors, seed = 1 }) {
   const per = W * D, n = per * floors, rank = new Float32Array(n);
-  style = loadStyle(style);
+  style = ORDERS.includes(style) ? style : 'vase';
   if (style === 'none' || n < 1) return rank; // all 0: everything shows from the first moment
   const seq = []; // every place, in the order it appears
   const cx = (W - 1) / 2, cz = (D - 1) / 2;
   const ring = (i) => Math.min(i % W, W - 1 - (i % W), Math.floor(i / W), D - 1 - Math.floor(i / W)); // 0 = the outer wall
   const around = (i) => Math.atan2(Math.floor(i / W) - cz, (i % W) - cx);
-  const snake = (f, cells) => { // back and forth in rows, turned a quarter on every other floor, the way a printer fills
-    const key = (i) => { const x = i % W, z = Math.floor(i / W); return f % 2 ? [x, x % 2 ? D - 1 - z : z] : [z, z % 2 ? W - 1 - x : x]; };
-    return cells.map((i) => [key(i), i]).sort((a, b) => a[0][0] - b[0][0] || a[0][1] - b[0][1]).map((p) => p[1]);
-  };
   const cells = Array.from({ length: per }, (_, i) => i);
   if (style === 'random') {
     for (let i = 0; i < n; i++) seq.push(i);
     const r = seeded(seed); for (let i = n - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [seq[i], seq[j]] = [seq[j], seq[i]]; }
-  } else if (style === 'spiral') { // each floor from its middle outward along r = theta / 2pi: one cell further out with every turn
-    const key = (i) => { const r = Math.hypot((i % W) - cx, Math.floor(i / W) - cz), a = around(i) + Math.PI; return a + 2 * Math.PI * Math.max(0, Math.round(r - a / (2 * Math.PI))); };
-    const one = cells.map((i) => [key(i), i]).sort((a, b) => a[0] - b[0]).map((p) => p[1]);
-    for (let f = 0; f < floors; f++) for (const i of one) seq.push(f * per + i);
-  } else if (style === 'lines') {
-    for (let f = 0; f < floors; f++) for (const i of snake(f, cells)) seq.push(f * per + i);
-  } else if (style === 'rings') { // each floor's outer wall first, then ring by ring to the middle
-    const one = cells.map((i) => [ring(i), around(i), i]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((p) => p[2]);
-    for (let f = 0; f < floors; f++) for (const i of one) seq.push(f * per + i);
-  } else { // vase: the outer wall alone, round and round to the top, then the inside filled floor by floor
+  } else if (style === 'erode') { // deepest first, the surface last, roughened so it wears away unevenly
+    const r = seeded(seed), deep = [];
+    for (let f = 0; f < floors; f++) for (const i of cells) deep.push([Math.min(ring(i), f, floors - 1 - f) + r() * 2.5, f * per + i]);
+    deep.sort((a, b) => b[0] - a[0]); for (const d of deep) seq.push(d[1]);
+  } else { // vase and drain: the outer wall alone, round and round to the top, then the inside poured in like water
     const wall = cells.filter((i) => ring(i) === 0).sort((a, b) => around(a) - around(b)), inside = cells.filter((i) => ring(i) > 0);
     for (let f = 0; f < floors; f++) for (const i of wall) seq.push(f * per + i);
-    for (let f = 0; f < floors; f++) for (const i of snake(f, inside)) seq.push(f * per + i);
+    const pour = [];
+    for (let f = 0; f < floors; f++) for (const i of inside) pour.push([slosh(f, i % W, Math.floor(i / W), W, D, floors), f * per + i]);
+    pour.sort((a, b) => a[0] - b[0]); for (const p of pour) seq.push(p[1]);
   }
   seq.forEach((slot, k) => { rank[slot] = k / n; });
   return rank;
@@ -505,3 +514,51 @@ export function movedBlocks(before, after, { n = 64 } = {}) {
 }
 export const targetsOf = (list) => list.map((d) => ({ kind: d.kind, layer: d.layer, index: d.kind === 'expert' || d.kind === 'head' ? d.index : 0 }));
 export const TARGET_FORMAT = 'bob-fnri-targets';
+
+// ---- two different brains side by side ----
+// A cut brain's keep list says which of the stock brain's experts each of its experts was: layers[l][j] = the stock
+// id of its expert j on floor l (the forge's bob-keep.json, the Lab's <name>-keep.json). Checked against both brains;
+// null when it doesn't fit.
+export function keepMap(keep, { layers, experts, of = 0 }) {
+  const L = keep?.layers;
+  if (!Array.isArray(L) || L.length !== layers) return null;
+  const before = of || Number(keep.experts_before) || Number(keep.of) || 0;
+  for (const k of L) {
+    if (!Array.isArray(k) || k.length !== experts || new Set(k).size !== k.length) return null;
+    if (!k.every((x) => Number.isInteger(x) && x >= 0 && (!before || x < before))) return null;
+  }
+  return L.map((k) => k.slice());
+}
+// The cut brain's scan with its experts renamed to the stock brain's, so the two can be compared block for block.
+export function lineUp(rec, map, experts) {
+  return { ...rec, brain: { ...rec.brain, experts }, clips: rec.clips.map((c) => ({ ...c, e: c.e.map((row) => row.map((ids, l) => ids.map((x) => map[l]?.[x] ?? x))) })) };
+}
+// Can these two scans be compared, and how: { a, b } ready for compareScans (b may be lined up), or { why }.
+// a = the other scan, b = this one. keepA / keepB: each one's keep list, when it has one.
+export function pairUp(a, b, { keepA = null, keepB = null } = {}) {
+  if (a.brain.kind !== b.brain.kind) return { why: 'one scan is of experts and the other of neuron groups or attention heads, so the blocks don\'t line up' };
+  if (a.brain.layers !== b.brain.layers) return { why: `the two brains have a different number of floors (${a.brain.layers} and ${b.brain.layers}), so the blocks don't line up` };
+  if (a.brain.experts === b.brain.experts) return { a, b, lined: '' };
+  if (a.brain.kind !== 'experts') return { why: 'the two brains are a different size, so the blocks don\'t line up' };
+  const small = a.brain.experts < b.brain.experts ? 'a' : 'b', big = small === 'a' ? b : a, cut = small === 'a' ? a : b;
+  const map = keepMap(small === 'a' ? keepA : keepB, { layers: cut.brain.layers, experts: cut.brain.experts, of: big.brain.experts });
+  if (!map) return { why: `${cut.brain.name || 'one brain'} has ${cut.brain.experts} experts on each floor and ${big.brain.name || 'the other'} ${big.brain.experts}, and Bob has no list of which experts the smaller one kept (its keep file), so the blocks can't be lined up` };
+  const lined = lineUp(cut, map, big.brain.experts);
+  return small === 'a' ? { a: lined, b, lined: 'a' } : { a, b: lined, lined: 'b' };
+}
+export function pairWords(cmp, nameA, nameB) {
+  if (!cmp.clips.length) return 'These two scans don\'t share any questions, so there\'s nothing to compare.';
+  const pct = (v) => `${Math.round(v * 100)}%`;
+  const most = [...cmp.per].sort((a, b) => b.moved - a.moved)[0], least = [...cmp.per].sort((a, b) => a.moved - b.moved)[0];
+  return `${nameA} and ${nameB} gave the same answer to ${cmp.same} of ${cmp.clips.length} questions. Reading the same questions, ${pct(cmp.moved)} of the picks went to different experts.${cmp.per.length > 1 ? ` ${most.label} differed most (${pct(most.moved)}), ${least.label} least (${pct(least.moved)}).` : ''}`;
+}
+// A video's file name, the owner's way: model-skill-quantization (riker-coding-q4_k_m), and for two brains
+// riker-vs-qwen-3.6-35b-a3b-coding-q4_k_m. The quantization is read from the brain's or the scan's name.
+export const QUANT_RE = /\b(I?Q\d(?:_[0-9A-Z]+)*|F16|BF16|F32|MXFP4)\b/i;
+export function videoName(rec, { skill = '', other = null } = {}) {
+  const quant = (s) => (String(s || '').match(QUANT_RE)?.[1] || '').toLowerCase();
+  const model = (r) => String(r.brain.name || 'brain').replace(QUANT_RE, '').toLowerCase().replace(/[^a-z0-9.]+/g, '-').replace(/^-+|-+$/g, '') || 'brain';
+  const q = quant(rec.brain.name) || quant(rec.name) || (other ? quant(other.brain.name) || quant(other.name) : '');
+  const sk = String(skill || 'all-skills').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  return [other ? `${model(rec)}-vs-${model(other)}` : model(rec), sk, q].filter(Boolean).join('-');
+}

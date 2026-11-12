@@ -3,6 +3,7 @@
 // sets are downloaded and converted here by the Forge's lesson importer before a run. A private or gated repo needs the person's own HF_TOKEN in their environment; it is sent
 // only to huggingface.co and never shown, logged or written into a plan.
 import { classOf } from './lab-challenges.js';
+import { keyValue } from './secret-box.js';
 
 const NAME = /^[A-Za-z0-9][\w.-]{0,95}\/[A-Za-z0-9][\w.-]{0,95}$/;
 const REV = /^[\w.-]{1,64}$/;
@@ -33,7 +34,7 @@ export function parseHfRef(input, kind = 'model') {
 const LICENCE_OK = /^(apache-2\.0|mit|bsd(-[23]-clause)?|cc-by-4\.0|cc-by-sa-4\.0|cc0-1\.0|odc-by|llama3(\.[123])?|gemma|openrail\+*|bigscience-openrail-m|creativeml-openrail-m|other)$/i;
 
 // What the Lab shows about a repo before it goes in a plan. fetchFn and token are injected by tests.
-export async function hfLookup(ref, { fetchFn = fetch, token = process.env.HF_TOKEN || '', signal } = {}) {
+export async function hfLookup(ref, { fetchFn = fetch, token = keyValue('HF_TOKEN'), signal } = {}) {
   const r = typeof ref === 'string' ? parseHfRef(ref) : ref;
   if (!r) return { ok: false, error: 'That isn\'t a Hugging Face name or link. It looks like owner/name, or a huggingface.co link.' };
   const api = `https://huggingface.co/api/${r.kind === 'dataset' ? 'datasets' : 'models'}/${r.repo}${r.revision ? `/revision/${encodeURIComponent(r.revision)}` : ''}`;

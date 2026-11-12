@@ -8,10 +8,11 @@
 //   3. otherwise %LOCALAPPDATA%\Bob, with a fresh config.json made from config.example.json.
 // On a Mac (Bob.app, the same official Electron renamed, Bob's files in Bob.app/Contents/Resources/app) step 3 is
 // ~/Library/Application Support/Bob/home, and on Linux ~/.local/share/bob (src/platform.js defaultHome).
-const { app, BrowserWindow, shell, Menu, dialog, clipboard, screen, Tray, nativeImage, Notification } = require('electron');
+const { app, BrowserWindow, shell, Menu, dialog, clipboard, screen, Tray, nativeImage, Notification, globalShortcut } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
+const { readHomeFrom, badHomeLine, stripBom } = require('./home-json.cjs');
 
 // Before anything else: the name decides Bob's user-data folder (and so the single-instance lock), and the
 // id matches the Start menu shortcut, so the taskbar shows Bob's icon rather than Electron's.
@@ -48,11 +49,10 @@ if (MAC) {
 // Linux: the AppImage file's own folder (APPIMAGE), not the read-only place it is mounted while it runs.
 const exeDir = process.env.PORTABLE_EXECUTABLE_DIR || (process.env.APPIMAGE && path.dirname(process.env.APPIMAGE)) || path.dirname(process.execPath);
 
+const homeFiles = () => [path.join(exeDir, 'home.json'), path.join(app.getPath('appData'), 'Bob', 'home.json')];
+// 1.5.201 (electron/home-json.cjs): a PowerShell byte-order mark is dropped; an unreadable home.json is reported, never skipped.
 function readHome() {
-  for (const f of [path.join(exeDir, 'home.json'), path.join(app.getPath('appData'), 'Bob', 'home.json')]) {
-    try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch {}
-  }
-  return {};
+  return readHomeFrom(homeFiles()).home;
 }
 
 // Bob.exe sitting somewhere inside an existing Bob folder (one with an "inn"), like Bob home\Bob app or
@@ -124,7 +124,7 @@ async function finishMove(home, file) {
   let box = null;
   try {
     box = new BrowserWindow({ width: 460, height: 180, resizable: false, minimizable: false, frame: true, title: 'Bob', autoHideMenuBar: true, webPreferences: { sandbox: true } });
-    box.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`<body style="font:15px system-ui;background:#1d1510;color:#f1e9dc;padding:20px"><b>Moving my things…</b><p>From ${from}<br>to ${to}.</p><p>This takes a while with big models. Please leave me to it.</p></body>`));
+    box.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`<body style="font:15px system-ui;background:#121212;color:#e4e4e4;padding:20px"><b>Moving my things…</b><p>From ${from}<br>to ${to}.</p><p>This takes a while with big models. Please leave me to it.</p></body>`));
   } catch {}
   try {
     fs.mkdirSync(to, { recursive: true });
@@ -155,7 +155,9 @@ async function finishMove(home, file) {
 }
 
 async function setUpHome() {
-  let home = readHome();
+  const read = readHomeFrom(homeFiles());
+  if (read.bad) { dialog.showErrorBox('Bob', badHomeLine(read)); return null; } // the caller quits
+  let home = read.home;
   if (!home.agentDir) home = { ...findNearbyHome(), ...home };
   const { defaultHome } = await import(pathToFileURL(path.join(root, 'src', 'platform.js')).href);
   const { suggestedHome, homeProblem, synced, cloudWarning } = await import(pathToFileURL(path.join(root, 'src', 'home.js')).href);
@@ -177,7 +179,9 @@ async function setUpHome() {
   // The brain's "Bob's home folder": a move is noted in home.json and done by this file at the next start.
   globalThis.bobHome = {
     file: homeFile(),
-    move: (to) => { writeHome({ ...readHome(), agentDir, moveTo: to }); app.relaunch(); setTimeout(() => app.quit(), 400); }
+    move: (to) => { writeHome({ ...readHome(), agentDir, moveTo: to }); app.relaunch(); setTimeout(() => app.quit(), 400); },
+    // Back up and move: a restore waits for the next start (src/backup-apply.js); this starts Bob again for it.
+    restart: () => { app.relaunch(); setTimeout(() => app.quit(), 400); }
   };
   const config = home.config || path.join(agentDir, 'config.json');
   if (!fs.existsSync(config)) fs.copyFileSync(path.join(root, 'config.example.json'), config);
@@ -186,7 +190,7 @@ async function setUpHome() {
   process.env.BOB_APP_DIR = exeDir;
   process.env.BOB_CONFIG = config;
   let port = 7777;
-  try { port = Number(JSON.parse(fs.readFileSync(config, 'utf8')).port) || 7777; } catch {}
+  try { port = Number(JSON.parse(stripBom(fs.readFileSync(config, 'utf8'))).port) || 7777; } catch {}
   return { agentDir, config, port };
 }
 
@@ -243,7 +247,9 @@ globalThis.bobLoginItem = loginItem(app);
 globalThis.bobShell = {
   openPath: (f) => shell.openPath(f),
   showItemInFolder: (f) => shell.showItemInFolder(f),
-  copy: (text) => clipboard.writeText(String(text))
+  copy: (text) => clipboard.writeText(String(text)),
+  // Settings, Jobs, Clickable file:line links: only an editor's own address (vscode://, cursor://, vscodium://).
+  openUrl: (url) => (/^(?:vscode|cursor|vscodium):\/\/file\//.test(String(url)) ? shell.openExternal(String(url)) : null)
 };
 // 1.5.125: small pictures for the chest and Made by Bob (src/thumbs.js), shrunk by Electron's own image code,
 // so no image library and no model is needed. PNG bytes, the longer side `size` pixels, or null.
@@ -326,8 +332,46 @@ function showBob() {
   win.focus();
 }
 
+// A shortcut from anywhere (Settings, How Bob works, 🌙 Quiet hours and shortcut; off unless switched on). While it's
+// on, the key opens a small ask box on top of any app (public/ask.html); the key again, or Esc, puts it away.
+// src/server.js calls this at start and whenever the switch or the key changes. Nothing is registered while it's off.
+let askKey = '', askWin = null;
+function openAsk(port) {
+  if (askWin && !askWin.isDestroyed()) { if (askWin.isVisible() && askWin.isFocused()) askWin.hide(); else { askWin.show(); askWin.focus(); } return; }
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const width = Math.min(640, area.width - 32), height = 420;
+  askWin = new BrowserWindow({
+    width, height, x: Math.round(area.x + (area.width - width) / 2), y: Math.round(area.y + area.height * 0.18),
+    title: 'Ask Bob', icon: iconFile(process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#121212',
+    autoHideMenuBar: true, alwaysOnTop: true, skipTaskbar: true, minimizable: false, maximizable: false, fullscreenable: false, resizable: true,
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }
+  });
+  askWin.setAlwaysOnTop(true, 'floating');
+  askWin.setMenu(null);
+  const base = `http://127.0.0.1:${port}`;
+  askWin.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url) && !url.startsWith(base)) shell.openExternal(url); return { action: 'deny' }; });
+  askWin.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(base + '/ask.html')) e.preventDefault(); });
+  askWin.on('closed', () => { askWin = null; });
+  askWin.loadURL(base + '/ask.html');
+}
+globalThis.bobGlobalAsk = (g, port) => {
+  const want = g && g.on === true && typeof g.key === 'string' ? g.key : '';
+  if (askKey && askKey !== want) { try { globalShortcut.unregister(askKey); } catch {} askKey = ''; }
+  if (!want || askKey === want) return { ok: true, key: askKey };
+  let ok = false;
+  try { ok = globalShortcut.register(want, () => openAsk(port)); } catch {}
+  if (ok) askKey = want;
+  else console.error(`Bob: couldn't take the key ${want} for the ask box (another app may use it).`);
+  return { ok, key: askKey };
+};
+globalThis.bobShow = () => showBob(); // the ask box's Open in Bob
+app.on('will-quit', () => { try { globalShortcut.unregisterAll(); } catch {} try { globalThis.bobCleanExit?.(); } catch {} });
+
+// 150 "Show a dot on the tray icon" (off by default): while something waits for you, the tray picture has a dot;
+// Windows also puts it on the taskbar button, and a Mac shows a dot on the Dock icon.
+const dotted = () => Boolean(winState.trayDot && winState.dot && winState.dotIcons);
 function trayImage() {
-  const ic = winState.icons;
+  const ic = dotted() ? winState.dotIcons : winState.icons;
   if (ic) {
     if (process.platform === 'linux') return nativeImage.createFromBuffer(ic[32]);
     const img = nativeImage.createEmpty();
@@ -362,10 +406,12 @@ function refreshWindowBits() {
         tray.setContextMenu(trayMenu());
         tray.on('click', showBob); // Windows and Linux: a click opens him (Mac shows the menu)
       } else tray.setImage(trayImage());
-      tray.setToolTip(MAC ? 'Bob' : 'Bob: click to open him, right-click to quit him');
+      tray.setToolTip(dotted() ? 'Bob: something is ready or needs you' : MAC ? 'Bob' : 'Bob: click to open him, right-click to quit him');
     } else if (tray) { tray.destroy(); tray = null; }
     if (MAC) { if (app.dock) app.dock.setIcon(bigImage()); }
     else if (win) win.setIcon(winState.icons ? bigImage() : iconFile(process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'));
+    if (MAC && app.dock) app.dock.setBadge(dotted() ? '•' : '');
+    if (process.platform === 'win32' && win) win.setOverlayIcon(dotted() ? nativeImage.createFromBuffer(winState.dotIcons.badge) : null, dotted() ? 'Something is ready or needs you' : '');
   } catch (e) { console.error('Bob: tray or icon', e.message); }
 }
 globalThis.bobWindow = { apply: (s) => { winState = { ...winState, ...s }; refreshWindowBits(); } };
@@ -392,7 +438,9 @@ function tuckAway(e) {
   trayHint();
   return true;
 }
-let watchWin = null; // the Lab's FNRI viewer window (public/watch.html), one at a time
+let watchWin = null; // the Lab's fNRI viewer window (public/watch.html), one at a time
+let settingsWin = null; // the Settings window (public/settings.html), one at a time
+let labWin = null; // the Computer Science Lab window (public/lab.html), one at a time
 let mindWin = null; // 1.5.53: "Bob's thinking", opened from the chat page; nothing runs for it while it's closed
 
 // Small, in the bottom-right corner of the screen Bob is on, so it sits beside a game or an editor.
@@ -401,7 +449,7 @@ function mindOptions(parent) {
   const width = 380, height = 480;
   return {
     width, height, minWidth: 260, minHeight: 200, x: area.x + area.width - width - 16, y: area.y + area.height - height - 16,
-    title: 'Bob\'s thinking', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#1d1510',
+    title: 'Bob\'s thinking', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#121212',
     autoHideMenuBar: true, alwaysOnTop: true, minimizable: true, maximizable: false, fullscreenable: false,
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }
   };
@@ -423,6 +471,7 @@ async function start() {
   if (handOverToNewBob()) { app.quit(); return; }
   let home;
   try { home = await setUpHome(); } catch (e) { dialog.showErrorBox('Bob', `Bob couldn't set up his folder: ${e.message}`); app.quit(); return; }
+  if (!home) { app.quit(); return; } // 1.5.201: an unreadable home.json, already said
   // An older Bob (from before Bob.exe) may already be running on the port: use it rather than fight it.
   if (!(await up(home.port))) {
     // Bob's own browser window for the Browser hand (src/hands-browser.js reads globalThis.bobBrowser).
@@ -434,8 +483,9 @@ async function start() {
   win = new BrowserWindow({
     width: 1200, height: 820, minWidth: 360, minHeight: 480,
     title: 'Bob', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'),
-    backgroundColor: '#1d1510', autoHideMenuBar: true, show: !process.argv.includes('--hidden'),
-    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }
+    backgroundColor: '#121212', autoHideMenuBar: true, show: !process.argv.includes('--hidden'),
+    // plugins: the built-in PDF viewer, so "Show documents in the side panel" can show a PDF's pages (no other plugins exist).
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, plugins: true }
   });
   const base = `http://127.0.0.1:${home.port}`;
   // Links to the web open in the normal browser; Bob's window only ever shows Bob.
@@ -445,24 +495,62 @@ async function start() {
       if (mindWin) { mindWin.show(); mindWin.focus(); return { action: 'deny' }; }
       return { action: 'allow', overrideBrowserWindowOptions: mindOptions(win) };
     }
-    // The Lab's FNRI viewer: its own ordinary window (not on top), so it can sit beside the Lab or a chat.
+    // The Lab's fNRI viewer: its own ordinary window (not on top), so it can sit beside the Lab or a chat.
     if (url === base + '/watch.html' || url.startsWith(base + '/watch.html?')) {
       if (watchWin) { watchWin.loadURL(url); watchWin.show(); watchWin.focus(); return { action: 'deny' }; }
-      return { action: 'allow', overrideBrowserWindowOptions: { width: 1180, height: 820, minWidth: 360, minHeight: 480, title: 'FNRI', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#1d1510', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 1180, height: 820, minWidth: 360, minHeight: 480, title: 'fNRI', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#121212', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
+    }
+    // Settings is its own ordinary window too (minimise, maximise, close), one at a time.
+    if (url === base + '/settings.html' || url.startsWith(base + '/settings.html#')) {
+      if (settingsWin) { if (settingsWin.webContents.getURL() !== url) settingsWin.loadURL(url); if (settingsWin.isMinimized()) settingsWin.restore(); settingsWin.show(); settingsWin.focus(); return { action: 'deny' }; }
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 1040, height: 780, minWidth: 360, minHeight: 480, title: 'Bob · Settings', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#121212', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
+    }
+    // The Computer Science Lab is its own ordinary window as well, one at a time.
+    if (url === base + '/lab.html') {
+      if (labWin) { if (labWin.isMinimized()) labWin.restore(); labWin.show(); labWin.focus(); return { action: 'deny' }; }
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 1180, height: 860, minWidth: 360, minHeight: 480, title: 'Bob · Computer Science Lab', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#1d1510', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
     }
     if (/^https?:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
+  // The fNRI viewer window, whichever window opened it (Bob's or the Lab's).
+  const adoptWatch = (child) => {
+    watchWin = child;
+    child.setMenu(null);
+    child.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+    child.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(base + '/watch.html')) e.preventDefault(); });
+    contextMenu(child, base);
+    child.on('closed', () => { watchWin = null; });
+  };
   win.webContents.on('did-create-window', (child, details) => {
-    if (String(details?.url || '').startsWith(base + '/watch.html')) {
-      watchWin = child;
+    if (String(details?.url || '') === base + '/lab.html') {
+      labWin = child;
       child.setMenu(null);
-      child.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
-      child.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(base + '/watch.html')) e.preventDefault(); });
+      // The Lab opens the fNRI viewer; web links go to the normal browser; nothing else opens from it.
+      child.webContents.setWindowOpenHandler(({ url }) => {
+        if (url === base + '/watch.html' || url.startsWith(base + '/watch.html?')) {
+          if (watchWin) { watchWin.loadURL(url); watchWin.show(); watchWin.focus(); return { action: 'deny' }; }
+          return { action: 'allow', overrideBrowserWindowOptions: { width: 1180, height: 820, minWidth: 360, minHeight: 480, title: 'fNRI', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#1d1510', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
+        }
+        if (/^https?:/.test(url)) shell.openExternal(url);
+        return { action: 'deny' };
+      });
+      child.webContents.on('did-create-window', (grand, d) => { if (String(d?.url || '').startsWith(base + '/watch.html')) adoptWatch(grand); });
+      child.webContents.on('will-navigate', (e, url) => { if (url !== base + '/lab.html') e.preventDefault(); });
       contextMenu(child, base);
-      child.on('closed', () => { watchWin = null; });
+      child.on('closed', () => { labWin = null; });
       return;
     }
+    if (String(details?.url || '').startsWith(base + '/settings.html')) {
+      settingsWin = child;
+      child.setMenu(null);
+      child.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+      child.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(base + '/settings.html')) e.preventDefault(); });
+      contextMenu(child, base);
+      child.on('closed', () => { settingsWin = null; });
+      return;
+    }
+    if (String(details?.url || '').startsWith(base + '/watch.html')) { adoptWatch(child); return; }
     mindWin = child;
     child.setAlwaysOnTop(true, 'floating'); // above other windows, but not above Windows' own menus
     child.setMenu(null);

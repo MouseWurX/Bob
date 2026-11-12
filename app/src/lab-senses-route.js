@@ -87,7 +87,7 @@ const sourceFrom = (lab, b) => {
 
 async function needCard(lab, unload) {
   if (!lab.brain?.engine?.loaded) return null;
-  const loaded = (await lab.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
+  const loaded = (await lab.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard || m.usesCard);
   if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
   if (loaded.length) await lab.brain.engine.unloadAll().catch(() => {});
   return null;
@@ -97,7 +97,7 @@ function canStart(lab) {
   const room = lab.room(); if (!room.ok) throw new Error(room.why);
   if (lab.job) throw new Error('The Lab is already busy with a job. Wait for it, or stop it.');
   if (gaming(lab.cfg)) throw new Error('Gaming is on, so the Lab waits. Switch the session to Normal to run it.');
-  if (!lab.tools().server.found) throw new Error(`${path.basename(lab.tools().server.path)} isn't in Bob's engine folder. Get models, Engines, Bob's own engine has it.`);
+  if (!lab.tools().server.found) throw new Error(`${path.basename(lab.tools().server.path)} isn't in Bob's engine folder. Settings, Engines, Bob's own engine has it.`);
 }
 
 // Put the brain and its new reader into Bob as a brain of their own (same brain file, nothing copied).

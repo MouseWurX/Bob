@@ -17,13 +17,14 @@ import { readCard } from './gaming-card.js';
 import { bigGraceMs } from './brain-mode.js';
 
 export const autoSessionOn = (cfg) => cfg?.autoSession !== false;
+const ART_ASK = /\b(?:pic|pics|picture|image|photo|draw|drawing|paint|painting|sketch|art|artwork|logo|icon|avatar|wallpaper|poster|illustrat\w*|render\w*|video|clip|animat\w*|music|song|tune|melody|beat|sound|sfx|jingle|3d)s?\b/i;
 
 // What Bob reads in the tool (and nothing else): plain, short, so a small brain can choose well.
 const PICK_IDS = { normal: 'normal', art: 'art', coding: 'coding', office: 'office', gaming: 'light' };
 export const pickId = (x) => PICK_IDS[String(x || '').toLowerCase().trim()] || null;
 
 export const PICK_SCHEMA_TEXT = {
-  description: 'Change session to suit the work, judged from the whole chat, only when the job clearly fits another better. You go back to normal when quiet.',
+  description: 'Switch session to suit the work, only when the whole chat clearly fits another. It goes back to normal when quiet.',
   session: 'art: pictures, clips, music; coding: multi-step coding work; office: writing, spreadsheets, research; gaming: {{USER}} is gaming; normal: the rest',
   why: 'Few words, e.g. "for the fix".'
 };
@@ -45,6 +46,11 @@ export async function decidePick(brain, args, ctx) {
   // and the job waits in Tasks as before ("Waiting · Gaming is on"), then runs once the game is closed.
   if (now.id === 'light' && (await (brain.readCard || readCard)().then(cardBusy).catch(() => null)) === true) {
     return { text: `Something (likely ${who}'s game) is using the graphics card, so you stay in Gaming. Card jobs wait in Tasks and run by themselves once it's free. Do what you can here, and say so in a line.` };
+  }
+  // 1.5.207 PC check: a dinner plan was moved into Art. Art loads the picture brain and lets the chat brain go, so it
+  // only happens when the ask (or a picture with it) is about pictures, clips, music or sound.
+  if (id === 'art' && !ART_ASK.test(String(ctx?.job?.text || ctx?.turnText || '')) && !(ctx?.job?.refs || []).length) {
+    return { text: `Stay in the ${now.label} session: Art is only for pictures, clips, music and sound. Do the job here.` };
   }
   const why = String(args?.why || '').replace(/\s+/g, ' ').trim().slice(0, 80);
   return { text: `Switching to the ${SESSIONS[id].label} session${why ? ` ${why}` : ''}.`, switchTo: id, why };

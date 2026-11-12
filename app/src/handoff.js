@@ -11,6 +11,8 @@ import fs from 'node:fs';
 import { sameModel } from './brain-mode.js';
 import { gaming } from './sessions.js';
 import { describe } from './verify.js';
+import { SIDE_EFFECT, WAIT_IF_CUT } from './tool-kinds.js';
+import { jitter } from './retry.js';
 
 const sleep = (ms, signal) => new Promise((resolve, reject) => {
   if (!ms) return resolve();
@@ -54,9 +56,9 @@ const clip = (x, n = 200) => String(x ?? '').replace(/\s+/g, ' ').slice(0, n);
 export class Ledger {
   constructor({ job = null, expect = null, save = () => {} } = {}) {
     this.job = job; this.expect = expect; this.save = save;
-    this.steps = []; this.outputs = []; this.actions = []; this.nudged = 0; this.reply = '';
+    this.steps = []; this.outputs = []; this.actions = []; this.corrections = []; this.nudged = 0; this.reply = '';
     this.current = null; // 1.5.38: the tool running right now, so a restart knows which step was cut off
-    this.persist();
+    this.persist(true);
   }
   step(kind, info = {}) {
     const st = { kind, ...Object.fromEntries(Object.entries(info).map(([k, v]) => [k, typeof v === 'string' ? clip(v) : v])), state: 'running', at: Date.now() };
@@ -70,27 +72,49 @@ export class Ledger {
   output(o, tool = null) { this.outputs.push({ type: o.type, file: o.file || null, url: o.url || null, tool, at: Date.now() }); this.persist(); }
   // at: when the tool started.
   // extra: what verify.js found (why, files, info, declined), so the end-of-turn check can use it.
-  begin(name, args) { this.current = { name, args: clip(typeof args === 'string' ? args : JSON.stringify(args || {}), 300), at: Date.now() }; this.persist(); }
+  // Item 235: a step's whole input (up to 2,000 characters) and its result (up to 1,000) are kept, not just its name, so
+  // Carry on after a restart knows exactly what each finished step did. Item 230: a step that changes something outside
+  // Bob saves at once (a restart must know it started); the rest are saved with the next save, within a second.
+  begin(name, args) { this.current = { name, args: clip(typeof args === 'string' ? args : JSON.stringify(args || {}), STEP_IN), at: Date.now() }; this.persist(changesThings(name)); }
   action(name, args, ok, text, at = Date.now(), extra = {}) {
     this.current = null;
     const keep = Object.fromEntries(Object.entries(extra || {}).filter(([k, v]) => ['why', 'files', 'info', 'declined', 'partly'].includes(k) && v != null));
-    this.actions.push({ name, args: clip(typeof args === 'string' ? args : JSON.stringify(args || {}), 300), ok, text: clip(text, 300), at, ...keep });
-    this.persist();
+    this.actions.push({ name, args: clip(typeof args === 'string' ? args : JSON.stringify(args || {}), STEP_IN), ok, text: clip(text, STEP_OUT), at, ...keep });
+    this.persist(changesThings(name));
   }
+  // Item 191 (Nov 12): a correction the app put under an answer, kept with the job (what, which kind, whose answer).
+  correction(text, kind = 'other', brain = '') { this.corrections.push({ text: clip(text, 200), kind, brain: clip(brain, 120), at: Date.now() }); if (this.corrections.length > 12) this.corrections.shift(); this.persist(); }
   // The part that's saved with the job (queue file): small, and enough for a restart to see what was done.
-  view() { return { expect: this.expect, steps: this.steps.slice(-30), outputs: this.outputs.slice(-24), actions: this.actions.slice(-40), current: this.current }; }
-  persist() { if (this.job) { this.job.handoff = this.view(); try { this.save(); } catch {} } }
+  view() { return { expect: this.expect, steps: this.steps.slice(-30), outputs: this.outputs.slice(-24), actions: this.actions.slice(-40), current: this.current, ...(this.corrections.length ? { corrections: this.corrections.slice(-12) } : {}) }; }
+  persist(now = false) { if (this.job) { this.job.handoff = this.view(); try { this.save(now); } catch {} } }
 }
 
 // A finished job keeps what it asked for, what it made and what it did (short), not every load step: the queue file
 // holds up to 200 jobs and is written on every step of the running one.
 export function slimHandoff(h) {
   if (!h) return h;
-  return { expect: h.expect || null, outputs: (h.outputs || []).slice(-12).map(({ type, file, tool }) => ({ type, file, tool })), actions: (h.actions || []).slice(-12).map(({ name, ok, at }) => ({ name, ok, at })) };
+  return { expect: h.expect || null, outputs: (h.outputs || []).slice(-12).map(({ type, file, tool }) => ({ type, file, tool })), actions: (h.actions || []).slice(-12).map(({ name, ok, at }) => ({ name, ok, at })), ...(h.corrections?.length ? { corrections: h.corrections.slice(-6).map(({ text, kind, brain, at }) => ({ text, kind, brain, at })) } : {}) };
 }
 
+export const STEP_IN = 2000, STEP_OUT = 1000; // item 235
+const changesThings = (name) => SIDE_EFFECT.test(String(name || '')) || WAIT_IF_CUT.test(String(name || ''));
 // Tools that change something outside Bob's own chat (a restart must not redo these blindly).
-export const SIDE_EFFECT = /^(app_|open_app|convert_file|strip_metadata|defender_scan|office_make|office_edit|edit_file|write_file|file_hands|undo_files|move_|copy_|rename_|delete_|recycle|zip|unzip|run_command|run_recipe|save_|schedule_|make_|mcp_use)/; // file_hands/undo_files: 1.5.38
+// Nov 12 (item 172): which tools change something, and which can be left half done, live in tool-kinds.js.
+export { SIDE_EFFECT } from './tool-kinds.js';
+// Item 245 (Nov 12): after a restart, the brain is told which steps finished, but it could still ask for one again.
+// An action (SIDE_EFFECT) that already finished before the restart, with the same input, is never done twice: the
+// call gets its earlier result back instead. Inputs match when they are the same JSON (key order doesn't matter), or
+// the same as saved (the ledger keeps the first 300 characters).
+const stable = (v) => (Array.isArray(v) ? `[${v.map(stable).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable(v[k])}`).join(',')}}` : JSON.stringify(v ?? null));
+const asObj = (x) => { if (x && typeof x === 'object') return x; try { return JSON.parse(String(x ?? '') || '{}'); } catch { return undefined; } };
+export function doneBefore(job, name, args) {
+  if (!job?.before?.length || !name || !SIDE_EFFECT.test(name)) return null;
+  const raw = clip(typeof args === 'string' ? args : JSON.stringify(args || {}), 300);
+  const mine = asObj(args);
+  return job.before.find((b) => b?.name === name && (b.args === raw || (mine !== undefined && asObj(b.args) !== undefined && stable(asObj(b.args)) === stable(mine)))) || null;
+}
+export const doneBeforeNote = (b) => `(Not done again: this exact step already finished before Bob was restarted. Its result then: ${String(b?.text ?? '').slice(0, 300)}) Carry on from the next step.`;
+
 // A job that was cut off by a restart can be picked up again on its own when nothing it did changed the PC.
 export function safeToResume(job) {
   const done = job?.handoff?.actions || [];
@@ -111,7 +135,7 @@ export function interruptedNote(job) {
 // Finished steps are never done again. The cut-off step is done again from the start, with the same settings,
 // unless it's one that can be left half done (typing into an app, moving or deleting files, running a command, an edit):
 // then the job waits in Tasks so the user can look first.
-export const WAIT_IF_CUT = /^(app_|office_edit|edit_file|file_hands|undo_files|move_|rename_|delete_|recycle|unzip|run_command|run_recipe|schedule_|mcp_use)/;
+export { WAIT_IF_CUT } from './tool-kinds.js';
 export const MAX_AUTO_RESUMES = 2; // a job that keeps getting cut off (or keeps crashing Bob) stops coming back on its own
 const plainStep = (a) => { try { return describe(a.name, parseArgs(a.args)).replace(/^\w/, (c) => c.toLowerCase()); } catch { return a.name; } };
 const parseArgs = (x) => { try { return typeof x === 'string' ? JSON.parse(x || '{}') : (x || {}); } catch { return {}; } };
@@ -132,7 +156,7 @@ export function carryOnPlan(job) {
   const lines = ['[Bob note, not from the user: Bob was closed (an update, a restart or a crash) while working on this message, and has opened again. Carry on from where you stopped. Don\'t greet the user again or start over.'];
   if (done.length) {
     lines.push('Already finished. Do NOT do these again:');
-    done.forEach((a, i) => lines.push(`${i + 1}. ${a.name} ${a.args || '{}'} -> ${String(a.text || 'done').slice(0, 160)}`));
+    done.forEach((a, i) => lines.push(`${i + 1}. ${a.name} ${String(a.args || '{}').slice(0, 300)} -> ${String(a.text || 'done').slice(0, 160)}`));
   }
   if (outputs.length) lines.push(`Files already made: ${outputs.join(', ')}`);
   if (cut) lines.push(`Cut off before it finished: ${cut.name} ${cut.args || '{}'}. Do that step again with the same settings (it may have half happened, so check first if it changes files), then finish the rest.`);
@@ -288,7 +312,7 @@ export class Gate {
             this.brain.log?.('handoff', `letting the second brain (${this.engine.beside.current}) off the card before trying ${m} again`);
             await this.engine.dropBeside?.().catch?.(() => {});
           }
-          await sleep(this.delays[attempt - 1], signal);
+          await sleep(jitter(this.delays[attempt - 1]), signal); // item 194: a bit of randomness in each wait
           st?.done();
         }
         // The painter lets go first (it may still hold the card from the last picture), unless both fit.
@@ -306,7 +330,7 @@ export class Gate {
           st?.fail(e);
           if (signal?.aborted) throw new Error('Stopped.');
           last = e;
-          if (NO_RETRY.test(e.message)) break;
+          if (NO_RETRY.test(e.message) || e.noRetry) break; // reliability 218-228: the engine already tried what helps (smaller memory, last good settings)
           // 1.5.113: timed out because another program holds the card: one try, not three five-minute ones.
           if (!o.cpu && await this.brain.cardTaken?.(e, null).catch?.(() => false)) { last = Object.assign(new Error(this.brain.cardHeld.line), { code: 'card_held' }); break; }
         } finally { this.loading = null; }
@@ -404,7 +428,7 @@ export async function withRetry(fn, { tries = 2, wait = 3000, signal, onRetry, r
       last = e;
       if (signal?.aborted || e.code === 'stopped' || /^Stopped\.$/.test(e.message) || i === tries - 1 || !(await retryable(e))) throw e; // 1.5.113: retryable may be async
       onRetry?.(e, i);
-      await sleep(wait, signal);
+      await sleep(jitter(wait * 2 ** i), signal); // item 194: longer each time, with a bit of randomness
     }
   }
   throw last;

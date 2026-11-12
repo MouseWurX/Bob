@@ -2,7 +2,9 @@
 // slider (the sums are public/lab-context-math.js, the same the server uses); the speed-and-needle ladder, the stretch
 // and the forgetting demo run as a Lab job (src/lab-context.js). Use this in Bob writes the brain's size in Settings.
 import { esc } from './rich.js';
+import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
 import { meter, fitsAnswer, ladderSizes, kLabel, STOPS, SQUEEZE, STRETCH } from './lab-context-math.js';
+import { goBtn } from './lab-go.js'; // a button to where the message points
 
 export function createContextPage({ api }) {
   let v = null, from = '', at = 5, squeeze = 'half', stretch = 1, sizes = [1024, 4096, 16384, 32768], forget = true, plan = null, msg = '', used = '', askUnload = null, loading = false;
@@ -28,7 +30,7 @@ export function createContextPage({ api }) {
         ${m.cardGB ? `<span class="ctx-line" style="left:${pc(m.cardGB)}%" title="The graphics card ends here"></span>` : ''}</div>
       <p class="play-key muted"><span><span class="ctx-brain swatch"></span> The brain ${m.brainGB} GB</span> <span><span class="ctx-kv swatch"></span> Chat memory ${m.kvGB} GB</span> <span><span class="ctx-work swatch"></span> Working room ${m.workGB} GB</span>${m.cardGB ? ` <span><span class="ctx-line swatch"></span> The card, ${m.cardGB} GB</span>` : ''}</p>
       <p role="status" class="${m.where === 'no' ? 'error' : ''}"><strong>${esc(where)}</strong>${m.where === 'card' ? ` ${m.leftGB} GB left on the card.` : ''}</p>
-      <fieldset><legend>Cache squeeze</legend>${SQUEEZE.map((s) => `<label class="lab-opt"><input type="radio" name="ctxsq" value="${s.id}" ${squeeze === s.id ? 'checked' : ''}> <span><strong>${esc(s.label)}</strong><br><span class="muted">${esc(s.hint)}</span></span></label>`).join('')}</fieldset>
+      <fieldset><legend>${nameNow('Cache squeeze')}</legend>${SQUEEZE.map((s) => `<label class="lab-opt"><input type="radio" name="ctxsq" value="${s.id}" ${squeeze === s.id ? 'checked' : ''}> <span><strong>${esc(s.label)}</strong><br><span class="muted">${esc(s.hint)}</span></span></label>`).join('')}</fieldset>
       <p class="lab-saw"><strong>Fits my card:</strong> ${esc(fit.line)}</p>
       <div class="row"><button type="button" class="get" data-ctxuse="${useAt}" ${useAt ? '' : 'disabled'}>Use this in Bob</button>${used ? `<span role="status">${esc(used)}</span>` : ''}</div>
       <p class="muted">${fit.card ? `Use this in Bob sets ${esc(b.name)}'s size in Settings to the biggest that stays on the card (${kLabel(fit.card)}).` : `${esc(b.name)} never fits on the card whole, so Use this in Bob sets the size on the slider${useAt ? ` (${kLabel(useAt)})` : ''}.`} Bob uses half-size chat memory.</p>`
@@ -37,10 +39,10 @@ export function createContextPage({ api }) {
 
   function ladderHtml(b) {
     const list = ladderSizes(b.max, stretch);
-    return `<section class="lab-compare" aria-labelledby="ctx-run-h"><h4 id="ctx-run-h">Speed against length, and the needle at every size</h4>
+    return `<section class="lab-compare" aria-labelledby="ctx-run-h"><h4 id="ctx-run-h">${nameNow('Speed against length, and the needle at every size')}</h4>
       <p class="muted">Bob gives ${esc(b.name)} one long text at each size you tick, with a note hidden in it, and asks for the note at the end. He times how long the first word takes and how fast it writes, so you see the slow-down with your own eyes.</p>
       <fieldset><legend>Sizes</legend><div class="row">${list.map((s) => `<label class="lab-opt${s.ok ? '' : ' dim'}"><input type="checkbox" data-ctxsize="${s.n}" ${sizes.includes(s.n) && s.ok ? 'checked' : ''} ${s.ok ? '' : 'disabled'}> <span><strong>${s.label}</strong>${s.ok ? (s.past ? ' <span class="tag warn">stretched</span>' : '') : '<br><span class="muted">Past its window. Stretch it to try.</span>'}</span></label>`).join('')}</div></fieldset>
-      <fieldset><legend>Stretch the window</legend><div class="row">${STRETCH.map((n) => `<label class="lab-opt"><input type="radio" name="ctxstretch" value="${n}" ${stretch === n ? 'checked' : ''}> <span><strong>${n === 1 ? 'No stretch' : `${n}x`}</strong>${n > 1 ? `<br><span class="muted">up to ${kLabel((b.max || 32768) * n)}</span>` : ''}</span></label>`).join('')}</div>
+      <fieldset><legend>${nameNow('Stretch the window')}</legend><div class="row">${STRETCH.map((n) => `<label class="lab-opt"><input type="radio" name="ctxstretch" value="${n}" ${stretch === n ? 'checked' : ''}> <span><strong>${n === 1 ? 'No stretch' : `${n}x`}</strong>${n > 1 ? `<br><span class="muted">up to ${kLabel((b.max || 32768) * n)}</span>` : ''}</span></label>`).join('')}</div>
         <p class="muted">Stretching (YaRN, the same setting as Long memory) spreads the brain's positions out so it can read further. It trades a little sharpness everywhere for reach: run it plain and stretched, and compare the notes it finds.</p></fieldset>
       <label class="lab-opt"><input type="checkbox" data-ctxforget ${forget ? 'checked' : ''}> <span><strong>What gets forgotten</strong><br><span class="muted">A 20-turn chat that's too long for a 2K window. Bob asks about the first turn with the whole chat, and again with only what fits.</span></span></label>
       ${plan ? `<div class="lab-check" role="status">${plan.problems.length ? `<p><strong>Before it can start:</strong></p><ul>${plan.problems.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>` : '<p><strong>Ready.</strong> It runs here, for free, on whatever card this is.</p>'}${plan.notes.map((n) => `<p class="muted">${esc(n)}</p>`).join('')}</div>` : ''}
@@ -62,9 +64,9 @@ export function createContextPage({ api }) {
   function html() {
     if (!v) return `<p class="muted" role="status">${loading ? 'Reading your brains…' : ''}</p>${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}`;
     const b = brain();
-    return `<h3>How much can it hold?</h3>
-      <p class="muted">A brain can only keep so much of a chat in mind at once: its window. Here you can see what a longer window costs in memory and speed, where it stops fitting, and what a brain forgets when a chat outgrows it. It all runs here, for free.</p>
-      <fieldset><legend>Which brain?</legend>${v.brains.map((x) => `<label class="lab-opt"><input type="radio" name="ctxfrom" value="${esc(x.id)}" ${from === x.id ? 'checked' : ''}> <span><strong>${esc(x.name)}</strong><br><span class="muted">${x.sizeGB} GB${x.max ? `, made for ${kLabel(x.max)}` : ''}</span></span></label>`).join('') || '<p>There are no brains here yet. Get one from Get models.</p>'}</fieldset>
+    return `<h3>${nameNow('How much can it hold?')}</h3>
+      <p class="muted">How much chat a brain can keep in mind, what more costs in memory and speed, and what it forgets past that. Free, here.</p>
+      <fieldset><legend>Which brain?</legend>${v.brains.map((x) => `<label class="lab-opt"><input type="radio" name="ctxfrom" value="${esc(x.id)}" ${from === x.id ? 'checked' : ''}> <span><strong>${esc(x.name)}</strong><br><span class="muted">${x.sizeGB} GB${x.max ? `, made for ${kLabel(x.max)}` : ''}</span></span></label>`).join('') || '<p>There are no brains here yet. Get one from Get models.' + goBtn('models') + '</p>'}</fieldset>
       ${b ? meterHtml(b) + ladderHtml(b) : ''}
       ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}
       ${(v.runs || []).filter((r) => !from || r.brain.id === from).map((r, i) => resultHtml({ ...r, saw: r.saw || '' }, i)).join('')}`;

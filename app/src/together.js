@@ -118,7 +118,7 @@ export async function askOnce(brain, items, ctx, { why = '' } = {}) {
   // Bob's own words about the job stay off the card: they can't be checked against the steps, and the card must
   // never promise or hide anything. The steps themselves are the whole story.
   const text = 'Here they all are, so you can see the whole job before any of it starts.';
-  if (why) brain.log('approval', `together, Bob says it's for: ${String(why).slice(0, 300)}`);
+  if (why) brain.log('approval', `together, Bob gave a reason (${String(why).length} characters)`); // item 248: his words stay in the chat
   const answer = await brain.approve({ text, together: items }, ctx.emit, ctx.signal, null, { hand: true, id });
   return keepAnswers(brain, items, answer, ctx);
 }
@@ -177,7 +177,7 @@ export function askTogetherTool(brain) {
       type: 'function',
       function: {
         name: 'ask_together',
-        description: 'Before a job that needs more than one OK from {{USER}} (files, commands, apps, edits, schedules, cloud helpers), list every one of those steps here first, with the exact tool and arguments you will use. {{USER}} sees them all on one card and allows or denies them together. Then do the steps with the same arguments; the allowed ones won\'t ask again. Leave out steps that need no OK.',
+        description: 'Before a job needing several OKs, list those steps with the exact tool and args. {{USER}} answers them on one card; call them after with the same args and they won\'t ask again. Leave out steps needing no OK.',
         parameters: {
           type: 'object',
           properties: {

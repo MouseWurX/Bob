@@ -90,9 +90,9 @@ const cards = () => events.filter((e) => e.type === 'approval');
   const masterOff = { userName: 'Sam', hands: { enabled: false, apps: { on: true } } };
   const appsOff = { userName: 'Sam', hands: { enabled: true, apps: { on: false } } };
   const held = { userName: 'Sam', hands: { enabled: true, held: true, apps: { on: true } } };
-  check('when everything is off, Bob says both switches to turn on, by their Settings names', handOffWhy(allOff, 'apps') === 'Hands are off in Settings. Sam can turn on "Let Bob use Hands" and "Open and use apps" in Settings, Show advanced settings, Hands.');
+  check('when everything is off, Bob says both switches to turn on, by their Settings names', handOffWhy(allOff, 'apps') === 'Hands are off in Settings. Sam can turn on "Let Bob use Hands" and "Open and use apps" in Settings, Hands.');
   check('when only the master switch is off, Bob names it', /Hands are off in Settings \(the "Let Bob use Hands" switch\)/.test(handOffWhy(masterOff, 'apps')));
-  check('when only the Apps hand is off, Bob names it', handOffWhy(appsOff, 'apps') === 'The "Open and use apps" Hand is off. Sam can turn it on in Settings, Show advanced settings, Hands.');
+  check('when only the Apps hand is off, Bob names it', handOffWhy(appsOff, 'apps') === 'The "Open and use apps" Hand is off. Sam can turn it on in Settings, Hands.');
   check('when stopped on the chat page, Bob says so', /chat page/.test(handOffWhy(held, 'apps')));
   const p0 = handsPrompt(allOff);
   check("with Hands off, Bob's prompt still tells him which are off, why, and to say so plainly (\"open Notepad\" -> a clear reason)", /off right now/.test(p0) && /Open and use apps/.test(p0) && /Let Bob use Hands/.test(p0) && /don't refuse without a reason or make one up/.test(p0));
@@ -100,9 +100,11 @@ const cards = () => events.filter((e) => e.type === 'approval');
   check("with Hands on, Bob is told the PC is real, to quote a tool's error, to claim only what a tool did, and to retry rather than repeat an old failure", /Hands act on it for real/.test(pOn) && /never blame a simulation/.test(pOn) && /Never say you did something on \S+'s Windows PC \(opened.* unless a tool result in this turn says it was done/.test(pOn) && /Never say you did something/.test(p0) && /call the tool again instead of repeating/.test(pOn));
   const p1 = handsPrompt(appsOff);
   // 1.5.102: Hands that are simply off share one "turn them on" line instead of one each.
-  check('with some Hands on, the off ones are still explained', /off right now[^\n]*Open and use apps/.test(p1) && /Sam can turn them on in Settings, Show advanced settings, Hands\./.test(p1) && (p1.match(/Show advanced settings/g) || []).length === 1);
+  check('with some Hands on, the off ones are still explained', /off right now[^\n]*Open and use apps/.test(p1) && /Sam can turn them on in Settings, Hands\./.test(p1) && !/Show advanced settings/.test(p1));
 }
-check("Bob's prompt explains look-then-act when the Apps hand is on", /app_look/.test(handsPrompt(cfg)) && !/app_look/.test(handsPrompt({ ...cfg, hands: { ...cfg.hands, apps: { on: false } } })));
+// 1.5.207 (less context): the look-then-act order is said once, in the drive line, not again in the Hands paragraph.
+{ const { realPcPrompt } = await import('../src/brain.js');
+  check("Bob's prompt explains look-then-act when the Apps hand is on", /open_app, then app_look, then app_act/.test(realPcPrompt(cfg)) && !/app_look/.test(realPcPrompt({ ...cfg, hands: { ...cfg.hands, apps: { on: false } } })) && !/app_look/.test(handsPrompt(cfg).replace(/app_look[^.]*hands? is off/g, ''))); }
 {
   const offCfg = { ...cfg, hands: { ...cfg.hands, apps: { on: false } } };
   const offTools = handsTools({ cfg: offCfg, log() {} }, { apps: { driver: new AppsDriver({ command: [process.execPath, path.join(here, 'mock-apps-driver.js')] }) } });
@@ -225,6 +227,20 @@ check('taking over is in the logbook', logs.some((l) => /moved the mouse; Bob st
 const s3 = await fake.runTool('app_act', { window: 'notepad', action: 'click', name: 'Save' }, ctx());
 check('a new job can ask again', /Done/.test(s3.text));
 
+// 1.5.208 PC check: Windows 11 Notepad came back on the owner's unsaved note, and Bob typed into it.
+fs.writeFileSync(mockLog + '.oldtab', '');
+const n1 = await fake.runTool('open_app', { name: 'notepad' }, ctx());
+check('Notepad opening on an old page gets a new blank tab (ctrl+n), and the old page is left alone', /came back on a page that was already there, so Bob opened a new blank tab \("Untitled - Notepad"\)/.test(n1.text) && sent().some((m) => m.op === 'act' && m.keys === '^n'), n1.text);
+fs.writeFileSync(mockLog + '.nonewtab', '');
+const n2 = await fake.runTool('open_app', { name: 'notepad' }, ctx());
+check("…and when no new tab comes, Bob says so and doesn't type", /didn't come\. Don't type into it/.test(n2.text), n2.text);
+const oldCards = cards().length;
+const n3 = await fake.runTool('app_act', { window: 'dear diary', action: 'type', text: 'Shopping list' }, ctx());
+check('typing into a page that was already open is refused before any card, with the way to a blank page', /already open/.test(n3.text) && /ctrl\+n/.test(n3.text) && cards().length === oldCards, n3.text);
+const n4 = await fake.runTool('app_act', { window: 'dear diary', action: 'keys', keys: 'ctrl+a' }, ctx());
+check('…and so are other keys (ctrl+a, Delete) on it', /already open/.test(n4.text), n4.text);
+fs.rmSync(mockLog + '.nonewtab'); fs.rmSync(mockLog + '.oldtab');
+
 // Stop everything ends the helper and its bar
 check('the helper is listed as running while it is up', runningNow().some((r) => r.line === 'Apps hand'));
 stopEverything(fake);
@@ -253,7 +269,7 @@ if (process.platform !== 'win32') check('off Windows the real helper says it nee
   const b = fs.readFileSync(path.join(here, '..', 'src', 'brain.js'), 'utf8');
   check('a claim with no Hands tool done this turn gets a visible correction and one chance to really do it', /if \(!reply\.tool_calls && !ctx\.handsDid && !ctx\.claimChecked && claimsPcAction\(reply\.content\)\)/.test(b) && /emit\(\{ type: 'correction', text: CLAIM_CORRECTION \}\)/.test(b) && /reply\.correction = CLAIM_CORRECTION/.test(b) && /continue;/.test(b) && CLAIM_CORRECTION === 'Nothing was actually done on this replicant matrix in that reply. Bob said he did, but no action ran.');
   check('the nudge stays out of the chat the user sees', /role: 'system', content: CLAIM_NUDGE, hidden: true/.test(b) && /\.filter\(\(m\) => \(m\.role === 'user' \|\| m\.role === 'assistant'\)/.test(b));
-  check('the brain sees history through the stale-error filter', /messages: \[sys, \.\.\.staleHandErrors\(msgs, turnStart\)\]/.test(b));
+  check('the brain sees history through the stale-error filter', /messages: \[sys, \.\.\.(?:loopView\()?staleHandErrors\(msgs, turnStart\)(?:, step\))?\]/.test(b));
 }
 
 // UI

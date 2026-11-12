@@ -16,7 +16,8 @@ $v = @(Get-CimInstance Win32_VideoController | ForEach-Object { @{ name = $_.Nam
 $d = $null
 $p = Get-Partition -DriveLetter '${drive}'
 if ($p) { $k = Get-Disk -Number $p.DiskNumber; $pd = Get-PhysicalDisk | Where-Object { $_.DeviceId -eq [string]$k.Number } | Select-Object -First 1; $d = @{ media = [string]$pd.MediaType; bus = [string]$k.BusType } }
-@{ memory = $m; battery = $b; video = $v; disk = $d } | ConvertTo-Json -Depth 4 -Compress`;
+$sac = (Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\CI\\Policy' -Name VerifiedAndReputablePolicyState).VerifiedAndReputablePolicyState
+@{ memory = $m; battery = $b; video = $v; disk = $d; sac = $sac } | ConvertTo-Json -Depth 4 -Compress`;
 
 // 1.5.133, by CitizenFog and Bob (GitHub issue #25): Windows's own list of video controllers says which cards are really there,
 // so nvidia-smi is only asked when one of them is NVIDIA. Without that list (Linux, Mac, or PowerShell said nothing)
@@ -88,7 +89,7 @@ export function tipsFrom(facts, { today = new Date() } = {}) {
   const d = facts.disk;
   if (d && (/hdd/i.test(d.media) || /usb/i.test(d.bus))) {
     tips.push({ id: 'disk', level: 'fix', title: `Bob's models are on a ${/usb/i.test(d.bus) ? 'USB drive' : 'hard drive'} (${facts.drive}:)`, why: 'Brains load from disk each time Bob wakes, so a slow drive adds many seconds to every first reply.',
-      steps: ['Move the models folder to your fastest drive (an SSD inside this replicant matrix).', 'In Bob, open Settings, then Show advanced settings, and point Bob at the new folder.'] });
+      steps: ['Move the models folder to your fastest drive (an SSD inside this replicant matrix).', 'In Bob, open Settings, and point Bob at the new folder.'] });
   } else if (d?.media) fine.push(`Models are on a fast drive (${facts.drive}:).`);
   if (facts.nvidia) {
     const others = (facts.nvidia.apps || []).filter((a) => a.gb >= 0.5);
@@ -100,5 +101,12 @@ export function tipsFrom(facts, { today = new Date() } = {}) {
     tips.push({ id: 'sysmem-fallback', level: 'optional', title: 'Optional: stop the graphics card from quietly borrowing RAM', why: 'When a brain doesn\'t quite fit, the driver borrows RAM and Bob slows down without saying why. With this setting, it fails clearly instead, and Bob makes it fit.',
       steps: ['This is a driver setting. Bob can\'t change it.', 'Right-click the desktop and open NVIDIA Control Panel.', 'Go to Manage 3D settings, then Global Settings.', 'Set "CUDA - Sysmem Fallback Policy" to "Prefer No Sysmem Fallback" and click Apply.'] });
   }
+  // 1.5.204 Smart App Control (app-control.js): read, never changed. 1 = on, 2 = trial mode, 0 = off.
+  const sac = facts.sac === null || facts.sac === undefined || facts.sac === '' ? null : Number(facts.sac);
+  if (sac === 1 || sac === 2) {
+    tips.push({ id: 'smart-app-control', level: 'optional', title: sac === 1 ? 'Windows Smart App Control is on' : 'Windows Smart App Control is in its trial mode',
+      why: `${sac === 1 ? 'It stops' : 'Windows can turn it on by itself later. Then it stops'} program files Windows hasn't seen before unless they're signed, and some of Bob's engines aren't signed yet. Bob tries each new engine before using it and keeps the old one if Windows says no, so nothing breaks.`,
+      steps: ['You don\'t need to do anything. Bob never changes this setting.', 'It\'s in Windows Security, App & browser control, Smart App Control. Turning it off is your choice: it protects this replicant matrix from unknown programs.'] });
+  } else if (sac === 0) fine.push('Smart App Control is off, so Windows won\'t stop Bob\'s unsigned engines.');
   return { tips, fine };
 }

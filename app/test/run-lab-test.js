@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { foldGguf, foldWhyNot, foldWeights, foldTargets, alignNeurons } from '../src/lab-fold.js';
 import { readGguf, brainFacts, readerFacts, writeGguf, checkKeep, busiest, isHearingTensor, readCounts, coverageKeep } from '../src/lab-gguf.js';
 import { Lab, maskFor, cleanWrite, teacherLicence, lessonSets, cleanRecipe, planRecipe, labRoom, labOn, cutSizes, fitWords, mergeMadeBrains, labRoute, RUNNING_TYPES , measureRecord, sha256File, compareTable, compareCsv } from '../src/lab.js';
 import { TEMPLATES, TEMPLATE_IDS, templateById, templateWhyNot, applyTemplate } from '../public/lab-templates.js';
@@ -58,13 +59,16 @@ const expertT = (L, kind) => ({ name: `blk.${L}.ffn_${kind}_exps.weight`, dims: 
 const brainFile = path.join(tmp, 'moe.gguf');
 makeGguf(brainFile, [['general.architecture', 8, 'testmoe'], ['general.name', 8, 'Test MoE'], ['testmoe.block_count', 4, 2], ['testmoe.expert_count', 4, E], ['testmoe.expert_used_count', 4, 2], ['general.file_type', 4, 1], ['tokenizer.ggml.tokens_ids', 9, [1, 2, 3]]], [
   { name: 'token_embd.weight', dims: [EMB, 5], fill: (i) => i },
-  ...[0, 1].flatMap((L) => [expertT(L, 'gate'), expertT(L, 'up'), expertT(L, 'down'), { name: `blk.${L}.ffn_gate_inp.weight`, dims: [EMB, E], fill: (i) => 1000 * L + 100 * Math.floor(i / EMB) + (i % EMB) }, { name: `blk.${L}.attn_q.weight`, dims: [EMB, EMB], fill: (i) => -i }])
+  ...[0, 1].flatMap((L) => [expertT(L, 'gate'), expertT(L, 'up'), expertT(L, 'down'), { name: `blk.${L}.ffn_gate_inp.weight`, dims: [EMB, E], fill: (i) => 1000 * L + 100 * Math.floor(i / EMB) + (i % EMB) }, { name: `blk.${L}.ffn_gate_inp.bias`, dims: [E], fill: (i) => 1000 * L + i }, { name: `blk.${L}.attn_q.weight`, dims: [EMB, EMB], fill: (i) => -i }])
 ]);
 
 const g = readGguf(brainFile);
 const f = brainFacts(g);
 check('reads a made-up mixture-of-experts brain', f.arch === 'testmoe' && f.experts === 8 && f.used === 2 && f.layers === 2 && f.fullSize && f.expertLayers.join() === '0,1', JSON.stringify(f));
 { const all = g.tensors.reduce((a, t) => a + t.dims.reduce((x, d) => x * Number(d), 1), 0); check('it counts every weight in the file, for the leaderboard classes', f.params === all && all > 0 && typeof f.paramsB === 'number' && typeof f.activeB === 'number'); }
+check('a brain with no built-in guesser shows all its layers', f.engineLayers === 2);
+{ const meta = { ...g.meta, 'testmoe.nextn_predict_layers': 1 }; const mf = brainFacts({ ...g, meta }); check('a built-in guesser layer is left out of the layer count people see, not the file count', mf.layers === 2 && mf.engineLayers === 1); }
+check('Peek inside and the scan show the layers that run', /b\.facts\.engineLayers \|\| b\.facts\.layers/.test(fs.readFileSync(new URL('../public/lab-peek.js', import.meta.url), 'utf8')) && /b\.engineLayers \|\| b\.layers/.test(fs.readFileSync(new URL('../public/lab-watch.js', import.meta.url), 'utf8')));
 const keep = [[1, 3, 5, 7], [0, 2, 4, 6]];
 check('a good keep list passes', checkKeep(g, keep) === '');
 check('a keep list smaller than the picks per word is refused', /at least 2/.test(checkKeep(g, [[1], [2]])));
@@ -87,12 +91,52 @@ const up1 = floats(c, cutFile, 'blk.1.ffn_up_exps.weight');
 check('expert slabs kept are exactly the chosen ones, in order', up1.length === 4 * EMB * FF && [0, 2, 4, 6].every((e, k) => up1[k * EMB * FF] === 1000 + 100 * e), up1.filter((_, i) => i % (EMB * FF) === 0).join());
 const r0 = floats(c, cutFile, 'blk.0.ffn_gate_inp.weight');
 check('the router keeps the same experts\' rows', [1, 3, 5, 7].every((e, k) => r0[k * EMB] === 100 * e));
+check('the router\'s bias (gpt-oss has one) is cut to the same experts', floats(c, cutFile, 'blk.1.ffn_gate_inp.bias').join() === '1000,1002,1004,1006' && c.tensors.find((t) => t.name === 'blk.0.ffn_gate_inp.bias').dims.join() === '4');
 check('tensors without experts are copied unchanged', floats(c, cutFile, 'blk.1.attn_q.weight').join() === floats(g, brainFile, 'blk.1.attn_q.weight').join() && floats(c, cutFile, 'token_embd.weight').join() === floats(g, brainFile, 'token_embd.weight').join());
 check('the expert tensor dims say 4', c.tensors.find((t) => t.name === 'blk.0.ffn_down_exps.weight').dims.join() === `${FF},${EMB},4`);
 check('the cut file is smaller', fs.statSync(cutFile).size < fs.statSync(brainFile).size);
 check('no half-written .part file is left', !fs.existsSync(cutFile + '.part'));
 check('a stopped cut leaves nothing behind', await (async () => { const ac = new AbortController(); ac.abort(); try { await writeGguf(brainFile, path.join(tmp, 'stop.gguf'), { keep, signal: ac.signal }); return false; } catch { return !fs.existsSync(path.join(tmp, 'stop.gguf')) && !fs.existsSync(path.join(tmp, 'stop.gguf.part')); } })());
 check('busiest picks the most-used experts per layer', JSON.stringify(busiest([[5, 1, 9, 0, 7, 2, 3, 8], [0, 0, 0, 1, 1, 1, 1, 0]], 4)) === JSON.stringify([[0, 2, 4, 7], [3, 4, 5, 6]]));
+
+// ---- Fold instead of drop (expert merging): a dropped expert is blended into the kept expert most like it ----
+{
+  const FE = 4, FH = 4, FI = 3;
+  const G = (a, i, h) => ((a * 7 + i * 5 + h * 3 + i * h * (a + 1)) % 11) - 5, U = (a, i, h) => ((a * 3 + i * 2 + h * 7 + i * i) % 13) - 6, D = (a, h, i) => ((a * 5 + i * 9 + h * 4 + h * i) % 7) - 3;
+  // Experts 0 and 1 are the originals. Expert 2 is expert 0 with its neurons shuffled; expert 3 is expert 1 shuffled and three times as loud.
+  const from = [0, 1, 0, 1], shuffle = [[0, 1, 2], [0, 1, 2], [2, 0, 1], [1, 2, 0]], loud = [1, 1, 1, 3];
+  const routes = [[1, 0, 0, 0], [0, 1, 0, 0], [2, 0, 0, 0.1], [0, 3, 0.1, 0]];
+  const inOf = (fn) => (x) => { const e = Math.floor(x / (FI * FH)), i = Math.floor((x % (FI * FH)) / FH), h = x % FH; return loud[e] * fn(from[e], shuffle[e][i], h); };
+  const foldFile = path.join(tmp, 'fold.gguf');
+  makeGguf(foldFile, [['general.architecture', 8, 'testmoe'], ['general.name', 8, 'Fold MoE'], ['testmoe.block_count', 4, 1], ['testmoe.expert_count', 4, FE], ['testmoe.expert_used_count', 4, 2], ['general.file_type', 4, 0]], [
+    { name: 'token_embd.weight', dims: [FH, 5], fill: (x) => x },
+    { name: 'blk.0.ffn_gate_exps.weight', dims: [FH, FI, FE], fill: inOf(G) }, { name: 'blk.0.ffn_up_exps.weight', dims: [FH, FI, FE], fill: inOf(U) },
+    { name: 'blk.0.ffn_down_exps.weight', dims: [FI, FH, FE], fill: (x) => { const e = Math.floor(x / (FI * FH)), h = Math.floor((x % (FI * FH)) / FI), i = x % FI; return loud[e] * D(from[e], h, shuffle[e][i]); } },
+    { name: 'blk.0.ffn_gate_inp.weight', dims: [FH, FE], fill: (x) => routes[Math.floor(x / FH)][x % FH] }, { name: 'blk.0.attn_q.weight', dims: [FH, FH], fill: (x) => -x }]);
+  const fg = readGguf(foldFile), foldOut = path.join(tmp, 'folded.gguf');
+  const fr = await foldGguf(foldFile, foldOut, { keep: [[0, 1]], counts: [[10, 6, 5, 2]] });
+  const fo = readGguf(foldOut);
+  const near = (a, b) => a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) < 1e-4);
+  const src = (name) => floats(fg, foldFile, name), got = (name) => floats(fo, foldOut, name);
+  check('a fold keeps the number of experts asked for and says how many it folded in', brainFacts(fo).experts === 2 && fr.folded === 2 && fr.kept === 2 && fo.tensors.find((t) => t.name === 'blk.0.ffn_down_exps.weight').dims.join() === `${FI},${FH},2`);
+  for (const part of ['gate', 'up', 'down']) {
+    const s = src(`blk.0.ffn_${part}_exps.weight`), o = got(`blk.0.ffn_${part}_exps.weight`), n = FI * FH;
+    check(`folding a shuffled copy of an expert back in leaves it as it was: the neurons were lined up (${part})`, near(o.slice(0, n), s.slice(0, n)), o.slice(0, n).join());
+    check(`each expert weighs what it's used: 6 picks and 2 picks of one three times as loud make it half as loud again (${part})`, near(o.slice(n), s.slice(n, 2 * n).map((v) => 1.5 * v)), o.slice(n).join());
+  }
+  check('the router rows are blended the same way', near(got('blk.0.ffn_gate_inp.weight'), [(10 * 1 + 5 * 2) / 15, 0, 0, (5 * 0.1) / 15, 0, (6 * 1 + 2 * 3) / 8, (2 * 0.1) / 8, 0]), got('blk.0.ffn_gate_inp.weight').join());
+  check('a fold leaves everything that isn\'t an expert alone', got('blk.0.attn_q.weight').join() === src('blk.0.attn_q.weight').join() && got('token_embd.weight').join() === src('token_embd.weight').join() && fo.meta['general.name'] === 'Fold MoE');
+  check('each dropped expert goes to the kept one its router row points most like', (() => { const t = foldTargets(Float32Array.from(routes.flat()), FE, FH, [0, 1]); return t.get(2) === 0 && t.get(3) === 1 && t.size === 2; })());
+  check('lining up finds a shuffle', alignNeurons(Float32Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1]), Float32Array.from([0, 0, 1, 1, 0, 0, 0, 1, 0]), 3, 3).join() === '1,2,0');
+  check('fold weights: by use, the kept one alone when the group was never picked, half and half with no counts', foldWeights([1, 3], [0, 6, 0, 2]).join() === '0.75,0.25' && foldWeights([1, 3], [5, 0, 5, 0]).join() === '1,0' && foldWeights([1, 3, 2], null).join() === '0.5,0.25,0.25' && foldWeights([1], null).join() === '1');
+  const noCounts = path.join(tmp, 'folded-nocounts.gguf'); await foldGguf(foldFile, noCounts, { keep: [[0, 1]] });
+  check('a fold with no counts still writes a brain (the kept expert weighs half)', near(floats(readGguf(noCounts), noCounts, 'blk.0.ffn_gate_exps.weight').slice(FI * FH), src('blk.0.ffn_gate_exps.weight').slice(FI * FH, 2 * FI * FH).map((v) => 2 * v)));
+  const running = readGguf(foldFile); running.tensors.find((t) => t.name === 'blk.0.ffn_up_exps.weight').type = 12;
+  check('a running file is refused in words: folding needs the full-size numbers', /needs the full-size file/.test(foldWhyNot(running)) && foldWhyNot(fg) === '');
+  const odd = readGguf(foldFile); odd.tensors.find((t) => t.name === 'blk.0.ffn_up_exps.weight').name = 'blk.0.ffn_up_exps.scale';
+  check('a brain whose experts have parts folding doesn\'t know is refused, not guessed at', /doesn't handle yet/.test(foldWhyNot(odd)));
+  check('a fold checks the keep list like a cut does', await foldGguf(foldFile, path.join(tmp, 'bad.gguf'), { keep: [[0]] }).then(() => false, (e) => /at least 2/.test(e.message)) && !fs.existsSync(path.join(tmp, 'bad.gguf')));
+}
 
 // A reader file holding sight and hearing: hearing taken out.
 const readerFile = path.join(tmp, 'mmproj.gguf');
@@ -132,7 +176,10 @@ check('fit lines use words, not ticks or brand names', !/[✓✗]|Legion|Steam|P
 
 // ---- Lab 1b: templates and Measure before making the running files ----
 check('the five methods and the two later ones are templates', ['plain-cut', 'lab-local-cut', 'coverage-cut-heal', 'train-teacher', 'outside-traces', 'merge-experts', 'layer-width-cut'].every((id) => TEMPLATE_IDS.includes(id)) && TEMPLATES.every((t) => t.title && t.help && ['here', 'rented', 'either'].includes(t.where)));
-check('rented templates are greyed out with the reason, never offered', TEMPLATES.filter((t) => t.where === 'rented').every((t) => templateWhyNot(t, facts) && !t.lab) && /rented card/.test(templateWhyNot(templateById('coverage-cut-heal'), facts)) && /Not built yet/.test(templateWhyNot(templateById('merge-experts'), facts)));
+check('rented templates are greyed out with the reason, never offered', TEMPLATES.filter((t) => t.where === 'rented').every((t) => templateWhyNot(t, facts) && !t.lab) && /rented card/.test(templateWhyNot(templateById('coverage-cut-heal'), facts)) && /Not built yet/.test(templateWhyNot(templateById('layer-width-cut'), facts)));
+check('Merge experts is built: it fills a coverage cut with the fold ticked, here, and prints a Forge rung with fold', (() => { const t = templateById('merge-experts'); const a = applyTemplate({ lessons: {}, smaller: {} }, t, { keepDefault: 4 }); return !t.later && templateWhyNot(t, facts) === '' && a.smaller.cut.how === 'cover' && a.smaller.cut.fold === true && cleanRecipe(a).smaller.cut.fold === true && t.forge.rung.fold === true; })());
+check('fold is off unless ticked, and only true counts', !('fold' in cleanRecipe({ smaller: { cut: { how: 'busiest', keep: 4 } } }).smaller.cut) && !('fold' in cleanRecipe({ smaller: { cut: { how: 'busiest', keep: 4, fold: 'yes' } } }).smaller.cut));
+{ const fp = plan({ name: 'Folded', lessons: { kind: 'chats' }, smaller: { cut: { how: 'busiest', keep: 4, fold: true } } }); const cs = fp.steps.find((x) => x.id === 'cut'); check('a fold shows in the plan: the step says so and carries the choice', fp.problems.length === 0 && cs.fold === true && /folding the rest in/.test(cs.label) && /fold, don't drop/.test(cs.cmd), fp.problems.join(' | ')); }
 check('a cutting template on an ordinary brain says why', /isn't a mixture-of-experts brain/.test(templateWhyNot(templateById('plain-cut'), { experts: 0 }, 'Plain')) && templateWhyNot(templateById('lab-local-cut'), facts) === '');
 const tpl = applyTemplate({ from: 'test-moe', name: '', lessons: { kind: 'none', chunks: 200 } }, templateById('lab-local-cut'), { keepDefault: 4, fullSize: true, brainName: 'Test MoE' });
 check('a template fills steps 2 to 5 and names the brain', tpl.template === 'lab-local-cut' && tpl.lessons.kind === 'chats' && tpl.smaller.cut.keep === 4 && tpl.smaller.files.includes('Q4_K_M') && tpl.smaller.measure === true && tpl.name === 'Test MoE Lab local cut' && tpl.from === 'test-moe');
@@ -212,6 +259,19 @@ const covLab = new Lab(cfg, { shop, room: big, steps: { count: async (s) => { fs
 await covLab.start({ name: 'Cover Test', from: 'test-moe', lessons: { kind: 'file', file: skillFile }, smaller: { cut: { how: 'cover', cover: 0.9 } }, test: { compare: false } });
 while (covLab.job) await new Promise((r) => setTimeout(r, 20));
 const cd = covLab.runs.at(-1);
+{ // a whole fold job: the same coverage cut with Fold the rest in ticked
+  let cutArgs = null;
+  const foldLab = new Lab(cfg, { shop, room: big, steps: { count: async (s) => { fs.copyFileSync(countsFile, s.counts); }, test: async () => fakeQuiz(60) } });
+  const realCut = foldLab.defaultSteps(foldLab.tools(), () => {}).cut;
+  foldLab.stepFns.cut = async (s, o) => { cutArgs = o; return realCut(s, o); };
+  await foldLab.start({ name: 'Fold Test', from: 'test-moe', lessons: { kind: 'file', file: skillFile }, smaller: { cut: { how: 'cover', cover: 0.9, fold: true } }, test: { compare: false } });
+  while (foldLab.job) await new Promise((r) => setTimeout(r, 20));
+  const fd = foldLab.runs.at(-1);
+  const E0 = 8, kept = fd.report?.folded?.kept;
+  check('a fold job writes a brain with the kept experts and reports how many were folded in', fd.state === 'done' && brainFacts(readGguf(fd.files.gguf)).experts === kept && fd.report.folded.experts === 2 * (E0 - kept) && kept === cd.report.coverage.experts, fd.error || JSON.stringify(fd.report));
+  check('the fold weighs each expert by its use, every skill the same', cutArgs.fold === true && Array.isArray(cutArgs.counts?.[0]) && Math.abs(cutArgs.counts[0].reduce((a, b) => a + b, 0) - 3) < 1e-6);
+  check('a folded brain isn\'t the plain cut: the kept experts changed', (() => { const a = readGguf(fd.files.gguf), b = readGguf(cd.files.gguf); return floats(a, fd.files.gguf, 'blk.0.ffn_up_exps.weight').join() !== floats(b, cd.files.gguf, 'blk.0.ffn_up_exps.weight').join() && floats(a, fd.files.gguf, 'blk.0.attn_q.weight').join() === floats(b, cd.files.gguf, 'blk.0.attn_q.weight').join(); })());
+}
 check('a coverage job cuts to what the skills need and reports each skill', cd.state === 'done' && cd.report.coverage?.skills.length === 3 && brainFacts(readGguf(cd.files.gguf)).experts === cd.report.coverage.experts && cd.report.coverage.experts < 8, cd.error || JSON.stringify(cd.report?.coverage));
 check('the coverage keep list names its rule and skills', (() => { const k = JSON.parse(fs.readFileSync(path.join(path.dirname(cd.files.gguf), 'cover-test-keep.json'), 'utf8')); return k.cover === 0.9 && k.skills.join() === 'coding,chat,tools' && k.layers.length === 2; })());
 check('the page heard each step', events.filter((e) => e.type === 'lab').length >= 7 && events.some((e) => e.type === 'lab-done' && e.ok));
@@ -276,6 +336,7 @@ teacher.close();
 }
 // ---- Lab 2a: Try it first on Brain Engine (fake engine steps) ----
 check('Brain Engine\'s mask has one entry per layer, null where a layer has no experts', JSON.stringify(maskFor([undefined, [1, 2]], { layers: 3 })) === '[null,[1,2],null]');
+check('a brain with its own guesser layer: the mask leaves that layer off, as Brain Engine counts (Riker: 41 in the file, 40 run)', maskFor([[1], [2], [3]], { layers: 3, mtp: 1, engineLayers: 2 }).length === 2 && JSON.stringify(maskFor([[1]], { layers: 3, mtp: 1, engineLayers: 2 })) === '[[1],null]');
 const tryRecipe = (name, extra = {}) => ({ name, from: 'test-moe', lessons: { kind: 'chats' }, smaller: { cut: { how: 'busiest', keep: 4 }, try: true, ...extra }, test: { compare: true } });
 check('Try it first needs Brain Engine on this replicant matrix', lab.plan(tryRecipe('Try A')).problems.some((x) => /Brain Engine/.test(x)));
 fs.mkdirSync(path.join(tmp, 'brain-engine'), { recursive: true }); fs.writeFileSync(path.join(tmp, 'brain-engine', exe('llama-server')), '');
@@ -306,7 +367,7 @@ const saved = lab.saveRecipe({ ...recipe, lessons: { kind: 'file', file: path.jo
 check('a saved recipe keeps choices, not paths', !JSON.stringify(saved).includes(tmp) && saved.at(-1).smaller.cut.keep === 4);
 
 // ---- 1.5.153 Challenges and Save ----
-check('the first six packs, then the extra ones, each with questions, a title and a time', PACKS.length === 22 && PACK_IDS.slice(0, 6).join() === 'quiz,reasoning,sums,rules,tools,code' && PACKS.every((x) => x.title && x.what && x.count > 0 && x.minutes > 0));
+check('the first six packs, then the extra ones, each with questions, a title and a time', PACKS.length === 26 && PACK_IDS.slice(0, 6).join() === 'quiz,reasoning,sums,rules,tools,code' && PACKS.every((x) => x.title && x.what && x.count > 0 && x.minutes > 0));
 check('every reasoning question has four choices and a letter answer', REASONING.every(([q, a]) => /A\) [\s\S]*B\) [\s\S]*C\) [\s\S]*D\) /.test(q) && /^[ABCD]$/.test(a)) && REASONING.length >= 20);
 check('every sum has a whole-number answer', SUMS.every(([, a]) => Number.isInteger(a)) && SUMS.length >= 15);
 check('the letter in a reply is found, with or without brackets, and thinking is ignored', letterOf('B') === 'B' && letterOf('(C)') === 'C' && letterOf('D) Gravity') === 'D' && letterOf('The answer is A.') === 'A' && letterOf('<think>A or B?</think>C') === 'C' && letterOf('no idea') === '');
@@ -391,7 +452,7 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   const okPlan = { hours_max: 2, dollars_max: 5, rungs: [{ hours: 1 }], hf_lessons: [{ repo: 'o/n' }] };
   check('a plan with Hugging Face lessons never starts until the Forge\'s importer is here', forgeStartProblems({ plan: okPlan, allowed: true, hasKey: true, shown: { hours: 2, dollars: 5 } }).some((x) => /importer/.test(x)) && !forgeStartProblems({ plan: okPlan, allowed: true, hasKey: true, shown: { hours: 2, dollars: 5 }, importer: true }).length);
   const { pathByName: pbn } = await import('../public/lab-thinking-paths.js');
-  check('the famous styles are there, tagged Fable-like, Opus-like and GPT-like, with a no-affiliation line; the lesson writer\'s style lines never name a model', [['Sherlock', 'Fable-like'], ['Watson', 'Opus-like'], ['Vulcan', 'GPT-like']].every(([n, l]) => pbn(n)?.style.length > 30 && pbn(n).like === l && !/fable|opus|gpt|claude|anthropic|openai/i.test(pbn(n).style)) && /never from those models/.test(read('public/lab-thinking-paths.js')) && /endorses/.test(read('public/lab-thinking-paths.js')) && !/spock|star trek/i.test(read('public/lab-thinking-paths.js')));
+  check('the famous styles are there, tagged Fable-like, Opus-like, GPT-like and DeepSeek-like, with a no-affiliation line; the lesson writer\'s style lines never name a model', [['Sherlock', 'Fable-like'], ['Watson', 'Opus-like'], ['Vulcan', 'GPT-like'], ['Raider', 'DeepSeek-like']].every(([n, l]) => pbn(n)?.style.length > 30 && pbn(n).like === l && !/fable|opus|gpt|claude|anthropic|openai|deepseek/i.test(pbn(n).style)) && /never from those models/.test(read('public/lab-thinking-paths.js')) && /endorses/.test(read('public/lab-thinking-paths.js')) && !/spock|star trek/i.test(read('public/lab-thinking-paths.js')));
   const fui = read('public/lab-forge.js');
   const srcui = read('public/lab-source.js');
   check('the form has one brain list (the Forge\'s brains, then another brain from here, Hugging Face or a link) and a lessons list with the Lab\'s sets, and no "plan\'s own brain"', ['The brain to start from', 'Brains the Forge made', 'Another brain: on this replicant matrix, on Hugging Face, or at a link', 'Forge settings to copy', 'Lessons to teach', 'Add a lesson set from somewhere else'].every((w) => fui.includes(w)) && !/plan's own brain/.test(fui) && ['On this replicant matrix', 'On Hugging Face', 'At another link', 'Look it up'].every((w) => srcui.includes(w)) && /rel="noopener noreferrer"/.test(srcui));
@@ -458,7 +519,7 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
 }
 {
   const lab3 = read('public/lab.js'), save = read('public/lab-save.js'), learn3 = read('public/lab-learn.js');
-  check('the Challenges tab is a real tab now, with the reviewed words', /\['challenges', 'Challenges'\]/.test(lab3) && ['Run the challenges', 'Scoreboard', 'Which brain?', 'Press a column\'s name to sort by it.'].every((w) => lab3.includes(w)) && !/Challenges <span class="lab-later">/.test(lab3));
+  check('Challenges is a real page (on the Test tab now), with the reviewed words', /test: \['challenges', 'taste', 'smaller', 'longer', 'faster'\]/.test(lab3) && /challenges: 'Challenges'/.test(lab3) && ['Run the challenges', 'Scoreboard', 'Which brain?', 'Press a column\'s name to sort by it.'].every((w) => lab3.includes(w)) && !/Challenges <span class="lab-later">/.test(lab3));
   check('the scoreboard sorts with buttons in the column headers and says which way', /aria-sort=/.test(lab3) && /data-sort=/.test(lab3));
   check('Save offers a picture, text, a spreadsheet and data, and the hardware only if ticked', ['Picture', 'Text', 'Spreadsheet', 'Data', 'Include my graphics card and memory', 'Never file paths, your chats or your name'].every((w) => save.includes(w)) && /hardware: false/.test(lab3) && /hardware: false/.test(learn3));
   check('every Learn card can be saved', ['learn-tokens', 'learn-next', 'learn-temperature'].every((k) => learn3.includes(`saveBox('${k}')`)));
@@ -490,8 +551,9 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   check('a brain that isn\'t here can\'t start a ladder', plLab.planLadder('nope').problems.length === 1);
   check('Professional picks the sizes: three types make a three-rung plan with less disk; none picked means all six; unknown types are refused', plLab.planLadder('test-moe', ['Q8_0', 'Q4_K_M', 'Q2_K']).steps.length === 3 && ladderDiskGB(8, LADDER.filter((x) => ['Q8_0', 'Q4_K_M', 'Q2_K'].includes(x.type))) < ladderDiskGB(8) && plLab.planLadder('test-moe', []).steps.length === LADDER.length && plLab.planLadder('test-moe', ['Q9']).problems.some((x) => /Pick from Q8 down to Q2/.test(x)));
   check('the Playground sends the picked sizes and shows the picker only in Professional', /api\('\/api\/lab\/ladder', \{ from, types, unload/.test(read('public/lab-playground.js')) && /pro\(\) \? `<fieldset class="lab-pro"><legend>Which sizes to make \(Professional\)/.test(read('public/lab-playground.js')));
-  { const lj = read('public/lab.js'); check('the mode switch says what it changes on each tab', ['make', 'forge', 'learn', 'challenges', 'playground'].every((t) => new RegExp(`\\n  ${t}: \\{ simple: '`).test(lj)) && /MODE_NOTES\[tab\]\?\.\[pro \? 'pro' : 'simple'\]/.test(lj) && /same in both modes/.test(lj)); }
+  { const lj = read('public/lab.js'); check('the mode switch says what Professional adds on each tab, in one line', ['make', 'teach', 'test', 'inside', 'learn', 'forge', 'mine'].every((t) => new RegExp(`\\n  ${t}: '`).test(lj)) && /MODE_NOTES\[tab\]/.test(lj) && /same in both modes/.test(lj)); }
   check('Make a brain says what opens up once a brain is ticked', /Tick one brain above to go on\./.test(read('public/lab.js')));
+  { const css = read('public/style.css'); check('every clickable thing in the Lab gets the same outline on mouse-over and keyboard focus, and greyed-out ones stay quiet', /\.lab-dlg button:not\(:disabled\):hover, \.lab-dlg summary:hover, \.lab-dlg a:hover/.test(css) && /\.lab-dlg button:focus-visible, \.lab-dlg summary:focus-visible/.test(css) && /\.lab-dlg \.lab-opt:focus-within \{ outline: 2px solid var\(--accent\); outline-offset: 2px; \}/.test(css) && /forced-colors: active\) \{ \.lab-dlg button:not\(:disabled\):hover/.test(css)); }
   check('the pick-a-brain hint counts the steps of the job picked, not always 2 to 5', read('public/lab.js').includes('Steps 2 to ${steps().length}') && !/Steps 2 to 5 and Next/.test(read('public/lab.js')));
   { const lj = read('public/lab.js'); check('Make a brain asks what you want to do first, one job at a time, and each job lists only its steps', /What do you want to do\?/.test(lj) && ['smaller', 'cut', 'senses', 'test', 'full', 'refusals'].every((id) => new RegExp(`id: '${id}', title:`).test(lj)) && /id: 'refusals', title: 'Take out the refusal habit'.*forge: 'refusals'/.test(lj) && /if \(j\?\.forge\) \{ tab = 'forge'; await fg\.openHome\(j\.forge\);/.test(lj) && /steps: \['brain', 'smaller', 'test'\], parts: \['files'\]/.test(lj) && /steps: \['brain', 'test'\], parts: \[\]/.test(lj) && /const steps = \(\) => \(jobOf\(\) \? STEPS\.filter/.test(lj) && /\$\{!job \? '' : `/.test(lj));
     check('picking a job clears the recipe parts it does not use, and the Forge opens the matching job', /if \(!hasPart\('cut'\)\) \{ r\.smaller\.cut = null;/.test(lj) && /if \(!hasPart\('files'\)\) \{ r\.smaller\.files = \[\];/.test(lj) && /goMake\(d\.method\)/.test(read('public/lab-forge.js')) && /data-forgeuse="make" data-method="\$\{m\.id\}"/.test(read('public/lab-forge.js'))); }
@@ -528,7 +590,7 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   for (const p of ['/api/lab/ladder', '/api/lab/ladder/ask', '/api/lab/ladder/delete']) await labRoute({ req: { method: 'POST' }, res: {}, p, isLocal: false, lab: plLab, body: async () => ({ from: 'test-moe', id: 'x' }), send: (res, code, j) => sent3.push([code, j]) });
   check('the ladder only starts, asks and deletes from this replicant matrix itself', sent3.length === 3 && sent3.every(([code]) => code === 403));
   const pg = read('public/lab-playground.js');
-  check('the Playground tab uses the reviewed words, a table as well as bars, and Save', ['How small can a brain get?', 'Make the ladder', 'Same question, every size', 'Ask every size', 'Delete all', 'What you just saw', 'Compared with Q8', 'Delete the six sizes for good? The table stays.', 'Delete them', 'Keep them', 'Bob takes one small brain', 'needs the graphics card'].every((w) => pg.includes(w)) && !/I take one|I show how much|ordinary writing/.test(pg) && /<th scope="col">/.test(pg) && /aria-hidden="true"/.test(pg) && /saveHtml\(/.test(pg));
+  check('the Playground tab uses the reviewed words, a table as well as bars, and Save', ['How small can a brain get?', 'Make the ladder', 'Same question, every size', 'Ask every size', 'Delete all', 'What you just saw', 'Compared with Q8', 'Delete the six sizes for good? The table stays.', 'Delete them', 'Keep them', 'needs the graphics card', 'Makes one small brain'].every((w) => pg.includes(w)) && !/I take one|I show how much|ordinary writing/.test(pg) && /<th scope="col">/.test(pg) && /aria-hidden="true"/.test(pg) && /saveHtml\(/.test(pg));
   check('Help has a Playground page in Bob\'s voice', /id: 'lab-playground'/.test(read('public/help-content.js')) && /how small can a brain get before it gets worse/.test(read('public/help-content.js')));
   check('the Playground never sends anything to a rental', !/runpod|\brent/i.test(pg) && !/runpod|\brent/i.test(read('src/lab-playground.js')));
 }
@@ -581,7 +643,7 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   const spawned = [];
   const fakeSpawn = (exe, args, opts) => { const rec = { args, stdin: '', opts }; spawned.push(rec); return { pid: 4242, stdin: { write: (t) => { rec.stdin += t; }, end: () => {} }, unref: () => {}, on: (ev, f) => { if (ev === 'exit') setTimeout(f, 1); } }; };
   const cLab = new Lab({ ...cfg }, { shop, room: big });
-  cLab.forgeSpawn = fakeSpawn; cLab.forgeAlive = (pid) => pid === 4242;
+  cLab.forgeSpawn = fakeSpawn; cLab.forgeAlive = (pid) => pid === 4242; const killed = []; cLab.forgeKill = (pid) => killed.push(pid); // never signal a real process: 4242 can be anything on the test computer
   let keyEnv = {}; cLab.rentEnv = () => keyEnv;
   const spFile = path.join(dataDir, 'lab', 'forge-plans', 'first.json');
   check('a plan with caps of 0 can\'t start, and the switch starts off', cLab.forgeCard('first').problems.some((x) => /caps are 0/.test(x)) && cLab.forgeCard('first').problems.some((x) => /Let the Lab start Forge runs/.test(x)) && cfg.labForgeStart !== true);
@@ -621,14 +683,14 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   check('the plan warns about fighting paths, mixed moods and the longer teacher pass', tp.notes.some((n) => /Concise and Thorough pull against/.test(n)) && tp.notes.some((n) => /Moods mixed/.test(n)) && tp.notes.some((n) => /starts over/.test(n)));
   check('ticking thinking with no path or personality is a problem in words', makeForgePlan({ rungs: [{ name: 'a', keep: 128 }], teach: { thinking: 100 } }, { base: {} }).problems.some((x) => /pick at least one thought path/.test(x)));
   check('the form has what to teach, blend or switch, your own path, personality and learn from', ['What to teach', 'Learn from', 'Start from a set', 'Your own path', 'Alignment', 'Mood (best as a switch)', 'Blend', 'Switch'].every((w) => pf.includes(w)) && /type="number" min="0" max="100"/.test(pf));
-  check('Stop deletes only this run\'s card, by its id, never every Forge card', stopRes.pod && spawned.at(-1).args.slice(-2).join(' ') === '--kill abc123xyz' && !JSON.stringify(cLab.forgeView()).includes('never-shown'));
+  check('Stop deletes only this run\'s card, by its id, never every Forge card', stopRes.pod && killed.join() === '4242' && spawned.at(-1).args.slice(-2).join(' ') === '--kill abc123xyz' && !JSON.stringify(cLab.forgeView()).includes('never-shown'));
   // 1.5.163 lessons from Hugging Face: the Forge's importer runs first, on a copy of the plan
   {
     const sp2 = [];
     let impCode = 0, impKeeps = false;
     const fs2 = (exe, args, opts) => { const rec = { args, opts, stdin: '' }; sp2.push(rec); const isImp = args.some((a) => /import-lessons\.mjs$/.test(a)); return { pid: isImp ? 5151 : 4242, stdin: { write: (t) => { rec.stdin += t; }, end: () => {} }, unref: () => {}, on: (ev, f) => { if (ev === 'exit' && isImp) setTimeout(() => { const pl = JSON.parse(fs.readFileSync(args.at(-1), 'utf8')); if (!impKeeps) { delete pl.hf_lessons; pl.extra_lessons = ['/abs/lessons-hf-1']; } fs.writeFileSync(args.at(-1), JSON.stringify(pl)); f(impCode); }, 5); } }; };
     const hLab = new Lab({ ...cfg, labForgeStart: true }, { shop, room: big });
-    hLab.forgeSpawn = fs2; hLab.forgeAlive = (pid) => pid === 5151 || pid === 4242; hLab.rentEnv = () => ({ RUNPOD_API_KEY: 'rpa_TESTKEY0000000000' });
+    hLab.forgeSpawn = fs2; hLab.forgeAlive = (pid) => pid === 5151 || pid === 4242; hLab.forgeKill = () => {}; hLab.rentEnv = () => ({ RUNPOD_API_KEY: 'rpa_TESTKEY0000000000' });
     try { fs.unlinkSync(hLab.forgeLiveFile()); } catch {}
     const hfFile = path.join(dataDir, 'lab', 'forge-plans', 'hfp.json');
     fs.writeFileSync(hfFile, JSON.stringify({ ...JSON.parse(fs.readFileSync(spFile, 'utf8')), run: 'hfp', hf_lessons: [{ repo: 'o/n', license: 'mit' }] }));
@@ -674,20 +736,35 @@ check('looking at a comparison works from another device', sent[3][0] === 200 &&
 await labRoute({ req: fakeReq('GET'), res: {}, p: '/api/lab/measures', isLocal: true, lab, body: async () => ({}), send: (res, code, j) => sent.push([code, j]) });
 check('the measures list has no file contents or paths', sent[4][0] === 200 && sent[4][1].measures.length === lab.measures().length && !JSON.stringify(sent[4][1]).includes(tmp) && !('rec' in sent[4][1].measures[0]));
 
-// The quiz, against a fake server.
+// The quiz, against a fake server. Nov 11: the tool part goes round Bob's loop with his real tools, so the fake
+// answers a tool job with the call it needs (one at a time), then in words once a tool result is back.
 const fakeFetch = globalThis.fetch;
+const { ENTRY_JOBS, entryTools } = await import('../src/lab-entry.js');
+const realTools = await entryTools();
 globalThis.fetch = async (url, o) => {
-  const q = JSON.parse(o.body).messages[0].content;
-  const tool = (n) => ({ choices: [{ message: { content: '', tool_calls: [{ function: { name: n } }] } }], timings: { predicted_per_second: 20 } });
+  const b = JSON.parse(o.body), msgs = b.messages;
+  const q = msgs.find((m) => m.role === 'user').content;
   const say = (t) => ({ choices: [{ message: { content: `<think>hmm</think>${t}` } }], timings: { predicted_per_second: 20 } });
-  const hit = QUIZ.tools.find(([x]) => x === q);
-  const body = hit ? tool(hit[1]) : /capital of France/.test(q) ? say('Paris') : /banana/.test(q) ? say('banana') : say('no idea');
-  return { ok: true, json: async () => body };
+  const job = ENTRY_JOBS.find(([x]) => x === q);
+  if (job) {
+    const done = msgs.filter((m) => m.role === 'tool').length;
+    const next = job[1][done];
+    const args = { web_search: { query: 'x' }, fetch_page: { url: 'https://example.com/news' }, read_file: { path: 'notes.txt' }, list_folder: { path: 'inn' }, write_file: { path: 'tower.txt', content: '330 m' }, edit_file: { path: 'report.txt', find: 'Total: 9', replace: 'Total: 7' }, search_files: { text: 'shopping' }, notice_board: { action: 'write', content: '- buy bread' }, remember: { fact: 'x' }, reminders: { action: 'add', time: 'tomorrow 9:00', text: 'feed Patches' }, save_spreadsheet: { name: 'releases', csv: 'a,b' }, make_image: { prompt: 'cat in a hat' } };
+    if (!next || !b.tools) return { ok: true, json: async () => say('Done.') };
+    // the first call goes in with its main input under another name, to show the loop mends it
+    const a = done === 0 && next === 'web_search' ? { q: 'x' } : args[next];
+    return { ok: true, json: async () => ({ choices: [{ message: { content: '', tool_calls: [{ function: { name: next, arguments: JSON.stringify(a) } }] } }], timings: { predicted_per_second: 20 } }) };
+  }
+  return { ok: true, json: async () => (/capital of France/.test(q) ? say('Paris') : /banana/.test(q) ? say('banana') : say('no idea')) };
 };
-const quiz = await runQuiz('http://fake');
+const quizLog = [];
+const quiz = await runQuiz('http://fake', { log: (x) => quizLog.push(x) });
 globalThis.fetch = fakeFetch;
-check('the quiz marks tool picks and answers, thinking stripped', quiz.parts.tools.score === 100 && quiz.parts.general.right === 1 && quiz.parts.following.right === 1 && quiz.tps === 20 && quiz.score > 0 && quiz.score < 100, JSON.stringify(quiz.parts));
-check('the quiz tools are made up, not Bob\'s real ones', TOOLS.every((t) => !/hands|files_|run_/.test(t.function.name)));
+check('the quiz marks tool jobs and answers, thinking stripped', quiz.parts.general.right === 1 && quiz.parts.following.right === 1 && quiz.tps === 20 && quiz.score > 0 && quiz.score < 100, JSON.stringify(quiz.parts));
+check('the tool part is Bob\'s real tools, round his loop', realTools.length >= 10 && realTools.every((t) => !['get_weather', 'make_picture', 'set_reminder'].includes(t.function.name)) && quiz.parts.tools.of === ENTRY_JOBS.length, JSON.stringify(quiz.parts.tools));
+check('jobs that need a call the fake can make all pass, the mended one too', quiz.parts.tools.right === ENTRY_JOBS.length, JSON.stringify(quizLog.filter((x) => x.answer.startsWith('(ran') && !x.ok).map((x) => x.answer)));
+check('the quiz has 10 coding asks and says when the code wasn\'t run', QUIZ.coding.length === 10 && quiz.codeChecked === false);
+check('the old one-shot tool picks stay for the Pick the tool challenge', TOOLS.every((t) => !/hands|files_|run_/.test(t.function.name)));
 
 // ---- 1.5.151 Learn: experiments on the loaded brain, against a pretend llama-server ----
 {
@@ -730,7 +807,7 @@ check('the quiz tools are made up, not Bob\'s real ones', TOOLS.every((t) => !/h
   // which brain the cards may use
   const engine = { url: 'http://fake', current: 'qwen', child: { exitCode: null }, currentCtx: 8192, active: 0, now: () => 5, isBusy: () => false };
   const brainFor = (cfg, eng = engine) => ({ cfg, engine: eng, brainLabel: (m) => `Friendly ${m}` });
-  check('Learn needs Bob\'s own engine', !learnBrain(brainFor({ engine: 'ollama' })).ready && /built-in engine \(llama\.cpp\)/.test(learnBrain(brainFor({ engine: 'ollama' })).why));
+  check('Learn needs Bob\'s own engine', !learnBrain(brainFor({ engine: 'ollama' })).ready && /my own engine, Brain Engine/.test(learnBrain(brainFor({ engine: 'ollama' })).why));
   check('Learn with no brain loaded says to say something in the chat', (() => { const b = learnBrain(brainFor({ engine: 'llamacpp' }, { ...engine, current: '' })); return !b.ready && b.wake && /Say anything to me in the chat/.test(b.why); })());
   check('Learn waits while Bob is answering in the chat', (() => { const b = learnBrain(brainFor({ engine: 'llamacpp' }, { ...engine, isBusy: () => true })); return !b.ready && b.busy; })());
   check('Learn finds the loaded brain, its address and its window', JSON.stringify(learnBrain(brainFor({ engine: 'llamacpp' }))) === JSON.stringify({ ready: true, url: 'http://fake', model: 'qwen', ctx: 8192 }));
@@ -748,7 +825,7 @@ check('the quiz tools are made up, not Bob\'s real ones', TOOLS.every((t) => !/h
   await labRoute({ req: fakeReq('GET'), res: {}, p: '/api/lab/learn', isLocal: false, lab: { cfg: { computerLab: true }, brain: brainFor({ engine: 'llamacpp' }) }, body: async () => ({}), send: (res, code, j) => sent.push([code, j]) });
   check('the Learn view names the loaded brain the friendly way and lists the cards, from any device Bob lets in', sent[1][0] === 200 && sent[1][1].ready && sent[1][1].brain === 'Friendly qwen' && sent[1][1].cards.length === 3 && sent[1][1].on, JSON.stringify(sent[1]));
   const page2 = read('public/lab-learn.js'), lab2 = read('public/lab.js');
-  check('the Lab page has real tabs, Playground among them', /role="tablist"/.test(lab2) && /role="tab"/.test(lab2) && /aria-selected/.test(lab2) && /\['playground', 'Playground'\]/.test(lab2) && /ArrowRight/.test(lab2));
+  check('the Lab page has real tabs, with the Playground pages sorted under them', /role="tablist"/.test(lab2) && /role="tab"/.test(lab2) && /aria-selected/.test(lab2) && /\['test', 'Test'\]/.test(lab2) && /\['inside', 'Look inside'\]/.test(lab2) && /pg\.html\(runsHtml\(\), subNav\(\), tab\)/.test(lab2) && /ArrowRight/.test(lab2));
   check('the Learn cards use the reviewed words, a live result, and a slider with a number box', ['What is a token?', 'How do I pick the next word?', 'What does temperature do?', 'Split it', 'Show my odds', 'Let me choose', 'Write it three times', 'More knobs', 'Cut the long tail', 'Only the likeliest', 'What you just saw'].every((w) => page2.includes(w)) && /aria-live="polite"/.test(page2) && /id="learn-tp" type="range"[\s\S]{0,200}id="learn-tp-n" type="number"/.test(page2));
   check('token chips take turns solid and dashed, not colour alone, and the odds are in text as well as bars', /learn-tok\.a \{[^}]*solid/.test(read('public/style.css')) && /learn-tok\.b \{[^}]*dashed/.test(read('public/style.css')) && /pct\(x\.odds\)/.test(page2));
   check('Help has a Learn page in Bob\'s voice', /id: 'lab-learn'/.test(read('public/help-content.js')) && /Nothing you do here changes how I answer/.test(read('public/help-content.js')));
@@ -780,8 +857,8 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   const G = await import('../src/lab-guard.js');
   const C = await import('../src/lab-challenges.js');
   const ids = P.EXTRA_IDS;
-  check('sixteen extra packs, version 1, each with questions, a title and a time', ids.length === 16 && P.EXTRA_PACKS.every((x) => x.version === 1 && x.title && x.what && x.count > 0 && x.minutes > 0) && ids.every((id) => C.PACK_IDS.includes(id)));
-  check('Guard rails is shown but never counted in Overall', C.PACKS.find((x) => x.id === 'guard').ranked === false && !C.RANKED_IDS.includes('guard') && C.RANKED_IDS.length === C.PACKS.length - 1);
+  check('twenty extra packs (four from Lab items 105 to 107), version 1, each with questions, a title and a time', ids.length === 20 && P.EXTRA_PACKS.every((x) => x.version === 1 && x.title && x.what && x.count > 0 && x.minutes > 0) && ids.every((id) => C.PACK_IDS.includes(id)));
+  check('Guard rails is shown but never counted in Overall', C.PACKS.find((x) => x.id === 'guard').ranked === false && !C.RANKED_IDS.includes('guard') && C.RANKED_IDS.length === C.PACKS.length - 5); // Guard rails plus En français, En español, Job speed, Still refuses
   const all = Object.fromEntries(C.RANKED_IDS.map((id) => [id, { score: 80, right: 8, of: 10 }]));
   const row = C.scoreboard([C.mergeScores(null, { name: 'A', paramsB: 4, packs: { ...all, guard: { score: 10, right: 1, of: 10, parts: { held: { score: 0, right: 0, of: 5 }, answered: { score: 100, right: 15, of: 15 }, page: { score: 50, right: 3, of: 6 } } } }, when: '2026-11-09' })])[0];
   check('a low Guard rails score leaves Overall and "ran them all" alone, and its three numbers are kept', row.overall === 80 && row.all === true && row.guard?.held?.score === 0 && row.guard?.answered?.score === 100);
@@ -862,7 +939,7 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   check('and says why when no brain is loaded', (await guardChat({ cfg: { engine: 'llamacpp' }, engine: { url: 'http://b' } }, { messages: [{ role: 'user', content: 'hi' }] })).ok === false);
   check('saving from the sandbox is only for this replicant matrix itself', read('src/lab.js').indexOf("'/api/lab/guard/save'") > read('src/lab.js').indexOf('Lab jobs can only be started on this replicant matrix itself') && read('src/lab.js').indexOf("'/api/lab/guard/chat'") < read('src/lab.js').indexOf('Lab jobs can only be started on this replicant matrix itself'));
   const { packGroups, guardPartsLine } = await import('../public/lab-guard.js');
-  check('the Challenges list shows the first packs, then More challenges', packGroups(C.PACKS).map((g) => `${g.id}:${g.packs.length}`).join() === 'first:6,more:16');
+  check('the Challenges list shows the first packs, then More challenges', packGroups(C.PACKS).map((g) => `${g.id}:${g.packs.length}`).join() === 'first:6,more:20');
   check('the three Guard rails numbers read as words', guardPartsLine({ held: { score: null }, answered: { score: 90 }, page: { score: 50 } }) === 'Didn\'t over-refuse: 90 · Ignored planted orders: 50 · Held the line: not run');
 }
 
@@ -1031,17 +1108,22 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
     let served = 0, stopped = 0, mode = 'ok';
     const plab = new Lab(hcfg, { shop: hshop, room: big, steps: {
       peekServe: async () => { served++; return { url, where: 'card', stop: () => { stopped++; } }; },
-      peekAsk: async (u, q) => { if (mode === 'none') throw new Error(PK.NO_TRACE); return { answer: `About ${q}`, trace: [[[1, 3], [0, 2]], [[1, 5], [0, 2]]], tokens: ['A', 'b'], tps: 20 }; },
+      peekAsk: async (u, q) => { if (mode === 'none') throw new Error(PK.NO_TRACE); return { answer: `About ${q}`, trace: [[[1, 3], [0, 2]], [[1, 5], [0, 2]]], tokens: ['A', 'b'], tps: 18.256099398257696 }; },
       fingerprint: async () => 'abc'
     } });
     const a1 = await plab.peekAsk({ brain: 'rel-a', question: 'rain', tally: true });
     check('a live question answers with the words lit up and adds to the tally', a1.answer === 'About rain' && a1.words.length === 2 && a1.lit[0].join() === '1,3,5' && a1.tallied.tokens === 8 && served === 1 && !plab.job);
+    check('the speed line is rounded to one place (18.3 words a second, not 18.256...)', a1.tps === 18.3);
     const a2 = await plab.peekAsk({ brain: 'rel-a', question: 'sun', maskCounts: a1.counts });
     check('Keep only these masks to the lit set, padded, then clears the mask, on the same loaded engine', a2.masked && masks.length === 2 && masks[1] === null && Array.isArray(masks[0]) && served === 1);
     check('the page gets the live view as possible', plab.peek('rel-a').live.ok);
     mode = 'none';
     const bad = await plab.peekAsk({ brain: 'rel-a', question: 'x' }).then(() => '', (e) => e.message);
     check('an engine without the trace is said once and the live view greys out with the reason', bad === PK.NO_TRACE && plab.peek('rel-a').live.ok === false && plab.peek('rel-a').live.why === PK.NO_TRACE && stopped === 1);
+    const held = new Lab(hcfg, { shop: hshop, room: big, brain: { engine: { loaded: async () => [{ name: 'Riker', vram: 0, usesCard: true }], unloadAll: async () => {} } }, steps: { peekServe: async () => { served++; return { url, stop: () => {} }; } } });
+    const nu = await held.peekAsk({ brain: 'rel-a', question: 'x' });
+    check('Peek inside asks to unload a chat brain that\'s on the card even when Windows can\'t say how much it holds', nu.needUnload === true && nu.names[0] === 'Riker');
+    check('the chat brain says it was started on the card', /usesCard: this\.role !== BESIDE && !this\.currentCpu/.test(read('src/llamacpp.js')));
     plab.freePeek(); srv.close(); }
 
   // the page's words and the cards

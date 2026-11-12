@@ -10,13 +10,17 @@
 // Everything outside (GitHub, the loaded brains, the downloads, the chat) comes in as functions, so tests use fakes.
 import fs from 'node:fs';
 import path from 'node:path';
-import { ENGINES, engineFor, installedMarker, brainsEngineNow, sharedDir, TESTED_LLAMA } from './engines.js';
+import { wasBlocked } from './app-control.js';
+import { engineNoteLine } from './engine-extras.js'; // 99 Engine updates in plain words (opt-in)
+import { ENGINES, engineFor, installedMarker, brainsEngineNow, sharedDir, TESTED_LLAMA, brainEnginePin, brainEngineStale, engineBlocked } from './engines.js';
 
 export const KEEPER_ENGINES = ['brainengine', 'llamacpp'];
 export const FIRST_CHECK_MS = 2 * 60e3; // after start, so the window is open and the first brain has loaded
 export const DAY_MS = 23 * 3600e3; // "about daily": a little under a day, so a PC on at the same time each day still checks
 export const TICK_MS = 60 * 60e3; // look once an hour whether a check is due
 export const WAIT_MS = 10 * 60e3; // while an update waits for the engine to be free
+// 1.5.196: Brain Engine goes with Bob. Its first look is right after start, before the first brain loads on it.
+export const WITH_BOB_MS = 5e3;
 
 export const keeperOn = (cfg) => cfg?.engineUpdates?.auto !== false;
 export const cleanEngineUpdates = (v) => ({ auto: v?.auto !== false });
@@ -62,7 +66,32 @@ export class EngineKeeper {
   read() { try { const s = JSON.parse(fs.readFileSync(this.file, 'utf8')); return { lastCheck: Number(s.lastCheck) || 0, lastError: String(s.lastError || '') }; } catch { return { lastCheck: 0, lastError: '' }; } }
   write() { try { fs.mkdirSync(path.dirname(this.file), { recursive: true }); fs.writeFileSync(this.file, JSON.stringify(this.state, null, 2)); } catch {} }
   // The first look after start always asks ("checks on start"); after that, about once a day.
-  start() { this.schedule(FIRST_CHECK_MS, true); return this; }
+  start() { this.schedule(FIRST_CHECK_MS, true); this.d.setTimer(() => this.withBob().catch(() => {}), WITH_BOB_MS); return this; }
+
+  // 1.5.196 (the owner, Nov 10: "it should update with Bob himself, not standalone"; fNRI on the PC found Bob on a new
+  // version with the old engine). Brain Engine updates with Bob: when the build here (its own marker) isn't the one this
+  // Bob names (package.json bob.brainEngine), the named build comes along at the next start, whatever the Keep engines
+  // up to date switch says, the same way Bob's own files do. GitHub is asked once, only to make sure the file there
+  // differs from the one here (so a release rebuilt ahead of this Bob isn't fetched again and again).
+  // It no longer follows the newest Brain Engine on its own; the daily check is for llama.cpp.
+  async withBob() {
+    const pin = this.d.pin === undefined ? brainEnginePin() : this.d.pin;
+    if (!pin || this.pending.has('brainengine')) return null;
+    const e = keeperCandidates(this.cfg).find((x) => x.id === 'brainengine');
+    const mark = e && installedMarker(this.cfg, e);
+    if (!brainEngineStale(mark, pin)) return null;
+    // 1.5.203: Windows blocked this very build and Bob went back from it: don't fetch it again (Try again in Settings).
+    const blocked = engineBlocked(this.cfg, 'brainengine');
+    if (blocked && blocked.version === pin.tag && (!blocked.print || blocked.print === pin.print)) return null;
+    // 1.5.204: the trial before the swap (app-control.js) found Windows stops this build: don't fetch it at every start.
+    if (wasBlocked(this.cfg, 'brainengine', { version: pin.tag, print: pin.print || '' })) return null;
+    let r = null;
+    try { r = await this.d.check('brainengine'); } catch (err) { this.state.lastError = `Brain Engine: ${err.message}`.slice(0, 300); this.write(); return null; }
+    if (!r || (r.print && r.print === mark.print && r.latest === mark.version)) return null;
+    this.pending.set('brainengine', { from: mark.version, to: r.latest || pin.tag, rebuilt: r.latest === mark.version, withBob: true, queued: false, saidWait: false });
+    await this.tick({ bob: true });
+    return this.pending.get('brainengine') || null;
+  }
   stop() { if (this.timer) this.d.clearTimer(this.timer); this.timer = null; }
   schedule(ms, force = false) { this.stop(); this.timer = this.d.setTimer(() => { this.tick({ force }).catch(() => {}).finally(() => this.schedule(this.pending.size ? WAIT_MS : TICK_MS)); }, ms); }
   view() { return { auto: keeperOn(this.cfg), lastCheck: this.state.lastCheck ? new Date(this.state.lastCheck).toISOString() : '', lastError: this.state.lastError, waiting: [...this.pending.entries()].map(([id, p]) => ({ id, to: p.to, queued: Boolean(p.queued) })) }; }
@@ -82,8 +111,8 @@ export class EngineKeeper {
     this.running = true;
     try {
       this.follow();
-      if (!keeperOn(this.cfg)) { this.pending.clear(); return this.view(); }
-      if (force || this.d.now() - this.state.lastCheck >= DAY_MS) await this.check();
+      if (!keeperOn(this.cfg)) { for (const [id, p] of this.pending) if (!p.withBob) this.pending.delete(id); } // Brain Engine with Bob still goes
+      else if (force || this.d.now() - this.state.lastCheck >= DAY_MS) await this.check();
       for (const [id, p] of this.pending) {
         if (p.queued) continue;
         const why = await this.whyWait(id);
@@ -91,7 +120,7 @@ export class EngineKeeper {
           if (!p.saidWait) { p.saidWait = true; this.d.say(`${nameOf(id)} has ${p.rebuilt ? 'a rebuilt build' : `a newer build (${p.to})`}. I'll update it once ${why === 'a brain is loaded on it' ? 'no brain is loaded on it' : `I'm free (${why})`}.`); }
           continue;
         }
-        try { await this.d.queue(id); p.queued = true; this.d.say(`Updating ${nameOf(id)} to ${p.rebuilt ? `a rebuilt ${p.to}` : p.to}. It downloads beside the one you have, and Go back in Settings, Engines puts the old one back.`); }
+        try { await this.d.queue(id); p.queued = true; this.d.say(`Updating ${nameOf(id)} to ${p.withBob ? 'the build that goes with this Bob' : p.rebuilt ? `a rebuilt ${p.to}` : p.to}. It downloads beside the one you have, and Go back in Settings, Engines puts the old one back.`); }
         catch (err) { this.pending.delete(id); this.d.say(`I couldn't start the ${nameOf(id)} update: ${err.message}`); }
       }
       return this.view();
@@ -100,9 +129,12 @@ export class EngineKeeper {
 
   async check() {
     this.state.lastCheck = this.d.now(); this.state.lastError = '';
+    const pin = this.d.pin === undefined ? brainEnginePin() : this.d.pin;
     for (const e of keeperCandidates(this.cfg)) {
       if (this.pending.has(e.id)) continue;
-      try { const due = await dueUpdate(this.cfg, e, { check: this.d.check, tested: this.d.tested ?? TESTED_LLAMA }); if (due) this.pending.set(e.id, { ...due, queued: false, saidWait: false }); }
+      if (e.id === 'brainengine' && pin) continue; // 1.5.196: Brain Engine goes with Bob (withBob), not on its own
+      if (engineBlocked(this.cfg, e.id)) continue; // 1.5.203: went back from a blocked build; Try again first
+      try { const due = await dueUpdate(this.cfg, e, { check: this.d.check, tested: this.d.tested ?? TESTED_LLAMA }); if (due && !wasBlocked(this.cfg, e.id, { version: due.to })) this.pending.set(e.id, { ...due, queued: false, saidWait: false }); }
       catch (err) { this.state.lastError = `${e.name}: ${err.message}`.slice(0, 300); }
     }
     this.write();
@@ -115,7 +147,7 @@ export class EngineKeeper {
       const dl = this.d.download?.(id);
       if (!dl || ['queued', 'downloading'].includes(dl.state)) continue;
       this.pending.delete(id);
-      if (dl.state === 'done') this.d.say(`${nameOf(id)} is up to date (${p.rebuilt ? `rebuilt ${p.to}` : p.to}). I use it the next time a brain loads. If it gives trouble, Go back in Settings, Engines puts the old one back.`);
+      if (dl.state === 'done') this.d.say(`${nameOf(id)} is up to date (${p.rebuilt ? `rebuilt ${p.to}` : p.to}). I use it the next time a brain loads. If it gives trouble, Go back in Settings, Engines puts the old one back.${engineNoteLine(this.cfg, id, p.to)}`);
       else if (dl.state === 'failed') this.d.say(`The ${nameOf(id)} update didn't work (${dl.error || 'no reason given'}), so I kept the one you have. I'll try again tomorrow.`);
     }
   }

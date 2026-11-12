@@ -74,7 +74,7 @@ check('markdown links: only http(s), opened by the phone', !/javascript:/.test(m
 // Help covers every setting and screen on the page.
 const html = fs.readFileSync(path.join(www, 'index.html'), 'utf8');
 const ids = H.sections.map((s) => s.id);
-const need = { 'phone-on': 'phone-brain', 'free-idle': 'free-memory', 'idle-min': 'free-memory', mode: 'who', 'user-name': 'user-name', 'read-aloud': 'read-aloud', theme: 'theme', resume: 'resume', mic: 'mic', effort: 'effort', bobs: 'bobs', memory: 'memory', chats: 'past-chats', 'lend-on': 'lend', 'pass-along': 'pass-along' };
+const need = { 'prompt-on': 'saved-prompts', 'phone-on': 'phone-brain', 'free-idle': 'free-memory', 'idle-min': 'free-memory', mode: 'who', 'user-name': 'user-name', 'read-aloud': 'read-aloud', 'math-view': 'maths', theme: 'theme', resume: 'resume', redo: 'redo', mic: 'mic', effort: 'effort', bobs: 'bobs', memory: 'memory', chats: 'past-chats', 'lend-on': 'lend', 'pass-along': 'pass-along', 'lock-code': 'lock', 'lock-current': 'lock', 'lock-new': 'lock', 'lock-again': 'lock', 'lock-on': 'lock', 'lock-idle': 'lock', 'lock-enc': 'lock', 'text-size': 'text-size', 'readable-font': 'text-size', 'talk-over': 'talk-over', 'wake-on': 'wake', 'net-voices': 'net-voices', 'share-on': 'share', 'widget-reminder': 'widget', 'low-data': 'low-data', 'reader-speed': 'reader', 'hf-again': 'hands-free' };
 for (const [ctl, sec] of Object.entries(need)) check(`help covers ${ctl}`, (html.includes(`id="${ctl}"`) || html.includes(`name="${ctl}"`)) && ids.includes(sec));
 const controls = [...html.matchAll(/<(?:input|select)[^>]*(?:id|name)="([\w-]+)"/g)].map((m) => m[1]).filter((x) => !['chat-search', 'help-search', 'add-name', 'add-address', 'memory-text'].includes(x));
 for (const c of new Set(controls)) check(`setting ${c} has a help entry`, c in need);
@@ -220,6 +220,11 @@ check('save: files stream to the phone, not held in memory', (() => { const net 
 
 // The page's lock: no inline scripts or styles, no network from the page itself.
 check('page has a strict Content-Security-Policy', /script-src 'self'/.test(html) && /connect-src 'none'/.test(html) && !/<script>(?!<)/.test(html.replace(/<script src[^>]*><\/script>/g, '')) && !/ style="/.test(html));
+
+// Moondust is the starting theme on every system, the phone too; a phone that only ever had the old default moves to it once.
+{ const rd = (p) => fs.readFileSync(path.join(root, p), 'utf8').replace(/\r\n/g, '\n'), css = rd('android/app/src/main/assets/www/phone.css'), xml = rd('android/app/src/main/res/values/themes.xml'), help = rd('android/app/src/main/assets/www/help.js'), desk = rd('public/themes.js');
+  check('theme: Moondust is the phone default, like the desktop', /DEFAULT_THEME = 'moondust'/.test(desk) && /theme: 'moondust'/.test(js) && /<select id="theme"><option value="moondust">Moondust \(dark\)<\/option><option value="inn">/.test(html) && /:root \{[^}]*--bg: #121212;[^}]*--accent: #4fb3bf;/.test(css) && /:root\[data-theme="inn"\] \{[^}]*--bg: #1d1510;/.test(css) && /<color name="moondust">#121212<\/color>/.test(xml) && !/@color\/inn/.test(xml) && /Moondust \(dark, the starting position/.test(help));
+  check('theme: an unpicked old Inn default moves to Moondust; a picked theme stays', /if \(settings\.theme === 'inn' && !settings\.themePicked\) settings\.theme = 'moondust';/.test(js) && /settings\.theme = e\.target\.value; settings\.themePicked = true;/.test(js)); }
 
 // Nothing personal in the phone app.
 function files0() { const out = []; const w = (d) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) { if (f.name !== 'third_party' && f.name !== 'build') w(p); } else if (/\.(js|kt|html)$/.test(f.name)) out.push(p); } }; w(path.join(root, 'android')); return out; }

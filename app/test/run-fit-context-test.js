@@ -46,7 +46,7 @@ const size = (ms) => ms.reduce((a, m) => a + Math.ceil(String(m.content ?? '').l
 }
 
 { const src = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'brain.js'), 'utf8').replace(/\r\n/g, '\n');
-  check('every request goes through fitContext, and a failed job leaves a note in the chat', /const fitted = fitContext\(opts\.messages, opts\.ctx, opts\.tools\);/.test(src) && /correction: `⚠ \$\{String\(e\.message\)\.slice\(0, 400\)\}`, failed: true/.test(src)); }
+  check('every request goes through fitContext, and a failed job leaves a note in the chat', /const fitted = fitContext\(opts\.messages, opts\.ctx, opts\.tools, 0\.75, per\);/.test(src) && /correction: `⚠ \$\{String\(e\.message\)\.slice\(0, 400\)\}`, failed: true/.test(src)); }
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

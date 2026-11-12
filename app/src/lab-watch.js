@@ -1,4 +1,4 @@
-// 🧪 Computer Science Lab, Playground: FNRI. A recording of which experts a mixture-of-experts brain picks,
+// 🧪 Computer Science Lab, Playground: fNRI. A recording of which experts a mixture-of-experts brain picks,
 // word by word, while it answers a few simple questions for each skill; the viewer window (public/watch.html) plays
 // it as a 3D block of voxels, one floor per layer, coloured by the skill each expert leans to, glowing as it is used.
 //   The questions are plain data below, so anyone can read them. A few per skill is enough to see the pattern; it is
@@ -13,6 +13,7 @@ import { labDir, inspect, slugOf } from './lab.js';
 import { startServer } from './lab-test.js';
 import { readGguf, isExpertTensor } from './lab-gguf.js';
 import { askTraced, NO_TRACE, NO_ENGINE } from './lab-peek.js';
+import { weightMap, changeMap, shade, WEIGHTS_FORMAT } from './lab-weights.js';
 import { readJson, writeJson, canStart, makeRoom, runJob, pageLog } from './lab-jobs.js';
 import { NAME, FORMAT, VERSION, cleanRecording, specialise, inWords, MAX_SKILLS, skillMap, cleanDials, targetsOf, TARGET_FORMAT } from '../public/lab-watch-math.js';
 
@@ -264,7 +265,7 @@ export function pickSkills({ skills = null, per = PER_DEFAULT, own = null } = {}
 
 // What the Lab page needs: the skills on offer, and for a brain its recordings and whether it can record here.
 export function watchView(lab, brainId = '') {
-  const moe = lab.brains().map((b) => { let f = null; try { f = inspect(b); } catch {} return f?.layers ? { id: b.id, name: b.name, experts: f.experts || 0, layers: f.layers } : null; }).filter(Boolean);
+  const moe = lab.brains().map((b) => { let f = null; try { f = inspect(b); } catch {} return f?.layers ? { id: b.id, name: b.name, experts: f.experts || 0, layers: f.layers, engineLayers: f.engineLayers || f.layers } : null; }).filter(Boolean);
   const base = { brains: moe, skills: WATCH_SKILLS.map((s) => ({ id: s.id, label: s.label, count: s.questions.length, questions: s.questions, extra: s.extra === true })), maxSkills: MAX_SKILLS, perChoices: PER_CHOICES, per: PER_DEFAULT, ownMax: OWN_MAX, words: WATCH_WORDS, wordsThink: WATCH_WORDS_THINK };
   const brain = lab.brains().find((b) => b.id === String(brainId || ''));
   if (!brain) return { ...base, brain: '', recordings: [], live: null };
@@ -305,6 +306,25 @@ export function cubeMap(lab, { model = '', label = '', experts = 0, layers = 0, 
   return null;
 }
 
+// A cut brain's keep list: which of the stock brain's experts each of its experts was, per layer. The forge writes it
+// as bob-keep.json in the brain's folder and <name>-keep.json beside the GGUF it exports; the Lab writes <name>-keep.json
+// in the usage folder. Used to line a cut brain up with the brain it was cut from (Before and after, two brains).
+// { experts: before the cut, layers: [[stock ids]] } or null.
+export function keepBeside(brain, { layers = 0, experts = 0 } = {}) {
+  const g = String(brain?.gguf || ''); if (!g) return null;
+  const dir = path.dirname(g), stem = path.basename(g).replace(/\.gguf$/i, '').replace(/[-.](q\d.*|iq\d.*|f16|bf16|f32)$/i, '');
+  let names = []; try { names = fs.readdirSync(dir).filter((f) => /(^|-)keep\.json$/i.test(f)); } catch { return null; }
+  names.sort((a, b) => (b.startsWith(stem) - a.startsWith(stem)) || (b === 'bob-keep.json') - (a === 'bob-keep.json'));
+  for (const f of names) {
+    const j = readJson(path.join(dir, f), null), L = j?.layers;
+    if (!Array.isArray(L) || (layers && L.length !== layers)) continue;
+    if (!L.every((k) => Array.isArray(k) && k.every((x) => Number.isInteger(x) && x >= 0) && (!experts || k.length === experts) && new Set(k).size === k.length)) continue;
+    const before = Number(j.experts_before) || Math.max(...L.flat()) + 1;
+    return { experts: before, layers: L, file: f };
+  }
+  return null;
+}
+
 export function readRecording(lab, { brain: brainId, id } = {}) {
   const brain = lab.brains().find((b) => b.id === String(brainId || ''));
   if (!brain) throw new Error('Pick a brain first.');
@@ -312,7 +332,8 @@ export function readRecording(lab, { brain: brainId, id } = {}) {
   if (!j) throw new Error('That recording isn\'t here any more.');
   let dials = null; try { if (j.dials?.list?.length) dials = cleanDials(j.dials.list, { experts: j.brain?.kind === 'experts' || !j.brain?.kind ? Number(j.brain?.experts) || 0 : 0, layers: Number(j.brain?.layers) || 0 }); } catch {}
   const from = String(j.dials?.from || j.cut?.from || '').slice(0, 80); // the scan this one was made from (same questions), for Before and after
-  return { ...cleanRecording(j), parts: j.parts || null, saw: j.saw || '', ...(j.cut?.off ? { cut: { off: Number(j.cut.off) || 0 } } : {}), ...(dials?.length ? { dials } : {}), ...(from ? { from } : {}) };
+  const keep = j.brain?.kind === 'experts' || !j.brain?.kind ? keepBeside(brain, { layers: Number(j.brain?.layers) || 0, experts: Number(j.brain?.experts) || 0 }) : null;
+  return { ...cleanRecording(j), ...(keep ? { keep: { experts: keep.experts, layers: keep.layers } } : {}), parts: j.parts || null, saw: j.saw || '', ...(j.cut?.off ? { cut: { off: Number(j.cut.off) || 0 } } : {}), ...(dials?.length ? { dials } : {}), ...(from ? { from } : {}) };
 }
 
 // The experts to leave on, a list for each layer, checked: whole numbers in range, no repeats, and never fewer on a
@@ -336,7 +357,7 @@ async function maskExperts(url, keep) {
 
 // Dials (public/lab-watch-math.js): set in Brain Engine for the length of one scan. An older Brain Engine has no
 // dials and says 404.
-export const NO_DIALS = 'This Brain Engine can\'t turn parts up or down yet. Update it under Get models, Engines (Brain Engine), then try again.';
+export const NO_DIALS = 'This Brain Engine can\'t turn parts up or down yet. Update it under Settings, Engines (Brain Engine), then try again.';
 async function setDials(url, dials) {
   const res = await fetch(url + '/dials', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dials }), signal: AbortSignal.timeout(30000) });
   if (res.status === 404) throw new Error(NO_DIALS);
@@ -384,7 +405,7 @@ export function deleteRecording(lab, { brain: brainId, id } = {}) {
 }
 
 // One traced answer as a clip of the recording: every word read, the question first, then the answer read back.
-export const NO_HEADS = 'This Brain Engine build can\'t report attention heads yet. Update it in Get models &gt; Engines: Brain Engine (test build), then scan again.';
+export const NO_HEADS = 'This Brain Engine build can\'t report attention heads yet. Update it in Settings &gt; Engines: Brain Engine (test build), then scan again.';
 
 export function clipOf(skill, question, got, { experts, layers }) {
   const read = got.read;
@@ -480,6 +501,43 @@ export async function startWatch(lab, c = {}, { unload = false } = {}) {
   });
 }
 
+// The weight map (how strong each block's weights are) and the difference map (how much each block differs from another
+// brain: the one it was cut or healed from, say). Read from the brain files, never from the engine, and kept beside the
+// scans so a second look is instant (made again when either file changes). `kind`, `experts`, `layers`: the scan's shape.
+// { kind: 'weights' | 'change', vals: [[0..1 or null]], raw: [[number or null]], vs, ms }
+const weightBusy = new Set();
+export async function weightsFor(lab, { brain: brainId, vs = '', kind = 'experts', experts = 0, layers = 0 } = {}, { now = Date.now } = {}) {
+  const brain = lab.brains().find((b) => b.id === String(brainId || ''));
+  if (!brain?.gguf) throw new Error('This scan\'s brain isn\'t in the Lab here, so Bob can\'t read its weights. Open the scan from the Lab on the Bob that has the brain.');
+  if (kind === 'heads') throw new Error('The weight map colours experts and neuron groups. Open an expert or neuron scan of this brain for it.');
+  const shape = { kind: kind === 'neurons' ? 'neurons' : 'experts', experts: Number(experts) || 0, layers: Number(layers) || 0 };
+  if (!shape.experts || !shape.layers) throw new Error('This scan doesn\'t say how the brain is built.');
+  const other = vs ? lab.brains().find((b) => b.id === String(vs)) : null;
+  if (vs && !other?.gguf) throw new Error('Pick the brain to compare with from the list.');
+  if (other && other.id === brain.id) throw new Error('Pick a different brain to compare with: a brain is always the same as itself.');
+  const stamp = (f) => { const st = fs.statSync(f); return `${st.size}:${Math.round(st.mtimeMs)}`; };
+  const file = path.join(brainDir(lab.cfg, brain), `weightmap-${other ? slugOf(other.id) : 'self'}-${shape.kind}.json`);
+  const key = `${stamp(brain.gguf)}|${other ? stamp(other.gguf) : ''}|${shape.experts}x${shape.layers}`;
+  const hit = readJson(file, null);
+  let map = hit?.format === WEIGHTS_FORMAT && hit.key === key ? hit : null;
+  const t0 = now();
+  if (!map) {
+    if (weightBusy.has(file)) throw new Error('Bob is already reading these weights. Give it a moment and try again.');
+    weightBusy.add(file);
+    try {
+      if (!other) map = await weightMap(brain.gguf, shape);
+      else {
+        let keep = null;
+        if (shape.kind === 'experts') { let fo = null; try { fo = inspect(other); } catch {} if (fo?.experts && fo.experts !== shape.experts) { const k = keepBeside(brain, { layers: shape.layers, experts: shape.experts }); if (!k || k.experts !== fo.experts) throw new Error(`${brain.name} has ${shape.experts} experts on a floor and ${other.name} has ${fo.experts}, and there's no keep list beside ${brain.name} saying which of them it kept. Pick the brain it was made from, or put its keep list beside it.`); keep = k; } }
+        map = await changeMap(brain.gguf, other.gguf, shape, { keep });
+      }
+      map = { ...map, key };
+      try { fs.mkdirSync(path.dirname(file), { recursive: true }); writeJson(file, map); } catch {}
+    } finally { weightBusy.delete(file); }
+  }
+  return { kind: map.kind, vals: shade(map), raw: map.layers, vs: other ? other.name : '', ms: now() - t0 };
+}
+
 // Mounted by src/lab-pages.js. Reading is open to this Bob's own pages (the viewer window, a paired phone);
 // recording and deleting only on this replicant matrix itself.
 export async function watchRoute({ req, p, isLocal, lab, b, send, res }) {
@@ -490,12 +548,32 @@ export async function watchRoute({ req, p, isLocal, lab, b, send, res }) {
   if (!isLocal) { send(res, 403, { error: 'Lab jobs can only be started on this replicant matrix itself for now.' }); return true; }
   if (p === '/api/lab/watch/start') { send(res, 200, await startWatch(lab, b, { unload: b.unload === true })); return true; }
   if (p === '/api/lab/watch/targets') { send(res, 200, saveTargets(lab, b)); return true; }
+  if (p === '/api/lab/watch/weights') { send(res, 200, await weightsFor(lab, b)); return true; }
   if (p === '/api/lab/watch/delete') { send(res, 200, deleteRecording(lab, b)); return true; }
   return false;
 }
 
 // The small cube: the brains loaded right now, by the names the cube shows (so it can take itself apart when its
 // brain is let go). `loaded` is the engine's own list; a brain held beside the main one counts too.
+// The cube's empty shape for each loaded (or loading) brain, from its file: floors and experts, or for a brain without
+// experts the neuron groups Brain Engine reports (up to 256 a floor, engine patch 0002). It is drawn in one colour as
+// soon as the brain loads, before any reply, and on an engine that can't report experts at all.
+export const CUBE_GROUPS = 256;
+// locate(model) -> the brain's file, from the engine: a loaded brain the Lab's list doesn't know (another
+// category, a file picked by hand) still gets its shape, so the cube builds it instead of showing the sign.
+export function cubeShapes(lab, models, friendly = (n) => n, locate = null) {
+  const base = (p) => path.basename(String(p || '')).replace(/\.gguf$/i, '');
+  const out = [];
+  for (const model of [...new Set((models || []).filter(Boolean).map(String))]) {
+    const label = String(friendly(model));
+    let brain = lab.brains().find((b) => b.id === model || base(b.gguf) === base(model) || b.name === label);
+    if (!brain && locate) { try { const g = locate(model); if (g) brain = { gguf: String(g), mmproj: null }; } catch {} }
+    let f = null; try { f = brain ? inspect(brain) : null; } catch {}
+    if (!f?.layers) continue;
+    out.push({ label, experts: f.experts || CUBE_GROUPS, layers: f.layers, kind: f.experts ? 'experts' : 'neurons', used: Number(f.used) || 0 }); // used: how many experts a word picks, for the cube's made-up glow
+  }
+  return out;
+}
 export function cubeBrains(loaded, friendly = (n) => n) {
   return [...new Set((Array.isArray(loaded) ? loaded : []).map((m) => (m && m.name ? String(friendly(m.name)) : '')).filter(Boolean))];
 }

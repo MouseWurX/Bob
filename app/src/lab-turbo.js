@@ -7,6 +7,7 @@
 //   and whether the words came out the same,
 // - Use this in Bob: the brain's Turbo row in Settings (llamacpp.turbo[<brain>], src/llamacpp.js buildArgs).
 // Nothing rented. Results (small) in <data>/lab/turbo/<brain>.json.
+import { draftNumArgs } from './engine-extras.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -66,7 +67,7 @@ export function planTurbo(lab, c = {}) {
   if (!guess.length) problems.push('Pick at least one guess length.');
   const prompt = TURBO_PROMPTS[c.prompt] ? c.prompt : 'code';
   const tools = lab.tools();
-  if (!tools.server.found) problems.push(`${path.basename(tools.server.path)} isn't in Bob's engine folder. Get models > Engines: the built-in engine has it.`);
+  if (!tools.server.found) problems.push(`${path.basename(tools.server.path)} isn't in Bob's engine folder. Settings > Engines: the built-in engine has it.`);
   if (useMtp) notes.push(`${main.name} guesses with its own multi-token head, so nothing else loads.`);
   notes.push('Turbo helps most on code and plain writing, least on creative writing at a high temperature, and not at all if the draft doesn\'t fit next to the main brain.');
   return { main, draft, useMtp, guess, prompt, problems, notes };
@@ -96,7 +97,8 @@ export async function startTurbo(lab, c = {}, { unload = false } = {}) {
     for (let i = 0; i < p.guess.length; i++) {
       const n = p.guess[i];
       set(`g${n}`, 'running');
-      const args = p.useMtp ? ['--spec-type', 'draft-mtp', '--draft-max', String(n)] : ['-md', draft.gguf, '--draft-max', String(n), '--draft-min', '0', '-ngld', '99'];
+      // The engines the Lab runs (b12282 and newer) refuse the old --draft-max/--draft-min names and won't start.
+      const args = p.useMtp ? ['--spec-type', 'draft-mtp', ...draftNumArgs(0, n)] : ['-md', draft.gguf, ...draftNumArgs(0, n, 0), '-ngld', '99'];
       const on = await one(args, false);
       const dn = Number(on.timings.draft_n) || 0, da = Number(on.timings.draft_n_accepted) || 0;
       rows.push({ guess: n, label: `${n} ahead`, tps: round1(on.timings.predicted_per_second), accept: dn ? Math.round((100 * da) / dn) : null, same: on.text === off.text });

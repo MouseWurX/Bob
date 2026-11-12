@@ -10,6 +10,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { HANDS } from './hands-settings.js';
+import { kindOf, repeatSafe } from './tool-kinds.js';
+import { PIC_CLAIM_FR_ES, FILE_CLAIM_FR_ES, admitsTrouble, plain } from './honest.js'; // Nov 12, items 182 and 185
 
 // ---------------------------------------------------------------- what was asked for
 
@@ -126,8 +128,8 @@ export async function verifyOutput(file, type = typeOfFile(file), { settleMs = 2
 
 const MEDIA = { make_image: 'image', make_video: 'video', make_music: 'audio', make_sound: 'audio', workshop_run: null };
 const MEDIA_EXT = /\.(?:png|jpe?g|webp|bmp|gif|mp4|webm|mov|avi|mkv|wav|mp3|ogg|flac|m4a)$/i;
-// Running these again can't do harm: they make a new file or write the same content again.
-const RETRY_SAFE = new Set([...Object.keys(MEDIA), 'write_file', 'save_spreadsheet']);
+// Running these again can't do harm: they make a new file or write the same content again (tool-kinds.js, item 170).
+const RETRY_SAFE = { has: (name) => kindOf(name).risk !== 'look' && repeatSafe(name) };
 // Worth one more go: the engine was busy, slow, out of memory or not up yet.
 const TRANSIENT = /time(?:d)? ?out|didn'?t finish in time|out of memory|\bOOM\b|ECONNREFUSED|ECONNRESET|EPIPE|EBUSY|EAGAIN|socket hang up|fetch failed|network|not ready|still loading|loading the model|busy|exited|crashed|stopped unexpectedly|no output|code \d+|temporar|try again|503|502|500\b/i;
 const PERMANENT = /isn'?t set up|isn'?t installed|isn'?t hooked up|switched off|is off\b|are off\b|not allowed|off limits|no reference called|said no|read-only|don'?t (?:write|edit)|isn'?t in the file|appears \d+ times|doesn'?t exist|Hands are stopped|Stopped by the user|Stopped\.$/i;
@@ -150,6 +152,34 @@ const sameCall = (a, name, args) => a.name === name && JSON.stringify(a.args ?? 
 const parse = (a) => { if (typeof a === 'string') { try { return JSON.parse(a); } catch { return {}; } } return a || {}; };
 const fileIn = (text, re) => { const m = String(text || '').match(re); return m ? m[1].trim() : ''; };
 
+// Item 183: edit_file's changes, as tools.js editList reads them, and the file they should make.
+const editsOf = (args = {}) => [{ find: args.find, replace: args.replace }, ...(Array.isArray(args.more) ? args.more : [])].slice(0, 20).map((e) => ({ find: String(e?.find ?? ''), replace: String(e?.replace ?? '') }));
+function applyAll(body, edits) {
+  let out = String(body);
+  for (const e of edits) { if (!e.find || out.split(e.find).length !== 2) throw new Error('does not fit'); out = out.replace(e.find, () => e.replace); }
+  return out;
+}
+// Item 184: the files and folders a command was told to make (no shell, so the program and its arguments apart):
+// an output flag (-o for the programs where it means that, --output, -OutFile...), mkdir's folders, git clone's folder.
+const OUT_SHORT = new Set(['curl', 'gcc', 'g++', 'clang', 'clang++', 'cc', 'pandoc', 'go', 'rustc', 'javac', 'tsc', 'yt-dlp', 'wget']);
+const OUT_LONG = /^(?:--output|--out|--outfile|--out-file|--output-file|--output-path|-outfile|-out|-OutFile|--outdir|--out-dir|--output-dir)$/i;
+const OUT_LONG_EQ = /^(?:--output|--out|--outfile|--out-file|--output-file|--output-path|--outdir|--out-dir|--output-dir)=(.+)$/i;
+export function expectedOutputs(args = {}) {
+  const cmd = String(args.cmd || '').split(/[\\/]/).pop().toLowerCase().replace(/\.(?:exe|cmd|bat)$/, '');
+  const list = (Array.isArray(args.args) ? args.args : []).map((a) => String(a));
+  const cwd = String(args.cwd || '');
+  const out = [];
+  const add = (p) => { p = String(p || '').trim().replace(/^["']|["']$/g, ''); if (!p || p === '-' || /[$%*?<>|]|^\/dev\//.test(p) || /^(?:nul|con)$/i.test(p) || /^[a-z]+:\/\//i.test(p)) return; out.push(path.isAbsolute(p) || /^[A-Za-z]:[\\/]/.test(p) ? p : path.resolve(cwd || '.', p)); };
+  for (let i = 0; i < list.length; i++) {
+    const a = list[i], eq = OUT_LONG_EQ.exec(a);
+    if (eq) add(eq[1]);
+    else if (OUT_LONG.test(a) || ((a === '-o' && OUT_SHORT.has(cmd) && cmd !== 'wget') || (a === '-O' && cmd === 'wget'))) add(list[++i]);
+  }
+  if (cmd === 'mkdir' || cmd === 'md') list.filter((a) => !a.startsWith('-')).forEach(add);
+  if (cmd === 'git' && list[0] === 'clone') { const rest = list.slice(1).filter((a) => !a.startsWith('-')); if (rest.length === 2) add(rest[1]); }
+  return cwd ? out : out.filter((p) => path.isAbsolute(p) || /^[A-Za-z]:[\\/]/.test(p));
+}
+
 // Right after a tool ran. ok: it did what it says (checked on the PC where that's possible). retry: one more
 // automatic go is safe and may help. text: what Bob should read instead of the tool's own result.
 // show: real files that never reached the chat (the lead emits them). declined: the user said no (not a failure).
@@ -166,7 +196,10 @@ export async function afterTool(name, args, text, ctx = {}) {
   };
   if (!s.trim()) return fail(`${name} gave back nothing, so it can't be told whether it ran`, { retry: true, text: `Error: ${name} gave back nothing at all, so the app can't tell whether it ran. Don't say it worked.` });
   if (/^The user said no\b/.test(s)) return { ok: true, declined: true, why: 'declined', retry: false };
-  if (/^Error:/.test(s)) return fail(plainWhy(s), { retry: TRANSIENT.test(s) && !PERMANENT.test(s) });
+  // Item 198: when the tool's own error had a code (ENOENT, ETIMEDOUT...), that decides whether a second go can help;
+  // the words are only read when there was no code.
+  const known = ctx.toolError?.code ? ctx.toolError : null;
+  if (/^Error:/.test(s)) return fail(plainWhy(s), { retry: known ? Boolean(known.transient) : TRANSIENT.test(s) && !PERMANENT.test(s) });
 
   if (name in MEDIA) {
     if (/^Didn'?t paint\b/.test(s)) return { ok: true, info: true, why: 'nothing painted on purpose', retry: false };
@@ -195,6 +228,21 @@ export async function afterTool(name, args, text, ctx = {}) {
     let body;
     try { body = fs.readFileSync(file, 'utf8'); } catch { return fail(`${path.basename(String(file))} isn't there after the edit`, { text: `Error: the app looked for ${file} after the edit, and it isn't there.` }); }
     if (args.replace && !body.includes(args.replace)) return fail(`the change isn't in ${path.basename(file)}`, { text: `Error: the app read ${file} back and the new text isn't in it, so the edit didn't land. Read the file and try again.` });
+    // Item 183 (Nov 12): the new text being there isn't proof (it may have been there already). With the file as it
+    // was just before the edit, the app works out what it should be now and compares; without it, each old text must
+    // be gone (unless its new text keeps it) and the file must have changed.
+    const edits = editsOf(args);
+    const before = ctx.editBefore && path.resolve(ctx.editBefore.file) === path.resolve(file) ? ctx.editBefore.body : null;
+    if (edits.length && edits.every((e) => e.find === e.replace)) return fail(`nothing in ${path.basename(file)} changed`, { text: `Error: the edit's new text is the same as its old text, so ${file} didn't change. (Checked by the app.) Don't say it was changed.` });
+    if (before != null) {
+      if (body === before) return fail(`nothing in ${path.basename(file)} changed`, { text: `Error: the app read ${file} back and it's the same as before the edit, so nothing changed. (Checked by the app.) Read the file and try again.` });
+      let want = null;
+      try { want = applyAll(before, edits); } catch {}
+      if (want != null && want !== body) return fail(`${path.basename(file)} isn't what the edit should have made`, { text: `Error: the app read ${file} back and it isn't what the edit should have made (something else changed it, or only part landed). (Checked by the app.) Read the file before saying it's done.` });
+    } else {
+      const left = edits.find((e) => e.find && !e.replace.includes(e.find) && !edits.some((o) => o !== e && o.replace.includes(e.find)) && body.includes(e.find));
+      if (left) return fail(`the old text is still in ${path.basename(file)}`, { text: `Error: the app read ${file} back and the old text is still there, so the edit didn't land. Read the file and try again.` });
+    }
     return { ok: true, why: `${path.basename(file)} changed and read back`, retry: false, files: [file] };
   }
   if (name === 'save_spreadsheet') {
@@ -218,9 +266,14 @@ export async function afterTool(name, args, text, ctx = {}) {
     if (/^Stopped: it ran past/.test(s)) return fail('it ran too long and was stopped');
     const code = s.match(/^Finished with exit code (-?\d+)/m);
     if (code && Number(code[1]) !== 0) return fail(`it finished with exit code ${code[1]} (that usually means it failed)`);
+    // Item 184 (Nov 12): exit code 0 isn't the whole story. A file or folder the command was told to make must be there.
+    if (name === 'run_command') {
+      const missing = expectedOutputs(args).filter((f) => !fs.existsSync(f));
+      if (missing.length) return fail(`it finished, but ${missing.map((f) => path.basename(f)).join(', ')} isn't there`, { text: `${s}\n(Checked by the app: the command finished, but ${missing.join(', ')} ${missing.length === 1 ? 'isn\'t' : 'aren\'t'} there, so it didn't do what it was asked. Don't say it did.)` });
+    }
     return { ok: true, why: code ? 'exit code 0' : 'ran', retry: false };
   }
-  if (name === 'file_hands') {
+  if (name === 'file_hands' || name === 'sort_files') {
     const done = Number((s.match(/: (\d+) done\./) || [])[1] ?? NaN);
     const notDone = /^Not done: (.+)$/m.exec(s);
     if (done === 0 && notDone) return fail(`none of it was done: ${notDone[1].slice(0, 160)}`);
@@ -259,7 +312,7 @@ const MEDIA_OF = { picture: 'image', show: 'image', video: 'video', music: 'audi
 const TOOL_OF = { diagram: 'make_diagram', picture: 'make_image', show: 'make_image', video: 'make_video', music: 'make_music', sound: 'make_sound', file: 'write_file', app: 'open_app' };
 const GROUPS_OF = { diagram: ['diagrams'], picture: ['pictures'], show: ['pictures'], video: ['pictures'], music: ['pictures'], sound: ['pictures'], file: ['documents'], app: ['apps'] };
 const WHAT = { diagram: 'a diagram', picture: 'a picture', show: 'a picture', video: 'a clip', music: 'some music', sound: 'a sound', file: 'a file saved', app: 'something done in an app' };
-const FILE_TOOLS = new Set(['write_file', 'edit_file', 'save_spreadsheet', 'file_hands', 'convert_file', 'office_make', 'office_edit', 'strip_metadata']);
+const FILE_TOOLS = new Set(['write_file', 'edit_file', 'save_spreadsheet', 'file_hands', 'sort_files', 'convert_file', 'office_make', 'office_edit', 'strip_metadata']);
 const APP_TOOLS = new Set(['open_app', 'app_act']);
 const LOOKS = new Set(['app_look', 'list_schedules', 'read_file', 'list_files', 'search_files', 'workshop_list', 'use_tools', 'recall', 'web_search', 'fetch_page', 'security_check', 'inspect_file', 'osint_lookup', 'check_exposure', 'security_tips', 'bob_help']);
 const isDoing = (n) => n in MEDIA || FILE_TOOLS.has(n) || APP_TOOLS.has(n) || ['run_command', 'run_recipe', 'schedule_job', 'change_schedule', 'undo_files'].includes(n);
@@ -280,6 +333,7 @@ export function describe(name, args = {}) {
     case 'save_spreadsheet': return `Saving the spreadsheet${args.name ? ` "${args.name}"` : ''}`;
     case 'file_hands': return FILE_JOBS[String(args.action || '').toLowerCase()] || 'The file job';
     case 'undo_files': return 'Undoing the file job';
+    case 'sort_files': return 'Sorting and renaming';
     case 'convert_file': return `Converting ${[].concat(args.paths || []).length === 1 ? base([].concat(args.paths)[0]) : 'the files'}${args.to ? ` to ${String(args.to).toUpperCase()}` : ''}`;
     case 'office_make': return `Making the ${({ writer: 'document', calc: 'spreadsheet', impress: 'presentation' })[args.kind] || 'document'}`;
     case 'office_edit': return `Changing ${base(args.path)}`;
@@ -319,6 +373,8 @@ export function plainReason(why) {
   if (!s || TECHNICAL.test(s) || s.length > 140) return '';
   return s.replace(/[.\s]+$/, '');
 }
+// What a step did, said in the past ("saved notes.txt"), for the notes under an answer.
+const pastStep = (a) => `${describe(a.name, a.args).replace(/^Making/, 'made').replace(/^Saving/, 'saved').replace(/^Opening/, 'opened').replace(/^Changing/, 'changed').replace(/^Running/, 'ran').replace(/^Typing/, 'typed').replace(/^Clicking/, 'clicked').replace(/^Pressing/, 'pressed').replace(/^Setting up/, 'set up').replace(/^Moving/, 'moved').replace(/^Copying/, 'copied').replace(/^Renaming/, 'renamed').replace(/^Zipping/, 'zipped').replace(/^Unzipping/, 'unzipped').replace(/^Tidying/, 'tidied').replace(/^Undoing/, 'undid')}${a.name in MEDIA && a.files?.length ? ` (${a.files.map(baseName).join(', ')})` : ''}`;
 const failNote = (a) => {
   const r = plainReason(a.why || plainWhy(a.text));
   return r ? `${describe(a.name, a.args)} didn't work: ${r}.` : `${describe(a.name, a.args)} didn't work. Ask Bob what went wrong.`;
@@ -337,7 +393,7 @@ const MODEL_NAME = { picture: 'a picture model', show: 'a picture model', video:
 const HAND_OF = { app: 'apps' };
 const cantNote = (kind) => {
   if (MODEL_FOR[kind]) return `Bob can't make ${MODEL_FOR[kind]} yet: he needs ${MODEL_NAME[kind]}. Get one in Get models.`;
-  if (HAND_OF[kind]) return `Bob can't do that yet: the ${HANDS[HAND_OF[kind]].label} Hand is off. Turn it on in Settings, Show advanced settings, Hands.`;
+  if (HAND_OF[kind]) return `Bob can't do that yet: the ${HANDS[HAND_OF[kind]].label} Hand is off. Turn it on in Settings, Hands.`;
   return 'Bob can\'t do that on this replicant matrix yet.';
 };
 const DIDNT = { diagram: 'draw the diagram', picture: 'make a picture', show: 'make a picture', video: 'make a clip', music: 'make the music', sound: 'make the sound', file: 'save the file', app: 'do it in the app' };
@@ -361,10 +417,12 @@ export function afterTurn(ctx = {}, replyText) {
   // Claims with nothing behind them (the app checks the PC, not his words). Worked out first: they decide
   // which note the user sees.
   const claims = [];
-  if (PIC_CLAIM.test(reply) && !made('image') && !actions.some((a) => ok(a) && a.name in MEDIA && MEDIA[a.name] === 'image')) claims.push('picture');
+  const picClaim = PIC_CLAIM.test(reply) || PIC_CLAIM_FR_ES.test(plain(reply)); // item 182: in French and Spanish too
+  const fileClaim = FILE_CLAIM.test(reply) || FILE_CLAIM_FR_ES.test(plain(reply));
+  if (picClaim && !made('image') && !actions.some((a) => ok(a) && a.name in MEDIA && MEDIA[a.name] === 'image')) claims.push('picture');
   if (VID_CLAIM.test(reply) && !made('video') && !actions.some((a) => ok(a) && a.name === 'make_video')) claims.push('clip');
   if ((AUDIO_CLAIM.test(reply) || AUDIO_DONE.test(reply)) && !made('audio') && !actions.some((a) => ok(a) && (a.name === 'make_music' || a.name === 'make_sound'))) claims.push('sound');
-  if (FILE_CLAIM.test(reply) && !actions.some((a) => ok(a) && FILE_TOOLS.has(a.name))) claims.push('file');
+  if (fileClaim && !actions.some((a) => ok(a) && FILE_TOOLS.has(a.name))) claims.push('file');
   if (!ctx.claimChecked && APP_CLAIM.test(reply) && !actions.some((a) => ok(a) && APP_TOOLS.has(a.name))) claims.push('app');
   const missing = [];
   for (const m of reply.matchAll(SAVED_AT)) { const p = m[1].replace(/[.,;:)]+$/, ''); if (/\.\w{1,8}$/.test(p) && !fs.existsSync(p)) missing.push(p); }
@@ -375,7 +433,17 @@ export function afterTurn(ctx = {}, replyText) {
 
   // 1. Actions that failed and weren't put right later in the turn (a retry, or another way).
   const failedLeft = actions.filter((a, i) => a.ok === false && isDoing(a.name) && !actions.slice(i + 1).some((b) => ok(b) && isDoing(b.name) && ((a.name in MEDIA) === (b.name in MEDIA))));
-  for (const a of failedLeft.slice(-2)) notes.push(failNote(a));
+  // Item 185 (Nov 12): half-done is said as half-done. When some steps worked and some didn't (or a step did only
+  // part of its job), and the answer doesn't say so, the note lists both.
+  const doneSteps = actions.filter((a) => ok(a) && isDoing(a.name) && !a.info);
+  const partly = actions.filter((a) => ok(a) && a.partly);
+  if ((failedLeft.length && doneSteps.length) || partly.length) {
+    if (!said || !admitsTrouble(said)) {
+      const did = [...new Set(doneSteps.filter((a) => !a.partly).map((a) => pastStep(a)))].slice(0, 3);
+      const not = [...new Set([...failedLeft.slice(-2).map((a) => failNote(a).replace(/\.$/, '')), ...partly.map((a) => `${describe(a.name, a.args)}: ${String(a.why || '').replace(/^\d+ done, some not: /, 'some not done: ')}`.replace(/[.\s]+$/, ''))])].slice(0, 3);
+      notes.push(`Only part of this worked.${did.length ? ` Done: ${did.join('; ')}.` : ''} Not done: ${not.join('; ')}.`);
+    } else for (const a of failedLeft.slice(-2)) notes.push(failNote(a));
+  } else for (const a of failedLeft.slice(-2)) notes.push(failNote(a));
   // An app step the app couldn't confirm, with no look afterwards.
   const unconfirmed = actions.findLast((a) => a.name === 'app_act' && a.ok === false && /^Not sure it worked/.test(String(a.text || '')));
   if (unconfirmed && !actions.slice(actions.indexOf(unconfirmed) + 1).some((b) => b.name === 'app_look' && ok(b))) {
@@ -434,7 +502,7 @@ export function afterTurn(ctx = {}, replyText) {
     // Something made is already in the chat as its own card: that's the answer, no note repeating it.
     if (outputs.length) return notes.length ? { note: [...new Set(notes)].slice(0, 3).join(' ') } : null;
     if (done.length) {
-      const what = [...new Set(done.map((a) => `${describe(a.name, a.args).replace(/^Making/, 'made').replace(/^Saving/, 'saved').replace(/^Opening/, 'opened').replace(/^Changing/, 'changed').replace(/^Running/, 'ran').replace(/^Typing/, 'typed').replace(/^Clicking/, 'clicked').replace(/^Pressing/, 'pressed').replace(/^Setting up/, 'set up').replace(/^Moving/, 'moved').replace(/^Copying/, 'copied').replace(/^Renaming/, 'renamed').replace(/^Zipping/, 'zipped').replace(/^Unzipping/, 'unzipped').replace(/^Tidying/, 'tidied').replace(/^Undoing/, 'undid')}${a.name in MEDIA && a.files?.length ? ` (${a.files.map(baseName).join(', ')})` : ''}`))];
+      const what = [...new Set(done.map((a) => pastStep(a)))];
       // Work really happened and the reply is only empty: say what was done, don't send him back for another go.
       return { note: [`Done: ${what.join('; ')}.`, ...notes].join(' ') };
     }

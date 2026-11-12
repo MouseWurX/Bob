@@ -14,6 +14,7 @@ import { saveSettings } from './config.js';
 import { fullSizeDirOf, labOn } from './lab.js';
 import { PLAY_MAX_GB } from './lab-playground.js';
 import { partsOf, joinParts } from './lab-split.js'; // brains in parts become one file (llama-gguf-split)
+import { keyValue } from './secret-box.js';
 
 const GB = 1e9;
 const round1 = (x) => Math.round(x * 10) / 10;
@@ -29,7 +30,7 @@ const isFull = (name) => /\.gguf$/i.test(name) && FULL_FILE.test(name) && !/mmpr
 // Look a source up without downloading. For a Hugging Face repo: its licence and every full-size GGUF with its size
 // (split files are shown as one, by their first part). For a link: the file's size from its headers. For a file here:
 // what the GGUF says. Gives { ok, kind, name, license, files: [{ file, gb, fits, note }], warn } or { ok: false, error }.
-export async function lookFullSize(input, { fetchFn = fetch, token = process.env.HF_TOKEN || '', signal, maxGB = PLAY_MAX_GB } = {}) {
+export async function lookFullSize(input, { fetchFn = fetch, token = keyValue('HF_TOKEN'), signal, maxGB = PLAY_MAX_GB } = {}) {
   const src = parseSource(input);
   if (!src) return { ok: false, error: 'Say where the brain is: a Hugging Face name (owner/name) or link, a link to a .gguf file, or the path of a .gguf file on this replicant matrix.' };
   const fits = (gb) => (gb <= maxGB ? `Fits the Lab's ways (up to ${maxGB} GB).` : gb <= MAX_FULL_GB ? `Too big for the Lab's ways (they stop at ${maxGB} GB); it would only run, not be worked on.` : 'Too big to bring in.');
@@ -82,7 +83,7 @@ export class FullSize {
   stop() { if (this.cur) { this.cur.ac.abort('stop'); return true; } return false; }
 
   // Start a download (hf or link). Resolves right away with the view; progress goes out as 'lab-full' events.
-  async start({ input, file }, { fetchFn = fetch, token = process.env.HF_TOKEN || '' } = {}) {
+  async start({ input, file }, { fetchFn = fetch, token = keyValue('HF_TOKEN') } = {}) {
     if (this.cur) throw new Error(`${this.cur.name} is still coming down. Stop it first, or wait.`);
     const look = await lookFullSize(input, { fetchFn, token });
     if (!look.ok) throw new Error(look.error);

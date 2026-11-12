@@ -19,8 +19,11 @@ import { startServer, runQuiz } from './lab-test.js';
 import { ggufInfo } from './gguf.js';
 import { gpuInfo, OS, venvPython } from './platform.js';
 import { TEACH_PY, FETCH_PY } from './lab-teach-script.js';
+import { getOwnPython, ownPythonDir } from './audio.js';
 import { ladderTexts } from './lab-playground.js';
 import { readJson, writeJson, isInsideDir, exeName, canStart, makeRoom, runJob, runTool, pageLog } from './lab-jobs.js';
+import { keyValue } from './secret-box.js';
+import { readMyTests } from './lab-mistakes.js'; // Nov 11: Teach it from my mistakes
 
 // ---- The fit rule (the card shows which row applies and why; the person can always pick rented) ----
 // Card memory -> the biggest dense brain taught here (adapter on a 4-bit base), and a mixture of experts by its total.
@@ -51,10 +54,11 @@ export const teachDiskGB = (paramsB, { download = true } = {}) => ({ work: Math.
 
 // ---- The Trainer pack (opt-in, its own folder, removable) ----
 export const TRAINER = {
-  uv: '0.13.4', python: '3.12', llamacpp: 'b12032', sizeGB: { cuda: 7, mac: 3 },
+  uv: '0.13.4', python: '3.12', llamacpp: 'b12282', sizeGB: { cuda: 7, mac: 3 },
   packages: ['torch==2.14.1', 'transformers==5.20.2', 'peft==0.21.2', 'accelerate==1.15.0', 'safetensors==0.8.0', 'sentencepiece==0.2.2', 'protobuf', 'numpy', 'huggingface_hub'],
   cudaOnly: ['bitsandbytes==0.50.2'],
-  torchIndex: 'https://download.pytorch.org/whl/cu128',
+  torchIndex: 'https://download.pytorch.org/whl/cu130', // CUDA 13.0 builds: they know the newest NVIDIA cards (the 50-series); cu128 ones came up CPU-only there
+  cudaCheck: 'import torch, sys; sys.exit(0 if torch.cuda.is_available() else 3)',
   licences: [['uv', 'MIT or Apache-2.0'], ['Python', 'PSF'], ['PyTorch', 'BSD-3-Clause'], ['Transformers, PEFT, Accelerate', 'Apache-2.0'], ['bitsandbytes', 'MIT'], ['llama.cpp converters', 'MIT']]
 };
 export const trainerDir = (cfg) => path.join(cfg.agentDir, 'trainer');
@@ -68,10 +72,13 @@ export const uvUrl = (os_ = OS, arch = process.arch) => `https://github.com/astr
 export const llamaSrcUrl = () => `https://github.com/ggml-org/llama.cpp/archive/refs/tags/${TRAINER.llamacpp}.tar.gz`;
 // `hw` = { os, arch }: the machine, injectable so tests never read the tester's own chip (the builder's rule).
 export const hwOf = (lab) => (lab?.platform ? lab.platform() : { os: OS, arch: process.arch });
+// 1.5.200 On Windows the trainer runs from a private copy of Bob's own signed Python (the PSF's NuGet package), not
+// a venv: a venv's python.exe is an unsigned launcher, and Smart App Control blocks it (os error 4551 on the PC test).
+export const trainerPython = (dir, os_ = OS) => (os_ === 'win' ? path.join(dir, 'python-signed', 'python.exe') : venvPython(path.join(dir, 'venv'), os_));
 export function trainerState(cfg, hw = { os: OS, arch: process.arch }) {
   const dir = trainerDir(cfg);
   const rec = readJson(path.join(dir, 'trainer.json'), null);
-  const py = venvPython(path.join(dir, 'venv'));
+  const py = rec?.python ? path.join(dir, rec.python) : trainerPython(dir, hw.os);
   const ok = Boolean(rec?.ok) && fs.existsSync(py) && fs.existsSync(path.join(dir, 'llama.cpp', 'convert_hf_to_gguf.py'));
   return { ok, dir, python: py, version: rec?.version || '', at: rec?.at || 0, sizeGB: hw.os === 'mac' ? TRAINER.sizeGB.mac : TRAINER.sizeGB.cuda, licences: TRAINER.licences, supported: hw.os !== 'android' && !(hw.os === 'linux' && hw.arch === 'arm64') };
 }
@@ -97,13 +104,25 @@ async function download(url, out, { signal, onProgress = () => {}, headers = {},
 }
 const tarExe = () => (OS === 'win' ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'tar');
 
+// Windows Smart App Control (or another app-control policy) blocking a program shows up as os error 4551 or
+// 0xc0e90002. Bob says so in plain words and changes no security setting.
+export function blockedWords(e) {
+  if (!/\b4551\b|0xc0e90002|Application Control policy has blocked/i.test(String(e?.message || e))) return e;
+  const x = new Error('Windows Smart App Control blocked a program the trainer needs, so it stopped. Bob doesn\'t change Windows security settings. Press Try again: Windows sometimes checks a new program once. If it keeps happening, the Teach it log names the file, and Teach it rented still works.');
+  x.cause = e; return x;
+}
+export const guardTool = (tool) => async (...a) => { try { return await tool(...a); } catch (e) { throw blockedWords(e); } };
+export const NO_CUDA = 'The training libraries installed, but they can\'t see your NVIDIA card. Update the NVIDIA driver (Bob needs a recent one), then press Try again. Teaching rented still works.';
+const hasNvidia = async (lab) => { const g = await Promise.resolve((lab.gpuInfo || gpuInfo)()).catch(() => null); return /nvidia|geforce|rtx|quadro|tesla/i.test(g?.name || ''); };
 export async function startTrainerInstall(lab) {
   canStart(lab, { room: false });
   const st = trainerState(lab.cfg, hwOf(lab));
   if (!st.supported) throw new Error('The Trainer pack doesn\'t run on this replicant matrix. Teach it rented instead.');
   const dir = st.dir, log = pageLog(lab.cfg, 'teach');
-  const fx = { download, tool: runTool, ...lab.stepFns };
-  const steps = [['uv', `Get uv ${TRAINER.uv} (it installs Python and the libraries)`], ['python', `Get Python ${TRAINER.python} in its own folder`], ['libs', 'Get the training libraries (the big part)'], ['conv', `Get llama.cpp ${TRAINER.llamacpp}'s converters`]];
+  const hw = hwOf(lab), win = hw.os === 'win';
+  const fx = { download, tool: runTool, ownPython: (o) => getOwnPython(lab.cfg, o), ...lab.stepFns };
+  fx.tool = guardTool(fx.tool);
+  const steps = [['uv', `Get uv ${TRAINER.uv} (it installs Python and the libraries)`], ['python', win ? `Copy Bob's own signed Python ${TRAINER.python} into its own folder` : `Get Python ${TRAINER.python} in its own folder`], ['libs', 'Get the training libraries (the big part)'], ['conv', `Get llama.cpp ${TRAINER.llamacpp}'s converters`]];
   return runJob(lab, { kind: 'trainer', name: 'Get the Trainer pack', steps, stopped: 'You stopped it. Start it again to carry on, or Remove it in Settings.' }, async (r, { set, signal, progress }) => {
     fs.mkdirSync(dir, { recursive: true });
     const uvDir = path.join(dir, 'uv'), env = { ...process.env, UV_CACHE_DIR: path.join(dir, 'cache'), UV_PYTHON_INSTALL_DIR: path.join(dir, 'python') };
@@ -115,11 +134,23 @@ export async function startTrainerInstall(lab) {
     const uv = findFile(uvDir, exeName('uv'));
     if (!uv) throw new Error('uv didn\'t unpack where Bob expected it.');
     set('uv', 'done'); set('python', 'running');
-    await fx.tool(uv, ['venv', '--python', TRAINER.python, path.join(dir, 'venv')], { signal, log, env });
+    const py = trainerPython(dir, hw.os);
+    if (win) {
+      // A private copy, so the libraries never land in the Python Bob's voices use; the copy keeps the PSF signature.
+      const own = await fx.ownPython({ signal });
+      const to = path.dirname(py);
+      fs.rmSync(to, { recursive: true, force: true });
+      fs.cpSync(path.dirname(own), to, { recursive: true });
+      if (!fs.existsSync(py)) throw new Error('Bob\'s own Python didn\'t copy where he expected it. Press Try again.');
+    } else await fx.tool(uv, ['venv', '--python', TRAINER.python, path.join(dir, 'venv')], { signal, log, env });
     set('python', 'done'); set('libs', 'running'); progress(15);
-    const py = venvPython(path.join(dir, 'venv'));
-    const cuda = OS !== 'mac';
+    const cuda = hw.os !== 'mac';
     await fx.tool(uv, ['pip', 'install', '--python', py, ...(cuda ? ['--index-url', TRAINER.torchIndex, '--extra-index-url', 'https://pypi.org/simple', '--index-strategy', 'unsafe-best-match'] : []), ...TRAINER.packages, ...(cuda ? TRAINER.cudaOnly : [])], { signal, log, env, onLine: (l) => { if (/Downloading|Prepared|Installed/.test(l)) progress(Math.min(85, r.progress + 1), `Get the training libraries: ${l.trim().slice(0, 60)}`); } });
+    if (cuda && await hasNvidia(lab)) {
+      // A torch that installed fine but can't see the card would only fail hours later, mid-lesson. Check it now.
+      try { await fx.tool(py, ['-c', TRAINER.cudaCheck], { signal, log, env }); }
+      catch (e) { if (signal?.aborted) throw e; throw new Error(NO_CUDA); }
+    }
     set('libs', 'done'); set('conv', 'running');
     const src = path.join(dir, 'llama-src.tar.gz');
     await fx.download(llamaSrcUrl(), src, { signal, maxBytes: 500e6 });
@@ -128,7 +159,7 @@ export async function startTrainerInstall(lab) {
     await fx.tool(tarExe(), ['-xzf', src, '-C', lc, '--strip-components=1'], { signal, log });
     await fx.tool(uv, ['pip', 'install', '--python', py, path.join(lc, 'gguf-py')], { signal, log, env });
     for (const f of [arch, src]) fs.rmSync(f, { force: true });
-    writeJson(path.join(dir, 'trainer.json'), { ok: true, version: `uv ${TRAINER.uv}, Python ${TRAINER.python}, llama.cpp ${TRAINER.llamacpp}`, packages: [...TRAINER.packages, ...(cuda ? TRAINER.cudaOnly : [])], at: lab.now() });
+    writeJson(path.join(dir, 'trainer.json'), { ok: true, python: path.relative(dir, py), version: `uv ${TRAINER.uv}, Python ${TRAINER.python}, llama.cpp ${TRAINER.llamacpp}`, packages: [...TRAINER.packages, ...(cuda ? TRAINER.cudaOnly : [])], at: lab.now() });
     set('conv', 'done');
     return { trainer: trainerState(lab.cfg, hwOf(lab)) };
   });
@@ -261,8 +292,8 @@ export async function planTeach(lab, c = {}) {
     if (direct) disk = { work: disk.work + Math.ceil((brain.paramsB || 4) * 2), keep: disk.keep + (way === 'squeeze' ? Math.ceil((brain.paramsB || 4) * 0.7) : 0) };
     let freeGB = null; try { const d = labModelsDir(lab.cfg); fs.mkdirSync(d, { recursive: true }); if (lab.freeGB) freeGB = lab.freeGB(d); else { const st = fs.statfsSync(d); freeGB = Math.round((st.bavail * st.bsize) / 1e9); } } catch {}
     if (freeGB !== null && brain.paramsB && freeGB < disk.work + 5) problems.push(`It needs about ${disk.work} GB of disk while it works and there's ${freeGB} GB free.`);
-    for (const t of ['quantize', 'server']) if (!lab.tools()[t].found) problems.push(`${path.basename(lab.tools()[t].path)} isn't in Bob's engine folder. Get models > Engines: the built-in engine has it.`);
-    if (!direct && !fs.existsSync(exportLoraPath(lab))) problems.push(`${exeName('llama-export-lora')} isn't here; it folds the adapter into the new brain. It isn't in the built-in engine's download; it comes with Brain Engine, the Lab's engine (Get models > Engines: Brain Engine (test build)), from the build after this one.`);
+    for (const t of ['quantize', 'server']) if (!lab.tools()[t].found) problems.push(`${path.basename(lab.tools()[t].path)} isn't in Bob's engine folder. Settings > Engines: the built-in engine has it.`);
+    if (!direct && !fs.existsSync(exportLoraPath(lab))) problems.push(`${exeName('llama-export-lora')} isn't here; it folds the adapter into the new brain. It isn't in the built-in engine's download; it comes with Brain Engine, the Lab's engine (Settings > Engines: Brain Engine (test build)), from the build after this one.`);
     if (way === 'squeeze') {
       notes.push(`Squeeze-aware: while it learns, every weight is rounded the way the ${squeeze} file rounds it, and the brain learns to say what its full-size self says on these lessons (their answers aren't needed). Then Bob makes the plain ${squeeze} and the squeeze-aware ${squeeze}, and compares both with the full-size brain.`);
       if (!lab.tools().perplexity?.found && !lab.stepFns?.perplexity) notes.push(`${exeName('llama-perplexity')} isn't in Bob's engine folder, so the comparison uses the Quick quiz alone.`);
@@ -290,6 +321,7 @@ export async function startTeach(lab, c = {}, { unload = false } = {}) {
   const tr = trainerState(lab.cfg, hwOf(lab)), log = pageLog(lab.cfg, 'teach');
   const work = path.join(labModelsDir(lab.cfg), 'teach', p.slug);
   const fx = { tool: runTool, download, quiz: quizFile, ...lab.stepFns };
+  fx.tool = guardTool(fx.tool);
   const env = { ...process.env, PYTHONIOENCODING: 'utf-8', HF_HUB_DISABLE_TELEMETRY: '1' };
   const sq = p.way === 'squeeze';
   const steps = sq
@@ -303,7 +335,7 @@ export async function startTeach(lab, c = {}, { unload = false } = {}) {
     const base = await fetchBase(lab, p, work, { fx, signal, log, env, tr, progress });
     set('brain', 'done'); set('lessons', 'running');
     let lessonsFile = p.lessons.file;
-    const hfHead = process.env.HF_TOKEN ? { Authorization: `Bearer ${process.env.HF_TOKEN}` } : {};
+    const hfHead = keyValue('HF_TOKEN') ? { Authorization: `Bearer ${keyValue('HF_TOKEN')}` } : {};
     if (p.lessons.repo) { lessonsFile = path.join(work, 'lessons.jsonl'); await fx.download(`https://huggingface.co/datasets/${p.lessons.repo}/resolve/${encodeURIComponent(p.lessons.revision || 'main')}/${p.lessons.hfFile.split('/').map(encodeURIComponent).join('/')}`, lessonsFile, { signal, headers: hfHead, maxBytes: 4e9 }); }
     if (p.lessons.url) { lessonsFile = path.join(work, 'lessons.jsonl'); await fx.download(p.lessons.url, lessonsFile, { signal, maxBytes: 4e9 }); }
     set('lessons', 'done'); set('teach', 'running');
@@ -324,7 +356,7 @@ export async function startTeach(lab, c = {}, { unload = false } = {}) {
     const now = await fx.quiz(lab, after, signal);
     set('quiz', 'done');
     let sizeGB = 0; try { sizeGB = Math.round((fs.statSync(after).size / 1e9) * 10) / 10; } catch {}
-    r.files = { gguf: after }; r.sizeGB = sizeGB;
+    r.files = { gguf: after }; r.sizeGB = sizeGB; r.before = p.brain.gguf || before; // the start brain's file, for Before and after (Lab item 103)
     writeJson(path.join(work, 'teach.json'), { name: p.name, from: p.brain.name, repo: p.brain.repo, lessons: [p.lessons.name], learned, skipped, epochs: p.epochs, madeHere: true, before: was?.score ?? null, after: now.score, at: lab.now() });
     return { made: { score: now.score, tps: now.tps }, from: was ? { score: was.score } : null, sizeGB, madeHere: true, lessons: [p.lessons.name], learned, skipped, loss: lastLoss };
   });
@@ -361,7 +393,7 @@ async function squeezeRun(lab, p, r, { base, lessonsFile, work, fx, signal, log,
   const now = await fx.quiz(lab, aware, signal);
   set('quiz', 'done');
   let sizeGB = 0; try { sizeGB = Math.round((fs.statSync(aware).size / 1e9) * 10) / 10; } catch {}
-  r.files = { gguf: aware }; r.sizeGB = sizeGB;
+  r.files = { gguf: aware }; r.sizeGB = sizeGB; r.before = plain; // the same size, untaught, for Before and after (Lab item 103)
   const squeeze = { type: p.squeeze, drift, surprise };
   writeJson(path.join(work, 'teach.json'), { name: p.name, from: p.brain.name, repo: p.brain.repo, lessons: [p.lessons.name], way: 'squeeze', squeeze, learned, epochs: p.epochs, madeHere: true, before: was?.score ?? null, after: now.score, at: lab.now() });
   return { made: { score: now.score, tps: now.tps }, from: was ? { score: was.score } : null, sizeGB, madeHere: true, lessons: [p.lessons.name], learned, skipped: 0, loss: lastLoss, squeeze };
@@ -376,9 +408,11 @@ export async function foldFull(lab, dir, outs, work, tag, { fx, signal, log, env
 }
 // The full weights to teach, for Teach it and the Best answers page: a folder here, or fetched from Hugging Face or
 // a link into the work folder. Returns the folder that holds config.json.
+// A Hugging Face key saved in Settings (🔐 Locked secrets) reaches the download helper only, as HF_TOKEN.
+const withHfToken = (env) => { const t = keyValue('HF_TOKEN'); return t && !(env || process.env).HF_TOKEN ? { ...(env || process.env), HF_TOKEN: t } : env; };
 export async function fetchBase(lab, p, work, { fx, signal, log, env, tr, progress = () => {} }) {
   let base = p.brain.folder;
-  if (!base && p.brain.repo) { base = path.join(work, 'base'); await fx.tool(tr.python, [path.join(tr.dir, 'fetch.py'), p.brain.repo, p.brain.revision || '', base], { signal, log, env }); }
+  if (!base && p.brain.repo) { base = path.join(work, 'base'); await fx.tool(tr.python, [path.join(tr.dir, 'fetch.py'), p.brain.repo, p.brain.revision || '', base], { signal, log, env: withHfToken(env) }); }
   if (!base && p.brain.url) {
     const a = path.join(work, 'brain-archive'); await fx.download(p.brain.url, a, { signal, onProgress: (gt, t) => t && progress((10 * gt) / t) });
     base = path.join(work, 'base'); fs.mkdirSync(base, { recursive: true }); await fx.tool(tarExe(), ['-xf', a, '-C', base], { signal, log }); fs.rmSync(a, { force: true });
@@ -440,7 +474,7 @@ export async function saveTeachPlan(lab, c = {}) {
 
 export function teachView(lab) {
   const tr = trainerState(lab.cfg, hwOf(lab));
-  return { trainer: { ok: tr.ok, sizeGB: tr.sizeGB, version: tr.version, licences: tr.licences, supported: tr.supported, uv: TRAINER.uv, python: TRAINER.python, llamacpp: TRAINER.llamacpp }, fit: FIT_ROWS.map(([gb, dense, moe]) => ({ gb, dense, moe })), squeezeTypes: SQUEEZE_TYPES, perplexity: Boolean(lab.tools().perplexity?.found), brains: lab.brains().map((b) => ({ id: b.id, name: b.name })), sets: lessonSets(lab.cfg).map(({ id, name, count }) => ({ id, name, count })), runs: lab.runs.filter((r) => r.kind === 'teach').slice(-5).reverse().map((r) => lab.runView(r)), os: OS, ram: Math.round(os.totalmem() / 1024 ** 3) };
+  return { mistakes: readMyTests(lab.cfg).length, teachers: lab.brains().map((b) => ({ id: b.id, name: b.name })), trainer: { ok: tr.ok, sizeGB: tr.sizeGB, version: tr.version, licences: tr.licences, supported: tr.supported, uv: TRAINER.uv, python: TRAINER.python, llamacpp: TRAINER.llamacpp }, fit: FIT_ROWS.map(([gb, dense, moe]) => ({ gb, dense, moe })), squeezeTypes: SQUEEZE_TYPES, perplexity: Boolean(lab.tools().perplexity?.found), brains: lab.brains().map((b) => ({ id: b.id, name: b.name })), sets: lessonSets(lab.cfg).map(({ id, name, count }) => ({ id, name, count })), runs: lab.runs.filter((r) => r.kind === 'teach').slice(-5).reverse().map((r) => lab.runView(r)), os: OS, ram: Math.round(os.totalmem() / 1024 ** 3) };
 }
 
 export async function teachRoute({ req, p, isLocal, lab, b, send, res }) {

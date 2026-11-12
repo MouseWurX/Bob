@@ -2,7 +2,7 @@
 
 *A plan written the way a business proposal is written: what is being made, why, how, what it has cost so far, what the rest is expected to cost, what could go wrong, and how it is measured. It is public so that anyone can read the whole plan before deciding whether the project deserves their time, and so that the numbers can be checked against [What Bob costs to make](COSTS.md), [Bob's own models](BOBS-OWN-MODELS.md) and [the Forge journal](FORGE-JOURNAL.md). **This is not a request for money.** Nothing is for sale and no pot is open. If the project ever opens one, this page will say so plainly, and the rules for it are already written in section 10.*
 
-*Prepared 8 November 2026 by the owner of Bob with Claude, who writes much of Bob's code and documents. Revised as the work moves.*
+*Prepared 8 November 2026 by the owner of Bob with Claude, who writes much of Bob's code and documents. Revised as the work moves; last revised 12 November 2026.*
 
 ## 1. In one page
 
@@ -10,14 +10,15 @@ Bob is a local AI assistant that runs on a person's own computer, handheld or ph
 
 The proposal is to give Bob a family of his own brains: **the same big model with its least-used parts cut away, then retrained with the big model as its teacher**, at six sizes from 28 billion parameters down to 5, plus a stretch goal at 2. Every size keeps Bob's tool calls, his thinking switch and his eyes. Each one is called a Bob (28Bob, 20Bob, 14Bob, 10Bob, 7Bob, 5Bob), with a crew nickname as a label.
 
-What is true today, 8 November 2026:
+What is true today, 12 November 2026:
 
 - The method works at the top of the ladder. **28Bob Riker is made, benchmarked and kept** (8 November): 9 of 13 on the coding race against the full model's 12, 6 of 6 on the quick code test, tool calls level (65% against 67%), 24 of 25 on the routing race, and a fact found every time in documents up to 128K tokens. The first attempts (v1 and v2) taught the cut rule and the lesson rules he was made with; they are retired and their files deleted.
-- **On top of the ladder sits 35Bob Bobert**: the full model with no cut, trained on every lesson, a brain for 24 GB cards and the teacher of every Bob below him. His run started on 8 November. Bill is cut from Bobert; each rung below is cut from the healed Bob above it: Homer, Milo, Luke, Calvin, then the stretch goal Bender.
+- **On top of the ladder sits 35Bob Bobert**: the full model with no cut, trained on every lesson, a brain for 24 GB cards and the teacher of every Bob below him. He was made on 8 to 9 November and is published. Bill is cut from Bobert; each rung below is cut from the healed Bob above it: Homer, Milo, Luke, Calvin, then the stretch goal Bender.
+- **20Bob Bill is made and published** (11 November). He is the best of the three at Bob's own tool decisions (213 of 314 held-out turns, against 205 for Riker and for Bobert) and the weakest at plain facts (12 of 20) and code (1 of 6).
 - Coding and general knowledge are where a cut shows. The first cut rule and the first coding lessons were both weak; both have been measured, written up and replaced.
-- Five Bobs have been made on rented cards for $183.90 of card time, failures included. Only Riker is kept; the four earlier ones were retired and deleted on 8 November, and their benchmark numbers stay on the models page as the control group.
-- The rest of the family is expected to cost about $255 to $265 more in card time (one combined run for the new lessons, Bobert, the odds and Bill, then Homer down to Bender), about $1,750 to $1,850 in total with the tools that made it. Every dollar so far is itemised on the costs page.
-- Nothing is released. The first release is three models, Bobert, Riker and Bill, on Hugging Face under Apache 2.0, each with a model card that says exactly what it is and how it scored; the rest follow as they pass their tests.
+- Seven Bobs have been made on rented cards for $403.24 of card time, failures included. Riker, Bobert and Bill are kept; the four earlier ones were retired and deleted on 8 November, and their benchmark numbers stay on the models page as the control group.
+- The rest of the family is expected to cost about $119 to $129 more in card time (Homer down to Bender), about $1,900 to $1,980 in total with the tools that made it and the rented drive. Every dollar so far is itemised on the costs page.
+- Three models are released: Bobert, Riker and Bill are on Hugging Face under Apache 2.0, each with a model card that says exactly what it is and how it scored. The rest follow as they pass their tests.
 
 ## 2. The problem
 
@@ -33,9 +34,9 @@ Qwen3.6-35B-A3B is a mixture-of-experts model: each of its 40 layers holds 256 s
 
 | Rung | Nickname | Experts kept per layer (of 256) | File at Q4, about | Meant for | State |
 |---|---|---|---|---|---|
-| 35Bob | Bobert | 256, no cut: the full model trained on every lesson | ~21 GB (Q3 ~17 GB) | 24 GB cards, or a 16 GB card with experts in RAM; the teacher of every Bob below | in the making, run started 8 Nov |
+| 35Bob | Bobert | 256, no cut: the full model trained on every lesson | ~21 GB (Q3 ~17 GB) | 24 GB cards, or a 16 GB card with experts in RAM; the teacher of every Bob below | made 8 to 9 Nov, published |
 | 28Bob | Riker | 208 | 17.5 GB (Q3 13.9 GB) | a 16 GB card with experts spilling into RAM, or the Q3 file | made, benchmarked and kept 8 Nov |
-| 20Bob | Bill | 144 | 12.7 GB | a 16 GB card entirely: the everyday desktop Bob | next, cut from Bobert and healed against his odds |
+| 20Bob | Bill | 144 | 12.7 GB | a 16 GB card entirely, with room for long chats | made and published 11 Nov: best at tool decisions, weaker at facts and code |
 | 14Bob | Homer | 96 | 9 GB | 8 GB cards and gaming handhelds | planned |
 | 10Bob | Milo | 64 | 6.6 GB | small cards, big phones | planned |
 | 7Bob | Luke | 40 | 4.6 GB | phones | planned |
@@ -75,42 +76,45 @@ The full method, with the numbers behind every claim, is on [Bob's own models](B
 | 7 Nov | Forge build 15, on paper | The teacher's scores are kept between runs; the fast kernels, never loaded in any run so far, are built properly |
 | 8 Nov | Riker benchmarked at home and kept; v1 and v2 retired and deleted | Clean coding lessons lifted the coding race from 6 to 9 of 13 and the quick code test to 6 of 6; tools level; two short facts lost; long documents unharmed |
 | 8 Nov | Five outside answer sets converted to Bob's lesson format and checked; one dropped as broken; the set is 18,118, half Bob's own | Outside traces that never end in an answer are worthless; a scan for planted instructions found none |
-| 8 Nov | Bobert decided (the full model trained on every lesson, the teacher of every cut); Forge build 17 publishes odds and files from the card; the combined run started | |
+| 8 Nov | Bobert decided (the full model trained on every lesson, the teacher of every cut); Forge build 17 publishes odds and files from the card | |
+| 8 to 9 Nov | **Bobert**: about 9,000 new lessons and a full pass of 2,018 steps ($108.75) | The fast kernels work, at about 3,400 words a second; the odds pass saved about half the pieces inside its time budget |
+| 9 to 10 Nov | Riker and Bobert rebuilt and published on Hugging Face ($5.44, plus $1.18 for three short tries at the uploads) | A Bob can be put back together from the stock model, his keep list and his adapter, with no training |
+| 10 to 11 Nov | **Bill** at 144 experts, cut from Bobert, a full pass ($96.27); his full-size weights published ($6.84) | Reusing Bobert's saved odds meant no second teacher pass |
+| 11 Nov | The three kept Bobs tested side by side on one small rented card ($0.86) | Riker matches Bobert at a size that fits a 16 GB card far better; Bill makes the best tool decisions (68% against 65%) and loses facts and code |
 
-The honest reading: the method is proven at the top rung, where Riker holds Bob's own work and most of the coding against the full model; the middle rungs are a reasonable bet because the heal recovered most of a 128-expert cut; and the small rungs are an experiment that will be judged by the benchmarks and dropped if a stock small model beats them.
+The honest reading: the method is proven at the top rung, where Riker holds Bob's own work and most of the coding against the full model; the middle rungs are a reasonable bet because the heal recovered most of a 128-expert cut, though Bill shows where that bet is weakest (tool decisions hold at 144 experts, facts and coding do not); and the small rungs are an experiment that will be judged by the benchmarks and dropped if a stock small model beats them.
 
 ## 6. Plan and milestones
 
 | Milestone | What it needs | Expected card time | Done when |
 |---|---|---|---|
 | 1. Riker benchmarked at home | the PC, no rental | 0 | **done 8 November**: tool score, routing race, coding race and the long-document checks are on the models page |
-| 2. The combined run: about 9,000 more lessons, Bobert trained in a full pass, the odds recorded, Bill cut from Bobert and healed | one rental with a 300 GB drive, about $135 | about 24 to 26 h | **started 8 November**; done when Bobert and Bill each pass their home tests |
+| 2. The combined run: about 9,000 more lessons, Bobert trained in a full pass, the odds recorded, Bill cut from Bobert and healed | two rentals with the drive, $108.75 and $96.27 | about 38 h | **made 8 to 11 November** and published; Bobert is tested at home, Bill's home test is still to come |
 | 3. Homer and Milo | one rental | about 9 h | both score above the stock models they replace on their devices |
 | 4. Luke and Calvin | one rental | about 8 h | Luke equipped on a phone; Calvin kept or dropped by the benchmarks |
 | 5. The by-the-word teacher test | a small hosted spend | 0 card hours | a Bob healed with a few hundred lessons from a much bigger teacher is raced against one without |
 | 6. Specialists and line A | only if 3 and 5 earn them | about 4 h each | each specialist beats the general rung at its own job |
 | 7. Big-card numbers | one short rental | a few hours | the same benchmarks run on the big card, so every brain has a home number and a commercial-card number side by side |
-| 8. Release | the PC and Hugging Face | 0 | Bobert, Riker and Bill first, then every Bob as it passes, each on Hugging Face with a model card, pinned in Bob's catalogue; Bob's starter sets prefer them |
+| 8. Release | the PC and Hugging Face | 0 | **started**: Bobert, Riker and Bill went up on 9 to 11 November; then every Bob as it passes, each on Hugging Face with a model card, pinned in Bob's catalogue; Bob's starter sets prefer them |
 | Later | Bender (2Bob) another way; expert merging for the small rungs | | each gets its own entry here first |
 
 No dates are promised. Rentals happen when the owner says so, one at a time, each with a plan file that names its caps in hours and dollars.
 
 ## 7. Costs
 
-Every dollar spent, including the runs that made nothing, is on [What Bob costs to make](COSTS.md), with the rate and the hours. In short, as of 8 November 2026:
+Every dollar spent, including the runs that made nothing, is on [What Bob costs to make](COSTS.md), with the rate and the hours. In short, as of 12 November 2026:
 
 | | |
 |---|---|
-| Card time rented so far, about 37 hours over 10 rentals, 4 of them failures | $183.90 |
-| Of which wasted on failed attempts | about $16, plus the half-run of 6 to 7 November |
+| Card time rented so far, about 79 hours over 17 rentals, 6 of them failures | $403.24 |
+| Of which wasted on failed attempts | $16.55, plus the half-run of 6 to 7 November and about $11 of idle time at the end of Bill's run |
 | Tools: Claude subscription and extra usage, November 2026 | $1,000 (Claude is a contributor and writes much of Bob's code and documents) |
 | Code and release hosting, model hosting | $0 |
-| The combined run: new lessons, Bobert, the odds and Bill | about $135 |
-| Card time for the rest of the ladder (Homer, Milo, Luke, Calvin, Bender) | $119 to $129, plus $7 to $21 a month for the network drive (100 to 300 GB) while it exists |
+| Card time for the rest of the ladder (Homer, Milo, Luke, Calvin, Bender) | $119 to $129, plus about $35 a month for the 500 GB network drive while it exists |
 | Allowed for re-runs if a heal scores badly | up to $20 a rung |
 | Specialists and line A, only if earned | about $25 a specialist; $179 to $189 for line A |
 
-The whole family, line B complete, comes to about $1,750 to $1,850 including the tools that made it. That is the cost of making a custom model family on rented cards by the hour, done by one person with an assistant, with the mistakes left in.
+The whole family, line B complete, comes to about $1,900 to $1,980 including the tools that made it and the rented drive. That is the cost of making a custom model family on rented cards by the hour, done by one person with an assistant, with the mistakes left in.
 
 ## 8. What is invested, and what is already in hand
 
@@ -120,12 +124,13 @@ A proposal usually asks for everything up front. This one does not, because most
 
 | | Amount | Notes |
 |---|---|---|
-| Card time rented by the hour | $183.90 | 10 rentals, 4 of them failures; every line on the costs page |
+| Card time rented by the hour | $403.24 | 17 rentals, 6 of them failures; every line on the costs page |
 | Claude subscription and extra usage, November 2026 | $1,000 | the assistant that wrote the Forge, the lesson writer, the benchmarks and these pages |
+| Rented network drive between sessions, 5 to 12 November | about $4 | 500 GB now, about $35 a month from the prepaid credit |
 | Prepaid card credit | loaded in advance, amount not shown | the rental account is paid up front and drawn down by each session; the card time above came out of it, and the unused part is already earmarked for the rungs still to make |
-| Owner's time | 4 to 8 November, not counted in dollars | lessons, counts and benchmarks on the home PC; every rental watched by hand |
+| Owner's time | 4 to 11 November, not counted in dollars | lessons, counts and benchmarks on the home PC; every rental watched by hand |
 | Hosting, signing, model storage | $0 | GitHub and Hugging Face are free for a public project |
-| **Total cash in** | **about $1,184** | |
+| **Total cash in** | **about $1,407** | |
 
 ### 8.2 Assets in hand
 
@@ -137,13 +142,15 @@ Everything below exists today, is on the owner's machine or on GitHub, and would
 | **The lesson set** | 18,118 lessons: 9,059 of Bob's own in 16 skill sets, 5% held out, written by the full model from Bob's real tools and prompt and published as the `lessons-v3` release asset under CC BY-SA 4.0; plus 9,059 converted from other teachers' published answer sets after a quality pass | about $35 of card time and three days of cleaning and checking |
 | **Expert counts for 24 skills** | which of the 10,240 experts each skill uses in the full model; the table every keep list is built from | $9 and a short rental |
 | **28Bob Riker** | made, benchmarked and kept: Q4 (17.5 GB) and Q3 (13.9 GB) files and the 1.7 GB adapter that rebuilds the full-precision model from the teacher in minutes | $51.79 |
+| **35Bob Bobert** | made and published: the full model trained on every lesson, with his Q4 and Q3 files, full-size weights, adapter and saved next-word odds | $108.75 |
+| **20Bob Bill** | made and published: Q4 (12.7 GB) and Q3 files, full-size weights, adapter and keep list | $96.27 |
 | **Four retired Bobs** | Riker v1 and v2, Bill v1 and v2: retired and their files deleted on 8 November; their benchmark results stay on the models page as the control group and as proof that tools and routing survive a cut | nothing to replace |
 | **Benchmarks** | the experts-per-word test, the tool score (314 turns), the coding race and the routing race, all runnable for free on a 16 GB card, with results for the full model and every Bob so far | a week of writing |
 | **Keep lists and coverage tables** | the per-skill cut rule and the keep lists for every planned rung, built on the PC from the counts, no rental needed | free to rebuild from the counts |
 | **The written record** | the method, results, costs and the day-by-day journal, public and checkable | |
-| **Qwen3.6-35B-A3B weights and general text** | the teacher and its outside text, downloaded once per session; the rented drive that would keep them between sessions is about $7 a month | a download, not a cost |
+| **Qwen3.6-35B-A3B weights and general text** | the teacher and its outside text, downloaded once per session; the rented drive that keeps them between sessions is about $35 a month at 500 GB | a download, not a cost |
 
-What is **being made now**: the combined run that started on 8 November writes the remaining lessons, trains Bobert and records the **teacher's odds** (Bobert's top-32 next words at every answer position, a few gigabytes). The first set of odds was lost on 6 November with a machine that had no drive; from build 16 on, everything a run makes is kept on the drive and the PC, and the odds go to Hugging Face as a private dataset as well, so this cost is paid once.
+Nothing is **being made now**. Bobert's **odds** (his top-32 next words at every answer position, a few gigabytes) are saved on the drive and were reused for Bill, so that cost is paid once. The first set of odds was lost on 6 November with a machine that had no drive; from build 16 on, everything a run makes is kept on the drive and the PC.
 
 ## 9. Risks, and what is done about them
 
@@ -151,7 +158,7 @@ What is **being made now**: the combined run that started on 8 November writes t
 |---|---|---|---|
 | Small rungs lose too much | likely below 10Bob | a size is not worth shipping | every rung is benchmarked against the stock model it replaces, and dropped if it loses; Bender is made another way |
 | Coding stays weak | medium | Bob keeps a stock coding brain in that slot | the coverage cut protects coding's experts; the clean coding set replaces the weak one; the specialist Cypher is the second bet |
-| A rental is wasted | has happened four times | $1 to $51 lost | the Forge now refuses a card without a drive, keeps the teacher's scores between runs, deletes the machine at the cap, and every plan carries hard caps |
+| A rental is wasted | has happened six times, and one run lost its second half | $0.34 to $9.27 lost each time | the Forge now refuses a card without a drive, keeps the teacher's scores between runs, deletes the machine at the cap, and every plan carries hard caps |
 | A trained teacher's odds lean toward the lessons | possible | every cut inherits a narrower view of the world | general text is part of every heal; Bobert is benchmarked at home before he teaches anything, and dropped as teacher if he loses general knowledge |
 | General knowledge fades | certain under a deep cut | a small Bob is vaguer about the wide world | general text is a third of the heal mix and scored separately; the models page says so plainly |
 | Licence or credit problems | very low | cannot share | Apache 2.0 allows it; every Bob ships with the licence, a "modified" note and "made from Qwen3.6-35B-A3B"; the Qwen name is never used as a brand |
@@ -159,7 +166,7 @@ What is **being made now**: the combined run that started on 8 November writes t
 
 ## 10. How others could take part, later
 
-Nothing is open yet. When the first Bobs are on Hugging Face, the project intends to open three ways to help, in this order, each solo-safe (with nobody joining, the plan is exactly this one):
+Nothing is open yet. With the first Bobs now on Hugging Face, the project intends to open three ways to help, in this order, each solo-safe (with nobody joining, the plan is exactly this one):
 
 1. **Benchmarks on real devices.** Run a Bob on your handheld, laptop or phone and send the scores. Two devices of the same class must agree.
 2. **Home cards for the small rungs.** The teacher's odds for a lesson set are a few gigabytes; a 16 to 24 GB card can heal a 7Bob or 5Bob from them. A second person re-heals from the same plan and the scores must match.

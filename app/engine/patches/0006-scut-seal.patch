@@ -1,0 +1,490 @@
+diff --git a/ggml/src/ggml-rpc/scut-seal.h b/ggml/src/ggml-rpc/scut-seal.h
+new file mode 100644
+index 0000000..6088247
+--- /dev/null
++++ b/ggml/src/ggml-rpc/scut-seal.h
+@@ -0,0 +1,222 @@
++#pragma once
++// SCUT seal, Brain Engine patch 0006: every SCUT datagram signed and scrambled with ChaCha20-Poly1305 (RFC 8439).
++//
++// Header-only and self-contained (no OpenSSL to ship or find on Windows, Mac, Linux and Android). Written straight from
++// RFC 8439: ChaCha20 (section 2.3/2.4), Poly1305 (2.5, 26-bit limbs as in poly1305-donna), the AEAD construction (2.8)
++// and HChaCha20 (draft-irtf-cfrg-xchacha, section 2.2) to make one key per direction per connection.
++
++#include <cstddef>
++#include <cstdint>
++#include <cstring>
++
++namespace scut_seal {
++
++static inline uint32_t rotl(uint32_t v, int c) { return (v << c) | (v >> (32 - c)); }
++static inline uint32_t ld32(const uint8_t * p) { return (uint32_t) p[0] | ((uint32_t) p[1] << 8) | ((uint32_t) p[2] << 16) | ((uint32_t) p[3] << 24); }
++static inline void st32(uint8_t * p, uint32_t v) { p[0] = (uint8_t) v; p[1] = (uint8_t) (v >> 8); p[2] = (uint8_t) (v >> 16); p[3] = (uint8_t) (v >> 24); }
++static inline void st64(uint8_t * p, uint64_t v) { st32(p, (uint32_t) v); st32(p + 4, (uint32_t) (v >> 32)); }
++static inline uint64_t ld64(const uint8_t * p) { return (uint64_t) ld32(p) | ((uint64_t) ld32(p + 4) << 32); }
++
++#define SCUT_QR(a, b, c, d) \
++    a += b; d ^= a; d = rotl(d, 16); c += d; b ^= c; b = rotl(b, 12); \
++    a += b; d ^= a; d = rotl(d, 8);  c += d; b ^= c; b = rotl(b, 7);
++
++static inline void rounds(uint32_t x[16]) {
++    for (int i = 0; i < 10; i++) {
++        SCUT_QR(x[0], x[4], x[8],  x[12]) SCUT_QR(x[1], x[5], x[9],  x[13])
++        SCUT_QR(x[2], x[6], x[10], x[14]) SCUT_QR(x[3], x[7], x[11], x[15])
++        SCUT_QR(x[0], x[5], x[10], x[15]) SCUT_QR(x[1], x[6], x[11], x[12])
++        SCUT_QR(x[2], x[7], x[8],  x[13]) SCUT_QR(x[3], x[4], x[9],  x[14])
++    }
++}
++#undef SCUT_QR
++
++static inline void setup(uint32_t s[16], const uint8_t key[32], const uint8_t * in16) {
++    s[0] = 0x61707865; s[1] = 0x3320646e; s[2] = 0x79622d32; s[3] = 0x6b206574;
++    for (int i = 0; i < 8; i++) s[4 + i] = ld32(key + 4 * i);
++    for (int i = 0; i < 4; i++) s[12 + i] = ld32(in16 + 4 * i);
++}
++
++// One 64-byte ChaCha20 block: counter, then the 12-byte nonce.
++static inline void block(const uint8_t key[32], uint32_t counter, const uint8_t nonce[12], uint8_t out[64]) {
++    uint8_t in[16]; st32(in, counter); memcpy(in + 4, nonce, 12);
++    uint32_t s[16], x[16];
++    setup(s, key, in);
++    memcpy(x, s, sizeof(x));
++    rounds(x);
++    for (int i = 0; i < 16; i++) st32(out + 4 * i, x[i] + s[i]);
++}
++
++// XORs the ChaCha20 stream (from block `counter`) over data, in place.
++static inline void chacha20_xor(const uint8_t key[32], uint32_t counter, const uint8_t nonce[12], uint8_t * data, size_t n) {
++    uint8_t ks[64];
++    while (n > 0) {
++        block(key, counter++, nonce, ks);
++        size_t take = n < 64 ? n : 64;
++        for (size_t i = 0; i < take; i++) data[i] ^= ks[i];
++        data += take; n -= take;
++    }
++}
++
++// HChaCha20: a new 32-byte key from a key and 16 bytes.
++static inline void hchacha20(const uint8_t key[32], const uint8_t in16[16], uint8_t out[32]) {
++    uint32_t x[16];
++    setup(x, key, in16);
++    rounds(x);
++    for (int i = 0; i < 4; i++) { st32(out + 4 * i, x[i]); st32(out + 16 + 4 * i, x[12 + i]); }
++}
++
++// Poly1305 (poly1305-donna, 32-bit).
++struct poly1305 {
++    uint32_t r[5], h[5] = {0, 0, 0, 0, 0}, pad[4];
++    uint8_t  buf[16];
++    size_t   left = 0;
++
++    explicit poly1305(const uint8_t key[32]) {
++        r[0] = (ld32(key + 0)) & 0x3ffffff;
++        r[1] = (ld32(key + 3) >> 2) & 0x3ffff03;
++        r[2] = (ld32(key + 6) >> 4) & 0x3ffc0ff;
++        r[3] = (ld32(key + 9) >> 6) & 0x3f03fff;
++        r[4] = (ld32(key + 12) >> 8) & 0x00fffff;
++        for (int i = 0; i < 4; i++) pad[i] = ld32(key + 16 + 4 * i);
++    }
++    void blocks(const uint8_t * m, size_t n, uint32_t hibit) {
++        const uint32_t r0 = r[0], r1 = r[1], r2 = r[2], r3 = r[3], r4 = r[4];
++        const uint32_t s1 = r1 * 5, s2 = r2 * 5, s3 = r3 * 5, s4 = r4 * 5;
++        uint32_t h0 = h[0], h1 = h[1], h2 = h[2], h3 = h[3], h4 = h[4];
++        while (n >= 16) {
++            h0 += (ld32(m + 0)) & 0x3ffffff;
++            h1 += (ld32(m + 3) >> 2) & 0x3ffffff;
++            h2 += (ld32(m + 6) >> 4) & 0x3ffffff;
++            h3 += (ld32(m + 9) >> 6) & 0x3ffffff;
++            h4 += (ld32(m + 12) >> 8) | hibit;
++            uint64_t d0 = (uint64_t) h0 * r0 + (uint64_t) h1 * s4 + (uint64_t) h2 * s3 + (uint64_t) h3 * s2 + (uint64_t) h4 * s1;
++            uint64_t d1 = (uint64_t) h0 * r1 + (uint64_t) h1 * r0 + (uint64_t) h2 * s4 + (uint64_t) h3 * s3 + (uint64_t) h4 * s2;
++            uint64_t d2 = (uint64_t) h0 * r2 + (uint64_t) h1 * r1 + (uint64_t) h2 * r0 + (uint64_t) h3 * s4 + (uint64_t) h4 * s3;
++            uint64_t d3 = (uint64_t) h0 * r3 + (uint64_t) h1 * r2 + (uint64_t) h2 * r1 + (uint64_t) h3 * r0 + (uint64_t) h4 * s4;
++            uint64_t d4 = (uint64_t) h0 * r4 + (uint64_t) h1 * r3 + (uint64_t) h2 * r2 + (uint64_t) h3 * r1 + (uint64_t) h4 * r0;
++            uint32_t c;
++            c = (uint32_t) (d0 >> 26); h0 = (uint32_t) d0 & 0x3ffffff; d1 += c;
++            c = (uint32_t) (d1 >> 26); h1 = (uint32_t) d1 & 0x3ffffff; d2 += c;
++            c = (uint32_t) (d2 >> 26); h2 = (uint32_t) d2 & 0x3ffffff; d3 += c;
++            c = (uint32_t) (d3 >> 26); h3 = (uint32_t) d3 & 0x3ffffff; d4 += c;
++            c = (uint32_t) (d4 >> 26); h4 = (uint32_t) d4 & 0x3ffffff; h0 += c * 5;
++            c = h0 >> 26; h0 &= 0x3ffffff; h1 += c;
++            m += 16; n -= 16;
++        }
++        h[0] = h0; h[1] = h1; h[2] = h2; h[3] = h3; h[4] = h4;
++    }
++    void update(const uint8_t * m, size_t n) {
++        if (left) {
++            size_t want = 16 - left; if (want > n) want = n;
++            memcpy(buf + left, m, want); left += want; m += want; n -= want;
++            if (left < 16) return;
++            blocks(buf, 16, 1u << 24); left = 0;
++        }
++        size_t whole = n & ~(size_t) 15;
++        if (whole) { blocks(m, whole, 1u << 24); m += whole; n -= whole; }
++        if (n) { memcpy(buf, m, n); left = n; }
++    }
++    // Pads the message so far to 16 bytes with zeros (the AEAD's layout).
++    void pad16() { if (left) { memset(buf + left, 0, 16 - left); blocks(buf, 16, 1u << 24); left = 0; } }
++    void finish(uint8_t mac[16]) {
++        if (left) { buf[left] = 1; for (size_t i = left + 1; i < 16; i++) buf[i] = 0; blocks(buf, 16, 0); left = 0; }
++        uint32_t h0 = h[0], h1 = h[1], h2 = h[2], h3 = h[3], h4 = h[4], c;
++        c = h1 >> 26; h1 &= 0x3ffffff; h2 += c;
++        c = h2 >> 26; h2 &= 0x3ffffff; h3 += c;
++        c = h3 >> 26; h3 &= 0x3ffffff; h4 += c;
++        c = h4 >> 26; h4 &= 0x3ffffff; h0 += c * 5;
++        c = h0 >> 26; h0 &= 0x3ffffff; h1 += c;
++        uint32_t g0 = h0 + 5; c = g0 >> 26; g0 &= 0x3ffffff;
++        uint32_t g1 = h1 + c; c = g1 >> 26; g1 &= 0x3ffffff;
++        uint32_t g2 = h2 + c; c = g2 >> 26; g2 &= 0x3ffffff;
++        uint32_t g3 = h3 + c; c = g3 >> 26; g3 &= 0x3ffffff;
++        uint32_t g4 = h4 + c - (1u << 26);
++        uint32_t mask = (g4 >> 31) - 1;   // all ones when h >= p
++        g0 &= mask; g1 &= mask; g2 &= mask; g3 &= mask; g4 &= mask;
++        mask = ~mask;
++        h0 = (h0 & mask) | g0; h1 = (h1 & mask) | g1; h2 = (h2 & mask) | g2; h3 = (h3 & mask) | g3; h4 = (h4 & mask) | g4;
++        h0 = (h0) | (h1 << 26);
++        h1 = (h1 >> 6) | (h2 << 20);
++        h2 = (h2 >> 12) | (h3 << 14);
++        h3 = (h3 >> 18) | (h4 << 8);
++        uint64_t f;
++        f = (uint64_t) h0 + pad[0];             h0 = (uint32_t) f;
++        f = (uint64_t) h1 + pad[1] + (f >> 32); h1 = (uint32_t) f;
++        f = (uint64_t) h2 + pad[2] + (f >> 32); h2 = (uint32_t) f;
++        f = (uint64_t) h3 + pad[3] + (f >> 32); h3 = (uint32_t) f;
++        st32(mac, h0); st32(mac + 4, h1); st32(mac + 8, h2); st32(mac + 12, h3);
++    }
++};
++
++static inline void aead_tag(const uint8_t key[32], const uint8_t nonce[12], const uint8_t * aad, size_t aad_n, const uint8_t * ct, size_t ct_n, uint8_t tag[16]) {
++    uint8_t otk[64];
++    block(key, 0, nonce, otk);
++    poly1305 p(otk);
++    p.update(aad, aad_n); p.pad16();
++    p.update(ct, ct_n);   p.pad16();
++    uint8_t lens[16]; st64(lens, aad_n); st64(lens + 8, ct_n);
++    p.update(lens, 16);
++    p.finish(tag);
++    memset(otk, 0, sizeof(otk));
++}
++
++// Scrambles data in place and writes the 16-byte tag over aad + data.
++static inline void seal(const uint8_t key[32], const uint8_t nonce[12], const uint8_t * aad, size_t aad_n, uint8_t * data, size_t n, uint8_t tag[16]) {
++    chacha20_xor(key, 1, nonce, data, n);
++    aead_tag(key, nonce, aad, aad_n, data, n, tag);
++}
++
++// Checks the tag first (in constant time) and only then unscrambles. false = forged or damaged: the data is untouched.
++static inline bool open(const uint8_t key[32], const uint8_t nonce[12], const uint8_t * aad, size_t aad_n, uint8_t * data, size_t n, const uint8_t tag[16]) {
++    uint8_t want[16];
++    aead_tag(key, nonce, aad, aad_n, data, n, want);
++    uint8_t diff = 0;
++    for (int i = 0; i < 16; i++) diff |= (uint8_t) (want[i] ^ tag[i]);
++    if (diff != 0) return false;
++    chacha20_xor(key, 1, nonce, data, n);
++    return true;
++}
++
++// Reads 64 hex digits into a 32-byte key. false when it isn't exactly that.
++static inline bool parse_key(const char * s, size_t n, uint8_t key[32]) {
++    if (!s || n != 64) return false;
++    for (size_t i = 0; i < 32; i++) {
++        int v = 0;
++        for (int k = 0; k < 2; k++) {
++            char c = s[2 * i + k]; int d;
++            if (c >= '0' && c <= '9') d = c - '0';
++            else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
++            else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
++            else return false;
++            v = v * 16 + d;
++        }
++        key[i] = (uint8_t) v;
++    }
++    return true;
++}
++
++// Which packets were already seen in one direction: the highest counter and the 2048 before it. Each counter is
++// accepted once, so a recorded packet played back later is dropped.
++struct replay_window {
++    static constexpr uint64_t W = 2048;
++    uint64_t top = 0;
++    uint64_t bits[W / 64] = {0};
++    bool fresh(uint64_t c) const {
++        if (c == 0) return false;
++        if (c > top) return true;
++        if (top - c >= W) return false;
++        return !(bits[(c % W) / 64] >> (c % 64) & 1);
++    }
++    void mark(uint64_t c) {
++        if (c > top) {
++            uint64_t gap = c - top;
++            if (gap >= W) { memset(bits, 0, sizeof(bits)); }
++            else { for (uint64_t k = top + 1; k <= c; k++) bits[(k % W) / 64] &= ~(1ull << (k % 64)); }
++            top = c;
++        }
++        bits[(c % W) / 64] |= 1ull << (c % 64);
++    }
++};
++
++} // namespace scut_seal
+diff --git a/ggml/src/ggml-rpc/scut.cpp b/ggml/src/ggml-rpc/scut.cpp
+index 942ea87..9391819 100644
+--- a/ggml/src/ggml-rpc/scut.cpp
++++ b/ggml/src/ggml-rpc/scut.cpp
+@@ -1,5 +1,6 @@
+ // SCUT, Brain Engine patch 0005: see scut.h for what it is and why.
+ #include "scut.h"
++#include "scut-seal.h" // Brain Engine 0006: every datagram signed and scrambled
+ #include "log.h"
+ 
+ #ifdef _WIN32
+@@ -42,6 +43,7 @@ static void bl_close(scut_fd_t s) { close(s); }
+ #include <map>
+ #include <mutex>
+ #include <random>
++#include <string>
+ #include <thread>
+ #include <vector>
+ 
+@@ -52,6 +54,7 @@ static inline int64_t now_us() { return std::chrono::duration_cast<std::chrono::
+ 
+ constexpr uint32_t MAGIC     = 0x54554353; // "SCUT"
+ constexpr uint8_t  VERSION   = 1;
++constexpr uint8_t  VERSION_SEALED = 2; // 0006: a sealed offer. Engines without 0006 only take version 1, so they never switch to a link they can't read
+ constexpr uint16_t PKT_MAGIC = 0xB0B1;
+ constexpr size_t   SEG       = 1200;       // payload per datagram: stays under a 1500-byte Wi-Fi MTU with room to spare
+ constexpr size_t   MAX_QUEUE = 16384;      // segments waiting or in flight (~19 MiB); the sender waits beyond this
+@@ -60,6 +63,12 @@ constexpr size_t   RX_AHEAD  = 16384;      // out-of-order segments the receiver
+ enum : uint8_t { T_DATA = 1, T_ACK = 2, T_PING = 3, T_PONG = 4, T_CLOSE = 5, T_FEC = 6 };
+ // offer flags
+ constexpr uint8_t OF_FEC = 1;   // understands repair packets (T_FEC)
++constexpr uint8_t OF_SEAL = 2;  // 0006: has a key, and every datagram is sealed (ChaCha20-Poly1305)
++// 0006: a sealed datagram is the 20-byte header (signed, readable), an 8-byte packet counter (signed, readable), the
++// scrambled body, and a 16-byte tag over all of it. The counter is the nonce: each direction has its own key and
++// counts up from 1, so a nonce is never used twice, and the receiver takes each counter once (no replays).
++constexpr size_t SEAL_CTR = 8, SEAL_TAG = 16, SEAL_EXTRA = SEAL_CTR + SEAL_TAG;
++constexpr size_t MAX_DGRAM = 2048;                   // the biggest datagram SCUT makes is ~1.3 KB
+ constexpr uint32_t FEC_MAX = 8; // a burst of up to this many segments gets one repair packet
+ 
+ #pragma pack(push, 1)
+@@ -121,6 +130,14 @@ struct scut {
+     uint32_t     cap_bps = 0;        // bytes per second, the lower of both sides' caps
+     bool         awake = true;
+     bool         fec = false;        // both sides understand repair packets (and GGML_RPC_SCUT_FEC isn't 0)
++    // 0006: the seal
++    bool         have_key = false;   // a key was given for this link (GGML_RPC_SCUT_KEY / GGML_RPC_SCUT_KEYS)
++    bool         sealed = false;     // switched on: every datagram both ways is sealed, unsealed ones are dropped
++    uint8_t      key[32] = {0};      // the key Bob gave; each direction's key is made from it and both offers
++    uint8_t      k_tx[32] = {0}, k_rx[32] = {0};
++    std::atomic<uint64_t> tx_ctr{0};
++    scut_seal::replay_window rx_seen;
++    uint64_t     n_bad = 0, n_replayed = 0;
+ 
+     // test only: drop this share of outgoing datagrams (GGML_RPC_SCUT_TEST_DROP, per thousand)
+     uint32_t     test_drop = 0;
+@@ -191,13 +208,46 @@ struct scut {
+         if (conn) timeEndPeriod(1);
+ #endif
+         if (conn) LOG_DBG("[scut] closed: %llu datagrams sent, %llu resent, %llu received, %llu repairs sent, %llu fixed by repairs; pace %.1f MB/s, round trip %.1f ms (quietest %.1f)\n", (unsigned long long) n_sent, (unsigned long long) n_resent, (unsigned long long) n_recv, (unsigned long long) n_fec_sent, (unsigned long long) n_fec_fixed, rate / 1e6, srtt / 1000, min_rtt / 1000);
++        if (conn && sealed) LOG_DBG("[scut] sealed link: %llu dropped for a bad seal, %llu dropped as replays\n", (unsigned long long) n_bad, (unsigned long long) n_replayed);
++        memset(key, 0, sizeof(key)); memset(k_tx, 0, sizeof(k_tx)); memset(k_rx, 0, sizeof(k_rx));
+     }
+ 
+     void raw_send(const void * p, size_t n) {
+         if (test_drop && (rng() % 1000) < test_drop) { n_dropped_test++; return; }
+-        sendto(udp, (const char *) p, (int) n, 0, (const sockaddr *) &peer, sizeof(peer));
++        xmit(p, n);
+         last_tx = now_us();
+     }
++    // 0006: every datagram leaves through here: data, acks, repair packets, pings, pongs, close, and SUDDAR's probes.
++    void xmit(const void * p, size_t n) {
++        if (!sealed) { sendto(udp, (const char *) p, (int) n, 0, (const sockaddr *) &peer, sizeof(peer)); return; }
++        uint8_t out[MAX_DGRAM + SEAL_EXTRA];
++        if (n < sizeof(hdr_t) || n + SEAL_EXTRA > sizeof(out)) return;
++        uint64_t c = ++tx_ctr;
++        memcpy(out, p, sizeof(hdr_t));
++        scut_seal::st64(out + sizeof(hdr_t), c);
++        size_t bn = n - sizeof(hdr_t);
++        memcpy(out + sizeof(hdr_t) + SEAL_CTR, (const uint8_t *) p + sizeof(hdr_t), bn);
++        uint8_t nonce[12] = {0}; scut_seal::st64(nonce + 4, c);
++        scut_seal::seal(k_tx, nonce, out, sizeof(hdr_t) + SEAL_CTR, out + sizeof(hdr_t) + SEAL_CTR, bn, out + sizeof(hdr_t) + SEAL_CTR + bn);
++        sendto(udp, (const char *) out, (int) (n + SEAL_EXTRA), 0, (const sockaddr *) &peer, sizeof(peer));
++    }
++    // 0006: checks a received datagram's seal before anything in it is used, then unscrambles it in place and takes the
++    // counter and tag off, so it reads like an unsealed one. false = forged, damaged, sealed with another key, or a
++    // replay: drop it. Unsealed links pass everything through as before.
++    bool unseal(uint8_t * buf, int & n) {
++        if (!sealed) return true;
++        if (n < (int) (sizeof(hdr_t) + SEAL_EXTRA)) { n_bad++; return false; }
++        uint64_t c = scut_seal::ld64(buf + sizeof(hdr_t));
++        if (!rx_seen.fresh(c)) { n_replayed++; return false; }
++        size_t bn = (size_t) n - sizeof(hdr_t) - SEAL_EXTRA;
++        uint8_t * body = buf + sizeof(hdr_t) + SEAL_CTR;
++        uint8_t nonce[12] = {0}; scut_seal::st64(nonce + 4, c);
++        if (!scut_seal::open(k_rx, nonce, buf, sizeof(hdr_t) + SEAL_CTR, body, bn, body + bn)) { n_bad++; return false; }
++        rx_seen.mark(c);
++        memmove(buf + sizeof(hdr_t), body, bn);
++        n = (int) (sizeof(hdr_t) + bn);
++        return true;
++    }
+     // One repair packet for the burst [first, first+k): the XOR of its segments, so the receiver can rebuild any one
+     // that the air loses without asking for it again (a lost last packet would otherwise wait for the resend timer).
+     void send_fec(uint32_t first, uint32_t k) {
+@@ -456,6 +506,7 @@ struct scut {
+                     hdr_t h; memcpy(&h, buf.data(), sizeof(h));
+                     if (h.magic != PKT_MAGIC || h.conn != conn) continue;
+                     if (from.sin_addr.s_addr != peer.sin_addr.s_addr) continue;
++                    if (!unseal(buf.data(), n)) continue; // 0006: checked before anything in it is used
+                     n_recv++;
+                     last_heard = t;
+                     const uint8_t * body = buf.data() + sizeof(hdr_t);
+@@ -551,11 +602,55 @@ bool scut_enabled() {
+ bool scut_offered(const uint8_t * caps, size_t caps_size) {
+     if (caps_size < sizeof(offer_t)) return false;
+     offer_t o; memcpy(&o, caps, sizeof(o));
+-    return o.magic == MAGIC && o.version == VERSION && o.udp_port != 0;
++    if (o.magic != MAGIC || o.udp_port == 0) return false;
++    return o.version == VERSION || (o.version == VERSION_SEALED && (o.flags & OF_SEAL)); // 0006: sealed offers too
++}
++
++// 0006: the key for this link. The lending side (server) has one: GGML_RPC_SCUT_KEY, 64 hex digits. The borrowing side
++// may talk to several lenders, each with its own: GGML_RPC_SCUT_KEYS="host:port=hex,host:port=hex" (or "host=hex"),
++// matched against the address it connected to, else GGML_RPC_SCUT_KEY. "host:port=off" means no SCUT with that one
++// (Bob asked for sealed packets and that lender can't seal). 1 = found, 0 = none, -1 = given but not a key, -2 = off.
++static int scut_key_for(scut_fd_t tcp_fd, bool server, uint8_t key[32]) {
++    if (!server) {
++        const char * list = std::getenv("GGML_RPC_SCUT_KEYS");
++        sockaddr_in pa = {}; socklen_compat_t pl = sizeof(pa);
++        if (list && *list && getpeername(tcp_fd, (sockaddr *) &pa, &pl) == 0 && pa.sin_family == AF_INET) {
++            char ip[INET_ADDRSTRLEN] = {0};
++            inet_ntop(AF_INET, &pa.sin_addr, ip, sizeof(ip));
++            std::string with_port = std::string(ip) + ":" + std::to_string(ntohs(pa.sin_port));
++            std::string all(list);
++            size_t at = 0;
++            while (at <= all.size()) {
++                size_t end = all.find_first_of(",;", at);
++                if (end == std::string::npos) end = all.size();
++                std::string item = all.substr(at, end - at);
++                size_t eq = item.find('=');
++                if (eq != std::string::npos) {
++                    std::string who = item.substr(0, eq), hex = item.substr(eq + 1);
++                    if (who == with_port || who == ip) return hex == "off" ? -2 : scut_seal::parse_key(hex.c_str(), hex.size(), key) ? 1 : -1;
++                }
++                at = end + 1;
++            }
++        }
++    }
++    const char * one = std::getenv("GGML_RPC_SCUT_KEY");
++    if (!one || !*one) return 0;
++    return scut_seal::parse_key(one, strlen(one), key) ? 1 : -1;
+ }
+ 
+ scut_ptr scut_prepare(scut_fd_t tcp_fd, bool server, uint8_t * caps, size_t caps_size) {
+     if (caps_size < sizeof(offer_t)) return nullptr;
++    uint8_t key[32];
++    int got_key = scut_key_for(tcp_fd, server, key);
++    if (got_key == -2) {
++        LOG_INFO("[scut] SCUT is off for this card: it can't seal its packets, so the usual link is used\n");
++        return nullptr;
++    }
++    if (got_key < 0) {
++        // a key that was meant to be there but can't be read: never fall back to an unsealed SCUT link
++        LOG_WARN("[scut] the SCUT key isn't 64 hex digits, so SCUT stays off (the usual link is used)\n");
++        return nullptr;
++    }
+     sockaddr_in local = {}; socklen_compat_t ll = sizeof(local);
+     if (getsockname(tcp_fd, (sockaddr *) &local, &ll) != 0 || local.sin_family != AF_INET) return nullptr;
+     scut_fd_t u = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+@@ -585,6 +680,13 @@ scut_ptr scut_prepare(scut_fd_t tcp_fd, bool server, uint8_t * caps, size_t caps
+     b->my_nonce = ((uint64_t) rd() << 32) ^ rd() ^ (uint64_t) now_us();
+     offer_t o = {};
+     o.magic = MAGIC; o.version = VERSION; o.udp_port = bound.sin_port; o.nonce = b->my_nonce;
++    if (got_key == 1) { // 0006: a sealed offer
++        b->have_key = true;
++        memcpy(b->key, key, sizeof(key));
++        o.version = VERSION_SEALED;
++        o.flags |= OF_SEAL;
++    }
++    memset(key, 0, sizeof(key));
+     // behind a relay (Bob's gate passes UDP on its own port to this one), the offer names the relay's port
+     if (server) { uint32_t pp = env_u32("GGML_RPC_SCUT_PUBLIC_PORT", 0); if (pp > 0 && pp < 65536) o.udp_port = htons((uint16_t) pp); }
+     o.mbps = env_u32("GGML_RPC_SCUT_MBPS", 300);
+@@ -609,10 +711,10 @@ static bool read_byte_with_pings(scut * b, uint8_t & out, int timeout_ms) {
+             int n = (int) recvfrom(b->udp, (char *) buf.data(), (int) buf.size(), 0, (sockaddr *) &from, &fl);
+             if (n >= (int) sizeof(hdr_t)) {
+                 hdr_t h; memcpy(&h, buf.data(), sizeof(h));
+-                if (h.magic == PKT_MAGIC && h.type == T_PING && h.conn == b->conn && from.sin_addr.s_addr == b->peer.sin_addr.s_addr) {
++                if (h.magic == PKT_MAGIC && h.type == T_PING && h.conn == b->conn && from.sin_addr.s_addr == b->peer.sin_addr.s_addr && b->unseal(buf.data(), n)) {
+                     b->peer.sin_port = from.sin_port; // answer where it really came from
+                     hdr_t o = h; o.type = T_PONG;
+-                    sendto(b->udp, (const char *) &o, sizeof(o), 0, (const sockaddr *) &b->peer, sizeof(b->peer));
++                    b->xmit(&o, sizeof(o));
+                 }
+             }
+         }
+@@ -634,6 +736,24 @@ bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size) {
+     if (!b->server) { uint32_t tp = env_u32("GGML_RPC_SCUT_TEST_UDP_PORT", 0); if (tp) b->peer.sin_port = htons((uint16_t) tp); } // tests: through a fake Wi-Fi
+     uint64_t c = (b->server ? (ro.nonce ^ (b->my_nonce * 31)) : (b->my_nonce ^ (ro.nonce * 31)));
+     b->conn = (uint32_t) (c ^ (c >> 32)) | 1u;
++    // 0006: both sides sealed, or neither. One with a key and one without stays on the usual link: a Bob that asked
++    // for sealed packets never gets plain ones. Both sides see both offers, so both decide the same without a word.
++    bool theirs_sealed = ro.version == VERSION_SEALED && (ro.flags & OF_SEAL);
++    if (theirs_sealed != b->have_key) {
++        LOG_WARN("[scut] %s, so SCUT stays off and the usual link is used\n", b->have_key ? "the other side doesn't seal its packets (no key there, or an older Brain Engine)" : "the other side seals its packets and there's no key here");
++        return false;
++    }
++    if (b->have_key) {
++        if (ro.nonce == b->my_nonce) return false; // can't happen by chance; never let both directions share a key
++        // one key per direction, new for every connection: HChaCha20(key, client nonce | server nonce) and the reverse
++        uint8_t c2s[16], s2c[16];
++        uint64_t nc = b->server ? ro.nonce : b->my_nonce, ns = b->server ? b->my_nonce : ro.nonce;
++        scut_seal::st64(c2s, nc); scut_seal::st64(c2s + 8, ns);
++        scut_seal::st64(s2c, ns); scut_seal::st64(s2c + 8, nc);
++        scut_seal::hchacha20(b->key, b->server ? s2c : c2s, b->k_tx);
++        scut_seal::hchacha20(b->key, b->server ? c2s : s2c, b->k_rx);
++        b->sealed = true;
++    }
+     uint32_t mine = env_u32("GGML_RPC_SCUT_MBPS", 300);
+     uint32_t mbps = std::max<uint32_t>(1, std::min(mine ? mine : 300, ro.mbps ? ro.mbps : 300));
+     b->cap_bps = mbps * 125000u;
+@@ -651,7 +771,7 @@ bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size) {
+         std::vector<uint8_t> buf(2048);
+         for (int i = 0; i < 10 && !yes; i++) {
+             hdr_t h = {}; h.magic = PKT_MAGIC; h.type = T_PING; h.conn = b->conn; h.seq = (uint32_t) i; h.ts = (uint32_t) now_us();
+-            sendto(b->udp, (const char *) &h, sizeof(h), 0, (const sockaddr *) &b->peer, sizeof(b->peer));
++            b->xmit(&h, sizeof(h));
+             int64_t end = now_us() + 100000;
+             while (now_us() < end && !yes) {
+                 pollfd p = {}; p.fd = b->udp; p.events = POLLIN;
+@@ -660,7 +780,7 @@ bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size) {
+                 int n = (int) recvfrom(b->udp, (char *) buf.data(), (int) buf.size(), 0, (sockaddr *) &from, &fl);
+                 if (n < (int) sizeof(hdr_t)) continue;
+                 hdr_t r; memcpy(&r, buf.data(), sizeof(r));
+-                if (r.magic == PKT_MAGIC && r.type == T_PONG && r.conn == b->conn && from.sin_addr.s_addr == b->peer.sin_addr.s_addr) {
++                if (r.magic == PKT_MAGIC && r.type == T_PONG && r.conn == b->conn && from.sin_addr.s_addr == b->peer.sin_addr.s_addr && b->unseal(buf.data(), n)) {
+                     b->peer.sin_port = from.sin_port;
+                     uint32_t s = (uint32_t) now_us() - r.ts; b->rtt_sample((double) s);
+                     yes = 1;
+@@ -680,7 +800,7 @@ bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size) {
+ #endif
+     b->last_heard = b->last_data_activity = now_us();
+     b->io = std::thread([b] { b->loop(); });
+-    LOG_INFO("[scut] SCUT on: udp %s:%d, cap %u Mbit/s, round trip %.1f ms\n", inet_ntoa(b->peer.sin_addr), ntohs(b->peer.sin_port), mbps, b->srtt / 1000.0);
++    LOG_INFO("[scut] SCUT on: udp %s:%d, cap %u Mbit/s, round trip %.1f ms%s\n", inet_ntoa(b->peer.sin_addr), ntohs(b->peer.sin_port), mbps, b->srtt / 1000.0, b->sealed ? ", sealed (signed and scrambled)" : "");
+     return true;
+ }
+ 
+diff --git a/ggml/src/ggml-rpc/scut.h b/ggml/src/ggml-rpc/scut.h
+index 1e3a8e7..84f390a 100644
+--- a/ggml/src/ggml-rpc/scut.h
++++ b/ggml/src/ggml-rpc/scut.h
+@@ -13,6 +13,10 @@
+ //   - while words are flowing it can send a tiny "stay awake" ping every 25 ms so a handheld's Wi-Fi doesn't doze
+ //     between words (GGML_RPC_SCUT_AWAKE=0 turns that off).
+ // The TCP connection stays open beside it, as the "are you still there" line.
++// Sealed (Brain Engine patch 0006): with a key (GGML_RPC_SCUT_KEY on the lender, GGML_RPC_SCUT_KEYS or GGML_RPC_SCUT_KEY on
++// the borrower, 64 hex digits each) every datagram both ways is signed and scrambled with ChaCha20-Poly1305 (scut-seal.h),
++// with a fresh key per direction per connection and a packet counter, and anything that fails the check (forged, changed,
++// replayed, another key) is dropped before it is read. Both sides need a key, or neither: otherwise the usual link is used.
+ 
+ #include <cstddef>
+ #include <cstdint>

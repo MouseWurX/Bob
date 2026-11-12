@@ -16,10 +16,13 @@
 //
 // What goes through Telegram's servers while it's on: your messages to the bot, Bob's replies, card texts (only
 // with the OK switch), and pictures (only with the pictures switch). Nothing else from your chats.
+import { deadline as withDeadline } from './hang-guard.js'; // item 212: every network call has a deadline
 import fs from 'node:fs';
+import { readJsonFile } from './util.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { rentKeyEnv } from './rental.js'; // process env, Windows user variables, or ~/.config/bob/env on Mac and Linux
+import { readConfigFile, writeConfigFile } from './config.js';
 
 export const TOKEN_ENV = 'BOB_TELEGRAM_TOKEN';
 export const TELEGRAM_SESSION = 'telegram';
@@ -38,11 +41,11 @@ export function telegramSettings(cfg) {
 // Lives in config.json only, never in settings.json, like phone access: nothing that can write Bob's settings file
 // can open this door. Only the Settings page on this PC calls this.
 export function saveTelegram(cfg, patch) {
-  let raw = {};
-  try { raw = JSON.parse(fs.readFileSync(cfg.configFile, 'utf8')); } catch {}
+  // 1.5.201: an unreadable config.json stops the save (it used to be taken as empty and written over, losing the rest).
+  const raw = readConfigFile(cfg);
   raw.telegram = { ...(raw.telegram || {}), ...patch };
   for (const k of Object.keys(raw.telegram)) if (raw.telegram[k] === undefined) delete raw.telegram[k];
-  fs.writeFileSync(cfg.configFile, JSON.stringify(raw, null, 2));
+  writeConfigFile(cfg, raw);
   cfg.telegram = raw.telegram;
 }
 
@@ -136,8 +139,8 @@ export class TelegramBridge {
     const token = this.token();
     if (!token) throw new Error(`No ${TOKEN_ENV} found.`);
     const r = await this.fetch(`${API}/bot${token}/${method}`, form
-      ? { method: 'POST', body: form, signal }
-      : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}), signal });
+      ? { method: 'POST', body: form, signal: withDeadline(signal, 120_000) }
+      : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}), signal: withDeadline(signal, ((Number(body?.timeout) || 0) + 30) * 1000) }); // item 212: long polls get their wait plus 30 s
     const j = await r.json().catch(() => ({}));
     // The token is part of the address, so errors never repeat the address, only Telegram's own words.
     if (!j.ok) throw new Error(String(j.description || `Telegram said ${r.status}`).replace(token, '…').slice(0, 200));
@@ -254,6 +257,12 @@ export class TelegramBridge {
     const id = ev.turnId || '-';
     switch (ev.type) {
       case 'token': this.turns.set(id, (this.turns.get(id) || '') + String(ev.text || '')); break;
+      case 'edited': { // Let Bob fix his own messages (src/edit-own.js): fixed before it's sent, or one short message with the new words
+        const open = this.turns.get(id), before = String(ev.before || '');
+        if (open != null && before && open.includes(before)) this.turns.set(id, open.replace(before, String(ev.text || '')));
+        else this.say(`✏️ Fixed an earlier message. It now says:\n${String(ev.text || '')}`);
+        break;
+      }
       case 'busy-note': case 'announce': this.say(String(ev.text || '')); break;
       case 'waiting-line': if (!(this.waitSaid ||= new Set()).has(ev.id)) { this.waitSaid.add(ev.id); this.say(String(ev.text || '')); } break; // 1.5.104: once per wait
       case 'error': this.say(`That didn't work: ${String(ev.text || ev.error || 'something went wrong').slice(0, 500)}`); break;

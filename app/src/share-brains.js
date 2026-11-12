@@ -13,9 +13,12 @@
 // Addresses must be Tailscale ones (100.64.0.0/10 or a *.ts.net name). Passcodes live in config.json only, like the
 // phone door's, and are never sent back to the page.
 import fs from 'node:fs';
+import { readJsonFile } from './util.js';
 import { isTailscaleIp } from './phone-access.js';
-import { homeIps, isHomeIp, sameNet } from './share-card.js';
+import { homeIps, isHomeIp, sameNet, SCUT_MBPS } from './share-card.js';
 import { cleanCheck, checkRefusal, checkDown, CHECK_FIRST_WORD_MAX_MS } from './bob-net-check.js'; // 1.5.185
+import { LOOK_ID_RE } from './look.js'; // the avatars on the Bob-Net list
+import { readConfigFile, writeConfigFile } from './config.js';
 
 export const PROTOCOL = 1;
 // About how many tokens a request is (4 characters a token is close enough to decide whether it fits a brain's room).
@@ -35,6 +38,9 @@ export const FIRST_WORD_MAX_MS = 45000;
 // alive, the asker waits up to this long; a refusal, a dropped line or a long silence still falls back at once.
 export const REVIEW_WAIT_MS = 15 * 60000;
 const GOOD_FOR = 30000, DOWN_FOR = 60000;
+// Item 202: a Bob that fails twice (not reachable, too slow, broke mid-answer) is skipped for an hour, not asked again
+// every step. Saying "busy" or "too long" is a polite no, not a failure. Always on.
+export const SKIP_AFTER = 2, SKIP_MS = 60 * 60 * 1000;
 const MAX_BOBS = 6;
 const TS_NAME = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.ts\.net$/;
 
@@ -63,6 +69,9 @@ export function shareView(cfg) {
     spread: ['toobig', 'big'].includes(s.spread) ? s.spread : 'off', // Spread big brains over my other Bobs' cards
     // Bob-Net mode: More Bobs (the default: each Bob runs his own brain) or Bigger Bobs (they pool their cards).
     homeNet: s.homeNet !== false, // Bigger Bobs: Use the home network first (src/share-card.js), Tailscale as the backup
+    scut: s.scut === true, // SCUT, the fast link for Bigger Bobs (src/share-card.js), off unless switched on
+    scutMbps: SCUT_MBPS.includes(Number(s.scutMbps)) ? Number(s.scutMbps) : 100,
+    scutSeal: s.scutSeal !== false, // Seal SCUT packets (src/scut-seal.js): on unless switched off
     mode: s.lendCard === true || ['toobig', 'big'].includes(s.spread) ? 'bigger' : 'more',
     doorOpen: doorOpen(cfg),
     borrow: { on: b.on === true, jobs: b.jobs === true, checks: b.checks === true, when: WHEN.includes(b.when) ? b.when : 'gaming', bobs: (b.bobs || []).map((x) => ({ name: x.name, address: x.address, passcodeSet: String(x.passcode || '').length >= 6 })) }
@@ -75,7 +84,7 @@ export const doorOpen = (cfg) => Boolean(cfg.remote?.enabled && String(cfg.remot
 export function cleanSharePatch(cfg, b) {
   const cur = cfg.share || {};
   const cb = cur.borrow || {};
-  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendChecks: cur.lendChecks === true, homeNet: cur.homeNet !== false, spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
+  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendChecks: cur.lendChecks === true, homeNet: cur.homeNet !== false, scut: cur.scut === true, scutMbps: SCUT_MBPS.includes(Number(cur.scutMbps)) ? Number(cur.scutMbps) : 100, scutSeal: cur.scutSeal !== false, spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
   if ('lend' in b) next.lend = b.lend === true;
   if ('takeJobs' in b) next.takeJobs = b.takeJobs === true; // 1.5.72, off unless switched on
   if ('passAlong' in b) next.passAlong = b.passAlong === true; // 1.5.123, off unless switched on
@@ -91,6 +100,9 @@ export function cleanSharePatch(cfg, b) {
   }
   if ('lendCard' in b) next.lendCard = b.lendCard === true; // off unless switched on
   if ('homeNet' in b) next.homeNet = b.homeNet !== false;
+  if ('scut' in b) next.scut = b.scut === true; // off unless switched on
+  if ('scutSeal' in b) next.scutSeal = b.scutSeal !== false; // on unless switched off (the owner's call)
+  if ('scutMbps' in b) { if (!SCUT_MBPS.includes(Number(b.scutMbps))) return { error: 'Pick a speed cap for SCUT.' }; next.scutMbps = Number(b.scutMbps); }
   if ('spread' in b) { if (!['off', 'toobig', 'big'].includes(b.spread)) return { error: 'Pick when to spread a brain.' }; next.spread = b.spread; }
   if ('sendJobs' in b) next.borrow.jobs = b.sendJobs === true; // 1.5.72, off unless switched on
   if ('when' in b) { if (!WHEN.includes(b.when)) return { error: 'Pick when to borrow.' }; next.borrow.when = b.when; }
@@ -113,9 +125,9 @@ export function cleanSharePatch(cfg, b) {
 }
 
 export function saveShare(cfg, share) {
-  const raw = JSON.parse(fs.readFileSync(cfg.configFile, 'utf8'));
+  const raw = readConfigFile(cfg);
   raw.share = share;
-  fs.writeFileSync(cfg.configFile, JSON.stringify(raw, null, 2));
+  writeConfigFile(cfg, raw);
   cfg.share = share;
 }
 
@@ -155,8 +167,9 @@ export function cleanLendRequest(b) {
   const roles = new Set(['system', 'user', 'assistant', 'tool']);
   const messages = [].concat(b?.messages || []).slice(-200).filter((m) => m && roles.has(m.role)).map((m) => {
     const o = { role: m.role, content: typeof m.content === 'string' ? m.content.slice(0, 60000) : '' };
-    if (m.role === 'assistant' && Array.isArray(m.tool_calls)) o.tool_calls = m.tool_calls.slice(0, 16).map((c) => ({ function: { name: String(c?.function?.name || '').slice(0, 80), arguments: c?.function?.arguments && typeof c.function.arguments === 'object' ? c.function.arguments : {} } }));
+    if (m.role === 'assistant' && Array.isArray(m.tool_calls)) o.tool_calls = m.tool_calls.slice(0, 16).map((c) => ({ ...(typeof c?.id === 'string' && /^[\w.-]{1,80}$/.test(c.id) ? { id: c.id } : {}), function: { name: String(c?.function?.name || '').slice(0, 80), arguments: c?.function?.arguments && typeof c.function.arguments === 'object' ? c.function.arguments : {} } }));
     if (m.role === 'tool' && m.tool_name) o.tool_name = String(m.tool_name).slice(0, 80);
+    if (m.role === 'tool' && typeof m.tool_call_id === 'string' && /^[\w.-]{1,80}$/.test(m.tool_call_id)) o.tool_call_id = m.tool_call_id; // item 165
     return o;
   });
   const tools = [].concat(b?.tools || []).slice(0, 128).filter((t) => t?.type === 'function' && /^[\w.-]{1,80}$/.test(String(t.function?.name || '')));
@@ -225,8 +238,10 @@ export async function lendChat(brain, req, res, b, deps) {
     brain.broadcast?.({ type: 'lending', on: false, for: who });
     res.end();
     // Back to light, same as after his own jobs. A review comes back for its next step in a moment, so his Review brain waits.
-    if (forReview) { brain.reviewHold = setTimeout(() => { brain.reviewHold = null; brain.settle?.().catch?.(() => {}); }, deps.reviewHoldMs ?? REVIEW_HOLD_MS); brain.reviewHold.unref?.(); }
-    else setTimeout(() => brain.settle?.().catch?.(() => {}), 0);
+    // 1.5.196 (Tailscale test: a 2 s lend cost the lender a 78 s reload): after a lend he lets go of what the lend brought,
+    // but doesn't load his own quick brain back. That waits until his owner types (or "Always on" holds it, as before).
+    if (forReview) { brain.reviewHold = setTimeout(() => { brain.reviewHold = null; brain.settle?.({ noWake: true }).catch?.(() => {}); }, deps.reviewHoldMs ?? REVIEW_HOLD_MS); brain.reviewHold.unref?.(); }
+    else setTimeout(() => brain.settle?.({ noWake: true }).catch?.(() => {}), 0);
   }
 }
 
@@ -255,6 +270,15 @@ export class Lenders {
     this.inUse = new Map();
     this.live = new Map(); // 1.5.123: address -> 'thinking' while a reply streams from him (for the Bob-Net party in Now running)
   }
+  // Item 202: skipped for an hour after two failures in a row.
+  skipped(address) { return (this.state.get(address)?.skipUntil || 0) > this.now(); }
+  strike(bob, why) {
+    const s = this.state.get(bob.address) || { ok: false, at: this.now() };
+    s.strikes = (s.strikes || 0) + 1;
+    if (s.strikes >= SKIP_AFTER) { s.strikes = 0; s.skipUntil = this.now() + SKIP_MS; try { this.onSkip?.(bob, why); } catch {} }
+    this.state.set(bob.address, s);
+  }
+  cleared(bob) { const s = this.state.get(bob.address); if (s) { s.strikes = 0; s.skipUntil = 0; } }
   busyHere(address) { const t = this.inUse.get(address); return t !== undefined && t > this.now(); }
   hold(address, ms = 15000) { this.inUse.set(address, this.now() + ms); }
   release(address) { this.inUse.delete(address); }
@@ -313,25 +337,31 @@ export class Lenders {
     const s = this.state.get(bob.address);
     if (!force && s && this.now() - s.at < (s.ok ? GOOD_FOR : DOWN_FOR)) return s;
     let out;
+    const t0 = Date.now();
     try {
       const r = await this.call(bob, '/api/lend/hello');
+      const ms = Date.now() - t0; // SUDDAR: how long his answer took, there and back
       const j = await r.json().catch(() => ({}));
       out = r.ok && j.lend === true && !j.busy ? { ok: true, brain: String(j.brain || '').slice(0, 60), device: String(j.device || '').slice(0, 20) } : { ok: false, why: j.busy || (r.status === 401 ? 'passcode not accepted' : r.status === 403 ? 'door closed' : `answered ${r.status}`) };
       // 1.5.72: what this Bob says he can do. ctx: his quick brain's room; speed: words a second he's seen lately;
       // jobs: whole jobs he takes (only with "Take jobs from my other Bobs" on there), and how busy his queue is.
-      if (r.ok) Object.assign(out, cleanAbilities(j));
+      if (r.ok) Object.assign(out, cleanAbilities(j), { ms });
       if (r.ok) this.learnNear(bob, j.home);
     } catch (e) { out = { ok: false, why: /passcode|tries/.test(e.message) ? e.message : 'not reachable' }; }
     const seen = this.state.get(bob.address);
     if (seen?.measured) out.measured = seen.measured; // what we timed ourselves outlives a hello
     if (seen?.reviewDownUntil) out.reviewDownUntil = seen.reviewDownUntil; // #30: a review he couldn't do, too
+    if (seen?.strikes) out.strikes = seen.strikes; // item 202
+    if (seen?.skipUntil) out.skipUntil = seen.skipUntil;
+    if (!out.look && seen?.look) out.look = seen.look; // his avatar stays on the Bob-Net list while he's away
     out.at = this.now();
     this.state.set(bob.address, out);
+    if (!out.ok && out.why === 'not reachable') this.strike(bob, 'not reachable'); // item 202
     return out;
   }
 
   // Keeps what he told us he can do (his room, his jobs) and what we timed; only today's yes becomes a no.
-  markDown(bob, why) { const s = this.state.get(bob.address) || {}; this.state.set(bob.address, { ...s, ok: false, why, at: this.now() }); }
+  markDown(bob, why, { failed = false } = {}) { const s = this.state.get(bob.address) || {}; this.state.set(bob.address, { ...s, ok: false, why, at: this.now() }); if (failed) this.strike(bob, why); }
 
   // The first of your Bobs (in your order) that says yes and isn't already thinking for us, or null.
   // `skip`: addresses already tried for this reply. The pick is held for a moment, so a second reply at the same time
@@ -342,7 +372,7 @@ export class Lenders {
   // the last 10 minutes, so he doesn't read it all again) goes first, then the fastest, going by what we timed ourselves
   // or what he says. Your order breaks ties.
   async pick({ skip = [], tokens = 0 } = {}) {
-    const list = this.bobs().filter((b) => !skip.includes(b.address) && !this.busyHere(b.address));
+    const list = this.bobs().filter((b) => !skip.includes(b.address) && !this.busyHere(b.address) && !this.skipped(b.address));
     const seen = await Promise.all(list.map((b) => this.hello(b).catch(() => ({ ok: false }))));
     const fits = list.map((bob, i) => ({ bob, s: seen[i], i })).filter(({ s }) => s.ok && (!s.ctx || !tokens || tokens + REPLY_ROOM <= s.ctx));
     if (!fits.length) return null;
@@ -359,7 +389,7 @@ export class Lenders {
   // 1.5.72: the Bob for a whole job: he must say he takes jobs, list this kind as one he can do right now, and not be
   // gaming or full. The least busy goes first (fewest jobs in his Tasks), your order breaking ties.
   async pickForJob(need) {
-    const list = this.bobs().filter((b) => !this.busyHere(`job:${b.address}`));
+    const list = this.bobs().filter((b) => !this.busyHere(`job:${b.address}`) && !this.skipped(b.address));
     const seen = await Promise.all(list.map((b) => this.hello(b).catch(() => ({}))));
     const can = list.map((bob, i) => ({ bob, s: seen[i], i })).filter(({ s }) => s.takesJobs && s.jobs?.includes(need) && !s.jobsBusy && !(s.jobsDownUntil > this.now()));
     can.sort((a, b) => ((a.s.queue || 0) - (b.s.queue || 0)) || (a.i - b.i));
@@ -371,7 +401,7 @@ export class Lenders {
   // #30: the Bob to check work on his Review brain: he says he reviews, isn't thinking for us already, and his Review brain
   // is good enough (its file at least `minGB`, so a phone's small brain never signs off on a big brain's work). Your order.
   async pickForReview({ minGB = 0, log = null } = {}) {
-    const list = this.bobs().filter((b) => !this.busyHere(b.address));
+    const list = this.bobs().filter((b) => !this.busyHere(b.address) && !this.skipped(b.address));
     const seen = await Promise.all(list.map((b) => this.hello(b).catch(() => ({}))));
     // Two-Bob trial (Test D): the logbook says why a Bob was passed over, not only that he was.
     if (log) list.forEach((bob, i) => { const until = seen[i]?.reviewDownUntil; if (until > this.now()) log(`skipping ${bob.name} for ${Math.max(1, Math.ceil((until - this.now()) / 60000))} more min after he couldn't finish a check`); });
@@ -441,20 +471,21 @@ export class Lenders {
       }
       if (!reply) throw new Error('stopped mid-answer');
       const secs = (this.now() - (firstAt || t0)) / 1000;
+      this.cleared(bob); // item 202: it worked, so the count starts over
       this.note(bob, { lastUsed: this.now(), firstWordMs: (firstAt || this.now()) - t0, ...(words > 8 && secs > 0.2 ? { tokPerSec: Math.round((words / secs) * 10) / 10 } : {}) });
       const calls = Array.isArray(reply.tool_calls) ? reply.tool_calls.filter((c) => c?.function?.name).map((c) => ({ function: { name: String(c.function.name), arguments: c.function.arguments && typeof c.function.arguments === 'object' ? c.function.arguments : {} } })) : [];
       return { role: 'assistant', content: String(reply.content || ''), tool_calls: calls.length ? calls : undefined };
     } catch (e) {
       if (signal?.aborted) throw e;
       if (checking) checkDown(this, bob); // his quick replies are still fine
-      else if (e.why !== 'too long') this.markDown(bob, e.busy ? (e.why || 'busy') : quiet.signal.aborted ? 'too slow' : 'not reachable'); // too long: he's still fine for shorter chats
+      else if (e.why !== 'too long') this.markDown(bob, e.busy ? (e.why || 'busy') : quiet.signal.aborted ? 'too slow' : 'not reachable', { failed: !e.busy }); // too long: he's still fine for shorter chats
       throw quiet.signal.aborted ? new Error('too slow') : e;
     } finally { clearTimeout(timer); clearTimeout(cap); this.live.delete(bob.address); this.hold(bob.address, 5000); }
   }
 }
 
 // ---------- What a Bob can do (1.5.72) ----------
-export const NEEDS = ['pictures', 'video', 'music', 'sfx', 'web', 'think'];
+export const NEEDS = ['pictures', 'video', 'music', 'sfx', 'model3d', 'web', 'think'];
 export function cleanAbilities(j) {
   const n = (x, max) => (Number.isFinite(Number(x)) && Number(x) > 0 ? Math.min(Number(x), max) : 0);
   const out = { ctx: n(j?.ctx, 1048576), speed: n(j?.speed, 1000), takesJobs: j?.takesJobs === true };
@@ -462,6 +493,8 @@ export function cleanAbilities(j) {
   out.jobsBusy = typeof j?.jobsBusy === 'string' ? j.jobsBusy.slice(0, 40) : '';
   out.queue = n(j?.queue, 999);
   out.passAlong = j?.passAlong === true; // 1.5.123: he introduces his Bobs to each other
+  out.lendCard = j?.lendCard === true; // Bigger Bobs: he lends his card
+  out.scut = j?.scut === true; // SCUT: he has the fast link on
   // 1.5.137: his room (graphics card and memory, in GB), so the Brain catalogue knows which brains a Bob on the
   // Bob-Net could run. Numbers only; a Bob that doesn't say (the phone, an older Bob) simply has no room listed.
   const r = j?.room && typeof j.room === 'object' ? { vramGB: n(j.room.vramGB, 4096), ramGB: n(j.room.ramGB, 16384) } : null;
@@ -470,6 +503,8 @@ export function cleanAbilities(j) {
   if (j?.review && typeof j.review === 'object' && j.review.brain) out.review = { brain: String(j.review.brain).slice(0, 60), ctx: n(j.review.ctx, 1048576), gb: n(j.review.gb, 1024) };
   const check = cleanCheck(j); // 1.5.185: he checks harder jobs on his Review brain
   if (check) out.check = check;
+  // His look (the avatar picked in Style), for his avatar on the Bob-Net list in Now running. Only a real look id.
+  if (typeof j?.look === 'string' && LOOK_ID_RE.test(j.look)) out.look = j.look;
   if (typeof j?.name === 'string' && j.name.trim()) out.hisName = j.name.replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 40);
   return out;
 }
@@ -489,7 +524,9 @@ export function helloFor(brain, { why, quick, can, version, label, webOn, bigBra
     brain: quick ? label(quick.model) : '', ctx: quick?.ctx || 0, speed: brain.engine?.lastStats?.tokPerSec || 0,
     device: 'computer', version, takesJobs, jobs, jobsBusy: takesJobs ? guestRefusal(brain) : '', queue: brain.queue?.filter?.((j) => j.state === 'waiting' || j.state === 'working').length || 0,
     name, passAlong: brain.cfg.share?.passAlong === true, // 1.5.123: for the party in Now running
+    ...(LOOK_ID_RE.test(String(brain.cfg.look || '')) ? { look: brain.cfg.look } : {}), // his avatar, for the avatars on the others' Bob-Net lists
     lendCard: brain.cfg.share?.lendCard === true && doorOpen(brain.cfg), // Lend my graphics card (src/share-card.js)
+    scut: brain.cfg.share?.scut === true, // SCUT, the fast link for a lent card (src/share-card.js)
     ...(review?.model ? { review: { brain: label(review.model), ctx: review.ctx || 0, gb: review.gb || 0 } } : {}), // #30: checks work for his other Bobs
     // Also over the home network (off unless switched on): where this Bob's door is on the home network too.
     home: brain.cfg.remote?.homeNet === true && doorOpen(brain.cfg) ? homeIps().map((m) => `${m.address}:${brain.cfg.port}`).slice(0, 4) : [],

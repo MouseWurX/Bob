@@ -1,5 +1,6 @@
 // 1.5.125 The chest on Equip Bob (what Bob made, as thumbnails with names, plus the save folder), thumbnails made
 // once and kept, and Bob's home folder: picked at install or first open, never a temporary place, movable from Settings.
+import { serverText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -116,7 +117,7 @@ fs.mkdirSync(env.LOCALAPPDATA, { recursive: true });
 
 // ---------- The window, the phone, the installer and the words ----------
 {
-  const cellar = read('public/cellar.js'), server = read('src/server.js'), main = read('electron/main.cjs'), ps = read('installer/bob-build-window.ps1'), readme = read('../README.md'), guide = read('docs/USER-GUIDE.md'), inv = read('docs/SETTINGS-INVENTORY.md');
+  const cellar = read('public/cellar.js'), server = serverText(), main = read('electron/main.cjs'), ps = read('installer/bob-build-window.ps1'), readme = read('../README.md'), guide = read('docs/USER-GUIDE.md'), inv = read('docs/SETTINGS-INVENTORY.md');
   check('the window loads the chest from the Made list and Change folder… uses the same picker as Settings', /api\(`\/api\/made\?limit=\$\{CHEST_SHOW\}`\)/.test(cellar) && /'chestbrowse' in b\.dataset.*purpose: 'save'/.test(cellar) && /'chestall' in b\.dataset.*madeBtn/.test(cellar));
   check('the brain serves thumbnails and the home folder, local only for home', /p === '\/api\/thumb'/.test(server) && /p === '\/api\/home'/.test(server) && /thumbFor\(cfg, d\.path\)/.test(server) && /homeProblem\(folder, \{ current: cfg\.agentDir \}\)/.test(server) && /globalThis\.bobHome\.move/.test(server));
   check('Settings has Bob\'s home folder with Browse…, Move here… and one Yes', /'ev-home', '📦 Bob\\'s home folder'/.test(cellar) && /data-homebrowse>Browse…/.test(cellar) && /data-homemove>Move here…/.test(cellar) && /'Move there anyway' : 'Yes, move everything'/.test(cellar) && /data-homeno>Not now/.test(cellar) && /confirm: true/.test(cellar));

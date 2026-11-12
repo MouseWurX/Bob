@@ -9,9 +9,11 @@
 import { HANDS, handOn, handOffWhy } from './hands-settings.js';
 import { makerWords, makerWhat } from './selftools.js';
 import { mcpWords, mcpWhat } from './mcp.js';
+import { packsWords, packsWhat } from './toolpacks.js';
 import { selfWorkWords } from './self-work.js';
+import { GROUP_WORDS, GROUP_TOOLS, GROUP_WHAT } from './more-tools.js'; // 🧰 More tools, each only while its switch is on
 
-export const CORE = ['notice_board', 'remember', 'reminders', 'list_folder', 'read_file', 'web_search', 'fetch_page', 'bob_help', 'ask_specialist', 'show_made', 'pick_session', 'offer_setup', 'use_tools'];
+export const CORE = ['notice_board', 'remember', 'reminders', 'list_folder', 'read_file', 'web_search', 'fetch_page', 'bob_help', 'ask_specialist', 'show_made', 'pick_session', 'edit_my_message', 'take_note', 'offer_setup', 'use_tools', 'ask_user'];
 
 // Groups Bob can add. `what` is what Bob reads in use_tools; `words` is the cheap pre-check on the user's message.
 const WORK_GROUPS = {
@@ -26,9 +28,24 @@ const WORK_GROUPS = {
     words: /\b(flow ?charts?|diagrams?|mind ?maps?|org(?:ani[sz]ation(?:al)?)? charts?|family trees?|decision trees?|process (?:map|chart)s?|gantt|timelines?|pie charts?|bar charts?|swim ?lanes?|wireframes?|boxes and arrows|map (?:it |this |that |them )?out|lay (?:it |this |that )?out visually|chart (?:out|how)|(?:draw|sketch|show) (?:me )?(?:how|the steps|the process|the flow)|visual(?:ly)? (?:show|map|lay)|mermaid|uml|er diagram|sequence)\b/i
   },
   documents: {
-    what: 'write or edit files, save spreadsheets, search inside files',
-    tools: ['write_file', 'edit_file', 'save_spreadsheet', 'search_files'],
-    words: /\b(save|write|edit|document|txt|csv|xlsx|spreadsheet|excel|search (?:my|the|in|for)|find (?:in|where)|grep|jot|text file|notes? file|(?:in|through) my files|where did I (?:mention|write|put|say))\b/i
+    what: 'write or edit files, save spreadsheets, search inside files and documents, map a codebase, see what changed (git)',
+    tools: ['write_file', 'edit_file', 'save_spreadsheet', 'search_files', 'find_in_documents', 'code_map', 'git_look'],
+    words: /\b(save|write|edit|git|commits?|diffs?|what (?:i |we )?changed|uncommitted|documents?|txt|csv|xlsx|spreadsheet|excel|pdfs?|word (?:doc|file)s?|search (?:my|the|in|for)|find (?:in|where|the (?:file|doc|document|pdf))|grep|jot|text file|notes? file|(?:in|through) my (?:files|documents|docs|folders)|where did I (?:mention|write|put|say|save)|which (?:file|document|doc|pdf))\b/i
+  },
+  parts3d: { // "Let Bob make 3D parts" (parts3d.js): only while it's on (offTools hides it otherwise)
+    what: 'make exact 3D parts (STL files for a 3D printer) from an OpenSCAD recipe: brackets, boxes, lids, spacers, replacement parts; and turn a picture into a textured 3D model (GLB): figurines, characters, props',
+    tools: ['make_3d_part', 'make_3d_model'],
+    words: /\b(3d|3-d|stl|openscad|scad|cad|3d ?print\w*|printable|bracket|enclosure|spacer|washer|standoff|knob|hinge|gear|cog|replacement part|spare part|part for|glb|figurine|sculpt\w*|miniature|3d model|mesh)s?\b/i
+  },
+  sandbox: { // "Let Bob work things out in a sandbox" (sandbox-code.js): only while it's on (offTools hides it otherwise)
+    what: 'work out sums, money, dates, unit conversions, counting and sorting exactly, by running a little code in a locked sandbox',
+    tools: ['run_in_sandbox'],
+    words: /\b(calculat\w*|work (?:it |this |that )?out|how (?:many|much|long) (?:days|weeks|months|years|hours|minutes|until|till|since|left)|add (?:up|these|them)|total|sum|average|mean|median|percent\w*|per cent|interest|compound|tip|split (?:the )?(?:bill|cost)|convert (?:\d|this|that|these)|in (?:km|miles|kg|lbs?|pounds|celsius|fahrenheit|inches|cm|feet|metres|meters|litres|liters|gallons|ounces)|sort (?:this|these|them|the list)|count (?:the|how|these)|regex|pattern|run (?:the |some |this )?(?:code|numbers|maths?|math)|sandbox|exact(?:ly)?)\b/i
+  },
+  spending: { // 🧾 "Keep a spending sheet from receipts" (receipts.js): only while it's on (offTools hides it otherwise)
+    what: 'add a receipt from a picture to the private spending sheet, list it, or total it up',
+    tools: ['spending_sheet'],
+    words: /\b(receipts?|spending|spent|expenses?|bills? (?:from|at)|how much (?:did )?i (?:spend|spent)|budget)\b/i
   },
   memory: {
     what: 'forget a topic you keep notes on',
@@ -55,6 +72,7 @@ const WORK_GROUPS = {
 // The Hands each get their own group, only when that Hand is switched on.
 const HAND_WORDS = {
   files: /\b(move|copy|rename|zip|unzip|unpack|archive|extract|(?:clear|free) (?:up )?(?:some )?(?:disk )?space|biggest files|disk space|tidy|organi[sz]e|sort|clean ?up|downloads|undo|folder|folders)\b/i,
+  sort: /\b(sort|rename|renam\w+|organi[sz]e|tidy|naming|name (?:them|these|my|all)|librar(?:y|ies)|music (?:folder|collection)|my (?:music|songs|albums|videos|movies|films|shows|tv|episodes|photos)|downloads|output folder|undo)\b/i,
   run: /\b(run|execute|command|script|terminal|powershell|cmd|install|build|npm|python|node|git|recipe|(?:start|fire|spin|boot) (?:up )?(?:the |my |a )?(?:dev |local |web )?(?:server|app|game|project|bot)|dev server|compile)\b/i,
   schedules: /\b(schedules?|scheduled|every (?:day|morning|afternoon|evening|night|week|weekday|monday|tuesday|wednesday|thursday|friday|saturday|sunday|month|hour|\d+)|each (?:day|morning|evening|night|week|weekday|hour)|daily|nightly|weekly|hourly|on a timer|automatically|at \d{1,2}(?::\d\d)?\s*(?:am|pm)|(?:on |every )?weekdays|(?:on |every )?weekends)\b/i,
   office: /\b(convert\w*|shrink|compress\w*|make (?:it|this|that) smaller|turn (?:it|this|that|them|these) into|save (?:it |this |that )?as|export\w*|pdf|docx?|xlsx?|pptx?|odt|ods|odp|word (?:doc\w*|file)|excel|powerpoint|libre ?office|open ?office|writer|calc|impress|slides?|presentation|slideshow|deck|spreadsheet|sheet|cells?|template|mp3|mp4|wav|webm|webp|flac|ogg|mkv|gif|jpe?g|png)\b/i,
@@ -65,6 +83,7 @@ const HAND_WORDS = {
 
 const HAND_WHAT = {
   files: 'move, copy, rename, zip, unzip, tidy files and folders, undo',
+  sort: 'sort and rename many files (music, videos, photos) to the user\'s naming rules, or from Downloads into their folders, undo',
   run: 'run commands, scripts, programs',
   schedules: 'repeat a job at set times (every morning...)',
   apps: 'open apps and click, type or press keys in them, with a look at the screen through your eyes brain',
@@ -78,14 +97,22 @@ const PICTURE_WHAT = { make_image: 'make pictures', make_video: 'make video clip
 export function groupsFor(brain) {
   const g = {};
   for (const [id, x] of Object.entries(WORK_GROUPS)) g[id] = { ...x };
+  for (const id of Object.keys(GROUP_TOOLS)) g[id] = { what: GROUP_WHAT[id], tools: GROUP_TOOLS[id], words: GROUP_WORDS[id] };
   // The user's repositories by name, so "fix the login bug in WeatherApp" finds the tool (self-work.js).
   g.selfwork.words = selfWorkWords(brain.cfg, g.selfwork.words);
   for (const [id, hand] of Object.entries(HANDS)) {
     g[id] = { what: HAND_WHAT[id] || `Hands, ${hand.label.toLowerCase()}`, tools: hand.tools, words: HAND_WORDS[id] || /$^/, hand: id };
+    // A shared tool (Undo) goes with this Hand's group while its own Hand is off, so it is in one group only.
+    for (const t of hand.shares || []) {
+      const owner = Object.keys(HANDS).find((h) => HANDS[h].tools.includes(t));
+      if (owner && brain.cfg && handOn(brain.cfg, id) && !handOn(brain.cfg, owner)) { g[id].tools = [...g[id].tools, t]; if (g[owner]) g[owner].tools = g[owner].tools.filter((x) => x !== t); }
+    }
     // 1.5.48: the tools Bob made himself are named in the group, so "run my csv tool" finds them.
     if (id === 'maker') Object.assign(g[id], { what: makerWhat(brain.cfg), words: makerWords(brain.cfg) });
     // The connected apps by name, so "in Blender, add a cube" finds them.
     if (id === 'mcp') Object.assign(g[id], { what: mcpWhat(brain.cfg), words: mcpWords(brain.cfg) });
+    // Tool packs from other people (toolpacks.js) by name, so "count the words with the word tools pack" finds them.
+    if (id === 'packs') Object.assign(g[id], { what: packsWhat(brain.cfg), words: packsWords(brain.cfg) });
   }
   // Only groups with at least one tool Bob can use on this PC right now.
   const out = {};
@@ -107,13 +134,19 @@ export function groupsFor(brain) {
 export const groupOf = (brain, name) => Object.entries(groupsFor(brain)).find(([, x]) => x.tools.includes(name))?.[0] || null;
 
 // The groups the user's words point at this turn.
+// Assistant presets (presets.js): only the groups a chat's preset allows. `only` null = every group, as usual.
+export function onlyGroups(groups, only) {
+  if (!only) return groups;
+  return Object.fromEntries(Object.entries(groups).filter(([id]) => only.has(id)));
+}
+
 export function guessGroups(brain, text) {
   const t = String(text || '');
   return Object.entries(groupsFor(brain)).filter(([, x]) => x.words.test(t)).map(([id]) => id);
 }
 
 // The chat chip when a group is added (clarity reviewer's words; Hands match their names in Settings).
-const CHIP = { pictures: 'Using his picture, video and music tools', diagrams: 'Using his diagram tools', documents: 'Using his document tools', files: 'Using his file tools', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', apps: 'Using Hands: apps', browser: 'Using Hands: his browser', office: 'Using Hands: office and converting', security: 'Using Hands: security and privacy', maker: 'Using Hands: his own tools', mcp: 'Using Hands: connected apps', memory: 'Forgetting a topic', howtos: 'Using his how-tos', selfwork: 'Working on a repository', cloud: 'Using a cloud helper' };
+const CHIP = { pictures: 'Using his picture, video and music tools', diagrams: 'Using his diagram tools', parts3d: 'Using his 3D part tools', documents: 'Using his document tools', files: 'Using his file tools', sort: 'Using Hands: sort and rename', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', apps: 'Using Hands: apps', browser: 'Using Hands: his browser', office: 'Using Hands: office and converting', security: 'Using Hands: security and privacy', maker: 'Using Hands: his own tools', mcp: 'Using Hands: connected apps', memory: 'Forgetting a topic', howtos: 'Using his how-tos', selfwork: 'Working on a repository', cloud: 'Using a cloud helper' };
 
 export const allToolsOn = (cfg) => cfg.allTools === true;
 
@@ -132,8 +165,10 @@ export function useToolsTool(brain) {
       }
     },
     async run({ group }, ctx) {
-      const groups = groupsFor(brain);
+      const all = groupsFor(brain);
+      const groups = onlyGroups(all, ctx?.loaded?.only);
       const id = String(group || '').toLowerCase().trim();
+      if (all[id] && !groups[id]) return `This chat's assistant preset leaves out ${id}. Say so in a line; a chat without this preset can use it.`;
       const handId = Object.keys(HANDS).find((h) => h === id);
       if (!groups[id]) {
         if (handId && !handOn(brain.cfg, handId)) return handOffWhy(brain.cfg, handId);
@@ -156,6 +191,10 @@ export function tidySchema(x) {
   const out = {};
   for (const [k, v] of Object.entries(x)) {
     if (k === 'enum' && Array.isArray(v) && !v.length) continue;
+    // Less context is better (1.5.207): an empty required list and "Optional:" in front of a field the required list
+    // already leaves out say nothing the brain doesn't know. About 500 characters with everything on.
+    if (k === 'required' && Array.isArray(v) && !v.length) continue;
+    if (k === 'description' && typeof v === 'string') { out[k] = v.replace(/^Optional(?:[:,] ?|\. )(\S)/, (_, c) => c.toUpperCase()); continue; }
     out[k] = tidySchema(v);
   }
   return out;
@@ -174,8 +213,8 @@ export function fillUseTools(schema, groups, loaded) {
 // One line in the front desk's prompt naming the groups not added yet (router test, 2026-11-02: without it,
 // small brains said "I can't make pictures yet" instead of calling use_tools). About 80 tokens.
 export function toolboxPrompt(brain, loaded) {
-  if (allToolsOn(brain.cfg)) return '';
-  const open = Object.entries(groupsFor(brain)).filter(([id]) => !loaded.has(id));
+  if (allToolsOn(brain.cfg) && !loaded?.only) return '';
+  const open = Object.entries(onlyGroups(groupsFor(brain), loaded?.only)).filter(([id]) => !loaded.has(id));
   if (!open.length) return '';
   return `\n\nMore you CAN do: call use_tools with a group, then its tool. ${open.map(([id, x]) => `${id} = ${x.what}`).join('; ')}. Never say you can't do these.`;
 }

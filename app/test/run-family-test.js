@@ -139,7 +139,7 @@ check('core: "mention it and ask" is only about extras nobody asked for', /only 
   const cfg = { agentDir: tmp, dataDir: tmp, innDir: tmp, readRoots: [tmp], readOnlyRoots: [], projects: { Alpha: a, Beta: b } };
   const t = buildTools(cfg);
   const sch = t.search_files.schema.function;
-  check('search_files: project is optional', JSON.stringify(sch.parameters.required) === '["text"]' && /leave project out/.test(sch.description));
+  check('search_files: project is optional', JSON.stringify(sch.parameters.required) === '["text"]' && /Leave out unless \{\{USER\}\} named one/.test(sch.parameters.properties.project.description));
   const all = await t.search_files.run({ text: 'spawnenemy' });
   check('search_files with no project searches every project', all.includes('Enemy.cpp') && all.includes('Wave.cpp'));
   const one = await t.search_files.run({ project: 'Beta', text: 'spawnenemy' });
@@ -147,8 +147,8 @@ check('core: "mention it and ask" is only about extras nobody asked for', /only 
   let err = '';
   try { await buildTools({ ...cfg, projects: {} }).search_files.run({ text: 'xx' }); } catch (e) { err = e.message; }
   check('no projects: a plain error with another way to look', /No projects are set up yet/.test(err));
-  check('make_music: picks a style when none was given', /pick one that fits/.test(t.make_music.schema.function.parameters.properties.prompt.description));
-  check('ask_specialist: passes the job on without asking for paths', /don't ask for paths or line numbers first/.test(t.ask_specialist.schema.function.parameters.properties.task.description));
+  check('make_music: picks a style when none was given', /No style given\? Pick one/.test(t.make_music.schema.function.parameters.properties.prompt.description));
+  check('ask_specialist: passes the job on without asking for paths', /don't ask for paths first/.test(t.ask_specialist.schema.function.parameters.properties.task.description));
   check('web search off: offers the switch (1.5.91: the Set it up card)', /offer_setup with "web"/.test(webPrompt({ userName: 'Sam' })) && /switch/i.test(webPrompt({ userName: 'Sam' })));
 }
 

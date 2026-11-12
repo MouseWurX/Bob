@@ -7,12 +7,16 @@ const arg = (f) => argv[argv.indexOf(f) + 1];
 const port = Number(arg('--port'));
 const modelFile = path.basename(arg('-m'));
 const readyAt = Date.now() + 800;
+// Reliability 218-228 tests: a setting the engine refuses, running out of memory above a chat memory size, a crash.
+if (argv.includes('--bad-flag')) { console.error('error: invalid argument: --bad-flag'); process.exit(1); }
+if (Number(process.env.MOCK_OOM_ABOVE) > 0 && Number(arg('-c')) > Number(process.env.MOCK_OOM_ABOVE)) { console.error('ggml_backend_cuda_buffer_type_alloc_buffer: allocating 9000 MiB on device 0: cudaMalloc failed: out of memory'); process.exit(1); }
 
 http.createServer(async (req, res) => {
   let body = '';
   for await (const c of req) body += c;
   // 1.5.32 tests: whether the card was hidden from this server (Gaming, "Never use the card").
   if (req.url === '/test-env') { res.writeHead(200); return res.end(JSON.stringify({ cuda: process.env.CUDA_VISIBLE_DEVICES ?? null })); }
+  if (req.url === '/test-crash') { console.error('CUDA error: an illegal memory access was encountered'); process.exit(3); }
   if (req.url === '/health') { res.writeHead(Date.now() > readyAt ? 200 : 503); return res.end('{}'); }
   // Saved readings (1.5.24): /slots/0?action=save|restore with a plain file name under --slot-save-path.
   if (req.url.startsWith('/slots/0?action=')) {
@@ -36,7 +40,7 @@ http.createServer(async (req, res) => {
     const j = JSON.parse(body);
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     const send = (delta) => res.write(`data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`);
-    const msgs = j.messages, last = msgs.at(-1);
+    const msgs = j.messages, last = [...msgs].reverse().find((m) => m.role !== 'system') || msgs.at(-1); // Nov 11: Bob's "where we are" note can come last
     const lastUser = [...msgs].reverse().find((m) => m.role === 'user')?.content || '';
     // Every tool message must answer a tool call id from the assistant message before it.
     const ids = new Set(msgs.flatMap((m) => (m.tool_calls || []).map((t) => t.id)));

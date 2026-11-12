@@ -4,7 +4,7 @@
 // - "Better and worse pairs": it learns to lean toward the better answer of each pair (preference training, DPO).
 // - Both: the best answers first, then the pairs.
 // "Teach only these parts" puts the adapter only on the experts, layers or
-// heads that an FNRI recording shows the skill uses, or that a parts list saved from the FNRI viewer names; the rest of
+// heads that an fNRI recording shows the skill uses, or that a parts list saved from the fNRI viewer names; the rest of
 // the brain stays frozen. Questions with a short exact answer (a number, a word) are marked by a checker, not the judge.
 // Some questions are held back: never taught, asked before and after, so the result is honest.
 // Answering and judging always run here (they're just chats). Teaching runs here when the brain fits the card (the
@@ -14,11 +14,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { labDir, labModelsDir, inspect, slugOf, lessonSets } from './lab.js';
 import { startServer } from './lab-test.js';
-import { planTeach, saveTeachPlan, trainerState, hwOf, fetchBase, foldAdapter, foldFull, quizFile, readLessonSource, lessonsPerHour, TRAINER } from './lab-teach.js';
+import { planTeach, saveTeachPlan, trainerState, hwOf, fetchBase, foldAdapter, foldFull, quizFile, guardTool, readLessonSource, lessonsPerHour, TRAINER } from './lab-teach.js';
 import { TEACH_PY, FETCH_PY } from './lab-teach-script.js';
 import { watchDir, listRecordings, readRecording } from './lab-watch.js';
 import { specialise } from '../public/lab-watch-math.js';
 import { readJson, writeJson, canStart, makeRoom, runJob, runTool, pageLog } from './lab-jobs.js';
+import { judgeTrust } from './lab-plus.js'; // Lab item 111: Check the judge first
 
 export const ANSWERS = [2, 4, 8];          // answers the small brain gives to each question
 export const ANSWERS_DEFAULT = 4;
@@ -29,7 +30,7 @@ export const GOOD = 6;      // out of 10: a best answer below this isn't taught
 export const GAP = 2;       // points between the better and the worse answer for a pair to count
 export const HOLD = { share: 0.1, min: 5, max: 40 };
 export const MAX_TARGETS = 20000;
-export const TARGETS_FORMAT = 'bob-fnri-targets'; // the FNRI viewer's "Use these for training" files (src/lab-watch.js)
+export const TARGETS_FORMAT = 'bob-fnri-targets'; // the fNRI viewer's "Use these for training" files (src/lab-watch.js)
 const ANSWER_TOKENS = 400, TEMP = 0.8;
 export const bestDir = (cfg) => path.join(labDir(cfg), 'best');
 
@@ -101,7 +102,7 @@ export function pick(scores) {
   return { best: hi, worst: lo, bestScore: scores[hi], worstScore: scores[lo], good: scores[hi] >= GOOD, pair: hi !== lo && scores[hi] - scores[lo] >= GAP && scores[hi] >= GOOD };
 }
 
-// ---- Parts to teach: FNRI's saved lists, or a skill's experts from a recording ----
+// ---- Parts to teach: fNRI's saved lists, or a skill's experts from a recording ----
 const brainOf = (lab, id) => lab.brains().find((b) => b.id === String(id || ''));
 const targetsFolder = (cfg, brain) => path.join(watchDir(cfg), slugOf(brain.id || brain.name));
 export function listTargetFiles(cfg, brain) {
@@ -136,12 +137,12 @@ export function resolveTargets(lab, learnerId, t = {}) {
   }
   if (t.kind === 'skill') {
     const rec = readRecording(lab, { brain: brain.id, id: String(t.recording || '') });
-    if (rec.brain.kind && rec.brain.kind !== 'experts') throw new Error('That scan shows heads or neurons, not experts. Save a parts list from it in FNRI and pick that.');
+    if (rec.brain.kind && rec.brain.kind !== 'experts') throw new Error('That scan shows heads or neurons, not experts. Save a parts list from it in fNRI and pick that.');
     const s = rec.skills.findIndex((x) => x.id === String(t.skill || ''));
     if (s < 0) throw new Error('That skill isn\'t in the scan.');
     const sp = specialise(rec), list = [];
     sp.top.forEach((row, layer) => row.forEach((top, index) => { if (top === s) list.push({ kind: 'expert', layer, index }); }));
-    if (!list.length) throw new Error(`No expert leans to ${rec.skills[s].label} in that scan. Ask it more of that skill's questions in FNRI first.`);
+    if (!list.length) throw new Error(`No expert leans to ${rec.skills[s].label} in that scan. Ask it more of that skill's questions in fNRI first.`);
     return { list: cleanTargets(list, shape), label: `the experts that lean to ${rec.skills[s].label}` };
   }
   throw new Error('Pick which parts to teach.');
@@ -186,6 +187,7 @@ export async function planBest(lab, c = {}) {
   const judgeS = n * (answers * 15 + 40) / tpsOf(jf?.sizeGB) + n * 4;
   const minutes = Math.max(1, Math.round((answerS + judgeS) / 60));
   const teachHours = t.where === 'here' ? Math.max(0.1, Math.round(((taught * (way === 'pairs' ? 3 : way === 'both' ? 4 : 1)) / lessonsPerHour(t.brain.paramsB)) * 10) / 10) : null;
+  if (judge && lab.cfg) { const t = judgeTrust(lab.cfg, judge.id); notes.push(t ? `Checked against your own picks: ${t.line}` : `${judge.name} hasn't been checked against your own picks yet. Test, Taste test, Check the judge shows how far to trust it.`); } // Lab item 111
   if (jf && lab.cfg && jf.sizeGB > (Number(lab.cfg.gpuVramGB) || 99)) notes.push(`${judge.name} is bigger than the card, so part of it runs from RAM while it judges: slower, the same scores.`);
   notes.push(`Of ${n} questions, ${held} are held back: never taught, asked before and after, so you see whether it really got better and didn't just learn the test.`);
   if (rescue) notes.push(`When none of ${learner?.name || 'its'} answers scores ${GOOD} or more, ${judge?.name || 'the judge'} writes its own answer for that question instead, and that's taught.`);
@@ -210,6 +212,7 @@ export async function startBest(lab, c = {}, { unload = false } = {}) {
   const log = pageLog(lab.cfg, 'best'), here = p.where === 'here';
   const learner = brainOf(lab, p.learner.id), judge = brainOf(lab, p.judge.id);
   const fx = { tool: runTool, quiz: quizFile, serve: (gguf, signal) => startServer({ exe: lab.tools().server.path, gguf, signal, log }), chat: sample, ...lab.stepFns };
+  fx.tool = guardTool(fx.tool);
   const data = path.join(bestDir(lab.cfg), p.slug), work = path.join(labModelsDir(lab.cfg), 'best', p.slug);
   const targets = resolveTargets(lab, p.learner.id, c.targets).list;
   const steps = [['questions', `Read the questions (${p.questions.name})`], ['answers', `${p.learner.name} answers each ${p.answers} times`], ['judge', `${p.judge.name} judges every answer`],
@@ -362,7 +365,7 @@ export function bestView(lab) {
   const brains = lab.brains().map((b) => { let f = null; try { f = inspect(b); } catch {} return { id: b.id, name: b.name, family: b.family || '', paramsB: f?.paramsB || 0, sizeGB: f?.sizeGB || 0, experts: f?.experts || 0, layers: f?.layers || 0 }; });
   return { trainer: { ok: tr.ok, supported: tr.supported, sizeGB: tr.sizeGB, uv: TRAINER.uv }, brains, sets: lessonSets(lab.cfg).map(({ id, name, count }) => ({ id, name, count })), answers: ANSWERS, answersDefault: ANSWERS_DEFAULT, limits: LIMITS, limitDefault: LIMIT_DEFAULT, good: GOOD, gap: GAP, runs: lab.runs.filter((r) => r.kind === 'best').slice(-5).reverse().map((r) => lab.runView(r)) };
 }
-// What FNRI has for one brain: its scans (with their skills) and the parts lists saved from the viewer.
+// What fNRI has for one brain: its scans (with their skills) and the parts lists saved from the viewer.
 export function bestParts(lab, brainId) {
   const brain = brainOf(lab, brainId); if (!brain) return { recordings: [], lists: [] };
   const recs = listRecordings(lab.cfg, brain).slice(0, 12).map((r) => { let skills = []; try { skills = readRecording(lab, { brain: brain.id, id: r.id }).skills; } catch {} return { id: r.id, name: r.name, when: r.when, skills }; });

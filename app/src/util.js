@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
+import { saveFile } from './saving.js';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // One line of text, at most n characters.
@@ -9,6 +10,11 @@ export const clip = (s, n) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(
 // A file's size in bytes, or 0 if it isn't there.
 export const fileSize = (p) => { try { return fs.statSync(p).size; } catch { return 0; } };
 // The first {...} in a brain's answer, or null.
+// 1.5.201: a JSON file as it's saved. A file written by Windows PowerShell (Set-Content, Out-File) starts with a UTF-8
+// byte-order mark, which JSON.parse refuses; it's dropped first. A file that still can't be read throws, so a caller
+// never takes "unreadable" for "empty" and writes over it.
+export const stripBom = (t) => String(t ?? '').replace(/^\uFEFF/, '');
+export const readJsonFile = (file) => JSON.parse(stripBom(fs.readFileSync(file, 'utf8')));
 export function parseJson(text) {
   const s = String(text || '');
   const a = s.indexOf('{'), b = s.lastIndexOf('}');
@@ -24,11 +30,10 @@ export function freeName(p, taken = new Set()) {
 }
 // Write a JSON file so a crash or power cut mid-write never leaves a half file: the text goes to
 // a sibling .part file first, then takes the real name in one step (rename is atomic on every platform).
+// Since item 229 (saving.js): a temp name of its own per save, flushed to the disk before the rename, and a retry when
+// Windows holds the old file for a moment.
 export function writeJsonAtomic(file, value, spaces = 1) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const part = `${file}.part`;
-  fs.writeFileSync(part, JSON.stringify(value, null, spaces));
-  fs.renameSync(part, file);
+  saveFile(file, JSON.stringify(value, null, spaces));
 }
 
 // The command line of a running process ('' when it is gone or can't be read), so a stale pid file never

@@ -58,7 +58,7 @@ const size = (step) => JSON.stringify(step.tools).length;
   const steps = await turn('hmm', [call('write_file', { path: target, content: 'x' })], 's6');
   check('calling a tool from a group not added yet still works (the group is added)', steps.length === 2 && names(steps[1]).includes('write_file'));
   const off = await brain.runTool('run_command', { cmd: 'echo', args: ['hi'] }, { emit: () => {}, signal: new AbortController().signal, allowAll: new Set() });
-  check('a tool from a Hand that is off is refused with how to turn it on', /(switched off|is off).*Settings, Show advanced settings, Hands/.test(off.text), off.text);
+  check('a tool from a Hand that is off is refused with how to turn it on', /(switched off|is off).*Settings, Hands/.test(off.text), off.text);
   const bad = await turn('hmm', [call('use_tools', { group: 'run' })], 's7');
   check('use_tools on a Hand that is off says how to turn it on', bad.length === 2);
 }
@@ -131,7 +131,8 @@ const size = (step) => JSON.stringify(step.tools).length;
   check('ask_together comes along once a group that asks for OKs is added', !brain.frontDeskTools(new Set()).some((t) => t.function?.name === 'ask_together') && brain.frontDeskTools(new Set(['documents'])).some((t) => t.function?.name === 'ask_together'));
   // show_plan (1.5.78) isn't in a group either: it is always there while "Show Bob's plan before big jobs" is on.
   check('show_plan comes along only while its setting is on', !brain.frontDeskTools(new Set()).some((t) => t.function?.name === 'show_plan') && (() => { brain.cfg.planFirst = true; const on = brain.frontDeskTools(new Set()).some((t) => t.function?.name === 'show_plan'); brain.cfg.planFirst = false; return on; })());
-  check('every non-core tool is in exactly one group', (() => { const g = groupsFor({ usable: () => true, cfg }); const all = Object.values(g).flatMap((x) => x.tools); return Object.keys(brain.tools).filter((n) => !CORE.includes(n) && n !== 'ask_together' && n !== 'show_plan').every((n) => all.filter((x) => x === n).length === 1); })());
+  // look_at_job and pass_note (meanwhile.js) come along only in a quick reply beside a job, like show_plan with its setting.
+  check('every non-core tool is in exactly one group', (() => { const g = groupsFor({ usable: () => true, cfg }); const all = Object.values(g).flatMap((x) => x.tools); return Object.keys(brain.tools).filter((n) => !CORE.includes(n) && n !== 'ask_together' && n !== 'show_plan' && n !== 'look_at_job' && n !== 'pass_note').every((n) => all.filter((x) => x === n).length === 1); })());
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

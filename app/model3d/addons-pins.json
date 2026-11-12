@@ -1,0 +1,6 @@
+{
+  "note": "The 3D workshop add-on wheels for each computer, with their sha256, from Bob's own GitHub pre-release. Filled in by installer/pin-model3d.js <release> after .github/workflows/model3d-addons.yml was run by hand with publish ticked. While a computer's list is empty Bob offers no download there.",
+  "release": "",
+  "win-x64": [],
+  "linux-x64": []
+}

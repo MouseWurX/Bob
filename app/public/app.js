@@ -1,10 +1,16 @@
 // Bob's panel: chat, approvals, status, taskbar badge, read-aloud, and the brain-swap machine.
 import { drawBob, setLook } from './bob-sprite.js';
+import { secretNoteHtml, wireSecretNote } from './more-tools.js'; // 🧰 More tools: a password Bob made
 import { applyStyle, applySavedStyle } from './themes.js';
 applySavedStyle();
+import { startI18n, followSaved } from './i18n.js';
+startI18n();
 import { startSwap, sceneLabel } from './brain-swap.js';
 import { createVoice } from './voice.js';
+import { createReader } from './read-aloud.js'; // Read documents aloud (item 136, off unless turned on)
 import { createCellar } from './cellar.js';
+import { watchLock } from './lock-settings.js';
+import { CHANNEL as SETTINGS_CHANNEL, WINDOW_NAME, WINDOW_SIZE, settingsUrl, wantsWindow, accept as acceptSettings } from './settings-link.js';
 import { createShelf, uploadRef, fixSideways } from './shelf.js';
 import { summary, size } from './progress.js';
 import { createTasks, createDownloads, makeSortable, neighbour, taskRow } from './lists.js';
@@ -13,6 +19,7 @@ import { esc, render, renderRich } from './rich.js';
 import { createTopics } from './topics.js';
 import { createTidy } from './tidy.js';
 import { createLab } from './lab.js'; // 1.5.141 Computer Science Lab
+import { CHANNEL as LAB_CHANNEL, WINDOW_NAME as LAB_WINDOW_NAME, WINDOW_SIZE as LAB_WINDOW_SIZE, LAB_URL, labWantsWindow, accept as labAccept } from './lab-link.js'; // the Lab's own window
 import { createAdventure } from './adventure.js';
 import { createGames } from './games.js';
 import { createHelp } from './help.js';
@@ -27,15 +34,37 @@ import { createRentSwitch } from './rent-switch.js'; // 1.5.127 rented brains
 import { createGameLock } from './game-lock.js';
 import { quarantineCard, quarantineResult, createQuarantineBanner } from './quarantine.js';
 import { createEffort } from './effort.js';
+import { createPresetPicker } from './presets.js'; // Assistant presets for chats
 import { createCatAntics } from './cat-antics.js';
 import { createBubbles } from './say-bubbles.js';
 import { createBobLife } from './bob-life.js';
 import { createViewer, outCard, fillPeeks } from './viewer.js';
 import { songListHtml, wireSongs } from './song-player.js';
 import { moreBar } from './more-bar.js';
+import { createPromptMenu } from './prompts.js'; // saved prompts: the / menu in the message box
+import { createBobMenu } from './bob-menu.js'; // 1.5.207 the small menu on Bob's picture
 import { diagramHtml, saveRowsHtml, setupSaveAs, watchSaveAs } from './save-as.js';
+import './math-core.js'; // Show maths as formulas: KaTeX, loaded only while the switch is on
+import { installShortcuts, listHtml as shortcutListHtml } from './shortcuts.js';
+import { createJobHelps } from './job-helps.js'; // Settings, Jobs: Stop after this step, time bar, receipts, file:line links
+import { saveToLab } from './lab-save-q.js'; // Lab item 102: Save to Lab under your messages, off unless switched on
+import { createHarnessChat, quietNow } from './harness-chat.js'; // items 62 to 72: crash card, quiet hours, Pin, Try from here, Guest chat
+import { applyReading, startEveryday } from './everyday.js'; // 🗓 Everyday helpers: text size, font, today card, tour, ⏱ Focus, tray dot
 
-const cellar = createCellar();
+// Settings opens in its own window on a computer (minimise, maximise, close). The main window keeps
+// its left menu and Now running; what changes over there comes back on a BroadcastChannel (settings-link.js).
+const settingsChan = 'BroadcastChannel' in window ? new BroadcastChannel(SETTINGS_CHANNEL) : null;
+let settingsWin = null;
+function openSettingsWindow(jump) {
+  if (!wantsWindow({ hasChannel: Boolean(settingsChan), coarse: matchMedia('(pointer: coarse)').matches, standalone: matchMedia('(display-mode: standalone)').matches, width: window.innerWidth })) return false;
+  try {
+    if (settingsWin && !settingsWin.closed) settingsChan.postMessage({ from: 'main', name: 'bob-goto', detail: jump || '' });
+    else settingsWin = window.open(settingsUrl(jump), WINDOW_NAME, WINDOW_SIZE);
+    settingsWin?.focus();
+  } catch { settingsWin = null; }
+  return Boolean(settingsWin);
+}
+const cellar = createCellar({ popOut: openSettingsWindow });
 const api = async (url, data) => {
   const r = await fetch(url, data === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify(data) });
   const j = await r.json().catch(() => ({}));
@@ -45,12 +74,15 @@ const api = async (url, data) => {
 const tasks = createTasks({ post: (u, d) => post(u, d) });
 const downloads = createDownloads({ api, post: (u, d) => post(u, d) });
 installTips();
+watchLock(); // 🔒 Passcode lock: back to the lock screen once Bob locks
 const layout = createLayout({ post: (u, d) => post(u, d), openTasks: () => tasks.open(), openDownloads: () => downloads.open() });
 
 const $ = (id) => document.getElementById(id);
 const log = $('log'), input = $('input'), sendBtn = $('send'), stopBtn = $('stop'), statusEl = $('status');
+const setSaveToLab = saveToLab(log, api);
 const brainBar = createBrainBar({ post: (u, d) => post(u, d), note: (t, k) => note(t, k) });
 const handsSwitch = createHandsSwitch({ note: (t, k) => note(t, k) });
+const jobHelps = createJobHelps({ api: (u, d) => api(u, d), add: (c, h) => add(c, h), note: (t, k) => note(t, k), log, stopBtn, scrollDown: () => scrollDown() });
 const quickSwitches = createQuickSwitches({ note: (t, k) => note(t, k) });
 const webSwitch = createWebSwitch({ note: (t, k) => note(t, k) });
 const rentSwitch = createRentSwitch({ note: (t, k) => note(t, k) });
@@ -71,11 +103,13 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch {} }
 };
 let sessionId = store.get('bob-session', 'main');
+const presetPicker = createPresetPicker({ note: (t, k) => note(t, k), effort, session: () => sessionId });
 let speakOn = store.get('bob-speak', '0') === '1';
 let busy = false;
 const replies = new Map(); // turnId -> { el, text } of the reply being streamed (two can run at once in an Art session)
 const running = new Set();  // turnIds of jobs running now
 let talkingUntil = 0;
+const borrowedBy = new Map(); // turnId -> the Bob who thought this reply (A voice per Bob)
 let swapStop = null, swapEl = null;
 let lastModel = null;
 
@@ -129,7 +163,29 @@ for (const ev of ['pointermove', 'keydown', 'focus']) window.addEventListener(ev
 document.addEventListener('visibilitychange', () => { if (!document.hidden) wakeBob(); });
 
 // ---------- Rendering ----------
-function scrollDown() { log.scrollTop = log.scrollHeight; }
+// Follow along at the bottom, unless you've scrolled up to read: then new words don't pull you down, and a round
+// button at the bottom middle takes you back (with three dots that breathe slowly while Bob is still working).
+let stick = true;
+const nearBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+const toBottom = $('toBottom');
+function drawToBottom() {
+  toBottom.hidden = stick || nearBottom();
+  toBottom.classList.toggle('working', !toBottom.hidden && busy);
+  toBottom.setAttribute('aria-label', toBottom.classList.contains('working') ? 'Bob is still working. Go to the newest message' : 'Go to the newest message');
+}
+function scrollDown(force = false) {
+  if (force) stick = true;
+  if (stick) log.scrollTop = log.scrollHeight;
+  drawToBottom();
+}
+function goBottom() {
+  stick = true;
+  log.scrollTo({ top: log.scrollHeight, behavior: document.body.classList.contains('still') ? 'auto' : 'smooth' });
+  drawToBottom();
+}
+log.addEventListener('scroll', () => { stick = nearBottom(); drawToBottom(); }, { passive: true });
+toBottom.addEventListener('click', () => { goBottom(); $('input')?.focus({ preventScroll: true }); });
+window.addEventListener('keydown', (e) => { if (e.ctrlKey && e.key === 'End' && !toBottom.hidden) { e.preventDefault(); goBottom(); } });
 function add(cls, html) {
   const el = document.createElement('div');
   el.className = cls;
@@ -194,7 +250,31 @@ function addMade(ev) {
   if (fresh.length) { r.media.push(...fresh.map((x) => ({ type: 'file', kind: x.kind, url: x.url, name: x.name, path: x.path }))); drawReply(r); scrollDown(); }
   viewer.made(ev.items, { show: ev.show === true });
 }
-function endReply(ev) { replies.delete(ev?.turnId || '-'); }
+function endReply(ev) {
+  // Item 190 (Nov 12): a correction ends the bubble; if Bob then tries again in this turn, these words get folded
+  // away as replaced (see 'token').
+  const rep = ev?.type === 'correction' ? replies.get(ev.turnId || '-') : null;
+  if (rep?.el && String(rep.text || '').trim()) correctedBubbles.set(ev.turnId || '-', rep.el);
+  replies.delete(ev?.turnId || '-');
+}
+// Item 190 (Nov 12): a reply the app corrected and Bob then answered again folds away as "replaced", so the wrong
+// words aren't left above the right ones. One press shows them again. Live (correctedBubbles) and after a reload.
+const correctedBubbles = new Map();
+function markReplaced(el) {
+  if (!el || el.classList.contains('replaced')) return;
+  el.classList.add('replaced');
+  const keepTools = el.querySelector(':scope > .msg-tools');
+  const box = document.createElement('div');
+  box.className = 'replaced-body';
+  box.hidden = true;
+  for (const n of [...el.childNodes]) if (n !== keepTools) box.appendChild(n);
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'link mini replaced-toggle'; b.setAttribute('aria-expanded', 'false');
+  b.textContent = 'Bob\'s first try, replaced by the answer below (show it)';
+  b.onclick = () => { box.hidden = !box.hidden; b.setAttribute('aria-expanded', String(!box.hidden)); b.textContent = box.hidden ? 'Bob\'s first try, replaced by the answer below (show it)' : 'Bob\'s first try, replaced by the answer below (hide it)'; };
+  el.insertBefore(box, keepTools || null);
+  el.insertBefore(b, box);
+}
 
 // ---------- Status, badge, notifications ----------
 const STATUS_TEXT = {
@@ -241,11 +321,13 @@ function setStatus(s) {
   if (s.model) lastModel = s.model;
   layout.status(s);
 }
+let everyday = null; // 🗓 Everyday helpers (everyday.js), set once the settings are read
 function badge(on) {
+  if (on) everyday?.pinged(); // the tray dot, when it's on and nobody's looking
   try { if (on) navigator.setAppBadge && navigator.setAppBadge(); else navigator.clearAppBadge && navigator.clearAppBadge(); } catch {}
 }
 function ping(title, body) {
-  if (!document.hidden) return;
+  if (!document.hidden || quietNow()) return; // Quiet hours (off unless switched on): no pop-ups
   badge(true);
   try { if ('Notification' in window && Notification.permission === 'granted' && store.get('bob-alerts', '1') === '1') new Notification(title, { body, icon: '/icons/bob-192.png' }); } catch {}
 }
@@ -275,29 +357,44 @@ function hideSwap() {
 
 // ---------- Read aloud ----------
 // Bob's own voice (Piper, from the cellar) when he has one; otherwise the Windows voices.
+// Voice, phone and Bob-Net (items 135 and 139): Talk over Bob keeps the microphone open while he talks, and A voice
+// per Bob reads a reply another of your Bobs thought in that Bob's voice. Both off unless turned on (Settings, Voice details).
 let ownVoice = false;
-const sayQueue = [];
+const sayQueue = []; // [{ text, bob }]
 let saying = false;
+let stopSaying = null; // stops the clip playing now
+const voiceNet = { talkOver: false, netVoices: false };
+let reader = null; // Read documents aloud (public/read-aloud.js)
+async function readVoiceNet() { try { const s = await (await fetch('/api/settings')).json(); voiceNet.talkOver = s.talkOver === true; voiceNet.netVoices = s.netVoices === true; reader?.setOn(s.readDocs === true); } catch {} }
+window.addEventListener('focus', readVoiceNet);
+// A pitch from a Bob's name, for this computer's own voices (Bob's own Kokoro voice gets a whole other voice instead).
+function pitchFor(name) { let h = 2166136261; for (const c of String(name || '').toLowerCase()) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; } return name ? [0.8, 0.88, 0.95, 1.08, 1.16, 1.25][h % 6] : 1; }
+function talking(on) { try { voice?.speaking(on); } catch {} }
 async function sayNext() {
   if (saying || !sayQueue.length) return;
   saying = true;
-  const text = sayQueue.shift();
+  const { text, bob } = sayQueue.shift();
+  talking(true);
   try {
-    const r = await fetch('/api/speak', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ text }) });
+    const r = await fetch('/api/speak', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ text, ...(bob && voiceNet.netVoices ? { bob } : {}) }) });
     if (!r.ok) throw new Error('no voice');
     const url = URL.createObjectURL(await r.blob());
     const a = new Audio(url);
     talkingUntil = Date.now() + 60000;
-    await new Promise((res) => { a.onended = res; a.onerror = res; a.play().catch(res); });
+    await new Promise((res) => { stopSaying = () => { a.pause(); res(); }; a.onended = res; a.onerror = res; a.play().catch(res); });
+    stopSaying = null;
     URL.revokeObjectURL(url);
-  } catch { ownVoice = false; browserSpeak(text); }
+  } catch { ownVoice = false; browserSpeak(text, bob); }
   talkingUntil = 0;
   saying = false;
+  if (!sayQueue.length) talking(false);
   sayNext();
 }
+// Stop reading aloud now (Talk over Bob, or the speaker switch going off): the queue empties too.
+function hush() { sayQueue.length = 0; try { stopSaying?.(); } catch {} try { speechSynthesis.cancel(); } catch {} talkingUntil = 0; talking(false); }
 let winVoiceName = '';
 window.addEventListener('bob-voice', (e) => { winVoiceName = e.detail?.windowsVoice || ''; });
-function browserSpeak(text) {
+function browserSpeak(text, bob = '') {
   if (!('speechSynthesis' in window)) return;
   const plain = text.replace(/```[\s\S]*?```/g, ' (code) ').replace(/[*_`#>]/g, '').replace(/https?:\/\/\S+/g, 'a link').slice(0, 800);
   const u = new SpeechSynthesisUtterance(plain);
@@ -306,15 +403,16 @@ function browserSpeak(text) {
   const v = (winVoiceName && all.find((x) => x.name === winVoiceName)) || all.find((x) => /en-(CA|US|GB)/.test(x.lang) && /male|david|guy|george|ryan/i.test(x.name));
   if (v) u.voice = v;
   u.rate = 1.02;
-  u.onstart = () => { talkingUntil = Date.now() + 60000; };
-  u.onend = () => { talkingUntil = 0; };
+  if (bob && voiceNet.netVoices) u.pitch = pitchFor(bob);
+  u.onstart = () => { talkingUntil = Date.now() + 60000; talking(true); };
+  u.onend = () => { talkingUntil = 0; if (!speechSynthesis.pending) talking(false); };
   speechSynthesis.speak(u);
 }
 // Read aloud skips stage directions like *yawns* and just says the words.
 const sayAside = (t) => String(t).replace(/\*[^*]+\*\s*/g, '').trim();
-function speak(text) {
+function speak(text, bob = '') {
   if (!speakOn || !text) return;
-  if (ownVoice) { sayQueue.push(text); sayNext(); } else browserSpeak(text);
+  if (ownVoice) { sayQueue.push({ text, bob }); sayNext(); } else browserSpeak(text, bob);
 }
 const speakBtn = $('speak');
 // Toggles show their state in words, not just a colour.
@@ -324,7 +422,7 @@ function setToggle(btn, on, title) {
   if (title) btn.title = title;
 }
 const syncSpeak = () => setToggle(speakBtn, speakOn, speakOn ? 'Bob reads his replies aloud (click to stop)' : 'Bob reads his replies aloud');
-speakBtn.onclick = () => { speakOn = !speakOn; store.set('bob-speak', speakOn ? '1' : '0'); if (!speakOn) { sayQueue.length = 0; try { speechSynthesis.cancel(); } catch {} } syncSpeak(); };
+speakBtn.onclick = () => { speakOn = !speakOn; store.set('bob-speak', speakOn ? '1' : '0'); if (!speakOn) hush(); syncSpeak(); };
 syncSpeak();
 
 const notifyBtn = $('notify');
@@ -344,8 +442,19 @@ syncNotify();
 
 $('cellarBtn').onclick = () => cellar.open('shop', 'roles');
 $('settingsBtn').onclick = () => cellar.open('settings');
+// Saved prompts: "/" at the start of the message box (off unless turned on in Settings, How Bob works).
+createPromptMenu(input, { openSettings: () => cellar.open('settings', null, { jump: 'adv-prompts' }) });
 // 1.5.141: the Bob-Net heading in Now running opens Settings at Bob-Net (advanced shown, the section open).
 $('nowNetHead')?.addEventListener('click', () => cellar.open('settings', null, { jump: 'adv-bobnet' }));
+// What the Settings window changed: pass its announcements on, press the two voice buttons for it, and read the
+// look and theme again.
+settingsChan?.addEventListener('message', (e) => {
+  const m = acceptSettings(e.data); if (!m) return;
+  if (m.kind === 'press') { $(m.id)?.click(); return; }
+  if (m.kind === 'event') { (m.name === 'bob-door' ? document : window).dispatchEvent(new CustomEvent(m.name, { detail: m.detail })); return; }
+  jobHelps.refresh();
+  fetch('/api/settings').then((r) => r.json()).then((st) => { setLook(st.look); applyStyle(st.style); applyMath(st.mathView === true, true); shortcutsOn = st.shortcuts === true; applyReading(st); everyday?.settings(st); }).catch(() => {});
+});
 // Settings, Get models and Style are pages in the main area: Chat or New chat goes back to the chat.
 for (const id of ['chatBtn', 'newchat']) $(id).addEventListener('click', () => { if ($('cellar').open) $('cellar').close(); });
 $('styleBtn').onclick = () => cellar.open('shop', 'style');
@@ -357,11 +466,28 @@ const tidyPage = createTidy({ api, onCount: (n) => countBadge($('tidyBtn'), n) }
 $('topicsBtn').onclick = () => topicsPage.open();
 $('tidyBtn').onclick = () => tidyPage.open();
 // 1.5.141: 🧪 Lab in the left pane while Show the Computer Science Lab is on (1.5.172: on unless switched off).
-const labPage = createLab({ api, note: (t) => note(t) });
-$('labBtn').onclick = () => labPage.open();
+// The Lab's "take me there" buttons: Get models, Settings (Engines), the chat.
+const labGo = (where) => {
+  labPage.close();
+  if (where === 'models') $('cellarBtn').click();
+  else if (where === 'engines') cellar.open('settings', null, { jump: 'adv-engines' });
+  else if (where === 'chat') $('input')?.focus();
+  try { window.focus(); } catch {}
+};
+const labPage = createLab({ api, note: (t) => note(t), go: labGo });
+// On a computer the Lab opens in its own window, like Settings; on a phone or tablet it stays a page here.
+const labChan = 'BroadcastChannel' in window ? new BroadcastChannel(LAB_CHANNEL) : null;
+let labWin = null;
+function openLabWindow() {
+  if (!labWantsWindow({ hasChannel: Boolean(labChan), coarse: matchMedia('(pointer: coarse)').matches, standalone: matchMedia('(display-mode: standalone)').matches, width: window.innerWidth })) return false;
+  try { if (!labWin || labWin.closed) labWin = window.open(LAB_URL, LAB_WINDOW_NAME, LAB_WINDOW_SIZE); labWin?.focus(); } catch { labWin = null; }
+  return Boolean(labWin);
+}
+labChan?.addEventListener('message', (e) => { const m = labAccept(e.data); if (m?.kind === 'go') labGo(m.where); else if (m?.kind === 'note') note(m.text); });
+$('labBtn').onclick = () => { if (!openLabWindow()) labPage.open(); };
 const showLab = (on) => { $('labBtn').hidden = !on; };
 window.addEventListener('bob-lab-switch', (e) => showLab(e.detail?.on === true));
-fetch('/api/settings').then((r) => r.json()).then((st) => showLab(st.computerLab !== false)).catch(() => {});
+fetch('/api/settings').then((r) => r.json()).then((st) => { showLab(st.computerLab !== false); if (st.language) followSaved(st.language); }).catch(() => {});
 const adventurePage = createAdventure({ api }); // 1.5.117 🎲 Adventure
 $('adventureBtn').onclick = () => adventurePage.open();
 const gamesPage = createGames({ api }); // 1.5.121 🧩 Games
@@ -369,27 +495,44 @@ $('gamesBtn').onclick = () => gamesPage.open();
 const helpPage = createHelp();
 $('helpBtn').onclick = () => helpPage.open();
 window.addEventListener('bob-tidy', () => tidyPage.open());
+// Settings, Where my memories came from: Open the chat a memory was learned in (memory-more.js).
+window.addEventListener('bob-open-chat', (e) => { const id = String(e.detail?.id || '').replace(/[^a-zA-Z0-9-]/g, ''); if (!id) return; if ($('cellar').open) $('cellar').close(); openChat(id); try { window.focus(); } catch {} });
 // "Ask Bob what he thinks" (Equip Bob, Attributes): puts the question in the chat and sends it.
 window.addEventListener('bob-ask', (e) => { const t = String(e.detail || '').slice(0, 300); if (!t) return; $('input').value = t; $('composer').requestSubmit(); });
-// Click Bob (or press Enter on him) to open Equip Bob.
+// 1.5.207 Click Bob (or press Enter on him) for his small menu: what he's doing, the brain loaded, and doors to
+// Settings, Brains, Style and Get models. The old Equip Bob screen no longer opens from here.
 bobCanvas.tabIndex = 0;
 bobCanvas.setAttribute('role', 'button');
-bobCanvas.title = 'Equip Bob: his models, attributes and look';
-bobCanvas.setAttribute('aria-label', 'Bob. Open Equip Bob');
-bobCanvas.addEventListener('click', () => cellar.open('shop', 'roles'));
-bobCanvas.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cellar.open('shop', 'roles'); } });
+bobCanvas.title = 'Bob: what I\'m doing, my brain, and my settings';
+bobCanvas.setAttribute('aria-label', 'Bob. Open my menu');
+createBobMenu({
+  anchor: bobCanvas,
+  doors: { brains: () => cellar.open('settings', null, { jump: 'adv-brains' }), style: () => cellar.open('shop', 'style'), models: () => cellar.open('shop', 'roles') },
+  getStatus: async () => (await fetch('/api/status')).json(),
+  getNames: async () => Object.fromEntries((((await (await fetch('/api/roles')).json()).options || {}).llm || []).map((o) => [o.value, o.label])),
+  saidNow: () => statusEl.title || statusEl.textContent
+});
 // A past chat from Topics or search: switch to it and show its recent part (older parts are summed up).
 async function openChat(id, msgId) {
   if (busy) { note('Bob is busy in this chat. Open the other one when he has finished.'); return; }
   sessionId = id;
   store.set('bob-session', sessionId);
-  log.innerHTML = '';
+  harnessChat?.moved(sessionId); // a guest chat left behind is let go
+  log.innerHTML = ''; stick = true;
+  drawFill(null); // item 13: the meter is for the chat it was measured in
+  presetPicker.load();
   await loadHistory(40);
   const el = msgId && log.querySelector(`[data-mid="${CSS.escape(msgId)}"]`);
   if (el) { el.scrollIntoView({ block: 'center' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2500); }
   else if (msgId) note('That message is in the older part of this chat, which Bob keeps summed up. The Topics page shows it in full.');
 }
+// Item 238: your messages whose turn changed files, notes or memory (the … menu offers Undo changes on them).
+const turnUndo = new Set();
+async function loadTurnUndo() {
+  try { const r = await (await fetch('/api/turn-changes?session=' + encodeURIComponent(sessionId))).json(); turnUndo.clear(); for (const id of r.asks || []) turnUndo.add(id); } catch {}
+}
 async function loadHistory(n = 20) {
+  loadTurnUndo();
   try {
     const h = await (await fetch('/api/history?session=' + encodeURIComponent(sessionId))).json();
     for (const m of h.slice(-n)) {
@@ -398,17 +541,32 @@ async function loadHistory(n = 20) {
       if (m.role !== 'user' && !String(m.content || '').trim() && !m.media?.length) { if (m.correction) note(m.correction, 'error'); continue; }
       const el = decorate(add(m.role === 'user' ? 'msg you' : 'msg bob', m.role === 'user' ? esc(m.content) + picsHtml(m.pics) : render(m.content) + mediaHtml(m.media)), m.content, m.media);
       if (m.id) el.dataset.mid = m.id;
+      if (m.role !== 'user') bubbleMedia.set(el, m.media || []);
+      if (m.edited) markEdited(el, m.was, m.editedBy);
+      if (m.versions?.length) markVersions(el, m.versions);
+      if (m.steps?.length) markSteps(el, m.steps);
+      if (m.replaced) markReplaced(el); // item 190: a corrected reply that was tried again
       if (m.correction) note(m.correction, 'error');
     }
   } catch {}
+  drawRedo();
 }
 $('newchat').onclick = () => {
   if (busy) return;
   sessionId = 'chat-' + Date.now();
   store.set('bob-session', sessionId);
-  log.innerHTML = '';
+  harnessChat?.moved(sessionId);
+  log.innerHTML = ''; stick = true;
+  presetPicker.load({ apply: false });
   note('New conversation. Bob still remembers what\'s in his memory file and on your to-do list.');
 };
+// Items 62 to 72 (public/harness-chat.js), all off unless switched on: the crash card, quiet hours, 📌 Pin, ⑂ Try from
+// here, 👤 Guest chat, the weekly line and the ask box's Open in Bob.
+const harnessChat = createHarnessChat({
+  log, input, add, note, session: () => sessionId, open: (id) => openChat(id),
+  openSettings: (jump) => cellar.open('settings', null, jump ? { jump } : {}),
+  start: (id, line) => { if (busy) return false; if ($('cellar').open) $('cellar').close(); sessionId = id; store.set('bob-session', sessionId); harnessChat.moved(sessionId); log.innerHTML = ''; stick = true; presetPicker.load({ apply: false }); note(line); input.focus(); return true; }
+});
 
 // ---------- Downloads and installs: always visible, even with the cellar closed ----------
 const dlbar = $('dlbar');
@@ -461,11 +619,22 @@ window.addEventListener('bob-mind-dock', (e) => mindTitle(e.detail.docked));
 
 // ---------- Events from the brain ----------
 let brainSoon = null;
+const shownCards = new Set(); // approval card ids already on this page
 function onEvent(ev) {
+  if (ev.type === 'beat') return; // item 214: only proof Bob is still answering (connect() watches for it)
+  if (ev.type === 'froze') { // item 214: Bob was stuck for a while and is back
+    const el = note(ev.text, 'announce');
+    if (ev.canRestart) { const b = document.createElement('button'); b.type = 'button'; b.className = 'link'; b.textContent = 'Restart Bob'; b.onclick = () => { b.disabled = true; post('/api/watchdog/restart', {}).catch(() => {}); }; el.append(' ', b); }
+    return;
+  }
   if (ev.type === 'brain' || ev.type === 'status') { clearTimeout(brainSoon); brainSoon = setTimeout(() => brainBar.refresh(), 250); }
   if (ev.type === 'brain') return;
   if (ev.type === 'status') return setStatus(ev);
-  if (ev.sessionId && ev.sessionId !== sessionId && ev.type !== 'reminder') return;
+  // 1.5.207 PC check: an OK card from another chat (a schedule, the phone, a job in another chat) showed only as
+  // "Needs your OK" in the title. It shows here too, marked with where it's from; its result clears it here as well.
+  const elsewhere = ev.sessionId && ev.sessionId !== sessionId;
+  const foreignCard = elsewhere && ev.id && (ev.type === 'approval' || (ev.type === 'approval-result' && shownCards.has(ev.id)));
+  if (elsewhere && ev.type !== 'reminder' && !foreignCard) return;
   if (ev.type === 'more-pictures' || ev.type === 'more-pictures-done') return more.handle(ev);
   if (ev.type === 'hands') handsSwitch.update(ev.settings);
   if (ev.type === 'hands') quickSwitches.update(ev.settings); // Autonomy and Screen use
@@ -473,6 +642,8 @@ function onEvent(ev) {
   if (['lending', 'borrow', 'away', 'pair-done', 'queue'].includes(ev.type)) layout.net(); // 1.5.123: the Bob-Net party in Now running
   if (quarantineResult(ev)) return;
   if (onHandsEvent(ev, { add, scrollDown, note })) return;
+  if (jobHelps.event(ev)) return; // Settings, Jobs: the time bar and the receipt card
+  if (everyday?.event(ev)) return; // ⏱ Focus done
   switch (ev.type) {
     case 'queue':
       drawQueue(ev.jobs || []);
@@ -578,6 +749,9 @@ function onEvent(ev) {
       note(ev.text, 'announce');
       scrollDown();
       return;
+    case 'reply-break': // Answer messages mid-job: the job's next words go in a new bubble, under the quick reply
+      endReply(ev);
+      return;
     case 'start':
       endReply(ev);
       running.add(ev.turnId);
@@ -596,6 +770,8 @@ function onEvent(ev) {
       return;
     case 'token': {
       if (!replies.has(ev.turnId || '-') && !ev.text.trim()) break;
+      // Item 190: the first new words after a correction in this turn: the corrected reply above is replaced.
+      if (ev.text.trim() && correctedBubbles.has(ev.turnId || '-')) { markReplaced(correctedBubbles.get(ev.turnId || '-')); correctedBubbles.delete(ev.turnId || '-'); }
       const r = ensureReply(ev);
       r.text += ev.text;
       drawReply(r);
@@ -603,6 +779,30 @@ function onEvent(ev) {
       scrollDown();
       break;
     }
+    case 'token-undo': { // item 193: a retry went another way; the words that differ are taken back
+      const r = replies.get(ev.turnId || '-');
+      const n = Math.max(0, Number(ev.chars) || 0);
+      if (r && n) { r.text = r.text.slice(0, Math.max(0, r.text.length - n)); drawReply(r); }
+      break;
+    }
+    case 'retry-note': // item 193: the brain dropped out and is loading again; a line, not words in the answer
+      note(ev.text, 'announce');
+      scrollDown();
+      break;
+    case 'answer-id': { // item 11: the answer just given now has its id (Save as a test, Try again)
+      const last = [...log.querySelectorAll(':scope > .msg.bob:not(.aside-msg)')].pop();
+      if (last && !last.dataset.mid && ev.id) { last.dataset.mid = ev.id; drawRedo(); }
+      break;
+    }
+    case 'chat-fill': drawFill(ev); break; // item 13
+    case 'steps': { // item 10: How I got here, under the answer just given
+      const last = [...log.querySelectorAll(':scope > .msg.bob:not(.aside-msg)')].pop();
+      if (last && ev.list?.length) markSteps(last, ev.list);
+      break;
+    }
+    case 'stuck': // item 8: he gave up on this one; offer the harder try under it
+      stuckNow = true; drawRedo();
+      break;
     case 'announce':
       endReply(ev);
       note(ev.text, 'announce');
@@ -641,11 +841,12 @@ function onEvent(ev) {
       else if (ev.action === 'used') add('note borrow muted', `🏗 ${esc(ev.rental)}: about ${esc(ev.usd)} so far this job; ${esc(ev.monthUsd)} this month.`);
       else if (ev.action === 'stop') add('note borrow', ev.stopped ? `🏗 Stopped the rented machine (${esc(ev.service)}) after ${ev.minutes} min, ${esc(ev.usd)}: ${esc(ev.why)}.` : `🏗 I couldn't stop the rented machine on ${esc(ev.service)} (${esc(ev.machine || '')}). Please stop it on their website so it doesn't keep billing.`);
       else if (ev.action === 'warn') add('note borrow', `🏗 ${esc(ev.text)}`);
-      else if (ev.action === 'leftover') add('note borrow', `🏗 ${ev.machines.length === 1 ? 'A rented machine is' : `${ev.machines.length} rented machines are`} still running from before: ${ev.machines.map((m) => `${esc(m.service)} ${esc(m.id)}${m.perHour ? ` (about $${(+m.perHour).toFixed(2)} an hour)` : ''}`).join(', ')}. Stop them in Settings, Show advanced settings, Online services, Rented brains.`);
+      else if (ev.action === 'leftover') add('note borrow', `🏗 ${ev.machines.length === 1 ? 'A rented machine is' : `${ev.machines.length} rented machines are`} still running from before: ${ev.machines.map((m) => `${esc(m.service)} ${esc(m.id)}${m.perHour ? ` (about $${(+m.perHour).toFixed(2)} an hour)` : ''}`).join(', ')}. Stop them in Settings, Online services, Rented brains.`);
       else if (ev.action === 'slot') { rentSwitch.update(ev.rental); window.dispatchEvent(new CustomEvent('bob-rent-slot', { detail: { rental: ev.rental } })); }
       break;
     case 'borrow': // 1.5.55 Share brains: another of your Bobs thinks this reply (src/share-brains.js)
       endReply(ev);
+      if (ev.action === 'start') borrowedBy.set(ev.turnId, String(ev.name || '')); else borrowedBy.delete(ev.turnId); // A voice per Bob
       if (ev.action === 'start') add('note borrow', `📡 Borrowed brain: ${esc(ev.name)}${ev.brain ? ` (${esc(ev.brain)})` : ''} thinks this one. The tools still run here.`);
       else add('note borrow', `📡 ${esc(ev.name)} ${ev.why === 'too slow' ? 'didn\'t answer in time' : ev.partial ? 'dropped out mid-answer' : 'couldn\'t take it'}, so Bob thinks this one himself.`);
       break;
@@ -655,7 +856,7 @@ function onEvent(ev) {
       else add('note borrow', `📡 ${esc(ev.name)} ${esc(ev.why || 'couldn\'t take it')}, so I'll do this one here.`);
       break;
     case 'tool':
-      if (!/^hat:/.test(ev.summary)) note(`· ${ev.summary}`);
+      if (!/^hat:/.test(ev.summary) && ev.name !== 'edit_my_message') note(`· ${ev.summary}`); // an edit shows as "edited" on the message itself
       endReply(ev);
       break;
     case 'house': { // 1.5.34: "Used your house style: 30 seconds · Change" (House style on Equip Bob)
@@ -669,7 +870,21 @@ function onEvent(ev) {
     case 'diagram': { addMedia(ev, 'diagram'); break; } // 1.5.95 drawn by save-as.js
     case 'made': { addMade(ev); break; }
     case 'approval': {
-      endReply(ev);
+      // 1.5.206: a page that connects is handed the cards still waiting; one it already shows isn't added twice.
+      if (ev.id && shownCards.has(ev.id)) break;
+      if (ev.id) shownCards.add(ev.id);
+      if (elsewhere) {
+        const from = add('note', `🔔 A job in another chat needs your OK. You can answer it here. <button type="button" class="link">Open that chat</button>`);
+        from.querySelector('button').onclick = () => openChat(ev.sessionId);
+      } else endReply(ev);
+      // Item 25: a question with choices (ask_user). The pick goes back as the card's note.
+      if (ev.ask) {
+        const card = add('approval ask-card', `<p><strong>Bob asks:</strong> ${esc(ev.ask.question)}</p><div class="row">${ev.ask.choices.map((c, i) => `<button type="button" class="big" data-pick="${i}">${esc(c)}</button>`).join('')}</div><form class="row ask-other"><label class="sr-only" for="ask-${esc(ev.id)}">Something else</label><input id="ask-${esc(ev.id)}" type="text" maxlength="500" placeholder="Something else…"><button type="submit">Send</button></form>`);
+        const pick = async (words) => { if (!words) return; card.querySelector('.row').outerHTML = `<div class="done">You picked: ${esc(words)}</div>`; card.querySelector('.ask-other')?.remove(); await post('/api/approve', { id: ev.id, allow: true, note: words }); };
+        for (const b of card.querySelectorAll('[data-pick]')) b.onclick = () => pick(ev.ask.choices[Number(b.dataset.pick)]);
+        card.querySelector('.ask-other').onsubmit = (e) => { e.preventDefault(); pick(card.querySelector('.ask-other input').value.trim()); };
+        ping('Bob has a question', ev.ask.question); layout.needsYou(); break;
+      }
       // The reviewer asks whether to quarantine Bob (quarantine.js, opt-in).
       if (quarantineCard(ev, { add, answer: (q) => post('/api/approve', { id: ev.id, allow: q }) })) { ping('Bob\'s reviewer needs you', ev.text); layout.needsYou(); break; }
       // 1.5.78: Bob's plan for a big job, with its OKs on the same card (plan-card.js).
@@ -680,10 +895,11 @@ function onEvent(ev) {
       if (handsApproval(ev, { add, answer: (allow, rows) => post('/api/approve', { id: ev.id, allow, rows }) })) { ping('Bob needs your OK', ev.text); layout.needsYou(); break; }
       const diff = ev.diff ? `<pre class="diff"><code>${esc(ev.diff)}</code></pre>` : '';
       const all = ev.allowAll ? '<button class="all">Allow the rest of this job</button>' : '';
-      const card = add('approval', `<p><strong>Bob wants to:</strong> ${esc(ev.text)}</p>${diff}<div class="row"><button class="yes">Allow</button>${all}<button class="no">Deny</button></div>`);
+      const card = add('approval', `<p><strong>Bob wants to:</strong> ${esc(ev.text)}</p>${diff}<div class="row"><button class="yes">Allow</button>${all}<button class="no">Deny</button>${jobHelps.whyBox()}</div>`);
       const answer = async (allow) => {
-        card.querySelector('.row').outerHTML = `<div class="done">${allow === 'all' ? 'Allowed for the rest of this job' : allow ? 'Allowed' : 'Denied'}</div>`;
-        await post('/api/approve', { id: ev.id, allow });
+        const why = allow ? '' : String(card.querySelector('.why-not')?.value || '').trim(); // Settings, Jobs: Remember a "no"
+        card.querySelector('.row').outerHTML = `<div class="done">${allow === 'all' ? 'Allowed for the rest of this job' : allow ? 'Allowed' : why ? `Denied: ${esc(why)}` : 'Denied'}</div>`;
+        await post('/api/approve', { id: ev.id, allow, ...(why ? { note: why } : {}) });
       };
       card.querySelector('.yes').onclick = () => answer(true);
       card.querySelector('.no').onclick = () => answer(false);
@@ -699,28 +915,50 @@ function onEvent(ev) {
       for (const b of el.querySelectorAll('button')) b.onclick = () => { el.remove(); if (b.dataset.t === 'look') tidyPage.open(); };
       break;
     }
-    case 'lab': labPage.update(ev.run); break; // 1.5.141
+    case 'lab': labPage.update(ev.run); break;
+    case 'lab-queue': labPage.queueUpdate?.(ev.queue); break; // Nov 11: the Lab's job queue
+    case 'lab-recheck': note(ev.text); break; // Nov 11: a brain slipped after an engine update // 1.5.141 (the Lab's own window reads these itself)
     case 'lab-full': labPage.fullUpdate(ev.full); break; // Bring in a full-size brain
     case 'lab-diffusion': document.dispatchEvent(new CustomEvent('lab-diffusion', { detail: ev.now })); break; // Playground: Diffusion brains, live
-    case 'lab-done': note(ev.ok ? `🧪 The Lab finished ${ev.name}${ev.score != null ? `: ${ev.score} out of 100 on the Lab test` : ''}. Open the Lab to see the report.` : `🧪 The Lab stopped on ${ev.name}: ${ev.error}`); break;
+    case 'lab-extras': setSaveToLab(ev.extras?.saveQuestions === true); break; // Lab item 102, switched in the Lab
+    case 'lab-done':
+      note(ev.ok ? `🧪 The Lab finished ${ev.name}${ev.score != null ? `: ${ev.score} out of 100 on the Lab test` : ''}. Open the Lab to see the report.` : `🧪 The Lab stopped on ${ev.name}: ${ev.error}`);
+      // Lab item 110, "Tell my phone when a Lab job ends": a phone's browser (not this replicant matrix's own window) gets a notification.
+      try { if (ev.phone && !['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname) && 'Notification' in window && Notification.permission === 'granted') new Notification(ev.ok ? 'Bob: Lab job done' : 'Bob: Lab job stopped', { body: ev.ok ? ev.name : `${ev.name}: ${ev.error || ''}`.slice(0, 200), icon: '/icons/bob-192.png' }); } catch {}
+      break;
     case 'tidy-done':
       topicsPage.refresh();
       if (ev.error) note(`Housekeeping stopped: ${ev.error}`, 'error');
       else note(`Housekeeping: ${[ev.summaries && `summed up ${ev.summaries} chat${ev.summaries === 1 ? '' : 's'}`, ev.topics && `filed ${ev.topics} chat${ev.topics === 1 ? '' : 's'} under topics`, ev.auto && `tidied ${ev.auto} thing${ev.auto === 1 ? '' : 's'}`, ev.ask && `${ev.ask} thing${ev.ask === 1 ? '' : 's'} to look at in Tidy up`].filter(Boolean).join(', ') || 'nothing to do'}.${ev.error ? '' : ''}`);
       if (ev.ask != null) countBadge($('tidyBtn'), ev.ask);
       break;
+    case 'carried': // Carry on on another Bob (src/carry.js): another of your Bobs or your phone handed a chat over
+      add('note borrow', `📡 ${esc(ev.from || 'Another of your Bobs')} handed over a chat: <strong>${esc(ev.title || '')}</strong>. <button type="button" class="link" data-carried="${esc(ev.id || '')}">Open it</button>`);
+      break;
+    case 'secret-note': { // 🧰 More tools, "Let Bob make passwords": shown here once, never saved, never spoken
+      const el = add('approval', secretNoteHtml(ev));
+      wireSecretNote(el, ev);
+      break;
+    }
     case 'reminder':
-      add('approval', `<p><strong>Reminder:</strong> ${esc(ev.text)}</p><div class="done">${esc(ev.local || '')}</div>`);
+      add('approval', `<p><strong>${ev.watch ? 'Page watch' : 'Reminder'}:</strong> ${esc(ev.text)}</p><div class="done">${esc([ev.local, ev.every ? `repeats every ${ev.every}` : ''].filter(Boolean).join(' · '))}</div>`);
+      if (ev.quiet && !ev.urgent) break; // Quiet hours: in the chat only, unless it's urgent
       speak('Reminder: ' + ev.text);
       badge(true);
       try { if ('Notification' in window && Notification.permission === 'granted' && store.get('bob-alerts', '1') === '1') new Notification('Bob: reminder', { body: ev.text, icon: '/icons/bob-192.png', requireInteraction: true }); } catch {}
       break;
+    case 'digest': {
+      // A Sunday digest (src/digest.js): the week in one short note, also saved in the digests folder.
+      add('approval', `<p><strong>Sunday digest:</strong> ${esc(ev.title || '')}</p>${render(String(ev.text || '').replace(/^# .*\n+/, '').replace(/^## (.*)$/gm, '**$1**'))}${ev.file ? `<div class="row"><button type="button" class="mini" data-open="${esc(ev.file)}">Open the note</button></div>` : ''}`);
+      badge(true);
+      break;
+    }
     case 'checkin': {
       // 1.5.78 Check-ins: only sent when something needs you (src/checkins.js). Nothing is changed by it.
       const items = ev.items || [];
       add('approval', `<p><strong>Check-in:</strong> ${items.length} thing${items.length === 1 ? '' : 's'} need${items.length === 1 ? 's' : ''} you.</p><ul>${items.map((i) => `<li><strong>${esc(i.title)}</strong>${i.detail ? ` <span class="muted">${esc(i.detail)}</span>` : ''}</li>`).join('')}</ul><div class="done">${esc(ev.at ? new Date(ev.at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '')}</div>`); // same style as Settings, Check-ins
       badge(true);
-      try { if ('Notification' in window && Notification.permission === 'granted' && store.get('bob-alerts', '1') === '1') new Notification('Bob: check-in', { body: items.map((i) => i.title).join('\n').slice(0, 300), icon: '/icons/bob-192.png' }); } catch {}
+      try { if (!quietNow() && 'Notification' in window && Notification.permission === 'granted' && store.get('bob-alerts', '1') === '1') new Notification('Bob: check-in', { body: items.map((i) => i.title).join('\n').slice(0, 300), icon: '/icons/bob-192.png' }); } catch {}
       break;
     }
     case 'error':
@@ -728,6 +966,23 @@ function onEvent(ev) {
       life.react('oops');
       note(ev.text, 'error');
       break;
+    case 'said': { // Let Bob fix his own messages: the id of what he just said, so the bubble can be found if he changes it
+      const r = replies.get(ev.turnId || '-');
+      if (r && ev.id) { r.el.dataset.mid = `${r.el.dataset.mid ? `${r.el.dataset.mid} ` : ''}${ev.id}`; liveWords.set(r.el, r.text); bubbleMedia.set(r.el, r.media); }
+      return;
+    }
+    case 'edited': editedMsg(ev); return;
+    case 'msg-edited': editedMsg(ev); return; // you changed Bob's words with the ... menu (msg-menu.js), here or in another window
+    case 'turn-changed': if (ev.askId) turnUndo.add(ev.askId); return; // item 238
+    case 'asked': { // Try again and Edit: the id of the message you sent, so Edit can find it in the saved chat
+      const bub = jobBubbles.get(ev.turnId);
+      if (bub && ev.id) { bub.dataset.mid = ev.id; drawRedo(); }
+      return;
+    }
+    case 'rewound': // Try again or Edit pressed in another window of this chat: draw it again from the saved chat
+      if (!redoing && ev.id !== redoneId) { log.innerHTML = ''; stick = true; loadHistory(40); }
+      redoneId = '';
+      return;
     case 'correction':
       // The app's own check, under Bob's reply: he said he did something on the PC and no action ran.
       endReply(ev);
@@ -746,6 +1001,7 @@ function onEvent(ev) {
       break;
     }
     case 'done': {
+      correctedBubbles.delete(ev.turnId || '-'); // item 190: a correction with no second try stays as it is
       const rep = replies.get(ev.turnId || '-');
       const finished = rep?.text;
       // Never leave an empty Bob bubble (nothing said, nothing made).
@@ -757,7 +1013,8 @@ function onEvent(ev) {
       running.delete(ev.turnId);
       setBusy(running.size > 0);
       if (rep?.media?.length) life.react('proud'); else if (finished) life.react('done');
-      if (finished) { speak(finished); if (aside) speak(sayAside(aside)); ping('Bob replied', finished.slice(0, 120)); }
+      const by = borrowedBy.get(ev.turnId) || ''; borrowedBy.delete(ev.turnId);
+      if (finished) { speak(finished, by); if (aside) speak(sayAside(aside)); ping('Bob replied', finished.slice(0, 120)); }
       break;
     }
   }
@@ -765,11 +1022,17 @@ function onEvent(ev) {
 
 function connect() {
   const es = new EventSource('/api/events');
-  es.onmessage = (m) => { try { onEvent(JSON.parse(m.data)); } catch (e) { console.error(e); } };
+  // Item 214: Bob sends a beat every 20 s. A minute with nothing at all while still connected means he's stuck.
+  let heard = Date.now(), quiet = false, lastStatus = null;
+  es.onmessage = (m) => {
+    heard = Date.now();
+    try { const ev = JSON.parse(m.data); if (ev.type === 'status') lastStatus = ev; if (quiet) { quiet = false; if (lastStatus) setStatus(lastStatus); } onEvent(ev); } catch (e) { console.error(e); }
+  };
+  setInterval(() => { if (!dropped && !quiet && es.readyState === 1 && Date.now() - heard > 65000) { quiet = true; statusEl.textContent = 'Bob hasn\'t answered for a minute. If this lasts, close Bob and open him again.'; statusEl.className = 'status waiting'; } }, 10000);
   let dropped = false;
   es.onerror = () => { dropped = true; statusEl.textContent = 'Bob\'s brain isn\'t answering. Retrying...'; statusEl.className = 'status waiting'; };
   // Back after a gap: anything Bob made meanwhile is in his saved replies, so show what this window missed.
-  es.onopen = () => { if (dropped) { dropped = false; catchUpMedia(); } };
+  es.onopen = () => { if (dropped) { dropped = false; catchUpMedia(); } heard = Date.now(); };
 }
 async function catchUpMedia() {
   try {
@@ -788,6 +1051,9 @@ async function post(url, data) {
 function setBusy(b) {
   busy = b;
   stopBtn.hidden = !b;
+  jobHelps.busy(b); // Settings, Jobs: Stop after this step shows beside Stop
+  drawToBottom(); // the dots on the go-to-bottom button
+  drawRedo(); // Try again and Edit hide while Bob is busy
 }
 
 // ---------- The queue: what's waiting, what's running, what failed ----------
@@ -899,17 +1165,311 @@ function mediaHtml(media) {
 }
 // ---------- Copy buttons and file cards (right-click and Ctrl+C often don't get through remote desktop) ----------
 const rawText = new WeakMap();
+// Let Bob fix his own messages (Settings, How Bob works; src/edit-own.js): the words and things made of each bubble,
+// so a message he changes later is drawn again in place, with "edited" under it.
+const liveWords = new WeakMap(), bubbleMedia = new WeakMap();
+function markEdited(el, was, by) {
+  el.querySelector(':scope > .edited-note')?.remove();
+  const box = document.createElement('div');
+  box.className = 'edited-note';
+  const who = by === 'you' && el.classList.contains('bob') ? 'You changed Bob\'s words here' : `${el.classList.contains('you') ? 'You' : 'Bob'} changed this message`;
+  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false" title="${who}. Press to see what it said first.">edited</button><div class="edited-was muted" hidden><strong>First said:</strong> ${esc(was || '')}</div>`;
+  const b = box.querySelector('button'), w = box.querySelector('.edited-was');
+  b.onclick = () => { w.hidden = !w.hidden; b.setAttribute('aria-expanded', String(!w.hidden)); };
+  el.insertBefore(box, el.querySelector(':scope > .msg-tools'));
+}
+function editedMsg(ev) {
+  const el = ev.id && log.querySelector(`[data-mid~="${CSS.escape(ev.id)}"]`);
+  if (!el) return; // in the older part of the chat, or another chat: the saved chat has the new words
+  const live = [...replies.values()].find((r) => r.el === el);
+  const old = live ? live.text : rawText.get(el) ?? liveWords.get(el) ?? '';
+  const one = !/\s/.test(el.dataset.mid.trim());
+  const text = ev.before && old.includes(ev.before) ? old.replace(ev.before, ev.text) : one ? ev.text : null;
+  if (text == null) return; // two of his messages share this bubble and the old words weren't found: a reload shows it right
+  const media = live ? live.media : bubbleMedia.get(el) || [];
+  if (live) { live.text = text; live.mediaKey = null; drawReply(live); }
+  else {
+    el.innerHTML = render(text) + (media.length ? `<div class="reply-media">${mediaHtml(media)}</div>` : '');
+    if (media.length) fillPeeks(el);
+    rawText.delete(el); liveWords.set(el, text);
+    decorate(el, text, media);
+  }
+  markEdited(el, ev.was, ev.by);
+  el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2500);
+}
+// ---------- Try again and Edit (Settings, How Bob works; src/redo.js). Off unless you turn it on. ----------
+// Try again is in the ... menu of Bob's latest answer; Edit in the ... menu of each of your messages Bob has saved. Either one takes back what
+// came after, keeps it under your message as an earlier version, and sends your message (again). Hidden while Bob is busy.
+let redoOnNow = false, redoing = false, redoneId = '';
+// Nov 11 (item 8): after Bob gives up (the same call three times), Try again also comes as "Try again, thinking harder":
+// the same message on High effort, so the big brain drafts it and the reviewer checks it.
+let stuckNow = false;
+const lastYou = () => [...log.querySelectorAll(':scope > .msg.you')].pop() || null;
+// Where Try again goes: Bob's latest answer, or your latest message while it has none. It's in that message's ... menu.
+function redoTarget() {
+  const you = lastYou();
+  if (!you?.dataset.mid) return null;
+  let answer = null;
+  for (let n = you.nextElementSibling; n; n = n.nextElementSibling) if (n.matches('.msg.bob:not(.aside-msg)')) answer = n;
+  return answer || you;
+}
+// Try again and Edit live in the ... menu, built fresh each time it opens; an open one shuts when Bob gets busy.
+function drawRedo() {
+  for (const x of log.querySelectorAll('[data-save-test], [data-redo][data-hard]')) x.remove();
+  if (busy || redoing || !redoOnNow) { window.dispatchEvent(new Event('bob-msg-menu-close')); return; }
+  // Two buttons stay under the latest answer, outside the ... menu: Save as a test (item 11), and after Bob gave up,
+  // Try again thinking harder (item 8).
+  const t = redoTarget(), answer = t?.matches('.msg.bob') ? t : null;
+  if (answer?.dataset.mid) answer.querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-save-test title="That answer went wrong? Keep the question as a test, so Bob\'s tests (and the Lab) learn from it">Save as a test</button>');
+  if (stuckNow && t) t.querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-redo data-hard title="Ask again on High effort: the bigger brain works it out and a second brain checks it">Try again, thinking harder</button>');
+}
+function versionsHtml(list) {
+  const cut = (t) => { const x = String(t || ''); return esc(x.length > 1500 ? x.slice(0, 1500) + '…' : x); };
+  return list.slice().reverse().map((v, i) => `<li><span class="muted">${i === 0 ? 'Latest earlier version' : `${i + 1} versions back`}${v.at ? ` · ${esc(new Date(v.at).toLocaleString())}` : ''}</span><div><strong>You:</strong> ${cut(v.text)}</div>${(v.said || []).map((m) => `<div><strong>${m.role === 'user' ? 'You' : 'Bob'}:</strong> ${cut(m.content) || (m.media?.length ? `<em>${m.media.length} thing${m.media.length === 1 ? '' : 's'} made</em>` : '')}</div>`).join('') || '<div class="muted">No answer yet.</div>'}</li>`).join('');
+}
+function markVersions(el, list) {
+  el.querySelector(':scope > .versions-note')?.remove();
+  if (!list?.length) return;
+  const box = document.createElement('div');
+  box.className = 'versions-note';
+  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false" title="What was here before Try again or Edit. Press to see it.">${list.length === 1 ? '1 earlier version' : `${list.length} earlier versions`}</button><ol class="versions-list muted" hidden>${versionsHtml(list)}</ol>`;
+  const b = box.querySelector('button'), w = box.querySelector('ol');
+  b.onclick = () => { w.hidden = !w.hidden; b.setAttribute('aria-expanded', String(!w.hidden)); };
+  el.insertBefore(box, el.querySelector(':scope > .msg-tools'));
+}
+// Item 10 (Nov 11): "How I got here" under a reply: each step, whether it worked, how long it took, how much came back and
+// which brain was thinking. Folded until pressed; Copy puts it on the clipboard as plain lines for a bug report.
+function stepsText(list) {
+  return list.map((x, i) => (x.correction ? `${i + 1}. ⚠ ${x.what || 'App\'s note'}${x.brain ? ` · ${x.brain}` : ''}` : `${i + 1}. ${x.ok ? '✓' : '✗'} ${x.what || x.tool} · ${(x.ms / 1000).toFixed(1)} s · ${Number(x.chars || 0).toLocaleString()} characters back${x.brain ? ` · ${x.brain}` : ''}`)).join('\n');
+}
+function markSteps(el, list) {
+  el.querySelector(':scope > .steps-note')?.remove();
+  if (!list?.length) return;
+  const box = document.createElement('div');
+  box.className = 'versions-note steps-note';
+  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false" title="Each step Bob took for this answer. Press to see them.">How I got here (${list.length} step${list.length === 1 ? '' : 's'})</button><div hidden><ol class="steps-list">${list.map((x) => (x.correction ? `<li class="step-correction">⚠ ${esc(x.what || 'App\'s note')}${x.brain ? ` <span class="muted">· ${esc(x.brain)}</span>` : ''}</li>` : `<li>${x.ok ? '✓' : '✗'} ${esc(x.what || x.tool)} <span class="muted">· ${(x.ms / 1000).toFixed(1)} s · ${esc(Number(x.chars || 0).toLocaleString())} characters back${x.brain ? ` · ${esc(x.brain)}` : ''}</span></li>`)).join('')}</ol><button type="button" class="mini" data-copy-steps>Copy</button></div>`;
+  const b = box.querySelector('button'), w = box.querySelector('div');
+  b.onclick = () => { w.hidden = !w.hidden; b.setAttribute('aria-expanded', String(!w.hidden)); };
+  box.querySelector('[data-copy-steps]').onclick = () => navigator.clipboard?.writeText(stepsText(list)).then(() => note('Copied the steps.')).catch(() => {});
+  el.insertBefore(box, el.querySelector(':scope > .msg-tools'));
+}
+// Item 13 (Nov 11): how full this chat left the brain's memory, by Effort, after each reply. From 70% on, "Sum up and
+// carry on" appears: the older part is summed up and only the last few messages stay word for word.
+const kTok = (n) => (n >= 1000 ? `${Math.round(n / 1000)}K` : String(n));
+function drawFill(ev) {
+  const fillBox = $('chatFill'), fillText = $('chatFillText'), fillSum = $('chatFillSum');
+  if (!fillBox) return;
+  if (!ev?.ctx) { fillBox.hidden = true; return; }
+  const share = Math.min(1, ev.used / ev.ctx);
+  fillText.textContent = `This chat: ${kTok(ev.used)} of ${kTok(ev.ctx)} (${Math.round(share * 100)}%)`;
+  fillBox.title = 'How much of the brain\'s memory this chat filled on the last reply';
+  fillBox.classList.toggle('full', share >= 0.7);
+  fillSum.hidden = share < 0.7;
+  fillBox.hidden = false;
+}
+$('chatFillSum')?.addEventListener('click', async () => {
+  const fillSum = $('chatFillSum');
+  fillSum.disabled = true;
+  const r = await post('/api/chat/compact', { sessionId }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob.' } }));
+  fillSum.disabled = false;
+  if (!r.ok) { note(r.data.error || 'Something went wrong.', 'error'); return; }
+  note(r.data.moved ? `Summed up ${r.data.moved} older messages${r.data.summed ? '' : ' (the summary comes when Bob is idle)'}. The last ${r.data.kept} stay word for word.` : 'This chat is already short.');
+  drawFill(null);
+  log.innerHTML = ''; stick = true; await loadHistory(40);
+});
+// Take back and send again. text: the new words (Edit), or none (Try again).
+async function redoSend(id, text, level = effort.get()) {
+  if (busy || redoing) { note('Bob is still on this chat. Wait until he has finished, or press Stop first.'); return; }
+  redoing = true; drawRedo();
+  try {
+    const r = await post('/api/chat/redo', { sessionId, ...(id ? { id } : {}), ...(text != null ? { text } : {}) }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob\'s brain. Is it running?' } }));
+    if (!r.ok) { note(r.data.error || 'Something went wrong.', 'error'); return; }
+    redoneId = r.data.id;
+    log.innerHTML = ''; stick = true;
+    await loadHistory(40);
+    const bubble = log.querySelector(`.msg.you[data-mid="${CSS.escape(r.data.id)}"]`);
+    stuckNow = false;
+    const s = await post('/api/chat', { sessionId, text: r.data.text, redo: r.data.edited ? 'edit' : 'again', effort: level, ...(rentSwitch.on() ? { rent: true } : {}) }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob\'s brain. Is it running?' } }));
+    if (!s.ok) { note(s.data.error || 'Something went wrong.', 'error'); return; }
+    if (bubble) { jobBubbles.set(s.data.jobId, bubble); bubble.insertAdjacentHTML('beforeend', `<span class="qtag">${s.data.ahead ? `queued, ${s.data.ahead} ahead` : 'queued'}</span>`); }
+    life.react('heard');
+    if (lastJobs.some((j) => j.id === s.data.jobId && j.state !== 'waiting')) drawQueue(lastJobs);
+  } finally { redoing = false; drawRedo(); scrollDown(); }
+}
+// Edit in place: a box with your words, Send again and Cancel. Esc cancels, Enter sends (Shift+Enter for a new line).
+function editInPlace(el) {
+  if (el.querySelector(':scope > .edit-box')) return;
+  const was = rawText.get(el) || '';
+  const later = el !== lastYou() || [...log.querySelectorAll(':scope > .msg.bob')].some((b) => el.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const box = document.createElement('form');
+  box.className = 'edit-box';
+  box.innerHTML = `<label class="sr-only" for="edit-${el.dataset.mid}">Your message</label><textarea id="edit-${el.dataset.mid}" rows="3">${esc(was)}</textarea>${later ? '<span class="muted">Bob answers from here. What came after this message is kept under it as an earlier version.</span>' : ''}<div class="row"><button type="submit">Send again</button><button type="button" class="link" data-edit-cancel>Cancel</button></div>`;
+  el.classList.add('editing');
+  el.appendChild(box);
+  const t = box.querySelector('textarea');
+  t.focus(); t.setSelectionRange(t.value.length, t.value.length);
+  const close = () => { box.remove(); el.classList.remove('editing'); };
+  box.querySelector('[data-edit-cancel]').onclick = close;
+  t.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); box.requestSubmit(); }
+  });
+  box.onsubmit = (e) => {
+    e.preventDefault();
+    const text = t.value.trim();
+    if (!text) { t.focus(); return; }
+    if (text === was.trim()) { close(); return; }
+    close();
+    redoSend(el.dataset.mid, text);
+  };
+}
+window.addEventListener('bob-chat-redo', (e) => { redoOnNow = e.detail === true; drawRedo(); });
+
+// ---------- The ... menu on a message (src/msg-menu.js) ----------
+// A small ... at the top right of a message, shown while the mouse is over it (always on a touch screen, and while it
+// has keyboard focus). Copy is always there. Edit and Delete follow "Show Try again, Edit and Delete in the chat"
+// (Settings, How Bob works): Edit on your message changes it and sends it again (editInPlace above); Edit on Bob's
+// changes his words without sending anything; Delete takes yours out with Bob's answer to it, or just his answer.
+// Not while Bob is on this chat.
+const msgMenu = (() => {
+  let open = null; // { msg, btn, box }
+  const singleId = (msg) => { const id = (msg.dataset.mid || '').trim(); return id && !/\s/.test(id) ? id : ''; };
+  function close(focus = false) {
+    if (!open) return;
+    open.box.remove(); open.btn.setAttribute('aria-expanded', 'false'); open.msg.classList.remove('menu-open');
+    if (focus) open.btn.focus();
+    open = null;
+  }
+  function items(msg) {
+    const you = msg.classList.contains('you');
+    const id = you ? (msg.dataset.mid || '').trim() : singleId(msg);
+    const on = redoOnNow && id && !msg.classList.contains('aside-msg');
+    const wait = busy || redoing;
+    const why = 'Bob is still on this chat. Wait until he has finished.';
+    const list = [];
+    if (on && msg === redoTarget()) list.push(['redo', 'Try again', wait ? why : 'Get a new answer to your last message', wait]);
+    if (on) list.push([you ? 'edit-msg' : 'edit-bob', 'Edit', wait ? why : you ? 'Change what you said and send it again' : 'Change Bob\'s words. Nothing is sent.', wait]);
+    list.push(['copy-msg', 'Copy', 'Copy this message']);
+    if (on) list.push(['del-msg', 'Delete', wait ? why : you ? 'Delete this message and Bob\'s answer to it' : 'Delete this answer', wait]);
+    if (you && id && turnUndo.has(id)) list.push(['undo-turn', 'Undo changes', wait ? why : 'Put back the files, notes and memory Bob changed for this message', wait]); // item 238
+    return list;
+  }
+  function draw(box, list) {
+    box.innerHTML = list.map(([k, label, tip, off]) => `<button type="button" role="menuitem" data-m="${k}" title="${esc(tip)}"${off ? ' aria-disabled="true"' : ''}>${esc(label)}</button>`).join('');
+    box.querySelector('button')?.focus();
+  }
+  function toggle(msg, btn) {
+    if (open?.msg === msg) return close(true);
+    close();
+    const box = document.createElement('div');
+    box.className = 'msg-menu'; box.setAttribute('role', 'menu'); box.setAttribute('aria-label', 'Message menu');
+    msg.appendChild(box);
+    open = { msg, btn, box };
+    btn.setAttribute('aria-expanded', 'true'); msg.classList.add('menu-open');
+    draw(box, items(msg));
+    box.scrollIntoView?.({ block: 'nearest' });
+  }
+  async function pick(msg, b) {
+    if (b.getAttribute('aria-disabled') === 'true') { note('Bob is still on this chat. Wait until he has finished, or press Stop first.'); return; }
+    const k = b.dataset.m, btn = open?.btn;
+    if (k === 'copy-msg') { close(true); return copyText(copyWords(msg), btn); }
+    if (k === 'redo') { close(); return redoSend(null, null); }
+    if (k === 'edit-msg') { close(); return editInPlace(msg); }
+    if (k === 'edit-bob') { close(); return editBob(msg); }
+    if (k === 'del-msg') { // asked in the menu itself, never a pop-up box
+      const you = msg.classList.contains('you');
+      open.box.innerHTML = `<p class="msg-menu-ask">${you ? 'Delete this message and Bob\'s answer to it?' : 'Delete this answer?'}${msg.querySelector('img, video, audio, .out-card') ? ' What he made stays in its folder.' : ''}</p><button type="button" role="menuitem" data-m="del-yes" class="danger">Delete</button><button type="button" role="menuitem" data-m="del-no">Keep it</button>`;
+      open.box.querySelector('[data-m="del-no"]').focus();
+      return;
+    }
+    if (k === 'undo-turn') { // item 238: asked in the menu itself, like Delete
+      open.box.innerHTML = `<p class="msg-menu-ask">Put back everything Bob changed for this message? A file changed since is left as it is.</p><button type="button" role="menuitem" data-m="undo-yes" class="danger">Undo changes</button><button type="button" role="menuitem" data-m="del-no">Keep them</button>`;
+      open.box.querySelector('[data-m="del-no"]').focus();
+      return;
+    }
+    if (k === 'undo-yes') {
+      close();
+      const askId = (msg.dataset.mid || '').trim();
+      const r = await post('/api/turn-undo', { sessionId, askId }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob\'s brain. Is it running?' } }));
+      if (!r.ok) { note(r.data.error || 'Something went wrong.', 'error'); return; }
+      turnUndo.delete(askId);
+      return note(r.data.text);
+    }
+    if (k === 'del-no') return close(true);
+    if (k === 'del-yes') { close(); return deleteMsg(msg); }
+  }
+  async function deleteMsg(msg) {
+    const you = msg.classList.contains('you');
+    const ids = you ? [(msg.dataset.mid || '').trim()] : (msg.dataset.mid || '').trim().split(/\s+/).filter(Boolean);
+    for (const id of ids) {
+      redoneId = id; // the saved chat is redrawn here by hand, not again when the other windows are told
+      const r = await post('/api/chat/msg-delete', { sessionId, id }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob\'s brain. Is it running?' } }));
+      if (!r.ok) { redoneId = ''; note(r.data.error || 'Something went wrong.', 'error'); return; }
+    }
+    const gone = [msg];
+    if (you) for (let n = msg.nextElementSibling; n && !n.matches('.msg.you'); n = n.nextElementSibling) if (n.matches('.msg.bob')) gone.push(n);
+    for (const el of gone) el.remove();
+    drawRedo();
+  }
+  // Change Bob's words in place: a box with them, Save and Cancel. Esc cancels, Enter saves (Shift+Enter for a new line).
+  function editBob(el) {
+    if (el.querySelector(':scope > .edit-box')) return;
+    const id = singleId(el);
+    const live = [...replies.values()].find((r) => r.el === el);
+    const was = live ? live.text : rawText.get(el) ?? liveWords.get(el) ?? '';
+    const box = document.createElement('form');
+    box.className = 'edit-box';
+    box.innerHTML = `<label class="sr-only" for="editb-${esc(id)}">Bob's words</label><textarea id="editb-${esc(id)}" rows="5">${esc(was)}</textarea><span class="muted">Nothing is sent. Bob reads the new words from now on, and the chat shows the message as edited.</span><div class="row"><button type="submit">Save</button><button type="button" class="link" data-edit-cancel>Cancel</button></div>`;
+    el.classList.add('editing');
+    el.appendChild(box);
+    const t = box.querySelector('textarea');
+    t.focus(); t.setSelectionRange(t.value.length, t.value.length);
+    const close = () => { box.remove(); el.classList.remove('editing'); };
+    box.querySelector('[data-edit-cancel]').onclick = close;
+    t.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); close(); }
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); box.requestSubmit(); }
+    });
+    box.onsubmit = async (e) => {
+      e.preventDefault();
+      const text = t.value.trim();
+      if (!text) { note('A message can\'t be changed to nothing. Use Delete to take it out instead.'); t.focus(); return; }
+      if (text === String(was).trim()) { close(); return; }
+      const r = await post('/api/chat/msg-edit', { sessionId, id, text }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob\'s brain. Is it running?' } }));
+      if (!r.ok) { note(r.data.error || 'Something went wrong.', 'error'); return; }
+      close();
+      editedMsg({ id, text: r.data.text, before: was, was: r.data.was, by: 'you' });
+    };
+  }
+  // A press inside the menu can swap its buttons (Delete asks first), so a button that's gone counts as inside.
+  document.addEventListener('click', (e) => { if (open && e.target.isConnected && !open.msg.contains(e.target)) close(); });
+  document.addEventListener('keydown', (e) => {
+    if (!open || !open.box.contains(document.activeElement)) return;
+    const all = [...open.box.querySelectorAll('button')];
+    const at = all.indexOf(document.activeElement);
+    if (e.key === 'Escape') { e.preventDefault(); close(true); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); all[(at + 1) % all.length]?.focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); all[(at - 1 + all.length) % all.length]?.focus(); }
+    else if (e.key === 'Home') { e.preventDefault(); all[0]?.focus(); }
+    else if (e.key === 'End') { e.preventDefault(); all[all.length - 1]?.focus(); }
+    else if (e.key === 'Tab') close();
+  });
+  window.addEventListener('bob-msg-menu-close', () => close());
+  return { toggle, pick, close };
+})();
+
 function decorate(el, text, media = []) {
   if (!el || el.querySelector(':scope > .msg-tools')) return el;
   rawText.set(el, text || '');
+  if (el.classList.contains('bob')) jobHelps.links(el); // Settings, Jobs: file:line links open the editor there
   const { files } = renderRich(text || '');
   const made = (media || []).map((m) => m.url).filter((u) => typeof u === 'string' && u.startsWith('/images/'));
   for (const v of el.querySelectorAll('img[src^="/images/"], audio[src^="/images/"], video[src^="/images/"]')) made.push(v.getAttribute('src'));
   const links = [...el.querySelectorAll('a[href^="http"]')].length;
   const tools = document.createElement('div');
   tools.className = 'msg-tools';
-  tools.innerHTML = `<button type="button" class="mini" data-copy-msg title="Copy this message">Copy</button>${links ? `<button type="button" class="mini" data-copy-links title="Copy every link in this message">Copy link${links === 1 ? '' : 's'}</button>` : ''}`;
-  el.appendChild(tools);
+  el.appendChild(tools); // Try again, Edit, Copy and Delete are in the ... menu (msgMenu below)
+  el.insertAdjacentHTML('beforeend', '<button type="button" class="msg-more" data-msg-more aria-haspopup="menu" aria-expanded="false" aria-label="Message menu: Try again, Edit, Copy, Delete" title="Try again, Edit, Copy, Delete">…</button>');
   fillPeeks(el);
   const want = [...new Set([...files, ...made])];
   if (want.length && el.classList.contains('bob')) {
@@ -925,9 +1485,11 @@ function decorate(el, text, media = []) {
   }
   return el;
 }
+// A message with formulas copies as the brain wrote it (the LaTeX), which pastes cleanly anywhere.
+const copyWords = (msg) => (msg.querySelector('.katex') ? rawText.get(msg) : '') || plainText(msg) || rawText.get(msg) || '';
 function plainText(el) {
   const c = el.cloneNode(true);
-  for (const x of c.querySelectorAll('.msg-tools, .mini, .file-cards, .qtag')) x.remove();
+  for (const x of c.querySelectorAll('.msg-tools, .mini, .file-cards, .qtag, .msg-more, .msg-menu')) x.remove();
   return c.innerText.trim();
 }
 async function copyText(text, btn) {
@@ -945,11 +1507,25 @@ log.addEventListener('click', async (e) => {
   const b = e.target.closest('button, a.file-link');
   if (!b || !log.contains(b)) return;
   const msg = b.closest('.msg');
-  if ('copyMsg' in b.dataset) return copyText(plainText(msg) || rawText.get(msg) || '', b);
+  if ('msgMore' in b.dataset) return msgMenu.toggle(msg, b);
+  if (b.closest('.msg-menu')) return msgMenu.pick(msg, b);
+  if ('saveTest' in b.dataset) { const mid = b.closest('.msg')?.dataset.mid; if (!mid) return; const r = await post('/api/chat/save-test', { sessionId, id: mid }).catch(() => ({ ok: false, data: {} })); note(r.ok ? `Saved as a test (${r.data.count} so far). The Lab's loop test runs it with the others.` : r.data?.error || 'Couldn\'t save that one.', r.ok ? '' : 'error'); if (r.ok) b.remove(); return; }
+  if (b.dataset.carried) return openChat(b.dataset.carried); // a chat another of your Bobs handed over
+  if ('redo' in b.dataset) return redoSend(null, null, 'hard' in b.dataset ? 'high' : effort.get());
+  if ('editMsg' in b.dataset) return editInPlace(msg);
+  if ('copyMsg' in b.dataset) return copyText(copyWords(msg), b);
   if ('copyLinks' in b.dataset) return copyText([...new Set([...msg.querySelectorAll('a[href^="http"]')].map((a) => a.href))].join('\n'), b);
   if ('copyCode' in b.dataset) return copyText(b.parentElement.querySelector('code')?.textContent || '', b);
   if (b.dataset.copyLink) return copyText(b.dataset.copyLink, b);
   if (b.dataset.copyPath) return copyText(b.dataset.copyPath, b);
+  // "Show the page and line" (src/doc-more.js): "(page 3)" after a file opens it beside the chat, at that place.
+  if (b.dataset.at && b.dataset.file) {
+    e.preventDefault();
+    const [kind, n] = b.dataset.at.split(':');
+    const file = b.dataset.file, name = file.split(/[\\/]/).pop();
+    viewer.open({ path: file, name, kind: 'text', url: `/api/file?path=${encodeURIComponent(file)}`, at: { kind, n: Number(n) } });
+    return;
+  }
   const which = b.dataset.open ?? b.dataset.reveal ?? b.dataset.file;
   if (which != null) {
     e.preventDefault();
@@ -989,11 +1565,13 @@ $('composer').onsubmit = async (e) => {
   const text = input.value.trim() || (pending.length ? 'Have a look at this.' : '');
   if (!text) return;
   const pics = pending;
+  stick = true; // sending takes you to the bottom
   const bubble = add('msg you', esc(text) + picsHtml(pics) + '<span class="qtag">sending...</span>');
   decorate(bubble, text);
   input.value = '';
   pending = [];
   drawTray();
+  stuckNow = false;
   const level = effort.get();
   const r = await post('/api/chat', { sessionId, text, refs: pics.map((p) => p.id), effort: level, ...(rentSwitch.on() ? { rent: true } : {}) }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob\'s brain. Is it running?' } }));
   const tag = bubble.querySelector('.qtag');
@@ -1039,8 +1617,12 @@ const voice = createVoice({
     if (state === 'armed') { talkingUntil = Date.now() + 300; statusEl.textContent = 'Listening...'; }
     if (msg) note(msg, 'error');
   },
-  isQuiet: () => saying || ('speechSynthesis' in window && speechSynthesis.speaking)
+  isQuiet: () => saying || ('speechSynthesis' in window && speechSynthesis.speaking),
+  talkOver: () => voiceNet.talkOver && speakOn, // Talk over Bob (Settings, Voice details; off unless turned on)
+  onBarge: () => { hush(); statusEl.textContent = 'Listening...'; }
 });
+reader = createReader({ hush, ownVoice: () => ownVoice, onTalk: (on) => talking(on) });
+readVoiceNet();
 micBtn.onclick = () => voice.push().catch((e) => note('I can\'t use the microphone: ' + e.message, 'error'));
 const syncEar = () => setToggle(earBtn, wakeOn, wakeOn ? 'Listening for "Hey Bob" (click to stop)' : 'Listen for "Hey Bob" while this window is open');
 earBtn.onclick = async () => {
@@ -1065,8 +1647,75 @@ async function applyCaps() {
 }
 window.addEventListener('bob-caps', applyCaps);
 
+// ---------- "Do you want me to:" (public/wants.js), offered once in the chat to a Bob that was set up before it existed ----------
+function offerWants() {
+  const el = add('suggest', `<span>New in the first-time setup: a short "Do you want me to:" list with the things I can do that stay off until you say so, like quick notes, reading your documents and fixing my own messages. Nothing changes unless you tick it.</span><button type="button" data-w="show">Show me the list</button><button type="button" class="link" data-w="no">Not now</button>`);
+  for (const b of el.querySelectorAll('button')) b.onclick = async () => {
+    el.remove();
+    await post('/api/settings', { wantsAsked: true }).catch(() => {});
+    if (b.dataset.w === 'show') cellar.open('welcome', null, { jump: 'wants' });
+    else note('OK. It\'s in Settings, Run first-time setup, whenever you want it.');
+  };
+}
+
 // ---------- Start ----------
+// ---------- Show maths as formulas (Settings, Bob himself; off unless you turn it on) ----------
+// KaTeX is loaded from Bob's own files the first time it's needed. redraw: the switch changed, so the chat is drawn again.
+async function applyMath(on, redraw = false) {
+  if (on === BobMath.isOn()) return;
+  if (on) { try { await BobMath.load('/vendor/katex/'); } catch { note('Formulas couldn\'t be drawn: Bob\'s maths files are missing. They show as written.', 'error'); return; } }
+  BobMath.setOn(on);
+  if (redraw && !busy && log.querySelector('.msg')) { log.innerHTML = ''; await loadHistory(40); }
+}
+
+// ---------- Keyboard shortcuts (shortcuts.js; the extra ones while Settings, Bob himself, Keyboard shortcuts is on) ----------
+let shortcutsOn = false;
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+function showShortcuts() {
+  let dlg = $('keysDlg');
+  if (!dlg) {
+    dlg = document.createElement('dialog');
+    dlg.id = 'keysDlg'; dlg.className = 'keys-dlg'; dlg.setAttribute('aria-label', 'Keyboard shortcuts');
+    document.body.appendChild(dlg);
+    dlg.addEventListener('click', (e) => { if (e.target === dlg || e.target.closest('[data-keys-close]')) dlg.close(); });
+  }
+  dlg.innerHTML = `<h3>Keyboard shortcuts</h3>${shortcutListHtml({ mac: isMac, on: shortcutsOn })}<p><button type="button" class="big" data-keys-close>Close</button></p>`;
+  if (!dlg.open) dlg.showModal();
+}
+window.addEventListener('bob-shortcuts', showShortcuts);
+// 🗓 Text size and font (everyday.js): what's set now, so one change keeps the other.
+let readingKeep = {};
+window.addEventListener('bob-display', (e) => { const d = e.detail || {}; if ('shortcuts' in d) shortcutsOn = d.shortcuts === true; if ('mathView' in d) applyMath(d.mathView === true, true); if (['textSize', 'readableFont', 'focusTimer', 'todayCard', 'updateTour', 'trayDot'].some((k) => k in d)) { readingKeep = { ...readingKeep, ...d }; applyReading(readingKeep); everyday?.settings(d); } }); // Help, Keyboard shortcuts: Show the list
+installShortcuts({
+  doc: document,
+  isOn: () => shortcutsOn,
+  ctx: () => {
+    const a = document.activeElement;
+    return { mac: isMac, typing: Boolean(a?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]')), inInput: a === input, empty: !input.value, busy, dialog: Boolean(document.querySelector('dialog[open]')) };
+  },
+  act: (id) => {
+    if (id === 'newChat') { if (busy) return false; if ($('cellar').open) $('cellar').close(); $('newchat').click(); input.focus(); }
+    else if (id === 'stop') { if (stopBtn.hidden) return false; stopBtn.click(); }
+    else if (id === 'search') topicsPage.open();
+    else if (id === 'session') { sessionSel.focus(); try { sessionSel.showPicker(); } catch {} }
+    else if (id === 'focus') input.focus();
+    else if (id === 'lastMsg') {
+      const mine = [...log.querySelectorAll('.msg.you')].pop();
+      const t = mine && (rawText.get(mine) ?? plainText(mine));
+      if (!t) return false;
+      input.value = t; input.setSelectionRange(t.length, t.length);
+    } else if (id === 'copyReply') {
+      const his = [...log.querySelectorAll('.msg.bob')].pop();
+      if (!his) return false;
+      copyText(copyWords(his)).then((ok) => note(ok ? 'Copied Bob\'s last reply.' : 'Couldn\'t copy. Use the Copy button under the reply.'));
+    } else if (id === 'settings') $('settingsBtn').click();
+    else if (id === 'list') showShortcuts();
+    return true;
+  }
+});
+
 async function start() {
+  try { const st = await (await fetch('/api/settings')).json(); shortcutsOn = st.shortcuts === true; applyReading(st); readingKeep = { textSize: st.textSize, readableFont: st.readableFont }; await applyMath(st.mathView === true); } catch {}
   await loadHistory(20);
   let cat = 'Patches';
   try { cat = (await (await fetch('/api/settings')).json()).catName || cat; } catch {}
@@ -1081,8 +1730,10 @@ async function start() {
     if (!s.ollama) note('I can\'t reach my engine (' + (s.engine || 'Ollama') + ') right now. Is it running? (The AI Toggle shortcut turns Ollama on.)', 'error');
   } catch {}
   try {
-    const st = await (await fetch('/api/settings')).json(); winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); autoSession = st.autoSession !== false; drawSessions(st.sessions, st.session, st.sessionBy);
+    const st = await (await fetch('/api/settings')).json(); winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
+    if (st.setupDone && !st.wantsAsked) offerWants(); // once, for Bobs set up before the Welcome had "Do you want me to:"
+    everyday = startEveryday({ add, note, settings: st, version: st.version?.label || '' }); // 🗓 today card, tour, ⏱ Focus, tray dot (each only when on)
     if (st.updates?.autoCheck) { const c = await (await fetch('/api/update/check')).json(); if (c.newer) note(`A newer Bob (${c.available.label}) is out${c.from === 'github' ? ' on GitHub' : ''}. Settings, This replicant matrix and updates, Check for updates.`); }
   } catch {}
   try { drawQueue(await (await fetch('/api/queue')).json()); } catch {}

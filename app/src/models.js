@@ -1,6 +1,8 @@
 // Bob's model shop: what models exist, which are already on this PC (Ollama, ComfyUI, Maestro...),
 // downloading new ones one at a time with progress and a checksum, and switching Bob over to them.
 // Every download starts from a click in Bob's window. Bob never downloads a model on his own.
+import { deadline as withDeadline, quietGuard } from './hang-guard.js'; // item 212
+import { recordBrainFile } from './engine-care.js';
 import { ownEntries, ownModels, ownResolve } from './own-models.js';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -16,6 +18,7 @@ import { gpuInfo, cpuName, specLine, shownRamGB, OS } from './platform.js';
 import { packFor } from '../public/fit.js';
 import { allSlots, slotValue } from '../public/equip.js';
 import { mergeMadeBrains } from './lab.js'; // 1.5.141
+import { jitter } from './retry.js'; // item 194
 
 const MODEL_EXT = new Set(['.gguf', '.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.sft']);
 const SKIP = new Set(['node_modules', '.git', '__pycache__', 'site-packages', 'venv', '.venv', 'env', 'cache', '.cache', 'Lib', 'include', 'temp', 'tmp', 'logs', 'blobs']);
@@ -26,6 +29,15 @@ export function hostAllowed(u) {
   try {
     const url = new URL(u);
     return url.protocol === 'https:' && ALLOWED_HOSTS.some((r) => r.test(url.hostname));
+  } catch { return false; }
+}
+// 1.5.207 Model files may also come from ModelScope (modelscope.cn itself; it serves the file with no second host).
+// Only model downloads use this list: engines and Bob's own updates keep hostAllowed.
+const MODEL_HOSTS = [...ALLOWED_HOSTS, /^(www\.)?modelscope\.cn$/];
+export function modelHostAllowed(u) {
+  try {
+    const url = new URL(u);
+    return url.protocol === 'https:' && MODEL_HOSTS.some((r) => r.test(url.hostname));
   } catch { return false; }
 }
 
@@ -130,12 +142,12 @@ export function linkError(name, status) {
 export async function headFile(url, signal) {
   let u = url, r;
   for (let hop = 0; hop < 6; hop++) {
-    r = await fetch(u, { method: 'HEAD', redirect: 'manual', signal });
+    r = await fetch(u, { method: 'HEAD', redirect: 'manual', signal: withDeadline(signal, 30_000) }); // item 212
     if (![301, 302, 307, 308].includes(r.status) || r.headers.get('x-linked-size')) return r;
     const loc = r.headers.get('location');
     if (!loc) return r;
     const next = new URL(loc, u);
-    if (next.host !== new URL(u).host || !hostAllowed(next.href)) return r;
+    if (next.host !== new URL(u).host || !modelHostAllowed(next.href)) return r;
     u = next.href;
   }
   return r;
@@ -148,7 +160,7 @@ export async function hfFileInfo(url, signal) {
   const [, repo, rev, file] = m;
   const dir = file.includes('/') ? file.slice(0, file.lastIndexOf('/')) : '';
   try {
-    const r = await fetch(`https://huggingface.co/api/models/${repo}/tree/${rev}${dir ? '/' + dir.split('/').map(encodeURIComponent).join('/') : ''}`, { signal });
+    const r = await fetch(`https://huggingface.co/api/models/${repo}/tree/${rev}${dir ? '/' + dir.split('/').map(encodeURIComponent).join('/') : ''}`, { signal: withDeadline(signal, 30_000) });
     if (!r.ok) return null;
     const hit = (await r.json()).find((x) => x.path === decodeURIComponent(file));
     if (!hit) return null;
@@ -494,7 +506,7 @@ export class ModelShop {
           d.error = String(e.message || e).slice(0, 300);
           // Network hiccups get two more tries, after 15 s and 1 min. A damaged file or a missing link doesn't.
           const hopeless = /checksum|is missing the|still missing|isn't one of those|different size on the website|changed on the website|no checksum|Not enough disk|No such|redirected|won't install|Python|Smart App Control|Hugging Face account|link .* is broken/i.test(d.error);
-          if (!hopeless && d.tries < 3) { d.state = 'queued'; d.retryAt = Date.now() + (d.tries === 1 ? 15e3 : 60e3); pub.phase = 'retrying'; pub.error = `${d.error} Trying again in ${d.tries === 1 ? '15 seconds' : 'a minute'}.`; }
+          if (!hopeless && d.tries < 3) { d.state = 'queued'; d.retryAt = Date.now() + jitter(d.tries === 1 ? 15e3 : 60e3); pub.phase = 'retrying'; pub.error = `${d.error} Trying again in ${d.tries === 1 ? '15 seconds' : 'a minute'}.`; }
           else { d.state = 'failed'; d.doneAt = Date.now(); pub.phase = 'failed'; pub.error = d.error; }
         }
         tick();
@@ -598,15 +610,18 @@ export class ModelShop {
   async pullOllama(entry, pub, signal, tick) {
     pub.file = entry.ollama;
     pub.phase = 'downloading';
+    const q = quietGuard(signal, 10 * 60_000); // item 212: ten quiet minutes (checking a big file can be quiet a while)
+    try {
     const res = await fetch(this.cfg.ollamaUrl.replace(/\/$/, '') + '/api/pull', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model: entry.ollama, stream: true }), signal
+      body: JSON.stringify({ model: entry.ollama, stream: true }), signal: q.signal
     });
     if (!res.ok) throw new Error(`Ollama said ${res.status}.`);
     let buf = '', last = 0;
     const layers = {};
     const dec = new TextDecoder();
     for await (const chunk of res.body) {
+      q.poke();
       buf += dec.decode(chunk, { stream: true });
       let nl;
       while ((nl = buf.indexOf('\n')) >= 0) {
@@ -620,6 +635,8 @@ export class ModelShop {
         if (Date.now() - last > 500) { last = Date.now(); tick(); }
       }
     }
+    } catch (e) { if (q.quiet() && !signal?.aborted) throw new Error('Ollama\'s download went quiet for 10 minutes. Try again; it picks up where it stopped.'); throw e; }
+    finally { q.done(); }
   }
 
   async fetchFiles(entry, pub, signal, tick) {
@@ -629,7 +646,7 @@ export class ModelShop {
     // Ask each link for its size and checksum first, so a broken link or a full disk is caught before anything downloads.
     const heads = [];
     for (const f of todo) {
-      if (!hostAllowed(f.url)) throw new Error(`I only download from Hugging Face and GitHub. ${f.url} isn't one of those.`);
+      if (!modelHostAllowed(f.url)) throw new Error(`I only download from Hugging Face, ModelScope and GitHub. ${f.url} isn't one of those.`);
       // 1.5.32: follow a renamed repo's redirect (Hugging Face answers 307 with a relative address and no file details)
       // until a hop names the file's size; the storage hop itself (another host) isn't asked.
       const r = await headFile(f.url, signal);
@@ -673,8 +690,10 @@ export class ModelShop {
         for await (const c of fs.createReadStream(part)) { hash.update(c); have += c.length; }
       }
       const base = pub.done;
-      let res = await fetch(h.f.url, { headers: have ? { range: `bytes=${have}-` } : {}, redirect: 'follow', signal });
-      if (!hostAllowed(res.url)) throw new Error('The download was redirected somewhere I don\'t trust. Stopped.');
+      const q = quietGuard(signal); // item 212: two quiet minutes and the download stops (it resumes from here next time)
+      let res;
+      try { res = await fetch(h.f.url, { headers: have ? { range: `bytes=${have}-` } : {}, redirect: 'follow', signal: q.signal }); } catch (e) { q.done(); throw q.quiet() && !signal?.aborted ? new Error(`Download of ${name} didn't start (nothing for 2 minutes). Try again; it picks up where it stopped.`) : e; }
+      if (!modelHostAllowed(res.url)) throw new Error('The download was redirected somewhere I don\'t trust. Stopped.');
       // The server ignored the Range request: start this file again from nothing.
       if (have && res.status === 200) { have = 0; hash.destroy?.(); fs.rmSync(part, { force: true }); return this.fetchFiles(entry, pub, signal, tick); }
       if (!res.ok && res.status !== 206) throw new Error(res.status === 401 || res.status === 403 || res.status === 404 ? linkError(name, res.status) : `Download of ${name} failed (${res.status}).`);
@@ -682,19 +701,22 @@ export class ModelShop {
       let last = 0, got = have;
       try {
         for await (const c of res.body) {
+          q.poke();
           hash.update(c);
           got += c.length;
           if (!out.write(c)) await new Promise((r) => out.once('drain', r));
           pub.done = base + got;
           if (Date.now() - last > 500) { last = Date.now(); tick(); }
         }
-      } finally { await new Promise((r) => out.end(r)); }
+      } catch (e) { if (q.quiet() && !signal?.aborted) throw new Error(`Download of ${name} stopped coming (nothing for 2 minutes). Try again; it picks up where it stopped.`); throw e; }
+      finally { q.done(); await new Promise((r) => out.end(r)); }
       pub.phase = 'checking';
       tick();
       const digest = hash.digest('hex');
       if (h.f.bytes && got !== h.f.bytes) { fs.rmSync(part, { force: true }); throw new Error(`${name} came through the wrong size. I deleted it; try again.`); }
       if (h.sha && digest !== h.sha) { fs.rmSync(part, { force: true }); throw new Error(`${name} came through damaged (checksum didn't match). I deleted it; try again.`); }
       fs.renameSync(part, final);
+      recordBrainFile(this.cfg, final, { bytes: got, sha256: digest }); // reliability 227: checked again before it loads if it changes
       pub.done = base + got;
       if (!entry.into) this.found.files.push({ path: final, name, size: got, kind: entry.category, owner: 'Bob' });
     }

@@ -1,7 +1,9 @@
 // Cloud helpers: paid AI services Bob may hand one job to, as a sub-agent. Off unless switched on.
 // Keys are never stored by Bob: they come from Windows environment variables you set yourself.
 // Addresses are fixed here, so a settings file can't redirect your text somewhere else.
+import { deadline as withDeadline } from './hang-guard.js'; // item 212: every network call has a deadline
 import { execFileSync } from 'node:child_process';
+import { savedKey } from './secret-box.js';
 
 // A key added in Windows after Bob started isn't in process.env yet, so also look in the user's
 // saved environment (HKCU\Environment). The key's value never leaves this module except in the request to its provider.
@@ -12,7 +14,8 @@ export function keyEnv() {
     get(target, k) {
       if (typeof k !== 'string') return undefined;
       if (target[k]) return target[k];
-      if (process.platform !== 'win32' || !/^[A-Z0-9_]{3,64}$/.test(k)) return undefined;
+      if (!/^[A-Z0-9_]{3,64}$/.test(k)) return undefined;
+      if (process.platform !== 'win32') return savedKey(k) || undefined; // 🔐 a key saved in Settings (secret-box.js)
       const hit = regCache.get(k);
       if (hit && Date.now() - hit.at < 60000) return hit.value;
       let value;
@@ -24,7 +27,7 @@ export function keyEnv() {
         value = m ? m[1].trim() : undefined;
       } catch { value = undefined; }
       regCache.set(k, { at: Date.now(), value });
-      return value;
+      return value || savedKey(k) || undefined;
     }
   });
 }
@@ -65,7 +68,7 @@ export async function askCloud(c, task, signal, env = keyEnv()) {
   if (!key) throw new Error(`No key for ${c.name} on this replicant matrix.`);
   if (c.type === 'anthropic') {
     const res = await fetch(`${c.baseUrl}/messages`, {
-      method: 'POST', signal,
+      method: 'POST', signal: withDeadline(signal, 10 * 60_000),
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({ model: c.model, max_tokens: c.maxTokens, messages: [{ role: 'user', content: task }] })
     });
@@ -74,7 +77,7 @@ export async function askCloud(c, task, signal, env = keyEnv()) {
     return { text: (j.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n') || '(no answer)', usage: { in: j.usage?.input_tokens, out: j.usage?.output_tokens } };
   }
   const res = await fetch(`${c.baseUrl.replace(/\/$/, '')}/chat/completions`, {
-    method: 'POST', signal,
+    method: 'POST', signal: withDeadline(signal, 10 * 60_000),
     headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
     body: JSON.stringify({ model: c.model, max_tokens: c.maxTokens, messages: [{ role: 'user', content: task }] })
   });

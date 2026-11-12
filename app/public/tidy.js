@@ -5,7 +5,7 @@ import { tip } from './tips.js';
 
 const $ = (id) => document.getElementById(id);
 const ACTION = { summarize: 'Sum up, then to the Recycle Bin', delete: 'To the Recycle Bin', forget: 'Forget the chat parts (note stays)' };
-const KIND_LABEL = { chats: 'Chats', pictures: 'Pictures and clips', sounds: 'Sounds', tasks: 'Finished tasks', logs: 'Logs', topics: 'Topics set to fade', spare: 'Spare copies' };
+const KIND_LABEL = { chats: 'Chats', pictures: 'Pictures and clips', sounds: 'Sounds', tasks: 'Finished tasks', logs: 'Logs', topics: 'Topics set to fade', spare: 'Spare copies', folders: 'Files in folders you added' };
 
 export function createTidy({ api, onCount }) {
   const dlg = $('tidy'), body = $('tidy-body');
@@ -42,7 +42,7 @@ export function createTidy({ api, onCount }) {
     const bytes = doing.reduce((n, i) => n + (i.bytes || 0), 0);
     const kinds = [...new Set(items.map((i) => i.kind))];
     body.innerHTML = `${msg ? `<p class="have">${esc(msg)}</p>` : ''}
-      <p class="muted">${hk?.enabled ? 'Housekeeping is on.' : 'Housekeeping is off, so Bob only looks when you open this page.'} ${tip('Limits and "ask me" or "tidy automatically" are in Settings, Show advanced settings, Housekeeping. Pinned chats, pictures and topics are never touched. Everything goes to the Recycle Bin, so you can get it back.', 'Tidy up')}</p>
+      <p class="muted">${hk?.enabled ? 'Housekeeping is on.' : 'Housekeeping is off, so Bob only looks when you open this page.'} ${tip('Limits and "ask me" or "tidy automatically" are in Settings, Housekeeping. Pinned chats, pictures and topics are never touched. Everything goes to the Recycle Bin, so you can get it back.', 'Tidy up')}</p>
       ${items.length ? kinds.map((k) => `<section><h3>${esc(KIND_LABEL[k] || k)}</h3><ol class="tidy-list">${items.filter((i) => i.kind === k).map(row).join('')}</ol></section>`).join('')
         : '<p>Nothing to tidy. Everything has come up recently enough.</p>'}
       <div class="row wrap tidy-foot">
