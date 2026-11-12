@@ -41,6 +41,10 @@ check('no mass from the engine: falls back to counts', s3.hasMass === false && p
 const steps = [{ share: 1, pct: 70 }, { share: 0.75, pct: 69 }, { share: 0.5, pct: 68.5 }, { share: 0.35, pct: 60 }];
 check('smallest share within the margin', smallestGood(steps, 2).share === 0.5);
 check('a tighter margin keeps more', smallestGood(steps, 1).share === 0.75);
+{ // the gpt-oss run: the 16% step crashed, 71 of 314 turns came back, and it looked within the margin on those
+  const g = [{ share: 1, total: 204, of: 314, pct: 65 }, { share: 0.5, total: 196, of: 314, pct: 62.4 }, { share: 0.32, total: 192, of: 312, pct: 61.5 }, { share: 0.16, total: 46, of: 71, pct: 64.8 }];
+  check('a step that lost most of its turns is never picked', smallestGood(g, 4).share === 0.32, String(smallestGood(g, 4)?.share));
+  check('missing turns count as wrong (192 of 314, not of 312)', smallestGood(g, 3.6).share === 0.5, String(smallestGood(g, 3.6)?.share)); }
 
 // ---- a whole run against a made-up Brain Engine ----
 const isHoldout = (id) => parseInt(crypto.createHash('md5').update(String(id)).digest('hex').slice(0, 8), 16) / 0xFFFFFFFF < 0.05;

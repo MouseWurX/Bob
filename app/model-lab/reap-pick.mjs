@@ -61,9 +61,15 @@ export function keepLists(s, share, by = 'mass') {
 }
 
 // The smallest share whose score stays within `margin` points (percent of turns) of the full brain's.
-export function smallestGood(steps, margin = 2) {
-  const full = steps.find((x) => x.share === 1) || steps[0];
+export function smallestGood(steps, margin = 2, cover = 0.95) {
+  // 12 Nov: a step where the server crashed came back with 71 of 314 turns and looked "within the margin" on those few.
+  // Each step is now judged against the most turns any step answered: missing turns count as wrong, and a step that
+  // answered fewer than 95% of them is invalid and never picked.
+  const most = Math.max(0, ...steps.map((x) => x.of || 0));
+  const pctOf = (x) => (most && x.total != null ? (100 * x.total) / most : x.pct);
+  const valid = (x) => x.pct != null && (!most || !x.of || x.of >= cover * most);
+  const full = steps.find((x) => x.share === 1 && valid(x)) || steps.filter(valid).sort((a, b) => b.share - a.share)[0];
   if (!full) return null;
-  const ok = steps.filter((x) => x.pct != null && x.pct >= full.pct - margin);
+  const ok = steps.filter((x) => valid(x) && pctOf(x) >= pctOf(full) - margin);
   return ok.sort((a, b) => a.share - b.share)[0] || full;
 }
