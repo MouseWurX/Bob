@@ -2496,14 +2496,14 @@ ${set('Each chat keeps its place in the engine', 'Off', "Switching chats saves t
 <dt>Bob's own brains (Riker, Bobert)</dt><dd>Brains made for me in my workshop from open Qwen brains and benchmarked before they reach you, in the Bob family of the Brain catalogue. See ${go('faq-bob-brains', 'Why is Riker or Bobert my pick?')}</dd>
 <dt>Bob-Net</dt><dd>Your Bobs on your own replicant matrices, sharing brains and jobs over Tailscale. Set it up in Settings, <strong>Bob-Net</strong>.</dd>
 <dt>Borrowed brain</dt><dd>When another of your Bobs thinks a quick reply for me over Tailscale (📡 in the chat). I still run the tools.</dd>
-<dt>Brain</dt><dd>A model that thinks and chats. Bigger brains are usually smarter but slower and need more memory.</dd>
-<dt>Brain label (status chip)</dt><dd>The one chip at the top of the chat. It says what my brain is doing and shows ✋, 🔓 or 🖥 when Hands, Autonomy or Screen use is on. Press it for the quick switches. See ${go('brain-label', 'The brain label')}.</dd>
 <dt>Bottom bar</dt><dd>On a phone or a narrow window, the row along the bottom: Chat, New, Tasks, Topics, Settings and More. More opens the whole menu. See ${go('around', 'Finding your way around')}.</dd>
+<dt>Brain</dt><dd>A model that thinks and chats. Bigger brains are usually smarter but slower and need more memory.</dd>
 <dt>Brain catalogue</dt><dd>My full list of models, sorted by job, with what each one needs and where it comes from.</dd>
 <dt>Brain Engine</dt><dd>My own engine for brains, made to give me more room to work with them. Built on the open-source llama.cpp, not an official llama.cpp build. The only engine for my brains now, wherever it has a build.</dd>
 <dt>Brain Engine build name (N1bN2)</dt><dd>How a Brain Engine build is named from build 5 on: my build number, a b, then the llama.cpp build under it. Brain Engine 5b12282 is my fifth build, on llama.cpp b12282. See ${go('faq-brain-engine-name', 'What does a name like Brain Engine 5b12282 mean?')}.</dd>
 <dt>Brain for these jobs</dt><dd>The brain I use when I work on a repository. My biggest unless you pick another one under Let Bob work on repositories: your own tuned brains, the ones doing a job, or any from the catalogue (get it first).</dd>
 <dt>Brain in parts</dt><dd>A big brain cut into several files (name-00001-of-00003.gguf), because Hugging Face takes files only up to 50 GB. See ${go('faq-parts', 'Why does a brain come in several files?')}.</dd>
+<dt>Brain label (status chip)</dt><dd>The one chip at the top of the chat. It says what my brain is doing and shows ✋, 🔓 or 🖥 when Hands, Autonomy or Screen use is on. Press it for the quick switches. See ${go('brain-label', 'The brain label')}.</dd>
 <dt>Brain swap</dt><dd>Putting one brain away and loading another, usually 10 to 20 seconds.</dd>
 <dt>Brains page</dt><dd>In Settings, Brains, and the first view of Equip Bob: each brain I use, the jobs it does, and where it sits (card, memory, drive). See ${go('brains-page', 'The Brains page')}.</dd>
 <dt>Bring in chats</dt><dd>Keeping chats from a file another assistant exported (ChatGPT, Claude, Open WebUI) as chats of our own, in Past chats. Some apps call it <em>import</em>. See ${go('chat-files', 'Saving chats and bringing chats in')}.</dd>
