@@ -1,4 +1,4 @@
-// Which models suit this PC, and which jobs (Equip Bob slots) each model can do. Pure functions, no DOM,
+// Which models suit this PC, and which jobs (Brains page jobs) each model can do. Pure functions, no DOM,
 // so the tests can run them. Three separate answers, never mixed up:
 //   canDo:  can this model do that job at all? If not, it isn't listed for that job anywhere.
 //   suit:   does it run well on this PC (graphics card, RAM, disk)? ok, slow, no or blocked, with a plain reason.

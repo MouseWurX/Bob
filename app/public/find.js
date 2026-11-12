@@ -11,10 +11,10 @@ export function rankFind(items, query, max = 12) {
   const parts = q.split(/\s+/);
   const score = (i) => {
     const label = i.label.toLowerCase(), hay = `${label} ${(i.words || '').toLowerCase()}`;
-    if (!parts.every((p) => hay.includes(p))) return null; // no match
-    return 1000 + (label.startsWith(q) ? 100 : 0) + (label.includes(q) ? 50 : 0) + (i.kind === 'Page' ? 300 : i.kind === 'Tool' ? 250 : i.kind === 'Settings' ? 200 : 0) - label.length / 100;
+    if (!parts.every((p) => hay.includes(p))) return -1;
+    return (label.startsWith(q) ? 100 : 0) + (label.includes(q) ? 50 : 0) + (i.kind === 'Page' ? 300 : i.kind === 'Tool' ? 250 : i.kind === 'Settings' ? 200 : 0) - label.length / 100;
   };
-  return items.map((i) => [score(i), i]).filter(([s]) => s !== null).sort((a, b) => b[0] - a[0]).slice(0, max).map(([, i]) => i);
+  return items.map((i) => [score(i), i]).filter(([s]) => s >= 0).sort((a, b) => b[0] - a[0]).slice(0, max).map(([, i]) => i);
 }
 
 // items(): the current list (built on each open, so hidden pages like the Lab follow their switch).

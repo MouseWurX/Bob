@@ -4,7 +4,7 @@
 
 // Advanced: the side list, top to bottom.
 export const GROUPS = [
-  ['Bob', ['ev-bob', 'ev-how', 'adv-jobs', 'adv-prompts', 'adv-chatx', 'adv-quiet', 'adv-daily', 'adv-voice', 'adv-look', 'adv-house', 'adv-presets', 'adv-checkins', 'adv-tools']],
+  ['Bob', ['ev-bob', 'ev-how', 'adv-jobs', 'adv-prompts', 'adv-chatx', 'adv-quiet', 'adv-daily', 'adv-voice', 'adv-look', 'adv-personality', 'adv-house', 'adv-presets', 'adv-checkins', 'adv-tools']],
   ['Brains', ['adv-brains', 'adv-speed', 'adv-engines']],
   ['Connections', ['adv-bobnet', 'adv-online', 'adv-apps']],
   ['What Bob may do', ['adv-hands', 'ev-howtos', 'adv-adventure', 'adv-games']],
@@ -13,9 +13,9 @@ export const GROUPS = [
 
 // Simple: the cards. `about` says what's inside, in a few plain words.
 export const CARDS = [
-  { id: 'bob', icon: '🙂', name: 'Bob himself', about: 'Voice, look, theme, house style and presets.', topics: ['ev-bob', 'adv-voice', 'adv-look', 'adv-house', 'adv-presets'] },
+  { id: 'bob', icon: '🙂', name: 'Bob himself', about: 'Voice, look, personality, house style and presets.', topics: ['ev-bob', 'adv-voice', 'adv-look', 'adv-personality', 'adv-house', 'adv-presets'] },
   { id: 'how', icon: '⚡', name: 'How Bob works', about: 'Sessions, plans, notes, jobs, saved prompts, start-up, check-ins.', topics: ['ev-how', 'adv-jobs', 'adv-prompts', 'adv-chatx', 'adv-quiet', 'adv-daily', 'adv-checkins', 'adv-tools'] },
-  { id: 'brains', icon: '🧠', name: 'Brains and speed', about: 'Which brain does what, memory and engines.', words: 'calibrate calibration set up gpu card layers experts speed', topics: ['adv-brains', 'adv-speed', 'adv-engines'] },
+  { id: 'brains', icon: '🧠', name: 'Brains and speed', about: 'Which brain does what, memory and engines.', topics: ['adv-brains', 'adv-speed', 'adv-engines'] },
   { id: 'net', icon: '🌐', name: 'My other Bobs', about: 'Bob-Net, your phone and sharing brains.', topics: ['adv-bobnet'] },
   { id: 'online', icon: '☁', name: 'Online and other apps', about: 'Cloud helpers, chat bots, rented brains, ComfyUI, other apps, Claude.', topics: ['adv-online', 'adv-apps'] },
   { id: 'may', icon: '✋', name: 'What Bob may do', about: 'Files, programs, apps and the tools he made.', topics: ['adv-hands', 'ev-howtos'] },

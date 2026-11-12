@@ -3,7 +3,7 @@
 // running files (Q4 and friends). This is the way in: a Hugging Face name or link is looked up (public card only), its
 // full-size GGUF files are listed with their sizes, and the one picked is downloaded into the Lab's own folder
 // (<models>/bob/lab/full-size) and added to Bob's list as one of Your own brains, so it shows in the Lab's brain lists
-// and in Equip Bob like any other. A file already on this replicant matrix is added the same way without a download.
+// and in Settings, Brains like any other. A file already on this replicant matrix is added the same way without a download.
 // A link to a .gguf file elsewhere works too. Nothing is ever uploaded, and an HF_TOKEN goes only to huggingface.co.
 // One download at a time; it isn't a Lab job, so a job can run meanwhile, and Stop throws the part away.
 import fs from 'node:fs';

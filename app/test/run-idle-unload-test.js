@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LlamaCpp, keepAliveMs } from '../src/llamacpp.js';
+import { LlamaCpp, keepAliveMs, idleFor } from '../src/llamacpp.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let pass = 0, fail = 0;
@@ -51,7 +51,9 @@ const idleSaid = []; eng.log = (k, t) => idleSaid.push(`${k}: ${t}`);
 let toldGone = 0; eng.onIdleGone = () => { toldGone++; };
 check('over 10 minutes idle: unloaded, the graphics card is free', await eng.idleTick() && !alive() && eng.current === null && (await eng.loaded()).length === 0);
 check('1.5.208: the idle unload tells Bob straight away, once (the label and the fNRI cube\'s unload animation hear it)', toldGone === 1);
-check('1.5.133: the unload is logged, with how long it sat unused', idleSaid.some((l) => /^engine: .+: let go after \d+ min unused$/.test(l)), idleSaid.join(' | '));
+check('1.5.210: the logbook says the real time, in minutes and seconds', idleFor(75_000) === '1 min 15 s' && idleFor(60_000) === '1 min' && idleFor(20_000) === '20 s');
+check('...and the idle check runs every 15 s, so a 1 min keep-alive lets go near 1 min', /idleTick\(\)\.catch\(\(\) => \{\}\); \}, 15_000\)/.test(fs.readFileSync(new URL('../src/llamacpp.js', import.meta.url), 'utf8')));
+check('1.5.133: the unload is logged, with how long it sat unused', idleSaid.some((l) => /^engine: .+: let go after \d+ min( \d+ s)? unused \(kept for 10m\)$/.test(l)), idleSaid.join(' | '));
 await new Promise((r) => setTimeout(r, 300));
 let gone = false; try { process.kill(pid, 0); } catch { gone = true; }
 check('the llama-server process is really gone', gone);
@@ -77,5 +79,16 @@ check('2½ minutes ("150s") works for Bob\'s own engine too', keepAliveMs({ olla
 clearInterval(eng.idleTimer);
 await eng.stopServer();
 fs.rmSync(tmp, { recursive: true, force: true });
+// 1.5.210 (Go Wi-Fi test): Stop with no chat job ends a load that's still going.
+{
+  const e = Object.create(LlamaCpp.prototype); e.log = () => {};
+  e.startEngineNow = (model, signal) => new Promise((res, rej) => { signal.addEventListener('abort', () => rej(new Error('Stopped.'))); });
+  const p = e.startEngine('riker', null);
+  const said = e.stopLoad();
+  const why = await p.then(() => 'loaded', (x) => x.message);
+  check('Stop ends a load with no job behind it, and says it stopped something', said === true && why === 'Stopped.' && e.stopLoad() === false);
+  const src = fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8');
+  check('...and /api/stop reaches it', /if \(!id\) \{ try \{ if \(this\.engine\?\.stopLoad\?\.\(\)\) hit = true;/.test(src));
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -17,7 +17,9 @@ export function jumpFromHash(hash) {
   try { id = decodeURIComponent(String(hash || '').replace(/^#/, '')); } catch { return ''; }
   return /^(adv|ev)-[\w-]{1,40}$/.test(id) ? id : '';
 }
-export const settingsUrl = (jump) => '/settings.html' + (jumpFromHash('#' + (jump || '')) ? '#' + jump : '');
+// 1.5.210 a tab in sample-data mode opens Settings in sample mode too, so the real settings never show beside it.
+const sampleQ = () => (globalThis.__bobSample ? `?sample=${encodeURIComponent(globalThis.__bobSample)}` : '');
+export const settingsUrl = (jump) => '/settings.html' + sampleQ() + (jumpFromHash('#' + (jump || '')) ? '#' + jump : '');
 
 // Settings gets its own window on a computer. On a phone or tablet (touch first, or a narrow screen) there are no
 // separate windows, so it stays a page. `env` is passed in so tests don't read the real screen.

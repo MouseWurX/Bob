@@ -131,6 +131,7 @@ export function createStylePage({ api, redraw, flash }) {
   async function onClick(b, settings) {
     const style = settings.style || {};
     if (b.dataset.motion) { await save(settings, { motion: b.dataset.motion }); redraw(); return true; }
+    if (b.dataset.avatar) { await save(settings, { avatar: b.dataset.avatar === 'cube' ? 'cube' : 'pixel' }); redraw(); return true; } // 1.5.209: themes.js tells app.js, which swaps the picture
     if (b.dataset.uilook) {
       await save(settings, { look: b.dataset.uilook });
       // Lamplight is the chat in a dark room: Now running tucks away (Ctrl+J or its button brings it back), and the
@@ -141,7 +142,6 @@ export function createStylePage({ api, redraw, flash }) {
       }
       redraw(); return true;
     }
-    if (b.dataset.avatar) { await save(settings, { avatar: b.dataset.avatar === 'cube' ? 'cube' : 'pixel' }); redraw(); return true; } // 1.5.209: themes.js tells app.js, which swaps the picture
     if (b.dataset.nowneed) { await save(settings, { openNowOnNeed: b.dataset.nowneed === '1' }); redraw(); return true; }
     if (b.dataset.theme) { draft = null; await save(settings, { theme: b.dataset.theme }); redraw(); return true; }
     if (b.dataset.look) { const r = await api('/api/settings', { look: b.dataset.look }); setLook(b.dataset.look); settings.look = b.dataset.look; if (r.lookText) settings.lookText = r.lookText; redraw(); return true; }
@@ -185,7 +185,7 @@ export function createStylePage({ api, redraw, flash }) {
     return true;
   }
 
-  // 1.5.122: Equip Bob's "Change his look" opens the page with the character screen already open.
+  // 1.5.122: Settings, Personality's "Change look" opens the page with the character screen already open.
   function openMaker(settings) { making = true; makingParts = partsOf(settings?.look || LOOK_ID); }
   return { html, onClick, onInput, paintPreviews, openMaker, closing(settings) { if (draft) { draft = null; applyStyle(settings?.style); } } };
 }

@@ -1,9 +1,9 @@
 // Voice input: push-to-talk and an optional "Hey Bob" listener.
 // Audio is recorded locally as 16 kHz WAV and sent to Bob's brain, which uses the local Whisper.
 
-const RATE = 16000;
+export const RATE = 16000;
 
-function encodeWav(samples) {
+export function encodeWav(samples) {
   const buf = new ArrayBuffer(44 + samples.length * 2);
   const v = new DataView(buf);
   const w = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
@@ -18,7 +18,7 @@ function encodeWav(samples) {
   return new Blob([buf], { type: 'audio/wav' });
 }
 
-function downsample(chunk, fromRate) {
+export function downsample(chunk, fromRate) {
   if (fromRate === RATE) return chunk;
   const ratio = fromRate / RATE, out = new Float32Array(Math.floor(chunk.length / ratio));
   for (let i = 0; i < out.length; i++) {
@@ -30,8 +30,8 @@ function downsample(chunk, fromRate) {
   return out;
 }
 
-const rms = (a) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * a[i]; return Math.sqrt(s / a.length); };
-const join = (parts) => { const n = parts.reduce((t, p) => t + p.length, 0), o = new Float32Array(n); let k = 0; for (const p of parts) { o.set(p, k); k += p.length; } return o; };
+export const rms = (a) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * a[i]; return Math.sqrt(s / a.length); };
+export const join = (parts) => { const n = parts.reduce((t, p) => t + p.length, 0), o = new Float32Array(n); let k = 0; for (const p of parts) { o.set(p, k); k += p.length; } return o; };
 
 // Strips a leading "hey bob" and says whether it was there.
 export function wakeWord(text) {

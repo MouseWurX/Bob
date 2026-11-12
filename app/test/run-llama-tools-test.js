@@ -1,6 +1,7 @@
 // llama.cpp's helper programs in Bob: finding them, gguf-split (brains in parts), llama-bench (the standard speed
 // test), ggml-rpc-server (Bob-Net: lend my graphics card / spread big brains) and llama-diffusion-cli (diffusion
 // brains). Nothing here runs a real program or reads the real computer: tools, folders, networks and processes are fakes.
+import { labText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -111,7 +112,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   ok(!r.ok && /isn't here/.test(r.error), 'bench: no tool, said plainly');
   const m = mergeScores({ speed: { tps: 50 } }, { name: 'B', packs: {}, when: '2026-11-09', bench: b });
   ok(m.speed.tps === 50 && m.speed.bench.read === 1834.6 && m.speed.bench.when === '2026-11-09', 'bench: kept on the scoreboard beside the Challenges speed');
-  const lab = read(path.join(here, '..', 'src', 'lab.js'));
+  const lab = labText();
   ok(/const bench = c\.bench === true/.test(lab), 'bench: off unless ticked');
 }
 
@@ -175,6 +176,14 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   ok(r.ok && r.via === 'home' && r.host === H(192, 168, 4, 185) && gates.at(-1).allow === H(192, 168, 4, 189) && !gates[0].open, 'card: on the same home network, the gate moves there, for that Bob only');
   r = await lender.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', home: [H(10, 0, 0, 9), '8.8.8.8'] });
   ok(r.ok && r.via === 'tailscale', 'card: a different home network, or a public address, stays on Tailscale');
+  {
+    // 1.5.210 (Go Wi-Fi test): a lender holding its own brain lets it go before the lend starts.
+    let freed = 0; const said = [];
+    const holder = new CardLender(cfg, { spawnFn, tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome, gate, freeOwn: async () => { freed++; return true; }, log: (k, t) => said.push(t) });
+    const rr = await holder.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.9' });
+    ok(rr.ok && freed === 1 && said.some((t) => /let go of my own brain first/.test(t)), 'card: a lender holding its own brain lets it go first, and says so');
+    holder.close();
+  }
   {
     const noHome = new CardLender({ ...cfg, share: { ...cfg.share, homeNet: false } }, { spawnFn, tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome, gate });
     ok((await noHome.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', home: [H(192, 168, 4, 189)] })).via === 'tailscale', 'card: Use the home network first off, Tailscale only');
@@ -248,6 +257,12 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     await b2.open({ sizeGB: 200, file: brainFile });
     ok(!('brain' in sent[0].body) && sent[0].timeout === 8000, 'send early: with SCUT off, nothing about the brain is sent');
     b2.close();
+    // 1.5.210 (PC test): a Bob that won't lend is named in the logbook with why, instead of a quiet load here.
+    const said = [];
+    const no = { bobs: () => [{ name: 'Go', address: '100.102.0.7:7777' }], call: async () => ({ ok: true, json: async () => ({ ok: false, why: 'off' }) }) };
+    const b3 = new CardBorrower({ share: { spread: 'toobig' }, gpuVramGB: 16 }, no, { home: () => [], log: (k, t) => said.push(t) });
+    const h3 = await b3.open({ sizeGB: 200 });
+    ok(h3.length === 0 && said.some((t) => /skipped Go \(lending is off there\)/.test(t)), 'spread: a Bob that didn\'t lend is named, with why');
   }
   {
     // The real UDP half of the gate, on loopback: the asking Bob's datagrams reach the card server and its answers come back; anyone else's don't.

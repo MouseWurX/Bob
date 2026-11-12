@@ -1,26 +1,37 @@
 diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
-index 1457f9a..ae28423 100644
+index 1457f9a..028ba4d 100644
 --- a/tools/server/server-context.cpp
 +++ b/tools/server/server-context.cpp
-@@ -196,8 +196,17 @@ struct server_expert_trace {
+@@ -196,7 +196,27 @@ struct server_expert_trace {
          pass    = 0;
          last_il = -1;
          tags.clear();
+-    }
 +        sent_tag = 0;
 +        sent_out = 0;
 +        sent_rows = 0;
-     }
- 
++        seen_tag = 0;
++        seen_out = 0;
++        seen_prompt = 0;
++    }
++
 +    // Brain Engine, streamed trace: how far the pieces sent so far reach (in tags, in tokens with an output, and in
 +    // the slot's own rows)
 +    size_t  sent_tag  = 0;
 +    size_t  sent_out  = 0;
 +    int32_t sent_rows = 0;
-+
++    // running counts over the tags (so a piece costs the same at any context length, not a walk over every tag):
++    // how many tags are counted, how many of them have an output, how many are the traced slot's prompt
++    size_t  seen_tag    = 0;
++    size_t  seen_out    = 0;
++    int32_t seen_prompt = 0;
++    // a piece carries at most this many of the slot's rows (a long prompt arrives as one piece: only its end is sent,
++    // and "from" says where that end starts)
++    static constexpr size_t part_max_rows = 64;
+ 
      // the hidden neurons of a layer's feed-forward block, after the activation: [n_ff, n_tokens]
      static int neuron_layer(const char * name) {
-         static const char * const names[] = {
-@@ -2552,6 +2561,9 @@ private:
+@@ -2552,6 +2572,9 @@ private:
          res->n_prompt_tokens       = slot.task->n_tokens();
          res->n_prompt_tokens_cache = slot.stats.n_prompt_cached;
          res->post_sampling_probs   = slot.task->params.post_sampling_probs;
@@ -30,7 +41,7 @@ index 1457f9a..ae28423 100644
  
          res->verbose           = slot.task->params.verbose;
          res->res_type          = slot.task->params.res_type;
-@@ -5165,6 +5177,93 @@ private:
+@@ -5165,6 +5188,103 @@ private:
          return out;
      }
  
@@ -47,10 +58,12 @@ index 1457f9a..ae28423 100644
 +        if (etrace.bad || etrace.n_used <= 0 || etrace.sent_tag >= etrace.tags.size()) {
 +            return out;
 +        }
-+        size_t n_output = 0;
-+        for (const auto & tag : etrace.tags) {
-+            n_output += tag.output ? 1 : 0;
++        for (; etrace.seen_tag < etrace.tags.size(); etrace.seen_tag++) {
++            const auto & tag = etrace.tags[etrace.seen_tag];
++            etrace.seen_out    += tag.output ? 1 : 0;
++            etrace.seen_prompt += tag.id_slot == slot.id && tag.is_prompt ? 1 : 0;
 +        }
++        const size_t n_output = etrace.seen_out;
 +        // as at the end: a layer has seen every token so far, or (the last layer) only the tokens with an output
 +        std::vector<uint8_t> outputs_only(etrace.cols.size(), 0);
 +        for (size_t il = 0; il < etrace.cols.size(); il++) {
@@ -65,15 +78,23 @@ index 1457f9a..ae28423 100644
 +        const int32_t k = etrace.n_used;
 +        const bool with_acts = etrace.neurons || etrace.heads;
 +        json rows = json::array();
-+        int32_t n_prompt = 0;
-+        for (const auto & tag : etrace.tags) {
-+            n_prompt += tag.id_slot == slot.id && tag.is_prompt ? 1 : 0;
++        const int32_t n_prompt = etrace.seen_prompt;
++        // the slot's new rows; when there are more than part_max_rows, skip the early ones (still counted in "from")
++        size_t n_new = 0;
++        for (size_t i = etrace.sent_tag; i < etrace.tags.size(); i++) {
++            n_new += etrace.tags[i].id_slot == slot.id ? 1 : 0;
 +        }
++        const size_t n_skip = n_new > etrace.part_max_rows ? n_new - etrace.part_max_rows : 0;
++        size_t skipped = 0;
 +        size_t i_output = etrace.sent_out;
 +        for (size_t i = etrace.sent_tag; i < etrace.tags.size(); i++) {
 +            const size_t i_out = i_output;
 +            i_output += etrace.tags[i].output ? 1 : 0;
 +            if (etrace.tags[i].id_slot != slot.id) {
++                continue;
++            }
++            if (skipped < n_skip) {
++                skipped++;
 +                continue;
 +            }
 +            json e = json::array();
@@ -112,10 +133,10 @@ index 1457f9a..ae28423 100644
 +            {"n_ff",          etrace.n_ff},
 +            {"n_expert_used", k},
 +            {"n_prompt",      n_prompt},
-+            {"from",          etrace.sent_rows},
++            {"from",          etrace.sent_rows + (int32_t) n_skip},
 +            {"rows",          rows},
 +        };
-+        etrace.sent_rows += (int32_t) rows.size();
++        etrace.sent_rows += (int32_t) (n_skip + rows.size());
 +        etrace.sent_tag   = etrace.tags.size();
 +        etrace.sent_out   = i_output;
 +        return out;

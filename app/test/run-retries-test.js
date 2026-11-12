@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Brain, NO_ANSWER_NOTE, NO_ANSWER_PARKED } from '../src/brain.js';
-import { backoffMs, jitter, rootCause, causeLine, engineFailKind, carryOnTokens, toolError, toolErrorText, ToolStrikes, STRIKES, STRIKE_NOTE, STRUCK_OUT, fixOffer, ErrorTally, sideJob, halfDone, pause } from '../src/retry.js';
+import { backoffMs, jitter, rootCause, causeLine, engineFailKind, carryOnTokens, toolError, toolErrorText, ToolStrikes, badAddress, STRIKES, STRIKE_NOTE, STRUCK_OUT, fixOffer, ErrorTally, sideJob, halfDone, pause } from '../src/retry.js';
 import { Lenders, SKIP_MS } from '../src/share-brains.js';
 import { fetchRetry } from '../src/tools.js';
 import { healthChecks } from '../src/health.js';
@@ -391,5 +391,9 @@ const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls:
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });
+// 1.5.210 (208 PC check): a made-up address is the address's fault, not a strike.
+check('an address that doesn\'t exist is not the tool\'s fault', badAddress('Error: getaddrinfo ENOTFOUND bob-test.invalid') && badAddress('Error: fetch failed (could not resolve host)') && badAddress('Error: that page came back 404 Not Found') && !badAddress('Error: the page timed out') && !badAddress('Error: Unexpected token in JSON'));
+check('...and the loop skips the strike and the daily count for it', /if \(!v\.declined && !\(!ok && badAddress\(text\)\)\)/.test(fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8')));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

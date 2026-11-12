@@ -179,6 +179,26 @@ textarea {
 @keyframes pulse { 50% { opacity: .6; } }
 body.still .mic.on { animation: none; }
 
+/* 🗣 Talk with Bob (1.5.210, public/talk.js): a bar above the message box while a hands-free talk is open. The dot
+   breathes while he listens, ripples while he talks and spins slowly while he thinks; still with reduced motion. */
+.talk-btn[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.talk-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 14px; background: var(--panel); border-top: 1px solid var(--line, rgba(127,127,127,.3)); }
+.talk-bar[hidden] { display: none; }
+.talk-dot { width: 22px; height: 22px; flex: none; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 var(--accent); }
+.talk-bar[data-state="listening"] .talk-dot { animation: talk-breathe 2.4s ease-in-out infinite; }
+.talk-bar[data-state="talking"] .talk-dot { animation: talk-ripple 1s ease-out infinite; }
+.talk-bar[data-state="hearing"] .talk-dot, .talk-bar[data-state="thinking"] .talk-dot, .talk-bar[data-state="working"] .talk-dot { background: conic-gradient(var(--accent) 0 70%, transparent 70%); animation: talk-spin 1.6s linear infinite; }
+.talk-bar[data-state="paused"] .talk-dot, .talk-bar[data-state="starting"] .talk-dot { opacity: .45; }
+.talk-words { display: flex; flex-direction: column; min-width: 0; flex: 1 1 200px; }
+.talk-said { overflow-wrap: anywhere; }
+.talk-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+.talk-buttons button { min-height: 36px; }
+@keyframes talk-breathe { 50% { transform: scale(.8); opacity: .7; } }
+@keyframes talk-ripple { 0% { box-shadow: 0 0 0 0 var(--accent); } 100% { box-shadow: 0 0 0 10px transparent; } }
+@keyframes talk-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .talk-bar .talk-dot { animation: none !important; } }
+body.still .talk-bar .talk-dot { animation: none !important; }
+
 .chips { display: flex; gap: 6px; padding: 8px 14px 0; overflow-x: auto; background: var(--panel); }
 .chips button { white-space: nowrap; padding: 4px 10px; font-size: 13px; border-radius: 999px; color: var(--muted); }
 .chips button:hover { color: var(--text); border-color: var(--accent); }
@@ -575,35 +595,17 @@ button.danger { background: #a8432f; color: #fff; border-color: #a8432f; }
 .subsection > h3 { margin: 0 0 4px; }
 .voice-settings { margin-bottom: 10px; }
 
-/* 1.2.0 Equip Bob: the paper doll */
-.equip-top { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; }
-.doll { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: start; margin: 10px 0; }
-.doll-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.doll-mid { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 40px; position: sticky; top: 0; }
-.doll-bob { width: 160px; height: 160px; image-rendering: pixelated; background: var(--sprite-bg); border-radius: calc(var(--r) * 2); border: 1px solid var(--line); }
-.slot { position: relative; display: flex; align-items: stretch; border: 1px dashed var(--line); border-radius: var(--r); background: var(--bg); }
-.slot.on { border-style: solid; background: var(--card); box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 35%, transparent); }
-.slot.sel { outline: 2px solid var(--accent); outline-offset: 1px; }
-.slot.can-drop { border-color: var(--good); }
-.slot.drop-here { background: var(--good-bg); }
-.slot-pick { flex: 1; display: flex; gap: 8px; align-items: center; text-align: left; border: 0; background: transparent; padding: 6px 8px; min-width: 0; }
-.slot-icon { font-size: 22px; width: 28px; text-align: center; flex: none; }
-.slot-text { font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
-.slot .unequip { align-self: center; margin-right: 6px; font-size: 12px; padding: 1px 7px; background: transparent; color: var(--muted); }
-.slot .weight { color: var(--muted); font-size: 12px; }
+/* 1.2.0 Kits: the choices for one job (the Brains page). 1.5.210 the paper doll they sat beside is gone. */
 .helpers { margin: 8px 0; }
-.helper-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 6px; margin-top: 6px; }
 .kit-panel { border-top: 1px solid var(--line); padding-top: 8px; }
 .kit-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .kit { border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
-.kit[draggable="true"] { cursor: grab; }
 .kit.worn { border-color: var(--good); }
 .kit.heavy { opacity: 0.8; }
 .kit-btn { width: 100%; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; text-align: left; border: 0; background: transparent; padding: 8px 10px; }
 .kit.shop { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; padding: 8px 10px; border-style: dashed; }
 .kit.shop .confirm { flex-basis: 100%; }
 .kit-name { font-weight: 600; }
-.weight-bar { margin: 8px 0; font-size: 13px; color: var(--muted); }
 .meter.over i { background: var(--bad); }
 .confirm.also { border: 1px solid var(--accent); border-radius: var(--r); padding: 8px 10px; margin-bottom: 8px; }
 .also-row { display: block; padding: 2px 0; }
@@ -626,15 +628,9 @@ button.danger { background: #a8432f; color: #fff; border-color: #a8432f; }
 .hands-limits label.switch { margin-top: 6px; }
 .hands-limits label.switch input, .hands-free label.switch input { flex-shrink: 0; }
 .hands-free.on { border-left: 3px solid var(--warn); padding-left: 8px; }
-@media (max-width: 720px) {
-  .doll { grid-template-columns: 1fr; }
-  .doll-mid { order: -1; padding-top: 0; position: static; }
-}
 
 /* 1.3.0: Attributes on the left, Bob and his slots in the middle, inventory on the right */
 .cellar.wide { width: min(1400px, 98vw); }
-.equip-page { display: grid; grid-template-columns: 250px minmax(0, 1fr) 280px; gap: 14px; align-items: start; }
-.equip-page .kit-panel { border-top: 0; border-left: 1px solid var(--line); padding: 0 0 0 12px; position: sticky; top: 56px; max-height: 75vh; overflow: auto; }
 .kit-head { text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; }
 .attributes { border-right: 1px solid var(--line); padding-right: 12px; }
 .attributes summary { list-style: none; cursor: pointer; }
@@ -654,10 +650,8 @@ p.small, .muted.small { font-size: 12px; }
 #bob { cursor: pointer; border-radius: var(--r); }
 #bob:hover, #bob:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 1100px) {
-  .equip-page { grid-template-columns: 1fr; }
   .attributes { border-right: 0; padding-right: 0; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
   .attributes summary h3::after { content: " (tap to fold)"; text-transform: none; letter-spacing: 0; }
-  .equip-page .kit-panel { border-left: 0; padding-left: 0; position: static; max-height: none; border-top: 1px solid var(--line); padding-top: 8px; }
 }
 
 /* 1.3.1: what Bob calls you */
@@ -751,16 +745,11 @@ details.more > summary:hover { color: var(--accent); }
 @media (max-width: 640px) { .srow { grid-template-columns: 1fr; } .srow .sact { justify-content: flex-start; } }
 /* The page is narrower than the window (menu and Now running sit beside it), so Equip Bob folds by the page's own width. */
 .cellar.page #cellar-body { container-type: inline-size; }
-.cellar.page .equip-page .kit-panel { top: calc(var(--cellar-head-h, 56px) + var(--cellar-tabs-h, 0px) + 8px); }
 @container (max-width: 1100px) {
-  .equip-page { grid-template-columns: 1fr; }
   .attributes { border-right: 0; padding-right: 0; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
   .attributes summary h3::after { content: " (tap to fold)"; text-transform: none; letter-spacing: 0; }
-  .equip-page .kit-panel { border-left: 0; padding-left: 0; position: static; max-height: none; border-top: 1px solid var(--line); padding-top: 8px; }
 }
 @container (max-width: 720px) {
-  .doll { grid-template-columns: 1fr; }
-  .doll-mid { order: -1; padding-top: 0; position: static; }
   .srow { grid-template-columns: 1fr; } .srow .sact { justify-content: flex-start; }
 }
 
@@ -824,6 +813,13 @@ details.more > summary:hover { color: var(--accent); }
 .help-entry dt { font-weight: 700; margin-top: 6px; }
 .help-entry dd { margin: 0 0 4px 0; }
 .help-entry a { color: var(--accent); }
+/* 1.5.210: questions and small pages folded into their main page */
+.help-entry h4 { margin: 12px 0 4px; font-size: .95em; }
+.help-subs { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.help-sub { border: 1px solid var(--line); border-radius: 6px; padding: 0 10px; scroll-margin-top: 8px; }
+.help-sub > summary { cursor: pointer; padding: 6px 0; font-weight: 600; }
+.help-sub > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.help-sub[open] { padding-bottom: 8px; }
 #help { width: min(1000px, 96vw); }
 @media (max-width: 700px) { .help-cols { grid-template-columns: 1fr; } .help-toc { position: static; } }
 .fit-picks { margin: 4px 0; padding-left: 18px; font-size: 14px; }
@@ -1143,7 +1139,7 @@ video.out-media { max-height: 240px; border-radius: calc(var(--r) * 0.75); }
 .spanel .mini { padding: 4px 12px; }
 .cellar .settings { padding-bottom: 160px; }
 
-/* 1.5.34 House style boxes (Equip Bob) and Projects (Settings) */
+/* 1.5.34 House style boxes and Projects (both in Settings) */
 .house-style { margin: 8px 0; padding: 6px 10px; border: 1px solid var(--line, #444); border-radius: 8px; }
 .house-style summary { cursor: pointer; font-weight: 600; }
 .hs-grid { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 10px; align-items: center; }
@@ -1628,12 +1624,7 @@ button.gm-sq:hover, button.gm-sq:focus-visible { background: #a9cdf0; outline: 2
 .adv-char canvas { width: 64px; height: 64px; flex: none; image-rendering: pixelated; background: var(--sprite-bg); border-radius: var(--r); }
 .adv-char .row { margin-top: 4px; }
 
-/* 1.5.125 The chest on Equip Bob: what Bob made, as little pictures with names, under Bob on the paper doll. */
-.chest-tile { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 6px 12px; border: 1px dashed var(--line); border-radius: var(--r); background: var(--bg); font-size: 13px; min-height: 32px; }
-.chest-tile:hover, .chest-tile:focus-visible { border-color: var(--accent); }
-.chest-tile.sel { outline: 2px solid var(--accent); outline-offset: 1px; border-style: solid; background: var(--card); }
-.chest-icon { font-size: 22px; line-height: 1; }
-.chest-count { background: var(--accent); color: var(--bg); border-radius: 999px; padding: 0 7px; font-size: 12px; font-weight: 600; min-width: 20px; text-align: center; }
+/* 1.5.125 Little pictures with names for what Bob made (1.5.210: the chest tile on the paper doll is gone). */
 .chest-folder { margin: 6px 0 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
 .chest-folder p { margin: 0 0 6px; }
 .chest-folder .row { gap: 6px; flex-wrap: wrap; }
@@ -2152,6 +2143,39 @@ html.readable-font code, html.readable-font pre, html.readable-font kbd { font-f
 .file-link.file-place { white-space: nowrap; }
 .vdoc .flash, .vslide.flash { outline: 2px solid var(--accent); outline-offset: 2px; }
 .vcode mark.vat { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; }
+/* 1.5.208 the catalogue's sort and filter bar, and the maker and REAP tags */
+.cat-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 12px; margin: 8px 0; }
+.cat-filter { display: grid; gap: 2px; font-size: 12px; color: var(--muted); }
+.cat-filter select { min-height: 36px; max-width: 100%; }
+.tag.official-tag { border-color: var(--accent); }
+.tag.reap-tag { border-style: dashed; }
+
+/* 1.5.210 The porthole: the fNRI cube seen through a round window into a foggy room (public/fog.js draws the fog on its own
+   canvas behind the cube's). The rim is the theme's colours, so it fits every look. */
+.mind-cube.porthole .port { position: relative; width: 220px; height: 220px; margin: 0 auto; border-radius: 50%; padding: 6px; box-sizing: border-box;
+  background: radial-gradient(circle at 35% 28%, color-mix(in srgb, var(--text) 55%, var(--panel)), color-mix(in srgb, var(--line) 80%, black) 58%, color-mix(in srgb, var(--bg) 70%, black));
+  box-shadow: 0 3px 12px rgba(0, 0, 0, .55); }
+.mind-cube.porthole .port canvas { position: absolute; inset: 6px; width: calc(100% - 12px); height: calc(100% - 12px); border: none; border-radius: 50%; display: block; }
+.mind-cube.porthole .port canvas.fog { image-rendering: auto; filter: blur(1px); }
+.mind-cube.porthole .port::after { content: ""; position: absolute; inset: 6px; border-radius: 50%; pointer-events: none;
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, .8); background: radial-gradient(circle at 30% 22%, rgba(255, 255, 255, .14), transparent 38%); }
+.mind-cube.porthole .port { --glint: var(--cube, var(--accent)); --glint-a: 0; transition: box-shadow .5s ease-out; }
+.mind-cube.porthole .port { box-shadow: 0 3px 12px rgba(0, 0, 0, .55), 0 0 calc(14px * var(--glint-a)) calc(2px * var(--glint-a)) color-mix(in srgb, var(--glint) calc(70% * var(--glint-a)), transparent); }
+.mind-cube.porthole .port::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; pointer-events: none; z-index: 1; border: 2px solid var(--cube, var(--accent)); opacity: 0; transform: scale(.2); }
+.mind-cube.porthole .port.ripple::before { animation: porthole-ripple 1.2s ease-out; }
+@keyframes porthole-ripple { 0% { opacity: .7; transform: scale(.2); } 100% { opacity: 0; transform: scale(1); } }
+.still .mind-cube.porthole .port::before { animation: none; }
+.mind-cube.porthole.pulse .port canvas:not(.fog) { animation: mind-cube-pulse 1.4s ease-in-out infinite; }
+.mind-cube.porthole.pulse canvas.fog { animation: none; }
+
+/* 1.5.209 Bob's picture as the fNRI cube (Style, Bob's look): the same size and place as the pixel Bob, in its own small porthole, theme colours only */
+.mind-cube.bob-cube { margin: 0; gap: 0; }
+.mind-cube.bob-cube.porthole .port { width: 56px; height: 56px; padding: 3px; cursor: pointer; }
+.side-top .mind-cube.bob-cube.porthole .port { width: 44px; height: 44px; }
+body.left-folded .side-top .mind-cube.bob-cube.porthole .port { width: 36px; height: 36px; padding: 2px; }
+.mind-cube.bob-cube.porthole .port canvas { inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px); }
+.mind-cube.bob-cube.porthole .port::after { inset: 3px; box-shadow: inset 0 0 6px rgba(0, 0, 0, .8); }
+.mind-cube.bob-cube canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ---------- 1.5.210 (UX item B): one status chip, a grouped menu, a bottom bar on phones. Display only. ---------- */
 /* The chip: Bob's brain line, then the icons of any quick switch that is on, then ▾. Its panel holds the switches. */
@@ -2215,29 +2239,131 @@ body.left-folded .nav-head:has(+ #labBtn[hidden]) { display: none; }
   .chips { padding: 6px 8px 0; }
 }
 .tasks-empty p { margin: 4px 0; } .tasks-empty q { font-style: italic; }
-/* 1.5.210 The porthole: the fNRI cube seen through a round window into a foggy room (public/fog.js draws the fog on its own
-   canvas behind the cube's). The rim is the theme's colours, so it fits every look. */
-.mind-cube.porthole .port { position: relative; width: 220px; height: 220px; margin: 0 auto; border-radius: 50%; padding: 6px; box-sizing: border-box;
-  background: radial-gradient(circle at 35% 28%, color-mix(in srgb, var(--text) 55%, var(--panel)), color-mix(in srgb, var(--line) 80%, black) 58%, color-mix(in srgb, var(--bg) 70%, black));
-  box-shadow: 0 3px 12px rgba(0, 0, 0, .55); }
-.mind-cube.porthole .port canvas { position: absolute; inset: 6px; width: calc(100% - 12px); height: calc(100% - 12px); border: none; border-radius: 50%; display: block; }
-.mind-cube.porthole .port canvas.fog { image-rendering: auto; filter: blur(1px); }
-.mind-cube.porthole .port::after { content: ""; position: absolute; inset: 6px; border-radius: 50%; pointer-events: none;
-  box-shadow: inset 0 0 18px rgba(0, 0, 0, .8); background: radial-gradient(circle at 30% 22%, rgba(255, 255, 255, .14), transparent 38%); }
-.mind-cube.porthole .port { --glint: var(--cube, var(--accent)); --glint-a: 0; transition: box-shadow .5s ease-out; }
-.mind-cube.porthole .port { box-shadow: 0 3px 12px rgba(0, 0, 0, .55), 0 0 calc(14px * var(--glint-a)) calc(2px * var(--glint-a)) color-mix(in srgb, var(--glint) calc(70% * var(--glint-a)), transparent); }
-.mind-cube.porthole .port::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; pointer-events: none; z-index: 1; border: 2px solid var(--cube, var(--accent)); opacity: 0; transform: scale(.2); }
-.mind-cube.porthole .port.ripple::before { animation: porthole-ripple 1.2s ease-out; }
-@keyframes porthole-ripple { 0% { opacity: .7; transform: scale(.2); } 100% { opacity: 0; transform: scale(1); } }
-.still .mind-cube.porthole .port::before { animation: none; }
-.mind-cube.porthole.pulse .port canvas:not(.fog) { animation: mind-cube-pulse 1.4s ease-in-out infinite; }
-.mind-cube.porthole.pulse canvas.fog { animation: none; }
 
-/* 1.5.209 Bob's picture as the fNRI cube (Style, Bob's look): the same size and place as the pixel Bob, in its own small porthole, theme colours only */
-.mind-cube.bob-cube { margin: 0; gap: 0; }
-.mind-cube.bob-cube.porthole .port { width: 56px; height: 56px; padding: 3px; cursor: pointer; }
-.side-top .mind-cube.bob-cube.porthole .port { width: 44px; height: 44px; }
-body.left-folded .side-top .mind-cube.bob-cube.porthole .port { width: 36px; height: 36px; padding: 2px; }
-.mind-cube.bob-cube.porthole .port canvas { inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px); }
-.mind-cube.bob-cube.porthole .port::after { inset: 3px; box-shadow: inset 0 0 6px rgba(0, 0, 0, .8); }
-.mind-cube.bob-cube canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* ---------- 1.5.210 panels you build (panels.js): none until you put a module in one ---------- */
+.mod-panel { flex: none; width: var(--panel-w, 300px); display: flex; flex-direction: column; gap: 6px; min-height: 0; padding: 10px; overflow-y: auto; background: var(--panel); font-size: 13px; }
+.mod-panel[hidden] { display: none; }
+#panelLeft { border-right: 1px solid var(--line); }
+#panelRight { border-left: 1px solid var(--line); }
+.mod-panel[data-state="collapsed"] { width: 132px; }
+.panel-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.panel-states { display: inline-flex; gap: 2px; }
+.mod-panel[data-state="collapsed"] .panel-head strong { flex: 1 1 100%; }
+.panel-states [aria-checked="true"], .panel-row [aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.panel-strip { display: grid; gap: 4px; }
+.panel-strip[hidden], .panel-mods[hidden] { display: none; }
+.panel-strip .mini { text-align: left; white-space: normal; }
+.panel-mods { display: flex; flex-direction: column; gap: 6px; }
+.mod-panel .sec-order { display: none; } /* the order inside a panel is the order you put modules in */
+.put-in select { font-size: 11px; padding: 1px 4px; max-width: 120px; }
+.panel-row { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); padding: 2px 0 6px; border-bottom: 1px solid var(--line); }
+.panel-row-side { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+/* Lamplight lays the window out as a grid: a panel takes a column of its own beside the chat. */
+@media (min-width: 641px) {
+  body.look-lamplight.panel-left .app { grid-template-columns: auto minmax(0, 1fr) auto auto auto auto; }
+  body.look-lamplight #panelLeft { grid-column: 1; grid-row: 2; margin: 0 0 var(--s3, 12px) var(--s3, 12px); border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb, var(--panel) 94%, transparent); }
+  body.look-lamplight.panel-left .mid { grid-column: 2; }
+  body.look-lamplight #panelRight { grid-row: 2; grid-column: -2; margin: 0 var(--s3, 12px) var(--s3, 12px) 0; border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb, var(--panel) 94%, transparent); }
+}
+/* A phone has no room beside the chat: panels stay in Now running's place, which the status line opens. */
+/* (panels.js keeps them hidden on a phone and puts their modules back in Now running) */
+.now-sec:has(.put-in) { flex-wrap: wrap; }
+.put-in { margin-left: auto; }
+@media (min-width: 641px) {
+  body.look-lamplight.panel-right .now { right: calc(var(--panel-w, 300px) + 24px); }
+  body.look-lamplight.panel-right-collapsed .now { right: 156px; }
+}
+.mod-panel[data-state="collapsed"] .panel-states { display: grid; width: 100%; }
+.mod-panel[data-state="collapsed"] .panel-states .mini { text-align: left; }
+
+/* 1.5.210 The thinking bubble (think-bubble.js): folded above Bob's answer; press to see the steps, drafts and fixes. */
+.think { align-self: flex-start; max-width: 92%; border: 1px dashed var(--line); border-radius: calc(var(--r) * 1.25); background: color-mix(in srgb, var(--card) 55%, transparent); font-size: .9em; }
+.think.open { border-style: solid; }
+.think.needs { border: 1px solid var(--warn); }
+.think-head { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 6px 10px; background: none; border: 0; color: var(--muted); text-align: left; cursor: pointer; font: inherit; }
+.think.needs .think-head { color: var(--warn); font-weight: 600; }
+.think-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: calc(var(--r) * 1.25); }
+.think-line { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.think-line.swap { animation: think-swap .45s ease-out; }
+@keyframes think-swap { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.think-time { font-variant-numeric: tabular-nums; opacity: .75; }
+.think-spark { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); flex: none; }
+.think.live .think-spark { animation: think-pulse 1.6s ease-in-out infinite; }
+.think.needs .think-spark { background: var(--warn); }
+.think.finished .think-spark { opacity: .5; }
+@keyframes think-pulse { 0%, 100% { opacity: .35; transform: scale(.75); } 50% { opacity: 1; transform: scale(1.15); } }
+.think-dots { display: inline-flex; gap: 3px; margin-left: auto; flex: none; }
+.think-dots i, .think-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.d-done { background: var(--accent); }
+.d-failed { background: var(--bad); }
+.d-waiting { background: var(--warn); }
+.d-note { background: var(--muted); }
+.d-draft { background: transparent; box-shadow: 0 0 0 1.5px var(--muted) inset; }
+.think-caret { flex: none; transition: transform .15s; }
+.think.open .think-caret { transform: rotate(90deg); }
+.think-body { padding: 0 10px 8px; }
+.think-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
+.think-row { display: flex; gap: 8px; align-items: baseline; color: var(--text); }
+.think-row.note { color: var(--muted); }
+.think-row .think-dot { position: relative; top: -1px; }
+.think-draft { display: block; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); border-left: 2px solid var(--line); padding-left: 8px; max-height: 9em; overflow-y: auto; }
+.think-foot { margin-top: 6px; }
+.think-empty { margin: 0; }
+body.still .think *, .think.finished * { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .think * { animation: none !important; transition: none !important; } }
+@media (max-width: 600px) { .think { max-width: 100%; } .think-dots i:nth-child(n+9) { display: none; } }
+
+/* 1.5.210 First run: the four switches that help most, then everything else folded below. */
+.want-top { margin-bottom: 8px; }
+.wants-more > summary { cursor: pointer; padding: 6px 0; font-weight: 600; }
+.wants-more[open] > summary { margin-bottom: 6px; }
+/* 1.5.210 the catalogue's Sort (my pick first / best fit first) and the Fits your card badge */
+.cat-sort { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; }
+.cat-sort button[aria-checked="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tag.fit-tag { cursor: help; }
+.house-door { margin: 6px 0; }
+/* 1.5.210 sample-data mode: a plain bar along the top so a screenshot can never pass for the real thing */
+.sample-banner { position: sticky; top: 0; z-index: 1000; padding: 6px 16px; background: var(--warn); color: var(--bg); font-weight: 600; text-align: center; }
+
+/* ---------- 1.5.210 pages (item B): Settings, Get models, Tasks, Downloads, Tidy up and Help, on the Lamplight page
+   frame (looks.css). Page-scoped only; the shared frame belongs to looks.css. ---------- */
+/* Settings in its own window has no top bar, so the page takes the whole window. */
+html.settings-window body.look-lamplight .cellar.page[open] { inset: 0; }
+/* Settings, Simple: the eight cards are quiet outlines that light up, in one centred grid. */
+body.look-lamplight .set-cards { max-width: 1000px; gap: var(--s3, 12px); }
+body.look-lamplight .set-card { background: transparent; border: 1px solid var(--line); border-radius: 14px; box-shadow: none; transition: border-color .15s, box-shadow .15s; }
+body.look-lamplight .set-card:hover, body.look-lamplight .set-card:focus-visible { border-color: var(--accent); box-shadow: 0 0 22px -10px var(--accent); }
+body.look-lamplight .set-card .set-card-now { color: var(--muted); }
+body.look-lamplight.still .set-card { transition: none; }
+/* Get models: the two rows of boxed buttons become two rows of words with a lit underline. */
+body.look-lamplight .cellar-tabs { background: none; border: 0; border-bottom: 1px solid var(--line); padding: 0 0 var(--s2, 8px); gap: 0; }
+body.look-lamplight .cellar-tabs .tabs-row { gap: 0; flex-wrap: wrap; }
+body.look-lamplight .cellar-tabs .tabs-label { color: var(--muted); font-size: var(--t-xs, 12px); text-transform: uppercase; letter-spacing: .08em; min-width: 7em; }
+body.look-lamplight .cellar-tabs [role="tab"] { background: none !important; border: 0 !important; border-radius: 0; box-shadow: none; padding: var(--s2, 8px) var(--s3, 12px); color: var(--muted); font-weight: 400; }
+body.look-lamplight .cellar-tabs [role="tab"]:hover { color: var(--text); }
+body.look-lamplight .cellar-tabs [role="tab"][aria-selected="true"] { color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+/* Tasks (and Finished in Downloads): the filter buttons read as tabs too. */
+body.look-lamplight .ttabs { gap: 0; border-bottom: 1px solid var(--line); margin-bottom: var(--s3, 12px); }
+body.look-lamplight .ttabs [data-f] { background: none !important; border: 0 !important; border-radius: 0; color: var(--muted); padding: var(--s2, 8px) var(--s3, 12px); }
+body.look-lamplight .ttabs [data-f][aria-pressed="true"] { color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+body.look-lamplight .tlist .titem { background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+body.look-lamplight .tasks-empty { list-style: none; max-width: 60ch; color: var(--muted); padding: var(--s4, 16px) 0; }
+body.look-lamplight .tasks-empty strong { color: var(--text); }
+/* Downloads: its settings sit under a hairline, as one quiet group. */
+body.look-lamplight .dl-settings { border-top: 1px solid var(--line); margin-top: var(--s6, 24px); padding-top: var(--s4, 16px); }
+/* Help: the contents on the left, the words on the right at a readable width. */
+body.look-lamplight .help-cols { grid-template-columns: 240px minmax(0, 72ch); gap: var(--s6, 32px); }
+body.look-lamplight .help-toc { top: 0; max-height: calc(100dvh - 140px); padding-right: var(--s3, 12px); border-right: 1px solid var(--line); }
+body.look-lamplight .help-toc a { color: var(--muted); text-decoration: none; }
+body.look-lamplight .help-toc a:hover, body.look-lamplight .help-toc a:focus-visible, body.look-lamplight .help-toc a[aria-current] { color: var(--accent); }
+@media (max-width: 700px) { body.look-lamplight .help-cols { grid-template-columns: 1fr; } body.look-lamplight .help-toc { border: 0; max-height: none; } }
+body.look-lamplight #help[open] { width: 100vw; }
+html.settings-window body.look-lamplight .cellar.page[open] { height: 100dvh; max-height: none; }
+@media (max-width: 640px) {
+  body.look-lamplight .cellar-tabs .tabs-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  body.look-lamplight .cellar-tabs [role="tab"] { flex: none; white-space: nowrap; }
+  body.look-lamplight .cellar-tabs .tabs-label { min-width: 0; flex: none; white-space: nowrap; margin-right: var(--s2, 8px); position: static; }
+  body.look-lamplight .cellar select { width: 100%; min-width: 0; }
+  body.look-lamplight .ttabs { flex-wrap: nowrap; overflow-x: auto; }
+  body.look-lamplight .ttabs [data-f] { flex: none; white-space: nowrap; }
+}

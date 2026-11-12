@@ -98,7 +98,7 @@ export function presetFor(cfg, chatId) {
   return cleanPresetList(cfg.presetList).find((p) => p.id === want) || null;
 }
 
-// The brains a preset can name: the ones already in Bob's slots (Equip Bob). Nothing new is downloaded for a preset.
+// The brains a preset can name: the ones already in Bob's slots (Settings, Brains). Nothing new is downloaded for a preset.
 export function presetBrains(cfg) {
   return [...new Set(Object.values(cfg?.models || {}).filter((m) => typeof m === 'string' && m))];
 }

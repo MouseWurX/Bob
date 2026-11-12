@@ -56,6 +56,12 @@ check('the cube tells a screen reader its state once per change, not every word'
   && cubeState({ empty: true }) === 'Bob\'s brain cube: no brain loaded.' && cubeState({ shell: { label: 'Riker' }, phase: 'wait' }) === 'Bob\'s brain cube (Riker): thinking.'
   && cubeState({ shell: { label: 'Riker' }, loadingNow: 'Riker' }) === 'Bob\'s brain cube (Riker): loading.' && cubeState({ shell: { label: 'Riker' } }) === 'Bob\'s brain cube (Riker): ready.');
 
+// ---- the pages on the Lamplight frame (Settings, Get models, Tasks, Downloads, Tidy up, Help) ----
+const pages = css.slice(css.indexOf('1.5.210 pages (item B)'));
+check('my pages build on the shared frame with page-scoped rules only, and no colours of their own', css.includes('1.5.210 pages (item B)') && !/#[0-9a-f]{3,6}\b/i.test(pages) && /body\.look-lamplight \.set-card \{/.test(pages) && /body\.look-lamplight \.cellar-tabs \[role="tab"\]\[aria-selected="true"\]/.test(pages) && /body\.look-lamplight \.ttabs \[data-f\]\[aria-pressed="true"\]/.test(pages) && /body\.look-lamplight \.help-cols \{ grid-template-columns: 240px minmax\(0, 72ch\)/.test(pages));
+check('Settings in its own window fills it, Help gets the wide column', /html\.settings-window body\.look-lamplight \.cellar\.page\[open\] \{ inset: 0; \}/.test(pages) && /<dialog id="help" class="cellar wide"/.test(html) && /<dialog id="help" class="cellar wide"/.test(read('public/settings.html')));
+check('an empty Downloads list opens Get models instead of pointing at a menu that may not be there', /data-getmodels>Open Get models<\/button>/.test(read('public/lists.js')) && !/Get models in the left menu/.test(read('public/lists.js')));
+
 // ---- nothing reaches the brain ----
 check('the new module talks to no server', !/fetch\(|post\(|\/api\//.test(chip));
 

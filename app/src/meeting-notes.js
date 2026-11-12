@@ -1,7 +1,7 @@
 // 🎙 "Let Bob turn recordings into notes" (Settings, How Bob works, 🧰 More tools; off by default).
 // meeting_notes takes a recording (mp3, m4a, wav, ogg, flac, webm, mp4, mkv, mov; up to 3 hours) and:
 //   1. FFmpeg turns it into plain 16 kHz sound (Bob's own FFmpeg from Settings, Engines, or the computer's);
-//   2. Bob's hearing (Settings, Equip Bob: whisper.cpp with times, or the Hearing you brain in 30-second pieces)
+//   2. Bob's hearing (Settings, Brains: whisper.cpp with times, or the Hearing you brain in 30-second pieces)
 //      writes down what was said;
 //   3. a voice guess, worked out here: each piece's voice (the shape of its sound and its pitch) is compared with the
 //      others, and pieces that sound alike get the same "Speaker 1", "Speaker 2"... It's a guess, not voice ID, and
@@ -230,7 +230,7 @@ export async function meetingNotes(cfg, file, { people, signal, ffmpeg = findFfm
   const secs = pcm.length / 2 / RATE;
   if (secs < 2) throw new Error('That recording has no sound I can hear (or it\'s under 2 seconds).');
   const segs = await whatWasSaid(cfg, pcm, { signal, hear, onPiece });
-  if (!segs.length) throw new Error('I couldn\'t hear any words in that recording. Check that "Hearing you" is set up in Equip Bob.');
+  if (!segs.length) throw new Error('I couldn\'t hear any words in that recording. Check that "Hearing you" is set up in Settings, Brains.');
   const x = toFloats(pcm);
   const speakers = guessSpeakers(segs.map((s) => voiceOf(x, s.start, s.end)), people);
   const body = transcriptText(segs, speakers);

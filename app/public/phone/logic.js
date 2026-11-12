@@ -208,6 +208,34 @@
     return { stop: true, send: wakeWord(t).rest || t };
   }
 
+  // Short answers out loud (Hands-free, 1.5.210, off unless turned on): the first sentence or two of a reply, up to
+  // about 220 letters, then "The rest is in the chat." Same rule as desktop Bob's Talk with Bob (public/talk-core.js).
+  function shortSay(text, max = 220) {
+    const plain = String(text || '')
+      .replace(/```[\s\S]*?```/g, ' (some code) ')
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+      .replace(/https?:\/\/\S+/g, 'a link')
+      .replace(/^\s*[-*+]\s+/gm, '')
+      .replace(/^\s*\d+[.)]\s+/gm, '')
+      .replace(/\*\*([^*\n]+)\*\*/g, '$1')
+      .replace(/\*[^*\n]+\*\s*/g, '')
+      .replace(/[*_#>|`~]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!plain) return { say: '', cut: false };
+    const sentences = plain.match(/[^.!?]+(?:[.!?]+["')\]]*|$)\s*/g) || [plain];
+    let say = '', n = 0;
+    for (const s of sentences) {
+      const next = say ? `${say} ${s.trim()}` : s.trim();
+      if (n >= 2 || (say && next.length > max)) break;
+      say = next; n++;
+    }
+    if (say.length > max) { const cut = say.lastIndexOf(' ', max); say = `${say.slice(0, cut > max / 2 ? cut : max).replace(/[,;:]$/, '')}…`; }
+    const cut = say.length < plain.length;
+    return { say: cut ? `${say} The rest is in the chat.` : say, cut };
+  }
+
   // Talk over Bob without headphones: the phone may hear his own voice from its speaker. Words that are mostly in
   // what he's reading right now are taken as his echo, not you.
   function selfEcho(heard, saying) {
@@ -289,5 +317,5 @@
     return [subject && !text.startsWith(subject) ? subject : '', text, file].filter(Boolean).join('\n\n');
   }
 
-  globalThis.BobLogic = { netAddress, bigJob, BIG_JOBS, pickAnswerer, canDo, phoneSystem, markdown, esc, chatTitle, size, fits, phoneBackup, phoneRestore, wakeWord, talkOver, selfEcho, voiceFor, readPieces, lowData, glanceWords, carryMsgs, shareWords };
+  globalThis.BobLogic = { netAddress, bigJob, BIG_JOBS, pickAnswerer, canDo, phoneSystem, markdown, esc, chatTitle, size, fits, phoneBackup, phoneRestore, wakeWord, talkOver, shortSay, selfEcho, voiceFor, readPieces, lowData, glanceWords, carryMsgs, shareWords };
 })();

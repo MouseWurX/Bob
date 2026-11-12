@@ -56,6 +56,15 @@ function runFile(file, args, opts = {}) {
   return new Promise((resolve) => execFile(file, args, { windowsHide: true, timeout: 120000, maxBuffer: 1e6, ...opts }, (err, out, errOut) => resolve({ ok: !err, out: String(out || ''), err: String(errOut || err?.message || '') })));
 }
 
+// netsh's answer, one section per rule: { head: the name line, body: the whole section }. Without the dashes line
+// (an odd netsh), the whole answer is one section.
+export function ruleSections(out) {
+  const lines = String(out || '').replace(/\r\n?/g, '\n').split('\n');
+  const starts = lines.map((l, i) => (/^-{10,}\s*$/.test(lines[i + 1] || '') && l.trim() ? i : -1)).filter((i) => i >= 0);
+  if (!starts.length) return [{ head: String(out || ''), body: String(out || ''), whole: true }];
+  return starts.map((s, k) => ({ head: lines[s], body: lines.slice(s, k + 1 < starts.length ? starts[k + 1] : lines.length).join('\n') }));
+}
+
 // Is Bob's rule there? Reading the rules needs no admin.
 export async function firewallState(port, { os_ = OS, run = runFile, home = false, udp = true } = {}) {
   if (os_ === 'mac') return { os: 'mac', canAdd: false, note: 'mac' };
@@ -68,11 +77,15 @@ export async function firewallState(port, { os_ = OS, run = runFile, home = fals
         : which === 'firewalld' ? `${[Number(port), CARD_PORT].map((q) => `sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="${TAILSCALE_RANGE}" port port="${q}" protocol="tcp" accept'`).join(' && ')}${udp ? ` && sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="${TAILSCALE_RANGE}" port port="${CARD_PORT}" protocol="udp" accept'` : ''} && sudo firewall-cmd --reload` : '' };
   }
   const r = await run('netsh', ['advfirewall', 'firewall', 'show', 'rule', `name=${RULE}`, 'verbose']);
-  const has = (q) => new RegExp(`\\b${q}\\b`).test(r.out); // the labels are in Windows' own language, the ports aren't
+  // Only Bob's own rule counts (1.5.209, the Go: Windows' "bob.exe" program rule, UDP, came back in the same answer and
+  // made a TCP-only rule look current). netsh prints each rule as its name line, a line of dashes, then its fields;
+  // the labels are in Windows' own language, but the name, ports and TCP/UDP aren't.
+  const mine = ruleSections(r.out).filter((s) => s.whole || s.head.includes(RULE)).map((s) => s.body);
+  const has = (q, list = mine) => list.some((b) => new RegExp(`\\b${q}\\b`).test(b));
   const here = r.ok && has(Number(port));
   // An older rule (Bob's port only, or TCP only with no UDP half for SCUT), or one without the home network when
   // that's on: offered again, as Bring up to date.
-  const behind = here && (!has(CARD_PORT) || (home && !/LocalSubnet/i.test(r.out)) || (udp && !/\bUDP\b/i.test(r.out)));
+  const behind = here && (!has(CARD_PORT) || (home && !mine.some((b) => /LocalSubnet/i.test(b))) || (udp && !mine.some((b) => /\bUDP\b/i.test(b) && new RegExp(`\\b${CARD_PORT}\\b`).test(b))));
   return { os: 'win', canAdd: true, ruleHere: here && !behind, behind, otherPort: r.ok && !here, home: home === true, udp: udp === true };
 }
 

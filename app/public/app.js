@@ -1,4 +1,5 @@
 // Bob's panel: chat, approvals, status, taskbar badge, read-aloud, and the brain-swap machine.
+import './sample-data.js'; // 1.5.210 sample-data mode (?sample=1 in the address only): made-up brains, nothing saved
 import { drawBob, setLook } from './bob-sprite.js';
 import { secretNoteHtml, wireSecretNote } from './more-tools.js'; // 🧰 More tools: a password Bob made
 import { applyStyle, applySavedStyle } from './themes.js';
@@ -8,6 +9,7 @@ import { startI18n, followSaved } from './i18n.js';
 startI18n();
 import { startSwap, sceneLabel } from './brain-swap.js';
 import { createVoice } from './voice.js';
+import { createTalk } from './talk.js'; // 🗣 Talk with Bob (1.5.210, off unless turned on)
 import { createReader } from './read-aloud.js'; // Read documents aloud (item 136, off unless turned on)
 import { createCellar } from './cellar.js';
 import { watchLock } from './lock-settings.js';
@@ -41,6 +43,7 @@ import { createCatAntics } from './cat-antics.js';
 import { createBubbles } from './say-bubbles.js';
 import { createBobLife } from './bob-life.js';
 import { createViewer, outCard, fillPeeks } from './viewer.js';
+import { createThinkBubbles } from './think-bubble.js'; // 1.5.210: the thinking bubble above the answer
 import { songListHtml, wireSongs } from './song-player.js';
 import { moreBar } from './more-bar.js';
 import { createPromptMenu } from './prompts.js'; // saved prompts: the / menu in the message box
@@ -331,6 +334,31 @@ function markReplaced(el) {
   el.insertBefore(b, box);
 }
 
+// 1.5.210 The thinking bubble (public/think-bubble.js): while Bob works, his steps, drafts and fixes go in one folded
+// bubble above the answer; the chat bubble gets only the finished answer, whole. Settings, Bob himself, "Thinking
+// bubble above answers" (on unless turned off); off, the chat is as it was.
+let thinkOn = true, catName = 'Patches';
+const stillNow = () => document.body.classList.contains('still') || Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+function showAnswer(ev, text, extra = {}) {
+  const r = ensureReply(ev);
+  r.text = String(text || '');
+  if (r.text.trim() || r.media.length) { drawReply(r); log.append(r.el); } // under the cards that came while he worked
+  if (extra.checked) checkedNote(r.el, extra.checked);
+  if (extra.correction) note(extra.correction, 'error');
+}
+// The moot's minutes, folded under the answer it checked.
+function checkedNote(el, minutes) {
+  el.querySelector(':scope > .checked-note')?.remove();
+  const box = document.createElement('div');
+  box.className = 'versions-note checked-note';
+  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false">🛰 Checked by a second look</button><div hidden>${render(String(minutes))}</div>`;
+  const b = box.querySelector('button'), w = box.querySelector('div');
+  b.onclick = () => { w.hidden = !w.hidden; b.setAttribute('aria-expanded', String(!w.hidden)); };
+  el.insertBefore(box, el.querySelector(':scope > .msg-tools'));
+}
+window.addEventListener('bob-think-bubble', (e) => { thinkOn = e.detail !== false; }); // Settings, from this window
+const thinkBubbles = createThinkBubbles({ add, esc, answer: showAnswer, on: () => thinkOn, still: stillNow, cat: () => catName, openMind: () => $('mindBtn')?.click() });
+
 // ---------- Status, badge, notifications ----------
 const STATUS_TEXT = {
   idle: 'Coffee in hand. Ready when you are.',
@@ -418,10 +446,12 @@ let ownVoice = false;
 const sayQueue = []; // [{ text, bob }]
 let saying = false;
 let stopSaying = null; // stops the clip playing now
-const voiceNet = { talkOver: false, netVoices: false };
+const voiceNet = { talkOver: false, netVoices: false, talk: false, talkWay: 'own' };
+let talk = null; // 🗣 Talk with Bob (public/talk.js)
 let reader = null; // Read documents aloud (public/read-aloud.js)
-async function readVoiceNet() { try { const s = await (await fetch('/api/settings')).json(); voiceNet.talkOver = s.talkOver === true; voiceNet.netVoices = s.netVoices === true; reader?.setOn(s.readDocs === true); } catch {} }
+async function readVoiceNet() { try { const s = await (await fetch('/api/settings')).json(); voiceNet.talkOver = s.talkOver === true; voiceNet.netVoices = s.netVoices === true; voiceNet.talk = s.talkWithBob === true; voiceNet.talkWay = s.talkWay || 'own'; reader?.setOn(s.readDocs === true); syncTalk(); } catch {} }
 window.addEventListener('focus', readVoiceNet);
+window.addEventListener('bob-voice-net', readVoiceNet);
 // A pitch from a Bob's name, for this computer's own voices (Bob's own Kokoro voice gets a whole other voice instead).
 function pitchFor(name) { let h = 2166136261; for (const c of String(name || '').toLowerCase()) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; } return name ? [0.8, 0.88, 0.95, 1.08, 1.16, 1.25][h % 6] : 1; }
 function talking(on) { try { voice?.speaking(on); } catch {} }
@@ -466,6 +496,7 @@ function browserSpeak(text, bob = '') {
 // Read aloud skips stage directions like *yawns* and just says the words.
 const sayAside = (t) => String(t).replace(/\*[^*]+\*\s*/g, '').trim();
 function speak(text, bob = '') {
+  if (text && talk?.open) { talk.say(text); return; } // in a talk, everything he says goes through it, short
   if (!speakOn || !text) return;
   if (ownVoice) { sayQueue.push({ text, bob }); sayNext(); } else browserSpeak(text, bob);
 }
@@ -495,7 +526,7 @@ notifyBtn.onclick = async () => {
 };
 syncNotify();
 
-$('cellarBtn').onclick = () => cellar.open('shop', 'roles');
+$('cellarBtn').onclick = () => cellar.open('shop', 'catalogue'); // 1.5.210 opens on the Brain catalogue (brains are picked in Settings, Brains)
 $('settingsBtn').onclick = () => cellar.open('settings');
 // Saved prompts: "/" at the start of the message box (off unless turned on in Settings, How Bob works).
 createPromptMenu(input, { openSettings: () => cellar.open('settings', null, { jump: 'adv-prompts' }) });
@@ -552,10 +583,10 @@ $('helpBtn').onclick = () => helpPage.open();
 window.addEventListener('bob-tidy', () => tidyPage.open());
 // Settings, Where my memories came from: Open the chat a memory was learned in (memory-more.js).
 window.addEventListener('bob-open-chat', (e) => { const id = String(e.detail?.id || '').replace(/[^a-zA-Z0-9-]/g, ''); if (!id) return; if ($('cellar').open) $('cellar').close(); openChat(id); try { window.focus(); } catch {} });
-// "Ask Bob what he thinks" (Equip Bob, Attributes): puts the question in the chat and sends it.
+// "Ask Bob what he thinks" (Settings, Personality): puts the question in the chat and sends it.
 window.addEventListener('bob-ask', (e) => { const t = String(e.detail || '').slice(0, 300); if (!t) return; $('input').value = t; $('composer').requestSubmit(); });
 // 1.5.207 Click Bob (or press Enter on him) for his small menu: what he's doing, the brain loaded, and doors to
-// Settings, Brains, Style and Get models. The old Equip Bob screen no longer opens from here.
+// Settings, Brains, Style and Get models.
 bobCanvas.tabIndex = 0;
 bobCanvas.setAttribute('role', 'button');
 bobCanvas.title = 'Bob: what I\'m doing, my brain, and my settings';
@@ -571,7 +602,7 @@ const bobMenu = createBobMenu({
   pickTool: (id) => $(id)?.click(),
   getSession: () => (lamp() && sessionSel.options.length ? { value: sessionSel.value, options: [...sessionSel.options].map((o) => ({ value: o.value, label: o.textContent })) } : null),
   pickSession: (v) => { sessionSel.value = v; sessionSel.dispatchEvent(new Event('change', { bubbles: true })); },
-  doors: { brains: () => cellar.open('settings', null, { jump: 'adv-brains' }), style: () => cellar.open('shop', 'style'), models: () => cellar.open('shop', 'roles') },
+  doors: { brains: () => cellar.open('settings', null, { jump: 'adv-brains' }), style: () => cellar.open('shop', 'style'), models: () => cellar.open('shop', 'catalogue') },
   getStatus: async () => (await fetch('/api/status')).json(),
   getNames: async () => Object.fromEntries((((await (await fetch('/api/roles')).json()).options || {}).llm || []).map((o) => [o.value, o.label])),
   saidNow: () => statusEl.title || statusEl.textContent
@@ -584,7 +615,7 @@ const findBox = createFind({
   items: () => [
     ...PAGE_BTNS.filter((id) => $(id) && !$(id).hidden).map((id) => ({ label: $(id).getAttribute('aria-label') || id, kind: ['settingsBtn', 'styleBtn', 'helpBtn', 'dlBtn', 'tidyBtn', 'cellarBtn', 'newchat'].includes(id) ? 'Tool' : 'Page', words: $(id).title, run: () => $(id).click() })),
     ...['ear', 'speak', 'notify'].filter((id) => $(id)).map((id) => ({ label: $(id).getAttribute('aria-label'), kind: 'Tool', words: $(id).title, run: () => $(id).click() })),
-    ...CARDS.map((c) => ({ label: c.name, kind: 'Settings', words: `${c.about} ${c.words || ''}`, run: () => cellar.open('settings', null, { jump: c.topics[0] }) })),
+    ...CARDS.map((c) => ({ label: c.name, kind: 'Settings', words: c.about, run: () => cellar.open('settings', null, { jump: c.topics[0] }) })),
     ...HELP.map((h) => ({ label: h.title, kind: 'Help', words: h.words, run: () => helpPage.open(h.id) }))
   ],
   searchChats: async (q) => { await topicsPage.open(); const box = $('topics-q'); if (box) { box.value = q; box.dispatchEvent(new Event('input', { bubbles: true })); } }
@@ -619,7 +650,26 @@ async function loadHistory(n = 20) {
   loadTurnUndo();
   try {
     const h = await (await fetch('/api/history?session=' + encodeURIComponent(sessionId))).json();
+    // 1.5.210: what he wrote on the way to an answer (steps) goes in one folded thinking bubble above that answer,
+    // even the moot's check that came after it.
+    const shown = [], held = [];
+    let askedAt = 0, endAt = 0;
+    const flush = () => { if (held.length) shown.push({ bubble: held.splice(0), ms: askedAt && endAt > askedAt ? endAt - askedAt : 0 }); };
     for (const m of h.slice(-n)) {
+      if (m.role === 'user') { flush(); askedAt = m.at || 0; endAt = 0; shown.push(m); continue; }
+      endAt = Math.max(endAt, m.at || 0);
+      if (m.step && thinkOn) { held.push(m); continue; }
+      shown.push(m);
+    }
+    flush();
+    // A bubble goes above the first answer of its turn.
+    for (let k = shown.length - 1; k >= 0; k--) {
+      if (!shown[k].bubble) continue;
+      let at = k; while (at > 0 && shown[at - 1].role && shown[at - 1].role !== 'user') at--;
+      if (at !== k) { const [b] = shown.splice(k, 1); shown.splice(at, 0, b); }
+    }
+    for (const m of shown) {
+      if (m.bubble) { thinkBubbles.saved(m.bubble, m.ms); continue; }
       if (m.forgotten) { if (m.role === 'user') note(m.content); continue; }
       // A reply with no words and nothing made shows only its note, never an empty bubble.
       if (m.role !== 'user' && !String(m.content || '').trim() && !m.media?.length) { if (m.correction) note(m.correction, 'error'); continue; }
@@ -728,6 +778,7 @@ function onEvent(ev) {
   if (onHandsEvent(ev, { add, scrollDown, note })) return;
   if (jobHelps.event(ev)) return; // Settings, Jobs: the time bar and the receipt card
   if (everyday?.event(ev)) return; // ⏱ Focus done
+  if (!elsewhere && thinkBubbles.take(ev)) { scrollDown(); return; } // 1.5.210: steps, drafts and fixes go in the thinking bubble
   switch (ev.type) {
     case 'queue':
       drawQueue(ev.jobs || []);
@@ -831,6 +882,7 @@ function onEvent(ev) {
     }
     case 'busy-note': // 1.5.37: your message waits behind a picture, song or clip; Bob says so at once
       note(ev.text, 'announce');
+      talk?.say(ev.text); // in a talk, he says it too
       scrollDown();
       return;
     case 'reply-break': // Answer messages mid-job: the job's next words go in a new bubble, under the quick reply
@@ -943,9 +995,9 @@ function onEvent(ev) {
       if (!/^hat:/.test(ev.summary) && ev.name !== 'edit_my_message') note(`· ${ev.summary}`); // an edit shows as "edited" on the message itself
       endReply(ev);
       break;
-    case 'house': { // 1.5.34: "Used your house style: 30 seconds · Change" (House style on Equip Bob)
+    case 'house': { // 1.5.34: "Used your house style: 30 seconds · Change" (Settings, House style)
       const el = add('note house', `${esc(ev.text)} · <button type="button" class="link" data-house="${esc(ev.group || '')}">Change</button>`);
-      el.querySelector('[data-house]')?.addEventListener('click', () => cellar.open('shop', 'roles', { house: ev.group }));
+      el.querySelector('[data-house]')?.addEventListener('click', () => cellar.open('settings', null, { house: ev.group, jump: 'adv-house' })); // 1.5.210 House style is in Settings
       break;
     }
     case 'image': { addMedia(ev, 'image'); ping('Bob finished a picture', ev.file || ''); break; }
@@ -1098,7 +1150,9 @@ function onEvent(ev) {
       setBusy(running.size > 0);
       if (rep?.media?.length) life.react('proud'); else if (finished) life.react('done');
       const by = borrowedBy.get(ev.turnId) || ''; borrowedBy.delete(ev.turnId);
-      if (finished) { speak(finished, by); if (aside) speak(sayAside(aside)); ping('Bob replied', finished.slice(0, 120)); }
+      if (talk?.open) talk.say(finished || '', { answer: true }); // 🗣 Talk with Bob: the short version, aloud
+      else if (finished) { speak(finished, by); if (aside) speak(sayAside(aside)); }
+      if (finished) ping('Bob replied', finished.slice(0, 120));
       break;
     }
   }
@@ -1706,6 +1760,51 @@ const voice = createVoice({
   onBarge: () => { hush(); statusEl.textContent = 'Listening...'; }
 });
 reader = createReader({ hush, ownVoice: () => ownVoice, onTalk: (on) => talking(on) });
+
+// 🗣 Talk with Bob (1.5.210; Settings, Voice details, off unless turned on): a live, hands-free talk. What you say goes
+// in as an ordinary message and the reply comes back short, out loud; the brain is told nothing about it.
+let canHear = false;
+const talkBtn = $('talkBtn');
+function syncTalk() { if (talkBtn) talkBtn.hidden = !(voiceNet.talk && (canHear || voiceNet.talkWay === 'xai')); if (talkBtn?.hidden && talk?.open) talk.end(); }
+function sayInWindow(text) {
+  return new Promise((res) => {
+    if (!('speechSynthesis' in window)) return res();
+    const u = new SpeechSynthesisUtterance(text);
+    const all = speechSynthesis.getVoices();
+    const v = (winVoiceName && all.find((x) => x.name === winVoiceName)) || all.find((x) => /en-(CA|US|GB)/.test(x.lang) && /male|david|guy|george|ryan/i.test(x.name));
+    if (v) u.voice = v;
+    u.onend = res; u.onerror = res;
+    speechSynthesis.speak(u);
+  });
+}
+talk = createTalk({
+  bar: $('talkBar'), button: talkBtn,
+  hear: async (wav) => {
+    const r = await fetch('/api/talk/hear', { method: 'POST', headers: { 'content-type': 'audio/wav', 'x-bob': '1' }, body: wav });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'I couldn\'t hear that.');
+    return j;
+  },
+  say: async (text) => {
+    const r = await fetch('/api/talk/say', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ text }) });
+    if (!r.ok) throw new Error('no voice');
+    return { blob: await r.blob(), fellBack: r.headers.get('x-bob-fell-back') === '1' };
+  },
+  fallbackSay: sayInWindow,
+  send: (text) => {
+    const draft = input.value; // what you were typing stays in the box
+    input.value = text;
+    $('composer').requestSubmit();
+    input.value = draft;
+    return true;
+  },
+  onOpen: (on) => {
+    hush(); // no reading aloud on top of the talk
+    if (wakeOn) voice.setWake(!on).catch(() => {}); // the "Hey Bob" listener rests while you talk
+    life.react(on ? 'heard' : 'done');
+  },
+  note: (msg, kind) => note(msg, kind)
+});
 readVoiceNet();
 micBtn.onclick = () => voice.push().catch((e) => note('I can\'t use the microphone: ' + e.message, 'error'));
 const syncEar = () => setToggle(earBtn, wakeOn, wakeOn ? 'Listening for "Hey Bob" (click to stop)' : 'Listen for "Hey Bob" while this window is open');
@@ -1724,6 +1823,7 @@ async function applyCaps() {
   try {
     const c = await (await fetch('/api/capabilities')).json();
     ownVoice = Boolean(c.voice);
+    canHear = Boolean(c.hearing); syncTalk();
     $('mic').hidden = !c.hearing;
     $('ear').hidden = !c.hearing;
     if (!c.hearing && wakeOn) { voice.setWake(false); }
@@ -1799,7 +1899,7 @@ installShortcuts({
 });
 
 async function start() {
-  try { const st = await (await fetch('/api/settings')).json(); shortcutsOn = st.shortcuts === true; applyReading(st); readingKeep = { textSize: st.textSize, readableFont: st.readableFont }; await applyMath(st.mathView === true); } catch {}
+  try { const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; catName = st.catName || catName; shortcutsOn = st.shortcuts === true; applyReading(st); readingKeep = { textSize: st.textSize, readableFont: st.readableFont }; await applyMath(st.mathView === true); } catch {}
   await loadHistory(20);
   let cat = 'Patches';
   try { cat = (await (await fetch('/api/settings')).json()).catName || cat; } catch {}
@@ -1814,7 +1914,7 @@ async function start() {
     if (!s.ollama) note('I can\'t reach my engine (' + (s.engine || 'Ollama') + ') right now. Is it running? (The AI Toggle shortcut turns Ollama on.)', 'error');
   } catch {}
   try {
-    const st = await (await fetch('/api/settings')).json(); winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
+    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
     if (st.setupDone && !st.wantsAsked) offerWants(); // once, for Bobs set up before the Welcome had "Do you want me to:"
     everyday = startEveryday({ add, note, settings: st, version: st.version?.label || '' }); // 🗓 today card, tour, ⏱ Focus, tray dot (each only when on)

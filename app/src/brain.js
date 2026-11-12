@@ -24,6 +24,7 @@ import { personalityPrompt, cleanPersonality } from '../public/personality.js';
 import { catPrompt, catMoment, catTurn } from '../public/patches.js';
 import { sleepyAfterReply, sleepySwitch, SLEEPY_SESSION } from '../public/sleepy.js';
 import { cleanEffort, careful, bigThinker, draftBrain, hatBrain, effortPrompt, mootOpening, runMoot, phasedWork, reviewBrain } from './moot.js';
+import { pickAnswer } from './clean-answer.js'; // 1.5.210: the chat shows only the finished answer (display only)
 import { brainBillions, wantsBorrowedCheck, pickChecker, checkDown, checkingOnLine, checkBackLine } from './bob-net-check.js'; // 1.5.185
 import { saveSettings, outputDirs, findOutput, VERSION } from './config.js';
 import { inTurn, turnNow, turnField, endWhy, whyLine, turnSummary, LoopStats } from './turn-log.js';
@@ -58,7 +59,7 @@ import { SAVE_AS, namedType, saveAs } from './save-as.js';
 import { recordCall, learnedLine, loadLearning, toolLearnOn } from './tool-learn.js';
 import { CORE, groupsFor, groupOf, guessGroups, allToolsOn, useToolsTool, fillUseTools, tidySchema, STICKY_TURNS, toolboxPrompt, saysCant, onlyGroups } from './toolbox.js';
 import { presetFor, presetGroups, presetBrain, presetPrompt, LimitedGroups } from './presets.js';
-import { backoffMs, carryOnTokens, causeLine, engineFailKind, pause, toolErrorText, ToolStrikes, STRIKES, STRIKE_NOTE, STRUCK_OUT, fixOffer, ErrorTally, sideJob, halfDone } from './retry.js'; // reliability items 193-207, always on
+import { backoffMs, carryOnTokens, causeLine, engineFailKind, pause, toolErrorText, ToolStrikes, STRIKES, STRIKE_NOTE, STRUCK_OUT, fixOffer, ErrorTally, sideJob, halfDone, badAddress } from './retry.js'; // reliability items 193-207, always on
 import { Gate, Ledger, safeToResume, interruptedNote, withRetry, slimHandoff, carryOnPlan, carryOnLine, finishedSteps, MAX_AUTO_RESUMES, isBareOk, NOTHING_TO_OK, NOTHING_TO_OK_BUSY, queuedLine, plainDoing } from './handoff.js';
 import { expectFrom, verifyOutput, afterTool, afterTurn } from './verify.js';
 import { brainMode, chatBrain, holdsChatBrain, bigSession, isBobs, sameModel, sleepAfterText, bigGraceMs, msText } from './brain-mode.js';
@@ -67,7 +68,7 @@ import { editOwnOn, editOwnTool } from './edit-own.js';
 import { midJobOn, midJobFits, sortMessage, replyTag, maybeTag, jobLine, quickPrompt, quickHistory, waitingFor, ACK_AFTER_MS, ACK_LINE, QUEUED_LINE, WAITS_LINE } from './mid-job.js';
 import { JobWatch, meanwhileOn, meanwhileLine, watchTools, WATCH_TOOLS, noteForBig, noteGotLine, noteAfterAnswer, noteMissedLine, asksAboutJob, NO_JOB_LINE, noteAsk, statusLine, noteQueuedLine, claimsJobGuess, JOB_GUESS_CORRECTION, JOB_GUESS_NUDGE } from './meanwhile.js';
 import { REDO_NOTE, EDIT_NOTE } from './redo.js';
-import { steerNote, SOFT_STOP_NOTE, SOFT_STOP_LINE, TIME_UP_NOTE, timeCheck, receiptBefore, receiptAfter, testsNudge, askFirstNote, noteNo, flushNoes, cachedLook, keepLook, jobHelpsPrompt, afterAnswer, cleanJobHelps } from './job-helps.js'; // Settings, Jobs (items 51-61)
+import { steerNote, SOFT_STOP_NOTE, stepsRan, SOFT_STOP_LINE, TIME_UP_NOTE, timeCheck, receiptBefore, receiptAfter, testsNudge, askFirstNote, noteNo, flushNoes, cachedLook, keepLook, jobHelpsPrompt, afterAnswer, cleanJobHelps } from './job-helps.js'; // Settings, Jobs (items 51-61)
 import { notesOn, notesTool, smartNotesOn, notesPrompt } from './notes.js';
 import { receiptsOn, receiptTool } from './receipts.js'; // 🧾 Snap a receipt (off by default)
 import { docToolsOn, findDocsTool } from './my-docs.js';
@@ -185,7 +186,7 @@ export const APU_MIN_CTX = 8192;
 export const APU_HOLDBACK_DEFAULT_GB = 4;
 export const apuHoldbackGB = (cfg) => { const v = Number(cfg?.apuHoldbackGB); return Number.isFinite(v) && v >= 0 && v <= 8 ? v : APU_HOLDBACK_DEFAULT_GB; };
 export const APU_CARVE_MARGIN_GB = 0.5; // 1.5.133: kept free inside the set-aside for the picture reader and the driver
-export const APU_NO_ROOM = (needGB, freeGB, holdGB = 1) => `That brain needs about ${needGB} GB and only about ${freeGB} GB is free${holdGB > 0 ? ' once Windows keeps its share' : ''}, so I haven't loaded it. Close something or pick a smaller brain in Equip Bob.`;
+export const APU_NO_ROOM = (needGB, freeGB, holdGB = 1) => `That brain needs about ${needGB} GB and only about ${freeGB} GB is free${holdGB > 0 ? ' once Windows keeps its share' : ''}, so I haven't loaded it. Close something or pick a smaller brain in Settings, Brains.`;
 export async function apuRoom(brain, model, ctx, { freeMem = freeMemNow(), loaded = null, minCtx = APU_MIN_CTX } = {}) {
   if (!brain?.cfg?.sharedGraphics || !model) return { ok: true, ctx };
   const bytes = (c) => brain.gate?.brainBytes?.(model, { ctx: c });
@@ -584,7 +585,7 @@ export class Brain {
     this.lenders = new Lenders(cfg);
     this.lenders.onSkip = (bob, why) => this.log('borrow', `${bob.name} failed twice (${why}); not asked again for an hour`); // item 202
     // Bob-Net: one brain over several of your Bobs' cards (llama.cpp's RPC server). Both off unless switched on.
-    this.cardLender = new CardLender(cfg, { gaming: () => currentSession(this.cfg).id === 'light', log: (k, t) => this.log(k, t) });
+    this.cardLender = new CardLender(cfg, { gaming: () => currentSession(this.cfg).id === 'light', freeOwn: async () => { if (this.turns.size || !this.engine?.current) return false; await this.engine.unloadAll(); return true; }, log: (k, t) => this.log(k, t) });
     if (this.engine instanceof LlamaCpp) this.engine.spread = new CardBorrower(cfg, this.lenders, { log: (k, t) => this.log(k, t) });
     // 1.5.127 Rented brains: a big brain hired from an online service for one job, only after a card the owner pressed.
     this.errorTally = new ErrorTally(cfg.dataDir ? path.join(cfg.dataDir, 'tool-errors.json') : null); // item 206
@@ -678,7 +679,7 @@ export class Brain {
   }
 
   // ---------- Share jobs (1.5.72) ----------
-  // A big brain for Medium-and-up work that's really here (the file is on disk), not just picked in Equip Bob.
+  // A big brain for Medium-and-up work that's really here (the file is on disk), not just picked in Settings, Brains.
   guestBigBrain() { const d = draftBrain(this.cfg, 'medium'); if (!d?.model) return false; return this.cfg.engine === 'llamacpp' ? runnable(this, d.model) : true; }
   guestCanNow() { const can = this.jobCan(); return NEEDS_LIST.filter((n) => canHere(this, n, { can, webOn: webOn(this.cfg) })); }
   // 1.5.133 lost-song fix: what this Bob can really make right now. capabilities() says music once the audio workshop is
@@ -826,9 +827,12 @@ export class Brain {
   }
 
   now() {
-    return new Intl.DateTimeFormat('en-CA', {
+    const f = new Intl.DateTimeFormat('en-CA', {
       timeZone: this.cfg.timeZone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit'
-    }).format(new Date());
+    });
+    // 1.5.210 (208 PC check): the zone goes with the time, read from settings, so a time or zone question is never a guess.
+    const zone = this.cfg.timeZone || f.resolvedOptions().timeZone || '';
+    return `${f.format(new Date())}${zone ? ` (${zone})` : ''}`;
   }
 
   setState(state, detail = '', model = this.state.model, extra = null) {
@@ -1008,7 +1012,7 @@ export class Brain {
   history(id) {
     return this.session(id)
       .filter((m) => (m.role === 'user' || m.role === 'assistant') && (m.content || m.media?.length || m.correction))
-      .map((m) => ({ role: m.role, id: m.id, at: m.at, ...(m.forgotten ? { forgotten: true } : {}), content: m.role === 'user' && m.text != null ? m.text : (m.content || ''), ...(m.media?.length ? { media: m.media } : {}), ...(m.correction ? { correction: m.correction } : {}), ...(m.replaced ? { replaced: true } : {}), ...(m.edited ? { edited: m.edited, was: m.was ?? '', ...(m.editedBy === 'you' ? { editedBy: 'you' } : {}) } : {}), ...(m.role === 'assistant' && m.steps?.length ? { steps: m.steps } : {}), ...(m.role === 'user' && m.versions?.length ? { versions: m.versions } : {}), pics: (m.refs || []).map((id) => this.refs.find(id)).filter(Boolean).map((r) => ({ name: r.name, url: `/refs/${r.file}` })) }));
+      .map((m) => ({ role: m.role, id: m.id, at: m.at, ...(m.forgotten ? { forgotten: true } : {}), content: m.role === 'user' && m.text != null ? m.text : (m.showText || m.content || ''), ...(m.step ? { step: true } : {}), ...(m.media?.length ? { media: m.media } : {}), ...(m.correction ? { correction: m.correction } : {}), ...(m.replaced ? { replaced: true } : {}), ...(m.edited ? { edited: m.edited, was: m.was ?? '', ...(m.editedBy === 'you' ? { editedBy: 'you' } : {}) } : {}), ...(m.role === 'assistant' && m.steps?.length ? { steps: m.steps } : {}), ...(m.role === 'user' && m.versions?.length ? { versions: m.versions } : {}), pics: (m.refs || []).map((id) => this.refs.find(id)).filter(Boolean).map((r) => ({ name: r.name, url: `/refs/${r.file}` })) }));
   }
 
   // Makes sure a model is in memory, telling the user first if it means a wait. Goes through the gate: the action
@@ -1435,6 +1439,7 @@ export class Brain {
   stop(id) {
     let hit = false;
     for (const t of this.turns.values()) if (!id || t.turnId === id) { t.controller.abort(); hit = true; }
+    if (!id) { try { if (this.engine?.stopLoad?.()) hit = true; } catch {} } // 1.5.210: a load with no job behind it stops too
     // Item 213: Stop really stops. A few seconds on, any command or helper a stopped job started that is still running
     // is forced to end, and an engine still busy with a reply nobody is waiting for is restarted.
     if (hit) afterStop({ kill: killProcTree, log: (k, t) => this.log(k, t), engine: this.engine instanceof LlamaCpp ? { busy: () => this.engine.stuckAfterStop(), reset: () => this.engine.resetStuck() } : null }).catch(() => {});
@@ -1594,12 +1599,19 @@ export class Brain {
     noteNo(this, ctx, name, args, res?.text); // Jobs: Remember a "no" for the whole chat
     if (watched) this.watch.result(ctx.job, res?.text);
     // 1.5.95: a file type named in the ask is saved before the tool's answer goes back, so Bob can say so.
-    if (ctx?.saves?.length) {
-      await Promise.allSettled(ctx.saves.splice(0));
-      if (ctx.savedAs?.length && res && typeof res.text === 'string') res.text += ` Also saved as ${ctx.savedAs.splice(0).join(', ')}, as asked (the original is kept too).`;
-    }
+    await this.savesInto(ctx, res);
     qAfter(this, name, args, res.text, ctx, tool);
     recordCall(this.cfg, name === 'use_my_tool' && args.name ? `use_my_tool:${args.name}` : name, args, res?.text, ctx); // "Let Bob learn from his tools" (tool-learn.js)
+    return res;
+  }
+
+  // 1.5.95: a file type named in the ask is saved before the tool's answer goes back, so Bob can say so. Called after
+  // the tool and again just before its answer goes to the brain (1.5.209: a save that started late still gets named).
+  async savesInto(ctx, res) {
+    if (!ctx?.saves) return res;
+    while (ctx.saves.length) await Promise.allSettled(ctx.saves.splice(0));
+    // 1.5.210: first, not last, so trimming a long result can never cut it off (the Mac CI run did).
+    if (ctx.savedAs?.length && res) res.text = `Also saved as ${ctx.savedAs.splice(0).join(', ')}, as asked (the original is kept too). ${res.text ?? ''}`.trim();
     return res;
   }
 
@@ -1633,7 +1645,7 @@ export class Brain {
     }
     // Item 200: this tool failed three times in a row in this job, so it's set aside (no card, no run).
     if (ctx && ctx.strikes?.blocked(name)) { this.log('tool', `${name} not run: it failed three times in this job`); return { text: STRUCK_OUT(name, this.cfg.userName || 'the user', ctx.strikes.lastError(name)), hinted: true, struck: true }; }
-    // 1.5.34 House style: what the call left out comes from the defaults set on Equip Bob, and the chat says so.
+    // 1.5.34 House style: what the call left out comes from the defaults set in Settings, House style, and the chat says so.
     const house = applyHouseStyle(name, args, this.cfg.houseStyle);
     args = house.args;
     ctx.emit({ type: 'tool', name, summary: tool.summary ? tool.summary(args) : name });
@@ -1704,7 +1716,7 @@ export class Brain {
         this.log('handoff', `${name} looked unfinished, but ${half.why}; not run again`);
         ctx.ledger?.step('note', { what: `${name}: ${half.why}` }).done();
         v = { ok: true, why: half.why, retry: false, files: half.files, ...(name !== 'write_file' ? { show: half.files.map((file) => ({ file })) } : {}) };
-        text = `Done: ${half.why} (checked by the app).${half.files?.length ? ` ${half.files.join(', ')}` : ''}`;
+        text = `Done: ${half.why} (checked by the app).${half.files?.length ? ` ${half.files.map((f) => path.basename(String(f))).join(', ')}` : ''}`; // 1.5.210: names, not long temp paths (macOS /var/folders pushed the rest past the cap)
       }
       if (v.retry && !ctx.signal.aborted) {
         this.log('handoff', `${name} didn't take (${v.why || 'no proof'}); checked it isn't half-done, trying it once more`);
@@ -1728,7 +1740,7 @@ export class Brain {
       // Item 207: the logbook keeps the real cause (the first error), not the last wrapper.
       this.log(ok ? 'tool' : 'error', ok ? (tool.summary ? tool.summary(args) : name) : `${name}: ${(ctx.toolError?.cause || text.replace(/^Error:\s*/, '')).slice(0, 400)}`);
       let strikeNote = '';
-      if (!v.declined) {
+      if (!v.declined && !(!ok && badAddress(text))) { // 1.5.210: a made-up or missing address isn't the tool's fault
         if (!ok) this.noteToolError(name); // item 206
         // Item 200: the third failure in a row of this tool in this job: it's set aside, and offered for fixing after.
         if ((ctx.strikes ||= new ToolStrikes()).record(name, ok, text) === STRIKES) { strikeNote = STRIKE_NOTE(name, this.cfg.userName || 'the user'); this.log('tool', `${name} failed three times in this job; set aside for the rest of it`); }
@@ -2729,9 +2741,9 @@ export class Brain {
         // Item 10: the steps go with the answer, so "How I got here" is there after a reload too.
         const steps = this.traces?.get(sessionId);
         if (steps) this.traces.delete(sessionId);
-        if (steps?.length && !job?.guest) { const list = steps.slice(0, MAX_TRACE); const last = [...this.session(sessionId)].reverse().find((m) => m.role === 'assistant' && !m.tool_calls?.length); if (last) last.steps = list; emit({ type: 'steps', list }); }
+        if (steps?.length && !job?.guest) { const list = steps.slice(0, MAX_TRACE); const last = [...this.session(sessionId)].reverse().find((m) => m.role === 'assistant' && !m.tool_calls?.length && !m.step); if (last) last.steps = list; emit({ type: 'steps', list }); }
         if (!job?.guest) this.saveSession(sessionId); // 1.5.72: a job from another Bob isn't kept as a chat here
-        if (!job?.guest) { const last = [...this.session(sessionId)].reverse().find((m) => m.role === 'assistant' && !m.tool_calls?.length); if (last?.id) emit({ type: 'answer-id', id: last.id }); } // item 11: Save as a test needs it
+        if (!job?.guest) { const last = [...this.session(sessionId)].reverse().find((m) => m.role === 'assistant' && !m.tool_calls?.length && !m.step); if (last?.id) emit({ type: 'answer-id', id: last.id }); } // item 11: Save as a test needs it
         // Item 13: how full this chat left the brain's memory, for the meter by Effort.
         const st = this.engine?.lastStats; if (!job?.guest && st?.used && st.ctx && st.at >= (job?.startedAt || 0)) emit({ type: 'chat-fill', used: st.used, ctx: st.ctx });
         this.gate.done(controller.signal); // the graphics card goes to the next job waiting for it
@@ -2799,6 +2811,7 @@ export class Brain {
     const out = {};
     let rough = false; // an error or correction note this turn: no how-to card
     const corrections = []; // Nov 12 (items 190-192): this turn's corrections, for its record and the honesty score
+    let mooted = null; // the moot's rounds, when one ran (for the answer the chat shows)
     const keep = (ev) => {
       if (['error', 'correction', 'held', 'waiting'].includes(ev?.type)) rough = true;
       if (ev?.type === 'correction' && ev.text) corrections.push({ text: String(ev.text), kind: ev.kind || ([CLAIM_CORRECTION, OBSERVE_CORRECTION, JOB_GUESS_CORRECTION].includes(ev.text) ? 'claims' : ''), brain: out.ctx?.replyModel || this.state?.model || '' });
@@ -2815,19 +2828,23 @@ export class Brain {
       // High and Extreme effort: Bob calls a moot. The draft comes first (runOn), then his reviewer copy checks it.
       if (careful(job)) emit({ type: 'announce', text: mootOpening(this.cfg, job.effort, base) });
       await this.runOn(msgs, text, keep, signal, pics, job, sessionId, out);
-      if (careful(job) && out.ctx && !signal?.aborted) await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx });
+      if (careful(job) && out.ctx && !signal?.aborted) mooted = await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx });
       // #30: Low and Medium, opt-in: a quick second look from a paired Bob when one is free. None free: no check, no swap.
-      else if (out.ctx && !signal?.aborted && this.cfg.netReview === true) await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx, quick: () => this.quickReviewer(job, pics) });
+      else if (out.ctx && !signal?.aborted && this.cfg.netReview === true) mooted = await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx, quick: () => this.quickReviewer(job, pics) });
       if (out.ctx && !signal?.aborted && !rough) sideJob((k, t) => this.log(k, t), 'the how-to card', () => this.howtoAfter(sessionId, text, out.ctx, keep, job)); // item 204
     }
     finally {
       try { this.honestAfter?.(msgs.slice(base), corrections, out.ctx, job, signal); } catch (e) { try { this.log?.('honesty', `the record of corrections broke: ${e.message}`); } catch {} }
+      // 1.5.210: which message the chat shows as the answer; the rest of what he wrote is marked as steps (clean-answer.js).
+      const shown = pickAnswer(msgs.slice(base), mooted?.rounds);
       if (media.length) {
         const added = msgs.slice(base);
-        let reply = [...added].reverse().find((m) => m.role === 'assistant' && !m.tool_calls);
+        let reply = shown.final || [...added].reverse().find((m) => m.role === 'assistant' && !m.tool_calls);
         if (!reply) { reply = { role: 'assistant', content: '' }; msgs.push(reply); }
         reply.media = [...(reply.media || []), ...media].slice(0, 24);
       }
+      // The thinking bubble (public/think-bubble.js) puts this in the chat as the answer, whole.
+      emit({ type: 'final', text: shown.text, ...(shown.final?.correction ? { correction: shown.final.correction } : {}), ...(shown.checked ? { checked: shown.checked } : {}) });
       // Answer messages mid-job: quick replies given during this job are already in the chat; the job's own question
       // goes before them, so the chat reads in the order things were said.
       const added = msgs.slice(base);
@@ -3069,7 +3086,7 @@ export class Brain {
     let rented = null;
     if (job?.rent && !job.side && !job.guest) {
       const rental = this.rentals.current();
-      if (!rental) emit({ type: 'announce', text: 'No rented brain is in its slot (Equip Bob), so I\'m doing this one here.' });
+      if (!rental) emit({ type: 'announce', text: 'No rented brain is in its slot (Settings, Brains), so I\'m doing this one here.' });
       else if (!this.rentals.approved(rental, job)) {
         const r = this.offerRent(ctx, { why: 'You asked for the rented brain.' });
         emit({ type: 'announce', text: r?.blocked ? `I can't hire ${rental.name} yet: ${r.blocked}` : `Press Hire it on the card below and I'll run this on ${rental.name}.` });
@@ -3147,7 +3164,7 @@ export class Brain {
       // Jobs (job-helps.js): "Stop after this step" pressed, or the job's time limit used up: no more tools, he wraps up.
       if (!ctx.lastRound && step > 0) {
         const who = this.cfg.userName || 'the user';
-        if (job?.stopAfter && !ctx.softStopped) { ctx.softStopped = true; ctx.endWhy = 'stop-after'; ctx.noTools = true; ctx.lastRound = true; msgs.push({ role: 'system', content: SOFT_STOP_NOTE(who), hidden: true }); emit({ type: 'announce', text: SOFT_STOP_LINE }); }
+        if (job?.stopAfter && !ctx.softStopped) { ctx.softStopped = true; ctx.endWhy = 'stop-after'; ctx.noTools = true; ctx.lastRound = true; msgs.push({ role: 'system', content: SOFT_STOP_NOTE(who, stepsRan(msgs, turnStart)), hidden: true }); emit({ type: 'announce', text: SOFT_STOP_LINE }); }
         else if (await timeCheck(this, ctx, { now: () => Date.now() - waitedFor(signal) }) === 'wrap') { ctx.endWhy = 'time'; ctx.noTools = true; ctx.lastRound = true; msgs.push({ role: 'system', content: TIME_UP_NOTE(who, cleanJobHelps(this.cfg.jobHelps).minutes), hidden: true }); }
       } else if (step === 0) await timeCheck(this, ctx, { now: () => Date.now() - waitedFor(signal) });
       if (step === maxSteps - 1 && !this.helpOff('last') && !ctx.noTools && msgs.slice(turnStart).some((m) => m.role === 'tool')) { ctx.noTools = true; ctx.lastRound = true; ctx.endWhy ||= 'steps'; this.log('tool', 'the last step: no more tools, so he answers with what he has'); }
@@ -3473,6 +3490,7 @@ export class Brain {
         }
         if (!ranIt) ctx.progress.skipped(key); // not run, but a loop through it still shows (155)
         if (name === 'use_tools') { let a = call.function?.arguments; if (typeof a === 'string') { try { a = JSON.parse(a); } catch { a = {}; } } const id = String(a?.group || '').toLowerCase().trim(); if (ctx.loaded.has(id)) used.add(id); }
+        if (ctx.saves?.length || ctx.savedAs?.length) res = await this.savesInto(ctx, { ...res });
         msgs.push(toolMessage(call, res.text, call.bounce ? false : res.ok)); // item 165: the result names its call
         if (howtosOn(this.cfg)) { // 1.5.79: the job's steps, in case it's worth a how-to
           let a = call.function?.arguments; if (typeof a === 'string') { try { a = JSON.parse(a); } catch { a = {}; } }
@@ -3951,8 +3969,8 @@ export class Brain {
     }
     const waiting = await this.editModelWaiting();
     const fix = waiting
-      ? `${waiting} is on this replicant matrix but isn't assigned to "Picture edits": Get models, Equip Bob, the Picture editor slot (one click).`
-      : 'No picture-edit model is on this replicant matrix yet: Get models, Pictures & video, a picture-edit model (Qwen Image Edit), then Equip Bob, the Picture editor slot.';
+      ? `${waiting} is on this replicant matrix but isn't assigned to "Picture edits": Settings, Brains, the Picture editor job (one click).`
+      : 'No picture-edit model is on this replicant matrix yet: Get models, Pictures & video, a picture-edit model (Qwen Image Edit), then Settings, Brains, the Picture editor job.';
     return `Didn't paint anything. Editing ${what} and keeping it looking the same needs a picture-edit model. ${fix} Tell the user that plainly. Offer the alternative too: rework the picture from itself (make_image with mode start_from), where the look can drift.`;
   }
 

@@ -1,5 +1,5 @@
 // 1.5.207 The small menu on Bob's picture (the owner's pick): what Bob is doing, the brain that is loaded, and
-// doors to Settings, Brains, Style and Get models. It replaces the old Equip Bob screen that opened from there.
+// doors to Settings, Brains, Style and Get models.
 // bobMenuHtml is a pure builder (tests give it made-up status); createBobMenu wires one picture to it.
 import { esc } from './util.js';
 
@@ -18,7 +18,7 @@ export function bobMenuHtml(status, { said = '', names = {}, tools = [], session
   return `<p class="bob-menu-now" role="status"><strong>${esc(doing)}</strong><br><span class="muted">${esc(status ? loadedLine(status, names) : 'Checking which brain is loaded…')}</span></p>
     ${door('brains', '🧠', 'Brains', 'Which brain does what, Set up and Calibrate')}
     ${door('style', '🎨', 'Style', 'My look, colours and animations')}
-    ${door('models', '📚', 'Get models', 'The catalogue and the paper doll')}${tools.length ? `
+    ${door('models', '📚', 'Get models', 'The catalogue and every model shop')}${tools.length ? `
     <div class="bob-menu-tools" role="group" aria-label="More of my menu">${tools.map((t) => `<button type="button" role="menuitem" class="bob-menu-tool" data-bobtool="${esc(t.id)}"><span aria-hidden="true">${t.icon}</span> ${esc(t.label)}${t.st ? ` <span class="muted">${esc(t.st)}</span>` : ''}</button>`).join('')}</div>` : ''}${session && session.options.length ? `
     <label class="bob-menu-session">Session <select data-bobsession aria-label="Session">${session.options.map((o) => `<option value="${esc(o.value)}"${o.value === session.value ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>` : ''}`;
 }

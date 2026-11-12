@@ -41,19 +41,30 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.208-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.208-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.208-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.208-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.208-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.208-linux-x86_64.AppImage) |
-| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.208-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.208-linux-amd64.deb) |
-| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.208-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.208-linux-x86_64.flatpak) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.208-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.208-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
-| **Android phone** | [`Bob-1.5.208-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.208-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.210-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.210-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.210-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.210-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.210-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.210-linux-x86_64.AppImage) |
+| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.210-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.210-linux-amd64.deb) |
+| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.210-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.210-linux-x86_64.flatpak) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.210-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.210-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
+| **Android phone** | [`Bob-1.5.210-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.210-android.apk) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 
 **On Windows 11?** Bob isn't code signed yet, so Smart App Control may stop him from running. [Read this first](#windows-11-smart-app-control).
 
 ## What's new
+
+**In 1.5.210:**
+
+| | |
+|---|---|
+| 🏮 **Three looks** | Classic, Lamplight (a dark room lit by Bob's cube, with Find anything on Ctrl+K) and Terminal, on the Style page. |
+| 💭 **A thinking bubble** | The steps sit in a small bubble above the reply, and the chat shows only the finished answer. |
+| 🗣 **Talk with Bob** | Press 🗣 and just talk, hands-free. He answers out loud and you can cut in. |
+| 🧠 **One Brains page** | Settings, Brains picks every model; the catalogue sorts by best fit, filters by what runs here, and finds more models on Hugging Face and ModelScope. |
+| 📖 **Help that starts where you are** | A guide written around jobs, opening on Start here, with each page's questions folded underneath. |
+| 🧩 **Panels you build** | Put Now running's parts in a panel on the left or the right. |
 
 **In 1.5.208:**
 
@@ -78,7 +89,7 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 | 🎲 **Adventure table rules** | A map that grows, portraits, coins and shops, riddle rooms, Easy to Hard, and campaigns you can send to a friend. |
 | 🧪 **More Lab** | A blind taste test that ranks brains, Save to Lab from the chat, before and after Teach it, and recipe files to share. |
 | ⚡ **Engine and speed** | Load the next brain early, a speed history chart, laptop mode on battery, and a chat memory type for each brain. |
-| 🗣 **Voice and phone** | Talk over Bob while he reads aloud, have documents read aloud, and carry a chat on to another Bob. On Android: Share to Bob, a home-screen widget and hands-free. |
+| 🗣 **Voice and phone** | Talk with Bob hands-free (short spoken answers, cut in any time), talk over Bob while he reads aloud, have documents read aloud, and carry a chat on to another Bob. On Android: Share to Bob, a home-screen widget and hands-free. |
 
 Every new switch is off until you turn it on.
 
@@ -97,7 +108,7 @@ Every new switch is off until you turn it on.
 | 🗂 **Sort and rename** | A Hand that renames and files a whole music, video or photo collection by rules you set. Every change goes on a card first, nothing is overwritten, and Undo puts it all back. |
 | 🎲 **Adventure grows up** | Enemies sit on the table with their hearts. Characters get stronger and keep it. A quest log and a world book, friends at the table, the odds on every card, your turn in your own words or by voice, and a storybook of the finished game. |
 | 🧪 **A simpler, busier Lab** | Its own window, tabs sorted by task, one place to start, and **My Lab** for everything you've made. A queue runs jobs overnight, **Show the wobble** shows how much a score moves, and every brain takes an entry test with Bob's real tools. |
-| 🧠 **Brains page** | Equip Bob shows how each brain runs here: on your card, with memory, with storage, with another Bob's help, or too big, with its Lab scores underneath. Add a model from a Hugging Face page. |
+| 🧠 **Brains page** | Settings, Brains is the one place to pick brains. It shows how each brain runs here: on your card, with memory, with storage, with another Bob's help, or too big, with its Lab scores underneath. Add a model from a Hugging Face page. |
 | 🧊 **3D models** | STL, OBJ and GLB open in the side panel. Bob makes a part from an OpenSCAD recipe, or a textured model from one picture. |
 | 🔎 **Search by meaning** | Bob finds documents, memories and topics that are close in meaning, not only by exact words. |
 | 🔌 **Doors for other apps** | VS Code, Open WebUI and scripts use Bob's brains at `localhost:7777/v1`. The Claude app and Claude Code use Bob's Hands, every call on a card. Tool packs add other people's tools, in the sandbox. |
@@ -119,8 +130,8 @@ The [changelog](CHANGELOG.md) has every release.
 |---|---|
 | ![A chat about a garden budget on the left, and the spreadsheet open in the side panel on the right](app/docs/screens/documents.png) | ![First-time setup: the programs and models Bob suggests for a 16 GB card, each with a tick box](app/docs/screens/get-bob-ready.png) |
 | **Documents beside the chat.** Sheets, slides, pages and PDFs. | **Ready in one button.** Bob reads your card and fetches what fits. |
-| ![Equip Bob: Bob in the middle with a slot for every job around him](app/docs/screens/equip-bob.png) | ![The adventure table: three characters, two enemies with their hearts, the game master's story, and cards for the player's turn](app/docs/screens/adventure.png) |
-| **Equip Bob.** A slot for every job, a model for every slot. | **Adventure.** Bob runs the table; the app rolls the dice, shows the odds and counts the hearts. |
+| ![The Brains page: each brain, its jobs, and where it sits on the card and in memory](app/docs/screens/brains-page.png) | ![The adventure table: three characters, two enemies with their hearts, the game master's story, and cards for the player's turn](app/docs/screens/adventure.png) |
+| **Brains.** Each brain, the jobs it does, and where it sits on your card. | **Adventure.** Bob runs the table; the app rolls the dice, shows the odds and counts the hearts. |
 
 - **Work:** plans and reminders, web research with sources, code written, run and fixed, documents and spreadsheets read, searched and written.
 - **Make:** pictures painted and edited, short clips, songs and sound effects, 3D parts and models, and a voice (22 Kokoro voices and more).
@@ -167,7 +178,10 @@ Most AI apps are for talking to a model or for building one. Bob does both. **�
 
 - **Keep it simple or Professional.** Simple fills in Bob's defaults. Professional shows every control and its proper name. **Show the recipe** prints every command the Lab runs.
 - **Brain Engine** is Bob's own engine. It switches a brain's experts on and off while it's loaded, so the Lab can try a cut before writing a file.
-- **fNRI** (functional Neural Response Imager) shows a brain as a 3D block: one floor per layer, every expert coloured by the skill that used it most.
+- **fNRI** (functional Neural Response Imager) shows a brain as a 3D block: one floor per layer, every expert coloured by the skill that used it most. Its **weight map** colours the block by the brain's own weights instead: how strong each expert is, or how much it differs from another brain.
+
+  ![fNRI's weight map of Riker, and the same block coloured by how much each expert differs from stock Qwen3.6-35B-A3B](app/docs/screens/fnri-weight-maps-riker.jpg)  
+  *Riker's weights. Top: how strong each expert is for its floor (purple weaker, yellow stronger). Bottom: how much each expert changed from stock Qwen3.6-35B-A3B. The glow is the experts answering a question.*
 
 <details>
 <summary><b>More pictures:</b> Teach, Test, Forge and My Lab</summary>
@@ -286,7 +300,7 @@ Bob's program and his things live apart, so updating never touches your models o
 
 - **You pick the folder when Bob is installed or first opened.** Bob suggests a `Bob` folder in your user folder and takes any drive. He refuses temporary places like AppData, because models are 10 to 60 GB. A cloud-synced folder (OneDrive, Dropbox, Google Drive, iCloud) is allowed, but Bob always recommends against it: every model would be uploaded.
 - **To move it later:** Settings, **Bob's home folder**, then **Move here…**.
-- **His pictures, clips and songs** go to the folder shown in the **chest** under Bob on Equip Bob, with a **Change folder…** button.
+- **His pictures, clips and songs** go to the folder in Settings, **Where Bob saves things**, with a **Change folder…** button. **Made by Bob** lists them all.
 
 ## Using Bob
 

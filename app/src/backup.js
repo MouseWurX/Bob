@@ -17,8 +17,14 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { collect, writeZip, readZipEntry, readZipList, unzip } from './zip.js';
-import { writeJsonAtomic, readJsonFile } from './util.js';
+import { writeJsonAtomic } from './util.js';
 import { cleanBackup, backupOf } from './backup-settings.js';
+// 🔐 Locked secrets (secret-box.js, on by default since 1.5.205): config.json's secrets, inn\bob\keys.json and the env
+// values in mcp-servers.json are locked with a key only THIS computer and account can open. A backup opens them first
+// and, only when "Keys and passcodes" is ticked, locks them again with the passcode typed for the backup. A restore
+// saves them through the same savers, so they are locked with the NEW computer's box.
+import { keyNames as savedKeyNames, savedKey, saveKey, ensureBox, sealCopy, openCopy, lockOn, SECRET_FIELDS } from './secret-box.js';
+import { readConfigFile, writeConfigFile } from './config.js';
 
 export const FORMAT = 1;
 export const MANIFEST = 'bob-backup.json';
@@ -71,7 +77,7 @@ export function keyNames(cfg = {}) {
 
 // ---------------------------------------------------------------- which files
 const under = (rel, p) => (p.endsWith('/') ? rel.startsWith(p) : rel === p);
-export const skipped = (rel) => NOT_BACKED_UP.some((p) => under(rel, p));
+export const skipped = (rel) => rel.startsWith('bob/secret-box') || NOT_BACKED_UP.some((p) => under(rel, p)); // the box (and old boxes set aside) only opens on this computer
 export function partOf(rel) {
   if (skipped(rel)) return '';
   for (const part of PARTS) if (part.paths.some((p) => under(rel, p))) return part.id;
@@ -104,20 +110,51 @@ function isDir(p) { try { return fs.lstatSync(p).isDirectory(); } catch { return
 // ---------------------------------------------------------------- doors (config.json) and keys
 // The door settings that live in config.json: Discord and Telegram (who the owner is, which switches), with every
 // switch that opens the door set off. Never the token; the phone passcode only goes in the locked part.
+// Every passcode, token or key field taken out (they only travel in the locked part).
+function withoutSecrets(v, depth = 0) {
+  if (!v || typeof v !== 'object' || depth > 10) return v;
+  if (Array.isArray(v)) return v.map((x) => withoutSecrets(x, depth + 1));
+  const o = {};
+  for (const [k, x] of Object.entries(v)) if (!SECRET_FIELDS.has(k)) o[k] = withoutSecrets(x, depth + 1);
+  return o;
+}
 export function doorsOf(raw = {}) {
   const out = {};
-  if (raw.discord && typeof raw.discord === 'object') { const d = { ...raw.discord }; delete d.token; out.discord = { ...d, enabled: false, dmEnabled: false }; }
-  if (raw.telegram && typeof raw.telegram === 'object') { const t = { ...raw.telegram }; delete t.token; out.telegram = { ...t, enabled: false }; }
+  if (raw.discord && typeof raw.discord === 'object') out.discord = { ...withoutSecrets(raw.discord), enabled: false, dmEnabled: false };
+  if (raw.telegram && typeof raw.telegram === 'object') out.telegram = { ...withoutSecrets(raw.telegram), enabled: false };
   return out;
 }
 
 // The keys this computer has, by name. env reads like process.env (rental.js rentKeyEnv() in the app).
+// The apps in "Apps Bob can use" and their env values (often keys), opened: { id: { NAME: value } }.
+export function mcpEnvOf(cfg) {
+  let j = null;
+  try { j = JSON.parse(fs.readFileSync(path.join(cfg.dataDir, 'mcp-servers.json'), 'utf8').replace(/^\uFEFF/, '')); } catch { return {}; }
+  const out = {};
+  for (const sv of Array.isArray(j?.servers) ? j.servers : []) {
+    if (!sv || typeof sv.id !== 'string' || !sv.env || typeof sv.env !== 'object') continue;
+    const env = openCopy(sv.env, ensureBox(cfg), { all: true });
+    const kept = Object.fromEntries(Object.entries(env).filter(([, v]) => typeof v === 'string' && v));
+    if (Object.keys(kept).length) out[sv.id] = kept;
+  }
+  return out;
+}
+// The keys this computer has, by name: Bob's own list, any key saved in Settings (keys.json), and the env values of
+// connected apps. env reads like process.env (rental.js rentKeyEnv() in the app, which also reads keys.json).
 export function gatherKeys(cfg, env = {}) {
   const keys = {};
-  for (const k of keyNames(cfg)) { const v = String(env[k] || '').trim(); if (v && v.length <= 4096 && !/[\r\n\0]/.test(v)) keys[k] = v; }
+  let saved = [];
+  try { if (cfg.dataDir) ensureBox(cfg); saved = savedKeyNames(); } catch {}
+  for (const k of [...new Set([...keyNames(cfg), ...saved])]) {
+    let v = String(env[k] || '').trim();
+    if (!v) { try { v = String(savedKey(k) || '').trim(); } catch {} }
+    if (v && v.length <= 4096 && !/[\r\n\0]/.test(v)) keys[k] = v;
+  }
   const phone = String(cfg.remote?.passcode || '');
-  return { keys, phonePasscode: phone.length >= 6 ? phone : '' };
+  const mcpEnv = cfg.dataDir ? mcpEnvOf(cfg) : {};
+  return { keys, phonePasscode: phone.length >= 6 && !phone.startsWith('bobsecret1:') ? phone : '', mcpEnv };
 }
+export const keyCountOf = (g) => Object.keys(g.keys).length + (g.phonePasscode ? 1 : 0) + Object.values(g.mcpEnv || {}).reduce((n, e) => n + Object.keys(e).length, 0);
 
 const SCRYPT = { N: 2 ** 15, r: 8, p: 1 };
 export function lock(obj, passcode, { scrypt = SCRYPT } = {}) {
@@ -188,17 +225,27 @@ export function makeBackup(cfg, { folder, parts = PART_IDS, keys = false, passco
   const chosen = PART_IDS.filter((p) => parts.includes(p));
   if (!chosen.length && !keys) throw new Error('Tick at least one thing to back up.');
   const { entries, counts } = backupFiles(cfg, chosen);
+  // Connected apps: their env values are locked to this computer, so the list goes in with them blanked; the values
+  // themselves only travel in the locked part.
+  for (const e of entries) {
+    if (e.name !== 'inn/bob/mcp-servers.json') continue;
+    try {
+      const j = JSON.parse(fs.readFileSync(e.abs, 'utf8').replace(/^\uFEFF/, ''));
+      for (const sv of Array.isArray(j?.servers) ? j.servers : []) if (sv?.env && typeof sv.env === 'object') for (const k of Object.keys(sv.env)) sv.env[k] = '';
+      e.data = Buffer.from(JSON.stringify(j, null, 1));
+    } catch { e.data = Buffer.from('{"servers":[]}'); }
+  }
   const extra = [];
   if (chosen.includes('settings')) {
     let raw = {};
-    try { raw = cfg.configFile ? readJsonFile(cfg.configFile) : {}; } catch {}
+    try { raw = cfg.configFile ? readConfigFile(cfg) : {}; } catch {}
     const doors = doorsOf(raw);
     if (Object.keys(doors).length) extra.push({ name: DOORS, data: Buffer.from(JSON.stringify(doors, null, 1)), size: 0, mtime: now });
   }
   let keyCount = 0;
   if (keys) {
     const g = gatherKeys(cfg, env);
-    keyCount = Object.keys(g.keys).length + (g.phonePasscode ? 1 : 0);
+    keyCount = keyCountOf(g);
     if (!keyCount) throw new Error('There are no keys or passcodes on this replicant matrix to back up. Untick "Keys and passcodes".');
     extra.push({ name: SECRETS, data: lock(g, passcode), size: 0, mtime: now });
   }
@@ -291,7 +338,7 @@ const safeSchedules = (list) => (Array.isArray(list) ? list.map((e) => ({ ...e, 
 
 // Unpacks the parts asked for into inn\restore-waiting (they go in at Bob's next start), puts keys back (when the
 // passcode opens them) and the door settings in config.json, switched off. Returns what happened, for the card.
-export async function stageRestore(cfg, file, { parts = PART_IDS, keys = false, passcode = '', store = storeKey, env = {}, now = new Date() } = {}) {
+export async function stageRestore(cfg, file, { parts = PART_IDS, keys = false, passcode = '', store = (name, value) => saveKey(cfg, name, value), env = {}, now = new Date() } = {}) {
   const info = readBackup(file);
   const chosen = info.parts.filter((p) => parts.includes(p));
   let unlocked = null;
@@ -301,6 +348,7 @@ export async function stageRestore(cfg, file, { parts = PART_IDS, keys = false, 
   const tmp = waiting + '.new';
   fs.rmSync(tmp, { recursive: true, force: true });
   let files = 0;
+  const appNotes = [];
   if (chosen.length) {
     unzip(info.file, tmp);
     const pairs = [[info.from.innDir, cfg.innDir], [info.from.agentDir, cfg.agentDir]].filter(([a, b]) => a && b && a !== b);
@@ -315,6 +363,7 @@ export async function stageRestore(cfg, file, { parts = PART_IDS, keys = false, 
       try { j = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return; }
       if (pairs.length) j = rebaseJson(j, pairs);
       if (rel === 'bob/settings.json') j = safeSettings(j);
+      if (rel === 'bob/mcp-servers.json') j = restoreApps(cfg, j, unlocked?.mcpEnv || {}, appNotes);
       if (rel === 'bob/schedules.json') j = Array.isArray(j) ? safeSchedules(j) : j && typeof j === 'object' && Array.isArray(j.list) ? { ...j, list: safeSchedules(j.list) } : j;
       writeJsonAtomic(p, j, rel === 'bob/settings.json' ? 2 : 1);
     };
@@ -329,7 +378,9 @@ export async function stageRestore(cfg, file, { parts = PART_IDS, keys = false, 
   if (unlocked) {
     for (const [name, value] of Object.entries(unlocked.keys || {})) {
       if (!KEY_NAME_RE.test(name)) continue;
-      if (env[name]) { keptKeys.push(name); continue; }
+      let have = env[name];
+      if (!have) { try { have = savedKey(name); } catch {} }
+      if (have) { keptKeys.push(name); continue; }
       try { await store(name, String(value)); restoredKeys.push(name); } catch { failedKeys.push(name); }
     }
   }
@@ -337,7 +388,7 @@ export async function stageRestore(cfg, file, { parts = PART_IDS, keys = false, 
   let doors = false;
   if (cfg.configFile && (chosen.includes('settings') && info.doors || unlocked?.phonePasscode)) {
     let raw;
-    try { raw = readJsonFile(cfg.configFile); } catch { raw = null; } // unreadable config.json: leave it alone
+    try { raw = readConfigFile(cfg); } catch { raw = null; } // unreadable config.json: leave it alone
     if (raw) {
       if (chosen.includes('settings') && info.doors) {
         let d = {};
@@ -348,11 +399,40 @@ export async function stageRestore(cfg, file, { parts = PART_IDS, keys = false, 
         doors = Boolean(safe.discord || safe.telegram);
       }
       if (unlocked?.phonePasscode && !(raw.remote?.passcode)) { raw.remote = { ...(raw.remote || {}), passcode: String(unlocked.phonePasscode).slice(0, 64), enabled: false }; restoredKeys.push('phone passcode'); }
-      writeJsonAtomic(cfg.configFile, raw, 2);
-      for (const k of ['discord', 'telegram', 'remote']) if (raw[k]) cfg[k] = raw[k];
+      try {
+        writeConfigFile(cfg, raw); // locked with this computer's box
+        for (const k of ['discord', 'telegram', 'remote']) if (raw[k]) cfg[k] = raw[k];
+      } catch {
+        doors = false;
+        const i = restoredKeys.indexOf('phone passcode');
+        if (i >= 0) { restoredKeys.splice(i, 1); failedKeys.push('phone passcode'); }
+      }
     }
   }
+  for (const n of appNotes) (n.ok ? restoredKeys : failedKeys).push(n.name);
   return { ok: true, waiting: files > 0, files, parts: chosen, made: info.made, brains: info.brains, keys: { restored: restoredKeys, kept: keptKeys, failed: failedKeys }, doors };
+}
+
+// Connected apps from a backup: each one's env values come from the locked part (when its passcode was given), locked
+// again with this computer's box. A value locked by another computer's box (from a copy of the file) can't be opened
+// here, so it's left empty. notes collects { name, ok } for the restore card.
+export function restoreApps(cfg, j, mcpEnv = {}, notes = []) {
+  if (!j || !Array.isArray(j.servers)) return j;
+  let box = null;
+  const locking = lockOn(cfg);
+  if (locking) { try { box = ensureBox(cfg); } catch {} }
+  const servers = j.servers.map((sv) => {
+    if (!sv || typeof sv !== 'object' || !sv.env || typeof sv.env !== 'object') return sv;
+    const env = {};
+    for (const [k, v] of Object.entries(sv.env)) {
+      const plain = typeof mcpEnv[sv.id]?.[k] === 'string' ? mcpEnv[sv.id][k] : typeof v === 'string' && !v.startsWith('bobsecret1:') ? v : '';
+      if (!plain) { env[k] = ''; continue; }
+      if (!locking) { env[k] = plain; notes.push({ name: `${sv.name || sv.id}: ${k}`, ok: true }); continue; }
+      if (box?.ready) { env[k] = box.seal(plain); notes.push({ name: `${sv.name || sv.id}: ${k}`, ok: true }); } else { env[k] = ''; notes.push({ name: `${sv.name || sv.id}: ${k}`, ok: false }); }
+    }
+    return { ...sv, env };
+  });
+  return { ...j, servers };
 }
 
 // ---------------------------------------------------------------- the automatic backup
@@ -404,7 +484,7 @@ export function backupView(cfg, keeper, { canRestart = false, env = {} } = {}) {
     settings: backupOf(cfg), state: keeper ? keeper.state() : null, lastRestore, canRestart,
     waiting: fs.existsSync(path.join(cfg.innDir, 'restore-waiting', 'plan.json')),
     parts: PARTS.map(({ id, label, what }) => ({ id, label, what })),
-    keysHere: Object.keys(g.keys).length + (g.phonePasscode ? 1 : 0), minPasscode: MIN_PASSCODE
+    keysHere: keyCountOf(g), minPasscode: MIN_PASSCODE
   };
 }
 

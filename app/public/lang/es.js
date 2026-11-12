@@ -119,7 +119,7 @@ export const WORDS = {
   "Simple": "Sencillo",
   "Advanced": "Avanzado",
   "Bob himself": "Bob en persona",
-  "Voice, look, theme, house style and presets.": "Voz, aspecto, tema, estilo de la casa y ajustes predefinidos.",
+  "Voice, look, personality, house style and presets.": "Voz, aspecto, personalidad, estilo de la casa y ajustes predefinidos.",
   "How Bob works": "Cómo trabaja Bob",
   "Sessions, plans, notes, jobs, saved prompts, start-up, check-ins.": "Sesiones, planes, notas, trabajos, mensajes guardados, arranque, revisiones.",
   "🧰 More tools": "🧰 Más herramientas",

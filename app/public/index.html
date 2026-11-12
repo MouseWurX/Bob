@@ -17,7 +17,7 @@
   <div class="app">
   <nav id="side" class="side" aria-label="Bob's menu">
     <div class="side-top">
-      <div class="bob-wrap"><canvas id="bob" width="56" height="56" aria-label="Bob"></canvas><div id="bobCubeBox" class="mind-cube bob-cube" hidden><canvas id="bobCube" role="button" tabindex="0" aria-label="Bob, as his brain: a small block that builds itself when a brain loads, glows while he thinks and takes itself apart when the brain is let go. Open Equip Bob" title="Equip Bob: his models, attributes and look"></canvas><p id="bobCubeSays" class="sr-only" aria-live="off"></p><button id="bobCubeOpen" type="button" hidden>Open in the big viewer</button></div><span id="cat" class="cat" aria-hidden="true">🐈</span><span id="bobProp" class="bob-prop" aria-hidden="true" hidden></span></div>
+      <div class="bob-wrap"><canvas id="bob" width="56" height="56" aria-label="Bob"></canvas><div id="bobCubeBox" class="mind-cube bob-cube" hidden><canvas id="bobCube" role="button" tabindex="0" aria-label="Bob, as his brain: a small block that builds itself when a brain loads, glows while he thinks and takes itself apart when the brain is let go. Opens Bob's menu" title="Bob's menu: what he's doing, his brain, and doors to Brains, Style and Get models"></canvas><p id="bobCubeSays" class="sr-only" aria-live="off"></p><button id="bobCubeOpen" type="button" hidden>Open in the big viewer</button></div><span id="cat" class="cat" aria-hidden="true">🐈</span><span id="bobProp" class="bob-prop" aria-hidden="true" hidden></span></div>
       <div class="who"><div class="name">Bob</div><div id="status" class="status" role="status">Getting the fire going...</div></div>
       <button id="foldLeft" type="button" class="fold" title="Fold the menu (Ctrl+B)" aria-label="Fold the menu" aria-expanded="true"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 6l-6 6 6 6"/></svg></button>
     </div>
@@ -34,7 +34,7 @@
     <div id="labHead" class="nav-head">Lab</div>
     <button id="labBtn" type="button" class="nav-item" title="Computer Science Lab: make your own brain from one in the catalogue" aria-label="Lab" hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7.5 15h9"/></svg><span class="lbl">Lab</span><span class="short" aria-hidden="true">Lab</span></button>
     <div class="nav-head">Setup</div>
-    <button id="cellarBtn" type="button" class="nav-item" title="Get models: Equip Bob, the model shops and what's on this replicant matrix" aria-label="Get models"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7l8-4 8 4v10l-8 4-8-4z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg><span class="lbl">Get models</span><span class="short" aria-hidden="true">Models</span></button>
+    <button id="cellarBtn" type="button" class="nav-item" title="Get models: the Brain catalogue, the model shops and what's on this replicant matrix" aria-label="Get models"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7l8-4 8 4v10l-8 4-8-4z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg><span class="lbl">Get models</span><span class="short" aria-hidden="true">Models</span></button>
     <button id="dlBtn" type="button" class="nav-item" title="Downloads: pause, resume, reorder" aria-label="Downloads"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v3h16v-3"/></svg><span class="lbl">Downloads</span><span class="short" aria-hidden="true">Downloads</span><span class="badge" hidden></span></button>
     <button id="tidyBtn" type="button" class="nav-item" title="Tidy up: old chats, pictures and logs Bob can clear away (asks first)" aria-label="Tidy up"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3l-2 8"/><path d="M6 13h12l-1 8H7z"/><path d="M9 17v2M12 17v2M15 17v2"/></svg><span class="lbl">Tidy up</span><span class="short" aria-hidden="true">Tidy</span><span class="badge" hidden></span></button>
     <button id="settingsBtn" type="button" class="nav-item" title="Settings: everyday, plus advanced if you want it" aria-label="Settings"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span class="lbl">Settings</span><span class="short" aria-hidden="true">Settings</span></button>
@@ -47,6 +47,7 @@
     <div class="side-fill"></div>
     <label class="session-wrap" title="Which brains Bob keeps loaded"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="6" width="12" height="12" rx="1"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg><span class="lbl">Session:</span> <select id="sessionSel" class="session" aria-label="Session"></select></label>
   </nav>
+  <aside id="panelLeft" class="mod-panel" aria-label="Left panel" hidden></aside>
 
   <div class="mid">
     <div class="ctx">
@@ -104,8 +105,10 @@
     <span id="chatFill" class="muted chat-fill" hidden><span id="chatFillText"></span> <button id="chatFillSum" type="button" class="link mini" hidden title="Bob sums up the older part of this chat and keeps only the last few messages word for word, so the brain has room again">Sum up and carry on</button></span>
     <span id="effortHint" class="muted effort-hint" aria-live="polite"></span>
   </div>
+  <div id="talkBar" class="talk-bar" role="region" aria-label="Talk with Bob" hidden></div>
   <form id="composer" class="composer">
     <button id="mic" type="button" class="mic" title="Talk to Bob: click, speak, then pause">🎙</button>
+    <button id="talkBtn" type="button" class="mic talk-btn" title="Talk with Bob: a hands-free talk. Just talk, and he answers out loud" aria-label="Talk with Bob" aria-pressed="false" hidden>🗣</button>
     <button id="attach" type="button" class="mic" title="Attach a picture (or paste or drop one)">📎</button>
     <input id="attachFile" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
     <textarea id="input" rows="2" placeholder="Tell Bob what you need..." autocomplete="off"></textarea>
@@ -124,6 +127,8 @@
   <div id="grab" class="grab" role="separator" aria-orientation="vertical" aria-label="Drag to resize Now running" tabindex="0"></div>
   <aside id="now" class="now" aria-label="Now running">
     <div class="now-head"><strong>Now running</strong><span class="ctx-fill"></span><button id="hideRight" type="button" class="link" title="Hide (Ctrl+J)">Hide »</button></div>
+    <div id="panelRow" class="panel-row" role="group" aria-label="Your panels"></div>
+    <p id="panelSay" class="sr-only" aria-live="polite"></p>
     <div id="nowSections" class="now-sections">
     <section data-sec="tasks"><div class="now-sec"><span class="sec-order"><button type="button" class="sec-grip" data-grip="tasks" aria-label="Move Tasks" aria-expanded="false" title="Drag this section up or down, or press for Move up and Move down. Arrow keys work too.">⋮⋮</button><span class="sec-move" hidden><button type="button" class="mini" data-move="-1" data-sec-id="tasks" aria-label="Move Tasks up">▲ Move up</button><button type="button" class="mini" data-move="1" data-sec-id="tasks" aria-label="Move Tasks down">▼ Move down</button></span></span>Tasks <button type="button" class="tip-i" aria-label="About Tasks" aria-expanded="false"><span class="tip-src" hidden>What Bob is doing and what waits its turn. Drag one to change the order.</span></button><span class="ctx-fill"></span><button type="button" class="link" data-alltasks>See all</button></div><ol id="nowTasks" class="tlist"></ol></section>
     <section id="nowNet" data-sec="net" hidden><div class="now-sec"><span class="sec-order"><button type="button" class="sec-grip" data-grip="net" aria-label="Move Bob-Net" aria-expanded="false" title="Drag this section up or down, or press for Move up and Move down. Arrow keys work too.">⋮⋮</button><span class="sec-move" hidden><button type="button" class="mini" data-move="-1" data-sec-id="net" aria-label="Move Bob-Net up">▲ Move up</button><button type="button" class="mini" data-move="1" data-sec-id="net" aria-label="Move Bob-Net down">▼ Move down</button></span></span><button type="button" id="nowNetHead" class="link now-head" title="Bob-Net settings" aria-label="Open Bob-Net settings">Bob-Net</button> <button type="button" class="tip-i" aria-label="About Bob-Net" aria-expanded="false"><span class="tip-src" hidden>Your other Bobs, and what each is doing for the others right now: thinking a reply, making a picture, ready, gaming, not reachable. The top line is this Bob. Press Bob-Net to set it up.</span></button></div><div class="net-tools"><button id="nowNetAvatars" type="button" class="brain-switch" role="switch" aria-checked="false" title="Show each Bob's avatar (the look picked in his Style page) beside his line. Off: just the words. Nothing extra goes over the network: each Bob's look comes with the hello this list already uses."><span class="lbl">Show avatars</span><span class="st">Off</span></button></div><ul id="nowNetList" class="tlist net-list"></ul></section>
@@ -148,6 +153,7 @@
     </div>
     <p id="nowOrderSay" class="sr-only" aria-live="polite"></p>
   </aside>
+  <aside id="panelRight" class="mod-panel" aria-label="Right panel" hidden></aside>
   </div>
 
   <dialog id="shelf" class="cellar" aria-labelledby="shelf-title">
@@ -156,12 +162,12 @@
   </dialog>
 
   <dialog id="tasks" class="cellar" aria-labelledby="tasks-title">
-    <div class="cellar-head"><h2 id="tasks-title">Tasks</h2><button id="tasks-close" class="icon" title="Close" aria-label="Close">✕</button></div>
+    <div class="cellar-head"><h2 id="tasks-title">Tasks</h2><button id="tasks-close" class="icon" aria-label="Close">✕</button></div>
     <div id="tasks-body"></div>
   </dialog>
 
   <dialog id="downloads" class="cellar" aria-labelledby="downloads-title">
-    <div class="cellar-head"><h2 id="downloads-title">Downloads</h2><button id="downloads-close" class="icon" title="Close" aria-label="Close">✕</button></div>
+    <div class="cellar-head"><h2 id="downloads-title">Downloads</h2><button id="downloads-close" class="icon" aria-label="Close">✕</button></div>
     <div id="downloads-body"></div>
   </dialog>
 
@@ -184,11 +190,11 @@
     <div id="lab-body"></div>
   </dialog>
   <dialog id="tidy" class="cellar" aria-labelledby="tidy-title">
-    <div class="cellar-head"><h2 id="tidy-title">Tidy up</h2><button id="tidy-close" class="icon" title="Close" aria-label="Close">✕</button></div>
+    <div class="cellar-head"><h2 id="tidy-title">Tidy up</h2><button id="tidy-close" class="icon" aria-label="Close">✕</button></div>
     <div id="tidy-body"></div>
   </dialog>
 
-  <dialog id="help" class="cellar" aria-labelledby="help-title">
+  <dialog id="help" class="cellar wide" aria-labelledby="help-title">
     <div class="cellar-head"><h2 id="help-title">Help</h2><button id="help-close" class="icon" title="Close (Esc)" aria-label="Close">✕</button></div>
     <div id="help-body"></div>
   </dialog>
