@@ -64,6 +64,7 @@ check('Find anything has a name, keyboard moves and the listbox roles', read('pu
 const help = (id) => HELP.find((e) => e.id === id)?.html || '';
 check('Style Help explains the three looks', ['Classic', 'Lamplight', 'Terminal'].every((w) => help('style').includes(w)));
 check('the FAQ says a look never changes how Bob works', /same speed/.test(help('faq-looks')) && /Windows, Mac, Linux/.test(help('faq-looks')));
+check('a Lamplight page fills the room and scrolls inside it (height: auto beats the dialog\'s own fit-content; 1.5.212, first-time setup didn\'t scroll)', /body\.look-lamplight \.cellar\.page\[open\] \{ position: fixed; inset: 64px 0 0 0;[^}]*height: auto;/.test(css) && /\.cellar\.page \{[^}]*overflow: auto/.test(read('public/style.css')));
 check('the glossary has Lamplight, Look and Find anything', ['Lamplight', 'Look', 'Find anything'].every((w) => help('glossary').includes(`<dt>${w}</dt>`)));
 check('Style Help explains Find anything and the status line', help('style').includes('Find anything') && help('style').includes('status line'));
 
