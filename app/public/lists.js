@@ -77,8 +77,7 @@ export function taskRow(j, { movable, full }) {
     status === 'interrupted' ? '<button type="button" data-t="retry">Carry on</button>' : ['failed', 'cancelled'].includes(status) ? '<button type="button" data-t="retry">Try again</button>' : '',
     status === 'queued' ? '<button type="button" data-t="cancel">Remove</button>' : '',
     ['in progress', 'delegated', 'needs you'].includes(status) ? '<button type="button" data-t="cancel">Stop</button>' : '',
-    // 1.5.211: a failed or stopped job can just be taken off the list, in Now running too, without trying it again first.
-    (full || ['failed', 'cancelled', 'interrupted'].includes(status)) && !['queued', 'in progress', 'delegated', 'needs you'].includes(status) ? '<button type="button" data-t="remove" title="Take it off the list" aria-label="Take it off the list">✕</button>' : ''
+    full && !['queued', 'in progress', 'delegated', 'needs you'].includes(status) ? '<button type="button" data-t="remove" title="Take it off the list" aria-label="Take it off the list">✕</button>' : ''
   ].join('');
   return `<li class="titem" data-id="${esc(j.id)}" ${movable ? 'draggable="true"' : ''}>
     <span class="grip" aria-hidden="true">${movable ? '⋮⋮' : ''}</span>

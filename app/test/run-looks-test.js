@@ -6,7 +6,6 @@ import { cleanStyle } from '../src/config.js';
 import { HELP } from '../public/help-content.js';
 import { rankFind } from '../public/find.js';
 import { bobMenuHtml } from '../public/bob-menu.js';
-import { taskRow } from '../public/lists.js';
 const pixelKeptT = (st) => st?.avatar === 'pixel' && st?.avatarKept === true; // mirrors public/themes.js pixelKept (themes.js needs a page)
 
 let pass = 0, fail = 0;
@@ -47,7 +46,6 @@ const r = rankFind([{ label: 'Downloads', kind: 'Tool' }, { label: 'Tasks', kind
 check('Find anything finds a Settings card by the words inside it', r.length === 1 && r[0].label === 'Brains and speed');
 check('Find anything with nothing typed lists the pages and tools', rankFind([{ label: 'Tasks', kind: 'Page' }, { label: 'Style', kind: 'Help' }], '').map((i) => i.label).join() === 'Tasks');
 check('a Help topic found only by its search words still shows', rankFind([{ label: 'My Bobs are on Wi-Fi. How do I get them on the best band?', kind: 'Help', words: 'wifi calibrate' }], 'calibrate').length === 1);
-check('a failed job in Now running can be taken off the list without trying again', taskRow({ id: 'j1', state: 'failed', name: 'x', error: 'no' }, { movable: false, full: false }).includes('data-t="remove"') && !taskRow({ id: 'j2', state: 'working', name: 'y' }, { movable: false, full: false }).includes('data-t="remove"'));
 check('themes.js keeps the same Pixel Bob rule', read('public/themes.js').includes("export const pixelKept = (style) => style?.avatar === 'pixel' && style?.avatarKept === true;"));
 check('an old Pixel Bob pick no longer hides the cube; one made from 1.5.211 on is kept', !pixelKeptT({ avatar: 'pixel' }) && pixelKeptT({ avatar: 'pixel', avatarKept: true }) && cleanStyle({ avatar: 'pixel', avatarKept: true }).avatarKept === true);
 check('Now running starts closed in every look, and an old open is forgotten once on the update', read('public/layout.js').includes("store.get('bob-right', 'hidden')") && read('public/layout.js').includes("'bob-layout-211'"));
