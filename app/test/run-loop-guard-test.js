@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { NUDGE_BUDGET, CALLS_PER_TURN, nudgeOk, spendNudge, Progress, findCycle, resultHash, WRAP_NOTES, wrapUp, droppedNote, outOfStepsLine, noteWait, waitedFor, busyMs, pastCeiling, ceilingMs, ceilingMins, stage, carriedBudget, keepBudget, CARRIED_MIN_STEPS, CAP_SKIP } from '../src/loop-guard.js';
 import { Brain, MAX_CALLS_PER_REPLY } from '../src/brain.js';
+import { saveSettings } from '../src/config.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -236,6 +237,21 @@ const hiddenNotes = () => brain.session('main').filter((m) => m.role === 'system
   check('161: past the 10-minute limit the next round has no tools', seenTools[1] === 0, seenTools.join(','));
   check('161: and he wraps up', brain.session('main').at(-1)?.content === 'Out of time, here is what I have.');
   check('161: the note names the limit', hiddenNotes().some((t) => t === WRAP_NOTES.time('Sam', 10)));
+}
+{ // 161: the limit is read fresh at every check, so a change in Settings counts at once, even mid-job
+  for (const [from, to, wraps] of [[60, 10, true], [10, 30, false]]) {
+    reset();
+    saveSettings(brain.cfg, { jobHelps: { minutes: from } });
+    const realNow = Date.now;
+    let skew = 0;
+    Date.now = () => realNow() + skew;
+    toolImpl = (name) => { skew += 11 * 60000; saveSettings(brain.cfg, { jobHelps: { minutes: to } }); return { text: `${name} ok ${skew}` }; };
+    script = [call('web_search', { query: 'a' }), (o) => ({ role: 'assistant', content: o.tools?.length ? 'still going' : 'Out of time.' })];
+    await run('a long job');
+    Date.now = realNow;
+    check(`161: the limit changed from ${from} to ${to} minutes mid-job ${wraps ? 'wraps it up' : 'lets it carry on'}`, (seenTools[1] === 0) === wraps && brain.session('main').at(-1)?.content === (wraps ? 'Out of time.' : 'still going'), seenTools.join(','));
+  }
+  saveSettings(brain.cfg, { jobHelps: { minutes: 10 } });
 }
 { // 162: stages in the log
   reset();

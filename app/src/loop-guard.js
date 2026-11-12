@@ -9,6 +9,8 @@ export const NUDGE_BUDGET = 2;          // 152: the honesty, empty, can't, promi
 export const CALLS_PER_TURN = 40;       // 157: tool calls one turn may run, across all its replies
 // 161 (Nov 12): the safety net is always on and uses the job time limit's minutes (Settings, Jobs), whether
 // that switch is on or off, so no Bob runs away. Card waits don't count (163).
+// Read fresh from the live settings at every check, never copied, so a change in Settings counts at once, even for
+// work already running.
 export const ceilingMins = (cfg) => cleanJobHelps(cfg?.jobHelps).minutes;
 export const ceilingMs = (cfg) => ceilingMins(cfg) * 60000;
 export const STALE_ROUNDS = 3;          // 154: rounds in a row that find nothing new
