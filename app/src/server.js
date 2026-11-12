@@ -90,7 +90,9 @@ import { firewallState, changeRule, firewallHome, firewallUdp } from './firewall
 import { shareView, cleanSharePatch, saveShare, lendChat, lendRefusal, reviewRefusal, helloFor, bobNetRooms } from './share-brains.js';
 import { lendCardRoute, homeIps, isHomeIp, sameNet } from './share-card.js'; // Bob-Net: Lend my graphics card
 import { tailLinkLog } from './link-log.js'; // Bob-Net: the link log
-import { wifiView, wifiSays, calibrate, putBack, cleanWifiWas } from './wifi-tune.js'; // Bob-Net: Calibrate Wi-Fi
+import { wifiView, wifiSays, calibrate, putBack, cleanWifiWas, tcpTrip } from './wifi-tune.js'; // Bob-Net: Calibrate Wi-Fi
+import { LinksCache, kindOfAddress, linksSay } from './links.js'; // Bob-Net: Check links
+import { machineWord } from './platform.js';
 import { checkHello } from './bob-net-check.js'; // 1.5.185 a bigger Bob checks the harder jobs
 import { guestRoute, answerAway } from './share-jobs.js';
 import { Pairing, myName } from './bob-net-pair.js';
@@ -187,6 +189,7 @@ function broadcast(ev) {
 }
 
 const brain = new Brain(cfg, broadcast);
+brain.linksCache = new LinksCache(); // which links this machine has, read in the background for the hello (src/links.js)
 // Item 214: a helper thread notices when this server stops answering for a minute (it notes it in the logbook), and
 // when it answers again the window hears about it, with a Restart button where Bob can restart himself.
 startWatchdog({ logbook: cfg.logbook, timeZone: cfg.timeZone, onBack: ({ secs }) => {
@@ -806,6 +809,19 @@ const server = http.createServer(async (req, res) => {
     }
     // Calibrate Wi-Fi (src/wifi-tune.js). GET: what Bob sees (no admin). POST { calibrate } tries each band and sets the
     // best (Windows asks once); POST { putBack } restores the card's setting. This machine only, and only on a click.
+    // Check links (src/links.js): what links this machine has, every path to each Bob with its trip time, and what
+    // would be faster. Reads only; this machine only.
+    if (p === '/api/share-brains/links' && req.method === 'GET') {
+      if (!isLocal) return send(res, 403, { error: 'The links can only be checked on this replicant matrix itself.' });
+      const me = await brain.linksCache.fresh();
+      const list = brain.lenders.bobs();
+      await Promise.all(list.map((x) => brain.lenders.hello(x, { force: true }).catch(() => null)));
+      const bobs = await Promise.all(list.map(async (x) => {
+        const paths = await Promise.all((brain.lenders.nearAll.get(x.address) || []).map(async (f) => { let best = Infinity; for (let i = 0; i < 3; i++) { const t = await tcpTrip({ host: f.host, port: f.port }, 600); if (t === null) break; best = Math.min(best, t); } return { kind: kindOfAddress(f.mine, me), ms: best }; }));
+        return { name: x.name || 'Your other Bob', links: brain.lenders.state.get(x.address)?.links || null, paths };
+      }));
+      return send(res, 200, { ok: true, text: linksSay({ me, machine: machineWord(), bobs }) });
+    }
     if (p === '/api/share-brains/wifi' && (req.method === 'GET' || req.method === 'POST')) {
       if (!isLocal) return send(res, 403, { error: 'The Wi-Fi can only be calibrated on this replicant matrix itself.' });
       if (req.method === 'GET') { const view = await wifiView(); return send(res, 200, { ok: view.ok, text: wifiSays(view) }); }

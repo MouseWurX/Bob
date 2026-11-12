@@ -92,7 +92,9 @@ const plainIp = (a) => String(a || '').replace(/^::ffff:/i, '');
 const quad = (a) => { const m = String(a || '').match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/); return m && m.slice(1).every((x) => +x <= 255) ? m.slice(1).map(Number) : null; };
 const num = (q) => ((q[0] << 24) >>> 0) + (q[1] << 16) + (q[2] << 8) + q[3];
 // A home-network (private) address: 10.x, 172.16-31.x or 192.168.x. Tailscale's 100.64-127.x are not.
-export const isHomeIp = (a) => { const q = quad(plainIp(a)); return Boolean(q && (q[0] === 10 || (q[0] === 172 && q[1] >= 16 && q[1] <= 31) || (q[0] === 192 && q[1] === 168))); };
+// Also 169.254.x.x: the address two machines give themselves over a cable straight between them (a network cable,
+// or USB4 / Thunderbolt), or through a switch with no router. Such an address only reaches what's on that same cable.
+export const isHomeIp = (a) => { const q = quad(plainIp(a)); return Boolean(q && (q[0] === 10 || (q[0] === 172 && q[1] >= 16 && q[1] <= 31) || (q[0] === 192 && q[1] === 168) || (q[0] === 169 && q[1] === 254))); };
 export const sameNet = (a, b, mask) => { const x = quad(plainIp(a)), y = quad(plainIp(b)), m = quad(mask); return Boolean(x && y && m && (num(x) & num(m)) === (num(y) & num(m))); };
 // This machine's own home-network addresses: [{ address, netmask }].
 export const homeIps = (ifaces = os.networkInterfaces()) => { const out = []; for (const list of Object.values(ifaces)) for (const n of list || []) if (n.family === 'IPv4' && !n.internal && isHomeIp(n.address)) out.push({ address: n.address, netmask: n.netmask || '255.255.255.0' }); return out; };

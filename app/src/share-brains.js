@@ -13,6 +13,7 @@
 // Addresses must be Tailscale ones (100.64.0.0/10 or a *.ts.net name). Passcodes live in config.json only, like the
 // phone door's, and are never sent back to the page.
 import { cleanWifiWas, tcpTrip } from './wifi-tune.js';
+import { linksHello, cleanLinks } from './links.js'; // Check links: what kinds of link each Bob has
 import fs from 'node:fs';
 import { readJsonFile } from './util.js';
 import { isTailscaleIp } from './phone-access.js';
@@ -271,6 +272,7 @@ export class Lenders {
     // Two Bobs can share more than one network (Wi-Fi and a cable between them): the quickest is used. nearMine: address ->
     // this Bob's own addresses on the shared networks, quickest first; nearTimed: when that was last timed.
     this.trip = trip; this.nearMine = new Map(); this.nearTimed = new Map();
+    this.nearAll = new Map(); // address -> every shared path [{ at, host, port, mine }], for Check links
     this.cookies = new Map(); // address -> bob_auth cookie (memory only)
     this.state = new Map(); // address -> { ok, at, brain, why }
     // 1.5.72: Bobs thinking for us right now (address -> held until), so two replies at once go to two different Bobs.
@@ -303,7 +305,7 @@ export class Lenders {
       const m = x.match(/^([\d.]+):(\d{1,5})$/), h = m && isHomeIp(m[1]) ? mine.find((q) => sameNet(q.address, m[1], q.netmask)) : null;
       return h ? { at: x, host: m[1], port: Number(m[2]), mine: h.address } : null;
     }).filter(Boolean);
-    if (!found.length) { this.near.delete(bob.address); this.nearMine.delete(bob.address); return; }
+    if (!found.length) { this.near.delete(bob.address); this.nearMine.delete(bob.address); this.nearAll.delete(bob.address); return; }
     if (found.length > 1) {
       const key = found.map((f) => f.at).join(' '), was = this.nearTimed.get(bob.address);
       let order = was && was.key === key && this.now() - was.at < 5 * 60000 ? was.order : null;
@@ -315,6 +317,7 @@ export class Lenders {
       found = order.map((at) => found.find((f) => f.at === at));
     }
     this.near.set(bob.address, found[0].at);
+    this.nearAll.set(bob.address, found);
     this.nearMine.set(bob.address, [...new Set(found.map((f) => f.mine))]);
   }
 
@@ -370,7 +373,7 @@ export class Lenders {
       out = r.ok && j.lend === true && !j.busy ? { ok: true, brain: String(j.brain || '').slice(0, 60), device: String(j.device || '').slice(0, 20) } : { ok: false, why: j.busy || (r.status === 401 ? 'passcode not accepted' : r.status === 403 ? 'door closed' : `answered ${r.status}`) };
       // 1.5.72: what this Bob says he can do. ctx: his quick brain's room; speed: words a second he's seen lately;
       // jobs: whole jobs he takes (only with "Take jobs from my other Bobs" on there), and how busy his queue is.
-      if (r.ok) Object.assign(out, cleanAbilities(j), { ms });
+      if (r.ok) Object.assign(out, cleanAbilities(j), { ms, links: cleanLinks(j.links) });
       if (r.ok) await this.learnNear(bob, j.home);
     } catch (e) { out = { ok: false, why: /passcode|tries/.test(e.message) ? e.message : 'not reachable' }; }
     const seen = this.state.get(bob.address);
@@ -555,6 +558,7 @@ export function helloFor(brain, { why, quick, can, version, label, webOn, bigBra
     ...(review?.model ? { review: { brain: label(review.model), ctx: review.ctx || 0, gb: review.gb || 0 } } : {}), // #30: checks work for his other Bobs
     // Also over the home network (off unless switched on): where this Bob's door is on the home network too.
     home: brain.cfg.remote?.homeNet === true && doorOpen(brain.cfg) ? homeIps().map((m) => `${m.address}:${brain.cfg.port}`).slice(0, 4) : [],
+    ...(linksHello(brain.linksCache?.peek?.()) ? { links: linksHello(brain.linksCache.peek()) } : {}), // which kinds of link this Bob has (src/links.js), for the other Bob's Check links
     ...check, // 1.5.185 Check harder jobs for my other Bobs (src/bob-net-check.js checkHello)
     ...(room ? { room } : {}) // 1.5.137: graphics card and memory in GB, for the other Bob's Brain catalogue
   };
