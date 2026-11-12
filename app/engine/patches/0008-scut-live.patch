@@ -1,0 +1,873 @@
+diff --git a/ggml/src/ggml-rpc/ggml-rpc.cpp b/ggml/src/ggml-rpc/ggml-rpc.cpp
+index 2ec7036..1876a61 100644
+--- a/ggml/src/ggml-rpc/ggml-rpc.cpp
++++ b/ggml/src/ggml-rpc/ggml-rpc.cpp
+@@ -343,14 +343,165 @@ static uint64_t fnv_hash(const uint8_t * data, size_t len, uint64_t hash = 0xcbf
+     return hash;
+ }
+ 
+-static bool send_msg(socket_ptr sock, const void * msg, size_t msg_size) {
+-    if (!sock->send_data(&msg_size, sizeof(msg_size))) {
+-        return false;
++// Brain Engine 0008: the link log. Every GGML_RPC_STATS seconds (default 10, 0 = off) in which the link carried
++// anything, both ends write what it carried and where the time went: "[link] ..." lines, and SCUT's own counters as
++// "[scut] ...". Nothing is added to the protocol except one tiny GET_ALIGNMENT round trip per report, to time the link.
++static int rpc_stats_secs() {
++    static const int secs = [] {
++        const char * env = std::getenv("GGML_RPC_STATS");
++        if (env == nullptr || env[0] == '\0') {
++            return 10;
++        }
++        const int v = atoi(env);
++        return v < 0 ? 0 : v;
++    }();
++    return secs;
++}
++
++static inline double rpc_ms_since(std::chrono::steady_clock::time_point t0) {
++    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
++}
++
++struct rpc_link_log {
++    struct per_cmd {
++        uint64_t n      = 0;
++        uint64_t bytes  = 0; // request + answer
++        double   ms     = 0;
++        double   max_ms = 0;
++        double   card_ms = 0; // lending side: the part spent waiting for the card to finish its work
++        bool     answered = false; // borrowing side: the command waits for an answer
++    };
++    per_cmd  cmds[RPC_CMD_COUNT];
++    bool     any = false;
++    std::chrono::steady_clock::time_point since = std::chrono::steady_clock::now();
++    uint64_t tx_mark = 0, rx_mark = 0;
++    // lending side
++    double   idle_ms = 0, send_ms = 0;
++
++    void add(uint8_t cmd, uint64_t bytes, double ms, double card_ms = 0, bool answered = false) {
++        if (cmd >= RPC_CMD_COUNT) {
++            return;
++        }
++        per_cmd & c = cmds[cmd];
++        c.n++;
++        c.bytes += bytes;
++        c.ms += ms;
++        c.card_ms += card_ms;
++        c.answered |= answered;
++        c.max_ms = std::max(c.max_ms, ms);
++        any = true;
+     }
+-    if (!sock->send_data(msg, msg_size)) {
+-        return false;
++
++    bool due() const {
++        const int secs = rpc_stats_secs();
++        return secs > 0 && any && std::chrono::steady_clock::now() - since >= std::chrono::seconds(secs);
+     }
+-    return sock->flush();
++
++    // "GET_TENSOR x170 52.4 ms each (longest 80.1), SET_TENSOR x340 0.1 ms each, ...": the slowest six
++    std::string by_command(bool server) const {
++        std::vector<int> order;
++        for (int i = 0; i < RPC_CMD_COUNT; i++) {
++            if (cmds[i].n > 0) {
++                order.push_back(i);
++            }
++        }
++        std::sort(order.begin(), order.end(), [&](int a, int b) { return cmds[a].ms > cmds[b].ms; });
++        std::string out;
++        for (size_t k = 0; k < order.size() && k < 6; k++) {
++            const per_cmd & c = cmds[order[k]];
++            char buf[200];
++            if (server && c.card_ms > 0) {
++                snprintf(buf, sizeof(buf), "%s%s x%" PRIu64 " %.1f ms each (%.1f of it the card working; longest %.1f)", k ? "; " : "",
++                         rpc_cmd_name((enum rpc_cmd) order[k]), c.n, c.ms / c.n, c.card_ms / c.n, c.max_ms);
++            } else if (server) {
++                snprintf(buf, sizeof(buf), "%s%s x%" PRIu64 " %.1f ms each (longest %.1f)", k ? "; " : "",
++                         rpc_cmd_name((enum rpc_cmd) order[k]), c.n, c.ms / c.n, c.max_ms);
++            } else {
++                snprintf(buf, sizeof(buf), "%s%s x%" PRIu64 " %.1f ms each (longest %.1f), %s", k ? "; " : "",
++                         rpc_cmd_name((enum rpc_cmd) order[k]), c.n, c.ms / c.n, c.max_ms, rpc_log_format_size(c.bytes).c_str());
++            }
++            out += buf;
++        }
++        return out;
++    }
++
++    void reset(uint64_t tx, uint64_t rx) {
++        for (auto & c : cmds) {
++            c = per_cmd();
++        }
++        any = false;
++        idle_ms = send_ms = 0;
++        tx_mark = tx;
++        rx_mark = rx;
++        since = std::chrono::steady_clock::now();
++    }
++
++    // The borrowing side: what went to one lent card, how long its answers took, and how much of that is the link.
++    void report_client(const std::string & endpoint, const socket_ptr & sock, double round_trip_ms) {
++        const double secs = rpc_ms_since(since) / 1000.0;
++        uint64_t n_all = 0, n_answers = 0;
++        double busy_ms = 0, wait_ms = 0, longest = 0;
++        for (int i = 0; i < RPC_CMD_COUNT; i++) {
++            const per_cmd & c = cmds[i];
++            n_all += c.n;
++            busy_ms += c.ms;
++            // the commands that wait for an answer; the rest are sent and not waited for
++            if (c.answered) {
++                n_answers += c.n;
++                wait_ms += c.ms;
++                longest = std::max(longest, c.max_ms);
++            }
++        }
++        const uint64_t tx = sock->bytes_sent(), rx = sock->bytes_received();
++        char share[160] = "";
++        if (round_trip_ms > 0 && n_answers > 0 && wait_ms > 0) {
++            const double link = std::min(100.0, 100.0 * round_trip_ms * n_answers / wait_ms);
++            snprintf(share, sizeof(share), "; the link's round trip is %.1f ms, so about %.0f%% of that wait is the link and %.0f%% the other card working",
++                     round_trip_ms, link, 100.0 - link);
++        }
++        LOG_INFO("[link] %s over %s, %.1f s: %" PRIu64 " messages, %s sent, %s received; %.1f s spent on this card, %.1f s of it waiting for %" PRIu64 " answers (%.1f ms each, longest %.1f)%s\n",
++                 endpoint.c_str(), sock->link_name().c_str(), secs, n_all, rpc_log_format_size(tx - tx_mark).c_str(), rpc_log_format_size(rx - rx_mark).c_str(),
++                 busy_ms / 1000.0, wait_ms / 1000.0, n_answers, n_answers ? wait_ms / n_answers : 0.0, longest, share);
++        LOG_INFO("[link]   by command: %s\n", by_command(false).c_str());
++        const std::string note = sock->link_note();
++        if (!note.empty()) {
++            LOG_INFO("[scut]   %s\n", note.c_str());
++        }
++        reset(tx, rx);
++    }
++
++    // The lending side: how long the card worked, how long the answers took to send, and how long it sat waiting.
++    void report_server(const socket_ptr & sock, bool closing) {
++        const double secs = rpc_ms_since(since) / 1000.0;
++        uint64_t n_all = 0;
++        double busy_ms = 0, card_ms = 0;
++        for (int i = 0; i < RPC_CMD_COUNT; i++) {
++            n_all += cmds[i].n;
++            busy_ms += cmds[i].ms;
++            card_ms += cmds[i].card_ms;
++        }
++        const uint64_t tx = sock->bytes_sent(), rx = sock->bytes_received();
++        LOG_INFO("[link] lent card over %s, %.1f s%s: %" PRIu64 " messages, %s received, %s sent; the card worked %.1f s, sending answers took %.1f s, other handling %.1f s, waiting for the next message %.1f s\n",
++                 sock->link_name().c_str(), secs, closing ? " (closing)" : "", n_all, rpc_log_format_size(rx - rx_mark).c_str(), rpc_log_format_size(tx - tx_mark).c_str(),
++                 card_ms / 1000.0, send_ms / 1000.0, std::max(0.0, busy_ms - card_ms - send_ms) / 1000.0, idle_ms / 1000.0);
++        LOG_INFO("[link]   by command: %s\n", by_command(true).c_str());
++        const std::string note = sock->link_note();
++        if (!note.empty()) {
++            LOG_INFO("[scut]   %s\n", note.c_str());
++        }
++        reset(tx, rx);
++    }
++};
++
++// lending side: time spent sending answers and waiting for the card, added up for the link log
++static thread_local double g_rpc_send_ms = 0;
++static thread_local double g_rpc_card_ms = 0;
++
++static bool send_msg(socket_ptr sock, const void * msg, size_t msg_size) {
++    const auto t0 = std::chrono::steady_clock::now();
++    bool ok = sock->send_data(&msg_size, sizeof(msg_size)) && sock->send_data(msg, msg_size) && sock->flush();
++    g_rpc_send_ms += rpc_ms_since(t0);
++    return ok;
+ }
+ 
+ static bool recv_msg(socket_ptr sock, void * msg, size_t msg_size) {
+@@ -506,6 +657,18 @@ public:
+         return true;
+     }
+ 
++    // Brain Engine 0008: gives up after a while, so the link log gets written when the commands stop coming
++    bool pop_for(T* out, std::chrono::milliseconds wait, bool * timed_out) {
++        std::unique_lock<std::mutex> lock(mutex);
++        *timed_out = !cvar.wait_for(lock, wait, [this] { return !queue.empty() || interrupted; });
++        if (*timed_out || interrupted) {
++            return false;
++        }
++        *out = queue.front();
++        queue.pop();
++        return true;
++    }
++
+     bool try_pop(T* out) {
+         std::unique_lock<std::mutex> lock(mutex);
+         if (interrupted || queue.empty()) {
+@@ -578,6 +741,8 @@ private:
+ 
+     rpc_msg_queue queue;
+     socket_ptr    sock;
++    std::string   link_endpoint; // Brain Engine 0008: the link log
++    rpc_link_log  link_log;
+ 
+     rpc_dispatcher_flags flags = {};
+ 
+@@ -684,6 +849,10 @@ bool rpc_dispatcher::start(const std::string & endpoint) {
+         return false;
+     }
+     LOG_DBG("[%s] connected to %s\n", __func__, endpoint.c_str());
++    link_endpoint = endpoint;
++    if (rpc_stats_secs() > 0) {
++        LOG_INFO("[link] %s: connected over %s\n", endpoint.c_str(), sock->link_name().c_str());
++    }
+     running = true;
+     thread = std::thread(rpc_dispatcher_trampoline, this);
+     return true;
+@@ -701,6 +870,16 @@ void rpc_dispatcher::work() {
+                 rpc_cpu_relax();
+                 continue;
+             }
++        } else if (link_log.any && rpc_stats_secs() > 0) {
++            // Brain Engine 0008: the commands stopped coming: write what the link carried, then wait as before
++            bool timed_out = false;
++            if (!queue.pop_for(&msg_ptr, std::chrono::seconds(rpc_stats_secs()), &timed_out)) {
++                if (!timed_out) {
++                    break;
++                }
++                link_log.report_client(link_endpoint, sock, -1);
++                continue;
++            }
+         } else if (!queue.pop(&msg_ptr)) {
+             break;
+         }
+@@ -720,6 +899,26 @@ void rpc_dispatcher::work() {
+                 const std::chrono::duration<double, std::milli> elapsed = std::chrono::steady_clock::now() - t0;
+                 LOG_DBG3("[%s] %s done in %.3f ms\n", __func__, rpc_cmd_name(msg_ptr->cmd), elapsed.count());
+             }
++            // Brain Engine 0008: the link log
++            link_log.add(msg_ptr->cmd, 9 + msg_ptr->input_size + msg_ptr->payload_size + (msg_ptr->output ? 8 + msg_ptr->output_size : 0), rpc_ms_since(t0), 0, msg_ptr->output != nullptr);
++            if (link_log.due()) {
++                // right after an answer the other side has nothing left to do, so a tiny question times the link alone
++                double round_trip_ms = -1;
++                if (msg_ptr->output) {
++                    rpc_msg_get_alignment_req  probe = {};
++                    rpc_msg_get_alignment_rsp  probe_rsp = {};
++                    for (int i = 0; i < 2; i++) {
++                        const auto p0 = std::chrono::steady_clock::now();
++                        if (!send_rpc_cmd(sock, RPC_CMD_GET_ALIGNMENT, &probe, sizeof(probe), &probe_rsp, sizeof(probe_rsp))) {
++                            round_trip_ms = -1;
++                            break;
++                        }
++                        const double ms = rpc_ms_since(p0);
++                        round_trip_ms = round_trip_ms < 0 ? ms : std::min(round_trip_ms, ms);
++                    }
++                }
++                link_log.report_client(link_endpoint, sock, round_trip_ms);
++            }
+         } else {
+             LOG_DBG3("[%s] sync barrier\n", __func__);
+         }
+@@ -2310,9 +2509,11 @@ bool rpc_server::graph_recompute(const rpc_msg_graph_recompute_req & request) {
+ 
+ // graph compute is asynchronous; commands that read or write buffer data synchronize first
+ void rpc_server::sync_all_backends() {
++    const auto t0 = std::chrono::steady_clock::now();
+     for (ggml_backend_t backend : backends) {
+         ggml_backend_synchronize(backend);
+     }
++    g_rpc_card_ms += rpc_ms_since(t0); // Brain Engine 0008: the link log
+ }
+ 
+ void rpc_server::comm_free_device(uint32_t dev_id) {
+@@ -2715,10 +2916,50 @@ static void rpc_serve_client(const std::vector<ggml_backend_t> & backends, const
+     // Activate transport upgrade using client's caps
+     sock->update_caps(req.conn_caps);
+     LOG_DBG("[%s] client connected, transport: %s\n", __func__, sock->transport_name());
++    // Brain Engine 0008: the link log. Written every GGML_RPC_STATS seconds while messages come, and when the link closes.
++    struct link_log_guard {
++        rpc_link_log log;
++        socket_ptr   sock;
++        std::chrono::steady_clock::time_point t_cmd;
++        uint8_t      cmd = RPC_CMD_NONE;
++        bool         in_cmd = false;
++        void done() {
++            if (!in_cmd) {
++                return;
++            }
++            in_cmd = false;
++            const bool graph = cmd == RPC_CMD_GRAPH_COMPUTE || cmd == RPC_CMD_GRAPH_RECOMPUTE;
++            const double ms = rpc_ms_since(t_cmd);
++            log.add(cmd, 0, ms, graph ? ms : std::min(ms, g_rpc_card_ms));
++            log.send_ms += g_rpc_send_ms;
++        }
++        ~link_log_guard() {
++            done();
++            if (log.any && rpc_stats_secs() > 0) {
++                log.report_server(sock, true);
++            }
++        }
++    } ll;
++    ll.sock = sock;
++    ll.log.reset(sock->bytes_sent(), sock->bytes_received());
++    if (rpc_stats_secs() > 0) {
++        LOG_INFO("[link] a Bob connected over %s\n", sock->link_name().c_str());
++    }
+     while (true) {
++        ll.done();
++        if (ll.log.due()) {
++            ll.log.report_server(sock, false);
++        }
++        const auto t_idle = std::chrono::steady_clock::now();
+         if (!sock->recv_data(&cmd, 1)) {
+             break;
+         }
++        ll.log.idle_ms += rpc_ms_since(t_idle);
++        ll.t_cmd = std::chrono::steady_clock::now();
++        ll.cmd = cmd;
++        ll.in_cmd = true;
++        g_rpc_send_ms = 0;
++        g_rpc_card_ms = 0;
+         if (cmd >= RPC_CMD_COUNT) {
+             // fail fast if the command is invalid
+             LOG_ERROR("Unknown command: %d\n", cmd);
+diff --git a/ggml/src/ggml-rpc/scut.cpp b/ggml/src/ggml-rpc/scut.cpp
+index 9391819..8b7754a 100644
+--- a/ggml/src/ggml-rpc/scut.cpp
++++ b/ggml/src/ggml-rpc/scut.cpp
+@@ -37,6 +37,7 @@ static void bl_close(scut_fd_t s) { close(s); }
+ #include <atomic>
+ #include <chrono>
+ #include <condition_variable>
++#include <cstdio>
+ #include <cstdlib>
+ #include <cstring>
+ #include <deque>
+@@ -60,10 +61,25 @@ constexpr size_t   SEG       = 1200;       // payload per datagram: stays under
+ constexpr size_t   MAX_QUEUE = 16384;      // segments waiting or in flight (~19 MiB); the sender waits beyond this
+ constexpr size_t   RX_AHEAD  = 16384;      // out-of-order segments the receiver holds
+ 
+-enum : uint8_t { T_DATA = 1, T_ACK = 2, T_PING = 3, T_PONG = 4, T_CLOSE = 5, T_FEC = 6 };
++enum : uint8_t { T_DATA = 1, T_ACK = 2, T_PING = 3, T_PONG = 4, T_CLOSE = 5, T_FEC = 6, T_RXR = 7 };
+ // offer flags
+ constexpr uint8_t OF_FEC = 1;   // understands repair packets (T_FEC)
+ constexpr uint8_t OF_SEAL = 2;  // 0006: has a key, and every datagram is sealed (ChaCha20-Poly1305)
++constexpr uint8_t OF_TUNE = 4;  // 0008: sends receive reports (T_RXR) and retunes itself from the other side's
++// 0008, self-tuning. Four times a second each side tells the other what really arrived (a receive report). Once a
++// second the sender reads those reports next to its own counters and adjusts, while the words keep flowing:
++//   - repairs: one repair packet per 8, 4, 2 or 1 data packets (1 = everything small goes twice). More when packets
++//     still had to be sent again, fewer after 20 quiet seconds;
++//   - the resend timer: a little longer when many resends turned out not to be needed (the packet was only late),
++//     shorter when timeouts were real losses;
++//   - the pace: never left below what the other side says is really arriving;
++//   - the keep-awake ping: tried faster for 2 seconds when the round trip sits well above its quietest, kept if that
++//     brought it down, else put back and not tried again for a minute.
++// Every change is logged ("[scut] tuned: ..."). GGML_RPC_SCUT_TUNE=0 turns it off; both sides must have it.
++constexpr uint32_t FEC_SPAN = 64;       // a message of up to this many packets gets repair packets
++constexpr int64_t  RXR_EVERY = 250000;  // us between receive reports while data arrives
++constexpr int64_t  TUNE_EVERY = 1000000;
++constexpr int64_t  AWAKE_BASE = 25000, AWAKE_MIN = 4000;
+ // 0006: a sealed datagram is the 20-byte header (signed, readable), an 8-byte packet counter (signed, readable), the
+ // scrambled body, and a 16-byte tag over all of it. The counter is the nonce: each direction has its own key and
+ // counts up from 1, so a nonce is never used twice, and the receiver takes each counter once (no replays).
+@@ -92,6 +108,15 @@ struct hdr_t {
+     uint16_t pad;
+ };
+ #pragma pack(pop)
++struct rxr_t {             // 0008: a receive report's body
++    uint32_t ms;           // the time it covers
++    uint32_t n_data;       // data packets that were new
++    uint32_t n_dup;        // data packets it already had (a resend that wasn't needed)
++    uint32_t n_fixed;      // rebuilt from repair packets
++    uint32_t n_ooo;        // arrived ahead of a missing one
++    uint32_t bytes;        // new bytes
++    uint32_t hol_us;       // the longest the stream stood still behind a missing packet
++};
+ static_assert(sizeof(offer_t) == 24, "offer_t must fill conn_caps");
+ static_assert(sizeof(hdr_t) == 20, "hdr_t size");
+ 
+@@ -118,8 +143,13 @@ static uint32_t env_u32(const char * name, uint32_t def) {
+ static std::mutex g_pace_mu;
+ static std::map<uint32_t, double> g_pace;
+ 
++// Link log (0008): the plain reason SCUT wasn't used on this thread's last try, for the [link] lines.
++static thread_local std::string g_why;
++
+ } // namespace
+ 
++const char * scut_why() { return g_why.c_str(); }
++
+ struct scut {
+     bool server = false;
+     scut_fd_t tcp = BL_INVALID;
+@@ -188,6 +218,23 @@ struct scut {
+ 
+     // counters, printed at the end with GGML_RPC_DEBUG
+     uint64_t n_sent = 0, n_resent = 0, n_recv = 0, n_dropped_test = 0, n_fec_sent = 0, n_fec_fixed = 0;
++    // link log (0008): what the app handed over and took, what went on the air, and how often the pace was cut
++    uint64_t app_tx = 0, app_rx = 0, wire_tx = 0, wire_rx = 0, n_cuts = 0, n_timeouts = 0;
++    struct mark_t { uint64_t n_sent, n_resent, n_recv, n_fec_sent, n_fec_fixed, n_bad, n_replayed, app_tx, app_rx, wire_tx, wire_rx, n_cuts, n_timeouts; };
++    mark_t mark = {};
++    // 0008, self-tuning (see OF_TUNE)
++    bool     tune = false;                   // both sides send receive reports
++    uint32_t fec_k = FEC_MAX;                // one repair packet per this many data packets
++    double   rto_scale = 1.0;                // the resend timer, stretched or shortened
++    int64_t  awake_us = AWAKE_BASE;          // the keep-awake ping's beat
++    rxr_t    rx_now = {};                    // receiver: what arrived since the last report
++    int64_t  rxr_at = 0, hol_at = 0;
++    struct { int64_t at = 0; uint64_t sent = 0, resent = 0, timeouts = 0, dup = 0, fixed = 0, data = 0, bytes = 0, ms = 0; uint32_t hol_us = 0; } tw; // sender: this second
++    uint64_t tw_sent = 0, tw_resent = 0, tw_timeouts = 0;
++    int      quiet_secs = 0, calm_secs = 0;
++    int64_t  trial_end = 0, trial_next = 0, trial_prev = 0;
++    double   trial_srtt = 0;
++    uint64_t n_tuned = 0;
+     int64_t  last_tx = 0;            // anything sent at all: data, acks, repair packets
+     uint32_t burst_first = 0;        // first segment since the last flush: one message's burst
+     // receiver side of the repair packets: copies of the last segments (in order or not) and the repairs waiting
+@@ -215,6 +262,7 @@ struct scut {
+     void raw_send(const void * p, size_t n) {
+         if (test_drop && (rng() % 1000) < test_drop) { n_dropped_test++; return; }
+         xmit(p, n);
++        wire_tx += n;
+         last_tx = now_us();
+     }
+     // 0006: every datagram leaves through here: data, acks, repair packets, pings, pongs, close, and SUDDAR's probes.
+@@ -303,6 +351,7 @@ struct scut {
+         fecs.erase(it);
+         hdr_t h = {}; h.seq = missing; h.len = len; h.ts = ack_ts;
+         n_fec_fixed++;
++        rx_now.n_fixed++;
+         on_data(h, x.data(), len);
+     }
+ 
+@@ -310,7 +359,7 @@ struct scut {
+     double rto_us() const {
+         double r = srtt > 0 ? srtt + 4 * rttvar : 50000;
+         r = std::max(std::max(8000.0, srtt * 1.25 + 2000), std::min(250000.0, r)); // still far under TCP's 200-300 ms
+-        return r * (1 << std::min(rto_backoff, 4));
++        return r * rto_scale * (1 << std::min(rto_backoff, 4));
+     }
+     void refill(int64_t t) {
+         if (!tokens_at) tokens_at = t;
+@@ -349,7 +398,7 @@ struct scut {
+             if (tokens <= 0) return;
+             bool timed_out = (double) (t - s.sent_at) > rto_us();
+             bool hole = s.seq + 2 < highest_sacked && (double) (t - s.sent_at) > std::max(2000.0, srtt * 0.5);
+-            if (timed_out || hole) { if (timed_out) any_timeout = true; lost = true; win_lost++; send_seg(s, t); }
++            if (timed_out || hole) { if (timed_out) { any_timeout = true; n_timeouts++; } lost = true; win_lost++; send_seg(s, t); }
+         }
+         if (any_timeout) rto_backoff++;
+         if (lost) judge(t);
+@@ -370,9 +419,14 @@ struct scut {
+         double span = std::max(srtt, 5000.0);
+         if ((double) (t - win_start) < span) return;
+         bool crowded = win_sent >= 20 && win_lost * 20 > win_sent;                       // over 5% lost
+-        bool queueing = min_rtt > 0 && win_min > min_rtt + std::max(15000.0, min_rtt);  // even the quietest one is 15 ms late
++        // 0008: a late round trip only means a queue when this side was filling the line. With a word's few packets
++        // going out now and then, lateness is the air (a weak signal, a radio retrying), and slowing down doesn't help:
++        // it only made the next big message crawl. So the slow-down for lateness needs at least half the pace in use.
++        bool filling = (double) win_sent * SEG >= rate * ((double) (t - win_start) / 1e6) * 0.5;
++        bool queueing = filling && min_rtt > 0 && win_min > min_rtt + std::max(15000.0, min_rtt);  // even the quietest one is 15 ms late
+         if ((crowded || queueing) && (double) (t - last_loss_cut) >= span) {
+             rate = std::max(1e6, rate * (crowded ? 0.7 : 0.9));
++            n_cuts++;
+             for (double & b : bw_ring) b = std::min(b, rate);
+             last_loss_cut = t;
+         }
+@@ -424,14 +478,106 @@ struct scut {
+         srtt = 0.875 * srtt + 0.125 * r;
+     }
+ 
++    // ---- 0008: self-tuning ----
++    void send_report(int64_t t) {
++        uint8_t buf[sizeof(hdr_t) + sizeof(rxr_t)];
++        hdr_t * h = (hdr_t *) buf;
++        *h = {};
++        h->magic = PKT_MAGIC; h->type = T_RXR; h->conn = conn; h->ts = (uint32_t) t; h->len = sizeof(rxr_t);
++        rx_now.ms = (uint32_t) ((t - rxr_at) / 1000);
++        memcpy(buf + sizeof(hdr_t), &rx_now, sizeof(rxr_t));
++        raw_send(buf, sizeof(buf));
++        rx_now = {};
++        rxr_at = t;
++    }
++    void tuned(const char * what) {
++        n_tuned++;
++        LOG_INFO("[scut] tuned: %s (now: a repair packet per %u, resend timer x%.2f, keep-awake ping every %d ms, pace %.0f Mbit/s)\n",
++                 what, fec_k, rto_scale, (int) (awake_us / 1000), rate * 8 / 1e6);
++    }
++    void on_report(const uint8_t * body, size_t n, int64_t t) {
++        if (!tune || n < sizeof(rxr_t)) return;
++        rxr_t r; memcpy(&r, body, sizeof(r));
++        if (!tw.at) { tw.at = t; tw_sent = n_sent + n_resent; tw_resent = n_resent; tw_timeouts = n_timeouts; }
++        tw.dup += r.n_dup; tw.fixed += r.n_fixed; tw.data += r.n_data; tw.bytes += r.bytes; tw.ms += r.ms;
++        tw.hol_us = std::max(tw.hol_us, r.hol_us);
++        if (t - tw.at < TUNE_EVERY) return;
++        tw.sent = n_sent + n_resent - tw_sent; tw.resent = n_resent - tw_resent; tw.timeouts = n_timeouts - tw_timeouts;
++        char why[200];
++        // 1. repairs. A resend the other side already had wasn't a loss, only a late packet.
++        const uint64_t real = tw.resent > tw.dup ? tw.resent - tw.dup : 0;
++        if (fec && tw.sent >= 20) {
++            if (real * 100 > tw.sent && fec_k > 1) {
++                fec_k /= 2; quiet_secs = 0;
++                snprintf(why, sizeof(why), "more repair packets, %llu of %llu packets had to be sent again", (unsigned long long) real, (unsigned long long) tw.sent);
++                tuned(why);
++            } else if (real == 0 && tw.fixed == 0) {
++                if (++quiet_secs >= 20 && fec_k < FEC_MAX) { fec_k *= 2; quiet_secs = 0; tuned("fewer repair packets, nothing was lost for 20 seconds"); }
++            } else {
++                quiet_secs = 0;
++            }
++        }
++        // 2. the resend timer
++        // (words matter more than a few wasted packets, so the timer only stretches when over 3% of everything sent was
++        // a resend nobody needed, and never past one and a half times)
++        if (tw.resent >= 4 && tw.dup * 2 > tw.resent && tw.resent * 33 > tw.sent && rto_scale < 1.5) {
++            rto_scale = std::min(1.5, rto_scale * 1.25);
++            snprintf(why, sizeof(why), "a longer resend timer, %llu of %llu resends weren't needed (the packets were only late)", (unsigned long long) tw.dup, (unsigned long long) tw.resent);
++            tuned(why);
++        } else if (tw.timeouts >= 2 && tw.dup == 0 && rto_scale > 0.75) {
++            rto_scale = std::max(0.75, rto_scale * 0.9);
++            tuned("a shorter resend timer, every timeout was a real loss");
++        }
++        // 3. the pace: with messages still queued, never below what really arrived
++        bool backlog = false;
++        for (auto & sg : q) { if (!sg.sent) { backlog = true; break; } }
++        if (backlog && tw.ms >= 500) {
++            const double arrived = tw.bytes * 1000.0 / tw.ms;
++            if (arrived > rate * 1.05) {
++                rate = std::min((double) cap_bps, arrived * 1.25);
++                for (double & b : bw_ring) b = std::max(b, arrived);
++                tuned("a faster pace, more was arriving than the pace allowed for");
++            }
++        }
++        // 4. the keep-awake ping: when the round trip sits well above its quietest while words flow, try a faster beat
++        if (awake && min_rtt > 0 && t - last_data_activity < 1000000) {
++            const bool slow = srtt > 2 * min_rtt + 3000;
++            if (trial_end) {
++                if (t >= trial_end) {
++                    if (srtt < 0.8 * trial_srtt) {
++                        snprintf(why, sizeof(why), "a faster keep-awake ping, the round trip fell from %.1f to %.1f ms", trial_srtt / 1000, srtt / 1000);
++                        tuned(why);
++                    } else {
++                        awake_us = trial_prev;
++                        trial_next = t + 60000000;
++                    }
++                    trial_end = 0;
++                }
++            } else if (slow && awake_us > AWAKE_MIN && t >= trial_next) {
++                trial_prev = awake_us; trial_srtt = srtt;
++                awake_us = std::max(AWAKE_MIN, awake_us / 2);
++                trial_end = t + 2000000;
++                calm_secs = 0;
++            } else if (!slow && awake_us < AWAKE_BASE && ++calm_secs >= 60) {
++                awake_us = std::min(AWAKE_BASE, awake_us * 2); calm_secs = 0;
++                tuned("a slower keep-awake ping, the round trip has been steady for a minute");
++            }
++        }
++        tw = {};
++        tw.at = t; tw_sent = n_sent + n_resent; tw_resent = n_resent; tw_timeouts = n_timeouts;
++    }
++
+     // ---- receiver ----
+     void on_data(const hdr_t & h, const uint8_t * body, size_t n) {
+         if (h.len > n || h.len > SEG) return;
+         ack_due = true;
+         if (h.ts) ack_ts = h.ts;
+         int32_t ahead = (int32_t) (h.seq - rcv_next);
+-        if (ahead < 0) return;                         // already have it (the ack is resent)
++        if (ahead < 0) { rx_now.n_dup++; return; }     // already have it (the ack is resent)
+         if ((size_t) ahead >= RX_AHEAD) return;
++        if (ahead > 0 && ooo.count(h.seq)) { rx_now.n_dup++; return; }
++        rx_now.n_data++; rx_now.bytes += h.len;
++        if (ahead > 0) { rx_now.n_ooo++; if (!hol_at) hol_at = now_us(); }
+         if (fec) {
+             recent[h.seq].assign(body, body + h.len);
+             while (recent.size() > 4 * FEC_MAX) recent.erase(recent.begin());
+@@ -449,6 +595,7 @@ struct scut {
+             ooo.erase(it);
+             rcv_next++;
+         }
++        if (hol_at && ooo.empty()) { rx_now.hol_us = std::max<uint32_t>(rx_now.hol_us, (uint32_t) std::min<int64_t>(now_us() - hol_at, 0x7fffffff)); hol_at = 0; }
+         if (fec && !fecs.empty()) { std::vector<uint32_t> ks; for (auto & kv : fecs) ks.push_back(kv.first); for (uint32_t k : ks) try_fec(k); }
+     }
+     void deliver(std::vector<uint8_t> && v) {
+@@ -508,6 +655,7 @@ struct scut {
+                     if (from.sin_addr.s_addr != peer.sin_addr.s_addr) continue;
+                     if (!unseal(buf.data(), n)) continue; // 0006: checked before anything in it is used
+                     n_recv++;
++                    wire_rx += (uint64_t) n;
+                     last_heard = t;
+                     const uint8_t * body = buf.data() + sizeof(hdr_t);
+                     size_t bn = (size_t) n - sizeof(hdr_t);
+@@ -517,6 +665,7 @@ struct scut {
+                         case T_ACK:  on_ack(h, body, bn, t); break;
+                         case T_PING: { hdr_t o = h; o.type = T_PONG; raw_send(&o, sizeof(o)); break; }
+                         case T_PONG: { uint32_t s = (uint32_t) t - h.ts; if (s < 5000000) rtt_sample((double) s); break; }
++                        case T_RXR: on_report(body, bn, t); break;
+                         case T_CLOSE: dead = true; cv_rx.notify_all(); cv_tx.notify_all(); break;
+                         default: break;
+                     }
+@@ -524,8 +673,13 @@ struct scut {
+                 if (ack_due) send_ack();
+             }
+             pump(t);
++            // 0008: tell the other side what arrived, four times a second while anything does
++            if (tune) {
++                if (!rxr_at) rxr_at = t;
++                if (t - rxr_at >= RXR_EVERY) { if (rx_now.n_data || rx_now.n_dup || rx_now.n_fixed) send_report(t); else rxr_at = t; }
++            }
+             // keep a handheld's Wi-Fi awake while words are flowing
+-            if (awake && t - last_data_activity < 3000000 && t - last_ping > 25000 && t - last_tx > 25000) {
++            if (awake && t - last_data_activity < 3000000 && t - last_ping > awake_us && t - last_tx > awake_us) {
+                 hdr_t h = {}; h.magic = PKT_MAGIC; h.type = T_PING; h.conn = conn; h.seq = ping_seq++; h.ts = (uint32_t) t;
+                 raw_send(&h, sizeof(h));
+                 last_ping = t;
+@@ -553,6 +707,7 @@ struct scut {
+     bool send(const void * data, size_t size) {
+         const uint8_t * p = (const uint8_t *) data;
+         std::unique_lock<std::mutex> lk(mu);
++        app_tx += size;
+         while (size > 0) {
+             if (dead) return false;
+             if (!have_cur) { cur.seq = snd_next++; cur.len = 0; cur.sent = false; cur.sacked = false; cur.tries = 0; have_cur = true; }
+@@ -570,13 +725,18 @@ struct scut {
+         std::unique_lock<std::mutex> lk(mu);
+         if (have_cur && cur.len > 0 && !queue_cur(lk)) return false;
+         pump(now_us()); // send now from this thread: no waiting for the I/O thread to wake up
+-        if (fec) send_fec(burst_first, snd_next - burst_first);
++        if (fec) {
++            // one repair packet per fec_k packets of this message (0008: fec_k is tuned live; a long message gets none)
++            const uint32_t n = snd_next - burst_first;
++            if (n <= FEC_SPAN) { for (uint32_t f = 0; f < n; f += fec_k) send_fec(burst_first + f, std::min(fec_k, n - f)); }
++        }
+         burst_first = snd_next;
+         return !dead;
+     }
+     bool recv(void * data, size_t size) {
+         uint8_t * out = (uint8_t *) data;
+         std::unique_lock<std::mutex> lk(mu);
++        app_rx += size;
+         while (size > 0) {
+             cv_rx.wait(lk, [&] { return dead || rx_bytes > 0; });
+             if (rx_bytes == 0) return false;
+@@ -590,6 +750,25 @@ struct scut {
+         }
+         return true;
+     }
++    // Link log (0008): what happened on this link since the last call, in one line.
++    std::string note() {
++        std::unique_lock<std::mutex> lk(mu);
++        mark_t now = { n_sent, n_resent, n_recv, n_fec_sent, n_fec_fixed, n_bad, n_replayed, app_tx, app_rx, wire_tx, wire_rx, n_cuts, n_timeouts };
++        mark_t d = now;
++        d.n_sent -= mark.n_sent; d.n_resent -= mark.n_resent; d.n_recv -= mark.n_recv; d.n_fec_sent -= mark.n_fec_sent;
++        d.n_fec_fixed -= mark.n_fec_fixed; d.n_bad -= mark.n_bad; d.n_replayed -= mark.n_replayed; d.app_tx -= mark.app_tx;
++        d.app_rx -= mark.app_rx; d.wire_tx -= mark.wire_tx; d.wire_rx -= mark.wire_rx; d.n_cuts -= mark.n_cuts; d.n_timeouts -= mark.n_timeouts;
++        mark = now;
++        char buf[768];
++        snprintf(buf, sizeof(buf),
++            "%llu data packets out (%llu sent again, %llu after a timeout; %llu repair packets), %llu packets in (%llu rebuilt from repairs, %llu refused: %llu bad seal, %llu replays); "
++            "on the air %.1f KiB out, %.1f KiB in; pace %.1f of %.1f Mbit/s, slowed %llu times; round trip %.1f ms (quietest %.1f); %s: a repair packet per %u, resend timer x%.2f, keep-awake ping every %d ms, %llu changes so far",
++            (unsigned long long) d.n_sent, (unsigned long long) d.n_resent, (unsigned long long) d.n_timeouts, (unsigned long long) d.n_fec_sent,
++            (unsigned long long) d.n_recv, (unsigned long long) d.n_fec_fixed, (unsigned long long) (d.n_bad + d.n_replayed), (unsigned long long) d.n_bad, (unsigned long long) d.n_replayed,
++            d.wire_tx / 1024.0, d.wire_rx / 1024.0, rate * 8 / 1e6, cap_bps * 8.0 / 1e6, (unsigned long long) d.n_cuts, srtt / 1000.0, min_rtt / 1000.0,
++            tune ? "self-tuning" : "not self-tuning", fec ? fec_k : 0, rto_scale, (int) (awake_us / 1000), (unsigned long long) n_tuned);
++        return buf;
++    }
+ };
+ 
+ void scut_ptr_deleter::operator()(scut * b) const { delete b; }
+@@ -640,13 +819,16 @@ static int scut_key_for(scut_fd_t tcp_fd, bool server, uint8_t key[32]) {
+ 
+ scut_ptr scut_prepare(scut_fd_t tcp_fd, bool server, uint8_t * caps, size_t caps_size) {
+     if (caps_size < sizeof(offer_t)) return nullptr;
++    g_why = "its UDP side couldn't open on this machine";
+     uint8_t key[32];
+     int got_key = scut_key_for(tcp_fd, server, key);
+     if (got_key == -2) {
++        g_why = "the other card can't seal its packets";
+         LOG_INFO("[scut] SCUT is off for this card: it can't seal its packets, so the usual link is used\n");
+         return nullptr;
+     }
+     if (got_key < 0) {
++        g_why = "the SCUT key isn't 64 hex digits";
+         // a key that was meant to be there but can't be read: never fall back to an unsealed SCUT link
+         LOG_WARN("[scut] the SCUT key isn't 64 hex digits, so SCUT stays off (the usual link is used)\n");
+         return nullptr;
+@@ -691,8 +873,10 @@ scut_ptr scut_prepare(scut_fd_t tcp_fd, bool server, uint8_t * caps, size_t caps
+     if (server) { uint32_t pp = env_u32("GGML_RPC_SCUT_PUBLIC_PORT", 0); if (pp > 0 && pp < 65536) o.udp_port = htons((uint16_t) pp); }
+     o.mbps = env_u32("GGML_RPC_SCUT_MBPS", 300);
+     if (env_u32("GGML_RPC_SCUT_FEC", 1) != 0) o.flags |= OF_FEC;
++    if (env_u32("GGML_RPC_SCUT_TUNE", 1) != 0) o.flags |= OF_TUNE;
+     memcpy(caps, &o, sizeof(o));
+     LOG_DBG("[scut] offered on udp port %d\n", ntohs(bound.sin_port));
++    g_why.clear();
+     return b;
+ }
+ 
+@@ -727,7 +911,9 @@ static bool read_byte_with_pings(scut * b, uint8_t & out, int timeout_ms) {
+ }
+ 
+ bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size) {
++    g_why = "the other side didn't offer SCUT (switched off there, or an older Brain Engine)";
+     if (!b || !scut_offered(remote_caps, caps_size)) return false;
++    g_why = "the link couldn't be set up";
+     offer_t ro; memcpy(&ro, remote_caps, sizeof(ro));
+     sockaddr_in tpeer = {}; socklen_compat_t pl = sizeof(tpeer);
+     if (getpeername(b->tcp, (sockaddr *) &tpeer, &pl) != 0) return false;
+@@ -740,6 +926,7 @@ bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size) {
+     // for sealed packets never gets plain ones. Both sides see both offers, so both decide the same without a word.
+     bool theirs_sealed = ro.version == VERSION_SEALED && (ro.flags & OF_SEAL);
+     if (theirs_sealed != b->have_key) {
++        g_why = b->have_key ? "the other side doesn't seal its packets (no key there, or an older Brain Engine)" : "the other side seals its packets and there's no key here";
+         LOG_WARN("[scut] %s, so SCUT stays off and the usual link is used\n", b->have_key ? "the other side doesn't seal its packets (no key there, or an older Brain Engine)" : "the other side seals its packets and there's no key here");
+         return false;
+     }
+@@ -762,6 +949,7 @@ bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size) {
+       if (it != g_pace.end()) { b->rate = std::min<double>(b->cap_bps, std::max(2e6, it->second)); for (double & v : b->bw_ring) v = it->second * 0.8; } }
+     b->awake = env_u32("GGML_RPC_SCUT_AWAKE", 1) != 0;
+     b->fec = (ro.flags & OF_FEC) && env_u32("GGML_RPC_SCUT_FEC", 1) != 0;
++    b->tune = (ro.flags & OF_TUNE) && env_u32("GGML_RPC_SCUT_TUNE", 1) != 0;
+     b->test_drop = env_u32("GGML_RPC_SCUT_TEST_DROP", 0);
+     b->rng.seed((uint32_t) b->my_nonce);
+ 
+@@ -792,6 +980,7 @@ bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size) {
+         if (!read_byte_with_pings(b, yes, 3000)) return false;
+     }
+     if (!yes) {
++        g_why = "the UDP path didn't answer in 1 second (a firewall, or a router that blocks UDP between devices)";
+         LOG_WARN("[scut] the UDP path didn't answer (a firewall?), staying on TCP\n");
+         return false;
+     }
+@@ -800,10 +989,14 @@ bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size) {
+ #endif
+     b->last_heard = b->last_data_activity = now_us();
+     b->io = std::thread([b] { b->loop(); });
++    g_why.clear();
+     LOG_INFO("[scut] SCUT on: udp %s:%d, cap %u Mbit/s, round trip %.1f ms%s\n", inet_ntoa(b->peer.sin_addr), ntohs(b->peer.sin_port), mbps, b->srtt / 1000.0, b->sealed ? ", sealed (signed and scrambled)" : "");
++    if (b->tune) LOG_INFO("[scut] self-tuning is on: both sides report what arrives and adjust as they go\n");
+     return true;
+ }
+ 
+ bool scut_send(scut * b, const void * data, size_t size) { return b->send(data, size); }
+ bool scut_flush(scut * b) { return b->flush(); }
+ bool scut_recv(scut * b, void * data, size_t size) { return b->recv(data, size); }
++std::string scut_note(scut * b) { return b ? b->note() : std::string(); }
++double scut_round_trip_ms(scut * b) { if (!b) return 0; std::lock_guard<std::mutex> g(b->mu); return b->srtt / 1000.0; }
+diff --git a/ggml/src/ggml-rpc/scut.h b/ggml/src/ggml-rpc/scut.h
+index 84f390a..62ba74d 100644
+--- a/ggml/src/ggml-rpc/scut.h
++++ b/ggml/src/ggml-rpc/scut.h
+@@ -21,6 +21,7 @@
+ #include <cstddef>
+ #include <cstdint>
+ #include <memory>
++#include <string>
+ 
+ #ifdef _WIN32
+ #  ifndef NOMINMAX
+@@ -51,3 +52,10 @@ bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size);
+ bool scut_send(scut * b, const void * data, size_t size);
+ bool scut_flush(scut * b);
+ bool scut_recv(scut * b, void * data, size_t size);
++
++// Link log (Brain Engine patch 0008).
++// Why SCUT wasn't used the last time this thread tried to set it up ("" when it was).
++const char * scut_why();
++// What the link carried since the last call: packets, resends, repairs, refused packets, pace, round trip.
++std::string scut_note(scut * b);
++double scut_round_trip_ms(scut * b);
+diff --git a/ggml/src/ggml-rpc/transport.cpp b/ggml/src/ggml-rpc/transport.cpp
+index 56fc67d..a5fc16e 100644
+--- a/ggml/src/ggml-rpc/transport.cpp
++++ b/ggml/src/ggml-rpc/transport.cpp
+@@ -18,9 +18,11 @@
+ #  include <netdb.h>
+ #  include <unistd.h>
+ #endif
++#include <atomic>
+ #include <cstdlib>
+ #include <cstring>
+ #include <mutex>
++#include <string>
+ #include <optional>
+ 
+ #ifdef GGML_RPC_RDMA
+@@ -163,6 +165,10 @@ struct socket_t::impl {
+     bool        is_server = false;
+     bool        use_bl = false;
+     scut_ptr bl;
++    // Brain Engine 0008: the link log. Bytes the RPC layer handed to this link and took from it, whatever carried them,
++    // and why SCUT isn't carrying them ("" when it is, or when nobody asked for it).
++    std::atomic<uint64_t> n_tx{0}, n_rx{0};
++    std::string           bl_why;
+ };
+ 
+ socket_t::impl::~impl() {
+@@ -553,6 +559,7 @@ bool socket_t::impl::rdma_recv(void * data, size_t size) {
+ #endif // GGML_RPC_RDMA
+ 
+ bool socket_t::impl::send_data(const void * data, size_t size) {
++    n_tx.fetch_add(size, std::memory_order_relaxed);
+     if (use_bl) {
+         return scut_send(bl.get(), data, size);
+     }
+@@ -581,6 +588,7 @@ bool socket_t::impl::send_data(const void * data, size_t size) {
+ }
+ 
+ bool socket_t::impl::recv_data(void * data, size_t size) {
++    n_rx.fetch_add(size, std::memory_order_relaxed);
+     if (use_bl) {
+         return scut_recv(bl.get(), data, size);
+     }
+@@ -647,13 +655,18 @@ void socket_t::impl::get_caps(uint8_t * local_caps) {
+     }
+     if (!taken && scut_enabled()) {
+         bl = scut_prepare(fd, is_server, local_caps, RPC_CONN_CAPS_SIZE);
++        bl_why = bl ? "" : scut_why();
++    } else {
++        bl_why = taken ? "RDMA is in use" : "SCUT is switched off on this machine";
+     }
+ }
+ 
+ void socket_t::impl::update_caps(const uint8_t * remote_caps) {
+     if (bl) {
++        bl_why = "the other side didn't offer SCUT (switched off there, or an older Brain Engine)";
+         if (scut_offered(remote_caps, RPC_CONN_CAPS_SIZE)) {
+             use_bl = scut_activate(bl.get(), remote_caps, RPC_CONN_CAPS_SIZE);
++            bl_why = use_bl ? "" : scut_why();
+         }
+         if (!use_bl) {
+             bl.reset();
+@@ -734,6 +747,17 @@ const char * socket_t::transport_name() const {
+     return pimpl->use_bl ? "SCUT" : pimpl->use_rdma ? "RDMA" : "TCP";
+ }
+ 
++// Brain Engine 0008: the link log
++uint64_t socket_t::bytes_sent() const { return pimpl->n_tx.load(std::memory_order_relaxed); }
++uint64_t socket_t::bytes_received() const { return pimpl->n_rx.load(std::memory_order_relaxed); }
++std::string socket_t::link_name() const {
++    if (pimpl->use_bl || pimpl->use_rdma || pimpl->bl_why.empty()) {
++        return transport_name();
++    }
++    return std::string(transport_name()) + " (not SCUT: " + pimpl->bl_why + ")";
++}
++std::string socket_t::link_note() const { return pimpl->use_bl ? scut_note(pimpl->bl.get()) : std::string(); }
++
+ static bool is_valid_fd(sockfd_t sockfd) {
+ #ifdef _WIN32
+     return sockfd != INVALID_SOCKET;
+diff --git a/ggml/src/ggml-rpc/transport.h b/ggml/src/ggml-rpc/transport.h
+index 59b8845..7efa1c6 100644
+--- a/ggml/src/ggml-rpc/transport.h
++++ b/ggml/src/ggml-rpc/transport.h
+@@ -3,6 +3,7 @@
+ #include <cstddef>
+ #include <cstdint>
+ #include <memory>
++#include <string>
+ 
+ struct socket_t;
+ typedef std::shared_ptr<socket_t> socket_ptr;
+@@ -26,6 +27,14 @@ struct socket_t {
+     void update_caps(const uint8_t * remote_caps);
+     const char * transport_name() const;
+ 
++    // Brain Engine 0008, the link log: the bytes the RPC layer sent and received on this link, the link's name with
++    // the reason SCUT isn't carrying it when it was asked for ("TCP (not SCUT: ...)"), and SCUT's own counters since
++    // the last call ("" on TCP).
++    uint64_t bytes_sent() const;
++    uint64_t bytes_received() const;
++    std::string link_name() const;
++    std::string link_note() const;
++
+     static socket_ptr create_server(const char * host, int port);
+     static socket_ptr connect(const char * host, int port);
+ 

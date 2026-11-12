@@ -88,6 +88,7 @@ import { phoneView, cleanPhonePatch, findAddresses, newPasscode, isTailscaleIp }
 import { firewallState, changeRule, firewallHome, firewallUdp } from './firewall.js';
 import { shareView, cleanSharePatch, saveShare, lendChat, lendRefusal, reviewRefusal, helloFor, bobNetRooms } from './share-brains.js';
 import { lendCardRoute, homeIps, isHomeIp, sameNet } from './share-card.js'; // Bob-Net: Lend my graphics card
+import { tailLinkLog } from './link-log.js'; // Bob-Net: the link log
 import { checkHello } from './bob-net-check.js'; // 1.5.185 a bigger Bob checks the harder jobs
 import { guestRoute, answerAway } from './share-jobs.js';
 import { Pairing, myName } from './bob-net-pair.js';
@@ -793,6 +794,11 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, view());
     }
     // Share brains between your Bobs (src/share-brains.js). Settings only from this PC; lending only through the phone door.
+    // The link log (src/link-log.js): what the link to a lent card carried, for "Link log" in Settings. This machine only.
+    if (p === '/api/share-brains/link-log' && req.method === 'GET') {
+      if (!isLocal) return send(res, 403, { error: 'The link log can only be read on this replicant matrix itself.' });
+      return send(res, 200, { text: tailLinkLog(cfg, Number(url.searchParams.get('lines')) || 120), live: cfg.share?.linkDebug === true });
+    }
     if (p === '/api/share-brains' && (req.method === 'GET' || req.method === 'POST')) {
       if (!isLocal) return send(res, 403, { error: 'Sharing brains can only be changed on this replicant matrix itself.' });
       if (req.method === 'GET') return send(res, 200, { ...shareView(cfg), lenders: brain.lenderStatus(), introductions: introductions.view() });

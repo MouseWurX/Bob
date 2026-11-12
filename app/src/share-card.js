@@ -21,6 +21,7 @@ import { sealOn, sealAsk, cleanSealAsk, lenderSeal, borrowerSeal, keysEnv } from
 import { isTailscaleIp } from './phone-access.js';
 import { findTool, missingWords } from './llama-tools.js';
 import { spawn } from 'node:child_process';
+import { LinkLog } from './link-log.js'; // what the link carried, kept in bob-net-link.log and the logbook
 import { safeSpawn } from './engine-blocked.js'; // 1.5.203: a blocked program comes back as 'error', not a throw
 import path from 'node:path';
 import os from 'node:os';
@@ -77,6 +78,10 @@ export function freeBytes(dir) {
 export const scutMbps = (cfg) => (SCUT_MBPS.includes(Number(cfg.share?.scutMbps)) ? Number(cfg.share.scutMbps) : 100);
 // What the engine is started with. lend: the card server, behind the gate, says the gate's port (UDP too) in its offer.
 export const scutEnv = (cfg, { lend = false } = {}) => (scutOn(cfg) ? { GGML_RPC_SCUT: '1', GGML_RPC_SCUT_MBPS: String(scutMbps(cfg)), ...(lend ? { GGML_RPC_SCUT_PUBLIC_PORT: String(RPC_PORT) } : {}) } : {});
+// The link log (Brain Engine 0008, src/link-log.js): the engine says what the link carried every 10 seconds it's busy,
+// or every 2 with "Watch the link live" on. For any lent card, with SCUT or on the usual link.
+export const linkLive = (cfg) => cfg.share?.linkDebug === true;
+export const linkEnv = (cfg) => ({ GGML_RPC_STATS: linkLive(cfg) ? '2' : '10' });
 export const lendCardOn = (cfg) => cfg.share?.lendCard === true && Boolean(cfg.remote?.enabled && String(cfg.remote?.passcode || '').length >= 6);
 export const spreadOf = (cfg) => (SPREAD.includes(cfg.share?.spread) ? cfg.share.spread : 'off');
 // This machine's own Tailscale addresses.
@@ -229,11 +234,12 @@ export class CardLender {
     const t = this.tool();
     // Sealed SCUT packets: this lend's key for the card server, made from the pair's link key and a fresh salt.
     const sealed = lenderSeal(this.cfg, { on: scutSealOn(this.cfg), ask: seal, asker: plainIp(remoteAddr), log: this.log });
-    const child = safeSpawn(this.spawnFn, t.path, ['-H', '127.0.0.1', '-p', String(INNER_PORT), '-c'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], cwd: path.dirname(t.path), env: { ...this.env, ...scutEnv(this.cfg, { lend: true }), ...sealed.env } });
+    const child = safeSpawn(this.spawnFn, t.path, ['-H', '127.0.0.1', '-p', String(INNER_PORT), '-c'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], cwd: path.dirname(t.path), env: { ...this.env, ...scutEnv(this.cfg, { lend: true }), ...linkEnv(this.cfg), ...sealed.env } });
     let out = '';
+    const link = new LinkLog(this.cfg, { who: 'lent card', log: this.log }); // the card server's [link] and [scut] lines, for as long as it runs
     const ready = await new Promise((resolve) => {
       const done = (v) => { clearTimeout(timer); resolve(v); };
-      const look = (d) => { out = (out + d).slice(-4000); if (/endpoint|Starting RPC server|accepting/i.test(out)) done(true); };
+      const look = (d) => { link.feed(d); out = (out + d).slice(-4000); if (/endpoint|Starting RPC server|accepting/i.test(out)) done(true); };
       child.stdout?.on('data', look); child.stderr?.on('data', look);
       child.once('error', () => done(false));
       child.once('exit', () => done(false));

@@ -91,6 +91,18 @@ Then run `engine/try-newer.sh <tag>`. Every patch must go on, and the Linux buil
 - **Re-check on rebase:** 0005 must go on first. A sealed Bob and an unsealed one must fall back to the plain link, never a link one side can't read. Same answers sealed or not.
 - **Tests:** `test/run-scut-seal-test.js` (keys, pairing, locked key file). The PC test is Bigger Bobs over Wi-Fi with SCUT on, sealed (the default) and unsealed.
 
+### 0008-scut-live: the link log, and SCUT that retunes itself
+- **Upstream files:** `ggml/src/ggml-rpc/ggml-rpc.cpp`, `transport.{h,cpp}`, and SCUT's own `scut.{h,cpp}`.
+- **Hooks:**
+  - `rpc_dispatcher::work()` times every command, writes the `[link]` lines every `GGML_RPC_STATS` seconds, and wakes from its queue wait (`message_queue::pop_for`) to write the last one when commands stop.
+  - `rpc_serve_client()` does the same on the lending side (a guard object, so the last lines are written however the loop ends); `send_msg` and `rpc_server::sync_all_backends` add up sending and card time.
+  - `socket_t` gains `bytes_sent`, `bytes_received`, `link_name` and `link_note`; `impl::get_caps` / `update_caps` keep the reason SCUT isn't in use (`scut_why()`).
+  - `scut.cpp`: counters and `note()`; receive reports (`T_RXR`, offer flag `OF_TUNE`), `on_report()` (the tuning), `flush()` sends a repair per `fec_k` packets, `judge()` only slows for lateness when the line was being filled.
+- **Environment:** `GGML_RPC_STATS` (seconds, default 10, 0 = off), `GGML_RPC_SCUT_TUNE` (default 1).
+- **Bob callers:** `src/link-log.js` (keeps the lines in `bob-net-link.log` and the logbook), `src/share-card.js` (`linkEnv`, the lender's output), `src/llamacpp.js` (the borrower's output), `src/server.js` (`/api/share-brains/link-log`), `public/share-brains.js` (Watch the link live, Link log).
+- **Re-check on rebase:** 0005 and 0006 first. If upstream changes `rpc_dispatcher::work()` or the `rpc_serve_client` loop, the timing hooks move with them; the probe uses `RPC_CMD_GET_ALIGNMENT` for device 0, which must stay a command the server answers without touching the card.
+- **Tests:** `test/run-link-log-test.js`. SCUT alone can be built without llama.cpp (scut.cpp, scut.h, scut-seal.h and a four-line stand-in for log.h) and run through a pretend Wi-Fi; do that after any change to the tuning. The PC test is Bigger Bobs over Wi-Fi with the Link log open on both Bobs.
+
 ## What's not covered yet
 
 No patch is tested automatically against a real engine build. A Brain Engine build that compiles but put a hunk in the wrong place would only show up in the PC test. Proposed for a later Brain Engine build: a short engine test in `brain-engine.yml` (ready-for-review PRs and main only, never drafts). It would load a tiny MoE GGUF and check five things:

@@ -22,7 +22,8 @@ import { ggufInfo } from './gguf.js';
 import { placeArgs } from './brain-place.js';
 import { selfWorkOn } from './self-work.js';
 import { stretchOn, stretchMax as stretchMost, stretchPlan, yarnArgs, needBytes, roomBytes, kvBytes } from './model-ctx.js';
-import { scutEnv } from './share-card.js'; // SCUT, the fast link to lent cards
+import { scutEnv, linkEnv } from './share-card.js'; // SCUT, the fast link to lent cards
+import { LinkLog } from './link-log.js'; // what the link to a lent card carried, kept in a file and the logbook
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { memArgs, copyGuessArgs, draftNumArgs, laptopThreads } from './engine-extras.js'; // list items 94-100
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
@@ -976,12 +977,14 @@ export class LlamaCpp {
     this.slotDir = args.includes('--slot-save-path') ? args[args.indexOf('--slot-save-path') + 1] : ''; // where this engine run saves readings
     this.placeChat = null; // a fresh engine holds no chat's reading yet
     let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
-    if (helpers.length) env = { ...env, ...scutEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
+    if (helpers.length) env = { ...env, ...scutEnv(this.cfg), ...linkEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
     // 1.5.203: spawn throws when Windows blocks the program (Smart App Control); safeSpawn turns that into 'error'.
     const child = safeSpawn(spawn, exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });
     // 1.5.24 "Let games go first": on the processor, the engine yields to games (below normal priority).
     if (this.role === BESIDE || (cpu && cpuPlan(this.cfg)?.lowPriority)) { try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {} }
-    const keep = (d) => { log = (log + d).slice(-4000); if (full.length < LOAD_LOG_MAX) full += d; };
+    // The link log: with a lent card in use, the engine's [link] and [scut] lines go to bob-net-link.log and the logbook.
+    const link = helpers.length ? new LinkLog(this.cfg, { who: 'borrowed card', log: (...a) => this.log?.(...a) }) : null;
+    const keep = (d) => { log = (log + d).slice(-4000); if (full.length < LOAD_LOG_MAX) full += d; link?.feed(d); };
     child.stdout.on('data', keep);
     child.stderr.on('data', keep);
     const failFile = path.join(this.cfg.dataDir, `llama-server${this.tag}-load-failed.txt`);
@@ -1018,20 +1021,28 @@ export class LlamaCpp {
     const dl = loadDeadline(this.loadTimes[model], this.lc.loadTimeoutSeconds || 300);
     const soft = !retried && !helpers.length && dl.soft < dl.hard ? t0 + dl.soft * 1000 : 0;
     let said = Date.now(); // a spread load says how it's going once a minute, so a long first load isn't silent
+    // Nov 12: once the load is over (loaded, failed or stopped) this watch ends too. It used to run on to its deadline
+    // after the engine had already stopped, saying "still loading over Bob-Net" every minute for a load that was gone.
+    let over = false;
     const ready = (async () => {
       while (Date.now() < deadline) {
+        if (over) return;
         if (signal?.aborted) throw new Error('Stopped.');
         if (soft && Date.now() > soft) throw Object.assign(new Error(`${model} took more than twice its usual ${Math.round(this.loadTimes[model])} s to load`), { slow: true });
         if (await this.health()) return;
         if (helpers.length && Date.now() - said >= 60000) { said = Date.now(); try { this.log?.('engine', `${model}: still loading over Bob-Net, ${Math.round((Date.now() - t0) / 60000)} min so far`); } catch {} }
         await new Promise((r) => setTimeout(r, 500));
       }
+      if (over) return;
       saveFail('took too long to load');
       throw new Error(`${model} took too long to load.`);
     })();
     try {
       await Promise.race([ready, started]);
+      over = true;
     } catch (e) {
+      over = true;
+      ready.catch(() => {});
       this.lastLoadOut = full; // 226: the engine's own words, for the plain reason
       await this.stopServer();
       // 1.5.189: a spread that failed loads here like always, instead of leaving no brain.
