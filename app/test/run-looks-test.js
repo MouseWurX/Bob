@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { cleanStyle } from '../src/config.js';
 import { HELP } from '../public/help-content.js';
+import { rankFind } from '../public/find.js';
+import { bobMenuHtml } from '../public/bob-menu.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -37,11 +39,27 @@ check('Lamplight puts the menu across the top on a computer, phones keep the bot
 check('every tool in the top bar keeps its name for screen readers', ['newchat', 'cellarBtn', 'dlBtn', 'tidyBtn', 'settingsBtn', 'styleBtn', 'helpBtn', 'ear', 'speak', 'notify'].every((id) => new RegExp(`id="${id}"[^>]*aria-label="[^"]+"`).test(read('public/index.html'))));
 check('picking Lamplight tucks Now running away and offers the cube, without forcing either', page.includes("getElementById('hideRight')?.click()") && page.includes('!settings.style?.avatar'));
 
+// ---- the Lamplight layout: Bob's menu, Find anything, the status line ----
+const r = rankFind([{ label: 'Downloads', kind: 'Tool' }, { label: 'Tasks', kind: 'Page' }, { label: 'Brains and speed', kind: 'Settings', words: 'memory engines' }, { label: 'Style', kind: 'Help', words: 'glow' }], 'engine');
+check('Find anything finds a Settings card by the words inside it', r.length === 1 && r[0].label === 'Brains and speed');
+check('Find anything with nothing typed lists the pages and tools', rankFind([{ label: 'Tasks', kind: 'Page' }, { label: 'Style', kind: 'Help' }], '').map((i) => i.label).join() === 'Tasks');
+check('a page beats a Help topic of the same name', rankFind([{ label: 'Tasks', kind: 'Help' }, { label: 'Tasks', kind: 'Page' }], 'tasks')[0].kind === 'Page');
+const menu = bobMenuHtml({ loaded: [] }, { tools: [{ id: 'settingsBtn', icon: '⚙', label: 'Settings' }, { id: 'speak', icon: '🔊', label: 'Read aloud', st: 'On' }], session: { value: 'b', options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B<' }] } });
+check("Bob's menu carries the tools, each pressing its own button", menu.includes('data-bobtool="settingsBtn"') && menu.includes('data-bobtool="speak"') && menu.includes('>On<'));
+check("Bob's menu has the Session pick, escaped", menu.includes('<option value="b" selected>B&lt;</option>'));
+check("without Lamplight Bob's menu stays as it was", !bobMenuHtml({ loaded: [] }).includes('bob-menu-tools'));
+const app = read('public/app.js');
+check('Ctrl+K opens Find anything only in Lamplight', /id === 'search'\) \{ if \(lamp\(\)\) findBox\.open\(\); else topicsPage\.open\(\);/.test(app));
+check('the top bar hides the tools only in Lamplight, and the Find button only shows there', /body\.look-lamplight \.side :is\(#cellarBtn[^)]*\)[^{]*\{ display: none; \}/.test(css) && /\n#findBtn \{ display: none; \}/.test(css));
+check('the status line moves under the typing box (the same buttons, nothing rebuilt)', /body\.look-lamplight \.ctx \{ order: 99;/.test(css));
+check('Find anything has a name, keyboard moves and the listbox roles', read('public/find.js').includes("role=\"listbox\"") && read('public/find.js').includes('aria-activedescendant') && read('public/index.html').includes('aria-keyshortcuts="Control+K"'));
+
 // ---- Help, glossary, FAQ ----
 const help = (id) => HELP.find((e) => e.id === id)?.html || '';
 check('Style Help explains the three looks', ['Classic', 'Lamplight', 'Terminal'].every((w) => help('style').includes(w)));
 check('the FAQ says a look never changes how Bob works', /same speed/.test(help('faq-looks')) && /Windows, Mac, Linux/.test(help('faq-looks')));
-check('the glossary has Lamplight and Look', help('glossary').includes('<dt>Lamplight</dt>') && help('glossary').includes('<dt>Look</dt>'));
+check('the glossary has Lamplight, Look and Find anything', ['Lamplight', 'Look', 'Find anything'].every((w) => help('glossary').includes(`<dt>${w}</dt>`)));
+check('Style Help explains Find anything and the status line', help('style').includes('Find anything') && help('style').includes('status line'));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
