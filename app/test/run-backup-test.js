@@ -12,6 +12,8 @@ import {
 } from '../src/backup.js';
 import { cleanBackup, BACKUP_DEFAULTS } from '../src/backup-settings.js';
 import { applyWaitingRestore } from '../src/backup-apply.js';
+import { readConfigFile, writeConfigFile } from '../src/config.js';
+import { useKeysFile, saveKey, savedKey, ensureBox, sealCopy, theBox } from '../src/secret-box.js';
 import { readZipList, writeZip } from '../src/zip.js';
 import { HELP } from '../public/help-content.js';
 import { allTopics, cardOf } from '../public/settings-map.js';
@@ -154,7 +156,9 @@ check('restore: a wrong passcode stops it before anything changes', /passcode do
 const r = await stageRestore(b, withKeys.file, { keys: true, passcode: 'move my bob please', store, env: { BOB_DISCORD_TOKEN: 'already here' } });
 check('restore: files wait for the next start', r.waiting && r.files > 5 && fs.existsSync(path.join(b.innDir, 'restore-waiting', 'plan.json')) && fs.readFileSync(path.join(b.innDir, 'bob-memory.md'), 'utf8').includes('New computer'));
 check('restore: keys this computer lacks are put back, its own are kept', stored.length === 1 && stored[0][0] === 'RUNPOD_API_KEY' && r.keys.kept.includes('BOB_DISCORD_TOKEN') && r.keys.restored.includes('phone passcode'));
-const conf = JSON.parse(fs.readFileSync(b.configFile, 'utf8'));
+const onDisk = JSON.parse(fs.readFileSync(b.configFile, 'utf8'));
+check('restore: the phone passcode is locked on disk with this computer\'s box', String(onDisk.remote.passcode).startsWith('bobsecret1:'));
+const conf = readConfigFile(b);
 check('restore: Discord and Telegram details back, switched off; the phone passcode back, phone access off', conf.discord.ownerId === '123' && conf.discord.enabled === false && conf.telegram.enabled === false && conf.remote.passcode === 'phone-pass-99' && conf.remote.enabled === false && !conf.discord.token && conf.port === 7777);
 const staged = JSON.parse(fs.readFileSync(path.join(b.innDir, 'restore-waiting', 'inn', 'bob', 'settings.json'), 'utf8'));
 check('restore: the old computer\'s folders become this one\'s', staged.saveDir === path.join(b.innDir, 'painter'), staged.saveDir);
@@ -244,6 +248,40 @@ const help = HELP.find((h) => h.id === 'backup');
 check('Help: a Back up and move page in Bob\'s voice', help && /\bI\b|\bmy\b/.test(help.html) && /passcode/.test(help.html) && /switched off/.test(help.html));
 check('Help: an FAQ for moving to a new computer', ids.has('faq-move-bob') && /Back up and move/.test(HELP.find((h) => h.id === 'faq-move-bob').html));
 check('Help: the glossary has Back up and move', /<dt>Back up and move<\/dt>/.test(HELP.find((h) => h.id === 'glossary').html));
+
+// ---------- 🔐 locked secrets: opened for the backup, locked again with the new computer's box ----------
+{
+  const o = makeBob('locked-old');
+  ensureBox(o);
+  useKeysFile(path.join(o.dataDir, 'keys.json'));
+  saveKey(o, 'MY_SERVICE_KEY', 'svc-secret-123');
+  writeConfigFile(o, { discord: { enabled: true, ownerId: '9', token: 'disc-locked-token' }, remote: { enabled: true, passcode: 'phone-locked-77' } });
+  put(path.join(o.dataDir, 'mcp-servers.json'), JSON.stringify({ servers: [{ id: 'notes', name: 'Notes app', command: 'notes-mcp', enabled: true, env: sealCopy({ NOTES_TOKEN: 'mcp-secret-456' }, theBox(), { all: true }) }] }));
+  put(path.join(o.dataDir, 'settings.json'), '{}');
+  check('locked secrets: config.json and the apps file hold no plain secret on the old computer', !fs.readFileSync(o.configFile, 'utf8').includes('phone-locked-77') && !fs.readFileSync(path.join(o.dataDir, 'mcp-servers.json'), 'utf8').includes('mcp-secret-456'));
+  const oc = { ...o, ...readConfigFile(o) };
+  const g2 = gatherKeys(oc, {});
+  check('locked secrets: keys saved in Settings, the phone passcode and app env values are opened for the backup', g2.keys.MY_SERVICE_KEY === 'svc-secret-123' && g2.phonePasscode === 'phone-locked-77' && g2.mcpEnv.notes?.NOTES_TOKEN === 'mcp-secret-456');
+  const plainZip = makeBackup(oc, { folder: out, env: {}, now: new Date(2026, 10, 12, 1, 0) });
+  const pz = fs.readFileSync(plainZip.file);
+  check('locked secrets: without keys ticked, nothing locked or plain from the old box is in the zip', !pz.includes('bobsecret1:') && !pz.includes('mcp-secret-456') && !pz.includes('disc-locked-token') && !pz.includes('phone-locked-77'));
+  const keyZip = makeBackup(oc, { folder: out, keys: true, passcode: 'move my bob please', env: {}, now: new Date(2026, 10, 12, 1, 1) });
+  check('locked secrets: with keys ticked they travel only in the locked part', keyZip.keys === 3 && !fs.readFileSync(keyZip.file).includes('bobsecret1:') && !fs.readFileSync(keyZip.file).includes('svc-secret-123'));
+  const n = makeBob('locked-new');
+  put(n.configFile, '{}');
+  useKeysFile(path.join(n.dataDir, 'keys.json'));
+  const r3 = await stageRestore(n, keyZip.file, { keys: true, passcode: 'move my bob please', env: {} });
+  check('locked secrets: keys go back into Settings\' saved keys, locked on this computer', savedKey('MY_SERVICE_KEY') === 'svc-secret-123' && !fs.readFileSync(path.join(n.dataDir, 'keys.json'), 'utf8').includes('svc-secret-123') && r3.keys.restored.includes('MY_SERVICE_KEY'));
+  const apps = JSON.parse(fs.readFileSync(path.join(n.innDir, 'restore-waiting', 'inn', 'bob', 'mcp-servers.json'), 'utf8'));
+  check('locked secrets: an app\'s env value comes back locked with this computer\'s box', String(apps.servers[0].env.NOTES_TOKEN).startsWith('bobsecret1:') && theBox().open(apps.servers[0].env.NOTES_TOKEN) === 'mcp-secret-456' && r3.keys.restored.includes('Notes app: NOTES_TOKEN'));
+  check('locked secrets: the phone passcode comes back locked, phone access off', readConfigFile(n).remote.passcode === 'phone-locked-77' && !fs.readFileSync(n.configFile, 'utf8').includes('phone-locked-77') && readConfigFile(n).remote.enabled === false);
+  const n2 = makeBob('locked-new-nokeys');
+  put(n2.configFile, '{}');
+  await stageRestore(n2, keyZip.file, { keys: false, env: {} });
+  const apps2 = JSON.parse(fs.readFileSync(path.join(n2.innDir, 'restore-waiting', 'inn', 'bob', 'mcp-servers.json'), 'utf8'));
+  check('locked secrets: without the passcode an app comes back with its key empty, to type again', apps2.servers[0].env.NOTES_TOKEN === '' && apps2.servers[0].name === 'Notes app');
+  check('locked secrets: the box itself is never backed up', skipped('bob/secret-box.json') && skipped('bob/secret-box.old-2026-11-12-1.json') && skipped('bob/keys.json'));
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
