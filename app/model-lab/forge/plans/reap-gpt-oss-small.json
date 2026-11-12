@@ -41,7 +41,7 @@
       {
         "name": "gpt-oss-20b",
         "nickname": "GPT-OSS 20B",
-        "file": "hf:ggml-org/gpt-oss-20b-GGUF:gpt-oss-20b-mxfp4.gguf",
+        "file": "hf:ggml-org/gpt-oss-20b-GGUF:gpt-oss-20b-MXFP4.gguf",
         "quant": "MXFP4",
         "ctx": 32768,
         "extra": "",
