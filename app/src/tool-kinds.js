@@ -82,15 +82,54 @@ export function limitMs(name, tool, { ownMin = 0 } = {}) {
   return min * 60_000;
 }
 
-// 168: a result is cut where it's made, not after it has filled memory. The start and the end are kept (a
-// command's error is usually at the end).
+// 168: a very long result is cut where it's made, not after it has filled memory. Owner (Nov 12): "is there a way
+// to do intelligent exceptions?" So it isn't a blind cut:
+//  - the limit grows with the brain's memory: half of it for one result (never under RESULT_CAP, never over RESULT_MAX).
+//    The chat's own fit (fitContext in brain.js) trims older results further only when the chat really won't fit.
+//  - what's kept: the start, the end (a command's error is usually there), and in between every line that shares a
+//    word with the ask or looks like a problem (error, failed, warning, exception...), in order.
+//  - the whole result is saved (brain.js), and the first line says where, so Bob can read the rest with read_file
+//    (and its line) or search it with search_files.
 export const RESULT_CAP = 48_000;
-export function capResult(text, cap = RESULT_CAP) {
+export const RESULT_MAX = 400_000;
+export const capFor = (ctxTokens, per = 3) => Math.max(RESULT_CAP, Math.min(RESULT_MAX, Math.floor((Number(ctxTokens) || 0) * per * 0.5)));
+const SKIP = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'what', 'from', 'have', 'does', 'into', 'about', 'your', 'you', 'can', 'are', 'how', 'why', 'when', 'where', 'which', 'there', 'please', 'tell', 'show', 'find', 'look', 'run', 'file', 'files']);
+// The ask's own words (the same idea as brain.js's askWords, kept here so this file needs nothing else).
+export const keyWords = (ask) => [...new Set(String(ask || '').toLowerCase().match(/[\p{L}\p{N}_.-]{3,}/gu) || [])].filter((w) => !SKIP.has(w)).slice(0, 24);
+export const PROBLEM_LINE = /\b(error|errors|failed|failure|fail|fatal|exception|traceback|panic|warning|warn|denied|refused|not found|cannot|can't|couldn't|undefined|null pointer|segfault|abort(?:ed)?|timed? ?out|assert(?:ion)?)\b|✗|✖|❌/i;
+export function capResult(text, cap = RESULT_CAP, { ask = '', saved = '' } = {}) {
   const s = String(text ?? '');
-  if (s.length <= cap) return { text: s, cut: 0 };
-  const head = Math.floor(cap / 3), tail = cap - head;
-  const cut = s.length - head - tail;
-  return { text: `${s.slice(0, head)}\n[... ${cut.toLocaleString('en')} characters cut from the middle ...]\n${s.slice(-tail)}`, cut };
+  if (s.length <= cap) return { text: s, cut: 0, kept: 0 };
+  const pointer = saved ? `(Long result: ${s.length.toLocaleString('en')} characters. The whole of it is saved at ${saved}: read more with read_file and a line number, or search it with search_files.)\n` : '';
+  const room = cap - pointer.length;
+  const words = keyWords(ask);
+  // The lines between the start and the end that match the ask or look like a problem, with their line numbers.
+  const pick = (head, tail, space) => {
+    const out = [];
+    let used = 0, n = 1 + (s.slice(0, head).match(/\n/g) || []).length;
+    for (const line of s.slice(head, s.length - tail).split('\n')) {
+      const l = line.toLowerCase();
+      if (line.trim() && (PROBLEM_LINE.test(line) || words.some((w) => l.includes(w)))) {
+        const bit = `${n}: ${line.length > 400 ? line.slice(0, 400) + '…' : line}`;
+        if (used + bit.length + 1 > space) break;
+        out.push(bit); used += bit.length + 1;
+      }
+      n++;
+    }
+    return { out, used };
+  };
+  // A quarter of the room for the start, a quarter for the end, half for the picked lines; what the picked lines
+  // don't use goes back to the start and the end, so nothing is wasted.
+  const space = Math.floor(room / 2) - 200;
+  const first = pick(Math.floor(room / 4), Math.floor(room / 4), space);
+  const spare = Math.max(0, space - first.used);
+  const head = Math.floor(room / 4 + spare / 2), tail = Math.floor(room / 4 + spare / 2);
+  const { out: picked, used } = pick(head, tail, space);
+  const cut = Math.max(0, s.length - head - tail - used);
+  const gap = picked.length
+    ? `\n[... the middle is cut (${cut.toLocaleString('en')} characters); these ${picked.length} line${picked.length === 1 ? '' : 's'} from it match the ask or look like a problem, with their line numbers:]\n${picked.join('\n')}\n[... end of the picked lines ...]\n`
+    : `\n[... ${cut.toLocaleString('en')} characters cut from the middle ...]\n`;
+  return { text: `${pointer}${s.slice(0, head)}${gap}${s.slice(-tail)}`, cut, kept: picked.length };
 }
 
 // 169: tools hand back text. Anything else is turned into text here, so a broken tool can't send junk to the brain.

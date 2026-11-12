@@ -12,7 +12,7 @@ import { isSensitive } from './tools.js';
 import { limitOn, readOnlyRoots } from './hands-settings.js';
 import { killTree as stopTree } from './platform.js';
 
-const MAX_OUT = 200_000; // characters of output kept for Bob (the chat gets all of it live)
+const MAX_OUT = 400_000; // characters of output kept for Bob (the chat gets all of it live); tool-kinds.js trims it smartly after (RESULT_MAX)
 const WIN = process.platform === 'win32';
 
 // Programs that are never run, whatever the arguments.

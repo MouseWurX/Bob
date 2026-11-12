@@ -77,7 +77,8 @@ import { freeMemNow } from './platform.js';
 import { selfWorkOn, readyRepos } from './self-work.js';
 import { compactMessages, charsFor } from './self-work-plan.js';
 import { asDoc, asQuery, embedModel, vecKey } from './embed-prefix.js';
-import { lastFinished, riskOf, isVolatile, limitMs, capResult, cleanResult, NOTHING_FOUND, failedResult, giveIds, toolMessage, NOT_OFFERED, NOT_FOR_JOB } from './tool-kinds.js';
+import { lockOn } from './lock.js';
+import { lastFinished, riskOf, isVolatile, limitMs, capResult, capFor, cleanResult, NOTHING_FOUND, failedResult, giveIds, toolMessage, NOT_OFFERED, NOT_FOR_JOB } from './tool-kinds.js';
 import { fixCalls, errorHint, promisesAction, PROMISE_NUDGE, PROMISE_LOG, nearKey, onTrackNote, LAST_ROUND_NOTE, tidyOld, togetherCalls, meaningPick, GroupVectors } from './loop-help.js';
 import { HowTos, howtoTools, howtosOn, trailStep, worthOffering, howtoPrompt, usingLine } from './howtos.js';
 import { NEEDS, planFor, SetupOffers, switchFor, applySwitch, SWITCH_KEYS } from './setup-offer.js';
@@ -1513,9 +1514,27 @@ export class Brain {
     if (clean.fixed) this.log('tool', `${name} ${clean.fixed}; passed on as plain text`);
     let text = clean.text;
     if (!text.trim() && riskOf(name, tool) === 'look') text = NOTHING_FOUND(name);
-    const capped = capResult(text);
-    if (capped.cut) this.log('tool', `${name} gave back ${text.length.toLocaleString('en')} characters; kept the start and the end (${capped.cut.toLocaleString('en')} cut)`);
+    const cap = capFor(this.engine?.currentCtx || this.engine?.lc?.ctx || 0);
+    if (text.length <= cap) return text;
+    const saved = isGuestId(ctx?.sessionId) || ctx?.job?.guest ? '' : this.keepWholeResult(name, text);
+    const capped = capResult(text, cap, { ask: ctx.turnText || '', saved });
+    this.log('tool', `${name} gave back ${text.length.toLocaleString('en')} characters; kept the start, the end and ${capped.kept} matching line${capped.kept === 1 ? '' : 's'}${saved ? ', and saved the whole of it' : ''}`);
     return capped.text;
+  }
+
+  // The whole of a long result, saved in inn\bob\tool-results so Bob can read the rest. Kept 3 days, at most 30 files.
+  // Not while the passcode lock keeps chats locked on disk (a plain copy would get round it), and never in a guest chat.
+  keepWholeResult(name, text) {
+    try {
+      if (lockOn(this.cfg) || !this.cfg.dataDir) return '';
+      const dir = path.join(this.cfg.dataDir, 'tool-results');
+      fs.mkdirSync(dir, { recursive: true });
+      const old = fs.readdirSync(dir).filter((f) => f.endsWith('.txt')).map((f) => ({ f, t: fs.statSync(path.join(dir, f)).mtimeMs })).sort((a, b) => b.t - a.t);
+      old.forEach((x, i) => { if (i >= 29 || Date.now() - x.t > 3 * 86_400_000) { try { fs.unlinkSync(path.join(dir, x.f)); } catch {} } });
+      const file = path.join(dir, `${new Date().toISOString().replace(/[:.]/g, '-')}-${String(name).replace(/[^\w-]/g, '_')}.txt`);
+      fs.writeFileSync(file, text);
+      return file;
+    } catch (e) { this.log('tool', `couldn't keep the whole ${name} result (${e.message})`); return ''; }
   }
 
   // verify.js's check of one tool run; a check that itself breaks never breaks the turn.

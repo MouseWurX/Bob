@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   TOOL_KINDS, kindOf, riskOf, repeatSafe, isVolatile, SIDE_EFFECT, WAIT_IF_CUT, limitMs, LOOK_MIN, CHANGE_MIN,
-  RESULT_CAP, capResult, cleanResult, NOTHING_FOUND, isNothingFound, failedResult, giveIds, toolMessage, lastFinished
+  RESULT_CAP, RESULT_MAX, capFor, capResult, cleanResult, NOTHING_FOUND, isNothingFound, failedResult, giveIds, toolMessage, lastFinished
 } from '../src/tool-kinds.js';
 import { LlamaCpp } from '../src/llamacpp.js';
 import { cleanLendRequest } from '../src/share-brains.js';
@@ -80,6 +80,14 @@ check('167: an older result without the field is read from its words', failedRes
   const c = capResult(big);
   check('168: a huge result is cut to the cap, with its start and its end', c.text.length < RESULT_CAP + 200 && c.text.startsWith('SSS') && c.text.endsWith('EEE') && /characters cut from the middle/.test(c.text) && c.cut > 0);
   check('168: a normal result is left alone', capResult('short').text === 'short' && capResult('short').cut === 0);
+  // "Intelligent exceptions" (owner, Nov 12): not a blind cut.
+  const log = Array.from({ length: 5000 }, (_, i) => (i === 2000 ? 'src/auth.ts(41,7): error TS2345: wrong type' : i === 3100 ? 'Grimbold,dwarf,9120' : `  compiling module ${i} ... ok ${'.'.repeat(30)}`)).join('\n');
+  const smart = capResult(log, RESULT_CAP, { ask: "what is Grimbold's score", saved: '/inn/bob/tool-results/x.txt' });
+  check('168: a problem line from the middle is kept, with its line number', /2001: src\/auth\.ts\(41,7\): error TS2345/.test(smart.text), smart.text.slice(0, 300));
+  check('168: a line that matches the ask is kept too', /3101: Grimbold,dwarf,9120/.test(smart.text) && smart.kept === 2);
+  check('168: the first line says where the whole result is, and how to read more', /^\(Long result: [\d,]+ characters\. The whole of it is saved at \/inn\/bob\/tool-results\/x\.txt: read more with read_file/.test(smart.text));
+  check('168: room the picked lines don\'t need goes to the start and the end', smart.text.length > RESULT_CAP - 400 && smart.text.length <= RESULT_CAP);
+  check('168: the limit grows with the brain\'s memory', capFor(0) === RESULT_CAP && capFor(65536) === 98304 && capFor(10_000_000) === RESULT_MAX);
 }
 
 // ---------- 169: plain text only ----------
@@ -139,7 +147,15 @@ clearInterval(brain.reminderTimer);
   check('169: a tool that gives back an object hands on text', r2.text === '{"rows":2}');
   brain.tools.t_big = { schema: { type: 'function', function: { name: 't_big', description: 'test', parameters: { type: 'object', properties: {} } } }, risk: 'look', run: async () => 'x'.repeat(300_000) };
   const r3 = await brain.runTool('t_big', {}, job);
-  check('168: a huge result is cut before it goes anywhere', r3.text.length < RESULT_CAP + 200);
+  check('168: a huge result is cut before it goes anywhere', r3.text.length <= RESULT_CAP);
+  const kept = (r3.text.match(/saved at (.+?\.txt):/) || [])[1];
+  check('168: and the whole of it is saved in Bob\'s own folder for read_file', kept && kept.startsWith(path.join(dataDir, 'tool-results')) && fs.readFileSync(kept, 'utf8').length === 300_000, String(kept));
+  const rf = kept ? await brain.runTool('read_file', { path: kept }, job) : { text: '' };
+  check('168: read_file can open the saved result', /x{100}/.test(rf.text) && !/^Error/.test(rf.text), rf.text.slice(0, 200));
+  brain.cfg.lock = { enabled: true, wrapped: 'w' };
+  const r3b = await brain.runTool('t_big', {}, job);
+  check('168: with the passcode lock on, no plain copy is saved', !/saved at/.test(r3b.text) && r3b.text.length <= RESULT_CAP);
+  delete brain.cfg.lock;
   let gotSignal = null;
   brain.tools.t_hang = { schema: { type: 'function', function: { name: 't_hang', description: 'test', parameters: { type: 'object', properties: {} } } }, risk: 'look', run: (a, ctx) => { gotSignal = ctx.signal; return new Promise(() => {}); } };
   brain.toolLimitMs = () => 60;

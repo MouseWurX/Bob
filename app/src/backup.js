@@ -42,7 +42,7 @@ export const PART_IDS = PARTS.map((p) => p.id);
 // Bob's code names in inn\bob or inn is either in a part above or here, so nothing new is forgotten.
 export const NOT_BACKED_UP = [
   'bob/update-status.json', 'bob/update-launch-log.txt', 'bob/github-update/', 'bob/catalog-latest.json', 'bob/model-scan.json',
-  'bob/tidy-backups/', 'bob/backups/', 'bob/trash/', 'bob/thumbs/', 'bob/voice-samples/', 'bob/speed-tests.json', 'bob/speed-log.json', 'bob/card-seen.json', 'bob/load-times.json',
+  'bob/tidy-backups/', 'bob/tool-results/', 'bob/backups/', 'bob/trash/', 'bob/thumbs/', 'bob/voice-samples/', 'bob/speed-tests.json', 'bob/speed-log.json', 'bob/card-seen.json', 'bob/load-times.json',
   'bob/selftools.json', 'bob/quarantine.json', 'bob/lab/', 'bob/hands-runs.json', 'bob/hands-journal.json', 'bob/downloads.json',
   'bob/queue.json', 'bob/electron/', 'bob/doc-index.json', 'bob/tool-group-vectors.json', 'bob/receipts/', 'bob/claude-door.json', 'bob/tool-packs.json', 'tool-packs/', 'bob/sd-server-args.txt', 'bob/backup-state.json', 'bob/restore-result.json',
   'bob/seeded-brains.json', 'bob/keys.json', 'bob/bob-net-link-keys.json', // brains seeded on a lent card (worked out again); locked secrets and Bob-Net link keys are locked to this computer (keys travel in the locked part; Bobs pair again)
