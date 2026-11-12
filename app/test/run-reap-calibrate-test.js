@@ -66,7 +66,17 @@ const code = await new Promise((resolve) => {
   let log = ''; p.stdout.on('data', (d) => (log += d)); p.stderr.on('data', (d) => (log += d));
   p.on('close', (c) => { if (c) console.log(log); resolve(c); });
 });
+const run = (extra) => new Promise((resolve) => {
+  const p = spawn(process.execPath, [path.join(here, '..', 'model-lab', 'reap-calibrate.mjs'), '--url', url, '--lessons', lessonsDir, ...extra], { env: { ...process.env, BOB_AGENT_DIR: tmp }, stdio: ['ignore', 'pipe', 'pipe'] });
+  let log = ''; p.stdout.on('data', (d) => (log += d)); p.stderr.on('data', (d) => (log += d));
+  p.on('close', (c) => { if (c) console.log(log); resolve(c); });
+});
+const tracedBefore = seen.traced, out2 = path.join(tmp, 'cal2');
+const code2 = await run(['--out', out2, '--scores', path.join(out, 'scores.json'), '--steps', '0.25']);
 srv.close();
+check('reusing scores: the run finishes without scoring again', code2 === 0 && seen.traced === tracedBefore);
+const cal2 = JSON.parse(fs.readFileSync(path.join(out2, 'calibration.json'), 'utf8'));
+check('reusing scores: the earlier full score is the yardstick', cal2.steps[0].share === 1 && cal2.steps[0].earlier === true && cal2.best.share === 1, JSON.stringify(cal2.steps));
 check('the run finishes', code === 0);
 check('it scored only training lessons', seen.traced === 10);
 const cal = JSON.parse(fs.readFileSync(path.join(out, 'calibration.json'), 'utf8'));

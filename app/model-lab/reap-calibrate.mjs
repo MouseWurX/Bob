@@ -11,6 +11,7 @@
 //
 // node reap-calibrate.mjs --url http://host:port [--lessons out/lessons] [--score 200] [--steps 1,0.75,0.5,0.35]
 //      [--by mass|reap|counts] [--margin 2] [--quick] [--no-think] [--out out/calibrate] [--test "extra tool-score args"]
+//      [--scores <an earlier run's scores.json for the same brain: skip scoring>]
 // The server must be Brain Engine with the expert trace (0002) and, for true REAP, the expert-mass patch; without
 // mass it falls back to pick counts and says so. Set LAB_API_KEY for a server with a key (the Forge's rented card).
 import fs from 'node:fs';
@@ -55,12 +56,16 @@ function whole(lesson) {
   return system === null ? null : [{ role: 'system', content: system }, ...msgs];
 }
 
-// ---- 1. score ----
-console.log(`Scoring on ${chosen.length} of ${train.length} training lessons (the held-out 5% are kept for judging)`);
+// ---- 1. score (or reuse an earlier run's scores.json for the same brain: --scores <file>) ----
 await post('/expert-mask', { keep: null }, 60_000).catch(() => {});
 const s = emptyScores();
 let fails = 0;
-for (const [i, lesson] of chosen.entries()) {
+if (o.scores) {
+  const old = JSON.parse(fs.readFileSync(String(o.scores), 'utf8'));
+  Object.assign(s, { experts: old.experts, used: old.used, layers: old.layers, mass: old.mass, lessons: old.lessons, tokens: old.tokens, hasMass: old.hasMass !== false });
+  console.log(`Reusing the scores in ${o.scores} (${s.lessons} lessons, ${s.layers.length} layers x ${s.experts} experts)`);
+} else console.log(`Scoring on ${chosen.length} of ${train.length} training lessons (the held-out 5% are kept for judging)`);
+for (const [i, lesson] of (o.scores ? [] : chosen).entries()) {
   const messages = whole(lesson); if (!messages) continue;
   try {
     const j = await post('/v1/chat/completions', { messages, max_tokens: 1, cache_prompt: false, expert_trace: true, expert_trace_mass: true, temperature: 0 });
@@ -91,12 +96,16 @@ for (const share of String(o.steps).split(',').map(Number).filter((x) => x > 0 &
   steps.push({ share, kept: n, total: res?.total ?? null, of: res?.totalN ?? null, pct: res ? (100 * res.total) / Math.max(res.totalN, 1) : null, tps: res?.tpsAvg ?? null, ok: r.status === 0 });
 }
 await post('/expert-mask', { keep: null }, 60_000).catch(() => {});
+// Reused scores: the full brain's score from that earlier run is the yardstick when this run has no 100% step.
+if (o.scores && !steps.some((x) => x.share === 1)) {
+  try { const full = JSON.parse(fs.readFileSync(path.join(path.dirname(String(o.scores)), 'calibration.json'), 'utf8')).steps.find((x) => x.share === 1); if (full) steps.unshift({ ...full, earlier: true }); } catch {}
+}
 
 // ---- 3. keep ----
 const best = smallestGood(steps, Number(o.margin));
 const lines = ['# REAP calibration', '', `Scored on ${s.lessons} training lessons, ranked by ${by}. Judged on the held-out lessons (tool-score${o.quick ? ', quick' : ''}). Margin: ${o.margin} points.`, '',
   '| Kept per layer | Share | Held-out overall | Words a second |', '|---|---|---|---|',
-  ...steps.map((x) => `| ${x.kept} of ${s.experts} | ${Math.round(x.share * 100)}% | ${x.total == null ? 'failed' : `${x.total}/${x.of} (${x.pct.toFixed(1)}%)`} | ${x.tps == null ? '' : x.tps.toFixed(1)} |`),
+  ...steps.map((x) => `| ${x.kept} of ${s.experts} | ${Math.round(x.share * 100)}% | ${x.total == null ? 'failed' : `${x.total}/${x.of} (${x.pct.toFixed(1)}%)`} | ${x.tps == null ? '' : x.tps.toFixed(1)}${x.earlier ? ' (earlier run)' : ''} |`),
   '', best ? `Smallest within the margin: **${Math.round(best.share * 100)}%** (${best.kept} of ${s.experts} per layer), keep list \`keep-${Math.round(best.share * 100)}.json\`.` : 'No step finished.',
   '', 'The brain file was not changed and every expert is switched back on. Switching experts off saves no memory by itself.'];
 fs.writeFileSync(path.join(out, 'calibration.md'), lines.join('\n') + '\n');

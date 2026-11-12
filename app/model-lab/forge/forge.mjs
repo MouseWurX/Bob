@@ -410,7 +410,9 @@ async function benchOnPod(name) {
   const { spawn } = await import('node:child_process'); // 11 Nov: was missing; Bill's publish run looped on 'spawn is not defined' at the first benchmark
   const url = args.local ? 'http://127.0.0.1:8001' : `https://${podId}-8001.proxy.runpod.net`;
   const dir = path.join(outDir, 'bench', plan.run || 'run', name); fs.mkdirSync(dir, { recursive: true });
-  const cmds = plan.benchmark.commands?.length ? plan.benchmark.commands : ['node experts-test.mjs --url {{url}} --counts 8 --out {{out}}'];
+  // 12 Nov: a model can carry its own commands (one brain reuses earlier REAP scores, another is calibrated from the start)
+  const own = (plan.benchmark.models || []).find((m) => m.name === name)?.commands;
+  const cmds = own?.length ? own : plan.benchmark.commands?.length ? plan.benchmark.commands : ['node experts-test.mjs --url {{url}} --counts 8 --out {{out}}'];
   log(`benchmark: ${name} is served by the card; running ${cmds.length} test command(s) on this PC`);
   for (const [i, c] of cmds.entries()) {
     // 11 Nov: {{out}} is quoted (the install folder has a space, and the command runs through the shell: an unquoted path was cut at the space,
