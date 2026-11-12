@@ -2220,3 +2220,39 @@ body.left-folded .nav-head:has(+ #labBtn[hidden]) { display: none; }
   .chips { padding: 6px 8px 0; }
 }
 .tasks-empty p { margin: 4px 0; } .tasks-empty q { font-style: italic; }
+
+/* ---------- 1.5.210 panels you build (panels.js): none until you put a module in one ---------- */
+.mod-panel { flex: none; width: var(--panel-w, 300px); display: flex; flex-direction: column; gap: 6px; min-height: 0; padding: 10px; overflow-y: auto; background: var(--panel); font-size: 13px; }
+.mod-panel[hidden] { display: none; }
+#panelLeft { border-right: 1px solid var(--line); }
+#panelRight { border-left: 1px solid var(--line); }
+.mod-panel[data-state="collapsed"] { width: 132px; }
+.panel-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.panel-states { display: inline-flex; gap: 2px; }
+.mod-panel[data-state="collapsed"] .panel-head strong { flex: 1 1 100%; }
+.panel-states [aria-checked="true"], .panel-row [aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.panel-strip { display: grid; gap: 4px; }
+.panel-strip[hidden], .panel-mods[hidden] { display: none; }
+.panel-strip .mini { text-align: left; white-space: normal; }
+.panel-mods { display: flex; flex-direction: column; gap: 6px; }
+.mod-panel .sec-order { display: none; } /* the order inside a panel is the order you put modules in */
+.put-in select { font-size: 11px; padding: 1px 4px; max-width: 120px; }
+.panel-row { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); padding: 2px 0 6px; border-bottom: 1px solid var(--line); }
+.panel-row-side { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+/* Lamplight lays the window out as a grid: a panel takes a column of its own beside the chat. */
+@media (min-width: 641px) {
+  body.look-lamplight.panel-left .app { grid-template-columns: auto minmax(0, 1fr) auto auto auto auto; }
+  body.look-lamplight #panelLeft { grid-column: 1; grid-row: 2; margin: 0 0 var(--s3, 12px) var(--s3, 12px); border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb, var(--panel) 94%, transparent); }
+  body.look-lamplight.panel-left .mid { grid-column: 2; }
+  body.look-lamplight #panelRight { grid-row: 2; grid-column: -2; margin: 0 var(--s3, 12px) var(--s3, 12px) 0; border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb, var(--panel) 94%, transparent); }
+}
+/* A phone has no room beside the chat: panels stay in Now running's place, which the status line opens. */
+/* (panels.js keeps them hidden on a phone and puts their modules back in Now running) */
+.now-sec:has(.put-in) { flex-wrap: wrap; }
+.put-in { margin-left: auto; }
+@media (min-width: 641px) {
+  body.look-lamplight.panel-right .now { right: calc(var(--panel-w, 300px) + 24px); }
+  body.look-lamplight.panel-right-collapsed .now { right: 156px; }
+}
+.mod-panel[data-state="collapsed"] .panel-states { display: grid; width: 100%; }
+.mod-panel[data-state="collapsed"] .panel-states .mini { text-align: left; }

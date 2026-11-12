@@ -47,6 +47,7 @@
     <div class="side-fill"></div>
     <label class="session-wrap" title="Which brains Bob keeps loaded"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="6" width="12" height="12" rx="1"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg><span class="lbl">Session:</span> <select id="sessionSel" class="session" aria-label="Session"></select></label>
   </nav>
+  <aside id="panelLeft" class="mod-panel" aria-label="Left panel" hidden></aside>
 
   <div class="mid">
     <div class="ctx">
@@ -124,6 +125,8 @@
   <div id="grab" class="grab" role="separator" aria-orientation="vertical" aria-label="Drag to resize Now running" tabindex="0"></div>
   <aside id="now" class="now" aria-label="Now running">
     <div class="now-head"><strong>Now running</strong><span class="ctx-fill"></span><button id="hideRight" type="button" class="link" title="Hide (Ctrl+J)">Hide »</button></div>
+    <div id="panelRow" class="panel-row" role="group" aria-label="Your panels"></div>
+    <p id="panelSay" class="sr-only" aria-live="polite"></p>
     <div id="nowSections" class="now-sections">
     <section data-sec="tasks"><div class="now-sec"><span class="sec-order"><button type="button" class="sec-grip" data-grip="tasks" aria-label="Move Tasks" aria-expanded="false" title="Drag this section up or down, or press for Move up and Move down. Arrow keys work too.">⋮⋮</button><span class="sec-move" hidden><button type="button" class="mini" data-move="-1" data-sec-id="tasks" aria-label="Move Tasks up">▲ Move up</button><button type="button" class="mini" data-move="1" data-sec-id="tasks" aria-label="Move Tasks down">▼ Move down</button></span></span>Tasks <button type="button" class="tip-i" aria-label="About Tasks" aria-expanded="false"><span class="tip-src" hidden>What Bob is doing and what waits its turn. Drag one to change the order.</span></button><span class="ctx-fill"></span><button type="button" class="link" data-alltasks>See all</button></div><ol id="nowTasks" class="tlist"></ol></section>
     <section id="nowNet" data-sec="net" hidden><div class="now-sec"><span class="sec-order"><button type="button" class="sec-grip" data-grip="net" aria-label="Move Bob-Net" aria-expanded="false" title="Drag this section up or down, or press for Move up and Move down. Arrow keys work too.">⋮⋮</button><span class="sec-move" hidden><button type="button" class="mini" data-move="-1" data-sec-id="net" aria-label="Move Bob-Net up">▲ Move up</button><button type="button" class="mini" data-move="1" data-sec-id="net" aria-label="Move Bob-Net down">▼ Move down</button></span></span><button type="button" id="nowNetHead" class="link now-head" title="Bob-Net settings" aria-label="Open Bob-Net settings">Bob-Net</button> <button type="button" class="tip-i" aria-label="About Bob-Net" aria-expanded="false"><span class="tip-src" hidden>Your other Bobs, and what each is doing for the others right now: thinking a reply, making a picture, ready, gaming, not reachable. The top line is this Bob. Press Bob-Net to set it up.</span></button></div><div class="net-tools"><button id="nowNetAvatars" type="button" class="brain-switch" role="switch" aria-checked="false" title="Show each Bob's avatar (the look picked in his Style page) beside his line. Off: just the words. Nothing extra goes over the network: each Bob's look comes with the hello this list already uses."><span class="lbl">Show avatars</span><span class="st">Off</span></button></div><ul id="nowNetList" class="tlist net-list"></ul></section>
@@ -148,6 +151,7 @@
     </div>
     <p id="nowOrderSay" class="sr-only" aria-live="polite"></p>
   </aside>
+  <aside id="panelRight" class="mod-panel" aria-label="Right panel" hidden></aside>
   </div>
 
   <dialog id="shelf" class="cellar" aria-labelledby="shelf-title">
