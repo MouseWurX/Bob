@@ -11,7 +11,7 @@
   <a href="app/docs/README.md">All the docs</a>
 </p>
 
-![Bob's window: the menu on the left, a chat in the middle where Bob plans a Saturday, and Now running on the right with his thinking and tasks](app/docs/screenshot.png)
+![Bob's window in the Lamplight look: the glowing cube top left, tabs across the top, a chat in the middle and a quiet composer below](app/docs/screenshot.png)
 
 <p align="center">Windows 路 Mac 路 Linux 路 Raspberry Pi 路 Android 路 iPhone &nbsp;|&nbsp; free and open source &nbsp;|&nbsp; no account, no telemetry</p>
 
@@ -66,6 +66,30 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 | 馃摉 **Help that starts where you are** | A guide written around jobs, opening on Start here, with each page's questions folded underneath. |
 | 馃З **Panels you build** | Put Now running's parts in a panel on the left or the right. |
 
+| | |
+|:---:|:---:|
+| ![Bob's menu, opened by clicking the cube: Brains, Style, Get models, the tools and the session](app/docs/screens/bob-menu.png) | ![Find anything with calibrate typed: Brains and speed first, then Help topics](app/docs/screens/find-anything.png) |
+| **Bob's menu.** Click the cube. | **Find anything.** Ctrl+K reaches every page, setting and Help topic. |
+| ![The Now running drawer open on the right, beside the chat](app/docs/screens/now-running.png) | ![Brains in use, each with Calibrate and Set up, and Calibrate all at the top](app/docs/screens/brains-calibrate.png) |
+| **Now running.** Closed until you open it from the status line. | **Calibrate.** Times each brain on your card and recommends the fastest way to load it. |
+
+<p align="center">
+  <img src="app/docs/screens/cube-porthole.png" width="420" alt="The porthole cube glowing beside Bob's name">
+  <br><b>The porthole cube.</b> It lights the room: brighter while Bob thinks, nearly dark with no brain loaded.
+</p>
+
+<details>
+<summary><b>On a phone, and the other two looks</b></summary>
+
+| | |
+|:---:|:---:|
+| <img src="app/docs/screens/lamplight-phone.png" width="260" alt="Lamplight on a phone: cube and status line on top, the chat, the composer and the tab bar"> | ![The Classic look: the menu on the left and the chat in the middle](app/docs/screens/look-classic.png) |
+| **Lamplight on a phone.** | **Classic.** |
+| ![The Terminal look: green text on black, you and bob prompts](app/docs/screens/look-terminal.png) | |
+| **Terminal.** | |
+
+</details>
+
 **In 1.5.208:**
 
 | | |
@@ -93,10 +117,16 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 
 Every new switch is off until you turn it on.
 
-<p align="center">
-  <img src="app/docs/screens/journey.png" width="460" alt="Journey: a pixel-art village on a tile map, the hero in the square among villagers, a message box reading Welcome to the Brindle Vale, and hearts for the hero and Bob below">
-  <br><b>Journey.</b> Arrow keys walk, Enter talks, opens chests and swings.
-</p>
+| | |
+|:---:|:---:|
+| ![Journey: Bob's Inn, a wooden tavern with tables, the hero by the bar and the innkeeper](app/docs/screens/journey-inn.png) | ![Journey: the world map with mountains, a road and travellers walking it](app/docs/screens/journey-world.png) |
+| **Bob's Inn.** Every journey starts here. | **The world.** Rolled from a seed; guards walk the roads. |
+| ![Journey: a village of red-roofed houses outside the castle gate, guards at the wall](app/docs/screens/journey-castle.png) | ![Journey: the keep's throne hall with a red carpet and knights along the walls](app/docs/screens/journey-keep.png) |
+| **Outside the castle gate.** | **The keep.** A king, a queen, knights and guards. |
+| ![Journey: a dark cave with a chest](app/docs/screens/journey-cave.png) | ![Journey: a turn-based fight against two guards in a town square](app/docs/screens/journey-fight.png) |
+| **Caves** hide chests with good kit. | **Fights** drop coin and whatever the foe carried. |
+
+<p align="center"><b>Journey.</b> Arrow keys walk, Enter talks, opens chests and swings. Bob's Inn, the rolled world, castles and patrols arrive in 1.5.211.</p>
 
 <details>
 <summary><b>Earlier:</b> 1.5.204 to 1.5.206, and before</summary>
@@ -164,7 +194,7 @@ The [changelog](CHANGELOG.md) has every release.
 
 Most AI apps are for talking to a model or for building one. Bob does both. **馃И Lab** in the menu opens in its own window, so you can change a brain while Bob keeps chatting.
 
-![The Computer Science Lab in its own window: seven tabs, Keep it simple or Professional, and Make a brain asking What do you want to do? with Cut experts picked and the 28Bob Riker brain ticked](app/docs/screens/lab.png)
+![The Computer Science Lab in its own window: seven tabs, Keep it simple or Professional, and Make a brain asking What do you want to do?](app/docs/screens/lab.png)
 
 | Tab | What you do there |
 |---|---|
@@ -182,6 +212,9 @@ Most AI apps are for talking to a model or for building one. Bob does both. **馃
 
   ![fNRI's weight map of Riker, and the same block coloured by how much each expert differs from stock Qwen3.6-35B-A3B](app/docs/screens/fnri-weight-maps-riker.jpg)  
   *Riker's weights. Top: how strong each expert is for its floor (purple weaker, yellow stronger). Bottom: how much each expert changed from stock Qwen3.6-35B-A3B. The glow is the experts answering a question.*
+
+  ![The fNRI viewer: a sample scan as a 3D block, experts coloured by Coding, Chat, Maths and Stories, with the player and skill switches beside it](app/docs/screens/fnri-viewer.png)  
+  *The viewer with a sample scan (made-up data): tick a skill to show or hide it, then play the answer back word by word.*
 
 <details>
 <summary><b>More pictures:</b> Teach, Test, Forge and My Lab</summary>
