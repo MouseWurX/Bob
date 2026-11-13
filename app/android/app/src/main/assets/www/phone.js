@@ -888,7 +888,7 @@
     document.querySelectorAll('.panel:not(.hidden)').forEach((p) => { p.classList.add('hidden'); panelClosed(p.id); });
     if (id === 'new') { newChat(); return; }
     $(id).classList.remove('hidden');
-    ({ chats: drawChats, bobs: drawBobs, brain: drawBrain, adventure: drawAdventure, games: drawGames, chest: drawChest, memory: drawMemory, settings: drawSettings, help: drawHelp, glance: drawGlance, reader: drawReader, carry: drawCarry, handsfree: hfOpen }[id] || (() => {}))();
+    ({ chats: drawChats, bobs: drawBobs, brain: drawBrain, adventure: drawAdventure, journey: journeyTab, games: drawGames, chest: drawChest, memory: drawMemory, settings: drawSettings, help: drawHelp, glance: drawGlance, reader: drawReader, carry: drawCarry, handsfree: hfOpen }[id] || (() => {}))();
     if (id === 'bobs') watchLend();
   }
   document.querySelectorAll('.panel .back').forEach((b) => b.addEventListener('click', () => { const p = b.closest('.panel'); p.classList.add('hidden'); panelClosed(p.id); }));
@@ -1627,7 +1627,7 @@ ${chatOut}
   // 1.5.206 🧭 Journey: the tile-map game, the PC's own screen (BobJourneyPlay), played here with the pad; the save
   // lives on your other Bob, like the table. Bob's own looks are the PC's, so here he wears a robot avatar.
   let advJourney = null;
-  function advJourneyOpen() {
+  function advJourneyOpen(fromTab = false) { // fromTab: opened from the menu's 🧭 Journey, so closing goes back to the menu
     const J = globalThis.BobJourneyPlay, R = globalThis.BobJourneyRules, S = globalThis.BobJourneySides, W = globalThis.BobJourneyWorld;
     if (!J || !R || !S || !W) { adv.msg = 'Journey needs the newer phone screen.'; advDraw(); return; }
     advJourney?.stop();
@@ -1645,8 +1645,16 @@ ${chatOut}
       enemyLooks: Object.fromEntries((adv.v?.enemies || []).map((e) => [e.id, e.look])),
       lookOf: (id) => AV.avatar(id), api: (p, body) => advApi(p, body),
       still: () => matchMedia('(prefers-reduced-motion: reduce)').matches,
-      onClose: () => { advJourney = null; $('journey').classList.add('hidden'); $('adventure').classList.remove('hidden'); advDraw(); }
+      onClose: () => { advJourney = null; $('journey').classList.add('hidden'); if (fromTab) open('menu'); else { $('adventure').classList.remove('hidden'); advDraw(); } }
     });
+  }
+  // 1.5.215: 🧭 Journey has its own place in the menu, like Games. It still saves on your other Bob.
+  async function journeyTab() {
+    const b = advBob();
+    if (!b) { $('journey').classList.add('hidden'); open('adventure'); return; }
+    adv.base = b.base;
+    if (!adv.v) { try { adv.v = await advApi('/api/adventure'); } catch { /* the game runs without the bestiary's looks */ } }
+    advJourneyOpen(true);
   }
   function advCharsPage() {
     const v = adv.v || {}, ch = adv.chars, g = v.game;

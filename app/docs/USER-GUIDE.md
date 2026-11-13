@@ -384,7 +384,7 @@ A tabletop role-playing game with Bob as game master and a party of you, your fr
 - **🧰 Table extras** and table rules (all off): visible dice, sounds, reading aloud, pictures, music, a map that grows, coins and shops, riddle rooms, badges, sending a campaign to a friend.
 - Campaigns are saved and continue from the start card with a "Last time…" reminder.
 
-**🧭 Journey** (on the Adventure start card): walk the Brindle Vale on a tile map with the arrow keys, WASD or the phone pad, open chests, talk to the village and fight turn-based battles. It needs no brain and saves itself.
+**🧭 Journey** (its own page at the top, next to Adventure, and on the Adventure start card): walk the Brindle Vale on a tile map with the arrow keys, WASD or the phone pad, open chests, talk to the village and fight turn-based battles. It needs no brain and saves itself.
 
 ---
 

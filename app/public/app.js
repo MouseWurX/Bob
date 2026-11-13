@@ -24,6 +24,7 @@ import { createTidy } from './tidy.js';
 import { createLab } from './lab.js'; // 1.5.141 Computer Science Lab
 import { CHANNEL as LAB_CHANNEL, WINDOW_NAME as LAB_WINDOW_NAME, WINDOW_SIZE as LAB_WINDOW_SIZE, LAB_URL, labWantsWindow, accept as labAccept } from './lab-link.js'; // the Lab's own window
 import { createAdventure } from './adventure.js';
+import { openJourney } from './journey.js'; // 1.5.215: Journey's own tab
 import { createGames } from './games.js';
 import { createHelp } from './help.js';
 import { handsApproval, togetherApproval, onHandsEvent } from './hands.js';
@@ -361,7 +362,7 @@ const thinkBubbles = createThinkBubbles({ add, esc, answer: showAnswer, on: () =
 
 // ---------- Status, badge, notifications ----------
 const STATUS_TEXT = {
-  idle: 'Coffee in hand. Ready when you are.',
+  idle: 'Coffee in hand.\u00a0Ready when you are.', // 1.5.215: the no-break space keeps "hand. Ready" together
   thinking: 'Thinking...',
   loading: 'Swapping brains...',
   busy: 'Working...',
@@ -578,6 +579,11 @@ const adventurePage = createAdventure({ api }); // 1.5.117 🎲 Adventure
 $('adventureBtn').onclick = () => adventurePage.open();
 const gamesPage = createGames({ api }); // 1.5.121 🧩 Games
 $('gamesBtn').onclick = () => gamesPage.open();
+// 1.5.215: 🧭 Journey has its own tab, like Games: the same game the Adventure page opens, with your saved characters.
+$('journeyBtn').onclick = async () => {
+  let v = {}; try { v = await api('/api/adventure'); } catch { /* the game runs without the saved characters */ }
+  openJourney({ api, you: {}, characters: v?.characters || [], enemies: v?.enemies || [] });
+};
 const helpPage = createHelp();
 $('helpBtn').onclick = () => helpPage.open();
 window.addEventListener('bob-tidy', () => tidyPage.open());
@@ -615,7 +621,7 @@ function tuckNowForLamp(style) {
 // The fNRI cube avatar (when it is on) opens the same menu.
 document.addEventListener('click', (e) => { const c = e.target.closest?.('#bobCubeBox'); if (c && lampLook()) bobMenu.toggle(c); }); // Lamplight: the cube opens Bob's menu
 // 1.5.210 Find anything: every page, menu tool, Settings card and Help topic by name, plus your chats.
-const PAGE_BTNS = ['chatBtn', 'tasksBtn', 'topicsBtn', 'madeBtn', 'adventureBtn', 'gamesBtn', 'labBtn', 'shelfBtn', 'cellarBtn', 'dlBtn', 'tidyBtn', 'settingsBtn', 'styleBtn', 'helpBtn', 'newchat'];
+const PAGE_BTNS = ['chatBtn', 'tasksBtn', 'topicsBtn', 'madeBtn', 'adventureBtn', 'journeyBtn', 'gamesBtn', 'labBtn', 'shelfBtn', 'cellarBtn', 'dlBtn', 'tidyBtn', 'settingsBtn', 'styleBtn', 'helpBtn', 'newchat'];
 const findBox = createFind({
   items: () => [
     ...PAGE_BTNS.filter((id) => $(id) && !$(id).hidden).map((id) => ({ label: $(id).getAttribute('aria-label') || id, kind: ['settingsBtn', 'styleBtn', 'helpBtn', 'dlBtn', 'tidyBtn', 'cellarBtn', 'newchat'].includes(id) ? 'Tool' : 'Page', words: $(id).title, run: () => $(id).click() })),
