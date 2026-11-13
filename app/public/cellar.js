@@ -466,7 +466,8 @@ export function createCellar({ popOut = null } = {}) {
     const d = sp.draft || {};
     const llms = roles?.options?.llm || [];
     const n = (k, label, hint) => `<label class="pick"><span>${label}</span><input type="text" inputmode="numeric" data-speed="${k}" value="${esc(sp[k] ?? '')}" placeholder="${hint}" style="width:7em"></label>`;
-    const models = [...new Set([...llms.map((o) => o.value), ...Object.keys(sp.modelArgs || {})])];
+    const models = [...new Set([...llms.map((o) => o.value), ...Object.keys(sp.modelArgs || {}), ...Object.keys(sp.expertsPerWord || {})])];
+    const pw = sp.expertsPerWord?.[speedModel || models[0]];
     return `<div><strong>Speed (Bob's own engine)</strong>${settings.engine === 'llamacpp' ? '' : ' <span class="tag">only used with Bob\'s own engine</span>'} ${tip('Changes apply the next time a brain loads. Leave a box empty for the engine\'s default.', 'Speed')}
       <div class="row">${n('threads', 'Threads', 'auto')}${n('batch', 'Batch', '2048')}${n('ubatch', 'Micro-batch', '512')}</div>
       <label class="switch"><input type="checkbox" data-fit ${sp.fit !== false ? 'checked' : ''}><span><strong>Fit to free graphics memory</strong> <span class="tag good">recommended</span> ${tip('Fits each brain around whatever else is using the graphics card right now. Faster and steadier than a fixed split.', 'Fit to free graphics memory')}</span></label>
@@ -477,7 +478,8 @@ export function createCellar({ popOut = null } = {}) {
       ${turboRowsHtml(sp, llms)}
       ${sp.trainer ? `<p class="muted">The Lab's Trainer pack is here (for Teach it). <button type="button" class="link" data-trainerremove aria-expanded="false">Remove the Trainer pack</button></p>` : ''}
       <div class="row"><label class="pick"><span>Extra settings for one brain</span><select data-margsmodel>${models.map((m) => `<option ${m === speedModel ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label>
-        <label class="pick" style="flex:1"><span>Engine flags (for example <code>--n-cpu-moe 8</code>)</span><input type="text" data-margs value="${esc((sp.modelArgs?.[speedModel || models[0]] || []).join(' '))}" placeholder="none"></label></div>
+        <label class="pick" style="flex:1"><span>Engine flags (for example <code>--n-cpu-moe 8</code>)</span><input type="text" data-margs value="${esc((sp.modelArgs?.[speedModel || models[0]] || []).join(' '))}" placeholder="none"></label>
+        <label class="pick"><span>Experts per word <span class="tag warn">experimental</span> ${tip('For a mixture-of-experts brain: how many of its experts it asks for each word. Empty means the brain\'s own count, which is how it was made. More is slower and can help or hurt; fewer is faster. One number, or one per layer with commas. Brain Engine changes it before the next answer without reloading, and the brain file never changes. Try counts first in the Lab, Peek inside.', 'Experts per word')}</span><input type="text" inputmode="numeric" data-perword value="${esc(pw == null ? '' : Array.isArray(pw) ? pw.join(',') : pw)}" placeholder="its own" style="width:9em" aria-label="Experts per word for this brain, empty for its own"></label></div>
     </div>`;
   }
 
@@ -2096,6 +2098,18 @@ export function createCellar({ popOut = null } = {}) {
         const r = await api('/api/settings', { speed: { draft: d } }); settings.speed = r.speed; flash(el, 'Saved.'); return;
       }
       if ('margsmodel' in el.dataset) { speedModel = el.value; draw(); return; }
+      if ('perword' in el.dataset) { // Brain Engine 0013: experts per word, per brain; empty = the brain's own
+        const model = speedModel || dlg.querySelector('[data-margsmodel]')?.value;
+        if (!model) return;
+        const typed = el.value.trim();
+        if (typed && !/^\d+(\s*,\s*\d+)*$/.test(typed)) { alertIn(el, 'A whole number, or one per layer with commas (for example 6,6,4,4).'); return; }
+        const want = !typed ? null : typed.includes(',') ? typed.split(/\s*,\s*/).map(Number) : Number(typed);
+        const r = await api('/api/settings', { speed: { expertsPerWord: { [model]: want } } }); settings.speed = r.speed;
+        const kept = r.speed.expertsPerWord?.[model];
+        if (want !== null && (kept === null || kept === undefined)) { alertIn(el, 'That count was left out: it goes from 1 up to the experts the brain has.'); el.value = ''; return; }
+        el.value = kept == null ? '' : Array.isArray(kept) ? kept.join(',') : String(kept);
+        flash(el, kept == null ? 'Saved. The brain\'s own count from its next answer.' : 'Saved. Used from this brain\'s next answer, no reload.'); return;
+      }
       if ('margs' in el.dataset) {
         const model = speedModel || dlg.querySelector('[data-margsmodel]')?.value;
         if (!model) return;

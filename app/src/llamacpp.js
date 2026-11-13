@@ -2,6 +2,7 @@
 // Same interface as the Ollama client, so the brain doesn't care which engine is in use.
 // Models are found by Ollama name in Ollama's model folder (no duplicate downloads), or set by path in config.
 import { learnPer, promptChars, perFor } from './token-count.js';
+import { perWordFor, perWordWords, sendPerWord } from './experts-per-word.js'; // Brain Engine 0013
 import { replyStats } from './speed-stats.js';
 import fs from 'node:fs';
 import { commandLineOf } from './util.js';
@@ -699,6 +700,7 @@ export class LlamaCpp {
     if (this.primedHash === hash) return 'ready';
     this.active++;
     try {
+      await this.sendPerWord(model); // before the reading, which a change of experts per word would throw away
       const res = await fetch(this.url + '/v1/chat/completions', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ model, messages: [...LlamaCpp.toOpenAI(messages), { role: 'user', content: '.' }], tools: tools?.length ? tools : undefined, max_tokens: 1, stream: false, cache_prompt: true, chat_template_kwargs: { enable_thinking: false } }),
@@ -1158,6 +1160,7 @@ export class LlamaCpp {
     });
     this.child = child;
     this.loadedOk = false;
+    this.perWordSent = null; this.perWordLive = false; // a new engine starts with the brain's own experts per word
     this.current = model;
     this.currentCtx = ctx || null;
     this.currentCpu = Boolean(cpu);
@@ -1305,6 +1308,25 @@ export class LlamaCpp {
     } finally { opts.signal?.removeEventListener?.('abort', onAbort); }
   }
 
+  // Brain Engine 0013: the experts per word saved for this brain (Settings, Speed), sent before its first answer on
+  // this engine and again after a change, with no reload. Nothing is sent for a brain without one. Only when this
+  // reply has the engine to itself (Brain Engine refuses while answering); otherwise the next reply sends it.
+  async sendPerWord(model) {
+    const want = perWordFor(this.lc, model);
+    const key = `${model}|${JSON.stringify(want)}`;
+    if (this.perWordSent === key || this.current !== model || this.active > 1) return;
+    if (want === null && !this.perWordLive) { this.perWordSent = key; return; } // the brain's own, and the engine has it
+    try {
+      const r = await sendPerWord(this.url, want, { timeoutMs: 15000 });
+      this.perWordSent = key;
+      this.perWordLive = want !== null;
+      try { this.log?.('engine', `${model}: experts per word ${perWordWords(want, r?.n_expert_used)}`); } catch {}
+    } catch (e) {
+      this.perWordSent = key; // said once; tried again after the next change or load
+      try { this.log?.('engine', `${model}: experts per word not changed: ${e.message}`); } catch {}
+    }
+  }
+
   async chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver, task, temperature }) {
     // 1.5.52: a brain whose template refused a mid-chat system note gets them folded in from then on (foldSystem).
     this.noMidSystem ||= new Set();
@@ -1323,6 +1345,7 @@ export class LlamaCpp {
       } catch {}
     }
     if (this.noMidSystem.has(model)) messages = foldSystem(messages);
+    await this.sendPerWord(model);
     // Item 14 (Nov 11): a reply that stops sending words is stopped, not waited on until someone presses Stop. Once
     // words are coming, a quiet spell longer than STALL_MS (twice that when the brain is spread over other Bobs' cards)
     // means the engine hung: it is let go and the error says "terminated", so Bob loads it again and asks once more.
