@@ -85,6 +85,21 @@ const SCI_ANGLES = ['physics: motion, energy, forces, heat, light, with a worked
 const thinkMode = String(o.think || 'half');
 // --review: the teacher reads each finished lesson and grades it; a failed one goes to rejected.jsonl (with why), not lessons.jsonl
 const review = Boolean(o.review);
+// --odds K (13 Nov, the owner's rule: every set carries its teacher's odds): each answer the teacher writes is saved with its own
+// top-K odds per word in odds.jsonl beside the lessons, one row per kept lesson ({idea, job, think, turns: [{step, set, odds}]}).
+// Only the writer's own words can be scored this way (llama-server gives the odds of what it writes, not of someone else's text).
+const oddsK = Math.max(0, Math.min(64, Number(o.odds) || 0));
+// --effort low|medium|high: GPT-OSS's thinking depth (it always thinks; a "no think" lesson is written at low). Qwen ignores it.
+const effort = ['low', 'medium', 'high'].includes(String(o.effort)) ? String(o.effort) : '';
+// --sampling t,p,k: the writer's own published sampling (GPT-OSS: 1,1,0) instead of Qwen's
+const sampling = o.sampling ? String(o.sampling).split(',').map(Number) : null;
+const extraBody = (think) => ({
+  ...(effort ? { chat_template_kwargs: { enable_thinking: Boolean(think), reasoning_effort: think ? effort : 'low' } } : {}),
+  ...(sampling ? { temperature: sampling[0], top_p: sampling[1], top_k: sampling[2] } : {}),
+  ...(oddsK ? { logprobs: true, top_logprobs: oddsK } : {}),
+});
+// [token, logprob, [[token, logprob] x K]] per word: the same content as tool-score's odds, in a smaller shape
+const packOdds = (lp) => (lp?.content || []).map((x) => [x.token, Math.round(x.logprob * 1e4) / 1e4, (x.top_logprobs || []).map((y) => [y.token, Math.round(y.logprob * 1e4) / 1e4])]);
 // --avoid <folders>: requests already in these lesson folders are never written again (first user message, lowercased, gaps squeezed)
 const norm = (t) => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 const avoid = new Set();
@@ -174,6 +189,7 @@ async function one(idea, think, room = 1) { // room 2 = a second try with twice 
   const user = idea.image ? { role: 'user', content: [{ type: 'text', text: idea.text }, imgPart(idea.image)] } : { role: 'user', content: idea.text };
   const saved = [{ role: 'user', content: idea.text, ...(idea.image ? { image: idea.image } : {}) }];
   const live = [user];
+  const odds = []; // this lesson's teacher odds, kept only if the lesson is
   let failNext = idea.job === 'recover' || idea.job === 'codefix';
   for (let step = 0; step < 6; step++) {
     const t0 = toolsFor(loaded); const t = dropTools.size ? { ...t0, tools: (t0.tools || []).filter((x) => !dropTools.has(x.function?.name || x.name)), system: String(t0.system || '').split('\n').filter((ln) => ![...dropTools].some((d) => ln.includes(d))).join('\n') } : t0; // dropped tools leave the offer AND the prompt text
@@ -181,7 +197,8 @@ async function one(idea, think, room = 1) { // room 2 = a second try with twice 
     const set = setKey(sys, t.tools);
     // teacher-only additions (persona, act nudge) go to the server but never into the saved prompt or the set key
     const teacherOnly = [persona, ACT_JOBS.has(idea.job) ? ACT_NUDGE : ''].filter(Boolean).join('\n\n');
-    const { msg, finish } = await chat(srv.url, { messages: [{ role: 'system', content: teacherOnly ? `${sys}\n\n${teacherOnly}` : sys }, ...live], tools: t.tools, think, max: (think ? 6000 : 3000) * room });
+    const { msg, finish, logprobs } = await chat(srv.url, { messages: [{ role: 'system', content: teacherOnly ? `${sys}\n\n${teacherOnly}` : sys }, ...live], tools: t.tools, think, max: (think ? 6000 : 3000) * room, ...extraBody(think) });
+    if (oddsK) odds.push({ step, set, odds: packOdds(logprobs) });
     if (finish === 'length') throw new Error('ran out of room');
     const a = { role: 'assistant', content: msg.content || '', ...(msg.reasoning_content ? { reasoning: msg.reasoning_content } : {}), ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}), set };
     saved.push(a); live.push({ role: 'assistant', content: a.content, ...(a.tool_calls ? { tool_calls: a.tool_calls } : {}) });
@@ -203,6 +220,7 @@ async function one(idea, think, room = 1) { // room 2 = a second try with twice 
     if (!v.ok) { appendJsonl(path.join(dir, 'rejected.jsonl'), { idea: idea.id, job: idea.job, think, why: v.why, messages: saved }); throw new Error(`review: ${v.why}`); }
   }
   appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, messages: saved });
+  if (oddsK) appendJsonl(path.join(dir, 'odds.jsonl'), { idea: idea.id, job: idea.job, think, k: oddsK, turns: odds });
 }
 // The teacher as a strict reviewer: right tool or rightly none, exact arguments, results read, a final answer that does the job.
 const RULES = { restraint: 'This message only wants an answer Bob knows: calling any tool is a FAIL.', precise: 'Every detail from the request (names, paths, dates, amounts) must appear exactly in the tool arguments.', agent: 'Each step must use what the previous result returned; the final answer must sum up what was done.' };
