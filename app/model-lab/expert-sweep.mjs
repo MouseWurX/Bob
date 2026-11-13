@@ -24,7 +24,8 @@ if (!o.url || !o.lessons) { console.error('--url <Brain Engine> --lessons <lesso
 const url = String(o.url).replace(/\/$/, '');
 const lessonsDir = String(o.lessons);
 const isHoldout = (id) => parseInt(crypto.createHash('md5').update(String(id)).digest('hex').slice(0, 8), 16) / 0xFFFFFFFF < 0.05;
-const sets = JSON.parse(fs.readFileSync(path.join(lessonsDir, 'toolsets.json'), 'utf8'));
+let sets = {}; // 1.5.219 a plain message, not a crash, when the set has no tool sets
+try { sets = JSON.parse(fs.readFileSync(path.join(lessonsDir, 'toolsets.json'), 'utf8')) || {}; } catch (e) { console.error(`${lessonsDir} has no readable toolsets.json (${e.code || e.message}): the sweep needs Bob's prompt and tools for each lesson`); process.exit(1); }
 const targets = o.targets ? JSON.parse(fs.readFileSync(String(o.targets), 'utf8')) : {};
 const targetOf = (job) => Object.entries(targets).find(([, t]) => (t.jobs || []).includes(job))?.[0] || (Object.keys(targets).length ? 'other' : 'all');
 
@@ -40,7 +41,7 @@ for (const l of readJsonl(path.join(lessonsDir, 'lessons.jsonl'))) {
 }
 const n = Number(o.sample);
 for (const k of Object.keys(byTarget)) { const all = byTarget[k]; if (all.length > n) { const step = all.length / n; byTarget[k] = Array.from({ length: n }, (_, i) => all[Math.floor(i * step)]); } }
-if (!Object.keys(byTarget).length) { console.error(`no held-out chats in ${lessonsDir}`); process.exit(1); }
+if (!Object.keys(byTarget).length) { console.error(`no held-out tool lessons in ${lessonsDir} (held-out ideas whose first answer uses a set in toolsets.json)`); process.exit(1); }
 
 const post = async (p, body) => {
   const r = await fetch(url + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });

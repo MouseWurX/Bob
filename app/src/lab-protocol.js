@@ -8,8 +8,9 @@
 // Methods of the Lab class. Nothing here rents, uploads or changes a brain file.
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { forgeDir } from './lab-forge.js';
+import { forgeDir, forgeCandidates } from './lab-forge.js';
 import { lessonSets, lessonSetsDir } from './lab-plan.js';
 import { labDir, readJson, writeJson, slugOf } from './lab-measure.js';
 import { nodeCmd } from './selftools.js';
@@ -37,10 +38,30 @@ const nums = (s, re) => { const v = String(s || '').replace(/\s+/g, ''); return 
 export const protocolDir = (cfg) => path.join(labDir(cfg), 'protocol');
 const freeName = (root, base) => { let n = base, i = 2; while (fs.existsSync(path.join(root, n))) n = `${base}-${i++}`; return n; };
 
+// 1.5.219 What the sweep needs before it starts, read the same way expert-sweep.mjs does: the set's toolsets.json (Bob's
+// prompt and tools for each lesson), and held-out lessons whose first answer uses one of those tool sets.
+const isHoldout = (id) => parseInt(crypto.createHash('md5').update(String(id)).digest('hex').slice(0, 8), 16) / 0xFFFFFFFF < 0.05;
+export function sweepReadiness(lessonsDir) {
+  let sets;
+  try { sets = JSON.parse(fs.readFileSync(path.join(lessonsDir, 'toolsets.json'), 'utf8')); } catch (e) { return { problem: e.code === 'ENOENT' ? 'This set has no toolsets.json (Bob\'s prompt and tools for each lesson), so the sweep can\'t ask the brain anything. Pick a set written by the Lab\'s lesson writer, or a cleaned copy of one.' : 'This set\'s toolsets.json can\'t be read. Write the set again, or clean a copy of it.' }; }
+  if (!sets || typeof sets !== 'object' || !Object.keys(sets).length) return { problem: 'This set\'s toolsets.json is empty, so the sweep can\'t ask the brain anything. Write the set again, or clean a copy of it.' };
+  let held = 0, text = '';
+  try { text = fs.readFileSync(path.join(lessonsDir, 'lessons.jsonl'), 'utf8'); } catch { return { problem: 'This set has no lessons.jsonl.' }; }
+  for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
+    if (!line.trim()) continue;
+    let l; try { l = JSON.parse(line); } catch { continue; }
+    if (l.idea === undefined || !isHoldout(l.idea)) continue;
+    const i = (l.messages || []).findIndex((m) => m.role === 'assistant');
+    if (i >= 1 && sets[l.messages[i].set]) held++;
+  }
+  if (!held) return { problem: 'This set has no held-out tool lessons (about 1 in 20 ideas is kept back for checks), so there\'s nothing fair to score. Pick a bigger set.' };
+  return { held };
+}
+
 // The checks for one free step: tool = clean | pairs | sweep; form = the page's answers. Never writes anything.
 export function planProtocol(tool, form = {}, { dir = '', sets = [], root = '', review = '' } = {}) {
   const problems = [], notes = [];
-  if (!dir) problems.push('The Forge\'s tools aren\'t next to this copy of Bob. They live in the model-lab folder of Bob\'s source.');
+  if (!dir) problems.push('Bob can\'t find the Forge\'s tools: the model-lab folder of Bob\'s source.');
   else if (PROTOCOL_TOOLS[tool] && !fs.existsSync(path.join(dir, PROTOCOL_TOOLS[tool]))) problems.push(`${PROTOCOL_TOOLS[tool]} isn't in this model-lab folder yet. Update Bob's source.`);
   if (!PROTOCOL_TOOLS[tool]) { problems.push('There\'s no protocol step by that name.'); return { problems, notes, args: [] }; }
   const set = sets.find((x) => x.id === String(form.set || ''));
@@ -73,9 +94,10 @@ export function planProtocol(tool, form = {}, { dir = '', sets = [], root = '', 
     const sample = Math.max(10, Math.min(200, Math.round(Number(form.sample) || 60)));
     const out = path.join(root, 'sweeps');
     if (set) args.push('--url', url, '--lessons', path.dirname(set.file), '--sample', String(sample), '--out', out, ...(used ? ['--used', used] : []), ...(scales ? ['--layer-scale', scales, '--groups', '4'] : []));
-    if (set) { const tf = path.join(out, `targets-${slugOf(set.id) || 'set'}.json`); args.push('--targets', tf); notes.push('Every kind of lesson in the set (its jobs) is scored on its own, so a setting that helps one and hurts another shows.'); return { problems, notes, args, out, set, targetsFile: tf }; }
+    if (set) { const r = sweepReadiness(path.dirname(set.file)); if (r.problem) problems.push(r.problem); else notes.push(`${r.held} held-out chats to score, at most ${sample} per kind of lesson.`); }
     notes.push('Nothing in the brain file changes: the sweep only turns the engine\'s live switches, and puts them back at the end. It needs a Brain Engine with the live switches (experts per word, dials, expert mask); an older one skips the trials it can\'t do.');
     notes.push('Only one card test at a time: don\'t sweep while a game, a benchmark or another test is using the card.');
+    if (set) { const tf = path.join(out, `targets-${slugOf(set.id) || 'set'}.json`); args.push('--targets', tf); notes.push('Every kind of lesson in the set (its jobs) is scored on its own, so a setting that helps one and hurts another shows.'); return { problems, notes, args, out, set, targetsFile: tf }; }
     return { problems, notes, args, out, set };
   }
   return { problems, notes, args };
@@ -109,7 +131,7 @@ export const protocolJobs = {
     let sweeps = []; try { sweeps = fs.readdirSync(path.join(root, 'sweeps')).filter((f) => /^expert-sweep-.*\.md$/.test(f)).sort().reverse().slice(0, 5).map((f) => ({ name: f, text: fs.readFileSync(path.join(root, 'sweeps', f), 'utf8').replace(/\r\n/g, '\n').slice(0, 6000) })); } catch {}
     const sets = lessonSets(this.cfg);
     return {
-      found: Boolean(dir), tools: Object.fromEntries(Object.entries(PROTOCOL_TOOLS).map(([k, f]) => [k, Boolean(dir) && fs.existsSync(path.join(dir, f))])),
+      found: Boolean(dir), looked: dir ? [] : forgeCandidates(this.cfg), tools: Object.fromEntries(Object.entries(PROTOCOL_TOOLS).map(([k, f]) => [k, Boolean(dir) && fs.existsSync(path.join(dir, f))])),
       steps: PROTOCOL_STEPS, sets: sets.map((x) => ({ id: x.id, name: x.name, count: x.count, cleaned: fs.existsSync(path.join(path.dirname(x.file), 'CHANGES.md')), changes: (() => { try { return fs.readFileSync(path.join(path.dirname(x.file), 'CHANGES.md'), 'utf8').replace(/\r\n/g, '\n').slice(0, 4000); } catch { return ''; } })() })),
       pairs: this.protocolPairs().map(({ path: _p, ...x }) => x), sweeps,
       job: job ? { tool: job.tool, state: job.state, at: job.at, message: job.message || '', tail } : null

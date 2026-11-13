@@ -38,7 +38,7 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
   const makeLine = () => { const ms = fv.methods.filter((m) => m.ready && m.use === 'make'); return ms.length ? `<p class="forge-make">${ms.map((m) => `<button type="button" class="link" data-forgeuse="make" data-method="${m.id}">${nameNow(m.title)}</button>`).join(' · ')} <span class="muted">are on Make a brain.</span></p>` : ''; };
 
   function runsHtml() {
-    if (!fv.found) return '<p class="muted">The Forge isn\'t next to this copy of Bob. It lives in the model-lab folder of Bob\'s source; run Bob from there and its runs show here.</p>';
+    if (!fv.found) return `<p class="muted">Bob can't find the Forge. It lives in the model-lab folder of Bob's source, and installs don't carry it.${fv.looked?.length ? ` Bob looked in ${esc(fv.looked.join(', '))}. Put a copy of model-lab in one of them, or write its place in Bob's config.json as "forgeDir".` : ''}</p>`;
     const runs = fv.runs.length ? `<ul class="tlist">${fv.runs.map((r) => `<li><strong>${esc(r.when)}</strong> <span class="muted">· ${r.state === 'done' ? 'finished' : r.state === 'stopped' ? 'stopped' : 'no end recorded'}${r.made.length ? ` · made ${esc(r.made.join(', '))}` : ''}</span>
       <details><summary>Last lines of its log</summary><pre tabindex="0">${esc(r.tail.join('\n'))}</pre></details></li>`).join('')}</ul>` : '<p class="muted">No Forge runs on this replicant matrix yet.</p>';
     const brains = fv.brains.length ? `<table class="lab-report"><caption class="muted">Brains the Forge brought home. Surprise on held-back lessons, lower is better; the teacher's own score is the floor.</caption>

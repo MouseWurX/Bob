@@ -40,11 +40,11 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (req.method === 'GET' && p === '/api/lab/measures') { send(res, 200, { measures: lab.measures().map(({ rec, ...m }) => m) }); return true; }
     // 1.5.151 Learn: experiments on the brain Bob has loaded. Read-only, nothing is written, so any device Bob lets in may use them.
     if (req.method === 'GET' && p === '/api/lab/learn') { const b = learnBrain(lab.brain); send(res, 200, { on: labOn(lab.cfg), ready: b.ready, why: b.why || '', wake: b.wake === true, busy: b.busy === true, brain: b.ready ? (lab.brain?.brainLabel?.(b.model) || b.model) : '', ctx: b.ctx || 0, cards: LEARN_CARDS }); return true; }
-    if (req.method === 'GET' && p === '/api/lab/forge') { const v = lab.forgeView(); send(res, 200, isLocal ? v : { ...v, keepFiles: [] }); return true; } // 1.5.159 read-only
+    if (req.method === 'GET' && p === '/api/lab/forge') { const v = lab.forgeView(); send(res, 200, isLocal ? v : { ...v, keepFiles: [], looked: [] }); return true; } // 1.5.159 read-only; 1.5.219 folders only to this computer
     // 1.5.164 Guard rails sandbox: chat with the brain Bob has loaded, like Learn. Nothing is saved unless you press Save as lesson.
     if (req.method === 'GET' && p === '/api/lab/guard') { const g = learnBrain(lab.brain); send(res, 200, { on: labOn(lab.cfg), ready: g.ready, why: g.why || '', brain: g.ready ? (lab.brain?.brainLabel?.(g.model) || g.model) : '', demo: PAGE_DEMO, maxTurns: SANDBOX_MAX_TURNS, canSave: isLocal, settings: GUARD_SETTINGS, styles: GUARD_STYLES }); return true; }
     if (req.method === 'GET' && p === '/api/lab/brain-scores') { send(res, 200, { scores: labOn(lab.cfg) ? lab.brainScores() : {} }); return true; } // Nov 11: for the Brains page, read-only
-    if (req.method === 'GET' && p === '/api/lab/protocol') { const v = lab.protocolView(); send(res, 200, isLocal ? v : { ...v, job: v.job ? { ...v.job, tail: [] } : null }); return true; } // 13 Nov read-only
+    if (req.method === 'GET' && p === '/api/lab/protocol') { const v = lab.protocolView(); send(res, 200, isLocal ? v : { ...v, looked: [], job: v.job ? { ...v.job, tail: [] } : null }); return true; } // 13 Nov read-only
     if (req.method !== 'POST') { send(res, 404, { error: 'no' }); return true; }
     const b = await body(req);
     if (p === '/api/lab/guard/chat') { if (!labOn(lab.cfg)) { send(res, 403, { error: 'The Lab is off.' }); return true; } send(res, 200, await guardChat(lab.brain, b)); return true; }
