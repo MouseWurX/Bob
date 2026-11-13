@@ -346,6 +346,11 @@ if [ "$GENERAL_TOKENS" -gt 0 ] && [ ! -d $S/general ]; then
   find $S/general -name '*.parquet' | head
 fi
 GEN="--general $S/general --general-tokens $GENERAL_TOKENS"
+# right-vs-wrong answers for preference training (plan.pref, made on the PC by make-pairs.mjs): one folder the heal reads
+if [ -f $IN/pref-pairs.jsonl ] || [ -f $IN/pref-kto.jsonl ]; then
+  mkdir -p $IN/pref; for f in pairs.jsonl kto.jsonl toolsets.json; do [ -f $IN/pref-$f ] && mv $IN/pref-$f $IN/pref/$f; done
+  echo "preference data: $(cat $IN/pref/pairs.jsonl 2>/dev/null | wc -l) pairs, $(cat $IN/pref/kto.jsonl 2>/dev/null | wc -l) marked answers"
+fi
 
 # --- extra lessons written on this card (plan.write_lessons): vLLM serves the full Qwen, the PC's lesson writer talks to it ---
 WL=$(plan ".get('write_lessons')")
@@ -431,6 +436,24 @@ if [ -n "$TM" ]; then
 fi
 # --- train the teacher (plan.train_teacher): the full Qwen learns every lesson by plain next-word training (no odds to copy, it IS the
 # teacher), is kept as a Bob of its own (35Bob "Bobert": no cut, all experts) and becomes the teacher for the odds and the cuts below ---
+# --- blends (plan.merge, 13 Nov): a trained Bob mixed back toward its base on the CPU (merge.py), each made into GGUF files to test at home ---
+MG=$(plan ".get('merge')")
+if [ -n "$MG" ]; then
+  for i in $(seq 0 $(( $(plan "['merge'].__len__()") - 1 ))); do
+    MN=$(plan "['merge'][$i]['name']"); MB=$(plan "['merge'][$i].get('base','teacher')"); MT=$(plan "['merge'][$i]['tuned']")
+    [ "$MB" = "teacher" ] && MB=$S/teacher || MB=$S/$MB; MT=$S/$MT
+    [ -f $MB/config.json ] && [ -f $MT/config.json ] || { echo "merge $MN: $MB or $MT is not on the volume, skipped"; continue; }
+    status merge "$MN: blending $(plan "['merge'][$i].get('weight',0.7)") of $(basename $(dirname $MT)) with $(basename $MB) ($(plan "['merge'][$i].get('method','linear')"))"
+    mkdir -p $OUT/$MN
+    python3 merge.py --base $MB --tuned $MT --out $W/merged-$MN --method $(plan "['merge'][$i].get('method','linear')") --weight $(plan "['merge'][$i].get('weight',0.7)") \
+      --density $(plan "['merge'][$i].get('density',0.5)") > $OUT/$MN/merge.log 2>&1 || { echo "merge $MN failed (out/$MN/merge.log)"; tail -3 $OUT/$MN/merge.log; continue; }
+    cp $W/merged-$MN/merge-report.json $OUT/$MN/
+    for j in $(seq 1 90); do [ -f $S/llama-ready ] || [ -f $S/llama-failed ] && break; sleep 20; done
+    python3 export.py --model $W/merged-$MN --out $OUT/$MN --name "$MN" --teacher "$TEACHER" --llama $S/llama.cpp --quants $(plan ".get('quants','Q4_K_M')") --pending --what "$(plan "['merge'][$i].get('what','A blend of a trained Bob and the brain it came from, to test at home.')")" \
+      > $OUT/$MN/export.log 2>&1 && { keep_bob $MN "$MN" ""; release_files $MN "$MN"; status ready "$MN ready to download"; } || { echo "merge $MN: export failed (out/$MN/export.log)"; tail -3 $OUT/$MN/export.log; }
+    rm -rf $W/merged-$MN
+  done
+fi
 TT=$(plan ".get('train_teacher')")
 if [ -n "$TT" ]; then
   TNAME=$(plan "['train_teacher'].get('name','35Bob')"); TNICK=$(plan "['train_teacher'].get('nickname','Bobert')"); THOURS=$(plan "['train_teacher'].get('hours',8)")
@@ -778,12 +801,30 @@ PY
   eval "$(python3 - $i <<'PY'
 import json,sys,os; p=json.load(open(os.environ.get('FORGE_ROOT','/workspace')+'/in/plan.json')); r=p['rungs'][int(sys.argv[1])]; h=p.get('heal',{})
 print(f"EXPERTS={r.get('experts',h.get('experts','lora'))}; HOURS={r.get('hours',h.get('hours',2.5))}; EPOCHS={h.get('epochs',1)}; MAXLEN={p.get('max_len',8192)}; QUANTS={p.get('quants','Q4_K_M')}")
+# 13 Nov: new ways to learn, each only when the plan asks (heal.pref needs plan.pref, the pairs folder the PC sent)
+pr=r.get('pref',h.get('pref')); op=r.get('onpolicy',h.get('onpolicy'))
+a=[]
+if pr and os.path.isdir(os.environ.get('FORGE_ROOT','/workspace')+'/in/pref'): a+=["--pref",os.environ.get('FORGE_ROOT','/workspace')+"/in/pref","--pref-kind",str(pr.get('kind','orpo')),"--pref-beta",str(pr.get('beta',0.1)),"--pref-every",str(pr.get('every',4)),"--pref-hours",str(pr.get('hours',0.5))]
+if op: a+=["--onpolicy-frac",str(op.get('frac',0.2)),"--onpolicy-new",str(op.get('new',256)),"--onpolicy-temp",str(op.get('temp',1.0))]
+print("NEWARGS='"+" ".join(a)+"'; ONPOLICY="+("1" if op else ""))
+g=p.get('grpo'); print("GRPO="+("1" if g and (not g.get('rungs') or r['name'] in g['rungs']) else ""))
 PY
 )"
+  [ -n "$ONPOLICY" ] && NEWARGS="$NEWARGS --onpolicy-teacher $TEACHER_DIR"
   mkdir -p $OUT/$NAME
   if python3 heal.py --model $W/cut-$NAME --lessons $IN --teacher $TPT --save $W/healed-$NAME --cache $CACHE \
-    --experts $EXPERTS --epochs $EPOCHS --hours $HOURS --max-len $MAXLEN --report $OUT/$NAME/heal-report.json $GEN; then
+    --experts $EXPERTS --epochs $EPOCHS --hours $HOURS --max-len $MAXLEN --report $OUT/$NAME/heal-report.json $GEN $NEWARGS; then
     rm -rf $W/cut-$NAME
+    # 13 Nov: plan.grpo, a reward pass on tool calls after the heal; kept only if its held-out grade is no worse than the heal's
+    if [ -n "$GRPO" ]; then
+      status heal "$NAME: reward pass on tool calls (GRPO)"
+      if python3 grpo.py --model $W/healed-$NAME --lessons $IN --save $W/grpo-$NAME --report $OUT/$NAME/grpo-report.json --max-len $MAXLEN \
+          --hours $(plan "['grpo'].get('hours',1.5)") --steps $(plan "['grpo'].get('steps',200)") --group $(plan "['grpo'].get('group',6)") \
+          --chats $(plan "['grpo'].get('chats',4)") --kl $(plan "['grpo'].get('kl',0.02)") --lr $(plan "['grpo'].get('lr',5e-6)") && \
+         python3 -c "import json,sys; r=json.load(open(sys.argv[1])); sys.exit(0 if r['after']['reward']>=r['before']['reward'] else 1)" $OUT/$NAME/grpo-report.json; then
+        cp $W/healed-$NAME/adapter.pt $W/grpo-$NAME/heal-adapter.pt; rm -rf $W/healed-$NAME; mv $W/grpo-$NAME $W/healed-$NAME; echo "$NAME: reward pass kept"
+      else rm -rf $W/grpo-$NAME; echo "$NAME: reward pass did not help on the held-out chats (or failed): the healed Bob stays"; fi
+    fi
   else
     # the heal is the newest code: if it breaks, keep the session useful by shipping the unhealed cut (REAP-style) and carrying on from it
     status heal "$NAME: heal FAILED, exporting the unhealed cut as $NAME-raw"
