@@ -135,7 +135,8 @@ globalThis.BobHelp = {
 <li><strong>Lock again after:</strong> back to the passcode screen when nobody has touched me for that many minutes. 0 means only when I open.</li>
 <li><strong>Lock my chats and memory:</strong> this phone's chats and my memory are kept scrambled (encrypted) in my storage, opened by the passcode. Off puts them back to plain.</li>
 <li><strong>Lock Bob now:</strong> back to the passcode screen at once.</li></ul>
-<p><strong>⚠ If you forget the passcode, your locked chats and memory are gone for good.</strong> Nobody can open them, not even me, and there is no reset. Write it down first. Your other replicant matrix has its own lock, in its Settings, This replicant matrix, Passcode lock.</p>`
+<p><strong>Spare keys for my other Bobs:</strong> keep a spare key for a Bob on your computer, so it can reset a forgotten passcode and keep its locked chats. On that Bob, press <strong>Get a spare key ready</strong> (its Settings, Passcode lock), then <strong>Pick up a spare key</strong> here. When it asks (Forgot it? on its lock screen), it says "asking to reset now" here: tap <strong>Let it reset</strong>. Only from this app, never a web page. The spare opens nothing by itself.</p>
+<p><strong>⚠ If you forget the passcode, your locked chats and memory are gone for good.</strong> Nobody can open them, not even me, and this phone's own lock has no reset yet. Write it down first. Your other replicant matrix has its own lock, in its Settings, This replicant matrix, Passcode lock.</p>`
     },
     {
       id: 'alerts', title: 'Alerts',

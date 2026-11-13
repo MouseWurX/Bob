@@ -231,6 +231,7 @@
     "test/run-claude-door-test.js",
     "test/run-coding-agents-test.js",
     "test/run-lock-test.js",
+    "test/run-lock-reset-test.js",
     "test/run-iphone-test.js",
     "test/run-toolpacks-test.js",
     "test/run-backup-test.js",

@@ -111,6 +111,9 @@ import { clearDocCache } from './my-docs.js';
 import { sandboxHolds } from './selftools.js';
 import { makeAppsRoute, appsDoorView, saveAppsDoor } from './apps-door.js'; // Brains for other apps (/v1)
 import { Lock, lockOn, lockView, lockPage, OPEN_WHILE_LOCKED } from './lock.js'; // 🔒 Passcode lock (off unless you turn it on)
+import { LockReset, SpareKeeper } from './lock-reset.js'; // 🔑 Forgot the passcode? (off unless set up)
+import { lockResetRoute, forgotRoute } from './lock-reset-routes.js';
+import { emailAccountRoute, canSend, sendToSelf } from './email-account.js'; // 📧 Email account (Online services)
 import { findOpenscad } from './parts3d.js';
 import { model3dReady } from './model3d.js';
 import { lockAtStart, secretsPatch, secretsView } from './secret-settings.js'; // 🔐 Locked secrets
@@ -413,6 +416,14 @@ readRemote();
 const startedWide = Boolean(remoteOn && remote.bindAddress);
 const loginTries = [];
 const winLock = new Lock(cfg, { log: (k, t) => brain.log(k, t) });
+// 🔑 Forgot it? Codes go only to your own email account or your own Discord DMs (lock-reset.js).
+const lockReset = new LockReset(cfg, winLock, { log: (k, t) => brain.log(k, t), send: {
+  emailReady: () => canSend(cfg),
+  email: (text) => sendToSelf(cfg, 'Bob: your passcode reset code', text),
+  discordReady: () => Boolean(discord?.running && discord.settings().dmEnabled && discord.settings().ownerId),
+  discord: async (text) => { const sent = await discord.dm(text); if (!sent?.length) throw new Error('Discord didn\'t take the message'); return {}; }
+} });
+const spareKeeper = new SpareKeeper(cfg, { call: (bob, path, o) => brain.lenders.call(bob, path, o), name: () => myName(), log: (k, t) => brain.log(k, t) });
 const profiles = new Profiles(cfg, { brain, log: (k, t) => brain.log(k, t) }); // 👥 off unless turned on
 focus = new Focus({ send: broadcast });
 { const t = setInterval(() => focus.tick(), 5000); t.unref?.(); }
@@ -502,6 +513,14 @@ const server = http.createServer(async (req, res) => {
     // 🔒 Passcode lock (off unless you turn it on): on this replicant matrix, nothing but the lock screen until the
     // passcode is typed. Phones and other Bobs come through the door above with its own passcode instead.
     if (isLocal && lockOn(cfg)) {
+      // 🔑 Forgot it? (lock-reset.js): the page and its forms. Only the owner's lock; a person's own passcode can't be reset here.
+      if (p.startsWith('/unlock/') && await forgotRoute({ req, res, p, send, reset: lockReset, host, grant: (token, aside) => {
+        profiles.useMain(); winLock.lockNow();
+        for (const c of [...clients, ...mindClients]) { try { c.end(); } catch {} }
+        const t = winLock.grant();
+        res.writeHead(303, { location: '/', 'set-cookie': winLock.cookie(t), 'cache-control': 'no-store' }); res.end();
+        if (aside) brain.log('settings', `passcode reset: locked chats and memory are in ${aside}`);
+      } })) return;
       if (req.method === 'POST' && p === '/unlock') {
         const origin = String(req.headers.origin || '').toLowerCase();
         if (origin && origin !== `http://${host}`) return send(res, 403, { error: 'refused (other website)' });
@@ -757,6 +776,9 @@ const server = http.createServer(async (req, res) => {
       const extra = !wasOn && lockOn(cfg) ? { 'set-cookie': winLock.cookie(winLock.grant()) } : {};
       return send(res, 200, { ...r.view, changed: r.changed }, 'application/json', extra);
     }
+    // 🔑 Forgot it? Settings, and the spare keys your Bobs keep for each other (lock-reset-routes.js).
+    if ((p.startsWith('/api/lock/') || p === '/api/spares') && await lockResetRoute({ req, res, p, isLocal, body, send, reset: lockReset, keeper: spareKeeper, bobs: () => brain.lenders?.bobs?.() || [] })) return;
+    if (p === '/api/email-account' && await emailAccountRoute({ req, res, p, isLocal, cfg, brain, body, send })) return;
     // 🔒 With Lock my chats and memory on, the memory file is scrambled on disk, so it's edited here instead of in a text editor.
     if (p === '/api/memory/text' && (req.method === 'GET' || req.method === 'POST')) {
       if (!isLocal) return send(res, 403, { error: 'Bob\'s memory can only be edited on this replicant matrix itself.' });

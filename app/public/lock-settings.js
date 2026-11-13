@@ -17,7 +17,7 @@ export function lockSummary(v) {
   return `On${v.idleMinutes ? ` · locks after ${v.idleMinutes} min of nothing` : ' · asks when Bob starts'}${v.encrypt ? ' · chats and memory locked' : ''}`;
 }
 
-export const lockSettingsHtml = () => '<div class="lock-box"><p class="muted">Loading…</p></div>';
+export const lockSettingsHtml = () => '<div class="lock-box"><p class="muted">Loading…</p></div><div class="lock-reset-box"></div>';
 
 export async function mountLockSettings(box, { onChange = () => {} } = {}) {
   if (!box) return;
@@ -88,6 +88,56 @@ export async function mountLockSettings(box, { onChange = () => {} } = {}) {
     }
   });
   try { await load(); } catch (e) { box.innerHTML = `<strong>🔒 Passcode lock</strong><p class="muted">${esc(e.message)}</p>`; }
+  mountLockReset(box.parentElement?.querySelector('.lock-reset-box'));
+}
+
+const when = (iso) => { const d = new Date(iso); return Number.isNaN(+d) ? '' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); };
+
+// 🔑 Forgot the passcode? (src/lock-reset.js): a spare key on another Bob, codes by email or Discord, and the spare
+// keys this Bob keeps for your other Bobs. Everything shows all the time; nothing is set up until you press it.
+export async function mountLockReset(box) {
+  if (!box) return;
+  let v = {}, s = { kept: [], bobs: [] }, msg = '';
+  const draw = () => {
+    const kept = s.kept.map((k) => `<li><strong>${esc(k.bob)}</strong> <span class="muted">since ${esc(when(k.at))}${k.asking ? ' · <strong>asking to reset now</strong>' : ''}</span>
+      <button type="button" class="${k.asking ? 'get' : 'mini'}" data-spare-let="${esc(k.id)}">Let it reset</button> <button type="button" class="mini" data-spare-forget="${esc(k.id)}" aria-label="Forget the spare key for ${esc(k.bob)}">Forget</button></li>`).join('');
+    box.innerHTML = `<h4 class="ssub">🔑 Forgot the passcode?</h4>
+      <p class="muted">Ways back in, started from the lock screen with <strong>Forgot it?</strong>.</p>
+      <div class="srow"><span class="slabel"><strong>Spare key on another Bob</strong><br><span class="muted">Gets everything back, locked chats too. Press this, then <strong>Pick up a spare key</strong> in your other Bob's own Settings within 15 minutes.</span></span>
+        <span class="sact"><button type="button" data-reset-offer>Get a spare key ready</button></span></div>
+      <p class="muted">${v.offerUntil ? `Waiting to be picked up until ${esc(new Date(v.offerUntil).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}. ` : ''}${v.keptBy?.length ? `Kept by: ${esc(v.keptBy.map((k) => k.name).join(', '))}.` : 'No other Bob keeps one yet.'}${v.spareReady ? ' <button type="button" class="mini" data-reset-drop>Stop every spare key</button>' : ''}</p>
+      <label class="switch"><input type="checkbox" data-reset-way="email" ${v.email ? 'checked' : ''}><span><strong>Email me a code</strong><br><span class="muted">Opens the lock screen only; locked chats stay locked. Uses your account in Online services, 📧 Email account${v.emailReady ? '' : ' (not set up yet)'}.</span></span></label>
+      <label class="switch"><input type="checkbox" data-reset-way="discord" ${v.discord ? 'checked' : ''}><span><strong>Send a code to my Discord</strong><br><span class="muted">Same, by a private message from Bob on Discord${v.discordReady ? '' : ' (needs Bob on Discord with Discord DMs on)'}.</span></span></label>
+      <h4 class="ssub">Spare keys I keep</h4>
+      <p class="muted">For your other Bobs. When one asks, press <strong>Let it reset</strong> here.</p>
+      <ul class="plain">${kept || '<li class="muted">None yet.</li>'}</ul>
+      <div class="row"><label>Pick up a spare key from <select data-spare-from>${s.bobs.map((b) => `<option value="${esc(b.address)}">${esc(b.name)}</option>`).join('') || '<option value="">No other Bobs yet</option>'}</select></label> <button type="button" class="mini" data-spare-pickup>Pick up a spare key</button></div>
+      ${msg ? `<p class="muted" role="status">${esc(msg)}</p>` : ''}`;
+  };
+  const load = async () => {
+    try { v = await api('/api/lock/reset'); } catch (e) { msg = e.message; }
+    try { s = await api('/api/spares'); } catch (e) { msg = e.message; }
+    draw();
+  };
+  const run = async (url, data, done) => {
+    try { const r = await api(url, data); if (url === '/api/lock/reset') v = r; msg = done(r); } catch (e) { msg = e.message; }
+    if (url === '/api/spares') { try { s = await api('/api/spares'); } catch {} }
+    draw();
+  };
+  box.addEventListener('change', (e) => {
+    const w = e.target.dataset?.resetWay;
+    if (w) run('/api/lock/reset', { [w]: e.target.checked }, () => (e.target.checked ? 'On.' : 'Off.'));
+  });
+  box.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const d = b.dataset;
+    if ('resetOffer' in d) run('/api/lock/reset', { offer: true }, () => 'Ready for 15 minutes. Now press Pick up a spare key on your other Bob.');
+    else if ('resetDrop' in d) run('/api/lock/reset', { drop: true }, () => 'Every spare key stopped working. Get a new one ready when you like.');
+    else if ('sparePickup' in d) { const a = box.querySelector('[data-spare-from]')?.value; if (a) run('/api/spares', { pickup: a }, () => 'Spare key kept.'); }
+    else if (d.spareLet) run('/api/spares', { letReset: d.spareLet }, (r) => `Done. ${r.bob} can make a new passcode on its lock screen now.`);
+    else if (d.spareForget) run('/api/spares', { forget: d.spareForget }, () => 'Forgotten.');
+  });
+  await load();
 }
 
 // Any open page goes back to the lock screen once Bob locks (Lock Bob now, or after minutes of nothing).

@@ -70,6 +70,10 @@ export function cleanMoreTools(v) {
   out.emailPort = port >= 1 && port <= 65535 ? port : 993;
   out.emailUser = clip(x.emailUser, 160);
   out.emailFolder = clip(x.emailFolder, 80).replace(/["\\]/g, '') || 'INBOX';
+  // Sending (only Bob's passcode-reset code, to this same account; src/email-send.js). Empty = worked out from the reading server.
+  out.emailSendHost = clip(x.emailSendHost, 120).replace(/[^\w.-]/g, '');
+  const sp = Math.round(Number(x.emailSendPort));
+  out.emailSendPort = sp >= 1 && sp <= 65535 ? sp : 0;
   // Calendars: a name and where it is. A web link is private (it opens the whole calendar), so it's in the locked
   // store under calendarKey(id); a file is a plain path on this computer.
   out.calendars = (Array.isArray(x.calendars) ? x.calendars : []).map((c) => ({

@@ -24,6 +24,7 @@ export class VaultLocked extends Error {
 // 👥 A profile's chats and memory (profiles.js) are always locked, with that person's own key.
 export const vaultOn = (cfg) => Boolean(cfg?.profileNow) || (cfg?.lock?.encrypt === true && cfg?.lock?.enabled === true);
 export const hasKey = () => Boolean(key);
+export const currentKey = () => (key ? Buffer.from(key) : null); // a copy: the passcode reset's spare key (lock-reset.js)
 export function setKey(k) { key = k ? Buffer.from(k) : null; }
 
 export const isSealed = (buf) => Buffer.isBuffer(buf) && buf.length >= MAGIC.length && buf.subarray(0, MAGIC.length).equals(MAGIC);

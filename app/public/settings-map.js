@@ -7,7 +7,7 @@ export const GROUPS = [
   ['Bob', ['ev-bob', 'adv-personality', 'adv-voice', 'adv-look', 'adv-house', 'adv-presets']],
   ['Chat and jobs', ['ev-how', 'adv-jobs', 'adv-chatx', 'adv-prompts', 'adv-checkins', 'adv-daily', 'adv-quiet', 'adv-tools']],
   ['Brains', ['adv-brains', 'adv-speed', 'adv-engines']],
-  ['Connections', ['adv-bobnet', 'adv-online', 'adv-apps']],
+  ['Connections', ['adv-bobnet', 'adv-online', 'adv-email', 'adv-apps']],
   ['What Bob may do', ['adv-hands', 'ev-howtos']],
   ['Fun', ['adv-adventure', 'adv-games']],
   ['This replicant matrix', ['ev-pc', 'ev-home', 'ev-save', 'ev-projects', 'ev-backup', 'adv-housekeeping', 'ev-lock', 'ev-secrets', 'adv-health', 'adv-remove']]
@@ -19,7 +19,7 @@ export const CARDS = [
   { id: 'how', icon: '⚡', name: 'How Bob works', about: 'Sessions, plans, notes, jobs, saved prompts, start-up, check-ins.', topics: ['ev-how', 'adv-jobs', 'adv-prompts', 'adv-chatx', 'adv-quiet', 'adv-daily', 'adv-checkins', 'adv-tools'] },
   { id: 'brains', icon: '🧠', name: 'Brains and speed', about: 'Which brain does what, memory and engines.', words: 'calibrate calibration set up gpu card layers experts speed', topics: ['adv-brains', 'adv-speed', 'adv-engines'] },
   { id: 'net', icon: '🌐', name: 'My other Bobs', about: 'Bob-Net, your phone and sharing brains.', topics: ['adv-bobnet'] },
-  { id: 'online', icon: '☁', name: 'Online and other apps', about: 'Cloud helpers, chat bots, rented brains, ComfyUI, other apps, Claude.', topics: ['adv-online', 'adv-apps'] },
+  { id: 'online', icon: '☁', name: 'Online and other apps', about: 'Cloud helpers, chat bots, rented brains, ComfyUI, other apps, Claude.', topics: ['adv-online', 'adv-email', 'adv-apps'] },
   { id: 'may', icon: '✋', name: 'What Bob may do', about: 'Files, programs, apps and the tools he made.', topics: ['adv-hands', 'ev-howtos'] },
   { id: 'fun', icon: '🎲', name: 'Fun', about: 'Adventure and games.', topics: ['adv-adventure', 'adv-games'] },
   { id: 'pc', icon: '💻', name: 'This replicant matrix', about: 'Updates, passcode, secrets, folders, backups, tidying, removing Bob.', topics: ['ev-pc', 'adv-health', 'ev-lock', 'ev-projects', 'ev-home', 'ev-secrets', 'ev-save', 'ev-backup', 'adv-housekeeping', 'adv-remove'] }
