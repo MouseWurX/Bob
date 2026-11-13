@@ -55,6 +55,7 @@ export const NOT_BACKED_UP = [
   'bob/saved-formats.json', 'bob/turn-changes/', // items 232 and 238: worked out again; a turn's Undo is about this computer's files
   'bob/running.json', 'bob/crash-reports/', 'bob/before-safe-start.json', 'bob/settings-undo.json', 'bob/weekly.json', 'bob/chat-places/', 'bob/tool-errors.json', // items 62 to 72 (and reliability item 206's error counts): worked out again on this computer, or about this computer only
   'bob/brain-files.json', 'bob/engine-care.json', 'bob/engine-care-beside.json', // reliability 218-228: about this computer's engine and files
+  'bob/coding-agents.json', 'bob/agent-accounts/', 'bob/agent-tasks/', 'bob/agent-ask.mjs', // Nov 13 Coding agents: folders on this computer, other people's sign-ins (never copied), a task file while it runs, a helper made again
   'bob/honesty.json', // Nov 12, item 192: each brain's honesty score on this computer, counted again from new answers
   'bob/spending.json', 'profiles/', // 🧾 the spending sheet and 👥 profiles are locked with keys that belong to this computer (or a person's passcode kept in config.json): save the sheet as a CSV to move it
   'painter/', 'references/', 'workshop/', 'own-code/', 'documents/', 'tools/_scratch/', 'tools/_pyscratch/', 'restore-waiting/', 'restore-waiting.new/'

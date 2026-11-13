@@ -183,7 +183,8 @@ A **session** says what the graphics card is kept for. Effort says how hard Bob 
 ### While he works
 
 - **💭 Bob's thinking** (press the brain label at the top of the chat) opens a small window with his thinking, brain swaps and every tool step, live. Nothing in it is saved.
-- **Answer messages between steps** (on): send a message during a long job and he answers it when the current step is done. "also …" joins the job, "stop" stops it.
+- **Answer messages between steps** (on): send a message during a long job and he answers it when the current step is done. "also …" joins the job.
+- **Stop and wait words** (on): while a job runs, a short "stop", "no no", "cancel" or "belay that" stops it at once; "wait", "pause" or "hold on" pauses it; "wait 10 minutes" or "later" pauses it for later; "what are you doing?!" pauses it just in case; "go on" or "you got it" carries on. Only the whole message counts.
 - **Keep chatting while Bob is busy** (on): while he paints or works, a plain message is answered by his small brain on the processor.
 - **Let Bob's Quick brain see the big job** (off): that small brain knows how the big job is going and can pass it a note.
 - **Show Bob's plan before big jobs** (off): before a job with several steps, he shows every step on one card. **Go ahead**, **Change something** or **Not now**.

@@ -4,6 +4,33 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.216
+
+"Stop" and "wait" work at once, coding agents side by side, OK cards on all your Bobs, and my thinking on its own.
+
+### New
+
+- **Coding agents** (experimental, off to start with, Settings, Other apps). Run Claude Code, Codex, Gemini CLI, Qwen Code, OpenCode or any other coding program side by side, each in its own project folder. They show in Now running under **🤝 Coding agents**, folded to one line with a small badge like "1 needs you · 2 working". Open it to ask one something, stop it, read what it said, answer it when it needs you, or press **Pass to** to hand its work to another one with a note. **When done pass to** hands it on by itself, and agents can ask each other (at most 4 hand-ons). They can't change files unless you switch **May change files** on. Each agent can use its own **Account**, so two people can each run their own agents on their own sign-ins at the same time. Claude Code can also tell me exactly when it's working or waiting on you. My brain isn't involved, and nothing about them goes into my start-up words. Not on Bob for Android.
+- **Answer my OK cards on any of your Bobs** (off to start with, Settings, Bob-Net, **Show my OK cards on my other Bobs**). Each OK, question or plan card shows on every Bob on my list and in the phone app, marked with my name. Answer it on any of them and it comes down everywhere. Pairing cards stay on the Bob being paired. Bob-Net in Now running says how many of each Bob's cards are waiting on you.
+
+### Changed
+
+- **Tasks speak up in a small bubble, not a strip.** The Tasks strip above the message box is gone. When a task starts, waits or fails, a see-through bubble says so under the Tasks tab (above the Tasks button on a phone), fading in over about 0.7 seconds and back into the tab.
+
+- **Open Bob's thinking shows just my thinking.** The thinking bubble's **Open Bob's thinking** and the 💭 button now open Now running with only my thinking in it, titled **Bob's thinking**. The status line or Ctrl+J brings the rest back. If my thinking is in a panel, it opens there.
+
+- **A lent graphics card shows what it's helping with.** While your card helps another Bob run a brain, a small 🖐 badge on the corner of my picture says that brain has Hands, Autonomy or Screen use on. Hover or tap it for the full sentence.
+- **Helper Bobs work side by side on your code.** When I split a self-work job between my Bobs, each helper works in his own copy of the code, on a branch of its own, and the work is merged back. If two changes clash, I redo that part here.
+
+### Fixed
+
+- **"Stop", "wait" and "go on" work at once.** Before, "wait", "hold on" or "no no" got a reply while the job kept going. Now, while I work on a job of yours, a short message on its own is a command, done the moment you send it, even halfway through a step. "Stop", "cancel", "belay that" or "no no" stops the job. "Wait" or "hold on" pauses it. "Wait 10 minutes" pauses it and I carry on by myself after that. "What are you doing?!" pauses, just in case. "Go on" or "you got it" carries on. It's on to start with (Settings, Brains, **Stop and wait words**).
+
+- **One step count.** The thinking bubble's "Worked for · N steps" counted drafts and notes too, so it didn't match How I got here. It now counts only the steps, shows each step's details on its rows, and has **Copy the steps**. While the bubble is on there's no separate How I got here fold.
+- **Lamplight, narrow window:** Now running had no background.
+
+**Where it works:** Windows, Mac and Linux. OK cards also show in Bob for Android.
+
 ## 1.5.215
 
 One brain really is one brain, Journey gets its own tab, the cube fills as a brain loads, picture to 3D on RTX 50 cards, and the Lab can change how many experts a brain uses for each word without reloading it.
@@ -290,36 +317,6 @@ A big one: eleven more games and a walking Journey, a steadier loop with better 
 - **Turbo and the draft brain could stop the engine from starting** on newer llama.cpp builds, which refuse the old draft flags. I use the new names now.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android, unless a line says otherwise. The shortcut, the tray dot and profiles are desktop only. The phone screen on an iPhone has no ears, share option or widget. Card heat needs an NVIDIA card. Help covers each new part.
-
-## 1.5.206
-
-A … menu on every message, steadier tool work from small brains, housekeeping on by default, a new Hand that sorts and renames whole collections, Adventure round 3, and a busier Lab.
-
-### New
-
-- **The … menu on a message.** Hover a message (or Tab to it) and a small **…** shows at its top right. On touch screens it's always there. It holds **Try again**, **Edit**, **Copy** (and **Copy links**) and **Delete**. Edit on your message sends it again. Edit on mine changes my words without sending anything, and I read the new words from then on, marked "edited". Delete asks once, inside the menu. On your message it takes out your message and my answer to it. It's on the phone screen and in the Android app too. The switch is now called **Show Try again, Edit and Delete in the chat** (on unless you turn it off).
-- **Sort and rename** (Settings, Hands; off unless you turn it on). I rename and move a whole music, video or photo collection to naming rules you set for each kind of file, like `{albumartist}/{album}/{track} {title}` for music or `{show}/Season {season}/...` for TV. Each rule can also send new files from Downloads into your library. I read the tags straight from the files (MP3, FLAC, Ogg/Opus, M4A/M4V, photo dates). Every rename goes on the usual Files card with a tick for each row, nothing is overwritten, and **Undo** puts it all back.
-- **Folders you point me to** (Settings, Housekeeping). Add folders and I'll offer their old files in Tidy up. They always ask first and go to the Recycle Bin. System folders, your whole home folder and my own folders are refused.
-- **Adventure, round 3.** 🎭 **Tone** (Cosy, Normal, Grim) and a **Keep out of the story** line on the start card. 🎯 **Odds on the cards** ("11+ · 50%"). ↩ **Take that back** for five seconds after a card, before the dice roll. 📚 A **World book** in the Journal, where the game master keeps people, places, promises and open threads, so long campaigns don't forget. 📕 A **Storybook**: a finished game becomes one page you can save as a single .html file.
-- **The Lab, round 2.** 📋 A **queue** for Challenges, Smaller and fNRI jobs, so they run one after another overnight, each when the Lab is free and nobody is chatting. ± **Show the wobble** runs each challenge three times and shows how much the score moves. 🧪 **Lab scores on the Brains page** under each tested brain. **Teach it from my mistakes** turns replies saved with Save as a test into a lesson set. fNRI scans show in My Lab. **Check my main brain after engine updates** (off unless you tick it).
-
-### Changed
-
-- **Housekeeping is on by default**, and it touches only my own files unless you add folders. Every kind still asks first, and I never load a brain just for it. If you had switched it off yourself, it stays off. An older saved "off" that you never picked turns on.
-- **Small brains make fewer tool slips. This is always on, with no setting.** I check each tool call before it runs and mend what I'm sure of (broken JSON, a field under another name, "5" for 5). I give one plain hint after common errors. On long jobs I keep a short "where we are" note and make sure the last step is an answer. Repeat searches are spotted, look-ups run side by side, and older tool results in long chats shrink to one line each.
-- **A real Lab entry test.** Every brain the Lab tests now does 16 jobs with my real tools, round my real loop, plus 10 coding asks (JavaScript ones run in the sandbox). Older Quick quiz scores show greyed until run again. The Forge points Make it smaller and Cut experts at Make a brain.
-- **Memory, topics and how-tos match by meaning better.** They now use the same search openings as document search. Old entries are remade while I'm idle.
-
-### Fixed
-
-- **Adventure:** the game master's hidden notes are mended when broken, a new enemy's hearts fit the party, a Bob-Net player who takes more than 45 seconds has his turn played by the game master, and starting a new game right after ending one no longer pauses it.
-- **The phone screen on iPhone stopped on load**, because four of its files weren't copied over. They are now.
-- **The phone screen had no passcode lock**, because lock.js wasn't copied to it. It is now, and a test checks every file the page loads.
-- **A retry could end with no answer.** Thinking on every second try sometimes used the whole reply on thinking. Only the long coding brains think on a retry again.
-- **Adventure's Keep out list holds.** The rule rides on the latest message too, a kept-out word shows as … while I'm writing, and a turn that brings one in is written again.
-- **An OK card made while Bob's window was shut** now shows when you open it.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android, unless a line says otherwise. Sort and rename runs on the computer I run on; on Android you approve the card there. Help: "The … menu on a message", "Sort and rename", "Will housekeeping touch my own files?".
 
 ## Older versions
 

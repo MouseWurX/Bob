@@ -105,10 +105,12 @@ const finished = (id) => ['done', 'failed', 'cancelled'].includes(stateOf(id));
   calls.length = 0;
   script = [call('fetch_page', { url: 'https://example.org/c' }), call('fetch_page', { url: 'https://example.org/d' }), { role: 'assistant', content: 'Stopped with what I had.' }];
   let stopId;
+  brain.cfg.stopWords = false; // Stop and wait words off: the old "stop after this step" between steps
   during = () => { stopId = brain.enqueue('main', 'stop').jobId; };
   const { jobId } = brain.enqueue('main', 'read https://example.org/c and then https://example.org/d');
   await until(() => finished(jobId));
   const main = calls.filter((c) => !c.quick);
+  brain.cfg.stopWords = undefined;
   check('"stop": no brain call for it, and the next round has no tools', !calls.some((c) => c.quick) && main.length >= 2 && main.slice(1).every((c) => c.names.length === 0) && stateOf(stopId) === 'done');
 }
 {

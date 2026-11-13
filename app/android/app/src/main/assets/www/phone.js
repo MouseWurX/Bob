@@ -623,7 +623,8 @@
     if (ev.type === 'games') return onGamEvent(base, ev); // 🧩 a game on your other Bob
     if (!ev || typeof ev !== 'object') return;
     const mine = current && current.kind === 'net' && current.base === base && ev.sessionId === `phone-${current.chatId}`;
-    if (ev.type === 'approval' && String(ev.sessionId || '').startsWith('phone-')) return approvalCard(base, ev);
+    // Nov 13: with "Show my OK cards on my other Bobs" on there, every card of his comes here (marked everywhere), not only the phone's.
+    if (ev.type === 'approval' && (String(ev.sessionId || '').startsWith('phone-') || ev.everywhere === true)) return approvalCard(base, ev);
     if (ev.type === 'checkin') return checkinCard(base, ev);
     if (ev.type === 'digest') return digestCard(base, ev); // A Sunday digest from that Bob (src/digest.js)
     if (ev.type === 'reminder' && ev.phone) return reminderCard(base, ev); // 🧰 "Show reminders on my phone" (set on the replicant matrix)

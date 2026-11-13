@@ -58,7 +58,7 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
   check('a few Bob-ish lines to rotate through', PUNS.length >= 8 && PUNS[0] === 'Thinking…');
   check('the cat\'s name goes in', punAt(2, 'Patches').includes('Patches') && !punAt(2, '').includes('{cat}'));
   check('times read plainly', took(45000) === '45s' && took(130000) === '2m 10s' && took(3780000) === '1h 3m');
-  check('the finished line', doneLine(130000, 7) === 'Worked for 2m 10s · 7 steps' && doneLine(4000, 0) === 'Thought for 4s' && doneLine(9000, 1, true) === 'Worked for 9s · 1 step · waited on you');
+  check('the finished line', doneLine(130000, 7) === 'Worked for 2m 10s · 7 steps' && doneLine(4000, 0) === 'Thought for 4s' && doneLine(9000, 1, true) === 'Worked for 9s · 1 step · waited on you' && doneLine(0, 3) === 'Worked through 3 steps');
   check('the lines never name a real model', !PUNS.some((p) => /qwen|llama|gpt|riker|bobert/i.test(p)));
 }
 
@@ -72,7 +72,7 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
   check('Bob-Net leaves the window fields out', /step, showText, \.\.\.rest/.test(read('src/share-brains.js')));
   check('nothing new in the start prompt', !/think-bubble|thinkBubble|pickAnswer/.test(read('src/prompts.js') + (fs.existsSync(new URL('../src/system-prompt.js', import.meta.url)) ? read('src/system-prompt.js') : '')));
   check('the chat hands events to the bubble first', /if \(!elsewhere && thinkBubbles\.take\(ev\)\) \{ scrollDown\(\); return; \}/.test(app));
-  check('a saved chat folds the steps above the answer', /m\.step && thinkOn/.test(app) && /thinkBubbles\.saved\(m\.bubble, m\.ms\)/.test(app));
+  check('a saved chat folds the steps above the answer', /m\.step && thinkOn/.test(app) && /thinkBubbles\.saved\(m\.bubble, m\.ms, ans\?\.steps\)/.test(app));
   check('the down arrow and its dots are still there', /toBottom\.classList\.toggle\('working', !toBottom\.hidden && busy\)/.test(app) && /\.to-bottom\.working \.tb-dots/.test(css));
   check('cards that need you stay in the chat', /case 'approval':[\s\S]{0,300}return false; \/\/ the card itself stays in the chat/.test(bubble));
   check('reduced motion: nothing moves', /prefers-reduced-motion: reduce\) \{ \.think \*/.test(css) && /still\(\) \? 'Thinking…'/.test(bubble));

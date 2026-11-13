@@ -16,7 +16,8 @@ import { watchLock } from './lock-settings.js';
 import { CHANNEL as SETTINGS_CHANNEL, WINDOW_NAME, WINDOW_SIZE, settingsUrl, wantsWindow, accept as acceptSettings } from './settings-link.js';
 import { createShelf, uploadRef, fixSideways } from './shelf.js';
 import { summary, size } from './progress.js';
-import { createTasks, createDownloads, makeSortable, neighbour, taskRow } from './lists.js';
+import { createTasks, createDownloads } from './lists.js';
+import { createTaskPop } from './task-pop.js'; // 1.5.216: the Tasks word bubble (it replaced the strip above the message box)
 import { createLayout } from './layout.js';
 import { esc, render, renderRich } from './rich.js';
 import { createTopics } from './topics.js';
@@ -38,6 +39,7 @@ import { createQuickSwitches } from './quick-switches.js'; // Autonomy and Scree
 import { createRentSwitch } from './rent-switch.js'; // 1.5.127 rented brains
 import { createGameLock } from './game-lock.js';
 import { quarantineCard, quarantineResult, createQuarantineBanner } from './quarantine.js';
+import { createLendPowersBadge } from './lend-powers.js'; // Nov 13: what a brain this card helps run has on
 import { createEffort } from './effort.js';
 import { createPresetPicker } from './presets.js'; // Assistant presets for chats
 import { createCatAntics } from './cat-antics.js';
@@ -122,6 +124,7 @@ const webSwitch = createWebSwitch({ note: (t, k) => note(t, k) });
 const rentSwitch = createRentSwitch({ note: (t, k) => note(t, k) });
 const gameLock = createGameLock({ note: (t, k) => note(t, k) }); // 1.5.41 the 🎮 Gaming button
 const qBanner = createQuarantineBanner({ note: (t, k) => note(t, k) });
+const lendPowers = createLendPowersBadge(); // Nov 13: a lent card's brain has Hands, Autonomy or Screen use on over there
 const effort = createEffort();
 const bubbles = createBubbles();
 const catAntics = createCatAntics({ onAntic: () => life.react('cat'), sleepy: () => life.dozing, bubbles });
@@ -269,9 +272,11 @@ function goBottom() {
 log.addEventListener('scroll', () => { stick = nearBottom(); drawToBottom(); }, { passive: true });
 toBottom.addEventListener('click', () => { goBottom(); $('input')?.focus({ preventScroll: true }); });
 window.addEventListener('keydown', (e) => { if (e.ctrlKey && e.key === 'End' && !toBottom.hidden) { e.preventDefault(); goBottom(); } });
+let cardNow = ''; // Nov 13: the OK card being drawn, so its answer from anywhere can take it down here
 function add(cls, html) {
   const el = document.createElement('div');
   el.className = cls;
+  if (cardNow && /\bapproval\b/.test(cls)) el.dataset.card = cardNow;
   el.innerHTML = html;
   log.appendChild(el);
   scrollDown();
@@ -291,7 +296,7 @@ const correctedBubbles = new Map();
 let thinkOn = true, catName = 'Patches';
 const stillNow = () => document.body.classList.contains('still') || Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 window.addEventListener('bob-think-bubble', (e) => { thinkOn = e.detail !== false; }); // Settings, from this window
-const thinkBubbles = createThinkBubbles({ add, esc, answer: showAnswer, on: () => thinkOn, still: stillNow, cat: () => catName, openMind: () => $('mindBtn')?.click() });
+const thinkBubbles = createThinkBubbles({ add, esc, answer: showAnswer, on: () => thinkOn, still: stillNow, cat: () => catName, openMind: () => $('mindBtn')?.click(), copy: (t) => navigator.clipboard?.writeText(t).then(() => note('Copied the steps.')).catch(() => {}) });
 
 // ---------- Status, badge, notifications ----------
 const STATUS_TEXT = {
@@ -612,17 +617,22 @@ async function loadHistory(n = 20) {
       let at = k; while (at > 0 && shown[at - 1].role && shown[at - 1].role !== 'user') at--;
       if (at !== k) { const [b] = shown.splice(k, 1); shown.splice(at, 0, b); }
     }
-    for (const m of shown) {
-      if (m.bubble) { thinkBubbles.saved(m.bubble, m.ms); continue; }
+    for (let k = 0; k < shown.length; k++) {
+      const m = shown[k];
+      if (m.bubble) { // 1.5.216: the answer's steps go on its bubble, so they show once and the count agrees
+        let ans = null; for (let j = k + 1; j < shown.length && shown[j].role !== 'user'; j++) if (shown[j].steps?.length) { ans = shown[j]; break; }
+        thinkBubbles.saved(m.bubble, m.ms, ans?.steps); if (ans) ans.stepsShown = true; continue;
+      }
       if (m.forgotten) { if (m.role === 'user') note(m.content); continue; }
       // A reply with no words and nothing made shows only its note, never an empty bubble.
       if (m.role !== 'user' && !String(m.content || '').trim() && !m.media?.length) { if (m.correction) note(m.correction, 'error'); continue; }
+      if (thinkOn && m.role !== 'user' && m.steps?.length && !m.stepsShown) { thinkBubbles.saved([], 0, m.steps); m.stepsShown = true; } // steps but nothing written on the way: still one bubble, no list under it
       const el = decorate(add(m.role === 'user' ? 'msg you' : 'msg bob', m.role === 'user' ? esc(m.content) + picsHtml(m.pics) : render(m.content) + mediaHtml(m.media)), m.content, m.media);
       if (m.id) el.dataset.mid = m.id;
       if (m.role !== 'user') bubbleMedia.set(el, m.media || []);
       if (m.edited) markEdited(el, m.was, m.editedBy);
       if (m.versions?.length) markVersions(el, m.versions);
-      if (m.steps?.length) markSteps(el, m.steps);
+      if (m.steps?.length && !m.stepsShown) markSteps(el, m.steps); // the thinking bubble off (or, below, none was saved)
       if (m.replaced) markReplaced(el); // item 190: a corrected reply that was tried again
       if (m.correction) note(m.correction, 'error');
     }
@@ -712,11 +722,16 @@ function onEvent(ev) {
   // "Needs your OK" in the title. It shows here too, marked with where it's from; its result clears it here as well.
   const elsewhere = ev.sessionId && ev.sessionId !== sessionId;
   const foreignCard = elsewhere && ev.id && (ev.type === 'approval' || (ev.type === 'approval-result' && shownCards.has(ev.id)));
+  cardNow = '';
+  // Nov 13: a card answered somewhere else (your phone, another Bob, another window) is taken down here too.
+  if (ev.type === 'approval-result' && ev.id) for (const c of document.querySelectorAll(`[data-card="${CSS.escape(String(ev.id))}"]`)) { if (c.querySelector('.done')) continue; const row = c.querySelector('.row'); if (row) row.outerHTML = `<div class="done">${ev.allowed ? 'Allowed' : 'Answered'}${ev.net ? ' on another Bob' : ''}</div>`; c.querySelector('.ask-other')?.remove(); for (const b of c.querySelectorAll('button:not(.link)')) b.disabled = true; }
   if (elsewhere && ev.type !== 'reminder' && !foreignCard) return;
   if (ev.type === 'more-pictures' || ev.type === 'more-pictures-done') return more.handle(ev);
   if (ev.type === 'hands') handsSwitch.update(ev.settings);
   if (ev.type === 'hands') quickSwitches.update(ev.settings); // Autonomy and Screen use
   if (ev.type === 'quarantine') return qBanner.update(ev.active);
+  if (ev.type === 'lend-powers') { lendPowers.update(ev); layout.net(); return; }
+  if (ev.type === 'coding-agents') { layout.agents(ev); if (ev.agent?.state === 'needs-you') ping(`${ev.agent.name} needs you`, 'A coding agent is waiting for you.'); return; }
   if (['lending', 'borrow', 'away', 'pair-done', 'queue'].includes(ev.type)) layout.net(); // 1.5.123: the Bob-Net party in Now running
   if (quarantineResult(ev)) return;
   if (onHandsEvent(ev, { add, scrollDown, note })) return;
@@ -953,7 +968,9 @@ function onEvent(ev) {
       // 1.5.206: a page that connects is handed the cards still waiting; one it already shows isn't added twice.
       if (ev.id && shownCards.has(ev.id)) break;
       if (ev.id) shownCards.add(ev.id);
-      if (elsewhere) {
+      cardNow = String(ev.id || '');
+      if (ev.net) { add('note', `🔔 <strong>${esc(ev.net.from)}</strong> needs your OK. You can answer it here; it goes back to ${esc(ev.net.from)}.`); layout.net(); } // Nov 13: a card from another of your Bobs
+      else if (elsewhere) {
         const from = add('note', `🔔 A job in another chat needs your OK. You can answer it here. <button type="button" class="link">Open that chat</button>`);
         from.querySelector('button').onclick = () => openChat(ev.sessionId);
       } else endReply(ev);
@@ -1139,38 +1156,23 @@ function setBusy(b) {
 }
 
 // ---------- The queue: what's waiting, what's running, what failed ----------
-// A short strip above the message box (open tasks only); the Tasks button shows the full list.
+// 1.5.216: no strip across the chat any more. A small word bubble under the Tasks tab says when a task starts, waits
+// or fails (task-pop.js), and fades back into the tab; the full list is in Tasks and in Now running.
 const STATE_LABEL = { waiting: 'queued', working: 'in progress', rented: 'rented', done: 'completed', failed: 'failed', cancelled: 'cancelled', interrupted: 'interrupted', paused: 'paused' };
 let lastJobs = [];
-const qbox = $('queue');
+const taskPop = createTaskPop({ onOpen: () => tasks.open() });
 function drawQueue(jobs) {
   lastJobs = jobs;
   tasks.update(jobs);
   layout.jobs(jobs);
+  taskPop.jobs(jobs);
   const open = jobs.filter((j) => j.state === 'waiting' || j.state === 'working');
   countBadge($('tasksBtn'), open.length);
   for (const j of jobs) {
     const tag = jobBubbles.get(j.id)?.querySelector('.qtag');
     if (tag) { const st = j.status || STATE_LABEL[j.state] || j.state; tag.textContent = (j.gaming ? j.gaming.tag : st === 'delegated' && j.delegatedTo ? `${j.delegatedTo.sent ? 'sent' : 'delegated'} to ${j.delegatedTo.copy}` : st) + (j.effort && j.effort !== 'low' ? ` · ${j.effort[0].toUpperCase()}${j.effort.slice(1)} effort` : ''); tag.className = `qtag ${j.state}`; }
   }
-  const show = jobs.filter((j) => j.state === 'waiting' || j.state === 'working' || j.state === 'paused' || ((j.state === 'failed' || j.state === 'interrupted') && Date.now() - j.at < 3600e3));
-  qbox.hidden = !show.length;
-  if (!show.length) return;
-  const waiting = show.filter((j) => j.state === 'waiting').length;
-  qbox.innerHTML = `<div class="q-head">Tasks${waiting ? ` · ${waiting} waiting (drag to change the order)` : ''} · <button type="button" class="link" data-alltasks>See all</button></div><ol class="tlist">${show.map((j) => taskRow(j, { movable: j.state === 'waiting', full: false })).join('')}</ol>`;
 }
-qbox.addEventListener('click', (e) => {
-  const b = e.target.closest('button');
-  if (!b) return;
-  if ('alltasks' in b.dataset) return tasks.open();
-  const id = b.closest('[data-id]')?.dataset.id, t = b.dataset.t;
-  if (!id || !t) return;
-  if (t === 'up' || t === 'down') {
-    const before = neighbour(lastJobs.filter((j) => j.state === 'waiting').map((j) => j.id), id, t === 'up' ? -1 : 1);
-    if (before !== undefined) post('/api/queue/move', { id, before });
-  } else post(`/api/queue/${t}`, { id });
-});
-makeSortable(qbox, (id, before) => post('/api/queue/move', { id, before }));
 // ---------- Pictures attached to the next message ----------
 let pending = []; // [{ id, name, url, kind }]
 const tray = $('tray');

@@ -11,9 +11,14 @@
 // 4. Helpers (opt-in, "Let my other Bobs help"): research tasks can go to your other Bobs on Bob-Net that run a big
 //    brain (Bobert or Qwen 35B), at the same time as this Bob works. They only think: the tools they ask for run here,
 //    and only the reading ones (list, read, search, web). Edits, commands and the wrap-up always stay here.
+// 5. Helpers' own copies (the owner, Nov 13: "each helper bob makes its own copy or fork of a repo, is fine by me"): with
+//    helpers on, edit tasks next to each other in the plan that name their files, and share none, are done at the same
+//    time: one here, the others each by a helper Bob in a copy of his own (a git worktree of the code copy, on its own
+//    branch, in inn/own-code/helpers). Every edit still shows its card. When a helper is done, his branch is merged
+//    back; if it doesn't merge cleanly, it's dropped and the task is done again here. Checks and the wrap-up stay here.
 import fs from 'node:fs';
 import path from 'node:path';
-import { codeCopyRoot, bigBrainOk, repoSlug } from './self-work.js';
+import { codeCopyRoot, codeCopyDir, bigBrainOk, repoSlug, runGit } from './self-work.js';
 import { giveIds, toolMessage } from './tool-kinds.js';
 
 export const NOTES_MAX = 24000; // characters (~6K tokens); past this the notes are compressed
@@ -22,6 +27,50 @@ export const MAX_TASKS = 12;
 export const TASK_STEPS = 40;
 export const READ_TOOLS = ['list_folder', 'code_map', 'read_file', 'search_files', 'git_look', 'web_search', 'fetch_page'];
 export const helpersOn = (cfg) => cfg?.selfWork?.helpers === true;
+export const EDIT_TOOLS = [...READ_TOOLS, 'edit_file', 'write_file'];
+
+// ---- Helpers' own copies ----
+const slugName = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'helper';
+export const helperCopyDir = (cfg, repo, name) => path.join(codeCopyRoot(cfg), 'helpers', `${repo.id}-${slugName(name)}`);
+export const helperBranch = (name, n) => `bob-helper/${slugName(name)}-task-${Number(n) || 0}`;
+export const filesOf = (t) => [...new Set(String(t?.files || '').split(/[,;\s]+/).map((f) => f.trim().replace(/^\.?\//, '').replace(/\\/g, '/')).filter((f) => f && f.length < 300))];
+// Edit tasks that can be done side by side: the run of edit tasks at the front of the list, each naming its files,
+// none sharing a file with another. At most max. Fewer than two: nothing to share.
+export function sideBySide(list, max) {
+  const out = [], taken = new Set();
+  for (const t of list) {
+    if (out.length >= max || t.kind !== 'edit' || t.state === 'done') break;
+    const fs_ = filesOf(t);
+    if (!fs_.length || fs_.some((f) => taken.has(f))) break;
+    fs_.forEach((f) => taken.add(f)); out.push(t);
+  }
+  return out.length >= 2 ? out : [];
+}
+// A helper's own copy: a git worktree of the code copy, on its own branch, starting where the copy is now.
+export async function openHelperCopy(git, run, { dir, copy, branch }) {
+  try { await run(git, ['-C', dir, 'worktree', 'remove', '--force', copy], { cwd: dir }); } catch {} // a copy left from a stopped job
+  const r = await run(git, ['-C', dir, 'worktree', 'add', '-B', branch, copy, 'HEAD'], { cwd: dir });
+  if (r?.code !== 0) throw new Error(`couldn't make his copy (${String(r?.out || '').trim().slice(0, 160)})`);
+  return copy;
+}
+// His work goes back into the code copy: committed on his branch, merged in. A merge that isn't clean is undone and
+// reported (the task is then done here). His copy and branch are removed either way.
+export async function closeHelperCopy(git, run, { dir, copy, branch, message }) {
+  let merged = false, why = '';
+  try {
+    await run(git, ['-C', copy, 'add', '-A'], { cwd: copy });
+    const c = await run(git, ['-C', copy, 'commit', '-q', '-m', String(message || 'helper task').slice(0, 200)], { cwd: copy });
+    if (c?.code !== 0 && !/nothing to commit/i.test(c?.out || '')) why = 'his changes couldn\'t be saved';
+    else {
+      const m = await run(git, ['-C', dir, 'merge', '--no-ff', '--no-edit', branch], { cwd: dir });
+      if (m?.code === 0) merged = true;
+      else { why = 'his changes clash with the ones made here'; await run(git, ['-C', dir, 'merge', '--abort'], { cwd: dir }).catch(() => {}); }
+    }
+  } catch (e) { why = e.message; }
+  try { await run(git, ['-C', dir, 'worktree', 'remove', '--force', copy], { cwd: dir }); } catch {}
+  try { await run(git, ['-C', dir, 'branch', '-D', branch], { cwd: dir }); } catch {}
+  return { merged, why };
+}
 
 export const notesDir = (cfg, repo) => path.join(codeCopyRoot(cfg), 'notes', repo.id);
 export const notesFile = (cfg, repo, jobId) => path.join(notesDir(cfg, repo), `${jobId}.md`);
@@ -136,10 +185,12 @@ export async function pickHelpers(lenders, { max = 3, same = '' } = {}) {
 }
 
 // One research task on a helper Bob: his brain thinks, the reading tools run here (and only those).
-export async function helperTask(brain, helper, brief, ctx, { steps = 20, tools = READ_TOOLS } = {}) {
+export const HELPER_READ = 'You are Bob, helping another Bob with one research task for a coding job. Read and look things up with the tools; change nothing. Be brief and exact: end with what you found, in short bullets with file paths.';
+export const HELPER_EDIT = 'You are Bob, helping another Bob with one task of a coding job, in a copy of the code of your own. Make this change only, in small edits (read before you edit), only in the folder the task names. End with what you changed, file by file.';
+export async function helperTask(brain, helper, brief, ctx, { steps = 20, tools = READ_TOOLS, system = HELPER_READ } = {}) {
   const schemas = brain.toolSchemas(tools);
   const messages = [
-    { role: 'system', content: 'You are Bob, helping another Bob with one research task for a coding job. Read and look things up with the tools; change nothing. Be brief and exact: end with what you found, in short bullets with file paths.' },
+    { role: 'system', content: system },
     { role: 'user', content: brief }
   ];
   let final = '';
@@ -151,7 +202,7 @@ export async function helperTask(brain, helper, brief, ctx, { steps = 20, tools 
     giveIds(reply.tool_calls); // item 165: each result names its call
     for (const call of reply.tool_calls) {
       const name = call.function?.name;
-      const res = tools.includes(name) ? await brain.runTool(name, call.function?.arguments, ctx) : { text: 'Error: only reading tools on this task.' };
+      const res = tools.includes(name) ? await brain.runTool(name, call.function?.arguments, ctx) : { text: `Error: only ${tools === READ_TOOLS ? 'reading tools' : 'reading and editing tools'} on this task.` };
       messages.push(toolMessage(call, String(res.text || ''), res.ok));
     }
     compactMessages(messages, charsFor(helper.ctx || 32768));
@@ -161,7 +212,7 @@ export async function helperTask(brain, helper, brief, ctx, { steps = 20, tools 
 
 // ---- The whole managed job ----
 // runHat(task, opts) runs the workbench copy on the job's brain; compress(text) runs it with no tools.
-export async function runManaged(brain, ctx, { cfg, repo, job, brief, setup = '', wrapUp, runOn, force, write = (f, t) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, t); }, now = new Date(), notesMax = NOTES_MAX }) {
+export async function runManaged(brain, ctx, { cfg, repo, job, brief, setup = '', wrapUp, runOn, force, write = (f, t) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, t); }, now = new Date(), notesMax = NOTES_MAX, git = '', run = runGit, dir = codeCopyDir(cfg, repo) }) {
   const say = (text) => ctx.emit?.({ type: 'token', text });
   const file = notesFile(cfg, repo, jobId(job, now));
   const hat = (task, extra = {}) => brain.runHat('tinker', task, ctx, { ...force, ...extra });
@@ -215,6 +266,39 @@ export async function runManaged(brain, ctx, { cfg, repo, job, brief, setup = ''
     if (order[i].kind !== 'research') { await collect(); if (retry.length) order.splice(i, 0, ...retry.splice(0)); }
     const t = order[i];
     if (t.state === 'done') continue;
+    // Helpers' own copies: edit tasks side by side, one here and the rest on helpers.
+    if (git && helpersOn(cfg) && t.kind === 'edit') {
+      const group = sideBySide(order.slice(i), 4);
+      const free = group.length ? await pickHelpers(brain.lenders, { max: group.length - 1, same: force?.model || '' }).catch(() => []) : [];
+      if (free.length) {
+        const mine = group[0], theirs = group.slice(1, free.length + 1);
+        const notes = notesText({ repo, job, tasks, learned });
+        const jobs = theirs.map(async (task, k) => {
+          const helper = free[k], copy = helperCopyDir(cfg, repo, helper.name), branch = helperBranch(helper.name, task.n);
+          task.state = 'in progress'; task.by = helper.name;
+          try {
+            await openHelperCopy(git, run, { dir, copy, branch });
+            ctx.emit?.({ type: 'announce', text: `🛰 ${helper.name} takes task ${task.n} (${task.title}) in a copy of his own at ${copy}. Every change still shows its card here.` });
+            const text = await helperTask(brain, helper, taskBrief(brief.split(dir).join(copy), notes.split(dir).join(copy), task, { runOn: false, steps: TASK_STEPS }), ctx, { steps: TASK_STEPS, tools: EDIT_TOOLS, system: HELPER_EDIT });
+            const back = await closeHelperCopy(git, run, { dir, copy, branch, message: `Task ${task.n}: ${task.title} (by ${helper.name})` });
+            return { task, text, ...back };
+          } catch (e) { await closeHelperCopy(git, run, { dir, copy, branch, message: '' }).catch(() => {}); return { task, merged: false, why: e.message }; }
+          finally { brain.lenders?.release?.(helper.address); }
+        });
+        mine.state = 'in progress'; mine.by = ''; save();
+        say(`\n\n---\n**Task ${mine.n} of ${tasks.length} (${mine.kind}): ${mine.title}**${theirs.length ? ` (tasks ${theirs.map((x) => x.n).join(', ')} on ${free.slice(0, theirs.length).map((h) => h.name).join(', ')} at the same time)` : ''}\n\n`);
+        const text = await hat(taskBrief(brief, notes, mine, { runOn }), { maxSteps: TASK_STEPS });
+        mine.state = 'done';
+        await remember(learnedFrom(mine, `${text}${ctx.hatNotes ? `\n${ctx.hatNotes}` : ''}`));
+        for (const r of await Promise.all(jobs)) {
+          if (r.merged) { r.task.state = 'done'; await remember(learnedFrom(r.task, r.text)); ctx.emit?.({ type: 'announce', text: `🛰 ${r.task.by}'s work on task ${r.task.n} is merged in.` }); }
+          else { ctx.emit?.({ type: 'announce', text: `🛰 Task ${r.task.n} came back without merging (${r.why || 'no changes'}), so I'll do it myself.` }); r.task.state = 'to do'; r.task.by = ''; }
+        }
+        save();
+        i--; // look at this place in the list again: the tasks still to do there run next
+        continue;
+      }
+    }
     t.state = 'in progress'; t.by = ''; save();
     say(`\n\n---\n**Task ${t.n} of ${tasks.length} (${t.kind}): ${t.title}**\n\n`);
     const text = await hat(taskBrief(brief, notesText({ repo, job, tasks, learned }), t, { runOn }), { maxSteps: TASK_STEPS });

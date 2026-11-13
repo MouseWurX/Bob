@@ -329,7 +329,6 @@ body.still .meter i { transition: none; }
 body.still .meter.moving i { animation: none; }
 
 /* Bob's list: every message queues; nothing gets dropped */
-.queue { background: var(--panel); border-top: 1px solid var(--line); padding: 6px 14px; display: grid; gap: 4px; max-height: 30vh; overflow-y: auto; font-size: 13px; }
 .q-head { opacity: .75; font-size: 12px; }
 .q-job { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .q-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -507,22 +506,17 @@ body:not(.right-hidden) .now-toggle .badge { display: none; }
 .now-gpu .meter { margin: 0; }
 .tag.needs-you { background: var(--danger-bg); color: var(--warn); }
 body.right-hidden .now, body.right-hidden .grab { display: none; }
-body:not(.right-hidden) #queue { display: none; } /* the panel shows the queue; the strip is for when it's hidden */
-body.right-hidden #queue:not([hidden]) { display: grid; }
 
 /* Narrow windows: the panel slides over the chat instead of squeezing it. */
 @media (max-width: 900px) {
   .now { position: fixed; top: 0; right: 0; bottom: 0; z-index: 20; width: min(340px, 92vw); box-shadow: -8px 0 24px #0008; border-left: 1px solid var(--line); }
   .grab { display: none; }
-  body:not(.right-hidden) #queue:not([hidden]) { display: grid; }
 }
 @media (max-width: 560px) {
   body:not(.left-folded) .side { position: fixed; top: 0; bottom: 0; left: 0; z-index: 21; box-shadow: 8px 0 24px #0008; }
   .ctx-title { display: none; }
 }
 .titem .grip { letter-spacing: -3px; }
-.queue .titem { padding: 4px 8px; }
-.queue .titem .tsub { display: none; }
 body.left-folded .now-toggle { flex-direction: row; padding: 4px 8px; font-size: 12.5px; }
 body.left-folded .now-toggle .lbl { display: inline; }
 body.left-folded .now-toggle .badge { position: static; }
@@ -720,7 +714,7 @@ button.big { padding: 9px 18px; font-size: 15px; min-height: 40px; }
 .hands-box button.stop-all, .composer button.stop-all { background: var(--bad); color: var(--on-accent); border: none; font-weight: 700; }
 
 /* ---------- 1.5.0: Settings, Get models and Style as a page in the main area ---------- */
-.mid.paged > :is(#log, #chips, #queue, #tray, #composer) { display: none !important; }
+.mid.paged > :is(#log, #chips, #tray, #composer) { display: none !important; }
 .cellar.page { position: static; flex: 1; min-height: 0; width: auto; max-width: none; max-height: none; margin: 0; border: 0; border-radius: 0; overflow: auto; background: var(--bg); }
 .cellar.page:not([open]) { display: none; }
 .cellar.page.wide { width: auto; }
@@ -959,6 +953,18 @@ body.left-folded .bob-prop { top: -6px; right: -6px; font-size: 11px; }
 @media (prefers-reduced-motion: reduce) { .say-bubble { transition: none; transform: none; } }
 @media (forced-colors: active) { .say-bubble, .say-bubble::before { border-color: CanvasText; } }
 @media print { .bubbles { display: none; } }
+/* 1.5.216: the Tasks word bubble, under the Tasks tab (above it on a phone's bottom bar). Same see-through glass and
+   0.7 s fade as Bob's and the cat's bubbles; it fades out into the tab. Fixed, so it never moves the chat. */
+.task-pop { position: fixed; z-index: 9001; width: max-content; padding: 7px 11px; cursor: pointer; transform-origin: var(--tip, 24px) top; }
+.task-pop.up { transform-origin: var(--tip, 24px) bottom; transform: translateY(4px) scale(.96); }
+.task-pop.on { pointer-events: auto; opacity: 1; transform: none; }
+.task-pop.up.on { pointer-events: none; } /* a phone: taps go through to the message box and Send under it */
+.task-pop.into { opacity: 0; transform: translateY(-14px) scale(.2); }
+.task-pop.up.into { transform: translateY(14px) scale(.2); }
+.task-pop::before { left: calc(var(--tip, 24px) - 5px); top: -6px; border-bottom: 0; border-top: 1px solid var(--accent); }
+.task-pop.up::before { top: auto; bottom: -6px; border-top: 0; border-left: 0; border-bottom: 1px solid var(--accent); border-right: 1px solid var(--accent); }
+@media (prefers-reduced-motion: reduce) { .task-pop, .task-pop.into, .task-pop.up.into { transition: opacity .2s; transform: none; } }
+@media print { .task-pop { display: none; } }
 
 /* ---------- Side panel: things Bob made open here, beside the chat ---------- */
 .viewer { width: var(--viewer-w, 480px); flex: none; display: flex; flex-direction: column; min-width: 0; background: var(--panel); border-left: 1px solid var(--line); }
@@ -2372,3 +2378,38 @@ html.settings-window body.look-lamplight .cellar.page[open] { height: 100dvh; ma
   body.look-lamplight .ttabs { flex-wrap: nowrap; overflow-x: auto; }
   body.look-lamplight .ttabs [data-f] { flex: none; white-space: nowrap; }
 }
+
+/* Nov 13 Coding agents (coding-agents.js): the small badge on the folded title, and a row that needs you */
+#nowAgents .now-sec { flex-wrap: wrap; row-gap: 2px; } /* a narrow panel or phone: the badge drops below, never off the edge */
+.agents-badge { font-size: .8em; padding: 0 .45em; border-radius: 1em; border: 1px solid var(--line); white-space: nowrap; }
+.agents-badge.needs { border-color: var(--accent); font-weight: 600; }
+.agents-set { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.agents-set > li { padding: 8px 0 8px 12px; border-left: 2px solid var(--line); }
+.agents-set > li > .row, .agents-set > li > button { margin-top: 4px; }
+/* one agent: a light, its name and state, one line of detail, small text buttons; every word shows, never cut off */
+.agent-row .ttext { white-space: normal; overflow: visible; overflow-wrap: anywhere; display: flex; flex-direction: column; gap: 2px; }
+.agent-row .agent-top { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.agent-row .agent-state { color: var(--muted); font-size: .92em; }
+.agent-row[data-state="needs-you"] .agent-state { color: var(--accent); }
+.agent-row .agent-meta { color: var(--muted); font-size: .92em; }
+.agent-row .agent-needs { font-weight: 600; }
+.agent-row .agent-acts { display: flex; gap: 12px; flex-wrap: wrap; }
+.agent-row .agent-acts:empty { display: none; }
+.agent-row .agent-btn { min-height: 28px; padding: 0; border: 0; background: none; color: var(--muted); font: inherit; font-size: .92em; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, var(--muted) 50%, transparent); cursor: pointer; }
+.agent-row .agent-btn:hover, .agent-row .agent-btn:focus-visible, .agent-row .agent-btn[aria-expanded="true"] { color: var(--accent); }
+.agent-row details summary { color: var(--muted); font-size: .92em; cursor: pointer; }
+.agent-row pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16em; overflow: auto; font-size: .85em; margin: 4px 0; }
+.agent-row :is(.agent-ask, .agent-pass) { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 2px; }
+.agent-row :is(.agent-ask, .agent-pass) input[type="text"] { flex: 1 1 9em; min-width: 0; }
+.agent-row :is(input[type="text"], select) { font: inherit; padding: 4px 8px; border-radius: calc(var(--r) * 0.5); border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+.agent-row :is(input[type="text"], select):focus-visible { outline: none; border-color: var(--accent); }
+/* Nov 13: a lent card whose brain has Hands, Autonomy or Screen use on over there */
+/* Nov 13: a lent card's brain has Hands, Autonomy or Screen use on: a small badge on Bob's picture, never a strip over the chat. */
+.lend-powers-badge { position: absolute; left: -6px; bottom: -6px; z-index: 2; width: 22px; height: 22px; min-height: 0; padding: 0; border: 1px solid var(--accent); border-radius: 50%; background: color-mix(in srgb, var(--panel) 80%, transparent); font-size: 12px; line-height: 20px; text-align: center; cursor: pointer; }
+.lend-powers-note { position: absolute; left: 0; top: calc(100% + 8px); z-index: 9001; width: max-content; max-width: min(20em, 80vw); padding: 6px 10px; border: 1px solid var(--accent); border-radius: var(--r, 8px); background: color-mix(in srgb, var(--panel) 72%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); color: var(--text); font-size: 12.5px; line-height: 1.4; overflow-wrap: anywhere; white-space: normal; }
+.net-cards { font-weight: 600; }
+/* 1.5.216: "Open Bob's thinking" shows only the thinking: the other sections, the panels row and the section's own
+   title line (grip, Put in, fold) step aside until Now running is opened the usual way. */
+body.now-mind-only #panelRow,
+body.now-mind-only #nowSections > section:not([data-sec="mind"]),
+body.now-mind-only #nowMind > .now-sec { display: none; }

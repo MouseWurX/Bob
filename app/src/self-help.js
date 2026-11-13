@@ -54,6 +54,7 @@ export function settingsNow(cfg) {
     `Let Bob fix his own messages: ${onOff(cfg.editOwn === true)}`,
     `Show Try again, Edit and Delete in the chat: ${onOff(cfg.chatRedo !== false)}`,
     `Answer messages between steps: ${onOff(cfg.answerMidJob !== false)}`,
+    `Stop and wait words: ${onOff(cfg.stopWords !== false)}`,
     `Thinking bubble above answers: ${onOff(cfg.thinkBubble !== false)}`,
     `Let Bob's Quick brain see the big job: ${onOff(cfg.quickSeesJob === true)}`,
     `Engine extras (Speed & memory): Guess ahead by copying from the chat: ${onOff(cfg.copyGuess === true)}; Load the next brain early: ${onOff(cfg.preloadNext === true)}; Laptop mode: ${onOff(cfg.laptopMode === true)}; Test a new graphics card by itself: ${onOff(cfg.newCardTest === true)}; Keep a speed history: ${onOff(cfg.speedLog === true)}; Tell me what engine updates change (Engines): ${onOff(cfg.engineNotes === true)}; Chat memory type picked for ${Object.values(cfg.brainMemType || {}).filter((t) => t !== 'standard').length} brain(s), the rest Standard`,

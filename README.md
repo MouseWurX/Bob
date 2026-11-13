@@ -41,13 +41,13 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.215-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.215-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.215-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.215-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.215-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.215-linux-x86_64.AppImage) |
-| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.215-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.215-linux-amd64.deb) |
-| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.215-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.215-linux-x86_64.flatpak) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.215-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.215-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
-| **Android phone** | [`Bob-1.5.215-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.215-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.216-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.216-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.216-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.216-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.216-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.216-linux-x86_64.AppImage) |
+| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.216-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.216-linux-amd64.deb) |
+| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.216-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.216-linux-x86_64.flatpak) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.216-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.216-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
+| **Android phone** | [`Bob-1.5.216-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.216-android.apk) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 
@@ -104,7 +104,8 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 
 | | |
 |---|---|
-| 💬 **Answers between steps** | Send a message while Bob works on a long job and he answers it when the step he's on is done, then carries on. "Stop" stops the job. |
+| 💬 **Answers between steps** | Send a message while Bob works on a long job and he answers it when the step he's on is done, then carries on. |
+| 🛑 **Stop and wait words** | While Bob works, "stop", "no no" or "belay that" stops the job at once, "wait" or "hold on" pauses it, "wait 10 minutes" brings it back later, and "go on" carries on. Only a whole short message counts. |
 | 🛠 **A hundred reliability fixes** | Saves that are whole or not at all, a loop that can't run away, tools set aside after three fails, an engine that restarts itself, and honest reporting. Always on, and nothing added to what his brain reads. |
 | 🧰 **More tools** | A calculator, passwords, repeating reminders, read-only email and calendar, page watch, web services, data questions, charts, spelling, meeting notes and file compare. Each one off until you tick it. |
 | 🧠 **Memory and documents** | Where each memory came from, memories that run out, project memories, fresh documents, page and line, notes apps and a Sunday digest. |

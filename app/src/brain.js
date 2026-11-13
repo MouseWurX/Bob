@@ -24,7 +24,7 @@ import { securityTools } from './hands-security.js';
 import { selfToolsTools } from './selftools.js';
 import { Made, showMadeTool } from './made.js';
 import { scheduleTools } from './hands-schedules.js';
-import { HANDS } from './hands-settings.js';
+import { HANDS, handsSettings } from './hands-settings.js';
 import { useToolsTool } from './toolbox.js';
 import { ErrorTally } from './retry.js'; // reliability items 193-207, always on
 import { Gate, queuedLine, plainDoing } from './handoff.js';
@@ -52,7 +52,9 @@ import { parts3dTool } from './parts3d.js';
 import { model3dTool } from './model3d.js';
 import { pickSessionTool } from './auto-session.js';
 import { Lenders, wantsBorrow } from './share-brains.js';
-import { CardLender, CardBorrower } from './share-card.js'; // Bob-Net: lend my graphics card / spread big brains
+import { CardLender, CardBorrower, powersOf, powersWords } from './share-card.js'; // Bob-Net: lend my graphics card / spread big brains
+import { NetCards, cardsOn } from './net-cards.js'; // OK cards on all your Bobs
+import { myName } from './bob-net-pair.js';
 import { Rentals, currentRental, saveEndpoint } from './rental.js'; // 1.5.127 rented brains
 import { GuestJobs, canHere, NEEDS_LIST } from './share-jobs.js';
 import { askTogetherTool } from './together.js';
@@ -76,6 +78,7 @@ import { turnParts } from './brain-turns.js';
 import { runOnParts } from './brain-run-on.js';
 import { hatParts } from './brain-hats.js';
 import { makingParts } from './brain-making.js';
+import { armDelays } from './stop-words.js'; // Stop and wait words: delayed jobs come back by themselves
 export { SIDE_LANE, sideOk, APU_MIN_CTX, APU_CARVE_MARGIN_GB, APU_NO_ROOM, apuRoom, sideBrain, reviewBrainOf, talkerModel, isTalker, sidePick, TALKER_CTX, talkerCtx, TALKER_LINE, BIG_AFTER_MS, MOVE_TO_CPU, BESIDE_FAILED, mainJob, bigJob, besideBigOk, besideLater, mootBesideOk, besideOk } from './brain-lanes.js';
 export { APU_HOLDBACK_DEFAULT_GB, apuHoldbackGB } from './brain-lanes.js';
 export { NOW_IN_NOTE, CUT_NOTE, fitContext, askWords, cutKeeping, MAX_TRACE, fileBefore, traceStep, TOO_LONG, staleHandErrors, claimsPcAction, claimsObservation, OBSERVE_CORRECTION, realState, meanwhileNear, engineLabel, linkKey, CLAIM_CORRECTION, realPcPrompt, ALT_ROUTE_NUDGE, ALT_ROUTE_DONE, askedCount, quickHandBack, EMPTY_NOTE, COMPACT_KEEP, HISTORY_PER, HISTORY_MAX, historyKeep, NO_ANSWER_NOTE, UNCAUGHT_QUIET_MS, NO_ANSWER_PARKED, editPrompt, loadMode, loadLine, thinkStream } from './brain-words.js';
@@ -145,7 +148,9 @@ export class Brain {
     this.lenders.onSkip = (bob, why) => this.log('borrow', `${bob.name} failed twice (${why}); not asked again for an hour`); // item 202
     // Bob-Net: one brain over several of your Bobs' cards (llama.cpp's RPC server). Both off unless switched on.
     this.cardLender = new CardLender(cfg, { gaming: () => currentSession(this.cfg).id === 'light', linkKind: (a) => kindOfAddress(a, this.linksCache?.peek?.()), freeOwn: async () => { if (this.turns.size || !this.engine?.current) return false; await this.engine.unloadAll(); return true; }, log: (k, t) => this.log(k, t) });
-    if (this.engine instanceof LlamaCpp) this.engine.spread = new CardBorrower(cfg, this.lenders, { log: (k, t) => this.log(k, t), linkKind: (a) => kindOfAddress(a, this.linksCache?.peek?.()) });
+    // the owner, Nov 13: a lent card shows when the brain it helps run has Hands, Autonomy or Screen use on over there.
+    this.cardLender.onPowers = (p, to) => { this.broadcast({ type: 'lend-powers', powers: p, to: to || '' }); if (p) this.log('bob-net', `the brain my card helps ${to || 'another Bob'} run has ${powersWords(p).join(', ')} on`); };
+    if (this.engine instanceof LlamaCpp) this.engine.spread = new CardBorrower(cfg, this.lenders, { log: (k, t) => this.log(k, t), linkKind: (a) => kindOfAddress(a, this.linksCache?.peek?.()), powers: () => powersOf(handsSettings(this.cfg)) });
     if (this.engine?.spread) this.engine.spread.onLost = () => this.engine.cardTakenBack(); // 1.5.214: a lent card taken back mid-spread
     // 1.5.127 Rented brains: a big brain hired from an online service for one job, only after a card the owner pressed.
     this.errorTally = new ErrorTally(cfg.dataDir ? path.join(cfg.dataDir, 'tool-errors.json') : null); // item 206
@@ -160,11 +165,15 @@ export class Brain {
     // 1.5.206 PC check: a card made while no page was open never showed. Waiting cards are kept until answered, and
     // /api/events hands them to each page that connects.
     this.waitingCards = new Map();
+    // the owner, Nov 13 (src/net-cards.js, opt-in): OK cards go to all your Bobs, and come down everywhere once answered.
+    this.netCards = new NetCards(this, { name: () => cfg.windowsName || myName() });
     this.broadcast = (ev) => {
-      if (ev?.type === 'approval' && ev.id) this.waitingCards.set(ev.id, ev);
+      if (ev?.type === 'approval' && ev.id) { this.waitingCards.set(ev.id, ev); if (!ev.net && cardsOn(this.cfg)) ev.everywhere = true; } // the phone app shows it too
       else if (ev?.type === 'approval-result' && ev.id) this.waitingCards.delete(ev.id);
       raw(ev); try { this.guests.watch(ev); } catch {}
+      try { this.netCards.local(ev); } catch {}
     };
+    this.netCards.start();
     this.lendDeps = { currentSession, quickBrain: (b) => { const sb = sessionBrains(b.cfg); const m = sb.small && runnable(b, sb.small) ? sb.small : (b.cfg.engine === 'llamacpp' ? null : sb.small); return m ? { model: m, cpu: false, ctx: Math.min(chatBrain(b.cfg).ctx || 32768, 32768) } : null; }, reviewBrain: (b) => reviewBrainOf(b),
       // 1.5.185 Check harder jobs for my other Bobs: the Review brain (Review slot, else Deep thinking, else main), on the card.
       checkBrain: (b) => { const r = reviewBrain(b.cfg); return r && (runnable(b, r.model) || b.cfg.engine !== 'llamacpp') ? { model: r.model, cpu: false, ctx: 32768, think: 'high' } : null; } };
@@ -183,6 +192,7 @@ export class Brain {
     this.lastActivity = Date.now(); // for /api/idle
     this.queue = this.loadQueue();
     setTimeout(() => this.pump(), 1500); // pick up anything left waiting when Bob was last closed
+    armDelays(this); // Stop and wait words: "wait 10 minutes" left from last time comes back by itself
     setTimeout(() => this.armIdleCheck(), 1500); // 1.5.41: a session left on from last time goes back to the lightest one
     this.sessionDir = path.join(cfg.dataDir, 'sessions');
     fs.mkdirSync(this.sessionDir, { recursive: true });

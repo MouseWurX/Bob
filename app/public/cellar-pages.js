@@ -6,6 +6,7 @@ import { LANGS, pickLang } from './i18n.js';
 import { dayWords, rentPicks, visibleModels } from './catalogue.js';
 import { appsDoorHtml } from './apps-door.js';
 import { claudeDoorHtml } from './claude-door.js';
+import { agentsSettingsHtml } from './coding-agents.js'; // Nov 13 Coding agents
 import { telegramHtml } from './telegram.js';
 import { discordHtml } from './discord.js';
 import { phoneAccessHtml } from './phone-access.js';
@@ -137,7 +138,8 @@ export function createSettingsParts(now) {
         <label class="pick"><strong>ComfyUI port</strong><input data-set="workshopPort" inputmode="numeric" value="${esc(settings.workshop?.port || 8188)}" aria-label="ComfyUI port" style="width:7em"></label></div>
       ${appsDoorHtml()}
       <p class="muted">Apps Bob works inside (Unreal Engine, Blender) are under Hands, Connected apps (MCP).</p>
-      ${claudeDoorHtml()}`;
+      ${claudeDoorHtml()}
+      ${agentsSettingsHtml()}`;
   }
   // 1.5.127 Rented brains: a big brain hired for one job from a service the owner has an account with.
   function rentHtml() {

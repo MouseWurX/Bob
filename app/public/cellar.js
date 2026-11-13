@@ -22,6 +22,7 @@ import { telegramHtml, mountTelegram } from './telegram.js';
 import { discordHtml, mountDiscord } from './discord.js';
 import { appsDoorHtml, mountAppsDoor } from './apps-door.js';
 import { claudeDoorHtml, mountClaudeDoor } from './claude-door.js'; // Let Claude use Bob's hands
+import { mountAgentsSettings } from './coding-agents.js'; // Nov 13 Coding agents
 import { checkinsHtml, mountCheckins } from './checkins.js';
 import { promptsHtml, mountPrompts } from './prompts.js'; // saved prompts and the / menu
 import { mountHarness } from './harness.js'; // items 62 to 72: Health and history, Quiet hours and shortcut, Chat extras
@@ -402,11 +403,12 @@ export function createCellar({ popOut = null } = {}) {
   // 1.5.98: old panel ids (Help links, cards, remembered open panels) land on the new panels.
   const ADV_MOVED = { 'adv-connections': 'adv-bobnet' };
   const ADV = [
-    ['brains', '🧠 Brains', 'model roles session brains context thinking making reviewer beside moot keep chatting busy answer messages between steps mid-job interrupt quick brain see big job meanwhile note all tools at once', () => brainsPanelHtml() + `
+    ['brains', '🧠 Brains', 'model roles session brains context thinking making reviewer beside moot keep chatting busy answer messages between steps mid-job interrupt stop and wait words pause hold cancel belay delay no go on resume quick brain see big job meanwhile note all tools at once', () => brainsPanelHtml() + `
       ${sswitch('mootBeside', settings.mootBeside === true, 'Let the reviewer sit beside Bob\'s main brain', keep('Off to start with. At High and Extreme effort the reviewer normally swaps in for Bob\'s main brain. On: if there\'s room, it loads beside it instead (on the processor if the card is full, which is slower), so Bob carries on straight after the check. With no room, a paired Bob can check over Bob-Net if Borrow a brain is on. Not in the Gaming session.'))}
       ${sswitch('netReview', settings.netReview === true, 'Ask my other Bobs for a quick second look', keep('Off to start with. At Low and Medium effort there\'s normally no review. On (with Borrow a brain on): a free Bob on Bob-Net with a big enough Review brain checks Bob\'s longer replies once. If none is free, there\'s no check. Chit-chat is never checked.'))}
       ${sswitch('chatWhileBusy', settings.chatWhileBusy !== false, 'Keep chatting while Bob is busy', keep('While Bob makes a picture, clip, song or sound (or works on a long job, when Answer messages between steps is off), his small brain (Qwen3 4B, if downloaded) answers plain chat beside it, if there\'s free memory. On the processor, replies can take up to half a minute to start. Messages with a picture, or at Medium effort and up, still wait. Off: every message waits for the job.'))}
       ${sswitch('answerMidJob', settings.answerMidJob !== false, 'Answer messages between steps', keep('On to start with. A message you send while Bob works on a long job is answered by the brain that\'s already loaded, between two steps of the job, so you don\'t wait for the whole job. A question gets a short reply. New work goes in Tasks for after the job. In the job\'s own chat, "also…" or "use the other file" is added to the job, and "stop" stops it after the step it\'s on. Then he carries on from the same step. If a step runs long, he says he got your message. Off: messages wait for the job, or go to the small brain beside it.'))}
+      ${sswitch('stopWords', settings.stopWords !== false, 'Stop and wait words', keep('On to start with. While a job of yours runs, a short message on its own is read as a command the moment you send it: "stop", "cancel", "belay that" or "no no" stops the job at once; "wait", "pause" or "hold on" pauses it; "wait 10 minutes" or "later" pauses it for later; "what are you doing?!" pauses it just in case; "go on", "carry on" or "you got it" carries on. The same word inside a sentence ("don\'t stop the server") is a normal message. A bare "no" stops a job only when nothing is waiting on your answer. Off: only a bare "stop" counts, after the step Bob is on.'))}
       ${sswitch('quickSeesJob', settings.quickSeesJob === true, 'Let Bob\'s Quick brain see the big job', keep('Off unless you turn it on. When Bob chats beside a long job, his Quick brain knows what the big brain is on: the job, how long it has run and its last step. Ask, and it shows you the steps so far, or passes the big brain a note from you, which it reads at its next step. Stopping a job is still your Stop button. Works while Keep chatting while Bob is busy is on.'))}
       ${hw?.gpu?.integrated ? holdbackHtml() : ''}
       ${sswitch('allTools', settings.allTools, 'Give Bob all his tools at once', 'Sends every tool with each message, which leaves less room for the chat. Leave off to keep chats light.')}`],
@@ -598,6 +600,7 @@ export function createCellar({ popOut = null } = {}) {
     mountDiscord(dlg.querySelector('.discord-box')); // Online services: Bob on Discord
     mountAppsDoor(dlg.querySelector('.apps-door-box')); // Other apps: Let other apps use Bob's brains
     mountClaudeDoor(dlg.querySelector('.claude-door-box')); // Other apps: Let Claude use Bob's hands
+    mountAgentsSettings(dlg.querySelector('.coding-agents-box')); // Other apps: Coding agents
     mountCheckins(dlg.querySelector('.checkins-box')); // 1.5.78 Check-ins
     mountPresets(dlg.querySelector('.presets-box')); // Assistant presets for chats (loads its own list)
     mountPrompts(dlg.querySelector('.prompts-box')); // 📝 Saved prompts
@@ -1407,6 +1410,7 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.set === 'mootBeside') { const r = await api('/api/settings', { mootBeside: el.checked }); settings.mootBeside = r.mootBeside; el.checked = r.mootBeside; return; }
       if (el.dataset.set === 'chatWhileBusy') { const r = await api('/api/settings', { chatWhileBusy: el.checked }); settings.chatWhileBusy = r.chatWhileBusy; el.checked = r.chatWhileBusy; return; }
       if (el.dataset.set === 'answerMidJob') { const r = await api('/api/settings', { answerMidJob: el.checked }); settings.answerMidJob = r.answerMidJob; el.checked = r.answerMidJob; flash(el, r.answerMidJob ? 'On. Bob answers between steps of a long job.' : 'Off. Messages wait for the job, or go to the small brain beside it.'); return; }
+      if (el.dataset.set === 'stopWords') { const r = await api('/api/settings', { stopWords: el.checked }); settings.stopWords = r.stopWords; el.checked = r.stopWords; flash(el, r.stopWords ? 'On. Stop, wait and go on work while Bob is busy.' : 'Off. Only a bare stop counts, after the step he is on.'); return; }
       if (el.dataset.set === 'quickSeesJob') { const r = await api('/api/settings', { quickSeesJob: el.checked }); settings.quickSeesJob = r.quickSeesJob; el.checked = r.quickSeesJob; flash(el, r.quickSeesJob ? 'On. Ask how the job is going while Bob works.' : 'Off. Quick replies don\'t see the job.'); return; }
       if (el.dataset.set === 'quickOnCpu') { const r = await api('/api/settings', { quickOnCpu: el.checked }); settings.quickOnCpu = r.quickOnCpu; el.checked = r.quickOnCpu; return; }
       if (el.dataset.set === 'planFirst') { const r = await api('/api/settings', { planFirst: el.checked }); settings.planFirst = r.planFirst; el.checked = r.planFirst; return; }

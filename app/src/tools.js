@@ -722,11 +722,13 @@ export function buildTools(cfg) {
       // The owner's ask: Git and Node.js 20+ fetched when they're missing (his own copies, in his folder only).
       // Node only for Bob himself and repositories with a package.json.
       const runOn = handOn(cfg, 'run');
+      let gitFile = ''; // Nov 13: helpers' own copies need Git (self-work-plan.js)
       if (runOn) {
         const need = [['git', 'Git'], ...(repo.own || fs.existsSync(path.join(codeCopyDir(cfg, repo), 'package.json')) ? [['node', 'Node.js']] : [])];
         for (const [tool, label] of need) {
           try {
             const t = await ensureTool(cfg, tool, { signal: ctx.signal, tick: () => {} });
+            if (tool === 'git') gitFile = t.file || 'git';
             if (t.fetched) ctx.emit?.({ type: 'announce', text: `📦 ${label} wasn't on this replicant matrix, so I got my own copy (in my folder only, nothing installed for the rest of the computer).` });
           } catch (e) { throw new Error(`I need ${label} for this job and couldn't get it: ${e.message}`); }
         }
@@ -737,7 +739,7 @@ export function buildTools(cfg) {
       // phased: Extreme effort's research-plan-do steps would start fresh hats on other brains; this job keeps its one brain.
       const was = ctx.phased;
       ctx.phased = true;
-      try { return await runManaged(ctx.brain, ctx, { cfg, repo, job, ...parts, runOn, force: { model: pick.id, cpu: false, think: true, ctx: want, longRun: true, maxSteps: SELF_STEPS } }); }
+      try { return await runManaged(ctx.brain, ctx, { cfg, repo, job, ...parts, runOn, git: gitFile, force: { model: pick.id, cpu: false, think: true, ctx: want, longRun: true, maxSteps: SELF_STEPS } }); }
       finally { ctx.phased = was; }
     },
     summary: ({ repo }) => `work on ${repo || 'Bob'}`,

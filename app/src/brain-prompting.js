@@ -28,6 +28,7 @@ import { selfWorkOn, readyRepos } from './self-work.js';
 import { moreToolsOff } from './more-tools.js';
 import { toolLearnOn, loadLearning, learnedLine } from './tool-learn.js';
 import os from 'node:os';
+import { stopWordsOn, LINES as STOP_LINES } from './stop-words.js';
 import { waitingFor, sortMessage, WAITS_LINE, QUEUED_LINE, quickPrompt, jobLine, quickHistory, maybeTag, replyTag } from './mid-job.js';
 import { noteWait } from './loop-guard.js';
 import { newMsgId } from './chats.js';
@@ -151,6 +152,14 @@ export const promptParts = {
       let kind = sortMessage(q.text, { sameChat });
       if (kind === '' || kind === 'answer') kind = await this.quickReply(q, job, { model, cpu, brainCtx, signal, unsure: kind === '', sameChat });
       if (kind === 'answer') { n++; continue; }
+      if ((kind === 'stopnow' || kind === 'pause') && sameChat) {
+        // Stop and wait words: the brain read an unclear message as stop or pause, and the app does it (stop-words.js).
+        this.midJobRecord(q, job, null);
+        const ok = kind === 'stopnow' ? this.cancelJob(job.id) : this.pauseJob(job.id);
+        if (ok) this.broadcast({ type: 'busy-note', sessionId: q.sessionId, text: kind === 'stopnow' ? STOP_LINES.stop : STOP_LINES.pause });
+        this.log('jobs', `a message typed during the job was read by the brain as ${kind === 'stopnow' ? 'stop' : 'pause'}`);
+        return n + 1; // the job ends or pauses here: nothing more to answer between steps
+      }
       if (kind === 'stop') {
         job.stopAfter = true; // the loop's own Stop after this step takes it from here, and says so in the job's chat
         this.midJobRecord(q, job, null);
@@ -189,14 +198,14 @@ export const promptParts = {
     this.saveQueue();
   },
   // The quick reply: its own small context (the message, one line about the job, the last few turns of that chat), no
-  // tools, on the loaded brain. Returns 'answer', 'task', 'change', 'failed' or 'aborted'.
+  // tools, on the loaded brain. Returns 'answer', 'task', 'change', 'stopnow', 'pause', 'failed' or 'aborted'.
   async quickReply(q, job, { model, cpu, brainCtx, signal, unsure = false, sameChat = false }) {
     const sid = q.sessionId;
     const who = this.cfg.userName || 'the user';
     const out = (ev) => this.broadcast({ ...ev, turnId: q.id, sessionId: sid });
     const lang = this.cfg.language && this.cfg.language !== 'en' ? this.cfg.language : '';
     const messages = [
-      { role: 'system', content: quickPrompt({ who, line: jobLine(this.watch.for(job)), unsure, sameChat, language: lang }) },
+      { role: 'system', content: quickPrompt({ who, line: jobLine(this.watch.for(job)), unsure, sameChat, language: lang, stopTags: stopWordsOn(this.cfg) }) },
       ...quickHistory(this.session(sid)),
       { role: 'user', content: q.text }
     ];
@@ -217,7 +226,7 @@ export const promptParts = {
     }
     const text = String(reply?.content || '').trim();
     const tag = replyTag(text);
-    if (tag || !text) { q.state = 'waiting'; out({ type: 'done' }); return tag === 'change' && sameChat ? 'change' : tag ? 'task' : 'failed'; }
+    if (tag || !text) { q.state = 'waiting'; out({ type: 'done' }); return tag === 'change' && sameChat ? 'change' : tag === 'stop' && sameChat ? 'stopnow' : tag === 'pause' && sameChat ? 'pause' : tag === 'task' ? 'task' : 'failed'; }
     if (!open) out({ type: 'token', text });
     const answer = { role: 'assistant', content: text, at: Date.now(), id: newMsgId(), midJob: job.id };
     out({ type: 'said', id: answer.id });
