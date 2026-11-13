@@ -1,0 +1,22 @@
+diff --git a/tools/server/server.cpp b/tools/server/server.cpp
+index 286ff08..8a0e009 100644
+--- a/tools/server/server.cpp
++++ b/tools/server/server.cpp
+@@ -678,6 +678,17 @@ static int server_run_instance(common_params & params, server_role & role, commo
+         ctx_server.set_state_callback([&](server_state state, json payload) {
+             role.notify_to_router(server_state_to_str(state), payload);
+         });
++    } else {
++        // Brain Engine: say how far the model has loaded (already throttled to one sample per 200 ms), so a front end
++        // reading the output can show real progress: "load_progress: <stage> <percent>"
++        ctx_server.set_state_callback([](server_state state, json payload) {
++            if (state != SERVER_STATE_LOADING || !payload.contains("value") || !payload.contains("current")) {
++                return;
++            }
++            const float  value = payload.at("value").get<float>();
++            const std::string stage = payload.at("current").get<std::string>();
++            SRV_INF("load_progress: %s %d\n", stage.c_str(), (int) (value*100.0f + 0.5f));
++        });
+     }
+ 
+     if (!ctx_server.load_model(params)) {

@@ -2,7 +2,7 @@
 
 This is the guide to what Brain Engine changes in llama.cpp, where each change hooks in, and what to re-check when moving to a newer llama.cpp. [README.md](README.md) says what each patch is for and how to build and move it. This page is the "where and how" for whoever does the rebase.
 
-Brain Engine 6 (named 6b12282) is llama.cpp **b12282** plus the eleven patches below (Brain Engine 4 had the first six, Brain Engine 5 the first eight; 0007 is live expert picks, 0008 the link log and SCUT that retunes itself, 0009 the expert mass, 0010 the expert trace read once per word, 0011 one trip a word over a lent card). Only 0004, 0005, 0006, 0008 and 0011 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
+Brain Engine 6 (named 6b12282) is llama.cpp **b12282** plus the twelve patches below (Brain Engine 4 had the first six, Brain Engine 5 the first eight; 0007 is live expert picks, 0008 the link log and SCUT that retunes itself, 0009 the expert mass, 0010 the expert trace read once per word, 0011 one trip a word over a lent card, 0012 load progress). Only 0004, 0005, 0006, 0008 and 0011 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
 
 Bob's own code map lists these patches too: one line each, with the files they change, the lines they add and take out, and the main names they add.
 
@@ -142,6 +142,12 @@ Then run `engine/try-newer.sh <tag>`. Every patch must go on, and the Linux buil
 - **Bob callers:** none; `src/link-log.js` keeps the `[link]   read ahead: ...` line like any other.
 - **Re-check on rebase:** it leans on graphs keeping their `uid` from one word to the next (that is what makes upstream send `GRAPH_RECOMPUTE`), and on the card server answering commands in the order they arrive. If upstream changes either, or adds its own batching of reads, drop this patch rather than port it.
 - **Tests:** `engine/tests/rpc-ahead.cpp` (build it against the engine's libraries; run it against `ggml-rpc-server` with `GGML_RPC_AHEAD` 0 and 1, straight and through a slow link). `test/run-link-log-test.js` checks the patch is listed.
+
+### 0012-load-progress: how far a brain has loaded
+- **Upstream files:** `tools/server/server.cpp` only.
+- **Hooks:** `server_run_instance()`: when the server is not run by a router, `ctx_server.set_state_callback()` prints `load_progress: <stage> <percent>` for each loading sample (upstream throttles them to one per 200 ms). Under a router, upstream's own callback is kept.
+- **Bob callers:** `loadDots()` in `src/llamacpp.js` reads the lines while a brain loads; `src/brain.js` broadcasts `load-progress` and `src/server.js` sends `cube-load` to the cube.
+- **Re-check on rebase:** that `set_state_callback` and the `value` / `current` fields of the loading payload are still there.
 
 ## What's not covered yet
 
