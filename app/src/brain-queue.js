@@ -12,6 +12,7 @@ import crypto from 'node:crypto';
 import { cleanEffort } from './moot.js';
 import { jobHome, homeOpen, HOME_WAIT } from './job-home.js';
 import { midJobFits, ACK_LINE, ACK_AFTER_MS } from './mid-job.js';
+import { heedStopWord, clearDelay } from './stop-words.js';
 import { autoSessionOn } from './auto-session.js';
 import { stopAway, awayPlan, awayWaitLine, sendAway } from './share-jobs.js';
 import { webOn } from './web.js';
@@ -108,6 +109,10 @@ export const queueParts = {
   },
   enqueue(sessionId, text, attach = [], effort = 'low', extra = {}) {
     this.lastActivity = Date.now();
+    // Nov 13 (the owner): Stop and wait words. "stop", "no no", "hold on", "wait 10 minutes", "go on"... as a whole short
+    // message, while a job of yours runs, waits or is paused: the app acts at once (stop-words.js). Nothing for the brain.
+    const heard = heedStopWord(this, sessionId, text, attach, extra);
+    if (heard) return heard;
     // 1.5.97: "ok" while a job only waits for the graphics card (no card open) gets a plain answer at once, instead of
     // queueing behind the wait it was meant to answer.
     // 1.5.104: also while a chat of this session already waits behind a picture, clip, song or sound.
@@ -230,6 +235,7 @@ export const queueParts = {
   resumeJob(id) {
     const j = this.queue.find((x) => x.id === id);
     if (!j || j.state !== 'paused') return false;
+    clearDelay(this, j); // Resume pressed (or "go on") before a delay was up
     j.pickUp = j.pausedFrom === 'working' && Boolean(j.carryOn);
     if (j.pausedFrom === 'working') { j.steps = []; j.resumed = 0; }
     Object.assign(j, { state: 'waiting', pausedFrom: undefined, pausedAt: undefined, error: undefined, at: Date.now() }); // keeps its place in line

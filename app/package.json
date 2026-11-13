@@ -200,6 +200,7 @@
     "test/run-engine-blocked-test.js",
     "test/run-meanwhile-test.js",
     "test/run-mid-job-test.js",
+    "test/run-stop-words-test.js",
     "test/run-place-test.js",
     "test/run-brains-page-test.js",
     "test/run-fit-sort-test.js",

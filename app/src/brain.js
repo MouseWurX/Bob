@@ -76,6 +76,7 @@ import { turnParts } from './brain-turns.js';
 import { runOnParts } from './brain-run-on.js';
 import { hatParts } from './brain-hats.js';
 import { makingParts } from './brain-making.js';
+import { armDelays } from './stop-words.js'; // Stop and wait words: delayed jobs come back by themselves
 export { SIDE_LANE, sideOk, APU_MIN_CTX, APU_CARVE_MARGIN_GB, APU_NO_ROOM, apuRoom, sideBrain, reviewBrainOf, talkerModel, isTalker, sidePick, TALKER_CTX, talkerCtx, TALKER_LINE, BIG_AFTER_MS, MOVE_TO_CPU, BESIDE_FAILED, mainJob, bigJob, besideBigOk, besideLater, mootBesideOk, besideOk } from './brain-lanes.js';
 export { APU_HOLDBACK_DEFAULT_GB, apuHoldbackGB } from './brain-lanes.js';
 export { NOW_IN_NOTE, CUT_NOTE, fitContext, askWords, cutKeeping, MAX_TRACE, fileBefore, traceStep, TOO_LONG, staleHandErrors, claimsPcAction, claimsObservation, OBSERVE_CORRECTION, realState, meanwhileNear, engineLabel, linkKey, CLAIM_CORRECTION, realPcPrompt, ALT_ROUTE_NUDGE, ALT_ROUTE_DONE, askedCount, quickHandBack, EMPTY_NOTE, COMPACT_KEEP, HISTORY_PER, HISTORY_MAX, historyKeep, NO_ANSWER_NOTE, UNCAUGHT_QUIET_MS, NO_ANSWER_PARKED, editPrompt, loadMode, loadLine, thinkStream } from './brain-words.js';
@@ -183,6 +184,7 @@ export class Brain {
     this.lastActivity = Date.now(); // for /api/idle
     this.queue = this.loadQueue();
     setTimeout(() => this.pump(), 1500); // pick up anything left waiting when Bob was last closed
+    armDelays(this); // Stop and wait words: "wait 10 minutes" left from last time comes back by itself
     setTimeout(() => this.armIdleCheck(), 1500); // 1.5.41: a session left on from last time goes back to the lightest one
     this.sessionDir = path.join(cfg.dataDir, 'sessions');
     fs.mkdirSync(this.sessionDir, { recursive: true });

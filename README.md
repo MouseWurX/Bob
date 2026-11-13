@@ -104,7 +104,8 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 
 | | |
 |---|---|
-| 💬 **Answers between steps** | Send a message while Bob works on a long job and he answers it when the step he's on is done, then carries on. "Stop" stops the job. |
+| 💬 **Answers between steps** | Send a message while Bob works on a long job and he answers it when the step he's on is done, then carries on. |
+| 🛑 **Stop and wait words** | While Bob works, "stop", "no no" or "belay that" stops the job at once, "wait" or "hold on" pauses it, "wait 10 minutes" brings it back later, and "go on" carries on. Only a whole short message counts. |
 | 🛠 **A hundred reliability fixes** | Saves that are whole or not at all, a loop that can't run away, tools set aside after three fails, an engine that restarts itself, and honest reporting. Always on, and nothing added to what his brain reads. |
 | 🧰 **More tools** | A calculator, passwords, repeating reminders, read-only email and calendar, page watch, web services, data questions, charts, spelling, meeting notes and file compare. Each one off until you tick it. |
 | 🧠 **Memory and documents** | Where each memory came from, memories that run out, project memories, fresh documents, page and line, notes apps and a Sunday digest. |
