@@ -129,7 +129,7 @@ try {
   check('a saved setting that starts off', SETTING_KEYS.includes('promptMenu') && mergeSettings({}, {}).promptMenu !== true && mergeSettings({}, { promptMenu: 'yes' }).promptMenu === false);
   check('bob_help lists it', /Saved prompts with \/: off/.test(settingsNow({ cloud: [] })));
   check('on the first-time list', WANTS.some((w) => w.key === 'promptMenu'));
-  check('a Settings panel in the Bob group and the How Bob works card', GROUPS.find(([g]) => g === 'Bob')[1].includes('adv-prompts') && CARDS.find((c) => c.id === 'how').topics.includes('adv-prompts'));
+  check('a Settings panel in the Chat and jobs group and the How Bob works card', GROUPS.find(([g]) => g === 'Chat and jobs')[1].includes('adv-prompts') && CARDS.find((c) => c.id === 'how').topics.includes('adv-prompts'));
   const cellar = publicText('cellar.js'), app = publicText('app.js'), server = read('src/server.js'), css = read('public/style.css');
   check('the switch sits on top of the list, which shows either way', /\['prompts', '📝 Saved prompts', [^\n]*sswitch\('promptMenu', settings\.promptMenu === true, 'Saved prompts with \/'[^\n]*\+ promptsHtml\(\)\]/.test(cellar) && /mountPrompts\(dlg\.querySelector\('\.prompts-box'\)\)/.test(cellar) && !/data-pe-on|disabled/.test(read('public/prompts.js').split('mountPrompts')[1].split('data-pe-up')[0]));
   check('the chat box gets the / menu', /createPromptMenu\(input, \{ openSettings: \(\) => cellar\.open\('settings', null, \{ jump: 'adv-prompts' \}\) \}\)/.test(app));

@@ -137,6 +137,7 @@ export const WORDS = {
   "Updates, passcode, secrets, folders, backups, tidying, removing Bob.": "Actualizaciones, código de acceso, secretos, carpetas, copias de seguridad, limpieza y desinstalar Bob.",
   "Bob": "Bob",
   "Brains": "Cerebros",
+  "Chat and jobs": "Chat y trabajos",
   "Connections": "Conexiones",
   "🙂 Bob himself": "🙂 Bob en persona",
   "⚡ How Bob works": "⚡ Cómo trabaja Bob",

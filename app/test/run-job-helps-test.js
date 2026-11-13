@@ -244,7 +244,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-jobs-'));
   check('Undo and open-at only on this replicant matrix', /\(p === '\/api\/jobs\/undo' \|\| p === '\/api\/open-at'\)\) \{\n\s+if \(!isLocal\) return send\(res, 403/.test(server));
   check('the reason typed on Deny is kept', /if \(allow === false && typeof note === 'string' && note\.trim\(\)\) keepDenyNote\(brain, note\)/.test(server));
   check('Settings has a Jobs panel with eleven switches, off unless turned on', /\['jobs', '🔁 Jobs'/.test(cellar) && (cellar.match(/\$\{sw\('/g) || []).length === 11 && /j\[k\] === true/.test(cellar));
-  check('the panel is in How Bob works and the Bob group', CARDS.find((c) => c.id === 'how').topics.includes('adv-jobs') && GROUPS.find(([g]) => g === 'Bob')[1].includes('adv-jobs') && CARDS.every((c) => c.about.length <= 70));
+  check('the panel is in How Bob works and the Chat and jobs group', CARDS.find((c) => c.id === 'how').topics.includes('adv-jobs') && GROUPS.find(([g]) => g === 'Chat and jobs')[1].includes('adv-jobs') && CARDS.every((c) => c.about.length <= 70));
   check('the chat draws the bar, the receipt, Stop after this step and the links', /jobHelps\.event\(ev\)/.test(app) && /jobHelps\.busy\(b\)/.test(app) && /jobHelps\.links\(el\)/.test(app) && /jobHelps\.whyBox\(\)/.test(app));
   check('the window only opens editor addresses', /openUrl: \(url\) => \(\/\^\(\?:vscode\|cursor\|vscodium\):/.test(main));
   check('the phone shows the receipt as text', /ev\.type === 'receipt'/.test(phone));

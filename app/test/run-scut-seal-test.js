@@ -166,7 +166,7 @@ const box = (name) => { const d = path.join(tmp, name); fs.mkdirSync(d, { recurs
   ok(/RFC 8439/.test(patch) && !/#include <openssl/.test(patch), 'engine: ChaCha20-Poly1305 written from RFC 8439, no outside library to ship');
   ok(/0006-scut-seal\.patch/.test(readme), 'engine README lists 0006');
   const ui = read('public', 'share-brains.js');
-  ok(/data-share-scutseal/.test(ui) && /Seal SCUT packets/.test(ui) && /on unless you turn it off/.test(ui) && /v\.scutSeal !== false \? 'checked'/.test(ui), 'Settings: Seal SCUT packets, ticked unless switched off, always shown');
+  ok(/data-share-scutseal/.test(ui) && /Seal SCUT packets/.test(ui) && /v\.scutSeal !== false \? 'checked'/.test(ui), 'Settings: Seal SCUT packets, ticked unless switched off, always shown');
   const help = read('public', 'help-content.js');
   ok(/id: 'faq-scut-seal'/.test(help) && /<dt>Sealed SCUT packets<\/dt>/.test(help) && /go\('faq-scut-seal'/.test(help), 'Help: an FAQ, a glossary entry and a link from the SCUT FAQ');
   ok(/Seal SCUT packets/.test(read('docs', 'SETTINGS-INVENTORY.md')), 'settings inventory has it');

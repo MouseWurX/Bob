@@ -2,13 +2,15 @@
 // One toggle swaps them. Nothing is hidden in either view: every panel sits on one card and in one group.
 // Panel ids are the ones Help links and cards already jump to (ev-... and adv-...).
 
-// Advanced: the side list, top to bottom.
+// Advanced: the side list, top to bottom. The groups line up with the Simple cards (Bob himself, How Bob works, Fun...).
 export const GROUPS = [
-  ['Bob', ['ev-bob', 'ev-how', 'adv-jobs', 'adv-prompts', 'adv-chatx', 'adv-quiet', 'adv-daily', 'adv-voice', 'adv-look', 'adv-personality', 'adv-house', 'adv-presets', 'adv-checkins', 'adv-tools']],
+  ['Bob', ['ev-bob', 'adv-personality', 'adv-voice', 'adv-look', 'adv-house', 'adv-presets']],
+  ['Chat and jobs', ['ev-how', 'adv-jobs', 'adv-chatx', 'adv-prompts', 'adv-checkins', 'adv-daily', 'adv-quiet', 'adv-tools']],
   ['Brains', ['adv-brains', 'adv-speed', 'adv-engines']],
   ['Connections', ['adv-bobnet', 'adv-online', 'adv-apps']],
-  ['What Bob may do', ['adv-hands', 'ev-howtos', 'adv-adventure', 'adv-games']],
-  ['This replicant matrix', ['ev-pc', 'adv-health', 'ev-lock', 'ev-projects', 'ev-home', 'ev-secrets', 'ev-save', 'ev-backup', 'adv-housekeeping', 'adv-remove']]
+  ['What Bob may do', ['adv-hands', 'ev-howtos']],
+  ['Fun', ['adv-adventure', 'adv-games']],
+  ['This replicant matrix', ['ev-pc', 'ev-home', 'ev-save', 'ev-projects', 'ev-backup', 'adv-housekeeping', 'ev-lock', 'ev-secrets', 'adv-health', 'adv-remove']]
 ];
 
 // Simple: the cards. `about` says what's inside, in a few plain words.
