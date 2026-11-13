@@ -128,6 +128,7 @@ export class Brain {
     this.engine.brainLabel = (m) => this.brainLabel(m); // reliability 218-228: the engine's chat notes name brains as the person knows them
     // 1.5.53: a second brain joined or left (chat page: Bob's head grows / shrinks; see public docs in the HANDOFF).
     this.engine.onBeside = (ev) => { this.broadcast({ type: 'second-brain', ...ev, label: ev.model ? this.brainLabel(ev.model) : '' }); this.broadcast({ type: 'brain' }); };
+    this.engine.onLoadProgress = (model, pct) => this.broadcast({ type: 'load-progress', model, pct }); // 1.5.215: the cube's load-in follows the weights loading
     this.engine.onIdleGone = () => this.broadcast({ type: 'brain' }); // the idle timer let the brain go: the label and the fNRI cube hear at once
     this.sleepy = { since: 0, recent: [] }; // Gaming-session asides (public/sleepy.js)
     // Bob's own engine unloads its brain when idle; it asks here first so it never does that mid-job.

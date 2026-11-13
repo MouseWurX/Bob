@@ -183,6 +183,7 @@ function broadcast(ev) {
   for (const res of ev?.type === 'think' || ev?.type === 'think-start' ? mindClients : clients) res.write(data);
   if (ev?.type === 'status') { const l = ['waking', 'loading'].includes(ev.state) ? String(ev.model || '') : ''; if (l !== cubeLoading) { cubeLoading = l; if (cubeClients.size) cubeBrainsNow(); } } // once as a brain starts loading, and once as loading stops (a load that failed or was called off leaves no brain), not every progress line
   if (ev?.type === 'brain' && cubeClients.size) cubeBrainsNow(); // fNRI's small cube takes itself apart when its brain is let go
+  if (ev?.type === 'load-progress' && cubeClients.size) { const d = `data: ${JSON.stringify({ type: 'cube-load', label: friendlyName(ev.model), pct: Math.max(0, Math.min(100, Number(ev.pct) || 0)) })}\n\n`; for (const res of cubeClients) res.write(d); } // 1.5.215: the load-in fills as the weights load
   try { weekly.watch(ev, () => brain.engine?.current || ''); } catch {} // Count what Bob did each week (numbers only)
   try { telegram?.watch(ev); } catch {} // Talk to Bob on Telegram: only the Telegram chat's events, and only while it's on
   try { discord?.watch(ev); } catch {} // Bob on Discord: only Discord jobs' own events
