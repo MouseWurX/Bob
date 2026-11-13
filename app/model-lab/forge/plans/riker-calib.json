@@ -15,6 +15,7 @@
  "disk_gb": 300,
  "general_tokens": 0,
  "rungs": [],
+ "direct": true,
  "hours_max": 10,
  "dollars_max": 53,
  "rent_minutes": 420,

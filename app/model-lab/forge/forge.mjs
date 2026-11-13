@@ -39,8 +39,8 @@ function hfToken() {
 const args = Object.fromEntries(process.argv.slice(2).map((a, i, arr) => a.startsWith('--') ? [a.slice(2), arr[i + 1]?.startsWith('--') || arr[i + 1] === undefined ? true : arr[i + 1]] : []).filter((x) => x.length));
 const KEY = process.env.RUNPOD_API_KEY;
 if (!KEY) { console.error('RUNPOD_API_KEY is not set (the "Save RunPod key" step).'); process.exit(1); }
-const REST = 'https://rest.runpod.io/v1';
-const outDir = path.join(here, '..', 'out'); fs.mkdirSync(path.join(outDir, 'forge'), { recursive: true });
+const REST = process.env.FORGE_REST || 'https://rest.runpod.io/v1'; // FORGE_REST / FORGE_OUT: tests only (a made-up RunPod and a temp folder)
+const outDir = process.env.FORGE_OUT || path.join(here, '..', 'out'); fs.mkdirSync(path.join(outDir, 'forge'), { recursive: true });
 const logFile = path.join(outDir, 'forge', `forge-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.log`);
 const log = (...m) => { const line = `${new Date().toISOString().slice(11, 19)} ${m.join(' ')}`; console.log(line); fs.appendFileSync(logFile, line + '\n'); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -146,7 +146,7 @@ let hoursMax = plan.hours_max || 9, dollarsMax = plan.dollars_max || 40;
 const rereadCaps = () => { try { const p = JSON.parse(fs.readFileSync(planFile, 'utf8')); const h = Number(p.hours_max) || hoursMax, d = Number(p.dollars_max) || dollarsMax; if (h !== hoursMax || d !== dollarsMax) { log(`caps now ${h} h / $${d} (were ${hoursMax} h / $${dollarsMax}), from ${planFile}`); hoursMax = h; dollarsMax = d; } } catch {} };
 const token = crypto.randomBytes(16).toString('hex');
 
-let podId = args.resume || args.restart || args['send-plan'] || args['send-token'], price = 0, base = args.local || '';
+let podId = args.resume || args.restart || args['send-plan'] || args['send-token'] || args.urls, price = 0, base = args.local || '';
 const hdr = { 'X-Forge-Token': token };
 // build 19: one pod record per run (two Forge windows can run side by side without touching each other's rental); an older run's single pod-token.json still works for --resume/--send-*
 // 12 Nov: files sent to the pod are named per run, so two rentals can start side by side without swapping plans
@@ -219,7 +219,7 @@ async function rent() {
           name: `bob-forge-${plan.rungs[0]?.name || (plan.lessons_only ? 'lessons' : 'counts')}-${String(plan.run || '').replace(/[^\w.-]/g, '_').slice(0, 40)}`, imageName: plan.image || 'vllm/vllm-openai:v0.28.0', cloudType: 'SECURE',
           gpuTypeIds: cards, gpuTypePriority: 'custom', gpuCount: 1, volumeMountPath: '/workspace',
           ...(useVol ? { networkVolumeId: useVol.id, dataCenterIds: [useVol.dataCenterId], containerDiskInGb: plan.disk_gb || 350 } : { volumeInGb: plan.disk_gb || 350, containerDiskInGb: 40 }),
-          ports: (plan.write_lessons || plan.benchmark) ? ['8000/http', '8001/http'] : ['8000/http'], supportPublicIp: false,
+          ports: directPorts() || ((plan.write_lessons || plan.benchmark) ? ['8000/http', '8001/http'] : ['8000/http']), supportPublicIp: Boolean(plan.direct),
           // the PC's RunPod key goes in as FORGE_RUNPOD_KEY (RunPod injects its own limited RUNPOD_API_KEY into every pod, which cannot delete) so the pod can delete itself near the time cap even if this PC falls asleep.
           env: { FORGE_TOKEN: token, FORGE_RUNPOD_KEY: KEY, HF_HUB_ENABLE_HF_TRANSFER: '0', FORGE_HOURS_MAX: String(hoursMax), FORGE_ROOT: root, FORGE_SHARED: '/workspace' },
           dockerEntrypoint: ['bash', '-c'],
@@ -290,12 +290,43 @@ async function download(rel, dest, bytes, sha) {
   fs.renameSync(part, dest); log(`downloaded ${rel} -> ${dest}`);
 }
 
+// 13 Nov (the owner: "we need the direct port working"): plan.direct rents the door (8000) and the brain (8001) as plain TCP on the
+// pod's public address, so no RunPod https proxy sits between: no 100 s cutoff (524), no proxy slowness. The PC finds ip:port in
+// the pod's record (publicIp + portMappings) and checks it answers; without them it falls back to the proxy addresses. The same
+// tokens guard both (X-Forge-Token on the door, the forge token as the brain's API key); plain http, so only the token's holder
+// can use it, but it is not encrypted on the way. --restart on a pod without the TCP ports first resets it with them (RunPod
+// restarts the container: the drive keeps the built engine and the downloads; whatever ran stops).
+function directPorts() { return plan.direct ? ['8000/tcp', '8001/tcp'] : null; }
+async function directUrls() {
+  if (!plan.direct || args.local) return null;
+  try { const p = await rp('GET', `/pods/${podId}`); const ip = p.publicIp, pm = p.portMappings || {};
+    return ip && pm['8000'] ? { door: `http://${ip}:${pm['8000']}`, llama: pm['8001'] ? `http://${ip}:${pm['8001']}` : null } : null; } catch { return null; }
+}
+// the brain's address for the PC's commands: the direct one when it answers /health, else the proxy
+async function llamaUrl() {
+  if (args.local) return 'http://127.0.0.1:8001';
+  const d = await directUrls();
+  if (d?.llama) { try { const r = await fetch(`${d.llama}/health`, { signal: AbortSignal.timeout(10000) }); if (r.status === 200) return d.llama; } catch {} log(`direct port ${d.llama} does not answer /health; using the proxy`); }
+  return `https://${podId}-8001.proxy.runpod.net`;
+}
+
 const started = Date.now();
 if (args.local) { podId = 'local'; hdr['X-Forge-Token'] = process.env.FORGE_TOKEN || ''; fs.writeFileSync(tokenFile, JSON.stringify({ pod: podId, token: hdr['X-Forge-Token'], started: Date.now(), price: 0 })); }
 else if (!podId) await rent();
 else { const t = JSON.parse(fs.readFileSync(tokenFile, 'utf8')); price = t.price || 0; }
 if (!args.local) base = `https://${podId}-8000.proxy.runpod.net`;
 const t0 = JSON.parse(fs.readFileSync(tokenFile, 'utf8')).started || started;
+if (plan.direct && !args.local) {
+  let d = await directUrls();
+  if (args.urls) { console.log(d ? `door ${d.door}\nbrain ${d.llama || '(no 8001 mapping)'}\nset LAB_URL=${d.llama || ''}` : 'this pod has no direct TCP ports (forge.mjs --restart with plan.direct resets it with them)'); process.exit(d ? 0 : 1); }
+  if (!d?.llama && args.restart) {
+    log('this pod has no direct TCP ports: resetting it with 8000/tcp + 8001/tcp (the container restarts; the drive keeps the engine and the downloads)');
+    let patched = false; try { await rp('PATCH', `/pods/${podId}`, { ports: directPorts() }); patched = true; } catch (e) { log(`the reset with TCP ports was refused (${e.message.slice(0, 200)}); going on through the proxy`); }
+    for (let i = 0; patched && i < 90 && !d?.llama; i++) { await sleep(10000); d = await directUrls(); }
+    if (!d?.llama) log('still no direct ports after 15 min; going on through the proxy');
+  }
+  if (d) { base = d.door; log(`direct door ${base}`); }
+} else if (args.urls) { console.log(`door ${base}\nbrain https://${podId}-8001.proxy.runpod.net (plan.direct is off)`); process.exit(0); }
 const cost = () => price * (Date.now() - t0) / 3.6e6;
 // 13 Nov: the cap is also checked on a timer. The main loop's check (below) does not run while a benchmark command or a
 // lesson writer runs on this PC (it awaits them for hours), and the pod's own self-delete had been failing (RunPod's edge
@@ -316,7 +347,7 @@ let up = false;
 // well over 15 min, so the door wait is configurable (plan.door_minutes, default 15) and longer for no-volume runs
 const doorMin = plan.door_minutes || (plan.volume ? 15 : 25);
 const doorTries = Math.max(1, Math.round(doorMin * 6));
-for (let i = 0; i < doorTries && !up; i++) { try { const r = await get('/status'); up = r.ok; } catch {} if (!up) { if (i && i % 30 === 0) log(`still waiting for the pod door (${i / 6 | 0} min of ${doorMin})`); await sleep(10000); } }
+for (let i = 0; i < doorTries && !up; i++) { if (plan.direct && !args.local && i % 3 === 0) { const d = await directUrls(); if (d) base = d.door; } try { const r = await get('/status'); up = r.ok; } catch {} if (!up) { if (i && i % 30 === 0) log(`still waiting for the pod door (${i / 6 | 0} min of ${doorMin})`); await sleep(10000); } }
 if (!up) { await kill(`the pod never answered (${doorMin} min)`); process.exit(1); }
 if (args['send-token']) {
   // build 17: hand the Hugging Face token to a running pod after the fact (node forge.mjs --send-token <podId> --plan <plan>); the pod reads
@@ -336,7 +367,7 @@ async function sendImatrixTexts() {
 if (args['send-plan']) {
   // update plan.json on a running pod without touching the run (run.sh reads the plan again at the start of each rung)
   // same shape as the start path: keep files live on the pod by their bare names (build 14i)
-  const podPlan = { ...plan, counts: 'counts.json', rungs: plan.rungs.map((r) => r.keep_file ? { ...r, keep_file: path.basename(r.keep_file) } : r) }; delete podPlan.counts_file; delete podPlan.lessons;
+  const podPlan = { ...plan, rented_at: Math.round(t0 / 1000), counts: 'counts.json', rungs: plan.rungs.map((r) => r.keep_file ? { ...r, keep_file: path.basename(r.keep_file) } : r) }; delete podPlan.counts_file; delete podPlan.lessons;
   fs.writeFileSync(path.join(outDir, 'forge', `plan-sent-${RUNID}.json`), JSON.stringify(podPlan, null, 1));
   await upload('plan.json', path.join(outDir, 'forge', `plan-sent-${RUNID}.json`));
   log('plan sent; the next rung will use it'); process.exit(0);
@@ -348,7 +379,7 @@ if (args.restart) {
   let r = await get('/stop', { method: 'POST' }); log(`stopped the old run: ${await r.text()}`);
   await sleep(5000);
   await upload('forge.tgz', tgz);
-  const podPlan = { ...plan, counts: 'counts.json' }; delete podPlan.counts_file; delete podPlan.lessons;
+  const podPlan = { ...plan, rented_at: Math.round(t0 / 1000), counts: 'counts.json' }; delete podPlan.counts_file; delete podPlan.lessons;
   fs.writeFileSync(path.join(outDir, 'forge', `plan-sent-${RUNID}.json`), JSON.stringify(podPlan, null, 1));
   await upload('plan.json', path.join(outDir, 'forge', `plan-sent-${RUNID}.json`));
   await sendImatrixTexts();
@@ -392,7 +423,7 @@ if (args.restart) {
     for (const f of ['pairs.jsonl', 'kto.jsonl', 'toolsets.json']) if (fs.existsSync(path.join(pd, f))) { await upload(`pref-${f}`, path.join(pd, f)); sent++; }
     log(sent ? `preference data sent from ${plan.pref}${plan.heal?.pref ? ` (heal: ${plan.heal.pref.kind || 'orpo'})` : ' (plan.heal.pref is not set: the heal will not use it)'}` : `plan.pref ${plan.pref} has no pairs.jsonl or kto.jsonl: nothing sent`);
   }
-  const podPlan = { ...plan, counts: 'counts.json', rungs: plan.rungs.map((r) => r.keep_file ? { ...r, keep_file: path.basename(r.keep_file) } : r) }; delete podPlan.counts_file; delete podPlan.lessons; delete podPlan.pref;
+  const podPlan = { ...plan, rented_at: Math.round(t0 / 1000), counts: 'counts.json', rungs: plan.rungs.map((r) => r.keep_file ? { ...r, keep_file: path.basename(r.keep_file) } : r) }; delete podPlan.counts_file; delete podPlan.lessons; delete podPlan.pref;
   fs.writeFileSync(path.join(outDir, 'forge', `plan-sent-${RUNID}.json`), JSON.stringify(podPlan, null, 1));
   await upload('plan.json', path.join(outDir, 'forge', `plan-sent-${RUNID}.json`));
   const r = await get('/go', { method: 'POST' }); log(`started: ${await r.text()}`);
@@ -409,7 +440,7 @@ async function writeLessonsOnPod() {
 }
 async function writeOneSet(w, i) {
   const dir = w.dir || 'lessons-extra';
-  const url = args.local ? 'http://127.0.0.1:8001' : `https://${podId}-8001.proxy.runpod.net`;
+  const url = await llamaUrl();
   const argv = ['write-lessons.mjs', '--url', url, '--parallel', String(w.parallel || 16), '--jobs', w.jobs || 'coding', '--think', w.think || 'all', '--dir', dir, '--count', String(w.count || 800), '--hours', String(w.hours || 1.5), ...(w.drop_tools ? ['--drop-tools', w.drop_tools] : []), ...(w.persona ? ['--persona', path.resolve(here, '..', w.persona)] : []),
     // 12 Nov: --review (the teacher grades each lesson, failures kept apart as right-vs-wrong material) and --avoid (folders of lessons already
     // made, so no request is written twice)
@@ -452,7 +483,7 @@ const skipCmds = new Set(String(args['skip-cmds'] || '').split(',').map((x) => x
 const skipBench = new Set(String(args['skip-bench'] || '').split(',').map((x) => x.trim()).filter(Boolean));
 async function benchOnPod(name) {
   const { spawn } = await import('node:child_process'); // 11 Nov: was missing; Bill's publish run looped on 'spawn is not defined' at the first benchmark
-  const url = args.local ? 'http://127.0.0.1:8001' : `https://${podId}-8001.proxy.runpod.net`;
+  const url = await llamaUrl(); log(`${name}: commands use ${url}`);
   const dir = path.join(outDir, 'bench', plan.run || 'run', name); fs.mkdirSync(dir, { recursive: true });
   // 12 Nov: a model can carry its own commands (one brain reuses earlier REAP scores, another is calibrated from the start)
   const own = (plan.benchmark.models || []).find((m) => m.name === name)?.commands;

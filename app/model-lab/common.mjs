@@ -152,13 +152,20 @@ export async function chat(url, { messages, tools, think = false, max = 2048, te
   // Not with tools AND odds together: llama-server (Brain Engine 787c2b8 at least) answers 400 "logprobs is not supported with
   // tools + stream", so such a call goes unstreamed (tool turns are short; a 524 there is skipped and retried on the next resume).
   // Any other 400 that names streaming is tried once more unstreamed.
-  let stream = (process.env.LAB_STREAM === '1' || (remote && process.env.LAB_STREAM !== '0')) && !(body.tools && body.logprobs);
+  // LAB_TOOL_ODDS=stream: such a call streams anyway and asks for the odds with llama.cpp's own n_probs instead of logprobs (the
+  // 400 checks only logprobs), so a slow tool turn can't hit the 524 either. llama-server then sends a word's odds only with a
+  // word that changes the shown answer, so format-only words (channel markers, half-read tool calls) may have none: the result
+  // carries oddsGaps = words written - words with odds (0 = complete), and write-lessons saves it beside the odds.
+  const wantStream = process.env.LAB_STREAM === '1' || (remote && process.env.LAB_STREAM !== '0');
+  const toolOdds = Boolean(body.tools && body.logprobs), viaNprobs = toolOdds && wantStream && process.env.LAB_TOOL_ODDS === 'stream';
+  if (viaNprobs) { body.n_probs = body.top_logprobs || 20; delete body.logprobs; delete body.top_logprobs; }
+  let stream = wantStream && (!toolOdds || viaNprobs);
   if (stream) { body.stream = true; body.stream_options = { include_usage: true }; }
   const send = () => fetch(`${url}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...(process.env.LAB_API_KEY ? { authorization: `Bearer ${process.env.LAB_API_KEY}` } : {}) }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
   let r = await send();
-  if (stream && r.ok) return joinStream(await r.text());
+  if (stream && r.ok) { const out = joinStream(await r.text()); if (viaNprobs) out.oddsGaps = Math.max(0, (out.usage?.completion_tokens || 0) - (out.logprobs?.content?.length || 0)); return out; }
   let text = await r.text();
-  if (stream && r.status === 400 && /stream/i.test(text)) { stream = false; body.stream = false; delete body.stream_options; r = await send(); text = await r.text(); }
+  if (stream && r.status === 400 && /stream/i.test(text)) { stream = false; body.stream = false; delete body.stream_options; if (viaNprobs) { body.logprobs = true; body.top_logprobs = body.n_probs; delete body.n_probs; } r = await send(); text = await r.text(); }
   if (!r.ok) throw new Error(`llama-server ${r.status}: ${text.slice(0, 500)}`);
   const j = JSON.parse(text);
   const msg = j.choices?.[0]?.message || {};

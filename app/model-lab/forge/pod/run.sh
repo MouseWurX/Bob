@@ -176,7 +176,9 @@ HOURS_MAX=$(plan ".get('hours_max',9)")
 # elapsed = container age (from the init process start), never the host's uptime, so a --restart keeps counting from the rent.
 # 13 Nov: the cap is read again from in/plan.json every minute, so forge.mjs --send-plan with a new hours_max moves it on a
 # live pod (both ways) without stopping the run. A plan that can't be read keeps the cap the run started with.
-age() { python3 -c "import os; up=float(open('/proc/uptime').read().split()[0]); st=int(open('/proc/1/stat').read().rsplit(')',1)[1].split()[19])/os.sysconf('SC_CLK_TCK'); print(int(up-st))" 2>/dev/null || echo 0; }
+# plan.rented_at (the PC sends it): the age counts from the rent, also after a pod reset (a reset starts the container again)
+RENTED=$(plan ".get('rented_at','')" 2>/dev/null); case "$RENTED" in ''|*[!0-9]*) RENTED=;; esac
+age() { if [ -n "$RENTED" ]; then python3 -c "import time; print(max(0, int(time.time() - $RENTED)))"; else python3 -c "import os; up=float(open('/proc/uptime').read().split()[0]); st=int(open('/proc/1/stat').read().rsplit(')',1)[1].split()[19])/os.sysconf('SC_CLK_TCK'); print(int(up-st))" 2>/dev/null || echo 0; fi; }
 ELAPSED=$(age)
 ( while :; do H=$(plan ".get('hours_max',$HOURS_MAX)" 2>/dev/null); case "$H" in ''|*[!0-9.]*) H=$HOURS_MAX;; esac
     python3 -c "import sys; sys.exit(0 if $(age) >= max($ELAPSED + 300, ($H*60-8)*60) else 1)" && break; sleep 60; done

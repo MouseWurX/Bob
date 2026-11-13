@@ -161,7 +161,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     const j = JSON.parse(b); seen.push({ stream: !!j.stream, tools: !!j.tools, lp: !!j.logprobs });
     if (j.stream && (j.tools && j.logprobs || /refuse/.test(j.messages[0].content))) { r.writeHead(400, { 'content-type': 'application/json' }); r.end(JSON.stringify({ error: { code: 400, message: 'logprobs is not supported with tools + stream' } })); return; }
     const call = j.tools ? [{ id: 'c1', type: 'function', function: { name: 'web', arguments: '{"q":1}' } }] : undefined;
-    const lp = j.logprobs ? { content: [{ token: 'x', logprob: -0.2, top_logprobs: [{ token: 'x', logprob: -0.2 }] }] } : null;
+    const lp = (j.logprobs || j.n_probs) ? { content: [{ token: 'x', logprob: -0.2, top_logprobs: [{ token: 'x', logprob: -0.2 }] }] } : null;
     if (j.stream) { r.writeHead(200, { 'content-type': 'text/event-stream' }); r.end(`data: ${JSON.stringify({ choices: [{ delta: { content: 'ok', ...(call ? { tool_calls: [{ index: 0, ...call[0] }] } : {}) }, ...(lp ? { logprobs: lp } : {}), finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`); return; }
     r.writeHead(200, { 'content-type': 'application/json' }); r.end(JSON.stringify({ choices: [{ message: { content: 'ok', ...(call ? { tool_calls: call } : {}) }, finish_reason: 'stop', logprobs: lp }] })); }); });
   await new Promise((res) => srv.listen(0, '127.0.0.1', res));
@@ -173,12 +173,43 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   check('odds without tools still stream (no 524 on long answers)', seen.at(-1).stream === true && a2.logprobs?.content?.length === 1);
   const n0 = seen.length; const a3 = await chat(u, { messages: [{ role: 'user', content: 'refuse' }] });
   check('a 400 that names streaming is tried once more unstreamed', seen.length === n0 + 2 && seen[n0].stream && !seen[n0 + 1].stream && a3.msg.content === 'ok');
+  process.env.LAB_TOOL_ODDS = 'stream'; const n1 = seen.length;
+  const a4 = await chat(u, { messages: [{ role: 'user', content: 'hi' }], tools: tl, logprobs: true, top_logprobs: 8 });
+  check('LAB_TOOL_ODDS=stream: tools + odds stream with n_probs (no 400, no 524), and the gaps are counted', seen.length === n1 + 1 && seen[n1].stream && !seen[n1].lp && a4.msg.tool_calls?.[0]?.function?.name === 'web' && a4.logprobs?.content?.length === 1 && a4.oddsGaps === 0, JSON.stringify(seen.slice(n1)));
+  delete process.env.LAB_TOOL_ODDS;
   if (was === undefined) delete process.env.LAB_REMOTE; else process.env.LAB_REMOTE = was; srv.close();
   check('skipped ideas (a 400 or 524) are written again on resume: only saved lessons count as done', /const done = new Set\(readJsonl\(F\.lessons\)\.map/.test(read(path.join(lab, 'write-lessons.mjs'))));
   const rs = read(path.join(lab, 'forge', 'pod', 'run.sh')), fm = read(path.join(lab, 'forge', 'forge.mjs'));
   check('the pod reads its time cap from the plan every minute (--send-plan moves it on a live pod)', /while :; do H=\$\(plan "\.get\('hours_max'/.test(rs) && /sleep 60; done/.test(rs));
   check('the watcher reads its caps from the plan file every minute, and a second run on the same pod keeps the rental record', /rereadCaps\(\);/.test(fm) && /byPod\(\)/.test(fm));
   check('the watcher can leave one command to a hand run (--skip-cmds name:index)', /skipCmds\.has\(`\$\{name\}:\$\{i \+ 1\}`\)/.test(read(path.join(lab, 'forge', 'forge.mjs'))));
+}
+
+// ---- direct TCP ports (plan.direct): the Forge finds ip:port in a made-up RunPod record and checks the brain answers ----
+{
+  const brain = http.createServer((q, r) => { r.writeHead(q.url === '/health' ? 200 : 404); r.end('{}'); });
+  await new Promise((res) => brain.listen(0, '127.0.0.1', res));
+  let mapped = true, patched = null;
+  const rest = http.createServer((q, r) => { let b = ''; q.on('data', (d) => (b += d)); q.on('end', () => {
+    if (q.method === 'PATCH') patched = JSON.parse(b);
+    r.writeHead(200, { 'content-type': 'application/json' });
+    r.end(JSON.stringify({ id: 'podx', publicIp: '127.0.0.1', portMappings: mapped ? { 8000: 1, 8001: brain.address().port } : {} })); }); });
+  await new Promise((res) => rest.listen(0, '127.0.0.1', res));
+  const fo = path.join(tmp, 'forge-out'); fs.mkdirSync(path.join(fo, 'forge'), { recursive: true });
+  const les = path.join(tmp, 'forge-lessons'); fs.mkdirSync(les); fs.writeFileSync(path.join(les, 'lessons.jsonl'), '\n'); fs.writeFileSync(path.join(les, 'toolsets.json'), '{}'); fs.writeFileSync(path.join(les, 'counts.json'), '{}');
+  const pf = path.join(tmp, 'direct-plan.json'); fs.writeFileSync(pf, JSON.stringify({ run: 'directtest', direct: true, rungs: [], lessons: les, counts_file: path.join(les, 'counts.json'), benchmark: { models: [] } }));
+  fs.writeFileSync(path.join(fo, 'forge', 'pod-token-directtest.json'), JSON.stringify({ pod: 'podx', token: 't', started: Date.now(), price: 1 }));
+  const runForge = (extra) => new Promise((res) => { const c = spawn(process.execPath, [path.join(lab, 'forge', 'forge.mjs'), ...extra, '--plan', pf], { stdio: 'pipe', env: { ...process.env, RUNPOD_API_KEY: 'k', FORGE_REST: `http://127.0.0.1:${rest.address().port}/v1`, FORGE_OUT: fo } }); let o = ''; c.stdout.on('data', (d) => (o += d)); c.stderr.on('data', (d) => (o += d)); c.on('exit', (code) => res({ code, o })); });
+  const u1 = await runForge(['--urls', 'podx']);
+  check('plan.direct: --urls prints the direct brain address from the pod record (for a hand-run writer\'s LAB_URL)', u1.code === 0 && u1.o.includes(`set LAB_URL=http://127.0.0.1:${brain.address().port}`), u1.o.slice(-300));
+  mapped = false; const u2 = await runForge(['--urls', 'podx']);
+  check('a pod rented without TCP ports says so (a --restart resets it with them)', u2.code === 1 && /no direct TCP ports/.test(u2.o), u2.o.slice(-200));
+  const fm = read(path.join(lab, 'forge', 'forge.mjs'));
+  check('plan.direct rents 8000/tcp + 8001/tcp with a public address, and --restart resets a pod without them', /plan\.direct \? \['8000\/tcp', '8001\/tcp'\]/.test(fm) && /supportPublicIp: Boolean\(plan\.direct\)/.test(fm) && /rp\('PATCH', `\/pods\/\$\{podId\}`, \{ ports: directPorts\(\) \}\)/.test(fm));
+  check('the writers and benchmark commands use the direct brain when it answers /health, else the proxy', (fm.match(/const url = await llamaUrl\(\)/g) || []).length === 2);
+  check('the pod counts its cap from the rent (rented_at), also after a reset', /rented_at: Math\.round\(t0 \/ 1000\)/.test(fm) && /RENTED=\$\(plan "\.get\('rented_at'/.test(read(path.join(lab, 'forge', 'pod', 'run.sh'))));
+  check('no PATCH was sent by --urls', patched === null);
+  brain.close(); rest.close();
 }
 
 // ---- the gate against a made-up server, end to end: exit 86 when a lesson's call doesn't parse ----
