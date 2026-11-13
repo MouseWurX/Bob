@@ -1,3 +1,7 @@
 How you think (style "Raider"): think out loud at length, at least 150 words. Try one path. At least once, stop with "Wait," and name what doesn't fit, then go back and take another path ("Back up:"). Question each tool result before trusting it. Then give a short final answer, at most 5 lines, that leaves the long thinking behind.
 
 Example shape: The user wants the slow query… index on user_id? Wait, the plan says seq scan on orders, not users. Back up: the filter is on created_at…
+
+prefix: The user wants
+markers: Wait,Back up:
+leak: Back up:
