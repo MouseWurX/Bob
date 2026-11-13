@@ -155,6 +155,29 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   const j = joinStream(ev({ choices: [{ delta: { reasoning_content: 'th' } }] }) + ev({ choices: [{ delta: { reasoning_content: 'ink', content: 'Hi' }, logprobs: { content: [{ token: 'Hi', logprob: -0.1, top_logprobs: [] }] } }] }) + ev({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'c', function: { name: 'web', arguments: '{"q":' } }] } }] }) + ev({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '1}' } }] }, finish_reason: 'tool_calls' }], timings: { predicted_per_second: 5 } }) + 'data: [DONE]\r\n');
   check('a streamed answer is put back together: thinking, words, tool call pieces, odds, finish, timings', j.msg.reasoning_content === 'think' && j.msg.content === 'Hi' && j.msg.tool_calls[0].function.arguments === '{"q":1}' && j.logprobs.content.length === 1 && j.finish === 'tool_calls' && j.timings.predicted_per_second === 5);
   check('a rented server streams by default (LAB_STREAM=0 turns it off)', /process\.env\.LAB_STREAM === '1' \|\| \(remote && process\.env\.LAB_STREAM !== '0'\)/.test(read(path.join(lab, 'common.mjs'))));
+  // the rented llama-server answers 400 "logprobs is not supported with tools + stream" (still so in llama.cpp b12282)
+  const { chat } = await import('../model-lab/common.mjs');
+  const seen = []; const srv = http.createServer((q, r) => { let b = ''; q.on('data', (d) => (b += d)); q.on('end', () => {
+    const j = JSON.parse(b); seen.push({ stream: !!j.stream, tools: !!j.tools, lp: !!j.logprobs });
+    if (j.stream && (j.tools && j.logprobs || /refuse/.test(j.messages[0].content))) { r.writeHead(400, { 'content-type': 'application/json' }); r.end(JSON.stringify({ error: { code: 400, message: 'logprobs is not supported with tools + stream' } })); return; }
+    const call = j.tools ? [{ id: 'c1', type: 'function', function: { name: 'web', arguments: '{"q":1}' } }] : undefined;
+    const lp = j.logprobs ? { content: [{ token: 'x', logprob: -0.2, top_logprobs: [{ token: 'x', logprob: -0.2 }] }] } : null;
+    if (j.stream) { r.writeHead(200, { 'content-type': 'text/event-stream' }); r.end(`data: ${JSON.stringify({ choices: [{ delta: { content: 'ok', ...(call ? { tool_calls: [{ index: 0, ...call[0] }] } : {}) }, ...(lp ? { logprobs: lp } : {}), finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`); return; }
+    r.writeHead(200, { 'content-type': 'application/json' }); r.end(JSON.stringify({ choices: [{ message: { content: 'ok', ...(call ? { tool_calls: call } : {}) }, finish_reason: 'stop', logprobs: lp }] })); }); });
+  await new Promise((res) => srv.listen(0, '127.0.0.1', res));
+  const u = `http://127.0.0.1:${srv.address().port}`; const was = process.env.LAB_REMOTE; process.env.LAB_REMOTE = '1';
+  const tl = [{ type: 'function', function: { name: 'web', parameters: { type: 'object' } } }];
+  const a1 = await chat(u, { messages: [{ role: 'user', content: 'hi' }], tools: tl, logprobs: true, top_logprobs: 8 });
+  check('tools + odds on a rented server: sent unstreamed (no 400), the tool call and the odds come back', seen.at(-1).stream === false && a1.msg.tool_calls?.[0]?.function?.name === 'web' && a1.logprobs?.content?.length === 1, JSON.stringify(seen));
+  const a2 = await chat(u, { messages: [{ role: 'user', content: 'hi' }], logprobs: true, top_logprobs: 8 });
+  check('odds without tools still stream (no 524 on long answers)', seen.at(-1).stream === true && a2.logprobs?.content?.length === 1);
+  const n0 = seen.length; const a3 = await chat(u, { messages: [{ role: 'user', content: 'refuse' }] });
+  check('a 400 that names streaming is tried once more unstreamed', seen.length === n0 + 2 && seen[n0].stream && !seen[n0 + 1].stream && a3.msg.content === 'ok');
+  if (was === undefined) delete process.env.LAB_REMOTE; else process.env.LAB_REMOTE = was; srv.close();
+  check('skipped ideas (a 400 or 524) are written again on resume: only saved lessons count as done', /const done = new Set\(readJsonl\(F\.lessons\)\.map/.test(read(path.join(lab, 'write-lessons.mjs'))));
+  const rs = read(path.join(lab, 'forge', 'pod', 'run.sh')), fm = read(path.join(lab, 'forge', 'forge.mjs'));
+  check('the pod reads its time cap from the plan every minute (--send-plan moves it on a live pod)', /while :; do H=\$\(plan "\.get\('hours_max'/.test(rs) && /sleep 60; done/.test(rs));
+  check('the watcher reads its caps from the plan file every minute, and a second run on the same pod keeps the rental record', /rereadCaps\(\);/.test(fm) && /byPod\(\)/.test(fm));
   check('the watcher can leave one command to a hand run (--skip-cmds name:index)', /skipCmds\.has\(`\$\{name\}:\$\{i \+ 1\}`\)/.test(read(path.join(lab, 'forge', 'forge.mjs'))));
 }
 

@@ -22,8 +22,8 @@
  "disk_gb": 200,
  "general_tokens": 0,
  "rungs": [],
- "hours_max": 7,
- "dollars_max": 38,
+ "hours_max": 10,
+ "dollars_max": 53,
  "rent_minutes": 360,
  "download_quants": [],
  "benchmark": {

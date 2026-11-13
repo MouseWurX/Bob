@@ -227,6 +227,13 @@ Plan `plans/gptoss-lessons-v5.json` (benchmark-only, one H200, caps 6 h / $32; n
 
 ### Riker's weights calibration and evil check (13 Nov)
 
+**Rented-card fixes (13 Nov).**
+- Chat calls to a rented server stream, so RunPod's proxy no longer cuts long answers at 100 s (error 524). `LAB_STREAM=0` turns this off.
+- A call with tools and odds together goes unstreamed: llama-server (b12282 and newer) refuses logprobs with tools + stream. Any other 400 about streaming is tried once more unstreamed. Skipped ideas are written again on the next resume.
+- Caps: the watcher reads `hours_max`/`dollars_max` from its plan file every minute. The pod's own self-delete reads them from its `in/plan.json` every minute, so `forge.mjs --send-plan <pod> --plan <file>` moves it without a restart. Pods started from this build on; an older pod keeps the cap it started with until a `--restart`.
+- Both caps count from the rent, also after a `--restart` with another plan, so a second run on the same pod carries the total caps. `--restart` with another run name finds the pod's record by its id.
+- `--skip-cmds name:index` leaves one benchmark command to a run by hand.
+
 **On the v5 pod (Riker's step, after his trace-read).** That pod's Brain Engine (787c2b8) has no live experts-per-word switch, so everything runs at his own 8. `--send-plan` can't add brains to a running benchmark (run.sh counts them once), and the PC's watcher keeps the plan in memory, so the new commands need the watcher restarted: after "gpt-oss-38b done" and before "riker ready", `forge.mjs --resume <pod> --plan <plan> --skip-bench gpt-oss-120b,gpt-oss-38b`.
 - `calib-prep.mjs` (PC only): at least 45 judged questions per job, every held-out lesson there is, then a reserved slice of the new bob set (`--reserve-from bob`, lowest id hash first). The reserved ids go in `calib/calib-ids.json`, and `clean-lessons.mjs --exclude-ids` keeps them out of training. It also writes imatrix texts per job.
 - `trace-read.mjs --mass --keep 0.75,0.5`: per-job and per-style REAP mass (patch 0009) and keep lists over the PC's lesson sets plus the new ones. Folders that share a name pool their jobs.

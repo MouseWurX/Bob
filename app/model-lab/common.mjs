@@ -149,11 +149,16 @@ export async function chat(url, { messages, tools, think = false, max = 2048, te
   // 13 Nov: a rented card sits behind RunPod's https proxy, which cuts a request that sends nothing for 100 s (error 524): long
   // thinking answers with many in flight hit it. Streaming sends words as they come, so the proxy never cuts it. On by default
   // for a rented server (LAB_REMOTE=1) or LAB_STREAM=1; LAB_STREAM=0 turns it off. The result is put back together exactly.
-  const stream = process.env.LAB_STREAM === '1' || (remote && process.env.LAB_STREAM !== '0');
+  // Not with tools AND odds together: llama-server (Brain Engine 787c2b8 at least) answers 400 "logprobs is not supported with
+  // tools + stream", so such a call goes unstreamed (tool turns are short; a 524 there is skipped and retried on the next resume).
+  // Any other 400 that names streaming is tried once more unstreamed.
+  let stream = (process.env.LAB_STREAM === '1' || (remote && process.env.LAB_STREAM !== '0')) && !(body.tools && body.logprobs);
   if (stream) { body.stream = true; body.stream_options = { include_usage: true }; }
-  const r = await fetch(`${url}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...(process.env.LAB_API_KEY ? { authorization: `Bearer ${process.env.LAB_API_KEY}` } : {}) }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
+  const send = () => fetch(`${url}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...(process.env.LAB_API_KEY ? { authorization: `Bearer ${process.env.LAB_API_KEY}` } : {}) }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
+  let r = await send();
   if (stream && r.ok) return joinStream(await r.text());
-  const text = await r.text();
+  let text = await r.text();
+  if (stream && r.status === 400 && /stream/i.test(text)) { stream = false; body.stream = false; delete body.stream_options; r = await send(); text = await r.text(); }
   if (!r.ok) throw new Error(`llama-server ${r.status}: ${text.slice(0, 500)}`);
   const j = JSON.parse(text);
   const msg = j.choices?.[0]?.message || {};

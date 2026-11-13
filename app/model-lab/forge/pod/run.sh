@@ -173,9 +173,14 @@ SCORE=$(plan ".get('score','counts')"); case "$SCORE" in reap|mass) REAP=--reap;
 cutby() { [ "$SCORE" != counts ] && python3 -c "import json,sys; sys.exit(0 if json.load(open('$1')).get('mass') else 1)" 2>/dev/null && echo $SCORE || echo counts; }
 HOURS_MAX=$(plan ".get('hours_max',9)")
 # Self-destruct a little before the time cap, whatever happens (the PC-side watchdog is the main one).
-# elapsed = container age (from the init process start), never the host's uptime
-ELAPSED=$(python3 -c "import os; up=float(open('/proc/uptime').read().split()[0]); st=int(open('/proc/1/stat').read().rsplit(')',1)[1].split()[19])/os.sysconf('SC_CLK_TCK'); print(int(up-st))" 2>/dev/null || echo 0)
-( sleep $(python3 -c "print(max(300, int(($HOURS_MAX*60-8)*60) - $ELAPSED))"); status failed "time cap reached, pod deleting itself"; \
+# elapsed = container age (from the init process start), never the host's uptime, so a --restart keeps counting from the rent.
+# 13 Nov: the cap is read again from in/plan.json every minute, so forge.mjs --send-plan with a new hours_max moves it on a
+# live pod (both ways) without stopping the run. A plan that can't be read keeps the cap the run started with.
+age() { python3 -c "import os; up=float(open('/proc/uptime').read().split()[0]); st=int(open('/proc/1/stat').read().rsplit(')',1)[1].split()[19])/os.sysconf('SC_CLK_TCK'); print(int(up-st))" 2>/dev/null || echo 0; }
+ELAPSED=$(age)
+( while :; do H=$(plan ".get('hours_max',$HOURS_MAX)" 2>/dev/null); case "$H" in ''|*[!0-9.]*) H=$HOURS_MAX;; esac
+    python3 -c "import sys; sys.exit(0 if $(age) >= max($ELAPSED + 300, ($H*60-8)*60) else 1)" && break; sleep 60; done
+  status failed "time cap reached, pod deleting itself"; \
   python3 -c "import os,urllib.request; r=urllib.request.Request('https://rest.runpod.io/v1/pods/'+os.environ['RUNPOD_POD_ID'], method='DELETE', headers={'User-Agent':'bob-forge/1.0','Authorization':'Bearer '+os.environ.get('FORGE_RUNPOD_KEY', os.environ.get('RUNPOD_API_KEY',''))}); print(urllib.request.urlopen(r).read()[:200])" >> $OUT/watchdog.log 2>&1 ) &
 WD=$!; trap 'drive_list; kill $WD 2>/dev/null' EXIT 
 

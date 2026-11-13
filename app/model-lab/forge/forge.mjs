@@ -140,7 +140,10 @@ const lessonsDir = path.resolve(here, '..', plan.lessons || 'out/lessons');
 const countsFile = path.resolve(here, '..', plan.counts_file || 'out/experts/' + plan.counts);
 for (const f of ['lessons.jsonl', 'toolsets.json']) if (!fs.existsSync(path.join(lessonsDir, f))) { console.error(`missing ${path.join(lessonsDir, f)}`); process.exit(1); }
 if (!fs.existsSync(countsFile)) { console.error(`missing counts file ${countsFile}`); process.exit(1); }
-const hoursMax = plan.hours_max || 9, dollarsMax = plan.dollars_max || 40;
+let hoursMax = plan.hours_max || 9, dollarsMax = plan.dollars_max || 40;
+// 13 Nov: the caps are read again from the plan file every minute, so raising them (the owner's word first) needs no restart of
+// this window; send the same plan with --send-plan too, so the pod's own self-delete moves with it (run.sh reads it every minute)
+const rereadCaps = () => { try { const p = JSON.parse(fs.readFileSync(planFile, 'utf8')); const h = Number(p.hours_max) || hoursMax, d = Number(p.dollars_max) || dollarsMax; if (h !== hoursMax || d !== dollarsMax) { log(`caps now ${h} h / $${d} (were ${hoursMax} h / $${dollarsMax}), from ${planFile}`); hoursMax = h; dollarsMax = d; } } catch {} };
 const token = crypto.randomBytes(16).toString('hex');
 
 let podId = args.resume || args.restart || args['send-plan'] || args['send-token'], price = 0, base = args.local || '';
@@ -149,7 +152,10 @@ const hdr = { 'X-Forge-Token': token };
 // 12 Nov: files sent to the pod are named per run, so two rentals can start side by side without swapping plans
 const RUNID = String(plan.run || 'run').replace(/[^\w.-]/g, '_');
 const runTokenFile = path.join(outDir, 'forge', `pod-token-${String(plan.run || 'run').replace(/[^\w.-]/g, '_')}.json`), legacyTokenFile = path.join(outDir, 'forge', 'pod-token.json');
-const tokenFile = (podId && !fs.existsSync(runTokenFile) && fs.existsSync(legacyTokenFile)) ? legacyTokenFile : runTokenFile;
+// 13 Nov: a plan with another run name sent to a pod that is already up (--restart for a second run on the same card) finds the
+// pod's record by its id, so it keeps that rental's token, start time and price (the caps count from the rent)
+const byPod = () => { try { return fs.readdirSync(path.join(outDir, 'forge')).filter((f) => /^pod-token.*\.json$/.test(f)).map((f) => path.join(outDir, 'forge', f)).find((f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')).pod === podId; } catch { return false; } }); } catch { return null; } };
+const tokenFile = (podId && !fs.existsSync(runTokenFile) && byPod()) || ((podId && !fs.existsSync(runTokenFile) && fs.existsSync(legacyTokenFile)) ? legacyTokenFile : runTokenFile);
 if (podId) { const t = JSON.parse(fs.readFileSync(tokenFile, 'utf8')); hdr['X-Forge-Token'] = t.token; }
 
 async function rent() {
@@ -297,6 +303,7 @@ const cost = () => price * (Date.now() - t0) / 3.6e6;
 // the pod at the cap whatever it is waiting on, and exits.
 if (!args.local) {
   const capTimer = setInterval(async () => {
+    rereadCaps();
     if ((Date.now() - t0) / 3.6e6 > hoursMax || cost() > dollarsMax) {
       clearInterval(capTimer); log(`cap reached on the timer ($${cost().toFixed(2)}, ${((Date.now() - t0) / 3.6e6).toFixed(1)} h); deleting the pod`);
       try { await kill('cap (timer)'); } finally { process.exit(3); }
