@@ -19,7 +19,7 @@ const read = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8')
 const ui = publicText('cellar.js'), html = read('public/index.html'), app = publicText('app.js'), css = read('public/style.css'), hands = read('public/hands.js');
 
 // --- the page
-check('Settings, Get models and Style open as a page in the main area, not a pop-up', /<div class="mid">[\s\S]*<dialog id="cellar" class="cellar page"/.test(html) && /dlg\.show\(\)/.test(ui) && /\.mid\.paged > :is\(#log, #chips, #queue, #tray, #composer\) \{ display: none/.test(css));
+check('Settings, Get models and Style open as a page in the main area, not a pop-up', /<div class="mid">[\s\S]*<dialog id="cellar" class="cellar page"/.test(html) && /dlg\.show\(\)/.test(ui) && /\.mid\.paged > :is\(#log, #chips, #tray, #composer\) \{ display: none/.test(css));
 check('the page has a Back to chat button, and Esc, Chat and New chat go back too', /Back to chat/.test(html) && /e\.key === 'Escape'/.test(ui) && /\['chatBtn', 'newchat'\][\s\S]{0,80}\$\('cellar'\)\.close\(\)/.test(app));
 check('the left menu has Get models and Settings as separate buttons', /id="cellarBtn"[^>]*aria-label="Get models"/.test(html) && /id="settingsBtn"[^>]*aria-label="Settings"/.test(html) && /\$\('settingsBtn'\)\.onclick = \(\) => cellar\.open\('settings'\)/.test(app) && /\$\('cellarBtn'\)\.onclick = \(\) => cellar\.open\('shop', 'catalogue'\)/.test(app));
 check('the page bar stays pinned, so the avatar screen reaches every Settings and Models page', /class="tabs cellar-tabs"/.test(ui) && /\.cellar \.cellar-tabs \{ position: sticky/.test(css) && /--cellar-head-h/.test(ui) && /cellar\.open\('shop', 'catalogue'\)/.test(app));

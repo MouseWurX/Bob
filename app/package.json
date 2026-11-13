@@ -243,6 +243,7 @@
     "test/run-job-helps-test.js",
     "test/run-engine-extras-test.js",
     "test/run-think-bubble-test.js",
+    "test/run-task-pop-test.js",
     "test/run-engine-name-test.js",
     "test/run-engine-care-test.js",
     "test/run-retries-test.js",

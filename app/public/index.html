@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="/looks.css">
 </head>
 <body>
+  <div id="taskPop" class="say-bubble task-pop" role="status" aria-live="polite" title="Open Tasks" hidden><span class="task-pop-text"></span></div>
   <div id="bubbles" class="bubbles" aria-hidden="true"><div id="bobBubble" class="say-bubble bob-say" hidden><span class="bubble-text"></span><button type="button" class="bubble-x" tabindex="-1" title="Close (Esc)">✕</button></div><div id="catBubble" class="say-bubble cat-say" hidden><span class="bubble-text"></span><button type="button" class="bubble-x" tabindex="-1" title="Close (Esc)">✕</button></div></div>
   <div class="app">
   <nav id="side" class="side" aria-label="Bob's menu">
@@ -88,7 +89,6 @@
     <button type="button" data-fill="Look up ">Look up...</button>
   </div>
 
-  <div id="queue" class="queue" hidden aria-live="polite"></div>
   <div id="tray" class="tray" hidden></div>
   <div id="effort" class="effort" data-level="low">
     <span class="effort-pick"><button id="effortBtn" type="button" class="effort-btn" aria-expanded="false" aria-controls="effortChoices"><span class="effort-lbl">Effort</span> <b id="effortNow">Low</b> <span id="effortArrow" aria-hidden="true">▾</span></button>

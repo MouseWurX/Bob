@@ -329,7 +329,6 @@ body.still .meter i { transition: none; }
 body.still .meter.moving i { animation: none; }
 
 /* Bob's list: every message queues; nothing gets dropped */
-.queue { background: var(--panel); border-top: 1px solid var(--line); padding: 6px 14px; display: grid; gap: 4px; max-height: 30vh; overflow-y: auto; font-size: 13px; }
 .q-head { opacity: .75; font-size: 12px; }
 .q-job { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .q-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -507,22 +506,17 @@ body:not(.right-hidden) .now-toggle .badge { display: none; }
 .now-gpu .meter { margin: 0; }
 .tag.needs-you { background: var(--danger-bg); color: var(--warn); }
 body.right-hidden .now, body.right-hidden .grab { display: none; }
-body:not(.right-hidden) #queue { display: none; } /* the panel shows the queue; the strip is for when it's hidden */
-body.right-hidden #queue:not([hidden]) { display: grid; }
 
 /* Narrow windows: the panel slides over the chat instead of squeezing it. */
 @media (max-width: 900px) {
   .now { position: fixed; top: 0; right: 0; bottom: 0; z-index: 20; width: min(340px, 92vw); box-shadow: -8px 0 24px #0008; border-left: 1px solid var(--line); }
   .grab { display: none; }
-  body:not(.right-hidden) #queue:not([hidden]) { display: grid; }
 }
 @media (max-width: 560px) {
   body:not(.left-folded) .side { position: fixed; top: 0; bottom: 0; left: 0; z-index: 21; box-shadow: 8px 0 24px #0008; }
   .ctx-title { display: none; }
 }
 .titem .grip { letter-spacing: -3px; }
-.queue .titem { padding: 4px 8px; }
-.queue .titem .tsub { display: none; }
 body.left-folded .now-toggle { flex-direction: row; padding: 4px 8px; font-size: 12.5px; }
 body.left-folded .now-toggle .lbl { display: inline; }
 body.left-folded .now-toggle .badge { position: static; }
@@ -720,7 +714,7 @@ button.big { padding: 9px 18px; font-size: 15px; min-height: 40px; }
 .hands-box button.stop-all, .composer button.stop-all { background: var(--bad); color: var(--on-accent); border: none; font-weight: 700; }
 
 /* ---------- 1.5.0: Settings, Get models and Style as a page in the main area ---------- */
-.mid.paged > :is(#log, #chips, #queue, #tray, #composer) { display: none !important; }
+.mid.paged > :is(#log, #chips, #tray, #composer) { display: none !important; }
 .cellar.page { position: static; flex: 1; min-height: 0; width: auto; max-width: none; max-height: none; margin: 0; border: 0; border-radius: 0; overflow: auto; background: var(--bg); }
 .cellar.page:not([open]) { display: none; }
 .cellar.page.wide { width: auto; }
@@ -959,6 +953,18 @@ body.left-folded .bob-prop { top: -6px; right: -6px; font-size: 11px; }
 @media (prefers-reduced-motion: reduce) { .say-bubble { transition: none; transform: none; } }
 @media (forced-colors: active) { .say-bubble, .say-bubble::before { border-color: CanvasText; } }
 @media print { .bubbles { display: none; } }
+/* 1.5.216: the Tasks word bubble, under the Tasks tab (above it on a phone's bottom bar). Same see-through glass and
+   0.7 s fade as Bob's and the cat's bubbles; it fades out into the tab. Fixed, so it never moves the chat. */
+.task-pop { position: fixed; z-index: 9001; width: max-content; padding: 7px 11px; cursor: pointer; transform-origin: var(--tip, 24px) top; }
+.task-pop.up { transform-origin: var(--tip, 24px) bottom; transform: translateY(4px) scale(.96); }
+.task-pop.on { pointer-events: auto; opacity: 1; transform: none; }
+.task-pop.up.on { pointer-events: none; } /* a phone: taps go through to the message box and Send under it */
+.task-pop.into { opacity: 0; transform: translateY(-14px) scale(.2); }
+.task-pop.up.into { transform: translateY(14px) scale(.2); }
+.task-pop::before { left: calc(var(--tip, 24px) - 5px); top: -6px; border-bottom: 0; border-top: 1px solid var(--accent); }
+.task-pop.up::before { top: auto; bottom: -6px; border-top: 0; border-left: 0; border-bottom: 1px solid var(--accent); border-right: 1px solid var(--accent); }
+@media (prefers-reduced-motion: reduce) { .task-pop, .task-pop.into, .task-pop.up.into { transition: opacity .2s; transform: none; } }
+@media print { .task-pop { display: none; } }
 
 /* ---------- Side panel: things Bob made open here, beside the chat ---------- */
 .viewer { width: var(--viewer-w, 480px); flex: none; display: flex; flex-direction: column; min-width: 0; background: var(--panel); border-left: 1px solid var(--line); }

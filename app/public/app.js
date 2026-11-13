@@ -16,7 +16,8 @@ import { watchLock } from './lock-settings.js';
 import { CHANNEL as SETTINGS_CHANNEL, WINDOW_NAME, WINDOW_SIZE, settingsUrl, wantsWindow, accept as acceptSettings } from './settings-link.js';
 import { createShelf, uploadRef, fixSideways } from './shelf.js';
 import { summary, size } from './progress.js';
-import { createTasks, createDownloads, makeSortable, neighbour, taskRow } from './lists.js';
+import { createTasks, createDownloads } from './lists.js';
+import { createTaskPop } from './task-pop.js'; // 1.5.216: the Tasks word bubble (it replaced the strip above the message box)
 import { createLayout } from './layout.js';
 import { esc, render, renderRich } from './rich.js';
 import { createTopics } from './topics.js';
@@ -1139,38 +1140,23 @@ function setBusy(b) {
 }
 
 // ---------- The queue: what's waiting, what's running, what failed ----------
-// A short strip above the message box (open tasks only); the Tasks button shows the full list.
+// 1.5.216: no strip across the chat any more. A small word bubble under the Tasks tab says when a task starts, waits
+// or fails (task-pop.js), and fades back into the tab; the full list is in Tasks and in Now running.
 const STATE_LABEL = { waiting: 'queued', working: 'in progress', rented: 'rented', done: 'completed', failed: 'failed', cancelled: 'cancelled', interrupted: 'interrupted', paused: 'paused' };
 let lastJobs = [];
-const qbox = $('queue');
+const taskPop = createTaskPop({ onOpen: () => tasks.open() });
 function drawQueue(jobs) {
   lastJobs = jobs;
   tasks.update(jobs);
   layout.jobs(jobs);
+  taskPop.jobs(jobs);
   const open = jobs.filter((j) => j.state === 'waiting' || j.state === 'working');
   countBadge($('tasksBtn'), open.length);
   for (const j of jobs) {
     const tag = jobBubbles.get(j.id)?.querySelector('.qtag');
     if (tag) { const st = j.status || STATE_LABEL[j.state] || j.state; tag.textContent = (j.gaming ? j.gaming.tag : st === 'delegated' && j.delegatedTo ? `${j.delegatedTo.sent ? 'sent' : 'delegated'} to ${j.delegatedTo.copy}` : st) + (j.effort && j.effort !== 'low' ? ` · ${j.effort[0].toUpperCase()}${j.effort.slice(1)} effort` : ''); tag.className = `qtag ${j.state}`; }
   }
-  const show = jobs.filter((j) => j.state === 'waiting' || j.state === 'working' || j.state === 'paused' || ((j.state === 'failed' || j.state === 'interrupted') && Date.now() - j.at < 3600e3));
-  qbox.hidden = !show.length;
-  if (!show.length) return;
-  const waiting = show.filter((j) => j.state === 'waiting').length;
-  qbox.innerHTML = `<div class="q-head">Tasks${waiting ? ` · ${waiting} waiting (drag to change the order)` : ''} · <button type="button" class="link" data-alltasks>See all</button></div><ol class="tlist">${show.map((j) => taskRow(j, { movable: j.state === 'waiting', full: false })).join('')}</ol>`;
 }
-qbox.addEventListener('click', (e) => {
-  const b = e.target.closest('button');
-  if (!b) return;
-  if ('alltasks' in b.dataset) return tasks.open();
-  const id = b.closest('[data-id]')?.dataset.id, t = b.dataset.t;
-  if (!id || !t) return;
-  if (t === 'up' || t === 'down') {
-    const before = neighbour(lastJobs.filter((j) => j.state === 'waiting').map((j) => j.id), id, t === 'up' ? -1 : 1);
-    if (before !== undefined) post('/api/queue/move', { id, before });
-  } else post(`/api/queue/${t}`, { id });
-});
-makeSortable(qbox, (id, before) => post('/api/queue/move', { id, before }));
 // ---------- Pictures attached to the next message ----------
 let pending = []; // [{ id, name, url, kind }]
 const tray = $('tray');
