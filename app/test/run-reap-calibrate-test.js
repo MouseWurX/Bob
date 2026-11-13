@@ -7,7 +7,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { emptyScores, addTrace, keepLists, priority, scoreOf, smallestGood } from '../model-lab/reap-pick.mjs';
+import { emptyScores, addTrace, keepLists, priority, scoreOf, smallestGood, thinLayers } from '../model-lab/reap-pick.mjs';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -40,6 +40,9 @@ check('no mass from the engine: falls back to counts', s3.hasMass === false && p
   check('an engine without the mass patch that sends only per-word rows still counts picks', ok && JSON.stringify(s4.layers) === '[[1,2,0,1],[0,0,1,1]]' && s4.hasMass === false && s4.tokens === 2, JSON.stringify(s4.layers)); }
 const steps = [{ share: 1, pct: 70 }, { share: 0.75, pct: 69 }, { share: 0.5, pct: 68.5 }, { share: 0.35, pct: 60 }];
 check('smallest share within the margin', smallestGood(steps, 2).share === 0.5);
+{ const t = { layers: [[500, 500, 0, 0], [400, 600, 0, 0], [3, 1, 0, 0]] };
+  check('a barely scored last layer is caught (gpt-oss layer 35)', JSON.stringify(thinLayers(t).map((x) => x.layer)) === '[2]', JSON.stringify(thinLayers(t)));
+  check('evenly scored layers are fine', thinLayers({ layers: [[5, 5], [6, 4], [4, 6]] }).length === 0); }
 check('a tighter margin keeps more', smallestGood(steps, 1).share === 0.75);
 { // the gpt-oss run: the 16% step crashed, 71 of 314 turns came back, and it looked within the margin on those
   const g = [{ share: 1, total: 204, of: 314, pct: 65 }, { share: 0.5, total: 196, of: 314, pct: 62.4 }, { share: 0.32, total: 192, of: 312, pct: 61.5 }, { share: 0.16, total: 46, of: 71, pct: 64.8 }];

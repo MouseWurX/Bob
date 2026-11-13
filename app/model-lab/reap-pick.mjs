@@ -73,3 +73,13 @@ export function smallestGood(steps, margin = 2, cover = 0.95) {
   const ok = steps.filter((x) => valid(x) && pctOf(x) >= pctOf(full) - margin);
   return ok.sort((a, b) => a.share - b.share)[0] || full;
 }
+
+// 13 Nov: llama.cpp runs the last layer only for the words whose output it needs, so a prompt-only trace (max_tokens 1)
+// gave gpt-oss's last layer 400 picks against about a million elsewhere and its keep list was mostly guesses. A layer
+// whose picks are far below the others is "thin"; reap-calibrate refuses to write keep lists while any layer is thin.
+export function thinLayers(s, ratio = 0.5) {
+  const picks = s.layers.map((row) => (row || []).reduce((a, b) => a + b, 0));
+  const sorted = picks.filter((x) => x > 0).sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)] || 0;
+  return picks.map((n, li) => ({ layer: li, picks: n, seen: (s.layers[li] || []).filter((x) => x > 0).length })).filter((x) => median && x.picks < ratio * median);
+}

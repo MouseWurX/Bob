@@ -20,7 +20,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { opts, locate, readJsonl, stamp, AGENT } from './common.mjs';
-import { emptyScores, addTrace, keepLists, priority, smallestGood } from './reap-pick.mjs';
+import { emptyScores, addTrace, keepLists, priority, smallestGood, thinLayers } from './reap-pick.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const o = opts({ score: 200, steps: '1,0.75,0.5,0.35', by: 'mass', margin: 2 });
@@ -85,6 +85,12 @@ for (const [i, lesson] of (o.scores ? [] : chosen).entries()) {
 if (!s.lessons) { console.error('No expert traces came back. Is this a Brain Engine server with the expert trace, and a mixture-of-experts brain?'); process.exit(1); }
 const by = s.hasMass ? String(o.by) : 'counts';
 if (!s.hasMass) console.log('This engine gives pick counts but no expert mass, so the ranking uses counts (not true REAP).');
+const thin = thinLayers(s);
+if (thin.length && !o['allow-thin']) {
+  console.error(`These layers were barely scored, so their keep lists would be guesses: ${thin.map((t) => `layer ${t.layer} (${t.picks} picks, ${t.seen} experts seen)`).join(', ')}. The engine only ran them for the last word of each lesson; score with generated words or every-word outputs, or pass --allow-thin.`);
+  fs.writeFileSync(path.join(out, 'scores-thin.json'), JSON.stringify({ by: s.hasMass ? String(o.by) : 'counts', thin, ...s }, null, 1));
+  process.exit(3);
+}
 fs.writeFileSync(path.join(out, 'scores.json'), JSON.stringify({ by, ...s }, null, 1));
 fs.writeFileSync(path.join(out, 'priority.json'), JSON.stringify({ by, experts: s.experts, used: s.used, layers: priority(s, by) }));
 console.log(`${s.lessons} lessons, ${s.tokens} tokens, ${s.layers.length} layers x ${s.experts} experts (${s.used} per word), ranked by ${by}`);
