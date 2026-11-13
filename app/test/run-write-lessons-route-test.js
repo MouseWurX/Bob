@@ -20,8 +20,8 @@ const srv = http.createServer((q, r) => { let b = ''; q.on('data', (d) => (b += 
   if (/^Write 25/.test(first)) content = JSON.stringify(Array.from({ length: 25 }, () => `please remind me about thing ${k++} at 5pm`));
   else if (/^You review training lessons/.test(first)) content = /FIXED/.test(first) ? '{"ok": true, "why": "fine"}' : '{"ok": false, "why": "saved to a wrong path"}';
   else if (j.messages.at(-1)?.role === 'assistant' && j.messages.at(-1).reasoning_content) { // a prefilled thinking turn: carry on from it
-    styleSeen.push({ system: first, prefill: j.messages.at(-1).reasoning_content, lp: !!j.logprobs });
-    r.writeHead(200, { 'content-type': 'application/json' }); r.end(JSON.stringify({ choices: [{ message: { content: mode.content, reasoning_content: mode.reasoning }, finish_reason: 'stop', logprobs: { content: [{ token: ' find', logprob: -0.1, top_logprobs: [{ token: ' find', logprob: -0.1 }] }] } }] })); return;
+    styleSeen.push({ system: first, user: String(j.messages.find((m) => m.role === 'user')?.content || ''), prefill: j.messages.at(-1).reasoning_content, lp: !!j.logprobs });
+    r.writeHead(200, { 'content-type': 'application/json' }); r.end(JSON.stringify({ choices: [{ message: { content: mode.content, reasoning_content: (mode.echo ? j.messages.at(-1).reasoning_content : '') + mode.reasoning }, finish_reason: 'stop', logprobs: { content: [{ token: ' find', logprob: -0.1, top_logprobs: [{ token: ' find', logprob: -0.1 }] }] } }] })); return;
   }
   else { seen.push({ system: first, kw: j.chat_template_kwargs || {} }); content = /A reviewer failed an earlier answer/.test(first) ? 'FIXED: reminder set for 5pm.' : 'Saved a reminder file in C:/temp.'; }
   r.writeHead(200, { 'content-type': 'application/json' }); r.end(JSON.stringify({ choices: [{ message: { content }, finish_reason: 'stop' }] }));
@@ -71,6 +71,20 @@ check('--leak-mode strip takes the marker lines off the answer and marks it', st
 mode.content = 'FIXED: done.'; mode.reasoning = ' just do it.';
 await styleRun('sherlock-weak', ['--style-min', '0.5']);
 check('--style-min rejects thinking that shows too few of the style markers', rows(path.join(tmp, 'sherlock-weak', 'lessons.jsonl')).length === 0);
+// ---- live findings (13 Nov): llama-server echoes the prefill; the style slides back with Bob's full prompt ----
+mode.content = 'FIXED: done, 41 errors.'; mode.reasoning = ' find it 2. report. Options: A grep, B read. Pick: A. Check: ok.'; mode.echo = true;
+const n0 = styleSeen.length;
+await styleRun('sherlock-echo', ['--style-position', 'user']);
+const se = rows(path.join(tmp, 'sherlock-echo', 'lessons.jsonl')), seo = rows(path.join(tmp, 'sherlock-echo', 'odds.jsonl'));
+check('a prefill the server sends back is not doubled ("NeedsNeeds")', se.length >= 3 && se.every((l) => l.messages.find((m) => m.role === 'assistant').reasoning === 'Plan: 1. find it 2. report. Options: A grep, B read. Pick: A. Check: ok.'), JSON.stringify(se[0]?.messages?.[1]?.reasoning));
+check('the odds row says whether the given words came back in the reply', seo.length >= 3 && seo.every((x) => x.turns[0].given === 'Plan: 1.' && x.turns[0].given_echoed === true));
+const sp = styleSeen.slice(n0);
+check('--style-position user: the style note sits just before the ask, not in the system prompt', sp.length > 0 && sp.every((x) => !/start with Plan:/.test(x.system) && /^\(Note for how you think, never mention it: How you think/.test(x.user)), JSON.stringify(sp[0]).slice(0, 300));
+check('the saved lesson keeps the plain message (the note is teacher-only)', se.every((l) => !/Note for how you think/.test(JSON.stringify(l.messages))));
+fs.writeFileSync(path.join(tmp, 'think-long.txt'), 'Style.\nprefix: Plan: 1. a 2. b\\nOptions: A\nprefix-later: Saw:\n');
+const n1 = styleSeen.length; await run(['--dir', 'long', '--jobs', 'chat:1', '--think', 'all', '--persona', path.join(tmp, 'think-long.txt'), '--no-fix']);
+check('a longer prefix can carry line breaks (\\n in the style file)', styleSeen.slice(n1).some((x) => x.prefill === 'Plan: 1. a 2. b\nOptions: A'));
+check('later thinking turns of a tool lesson get prefix-later', /step \? laterPrefix : thinkPrefix/.test(fs.readFileSync(path.join(lab, 'write-lessons.mjs'), 'utf8')));
 srv.close();
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -28,8 +28,15 @@ const personaRaw = o.persona ? fs.readFileSync(path.resolve(String(o.persona)), 
 //   --leak A:,B: --leak-mode reject|strip   a final answer whose first lines start with a style marker is rejected (default
 //                           when a prefix or markers are set) or has those lines stripped
 const fileLine = (k) => (personaRaw.match(new RegExp(`^${k}:[ \\t]*(.+)$`, 'mi'))?.[1] || '').trim();
-const persona = personaRaw.split('\n').filter((ln) => !/^(prefix|markers|leak):/i.test(ln.trim())).join('\n').trim();
-const thinkPrefix = String(o['think-prefix'] && o['think-prefix'] !== true ? o['think-prefix'] : fileLine('prefix'));
+const persona = personaRaw.split('\n').filter((ln) => !/^(prefix|prefix-later|markers|leak):/i.test(ln.trim())).join('\n').trim();
+// a "\n" in a prefix is a line break (a longer prefix can carry the style's whole first step: "Plan: 1. ... 2. ...\nOptions: A")
+const unesc = (x) => String(x || '').replace(/\\n/g, '\n');
+const thinkPrefix = unesc(o['think-prefix'] && o['think-prefix'] !== true ? o['think-prefix'] : fileLine('prefix'));
+// --prefix-later (or a "prefix-later:" line): the prefix for the thinking turns after a tool result (default: the same prefix)
+const laterPrefix = unesc(o['prefix-later'] && o['prefix-later'] !== true ? o['prefix-later'] : fileLine('prefix-later')) || thinkPrefix;
+// --style-position user (13 Nov: with Bob's full prompt and ~13 tools the style slid back by line 2; next to the ask it held):
+// the style text goes as a short teacher-only note just before the person's message instead of at the end of the system prompt
+const stylePos = String(o['style-position'] || 'system') === 'user' ? 'user' : 'system';
 const listOf = (v) => String(v || '').split(',').map((x) => x.trim()).filter(Boolean);
 const styleMarkers = listOf(o['style-markers'] && o['style-markers'] !== true ? o['style-markers'] : fileLine('markers'));
 const styleMin = Number(o['style-min']) || 0;
@@ -269,12 +276,17 @@ async function one(idea, think, room = 1, fix = '') { // room 2 = a second try w
     const sys = tag ? `${t.system}\n\n${tag}` : t.system;
     const set = setKey(sys, t.tools);
     // teacher-only additions (persona, act nudge) go to the server but never into the saved prompt or the set key
-    const teacherOnly = [persona, ACT_JOBS.has(idea.job) ? ACT_NUDGE : '', toolNoteOn && TOOL_JOBS.has(idea.job) ? TOOL_NOTE : '',
+    const teacherOnly = [stylePos === 'system' ? persona : '', ACT_JOBS.has(idea.job) ? ACT_NUDGE : '', toolNoteOn && TOOL_JOBS.has(idea.job) ? TOOL_NOTE : '',
       fix ? `A reviewer failed an earlier answer to this same message because: ${fix}. Do it right this time; never mention the review.` : ''].filter(Boolean).join('\n\n');
-    const pre = think && thinkPrefix ? thinkPrefix : '';
-    const { msg, finish, logprobs, oddsGaps } = await chat(srv.url, { messages: [{ role: 'system', content: teacherOnly ? `${sys}\n\n${teacherOnly}` : sys }, ...live, ...(pre ? [{ role: 'assistant', content: '', reasoning_content: pre }] : [])], tools: t.tools, think, max: (think ? 6000 : 3000) * room, ...extraBody(think, idea.job) });
+    const pre = think ? (step ? laterPrefix : thinkPrefix) : '';
+    // the style note before the person's message goes only to the server (live and saved keep the plain message)
+    const sent = stylePos === 'user' && persona ? live.map((m, mi) => (mi === 0 ? { ...m, content: typeof m.content === 'string' ? `(Note for how you think, never mention it: ${persona})\n\n${m.content}` : [{ type: 'text', text: `(Note for how you think, never mention it: ${persona})` }, ...m.content] } : m)) : live;
+    const { msg, finish, logprobs, oddsGaps } = await chat(srv.url, { messages: [{ role: 'system', content: teacherOnly ? `${sys}\n\n${teacherOnly}` : sys }, ...sent, ...(pre ? [{ role: 'assistant', content: '', reasoning_content: pre }] : [])], tools: t.tools, think, max: (think ? 6000 : 3000) * room, ...extraBody(think, idea.job) });
     if (oddsK) { const pk = packOdds(logprobs); odds.push({ step, set, covers: oddsCover(pk, msg.reasoning_content), ...(pre ? { given: pre } : {}), ...(oddsGaps !== undefined ? { gaps: oddsGaps } : {}), odds: pk }); }
-    if (pre) msg.reasoning_content = pre + String(msg.reasoning_content || ''); // the server returns only what follows the prefix
+    // llama-server (live, 13 Nov) sends the prefill back at the start of reasoning_content; another server may send only what
+    // follows it. Prepend only when it isn't there already (it read "NeedsNeeds..."). The odds cover the writer's own words only.
+    let echoed = false;
+    if (pre) { const rc = String(msg.reasoning_content || ''); echoed = rc.startsWith(pre); if (!echoed) msg.reasoning_content = pre + rc; if (oddsK) odds.at(-1).given_echoed = echoed; }
     if (finish === 'length') throw new Error('ran out of room');
     const a = { role: 'assistant', content: msg.content || '', ...(msg.reasoning_content ? { reasoning: msg.reasoning_content } : {}), ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}), set };
     saved.push(a); live.push({ role: 'assistant', content: a.content, ...(a.tool_calls ? { tool_calls: a.tool_calls } : {}) });
