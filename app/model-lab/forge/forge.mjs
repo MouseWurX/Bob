@@ -439,6 +439,9 @@ async function answerTeacherKey() {
 // in), saves what they print under out/bench/<run>/<name>/, then tells the pod to move on (in/bench-done-<name>).
 const benchDone = new Set();
 // 13 Nov: --skip-bench a,b: a watcher started again on a running pod (--resume) leaves brains whose tests already ran alone
+// 13 Nov: --skip-cmds gpt-oss-120b:1,gpt-oss-120b:2 = those commands of that brain are not run by this watcher (one was swapped
+// for a fixed copy run by hand, which resumes where the old one stopped)
+const skipCmds = new Set(String(args['skip-cmds'] || '').split(',').map((x) => x.trim()).filter(Boolean));
 const skipBench = new Set(String(args['skip-bench'] || '').split(',').map((x) => x.trim()).filter(Boolean));
 async function benchOnPod(name) {
   const { spawn } = await import('node:child_process'); // 11 Nov: was missing; Bill's publish run looped on 'spawn is not defined' at the first benchmark
@@ -455,6 +458,7 @@ async function benchOnPod(name) {
     for (const f of (st?.files || []).filter((x) => x.path.startsWith(`bench/evil-${name}/`) || x.path.startsWith(`bench/imatrix-${name}/`))) await download(f.path, path.join(dir, f.path.startsWith(`bench/evil-`) ? 'evil' : 'imatrix', path.basename(f.path)), f.bytes, null);
   } catch (e) { log(`  pod files for ${name}: ${e.message.slice(0, 120)}`); }
   for (const [i, c] of cmds.entries()) {
+    if (skipCmds.has(`${name}:${i + 1}`)) { log(`  command ${i + 1} skipped (--skip-cmds; it runs elsewhere)`); continue; }
     // 11 Nov: {{out}} is quoted (the install folder has a space, and the command runs through the shell: an unquoted path was cut at the space,
     // so the tests wrote to the wrong place and tool-score could not find the lessons); {{lessons}} is the lab's lessons folder for tool-score
     const q = (v) => `"${String(v).replace(/"/g, '')}"`;

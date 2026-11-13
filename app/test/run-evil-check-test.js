@@ -148,6 +148,16 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   check('job-presets never runs anything a brain writes, and puts every switch back', !/child_process|node:vm|\beval\(|runCode/.test(jp) && /finally \{ await eng\.reset\(\); \}/.test(jp));
 }
 
+// ---- streaming through the rented card's proxy (100 s cutoff), and swapping one command for a hand run ----
+{
+  const { joinStream } = await import('../model-lab/common.mjs');
+  const ev = (o) => `data: ${JSON.stringify(o)}\r\n\r\n`;
+  const j = joinStream(ev({ choices: [{ delta: { reasoning_content: 'th' } }] }) + ev({ choices: [{ delta: { reasoning_content: 'ink', content: 'Hi' }, logprobs: { content: [{ token: 'Hi', logprob: -0.1, top_logprobs: [] }] } }] }) + ev({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'c', function: { name: 'web', arguments: '{"q":' } }] } }] }) + ev({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '1}' } }] }, finish_reason: 'tool_calls' }], timings: { predicted_per_second: 5 } }) + 'data: [DONE]\r\n');
+  check('a streamed answer is put back together: thinking, words, tool call pieces, odds, finish, timings', j.msg.reasoning_content === 'think' && j.msg.content === 'Hi' && j.msg.tool_calls[0].function.arguments === '{"q":1}' && j.logprobs.content.length === 1 && j.finish === 'tool_calls' && j.timings.predicted_per_second === 5);
+  check('a rented server streams by default (LAB_STREAM=0 turns it off)', /process\.env\.LAB_STREAM === '1' \|\| \(remote && process\.env\.LAB_STREAM !== '0'\)/.test(read(path.join(lab, 'common.mjs'))));
+  check('the watcher can leave one command to a hand run (--skip-cmds name:index)', /skipCmds\.has\(`\$\{name\}:\$\{i \+ 1\}`\)/.test(read(path.join(lab, 'forge', 'forge.mjs'))));
+}
+
 // ---- the gate against a made-up server, end to end: exit 86 when a lesson's call doesn't parse ----
 {
   const srv = http.createServer((q, r) => { let b = ''; q.on('data', (d) => (b += d)); q.on('end', () => { r.writeHead(200, { 'content-type': 'application/json' }); r.end(JSON.stringify({ choices: [{ message: { content: '' } }], expert_trace: { kind: 'experts', n_expert: 4, n_expert_used: 2, rows: [{ t: 'a', e: [[0, 1]] }] } })); }); });

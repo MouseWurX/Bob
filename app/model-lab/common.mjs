@@ -146,13 +146,46 @@ export async function chat(url, { messages, tools, think = false, max = 2048, te
     chat_template_kwargs: { enable_thinking: Boolean(think) },
     // Qwen3.6's published sampling: thinking 0.6/0.95/20, instruct 0.7/0.8/20.
     temperature: temperature ?? (think ? 0.6 : 0.7), top_p: think ? 0.95 : 0.8, top_k: 20, ...rest };
+  // 13 Nov: a rented card sits behind RunPod's https proxy, which cuts a request that sends nothing for 100 s (error 524): long
+  // thinking answers with many in flight hit it. Streaming sends words as they come, so the proxy never cuts it. On by default
+  // for a rented server (LAB_REMOTE=1) or LAB_STREAM=1; LAB_STREAM=0 turns it off. The result is put back together exactly.
+  const stream = process.env.LAB_STREAM === '1' || (remote && process.env.LAB_STREAM !== '0');
+  if (stream) { body.stream = true; body.stream_options = { include_usage: true }; }
   const r = await fetch(`${url}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...(process.env.LAB_API_KEY ? { authorization: `Bearer ${process.env.LAB_API_KEY}` } : {}) }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
+  if (stream && r.ok) return joinStream(await r.text());
   const text = await r.text();
   if (!r.ok) throw new Error(`llama-server ${r.status}: ${text.slice(0, 500)}`);
   const j = JSON.parse(text);
   const msg = j.choices?.[0]?.message || {};
   if (!msg.reasoning_content && msg.reasoning) msg.reasoning_content = msg.reasoning; // newer vLLM names it reasoning
   return { msg, finish: j.choices?.[0]?.finish_reason, timings: j.timings || {}, usage: j.usage || {}, logprobs: j.choices?.[0]?.logprobs || null };
+}
+
+// A streamed chat answer (server-sent events) put back together as the plain answer: content, thinking, tool calls (their
+// pieces joined by index), the odds of every word, finish reason, timings and usage.
+export function joinStream(text) {
+  const msg = { role: 'assistant', content: '' }; let reasoning = '', finish = null, timings = {}, usage = {}, lp = null, err = null; const calls = [];
+  for (const line of String(text).replace(/\r\n/g, '\n').split('\n')) {
+    if (!line.startsWith('data:')) continue;
+    const d = line.slice(5).trim(); if (!d || d === '[DONE]') continue;
+    let j; try { j = JSON.parse(d); } catch { continue; }
+    if (j.error) { err = j.error; continue; }
+    if (j.timings) timings = j.timings; if (j.usage) usage = j.usage;
+    const c = j.choices?.[0]; if (!c) continue;
+    const dl = c.delta || {};
+    if (typeof dl.content === 'string') msg.content += dl.content;
+    const rc = dl.reasoning_content ?? dl.reasoning; if (typeof rc === 'string') reasoning += rc;
+    for (const t of dl.tool_calls || []) {
+      const k = t.index ?? calls.length; const x = (calls[k] ||= { id: t.id, type: 'function', function: { name: '', arguments: '' } });
+      if (t.id) x.id = t.id; if (t.function?.name) x.function.name += t.function.name; if (t.function?.arguments) x.function.arguments += t.function.arguments;
+    }
+    if (c.logprobs?.content?.length) (lp ||= { content: [] }).content.push(...c.logprobs.content);
+    if (c.finish_reason) finish = c.finish_reason;
+  }
+  if (err && !msg.content && !calls.length) throw new Error(`llama-server stream: ${JSON.stringify(err).slice(0, 300)}`);
+  if (reasoning) msg.reasoning_content = reasoning;
+  if (calls.length) msg.tool_calls = calls.filter(Boolean);
+  return { msg, finish, timings, usage, logprobs: lp };
 }
 
 export const stamp = () => new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
