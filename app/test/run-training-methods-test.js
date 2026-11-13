@@ -154,6 +154,37 @@ check('the dry run covers targets', /--targets/.test(st) && /the mix follows the
   fs.rmSync(sw, { recursive: true, force: true });
 }
 
+// ---- clean-lessons: a new version, the old one only read ----
+{
+  const cl = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-clean-'));
+  const put = (p, t) => { fs.mkdirSync(path.dirname(path.join(cl, p)), { recursive: true }); fs.writeFileSync(path.join(cl, p), t); };
+  const rows = (r) => r.map((x) => JSON.stringify(x)).join('\r\n') + '\r\n';
+  put('v3/lessons/toolsets.json', JSON.stringify({ s1: { system: 'You are Bob.', tools: [{ type: 'function', function: { name: 'web_search' } }] } }));
+  put('v3/lessons/lessons.jsonl', rows([
+    { idea: 'i1', job: 'chat', think: false, messages: [ask('hello there'), { role: 'assistant', set: 's1', content: 'Hi.' }] },
+    { idea: 'i2', job: 'chat', think: false, messages: [ask('Hello there!'), { role: 'assistant', set: 's1', content: 'Hey.' }] },
+    { idea: 'i3', job: 'chat', think: true, messages: [ask('hello there'), { role: 'assistant', set: 's1', content: 'Hi (thought).' }] },
+    { idea: 'i4', job: 'web', think: false, messages: [ask('news?'), { role: 'assistant', set: 's1', content: '', tool_calls: [call('made_up_tool')] }] },
+    { idea: 'i5', job: 'web', think: false, messages: [ask('news today?'), { role: 'assistant', set: 's1', content: 'I cannot access the internet.' }] }
+  ]));
+  put('v3/kimi-traces/lessons.jsonl', rows([{ idea: 'k1', job: 'ext-agent', messages: [ask('x'), { role: 'assistant', content: 'y' }] }]));
+  put('review.json', JSON.stringify({ wrong: [{ folder: 'lessons', idea: 'i5', why: 'web search was offered' }] }));
+  const before = fs.readFileSync(path.join(cl, 'v3/lessons/lessons.jsonl'), 'utf8');
+  const go = (o) => spawnSync(process.execPath, [path.join(app, 'model-lab', 'clean-lessons.mjs'), '--from', path.join(cl, 'v3'), '--out', o, '--review', path.join(cl, 'review.json')], { encoding: 'utf8' });
+  const r = go(path.join(cl, 'v4'));
+  check('clean-lessons finishes', r.status === 0, r.stderr);
+  const kept = fs.readFileSync(path.join(cl, 'v4/lessons/lessons.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l).idea);
+  const rej = fs.readFileSync(path.join(cl, 'v4/lessons/rejected.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  check('clean-lessons drops a call to a tool that was not offered', !kept.includes('i4'));
+  check('clean-lessons keeps one copy of a repeated prompt, but both thinking modes', kept.filter((i) => ['i1', 'i2'].includes(i)).length === 1 && kept.includes('i3'), kept.join(','));
+  check('clean-lessons moves a reviewed lesson to the wrong side with its reason', !kept.includes('i5') && rej[0]?.idea === 'i5' && /offered/.test(rej[0].why));
+  check('clean-lessons moves other models\' answers to distill/', fs.existsSync(path.join(cl, 'v4/distill/kimi-traces/lessons.jsonl')) && !fs.existsSync(path.join(cl, 'v4/kimi-traces')));
+  check('clean-lessons writes train and heal weights', JSON.parse(fs.readFileSync(path.join(cl, 'v4/targets-train.json'), 'utf8')).light.weight === 0.5 && JSON.parse(fs.readFileSync(path.join(cl, 'v4/targets-heal.json'), 'utf8')).light.weight === 1);
+  check('clean-lessons never changes the old version', fs.readFileSync(path.join(cl, 'v3/lessons/lessons.jsonl'), 'utf8') === before);
+  check('clean-lessons refuses to write into the old version or a full folder', go(path.join(cl, 'v3', 'v4')).status === 1 && go(path.join(cl, 'v4')).status === 1);
+  fs.rmSync(cl, { recursive: true, force: true });
+}
+
 // ---- Help: FAQ in Bob's voice + glossary ----
 const help = read('public/help-content.js');
 check('Help has an FAQ on the Forge\'s ways to teach', /id: 'faq-forge-ways'/.test(help) && /Kept only if he does better on the held-out chats/.test(help));
