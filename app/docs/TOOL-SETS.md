@@ -51,6 +51,8 @@ Keep a family's wording only when right-tool plus right-arguments goes up. Lesso
 
 ## Making new tools with this in mind
 
+The whole guide is [WRITING-TOOLS.md](WRITING-TOOLS.md). In short:
+
 1. Use one tool with an `action` enum rather than sibling tools that get mixed up.
 2. Give safe defaults (a save path when none is given), and check inputs in code with an error that says how to fix it.
 3. Return a result that says exactly what happened (the file's real path, how many items changed), so the answer can quote it.
