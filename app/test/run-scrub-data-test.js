@@ -22,8 +22,8 @@ check('the name in file names and any case', S('ZORVIK.vbs zorvik.txt') === 'you
 check('a private word with its own stand-in, longest first', S('D:\\zorvikdrive\\x') === 'D:\\mydrive\\x', S('D:\\zorvikdrive\\x'));
 check('a two-word private name', S('in secret place now') === 'in private now');
 check('the PC name where it is a host', S('\\\\box7\\share, box7.local, box7:7777, http://box7/x') === '\\\\my-pc\\share, my-pc.local, my-pc:7777, http://my-pc/x', S('\\\\box7\\share, box7.local, box7:7777, http://box7/x'));
-check('a short PC name as an ordinary word stays (Bob\'s "NPC")', scrubValue('As an NPC inside a PC', scrubber({ host: 'npc' })) === 'As an NPC inside a PC');
-const lan = [192, 168, 4, 9].join('.'), mail = ['z', 'mail.org'].join('@');
+check('a short PC name that is also an ordinary word stays ("Hero")', scrubValue('As a hero inside a PC', scrubber({ host: 'hero' })) === 'As a hero inside a PC');
+const lan = [192, 168, 77, 9].join('.'), mail = ['z', 'mail.org'].join('@');
 check('home-network and Tailscale addresses, e-mails, keys', S(`${lan} 100.101.2.3 ${mail} hf_${'a'.repeat(30)}`) === `${[192, 168, 0, 10].join('.')} 100.64.0.1 ${['you', 'example.com'].join('@')} [key removed]`);
 
 const odds = [{ t: 'C:\\Users\\', p: -0.1, top: [{ t: 'C', p: -1 }] }, { t: 'zor', p: -0.2, top: [{ t: 'zor', p: -0.2 }, { t: 'zork', p: -3 }] }, { t: 'vik', p: -0.1, top: [{ t: 'vik', p: -0.1 }] }, { t: '\\x', p: -0.1, top: [] }];
