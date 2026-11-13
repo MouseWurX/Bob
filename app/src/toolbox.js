@@ -47,10 +47,10 @@ const WORK_GROUPS = {
     tools: ['spending_sheet'],
     words: /\b(receipts?|spending|spent|expenses?|bills? (?:from|at)|how much (?:did )?i (?:spend|spent)|budget)\b/i
   },
-  memory: {
-    what: 'forget a topic you keep notes on',
-    tools: ['forget_topic'],
-    words: /\b(forget|erase|delete (?:the |that |your )?(?:note|topic|memory))\b/i
+  memory: { // Nov 13: tool_record (tool-record.js), the saved record of tool calls, for "why did you..." and misses
+    what: 'forget a topic you keep notes on; tool_record = why you did something',
+    tools: ['forget_topic', 'tool_record'],
+    words: /\b(forget|erase|delete (?:the |that |your )?(?:note|topic|memory)|why (?:did|didn't|did not|would) you|what went wrong|what happened (?:with|to)|tool record|(?:look at|fix) (?:it|them|the tools?) harder|try to fix (?:it|them))\b/i
   },
   howtos: { // 1.5.79: only while "Learn how-tos" is on (offTools hides the tools otherwise)
     what: 'keep the steps of a job that worked as a how-to, list your how-tos',

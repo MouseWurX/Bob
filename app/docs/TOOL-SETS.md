@@ -47,9 +47,9 @@ node model-lab/tool-score.mjs --models "gptoss=...gguf" --tool-set gpt-oss
 node model-lab/tool-score.mjs --models "gptoss=...gguf" --tool-set off
 ```
 
-Keep a family's wording only when right-tool plus right-arguments goes up. Until then the family carries `proven: false` in `SETS` and is used only when named.
+Keep a family's wording only when right-tool plus right-arguments goes up. Score with `--tools live`, so the brain sees today's tools and not the ones saved with the lessons. The Nov 13 run below replayed lists saved by a 1.5.108 copy. The Lab now refuses a Bob copy more than 3 releases behind it (`model-lab/bob-source.mjs`, `--allow-old-bob` to override), and stamps `bob_src` (version and commit) on tool lists, lessons and scores. Until then the family carries `proven: false` in `SETS` and is used only when named.
 
-**Result, Nov 13 (GPT-OSS 120B, rented H200, quick set, partial: 25 of 74 turns before the brain unloaded):** its own wording got 5 of 14 tool turns right (tool and inputs) and 9 of 10 no-tool turns; Bob's wording got 6 of 14 and 10 of 11. No gain, so GPT-OSS is `proven: false` and every brain gets Bob's wording. A thinking style of "plan, check inputs, quote the result" scored 0 of 8 against 0 of 8 on the 8 hardest v5 misses. The levers that count are in the tools and the loop: action enums, defaults, exact results, routing, and the plan and check steps, which stay on for every brain.
+**Result, Nov 13 (GPT-OSS 120B, rented H200, quick set, partial: 25 of 74 turns before the brain unloaded; tool lists from Bob 1.5.108, so it's worth running again with `--tools live`):** its own wording got 5 of 14 tool turns right (tool and inputs) and 9 of 10 no-tool turns; Bob's wording got 6 of 14 and 10 of 11. No gain, so GPT-OSS is `proven: false` and every brain gets Bob's wording. A thinking style of "plan, check inputs, quote the result" scored 0 of 8 against 0 of 8 on the 8 hardest v5 misses. The levers that count are in the tools and the loop: action enums, defaults, exact results, routing, and the plan and check steps, which stay on for every brain.
 
 Lesson writing picks the teacher's family by itself once that family is proven. Use `--tool-set off` for Bob's own wording, or `--tool-set gpt-oss` to name an unproven one.
 

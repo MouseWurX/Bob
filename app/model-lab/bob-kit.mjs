@@ -3,12 +3,15 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import { checkBobSource } from './bob-source.mjs';
 
 // howtos: a how-to file ({ howtos: [{ name, when, steps }] }) put in the throwaway Bob first, so the quiz can see them.
-export async function loadBob(bobDir, { howtos = '' } = {}) {
+// allowOld: --allow-old-bob (bob-source.mjs): a Bob copy more than a few releases behind this Lab is refused otherwise.
+export async function loadBob(bobDir, { howtos = '', allowOld = false } = {}) {
   const src = (f) => pathToFileURL(path.join(bobDir, 'src', f)).href;
   if (!fs.existsSync(path.join(bobDir, 'src', 'brain.js'))) throw new Error(`No Bob source tree at ${bobDir} (src/brain.js missing). Pass --bob <folder>.`);
+  const bobSrc = checkBobSource(bobDir, path.join(path.dirname(fileURLToPath(import.meta.url)), '..'), { allowOld });
   const { Brain } = await import(src('brain.js'));
   const { systemPrompt } = await import(src('persona.js'));
   const tb = await import(src('toolbox.js'));
@@ -40,6 +43,7 @@ export async function loadBob(bobDir, { howtos = '' } = {}) {
   for (const k of Object.keys(brain)) { const v = brain[k]; if (v && typeof v === 'object' && v.timer) try { clearInterval(v.timer); } catch {} }
 
   const kit = {
+    bobSrc,
     brain, phrasings, tmp,
     groups: () => tb.groupsFor(brain),
     guessGroups: (text) => tb.guessGroups(brain, text),

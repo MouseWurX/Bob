@@ -1236,6 +1236,7 @@ ${set('Search notes apps', 'No folders', 'Add an Obsidian vault, or a folder of 
 ${set('Sunday digest', 'Off', 'Every Sunday from 9 in the morning I put one short note in the chat: the week\'s chats, the reminders that went off, and what I noticed. <strong>Make this week\'s digest now</strong> makes one straight away. See ' + go('digest', 'The Sunday digest') + '.')}
 ${set('Documents in the side panel', 'Off', 'Word, Excel, PowerPoint, OpenDocument, e-book and Rich Text files open beside the chat as their words, tables and slides, and a PDF as its pages where the window can draw them. Off: they get <strong>Open in its app</strong>. See ' + go('doc-view', 'Documents in the side panel') + '.')}
 ${set('Better tool calling', 'On', 'Before a tool runs I check the call and mend sure slips, add one hint after common errors, and keep long jobs on track. See ' + go('tool-loop', 'How I keep my tool calls on track') + '.')}
+${set('Keep a record of my tool calls', 'On', 'The app writes each tool call down word for word, so I can tell you why from the record. See ' + go('tool-record', 'My record of tool calls') + '.')}
 ${set('Tool wording for each brain family', 'On', 'Same tools and names; a family gets its own wording only once a test proves it helps (none yet). See ' + go('tool-sets', 'Tool wording for each brain family') + '.')}
 ${set('Learn from tool errors', 'Off', 'When a tool fails and then works, I keep one line on what fixed it and read it next time, and I count what works and what fails. See ' + go('tool-learning', 'Learning from my tools') + '.')}
 ${set('Code sandbox', 'Off', 'For sums, dates and counting, I run a few lines of code in a locked box and answer from the result. See ' + go('sandbox', 'Working things out in the sandbox') + '.')}
@@ -2330,7 +2331,7 @@ ${set('Check in now', 'A button', 'Does a round straight away and shows the resu
     html: `<p>Obsidian, yes: turn on <strong>Read and search documents</strong> and add your vault under <strong>Search notes apps</strong> (Settings, How Bob works). OneNote keeps its notebooks in a closed format, so export them as Word or PDF into a folder first (OneNote: File, Export) and add that folder. I only read them. See ${go('doc-more', 'Fresh documents, pages and lines, and notes apps')}.</p>` },
   { id: 'faq-digest', group: 'FAQ', title: 'What is the Sunday digest, and does it cost anything?', words: 'faq sunday digest weekly summary cost brain online',
     html: `<p>One short note each Sunday with the week's chats, the reminders that went off, and what I noticed. It's off until you turn on <strong>Sunday digest</strong> (Settings, How Bob works). It's plain counting: no brain is loaded and nothing goes online, so it costs nothing. See ${go('digest', 'The Sunday digest')}.</p>` },
-  { id: 'email-tidy', group: 'Using Bob', title: 'Tidying your email safely', words: 'email mail tidy sort clean up inbox batches folders trash archive draft reply first important dangerous phishing scam flag prompt injection hidden text gmail outlook hotmail french undo mail lock replicant matrix pc computer laptop mac phone android',
+  { id: 'email-tidy', group: 'Using Bob', title: 'Tidying your email safely', words: 'email mail tidy sort clean up inbox batches folders trash archive draft reply first important dangerous phishing scam flag prompt injection hidden text gmail outlook hotmail french undo mail lock replicant matrix pc computer laptop mac device phone android',
     html: `<p>With <strong>Let Bob tidy my email</strong> on (Settings, How Bob works, 🧰 More tools; off until you turn it on, and it needs <strong>Let Bob read my email</strong>), say "tidy my inbox" and I show you a plan before I touch anything:</p>
 <ul><li><strong>Batches.</strong> Old newsletters you've read (I suggest Trash), other newsletters (Archive), a folder of their own for anyone who sends you lots, and the rest stays put. Change what any batch does, move one email to another batch, or move a whole batch at once.</li>
 <li><strong>Reply to these first</strong>, most important first, with a short reason for each.</li>
@@ -2339,6 +2340,16 @@ ${set('Check in now', 'A button', 'Does a round straight away and shows the resu
 <p><strong>I can't destroy your mail.</strong> Trash is a move, never a delete for good, and I never empty a folder. Drafts go in your Drafts folder and are never sent; you send them. Every change shows a card first, even with "Work without asking" on, and can be undone ("undo that").</p>
 <p><strong>Emails can't steer me.</strong> Every part of an email (subject, names, Cc, attachment names, the words, hidden HTML, calendar notes, encoded bits) reaches me fenced off as someone else's words, with hidden text and invisible letters taken out, and links shown only as the site they go to. And once a chat has email in it, the ${go('glossary', 'mail lock')} is on: in that chat I can't send, post, open web pages, search, run commands or remember things, and every change asks you. A new chat without email can do those again.</p>
 <p>Works with Gmail, Outlook and Hotmail, in English or French (Corbeille, Éléments supprimés, Brouillons...). The plan card is the same on Windows, Mac and Linux, and on the Android app while it's paired.</p>` },
+  { id: 'tool-record', group: 'Using Bob', title: 'My record of tool calls', words: 'tool record why did you reasons thinking log calls inputs result missed worked search job three strikes fix honest record replicant matrix pc computer laptop mac device android',
+    html: `<p>With <strong>Keep a record of my tool calls</strong> on (Settings, How Bob works; on unless you turn it off), the app writes down every tool call I make, word for word, as it happens. I don't write it, so I can't tidy it up or misremember it. Each entry has:</p>
+<ul><li>your message, and the steps the app read from it if you asked for several things;</li>
+<li>the tool and its exact inputs;</li>
+<li>what it answered, and whether it worked, missed, or you said no;</li>
+<li>the end of my thinking just before the call, word for word (if the brain thinks).</li></ul>
+<p>Ask "why did you save it there?" or "what went wrong?" and I look it up with <strong>tool_record</strong>, by tool, by worked or missed, by job, or by words, and quote it. If there's nothing, I say so instead of guessing. When a tool misses three times and I offer to look at it harder, I start from its entries.</p>
+<p>It stays on this replicant matrix, the newest 500 entries, and never holds email. Nothing from it goes into the start of a job; I only read it when you ask. Turning it off deletes it. Same on Windows, Mac and Linux, and for jobs you send from the Android app.</p>` },
+  { id: 'faq-tool-record', group: 'FAQ', title: 'Can Bob tell me why he did something?', words: 'faq why did you reason explain tool record thinking honest guess',
+    html: `<p>Yes, from the record, not from memory. The app writes down each tool call word for word (your ask, the inputs, the result, and the end of my thinking just before it), so when you ask why, I read the real entry and quote it. If there isn't one, I say so. See ${go('tool-record', 'My record of tool calls')}.</p>` },
   { id: 'tool-sets', group: 'Using Bob', title: 'Tool wording for each brain family', words: 'tool wording brain family families gpt-oss gpt oss qwen riker tool sets toolsets use when example to-do reminder notice board add save path logic arguments replicant matrix pc computer laptop mac device machine android',
     html: `<p>Brains from different families learned tools from different teachers, so they read a tool list in their own way. With <strong>Tool wording for each brain family</strong> on (Settings, How Bob works; on unless you turn it off), I word my tools the way each family reads best:</p>
 <ul><li><strong>Same tools, same names.</strong> Only the description changes. What I call and what goes into it stay exactly the same, so a call works the same way on any brain.</li>
@@ -3112,6 +3123,7 @@ ${set('Per-chat engine cache', 'Off', "Switching chats saves the engine's readin
 <dt>Token</dt><dd>A piece of a word. Brains read and write in tokens; context is counted in them.</dd>
 <dt>Tool note</dt><dd>One line I keep on what fixed a tool that failed, so I get it right next time. See ${go('tool-learning', 'Learning from my tools')}.</dd>
 <dt>Tool pack</dt><dd>A folder (or .zip) someone else made that gives me new tools or jobs: a bob-pack.json file and a little plain JavaScript. It comes in switched off, its tools run in my sandbox and ask you every time. Not the same as an app's MCP add-on. See ${go('hands-packs', 'The Tool packs from other people Hand')}.</dd>
+<dt>Tool record</dt><dd>The app's word-for-word note of each tool call I make: your ask, the inputs, the result and my thinking just before. I read it when you ask why. See ${go('tool-record', 'My record of tool calls')}.</dd>
 <dt>Tool wording (tool sets)</dt><dd>How my tools are described to a brain. Each brain family gets the wording it reads best; the tools and their names stay the same. See ${go('tool-sets', 'Tool wording for each brain family')}.</dd>
 <dt>Topic</dt><dd>A group of chats about one project, with a short note on where things landed.</dd>
 <dt>Training protocol</dt><dd>The order I make a better small Bob in: data, clean first, train, analyse, cut, teach back, targets, on-policy finish and reward pass, blend, surgery, publish. A test follows every step. See ${go('faq-protocol', 'What is the training protocol?')}.</dd>
@@ -3165,7 +3177,7 @@ export const FOLD = {
   'quick-notes': 'notes', 'memory-more': 'notes', 'memory-recall': 'notes', digest: 'notes',
   'doc-view': 'my-documents', 'doc-more': 'my-documents', 'read-docs': 'my-documents',
   'tool-loop': 'watching-myself', 'loop-guard': 'watching-myself', 'saving-safely': 'watching-myself',
-  'tool-steady': 'watching-myself', 'honest-report': 'watching-myself', 'tool-learning': 'watching-myself', 'tool-sets': 'watching-myself',
+  'tool-steady': 'watching-myself', 'honest-report': 'watching-myself', 'tool-learning': 'watching-myself', 'tool-sets': 'watching-myself', 'tool-record': 'watching-myself',
   'errors-retries': 'watching-myself',
   'fade-chat': 'settings-chatx', 'amnesia-mode': 'settings-chatx', 'faq-fade': 'fade-chat', 'faq-amnesia': 'amnesia-mode',
   'pin-messages': 'settings-chatx', 'guest-chat': 'settings-chatx', 'try-from-here': 'settings-chatx', 'chat-places': 'settings-chatx',
@@ -3233,7 +3245,7 @@ export const FOLD = {
   'faq-quick-notes-where': 'notes', 'faq-docs-meaning': 'my-documents', 'faq-docs-private': 'my-documents',
   'faq-memory-where-from': 'notes', 'faq-memory-for-a-while': 'notes', 'faq-obsidian-onenote': 'my-documents', 'faq-digest': 'notes',
   'faq-code-map': 'self-work', 'faq-housekeeping-files': 'housekeeping', 'faq-small-brain-tools': 'watching-myself',
-  'faq-tool-learning': 'watching-myself', 'faq-tool-sets': 'watching-myself', 'faq-sandbox-safe': 'sandbox', 'faq-3d-models': 'model3d', 'faq-ms-office': 'hands',
+  'faq-tool-learning': 'watching-myself', 'faq-tool-sets': 'watching-myself', 'faq-tool-record': 'watching-myself', 'faq-sandbox-safe': 'sandbox', 'faq-3d-models': 'model3d', 'faq-ms-office': 'hands',
   'faq-borrow': 'settings-bobnet', 'faq-discord-gate': 'settings-online', 'faq-bigger-checker': 'settings-bobnet', 'faq-pair': 'settings-bobnet', 'faq-talk-over': 'voice',
   'faq-read-docs': 'my-documents', 'faq-carry-on': 'settings-bobnet', 'faq-phone-glance': 'settings-bobnet', 'faq-party': 'settings-bobnet',
   'faq-avatars': 'settings-bobnet', 'faq-sent-lost': 'settings-bobnet', 'faq-introduce': 'settings-bobnet', 'faq-online': 'privacy',

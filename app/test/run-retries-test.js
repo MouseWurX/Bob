@@ -101,7 +101,7 @@ const seq = (...xs) => { let i = 0; return () => xs[Math.min(i++, xs.length - 1)
   check('200 three in a row: set aside', STRIKES === 3 && s.record('read_file', false) === 3 && s.blocked('read_file'));
   check('200 asking the user never counts', s.record('ask_user', false) === 0 && s.record('ask_user', false) === 0 && !s.blocked('ask_user'));
   check('200 the notes are one line each', !/\n/.test(STRIKE_NOTE('x', 'Sam')) && !/\n/.test(STRUCK_OUT('x', 'Sam')));
-  check('200 the offer after the job is one line, naming the tools', fixOffer(['read_file']) === '🔧 read_file kept failing on this job, so I set it aside. Want me to look at it harder and try to fix it?' && /web_search and read_file .* set them aside/.test(fixOffer(['web_search', 'read_file'])) && fixOffer([]) === '');
+  check('200 the offer after the job is one line, naming the tools', fixOffer(['read_file']) === '🔧 read_file kept failing on this job, so I set it aside. I kept a record of each miss. Want me to look at it harder and try to fix it?' && /web_search and read_file .* set them aside/.test(fixOffer(['web_search', 'read_file'])) && fixOffer([]) === '');
 }
 
 // ---------- 206: errors counted per tool per day ----------

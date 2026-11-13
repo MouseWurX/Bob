@@ -196,6 +196,7 @@
     "test/run-tool-learn-test.js",
     "test/run-tool-sets-test.js",
     "test/run-email-safe-test.js",
+    "test/run-tool-record-test.js",
     "test/run-loop-help-test.js",
     "test/run-said-done-test.js",
     "test/run-honest-report-test.js",

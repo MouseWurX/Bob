@@ -174,7 +174,7 @@ export function fixOffer(tools) {
   if (!list.length) return '';
   const names = list.length === 1 ? list[0] : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}`;
   const it = list.length === 1 ? 'it' : 'them';
-  return `🔧 ${names} kept failing on this job, so I set ${it} aside. Want me to look at ${it} harder and try to fix ${it}?`;
+  return `🔧 ${names} kept failing on this job, so I set ${it} aside. I kept a record of each miss. Want me to look at ${it} harder and try to fix ${it}?`;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

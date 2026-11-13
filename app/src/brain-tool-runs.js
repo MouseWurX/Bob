@@ -6,6 +6,7 @@ import { WATCH_TOOLS } from './meanwhile.js';
 import { receiptBefore, cachedLook, keepLook, receiptAfter, noteNo } from './job-helps.js';
 import { inTurn as inChangeTurn, afterChanges } from './turn-changes.js';
 import { recordCall } from './tool-learn.js';
+import { keepRecord } from './tool-record.js';
 import { SAVE_AS, saveAs } from './save-as.js';
 import path from 'node:path';
 import { isGuestId, GUEST_BLOCKED, GUEST_NO_MEMORY } from './guest-chat.js';
@@ -16,7 +17,7 @@ import { STRUCK_OUT, halfDone, badAddress, ToolStrikes, STRIKES, STRIKE_NOTE, ca
 import { applyHouseStyle, usedLine } from '../public/house-style.js';
 import { KEEPS_FOR_LATER, outsideNeed, isOutside, markOutside } from './outside-text.js';
 import { takeEarlier } from './together.js';
-import { mailInChat, mailGate, MAIL_CARD_NOTE } from './mail-guard.js';
+import { mailInChat, mailGate, MAIL_CARD_NOTE, mailApp, fenceMail } from './mail-guard.js';
 import { outputDirs } from './config.js';
 import { madePaths } from './made.js';
 import { limitMs, cleanResult, riskOf, NOTHING_FOUND, capFor, capResult } from './tool-kinds.js';
@@ -68,6 +69,7 @@ export const toolRunParts = {
     await this.savesInto(ctx, res);
     qAfter(this, name, args, res.text, ctx, tool);
     recordCall(this.cfg, name === 'use_my_tool' && args.name ? `use_my_tool:${args.name}` : name, args, res?.text, ctx); // "Learn from tool errors" (tool-learn.js)
+    keepRecord(this.cfg, name, args, res?.text, ctx); // the tool record (tool-record.js): code writes it, word for word
     return res;
   },
   // 1.5.95: a file type named in the ask is saved before the tool's answer goes back, so Bob can say so. Called after
@@ -200,6 +202,9 @@ export const toolRunParts = {
       // the answer can be checked against them. In memory only, at most about 400,000 characters a turn.
       if (!/^Error:/.test(text)) { const seen = (ctx.seen ||= []); if (seen.reduce((n, x) => n + x.length, 0) < 4e5) seen.push(String(text).slice(0, 1e5)); if (name === 'run_in_sandbox') (ctx.sandboxOut ||= []).push(String(text).slice(0, 2e4)); }
       // Item 9: what came from outside is marked as information, and the rest of the turn asks before acting.
+      // Mail through a connected app (a Gmail or Outlook MCP server): cleaned and fenced like read_email, so the mail lock
+      // (mail-guard.js) covers it too. Not under the plain loop switch.
+      if (mailApp(name, args) && !/^Error:/.test(text)) { text = fenceMail(text); ctx.mailRead = true; }
       if (isOutside(name) && !/^Error:/.test(text) && !this.plainLoop) { text = markOutside(name, text); ctx.outsideRead = true; }
       for (const o of v.show || []) if (o?.file) await this.deliver(ctx, o.type || 'image', o.file);
       ctx.currentTool = null;

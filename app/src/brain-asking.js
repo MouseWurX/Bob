@@ -71,7 +71,9 @@ export const askingParts = {
   async chatSafe(opts, { emit, who = 'bob' } = {}) {
     // 1.5.53: while a "Bob's thinking" window is open, his thinking streams to it, a few times a second (never saved).
     const mind = emit && this.mindWatchers?.() ? thinkStream(emit, who, opts.model) : null;
-    if (mind) opts = { ...opts, onThink: mind.push };
+    // The tool record (tool-record.js): the end of this reply's thinking, word for word, for the calls it makes. Kept on
+    // the turn only (the record keeps the last 800 characters of it with each call).
+    { const t = turnNow(); if (t?.ctx) { const tail = (t.ctx.lastThought = { text: '' }); const push = mind?.push; opts = { ...opts, onThink: (x) => { tail.text = (tail.text + x).slice(-2000); push?.(x); } }; } else if (mind) opts = { ...opts, onThink: mind.push }; }
     // Reliability 221: a brain that loaded with a smaller chat memory (memory was short) is fitted to what it really has.
     if (!opts.beside && opts.ctx) { const real = this.engine?.realCtx?.(opts.model, opts.ctx, opts.cpu); if (real && real !== opts.ctx) opts = { ...opts, ctx: real }; }
     const per = this.engine?.charsPerToken?.(opts.model) || 3; // item 3: the brain's own figure once known

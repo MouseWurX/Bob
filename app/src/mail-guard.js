@@ -9,13 +9,13 @@
 // - e-mail changes only run from the card the person pressed, tied to the exact messages on it (email-manage.js).
 // The lock lifts when the e-mail is no longer in the chat (a new chat, or the chat is trimmed). Always on, with no
 // setting: it only applies once e-mail was read. Test: test/run-email-safe-test.js.
-import { MAIL_MARK } from './email-safe.js';
+import { MAIL_MARK, MAIL_START, MAIL_END, cleanText } from './email-safe.js';
 
 // What may run in a chat that holds e-mail: looks at this replicant matrix, the mail tools, and saving things here.
 export const AFTER_MAIL = new Set([
   'read_email', 'manage_email', 'read_calendar', 'calculate', 'check_spelling', 'compare_files', 'query_data',
   'read_file', 'list_folder', 'search_files', 'find_in_documents', 'office_read', 'inspect_file', 'security_check', 'security_tips',
-  'bob_help', 'my_howtos', 'use_tools', 'look_at_job', 'show_made', 'list_schedules', 'code_map', 'git_look',
+  'bob_help', 'tool_record', 'my_howtos', 'use_tools', 'look_at_job', 'show_made', 'list_schedules', 'code_map', 'git_look',
   'ask_user', 'show_plan', 'ask_together',
   'notice_board', 'reminders', 'take_note', 'write_file', 'save_spreadsheet', 'make_chart', 'make_diagram', 'office_make'
 ]);
@@ -34,3 +34,8 @@ export function mailGate(name, risk) {
   if (risk && risk !== 'look') return { card: true };
   return null;
 }
+
+// Mail that comes through a connected app (mcp_use on a Gmail, Outlook or other mail server's tool): the same fence.
+const MAILISH = /\b(g?mail|e-?mail|inbox|outlook|hotmail|imap|proton|fastmail|thunderbird)\b|mail_|_mail|gmail/i;
+export const mailApp = (name, args) => name === 'mcp_use' && MAILISH.test(`${args?.app || ''} ${args?.tool || ''}`);
+export const fenceMail = (text) => `${MAIL_START}\n${cleanText(text)}\n${MAIL_END}`; // always: cleanText breaks any fence words inside
