@@ -1,4 +1,4 @@
-// Answer messages between steps (src/mid-job.js): on unless switched off; a message sent during a job is sorted and
+// Reply between steps (src/mid-job.js): on unless switched off; a message sent during a job is sorted and
 // handled at the job's next step boundary on the loaded brain (quick reply from its own small context, new work to
 // Tasks, a change or "stop" folded into the job), and the job then carries on from the same step, untouched.
 import fs from 'node:fs';
@@ -144,11 +144,11 @@ const finished = (id) => ['done', 'failed', 'cancelled'].includes(stateOf(id));
 
 // ---------- Settings, Help, glossary, FAQ ----------
 const cellar = publicText('cellar.js');
-check('the switch in Settings, Brains, on to start with', /sswitch\('answerMidJob', settings\.answerMidJob !== false, 'Answer messages between steps'/.test(cellar) && /data\.set === 'answerMidJob'|dataset\.set === 'answerMidJob'/.test(cellar));
+check('the switch in Settings, Brains, on to start with', /sswitch\('answerMidJob', settings\.answerMidJob !== false, 'Reply between steps'/.test(cellar) && /data\.set === 'answerMidJob'|dataset\.set === 'answerMidJob'/.test(cellar));
 const help = HELP.find((e) => e.id === 'mid-job');
 check('Help in Bob\'s voice, says where it works', help && /Windows, Mac, Linux and Android/.test(help.html) && /\bI\b/.test(help.html));
 check('glossary and FAQ', HELP.find((e) => e.id === 'glossary').html.includes('<dt>Step boundary</dt>') && HELP.some((e) => e.id === 'faq-mid-job' && e.group === 'FAQ'));
-check('nothing added to the start-of-job prompt', !/between two steps|Answer messages between steps/.test(read('src/prompts.js')));
+check('nothing added to the start-of-job prompt', !/between two steps|Reply between steps/.test(read('src/prompts.js')));
 
 try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
 console.log(`\n${pass} passed, ${fail} failed`);

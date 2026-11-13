@@ -1,4 +1,4 @@
-// 1.5.41 "Let Bob pick the session" (Settings > Everyday > How Bob works). ON unless switched off: the owner asked for this
+// 1.5.41 "Auto session" (Settings > Everyday > How Bob works). ON unless switched off: the owner asked for this
 // as how Bob works ("this wouldn't be opt in"), the one exception to the opt-in rule. Off = only the picker changes it.
 // With it on, Bob changes session himself, from what the chat and the job are really about: his quick brain reads the
 // conversation and calls pick_session when a job would clearly go better in another session. There's no word list
@@ -33,7 +33,7 @@ export const PICK_SCHEMA_TEXT = {
 export async function decidePick(brain, args, ctx) {
   const cfg = brain.cfg;
   const who = cfg.userName || 'the user';
-  if (!autoSessionOn(cfg)) return { text: `Error: "Let Bob pick the session" is off, so only ${who} changes the session.` };
+  if (!autoSessionOn(cfg)) return { text: `Error: "Auto session" is off, so only ${who} changes the session.` };
   const id = pickId(args?.session);
   if (!id || !SESSIONS[id]) return { text: 'Error: pick normal, art, coding, office or gaming.' };
   const now = currentSession(cfg);

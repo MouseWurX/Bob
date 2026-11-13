@@ -39,7 +39,7 @@ const core = all.filter((f) => CORE.includes(f.name));
 check('the tools every chat starts with stay under 8,100 characters', size(core) < 8100, String(size(core)));
 check('no tool talks about GPU plumbing the brain can\'t act on', !all.some((f) => /steps out of the GPU/.test(f.description)));
 
-// "Let Bob learn from his tools": the line he kept is on the tool he is handed, and runTool keeps it.
+// "Learn from tool errors": the line he kept is on the tool he is handed, and runTool keeps it.
 cfg.toolLearning = true;
 const job = { emit: () => {}, signal: new AbortController().signal };
 await brain.runTool('read_file', { path: 'notes.txt' }, job);

@@ -95,7 +95,7 @@ export function loadConfig() {
   cfg.dataDir = path.join(cfg.innDir, 'bob');
   cfg.ledgerDir = path.join(cfg.innDir, 'ledger');
   cfg.painterDir = path.join(cfg.innDir, 'painter');
-  cfg.defaultPainterDir = cfg.painterDir; // 1.5.41: Bob's own folder for what he makes; "Where Bob saves things" can pick another
+  cfg.defaultPainterDir = cfg.painterDir; // 1.5.41: Bob's own folder for what he makes; "Save folder" can pick another
   cfg.archiveDir = path.join(cfg.innDir, 'archive');
   cfg.noticeBoard = path.join(cfg.innDir, 'notice-board.md');
   cfg.logbook = path.join(cfg.innDir, 'logbook.md');
@@ -296,7 +296,7 @@ function clean(patch) {
   if ('webSearch' in out) out.webSearch = out.webSearch === true;
   if ('backup' in out) out.backup = cleanBackup(out.backup); // Back up and move: the automatic backup, off unless switched on
   if ('naughtyList' in out) out.naughtyList = out.naughtyList === true; // 1.5.132 "Show the naughty list", off unless switched on
-  if ('catalogUpdates' in out) out.catalogUpdates = out.catalogUpdates === true; // 1.5.137 "Let Bob fetch his newest brain list", off unless switched on
+  if ('catalogUpdates' in out) out.catalogUpdates = out.catalogUpdates === true; // 1.5.137 "Auto-update the brain list", off unless switched on
   if ('ownModels' in out) out.ownModels = cleanOwnModels(out.ownModels); // 1.5.135 brains of your own (GGUF files on this replicant matrix)
   if ('computerLab' in out) out.computerLab = out.computerLab !== false; // 1.5.172 "Show the Computer Science Lab", on unless switched off (was off until 1.5.171)
   if ('labForgeStart' in out) out.labForgeStart = out.labForgeStart === true; // 1.5.160 "Let the Lab start Forge runs", off unless switched on
@@ -304,29 +304,29 @@ function clean(patch) {
   if ('labExtras' in out) out.labExtras = Object.fromEntries(['hoverWords', 'tellPhone', 'saveQuestions'].map((k) => [k, out.labExtras?.[k] === true])); // Lab items 109, 110, 102: the Lab's three small switches, each off unless switched on
   if ('labRecheck' in out) out.labRecheck = out.labRecheck === true; // Nov 11 "Check my main brain after engine updates", off unless switched on
   if ('labPro' in out) out.labPro = out.labPro === true; // 1.5.168 the Lab's Professional mode: more controls on every tab; off = Keep it simple
-  if ('qwenPresets' in out) out.qwenPresets = cleanPresets(out.qwenPresets); // 1.5.148 "Choose my own word settings", off unless switched on
-  if ('selfWork' in out) out.selfWork = cleanSelfWork(out.selfWork); // "Let Bob work on repositories" (self-work.js), off by default
-  if ('howtos' in out) out.howtos = out.howtos === true; // 1.5.79 "Let Bob learn how-tos", off by default
+  if ('qwenPresets' in out) out.qwenPresets = cleanPresets(out.qwenPresets); // 1.5.148 "Custom sampling", off unless switched on
+  if ('selfWork' in out) out.selfWork = cleanSelfWork(out.selfWork); // "Work on repositories" (self-work.js), off by default
+  if ('howtos' in out) out.howtos = out.howtos === true; // 1.5.79 "Learn how-tos", off by default
   if ('wantsAsked' in out) out.wantsAsked = out.wantsAsked === true; // the chat's one-time "Do you want me to" offer (wants.js)
   // List items 94-100, engine and speed extras (engine-extras.js), each off unless switched on
   for (const k of EXTRA_SWITCHES) if (k in out) out[k] = out[k] === true;
   if ('brainMemType' in out) out.brainMemType = cleanMemType(out.brainMemType); // 100 memory type per brain; Standard when not set
   if ('stopWords' in out) out.stopWords = out.stopWords !== false; // "Stop and wait words", on unless switched off (stop-words.js)
-  if ('answerMidJob' in out) out.answerMidJob = out.answerMidJob !== false; // "Answer messages between steps", on unless switched off (mid-job.js)
-  if ('quickSeesJob' in out) out.quickSeesJob = out.quickSeesJob === true; // "Let Bob's Quick brain see the big job", off by default (meanwhile.js)
+  if ('answerMidJob' in out) out.answerMidJob = out.answerMidJob !== false; // "Reply between steps", on unless switched off (mid-job.js)
+  if ('quickSeesJob' in out) out.quickSeesJob = out.quickSeesJob === true; // "Quick brain sees the job", off by default (meanwhile.js)
   if ('jobHelps' in out) out.jobHelps = cleanJobHelps(out.jobHelps); // Settings, Jobs: eleven switches, all off by default (job-helps.js)
-  if ('editOwn' in out) out.editOwn = out.editOwn === true; // "Let Bob fix his own messages", off by default (edit-own.js)
+  if ('editOwn' in out) out.editOwn = out.editOwn === true; // "Edit his own messages", off by default (edit-own.js)
   if ('statusJokes' in out) out.statusJokes = out.statusJokes !== false; // 1.5.216 status-line.js, ON unless turned off (the owner asked for it)
   if ('thinkBubble' in out) out.thinkBubble = out.thinkBubble !== false; // 1.5.210 think-bubble.js, ON unless turned off (the owner asked for it)
-  if ('chatRedo' in out) out.chatRedo = out.chatRedo !== false; // "Show Try again, Edit and Delete in the chat", ON unless turned off (owner's exception, redo.js)
-  if ('quickNotes' in out) out.quickNotes = out.quickNotes === true; // "Let Bob take quick notes", off by default (notes.js)
-  if ('smartNotes' in out) out.smartNotes = out.smartNotes === true; // "Let Bob notice what's worth noting", off by default (notes.js)
-  if ('docTools' in out) out.docTools = out.docTools === true; // "Read and search my documents", off by default (my-docs.js)
-  if ('docMeaning' in out) out.docMeaning = out.docMeaning === true; // "Search my documents by meaning", off by default (doc-index.js)
+  if ('chatRedo' in out) out.chatRedo = out.chatRedo !== false; // "Try again, Edit and Delete", ON unless turned off (owner's exception, redo.js)
+  if ('quickNotes' in out) out.quickNotes = out.quickNotes === true; // "Quick notes", off by default (notes.js)
+  if ('smartNotes' in out) out.smartNotes = out.smartNotes === true; // "Auto notes", off by default (notes.js)
+  if ('docTools' in out) out.docTools = out.docTools === true; // "Read and search documents", off by default (my-docs.js)
+  if ('docMeaning' in out) out.docMeaning = out.docMeaning === true; // "Semantic document search", off by default (doc-index.js)
   // Memory and documents, items 87 to 93 (memory-more.js, doc-more.js, digest.js): all off by default.
   for (const k of ['memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPlaces', 'weeklyDigest']) if (k in out) out[k] = out[k] === true;
   if ('notesFolders' in out) out.notesFolders = cleanNotesFolders(out.notesFolders);
-  if ('chatFiles' in out) out.chatFiles = out.chatFiles === true; // "Save chats as files and bring chats in", off by default (chat-files.js)
+  if ('chatFiles' in out) out.chatFiles = out.chatFiles === true; // "Export and import chats", off by default (chat-files.js)
   // Voice, phone and Bob-Net (items 133 to 142, 2026-11-11): every switch off unless turned on.
   if ('talkOver' in out) out.talkOver = out.talkOver === true; // "Talk over Bob" (public/voice.js)
   // Talk with Bob (1.5.210, src/talk.js): off unless turned on; xAI's online hearing and voice off unless picked.
@@ -337,12 +337,12 @@ function clean(patch) {
   if ('netVoices' in out) out.netVoices = out.netVoices === true; // "A voice per Bob" (src/tts.js netVoiceFor)
   if ('netVoiceMap' in out) out.netVoiceMap = cleanVoiceMap(out.netVoiceMap);
   if ('carryIn' in out) out.carryIn = out.carryIn === true; // "Take chats from my other Bobs" (src/carry.js)
-  if ('phoneGlance' in out) out.phoneGlance = out.phoneGlance === true; // "Let my phone see how I'm doing" (src/glance.js)
+  if ('phoneGlance' in out) out.phoneGlance = out.phoneGlance === true; // "Share status with my phone" (src/glance.js)
   if ('netOverlay' in out) out.netOverlay = out.netOverlay === true; // Nov 13 "Bob-Net icons under Bob" (src/net-overlay.js), off unless turned on
-  if ('mathView' in out) out.mathView = out.mathView === true; // "Show maths as formulas", off by default (public/math-core.js)
+  if ('mathView' in out) out.mathView = out.mathView === true; // "Render maths", off by default (public/math-core.js)
   if ('shortcuts' in out) out.shortcuts = out.shortcuts === true; // "Keyboard shortcuts", off by default (public/shortcuts.js)
-  if ('docView' in out) out.docView = out.docView === true; // "Show documents in the side panel", off by default (files.js docPeek)
-  if ('toolLearning' in out) out.toolLearning = out.toolLearning === true; // "Let Bob learn from his tools", off by default (tool-learn.js)
+  if ('docView' in out) out.docView = out.docView === true; // "Documents in the side panel", off by default (files.js docPeek)
+  if ('toolLearning' in out) out.toolLearning = out.toolLearning === true; // "Learn from tool errors", off by default (tool-learn.js)
   if ('chatPresets' in out) out.chatPresets = out.chatPresets === true; // "Assistant presets for chats", off by default (presets.js)
   if ('presetList' in out) out.presetList = cleanPresetList(out.presetList); // the saved presets (presets.js)
   for (const k of HARNESS_KEYS) if (k in out) out[k] = cleanHarness(k, out[k]); // items 62 to 72 (src/harness.js), all off unless switched on
@@ -351,16 +351,16 @@ function clean(patch) {
   if ('textSize' in out) out.textSize = cleanTextSize(out.textSize);
   if ('todayPlace' in out) out.todayPlace = cleanPlace(out.todayPlace);
   if ('tourSeen' in out) out.tourSeen = typeof out.tourSeen === 'string' && /^\d+\.\d+\.\d+$/.test(out.tourSeen) ? out.tourSeen : '';
-  if ('promptMenu' in out) out.promptMenu = out.promptMenu === true; // "Pull up saved prompts with /", off by default (prompts.js)
-  if ('sandboxCode' in out) out.sandboxCode = out.sandboxCode === true; // "Let Bob work things out in a sandbox", off by default (sandbox-code.js)
+  if ('promptMenu' in out) out.promptMenu = out.promptMenu === true; // "Saved prompts with /", off by default (prompts.js)
+  if ('sandboxCode' in out) out.sandboxCode = out.sandboxCode === true; // "Code sandbox", off by default (sandbox-code.js)
   if ('moreTools' in out) out.moreTools = cleanMoreTools(out.moreTools); // 🧰 More tools, every switch off by default (more-tools.js)
-  if ('parts3d' in out) out.parts3d = out.parts3d === true; // "Let Bob make 3D parts", off by default (parts3d.js)
-  if ('model3d' in out) out.model3d = out.model3d === true; // "Let Bob turn pictures into 3D models", off by default (model3d.js)
+  if ('parts3d' in out) out.parts3d = out.parts3d === true; // "3D parts", off by default (parts3d.js)
+  if ('model3d' in out) out.model3d = out.model3d === true; // "Pictures to 3D models", off by default (model3d.js)
   if ('tray' in out) out.tray = out.tray !== false; // 1.5.94 "Keep Bob in the tray"; on unless switched off since 1.5.134 (the owner asked for it)
   if ('lookIcon' in out) out.lookIcon = out.lookIcon !== false; // 1.5.94 "Use Bob's look as his icon"; on unless switched off since 1.5.134 (the owner asked for it)
   if ('houseStyle' in out) out.houseStyle = cleanHouseStyle(out.houseStyle); // 1.5.34 House style (public/house-style.js)
   if ('projectList' in out) out.projectList = cleanProjects(out.projectList); // 1.5.34 Projects in Settings
-  if ('saveDir' in out) out.saveDir = cleanDir(out.saveDir); // 1.5.41 Where Bob saves things ('' = Bob's own folder)
+  if ('saveDir' in out) out.saveDir = cleanDir(out.saveDir); // 1.5.41 Save folder ('' = Bob's own folder)
   if ('saveDirsUsed' in out) out.saveDirsUsed = [].concat(out.saveDirsUsed || []).map(cleanDir).filter(Boolean).slice(0, 10);
   if ('defaultProject' in out) out.defaultProject = typeof out.defaultProject === 'string' ? out.defaultProject.slice(0, 60) : '';
   if ('gamingCard' in out) out.gamingCard = ['auto', 'never', 'always'].includes(out.gamingCard) ? out.gamingCard : 'auto'; // 1.5.32
@@ -370,7 +370,7 @@ function clean(patch) {
   if ('autoSession' in out) out.autoSession = out.autoSession !== false; // 1.5.41, on unless switched off (the owner's call)
   if ('pictureNoWait' in out) out.pictureNoWait = out.pictureNoWait !== false; // 1.5.20, on unless switched off
   if ('updates' in out) out.updates = { autoCheck: out.updates?.autoCheck === true };
-  if ('engineUpdates' in out) out.engineUpdates = { auto: out.engineUpdates?.auto !== false }; // 1.5.184 Keep engines up to date, on unless switched off
+  if ('engineUpdates' in out) out.engineUpdates = { auto: out.engineUpdates?.auto !== false }; // 1.5.184 Auto-update engines, on unless switched off
   if ('housekeeping' in out) out.housekeeping = cleanHousekeeping(out.housekeeping || {});
   if ('checkins' in out) out.checkins = cleanCheckins(out.checkins || {}); // 1.5.78 Check-ins, off unless switched on
   if ('games' in out) { const g = out.games || {}; out.games = { brain: g.brain === 'main' ? 'main' : 'quick', talk: ['every', 'some', 'end'].includes(g.talk) ? g.talk : 'every', keep: g.keep === true, kid: g.kid === true }; } // 1.5.121 🧩 Games (defaults, nothing on); 1.5.206 Keep an unfinished game, off; Kid mode, off
@@ -543,7 +543,7 @@ export function cleanProjects(list) {
   }
   return out;
 }
-// ---------- 1.5.41: Where Bob saves things ----------
+// ---------- 1.5.41: Save folder ----------
 // Pictures, clips, songs and sounds go to cfg.painterDir. That is Bob's own folder (inn\painter, shown as
 // "Made by Bob") unless the user picked another in Settings (saveDir). Folders used before stay readable
 // (saveDirsUsed), so pictures and songs in older chats still show after a change.
@@ -594,11 +594,11 @@ function applyProjects(cfg) {
   if (Array.isArray(cfg.projectList)) cfg.projects = Object.fromEntries(cfg.projectList.map((p) => [p.name, p.path]));
   if (cfg.defaultProject && !(cfg.projects || {})[cfg.defaultProject]) cfg.defaultProject = '';
   applyNotes(cfg); // notes folders (Obsidian, OneNote exports) join the folders Bob may read (notes-folders.js)
-  return applyCodeCopy(cfg); // "Let Bob work on repositories": the code copies are projects while the switch is on
+  return applyCodeCopy(cfg); // "Work on repositories": the code copies are projects while the switch is on
 }
 
 // Settings saved whole (not merged key by key), so an emptied box or a removed project really goes away.
-// "Keep the last 20 Settings changes" (src/settings-undo.js) listens here while it's on: the keys a change touched,
+// "Settings undo (last 20)" (src/settings-undo.js) listens here while it's on: the keys a change touched,
 // as they were and as they are now. One listener; it never changes what is saved.
 let settingsWatcher = null;
 export const watchSettings = (fn) => { settingsWatcher = typeof fn === 'function' ? fn : null; };

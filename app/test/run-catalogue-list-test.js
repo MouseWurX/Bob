@@ -152,7 +152,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
   fs.rmSync(tmp, { recursive: true, force: true });
   const server = read('src/server.js'), cellar = publicText('cellar.js');
   check('the server merges it at start, checks once a day only when due, and Check now is this replicant matrix only', /shop\.catalog = mergeAdded\(listUpdates\.merge\(shop\.shipped\), cfg\)/.test(server) && /if \(listUpdates\.due\(\)\)/.test(server) && /p === '\/api\/catalog\/latest'\) \{\s*if \(!isLocal\)/.test(server));
-  check('Settings: "Let Bob fetch his newest brain list" under Going online, off, with Check now', /sswitch\('catalogUpdates', settings\.catalogUpdates === true, 'Let Bob fetch his newest brain list', keep\('Off unless you turn it on\./.test(cellar) && /data-listcheck>Check now/.test(cellar));
+  check('Settings: "Auto-update the brain list" under Going online, off, with Check now', /sswitch\('catalogUpdates', settings\.catalogUpdates === true, 'Auto-update the brain list', keep\('/.test(cellar) && /data-listcheck>Check now/.test(cellar));
 }
 
 // ---- DeepSeek's thinking brains (the owner, Nov 10: "i want to have access to their thinking") ----

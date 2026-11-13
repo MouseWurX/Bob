@@ -1,4 +1,4 @@
-// Saved prompts (Settings, How Bob works: "Pull up saved prompts with /"; off unless the user turns it on).
+// Saved prompts (Settings, How Bob works: "Saved prompts with /"; off unless the user turns it on).
 //
 // The words you type often, saved once: type "/" at the start of the message box, pick one, and its words go in
 // the box for you to finish and send. Nothing is sent by itself, and Bob's brain never sees the list.
@@ -50,7 +50,7 @@ export async function promptsRoute({ req, res, p, isLocal, cfg, body, send, save
   let list = loadPrompts(cfg);
   if (typeof b.on === 'boolean') {
     saveSettings(cfg, { promptMenu: b.on });
-    log('settings', `Pull up saved prompts with /: ${b.on ? 'on' : 'off'} (your click)`);
+    log('settings', `Saved prompts with /: ${b.on ? 'on' : 'off'} (your click)`);
   }
   if (b.save) {
     const r = savePrompt(list, b.save);

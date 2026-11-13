@@ -117,13 +117,13 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 |---|---|
 | 🧭 **Journey** | Adventure as an old console game. Walk a tile map, open chests, talk to the village and fight turn-based battles. No brain needed. |
 | 🧩 **Eleven more games** | Chess, Sudoku, a daily mini crossword, Four in a row, Hidden fleet, Liar's dice, Trivia night and more. Easy, Normal or Hard, two players on one screen, and a puzzle of the day. |
-| 🔁 **Jobs you can steer** | Steer Bob mid-job, stop after this step, set a time limit, and get a receipt with Open and Undo. **How I got here** under each answer lists the tools he used. |
+| 🔁 **Jobs you can steer** | Steer mid-job, stop after this step, set a time limit, and get a receipt with Open and Undo. **How I got here** under each answer lists the tools he used. |
 | 🛠 **Steadier work, better tools** | Replies start sooner. Bob asks one question on a card when he needs to, reads PDF and Office links, and looks at git history. If he says something is done when it isn't, a note puts it right. |
 | 🩺 **Health and history** | Crash catching with a safe start, the last 20 Settings changes with Put it back, a Health page with fix buttons, quiet hours, and a shortcut from anywhere. |
 | 🗓 **Everyday helpers** | A today card, a focus timer, a spending sheet from receipt photos, profiles for a shared computer, bigger text and an easier-to-read font. |
 | 🎲 **Adventure table rules** | A map that grows, portraits, coins and shops, riddle rooms, Easy to Hard, and campaigns you can send to a friend. |
 | 🧪 **More Lab** | A blind taste test that ranks brains, Save to Lab from the chat, before and after Teach it, and recipe files to share. |
-| ⚡ **Engine and speed** | Load the next brain early, a speed history chart, laptop mode on battery, and a chat memory type for each brain. |
+| ⚡ **Engine and speed** | Preload the next brain, a speed history chart, laptop mode on battery, and a chat memory type for each brain. |
 | 🗣 **Voice and phone** | Talk with Bob hands-free (short spoken answers, cut in any time), talk over Bob while he reads aloud, have documents read aloud, and carry a chat on to another Bob. On Android: Share to Bob, a home-screen widget and hands-free. |
 
 Every new switch is off until you turn it on.
@@ -305,7 +305,7 @@ Put Bob on your PC, laptop, handheld and phone, and they find each other on your
 | Context on a 16 GB card | **256K tokens**, and up to 1M with Long memory. |
 | 🧊 The cube's **Real experts** (live brain picks) | **Free when off** (the glow alone costs nothing). On Brain Engine 7 (Bob's own from 1.5.217): **about a tenth** shown live (Riker on a 5070 Ti, 115.1 down to 104.7 words a second) and about 4.5% read after the answer (109.9). Brain Engine 5 cost about a fifth (122.7 down to 99.2), because it stopped at every layer; from Brain Engine 6 the picks are read once per word; [the numbers](app/docs/test-results/2026-11-12-cube-real-experts-cost.md). |
 
-Pictures and big jobs wait in Tasks while you play, and **Let games go first** has Bob use fewer processor cores. The measurements are in [How Bob stays fast and light](app/docs/PERFORMANCE.md).
+Pictures and big jobs wait in Tasks while you play, and **Games first** has Bob use fewer processor cores. The measurements are in [How Bob stays fast and light](app/docs/PERFORMANCE.md).
 
 ## Getting Bob
 
@@ -346,7 +346,7 @@ Bob's program and his things live apart, so updating never touches your models o
 
 - **You pick the folder when Bob is installed or first opened.** Bob suggests a `Bob` folder in your user folder and takes any drive. He refuses temporary places like AppData, because models are 10 to 60 GB. A cloud-synced folder (OneDrive, Dropbox, Google Drive, iCloud) is allowed, but Bob always recommends against it: every model would be uploaded.
 - **To move it later:** Settings, **Bob's home folder**, then **Move here…**.
-- **His pictures, clips and songs** go to the folder in Settings, **Where Bob saves things**, with a **Change folder…** button. **Made by Bob** lists them all.
+- **His pictures, clips and songs** go to the folder in Settings, **Save folder**, with a **Change folder…** button. **Made by Bob** lists them all.
 
 ## Using Bob
 
@@ -389,4 +389,4 @@ Once signing is set up:
 - Committers and reviewers: the members of this repository with write access.
 - Approvers: the project owner. Every signing request for a release will be approved by hand.
 
-**Privacy policy** ([PRIVACY.md](app/docs/legal/PRIVACY.md)): This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. Bob reaches the internet only for downloads you confirm, voice samples you play, web searches if you turn on "Let Bob search the web", and online services you switch on yourself. Bob sends no telemetry.
+**Privacy policy** ([PRIVACY.md](app/docs/legal/PRIVACY.md)): This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. Bob reaches the internet only for downloads you confirm, voice samples you play, web searches if you turn on "Web search", and online services you switch on yourself. Bob sends no telemetry.

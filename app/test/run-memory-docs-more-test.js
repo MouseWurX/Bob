@@ -36,7 +36,7 @@ const KEYS = ['memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPl
   check('all six start off', KEYS.every((k) => fresh[k] !== true));
   check('only true turns one on', KEYS.every((k) => mergeSettings({}, { [k]: 'yes' })[k] === false && mergeSettings({}, { [k]: true })[k] === true));
   check('the on-checks need true', !sourcesOn({}) && sourcesOn({ memorySources: true }) && !expiryOn({ memoryExpiry: 1 }) && expiryOn({ memoryExpiry: true }) && !digestOn({}) && digestOn({ weeklyDigest: true }));
-  check('project memories kept to their project needs Remember only what fits', !whereOn({ memoryWhere: true }) && whereOn({ memoryWhere: true, memoryRecall: true }));
+  check('project memories kept to their project needs Relevant memories only', !whereOn({ memoryWhere: true }) && whereOn({ memoryWhere: true, memoryRecall: true }));
   check('documents kept fresh needs reading and meaning search', !docFreshOn({ docFresh: true }) && !docFreshOn({ docFresh: true, docTools: true }) && docFreshOn({ docFresh: true, docTools: true, docMeaning: true }));
   check('page and line needs reading documents', !docPlacesOn({ docPlaces: true }) && docPlacesOn({ docPlaces: true, docTools: true }));
 }
@@ -246,8 +246,8 @@ const KEYS = ['memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPl
 // ---------- Settings, the server, the first-time list ----------
 {
   const cellar = publicText('cellar.js'), server = read('src/server.js');
-  for (const [k, label] of [['memorySources', 'Note where each memory came from'], ['memoryExpiry', 'Let memories run out'], ['memoryWhere', 'Keep project memories to their project'], ['docFresh', 'Keep my documents fresh'], ['docPlaces', 'Show the page and line'], ['weeklyDigest', 'A Sunday digest']]) {
-    check(`Settings has "${label}", off unless turned on`, cellar.includes(`sswitch('${k}', settings.${k} === true, '${label}', 'Off unless you turn it on.`));
+  for (const [k, label] of [['memorySources', 'Memory sources'], ['memoryExpiry', 'Expiring memories'], ['memoryWhere', 'Per-project memories'], ['docFresh', 'Live document index'], ['docPlaces', 'Cite page and line'], ['weeklyDigest', 'Sunday digest']]) {
+    check(`Settings has "${label}", off unless turned on`, cellar.includes(`sswitch('${k}', settings.${k} === true, '${label}', '`));
     check(`the server saves and shows ${k}`, server.includes(`typeof b.${k} === 'boolean'`) && server.includes(`${k}: cfg.${k} === true`));
     check(`${k} is on the first-time list`, WANTS.some((w) => w.key === k && w.setting === label));
   }

@@ -319,9 +319,9 @@ check('remixes and smaller brains don\'t', !['qwen3.6-35b-a3b-heretic', 'qwen3.6
   const tools = read('src/tools.js');
   check('new files in the code copy still show their card (the rest of the inn doesn\'t)', /!isInside\(codeCopyRoot\(cfg\), file\)\) return false/.test(tools));
   check('the job runs as a managed job on the picked brain, Long memory and more steps', /runManaged\(ctx\.brain, ctx, \{ cfg, repo, job, \.\.\.parts, runOn, git: gitFile, force: \{ model: pick\.id, cpu: false, think: true, ctx: want, longRun: true, maxSteps: SELF_STEPS \} \}\)/.test(tools));
-  check('Bob knows whether it\'s on (his own settings lookup)', settingsNow({ ...cfg, selfWork: { enabled: true } }).includes('Let Bob work on repositories: on'));
+  check('Bob knows whether it\'s on (his own settings lookup)', settingsNow({ ...cfg, selfWork: { enabled: true } }).includes('Work on repositories: on'));
   const ids = new Set(HELP.map((h) => h.id));
-  check('Help, an FAQ and the settings list explain it', ids.has('self-work') && ids.has('faq-self-work') && HELP.some((h) => h.html.includes('Let Bob work on repositories')));
+  check('Help, an FAQ and the settings list explain it', ids.has('self-work') && ids.has('faq-self-work') && HELP.some((h) => h.html.includes('Work on repositories')));
   check('...and the glossary has Code copy', HELP.find((h) => h.id === 'glossary')?.html.includes('<dt>Code copy</dt>'));
   const help = HELP.find((h) => h.id === 'self-work').html;
   check('Help says the running Bob stays locked, the brains, Long memory, getting Git and Node, and the phone', /stay locked/.test(help) && /Bobert/.test(help) && /Qwen3\.6 35B/.test(help) && /512K/.test(help) && /Node\.js 20/.test(help) && /own-tools/.test(help) && /nodejs\.org/.test(help) && /MinGit/.test(help) && /Android/.test(help));

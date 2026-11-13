@@ -19,7 +19,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 check(same(tuning({}), { readyWhileTyping: false, gamesFirst: false, pictureFit: false }), 'all three switches are off unless turned on');
 check(tuning({ gamesFirst: 'yes' }).gamesFirst === false, 'only a real true turns a switch on');
 
-// ---------- Let games go first ----------
+// ---------- Games first ----------
 const cpus = (model, n) => Array.from({ length: n }, () => ({ model }));
 check(cpuPlan({}, { cpus: cpus('AMD Ryzen 7 9800X3D 8-Core Processor', 16) }) === null, 'games first off: no change to cores or priority');
 const one = cpuPlan({ gamesFirst: true }, { cpus: cpus('AMD Ryzen 7 9800X3D 8-Core Processor', 16) });
@@ -164,7 +164,7 @@ try {
   bob.kill();
 }
 const html = publicText('cellar.js');
-check(/Get Bob ready while you type/.test(html) && /Let games go first/.test(html) && /Match picture settings to my graphics card/.test(html) && /Test Bob's speed/.test(html) && /Check this replicant matrix/.test(html) && /<th>Load<\/th>/.test(html) && /<th>Second reply<\/th>/.test(html), 'the settings page has the switches and both buttons');
+check(/Warm up while typing/.test(html) && /Games first/.test(html) && /Fit pictures to my GPU/.test(html) && /Test Bob's speed/.test(html) && /Check this replicant matrix/.test(html) && /<th>Load<\/th>/.test(html) && /<th>Second reply<\/th>/.test(html), 'the settings page has the switches and both buttons');
 
 
 // 1.5.27: saved chat starts are kept for the newest 2 brains only.

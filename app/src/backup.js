@@ -326,7 +326,7 @@ export function rebaseJson(v, pairs, opts) {
 export function safeSettings(s = {}) {
   const out = { ...s };
   delete out.hands; // What Bob may do: back to the defaults (asks first)
-  delete out.selfWork; // Let Bob work on repositories: off, and the code copies aren't in a backup
+  delete out.selfWork; // Work on repositories: off, and the code copies aren't in a backup
   delete out.autostart; // Launch on start-up is set on each computer
   delete out.gpuVramGB; delete out.gamingCard; delete out.apuHoldbackGB; // this computer's own hardware
   if (out.rentals && typeof out.rentals === 'object') out.rentals = { ...out.rentals, enabled: {}, current: '' };

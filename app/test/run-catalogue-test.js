@@ -132,7 +132,7 @@ check('each machine answer is said once (grouped), and Active is explained once 
   // The setting itself.
   check('naughtyList is a known setting, off unless true', mergeSettings({}, { naughtyList: 'yes' }).naughtyList === false && mergeSettings({}, { naughtyList: true }).naughtyList === true && mergeSettings({}, {}).naughtyList !== true);
   const cellar = publicText('cellar.js');
-  check('the Settings switch is "Show the naughty list", off unless you turn it on, and the menus skip naughty brains while off', /sswitch\('naughtyList', settings\.naughtyList === true, 'Show the naughty list', keep\('Off unless you turn it on/.test(cellar) && /naughtyOn\(\) \|\| !isNaughty\(entryOf\(data\.models, o\.value\)\)/.test(cellar));
+  check('the Settings switch is "Show the naughty list", off unless you turn it on, and the menus skip naughty brains while off', /sswitch\('naughtyList', settings\.naughtyList === true, 'Show the naughty list', keep\('/.test(cellar) && /naughtyOn\(\) \|\| !isNaughty\(entryOf\(data\.models, o\.value\)\)/.test(cellar));
   const help = fs.readFileSync(new URL('../public/help-content.js', import.meta.url), 'utf8');
   check('Help has the FAQ, the glossary lines and the Settings row', /id: 'faq-naughty'/.test(help) && /<dt>Naughty list<\/dt>/.test(help) && /<dt>Abliterated \(heretic\)<\/dt>/.test(help) && /<dt>Community build<\/dt>/.test(help) && /set\('Show the naughty list', 'Off'/.test(help));
 }

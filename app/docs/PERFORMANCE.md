@@ -155,7 +155,7 @@ Where each brain runs, in plain terms:
 | Office | the graphics card | One all-rounder brain, no swaps. |
 | Gaming | the processor (borrows a little of the card only when it's free) | The card belongs to your game. |
 
-**Why not run everything on the processor all the time?** Because long prompts are where the processor hurts. With a 4,300-token prompt, Gemma 4 E4B takes about **31 s** to the first word on the processor and about **4.4 s** on the card. Short chats on a small instruct brain are fine on the processor; long ones on a bigger brain are not. So in Normal it's a choice: **Keep the graphics card free for quick answers** (Settings, Speed & memory) moves Low-effort replies to the processor, and it is off by default.
+**Why not run everything on the processor all the time?** Because long prompts are where the processor hurts. With a 4,300-token prompt, Gemma 4 E4B takes about **31 s** to the first word on the processor and about **4.4 s** on the card. Short chats on a small instruct brain are fine on the processor; long ones on a bigger brain are not. So in Normal it's a choice: **Quick answers on CPU** (Settings, Speed & memory) moves Low-effort replies to the processor, and it is off by default.
 
 ### Gaming and the graphics card
 
@@ -188,7 +188,7 @@ Automatic checks each time the Gaming brain loads and again every quiet minute. 
 
 What that costs: the Quick brain (Gemma 4 E4B) loads in about **6 s** and uses 6.2 GB. Unloading takes **0.3 s**.
 
-Optional, off by default: **Get Bob ready while you type** starts that load the moment you start typing, so most of the 6 s is hidden behind your typing.
+Optional, off by default: **Warm up while typing** starts that load the moment you start typing, so most of the 6 s is hidden behind your typing.
 
 ### Big brains only for big jobs
 
@@ -204,7 +204,7 @@ A picture with Z-Image Turbo (1024 px, 8 steps) takes about 28 to 31 s in total 
 
 The painter and the chat brain can't share a 16 GB card, so Bob hands the card over. Three things keep that hand-off cheap:
 
-- **Show pictures without waiting for Bob's brain** (on by default): the finished picture appears straight away with a short line. Bob doesn't reload his brain just to say "here it is". That reload was about 6 s on the Quick brain and 22 to 29 s on the 26B.
+- **Show pictures right away** (on by default): the finished picture appears straight away with a short line. Bob doesn't reload his brain just to say "here it is". That reload was about 6 s on the Quick brain and 22 to 29 s on the 26B.
 - **"Make another picture?"**: for about 10 seconds after a picture Bob asks. Say yes and the picture model stays ready for 2 minutes, so the next one skips the load. Say no (or ignore it) and it's freed at once.
 - **Careful hand-offs**: the brain gives the card to the painter before it loads, and Bob checks free system RAM too, not just graphics memory.
 
@@ -236,7 +236,7 @@ For tinkerers, every one of these is in Settings, Engines. The exact command Bob
 Every word Bob sends to the brain has to be read before the reply starts. So:
 
 - **Slim tools**: each chat starts with a small core of tools, and Bob adds the picture, file and Hands groups only when a message needs them. With every tool attached, a prompt is about 5,000 tokens; with the slim set it's about 2,000. On the processor, that difference is seconds.
-- **Give Bob all his tools at once** (off) is there if a brain ever can't find a tool.
+- **Send all tools** (off) is there if a brain ever can't find a tool.
 - **Slim task records**: finished jobs keep a short record instead of their whole transcript, which took the task queue from 6.8 MB to 0.23 MB and keeps start-up and the Tasks page snappy.
 
 ---
@@ -245,9 +245,9 @@ Every word Bob sends to the brain has to be read before the reply starts. So:
 
 These are all **off until you turn them on** (Settings, Speed & memory). Bob never changes your PC's settings by himself.
 
-- **Get Bob ready while you type**: starts loading and reading his instructions as soon as you start typing. On the processor he also keeps a copy of that reading on disk, so the next start is quicker.
-- **Let games go first**: when Bob works on the processor, he uses fewer cores at lower priority. His replies may be a little slower; your frame rate stays smooth. Worth turning on if you game with Bob open.
-- **Match picture settings to my graphics card**: big cards keep the picture model in graphics memory (faster). Cards with 8 GB or less, and built-in graphics like a handheld's, make pictures at 768 px so they fit and come quicker. If a picture fails with these settings, Bob goes back to the usual ones.
+- **Warm up while typing**: starts loading and reading his instructions as soon as you start typing. On the processor he also keeps a copy of that reading on disk, so the next start is quicker.
+- **Games first**: when Bob works on the processor, he uses fewer cores at lower priority. His replies may be a little slower; your frame rate stays smooth. Worth turning on if you game with Bob open.
+- **Fit pictures to my GPU**: big cards keep the picture model in graphics memory (faster). Cards with 8 GB or less, and built-in graphics like a handheld's, make pictures at 768 px so they fit and come quicker. If a picture fails with these settings, Bob goes back to the usual ones.
 
 ---
 

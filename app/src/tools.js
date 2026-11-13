@@ -305,7 +305,7 @@ export function buildTools(cfg) {
   };
 
   t.remember = {
-    // 1.5.79: with "Remember only what fits" on, a fact can go to one project's memory bank (the project field
+    // 1.5.79: with "Relevant memories only" on, a fact can go to one project's memory bank (the project field
     // is only offered then, so the tool costs nothing extra while the setting is off).
     get schema() {
       const banks = recallOn(cfg) ? Object.keys(cfg.projects || {}) : [];
@@ -313,7 +313,7 @@ export function buildTools(cfg) {
         fact: str('One short sentence.'),
         replaces: str('Optional: the earlier memory this corrects, word for word, once the user said which is right.'),
         ...(recallOn(cfg) ? { project: str(`Only for a fact about one project: its name${banks.length ? ` (${banks.join(', ')})` : ''}. Leave out for anything general.`) } : {}),
-        // "Let memories run out" (memory-more.js): only offered while that switch is on.
+        // "Expiring memories" (memory-more.js): only offered while that switch is on.
         ...(expiryOn(cfg) ? { keep: str('Only when {{USER}} says how long: day, week, month, "3 days", or a date (YYYY-MM-DD). Leave out to keep it.') } : {})
       }, ['fact']);
     },
@@ -413,7 +413,7 @@ export function buildTools(cfg) {
       if (!insideAny(cfg.readRoots, file)) throw new Error(`I'm not allowed to read ${file}.`);
       if (isSensitive(cfg, file)) throw new Error(SECRET_MSG);
       const size = fs.statSync(file).size;
-      // "Read and search my documents" (my-docs.js): Word, Excel, PowerPoint, OpenDocument, e-books, RTF and PDF as text.
+      // "Read and search documents" (my-docs.js): Word, Excel, PowerPoint, OpenDocument, e-books, RTF and PDF as text.
       const ext = path.extname(file).slice(1).toLowerCase();
       if (docToolsOn(cfg) && isDoc(file)) {
         if (size > MAX_DOC_BYTES) throw new Error(`That file is ${Math.round(size / 1048576)} MB. I read documents up to ${MAX_DOC_BYTES / 1048576} MB.`);
@@ -423,7 +423,7 @@ export function buildTools(cfg) {
       if (size > MAX_READ_BYTES) throw new Error(`That file is ${Math.round(size / 1048576)} MB, too big to read as text. I read files up to 20 MB.`);
       const buf = fs.readFileSync(file);
       if (buf.subarray(0, 4096).includes(0) || (isDoc(file) && ext !== 'rtf') || OLD_EXT.includes(ext)) {
-        if (isDoc(file) && !docToolsOn(cfg)) return `(That's a document, not plain text. To read it, ${cfg.userName || 'the user'} can turn on "Read and search my documents" in Settings, How Bob works, or the Office documents Hand; say so in one line.)`;
+        if (isDoc(file) && !docToolsOn(cfg)) return `(That's a document, not plain text. To read it, ${cfg.userName || 'the user'} can turn on "Read and search documents" in Settings, How Bob works, or the Office documents Hand; say so in one line.)`;
         if (OLD_EXT.includes(ext)) return '(That\'s an old Office file, which needs the Office documents Hand (office_read) to read.)';
         return '(That looks like a binary file, so I can\'t read it as text.)';
       }
@@ -705,7 +705,7 @@ export function buildTools(cfg) {
       job: str('What to change, in {{USER}}\'s words, with details from the chat.')
     }, ['job']),
     async run({ repo: which, job }, ctx) {
-      const where = 'Settings, How Bob works, "Let Bob work on repositories"';
+      const where = 'Settings, How Bob works, "Work on repositories"';
       if (!selfWorkOn(cfg)) throw new Error(`Working on repositories is off. It's in ${where}.`);
       const repo = repoNamed(cfg, which);
       if (!repo) throw new Error(`I don't have a repository called "${which}". The list: ${reposOf(cfg).map((r) => r.name).join(', ')}. Add one in ${where}.`);

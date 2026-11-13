@@ -133,7 +133,7 @@ check('check-in: a card in chat', /if \(ev\.type === 'checkin'\) return checkinC
 check('check-in: a notification in the background ("Bob: check-in", the titles)', /"checkin" -> \{[\s\S]*?notifyNow\("Bob: check-in", titles/.test(bridge));
 check('check-in: the phone never changes check-ins', !/\/api\/checkins/.test(js));
 
-// "Remember only what fits": on-phone replies ask the PC for the lines that fit, briefly, and carry on without.
+// "Relevant memories only": on-phone replies ask the PC for the lines that fit, briefly, and carry on without.
 check('memory: on-phone replies ask the PC for what fits (2 s at most)', /'\/api\/memory\/recall'/.test(js) && /setTimeout\(\(\) => ok\(''\), 2000\)/.test(js) && /if \(!m\.on\) return ''/.test(js));
 
 // How-tos: the phone shows the offer card and answers it; changing or deleting is on the PC.

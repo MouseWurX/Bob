@@ -332,7 +332,7 @@ function showBob() {
   win.focus();
 }
 
-// A shortcut from anywhere (Settings, How Bob works, 🌙 Quiet hours and shortcut; off unless switched on). While it's
+// Global shortcut (Settings, How Bob works, 🌙 Quiet hours and shortcut; off unless switched on). While it's
 // on, the key opens a small ask box on top of any app (public/ask.html); the key again, or Esc, puts it away.
 // src/server.js calls this at start and whenever the switch or the key changes. Nothing is registered while it's off.
 let askKey = '', askWin = null;
@@ -367,7 +367,7 @@ globalThis.bobGlobalAsk = (g, port) => {
 globalThis.bobShow = () => showBob(); // the ask box's Open in Bob
 app.on('will-quit', () => { try { globalShortcut.unregisterAll(); } catch {} try { globalThis.bobCleanExit?.(); } catch {} });
 
-// 150 "Show a dot on the tray icon" (off by default): while something waits for you, the tray picture has a dot;
+// 150 "Tray icon dot" (off by default): while something waits for you, the tray picture has a dot;
 // Windows also puts it on the taskbar button, and a Mac shows a dot on the Dock icon.
 const dotted = () => Boolean(winState.trayDot && winState.dot && winState.dotIcons);
 function trayImage() {
@@ -484,7 +484,7 @@ async function start() {
     width: 1200, height: 820, minWidth: 360, minHeight: 480,
     title: 'Bob', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'),
     backgroundColor: '#121212', autoHideMenuBar: true, show: !process.argv.includes('--hidden'),
-    // plugins: the built-in PDF viewer, so "Show documents in the side panel" can show a PDF's pages (no other plugins exist).
+    // plugins: the built-in PDF viewer, so "Documents in the side panel" can show a PDF's pages (no other plugins exist).
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, plugins: true }
   });
   const base = `http://127.0.0.1:${home.port}`;

@@ -1,7 +1,7 @@
 // Bob's local server: serves the panel and a small API. Only listens on this PC.
 import { caseFor, saveTest } from './my-tests.js';
 import { readText, writeText, vaultOn } from './vault.js'; // 🔒 Lock my chats and memory
-import { chatIds, chatInfo } from './chats.js'; // "Note where each memory came from": the chat titles
+import { chatIds, chatInfo } from './chats.js'; // "Memory sources": the chat titles
 import { today } from './tools.js';
 import { ramNow, memGB } from './server-ram.js';
 import { cpuLoad } from './speed-stats.js';
@@ -13,7 +13,7 @@ import { cleanPersonality } from '../public/personality.js';
 import { cleanHouseStyle } from '../public/house-style.js';
 import { pickFolder } from './pick-folder.js';
 import { pickFile, ownEntries } from './own-models.js';
-import { selfWorkView, gatherBrains, makeCodeCopy, applyCodeCopy, cleanSelfWork, repoNamed, codeCopyRoot } from './self-work.js'; // "Let Bob work on repositories"
+import { selfWorkView, gatherBrains, makeCodeCopy, applyCodeCopy, cleanSelfWork, repoNamed, codeCopyRoot } from './self-work.js'; // "Work on repositories"
 import { catalogFileFor } from './llamacpp.js';
 import { ensureTool } from './self-work-tools.js'; // 1.5.135 brains of your own
 import fs from 'node:fs';
@@ -65,7 +65,7 @@ import { hkSettings, cleanHousekeeping, cleanFolder, folderRefusal, KINDS } from
 import { banks as memoryBanks, recallOn } from './recall.js';
 import { memorySources, forgetLine, sourcesOn } from './memory-more.js'; // memory items 87 to 89, off by default
 import { cleanNotesFolders, isVault } from './doc-more.js'; // documents items 90 to 92, off by default
-import { digestOn } from './digest.js'; // "A Sunday digest", off by default
+import { digestOn } from './digest.js'; // "Sunday digest", off by default
 import { handsRoute } from './hands-routes.js';
 import { ownKitCounts } from './own-kit.js';
 import { quarantineRoute } from './quarantine-routes.js';
@@ -121,8 +121,8 @@ import { fadeRoute } from './fade-routes.js'; // Fade old messages, Clear chat a
 import { visibleHistory, sweepAll, fadeOf } from './fade-chat.js';
 import { amnesiaTick } from './amnesia.js';
 import { watchRuns, endRun, engineCrashed } from './crash-catch.js'; // Catch crashes, Safe start
-import { undoWatcher } from './settings-undo.js'; // Keep the last 20 Settings changes
-import { Weekly } from './weekly.js'; // Count what Bob did each week
+import { undoWatcher } from './settings-undo.js'; // Settings undo (last 20)
+import { Weekly } from './weekly.js'; // Weekly stats
 import { watchSettings } from './config.js';
 import { everydayView, everydaySettings, Focus } from './everyday.js'; // 🗓 Everyday helpers (all off by default)
 import { everydayRoute, trayDot } from './everyday-routes.js';
@@ -146,8 +146,8 @@ import { filesRoute } from './files-routes.js';
 const logTail = () => { try { const t = fs.readFileSync(cfg.logbook, 'utf8'); return t.slice(-20000); } catch { return ''; } };
 const crashState = watchRuns(cfg, { version: VERSION.label, logText: logTail });
 globalThis.bobCleanExit = () => endRun(cfg); // Bob.exe says so when it quits on purpose
-watchSettings(undoWatcher(cfg)); // Keep the last 20 Settings changes: records only while its switch is on
-const weekly = new Weekly(cfg); // Count what Bob did each week: counts only while its switch is on
+watchSettings(undoWatcher(cfg)); // Settings undo (last 20): records only while its switch is on
+const weekly = new Weekly(cfg); // Weekly stats: counts only while its switch is on
 // 1.5.76: the basic llama.cpp that comes inside Bob's download goes into his engine folder, if he has none yet.
 try { if (seedBundledEngine(cfg)) console.error('Bob: set up the llama.cpp that came with him.'); } catch {}
 const publicDir = path.join(appDir, 'public');
@@ -157,7 +157,7 @@ function speedView() {
   const lc = cfg.llamacpp || {};
   return { fit: typeof lc.fit === 'boolean' ? lc.fit : null, threads: lc.threads || null, batch: lc.batch || null, ubatch: lc.ubatch || null, ctx: lc.ctx || null, draft: lc.draft || { enabled: false, model: '', max: 16, min: 1, ngld: 99 }, modelArgs: lc.modelArgs || {}, args: lc.args || null, turbo: lc.turbo || {}, expertsPerWord: lc.expertsPerWord || {}, trainer: trainerState(cfg).ok, brainEngine: lc.brainEngine !== false, onBrainEngine: /[\\/]brain-engine[\\/]/.test(lc.exe || '') }; // 1.5.16x Turbo per brain, the Lab's Trainer pack
 }
-// 1.5.41 Where Bob saves things, as Settings shows it: the folder now, Bob's own, and whether a picked one has gone.
+// 1.5.41 Save folder, as Settings shows it: the folder now, Bob's own, and whether a picked one has gone.
 // 1.5.79: the memory banks for Settings (general + one per project), and what the last message recalled.
 function memoryBanksView() {
   let text = '';
@@ -192,7 +192,7 @@ function broadcast(ev) {
   if (ev?.type === 'status') { const l = ['waking', 'loading'].includes(ev.state) ? String(ev.model || '') : ''; if (l !== cubeLoading) { cubeLoading = l; if (cubeClients.size) cubeBrainsNow(); } } // once as a brain starts loading, and once as loading stops (a load that failed or was called off leaves no brain), not every progress line
   if (ev?.type === 'brain' && cubeClients.size) cubeBrainsNow(); // fNRI's small cube takes itself apart when its brain is let go
   if (ev?.type === 'load-progress' && cubeClients.size) { const d = `data: ${JSON.stringify({ type: 'cube-load', label: friendlyName(ev.model), pct: Math.max(0, Math.min(100, Number(ev.pct) || 0)) })}\n\n`; for (const res of cubeClients) res.write(d); } // 1.5.215: the load-in fills as the weights load
-  try { weekly.watch(ev, () => brain.engine?.current || ''); } catch {} // Count what Bob did each week (numbers only)
+  try { weekly.watch(ev, () => brain.engine?.current || ''); } catch {} // Weekly stats (numbers only)
   try { telegram?.watch(ev); } catch {} // Talk to Bob on Telegram: only the Telegram chat's events, and only while it's on
   try { discord?.watch(ev); } catch {} // Bob on Discord: only Discord jobs' own events
   if (ev?.type === 'pair-done') try { introductions.soon(); } catch {} // 1.5.123: a new Bob on the list meets the others
@@ -226,7 +226,7 @@ if (cfg.settingsFixed?.length) brain.log('settings', `went back to the default f
   }
 }
 if (brain.engine) brain.engine.onCrash = (x) => engineCrashed(cfg, { ...x, version: VERSION.label, logText: logTail() }); // Catch crashes
-// A shortcut from anywhere (electron/main.cjs): Bob.exe registers the key while the switch is on. Nothing in a browser.
+// Global shortcut (electron/main.cjs): Bob.exe registers the key while the switch is on. Nothing in a browser.
 const applyShortcut = (g) => { try { globalThis.bobGlobalAsk?.(g, cfg.port); } catch {} };
 setTimeout(() => applyShortcut(cfg.globalAsk), 1500).unref?.();
 const appsRoute = makeAppsRoute({ brain, cfg, version: VERSION.label || String(VERSION) });
@@ -291,7 +291,7 @@ lab.queue = new LabQueue(lab, {
   onTick: () => { try { const v = lab.engineView(); recheckTick({ lab, queue: lab.queue, mainId: cfg.models?.bob, version: v.version ? `${v.name} ${v.version}` : '', engine: v.version ? `${v.name} ${v.version}` : '', rows: lab.scores() }); } catch {} }
 });
 lab.queue.start();
-// 1.5.184 Keep engines up to date (src/engine-keeper.js): on unless switched off in Settings, Engines. Checks two
+// 1.5.184 Auto-update engines (src/engine-keeper.js): on unless switched off in Settings, Engines. Checks two
 // minutes after start and about daily; updates only while no brain is loaded on that engine and nothing is busy.
 // 1.5.203: Bob went back to the engine he had before because Windows blocked the new one: say so in chat, once.
 onEngineFallback((r) => { try { brain.log('engine', r.say); broadcast({ type: 'announce', text: r.say }); } catch {} });
@@ -312,7 +312,7 @@ extras.cardCheck({ saveSettings }).catch(() => {});
 // Back up and move (src/backup.js): the automatic backup checks once an hour and only saves with its switch on.
 const backupKeeper = new BackupKeeper(cfg, { log: (t) => brain.log('settings', t), version: VERSION.label });
 if (cfg.restored) brain.log('settings', `restore went in at start: ${cfg.restored.placed} file(s) from ${cfg.restored.from || 'a backup'}${cfg.restored.kept ? `, what they replaced is in ${cfg.restored.keptIn}` : ''}${cfg.restored.failed.length ? `, ${cfg.restored.failed.length} couldn't go in` : ''}`);
-// 1.5.137: Bob's newest brain list from GitHub, only with "Let Bob fetch his newest brain list" on: once a day, the
+// 1.5.137: Bob's newest brain list from GitHub, only with "Auto-update the brain list" on: once a day, the
 // first look a minute and a half after start, and Check now in Settings. Off: the shipped list, nothing fetched.
 const listUpdates = new CatalogUpdates(cfg, { log: (k, m) => brain.log(k, m) });
 shop.catalog = mergeAdded(listUpdates.merge(shop.shipped), cfg);
@@ -768,7 +768,7 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { ok: true });
       } catch (e) { return send(res, e.code === 'VAULT_LOCKED' ? 401 : 500, { error: e.message }); }
     }
-    // "Note where each memory came from" (memory-more.js): every memory with the chat it came from, and Forget this one.
+    // "Memory sources" (memory-more.js): every memory with the chat it came from, and Forget this one.
     if (p === '/api/memory/sources' && req.method === 'GET') {
       if (!isLocal) return send(res, 403, { error: 'Bob\'s memory can only be looked through on this replicant matrix itself.' });
       try {
@@ -788,7 +788,7 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { ok: true, forgot: r.n });
       } catch (e) { return send(res, e.code === 'VAULT_LOCKED' ? 401 : 500, { error: e.message }); }
     }
-    // "A Sunday digest" (digest.js): Settings, Make this week's digest now.
+    // "Sunday digest" (digest.js): Settings, Make this week's digest now.
     if (p === '/api/digest/now' && req.method === 'POST') {
       try { const d = brain.housekeeper?.digestKeeper().build(); if (!d) return send(res, 409, { error: 'Housekeeping isn\'t running yet.' }); brain.housekeeper.digestKeeper().show(d); return send(res, 200, { ok: true, title: d.title, file: d.file, counts: d.counts, on: digestOn(cfg) }); }
       catch (e) { return send(res, e.code === 'VAULT_LOCKED' ? 401 : 500, { error: e.message }); }
@@ -937,7 +937,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, r.code, r);
     }
     // Your Bobs on the phone (src/glance.js, item 141): how this Bob is doing, for the phone's Your Bobs page and its
-    // widget. Signed in through the door, or here; only with "Let my phone see how I'm doing" on.
+    // widget. Signed in through the door, or here; only with "Share status with my phone" on.
     if (req.method === 'GET' && p === '/api/bob-net/glance') {
       if (!glanceOn(cfg)) return send(res, 409, { error: GLANCE_OFF, off: true });
       let loaded = [];
@@ -1105,7 +1105,7 @@ const server = http.createServer(async (req, res) => {
             out.projectList = Object.entries(cfg.projects || {}).map(([name, p]) => ({ name, path: p, missing: !fs.existsSync(p) }));
             out.defaultProject = cfg.defaultProject || '';
           }
-          // 1.5.41 Where Bob saves things (Settings): a folder the user picked, or '' for Bob's own (Made by Bob).
+          // 1.5.41 Save folder (Settings): a folder the user picked, or '' for Bob's own (Made by Bob).
           if (typeof b.saveDir === 'string') {
             const want = b.saveDir.trim();
             const bad = want ? saveDirProblem(cfg, want) : '';
@@ -1207,7 +1207,7 @@ const server = http.createServer(async (req, res) => {
             else saveSettings(cfg, { sandboxCode: false });
             out.sandboxCode = cfg.sandboxCode === true;
           }
-          // "Let Bob work on repositories" (self-work.js): the switch, the Long memory size, the brain and the list.
+          // "Work on repositories" (self-work.js): the switch, the Long memory size, the brain and the list.
           if (b.selfWork && typeof b.selfWork === 'object') { saveSettings(cfg, { selfWork: cleanSelfWork({ ...(cfg.selfWork || {}), ...b.selfWork }) }); applyCodeCopy(cfg); out.selfWork = selfWorkNow(); }
           // 1.5.94 tray and icon: saved, then handed straight to the window program, so they work without a restart.
           if (typeof b.tray === 'boolean') { saveSettings(cfg, { tray: b.tray }); out.tray = cfg.tray !== false; }
@@ -1258,11 +1258,11 @@ const server = http.createServer(async (req, res) => {
     // 1.5.118 Save a help bundle (Settings, This replicant matrix and updates): one zip an agent or a person can read to
     // work out what's wrong with this Bob (help-bundle.js). POST on this replicant matrix: picks a folder, writes the
     // zip there and shows it. GET from a paired phone: the same zip as a download, which the phone saves itself.
-    // "Let Bob work on repositories": Make the code copy of one repository (git clone into inn/own-code/<name>).
+    // "Work on repositories": Make the code copy of one repository (git clone into inn/own-code/<name>).
     // Only on this replicant matrix, only with the switch on, and never over a copy that's already there.
     if (req.method === 'POST' && p === '/api/self-work/copy') {
       if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
-      if (cfg.selfWork?.enabled !== true) return send(res, 409, { error: 'Turn on "Let Bob work on repositories" first.' });
+      if (cfg.selfWork?.enabled !== true) return send(res, 409, { error: 'Turn on "Work on repositories" first.' });
       const b = await body(req).catch(() => ({}));
       const repo = repoNamed(cfg, String(b.repo || 'bob'));
       if (!repo) return send(res, 404, { error: 'That repository isn\'t in the list.' });
@@ -1390,7 +1390,7 @@ const server = http.createServer(async (req, res) => {
 
     // Housekeeping, topics, past chats and search. Reading works from the phone too; changes only on the PC.
     if ((await tidyRoute({ req, res, p, url, isLocal, cfg, brain, body, send, broadcast })) !== false) return;
-    // "Save chats as files and bring chats in" (chat-files.js, off unless turned on). Saving works from the phone too;
+    // "Export and import chats" (chat-files.js, off unless turned on). Saving works from the phone too;
     // bringing chats in only on this replicant matrix itself. The file is looked at first and nothing is kept until
     // the owner ticks which chats to bring in.
     if (req.method === 'GET' && p === '/api/chats/save') {
@@ -1430,7 +1430,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if ((await filesRoute({ req, res, p, url, isLocal, cfg, brain, body, send, serveFile })) !== false) return;
-    // "Show documents in the side panel": a document's words, tables and slides (files.js docPeek, off unless turned on),
+    // "Documents in the side panel": a document's words, tables and slides (files.js docPeek, off unless turned on),
     // and a PDF as its pages for windows that can draw them. Same rules as /api/file: over the home network only the inn.
     if (req.method === 'GET' && p === '/api/file/doc') {
       const d = describeFile(cfg, url.searchParams.get('path') || '');
@@ -1445,7 +1445,7 @@ const server = http.createServer(async (req, res) => {
       return serveFile(res, path.dirname(d.path), path.basename(d.path), { 'x-content-type-options': 'nosniff', 'x-frame-options': 'SAMEORIGIN', 'content-disposition': 'inline' });
     }
     // 1.5.79: the memories that fit a message, for a chat the phone answers with its own brain (Android app note).
-    // Empty while "Remember only what fits" is off. Phone access already guards every /api call.
+    // Empty while "Relevant memories only" is off. Phone access already guards every /api call.
     if (req.method === 'POST' && p === '/api/memory/recall') {
       const b = await body(req);
       if (!recallOn(cfg)) return send(res, 200, { on: false, text: '' });

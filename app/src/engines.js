@@ -21,7 +21,7 @@ export function officePins() {
   try { return JSON.parse(fs.readFileSync(new URL('./office-pins.json', import.meta.url), 'utf8')); } catch { return {}; }
 }
 const PIN = officePins();
-// 🧊 OpenSCAD for "Let Bob make 3D parts" (parts3d.js): one checked version per computer (src/openscad-pins.json,
+// 🧊 OpenSCAD for "3D parts" (parts3d.js): one checked version per computer (src/openscad-pins.json,
 // filled in by installer/pin-openscad.js). Until a computer's pin is filled in there's no Get button for it.
 const SCAD_PIN = openscadPins();
 export const scadPinFor = (key, pins = SCAD_PIN) => { const p = pins?.[key]; return p && openscadAllowed(p.url) && /^[0-9a-f]{64}$/.test(p.sha256 || '') ? { version: pins.version || '', ...p } : null; };
@@ -194,10 +194,10 @@ export const ENGINES = [
     linux: { unavailable: 'On Linux, install LibreOffice from your software centre (most distros already have it), and Bob finds it by himself.' }
   },
   {
-    // 🧊 OpenSCAD (GPL-2.0) for "Let Bob make 3D parts" (parts3d.js). Windows: the official zip, unpacked into Bob's
+    // 🧊 OpenSCAD (GPL-2.0) for "3D parts" (parts3d.js). Windows: the official zip, unpacked into Bob's
     // folder (nothing installed). Linux: the official AppImage. Mac: the user drags it into Applications. One already
     // on the replicant matrix counts. Runs only while it makes a part.
-    id: 'openscad', name: 'OpenSCAD', what: 'Makes exact 3D parts (STL files for a 3D printer) from the recipes Bob writes, for "Let Bob make 3D parts". About 30 MB. Runs only while it makes a part. If OpenSCAD is already on your replicant matrix, Bob uses that one.',
+    id: 'openscad', name: 'OpenSCAD', what: 'Makes exact 3D parts (STL files for a 3D printer) from the recipes Bob writes, for "3D parts". About 30 MB. Runs only while it makes a part. If OpenSCAD is already on your replicant matrix, Bob uses that one.',
     pinned: true, anyOS: true, dir: 'openscad', exe: 'openscad.exe',
     unavailable: scadWhy('win-x64'),
     ready: (cfg) => Boolean(findOpenscad(cfg)),

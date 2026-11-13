@@ -1,4 +1,4 @@
-// "Show maths as formulas" and "Keyboard shortcuts" (Nov 2026). Maths: formulas a brain writes in LaTeX are found
+// "Render maths" and "Keyboard shortcuts" (Nov 2026). Maths: formulas a brain writes in LaTeX are found
 // (public/math-core.js, shared with the phone app) and drawn by KaTeX, bundled in vendor/katex/. Keys: one list
 // (public/shortcuts.js) for the pop-up, Help and the matching. Both off unless turned on. Nothing reads the real
 // computer: key presses and the drawing function are passed in.
@@ -92,10 +92,10 @@ check('the main window wires the keys and the list', /installShortcuts\(\{/.test
 check('both are settings, off by default', SETTING_KEYS.includes('mathView') && SETTING_KEYS.includes('shortcuts') && mergeSettings({}, { mathView: 'yes', shortcuts: 1 }).mathView === false && mergeSettings({}, { shortcuts: 1 }).shortcuts === false);
 check('both save when turned on', mergeSettings({}, { mathView: true }).mathView === true && mergeSettings({}, { shortcuts: true }).shortcuts === true);
 const cellar = publicText('cellar.js');
-check('both switches are in Settings, Bob himself, drawn all the time', /sswitch\('mathView', settings\.mathView === true, 'Show maths as formulas'/.test(cellar) && /sswitch\('shortcuts', settings\.shortcuts === true, 'Keyboard shortcuts'/.test(cellar));
+check('both switches are in Settings, Bob himself, drawn all the time', /sswitch\('mathView', settings\.mathView === true, 'Render maths'/.test(cellar) && /sswitch\('shortcuts', settings\.shortcuts === true, 'Keyboard shortcuts'/.test(cellar));
 check('both are on the Welcome\'s Do you want me to list', ['mathView', 'shortcuts'].every((k) => WANTS.some((w) => w.key === k && w.card === 'bob')));
 const help = (id) => HELP.find((h) => h.id === id);
-check('Help has Maths as formulas and the FAQ', help('maths')?.html.includes('Show maths as formulas') && help('faq-maths') && help('faq-keys'));
+check('Help has Maths as formulas and the FAQ', help('maths')?.html.includes('Render maths') && help('faq-maths') && help('faq-keys'));
 check('Help\'s shortcut page lists every shortcut', SHORTCUTS.every((s) => help('keys').html.includes(s.keys.replace(';', ';'))), SHORTCUTS.filter((s) => !help('keys').html.includes(s.keys)).map((s) => s.keys).join());
 check('Help says where they don\'t work (no keys in the Android app)', /Android app has no keyboard shortcuts/.test(help('keys').html));
 check('the glossary has KaTeX, LaTeX and Keyboard shortcuts', ['<dt>KaTeX</dt>', '<dt>LaTeX</dt>', '<dt>Keyboard shortcuts</dt>'].every((t) => help('glossary').html.includes(t)));

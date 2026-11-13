@@ -1,4 +1,4 @@
-// "Let Bob work on repositories" (off by default; the owner asked for it on 2026-11-09: "a skill for Bob to work on the
+// "Work on repositories" (off by default; the owner asked for it on 2026-11-09: "a skill for Bob to work on the
 // app himself, long YaRN context on, my biggest model only, Bobert or Qwen 35B", then "a directory of repositories").
 //
 // Bob's own program folder and settings stay locked (config.js ownReadOnlyRoots): this never lifts that. Instead he

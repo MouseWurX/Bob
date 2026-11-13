@@ -12,7 +12,7 @@ const web = new Set(['web']);
 // Riker-style replies that claim it
 for (const r of ['Web search is now on! Let me look up the weather for you.', 'Done, I\'ve turned on web search.', 'I switched it on, web search is ready to go.', 'Great news: I can now search the web for that.', 'Web search enabled. Searching now...']) {
   const v = saidNotDone(r, { off, pending: web });
-  check(`claim caught: "${r}"`, v?.kind === 'switch' && v.key === 'web' && /^Not yet: Let Bob search the web is still off\. It switches on when you press Switch it on/.test(v.note), JSON.stringify(v));
+  check(`claim caught: "${r}"`, v?.kind === 'switch' && v.key === 'web' && /^Not yet: Web search is still off\. It switches on when you press Switch it on/.test(v.note), JSON.stringify(v));
 }
 // ...and ones that don't
 for (const r of ['Web search is off right now. Press Switch it on on the card and I\'ll look it up.', 'Once you press the button, web search is on and I carry on.', 'If you switch on web search, I can find it.', 'Would you like web search on?', 'The weather tomorrow is sunny.', 'Web search needs your OK first.']) {
@@ -30,7 +30,7 @@ check('"I looked it up" after web_search is fine', saidNotDone('I looked it up: 
 check('"should I send it?" is not a claim', saidNotDone('Should I send it now?', { off: [] }) === null);
 
 // what the brain reads: one short line, only while an offer waits
-check('the waiting line is one short line', pendingLine(off, web) === 'Let Bob search the web: offered, not on yet (waiting for a press on the card).');
+check('the waiting line is one short line', pendingLine(off, web) === 'Web search: offered, not on yet (waiting for a press on the card).');
 check('nothing waiting, no line', pendingLine(off, new Set()) === '');
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -52,7 +52,7 @@ export const loadingParts = {
       if (!cpu && this.painter?.yieldFor) await this.painter.yieldFor(model, { bytes: this.gate.brainBytes(model, { ctx }) }).catch(() => {});
       const took = await this.engine.preload(model, undefined, { cpu, ctx });
       this.log('model', `woke ${model} in ${took.toFixed(1)} s (${reason})`);
-      // 1.5.24 "Get Bob ready while you type": read the instructions while the user is still typing.
+      // 1.5.24 "Warm up while typing": read the instructions while the user is still typing.
       if (this.cfg.readyWhileTyping === true && this.engine.prime) {
         const t0 = Date.now();
         this.engine.prime(model, { ctx, cpu, ...this.startPrompt() })
@@ -331,7 +331,7 @@ export const loadingParts = {
       for (const text of e?.takeNotes?.() || []) { try { emit({ type: 'announce', text }); } catch {} }
     }
   },
-  // 1.5.51: the tip about "Let the reviewer sit beside Bob's main brain" shows the first time a moot swaps, then never
+  // 1.5.51: the tip about "Reviewer beside main brain" shows the first time a moot swaps, then never
   // again (a marker in Bob's data folder remembers it across restarts).
   besideTipOnce() {
     const f = path.join(this.cfg.dataDir || '.', 'moot-beside-tip-shown');
@@ -341,7 +341,7 @@ export const loadingParts = {
   },
   // 1.5.53 (the owner's idea): before a big brain pushes the quick brain off the card, a small talker starts on the
   // processor beside it (second server), so chat carries on during the job. The chat page gets second-brain events and
-  // the brain bay shows the add. Under "Keep chatting while Bob is busy"; never in Gaming; only with room in RAM.
+  // the brain bay shows the add. Under "Chat while busy"; never in Gaming; only with room in RAM.
   async keepTalker(model, opts = {}, emit = () => {}, { freeMem = freeMemNow(), signal = null } = {}) {
     const cfg = this.cfg;
     if (cfg.chatWhileBusy === false || cfg.engine !== 'llamacpp' || typeof this.engine.besideServer !== 'function') return false;
@@ -382,7 +382,7 @@ export const loadingParts = {
     const nice = this.catalogNames.find(([id]) => sameModel(id, model))?.[1] || String(model || '').replace(/:latest$/, '');
     return `${phrase} (${nice})`;
   },
-  // Switch session: from the user's pick, or (1.5.41, "Let Bob pick the session") Bob's own: by 'bob' for a job, 'idle'
+  // Switch session: from the user's pick, or (1.5.41, "Auto session") Bob's own: by 'bob' for a job, 'idle'
   // when he goes quiet. Brains from the old session are let go so the new set fits.
   async setSession(id, { by = 'you', why = '' } = {}) {
     if (!SESSIONS[id]) throw new Error('Unknown session.');
@@ -447,7 +447,7 @@ export const loadingParts = {
     else Object.assign(job, { state: 'waiting', pickUp: true, at: Date.now(), error: undefined });
     emit({ type: 'token', text: '\n\n*(Put aside for Gaming. It waits in Tasks and carries on when Gaming is off.)*' });
   },
-  // 1.5.41: a job is waiting for Gaming to end. With "Let Bob pick the session" on, Bob looks at the graphics card once
+  // 1.5.41: a job is waiting for Gaming to end. With "Auto session" on, Bob looks at the graphics card once
   // a minute: once nothing else is using it (the game is closed), he goes back to Normal and the job runs. No question.
   gamingProbe() {
     if (!autoSessionOn(this.cfg) || this.cfg.gamingLock === true || this.probeTimer || this.switching) return;

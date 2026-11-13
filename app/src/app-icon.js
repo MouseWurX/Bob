@@ -52,7 +52,7 @@ export function lookPng(id, size = 32) {
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
 }
 
-// 150 "Show a dot on the tray icon" (off by default): the same picture with a round dot in the bottom-right corner,
+// 150 "Tray icon dot" (off by default): the same picture with a round dot in the bottom-right corner,
 // in a warm orange ringed in dark brown so it shows on light and dark taskbars alike.
 export const DOT = { fill: [0xe7, 0x7a, 0x1a], ring: [0x2b, 0x1d, 0x14] };
 // id '' draws the dot alone (the small badge Windows puts on the taskbar button).

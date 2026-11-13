@@ -95,7 +95,7 @@ export function paint(cfg, kind, { prompt, negative, width, height, seconds, ima
   }
   // Flash attention and tiled VAE decoding cut graphics memory a lot with no visible change.
   // clipOnCpu keeps the text encoder (the biggest part of Z-Image) off the card.
-  // 1.5.24: "Match picture settings to my graphics card" can drop the swapping and tiling on big cards (tuning.js).
+  // 1.5.24: "Fit pictures to my GPU" can drop the swapping and tiling on big cards (tuning.js).
   args.push(...flags.extra);
   if (flags.clipOnCpu) args.push('--clip-on-cpu');
 

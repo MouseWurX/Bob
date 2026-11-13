@@ -1,4 +1,4 @@
-// Smarter memory (setting memoryRecall, "Remember only what fits", off unless the user turns it on).
+// Smarter memory (setting memoryRecall, "Relevant memories only", off unless the user turns it on).
 // Off: Bob's whole memory file (its last 4,000 characters) goes into every prompt, as before.
 // On: each message gets only the memory lines that fit it (up to 8, about 1,500 characters at most), plus any line
 // the user marked [always]. Each project keeps its own memory bank: lines tagged [project: Name]. While a chat is
@@ -29,7 +29,7 @@ export const factText = (line) => String(line).replace(/^\s*[-*]\s*/, '').replac
 export const lineKey = (line) => crypto.createHash('sha1').update(normName(factText(line))).digest('hex').slice(0, 16);
 
 // The memory file as lines Bob can pick from (headings and blank lines left out).
-// today (YYYY-MM-DD, with "Let memories run out" on): lines whose [until: day] has passed are left out (memory-more.js).
+// today (YYYY-MM-DD, with "Expiring memories" on): lines whose [until: day] has passed are left out (memory-more.js).
 export function parseMemory(text, { today = '' } = {}) {
   return String(text || '').split('\n').map((raw) => raw.trimEnd()).filter((raw) => raw.trim() && !/^\s*#/.test(raw) && factText(raw).length > 3)
     .filter((raw) => { if (!today) return true; const u = raw.match(/\[until:\s*(\d{4}-\d{2}-\d{2})\]/i); return !u || u[1] >= today; })
@@ -62,7 +62,7 @@ export function activeProject(cfg, text, { sticky = '', topicProject = '', bankN
 }
 
 // The lines for one message. lines from parseMemory; vecs: { key: vector } (may be empty); qvec: the message's vector.
-// strict ("Keep project memories to their project", memory-more.js): on no project, only the general lines.
+// strict ("Per-project memories", memory-more.js): on no project, only the general lines.
 export function pickMemories(lines, { text = '', project = '', qvec = null, vecs = {}, k = RECALL_K, maxChars = RECALL_CHARS, strict = false } = {}) {
   // On a project: its bank and the general lines only. On no project: every bank, general lines first on a near tie.
   const inBank = (l) => !l.project || (!project && !strict) || (project && normName(l.project) === normName(project));

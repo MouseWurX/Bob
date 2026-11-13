@@ -142,7 +142,7 @@ check('...and Borrow a brain', (await Brain.prototype.quickReviewer.call({ ...qb
 check('...and asks with the same quality floor', (await Brain.prototype.quickReviewer.call(qb, {}, []))?.min === 4);
 check('...never for a guest job or pictures', (await Brain.prototype.quickReviewer.call(qb, { guest: true }, [])) === null && (await Brain.prototype.quickReviewer.call(qb, {}, ['p'])) === null);
 const cellar = publicText('cellar.js');
-check('Settings has the switch, off unless set, and saves it', /sswitch\('netReview', settings\.netReview === true, 'Ask my other Bobs for a quick second look'/.test(cellar) && /dataset\.set === 'netReview'/.test(cellar));
+check('Settings has the switch, off unless set, and saves it', /sswitch\('netReview', settings\.netReview === true, 'Review by my other Bobs'/.test(cellar) && /dataset\.set === 'netReview'/.test(cellar));
 
 // ---- 1.5.181: what the two-Bob trial found ----
 check('a draft that is only a tool step written out ("*fetch_page with same url and part: 3*") is not an answer', nonAnswer('*fetch_page with same url and part: 3*', ['fetch_page']) && nonAnswer('', []) && nonAnswer('search_web: bob-net', []));

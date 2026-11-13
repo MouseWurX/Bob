@@ -1,6 +1,6 @@
 // Talk with Bob (1.5.210, UX plan item 12; Settings, Voice details, off unless turned on): a live, hands-free talk.
 // Press 🗣 next to the 🎙 and just talk. Each time you pause, what you said goes to Bob as an ordinary message (so a
-// running job carries on, and with Answer messages between steps on he answers between its steps). He says a short
+// running job carries on, and with Reply between steps on he answers between its steps). He says a short
 // version of each reply aloud; the whole reply is in the chat. Start talking while he speaks and he stops and listens.
 // "Goodbye" or ✕ ends it. Nothing is recorded or kept, and nothing is added to what the brain reads.
 // The rules are in talk-core.js; hearing and voice come from POST /api/talk/hear and /api/talk/say (src/talk.js).

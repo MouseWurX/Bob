@@ -153,7 +153,7 @@ check('asking for a picture is still a picture job', Brain.guessKind('paint a dr
   check('beside a picture: Medium effort and up (reviewer brain) waits', !besideOk(b, { refs: [], effort: 'medium' }, 'talk'));
   check('with Ollama nothing waits', besideOk({ ...b, cfg: { engine: 'ollama' } }, { refs: ['x'], effort: 'high' }, 'talk'));
 }
-// 1.5.41 "Keep chatting while Bob is busy": a plain chat goes beside a media step, on the small processor brain.
+// 1.5.41 "Chat while busy": a plain chat goes beside a media step, on the small processor brain.
 {
   const GB = 1024 ** 3;
   const base = (over = {}) => ({ cfg: { engine: 'llamacpp', chatWhileBusy: true, models: { bob: 'big', small: 'small' }, sessionBrains: { small: 'small' } }, turns: new Map([['talk', {}]]), state: { state: 'painting' }, engine: { resolve: () => ({ gguf: '/x' }) }, ...over });

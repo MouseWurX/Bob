@@ -1,4 +1,4 @@
-// "Let Bob work on repositories": how a big job is run (the owner, 2026-11-09: "smartly manage memory between tasks and
+// "Work on repositories": how a big job is run (the owner, 2026-11-09: "smartly manage memory between tasks and
 // as his output and research gets more dense it should compress, don't want him running out of context; divide work
 // up into different tasks to do systematically and intelligently, and maybe delegate to other Bobs on the network").
 //

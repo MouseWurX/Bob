@@ -1,14 +1,14 @@
 // Your Bobs on the phone (item 141, 2026-11-11). A short reading of how this Bob is doing, for the Android app's
 // "Your Bobs" page and its home-screen widget: up or busy, the brain he has loaded, the graphics card's heat and
 // memory, the jobs running or waiting, and the next reminder.
-// Only with "Let my phone see how I'm doing" on (off unless you turn it on), and only through the signed-in door
+// Only with "Share status with my phone" on (off unless you turn it on), and only through the signed-in door
 // (Tailscale, your phone's key), or on this replicant matrix itself. Nothing is kept or sent anywhere else, and the
 // card is read at most every 20 seconds (nvidia-smi, about 50 ms). No card reading in tests.
 import { execFile } from 'node:child_process';
 import { IN_TEST } from './recycle.js';
 
 export const glanceOn = (cfg) => cfg?.phoneGlance === true;
-export const GLANCE_OFF = 'This Bob isn\'t sharing how he\'s doing. On that replicant matrix: Settings, Bob-Net, Let my phone see how I\'m doing.';
+export const GLANCE_OFF = 'This Bob isn\'t sharing how he\'s doing. On that replicant matrix: Settings, Bob-Net, Share status with my phone.';
 export const CARD_EVERY_MS = 20e3;
 
 const KIND = { chat: 'Chat', picture: 'Picture', pictures: 'Picture', video: 'Clip', clip: 'Clip', music: 'Song', song: 'Song', sfx: 'Sound', sound: 'Sound', code: 'Code', hands: 'Job on this replicant matrix', office: 'Document', research: 'Research' };

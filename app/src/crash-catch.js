@@ -1,4 +1,4 @@
-// "Catch crashes" and "Offer a safe start after two crashes" (Settings, This replicant matrix, 🩺 Health and history).
+// "Catch crashes" and "Safe start after two crashes" (Settings, This replicant matrix, 🩺 Health and history).
 // Both are off unless the owner turns them on.
 //
 // How a crash is noticed: while Bob runs, a small marker file (inn\bob\running.json) says so. A normal quit removes

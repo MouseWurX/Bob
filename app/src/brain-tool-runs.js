@@ -47,7 +47,7 @@ export const toolRunParts = {
     }
     const held = await qGate(this, name, args, ctx, tool);
     if (held) { qAfter(this, name, args, held.text, ctx, tool); return held; }
-    // Let Bob's Quick brain see the big job: the step goes in the job's record first (still going), its result after.
+    // Quick brain sees the job: the step goes in the job's record first (still going), its result after.
     const watched = ctx?.job && !WATCH_TOOLS.includes(name) ? this.watch?.for(ctx.job) : null;
     if (watched) {
       if (name === 'show_plan' && Array.isArray(args.steps)) this.watch.plan(ctx.job, args.steps.length);
@@ -66,7 +66,7 @@ export const toolRunParts = {
     // 1.5.95: a file type named in the ask is saved before the tool's answer goes back, so Bob can say so.
     await this.savesInto(ctx, res);
     qAfter(this, name, args, res.text, ctx, tool);
-    recordCall(this.cfg, name === 'use_my_tool' && args.name ? `use_my_tool:${args.name}` : name, args, res?.text, ctx); // "Let Bob learn from his tools" (tool-learn.js)
+    recordCall(this.cfg, name === 'use_my_tool' && args.name ? `use_my_tool:${args.name}` : name, args, res?.text, ctx); // "Learn from tool errors" (tool-learn.js)
     return res;
   },
   // 1.5.95: a file type named in the ask is saved before the tool's answer goes back, so Bob can say so. Called after

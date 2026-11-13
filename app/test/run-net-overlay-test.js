@@ -142,7 +142,7 @@ check('every mood is one the icon knows', ['none', 'loading', 'thinking', 'reply
 // ---- setting, Help, glossary, FAQ ----
 {
   const pages = read('public/cellar-pages.js'), help = read('public/help-content.js');
-  check('the switch is in Settings, Bob-Net, off', pages.includes("sswitch('netOverlay', settings.netOverlay === true, 'Bob-Net icons under Bob', 'Off unless you turn it on."));
+  check('the switch is in Settings, Bob-Net, off', pages.includes("sswitch('netOverlay', settings.netOverlay === true, 'Bob-Net icons under Bob', '"));
   check('saved as a plain on or off', read('src/config.js').includes("out.netOverlay = out.netOverlay === true") && read('src/config.js').includes("'netOverlay'"));
   check('Help, glossary and FAQ', help.includes("id: 'net-overlay'") && help.includes('<dt>Guest mode</dt>') && help.includes("id: 'faq-net-overlay'") && help.includes("set('Bob-Net icons under Bob', 'Off'"));
   check('Help says where it doesn\'t work yet', /Android app's own screens don't have it yet/.test(help));

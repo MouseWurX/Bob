@@ -513,7 +513,7 @@ export class DiscordBridge {
     return sent;
   }
 
-  // Let Bob fix his own messages (src/edit-own.js) in your DMs. Still being written: the fix goes into the words before
+  // Edit his own messages (src/edit-own.js) in your DMs. Still being written: the fix goes into the words before
   // they're sent. Already sent as one DM that held only that message: that DM is changed. Otherwise one short DM with the new words.
   async dmEdited(ev, turnId) {
     const before = String(ev.before || ''), after = String(ev.text || '');

@@ -73,7 +73,7 @@ export async function openWeekly() {
   try { v = await get('/api/weekly'); } catch { body.innerHTML = '<p class="muted">Couldn\'t reach Bob.</p>'; return; }
   const w = v.week || {}, b = v.before || {};
   const diff = (a, c) => (c ? ` <span class="muted">(${a >= c ? '+' : ''}${num(a - c)} on the week before)</span>` : '');
-  body.innerHTML = `${v.on ? '' : '<p class="muted">Counting is off. Switch on <strong>Count what Bob did each week</strong> in Settings, This replicant matrix, 🩺 Health and history.</p>'}
+  body.innerHTML = `${v.on ? '' : '<p class="muted">Counting is off. Switch on <strong>Weekly stats</strong> in Settings, This replicant matrix, 🩺 Health and history.</p>'}
     ${w.jobs ? `<table class="harness-table"><caption class="sr-only">The last 7 days</caption><tbody>
       <tr><th scope="row">Chats</th><td>${num(w.chats)}${diff(w.chats, b.chats)}</td></tr>
       <tr><th scope="row">Replies and jobs</th><td>${num(w.jobs)}${diff(w.jobs, b.jobs)}</td></tr>

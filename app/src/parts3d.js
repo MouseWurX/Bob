@@ -1,4 +1,4 @@
-// 🧊 "Let Bob make 3D parts" (Settings, How Bob works; off unless the user turns it on).
+// 🧊 "3D parts" (Settings, How Bob works; off unless the user turns it on).
 //
 // Bob writes the part as an OpenSCAD recipe (plain code: cubes, cylinders, holes, rounded edges, measurements in
 // millimetres) and OpenSCAD (GPL-2.0, openscad.org) turns it into an exact STL file, ready for a 3D printer or any

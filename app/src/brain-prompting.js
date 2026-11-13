@@ -119,7 +119,7 @@ export const promptParts = {
       return s;
     });
   },
-  // Let Bob's Quick brain see the big job: the app's own answer to a message about the running job, or null.
+  // Quick brain sees the job: the app's own answer to a message about the running job, or null.
   jobAnswer(sessionId, text, attach, extra = {}, { freeMem } = {}) {
     if (!meanwhileOn(this.cfg) || extra.guest || (attach || []).length || !this.watch?.job) return null;
     const note = noteAsk(text), asks = !note && asksAboutJob(text);
@@ -234,7 +234,7 @@ export const promptParts = {
     out({ type: 'done' });
     return 'answer';
   },
-  // Let Bob's Quick brain see the big job (meanwhile.js): notes passed along for this job go in before its next step.
+  // Quick brain sees the job (meanwhile.js): notes passed along for this job go in before its next step.
   readNotes(ctx, msgs, say = noteForBig) {
     const notes = ctx?.job ? this.watch?.takeNotes(ctx.job) : [];
     if (!notes?.length) return 0;
@@ -243,13 +243,13 @@ export const promptParts = {
     this.log('meanwhile', `the big job read ${notes.length} note${notes.length === 1 ? '' : 's'} passed along to it`);
     return notes.length;
   },
-  // Let Bob's Quick brain see the big job: look_at_job and pass_note, only in a quick reply beside a running job.
+  // Quick brain sees the job: look_at_job and pass_note, only in a quick reply beside a running job.
   withWatchTools(list, job) {
     const out = list.filter((t) => !WATCH_TOOLS.includes(t.function?.name));
     return job?.side && meanwhileOn(this.cfg) && this.watch.job ? out.concat(this.toolSchemas(WATCH_TOOLS)) : out;
   },
   // The front desk's tools for this step: the core, plus the groups added so far this turn (toolbox.js).
-  // With "Give Bob all his tools at once" on, every usable tool, the way it was before.
+  // With "Send all tools" on, every usable tool, the way it was before.
   frontDeskTools(loaded) {
     if (allToolsOn(this.cfg) && !loaded?.only) return this.toolSchemas(Object.keys(this.tools));
     // Assistant presets (presets.js): a chat's preset can narrow the groups. Its copies of Bob have their own tools, so
@@ -334,7 +334,7 @@ export const promptParts = {
     return done;
   },
   // Nov 11: the tool groups a message means (loop-help.js), from the Memory slot's embedding model. Only when it's in
-  // use anyway (housekeeping or "Remember only what fits" on), never in the Gaming session, and at most 1.5 seconds:
+  // use anyway (housekeeping or "Relevant memories only" on), never in the Gaming session, and at most 1.5 seconds:
   // the first time, the groups' own vectors are made in the background and words alone pick this turn.
   async meaningGroups(text) {
     const hk = this.housekeeper;

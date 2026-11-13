@@ -257,7 +257,7 @@ export class TelegramBridge {
     const id = ev.turnId || '-';
     switch (ev.type) {
       case 'token': this.turns.set(id, (this.turns.get(id) || '') + String(ev.text || '')); break;
-      case 'edited': { // Let Bob fix his own messages (src/edit-own.js): fixed before it's sent, or one short message with the new words
+      case 'edited': { // Edit his own messages (src/edit-own.js): fixed before it's sent, or one short message with the new words
         const open = this.turns.get(id), before = String(ev.before || '');
         if (open != null && before && open.includes(before)) this.turns.set(id, open.replace(before, String(ev.text || '')));
         else this.say(`✏️ Fixed an earlier message. It now says:\n${String(ev.text || '')}`);

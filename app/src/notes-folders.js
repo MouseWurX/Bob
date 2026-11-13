@@ -19,7 +19,7 @@ export function cleanNotesFolders(v) {
 
 const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
 
-// The notes folders join the folders Bob may read while "Read and search my documents" is on, and leave them when
+// The notes folders join the folders Bob may read while "Read and search documents" is on, and leave them when
 // they're taken off the list (or the switch goes off). Bob's own folders never join this way.
 export function applyNotes(cfg, { exists = isDir } = {}) {
   if (!Array.isArray(cfg?.readRoots)) return cfg;

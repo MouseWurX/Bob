@@ -29,7 +29,7 @@ export const turnParts = {
     const controller = new AbortController();
     let flagged = false; // an error or correction note under this reply: no sleepy aside (never joke about a real failure)
     const tstore = { id: turnId, asks: 0, corrections: 0, at: Date.now(), ctx: null, error: null }; // items 246-249 (turn-log.js)
-    // Let Bob's Quick brain see the big job: the main lane's job gets a record (meanwhile.js), and its thinking (only
+    // Quick brain sees the job: the main lane's job gets a record (meanwhile.js), and its thinking (only
     // passed along while Bob's thinking window is open) and copies go in it too.
     if (lane === 'talk' && job && !job.side) this.watch.start(job, { session: currentSession(this.cfg).label });
     const watched = lane === 'talk' && job && !job.side ? job : null;
@@ -223,7 +223,7 @@ export const turnParts = {
     const answered = added.some((m) => m.role === 'assistant' && !m.tool_calls?.length && String(m.content || '').trim());
     if (ctx.replyModel && answered && !signal?.aborted) this.honesty?.record(ctx.replyModel, kinds);
   },
-  // 1.5.79: after a job went well, one card: save its steps as a how-to? Only with "Let Bob learn how-tos" on,
+  // 1.5.79: after a job went well, one card: save its steps as a how-to? Only with "Learn how-tos" on,
   // never for a job from another Bob, not when a how-to was followed this turn or already covers it.
   howtoAfter(sessionId, text, ctx, emit, job = null) {
     if (!howtosOn(this.cfg) || job?.guest || isGuestId(sessionId)) return null;

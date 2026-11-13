@@ -86,7 +86,7 @@ check('"Try again" puts a task at the back of the line', f3.queue.map((j) => j.i
   P.pump.call(g);
   check('back to Normal: the waiting picture job starts', started.join() === 'pic', started.join());
 }
-// 1.5.41: Keep chatting while Bob is busy. A chat waiting behind a picture that's painting starts in the side lane.
+// 1.5.41: Chat while busy. A chat waiting behind a picture that's painting starts in the side lane.
 {
   const started = [];
   const g = { waitOver() {}, cfg: { session: 'normal', engine: 'llamacpp', chatWhileBusy: true, models: { small: 's' } }, engine: { resolve: () => ({ gguf: '/x' }) }, state: { state: 'painting' }, turns: new Map([['talk', {}]]),

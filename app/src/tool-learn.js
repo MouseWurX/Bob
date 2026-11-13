@@ -1,4 +1,4 @@
-// "Let Bob learn from his tools" (Nov 11, off by default). Two things, both kept in inn\bob\tool-learning.json:
+// "Learn from tool errors" (Nov 11, off by default). Two things, both kept in inn\bob\tool-learning.json:
 //   1. Tool notes: when a tool fails and then works later in the same job, Bob keeps one line on what fixed it.
 //      The next time he is handed that tool, the line is on it, so he gets it right the first time.
 //   2. Scorecard: wins and misses for each tool. A tool that keeps failing says so on itself, and Bob offers

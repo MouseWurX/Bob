@@ -13,7 +13,7 @@ async function api(data) {
 // What each switch does, in a line.
 const NOTES = {
   calculator: 'Exact sums and unit changes (miles to km, °F to °C, cups to ml) worked out by code, not guessed.',
-  python: 'Python joins the sandbox, for data and maths jobs. No internet, no files outside the box. Needs "Let Bob work things out in a sandbox" on and Python fetched once.',
+  python: 'Python joins the sandbox, for data and maths jobs. No internet, no files outside the box. Needs "Code sandbox" on and Python fetched once.',
   passwords: 'Passwords, passphrases and PINs made by your computer\'s random maker. Shown only to you, never to the brain, never saved.',
   repeatReminders: 'Reminders can repeat: every day, weekday, week, month or year ("every Monday at 9").',
   phoneReminders: 'Reminders and page-watch news pop up on Bob for Android too, while it\'s paired.',
@@ -35,7 +35,7 @@ export function moreToolsHtml() {
 export async function mountMoreTools(box) {
   if (!box) return;
   let v, msg = '';
-  const sw = (s) => `<label class="switch srow-switch"><input type="checkbox" data-mt-on="${esc(s.key)}" ${s.on ? 'checked' : ''}><span><strong>${esc(s.label)}</strong><br><span class="muted">Off unless you turn it on. ${esc(NOTES[s.key] || '')}</span></span></label>`;
+  const sw = (s) => `<label class="switch srow-switch"><input type="checkbox" data-mt-on="${esc(s.key)}" ${s.on ? 'checked' : ''}><span><strong>${esc(s.label)}</strong><br><span class="muted">${esc(NOTES[s.key] || '')}</span></span></label>`;
   const byKey = (k) => sw(v.switches.find((s) => s.key === k));
   const draw = () => {
     const cal = v.calendars.map((c) => `<li>${esc(c.name)} <span class="muted">(${c.kind === 'file' ? esc(c.file) : c.linkSaved ? 'link locked' : 'link missing'})</span> <button type="button" class="mini" data-mt-caltest="${esc(c.id)}">Test</button> <button type="button" class="mini" data-mt-calrm="${esc(c.id)}" aria-label="Remove ${esc(c.name)}">Remove</button></li>`).join('');

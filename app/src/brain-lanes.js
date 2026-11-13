@@ -11,7 +11,7 @@ import { midJobOn } from './mid-job.js';
 // 1.5.40: Bob's own engine runs one brain. While the other lane is busy, a job that may need a different brain
 // (pictures attached for his eyes, or Medium effort and up with its reviewer) waits, so it never swaps the brain
 // out from under the other job. Everything else shares the small brain and runs beside it.
-// 1.5.41 "Keep chatting while Bob is busy" (chatWhileBusy, on unless switched off: an approved exception to opt-in): while the job in the main lane is
+// 1.5.41 "Chat while busy" (chatWhileBusy, on unless switched off: an approved exception to opt-in): while the job in the main lane is
 // in a media step (painting, filming, composing: its brain is already let go so the card is free), a plain chat
 // message runs in a "side" lane on the small brain on the processor, if there's room in RAM. Nothing big is loaded
 // for it. The media job waits for that reply before it loads its own brain back (Gate.needBrain).
@@ -121,7 +121,7 @@ export const TALKER_CTX = 32768;
 export const talkerCtx = (cfg) => Math.min(Number(chatBrain(cfg).ctx) || TALKER_CTX, TALKER_CTX);
 export const TALKER_LINE = (name) => `Keeping a small brain (${fullName(name)}) on the processor, so we can keep talking while the big one works.`;
 
-// 1.5.51 "Keep chatting while Bob is busy", part 2: beside a big text job (Medium effort and up, the Coding session, or
+// 1.5.51 "Chat while busy", part 2: beside a big text job (Medium effort and up, the Coding session, or
 // any job that has run 20 seconds), a plain chat message is answered by the small brain on a second llama-server, on
 // the processor only, if there's room in RAM. The main brain stays on the card and carries on; nothing is swapped.
 // A short job isn't worth it: the quick brain on the processor takes up to half a minute to its first word, while the

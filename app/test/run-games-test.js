@@ -41,7 +41,7 @@ check('the scoreboard counts your wins, my wins, shared games and your best run'
 check('Games settings have defaults and only known values; nothing is "on"', JSON.stringify(cleanGames({})) === '{"brain":"quick","talk":"every","keep":false,"kid":false}' && cleanGames({ brain: 'main', talk: 'end' }).talk === 'end' && cleanGames({ brain: 'x', talk: 'y' }).brain === 'quick' && Object.keys(TALK).length === 3);
 check('the setting is saved under its own key and cleaned', SETTING_KEYS.includes('games') && (() => { const c = { settingsFile: '', agentDir: '' }; mergeSettings(c, { games: { brain: 'main', talk: 'bogus' } }); return c.games.brain === 'main' && c.games.talk === 'every'; })());
 { const q = gamesBrain({ models: { bob: 'big' } }); check('the quick brain plays, on the card, thinking off, small context', q.model === 'gemma4:e4b' && q.cpu === false && q.think === false && q.ctx === 8192);
-  check('with "Keep the graphics card free for quick answers" it plays on the processor', gamesBrain({ models: { bob: 'big' }, quickOnCpu: true }).cpu === true);
+  check('with "Quick answers on CPU" it plays on the processor', gamesBrain({ models: { bob: 'big' }, quickOnCpu: true }).cpu === true);
   const g = gamesBrain({ session: 'light', models: { bob: 'big' } }); check('in the Gaming session the Gaming brain plays, on the processor (never E4B, never the card)', g.model === 'qwen3-4b' && g.cpu === true);
   check('Main Brain when picked', gamesBrain({ games: { brain: 'main' }, models: { bob: 'big' } }).model === 'big'); }
 check('refused only when no brain is equipped at all', /Equip a Brain/.test(refusal({ models: {} })) && refusal({ models: { bob: 'x' } }) === '' && refusal({ session: 'light', models: { bob: 'x' } }) === '');

@@ -15,7 +15,7 @@
 //
 // What's approved lives in Bob's own settings folder (selftools.json: the sha256 of every file), which no Hand or
 // tool can write. If a tool's files change after the OK, it's turned off until it goes through the checks again.
-// Tools are listed in Settings (🧰 Tools and how-tos Bob made: show code, delete; Hands: turn off, show code) and Bob
+// Tools are listed in Settings (🧰 Tools and how-tos: show code, delete; Hands: turn off, show code) and Bob
 // can list them too. 1.5.144: Delete puts a tool on the shelf (Recently deleted) for 30 days, off and out of Bob's
 // reach, with Put back and Delete for good; after 30 days (or Delete for good) its folder goes to the Recycle Bin.
 // Light: nothing runs in the background, the tools aren't in Bob's prompt until a job needs them (toolbox.js), and the
@@ -490,7 +490,7 @@ export function toolCode(cfg, name) {
 }
 
 // 1.5.144: what Bob says about a tool on the Recently deleted shelf (use it, or make one with its name).
-const shelvedWords = (cfg, name) => `The ${name} tool was deleted. ${cfg.userName || 'The user'} can put it back within 30 days in Settings, 🧰 Tools and how-tos Bob made, Recently deleted. Don't make a new one with that name: tell ${cfg.userName || 'the user'} it was deleted and ask whether to put it back.`;
+const shelvedWords = (cfg, name) => `The ${name} tool was deleted. ${cfg.userName || 'The user'} can put it back within 30 days in Settings, 🧰 Tools and how-tos, Recently deleted. Don't make a new one with that name: tell ${cfg.userName || 'the user'} it was deleted and ask whether to put it back.`;
 
 // Runs a tool Bob made (already approved). Its files must still be exactly what was OK'd.
 export async function useTool(cfg, name, input, { signal } = {}) {
@@ -658,7 +658,7 @@ export function selfToolsTools(brain) {
     async run({ action, name }) {
       off(cfg);
       if (action === 'off') { setToolOn(cfg, String(name), false); log('selftools', `turned off ${name}`); return `Turned ${name} off. ${cfg.userName || 'The user'} can turn it back on in Settings, Hands.`; }
-      if (action === 'remove') { deleteTool(cfg, String(name)); log('selftools', `deleted ${name} (on the shelf 30 days)`); return `Deleted ${name}. ${cfg.userName || 'The user'} can put it back within 30 days in Settings, 🧰 Tools and how-tos Bob made, Recently deleted.`; }
+      if (action === 'remove') { deleteTool(cfg, String(name)); log('selftools', `deleted ${name} (on the shelf 30 days)`); return `Deleted ${name}. ${cfg.userName || 'The user'} can put it back within 30 days in Settings, 🧰 Tools and how-tos, Recently deleted.`; }
       const all = listTools(cfg);
       if (!all.length) return 'No tools made yet.';
       const st = { on: 'on', off: 'turned off', changed: 'off: its files changed since the OK', missing: 'its folder is gone' };

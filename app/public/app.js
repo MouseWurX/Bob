@@ -56,7 +56,7 @@ import { createFind } from './find.js'; // 1.5.210 Lamplight: Find anything (Ctr
 import { CARDS } from './settings-map.js';
 import { HELP } from './help-content.js';
 import { diagramHtml, saveRowsHtml, setupSaveAs, watchSaveAs } from './save-as.js';
-import './math-core.js'; // Show maths as formulas: KaTeX, loaded only while the switch is on
+import './math-core.js'; // Render maths: KaTeX, loaded only while the switch is on
 import { installShortcuts, listHtml as shortcutListHtml } from './shortcuts.js';
 import { createJobHelps } from './job-helps.js'; // Settings, Jobs: Stop after this step, time bar, receipts, file:line links
 import { saveToLab } from './lab-save-q.js'; // Lab item 102: Save to Lab under your messages, off unless switched on
@@ -312,7 +312,7 @@ window.addEventListener('bob-brain-status', (e) => { statusLine.brains(e.detail)
 window.addEventListener('bob-status-jokes', (e) => statusLine.jokes(e.detail !== false)); // Settings, from this window
 // ---------- Sessions: which brains Bob keeps loaded. Bob may suggest one; only the user switches. ----------
 const sessionSel = $('sessionSel');
-let autoSession = true; // 1.5.41 "Let Bob pick the session" (Settings), on unless switched off
+let autoSession = true; // 1.5.41 "Auto session" (Settings), on unless switched off
 let curSession = null, pickedBy = 'you'; // 1.5.41: "Coding (picked by Bob)" when Bob picked it
 function drawSessions(list, cur, by) {
   if (list) sessionSel.innerHTML = list.map((x) => `<option value="${esc(x.id)}" title="${esc(x.what)}" data-label="${esc(x.icon + ' ' + x.label)}">${x.icon} ${esc(x.label)}</option>`).join('');
@@ -790,7 +790,7 @@ function onEvent(ev) {
           const r = await api('/api/howtos/answer', { id: ev.id, save, name: el.querySelector('input')?.value || '' });
           el.remove();
           if (!r.ok) note(r.why || 'That card is too old now.', 'error');
-          else if (save && r.saved) { window.dispatchEvent(new CustomEvent('bob-howto-saved')); } if (r.ok && save && r.saved) note(`Saved the how-to "${r.saved.name}". You can change or delete it in Settings, 🧰 Tools and how-tos Bob made.`);
+          else if (save && r.saved) { window.dispatchEvent(new CustomEvent('bob-howto-saved')); } if (r.ok && save && r.saved) note(`Saved the how-to "${r.saved.name}". You can change or delete it in Settings, 🧰 Tools and how-tos.`);
         } catch (e) { yes.disabled = no.disabled = false; note(e.message, 'error'); }
       };
       yes.onclick = () => answer(true);
@@ -1068,7 +1068,7 @@ function onEvent(ev) {
       try { if ('Notification' in window && Notification.permission === 'granted' && store.get('bob-alerts', '1') === '1') new Notification('Bob: reminder', { body: ev.text, icon: '/icons/bob-192.png', requireInteraction: true }); } catch {}
       break;
     case 'digest': {
-      // A Sunday digest (src/digest.js): the week in one short note, also saved in the digests folder.
+      // Sunday digest (src/digest.js): the week in one short note, also saved in the digests folder.
       add('approval', `<p><strong>Sunday digest:</strong> ${esc(ev.title || '')}</p>${render(String(ev.text || '').replace(/^# .*\n+/, '').replace(/^## (.*)$/gm, '**$1**'))}${ev.file ? `<div class="row"><button type="button" class="mini" data-open="${esc(ev.file)}">Open the note</button></div>` : ''}`);
       badge(true);
       break;
@@ -1086,7 +1086,7 @@ function onEvent(ev) {
       life.react('oops');
       note(ev.text, 'error');
       break;
-    case 'said': { // Let Bob fix his own messages: the id of what he just said, so the bubble can be found if he changes it
+    case 'said': { // Edit his own messages: the id of what he just said, so the bubble can be found if he changes it
       const r = replies.get(ev.turnId || '-');
       if (r && ev.id) { r.el.dataset.mid = `${r.el.dataset.mid ? `${r.el.dataset.mid} ` : ''}${ev.id}`; liveWords.set(r.el, r.text); bubbleMedia.set(r.el, r.media); }
       return;
@@ -1255,7 +1255,7 @@ document.addEventListener('drop', (e) => {
 });
 // ---------- Copy buttons and file cards (right-click and Ctrl+C often don't get through remote desktop) ----------
 const rawText = new WeakMap();
-// Let Bob fix his own messages (Settings, How Bob works; src/edit-own.js): the words and things made of each bubble,
+// Edit his own messages (Settings, How Bob works; src/edit-own.js): the words and things made of each bubble,
 // so a message he changes later is drawn again in place, with "edited" under it.
 const liveWords = new WeakMap(), bubbleMedia = new WeakMap();
 // ---------- Try again and Edit (Settings, How Bob works; src/redo.js). Off unless you turn it on. ----------
@@ -1299,7 +1299,7 @@ window.addEventListener('bob-chat-redo', (e) => { redoOnNow = e.detail === true;
 
 // ---------- The ... menu on a message (src/msg-menu.js) ----------
 // A small ... at the top right of a message, shown while the mouse is over it (always on a touch screen, and while it
-// has keyboard focus). Copy is always there. Edit and Delete follow "Show Try again, Edit and Delete in the chat"
+// has keyboard focus). Copy is always there. Edit and Delete follow "Try again, Edit and Delete"
 // (Settings, How Bob works): Edit on your message changes it and sends it again (editInPlace above); Edit on Bob's
 // changes his words without sending anything; Delete takes yours out with Bob's answer to it, or just his answer.
 // Not while Bob is on this chat.
@@ -1445,7 +1445,7 @@ log.addEventListener('click', async (e) => {
   if ('copyCode' in b.dataset) return copyText(b.parentElement.querySelector('code')?.textContent || '', b);
   if (b.dataset.copyLink) return copyText(b.dataset.copyLink, b);
   if (b.dataset.copyPath) return copyText(b.dataset.copyPath, b);
-  // "Show the page and line" (src/doc-more.js): "(page 3)" after a file opens it beside the chat, at that place.
+  // "Cite page and line" (src/doc-more.js): "(page 3)" after a file opens it beside the chat, at that place.
   if (b.dataset.at && b.dataset.file) {
     e.preventDefault();
     const [kind, n] = b.dataset.at.split(':');
@@ -1629,7 +1629,7 @@ function offerWants() {
 }
 
 // ---------- Start ----------
-// ---------- Show maths as formulas (Settings, Bob himself; off unless you turn it on) ----------
+// ---------- Render maths (Settings, Bob himself; off unless you turn it on) ----------
 // KaTeX is loaded from Bob's own files the first time it's needed. redraw: the switch changed, so the chat is drawn again.
 async function applyMath(on, redraw = false) {
   if (on === BobMath.isOn()) return;
@@ -1738,7 +1738,7 @@ async function askRestart(st) {
   // 1.5.38: only promise to pick up where he left off when that switch is on.
   let pickUp = false;
   if (busyWith) { try { pickUp = (await (await fetch('/api/settings')).json()).resumeJobs === true; } catch {} }
-  const after = pickUp ? 'if I restart now, I pick up where I left off when I open again.' : 'if I restart now, it stops and waits in Tasks or Downloads for you to start it again. (Turn on "Pick up where Bob left off after a restart" in Settings, How Bob works, and I\'ll carry on by myself.)';
+  const after = pickUp ? 'if I restart now, I pick up where I left off when I open again.' : 'if I restart now, it stops and waits in Tasks or Downloads for you to start it again. (Turn on "Resume jobs after restart" in Settings, How Bob works, and I\'ll carry on by myself.)';
   const el = add('suggest', `<span>The new Bob (${esc(st.version || 'update')}) is ready.${busyWith ? ` I'm working on ${esc(busyWith)}; ${esc(after)}` : ''}</span>
     <button type="button" data-r="now">${busyWith ? 'Restart anyway' : 'Restart Bob now'}</button>${busyWith ? '<button type="button" data-r="done">Wait until I\'m done</button>' : ''}<button type="button" class="link" data-r="later">Later</button>`);
   for (const b of el.querySelectorAll('button')) b.onclick = async () => {

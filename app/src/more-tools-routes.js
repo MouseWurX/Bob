@@ -52,7 +52,7 @@ export async function moreToolsRoute({ req, res, p, isLocal, brain, cfg, body, s
         if (k === 'python' && v) {
           const r = await pythonReady(cfg);
           if (!r.ok) { out.why = `Python stays off: ${r.why}.`; continue; }
-          if (!sandboxOn(cfg)) out.note = 'On. It works once "Let Bob work things out in a sandbox" is on too.';
+          if (!sandboxOn(cfg)) out.note = 'On. It works once "Code sandbox" is on too.';
         }
         save(cfg, { [k]: v });
         log(`"${SWITCHES.find((s) => s.key === k).label}" switched ${v ? 'on' : 'off'}`);

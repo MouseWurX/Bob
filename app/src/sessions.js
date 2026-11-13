@@ -1,6 +1,6 @@
 // Sessions: sets of brains that fit in the graphics card together, so Bob never swaps brains mid-session.
 // "Normal" is the old behaviour (each job uses the brain picked for it in Model roles).
-// 1.5.41: with "Let Bob pick the session" on (the default) Bob switches himself, see auto-session.js; off, he only suggests.
+// 1.5.41: with "Auto session" on (the default) Bob switches himself, see auto-session.js; off, he only suggests.
 
 import { laptopSaving } from './engine-extras.js';
 
@@ -19,7 +19,7 @@ export const SESSIONS = {
 // from the models already picked in Model roles.
 // '' = taken off that job by hand (the Brains page's ✕, or the One brain setup): no brain of its own, so the Quick brain
 // stays off (it never comes back as E4B) and Coding, Office and Deep thinking fall back to the brain below them.
-// Nov 13: "One brain (snappier)" on = every job is the main brain and there is no Quick brain, whatever is picked.
+// Nov 13: "One brain" on = every job is the main brain and there is no Quick brain, whatever is picked.
 // { picked: true } gives the picks as saved (the Brains page shows them, greyed, so they come back when it's off).
 export const oneBrainOn = (cfg) => cfg?.oneBrain === true && Boolean(cfg?.models?.bob);
 export function sessionBrains(cfg, { picked = false } = {}) {

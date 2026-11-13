@@ -15,7 +15,7 @@ import { templateFor, samplingFor, replyTokens } from './model-family.js';
 import { gaming, LONG_CODER } from './sessions.js';
 import { gamingCard, decideCard, readCard, CARD_BUSY_PCT, CARD_MIN_FREE_MB } from './gaming-card.js';
 import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts, cardGB } from './tuning.js';
-import { chatPlacesOn, placesDir, placeFile, tidyPlaces } from './chat-places.js'; // Each chat keeps its place in the engine (off unless switched on)
+import { chatPlacesOn, placesDir, placeFile, tidyPlaces } from './chat-places.js'; // Per-chat engine cache (off unless switched on)
 import { exeName } from './platform.js';
 import { buildMatches, brainEngineName, brainEngineBuild } from '../public/engine-name.js';
 import { Embedder } from './embedder.js';
@@ -569,7 +569,7 @@ export class LlamaCpp {
       // 98 Laptop mode (opt-in): on battery, half the cores. Games-first and threads set by hand win.
       ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : laptopThreads(this.cfg) ? ['-t', String(laptopThreads(this.cfg))] : num(lc.threads, '-t')),
       ...num(lc.batch, '-b'), ...num(lc.ubatch, '-ub'),
-      // 1.5.24 "Get Bob ready while you type": on the processor, his reading of the instructions is kept on disk.
+      // 1.5.24 "Warm up while typing": on the processor, his reading of the instructions is kept on disk.
       ...(cpu && tuning(this.cfg).readyWhileTyping ? ['--slot-save-path', startDir(this.cfg)] : chatPlacesOn(this.cfg) && this.role !== BESIDE ? ['--slot-save-path', placesDir(this.cfg)] : []), // or each chat's place (chat-places.js)
       ...(modelArgs || lc.modelArgs?.[model] || []),
       // Mixture-of-experts models: keep this many layers' experts in system RAM so the rest fits the card.
@@ -627,7 +627,7 @@ export class LlamaCpp {
 
   // Long memory (YaRN): only with the switch on, a brain the guide covers, and a size past what it was made for.
   // Settings set by hand (llamacpp.args with --rope-scaling) win.
-  // "Let Bob work on repositories" (self-work.js) uses Long memory for its own job even with the switch off: a size past
+  // "Work on repositories" (self-work.js) uses Long memory for its own job even with the switch off: a size past
   // what the brain was made for only reaches here through that job (brain.fitCtx with stretch) or a pick with it on.
   stretchArgs(gguf, ctx) {
     if (!(stretchOn(this.cfg) || selfWorkOn(this.cfg)) || (this.lc.args || []).includes('--rope-scaling')) return [];
@@ -655,13 +655,13 @@ export class LlamaCpp {
     try { return samplingFor(this.lc, model, gguf, { tools, think, task, own: this.cfg?.qwenPresets }); } catch { return {}; }
   }
 
-  // ---------- Get Bob ready while you type (1.5.24) ----------
+  // ---------- Warm up while typing (1.5.24) ----------
   async slotAction(action, filename) {
     const res = await fetch(`${this.url}/slots/0?action=${action}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ filename }), signal: AbortSignal.timeout(60000) });
     if (!res.ok) throw new Error(`slot ${action}: ${res.status}`);
   }
 
-  // Each chat keeps its place in the engine (chat-places.js, off unless switched on): before another chat's reply, the
+  // Per-chat engine cache (chat-places.js, off unless switched on): before another chat's reply, the
   // reading the engine holds for the last chat is saved to disk, and the new chat's saved reading (if any) comes back.
   // The engine only reuses the part of a saved reading that still matches the chat, so an edited chat is safe.
   async switchPlace(chatId, model) {
@@ -1128,7 +1128,7 @@ export class LlamaCpp {
     if (helpers.length) env = { ...env, ...scutEnv(this.cfg, { wired: Boolean(this.spread?.allWired?.()) }), ...linkEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
     // 1.5.203: spawn throws when Windows blocks the program (Smart App Control); safeSpawn turns that into 'error'.
     const child = safeSpawn(spawn, exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });
-    // 1.5.24 "Let games go first": on the processor, the engine yields to games (below normal priority).
+    // 1.5.24 "Games first": on the processor, the engine yields to games (below normal priority).
     if (this.role === BESIDE || (cpu && cpuPlan(this.cfg)?.lowPriority)) { try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {} }
     // The link log: with a lent card in use, the engine's [link] and [scut] lines go to bob-net-link.log and the logbook.
     const link = helpers.length ? new LinkLog(this.cfg, { who: 'borrowed card', log: (...a) => this.log?.(...a) }) : null;
@@ -1457,7 +1457,7 @@ export class LlamaCpp {
           if (tc.id && !calls[i].id) calls[i].id = String(tc.id); // item 166: the engine's own id is kept
           if (tc.function?.name) calls[i].name += tc.function.name;
           if (tc.function?.arguments) calls[i].args += tc.function.arguments;
-          // 95 Load the next brain early: the brain hears a hand-off while it is still being written.
+          // 95 Preload the next brain: the brain hears a hand-off while it is still being written.
           if (this.onToolCall && calls[i].name) { try { this.onToolCall(calls[i].name, calls[i].args); } catch {} }
         }
       }

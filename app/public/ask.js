@@ -1,4 +1,4 @@
-// The small ask box (A shortcut from anywhere: Settings, How Bob works, 🌙 Quiet hours and shortcut). Bob.exe opens
+// The small ask box (Global shortcut: Settings, How Bob works, 🌙 Quiet hours and shortcut). Bob.exe opens
 // this page on top of any app when the key is pressed. It keeps its own chat, "ask-box", so it never lands in the
 // middle of the chat open in Bob's window. Enter sends, Shift+Enter is a new line, Esc puts the box away.
 export const ASK_CHAT = 'ask-box';

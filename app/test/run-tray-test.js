@@ -88,7 +88,7 @@ function decode(png) {
 // ---- Settings and Help ----
 {
   const cellar = publicText('cellar.js');
-  check('Settings has both switches, each saying it starts on', /sswitch\('tray', settings\.tray !== false, 'Keep Bob in the tray', `On unless you turn it off\./.test(cellar) && /sswitch\('lookIcon', settings\.lookIcon !== false, 'Use Bob\\'s look as his icon', `On unless you turn it off\./.test(cellar));
+  check('Settings has both switches, each saying it starts on', /sswitch\('tray', settings\.tray !== false, 'Keep Bob in the tray', `/.test(cellar) && /sswitch\('lookIcon', settings\.lookIcon !== false, 'Use Bob\\'s look as his icon', `/.test(cellar));
   check('the icon note says a pinned taskbar shortcut is the one thing that may not follow', /pinned to the taskbar may keep the usual icon/.test(cellar));
   check('the tray note says how to close him fully', /pick <strong>Quit Bob<\/strong>/.test(cellar));
   const topic = HELP.find((e) => e.id === 'tray');

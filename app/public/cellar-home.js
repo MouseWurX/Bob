@@ -35,7 +35,7 @@ export function createHomeParts(now) {
   function ownKitHtml() {
     if (ownKit === null) { loadOwnKit(); return '<p class="muted">Loading…</p>'; }
     const k = ownKit;
-    const intro = `<p class="muted">Everything Bob made for himself to work with: the tools he wrote and the how-tos he kept. Look them over and delete what you don't want him to have. Anything deleted waits 30 days under Recently deleted, where you can put it back. ${tip('Delete here stops Bob using the thing at once. A tool\'s files stay in his folder on the shelf, then go to ' + binWord() + ' after 30 days (or when you press Delete for good). A how-to is plain text, so it\'s simply forgotten. Nothing here leaves this replicant matrix (your computer).', 'Tools and how-tos Bob made')}</p>`;
+    const intro = `<p class="muted">Everything Bob made for himself to work with: the tools he wrote and the how-tos he kept. Look them over and delete what you don't want him to have. Anything deleted waits 30 days under Recently deleted, where you can put it back. ${tip('Delete here stops Bob using the thing at once. A tool\'s files stay in his folder on the shelf, then go to ' + binWord() + ' after 30 days (or when you press Delete for good). A how-to is plain text, so it\'s simply forgotten. Nothing here leaves this replicant matrix (your computer).', 'Tools and how-tos')}</p>`;
     const note = ownError ? `<p class="error ownkit-note" role="alert">${esc(ownError)}</p>`
       : ownLast ? `<p class="ownkit-note" role="status">${ownLast.put ? `Put the ${KIND_WORD[ownLast.kind]} "${esc(ownLast.name)}" back.` : `Deleted the ${KIND_WORD[ownLast.kind]} "${esc(ownLast.name)}". <button type="button" class="mini" data-ownundo="${esc(ownLast.kind)}:${esc(ownLast.id)}">Undo</button>`}</p>` : '<p class="ownkit-note" role="status" hidden></p>';
     const tools = k.tools.map((t) => `<li class="ownkit-row"><div class="row"><strong>${esc(t.name)}</strong>${TOOL_STATE[t.state] ? ` <span class="warn-text">${esc(TOOL_STATE[t.state])}</span>` : ''}<span class="muted">${t.lastUsed ? `used ${esc(when(t.lastUsed))}` : 'not used yet'}</span></div>
@@ -61,16 +61,16 @@ export function createHomeParts(now) {
       <p class="muted">${k.makerOn ? 'With "Make his own tools" on, Bob writes one when none of his tools fits a job, and shows you a card before it\'s added. Turn one off or on under Settings, Hands.' : 'Making new ones is off ("Make his own tools" under Settings, Hands). The ones he already made stay here.'}</p>
       <ul class="ownkit-list">${tools || '<li class="muted">No tools yet.</li>'}</ul>
       <h4 class="ssub">📒 How-tos he kept <span class="muted">${k.howtos.length} of ${k.maxHowtos}</span></h4>
-      <p class="muted">${k.howtosOn ? 'After a job with a few steps goes well, Bob offers a card to keep the steps. When you ask for something like it again, he follows them.' : 'Learning new ones is off ("Let Bob learn how-tos" in How Bob works). The ones you already saved stay here, and he doesn\'t use them while it\'s off.'}</p>
+      <p class="muted">${k.howtosOn ? 'After a job with a few steps goes well, Bob offers a card to keep the steps. When you ask for something like it again, he follows them.' : 'Learning new ones is off ("Learn how-tos" in How Bob works). The ones you already saved stay here, and he doesn\'t use them while it\'s off.'}</p>
       <ul class="ownkit-list">${howtos || '<li class="muted">No how-tos yet.</li>'}</ul>
       <details class="ownkit-shelf" ${k.deleted.length && (ownPurgeAsk || ownLast) ? 'open' : ''}><summary><strong>🗑 Recently deleted</strong> <span class="muted">· ${k.deleted.length ? `${k.deleted.length} waiting · each kept 30 days` : 'nothing waiting'}</span></summary>
         <ul class="ownkit-list">${shelf || '<li class="muted">Nothing here. Delete a tool or how-to above and it waits here for 30 days.</li>'}</ul></details>`;
   }
-  // 1.5.41 Where Bob saves things: the folder for pictures, clips, songs and sounds. Bob's own folder unless one is picked.
+  // 1.5.41 Save folder: the folder for pictures, clips, songs and sounds. Bob's own folder unless one is picked.
   function saveDirHtml() {
     const sd = settings?.saveDir || {};
     const custom = sd.custom === true;
-    return `<p class="save-now"><strong>Saving in</strong> <span class="save-path">${esc(sd.folder || '')}</span> ${custom ? '' : '<span class="tag good">Bob\'s own folder</span>'} ${tip('The pictures, clips, songs and sounds Bob makes are saved in this folder. Made by Bob in the left menu shows them wherever they are. Things Bob already made stay where they are; only new ones go to a new folder. Tidy up only tidies Bob\'s own folder, never one you picked. Documents and spreadsheets still go where you ask for them.', 'Where Bob saves things')}</p>
+    return `<p class="save-now"><strong>Saving in</strong> <span class="save-path">${esc(sd.folder || '')}</span> ${custom ? '' : '<span class="tag good">Bob\'s own folder</span>'} ${tip('The pictures, clips, songs and sounds Bob makes are saved in this folder. Made by Bob in the left menu shows them wherever they are. Things Bob already made stay where they are; only new ones go to a new folder. Tidy up only tidies Bob\'s own folder, never one you picked. Documents and spreadsheets still go where you ask for them.', 'Save folder')}</p>
       ${sd.missing ? `<p class="error">Bob can't find ${esc(sd.picked)} right now (an unplugged drive, maybe). Until it's back, he saves in his own folder.</p>` : ''}
       <div class="save-pick"><label for="save-path">Folder</label><input id="save-path" type="text" placeholder="D:\\My pictures from Bob" value="${esc(custom ? sd.folder : '')}"> <button type="button" class="mini" data-savebrowse>Browse…</button>
         <button type="button" data-savedir disabled>Save here</button></div>
@@ -113,7 +113,7 @@ export function createHomeParts(now) {
       ${rows ? `<ul class="packlist">${rows}</ul>` : '<p class="muted">No notes folders yet.</p>'}
       <button type="button" data-notesadd="obsidian">Add an Obsidian vault…</button> <button type="button" data-notesadd="onenote">Add a OneNote export folder…</button> <span class="muted notes-out"></span></div>`;
   }
-  // 1.5.79: the memory banks, shown under "Remember only what fits" while it's on.
+  // 1.5.79: the memory banks, shown under "Relevant memories only" while it's on.
   function memoryBanksHtml() {
     const mb = settings.memoryBanks || {};
     const list = (mb.banks || []).map((b) => `${b.name ? esc(b.name) : 'General'} ${b.lines}`).join(' · ');

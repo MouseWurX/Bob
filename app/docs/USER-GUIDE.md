@@ -6,7 +6,7 @@ This guide is sorted by what you want to do. Start at the top, then jump to the 
 
 Two promises run through everything:
 
-- **Nothing leaves your computer unless you say so.** Bob only goes online to download something you picked, to search the web if you turned on **Let Bob search the web**, to use a cloud helper you switched on, or to run a job on a rented brain you hired.
+- **Nothing leaves your computer unless you say so.** Bob only goes online to download something you picked, to search the web if you turned on **Web search**, to use a cloud helper you switched on, or to run a job on a rented brain you hired.
 - **Nothing extra is switched on until you switch it on.** Bob may suggest something, but you decide. The only things on from the start are fixes that make him steadier.
 
 ![Bob's window: the menu on the left, the chat in the middle, and Now running on the right](screenshot.png)
@@ -126,7 +126,7 @@ How much each session keeps in mind (its **context**, 8K to 256K) is in Settings
 - **Active** decides whether a model shows in the job menus. Switching one off only hides it.
 - **😇 Well behaved / 🤝 Community / Naughty list:** the Naughty list holds other people's remixes with the refusals cut out. It stays greyed until you turn on **Show the naughty list**, and Bob never marks one ★ Recommended.
 - **➕ Your own brains:** **Add a brain from a file** adds a .gguf already on your computer. Bob runs it from where it is and never moves or deletes it.
-- **Let Bob fetch his newest brain list** (off): once a day Bob reads his brain list from his GitHub page, so newer brains show up. Nothing about you is sent.
+- **Auto-update the brain list** (off): once a day Bob reads his brain list from his GitHub page, so newer brains show up. Nothing about you is sent.
 
 **Starter sets** are what Get me ready ticks for your card. Everything in them is free to use, including for commercial work.
 
@@ -142,14 +142,14 @@ Every computer also gets Gemma 4 E4B (brain, quick brain, seeing, hearing; about
 
 ### Where the things he made are
 
-The old chest is gone: **Made by Bob** in the left menu lists everything Bob has made or saved, newest first. The folder is in Settings, **Where Bob saves things**; **Change folder…** picks another. (Before 1.5.210 the Equip Bob paper doll held the chest, the personality dials and House style. It's retired: the dials are Settings, **🎚 Personality**, and House style is Settings, **🖋 House style**.)
+The old chest is gone: **Made by Bob** in the left menu lists everything Bob has made or saved, newest first. The folder is in Settings, **Save folder**; **Change folder…** picks another. (Before 1.5.210 the Equip Bob paper doll held the chest, the personality dials and House style. It's retired: the dials are Settings, **🎚 Personality**, and House style is Settings, **🖋 House style**.)
 
 ### Make him faster
 
 - **Check this replicant matrix** (Settings, bottom of the Everyday page) finds what slows Bob down (slow RAM settings, an old driver, a laptop on battery, other apps holding graphics memory) and says how to fix each. He only looks; he never changes anything.
 - **Test Bob's speed** (Speed & memory) times the first word and the whole answer, and keeps your results.
-- **Engine extras** (Speed & memory, all off): **Guess ahead by copying from the chat**, **Load the next brain early**, **Laptop mode**, **Test a new graphics card by itself**, **Keep a speed history**.
-- Also off to start: **Get Bob ready while you type**, **Let games go first**, **Match picture settings to my graphics card**.
+- **Engine extras** (Speed & memory, all off): **Prompt-lookup decoding**, **Preload the next brain**, **Laptop mode**, **Auto-test a new GPU**, **Speed history**.
+- Also off to start: **Warm up while typing**, **Games first**, **Fit pictures to my GPU**.
 
 ---
 
@@ -158,7 +158,7 @@ The old chest is gone: **Made by Bob** in the left menu lists everything Bob has
 Type a question, an idea or a job. You can send as many messages as you like; each becomes a task, and none get lost.
 
 - Every message and piece of code has a **Copy** button. Links and files Bob mentions are clickable, and everything he makes gets a card. **View** opens it in the **side panel**.
-- **Look things up online:** click **🌐 Web search** next to Effort (the same switch as **Let Bob search the web**). Only the search words and page address leave your computer.
+- **Look things up online:** click **🌐 Web search** next to Effort (the same switch as **Web search**). Only the search words and page address leave your computer.
 
 ### Effort: how hard he works
 
@@ -178,24 +178,24 @@ A **session** says what the graphics card is kept for. Effort says how hard Bob 
 - **Normal:** everyday use. **Art:** Bob chats on his Quick brain so painting and video get the card. **Coding:** the Coding brain leads. **Office:** documents and planning.
 - **Gaming:** your games keep the card. Bob chats on the processor with a small brain and holds pictures and big jobs until you switch back. **Gaming session: graphics card** (Speed & memory) decides whether he may borrow a little.
 
-**Let Bob pick the session** (on) moves him into the right one for the job and back to Normal after 2 quiet minutes. **🎮 Gaming** next to Effort keeps him in Gaming.
+**Auto session** (on) moves him into the right one for the job and back to Normal after 2 quiet minutes. **🎮 Gaming** next to Effort keeps him in Gaming.
 
 ### While he works
 
 - **💭 Bob's thinking** (press the brain label at the top of the chat) opens a small window with his thinking, brain swaps and every tool step, live. Nothing in it is saved.
-- **Answer messages between steps** (on): send a message during a long job and he answers it when the current step is done. "also …" joins the job.
+- **Reply between steps** (on): send a message during a long job and he answers it when the current step is done. "also …" joins the job.
 - **Stop and wait words** (on): while a job runs, a short "stop", "no no", "cancel" or "belay that" stops it at once; "wait", "pause" or "hold on" pauses it; "wait 10 minutes" or "later" pauses it for later; "what are you doing?!" pauses it just in case; "go on" or "you got it" carries on. Only the whole message counts.
-- **Keep chatting while Bob is busy** (on): while he paints or works, a plain message is answered by his small brain on the processor.
-- **Let Bob's Quick brain see the big job** (off): that small brain knows how the big job is going and can pass it a note.
-- **Show Bob's plan before big jobs** (off): before a job with several steps, he shows every step on one card. **Go ahead**, **Change something** or **Not now**.
+- **Chat while busy** (on): while he paints or works, a plain message is answered by his small brain on the processor.
+- **Quick brain sees the job** (off): that small brain knows how the big job is going and can pass it a note.
+- **Plan before big jobs** (off): before a job with several steps, he shows every step on one card. **Go ahead**, **Change something** or **Not now**.
 
 ### After he answers
 
-- **Show Try again, Edit and Delete in the chat** (on) puts them in the **…** menu on each message. **Try again** gets a new answer, **Edit** changes your message and sends it again, **Delete** takes it out. Try again and Edit keep the old version.
+- **Try again, Edit and Delete** (on) puts them in the **…** menu on each message. **Try again** gets a new answer, **Edit** changes your message and sends it again, **Delete** takes it out. Try again and Edit keep the old version.
 - **How I got here** lists the tools Bob used. **Save as a test** keeps a reply for the Lab. **Undo changes**, in the **…** menu on your message, puts back every file, note and memory line he changed for it, for a week.
-- **Let Bob fix his own messages** (off): he corrects an earlier message instead of sending a new one, marked **edited**.
+- **Edit his own messages** (off): he corrects an earlier message instead of sending a new one, marked **edited**.
 - **💬 Chat extras** (off): **Try from here**, 📌 pins, and 👤 guest chats that are never saved.
-- **Pull up saved prompts with /** (off): save things you ask often, then type `/` in the message box to pick one. Blanks like `{file}` are filled in by you; `{date}` fills itself.
+- **Saved prompts with /** (off): save things you ask often, then type `/` in the message box to pick one. Blanks like `{file}` are filled in by you; `{date}` fills itself.
 
 ---
 
@@ -206,8 +206,8 @@ Pick the **Coding** session (or let Bob pick it), then ask: "fix the failing tes
 - The **🔨 Coding** brain leads. On a 16 GB card that's Qwen3.6 35B-A3B with 256K context, which always thinks coding jobs through.
 - High and Extreme effort add a reviewer; Extreme plans and checks each step.
 - **Working on repositories:** Bob reads and changes code in projects you add under Settings, Projects. Read-only projects stay read-only. Changes go through the Run and Files Hands, so every step shows a card.
-- **Settings, Jobs** (all off): **Run the tests after code edits** (before he says done; the command still asks first), **Make file:line links clickable** (opens VS Code, Cursor or VSCodium at the line), **Steer Bob mid-job**, **Show a receipt after each job**, and more.
-- **Let Bob work things out in a sandbox** (off): for sums, dates and counting, he runs a few lines of JavaScript in a locked, empty folder.
+- **Settings, Jobs** (all off): **Run tests after code edits** (before he says done; the command still asks first), **Clickable file:line links** (opens VS Code, Cursor or VSCodium at the line), **Steer mid-job**, **Job receipt**, and more.
+- **Code sandbox** (off): for sums, dates and counting, he runs a few lines of JavaScript in a locked, empty folder.
 
 **Let other apps use Bob's brains** (Settings, Other apps; off): coding and chat apps (VS Code with Continue, OpenCode, your own scripts) use Bob's brains through `http://localhost:7777/v1`, with the key Bob makes (**Key for other apps**). Use the brain `bob`, or a name from `/v1/models`. From the command line: `bob ask "question"`, `bob status`, `bob models`. **Let apps on my other devices in too** (off) lets your Tailscale devices in. Web pages are always refused, and nothing is logged.
 
@@ -226,12 +226,12 @@ Just ask: "paint a lighthouse at dusk", "make this picture look like winter", "a
 - **House style** (Settings): your defaults for music, pictures, clips and times.
 - On small cards, expect half a minute to a minute per picture on 8 GB, ten minutes or more for a few seconds of video. While Bob paints, chat waits.
 
-**Where things go:** **Made by Bob** in the menu lists everything, newest first, with filters and a search box. Settings, **Where Bob saves things** picks the folder for new pictures, clips and songs. Only new things go there; older ones stay put.
+**Where things go:** **Made by Bob** in the menu lists everything, newest first, with filters and a search box. Settings, **Save folder** picks the folder for new pictures, clips and songs. Only new things go there; older ones stay put.
 
 **3D:**
 
-- **Let Bob make 3D parts** (off): ask for a bracket, a box or a spacer. Bob writes it as an OpenSCAD recipe in millimetres and makes an STL for a 3D printer. OpenSCAD is about 30 MB from Settings, Engines.
-- **Let Bob turn pictures into 3D models** (off): ask for a figurine or a prop; TRELLIS.2 turns a picture into a textured GLB model in 1 to 5 minutes. Needs an NVIDIA card (16 GB is best; RTX 20 to RTX 50) and the 3D workshop (about 28 GB). On a Mac, send the job to a PC Bob over Bob-Net.
+- **3D parts** (off): ask for a bracket, a box or a spacer. Bob writes it as an OpenSCAD recipe in millimetres and makes an STL for a 3D printer. OpenSCAD is about 30 MB from Settings, Engines.
+- **Pictures to 3D models** (off): ask for a figurine or a prop; TRELLIS.2 turns a picture into a textured GLB model in 1 to 5 minutes. Needs an NVIDIA card (16 GB is best; RTX 20 to RTX 50) and the 3D workshop (about 28 GB). On a Mac, send the job to a PC Bob over Bob-Net.
 - The side panel's **3D viewer** opens STL, OBJ and GLB files: drag to turn, scroll to zoom.
 
 **Advanced workshop:** if you use ComfyUI, Bob can run its workflows for you (Settings, Other apps).
@@ -240,12 +240,12 @@ Just ask: "paint a lighthouse at dusk", "make this picture look like winter", "a
 
 ## Work with documents and files
 
-- **Read and search my documents** (off): Bob reads Word, Excel, PowerPoint, OpenDocument, PDF, e-book and Rich Text files, and searches inside them, in Documents, Desktop and Downloads. Nothing leaves your computer.
-- **Search my documents by meaning** (off): also finds files that mean what you asked in other words. The index keeps file names and numbers, never the words.
-- **Show documents in the side panel** (off): **View** opens Word, Excel, PowerPoint and PDF files beside the chat.
-- **Let Bob take quick notes** (off): say "note: …" in any chat and he writes it in `quick-notes.md` with the date. Ask for your notes, or find them by a word or #tag.
-- **Save chats as files and bring chats in** (off): save a chat, or bring in chats from ChatGPT or Claude.
-- **Show maths as formulas** (off).
+- **Read and search documents** (off): Bob reads Word, Excel, PowerPoint, OpenDocument, PDF, e-book and Rich Text files, and searches inside them, in Documents, Desktop and Downloads. Nothing leaves your computer.
+- **Semantic document search** (off): also finds files that mean what you asked in other words. The index keeps file names and numbers, never the words.
+- **Documents in the side panel** (off): **View** opens Word, Excel, PowerPoint and PDF files beside the chat.
+- **Quick notes** (off): say "note: …" in any chat and he writes it in `quick-notes.md` with the date. Ask for your notes, or find them by a word or #tag.
+- **Export and import chats** (off): save a chat, or bring in chats from ChatGPT or Claude.
+- **Render maths** (off).
 - **🧰 More tools** (Settings, How Bob works; all off): a calculator, Python in the sandbox, passwords made safely, repeating reminders, reading your email and calendar (read-only), watching web pages, calling web services, asking questions of data files, charts, spelling and grammar, meeting recordings to notes, and comparing files.
 
 ### Office documents and converting
@@ -318,9 +318,9 @@ Bob isn't an antivirus; keep Defender. Ask: "is my computer protected?", "is thi
 
 ### How jobs run: Settings, Jobs
 
-All off, each on its own: **Steer Bob mid-job**, **Show Stop after this step**, **Give each job a time limit** (the minutes are also his always-on safety net), **Show a receipt after each job** (with Undo for a week), **Run the tests after code edits**, **Ask one question before a vague big job**, **Remember a no for the whole chat**, **Reuse look-ups for an hour**, **Show sources under web answers**, **Say how sure Bob is**, **Make file:line links clickable**.
+All off, each on its own: **Steer mid-job**, **Stop after this step**, **Job time limit** (the minutes are also his always-on safety net), **Job receipt** (with Undo for a week), **Run tests after code edits**, **Ask before a vague job**, **Remember a no**, **Cache look-ups for an hour**, **Sources under web answers**, **Confidence line**, **Clickable file:line links**.
 
-**Let Bob learn how-tos** (off): after a job goes well, Bob offers to keep the steps and follows them next time. Nothing is kept until you press **Save how-to**. **Let Bob learn from his tools** (off): he keeps one line on what fixed a failing tool.
+**Learn how-tos** (off): after a job goes well, Bob offers to keep the steps and follows them next time. Nothing is kept until you press **Save how-to**. **Learn from tool errors** (off): he keeps one line on what fixed a failing tool.
 
 ---
 
@@ -332,7 +332,7 @@ All off, each on its own: **Steer Bob mid-job**, **Show Stop after this step**, 
 
 To make Bob forget, use **Forget** on a topic or say "forget what we said about…". You see a preview first.
 
-Off to start: **Remember only what fits** (only the memories that suit the message), where each memory came from, memories that run out after a day or a week, project memories that stay with their project, a search of your notes apps (Obsidian, exported notebooks), and a **Sunday digest** of the week.
+Off to start: **Relevant memories only** (only the memories that suit the message), where each memory came from, memories that run out after a day or a week, project memories that stay with their project, a search of your notes apps (Obsidian, exported notebooks), and a **Sunday digest** of the week.
 
 ### Housekeeping (on unless you turn it off)
 
@@ -440,7 +440,7 @@ A **queue** runs jobs overnight, **Show the wobble** shows how much a score move
 - **Style:** themes, avatars, animations and layout. **Look** picks how the whole page is drawn: **Lamplight** (a dark room lit by Bob's cube, with Find anything on Ctrl+K; new installs start here), **Classic** (where earlier installs stay until you pick) or **Terminal**. **Bob's look** puts the fNRI cube in a small porthole as his picture (to begin with), or the pixel Bob if you'd rather. **🧍 Make your own look** builds Bob's avatar from parts.
 - **Language** (Settings, Bob himself): English, Français or Español for Bob's screens. Bob answers in whatever language you write in.
 - **Text size** and **Easier-to-read font** (Look & feel): 80% to 160%, and a plainer font.
-- **Choose my own word settings** (Engines; off): your own temperature and top P for Qwen brains.
+- **Custom sampling** (Engines; off): your own temperature and top P for Qwen brains.
 
 ---
 
@@ -455,7 +455,7 @@ A **queue** runs jobs overnight, **Show the wobble** shows how much a score move
 
 ## Update or remove Bob
 
-**Update:** Settings, **Check for updates**, then **Update Bob**. Bob downloads the new release, checks it, and swaps it in on restart; if he's busy, he asks when. Your chats, models and settings stay, because they live in his home folder. **Check for updates when Bob starts** is off unless you turn it on.
+**Update:** Settings, **Check for updates**, then **Update Bob**. Bob downloads the new release, checks it, and swaps it in on restart; if he's busy, he asks when. Your chats, models and settings stay, because they live in his home folder. **Check for updates at start** is off unless you turn it on.
 
 **Remove:** Settings, Remove Bob, **Remove Bob…**. The program, his shortcut, Launch on start-up and his scheduled task go. Two boxes, unticked, also remove his chats and settings and the models he downloaded, to the Recycle Bin. On a Mac, drag him to the Bin.
 
@@ -466,7 +466,7 @@ A **queue** runs jobs overnight, **Show the wobble** shows how much a score move
 | What you see | What to try |
 |---|---|
 | A download stopped | Press **Resume** in Now running. It carries on where it stopped. |
-| Pictures or video are very slow | Normal on small cards. Use the **Art** session, keep clips short, turn on **Match picture settings to my graphics card**, and run **Check this replicant matrix**. |
+| Pictures or video are very slow | Normal on small cards. Use the **Art** session, keep clips short, turn on **Fit pictures to my GPU**, and run **Check this replicant matrix**. |
 | Bob says he can't look things up | Click **🌐 Web search** next to Effort. |
 | The memory numbers at the top and on the right differ | The top counts Bob's brain only; the meters on the right count the whole card and RAM. |
 | "Out of graphics memory" | Close games or other graphics-heavy apps, or pick a smaller version in Settings, Brains. |

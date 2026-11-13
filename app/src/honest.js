@@ -215,14 +215,14 @@ export function unbackedNumbers(reply, sources = [], lists = sources, sandbox = 
 // Switches a brain is likely to say are on. Each: the setting's name as Settings shows it, the words a reply would
 // use for it, where it is, and whether it's on. (said-done.js already knows web search, the workshop and the Hands.)
 export const MORE_SWITCHES = [
-  { key: 'quickNotes', name: 'Let Bob take quick notes', words: 'quick notes?|prise de notes|notas rápidas', where: 'Settings, How Bob works' },
-  { key: 'docTools', name: 'Read and search my documents', words: 'document (?:tools|search|reading)|reading (?:your |my )?documents|search(?:ing)? (?:your |my )?documents', where: 'Settings, How Bob works' },
-  { key: 'sandboxCode', name: 'Let Bob work things out in a sandbox', words: '(?:the |a |code |my )?sandbox|bac à sable|caja de arena', where: 'Settings, How Bob works' },
-  { key: 'planFirst', name: 'Show Bob\'s plan before big jobs', words: 'plans? (?:first|before big jobs)|plan mode|show(?:ing)? (?:my |the )?plan', where: 'Settings, How Bob works' },
-  { key: 'resumeJobs', name: 'Pick up where Bob left off after a restart', words: 'pick up where (?:i|bob) left off|resum(?:e|ing) jobs|carry on after a restart', where: 'Settings, How Bob works' },
-  { key: 'memoryRecall', name: 'Remember only what fits', words: 'remember only what fits|memory recall', where: 'Settings, Speed & memory' },
-  { key: 'toolLearning', name: 'Let Bob learn from his tools', words: 'learn(?:ing)? from (?:my|his) tools|tool learning', where: 'Settings, How Bob works' },
-  { key: 'chatFiles', name: 'Save chats as files and bring chats in', words: 'sav(?:e|ing) chats as files|bring(?:ing)? chats in', where: 'Settings, How Bob works' }
+  { key: 'quickNotes', name: 'Quick notes', words: 'quick notes?|prise de notes|notas rápidas', where: 'Settings, How Bob works' },
+  { key: 'docTools', name: 'Read and search documents', words: 'document (?:tools|search|reading)|reading (?:your |my )?documents|search(?:ing)? (?:your |my )?documents', where: 'Settings, How Bob works' },
+  { key: 'sandboxCode', name: 'Code sandbox', words: '(?:the |a |code |my )?sandbox|bac à sable|caja de arena', where: 'Settings, How Bob works' },
+  { key: 'planFirst', name: 'Plan before big jobs', words: 'plans? (?:first|before big jobs)|plan mode|show(?:ing)? (?:my |the )?plan', where: 'Settings, How Bob works' },
+  { key: 'resumeJobs', name: 'Resume jobs after restart', words: 'pick up where (?:i|bob) left off|resum(?:e|ing) jobs|carry on after a restart', where: 'Settings, How Bob works' },
+  { key: 'memoryRecall', name: 'Relevant memories only', words: 'remember only what fits|memory recall', where: 'Settings, Speed & memory' },
+  { key: 'toolLearning', name: 'Learn from tool errors', words: 'learn(?:ing)? from (?:my|his) tools|tool learning', where: 'Settings, How Bob works' },
+  { key: 'chatFiles', name: 'Export and import chats', words: 'sav(?:e|ing) chats as files|bring(?:ing)? chats in', where: 'Settings, How Bob works' }
 ];
 export function moreSwitchesOff(cfg = {}) {
   return MORE_SWITCHES.filter((s) => cfg[s.key] !== true).map(({ key, name, where, words }) => ({ key, name, where, words }));

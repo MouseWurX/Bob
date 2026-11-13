@@ -608,7 +608,7 @@
     drawStatus();
   }
 
-  // "Remember only what fits" on the PC: when the first Bob on your network is reachable, he hands over the memory
+  // "Relevant memories only" on the PC: when the first Bob on your network is reachable, he hands over the memory
   // lines that fit this message (nothing while that setting is off). Two seconds at most; no PC, no extra memory.
   function pcRecall(text, chatId) {
     const b = bobs.find((x) => live[x.base]?.up && live[x.base]?.signedIn);
@@ -678,7 +678,7 @@
     // Nov 13: with "Show my OK cards on my other Bobs" on there, every card of his comes here (marked everywhere), not only the phone's.
     if (ev.type === 'approval' && (String(ev.sessionId || '').startsWith('phone-') || ev.everywhere === true)) return approvalCard(base, ev);
     if (ev.type === 'checkin') return checkinCard(base, ev);
-    if (ev.type === 'digest') return digestCard(base, ev); // A Sunday digest from that Bob (src/digest.js)
+    if (ev.type === 'digest') return digestCard(base, ev); // Sunday digest from that Bob (src/digest.js)
     if (ev.type === 'reminder' && ev.phone) return reminderCard(base, ev); // 🧰 "Show reminders on my phone" (set on the replicant matrix)
     if (ev.type === 'howto-offer' && String(ev.sessionId || '').startsWith('phone-')) return howtoCard(base, ev);
     if (ev.type === 'offer-setup' && String(ev.sessionId || '').startsWith('phone-')) return setupCard(base, ev); // 1.5.91
@@ -700,7 +700,7 @@
     else if (ev.type === 'made') {
       for (const it of ev.items || []) if ((it.kind === 'audio' || it.kind === 'model') && it.url) { const x = { kind: it.kind, url: it.url, base, name: it.name || '' }; current.media.push(x); current.node.append(mediaNode(x)); }
     }
-    else if (ev.type === 'edited') { // Let Bob fix his own messages: the fix goes into this reply's words, or one short line
+    else if (ev.type === 'edited') { // Edit his own messages: the fix goes into this reply's words, or one short line
       const before = String(ev.before || '');
       if (before && current.text.includes(before)) { current.text = current.text.replace(before, String(ev.text || '')); grow(''); }
       else grow(`\n\n*✏️ Fixed an earlier message. It now says:* ${ev.text || ''}`);
@@ -1254,7 +1254,7 @@
   document.querySelectorAll('input[name="mode"]').forEach((r) => r.addEventListener('change', () => { settings.mode = r.value; saveSettings(); drawWho(); }));
   $('user-name').addEventListener('change', (e) => { settings.userName = e.target.value.replace(/[<>{}"`\\]/g, '').trim().slice(0, 40); saveSettings(); });
   $('read-aloud').addEventListener('change', (e) => { settings.readAloud = e.target.checked; saveSettings(); });
-  // Show maths as formulas: KaTeX (vendor/katex/) loads the first time it's switched on; the chat is drawn again.
+  // Render maths: KaTeX (vendor/katex/) loads the first time it's switched on; the chat is drawn again.
   function applyMath() {
     const on = settings.mathView === true;
     if (!on) { BobMath.setOn(false); return Promise.resolve(); }
@@ -1361,7 +1361,7 @@
     b.dispatchEvent(new Event('input'));
   }
 
-  // ---------- 1.5.144 Tools and how-tos Bob made (the other Bob's, through him) ----------
+  // ---------- 1.5.144 Tools and how-tos (the other Bob's, through him) ----------
   // The same list as his Settings panel. Delete asks on the row, then the thing waits 30 days under Recently deleted;
   // Undo and Put back bring it back. Delete for good and Edit are on the other replicant matrix only.
   const ownAsk = { kind: '', id: '' };
@@ -1402,7 +1402,7 @@
     section(`How-tos he kept (${k.howtos.length})`, k.howtos.map((r) => el('div', { class: 'gap' },
       el('div', {}, el('strong', { text: r.name }), el('span', { class: 'dim small', text: ` · ${r.steps.length} steps${r.used ? `, used ${r.used} time${r.used === 1 ? '' : 's'}` : ''}` })),
       r.when && r.when !== r.name ? el('p', { class: 'help-line', text: `For: ${r.when}` }) : null,
-      el('div', { class: 'btns' }, delBtns('howto', r.id, r.name)))), k.howtosOn ? 'No how-tos yet.' : 'No how-tos yet. Learning them is off in his Settings (Let Bob learn how-tos).');
+      el('div', { class: 'btns' }, delBtns('howto', r.id, r.name)))), k.howtosOn ? 'No how-tos yet.' : 'No how-tos yet. Learning them is off in his Settings (Learn how-tos).');
     section(`Recently deleted (${k.deleted.length})`, k.deleted.map((d) => el('div', { class: 'gap' },
       el('div', {}, el('strong', { text: d.name }), el('span', { class: 'dim small', text: ` · ${kindWord[d.kind]} · gone for good ${dayOf(d.goneAt)}` })),
       el('div', { class: 'btns' }, el('button', { text: 'Put back', 'aria-label': `Put the ${kindWord[d.kind]} ${d.name} back`, onclick: () => act('restore', d.kind, d.id, d.name) })))), 'Nothing waiting. Each deleted thing waits here 30 days.');
@@ -2099,7 +2099,7 @@ ${chatOut}
     let items = [];
     try { items = await advApi('/api/made?limit=24'); } catch (e) { body.textContent = ''; body.append(el('p', { class: 'help-line', text: `I couldn't open the chest: ${e.message}` })); return; }
     body.textContent = '';
-    body.append(el('p', { class: 'help-line', text: `What ${b.name} has made, newest first. Tap one to see it here; Save to this phone keeps a copy. To change the folder new things are saved in, open Settings, Where Bob saves things, on your other replicant matrix.` }));
+    body.append(el('p', { class: 'help-line', text: `What ${b.name} has made, newest first. Tap one to see it here; Save to this phone keeps a copy. To change the folder new things are saved in, open Settings, Save folder, on your other replicant matrix.` }));
     if (!items.length) { body.append(el('p', { class: 'dim', text: 'Empty so far. Pictures, clips, songs and files he makes land here.' })); return; }
     const addr = b.address;
     const grid = el('div', { class: 'chest-grid', role: 'list', 'aria-label': 'What Bob made, newest first' });
@@ -2630,7 +2630,7 @@ ${chatOut}
   async function glanceOf(b) {
     const r = await phone('net.get', { address: b.address, path: '/api/bob-net/glance' });
     if (r.status === 200) return { ok: true, g: JSON.parse(r.body) };
-    if (r.status === 409) return { why: `${b.name} isn't sharing how he's doing. On that replicant matrix: Settings, Bob-Net, Let my phone see how I'm doing.` };
+    if (r.status === 409) return { why: `${b.name} isn't sharing how he's doing. On that replicant matrix: Settings, Bob-Net, Share status with my phone.` };
     if (r.status === 404) return { why: `${b.name} is an older Bob. Update him to see this.` };
     if (r.status === 401) return { why: `${b.name} wants the passcode again (Bob-Net).` };
     return { why: shortError(r.body) };

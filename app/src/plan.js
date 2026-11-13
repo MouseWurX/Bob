@@ -1,4 +1,4 @@
-// Plan card (1.5.78): with "Show Bob's plan before big jobs" on (Settings, How Bob works; off unless turned on),
+// Plan card (1.5.78): with "Plan before big jobs" on (Settings, How Bob works; off unless turned on),
 // Bob shows the whole job on one card before a big one starts: every step in plain words, in order, with the OKs
 // those steps need ticked on the same card (together.js), so there is still only one card for the whole job.
 // The person can press Go ahead, ask for a change in their own words, or say Not now. Nothing starts before that.
@@ -20,7 +20,7 @@ const who = (brain) => brain.cfg.userName || 'the user';
 // The line in Bob's instructions. Nothing at all while the setting is off (keeps his instructions light).
 export function planPrompt(cfg) {
   if (!planOn(cfg)) return '';
-  return `\n\n"Show Bob's plan before big jobs" is on. Before a big job, call show_plan first, before any other tool. Big means: three or more steps, anything that changes files, runs commands or uses apps more than once, or anything that takes more than a few minutes (a video clip, a song, a cloud helper, a long coding job). List every step in plain words, in order. For a step that needs an OK, add the exact tool and args you will use, so its OK goes on the same card. Then wait for the answer and do what it says. Don't use it for questions, chat or one quick thing.`;
+  return `\n\n"Plan before big jobs" is on. Before a big job, call show_plan first, before any other tool. Big means: three or more steps, anything that changes files, runs commands or uses apps more than once, or anything that takes more than a few minutes (a video clip, a song, a cloud helper, a long coding job). List every step in plain words, in order. For a step that needs an OK, add the exact tool and args you will use, so its OK goes on the same card. Then wait for the answer and do what it says. Don't use it for questions, chat or one quick thing.`;
 }
 
 // Shows the card and waits. steps: [{ say, tool?, args? }]. Returns the text Bob is told.
@@ -107,7 +107,7 @@ export function showPlanTool(brain) {
   };
 }
 
-const HOLD = (u) => `(Not done yet: "Show Bob's plan before big jobs" is on and this is a big job. Call show_plan first with every step of the job, in order, then do them once ${u} says go ahead.)`;
+const HOLD = (u) => `(Not done yet: "Plan before big jobs" is on and this is a big job. Call show_plan first with every step of the job, in order, then do them once ${u} says go ahead.)`;
 
 // The safety net, before the tool calls in one of Bob's replies run. Returns null (go on and run them) or
 // { hold: text } (don't run them; each call gets this text back).

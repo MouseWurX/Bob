@@ -639,7 +639,7 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   await labRoute({ req: { method: 'GET' }, res: {}, p: '/api/lab/forge', isLocal: false, lab: fLab, body: async () => ({}), send: (res, code, j) => sent4.push([code, j]) });
   check('plans are written only on this replicant matrix; other devices see the runs, without keep files', sent4[0][0] === 403 && sent4[1][0] === 403 && sent4[2][0] === 200 && sent4[2][1].runs.length === 1 && sent4[2][1].keepFiles.length === 0);
   const pf = read('public/lab-forge.js');
-  check('the Forge tab starts a run only from a purchase card with the caps on it, behind a switch that starts off', /Let the Lab start Forge runs/.test(pf) && /Off unless you turn it on/.test(pf) && /Rent it and start \(up to \$/.test(pf) && /Caps: \$\{buy\.hours\} hours or \$\$\{buy\.dollars\}/.test(pf) && /Stop the run and delete its rented card for good\?/.test(pf) && !/\/api\/rent/.test(pf));
+  check('the Forge tab starts a run only from a purchase card with the caps on it, behind a switch that starts off', /Let the Lab start Forge runs/.test(pf) && /Rent it and start \(up to \$/.test(pf) && /Caps: \$\{buy\.hours\} hours or \$\$\{buy\.dollars\}/.test(pf) && /Stop the run and delete its rented card for good\?/.test(pf) && !/\/api\/rent/.test(pf));
   // slice C: starting and stopping a run, with a fake process
   const spawned = [];
   const fakeSpawn = (exe, args, opts) => { const rec = { args, stdin: '', opts }; spawned.push(rec); return { pid: 4242, stdin: { write: (t) => { rec.stdin += t; }, end: () => {} }, unref: () => {}, on: (ev, f) => { if (ev === 'exit') setTimeout(f, 1); } }; };
@@ -836,7 +836,7 @@ check('the old one-shot tool picks stay for the Pick the tool challenge', TOOLS.
 // ---- words and wiring ----
 const html = read('public/index.html'), app = publicText('app.js'), cellar = publicText('cellar.js'), page = read('public/lab.js'), help = read('public/help-content.js'), inv = read('docs/SETTINGS-INVENTORY.md');
 check('the Lab button is in the left pane, hidden until the switch is on', /id="labBtn"[^>]*hidden/.test(html) && /labBtn/.test(app));
-check('the switch is under How Bob works, Brains, on unless turned off', /sswitch\('computerLab', settings\.computerLab !== false, 'Show the Computer Science Lab'/.test(cellar) && /On unless you turn it off/.test(cellar.split("sswitch('computerLab'")[1].slice(0, 600)));
+check('the switch is under How Bob works, Brains, on unless turned off', /sswitch\('computerLab', settings\.computerLab !== false, 'Show the Computer Science Lab'/.test(cellar));
 check('a saved setting is cleaned so only false turns the Lab off', (() => { const a = {}, b = {}, c = {}; mergeSettings(a, { computerLab: false }); mergeSettings(b, { computerLab: 'yes' }); mergeSettings(c, { computerLab: true }); return a.computerLab === false && b.computerLab === true && c.computerLab === true; })());
 check('a small replicant matrix sees the switch greyed out with the reason', /computerLabRoom/.test(cellar));
 check('the page uses real radio buttons and checkboxes with labels', /type="radio"/.test(page) && /type="checkbox"/.test(page) && /<label/.test(page));

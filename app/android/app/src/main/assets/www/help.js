@@ -30,7 +30,7 @@ globalThis.BobHelp = {
     },
     {
       id: 'maths', title: 'Maths as formulas',
-      html: `<p>Settings, Look, <strong>Show maths as formulas</strong> (off to start with). Brains write maths as code, like <code>\\frac{1}{2}</code> for a half. With this on I draw it as real formulas: fractions stacked, powers raised. Prices like $5 stay prices. It's all done on the phone, nothing goes online. A formula I can't read shows as I wrote it, in red. Keyboard shortcuts are only on my computer window, not here.</p>`
+      html: `<p>Settings, Look, <strong>Render maths</strong> (off to start with). Brains write maths as code, like <code>\\frac{1}{2}</code> for a half. With this on I draw it as real formulas: fractions stacked, powers raised. Prices like $5 stay prices. It's all done on the phone, nothing goes online. A formula I can't read shows as I wrote it, in red. Keyboard shortcuts are only on my computer window, not here.</p>`
     },
     {
       id: 'who', title: 'Who answers',
@@ -88,11 +88,11 @@ globalThis.BobHelp = {
     {
       id: 'chest', title: 'Chest',
       html: `<p>Menu, <strong>Chest</strong>: the newest things your other Bob has made (pictures, clips, songs, sounds, documents), as little pictures with their names, newest first. Tap one to see it right here, and <strong>Save to this phone</strong> keeps a copy in your Pictures or Music. Nothing is kept on the phone unless you save it; the chest itself lives on your other replicant matrix, so it needs a Bob on your Bob-Net.</p>
-<p>Where new things are saved is set on your other replicant matrix: Settings, <strong>Where Bob saves things</strong>, then <strong>Change folder…</strong>. Documents and spreadsheets still go wherever you asked for them.</p>`
+<p>Where new things are saved is set on your other replicant matrix: Settings, <strong>Save folder</strong>, then <strong>Change folder…</strong>. Documents and spreadsheets still go wherever you asked for them.</p>`
     },
     {
       id: 'memory', title: 'What Bob remembers',
-      html: `<p>Menu, <strong>What Bob remembers</strong>: lasting facts for the phone brain, one per line, yours to edit. It's used from the next new chat. It stays on this phone; your other replicant matrix's Bob keeps his own memory file. Don't put passwords in it.</p><p>If <strong>Remember only what fits</strong> is on in your other replicant matrix's Settings (Speed &amp; memory), then while I can reach your other replicant matrix, the Bob there hands me the few lines of his memory that fit what you just asked, for that one reply. I keep none of them. With your other replicant matrix out of reach, I make do with this phone's list.</p>`
+      html: `<p>Menu, <strong>What Bob remembers</strong>: lasting facts for the phone brain, one per line, yours to edit. It's used from the next new chat. It stays on this phone; your other replicant matrix's Bob keeps his own memory file. Don't put passwords in it.</p><p>If <strong>Relevant memories only</strong> is on in your other replicant matrix's Settings (Speed &amp; memory), then while I can reach your other replicant matrix, the Bob there hands me the few lines of his memory that fit what you just asked, for that one reply. I keep none of them. With your other replicant matrix out of reach, I make do with this phone's list.</p>`
     },
     {
       id: 'past-chats', title: 'Past chats',
@@ -117,7 +117,7 @@ globalThis.BobHelp = {
     },
     {
       id: 'redo', title: 'The … menu: Try again, Edit, Copy, Delete',
-      html: `<p>Tap the <strong>…</strong> at the top right of a message:</p><ul><li><strong>Try again</strong> (my latest answer): a new answer to your last message.</li><li><strong>Edit</strong>: your last message, sent again; or my words, fixed here without sending anything.</li><li><strong>Copy</strong>: the whole message.</li><li><strong>Delete</strong>: your message goes with my answer to it; mine goes alone. I ask once first, and it can't be undone.</li></ul><p>Try again, Edit and Delete need Settings, <strong>Show Try again, Edit and Delete in the chat</strong> (on to start with), and wait while I'm still on that chat. Try again and Edit keep what was there as an earlier version (tap <strong>1 earlier version</strong>). Read aloud is in the menu too.</p><p>When a Bob on your network answered, Try again and Edit take his old answer back too (his own switch on). Edit and Delete on this phone change only this phone's copy of the chat: he still remembers what he said.</p>`
+      html: `<p>Tap the <strong>…</strong> at the top right of a message:</p><ul><li><strong>Try again</strong> (my latest answer): a new answer to your last message.</li><li><strong>Edit</strong>: your last message, sent again; or my words, fixed here without sending anything.</li><li><strong>Copy</strong>: the whole message.</li><li><strong>Delete</strong>: your message goes with my answer to it; mine goes alone. I ask once first, and it can't be undone.</li></ul><p>Try again, Edit and Delete need Settings, <strong>Try again, Edit and Delete</strong> (on to start with), and wait while I'm still on that chat. Try again and Edit keep what was there as an earlier version (tap <strong>1 earlier version</strong>). Read aloud is in the menu too.</p><p>When a Bob on your network answered, Try again and Edit take his old answer back too (his own switch on). Edit and Delete on this phone change only this phone's copy of the chat: he still remembers what he said.</p>`
     },
     {
       id: 'fade-chat', title: 'Fade old messages and Clear chat',
@@ -125,7 +125,7 @@ globalThis.BobHelp = {
     },
     {
       id: 'saved-prompts', title: 'Saved prompts and the / menu',
-      html: `<p>Settings, <strong>Pull up saved prompts with /</strong> (off to start with). Save the things you ask me often, then type <strong>/</strong> at the start of the message box and tap one. Keep typing after the / to narrow the list down. Its words go in the box; nothing is sent until you tap Send.</p><p>Words in curly brackets, like {file} or {who}, are blanks. The first one is picked out, so just type over it, then tap <strong>Next blank</strong> above the box for the next. {date}, {time} and {day} fill themselves in from the phone's clock.</p><p>Add, change, delete and reorder them under Settings, Saved prompts. <strong>Add Bob's starters</strong> gives you four to try on an empty list. They stay on this phone; your other replicant matrices keep their own list (Settings, How Bob works, 📝 Saved prompts there).</p>`
+      html: `<p>Settings, <strong>Saved prompts with /</strong> (off to start with). Save the things you ask me often, then type <strong>/</strong> at the start of the message box and tap one. Keep typing after the / to narrow the list down. Its words go in the box; nothing is sent until you tap Send.</p><p>Words in curly brackets, like {file} or {who}, are blanks. The first one is picked out, so just type over it, then tap <strong>Next blank</strong> above the box for the next. {date}, {time} and {day} fill themselves in from the phone's clock.</p><p>Add, change, delete and reorder them under Settings, Saved prompts. <strong>Add Bob's starters</strong> gives you four to try on an empty list. They stay on this phone; your other replicant matrices keep their own list (Settings, How Bob works, 📝 Saved prompts there).</p>`
     },
     {
       id: 'lock', title: 'Passcode lock',
@@ -195,11 +195,11 @@ globalThis.BobHelp = {
     },
     {
       id: 'howtos', title: 'How-tos',
-      html: `<p>When a Bob on your Bob-Net finishes a bigger job well, he may offer to keep the steps as a how-to, and the card shows up here too. Tap <strong>Save how-to</strong> (you can rename it first) or <strong>Not now</strong>. Next time you ask for something like it, he follows those steps. He only offers when <strong>Let Bob learn how-tos</strong> is on in his Settings. Changing a how-to is done on your other replicant matrix, in Settings, 🧰 Tools and how-tos Bob made; here you can look at them and delete them (see Tools and how-tos Bob made).</p>`
+      html: `<p>When a Bob on your Bob-Net finishes a bigger job well, he may offer to keep the steps as a how-to, and the card shows up here too. Tap <strong>Save how-to</strong> (you can rename it first) or <strong>Not now</strong>. Next time you ask for something like it, he follows those steps. He only offers when <strong>Learn how-tos</strong> is on in his Settings. Changing a how-to is done on your other replicant matrix, in Settings, 🧰 Tools and how-tos; here you can look at them and delete them (see Tools and how-tos).</p>`
     },
     {
-      id: 'own-kit', title: 'Tools and how-tos Bob made',
-      html: `<p>Settings, <strong>Tools and how-tos Bob made</strong> shows what a Bob on your Bob-Net made for himself: the <strong>tools</strong> he wrote (small programs, only with Make his own tools on in his Settings) and the <strong>how-tos</strong> he kept (the steps of jobs that went well). Each tool says what it does, what it can change and whether it uses the internet.</p>
+      id: 'own-kit', title: 'Tools and how-tos',
+      html: `<p>Settings, <strong>Tools and how-tos</strong> shows what a Bob on your Bob-Net made for himself: the <strong>tools</strong> he wrote (small programs, only with Make his own tools on in his Settings) and the <strong>how-tos</strong> he kept (the steps of jobs that went well). Each tool says what it does, what it can change and whether it uses the internet.</p>
 <p><strong>Delete</strong> asks once more on the same row (Delete or Keep it). Then he stops using the thing at once and it waits 30 days under <strong>Recently deleted</strong>, where <strong>Put back</strong> brings it back exactly as it was. Right after a delete there's an <strong>Undo</strong> too. Delete for good, reading a tool's code and editing a how-to are done on your other replicant matrix itself, in the same panel. The list shows when a Bob is reachable; nothing is kept on the phone.</p>`
     },
     {
@@ -255,7 +255,7 @@ globalThis.BobHelp = {
     {
       id: 'widget', title: 'The home-screen widget',
       html: `<p>Long-press your home screen, <strong>Widgets</strong>, <strong>Bob</strong>, and drag it out. It has an <strong>Ask Bob</strong> box (opens me with the keyboard up), a <strong>🎙</strong> (opens me listening) and one line for your next reminder.</p>
-<p>The reminder line is filled only with Settings, <strong>Show my next reminder on the widget</strong> on (off to start with), and only while I'm open: I ask your other Bob every 10 minutes, and he has to have <strong>Let my phone see how I'm doing</strong> on (his Settings, Bob-Net). The widget itself never goes online. Without the switch it just says "Tap to ask Bob".</p>`
+<p>The reminder line is filled only with Settings, <strong>Show my next reminder on the widget</strong> on (off to start with), and only while I'm open: I ask your other Bob every 10 minutes, and he has to have <strong>Share status with my phone</strong> on (his Settings, Bob-Net). The widget itself never goes online. Without the switch it just says "Tap to ask Bob".</p>`
     },
     {
       id: 'carry', title: 'Carry on on another Bob',
@@ -265,7 +265,7 @@ globalThis.BobHelp = {
     {
       id: 'glance', title: 'Your Bobs',
       html: `<p>Menu, <strong>Your Bobs</strong>. One line per Bob on your list: up and ready, busy, or gaming; his brain; the graphics card's heat (cool, warm or hot, in °C) and memory; the jobs running or waiting; and your next reminder. It checks again every 15 seconds while the page is open, and not at all when it's closed.</p>
-<p>Each Bob only answers with Settings, Bob-Net, <strong>Let my phone see how I'm doing</strong> on there (off to start with). The heat needs an NVIDIA card; other cards show the rest.</p>`
+<p>Each Bob only answers with Settings, Bob-Net, <strong>Share status with my phone</strong> on there (off to start with). The heat needs an NVIDIA card; other cards show the rest.</p>`
     },
     {
       id: 'low-data', title: 'Low-data mode',
@@ -326,7 +326,7 @@ globalThis.BobHelp = {
       id: 'faq', title: 'Questions and fixes',
       html: `<table>
 <tr><th>What happens</th><th>What to do</th></tr>
-<tr><td>No Try again, Edit or Delete in the … menu</td><td>Settings, Show Try again, Edit and Delete in the chat: turn it back on. They also wait while I'm still answering in that chat.</td></tr>
+<tr><td>No Try again, Edit or Delete in the … menu</td><td>Settings, Try again, Edit and Delete: turn it back on. They also wait while I'm still answering in that chat.</td></tr>
 <tr><td>Can I get a deleted message back?</td><td>No. Delete is for good, so I ask once first. Try again and Edit keep the old version instead.</td></tr>
 <tr><td>The chest is empty or says no Bob is reachable</td><td>The chest is your other Bob's Made by Bob list, so it needs him on Tailscale. Once he's reachable, open the menu and tap Chest again.</td></tr>
 <tr><td>I forgot my passcode</td><td>If Lock my chats and memory was on, those chats and my memory are gone for good: the passcode is the only key and there is no reset. To start fresh, clear my storage (Android Settings, Apps, Bob, Storage, Clear storage); that removes the lock, the chats and your phone settings. Your other replicant matrix's chats aren't touched.</td></tr>
@@ -336,7 +336,7 @@ globalThis.BobHelp = {
 <tr><td>Your other replicant matrix says the phone didn't answer in time</td><td>The first borrowed reply is the slow one: the phone reads my whole instructions and tool list once. After that it only reads what's new. If it keeps happening, check Bob-Net, Lend my brain for a reason (warm, low battery, in use), and tap Open battery settings there.</td></tr>
 <tr><td>Can your other replicant matrix borrow the phone while I game?</td><td>Yes: that's what Lend my brain is for. Turn it on here, then on your other replicant matrix: Settings, Bob-Net, Borrow a brain. Keep the phone on its charger with the screen off.</td></tr>
 <tr><td>Can my Bobs introduce each other?</td><td>Yes, if you ask them to. Turn on Pass my Bob-Net along under Bob-Net here, and the same switch on the Bobs on your other replicant matrices (Settings, Bob-Net, What they share). A Bob paired with two of them tells each the other's name and address, and those two pair with no card. The phone only answers; Lend my brain has to be on here for the introduction to get in.</td></tr>
-<tr><td>Can I save prompts I use a lot?</td><td>Yes. Turn on Pull up saved prompts with / in Settings, add them under Saved prompts, then type / in the message box and tap one.</td></tr>
+<tr><td>Can I save prompts I use a lot?</td><td>Yes. Turn on Saved prompts with / in Settings, add them under Saved prompts, then type / in the message box and tap one.</td></tr>
 <tr><td>It asks for the passcode again</td><td>The passcode was changed on your other replicant matrix. Type the new one under Bob-Net.</td></tr>
 <tr><td>The phone brain is slow or stops</td><td>Close big apps (games, the camera), let the phone cool down, or try Test speed. Gemma 4 E2B is the quicker one.</td></tr>
 <tr><td>The download stopped</td><td>Tap Resume. It carries on where it stopped. If it says the checksum didn't match, the file was damaged on the way and was deleted: download it again on Wi-Fi.</td></tr>
@@ -352,8 +352,8 @@ globalThis.BobHelp = {
 <tr><td>Can I say "Hey Bob" on the phone?</td><td>Yes, while my screen is showing: Settings, Voice, Listen for "Hey Bob" while Bob is open. It's off to start with because it uses battery.</td></tr>
 <tr><td>Hey Bob doesn't hear me</td><td>Check the microphone is allowed (Android's Settings, Apps, Bob, Permissions), that my screen is showing, and that the 🎙 window isn't open. Some phones need Google's speech recognition installed.</td></tr>
 <tr><td>Bob isn't in the Share menu</td><td>Settings, Sharing and the widget, Take shares from other apps. Some apps only show the apps you used last: look under More.</td></tr>
-<tr><td>The widget says "Tap to ask Bob" and no reminder</td><td>Turn on Show my next reminder on the widget here, and Let my phone see how I'm doing on your other Bob (Settings, Bob-Net). It updates while I'm open.</td></tr>
-<tr><td>Your Bobs says a Bob isn't sharing</td><td>On that replicant matrix: Settings, Bob-Net, Let my phone see how I'm doing.</td></tr>
+<tr><td>The widget says "Tap to ask Bob" and no reminder</td><td>Turn on Show my next reminder on the widget here, and Share status with my phone on your other Bob (Settings, Bob-Net). It updates while I'm open.</td></tr>
+<tr><td>Your Bobs says a Bob isn't sharing</td><td>On that replicant matrix: Settings, Bob-Net, Share status with my phone.</td></tr>
 <tr><td>Can I move a chat from the phone to my computer?</td><td>Yes: Menu, Carry on on another Bob. That Bob needs Take chats from my other Bobs on (his Settings, Bob-Net).</td></tr>
 <tr><td>Pictures don't load on mobile data</td><td>That's Low-data mode: tap the button to load one, or set it to Off in Settings, Data.</td></tr>
 <tr><td>Can I use the phone away from home?</td><td>Yes, as long as your other replicant matrix is on and Tailscale is on at both ends. Without that, the phone brain can still chat.</td></tr>

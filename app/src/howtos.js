@@ -1,5 +1,5 @@
 // 1.5.79 How-tos: know-how Bob keeps from jobs that worked. Off by default (Settings, How Bob works:
-// "Let Bob learn how-tos"). After a job with several steps goes well, Bob offers one card: save these steps as
+// "Learn how-tos"). After a job with several steps goes well, Bob offers one card: save these steps as
 // a how-to? Nothing is saved without the click. Next time a request matches a saved how-to (by words, or by
 // meaning when the Memory model is running anyway), that one how-to goes into his instructions for that turn
 // and the chat says so. A how-to is plain text, never code: it can't run anything or approve anything, and
@@ -214,7 +214,7 @@ export function howtoTools(brain) {
       async run() {
         const list = brain.howtos.list();
         if (!list.length) return 'No how-tos saved yet. After a job with a few steps goes well, I offer a card to save it.';
-        return `${list.length} how-to${list.length === 1 ? '' : 's'} (edit or delete them in Settings, 🧰 Tools and how-tos Bob made):\n${list.map((r) => `- ${r.name}: ${r.steps.length} steps${r.used ? `, used ${r.used} time${r.used === 1 ? '' : 's'}` : ''}`).join('\n')}`;
+        return `${list.length} how-to${list.length === 1 ? '' : 's'} (edit or delete them in Settings, 🧰 Tools and how-tos):\n${list.map((r) => `- ${r.name}: ${r.steps.length} steps${r.used ? `, used ${r.used} time${r.used === 1 ? '' : 's'}` : ''}`).join('\n')}`;
       },
       summary: () => 'Looking at his how-tos'
     }

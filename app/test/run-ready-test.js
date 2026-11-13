@@ -79,7 +79,7 @@ const models = (here = []) => catalog.models.map((m) => ({ ...m, status: { state
 
 // ---------- Settings in the way ----------
 {
-  check('web search off: offered with its setting name and the privacy line', switchFor({}, 'web')?.name === 'Let Bob search the web' && switchFor({}, 'web').where === 'Settings, How Bob works' && /Only the search words and page addresses leave your replicant matrix \(your computer\)\./.test(switchFor({}, 'web').privacy) && switchFor({ webSearch: true }, 'web') === null);
+  check('web search off: offered with its setting name and the privacy line', switchFor({}, 'web')?.name === 'Web search' && switchFor({}, 'web').where === 'Settings, How Bob works' && /Only the search words and page addresses leave your replicant matrix \(your computer\)\./.test(switchFor({}, 'web').privacy) && switchFor({ webSearch: true }, 'web') === null);
   check('every Hand has its own short line for the card', Object.keys(HAND_CAN).length === 8 && Object.values(HAND_CAN).every((t) => /^[a-z]/.test(t) && !/\.$/.test(t)) && switchFor({ hands: {} }, 'hand:files').what === HAND_CAN.files);
   const h = switchFor({ hands: { enabled: false } }, 'hand:files');
   check('a Hand that is off: the card turns on Hands and that Hand', h && /Let Bob use Hands, Files/.test(h.name) && h.hands.enabled && h.hands.files.on && h.folders);
@@ -143,7 +143,7 @@ const models = (here = []) => catalog.models.map((m) => ({ ...m, status: { state
   check('an old card says so', (await brain.answerSetup('nope', true)).ok === false);
   const web = [];
   const wt = await brain.offerSetup('web', { emit: (e) => web.push(e) });
-  check('web search off: a Switch it on card', web[0]?.kind === 'switch' && web[0].name === 'Let Bob search the web' && /Only the search words/.test(web[0].privacy) && /Switch it on/.test(wt));
+  check('web search off: a Switch it on card', web[0]?.kind === 'switch' && web[0].name === 'Web search' && /Only the search words/.test(web[0].privacy) && /Switch it on/.test(wt));
   await brain.answerSetup(web[0].id, true);
   check('...which switches only that setting on', cfg.webSearch === true);
   check('offer_setup is listed only while something is missing or off', brain.tools.offer_setup && typeof brain.offerNeeded() === 'boolean');
