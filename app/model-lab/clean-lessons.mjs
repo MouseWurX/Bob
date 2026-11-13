@@ -7,7 +7,8 @@
 // otherwise lessons.jsonl alone (lessons-full.jsonl and other copies beside it are left out); --files "a*.jsonl,b.jsonl" says
 // otherwise. Each file is written back under its own name, so a held-out file stays its own file.
 // --sets "a,b" picks named sets out of --from. Copies of the SAME lesson (same idea, e.g. a mix's --repeat) are kept: only
-// different lessons with the same first prompt count as repeats. Held-out lessons (by id, "holdout": true, or a file named
+// different lessons with the same first prompt count as repeats (a mix's copies named idea-r0, idea-r1 ... or with copy_of
+// count as the same lesson). Held-out lessons (by id, "holdout": true, or a file named
 // *heldout* / *holdout*) are never dropped, so the test stays the same; problems in them are only reported.
 // --distill "" cleans other models' sets as sets of their own (for a distillation set); --skip leaves folders out.
 //
@@ -47,6 +48,7 @@ const pick = (dir) => {
   if (parts.length) return parts;
   return all.includes('lessons.jsonl') ? ['lessons.jsonl'] : all.filter((x) => /^lessons.*\.jsonl$/.test(x)).sort();
 };
+const baseIdea = (l) => String(l.copy_of ?? l.idea).replace(/-r\d+$/, ''); // a mix's copies: idea-r0, idea-r1, ... or copy_of
 const heldFile = (x) => /held-?out|hold-?out/i.test(x);
 const isHeld = (l, file) => heldFile(file) || l.holdout === true || isHoldout(l.idea);
 const norm = (s) => String(s || '').toLowerCase().replace(/\W+/g, ' ').trim().slice(0, 200);
@@ -72,7 +74,7 @@ for (const f of folders) {
   const files = pick(dir);
   const lessons = files.flatMap((file) => readJsonl(path.join(dir, file)).map((l) => ({ l, file })));
   sets[f] = { tools, lessons, files };
-  lessons.forEach(({ l, file }, i) => { const k = norm(firstUser(l)) && `${l.think ? 1 : 0}|${norm(firstUser(l))}`; if (k) byPrompt.set(k, [...(byPrompt.get(k) || []), { f, i, idea: String(l.idea), held: isHeld(l, file) }]); });
+  lessons.forEach(({ l, file }, i) => { const k = norm(firstUser(l)) && `${l.think ? 1 : 0}|${norm(firstUser(l))}`; if (k) byPrompt.set(k, [...(byPrompt.get(k) || []), { f, i, idea: baseIdea(l), held: isHeld(l, file) }]); });
 }
 const dupDrop = new Set();
 for (const copies of byPrompt.values()) {
@@ -99,7 +101,7 @@ for (const [f, { tools, lessons, files }] of Object.entries(sets)) {
     const w = wrong.get(`${f}/${l.idea}`);
     if (w) { c.wrong++; rejected.push({ ...l, why: w }); info.moved_wrong.push({ ...id, why: w }); return; }
     const as = (l.messages || []).filter((m) => m.role === 'assistant'), last = String(as.at(-1)?.content || '').split('</think>').at(-1);
-    if (REFUSE.test(last)) {
+    if (REFUSE.test(last.trim().slice(0, 300))) { // a refusal leads; a scene that says "I can't" later is not one
       const why = [], names = [...new Set(as.flatMap((m) => [...offered(m.set)]))].join(' ');
       if (FICTION.test(String(firstUser(l) || ''))) why.push('refusal in a fiction ask');
       if (!as.some((m) => m.tool_calls?.length) && CAN.some(([say, tl]) => say.test(last) && tl.test(names))) why.push("says it can't, with a matching tool offered");

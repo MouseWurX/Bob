@@ -192,9 +192,12 @@ check('the dry run covers targets', /--targets/.test(st) && /the mix follows the
   put('mix/lessons-full.jsonl', rows([facts, { idea: 'zz', messages: [ask('old'), { role: 'assistant', content: 'old' }] }]));
   put('mix/new-folded.jsonl', rows([{ idea: 'n1', job: 'chat', messages: [ask('fold'), { role: 'assistant', content: 'ok' }] }]));
   put('mix/new-folded-heldout.jsonl', rows([{ idea: 'h1', job: 'chat', messages: [ask('hey'), { role: 'assistant', content: 'Hello.' }] }]));
-  const mixGo = (o2, extra = []) => spawnSync(process.execPath, [path.join(app, 'model-lab', 'clean-lessons.mjs'), '--from', path.join(cl, 'mix'), '--out', path.join(cl, o2), ...extra], { encoding: 'utf8' });
-  const m1 = mixGo('mix-v4');
   const lines = (p) => fs.readFileSync(path.join(cl, p), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l).idea);
+  const mixGo = (o2, extra = []) => spawnSync(process.execPath, [path.join(app, 'model-lab', 'clean-lessons.mjs'), '--from', path.join(cl, 'mix'), '--out', path.join(cl, o2), ...extra], { encoding: 'utf8' });
+  put('mix2/lessons.jsonl', rows([0, 1, 2].map((r) => ({ ...facts, idea: `fx-r${r}` }))));
+  const m0 = spawnSync(process.execPath, [path.join(app, 'model-lab', 'clean-lessons.mjs'), '--from', path.join(cl, 'mix2'), '--out', path.join(cl, 'mix2-v4')], { encoding: 'utf8' });
+  check('clean-lessons keeps a mix\'s copies named idea-r0, idea-r1 ...', m0.status === 0 && lines('mix2-v4/mix2/lessons.jsonl').length === 3, m0.stderr);
+  const m1 = mixGo('mix-v4');
   check('clean-lessons keeps a mix\'s repeated copies of the same lesson', m1.status === 0 && lines('mix-v4/mix/lessons.jsonl').filter((i) => i === 'fx').length === 3, m1.stderr);
   check('clean-lessons reads lessons.jsonl and leaves a full copy beside it out', !fs.existsSync(path.join(cl, 'mix-v4/mix/lessons-full.jsonl')));
   const m2 = mixGo('mix-v4b', ['--files', 'new-folded*.jsonl']);
