@@ -146,16 +146,22 @@ if (onlyJobs && !JOBS2.length) { console.error(`No such job: ${o.jobs}`); proces
 const share = JOBS2.reduce((a, j) => a + j[2], 0);
 for (const [job, what, w] of JOBS2) {
   const want = Math.ceil((target * 0.92 * w) / share);
-  let tries = 0;
-  while (ideas.filter((i) => i.job === job).length < want && tries++ < (onlyJobs ? 120 : 40)) {
+  // 13 Nov: with --parallel, idea batches go out several at once (they used one slot of a 32-slot server, one at a time);
+  // a round sends only as many 25-idea batches as the job still needs
+  let batch = 0; const cap = onlyJobs ? 120 : 40;
+  while (ideas.filter((i) => i.job === job).length < want && batch < cap) {
     await pauseGate(L.out); if (Date.now() > until) await stop(0);
-    const style = STYLES[tries % STYLES.length];
-    const angle = job === 'coding' ? ` Focus this batch on ${CODE_ANGLES[tries % CODE_ANGLES.length]}. Each message is 2 to 4 sentences and names the language and what they are building, with enough detail (or pasted code) to answer properly.` : job === 'science' ? ` Focus this batch on ${SCI_ANGLES[tries % SCI_ANGLES.length]}.` : job === 'languages' ? ` This batch all in ${['French (Canada)', 'Spanish', 'German', 'Ukrainian', 'Tagalog', 'Punjabi', 'French', 'Portuguese'][tries % 8]}.` : job === 'formats' ? ` Each message must state the exact output shape it wants.`  : job === 'twins' ? ` Write them as pairs, one right after the other: first the message where a tool is needed (with the concrete thing pasted, named or attached), then the plain-knowledge question on the same topic. Vary the topics: files, the web, security, office documents, reminders, code, apps.` : job === 'codefix' ? ` Each message includes the broken code or the exact error output or a failing test, and says what it should do.`: '';
-    try {
-      const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `Write 25 different messages a person might type to their desktop AI assistant about: ${what}.${angle} Make them ${style}. Each one different in topic and wording. Make them real and specific, the way a person with an actual task types: concrete file names, numbers, places, times or pasted snippets where they fit, not generic examples. Mix easy and tricky ones, including a few where the right move is less obvious. Use neutral or no names.${toolboxNote}${job === 'clarify' || job === 'default' ? '' : ' Each message gives every detail needed (names, paths, times, amounts), so the assistant can act at once without asking.'} Reply with only a JSON array of strings.` }], max: 2500, temperature: 1.0 });
-      const arr = JSON.parse((msg.content || '').match(/\[[\s\S]*\]/)?.[0] || '[]');
-      for (const t of arr) add(job, t);
-    } catch (e) { console.log(`ideas ${job}: ${e.message.slice(0, 80)}`); }
+    const k = Math.max(1, Math.min(parallel, cap - batch, Math.ceil((want - ideas.filter((i) => i.job === job).length) / 25)));
+    await Promise.all(Array.from({ length: k }, async () => {
+      const tries = ++batch;
+      const style = STYLES[tries % STYLES.length];
+      const angle = job === 'coding' ? ` Focus this batch on ${CODE_ANGLES[tries % CODE_ANGLES.length]}. Each message is 2 to 4 sentences and names the language and what they are building, with enough detail (or pasted code) to answer properly.` : job === 'science' ? ` Focus this batch on ${SCI_ANGLES[tries % SCI_ANGLES.length]}.` : job === 'languages' ? ` This batch all in ${['French (Canada)', 'Spanish', 'German', 'Ukrainian', 'Tagalog', 'Punjabi', 'French', 'Portuguese'][tries % 8]}.` : job === 'formats' ? ` Each message must state the exact output shape it wants.`  : job === 'twins' ? ` Write them as pairs, one right after the other: first the message where a tool is needed (with the concrete thing pasted, named or attached), then the plain-knowledge question on the same topic. Vary the topics: files, the web, security, office documents, reminders, code, apps.` : job === 'codefix' ? ` Each message includes the broken code or the exact error output or a failing test, and says what it should do.`: '';
+      try {
+        const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `Write 25 different messages a person might type to their desktop AI assistant about: ${what}.${angle} Make them ${style}. Each one different in topic and wording. Make them real and specific, the way a person with an actual task types: concrete file names, numbers, places, times or pasted snippets where they fit, not generic examples. Mix easy and tricky ones, including a few where the right move is less obvious. Use neutral or no names.${toolboxNote}${job === 'clarify' || job === 'default' ? '' : ' Each message gives every detail needed (names, paths, times, amounts), so the assistant can act at once without asking.'} Reply with only a JSON array of strings.` }], max: 2500, temperature: 1.0 });
+        const arr = JSON.parse((msg.content || '').match(/\[[\s\S]*\]/)?.[0] || '[]');
+        for (const t of arr) add(job, t);
+      } catch (e) { console.log(`ideas ${job}: ${e.message.slice(0, 80)}`); }
+    }));
   }
   console.log(`ideas ${job}: ${ideas.filter((i) => i.job === job).length}`);
 }
