@@ -42,11 +42,13 @@ for (const [k, v] of Object.entries(pkg.scripts || {})) if (String(v).length > 2
 if (!/## Code signing policy/.test(fs.readFileSync(path.join(repo, 'README.md'), 'utf8'))) problems.push('README is missing "## Code signing policy"');
 // CHANGELOG.md is made from docs/releases (node installer/make-changelog.js) and must be current.
 {
-  const { buildChangelog } = await import('./make-changelog.js');
+  const { buildChangelog, buildOlder } = await import('./make-changelog.js');
   const file = path.join(repo, 'CHANGELOG.md');
   const have = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n') : '';
   if (!fs.existsSync(path.join(root, 'docs', 'releases', `v${pkg.version}.md`))) problems.push(`docs/releases/v${pkg.version}.md is missing`);
   if (have !== buildChangelog()) problems.push('CHANGELOG.md is out of date: run node installer/make-changelog.js');
+  for (const [f, text] of Object.entries(buildOlder())) { const at = path.join(root, f); if (!fs.existsSync(at) || fs.readFileSync(at, 'utf8').replace(/\r\n/g, '\n') !== text) problems.push(`${f} is out of date: run node installer/make-changelog.js`); }
+  if (Buffer.byteLength(have) > 150000) problems.push(`CHANGELOG.md is ${Math.round(Buffer.byteLength(have) / 1000)} KB: GitHub can't show a page that big (keep RECENT smaller)`);
 }
 // 1.5.126: the README's download row names the files of the latest release (Bob-<version>-win-x64.zip and the rest), so
 // every link must carry pkg.version; a stale row sends people to a file that isn't in the newest release.
