@@ -298,7 +298,7 @@ export function buildTools(cfg) {
     // Tool sets (tool-sets.js), logic arguments: add puts one item on the board without rewriting it (rewriting the
     // whole board was where small brains lost items).
     // Nov 13 (120B interview): "read it first" made brains read and stop. add and done need no read.
-    schema: fn('notice_board', "Read or change {{USER}}'s notice board (their to-do list). add = new items; done = tick one off (no read needed); write = the whole board.", {
+    schema: fn('notice_board', "{{USER}}'s notice board (to-do list). add = new items; done = tick one off; write = the whole board.", {
       action: str('read, add, done or write', { enum: ['read', 'add', 'done', 'write'] }),
       content: str('add: items, one per line. done: the item. write: the whole board, in Markdown.'),
       drop: { type: 'boolean', description: 'write: true to take items off.' }
@@ -347,12 +347,24 @@ export function buildTools(cfg) {
       if (action !== 'write') return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : BOARD_EMPTY;
       if (!content) throw new Error('No board content given. To put one item on, use action add.');
       // 1.5.222 PC check: a small brain wrote a fresh board without reading it and wiped the items and headings on it.
-      // write never drops an open item unless drop is true; it says which, and points to add.
+      // write never drops an open item unless drop is true. 1.5.223: refusing made Bob stop and ask, so instead the
+      // open items it left out go back on (under Side quests) and the board is saved, with a note saying so.
+      let kept = [];
       if (drop !== true && fs.existsSync(file)) {
         const keep = new Set(String(content).replace(/\r\n/g, '\n').split('\n').map((l) => itemOf(l).toLowerCase()).filter(Boolean));
-        const lost = readText(file).replace(/\r\n/g, '\n').split('\n').filter((l) => /^\s*[-*]\s*\[ \]/.test(l)).map(itemOf).filter((i) => i && !keep.has(i.toLowerCase()));
-        if (lost.length) throw new Error(`Not saved: that would take ${lost.length} item${lost.length === 1 ? '' : 's'} off the board (${lost.slice(0, 5).join('; ')}${lost.length > 5 ? '; …' : ''}). To put items on, use action add (one per line). To take items off on purpose, write again with drop true.`);
+        kept = [...new Set(readText(file).replace(/\r\n/g, '\n').split('\n').filter((l) => /^\s*[-*]\s*\[ \]/.test(l)).map(itemOf).filter((i) => i && !keep.has(i.toLowerCase())))];
+        if (kept.length) {
+          const lines = String(content).replace(/\r\n/g, '\n').split('\n');
+          const at = lines.findIndex((l) => /^#+\s*side quests/i.test(l));
+          if (at < 0) { while (lines.length && !lines[lines.length - 1].trim()) lines.pop(); lines.push('', '## Side quests'); }
+          let end = at < 0 ? lines.length : at + 1;
+          if (at >= 0) while (end < lines.length && !/^#+\s/.test(lines[end])) end++;
+          while (end > 0 && !lines[end - 1].trim() && end - 1 > at) end--;
+          lines.splice(end, 0, ...kept.map((i) => `- [ ] ${i}`));
+          content = lines.join('\n').replace(/\n*$/, '\n');
+        }
       }
+      const keptNote = kept.length ? ` Kept ${kept.length} open item${kept.length === 1 ? '' : 's'} your board left out (${kept.slice(0, 5).join('; ')}${kept.length > 5 ? '; …' : ''}). To tick one off, use action done; to take items off for good, write again with drop true.` : '';
       return oneWriter(file, () => { // item 231: one writer at a time
       if (fs.existsSync(file)) {
         const old = fs.readFileSync(file, 'utf8');
@@ -363,7 +375,7 @@ export function buildTools(cfg) {
         }
       }
       saveFile(file, content);
-      return `Notice board saved: ${String(content).split(/\r?\n/).filter((l) => /^\s*-\s*\[ \]/.test(l)).length} open items.`;
+      return `Notice board saved: ${String(content).split(/\r?\n/).filter((l) => /^\s*-\s*\[ \]/.test(l)).length} open items.${keptNote}`;
       });
     },
     summary: ({ action }) => `notice board: ${action}`

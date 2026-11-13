@@ -82,8 +82,11 @@ check('add to an empty board starts one', /Added/.test(await nb.run({ action: 'a
   const r = await nb.run({ action: 'add', content: '- [ ] eggs\n2. bread\n\n* [ ] first\n' });
   const b = fs.readFileSync(cfg.noticeBoard, 'utf8');
   check('add takes several items, one per line, and skips ones already there', /Added to the notice board: eggs; bread\. Already there: first/.test(r) && b.includes('- [ ] eggs') && b.includes('- [ ] bread'), r);
-  let refused = ''; try { await nb.run({ action: 'write', content: '# Notice board\n\n- [ ] call the bank\n' }); } catch (e) { refused = e.message; }
-  check('write that would take open items off is refused, names them and points to add', /Not saved: that would take 3 items off the board \(first; eggs; bread\)/.test(refused) && /action add/.test(refused) && fs.readFileSync(cfg.noticeBoard, 'utf8').includes('- [ ] eggs'), refused);
+  // 1.5.223 (builder): a refusal made Bob stop and ask, so write keeps the open items it left out and saves.
+  const kept = await nb.run({ action: 'write', content: '# Notice board\n\n- [ ] call the bank\n' });
+  const kb = fs.readFileSync(cfg.noticeBoard, 'utf8');
+  check('write that leaves open items out saves and keeps them, and says so', /Notice board saved: 4 open items\. Kept 3 open items your board left out \(first; eggs; bread\)/.test(kept) && /action done/.test(kept) && /drop true/.test(kept) && ['call the bank', 'first', 'eggs', 'bread'].every((i) => kb.includes(`- [ ] ${i}`)) && /## Side quests\n- \[ \] first/.test(kb), kept + '\n' + kb);
+  await nb.run({ action: 'write', content: '# Notice board\n\n## Side quests\n- [ ] first\n- [ ] eggs\n- [ ] bread\n', drop: true });
   check('write keeping every open item (ticking one off) is fine', /Notice board saved/.test(await nb.run({ action: 'write', content: '# Notice board\n\n## Side quests\n- [x] first\n- [ ] eggs\n- [ ] bread\n' })));
   check('write with drop true takes items off on purpose', /Notice board saved/.test(await nb.run({ action: 'write', content: '# Notice board\n\n- [ ] eggs\n', drop: true })) && !fs.readFileSync(cfg.noticeBoard, 'utf8').includes('bread'));
 }
@@ -130,6 +133,18 @@ const { afterTurn } = await import('../src/verify.js');
   check('the end-of-turn check asks for the missing step', /asked for 2 things/.test(v?.nudge || ''), JSON.stringify(v));
   const q = afterTurn({ stepsAsked: two, ledger: { actions: [{ name: 'read_file', args: {}, ok: true, text: 'x' }] }, cfg: { userName: 'Sam' } }, 'Which board section should they go in?');
   check('a question back is left alone', !/asked for 2 things/.test(q?.nudge || ''));
+}
+// 1.5.223 (builder): "read notes.txt" answered from an earlier refusal, with no read_file this turn.
+{
+  const { fileAsked } = await import('../src/verify.js');
+  check('a file named in the ask is found', fileAsked('read notes.txt') === 'notes.txt' && fileAsked("what's in plan.docx?") === 'plan.docx' && fileAsked('lis notes.txt') === 'notes.txt');
+  check('no file, or a file only mentioned, is no file ask', fileAsked('read the news') === '' && fileAsked('I saved notes.txt yesterday') === '');
+  const v = afterTurn({ turnText: 'read notes.txt', ledger: { actions: [] }, cfg: { userName: 'Sam' } }, 'It says to buy eggs and call the bank.');
+  check('a file asked for but never read gets one more go, with the read_file call', /read_file now with path "notes\.txt"/.test(v?.nudge || ''), JSON.stringify(v));
+  const ran = afterTurn({ turnText: 'read notes.txt', ledger: { actions: [{ name: 'read_file', args: { path: 'notes.txt' }, ok: true, text: 'buy eggs' }] }, cfg: { userName: 'Sam' } }, 'It says to buy eggs.');
+  check('a file that was read this turn: no nudge', !/read_file now/.test(ran?.nudge || ''));
+  const tried = afterTurn({ turnText: 'read notes.txt', ledger: { actions: [{ name: 'read_file', args: { path: 'notes.txt' }, ok: false, text: 'Error: no such file' }] }, cfg: { userName: 'Sam' } }, 'There is no notes.txt.');
+  check('a read that failed on that file counts as tried', !/read_file now/.test(tried?.nudge || ''));
 }
 
 // 6. Tools Bob makes follow the same rules: an action with choices, and forgiving inputs.
