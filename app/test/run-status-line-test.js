@@ -101,6 +101,9 @@ function clock() {
   check('saved settings read it as on unless false', /out\.statusJokes = out\.statusJokes !== false/.test(read('src/config.js')));
   check('Help, FAQ and glossary', /id: 'status-line'/.test(help) && /id: 'faq-status-line'/.test(help) && /<dt>Status line<\/dt>/.test(help));
   check('the settings inventory lists it', /Funny status line/.test(read('docs/SETTINGS-INVENTORY.md')));
+  const looks = read('public/looks.css');
+  check('Lamplight on a phone: his line goes under his name at the top (217 PC check)', /head\.querySelector\('\.lamp-who'\)\.append\(statusEl\)/.test(app) && /\.side-top \.who'\)\?\.append\(statusEl\)/.test(app) && /\.lamp-head \.status \{[^}]*white-space: pre-line/.test(looks));
+  check('...and the brain chip keeps its dot and switches, its words only for screen readers', /body\.look-lamplight #brainPillText \{ position: absolute;[^}]*clip-path: inset\(50%\)/.test(looks));
   check('nothing new in the start prompt', !/status-line|statusJokes|Vacancy/.test(read('src/prompts.js')));
 }
 
