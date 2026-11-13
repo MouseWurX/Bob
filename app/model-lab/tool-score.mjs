@@ -8,12 +8,16 @@
 //      [--llama <folder>] [--ctx 16384] [--experts 8] [--quick] [--no-think] [--extra "--n-cpu-moe 20"]
 //      [--split train --sample 2000] (harvest training data from the other 95%; not a benchmark)
 //      [--condition "keep75-n8"] [--evidence] (the surgery data rule: what each saved answer was made under; see answerTags)
+//      [--tools live|recorded] (Nov 13: live = the current Bob's tool definitions; recorded = those saved with the lessons) [--bob <folder>] [--allow-old-bob]
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { opts, locate, startServer, chat, stamp, readJsonl, appendJsonl, moeShape, AGENT, answerTags, tagsNote } from './common.mjs';
 import { parseArgs, sameArgs, judgeTurn } from './tool-judge.mjs';
 import { toolSetFor, inSet } from '../src/tool-sets.js';
+import { bobSource, releasesBehind, MAX_BEHIND } from './bob-source.mjs';
+import { loadBob } from './bob-kit.mjs';
+import { fileURLToPath } from 'node:url';
 
 const o = opts({ ctx: 16384 });
 if (o.url) process.env.LAB_URL = String(o.url);   // build 18: score a brain served elsewhere (the Forge's card); --models "label=served"
@@ -25,6 +29,22 @@ const HOLDOUT = 0.05;
 const isHoldout = (id) => parseInt(crypto.createHash('md5').update(String(id)).digest('hex').slice(0, 8), 16) / 0xFFFFFFFF < HOLDOUT;
 
 const sets = JSON.parse(fs.readFileSync(path.join(lessonsDir, 'toolsets.json'), 'utf8'));
+// Nov 13: each lesson replays with the tool list saved when it was written, which may be an older Bob's wording (the v5
+// lessons were written on 1.5.108). --tools live swaps in the current Bob's tool definitions, by name (--bob <folder>);
+// --tools recorded (the default) keeps them, and says which Bob they came from.
+const toolsMode = String(o.tools || 'recorded');
+const labSrc = bobSource(path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
+const recordedSrc = [...new Set(Object.values(sets).map((x) => (x.bob_src?.version ? `${x.bob_src.version}${x.bob_src.commit ? ` (${x.bob_src.commit})` : ''}` : 'unknown (written before Nov 13)')))];
+console.log(`Tool lists saved with these lessons come from Bob ${recordedSrc.join(', ')}; this Lab is Bob ${labSrc.version || '?'}.`);
+const oldSets = Object.values(sets).filter((x) => !x.bob_src?.version || releasesBehind(labSrc.version, x.bob_src.version) > MAX_BEHIND).length;
+if (toolsMode !== 'live' && oldSets) console.warn(`WARNING: ${oldSets} of ${Object.keys(sets).length} saved tool lists are from an older or unknown Bob, so this scores that wording, not today's. Use --tools live to score with the current tools.`);
+let liveKit = null, liveTools = null;
+if (toolsMode === 'live') {
+  liveKit = await loadBob(L.bob, { allowOld: Boolean(o['allow-old-bob']) });
+  liveTools = new Map(liveKit.allTools().map((t) => [t.function.name, t]));
+  console.log(`Scoring with Bob ${liveKit.bobSrc.version}${liveKit.bobSrc.commit ? ` (${liveKit.bobSrc.commit})` : ''}'s live tool definitions.`);
+}
+const liveSwap = (tools) => (liveTools && tools ? tools.map((t) => liveTools.get(t.function?.name) || t) : tools);
 // 12 Nov: --split train harvests training data instead of scoring: the same replay over the other 95% (never the
 // held-out 5%, so the benchmark stays clean), --sample N spread evenly. The kept answers (right ones and right-vs-wrong
 // pairs, via make-datasets) can be trained on; the score from a train run is not the benchmark.
@@ -58,7 +78,7 @@ function history(lesson, k) {
   if (system === null) return null;
   return { messages: [{ role: 'system', content: system }, ...out], tools };
 }
-// Tool sets (src/tool-sets.js), the per-family proof: --tool-set off scores with Bob's own wording, --tool-set auto
+// Tool sets (src/tool-sets.js), the per-family proof: --tool-set off scores with Bob's own wording, --tool-set auto (proven families only)
 // (or left out) gives each brain its family's wording, found from its label and file name. Run both and compare.
 const toolSetArg = String(o['tool-set'] || 'auto');
 const setOf = (m) => (toolSetArg === 'off' ? null : toolSetFor({}, toolSetArg === 'auto' ? `${m.name} ${path.basename(m.file)}` : '', toolSetArg === 'auto' ? {} : { family: toolSetArg }));
@@ -84,7 +104,7 @@ async function score(m) {
         // 12 Nov (the owner's rule): every benchmark keeps its data. Each answer is saved with the brain's odds (its top 5 words
         // at every step) unless --no-odds; the file sits next to the report and can be published or used as training data.
         let logprobs = null;
-        try { ({ msg, timings, logprobs } = await chat(srv.url, { messages: h.messages, tools: set && h.tools ? h.tools.map((x) => inSet(x, set, { user: 'the user' })) : h.tools, think, max: think ? 6000 : 1500, temperature: 0, ...(o['no-odds'] ? {} : { logprobs: true, top_logprobs: 5 }) })); }
+        try { ({ msg, timings, logprobs } = await chat(srv.url, { messages: h.messages, tools: set && h.tools ? liveSwap(h.tools).map((x) => inSet(x, set, { user: 'the user' })) : liveSwap(h.tools), think, max: think ? 6000 : 1500, temperature: 0, ...(o['no-odds'] ? {} : { logprobs: true, top_logprobs: 5 }) })); }
         catch (e) { r.errors++; r.misses.push(`${l.idea}/${k}: error ${e.message.slice(0, 80)}`); continue; }
         if (timings?.predicted_per_second) r.tps.push(timings.predicted_per_second);
         const got = (msg.tool_calls || []).map((c) => ({ name: c.function?.name, args: parseArgs(c.function?.arguments) }));
@@ -118,7 +138,7 @@ for (const m of models) {
 }
 const when = stamp();
 const pct = (a, b) => `${a}/${b} (${Math.round((100 * a) / Math.max(b, 1))}%)`;
-fs.writeFileSync(path.join(L.out, `tool-score-${when}.json`), JSON.stringify({ lessons: lessons.length, experts: o.experts || 'default', think: o['no-think'] ? 'off' : 'as recorded', results }, null, 2));
+fs.writeFileSync(path.join(L.out, `tool-score-${when}.json`), JSON.stringify({ lessons: lessons.length, experts: o.experts || 'default', think: o['no-think'] ? 'off' : 'as recorded', tools: toolsMode, bob_src: liveKit ? liveKit.bobSrc : recordedSrc, lab_src: labSrc, results }, null, 2));
 const md = [`# Tool score, ${when}`, '', `${lessons.length} held-out Bob conversations (never trained on), replayed turn by turn with full history. Right tool = same tool names as the full Qwen3.6 chose; right arguments = same values too; no tool = the turn was a plain reply and the model also made no call. Thinking ${o['no-think'] ? 'off' : 'as in each lesson'}${o.experts ? `, ${o.experts} experts per word` : ''}.`, '',
   '| Model | Right tool | Right arguments | Correctly no tool | Overall | Speed | Load |', '|---|---|---|---|---|---|---|',
   ...results.map((r) => `| ${r.name} | ${pct(r.rightTool, r.toolTurns)} | ${pct(r.rightArgs, r.toolTurns)} | ${pct(r.rightNoTool, r.noToolTurns)} | ${pct(r.total, r.totalN)} | ${r.tpsAvg.toFixed(1)} tok/s | ${r.loadSec.toFixed(0)} s |`), '',

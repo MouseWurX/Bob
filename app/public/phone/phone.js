@@ -1233,6 +1233,7 @@
 
   function drawSettings() {
     drawOwnKit();
+    drawSpares();
     globalThis.BobLock?.drawSettings();
     document.querySelectorAll('input[name="mode"]').forEach((r) => { r.checked = r.value === settings.mode; });
     $('user-name').value = settings.userName;
@@ -1366,6 +1367,56 @@
   // Undo and Put back bring it back. Delete for good and Edit are on the other replicant matrix only.
   const ownAsk = { kind: '', id: '' };
   let ownLast = null;
+  // 🔑 Spare keys this phone keeps for your other Bobs (desktop Bob's lock-reset.js). A spare opens nothing by itself:
+  // it only works with the recovery key that Bob keeps, and only while that Bob's lock screen is asking.
+  // "Let it reset" is only ever pressed here, in this phone's own Settings.
+  let spares = store.get('spares', []); // [{ id, bob, address, key, at }]
+  const spareName = () => (settings.userName ? `${settings.userName}'s phone` : 'Phone').slice(0, 40);
+  async function spareCall(address, path, data) {
+    const r = data === undefined ? await phone('net.get', { address, path }) : await phone('net.post', { address, path, body: JSON.stringify(data) });
+    let out = {}; try { out = JSON.parse(r.body || '{}'); } catch { /* not JSON */ }
+    if (r.status >= 400) throw new Error(out.error || `answered ${r.status}`);
+    return out;
+  }
+  async function drawSpares() {
+    const box = $('spare-list'), from = $('spare-from'), msg = $('spare-msg');
+    if (!box || !from) return;
+    from.textContent = '';
+    for (const b of bobs) from.append(el('option', { value: b.address, text: b.name }));
+    if (!bobs.length) from.append(el('option', { value: '', text: 'No other Bobs yet' }));
+    box.textContent = '';
+    if (!spares.length) { box.append(el('p', { class: 'dim', text: 'None kept yet.' })); return; }
+    for (const k of spares) {
+      let asking = false;
+      try { asking = (await spareCall(k.address, '/api/lock/spare/asking')).asking === true; } catch { /* not reachable now */ }
+      box.append(el('div', { class: 'gap' },
+        el('div', {}, el('strong', { text: k.bob }), el('span', { class: 'dim small', text: ` · since ${new Date(k.at).toLocaleDateString([], { month: 'short', day: 'numeric' })}${asking ? ' · asking to reset now' : ''}` })),
+        el('div', { class: 'btns' },
+          el('button', { class: asking ? 'main' : '', text: 'Let it reset', 'aria-label': `Let ${k.bob} reset its passcode`, onclick: async () => {
+            msg.textContent = '';
+            try { await spareCall(k.address, '/api/lock/spare/give', { key: k.key, name: spareName() }); msg.textContent = `Done. ${k.bob} can make a new passcode on its lock screen now.`; }
+            catch (e) { msg.textContent = `${k.bob}: ${e.message}`; }
+          } }),
+          el('button', { text: 'Forget', 'aria-label': `Forget the spare key for ${k.bob}`, onclick: () => { spares = spares.filter((x) => x.id !== k.id); store.set('spares', spares); drawSpares(); } }))));
+    }
+  }
+  function wireSpares() {
+    if (!$('spare-pickup')) return;
+    $('spare-pickup').addEventListener('click', async () => {
+      const b = bobs.find((x) => x.address === $('spare-from').value), msg = $('spare-msg');
+      if (!b) { msg.textContent = 'Add your other Bob on the Bob-Net page first.'; return; }
+      try {
+        const j = await spareCall(b.address, '/api/lock/spare/pickup', { name: spareName() });
+        if (!j.key) throw new Error('no key came back');
+        spares = [...spares.filter((x) => x.address !== b.address), { id: Math.random().toString(36).slice(2, 10), bob: b.name, address: b.address, key: String(j.key), at: new Date().toISOString() }].slice(0, 12);
+        store.set('spares', spares);
+        msg.textContent = `Keeping a spare key for ${b.name}.`;
+      } catch (e) { msg.textContent = `${b.name}: ${e.message}`; }
+      drawSpares();
+    });
+  }
+  wireSpares();
+
   async function drawOwnKit() {
     const box = $('own-kit'), msg = $('own-kit-msg');
     if (!box) return;

@@ -219,6 +219,7 @@ export class DiscordBridge {
     this.status = 'off';
     this.jobs = new Map(); // job id -> { channelId, messageId, text, startedAt, files, said }
     this.lastAsk = new Map(); // person id -> time of their last job
+    this.unlisted = new Map(); // channel id -> name: server channels that sent a message while not on the list (Settings offers Add)
     this.turns = new Map(); // your DM chat: turn id -> reply so far
     this.pair = null; // { code, until } while your account isn't paired
     this.pairLocked = false;
@@ -346,6 +347,24 @@ export class DiscordBridge {
     throw new Error('Discord is busy.');
   }
 
+  // A message that starts with an @mention of this bot: the rest is the ask ('' if nothing follows). null if it isn't one.
+  mentionAsk(text) {
+    if (!this.botId) return null;
+    const m = String(text || '').trim().match(/^<@!?(\d+)>/);
+    if (!m || m[1] !== this.botId) return null;
+    return String(text).trim().slice(m[0].length).replace(/^[\s,:;.!?-]+/, '').trim();
+  }
+
+  // A server message from a channel that isn't on the list: ignored, but said once per channel, so a new bot never looks dead.
+  async notListed(channelId, guildId) {
+    if (!channelId || this.unlisted.has(channelId) || this.unlisted.size >= 20) return;
+    this.unlisted.set(channelId, '');
+    let name = '';
+    try { const c = await this.rest('GET', `/channels/${channelId}`); name = String(c?.name || '').replace(/[\u0000-\u001f<>@]/g, '').slice(0, 60); } catch {}
+    this.unlisted.set(channelId, name);
+    this.log(`ignored a message in ${name ? `#${name}` : `channel ${channelId}`}: not on my channel list (Settings, Online services, Bob on Discord can add it)`);
+  }
+
   // One message from Discord. Only listed channels, only people on the list (if there is one), never bots.
   async handle(m) {
     const s = this.settings();
@@ -353,10 +372,10 @@ export class DiscordBridge {
     if (!m.guild_id) return this.direct(m, s); // a DM: only your paired account, private
     if (!s.enabled) return;
     const channelId = String(m.channel_id || '');
-    if (!s.channels.includes(channelId)) return;
+    if (!s.channels.includes(channelId)) return this.notListed(channelId, m.guild_id);
     const who = String(m.author?.id || '');
     if (s.people.length && !s.people.includes(who)) return;
-    const prompt = matchWake(s.wake, m.content, s.caseSensitive);
+    const prompt = this.mentionAsk(m.content) ?? matchWake(s.wake, m.content, s.caseSensitive); // "@Bob hi" works like the wake phrase
     if (prompt === null) return;
     const reply = (text) => this.post(channelId, m.id, text);
     if (!prompt) return reply(`Yes? Put what you'd like after "${s.wake.replace('*', '').trim()}".`);
@@ -642,7 +661,7 @@ export class DiscordBridge {
 export function discordView(bridge) {
   const s = bridge.settings();
   const pair = s.dmEnabled && !s.ownerId && bridge.pair && bridge.pair.until > bridge.now() ? bridge.pair : null;
-  return { ...s, paired: Boolean(s.ownerId), pairLocked: bridge.pairLocked, pairCode: pair?.code || '', tokenEnv: TOKEN_ENV, tokenFound: Boolean(bridge.token()), status: bridge.status, botName: bridge.botName, jobTypes: JOB_TYPES.map(({ id, label }) => ({ id, label })) };
+  return { ...s, paired: Boolean(s.ownerId), pairLocked: bridge.pairLocked, pairCode: pair?.code || '', tokenEnv: TOKEN_ENV, tokenFound: Boolean(bridge.token()), status: bridge.status, botName: bridge.botName, unlisted: [...bridge.unlisted].filter(([id]) => !s.channels.includes(id)).map(([id, name]) => ({ id, name })), jobTypes: JOB_TYPES.map(({ id, label }) => ({ id, label })) };
 }
 
 export function startDiscord(brain, opts) {

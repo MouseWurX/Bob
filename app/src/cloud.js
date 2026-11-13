@@ -13,7 +13,9 @@ export function keyEnv() {
   return new Proxy(process.env, {
     get(target, k) {
       if (typeof k !== 'string') return undefined;
+      if (target.BOB_KEYS === 'store') return (/^[A-Z0-9_]{3,64}$/.test(k) && savedKey(k)) || undefined; // a test Bob (BOB_KEYS=store): only keys saved in its own locked store, never its environment or the registry. Not a setting.
       if (target[k]) return target[k];
+      if (target.BOB_KEYS === 'env') return undefined; // a test Bob (BOB_KEYS=env): only the keys it was started with, never the registry or the locked store. Not a setting.
       if (!/^[A-Z0-9_]{3,64}$/.test(k)) return undefined;
       if (process.platform !== 'win32') return savedKey(k) || undefined; // 🔐 a key saved in Settings (secret-box.js)
       const hit = regCache.get(k);

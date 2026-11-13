@@ -71,7 +71,9 @@ export const askingParts = {
   async chatSafe(opts, { emit, who = 'bob' } = {}) {
     // 1.5.53: while a "Bob's thinking" window is open, his thinking streams to it, a few times a second (never saved).
     const mind = emit && this.mindWatchers?.() ? thinkStream(emit, who, opts.model) : null;
-    if (mind) opts = { ...opts, onThink: mind.push };
+    // The tool record (tool-record.js): the end of this reply's thinking, word for word, for the calls it makes. Kept on
+    // the turn only (the record keeps the last 800 characters of it with each call).
+    { const t = turnNow(); if (t?.ctx) { const tail = (t.ctx.lastThought = { text: '' }); const push = mind?.push; opts = { ...opts, onThink: (x) => { tail.text = (tail.text + x).slice(-2000); push?.(x); } }; } else if (mind) opts = { ...opts, onThink: mind.push }; }
     // Reliability 221: a brain that loaded with a smaller chat memory (memory was short) is fitted to what it really has.
     if (!opts.beside && opts.ctx) { const real = this.engine?.realCtx?.(opts.model, opts.ctx, opts.cpu); if (real && real !== opts.ctx) opts = { ...opts, ctx: real }; }
     const per = this.engine?.charsPerToken?.(opts.model) || 3; // item 3: the brain's own figure once known
@@ -179,6 +181,7 @@ export const askingParts = {
     if (hand) card.hand = true;
     if (Array.isArray(need.together)) card.together = need.together.map(({ key, ...it }) => it);
     if (need.planCard) { card.planCard = need.planCard; card.allowAll = false; }
+    if (need.sortCard) { card.sortCard = need.sortCard; card.allowAll = false; } // Nov 13: the email sort plan (email-manage.js)
     if (need.newTool) { card.newTool = need.newTool; if (need.button) card.button = String(need.button).slice(0, 30); card.allowAll = false; } // 1.5.48 (selftools.js)
     emit(card);
     if (hand) this.handApprovals.add(id);
@@ -192,6 +195,12 @@ export const askingParts = {
       signal.addEventListener('abort', () => done(false), { once: true });
     });
     noteWait(signal, Date.now() - waitFrom);
+    if (need.sortCard) { // the person's final batches: [{ id, batch }] and each batch's action, checked by email-manage.js
+      const said = note.trim();
+      emit({ type: 'approval-result', id, allowed: Boolean(allowed) && !said });
+      this.setState(prev.state === 'waiting' ? 'thinking' : prev.state, '', prev.model);
+      return { allow: Boolean(allowed) && !said, items: Array.isArray(steps) ? steps : null, ...(said ? { note: said } : {}) };
+    }
     if (Array.isArray(need.together) || need.planCard) {
       const ns = new Set((need.together || []).map((i) => i.n));
       const items = Array.isArray(steps) && ns.size ? steps.filter((p) => ns.has(Number(p?.n))).map((p) => ({ n: Number(p.n), rows: Array.isArray(p.rows) ? p.rows.map(String) : undefined })) : null;
@@ -243,7 +252,7 @@ export const askingParts = {
   answerApproval(id, allow, rows, items, note) {
     const done = this.approvals.get(id);
     if (!done) return false;
-    done(allow === 'all' || allow === 'today' ? allow : Boolean(allow), Array.isArray(rows) ? rows.slice(0, 1000).map(String) : null, Array.isArray(items) ? items.slice(0, 100) : null, typeof note === 'string' ? note : '');
+    done(allow === 'all' || allow === 'today' ? allow : Boolean(allow), Array.isArray(rows) ? rows.slice(0, 1000).map(String) : null, Array.isArray(items) ? items.slice(0, 200) : null, typeof note === 'string' ? note : '');
     return true;
   },
   // Item 203: an error nothing caught (server.js). It used to be only logged, and a job could sit on Working for good.

@@ -18,6 +18,7 @@ import { phoneAccessHtml, mountPhoneAccess } from './phone-access.js';
 import { lockSettingsHtml, mountLockSettings, lockSummary } from './lock-settings.js'; // 🔒 Passcode lock
 import { secretsHtml, mountSecrets } from './secrets.js';
 import { moreToolsHtml, mountMoreTools } from './more-tools.js';
+import { emailAccountHtml, mountEmailAccount } from './email-account.js'; // 📧 Email account (Online services)
 import { telegramHtml, mountTelegram } from './telegram.js';
 import { discordHtml, mountDiscord } from './discord.js';
 import { appsDoorHtml, mountAppsDoor } from './apps-door.js';
@@ -424,6 +425,7 @@ export function createCellar({ popOut = null } = {}) {
     ['engines', '⚙ Engines', 'engine engines brain engine lab engine gear update updates go back remove check all ollama llama.cpp downloads newer build tested build fit to free graphics memory speculative decoding draft flags threads batch tell me what engine updates change plain words', () => enginesHtml()],
     ['bobnet', '🌐 Bob-Net', 'bob-net bobnet phone android tailscale address passcode firewall let my phone in let my other replicant matrices in other bobs share brains lend borrow take jobs send jobs carry on take chats move chat phone see how doing your bobs widget card heat', () => bobNetHtml()],
     ['online', '☁ Online services', 'online internet cloud helpers api key anthropic openai gemini openrouter telegram discord bot token pairing wake phrase rented brains rent hire runpod vast lambda together spending cap limit machine', () => onlineHtml()],
+    ['email', '📧 Email account', 'email mail account imap smtp app password gmail outlook hotmail icloud yahoo reading sending server reset code', () => emailAccountHtml()],
     ['apps', '🔌 Other apps', 'other apps comfyui workflows port unreal blender mcp openai compatible api vs code continue opencode command line terminal cli key claude claude code desktop connect hands key', () => otherAppsHtml()],
     ['hands', '✋ Hands', 'files run commands schedules apps permission quarantine reviewer', () => handsSettingsHtml() + quarantineSettingsHtml()],
     ['housekeeping', '🧹 Housekeeping', 'tidy old chats pictures logs', () => housekeepingHtml()],
@@ -595,6 +597,7 @@ export function createCellar({ popOut = null } = {}) {
     mountQuarantineSettings(dlg.querySelector('.q-box'));
     mountSecrets(dlg.querySelector('.secrets-box')); // This replicant matrix: 🔐 Locked secrets
     mountMoreTools(dlg.querySelector('.more-tools-box')); // How Bob works: 🧰 More tools
+    mountEmailAccount(dlg.querySelector('.email-account-box')); // Online services: 📧 Email account
     mountPhoneAccess(dlg.querySelector('.phone-box')); // Bob-Net, This Bob: Bob-Net access
     mountLockSettings(dlg.querySelector('.lock-box'), { onChange: (v) => { if (settings) settings.passcodeLock = v; const n = dlg.querySelector('[data-panel="ev-lock"] .spanel-note'); if (n) n.textContent = lockSummary(v); } }); // 🔒 Passcode lock
     mountTelegram(dlg.querySelector('.telegram-box')); // Online services: Bob on Telegram
@@ -1378,6 +1381,7 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.holdback !== undefined) { const r = await api('/api/settings', { apuHoldbackGB: Number(el.value) }); settings.apuHoldbackGB = r.apuHoldbackGB; el.value = r.apuHoldbackGB; const lab = dlg.querySelector('[data-holdbacklabel]'); if (lab) lab.textContent = `${r.apuHoldbackGB} GB`; flash(el.closest('.srow'), 'Saved.'); return; }
       if (el.dataset.set === 'quickNotes') { const r = await api('/api/settings', { quickNotes: el.checked }); settings.quickNotes = r.quickNotes; el.checked = r.quickNotes; draw(); flash(dlg.querySelector('[data-set="quickNotes"]') || dlg, r.quickNotes ? 'On. Say "note:" and Bob writes it down.' : 'Off. Your notes file stays where it is.'); return; }
       if (el.dataset.set === 'smartNotes') { const r = await api('/api/settings', { smartNotes: el.checked }); settings.smartNotes = r.smartNotes; el.checked = r.smartNotes; flash(el, r.smartNotes ? 'On. Bob notes what\'s worth keeping and says 📝 Noted.' : 'Off. Bob only notes what you ask him to.'); return; }
+      if (el.dataset.set === 'toolRecord') { const r = await api('/api/settings', { toolRecord: el.checked }); settings.toolRecord = r.toolRecord; el.checked = r.toolRecord; return; }
       if (el.dataset.set === 'toolSets') { const r = await api('/api/settings', { toolSets: el.checked }); settings.toolSets = r.toolSets; el.checked = r.toolSets; return; }
       if (el.dataset.set === 'toolHelp') { const r = await api('/api/settings', { toolHelp: el.checked }); settings.toolHelp = r.toolHelp; el.checked = r.toolHelp; return; }
       if (el.dataset.set === 'toolLearning') { const r = await api('/api/settings', { toolLearning: el.checked }); settings.toolLearning = r.toolLearning; el.checked = r.toolLearning; draw(); flash(dlg.querySelector('[data-set="toolLearning"]') || dlg, r.toolLearning ? 'On. Bob learns from what works and what fails.' : 'Off. Bob keeps what he learned but stops using it.'); return; }

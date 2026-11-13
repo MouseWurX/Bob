@@ -1,6 +1,7 @@
 // Routes for "Fade old messages", "Clear chat" (src/fade-chat.js) and 🫥 Amnesia mode (src/amnesia.js).
 //   GET  /api/fade?session=          the fade setting, how many messages of this chat are out of view, cleared at
-//   POST /api/chat/clear { sessionId, forGood }   empty the chat on screen; forGood deletes it (this computer only)
+//   POST /api/chat/clear { sessionId, forGood }   empty the chat on screen; forGood deletes it (this computer only).
+//                                    sessionId may also come as id or session; none means the main chat.
 //   GET  /api/amnesia                on or off, since when, and what turning it off would forget
 //   POST /api/amnesia { on }         turn it on or off (this computer only)
 // Reading works from a paired phone too, like the chat itself.
@@ -25,9 +26,11 @@ export function fadeRoute(ctx) {
   if (p === '/api/chat/clear' && POST) {
     return (async () => {
       const b = await body(req).catch(() => ({}));
-      const id = safeId(b.sessionId || '');
+      // The chat to clear, by its id (as the chat window sends it: sessionId). id and session are taken too; nothing named is the main chat.
+      const id = safeId(b.sessionId || b.id || b.session || 'main');
       const forGood = b.forGood === true;
       if (forGood && !local()) return true;
+      if (forGood && !(b.sessionId || b.id || b.session)) { send(res, 400, { error: 'Delete it for good needs the chat named: send { "sessionId": "main", "forGood": true }.' }); return true; } // never delete a chat by default
       if (isGuestId(id)) { send(res, 400, { error: 'A guest chat isn\'t saved. Start a new one instead.' }); return true; }
       const r = clearChat(cfg, brain, id, { forGood });
       if (r.error) { send(res, 409, r); return true; }

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { overlayOn, chatIdFor, isNetChat, netChatTarget, hueFor, agentLook, cubeMood, cubeReader, overlayView, failNetChat, MOODS, NET_PREFIX } from '../src/net-overlay.js';
 import { GuestJobs, guestNote, guestTools, CHAT_NOTE, sendAway, pickChatBob } from '../src/share-jobs.js';
 import { cleanAbilities, helloFor } from '../src/share-brains.js';
-import { preview, isNetChat as isNetChatPage, hslHex, BUBBLE_HINT, ICON_LIGHT, MOOD_WORDS } from '../public/net-overlay.js';
+import { preview, isNetChat as isNetChatPage, hslHex, BUBBLE_HINT, ICON_LIGHT, MOOD_WORDS, drawVoxels, GHOST } from '../public/net-overlay.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -50,7 +50,17 @@ check('every mood is one the icon knows', ['none', 'loading', 'thinking', 'reply
   const off = await overlayView({ netOverlay: false }, { bobs: [laptop, go], seen: (b) => seen.get(b.address) });
   check('off: nothing shows', off.on === false && !off.bobs.length && !off.agents.length);
   const v = await overlayView({ netOverlay: true }, { bobs: [laptop, go], seen: (b) => seen.get(b.address), mood: async () => 'replying', agents: { on: true, agents: [{ id: 'a1', name: 'Claude Code', kind: 'claude', state: 'done', log: ['— You ask: fix it', 'Fixed the test.', '! warning'] }] } });
-  check('only Bobs on Bob-Net right now', v.bobs.length === 1 && v.bobs[0].name === 'Laptop' && v.bobs[0].chat === id && v.bobs[0].mood === 'replying' && v.bobs[0].canChat === true);
+  // Nov 13 (the owner: a test Bob showed as connected but with no cube head): a Bob with no brain keeps a grey cube.
+{
+  const fake = () => { const c = { fills: [], beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() { c.fills.push(c.fillStyle); }, stroke() {}, save() {}, restore() {}, arc() {} }; return c; };
+  const none = fake(); drawVoxels(none, { hue: 40, light: () => -1 });
+  const ghost = fake(); drawVoxels(ghost, { hue: 40, light: () => -1, ghost: true });
+  check('a cube with no light and no ghost draws nothing, as before', none.fills.length === 0);
+  check('the ghost cube draws all 64 blocks, faint and nearly grey', ghost.fills.length === 64 * 3 && ghost.fills.every((f) => f.startsWith(`hsla(40,${GHOST.sat}%`)));
+  const pub = fs.readFileSync(new URL('../public/net-overlay.js', import.meta.url), 'utf8');
+  check('no brain over there: the icon draws the grey cube, not just fog', /if \(mood === 'none'\) \{[^\n]*ghost: true/.test(pub) && !/if \(mood === 'none'\) return;/.test(pub));
+}
+check('only Bobs on Bob-Net right now', v.bobs.length === 1 && v.bobs[0].name === 'Laptop' && v.bobs[0].chat === id && v.bobs[0].mood === 'replying' && v.bobs[0].canChat === true);
   check('an agent you added, with its last line', v.agents.length === 1 && v.agents[0].last === 'Fixed the test.' && v.agents[0].look.sign === 'spark');
   const noAgents = await overlayView({ netOverlay: true }, { bobs: [], agents: { on: false, agents: [{ id: 'x' }] } });
   check('coding agents off: no agent icons', noAgents.agents.length === 0);

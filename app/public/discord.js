@@ -33,11 +33,12 @@ export async function mountDiscord(box) {
         <button type="button" data-dc-token>Save token</button></div>
       <div class="row"><label for="dc-wake"><strong>Wake phrase</strong></label>
         <input id="dc-wake" type="text" maxlength="100" value="${esc(v.wake)}" data-dc-wake>
-        <span class="muted">The <code>*</code> is what he reads as the job: <code>hey bob*</code> makes "hey bob draw a cat" into "draw a cat".</span></div>
+        <span class="muted">The <code>*</code> is what he reads as the job: <code>hey bob*</code> makes "hey bob draw a cat" into "draw a cat". An @mention of the bot at the start works too.</span></div>
       ${sw('caseSensitive', 'Case-sensitive', 'Off: "Hey Bob", "HEY BOB" and "hey bob" all work. On: only the phrase as you typed it.', v.caseSensitive)}
       <div class="row"><label for="dc-channels"><strong>Channels Bob answers in</strong></label>
         <textarea id="dc-channels" rows="2" placeholder="Channel IDs, one per line" data-dc-list="channels">${esc(v.channels.join('\n'))}</textarea>
-        <span class="muted">${v.channels.length ? '' : 'None yet, so he answers nowhere. '}Right-click a channel in Discord, Copy Channel ID (turn on Developer Mode in Discord\'s Advanced settings first).</span></div>
+        ${(v.unlisted || []).length ? `<span class="muted" role="status">Bob heard messages in channels that aren't on this list: ${v.unlisted.map((c) => `<button type="button" data-dc-add="${esc(c.id)}">Add ${c.name ? `#${esc(c.name)}` : esc(c.id)}</button>`).join(' ')}</span><br>` : ''}
+        <span class="muted">${v.channels.length ? '' : 'Bob answers in no server channels until you add one. '}Right-click a channel in Discord, Copy Channel ID (turn on Developer Mode in Discord\'s Advanced settings first).</span></div>
       <div class="row"><label for="dc-people"><strong>Only these people</strong></label>
         <textarea id="dc-people" rows="2" placeholder="User IDs, one per line (empty: everyone in those channels)" data-dc-list="people">${esc(v.people.join('\n'))}</textarea></div>
       <fieldset class="row"><legend><strong>Jobs Bob takes on Discord</strong></legend>
@@ -71,6 +72,8 @@ export async function mountDiscord(box) {
     if ('dcWake' in (t.dataset || {})) return change({ wake: t.value });
   });
   box.addEventListener('click', (e) => {
+    const add = e.target.closest('[data-dc-add]');
+    if (add) return change({ channels: [...v.channels, add.dataset.dcAdd].join('\n') });
     if (e.target.closest('[data-dc-forget]')) return change({ forget: true });
     if (e.target.closest('[data-dc-code]')) return change({ newCode: true });
     if (e.target.closest('[data-dc-owner]')) { const owner = box.querySelector('[data-dc-owner-in]')?.value.trim(); if (owner) change({ owner }); return; }

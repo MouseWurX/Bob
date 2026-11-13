@@ -6,6 +6,7 @@ import { WATCH_TOOLS } from './meanwhile.js';
 import { receiptBefore, cachedLook, keepLook, receiptAfter, noteNo } from './job-helps.js';
 import { inTurn as inChangeTurn, afterChanges } from './turn-changes.js';
 import { recordCall } from './tool-learn.js';
+import { keepRecord } from './tool-record.js';
 import { SAVE_AS, saveAs } from './save-as.js';
 import path from 'node:path';
 import { isGuestId, GUEST_BLOCKED, GUEST_NO_MEMORY } from './guest-chat.js';
@@ -16,6 +17,7 @@ import { STRUCK_OUT, halfDone, badAddress, ToolStrikes, STRIKES, STRIKE_NOTE, ca
 import { applyHouseStyle, usedLine } from '../public/house-style.js';
 import { KEEPS_FOR_LATER, outsideNeed, isOutside, markOutside } from './outside-text.js';
 import { takeEarlier } from './together.js';
+import { mailInChat, mailGate, MAIL_CARD_NOTE, mailApp, fenceMail } from './mail-guard.js';
 import { outputDirs } from './config.js';
 import { madePaths } from './made.js';
 import { limitMs, cleanResult, riskOf, NOTHING_FOUND, capFor, capResult } from './tool-kinds.js';
@@ -67,6 +69,7 @@ export const toolRunParts = {
     await this.savesInto(ctx, res);
     qAfter(this, name, args, res.text, ctx, tool);
     recordCall(this.cfg, name === 'use_my_tool' && args.name ? `use_my_tool:${args.name}` : name, args, res?.text, ctx); // "Learn from tool errors" (tool-learn.js)
+    keepRecord(this.cfg, name, args, res?.text, ctx); // the tool record (tool-record.js): code writes it, word for word
     return res;
   },
   // 1.5.95: a file type named in the ask is saved before the tool's answer goes back, so Bob can say so. Called after
@@ -114,11 +117,16 @@ export const toolRunParts = {
     if (house.used.length) ctx.emit({ type: 'house', text: usedLine(house.used), group: houseGroupOfTool(name) });
     try {
       ctx.picked = null;
+      // The mail lock (mail-guard.js): in a chat that holds e-mail, only the safe tools run, and changes always ask.
+      // Not turned off by the plain loop: it's how e-mail can't make Bob do anything harmful.
+      const mailGo = (ctx.mailRead ||= mailInChat(ctx.msgs)) ? mailGate(name, riskOf(name, tool)) : null;
+      if (mailGo?.refuse) { this.log('approval', `not run: ${name} in a chat that holds e-mail`); return { text: mailGo.refuse, hinted: true }; }
       // Item 9 (outside-text.js): after a web page or file was read this turn, anything that acts shows its card.
-      const afterOutside = Boolean(ctx.outsideRead) && !this.plainLoop;
-      if (tool.check || (afterOutside && KEEPS_FOR_LATER.has(name))) {
+      const afterOutside = (Boolean(ctx.outsideRead) && !this.plainLoop) || Boolean(mailGo?.card);
+      if (tool.check || (afterOutside && KEEPS_FOR_LATER.has(name)) || (mailGo?.card && !tool.ownCard?.(args))) {
         let need = tool.check ? await tool.check(args, ctx) : null;
-        if (afterOutside) { const was = need; need = outsideNeed(name, need, tool.summary ? tool.summary(args) : name); if (need && !was) this.log('approval', `asking first: ${name} right after reading outside text`); }
+        if (mailGo?.card && !tool.ownCard?.(args)) { const sum = tool.summary ? tool.summary(args) : name; need = !need ? `${sum}${MAIL_CARD_NOTE}` : typeof need === 'string' ? need + MAIL_CARD_NOTE : { ...need, text: String(need.text || '') + MAIL_CARD_NOTE }; this.log('approval', `asking first: ${name} in a chat that holds e-mail`); }
+        else if (afterOutside) { const was = need; need = outsideNeed(name, need, tool.summary ? tool.summary(args) : name); if (need && !was) this.log('approval', `asking first: ${name} right after reading outside text`); }
         // "Hands for Claude" (claude-door.js): the card names the app that asked.
         if (need && ctx.via) need = typeof need === 'string' ? `${ctx.via} (through Bob): ${need}` : { ...need, text: `${ctx.via} (through Bob): ${need.text}` };
         const group = typeof tool.approvalGroup === 'function' ? tool.approvalGroup(args) : tool.approvalGroup;
@@ -135,7 +143,7 @@ export const toolRunParts = {
           ctx.emit({ type: 'allowed-earlier', text: `${need.text} (allowed here for today)` });
         } else if (need && !(group && ctx.allowAll.has(group) && !afterOutside)) {
           // 1.5.42: already answered on the card with all of this job's OKs (together.js)?
-          const earlier = (ctx.preOk || ctx.preNo) ? takeEarlier(ctx, name, args, need) : null;
+          const earlier = (ctx.preOk || ctx.preNo) && !mailGo?.card ? takeEarlier(ctx, name, args, need) : null;
           if (earlier?.no) { ctx.ledger?.action(name, args, true, 'declined'); this.log('approval', `denied on the combined card: ${typeof need === 'string' ? need : need.text}`); return { text: 'The user said no to this on the card. Do not try again; say it is fine and ask what to do instead.' }; }
           if (earlier?.ok) {
             this.log('approval', `allowed on the combined card: ${typeof need === 'string' ? need : need.text}${need.command ? ` [${need.command}]` : ''}`);
@@ -194,6 +202,9 @@ export const toolRunParts = {
       // the answer can be checked against them. In memory only, at most about 400,000 characters a turn.
       if (!/^Error:/.test(text)) { const seen = (ctx.seen ||= []); if (seen.reduce((n, x) => n + x.length, 0) < 4e5) seen.push(String(text).slice(0, 1e5)); if (name === 'run_in_sandbox') (ctx.sandboxOut ||= []).push(String(text).slice(0, 2e4)); }
       // Item 9: what came from outside is marked as information, and the rest of the turn asks before acting.
+      // Mail through a connected app (a Gmail or Outlook MCP server): cleaned and fenced like read_email, so the mail lock
+      // (mail-guard.js) covers it too. Not under the plain loop switch.
+      if (mailApp(name, args) && !/^Error:/.test(text)) { text = fenceMail(text); ctx.mailRead = true; }
       if (isOutside(name) && !/^Error:/.test(text) && !this.plainLoop) { text = markOutside(name, text); ctx.outsideRead = true; }
       for (const o of v.show || []) if (o?.file) await this.deliver(ctx, o.type || 'image', o.file);
       ctx.currentTool = null;

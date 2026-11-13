@@ -45,13 +45,17 @@ function face(x, P, pts, fill, stroke) { x.beginPath(); pts.forEach((q, i) => (i
 function corners(cx, cy, sz) { return { t: [cx, cy - sz], ur: [cx + K * sz, cy - sz / 2], lr: [cx + K * sz, cy + sz / 2], b: [cx, cy + sz], ll: [cx - K * sz, cy + sz / 2], ul: [cx - K * sz, cy - sz / 2], c: [cx, cy] }; }
 
 // A Bob's little cube: n x n x n blocks, drawn back to front. light(i, j, k) -> 0..1, or -1 for no block.
-export function drawVoxels(x, { cx = 48, cy = 52, n = 4, size = 40, hue = 200, sat = 60, light }) {
+// ghost: a block with no light is still drawn, faint and nearly grey, so a Bob with no brain loaded (or one still
+// loading) keeps his cube head on Bob-Net instead of an empty porthole (the owner, Nov 13: a test Bob showed no cube).
+export const GHOST = { sat: 12, alpha: 0.38 };
+export function drawVoxels(x, { cx = 48, cy = 52, n = 4, size = 40, hue = 200, sat = 60, light, ghost = false }) {
   const s = size / n;
   for (let k = 0; k < n; k++) for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
-    const L = light(i, j, k); if (L < 0) continue;
+    let L = light(i, j, k), sa = sat, al = 1;
+    if (L < 0) { if (!ghost) continue; L = 0; sa = GHOST.sat; al = GHOST.alpha; }
     const px = cx + (i - j) * K * s, py = cy + (i + j) * 0.5 * s - k * s - size * 0.25 + s * 0.5;
-    const P = corners(px, py, s); const a = 0.35 + 0.6 * Math.max(L, 0.25);
-    face(x, P, ['t', 'ur', 'c', 'ul'], hsl(hue, sat, 58 + L * 28, a)); face(x, P, ['ul', 'c', 'b', 'll'], hsl(hue, sat, 42 + L * 28, a)); face(x, P, ['c', 'ur', 'lr', 'b'], hsl(hue, sat, 30 + L * 28, a));
+    const P = corners(px, py, s); const a = (0.35 + 0.6 * Math.max(L, 0.25)) * al;
+    face(x, P, ['t', 'ur', 'c', 'ul'], hsl(hue, sa, 58 + L * 28, a)); face(x, P, ['ul', 'c', 'b', 'll'], hsl(hue, sa, 42 + L * 28, a)); face(x, P, ['c', 'ur', 'lr', 'b'], hsl(hue, sa, 30 + L * 28, a));
     if (L > 0.55) { x.save(); x.globalCompositeOperation = 'lighter'; x.fillStyle = hsl(hue, sat, 70, (L - 0.55) * 0.9); x.beginPath(); x.arc(px, py, s * 1.4, 0, 7); x.fill(); x.restore(); }
   }
 }
@@ -95,14 +99,15 @@ function makeIcon(kind, key, it, { still }) {
     if (kind === 'agent') return drawAgent(x, s.it.look || {}, t, s.it.state === 'working');
     x.clearRect(0, 0, 96, 96);
     const mood = s.it.mood;
-    if (mood === 'none') return;
+    // No brain over there (a fresh copy, a test Bob, or his brain let go): his cube still shows, resting and grey.
+    if (mood === 'none') { s.fill = 0; s.sparks.clear(); return drawVoxels(x, { hue: s.it.hue, light: () => -1, ghost: true }); }
     if (mood === 'loading') s.fill = Math.min(1, s.fill + 0.006); else s.fill = 1;
     const pulse = mood === 'thinking' ? 0.2 + 0.25 * (0.5 + 0.5 * Math.sin(t * 5)) : 0;
     const rnd = Math.random();
     if ((mood === 'replying' && rnd < 0.55) || (mood === 'ready' && rnd < 0.02)) s.sparks.set(`${(Math.random() * 4) | 0},${(Math.random() * 4) | 0},${(Math.random() * 4) | 0}`, 1);
     for (const [k, v] of s.sparks) { const nv = v - (mood === 'replying' ? 0.06 : 0.025); if (nv <= 0) s.sparks.delete(k); else s.sparks.set(k, nv); }
     const filled = s.fill * 64;
-    drawVoxels(x, { hue: s.it.hue, sat: 60, light: (i, j, k) => (k * 16 + j * 4 + i >= filled ? -1 : ICON_LIGHT * Math.min(1, 0.12 + pulse + (s.sparks.get(`${i},${j},${k}`) || 0))) });
+    drawVoxels(x, { hue: s.it.hue, sat: 60, ghost: true, light: (i, j, k) => (k * 16 + j * 4 + i >= filled ? -1 : ICON_LIGHT * Math.min(1, 0.12 + pulse + (s.sparks.get(`${i},${j},${k}`) || 0))) });
   };
   return s;
 }

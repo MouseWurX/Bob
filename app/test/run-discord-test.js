@@ -70,6 +70,7 @@ b.onGateway({ op: 10, d: { heartbeat_interval: 60000 } });
 const ident = ws.sent.find((x) => x.op === 2);
 check('identifies as a bot with message intents', ident && ident.d.token === TOKEN && ident.d.intents === INTENTS && (INTENTS & (1 << 15)));
 b.onGateway({ op: 0, s: 1, t: 'READY', d: { session_id: 's1', resume_gateway_url: 'wss://gateway-us-east1-b.discord.gg', user: { id: '7', username: 'bob' } } });
+check('an @mention of this bot is an ask, like the wake phrase', b.mentionAsk('<@7> draw a cat') === 'draw a cat' && b.mentionAsk('<@!7>, hi') === 'hi' && b.mentionAsk('<@7>') === '' && b.mentionAsk('<@8> hi') === null && b.mentionAsk('hi <@7>') === null);
 check('READY: connected, bot name known', b.status === 'on' && discordView(b).botName === 'bob');
 check('the token never lands in config.json', !fs.readFileSync(configFile, 'utf8').includes(TOKEN));
 clearInterval(b.beat);
@@ -80,6 +81,9 @@ check('with no channels listed, nobody gets an answer', queue.length === 0 && po
 saveDiscord(brain.cfg, { channels: [CH] });
 await b.handle(msg('hey bob hi', { channel: OTHER_CH }));
 check('a channel not on the list is ignored', queue.length === 0);
+check('an unlisted channel is said once in the log, and Settings offers to add it', brain.logs.filter((l) => l.includes('not on my channel list')).length === 2 && discordView(b).unlisted.some((c) => c.id === OTHER_CH) && !discordView(b).unlisted.some((c) => c.id === CH));
+await b.handle(msg('hey bob again', { channel: OTHER_CH }));
+check('the same unlisted channel isn\'t logged twice', brain.logs.filter((l) => l.includes('not on my channel list')).length === 2 && queue.length === 0 && posts().length === 0);
 await b.handle(msg('hey bob hi', { bot: true }));
 check('bots are ignored', queue.length === 0);
 await b.handle(msg('just chatting about bob'));

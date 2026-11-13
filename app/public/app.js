@@ -31,6 +31,7 @@ import { createGames } from './games.js';
 import { createHelp } from './help.js';
 import { handsApproval, togetherApproval, onHandsEvent } from './hands.js';
 import { planApproval } from './plan-card.js';
+import { sortApproval } from './email-sort-card.js';
 import { createBrainBar } from './brain-bar.js';
 import { createStatusChip } from './status-chip.js'; // 1.5.210: one status chip, and the phone's bottom bar
 import { createHandsSwitch } from './hands-switch.js';
@@ -1012,6 +1013,7 @@ function onEvent(ev) {
       // The reviewer asks whether to quarantine Bob (quarantine.js, opt-in).
       if (quarantineCard(ev, { add, answer: (q) => post('/api/approve', { id: ev.id, allow: q }) })) { ping('Bob\'s reviewer needs you', ev.text); layout.needsYou(); break; }
       // 1.5.78: Bob's plan for a big job, with its OKs on the same card (plan-card.js).
+      if (sortApproval(ev, { add, answer: (allow, items, note) => post('/api/approve', { id: ev.id, allow, items, note }) })) { ping('Bob has a plan for your email', ev.text); layout.needsYou(); break; }
       if (planApproval(ev, { add, answer: (allow, items, note) => post('/api/approve', { id: ev.id, allow, items, note }) })) { ping('Bob has a plan for you to check', ev.text); layout.needsYou(); break; }
       // 1.5.41: every OK a job needs, on one card (hands.js togetherApproval).
       if (togetherApproval(ev, { add, answer: (allow, items) => post('/api/approve', { id: ev.id, allow, items }) })) { ping('Bob needs your OK', `${ev.together.length} things for one job`); layout.needsYou(); break; }

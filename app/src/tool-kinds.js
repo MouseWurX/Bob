@@ -46,7 +46,7 @@ export const TOOL_KINDS = {
   // Sends
   mcp_use: { risk: 'send', half: true, own: true }, pass_note: { risk: 'send' },
   // 🧰 More tools (1.5.208): looks, a few changes, and one send (a saved web service: POST and the rest ask first)
-  calculate: { risk: 'look' }, make_password: { risk: 'look', volatile: true }, read_email: { risk: 'look', volatile: true },
+  calculate: { risk: 'look' }, make_password: { risk: 'look', volatile: true }, read_email: { risk: 'look', volatile: true }, tool_record: { risk: 'look', volatile: true }, manage_email: { risk: 'change' },
   read_calendar: { risk: 'look', volatile: true }, query_data: { risk: 'look' }, check_spelling: { risk: 'look' }, compare_files: { risk: 'look' },
   watch_page: { risk: 'change' }, make_chart: { risk: 'change', again: true }, meeting_notes: { risk: 'change', again: true, min: 60 },
   call_api: { risk: 'send', half: true },

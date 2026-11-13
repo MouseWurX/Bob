@@ -30,6 +30,7 @@ import crypto from 'node:crypto';
 import { doorOpen, cleanBobAddress } from './share-brains.js';
 import { myName, PAIR, ASK_FOR_MS } from './bob-net-pair.js';
 import { LOOK_ID_RE } from './look.js';
+import { hueFor } from './net-overlay.js'; // Nov 13: each Bob's cube colour, the same as his Bob-Net icon
 
 const HOUR = 3600e3, DAY = 24 * HOUR;
 const clean = (s, n = 40) => String(s || '').replace(/[\u0000-\u001f<>"'`]/g, '').trim().slice(0, n);
@@ -53,6 +54,7 @@ export function partyView(brain, { now = Date.now } = {}) {
       ctx: st.ctx || 0, speed: st.measured?.tokPerSec || st.speed || 0, jobs: st.jobs || [], jobsBusy: st.jobsBusy || '', queue: st.queue || 0,
       thinking: L.live?.get(b.address) === 'thinking', doing: away.get(b.address) || '',
       look: LOOK_ID_RE.test(String(st.look || '')) ? st.look : '', // his avatar, from his hello ('' from a phone or an older Bob)
+      hue: hueFor(b.name), // his cube's colour on the list (every Bob has one, a phone or a test copy too)
       lastUsed: st.measured?.lastUsed || 0, passAlong: st.passAlong === true, checkedAt: st.at || 0
     };
   });

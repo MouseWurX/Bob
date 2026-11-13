@@ -7,7 +7,7 @@ import { currentStyle } from './themes.js';
 import { catMoment } from './patches.js';
 import { createBrainBay } from './brain-swap.js';
 import { esc } from './util.js';
-import { drawBob } from './bob-sprite.js'; // the avatars on the Bob-Net list
+import { drawVoxels } from './net-overlay.js'; // the cubes on the Bob-Net list (Nov 13)
 import { createMindCube } from './mind-cube.js';
 import { createMindView } from './mind-view.js'; // 1.5.138: Bob's thinking, docked
 import { DEFAULT_ORDER, SECTION_NAME, applyOrder, dropBefore } from './now-sections.js';
@@ -436,13 +436,13 @@ export function createLayout({ post, openTasks, openDownloads }) {
   const CAN = { pictures: 'pictures', video: 'clips', music: 'music', sfx: 'sounds', model3d: '3D models', web: 'web research', think: 'thinking' };
   const WHY = { gaming: 'gaming, so not lending', busy: 'busy with his own job', off: 'not lending', 'not reachable': 'not reachable', 'door closed': 'door shut over there', 'passcode not accepted': 'passcode not accepted', 'too slow': 'too slow last time', 'too long': 'no room for this chat', 'no brain': 'no quick brain' };
   const sinceShort = (ms) => { const m = Math.round(ms / 60000); return m < 1 ? 'just now' : m === 1 ? '1 min ago' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
-  // Show avatars (off unless switched on, remembered in this window): each Bob's avatar from Style, drawn small
-  // beside his line. He sends his look id with the hello the list already uses, so nothing extra goes over the network.
-  // A Bob with no look to send (the phone app, a Bob older than 1.5.205) keeps his 📱 or 💻 in the avatar's place.
+  // Show avatars (off unless switched on, remembered in this window): each Bob's little cube beside his line (Nov 13:
+  // the cube is Bob's picture outside games since 1.5.222). Every Bob gets one, in the same colour as his Bob-Net icon,
+  // even a phone, an older Bob or a test copy: lit while he answers, resting grey when he doesn't. Mine is teal.
   let avatars = store.get('bob-net-avatars', '0') === '1', lastNet = null;
-  const netAvatar = (look, name, icon) => !avatars ? ''
-    : look ? `<canvas class="net-avatar" width="32" height="32" data-look="${esc(look)}" role="img" aria-label="${esc(name)}'s avatar"></canvas>`
-      : `<span class="net-avatar none" aria-hidden="true">${icon}</span>`;
+  const MY_HUE = 180;
+  const netAvatar = (hue, name, lit) => !avatars ? ''
+    : `<canvas class="net-avatar" width="32" height="32" data-hue="${Number(hue) || 0}" data-lit="${lit ? 1 : 0}" role="img" aria-label="${esc(name)}'s cube"></canvas>`;
   const netRow = (b) => {
     let state, tone;
     if (b.thinking) { state = 'thinking a reply for me'; tone = 'busy'; }
@@ -456,7 +456,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
     if (b.passAlong) extra.push('passes Bob-Net along');
     const waiting = lastNet?.cardsWaiting?.[b.address] || 0; // Nov 13: his OK cards shown here
     const needs = waiting ? `<br><span class="net-cards">🔔 ${waiting} card${waiting === 1 ? '' : 's'} waiting on you</span>` : '';
-    return `<li class="titem net"><span class="net-dot ${tone}" aria-hidden="true"></span>${netAvatar(b.look, b.name, b.device === 'phone' ? '📱' : '💻')}<span class="ttext"><strong>${b.device === 'phone' ? '📱' : '💻'} ${esc(b.name)}</strong> · ${esc(state)}${needs}${extra.length ? `<br><span class="muted">${esc(extra.join(' · '))}</span>` : ''}</span></li>`;
+    return `<li class="titem net"><span class="net-dot ${tone}" aria-hidden="true"></span>${netAvatar(b.hue, b.name, b.ok === true)}<span class="ttext"><strong>${b.device === 'phone' ? '📱' : '💻'} ${esc(b.name)}</strong> · ${esc(state)}${needs}${extra.length ? `<br><span class="muted">${esc(extra.join(' · '))}</span>` : ''}</span></li>`;
   };
   function drawNet(v) {
     lastNet = v;
@@ -472,10 +472,10 @@ export function createLayout({ post, openTasks, openDownloads }) {
     const pw = v.cardPowers ? [v.cardPowers.hands && 'Hands', v.cardPowers.autonomy && 'Autonomy', v.cardPowers.screen && 'Screen use'].filter(Boolean) : [];
     if (pw.length) doing.push(`its card helps run a brain with ${pw.join(', ')} on`);
     if (v.agents?.needsYou) doing.push(`${v.agents.needsYou} coding agent${v.agents.needsYou === 1 ? '' : 's'} need${v.agents.needsYou === 1 ? 's' : ''} you`);
-    const mine = `<li class="titem net me"><span class="net-dot ${doing.length ? 'busy' : h.door ? 'ok' : ''}" aria-hidden="true"></span>${netAvatar(h.look || 'sysop', h.name, '🏠')}<span class="ttext"><strong>🏠 This Bob (${esc(h.name)})</strong> · ${esc(doing.join('; ') || (h.door ? 'nothing for the others right now' : 'door shut: the others can\'t reach him'))}${shares.length ? `<br><span class="muted">${esc(shares.join(' · '))}</span>` : ''}</span></li>`;
+    const mine = `<li class="titem net me"><span class="net-dot ${doing.length ? 'busy' : h.door ? 'ok' : ''}" aria-hidden="true"></span>${netAvatar(MY_HUE, h.name, true)}<span class="ttext"><strong>🏠 This Bob (${esc(h.name)})</strong> · ${esc(doing.join('; ') || (h.door ? 'nothing for the others right now' : 'door shut: the others can\'t reach him'))}${shares.length ? `<br><span class="muted">${esc(shares.join(' · '))}</span>` : ''}</span></li>`;
     const list = $('nowNetList');
     list.innerHTML = mine + (v.bobs || []).map(netRow).join('');
-    for (const cv of list.querySelectorAll('canvas.net-avatar')) { const c = cv.getContext('2d'); if (!c) continue; c.imageSmoothingEnabled = false; try { drawBob(c, cv.width, {}, cv.dataset.look); } catch {} }
+    for (const cv of list.querySelectorAll('canvas.net-avatar')) { const c = cv.getContext('2d'); if (!c) continue; const lit = cv.dataset.lit === '1'; try { c.clearRect(0, 0, cv.width, cv.height); c.save(); c.scale(cv.width / 96, cv.height / 96); drawVoxels(c, { hue: Number(cv.dataset.hue) || 0, sat: 60, ghost: true, light: () => (lit ? 0.45 : -1) }); c.restore(); } catch {} }
   }
   const avatarsBtn = $('nowNetAvatars');
   function drawAvatarsBtn() { if (!avatarsBtn) return; avatarsBtn.setAttribute('aria-checked', String(avatars)); avatarsBtn.querySelector('.st').textContent = avatars ? 'On' : 'Off'; }

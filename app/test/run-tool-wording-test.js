@@ -32,7 +32,9 @@ check('every tool has a description', all.every((f) => f.description.trim().leng
 // while off) about 640. 1.5.208: eleven 🧰 More tools (calculator, passwords, email, calendar, page watch, web
 // services, data, charts, spelling, meeting notes, compare) add about 7,100. All start off and are taken out while
 // off, and once on each comes in only when a message needs it (toolbox groups), so a normal turn doesn't carry them.
-check('all tools together stay under 53,500 characters', size(all) < 53500, String(size(all)));
+// Nov 13: manage_email ("Let Bob tidy my email", off until switched on) and tool_record (in the memory group, only
+// when a message asks why) add about 1,000; the cap moved to 54,000.
+check('all tools together stay under 54,000 characters', size(all) < 54000, String(size(all)));
 const core = all.filter((f) => CORE.includes(f.name));
 // 1.5.207: reminders gained urgent (quiet hours) and offer_setup's list grew with the new opt-in switches; the
 // descriptions were trimmed to make room, and the cap moved from 8,000 to 8,100.

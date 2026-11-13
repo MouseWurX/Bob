@@ -4,6 +4,30 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.223
+
+I can tidy your email now, if you let me, nothing in an email can steer me, and a forgotten passcode isn't the end of your chats. I keep a record of my tool calls so I can quote what really happened, and Clear chat answers properly again.
+
+### New
+
+- **Let Bob tidy my email** (Settings, How Bob works, More tools; off to start with, and it needs **Let Bob read my email**). I show a sort plan card: batches you can change, the emails to answer first, and a **Looks dangerous** batch. Nothing moves until you press **Do it**, and only the emails on the card change. Trash is a move, never a wipe, drafts are saved and never sent, and every change can be undone. Works on desktop and the phone, with Gmail folders and Outlook in French too.
+- **Forgot your passcode? There's a way back in.** Press **Forgot it?** on the lock screen. If another of your Bobs keeps a spare key, press **Let it reset** in that Bob's own Settings, and you get the lock and your chats back. Or get a code by email or Discord: that opens the lock screen only, and locked chats stay set aside, still locked. Email is now set up in one place, Settings, Online services, **📧 Email account**, for reading mail and for reset codes.
+- **Keep a record of my tool calls** (Settings, How Bob works; on to start with). I write down each tool call word for word: what you asked, what I sent, and what came back, keeping the newest 500. Email never goes in it. When you ask what I did, I look it up instead of guessing. Turning it off deletes the record.
+
+### Fixed
+
+- **Every Bob has his cube head on Bob-Net.** A Bob with no brain loaded, like a fresh or test copy, used to show an empty porthole in the Bob-Net icons. Now his cube shows grey and resting, and fills with colour as a brain loads. **Show avatars** on the Bob-Net list in Now running shows each Bob's cube in the same colour as his icon, lit while he answers, for every Bob, phones and older Bobs too.
+- **Email can't give me orders.** Every part of an email is cleaned and fenced off in code: hidden text, look-alike letters, fake markers and sneaky links are stripped. Danger signs like look-alike senders, failed sender checks, risky attachments and words aimed at an AI are flagged. Once a chat holds email, I can only sort and draft in it, and every change shows a card. Nothing can send, fetch, run or remember from there. 32 test attacks prove it.
+- **The notice board takes "done".** Ticking an item off is one step, and adding or ticking needs no read first. A rewrite that leaves items out puts them back under Side quests instead of losing them. A rewrite also keeps the board's shape: its title, its sections, the tick boxes, and the ticks on items already done.
+- **"Read notes.txt" gets read in the same turn.** If you name a file, I check it was read before I answer.
+- **The passcode warning tells the truth.** It now says a forgotten passcode loses your locked chats unless another of your Bobs keeps a spare key.
+- **Clear chat answers properly.** Clearing with no chat named clears the main chat from view, and the chat can be named as id, session or sessionId. Deleting a chat for good still needs the chat named.
+- **A new Discord server doesn't make me look dead.** When someone calls me in a channel that isn't on my list, I still don't answer there, but I note it once in my log and Settings shows an **Add** button for that channel, by name. No more hunting for channel IDs.
+- **"@Bob hi" works on Discord.** Starting a message with an @mention of my bot counts as the wake phrase, in the channels on my list.
+- **The Lab won't use an old copy of me.** Lesson writing and tool scores refuse a Bob more than 3 releases behind, and everything they write is stamped with which Bob made it.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.222
 
 Settings are shorter and clearer. The cube is my picture everywhere, my pixel looks move to games, the passcode lock turns off with your passcode, and tools are worded for each kind of brain.
@@ -189,22 +213,6 @@ Home network first, Tailscale when you're out; a lent card goes back when a game
 - **A paired Bob showed "not reachable" with Tailscale off**, even though his home-network door answered. He's now reached at home. A Bob also tells the others his home door whenever it's open, so the quick home path is found without anyone switching anything on.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.213
-
-Bob-Net without Tailscale, and switches that say why.
-
-### New
-
-- **Bob-Net over a plain home network, no Tailscale needed** (Settings, Bob-Net, **Also over the home network**; off unless you switch it on). Two Bobs on the same home network, a router or just a cable or switch between them, can find each other, pair and share with nothing else installed. **Find my other Bobs** looks on this computer's own network (its own block of 254 addresses, never wider), on this Bob's port and the usual 7777, and never lists this computer itself. The door leaves out virtual machine, WSL and Tailscale's own adapters. Pairing over the home network is always sealed: both Bobs make one-time keys, the 4-digit number you compare comes from both of them, and the passcodes and the SCUT link key travel scrambled. After pairing, everyday Bob-to-Bob talk on the home network is plain, so use it on a network you trust; Tailscale still works as before. Both Bobs need 1.5.213 or newer to pair over the home network; Find lists an older one as needing the update. Press the firewall button once on each computer.
-
-### Fixed
-
-- **A Bob-Net switch that can't go on says why, right under it.** "Let my other replicant matrices in", "Borrow a brain", "Send jobs to my other Bobs" and "Ask a bigger Bob to check my harder jobs" used to snap back off with the reason printed far below. Now the reason shows under the switch, and each of the three that need another Bob says "pair one of your other Bobs first" right under it, dimmed until you do.
-- **Lamplight: the bars at the top of Settings are solid**, so the page no longer shows through them as you scroll.
-- **Settings on a phone:** the Simple cards wrap to the screen instead of running off the side.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android. The firewall button is Windows only.
 
 ## Older versions
 

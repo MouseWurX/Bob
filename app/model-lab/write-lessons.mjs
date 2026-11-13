@@ -26,7 +26,8 @@ const persona = o.persona ? fs.readFileSync(path.resolve(String(o.persona)), 'ut
 const tag = o.tag ? String(o.tag).replace(/[\r\n]+/g, ' ').trim().slice(0, 80) : '';
 if (remoteUrl) process.env.LAB_REMOTE = '1'; else checkFree(o);
 const parallel = Math.max(1, Number(o.parallel) || 1);
-const kit = await loadBob(L.bob);
+const kit = await loadBob(L.bob, { allowOld: Boolean(o['allow-old-bob']) });
+console.log(`Bob's tools from ${L.bob}: ${kit.bobSrc.version || '?'}${kit.bobSrc.commit ? ` (${kit.bobSrc.commit})` : ''}`);
 // 12 Nov (later): the idea writer is told what Bob's tools can really do, so it doesn't invent jobs no tool covers (calendar events...)
 const TOOLBOX = (() => { try { return Object.entries(kit.groups()).map(([k, g]) => `${k} (${g.what || (g.tools || []).join(', ')})`).join('; '); } catch { return ''; } })();
 const toolboxNote = TOOLBOX ? ` Only ask for things this assistant can really do: its basic tools (list and read files, web search, open a web page, reminders, a notice board, memory) plus ${TOOLBOX}. Nothing else (no calendar app, no email sending, no phone calls).` : '';
@@ -98,7 +99,7 @@ const STYLES = ['short and casual', 'polite and detailed', 'with small typos', '
 function setKey(system, tools) {
   const k = crypto.createHash('sha1').update(system).update(JSON.stringify(tools)).digest('hex').slice(0, 12);
   const sets = fs.existsSync(F.sets) ? JSON.parse(fs.readFileSync(F.sets, 'utf8')) : {};
-  if (!sets[k]) { sets[k] = { system, tools }; fs.writeFileSync(F.sets, JSON.stringify(sets)); }
+  if (!sets[k]) { sets[k] = { system, tools, bob_src: kit.bobSrc }; fs.writeFileSync(F.sets, JSON.stringify(sets)); } // Nov 13: which Bob's wording
   return k;
 }
 
@@ -209,7 +210,7 @@ async function one(idea, think, room = 1) { // room 2 = a second try with twice 
     if (v.unparsed) { appendJsonl(path.join(dir, 'needs-review.jsonl'), { idea: idea.id, job: idea.job, think, why: v.why, messages: saved }); throw new Error('review unparsed'); }
     if (!v.ok) { appendJsonl(path.join(dir, 'rejected.jsonl'), { idea: idea.id, job: idea.job, think, why: v.why, messages: saved }); throw new Error(`review: ${v.why}`); }
   }
-  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, messages: saved });
+  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, bob_src: kit.bobSrc, messages: saved });
 }
 // The teacher as a strict reviewer: right tool or rightly none, exact arguments, results read, a final answer that does the job.
 const RULES = { restraint: 'This message only wants an answer Bob knows: calling any tool is a FAIL.', precise: 'Every detail from the request (names, paths, dates, amounts) must appear exactly in the tool arguments.', agent: 'Each step must use what the previous result returned; the final answer must sum up what was done.' };

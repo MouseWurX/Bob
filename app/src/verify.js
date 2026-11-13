@@ -316,6 +316,10 @@ const MEDIA_OF = { picture: 'image', show: 'image', video: 'video', music: 'audi
 const TOOL_OF = { todo: 'notice_board', reminder: 'reminders', diagram: 'make_diagram', picture: 'make_image', show: 'make_image', video: 'make_video', music: 'make_music', sound: 'make_sound', file: 'write_file', app: 'open_app' };
 const GROUPS_OF = { todo: [], reminder: [], diagram: ['diagrams'], picture: ['pictures'], show: ['pictures'], video: ['pictures'], music: ['pictures'], sound: ['pictures'], file: ['documents'], app: ['apps'] };
 const WHAT = { todo: 'something put on their to-do list', reminder: 'a reminder', diagram: 'a diagram', picture: 'a picture', show: 'a picture', video: 'a clip', music: 'some music', sound: 'a sound', file: 'a file saved', app: 'something done in an app' };
+// The tools that read a file (2c in afterTurn), and a file named in the ask: "read notes.txt", "what's in plan.docx".
+const READS_FILE = new Set(['read_file', 'office_read', 'inspect_file', 'find_in_documents', 'search_files', 'query_data', 'compare_files', 'read_spreadsheet']);
+const FILE_ASK = /\b(?:read|open|show(?: me)?|summari[sz]e|look (?:at|in|through)|check|go through|what(?:'s| is) (?:in|on)|what does|lis|lire|ouvre|ouvrir|r[ée]sume)\b[^\n]{0,40}?(?:^|[\s"'`(])((?:[\w.~-]+[\\/])*[\w~-][\w .-]{0,60}?\.(?:txt|md|markdown|csv|tsv|json|jsonl|log|ini|cfg|conf|toml|ya?ml|xml|html?|js|mjs|ts|py|ps1|bat|sh|docx?|xlsx?|pptx?|odt|ods|odp|rtf|pdf|epub))\b/i;
+export function fileAsked(text) { const m = String(text || '').match(FILE_ASK); return m ? m[1].trim() : ''; }
 const FILE_TOOLS = new Set(['write_file', 'edit_file', 'save_spreadsheet', 'file_hands', 'sort_files', 'convert_file', 'office_make', 'office_edit', 'strip_metadata']);
 const APP_TOOLS = new Set(['open_app', 'app_act']);
 const LOOKS = new Set(['app_look', 'list_schedules', 'read_file', 'list_files', 'search_files', 'workshop_list', 'use_tools', 'recall', 'web_search', 'fetch_page', 'security_check', 'inspect_file', 'osint_lookup', 'check_exposure', 'security_tips', 'bob_help']);
@@ -501,6 +505,14 @@ export function afterTurn(ctx = {}, replyText) {
   // 2b. Several things asked in one message (job-steps.js), and fewer tool steps ran: one more go, only when nothing
   // above already asks for one and the answer isn't a question back.
   if (!nudges.length && ctx.stepsAsked?.length && !/\?\s*$/.test(said)) { const n = stepsNudge(ctx.stepsAsked, actions, who); if (n) push(n); }
+
+  // 2c. 1.5.223 (builder): for a bare "read notes.txt", a brain answered from an earlier refusal in the chat and never
+  // opened the file. A file asked for by name must be read this turn before the answer counts.
+  const named = fileAsked(ctx.turnText);
+  if (!nudges.length && named && !/\?\s*$/.test(said) && usable('read_file')
+    && !actions.some((a) => READS_FILE.has(a.name) && (ok(a) || String(JSON.stringify(a.args ?? '')).toLowerCase().includes(named.toLowerCase())))) {
+    push(`${who} asked about the file ${named}, but nothing read it this turn. You can read files by name: call read_file now with just the name, path "${named}", and it looks in every folder you may read. Don't say it's restricted or missing until read_file says so. Then answer from what it says; what an earlier message in this chat said about it doesn't count.`, ['documents']);
+  }
 
   // 3. The claims' nudge (the note was worked out above).
   if (claims.length) {

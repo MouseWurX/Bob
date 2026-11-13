@@ -131,7 +131,7 @@ check('only the lock screen, the running check and quitting stay open', OPEN_WHI
 // Settings.
 check('Settings has the 🔒 Passcode lock panel in This replicant matrix', GROUPS.find(([g]) => g === 'This replicant matrix')[1].includes('ev-lock') && CARDS.find((c) => c.id === 'pc').topics.includes('ev-lock'));
 check('closed panel says what is set', lockSummary({ enabled: false }) === 'Off' && /locks after 5 min/.test(lockSummary({ enabled: true, idleMinutes: 5 })) && /chats and memory locked/.test(lockSummary({ enabled: true, encrypt: true })));
-check('the lost-passcode warning is plain', /gone for good/.test(LOST_WARNING) && /no reset/.test(LOST_WARNING));
+check('the lost-passcode warning is plain', /gone for good/.test(LOST_WARNING) && /spare key/.test(LOST_WARNING) && !/no reset/.test(LOST_WARNING));
 const ui = fs.readFileSync(new URL('../public/lock-settings.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 check('nothing in the panel is disabled or hidden until a box is ticked', !/disabled|hidden/.test(ui.split('export async function mountLockSettings')[1].split('const load')[0]));
 const server = fs.readFileSync(new URL('../src/server.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');

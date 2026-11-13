@@ -152,14 +152,7 @@ export class Lock {
 export function lockPage({ next = '/', wrong = '', encrypt = false, people = [] } = {}) {
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const safeNext = /^\/[a-zA-Z0-9/_.?=&%-]*$/.test(next) && !next.startsWith('//') ? next : '/';
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Bob is locked</title><link rel="icon" href="/icons/bob-32.png"><style>
-:root{--bg:#1d1510;--card:#2b1d14;--ink:#f3e7d3;--line:#5a4030;--accent:#e7a64a;--bad:#ff9b8a}
-@media (prefers-color-scheme: light){:root{--bg:#f6efe4;--card:#fffaf2;--ink:#2b1d14;--line:#c9b39a;--accent:#b0661a;--bad:#a3261a}}
-body{background:var(--bg);color:var(--ink);font:16px "Segoe UI",system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0}
-form{background:var(--card);padding:24px;border-radius:12px;display:grid;gap:12px;width:min(320px,calc(100vw - 32px));box-sizing:border-box}
-input,button,select{font:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);min-height:44px}input,select{background:var(--bg);color:var(--ink)}
-button{background:var(--accent);color:var(--card);font-weight:700;border:none;cursor:pointer}p{margin:0}.bad{color:var(--bad)}.muted{opacity:.8;font-size:14px}
-</style></head><body><form method="post" action="/unlock"><img src="/icons/bob-192.png" width="64" height="64" alt="">
+  return `${lockHead('Bob is locked')}<body><form method="post" action="/unlock"><img src="/icons/bob-192.png" width="64" height="64" alt="">
 <h1 style="font-size:20px;margin:0">🔒 Bob is locked</h1>
 ${people.length ? `<label for="w">Who's this?</label><select id="w" name="who"><option value="main">The owner</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>` : ''}
 <label for="c">Passcode</label><input id="c" name="code" type="password" autocomplete="current-password" required autofocus>
@@ -167,10 +160,23 @@ ${people.length ? `<label for="w">Who's this?</label><select id="w" name="who"><
 ${wrong ? `<p class="bad" role="alert">${esc(wrong)}</p>` : ''}
 <button>Open Bob</button>
 <p class="muted">${encrypt ? 'Your chats and memory stay locked until the passcode is typed.' : 'Bob keeps working in the background while he\'s locked.'}</p>
+<p class="muted"><a href="/unlock/forgot">Forgot it?</a></p>
 </form></body></html>`;
 }
 
+// The top of every lock-screen page (the lock screen and Forgot it?): works at phone width, light and dark.
+export const lockHead = (title) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title><link rel="icon" href="/icons/bob-32.png"><style>
+:root{--bg:#1d1510;--card:#2b1d14;--ink:#f3e7d3;--line:#5a4030;--accent:#e7a64a;--bad:#ff9b8a}
+@media (prefers-color-scheme: light){:root{--bg:#f6efe4;--card:#fffaf2;--ink:#2b1d14;--line:#c9b39a;--accent:#b0661a;--bad:#a3261a}}
+body{background:var(--bg);color:var(--ink);font:16px "Segoe UI",system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0}
+form{background:var(--card);padding:24px;border-radius:12px;display:grid;gap:12px;width:min(320px,calc(100vw - 32px));box-sizing:border-box}
+input,button,select{font:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);min-height:44px}input,select{background:var(--bg);color:var(--ink)}
+button{background:var(--accent);color:var(--card);font-weight:700;border:none;cursor:pointer}p{margin:0}.bad{color:var(--bad)}.muted{opacity:.8;font-size:14px}a{color:var(--accent)}
+button.plain{background:transparent;color:var(--ink);border:1px solid var(--line);font-weight:400}h2{font-size:17px;margin:8px 0 0}
+</style></head>`;
+
 // Paths that work while Bob is locked: the lock screen's picture, the check Bob's own window does to see if he's
 // running (only "locked" comes back), quitting (the update window), and the lock's own door.
-export const OPEN_WHILE_LOCKED = (method, p) => p.startsWith('/icons/') || p === '/favicon.ico' || (method === 'POST' && p === '/unlock')
+// 🔑 Forgot it? (lock-reset.js): its page and its forms.
+export const OPEN_WHILE_LOCKED = (method, p) => p.startsWith('/icons/') || p === '/favicon.ico' || (method === 'POST' && (p === '/unlock' || /^\/unlock\/[a-z-]+$/.test(p))) || (method === 'GET' && p === '/unlock/forgot')
   || (method === 'GET' && (p === '/api/status' || p === '/api/lock/state')) || (method === 'POST' && p === '/api/quit');

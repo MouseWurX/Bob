@@ -5,8 +5,8 @@
 //   - GPT-OSS gets short "Use when..." lines, with one worked example on the tools it mixes up (to-do or reminder,
 //     where a file goes, plain text or an office file). It also lets an added tool group go after 1 message, not 3.
 // A family's tool list is never longer in all than Bob's own (test/run-tool-sets-test.js): the examples are paid for
-// by shorter lines elsewhere, so the start of a job stays inside its budget (test/run-start-budget-test.js). A family stays on only after tool-score shows it fails
-// less with its own wording (docs/TOOL-SETS.md has the numbers).
+// by shorter lines elsewhere, so the start of a job stays inside its budget (test/run-start-budget-test.js). A family is picked by itself only after tool-score shows it
+// fails less with its own wording (docs/TOOL-SETS.md has the numbers); until then it's `proven: false` and only used when named.
 import { familyOf } from './model-family.js';
 import { ggufInfo } from './gguf.js';
 
@@ -16,9 +16,12 @@ export const toolSetsOn = (cfg) => cfg?.toolSets !== false;
 export const SETS = {
   'gpt-oss': {
     label: 'GPT-OSS',
+    // Nov 13, tool-score on the 120B (rented card, partial: 25 of 74 turns): its own wording 5/14 tool turns right,
+    // Bob's wording 6/14. Not proven, so it's only used when named (the Lab's --tool-set gpt-oss), never picked by itself.
+    proven: false,
     sticky: 1,
     use: {
-      notice_board: "Use for {{USER}}'s to-do list (no set time). add = new items; write = the whole board (read it first). Like: 'put milk on my list' -> {action:'add',content:'milk'}.",
+      notice_board: "Use for {{USER}}'s to-do list (no set time). add = new items; done = tick one off (no read first); write = the whole board. Like: 'put milk on my list' -> {action:'add',content:'milk'}.",
       reminders: "Use when {{USER}} wants a pop-up at a set time. time = local YYYY-MM-DDTHH:mm. No time? That's a to-do: notice_board.",
       remember: 'Use when {{USER}} tells you a lasting fact about them. Not for tasks or times. Never secrets.',
       list_folder: 'Use to see what is in a folder. Full path; home is {{HOME}}.',
@@ -44,7 +47,8 @@ export function toolSetFor(cfg, model, { info, family } = {}) {
   if (!toolSetsOn(cfg)) return null;
   const fam = family || familyOf(model, info || null);
   const set = SETS[fam];
-  if (!set || cfg?.toolSets?.[fam] === false) return null;
+  if (!set || (set.proven === false && !family)) return null; // an unproven family is used only when named
+  if (cfg?.toolSets?.[fam] === false) return null;
   return { id: fam, ...set };
 }
 

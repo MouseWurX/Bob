@@ -1,5 +1,6 @@
 // 1.5.123 Bob-Net party (Now running) and Pass my Bob-Net along (src/bob-net-party.js): the party reading, and three
 // Bobs on a pretend Tailscale where the desk introduces the handheld to the phone and they pair with no card.
+import { hueFor } from '../src/net-overlay.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -45,9 +46,10 @@ check('…and the asker keeps both, cleaned', ab.passAlong === true && ab.hisNam
   const html = read('public/index.html'), lay = read('public/layout.js');
   check('Show avatars is a switch in the Bob-Net section, off to begin with', /id="nowNetAvatars"[^>]*role="switch"[^>]*aria-checked="false"/.test(html) && html.indexOf('id="nowNetAvatars"') > html.indexOf('id="nowNet"') && html.indexOf('id="nowNetAvatars"') < html.indexOf('id="nowNetList"'));
   check('…remembered per window, off unless switched on', /store\.get\('bob-net-avatars', '0'\) === '1'/.test(lay));
-  check('…avatars are drawn with the avatar painter, named for screen readers', /drawBob\(c, cv\.width, \{\}, cv\.dataset\.look\)/.test(lay) && /aria-label="\$\{esc\(name\)\}'s avatar"/.test(lay));
+  check('…every Bob gets a cube, in his icon colour, named for screen readers (Nov 13)', /drawVoxels\(c, \{ hue: Number\(cv\.dataset\.hue\)/.test(lay) && /aria-label="\$\{esc\(name\)\}'s cube"/.test(lay) && !/drawBob/.test(lay) && /netAvatar\(b\.hue, b\.name, b\.ok === true\)/.test(lay));
+  check('…the party gives every Bob a cube colour, a phone too', v.bobs.every((b) => Number.isInteger(b.hue)) && v.bobs.find((b) => b.name === 'Phone').hue === hueFor('Phone'));
   const help = read('public/help-content.js');
-  check('…with Help, a glossary line and an FAQ', help.includes("id: 'faq-avatars'") && help.includes('<dt>Show avatars</dt>') && /Show avatars<\/strong>, just under the heading/.test(help));
+  check('…with Help, a glossary line and an FAQ', help.includes("id: 'faq-avatars'") && help.includes('<dt>Show avatars</dt>') && /Show avatars<\/strong>, just under the heading/.test(help) && /every Bob's picture now/.test(help));
 }
 
 // ---------- the party reading ----------

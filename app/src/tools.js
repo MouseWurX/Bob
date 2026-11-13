@@ -75,6 +75,45 @@ export async function readCapped(res, max) {
 // What an empty notice board read gives back: the layout to write it in.
 const BOARD_EMPTY = '(The notice board is empty. No file yet.) Layout: "# Notice board, YYYY-MM-DD", "XP today: N", then sections Main quest (only one), Side quests, Daily chores, Later, Done, using "- [ ]" and "- [x]" items with time and XP estimates.';
 
+// 1.5.223 PC check: a small brain rewrote the board as bare lines ("Apples / Pears / Plums"), losing the title,
+// the ## sections, the "- [ ]" boxes and a done mark. shapeBoard puts the board's shape back, in code:
+// - no "# " title: the board's title line (today's date) and its top lines (like "XP today") come back;
+// - bare or plain-bullet lines become "- [ ]" items (bare lines only when nothing in it is boxed, so notes stay notes);
+// - an item that was ticked off ([x]) keeps its tick when the same words come back;
+// - with no ## sections, each item goes back under the section it was in, new ones under Side quests.
+export function shapeBoard(oldText, content, day) {
+  const itemOf = (l) => String(l).replace(/^\s*[-*+]\s*(?:\[[ x]\]\s*)?/i, '').replace(/^\s*\d+[.)]\s+/, '').replace(/\s+/g, ' ').trim();
+  const isBox = (l) => /^\s*[-*+]\s*\[[ x]\]/i.test(l);
+  const old = String(oldText || '').replace(/\r\n/g, '\n').split('\n');
+  let lines = String(content || '').replace(/\r\n/g, '\n').split('\n');
+  const done = new Set(old.filter((l) => /^\s*[-*+]\s*\[x\]/i.test(l)).map((l) => itemOf(l).toLowerCase()));
+  const anyBox = lines.some(isBox);
+  lines = lines.map((l) => {
+    if (!l.trim() || /^\s*(#|>|\||<|```|XP today)/i.test(l)) return l;
+    if (isBox(l)) return done.has(itemOf(l).toLowerCase()) ? l.replace(/\[ \]/, '[x]') : l;
+    if (/^\s*([-*+]|\d+[.)])\s+/.test(l) || !anyBox) { const it = itemOf(l); return it ? `- [${done.has(it.toLowerCase()) ? 'x' : ' '}] ${it}` : l; }
+    return l;
+  });
+  if (!lines.some((l) => /^##\s/.test(l)) && old.some((l) => /^##\s/.test(l))) {
+    const home = new Map(); let sec = '';
+    for (const l of old) { if (/^##\s/.test(l)) sec = l.trim(); else if (isBox(l) && sec) home.set(itemOf(l).toLowerCase(), sec); }
+    const order = [...new Set(old.filter((l) => /^##\s/.test(l)).map((l) => l.trim()))];
+    if (!order.some((h) => /side quests/i.test(h))) order.push('## Side quests');
+    const side = order.find((h) => /side quests/i.test(h));
+    const by = new Map(order.map((h) => [h, []])); const rest = [];
+    for (const l of lines) { if (isBox(l)) by.get(home.get(itemOf(l).toLowerCase()) || side).push(l); else if (l.trim()) rest.push(l); }
+    lines = [...rest];
+    for (const h of order) if (by.get(h).length) lines.push('', h, ...by.get(h));
+  }
+  if (!lines.some((l) => /^#\s/.test(l))) {
+    const top = []; for (const l of old) { if (/^##\s/.test(l) || isBox(l)) break; if (/^#\s/.test(l)) top.push(`# Notice board, ${day}`); else top.push(l); }
+    while (top.length && !top[top.length - 1].trim()) top.pop();
+    while (lines.length && !lines[0].trim()) lines.shift();
+    lines = [...(top.length ? top : [`# Notice board, ${day}`]), '', ...lines];
+  }
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').replace(/\n*$/, '\n');
+}
+
 export function searchMatcher(text) {
   const t = String(text ?? '');
   const m = t.match(/^\/(.+)\/([i]?)$/s);
@@ -297,9 +336,10 @@ export function buildTools(cfg) {
     // The board's layout comes with an empty board, not in every prompt (less context is better, 1.5.207).
     // Tool sets (tool-sets.js), logic arguments: add puts one item on the board without rewriting it (rewriting the
     // whole board was where small brains lost items).
-    schema: fn('notice_board', "Read or change {{USER}}'s notice board (their to-do list). add = new items; write = the whole board (read it first).", {
-      action: str('read, add or write', { enum: ['read', 'add', 'write'] }),
-      content: str('add: items, one per line. write: the whole board, in Markdown.'),
+    // Nov 13 (120B interview): "read it first" made brains read and stop. add and done need no read.
+    schema: fn('notice_board', "{{USER}}'s notice board (to-do list). add = new items; done = tick one off; write = the whole board.", {
+      action: str('read, add, done or write', { enum: ['read', 'add', 'done', 'write'] }),
+      content: str('add: items, one per line. done: the item. write: the whole board, in Markdown.'),
       drop: { type: 'boolean', description: 'write: true to take items off.' }
     }, ['action']),
     async run({ action, content, drop }) {
@@ -328,15 +368,43 @@ export function buildTools(cfg) {
           return `Added to the notice board: ${added.join('; ')}.${had.length ? ` Already there: ${had.join('; ')}.` : ''} It has ${lines.filter((l) => /^\s*-\s*\[ \]/.test(l)).length} open items now.`;
         });
       }
+      if (action === 'done') {
+        const item = String(content || '').replace(/\s+/g, ' ').replace(/^[-*]\s*(?:\[[ x]\]\s*)?/i, '').trim().toLowerCase();
+        if (!item) throw new Error('Which item? Put its words in content.');
+        return oneWriter(file, () => {
+          if (!fs.existsSync(file)) return 'The notice board is empty. Nothing ticked off.';
+          const lines = readText(file).replace(/\r\n/g, '\n').split('\n');
+          const open = lines.map((l, i) => ({ l, i })).filter(({ l }) => /^\s*-\s*\[ \]/.test(l));
+          const words = (l) => l.replace(/^\s*-\s*\[ \]\s*/, '').trim();
+          const hit = open.find(({ l }) => words(l).toLowerCase() === item) || open.filter(({ l }) => words(l).toLowerCase().includes(item)).reduce((a, b, _, all) => (all.length === 1 ? b : a), null);
+          if (!hit) return `No open item matches "${content}". Open items: ${open.map(({ l }) => words(l)).slice(0, 15).join('; ') || 'none'}. Nothing ticked off.`;
+          lines[hit.i] = lines[hit.i].replace('[ ]', '[x]');
+          saveFile(file, lines.join('\n').replace(/\n*$/, '\n'));
+          return `Ticked off on the notice board: ${words(hit.l)}. ${open.length - 1} open items left.`;
+        });
+      }
       if (action !== 'write') return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : BOARD_EMPTY;
       if (!content) throw new Error('No board content given. To put one item on, use action add.');
       // 1.5.222 PC check: a small brain wrote a fresh board without reading it and wiped the items and headings on it.
-      // write never drops an open item unless drop is true; it says which, and points to add.
+      // write never drops an open item unless drop is true. 1.5.223: refusing made Bob stop and ask, so instead the
+      // open items it left out go back on (under Side quests) and the board is saved, with a note saying so.
+      content = shapeBoard(fs.existsSync(file) ? readText(file) : '', content, today(cfg));
+      let kept = [];
       if (drop !== true && fs.existsSync(file)) {
         const keep = new Set(String(content).replace(/\r\n/g, '\n').split('\n').map((l) => itemOf(l).toLowerCase()).filter(Boolean));
-        const lost = readText(file).replace(/\r\n/g, '\n').split('\n').filter((l) => /^\s*[-*]\s*\[ \]/.test(l)).map(itemOf).filter((i) => i && !keep.has(i.toLowerCase()));
-        if (lost.length) throw new Error(`Not saved: that would take ${lost.length} item${lost.length === 1 ? '' : 's'} off the board (${lost.slice(0, 5).join('; ')}${lost.length > 5 ? '; …' : ''}). To put items on, use action add (one per line). To take items off on purpose, write again with drop true.`);
+        kept = [...new Set(readText(file).replace(/\r\n/g, '\n').split('\n').filter((l) => /^\s*[-*]\s*\[ \]/.test(l)).map(itemOf).filter((i) => i && !keep.has(i.toLowerCase())))];
+        if (kept.length) {
+          const lines = String(content).replace(/\r\n/g, '\n').split('\n');
+          const at = lines.findIndex((l) => /^#+\s*side quests/i.test(l));
+          if (at < 0) { while (lines.length && !lines[lines.length - 1].trim()) lines.pop(); lines.push('', '## Side quests'); }
+          let end = at < 0 ? lines.length : at + 1;
+          if (at >= 0) while (end < lines.length && !/^#+\s/.test(lines[end])) end++;
+          while (end > 0 && !lines[end - 1].trim() && end - 1 > at) end--;
+          lines.splice(end, 0, ...kept.map((i) => `- [ ] ${i}`));
+          content = lines.join('\n').replace(/\n*$/, '\n');
+        }
       }
+      const keptNote = kept.length ? ` Kept ${kept.length} open item${kept.length === 1 ? '' : 's'} your board left out (${kept.slice(0, 5).join('; ')}${kept.length > 5 ? '; …' : ''}). To tick one off, use action done; to take items off for good, write again with drop true.` : '';
       return oneWriter(file, () => { // item 231: one writer at a time
       if (fs.existsSync(file)) {
         const old = fs.readFileSync(file, 'utf8');
@@ -347,7 +415,7 @@ export function buildTools(cfg) {
         }
       }
       saveFile(file, content);
-      return `Notice board saved: ${String(content).split(/\r?\n/).filter((l) => /^\s*-\s*\[ \]/.test(l)).length} open items.`;
+      return `Notice board saved: ${String(content).split(/\r?\n/).filter((l) => /^\s*-\s*\[ \]/.test(l)).length} open items.${keptNote}`;
       });
     },
     summary: ({ action }) => `notice board: ${action}`

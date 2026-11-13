@@ -9,7 +9,7 @@ Every brain gets the same tools, with the same names and the same inputs. Only t
 | Family | Wording | Added group stays for |
 |---|---|---|
 | Qwen (Riker, Bill, Bobert, Qwen3.x) and unknown brains | Bob's own wording, unchanged | 3 messages |
-| GPT-OSS | Short "Use when…" lines, with one example on the tools it mixes up | 1 message |
+| GPT-OSS (unproven: only when named, see below) | Short "Use when…" lines, with one example on the tools it mixes up | 1 message |
 
 Because the names and inputs never change, a lesson written by a GPT-OSS teacher is already in Bob's real tools. It never needs translating back.
 
@@ -43,13 +43,19 @@ These came from the GPT-OSS v5 lesson rejects, sorted by cause on Nov 13. In tha
 Run tool-score twice on the same held-out lessons, once with the family's wording and once without, and compare:
 
 ```
-node model-lab/tool-score.mjs --models "gptoss=...gguf" --tool-set auto
+node model-lab/tool-score.mjs --models "gptoss=...gguf" --tool-set gpt-oss
 node model-lab/tool-score.mjs --models "gptoss=...gguf" --tool-set off
 ```
 
-Keep a family's wording only when right-tool plus right-arguments goes up. Lesson writing picks the teacher's family by itself. Use `--tool-set off` for Bob's own wording, or `--tool-set gpt-oss` to name one.
+Keep a family's wording only when right-tool plus right-arguments goes up. Score with `--tools live`, so the brain sees today's tools and not the ones saved with the lessons. The Nov 13 run below replayed lists saved by a 1.5.108 copy. The Lab now refuses a Bob copy more than 3 releases behind it (`model-lab/bob-source.mjs`, `--allow-old-bob` to override), and stamps `bob_src` (version and commit) on tool lists, lessons and scores. Until then the family carries `proven: false` in `SETS` and is used only when named.
+
+**Result, Nov 13 (GPT-OSS 120B, rented H200, quick set, partial: 25 of 74 turns before the brain unloaded; tool lists from Bob 1.5.108, so it's worth running again with `--tools live`):** its own wording got 5 of 14 tool turns right (tool and inputs) and 9 of 10 no-tool turns; Bob's wording got 6 of 14 and 10 of 11. No gain, so GPT-OSS is `proven: false` and every brain gets Bob's wording. A thinking style of "plan, check inputs, quote the result" scored 0 of 8 against 0 of 8 on the 8 hardest v5 misses. The levers that count are in the tools and the loop: action enums, defaults, exact results, routing, and the plan and check steps, which stay on for every brain.
+
+Lesson writing picks the teacher's family by itself once that family is proven. Use `--tool-set off` for Bob's own wording, or `--tool-set gpt-oss` to name an unproven one.
 
 ## Making new tools with this in mind
+
+The whole guide is [WRITING-TOOLS.md](WRITING-TOOLS.md). In short:
 
 1. Use one tool with an `action` enum rather than sibling tools that get mixed up.
 2. Give safe defaults (a save path when none is given), and check inputs in code with an error that says how to fix it.

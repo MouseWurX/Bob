@@ -24,13 +24,12 @@ const { expectFrom } = await import('../src/verify.js');
 const { STICKY_TURNS } = await import('../src/toolbox.js');
 
 // 1. Which brains get which wording.
-check('GPT-OSS gets its own wording', toolSetFor({}, 'gpt-oss-120b-REAP-38B')?.id === 'gpt-oss');
-check('GPT-OSS by its file metadata too', toolSetFor({}, 'my-brain', { info: { arch: 'gpt-oss', name: 'gpt-oss-20b' } })?.id === 'gpt-oss');
+check('GPT-OSS wording is unproven (120B A/B Nov 13), so it isn\'t picked by itself', SETS['gpt-oss'].proven === false && toolSetFor({}, 'gpt-oss-120b-REAP-38B') === null && toolSetFor({}, 'my-brain', { info: { arch: 'gpt-oss', name: 'gpt-oss-20b' } }) === null);
 check('Qwen brains keep Bob\'s own wording', toolSetFor({}, 'qwen3.6-35b-a3b') === null && toolSetFor({}, 'riker') === null);
 check('unknown brains keep Bob\'s own wording', toolSetFor({}, 'some-new-brain') === null);
-check('on unless turned off', toolSetsOn({}) && !toolSetsOn({ toolSets: false }) && toolSetFor({ toolSets: false }, 'gpt-oss-20b') === null);
+check('on unless turned off', toolSetsOn({}) && !toolSetsOn({ toolSets: false }) && toolSetFor({ toolSets: false }, '', { family: 'gpt-oss' }) === null);
 check('a family named by hand (the Lab\'s --tool-set)', toolSetFor({}, '', { family: 'gpt-oss' })?.id === 'gpt-oss');
-check('GPT-OSS keeps an added group for 1 message; others for the usual', stickyFor(toolSetFor({}, 'gpt-oss-20b'), STICKY_TURNS) === 1 && stickyFor(null, STICKY_TURNS) === STICKY_TURNS);
+check('GPT-OSS keeps an added group for 1 message; others for the usual', stickyFor(toolSetFor({}, '', { family: 'gpt-oss' }), STICKY_TURNS) === 1 && stickyFor(null, STICKY_TURNS) === STICKY_TURNS);
 
 // 2. Against Bob's real tool list: same names and inputs, never longer in all.
 const cfg = loadConfig(); cfg.userName = 'Sam'; cfg.timeZone = 'UTC'; cfg.readRoots = [tmp];
@@ -51,10 +50,10 @@ for (const [fam, set] of Object.entries(SETS)) {
   const c1 = JSON.stringify(brain.toolSchemas(core)).length, c2 = JSON.stringify(brain.toolSchemas(core, { id: fam, ...set })).length;
   check(`${fam}: the core tools are no longer than Bob's own (${c2} vs ${c1})`, c2 <= c1, `${c2} > ${c1}`);
 }
-check('the Lab\'s saved lists get the placeholders filled', !JSON.stringify(inSet(brain.tools.reminders.schema, toolSetFor({}, 'gpt-oss-20b'), { user: 'the user' })).includes('{{'));
-check('a tool a set doesn\'t word stays as it is', inSet(brain.tools.bob_help.schema, toolSetFor({}, 'gpt-oss-20b')) === brain.tools.bob_help.schema);
-check('the brain works out the set from the model it answers on', brain.toolSetOf('gpt-oss-20b')?.id === 'gpt-oss' && brain.toolSetOf('riker') === null);
-{ const loaded = new Set(); loaded.toolSet = brain.toolSetOf('gpt-oss-20b'); const t = brain.frontDeskTools(loaded); check('the front desk hands GPT-OSS its wording', t.find((x) => x.function.name === 'reminders')?.function.description.startsWith('Use when')); }
+check('the Lab\'s saved lists get the placeholders filled', !JSON.stringify(inSet(brain.tools.reminders.schema, toolSetFor({}, '', { family: 'gpt-oss' }), { user: 'the user' })).includes('{{'));
+check('a tool a set doesn\'t word stays as it is', inSet(brain.tools.bob_help.schema, toolSetFor({}, '', { family: 'gpt-oss' })) === brain.tools.bob_help.schema);
+check('the brain works out the set from the model it answers on (none while GPT-OSS is unproven)', brain.toolSetOf('gpt-oss-20b') === null && brain.toolSetOf('riker') === null);
+{ const loaded = new Set(); loaded.toolSet = toolSetFor({}, '', { family: 'gpt-oss' }); const t = brain.frontDeskTools(loaded); check('the front desk hands GPT-OSS its wording', t.find((x) => x.function.name === 'reminders')?.function.description.startsWith('Use when')); }
 
 // 3. Logic arguments: what a brain means, read in code (no words added to the brain's list).
 const rp = brain.tools.reminders.schema.function.parameters, np = brain.tools.notice_board.schema.function.parameters;
@@ -83,8 +82,11 @@ check('add to an empty board starts one', /Added/.test(await nb.run({ action: 'a
   const r = await nb.run({ action: 'add', content: '- [ ] eggs\n2. bread\n\n* [ ] first\n' });
   const b = fs.readFileSync(cfg.noticeBoard, 'utf8');
   check('add takes several items, one per line, and skips ones already there', /Added to the notice board: eggs; bread\. Already there: first/.test(r) && b.includes('- [ ] eggs') && b.includes('- [ ] bread'), r);
-  let refused = ''; try { await nb.run({ action: 'write', content: '# Notice board\n\n- [ ] call the bank\n' }); } catch (e) { refused = e.message; }
-  check('write that would take open items off is refused, names them and points to add', /Not saved: that would take 3 items off the board \(first; eggs; bread\)/.test(refused) && /action add/.test(refused) && fs.readFileSync(cfg.noticeBoard, 'utf8').includes('- [ ] eggs'), refused);
+  // 1.5.223 (builder): a refusal made Bob stop and ask, so write keeps the open items it left out and saves.
+  const kept = await nb.run({ action: 'write', content: '# Notice board\n\n- [ ] call the bank\n' });
+  const kb = fs.readFileSync(cfg.noticeBoard, 'utf8');
+  check('write that leaves open items out saves and keeps them, and says so', /Notice board saved: 4 open items\. Kept 3 open items your board left out \(first; eggs; bread\)/.test(kept) && /action done/.test(kept) && /drop true/.test(kept) && ['call the bank', 'first', 'eggs', 'bread'].every((i) => kb.includes(`- [ ] ${i}`)) && /## Side quests\n- \[ \] call the bank\n- \[ \] first/.test(kb), kept + '\n' + kb);
+  await nb.run({ action: 'write', content: '# Notice board\n\n## Side quests\n- [ ] first\n- [ ] eggs\n- [ ] bread\n', drop: true });
   check('write keeping every open item (ticking one off) is fine', /Notice board saved/.test(await nb.run({ action: 'write', content: '# Notice board\n\n## Side quests\n- [x] first\n- [ ] eggs\n- [ ] bread\n' })));
   check('write with drop true takes items off on purpose', /Notice board saved/.test(await nb.run({ action: 'write', content: '# Notice board\n\n- [ ] eggs\n', drop: true })) && !fs.readFileSync(cfg.noticeBoard, 'utf8').includes('bread'));
 }
@@ -96,6 +98,15 @@ check('add to an empty board starts one', /Added/.test(await nb.run({ action: 'a
   check('a missing file says where the files Bob can read are', /Files I can read are in:/.test(miss) && miss.includes(cfg.readRoots[0]), miss);
 }
 check('write says how many items are open', /Notice board saved: 2 open items\./.test(await nb.run({ action: 'write', content: '# Notice board\n- [ ] a\n- [ ] b\n- [x] c\n', drop: true })));
+{ // 1.5.223 PC check: "rewrite my board with just the fruit" came back as bare lines and lost the board's shape
+  fs.writeFileSync(cfg.noticeBoard, '# Notice board, 2030-01-01\nXP today: 10\n\n## Main quest\n- [ ] ship it\n\n## Side quests\n- [ ] Apples\n- [x] Pears\n- [ ] Plums\n- [ ] call mom\n');
+  await nb.run({ action: 'write', content: 'Apples\nPears\nPlums', drop: true });
+  const fb = fs.readFileSync(cfg.noticeBoard, 'utf8');
+  check('a bare-lines rewrite keeps the title, the sections, the boxes and the done mark', /^# Notice board, \d{4}-\d{2}-\d{2}\nXP today: 10\n/.test(fb) && /## Side quests\n- \[ \] Apples\n- \[x\] Pears\n- \[ \] Plums/.test(fb) && !/call mom/.test(fb), fb);
+  await nb.run({ action: 'write', content: '# Notice board\n\n## Fruit\n- Apples\n- [ ] Pears\n\nA note stays a note.', drop: true });
+  const gb = fs.readFileSync(cfg.noticeBoard, 'utf8');
+  check('plain bullets get boxes, a ticked item stays ticked, a note stays a note', /- \[ \] Apples/.test(gb) && /- \[x\] Pears/.test(gb) && /\nA note stays a note\.\n/.test(gb), gb);
+}
 const rem = brain.tools.reminders;
 let noTime = ''; try { await rem.run({ action: 'add', text: 'buy milk' }); } catch (e) { noTime = e.message; }
 check('a reminder with no time points to the notice board', /notice_board, action add/.test(noTime), noTime);
@@ -131,6 +142,18 @@ const { afterTurn } = await import('../src/verify.js');
   check('the end-of-turn check asks for the missing step', /asked for 2 things/.test(v?.nudge || ''), JSON.stringify(v));
   const q = afterTurn({ stepsAsked: two, ledger: { actions: [{ name: 'read_file', args: {}, ok: true, text: 'x' }] }, cfg: { userName: 'Sam' } }, 'Which board section should they go in?');
   check('a question back is left alone', !/asked for 2 things/.test(q?.nudge || ''));
+}
+// 1.5.223 (builder): "read notes.txt" answered from an earlier refusal, with no read_file this turn.
+{
+  const { fileAsked } = await import('../src/verify.js');
+  check('a file named in the ask is found', fileAsked('read notes.txt') === 'notes.txt' && fileAsked("what's in plan.docx?") === 'plan.docx' && fileAsked('lis notes.txt') === 'notes.txt');
+  check('no file, or a file only mentioned, is no file ask', fileAsked('read the news') === '' && fileAsked('I saved notes.txt yesterday') === '');
+  const v = afterTurn({ turnText: 'read notes.txt', ledger: { actions: [] }, cfg: { userName: 'Sam' } }, 'It says to buy eggs and call the bank.');
+  check('a file asked for but never read gets one more go, with the read_file call', /read_file now with just the name, path "notes\.txt"/.test(v?.nudge || '') && /restricted/.test(v?.nudge || ''), JSON.stringify(v));
+  const ran = afterTurn({ turnText: 'read notes.txt', ledger: { actions: [{ name: 'read_file', args: { path: 'notes.txt' }, ok: true, text: 'buy eggs' }] }, cfg: { userName: 'Sam' } }, 'It says to buy eggs.');
+  check('a file that was read this turn: no nudge', !/read_file now/.test(ran?.nudge || ''));
+  const tried = afterTurn({ turnText: 'read notes.txt', ledger: { actions: [{ name: 'read_file', args: { path: 'notes.txt' }, ok: false, text: 'Error: no such file' }] }, cfg: { userName: 'Sam' } }, 'There is no notes.txt.');
+  check('a read that failed on that file counts as tried', !/read_file now/.test(tried?.nudge || ''));
 }
 
 // 6. Tools Bob makes follow the same rules: an action with choices, and forgiving inputs.

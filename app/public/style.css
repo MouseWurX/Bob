@@ -504,8 +504,7 @@ body:not(.right-hidden) .now-toggle .badge { display: none; }
 .net-tools { margin: 2px 0 4px; }
 .now .titem.net:has(.net-avatar) { grid-template-columns: auto auto 1fr; }
 .now .titem.net:has(.net-avatar) .ttext { grid-column: 3; }
-.net-avatar { width: 32px; height: 32px; image-rendering: pixelated; border-radius: 4px; }
-.net-avatar.none { display: inline-flex; align-items: center; justify-content: center; font-size: 18px; }
+.net-avatar { width: 32px; height: 32px; border-radius: 4px; }
 .now-gpu .meter { margin: 0; }
 .tag.needs-you { background: var(--danger-bg); color: var(--warn); }
 body.right-hidden .now, body.right-hidden .grab { display: none; }
@@ -1215,6 +1214,19 @@ video.out-media { max-height: 240px; border-radius: calc(var(--r) * 0.75); }
 .together tr.tap td { height: 32px; }
 .together .together-head input { flex: none; margin-top: 1px; }
 .together .together-step:has(input.pick:not(:checked)) > :not(.together-head) { opacity: 0.5; }
+/* Nov 13: the email sort plan (email-sort-card.js); one column on a phone */
+.sort-card .sort-batches { display: grid; gap: 8px; }
+.sort-card .sort-batch { border: 1px solid var(--line); border-radius: calc(var(--r) * 0.75); padding: 8px; min-width: 0; }
+.sort-card .sort-bad { border-color: var(--bad, #c0392b); }
+.sort-card .sort-what { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+.sort-card .sort-what label { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.sort-card select, .sort-card input { max-width: 100%; min-height: 32px; font: inherit; }
+.sort-card .sort-items ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+.sort-card .sort-item { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; border-top: 1px solid var(--line); padding-top: 6px; }
+.sort-card .sort-item-text { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.sort-card .sort-danger { color: var(--bad, #c0392b); font-size: 0.92em; }
+.sort-card .sort-first ol { margin: 4px 0 8px; }
+.sort-card summary { cursor: pointer; min-height: 32px; display: list-item; }
 /* 1.5.78: the plan card before big jobs (plan-card.js) */
 .msg.plan-card { white-space: normal; }
 .plan-card .plan-step { border: 1px solid var(--line); border-radius: calc(var(--r) * 0.75); padding: 8px; min-height: 36px; }
