@@ -52,22 +52,21 @@ export function model3dReady(cfg) {
 }
 
 // Why there's no Get button here, or undefined.
-// 1.5.211 PC check (RTX 5070 Ti): the pinned add-ons have no kernels for RTX 50-series cards (compute 12.x), so every
-// picture died in its first step ("flash_fwd_launch_template.h: invalid argument"). Until add-ons built for them ship,
-// there's no Get button there, rather than a 28 GB download that can't run. The card's compute level is read once.
+// 1.5.211 PC check (RTX 5070 Ti): every picture died in its first step ("flash_fwd_launch_template.h: invalid argument").
+// That was xformers' FlashAttention, not Bob's add-ons (those are built for compute 12.0 too). Now the runner
+// (model3d/bob-trellis.py, newest_cards) uses PyTorch's attention there and leaves FlashAttention out, so RTX 50-series
+// cards get the Get button again. The card's compute level is still read once, for anything that needs it.
 let capSeen;
 export function computeCap() {
   if (capSeen !== undefined) return capSeen;
   try { const out = execFileSync('nvidia-smi', ['--query-gpu=compute_cap', '--format=csv,noheader'], { timeout: 4000, windowsHide: true, encoding: 'utf8' }); capSeen = parseFloat(String(out).split('\n')[0]) || null; } catch { capSeen = null; }
   return capSeen;
 }
-export const NEWEST_CAP = 12; // the first compute level the pinned add-ons can't run
-export function model3dWhy(os_ = OS, arch = process.arch, pins = addonPins(), cap = (os_ === OS ? computeCap() : null)) {
+export function model3dWhy(os_ = OS, arch = process.arch, pins = addonPins()) {
   if (os_ === 'mac') return 'Picture to 3D needs an NVIDIA graphics card, which Macs don\'t have. Send the job to a PC Bob over Bob-Net instead (Settings, Bob-Net, Send jobs).';
   const key = machineKey(os_, arch);
   if (!key) return 'Picture to 3D needs an NVIDIA graphics card on a 64-bit Windows or Linux PC. Send the job to a PC Bob over Bob-Net instead.';
   if (!addonsFor(key, pins)) return 'Picture to 3D\'s add-ons aren\'t built and checked for this kind of computer in this build of Bob yet, so there\'s nothing to download.';
-  if (Number(cap) >= NEWEST_CAP) return 'Picture to 3D doesn\'t run on RTX 50-series cards yet: its add-ons were built before them. A Bob update will bring ones that do. Until then, send the job to a PC Bob with an older NVIDIA card over Bob-Net (Settings, Bob-Net, Send jobs).';
   return undefined;
 }
 

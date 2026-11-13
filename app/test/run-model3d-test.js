@@ -53,7 +53,12 @@ const PINS = { release: 'model3d-addons-1', 'win-x64': [wheel('cumesh-0.0.1-cp31
   check('a Mac is told to send it to a PC Bob', /NVIDIA/.test(model3dWhy('mac', 'arm64', PINS)) && /Bob-Net/.test(model3dWhy('mac', 'arm64', PINS)));
   check('ARM Linux is told too', /Bob-Net/.test(model3dWhy('linux', 'arm64', PINS)));
   check('Windows with pins: a Get button', model3dWhy('win', 'x64', PINS, 8.9) === undefined && model3dWhy('win', 'x64', PINS, null) === undefined);
-  check('an RTX 50-series card (compute 12.x) gets no Get button yet and is told why (1.5.211 PC check)', /RTX 50-series/.test(model3dWhy('win', 'x64', PINS, 12)) && /Bob-Net/.test(model3dWhy('win', 'x64', PINS, 12.0)));
+  check('an RTX 50-series card gets the Get button again (its attention is handled in the runner)', model3dWhy('win', 'x64', PINS) === undefined && !/RTX 50-series/.test(read('src/engines.js') + read('public/cellar.js')));
+  {
+    const py = read('model3d/bob-trellis.py');
+    check('on RTX 50-series cards the runner uses PyTorch attention and leaves xformers\' FlashAttention out, before TRELLIS.2 loads', /get_device_capability\(0\)\[0\] < 12/.test(py) && /ATTN_BACKEND"\] = "sdpa"/.test(py) && /flash\.FwOp\.not_supported_reasons = classmethod/.test(py) && py.indexOf('newest_cards(torch)') < py.indexOf('from trellis2.pipelines'));
+    check('weights already in the models folder without their .ok mark are checked in place, not downloaded again', /already here/.test(py) && /sha256\(dest\) == f\["sha256"\]/.test(py));
+  }
   check('Windows without pins: says why', /aren't built and checked/.test(model3dWhy('win', 'x64', {})));
   check('Windows gets the Triton build for Windows', runtimePackages('win').some((p) => /^triton-windows/.test(p)) && runtimePackages('linux').some((p) => /^triton[<>=]/.test(p)));
 }

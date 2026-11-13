@@ -230,7 +230,7 @@ Just ask: "paint a lighthouse at dusk", "make this picture look like winter", "a
 **3D:**
 
 - **Let Bob make 3D parts** (off): ask for a bracket, a box or a spacer. Bob writes it as an OpenSCAD recipe in millimetres and makes an STL for a 3D printer. OpenSCAD is about 30 MB from Settings, Engines.
-- **Let Bob turn pictures into 3D models** (off): ask for a figurine or a prop; TRELLIS.2 turns a picture into a textured GLB model in 1 to 5 minutes. Needs an NVIDIA card (16 GB is best; not RTX 50-series yet) and the 3D workshop (about 28 GB). On a Mac, send the job to a PC Bob over Bob-Net.
+- **Let Bob turn pictures into 3D models** (off): ask for a figurine or a prop; TRELLIS.2 turns a picture into a textured GLB model in 1 to 5 minutes. Needs an NVIDIA card (16 GB is best; RTX 20 to RTX 50) and the 3D workshop (about 28 GB). On a Mac, send the job to a PC Bob over Bob-Net.
 - The side panel's **3D viewer** opens STL, OBJ and GLB files: drag to turn, scroll to zoom.
 
 **Advanced workshop:** if you use ComfyUI, Bob can run its workflows for you (Settings, Other apps).
