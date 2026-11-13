@@ -2941,8 +2941,8 @@ ${set('Each chat keeps its place in the engine', 'Off', "Switching chats saves t
 <dt>Steer (mid-job)</dt><dd>A message typed in a job's chat while I work, read before my next step. Only with ${go('settings-jobs', 'Steer Bob mid-job')} on.</dd>
 <dt>Step boundary</dt><dd>The moment between two steps of a job, when one tool is done and the next hasn't started. With ${go('mid-job', 'Answer messages between steps')} on, that's when I read and answer messages that came in during the step.</dd>
 <dt>STL, OBJ and GLB</dt><dd>3D model files. STL is the usual one for 3D printing (just the shape); OBJ is an older all-rounder; GLB keeps a model with its colours and pictures in one file. See ${go('model-viewer', 'The 3D viewer')}.</dd>
-<dt>Stop and wait words</dt><dd>Short messages like "stop", "hold on", "wait 10 minutes" or "go on" that I treat as a command while a job runs, at once. See ${go('stop-words', 'Stop and wait words')}.</dd>
 <dt>Stop after this step</dt><dd>A softer Stop: the step running now finishes and keeps its result, then I answer. See ${go('settings-jobs', 'Settings: Jobs')}.</dd>
+<dt>Stop and wait words</dt><dd>Short messages like "stop", "hold on", "wait 10 minutes" or "go on" that I treat as a command while a job runs, at once. See ${go('stop-words', 'Stop and wait words')}.</dd>
 <dt>Story dice</dt><dd>A game on my 🧩 Games page: six picture dice come up and we tell a story a line each until every die is in it.</dd>
 <dt>Storybook</dt><dd>An Adventure written up as one page to keep or share: the story scene by scene, the turns and rolls, the rewards and the scene pictures. 📕 Storybook opens it; Save a copy keeps it as one .html file.</dd>
 <dt>Straight facts</dt><dd>Five Lab Challenges packs that show whether a brain repeats a government's line instead of the sourced facts (Tiananmen 1989, Taiwan, Xinjiang and more), in English and Chinese, with a fairness check on other countries. Plus a sourced lesson set to teach the facts back. Professional mode calls it a political-censorship probe.</dd>
@@ -3093,7 +3093,7 @@ export const FOLD = {
   'faq-rent-cost': 'rented', 'faq-rent-files': 'rented', 'faq-models-safe': 'settings-home', 'faq-help-me-set-up': 'start',
   'faq-get-help': 'trouble', 'faq-need-ollama': 'settings-engines', 'faq-music-models': 'songs', 'faq-busy': 'mid-job',
   'faq-chat-while-busy': 'mid-job', 'faq-steer': 'settings-jobs', 'faq-receipt': 'settings-jobs', 'faq-sources': 'research',
-  'faq-mid-job': 'mid-job', 'faq-meanwhile': 'mid-job', 'faq-mind': 'mind', 'faq-slow-first': 'memory-brains',
+  'faq-mid-job': 'mid-job', 'faq-stop-words': 'stop-words', 'faq-meanwhile': 'mid-job', 'faq-mind': 'mind', 'faq-slow-first': 'memory-brains',
   'faq-two-numbers': 'mind', 'faq-gaming': 'sessions', 'faq-which-effort': 'sessions', 'faq-session-effort': 'sessions',
   'faq-models-space': 'settings-home', 'faq-asleep': 'personality', 'faq-stop-moving': 'style', 'faq-no-gpu': 'start',
   'faq-built-in-graphics': 'start', 'faq-apu-memory': 'start', 'faq-undo': 'hands', 'faq-checkins-games': 'checkins', 'faq-checkins-quiet': 'checkins',

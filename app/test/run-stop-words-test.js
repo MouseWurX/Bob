@@ -136,10 +136,11 @@ const notes = (sid) => events.filter((e) => e.type === 'busy-note' && e.sessionI
   // "wait 1 minute" (fake clock): paused, then picks itself back up when the time is up.
   events.length = 0; stepMs = 200;
   script = [call('fetch_page', { url: 'https://example.org/d' }), { role: 'assistant', content: 'Done later.' }];
-  during = () => brain.enqueue('main', 'wait 1 second');
+  during = () => brain.enqueue('main', 'wait 2 seconds');
   const { jobId } = brain.enqueue('main', 'read https://example.org/d');
   await until(() => settled(jobId));
-  check('"wait 1 second": paused with a wake-up time', job(jobId).state === 'paused' && job(jobId).resumeAt > 0 && notes('main').some((t) => /pick it back up in 1 seconds?/.test(t)), notes('main').join(' | '));
+  await wait(20);
+  check('"wait 2 seconds": paused with a wake-up time', job(jobId).state === 'paused' && job(jobId).resumeAt > 0 && notes('main').some((t) => /pick it back up in 2 seconds/.test(t)), `${job(jobId).state} ${job(jobId).resumeAt} ${notes('main').join(' | ')}`);
   stepMs = 10;
   await until(() => job(jobId).state === 'done', 5000);
   check('it came back by itself and finished', job(jobId).state === 'done' && notes('main').includes(LINES.resumedLater) && !job(jobId).resumeAt);
@@ -151,6 +152,7 @@ const notes = (sid) => events.filter((e) => e.type === 'busy-note' && e.sessionI
   during = () => brain.enqueue('main', 'what are you doing?!');
   const { jobId } = brain.enqueue('main', 'read https://example.org/e');
   await until(() => settled(jobId));
+  await wait(20);
   check('"what are you doing?!": paused, not stopped, and says how to go on', job(jobId).state === 'paused' && notes('main').some((t) => /^⏸ Paused, just in case\./.test(t) && /"stop"/.test(t) && /"go on"/.test(t)), notes('main').join(' | '));
   const sr = brain.enqueue('main', 'stop');
   check('"stop" while paused ends it', sr.heard === 'stop' && job(jobId).state === 'cancelled', JSON.stringify(sr) + job(jobId).state);
