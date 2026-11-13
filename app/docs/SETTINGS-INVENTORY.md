@@ -421,6 +421,12 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 | same | Pin messages (`pinMessages`) | off | new, awaiting review |
 | same | Guest chats (`guestChat`) | off | new, awaiting review |
 | same | Each chat keeps its place in the engine (`chatPlaces`), Saved chat places count, Clear them | off | new, awaiting review |
+| same | Fade old messages (`fadeChat.on`), Fade after (`fadeChat.minutes`: number + minutes/hours/days, quick picks 5 min to 30 days), When they fade (`fadeChat.mode`: Hide them / Delete them for good), 🧹 Clear this chat | off, 1 hour, Hide them | new, awaiting review |
+| same | Offer Amnesia mode (`amnesiaOffer`), Things he made while it was on (`amnesiaMade`: Keep them / Delete them too), Turn it off by itself after (`amnesiaAutoOff`: Never, 1 hour, 4 hours, 1 day) | off, Keep them, Never | new, awaiting review |
+| Chat, top line (with fading on or something faded) | ⌛ N older messages faded, Show them / Hide them again, 🧹 Clear chat (asks first, Delete it for good unticked) | n/a | new, awaiting review |
+| Chat, beside Web search (with Offer Amnesia mode on) | 🫥 Amnesia switch; while on: banner with Turn off and forget, purple edge on the box | off | new, awaiting review |
+| Find anything | Clear chat | n/a | new, awaiting review |
+| Android app > Settings > In the chat | Fade old messages (`fade.on`), Fade after (`fade.minutes`), When they fade (`fade.mode`), 🧹 Clear this chat | off, 1 hour, Hide them | new, awaiting review |
 | Welcome, "Do you want me to:" | three buttons: Chat extras, Quiet hours and shortcut, Health and history | n/a | new, awaiting review |
 
 ## Settings: Look & feel and 🗓 Everyday helpers (items 143 to 150)

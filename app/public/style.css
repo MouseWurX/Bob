@@ -2415,3 +2415,97 @@ html.settings-window body.look-lamplight .cellar.page[open] { height: 100dvh; ma
 body.now-mind-only #panelRow,
 body.now-mind-only #nowSections > section:not([data-sec="mind"]),
 body.now-mind-only #nowMind > .now-sec { display: none; }
+
+/* Nov 13 Bob-Net icons under Bob (net-overlay.js), off unless turned on. A row at the top of the chat (phone and the
+   other looks); Lamplight on a computer turns it into a column under Bob's cube, over the empty space left of the chat.
+   A little see-through and dimmer than Bob's own cube; pointing at one makes it ebb and flow in place. */
+.net-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 6px 16px 8px; position: relative; z-index: 5; }
+.net-row[hidden] { display: none; }
+.net-row .nb { position: relative; width: 38px; height: 38px; flex: none; padding: 0; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--text) 14%, transparent); background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--text) 8%, transparent), rgb(5 7 10 / 55%) 70%); box-shadow: inset 0 0 8px rgb(0 0 0); opacity: .6; cursor: pointer; transition: opacity .25s ease, box-shadow .25s ease; }
+.net-row .nb:is(:hover, :focus-visible, .on), .net-row .nb:has(.count:not([hidden])) { opacity: .9; }
+.net-row .nb.on { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
+.net-row .nb-port { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; display: block; }
+.net-row .nb-port canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.net-row .nb-fog { opacity: .8; }
+.net-row .nb .dot { position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--bg); background: var(--good, rgb(91 208 138)); }
+.net-row .nb[data-mood="thinking"] .dot, .net-row .nb[data-mood="replying"] .dot, .net-row .nb[data-mood="loading"] .dot, .net-row .nb[data-mood="working"] .dot { background: var(--accent); }
+.net-row .nb[data-mood="none"] .dot, .net-row .nb[data-mood="idle"] .dot, .net-row .nb[data-mood="stopped"] .dot { background: var(--muted); }
+.net-row .nb[data-mood="needs-you"] .dot, .net-row .nb[data-mood="failed"] .dot { background: var(--bad, rgb(224 108 90)); }
+.net-row .nb .count { position: absolute; top: -5px; right: -7px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--accent); color: var(--bg); font: 600 10.5px/17px var(--font, system-ui); text-align: center; }
+.net-row .sep { width: 1px; height: 22px; background: var(--line); flex: none; }
+@keyframes net-ebb { 0%, 100% { transform: scale(1); filter: brightness(1); } 50% { transform: scale(1.12); filter: brightness(1.18); } }
+.net-row .nb:is(:hover, :focus-visible) .nb-port, body.look-lamplight .bob-cube.porthole:hover .port { animation: net-ebb 2.4s ease-in-out infinite; }
+.net-glow { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+.net-tip { position: fixed; z-index: 60; padding: 5px 10px; border-radius: 8px; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); color: var(--text); font-size: 12.5px; max-width: min(280px, calc(100vw - 32px)); overflow-wrap: anywhere; box-shadow: 0 6px 20px rgba(0,0,0,.4); pointer-events: none; }
+.net-tip small { display: block; color: var(--muted); font-size: 11px; }
+.net-tip[hidden] { display: none; }
+.say-bubble.net-bub { position: fixed; z-index: 61; max-width: min(280px, calc(100vw - 32px)); padding: 8px 12px; border-radius: 14px; cursor: pointer; border-color: color-mix(in srgb, var(--accent) 28%, transparent); background: color-mix(in srgb, var(--panel) 55%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 8px 28px -10px rgba(0,0,0,.5); touch-action: pan-y; }
+.say-bubble.net-bub::before { background: color-mix(in srgb, var(--panel) 55%, transparent); border-color: color-mix(in srgb, var(--accent) 28%, transparent); }
+.say-bubble.net-bub.below::before { left: 16px; top: -6px; border-bottom: 0; border-top: 1px solid color-mix(in srgb, var(--accent) 28%, transparent); }
+.say-bubble.net-bub b { display: block; font-size: 12px; font-weight: 600; color: color-mix(in srgb, var(--accent) 85%, var(--text)); margin-bottom: 2px; }
+.say-bubble.net-bub .hint { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
+.say-bubble.net-bub:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.guest-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 16px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.guest-bar[hidden] { display: none; }
+.guest-bar .g-who { flex: 1; min-width: 12em; }
+.guest-bar .g-who strong { display: block; font-size: 15px; }
+.guest-bar .g-who span { color: var(--muted); font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; overflow-wrap: anywhere; }
+.guest-bar .g-who p { margin: 4px 0 0; font-size: 12.5px; }
+.guest-bar .g-back { flex: none; border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); color: var(--accent); background: transparent; border-radius: 10px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
+/* Guest mode: web search is the only switch; Hands and the rest stay with your own Bob. */
+body.net-guest .effort > :not(#webBtn):not(.net-help), body.net-guest #handsQuick, body.net-guest .chips { display: none !important; }
+.net-help { display: none; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; padding: 4px 8px; }
+body.net-guest .net-help { display: inline-flex; }
+.net-help i { width: 7px; height: 7px; border-radius: 50%; background: var(--good, rgb(91 208 138)); }
+body.net-guest .composer { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+@media (min-width: 641px) {
+  body.look-lamplight .net-row { position: fixed; left: 8px; top: 78px; flex-direction: column; flex-wrap: nowrap; gap: 5px; padding: 0; }
+  body.look-lamplight.has-net-row .log { padding-left: max(56px, calc((100% - 760px) / 2)); }
+  body.look-lamplight .net-row .nb { width: 30px; height: 30px; }
+  body.look-lamplight .net-row .nb .dot { width: 9px; height: 9px; right: -2px; bottom: -2px; }
+  body.look-lamplight .net-row .nb .count { top: -5px; right: -7px; min-width: 15px; height: 15px; font-size: 10px; line-height: 15px; }
+  body.look-lamplight .net-row .sep { width: 18px; height: 1px; margin: 1px 6px; }
+  body.look-lamplight .guest-bar { margin: 0 max(var(--s4, 16px), calc((100% - 760px) / 2)); }
+}
+@media (prefers-reduced-motion: reduce) { .net-row .nb:is(:hover, :focus-visible) .nb-port, body.look-lamplight .bob-cube.porthole:hover .port { animation: none; } }
+body.still .net-row .nb:is(:hover, :focus-visible) .nb-port, body.still.look-lamplight .bob-cube.porthole:hover .port { animation: none; }
+/* Fade old messages, Clear chat and 🫥 Amnesia mode (fade-chat.js). Amnesia is purple in every look, so it's never
+   mistaken for the accent colour; forced colours and Still keep it plain. */
+:root { --amnesia: rgb(155 127 212); --amnesia-text: rgb(210 194 245); --amnesia-ink: rgb(22 15 36); }
+.fade-line { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 10px; margin: 6px auto 18px; padding: 8px 14px; max-width: 760px; color: var(--muted); font-size: 13px; border-bottom: 1px dashed var(--line); }
+.fade-line .hg { color: var(--accent); }
+.fade-line button { min-height: 32px; padding: 4px 12px; font: inherit; font-size: 12.5px; color: var(--accent); background: transparent; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 999px; cursor: pointer; }
+.fade-line button.plain { color: var(--text); border-color: var(--line); }
+.msg.fading-out { opacity: .15; transition: opacity 1.4s ease; }
+body.still .msg.fading-out { transition: none; }
+.amnesia-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; margin: 6px auto 18px; max-width: 760px; padding: 10px 14px; border: 1px solid var(--amnesia); border-radius: 12px; background: color-mix(in srgb, var(--amnesia) 14%, transparent); color: var(--text); font-size: 14px; }
+.amnesia-bar .amn-ic { font-size: 20px; }
+.amnesia-bar .amn-t { flex: 1; min-width: 200px; line-height: 1.4; }
+.amnesia-bar button { min-height: 32px; padding: 4px 13px; font: inherit; font-size: 13px; color: var(--amnesia-text); background: transparent; border: 1px solid var(--amnesia); border-radius: 999px; cursor: pointer; }
+.brain-switch.amnesia-btn[aria-checked="true"] { color: var(--amnesia-text); border-color: var(--amnesia); background: color-mix(in srgb, var(--amnesia) 18%, transparent); }
+.brain-switch.amnesia-btn[aria-checked="true"] .st { background: var(--amnesia); color: var(--amnesia-ink); }
+body.amnesia-on .composer { border-color: var(--amnesia) !important; box-shadow: 0 0 0 1px color-mix(in srgb, var(--amnesia) 35%, transparent), 0 0 22px -6px var(--amnesia); }
+body.amnesia-on.still .composer { box-shadow: 0 0 0 1px var(--amnesia); }
+@media (max-width: 640px) { #effort { flex-wrap: wrap; row-gap: 6px; } }
+dialog.fade-ask { width: min(440px, calc(100% - 32px)); padding: 20px 22px; color: var(--text); background: var(--card, var(--panel)); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 20px 60px -10px rgba(0, 0, 0, .8); }
+dialog.fade-ask::backdrop { background: rgba(0, 0, 0, .55); }
+dialog.fade-ask h3 { margin: 0 0 8px; font-size: 18px; }
+dialog.fade-ask p { margin: 0 0 10px; color: var(--muted); font-size: 14px; line-height: 1.45; }
+dialog.fade-ask ul { margin: 0 0 6px 18px; padding: 0; font-size: 14px; line-height: 1.6; }
+dialog.fade-ask .fade-tick { display: flex; gap: 10px; align-items: flex-start; margin: 12px 0 18px; font-size: 14px; line-height: 1.4; cursor: pointer; }
+dialog.fade-ask .fade-tick input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--accent); }
+dialog.fade-ask .fade-tick small { display: block; color: var(--muted); font-size: 12.5px; }
+dialog.fade-ask .fade-row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+dialog.fade-ask .fade-row button { min-height: 40px; padding: 8px 16px; font: inherit; font-size: 14px; color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+dialog.fade-ask .fade-row button.danger { color: var(--on-accent); background: var(--bad); border-color: var(--bad); }
+.fade-set .pick-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.fade-set .chip { min-height: 32px; padding: 4px 11px; font: inherit; font-size: 12.5px; color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
+.fade-set .chip[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+.fade-set .radio { display: flex; gap: 10px; align-items: flex-start; margin: 6px 0; line-height: 1.4; cursor: pointer; }
+.fade-set .radio input { margin-top: 4px; accent-color: var(--accent); }
+.fade-set .radio small { display: block; color: var(--muted); }
+.fade-set input[type="number"] { width: 80px; }
+@media (forced-colors: active) { .amnesia-bar, .brain-switch.amnesia-btn[aria-checked="true"], body.amnesia-on .composer { border: 2px solid Highlight !important; } }
+.fade-set .srow { display: block; }
+.fade-set .srow > strong, .fade-set .srow > .pick > strong { display: block; margin-bottom: 6px; }
+.fade-set { padding-bottom: 6px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }

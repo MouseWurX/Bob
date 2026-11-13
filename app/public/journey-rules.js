@@ -631,7 +631,11 @@ export const xpFor = (level) => Math.round(18 * Math.pow(level, 1.6));
 // A new journey: in Bob's Inn by the front door, a new land waiting outside, three tonics and 5 silver.
 export const STYLE_IDS = ['fantasy', 'scifi', 'cyber', 'steam'];
 export const SIZE_IDS = ['small', 'medium', 'large', 'vast', 'epic', 'campaign', 'saga'];
-export function newJourney({ seed = String(Date.now()), size = 'medium', party = [], style = 'fantasy' } = {}, world) {
+// layout: how the land's roads are drawn (journey-world.js LAYOUT). A new journey gets 2 (roads clear of places, 1.5.219);
+// a save from before has none and keeps 1, the land it was played on.
+export const LAYOUT = 2;
+export const layoutOf = (s) => (Number(s?.layout) === 2 ? 2 : 1);
+export function newJourney({ seed = String(Date.now()), size = 'medium', party = [], style = 'fantasy', layout = LAYOUT } = {}, world) {
   const p = party.slice(0, 4).map((b) => member(b));
   if (!p.length) p.push(member({ name: 'Hero', cls: 'fighter', who: 'you' }));
   const ids = new Set();
@@ -642,7 +646,7 @@ export function newJourney({ seed = String(Date.now()), size = 'medium', party =
   return {
     v: SAVE_VERSION, seed: String(seed).slice(0, 40), size, at: 'inn', x: inn?.start.x ?? 21, y: inn?.start.y ?? 29, facing: 'up',
     party: p, bag: { tonic: 3, water: 1 }, owned, coin: 500, steps: 0, danger: 0, next: 14, opened: [], beaten: [], talked: [], felled: [], wanted: {}, fines: 0, battles: 0, won: false,
-    style: STYLE_IDS.includes(style) ? style : 'fantasy', alt: 'ground', riding: false, quests: {}, found: [], seen: [], tamed: 0
+    style: STYLE_IDS.includes(style) ? style : 'fantasy', layout: layout === 1 ? 1 : LAYOUT, alt: 'ground', riding: false, quests: {}, found: [], seen: [], tamed: 0
   };
 }
 // Cleans a save from disk (or from the page) into a journey this file can play. Unknown things are dropped.
@@ -652,8 +656,9 @@ export function cleanJourney(s, makeWorld) {
   const old = !(Number(s.v) >= 2);
   const size = SIZE_IDS.includes(s.size) ? s.size : 'medium';
   const style = STYLE_IDS.includes(s.style) ? s.style : 'fantasy';
-  const world = makeWorld ? makeWorld(String(s.seed).slice(0, 40), size, style) : null;
-  const j = newJourney({ seed: String(s.seed).slice(0, 40), size, style, party: Array.isArray(s.party) ? s.party : [] }, world);
+  const layout = layoutOf(s); // a save from before 1.5.219 keeps the land it was played on
+  const world = makeWorld ? makeWorld(String(s.seed).slice(0, 40), size, style, layout) : null;
+  const j = newJourney({ seed: String(s.seed).slice(0, 40), size, style, layout, party: Array.isArray(s.party) ? s.party : [] }, world);
   if (!old && world) {
     const map = world.map(String(s.at));
     const x = Number(s.x), y = Number(s.y);

@@ -292,23 +292,24 @@ function mountJourney(root, deps) {
   // Making a land takes a moment (a few seconds for the biggest), so the last one made is kept, and the save is only
   // read for its summary until you Resume.
   let lastLand = null;
-  function makeLand(seed, size, style) {
-    const key = `${seed}|${size}`;
+  // layout 1 is the land as 1.5.218 and before drew it, for a save from then (R.layoutOf).
+  function makeLand(seed, size, style, layout) {
+    const key = `${seed}|${size}|${layout}`;
     if (lastLand?.key === key) return lastLand.world;
     lastLand = null; // let the old one go before making the new one
-    const w = Wm.makeWorld(seed, size, style);
+    const w = Wm.makeWorld(seed, size, style, layout === 1 ? 1 : undefined);
     lastLand = { key, world: w };
     return w;
   }
   // On a phone the computer makes the land and the phone holds only the pieces near the party (Wm.pieceWorld).
   const pieced = () => Boolean(deps.phone && Wm.pieceWorld && deps.api);
-  async function landFor(seed, size, style) {
-    if (!pieced()) return makeLand(seed, size, style);
-    if (lastLand?.key === `${seed}|${size}`) return lastLand.world;
-    const r = await deps.api('/api/adventure/journey/land', { seed, size });
+  async function landFor(seed, size, style, layout = R.LAYOUT) {
+    if (!pieced()) return makeLand(seed, size, style, layout);
+    if (lastLand?.key === `${seed}|${size}|${layout}`) return lastLand.world;
+    const r = await deps.api('/api/adventure/journey/land', { seed, size, layout });
     if (!r?.land) throw new Error('Your other Bob didn\'t send the land.');
-    const w = Wm.pieceWorld(r.land);
-    lastLand = { key: `${seed}|${size}`, world: w };
+    const w = Wm.pieceWorld({ ...r.land, layout });
+    lastLand = { key: `${seed}|${size}|${layout}`, world: w };
     return w;
   }
   const asking = new Set();
@@ -317,7 +318,7 @@ function mountJourney(root, deps) {
     const want = w.need(x, y, wide).filter(([cx, cy]) => !asking.has(`${cx},${cy}`));
     await Promise.all(want.map(async ([cx, cy]) => {
       const key = `${cx},${cy}`; asking.add(key);
-      try { const r = await deps.api('/api/adventure/journey/piece', { seed: w.seed, size: w.size, cx, cy }); if (lastLand?.world === w) w.addPiece(r?.piece); } catch {} finally { asking.delete(key); }
+      try { const r = await deps.api('/api/adventure/journey/piece', { seed: w.seed, size: w.size, layout: w.layout, cx, cy }); if (lastLand?.world === w) w.addPiece(r?.piece); } catch {} finally { asking.delete(key); }
     }));
   }
   // After each step: ask for the pieces coming into reach, and let go of the ones left behind.
@@ -376,7 +377,7 @@ function mountJourney(root, deps) {
     later(async () => {
       if (closed) return;
       const src = savedRaw || saved;
-      const w = await landFor(src.seed, src.size, src.style);
+      const w = await landFor(src.seed, src.size, src.style, R.layoutOf(src));
       if (w.pieced) { const home = w.sites.find((x) => x.id === (src.at === 'world' ? '' : src.at)) || w.sites.find((x) => x.id === w.home); const at = src.at === 'world' ? src : home || w.start; await fetchPieces(w, at.x, at.y, src.alt === 'sky'); }
       if (savedRaw) { j = R.cleanJourney(savedRaw, () => w); savedRaw = null; saved = j; } else j = saved;
       world = w;

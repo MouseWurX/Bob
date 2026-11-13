@@ -633,7 +633,11 @@ const xpFor = (level) => Math.round(18 * Math.pow(level, 1.6));
 // A new journey: in Bob's Inn by the front door, a new land waiting outside, three tonics and 5 silver.
 const STYLE_IDS = ['fantasy', 'scifi', 'cyber', 'steam'];
 const SIZE_IDS = ['small', 'medium', 'large', 'vast', 'epic', 'campaign', 'saga'];
-function newJourney({ seed = String(Date.now()), size = 'medium', party = [], style = 'fantasy' } = {}, world) {
+// layout: how the land's roads are drawn (journey-world.js LAYOUT). A new journey gets 2 (roads clear of places, 1.5.219);
+// a save from before has none and keeps 1, the land it was played on.
+const LAYOUT = 2;
+const layoutOf = (s) => (Number(s?.layout) === 2 ? 2 : 1);
+function newJourney({ seed = String(Date.now()), size = 'medium', party = [], style = 'fantasy', layout = LAYOUT } = {}, world) {
   const p = party.slice(0, 4).map((b) => member(b));
   if (!p.length) p.push(member({ name: 'Hero', cls: 'fighter', who: 'you' }));
   const ids = new Set();
@@ -644,7 +648,7 @@ function newJourney({ seed = String(Date.now()), size = 'medium', party = [], st
   return {
     v: SAVE_VERSION, seed: String(seed).slice(0, 40), size, at: 'inn', x: inn?.start.x ?? 21, y: inn?.start.y ?? 29, facing: 'up',
     party: p, bag: { tonic: 3, water: 1 }, owned, coin: 500, steps: 0, danger: 0, next: 14, opened: [], beaten: [], talked: [], felled: [], wanted: {}, fines: 0, battles: 0, won: false,
-    style: STYLE_IDS.includes(style) ? style : 'fantasy', alt: 'ground', riding: false, quests: {}, found: [], seen: [], tamed: 0
+    style: STYLE_IDS.includes(style) ? style : 'fantasy', layout: layout === 1 ? 1 : LAYOUT, alt: 'ground', riding: false, quests: {}, found: [], seen: [], tamed: 0
   };
 }
 // Cleans a save from disk (or from the page) into a journey this file can play. Unknown things are dropped.
@@ -654,8 +658,9 @@ function cleanJourney(s, makeWorld) {
   const old = !(Number(s.v) >= 2);
   const size = SIZE_IDS.includes(s.size) ? s.size : 'medium';
   const style = STYLE_IDS.includes(s.style) ? s.style : 'fantasy';
-  const world = makeWorld ? makeWorld(String(s.seed).slice(0, 40), size, style) : null;
-  const j = newJourney({ seed: String(s.seed).slice(0, 40), size, style, party: Array.isArray(s.party) ? s.party : [] }, world);
+  const layout = layoutOf(s); // a save from before 1.5.219 keeps the land it was played on
+  const world = makeWorld ? makeWorld(String(s.seed).slice(0, 40), size, style, layout) : null;
+  const j = newJourney({ seed: String(s.seed).slice(0, 40), size, style, layout, party: Array.isArray(s.party) ? s.party : [] }, world);
   if (!old && world) {
     const map = world.map(String(s.at));
     const x = Number(s.x), y = Number(s.y);
@@ -1642,5 +1647,5 @@ function restyle(text, style) {
 const craftFor = (style, kind) => STYLES[style]?.craft?.[kind] || null;
 const boatArt = (style, boat) => STYLES[style]?.craft?.boats?.[boat] || boat;
 
-globalThis.BobJourneyRules = { SAVE_VERSION, STATS, STAT_NAMES, STAT_CAP, COIN, COIN_ORDER, coinParts, fmtCoin, RACES, RACE_IDS, CLASSES, CLASS_IDS, SECOND_CLASS_LEVEL, WEAPONS, lookKit, ARMOURS, SHIELDS, AFFIXES, splitKit, kitKind, kitBase, kitStats, kitName, kitWords, ITEMS, FOODS, SCROLLS, KIT_PRICES, kitPrice, wares, SKILLS, COMBOS, TRIOS, ALL_SKILLS, PURE_CASTER, isPureCaster, treeOf, comboFor, trioFor, knownSkills, canLearn, learn, canAddClass, addClass, FOES, GUARDIANS, LANTERN_KEEPERS, ZONE_FOES, LAND_FOES, LAND_BEASTS, HILL_BEASTS, SEA_FOES, SKY_FOES, NPC_ROLES, PEACEFUL, seeded, member, PET_MAX, PET_NAMES, petStats, petOf, mountOf, kindOfPet, leaderMount, canFly, canSwim, setActive, release, renamePet, tameChance, BAG_BASE, bagCount, bagSize, bagRoom, addItem, passivesOf, statOf, refresh, attackOf, guardOf, magicOf, speedOf, accuracyOf, evasionOf, critOf, hitChance, costOf, xpFor, STYLE_IDS, SIZE_IDS, newJourney, cleanJourney, STEP, mapOf, visitingNow, peopleOn, thingAt, passable, canStand, walk, tick, zoneAt, encounter, rise, sink, ride, seeSites, BOATS, boatFor, fareFor, docksFrom, sailTo, FOE_HP, foe, startBattle, playRound, dropsOf, gainKit, drinkOn, fieldSkills, castField, levelUp, TRAINABLE, trainPrice, canTrain, train, hermitTeach, attackPerson, fineFor, payFine, isWanted, wakeAtInn, INN_PRICE, rest, priceOf, TRADER_PRICE, buy, sell, chestLoot, openChest, equip, FOLK_LINES, ROLE_LINES, questLine, elderLine, direction, KIN_LINES, ROAD_LINES, animalLine, questTalk, findLost, fishAt, STYLES, restyle, craftFor, boatArt };
+globalThis.BobJourneyRules = { SAVE_VERSION, STATS, STAT_NAMES, STAT_CAP, COIN, COIN_ORDER, coinParts, fmtCoin, RACES, RACE_IDS, CLASSES, CLASS_IDS, SECOND_CLASS_LEVEL, WEAPONS, lookKit, ARMOURS, SHIELDS, AFFIXES, splitKit, kitKind, kitBase, kitStats, kitName, kitWords, ITEMS, FOODS, SCROLLS, KIT_PRICES, kitPrice, wares, SKILLS, COMBOS, TRIOS, ALL_SKILLS, PURE_CASTER, isPureCaster, treeOf, comboFor, trioFor, knownSkills, canLearn, learn, canAddClass, addClass, FOES, GUARDIANS, LANTERN_KEEPERS, ZONE_FOES, LAND_FOES, LAND_BEASTS, HILL_BEASTS, SEA_FOES, SKY_FOES, NPC_ROLES, PEACEFUL, seeded, member, PET_MAX, PET_NAMES, petStats, petOf, mountOf, kindOfPet, leaderMount, canFly, canSwim, setActive, release, renamePet, tameChance, BAG_BASE, bagCount, bagSize, bagRoom, addItem, passivesOf, statOf, refresh, attackOf, guardOf, magicOf, speedOf, accuracyOf, evasionOf, critOf, hitChance, costOf, xpFor, STYLE_IDS, SIZE_IDS, LAYOUT, layoutOf, newJourney, cleanJourney, STEP, mapOf, visitingNow, peopleOn, thingAt, passable, canStand, walk, tick, zoneAt, encounter, rise, sink, ride, seeSites, BOATS, boatFor, fareFor, docksFrom, sailTo, FOE_HP, foe, startBattle, playRound, dropsOf, gainKit, drinkOn, fieldSkills, castField, levelUp, TRAINABLE, trainPrice, canTrain, train, hermitTeach, attackPerson, fineFor, payFine, isWanted, wakeAtInn, INN_PRICE, rest, priceOf, TRADER_PRICE, buy, sell, chestLoot, openChest, equip, FOLK_LINES, ROLE_LINES, questLine, elderLine, direction, KIN_LINES, ROAD_LINES, animalLine, questTalk, findLost, fishAt, STYLES, restyle, craftFor, boatArt };
 })();

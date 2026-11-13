@@ -523,6 +523,14 @@ export function createLayout({ post, openTasks, openDownloads }) {
     },
     // 1.5.123: something on Bob-Net changed (a lend, a borrow, a job sent away, a pairing): a fresh look, soon.
     net() { clearTimeout(netSoon); netSoon = setTimeout(pollNet, 800); },
-    agents(ev) { agentsSec?.update(ev); } // Nov 13 Coding agents: the badge right away
+    agents(ev) { agentsSec?.update(ev); }, // Nov 13 Coding agents: the badge right away
+    // Nov 13 Bob-Net icons (net-overlay.js): an agent's icon opens Now running at Coding agents, unfolded.
+    showAgents() {
+      setRight(false, false);
+      if (folded.has('agents')) document.querySelector('[data-fold="agents"]')?.click(); // unfolds it, and asks for the list
+      else agentsSec?.poll();
+      const sec = $('nowAgents');
+      if (sec) { sec.scrollIntoView({ block: 'nearest' }); sec.classList.remove('flash'); void sec.offsetWidth; sec.classList.add('flash'); }
+    }
   };
 }

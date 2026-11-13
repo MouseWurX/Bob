@@ -4,6 +4,27 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.220
+
+Your other Bobs can sit under me as little icons, and chats can fade, clear, or be forgotten.
+
+### New
+
+- **Fade old messages, Clear chat and Amnesia mode** (Settings, How Bob works, 💬 Chat extras; all off unless you turn them on). **Fade old messages** lets messages leave the chat by themselves after a time you pick. **Clear chat** empties the chat in one go. **🫥 Amnesia**, beside Web search, works exactly as usual while it's on, with a purple banner and a purple edge on the box you type in. When you turn it off I forget that whole stretch: chats, thinking, notes, memory lines and topics. You choose whether the things I made in that time stay. It can't forget anything from before you turned it on.
+- **Bob-Net icons under Bob** (off unless you turn it on: Settings, Bob-Net, **Bob-Net icons under Bob**). A small column of icons under my cube, a bit like a game's chat overlay (a row under the top bar on a phone). An icon is there only while what it stands for is there:
+  - **each of your other Bobs**, while he's on Bob-Net right now. His icon is a little porthole in a colour of his own, and its cube follows what he's doing over there: no brain, loading, thinking, writing back or ready.
+  - **each coding agent you added**, in its app's colours, with a moving sign of our own that nods to the app. It moves faster while the agent works.
+  - The icons are see-through and dimmer than me, each casts a small glow behind it, and pointing at one makes it gently breathe in place. My own cube does that too now in Lamplight.
+- **Click a Bob's icon** and his chat opens here in guest mode, with **Return from Guest Mode** at the top right. What you type goes to him and never runs on this computer. In guest mode only **Web search** is left on: no Hands, files, programs, reminders or memory, on either computer. The chat isn't saved. **Bob-Net helping** shows that the other Bob is doing the work.
+- **Something new in one of those chats** while you're elsewhere: a soft word bubble with a preview pops up on its icon. Left click opens the chat, right click dismisses it. On a phone, tap to open and swipe it away to dismiss.
+
+### Fixed
+
+- **Journey: adventures saved before 1.5.219 come back to exactly the land they were played on.** The clearer roads from 1.5.219 are for new journeys. A journey started on 1.5.219 itself goes back to the older land too.
+- **Discord group jobs can go to your other Bobs again.** A Bob's hello lost that he could take them, so they always stayed here.
+
+**Where it works:** Windows, Mac and Linux, and Bob's page in a phone's browser. Bob for Android's own screens don't have it yet. The other Bob needs this version and **Take jobs from my other Bobs** switched on. Clicking a coding agent opens its own page in Now running.
+
 ## 1.5.219
 
 Phones see the line under my name, and Journey's towns stay off the roads.
@@ -224,47 +245,6 @@ Brains that load on built-in graphics, Journey grown into a whole world, Lamplig
 This release carries Brain Engine 6 (6b12282): Brain Engine 5 plus the expert mass for the Lab (0009), the expert trace read once per word so the cube no longer slows a brain with experts by about a fifth (0010), and one trip a word instead of several over a lent card (0011). Its Windows and Linux builds come next, and a later update moves to it after it passes its own check on a real PC.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android, unless a line says otherwise. Journey is on desktop, Android and iPhone; the Saga land size is for computers. Check links reads Windows, Mac and Linux. Built-in graphics sizing is for any computer whose graphics share its RAM. The Lab's tuning runs where the Lab's Playground works. Help covers each new part.
-
-## 1.5.210
-
-A new look, an easier start and a tidier chat. Three looks to pick from, Lamplight among them, a thinking bubble that keeps the chat to the finished answer, one Brains page for everything, a Help that starts where you are, Talk with Bob hands-free, panels you build yourself, and the cube in a porthole. How I work is unchanged: none of this adds a word to what my brain reads.
-
-### New
-
-- **Three looks** (Style, Look). **Classic** is how I've always looked, tidied, and the one I start with. **Lamplight** is a dark room lit by my cube: my picture top left, the pages along the top, **Find anything** (Ctrl+K) for any page, tool, setting or Help topic, my menu holding the tools, and a status line under the typing box. **Terminal** is plain text in a window. Animations off holds the lamplight still.
-- **A thinking bubble above the answer** (Settings, How Bob works; on to start with). While I work, a small bubble above my reply shows the step I'm on. When I'm done, the chat shows only the finished answer; press the bubble to see the steps, drafts and fixes.
-- **Talk with Bob** (Settings, Voice details; off to start with). Press 🗣 and just talk, hands-free. I answer out loud, short, with the whole answer in the chat, and you can cut in. My own hearing and voice, free; xAI's online voice is an extra you pick, with your own paid key.
-- **Panels you build** (off until you put something in one). Now running's sections become modules you can put in a panel on the left or the right, each Expanded, Collapsed or Hidden.
-- **The cube in a porthole.** My fNRI cube sits in a round window into a foggy room: it fills as a brain loads, drains into the fog when it goes, and the neon signs are gone. **Bob's look** in Style can make it my picture instead of the pixel Bob.
-- **Find more models** (Get models, the Brain catalogue). Search Hugging Face or ModelScope for brains I don't list. Nothing goes out until you press Search, and what it finds is marked Not tried yet.
-- **Sort and filter the catalogue.** Bob's order, **Best fit first**, newest or oldest, smallest or biggest; filter by who made it, quantization, and **Runs here**. A green **Fits your card** tag marks what sits wholly on your card.
-- **Back up keys of connected apps** (Backup, Keys and passcodes, locked; off). They go in the locked part of the backup and come back into the locked key store.
-- **A link log for Bob-Net** (Settings, Bob-Net, Bigger Bobs). What the link to a lent card carried, and whether SCUT was on, in a Link log box and the logbook. **Watch the link live** shows it every 2 seconds. Byte counts need the next Brain Engine.
-- **Calibrate Wi-Fi** (Settings, Bob-Net, Bigger Bobs; Windows). When your Bobs share a brain over Wi-Fi, the band matters most. **Check** shows which band this computer is on and which ones the router offers. **Calibrate** times the trip to your other Bob on each strong band and sets the Wi-Fi card to the quickest, after one Windows prompt you press. **Put it back** restores what it found.
-
-### Changed
-
-- **One place to pick brains.** The Equip Bob paper doll is retired: Settings, Brains picks every model. Personality and House style are Settings panels now, Get models opens on the catalogue, and Made by Bob holds what the chest held.
-- **An easier first run.** Do you want me to: opens on the four switches that help most; the rest are folded underneath.
-- **One chip at the top of the chat.** The brain label holds the quick switches (Free memory, Hands, Autonomy, Screen use, Bob's thinking) and shows their icons when on. The left menu is grouped into Chat, Play, Lab and Setup, and phones and narrow windows get a bar along the bottom.
-- **Help starts where you are.** The guide is rewritten around jobs, Help opens on **Start here**, and each page keeps its questions folded at the bottom: about seventy pages instead of four hundred entries.
-- **A digest of this week.** **Make this week's digest now** makes this week, Monday to the coming Sunday, not last week.
-- **The time I'm given names my time zone**, from Settings, so a time or zone question is never a guess.
-- **Stop after this step** wraps up from the steps that really ran, and counts nothing they didn't show.
-
-### Fixed
-
-- **"A song as an MP3" says the MP3 on a Mac too.** A long temporary folder pushed the "Also saved as" line past the end of what I'm shown. It goes first now, and the "came out after all" note gives file names, not whole paths.
-- **A made-up address isn't a broken tool.** A web address that doesn't exist no longer counts toward a tool's three strikes or the "may have broken after an update" line.
-- **The logbook says how long a brain really sat unused** ("1 min 15 s", with the keep-alive), and a 1 minute keep-alive lets go close to 1 minute, not up to 2.
-- **Stop stops a load with no job behind it.** Stop now ends a brain load started from Settings or a warm-up, including "still loading over Bob-Net", and a spread load that fails ends at once and loads here instead.
-- **Spreading a brain:** a Bob lending its card lets go of its own idle brain first, so the room it offers is real; a hand-set split is left out of a spread so each card's share is sized to fit (a handheld's shared memory refused a 1 GB piece); turning spread on asks your other Bobs again at once; and each Bob that didn't lend is named in the logbook with why.
-
-### Brain Engine 5 (built, not switched to yet)
-
-This release carries Brain Engine 5's two new patches, live expert picks for the cube (0007) and the Bob-Net link log with SCUT that retunes itself (0008). Its Windows and Linux builds come next. I keep using Brain Engine 4 until build 5 has passed its own check on a real PC, then a later update moves to it. Until then, Real experts shows the picks after each reply as before, and the link log names the link but has no byte counts.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android, unless a line says otherwise. Talk with Bob's own hearing and voice work offline. Find more models needs the internet. Help covers each new part.
 
 ## Older versions
 

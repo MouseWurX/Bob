@@ -2,6 +2,7 @@
 // walking figures (public/journey-sides.js), the places (public/journey-world.js), the rules (public/journey-rules.js), the save and the keeper reward on the
 // server (src/adventure-journey.js), the screen's wiring, the phone's copies and Help. Nothing reads the real computer:
 // the save goes to a temporary folder and the dice are loaded.
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -112,6 +113,17 @@ const nextTo = (set, x, y) => set.has(`${x},${y}`) || [[1, 0], [-1, 0], [0, 1], 
       if (inn && !'IvVOK'.includes(rows[inn.y][inn.x])) blocked ||= `${seed} ${size}: the inn isn't drawn`;
     }
     check('no place stands at the end of a bridge or across a road it isn\'t heading for (the inn stands beside the road)', !blocked, blocked);
+  }
+  {
+    // A save keeps only its seed, so a save from 1.5.218 or before must rebuild the very land it was played on.
+    const print = (lw) => crypto.createHash('sha256').update(lw.map('world').rows.join('\n') + JSON.stringify(lw.sites.map((s) => [s.id, s.x, s.y]))).digest('hex').slice(0, 16);
+    check('layout 1 is the 1.5.218 land, tile for tile', print(W.makeWorld('test-seed', 'small', undefined, 1)) === '99eec07ff36cfd6c' && print(W.makeWorld('test-seed', 'medium', undefined, 1)) === '7b036cff66a9fd31');
+    const asked = [];
+    const mw = (seed, size, style, layout) => { asked.push(layout); return W.makeWorld(seed, size, style, layout); };
+    const before = R.cleanJourney({ v: 2, seed: 'test-seed', size: 'small', at: 'inn', party: [{ name: 'A', cls: 'fighter' }] }, mw);
+    const fresh = R.newJourney({ seed: 'test-seed', size: 'small', party: [{ name: 'A', cls: 'fighter' }] });
+    const after = R.cleanJourney(fresh, mw);
+    check('a save from before 1.5.219 keeps its old land (layout 1); a new journey gets clear roads (layout 2) and keeps them', before.layout === 1 && fresh.layout === 2 && after.layout === 2 && asked.join() === '1,2' && W.makeWorld('test-seed', 'small').layout === 2);
   }
   const walkers = m.people.filter((p) => p.route);
   check('patrols and travellers walk the roads', walkers.length === world.roads.length && walkers.some((p) => p.patrol) && walkers.every((p) => p.route.length > 4 && W.TILES[m.rows[p.y][p.x]].walk));

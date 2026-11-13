@@ -167,6 +167,14 @@
   <p class="help-line" id="bundle-msg" role="status"></p>
   <h3>In the chat</h3>
   <label class="switch"><div class="words"><strong>Show Try again, Edit and Delete in the chat</strong><p class="help-line">On unless you turn it off. Adds them to each message's … menu.</p></div><span class="pill"><input type="checkbox" id="redo"><span></span></span></label>
+  <label class="switch"><div class="words"><strong>Fade old messages</strong><p class="help-line">Off unless you turn it on. Your message and Bob's reply slip off the chat after the time you pick, so the chat stays short.</p></div><span class="pill"><input type="checkbox" id="fade-on"><span></span></span></label>
+  <p class="fade-pick"><strong>Fade after</strong> <input type="number" id="fade-num" min="1" value="1" aria-label="How long"> <select id="fade-unit" aria-label="Minutes, hours or days"><option value="1">minutes</option><option value="60" selected>hours</option><option value="1440">days</option></select></p>
+  <fieldset class="fade-modes"><legend>When they fade</legend>
+    <label><input type="radio" name="fade-mode" value="hide" checked> Hide them <span class="help-line">Still on this phone; Show them brings them back.</span></label>
+    <label><input type="radio" name="fade-mode" value="delete"> Delete them for good <span class="help-line">Gone from this phone.</span></label>
+  </fieldset>
+  <p><button type="button" id="fade-clear">🧹 Clear this chat</button> <span class="help-line">Asks first.</span></p>
+  <p class="help-line">Amnesia mode is on your computer's Bob only (Settings, How Bob works, Chat extras).</p>
   <h3>After Bob is closed</h3>
   <label class="switch"><div class="words"><strong>Pick up where Bob left off</strong><p class="help-line">If Android closes Bob in the middle of a phone-brain reply, he asks again when you come back. Off to start with.</p></div><span class="pill"><input type="checkbox" id="resume"><span></span></span></label>
 </div></section>

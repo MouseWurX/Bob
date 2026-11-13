@@ -183,7 +183,11 @@ export function makeInn(day = 'today') {
 // forests, swamps, deserts and grass; rivers from the foothills downhill to the sea; the mainland (the biggest piece
 // of land); settlements where people would build (flat ground, fresh water, the coast), spaced apart; roads between
 // them with bridges over the rivers; caves in the foothills, dungeons in the wild, the hermit far from everyone.
-export function makeWorld(seed, size = 'medium') {
+// layout: 2 (1.5.219 on) keeps roads and bridges clear of places; 1 is the land as 1.5.218 and before drew it, so an
+// older save (which keeps only its seed) comes back to exactly the land it was played on.
+export const LAYOUT = 2;
+export function makeWorld(seed, size = 'medium', style, layout = LAYOUT) {
+  const clear = layout !== 1;
   const sz = SIZES[size] || SIZES.medium;
   const big = Boolean(SIZES[size]) && !OLD_SIZES.includes(size), f = sizeFactor(size);
   const rnd = seeded(`world:${seed}:${size}`);
@@ -290,13 +294,13 @@ export function makeWorld(seed, size = 'medium') {
   const towns = sites.filter((s) => ['castle', 'town', 'village', 'hamlet'].includes(s.kind));
   // Every place is on the land before any road is drawn, so a road goes round a place it isn't heading for (walking
   // onto a place goes in, so a road through one, or a bridge that ends at one, could never be walked past).
-  for (const s of sites) g[s.y][s.x] = SITE_TILES[s.kind];
+  if (clear) for (const s of sites) g[s.y][s.x] = SITE_TILES[s.kind];
   // On a big land a road only looks for its way in a box round its two ends (roads don't wander far anyway). Only
   // where there's no other way at all does a road go through a place, as it always used to.
-  const path = (a, b) => { const pad = big ? Math.max(24, Math.round((Math.abs(a.x - b.x) + Math.abs(a.y - b.y)) / 2)) : 0; return cheapest(g, w, h, a, b, pad, true) || cheapest(g, w, h, a, b, pad); };
+  const path = (a, b) => { const pad = big ? Math.max(24, Math.round((Math.abs(a.x - b.x) + Math.abs(a.y - b.y)) / 2)) : 0; return (clear && cheapest(g, w, h, a, b, pad, true)) || cheapest(g, w, h, a, b, pad); };
   const road = (x, y) => { if (g[y][x] === 'r') g[y][x] = '='; else if (!SITE_SET.has(g[y][x]) && g[y][x] !== '=') g[y][x] = ':'; };
   // A place never stands at the end of a bridge (the bridge would lead only into it).
-  const byBridge = (x, y) => N4.some(([dx, dy]) => g[y + dy]?.[x + dx] === '=');
+  const byBridge = (x, y) => clear && N4.some(([dx, dy]) => g[y + dy]?.[x + dx] === '=');
   const roads = [];
   const groups = big ? [...lands].map((id) => towns.filter((t) => comp[t.y][t.x] === id)).filter((gr) => gr.length) : [towns];
   for (const group of groups) {
@@ -358,16 +362,18 @@ export function makeWorld(seed, size = 'medium') {
   for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
     const x = home.x + dx, y = home.y + dy, d = Math.abs(dx) + Math.abs(dy);
     // Beside the road, never on it (walking onto the inn goes in, so an inn on the road would block it).
-    if (d < 3 || !main(x, y) || !'."F,d'.includes(g[y]?.[x]) || byBridge(x, y) || sites.some((o) => Math.abs(o.x - x) + Math.abs(o.y - y) < 2)) continue;
+    if (d < 3 || !main(x, y) || !(clear ? '."F,d' : '."F,d:').includes(g[y]?.[x]) || byBridge(x, y) || sites.some((o) => Math.abs(o.x - x) + Math.abs(o.y - y) < 2)) continue;
     if (!N4.some(([a, b]) => '."F,d:'.includes(g[y + b]?.[x + a]))) continue;
-    innSpot.push([x, y, d + (N4.some(([a, b]) => g[y + b]?.[x + a] === ':') ? -3.5 : 0)]);
+    const byRoad = N4.some(([a, b]) => g[y + b]?.[x + a] === ':');
+    innSpot.push([x, y, d + (clear ? (byRoad ? -3.5 : 0) : (g[y][x] === ':' ? -2 : 0) + (byRoad ? -1.5 : 0))]);
   }
   innSpot.sort((a, b) => a[2] - b[2]);
   if (innSpot.length) {
     const [x, y] = innSpot[0];
     const inn = { kind: 'bobsinn', x, y, zone: 1 };
-    g[y][x] = 'I';
+    if (clear) g[y][x] = 'I';
     for (const [px, py] of path(inn, home) || []) if (g[py][px] === 'r') g[py][px] = '='; else if ('."F,dw'.includes(g[py][px])) g[py][px] = ':';
+    g[y][x] = 'I';
     inn.id = 'inn'; inn.name = "Bob's Inn";
     inn.exit = [[0, 1], [1, 0], [-1, 0], [0, -1]].map(([dx, dy]) => ({ x: x + dx, y: y + dy })).find((p) => TILES[g[p.y][p.x]]?.walk && !Object.values(SITE_TILES).includes(g[p.y][p.x])) || { x, y: y + 1 };
     sites.push(inn);
@@ -492,18 +498,18 @@ export function makeWorld(seed, size = 'medium') {
   const rows = toRows(g);
   const people = [...walkers, ...lost, ...wild];
   const roadList = roads.map((r) => ({ from: r.from.id, to: r.to.id, length: r.steps.length }));
-  return worldOf({ seed: String(seed), size: SIZES[size] ? size : 'medium', w, h, rows, sites, people, roads: roadList, home: { id: home.id, x: home.x, y: home.y, exit: { ...home.exit } } });
+  return worldOf({ seed: String(seed), size: SIZES[size] ? size : 'medium', w, h, rows, sites, people, roads: roadList, home: { id: home.id, x: home.x, y: home.y, exit: { ...home.exit } }, layout: clear ? LAYOUT : 1 });
 }
 // The finished land. Built out here, away from makeWorld, so the big working grids (heights, wetness, paths) are
 // let go as soon as the land is made: a closure inside makeWorld would keep them all alive for as long as you play.
 // Places (towns, caves, cities) are built the first time you walk in, and only the last few are kept.
 const KEEP_PLACES = 6;
-function worldOf({ seed, size, w, h, rows, sites, people, roads, home }) {
+function worldOf({ seed, size, w, h, rows, sites, people, roads, home, layout = LAYOUT }) {
   const zoneOf = (x, y) => clamp(1 + Math.floor((Math.abs(x - home.x) + Math.abs(y - home.y)) / (w / 6)), 1, 5);
   const worldMap = { id: 'world', kind: 'world', name: 'The land', w, h, rows, chests: [], people, doors: sites.map((s) => ({ x: s.x, y: s.y, to: s.id, ...(s.alt ? { alt: s.alt } : {}) })), start: { ...home.exit }, zoneOf };
   const cache = new Map();
   const world = {
-    seed, size, tiles: TILES, zoneOf, w, h, sites, roads, home: home.id, start: { ...home.exit },
+    seed, size, layout, tiles: TILES, zoneOf, w, h, sites, roads, home: home.id, start: { ...home.exit },
     map(id) {
       if (id === 'world') return worldMap;
       if (cache.has(id)) { const m = cache.get(id); cache.delete(id); cache.set(id, m); return m; }
@@ -862,7 +868,7 @@ export function landSkeleton(world) {
   const k = Math.max(1, Math.ceil(Math.max(world.w, world.h) / PICTURE));
   const picture = { k, rows: [] };
   for (let y = 0; y < world.h; y += k) { let r = ''; for (let x = 0; x < world.w; x += k) r += m.rows[y][x]; picture.rows.push(r); }
-  return { seed: world.seed, size: world.size, w: world.w, h: world.h, sites: world.sites, roads: world.roads, home: { id: home.id, x: home.x, y: home.y, exit: { ...home.exit } }, piece: PIECE, picture };
+  return { seed: world.seed, size: world.size, layout: world.layout, w: world.w, h: world.h, sites: world.sites, roads: world.roads, home: { id: home.id, x: home.x, y: home.y, exit: { ...home.exit } }, piece: PIECE, picture };
 }
 export function landPiece(world, cx, cy) {
   const m = world.map('world');
@@ -887,7 +893,7 @@ export function pieceWorld(skel) {
     return v;
   };
   const rows = new Proxy([], { get: (t, k) => (k === 'length' ? h : typeof k === 'string' && /^\d+$/.test(k) ? (Number(k) < h ? rowView(Number(k)) : undefined) : t[k]) });
-  const world = worldOf({ seed: skel.seed, size: skel.size, w, h, rows, sites: skel.sites, people, roads: skel.roads || [], home: skel.home });
+  const world = worldOf({ seed: skel.seed, size: skel.size, w, h, rows, sites: skel.sites, people, roads: skel.roads || [], home: skel.home, layout: skel.layout === 1 ? 1 : LAYOUT });
   const restock = () => { people.length = 0; for (const pc of pieces.values()) people.push(...pc.people); };
   // The pieces that cover two screens each way round (x, y): 15×11 tiles on screen, more when zoomed out in the sky.
   const around = (x, y, wide) => {

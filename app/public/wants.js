@@ -99,7 +99,7 @@ export const WANTS = [
 export const WANTS_ELSEWHERE = [
   { card: 'bob', id: 'adv-presets', label: 'Work a different way in each chat (🎭 Assistant presets)' },
   { card: 'how', id: 'adv-checkins', label: 'Check in on you by myself (🔔 Check-ins)' },
-  { card: 'how', id: 'adv-chatx', label: 'Pin messages, try a chat another way, guest chats (💬 Chat extras)' },
+  { card: 'how', id: 'adv-chatx', label: 'Fade old messages, Amnesia mode, pin messages, try a chat another way, guest chats (💬 Chat extras)' },
   { card: 'how', id: 'adv-quiet', label: 'Stay quiet at night, or open from a key anywhere (🌙 Quiet hours and shortcut)' },
   { card: 'net', id: 'adv-bobnet', label: 'Talk to me from your phone (🌐 Bob-Net)' },
   { card: 'online', id: 'adv-online', label: 'Chat on Discord or Telegram (☁ Online services)' },

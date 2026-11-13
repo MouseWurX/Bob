@@ -5,8 +5,8 @@
 //   POST /api/adventure/journey          { journey }     -> { ok }  (cleaned by the rules before it's written)
 //   POST /api/adventure/journey/delete                   -> { ok }
 //   POST /api/adventure/journey/reward   { charId, guardian } -> { characters }
-//   POST /api/adventure/journey/land     { seed, size }  -> { land }   the phone's list of places and a small picture (v1.2)
-//   POST /api/adventure/journey/piece    { seed, size, cx, cy } -> { piece }  32×32 tiles near the party (v1.2)
+//   POST /api/adventure/journey/land     { seed, size, layout }  -> { land }   the phone's list of places and a small picture (v1.2)
+//   POST /api/adventure/journey/piece    { seed, size, layout, cx, cy } -> { piece }  32×32 tiles near the party (v1.2)
 import fs from 'node:fs';
 import path from 'node:path';
 import { cleanJourney, GUARDIANS, STATS } from '../public/journey-rules.js';
@@ -15,9 +15,9 @@ import { makeWorld as makeWorldFresh, landSkeleton, landPiece, SIZES } from '../
 // The last land made is kept for a while (the biggest takes seconds to make, and every save checks against it), then
 // let go so it isn't held in memory while nobody plays.
 let lastLand = null, forget = null;
-export function makeWorld(seed, size, style) {
-  const key = `${seed}|${size}`;
-  if (lastLand?.key !== key) { lastLand = null; lastLand = { key, world: makeWorldFresh(seed, size, style) }; }
+export function makeWorld(seed, size, style, layout) {
+  const key = `${seed}|${size}|${layout === 1 ? 1 : 2}`;
+  if (lastLand?.key !== key) { lastLand = null; lastLand = { key, world: makeWorldFresh(seed, size, style, layout === 1 ? 1 : undefined) }; }
   clearTimeout(forget); forget = setTimeout(() => { lastLand = null; }, 15 * 60 * 1000); forget.unref?.();
   return lastLand.world;
 }
@@ -63,7 +63,7 @@ export async function journeyRoute({ req, res, p, brain, body, send }, chars) {
   if (p === '/api/adventure/journey/land' || p === '/api/adventure/journey/piece') {
     const seed = String(b.seed || '').slice(0, 40), size = SIZES[b.size] ? String(b.size) : 'medium';
     if (!seed) { send(res, 400, { error: 'Which land?' }); return true; }
-    const w = makeWorld(seed, size);
+    const w = makeWorld(seed, size, undefined, Number(b.layout) === 1 ? 1 : undefined); // layout 1: a save from 1.5.218 or before
     if (p.endsWith('/land')) send(res, 200, { land: landSkeleton(w) });
     else send(res, 200, { piece: landPiece(w, Math.floor(Number(b.cx)), Math.floor(Number(b.cy))) });
     return true;

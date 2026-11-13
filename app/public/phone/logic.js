@@ -317,5 +317,25 @@
     return [subject && !text.startsWith(subject) ? subject : '', text, file].filter(Boolean).join('\n\n');
   }
 
-  globalThis.BobLogic = { netAddress, bigJob, BIG_JOBS, pickAnswerer, canDo, phoneSystem, markdown, esc, chatTitle, size, fits, phoneBackup, phoneRestore, wakeWord, talkOver, shortSay, selfEcho, voiceFor, readPieces, lowData, glanceWords, carryMsgs, shareWords };
+  // Fade old messages (Settings, In the chat; off unless turned on) and Clear chat, as on the computer (src/fade-chat.js).
+  // A turn (your message and Bob's answers after it) fades as one, by its newest time. A message with no time (from
+  // before times were kept) counts as old only once the chat was cleared.
+  function fadeTurns(msgs, { fade = {}, clearedAt = 0, now = Date.now() } = {}) {
+    const before = Math.max(Number(clearedAt) || 0, fade.on ? now - Math.max(1, Number(fade.minutes) || 60) * 60e3 : 0);
+    const keep = [], gone = [];
+    let turn = null;
+    const turns = [];
+    for (const m of msgs || []) { if (m.who === 'you' || !turn) { turn = { msgs: [], at: 0 }; turns.push(turn); } turn.msgs.push(m); turn.at = Math.max(turn.at, Number(m.at) || 0); }
+    for (const t of turns) (before && (t.at ? t.at < before : clearedAt > 0) ? gone : keep).push(...t.msgs);
+    return { keep, gone };
+  }
+  function fadeWords(minutes) {
+    const m = Math.max(0, Math.round(Number(minutes) || 0));
+    const n = (x, w) => `${x} ${w}${x === 1 ? '' : 's'}`;
+    if (m && m % 1440 === 0) { const d = m / 1440; return d % 7 === 0 && d < 28 ? n(d / 7, 'week') : n(d, 'day'); }
+    if (m >= 60) { const h = Math.floor(m / 60), r = m % 60; return `${n(h, 'hour')}${r ? ` ${r} min` : ''}`; }
+    return `${m} min`;
+  }
+
+  globalThis.BobLogic = { fadeTurns, fadeWords, netAddress, bigJob, BIG_JOBS, pickAnswerer, canDo, phoneSystem, markdown, esc, chatTitle, size, fits, phoneBackup, phoneRestore, wakeWord, talkOver, shortSay, selfEcho, voiceFor, readPieces, lowData, glanceWords, carryMsgs, shareWords };
 })();
