@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { SLOTS, HELPERS, allSlots, entryOf, equipped, kitFor, equipHtml, packFor, slotValue, starterTicks, starterPlan, starterHtml } from '../public/equip.js';
+import { SLOTS, HELPERS, allSlots, entryOf, equipped, kitFor, packFor, slotValue, starterTicks, starterPlan, starterHtml } from '../public/equip.js';
 import { cleanHousekeeping } from '../src/hk-settings.js';
 import { ModelShop } from '../src/models.js';
 
@@ -40,18 +40,16 @@ const ctx = { roles, models, brains: { small: 'gemma4:e4b' }, embed: '', selecte
   check('the memory slot offers the embedding model', kitFor(SLOTS.find((s) => s.id === 'embed'), ctx).some((k) => k.value === 'nomic-embed-text:latest'));
 }
 
-// ---- the doll ----
+// ---- 1.5.210: the paper doll is retired; Settings, Brains is the one place a job gets its brain or sense ----
 {
-  const html = equipHtml(ctx);
-  check('a slot for each job, plus helpers', (html.match(/data-slotpick=/g) || []).length === allSlots().length);
-  check('kit can be dragged, and only onto slots of its kind', /draggable="true" data-equip="gemma4:e4b" data-kind="llm"/.test(html) && /data-slot="bob" data-kind="llm"/.test(html) && /data-slot="image" data-kind="images"/.test(html));
-  check('one model in three slots says so', /covers 3 slots/.test(html));
-  check('helper brains can be taken off; the main brain can\'t', /data-unequip="reviewer"/.test(html) && !/data-unequip="bob"/.test(html));
-  check('the Windows voice is not something to take off', !/data-unequip="speech"/.test(html));
+  const mod = await import('../public/equip.js');
+  const { brainsHtml } = await import('../public/brains.js');
+  check('the doll screen is gone from equip.js (no equipHtml, no chest, no weight bar)', !('equipHtml' in mod) && !('chestHtml' in mod) && !('CHEST_SHOW' in mod));
+  const html = brainsHtml(ctx);
+  check('the Brains page has every brain job (as a row or an empty job) and every sense', allSlots().filter((s) => s.kind === 'llm').every((s) => html.includes(`data-jobbrain="${s.id}"`) || html.includes(s.name)) && SLOTS.filter((s) => s.kind !== 'llm').every((s) => html.includes(`data-slotpick="${s.id}"`)));
   check('a plain list is one click away', /data-eqview="list"/.test(html));
-  check('the weight bar says when not everything fits at once', /alone needs more than your 4\.0 GB card/.test(equipHtml({ ...ctx, vramGB: 4 })) && /class="meter over"/.test(equipHtml({ ...ctx, vramGB: 4 })));
-  check('over the card in total is normal: neutral bar, plain words', /so Bob loads what each job needs/.test(equipHtml({ ...ctx, vramGB: 7, models: ctx.models.map((m) => (m.id === 'z-image-turbo' ? { ...m, vramGB: 5 } : m)) })) && !/class="meter over"/.test(equipHtml({ ...ctx, vramGB: 7, models: ctx.models.map((m) => (m.id === 'z-image-turbo' ? { ...m, vramGB: 5 } : m)) })));
-  check('nothing nasty gets through a model name', !/<script/.test(equipHtml({ ...ctx, roles: { ...roles, current: { ...roles.current, bob: '<script>x</script>' } } })));
+  check('no door back to a paper doll', !/data-eqview="doll"/.test(html));
+  check('nothing nasty gets through a model name', !/<script/.test(brainsHtml({ ...ctx, roles: { ...roles, current: { ...roles.current, bob: '<script>x</script>' } } })));
 }
 
 // ---- starter sets ----

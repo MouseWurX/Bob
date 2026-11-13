@@ -10,3 +10,15 @@ export function serverText() {
   const parts = [...main.matchAll(/from '\.\/([\w-]+-routes)\.js'/g)].map((m) => src(`${m[1]}.js`));
   return [main, ...parts].join('\n');
 }
+
+// A file read together with the parts split out of it: every file it imports whose opening note says
+// "Split out of <that file>" (for example lab.js and its lab-*-jobs.js parts).
+export function withParts(rel) {
+  const main = src(rel);
+  const name = rel.split('/').pop();
+  const parts = [...main.matchAll(/from '\.\/([\w-]+\.js)'/g)].map((m) => m[1]).filter((f, i, all) => all.indexOf(f) === i)
+    .map((f) => src(f)).filter((t) => t.split('\n').slice(0, 3).join(' ').includes(`Split out of ${name}`));
+  return [main, ...parts].join('\n');
+}
+export const labText = () => withParts('lab.js');
+export const brainText = () => withParts('brain.js');

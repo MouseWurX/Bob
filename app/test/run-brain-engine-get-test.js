@@ -23,7 +23,7 @@ check(st && st.name === 'Brain Engine' && /own engine for brains/.test(st.what) 
 { const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   const be = ENGINES.find((e) => e.id === 'brainengine');
   check(be.tag === pkg.bob.brainEngine.tag && be.linux.tag === pkg.bob.brainEngine.tag, 'Bob downloads the Brain Engine release his pin names (its own version, not one made from the llama.cpp tag)'); }
-check(/^brain-engine-v\d+$/.test(ENGINES.find((e) => e.id === 'brainengine').tag) && ENGINES.find((e) => e.id === 'brainengine').base === 'llamacpp' && ENGINES.find((e) => e.id === 'llamacpp').tested === TESTED_LLAMA, 'it is pinned to its own numbered pre-release, on top of the tested llama.cpp build');
+check(/^brain-engine-(?:v\d+|\d+b\d+)$/.test(ENGINES.find((e) => e.id === 'brainengine').tag) && ENGINES.find((e) => e.id === 'brainengine').base === 'llamacpp' && ENGINES.find((e) => e.id === 'llamacpp').tested === TESTED_LLAMA, 'it is pinned to its own numbered pre-release, on top of the tested llama.cpp build');
 
 // 1.5.169: which llama-server Bob runs brains on (fake folders, no real computer).
 {

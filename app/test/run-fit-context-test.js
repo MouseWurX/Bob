@@ -1,5 +1,6 @@
 // Two-Bob trial, Test B (1.5.185): a turn whose tool results don't fit the brain's chat memory, and a turn so long
 // that saving it used to drop the question too. No brain, no network: plain functions on made-up messages.
+import { brainText } from './source-text.js';
 import { Brain, fitContext, CUT_NOTE, TOO_LONG } from '../src/brain.js';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -45,7 +46,7 @@ const size = (ms) => ms.reduce((a, m) => a + Math.ceil(String(m.content ?? '').l
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
-{ const src = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'brain.js'), 'utf8').replace(/\r\n/g, '\n');
+{ const src = brainText().replace(/\r\n/g, '\n');
   check('every request goes through fitContext, and a failed job leaves a note in the chat', /const fitted = fitContext\(opts\.messages, opts\.ctx, opts\.tools, 0\.75, per\);/.test(src) && /correction: `⚠ \$\{String\(e\.message\)\.slice\(0, 400\)\}`, failed: true/.test(src)); }
 
 console.log(`\n${pass} passed, ${fail} failed`);

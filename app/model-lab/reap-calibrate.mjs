@@ -11,7 +11,10 @@
 //
 // node reap-calibrate.mjs --url http://host:port [--lessons out/lessons] [--score 200] [--steps 1,0.75,0.5,0.35]
 //      [--by mass|reap|counts] [--margin 2] [--quick] [--no-think] [--out out/calibrate] [--test "extra tool-score args"]
-//      [--scores <an earlier run's scores.json for the same brain: skip scoring>]
+//      [--scores <an earlier run's scores.json for the same brain: skip scoring>] [--flat-only] [--cover 0.8,0.85,0.9]
+// 13 Nov: every share below 100% is judged twice: flat (the same count in every layer, what a cut file can hold) and
+// uneven (the same total, shared out by how spread each layer's scores are; live switch only, or a padded file).
+// Experts used per word is set when the brain loads, so a Forge plan tests it by serving the brain once per count.
 // The server must be Brain Engine with the expert trace (0002) and, for true REAP, the expert-mass patch; without
 // mass it falls back to pick counts and says so. Set LAB_API_KEY for a server with a key (the Forge's rented card).
 import fs from 'node:fs';
@@ -20,7 +23,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { opts, locate, readJsonl, stamp, AGENT } from './common.mjs';
-import { emptyScores, addTrace, keepLists, priority, smallestGood } from './reap-pick.mjs';
+import { emptyScores, addTrace, keepLists, unevenKeepLists, coverage, coverTable, fileCount, priority, smallestGood, thinLayers } from './reap-pick.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const o = opts({ score: 200, steps: '1,0.75,0.5,0.35', by: 'mass', margin: 2 });
@@ -85,26 +88,43 @@ for (const [i, lesson] of (o.scores ? [] : chosen).entries()) {
 if (!s.lessons) { console.error('No expert traces came back. Is this a Brain Engine server with the expert trace, and a mixture-of-experts brain?'); process.exit(1); }
 const by = s.hasMass ? String(o.by) : 'counts';
 if (!s.hasMass) console.log('This engine gives pick counts but no expert mass, so the ranking uses counts (not true REAP).');
+const thin = thinLayers(s);
+if (thin.length && !o['allow-thin']) {
+  console.error(`These layers were barely scored, so their keep lists would be guesses: ${thin.map((t) => `layer ${t.layer} (${t.picks} picks, ${t.seen} experts seen)`).join(', ')}. The engine only ran them for the last word of each lesson; score with generated words or every-word outputs, or pass --allow-thin.`);
+  fs.writeFileSync(path.join(out, 'scores-thin.json'), JSON.stringify({ by: s.hasMass ? String(o.by) : 'counts', thin, ...s }, null, 1));
+  process.exit(3);
+}
 fs.writeFileSync(path.join(out, 'scores.json'), JSON.stringify({ by, ...s }, null, 1));
+// how many experts each layer needs to hold 50-99% of its own score (keep lists ready for the live switch)
+fs.writeFileSync(path.join(out, 'coverage.json'), JSON.stringify({ by, experts: s.experts, used: s.used, targets: coverTable(s, undefined, by) }));
 fs.writeFileSync(path.join(out, 'priority.json'), JSON.stringify({ by, experts: s.experts, used: s.used, layers: priority(s, by) }));
 console.log(`${s.lessons} lessons, ${s.tokens} tokens, ${s.layers.length} layers x ${s.experts} experts (${s.used} per word), ranked by ${by}`);
 
 // ---- 2. step down ----
 const scoreArgs = (typeof o.test === 'string' ? o.test.split(/\s+/).filter(Boolean) : []).concat(o.quick ? ['--quick'] : [], o['no-think'] ? ['--no-think'] : []);
 const steps = [];
-for (const share of String(o.steps).split(',').map(Number).filter((x) => x > 0 && x <= 1).sort((a, b) => b - a)) {
-  const keep = keepLists(s, share, by), n = keep.find(Boolean)?.length || s.experts;
-  const label = `keep-${Math.round(share * 100)}`;
+const mean = (a) => { const v = a.filter((x) => x != null); return v.length ? v.reduce((x, y) => x + y, 0) / v.length : null; };
+async function judge(share, kind, keep) {
+  const pct = Math.round(share * 100), label = kind === 'cover' ? `cover-${pct}` : `keep-${pct}${kind === 'uneven' ? '-uneven' : ''}`;
+  const n = kind !== 'flat' ? Math.round(mean(keep.filter(Boolean).map((k) => k.length))) : keep.find(Boolean)?.length || s.experts;
+  const cov = share === 1 ? null : coverage(s, keep, by), lo = cov ? Math.min(...cov.filter((x) => x != null)) : null;
+  const row = { share, kind, kept: n, file_count: share === 1 ? s.experts : fileCount(keep), cover_min: lo, cover_avg: cov ? mean(cov) : null };
   try { await post('/expert-mask', { keep: share === 1 ? null : keep }, 60_000); }
-  catch (e) { console.log(`  ${label}: the expert switch didn't answer (${String(e.message).slice(0, 120)}); step skipped`); steps.push({ share, kept: n, total: null, of: null, pct: null, tps: null, ok: false }); continue; }
-  fs.writeFileSync(path.join(out, `${label}.json`), JSON.stringify({ share, by, keep }));
-  console.log(`\n--- ${label}: ${n} of ${s.experts} experts in each layer ---`);
+  catch (e) { console.log(`  ${label}: the expert switch didn't answer (${String(e.message).slice(0, 120)}); step skipped`); steps.push({ ...row, total: null, of: null, pct: null, tps: null, ok: false }); return; }
+  fs.writeFileSync(path.join(out, `${label}.json`), JSON.stringify({ share, by, kind, keep }));
+  console.log(`\n--- ${label}: ${kind !== 'flat' ? `${n} of ${s.experts} per layer on average (${Math.min(...keep.filter(Boolean).map((k) => k.length))}-${row.file_count})` : `${n} of ${s.experts} experts in each layer`} ---`);
   const dir = path.join(out, label); fs.mkdirSync(dir, { recursive: true });
   const r = spawnSync(process.execPath, [path.join(here, 'tool-score.mjs'), '--url', url, '--models', `${label}=served`, '--lessons', lessonsDir, '--out', dir, ...scoreArgs], { stdio: 'inherit', env: process.env });
   const file = fs.readdirSync(dir).filter((f) => /^tool-score-.*\.json$/.test(f)).sort().at(-1);
   const res = file ? JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')).results?.[0] : null;
-  steps.push({ share, kept: n, total: res?.total ?? null, of: res?.totalN ?? null, pct: res ? (100 * res.total) / Math.max(res.totalN, 1) : null, tps: res?.tpsAvg ?? null, ok: r.status === 0 });
+  steps.push({ ...row, total: res?.total ?? null, of: res?.totalN ?? null, pct: res ? (100 * res.total) / Math.max(res.totalN, 1) : null, tps: res?.tpsAvg ?? null, ok: r.status === 0 });
 }
+for (const share of String(o.steps).split(',').map(Number).filter((x) => x > 0 && x <= 1).sort((a, b) => b - a)) {
+  await judge(share, 'flat', keepLists(s, share, by));
+  if (share < 1 && !o['flat-only']) await judge(share, 'uneven', unevenKeepLists(s, share, by));
+}
+// --cover 0.8,0.85: each layer keeps experts until they hold that share of its own score (the total floats)
+for (const c of (o.cover ? String(o.cover).split(',').map(Number).filter((x) => x > 0 && x < 1) : [])) await judge(c, 'cover', coverTable(s, [c], by)[0].keep);
 await post('/expert-mask', { keep: null }, 60_000).catch(() => {});
 // Reused scores: the full brain's score from that earlier run is the yardstick when this run has no 100% step.
 if (o.scores && !steps.some((x) => x.share === 1)) {
@@ -112,12 +132,17 @@ if (o.scores && !steps.some((x) => x.share === 1)) {
 }
 
 // ---- 3. keep ----
-const best = smallestGood(steps, Number(o.margin));
+// The pick is always a flat step (a cut file can hold it); the best uneven step is reported next to it.
+const flat = steps.filter((x) => x.kind === 'flat' || !x.kind), uneven = steps.filter((x) => x.kind === 'uneven');
+const best = smallestGood(flat, Number(o.margin));
+const bestUneven = uneven.length ? smallestGood([...flat.filter((x) => x.share === 1), ...uneven], Number(o.margin)) : null;
+const cell = (x) => (x.total == null ? 'failed' : `${x.total}/${x.of} (${x.pct.toFixed(1)}%)`);
 const lines = ['# REAP calibration', '', `Scored on ${s.lessons} training lessons, ranked by ${by}. Judged on the held-out lessons (tool-score${o.quick ? ', quick' : ''}). Margin: ${o.margin} points.`, '',
-  '| Kept per layer | Share | Held-out overall | Words a second |', '|---|---|---|---|',
-  ...steps.map((x) => `| ${x.kept} of ${s.experts} | ${Math.round(x.share * 100)}% | ${x.total == null ? 'failed' : `${x.total}/${x.of} (${x.pct.toFixed(1)}%)`} | ${x.tps == null ? '' : x.tps.toFixed(1)}${x.earlier ? ' (earlier run)' : ''} |`),
-  '', best ? `Smallest within the margin: **${Math.round(best.share * 100)}%** (${best.kept} of ${s.experts} per layer), keep list \`keep-${Math.round(best.share * 100)}.json\`.` : 'No step finished.',
+  '| Kept per layer | Share | Split | Held-out overall | Layer score kept (lowest / average) | Words a second |', '|---|---|---|---|---|---|',
+  ...steps.map((x) => `| ${x.kind !== 'flat' && x.kind ? `~${x.kept} (file needs ${x.file_count})` : x.kept} of ${s.experts} | ${Math.round(x.share * 100)}% | ${x.kind === 'cover' ? `uneven, each layer holds ${Math.round(x.share * 100)}% (${x.kept * s.layers.filter(Boolean).length} in all)` : x.kind === 'uneven' ? 'uneven' : 'even'} | ${cell(x)} | ${x.cover_min == null ? '' : `${Math.round(100 * x.cover_min)}% / ${Math.round(100 * x.cover_avg)}%`} | ${x.tps == null ? '' : x.tps.toFixed(1)}${x.earlier ? ' (earlier run)' : ''} |`),
+  '', best ? `Smallest even split within the margin: **${Math.round(best.share * 100)}%** (${best.kept} of ${s.experts} per layer), keep list \`keep-${Math.round(best.share * 100)}.json\`; a cut file can hold this.` : 'No step finished.',
+  ...(bestUneven && bestUneven.kind === 'uneven' ? [`Smallest uneven split within the margin: **${Math.round(bestUneven.share * 100)}%** (about ${bestUneven.kept} per layer, a file would need ${bestUneven.file_count}), keep list \`keep-${Math.round(bestUneven.share * 100)}-uneven.json\`; live switch only, or a padded file.`] : []),
   '', 'The brain file was not changed and every expert is switched back on. Switching experts off saves no memory by itself.'];
 fs.writeFileSync(path.join(out, 'calibration.md'), lines.join('\n') + '\n');
-fs.writeFileSync(path.join(out, 'calibration.json'), JSON.stringify({ by, experts: s.experts, used: s.used, margin: Number(o.margin), steps, best }, null, 1));
+fs.writeFileSync(path.join(out, 'calibration.json'), JSON.stringify({ by, experts: s.experts, used: s.used, margin: Number(o.margin), steps, best, best_uneven: bestUneven }, null, 1));
 console.log('\n' + lines.join('\n'));

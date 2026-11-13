@@ -2,6 +2,7 @@
 // (src/parts3d.js: OpenSCAD recipes in, STL out; off unless turned on), with its engine entry, toolbox group,
 // settings, Help, FAQ and glossary. OpenSCAD itself is never run: a fake stands in for it, and every file is
 // made up in a temporary folder.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -185,7 +186,7 @@ const throwsLike = (fn, re) => { try { fn(); return false; } catch (e) { return 
   check('the switch is saved and shown in Settings', /sswitch\('parts3d', settings\.parts3d === true, 'Let Bob make 3D parts'/.test(read('public/cellar.js')) && /typeof b\.parts3d === 'boolean'/.test(read('src/server.js')));
   check('the Welcome list has it, off', WANTS.some((w) => w.key === 'parts3d' && w.setting === 'Let Bob make 3D parts'));
   check('bob_help reports it', /Let Bob make 3D parts: off/.test(settingsNow({})));
-  const brainSrc = read('src/brain.js'), box = read('src/toolbox.js');
+  const brainSrc = brainText(), box = read('src/toolbox.js');
   check('the tool is hidden while the switch is off', /!parts3dOn\(this\.cfg\) && 'make_3d_part'/.test(brainSrc));
   const m = /parts3d: \{[\s\S]*?words: (\/.*\/i)\n/.exec(box);
   const words = m ? eval(m[1]) : /$^/;

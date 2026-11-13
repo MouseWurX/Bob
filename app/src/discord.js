@@ -36,6 +36,8 @@ import { scrubber } from './help-bundle.js';
 import { outputDirs } from './config.js';
 import { readConfigFile, writeConfigFile } from './config.js';
 import { saveKey, forgetPlainKey } from './secret-box.js';
+import { RoomGate } from './room-gate.js';
+import { KeepAwake } from './keep-awake.js';
 
 export const TOKEN_ENV = 'BOB_DISCORD_TOKEN';
 export const DISCORD_SESSION = 'discord'; // session ids are discord-<channel id>
@@ -81,6 +83,9 @@ export function discordSettings(cfg) {
     people: ids(d.people),
     jobs,
     share: d.share === true,
+    // 1.5.211 the room gate (src/room-gate.js): group requests wait for your OK unless Auto-accept is on (off).
+    autoAccept: d.autoAccept === true,
+    keepAwake: d.keepAwake === true, // 1.5.211 keep the computer from sleeping while Bob is on Discord (src/keep-awake.js)
     // Your private Bob in Discord DMs (off): only the one account you pair, with the full Bob, like his window.
     dmEnabled: d.dmEnabled === true,
     ownerId: ID_RX.test(String(d.ownerId || '')) ? String(d.ownerId) : null,
@@ -110,7 +115,7 @@ export function saveDiscord(cfg, patch) {
 // Only these keys, only these types.
 export function cleanDiscordPatch(b = {}, current = {}) {
   const out = {};
-  for (const k of ['enabled', 'caseSensitive', 'share', 'dmEnabled', 'dmApprove', 'dmPictures']) if (k in b) out[k] = b[k] === true;
+  for (const k of ['enabled', 'caseSensitive', 'share', 'autoAccept', 'keepAwake', 'dmEnabled', 'dmApprove', 'dmPictures']) if (k in b) out[k] = b[k] === true;
   if ('wake' in b) { const w = cleanWake(b.wake); if (w) out.wake = w; }
   const list = (v) => [...new Set(String(Array.isArray(v) ? v.join(' ') : v || '').split(/[\s,;]+/).filter((x) => ID_RX.test(x)))].slice(0, 50);
   if ('channels' in b) out.channels = list(b.channels);
@@ -193,7 +198,7 @@ export function storeToken(token, { cfg, platform = process.platform, home = os.
 }
 
 export class DiscordBridge {
-  constructor(brain, { fetchImpl = globalThis.fetch, WebSocketImpl = globalThis.WebSocket, env = rentKeyEnv(), now = Date.now, wait = (ms) => new Promise((r) => setTimeout(r, ms)), store, cleanOpts } = {}) {
+  constructor(brain, { fetchImpl = globalThis.fetch, WebSocketImpl = globalThis.WebSocket, env = rentKeyEnv(), now = Date.now, wait = (ms) => new Promise((r) => setTimeout(r, ms)), store, cleanOpts, gate, awake } = {}) {
     this.brain = brain;
     this.cfg = brain.cfg;
     this.fetch = fetchImpl;
@@ -218,6 +223,9 @@ export class DiscordBridge {
     this.pair = null; // { code, until } while your account isn't paired
     this.pairLocked = false;
     this.misses = 0;
+    // The group's own chat and its requests waiting for your OK (kept in Bob's data folder, never with your chats).
+    this.awake = awake || new KeepAwake({ log: (t) => this.log(t) });
+    this.gate = gate || new RoomGate({ room: 'discord', dir: brain.cfg?.dataDir || null, now, log: (t) => this.log(t) });
   }
 
   token() { const t = String(this.pasted || this.env[TOKEN_ENV] || '').trim(); return TOKEN_RX.test(t) ? t : ''; }
@@ -230,10 +238,12 @@ export class DiscordBridge {
     else this.stop(s.enabled || s.dmEnabled ? 'no token' : 'off');
     if (s.dmEnabled && !s.ownerId && !this.pairLocked && (!this.pair || this.pair.until < this.now())) this.newPairCode();
     if (!s.dmEnabled || s.ownerId) this.pair = null;
+    this.awake.set(s.keepAwake && this.running);
   }
 
   stop(why = 'off') {
     this.running = false;
+    this.awake?.set(false);
     this.status = why;
     clearInterval(this.beat);
     this.beat = null;
@@ -302,7 +312,7 @@ export class DiscordBridge {
     if (!this.running) return;
     // These won't get better by trying again.
     const fatal = { 4004: 'bad token', 4010: 'bad token', 4011: 'too many servers', 4012: 'bad token', 4013: 'intents', 4014: 'intents' }[code];
-    if (fatal) { this.running = false; this.status = fatal; this.log(`Discord closed the door (${code}): ${fatal}`); return; }
+    if (fatal) { this.running = false; this.awake?.set(false); this.status = fatal; this.log(`Discord closed the door (${code}): ${fatal}`); return; }
     const canResume = ![4007, 4009].includes(code) && this.session?.id;
     if (!canResume) this.session = null;
     this.retry(`Discord dropped the line (${code || 'no code'})`, Boolean(canResume));
@@ -357,18 +367,56 @@ export class DiscordBridge {
     }
     const now = this.now();
     if (now - (this.lastAsk.get(who) || 0) < COOLDOWN_MS) return reply('One moment, I\'m still on your last one. Ask again in a few seconds.');
-    const mine = [...this.jobs.keys()].filter((id) => (this.brain.queue || []).some((j) => j.id === id && ['waiting', 'working'].includes(j.state)));
-    if (mine.length >= MAX_WAITING) return reply('I\'ve got a few Discord jobs going already. Ask again in a little while.');
     this.lastAsk.set(who, now);
     const name = String(m.member?.nick || m.author?.global_name || m.author?.username || 'someone').replace(/[\u0000-\u001f<>@]/g, '').slice(0, 40) || 'someone';
+    if (s.autoAccept) {
+      const mine = [...this.jobs.keys()].filter((id) => (this.brain.queue || []).some((j) => j.id === id && ['waiting', 'working'].includes(j.state)));
+      if (mine.length >= MAX_WAITING) { this.lastAsk.delete(who); return reply('I\'ve got a few Discord jobs going already. Ask again in a little while.'); }
+    }
+    // 1.5.211 the room gate: it waits for the owner's OK in the Discord chat on this replicant matrix, unless Auto-accept is on.
+    const line = this.gate.ask({ who, name, where: channelId, text: prompt.slice(0, MAX_IN), type, ref: { channelId, messageId: m.id } }, { auto: s.autoAccept });
+    if (line.refused) { this.lastAsk.delete(who); return reply(line.refused === 'person' ? 'You\'ve got a few waiting for the owner\'s OK already. Ask again once they\'re answered.' : 'Lots of requests are waiting for the owner\'s OK already. Ask again later.'); }
+    this.roomNews();
+    if (s.autoAccept) return this.run(line);
+    this.log(`Discord request waiting for your OK (${type}, ${line.id.slice(0, 8)})`);
+    this.react(channelId, m.id, '⏳');
+  }
+
+  // Tells Bob's open pages the room changed (a quiet count, never a pop-up).
+  roomNews() { try { this.brain.broadcast?.({ type: 'room', room: 'discord', waiting: this.gate.waiting().length }); } catch {} }
+
+  react(channelId, messageId, emoji, off = false) {
+    return this.rest(off ? 'DELETE' : 'PUT', `/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/@me`).catch((e) => this.log(`couldn't react on Discord: ${e.message}`));
+  }
+
+  // Your Accept or Decline, from the Discord chat on this replicant matrix.
+  async answer(id, ok) {
+    const r = this.gate.answer(id, ok);
+    if (r.error) return r;
+    const { channelId, messageId } = r.line.ref || {};
+    this.log(`Discord request ${ok ? 'accepted' : 'declined'} (${r.line.id.slice(0, 8)}, your click)`);
+    this.roomNews();
+    if (this.running && channelId) {
+      await this.react(channelId, messageId, '⏳', true);
+      await this.react(channelId, messageId, ok ? '✅' : '❌');
+    }
+    if (ok) this.run(r.line);
+    return { ok: true };
+  }
+
+  // An accepted request becomes a guest job (the same strict job as always). Its reply goes to the room and its chat here.
+  run(line) {
+    const { channelId, messageId } = line.ref || {};
+    if (!channelId) return;
     const sessionId = `${DISCORD_SESSION}-${channelId}`;
     const hist = this.brain.sessions?.get(sessionId) || [];
     this.brain.sessions?.set(sessionId, hist.slice(-HISTORY));
-    const r = this.brain.enqueue(sessionId, `${name} (on Discord): ${prompt.slice(0, MAX_IN)}`, [], 'low', { guest: { from: 'Discord', need: 'chat', public: true, tools: toolsFor(s) } });
-    this.jobs.set(r.jobId, { channelId, messageId: m.id, text: '', startedAt: now, files: [] });
-    this.log(`job from Discord (${type}, ${r.jobId.slice(0, 8)})`);
-    this.rest('POST', `/channels/${channelId}/typing`).catch(() => {});
-    if (r.ahead > 0) await reply(`Got it. ${r.ahead === 1 ? 'One job is' : `${r.ahead} jobs are`} ahead of yours.`);
+    const r = this.brain.enqueue(sessionId, `${line.name} (on Discord): ${line.text}`, [], 'low', { guest: { from: 'Discord', need: 'chat', public: true, tools: toolsFor(this.settings()) } });
+    this.jobs.set(r.jobId, { channelId, messageId, text: '', startedAt: this.now(), files: [], lineId: line.id });
+    this.gate.started(line.id, r.jobId);
+    this.log(`job from Discord (${line.type}, ${r.jobId.slice(0, 8)})`);
+    if (this.running) this.rest('POST', `/channels/${channelId}/typing`).catch(() => {});
+    if (r.ahead > 0 && this.running) this.post(channelId, messageId, `Got it. ${r.ahead === 1 ? 'One job is' : `${r.ahead} jobs are`} ahead of yours.`);
   }
 
   async post(channelId, messageId, text) {
@@ -570,6 +618,7 @@ export class DiscordBridge {
         let text = job.text.trim();
         if (files.length && !s.share) text += `\n\n(I made ${files.length === 1 ? 'it' : 'them'}, but sharing what I make on Discord is switched off.)`;
         if (!text && job.error) text = 'Sorry, that didn\'t work.';
+        if (job.lineId) { this.gate.reply(job.lineId, text, { failed: Boolean(job.error), files: files.length }); this.roomNews(); }
         (async () => {
           if (text) await this.post(job.channelId, job.messageId, text);
           if (s.share) for (const f of files) if (this.fileOk(job, f)) await this.upload(job.channelId, job.messageId, f);
@@ -605,6 +654,7 @@ export function startDiscord(brain, opts) {
 
 // GET/POST /api/discord. Only from this PC: the switches and the token box never go to the phone.
 export async function discordRoute({ req, res, p, isLocal, brain, body, send }) {
+  if (p === '/api/rooms/discord') return roomRoute({ req, res, isLocal, brain, body, send });
   if (p !== '/api/discord') return false;
   const bridge = brain.discord;
   if (!bridge) { send(res, 404, { error: 'not ready' }); return true; }
@@ -629,3 +679,21 @@ export async function discordRoute({ req, res, p, isLocal, brain, body, send }) 
   send(res, 200, discordView(bridge));
   return true;
 }
+
+// 1.5.211 GET/POST /api/rooms/discord: the group's own chat, and your Accept or Decline. Only on this PC (the second gate).
+async function roomRoute({ req, res, isLocal, brain, body, send }) {
+  const bridge = brain.discord;
+  if (!bridge) { send(res, 404, { error: 'not ready' }); return true; }
+  if (!isLocal) { send(res, 403, { error: 'Discord requests can only be answered on this replicant matrix itself.' }); return true; }
+  if (req.method === 'GET') { send(res, 200, { ...bridge.gate.view(), on: bridge.settings().enabled, autoAccept: bridge.settings().autoAccept }); return true; }
+  if (req.method !== 'POST') { send(res, 405, { error: 'no' }); return true; }
+  const b = await body(req);
+  if (b.clear === true) { bridge.gate.clear(); bridge.roomNews(); brain.log('settings', 'Discord chat emptied (your click)'); }
+  else {
+    const r = await bridge.answer(String(b.id || ''), b.ok === true);
+    if (r.error) { send(res, 409, { error: r.error === 'not found' ? 'That request is gone.' : `That one is ${r.error.replace('already ', 'already ')}.` }); return true; }
+  }
+  send(res, 200, { ...bridge.gate.view(), on: bridge.settings().enabled, autoAccept: bridge.settings().autoAccept });
+  return true;
+}
+

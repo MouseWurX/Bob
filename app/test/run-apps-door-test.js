@@ -216,7 +216,7 @@ const post = (base, p, b, h = auth) => fetch(base + p, { method: 'POST', headers
   check('Windows: bob.cmd runs the Node inside Bob.exe', /ELECTRON_RUN_AS_NODE=1/.test(cmd) && /src\\bob-cli\.js/.test(cmd));
   check('Mac and Linux: bob.sh', /node "\$here\/\.\.\/src\/bob-cli\.js"/.test(read('installer/bob.sh')));
   check('the command line needs nothing else of Bob\'s', !/from '\.\//.test(read('src/bob-cli.js')));
-  check('it\'s in the test list', JSON.parse(read('package.json')).scripts.test.includes('run-apps-door-test.js'));
+  check('it\'s in the test list', JSON.parse(read('package.json')).testSuites.includes('test/run-apps-door-test.js'));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

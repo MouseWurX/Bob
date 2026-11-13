@@ -1,4 +1,5 @@
 // Sessions (which brains stay loaded), parallel lanes, and Style settings cleaning.
+import { brainText } from './source-text.js';
 import { Brain, besideOk, sideOk, sideBrain, SIDE_LANE } from '../src/brain.js';
 import { modelFor, laneOf, suggestSession, currentSession, sessionBrains, SESSIONS, waitsForGaming } from '../src/sessions.js';
 import { cleanStyle } from '../src/config.js';
@@ -159,7 +160,7 @@ check('asking for a picture is still a picture job', Brain.guessKind('paint a dr
   check('the reply beside always uses the small brain on the processor', JSON.stringify(sideBrain(base().cfg)) === JSON.stringify({ model: 'small', cpu: true }));
   const src = fs.readFileSync(new URL('../src/handoff.js', import.meta.url), 'utf8');
   check('the media job waits for that reply before loading its own brain back', /turns\?\.get\?\.\('side'\)/.test(src) && /sideIdle\?\.\(signal\)/.test(src));
-  const bsrc = fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8');
+  const bsrc = brainText();
   check('a second media step keeps the reply\'s processor brain loaded', /this\.turns\?\.has\(SIDE_LANE\)\) && this\.engine\.unloadGpu/.test(bsrc));
 }
 console.log(`\n${pass} passed, ${fail} failed`);

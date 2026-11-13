@@ -1,4 +1,4 @@
-// 1.5.127 Rented brains: the routes behind Settings (Online services), the Rented brain slot on Equip Bob, the chat
+// 1.5.127 Rented brains: the routes behind Settings (Online services), the Rented brain slot in Settings, Brains, the chat
 // page's 🏗 switch and the Hire it card. Settings change only from this replicant matrix; the card can be answered
 // from the phone too (like the Set it up card). Nothing here ever returns a key.
 import { saveSettings } from './config.js';

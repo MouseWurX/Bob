@@ -1,6 +1,7 @@
 // The Browser Hand (src/hands-browser.js), the eyes checks (src/eyes.js) and the Apps hand's new bits (expect, ask,
 // click_at). The browser window itself (electron/browser-window.cjs) is stood in for by a fake driver with a made-up
 // page; the eyes brain by a fake chatSafe. Run: node test/run-browser-test.js
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -52,7 +53,7 @@ check('single keys only, by name', keyFor('Enter') === 'enter' && keyFor('Escape
 // ---------- Eyes ----------
 check('the verdict is the first word: yes, no, unsure', eyesVerdict('Yes. The page shows results.') === 'yes' && eyesVerdict('no - still the home page') === 'no' && eyesVerdict('Unsure, the picture is dark') === 'unsure' && eyesVerdict('Not sure.') === 'unsure' && eyesVerdict('The page shows a cat') === null);
 check('the question asks for one word first, or answers a free question from what it sees', /exactly one word: yes, no or unsure/.test(eyesPrompt({ expect: 'the results show' })) && /saying only what you can see: Is there an error\?/.test(eyesPrompt({ ask: 'Is there an error?' })));
-check('without an eyes brain the check is skipped with a plain reason that names the slot', /no eyes brain is in its slot \(Equip Bob, "Seeing pictures"\)/.test(eyesWhy({ userName: 'Sam', models: {} })) && !eyesOn({ models: {} }));
+check('without an eyes brain the check is skipped with a plain reason that names the slot', /no eyes brain is in its slot \(Settings, Brains, "Seeing pictures"\)/.test(eyesWhy({ userName: 'Sam', models: {} })) && !eyesOn({ models: {} }));
 check('with the setting off it says so', /is off in Settings, Hands/.test(eyesWhy({ models: { eyes: 'gemma4:e4b' }, hands: { eyesCheck: false } })) && eyesOn({ models: { eyes: 'gemma4:e4b' }, hands: {} }));
 {
   const pic = path.join(tmp, 'p.png'); fs.writeFileSync(pic, Buffer.from('89504e470d0a1a0a', 'hex'));
@@ -255,7 +256,7 @@ const hp = read('public/hands.js');
 check('the Settings page shows Bob\'s browser and eyes: the window, Forget, and the eyes switch', /browserHtml\(v\.browser/.test(hp) && /data-hbrowserforget/.test(hp) && /data-heyes/.test(hp) && /Forget what Bob's browser knows/.test(hp) && /Bob checks his work with his eyes/.test(hp));
 check('the routes take forget and eyesCheck', /\/api\/hands\/browser/.test(read('src/hands-routes.js')) && /eyesCheck/.test(read('src/hands-routes.js')));
 check('the user guide and README mention the browser and the eyes', /### Use a browser/.test(read('docs/USER-GUIDE.md')) && /his own browser window/.test(read('../README.md')));
-check('offer_setup knows hand:browser', SWITCH_KEYS.includes('hand:browser') && /SWITCH_KEYS/.test(read('src/brain.js')));
+check('offer_setup knows hand:browser', SWITCH_KEYS.includes('hand:browser') && /SWITCH_KEYS/.test(brainText()));
 check('the release note is there', fs.readdirSync(path.join(here, '..', 'docs', 'releases')).some((f) => /Use a browser/.test(read(`docs/releases/${f}`))));
 
 console.log(`${pass} passed, ${fail} failed`);

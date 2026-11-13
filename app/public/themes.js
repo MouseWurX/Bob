@@ -128,6 +128,7 @@ export function applyTheme(t, root = document.documentElement) {
   root.style.colorScheme = isLight(c.bg) ? 'light' : 'dark';
   document.body?.classList.toggle('blueprint', Boolean(t.blueprint));
   document.body?.classList.toggle('outlined', Boolean(t.outlined));
+  document.body?.classList.toggle('theme-light', isLight(c.bg)); // 1.5.210: Lamplight keeps light themes light
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.content = c.panel;
 }
@@ -143,10 +144,25 @@ export function motionOff(style = current) {
   return false;
 }
 
+// 1.5.210: Bob's three looks (Style > Look). Shapes, spacing and motion only (looks.css); colours stay the theme's.
+export const LOOK_IDS = ['classic', 'lamplight', 'terminal'];
+export const DEFAULT_LOOK = 'classic'; // upgrades that never picked a look stay Classic; new installs get Lamplight from config.example.json
+export function lookId(style = current) { return LOOK_IDS.includes(style?.look) ? style.look : DEFAULT_LOOK; }
+function applyLook(style) {
+  const id = lookId(style), b = document.body;
+  if (!b) return;
+  for (const l of LOOK_IDS) b.classList.toggle(`look-${l}`, l === id);
+}
+
+// 1.5.211: the cube is Bob's picture for everyone. Pixel Bob shows only when picked from 1.5.211 on (avatarKept), so an
+// older pick, made when Pixel Bob was simply the default, doesn't hide the cube.
+export const pixelKept = (style) => style?.avatar === 'pixel' && style?.avatarKept === true;
 export function applyStyle(style = {}) {
   current = style || {};
   applyTheme(resolve(current));
   document.body?.classList.toggle('still', motionOff(current));
+  try { globalThis.dispatchEvent?.(new CustomEvent('bob-avatar', { detail: { cube: !pixelKept(current) } })); } catch {} // 1.5.209: the fNRI cube as Bob's picture (app.js); 1.5.211: the cube unless you picked Pixel Bob
+  applyLook(current);
   try { localStorage.setItem('bob-style', JSON.stringify(current)); } catch {} // so the next start shows the right colours at once
   if (!watching && globalThis.matchMedia) {
     watching = true;

@@ -11,7 +11,7 @@
   <a href="app/docs/README.md">All the docs</a>
 </p>
 
-![Bob's window: the menu on the left, a chat in the middle where Bob plans a Saturday, and Now running on the right with his thinking and tasks](app/docs/screenshot.png)
+![Bob's window in the Lamplight look: the glowing cube top left, tabs across the top, a chat in the middle and a quiet composer below](app/docs/screenshot.png)
 
 <p align="center">Windows · Mac · Linux · Raspberry Pi · Android · iPhone &nbsp;|&nbsp; free and open source &nbsp;|&nbsp; no account, no telemetry</p>
 
@@ -41,19 +41,64 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.209-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.209-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.209-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.209-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.209-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.209-linux-x86_64.AppImage) |
-| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.209-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.209-linux-amd64.deb) |
-| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.209-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.209-linux-x86_64.flatpak) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.209-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.209-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
-| **Android phone** | [`Bob-1.5.209-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.209-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.211-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.211-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.211-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.211-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.211-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.211-linux-x86_64.AppImage) |
+| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.211-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.211-linux-amd64.deb) |
+| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.211-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.211-linux-x86_64.flatpak) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.211-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.211-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
+| **Android phone** | [`Bob-1.5.211-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.211-android.apk) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 
 **On Windows 11?** Bob isn't code signed yet, so Smart App Control may stop him from running. [Read this first](#windows-11-smart-app-control).
 
 ## What's new
+
+**In 1.5.211:**
+
+| | |
+|---|---|
+| 🧭 **Journey grows into a world** | Roll a land up to Saga size, tame pets and mounts, fly to cities in the clouds, dive to the merfolk, bows and crossbows, four styles. |
+| 🎮 **Brains load on a handheld** | On built-in graphics Bob sizes a brain honestly, tries it, and steps down by himself if it runs out of memory. |
+| 🏮 **Lamplight to start** | New installs open in Lamplight, with the cube as Bob's picture in every look. |
+| 🔗 **The quickest link** | Bob-Net picks a cable over Wi-Fi, and Check links shows every way your Bobs can reach each other. |
+| 💬 **Discord groups ask first** | A group's request waits for your OK in its own chat. |
+
+**In 1.5.210:**
+
+| | |
+|---|---|
+| 🏮 **Three looks** | Classic, Lamplight (a dark room lit by Bob's cube, with Find anything on Ctrl+K) and Terminal, on the Style page. |
+| 💭 **A thinking bubble** | The steps sit in a small bubble above the reply, and the chat shows only the finished answer. |
+| 🗣 **Talk with Bob** | Press 🗣 and just talk, hands-free. He answers out loud and you can cut in. |
+| 🧠 **One Brains page** | Settings, Brains picks every model; the catalogue sorts by best fit, filters by what runs here, and finds more models on Hugging Face and ModelScope. |
+| 📖 **Help that starts where you are** | A guide written around jobs, opening on Start here, with each page's questions folded underneath. |
+| 🧩 **Panels you build** | Put Now running's parts in a panel on the left or the right. |
+
+| | |
+|:---:|:---:|
+| ![Bob's menu, opened by clicking the cube: Brains, Style, Get models, the tools and the session](app/docs/screens/bob-menu.png) | ![Find anything with calibrate typed: Brains and speed first, then Help topics](app/docs/screens/find-anything.png) |
+| **Bob's menu.** Click the cube. | **Find anything.** Ctrl+K reaches every page, setting and Help topic. |
+| ![The Now running drawer open on the right, beside the chat](app/docs/screens/now-running.png) | ![Brains in use, each with Calibrate and Set up, and Calibrate all at the top](app/docs/screens/brains-calibrate.png) |
+| **Now running.** Closed until you open it from the status line. | **Calibrate.** Times each brain on your card and recommends the fastest way to load it. |
+
+<p align="center">
+  <img src="app/docs/screens/cube-porthole.png" width="420" alt="The porthole cube glowing beside Bob's name">
+  <br><b>The porthole cube.</b> It lights the room: brighter while Bob thinks, nearly dark with no brain loaded.
+</p>
+
+<details>
+<summary><b>On a phone, and the other two looks</b></summary>
+
+| | |
+|:---:|:---:|
+| <img src="app/docs/screens/lamplight-phone.png" width="260" alt="Lamplight on a phone: cube and status line on top, the chat, the composer and the tab bar"> | ![The Classic look: the menu on the left and the chat in the middle](app/docs/screens/look-classic.png) |
+| **Lamplight on a phone.** | **Classic.** |
+| ![The Terminal look: green text on black, you and bob prompts](app/docs/screens/look-terminal.png) | |
+| **Terminal.** | |
+
+</details>
 
 **In 1.5.208:**
 
@@ -78,14 +123,20 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 | 🎲 **Adventure table rules** | A map that grows, portraits, coins and shops, riddle rooms, Easy to Hard, and campaigns you can send to a friend. |
 | 🧪 **More Lab** | A blind taste test that ranks brains, Save to Lab from the chat, before and after Teach it, and recipe files to share. |
 | ⚡ **Engine and speed** | Load the next brain early, a speed history chart, laptop mode on battery, and a chat memory type for each brain. |
-| 🗣 **Voice and phone** | Talk over Bob while he reads aloud, have documents read aloud, and carry a chat on to another Bob. On Android: Share to Bob, a home-screen widget and hands-free. |
+| 🗣 **Voice and phone** | Talk with Bob hands-free (short spoken answers, cut in any time), talk over Bob while he reads aloud, have documents read aloud, and carry a chat on to another Bob. On Android: Share to Bob, a home-screen widget and hands-free. |
 
 Every new switch is off until you turn it on.
 
-<p align="center">
-  <img src="app/docs/screens/journey.png" width="460" alt="Journey: a pixel-art village on a tile map, the hero in the square among villagers, a message box reading Welcome to the Brindle Vale, and hearts for the hero and Bob below">
-  <br><b>Journey.</b> Arrow keys walk, Enter talks, opens chests and swings.
-</p>
+| | |
+|:---:|:---:|
+| ![Journey: Bob's Inn, a wooden tavern with tables, the hero by the bar and the innkeeper](app/docs/screens/journey-inn.png) | ![Journey: the world map with mountains, a road and travellers walking it](app/docs/screens/journey-world.png) |
+| **Bob's Inn.** Every journey starts here. | **The world.** Rolled from a seed; guards walk the roads. |
+| ![Journey: a village of red-roofed houses outside the castle gate, guards at the wall](app/docs/screens/journey-castle.png) | ![Journey: the keep's throne hall with a red carpet and knights along the walls](app/docs/screens/journey-keep.png) |
+| **Outside the castle gate.** | **The keep.** A king, a queen, knights and guards. |
+| ![Journey: a dark cave with a chest](app/docs/screens/journey-cave.png) | ![Journey: a turn-based fight against two guards in a town square](app/docs/screens/journey-fight.png) |
+| **Caves** hide chests with good kit. | **Fights** drop coin and whatever the foe carried. |
+
+<p align="center"><b>Journey.</b> Arrow keys walk, Enter talks, opens chests and swings. Bob's Inn, the rolled world, castles and patrols arrive in 1.5.211.</p>
 
 <details>
 <summary><b>Earlier:</b> 1.5.204 to 1.5.206, and before</summary>
@@ -97,7 +148,7 @@ Every new switch is off until you turn it on.
 | 🗂 **Sort and rename** | A Hand that renames and files a whole music, video or photo collection by rules you set. Every change goes on a card first, nothing is overwritten, and Undo puts it all back. |
 | 🎲 **Adventure grows up** | Enemies sit on the table with their hearts. Characters get stronger and keep it. A quest log and a world book, friends at the table, the odds on every card, your turn in your own words or by voice, and a storybook of the finished game. |
 | 🧪 **A simpler, busier Lab** | Its own window, tabs sorted by task, one place to start, and **My Lab** for everything you've made. A queue runs jobs overnight, **Show the wobble** shows how much a score moves, and every brain takes an entry test with Bob's real tools. |
-| 🧠 **Brains page** | Equip Bob shows how each brain runs here: on your card, with memory, with storage, with another Bob's help, or too big, with its Lab scores underneath. Add a model from a Hugging Face page. |
+| 🧠 **Brains page** | Settings, Brains is the one place to pick brains. It shows how each brain runs here: on your card, with memory, with storage, with another Bob's help, or too big, with its Lab scores underneath. Add a model from a Hugging Face page. |
 | 🧊 **3D models** | STL, OBJ and GLB open in the side panel. Bob makes a part from an OpenSCAD recipe, or a textured model from one picture. |
 | 🔎 **Search by meaning** | Bob finds documents, memories and topics that are close in meaning, not only by exact words. |
 | 🔌 **Doors for other apps** | VS Code, Open WebUI and scripts use Bob's brains at `localhost:7777/v1`. The Claude app and Claude Code use Bob's Hands, every call on a card. Tool packs add other people's tools, in the sandbox. |
@@ -119,8 +170,8 @@ The [changelog](CHANGELOG.md) has every release.
 |---|---|
 | ![A chat about a garden budget on the left, and the spreadsheet open in the side panel on the right](app/docs/screens/documents.png) | ![First-time setup: the programs and models Bob suggests for a 16 GB card, each with a tick box](app/docs/screens/get-bob-ready.png) |
 | **Documents beside the chat.** Sheets, slides, pages and PDFs. | **Ready in one button.** Bob reads your card and fetches what fits. |
-| ![Equip Bob: Bob in the middle with a slot for every job around him](app/docs/screens/equip-bob.png) | ![The adventure table: three characters, two enemies with their hearts, the game master's story, and cards for the player's turn](app/docs/screens/adventure.png) |
-| **Equip Bob.** A slot for every job, a model for every slot. | **Adventure.** Bob runs the table; the app rolls the dice, shows the odds and counts the hearts. |
+| ![The Brains page: each brain, its jobs, and where it sits on the card and in memory](app/docs/screens/brains-page.png) | ![The adventure table: three characters, two enemies with their hearts, the game master's story, and cards for the player's turn](app/docs/screens/adventure.png) |
+| **Brains.** Each brain, the jobs it does, and where it sits on your card. | **Adventure.** Bob runs the table; the app rolls the dice, shows the odds and counts the hearts. |
 
 - **Work:** plans and reminders, web research with sources, code written, run and fixed, documents and spreadsheets read, searched and written.
 - **Make:** pictures painted and edited, short clips, songs and sound effects, 3D parts and models, and a voice (22 Kokoro voices and more).
@@ -153,7 +204,7 @@ The [changelog](CHANGELOG.md) has every release.
 
 Most AI apps are for talking to a model or for building one. Bob does both. **🧪 Lab** in the menu opens in its own window, so you can change a brain while Bob keeps chatting.
 
-![The Computer Science Lab in its own window: seven tabs, Keep it simple or Professional, and Make a brain asking What do you want to do? with Cut experts picked and the 28Bob Riker brain ticked](app/docs/screens/lab.png)
+![The Computer Science Lab in its own window: seven tabs, Keep it simple or Professional, and Make a brain asking What do you want to do?](app/docs/screens/lab.png)
 
 | Tab | What you do there |
 |---|---|
@@ -167,7 +218,13 @@ Most AI apps are for talking to a model or for building one. Bob does both. **�
 
 - **Keep it simple or Professional.** Simple fills in Bob's defaults. Professional shows every control and its proper name. **Show the recipe** prints every command the Lab runs.
 - **Brain Engine** is Bob's own engine. It switches a brain's experts on and off while it's loaded, so the Lab can try a cut before writing a file.
-- **fNRI** (functional Neural Response Imager) shows a brain as a 3D block: one floor per layer, every expert coloured by the skill that used it most.
+- **fNRI** (functional Neural Response Imager) shows a brain as a 3D block: one floor per layer, every expert coloured by the skill that used it most. Its **weight map** colours the block by the brain's own weights instead: how strong each expert is, or how much it differs from another brain.
+
+  ![fNRI's weight map of Riker, and the same block coloured by how much each expert differs from stock Qwen3.6-35B-A3B](app/docs/screens/fnri-weight-maps-riker.jpg)  
+  *Riker's weights. Top: how strong each expert is for its floor (purple weaker, yellow stronger). Bottom: how much each expert changed from stock Qwen3.6-35B-A3B. The glow is the experts answering a question.*
+
+  ![The fNRI viewer: a sample scan as a 3D block, experts coloured by Coding, Chat, Maths and Stories, with the player and skill switches beside it](app/docs/screens/fnri-viewer.png)  
+  *The viewer with a sample scan (made-up data): tick a skill to show or hide it, then play the answer back word by word.*
 
 <details>
 <summary><b>More pictures:</b> Teach, Test, Forge and My Lab</summary>
@@ -218,6 +275,7 @@ Same tests, same rented card, each Bob served from his public Q4 file. Riker mat
 | [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) | The lessons the Bobs learned from: chat, tool calls, thinking on and off. CC BY-SA 4.0. |
 | [bob-odds](https://huggingface.co/datasets/MouseWurX/bob-odds) | The teacher's next-word odds used to teach each cut brain back. |
 | [How they're made](app/docs/BOBS-OWN-MODELS.md) | The method, every result, and what went wrong along the way. |
+| [What we've learned](app/docs/MAKING-SMALLER-MODELS.md) | Best practices for making smaller brains from bigger ones: cutting, REAP, teaching back, lessons, fitting the device and renting cards. |
 | [What they cost](app/docs/COSTS.md) | Every rental, itemized, failures included. |
 | [Brain races](app/docs/BRAIN-RACES.md) · [test results](app/docs/test-results/README.md) | How other brains score on the same tests and the same PC. |
 
@@ -230,7 +288,7 @@ Put Bob on your PC, laptop, handheld and phone, and they find each other on your
 <img src="app/docs/screens/phone.png" width="240" align="right" alt="Bob for Android: the phone asks the PC's Bob for a wireframe fox and gets it back">
 
 - **Pool graphics cards and memory.** A brain too big for one computer is spread over your Bobs' cards and memory. One bigger than all of that can still run from a fast SSD.
-- **Fast where it counts.** The first load sends the brain once; later loads send only what's missing. A brain that fits on one computer stays there, because that beats any network.
+- **Fast where it counts.** The first load sends the brain once; later loads send only what's missing. A brain that fits on one computer stays there, because that beats any network. With **SCUT** turned on (experimental), a brain spread over two Bobs on weak home Wi-Fi wrote 17.5 tokens a second against 3.5 to 4.8 over plain TCP: [the measurements](app/docs/test-results/2026-11-12-scut-vs-tcp-over-wifi.md).
 - **Bobs working in concert.** Borrow a bigger Bob's brain for a reply, send a job to whichever Bob is free, or have a bigger Bob check a handheld's harder work.
 - **The phone app** talks to the Bob on your PC, and can run a small brain on the phone itself.
 - **Adventures together:** your other Bobs join the party in the tabletop game.
@@ -244,6 +302,7 @@ Put Bob on your PC, laptop, handheld and phone, and they find each other on your
 | Graphics memory Bob holds while idle | **None.** The brain unloads, and big models load only for the job that needs them. |
 | 🎮 Gaming session, first word of a reply | **0.1 seconds** with the brain loaded, on the processor, with the graphics card left to your game. |
 | Context on a 16 GB card | **256K tokens**, and up to 1M with Long memory. |
+| 🧊 The cube's **Real experts** (live brain picks) | **Free when off** (the glow alone costs nothing). On: **about a fifth** of the word speed on Brain Engine 5 (Riker on a 5070 Ti, 122.7 down to 99.2 words a second), whether shown live or after the answer, and no more for long chats. Brain Engine 6 reads the picks once per word instead of 40 times; [the numbers](app/docs/test-results/2026-11-12-cube-real-experts-cost.md). |
 
 Pictures and big jobs wait in Tasks while you play, and **Let games go first** has Bob use fewer processor cores. The measurements are in [How Bob stays fast and light](app/docs/PERFORMANCE.md).
 
@@ -286,7 +345,7 @@ Bob's program and his things live apart, so updating never touches your models o
 
 - **You pick the folder when Bob is installed or first opened.** Bob suggests a `Bob` folder in your user folder and takes any drive. He refuses temporary places like AppData, because models are 10 to 60 GB. A cloud-synced folder (OneDrive, Dropbox, Google Drive, iCloud) is allowed, but Bob always recommends against it: every model would be uploaded.
 - **To move it later:** Settings, **Bob's home folder**, then **Move here…**.
-- **His pictures, clips and songs** go to the folder shown in the **chest** under Bob on Equip Bob, with a **Change folder…** button.
+- **His pictures, clips and songs** go to the folder in Settings, **Where Bob saves things**, with a **Change folder…** button. **Made by Bob** lists them all.
 
 ## Using Bob
 

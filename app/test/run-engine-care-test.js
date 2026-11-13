@@ -1,5 +1,6 @@
 // Reliability items 218-228: engine and memory care (src/engine-care.js, wired in src/llamacpp.js).
 // Run: node test/run-engine-care-test.js. Uses the fake llama-server; never reads the real card, RAM or folders.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import net from 'node:net';
@@ -299,7 +300,7 @@ try {
   }
   // Wiring and the start-of-job prompt
   {
-    const brain = read('src/brain.js'), care = read('src/engine-care.js');
+    const brain = brainText(), care = read('src/engine-care.js');
     check(/engineNotes\(emit\) \{[\s\S]{0,400}type: 'announce', text/.test(brain) && /this\.engineNotes\(emit\);\n    return used;/.test(brain), 'the engine\'s notes are one line in the chat (announcements), shown when a job starts or a reply ends');
     check(!/systemPrompt|role: 'system'/.test(care), 'nothing here adds words to what the brain reads');
     check(/e\.noRetry\) break;/.test(read('src/handoff.js')), 'the gate doesn\'t repeat a load the engine already tried every way');

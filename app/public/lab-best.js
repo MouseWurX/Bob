@@ -123,7 +123,7 @@ export function createBestPage({ api }) {
     if (d.src === 'bst-weights' || d.src === 'bst-questions') { const x = d.src === 'bst-weights' ? f.weights : f.questions; await sourceEvent(b, x, look); await replan(); return 'draw'; }
     if ('bstcheck' in d) { await replan(); return 'draw'; }
     if ('bstnounload' in d) { askUnload = null; return 'draw'; }
-    if (d.bstuse) { try { await api('/api/lab/best/use', { id: d.bstuse }); done = 'It\'s in Bob now: Equip Bob lists it, and you pick it when you want it.'; await load(); } catch (e) { msg = e.message; } return 'draw'; }
+    if (d.bstuse) { try { await api('/api/lab/best/use', { id: d.bstuse }); done = 'It\'s in Bob now: the Brains page lists it, and you pick it when you want it.'; await load(); } catch (e) { msg = e.message; } return 'draw'; }
     if ('bstgo' in d) {
       msg = '';
       try { const r = await api('/api/lab/best/start', { ...out(), unload: d.bstgo === 'unload' }); askUnload = r.needUnload ? r.names : null; } catch (e) { msg = e.message; }

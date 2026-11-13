@@ -64,6 +64,21 @@ wheel() {
   fetch "$name"
   dir="$work/src-$name"
   [ -z "$(j "code.$name.dir")" ] || dir="$dir/$(j "code.$name.dir")"
+  if [ "$name" = flex_gemm ]; then
+    # Visual Studio needs "template" before data_ptr<T> where T comes from a generic lambda (gcc doesn't mind it)
+    sed -i 's/\.data_ptr<T>()/.template data_ptr<T>()/g' "$dir/flex_gemm/kernels/cuda/spconv/sparse_neighbor_map.cu"
+    grep -q 'template data_ptr<T>' "$dir/flex_gemm/kernels/cuda/spconv/sparse_neighbor_map.cu"
+  fi
+  if [ "$name" = o_voxel ]; then
+    # 1e-6d and 0.0d are a gcc-only way to write a double; Visual Studio wants plain 1e-6 and 0.0
+    sed -i -E 's/\b(1e-6|0\.0)d\b/\1/g' "$dir/src/convert/flexible_dual_grid.cpp"
+    if grep -qE '\b(1e-6|0\.0)d\b' "$dir/src/convert/flexible_dual_grid.cpp"; then echo "o-voxel patch didn't take"; exit 1; fi
+    # torch::zeros({N, C}) with size_t N and C is a narrowing error in Visual Studio: say int64_t
+    sed -i -E 's/torch::zeros\(\{(\w+), (\w+)\}/torch::zeros({(int64_t)\1, (int64_t)\2}/g' "$dir/src/io/filter_neighbor.cpp" "$dir/src/io/filter_parent.cpp"
+    if [ "$(grep -c 'torch::zeros({(int64_t)' "$dir/src/io/filter_neighbor.cpp" "$dir/src/io/filter_parent.cpp" | awk -F: '{s+=$2} END {print s}')" != 4 ]; then echo "o-voxel patch didn't take"; exit 1; fi
+    sed -i -E 's/torch::from_blob\((\w+)\.data\(\), \{(\w+)\.size\(\)\}/torch::from_blob(\1.data(), {(int64_t)\2.size()}/g' "$dir/src/io/svo.cpp"
+    if [ "$(grep -c '{(int64_t)' "$dir/src/io/svo.cpp")" != 2 ]; then echo "o-voxel patch didn't take"; exit 1; fi
+  fi
   echo "::group::building $name"
   "$py" -m pip wheel --no-build-isolation --no-deps -w "$out" "$dir"
   echo "::endgroup::"

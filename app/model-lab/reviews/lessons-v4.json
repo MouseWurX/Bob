@@ -1,0 +1,13 @@
+{
+  "about": "Hand review of Bob's lessons v3 (13 Nov 2026), used by clean-lessons.mjs to make v4. Each entry moves one lesson to the wrong side (rejected.jsonl), so preference training learns to avoid it. Flagged by a search for refusal words in fiction asks and 'I can't' with a matching tool offered (77 found), then read one by one; the rest were fine.",
+  "wrong": [
+    { "folder": "lessons-refusals", "idea": "i139", "why": "refuses a poison scene in a fantasy novel" },
+    { "folder": "lessons-refusals", "idea": "i170", "why": "refuses an exam-cheating scene in fiction" },
+    { "folder": "lessons-refusals", "idea": "i78", "why": "blames safety filters Bob does not have" },
+    { "folder": "lessons-refusals", "idea": "i61", "why": "refuses a legal self-defense question" },
+    { "folder": "lessons-refusals", "idea": "i224", "why": "opens with a refusal to a plain legal question" },
+    { "folder": "lessons-refusals", "idea": "i218", "why": "refuses authorised security testing" },
+    { "folder": "lessons-research", "idea": "i77", "why": "says it cannot reach the internet with web search offered" },
+    { "folder": "lessons", "idea": "i2581", "why": "says web search is not set up with web search offered" }
+  ]
+}

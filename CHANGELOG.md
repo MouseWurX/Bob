@@ -4,6 +4,114 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.211
+
+Brains that load on built-in graphics, Journey grown into a whole world, Lamplight to start with, tasks you can remove or pause, a gate for Discord groups, picture to 3D you can get, and Brain Engine 5 switched on. As always, none of this adds a word to what my brain reads.
+
+### New
+
+#### 🧭 Journey v1.1: a whole world to roll
+
+- **Bob's Inn is where it starts.** Walk around my tavern, then pick **✨ New adventure** to roll a land (small, medium or large, from a seed) or **▶ Resume adventure** to pick up where you left off.
+- **A land that makes sense.** You'll find sea and beaches, rivers running downhill, mountains, forests, swamps, plains and deserts. Hamlets, villages, towns and a castle are joined by roads and bridges. There are caves, dungeons and a hermit's hut.
+- **Castles** have a keep with a King and Queen, knights and guards, and a village inside the walls and another outside the gate. Guards and knights walk the roads, so trouble is rarer where they patrol.
+- **Bosses everywhere.** The three keepers are in every world. Every other dungeon and cave has its own boss to suit the land.
+- **Fight anyone** (F or ⚔), villagers included. You'll be wanted for it: guards come running, and the captain takes your fine.
+- **Coin and loot.** Coin comes in copper, silver, gold and platinum (1.11 is 1 silver and 11 copper). Everyone you beat drops coin, and sometimes their kit, a tonic or a scroll. Kit can be fine, keen, blessed, rusty or cursed, and the best of it sits in cave chests.
+- **Magic and skill trees.**
+  - Accuracy and evasion decide every hit. Healing works on the road, the Cleric's Raise brings a friend back, and anyone can read a scroll once.
+  - Seven classes, with the Psionist new, each have three branches. You can take a second class at level 5 and a third at level 10, and every pair has a combo.
+  - A Wizard, Cleric and Psionist together get the Mana Wellspring.
+  - The new Pixie race is small, quick and full of mana.
+- **Train your stats** by using them, at a trainer, with the hermit, or by sparring with a captain.
+- Old saves carry over. Desktop, Android and iPhone.
+
+#### 🧭 Journey v1.2: tame it, ride it, fly it
+
+- **Bigger lands.** Lands now go up to Vast, Epic and Campaign (1,024 by 1,024), and Saga (2,048 by 2,048) on a computer. The big ones are continents with sea between them, and coastal towns have docks: the sailor takes you to any dock you've found, by rowboat, sloop or ship.
+- **Taming.** Mid-fight, feed a wild animal the food it loves and it may come along. Each character can keep 5 pets and 3 mounts. Your pet follows you, fights beside you and carries extra loot. Ride your mount with R (or 🐎).
+- **Fly and dive.** On a pegasus, griffin or wyvern you take off and fly over sea and mountains to the cities in the clouds, where the bird folk live. On a dolphin you dive to the merfolk's city under the sea. Taking off, landing and diving all have their own animations, and underwater the land above goes blurry.
+- **Everyone's places.** You'll find orc villages, kobold lairs, dwarf holds, elf tree villages, halfling burrows, pixie glades, lizardfolk stilt villages, gnome tinker towns, centaur camps, giant halls and goblin markets.
+- **On the road.** Bird-folk traders swoop into town and sell great things at half price, elders hand out small jobs, you can fish, and animals wander the land.
+- **Bows, crossbows and spells.** New bows and crossbows fire visible arrows. Every element has its own spell effect, and blessed, cursed, rusty and arcane kit shows its colour.
+- **Four styles.** Pick Fantasy, Sci-fi, Cyberpunk or Steampunk. Each brings its own words, colours and craft (shuttles, hoverbikes, airships, submarines).
+- **☰ Menu, 🧭 The land** shows the whole land and every place you've found. **🐾 Pets** looks after your animals.
+- **Lighter.** The land takes far less memory. On a phone, your other Bob makes the land and the phone keeps only the part near you. Pages are sent packed (gzip) when the browser asks, so they come faster over Wi-Fi.
+
+#### Everything else
+
+- **Discord groups wait for your OK** (the Discord bot). A request from a Discord group shows up in a new Discord group chat in Topics, Past chats, and runs only when you say yes. **Auto-accept** skips the asking and **Keep awake while on Discord** keeps the computer up; both are off to start with. While this Bob is in Gaming, a group job goes to another of your Bobs, or waits.
+- **Picture to 3D you can get** (Settings, Engines, Pictures, sound and hearing: 3D workshop). The 3D workshop's graphics-card parts are built and pinned for Windows and Linux, so the **Get** button is there. It is about 28 GB with its models. Not on RTX 50-series cards yet: the add-ons were built before them, so those get no Get button (and no download that can't run) until a later update brings ones that do; send the job to a PC Bob with an older NVIDIA card over Bob-Net.
+- **Check links** (Settings, Bob-Net, Bigger Bobs; reads only). It shows how this computer can reach your other Bobs: Wi-Fi, a network port, a USB4 cable.
+- **The Lab: tune a stock brain without cutting it** (REAP calibrate). It scores each expert from the trace, turns the least used down a step at a time and keeps each step only if the tool score holds. It reads each expert's real share when the engine has Brain Engine 6's expert mass; until then it uses pick counts. Also new: the Lab's quiz kit has the how-tos on, and kept benchmark answers sort into clean, full and paired sets.
+
+- **Straight facts** (the Lab, Challenges; the Lab is off to start with). Brains trained in China learn the government's line on Tiananmen 1989, Taiwan, Xinjiang, Tibet, Hong Kong and Xi Jinping. Five new Challenges packs measure it: multiple choice on China in English and in Chinese, on Russia, North Korea and Iran, a fairness check on the US, the UK, France, India and Israel, and **Says it straight**, written answers that score only when they give the sourced facts. Every answer and the odds the brain gave each letter go in the run's log. None of them count in Overall. After any of them runs, a **Straight facts (sourced)** lesson set is ready for Teach it: short answers in English and Chinese, each with its links, and where something is really disputed, like Taiwan's status, the facts and each side's position. **model-lab/straight-facts.mjs** runs the packs from the command line (probe, scan, rescore).
+- **Remove, pause and resume tasks.** Every task has ✕ to remove it, whatever state it's in, so a failed one goes without a retry and a stop first. A running job can be paused and resumed where it was.
+
+### Changed
+
+- **Lamplight is the look for new installs**, and my cube is my picture in every look unless you pick Pixel Bob in Style, Bob's look, from this version on. Now running starts closed, so the window starts empty and you put in it what you want.
+- **Bob-Net takes the quickest way.** When two Bobs share more than one network, I use the quickest (a cable before Wi-Fi). A cable straight between two computers, a switch with no router, or a USB4 cable counts as home with nothing to type in.
+- **Brain Engine 5 (5b12282) is now the one I use**, with live expert picks for the cube and the Bob-Net link log with SCUT that retunes itself. Each Bob fetches it by himself the first time he starts on this version (about 600 MB with the llama.cpp files under it), so update every Bob that shares a card, since they all need the same one. Over today's Wi-Fi, SCUT ran one brain over two Bobs about four to five times faster than plain TCP (17.5 words a second against 3.5 to 4.8; app/docs/test-results has the write-up).
+- **Watch the link live** also turns on the engine's own link lines, so the Link log fills on the borrowing Bob.
+
+### Fixed
+
+- **Brains load on built-in graphics** (a handheld like the Legion Go, where the graphics use ordinary RAM). I size a brain from everything it really needs there: the file, the chat memory, the working buffers and the driver. Then I try it: wholly on the graphics if it fits, shared with the processor if not, or on the processor alone. If it still runs out of memory, I step down by myself (half the graphics, then the processor alone, then half the chat memory), remember what worked for that brain, and say so in the logbook. The estimate never stops me trying. A lent card on built-in graphics says how much it really has, so the other Bob doesn't overfill it. "Memory kept for Windows" now starts at 2 GB.
+- **"Invalid input batch" after a failed reply** no longer stops the chat: the next try starts clean.
+- **I stay in my session after letting a brain go.** My own brain on the card, or my card lent to another Bob, no longer counts as a game, so I don't drop to Gaming and pick another brain by myself.
+- **A SCUT key mix-up no longer costs a load.** When the Bob lending a card doesn't know the other's sealed-SCUT key (a fresh or copied Bob folder on either side), the two agree a new one right away, through the same passcode door pairing uses, and that very load uses SCUT. The logbook says "new SCUT key agreed". A card already lent is started again when the key changes, two Bob folders on one computer no longer push each other's key out, and the logbook tells "no shared key yet" apart from "an older Bob". Before, the whole load went over the slower usual link.
+- **Find anything (Ctrl+K)** finds Help topics by their search words too, so "calibrate" finds Calibrate Wi-Fi.
+- **Lab, Teach it and Best answers: a brain made in the Lab can be taught again.** I remember the original each brain was made from, so picking it teaches that original again, and the plan says plainly that what the brain learned before isn't carried over. To build on the taught brain itself, teach it from a folder of its full weights.
+- **Lab, Best answers: a steadier judge.** The judge reads each list twice, in order and reversed, and averages the scores; answers that are the same word for word share one score; and the judge gets a plain scale (10 fully right, 7 right with a slip, 4 partly right, 1 wrong). Judging takes about twice as long, which is still small next to answering. And an answer with a known result is checked the same way on both sides: bold, \\boxed{}, an "Answer:" line or a whole sentence around the same time or number all count as right.
+
+### Brain Engine 6 (built, not switched to yet)
+
+This release carries Brain Engine 6 (6b12282): Brain Engine 5 plus the expert mass for the Lab (0009), the expert trace read once per word so the cube no longer slows a brain with experts by about a fifth (0010), and one trip a word instead of several over a lent card (0011). Its Windows and Linux builds come next, and a later update moves to it after it passes its own check on a real PC.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android, unless a line says otherwise. Journey is on desktop, Android and iPhone; the Saga land size is for computers. Check links reads Windows, Mac and Linux. Built-in graphics sizing is for any computer whose graphics share its RAM. The Lab's tuning runs where the Lab's Playground works. Help covers each new part.
+
+## 1.5.210
+
+A new look, an easier start and a tidier chat. Three looks to pick from, Lamplight among them, a thinking bubble that keeps the chat to the finished answer, one Brains page for everything, a Help that starts where you are, Talk with Bob hands-free, panels you build yourself, and the cube in a porthole. How I work is unchanged: none of this adds a word to what my brain reads.
+
+### New
+
+- **Three looks** (Style, Look). **Classic** is how I've always looked, tidied, and the one I start with. **Lamplight** is a dark room lit by my cube: my picture top left, the pages along the top, **Find anything** (Ctrl+K) for any page, tool, setting or Help topic, my menu holding the tools, and a status line under the typing box. **Terminal** is plain text in a window. Animations off holds the lamplight still.
+- **A thinking bubble above the answer** (Settings, How Bob works; on to start with). While I work, a small bubble above my reply shows the step I'm on. When I'm done, the chat shows only the finished answer; press the bubble to see the steps, drafts and fixes.
+- **Talk with Bob** (Settings, Voice details; off to start with). Press 🗣 and just talk, hands-free. I answer out loud, short, with the whole answer in the chat, and you can cut in. My own hearing and voice, free; xAI's online voice is an extra you pick, with your own paid key.
+- **Panels you build** (off until you put something in one). Now running's sections become modules you can put in a panel on the left or the right, each Expanded, Collapsed or Hidden.
+- **The cube in a porthole.** My fNRI cube sits in a round window into a foggy room: it fills as a brain loads, drains into the fog when it goes, and the neon signs are gone. **Bob's look** in Style can make it my picture instead of the pixel Bob.
+- **Find more models** (Get models, the Brain catalogue). Search Hugging Face or ModelScope for brains I don't list. Nothing goes out until you press Search, and what it finds is marked Not tried yet.
+- **Sort and filter the catalogue.** Bob's order, **Best fit first**, newest or oldest, smallest or biggest; filter by who made it, quantization, and **Runs here**. A green **Fits your card** tag marks what sits wholly on your card.
+- **Back up keys of connected apps** (Backup, Keys and passcodes, locked; off). They go in the locked part of the backup and come back into the locked key store.
+- **A link log for Bob-Net** (Settings, Bob-Net, Bigger Bobs). What the link to a lent card carried, and whether SCUT was on, in a Link log box and the logbook. **Watch the link live** shows it every 2 seconds. Byte counts need the next Brain Engine.
+- **Calibrate Wi-Fi** (Settings, Bob-Net, Bigger Bobs; Windows). When your Bobs share a brain over Wi-Fi, the band matters most. **Check** shows which band this computer is on and which ones the router offers. **Calibrate** times the trip to your other Bob on each strong band and sets the Wi-Fi card to the quickest, after one Windows prompt you press. **Put it back** restores what it found.
+
+### Changed
+
+- **One place to pick brains.** The Equip Bob paper doll is retired: Settings, Brains picks every model. Personality and House style are Settings panels now, Get models opens on the catalogue, and Made by Bob holds what the chest held.
+- **An easier first run.** Do you want me to: opens on the four switches that help most; the rest are folded underneath.
+- **One chip at the top of the chat.** The brain label holds the quick switches (Free memory, Hands, Autonomy, Screen use, Bob's thinking) and shows their icons when on. The left menu is grouped into Chat, Play, Lab and Setup, and phones and narrow windows get a bar along the bottom.
+- **Help starts where you are.** The guide is rewritten around jobs, Help opens on **Start here**, and each page keeps its questions folded at the bottom: about seventy pages instead of four hundred entries.
+- **A digest of this week.** **Make this week's digest now** makes this week, Monday to the coming Sunday, not last week.
+- **The time I'm given names my time zone**, from Settings, so a time or zone question is never a guess.
+- **Stop after this step** wraps up from the steps that really ran, and counts nothing they didn't show.
+
+### Fixed
+
+- **"A song as an MP3" says the MP3 on a Mac too.** A long temporary folder pushed the "Also saved as" line past the end of what I'm shown. It goes first now, and the "came out after all" note gives file names, not whole paths.
+- **A made-up address isn't a broken tool.** A web address that doesn't exist no longer counts toward a tool's three strikes or the "may have broken after an update" line.
+- **The logbook says how long a brain really sat unused** ("1 min 15 s", with the keep-alive), and a 1 minute keep-alive lets go close to 1 minute, not up to 2.
+- **Stop stops a load with no job behind it.** Stop now ends a brain load started from Settings or a warm-up, including "still loading over Bob-Net", and a spread load that fails ends at once and loads here instead.
+- **Spreading a brain:** a Bob lending its card lets go of its own idle brain first, so the room it offers is real; a hand-set split is left out of a spread so each card's share is sized to fit (a handheld's shared memory refused a 1 GB piece); turning spread on asks your other Bobs again at once; and each Bob that didn't lend is named in the logbook with why.
+
+### Brain Engine 5 (built, not switched to yet)
+
+This release carries Brain Engine 5's two new patches, live expert picks for the cube (0007) and the Bob-Net link log with SCUT that retunes itself (0008). Its Windows and Linux builds come next. I keep using Brain Engine 4 until build 5 has passed its own check on a real PC, then a later update moves to it. Until then, Real experts shows the picks after each reply as before, and the link log names the link but has no byte counts.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android, unless a line says otherwise. Talk with Bob's own hearing and voice work offline. Find more models needs the internet. Help covers each new part.
+
 ## 1.5.209
 
 A quick one for the firewall.

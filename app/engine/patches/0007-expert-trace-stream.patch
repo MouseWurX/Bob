@@ -1,0 +1,205 @@
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 1457f9a..028ba4d 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -196,7 +196,27 @@ struct server_expert_trace {
+         pass    = 0;
+         last_il = -1;
+         tags.clear();
+-    }
++        sent_tag = 0;
++        sent_out = 0;
++        sent_rows = 0;
++        seen_tag = 0;
++        seen_out = 0;
++        seen_prompt = 0;
++    }
++
++    // Brain Engine, streamed trace: how far the pieces sent so far reach (in tags, in tokens with an output, and in
++    // the slot's own rows)
++    size_t  sent_tag  = 0;
++    size_t  sent_out  = 0;
++    int32_t sent_rows = 0;
++    // running counts over the tags (so a piece costs the same at any context length, not a walk over every tag):
++    // how many tags are counted, how many of them have an output, how many are the traced slot's prompt
++    size_t  seen_tag    = 0;
++    size_t  seen_out    = 0;
++    int32_t seen_prompt = 0;
++    // a piece carries at most this many of the slot's rows (a long prompt arrives as one piece: only its end is sent,
++    // and "from" says where that end starts)
++    static constexpr size_t part_max_rows = 64;
+ 
+     // the hidden neurons of a layer's feed-forward block, after the activation: [n_ff, n_tokens]
+     static int neuron_layer(const char * name) {
+@@ -2552,6 +2572,9 @@ private:
+         res->n_prompt_tokens       = slot.task->n_tokens();
+         res->n_prompt_tokens_cache = slot.stats.n_prompt_cached;
+         res->post_sampling_probs   = slot.task->params.post_sampling_probs;
++        if (!is_progress && !is_begin) {
++            res->expert_trace_part = expert_trace_part(slot); // Brain Engine: null unless asked for
++        }
+ 
+         res->verbose           = slot.task->params.verbose;
+         res->res_type          = slot.task->params.res_type;
+@@ -5165,6 +5188,103 @@ private:
+         return out;
+     }
+ 
++    // Brain Engine, streamed trace: the rows this slot read since the last piece, in the same form as the final trace's
++    // rows, with where they start ("from", counted in this slot's rows) and how many of all the rows so far are the
++    // prompt. Null when not asked for, or when the trace went bad (two requests at once, a failed decode).
++    json expert_trace_part(server_slot & slot) {
++        json out = nullptr;
++        if (!slot.task->params.expert_trace || !slot.task->params.expert_trace_stream || !slot.task->params.stream || !etrace.on) {
++            return out;
++        }
++        llama_synchronize(ctx_tgt);
++        std::lock_guard<std::mutex> lock(etrace.mutex);
++        if (etrace.bad || etrace.n_used <= 0 || etrace.sent_tag >= etrace.tags.size()) {
++            return out;
++        }
++        for (; etrace.seen_tag < etrace.tags.size(); etrace.seen_tag++) {
++            const auto & tag = etrace.tags[etrace.seen_tag];
++            etrace.seen_out    += tag.output ? 1 : 0;
++            etrace.seen_prompt += tag.id_slot == slot.id && tag.is_prompt ? 1 : 0;
++        }
++        const size_t n_output = etrace.seen_out;
++        // as at the end: a layer has seen every token so far, or (the last layer) only the tokens with an output
++        std::vector<uint8_t> outputs_only(etrace.cols.size(), 0);
++        for (size_t il = 0; il < etrace.cols.size(); il++) {
++            if (etrace.n_cols[il] == 0 || etrace.n_cols[il] == (int32_t) etrace.tags.size()) {
++                continue;
++            }
++            if (etrace.n_cols[il] != (int32_t) n_output) {
++                return out; // a layer is behind (still computing, or a shape we don't follow): wait for the next piece
++            }
++            outputs_only[il] = 1;
++        }
++        const int32_t k = etrace.n_used;
++        const bool with_acts = etrace.neurons || etrace.heads;
++        json rows = json::array();
++        const int32_t n_prompt = etrace.seen_prompt;
++        // the slot's new rows; when there are more than part_max_rows, skip the early ones (still counted in "from")
++        size_t n_new = 0;
++        for (size_t i = etrace.sent_tag; i < etrace.tags.size(); i++) {
++            n_new += etrace.tags[i].id_slot == slot.id ? 1 : 0;
++        }
++        const size_t n_skip = n_new > etrace.part_max_rows ? n_new - etrace.part_max_rows : 0;
++        size_t skipped = 0;
++        size_t i_output = etrace.sent_out;
++        for (size_t i = etrace.sent_tag; i < etrace.tags.size(); i++) {
++            const size_t i_out = i_output;
++            i_output += etrace.tags[i].output ? 1 : 0;
++            if (etrace.tags[i].id_slot != slot.id) {
++                continue;
++            }
++            if (skipped < n_skip) {
++                skipped++;
++                continue;
++            }
++            json e = json::array();
++            json a = json::array();
++            for (size_t il = 0; il < etrace.cols.size(); il++) {
++                if (etrace.n_cols[il] == 0 || (outputs_only[il] && !etrace.tags[i].output)) {
++                    e.push_back(json::array());
++                    if (with_acts) {
++                        a.push_back(0.0f);
++                    }
++                    continue;
++                }
++                const size_t at = outputs_only[il] ? i_out : i;
++                if ((at + 1)*k > etrace.cols[il].size()) {
++                    return out; // not there yet
++                }
++                const auto b = etrace.cols[il].begin() + at*k;
++                e.push_back(std::vector<int32_t>(b, b + k));
++                if (with_acts) {
++                    a.push_back(at < etrace.acts[il].size() ? etrace.acts[il][at] : 0.0f);
++                }
++            }
++            const llama_token tok = etrace.tags[i].token;
++            rows.push_back(json {
++                {"t", tok == LLAMA_TOKEN_NULL ? std::string() : common_token_to_piece(ctx_tgt, tok, true)},
++                {"e", std::move(e)},
++            });
++            if (with_acts) {
++                rows.back()["a"] = std::move(a);
++            }
++        }
++        out = json {
++            {"n_layer",       (int32_t) etrace.cols.size()},
++            {"kind",          etrace.heads ? "heads" : etrace.neurons ? "neurons" : "experts"},
++            {"n_expert",      etrace.neurons || etrace.heads ? etrace.n_group : llama_model_n_expert(model_tgt)},
++            {"n_ff",          etrace.n_ff},
++            {"n_expert_used", k},
++            {"n_prompt",      n_prompt},
++            {"from",          etrace.sent_rows + (int32_t) n_skip},
++            {"rows",          rows},
++        };
++        etrace.sent_rows += (int32_t) (n_skip + rows.size());
++        etrace.sent_tag   = etrace.tags.size();
++        etrace.sent_out   = i_output;
++        return out;
++    }
++
+     // returns true = success ; false = retry with smaller batch size
+     // throw std::runtime_error on fatal error
+     bool decode(int32_t & n_batch, int32_t off) {
+diff --git a/tools/server/server-schema.cpp b/tools/server/server-schema.cpp
+index 419574b..eb5af82 100644
+--- a/tools/server/server-schema.cpp
++++ b/tools/server/server-schema.cpp
+@@ -39,6 +39,9 @@ std::vector<std::unique_ptr<field>> make_llama_cmpl_schema(const common_params &
+     add((new field_bool("expert_trace", params.expert_trace))
+         ->set_desc("Brain Engine: for a mixture-of-experts model, return which experts every layer picked for every token read, in the `expert_trace` field of the final result. Only given to a request that ran alone"));
+ 
++    add((new field_bool("expert_trace_stream", params.expert_trace_stream))
++        ->set_desc("Brain Engine: with `expert_trace` and `stream`, every streamed piece carries the trace rows read since the previous piece, in `expert_trace_part` ({from, n_prompt, rows} plus the shape fields), so a viewer can light up while the reply is written. The full trace still comes with the last piece"));
++
+     add((new field_bool("expert_trace_heads", params.expert_trace_heads))
+         ->set_desc("Brain Engine: with `expert_trace`, report the busiest attention heads of every layer (kind `heads`) instead of experts or neuron groups. Works for any model"));
+ 
+diff --git a/tools/server/server-task.cpp b/tools/server/server-task.cpp
+index 711df69..909e74e 100644
+--- a/tools/server/server-task.cpp
++++ b/tools/server/server-task.cpp
+@@ -1079,6 +1079,9 @@ json server_task_result_cmpl_partial::to_json_non_oaicompat() {
+     if (!prob_output.probs.empty()) {
+         res["completion_probabilities"] = completion_token_output::probs_vector_to_json({prob_output}, post_sampling_probs);
+     }
++    if (!expert_trace_part.is_null()) {
++        res["expert_trace_part"] = expert_trace_part; // Brain Engine: the rows read since the last piece
++    }
+     return res;
+ }
+ 
+@@ -1170,6 +1173,9 @@ json server_task_result_cmpl_partial::to_json_oaicompat_chat() {
+         if (is_progress) {
+             last_json["prompt_progress"] = progress.to_json();
+         }
++        if (!expert_trace_part.is_null()) {
++            last_json["expert_trace_part"] = expert_trace_part; // Brain Engine: the rows read since the last piece
++        }
+     }
+ 
+     return deltas;
+diff --git a/tools/server/server-task.h b/tools/server/server-task.h
+index 616c20a..11c1238 100644
+--- a/tools/server/server-task.h
++++ b/tools/server/server-task.h
+@@ -83,6 +83,7 @@ struct task_params {
+     bool return_tokens   = false;
+     bool expert_trace    = false; // Brain Engine: report which experts every layer picked for every token
+     bool expert_trace_heads = false; // Brain Engine: with expert_trace, report the busiest attention heads instead
++    bool expert_trace_stream = false; // Brain Engine: with expert_trace and stream, every streamed piece carries the rows read since the last one
+     bool return_progress = false;
+ 
+     int32_t sse_ping_interval = 30; // seconds between SSE comment pings while the stream stays silent, -1 disables
+@@ -505,6 +506,7 @@ struct server_task_result_cmpl_partial : server_task_result {
+     bool is_begin = false; // whether to send 200 status to HTTP client (begin of SSE stream)
+                            // ref: https://github.com/ggml-org/llama.cpp/pull/23884
+     bool audio_commit_drained = false; // realtime: non-final commit has fully decoded
++    json expert_trace_part; // Brain Engine: with expert_trace_stream, the rows read since the last piece (null otherwise)
+     completion_token_output prob_output;
+     server_slot_stats stats;
+     result_prompt_progress progress;

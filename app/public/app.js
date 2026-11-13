@@ -1,12 +1,15 @@
 // Bob's panel: chat, approvals, status, taskbar badge, read-aloud, and the brain-swap machine.
+import './sample-data.js'; // 1.5.210 sample-data mode (?sample=1 in the address only): made-up brains, nothing saved
 import { drawBob, setLook } from './bob-sprite.js';
 import { secretNoteHtml, wireSecretNote } from './more-tools.js'; // 🧰 More tools: a password Bob made
 import { applyStyle, applySavedStyle } from './themes.js';
+import { createMindCube } from './mind-cube.js'; // 1.5.209: Bob's picture as the fNRI cube
 applySavedStyle();
 import { startI18n, followSaved } from './i18n.js';
 startI18n();
 import { startSwap, sceneLabel } from './brain-swap.js';
 import { createVoice } from './voice.js';
+import { createTalk } from './talk.js'; // 🗣 Talk with Bob (1.5.210, off unless turned on)
 import { createReader } from './read-aloud.js'; // Read documents aloud (item 136, off unless turned on)
 import { createCellar } from './cellar.js';
 import { watchLock } from './lock-settings.js';
@@ -26,6 +29,7 @@ import { createHelp } from './help.js';
 import { handsApproval, togetherApproval, onHandsEvent } from './hands.js';
 import { planApproval } from './plan-card.js';
 import { createBrainBar } from './brain-bar.js';
+import { createStatusChip } from './status-chip.js'; // 1.5.210: one status chip, and the phone's bottom bar
 import { createHandsSwitch } from './hands-switch.js';
 import { installTips } from './tips.js';
 import { createWebSwitch } from './web-switch.js';
@@ -39,10 +43,14 @@ import { createCatAntics } from './cat-antics.js';
 import { createBubbles } from './say-bubbles.js';
 import { createBobLife } from './bob-life.js';
 import { createViewer, outCard, fillPeeks } from './viewer.js';
+import { createThinkBubbles } from './think-bubble.js'; // 1.5.210: the thinking bubble above the answer
 import { songListHtml, wireSongs } from './song-player.js';
 import { moreBar } from './more-bar.js';
 import { createPromptMenu } from './prompts.js'; // saved prompts: the / menu in the message box
 import { createBobMenu } from './bob-menu.js'; // 1.5.207 the small menu on Bob's picture
+import { createFind } from './find.js'; // 1.5.210 Lamplight: Find anything (Ctrl+K)
+import { CARDS } from './settings-map.js';
+import { HELP } from './help-content.js';
 import { diagramHtml, saveRowsHtml, setupSaveAs, watchSaveAs } from './save-as.js';
 import './math-core.js'; // Show maths as formulas: KaTeX, loaded only while the switch is on
 import { installShortcuts, listHtml as shortcutListHtml } from './shortcuts.js';
@@ -84,6 +92,7 @@ const brainBar = createBrainBar({ post: (u, d) => post(u, d), note: (t, k) => no
 const handsSwitch = createHandsSwitch({ note: (t, k) => note(t, k) });
 const jobHelps = createJobHelps({ api: (u, d) => api(u, d), add: (c, h) => add(c, h), note: (t, k) => note(t, k), log, stopBtn, scrollDown: () => scrollDown() });
 const quickSwitches = createQuickSwitches({ note: (t, k) => note(t, k) });
+createStatusChip({ setLeft: layout.setLeft, leftFolded: layout.leftFolded });
 const webSwitch = createWebSwitch({ note: (t, k) => note(t, k) });
 const rentSwitch = createRentSwitch({ note: (t, k) => note(t, k) });
 const gameLock = createGameLock({ note: (t, k) => note(t, k) }); // 1.5.41 the 🎮 Gaming button
@@ -152,8 +161,57 @@ let lastFrame = '', lastProp = '';
     propEl.className = `bob-prop${f.prop ? ` p-${f.propClass}` : ''}`;
     propEl.hidden = !f.prop;
   }
-  setTimeout(animate, document.hidden ? 1000 : 80);
+  setTimeout(animate, document.hidden || cubeAvatarOn ? 1000 : 80); // 1.5.209: the cube avatar stands in, so the pixel Bob only ticks once a second
 })();
+// ---------- Bob's picture as the fNRI cube (1.5.209, Style, Bob's look; the pixel Bob to begin with) ----------
+// A small fNRI cube in place of the pixel Bob: it builds itself when a brain loads, rests with the odd spark, glows
+// while he thinks and drains away when the brain is let go, with the neon sign when none is loaded. It glows for show,
+// so it costs the engine nothing; with Real experts on (Bob's thinking) it shows the experts he really used. It draws
+// small and never turns, and while it shows the pixel Bob's loop slows right down and the brain-swap machine rests.
+// In Adventure the pixel Bob comes back (the small characters are the game's).
+var cubeAvatarOn = false; // var: the pixel loop above reads it before this line runs
+let cubeAvatar = null, cubeWanted = false;
+const advDlg = $('adventure');
+function showCubeAvatar() {
+  const on = cubeWanted && !advDlg?.open;
+  if (on === cubeAvatarOn) return;
+  cubeAvatarOn = on;
+  globalThis.bobCubeAvatarOn = on; window.dispatchEvent(new CustomEvent('bob-avatar-shown', { detail: { on } })); // shown once: Bob's thinking (layout.js) steps its own cube aside
+  const box = $('bobCubeBox');
+  if (!box) return;
+  bobCanvas.hidden = on;
+  if (on) {
+    if (!cubeAvatar) cubeAvatar = createMindCube({ box, canvas: $('bobCube'), says: $('bobCubeSays'), open: $('bobCubeOpen') }, { avatar: true, lamp: () => true, still: () => document.body.classList.contains('still'), live: () => store.get('bob-cube-live', '0') === '1' });
+    cubeAvatar.connect(); hideSwap();
+  } else if (cubeAvatar) { cubeAvatar.disconnect(); cubeAvatar.hide(); lastFrame = ''; }
+}
+function setAvatarCube(on) { cubeWanted = Boolean(on); store.set('bob-avatar-cube', cubeWanted ? '1' : '0'); showCubeAvatar(); }
+window.setAvatarCube = (on) => { setAvatarCube(on); api('/api/settings', { style: { avatar: on ? 'cube' : 'pixel' } }).catch(() => {}); }; // the Style page's looks call this
+window.addEventListener('bob-avatar', (e) => setAvatarCube(e.detail?.cube === true));
+window.addEventListener('bob-cube-live', () => { if (cubeAvatarOn && cubeAvatar) cubeAvatar.relive(); }); // Real experts switched in Bob's thinking
+setAvatarCube(store.get('bob-avatar-cube', '1') === '1'); // at once, before the settings arrive, so the picture never flips
+if (advDlg && globalThis.MutationObserver) new MutationObserver(showCubeAvatar).observe(advDlg, { attributes: true, attributeFilter: ['open'] });
+// 1.5.210 Lamplight on a phone: the left menu is a sheet, so the porthole moves to the top of the chat with Bob's
+// name beside it (the same element, so it keeps its fog, glow and clicks). Everywhere else it sits where Bob sits.
+const lampPhone = globalThis.matchMedia?.('(max-width: 640px)');
+function placeCube() {
+  const box = $('bobCubeBox'), ctx = document.querySelector('.ctx'), wrap = document.querySelector('.side-top .bob-wrap');
+  if (!box || !ctx || !wrap) return;
+  const top = document.body.classList.contains('look-lamplight') && Boolean(lampPhone?.matches);
+  let head = $('lampHead');
+  if (top && !head) { head = document.createElement('span'); head.id = 'lampHead'; head.className = 'lamp-head'; head.innerHTML = '<span class="lamp-name">Bob</span>'; }
+  if (top && box.parentElement !== head) { ctx.prepend(head); head.prepend(box); }
+  else if (!top && head && box.parentElement === head) { wrap.insertBefore(box, bobCanvas.nextSibling); head.remove(); }
+}
+let lampWas = '';
+const lampCheck = () => { const k = document.body.className.includes('look-lamplight') + ':' + Boolean(lampPhone?.matches); if (k !== lampWas) { lampWas = k; placeCube(); } };
+if (globalThis.MutationObserver) new MutationObserver(lampCheck).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+lampPhone?.addEventListener?.('change', lampCheck);
+lampCheck();
+// In Lamplight the cube is the menu button (Bob's menu, below); in the other looks it opens Equip Bob as before.
+const lampLook = () => document.body.classList.contains('look-lamplight');
+$('bobCube')?.addEventListener('click', () => { if (!lampLook()) cellar.open('shop', 'roles'); });
+$('bobCube')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (lampLook()) bobMenu.toggle($('bobCubeBox')); else cellar.open('shop', 'roles'); } });
 // Two brains loaded at once (from the brain readings): a bigger head. Back to one: normal again.
 window.addEventListener('bob-brain-status', (e) => { const n = (e.detail?.models || []).filter((m) => m?.name).length; life.brains(n); });
 // A dozing Bob wakes when you come back to the window.
@@ -276,6 +334,31 @@ function markReplaced(el) {
   el.insertBefore(b, box);
 }
 
+// 1.5.210 The thinking bubble (public/think-bubble.js): while Bob works, his steps, drafts and fixes go in one folded
+// bubble above the answer; the chat bubble gets only the finished answer, whole. Settings, Bob himself, "Thinking
+// bubble above answers" (on unless turned off); off, the chat is as it was.
+let thinkOn = true, catName = 'Patches';
+const stillNow = () => document.body.classList.contains('still') || Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+function showAnswer(ev, text, extra = {}) {
+  const r = ensureReply(ev);
+  r.text = String(text || '');
+  if (r.text.trim() || r.media.length) { drawReply(r); log.append(r.el); } // under the cards that came while he worked
+  if (extra.checked) checkedNote(r.el, extra.checked);
+  if (extra.correction) note(extra.correction, 'error');
+}
+// The moot's minutes, folded under the answer it checked.
+function checkedNote(el, minutes) {
+  el.querySelector(':scope > .checked-note')?.remove();
+  const box = document.createElement('div');
+  box.className = 'versions-note checked-note';
+  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false">🛰 Checked by a second look</button><div hidden>${render(String(minutes))}</div>`;
+  const b = box.querySelector('button'), w = box.querySelector('div');
+  b.onclick = () => { w.hidden = !w.hidden; b.setAttribute('aria-expanded', String(!w.hidden)); };
+  el.insertBefore(box, el.querySelector(':scope > .msg-tools'));
+}
+window.addEventListener('bob-think-bubble', (e) => { thinkOn = e.detail !== false; }); // Settings, from this window
+const thinkBubbles = createThinkBubbles({ add, esc, answer: showAnswer, on: () => thinkOn, still: stillNow, cat: () => catName, openMind: () => $('mindBtn')?.click() });
+
 // ---------- Status, badge, notifications ----------
 const STATUS_TEXT = {
   idle: 'Coffee in hand. Ready when you are.',
@@ -334,7 +417,7 @@ function ping(title, body) {
 document.addEventListener('visibilitychange', () => { if (!document.hidden) badge(false); });
 
 function showSwap(from, to, mode = 'swap') {
-  if (swapEl) return;
+  if (swapEl || cubeAvatarOn) return; // the cube avatar builds itself as the brain loads instead
   swapEl = document.createElement('div');
   swapEl.className = 'note announce';
   const c = document.createElement('canvas');
@@ -363,10 +446,12 @@ let ownVoice = false;
 const sayQueue = []; // [{ text, bob }]
 let saying = false;
 let stopSaying = null; // stops the clip playing now
-const voiceNet = { talkOver: false, netVoices: false };
+const voiceNet = { talkOver: false, netVoices: false, talk: false, talkWay: 'own' };
+let talk = null; // 🗣 Talk with Bob (public/talk.js)
 let reader = null; // Read documents aloud (public/read-aloud.js)
-async function readVoiceNet() { try { const s = await (await fetch('/api/settings')).json(); voiceNet.talkOver = s.talkOver === true; voiceNet.netVoices = s.netVoices === true; reader?.setOn(s.readDocs === true); } catch {} }
+async function readVoiceNet() { try { const s = await (await fetch('/api/settings')).json(); voiceNet.talkOver = s.talkOver === true; voiceNet.netVoices = s.netVoices === true; voiceNet.talk = s.talkWithBob === true; voiceNet.talkWay = s.talkWay || 'own'; reader?.setOn(s.readDocs === true); syncTalk(); } catch {} }
 window.addEventListener('focus', readVoiceNet);
+window.addEventListener('bob-voice-net', readVoiceNet);
 // A pitch from a Bob's name, for this computer's own voices (Bob's own Kokoro voice gets a whole other voice instead).
 function pitchFor(name) { let h = 2166136261; for (const c of String(name || '').toLowerCase()) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; } return name ? [0.8, 0.88, 0.95, 1.08, 1.16, 1.25][h % 6] : 1; }
 function talking(on) { try { voice?.speaking(on); } catch {} }
@@ -411,6 +496,7 @@ function browserSpeak(text, bob = '') {
 // Read aloud skips stage directions like *yawns* and just says the words.
 const sayAside = (t) => String(t).replace(/\*[^*]+\*\s*/g, '').trim();
 function speak(text, bob = '') {
+  if (text && talk?.open) { talk.say(text); return; } // in a talk, everything he says goes through it, short
   if (!speakOn || !text) return;
   if (ownVoice) { sayQueue.push({ text, bob }); sayNext(); } else browserSpeak(text, bob);
 }
@@ -440,7 +526,7 @@ notifyBtn.onclick = async () => {
 };
 syncNotify();
 
-$('cellarBtn').onclick = () => cellar.open('shop', 'roles');
+$('cellarBtn').onclick = () => cellar.open('shop', 'catalogue'); // 1.5.210 opens on the Brain catalogue (brains are picked in Settings, Brains)
 $('settingsBtn').onclick = () => cellar.open('settings');
 // Saved prompts: "/" at the start of the message box (off unless turned on in Settings, How Bob works).
 createPromptMenu(input, { openSettings: () => cellar.open('settings', null, { jump: 'adv-prompts' }) });
@@ -497,20 +583,54 @@ $('helpBtn').onclick = () => helpPage.open();
 window.addEventListener('bob-tidy', () => tidyPage.open());
 // Settings, Where my memories came from: Open the chat a memory was learned in (memory-more.js).
 window.addEventListener('bob-open-chat', (e) => { const id = String(e.detail?.id || '').replace(/[^a-zA-Z0-9-]/g, ''); if (!id) return; if ($('cellar').open) $('cellar').close(); openChat(id); try { window.focus(); } catch {} });
-// "Ask Bob what he thinks" (Equip Bob, Attributes): puts the question in the chat and sends it.
+// "Ask Bob what he thinks" (Settings, Personality): puts the question in the chat and sends it.
 window.addEventListener('bob-ask', (e) => { const t = String(e.detail || '').slice(0, 300); if (!t) return; $('input').value = t; $('composer').requestSubmit(); });
 // 1.5.207 Click Bob (or press Enter on him) for his small menu: what he's doing, the brain loaded, and doors to
-// Settings, Brains, Style and Get models. The old Equip Bob screen no longer opens from here.
+// Settings, Brains, Style and Get models.
 bobCanvas.tabIndex = 0;
 bobCanvas.setAttribute('role', 'button');
 bobCanvas.title = 'Bob: what I\'m doing, my brain, and my settings';
 bobCanvas.setAttribute('aria-label', 'Bob. Open my menu');
-createBobMenu({
+// 1.5.210 Lamplight: the top bar keeps only Bob, the pages and Find anything; the rest of the menu sits here.
+// Each line presses the very button it stands for, so nothing behaves differently.
+const lamp = () => document.body.classList.contains('look-lamplight');
+const LAMP_TOOLS = [['settingsBtn', '⚙', 'Settings'], ['dlBtn', '⬇', 'Downloads'], ['tidyBtn', '🧹', 'Tidy up'], ['shelfBtn', '🖼', 'References'], ['helpBtn', '❔', 'Help'], ['ear', '🎙', 'Listen for "Hey Bob"'], ['speak', '🔊', 'Read aloud'], ['notify', '🔔', 'Alerts']];
+const lampTools = () => (lamp() ? LAMP_TOOLS.filter(([id]) => $(id) && !$(id).hidden).map(([id, icon, label]) => ({ id, icon, label, st: $(id).querySelector('.st')?.textContent || '' })) : []);
+const bobMenu = createBobMenu({
   anchor: bobCanvas,
-  doors: { brains: () => cellar.open('settings', null, { jump: 'adv-brains' }), style: () => cellar.open('shop', 'style'), models: () => cellar.open('shop', 'roles') },
+  getTools: lampTools,
+  pickTool: (id) => $(id)?.click(),
+  getSession: () => (lamp() && sessionSel.options.length ? { value: sessionSel.value, options: [...sessionSel.options].map((o) => ({ value: o.value, label: o.textContent })) } : null),
+  pickSession: (v) => { sessionSel.value = v; sessionSel.dispatchEvent(new Event('change', { bubbles: true })); },
+  doors: { brains: () => cellar.open('settings', null, { jump: 'adv-brains' }), style: () => cellar.open('shop', 'style'), models: () => cellar.open('shop', 'catalogue') },
   getStatus: async () => (await fetch('/api/status')).json(),
   getNames: async () => Object.fromEntries((((await (await fetch('/api/roles')).json()).options || {}).llm || []).map((o) => [o.value, o.label])),
   saidNow: () => statusEl.title || statusEl.textContent
+});
+// 1.5.211: a new install starts in Lamplight, where Now running is a drawer that starts closed. Only the first time:
+// once you've opened or hidden it yourself, that choice is remembered and kept.
+function tuckNowForLamp(style) {
+  try { if (style?.look === 'lamplight' && localStorage.getItem('bob-right') === null && !document.body.classList.contains('right-hidden')) $('hideRight')?.click(); } catch {}
+}
+// The fNRI cube avatar (when it is on) opens the same menu.
+document.addEventListener('click', (e) => { const c = e.target.closest?.('#bobCubeBox'); if (c && lampLook()) bobMenu.toggle(c); }); // Lamplight: the cube opens Bob's menu
+// 1.5.210 Find anything: every page, menu tool, Settings card and Help topic by name, plus your chats.
+const PAGE_BTNS = ['chatBtn', 'tasksBtn', 'topicsBtn', 'madeBtn', 'adventureBtn', 'gamesBtn', 'labBtn', 'shelfBtn', 'cellarBtn', 'dlBtn', 'tidyBtn', 'settingsBtn', 'styleBtn', 'helpBtn', 'newchat'];
+const findBox = createFind({
+  items: () => [
+    ...PAGE_BTNS.filter((id) => $(id) && !$(id).hidden).map((id) => ({ label: $(id).getAttribute('aria-label') || id, kind: ['settingsBtn', 'styleBtn', 'helpBtn', 'dlBtn', 'tidyBtn', 'cellarBtn', 'newchat'].includes(id) ? 'Tool' : 'Page', words: $(id).title, run: () => $(id).click() })),
+    ...['ear', 'speak', 'notify'].filter((id) => $(id)).map((id) => ({ label: $(id).getAttribute('aria-label'), kind: 'Tool', words: $(id).title, run: () => $(id).click() })),
+    ...CARDS.map((c) => ({ label: c.name, kind: 'Settings', words: `${c.about} ${c.words || ''}`, run: () => cellar.open('settings', null, { jump: c.topics[0] }) })),
+    ...HELP.map((h) => ({ label: h.title, kind: 'Help', words: h.words, run: () => helpPage.open(h.id) }))
+  ],
+  searchChats: async (q) => { await topicsPage.open(); const box = $('topics-q'); if (box) { box.value = q; box.dispatchEvent(new Event('input', { bubbles: true })); } }
+});
+$('findBtn').onclick = () => findBox.open();
+// Ctrl+K (Cmd+K on a Mac) always opens it in Lamplight, even with Keyboard shortcuts off: it's the button's own key.
+document.addEventListener('keydown', (e) => {
+  if (!lamp() || shortcutsOn || e.key.toLowerCase() !== 'k' || !(isMac ? e.metaKey : e.ctrlKey) || e.altKey || e.shiftKey) return;
+  if (document.querySelector('dialog[open]')) return;
+  e.preventDefault(); findBox.open();
 });
 // A past chat from Topics or search: switch to it and show its recent part (older parts are summed up).
 async function openChat(id, msgId) {
@@ -535,7 +655,26 @@ async function loadHistory(n = 20) {
   loadTurnUndo();
   try {
     const h = await (await fetch('/api/history?session=' + encodeURIComponent(sessionId))).json();
+    // 1.5.210: what he wrote on the way to an answer (steps) goes in one folded thinking bubble above that answer,
+    // even the moot's check that came after it.
+    const shown = [], held = [];
+    let askedAt = 0, endAt = 0;
+    const flush = () => { if (held.length) shown.push({ bubble: held.splice(0), ms: askedAt && endAt > askedAt ? endAt - askedAt : 0 }); };
     for (const m of h.slice(-n)) {
+      if (m.role === 'user') { flush(); askedAt = m.at || 0; endAt = 0; shown.push(m); continue; }
+      endAt = Math.max(endAt, m.at || 0);
+      if (m.step && thinkOn) { held.push(m); continue; }
+      shown.push(m);
+    }
+    flush();
+    // A bubble goes above the first answer of its turn.
+    for (let k = shown.length - 1; k >= 0; k--) {
+      if (!shown[k].bubble) continue;
+      let at = k; while (at > 0 && shown[at - 1].role && shown[at - 1].role !== 'user') at--;
+      if (at !== k) { const [b] = shown.splice(k, 1); shown.splice(at, 0, b); }
+    }
+    for (const m of shown) {
+      if (m.bubble) { thinkBubbles.saved(m.bubble, m.ms); continue; }
       if (m.forgotten) { if (m.role === 'user') note(m.content); continue; }
       // A reply with no words and nothing made shows only its note, never an empty bubble.
       if (m.role !== 'user' && !String(m.content || '').trim() && !m.media?.length) { if (m.correction) note(m.correction, 'error'); continue; }
@@ -644,6 +783,7 @@ function onEvent(ev) {
   if (onHandsEvent(ev, { add, scrollDown, note })) return;
   if (jobHelps.event(ev)) return; // Settings, Jobs: the time bar and the receipt card
   if (everyday?.event(ev)) return; // ⏱ Focus done
+  if (!elsewhere && thinkBubbles.take(ev)) { scrollDown(); return; } // 1.5.210: steps, drafts and fixes go in the thinking bubble
   switch (ev.type) {
     case 'queue':
       drawQueue(ev.jobs || []);
@@ -747,6 +887,7 @@ function onEvent(ev) {
     }
     case 'busy-note': // 1.5.37: your message waits behind a picture, song or clip; Bob says so at once
       note(ev.text, 'announce');
+      talk?.say(ev.text); // in a talk, he says it too
       scrollDown();
       return;
     case 'reply-break': // Answer messages mid-job: the job's next words go in a new bubble, under the quick reply
@@ -859,9 +1000,9 @@ function onEvent(ev) {
       if (!/^hat:/.test(ev.summary) && ev.name !== 'edit_my_message') note(`· ${ev.summary}`); // an edit shows as "edited" on the message itself
       endReply(ev);
       break;
-    case 'house': { // 1.5.34: "Used your house style: 30 seconds · Change" (House style on Equip Bob)
+    case 'house': { // 1.5.34: "Used your house style: 30 seconds · Change" (Settings, House style)
       const el = add('note house', `${esc(ev.text)} · <button type="button" class="link" data-house="${esc(ev.group || '')}">Change</button>`);
-      el.querySelector('[data-house]')?.addEventListener('click', () => cellar.open('shop', 'roles', { house: ev.group }));
+      el.querySelector('[data-house]')?.addEventListener('click', () => cellar.open('settings', null, { house: ev.group, jump: 'adv-house' })); // 1.5.210 House style is in Settings
       break;
     }
     case 'image': { addMedia(ev, 'image'); ping('Bob finished a picture', ev.file || ''); break; }
@@ -1014,7 +1155,9 @@ function onEvent(ev) {
       setBusy(running.size > 0);
       if (rep?.media?.length) life.react('proud'); else if (finished) life.react('done');
       const by = borrowedBy.get(ev.turnId) || ''; borrowedBy.delete(ev.turnId);
-      if (finished) { speak(finished, by); if (aside) speak(sayAside(aside)); ping('Bob replied', finished.slice(0, 120)); }
+      if (talk?.open) talk.say(finished || '', { answer: true }); // 🗣 Talk with Bob: the short version, aloud
+      else if (finished) { speak(finished, by); if (aside) speak(sayAside(aside)); }
+      if (finished) ping('Bob replied', finished.slice(0, 120));
       break;
     }
   }
@@ -1058,7 +1201,7 @@ function setBusy(b) {
 
 // ---------- The queue: what's waiting, what's running, what failed ----------
 // A short strip above the message box (open tasks only); the Tasks button shows the full list.
-const STATE_LABEL = { waiting: 'queued', working: 'in progress', rented: 'rented', done: 'completed', failed: 'failed', cancelled: 'cancelled', interrupted: 'interrupted' };
+const STATE_LABEL = { waiting: 'queued', working: 'in progress', rented: 'rented', done: 'completed', failed: 'failed', cancelled: 'cancelled', interrupted: 'interrupted', paused: 'paused' };
 let lastJobs = [];
 const qbox = $('queue');
 function drawQueue(jobs) {
@@ -1071,7 +1214,7 @@ function drawQueue(jobs) {
     const tag = jobBubbles.get(j.id)?.querySelector('.qtag');
     if (tag) { const st = j.status || STATE_LABEL[j.state] || j.state; tag.textContent = (j.gaming ? j.gaming.tag : st === 'delegated' && j.delegatedTo ? `${j.delegatedTo.sent ? 'sent' : 'delegated'} to ${j.delegatedTo.copy}` : st) + (j.effort && j.effort !== 'low' ? ` · ${j.effort[0].toUpperCase()}${j.effort.slice(1)} effort` : ''); tag.className = `qtag ${j.state}`; }
   }
-  const show = jobs.filter((j) => j.state === 'waiting' || j.state === 'working' || ((j.state === 'failed' || j.state === 'interrupted') && Date.now() - j.at < 3600e3));
+  const show = jobs.filter((j) => j.state === 'waiting' || j.state === 'working' || j.state === 'paused' || ((j.state === 'failed' || j.state === 'interrupted') && Date.now() - j.at < 3600e3));
   qbox.hidden = !show.length;
   if (!show.length) return;
   const waiting = show.filter((j) => j.state === 'waiting').length;
@@ -1622,6 +1765,51 @@ const voice = createVoice({
   onBarge: () => { hush(); statusEl.textContent = 'Listening...'; }
 });
 reader = createReader({ hush, ownVoice: () => ownVoice, onTalk: (on) => talking(on) });
+
+// 🗣 Talk with Bob (1.5.210; Settings, Voice details, off unless turned on): a live, hands-free talk. What you say goes
+// in as an ordinary message and the reply comes back short, out loud; the brain is told nothing about it.
+let canHear = false;
+const talkBtn = $('talkBtn');
+function syncTalk() { if (talkBtn) talkBtn.hidden = !(voiceNet.talk && (canHear || voiceNet.talkWay === 'xai')); if (talkBtn?.hidden && talk?.open) talk.end(); }
+function sayInWindow(text) {
+  return new Promise((res) => {
+    if (!('speechSynthesis' in window)) return res();
+    const u = new SpeechSynthesisUtterance(text);
+    const all = speechSynthesis.getVoices();
+    const v = (winVoiceName && all.find((x) => x.name === winVoiceName)) || all.find((x) => /en-(CA|US|GB)/.test(x.lang) && /male|david|guy|george|ryan/i.test(x.name));
+    if (v) u.voice = v;
+    u.onend = res; u.onerror = res;
+    speechSynthesis.speak(u);
+  });
+}
+talk = createTalk({
+  bar: $('talkBar'), button: talkBtn,
+  hear: async (wav) => {
+    const r = await fetch('/api/talk/hear', { method: 'POST', headers: { 'content-type': 'audio/wav', 'x-bob': '1' }, body: wav });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'I couldn\'t hear that.');
+    return j;
+  },
+  say: async (text) => {
+    const r = await fetch('/api/talk/say', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ text }) });
+    if (!r.ok) throw new Error('no voice');
+    return { blob: await r.blob(), fellBack: r.headers.get('x-bob-fell-back') === '1' };
+  },
+  fallbackSay: sayInWindow,
+  send: (text) => {
+    const draft = input.value; // what you were typing stays in the box
+    input.value = text;
+    $('composer').requestSubmit();
+    input.value = draft;
+    return true;
+  },
+  onOpen: (on) => {
+    hush(); // no reading aloud on top of the talk
+    if (wakeOn) voice.setWake(!on).catch(() => {}); // the "Hey Bob" listener rests while you talk
+    life.react(on ? 'heard' : 'done');
+  },
+  note: (msg, kind) => note(msg, kind)
+});
 readVoiceNet();
 micBtn.onclick = () => voice.push().catch((e) => note('I can\'t use the microphone: ' + e.message, 'error'));
 const syncEar = () => setToggle(earBtn, wakeOn, wakeOn ? 'Listening for "Hey Bob" (click to stop)' : 'Listen for "Hey Bob" while this window is open');
@@ -1640,6 +1828,7 @@ async function applyCaps() {
   try {
     const c = await (await fetch('/api/capabilities')).json();
     ownVoice = Boolean(c.voice);
+    canHear = Boolean(c.hearing); syncTalk();
     $('mic').hidden = !c.hearing;
     $('ear').hidden = !c.hearing;
     if (!c.hearing && wakeOn) { voice.setWake(false); }
@@ -1696,7 +1885,7 @@ installShortcuts({
   act: (id) => {
     if (id === 'newChat') { if (busy) return false; if ($('cellar').open) $('cellar').close(); $('newchat').click(); input.focus(); }
     else if (id === 'stop') { if (stopBtn.hidden) return false; stopBtn.click(); }
-    else if (id === 'search') topicsPage.open();
+    else if (id === 'search') { if (lamp()) findBox.open(); else topicsPage.open(); } // Lamplight: Find anything
     else if (id === 'session') { sessionSel.focus(); try { sessionSel.showPicker(); } catch {} }
     else if (id === 'focus') input.focus();
     else if (id === 'lastMsg') {
@@ -1715,7 +1904,7 @@ installShortcuts({
 });
 
 async function start() {
-  try { const st = await (await fetch('/api/settings')).json(); shortcutsOn = st.shortcuts === true; applyReading(st); readingKeep = { textSize: st.textSize, readableFont: st.readableFont }; await applyMath(st.mathView === true); } catch {}
+  try { const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; catName = st.catName || catName; shortcutsOn = st.shortcuts === true; applyReading(st); readingKeep = { textSize: st.textSize, readableFont: st.readableFont }; await applyMath(st.mathView === true); } catch {}
   await loadHistory(20);
   let cat = 'Patches';
   try { cat = (await (await fetch('/api/settings')).json()).catName || cat; } catch {}
@@ -1730,7 +1919,7 @@ async function start() {
     if (!s.ollama) note('I can\'t reach my engine (' + (s.engine || 'Ollama') + ') right now. Is it running? (The AI Toggle shortcut turns Ollama on.)', 'error');
   } catch {}
   try {
-    const st = await (await fetch('/api/settings')).json(); winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
+    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
     if (st.setupDone && !st.wantsAsked) offerWants(); // once, for Bobs set up before the Welcome had "Do you want me to:"
     everyday = startEveryday({ add, note, settings: st, version: st.version?.label || '' }); // 🗓 today card, tour, ⏱ Focus, tray dot (each only when on)

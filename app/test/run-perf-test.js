@@ -1,5 +1,6 @@
 // 1.5.30: Now running's extra readings: Bob vs everything else, processor and card load, speed, context, graph.
 // Readings must cost well under a tenth of a second and never get in a game's way.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import { replyStats, promptSplit, cpuLoad } from '../src/speed-stats.js';
 
@@ -17,11 +18,11 @@ const a = cpuLoad(null, cpus(100, 100));
 check('processor load needs two readings', a.pct === null);
 check('processor load is the busy share between readings', cpuLoad(a.snap, cpus(130, 170)).pct === 70);
 
-const ollama = read('src/ollama.js'), llama = read('src/llamacpp.js'), server = read('src/server.js'), layout = read('public/layout.js'), brain = read('src/brain.js');
+const ollama = read('src/ollama.js'), llama = read('src/llamacpp.js'), server = read('src/server.js'), layout = read('public/layout.js'), brain = brainText();
 check('speeds come from the end-of-reply numbers the engines already send', /if \(ev\.done\) this\.lastStats = [^\n]*replyStats\(/.test(ollama) && /if \(ev\.timings\) this\.lastStats = [^\n]*replyStats\(/.test(llama) && /speed: this\.engine\.lastStats/.test(brain));
 check('card load rides on the same nvidia-smi call (no extra program)', /memory\.used,memory\.total,utilization\.gpu/.test(server) && (server.match(/--query-gpu=/g) || []).length === 1);
 check('the reading reports its own cost, for checking on a real PC', /out\.costMs = \{ wait:/.test(server) && /cardCheck: gpuCache\.ms/.test(server));
-check('slower in the Gaming session, and only while Now running is open', /brainSt\?\.session === 'Gaming' \? 15000 : 5000/.test(layout) && /right-hidden'\) \|\| document\.hidden\) return;/.test(layout));
+check('slower in the Gaming session, and only while Now running (or a panel holding Memory) is open', /brainSt\?\.session === 'Gaming' \? 15000 : 5000/.test(layout) && /if \(!seen\('memory', 'graph'\) \|\| document\.hidden\) return;/.test(layout));
 check('each meter splits into Bob and everything else', /everything else \$\{a\}/.test(layout) && /split-card/.test(layout) && /split-ram/.test(layout));
 check('a processor meter and a graph of the last 5 minutes (off until asked for, remembered)', /Processor · \$\{cpu\.loadPct\}% busy/.test(layout) && /hist\.length > 60/.test(layout) && /bob-now-graph/.test(layout) && /let lastGpu = null, showGraph = false, lastOk = 0;/.test(layout));
 // The 1.5.26 slip: pollGpu() runs on load, so everything it touches must be declared before it can be called.

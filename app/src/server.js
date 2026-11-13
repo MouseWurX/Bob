@@ -28,16 +28,18 @@ import { msgMenu } from './msg-menu.js';
 import { ModelShop } from './models.js';
 import { CatalogUpdates } from './catalog-update.js';
 import { readPage, makeEntry, cleanAdded, mergeAdded, sweepAdded, ADDED_MAX } from './catalog-added.js';
+import { findModels } from './catalog-find.js';
 import { checkEngine, seedBundledEngine, goBackEngine, removeEngine, brainsEngineSettings, engineChoices, brainsEngineNow } from './engines.js';
 import { onEngineFallback } from './engine-blocked.js';
 import { sacNoticeOnce } from './app-control.js';
-import { liveTrace } from '../public/lab-watch-math.js';
+import { liveTrace, liveTracePart } from '../public/lab-watch-math.js';
 import { cubeMap, cubeBrains, cubeShapes, listRecordings, startWatch } from './lab-watch.js';
 import { LabQueue } from './lab-queue.js'; // Nov 11: the Lab's job queue
 import { labPhone } from './lab-plus.js'; // Lab item 110: Lab jobs tell your phone
 import { recheckTick, QUIET_MIN } from './lab-recheck.js'; // Nov 11: check again after engine updates
 import { EngineKeeper, keeperOn } from './engine-keeper.js';
 import { autostartOn, setAutostart } from './autostart.js';
+import { makePacker } from './pack-send.js'; // 1.5.211: pages sent packed (gzip) when the browser asks
 import { applyWindowState } from './app-icon.js';
 import { capabilities } from './capabilities.js';
 import { cloudStatus } from './cloud.js';
@@ -88,6 +90,10 @@ import { phoneView, cleanPhonePatch, findAddresses, newPasscode, isTailscaleIp }
 import { firewallState, changeRule, firewallHome, firewallUdp } from './firewall.js';
 import { shareView, cleanSharePatch, saveShare, lendChat, lendRefusal, reviewRefusal, helloFor, bobNetRooms } from './share-brains.js';
 import { lendCardRoute, homeIps, isHomeIp, sameNet } from './share-card.js'; // Bob-Net: Lend my graphics card
+import { tailLinkLog } from './link-log.js'; // Bob-Net: the link log
+import { wifiView, wifiSays, calibrate, putBack, cleanWifiWas, tcpTrip } from './wifi-tune.js'; // Bob-Net: Calibrate Wi-Fi
+import { LinksCache, kindOfAddress, linksSay } from './links.js'; // Bob-Net: Check links
+import { machineWord } from './platform.js';
 import { checkHello } from './bob-net-check.js'; // 1.5.185 a bigger Bob checks the harder jobs
 import { guestRoute, answerAway } from './share-jobs.js';
 import { Pairing, myName } from './bob-net-pair.js';
@@ -125,6 +131,7 @@ import { howtosRoute } from './howtos-routes.js';
 import { ownModelsRoute } from './own-models-routes.js';
 import { saveRoute } from './save-routes.js';
 import { voiceRoute } from './voice-routes.js';
+import { talkView } from './talk.js'; // Talk with Bob (1.5.210)
 import { refsRoute } from './refs-routes.js';
 import { queueRoute } from './queue-routes.js';
 import { updateRoute } from './update-routes.js';
@@ -183,6 +190,7 @@ function broadcast(ev) {
 }
 
 const brain = new Brain(cfg, broadcast);
+brain.linksCache = new LinksCache(); // which links this machine has, read in the background for the hello (src/links.js)
 // Item 214: a helper thread notices when this server stops answering for a minute (it notes it in the logbook), and
 // when it answers again the window hears about it, with a Restart button where Bob can restart himself.
 startWatchdog({ logbook: cfg.logbook, timeZone: cfg.timeZone, onBack: ({ secs }) => {
@@ -240,6 +248,8 @@ if (brain.engine) {
   brain.engine.wantTrace = () => liveCubes.size > 0 && !cubeWhy();
   brain.engine.onTrace = (raw, model) => { const t = liveTrace(raw); if (!t) return; let map = null; try { map = cubeMap(lab, { model, label: friendlyName(model), experts: t.experts, layers: t.layers, kind: t.kind }); } catch {} // the colours, from this brain's newest scan
     const data = `data: ${JSON.stringify({ type: 'trace', label: friendlyName(model), ...t, ...(map ? { map } : {}) })}\n\n`; for (const res of liveCubes) res.write(data); }; // the real picks go to Real experts pages only
+  // 1.5.210: the picks as he goes, word by word (Brain Engine 5 and later streams them), to Real experts pages only
+  brain.engine.onTracePart = (raw, model) => { const t = liveTracePart(raw); if (!t || !liveCubes.size) return; const data = `data: ${JSON.stringify({ type: 'trace-part', label: friendlyName(model), ...t })}\n\n`; for (const res of liveCubes) res.write(data); };
 }
 // 1.5.38: when Downloads change, a job waiting for one (a song waiting for the music models) may be able to go.
 const shop = new ModelShop(cfg, (ev) => { broadcast(ev); if (ev?.type === 'downloads') brain.downloadsChanged(); }, brain.engine);
@@ -321,12 +331,16 @@ function send(res, code, body, type = 'application/json', extra = {}) {
   res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 }
 
+const packFile = makePacker();
 function serveFile(res, dir, rel, extra = {}) {
   const file = path.resolve(dir, '.' + path.sep + rel);
   if (!file.startsWith(path.resolve(dir) + path.sep)) return send(res, 404, { error: 'not found' });
   fs.readFile(file, (err, buf) => {
     if (err) return send(res, 404, { error: 'not found' });
-    send(res, 200, buf, TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', extra);
+    const type = TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream';
+    const gz = packFile(res.req?.headers?.['accept-encoding'], file, buf, type);
+    if (gz) return send(res, 200, gz, type, { ...extra, 'content-encoding': 'gzip', vary: 'Accept-Encoding' });
+    send(res, 200, buf, type, extra);
   });
 }
 
@@ -670,7 +684,7 @@ const server = http.createServer(async (req, res) => {
       } catch (e) { return send(res, 400, { error: e.message }); }
       return send(res, 404, { error: 'no' });
     }
-    // What an Ollama model can do (completion, vision, audio, tools, thinking), for Equip Bob's "also use it for".
+    // What an Ollama model can do (completion, vision, audio, tools, thinking), for the Brains page's "also use it for".
     if (req.method === 'GET' && p === '/api/models/caps') {
       const name = String(url.searchParams.get('name') || '');
       if (!/^[\w.:/-]{1,120}$/.test(name)) return send(res, 400, { error: 'bad name' });
@@ -693,7 +707,7 @@ const server = http.createServer(async (req, res) => {
     // 1.5.74: whether the core engines start (first-run step 1, and Settings, Engines).
     if (req.method === 'GET' && p === '/api/engines/check') return send(res, 200, { checks: await Promise.all(['llamacpp', 'sdcpp', 'whispercpp'].map((id) => checkEngine(cfg, id))) });
     if (req.method === 'GET' && p === '/api/settings') {
-      return send(res, 200, { timeZone: cfg.timeZone || '', timeZoneSet: cfg.timeZoneSet === true, jobHelps: cleanJobHelps(cfg.jobHelps), apuHoldbackGB: apuHoldbackGB(cfg), lockSecrets: cfg.lockSecrets !== false, autostart: autostartOn(), tray: cfg.tray !== false, lookIcon: cfg.lookIcon !== false, catalogUpdates: cfg.catalogUpdates === true, computerLab: labOn(cfg), labSaveQuestions: labOn(cfg) && cfg.labExtras?.saveQuestions === true, computerLabRoom: labRoom(), qwenPresets: cleanPresets(cfg.qwenPresets), qwenDefaults: Object.fromEntries(Object.entries(QWEN_PRESETS).map(([id, p]) => [id, { label: p.label, ...qwenPreset(id) }])), trayHere: Boolean(globalThis.bobWindow), setupDone: Boolean(cfg.setupDone), wantsAsked: cfg.wantsAsked === true, look: cfg.look || null, lookText: lookText(cfg.look), personality: cleanPersonality(cfg.personality), lookComments: cfg.lookComments === true, userName: cfg.userName || '', callMe: cfg.callMe || '', windowsName: cfg.windowsName || '', engine: cfg.engine, workshop: workshopView(), catName: cfg.catName || 'Patches', language: LANGUAGES.includes(cfg.language) ? cfg.language : 'en', version: VERSION, oneBrain: cfg.oneBrain === true, allTools: cfg.allTools === true, memoryRecall: cfg.memoryRecall === true, memoryBanks: memoryBanksView(), resumeJobs: cfg.resumeJobs === true, planFirst: cfg.planFirst === true, autoSession: autoSessionOn(cfg), gamingLock: cfg.gamingLock === true, sessionBy: cfg.sessionBy === 'bob' ? 'bob' : 'you', quickOnCpu: cfg.quickOnCpu === true, chatWhileBusy: cfg.chatWhileBusy !== false, mootBeside: cfg.mootBeside === true, netReview: cfg.netReview === true, webSearch: cfg.webSearch === true, naughtyList: cfg.naughtyList === true, howtos: cfg.howtos === true, editOwn: cfg.editOwn === true, quickNotes: cfg.quickNotes === true, quickSeesJob: cfg.quickSeesJob === true, ...Object.fromEntries(EXTRA_SWITCHES.map((k) => [k, cfg[k] === true])), brainMemType: cfg.brainMemType || {}, onBattery: batteryNow(), engineNote: cfg.engineNotes === true ? currentEngineNote(cfg) : '', docMeaning: cfg.docMeaning === true, docIndex: brain.housekeeper?.docIndexView() || null, chatPresets: presetsOn(cfg), chatRedo: cfg.chatRedo !== false, docView: cfg.docView === true, parts3d: cfg.parts3d === true, openscadHere: Boolean(findOpenscad(cfg)), model3d: cfg.model3d === true, model3dHere: model3dReady(cfg), promptMenu: cfg.promptMenu === true, mathView: cfg.mathView === true, talkOver: cfg.talkOver === true, readDocs: cfg.readDocs === true, netVoices: cfg.netVoices === true, netVoiceMap: cfg.netVoiceMap || {}, netBobs: (brain.lenders?.bobs?.() || []).map((x) => x.name).slice(0, 30), carryIn: cfg.carryIn === true, phoneGlance: cfg.phoneGlance === true, shortcuts: cfg.shortcuts === true, chatFiles: cfg.chatFiles === true, smartNotes: cfg.smartNotes === true, quickNotesFile: notesFile(cfg), docTools: cfg.docTools === true, sandboxCode: cfg.sandboxCode === true, toolLearning: cfg.toolLearning === true, toolScores: cfg.toolLearning === true ? scorecard(cfg).slice(0, 12) : [], howtoCount: brain.howtos?.load().length || 0, ownKit: ownKitCounts(cfg, brain), gamingCard: gamingCard(cfg), gamingCardNow: brain.engine?.currentCard || null, pictureNoWait: cfg.pictureNoWait !== false, ...tuning(cfg), downloads: { concurrent: cfg.downloads?.concurrent === 2 ? 2 : 1, resumeOnStart: cfg.downloads?.resumeOnStart === true }, updates: { autoCheck: cfg.updates?.autoCheck === true }, engineUpdates: engineKeeper.view(), ollamaKeepAlive: keepTime(cfg), brainMode: brainMode(cfg), tts: { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice || DEFAULT_KOKORO_VOICE, speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '', voicesFolder: path.join(cfg.innDir, 'voices') }, kokoroVoices: KOKORO_VOICES, kokoroDefault: DEFAULT_KOKORO_VOICE, session: currentSession(cfg), sessions: Object.entries(SESSIONS).map(([id, x]) => ({ id, ...x, ...(OS === 'mac' && x.whatMac ? { what: x.whatMac } : {}) })), sessionBrains: sessionBrains(cfg), activeModels: cfg.activeModels || {}, sessionCtx: cfg.sessionCtx || {}, brainCtxOn: cfg.brainCtxOn === true, brainCtxStretch: cfg.brainCtxStretch === true, brainCtx: cfg.brainCtx || {}, speed: speedView(), style: cfg.style || {}, painter: cfg.painter?.engine || 'comfy', platform: process.platform, os: OS, features: features(), home: cfg.agentDir, housekeeping: hkSettings(cfg), hands: handsSettings(cfg), houseStyle: cleanHouseStyle(cfg.houseStyle), projectList: Object.entries(cfg.projects || {}).filter(([, p]) => !isInside(codeCopyRoot(cfg), p)).map(([name, p]) => ({ name, path: p, missing: !fs.existsSync(p) })), selfWork: selfWorkNow(), defaultProject: cfg.defaultProject || '', saveDir: saveDirView(), toolHelp: cfg.toolHelp !== false, passcodeLock: lockView(cfg), ...everydayView(cfg), focusNow: focus.view(), profiles: profiles.view(), memorySources: cfg.memorySources === true, memoryExpiry: cfg.memoryExpiry === true, memoryWhere: cfg.memoryWhere === true, docFresh: cfg.docFresh === true, docPlaces: cfg.docPlaces === true, notesFolders: cleanNotesFolders(cfg.notesFolders).map((n) => ({ ...n, missing: !fs.existsSync(n.path), vault: n.kind === 'obsidian' && isVault(n.path) })), weeklyDigest: cfg.weeklyDigest === true, answerMidJob: cfg.answerMidJob !== false });
+      return send(res, 200, { timeZone: cfg.timeZone || '', timeZoneSet: cfg.timeZoneSet === true, jobHelps: cleanJobHelps(cfg.jobHelps), apuHoldbackGB: apuHoldbackGB(cfg), lockSecrets: cfg.lockSecrets !== false, autostart: autostartOn(), tray: cfg.tray !== false, lookIcon: cfg.lookIcon !== false, catalogUpdates: cfg.catalogUpdates === true, computerLab: labOn(cfg), labSaveQuestions: labOn(cfg) && cfg.labExtras?.saveQuestions === true, computerLabRoom: labRoom(), qwenPresets: cleanPresets(cfg.qwenPresets), qwenDefaults: Object.fromEntries(Object.entries(QWEN_PRESETS).map(([id, p]) => [id, { label: p.label, ...qwenPreset(id) }])), trayHere: Boolean(globalThis.bobWindow), setupDone: Boolean(cfg.setupDone), wantsAsked: cfg.wantsAsked === true, look: cfg.look || null, lookText: lookText(cfg.look), personality: cleanPersonality(cfg.personality), lookComments: cfg.lookComments === true, userName: cfg.userName || '', callMe: cfg.callMe || '', windowsName: cfg.windowsName || '', engine: cfg.engine, workshop: workshopView(), catName: cfg.catName || 'Patches', language: LANGUAGES.includes(cfg.language) ? cfg.language : 'en', version: VERSION, oneBrain: cfg.oneBrain === true, allTools: cfg.allTools === true, memoryRecall: cfg.memoryRecall === true, memoryBanks: memoryBanksView(), resumeJobs: cfg.resumeJobs === true, planFirst: cfg.planFirst === true, autoSession: autoSessionOn(cfg), gamingLock: cfg.gamingLock === true, sessionBy: cfg.sessionBy === 'bob' ? 'bob' : 'you', quickOnCpu: cfg.quickOnCpu === true, chatWhileBusy: cfg.chatWhileBusy !== false, mootBeside: cfg.mootBeside === true, netReview: cfg.netReview === true, webSearch: cfg.webSearch === true, naughtyList: cfg.naughtyList === true, howtos: cfg.howtos === true, editOwn: cfg.editOwn === true, quickNotes: cfg.quickNotes === true, quickSeesJob: cfg.quickSeesJob === true, ...Object.fromEntries(EXTRA_SWITCHES.map((k) => [k, cfg[k] === true])), brainMemType: cfg.brainMemType || {}, onBattery: batteryNow(), engineNote: cfg.engineNotes === true ? currentEngineNote(cfg) : '', docMeaning: cfg.docMeaning === true, docIndex: brain.housekeeper?.docIndexView() || null, chatPresets: presetsOn(cfg), chatRedo: cfg.chatRedo !== false, docView: cfg.docView === true, parts3d: cfg.parts3d === true, openscadHere: Boolean(findOpenscad(cfg)), model3d: cfg.model3d === true, model3dHere: model3dReady(cfg), promptMenu: cfg.promptMenu === true, mathView: cfg.mathView === true, talkOver: cfg.talkOver === true, ...talkView(cfg), readDocs: cfg.readDocs === true, netVoices: cfg.netVoices === true, netVoiceMap: cfg.netVoiceMap || {}, netBobs: (brain.lenders?.bobs?.() || []).map((x) => x.name).slice(0, 30), carryIn: cfg.carryIn === true, phoneGlance: cfg.phoneGlance === true, shortcuts: cfg.shortcuts === true, chatFiles: cfg.chatFiles === true, smartNotes: cfg.smartNotes === true, quickNotesFile: notesFile(cfg), docTools: cfg.docTools === true, sandboxCode: cfg.sandboxCode === true, toolLearning: cfg.toolLearning === true, toolScores: cfg.toolLearning === true ? scorecard(cfg).slice(0, 12) : [], howtoCount: brain.howtos?.load().length || 0, ownKit: ownKitCounts(cfg, brain), gamingCard: gamingCard(cfg), gamingCardNow: brain.engine?.currentCard || null, pictureNoWait: cfg.pictureNoWait !== false, ...tuning(cfg), downloads: { concurrent: cfg.downloads?.concurrent === 2 ? 2 : 1, resumeOnStart: cfg.downloads?.resumeOnStart === true }, updates: { autoCheck: cfg.updates?.autoCheck === true }, engineUpdates: engineKeeper.view(), ollamaKeepAlive: keepTime(cfg), brainMode: brainMode(cfg), tts: { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice || DEFAULT_KOKORO_VOICE, speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '', voicesFolder: path.join(cfg.innDir, 'voices') }, kokoroVoices: KOKORO_VOICES, kokoroDefault: DEFAULT_KOKORO_VOICE, session: currentSession(cfg), sessions: Object.entries(SESSIONS).map(([id, x]) => ({ id, ...x, ...(OS === 'mac' && x.whatMac ? { what: x.whatMac } : {}) })), sessionBrains: sessionBrains(cfg), activeModels: cfg.activeModels || {}, sessionCtx: cfg.sessionCtx || {}, brainCtxOn: cfg.brainCtxOn === true, brainCtxStretch: cfg.brainCtxStretch === true, brainCtx: cfg.brainCtx || {}, speed: speedView(), style: cfg.style || {}, painter: cfg.painter?.engine || 'comfy', platform: process.platform, os: OS, features: features(), home: cfg.agentDir, housekeeping: hkSettings(cfg), hands: handsSettings(cfg), houseStyle: cleanHouseStyle(cfg.houseStyle), projectList: Object.entries(cfg.projects || {}).filter(([, p]) => !isInside(codeCopyRoot(cfg), p)).map(([name, p]) => ({ name, path: p, missing: !fs.existsSync(p) })), selfWork: selfWorkNow(), defaultProject: cfg.defaultProject || '', saveDir: saveDirView(), toolHelp: cfg.toolHelp !== false, thinkBubble: cfg.thinkBubble !== false, passcodeLock: lockView(cfg), ...everydayView(cfg), focusNow: focus.view(), profiles: profiles.view(), memorySources: cfg.memorySources === true, memoryExpiry: cfg.memoryExpiry === true, memoryWhere: cfg.memoryWhere === true, docFresh: cfg.docFresh === true, docPlaces: cfg.docPlaces === true, notesFolders: cleanNotesFolders(cfg.notesFolders).map((n) => ({ ...n, missing: !fs.existsSync(n.path), vault: n.kind === 'obsidian' && isVault(n.path) })), weeklyDigest: cfg.weeklyDigest === true, answerMidJob: cfg.answerMidJob !== false });
     }
     // 🔒 Passcode lock (Settings, This replicant matrix). Only from this replicant matrix, only once you're in.
     if (p === '/api/lock' && (req.method === 'GET' || req.method === 'POST')) {
@@ -793,6 +807,43 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, view());
     }
     // Share brains between your Bobs (src/share-brains.js). Settings only from this PC; lending only through the phone door.
+    // The link log (src/link-log.js): what the link to a lent card carried, for "Link log" in Settings. This machine only.
+    if (p === '/api/share-brains/link-log' && req.method === 'GET') {
+      if (!isLocal) return send(res, 403, { error: 'The link log can only be read on this replicant matrix itself.' });
+      return send(res, 200, { text: tailLinkLog(cfg, Number(url.searchParams.get('lines')) || 120), live: cfg.share?.linkDebug === true });
+    }
+    // Calibrate Wi-Fi (src/wifi-tune.js). GET: what Bob sees (no admin). POST { calibrate } tries each band and sets the
+    // best (Windows asks once); POST { putBack } restores the card's setting. This machine only, and only on a click.
+    // Check links (src/links.js): what links this machine has, every path to each Bob with its trip time, and what
+    // would be faster. Reads only; this machine only.
+    if (p === '/api/share-brains/links' && req.method === 'GET') {
+      if (!isLocal) return send(res, 403, { error: 'The links can only be checked on this replicant matrix itself.' });
+      const me = await brain.linksCache.fresh();
+      const list = brain.lenders.bobs();
+      await Promise.all(list.map((x) => brain.lenders.hello(x, { force: true }).catch(() => null)));
+      const bobs = await Promise.all(list.map(async (x) => {
+        const paths = await Promise.all((brain.lenders.nearAll.get(x.address) || []).map(async (f) => { let best = Infinity; for (let i = 0; i < 3; i++) { const t = await tcpTrip({ host: f.host, port: f.port }, 600); if (t === null) break; best = Math.min(best, t); } return { kind: kindOfAddress(f.mine, me), ms: best }; }));
+        return { name: x.name || 'Your other Bob', links: brain.lenders.state.get(x.address)?.links || null, paths };
+      }));
+      return send(res, 200, { ok: true, text: linksSay({ me, machine: machineWord(), bobs }) });
+    }
+    if (p === '/api/share-brains/wifi' && (req.method === 'GET' || req.method === 'POST')) {
+      if (!isLocal) return send(res, 403, { error: 'The Wi-Fi can only be calibrated on this replicant matrix itself.' });
+      if (req.method === 'GET') { const view = await wifiView(); return send(res, 200, { ok: view.ok, text: wifiSays(view) }); }
+      const b = await body(req);
+      const keep = (was) => saveShare(cfg, { ...(cfg.share || {}), wifiWas: cleanWifiWas(was) });
+      const log = (k, t) => brain.log(k, t);
+      if (b.putBack === true) { const r = await putBack(cfg, { save: keep, log }); return send(res, 200, { ...r, wifiWas: Boolean(cfg.share?.wifiWas) }); }
+      if (b.calibrate !== true) return send(res, 400, { error: 'Nothing asked.' });
+      // Each try drops the Wi-Fi for a few seconds, which would cut a brain that's spread over a lent card.
+      if (brain.cardLender?.child || brain.engine?.spread?.using?.length) return send(res, 200, { ok: false, text: 'A graphics card is being shared right now, and calibrating drops the Wi-Fi for a few seconds at each try. Unload that brain first, then press Calibrate.', wifiWas: Boolean(cfg.share?.wifiWas) });
+      // Time the trip to another Bob on this home network when there is one; otherwise to the router.
+      await Promise.all(brain.lenders.bobs().map((x) => brain.lenders.hello(x).catch(() => null)));
+      let target = null;
+      for (const x of brain.lenders.bobs()) { const m = String(brain.lenders.nearOf(x) || '').match(/^([\d.]+):(\d{1,5})$/); if (m) { target = { host: m[1], port: Number(m[2]), name: x.name || 'your other Bob' }; break; } }
+      const r = await calibrate(cfg, { target, save: keep, log });
+      return send(res, 200, { ok: r.ok, text: r.text, changed: r.changed === true, wifiWas: Boolean(cfg.share?.wifiWas) });
+    }
     if (p === '/api/share-brains' && (req.method === 'GET' || req.method === 'POST')) {
       if (!isLocal) return send(res, 403, { error: 'Sharing brains can only be changed on this replicant matrix itself.' });
       if (req.method === 'GET') return send(res, 200, { ...shareView(cfg), lenders: brain.lenderStatus(), introductions: introductions.view() });
@@ -800,13 +851,15 @@ const server = http.createServer(async (req, res) => {
       const out = cleanSharePatch(cfg, b);
       if (out.error) return send(res, 400, { error: out.error });
       const wasBorrowing = cfg.share?.borrow?.on === true;
+      const wasSpread = cfg.share?.spread || 'off';
       saveShare(cfg, out.share);
       // 1.5.196 (Tailscale test: Borrow a brain was found off on the Go): a flip of that switch says what flipped it.
       if (wasBorrowing !== out.share.borrow.on) brain.log('borrow', `Borrow a brain switched ${out.share.borrow.on ? 'on' : 'off'} (Settings, ${Object.keys(b).filter((k) => k !== 'check').join(', ') || 'no change asked'})`);
       brain.lenders.state.clear();
       if (!out.share.lendCard) brain.cardLender.close(); // switched off: a lent card closes now
       brain.log('settings', `share brains: lend card ${out.share.lendCard ? 'on' : 'off'}, spread ${out.share.spread}, lend ${out.share.lend ? 'on' : 'off'}, borrow ${out.share.borrow.on ? out.share.borrow.when : 'off'}, pass along ${out.share.passAlong ? 'on' : 'off'}, ${out.share.borrow.bobs.length} Bob(s)`);
-      if (b.check) await Promise.all(brain.lenders.bobs().map((x) => brain.lenders.hello(x, { force: true })));
+      // 1.5.210 (PC test): spread switched on while Bob runs: ask every Bob again now, so the next load knows who can lend.
+      if (b.check || (wasSpread === 'off' && out.share.spread !== 'off')) await Promise.all(brain.lenders.bobs().map((x) => brain.lenders.hello(x, { force: true }).catch(() => null)));
       if (out.share.passAlong) introductions.soon(500); // a new switch or a new Bob: introductions right away
       return send(res, 200, { ...shareView(cfg), lenders: brain.lenderStatus(), introductions: introductions.view() });
     }
@@ -892,6 +945,14 @@ const server = http.createServer(async (req, res) => {
       try { const b = await body(req).catch(() => ({})); return send(res, 200, { folder: await pickFolder({ purpose: ['save', 'home'].includes(b?.purpose) ? b.purpose : 'project' }) }); } catch (e) { return send(res, 200, { error: e.message }); }
     }
     if ((await ownModelsRoute({ req, res, p, isLocal, cfg, brain, body, send })) !== false) return;
+    // 1.5.209 Find more models: one search of Hugging Face or ModelScope, only when the owner presses Search. A hit is
+    // only a page to look at; adding goes through Add a model page below.
+    if (req.method === 'POST' && p === '/api/catalog-find') {
+      if (!isLocal) return send(res, 403, { error: `Finding models only works on ${myName() || "the Bob's own replicant matrix"} itself, not from the phone.` });
+      const b = await body(req).catch(() => ({}));
+      const found = await findModels({ host: b?.host, q: b?.q, sort: b?.sort, cursor: b?.cursor });
+      return send(res, found.ok ? 200 : 502, found.ok ? found : { error: found.error });
+    }
     // 1.5.205 Add a model page: look at a page's files, then add the picked ones to this replicant matrix's own list.
     if (req.method === 'POST' && (p === '/api/catalog-added/look' || p === '/api/catalog-added/add')) {
       if (!isLocal) return send(res, 403, { error: `Model pages can only be added on ${myName() || "the Bob's own replicant matrix"} itself, not from the phone.` });
@@ -964,7 +1025,7 @@ const server = http.createServer(async (req, res) => {
             cfg.userName = name || cfg.windowsName;
             out.userName = cfg.userName; out.callMe = name;
           }
-          // 1.5.34 House style (Equip Bob) and Projects (Settings): saved whole, so an emptied box really clears.
+          // 1.5.34 House style (Settings) and Projects (Settings): saved whole, so an emptied box really clears.
           if (b.houseStyle && typeof b.houseStyle === 'object') { replaceSettings(cfg, { houseStyle: b.houseStyle }); out.houseStyle = cleanHouseStyle(cfg.houseStyle); }
           if (Array.isArray(b.projectList)) {
             const list = cleanProjects(b.projectList);
@@ -1051,6 +1112,7 @@ const server = http.createServer(async (req, res) => {
           if (typeof b.chatRedo === 'boolean') { saveSettings(cfg, { chatRedo: b.chatRedo }); out.chatRedo = cfg.chatRedo !== false; }
           if (typeof b.quickNotes === 'boolean') { saveSettings(cfg, { quickNotes: b.quickNotes }); out.quickNotes = cfg.quickNotes === true; if (out.quickNotes) { try { ensureNotesFile(cfg); } catch {} } } // notes.js
           if (typeof b.smartNotes === 'boolean') { saveSettings(cfg, { smartNotes: b.smartNotes, ...(b.smartNotes ? { quickNotes: true } : {}) }); out.smartNotes = cfg.smartNotes === true; out.quickNotes = cfg.quickNotes === true; if (out.quickNotes) { try { ensureNotesFile(cfg); } catch {} } } // notes.js: needs quick notes, so turning it on turns them on too
+          if (typeof b.thinkBubble === 'boolean') { saveSettings(cfg, { thinkBubble: b.thinkBubble }); out.thinkBubble = cfg.thinkBubble !== false; } // 1.5.210 think-bubble.js, on unless turned off
           if (typeof b.toolHelp === 'boolean') { saveSettings(cfg, { toolHelp: b.toolHelp }); out.toolHelp = cfg.toolHelp !== false; } // loop-help.js, on unless turned off
           if (typeof b.toolLearning === 'boolean') { saveSettings(cfg, { toolLearning: b.toolLearning }); out.toolLearning = cfg.toolLearning === true; } // tool-learn.js
           if (b.toolLearningForget === true) { forgetLearning(cfg); out.toolScores = []; }
@@ -1209,7 +1271,7 @@ const server = http.createServer(async (req, res) => {
     if (/^\/api\/(harness|crash|settings-undo|health|quiet|weekly|pins|chat\/try|guest)(\/|$)/.test(p) && await harnessRoute({ req, res, p, url, isLocal, cfg, brain, body, send, saveSettings, replaceSettings, weekly, crashState, applyShortcut, nameOf: friendlyName, probes: healthProbes })) return; // items 62 to 72
     if (p === '/api/prompts' && await promptsRoute({ req, res, p, isLocal, cfg, body, send, saveSettings, log: (k, t) => brain.log(k, t) })) return; // saved prompts and the / menu
     if (p === '/api/telegram' && await telegramRoute({ req, res, p, isLocal, brain, body, send })) return;
-    if (p === '/api/discord' && await discordRoute({ req, res, p, isLocal, brain, body, send })) return;
+    if ((p === '/api/discord' || p === '/api/rooms/discord') && await discordRoute({ req, res, p, isLocal, brain, body, send })) return;
     if (p === '/api/claude-door' && await doorSettingsRoute({ req, res, p, isLocal, brain, cfg, body, send })) return;
     if (p.startsWith('/api/lab') && await labRoute({ req, res, p, isLocal, lab, body, send })) return; // 1.5.141 Computer Science Lab
     if (p.startsWith('/api/rent') && await rentRoute({ req, res, p, isLocal, brain, cfg, body, send })) return; // 1.5.127 rented brains

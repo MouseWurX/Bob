@@ -1,6 +1,7 @@
 // Settings in its own window (public/settings.html). It draws the same Settings page the main window used to
 // show, and tells the main window what changed over a BroadcastChannel, so the chat, the left menu and Now running
 // keep up without a reload. Nothing here talks to the internet.
+import './sample-data.js'; // 1.5.210 sample-data mode follows the main window (?sample in the address)
 import { applySavedStyle } from './themes.js';
 import { startI18n } from './i18n.js';
 import { createCellar } from './cellar.js';

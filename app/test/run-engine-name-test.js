@@ -39,7 +39,7 @@ check('the fall-back message names a new build plainly', buildWords('brain-engin
   const pkg = JSON.parse(read(path.join(here, '..', 'package.json')));
   const bev = `${pkg.bob.brainEngineVersion}b${pkg.bob.bundledLlamaTag.replace(/^b/, '')}`;
   check('the workflow\'s name and the app\'s agree', `brain-engine-${bev}` === brainEngineTag(pkg.bob.brainEngineVersion, pkg.bob.bundledLlamaTag));
-  check('Brain Engine 4 is still the pinned build (the new name starts with the next one)', pkg.bob.brainEngine.tag === 'brain-engine-v4');
+  check('the pinned build uses the new name (N then b and the llama.cpp build, from Brain Engine 5 on)', /^brain-engine-\d+b\d+$/.test(pkg.bob.brainEngine.tag) && pkg.bob.brainEngine.tag.endsWith(`b${pkg.bob.bundledLlamaTag.replace(/^b/, '')}`));
   const pub = read(path.join(here, '..', 'engine', 'publish.sh'));
   check('the release title says the name and both parts', /--title "Brain Engine \$\{ver#v\} \(Brain Engine \$\{ver%%b\*\} on llama\.cpp \$tag/.test(pub));
   const cel = read(path.join(here, '..', 'public', 'cellar.js'));

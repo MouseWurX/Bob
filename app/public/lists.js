@@ -54,7 +54,7 @@ export function neighbour(ids, id, dir) {
 }
 
 // ---------- Tasks ----------
-const STATUS = { 'needs you': 'Needs you', queued: 'Queued', 'in progress': 'In progress', delegated: 'Delegated', rented: 'Rented', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled', interrupted: 'Interrupted' };
+const STATUS = { 'needs you': 'Needs you', queued: 'Queued', 'in progress': 'In progress', delegated: 'Delegated', rented: 'Rented', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled', interrupted: 'Interrupted', paused: 'Paused' };
 const ICON = { chat: '💬', picture: '🎨', video: '🎬', research: '🔎', code: '🛠', data: '📊' };
 
 export function taskRow(j, { movable, full }) {
@@ -69,15 +69,18 @@ export function taskRow(j, { movable, full }) {
     : status === 'queued' ? `Added ${when(j.at)}`
     : status === 'in progress' ? `Started ${when(j.startedAt)}`
     : status === 'needs you' ? 'Bob is waiting for your OK in the chat'
+    : status === 'paused' ? `Paused ${when(j.pausedAt || j.at)}. ${j.pausedFrom === 'working' ? 'Resume carries on from where it stopped' : 'Resume puts it back in line'}`
     : j.error ? esc(j.error) : `${esc(STATUS[status] || status)} ${when(j.doneAt || j.at)}`;
   const trail = full && j.steps?.length ? `<ol class="steps-trail">${j.steps.map((s) => `<li>Handed to ${esc(s.copy)} (${esc(s.label)}): ${esc(s.state)}${s.doneAt ? ` at ${when(s.doneAt)}` : ''}</li>`).join('')}</ol>` : '';
   const btns = [
     movable ? '<button type="button" data-t="up" title="Move up" aria-label="Move up">▲</button><button type="button" data-t="down" title="Move down" aria-label="Move down">▼</button>' : '',
     // 1.5.38: an interrupted job carries on from where it stopped; a failed or cancelled one starts over.
     status === 'interrupted' ? '<button type="button" data-t="retry">Carry on</button>' : ['failed', 'cancelled'].includes(status) ? '<button type="button" data-t="retry">Try again</button>' : '',
-    status === 'queued' ? '<button type="button" data-t="cancel">Remove</button>' : '',
+    // Nov 12: Pause and Resume on any task Bob runs here, and Remove (✕) on every task, whatever its state.
+    ['queued', 'in progress', 'needs you'].includes(status) && !j.waitsFor ? '<button type="button" data-t="pause" title="Pause: keep it, but hold it for now" aria-label="Pause">⏸ Pause</button>' : '',
+    status === 'paused' ? '<button type="button" data-t="resume" title="Resume: carry on" aria-label="Resume">▶ Resume</button>' : '',
     ['in progress', 'delegated', 'needs you'].includes(status) ? '<button type="button" data-t="cancel">Stop</button>' : '',
-    full && !['queued', 'in progress', 'delegated', 'needs you'].includes(status) ? '<button type="button" data-t="remove" title="Take it off the list" aria-label="Take it off the list">✕</button>' : ''
+    '<button type="button" data-t="remove" title="Remove: take it off the list (a running task stops first)" aria-label="Remove">✕</button>'
   ].join('');
   return `<li class="titem" data-id="${esc(j.id)}" ${movable ? 'draggable="true"' : ''}>
     <span class="grip" aria-hidden="true">${movable ? '⋮⋮' : ''}</span>
@@ -88,10 +91,20 @@ export function taskRow(j, { movable, full }) {
   </li>`;
 }
 
+// 1.5.210: an empty list says what a task is and gives one to try, instead of a bare one-line "nothing"
+export const TASK_EXAMPLE = 'Make a spreadsheet of my monthly bills';
+export function emptyTasks(filter, total = 0) {
+  if (filter === 'completed') return '<li class="muted tasks-empty">Nothing finished yet. Finished tasks wait here until you clear them.</li>';
+  if (filter === 'problems') return '<li class="muted tasks-empty">Nothing stopped or failed. Good.</li>';
+  if (filter === 'open' && total) return '<li class="muted tasks-empty">Nothing waiting. Everything you asked for is done or stopped (see the other tabs).</li>';
+  return `<li class="tasks-empty"><p><strong>No tasks yet.</strong> A task is anything you ask Bob to do. Each message you send becomes one, and he works through them top to bottom. While one runs you can keep chatting; new ones wait their turn here.</p>
+        <p>For example: <q>${TASK_EXAMPLE}</q> <button type="button" class="mini" data-try>Try it</button></p></li>`;
+}
+
 export function createTasks({ post }) {
   const dlg = document.getElementById('tasks'), body = document.getElementById('tasks-body');
   let jobs = [], filter = 'open';
-  const isOpen = (j) => j.state === 'waiting' || j.state === 'working';
+  const isOpen = (j) => j.state === 'waiting' || j.state === 'working' || j.state === 'paused';
   function draw() {
     if (!dlg.open) return;
     const open = jobs.filter(isOpen);
@@ -107,13 +120,14 @@ export function createTasks({ post }) {
         <span class="spacer"></span>
         ${done.length || other.some((j) => j.state === 'cancelled') ? '<button type="button" data-clear>Clear completed</button>' : ''}
       </div>
-      <ol class="tlist">${shown.map((j) => taskRow(j, { movable: j.state === 'waiting', full: true })).join('') || '<li class="muted">Nothing here.</li>'}</ol>`;
+      <ol class="tlist">${shown.map((j) => taskRow(j, { movable: j.state === 'waiting', full: true })).join('') || emptyTasks(filter, jobs.length)}</ol>`;
   }
   body.addEventListener('click', async (e) => {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.f) { filter = b.dataset.f; return draw(); }
     if ('clear' in b.dataset) return post('/api/queue/clear', {});
+    if ('try' in b.dataset) { const box = document.getElementById('input'); dlg.close(); if (box) { box.value = TASK_EXAMPLE; box.focus(); box.dispatchEvent(new Event('input', { bubbles: true })); } return; }
     const id = b.closest('[data-id]')?.dataset.id;
     if (!id) return;
     const t = b.dataset.t;
@@ -176,7 +190,7 @@ export function createDownloads({ api, post }) {
     const open = items.filter((d) => !['done', 'cancelled'].includes(d.state));
     const finished = items.filter((d) => ['done', 'cancelled'].includes(d.state));
     headTip(document.getElementById('downloads-title'), `Everything you've said yes to downloading. ${settings.concurrent === 2 ? 'Two run' : 'One runs'} at a time, top first; drag one up to have it next. Pause keeps what has downloaded, so a 20 GB model doesn't start over. Cancel deletes the half-done file.`, 'Downloads');
-    body.innerHTML = `      <ol class="tlist">${open.map(downloadRow).join('') || '<li class="muted">Nothing downloading. Get them from Get models in the left menu.</li>'}</ol>
+    body.innerHTML = `      <ol class="tlist">${open.map(downloadRow).join('') || '<li class="muted tasks-empty">Nothing downloading. Models come from Get models, and wait here while they download. <button type="button" class="mini" data-getmodels>Open Get models</button></li>'}</ol>
       ${finished.length ? `<div class="ttabs"><strong>Finished</strong><span class="spacer"></span><button type="button" data-clear>Clear finished</button></div><ol class="tlist">${finished.slice().reverse().map(downloadRow).join('')}</ol>` : ''}
       <div class="dl-settings">
         <strong>Settings</strong>
@@ -189,6 +203,7 @@ export function createDownloads({ api, post }) {
     const b = e.target.closest('button');
     if (!b) return;
     if ('clear' in b.dataset) return post('/api/models/clear', {});
+    if ('getmodels' in b.dataset) { dlg.close(); document.getElementById('cellarBtn')?.click(); return; }
     const id = b.closest('[data-id]')?.dataset.id, d = b.dataset.d;
     if (!id || !d) return;
     if (d === 'up' || d === 'down') {

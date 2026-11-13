@@ -5,7 +5,7 @@
 import { laptopSaving } from './engine-extras.js';
 
 export const SESSIONS = {
-  normal: { label: 'Normal', icon: '☕', what: 'Each job uses the brain picked for it in Equip Bob. Bob swaps brains when a job needs another one.' },
+  normal: { label: 'Normal', icon: '☕', what: 'Each job uses the brain picked for it in Settings, Brains. Bob swaps brains when a job needs another one.' },
   art: { label: 'Art', icon: '🎨', what: 'The graphics card is kept for pictures, video and sound. Bob chats on his small brain on the processor, so he keeps talking while a picture paints.', brain: 'small', cpu: true, parallel: true },
   coding: { label: 'Coding', icon: '🛠', what: 'The coding brain does everything, with its full memory for long files. Small side jobs run on the processor.', brain: 'coding' },
   office: { label: 'Office', icon: '📊', what: 'One all-rounder brain for writing, spreadsheets, research and planning. No swaps.', brain: 'office' },
@@ -96,8 +96,11 @@ export const gaming = (cfg) => cfg?.session === 'light';
 export const GAMING_TAG = 'Waiting · Gaming is on';
 export const GAMING_HINT = 'Switch the session to Normal to run it.';
 // A job that needs the card waits while Gaming is on: pictures, video, music, and Medium effort and up. Never dropped.
+// 1.5.211: a job from a group (Discord) never runs on a Bob you're gaming on, however small: another of your Bobs takes
+// it (Send jobs to my other Bobs), or it waits.
 export function waitsForGaming(cfg, job) {
   if (!gaming(cfg) || !job) return false;
+  if (job.guest?.public) return true;
   return ['picture', 'video', 'music'].includes(job.kind) || (job.effort && job.effort !== 'low');
 }
 

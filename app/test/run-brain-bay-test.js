@@ -1,4 +1,5 @@
 // 1.5.49: the moot is said plainly, brain loads say swap / add / load, and the brain bay picks the right scene.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import { loadMode, loadLine } from '../src/brain.js';
 import { bayChange, heldItems, MODES, sceneLabel, drawFrame } from '../public/brain-swap.js';
@@ -35,7 +36,7 @@ check('bay: one let go while another stays is a drop', bayChange(['a', 'picture 
 check('bay: one for another is a swap', bayChange(['a'], ['b'])?.mode === 'swap');
 check('bay: nothing changed, no scene', bayChange(['a'], ['a']) === null);
 check('held items list brains and the picture model', JSON.stringify(heldItems({ models: [{ name: 'a' }], picture: { gb: 3 } })) === '["a","picture model"]');
-const brainSrc = fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8');
+const brainSrc = brainText();
 check('one moot line per review: the reviewer line is quiet when its brain loads first', /quiet: true/.test(brainSrc) && /ev\.hat === 'reviewer' && ev\.quiet\) break/.test(app));
 const swapSrc = fs.readFileSync(new URL('../public/brain-swap.js', import.meta.url), 'utf8');
 check('brain bay: line only with Animations off, line outlasts the scene', /if \(!still\(\)\)/.test(swapSrc) && /textMs = 120000/.test(swapSrc) && /sceneMs = 8000/.test(swapSrc));

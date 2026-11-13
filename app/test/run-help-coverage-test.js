@@ -1,5 +1,6 @@
 // 1.5.27: every setting has a Help section (2026-11-02), Help has a glossary and an FAQ, web search is a
 // switch that starts off, and Bob can read his own Help and settings (bob_help).
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import { HELP } from '../public/help-content.js';
 import { HANDS, LIMITS } from '../src/hands-settings.js';
@@ -56,7 +57,7 @@ const missing = (labels) => [...new Set(labels)].filter((l) => !helpText.include
   check('the web tools are the search and the page reader', WEB_TOOLS.includes('web_search') && WEB_TOOLS.includes('fetch_page'));
   check('when it is off Bob says where the switch is', /Let Bob search the web/.test(WEB_OFF) && /Settings/.test(WEB_OFF));
   check('his prompt says so while it is off, and nothing while on', /Web search is OFF/.test(webPrompt({ userName: 'Sam' })) && /Sam can click "🌐 Web search" next to Effort/.test(webPrompt({ userName: 'Sam' })) && webPrompt({ webSearch: true }) === '');
-  const brain = read('src/brain.js');
+  const brain = brainText();
   check('the web tools are taken out of his tools while off', /\.\.\.\(webOn\(this\.cfg\) \? \[\] : WEB_TOOLS\)/.test(brain));
   check('a web tool called by name gets the switch card, or the switch message (1.5.91)', /WEB_TOOLS\.includes\(name\) && !webOn\(this\.cfg\)\) return \{ text: ctx\?\.emit \? await this\.offerSetup\('web', ctx\) : WEB_OFF \}/.test(brain));
   check('the scouting copy says where the switch is instead of researching', /hat === 'scout' && !webOn\(this\.cfg\)\) return WEB_OFF/.test(brain));

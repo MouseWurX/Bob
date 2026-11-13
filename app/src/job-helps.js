@@ -70,7 +70,14 @@ export function stopAfterStep(brain, id = '') {
   brain.log?.('jobs', 'Stop after this step pressed: the step running now finishes, then he answers');
   return true;
 }
-export const SOFT_STOP_NOTE = (who) => `${who} pressed "Stop after this step". Don't start anything new: no more tool calls. Say plainly what you did and found, what is left undone, and how to carry on.`;
+// 1.5.210 (208 PC check): the wrap-up counted things he never read ("5 mountains, 3 pages"). The note now names the
+// steps that really ran, so the summary is built only from those.
+export const SOFT_STOP_NOTE = (who, ran = []) => `${who} pressed "Stop after this step". Don't start anything new: no more tool calls. Say plainly what you did and found, what is left undone, and how to carry on. ${ran.length ? `The steps that really ran: ${ran.join(', ')}. Report only what their results say; count nothing they didn't show.` : 'No step ran yet, so there is nothing found to report.'}`;
+export function stepsRan(msgs, from = 0) {
+  const n = new Map();
+  for (const m of msgs.slice(from)) if (m?.role === 'tool' && !/^\(Not (?:run|done)/.test(String(m.content || ''))) { const k = String(m.tool_name || m.name || 'a tool'); n.set(k, (n.get(k) || 0) + 1); }
+  return [...n].map(([k, c]) => (c > 1 ? `${k} ×${c}` : k)).slice(0, 12);
+}
 export const SOFT_STOP_LINE = '⏸ Stopping after this step, as asked. Wrapping up with what I have.';
 
 // ---------------- 53 A time limit per job ----------------

@@ -88,7 +88,7 @@ globalThis.BobHelp = {
     {
       id: 'chest', title: 'Chest',
       html: `<p>Menu, <strong>Chest</strong>: the newest things your other Bob has made (pictures, clips, songs, sounds, documents), as little pictures with their names, newest first. Tap one to see it right here, and <strong>Save to this phone</strong> keeps a copy in your Pictures or Music. Nothing is kept on the phone unless you save it; the chest itself lives on your other replicant matrix, so it needs a Bob on your Bob-Net.</p>
-<p>Where new things are saved is set on your other replicant matrix: open Equip Bob, press the chest under Bob, then <strong>Change folder…</strong>. Documents and spreadsheets still go wherever you asked for them.</p>`
+<p>Where new things are saved is set on your other replicant matrix: Settings, <strong>Where Bob saves things</strong>, then <strong>Change folder…</strong>. Documents and spreadsheets still go wherever you asked for them.</p>`
     },
     {
       id: 'memory', title: 'What Bob remembers',
@@ -165,7 +165,8 @@ globalThis.BobHelp = {
 <p><strong>Odds.</strong> Each card shows what the die needs for a hit and about how likely that is (<strong>11+ · 50%</strong>), from your character's stat and plot armour.</p>
 <p><strong>↩ Take that back.</strong> For five seconds after a card, before the dice roll, you can take it back and play again; <strong>🎲 Roll now</strong> skips the wait.</p>
 <p><strong>Fair fights.</strong> A new enemy's hearts are set by the app to suit the party: more players, tougher enemies; less plot armour, gentler ones. A Bob on your Bob-Net who takes more than 45 seconds over his turn has it played by the game master.</p>
-<p><strong>🧭 Journey.</strong> Under Your character: Adventure played like an old console game. Walk the vale with the pad under the picture, <strong>A</strong> to talk, open chests or swing, <strong>B</strong> for the menu. Fights are turn-based: pick what everyone does, then the round plays out. Kit from chests goes on in Menu, Kit, and every figure walks from all four sides. No brain needed; the save lives on your other replicant matrix.</p>
+<p><strong>🧭 Journey.</strong> Under Your character: Adventure played like an old console game. It opens in my inn; <strong>✨ New adventure</strong> along the bottom rolls a whole new land (pick race, class and size) and <strong>▶ Resume adventure</strong> carries on. Walk with the pad, <strong>A</strong> to talk or open chests, <strong>⚔</strong> to pick a fight with whoever is in front (I ask once; the guards remember), <strong>B</strong> for the menu. Fights are turn-based and every swing and spell rolls to hit. Coin is copper, silver, gold and platinum. Skills, a second and third class, healing on the road and kit go in the menu. No brain needed; the save lives on your other replicant matrix.</p>
+<p><strong>🧭 Journey, bigger.</strong> Lands go up to Campaign size here (Saga is for computers), in Fantasy, Sci-fi, Cyberpunk or Steampunk. Your other Bob makes the land and the phone keeps only the part near you. Feed a wild animal the food it loves, mid-fight, to tame it: up to 5 pets and 3 mounts. 🐎 rides, ⤒ flies up on a flier (or comes up from the sea) and ⤓ lands or dives on a dolphin. ☰ Menu has 🐾 Pets and 🧭 The land.</p>
 <p><strong>📕 Storybook.</strong> When a game ends, it's written up as one page with the story, the rolls and the pictures. Open it at the table or next to a campaign under Continue. To keep a copy as a file, open it on your other replicant matrix and press Save a copy.</p>
 <p><strong>📋 Table rules</strong> (each off until ticked, remembered for next time): <strong>Easy, Normal or Hard</strong> sets how hard enemies hit. <strong>A map that grows</strong> draws the places the party has been under 🗺 Map. <strong>Coins and shops</strong> gives the party one purse; at a shop, tap something under 🪙 For sale here to buy it. <strong>Catch your breath</strong> puts a 🫁 card in your hand when you're hurt: one heart back, once a scene, no roll. <strong>Secret notes</strong>: 🤫 Secret note passes the game master a line nobody else sees. <strong>Riddle rooms</strong>: the app keeps the answer, so the game master can't give it away; type yours in the 🧩 box (three tries) or Give up. <strong>Badges</strong> (first natural 20, first enemy down, dragon slayer and more) stay with your saved character. 📋 Rules shows it all on one card. Riddles, buying and notes don't use your turn.</p>
 <p><strong>Portraits.</strong> Tick <strong>A portrait of every character</strong> under Table extras and your other Bob paints one for each character before the game.</p>
@@ -226,6 +227,7 @@ globalThis.BobHelp = {
       id: 'hands-free', title: 'Hands-free',
       html: `<p>Menu, <strong>Hands-free</strong>. A big-button page for when your hands are busy (cooking, the workshop, walking): tap <strong>🎙 Talk</strong>, say what you want, and I answer out loud, whatever Read replies aloud is set to.</p>
 <ul><li><strong>Listen again after Bob answers</strong> (on in Hands-free): when I finish talking, I listen for your next words by myself, so a whole conversation needs one tap. Turn it off to tap Talk each time.</li>
+<li><strong>Short answers out loud</strong> (off unless you turn it on): I say only the first sentence or two, then "The rest is in the chat." Same as Talk with Bob on the computer.</li>
 <li><strong>■ Stop</strong> stops me talking or thinking. <strong>🔁 Say it again</strong> repeats my last answer.</li>
 <li>Say "stop" to stop me mid-sentence (Talk over Bob works here too, if it's on).</li></ul>
 <p>Leaving the page (Back) stops the listening. Nothing new switches on.</p>`
@@ -279,7 +281,7 @@ globalThis.BobHelp = {
 <dt>Low-data mode</dt><dd>Text only: what your other Bob makes waits for your tap. Settings, Data.</dd>
 <dt>Bob on your network</dt><dd>A Bob running on one of your replicant matrices that lets this phone in. He does the heavy lifting.</dd>
 <dt>Phone brain</dt><dd>A small AI model that runs on this phone, without the internet.</dd>
-<dt>Chest</dt><dd>The newest things your other Bob made, shown as little pictures with names. Menu, Chest here; under Bob on Equip Bob on your other replicant matrix.</dd>
+<dt>Chest</dt><dd>The newest things your other Bob made, shown as little pictures with names. Menu, Chest here; Made by Bob on your other replicant matrix.</dd>
 <dt>Tailscale</dt><dd>A free app that makes a private, scrambled link between your own devices, wherever they are.</dd>
 <dt>Model family</dt><dd>Models made by the same team and built the same way, like Qwen or Gemma. One family comes in many sizes, from phone-sized to big. Under Phone brain each family has its own header you open and close.</dd>
 <dt>Replicant matrix</dt><dd>What I call the computer a Bob runs on. Here that's this replicant matrix (this phone); your other Bobs each live on their own, like your other replicant matrix at home. It's still your computer or phone; it's just my name for it.</dd>

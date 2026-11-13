@@ -42,7 +42,7 @@ function presetHtml(p, view, open) {
         ${brains.map((b) => `<option value="${esc(b)}" ${p.brain === b ? 'selected' : ''}>${esc(b)}</option>`).join('')}
         ${brainMissing ? `<option value="${esc(p.brain)}" selected>${esc(p.brain)} (not in a slot now: Bob uses his usual brain)</option>` : ''}
       </select></label>
-      <p class="muted small">Only brains already in Bob's slots (Equip Bob). Used at Low effort in the Normal session; Medium and up, and the other sessions, keep their own.</p>
+      <p class="muted small">Only brains already in Bob's slots (Settings, Brains). Used at Low effort in the Normal session; Medium and up, and the other sessions, keep their own.</p>
       <label class="pick"><strong>Starting effort</strong> <select data-pf="effort" aria-label="Starting effort">
         <option value="">Leave Effort as it is</option>
         ${Object.entries(EFFORT_NAMES).map(([v, n]) => `<option value="${v}" ${p.effort === v ? 'selected' : ''}>${n}</option>`).join('')}

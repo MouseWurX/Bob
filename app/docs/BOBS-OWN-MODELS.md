@@ -1,6 +1,6 @@
 # Bob's own models
 
-*The day-by-day record, every run's numbers and the routes not taken yet are in [the Forge journal](FORGE-JOURNAL.md); the raw run files are in [forge-runs/](forge-runs/). The plan as a business proposal, with milestones, what has been invested and what is already in hand, is [Bob's own models: the proposal](PROPOSAL.md).*
+*The best practices we've learned, in one place: [Making smaller brains from bigger ones](MAKING-SMALLER-MODELS.md). The day-by-day record, every run's numbers and the routes not taken yet are in [the Forge journal](FORGE-JOURNAL.md); the raw run files are in [forge-runs/](forge-runs/). The plan as a business proposal, with milestones, what has been invested and what is already in hand, is [Bob's own models: the proposal](PROPOSAL.md).*
 
 *This page is the plan, the method and the results so far, including the mistakes. It is updated as each model lands. Riker, Bobert and Bill are out on Hugging Face ([28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker), [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert), [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill)); the rest go up as each one passes its tests.*
 

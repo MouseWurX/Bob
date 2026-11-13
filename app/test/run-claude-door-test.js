@@ -1,6 +1,7 @@
 // Tests "Let Claude use Bob's hands" (src/claude-door.js): Bob as an MCP server for the Claude app and Claude Code.
 // A pretend Bob, pretend settings files in a temporary folder, and the real stdio helper talking to a door on
 // 127.0.0.1. Nothing reads the real computer's Claude settings.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -256,7 +257,7 @@ const fakeRes = () => { const r = { code: 0, headers: {}, body: '', on() {}, wri
 
 // ---- wiring, Help, glossary, FAQ ----
 {
-  const brainSrc = read('src/brain.js');
+  const brainSrc = brainText();
   check('Bob\'s own cards name the app that asked', /if \(need && ctx\.via\) need = /.test(brainSrc));
   check('"work without asking" never skips the card for another app', /!ctx\.alwaysAsk && (!afterOutside && )?freeOn\(this\.cfg\)/.test(brainSrc));
   const server = read('src/server.js');

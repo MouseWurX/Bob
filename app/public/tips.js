@@ -123,7 +123,7 @@ export function installTips(root = document.body) {
     clearTimeout(showTimer); if (!pinned) hideTip();
   });
   // Keyboard: the bubble shows as soon as Tab lands on it.
-  document.addEventListener('focusin', (e) => { const el = tipTarget(e.target); if (el && el.matches(':focus-visible')) showTip(el); });
+  document.addEventListener('focusin', (e) => { const el = tipTarget(e.target); if (el && el.matches(':focus-visible') && !el.closest('.cellar-head')) showTip(el); }); // a page's Back gets focus as the page opens; its tip would look like a second button (hover still shows it)
   document.addEventListener('focusout', (e) => { if (tipTarget(e.target) === owner && !pinned) hideTip(true); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && bubble && !bubble.hidden) { hideTip(true); e.stopPropagation(); } }, true);
 

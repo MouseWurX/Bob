@@ -6,10 +6,12 @@
 //
 // node tool-score.mjs --models "full=C:\...\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf,riker=C:\...\24Bob-Q4_K_M.gguf" [--lessons out\lessons]
 //      [--llama <folder>] [--ctx 16384] [--experts 8] [--quick] [--no-think] [--extra "--n-cpu-moe 20"]
+//      [--split train --sample 2000] (harvest training data from the other 95%; not a benchmark)
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { opts, locate, startServer, chat, stamp, readJsonl, appendJsonl, moeShape, AGENT } from './common.mjs';
+import { parseArgs, sameArgs, judgeTurn } from './tool-judge.mjs';
 
 const o = opts({ ctx: 16384 });
 if (o.url) process.env.LAB_URL = String(o.url);   // build 18: score a brain served elsewhere (the Forge's card); --models "label=served"
@@ -21,9 +23,16 @@ const HOLDOUT = 0.05;
 const isHoldout = (id) => parseInt(crypto.createHash('md5').update(String(id)).digest('hex').slice(0, 8), 16) / 0xFFFFFFFF < HOLDOUT;
 
 const sets = JSON.parse(fs.readFileSync(path.join(lessonsDir, 'toolsets.json'), 'utf8'));
-let lessons = readJsonl(path.join(lessonsDir, 'lessons.jsonl')).filter((l) => l.idea !== undefined && isHoldout(l.idea) && l.messages?.some((m) => m.role === 'assistant'));
+// 12 Nov: --split train harvests training data instead of scoring: the same replay over the other 95% (never the
+// held-out 5%, so the benchmark stays clean), --sample N spread evenly. The kept answers (right ones and right-vs-wrong
+// pairs, via make-datasets) can be trained on; the score from a train run is not the benchmark.
+const split = o.split === 'train' ? 'train' : 'holdout';
+// a lesson that carries its own split (make-probes) keeps it; others use the id hash
+let lessons = readJsonl(path.join(lessonsDir, 'lessons.jsonl')).filter((l) => l.idea !== undefined && (l.split || (isHoldout(l.idea) ? 'holdout' : 'train')) === split && l.messages?.some((m) => m.role === 'assistant'));
+if (o.sample && Number(o.sample) < lessons.length) { const n = Number(o.sample), step = lessons.length / n; lessons = Array.from({ length: n }, (_, i) => lessons[Math.floor(i * step)]); }
 if (o.quick) lessons = lessons.filter((_, i) => i % 5 === 0);
-if (!lessons.length) { console.error(`no held-out lessons in ${lessonsDir}`); process.exit(1); }
+if (!lessons.length) { console.error(`no ${split === 'train' ? 'training' : 'held-out'} lessons in ${lessonsDir}`); process.exit(1); }
+if (split === 'train') console.log(`Harvest run on ${lessons.length} training lessons (not the benchmark: the held-out 5% are left out)`);
 const models = String(o.models || '').split(',').map((s) => s.trim()).filter(Boolean).map((s) => { const i = s.indexOf('='); return i > 0 ? { name: s.slice(0, i), file: s.slice(i + 1) } : { name: path.basename(s, '.gguf'), file: s }; });
 if (!models.length) { console.error('--models "label=path.gguf,label2=path2.gguf" is needed'); process.exit(1); }
 if (!remote) for (const m of models) if (!fs.existsSync(m.file)) { console.error(`${m.name}: ${m.file} not found`); process.exit(1); }
@@ -47,20 +56,6 @@ function history(lesson, k) {
   if (system === null) return null;
   return { messages: [{ role: 'system', content: system }, ...out], tools };
 }
-const norm = (v) => (typeof v === 'string' ? v.trim().toLowerCase().replace(/\s+/g, ' ') : JSON.stringify(v));
-function parseArgs(a) { if (a && typeof a === 'object') return a; try { return JSON.parse(a || '{}'); } catch { return { input: String(a) }; } }
-function sameArgs(want, got) {
-  // every argument the original gave must be there with the same value (extra optional ones are fine); long free text only needs to overlap
-  for (const [k, v] of Object.entries(want)) {
-    if (!(k in got)) return false;
-    const a = norm(v), b = norm(got[k]);
-    if (a === b) continue;
-    if (a.length > 40 && b.length > 40) { const wa = new Set(a.split(/\W+/)); const hit = b.split(/\W+/).filter((w) => wa.has(w)).length; if (hit / wa.size >= 0.6) continue; }
-    return false;
-  }
-  return true;
-}
-
 async function score(m) {
   const shape = fs.existsSync(m.file) ? moeShape(m.file) : { key: null };
   const srv = await startServer({ server: L.server, model: m.file, mmproj: null, ctx: Number(o.ctx), extra: [...extra, ...(o.experts && shape.key ? ['--override-kv', `${shape.key}=int:${o.experts}`] : [])], logFile: path.join(L.out, 'llama-server-lab.log') });
@@ -83,8 +78,8 @@ async function score(m) {
         try { ({ msg, timings, logprobs } = await chat(srv.url, { messages: h.messages, tools: h.tools, think, max: think ? 6000 : 1500, temperature: 0, ...(o['no-odds'] ? {} : { logprobs: true, top_logprobs: 5 }) })); }
         catch (e) { r.errors++; r.misses.push(`${l.idea}/${k}: error ${e.message.slice(0, 80)}`); continue; }
         if (timings?.predicted_per_second) r.tps.push(timings.predicted_per_second);
-        try { appendJsonl(keepFile, { brain: m.name, idea: l.idea, turn: k, think, answer: { content: msg.content || '', reasoning: msg.reasoning_content || undefined, tool_calls: msg.tool_calls || undefined }, ...(logprobs ? { odds: (logprobs.content || []).map((x) => ({ t: x.token, p: x.logprob, top: (x.top_logprobs || []).map((y) => [y.token, y.logprob]) })) } : {}) }); } catch {}
         const got = (msg.tool_calls || []).map((c) => ({ name: c.function?.name, args: parseArgs(c.function?.arguments) }));
+        try { appendJsonl(keepFile, { brain: m.name, split, idea: l.idea, turn: k, think, ok: judgeTurn(wantCalls, got), want: wantCalls.length ? 'tool' : 'no-tool', answer: { content: msg.content || '', reasoning: msg.reasoning_content || undefined, tool_calls: msg.tool_calls || undefined }, ...(logprobs ? { odds: (logprobs.content || []).map((x) => ({ t: x.token, p: x.logprob, top: (x.top_logprobs || []).map((y) => [y.token, y.logprob]) })) } : {}) }); } catch {}
         if (!wantCalls.length) {
           r.noToolTurns++;
           if (!got.length) r.rightNoTool++; else r.misses.push(`${l.idea}/${k}: expected no tool, got ${got.map((g) => g.name).join(',')}`);

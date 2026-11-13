@@ -1,4 +1,5 @@
 // 1.5.79: "Remember only what fits" (memoryRecall, off): per-message memory recall and one memory bank per project.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -117,7 +118,7 @@ check('vectors: a new embedding model starts fresh', n === 7);
 check('vectors: no embedder (null) leaves things as they are', await new MemoryVectors({ dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'bob-recall2-')) }).fill(parseMemory(MEM), async () => null, 'x') === 0);
 
 // Wiring checks.
-const brain = read('src/brain.js'), hk = read('src/housekeeping.js'), server = read('src/server.js'), cellar = read('public/cellar.js'), help = read('public/help-content.js');
+const brain = brainText(), hk = read('src/housekeeping.js'), server = read('src/server.js'), cellar = read('public/cellar.js'), help = read('public/help-content.js');
 check('recall() adds the memories that fit, only with the setting on', /if \(recall\) \{ const mem = await this\.recallMemories/.test(brain));
 check('no embedding in the Gaming session', /!gaming\(this\.cfg\)/.test(brain) && /recallOn\(this\.cfg\) \|\| gaming\(this\.cfg\)/.test(hk));
 check('housekeeping fills vectors while idle, even with housekeeping off', /if \(recallOn\(this\.cfg\) && \(force \|\| this\.idle\(\)\)/.test(hk) && hk.indexOf('fillMemoryVectors(); } catch') < hk.indexOf('if (!force && (!hk.enabled'));

@@ -23,7 +23,7 @@
   };
   const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, mathView: false, userName: '', theme: 'moondust', effort: 'low', resume: false, redo: true, promptMenu: false, textSize: 100, readableFont: false,
     // Voice, phone and Bob-Net (items 133 to 142, 2026-11-11): every one off to start with.
-    talkOver: false, wakeOn: false, netVoices: false, shareOn: false, widgetReminder: false, lowData: 'off', hfAgain: true, readerSpeed: 1 };
+    talkOver: false, wakeOn: false, netVoices: false, shareOn: false, widgetReminder: false, lowData: 'off', hfAgain: true, hfShort: false, readerSpeed: 1 };
   const settings = { ...DEFAULTS, ...store.get('settings', {}) };
   // Bob's Inn was the starting theme until Moondust took over on every system. Settings are saved whole, so a phone
   // that never chose a theme has 'inn' saved too: it moves to Moondust once. A theme picked in Settings stays.
@@ -510,8 +510,9 @@
       if (current.media?.length) current.msg.media = current.media;
       saveChats();
       if (current.node) current.node.replaceWith(drawMsg(current.msg));
-      if (current.text && (hf.open || settings.readAloud)) sayOut(plain(current.text), { by: current.msg.by, sid: hf.open ? 'hf' : 'bob' });
-      if (hf.open) { hf.last = { text: plain(current.text || ''), by: current.msg.by }; hfDraw(current.text ? 'Bob is talking…' : 'Tap Talk'); }
+      const spoken = hf.open && settings.hfShort ? L.shortSay(plain(current.text || '')).say : plain(current.text || ''); // Short answers out loud (off unless on)
+      if (current.text && (hf.open || settings.readAloud)) sayOut(spoken, { by: current.msg.by, sid: hf.open ? 'hf' : 'bob' });
+      if (hf.open) { hf.last = { text: spoken, by: current.msg.by }; hfDraw(current.text ? 'Bob is talking…' : 'Tap Talk'); }
     }
     current = null;
     store.set('pending', null);
@@ -1627,8 +1628,8 @@ ${chatOut}
   // lives on your other Bob, like the table. Bob's own looks are the PC's, so here he wears a robot avatar.
   let advJourney = null;
   function advJourneyOpen() {
-    const J = globalThis.BobJourneyPlay, R = globalThis.BobJourneyRules, S = globalThis.BobJourneySides;
-    if (!J || !R || !S) { adv.msg = 'Journey needs the newer phone screen.'; advDraw(); return; }
+    const J = globalThis.BobJourneyPlay, R = globalThis.BobJourneyRules, S = globalThis.BobJourneySides, W = globalThis.BobJourneyWorld;
+    if (!J || !R || !S || !W) { adv.msg = 'Journey needs the newer phone screen.'; advDraw(); return; }
     advJourney?.stop();
     const chars = adv.v?.characters || [];
     const sv = chars.find((c) => c.id === advYou.savedId);
@@ -1640,7 +1641,7 @@ ${chatOut}
     $('adventure').classList.add('hidden');
     $('journey').classList.remove('hidden');
     advJourney = J.mountJourney($('journey-body'), {
-      R, S, A: AV, party, bobLook: 'robot-3',
+      R, W, S, A: AV, party, bobLook: 'robot-3', phone: true, // v1.2: the computer makes the land; the phone holds the pieces near you
       enemyLooks: Object.fromEntries((adv.v?.enemies || []).map((e) => [e.id, e.look])),
       lookOf: (id) => AV.avatar(id), api: (p, body) => advApi(p, body),
       still: () => matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -2028,7 +2029,7 @@ ${chatOut}
     let items = [];
     try { items = await advApi('/api/made?limit=24'); } catch (e) { body.textContent = ''; body.append(el('p', { class: 'help-line', text: `I couldn't open the chest: ${e.message}` })); return; }
     body.textContent = '';
-    body.append(el('p', { class: 'help-line', text: `What ${b.name} has made, newest first. Tap one to see it here; Save to this phone keeps a copy. To change the folder new things are saved in, open Equip Bob on your other replicant matrix and press the chest under Bob.` }));
+    body.append(el('p', { class: 'help-line', text: `What ${b.name} has made, newest first. Tap one to see it here; Save to this phone keeps a copy. To change the folder new things are saved in, open Settings, Where Bob saves things, on your other replicant matrix.` }));
     if (!items.length) { body.append(el('p', { class: 'dim', text: 'Empty so far. Pictures, clips, songs and files he makes land here.' })); return; }
     const addr = b.address;
     const grid = el('div', { class: 'chest-grid', role: 'list', 'aria-label': 'What Bob made, newest first' });
@@ -2483,6 +2484,7 @@ ${chatOut}
   function hfOpen() {
     hf.open = true; hf.listen = false;
     $('hf-again').checked = settings.hfAgain !== false;
+    $('hf-short').checked = settings.hfShort === true;
     hfDraw('Tap Talk, then say what you want.');
     syncEars();
   }
@@ -2503,6 +2505,7 @@ ${chatOut}
   $('hf-stop').addEventListener('click', () => { hf.listen = false; phone('speech.quiet').catch(() => {}); stopReply(); hfDraw('Stopped. Tap Talk.'); syncEars(); });
   $('hf-repeat').addEventListener('click', () => { if (hf.last?.text) sayOut(hf.last.text, { by: hf.last.by, sid: 'hf' }); else hfDraw('Nothing to say again yet.'); });
   $('hf-again').addEventListener('change', (e) => { settings.hfAgain = e.target.checked; saveSettings(); });
+  $('hf-short').addEventListener('change', (e) => { settings.hfShort = e.target.checked; saveSettings(); });
 
   // A panel was closed (Back, or another panel opened).
   function panelClosed(id) {

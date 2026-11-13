@@ -1,6 +1,7 @@
 // #48: Bob read only the first 15,000 characters of a big page (public/cellar.js from raw GitHub) and looped on it.
 // Now long pages and files come in parts with a "read on" note, find jumps to a word, code isn't run through the
 // HTML cleaner, and the same page read twice in one turn isn't fetched again.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -51,7 +52,7 @@ check('an HTML page is still cleaned', (await tools.fetch_page.run({ url: 'https
 globalThis.fetch = realFetch;
 
 // ---------- the repeat guard ----------
-const brain = fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8');
+const brain = brainText();
 check('the same page and part twice in one turn is not fetched again', /name === 'fetch_page' && ctx\.pagesRead\?\.has\(key\)/.test(brain) && /\(ctx\.pagesRead \|\|= new Set\(\)\)\.add\(key\)/.test(brain));
 
 fs.rmSync(tmp, { recursive: true, force: true });

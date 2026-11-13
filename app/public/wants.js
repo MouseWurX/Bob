@@ -138,22 +138,33 @@ export function wantSaved(settings, key, reply = {}) {
 // Where Bob can start at sign-in (the same test as the Settings switch).
 const canAutostart = (s) => s?.platform === 'win32' || s?.platform === 'darwin' || Boolean(s?.loginItems);
 
-export function wantsHtml(settings, esc) {
+// 1.5.210 The four that help most on day one, shown first on the Welcome so it fits on one screen. Each helps Bob do
+// the job (look things up, read your files, check sums, carry on after a restart); none of them slows a job down.
+// The rest sit under "Everything else" right below, and every one of them is in Settings too.
+export const WANTS_TOP = ['webSearch', 'docTools', 'sandboxCode', 'resumeJobs'];
+
+// full: open "Everything else" (the chat's one-time offer jumps straight to it).
+export function wantsHtml(settings, esc, { full = false } = {}) {
   const row = (w) => {
     const off = w.key === 'autostart' && !canAutostart(settings);
     const note = off ? 'Not on Linux yet, the same as in Settings.' : w.note;
     return `<li><label class="switch"><input type="checkbox" data-want="${esc(w.key)}" ${wantOn(settings, w.key) ? 'checked' : ''} ${off ? 'disabled' : ''}><span><strong>${esc(w.label)}</strong>${note ? `<br><span class="muted">${esc(note)}</span>` : ''} <span class="want-said muted" aria-live="polite"></span></span></label></li>`;
   };
+  const top = WANTS_TOP.map((k) => WANTS.find((w) => w.key === k)).filter(Boolean);
   const group = (c) => {
-    const ticks = WANTS.filter((w) => w.card === c.id), more = WANTS_ELSEWHERE.filter((x) => x.card === c.id), soon = WANTS_SOON.filter((x) => x.card === c.id);
+    const ticks = WANTS.filter((w) => w.card === c.id && !WANTS_TOP.includes(w.key)), more = WANTS_ELSEWHERE.filter((x) => x.card === c.id), soon = WANTS_SOON.filter((x) => x.card === c.id);
     if (!ticks.length && !more.length && !soon.length) return '';
     return `<h4>${c.icon} ${esc(c.name)}</h4>
       ${ticks.length ? `<ul class="packlist wantlist">${ticks.map(row).join('')}</ul>` : ''}
       ${more.length ? `<div class="row">${more.map((x) => `<button type="button" data-wantjump="${esc(x.id)}">${esc(x.label)}</button>`).join('')}</div>` : ''}
       ${soon.length ? `<p class="muted want-soon"><strong>Coming soon:</strong> ${soon.map((x) => esc(x.label)).join(' · ')}</p>` : ''}`;
   };
+  const rest = WANTS.length - top.length;
   return `<section class="ready wants" id="sub-wants"><h3>Do you want me to:</h3>
-    <p class="muted">All of these are off until you tick them. A tick is saved at once. The groups match the cards in Settings, where you can change your mind any time. A button opens the bigger ones in Settings.</p>
+    <p class="muted">All of these are off until you tick them. A tick is saved at once, and you can change your mind any time in Settings.</p>
+    <ul class="packlist wantlist want-top">${top.map(row).join('')}</ul>
+    <details class="wants-more"${full ? ' open' : ''}><summary>Everything else I can do <span class="muted">(${rest} more switches, all off, grouped like the cards in Settings)</span></summary>
     ${CARDS.map(group).join('')}
+    </details>
   </section>`;
 }

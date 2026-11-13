@@ -7,7 +7,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { Lab } from '../src/lab.js';
-import { readQuestions, holdBack, checkable, checkAnswer, judgeMessages, parseScores, pick, cleanTargets, resolveTargets, planBest, startBest, useBest, bestView, bestParts, listTargetFiles, GOOD, HOLD } from '../src/lab-best.js';
+import { readQuestions, holdBack, checkable, checkAnswer, judgeMessages, parseScores, steadyScores, pick, cleanTargets, resolveTargets, planBest, startBest, useBest, bestView, bestParts, listTargetFiles, GOOD, HOLD } from '../src/lab-best.js';
 import { TEACH_PY } from '../src/lab-teach-script.js';
 import { pagesRoute } from '../src/lab-pages.js';
 import { PLAY_PAGES } from '../public/lab-playground.js';
@@ -110,6 +110,14 @@ fs.mkdirSync(path.dirname(py), { recursive: true }); fs.writeFileSync(py, ''); f
   const h = holdBack(40);
   check(`about a tenth is held back (at least ${HOLD.min}), spread through the list`, h.size === HOLD.min && Math.max(...h) > 30 && Math.min(...h) < 10 && holdBack(6).size === 0);
   check('a short exact answer is checkable; a sentence isn\'t', checkable('42') && checkable('Paris') && !checkable('It is 42 because it doubles') && !checkable(''));
+  check('the final answer is read the same way from key and answer: bold, \\boxed{}, an Answer: line, a time or a number at the end of a sentence (PC trial)',
+    checkAnswer('**Answer: 4:15**', 'So, it arrives at **4:15**.') === 10 && checkAnswer('$$\\boxed{30}$$', '**30**') === 10 && checkAnswer('**30**', '$$\\boxed{30}$$') === 10
+    && checkAnswer('The whole trip takes 150 minutes.', '150 minutes') === 10 && checkAnswer('150 minutes', 'The whole trip takes 150 minutes.') === 10
+    && checkAnswer('Answer: 5:15', 'So, it arrives at 4:15.') === 0 && checkAnswer('It takes 140 minutes.', '150 minutes') === 0
+    && checkable('So, it arrives at **4:15**.') && checkable('$$\\boxed{30}$$'));
+  check('the value can sit on the line after "Final answer:", and a list is compared in its order (PC trial, "Sort 9, 2, 7, 4")',
+    checkAnswer('**Final answer:**  \n**2, 4, 7, 9**', '2, 4, 7, 9.') === 10 && checkAnswer('**Final answer:** 2, 4, 7, 9', '2, 4, 7, 9.') === 10
+    && checkAnswer('**Answer:**\n4:15', 'So, it arrives at 4:15.') === 10 && checkAnswer('Final answer: 9, 7, 4, 2', '2, 4, 7, 9.') === 0);
   check('the checker reads the last number, or the word on its own', checkAnswer('First 3, so the answer is 42.', '42') === 10 && checkAnswer('It is 41.', '42') === 0 && checkAnswer('The capital is Paris.', 'paris') === 10 && checkAnswer('Parisian food', 'paris') === 0 && checkAnswer('1,000 of them', '1000') === 10);
   const jm = judgeMessages({ messages: [{ role: 'user', content: 'Why?' }] }, ['A', 'B'], { key: 'Because.' });
   check('the judge sees the question, the known good answer and every answer, and is told length is no virtue', /Question: Why\?/.test(jm[1].content) && /known good answer/.test(jm[1].content) && /Answer 2:\nB/.test(jm[1].content) && /length is not a virtue/.test(jm[0].content));
@@ -148,6 +156,14 @@ fs.mkdirSync(path.dirname(py), { recursive: true }); fs.writeFileSync(py, ''); f
   check('no learner or no judge asks for one', /brain that learns/.test((await planBest(lab, { ...base, learner: '' })).problems.join(' ')) && /brain that judges/.test((await planBest(lab, { ...base, judge: '' })).problems.join(' ')));
   const v = bestView(lab);
   check('the view lists the brains with their sizes, the lesson sets and the choices', v.brains.find((b) => b.id === 'big').paramsB === 30 && v.sets.some((s) => s.id === 'maths') && v.answers.join() === '2,4,8' && v.limits.includes(200));
+}
+
+{
+  const seen = [];
+  const ask = async (l) => { seen.push(l.join('|')); return l.map((a, i) => (i === 0 ? 10 : 0)); }; // a judge that favours whatever comes first
+  const s = await steadyScores(ask, ['Paris.', 'paris.  ', 'Lyon.']);
+  check('the judge is steadier: the same answer twice shares one score, and order is evened out by judging twice, reversed', s[0] === s[1] && seen.length === 2 && seen[0] === 'Paris.|Lyon.' && seen[1] === 'Lyon.|Paris.' && s[0] === 5 && s[2] === 5);
+  check('the judge is told to score answers on their own, with a scale, and equal answers equally', /on its own/.test(judgeMessages({ messages: [{ role: 'user', content: 'q' }] }, ['a'])[0].content) && /equally correct get the same score/.test(judgeMessages({ messages: [{ role: 'user', content: 'q' }] }, ['a'])[0].content));
 }
 
 // ---- the job, here: best of its own, then both with parts-only ----

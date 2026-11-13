@@ -1,6 +1,7 @@
 // 1.5.16x The Playground's Longer, Faster and Teach it pages (thinking-paths.md sec 15): the sums, the plans, each job
 // with fake steps (no engine, no Python, no downloads), Use this in Bob, the fit rule, where brains and lessons come
 // from, the Forge plan for rented teaching (caps 0, never started), and the Turbo flags Bob's engine gets.
+import { labText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -260,6 +261,8 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
   check('the downloaded weights and the big in-between files are cleaned up', !fs.existsSync(path.join(cfg.bobModelsDir, 'lab', 'teach', 'taught-big', 'base')) && !fs.existsSync(path.join(cfg.bobModelsDir, 'lab', 'teach', 'taught-big', 'taught-f16.gguf')) && fs.existsSync(run.files.gguf));
   useTaught(lab, run.id);
   const made = JSON.parse(fs.readFileSync(path.join(dataDir, 'lab', 'made.json'), 'utf8')).find((m) => m.id === 'lab-teach-taught-big');
+  { const tb = lab.brains().find((b) => b.id === 'lab-teach-taught-big'); const src = tb ? await readBrainSource(lab, { kind: 'lab', id: tb.id }) : null;
+    check('a brain made here can be taught again: Bob remembers its original and says what that means', made?.origin === 'Qwen/Qwen3-8B' && src?.repo === 'Qwen/Qwen3-8B' && !src.problems.some((x) => /full weights are/.test(x)) && /isn't carried over/.test(src.notes.join(' ')), JSON.stringify(src && { repo: src.repo, problems: src.problems, ids: lab.brains().map((b) => b.id) })); }
   check('Use in Bob marks it made here, lists its lessons, and doesn\'t make it the default', made?.madeHere === true && made.lessons.join() === 'My set' && /Taught here from Big/.test(made.what) && !cfg.models);
   calls.length = 0;
   lab.stepFns.perplexity = async (st) => (/full-Q8_0/.test(st.gguf) ? 8 : /plain-/.test(st.gguf) ? 9 : 8.4);
@@ -290,7 +293,7 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
   await pagesRoute({ req: req('POST'), res: {}, p: '/api/lab/teach/plan', isLocal: false, lab, body: async () => ({}), send });
   check('the views are read-only for any device; starting a job is only on this replicant matrix', out[0][0] === 200 && out[0][1].brains.length >= 4 && out[1][0] === 403 && out[2][0] === 403);
   check('other Lab paths are left to the Lab', (await pagesRoute({ req: req('GET'), res: {}, p: '/api/lab/forge', isLocal: true, lab, body: async () => ({}), send })) === false);
-  check('the Lab mounts these pages', /pagesRoute\(\{ req, res, p, isLocal, lab, body, send \}\)/.test(read('src/lab.js')));
+  check('the Lab mounts these pages', /pagesRoute\(\{ req, res, p, isLocal, lab, body, send \}\)/.test(labText()));
 }
 
 // ---- the trainer script and the pages ----

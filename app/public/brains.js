@@ -1,7 +1,7 @@
 // 1.5.205 The Brains page: which brains Bob uses, the jobs each one does, and where each would sit on this replicant
-// matrix (card, memory, read from the drive). It replaces the paper doll as the first view of "Equip Bob"; the doll
-// and the plain list are one press away. Pure HTML builders, no DOM: cellar.js handles the clicks, and saving a job
-// goes through the same calls the doll uses. Nothing is equipped or downloaded without the owner.
+// matrix (card, memory, read from the drive). 1.5.210: it is the one place brains are picked (the
+// paper doll is gone); the plain list is one press away. Pure HTML builders, no DOM: cellar.js handles the clicks, and saving a job
+// goes through the same calls the plain list uses. Nothing is equipped or downloaded without the owner.
 import { SLOTS, allSlots, equipped, entryOf, slotTakes, isActive, tipHtml, kitHtml, starterHtml } from './equip.js';
 import { placeFor, sizeLine, placeWord, hasExperts } from './place.js';
 import { esc, gb } from './util.js';
@@ -301,7 +301,7 @@ export function brainsHtml(ctx) {
   const sel = senseSlots().find((s) => s.id === ctx.selected) || null;
   const word = placeWord('card', hwOf(ctx));
   return `<div class="equip-top"><p class="muted">Each brain, the jobs it does, and where it sits on this replicant matrix. ${tipHtml(`One brain doing several jobs is faster: I only swap brains when a job needs a different one. "${word}" is quickest; a brain that spills into memory or the drive still runs, slower.`, 'How the Brains page works')} <button type="button" class="mini help-link" data-help="brains-page" aria-label="Help: the Brains page">? Help</button></p>
-      <span>${ctx.inSettings ? '' : '<button type="button" class="link" data-eqview="doll">Paper doll</button> · '}<button type="button" class="link" data-eqview="list">Plain list</button></span></div>
+      <span><button type="button" class="link" data-eqview="list">Plain list</button></span></div>
     ${starterHtml(ctx)}
     <div class="brains-page">
     ${budgetHtml(ctx)}

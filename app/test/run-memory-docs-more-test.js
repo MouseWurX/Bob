@@ -2,6 +2,7 @@
 // project memories kept to their project, documents kept fresh, the page and line of a find, notes apps, and the
 // Sunday digest. Every one starts off. No real folders, clocks or settings of this computer are read: everything
 // runs in a temporary folder with fakes passed in.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -103,7 +104,7 @@ const KEYS = ['memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPl
   check('a tool in a project folder makes it the chat\'s project', Brain.prototype.noteWhereWorking.call(brainLike, 's1', { path: path.join(root, 'Starfall', 'Main.cpp') }) === 'Starfall' && brainLike.memProject.get('s1') === 'Starfall');
   const offLike = { cfg };
   check('off: tool calls change nothing', Brain.prototype.noteWhereWorking.call(offLike, 's1', { path: path.join(root, 'Starfall', 'Main.cpp') }) === '' && !offLike.memProject);
-  check('the brain calls it after every tool', /this\.noteWhereWorking\(ctx\.sessionId, args\);/.test(read('src/brain.js')));
+  check('the brain calls it after every tool', /this\.noteWhereWorking\(ctx\.sessionId, args\);/.test(brainText()));
 }
 
 // ---------- 90: documents kept fresh ----------
@@ -237,6 +238,8 @@ const KEYS = ['memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPl
   const made = keeper.check();
   check('on: made, saved and shown on Sunday', made && fs.existsSync(path.join(inn, 'digests', 'digest-2026-11-15.md')) && shown.length === 1 && shown[0].type === 'digest');
   check('and not again that week', keeper.check() === null && shown.length === 1);
+  const thu = new Digest(dcfg, { now: () => at('2026-11-12T15:00:00Z') }).build();
+  check('"Make this week\'s digest now" on a Thursday is this week, Monday to the coming Sunday', thu.sunday === '2026-11-15' && /Week of 2026-11-09 to 2026-11-15/.test(thu.title));
   check('the chat and the phone app show it', /case 'digest':/.test(read('public/app.js')) && /ev\.type === 'digest'\) return digestCard/.test(read('android/app/src/main/assets/www/phone.js')) && /ev\.type === 'digest'\) return digestCard/.test(read('public/phone/phone.js')));
 }
 

@@ -2,6 +2,7 @@
 // (from its settings or its translator's shapes), the made-here picture and sound packs, the downloads (token only to
 // huggingface.co, sha256 checked, nothing half-written left), the Lab jobs with fake engines (attach, try, measure),
 // load without eyes, forget, the Sharpen plan that never starts until the Forge can do it, and the card's words.
+import { labText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -223,7 +224,7 @@ check('a saved Sharpen plan never starts until the Forge says it can', forgeStar
 const saved = (await call('/api/lab/senses/save', { form: good })).body;
 check('Save writes it with the Forge\'s other plans', saved.file === 'riker-eyes.json' && JSON.parse(fs.readFileSync(path.join(dataDir, 'lab', 'forge-plans', 'riker-eyes.json'), 'utf8')).senses.way === 'heal');
 check('another device sees the checks but never the plan text', (await call('/api/lab/senses/plan', { form: good }, { isLocal: false })).body.text === '' && (await call('/api/lab/senses/save', { form: good }, { isLocal: false })).code === 403);
-check('the Lab\'s start passes the Forge\'s answer through', /senses: forgeDoesSenses\(dir\)/.test(read('src/lab.js')) && read('src/lab.js').match(/forgeDoesSenses\(dir\)/g).length === 2);
+check('the Lab\'s start passes the Forge\'s answer through', /senses: forgeDoesSenses\(dir\)/.test(labText()) && labText().match(/forgeDoesSenses\(dir\)/g).length === 2);
 
 // lessons
 const ldir = path.join(tmp, 'lessons-sight');

@@ -1,4 +1,5 @@
 // 1.5.113: another program holding the graphics card. One plain line, no retry, and waiting jobs told at once.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import { readCardUse, parseWinGpuMem, busyByOther, cardBusyLine, isLoadTimeout, NEED_MB, RECHECK_MS, CARD_STILL_BUSY } from '../src/card-busy.js';
 import { Gate } from '../src/handoff.js';
@@ -89,7 +90,7 @@ const full = { freeMB: 300, others: [{ name: 'llama-imatrix', mb: 9300 }] };
   await withRetry(async () => { t2++; if (t2 === 1) throw new Error('blip'); return 1; }, { wait: 1, retryable: async () => true });
   check('…and retries on yes', t2 === 2);
 }
-const brainSrc = read('src/brain.js');
+const brainSrc = brainText();
 check('the painter asks before retrying, says it once in this chat, and the error becomes the plain line', /retryable: async \(e\) => \{ if \(!\(await this\.cardTaken\(e, ctx\.emit, ctx\.sessionId\)\)\) return true; e\.message = this\.cardHeld\.line; e\.code = 'card_held'; return false; \}/.test(brainSrc));
 check('a job checks the card before it starts; a held-card failure ends with the line once per chat', /if \(await this\.cardStillTaken\(job\)\) throw Object\.assign\(new Error\(this\.cardLineFor\(sessionId\)\), \{ code: 'card_busy' \}\);/.test(brainSrc) && /e\?\.code === 'card_held' \|\| await this\.cardTaken\(e, null\)\.catch\(\(\) => false\)\) && this\.cardHeld\) e = Object\.assign\(new Error\(this\.cardLineFor\(sessionId\)\), \{ code: 'card_busy' \}\);/.test(brainSrc));
 check('no "Waking up…" load while another program holds the card', /if \(!cpu && await this\.cardStillTaken\(\{ kind: 'chat' \}\)\) return false;[^\n]*\n      this\.setState\('waking'/.test(brainSrc));
