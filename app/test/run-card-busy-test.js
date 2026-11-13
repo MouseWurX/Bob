@@ -93,9 +93,9 @@ const full = { freeMB: 300, others: [{ name: 'llama-imatrix', mb: 9300 }] };
 const brainSrc = brainText();
 check('the painter asks before retrying, says it once in this chat, and the error becomes the plain line', /retryable: async \(e\) => \{ if \(!\(await this\.cardTaken\(e, ctx\.emit, ctx\.sessionId\)\)\) return true; e\.message = this\.cardHeld\.line; e\.code = 'card_held'; return false; \}/.test(brainSrc));
 check('a job checks the card before it starts; a held-card failure ends with the line once per chat', /if \(await this\.cardStillTaken\(job\)\) throw Object\.assign\(new Error\(this\.cardLineFor\(sessionId\)\), \{ code: 'card_busy' \}\);/.test(brainSrc) && /e\?\.code === 'card_held' \|\| await this\.cardTaken\(e, null\)\.catch\(\(\) => false\)\) && this\.cardHeld\) e = Object\.assign\(new Error\(this\.cardLineFor\(sessionId\)\), \{ code: 'card_busy' \}\);/.test(brainSrc));
-check('no "Waking up…" load while another program holds the card', /if \(!cpu && await this\.cardStillTaken\(\{ kind: 'chat' \}\)\) return false;[^\n]*\n      this\.setState\('waking'/.test(brainSrc));
+check('no "Waking up…" load while another program holds the card', /if \(!cpu && await this\.cardStillTaken\(\{ kind: 'chat' \}\)\) return false;[^\n]*\n      if \(!cpu && await this\.cardGuardCheck\(model, \{ cpu, ctx \}\)\) return false;[^\n]*\n      this\.setState\('waking'/.test(brainSrc));
 const help = read('public/help-content.js');
-check('Help explains it in Bob\'s voice, with a FAQ and the glossary', /id: 'faq-card-busy'/.test(help) && /I take one quick look at the graphics card/.test(help) && /If another program has filled it, I tell you which one/.test(help));
+check('Help explains it in Bob\'s voice, with a FAQ and the glossary', /id: 'faq-card-busy'/.test(help) && /I take a quick look at it\. If another program holds a real share of it/.test(help) && /If another program has filled it, I tell you which one/.test(help));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exitCode = fail ? 1 : 0;

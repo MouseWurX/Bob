@@ -37,6 +37,11 @@ export function showWord(prev, layers, experts, used, rnd = Math.random) {
   return out;
 }
 
+// Nov 13 (the owner: "hit enter ... the loading animation disappears and the porthole shows as empty"): a message sent
+// while the brain still loads keeps the load showing. The pulse waits until the brain is in; a 'loading' or 'waking'
+// status never cancels the wait for his first word.
+export const cubePulse = ({ phase = 'idle', live = false, rec = false, loading = false } = {}) => phase === 'wait' && !live && !rec && !loading;
+export const statusKeepsPhase = (state) => state === 'waking' || state === 'loading';
 // 1.5.210: the cube's state in a few plain words, for its screen-reader label.
 export function cubeState({ why = '', rec = null, leaving = false, shell = null, loadingNow = '', phase = 'idle', busy = false, empty = false } = {}) {
   const name = shell?.label ? ` (${shell.label})` : '';
@@ -79,6 +84,8 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   // nothing is redrawn); once he writes it glows word by word ('run'); then it fades and rests ('idle'). busy = 'run'.
   let phase = 'idle', busy = false, show = [], showTimer = 0, sparkTimer = 0, showing = false;
   const pulse = (on) => box.classList.toggle('pulse', on);
+  const loadingHere = () => Boolean(shell && loadingNow && loadingNow === shell.label);
+  const repulse = () => pulse(cubePulse({ phase, live: live(), rec: Boolean(rec), loading: loadingHere() }));
   // 1.5.210 The porthole: the cube is seen through a round window into a foggy room. The fog (public/fog.js) has its own
   // canvas behind the cube's and moves all the time the porthole shows, brain or no brain; the cube only moves while a
   // brain is loaded. The experts as they fire light the fog in their colour.
@@ -178,7 +185,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   // reply, which the line under the cube follows), and the picture's own label says the same.
   const srLive = typeof document !== 'undefined' ? document.getElementById?.('mindCubeState') ?? null : null;
   let srLast = '';
-  function words() { wordsNow(); const now = cubeState({ why, rec, leaving, shell, loadingNow, phase, busy, empty: known && !anyLoaded }); if (now !== srLast) { srLast = now; canvas.setAttribute?.('aria-label', now); if (srLive) srLive.textContent = now; } }
+  function words() { repulse(); wordsNow(); const now = cubeState({ why, rec, leaving, shell, loadingNow, phase, busy, empty: known && !anyLoaded }); if (now !== srLast) { srLast = now; canvas.setAttribute?.('aria-label', now); if (srLive) srLive.textContent = now; } }
   function wordsNow() {
     const shape = shell ? ` ${shell.label}: ${shell.layers} floors of ${shell.experts} ${shell.kind === 'neurons' ? 'neuron groups' : 'experts'}.` : '';
     if (why) { says.textContent = why + shape; return; }
@@ -186,7 +193,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
     if (!rec) {
       open.hidden = true; if (key) key.hidden = true;
       if (leaving && shell) { says.textContent = `Letting go of the brain.${shape} The cube takes itself apart.`; return; }
-      if (!live()) { says.textContent = !shell && empty ? 'No brain is loaded right now: only fog in the porthole. The cube builds itself when Bob loads one.' : shell ? (phase === 'wait' ? `Thinking it over.${shape} The cube pulses until he starts to answer.` : busy ? `Answering.${shape} The glow is for show, not the experts he really uses (Real experts shows those).` : loadingNow === shell.label ? `Loading${shape}${loadPct >= 0 ? ` ${loadPct}% of it is in.` : ''} The cube glows while he thinks.` : `Ready.${shape} The cube glows while he thinks.`) : known && anyLoaded ? 'A brain is loaded, but Bob can\'t read its shape, so the cube has nothing to build.' : 'Waiting for Bob to load a brain. The cube builds itself when he does, and glows while he thinks.'; return; }
+      if (!live()) { says.textContent = !shell && empty ? 'No brain is loaded right now: only fog in the porthole. The cube builds itself when Bob loads one.' : shell ? (loadingNow === shell.label ? `Loading${shape}${loadPct >= 0 ? ` ${loadPct}% of it is in.` : ''} ${phase === 'wait' ? 'Your message waits until it is in.' : 'The cube glows while he thinks.'}` : phase === 'wait' ? `Thinking it over.${shape} The cube pulses until he starts to answer.` : busy ? `Answering.${shape} The glow is for show, not the experts he really uses (Real experts shows those).` : `Ready.${shape} The cube glows while he thinks.`) : known && anyLoaded ? 'A brain is loaded, but Bob can\'t read its shape, so the cube has nothing to build.' : 'Waiting for Bob to load a brain. The cube builds itself when he does, and glows while he thinks.'; return; }
       says.textContent = !shell && empty ? 'No brain is loaded right now: only fog in the porthole. The cube builds itself when Bob loads one.' : shell ? (loadingNow === shell.label ? `Loading${shape}${loadPct >= 0 ? ` ${loadPct}% of it is in.` : ''} The cube lights up with the experts he used when he finishes a reply.` : `Ready.${shape} The cube lights up with the experts he used when he finishes a reply.`) : 'Waiting for Bob\'s next reply. The cube lights up with the experts he used when he finishes it. Replies come slower while Real experts is on.'; return;
     }
     const c = rec.clips[clip], w = Math.min(c.e.length - 1, Math.floor(t));
@@ -232,7 +239,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   }
   function setPhase(p) {
     if (p === phase) return; phase = p;
-    pulse(p === 'wait' && !live() && !rec);
+    repulse();
     setBusy(p === 'run');
     sparkSoon();
   }
@@ -353,7 +360,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
     if (j?.type === 'start') { ripple(); setPhase('wait'); return; }
     if (j?.type === 'token') { setPhase('run'); return; }
     if (j?.type === 'done' || j?.type === 'error') { setPhase('idle'); return; }
-    if (j?.type === 'status') { const on = j.state === 'thinking' || j.state === 'busy'; if (!on) setPhase('idle'); else if (phase === 'idle') setPhase('run'); return; } // work that isn't a chat reply runs too
+    if (j?.type === 'status') { if (statusKeepsPhase(j.state)) { words(); return; } const on = j.state === 'thinking' || j.state === 'busy'; if (!on) setPhase('idle'); else if (phase === 'idle') setPhase('run'); return; } // work that isn't a chat reply runs too
     if (j?.type === 'cube') { why = j.ok ? '' : String(j.why || ''); words(); try { onWhy?.(why); } catch {} } else if (j?.type === 'trace' && live()) { why = ''; add(j); } else if (j?.type === 'trace-part' && live()) part(j);
   }
   open.onclick = () => {

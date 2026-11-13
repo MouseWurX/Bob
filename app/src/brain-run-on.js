@@ -1,6 +1,7 @@
 // runOn: the loop of one turn on one brain (ask the brain, run its tool calls, check, repeat until it answers).
 // A method of the Brain class. Split out of brain.js.
 import { newMsgId } from './chats.js';
+import { chatOpenAI } from './rental.js';
 import { recentPicture, wantsPictureEdit, editHint } from './intent.js';
 import { switchedNote, switchLine } from './auto-session.js';
 import { EDIT_NOTE, REDO_NOTE } from './redo.js';
@@ -160,7 +161,9 @@ export const runOnParts = {
       }
     }
     if (!model) throw new Error('I don\'t have a brain yet. Open Get models (in the menu on the left) and pick one; the first-time setup suggests the right one for this replicant matrix.');
-    this.setState('thinking', '', this.state.model);
+    // Nov 13 (the owner): a brain still loading from typing stays 'waking' (the cube keeps filling, the status line says
+    // loading) until it is in; wake() then hands over to 'thinking'.
+    if (!this.waking) this.setState('thinking', '', this.state.model);
     let earlier = job?.guest?.public ? '' : await this.recall(sessionId, text); // Bob on Discord: nothing of the owner's
     // Nov 11 (loop-help.js): the tool groups the message means, as well as the ones its words name. Only while the
     // embedding model is in use anyway (topics or "Remember only what fits"); never started just for this.
@@ -372,8 +375,29 @@ export const runOnParts = {
           lender = null; borrowing = false;
         }
       }
+      // Nov 13 (card-guard.js): the card is busy with another program and this brain won't fit beside it. He asks first:
+      // wait, use the brain already there (ctx.onCard, for the rest of this turn), or another of his Bobs.
+      if (!reply && ctx.onCard) {
+        this.setState('thinking', 'Thinking on the brain already on the card', this.state.model);
+        try { reply = await chatOpenAI({ url: `${ctx.onCard.url}/v1`, key: '', model: 'served', messages: [sys, ...loopView(staleHandErrors(msgs, turnStart), step)], tools, signal, think, onToken: (t) => emit({ type: 'token', text: t }) }); }
+        catch (e) {
+          if (signal?.aborted) throw e;
+          this.log('card', `the brain on the card couldn't answer (${causeLine(e).slice(0, 160)})`);
+          emit({ type: 'announce', text: 'The brain on the card stopped answering, so I\'ll look at the card again.' });
+          ctx.onCard = null; this.liftCardPause(); reply = null;
+        }
+      }
+      if (!reply && !cpu) {
+        const pick = await this.cardGuard(model, { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}) }, emit, signal, { sessionId, chat: !job?.guest && !job?.side, borrowOk: !ctx.cardBorrowTried });
+        if (pick.borrow) { ctx.cardBorrowTried = true; borrowing = true; step--; continue; }
+        if (pick.use) {
+          ctx.onCard = pick.use;
+          emit({ type: 'announce', text: pick.use.paused ? 'The test paused. Answering on its brain; it carries on after this.' : 'Answering on the brain already on the card. The test there keeps running, so its timings will be off for a moment.' });
+          step--; continue;
+        }
+      }
       if (!reply) {
-        model = (await this.ensureModel(model, emit, signal, 'bob', { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}) })) || model;
+        model = (await this.ensureModel(model, emit, signal, 'bob', { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}), cardChecked: true })) || model;
         this.setState('thinking', '', model);
         reply = await this.chatSafe({
           model, messages: this.plainLoop ? [sys, ...meanwhileNear(loopView(staleHandErrors(msgs, turnStart), step), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')] : [steadySys, ...meanwhileNear(meanwhileNear(loopView(staleHandErrors(msgs, turnStart), step), turnNote), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')], tools, signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),

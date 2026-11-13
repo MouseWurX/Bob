@@ -72,6 +72,17 @@ export const LINES = {
     'Brush in hand…',
     'Don\'t look yet…'
   ],
+  // Nov 13 (the owner: "i asked him to make me a song, i dont know if he is or not"): music and sounds share the
+  // painting state, so they read "Painting…". Now they say what they are, with how far along when the workshop says.
+  composing: [
+    'Making a song…',
+    'Making a song…\nHumming along.',
+    'Making a song…\nTuning up.'
+  ],
+  sound: [
+    'Making a sound…',
+    'Making a sound…\nFoley time.'
+  ],
   waiting: [ // always starts with "Needs your OK": it must be clear at a glance
     'Needs your OK',
     'Needs your OK.\nCard\'s in the chat.',
@@ -95,22 +106,26 @@ export const PLAIN = {
   replying: 'Answering...',
   busy: 'Working...',
   painting: 'Painting...',
+  composing: 'Making a song...',
+  sound: 'Making a sound...',
   waiting: 'Needs your OK',
   paused: 'A job is paused.'
 };
 
 // The short word for the window's title bar (Bob · Thinking), never a joke.
-export const TITLE = { waking: 'Waking up', loading: 'Loading', unloading: 'Unloading', thinking: 'Thinking', replying: 'Answering', busy: 'Working', painting: 'Painting', waiting: 'Needs your OK' };
+export const TITLE = { cardbusy: 'Card busy', waking: 'Waking up', loading: 'Loading', unloading: 'Unloading', thinking: 'Thinking', replying: 'Answering', busy: 'Working', painting: 'Painting', composing: 'Making a song', sound: 'Making a sound', waiting: 'Needs your OK' };
 
 export const FADE_MS = 350; // out, then in: about 0.7 s, like the patch pop-ups
 export const UNLOAD_MS = 5000; // how long "Putting my brain away" shows after the last brain goes
-export const SWAP_MS = { asleep: 60000, idle: 60000, paused: 60000, thinking: 9000, replying: 9000, busy: 12000, painting: 12000, loading: 9000 }; // a long state swaps lines this often; others never
+export const SWAP_MS = { asleep: 60000, idle: 60000, paused: 60000, thinking: 9000, replying: 9000, busy: 12000, painting: 12000, composing: 12000, sound: 12000, loading: 9000 }; // a long state swaps lines this often; others never
 
 // Which set of lines fits right now. state: the server's (idle, waking, loading, thinking, busy, painting, waiting).
 // loaded: how many brains are in memory (null = not known yet). replying: his words are coming in. unloading: a brain
 // just went. paused: a job is paused.
-export function moodOf({ state = 'idle', loaded = null, replying = false, unloading = false, paused = false } = {}) {
+export function moodOf({ state = 'idle', loaded = null, replying = false, unloading = false, paused = false, detail = '' } = {}) {
   if (state === 'waiting') return 'waiting';
+  if (state === 'painting' && /^Composing\b/.test(detail)) return 'composing'; // brain-making.js: music
+  if (state === 'painting' && /^Making a sound\b/.test(detail)) return 'sound';
   if (state === 'loading' || state === 'waking' || state === 'painting' || state === 'busy') return state;
   if (state === 'thinking') return replying ? 'replying' : 'thinking';
   if (state !== 'idle') return state in LINES ? state : 'idle';
@@ -132,6 +147,10 @@ export function pickLine(mood, { jokes = true, prev = '', rnd = Math.random } = 
 export function createStatusLine(el, { still = () => false, rnd = Math.random, setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
   let state = 'idle', loaded = null, replying = false, unloading = false, paused = false, jokes = true;
   let mood = '', text = '', held = false, swapT = 0, fadeT = 0, unloadT = 0;
+  // Nov 13 (card-guard.js): another program holds the graphics card ("Card busy: llama-server, 10.7 GB"). Shown
+  // instead of his resting line, so it's plain before anyone sends a message; his working lines stay as they are.
+  let cardBusy = '';
+  let detail = '', pct = '';
 
   function show(next, { quiet = false } = {}) {
     if (next === text) return;
@@ -146,17 +165,27 @@ export function createStatusLine(el, { still = () => false, rnd = Math.random, s
   function swapLater() {
     clearTimer(swapT);
     const every = jokes && SWAP_MS[mood];
-    if (every) swapT = setTimer(() => { if (!held) show(pickLine(mood, { jokes, prev: text, rnd }), { quiet: true }); swapLater(); }, every);
+    if (every) swapT = setTimer(() => { if (!held) show(withPct(pickLine(mood, { jokes, prev: text, rnd })), { quiet: true }); swapLater(); }, every);
   }
   function draw(force = false) {
     if (held) return;
-    const m = moodOf({ state, loaded, replying, unloading, paused });
+    const base = moodOf({ state, loaded, replying, unloading, paused, detail });
+    const m = cardBusy && (base === 'idle' || base === 'asleep') ? 'cardbusy' : base;
     if (m === mood && !force) return;
     mood = m;
     el.dataset.mood = m;
-    show(pickLine(m, { jokes, prev: text, rnd }));
+    if (m === 'cardbusy') { clearTimer(swapT); show(`⚠ ${cardBusy.replace(/^Card busy: /, 'Card busy:\n')}`); return; }
+    show(withPct(pickLine(m, { jokes, prev: text, rnd })));
     swapLater();
   }
+  // Making a song or a sound: how far along, on its own line ("Making a song…\n40% done"), when the workshop says.
+  // Or what the music engine is doing first ("Starting the music engine", "Setting up the music engine").
+  const stageOf = () => { const m = /^Composing \(([^:)]+)/.exec(detail); return m && m[1] !== 'composing' ? m[1].charAt(0).toUpperCase() + m[1].slice(1) : ''; };
+  const withPct = (line) => {
+    if (mood !== 'composing' && mood !== 'sound') return line;
+    const extra = pct ? `${pct}% done` : stageOf();
+    return extra ? `${line.split('\n')[0]}\n${extra}` : line;
+  };
   return {
     // The server's status event ({ state, ... }). A new state lets go of any held line.
     status(s) {
@@ -164,6 +193,10 @@ export function createStatusLine(el, { still = () => false, rnd = Math.random, s
       if (next !== 'thinking') replying = false;
       const changed = next !== state || held;
       state = next; held = false;
+      detail = String(s?.detail || '');
+      const p = (/(\d{1,3})%/.exec(detail) || [])[1] || '';
+      if (!changed && (mood === 'composing' || mood === 'sound') && moodOf({ state, detail }) === mood) { pct = p; show(withPct(text), { quiet: true }); return; }
+      pct = p;
       draw(changed);
     },
     // A brain reading (/api/brain, the bob-brain-status event): how many brains are in memory.
@@ -177,8 +210,11 @@ export function createStatusLine(el, { still = () => false, rnd = Math.random, s
       }
       if (n > 0) { unloading = false; clearTimer(unloadT); }
       loaded = n;
+      const c = String(st?.cardBusy || ''); if (c !== cardBusy) { cardBusy = c; draw(true); return; } // /api/brain says so too
       draw();
     },
+    // Another program holds the graphics card ('' = not any more).
+    card(words) { const c = String(words || ''); if (c === cardBusy) return; cardBusy = c; draw(true); },
     // His words started coming in (true), or the turn ended (false).
     replying(on) { if (replying === Boolean(on)) return; replying = Boolean(on); draw(); },
     // The job list: is one paused?

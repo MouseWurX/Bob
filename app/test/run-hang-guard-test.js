@@ -78,7 +78,7 @@ check('216 never past the hard limit', loadDeadline(200, 300).soft === 300);
   check('217/215 the card timer goes in the turn\'s bag', bag.close() === 1);
   await wait(60);
   check('217/215 and is cleared with it', !f2);
-  check('217 approval and ask_user cards use it', (brainText().match(/awakeTimeout\(\(\) => (?:\{ out\.timedOut = true; )?done\(false\)(?:; \})?, (?:this\.approvalMs \|\| )?APPROVAL_TIMEOUT_MS/g) || []).length === 2);
+  check('217 approval, ask_user and busy-card choice cards use it', (brainText().match(/awakeTimeout\(\(\) => (?:\{ out\.timedOut = true; )?done\(false\)(?:; \})?, (?:this\.approvalMs \|\| )?APPROVAL_TIMEOUT_MS/g) || []).length === 3);
 }
 
 // ---------- 212: deadlines ----------

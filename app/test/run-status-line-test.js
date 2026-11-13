@@ -92,7 +92,7 @@ function clock() {
   const app = publicText('app.js'), server = serverText(), css = read('public/style.css'), help = read('public/help-content.js'), cellar = publicText('cellar-pages.js');
   check('app uses the status line, no old fixed words', /createStatusLine\(statusEl/.test(app) && !/STATUS_TEXT/.test(app));
   check('his words coming in mark "writing back"', /ev\.type === 'token'.*statusLine\.replying\(true\)/.test(app));
-  check('the brain reading feeds it', /'bob-brain-status', \(e\) => statusLine\.brains\(e\.detail\)/.test(app));
+  check('the brain reading feeds it', /'bob-brain-status', \(e\) => \{ statusLine\.brains\(e\.detail\);/.test(app));
   check('paused jobs feed it', /statusLine\.jobs\(jobs\)/.test(app));
   check('two-part lines show on two lines', /\.status \{[^}]*white-space: pre-line/.test(css));
   check('the fade is about 0.7 s and off with Animations off', /\.status \{[^}]*transition: opacity \.35s/.test(css) && /\.status\.fading \{ opacity: 0; \}/.test(css) && /body\.still \.status \{ transition: none; \}/.test(css));

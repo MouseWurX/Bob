@@ -87,6 +87,7 @@ export function shareView(cfg) {
     takeJobs: s.takeJobs === true,
     passAlong: s.passAlong === true, // 1.5.123 Pass my Bob-Net along (src/bob-net-party.js)
     lendCard: s.lendCard === true, // Lend my graphics card (src/share-card.js), off unless switched on
+    lendFreesOwn: s.lendFreesOwn === true, // Nov 13: Let a lend unload my brain, off unless switched on
     lendChecks: s.lendChecks === true, // 1.5.185 Check harder jobs for my other Bobs (src/bob-net-check.js)
     cardsEverywhere: s.cardsEverywhere === true, // Show my OK cards on my other Bobs (src/net-cards.js), off unless switched on
     spread: ['toobig', 'big'].includes(s.spread) ? s.spread : 'off', // Spread big brains over my other Bobs' cards
@@ -109,7 +110,7 @@ export const doorOpen = (cfg) => Boolean(cfg.remote?.enabled && String(cfg.remot
 export function cleanSharePatch(cfg, b, opts = {}) {
   const cur = cfg.share || {};
   const cb = cur.borrow || {};
-  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendChecks: cur.lendChecks === true, cardsEverywhere: cur.cardsEverywhere === true, homeNet: cur.homeNet !== false, scut: cur.scut === true, scutMbps: SCUT_MBPS.includes(Number(cur.scutMbps)) ? Number(cur.scutMbps) : 100, ...(cur.scutMbpsChosen === true ? { scutMbpsChosen: true } : {}), scutSeal: cur.scutSeal !== false, linkDebug: cur.linkDebug === true, ...(cleanWifiWas(cur.wifiWas) ? { wifiWas: cleanWifiWas(cur.wifiWas) } : {}), spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
+  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendFreesOwn: cur.lendFreesOwn === true, lendChecks: cur.lendChecks === true, cardsEverywhere: cur.cardsEverywhere === true, homeNet: cur.homeNet !== false, scut: cur.scut === true, scutMbps: SCUT_MBPS.includes(Number(cur.scutMbps)) ? Number(cur.scutMbps) : 100, ...(cur.scutMbpsChosen === true ? { scutMbpsChosen: true } : {}), scutSeal: cur.scutSeal !== false, linkDebug: cur.linkDebug === true, ...(cleanWifiWas(cur.wifiWas) ? { wifiWas: cleanWifiWas(cur.wifiWas) } : {}), spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
   if ('lend' in b) next.lend = b.lend === true;
   if ('takeJobs' in b) next.takeJobs = b.takeJobs === true; // 1.5.72, off unless switched on
   if ('passAlong' in b) next.passAlong = b.passAlong === true; // 1.5.123, off unless switched on
@@ -125,6 +126,7 @@ export function cleanSharePatch(cfg, b, opts = {}) {
     else { next.lendCard = true; if (next.spread === 'off') next.spread = 'toobig'; if (!next.borrow.bobs.length) return { error: 'Bigger Bobs needs another Bob to pool with. Add one of your other Bobs first.' }; }
   }
   if ('lendCard' in b) next.lendCard = b.lendCard === true; // off unless switched on
+  if ('lendFreesOwn' in b) next.lendFreesOwn = b.lendFreesOwn === true; // Nov 13: off unless switched on
   if ('homeNet' in b) next.homeNet = b.homeNet !== false;
   if ('scut' in b) next.scut = b.scut === true; // off unless switched on
   if ('scutSeal' in b) next.scutSeal = b.scutSeal !== false; // on unless switched off (the owner's call)

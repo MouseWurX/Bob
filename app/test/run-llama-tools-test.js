@@ -178,12 +178,20 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   r = await lender.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', home: [H(10, 0, 0, 9), '8.8.8.8'] });
   ok(r.ok && r.via === 'tailscale', 'card: a different home network, or a public address, stays on Tailscale');
   {
-    // 1.5.210 (Go Wi-Fi test): a lender holding its own brain lets it go before the lend starts.
+    // Nov 13 (the PC borrowed the Go's card and the Go's own brain went, unasked): a lender holding its own brain
+    // says no, unless "Let a lend unload my brain" is on there; then it lets it go first (1.5.210), and says so.
     let freed = 0; const said = [];
-    const holder = new CardLender(cfg, { spawnFn, tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome, gate, freeOwn: async () => { freed++; return true; }, log: (k, t) => said.push(t) });
+    const no = new CardLender(cfg, { spawnFn, tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome, gate, holdsOwn: () => true, freeOwn: async () => { freed++; return true; }, log: (k, t) => said.push(t) });
+    const r0 = await no.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.9', from: 'tower' });
+    ok(!r0.ok && r0.why === 'own brain' && freed === 0 && said.some((t) => /said no to tower, my own brain is loaded/.test(t)), 'card: a lender holding its own brain says no, and its brain stays');
+    const { LEND_NO } = await import('../src/share-card.js');
+    ok(/its own brain is loaded/.test(LEND_NO['own brain']), 'card: the asking Bob names why in its logbook');
+    const holder = new CardLender({ ...cfg, share: { ...cfg.share, lendFreesOwn: true } }, { spawnFn, tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome, gate, holdsOwn: () => true, freeOwn: async () => { freed++; return true; }, log: (k, t) => said.push(t) });
     const rr = await holder.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.9' });
-    ok(rr.ok && freed === 1 && said.some((t) => /let go of my own brain first/.test(t)), 'card: a lender holding its own brain lets it go first, and says so');
+    ok(rr.ok && freed === 1 && said.some((t) => /let go of my own brain first/.test(t)), 'card: with "Let a lend unload my brain" on, it lets it go first, and says so');
     holder.close();
+    const { cleanSharePatch } = await import('../src/share-brains.js');
+    ok(cleanSharePatch({ share: {} }, { lendFreesOwn: true }).share?.lendFreesOwn === true && cleanSharePatch({ share: {} }, {}).share?.lendFreesOwn === false, 'card: "Let a lend unload my brain" is saved, and off unless switched on');
   }
   {
     const noHome = new CardLender({ ...cfg, share: { ...cfg.share, homeNet: false } }, { spawnFn, tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome, gate });

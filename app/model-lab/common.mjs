@@ -158,3 +158,26 @@ export async function chat(url, { messages, tools, think = false, max = 2048, te
 export const stamp = () => new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 export function appendJsonl(file, obj) { fs.appendFileSync(file, JSON.stringify(obj) + '\n'); }
 export function readJsonl(file) { if (!fs.existsSync(file)) return []; return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); }
+
+// Nov 13 (the owner: "he can pause after a step for the response then carry on again"): Bob asks a running test to
+// pause by writing card-pause.json in the Agent folder (src/card-guard.js). Call this between steps: when asked, it
+// writes card-paused.json with this test's server address, runs onPause (put every expert back on, so Bob answers
+// with the whole brain), waits until Bob lifts the pause, runs onResume, and carries on. Time paused isn't a step's
+// time, so the test's timings stay clean. A pause older than 30 minutes is ignored (Bob closed mid-answer).
+// Every call also leaves card-test.json (this test's address and the time), so Bob knows a test that can pause is running.
+export const CARD_PAUSE = 'card-pause.json', CARD_PAUSED = 'card-paused.json', CARD_TEST = 'card-test.json';
+export async function cardPausePoint({ url, dir = AGENT, onPause = async () => {}, onResume = async () => {}, log = console.log, pollMs = 2000, staleMs = 30 * 60e3, now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  const ask = path.join(dir, CARD_PAUSE), ack = path.join(dir, CARD_PAUSED);
+  const asked = () => { try { const j = JSON.parse(fs.readFileSync(ask, 'utf8').replace(/^﻿/, '')); return now() - Number(j.at || 0) < staleMs; } catch { return false; } };
+  try { fs.writeFileSync(path.join(dir, CARD_TEST), JSON.stringify({ url: String(url || ''), at: now(), pid: process.pid })); } catch {}
+  if (!asked()) return 0;
+  const t0 = now();
+  log('Bob asked to use this brain: pausing after this step.');
+  try { await onPause(); } catch (e) { log(`  couldn't get ready for Bob (${String(e.message).slice(0, 120)})`); }
+  try { fs.writeFileSync(ack, JSON.stringify({ url: String(url || ''), at: now(), pid: process.pid })); } catch {}
+  while (asked()) await sleep(pollMs);
+  try { fs.rmSync(ack, { force: true }); } catch {}
+  try { await onResume(); } catch (e) { log(`  couldn't pick up again (${String(e.message).slice(0, 120)})`); }
+  log(`Bob is done: carrying on (paused ${Math.round((now() - t0) / 1000)} s).`);
+  return now() - t0;
+}

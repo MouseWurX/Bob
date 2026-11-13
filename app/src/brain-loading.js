@@ -17,7 +17,12 @@ import { cleanPersonality } from '../public/personality.js';
 import { carryOnPlan, finishedSteps, interruptedNote } from './handoff.js';
 import { readCard } from './gaming-card.js';
 import { apuRoom, talkerModel, isTalker, runnable, talkerCtx, besideBytes, GB, TALKER_LINE, SIDE_LANE, MOVE_TO_CPU } from './brain-lanes.js';
-import { BRAIN_NAMES, loadMode, loadLine } from './brain-words.js';
+import { BRAIN_NAMES, loadMode, loadLine, APPROVAL_TIMEOUT_MS } from './brain-words.js';
+import { guardLoad, heldByOthers, HELD_MB, busyChoices, busyShort, whoHolds, pickedKey, serverUrlFrom, askPause, liftPause, pausedTest, pausableTest, USE_NOTE, PAUSE_WAIT_MS } from './card-guard.js';
+import { awakeTimeout, timersFor } from './hang-guard.js';
+import { noteWait } from './loop-guard.js';
+import { commandLineOf } from './util.js';
+import crypto from 'node:crypto';
 
 // Methods of the Brain class, put on it in its main file with the same rules as the methods written inside it.
 export const loadingParts = {
@@ -40,6 +45,7 @@ export const loadingParts = {
       try { loaded = await this.engine.isLoaded(model, { cpu, ctx }); } catch { return false; }
       if (loaded) { this.engine.touch?.(model, { cpu, ctx })?.catch?.(() => {}); return false; }
       if (!cpu && await this.cardStillTaken({ kind: 'chat' })) return false; // 1.5.113: another program holds the card: don't load
+      if (!cpu && await this.cardGuardCheck(model, { cpu, ctx })) return false; // Nov 13: no warm-up on a busy card; the message asks first
       this.setState('waking', 'Waking up...', model);
       this.broadcast({ type: 'brain' });
       // Same manners as the gate: the picture engine (kept loaded after a picture) makes room first, unless both fit.
@@ -60,6 +66,7 @@ export const loadingParts = {
     finally {
       this.waking = null;
       if (!this.turns.size) this.setState('idle', '', this.state.model);
+      else if (this.state.state === 'waking') this.setState('thinking', '', this.state.model); // a message came in while it loaded: now he thinks
       this.broadcast({ type: 'brain' });
     }
   },
@@ -111,6 +118,135 @@ export const loadingParts = {
     this.broadcast({ type: 'brain' });
     return false;
   },
+  // ---------- The busy card (Nov 13, card-guard.js) ----------
+  // Bob's own engines on the card, by process id, so a test's llama-server counts as another program.
+  ownCardPids() {
+    const out = new Set();
+    for (const p of [this.engine?.child?.pid, this.engine?.beside?.child?.pid, this.painter?.child?.pid]) if (p) out.add(p);
+    return out;
+  },
+  // null = load away. Else the guard's { needMB, roomMB, heldMB, others, line }. Never for the processor, a brain
+  // already loaded, or a card that can't be read.
+  async cardGuardCheck(model, opts = {}) {
+    if (opts.cpu || !model) return null;
+    try { if (await this.engine.isLoaded(model, opts)) return null; } catch { return null; }
+    const needB = this.gate?.brainBytes?.(model, opts);
+    if (!(needB > 0)) return null;
+    const card = await (this.readCardUse || readCardUse)(undefined, undefined, { ownPids: this.ownCardPids() }).catch(() => null);
+    if (!card) { this.setCardBusy(null); return null; }
+    const { mb: ownMB } = await this.ownCardMB();
+    const g = guardLoad({ card, needMB: needB / 2 ** 20, ownMB });
+    this.setCardBusy(g ? g.others : null);
+    return g;
+  },
+  // Every 30 s while a window is open (server.js): is something else holding the card? So the window shows it before
+  // anyone sends a message. nvidia-smi only (about 50 ms); never Windows' slower per-program counter.
+  async cardWatch() {
+    const card = await (this.readCardUse || readCardUse)(undefined, async () => null, { ownPids: this.ownCardPids() }).catch(() => null);
+    if (!card) { this.setCardBusy(null); return null; }
+    // 1.5.221 PC check: with Bob's own 12.9 GB brain loaded, Windows Terminal (listed by nvidia-smi, no sizes) was
+    // blamed for it. Now: Bob's own brain on the card means nothing to load, so never busy; otherwise busy only when
+    // his chat brain really wouldn't fit beside what others hold (the same rule as a load).
+    const own = await this.ownCardMB();
+    if (own.brainOnCard) { this.setCardBusy(null); return false; }
+    const { model, cpu, ctx } = chatBrain(this.cfg);
+    const needB = !cpu && model ? this.gate?.brainBytes?.(model, { ctx }) : 0;
+    const busy = needB > 0 ? Boolean(guardLoad({ card, needMB: needB / 2 ** 20, ownMB: own.mb })) : false;
+    this.setCardBusy(busy ? card.others : null);
+    return busy;
+  },
+  // What Bob's own engines hold on the card, in MB, and whether a brain of his sits there. On Windows nvidia-smi often
+  // can't say per process (0), so a brain started on the card counts at its estimated size instead.
+  async ownCardMB() {
+    let mb = (Number(this.painter?.vramBytes) || 0) / 2 ** 20, brainOnCard = false;
+    try {
+      for (const m of await this.engine.loaded()) {
+        const v = Number(m?.vram) || 0;
+        if (v > 0) { mb += v / 2 ** 20; brainOnCard = true; continue; }
+        if (m?.usesCard || m?.onCard) { brainOnCard = true; const est = Number(this.gate?.brainBytes?.(m.name, { ctx: m.ctx })) || Number(m.size) || 0; mb += est / 2 ** 20; }
+      }
+    } catch {}
+    return { mb, brainOnCard };
+  },
+  // What the window shows (status line, brain chip, the cube dimmed): "Card busy: llama-server, 11.2 GB", or null.
+  setCardBusy(others) {
+    const next = others && others.length ? busyShort(others) : null;
+    if ((this.cardBusyNow?.short || null) === next) return;
+    this.cardBusyNow = next ? { short: next, at: Date.now() } : null;
+    this.broadcast({ type: 'card-busy', busy: Boolean(next), short: next || '' });
+  },
+  // A brain server on the card that Bob didn't start: its address, or ''.
+  async brainOnCard(others = []) {
+    const t = pausableTest(this.cfg.agentDir || '');
+    if (t) return t.url;
+    for (const o of others) if (o.engine && o.pid && /^llama-server$/i.test(o.name)) { const u = serverUrlFrom(await (this.commandLineOf || commandLineOf)(o.pid).catch(() => '')); if (u) return u; }
+    return '';
+  },
+  // One question with choices on a card; resolves with the words picked ('' = no answer in 10 minutes, or Stop).
+  async pickChoice(question, choices, emit, signal, sessionId) {
+    const id = crypto.randomUUID(), prev = this.state, from = Date.now();
+    this.setState('waiting', question);
+    emit({ type: 'approval', id, text: question, ask: { question, choices }, ...(sessionId != null ? { sessionId } : {}) });
+    const said = await new Promise((resolve) => {
+      const timer = awakeTimeout(() => done(false), this.approvalMs || APPROVAL_TIMEOUT_MS, { bag: timersFor(signal) });
+      const done = (v, rows, items, note) => { timer.clear(); this.approvals.delete(id); resolve(v ? String(note || '').trim() : ''); };
+      this.approvals.set(id, done);
+      signal?.addEventListener?.('abort', () => done(false), { once: true });
+    });
+    noteWait(signal, Date.now() - from);
+    emit({ type: 'approval-result', id, allowed: Boolean(said) });
+    this.setState(prev.state === 'waiting' ? 'thinking' : prev.state, '', prev.model);
+    return said;
+  },
+  // Before a brain loads on the card: { go: true } (load as usual), { use: { url, paused } } (answer on the brain
+  // already there), or { borrow: true } (another of his Bobs). "Leave it" ends the job with the plain line.
+  // chat: a chat turn (the other two choices make sense only there).
+  async cardGuard(model, opts, emit, signal, { sessionId = null, chat = false, borrowOk = true } = {}) {
+    let g = await this.cardGuardCheck(model, opts);
+    if (!g) return { go: true };
+    this.log('card', `didn't load ${model}: ${whoHolds(g.others)} holds ~${(g.heldMB / 1024).toFixed(1)} GB of the card; it needs ~${(g.needMB / 1024).toFixed(1)} GB, ~${(g.roomMB / 1024).toFixed(1)} GB left`);
+    emit({ type: 'announce', text: g.line });
+    const server = chat ? await this.brainOnCard(g.others) : '';
+    const borrow = chat && borrowOk && this.cfg.share?.borrow?.on === true && (this.cfg.share.borrow.bobs || []).length > 0;
+    const choices = busyChoices({ brainOnCard: Boolean(server), borrow });
+    const said = await this.pickChoice(`What should I do?${server ? ` (Using the brain on the card: ${USE_NOTE})` : ''}`, choices, emit, signal, sessionId);
+    if (signal?.aborted) throw new Error('Stopped.');
+    const k = pickedKey(said);
+    this.log('card', `busy card: ${said ? `picked "${said}"` : 'no answer, so I wait for the card'}`);
+    if (k === 'leave') throw Object.assign(new Error('Not done: the graphics card is busy, so I left my brain unloaded. Send it again once the card is free.'), { code: 'card_busy' });
+    if (k === 'borrow' && borrow) return { borrow: true };
+    if (k === 'use' && server) return { use: await this.useCardBrain(server, emit, signal) };
+    emit({ type: 'announce', text: 'I\'ll load my brain as soon as the card has room. Stop ends the wait.' });
+    while (g) {
+      this.setState('waiting', 'Waiting for the graphics card');
+      await new Promise((r) => { const t = setTimeout(r, this.cardRecheckMs || RECHECK_MS); signal?.addEventListener?.('abort', () => { clearTimeout(t); r(); }, { once: true }); });
+      if (signal?.aborted) throw new Error('Stopped.');
+      g = await this.cardGuardCheck(model, opts);
+    }
+    this.log('card', 'the graphics card has room again; loading');
+    emit({ type: 'announce', text: 'The card has room now. Loading my brain.' });
+    this.setState('thinking', '', this.state.model);
+    return { go: true };
+  },
+  // "Use the brain already on the card": a test that can pause is asked to, and Bob waits for it to finish its step;
+  // an older test isn't asked (it can't hear), and its timings will be off. Returns { url, paused }.
+  async useCardBrain(server, emit, signal) {
+    const dir = this.cfg.agentDir || '';
+    if (!pausableTest(dir)) { this.log('card', `answering on the brain already on the card (${server}); that test can't pause`); return { url: server, paused: false }; }
+    askPause(dir); this.cardPaused = dir;
+    emit({ type: 'announce', text: 'Asking the test to pause after its current step. That can take a few minutes; Stop ends the wait.' });
+    this.setState('waiting', 'Waiting for the test to pause');
+    const until = Date.now() + (this.pauseWaitMs || PAUSE_WAIT_MS);
+    for (;;) {
+      const p = pausedTest(dir);
+      if (p) { this.log('card', 'the test paused after its step; answering on its brain'); return { url: p.url, paused: true }; }
+      if (signal?.aborted) { this.liftCardPause(); throw new Error('Stopped.'); }
+      if (Date.now() > until) { this.liftCardPause(); throw Object.assign(new Error('Not done: the test didn\'t pause in time, so I left it running. Send it again once it\'s done.'), { code: 'card_busy' }); }
+      await new Promise((r) => setTimeout(r, this.pausePollMs || 1000));
+    }
+  },
+  // The turn is over: the test carries on.
+  liftCardPause() { if (!this.cardPaused) return; liftPause(this.cardPaused); this.cardPaused = null; this.log('card', 'the test carries on'); },
   // 1.5.113: a load timed out. Is another program holding the graphics card? Then say so (once per chat) and don't retry.
   async cardTaken(e, emit, sessionId) {
     if (!isLoadTimeout(e)) return false;
@@ -150,9 +286,12 @@ export const loadingParts = {
   // waits for the card, the brain is checked ready after loading, a failed load is tried again, and a brain that
   // still won't load hands the job to the main brain. Returns the model that's really loaded (use that one).
   async ensureModel(model, emit, signal, who = 'bob', opts = {}) {
+    const cardChecked = opts.cardChecked === true; if ('cardChecked' in opts) { opts = { ...opts }; delete opts.cardChecked; }
     if (this.waking) await this.waking.catch(() => {}); // typing already started loading it: don't load twice
     clearTimeout(this.graceTimer);
     if (!opts.beside && !opts.noTalker) await this.keepTalker(model, opts, emit, { signal });
+    // Nov 13 (card-guard.js): never a load that would overfill a card another program holds; a chat turn asked already.
+    if (!opts.cpu && !cardChecked) await this.cardGuard(model, opts, typeof emit === 'function' ? emit : () => {}, signal);
     if (!signal) { try { await this.engine.isLoaded(model, opts); } catch (e) { throw new Error(`I can't reach my engine, ${this.engineName} (${e.message}).`); } }
     // 1.5.126: built-in graphics share Windows's RAM (apuRoom). Nov 12 (the owner: "u dont even let him try"): the
     // estimate is only a logbook line now. The engine places the brain where it fits, tries it, and on a real
