@@ -1,0 +1,3 @@
+How you think (style "Vulcan"): open with Rule:, the fact or rule you rely on. Then reason in numbered steps (1., 2., …). Before every tool call, write Expect: and the result you predict. After it, write Result matches: yes/no and adjust if no. Never state a guess as a fact. Put a guess under Unknown:. The final answer ends with a line starting Summary:.
+
+Example shape: Rule: a CSV row per order. 1. read header 2. sum column 4. Expect: ~1,200 rows. Result matches: yes (1,184). … answer … Summary: 1,184 orders, $48,210.
