@@ -199,9 +199,9 @@ check('the dry run covers targets', /--targets/.test(st) && /the mix follows the
   check('clean-lessons reads lessons.jsonl and leaves a full copy beside it out', !fs.existsSync(path.join(cl, 'mix-v4/mix/lessons-full.jsonl')));
   const m2 = mixGo('mix-v4b', ['--files', 'new-folded*.jsonl']);
   check('clean-lessons --files picks other files and writes each under its own name', m2.status === 0 && lines('mix-v4b/mix/new-folded.jsonl').join() === 'n1' && lines('mix-v4b/mix/new-folded-heldout.jsonl').join() === 'h1', m2.stderr);
-  const m3 = spawnSync(process.execPath, [path.join(app, 'model-lab', 'clean-lessons.mjs'), '--from', cl, '--sets', 'mix', '--files', 'lessons.jsonl,new-folded-heldout.jsonl', '--out', cl + '-v4c'], { encoding: 'utf8' });
-  check('clean-lessons --sets picks named sets; a held-out file is never thinned', m3.status === 0 && !fs.existsSync(cl + '-v4c/v3') && fs.readFileSync(cl + '-v4c/mix/new-folded-heldout.jsonl', 'utf8').includes('"h1"') && !fs.readFileSync(cl + '-v4c/mix/lessons.jsonl', 'utf8').includes('"g2"'), m3.stderr + m3.stdout);
-  check('clean-lessons refuses to write into the old version or a full folder', go(path.join(cl, 'v3', 'v4')).status === 1 && go(path.join(cl, 'v4')).status === 1);
+  const m3 = spawnSync(process.execPath, [path.join(app, 'model-lab', 'clean-lessons.mjs'), '--from', cl, '--sets', 'mix', '--files', 'lessons.jsonl,new-folded-heldout.jsonl', '--out', path.join(cl, 'mix-v4c')], { encoding: 'utf8' });
+  check('clean-lessons --sets picks named sets; a held-out file is never thinned', m3.status === 0 && !fs.existsSync(path.join(cl, 'mix-v4c/v3')) && fs.readFileSync(path.join(cl, 'mix-v4c/mix/new-folded-heldout.jsonl'), 'utf8').includes('"h1"') && !fs.readFileSync(path.join(cl, 'mix-v4c/mix/lessons.jsonl'), 'utf8').includes('"g2"'), m3.stderr + m3.stdout);
+  check('clean-lessons refuses to write into the old version or a full folder', go(path.join(cl, 'v3', 'lessons', 'v4')).status === 1 && go(path.join(cl, 'v3')).status === 1 && go(path.join(cl, 'v4')).status === 1);
   fs.rmSync(cl, { recursive: true, force: true }); fs.rmSync(cl + '-v4c', { recursive: true, force: true });
 }
 

@@ -28,7 +28,6 @@ import { opts, readJsonl } from './common.mjs';
 const o = opts({ distill: 'kimi', light: 'chat,languages,formats', 'light-weight': 0.5 });
 if (!o.from || !o.out) { console.error('--from <lesson sets> --out <new folder> are needed'); process.exit(1); }
 const from = path.resolve(String(o.from)), out = path.resolve(String(o.out));
-if (out === from || out.startsWith(from + path.sep)) { console.error('--out must be outside --from: the old version is never changed'); process.exit(1); }
 if (fs.existsSync(out) && fs.readdirSync(out).length) { console.error(`${out} is not empty: pick a new folder for the new version`); process.exit(1); }
 const isHoldout = (id) => parseInt(crypto.createHash('md5').update(String(id)).digest('hex').slice(0, 8), 16) / 0xFFFFFFFF < 0.05;
 const review = o.review ? JSON.parse(fs.readFileSync(String(o.review), 'utf8')) : { wrong: [] };
@@ -57,6 +56,8 @@ const setDir = (f) => (single ? from : path.join(from, f));
 const wanted = o.sets ? String(o.sets).split(',').map((s) => s.trim()).filter(Boolean) : null;
 const folders = single ? [path.basename(from)] : fs.readdirSync(from, { withFileTypes: true }).filter((d) => d.isDirectory() && (!wanted || wanted.includes(d.name)) && pick(path.join(from, d.name)).length).map((d) => d.name).sort();
 if (wanted) for (const w of wanted) if (!folders.includes(w)) { console.error(`--sets: ${w} is not a lesson set in ${from}`); process.exit(1); }
+for (const f of folders) { const d = path.resolve(setDir(f)); if (out === d || out.startsWith(d + path.sep) || d.startsWith(out + path.sep)) { console.error(`--out must be outside the lesson sets (${f}): the old version is never changed`); process.exit(1); } }
+if (single && out.startsWith(from + path.sep)) { console.error('--out must be outside --from: the old version is never changed'); process.exit(1); }
 const info = { made: new Date().toISOString(), from: path.basename(from), review: o.review ? path.basename(String(o.review)) : null, folders: {}, dropped: [], moved_wrong: [], distill: [], jobs: {} };
 const firstUser = (l) => (l.messages || []).find((m) => m.role === 'user')?.content;
 
