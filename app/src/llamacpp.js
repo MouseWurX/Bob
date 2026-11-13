@@ -1101,7 +1101,7 @@ export class LlamaCpp {
     this.slotDir = args.includes('--slot-save-path') ? args[args.indexOf('--slot-save-path') + 1] : ''; // where this engine run saves readings
     this.placeChat = null; // a fresh engine holds no chat's reading yet
     let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
-    if (helpers.length) env = { ...env, ...scutEnv(this.cfg), ...linkEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
+    if (helpers.length) env = { ...env, ...scutEnv(this.cfg, { wired: Boolean(this.spread?.allWired?.()) }), ...linkEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
     // 1.5.203: spawn throws when Windows blocks the program (Smart App Control); safeSpawn turns that into 'error'.
     const child = safeSpawn(spawn, exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });
     // 1.5.24 "Let games go first": on the processor, the engine yields to games (below normal priority).
@@ -1243,7 +1243,23 @@ export class LlamaCpp {
     this.lastUse = this.now();
     const mine = { signal: opts?.signal }; // item 213: a reply still here after its job was stopped is stuck
     (this.inflight ||= new Set()).add(mine);
-    try { return await this.chatOnce(opts); } finally { this.active--; this.lastUse = this.now(); this.inflight.delete(mine); }
+    try { return await this.chatOnce(opts); } finally { this.active--; this.lastUse = this.now(); this.inflight.delete(mine); if (this.cardBackPending && this.active === 0) this.reloadWithout(); }
+  }
+
+  // 1.5.214: a Bob lending a card to this spread needs it back (a game on it, or its memory ran low). The brain loads
+  // again without his card (src/share-card.js CardBorrower.lost marked him down): now when nothing is answering, or
+  // right after the reply in progress, so the reply isn't cut.
+  cardTakenBack() {
+    if (!this.current || !this.spreadNow) return;
+    this.reloadWanted.add(this.current);
+    this.cardBackPending = true;
+    if (this.active === 0) this.reloadWithout();
+  }
+  reloadWithout() {
+    this.cardBackPending = false;
+    const model = this.current;
+    if (!model) return;
+    this.preload(model, undefined, { ctx: this.currentCtx || undefined, cpu: Boolean(this.currentCpu) }).then(() => this.log?.('engine', `${model}: loaded again without the card that was taken back`)).catch((e) => this.log?.('engine', `${model}: couldn't load it again after a card was taken back (${String(e.message || e).slice(0, 160)}); the next job tries again`));
   }
 
   // 1.5.19: Medium has a thinking budget (1.5.68: so does Qwen3.6 at every effort, see thinkBudget). Once the brain has thought that long, the request stops and is asked again

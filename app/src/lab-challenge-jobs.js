@@ -10,7 +10,7 @@ import { ownRefusalAsks } from './lab-guard.js';
 import { benchBrain, benchLine } from './lab-bench.js';
 import { labOn, labDir, WOBBLE_RUNS, WOBBLE_TEMP, inspect, scoresDir, slugOf, writeJson, readJson, resultsDir, cell, cleanResult, resultText, hardwareLine } from './lab-measure.js';
 import { lessonSets, lessonSetsDir, run } from './lab-plan.js';
-import { FACT_PACK_IDS, FACTS_SET, writeFactLessons } from './lab-facts.js'; // Nov 12 Straight facts
+import { FACT_PACK_IDS, FACTS_SET, FACTS_SET_2, writeFactLessons } from './lab-facts.js'; // Nov 12 Straight facts
 
 // Methods of the Lab class (src/lab.js), put on it there with the same rules as the methods written inside it.
 export const challengeJobs = {
@@ -81,7 +81,7 @@ export const challengeJobs = {
         }
       }
       // Straight facts: after any of its packs, the sourced lesson set is ready for Teach it (written once, never over yours).
-      if (packs.some((id) => FACT_PACK_IDS.includes(id))) { try { const d = path.join(lessonSetsDir(this.cfg), FACTS_SET); if (!fs.existsSync(path.join(d, 'lessons.jsonl'))) writeFactLessons(d); } catch (e) { log(`straight facts lessons: ${e.message}`); } }
+      if (packs.some((id) => FACT_PACK_IDS.includes(id))) { try { for (const [round, set] of [[1, FACTS_SET], [2, FACTS_SET_2]]) { const d = path.join(lessonSetsDir(this.cfg), set); if (!fs.existsSync(path.join(d, 'lessons.jsonl'))) writeFactLessons(d, round); } } catch (e) { log(`straight facts lessons: ${e.message}`); } }
       // The standard speed test loads the brain on its own, so the challenge server goes first.
       let bench = null;
       if (r.bench) {

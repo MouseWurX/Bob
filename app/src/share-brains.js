@@ -16,8 +16,8 @@ import { cleanWifiWas, tcpTrip } from './wifi-tune.js';
 import { linksHello, cleanLinks } from './links.js'; // Check links: what kinds of link each Bob has
 import fs from 'node:fs';
 import { readJsonFile } from './util.js';
-import { isTailscaleIp } from './phone-access.js';
-import { homeIps, doorIps, isHomeIp, sameNet, SCUT_MBPS } from './share-card.js';
+import { isTailscaleIp, homeNetOn } from './phone-access.js';
+import { homeIps, doorIps, tailscaleIps, isHomeIp, sameNet, SCUT_MBPS, scutChosen } from './share-card.js';
 import { cleanCheck, checkRefusal, checkDown, CHECK_FIRST_WORD_MAX_MS } from './bob-net-check.js'; // 1.5.185
 import { LOOK_ID_RE } from './look.js'; // the avatars on the Bob-Net list
 import { readConfigFile, writeConfigFile } from './config.js';
@@ -69,7 +69,7 @@ export function cleanHomeAddress(a, mine = homeIps(), defPort = 7777) {
   if (mine.some((q) => q.address === ip)) return null; // that's this replicant matrix itself
   return mine.some((q) => sameNet(q.address, ip, q.netmask)) ? `${ip}:${port}` : null;
 }
-export const homeOn = (cfg) => cfg?.remote?.homeNet === true;
+export const homeOn = (cfg) => homeNetOn(cfg?.remote); // 1.5.214: on unless switched off (home network first)
 // A Bob's address: Tailscale always; a home address too while "Also over the home network" is on here.
 export const cleanBobAddress = (cfg, a, { home = homeIps } = {}) => cleanAddress(a) || (homeOn(cfg) ? cleanHomeAddress(a, home()) : null);
 export const BAD_ADDRESS = (cfg) => homeOn(cfg)
@@ -92,7 +92,7 @@ export function shareView(cfg) {
     // Bob-Net mode: More Bobs (the default: each Bob runs his own brain) or Bigger Bobs (they pool their cards).
     homeNet: s.homeNet !== false, // Bigger Bobs: Use the home network first (src/share-card.js), Tailscale as the backup
     scut: s.scut === true, // SCUT, the fast link for Bigger Bobs (src/share-card.js), off unless switched on
-    scutMbps: SCUT_MBPS.includes(Number(s.scutMbps)) ? Number(s.scutMbps) : 100,
+    scutMbps: scutChosen({ share: s }) ? Number(s.scutMbps) : 'auto', // 1.5.214: Auto (1000 on a cable, 100 on Wi-Fi)
     scutSeal: s.scutSeal !== false, // Seal SCUT packets (src/scut-seal.js): on unless switched off
     wifiWas: Boolean(cleanWifiWas(s.wifiWas)), // Calibrate Wi-Fi changed the card's band setting (src/wifi-tune.js): Put it back shows
     linkDebug: s.linkDebug === true, // Watch the link live (src/link-log.js): the link log every 2 seconds instead of 10
@@ -108,7 +108,7 @@ export const doorOpen = (cfg) => Boolean(cfg.remote?.enabled && String(cfg.remot
 export function cleanSharePatch(cfg, b, opts = {}) {
   const cur = cfg.share || {};
   const cb = cur.borrow || {};
-  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendChecks: cur.lendChecks === true, homeNet: cur.homeNet !== false, scut: cur.scut === true, scutMbps: SCUT_MBPS.includes(Number(cur.scutMbps)) ? Number(cur.scutMbps) : 100, scutSeal: cur.scutSeal !== false, linkDebug: cur.linkDebug === true, ...(cleanWifiWas(cur.wifiWas) ? { wifiWas: cleanWifiWas(cur.wifiWas) } : {}), spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
+  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendChecks: cur.lendChecks === true, homeNet: cur.homeNet !== false, scut: cur.scut === true, scutMbps: SCUT_MBPS.includes(Number(cur.scutMbps)) ? Number(cur.scutMbps) : 100, ...(cur.scutMbpsChosen === true ? { scutMbpsChosen: true } : {}), scutSeal: cur.scutSeal !== false, linkDebug: cur.linkDebug === true, ...(cleanWifiWas(cur.wifiWas) ? { wifiWas: cleanWifiWas(cur.wifiWas) } : {}), spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
   if ('lend' in b) next.lend = b.lend === true;
   if ('takeJobs' in b) next.takeJobs = b.takeJobs === true; // 1.5.72, off unless switched on
   if ('passAlong' in b) next.passAlong = b.passAlong === true; // 1.5.123, off unless switched on
@@ -127,7 +127,7 @@ export function cleanSharePatch(cfg, b, opts = {}) {
   if ('scut' in b) next.scut = b.scut === true; // off unless switched on
   if ('scutSeal' in b) next.scutSeal = b.scutSeal !== false; // on unless switched off (the owner's call)
   if ('linkDebug' in b) next.linkDebug = b.linkDebug === true; // off unless switched on
-  if ('scutMbps' in b) { if (!SCUT_MBPS.includes(Number(b.scutMbps))) return { error: 'Pick a speed cap for SCUT.' }; next.scutMbps = Number(b.scutMbps); }
+  if ('scutMbps' in b) { if (b.scutMbps === 'auto') { next.scutMbps = 100; next.scutMbpsChosen = false; } else { if (!SCUT_MBPS.includes(Number(b.scutMbps))) return { error: 'Pick a speed cap for SCUT.' }; next.scutMbps = Number(b.scutMbps); next.scutMbpsChosen = true; } }
   if ('spread' in b) { if (!['off', 'toobig', 'big'].includes(b.spread)) return { error: 'Pick when to spread a brain.' }; next.spread = b.spread; }
   if ('sendJobs' in b) next.borrow.jobs = b.sendJobs === true; // 1.5.72, off unless switched on
   if ('when' in b) { if (!WHEN.includes(b.when)) return { error: 'Pick when to borrow.' }; next.borrow.when = b.when; }
@@ -135,11 +135,14 @@ export function cleanSharePatch(cfg, b, opts = {}) {
     const address = cleanBobAddress(cfg, b.addBob.address, opts);
     if (!address) return { error: BAD_ADDRESS(cfg) };
     const passcode = String(b.addBob.passcode || '').trim();
-    const old = next.borrow.bobs.find((x) => x.address === address);
+    // 1.5.214: the same Bob under his other road (paired over Tailscale, now paired again at home) is one entry,
+    // keeping both addresses.
+    const old = next.borrow.bobs.find((x) => x.address === address) || next.borrow.bobs.find((x) => x.home === address || x.ts === address);
     if (!old && passcode.length < 6) return { error: 'Type that Bob\'s passcode (at least 6 characters).' };
     if (passcode && passcode.length > 64) return { error: 'That passcode is too long.' };
     const entry = { name: cleanName(b.addBob.name) || address.split(':')[0].split('.')[0], address, passcode: passcode || old.passcode };
-    next.borrow.bobs = [...next.borrow.bobs.filter((x) => x.address !== address), entry];
+    if (old) for (const at of [old.address, old.home, old.ts]) if (at && at !== address) { if (isTailscaleIp(String(at).split(':')[0])) entry.ts = at; else entry.home = at; }
+    next.borrow.bobs = [...next.borrow.bobs.filter((x) => x !== old && x.address !== address), entry];
     if (next.borrow.bobs.length > MAX_BOBS) return { error: `Up to ${MAX_BOBS} Bobs.` };
   }
   if (b.removeBob) next.borrow.bobs = next.borrow.bobs.filter((x) => x.address !== (cleanBobAddress(cfg, b.removeBob, opts) || cleanAddress(b.removeBob) || String(b.removeBob)));
@@ -314,7 +317,11 @@ export class Lenders {
   bobs() { return (this.cfg.share?.borrow?.bobs || []).filter((x) => cleanBobAddress(this.cfg, x.address, { home: this.home })); }
 
   // His door on our home network, when he said he has one there and it hasn't failed lately; else ''.
-  nearOf(bob) { const a = this.near.get(bob.address); return a && !(this.nearDown.get(bob.address) > this.now()) ? a : ''; }
+  // 1.5.214: or his saved home address (Find or a hello saved it), so a Bob paired over Tailscale works with it off.
+  nearOf(bob) {
+    const a = this.near.get(bob.address) || (bob.home && bob.home !== bob.address && cleanHomeAddress(bob.home, this.home()) === bob.home ? bob.home : '');
+    return a && !(this.nearDown.get(bob.address) > this.now()) ? a : '';
+  }
   // From his hello: keep only an address on our own home network (never a public one, never another network).
   // When more than one of his addresses is on a network of ours (Wi-Fi, and a cable too), each is timed (a few
   // hellos to his door, the quickest counts) and the quickest path wins. Timed again when the list changes, or after
@@ -354,7 +361,27 @@ export class Lenders {
         if (method !== 'GET' && /timeout|abort/i.test(`${e?.name} ${e?.message}`)) throw e;
       }
     }
-    return this.callAt(bob, bob.address, path, { method, body, signal, timeout });
+    // 1.5.214: Tailscale is the fallback for when you're out: a Bob paired at home is tried on his Tailscale address
+    // (his hello said it) when his home one doesn't connect.
+    const ts = bob.ts && bob.ts !== bob.address && cleanAddress(bob.ts) === bob.ts ? bob.ts : '';
+    if (!ts) return this.callAt(bob, bob.address, path, { method, body, signal, timeout });
+    try { return await this.callAt(bob, bob.address, path, { method, body, signal, timeout: Math.min(timeout, 4000) }); }
+    catch (e) {
+      if (signal?.aborted || (method !== 'GET' && /timeout|abort/i.test(`${e?.name} ${e?.message}`))) throw e;
+      return this.callAt(bob, ts, path, { method, body, signal, timeout });
+    }
+  }
+
+  // 1.5.214: keep his other road on his entry (home address, or Tailscale address), so it's there after a restart.
+  remember(bob, j) {
+    const entry = (this.cfg.share?.borrow?.bobs || []).find((x) => x.address === bob.address);
+    if (!entry) return;
+    const home = this.near.get(bob.address) || '';
+    const ts = (Array.isArray(j?.ts) ? j.ts : []).map((x) => cleanAddress(String(x))).find(Boolean) || '';
+    let changed = false;
+    if (home && home !== entry.address && entry.home !== home) { entry.home = home; bob.home = home; changed = true; }
+    if (ts && ts !== entry.address && entry.ts !== ts) { entry.ts = ts; bob.ts = ts; changed = true; }
+    if (changed && this.cfg.configFile) { try { saveShare(this.cfg, this.cfg.share); } catch {} }
   }
 
   async callAt(bob, at, path, { method = 'GET', body, signal, timeout = HELLO_MS } = {}) {
@@ -394,8 +421,11 @@ export class Lenders {
       // 1.5.72: what this Bob says he can do. ctx: his quick brain's room; speed: words a second he's seen lately;
       // jobs: whole jobs he takes (only with "Take jobs from my other Bobs" on there), and how busy his queue is.
       if (r.ok) Object.assign(out, cleanAbilities(j), { ms, links: cleanLinks(j.links) });
-      if (r.ok) await this.learnNear(bob, j.home);
+      if (r.ok) { await this.learnNear(bob, j.home); this.remember(bob, j); }
     } catch (e) { out = { ok: false, why: /passcode|tries/.test(e.message) ? e.message : 'not reachable' }; }
+    // 1.5.214: a paired Bob we can't reach and whose home address we don't know (paired over Tailscale, now off):
+    // look on the home network for him in the background (Find, at most every 10 minutes), which saves his home address.
+    if (!out.ok && out.why === 'not reachable' && !bob.home && this.lookHome && !(this.lookedAt > this.now() - 10 * 60000)) { this.lookedAt = this.now(); Promise.resolve().then(() => this.lookHome()).catch(() => {}); }
     const seen = this.state.get(bob.address);
     if (seen?.measured) out.measured = seen.measured; // what we timed ourselves outlives a hello
     if (seen?.reviewDownUntil) out.reviewDownUntil = seen.reviewDownUntil; // #30: a review he couldn't do, too
@@ -579,7 +609,9 @@ export function helloFor(brain, { why, quick, can, version, label, webOn, bigBra
     scut: brain.cfg.share?.scut === true, // SCUT, the fast link for a lent card (src/share-card.js)
     ...(review?.model ? { review: { brain: label(review.model), ctx: review.ctx || 0, gb: review.gb || 0 } } : {}), // #30: checks work for his other Bobs
     // Also over the home network (off unless switched on): where this Bob's door is on the home network too.
-    home: brain.cfg.remote?.homeNet === true && doorOpen(brain.cfg) ? doorIps().map((m) => `${m.address}:${brain.cfg.port}`).slice(0, 4) : [],
+    // 1.5.214 ts: his Tailscale door too, kept by a Bob paired at home as the fallback for when he's out.
+    ts: doorOpen(brain.cfg) ? tailscaleIps().map((ip) => `${ip}:${brain.cfg.port}`).slice(0, 2) : [],
+    home: homeOn(brain.cfg) && doorOpen(brain.cfg) ? doorIps().map((m) => `${m.address}:${brain.cfg.port}`).slice(0, 4) : [],
     ...(linksHello(brain.linksCache?.peek?.()) ? { links: linksHello(brain.linksCache.peek()) } : {}), // which kinds of link this Bob has (src/links.js), for the other Bob's Check links
     ...check, // 1.5.185 Check harder jobs for my other Bobs (src/bob-net-check.js checkHello)
     ...(room ? { room } : {}) // 1.5.137: graphics card and memory in GB, for the other Bob's Brain catalogue
