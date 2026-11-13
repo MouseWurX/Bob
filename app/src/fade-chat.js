@@ -136,7 +136,7 @@ export function sweepAll(cfg, brain, ids, now = Date.now()) {
 // links come out of Topics. Not while Bob is working in that chat.
 export function clearChat(cfg, brain, id, { forGood = false, now = Date.now() } = {}) {
   const sid = safeId(id);
-  if (!sid) return { error: 'Which chat?' };
+  if (!sid) return { error: 'Which chat? Send its id as sessionId, like { "sessionId": "main" }.' };
   if ([...(brain.turns?.values?.() || [])].some((t) => t?.sessionId === sid) || (brain.queue || []).some((j) => j.sessionId === sid && j.state !== 'done')) return { error: 'Bob is still on this chat. Wait until he has finished, or press Stop.' };
   if (!forGood) { markCleared(cfg, sid, now); return { ok: true, forGood: false }; }
   for (const f of chatFiles(cfg, sid)) fs.rmSync(f, { force: true });

@@ -185,6 +185,11 @@ const chat = () => [
   cfg.amnesiaOffer = true;
   check('Amnesia mode only from this replicant matrix', (await call('POST', '/api/amnesia', { on: true }, false)).code === 403 && !amnesiaState(cfg).on);
   check('Delete it for good only from this replicant matrix', (await call('POST', '/api/chat/clear', { sessionId: 'main', forGood: true }, false)).code === 403 && fs.existsSync(sess(cfg, 'main')));
+  const byId = await call('POST', '/api/chat/clear', { id: 'main' });
+  const none = await call('POST', '/api/chat/clear', {});
+  check('Clear chat takes the chat as sessionId, id or nothing (the main chat)', byId.code === 200 && none.code === 200 && clearedAt(cfg, 'main') > 0, JSON.stringify([byId, none]));
+  check('Delete it for good never picks the main chat by itself', (await call('POST', '/api/chat/clear', { forGood: true })).code === 400 && fs.existsSync(sess(cfg, 'main')));
+  check('a chat name with nothing usable says what to send', /sessionId/.test(clearChat(cfg, brain, '!!!').error || ''));
   check('a guest chat can\'t be cleared (it isn\'t saved)', (await call('POST', '/api/chat/clear', { sessionId: 'guest-abc' })).code === 400);
   check('other paths are left to other routes', (await call('GET', '/api/other')).handled === false);
   const srv = read('src/server.js');
