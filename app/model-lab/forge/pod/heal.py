@@ -6,11 +6,19 @@
            --hours 3 (stop and save in time)  --eval-only (just measure)  --alpha 0.7 (share of the loss from the teacher)
 Loss = alpha * KL(teacher top-K || student) + (1 - alpha) * cross-entropy on the real next word, over answer tokens only.
 Writes <save>/heal-report.json with held-out numbers before and after. Resumable (lora-state.pt every 100 steps).
+
+New ways to learn (13 Nov 2026), every one off unless asked for:
+  --pref <dir> --pref-kind orpo|dpo|kto  preference training from right/wrong answers (pref.py; dir from the Lab's make-pairs.mjs).
+           orpo is mixed into the heal (one pair every --pref-every lessons); dpo and kto are a short pass after it
+           (--pref-hours), measured from the healed Bob. Held-out pairs are measured before and after.
+  --onpolicy-frac 0.2 --onpolicy-teacher <dir>  a share of the steps where the student writes and the teacher scores
+           every word it wrote (onpolicy.py). Needs the teacher in memory beside the student.
 """
 import argparse, json, math, os, random, time
 import torch, torch.nn.functional as F
 from transformers import AutoTokenizer, Qwen3_5MoeForConditionalGeneration
 import data as D, lora as L
+import pref as P, onpolicy as OP, targets as TG
 
 def positions(r):
     m = torch.tensor(r["mask"]); return (m[1:] == 1).nonzero(as_tuple=True)[0]   # pos predicts pos+1
@@ -58,22 +66,38 @@ def main():
     ap.add_argument("--alpha", type=float, default=0.7); ap.add_argument("--eval-only", action="store_true")
     ap.add_argument("--eval-lessons", type=int, default=150); ap.add_argument("--cache", default="lessons-tok.pt"); ap.add_argument("--general", default=None); ap.add_argument("--general-tokens", type=int, default=0)
     ap.add_argument("--report", default=None); ap.add_argument("--seed", type=int, default=1); ap.add_argument("--device", default="cuda")
+    ap.add_argument("--pref", default=None); ap.add_argument("--pref-kind", default="orpo", choices=["orpo", "dpo", "kto"])
+    ap.add_argument("--pref-beta", type=float, default=0.1); ap.add_argument("--pref-every", type=int, default=4)
+    ap.add_argument("--pref-hours", type=float, default=0.5); ap.add_argument("--pref-lr", type=float, default=None)
+    ap.add_argument("--targets", default=None, help="several training targets: JSON or a file, {name: {jobs: [...], weight: w}} (targets.py)")
+    ap.add_argument("--onpolicy-frac", type=float, default=0.0); ap.add_argument("--onpolicy-teacher", default=None)
+    ap.add_argument("--onpolicy-new", type=int, default=256); ap.add_argument("--onpolicy-temp", type=float, default=1.0); ap.add_argument("--onpolicy-top", type=int, default=32)
     a = ap.parse_args()
+    if a.onpolicy_frac > 0 and not a.onpolicy_teacher: ap.error("--onpolicy-frac needs --onpolicy-teacher <the teacher's folder>")
     random.seed(a.seed); torch.manual_seed(a.seed)
     dev = a.device
     tok = AutoTokenizer.from_pretrained(a.model)
     data = D.build_all(tok, a.lessons, a.max_len, a.cache, a.general, a.general_tokens)
     teacher = torch.load(a.teacher) if a.teacher and os.path.exists(a.teacher) else {}
     print(f"teacher data for {len(teacher)} lessons")
+    pref = P.build(tok, a.pref, a.max_len) if a.pref else None
+    if pref is not None and not (pref["pairs"]["train"] or pref["kto"]["train"]): print("preference folder has nothing to train on: off"); pref = None
     t0 = time.time()
     model = Qwen3_5MoeForConditionalGeneration.from_pretrained(a.model, dtype=torch.bfloat16, device_map=dev)
     model.config.use_cache = False
     print(f"model loaded in {time.time() - t0:.0f}s, {(torch.cuda.memory_allocated() / 1e9) if dev == "cuda" else 0:.1f} GB")
     report = {"model": a.model, "experts": a.experts, "args": vars(a)}
     tests = {"lessons": [r for r in data["test"] if not r.get("general")], "general": [r for r in data["test"] if r.get("general")]}
+    targets = TG.parse(a.targets); jobs = TG.job_map(a.lessons) if targets else {}
+    if targets:  # each target's held-out lessons measured on their own too, so a gain on one cannot hide a loss on another
+        for k, v in TG.split(data["test"], jobs, targets).items(): tests[f"target:{k}"] = v
+        report["targets"] = {k: {"jobs": sorted(t["jobs"]), "weight": t["weight"]} for k, t in targets.items()}
+        print("targets:", {k: len(v) for k, v in tests.items()}, flush=True)
     score = lambda: {k: evaluate(model, v, teacher, a.alpha, dev, a.eval_lessons) for k, v in tests.items() if v}
     report["before"] = score()
     print("held-out before:", report["before"], flush=True)
+    if pref is not None:
+        report["pref_before"] = P.evaluate(model, pref, dev); print("held-out pairs before:", report["pref_before"], flush=True)
     rp = a.report or os.path.join(a.save or ".", "heal-report.json")
     if a.eval_only:
         os.makedirs(os.path.dirname(rp) or ".", exist_ok=True); json.dump(report, open(rp, "w"), indent=1); return
@@ -88,11 +112,19 @@ def main():
             import bitsandbytes as bnb; opt = bnb.optim.AdamW8bit(groups, weight_decay=0.0); print("8-bit AdamW")
         except Exception as e: print(f"bitsandbytes not usable ({str(e)[:60]}), plain AdamW")
     if opt is None: opt = torch.optim.AdamW(groups, weight_decay=0.0, betas=(0.9, 0.95))
+    live_teacher = None
+    if a.onpolicy_frac > 0:
+        live_teacher = Qwen3_5MoeForConditionalGeneration.from_pretrained(a.onpolicy_teacher, dtype=torch.bfloat16, device_map=dev).eval()
+        for p_ in live_teacher.parameters(): p_.requires_grad_(False)
+        print(f"on-policy: teacher loaded beside the student for {a.onpolicy_frac:.0%} of the steps", flush=True)
+    stops = {i for i in (tok.convert_tokens_to_ids("<|im_end|>"), tok.eos_token_id) if isinstance(i, int) and i >= 0}
+    op_stats = {"steps": 0, "words": 0, "kd": 0.0}; pref_stats = {"pairs": 0, "won": 0}; lessons_done = 0
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     model.enable_input_require_grads()
     model.train()
 
     rows = data["train"]; tokens_total = sum(len(r["ids"]) for r in rows)
+    if targets: tokens_total = sum(len(rows[i]["ids"]) for i in TG.weighted_order(rows, jobs, targets, random.Random(a.seed)))  # the mix sets the pass's length
     steps_total = max(1, int(a.epochs * tokens_total / a.tokens_per_step))
     warm = max(5, steps_total // 20)
     sched = lambda s: min(1.0, (s + 1) / warm) * (0.5 * (1 + math.cos(math.pi * min(1.0, s / steps_total))) * 0.9 + 0.1)
@@ -103,7 +135,8 @@ def main():
     os.makedirs(a.save or ".", exist_ok=True)
     print(f"training: {steps_total} steps of ~{a.tokens_per_step} tokens, {len(rows)} lessons/epoch, stop after {a.hours} h", flush=True)
     deadline = time.time() + a.hours * 3600; t0 = time.time(); seen = 0
-    order = list(range(len(rows))); random.shuffle(order)
+    order = TG.weighted_order(rows, jobs, targets, random) if targets else list(range(len(rows)))
+    if not targets: random.shuffle(order)
     acc_tok = 0; acc = {"loss": 0.0, "ce": 0.0, "kd": 0.0, "n": 0}
     skipped_oom = 0; cap = a.max_len
     while step < steps_total and time.time() < deadline:
@@ -113,10 +146,22 @@ def main():
             r = {**r, "ids": r["ids"][:cap], "mask": r["mask"][:cap]}
             if t is not None: teacher = {**teacher, r["id"]: tuple(x[:keep] for x in t)}
         try:
-            out = losses(model, r, teacher.get(r["id"]), a.alpha, dev)
-            if out is None: continue
-            loss, ce, kd, n = out
+            if live_teacher is not None and not r.get("general") and random.random() < a.onpolicy_frac:
+                got = OP.step_loss(model, live_teacher, r, dev, a.onpolicy_new, a.onpolicy_temp, a.onpolicy_top, stops)
+                if got is None: continue
+                loss, n = got; ce = kd = loss.detach()
+                op_stats["steps"] += 1; op_stats["words"] += n; op_stats["kd"] += kd.item() * n
+            else:
+                out = losses(model, r, teacher.get(r["id"]), a.alpha, dev)
+                if out is None: continue
+                loss, ce, kd, n = out
             (loss * len(r["ids"]) / a.tokens_per_step).backward()
+            lessons_done += 1
+            if pref is not None and a.pref_kind == "orpo" and pref["pairs"]["train"] and lessons_done % a.pref_every == 0:
+                pr = pref["pairs"]["train"][random.randrange(len(pref["pairs"]["train"]))]
+                pl, ratio, _ = P.pair_step(model, pr, "orpo", a.pref_beta, dev)
+                (pl * (len(pr["chosen"]["ids"]) + len(pr["rejected"]["ids"])) / a.tokens_per_step).backward()
+                pref_stats["pairs"] += 1; pref_stats["won"] += int(ratio.item() > 0)
         except torch.OutOfMemoryError:
             skipped_oom += 1; opt.zero_grad(set_to_none=True); torch.cuda.empty_cache() if dev == "cuda" else None
             if skipped_oom >= 3 and cap > 1024: cap //= 2; print(f"out of memory 3 times: lessons now cut to {cap} tokens")
@@ -134,8 +179,18 @@ def main():
                 acc = {"loss": 0.0, "ce": 0.0, "kd": 0.0, "n": 0}
             if step % 100 == 0:
                 torch.save({"params": L.trainable_state(model), "opt": opt.state_dict(), "step": step, "ptr": ptr}, state_path)
+    if pref is not None and a.pref_kind in ("dpo", "kto"):  # after the heal: the healed Bob is the reference, then pairs move it
+        print(f"{a.pref_kind}: {a.pref_hours} h pass from the healed Bob", flush=True)
+        report["pref_stage"] = P.stage(model, opt, params, pref, a.pref_kind, a.pref_beta, dev, a.pref_hours, a.pref_lr or a.lr * 0.5)
+    if pref is not None:
+        report["pref_mixed"] = pref_stats
+        report["pref_after"] = P.evaluate(model, pref, dev); print("held-out pairs after:", report["pref_after"], flush=True)
+    if live_teacher is not None:
+        report["onpolicy"] = {**op_stats, "kd": op_stats["kd"] / max(op_stats["words"], 1)}
+        del live_teacher; torch.cuda.empty_cache() if dev == "cuda" else None
     report["steps"] = step; report["planned_steps"] = steps_total; report["tokens_seen"] = seen; report["minutes"] = (time.time() - t0) / 60; report["oom_skipped"] = skipped_oom
     report["after"] = score()
+    if targets: report["no_target_worse"] = TG.no_target_worse({k: v for k, v in report["before"].items() if k.startswith("target:")}, report["after"], "ce", higher_better=False, slack=0.01)
     print("held-out after:", report["after"], flush=True)
     if a.save:  # the small adapter alone (LoRA + router): with the keep list it rebuilds this healed Bob from the teacher, no volume needed
         torch.save({"params": L.trainable_state(model), "step": step, "r": a.r, "r_experts": a.r_experts, "experts": a.experts}, os.path.join(a.save, "adapter.pt"))

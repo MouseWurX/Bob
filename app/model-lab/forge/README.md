@@ -173,3 +173,45 @@ carry old engine patches and an old viewer). From `app/`:
     node model-lab/forge/aifeui-bundle.mjs --brain hf:MouseWurX/28Bob-Riker:28Bob-Q4_K_M.gguf --name Riker --per 6 --out model-lab/forge/fnri-bundle/riker
     node model-lab/forge/aifeui-bundle.mjs --brain /workspace/bobs/35Bob/gguf/35Bob-Q4_K_M.gguf --name Bobert --per 6 --out model-lab/forge/fnri-bundle/bobert
     node model-lab/forge/aifeui-bundle.mjs --brain /workspace/bobs/20Bob/gguf/20Bob-Q4_K_M.gguf --name Bill --per 6 --out model-lab/forge/fnri-bundle/bill
+
+## Build 22 (13 November 2026, dry-run only, untested on a card): more ways to teach, each off unless the plan asks
+
+The owner asked whether we should train in other ways at the same time. Four new ways, each measured on the held-out chats before it replaces anything. `pod/selftest_training.py` runs all of them on a made-up tiny Qwen3.5-MoE on the CPU (about a minute, nothing downloaded): run it on a new pod image before the first real use.
+
+| Plan key | What it does | Where |
+| --- | --- | --- |
+| `"pref": "out/pref-bob"` + `"heal": {"pref": {"kind": "orpo", "beta": 0.1, "every": 4, "hours": 0.5}}` | Right-vs-wrong answers. `orpo` mixes one pair into the heal every `every` lessons (no second model); `dpo` and `kto` are a `hours` pass after the heal with the healed Bob frozen as the reference. Held-out pairs are measured before and after (`pref_before`, `pref_after` in heal-report.json). | `pod/pref.py`, folder from `model-lab/make-pairs.mjs` |
+| `"heal": {"onpolicy": {"frac": 0.2, "new": 256, "temp": 1.0}}` | For `frac` of the lesson steps the student writes its own answer (up to `new` words) and the teacher, loaded beside it, scores every word (KL over the teacher's top 32). Needs room for the teacher on the card: suits rungs of 20 GB and under on an H200. | `pod/onpolicy.py` |
+| `"grpo": {"hours": 1.5, "steps": 200, "group": 6, "chats": 4, "kl": 0.02, "lr": 5e-6, "rungs": ["Luke"]}` | After a rung's heal: each lesson's first turn answered `group` times, graded by `pod/tool_reward.py` (the same rule as tool-score: right 1, wrong arguments 0.3, a tool on a plain chat -0.5), a LoRA nudged toward the above-average answers. Kept only if the held-out grade is no worse. Leave out `rungs` for every rung. | `pod/grpo.py` |
+| `"merge": [{"name": "35Bob-facts1-m70", "base": "teacher", "tuned": "bobs/35Bob-facts1/model", "weight": 0.7, "method": "linear"}]` | Before the rungs: a trained Bob blended back toward its base on the CPU (`linear`, `ties`, `dare`, `dare_ties`; `density` for the last three), then GGUF files to test at home. A cut is blended expert by expert through its bob-keep.json. | `pod/merge.py` |
+
+Making the pairs on the PC (CPU only, no card):
+
+```
+node model-lab/make-pairs.mjs --lessons out/lessons --datasets <make-datasets folder> --out out/pref-bob
+```
+
+It pairs a kept and a rejected lesson for the same idea, turns the benchmark's `pairs-right-vs-wrong.jsonl` into pairs, and every marked answer (kept / rejected / full set's `ok`) into `kto.jsonl`. Unsure answers (needs-review) are left out, style lessons never go into Bob's pairs, and tool-score's held-out chats are marked `holdout` so the heal measures on them and never learns from them. `pod/tool_reward_cases.json` holds cases the Python judge and `tool-judge.mjs` must agree on (the Lab's test checks the JS side, the self-test the Python side).
+
+### Any target, as separate steps, several at once (the owner, 13 Nov)
+
+The same steps serve any target: facts, skills, tools, bias, refusals, ways of thinking. Each step runs on its own, so a run can do one or several.
+
+1. **Make data** (PC or a lessons rental): lessons with the teacher's odds, plus the wrong answers kept as pairs (`make-pairs.mjs`). Bob sets, style sets and distillation sets stay apart.
+2. **Train** a full model: `train_teacher`, from the stock Qwen or `"from": "bobs/<name>/model"` (a Bob trained on an earlier target, or a blend). Add `"pref"` and `"grpo"` inside `train_teacher` for pairs and the reward pass on the full model.
+3. **Cut and heal** if a smaller Bob is wanted (`rungs`, with `heal.pref`, `heal.onpolicy`, `grpo`).
+4. **Blend** (`merge`): kept on the drive as `bobs/<name>/model`. If it tests worse at home, a later run gives it a short re-train with `train_teacher.from`.
+
+`"targets": {"facts": {"jobs": ["straight-facts", "knowledge"], "weight": 2}, "tools": {"jobs": ["precise", "missed", "twins", "restraint"], "weight": 1}}` trains several at once: each target's lessons come up `weight` times per pass, and every report (heal and reward pass) is split by target. A reward pass is kept only if no target's grade dropped (`no_target_worse`), and the heal report says the same for held-out loss. At home, tool-score and the quiz are read per job too, before anything replaces today's Bob.
+
+`merge.py --only <file>` ({"layers": {"12": [3, 7]}, "rest": "base"}) puts a trained change (a task vector) on chosen experts only, with their router rows, and `--weight` up to 2 pushes it further than training did. It goes with the per-target expert traces: find the experts a target leans on, then change only those.
+
+### Probe and dial (13 Nov): find what helps or hinders each target, then make it permanent
+
+- `model-lab/expert-sweep.mjs --url <Brain Engine> --lessons out/lessons --targets targets.json --used "-4,-2,+2,+4,+10" --layer-scale "0.5,0.8,1.2,1.5"` runs on the PC against the engine's live switches (experts per word 0013, dials 0003, expert mask 0001). It scores each target's held-out chats per trial, flags trials that help one target and hurt another, and puts the engine back at the end. `--trials` and `--dials-file` take hand-written trials, for example the experts a trace says a target leans on.
+- `pod/surgery.py --model <dir> --edits edits.json --out <dir>` bakes a change that tested well into the weights, CPU only: one neuron (its column in the expert's down projection), a whole expert, the shared expert's neurons, or one attention head (full-attention layers only).
+- `model-lab/make-checks.mjs` exports the taught Straight facts written questions (want / slanted-line patterns) for `grpo.py --checks`. Packs with "new" in their name are fair tests and are never exported or learned from.
+
+### A new version of the lessons (13 Nov)
+
+`model-lab/clean-lessons.mjs --from <lesson sets> --out <new folder> --review model-lab/reviews/lessons-v4.json` writes a new version and only reads the old one. It drops lessons that call a tool their own tool list does not offer and repeated first prompts in the same thinking mode (the held-out copy is kept). It moves the lessons the hand review marks wrong to `rejected.jsonl` (the wrong side for `make-pairs.mjs`). It moves other models' answers (`--distill`, default `kimi`) to `distill/`. It also writes `targets-train.json` (chat, languages and formats at weight 0.5) and `targets-heal.json` (all at 1). v3 → v4: 9,059 → 8,992 lessons, 26 made-up tool calls, 33 repeats, 8 to the wrong side, Kimi traces to distill (5 held-out lessons with a bad call are kept and listed, so the test stays the same). Copies of the same lesson (a mix's repeats) are kept; `--files` and `--sets` pick files and sets, and each file keeps its own name.

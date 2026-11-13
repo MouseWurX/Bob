@@ -104,7 +104,7 @@ const num = (v, lo, hi) => { const n = Number(v); return Number.isFinite(n) ? Ma
 // estimate so a full pass is never cut short; caps start at 0 and a plan with 0 caps is never handed to forge.mjs.
 // What to teach -> the lesson writer's jobs (model-lab/write-lessons.mjs JOBS), split evenly inside each.
 export const TEACH_JOBS = { answers: ['chat', 'advice', 'knowledge', 'maths', 'science'], tools: ['reminders', 'memory', 'web', 'pictures', 'files', 'office', 'run', 'schedules', 'apps'], coding: ['coding'], writing: ['writing'] };
-export function makeForgePlan(form = {}, { base = {}, keepFiles = [], lessonSets = [] } = {}) {
+export function makeForgePlan(form = {}, { base = {}, keepFiles = [], lessonSets = [], pairsSets = [] } = {}) {
   const problems = [], notes = [];
   const plan = { ...base };
   delete plan.hours_max; delete plan.dollars_max; delete plan.benchmark; // never carried over: caps are typed, commands are fixed templates
@@ -244,7 +244,9 @@ export function makeForgePlan(form = {}, { base = {}, keepFiles = [], lessonSets
   const learn = ['answer', 'thinking', 'both'].includes(form.heal?.learn) ? form.heal.learn : 'answer';
   if (learn !== 'answer') { plan.heal.learn = learn; plan.heal.thinking_weight = num(form.heal?.thinking_weight, 0.05, 2) || 0.5; }
   if (form.heal?.odds_cover === 'both') { plan.heal.odds_cover = 'both'; notes.push('The teacher scores the thinking too: that pass takes much longer, fewer lessons fit in its time box, and saved teacher scores from earlier runs can\'t be reused, so it starts over.'); }
-  const hours = Math.round(rungs.reduce((a, r) => a + r.hours, 0) + 1.5);
+  // 13 Nov the training protocol's rented steps (draft PR #201), each off unless picked here.
+  waysToPlan(form.ways || {}, { plan, problems, notes, pairsSets, rungs });
+  const hours = Math.round(rungs.reduce((a, r) => a + r.hours, 0) + 1.5 + (plan.grpo ? plan.grpo.hours * rungs.length : 0));
   plan.hours_max = num(form.hours_max, 0, 72) || 0;
   plan.dollars_max = num(form.dollars_max, 0, 500) || 0;
   if (!plan.hours_max || !plan.dollars_max) notes.push('The caps are 0, so this plan can be saved and read but never started. Type the hours and dollars you\'ll allow before a run.');
@@ -308,4 +310,50 @@ export function runPodId(dir, run = '') {
     try {
       const j = JSON.parse(fs.readFileSync(path.join(dir, 'out', 'forge', f), 'utf8')); if (/^[a-z0-9]{6,32}$/i.test(j.pod || '')) return j.pod; } catch {} }
   return '';
+}
+
+// 13 Nov New ways to teach, written into the plan's keys the pod reads (run.sh): heal.pref + pref (pairs folder made here
+// by make-pairs.mjs), heal.onpolicy, grpo, targets, surgery. Every one is off unless picked, and every one only runs on
+// the owner's press of the purchase card. Surgery edits are baked into every brain the run makes, so they're shown back.
+export const PREF_KINDS = ['orpo', 'dpo', 'kto'];
+export function waysToPlan(w = {}, { plan, problems, notes, pairsSets = [], rungs = [] }) {
+  for (const k of ['pref', 'grpo', 'targets', 'surgery']) delete plan[k];
+  if (plan.heal) { delete plan.heal.pref; delete plan.heal.onpolicy; }
+  if (PREF_KINDS.includes(w.pref)) {
+    const ps = pairsSets.find((x) => x.id === String(w.pairs || ''));
+    if (!ps) problems.push('Right-vs-wrong pairs: pick the pairs to learn from (make them on this page first, under The training protocol).');
+    else {
+      plan.pref = path.resolve(ps.path); plan.heal = { ...(plan.heal || {}), pref: { kind: w.pref } };
+      if (w.pref !== 'kto' && !ps.pairs) problems.push(`${ps.id} has no pairs, only marked answers. Pick KTO, which learns from those, or make pairs from a set with wrong answers kept.`);
+      notes.push(`${w.pref.toUpperCase()} on ${ps.id} (${ps.pairs} pairs, ${ps.marked} marked answers).${w.pref === 'orpo' ? ' It mixes into the teaching back, with no second brain.' : ' A short pass after the teaching back.'} The held-out chats are measured, never learned.`);
+    }
+  }
+  const op = Number(w.onpolicy) || 0;
+  if (op > 0) {
+    if (op > 50) problems.push('On-policy teaching: at most 50% of the lessons.');
+    else { plan.heal = { ...(plan.heal || {}), onpolicy: { frac: Math.round(op) / 100 } }; notes.push('On-policy teaching needs the teacher on the same card as the small Bob, so it suits brains of 20 GB and under on the usual card.'); }
+  }
+  if (w.grpo === true) {
+    const h = Number(w.grpoHours); plan.grpo = { hours: Number.isFinite(h) && h >= 0.25 && h <= 6 ? h : 1.5 };
+    notes.push('Reward pass on tool calls: kept for a brain only if its held-out grade is no worse and no target drops. It adds its hours to each brain.');
+  }
+  const targets = {};
+  for (const t of (Array.isArray(w.targets) ? w.targets : []).slice(0, 8)) {
+    const name = String(t?.name || '').replace(/[^\w-]/g, '').slice(0, 24), jobs = String(t?.jobs || '').split(',').map((x) => x.trim().replace(/[^\w.-]/g, '')).filter(Boolean).slice(0, 40), weight = Number(t?.weight);
+    if (!name && !jobs.length) continue;
+    if (!name || !jobs.length) { problems.push('Each target needs a name and at least one kind of lesson (job).'); continue; }
+    if (!(weight >= 0 && weight <= 5)) { problems.push(`Target ${name}: a weight from 0 to 5.`); continue; }
+    for (const j of jobs) { const other = Object.entries(targets).find(([, x]) => x.jobs.includes(j)); if (other) problems.push(`${j} is in two targets (${other[0]} and ${name}). Each kind of lesson belongs to one.`); }
+    targets[name] = { jobs, weight };
+  }
+  if (Object.keys(targets).length) { plan.targets = targets; notes.push(`${Object.keys(targets).length} targets, each with its own weight and its own grade in every report.`); }
+  const sx = String(w.surgery || '').trim();
+  if (sx) {
+    let edits = null; try { const j = JSON.parse(sx); edits = Array.isArray(j) ? j : j.edits; } catch { problems.push('Surgery edits: that isn\'t readable JSON. Paste the edits list, like [{"layer": 12, "expert": 37, "scale": 0.8}].'); }
+    if (Array.isArray(edits)) {
+      const ok = edits.slice(0, 64).filter((e) => Number.isInteger(e?.layer) && e.layer >= 0 && Number(e.scale) >= 0 && Number(e.scale) <= 8 && (Number.isInteger(e.head) || Number.isInteger(e.expert) || e.expert === 'shared') && (e.neuron === undefined || Number.isInteger(e.neuron)));
+      if (ok.length !== edits.length) problems.push('Surgery edits: each needs a layer, an expert (a number or "shared") or a head, an optional neuron, and a scale from 0 to 8.');
+      else if (ok.length) { plan.surgery = { edits: ok.map((e) => ({ layer: e.layer, ...(Number.isInteger(e.head) ? { head: e.head } : { expert: e.expert }), ...(e.neuron !== undefined ? { neuron: e.neuron } : {}), scale: Number(e.scale) })) }; notes.push(`${ok.length} surgery edit${ok.length === 1 ? '' : 's'} will be baked into every brain this run makes (${rungs.map((r) => r.name).join(', ') || 'none yet'}). Bake only edits a sweep showed help and hurt nothing; pressing Start is your go.`); }
+    }
+  }
 }

@@ -368,7 +368,13 @@ if (args.restart) {
     const dd = path.resolve(here, '..', d); const lf = d.endsWith('.jsonl') ? dd : path.join(dd, 'lessons.jsonl'); const tf = path.join(path.dirname(lf), 'toolsets.json');
     await upload(`lessons-extra-pc${i}.jsonl`, lf); await upload(`toolsets-extra-pc${i}.json`, tf);
   }
-  const podPlan = { ...plan, counts: 'counts.json', rungs: plan.rungs.map((r) => r.keep_file ? { ...r, keep_file: path.basename(r.keep_file) } : r) }; delete podPlan.counts_file; delete podPlan.lessons;
+  // 13 Nov: plan.pref = a folder made by make-pairs.mjs (right-vs-wrong answers); the heal uses it only when plan.heal.pref says how
+  if (plan.pref) {
+    const pd = path.resolve(here, '..', plan.pref); let sent = 0;
+    for (const f of ['pairs.jsonl', 'kto.jsonl', 'toolsets.json']) if (fs.existsSync(path.join(pd, f))) { await upload(`pref-${f}`, path.join(pd, f)); sent++; }
+    log(sent ? `preference data sent from ${plan.pref}${plan.heal?.pref ? ` (heal: ${plan.heal.pref.kind || 'orpo'})` : ' (plan.heal.pref is not set: the heal will not use it)'}` : `plan.pref ${plan.pref} has no pairs.jsonl or kto.jsonl: nothing sent`);
+  }
+  const podPlan = { ...plan, counts: 'counts.json', rungs: plan.rungs.map((r) => r.keep_file ? { ...r, keep_file: path.basename(r.keep_file) } : r) }; delete podPlan.counts_file; delete podPlan.lessons; delete podPlan.pref;
   fs.writeFileSync(path.join(outDir, 'forge', `plan-sent-${RUNID}.json`), JSON.stringify(podPlan, null, 1));
   await upload('plan.json', path.join(outDir, 'forge', `plan-sent-${RUNID}.json`));
   const r = await get('/go', { method: 'POST' }); log(`started: ${await r.text()}`);

@@ -346,6 +346,13 @@ if [ "$GENERAL_TOKENS" -gt 0 ] && [ ! -d $S/general ]; then
   find $S/general -name '*.parquet' | head
 fi
 GEN="--general $S/general --general-tokens $GENERAL_TOKENS"
+# several training targets in one run (plan.targets, 13 Nov): {name: {jobs: [...], weight: w}}; every report split by target
+TGT=""; if [ -n "$(plan ".get('targets')")" ]; then plan ".get('targets')" > $IN/targets.json; TGT="--targets $IN/targets.json"; echo "targets: $(cat $IN/targets.json)"; fi
+# right-vs-wrong answers for preference training (plan.pref, made on the PC by make-pairs.mjs): one folder the heal reads
+if [ -f $IN/pref-pairs.jsonl ] || [ -f $IN/pref-kto.jsonl ]; then
+  mkdir -p $IN/pref; for f in pairs.jsonl kto.jsonl toolsets.json; do [ -f $IN/pref-$f ] && mv $IN/pref-$f $IN/pref/$f; done
+  echo "preference data: $(cat $IN/pref/pairs.jsonl 2>/dev/null | wc -l) pairs, $(cat $IN/pref/kto.jsonl 2>/dev/null | wc -l) marked answers"
+fi
 
 # --- extra lessons written on this card (plan.write_lessons): vLLM serves the full Qwen, the PC's lesson writer talks to it ---
 WL=$(plan ".get('write_lessons')")
@@ -429,8 +436,31 @@ if [ -n "$TM" ]; then
   [ -f $S/$TM/config.json ] || die "teacher_model $TM is not on the volume"
   TEACHER_DIR=$S/$TM; TEACHER_ID="$TEACHER+$(sha256sum $S/$TM/../adapter.pt | cut -c1-16)"; echo "teacher: $TM (trained)"
 fi
+# --- blends (plan.merge, 13 Nov): a trained Bob mixed back toward its base on the CPU (merge.py), each made into GGUF files to test at home ---
+MG=$(plan ".get('merge')")
+if [ -n "$MG" ]; then
+  for i in $(seq 0 $(( $(plan "['merge'].__len__()") - 1 ))); do
+    MN=$(plan "['merge'][$i]['name']"); MB=$(plan "['merge'][$i].get('base','teacher')"); MT=$(plan "['merge'][$i]['tuned']")
+    [ "$MB" = "teacher" ] && MB=$S/teacher || MB=$S/$MB; MT=$S/$MT
+    [ -f $MB/config.json ] && [ -f $MT/config.json ] || { echo "merge $MN: $MB or $MT is not on the volume, skipped"; continue; }
+    status merge "$MN: blending $(plan "['merge'][$i].get('weight',0.7)") of $(basename $(dirname $MT)) with $(basename $MB) ($(plan "['merge'][$i].get('method','linear')"))"
+    mkdir -p $OUT/$MN
+    python3 merge.py --base $MB --tuned $MT --out $W/merged-$MN --method $(plan "['merge'][$i].get('method','linear')") --weight $(plan "['merge'][$i].get('weight',0.7)") \
+      --density $(plan "['merge'][$i].get('density',0.5)") > $OUT/$MN/merge.log 2>&1 || { echo "merge $MN failed (out/$MN/merge.log)"; tail -3 $OUT/$MN/merge.log; continue; }
+    cp $W/merged-$MN/merge-report.json $OUT/$MN/
+    for j in $(seq 1 90); do [ -f $S/llama-ready ] || [ -f $S/llama-failed ] && break; sleep 20; done
+    python3 export.py --model $W/merged-$MN --out $OUT/$MN --name "$MN" --teacher "$TEACHER" --llama $S/llama.cpp --quants $(plan ".get('quants','Q4_K_M')") --pending --what "$(plan "['merge'][$i].get('what','A blend of a trained Bob and the brain it came from, to test at home.')")" \
+      > $OUT/$MN/export.log 2>&1 && { keep_bob $MN "$MN" ""; release_files $MN "$MN"; status ready "$MN ready to download"; } || { echo "merge $MN: export failed (out/$MN/export.log)"; tail -3 $OUT/$MN/export.log; }
+    # kept on the volume (room permitting) so a later run can give the blend a short re-train if it tests worse at home (train_teacher.from)
+    if [ "$S" != "$W" ] && [ "$(df -m $S | awk 'NR==2{print $4}')" -gt $(( $(du -sm $W/merged-$MN | cut -f1) + 2048 )) ]; then
+      mkdir -p $S/bobs/$MN && rm -rf $S/bobs/$MN/model && mv $W/merged-$MN $S/bobs/$MN/model && echo "$MN kept on the volume: bobs/$MN/model"
+    else rm -rf $W/merged-$MN; fi
+  done
+fi
 # --- train the teacher (plan.train_teacher): the full Qwen learns every lesson by plain next-word training (no odds to copy, it IS the
 # teacher), is kept as a Bob of its own (35Bob "Bobert": no cut, all experts) and becomes the teacher for the odds and the cuts below ---
+# 13 Nov: train_teacher.from trains another model on the volume instead (a blend, or a Bob that already learned something:
+# one target at a time, e.g. facts, then tools); train_teacher.pref and .grpo add the new ways on the full model, no cut needed ---
 TT=$(plan ".get('train_teacher')")
 if [ -n "$TT" ]; then
   TNAME=$(plan "['train_teacher'].get('name','35Bob')"); TNICK=$(plan "['train_teacher'].get('nickname','Bobert')"); THOURS=$(plan "['train_teacher'].get('hours',8)")
@@ -439,10 +469,26 @@ if [ -n "$TT" ]; then
     status train "$TNAME is already on the volume: no training (train_teacher.redo to redo it)"
   else
     kernels_ready
-    status train "$TNAME: teaching the full Qwen every lesson ($THOURS h at most, plain next-word training)"
-    python3 heal.py --model $S/teacher --lessons $IN --save $W/healed-$TNAME --experts $(plan "['train_teacher'].get('experts','lora')") --alpha 0 \
+    TFROM=$(plan "['train_teacher'].get('from','teacher')"); [ "$TFROM" = "teacher" ] && TFROM=$S/teacher || TFROM=$S/$TFROM
+    [ -f $TFROM/config.json ] || die "train_teacher.from $TFROM is not on the volume"
+    TARGS=$(python3 - <<'PY'
+import json,os; t=json.load(open(os.environ.get('FORGE_ROOT','/workspace')+'/in/plan.json'))['train_teacher']; pr=t.get('pref'); pd=os.environ.get('FORGE_ROOT','/workspace')+'/in/pref'
+print(" ".join(["--pref",pd,"--pref-kind",str(pr.get('kind','orpo')),"--pref-beta",str(pr.get('beta',0.1)),"--pref-every",str(pr.get('every',4)),"--pref-hours",str(pr.get('hours',0.5))]) if pr and os.path.isdir(pd) else "")
+PY
+)
+    status train "$TNAME: teaching $(basename $TFROM) every lesson ($THOURS h at most, plain next-word training${TARGS:+ + pairs})"
+    python3 heal.py --model $TFROM --lessons $IN --save $W/healed-$TNAME --experts $(plan "['train_teacher'].get('experts','lora')") --alpha 0 \
       --epochs $(plan "['train_teacher'].get('epochs',1)") --hours $THOURS --max-len $(plan ".get('max_len',8192)") --cache $W/lessons-tok-train.pt \
-      --report $OUT/$TNAME/train-report.json $GEN || die "$TNAME training"
+      --report $OUT/$TNAME/train-report.json $GEN $TARGS $TGT || die "$TNAME training"
+    echo "$(basename $TFROM)" > $S/bobs/$TNAME/base.txt   # the adapter rebuilds this Bob from this base, not always the stock Qwen
+    if [ -n "$(plan "['train_teacher'].get('grpo')")" ]; then
+      status train "$TNAME: reward pass on tool calls (GRPO)"
+      if python3 grpo.py --model $W/healed-$TNAME --lessons $IN --save $W/grpo-$TNAME --report $OUT/$TNAME/grpo-report.json --max-len $(plan ".get('max_len',8192)") \
+          --hours $(plan "['train_teacher']['grpo'].get('hours',1.5)") --steps $(plan "['train_teacher']['grpo'].get('steps',200)") --kl $(plan "['train_teacher']['grpo'].get('kl',0.02)") $TGT && \
+         python3 -c "import json,sys; r=json.load(open(sys.argv[1])); sys.exit(0 if r['after']['reward']>=r['before']['reward'] and r.get('no_target_worse',True) else 1)" $OUT/$TNAME/grpo-report.json; then
+        cp $W/healed-$TNAME/adapter.pt $W/grpo-$TNAME/heal-adapter.pt; rm -rf $W/healed-$TNAME; mv $W/grpo-$TNAME $W/healed-$TNAME; echo "$TNAME: reward pass kept"
+      else rm -rf $W/grpo-$TNAME; echo "$TNAME: reward pass did not help on the held-out chats: the trained model stays"; fi
+    fi
     cp $W/healed-$TNAME/adapter.pt $OUT/$TNAME/$TNAME-adapter.pt; cp $W/healed-$TNAME/adapter.pt $S/bobs/$TNAME/adapter.pt
     # the full model goes to the volume only if there is room (8 Nov: a 100 GB drive was reused); otherwise it stays on the pod disk
     # for this run and the adapter on the volume rebuilds it next time (heal.py --eval-only is not needed: stock teacher + adapter)
@@ -778,18 +824,45 @@ PY
   eval "$(python3 - $i <<'PY'
 import json,sys,os; p=json.load(open(os.environ.get('FORGE_ROOT','/workspace')+'/in/plan.json')); r=p['rungs'][int(sys.argv[1])]; h=p.get('heal',{})
 print(f"EXPERTS={r.get('experts',h.get('experts','lora'))}; HOURS={r.get('hours',h.get('hours',2.5))}; EPOCHS={h.get('epochs',1)}; MAXLEN={p.get('max_len',8192)}; QUANTS={p.get('quants','Q4_K_M')}")
+# 13 Nov: new ways to learn, each only when the plan asks (heal.pref needs plan.pref, the pairs folder the PC sent)
+pr=r.get('pref',h.get('pref')); op=r.get('onpolicy',h.get('onpolicy'))
+a=[]
+if pr and os.path.isdir(os.environ.get('FORGE_ROOT','/workspace')+'/in/pref'): a+=["--pref",os.environ.get('FORGE_ROOT','/workspace')+"/in/pref","--pref-kind",str(pr.get('kind','orpo')),"--pref-beta",str(pr.get('beta',0.1)),"--pref-every",str(pr.get('every',4)),"--pref-hours",str(pr.get('hours',0.5))]
+if op: a+=["--onpolicy-frac",str(op.get('frac',0.2)),"--onpolicy-new",str(op.get('new',256)),"--onpolicy-temp",str(op.get('temp',1.0))]
+print("NEWARGS='"+" ".join(a)+"'; ONPOLICY="+("1" if op else ""))
+g=p.get('grpo'); print("GRPO="+("1" if g and (not g.get('rungs') or r['name'] in g['rungs']) else ""))
 PY
 )"
+  [ -n "$ONPOLICY" ] && NEWARGS="$NEWARGS --onpolicy-teacher $TEACHER_DIR"
   mkdir -p $OUT/$NAME
   if python3 heal.py --model $W/cut-$NAME --lessons $IN --teacher $TPT --save $W/healed-$NAME --cache $CACHE \
-    --experts $EXPERTS --epochs $EPOCHS --hours $HOURS --max-len $MAXLEN --report $OUT/$NAME/heal-report.json $GEN; then
+    --experts $EXPERTS --epochs $EPOCHS --hours $HOURS --max-len $MAXLEN --report $OUT/$NAME/heal-report.json $GEN $NEWARGS $TGT; then
     rm -rf $W/cut-$NAME
+    # 13 Nov: plan.grpo, a reward pass on tool calls after the heal; kept only if its held-out grade is no worse than the heal's
+    if [ -n "$GRPO" ]; then
+      status heal "$NAME: reward pass on tool calls (GRPO)"
+      if python3 grpo.py --model $W/healed-$NAME --lessons $IN --save $W/grpo-$NAME --report $OUT/$NAME/grpo-report.json --max-len $MAXLEN \
+          --hours $(plan "['grpo'].get('hours',1.5)") --steps $(plan "['grpo'].get('steps',200)") --group $(plan "['grpo'].get('group',6)") \
+          --chats $(plan "['grpo'].get('chats',4)") --kl $(plan "['grpo'].get('kl',0.02)") --lr $(plan "['grpo'].get('lr',5e-6)") $TGT && \
+         python3 -c "import json,sys; r=json.load(open(sys.argv[1])); sys.exit(0 if r['after']['reward']>=r['before']['reward'] and r.get('no_target_worse',True) else 1)" $OUT/$NAME/grpo-report.json; then
+        cp $W/healed-$NAME/adapter.pt $W/grpo-$NAME/heal-adapter.pt; rm -rf $W/healed-$NAME; mv $W/grpo-$NAME $W/healed-$NAME; echo "$NAME: reward pass kept"
+      else rm -rf $W/grpo-$NAME; echo "$NAME: reward pass did not help on the held-out chats (or failed): the healed Bob stays"; fi
+    fi
   else
     # the heal is the newest code: if it breaks, keep the session useful by shipping the unhealed cut (REAP-style) and carrying on from it
     status heal "$NAME: heal FAILED, exporting the unhealed cut as $NAME-raw"
     rm -rf $W/healed-$NAME; mv $W/cut-$NAME $W/healed-$NAME; NAME_OUT="$NAME-raw"; RAW=1
   fi
   [ -z "${RAW:-}" ] && NAME_OUT="$NAME"
+  # 13 Nov: plan.surgery, edits a live sweep showed help and hurt nothing, baked into this brain (surgery.py, CPU); the owner's
+  # press of the purchase card is the go. A failed bake keeps the brain as it was.
+  if [ -z "${RAW:-}" ] && [ -n "$(plan ".get('surgery')")" ]; then
+    plan ".get('surgery')" > $IN/surgery.json
+    status heal "$NAME: baking $(python3 -c "import json; print(len(json.load(open('$IN/surgery.json'))['edits']))") surgery edits"
+    if python3 surgery.py --model $W/healed-$NAME --edits $IN/surgery.json --out $W/surg-$NAME > $OUT/$NAME/surgery.log 2>&1; then
+      cp $W/surg-$NAME/surgery-report.json $OUT/$NAME/; rm -rf $W/healed-$NAME; mv $W/surg-$NAME $W/healed-$NAME; echo "$NAME: surgery baked"
+    else rm -rf $W/surg-$NAME; echo "$NAME: surgery failed (out/$NAME/surgery.log), the brain stays as it was"; tail -3 $OUT/$NAME/surgery.log; fi
+  fi
   status count "$NAME: counting which experts it uses now"
   python3 count.py --model $W/healed-$NAME --lessons $IN --out $W/counts-$NAME.json --cache $CACHE $GEN $REAP --lessons-max $( [ -n "${RAW:-}" ] && echo 300 || echo 600 ) || echo "count failed for $NAME (next rung will use the plan's counts)"
   cp $W/counts-$NAME.json $OUT/$NAME/ 2>/dev/null

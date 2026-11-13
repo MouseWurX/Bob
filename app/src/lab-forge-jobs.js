@@ -46,7 +46,7 @@ export const forgeJobs = {
       const r = pickLessons(dir, { offCategories: arr(pick.offCategories), offSources: arr(pick.offSources), offThinking: arr(pick.offThinking), pathName: String(pick.pathName || '') });
       return { ...one, dir: r.dir || dir, picked: r.count, pathName: r.dir ? String(pick.pathName || '').trim() : '' };
     });
-    return makeForgePlan(form, { base: base || {}, keepFiles: this.keepFiles(), lessonSets: sets });
+    return makeForgePlan(form, { base: base || {}, keepFiles: this.keepFiles(), lessonSets: sets, pairsSets: this.protocolPairs ? this.protocolPairs() : [] });
   },
   // Add a lesson set from a file here or a .jsonl/.json file on Hugging Face: converted into the Lab's shape, then
   // broken into parts. The Hugging Face card's licence is kept with it; a set with none is for private use only.

@@ -4,6 +4,24 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.218
+
+The Lab gets the new training protocol.
+
+### New
+
+- **The training protocol** (the Lab, Forge tab). The 11 steps for teaching a brain, in order. Three free steps run here on your computer, one at a time:
+  - **Clean a lesson set** into a new Lab set. The original is never changed.
+  - **Make right-vs-wrong pairs** from it.
+  - **Sweep a running Brain Engine**: try more or fewer experts per word, scoring each kind of lesson on its own. Local engines only, and every switch is put back after.
+- **New ways to teach** (the Forge form, all off to start with): learning from right-vs-wrong pairs (ORPO, DPO, KTO), a share of on-policy teaching (the small Bob answers and the teacher corrects it word by word), a reward pass, targets, and edits to bake into the brain. These run on a rented card. Nothing cuts, trains or rents without your press on the purchase card, with the caps you type.
+
+### Good to know
+
+- The switch to Brain Engine 7 in 1.5.217 downloads about 588 MB once (the llama.cpp b12282 base it sits on, plus Brain Engine's own files).
+
+**Where it works:** Windows, Mac and Linux.
+
 ## 1.5.217
 
 Brain Engine 7 is switched on, and the line under my name follows what I'm doing.
@@ -245,50 +263,6 @@ A quick one for the firewall.
 - **"A song as an MP3" says the MP3 too, every time.** The extra copy I keep in the type you named is now always named in what I'm told, even when the save starts a moment late, so I can tell you about it.
 
 **Where it works:** the firewall fix is Windows only; Mac and Linux are unchanged (macOS asks by itself; on Linux the line to run already has the UDP part). The MP3 fix is everywhere.
-
-## 1.5.208
-
-A steadier one: a hundred reliability fixes that are always on and add nothing to what my brain reads at the start of a job, answers to your messages between the steps of a long job, the cube following my brain's whole life, a Brains page inside Settings, more memory and document switches, and fourteen small tools. Every new switch is off until you turn it on, except Answer messages between steps.
-
-### New
-
-- **Answer messages between steps** (Settings, Brains; on to start with). A message you send while I work on a long job doesn't wait for the whole job. When the step I'm on is done I look at it: a question gets a quick answer and the job carries on, "also …" joins the job, and "stop" stops it. On the brain that's already loaded, so nothing reloads. A long step gets a one-line "seen it" at once.
-- **🧰 More tools** (Settings, How Bob works). Fourteen small tools that each do one job with code instead of guesses: an exact calculator and unit changes, Python in the sandbox, passwords made by your computer's own random numbers (shown once, never kept), repeating reminders and reminders on your phone, your email read-only, calendar links, watching a page for changes, web services with a key, CSV and database questions, charts, an offline spelling check, meeting notes from a recording, and comparing two files. Each one is off until you tick it.
-- **Memory and documents** (all off until you turn them on). Note where each memory came from, memories that run out after a day, a week or a date, and project memories that stay with their project. Keep my documents fresh as you save them, show the page and line a find came from, search your notes apps too (Obsidian vaults and exported notebooks), and a Sunday digest of the week in one short note.
-- **Brains page in Settings.** Settings, Brains opens on the Brains page, in Simple and Advanced. The plain list has the same tools: setups, Calibrate all, the place bar, Calibrate and Set up for each job. Pressing my picture opens a small menu: what I'm doing, the brain loaded, and doors to Brains, Style and Get models. Add a model reads ModelScope pages too (each file pinned to its commit there), and GPT-OSS 120B is in the catalogue as a download.
-- **The cube follows my brain's whole life.** It fills while a brain loads, sparks now and then while it waits, thinks while I answer, and drains when the brain is unloaded. The VACANCY sign only shows when no brain is loaded at all.
-
-### Changed
-
-- **Steadier loop, always on.** Each job carries a budget of steps and calls, a job that goes round in circles or keeps failing ends with a plain note instead of running on, and every turn has a time ceiling (the job time limit's minutes; card waits and quick answers between steps don't count).
-- **Steadier tools, always on.** Each tool's answer goes back to the call that asked for it, every tool has its own time limit, huge results keep their start, their end and the lines that match the ask or look like a problem (the whole result is saved for 3 days so I can read the rest), an empty search says so plainly, overwrite and Undo cards show the real change, a restarted job never does its last finished step twice, and a connected app that forgot the connection reconnects (one that fails three times in a row waits 3 minutes).
-- **When something fails** (always on): a brain that drops out mid-answer no longer shows its words twice; retries wait a little longer each time, with a bit of randomness, and cover "busy" and "out of memory" too; an OK card nobody answered is a time-out, not a no, and the job waits in Tasks; an action is only tried again after checking it didn't half-happen; tool errors say what to try next; a tool that fails three times in a row in a job is set aside, and I offer to fix it after; a failing brain, Bob-Net Bob or rented brain hands the job on once; nothing stays stuck on Working after an uncaught error; side jobs never break a reply; the Health page shows tools failing today; and the logbook keeps each error's first cause.
-- **My engine looks after itself.** It starts again by itself after a crash (three in ten minutes and I stop and say why), tries a smaller chat memory once when it runs short, goes back to the last settings that worked, picks another port when one is taken, checks a brain file's size and checksum before loading, and reloads when it slows right down. One line in the chat when it does something, nothing when all is well.
-- **Honest reporting.** When I finish, my app checks what I said against what really happened. Numbers I worked out are worked out again, numbers are compared with the sandbox's own, and a correction replaces my first try instead of sitting above it. Each brain gets an honesty score on the Brains page.
-- **Engine names say both numbers.** From the next Brain Engine build, its name says both numbers: Brain Engine 5b12282 is build 5 on llama.cpp b12282.
-- **Time zone in Settings.** Settings, This replicant matrix shows the time zone I use and the time it is there now, read-only, so a wrong zone shows at once. My own list of my settings names it too.
-
-### Fixed
-
-- **Saves are whole or not at all.** Every save (files I write, the notice board, notes, memory, reminders, settings, chats) goes to a temp file, is flushed to the disk, then takes the real name in one step. A crash mid-save leaves the old file as it was. If Windows holds a file for a moment, I try again.
-- **One writer at a time.** Two copies of me on the same folder take turns saving settings, reminders, notes and the notice board.
-- **Bad saved files are kept, not lost.** A settings, queue or reminders file that won't read is kept beside its old name (`.broken-` and the time) and I start a fresh one. Before, an unreadable settings.json was read as empty and saved over at the next change.
-- **Settings are checked at start.** A saved setting of the wrong kind goes back to its default, and the logbook says which.
-- **Files from a newer Bob are left alone.** Going back to an older version, I read but never write a file a newer one saved in a layout I don't know.
-- **Tasks saves less often:** a step of the running job is saved within a second instead of rewriting the whole list every time. A step that changes files is still saved at once.
-- **Carry on after a restart** keeps each step's whole input and result, not just its name.
-- **A job stays with its chat.** It keeps its chat, folder and person. With Profiles on, a job one person sent waits until they open me again, instead of answering in someone else's chats.
-- **Undo changes** in the … menu on your message puts back every file, note and memory line I changed for that message (for a week). A file changed since is left as it is.
-- **Memory changes are logged** in memory-changes.jsonl beside the memory file, with the chat and message that made each one.
-- **A check at start:** old temp files cleared, then folders, disk space, the engine and saved files checked. One line in the logbook; a note in the chat only when something is wrong.
-- **When I get stuck, I notice.** A reply that sends no first word for far longer than the chat needs, or stops partway, is asked again, and only that brain reloads. An answer that hits the length limit says so, and a tool call cut off that way isn't run. Stop checks a few seconds later that commands and the engine really ended. A load that takes twice its usual time is tried once more. Downloads, updates, Bob-Net and Telegram calls all have deadlines. If I stop answering the window for a minute I say so when I'm back, with a Restart button. OK cards don't count time the computer was asleep.
-- **Long PDFs keep their first page.** A PDF changed after it was made (arXiv stamps its id on page 1) kept its new first page at the end of the file, so I read the title and abstract last or not at all. I follow the PDF's own page order now. Citations, footnote marks and maths no longer come out one piece a line ("[13]", not "[", "13", "]").
-- **Notepad's old tabs are left alone.** Windows 11 Notepad opens again on the tabs left open last time, unsaved notes and all, and I typed into one. Now I open a new blank tab when that happens, and I never type into a page that was already open.
-- **"Don't save the file" is honoured.** When your message says not to save, I don't save a file or offer one, and a long text that's too slow to type is offered in parts instead of as a file.
-- **The firewall rule lets SCUT through.** Bob's rule opened only TCP on his port and the card port, and SCUT also needs UDP on the card port, so SCUT fell back to TCP. The rule now always has the UDP half (same addresses: Tailscale, and the home network when that's on), and a rule made before shows **Bring up to date**.
-- **Bring in chats** works again (a missing import stopped it).
-
-**Where it works:** Windows, Mac, Linux and Bob for Android, unless a line says otherwise. The Notepad fix is Windows only. Email, calendar and page watch need the internet; everything else in More tools works offline. Help covers each new part.
 
 ## Older versions
 
