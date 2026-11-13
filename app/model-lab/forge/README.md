@@ -225,6 +225,14 @@ Plan `plans/gptoss-lessons-v5.json` (benchmark-only, one H200, caps 6 h / $32; n
 - After the run: `clean-lessons.mjs --distill ""` into a new folder, then scrub. Hugging Face only on the owner's word. GPT-OSS odds only fit GPT-OSS-family students (the 38B). Qwen odds for these lessons need a scoring pass, which llama-server can't do.
 - Check on the PC before renting: that the odds cover the thinking words (compare `odds` length with the answer's tokens), that the trace rows grow when thinking is included, and the Windows quoting of `{{out}}/../`.
 
+### Lesson writing: teacher routing, tool notes, fix after review (13 Nov, from the v5 keep rates)
+
+GPT-OSS 120B kept few lessons on the tool-heavy jobs (reminders 3/23, research 2/12, office 3/16, newtool 5/21, plans 5/19, schedules 2/7, knowledge 9/29), and the rejects were real tool mistakes. It did well on clarify (15/15), memory (8/8) and maths (10/13). So `write-lessons.mjs` now has:
+- `--route general|tools` with the full `--jobs` list keeps only that teacher's share. The tool list defaults to the seven jobs above; `--tool-jobs a,b` overrides it. A plan runs the same command under each teacher, each into its own `--dir`, for example `--route general --teacher gpt-oss-120b --dir bob-gptoss` on the GPT-OSS brain and `--route tools --teacher qwen36 --dir bob-qwen` on the Qwen brain. Each set keeps its own teacher's odds.
+- `--teacher <name> --kind bob|style|distill` is stamped on every lesson, reject and odds row. A folder holds one teacher and one kind (`set-info.json`); a run with another teacher or kind into it is refused.
+- `--tool-effort high` (GPT-OSS): the routed tool jobs always think, at that effort. `--tool-note` shows the writer a short note on how Bob's tools work for those jobs. It is teacher-only: never in the saved lesson, its set key or Bob's start prompt.
+- After a failed review, the lesson is tried once more with the reviewer's reason shown to the writer (teacher-only). The fix is saved with `retry: "review"`. The reject stays in `rejected.jsonl` under the same idea, so `make-pairs.mjs` turns them into a right-vs-wrong pair. `--no-fix` turns this off.
+
 ### Riker's weights calibration and evil check (13 Nov)
 
 **Rented-card fixes (13 Nov).**

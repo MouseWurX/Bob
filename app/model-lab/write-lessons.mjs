@@ -28,6 +28,7 @@ const parallel = Math.max(1, Number(o.parallel) || 1);
 const kit = await loadBob(L.bob);
 // 12 Nov (later): the idea writer is told what Bob's tools can really do, so it doesn't invent jobs no tool covers (calendar events...)
 const TOOLBOX = (() => { try { return Object.entries(kit.groups()).map(([k, g]) => `${k} (${g.what || (g.tools || []).join(', ')})`).join('; '); } catch { return ''; } })();
+const TOOL_NOTE = `How Bob's tools work (a note for you only; never mention it): call a tool only when the request needs one, and the one whose description fits; copy names, paths, dates, times and amounts from the message exactly into the arguments; save files inside the folders Bob is allowed to use (his own output folder when none is given) and ask before writing anywhere else; read each tool result before the next step and use what it returned; reminders, schedules and the notice board each have their own tool, never a file; when a needed detail is truly missing, ask one short question instead of guessing; finish with a plain answer that says what was done and where.${TOOLBOX ? ` Bob's tool groups: ${TOOLBOX}.` : ''}`;
 const toolboxNote = TOOLBOX ? ` Only ask for things this assistant can really do: its basic tools (list and read files, web search, open a web page, reminders, a notice board, memory) plus ${TOOLBOX}. Nothing else (no calendar app, no email sending, no phone calls).` : '';
 // and, for jobs where the message should carry everything, the teacher (only) is reminded to act on it rather than ask again
 const ACT_JOBS = new Set(['precise', 'missed', 'agent', 'twins', 'recover', 'codefix', 'research', 'files', 'office', 'run', 'schedules', 'web', 'pictures', 'reminders', 'security', 'apps']);
@@ -80,7 +81,35 @@ const JOBS = [
   ['apps', 'using apps on the PC: open, type into, click in Blender or Unreal through connected apps', 2],
   ['help', 'how to use Bob himself: his settings, sessions, brains, Hands, Bob-Net, phone app, updates', 4]
 ];
-const onlyJobs = o.jobs ? String(o.jobs).split(',').map((x) => x.trim()).filter(Boolean) : null;
+// 13 Nov (v5 data: GPT-OSS 120B kept only 2-5 of every 7-23 lessons on the tool-heavy jobs, the rejects real tool mistakes, but
+// 15/15 on clarify, 8/8 memory, 10/13 maths): per-job teacher routing. --route general keeps only the jobs NOT in the tool list,
+// --route tools only the ones in it (--tool-jobs a,b overrides the list). A plan runs the same command once per teacher, each into
+// its own --dir, so every set keeps its own teacher's odds and nothing is mixed.
+const TOOL_JOBS = new Set(o['tool-jobs'] ? String(o['tool-jobs']).split(',').map((x) => x.trim()).filter(Boolean) : ['reminders', 'research', 'office', 'newtool', 'plans', 'schedules', 'knowledge']);
+const route = ['general', 'tools'].includes(String(o.route)) ? String(o.route) : '';
+let onlyJobs = o.jobs ? String(o.jobs).split(',').map((x) => x.trim()).filter(Boolean) : null;
+if (route) {
+  if (!onlyJobs) { console.error('--route needs --jobs (the full list; the route keeps its share of it)'); process.exit(1); }
+  onlyJobs = onlyJobs.filter((x) => TOOL_JOBS.has(x.split(':')[0]) === (route === 'tools'));
+  if (!onlyJobs.length) { console.error(`--route ${route}: none of --jobs is routed to this teacher`); process.exit(0); }
+  console.log(`route ${route}: ${onlyJobs.map((x) => x.split(':')[0]).join(', ')}`);
+}
+// --teacher <name> --kind bob|style|distill: stamped on every lesson and odds row; a folder holds one teacher and one kind only
+// (set-info.json), so a second teacher or kind can never land in it by mistake (the owner's rule: kinds stay apart)
+const teacherName = o.teacher ? String(o.teacher).replace(/[^\w.-]/g, '').slice(0, 60) : '';
+const kind = o.kind ? String(o.kind) : '';
+if (kind && !['bob', 'style', 'distill'].includes(kind)) { console.error('--kind is bob, style or distill'); process.exit(1); }
+// --tool-effort high (GPT-OSS): the routed tool jobs always think, at this effort. --tool-note: a short teacher-only note on how
+// Bob's tools work goes to the writer on those jobs (never into the saved lesson, its set key or Bob's own start prompt)
+const toolEffort = ['low', 'medium', 'high'].includes(String(o['tool-effort'])) ? String(o['tool-effort']) : '';
+const toolNoteOn = Boolean(o['tool-note']);
+if (teacherName || kind) {
+  const infoF = path.join(dir, 'set-info.json'), want = { teacher: teacherName || null, kind: kind || null };
+  const had = fs.existsSync(infoF) ? JSON.parse(fs.readFileSync(infoF, 'utf8')) : null;
+  if (had && ((had.teacher || null) !== want.teacher || (had.kind || null) !== want.kind)) { console.error(`${dir} holds ${had.kind || '?'} lessons from ${had.teacher || '?'}; this run is ${want.kind || '?'} from ${want.teacher || '?'}: use another --dir (sets never mix)`); process.exit(1); }
+  if (!had) { if (readJsonl(F.lessons).length) { console.error(`${dir} already has lessons with no set-info.json: use another --dir for --teacher/--kind`); process.exit(1); } fs.writeFileSync(infoF, JSON.stringify({ ...want, made: new Date().toISOString() }, null, 1)); }
+}
+const stamp = { ...(teacherName ? { teacher: teacherName } : {}), ...(kind ? { kind } : {}) };
 const SCI_ANGLES = ['physics: motion, energy, forces, heat, light, with a worked calculation', 'electronics: circuits, Ohm\'s law, resistors, capacitors, transistors, microcontrollers, power supplies', 'chemistry: reactions, moles, acids and bases, materials, safety', 'maths beyond arithmetic: algebra, geometry, trig, probability, a bit of calculus', 'checking a calculation or unit conversion the person already did', 'explaining a science concept in plain words to a curious adult', 'practical engineering: batteries, motors, 3D printing materials, soldering, sensors'];
 const thinkMode = String(o.think || 'half');
 // --think 80 (13 Nov): that percent of the lessons think, spread evenly (a style set: mostly thinking, a few without so both modes stay healthy)
@@ -98,8 +127,8 @@ const oddsK = Math.max(0, Math.min(64, Number(o.odds) || 0));
 const effort = ['low', 'medium', 'high'].includes(String(o.effort)) ? String(o.effort) : '';
 // --sampling t,p,k: the writer's own published sampling (GPT-OSS: 1,1,0) instead of Qwen's
 const sampling = o.sampling ? String(o.sampling).split(',').map(Number) : null;
-const extraBody = (think) => ({
-  ...(effort ? { chat_template_kwargs: { enable_thinking: Boolean(think), reasoning_effort: think ? effort : 'low' } } : {}),
+const extraBody = (think, job) => ({
+  ...(effort || toolEffort ? { chat_template_kwargs: { enable_thinking: Boolean(think), reasoning_effort: think ? (toolEffort && TOOL_JOBS.has(job) ? toolEffort : effort || 'medium') : 'low' } } : {}),
   ...(sampling ? { temperature: sampling[0], top_p: sampling[1], top_k: sampling[2] } : {}),
   ...(oddsK ? { logprobs: true, top_logprobs: oddsK } : {}),
 });
@@ -200,9 +229,9 @@ const imgPart = (file) => { const b = fs.readFileSync(path.join(picDir, file)); 
 // Mixed order (stable between runs), so stopping early still leaves a mix of every job.
 const h = (s) => crypto.createHash('md5').update(s).digest('hex');
 const order = [...ideas].sort((x, y) => (h(x.id) < h(y.id) ? -1 : 1));
-let n = done.size, i = 0, skipped = 0, rescued = 0;
+let n = done.size, i = 0, skipped = 0, rescued = 0, fixed = 0;
 const queue = order.filter((x) => !done.has(x.id));
-async function one(idea, think, room = 1) { // room 2 = a second try with twice the word budget (build 18)
+async function one(idea, think, room = 1, fix = '') { // room 2 = a second try with twice the word budget (build 18); fix = the reviewer's reason for a failed first try
   const loaded = new Set(kit.guessGroups(idea.text));
   const user = idea.image ? { role: 'user', content: [{ type: 'text', text: idea.text }, imgPart(idea.image)] } : { role: 'user', content: idea.text };
   const saved = [{ role: 'user', content: idea.text, ...(idea.image ? { image: idea.image } : {}) }];
@@ -214,8 +243,9 @@ async function one(idea, think, room = 1) { // room 2 = a second try with twice 
     const sys = tag ? `${t.system}\n\n${tag}` : t.system;
     const set = setKey(sys, t.tools);
     // teacher-only additions (persona, act nudge) go to the server but never into the saved prompt or the set key
-    const teacherOnly = [persona, ACT_JOBS.has(idea.job) ? ACT_NUDGE : ''].filter(Boolean).join('\n\n');
-    const { msg, finish, logprobs, oddsGaps } = await chat(srv.url, { messages: [{ role: 'system', content: teacherOnly ? `${sys}\n\n${teacherOnly}` : sys }, ...live], tools: t.tools, think, max: (think ? 6000 : 3000) * room, ...extraBody(think) });
+    const teacherOnly = [persona, ACT_JOBS.has(idea.job) ? ACT_NUDGE : '', toolNoteOn && TOOL_JOBS.has(idea.job) ? TOOL_NOTE : '',
+      fix ? `A reviewer failed an earlier answer to this same message because: ${fix}. Do it right this time; never mention the review.` : ''].filter(Boolean).join('\n\n');
+    const { msg, finish, logprobs, oddsGaps } = await chat(srv.url, { messages: [{ role: 'system', content: teacherOnly ? `${sys}\n\n${teacherOnly}` : sys }, ...live], tools: t.tools, think, max: (think ? 6000 : 3000) * room, ...extraBody(think, idea.job) });
     if (oddsK) { const pk = packOdds(logprobs); odds.push({ step, set, covers: oddsCover(pk, msg.reasoning_content), ...(oddsGaps !== undefined ? { gaps: oddsGaps } : {}), odds: pk }); }
     if (finish === 'length') throw new Error('ran out of room');
     const a = { role: 'assistant', content: msg.content || '', ...(msg.reasoning_content ? { reasoning: msg.reasoning_content } : {}), ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}), set };
@@ -235,10 +265,12 @@ async function one(idea, think, room = 1) { // room 2 = a second try with twice 
     const v = await grade(idea, saved);
     // 12 Nov (later): a review that couldn't be read is neither kept nor rejected; it waits in needs-review.jsonl for a second look
     if (v.unparsed) { appendJsonl(path.join(dir, 'needs-review.jsonl'), { idea: idea.id, job: idea.job, think, why: v.why, messages: saved }); throw new Error('review unparsed'); }
-    if (!v.ok) { appendJsonl(path.join(dir, 'rejected.jsonl'), { idea: idea.id, job: idea.job, think, why: v.why, messages: saved }); throw new Error(`review: ${v.why}`); }
+    if (!v.ok) { appendJsonl(path.join(dir, 'rejected.jsonl'), { idea: idea.id, job: idea.job, think, ...stamp, ...(fix ? { retry: 'review' } : {}), why: v.why, messages: saved }); const e = new Error(`review: ${v.why}`); e.why = v.why; throw e; }
   }
-  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, ...(splitTag ? { split: splitTag } : {}), messages: saved });
-  if (oddsK) appendJsonl(path.join(dir, 'odds.jsonl'), { idea: idea.id, job: idea.job, think, k: oddsK, turns: odds });
+  // a lesson fixed after a failed review carries retry: 'review'; its reject sits in rejected.jsonl under the same idea, so
+  // make-pairs.mjs turns the two into a right-vs-wrong pair (the reviewer's reason goes along as why)
+  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, ...stamp, ...(fix ? { retry: 'review' } : {}), ...(splitTag ? { split: splitTag } : {}), messages: saved });
+  if (oddsK) appendJsonl(path.join(dir, 'odds.jsonl'), { idea: idea.id, job: idea.job, think, ...stamp, k: oddsK, turns: odds });
 }
 // The teacher as a strict reviewer: right tool or rightly none, exact arguments, results read, a final answer that does the job.
 const RULES = { restraint: 'This message only wants an answer Bob knows: calling any tool is a FAIL.', precise: 'Every detail from the request (names, paths, dates, amounts) must appear exactly in the tool arguments.', agent: 'Each step must use what the previous result returned; the final answer must sum up what was done.' };
@@ -259,7 +291,7 @@ async function grade(idea, saved) {
 async function worker() {
   while (queue.length && n < target) {
     await pauseGate(L.out); if (Date.now() > until) return;
-    const idea = queue.shift(); const think = thinkMode === 'all' ? true : thinkMode === 'none' ? false : thinkShare != null ? Math.floor((i + 1) * thinkShare) > Math.floor(i++ * thinkShare) : (i++ % 2) === 1;
+    const idea = queue.shift(); const think = toolEffort && TOOL_JOBS.has(idea.job) ? (i++, true) : thinkMode === 'all' ? true : thinkMode === 'none' ? false : thinkShare != null ? Math.floor((i + 1) * thinkShare) > Math.floor(i++ * thinkShare) : (i++ % 2) === 1;
     try { await one(idea, think); n++; if (n % 25 === 0) console.log(`${n}/${target} lessons`); }
     catch (e) {
       // build 18 (8 Nov, the owner asked): a lesson that ran out of room is tried ONCE more instead of being dropped. With thinking on, the
@@ -268,10 +300,15 @@ async function worker() {
         try { await one(idea, false, think ? 1 : 2); n++; rescued++; if (n % 25 === 0) console.log(`${n}/${target} lessons`); continue; }
         catch (e2) { skipped++; console.log(`skip ${idea.id}: ${e2.message.slice(0, 80)} (twice: with and without room for thinking)`); continue; }
       }
+      // 13 Nov: a lesson the review failed is tried ONCE more, with the reviewer's reason shown to the writer (teacher-only)
+      if (e.why && !o['no-fix']) {
+        try { await one(idea, think, 1, e.why); n++; fixed++; if (n % 25 === 0) console.log(`${n}/${target} lessons`); continue; }
+        catch (e2) { skipped++; console.log(`skip ${idea.id}: ${e2.message.slice(0, 80)} (twice: the fix failed too)`); continue; }
+      }
       skipped++; console.log(`skip ${idea.id}: ${e.message.slice(0, 100)}`);
     }
   }
 }
 await Promise.all(Array.from({ length: parallel }, worker));
-console.log(`Done for now: ${n} lessons in ${F.lessons} (${skipped} ideas skipped, ${rescued} saved by a second try)`);
+console.log(`Done for now: ${n} lessons in ${F.lessons} (${skipped} ideas skipped, ${rescued} saved by a second try, ${fixed} fixed after a failed review)`);
 await stop(0);

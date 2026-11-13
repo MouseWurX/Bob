@@ -32,6 +32,7 @@
     "test/run-reap-calibrate-test.js",
     "test/run-trace-read-test.js",
     "test/run-evil-check-test.js",
+    "test/run-write-lessons-route-test.js",
     "test/run-make-datasets-test.js",
     "test/run-training-methods-test.js",
     "test/run-scrub-data-test.js",
