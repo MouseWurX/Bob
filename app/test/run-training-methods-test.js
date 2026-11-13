@@ -186,8 +186,23 @@ check('the dry run covers targets', /--targets/.test(st) && /the mix follows the
   check('clean-lessons lists a refusal in a fiction ask to read by hand', r2.status === 0 && /"f1"/.test(fs.readFileSync(path.join(cl, 'v4b/flagged.jsonl'), 'utf8')), r2.stderr);
   const r3 = spawnSync(process.execPath, [path.join(app, 'model-lab', 'clean-lessons.mjs'), '--from', path.join(cl, 'v3/lessons-fic'), '--out', path.join(cl, 'one')], { encoding: 'utf8' });
   check('clean-lessons takes a single lesson set too', r3.status === 0 && fs.existsSync(path.join(cl, 'one/lessons-fic/lessons.jsonl')), r3.stderr);
+  // a mix with repeats, an old full copy beside it, and a held-out file of its own
+  const facts = { idea: 'fx', job: 'facts', messages: [ask('who wrote it?'), { role: 'assistant', content: 'She did.' }] };
+  put('mix/lessons.jsonl', rows([facts, facts, facts, { idea: 'g2', job: 'chat', messages: [ask('hey'), { role: 'assistant', content: 'Hi.' }] }]));
+  put('mix/lessons-full.jsonl', rows([facts, { idea: 'zz', messages: [ask('old'), { role: 'assistant', content: 'old' }] }]));
+  put('mix/new-folded.jsonl', rows([{ idea: 'n1', job: 'chat', messages: [ask('fold'), { role: 'assistant', content: 'ok' }] }]));
+  put('mix/new-folded-heldout.jsonl', rows([{ idea: 'h1', job: 'chat', messages: [ask('hey'), { role: 'assistant', content: 'Hello.' }] }]));
+  const mixGo = (o2, extra = []) => spawnSync(process.execPath, [path.join(app, 'model-lab', 'clean-lessons.mjs'), '--from', path.join(cl, 'mix'), '--out', path.join(cl, o2), ...extra], { encoding: 'utf8' });
+  const m1 = mixGo('mix-v4');
+  const lines = (p) => fs.readFileSync(path.join(cl, p), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l).idea);
+  check('clean-lessons keeps a mix\'s repeated copies of the same lesson', m1.status === 0 && lines('mix-v4/mix/lessons.jsonl').filter((i) => i === 'fx').length === 3, m1.stderr);
+  check('clean-lessons reads lessons.jsonl and leaves a full copy beside it out', !fs.existsSync(path.join(cl, 'mix-v4/mix/lessons-full.jsonl')));
+  const m2 = mixGo('mix-v4b', ['--files', 'new-folded*.jsonl']);
+  check('clean-lessons --files picks other files and writes each under its own name', m2.status === 0 && lines('mix-v4b/mix/new-folded.jsonl').join() === 'n1' && lines('mix-v4b/mix/new-folded-heldout.jsonl').join() === 'h1', m2.stderr);
+  const m3 = spawnSync(process.execPath, [path.join(app, 'model-lab', 'clean-lessons.mjs'), '--from', cl, '--sets', 'mix', '--files', 'lessons.jsonl,new-folded-heldout.jsonl', '--out', cl + '-v4c'], { encoding: 'utf8' });
+  check('clean-lessons --sets picks named sets; a held-out file is never thinned', m3.status === 0 && !fs.existsSync(cl + '-v4c/v3') && fs.readFileSync(cl + '-v4c/mix/new-folded-heldout.jsonl', 'utf8').includes('"h1"') && !fs.readFileSync(cl + '-v4c/mix/lessons.jsonl', 'utf8').includes('"g2"'), m3.stderr + m3.stdout);
   check('clean-lessons refuses to write into the old version or a full folder', go(path.join(cl, 'v3', 'v4')).status === 1 && go(path.join(cl, 'v4')).status === 1);
-  fs.rmSync(cl, { recursive: true, force: true });
+  fs.rmSync(cl, { recursive: true, force: true }); fs.rmSync(cl + '-v4c', { recursive: true, force: true });
 }
 
 // ---- Help: FAQ in Bob's voice + glossary ----
