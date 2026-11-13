@@ -60,6 +60,58 @@ export function keepLists(s, share, by = 'mass') {
   return priority(s, by).map((order) => (order ? order.slice(0, n).sort((a, b) => a - b) : null));
 }
 
+// 13 Nov (the owner: "when we calibrate we should really do both"): the same TOTAL as keepLists(s, share), shared out
+// unevenly. Each expert's score is taken as its fraction of its own layer's total (raw scores aren't comparable across
+// layers), every layer starts with the experts it must use per word, and the rest of the budget goes to the highest
+// fractions anywhere, so a spread-out layer gets more experts and a focused one fewer. A cut file holds one expert
+// count for every layer, so this runs on the live switch; as a file it would be padded to the biggest layer (fileCount).
+export function unevenKeepLists(s, share, by = 'mass') {
+  const order = priority(s, by);
+  const routed = order.filter(Boolean).length;
+  const n = Math.min(s.experts, Math.max(s.used || 1, Math.ceil(s.experts * share)));
+  const floor = Math.min(n, s.used || 1);
+  const take = order.map((o) => (o ? floor : 0));
+  const extra = [];
+  order.forEach((o, l) => {
+    if (!o) return;
+    const tot = o.reduce((a, e) => a + scoreOf(s, l, e, by), 0) || 1;
+    for (let i = floor; i < o.length; i++) extra.push({ l, i, f: scoreOf(s, l, o[i], by) / tot });
+  });
+  extra.sort((a, b) => b.f - a.f || a.l - b.l || a.i - b.i);
+  // within a layer the fractions fall with i, so taking the top of this list always takes prefixes of each layer's order
+  for (const x of extra.slice(0, Math.max(0, n * routed - floor * routed))) take[x.l] = Math.max(take[x.l], x.i + 1);
+  return order.map((o, l) => (o ? o.slice(0, take[l]).sort((a, b) => a - b) : null));
+}
+
+// How much of each layer's score a keep list holds (0-1 per layer; null for a layer with no router).
+export function coverage(s, keep, by = 'mass') {
+  return keep.map((k, l) => {
+    if (!k || !s.layers[l]) return null;
+    const all = s.layers[l].reduce((a, _, e) => a + scoreOf(s, l, e, by), 0);
+    return all ? k.reduce((a, e) => a + scoreOf(s, l, e, by), 0) / all : 1;
+  });
+}
+
+// For each target share of a layer's score (0.5-0.99), how many experts each layer needs, strongest first (never fewer
+// than it uses per word), and the keep lists: what the live switch would take to hold that share everywhere.
+export function coverTable(s, targets = [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.99], by = 'mass') {
+  const order = priority(s, by);
+  return targets.map((t) => {
+    const keep = order.map((o, l) => {
+      if (!o) return null;
+      const sc = o.map((e) => scoreOf(s, l, e, by)), all = sc.reduce((a, b) => a + b, 0);
+      let n = 0, got = 0;
+      while (n < o.length && (n < (s.used || 1) || got < t * all)) got += sc[n++];
+      return o.slice(0, n).sort((a, b) => a - b);
+    });
+    const counts = keep.map((k) => (k ? k.length : null)), c = counts.filter((x) => x != null);
+    return { target: t, total: c.reduce((a, b) => a + b, 0), min: Math.min(...c), max: Math.max(...c), counts, keep };
+  });
+}
+
+// The expert count a cut file would need for this keep list (one count for every layer: the biggest).
+export const fileCount = (keep) => Math.max(0, ...keep.filter(Boolean).map((k) => k.length));
+
 // The smallest share whose score stays within `margin` points (percent of turns) of the full brain's.
 export function smallestGood(steps, margin = 2, cover = 0.95) {
   // 12 Nov: a step where the server crashed came back with 71 of 314 turns and looked "within the margin" on those few.
