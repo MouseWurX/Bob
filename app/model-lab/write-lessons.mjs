@@ -83,6 +83,8 @@ const JOBS = [
 const onlyJobs = o.jobs ? String(o.jobs).split(',').map((x) => x.trim()).filter(Boolean) : null;
 const SCI_ANGLES = ['physics: motion, energy, forces, heat, light, with a worked calculation', 'electronics: circuits, Ohm\'s law, resistors, capacitors, transistors, microcontrollers, power supplies', 'chemistry: reactions, moles, acids and bases, materials, safety', 'maths beyond arithmetic: algebra, geometry, trig, probability, a bit of calculus', 'checking a calculation or unit conversion the person already did', 'explaining a science concept in plain words to a curious adult', 'practical engineering: batteries, motors, 3D printing materials, soldering, sensors'];
 const thinkMode = String(o.think || 'half');
+// --think 80 (13 Nov): that percent of the lessons think, spread evenly (a style set: mostly thinking, a few without so both modes stay healthy)
+const thinkShare = /^\d+(\.\d+)?$/.test(thinkMode) ? Math.min(100, Number(thinkMode)) / 100 : null;
 // --review: the teacher reads each finished lesson and grades it; a failed one goes to rejected.jsonl (with why), not lessons.jsonl
 const review = Boolean(o.review);
 // --odds K (13 Nov, the owner's rule: every set carries its teacher's odds): each answer the teacher writes is saved with its own
@@ -241,7 +243,7 @@ async function grade(idea, saved) {
 async function worker() {
   while (queue.length && n < target) {
     await pauseGate(L.out); if (Date.now() > until) return;
-    const idea = queue.shift(); const think = thinkMode === 'all' ? true : thinkMode === 'none' ? false : (i++ % 2) === 1;
+    const idea = queue.shift(); const think = thinkMode === 'all' ? true : thinkMode === 'none' ? false : thinkShare != null ? Math.floor((i + 1) * thinkShare) > Math.floor(i++ * thinkShare) : (i++ % 2) === 1;
     try { await one(idea, think); n++; if (n % 25 === 0) console.log(`${n}/${target} lessons`); }
     catch (e) {
       // build 18 (8 Nov, the owner asked): a lesson that ran out of room is tried ONCE more instead of being dropped. With thinking on, the
