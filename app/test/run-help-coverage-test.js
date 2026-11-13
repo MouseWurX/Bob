@@ -1,6 +1,6 @@
 // 1.5.27: every setting has a Help section (2026-11-02), Help has a glossary and an FAQ, web search is a
 // switch that starts off, and Bob can read his own Help and settings (bob_help).
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import { HELP } from '../public/help-content.js';
 import { HANDS, LIMITS } from '../src/hands-settings.js';
@@ -18,7 +18,7 @@ const missing = (labels) => [...new Set(labels)].filter((l) => !helpText.include
 
 // ---- every setting label in the window is explained in Help ----
 {
-  const cellar = read('public/cellar.js');
+  const cellar = publicText('cellar.js');
   const switches = [...cellar.matchAll(/sswitch\('\w+', [^,]+, '((?:[^'\\]|\\.)+)'/g)].map((m) => m[1].replace(/\\'/g, "'"));
   check('the settings page has switches to check', switches.length >= 10, String(switches.length));
   const gone = missing(switches);
@@ -62,7 +62,7 @@ const missing = (labels) => [...new Set(labels)].filter((l) => !helpText.include
   check('a web tool called by name gets the switch card, or the switch message (1.5.91)', /WEB_TOOLS\.includes\(name\) && !webOn\(this\.cfg\)\) return \{ text: ctx\?\.emit \? await this\.offerSetup\('web', ctx\) : WEB_OFF \}/.test(brain));
   check('the scouting copy says where the switch is instead of researching', /hat === 'scout' && !webOn\(this\.cfg\)\) return WEB_OFF/.test(brain));
   check('his prompt carries the web line', /prompt \+= webPrompt\(this\.cfg(, \{ hat \})?\)/.test(brain));
-  const cellar = read('public/cellar.js');
+  const cellar = publicText('cellar.js');
   check('the switch is on the everyday Settings page, off unless turned on', /sswitch\('webSearch', settings\.webSearch === true, 'Let Bob search the web', keep\('Off unless you turn it on/.test(cellar));
   const server = read('src/server.js');
   check('the server saves and shows it', /typeof b\.webSearch === 'boolean'/.test(server) && /webSearch: cfg\.webSearch === true/.test(server));
@@ -72,10 +72,10 @@ const missing = (labels) => [...new Set(labels)].filter((l) => !helpText.include
 
 // ---- Bob knows his own settings ----
 {
-  const ix = read('public/index.html'), ws = read('public/web-switch.js'), appjs = read('public/app.js');
+  const ix = read('public/index.html'), ws = read('public/web-switch.js'), appjs = publicText('app.js');
   check('the chat page has the Web search switch in the Effort row, off to start', /<div id="effort"[\s\S]*id="webBtn"[^>]*role="switch" aria-checked="false"[\s\S]*<\/div>\s*<form id="composer"/.test(ix));
   check('the chat switch saves the same webSearch setting', /webSearch: !on/.test(ws) && /createWebSwitch/.test(appjs));
-  check('Settings and the chat switch tell each other', /bob-web/.test(read('public/cellar.js')) && /addEventListener\('bob-web'/.test(ws));
+  check('Settings and the chat switch tell each other', /bob-web/.test(publicText('cellar.js')) && /addEventListener\('bob-web'/.test(ws));
   check('Bob\'s off-message names the chat switch', /WEB_PILL/.test(read('src/web.js')) && /next to Effort/.test(read('src/web.js')));
   check('bob_help is one of his everyday tools', CORE.includes('bob_help'));
   check('bob_help finds the web switch', findHelp('web search switch')[0]?.id === 'research' || findHelp('web search switch').some((e) => e.id === 'research'));

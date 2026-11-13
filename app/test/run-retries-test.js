@@ -1,6 +1,6 @@
 // Reliability items 193-207: errors and retries. Always on (they are fixes). Fake engines, fake Bobs and fake
 // timers only: nothing real is loaded, fetched or started, and nothing reads the real computer.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -74,7 +74,7 @@ const seq = (...xs) => { let i = 0; return () => xs[Math.min(i++, xs.length - 1)
   const c3 = carryOnTokens('Hello world', (t) => out3.push(t), (n) => { undo3 += n; });
   c3.onToken('Hello'); c3.finish();
   check('193 a retry that ends shorter takes back the rest', undo3 === ' world'.length && !out3.length);
-  check('193 the desktop window, the phone and a job from another Bob all know token-undo', /case 'token-undo'/.test(read('public/app.js')) && /token-undo/.test(read('android/app/src/main/assets/www/phone.js')) && /token-undo/.test(read('src/share-jobs.js')));
+  check('193 the desktop window, the phone and a job from another Bob all know token-undo', /case 'token-undo'/.test(publicText('app.js')) && /token-undo/.test(read('android/app/src/main/assets/www/phone.js')) && /token-undo/.test(read('src/share-jobs.js')));
 }
 
 // ---------- 198: plain words, from the error's own code ----------

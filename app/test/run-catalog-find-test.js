@@ -8,6 +8,7 @@ import { NAUGHTY_WORDS as SERVER_WORDS, makeEntry, cleanAdded } from '../src/cat
 import { NAUGHTY_WORDS } from '../public/cat-sort.js';
 import { hitMaker, hitNaughty, hitReap, shownHits, cleanFind, findHtml } from '../public/cat-find.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok ? '' : ' ' + extra}`); };
@@ -84,7 +85,7 @@ check('the choices are cleaned', JSON.stringify(cleanFind({ host: 'zz', sort: 1,
   check('a hit\'s name can\'t smuggle markup onto the page', !/<script>/.test(findHtml({ find: { searched: true, hits: [{ host: 'hf', repo: 'a/b', name: '<script>', page: 'https://huggingface.co/a/b', created: '', modified: '', downloads: 0, likes: 0, license: '<script>', base: '', how: '' }] } })));
 }
 {
-  const cellar = read('public/cellar.js'), server = read('src/server.js'), find = read('src/catalog-find.js');
+  const cellar = publicText('cellar.js'), server = read('src/server.js'), find = read('src/catalog-find.js');
   check('only Search asks the site: the menus alone never do', /findForm\) \{ e\.preventDefault\(\);[^\n]*await findRun\(\)/.test(cellar) && !/el\.dataset\.find\) \{[^\n]*findRun/.test(cellar));
   check('Show its files goes through Add a model page, so every added brain is pinned and checked', /b\.dataset\.findpick\)[^]*?api\('\/api\/catalog-added\/look', \{ page: link \}\)[^]*?pagePick\(r, link\)/.test(cellar));
   check('finding is for the replicant matrix itself, not the phone, and sends no token', /p === '\/api\/catalog-find'\) \{\s*if \(!isLocal\) return send\(res, 403/.test(server) && !/authorization|token/i.test(find.replace(/^\/\/.*$/gm, '')));

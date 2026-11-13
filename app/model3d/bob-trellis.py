@@ -36,9 +36,15 @@ def download(job):
     total = len(files)
     for i, (w, f) in enumerate(files, 1):
         dest = os.path.join(local_dir(models, w["repo"]), f["path"])
-        if os.path.exists(dest) and os.path.getsize(dest) == f["bytes"] and (not f.get("sha256") or os.path.exists(dest + ".ok")):
-            say(i, total, f"have {f['path']}")
-            continue
+        if os.path.exists(dest) and os.path.getsize(dest) == f["bytes"]:
+            if not f.get("sha256") or os.path.exists(dest + ".ok"):
+                say(i, total, f"have {f['path']}")
+                continue
+            # moved or copied here without its .ok mark: check it in place rather than fetch it again
+            say(i, total, f"checking {f['path']} that's already here")
+            if sha256(dest) == f["sha256"]:
+                open(dest + ".ok", "w").close()
+                continue
         say(i, total, f"getting {w['repo']} {f['path']} ({f['bytes'] / 1e9:.2f} GB)")
         try:
             got = hf_hub_download(w["repo"], f["path"], revision=w["revision"], local_dir=local_dir(models, w["repo"]))
@@ -70,6 +76,30 @@ def download(job):
     print("DONE " + models, flush=True)
 
 
+def newest_cards(torch):
+    """RTX 50-series (compute 12.x): xformers 0.0.31's FlashAttention kernels ask these cards for more shared
+    memory than they have ("flash_fwd_launch_template.h: invalid argument", the 1.5.211 PC check). Bob's own
+    add-ons are built for them; only that one part isn't. So here the plain attention goes through PyTorch (which
+    knows these cards) and the sparse attention through xformers' other kernels, with FlashAttention left out."""
+    if torch.cuda.get_device_capability(0)[0] < 12:
+        return
+    os.environ["ATTN_BACKEND"] = "sdpa"
+    os.environ["SPARSE_ATTN_BACKEND"] = "xformers"
+    from xformers.ops.fmha import flash
+    first = flash.FwOp.not_supported_reasons
+    flash.FwOp.not_supported_reasons = classmethod(
+        lambda cls, d: list(first(d)) + ["Bob: left out on RTX 50-series cards"])
+    import xformers.ops as xops  # a tiny run now, so a problem shows here in plain words, not mid-model
+    q = torch.randn(1, 40, 4, 64, device="cuda", dtype=torch.float16)
+    mask = xops.fmha.BlockDiagonalMask.from_seqlens([16, 24])
+    try:
+        xops.memory_efficient_attention(q, q, q, mask)
+        torch.cuda.synchronize()
+    except Exception as e:
+        raise SystemExit(f"Picture to 3D couldn't run its attention on this RTX 50-series card: {e}")
+    print("CARD RTX 50-series: PyTorch attention, xformers without FlashAttention", flush=True)
+
+
 def make(job):
     os.environ.setdefault("ATTN_BACKEND", "xformers")
     os.environ.setdefault("SPARSE_ATTN_BACKEND", "xformers")
@@ -82,6 +112,7 @@ def make(job):
     from PIL import Image
     if not torch.cuda.is_available():
         raise SystemExit("No NVIDIA graphics card answered. Picture to 3D needs one.")
+    newest_cards(torch)
     from trellis2.pipelines import Trellis2ImageTo3DPipeline
     import o_voxel
     here = local_dir(job["models"], "microsoft/TRELLIS.2-4B")

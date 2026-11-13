@@ -11,6 +11,7 @@ import { SHORTCUTS, match, listHtml, macKeys } from '../public/shortcuts.js';
 import { WANTS } from '../public/wants.js';
 import { HELP } from '../public/help-content.js';
 import '../public/math-core.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -84,13 +85,13 @@ check('typing in another language (composing) is left alone', match({ ...key('k'
 check('every switchable shortcut has a match', SHORTCUTS.filter((s) => !s.always).every((s) => ['newChat', 'stop', 'search', 'session', 'focus', 'lastMsg', 'copyReply', 'settings', 'list'].includes(s.id)));
 check('the list shows Mac keys on a Mac', listHtml({ mac: true }).includes('⌘⇧O') && macKeys('Ctrl+K') === '⌘K');
 check('the list says whether the switch is on', listHtml({ on: false }).includes('Off: Settings, Bob himself, Keyboard shortcuts') && listHtml({ on: true }).includes('On: '));
-const app = read('public/app.js');
+const app = publicText('app.js');
 check('the main window wires the keys and the list', /installShortcuts\(\{/.test(app) && /bob-shortcuts/.test(app) && /data-help-shortcuts/.test(read('public/help.js')));
 
 // ---------- Settings, Welcome list, Help ----------
 check('both are settings, off by default', SETTING_KEYS.includes('mathView') && SETTING_KEYS.includes('shortcuts') && mergeSettings({}, { mathView: 'yes', shortcuts: 1 }).mathView === false && mergeSettings({}, { shortcuts: 1 }).shortcuts === false);
 check('both save when turned on', mergeSettings({}, { mathView: true }).mathView === true && mergeSettings({}, { shortcuts: true }).shortcuts === true);
-const cellar = read('public/cellar.js');
+const cellar = publicText('cellar.js');
 check('both switches are in Settings, Bob himself, drawn all the time', /sswitch\('mathView', settings\.mathView === true, 'Show maths as formulas'/.test(cellar) && /sswitch\('shortcuts', settings\.shortcuts === true, 'Keyboard shortcuts'/.test(cellar));
 check('both are on the Welcome\'s Do you want me to list', ['mathView', 'shortcuts'].every((k) => WANTS.some((w) => w.key === k && w.card === 'bob')));
 const help = (id) => HELP.find((h) => h.id === id);

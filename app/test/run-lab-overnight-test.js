@@ -1,7 +1,7 @@
 // The Lab, items 27 to 34 of "50 ways to make Bob better" (Nov 11): the real entry test, the job queue, the wobble,
 // Lab scores on the Brains page, the check after engine updates, Teach it from my mistakes, fNRI scans in My Lab, and
 // the Forge pointing at Make a brain. Everything runs on fakes and a throwaway folder: no brain, engine or card.
-import { labText } from './source-text.js';
+import { labText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -74,7 +74,7 @@ check('the wobble is half the gap between the lowest and highest run', wobbleOf(
   const line = labLine({ value: 'tb', entry: { id: 'tb' } }, { labScores: scores });
   check('the Brains page line reads in plain words', line === 'Lab: tools 75 · coding 80 · 41 words a second here (2026-11-12)', line);
   check('no line when the Lab has no scores for that brain', labLine({ value: 'x', entry: { id: 'x' } }, { labScores: scores }) === '' && labLine({ value: 'x' }, {}) === '');
-  check('the Brains page asks for them and passes them in', /api\('\/api\/lab\/brain-scores'\)/.test(read('public/cellar.js')) && /calAsk, labScores, \.\.\.more \}/.test(read('public/cellar.js')));
+  check('the Brains page asks for them and passes them in', /api\('\/api\/lab\/brain-scores'\)/.test(publicText('cellar.js')) && /calAsk, labScores, \.\.\.more \}/.test(publicText('cellar.js')));
   // ---- 31 Check again after engine updates ----
   check('a drop bigger than luck is said; a small one isn\'t', /went from 70 to 60/.test(dropLine('Riker', { score: 70, tps: 100 }, { score: 60, tps: 100 }, 'Brain Engine 4')) && dropLine('Riker', { score: 70, tps: 100 }, { score: 67, tps: 95 }) === '');
   check('the measured wobble widens what counts as luck', dropLine('Riker', { score: 70, wobble: 8 }, { score: 63 }) === '');
@@ -155,7 +155,7 @@ check('the wobble is half the gap between the lowest and highest run', wobbleOf(
   said.length = 0;
   const after = [{ brainId: 'main', name: 'Main Brain', scores: { quiz: 60 }, tps: 99, old: [], wobble: {} }];
   check('when it\'s done a real drop is said in chat and kept', recheckTick({ lab, queue: q, mainId: 'main', version: 'Brain Engine b2', rows: after }) === 'checked' && said.some((e) => e.type === 'lab-recheck' && /72 to 60/.test(e.text)) && readRecheck(cfg).last.after.score === 60);
-  check('the chat shows that line, and the switch is on the Challenges page', /case 'lab-recheck': note\(ev\.text\)/.test(read('public/app.js')) && /data-recheck/.test(read('public/lab.js')));
+  check('the chat shows that line, and the switch is on the Challenges page', /case 'lab-recheck': note\(ev\.text\)/.test(publicText('app.js')) && /data-recheck/.test(read('public/lab.js')));
   check('the setting is saved off unless switched on', /'labRecheck' in out\) out\.labRecheck = out\.labRecheck === true/.test(read('src/config.js')));
 }
 

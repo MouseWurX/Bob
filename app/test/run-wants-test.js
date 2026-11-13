@@ -10,12 +10,13 @@ import { CARDS, cardOf } from '../public/settings-map.js';
 import { HELP } from '../public/help-content.js';
 import { mergeSettings, SETTING_KEYS } from '../src/config.js';
 import { esc } from '../public/util.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
 const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\r\n/g, '\n');
-const cellar = read('public/cellar.js'), server = read('src/server.js'), app = read('public/app.js');
+const cellar = publicText('cellar.js'), server = read('src/server.js'), app = publicText('app.js');
 const plain = (s) => String(s).replace(/<[^>]+>/g, ' ').replace(/\\'/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ').toLowerCase();
 const helpText = plain(HELP.map((e) => `${e.title} ${e.html}`).join(' '));
 

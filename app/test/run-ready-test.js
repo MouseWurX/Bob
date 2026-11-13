@@ -9,6 +9,7 @@ import { ModelShop } from '../src/models.js';
 import { Brain } from '../src/brain.js';
 import { OWN_PYTHON, getOwnPython, ownPythonExe } from '../src/audio.js';
 import { OS } from '../src/platform.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -50,7 +51,7 @@ const models = (here = []) => catalog.models.map((m) => ({ ...m, status: { state
   const both = readyToggle(go(32), readyToggle(go(32), readyDefaults(go(32)), 'gemma4-26b', true), 'qwen3.8-27b', true);
   const eq = readyOrder(go(32), both).equip;
   check('both ticked: Qwen 3.8 27B thinks deep, Gemma 4 26B does Office', eq['qwen3.8-27b']?.join() === 'deep' && eq['gemma4-26b']?.join() === 'office');
-  const welcome = read('public/cellar.js');
+  const welcome = publicText('cellar.js');
   check('the Welcome has one Get Bob ready button and sends the slots to Bob', /data-getready>Get Bob ready \(about/.test(welcome) && /equip: order\.equip/.test(welcome) && !/data-getpack/.test(welcome));
 }
 
@@ -147,7 +148,7 @@ const models = (here = []) => catalog.models.map((m) => ({ ...m, status: { state
   check('...which switches only that setting on', cfg.webSearch === true);
   check('offer_setup is listed only while something is missing or off', brain.tools.offer_setup && typeof brain.offerNeeded() === 'boolean');
   check('a job from another Bob gets no card here', /Not here/.test(await brain.offerSetup('video', { emit: () => { throw new Error('no card'); }, job: { guest: { from: 'Laptop Bob' } } })));
-  const app = read('public/app.js'), phone = read('android/app/src/main/assets/www/phone.js');
+  const app = publicText('app.js'), phone = read('android/app/src/main/assets/www/phone.js');
   check('the PC window shows the card', /case 'offer-setup'/.test(app) && /\/api\/setup\/answer/.test(app));
   check('the phone app shows the same card', /ev\.type === 'offer-setup'/.test(phone) && /\/api\/setup\/answer/.test(phone) && /Set it up \(about/.test(phone));
   check('the server answers the card from the phone too (the card id is the permission)', /p === '\/api\/setup\/answer'/.test(read('src/server.js')));
@@ -158,7 +159,7 @@ const models = (here = []) => catalog.models.map((m) => ({ ...m, status: { state
   check('pinned to the PSF-signed package with a checksum', /^https:\/\/api\.nuget\.org\//.test(OWN_PYTHON.url) && /^[0-9a-f]{64}$/.test(OWN_PYTHON.sha256));
   const audio = read('src/audio.js');
   check('setup gets his own Python instead of "install Python first"', /py = await getOwnPython\(cfg/.test(audio) && !/Install it from \$\{PYTHON_DOWNLOAD\} with the normal installer, then click Get again/.test(audio));
-  check('no screen tells people to install Python by hand any more', !/python\.org/.test(read('public/cellar.js')));
+  check('no screen tells people to install Python by hand any more', !/python\.org/.test(publicText('cellar.js')));
   if (OS === 'win') {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-py-'));
     const bad = async () => ({ ok: true, url: OWN_PYTHON.url, body: (async function* () { yield Buffer.from('not python'); })() });

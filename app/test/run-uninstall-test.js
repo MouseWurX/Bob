@@ -1,5 +1,5 @@
 // Tests "Remove Bob": what it plans to remove, the guards against removing anything else, and the window.
-import { serverText } from './source-text.js';
+import { serverText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -52,7 +52,7 @@ check('it also waits for any program running from the Bob app folder, not just t
 check('the window script is plain ASCII with no PowerShell 7 syntax', !/[^\x00-\x7F]/.test(ps) && !/\?\?/.test(ps));
 const server = serverText();
 check('removal is local only, needs the confirm, and turns off Launch on start-up first', /p === '\/api\/uninstall'\) \{\s*if \(!isLocal\)/.test(server) && /confirm !== 'remove'/.test(server) && /if \(autostartOn\(\)\) await setAutostart\(cfg, false\)/.test(server));
-const ui = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+const ui = publicText('cellar.js');
 check('Settings shows the full path and says the rest of the inn stays', /Also delete everything in <code>\$\{esc\(pl\.inn\)\}<\/code>/.test(ui) && /The rest of the inn folder/.test(ui));
 check('Settings asks before removing, with notes and models unticked', /Yes, remove Bob/.test(ui) && /data-rmnotes>/.test(ui) && !/data-rmnotes checked/.test(ui) && /data-rmmodels>/.test(ui));
 check('the README says how to remove Bob', /## Removing Bob/.test(fs.readFileSync(new URL('../../README.md', import.meta.url), 'utf8')));

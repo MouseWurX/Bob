@@ -6,6 +6,7 @@ import { setUpHtml, handLock, SETUPS, setupOf, setupPlan, duoNeedsQuick, brainsH
 import { HELP } from '../public/help-content.js';
 import { bobMenuHtml, loadedLine } from '../public/bob-menu.js';
 import { readyList, readyDefaults, readyOrder, SPLITS, splitPicks } from '../public/equip.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok ? '' : ' ' + extra}`); };
@@ -55,7 +56,7 @@ const ctx = { roles, models, brains: { small: 'gemma4-e4b', deep: 'bobert-35b' }
   check('no computer specs yet: the page still draws', /Brains in use/.test(brainsHtml({ ...ctx, vramGB: null, ramGB: null })));
 }
 {
-  const cellar = read('public/cellar.js');
+  const cellar = publicText('cellar.js');
   check('the Brains page is the one place: Get models, Brains and the old Equip Bob page id open Settings, Brains', /if \(id === 'roles'\) \{ tab = 'settings'; jumpTo = 'adv-brains'; return; \}/.test(cellar) && !/label: 'Equip Bob'/.test(cellar) && /brainsHtml\(brainsCtx\(\{ inSettings: true \}\)\)/.test(cellar));
   check('a remembered paper doll view lands on the Brains page', /getItem\('bob-brains-view'\) === 'list' \? 'list' : 'brains'/.test(cellar));
   check('the two menus save through the same equip call as the plain list', /el\.dataset\.brainjob && el\.value\) \{[^}]*await equip\(el\.value, el\.dataset\.brainjob/.test(cellar) && /el\.dataset\.jobbrain && el\.value\) \{[^}]*await equip\(el\.dataset\.jobbrain, el\.value/.test(cellar));
@@ -63,7 +64,7 @@ const ctx = { roles, models, brains: { small: 'gemma4-e4b', deep: 'bobert-35b' }
 }
 // ---- 1.5.207: the Brains page lives in Settings, Brains, and the plain list has the same tools ----
 {
-  const cellar = read('public/cellar.js'), app = read('public/app.js');
+  const cellar = publicText('cellar.js'), app = publicText('app.js');
   const place = { engineHere: true, brains: { 'bobert-35b': { layers: 41, set: { mode: 'hand', cpuMoe: 16 } }, 'riker-28b-q3': { layers: 0, set: { mode: 'auto' } } } };
   const c = { ...ctx, place };
   const top = listTopHtml(c);
@@ -102,7 +103,7 @@ const ctx = { roles, models, brains: { small: 'gemma4-e4b', deep: 'bobert-35b' }
   check('fewer brains is never a bigger download', readyOrder(rows, splitPicks(rows, 'one')).sizeGB <= readyOrder(rows, splitPicks(rows, 'duo')).sizeGB && readyOrder(rows, splitPicks(rows, 'duo')).sizeGB <= readyOrder(rows, all).sizeGB);
   check('the programs the ticked brains run on are still ticked', rows.filter((r) => r.kind === 'engine' && r.core && !r.here).every((r) => splitPicks(rows, 'one').has(r.id)));
   check('four choices; Across my Bobs is shown, locked, and says when it opens', SPLITS.map((x) => x.id).join() === 'one,duo,specialists,bobs' && /Bob-Net/.test(SPLITS[3].lock) && SPLITS.slice(0, 3).every((x) => !x.lock));
-  const cellar = read('public/cellar.js');
+  const cellar = publicText('cellar.js');
   check('the first-time screen offers it as labelled radio buttons, Specialists chosen at the start', /let wSplit = 'specialists'/.test(cellar) && /<legend><strong>How should I split my brains\?<\/strong>/.test(cellar) && /type="radio" name="wsplit" data-wsplit=/.test(cellar) && /wPicks = splitPicks\(rows, wSplit\)/.test(cellar));
 }
 // ---- Set up: one brain's own page ----
@@ -120,7 +121,7 @@ const ctx = { roles, models, brains: { small: 'gemma4-e4b', deep: 'bobert-35b' }
   const e4b = brainsHtml({ ...c, setUp: 'gemma4-e4b' });
   check('a brain that can\'t be set by hand keeps the controls on the page, locked, with the reason', /data-placemoe="gemma4-e4b" disabled/.test(e4b) && /data-placemode="hand"[^>]*disabled/.test(e4b) && /🔒 This brain has no experts to move/.test(e4b));
   check('the reasons: no experts, a number in the settings file, not read yet', /no experts to move/.test(handLock({ value: 'x', entry: { id: 'x', name: 'Plain 8B' } }, { place: { brains: { x: { layers: 30, set: {} } } } })) && /settings file/.test(handLock(b('bobert-35b'), { place: { brains: { 'bobert-35b': { layers: 40, set: {}, pinned: true } } } })) && /Reading/.test(handLock(b('bobert-35b'), {})) && handLock(b('bobert-35b'), c) === '');
-  const cellar = read('public/cellar.js');
+  const cellar = publicText('cellar.js');
   check('the slider and the number box stay in step while moving, and save one brain at a time', /if \(d\.placemoe\) \{ const n = dlg\.querySelector\('\[data-placemoenum\]'\); if \(n\) n\.value = e\.target\.value; \}/.test(cellar) && /brainPlace: \{ \[model\]: \{ \.\.\.cur, \.\.\.patch \} \}/.test(cellar));
 }
 // ---- setups ----
@@ -135,10 +136,20 @@ const ctx = { roles, models, brains: { small: 'gemma4-e4b', deep: 'bobert-35b' }
   const html = brainsHtml(ctx);
   check('the setups are buttons that say which is in use, in words', SETUPS.every((s) => html.includes(`data-setup="${s.id}"`)) && /data-setup="specialists" aria-pressed="true"><strong>[^<]*<\/strong> <span class="tag good">in use<\/span>/.test(html) && !/setup-ask/.test(html));
   const ask = brainsHtml({ ...ctx, setupAsk: 'one' });
-  check('pressing one shows the list of changes first, with Apply and Cancel', /class="setup-ask"/.test(ask) && /data-setupapply="one"/.test(ask) && /<strong>Coding<\/strong>: no brain of its own \(the main brain codes\)/.test(ask) && /No brain is deleted/.test(ask), ask.slice(ask.indexOf('setup-ask'), ask.indexOf('setup-ask') + 700));
-  check('nothing to change: no Apply button', !/data-setupapply/.test(brainsHtml({ ...ctx, roles: { ...roles, current: { bob: 'riker-28b-q3' } }, brains: {}, setupAsk: 'one' })));
+  check('pressing One brain shows the jobs the main brain takes first, with Apply and Cancel', /class="setup-ask"/.test(ask) && /data-setupapply="one"/.test(ask) && /<strong>Coding<\/strong>/.test(ask) && /Quick brain is off/.test(ask) && /picks stay on the page, greyed/.test(ask), ask.slice(ask.indexOf('setup-ask'), ask.indexOf('setup-ask') + 600));
+  check('a setup with nothing to change: no Apply button', !/data-setupapply/.test(brainsHtml({ ...ctx, setupAsk: 'specialists' })) && !/data-setupapply/.test(brainsHtml({ ...ctx, oneBrain: true, setupAsk: 'one' })));
+  // Nov 13 (the owner): "switching to one brain does not disable deep thinking brain, office brain, or quick brain".
+  const on = { ...ctx, oneBrain: true };
+  const onHtml = brainsHtml(on);
+  check('One brain on: it is the setup in use, whatever is picked', setupOf(on) === 'one' && /data-setup="one" aria-pressed="true"/.test(onHtml));
+  check('One brain on: other jobs stay on the page, greyed and marked main brain, never hidden', /job-chip job-chip-off[^>]*>[^<]*Deep thinking <span class="muted">\(main brain\)/.test(onHtml) && /data-onebrainoff/.test(onHtml) && /Quick brain is off/.test(onHtml), onHtml.slice(onHtml.indexOf('brain-list'), onHtml.indexOf('brain-list') + 900));
+  check('One brain on: the main brain\'s own jobs and Seeing pictures are not greyed', !/job-chip-off[^>]*>[^<]*Brain </.test(onHtml) && !/job-chip-off[^>]*>[^<]*Seeing pictures/.test(onHtml));
+  check('One brain on: an empty Quick brain says it is off, an empty Office says the main brain does it', /<strong>Quick brain<\/strong> <span class="muted">Off: One brain is on/.test(brainsHtml({ ...on, brains: { deep: 'bobert-35b' } })));
+  check('One brain on: another setup offers to turn it off', /turn One brain off|Turns One brain off/.test(brainsHtml({ ...on, setupAsk: 'duo' })) && /data-setupapply="specialists"/.test(brainsHtml({ ...on, setupAsk: 'specialists' })));
+  const cel = publicText('cellar.js');
+  check('Apply on One brain turns the switch on; any other setup turns it off first', /oneBrain: id === 'one'/.test(cel) && /const plan = id === 'one' \? \[\]/.test(cel) && /'onebrainoff' in b\.dataset/.test(cel) && /oneBrain: settings\?\.oneBrain === true/.test(cel));
   check('Across my Bobs points at the Bob-Net settings and says it is all off until turned on', /data-setupbobnet/.test(brainsHtml({ ...ctx, setupAsk: 'bobs' })) && /off until you turn it on/.test(brainsHtml({ ...ctx, setupAsk: 'bobs' })));
-  const cellar = read('public/cellar.js');
+  const cellar = publicText('cellar.js');
   check('Apply saves each job through the usual call, then reloads', /for \(const c of plan\) await equipSlot\(c\.slot, c\.value\);/.test(cellar) && /jumpTo = 'adv-bobnet'/.test(cellar));
 }
 console.log(`\n${pass} passed, ${fail} failed`);

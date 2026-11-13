@@ -9,7 +9,7 @@ import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professiona
 import { goBtn } from './lab-go.js'; // a button to where the message points
 
 export function createPeek({ api, view, cutWith = () => {}, toForge = () => {} }) {
-  let brain = '', data = null, thing = 'total', question = 'Write a haiku about rain, then explain what a prime number is.', asks = [], busy = false, msg = '', askUnload = null, tally = false, showCold = false, scrub = -1, perLayer = false, compare = false, switchAsk = null;
+  let brain = '', data = null, thing = 'total', question = 'Write a haiku about rain, then explain what a prime number is.', asks = [], busy = false, msg = '', askUnload = null, tally = false, showCold = false, scrub = -1, perLayer = false, compare = false, switchAsk = null, perWord = '', perWordSaved = '';
   const v = () => view() || {};
   const brains = () => (v().brains || []).filter((b) => b.facts?.experts);
   const cur = () => asks[asks.length - 1] || null;
@@ -68,13 +68,23 @@ export function createPeek({ api, view, cutWith = () => {}, toForge = () => {} }
     const words = live ? live.words : [];
     return `<div class="lab-check peek-live"><p><strong>Which experts did you use for this question?</strong></p>
       <label for="peek-q">Your question</label><textarea id="peek-q" rows="2" maxlength="500">${esc(question)}</textarea>
+      ${perWordHtml()}
       <label class="lab-opt"><input type="checkbox" data-peektally ${tally ? 'checked' : ''}> <span><strong>Keep count while Bob asks these</strong><br><span class="muted">Adds each answer to this brain's running count, so "unused" covers everything you ask.</span></span></label>
       ${askUnload ? `<div class="setup-offer" role="alert"><strong>Bob's brain is on the graphics card</strong><span>${esc(askUnload.names.join(', '))} is loaded. Peek inside needs the graphics card, so Bob unloads it first; it loads again the next time you chat.</span><div class="row"><button type="button" class="get" data-peekunload>Unload it and ask</button><button type="button" class="link" data-peeknounload>Not now</button></div></div>` : ''}
       <div class="row"><button type="button" class="get" data-peekask ${busy || !question.trim() ? 'disabled' : ''}>${busy ? 'Asking…' : asks.length ? 'Ask another' : 'Ask it'}</button>${live ? `<button type="button" class="link" data-peekoff ${busy ? 'disabled' : ''}>Keep only these and ask again</button>` : ''}${asks.length >= 2 ? `<button type="button" class="link" data-peekcompare aria-pressed="${compare}">Compare the last two</button>` : ''}${live ? '<button type="button" class="link" data-peekclear>Clear</button>' : ''}</div>
       ${live ? `<p><strong>"${esc(live.question)}"</strong>${live.masked ? ' <span class="muted">(with only the experts lit up last time switched on)</span>' : ''}</p><p class="peek-answer">${esc(live.answer) || '<span class="muted">(no answer)</span>'}</p>
+        ${live.perWord !== null && live.perWord !== undefined ? `<p class="muted">Asked with ${esc(Array.isArray(live.perWord) ? live.perWord.join(', ') : live.perWord)} experts per word instead of ${live.ownPerWord}${live.perWordGuess ? `; ${esc(live.perWordGuess)}` : ''}. <button type="button" class="link" data-peekpwuse>Use this in Bob</button>${perWordSaved ? ` <span role="status">${esc(perWordSaved)}</span>` : ''}</p>` : ''}
         <p class="muted">${live.words.length} words; ${live.used} experts lit up, ${live.share}% of the brain.${live.tps ? ` ${live.tps} words a second.` : ''}${live.tallied ? ` Counted: ${live.tallied.tokens} words in the tally so far.` : ''} Experts split work by word pattern, not topic, so most questions light up much the same set.</p>
         <label for="peek-scrub">Word by word</label> <input id="peek-scrub" type="range" min="-1" max="${words.length - 1}" value="${scrub}" aria-valuetext="${scrub < 0 ? 'the whole answer' : `word ${scrub + 1}: ${esc(words[scrub]?.text || '')}`}"> <span id="peek-scrub-h" role="status" class="muted">${scrub < 0 ? 'The whole answer.' : `Word ${scrub + 1} of ${words.length}: "${esc(words[scrub]?.text || '')}", ${(words[scrub]?.layers || []).reduce((a, l) => a + l.length, 0)} experts.`}</span>` : ''}
       ${compare && asks.length >= 2 ? compareHtml() : ''}</div>`;
+  }
+  // Brain Engine 0013: experts per word for the next question only. Empty = the brain's own count. The engine changes it
+  // without reloading, and puts it back after the answer. Use this in Bob saves it for chats (Settings, Speed).
+  function perWordHtml() {
+    const b = brains().find((x) => x.id === brain), own = b?.facts?.used || '';
+    return `<label for="peek-perword">Experts per word <span class="tag warn">experimental</span></label>
+      <input id="peek-perword" type="text" inputmode="numeric" value="${esc(perWord)}" placeholder="${own ? `its own ${own}` : 'its own'}" style="width:9em" aria-describedby="peek-perword-h">
+      <span id="peek-perword-h" class="muted">How many experts it asks for each word. Leave it empty for the brain's own${own ? ` (${own})` : ''}; more is slower and can help or hurt, fewer is faster. One number, or one per layer with commas. Nothing is reloaded and the brain file never changes.</span>`;
   }
   // 1.5.20x Turn off unused experts: only for a brain whose router has a bias (gpt-oss).
   function switchHtml() {
@@ -118,12 +128,13 @@ export function createPeek({ api, view, cutWith = () => {}, toForge = () => {} }
   }
   function input(el) {
     if (el.id === 'peek-q') { question = el.value; return true; }
+    if (el.id === 'peek-perword') { perWord = el.value; return true; }
     if (el.id === 'peek-scrub') { scrub = Number(el.value); const live = cur(); const h = document.getElementById('peek-scrub-h'); if (h && live) h.textContent = scrub < 0 ? 'The whole answer.' : `Word ${scrub + 1} of ${live.words.length}: "${live.words[scrub]?.text || ''}", ${(live.words[scrub]?.layers || []).reduce((a, l) => a + l.length, 0)} experts.`; if (thing === 'live') draw('peek-map', shown()); return true; }
     return false;
   }
   async function click(b, redraw) {
     const d = b.dataset;
-    if (!('peekask' in d || 'peekoff' in d || 'peekclear' in d || 'peekcold' in d || 'peekcut' in d || 'peekforge' in d || 'peekunload' in d || 'peeknounload' in d || 'peekcompare' in d || 'peekswoff' in d || 'peekswon' in d || 'peekswunload' in d || 'peeksworry' in d)) return false;
+    if (!('peekask' in d || 'peekoff' in d || 'peekclear' in d || 'peekcold' in d || 'peekcut' in d || 'peekforge' in d || 'peekunload' in d || 'peeknounload' in d || 'peekcompare' in d || 'peekswoff' in d || 'peekswon' in d || 'peekswunload' in d || 'peeksworry' in d || 'peekpwuse' in d)) return false;
     msg = '';
     if ('peekcold' in d) { showCold = !showCold; return 'draw'; }
     if ('peekclear' in d) { asks = []; thing = 'total'; scrub = -1; compare = false; return 'draw'; }
@@ -131,6 +142,11 @@ export function createPeek({ api, view, cutWith = () => {}, toForge = () => {} }
     if ('peekcompare' in d) { compare = !compare; return 'draw'; }
     if ('peekforge' in d) { toForge(data?.keepFile || ''); return true; }
     if ('peeksworry' in d) { switchAsk = null; return 'draw'; }
+    if ('peekpwuse' in d) {
+      const live = cur(); if (!live) return 'draw';
+      try { await api('/api/settings', { speed: { expertsPerWord: { [brain]: live.perWord } } }); perWordSaved = 'Saved. Bob uses it from his next answer with this brain, no reload.'; } catch (e) { msg = e.message; }
+      return 'draw';
+    }
     if ('peekswoff' in d || 'peekswon' in d || 'peekswunload' in d) {
       const back = 'peekswon' in d || switchAsk?.back === true;
       try {
@@ -149,7 +165,8 @@ export function createPeek({ api, view, cutWith = () => {}, toForge = () => {} }
       if ('peekask' in d || 'peekoff' in d || 'peekunload' in d) {
         const off = 'peekoff' in d || askUnload?.off;
         busy = true; redraw();
-        const res = await api('/api/lab/peek/ask', { brain, question, tally, unload: 'peekunload' in d, ...(off && cur() ? { maskCounts: cur().counts } : {}) });
+        perWordSaved = '';
+        const res = await api('/api/lab/peek/ask', { brain, question, tally, unload: 'peekunload' in d, ...(perWord.trim() ? { perWord: perWord.trim() } : {}), ...(off && cur() ? { maskCounts: cur().counts } : {}) });
         busy = false;
         if (res.needUnload) { askUnload = { names: res.names, off }; return 'draw'; }
         askUnload = null;

@@ -1,6 +1,6 @@
 // Nov 11: helping small brains with their tool calls (src/loop-help.js), always on, and the search openings for
 // nomic-embed-text (src/embed-prefix.js). Plain checks first, then real turns with a scripted brain.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -356,9 +356,9 @@ const reset = () => { ran.length = 0; events.length = 0; seen.length = 0; slow =
   }
   const srv = fs.readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
   check('/api/events hands waiting cards to a page as it connects', /for \(const c of brain\.waitingCards\?\.values\(\) \|\| \[\]\) res\.write/.test(srv));
-  { const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  { const app = publicText('app.js');
     check('a card from another chat shows in this one, with a way to open that chat (PC check 1.5.207)', /const foreignCard = elsewhere && ev\.id && \(ev\.type === 'approval'/.test(app) && /if \(elsewhere && ev\.type !== 'reminder' && !foreignCard\) return;/.test(app) && /A job in another chat needs your OK/.test(app) && /openChat\(ev\.sessionId\)/.test(app)); }
-  check('the page shows each card once', /if \(ev\.id && shownCards\.has\(ev\.id\)\) break;/.test(fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8')));
+  check('the page shows each card once', /if \(ev\.id && shownCards\.has\(ev\.id\)\) break;/.test(publicText('app.js')));
   const src = brainText();
   check('a retry thinks only for the long coders (thinking on every retry cost answers on the PC)', /ctx\.retrying && think === false && \(LONG_CODER\.test\(String\(model \|\| ''\)\) \|\| \(this\.cfg\?\.loopHelpOn \|\| \[\]\)\.includes\('think'\)\)\)/.test(src));
 }
@@ -371,7 +371,7 @@ fs.rmSync(tmp, { recursive: true, force: true });
   cfg.toolHelp = false;
   check('switched off: the loop works the old way', brain.plainLoop === true && brain.helpOff('mend') === true);
   if (was === undefined) delete cfg.toolHelp; else cfg.toolHelp = was;
-  const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const cellar = publicText('cellar.js');
   check('the switch is in Settings, on unless turned off', /sswitch\('toolHelp', settings\.toolHelp !== false, 'Better tool calling', 'On unless you turn it off\./.test(cellar));
 }
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -1,6 +1,6 @@
 // Saving safely and starting clean (reliability items 229-240): src/saving.js, src/turn-changes.js, src/job-home.js and
 // where they're wired in. Everything happens in a temp folder; nothing reads the real computer.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -239,7 +239,7 @@ const mkCfg = (name) => {
   fs.utimesSync(cfg.dataDir, new Date(), new Date());
   await inTurn({ ...scope, askId: 'ask-11', tool: 'write_file' }, () => tools.write_file.run({ path: old, content: 'x' }));
   check('238 a turn\'s Undo lasts a week', pruneTurns(cfg, { now: Date.now() + 8 * 864e5 }) === 1);
-  const src = brainText(), srv = read('../src/server.js'), app = read('../public/app.js');
+  const src = brainText(), srv = read('../src/server.js'), app = publicText('app.js');
   check('238 every tool of a turn runs inside it (not other Bobs\' or bots\' jobs)', /(?:inChangeTurn|inTurn)\(scope, async/.test(src) && /ctx\?\.askId && !ctx\.job\?\.guest/.test(src) && /askId: \(again \? lastUser\?\.id : user\.id\)/.test(src));
   check('238 the … menu on your message has Undo changes, asked first', /'undo-turn', 'Undo changes'/.test(app) && /data-m="undo-yes"/.test(app) && /\/api\/turn-undo/.test(srv) && /\/api\/turn-changes/.test(srv));
 }

@@ -2,6 +2,7 @@
 // Same interface as the Ollama client, so the brain doesn't care which engine is in use.
 // Models are found by Ollama name in Ollama's model folder (no duplicate downloads), or set by path in config.
 import { learnPer, promptChars, perFor } from './token-count.js';
+import { perWordFor, perWordWords, sendPerWord } from './experts-per-word.js'; // Brain Engine 0013
 import { replyStats } from './speed-stats.js';
 import fs from 'node:fs';
 import { commandLineOf } from './util.js';
@@ -83,6 +84,28 @@ export function thinkBudget(model, think) {
 // How long a brain may sit unused in memory: the shared setting ollamaKeepAlive ("10m", "30m", "1h", or "-1" for never).
 // Both engines use it: Ollama through keep_alive, Bob's own engine through the idle check below (1.5.2).
 // 1.5.210 (208 PC check): the logbook said "2 min" for a 1 min keep-alive. Minutes and seconds, as it really was.
+// 1.5.215: a reader for the engine's load progress. Brain Engine with patch 0012 writes "load_progress:
+// text_model <percent>" about five times a second while the weights load. llama.cpp builds that print the old progress
+// dots (one per 1%, on their own) are read too; a dot inside words or numbers ("model.gguf", "1.5", "...") doesn't
+// count. Returns a new percentage (0-100) when it moved by at least 2, or reached 100; null otherwise.
+export function loadDots() {
+  let n = 0, told = -1;
+  return (d) => {
+    const s = String(d || '');
+    let at = -1;
+    for (const m of s.matchAll(/load_progress: text_model (\d{1,3})\b/g)) at = Math.min(100, Number(m[1]));
+    if (at >= 0) n = Math.max(n, at);
+    else {
+      let got = 0;
+      if (/^[.\r\n]+$/.test(s)) got = (s.match(/\./g) || []).length;
+      else for (const m of s.match(/(?:^|[^\w.])(\.{5,})(?![\w.])/g) || []) got += (m.match(/\./g) || []).length;
+      if (!got) return null;
+      n = Math.min(100, n + got);
+    }
+    if (told < 0 || n - told >= 2 || (n === 100 && told < 100)) { told = n; return n; }
+    return null;
+  };
+}
 export const idleFor = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ''}`; };
 export function keepAliveMs(cfg) {
   const k = String(cfg?.ollamaKeepAlive ?? '5m');
@@ -221,7 +244,7 @@ export class LlamaCpp {
       this.beside.brainLabel = (m) => this.brainLabel?.(m) || `${m} brain`; // 218-228: plain names in the chat notes
       this.beside.main = this; // so a card reader set on the main engine (tests) also counts for the second server
       // fNRI's small cube: a brain answering on the second server is traced too, and told to the same cube
-      this.beside.wantTrace = () => this.wantTrace?.() || false; this.beside.onTrace = (raw, model) => this.onTrace?.(raw, model); this.beside.onTracePart = (raw, model) => this.onTracePart?.(raw, model);
+      this.beside.wantTrace = () => this.wantTrace?.() || false; this.beside.onTrace = (raw, model) => this.onTrace?.(raw, model); this.beside.onTracePart = (raw, model) => this.onTracePart?.(raw, model); this.beside.onLoadProgress = (model, pct) => this.onLoadProgress?.(model, pct);
       // 1.5.53: the brain hears when a second brain joins or leaves (chat page: second-brain events, Bob's head grows).
       this.beside.changed = (ev) => { try { this.onBeside?.(ev); } catch {} };
     }
@@ -677,6 +700,7 @@ export class LlamaCpp {
     if (this.primedHash === hash) return 'ready';
     this.active++;
     try {
+      await this.sendPerWord(model); // before the reading, which a change of experts per word would throw away
       const res = await fetch(this.url + '/v1/chat/completions', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ model, messages: [...LlamaCpp.toOpenAI(messages), { role: 'user', content: '.' }], tools: tools?.length ? tools : undefined, max_tokens: 1, stream: false, cache_prompt: true, chat_template_kwargs: { enable_thinking: false } }),
@@ -1108,7 +1132,11 @@ export class LlamaCpp {
     if (this.role === BESIDE || (cpu && cpuPlan(this.cfg)?.lowPriority)) { try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {} }
     // The link log: with a lent card in use, the engine's [link] and [scut] lines go to bob-net-link.log and the logbook.
     const link = helpers.length ? new LinkLog(this.cfg, { who: 'borrowed card', log: (...a) => this.log?.(...a) }) : null;
-    const keep = (d) => { log = (log + d).slice(-4000); if (full.length < LOAD_LOG_MAX) full += d; link?.feed(d); };
+    // 1.5.215: how far the weights have loaded. While a brain loads, llama.cpp writes one dot per 1% of its weights read
+    // in (and sent to the card), which drives the fNRI cube's load-in like a progress bar.
+    const dots = loadDots();
+    const keep = (d) => { log = (log + d).slice(-4000); if (full.length < LOAD_LOG_MAX) full += d; link?.feed(d);
+      if (!this.loadedOk && this.child === child) { const pct = dots(d); if (pct !== null) { try { this.onLoadProgress?.(model, pct); } catch {} } } };
     this.outTail = () => log; // Nov 12: the engine's last words after a reply failed (out of memory or not)
     child.stdout.on('data', keep);
     child.stderr.on('data', keep);
@@ -1132,6 +1160,7 @@ export class LlamaCpp {
     });
     this.child = child;
     this.loadedOk = false;
+    this.perWordSent = null; this.perWordLive = false; // a new engine starts with the brain's own experts per word
     this.current = model;
     this.currentCtx = ctx || null;
     this.currentCpu = Boolean(cpu);
@@ -1279,6 +1308,25 @@ export class LlamaCpp {
     } finally { opts.signal?.removeEventListener?.('abort', onAbort); }
   }
 
+  // Brain Engine 0013: the experts per word saved for this brain (Settings, Speed), sent before its first answer on
+  // this engine and again after a change, with no reload. Nothing is sent for a brain without one. Only when this
+  // reply has the engine to itself (Brain Engine refuses while answering); otherwise the next reply sends it.
+  async sendPerWord(model) {
+    const want = perWordFor(this.lc, model);
+    const key = `${model}|${JSON.stringify(want)}`;
+    if (this.perWordSent === key || this.current !== model || this.active > 1) return;
+    if (want === null && !this.perWordLive) { this.perWordSent = key; return; } // the brain's own, and the engine has it
+    try {
+      const r = await sendPerWord(this.url, want, { timeoutMs: 15000 });
+      this.perWordSent = key;
+      this.perWordLive = want !== null;
+      try { this.log?.('engine', `${model}: experts per word ${perWordWords(want, r?.n_expert_used)}`); } catch {}
+    } catch (e) {
+      this.perWordSent = key; // said once; tried again after the next change or load
+      try { this.log?.('engine', `${model}: experts per word not changed: ${e.message}`); } catch {}
+    }
+  }
+
   async chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver, task, temperature }) {
     // 1.5.52: a brain whose template refused a mid-chat system note gets them folded in from then on (foldSystem).
     this.noMidSystem ||= new Set();
@@ -1297,6 +1345,7 @@ export class LlamaCpp {
       } catch {}
     }
     if (this.noMidSystem.has(model)) messages = foldSystem(messages);
+    await this.sendPerWord(model);
     // Item 14 (Nov 11): a reply that stops sending words is stopped, not waited on until someone presses Stop. Once
     // words are coming, a quiet spell longer than STALL_MS (twice that when the brain is spread over other Bobs' cards)
     // means the engine hung: it is let go and the error says "terminated", so Bob loads it again and asks once more.

@@ -14,6 +14,7 @@ import { HELP } from '../public/help-content.js';
 import { GROUPS, CARDS } from '../public/settings-map.js';
 import { WANTS_ELSEWHERE } from '../public/wants.js';
 import { presetSummary } from '../public/presets.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -154,14 +155,14 @@ const quiet = cleanPreset({ id: 'pa1a1a1a1', name: 'Just talk', tools: 'none', b
 // ---------- Pages, phone and Help ----------
 {
   check('the Settings panel is in the map (Bob card and side list)', GROUPS.find(([g]) => g === 'Bob')[1].includes('adv-presets') && CARDS.find((c) => c.id === 'bob').topics.includes('adv-presets'));
-  const cellar = read('public/cellar.js');
+  const cellar = publicText('cellar.js');
   check('the Settings panel mounts the editor', /\['presets', '🎭 Assistant presets'/.test(cellar) && /mountPresets\(dlg\.querySelector\('\.presets-box'\)\)/.test(cellar));
   const page = read('public/presets.js');
   check('the switch says it starts off', /Assistant presets for chats<\/strong><span class="muted"> Off unless you turn it on\./.test(page));
   check('always visible: no field is disabled or hidden by the switch', !/disabled/.test(page.slice(0, page.indexOf('export function mountPresets'))));
   check('removing asks twice, no pop-up', /Press again/.test(page) && !/confirm\(/.test(page));
   check('the chat menu sits next to Effort', /id="presetPick"[^>]*hidden><span class="lbl">🎭 Preset<\/span>/.test(read('public/index.html')));
-  check('the chat page loads the pick when a chat opens', /presetPicker\.load\(\)/.test(read('public/app.js')));
+  check('the chat page loads the pick when a chat opens', /presetPicker\.load\(\)/.test(publicText('app.js')));
   const phone = read('android/app/src/main/assets/www/phone.js');
   check('Bob for Android has the 🎭 button, per chat', /id="preset"/.test(read('android/app/src/main/assets/www/index.html')) && /\/api\/presets\/pick/.test(phone) && /phone-\$\{chat\.id\}/.test(phone));
   check('first-time list points at it', WANTS_ELSEWHERE.some((w) => w.id === 'adv-presets'));

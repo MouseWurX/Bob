@@ -1,7 +1,7 @@
 // Three opt-in helpers (all off unless turned on): Read and search my documents (doc-text.js, my-docs.js),
 // Let Bob take quick notes (notes.js) and Let Bob work things out in a sandbox (sandbox-code.js), plus their
 // settings, tools, toolbox groups, Help, FAQ and glossary. Everything runs in a temporary folder with made-up files.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -254,7 +254,7 @@ fs.writeFileSync(path.join(docs, 'Report.pdf'), makePdf());
   check('nothing unrelated is put in front of him', notesPrompt(cfg, 'what is the weather like') === '');
   const brain = brainText();
   check('the brain adds fitting notes to what he carries, only with smart notes on', /if \(smartNotesOn\(this\.cfg\)\) \{[\s\S]{0,400}notesPrompt\(this\.cfg, text/.test(brain));
-  const cellar = read('public/cellar.js'), server = read('src/server.js');
+  const cellar = publicText('cellar.js'), server = read('src/server.js');
   check('the switch sits under quick notes, always shown, off unless turned on', cellar.includes("${sswitch('smartNotes', settings.smartNotes === true, 'Let Bob notice what\\'s worth noting', 'Off unless you turn it on."));
   check('the server saves and shows it', server.includes("typeof b.smartNotes === 'boolean'") && server.includes('smartNotes: cfg.smartNotes === true'));
   const help = HELP.find((e) => e.id === 'quick-notes').html;
@@ -311,7 +311,7 @@ fs.writeFileSync(path.join(docs, 'Report.pdf'), makePdf());
 
 // ---------- settings page, server, Help ----------
 {
-  const cellar = read('public/cellar.js'), server = read('src/server.js');
+  const cellar = publicText('cellar.js'), server = read('src/server.js');
   for (const [key, label] of [['quickNotes', 'Let Bob take quick notes'], ['docTools', 'Read and search my documents'], ['sandboxCode', 'Let Bob work things out in a sandbox']]) {
     check(`${label}: a switch in How Bob works, off unless turned on`, cellar.includes(`sswitch('${key}', settings.${key} === true, '${label}', 'Off unless you turn it on.`));
     check(`${label}: the server saves and shows it`, server.includes(`typeof b.${key} === 'boolean'`) && server.includes(`${key}: cfg.${key} === true`));

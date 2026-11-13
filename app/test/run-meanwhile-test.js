@@ -10,6 +10,7 @@ import { mergeSettings } from '../src/config.js';
 import { JobWatch, meanwhileOn, meanwhileLine, jobDetail, watchTools, claimsJobGuess, noteForBig, noteAsk, asksAboutJob, statusLine, STEP_KEEP, NOTES_MAX } from '../src/meanwhile.js';
 import { WANTS, wantsHtml } from '../public/wants.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -191,7 +192,7 @@ const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls:
 
 // ---------- Settings, first-time setup, Help ----------
 {
-  const cellar = read('public/cellar.js'), server = read('src/server.js');
+  const cellar = publicText('cellar.js'), server = read('src/server.js');
   check('the switch is in Brains, under Keep chatting, always there, off unless turned on', /\$\{sswitch\('quickSeesJob', settings\.quickSeesJob === true, 'Let Bob\\'s Quick brain see the big job', keep\('Off unless you turn it on/.test(cellar));
   check('the server saves and shows it', /typeof b\.quickSeesJob === 'boolean'/.test(server) && /quickSeesJob: cfg\.quickSeesJob === true/.test(server));
   const w = WANTS.find((x) => x.key === 'quickSeesJob');

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { tuning, cpuPlan, paintFlags, pictureFitFailed, pictureFitReset, SAFE_PAINT, startFile, promptHash } from '../src/tuning.js';
 import { tipsFrom, ratedSpeed, gatherFacts } from '../src/pc-check.js';
 import { LlamaCpp } from '../src/llamacpp.js';
+import { publicText } from './source-text.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let failures = 0;
@@ -162,7 +163,7 @@ try {
 } finally {
   bob.kill();
 }
-const html = fs.readFileSync(path.join(here, '..', 'public', 'cellar.js'), 'utf8');
+const html = publicText('cellar.js');
 check(/Get Bob ready while you type/.test(html) && /Let games go first/.test(html) && /Match picture settings to my graphics card/.test(html) && /Test Bob's speed/.test(html) && /Check this replicant matrix/.test(html) && /<th>Load<\/th>/.test(html) && /<th>Second reply<\/th>/.test(html), 'the settings page has the switches and both buttons');
 
 

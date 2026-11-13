@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { PRESETS, DEFAULT_THEME, OLD_IDS, themeId, findTheme, resolve, fullColors, swatch } from '../public/themes.js';
 import { cleanStyle } from '../src/config.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -45,7 +46,7 @@ const groups = [...new Set(PRESETS.map((t) => t.group))];
 check('groups: Bob, Worlds, Access, MouseWurX', JSON.stringify(groups) === JSON.stringify(['Bob', 'Worlds', 'Access', 'MouseWurX']));
 const page = read('public/style-page.js');
 check('the Style page shows the four groups with plain headings', /\['Worlds', 'Worlds and places'\]/.test(page) && /\['Access', 'High contrast'\]/.test(page) && !/From MouseHole/.test(page));
-check('no page falls back to the inn by name any more', !/'inn'/.test(page) && !/\|\| 'inn'/.test(read('public/cellar.js')));
+check('no page falls back to the inn by name any more', !/'inn'/.test(page) && !/\|\| 'inn'/.test(publicText('cellar.js')));
 check('every theme has a short blurb', PRESETS.every((t) => t.what && t.what.length <= 110));
 const pub = `${read('public/themes.js')} ${read('public/help-content.js')} ${read('../README.md')}`;
 // 1.5.163 the owner picked "Vulcan" as the GPT-like thought path's name (9 Nov); only that exact path name is let through.

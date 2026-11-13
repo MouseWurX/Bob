@@ -6,6 +6,7 @@ import path from 'node:path';
 import { partyView, Introductions } from '../src/bob-net-party.js';
 import { Pairing, PAIR } from '../src/bob-net-pair.js';
 import { Lenders, cleanSharePatch, shareView, helloFor, cleanAbilities, saveShare } from '../src/share-brains.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { if (ok) { pass++; console.log(`PASS ${name}`); } else { fail++; console.log(`FAIL ${name}${extra ? `: ${extra}` : ''}`); } };
@@ -186,7 +187,7 @@ const codeFor = (x, who) => (x.cfg.share.borrow?.bobs || []).find((b) => b.addre
 
 // ---------- the page, Help and the server wiring ----------
 {
-  const html = read('public/index.html'), layout = read('public/layout.js'), app = read('public/app.js'), share = read('public/share-brains.js'), help = read('public/help-content.js'), server = read('src/server.js'), css = read('public/style.css'), privacy = read('docs/legal/PRIVACY.md');
+  const html = read('public/index.html'), layout = read('public/layout.js'), app = publicText('app.js'), share = read('public/share-brains.js'), help = read('public/help-content.js'), server = read('src/server.js'), css = read('public/style.css'), privacy = read('docs/legal/PRIVACY.md');
   check('Now running has a Bob-Net section, hidden to start with', /<section id="nowNet" data-sec="net" hidden>/.test(html) && /<ul id="nowNetList" class="tlist net-list"><\/ul>/.test(html));
   check('the pane polls the party while open, and hides the section when Bob-Net isn\'t in use', /fetch\('\/api\/bob-net\/party'\)/.test(layout) && /sec\.hidden = !v\?\.on;/.test(layout) && /brainSt\?\.session === 'Gaming' \? 30000 : 15000/.test(layout));
   check('a lend, borrow, sent job or pairing refreshes it early', /\['lending', 'borrow', 'away', 'pair-done', 'queue'\]\.includes\(ev\.type\)\) layout\.net\(\);/.test(app) && /net\(\) \{ clearTimeout\(netSoon\); netSoon = setTimeout\(pollNet, 800\); \}/.test(layout));

@@ -1,5 +1,5 @@
 // 1.5.97: the ⏳ waiting line says who has the graphics card and that nothing is needed from the user.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import { Gate, holderLine, waitLine, isBareOk, NOTHING_TO_OK, WAIT_STILL } from '../src/handoff.js';
 import { HELP } from '../public/help-content.js';
@@ -34,7 +34,7 @@ check('the answer to it', NOTHING_TO_OK === "There's nothing to OK right now. I'
 
 const brainSrc = brainText();
 check('a bare OK with no card open is answered at once, not queued', /isBareOk\(text\) && !this\.approvals\.size && \(this\.gate\?\.waitingNow > 0 \|\| queuedHere\)/.test(brainSrc));
-const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+const app = publicText('app.js');
 check('chat shows it as a muted note updated in place, never a card', /case 'waiting-line':/.test(app) && /note\(ev\.text, 'wait'\)/.test(app) && !/waiting-line[^\n]*button/.test(app));
 check('no old "Waiting for ... to finish with the graphics card" line is left', !/to finish with the graphics card/.test(fs.readFileSync(new URL('../src/handoff.js', import.meta.url), 'utf8')));
 check('glossary explains the ⏳ line', /<dt>⏳ line<\/dt><dd>Bob is waiting on something, not on you\. Cards are the only things that need your answer\.<\/dd>/.test(HELP.find((h) => h.id === 'glossary').html));

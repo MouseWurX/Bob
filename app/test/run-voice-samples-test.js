@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { voiceList, publicView, sampleFor, cacheFile, piperOfficial, clearSamples, SAMPLE_LINE } from '../src/voice-samples.js';
 import { stopVoices } from '../src/tts.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -56,11 +57,11 @@ have.set('kokoro-v1', { model: kModel, voices: kVoices });
   const v = publicView(voiceList(cfg, shop)).find((x) => x.engine === 'kokoro' && x.voice === 'af_heart');
   check('voices downloaded without the engine are reported as such', v.filesHere === true && v.installed === false);
   check('the hint says to get the Kokoro engine', /One more step: get the Kokoro engine/.test(sampleHint(v)));
-  const ui = fs.readFileSync('public/cellar.js', 'utf8');
+  const ui = publicText('cellar.js');
   check('settings show a Get button for the missing engine where the voices are', /function engineStep/.test(ui) && /engineStep\(engineById\('kokoro'\), 'Voices downloaded'\)/.test(ui) && /engineStep\(engineById\('chatterbox'\)/.test(ui) && /data-engine="\$\{esc\(eng\.id\)\}"/.test(ui) && !/after Kokoro is in/.test(ui));
 }
 {
-  const ui = fs.readFileSync('public/cellar.js', 'utf8');
+  const ui = publicText('cellar.js');
   check('1.1.2: one Voice & conversation page (planning, hearing, voice) and one Pictures & video page', /id: 'talk', label: 'Voice & conversation'[^\n]*parts: \['chat', 'voice', 'speech'\]/.test(ui) && /id: 'media', label: 'Pictures & video'[^\n]*parts: \['images', 'video'\]/.test(ui));
   check("Bob's voice settings live on the Voice page, plus Advanced settings' Voice details (1.5.0)", /id === 'speech' \? `<div class="settings voice-settings">\$\{voiceHtml\(\)\}/.test(ui) && (ui.match(/\$\{voiceHtml\(\)\}/g) || []).length === 2 && /function voiceDetailsHtml/.test(ui));
 }

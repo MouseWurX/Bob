@@ -7,6 +7,7 @@ import path from 'node:path';
 import { handsTools, handsPrompt, stopEverything } from '../src/hands.js';
 import { stepKey, askTogether, askTogetherTool } from '../src/together.js';
 import { Brain } from '../src/brain.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -186,7 +187,7 @@ const run = (cmd, args) => ({ tool: 'run_command', args: { cmd, args, cwd: work 
 // ---------- The window ----------
 {
   const hands = fs.readFileSync(new URL('../public/hands.js', import.meta.url), 'utf8');
-  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const app = publicText('app.js');
   const server = fs.readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
   check('the chat page draws the combined card before the single ones', app.indexOf('togetherApproval(ev') > 0 && app.indexOf('togetherApproval(ev') < app.indexOf('handsApproval(ev'));
   check('the card has Allow all, Allow ticked and Deny all, with a box per step', /Allow all/.test(hands) && /Allow ticked/.test(hands) && /Deny all/.test(hands) && /class="pick"/.test(hands));

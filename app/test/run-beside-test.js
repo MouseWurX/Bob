@@ -8,6 +8,7 @@ import { LlamaCpp, besideThreads } from '../src/llamacpp.js';
 import { Brain, talkerModel, sidePick, isTalker, TALKER_LINE, TALKER_CTX, talkerCtx, besideBigOk, mootBesideOk, besideLater, bigJob, loadLine, loadMode, BIG_AFTER_MS, SIDE_LANE } from '../src/brain.js';
 import { Gate } from '../src/handoff.js';
 import { mergeSettings } from '../src/config.js';
+import { publicText } from './source-text.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let pass = 0, fail = 0;
@@ -300,7 +301,7 @@ try {
 
 // ---------- Help and settings text ----------
 const help = fs.readFileSync(path.join(here, '..', 'public', 'help-content.js'), 'utf8');
-const cellar = fs.readFileSync(path.join(here, '..', 'public', 'cellar.js'), 'utf8');
+const cellar = publicText('cellar.js');
 check('Settings has the reviewer-beside switch, off unless set', /sswitch\('mootBeside', settings\.mootBeside === true, 'Let the reviewer sit beside Bob\\'s main brain'/.test(cellar));
 check('Help explains it, and the long-job part of Keep chatting', /set\('Let the reviewer sit beside Bob\\'s main brain', 'Off'/.test(help) && /Adding the quick brain \.\.\. on the processor/.test(help));
 

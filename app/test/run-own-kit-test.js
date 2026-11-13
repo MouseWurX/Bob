@@ -1,7 +1,7 @@
 // 1.5.144 🧰 Tools and how-tos Bob made: one Settings panel (and phone screen) for the tools Bob wrote and the how-tos
 // he kept. Delete asks first, then the thing waits 30 days on the Recently deleted shelf (Undo, Put back), and
 // Delete for good drops it now. Bob stops using a deleted thing at once.
-import { serverText } from './source-text.js';
+import { serverText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -129,7 +129,7 @@ function plantTool(name, what) {
 
 // ---------- the PC page, the phone and Help ----------
 {
-  const ui = read('public/cellar.js'), server = serverText(), hands = read('public/hands.js'), phone = read('android/app/src/main/assets/www/phone.js'), phtml = read('android/app/src/main/assets/www/index.html'), phelp = read('android/app/src/main/assets/www/help.js');
+  const ui = publicText('cellar.js'), server = serverText(), hands = read('public/hands.js'), phone = read('android/app/src/main/assets/www/phone.js'), phtml = read('android/app/src/main/assets/www/index.html'), phelp = read('android/app/src/main/assets/www/help.js');
   check('one panel for both, in the everyday page, with counts on its line', /\['ev-howtos', '🧰 Tools and how-tos Bob made'/.test(ui) && /recently deleted/.test(ui) && !/'📒 How-tos'/.test(ui));
   check('both lists, with a Show code and an Edit', /<h4 class="ssub">🔧 Tools he wrote/.test(ui) && /<h4 class="ssub">📒 How-tos he kept/.test(ui) && /data-owncode=/.test(ui) && /data-howtoedit=/.test(ui));
   check('Delete asks on the row (Delete / Keep it), no pop-up', /data-ownask=/.test(ui) && /data-owndel=/.test(ui) && /data-owncancel>Keep it/.test(ui) && !/confirm\(/.test(ui.slice(ui.indexOf('function ownKitHtml'), ui.indexOf('const EVERY_EXTRA'))));
@@ -142,7 +142,7 @@ function plantTool(name, what) {
   check('the phone has Help for it', phelp.includes("id: 'own-kit'") && /Tools and how-tos Bob made/.test(phelp.slice(phelp.indexOf("id: 'howtos'"), phelp.indexOf("id: 'own-kit'"))));
   const h = (id) => HELP.find((e) => e.id === id);
   check('Help: a Settings topic in Bob\'s voice, the FAQ, the glossary word, the old topics point to it', h('own-kit') && /Recently deleted/.test(h('own-kit').html) && /Put back/.test(h('own-kit').html) && /Delete for good/.test(h('own-kit').html) && /I stop using/.test(h('own-kit').html) && h('faq-own-kit') && /<dt>Recently deleted<\/dt>/.test(h('glossary').html) && /own-kit/.test(h('howtos').html) && /own-kit/.test(h('hands-maker').html) && !/📒 How-tos<\/strong>/.test(h('howtos').html));
-  check('the saved-how-to note and the how-tos switch point to the new panel', /Tools and how-tos Bob made/.test(read('public/app.js')) && /Your how-tos are in 🧰 Tools and how-tos Bob made below/.test(ui));
+  check('the saved-how-to note and the how-tos switch point to the new panel', /Tools and how-tos Bob made/.test(publicText('app.js')) && /Your how-tos are in 🧰 Tools and how-tos Bob made below/.test(ui));
   check('docs: the settings inventory has the panel', /Tools and how-tos Bob made/.test(read('docs/SETTINGS-INVENTORY.md')));
 }
 

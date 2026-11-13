@@ -28,6 +28,8 @@ import { cleanBackup } from './backup-settings.js'; // Back up and move
 import { applyWaitingRestore } from './backup-apply.js';
 import { openBox, useBox, lockOn, mapSecrets, plainCount, writeSecretJson, openCopy, useKeysFile, memoryKeeper, IN_TEST, ensureBox } from './secret-box.js';
 import { HARNESS_KEYS, cleanHarness } from './harness.js'; // items 62 to 72
+import { cleanPerWordMap } from './experts-per-word.js'; // Brain Engine 0013
+
 
 // Where Ollama keeps its models on this PC: OLLAMA_MODELS if it's set, else Bob's own models folder if Ollama's files
 // are there (how the installer sets Ollama up), else Ollama's usual folder in the user's home (~/.ollama/models).
@@ -377,7 +379,9 @@ function clean(patch) {
   if ('sessionBrains' in out) {
     const sb = out.sessionBrains || {};
     out.sessionBrains = {};
-    for (const k of ['small', 'gaming', 'coding', 'office', 'deep']) if (typeof sb[k] === 'string' && /^[\w.:/-]{1,100}$/.test(sb[k])) out.sessionBrains[k] = sb[k];
+    // '' takes a brain off that job (Nov 13: it was dropped, so the ✕ and the One brain setup never took Quick, Office or
+    // Deep thinking off). Gaming always has one.
+    for (const k of ['small', 'gaming', 'coding', 'office', 'deep']) if (typeof sb[k] === 'string' && (/^[\w.:/-]{1,100}$/.test(sb[k]) || (sb[k] === '' && k !== 'gaming'))) out.sessionBrains[k] = sb[k];
     // 1.5.56: the owner's rule, kept here too: Gemma 4 E4B is never the Gaming brain, whatever asks for it.
     if (/e4b/i.test(out.sessionBrains.gaming || '')) delete out.sessionBrains.gaming;
   }
@@ -443,6 +447,7 @@ function cleanLlamacpp(lc) {
   for (const k of ['threads', 'batch', 'ubatch', 'ctx']) if (k in out) out[k] = Number.isInteger(out[k]) && out[k] > 0 && out[k] <= 1048576 ? out[k] : null;
   if ('fit' in out) out.fit = typeof out.fit === 'boolean' ? out.fit : null;
   if ('noEyes' in out) out.noEyes = Array.isArray(out.noEyes) ? [...new Set(out.noEyes.filter((x) => typeof x === 'string' && /^[\w.:/-]{1,100}$/.test(x)))].slice(0, 200) : []; // Lab: brains loaded without their reader
+  if ('expertsPerWord' in out) out.expertsPerWord = cleanPerWordMap(out.expertsPerWord); // Brain Engine 0013: experts per word, per brain
   if ('brainEngine' in out) out.brainEngine = out.brainEngine !== false; // 1.5.169: run brains on Brain Engine when it's here
   if ('loadMode' in out) out.loadMode = out.loadMode === 'mmap' ? 'mmap' : 'auto'; // 1.5.90
   if ('draft' in out) {

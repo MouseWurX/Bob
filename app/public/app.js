@@ -24,6 +24,7 @@ import { createTidy } from './tidy.js';
 import { createLab } from './lab.js'; // 1.5.141 Computer Science Lab
 import { CHANNEL as LAB_CHANNEL, WINDOW_NAME as LAB_WINDOW_NAME, WINDOW_SIZE as LAB_WINDOW_SIZE, LAB_URL, labWantsWindow, accept as labAccept } from './lab-link.js'; // the Lab's own window
 import { createAdventure } from './adventure.js';
+import { openJourney } from './journey.js'; // 1.5.215: Journey's own tab
 import { createGames } from './games.js';
 import { createHelp } from './help.js';
 import { handsApproval, togetherApproval, onHandsEvent } from './hands.js';
@@ -58,6 +59,30 @@ import { createJobHelps } from './job-helps.js'; // Settings, Jobs: Stop after t
 import { saveToLab } from './lab-save-q.js'; // Lab item 102: Save to Lab under your messages, off unless switched on
 import { createHarnessChat, quietNow } from './harness-chat.js'; // items 62 to 72: crash card, quiet hours, Pin, Try from here, Guest chat
 import { applyReading, startEveryday } from './everyday.js'; // 🗓 Everyday helpers: text size, font, today card, tour, ⏱ Focus, tray dot
+import { createReplyParts } from './app-replies.js';
+import { createRedoParts } from './app-redo.js';
+import { createCopyParts } from './app-copy.js';
+// Pieces of the chat that live in their own files (app-*.js). Their functions read app.js's values fresh on every call.
+// app-replies.js
+const {
+  setupOfferHtml, rentOfferHtml, ensureReply, drawReply, addMedia, addMade, endReply, markReplaced, showAnswer,
+  mediaHtml, picsHtml
+} = createReplyParts(() => ({
+  add, correctedBubbles, log, note, replies, scrollDown, viewer
+}));
+// app-redo.js
+const {
+  markEdited, editedMsg, redoTarget, drawRedo, markVersions, markSteps, drawFill, editInPlace
+} = createRedoParts(() => ({
+  $, bubbleMedia, busy, decorate, drawReply, lastYou, liveWords, log, mediaHtml, note, rawText, redoOnNow, redoSend,
+  redoing, replies, stuckNow
+}));
+// app-copy.js
+const {
+  decorate, copyWords, plainText, copyText
+} = createCopyParts(() => ({
+  api, jobHelps, post, rawText
+}));
 
 // Settings opens in its own window on a computer (minimise, maximise, close). The main window keeps
 // its left menu and Now running; what changes over there comes back on a BroadcastChannel (settings-link.js).
@@ -254,114 +279,23 @@ function add(cls, html) {
 }
 const waitLines = new Map(); // 1.5.97: wait id -> its ⏳ line
 function note(text, kind = '') { return add(`note ${kind}`, esc(text)); }
-// 1.5.91 the Set it up card (the words were signed off by the settings thread; the phone app has the same card).
-function setupOfferHtml(ev) {
-  const gbs = (n) => (n >= 1 ? `${(+n).toFixed(n >= 10 ? 0 : 1)} GB` : `${Math.max(1, Math.round(n * 1000))} MB`);
-  const after = ev.carryOn ? ' Then I carry on with what you asked.' : '';
-  if (ev.kind === 'switch') return `<strong>"${esc(ev.name)}" is off</strong><span>It lets me ${esc(ev.what)}.${ev.privacy ? ' ' + esc(ev.privacy) : ''}${ev.free ? ' "Let Bob work without asking" is on, so it won\'t ask before each step.' : ev.name.startsWith('Let Bob use Hands') ? ' I still ask before every step.' : ''}${ev.folders ? ' Then tick the folders I may use in Settings, Hands.' : ''}${esc(after)} You can switch it off again in ${esc(ev.where)}.</span><div class="row"><button type="button" class="get">Switch it on</button><button type="button" class="link">Not now</button></div>`;
-  if (ev.kind === 'equip') return `<strong>I can't ${esc(ev.say)} yet</strong><span>${esc(ev.model?.name || '')} is already on this replicant matrix, it just isn't in its slot.${esc(after)}</span><div class="row"><button type="button" class="get">Use it</button><button type="button" class="link">Not now</button></div>`;
-  const items = (ev.items || []).map((i) => `<li>${esc(i.name)} <span class="muted">· ${gbs(i.sizeGB)}${i.engine ? ' · program' : ''}${i.license ? ` · ${esc(i.license)}` : ''}</span></li>`).join('');
-  return `<strong>I can't ${esc(ev.say)} yet</strong><span>I need ${esc(ev.what)} first. ${ev.need === 'ffmpeg' ? 'One press gets it and sets it up.' : 'One press gets it, sets it up and puts it in its slot.'}${esc(after)}</span><ul>${items}</ul><span class="muted">About ${esc(ev.size)} in all${ev.freeGB != null ? `, ${ev.freeGB} GB free` : ''}. One time only.${ev.note ? ' ' + esc(ev.note) : ''}</span>${ev.short ? `<span class="error">Not enough free disk: free up ${ev.short} GB first, then ask me again.</span>` : ''}<div class="row"><button type="button" class="get">Set it up (about ${esc(ev.size)})</button><button type="button" class="link">Not now</button></div>`;
-}
 
-// 1.5.127 Rented brains: the Hire it card. Says what it costs, how long it takes to start, and exactly what leaves this replicant matrix.
-function rentOfferHtml(ev) {
-  const r = ev.rental || {};
-  const start = ev.startMinutes ? ` It takes about ${ev.startMinutes} minute${ev.startMinutes === 1 ? '' : 's'} to start${r.kind === 'machine' ? ', and those minutes are billed too' : ''}.` : '';
-  const leaves = `What leaves this replicant matrix: this chat, the files you attached to it, my instructions and what I remember about you, to ${esc(r.service || 'the service')}${r.plain ? ' (over a plain, unencrypted connection to the hired machine)' : ''}. Their privacy policy covers it there.`;
-  const after = ev.carryOn ? ' Then I run your request there; my tools still run here, with the usual OK cards.' : ' Then your next messages run there.';
-  const multi = (r.cards || 1) > 1 ? `<span class="error"><strong>⚠️ This machine has ${r.cards} cards at once</strong> (${esc(r.cardsText || '')}): it costs about ${r.cards} times as much an hour as one card, busy or not.</span>` : '';
-  return `<strong>Hire ${esc(r.name || 'the rented brain')}?</strong><span>${esc(ev.why || '')} ${esc(r.model || '')} on ${esc(r.service || '')}: ${esc(ev.price || '')}.${start}${esc(after)}</span>${multi}<span class="muted">${leaves}</span>${ev.blocked ? `<span class="error">${esc(ev.blocked)}</span>` : ''}<div class="row"><button type="button" class="get"${ev.blocked ? ' disabled title="Fix the line above first"' : ''}>Hire it (${esc(ev.est || 'a few cents')})</button><button type="button" class="link">Not now</button></div>`;
-}
 
-function ensureReply(ev) {
-  const k = ev?.turnId || '-';
-  if (!replies.has(k)) replies.set(k, { el: add('msg bob', ''), text: '', media: [] });
-  return replies.get(k);
-}
-// 1.5.11: a reply's pictures, sounds and clips live in the same bubble as its words (as history shows them), so
-// the words arriving later never wipe them and an image-only bubble never collapses to an empty box.
-// 1.5.41: while the words stream in, the cards already there stay as they are (not drawn again), so a song that's
-// playing keeps playing and a picture doesn't flicker. The cards sit in .reply-media (display: contents).
-function drawReply(r) {
-  const words = render(r.text.replace(/^\s+/, '').replace(/\s+$/, ''));
-  const key = r.media.map((m) => m.url).join('\n');
-  const keep = key && r.mediaKey === key ? r.el.querySelector(':scope > .reply-media') : null;
-  r.mediaKey = key;
-  if (!keep) { r.el.innerHTML = words + (r.media.length ? `<div class="reply-media">${mediaHtml(r.media)}</div>` : ''); if (r.media.length) fillPeeks(r.el); return; }
-  const tpl = document.createElement('template');
-  tpl.innerHTML = words;
-  for (const c of [...r.el.childNodes]) if (c !== keep) c.remove();
-  r.el.insertBefore(tpl.content, keep);
-}
-function addMedia(ev, type) {
-  const r = ensureReply(ev);
-  const item = { type, url: ev.url, name: decodeURIComponent(String(ev.url).split('/').pop() || ''), ...(ev.song?.title ? { title: ev.song.title, sound: ev.song.sound } : {}), ...(type === 'diagram' ? { title: ev.title || '', ...(ev.format ? { format: ev.format } : {}) } : {}) };
-  r.media.push(item); drawReply(r); scrollDown();
-  if (type !== 'diagram') viewer.made([{ ...item, kind: type }]); // the side panel shows it too, if it's open
-  return r;
-}
-// Files he saved (documents, spreadsheets, copies, zips) and things called up with show_made: cards in the same bubble.
-function addMade(ev) {
-  const r = ensureReply(ev);
-  const fresh = (ev.items || []).filter((x) => x?.url && !r.media.some((m) => m.url === x.url));
-  if (fresh.length) { r.media.push(...fresh.map((x) => ({ type: 'file', kind: x.kind, url: x.url, name: x.name, path: x.path }))); drawReply(r); scrollDown(); }
-  viewer.made(ev.items, { show: ev.show === true });
-}
-function endReply(ev) {
-  // Item 190 (Nov 12): a correction ends the bubble; if Bob then tries again in this turn, these words get folded
-  // away as replaced (see 'token').
-  const rep = ev?.type === 'correction' ? replies.get(ev.turnId || '-') : null;
-  if (rep?.el && String(rep.text || '').trim()) correctedBubbles.set(ev.turnId || '-', rep.el);
-  replies.delete(ev?.turnId || '-');
-}
 // Item 190 (Nov 12): a reply the app corrected and Bob then answered again folds away as "replaced", so the wrong
 // words aren't left above the right ones. One press shows them again. Live (correctedBubbles) and after a reload.
 const correctedBubbles = new Map();
-function markReplaced(el) {
-  if (!el || el.classList.contains('replaced')) return;
-  el.classList.add('replaced');
-  const keepTools = el.querySelector(':scope > .msg-tools');
-  const box = document.createElement('div');
-  box.className = 'replaced-body';
-  box.hidden = true;
-  for (const n of [...el.childNodes]) if (n !== keepTools) box.appendChild(n);
-  const b = document.createElement('button');
-  b.type = 'button'; b.className = 'link mini replaced-toggle'; b.setAttribute('aria-expanded', 'false');
-  b.textContent = 'Bob\'s first try, replaced by the answer below (show it)';
-  b.onclick = () => { box.hidden = !box.hidden; b.setAttribute('aria-expanded', String(!box.hidden)); b.textContent = box.hidden ? 'Bob\'s first try, replaced by the answer below (show it)' : 'Bob\'s first try, replaced by the answer below (hide it)'; };
-  el.insertBefore(box, keepTools || null);
-  el.insertBefore(b, box);
-}
 
 // 1.5.210 The thinking bubble (public/think-bubble.js): while Bob works, his steps, drafts and fixes go in one folded
 // bubble above the answer; the chat bubble gets only the finished answer, whole. Settings, Bob himself, "Thinking
 // bubble above answers" (on unless turned off); off, the chat is as it was.
 let thinkOn = true, catName = 'Patches';
 const stillNow = () => document.body.classList.contains('still') || Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-function showAnswer(ev, text, extra = {}) {
-  const r = ensureReply(ev);
-  r.text = String(text || '');
-  if (r.text.trim() || r.media.length) { drawReply(r); log.append(r.el); } // under the cards that came while he worked
-  if (extra.checked) checkedNote(r.el, extra.checked);
-  if (extra.correction) note(extra.correction, 'error');
-}
-// The moot's minutes, folded under the answer it checked.
-function checkedNote(el, minutes) {
-  el.querySelector(':scope > .checked-note')?.remove();
-  const box = document.createElement('div');
-  box.className = 'versions-note checked-note';
-  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false">🛰 Checked by a second look</button><div hidden>${render(String(minutes))}</div>`;
-  const b = box.querySelector('button'), w = box.querySelector('div');
-  b.onclick = () => { w.hidden = !w.hidden; b.setAttribute('aria-expanded', String(!w.hidden)); };
-  el.insertBefore(box, el.querySelector(':scope > .msg-tools'));
-}
 window.addEventListener('bob-think-bubble', (e) => { thinkOn = e.detail !== false; }); // Settings, from this window
 const thinkBubbles = createThinkBubbles({ add, esc, answer: showAnswer, on: () => thinkOn, still: stillNow, cat: () => catName, openMind: () => $('mindBtn')?.click() });
 
 // ---------- Status, badge, notifications ----------
 const STATUS_TEXT = {
-  idle: 'Coffee in hand. Ready when you are.',
+  idle: 'Coffee in hand.\u00a0Ready when you are.', // 1.5.215: the no-break space keeps "hand. Ready" together
   thinking: 'Thinking...',
   loading: 'Swapping brains...',
   busy: 'Working...',
@@ -578,6 +512,11 @@ const adventurePage = createAdventure({ api }); // 1.5.117 🎲 Adventure
 $('adventureBtn').onclick = () => adventurePage.open();
 const gamesPage = createGames({ api }); // 1.5.121 🧩 Games
 $('gamesBtn').onclick = () => gamesPage.open();
+// 1.5.215: 🧭 Journey has its own tab, like Games: the same game the Adventure page opens, with your saved characters.
+$('journeyBtn').onclick = async () => {
+  let v = {}; try { v = await api('/api/adventure'); } catch { /* the game runs without the saved characters */ }
+  openJourney({ api, you: {}, characters: v?.characters || [], enemies: v?.enemies || [] });
+};
 const helpPage = createHelp();
 $('helpBtn').onclick = () => helpPage.open();
 window.addEventListener('bob-tidy', () => tidyPage.open());
@@ -615,7 +554,7 @@ function tuckNowForLamp(style) {
 // The fNRI cube avatar (when it is on) opens the same menu.
 document.addEventListener('click', (e) => { const c = e.target.closest?.('#bobCubeBox'); if (c && lampLook()) bobMenu.toggle(c); }); // Lamplight: the cube opens Bob's menu
 // 1.5.210 Find anything: every page, menu tool, Settings card and Help topic by name, plus your chats.
-const PAGE_BTNS = ['chatBtn', 'tasksBtn', 'topicsBtn', 'madeBtn', 'adventureBtn', 'gamesBtn', 'labBtn', 'shelfBtn', 'cellarBtn', 'dlBtn', 'tidyBtn', 'settingsBtn', 'styleBtn', 'helpBtn', 'newchat'];
+const PAGE_BTNS = ['chatBtn', 'tasksBtn', 'topicsBtn', 'madeBtn', 'adventureBtn', 'journeyBtn', 'gamesBtn', 'labBtn', 'shelfBtn', 'cellarBtn', 'dlBtn', 'tidyBtn', 'settingsBtn', 'styleBtn', 'helpBtn', 'newchat'];
 const findBox = createFind({
   items: () => [
     ...PAGE_BTNS.filter((id) => $(id) && !$(id).hidden).map((id) => ({ label: $(id).getAttribute('aria-label') || id, kind: ['settingsBtn', 'styleBtn', 'helpBtn', 'dlBtn', 'tidyBtn', 'cellarBtn', 'newchat'].includes(id) ? 'Tool' : 'Page', words: $(id).title, run: () => $(id).click() })),
@@ -1288,58 +1227,11 @@ document.addEventListener('drop', (e) => {
   e.preventDefault();
   attachFiles(e.dataTransfer?.files || []);
 });
-// What Bob made in a reply (saved with it, so it's back after a reload): pictures, clips and sounds.
-// Each one is a card with a preview (a thumbnail, the player, or the first lines); a click opens the side panel.
-function mediaHtml(media) {
-  if (!media?.length) return '';
-  const items = media.map((m) => ({ ...m, kind: m.kind || (m.type === 'file' ? 'file' : m.type) }));
-  // 1.5.21: two or more pictures or clips sit in a grid sized to fit the window, so all of them show without scrolling.
-  const visual = items.filter((m) => m.kind === 'image' || m.kind === 'video');
-  // 1.5.41: songs and sounds get the song player; two or more sit in a list that plays one after another.
-  const songs = items.filter((m) => m.kind === 'audio' && m.url);
-  const diagrams = items.filter((m) => m.kind === 'diagram').map(diagramHtml).join(''); // 1.5.95
-  const rest = items.filter((m) => !visual.includes(m) && !songs.includes(m) && m.kind !== 'diagram').map(outCard).join('');
-  const sounds = songs.length ? songListHtml(songs) : '';
-  const saveRows = saveRowsHtml(items); // 1.5.95: Save as, under everything Bob made
-  if (visual.length < 2) return diagrams + visual.map(outCard).join('') + sounds + rest + saveRows;
-  const cols = Math.ceil(Math.sqrt(visual.length)), rows = Math.ceil(visual.length / cols);
-  const grid = `<div class="media-grid" style="--cols:${cols};--rows:${rows}">${visual.map(outCard).join('')}</div>`;
-  return diagrams + grid + sounds + rest + saveRows;
-}
 // ---------- Copy buttons and file cards (right-click and Ctrl+C often don't get through remote desktop) ----------
 const rawText = new WeakMap();
 // Let Bob fix his own messages (Settings, How Bob works; src/edit-own.js): the words and things made of each bubble,
 // so a message he changes later is drawn again in place, with "edited" under it.
 const liveWords = new WeakMap(), bubbleMedia = new WeakMap();
-function markEdited(el, was, by) {
-  el.querySelector(':scope > .edited-note')?.remove();
-  const box = document.createElement('div');
-  box.className = 'edited-note';
-  const who = by === 'you' && el.classList.contains('bob') ? 'You changed Bob\'s words here' : `${el.classList.contains('you') ? 'You' : 'Bob'} changed this message`;
-  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false" title="${who}. Press to see what it said first.">edited</button><div class="edited-was muted" hidden><strong>First said:</strong> ${esc(was || '')}</div>`;
-  const b = box.querySelector('button'), w = box.querySelector('.edited-was');
-  b.onclick = () => { w.hidden = !w.hidden; b.setAttribute('aria-expanded', String(!w.hidden)); };
-  el.insertBefore(box, el.querySelector(':scope > .msg-tools'));
-}
-function editedMsg(ev) {
-  const el = ev.id && log.querySelector(`[data-mid~="${CSS.escape(ev.id)}"]`);
-  if (!el) return; // in the older part of the chat, or another chat: the saved chat has the new words
-  const live = [...replies.values()].find((r) => r.el === el);
-  const old = live ? live.text : rawText.get(el) ?? liveWords.get(el) ?? '';
-  const one = !/\s/.test(el.dataset.mid.trim());
-  const text = ev.before && old.includes(ev.before) ? old.replace(ev.before, ev.text) : one ? ev.text : null;
-  if (text == null) return; // two of his messages share this bubble and the old words weren't found: a reload shows it right
-  const media = live ? live.media : bubbleMedia.get(el) || [];
-  if (live) { live.text = text; live.mediaKey = null; drawReply(live); }
-  else {
-    el.innerHTML = render(text) + (media.length ? `<div class="reply-media">${mediaHtml(media)}</div>` : '');
-    if (media.length) fillPeeks(el);
-    rawText.delete(el); liveWords.set(el, text);
-    decorate(el, text, media);
-  }
-  markEdited(el, ev.was, ev.by);
-  el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2500);
-}
 // ---------- Try again and Edit (Settings, How Bob works; src/redo.js). Off unless you turn it on. ----------
 // Try again is in the ... menu of Bob's latest answer; Edit in the ... menu of each of your messages Bob has saved. Either one takes back what
 // came after, keeps it under your message as an earlier version, and sends your message (again). Hidden while Bob is busy.
@@ -1348,68 +1240,6 @@ let redoOnNow = false, redoing = false, redoneId = '';
 // the same message on High effort, so the big brain drafts it and the reviewer checks it.
 let stuckNow = false;
 const lastYou = () => [...log.querySelectorAll(':scope > .msg.you')].pop() || null;
-// Where Try again goes: Bob's latest answer, or your latest message while it has none. It's in that message's ... menu.
-function redoTarget() {
-  const you = lastYou();
-  if (!you?.dataset.mid) return null;
-  let answer = null;
-  for (let n = you.nextElementSibling; n; n = n.nextElementSibling) if (n.matches('.msg.bob:not(.aside-msg)')) answer = n;
-  return answer || you;
-}
-// Try again and Edit live in the ... menu, built fresh each time it opens; an open one shuts when Bob gets busy.
-function drawRedo() {
-  for (const x of log.querySelectorAll('[data-save-test], [data-redo][data-hard]')) x.remove();
-  if (busy || redoing || !redoOnNow) { window.dispatchEvent(new Event('bob-msg-menu-close')); return; }
-  // Two buttons stay under the latest answer, outside the ... menu: Save as a test (item 11), and after Bob gave up,
-  // Try again thinking harder (item 8).
-  const t = redoTarget(), answer = t?.matches('.msg.bob') ? t : null;
-  if (answer?.dataset.mid) answer.querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-save-test title="That answer went wrong? Keep the question as a test, so Bob\'s tests (and the Lab) learn from it">Save as a test</button>');
-  if (stuckNow && t) t.querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-redo data-hard title="Ask again on High effort: the bigger brain works it out and a second brain checks it">Try again, thinking harder</button>');
-}
-function versionsHtml(list) {
-  const cut = (t) => { const x = String(t || ''); return esc(x.length > 1500 ? x.slice(0, 1500) + '…' : x); };
-  return list.slice().reverse().map((v, i) => `<li><span class="muted">${i === 0 ? 'Latest earlier version' : `${i + 1} versions back`}${v.at ? ` · ${esc(new Date(v.at).toLocaleString())}` : ''}</span><div><strong>You:</strong> ${cut(v.text)}</div>${(v.said || []).map((m) => `<div><strong>${m.role === 'user' ? 'You' : 'Bob'}:</strong> ${cut(m.content) || (m.media?.length ? `<em>${m.media.length} thing${m.media.length === 1 ? '' : 's'} made</em>` : '')}</div>`).join('') || '<div class="muted">No answer yet.</div>'}</li>`).join('');
-}
-function markVersions(el, list) {
-  el.querySelector(':scope > .versions-note')?.remove();
-  if (!list?.length) return;
-  const box = document.createElement('div');
-  box.className = 'versions-note';
-  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false" title="What was here before Try again or Edit. Press to see it.">${list.length === 1 ? '1 earlier version' : `${list.length} earlier versions`}</button><ol class="versions-list muted" hidden>${versionsHtml(list)}</ol>`;
-  const b = box.querySelector('button'), w = box.querySelector('ol');
-  b.onclick = () => { w.hidden = !w.hidden; b.setAttribute('aria-expanded', String(!w.hidden)); };
-  el.insertBefore(box, el.querySelector(':scope > .msg-tools'));
-}
-// Item 10 (Nov 11): "How I got here" under a reply: each step, whether it worked, how long it took, how much came back and
-// which brain was thinking. Folded until pressed; Copy puts it on the clipboard as plain lines for a bug report.
-function stepsText(list) {
-  return list.map((x, i) => (x.correction ? `${i + 1}. ⚠ ${x.what || 'App\'s note'}${x.brain ? ` · ${x.brain}` : ''}` : `${i + 1}. ${x.ok ? '✓' : '✗'} ${x.what || x.tool} · ${(x.ms / 1000).toFixed(1)} s · ${Number(x.chars || 0).toLocaleString()} characters back${x.brain ? ` · ${x.brain}` : ''}`)).join('\n');
-}
-function markSteps(el, list) {
-  el.querySelector(':scope > .steps-note')?.remove();
-  if (!list?.length) return;
-  const box = document.createElement('div');
-  box.className = 'versions-note steps-note';
-  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false" title="Each step Bob took for this answer. Press to see them.">How I got here (${list.length} step${list.length === 1 ? '' : 's'})</button><div hidden><ol class="steps-list">${list.map((x) => (x.correction ? `<li class="step-correction">⚠ ${esc(x.what || 'App\'s note')}${x.brain ? ` <span class="muted">· ${esc(x.brain)}</span>` : ''}</li>` : `<li>${x.ok ? '✓' : '✗'} ${esc(x.what || x.tool)} <span class="muted">· ${(x.ms / 1000).toFixed(1)} s · ${esc(Number(x.chars || 0).toLocaleString())} characters back${x.brain ? ` · ${esc(x.brain)}` : ''}</span></li>`)).join('')}</ol><button type="button" class="mini" data-copy-steps>Copy</button></div>`;
-  const b = box.querySelector('button'), w = box.querySelector('div');
-  b.onclick = () => { w.hidden = !w.hidden; b.setAttribute('aria-expanded', String(!w.hidden)); };
-  box.querySelector('[data-copy-steps]').onclick = () => navigator.clipboard?.writeText(stepsText(list)).then(() => note('Copied the steps.')).catch(() => {});
-  el.insertBefore(box, el.querySelector(':scope > .msg-tools'));
-}
-// Item 13 (Nov 11): how full this chat left the brain's memory, by Effort, after each reply. From 70% on, "Sum up and
-// carry on" appears: the older part is summed up and only the last few messages stay word for word.
-const kTok = (n) => (n >= 1000 ? `${Math.round(n / 1000)}K` : String(n));
-function drawFill(ev) {
-  const fillBox = $('chatFill'), fillText = $('chatFillText'), fillSum = $('chatFillSum');
-  if (!fillBox) return;
-  if (!ev?.ctx) { fillBox.hidden = true; return; }
-  const share = Math.min(1, ev.used / ev.ctx);
-  fillText.textContent = `This chat: ${kTok(ev.used)} of ${kTok(ev.ctx)} (${Math.round(share * 100)}%)`;
-  fillBox.title = 'How much of the brain\'s memory this chat filled on the last reply';
-  fillBox.classList.toggle('full', share >= 0.7);
-  fillSum.hidden = share < 0.7;
-  fillBox.hidden = false;
-}
 $('chatFillSum')?.addEventListener('click', async () => {
   const fillSum = $('chatFillSum');
   fillSum.disabled = true;
@@ -1438,33 +1268,6 @@ async function redoSend(id, text, level = effort.get()) {
     life.react('heard');
     if (lastJobs.some((j) => j.id === s.data.jobId && j.state !== 'waiting')) drawQueue(lastJobs);
   } finally { redoing = false; drawRedo(); scrollDown(); }
-}
-// Edit in place: a box with your words, Send again and Cancel. Esc cancels, Enter sends (Shift+Enter for a new line).
-function editInPlace(el) {
-  if (el.querySelector(':scope > .edit-box')) return;
-  const was = rawText.get(el) || '';
-  const later = el !== lastYou() || [...log.querySelectorAll(':scope > .msg.bob')].some((b) => el.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-  const box = document.createElement('form');
-  box.className = 'edit-box';
-  box.innerHTML = `<label class="sr-only" for="edit-${el.dataset.mid}">Your message</label><textarea id="edit-${el.dataset.mid}" rows="3">${esc(was)}</textarea>${later ? '<span class="muted">Bob answers from here. What came after this message is kept under it as an earlier version.</span>' : ''}<div class="row"><button type="submit">Send again</button><button type="button" class="link" data-edit-cancel>Cancel</button></div>`;
-  el.classList.add('editing');
-  el.appendChild(box);
-  const t = box.querySelector('textarea');
-  t.focus(); t.setSelectionRange(t.value.length, t.value.length);
-  const close = () => { box.remove(); el.classList.remove('editing'); };
-  box.querySelector('[data-edit-cancel]').onclick = close;
-  t.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { e.preventDefault(); close(); }
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); box.requestSubmit(); }
-  });
-  box.onsubmit = (e) => {
-    e.preventDefault();
-    const text = t.value.trim();
-    if (!text) { t.focus(); return; }
-    if (text === was.trim()) { close(); return; }
-    close();
-    redoSend(el.dataset.mid, text);
-  };
 }
 window.addEventListener('bob-chat-redo', (e) => { redoOnNow = e.detail === true; drawRedo(); });
 
@@ -1601,51 +1404,6 @@ const msgMenu = (() => {
   return { toggle, pick, close };
 })();
 
-function decorate(el, text, media = []) {
-  if (!el || el.querySelector(':scope > .msg-tools')) return el;
-  rawText.set(el, text || '');
-  if (el.classList.contains('bob')) jobHelps.links(el); // Settings, Jobs: file:line links open the editor there
-  const { files } = renderRich(text || '');
-  const made = (media || []).map((m) => m.url).filter((u) => typeof u === 'string' && u.startsWith('/images/'));
-  for (const v of el.querySelectorAll('img[src^="/images/"], audio[src^="/images/"], video[src^="/images/"]')) made.push(v.getAttribute('src'));
-  const links = [...el.querySelectorAll('a[href^="http"]')].length;
-  const tools = document.createElement('div');
-  tools.className = 'msg-tools';
-  el.appendChild(tools); // Try again, Edit, Copy and Delete are in the ... menu (msgMenu below)
-  el.insertAdjacentHTML('beforeend', '<button type="button" class="msg-more" data-msg-more aria-haspopup="menu" aria-expanded="false" aria-label="Message menu: Try again, Edit, Copy, Delete" title="Try again, Edit, Copy, Delete">…</button>');
-  fillPeeks(el);
-  const want = [...new Set([...files, ...made])];
-  if (want.length && el.classList.contains('bob')) {
-    api('/api/file/info', { paths: want }).then((list) => {
-      const shown = new Set([...el.querySelectorAll('img[src], audio[src], video[src]')].map((x) => x.getAttribute('src')).concat([...el.querySelectorAll('[data-view-url]')].map((x) => x.dataset.viewUrl)));
-      // A painted picture already in the message is the same file as /api/file?path=...; match by name too.
-      const shownNames = new Set([...shown].filter((u) => u.startsWith('/images/')).map((u) => decodeURIComponent(u.slice(8))));
-      // Every file he mentions gets the same card as things he made: a preview, and View opens the side panel.
-      const html = list.filter((f) => f.ok && !shown.has(f.url) && !shownNames.has(f.name)).map((f) => outCard({ ...f, kind: f.kind === 'text' ? 'document' : f.kind, mention: f.mention })).join('');
-      if (html) { const box = document.createElement('div'); box.className = 'file-cards'; box.innerHTML = html; el.insertBefore(box, tools); fillPeeks(box); }
-      for (const a of el.querySelectorAll('a.file-link')) { const f = list.find((x) => x.mention === a.dataset.file); if (!f?.ok) a.classList.add('gone'), a.title = f?.missing ? 'Not there any more' : 'Outside the folders Bob may open'; }
-    }).catch(() => {});
-  }
-  return el;
-}
-// A message with formulas copies as the brain wrote it (the LaTeX), which pastes cleanly anywhere.
-const copyWords = (msg) => (msg.querySelector('.katex') ? rawText.get(msg) : '') || plainText(msg) || rawText.get(msg) || '';
-function plainText(el) {
-  const c = el.cloneNode(true);
-  for (const x of c.querySelectorAll('.msg-tools, .mini, .file-cards, .qtag, .msg-more, .msg-menu')) x.remove();
-  return c.innerText.trim();
-}
-async function copyText(text, btn) {
-  let ok = false;
-  try { ok = (await post('/api/clipboard', { text })).data.ok === true; } catch {}
-  if (!ok) { try { await navigator.clipboard.writeText(text); ok = true; } catch {} }
-  if (!ok) {
-    const t = document.createElement('textarea'); t.value = text; t.style.position = 'fixed'; t.style.opacity = '0';
-    document.body.appendChild(t); t.select(); try { ok = document.execCommand('copy'); } catch {} t.remove();
-  }
-  if (btn) { const was = btn.textContent; btn.textContent = ok ? 'Copied' : 'Couldn\'t copy'; btn.classList.add('done'); setTimeout(() => { btn.textContent = was; btn.classList.remove('done'); }, 1400); }
-  return ok;
-}
 log.addEventListener('click', async (e) => {
   const b = e.target.closest('button, a.file-link');
   if (!b || !log.contains(b)) return;
@@ -1695,9 +1453,6 @@ log.addEventListener('error', (e) => {
   }).catch(() => {});
 }, true);
 
-function picsHtml(pics) {
-  return pics?.length ? `<div class="pics">${pics.map((p) => `<img src="${esc(p.url)}" alt="${esc(p.name)}" title="${esc(p.name)}">`).join('')}</div>` : '';
-}
 
 // Every message is its own job in Bob's queue: send as many as you like, none get dropped.
 const jobBubbles = new Map();

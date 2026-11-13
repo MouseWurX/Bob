@@ -47,7 +47,7 @@ body {
 .who { flex: 1; min-width: 0; }
 .name { font-weight: 700; font-size: 17px; }
 .inn { font-weight: 400; color: var(--muted); font-size: 13px; }
-.status { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; } /* 1.5.215: Bob's line wraps, never cut off */
 .status.loading, .status.painting { color: var(--accent); }
 .status.waiting { color: var(--bad); font-weight: 600; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
@@ -433,7 +433,7 @@ body.still *, body.still *::before, body.still *::after { animation: none !impor
 .side .who { min-width: 0; }
 /* Always two lines tall, whatever it says (clamped, never grown), so the menu below never moves. Work details go in
    Bob's thinking, not here. */
-.side .status { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; line-height: 1.35; height: 2.7em; }
+.side .status { white-space: normal; display: block; overflow: visible; font-size: 11px; line-height: 1.3; min-height: 2.6em; }
 button.fold { /* only the menu's fold button; the Settings expanders are details.fold too */ width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; align-self: start; }
 .fold .ico, .nav-item .ico, .nav-new .ico, .session-wrap .ico { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .nav-item, .nav-new { position: relative; display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 8px; border: 1px solid transparent; background: none; text-align: left; font-size: 13.5px; color: var(--text); }
@@ -775,7 +775,7 @@ details.more > summary:hover { color: var(--accent); }
 @media (max-width: 700px) { .brain-pill { max-width: 46vw; } }
 /* 1.5.3: the brain label stays on one line and ends in "…" when there is no room; the full text is in its popover. */
 .brain-pill { min-width: 0; max-width: 100%; overflow: hidden; }
-#brainPillText { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#brainPillText { min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: left; line-height: 1.25; } /* 1.5.215: wraps instead of "…", so it's always readable */
 /* 1.5.3: Now running shows the graphics card and RAM, one meter each. */
 .now-gpu .mem-row { display: grid; gap: 2px; }
 .now-gpu .mem-row .mem-text { color: var(--text); }
@@ -946,8 +946,8 @@ body.left-folded .bob-prop { top: -6px; right: -6px; font-size: 11px; }
 .say-bubble.on { pointer-events: auto; }
 .bubble-x { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); font-size: 12px; line-height: 20px; text-align: center; cursor: pointer; }
 .bubble-x:hover { background: var(--card); color: var(--text); }
-.say-bubble { position: relative; max-width: 100%; padding: 7px 24px 7px 11px; border-radius: var(--r, 8px); border: 1px solid var(--accent); background: var(--panel); color: var(--text); font-size: 12.5px; line-height: 1.4; box-shadow: 0 6px 20px rgba(0,0,0,.4); overflow-wrap: anywhere; opacity: 0; transform: translateX(-4px); transition: opacity .2s ease, transform .2s ease; }
-.say-bubble > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; overflow: hidden; max-height: 7em; }
+.say-bubble { position: relative; max-width: 100%; padding: 7px 24px 7px 11px; border-radius: var(--r, 8px); border: 1px solid var(--accent); background: color-mix(in srgb, var(--panel) 72%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); color: var(--text); font-size: 12.5px; line-height: 1.4; box-shadow: 0 6px 20px rgba(0,0,0,.4); overflow-wrap: anywhere; opacity: 0; transform: translateY(-4px) scale(.96); transition: opacity .7s ease, transform .7s ease; } /* 1.5.215: pops in and out over about 0.7 s */
+.say-bubble > span { display: block; } /* 1.5.215: the whole line, never cut off */
 .say-bubble.on { opacity: 1; transform: none; }
 .say-bubble[hidden] { display: none; }
 .say-bubble.cat-say { border-style: dashed; }
@@ -1980,6 +1980,8 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .brain-row { display: grid; grid-template-columns: minmax(150px, 1.1fr) minmax(160px, 1.6fr) minmax(180px, 1.4fr); gap: 10px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; }
 .brain-jobs { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
 .job-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; border: 1px solid var(--accent); border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
+.job-chip-off { border-style: dashed; border-color: var(--muted); opacity: 0.75; } /* One brain on: greyed, never hidden */
+.one-brain-note { margin: 8px 0 0; padding: 6px 10px; border: 1px dashed var(--accent); border-radius: 8px; overflow-wrap: anywhere; }
 .chip-x { background: none; border: 0; color: var(--muted); padding: 0; margin: 0 -4px 0 0; min-width: 24px; min-height: 24px; line-height: 1; cursor: pointer; }
 .chip-x:hover, .chip-x:focus-visible { color: var(--text); }
 .job-add { font-size: 13px; max-width: 11em; }

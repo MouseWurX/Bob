@@ -2,6 +2,7 @@
 // (they used to live only in a live event, and a missed event lost them).
 import fs from 'node:fs';
 import { Brain } from '../src/brain.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -51,7 +52,7 @@ const emit = (ev) => events.push(ev);
   check('a job that fails after painting keeps the picture', Brain.prototype.history.call(b, 's3').at(-1).media?.[0]?.url === '/images/a.png');
 }
 
-const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+const app = publicText('app.js');
 check('the window draws saved media when it loads the chat', /render\(m\.content\) \+ mediaHtml\(m\.media\)/.test(app) && /function mediaHtml\(media\)/.test(app));
 check('after the event stream drops and comes back, missed media are shown', /es\.onopen = \(\) => \{ if \(dropped\)/.test(app) && /async function catchUpMedia/.test(app) && /!seen\.has\(m\.url\)/.test(app));
 const server = fs.readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');

@@ -10,6 +10,7 @@ import { addPageHtml, pagePickHtml, catalogueHtml } from '../public/catalogue.js
 import { pickFor, sourceOf } from '../public/fit.js';
 import { hostAllowed, modelHostAllowed } from '../src/models.js';
 import { quantOf, placeFor } from '../public/place.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok ? '' : ' ' + extra}`); };
@@ -116,7 +117,7 @@ const fake = (status, j) => async (u, o) => { asked.push([u, o]); return { statu
   const html = catalogueHtml({ roles, models: [...catalog.models, e].map((m) => ({ ...m, status: { state: 'missing' } })), brains: {}, active: {}, vramGB: 16, ramGB: 32, freeGB: 500, packs: catalog.packs, platform: 'win32', showUnsuited: true });
   check('an added brain shows in its own family with size and quantization, and can be removed', html.includes('>Added by you<') && html.includes('5.6 GB · Q4_K_M') && html.includes(`data-catremove="${e.id}"`) && /catjob-addpage/.test(html));
 
-  const server = read('src/server.js'), cellar = read('public/cellar.js'), help = read('public/help-content.js');
+  const server = read('src/server.js'), cellar = publicText('cellar.js'), help = read('public/help-content.js');
   check('adding works only on this replicant matrix itself, and the list is rebuilt after', /p === '\/api\/catalog-added\/look' \|\| p === '\/api\/catalog-added\/add'\)\) \{\n\s+if \(!isLocal\)/.test(server) && /mergeAdded\(shop\.shipped, cfg\)/.test(server) && (server.match(/mergeAdded\(listUpdates\.merge\(shop\.shipped\), cfg\)/g) || []).length === 3);
   check('the page opens a pop-up to pick, then adds', /api\('\/api\/catalog-added\/look'/.test(cellar) && /pagePick\(r, link\)/.test(cellar) && /api\('\/api\/catalog-added\/add'/.test(cellar) && /showModal\(\)/.test(cellar));
   check('the shipped catalogue file is never written', !/writeFile|node:fs/.test(read('src/catalog-added.js')));

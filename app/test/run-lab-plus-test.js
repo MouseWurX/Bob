@@ -16,6 +16,7 @@ import * as P from '../src/lab-plus.js';
 import { readMyPacks } from '../src/lab-mypacks.js';
 import { pagesRoute } from '../src/lab-pages.js';
 import { saveSettings } from '../src/config.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -207,8 +208,8 @@ const mk = (steps = {}, c = cfg) => { const l = new Lab(c, { shop: { ...shop, cf
   let e = ''; try { P.setExtra(lab, 'nope', true); } catch (x) { e = x.message; }
   check('an unknown switch is turned away', /no Lab switch/.test(e));
   check('110 Bob for Android notifies for marked Lab jobs only', /"lab-done" -> if \(ev\.optBoolean\("phone"\)\) notifyNow/.test(read('android/app/src/main/java/ca/mousewurx/bob/Bridge.kt')));
-  check('110 a phone\'s browser shows it, never this replicant matrix\'s own window', /ev\.phone && !\['127\.0\.0\.1', 'localhost'/.test(read('public/app.js')));
-  check('102 the chat gets the Save to Lab switch from settings and follows changes made in the Lab', /labSaveQuestions: labOn\(cfg\) && cfg\.labExtras\?\.saveQuestions === true/.test(read('src/server.js')) && /case 'lab-extras': setSaveToLab/.test(read('public/app.js')));
+  check('110 a phone\'s browser shows it, never this replicant matrix\'s own window', /ev\.phone && !\['127\.0\.0\.1', 'localhost'/.test(publicText('app.js')));
+  check('102 the chat gets the Save to Lab switch from settings and follows changes made in the Lab', /labSaveQuestions: labOn\(cfg\) && cfg\.labExtras\?\.saveQuestions === true/.test(read('src/server.js')) && /case 'lab-extras': setSaveToLab/.test(publicText('app.js')));
 }
 
 // ---- the route: reads anywhere, jobs and switches on this replicant matrix only, nothing when the Lab is off ----

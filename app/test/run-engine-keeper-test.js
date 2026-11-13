@@ -12,6 +12,7 @@ import { engineFor, ENGINES, engineWhole, NOT_WHOLE, pickAsset } from '../src/en
 import { collect, writeZip, unzip } from '../src/zip.js';
 import { mergeSettings } from '../src/config.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let failures = 0, passed = 0;
 const check = (ok, name) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`); if (ok) passed++; else failures++; };
@@ -124,7 +125,7 @@ if (beOk) {
 // The window, Help, glossary and FAQ.
 {
   const read = (f) => fs.readFileSync(fileURLToPath(new URL('../' + f, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
-  const cellar = read('public/cellar.js');
+  const cellar = publicText('cellar.js');
   check(/sswitch\('engineAuto', settings\.engineUpdates\?\.auto !== false, 'Keep engines up to date'/.test(cellar), 'Settings, Engines has the switch, on unless switched off');
   check(/engineUpdates: engineKeeper\.view\(\)/.test(read('src/server.js')) && /new EngineKeeper\(/.test(read('src/server.js')), 'the server starts the keeper and shows its state');
   const help = (id) => HELP.find((h) => h.id === id)?.html || '';

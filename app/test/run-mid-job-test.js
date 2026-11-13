@@ -9,6 +9,7 @@ import { Brain, besideBigOk } from '../src/brain.js';
 import { mergeSettings } from '../src/config.js';
 import { midJobOn, sortMessage, replyTag, maybeTag, jobLine, quickPrompt, quickHistory, midJobFits } from '../src/mid-job.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -140,7 +141,7 @@ const finished = (id) => ['done', 'failed', 'cancelled'].includes(stateOf(id));
 }
 
 // ---------- Settings, Help, glossary, FAQ ----------
-const cellar = read('public/cellar.js');
+const cellar = publicText('cellar.js');
 check('the switch in Settings, Brains, on to start with', /sswitch\('answerMidJob', settings\.answerMidJob !== false, 'Answer messages between steps'/.test(cellar) && /data\.set === 'answerMidJob'|dataset\.set === 'answerMidJob'/.test(cellar));
 const help = HELP.find((e) => e.id === 'mid-job');
 check('Help in Bob\'s voice, says where it works', help && /Windows, Mac, Linux and Android/.test(help.html) && /\bI\b/.test(help.html));

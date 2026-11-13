@@ -1,7 +1,7 @@
 // 🗓 Everyday helpers (items 143 to 150): text size, easier-to-read font, profiles, today card, focus timer,
 // receipts, the tour after an update and the tray dot. Everything starts off; private things stay locked on disk;
 // nothing here reads the real computer or goes online (the weather gets a fake fetch, the box a test keeper).
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -49,9 +49,9 @@ const fresh = () => { const d = fs.mkdtempSync(path.join(tmp, 'inn-')); const da
   const css = read('public/style.css');
   check('the zoom covers the chat, the message box, Settings and Help', /\.log > \*, #input, #cellar-body > \*, #help-body > \* \{ zoom: var\(--text-zoom\); \}/.test(css));
   check('code keeps its own font', /html\.readable-font code, html\.readable-font pre/.test(css));
-  const cellar = read('public/cellar.js');
+  const cellar = publicText('cellar.js');
   check('Look & feel has the slider and the switch', /data-textsize value=/.test(cellar) && /sswitch\('readableFont', settings\.readableFont === true, 'Easier-to-read font'/.test(cellar));
-  check('both windows apply them', read('public/app.js').includes('applyReading(st)') && read('public/settings-window.js').includes('applyReading(reading)'));
+  check('both windows apply them', publicText('app.js').includes('applyReading(st)') && read('public/settings-window.js').includes('applyReading(reading)'));
   for (const f of ['public/phone/index.html', 'android/app/src/main/assets/www/index.html']) check(`the phone has them too (${f.split('/')[0]})`, read(f).includes('id="text-size"') && read(f).includes('id="readable-font"'));
   check('the phone script is the same in both places', read('public/phone/phone.js') === read('android/app/src/main/assets/www/phone.js') && /textSize: 100, readableFont: false/.test(read('public/phone/phone.js')));
 }

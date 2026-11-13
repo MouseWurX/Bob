@@ -7,6 +7,7 @@ import { LANGS, pickLang, translateText, translateTree, SKIP } from '../public/i
 import { WORDS as FR } from '../public/lang/fr.js';
 import { WORDS as ES } from '../public/lang/es.js';
 import { LANGUAGES, mergeSettings } from '../src/config.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -69,10 +70,10 @@ check('English swaps nothing', translateTree(el('div', {}, [txt('Send')]), null)
 check('the skip list covers the chat, text boxes and code', ['#log', 'textarea', 'input', 'code', 'pre', '[data-no-translate]', '[contenteditable]'].every((s) => SKIP.includes(s)));
 
 // ---- wired in ----
-const cellar = read('../public/cellar.js');
+const cellar = publicText('cellar.js');
 check('Settings, Bob himself has the Language menu', /srow\('Language', `<select data-set="language"/.test(cellar) && /el\.dataset\.set === 'language'/.test(cellar));
 check('the main window, the Settings window and the thinking window use it', ['app.js', 'settings-window.js', 'mind.js'].every((f) => /startI18n\(\)/.test(read('../public/' + f))));
-check('the main window follows the saved language (phone, other windows)', /followSaved\(st\.language\)/.test(read('../public/app.js')));
+check('the main window follows the saved language (phone, other windows)', /followSaved\(st\.language\)/.test(publicText('app.js')));
 const help = read('../public/help-content.js');
 check('Help, the glossary and the FAQ explain it', /id: 'language'/.test(help) && /id: 'faq-language'/.test(help) && /<dt>Language<\/dt>/.test(help));
 

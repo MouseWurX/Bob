@@ -3,7 +3,7 @@
 // replicant matrix and every Bob on the Bob-Net leave the catalogue's job lists for Rented brains; the really big brains
 // are listed in Add a rental; Bob can fetch his newest brain list from GitHub (off unless switched on); and a file Bob
 // downloaded himself has no "(downloaded by Bob)" bracket. Run: node test/run-catalogue-list-test.js
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -103,7 +103,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
   const picks = rentPicks(models, catalog.bigBrains, { vramGB: 6, ramGB: 8 }, [], 'win32');
   check('the picker lists every really big brain', catalog.bigBrains.every((b) => picks.some((p) => p.key === `big:${b.id}`)));
   check('and the catalogue brains too big for your Bobs, as a GGUF file a rented machine can fetch', picks.some((p) => p.key === 'cat:nemotron-3.5-bolt-74b' && /^nvidia\/[\w.-]+\/[\w.-]+\.gguf$/.test(p.model) && p.card === '48'));
-  check('no squeezed file, and naughty ones only when the caller passes them (Settings passes only what\'s visible)', !picks.some((p) => p.key === 'cat:qwen3.6-35b-a3b-q3') && /rentPicks\(visibleModels\(data\?\.models \|\| \[\], naughtyOn\(\)\)/.test(read('public/cellar.js')));
+  check('no squeezed file, and naughty ones only when the caller passes them (Settings passes only what\'s visible)', !picks.some((p) => p.key === 'cat:qwen3.6-35b-a3b-q3') && /rentPicks\(visibleModels\(data\?\.models \|\| \[\], naughtyOn\(\)\)/.test(publicText('cellar.js')));
   check('none that fit one of your Bobs', !rentPicks(models, [], { vramGB: 6 }, [{ name: 'big-pc', vramGB: 24, ramGB: 64 }]).some((p) => p.key === 'cat:nemotron-3.5-bolt-74b'));
   check('pay-per-answer-only brains carry no machine model; multi-card ones say how many', picks.filter((p) => p.answerOnly).every((p) => p.model === '') && picks.some((p) => p.cards === 8));
   check('rentAsOf turns a pinned file into Owner/Repo/file.gguf, and nothing else', rentAsOf({ files: [{ role: 'gguf', url: 'https://huggingface.co/a/b/resolve/0123456789abcdef0123456789abcdef01234567/x.gguf' }] }) === 'a/b/x.gguf' && rentAsOf({ files: [{ role: 'gguf', url: 'https://evil.example/a/b/resolve/0123456789abcdef0123456789abcdef01234567/x.gguf' }] }) === '' && rentAsOf({}) === '');
@@ -114,7 +114,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
   check('Find it reads the service\'s own model list (https only) and never for a machine service', await findModel('openrouter', { hf: 'deepseek-ai/DeepSeek-V4-Pro-0813', name: 'DeepSeek V4 Pro' }, 'k', fake) === 'deepseek/deepseek-v4-pro' && asked === 'https://openrouter.ai/api/v1/models' && await findModel('runpod', { hf: 'x/y' }, 'k', fake) === null && await findModel('other', { hf: 'x/y', address: 'http://plain' }, '', fake) === null);
   const routes = read('src/rental-routes.js');
   check('/api/rent/find needs this replicant matrix, the service switched on, and its key', /p === '\/api\/rent\/find'/.test(routes) && routes.indexOf("p === '/api/rent/find'") > routes.indexOf('if (!isLocal)') && /st\.enabled\[s\.id\] !== true/.test(routes));
-  const cellar = read('public/cellar.js');
+  const cellar = publicText('cellar.js');
   check('Add a rental has the picker and Find it; it never sets more than one card by itself', /Pick a brain from Bob's list/.test(cellar) && /data-rentfind/.test(cellar) && !/\[data-rentadd="cards"\]'\)\.value = String\(p\.cards/.test(cellar) && /Set Cards on the machine to \$\{p\.cards\}/.test(cellar));
 }
 
@@ -150,7 +150,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
   const down = new CatalogUpdates(cfg, { fetch: async () => { throw new Error('The operation was aborted due to timeout'); } });
   check('GitHub not answering is said plainly', (await down.check(catalog)).why === 'GitHub didn\'t answer in time.');
   fs.rmSync(tmp, { recursive: true, force: true });
-  const server = read('src/server.js'), cellar = read('public/cellar.js');
+  const server = read('src/server.js'), cellar = publicText('cellar.js');
   check('the server merges it at start, checks once a day only when due, and Check now is this replicant matrix only', /shop\.catalog = mergeAdded\(listUpdates\.merge\(shop\.shipped\), cfg\)/.test(server) && /if \(listUpdates\.due\(\)\)/.test(server) && /p === '\/api\/catalog\/latest'\) \{\s*if \(!isLocal\)/.test(server));
   check('Settings: "Let Bob fetch his newest brain list" under Going online, off, with Check now', /sswitch\('catalogUpdates', settings\.catalogUpdates === true, 'Let Bob fetch his newest brain list', keep\('Off unless you turn it on\./.test(cellar) && /data-listcheck>Check now/.test(cellar));
 }

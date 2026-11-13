@@ -1,6 +1,6 @@
 // Picture edits: Bob never quietly paints a new picture when an edit was meant, and says when an edit model
 // is on this replicant matrix but not assigned.
-import { serverText } from './source-text.js';
+import { serverText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -132,7 +132,7 @@ const { editPrompt } = await import('../src/brain.js');
 }
 {
   const sh = fs.readFileSync(fileURLToPath(new URL('../public/shelf.js', import.meta.url)), 'utf8');
-  const app = fs.readFileSync(fileURLToPath(new URL('../public/app.js', import.meta.url)), 'utf8');
+  const app = publicText('app.js');
   const srv = serverText();
   check('uploads are turned upright in the window first (imageOrientation from-image)', /imageOrientation: 'from-image'/.test(sh) && /upright\(file\)/.test(sh));
   const help = fs.readFileSync(fileURLToPath(new URL('../public/help-content.js', import.meta.url)), 'utf8');
@@ -143,7 +143,7 @@ const { editPrompt } = await import('../src/brain.js');
   check('the painter copy is told edits are short instructions', /short instruction saying only what to change/.test(persona));
 }
 
-const ui = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+const ui = publicText('cellar.js');
 check('Model roles shows a model that is on this replicant matrix but not assigned, with a Use button', /On this replicant matrix, not assigned yet/.test(ui) && /data-userole=/.test(ui) && /b\.dataset\.userole/.test(ui));
 const tools = fs.readFileSync(new URL('../src/tools.js', import.meta.url), 'utf8');
 check('make_image offers mode new', /enum: \['keep_look', 'start_from', 'new'\]/.test(tools));

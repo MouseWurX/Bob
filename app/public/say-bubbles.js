@@ -1,5 +1,5 @@
 // Word bubbles for Bob and the cat (Patches, or whatever the cat is called in Settings).
-// Their lines float beside Bob's picture, over the chat, in a fixed layer: they never take room in the menu, so a long
+// Their lines float under Bob's picture, over the chat, in a fixed layer: they never take room in the menu, so a long
 // line can't push New chat, Chat, Tasks and the rest down (the in-menu cat line used to). A bubble shows a few lines
 // at most, has an ✕ in its top right corner, and goes away by itself after 15 seconds, unless the pointer is resting
 // on it (then it waits until the pointer leaves). Esc closes them too. Only personality lines go here; Bob's work
@@ -21,19 +21,21 @@ export function createBubbles() {
   }
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (!els.bob.hidden) hide('bob'); if (!els.cat.hidden) hide('cat'); } });
 
-  // Beside the menu, level with Bob's picture. If there isn't room to the side (a very narrow window), under the picture.
+  // 1.5.215: under Bob's picture (the cube or the pixel Bob, whichever shows), so a line never covers him.
   function place() {
-    const pic = document.getElementById('bob'), side = document.getElementById('side');
+    const box = document.getElementById('bobCubeBox'), pixel = document.getElementById('bob');
+    const shown = (el) => el && !el.hidden && el.getClientRects().length && el.getBoundingClientRect().width > 0;
+    const pic = shown(box) ? box : shown(pixel) ? pixel : null;
     if (!pic) return;
-    const p = pic.getBoundingClientRect(), s = side ? side.getBoundingClientRect() : p;
+    const p = pic.getBoundingClientRect();
+    // Under his name and line too, where they sit beside the picture (the menu's top), so the bubble never covers them.
+    const top = pic.closest('.side-top'), under = top && top.getClientRects().length ? Math.max(p.bottom, top.getBoundingClientRect().bottom) : p.bottom;
     const vw = document.documentElement.clientWidth || window.innerWidth;
-    let left = Math.max(p.right, s.right) + GAP, top = p.top, room = vw - left - EDGE;
-    const below = room < MIN_W;
-    if (below) { left = EDGE; top = p.bottom + GAP; room = vw - EDGE * 2; }
-    layer.classList.toggle('below', below);
+    const left = Math.max(EDGE, Math.min(p.left, vw - MIN_W - EDGE));
+    layer.classList.add('below');
     layer.style.left = `${Math.round(left)}px`;
-    layer.style.top = `${Math.round(Math.max(EDGE, top))}px`;
-    layer.style.width = `${Math.round(Math.min(MAX_W, room))}px`;
+    layer.style.top = `${Math.round(Math.max(EDGE, under + GAP))}px`;
+    layer.style.width = `${Math.round(Math.min(MAX_W, vw - left - EDGE))}px`;
   }
 
   function hide(who) {
@@ -42,7 +44,7 @@ export function createBubbles() {
     clearTimeout(timers[who]);
     hovered[who] = false;
     el.classList.remove('on');
-    timers[who] = setTimeout(() => { el.hidden = true; }, 220);
+    timers[who] = setTimeout(() => { el.hidden = true; }, 720); // after the 0.7 s fade (style.css .say-bubble)
   }
 
   // say('cat', 'Patches is napping.'). Empty text hides the bubble.

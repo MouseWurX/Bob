@@ -19,9 +19,19 @@ if (!L.model) { console.error('Qwen3.6 GGUF not found. Pass --model.'); process.
 const remoteUrl = o.url ? String(o.url).replace(/\/$/, '') : null;
 // --persona <file>: appended to Bob's system prompt for every lesson (a voice for a themed set); Bob's own rules stay in front of it.
 const persona = o.persona ? fs.readFileSync(path.resolve(String(o.persona)), 'utf8').trim() : '';
+// --tag "Think: Sherlock" (12 Nov): a short switch line added to Bob's system prompt in BOTH the teacher's prompt and the saved
+// lesson, while the --persona text (how that style thinks) is only shown to the teacher. The student learns to think that
+// way from the short line alone, so the style can be picked at chat time (a "switch"), tool turns included.
+const tag = o.tag ? String(o.tag).replace(/[\r\n]+/g, ' ').trim().slice(0, 80) : '';
 if (remoteUrl) process.env.LAB_REMOTE = '1'; else checkFree(o);
 const parallel = Math.max(1, Number(o.parallel) || 1);
 const kit = await loadBob(L.bob);
+// 12 Nov (later): the idea writer is told what Bob's tools can really do, so it doesn't invent jobs no tool covers (calendar events...)
+const TOOLBOX = (() => { try { return Object.entries(kit.groups()).map(([k, g]) => `${k} (${g.what || (g.tools || []).join(', ')})`).join('; '); } catch { return ''; } })();
+const toolboxNote = TOOLBOX ? ` Only ask for things this assistant can really do: its basic tools (list and read files, web search, open a web page, reminders, a notice board, memory) plus ${TOOLBOX}. Nothing else (no calendar app, no email sending, no phone calls).` : '';
+// and, for jobs where the message should carry everything, the teacher (only) is reminded to act on it rather than ask again
+const ACT_JOBS = new Set(['precise', 'missed', 'agent', 'twins', 'recover', 'codefix', 'research', 'files', 'office', 'run', 'schedules', 'web', 'pictures', 'reminders', 'security', 'apps']);
+const ACT_NUDGE = 'Act on the details the person already gave (names, paths, times, amounts) with the right tool; do not ask again for anything that is already in the message.';
 const dir = path.join(L.out, o.dir ? String(o.dir).replace(/[^\w.-]/g, '') : 'lessons'); fs.mkdirSync(dir, { recursive: true });
 const F = { ideas: path.join(dir, 'ideas.jsonl'), lessons: path.join(dir, 'lessons.jsonl'), sets: path.join(dir, 'toolsets.json') };
 const until = Number(o.hours) > 0 ? Date.now() + Number(o.hours) * 3600e3 : Infinity;
@@ -48,6 +58,14 @@ const JOBS = [
   ['selfcheck', 'tasks where Bob checks his own answer before sending it: re-reads the request, tests a claim or a calculation a second way, runs the code, or asks the reviewer, then corrects himself if needed and says what he checked', 0],
   ['research', 'looking something up properly: a question that needs several sources or files, where Bob searches or reads more than one place, compares what they say, pulls out what matters, says what is uncertain and where each point came from', 0],
   ['understand', 'a pasted text, log, message or described problem that must be understood before acting: Bob restates what it says and what is being asked in his own words, points out what is missing or unclear, and only then answers or asks', 0],
+  // 12 Nov: aimed at what the benchmark showed every Bob gets wrong (tools called on plain chat, arguments, long jobs)
+  ['restraint', 'messages that mention files, the web, code, reminders or apps but only want an explanation, an opinion, advice or a quick fact Bob already knows ("what is a zip file?", "is it safe to delete temp files?", "how do reminders usually work?", "what does this error usually mean?"): Bob answers directly from his own knowledge and calls NO tool', 0],
+  ['precise', 'jobs full of exact details Bob must copy into the tool call exactly: file and folder names with spaces or odd characters, full paths, dates and times ("next Tuesday at 7:30pm"), amounts, units, quoted text, several items at once', 0],
+  ['agent', 'bigger jobs that need three to six tool calls in a row, where each step depends on what the last one returned (find the files, read them, summarise, save the summary, remind me later): Bob says a one-line plan, does it, checks each result and finishes with a short summary of what he did', 0],
+  // 12 Nov (later): the owner asked for the rest of the test-design list in this rental
+  ['twins', 'pairs of messages on the same topic where one needs a tool and the other does not: first a message about something concrete Bob must act on (a named or attached file, a link, their own PC, a time to schedule, a document to convert), then a plain question on the same topic that Bob answers from what he knows with NO tool (e.g. "is this email a scam?" with the email pasted, then "how can I tell if an email is a scam?")', 0],
+  ['missed', 'plain requests Bob\'s tests showed he gets wrong, said many different ways: make a poster, banner, logo or thumbnail; zip or unzip a project, rename photos by date, put all the PDFs in one folder, sort a messy desktop; run the tests, install dependencies, build or compile a project, start the dev server; do something every Friday or on weekdays at 9am; turn a file into a PDF, convert an essay to Word, export as a Word doc, total a column in an Excel file, convert mp4 to mp3, shrink a video to email it; is this email a scam, is this link safe; save this as notes.txt, write that to a file; remember how you did that, do it the same way as last time. Bob goes straight to the right tool (no listing folders or looking at git first) and fills in what it needs', 0],
+  ['default', 'requests that look a little vague but have one obvious sensible default (no format given for a list, no folder given for a save, "remind me tomorrow" with no time, "make it smaller" for a picture): Bob does it with the sensible default and says in one short line which default he picked and how to change it, instead of asking a question', 0],
   ['science', 'physics, maths, chemistry and electronics: how things work, worked calculations, circuits and components, units, formulas, explaining a concept plainly, checking a calculation', 0],
   ['plans', 'planning: trips, projects, study plans, step-by-step plans for a big job', 4],
   ['reminders', 'reminders, to-do lists and the notice board: add, change, list, clear', 4],
@@ -65,6 +83,13 @@ const JOBS = [
 const onlyJobs = o.jobs ? String(o.jobs).split(',').map((x) => x.trim()).filter(Boolean) : null;
 const SCI_ANGLES = ['physics: motion, energy, forces, heat, light, with a worked calculation', 'electronics: circuits, Ohm\'s law, resistors, capacitors, transistors, microcontrollers, power supplies', 'chemistry: reactions, moles, acids and bases, materials, safety', 'maths beyond arithmetic: algebra, geometry, trig, probability, a bit of calculus', 'checking a calculation or unit conversion the person already did', 'explaining a science concept in plain words to a curious adult', 'practical engineering: batteries, motors, 3D printing materials, soldering, sensors'];
 const thinkMode = String(o.think || 'half');
+// --review: the teacher reads each finished lesson and grades it; a failed one goes to rejected.jsonl (with why), not lessons.jsonl
+const review = Boolean(o.review);
+// --avoid <folders>: requests already in these lesson folders are never written again (first user message, lowercased, gaps squeezed)
+const norm = (t) => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const avoid = new Set();
+for (const d of String(o.avoid || '').split(',').filter(Boolean)) for (const f of ['lessons.jsonl', 'heldout.jsonl']) for (const l of readJsonl(path.join(d, f))) { const u = l.messages?.find((m) => m.role === 'user'); if (typeof u?.content === 'string') avoid.add(norm(u.content)); }
+if (avoid.size) console.log(`avoiding ${avoid.size} requests already in the given lesson folders`);
 const dropTools = new Set(String(o['drop-tools'] || o.dropTools || '').split(',').filter(Boolean)); // --drop-tools ask_specialist,pick_session: these tools are not offered, so the teacher answers itself
 const CODE_ANGLES = ['fixing a bug in pasted code (include the code)', 'writing a small complete program from scratch', 'explaining what a piece of code does', 'JavaScript or TypeScript for a web page or Node', 'Python scripts and data handling', 'C++ or Rust, memory and performance', 'Unreal Engine C++ and Blueprints', 'Kotlin for Android apps', 'Blender Python add-ons and scripts', 'shell, PowerShell or batch scripts on Windows', 'SQL and databases', 'reading or writing files on the PC, then running the result', 'tests, refactors and code review', 'git, builds, packaging and errors from tools', 'software design: how to structure a small program, data layout, which approach and why', 'debugging a described problem step by step (crash, wrong output, slow code) without the code pasted', 'explaining a software engineering idea plainly (big-O, concurrency, APIs, memory, version control)'];
 const STYLES = ['short and casual', 'polite and detailed', 'with small typos', 'very brief, a few words', 'a bit frustrated', 'curious, asking why', 'in a hurry', 'chatty, with some context first', 'from a beginner', 'from an expert'];
@@ -84,7 +109,7 @@ process.on('SIGINT', () => stop(0));
 // ---- stage 1: ideas (what people say) ----
 let ideas = readJsonl(F.ideas);
 const seen = new Set(ideas.map((i) => i.text.toLowerCase()));
-const add = (job, text, extra = {}) => { const t = String(text || '').trim(); if (t.length < 2 || t.length > 600 || seen.has(t.toLowerCase())) return; seen.add(t.toLowerCase()); const i = { id: `i${ideas.length}`, job, text: t, ...extra }; ideas.push(i); appendJsonl(F.ideas, i); };
+const add = (job, text, extra = {}) => { const t = String(text || '').trim(); if (t.length < 2 || t.length > 600 || seen.has(t.toLowerCase()) || avoid.has(norm(t))) return; seen.add(t.toLowerCase()); const i = { id: `i${ideas.length}`, job, text: t, ...extra }; ideas.push(i); appendJsonl(F.ideas, i); };
 if (!ideas.length && !onlyJobs) for (const p of kit.phrasings.filter((p) => !p.pic && !p.recent)) add(p.job, p.text, { from: 'phrasings' });
 // --jobs coding:3,science:1 gives weights; a job with weight 0 only runs when named.
 const jobW = Object.fromEntries((onlyJobs || []).map((x) => x.split(':')).map(([k, w]) => [k, Number(w) || null]));
@@ -98,9 +123,9 @@ for (const [job, what, w] of JOBS2) {
   while (ideas.filter((i) => i.job === job).length < want && tries++ < (onlyJobs ? 120 : 40)) {
     await pauseGate(L.out); if (Date.now() > until) await stop(0);
     const style = STYLES[tries % STYLES.length];
-    const angle = job === 'coding' ? ` Focus this batch on ${CODE_ANGLES[tries % CODE_ANGLES.length]}. Each message is 2 to 4 sentences and names the language and what they are building, with enough detail (or pasted code) to answer properly.` : job === 'science' ? ` Focus this batch on ${SCI_ANGLES[tries % SCI_ANGLES.length]}.` : job === 'languages' ? ` This batch all in ${['French (Canada)', 'Spanish', 'German', 'Ukrainian', 'Tagalog', 'Punjabi', 'French', 'Portuguese'][tries % 8]}.` : job === 'formats' ? ` Each message must state the exact output shape it wants.` : '';
+    const angle = job === 'coding' ? ` Focus this batch on ${CODE_ANGLES[tries % CODE_ANGLES.length]}. Each message is 2 to 4 sentences and names the language and what they are building, with enough detail (or pasted code) to answer properly.` : job === 'science' ? ` Focus this batch on ${SCI_ANGLES[tries % SCI_ANGLES.length]}.` : job === 'languages' ? ` This batch all in ${['French (Canada)', 'Spanish', 'German', 'Ukrainian', 'Tagalog', 'Punjabi', 'French', 'Portuguese'][tries % 8]}.` : job === 'formats' ? ` Each message must state the exact output shape it wants.`  : job === 'twins' ? ` Write them as pairs, one right after the other: first the message where a tool is needed (with the concrete thing pasted, named or attached), then the plain-knowledge question on the same topic. Vary the topics: files, the web, security, office documents, reminders, code, apps.` : job === 'codefix' ? ` Each message includes the broken code or the exact error output or a failing test, and says what it should do.`: '';
     try {
-      const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `Write 25 different messages a person might type to their desktop AI assistant about: ${what}.${angle} Make them ${style}. Each one different in topic and wording. Use neutral or no names. Reply with only a JSON array of strings.` }], max: 2500, temperature: 1.0 });
+      const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `Write 25 different messages a person might type to their desktop AI assistant about: ${what}.${angle} Make them ${style}. Each one different in topic and wording. Make them real and specific, the way a person with an actual task types: concrete file names, numbers, places, times or pasted snippets where they fit, not generic examples. Mix easy and tricky ones, including a few where the right move is less obvious. Use neutral or no names.${toolboxNote}${job === 'clarify' || job === 'default' ? '' : ' Each message gives every detail needed (names, paths, times, amounts), so the assistant can act at once without asking.'} Reply with only a JSON array of strings.` }], max: 2500, temperature: 1.0 });
       const arr = JSON.parse((msg.content || '').match(/\[[\s\S]*\]/)?.[0] || '[]');
       for (const t of arr) add(job, t);
     } catch (e) { console.log(`ideas ${job}: ${e.message.slice(0, 80)}`); }
@@ -152,8 +177,11 @@ async function one(idea, think, room = 1) { // room 2 = a second try with twice 
   let failNext = idea.job === 'recover' || idea.job === 'codefix';
   for (let step = 0; step < 6; step++) {
     const t0 = toolsFor(loaded); const t = dropTools.size ? { ...t0, tools: (t0.tools || []).filter((x) => !dropTools.has(x.function?.name || x.name)), system: String(t0.system || '').split('\n').filter((ln) => ![...dropTools].some((d) => ln.includes(d))).join('\n') } : t0; // dropped tools leave the offer AND the prompt text
-    const set = setKey(t.system, t.tools);
-    const { msg, finish } = await chat(srv.url, { messages: [{ role: 'system', content: persona ? `${t.system}\n\n${persona}` : t.system }, ...live], tools: t.tools, think, max: (think ? 6000 : 2000) * room });
+    const sys = tag ? `${t.system}\n\n${tag}` : t.system;
+    const set = setKey(sys, t.tools);
+    // teacher-only additions (persona, act nudge) go to the server but never into the saved prompt or the set key
+    const teacherOnly = [persona, ACT_JOBS.has(idea.job) ? ACT_NUDGE : ''].filter(Boolean).join('\n\n');
+    const { msg, finish } = await chat(srv.url, { messages: [{ role: 'system', content: teacherOnly ? `${sys}\n\n${teacherOnly}` : sys }, ...live], tools: t.tools, think, max: (think ? 6000 : 3000) * room });
     if (finish === 'length') throw new Error('ran out of room');
     const a = { role: 'assistant', content: msg.content || '', ...(msg.reasoning_content ? { reasoning: msg.reasoning_content } : {}), ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}), set };
     saved.push(a); live.push({ role: 'assistant', content: a.content, ...(a.tool_calls ? { tool_calls: a.tool_calls } : {}) });
@@ -168,7 +196,28 @@ async function one(idea, think, room = 1) { // room 2 = a second try with twice 
   }
   const last = saved[saved.length - 1];
   if (last.role !== 'assistant' || !String(last.content || '').trim()) throw new Error('no final answer (ran out of steps)');
+  if (review) {
+    const v = await grade(idea, saved);
+    // 12 Nov (later): a review that couldn't be read is neither kept nor rejected; it waits in needs-review.jsonl for a second look
+    if (v.unparsed) { appendJsonl(path.join(dir, 'needs-review.jsonl'), { idea: idea.id, job: idea.job, think, why: v.why, messages: saved }); throw new Error('review unparsed'); }
+    if (!v.ok) { appendJsonl(path.join(dir, 'rejected.jsonl'), { idea: idea.id, job: idea.job, think, why: v.why, messages: saved }); throw new Error(`review: ${v.why}`); }
+  }
   appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, messages: saved });
+}
+// The teacher as a strict reviewer: right tool or rightly none, exact arguments, results read, a final answer that does the job.
+const RULES = { restraint: 'This message only wants an answer Bob knows: calling any tool is a FAIL.', precise: 'Every detail from the request (names, paths, dates, amounts) must appear exactly in the tool arguments.', agent: 'Each step must use what the previous result returned; the final answer must sum up what was done.' };
+// 12 Nov (later): the reviewer is told Bob's own rules (it failed right behaviour, e.g. saving in Bob's folders) and sees the
+// whole lesson (tool results were cut at 1,500 characters, so it judged on half a result). Still strict on the real problems.
+const BOB_RULES = 'How Bob works (this is CORRECT, never a reason to fail): he saves files inside the folders he is allowed to use and asks first before writing anywhere else; tools that change things may show an OK card first; the tool results in the lesson are the truth (the reviewer does not doubt them).';
+async function grade(idea, saved) {
+  const text = saved.map((m) => `${m.role.toUpperCase()}${m.name ? ` (${m.name})` : ''}: ${m.tool_calls ? `[calls ${m.tool_calls.map((c) => `${c.function.name} ${String(c.function.arguments).slice(0, 2000)}`).join('; ')}] ` : ''}${String(m.content || '').slice(0, 6000)}`).join('\n');
+  try {
+    const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `You review training lessons for a desktop AI assistant called Bob. Be strict about real problems only. FAIL the lesson if Bob called a tool when a plain answer was enough (plain chat with a tool call always fails), skipped a tool the request clearly needed, called a wrong or an extra tool, put wrong or made-up details in tool arguments, misread what a tool result says, looped, or ended without a final answer that actually does what was asked. Small wording or style issues are NOT a reason to fail. ${BOB_RULES} ${RULES[idea.job] || ''}\n\n${text}\n\nReply with only JSON: {"ok": true or false, "why": "one short reason"}` }], max: 500, temperature: 0 });
+    const raw = (msg.content || '').match(/\{[\s\S]*\}/)?.[0];
+    let j = null; try { j = raw ? JSON.parse(raw) : null; } catch {}
+    if (!j || typeof j.ok !== 'boolean') return { ok: false, unparsed: true, why: 'review unparsed' };
+    return { ok: j.ok === true, why: String(j.why || '').slice(0, 200) };
+  } catch (e) { return { ok: false, unparsed: true, why: `review failed: ${e.message.slice(0, 60)}` }; } // a reviewer hiccup: kept aside for a second look
 }
 // --parallel N: N lessons at once (a rented server handles many together; the PC's llama-server is best at 1).
 async function worker() {
