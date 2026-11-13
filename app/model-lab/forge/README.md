@@ -233,3 +233,9 @@ The owner: "while doing the surgery, we may want to be careful with results we k
 `notForTraining(row)` in `common.mjs` holds rules 1 to 3. `make-pairs.mjs` leaves such rows out of both sides, and
 `clean-lessons.mjs` drops them from a new version (a held-out one is kept and flagged). The expert sweep and the
 targets files read `lessons.jsonl` only, never `rejected.jsonl` (rule 4).
+
+`tool-score.mjs` and `experts-test.mjs` write `"condition"` on every saved answer themselves: `"stock"`, or what was
+changed (experts per word away from the brain's own, a direction or kv override in `--extra`, and `--condition` for what
+the script can't see, like a cut brain or live dials). `--evidence` marks evil- and fiction-check runs. A brain served
+elsewhere (`--url`) without `--condition` is left unmarked, never called stock. For answers saved before this,
+`stamp-condition.mjs --dir <folder> --condition <what> [--evidence]` stamps every row that doesn't say yet.

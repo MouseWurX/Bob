@@ -2,10 +2,11 @@
 // Runs the same quiz at 8 (the model's own), 6, 4, 3 and 2 experts per word: picking Bob's right tool for plain
 // requests, short facts, and small coding jobs checked by running the code. Thinking off (instruct first).
 // node experts-test.mjs [--counts 8,6,4,3,2] [--bob <Bob source>] [--model <gguf>] [--llama <folder>] [--quick] [--howtos <how-to file>]
+//      [--condition "keep75-n8"] [--evidence] (the surgery data rule: each saved answer says what it was made under; see answerTags)
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
-import { opts, locate, moeShape, checkFree, startServer, chat, stamp } from './common.mjs';
+import { opts, locate, moeShape, checkFree, startServer, chat, stamp, answerTags, tagsNote } from './common.mjs';
 import { loadBob } from './bob-kit.mjs';
 import { FACTS, CODE, CANT, runCode } from './quiz-items.mjs';
 
@@ -30,11 +31,11 @@ const toolSet = quick ? TOOL_JOBS.filter((_, i) => i % 4 === 0) : TOOL_JOBS;
 
 // 12 Nov (the owner's rule): every benchmark keeps its data: each answer with the brain's odds (top 5 words per step), next to the report.
 const ODDS = o['no-odds'] ? {} : { logprobs: true, top_logprobs: 5 };
-let keepFile = null;
+let keepFile = null, tags = {};
 const keep = (kind, q, res, extra = {}) => {
   try {
     keepFile ||= path.join(L.out, `answers-quiz-${String(process.env.LAB_MODEL_NAME || shape.name).replace(/[^\w.-]/g, '_')}-${stamp()}.jsonl`);
-    fs.appendFileSync(keepFile, JSON.stringify({ kind, q, bob: bobVersion || undefined, ...extra, answer: { content: res.msg.content || '', tool_calls: res.msg.tool_calls || undefined }, ...(res.logprobs ? { odds: (res.logprobs.content || []).map((x) => ({ t: x.token, p: x.logprob, top: (x.top_logprobs || []).map((y) => [y.token, y.logprob]) })) } : {}) }) + '\n');
+    fs.appendFileSync(keepFile, JSON.stringify({ kind, q, bob: bobVersion || undefined, ...tags, ...extra, answer: { content: res.msg.content || '', tool_calls: res.msg.tool_calls || undefined }, ...(res.logprobs ? { odds: (res.logprobs.content || []).map((x) => ({ t: x.token, p: x.logprob, top: (x.top_logprobs || []).map((y) => [y.token, y.logprob]) })) } : {}) }) + '\n');
   } catch {}
 };
 async function quiz(url) {
@@ -82,6 +83,7 @@ const counts = remote ? [Number(String(o.counts).split(',')[0]) || 8] : String(o
 const results = [];
 for (const n of counts) {
   console.log(`\n--- ${n} experts per word ---`);
+  tags = answerTags(o, { n, own: remote ? 0 : shape.used, remote }); console.log(tagsNote(tags));
   const srv = await startServer({ server: L.server, model: L.model, mmproj: null, ctx: 16384, extra: shape.key ? ['--override-kv', `${shape.key}=int:${n}`] : [], logFile: path.join(L.out, 'llama-server-lab.log') });
   try {
     const r = await quiz(srv.url);

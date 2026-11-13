@@ -174,3 +174,21 @@ export function notForTraining(row = {}) {
   for (const k of ['pack', 'check', 'source', 'bench']) if (EVIDENCE.test(String(row[k] || ''))) return `${String(row[k]).slice(0, 40)}: evidence only`;
   return '';
 }
+
+// What every saved answer row carries for the surgery data rule, so no stamping is needed afterwards: "condition" is
+// "stock", or what was changed (--condition "keep75-n8" names a cut brain or live dials the script can't see; experts
+// per word away from the brain's own adds "n<count>"; a direction or kv override in --extra adds "direction" / "kv"),
+// and --evidence marks evil- and fiction-check runs. A brain served elsewhere (--url) without --condition can't be told
+// apart, so its rows get no condition and a warning says so.
+export function answerTags(o = {}, { n, own, remote = Boolean(process.env.LAB_URL) } = {}) {
+  const set = String(o.condition ?? '').trim();
+  const parts = set && set !== 'stock' ? [set] : [];
+  if (n && own && Number(n) !== Number(own)) parts.push(`n${n}`);
+  const extra = String(o.extra || '');
+  if (/--control-vector/.test(extra)) parts.push('direction');
+  if (/--override-kv/.test(extra)) parts.push('kv');
+  const ev = o.evidence ? { evidence: true } : {};
+  if (!parts.length && remote && !set) return ev;
+  return { condition: parts.join(' ') || 'stock', ...ev };
+}
+export const tagsNote = (tags) => (tags.condition === undefined ? 'answers carry no condition: pass --condition stock (or what was changed) for a served brain' : `answers marked condition "${tags.condition}"${tags.evidence ? ', evidence only' : ''}`);

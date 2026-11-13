@@ -7,10 +7,11 @@
 // node tool-score.mjs --models "full=C:\...\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf,riker=C:\...\24Bob-Q4_K_M.gguf" [--lessons out\lessons]
 //      [--llama <folder>] [--ctx 16384] [--experts 8] [--quick] [--no-think] [--extra "--n-cpu-moe 20"]
 //      [--split train --sample 2000] (harvest training data from the other 95%; not a benchmark)
+//      [--condition "keep75-n8"] [--evidence] (the surgery data rule: what each saved answer was made under; see answerTags)
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { opts, locate, startServer, chat, stamp, readJsonl, appendJsonl, moeShape, AGENT } from './common.mjs';
+import { opts, locate, startServer, chat, stamp, readJsonl, appendJsonl, moeShape, AGENT, answerTags, tagsNote } from './common.mjs';
 import { parseArgs, sameArgs, judgeTurn } from './tool-judge.mjs';
 
 const o = opts({ ctx: 16384 });
@@ -62,6 +63,7 @@ async function score(m) {
   const r = { name: m.name, file: m.file, toolTurns: 0, rightTool: 0, rightArgs: 0, noToolTurns: 0, rightNoTool: 0, errors: 0, tps: [], misses: [] };
   const t0 = Date.now();
   const keepFile = path.join(L.out, `answers-${String(m.name).replace(/[^\w.-]/g, '_')}-${stamp()}.jsonl`);
+  const tags = answerTags(o, { n: o.experts, own: shape.used, remote }); console.log(`${m.name}: ${tagsNote(tags)}`);
   try {
     let done = 0;
     for (const l of lessons) {
@@ -79,7 +81,7 @@ async function score(m) {
         catch (e) { r.errors++; r.misses.push(`${l.idea}/${k}: error ${e.message.slice(0, 80)}`); continue; }
         if (timings?.predicted_per_second) r.tps.push(timings.predicted_per_second);
         const got = (msg.tool_calls || []).map((c) => ({ name: c.function?.name, args: parseArgs(c.function?.arguments) }));
-        try { appendJsonl(keepFile, { brain: m.name, split, idea: l.idea, turn: k, think, ok: judgeTurn(wantCalls, got), want: wantCalls.length ? 'tool' : 'no-tool', answer: { content: msg.content || '', reasoning: msg.reasoning_content || undefined, tool_calls: msg.tool_calls || undefined }, ...(logprobs ? { odds: (logprobs.content || []).map((x) => ({ t: x.token, p: x.logprob, top: (x.top_logprobs || []).map((y) => [y.token, y.logprob]) })) } : {}) }); } catch {}
+        try { appendJsonl(keepFile, { brain: m.name, split, idea: l.idea, turn: k, think, ...tags, ok: judgeTurn(wantCalls, got), want: wantCalls.length ? 'tool' : 'no-tool', answer: { content: msg.content || '', reasoning: msg.reasoning_content || undefined, tool_calls: msg.tool_calls || undefined }, ...(logprobs ? { odds: (logprobs.content || []).map((x) => ({ t: x.token, p: x.logprob, top: (x.top_logprobs || []).map((y) => [y.token, y.logprob]) })) } : {}) }); } catch {}
         if (!wantCalls.length) {
           r.noToolTurns++;
           if (!got.length) r.rightNoTool++; else r.misses.push(`${l.idea}/${k}: expected no tool, got ${got.map((g) => g.name).join(',')}`);

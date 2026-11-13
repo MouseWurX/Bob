@@ -77,6 +77,18 @@ check('an unknown kind is refused', run(['--kind', 'mixed']).status === 1);
 check('without --out it explains what it needs', spawnSync(process.execPath, [path.join(app, 'model-lab', 'make-pairs.mjs'), '--lessons', 'x'], { encoding: 'utf8' }).status === 1);
 
 // ---- the reward judge: the Python one (pod/tool_reward.py) must agree with tool-score's on the shared cases ----
+const { answerTags } = await import(pathToFileURL(path.join(app, 'model-lab', 'common.mjs')).href);
+check('saved answers say what they were made under', answerTags({}, { n: 8, own: 8, remote: false }).condition === 'stock' && answerTags({}, { n: 4, own: 8, remote: false }).condition === 'n4' && answerTags({ condition: 'keep75' }, { n: 6, own: 8 }).condition === 'keep75 n6' && answerTags({ extra: '--control-vector x.gguf' }, { remote: false }).condition === 'direction' && answerTags({ evidence: true }, { remote: false }).evidence === true);
+check('a served brain with no --condition is left unmarked, never called stock', answerTags({}, { n: 8, own: 0, remote: true }).condition === undefined && answerTags({ condition: 'stock' }, { remote: true }).condition === 'stock');
+check('tool-score and experts-test write the condition on every answer', /\.\.\.tags,/.test(read('model-lab/tool-score.mjs')) && /\.\.\.tags,/.test(read('model-lab/experts-test.mjs')));
+{
+  const sd = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-stamp-'));
+  fs.writeFileSync(path.join(sd, 'answers-a.jsonl'), [JSON.stringify({ idea: 'x' }), JSON.stringify({ idea: 'y', condition: 'n4' })].join('\r\n') + '\r\n');
+  const st = spawnSync(process.execPath, [path.join(app, 'model-lab', 'stamp-condition.mjs'), '--dir', sd, '--condition', 'keep75-n8', '--evidence'], { encoding: 'utf8' });
+  const got = fs.readFileSync(path.join(sd, 'answers-a.jsonl'), 'utf8').replace(/\r\n/g, '\n').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  check('stamp-condition marks older answers and keeps a condition already there', st.status === 0 && got[0].condition === 'keep75-n8' && got[1].condition === 'n4' && got.every((g) => g.evidence === true), st.stderr);
+  fs.rmSync(sd, { recursive: true, force: true });
+}
 const { judgeTurn } = await import(pathToFileURL(path.join(app, 'model-lab', 'tool-judge.mjs')).href);
 const cases = JSON.parse(read('model-lab/forge/pod/tool_reward_cases.json'));
 check(`the shared judge cases still match tool-score (${cases.length})`, cases.length >= 12 && cases.every((c) => judgeTurn(c.want, c.got) === c.right));
