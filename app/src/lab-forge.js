@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import { parseHfRef } from './lab-hf.js'; // 1.5.163
 import path from 'node:path';
+import { appDir, unpackedDir } from './config.js'; // 1.5.219 where the Forge lives on a real install
 import { rentedEstimate } from './lab-estimate.js';
 import { pathByName, PERSONALITY, TEACH, clashes } from '../public/lab-thinking-paths.js';
 
@@ -50,11 +51,20 @@ export const LEFT_OUT = [
 const SECRET = /(rpa_[A-Za-z0-9]{8,}|hf_[A-Za-z0-9]{8,}|sk-[A-Za-z0-9_-]{8,}|"?token"?\s*[:=]\s*"?[A-Za-z0-9_.-]{12,}"?|[A-Fa-f0-9]{40,}|[A-Za-z0-9_-]{32,})/g;
 export const scrub = (text) => String(text || '').replace(SECRET, '[hidden]');
 
-// Where the Forge lives: the model-lab folder next to Bob, or the one set in the Lab.
-export function forgeDir(cfg) {
+// Where the Forge lives: "forgeDir" in config.json if set, else the first that holds forge/forge.mjs of: model-lab or
+// bob-model-lab in Bob's home (a working copy kept there), then model-lab beside Bob's own code and its unpacked copy.
+// 1.5.219: Bob's home is often not the source folder, so a copy run from source looks beside its code too. Installs
+// don't carry the Forge (it keeps a token and rental notes beside itself, which an update would wipe). codeDirs is for tests.
+export function forgeCandidates(cfg, codeDirs = [appDir, unpackedDir]) {
   const set = String(cfg?.forgeDir || '').trim();
-  const dir = set || path.join(cfg?.agentDir || '.', 'model-lab');
-  return fs.existsSync(path.join(dir, 'forge', 'forge.mjs')) ? dir : '';
+  if (set) return [set];
+  const home = cfg?.agentDir || '.';
+  // Bob's home first: a Forge there keeps its Hugging Face token and its rented pods' notes, so it must stay the one used.
+  // Then the model-lab beside Bob's own code, so a copy run from source finds it when Bob's home is somewhere else.
+  return [...new Set([path.join(home, 'model-lab'), path.join(home, 'bob-model-lab'), ...codeDirs.map((d) => path.join(d, 'model-lab'))])];
+}
+export function forgeDir(cfg, codeDirs) {
+  return forgeCandidates(cfg, codeDirs).find((d) => fs.existsSync(path.join(d, 'forge', 'forge.mjs'))) || '';
 }
 
 // The Forge's past runs, newest first: the timeline log, its last lines (scrubbed), and what each run made.

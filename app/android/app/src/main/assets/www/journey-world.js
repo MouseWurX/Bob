@@ -61,6 +61,7 @@ const TILES = {
   '%': { name: 'cloud', walk: true, wild: 0 }, '&': { name: 'open sky', walk: false }, '$': { name: 'the sea floor', walk: true, wild: 0 }, '+': { name: 'coral', walk: false }
 };
 const SITE_TILES = { bobsinn: 'I', hamlet: 'v', village: 'V', town: 'O', castle: 'K', cave: 'C', dungeon: 'D', hermit: 'H', aerie: 'S', reef: 'A', orccamp: 'X', kobold: 'L', dwarfhold: 'N', elfwood: 'E', burrow: 'M', glade: 'J', stilts: '1', gnome: '2', centaur: '3', giant: '4', goblin: '5' };
+const SITE_SET = new Set(Object.values(SITE_TILES));
 const SITE_WORDS = { bobsinn: "Bob's Inn", hamlet: 'Hamlet', village: 'Village', town: 'Town', castle: 'Castle', cave: 'Cave', dungeon: 'Dungeon', hermit: "Hermit's hut", aerie: 'Cloud city', reef: 'Merfolk city', orccamp: 'Orc village', kobold: 'Kobold lair', dwarfhold: 'Dwarf hold', elfwood: 'Elf tree village', burrow: 'Halfling burrows', glade: 'Pixie glade', stilts: 'Lizardfolk village', gnome: 'Gnome tinker town', centaur: 'Centaur camp', giant: 'Giant hall', goblin: 'Goblin market' };
 // The animals that wander each kind of land (and the least danger zone they show up in). Walk up and say hello.
 const WILD_ON = {
@@ -289,8 +290,15 @@ function makeWorld(seed, size = 'medium') {
   // way over the ground; a road over a river is a bridge. Caves, dungeons and the hut get a footpath to the nearest
   // settlement, which only needs bridges.
   const towns = sites.filter((s) => ['castle', 'town', 'village', 'hamlet'].includes(s.kind));
-  // On a big land a road only looks for its way in a box round its two ends (roads don't wander far anyway).
-  const path = (a, b) => cheapest(g, w, h, a, b, big ? Math.max(24, Math.round((Math.abs(a.x - b.x) + Math.abs(a.y - b.y)) / 2)) : 0);
+  // Every place is on the land before any road is drawn, so a road goes round a place it isn't heading for (walking
+  // onto a place goes in, so a road through one, or a bridge that ends at one, could never be walked past).
+  for (const s of sites) g[s.y][s.x] = SITE_TILES[s.kind];
+  // On a big land a road only looks for its way in a box round its two ends (roads don't wander far anyway). Only
+  // where there's no other way at all does a road go through a place, as it always used to.
+  const path = (a, b) => { const pad = big ? Math.max(24, Math.round((Math.abs(a.x - b.x) + Math.abs(a.y - b.y)) / 2)) : 0; return cheapest(g, w, h, a, b, pad, true) || cheapest(g, w, h, a, b, pad); };
+  const road = (x, y) => { if (g[y][x] === 'r') g[y][x] = '='; else if (!SITE_SET.has(g[y][x]) && g[y][x] !== '=') g[y][x] = ':'; };
+  // A place never stands at the end of a bridge (the bridge would lead only into it).
+  const byBridge = (x, y) => N4.some(([dx, dy]) => g[y + dy]?.[x + dx] === '=');
   const roads = [];
   const groups = big ? [...lands].map((id) => towns.filter((t) => comp[t.y][t.x] === id)).filter((gr) => gr.length) : [towns];
   for (const group of groups) {
@@ -300,9 +308,9 @@ function makeWorld(seed, size = 'medium') {
     let bi = 0, bj = 0, bd = Infinity;
     rest.forEach((s, i) => joined.forEach((t, k) => { const d = Math.abs(s.x - t.x) + Math.abs(s.y - t.y); if (d < bd) { bd = d; bi = i; bj = k; } }));
     const s = rest.splice(bi, 1)[0];
-    const road = path(s, joined[bj]) || [];
-    for (const [x, y] of road) { if (g[y][x] === 'r') g[y][x] = '='; else if (!'=vVOKCDH'.includes(g[y][x])) g[y][x] = ':'; }
-    if (road.length > 4) roads.push({ from: s, to: joined[bj], steps: road });
+    const steps = path(s, joined[bj]) || [];
+    for (const [x, y] of steps) road(x, y);
+    if (steps.length > 4) roads.push({ from: s, to: joined[bj], steps });
     joined.push(s);
   }
   }
@@ -351,16 +359,18 @@ function makeWorld(seed, size = 'medium') {
   const innSpot = [];
   for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
     const x = home.x + dx, y = home.y + dy, d = Math.abs(dx) + Math.abs(dy);
-    if (d < 3 || !main(x, y) || !'."F,d:'.includes(g[y]?.[x]) || sites.some((o) => Math.abs(o.x - x) + Math.abs(o.y - y) < 2)) continue;
+    // Beside the road, never on it (walking onto the inn goes in, so an inn on the road would block it).
+    if (d < 3 || !main(x, y) || !'."F,d'.includes(g[y]?.[x]) || byBridge(x, y) || sites.some((o) => Math.abs(o.x - x) + Math.abs(o.y - y) < 2)) continue;
     if (!N4.some(([a, b]) => '."F,d:'.includes(g[y + b]?.[x + a]))) continue;
-    innSpot.push([x, y, d + (g[y][x] === ':' ? -2 : 0) + (N4.some(([a, b]) => g[y + b]?.[x + a] === ':') ? -1.5 : 0)]);
+    innSpot.push([x, y, d + (N4.some(([a, b]) => g[y + b]?.[x + a] === ':') ? -3.5 : 0)]);
   }
   innSpot.sort((a, b) => a[2] - b[2]);
   if (innSpot.length) {
     const [x, y] = innSpot[0];
     const inn = { kind: 'bobsinn', x, y, zone: 1 };
+    g[y][x] = 'I';
     for (const [px, py] of path(inn, home) || []) if (g[py][px] === 'r') g[py][px] = '='; else if ('."F,dw'.includes(g[py][px])) g[py][px] = ':';
-    inn.id = 'inn'; inn.name = "Bob's Inn"; g[y][x] = 'I';
+    inn.id = 'inn'; inn.name = "Bob's Inn";
     inn.exit = [[0, 1], [1, 0], [-1, 0], [0, -1]].map(([dx, dy]) => ({ x: x + dx, y: y + dy })).find((p) => TILES[g[p.y][p.x]]?.walk && !Object.values(SITE_TILES).includes(g[p.y][p.x])) || { x, y: y + 1 };
     sites.push(inn);
   }
@@ -389,13 +399,13 @@ function makeWorld(seed, size = 'medium') {
     ['goblin', (x, y) => ('F"w'.includes(g[y][x]) ? 1 : 0)]
   ];
   const landNow = [];
-  for (let y = 3; y < h - 3; y += stride) for (let x = 3; x < w - 3; x += stride) if (main(x, y) && TILES[g[y][x]]?.walk && !Object.values(SITE_TILES).includes(g[y][x]) && g[y][x] !== ':' && g[y][x] !== '=') landNow.push([x, y]);
+  for (let y = 3; y < h - 3; y += stride) for (let x = 3; x < w - 3; x += stride) if (main(x, y) && TILES[g[y][x]]?.walk && !SITE_SET.has(g[y][x]) && g[y][x] !== ':' && g[y][x] !== '=') landNow.push([x, y]);
   // A small land has room for only some of them; which ones is up to the dice.
   const kinHere = size === 'small' ? [...KIN].sort(() => xrnd() - 0.5).slice(0, 5) : size === 'medium' ? [...KIN].sort(() => xrnd() - 0.5).slice(0, 8) : KIN;
   for (const [kind, score] of kinHere) {
     const cand = landNow.map(([x, y]) => [x, y, score(x, y)]).filter((c) => c[2] > 0).map((c) => [c[0], c[1], c[2] + xrnd() * 0.8]).sort((a, b) => b[2] - a[2]);
     let n = 0;
-    for (const [x, y] of cand) { if (n >= more) break; if (!free(x, y, Math.round(spacing * 0.6))) continue; extra.push({ kind, x, y }); n++; }
+    for (const [x, y] of cand) { if (n >= more) break; if (!free(x, y, Math.round(spacing * 0.6)) || byBridge(x, y)) continue; extra.push({ kind, x, y }); n++; }
   }
   // Ports: a settlement by the sea has a dock (and every continent with people gets at least one).
   const coastal = (s, r = 3) => { for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (g[s.y + dy]?.[s.x + dx] === '~') return true; return false; };
@@ -519,21 +529,28 @@ function innOnly() {
 }
 
 // The cheapest walk from a to b over the ground (no sea, no mountains); rivers cost a lot, roads very little.
-function cheapest(g, w, h, a, b, pad = 0) {
+// strict: go round every place but the two ends, and never bridge a river right beside a place.
+function cheapest(g, w, h, a, b, pad = 0, strict = false) {
   if (pad > 0) {
     // Search a box round the two ends, in the box's own coordinates, then move the way back onto the land.
     const x0 = Math.max(0, Math.min(a.x, b.x) - pad), y0 = Math.max(0, Math.min(a.y, b.y) - pad);
     const x1 = Math.min(w - 1, Math.max(a.x, b.x) + pad), y1 = Math.min(h - 1, Math.max(a.y, b.y) + pad);
     const box = [];
     for (let y = y0; y <= y1; y++) box.push(g[y].slice(x0, x1 + 1));
-    const out = cheapest(box, x1 - x0 + 1, y1 - y0 + 1, { x: a.x - x0, y: a.y - y0 }, { x: b.x - x0, y: b.y - y0 }, 0);
+    const out = cheapest(box, x1 - x0 + 1, y1 - y0 + 1, { x: a.x - x0, y: a.y - y0 }, { x: b.x - x0, y: b.y - y0 }, 0, strict);
     return out ? out.map(([x, y]) => [x + x0, y + y0]) : null;
   }
-  const cost = (x, y) => { const t = g[y][x]; if (t === '~' || t === '^') return Infinity; if (Object.values(SITE_TILES).includes(t)) return 1; return TILES[t]?.cost ?? 1; };
+  const goal = b.y * w + b.x;
+  const besidePlace = (x, y) => N4.some(([dx, dy]) => SITE_SET.has(g[y + dy]?.[x + dx]));
+  const cost = (x, y) => {
+    const t = g[y][x]; if (t === '~' || t === '^') return Infinity;
+    if (SITE_SET.has(t)) return strict && y * w + x !== goal ? Infinity : 1;
+    if (strict && t === 'r' && besidePlace(x, y)) return Infinity;
+    return TILES[t]?.cost ?? 1;
+  };
   const dist = new Float64Array(w * h).fill(Infinity), from = new Int32Array(w * h).fill(-1);
   const heap = [[0, a.y * w + a.x]];
   dist[a.y * w + a.x] = 0;
-  const goal = b.y * w + b.x;
   const push = (item) => { heap.push(item); let i = heap.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
   const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = i * 2 + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
   while (heap.length) {

@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { forgeDir, forgePlansDir, FORGE_KEY, METHODS, LEFT_OUT, forgeRuns, forgeBrains, forgePlans, makeForgePlan, alive, scrub as scrubForge, forgeStartProblems, onDrive, launchForge, runPodId } from './lab-forge.js';
+import { forgeDir, forgeCandidates, forgePlansDir, FORGE_KEY, METHODS, LEFT_OUT, forgeRuns, forgeBrains, forgePlans, makeForgePlan, alive, scrub as scrubForge, forgeStartProblems, onDrive, launchForge, runPodId } from './lab-forge.js';
 import { pickLessons, addLessonSet, downloadHfLessons } from './lab-library.js';
 import os from 'node:os';
 import { parseHfRef, hfLookup } from './lab-hf.js';
@@ -27,7 +27,7 @@ export const forgeJobs = {
     const dir = forgeDir(this.cfg);
     let saved = []; try { saved = fs.readdirSync(forgePlansDir(labDir(this.cfg))).filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, '')); } catch {}
     const live = this.forgeLive();
-    return { live, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), methods: METHODS, leftOut: LEFT_OUT, found: Boolean(dir), runs: forgeRuns(dir), brains: forgeBrains(dir), plans: forgePlans(dir), saved, keepFiles: this.keepFiles().map(({ path: _p, ...k }) => k), lessonSets: lessonSets(this.cfg).map((x) => ({ id: x.id, name: x.name, count: x.count, added: x.added === true, license: x.license || '', source: x.source || '', parts: partsView(path.dirname(x.file)) })), skills: (() => { const b = forgePlans(dir)[0]; return b ? Object.keys(readJson(path.join(dir, 'forge', 'plans', `${b.id}.json`), {}).skills || {}) : []; })() };
+    return { live, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), methods: METHODS, leftOut: LEFT_OUT, found: Boolean(dir), looked: dir ? [] : forgeCandidates(this.cfg), runs: forgeRuns(dir), brains: forgeBrains(dir), plans: forgePlans(dir), saved, keepFiles: this.keepFiles().map(({ path: _p, ...k }) => k), lessonSets: lessonSets(this.cfg).map((x) => ({ id: x.id, name: x.name, count: x.count, added: x.added === true, license: x.license || '', source: x.source || '', parts: partsView(path.dirname(x.file)) })), skills: (() => { const b = forgePlans(dir)[0]; return b ? Object.keys(readJson(path.join(dir, 'forge', 'plans', `${b.id}.json`), {}).skills || {}) : []; })() };
   },
   forgePlan(form = {}) {
     const dir = forgeDir(this.cfg);

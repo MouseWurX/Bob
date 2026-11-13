@@ -6,8 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import '../src/lab.js'; // the app loads the Lab first; its parts come in through it
-import { PROTOCOL_STEPS, planProtocol, adoptCleaned, protocolJobs } from '../src/lab-protocol.js';
-import { waysToPlan } from '../src/lab-forge.js';
+import { PROTOCOL_STEPS, planProtocol, adoptCleaned, protocolJobs, sweepReadiness } from '../src/lab-protocol.js';
+import { waysToPlan, forgeCandidates, forgeDir } from '../src/lab-forge.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -47,7 +47,25 @@ check('clean: reads the set, writes a new folder, uses the hand review', !pc.pro
 check('clean: without a review, none is passed', !planProtocol('clean', { set: 'mine', review: 'none' }, { dir: cfg.forgeDir, sets, root, review: '/x/r.json' }).args.includes('--review'));
 check('pairs: says when a set has no wrong answers kept', planProtocol('pairs', { set: 'mine' }, { dir: cfg.forgeDir, sets, root }).notes.some((n) => /no wrong answers kept/.test(n)));
 check('sweep: only a brain on this computer', planProtocol('sweep', { set: 'mine', url: 'http://example.com:8090' }, { dir: cfg.forgeDir, sets, root }).problems.some((p) => /this computer/.test(p)));
-const ps = planProtocol('sweep', { set: 'mine', url: 'http://127.0.0.1:8090', used: '-2,+4', scales: '0.8' }, { dir: cfg.forgeDir, sets, root });
+// 1.5.219 the sweep's own needs are checked before it starts: toolsets.json, and held-out tool lessons ('h14' is held out)
+const sweepSet = (id, toolsets, idea = 'h14') => {
+  const d = path.join(dataDir, 'lab', 'lessons', id); fs.mkdirSync(d, { recursive: true });
+  if (toolsets !== undefined) fs.writeFileSync(path.join(d, 'toolsets.json'), toolsets);
+  fs.writeFileSync(path.join(d, 'lessons.jsonl'), rows([{ idea, job: 'web', messages: [ask('news'), { role: 'assistant', set: 's1', content: 'Sunny.' }] }]));
+  sets.push({ id, name: id, file: path.join(d, 'lessons.jsonl') });
+  return d;
+};
+const s1 = JSON.stringify({ s1: { system: 'You are Bob.', tools: [] } });
+sweepSet('sweepy', s1); sweepSet('no-tools'); sweepSet('empty-tools', '{}'); sweepSet('bad-tools', '{oops'); sweepSet('no-held', s1, 'a1'); sweepSet('other-set', JSON.stringify({ s9: { system: 'x', tools: [] } }));
+check('sweep check: counts held-out tool lessons', sweepReadiness(path.join(dataDir, 'lab', 'lessons', 'sweepy')).held === 1);
+const sweepProblem = (id) => planProtocol('sweep', { set: id, url: 'http://127.0.0.1:8090' }, { dir: cfg.forgeDir, sets, root }).problems.join(' ');
+check('sweep check: a set with no toolsets.json is stopped before the run', /no toolsets\.json/.test(sweepProblem('no-tools')), sweepProblem('no-tools'));
+check('sweep check: an empty toolsets.json is stopped', /toolsets\.json is empty/.test(sweepProblem('empty-tools')));
+check('sweep check: an unreadable toolsets.json is stopped', /can't be read/.test(sweepProblem('bad-tools')));
+check('sweep check: no held-out lessons is stopped', /no held-out tool lessons/.test(sweepProblem('no-held')));
+check('sweep check: held-out lessons whose tool set is missing don\'t count', /no held-out tool lessons/.test(sweepProblem('other-set')));
+check('the sweep itself says so plainly instead of crashing', /no readable toolsets\.json/.test(read('model-lab/expert-sweep.mjs')));
+const ps = planProtocol('sweep', { set: 'sweepy', url: 'http://127.0.0.1:8090', used: '-2,+4', scales: '0.8' }, { dir: cfg.forgeDir, sets, root });
 check('sweep: a local engine with experts per word and layer scales', !ps.problems.length && ps.args.includes('--used') && ps.args.includes('--layer-scale') && ps.args.includes('--targets'), ps.problems.join(';'));
 check('sweep: refuses a made-up setting', planProtocol('sweep', { set: 'mine', url: 'http://127.0.0.1:8090', used: 'rm -rf' }, { dir: cfg.forgeDir, sets, root }).problems.some((p) => /whole numbers/.test(p)));
 check('an unknown step is refused', planProtocol('bake', { set: 'mine' }, { dir: cfg.forgeDir, sets, root }).problems.length > 0);
@@ -98,6 +116,19 @@ check('the pod bakes surgery edits after the heal, keeps the brain if it fails',
 check('the plan maker uses the new ways and counts the reward pass hours', /waysToPlan\(form\.ways/.test(read('src/lab-forge.js')) && /plan\.grpo \? plan\.grpo\.hours \* rungs\.length/.test(read('src/lab-forge.js')));
 const routes = read('src/lab-routes.js');
 check('the routes: read-only view for any device, runs on this computer only', /'\/api\/lab\/protocol'\)/.test(routes) && routes.indexOf("'/api/lab/protocol/run'") > routes.indexOf('Lab jobs can only be started on this replicant matrix itself'));
+// 1.5.219 the Forge is found when Bob's home is outside the source folder (made-up folders, never the real install)
+const fakeForge = (d) => { fs.mkdirSync(path.join(d, 'forge'), { recursive: true }); fs.writeFileSync(path.join(d, 'forge', 'forge.mjs'), ''); return d; };
+const codeDir = path.join(tmp, 'install', 'app'), homeDir = path.join(tmp, 'home');
+fs.mkdirSync(homeDir, { recursive: true });
+check('Forge: none found gives an empty folder', forgeDir({ agentDir: homeDir }, [codeDir]) === '');
+fakeForge(path.join(codeDir, 'model-lab'));
+check('Forge: found next to Bob\'s code when Bob\'s home is elsewhere', forgeDir({ agentDir: homeDir }, [codeDir]) === path.join(codeDir, 'model-lab'));
+check('Forge: the Forge folder setting wins', forgeDir({ agentDir: homeDir, forgeDir: '/set/here' }, [codeDir]) === '' && forgeCandidates({ forgeDir: '/set/here' }, [codeDir]).join() === '/set/here');
+const home2 = path.join(tmp, 'home2'); fakeForge(path.join(home2, 'bob-model-lab'));
+check('Forge: found in the home\'s bob-model-lab', forgeDir({ agentDir: home2 }, [path.join(tmp, 'nowhere')]) === path.join(home2, 'bob-model-lab'));
+fakeForge(path.join(homeDir, 'model-lab'));
+check('Forge: a copy in Bob\'s home wins over the one beside the code (it keeps the token and rental notes)', forgeDir({ agentDir: homeDir }, [codeDir]) === path.join(homeDir, 'model-lab'));
+check('Forge: says where Bob looked, but only to this computer', /looked: dir \? \[\] : forgeCandidates/.test(read('src/lab-protocol.js')) && /looked: \[\], job:/.test(read('src/lab-routes.js')) && /keepFiles: \[\], looked: \[\]/.test(read('src/lab-routes.js')));
 const page = read('public/lab-forge.js');
 check('the Forge tab shows the protocol and the new ways, always visible', /createProtocol/.test(page) && /\$\{pr\.html\(\)\}/.test(page) && /\$\{waysHtml\(\)\}/.test(page) && !/proOnly\(`<fieldset id="forge-ways"/.test(page));
 check('the protocol page keeps nothing in browser storage', !/localStorage|sessionStorage/.test(read('public/lab-protocol.js')));

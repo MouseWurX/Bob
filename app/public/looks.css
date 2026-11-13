@@ -265,7 +265,11 @@ body.look-lamplight .effort .brain-switch[aria-checked="true"], body.look-lampli
 /* 1.5.210 Lamplight on a phone: the porthole cube and Bob's name lead the top line (the left menu is a sheet there) */
 .lamp-head { display: inline-flex; align-items: center; gap: var(--s2); flex: none; }
 .lamp-head .lamp-name { font-weight: 600; font-size: var(--t-md); }
-.lamp-head .lamp-name:only-child { display: none; }
+.lamp-head > .lamp-who:only-child .lamp-name { display: none; } /* no cube: the chip row starts with his line */
+.lamp-head .lamp-who { display: flex; flex-direction: column; min-width: 0; }
+.lamp-head .status { font-family: var(--mono); font-size: 9.5px; line-height: 1.25; letter-spacing: .03em; text-transform: uppercase; max-width: 24ch; white-space: pre-line; overflow-wrap: anywhere; } /* 1.5.218: his status line on a phone, two short lines at most, never cut off */
+/* ...and the brain chip beside it keeps its dot and ▾ (the switches) but not its words: his line already says asleep or ready, and screen readers still get them */
+@media (max-width: 640px) { body.look-lamplight #brainPillText { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; } }
 .lamp-head .mind-cube.bob-cube.porthole .port { width: 36px; height: 36px; padding: 2px; }
 /* Lamplight: the porthole stands alone at top left (the cat keeps to the other looks) */
 body.look-lamplight .side-top #cat { display: none; }

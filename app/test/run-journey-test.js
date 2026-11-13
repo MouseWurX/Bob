@@ -100,6 +100,19 @@ const nextTo = (set, x, y) => set.has(`${x},${y}`) || [[1, 0], [-1, 0], [0, 1], 
   }
   check('on many seeds and every size: every place can be walked to, every person, chest and boss reached, and the three keepers are in dungeons', !bad, bad);
   check('roads join the settlements, with bridges over rivers', m.rows.some((r) => r.includes(':')) && world.roads.length >= 4 && W.makeWorld('b', 'large').map('world').rows.some((r) => r.includes('=')));
+  {
+    // Walking onto a place goes in, so a place on a road, or at the end of a bridge, blocks the way past it.
+    const placeTiles = new Set(Object.values(W.SITE_TILES));
+    let blocked = '';
+    for (const size of ['small', 'medium', 'large', 'vast']) for (const seed of ['a', 'b', 'c', 'd', 'e', 'f', 'test-seed']) {
+      const lw = W.makeWorld(seed, size), rows = lw.map('world').rows;
+      for (const s of lw.sites) if (!s.alt && [[0, 1], [1, 0], [-1, 0], [0, -1]].some(([dx, dy]) => rows[s.y + dy]?.[s.x + dx] === '=')) blocked ||= `${seed} ${size}: ${s.kind} at the end of a bridge`;
+      for (const p of lw.map('world').people.filter((q) => q.route)) if (p.route.slice(1, -1).some((t) => placeTiles.has(rows[t.y][t.x]))) blocked ||= `${seed} ${size}: a road runs through a place`;
+      const inn = lw.sites.find((s) => s.id === 'inn');
+      if (inn && !'IvVOK'.includes(rows[inn.y][inn.x])) blocked ||= `${seed} ${size}: the inn isn't drawn`;
+    }
+    check('no place stands at the end of a bridge or across a road it isn\'t heading for (the inn stands beside the road)', !blocked, blocked);
+  }
   const walkers = m.people.filter((p) => p.route);
   check('patrols and travellers walk the roads', walkers.length === world.roads.length && walkers.some((p) => p.patrol) && walkers.every((p) => p.route.length > 4 && W.TILES[m.rows[p.y][p.x]].walk));
   check('every dungeon and cave has a boss; the extra bosses fit the land and never repeat', world.sites.filter((s) => s.kind === 'dungeon' || s.kind === 'cave').every((s) => R.GUARDIANS[s.keeper]) && new Set(world.sites.map((s) => s.keeper).filter(Boolean)).size === world.sites.filter((s) => s.keeper).length);

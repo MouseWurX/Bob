@@ -47,7 +47,7 @@ export function createProtocol({ api }) {
     return `<section class="lab-compare" id="lab-protocol" aria-labelledby="proto-h"><h3 id="proto-h">The training protocol</h3>
       <p class="muted">The order every run follows, with a benchmark after each step. Any step can be skipped. Nothing is cut, trained or rented without your go, and a change to a brain is tried live before it's baked in.</p>
       <ol class="proto-steps">${pv.steps.map((s) => `<li><strong>${esc(s.title)}</strong> <span class="muted">· ${esc(WHERE[s.where] || s.where)}</span><br><span>${esc(s.what)}</span></li>`).join('')}</ol>
-      ${pv.found ? toolHtml() + jobHtml() + resultsHtml() : '<p class="muted">The Forge\'s tools aren\'t next to this copy of Bob. They live in the model-lab folder of Bob\'s source.</p>'}
+      ${pv.found ? toolHtml() + jobHtml() + resultsHtml() : `<p class="muted">Bob can't find the Forge's tools. They live in the model-lab folder of Bob's source, and installs don't carry them.${pv.looked?.length ? ` Bob looked in ${esc(pv.looked.join(', '))}. Put a copy of model-lab in one of them, or write its place in Bob's config.json as "forgeDir".` : ''}</p>`}
       ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}
     </section>`;
   }

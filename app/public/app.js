@@ -228,9 +228,12 @@ function placeCube() {
   if (!box || !ctx || !wrap) return;
   const top = document.body.classList.contains('look-lamplight') && Boolean(lampPhone?.matches);
   let head = $('lampHead');
-  if (top && !head) { head = document.createElement('span'); head.id = 'lampHead'; head.className = 'lamp-head'; head.innerHTML = '<span class="lamp-name">Bob</span>'; }
+  if (top && !head) { head = document.createElement('span'); head.id = 'lampHead'; head.className = 'lamp-head'; head.innerHTML = '<span class="lamp-who"><span class="lamp-name">Bob</span></span>'; }
   if (top && box.parentElement !== head) { ctx.prepend(head); head.prepend(box); }
-  else if (!top && head && box.parentElement === head) { wrap.insertBefore(box, bobCanvas.nextSibling); head.remove(); }
+  // 1.5.218 (217 PC check): his status line goes under his name here too, or a phone never sees it (the menu is shut).
+  if (top && statusEl.parentElement !== head.querySelector('.lamp-who')) head.querySelector('.lamp-who').append(statusEl);
+  else if (!top && head && statusEl.parentElement !== document.querySelector('.side-top .who')) document.querySelector('.side-top .who')?.append(statusEl);
+  if (!top && head && box.parentElement === head) { wrap.insertBefore(box, bobCanvas.nextSibling); head.remove(); }
 }
 let lampWas = '';
 const lampCheck = () => { const k = document.body.className.includes('look-lamplight') + ':' + Boolean(lampPhone?.matches); if (k !== lampWas) { lampWas = k; placeCube(); } };

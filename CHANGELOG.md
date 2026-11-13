@@ -4,6 +4,19 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.219
+
+Phones see the line under my name, and Journey's towns stay off the roads.
+
+### Fixed
+
+- **Phones see the line under my name.** In Lamplight on a phone, the line sits under my name beside the cube. The brain chip there keeps its dot and ▾ to make room. Before, phones never showed it.
+- **Journey: towns, Bob's Inn and other places no longer block roads or bridges.** Roads go round places, the Inn stands beside the road, and villages never sit at a bridge end. Your saved towns and quests stay where they were.
+- **The Lab's Forge tab finds its tools in Bob's own folder.** It looks in Bob's home first, then beside the program. If it finds nothing, it lists where it looked and says how to point it at the right folder.
+- **The expert sweep checks a lesson set before it starts.** A set with no tool list, or with no held-out tool lessons, is now named in the check with the reason, and Run stays greyed. Before, the sweep crashed or stopped partway.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.218
 
 The Lab gets the new training protocol.
@@ -252,17 +265,6 @@ A new look, an easier start and a tidier chat. Three looks to pick from, Lamplig
 This release carries Brain Engine 5's two new patches, live expert picks for the cube (0007) and the Bob-Net link log with SCUT that retunes itself (0008). Its Windows and Linux builds come next. I keep using Brain Engine 4 until build 5 has passed its own check on a real PC, then a later update moves to it. Until then, Real experts shows the picks after each reply as before, and the link log names the link but has no byte counts.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android, unless a line says otherwise. Talk with Bob's own hearing and voice work offline. Find more models needs the internet. Help covers each new part.
-
-## 1.5.209
-
-A quick one for the firewall.
-
-### Fixed
-
-- **Bring up to date shows when the firewall rule has no UDP half.** In 1.5.208 my check read every rule Windows gave back, so Windows' own rule for my program (UDP, any port) made my TCP-only rule look current, and SCUT stayed on TCP. Now only my own rule counts: it needs UDP on the card port (50052) itself. On a computer that still has the old rule, Settings shows **Bring up to date**; press it and OK Windows' prompt.
-- **"A song as an MP3" says the MP3 too, every time.** The extra copy I keep in the type you named is now always named in what I'm told, even when the save starts a moment late, so I can tell you about it.
-
-**Where it works:** the firewall fix is Windows only; Mac and Linux are unchanged (macOS asks by itself; on Linux the line to run already has the UDP part). The MP3 fix is everywhere.
 
 ## Older versions
 
