@@ -291,7 +291,7 @@ const correctedBubbles = new Map();
 let thinkOn = true, catName = 'Patches';
 const stillNow = () => document.body.classList.contains('still') || Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 window.addEventListener('bob-think-bubble', (e) => { thinkOn = e.detail !== false; }); // Settings, from this window
-const thinkBubbles = createThinkBubbles({ add, esc, answer: showAnswer, on: () => thinkOn, still: stillNow, cat: () => catName, openMind: () => $('mindBtn')?.click() });
+const thinkBubbles = createThinkBubbles({ add, esc, answer: showAnswer, on: () => thinkOn, still: stillNow, cat: () => catName, openMind: () => $('mindBtn')?.click(), copy: (t) => navigator.clipboard?.writeText(t).then(() => note('Copied the steps.')).catch(() => {}) });
 
 // ---------- Status, badge, notifications ----------
 const STATUS_TEXT = {
@@ -612,17 +612,22 @@ async function loadHistory(n = 20) {
       let at = k; while (at > 0 && shown[at - 1].role && shown[at - 1].role !== 'user') at--;
       if (at !== k) { const [b] = shown.splice(k, 1); shown.splice(at, 0, b); }
     }
-    for (const m of shown) {
-      if (m.bubble) { thinkBubbles.saved(m.bubble, m.ms); continue; }
+    for (let k = 0; k < shown.length; k++) {
+      const m = shown[k];
+      if (m.bubble) { // 1.5.216: the answer's steps go on its bubble, so they show once and the count agrees
+        let ans = null; for (let j = k + 1; j < shown.length && shown[j].role !== 'user'; j++) if (shown[j].steps?.length) { ans = shown[j]; break; }
+        thinkBubbles.saved(m.bubble, m.ms, ans?.steps); if (ans) ans.stepsShown = true; continue;
+      }
       if (m.forgotten) { if (m.role === 'user') note(m.content); continue; }
       // A reply with no words and nothing made shows only its note, never an empty bubble.
       if (m.role !== 'user' && !String(m.content || '').trim() && !m.media?.length) { if (m.correction) note(m.correction, 'error'); continue; }
+      if (thinkOn && m.role !== 'user' && m.steps?.length && !m.stepsShown) { thinkBubbles.saved([], 0, m.steps); m.stepsShown = true; } // steps but nothing written on the way: still one bubble, no list under it
       const el = decorate(add(m.role === 'user' ? 'msg you' : 'msg bob', m.role === 'user' ? esc(m.content) + picsHtml(m.pics) : render(m.content) + mediaHtml(m.media)), m.content, m.media);
       if (m.id) el.dataset.mid = m.id;
       if (m.role !== 'user') bubbleMedia.set(el, m.media || []);
       if (m.edited) markEdited(el, m.was, m.editedBy);
       if (m.versions?.length) markVersions(el, m.versions);
-      if (m.steps?.length) markSteps(el, m.steps);
+      if (m.steps?.length && !m.stepsShown) markSteps(el, m.steps); // the thinking bubble off (or, below, none was saved)
       if (m.replaced) markReplaced(el); // item 190: a corrected reply that was tried again
       if (m.correction) note(m.correction, 'error');
     }

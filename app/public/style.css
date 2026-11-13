@@ -2372,3 +2372,9 @@ html.settings-window body.look-lamplight .cellar.page[open] { height: 100dvh; ma
   body.look-lamplight .ttabs { flex-wrap: nowrap; overflow-x: auto; }
   body.look-lamplight .ttabs [data-f] { flex: none; white-space: nowrap; }
 }
+
+/* 1.5.216: "Open Bob's thinking" shows only the thinking: the other sections, the panels row and the section's own
+   title line (grip, Put in, fold) step aside until Now running is opened the usual way. */
+body.now-mind-only #panelRow,
+body.now-mind-only #nowSections > section:not([data-sec="mind"]),
+body.now-mind-only #nowMind > .now-sec { display: none; }

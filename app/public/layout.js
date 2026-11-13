@@ -47,7 +47,15 @@ export function createLayout({ post, openTasks, openDownloads }) {
     $('foldLeft').title = folded ? 'Open the menu (Ctrl+B)' : 'Fold the menu (Ctrl+B)';
     if (remember) store.set('bob-left', folded ? 'folded' : 'open');
   }
+  // 1.5.216 (the owner, Nov 13): "Open Bob's thinking" shows Bob's thinking and nothing else. Now running opens with
+  // only that section in it (body.now-mind-only); any other way of opening it (the status line, Ctrl+J) shows it all.
+  let mindOnly = false;
+  function setMindOnly(on) {
+    mindOnly = on; body.classList.toggle('now-mind-only', on);
+    const t = $('nowTitle'); if (t) t.textContent = on ? 'Bob\'s thinking' : 'Now running';
+  }
   function setRight(hidden, remember = true) {
+    setMindOnly(false);
     body.classList.toggle('right-hidden', hidden);
     $('foldRight').setAttribute('aria-expanded', String(!hidden));
     if (remember && !narrow()) store.set('bob-right', hidden ? 'hidden' : 'open');
@@ -64,7 +72,8 @@ export function createLayout({ post, openTasks, openDownloads }) {
   if (w >= 220 && w <= 560) body.style.setProperty('--now-w', `${w}px`);
 
   $('foldLeft').onclick = () => setLeft(!leftFolded());
-  $('foldRight').onclick = () => setRight(!body.classList.contains('right-hidden'));
+  // with only the thinking showing, the status line brings the rest of Now running back instead of closing it
+  $('foldRight').onclick = () => setRight(!mindOnly && !body.classList.contains('right-hidden'));
   $('hideRight').onclick = () => setRight(true);
   $('chatBtn').onclick = () => { if (narrow()) setRight(true); if (window.innerWidth <= 560) setLeft(true); $('input').focus(); };
   window.addEventListener('keydown', (e) => {
@@ -494,7 +503,13 @@ export function createLayout({ post, openTasks, openDownloads }) {
     showRight() { setRight(false); },
     // 1.5.138: the chat-bar 💭 button: with Show here on, it brings Now running and the thinking section into view.
     mindDocked() { return docked; },
-    showMind() { setRight(false); const sec = $('nowMind'); sec.scrollIntoView({ block: 'nearest' }); $('mindDockLog').focus({ preventScroll: true }); sec.classList.remove('flash'); void sec.offsetWidth; sec.classList.add('flash'); },
+    // 1.5.216: only the thinking: in its own panel if it has one (a collapsed one opens), else Now running with nothing else in it.
+    showMind() {
+      const sec = $('nowMind');
+      if (panels?.where('mind') && !panels.visible('mind')) panels.open?.('mind');
+      if (!panels?.visible('mind')) { setRight(false, false); setMindOnly(true); mindListen(); cubeListen(); $('now').scrollTop = 0; } // it's all there is, so its title and Hide stay in view
+      else sec.scrollIntoView({ block: 'nearest' }); $('mindDockLog').focus({ preventScroll: true }); sec.classList.remove('flash'); void sec.offsetWidth; sec.classList.add('flash');
+    },
     // 1.5.123: something on Bob-Net changed (a lend, a borrow, a job sent away, a pairing): a fresh look, soon.
     net() { clearTimeout(netSoon); netSoon = setTimeout(pollNet, 800); }
   };

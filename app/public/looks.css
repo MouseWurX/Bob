@@ -296,3 +296,8 @@ body.look-lamplight .cellar.page .cellar-head, body.look-lamplight .cellar.page 
 html.lab-window body.look-lamplight .cellar.page[open] { inset: 0; }
 /* the Settings and Lab windows have no top bar: their page fills the window */
 :is(html.settings-window, html.lab-window) body.look-lamplight .cellar.page[open] { inset: 0; height: 100dvh; }
+/* 1.5.216: on a narrow window Now running slides over the chat; in Lamplight it had no background there, so the chat
+   showed through it and the words ran into each other. Same glass as on a wide window. */
+@media (max-width: 900px) {
+  body.look-lamplight .now { background: color-mix(in srgb, var(--panel) 96%, transparent); backdrop-filter: blur(12px); }
+}
