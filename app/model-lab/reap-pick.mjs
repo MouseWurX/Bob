@@ -81,5 +81,7 @@ export function thinLayers(s, ratio = 0.5) {
   const picks = s.layers.map((row) => (row || []).reduce((a, b) => a + b, 0));
   const sorted = picks.filter((x) => x > 0).sort((a, b) => a - b);
   const median = sorted[Math.floor(sorted.length / 2)] || 0;
-  return picks.map((n, li) => ({ layer: li, picks: n, seen: (s.layers[li] || []).filter((x) => x > 0).length })).filter((x) => median && x.picks < ratio * median);
+  // a last layer re-scored from written answers (reap-lastlayer.mjs) has fewer readings but real ones: not thin
+  const rescored = s.last_layer_rescored ? s.layers.length - 1 : -1;
+  return picks.map((n, li) => ({ layer: li, picks: n, seen: (s.layers[li] || []).filter((x) => x > 0).length })).filter((x) => median && x.picks < ratio * median && x.layer !== rescored);
 }

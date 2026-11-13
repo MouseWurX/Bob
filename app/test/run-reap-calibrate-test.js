@@ -42,6 +42,7 @@ const steps = [{ share: 1, pct: 70 }, { share: 0.75, pct: 69 }, { share: 0.5, pc
 check('smallest share within the margin', smallestGood(steps, 2).share === 0.5);
 { const t = { layers: [[500, 500, 0, 0], [400, 600, 0, 0], [3, 1, 0, 0]] };
   check('a barely scored last layer is caught (gpt-oss layer 35)', JSON.stringify(thinLayers(t).map((x) => x.layer)) === '[2]', JSON.stringify(thinLayers(t)));
+  check('a last layer re-scored from written answers is not thin', thinLayers({ ...t, last_layer_rescored: { lessons: 300 } }).length === 0);
   check('evenly scored layers are fine', thinLayers({ layers: [[5, 5], [6, 4], [4, 6]] }).length === 0); }
 check('a tighter margin keeps more', smallestGood(steps, 1).share === 0.75);
 { // the gpt-oss run: the 16% step crashed, 71 of 314 turns came back, and it looked within the margin on those

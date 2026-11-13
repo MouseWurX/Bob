@@ -291,6 +291,18 @@ else { const t = JSON.parse(fs.readFileSync(tokenFile, 'utf8')); price = t.price
 if (!args.local) base = `https://${podId}-8000.proxy.runpod.net`;
 const t0 = JSON.parse(fs.readFileSync(tokenFile, 'utf8')).started || started;
 const cost = () => price * (Date.now() - t0) / 3.6e6;
+// 13 Nov: the cap is also checked on a timer. The main loop's check (below) does not run while a benchmark command or a
+// lesson writer runs on this PC (it awaits them for hours), and the pod's own self-delete had been failing (RunPod's edge
+// answered 403 to Python's default User-Agent), so the gpt-oss-small pod ran 1.3 h past its 5 h cap. Now the PC deletes
+// the pod at the cap whatever it is waiting on, and exits.
+if (!args.local) {
+  const capTimer = setInterval(async () => {
+    if ((Date.now() - t0) / 3.6e6 > hoursMax || cost() > dollarsMax) {
+      clearInterval(capTimer); log(`cap reached on the timer ($${cost().toFixed(2)}, ${((Date.now() - t0) / 3.6e6).toFixed(1)} h); deleting the pod`);
+      try { await kill('cap (timer)'); } finally { process.exit(3); }
+    }
+  }, 60_000); capTimer.unref?.();
+}
 log(`waiting for the pod door at ${base}`);
 let up = false;
 // the pod has to pull its container image before bootstrap.py can answer; a cold pod with no volume in a slow region can take

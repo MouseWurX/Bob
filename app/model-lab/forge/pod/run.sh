@@ -20,7 +20,7 @@ PY
 echo "== $(date -u +%H:%M:%S) $*"; }
 die() { status failed "$*"; echo "FAILED: $*"; exit 1; }
 # pod_delete: the pod removes itself through the rental service's API (the same call the time-cap watchdog makes)
-pod_delete() { python3 -c "import os,urllib.request; r=urllib.request.Request('https://rest.runpod.io/v1/pods/'+os.environ['RUNPOD_POD_ID'], method='DELETE', headers={'Authorization':'Bearer '+os.environ.get('FORGE_RUNPOD_KEY', os.environ.get('RUNPOD_API_KEY',''))}); print(urllib.request.urlopen(r).read()[:200])" >> $OUT/watchdog.log 2>&1; }
+pod_delete() { python3 -c "import os,urllib.request; r=urllib.request.Request('https://rest.runpod.io/v1/pods/'+os.environ['RUNPOD_POD_ID'], method='DELETE', headers={'User-Agent':'bob-forge/1.0','Authorization':'Bearer '+os.environ.get('FORGE_RUNPOD_KEY', os.environ.get('RUNPOD_API_KEY',''))}); print(urllib.request.urlopen(r).read()[:200])" >> $OUT/watchdog.log 2>&1; }
 # run_done <detail>: the run's last word. 10 Nov: Bill's run finished at "done" and the PC's watcher window had died, so nobody deleted
 # the pod and it billed for two idle hours. Now the pod deletes ITSELF: as soon as the PC says it has everything (in/pc-finished,
 # which forge.mjs sends before its own delete), or after plan.done_grace_minutes (default 120, enough for a 13 GB download on a
@@ -176,7 +176,7 @@ HOURS_MAX=$(plan ".get('hours_max',9)")
 # elapsed = container age (from the init process start), never the host's uptime
 ELAPSED=$(python3 -c "import os; up=float(open('/proc/uptime').read().split()[0]); st=int(open('/proc/1/stat').read().rsplit(')',1)[1].split()[19])/os.sysconf('SC_CLK_TCK'); print(int(up-st))" 2>/dev/null || echo 0)
 ( sleep $(python3 -c "print(max(300, int(($HOURS_MAX*60-8)*60) - $ELAPSED))"); status failed "time cap reached, pod deleting itself"; \
-  python3 -c "import os,urllib.request; r=urllib.request.Request('https://rest.runpod.io/v1/pods/'+os.environ['RUNPOD_POD_ID'], method='DELETE', headers={'Authorization':'Bearer '+os.environ.get('FORGE_RUNPOD_KEY', os.environ.get('RUNPOD_API_KEY',''))}); print(urllib.request.urlopen(r).read()[:200])" >> $OUT/watchdog.log 2>&1 ) &
+  python3 -c "import os,urllib.request; r=urllib.request.Request('https://rest.runpod.io/v1/pods/'+os.environ['RUNPOD_POD_ID'], method='DELETE', headers={'User-Agent':'bob-forge/1.0','Authorization':'Bearer '+os.environ.get('FORGE_RUNPOD_KEY', os.environ.get('RUNPOD_API_KEY',''))}); print(urllib.request.urlopen(r).read()[:200])" >> $OUT/watchdog.log 2>&1 ) &
 WD=$!; trap 'drive_list; kill $WD 2>/dev/null' EXIT 
 
 status setup "installing tools"
