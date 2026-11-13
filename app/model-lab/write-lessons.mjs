@@ -37,6 +37,11 @@ const laterPrefix = unesc(o['prefix-later'] && o['prefix-later'] !== true ? o['p
 // --style-position user (13 Nov: with Bob's full prompt and ~13 tools the style slid back by line 2; next to the ask it held):
 // the style text goes as a short teacher-only note just before the person's message instead of at the end of the system prompt
 const stylePos = String(o['style-position'] || 'system') === 'user' ? 'user' : 'system';
+// --teacher-prompt short (13 Nov: GPT-OSS 120B held a style with a short prompt, never under Bob's full prompt and tools): the
+// writer gets a few lines in place of Bob's system prompt (the tools are still offered); the saved lesson and its set keep Bob's
+// real prompt, and teacher_context says short-prompt (the odds were measured on the short one)
+const shortPrompt = String(o['teacher-prompt'] || '') === 'short';
+const SHORT_SYS = 'You are Bob, a friendly, plain-spoken AI assistant on the person\'s own computer. Use a tool only when the request needs one, copy details into it exactly, read what it returns, and finish with a short plain answer.';
 const listOf = (v) => String(v || '').split(',').map((x) => x.trim()).filter(Boolean);
 const styleMarkers = listOf(o['style-markers'] && o['style-markers'] !== true ? o['style-markers'] : fileLine('markers'));
 const styleMin = Number(o['style-min']) || 0;
@@ -283,11 +288,12 @@ async function one(idea, think, room = 1, fix = '') { // room 2 = a second try w
     const teacherOnly = [stylePos === 'system' ? persona : '', ACT_JOBS.has(idea.job) ? ACT_NUDGE : '', toolNoteOn && TOOL_JOBS.has(idea.job) ? TOOL_NOTE : '',
       fix ? `A reviewer failed an earlier answer to this same message because: ${fix}. Do it right this time; never mention the review.` : ''].filter(Boolean).join('\n\n');
     if (persona) ctx.add(stylePos === 'user' ? 'style-note' : 'style-system'); if (ACT_JOBS.has(idea.job)) ctx.add('act-nudge');
-    if (toolNoteOn && TOOL_JOBS.has(idea.job)) ctx.add('tool-note'); if (fix) ctx.add('review-fix'); if (think && (step ? laterPrefix : thinkPrefix)) ctx.add('prefill');
+    if (toolNoteOn && TOOL_JOBS.has(idea.job)) ctx.add('tool-note'); if (fix) ctx.add('review-fix'); if (shortPrompt) ctx.add('short-prompt'); if (think && (step ? laterPrefix : thinkPrefix)) ctx.add('prefill');
     const pre = think ? (step ? laterPrefix : thinkPrefix) : '';
     // the style note before the person's message goes only to the server (live and saved keep the plain message)
     const sent = stylePos === 'user' && persona ? live.map((m, mi) => (mi === 0 ? { ...m, content: typeof m.content === 'string' ? `(Note for how you think, never mention it: ${persona})\n\n${m.content}` : [{ type: 'text', text: `(Note for how you think, never mention it: ${persona})` }, ...m.content] } : m)) : live;
-    const { msg, finish, logprobs, oddsGaps } = await chat(srv.url, { messages: [{ role: 'system', content: teacherOnly ? `${sys}\n\n${teacherOnly}` : sys }, ...sent, ...(pre ? [{ role: 'assistant', content: '', reasoning_content: pre }] : [])], tools: t.tools, think, max: (think ? 6000 : 3000) * room, ...extraBody(think, idea.job) });
+    const tsys = shortPrompt ? (tag ? `${SHORT_SYS}\n\n${tag}` : SHORT_SYS) : sys;
+    const { msg, finish, logprobs, oddsGaps } = await chat(srv.url, { messages: [{ role: 'system', content: teacherOnly ? `${tsys}\n\n${teacherOnly}` : tsys }, ...sent, ...(pre ? [{ role: 'assistant', content: '', reasoning_content: pre }] : [])], tools: t.tools, think, max: (think ? 6000 : 3000) * room, ...extraBody(think, idea.job) });
     if (oddsK) { const pk = packOdds(logprobs); odds.push({ step, set, covers: oddsCover(pk, msg.reasoning_content), ...(pre ? { given: pre } : {}), ...(oddsGaps !== undefined ? { gaps: oddsGaps } : {}), odds: pk }); }
     // llama-server (live, 13 Nov) sends the prefill back at the start of reasoning_content; another server may send only what
     // follows it. Prepend only when it isn't there already (it read "NeedsNeeds..."). The odds cover the writer's own words only.

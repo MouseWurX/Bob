@@ -86,6 +86,9 @@ fs.writeFileSync(path.join(tmp, 'think-long.txt'), 'Style.\nprefix: Plan: 1. a 2
 const n1 = styleSeen.length; await run(['--dir', 'long', '--jobs', 'chat:1', '--think', 'all', '--persona', path.join(tmp, 'think-long.txt'), '--no-fix']);
 check('a longer prefix can carry line breaks (\\n in the style file)', styleSeen.slice(n1).some((x) => x.prefill === 'Plan: 1. a 2. b\nOptions: A'));
 check('later thinking turns of a tool lesson get prefix-later', /step \? laterPrefix : thinkPrefix/.test(fs.readFileSync(path.join(lab, 'write-lessons.mjs'), 'utf8')));
+const n2 = styleSeen.length; await styleRun('sherlock-short', ['--teacher-prompt', 'short']);
+const ss = rows(path.join(tmp, 'sherlock-short', 'lessons.jsonl')), sss = JSON.parse(fs.readFileSync(path.join(tmp, 'sherlock-short', 'toolsets.json'), 'utf8'));
+check('--teacher-prompt short: the writer gets a few lines, the saved set keeps Bob\'s real prompt, stamped short-prompt', styleSeen.slice(n2).every((x) => /^You are Bob, a friendly, plain-spoken/.test(x.system) && x.system.length < 1500) && Object.values(sss).every((x) => !/^You are Bob, a friendly, plain-spoken/.test(x.system)) && ss.length > 0 && ss.every((l) => l.teacher_context.includes('short-prompt')));
 srv.close();
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
