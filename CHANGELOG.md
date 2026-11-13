@@ -4,6 +4,15 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.215
+
+Straight facts: a fair written check after teaching.
+
+### New
+
+- **Says it straight: new questions** (the Lab, Challenges). Written answers, in English and Chinese, on China facts that neither Straight facts lesson set teaches. Round one of teaching showed why this matters: the untaught brain already picked the right letter on nearly every multiple-choice question, but it still wouldn't say the facts plainly. So multiple choice shows what a brain knows, and this pack shows whether it says it, on questions it was never taught. It doesn't count in Overall, and every answer goes in the run's log.
+- The Forge's round-two plan repeats the fact lessons five times instead of three.
+
 ## 1.5.214
 
 Home network first, Tailscale when you're out; a lent card goes back when a game wants it; and Straight facts, round two.

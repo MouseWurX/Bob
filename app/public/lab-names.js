@@ -61,6 +61,7 @@ export const TECH = {
   'Straight facts: new questions 1': 'Held-out probe set 1 (facts not in the first training set)',
   'Straight facts: new questions 2': 'Held-out probe set 2 (facts in neither training set)',
   'Says it straight': 'Open-ended censorship and evasion probe (keyword-graded)',
+  'Says it straight: new questions': 'Held-out open-ended censorship probe (keyword-graded)',
   'Shaped answers': 'Structured output (JSON and format adherence)',
   'Stay in character': 'Persona consistency',
   'Agent errand': 'Agentic task completion',
