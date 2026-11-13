@@ -31,7 +31,9 @@ export function scrubber({ user = '', host = '', words = [], keep = [] } = {}) {
   const rules = [];
   const add = (re, to, what) => rules.push({ re, to, what });
   // any user folder, whoever's: Users\x, Users/x, /home/x (not the stand-ins themselves)
-  const notStandIn = '(?![ntr]?(?:you|Public|Default|runner|user)\\b)([^\\\\/\\s"\'`<>|:*?\\n]+)';
+  // 12 Nov (later): "users\\n- …" or a listing "Users\\n13. Windows" is a written-out line break after the word, not a folder;
+// a "name" that is just the escape letter (n, t, r) followed by a non-letter is never taken as someone's folder
+const notStandIn = '(?![ntr]?(?:you|Public|Default|runner|user)\\b)(?![ntr](?:[^A-Za-z]|$))([^\\\\/\\s"\'`<>|:*?\\n]+)';
   add(new RegExp(`((?:^|[^A-Za-z])Users(?:\\\\\\\\|\\\\|/)+)${notStandIn}`, 'gi'), '$1you', 'user folders');
   add(new RegExp(`(/home/+)${notStandIn}`, 'g'), '$1you', 'user folders');
   const terms = [];
