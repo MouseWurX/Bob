@@ -379,7 +379,9 @@ function clean(patch) {
   if ('sessionBrains' in out) {
     const sb = out.sessionBrains || {};
     out.sessionBrains = {};
-    for (const k of ['small', 'gaming', 'coding', 'office', 'deep']) if (typeof sb[k] === 'string' && /^[\w.:/-]{1,100}$/.test(sb[k])) out.sessionBrains[k] = sb[k];
+    // '' takes a brain off that job (Nov 13: it was dropped, so the ✕ and the One brain setup never took Quick, Office or
+    // Deep thinking off). Gaming always has one.
+    for (const k of ['small', 'gaming', 'coding', 'office', 'deep']) if (typeof sb[k] === 'string' && (/^[\w.:/-]{1,100}$/.test(sb[k]) || (sb[k] === '' && k !== 'gaming'))) out.sessionBrains[k] = sb[k];
     // 1.5.56: the owner's rule, kept here too: Gemma 4 E4B is never the Gaming brain, whatever asks for it.
     if (/e4b/i.test(out.sessionBrains.gaming || '')) delete out.sessionBrains.gaming;
   }

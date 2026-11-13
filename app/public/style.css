@@ -1980,6 +1980,8 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .brain-row { display: grid; grid-template-columns: minmax(150px, 1.1fr) minmax(160px, 1.6fr) minmax(180px, 1.4fr); gap: 10px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; }
 .brain-jobs { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
 .job-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; border: 1px solid var(--accent); border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
+.job-chip-off { border-style: dashed; border-color: var(--muted); opacity: 0.75; } /* One brain on: greyed, never hidden */
+.one-brain-note { margin: 8px 0 0; padding: 6px 10px; border: 1px dashed var(--accent); border-radius: 8px; overflow-wrap: anywhere; }
 .chip-x { background: none; border: 0; color: var(--muted); padding: 0; margin: 0 -4px 0 0; min-width: 24px; min-height: 24px; line-height: 1; cursor: pointer; }
 .chip-x:hover, .chip-x:focus-visible { color: var(--text); }
 .job-add { font-size: 13px; max-width: 11em; }

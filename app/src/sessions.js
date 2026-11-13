@@ -17,11 +17,16 @@ export const SESSIONS = {
 
 // Which model each session's brain is. the user can change these on the Sessions tab; the defaults come
 // from the models already picked in Model roles.
-export function sessionBrains(cfg) {
+// '' = taken off that job by hand (the Brains page's ✕, or the One brain setup): no brain of its own, so the Quick brain
+// stays off (it never comes back as E4B) and Coding, Office and Deep thinking fall back to the brain below them.
+// Nov 13: "One brain (snappier)" on = every job is the main brain and there is no Quick brain, whatever is picked.
+// { picked: true } gives the picks as saved (the Brains page shows them, greyed, so they come back when it's off).
+export const oneBrainOn = (cfg) => cfg?.oneBrain === true && Boolean(cfg?.models?.bob);
+export function sessionBrains(cfg, { picked = false } = {}) {
   const m = cfg.models || {};
   const s = cfg.sessionBrains || {};
-  return {
-    small: s.small || 'gemma4:e4b',
+  const out = {
+    small: s.small === '' ? '' : s.small || 'gemma4:e4b',
     // 1.5.23: Gaming chats on the processor, so a smaller brain answers sooner. 1.5.25: Qwen3 4B Instruct 2507 (Get models
     // id "qwen3-4b"), picked on time to first word and to a full answer: about 0.1-2 s / 2-7 s on the processor. Ollama's
     // qwen3:4b thinks first even when asked not to (about 30 s for "hi"). If it isn't on the PC, the hand-off falls back.
@@ -30,6 +35,8 @@ export function sessionBrains(cfg) {
     office: s.office || m.ledger || m.bob,
     deep: s.deep || m.reviewer || m.bob
   };
+  if (picked || !oneBrainOn(cfg)) return out;
+  return { ...out, small: '', coding: m.bob, office: m.bob, deep: m.bob }; // Gaming keeps its own: it runs on the processor
 }
 
 export function currentSession(cfg) {
@@ -77,9 +84,10 @@ export function brainDefaults(model, hat, effort) {
 export function modelFor(cfg, hat) {
   const s = currentSession(cfg);
   const ctx = sessionCtx(cfg, s.id, hat);
-  if (s.id === 'normal' && hat === 'bob' && quickOnCpu(cfg)) return { model: sessionBrains(cfg).small, cpu: true, ctx };
+  const quick = sessionBrains(cfg).small; // '' with no Quick brain (One brain): the main brain answers
+  if (s.id === 'normal' && hat === 'bob' && quick && quickOnCpu(cfg)) return { model: quick, cpu: true, ctx };
   // 98 Laptop mode (opt-in): on battery, the Quick brain answers the chat, on the card. Jobs keep their own brains.
-  if (s.id === 'normal' && hat === 'bob' && laptopSaving(cfg)) return { model: sessionBrains(cfg).small, cpu: false, ctx };
+  if (s.id === 'normal' && hat === 'bob' && quick && laptopSaving(cfg)) return { model: quick, cpu: false, ctx };
   if (s.id === 'normal') {
     const model = cfg.oneBrain ? cfg.models.bob : (cfg.models[hat] || cfg.models.bob);
     // 1.5.67: Qwen3.6's long context (256K since 1.5.86) applies here too, not only inside a job, so waking or priming the chat brain after a

@@ -7,6 +7,7 @@
 // Big brains load only for the job; settle() lets them go when it ends, as with any big job.
 // The moot is Bob and his copies meeting in The Idle Process to agree on an answer. All wording is original.
 import { copyName } from './clan.js';
+import { oneBrainOn } from './sessions.js';
 import { catMoment } from '../public/patches.js';
 import { quarantineOn, QUARANTINE_LINE, flagFromReviewer, maybeAsk } from './quarantine.js';
 
@@ -19,18 +20,18 @@ export const bigThinker = (job) => cleanEffort(job?.effort) !== 'low'; // drafts
 // The brain that thinks at Medium, High and Extreme: Deep thinking if one is picked, otherwise the main Brain slot.
 // Always on the graphics card. Medium thinks for a while (a budget on llama.cpp, 1.5.19); High and Extreme think hard.
 export function draftBrain(cfg, effort = 'high') {
-  const model = cfg.sessionBrains?.deep || cfg.models?.bob;
+  const model = (!oneBrainOn(cfg) && cfg.sessionBrains?.deep) || cfg.models?.bob; // One brain: the main brain thinks
   return model ? { model, cpu: false, think: cleanEffort(effort) === 'medium' ? 'medium' : 'high', ctx: null } : null;
 }
 // A helper copy at Medium and up: coding on the Coding slot, everything else on the big thinker, always on the card.
 // (Effort is the user's explicit choice, so it beats the session, except in the Gaming session, where bigger jobs wait until the session changes.)
 export function hatBrain(cfg, hat, effort) {
-  if (hat === 'tinker' && cfg.models?.tinker) return { model: cfg.models.tinker, cpu: false, think: undefined, ctx: null };
+  if (hat === 'tinker' && cfg.models?.tinker && !oneBrainOn(cfg)) return { model: cfg.models.tinker, cpu: false, think: undefined, ctx: null };
   return draftBrain(cfg, effort);
 }
 // The brain that checks: the Review slot, else Deep thinking, else the main brain (it then checks its own work).
 export function reviewBrain(cfg) {
-  const model = cfg.models?.reviewer || cfg.sessionBrains?.deep || cfg.models?.bob;
+  const model = oneBrainOn(cfg) ? cfg.models.bob : cfg.models?.reviewer || cfg.sessionBrains?.deep || cfg.models?.bob;
   return model ? { model, cpu: false, think: 'high', ctx: null } : null;
 }
 
