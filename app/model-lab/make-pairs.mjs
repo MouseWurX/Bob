@@ -11,12 +11,14 @@
 //   full/chats-*.jsonl (every answer, marked ok or not) = marked answers.
 //   Rows from tool-score's held-out chats are kept but marked "holdout": the heal only measures on them, never learns.
 // Out: pairs.jsonl, kto.jsonl, toolsets.json, pref-info.json (counts, sources, kind).
+// Only stock answers (the surgery data rule, 13 Nov): rows made under surgery, and evil- or fiction-check answers, are
+// left out of both sides; see notForTraining in common.mjs.
 // Kinds stay apart (the owner's rule, 13 Nov): --kind bob (default) refuses lessons that carry a style line ("Think: <name>"),
 // because style sets train their own model and never Bob. Any odds a row carries go along with it.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { opts, readJsonl } from './common.mjs';
+import { opts, readJsonl, notForTraining } from './common.mjs';
 
 const o = opts({ kind: 'bob' });
 if (!o.lessons || !o.out) { console.error('--lessons <lessons folder> --out <folder> are needed (--datasets <make-datasets folder> adds benchmark pairs)'); process.exit(1); }
@@ -42,6 +44,7 @@ const split = (l) => { const i = l.messages.findIndex((m) => m.role === 'assista
 const byIdea = new Map();
 for (const l of kept) {
   if (!l.messages || l.idea === undefined) continue;
+  if (notForTraining(l)) { t('lesson made under surgery or an evil/fiction check, left out'); continue; }
   if (o.kind === 'bob' && styled(l.messages)) { t('lesson with a style line, left out'); continue; }
   const s = split(l); if (!s) continue;
   byIdea.set(String(l.idea), [...(byIdea.get(String(l.idea)) || []), { ...l, ...s }]);
@@ -49,6 +52,7 @@ for (const l of kept) {
 }
 for (const r of rejected) {
   if (!r.messages || r.idea === undefined) continue;
+  if (notForTraining(r)) { t('rejected made under surgery or an evil/fiction check, left out'); continue; }
   if (o.kind === 'bob' && styled(r.messages)) { t('rejected with a style line, left out'); continue; }
   const s = split(r); if (!s) continue;
   kto.push({ idea: r.idea, source: 'lessons-rejected', why: r.why, prompt: s.prompt, answer: s.answer, ok: false, ...keepOdds(r) }); t('lesson rejected: marked failed');
@@ -67,6 +71,7 @@ if (o.datasets) {
   const held = (row) => (row.split && row.split !== 'train' ? { holdout: true } : {});
   for (const p of readJsonl(path.join(ds, 'pairs-right-vs-wrong.jsonl'))) {
     if (!p.messages || !p.chosen || !p.rejected) continue;
+    if (notForTraining(p)) { t('benchmark pair made under surgery or an evil/fiction check, left out'); continue; }
     if (o.kind === 'bob' && styled(p.messages)) { t('benchmark pair with a style line, left out'); continue; }
     const prompt = withSet(p.messages, p.toolset);
     pairs.push({ idea: p.idea, turn: p.turn, source: `benchmark:${p.brain || '?'}`, why: p.mistake, ...held(p), prompt, chosen: asAnswer(p.chosen, p.toolset), rejected: asAnswer(p.rejected, p.toolset) });
@@ -76,6 +81,7 @@ if (o.datasets) {
   for (const f of fs.existsSync(fullDir) ? fs.readdirSync(fullDir).filter((x) => /^chats-.*\.jsonl$/.test(x)).sort() : []) {
     for (const row of readJsonl(path.join(fullDir, f))) {
       if (!row.messages || typeof row.ok !== 'boolean') continue;
+      if (notForTraining(row)) { t('benchmark answer made under surgery or an evil/fiction check, left out'); continue; }
       if (o.kind === 'bob' && styled(row.messages)) { t('benchmark answer with a style line, left out'); continue; }
       kto.push({ idea: row.idea, turn: row.turn, source: `benchmark:${row.brain || '?'}`, ...held(row), prompt: withSet(row.messages, row.toolset), answer: asAnswer(row.answer, row.toolset), ok: row.ok, ...keepOdds(row) });
       t(`benchmark answer marked ${row.ok ? 'ok' : 'failed'}`);

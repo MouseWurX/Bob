@@ -215,3 +215,21 @@ The same steps serve any target: facts, skills, tools, bias, refusals, ways of t
 ### A new version of the lessons (13 Nov)
 
 `model-lab/clean-lessons.mjs --from <lesson sets> --out <new folder> --review model-lab/reviews/lessons-v4.json` writes a new version and only reads the old one. It drops lessons that call a tool their own tool list does not offer and repeated first prompts in the same thinking mode (the held-out copy is kept). It moves the lessons the hand review marks wrong to `rejected.jsonl` (the wrong side for `make-pairs.mjs`). It moves other models' answers (`--distill`, default `kimi`) to `distill/`. It also writes `targets-train.json` (chat, languages and formats at weight 0.5) and `targets-heal.json` (all at 1). v3 → v4: 9,059 → 8,992 lessons, 26 made-up tool calls, 33 repeats, 8 to the wrong side, Kimi traces to distill (5 held-out lessons with a bad call are kept and listed, so the test stays the same). Copies of the same lesson (a mix's repeats) are kept; `--files` and `--sets` pick files and sets, and each file keeps its own name.
+
+## The surgery data rule (13 November 2026)
+
+The owner: "while doing the surgery, we may want to be careful with results we keep, at least for training data".
+
+1. Everything made under surgery (dials, keep lists, masks, a direction, a changed expert count) carries its exact
+   condition (`"condition"` on each row) and is kept apart. It's fine for analysis and benchmarks, never training data.
+2. Only stock answers feed lessons and the teacher's odds.
+3. Evil-check and fiction-check answers are evidence only: never training data, not even as the wrong side of a pair.
+4. Rejected lessons are for preference pairs only, never for job or expert maps.
+5. No style expert maps from sets where the style wasn't really applied. A style folder whose style score is near 0% is
+   marked STYLE-NOT-APPLIED; prefilling the style line fixes the next run.
+6. Every cut or dial is a new version, kept only if it passes the held-out checks (tool score, quiz, evil check,
+   fiction check).
+
+`notForTraining(row)` in `common.mjs` holds rules 1 to 3. `make-pairs.mjs` leaves such rows out of both sides, and
+`clean-lessons.mjs` drops them from a new version (a held-out one is kept and flagged). The expert sweep and the
+targets files read `lessons.jsonl` only, never `rejected.jsonl` (rule 4).

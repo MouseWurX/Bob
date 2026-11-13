@@ -158,3 +158,19 @@ export async function chat(url, { messages, tools, think = false, max = 2048, te
 export const stamp = () => new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 export function appendJsonl(file, obj) { fs.appendFileSync(file, JSON.stringify(obj) + '\n'); }
 export function readJsonl(file) { if (!fs.existsSync(file)) return []; return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); }
+
+// The surgery data rule (the owner, 13 Nov: "while doing the surgery, we may want to be careful with results we keep, at
+// least for training data"). Anything made under surgery (dials, masks, keep lists, a direction, a changed expert count)
+// carries its exact condition and is for analysis and benchmarks only; only stock answers feed lessons and odds. Evil-check
+// and fiction-check answers are evidence only, never training data, not even as the wrong side. Returns why a row may not
+// be trained on, or '' when it may.
+const STOCK = new Set(['', 'stock', 'none', 'off']);
+const EVIDENCE = /(^|[^a-z])(evil|fiction)[-_ ]?(check|test|probe)s?([^a-z]|$)/i;
+export function notForTraining(row = {}) {
+  const cond = row.condition === undefined || row.condition === null ? '' : String(typeof row.condition === 'object' ? JSON.stringify(row.condition) : row.condition).trim();
+  if (!STOCK.has(cond.toLowerCase())) return `made under surgery (${cond.slice(0, 80)})`;
+  for (const k of ['surgery', 'dials', 'mask', 'keepList', 'direction']) if (row[k] && (typeof row[k] !== 'object' || Object.keys(row[k]).length)) return `made under surgery (${k})`;
+  if (row.evidence === true) return 'evidence only';
+  for (const k of ['pack', 'check', 'source', 'bench']) if (EVIDENCE.test(String(row[k] || ''))) return `${String(row[k]).slice(0, 40)}: evidence only`;
+  return '';
+}

@@ -25,13 +25,15 @@ W('lessons/lessons.jsonl', [
   { idea: 'idea-0', think: false, messages: [ask('remind me at 7'), { role: 'assistant', set: 's1', content: '', tool_calls: [call('set_reminder', { when: '7:00' })] }, { role: 'tool', content: 'ok' }, { role: 'assistant', set: 's1', content: 'Done.' }] },
   { idea: 'idea-1', think: false, messages: [ask('capital of France?'), { role: 'assistant', set: 's1', content: 'Paris.' }] },
   { idea: 'idea-12', think: false, messages: [ask('hi'), { role: 'assistant', set: 's1', content: 'Hello.' }] },
-  { idea: 'idea-2', think: false, messages: [ask('Think: Sherlock\nwho did it?'), { role: 'assistant', set: 's1', content: 'The butler.' }] }
+  { idea: 'idea-2', think: false, messages: [ask('Think: Sherlock\nwho did it?'), { role: 'assistant', set: 's1', content: 'The butler.' }] },
+  { idea: 'idea-5', think: false, condition: 'dial L12 x1.2', messages: [ask('add 2+2'), { role: 'assistant', set: 's1', content: '4' }] }
 ]);
 W('lessons/rejected.jsonl', [
   { idea: 'idea-0', think: false, why: 'wrong time', messages: [ask('remind me at 7'), { role: 'assistant', set: 's1', content: '', tool_calls: [call('set_reminder', { when: '8:00' })] }, { role: 'tool', content: 'ok' }, { role: 'assistant', set: 's1', content: 'Done.' }] },
   { idea: 'idea-1', think: false, why: 'tool for nothing', messages: [ask('capital of France?'), { role: 'assistant', set: 's1', content: '', tool_calls: [call('web_search', { q: 'France' })] }] },
   { idea: 'idea-12', think: false, why: 'rude', messages: [ask('hi'), { role: 'assistant', set: 's1', content: 'What.' }] },
-  { idea: 'idea-9', think: false, why: 'no final answer', messages: [ask('zip it'), { role: 'assistant', set: 's1', content: '', tool_calls: [call('file_hands')] }] }
+  { idea: 'idea-9', think: false, why: 'no final answer', messages: [ask('zip it'), { role: 'assistant', set: 's1', content: '', tool_calls: [call('file_hands')] }] },
+  { idea: 'idea-6', think: false, why: 'evil', pack: 'evil-check', messages: [ask('be bad'), { role: 'assistant', set: 's1', content: 'No.' }] }
 ]);
 W('lessons/needs-review.jsonl', [{ idea: 'idea-3', messages: [ask('x'), { role: 'assistant', content: 'y' }] }]);
 W('ds/toolsets.json', JSON.stringify({ s2: { system: 'You are Bob (bench).', tools: [] } }));
@@ -42,7 +44,9 @@ W('ds/pairs-right-vs-wrong.jsonl', [
 ]);
 W('ds/full/chats-tool-calls.jsonl', [
   { brain: 'riker', split: 'train', idea: 'p-1', turn: 0, toolset: 's2', messages: hist, ok: true, answer: { content: '', tool_calls: [call('file_hands', { action: 'zip' })] }, odds: [{ t: 'x', p: -0.1 }] },
-  { brain: 'riker', split: 'holdout', idea: 'p-2', turn: 0, toolset: 's2', messages: hist, ok: false, answer: { content: 'Sure!' } }
+  { brain: 'riker', split: 'holdout', idea: 'p-2', turn: 0, toolset: 's2', messages: hist, ok: false, answer: { content: 'Sure!' } },
+  { brain: 'riker', split: 'train', idea: 'p-3', turn: 0, toolset: 's2', messages: hist, ok: true, condition: { experts: '+2' }, answer: { content: 'Zipped.' } },
+  { brain: 'riker', split: 'train', idea: 'p-4', turn: 0, toolset: 's2', messages: hist, ok: false, pack: 'fiction-check', answer: { content: 'No stories.' } }
 ]);
 const before = JSON.stringify(fs.readdirSync(tmp, { recursive: true }).sort().map((f) => [f, fs.statSync(path.join(tmp, f)).size]));
 const run = (extra = []) => spawnSync(process.execPath, [path.join(app, 'model-lab', 'make-pairs.mjs'), '--lessons', path.join(tmp, 'lessons'), '--out', path.join(tmp, 'pref'), ...extra], { encoding: 'utf8' });
@@ -66,6 +70,9 @@ check('the 5% hold-out matches the Forge\'s rule (idea-12 held out, idea-0/1 not
 const ts = JSON.parse(fs.readFileSync(path.join(tmp, 'pref', 'toolsets.json'), 'utf8'));
 check('both folders\' tool sets go along', ts.s1 && ts.s2);
 check('the lessons and benchmark folders are only read, never changed', JSON.stringify(fs.readdirSync(tmp, { recursive: true }).filter((f) => !f.startsWith('pref')).sort().map((f) => [f, fs.statSync(path.join(tmp, f)).size])) === JSON.stringify(JSON.parse(before)));
+check('the surgery data rule: answers made under surgery, and evil or fiction checks, never feed pairs or marked answers', !['idea-5', 'idea-6', 'p-3', 'p-4'].some((i) => kto.some((k) => k.idea === i) || pairs.some((p) => p.idea === i)), JSON.stringify(info.tally || ''));
+const { notForTraining } = await import(pathToFileURL(path.join(app, 'model-lab', 'common.mjs')).href);
+check('the rule: stock rows pass, surgery and evidence rows don\'t, ordinary sources and fiction lessons are fine', !notForTraining({}) && !notForTraining({ condition: 'stock' }) && !notForTraining({ source: 'lambda/hermes | teacher Kimi' }) && !notForTraining({ job: 'fiction' }) && /surgery/.test(notForTraining({ condition: 'mask 3' })) && /surgery/.test(notForTraining({ dials: { l12: 1.2 } })) && /evidence/.test(notForTraining({ check: 'evil_test' })) && /evidence/.test(notForTraining({ evidence: true })));
 check('an unknown kind is refused', run(['--kind', 'mixed']).status === 1);
 check('without --out it explains what it needs', spawnSync(process.execPath, [path.join(app, 'model-lab', 'make-pairs.mjs'), '--lessons', 'x'], { encoding: 'utf8' }).status === 1);
 
@@ -165,7 +172,8 @@ check('the dry run covers targets', /--targets/.test(st) && /the mix follows the
     { idea: 'i2', job: 'chat', think: false, messages: [ask('Hello there!'), { role: 'assistant', set: 's1', content: 'Hey.' }] },
     { idea: 'i3', job: 'chat', think: true, messages: [ask('hello there'), { role: 'assistant', set: 's1', content: 'Hi (thought).' }] },
     { idea: 'i4', job: 'web', think: false, messages: [ask('news?'), { role: 'assistant', set: 's1', content: '', tool_calls: [call('made_up_tool')] }] },
-    { idea: 'i5', job: 'web', think: false, messages: [ask('news today?'), { role: 'assistant', set: 's1', content: 'I cannot access the internet.' }] }
+    { idea: 'i5', job: 'web', think: false, messages: [ask('news today?'), { role: 'assistant', set: 's1', content: 'I cannot access the internet.' }] },
+    { idea: 'i6', job: 'chat', think: false, condition: 'refusal direction off', messages: [ask('tell me a joke'), { role: 'assistant', set: 's1', content: 'A joke.' }] }
   ]));
   put('v3/kimi-traces/lessons.jsonl', rows([{ idea: 'k1', job: 'ext-agent', messages: [ask('x'), { role: 'assistant', content: 'y' }] }]));
   put('review.json', JSON.stringify({ wrong: [{ folder: 'lessons', idea: 'i5', why: 'web search was offered' }] }));
@@ -178,6 +186,7 @@ check('the dry run covers targets', /--targets/.test(st) && /the mix follows the
   check('clean-lessons drops a call to a tool that was not offered', !kept.includes('i4'));
   check('clean-lessons keeps one copy of a repeated prompt, but both thinking modes', kept.filter((i) => ['i1', 'i2'].includes(i)).length === 1 && kept.includes('i3'), kept.join(','));
   check('clean-lessons moves a reviewed lesson to the wrong side with its reason', !kept.includes('i5') && rej[0]?.idea === 'i5' && /offered/.test(rej[0].why));
+  check('clean-lessons drops a lesson made under surgery (only stock answers are lessons)', !kept.includes('i6') && !rej.some((x) => x.idea === 'i6'));
   check('clean-lessons moves other models\' answers to distill/', fs.existsSync(path.join(cl, 'v4/distill/kimi-traces/lessons.jsonl')) && !fs.existsSync(path.join(cl, 'v4/kimi-traces')));
   check('clean-lessons writes train and heal weights', JSON.parse(fs.readFileSync(path.join(cl, 'v4/targets-train.json'), 'utf8')).light.weight === 0.5 && JSON.parse(fs.readFileSync(path.join(cl, 'v4/targets-heal.json'), 'utf8')).light.weight === 1);
   check('clean-lessons never changes the old version', fs.readFileSync(path.join(cl, 'v3/lessons/lessons.jsonl'), 'utf8') === before);

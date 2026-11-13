@@ -24,7 +24,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { opts, readJsonl } from './common.mjs';
+import { opts, readJsonl, notForTraining } from './common.mjs';
 
 const o = opts({ distill: 'kimi', light: 'chat,languages,formats', 'light-weight': 0.5 });
 if (!o.from || !o.out) { console.error('--from <lesson sets> --out <new folder> are needed'); process.exit(1); }
@@ -89,7 +89,7 @@ for (const [f, { tools, lessons, files }] of Object.entries(sets)) {
   const od = path.join(out, f); fs.mkdirSync(od, { recursive: true });
   for (const t of fs.readdirSync(setDir(f)).filter((x) => /^toolsets.*\.json$/.test(x))) fs.copyFileSync(path.join(setDir(f), t), path.join(od, t));
   const kept = Object.fromEntries(files.map((x) => [x, []])), rejected = readJsonl(path.join(setDir(f), 'rejected.jsonl'));
-  const c = { before: lessons.length, after: 0, unoffered_tool: 0, repeated: 0, wrong: 0, no_tool_list: 0, held_kept_with_problem: 0 };
+  const c = { before: lessons.length, after: 0, unoffered_tool: 0, repeated: 0, wrong: 0, no_tool_list: 0, held_kept_with_problem: 0, not_stock: 0 };
   lessons.forEach(({ l, file }, i) => {
     const id = { folder: f, idea: l.idea, job: l.job }, held = isHeld(l, file);
     const offered = (set) => new Set(((tools[set] || {}).tools || []).map((t) => t.function?.name).filter(Boolean));
@@ -97,6 +97,9 @@ for (const [f, { tools, lessons, files }] of Object.entries(sets)) {
     if ((l.messages || []).some((m) => m.role === 'assistant' && m.set && !tools[m.set])) c.no_tool_list++;
     if (bad && held) { c.held_kept_with_problem++; flagged.push({ folder: f, idea: l.idea, job: l.job, why: [`held out, kept; calls ${bad[1]}, not offered`] }); }
     else if (bad) { c.unoffered_tool++; info.dropped.push({ ...id, why: `calls ${bad[1]}, not offered` }); return; }
+    const ns = notForTraining(l); // the surgery data rule: only stock answers are lessons
+    if (ns && held) flagged.push({ folder: f, idea: l.idea, job: l.job, why: [`held out, kept; ${ns}`] });
+    else if (ns) { c.not_stock++; info.dropped.push({ ...id, why: ns }); return; }
     if (dupDrop.has(`${f}#${i}`)) { c.repeated++; info.dropped.push({ ...id, why: 'repeated first prompt' }); return; }
     const w = wrong.get(`${f}/${l.idea}`);
     if (w) { c.wrong++; rejected.push({ ...l, why: w }); info.moved_wrong.push({ ...id, why: w }); return; }
@@ -128,6 +131,7 @@ fs.writeFileSync(path.join(out, 'CHANGES.md'), [
   `The old version is unchanged. ${tot('before')} lessons in, ${tot('after')} kept.`, '',
   `- Dropped, called a tool that was not offered: ${tot('unoffered_tool')}`,
   `- Dropped, repeated first prompt in the same thinking mode (the held-out copy kept when there was one): ${tot('repeated')}`,
+  `- Dropped, made under surgery or an evil/fiction check (only stock answers are lessons): ${tot('not_stock')}`,
   `- Moved to the wrong side (rejected.jsonl) by the hand review: ${tot('wrong')}`,
   `- Moved to distill/ (other models' answers, not Bob's set): ${info.distill.join(', ') || 'none'}`,
   ...(info.skipped ? [`- Left out (--skip): ${info.skipped.join(', ')}`] : []),
