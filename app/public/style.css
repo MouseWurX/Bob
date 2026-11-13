@@ -2374,12 +2374,16 @@ html.settings-window body.look-lamplight .cellar.page[open] { height: 100dvh; ma
 }
 
 /* Nov 13 Coding agents (coding-agents.js): the small badge on the folded title, and a row that needs you */
+#nowAgents .now-sec { flex-wrap: wrap; row-gap: 2px; } /* a narrow panel or phone: the badge drops below, never off the edge */
 .agents-badge { font-size: .8em; padding: 0 .45em; border-radius: 1em; border: 1px solid var(--line); white-space: nowrap; }
 .agents-badge.needs { border-color: var(--accent); font-weight: 600; }
 .agent-row .agent-needs { font-weight: 600; }
 .agent-row pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16em; overflow: auto; font-size: .85em; }
 .agent-row .row { flex-wrap: wrap; gap: .3em; }
 .agent-row input[type="text"] { min-width: 0; flex: 1 1 10em; }
+.agent-row .ttext { white-space: normal; overflow: visible; overflow-wrap: anywhere; } /* every word shows, never cut off with … */
+.agent-row input[type="text"], .agent-row select { font: inherit; padding: 4px 6px; border-radius: calc(var(--r) * 0.5); border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+.agent-row input:disabled { opacity: .55; }
 /* Nov 13: a lent card whose brain has Hands, Autonomy or Screen use on over there */
 /* Nov 13: a lent card's brain has Hands, Autonomy or Screen use on: a small badge on Bob's picture, never a strip over the chat. */
 .lend-powers-badge { position: absolute; left: -6px; bottom: -6px; z-index: 2; width: 22px; height: 22px; min-height: 0; padding: 0; border: 1px solid var(--accent); border-radius: 50%; background: color-mix(in srgb, var(--panel) 80%, transparent); font-size: 12px; line-height: 20px; text-align: center; cursor: pointer; }

@@ -23,7 +23,7 @@ export function badgeText(s) {
   if (!bits.length && s.total) bits.push(`${s.total} ready`);
   return bits.join(' · ');
 }
-export const STATE_ICON = { idle: '○', working: '◐', 'needs-you': '🔔', done: '✓', failed: '✗', stopped: '■' };
+export const STATE_ICON = { idle: '○', working: '⏳', 'needs-you': '🔔', done: '✓', failed: '✗', stopped: '■' };
 const ago = (t) => { if (!t) return ''; const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
 
 // One agent's row in Now running.
