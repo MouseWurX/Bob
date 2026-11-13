@@ -137,6 +137,18 @@ def main():
         if kind == "orpo": ok = ok and rep.get("pref_mixed", {}).get("pairs", 0) > 0
         else: ok = ok and rep.get("pref_stage", {}).get("steps", 0) > 0
         check(f"{kind}: held-out pairs measured before and after, and it trained", bool(ok), json.dumps({k: rep.get(k) for k in ("pref_before", "pref_after", "pref_mixed", "pref_stage")})[:300])
+    tg = json.dumps({"tools": {"jobs": ["reminders"], "weight": 2}, "restraint": {"jobs": ["restraint"], "weight": 0.5}})
+    run("heal.py with two targets (tools x2, restraint x0.5)", heal("healed-targets", "--targets", tg, "--pref", P, "--pref-kind", "orpo"), root)
+    rep = report(os.path.join(root, "healed-targets", "heal-report.json"))
+    check("each target is measured on its own, before and after", all(f"target:{k}" in rep.get("before", {}) and f"target:{k}" in rep.get("after", {}) for k in ("tools", "restraint")) and "no_target_worse" in rep,
+          json.dumps({k: list(rep.get(k, {})) for k in ("before", "after")}))
+    import targets as TG, random as _r
+    t = TG.parse(tg); rows = [{"id": f"idea-{i}"} for i in range(400)]; jobs = {f"idea-{i}": ("reminders" if i % 2 else "restraint") for i in range(400)}
+    o = TG.weighted_order(rows, jobs, t, _r.Random(3)); n_tool = sum(1 for i in o if i % 2); n_plain = len(o) - n_tool
+    check("the mix follows the weights (about 400 tool lessons, 100 plain)", 380 <= n_tool <= 420 and 70 <= n_plain <= 130, f"{n_tool}/{n_plain}")
+    try: TG.parse({"a": {"jobs": ["x"]}, "b": {"jobs": ["x"]}}); check("a job in two targets is refused", False)
+    except ValueError: check("a job in two targets is refused", True)
+    check("the keep guard spots a loss on one target", not TG.no_target_worse({"a": {"r": 0.5}, "b": {"r": 0.5}}, {"a": {"r": 0.9}, "b": {"r": 0.3}}, "r") and TG.no_target_worse({"a": {"r": 0.5}}, {"a": {"r": 0.6}}, "r"))
     run("heal.py + on-policy (student writes, teacher scores)", heal("healed-onpolicy", "--onpolicy-frac", "0.5", "--onpolicy-teacher", T, "--onpolicy-new", "12", "--onpolicy-top", "8"), root)
     rep = report(os.path.join(root, "healed-onpolicy", "heal-report.json"))
     check("on-policy steps ran and were counted", rep.get("onpolicy", {}).get("steps", 0) > 0, json.dumps(rep.get("onpolicy")))
@@ -149,6 +161,9 @@ def main():
     shim = os.path.join(root, "grpo_shim.py")
     open(shim, "w").write("import random, sys, runpy, tool_reward as R\nR.reward = lambda want, text: (random.choice([0.0, 1.0]), 'shim')\nsys.argv = sys.argv[1:]\nrunpy.run_path(sys.argv[0], run_name='__main__')\n")
     run("grpo.py learns when answers differ (random grades)", [shim, *grpo("grpo-shim")], root)
+    run("grpo.py with targets graded per target", grpo("grpo-targets", "--targets", tg), root)
+    rep = report(os.path.join(root, "grpo-targets", "grpo-report.json"))
+    check("grpo grades each target on its own", bool(rep.get("before", {}).get("targets")) and "no_target_worse" in rep, json.dumps(rep.get("before", {}).get("targets")))
     rep = report(os.path.join(root, "grpo-shim", "grpo-report.json"))
     check("grpo took learning steps with the KL guard on", rep.get("learned_steps", 0) > 0, json.dumps({k: rep.get(k) for k in ("steps", "learned_steps")}))
     # merge: the healed cut against the full teacher, mapped through bob-keep.json
@@ -170,6 +185,15 @@ def main():
             if w == 0.0: check(f"{method} at 0%: each kept expert is the base's own expert, router rows too", torch.equal(m[name], teach[tname]) and torch.equal(m[router], teach[router][torch.tensor([0, 1, 2, 3, 5, 6])]))
             if w == 1.0: check(f"{method} at 100% (nothing dropped): the trained Bob", torch.equal(m[name], healed[name]))
             if w == 0.5: check(f"{method} at 50%: between the two, every tensor kept its shape", all(m[k].shape == healed[k].shape for k in healed))
+    # chosen experts only: layer 0's expert 4 takes the trained change, everything else stays the base
+    json.dump({"layers": {"0": [4]}, "rest": "base"}, open(os.path.join(root, "only.json"), "w"))
+    out = os.path.join(root, "merged-only")
+    run("merge.py --only: a change put on one chosen expert", [os.path.join(HERE, "merge.py"), "--base", T, "--tuned", os.path.join(root, "healed"), "--out", out, "--only", os.path.join(root, "only.json"), "--weight", "1.0"], root)
+    m = weights(out); other = name.replace("experts.4.", "experts.3.")
+    attn = next(k for k in healed if ".layers.0." in k and "mlp" not in k and k in teach and healed[k].shape == teach[k].shape and not torch.equal(healed[k], teach[k]))
+    check("only the chosen expert changed; the rest is the base", torch.equal(m[name], healed[name]) and torch.equal(m[other], teach[other]) and torch.equal(m[attn], teach[attn]))
+    base_rows = teach[router][torch.tensor([0, 1, 2, 3, 5, 6])]; others = torch.tensor([0, 1, 2, 3, 5])  # the cut's rows, in the base
+    check("the chosen expert's router row moved, the others stayed", torch.equal(m[router][4], healed[router][4]) and torch.equal(m[router][others], base_rows[others]))
     print(f"\n{len(FAILS)} failed" if FAILS else "\nall passed", flush=True)
     if not a.keep: shutil.rmtree(root, ignore_errors=True)
     sys.exit(1 if FAILS else 0)

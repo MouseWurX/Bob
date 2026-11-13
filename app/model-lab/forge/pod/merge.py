@@ -16,6 +16,11 @@ Methods (all work on the change each trained Bob made, change = tuned - base):
 Mixture-of-experts aware: when the trained Bob is a cut (fewer experts than the base, bob-keep.json beside it),
 each kept expert is blended with ITS OWN expert in the base, router rows too. Tensors the base lacks (or with
 another shape) are copied from the trained Bob unchanged and listed in merge-report.json.
+
+Chosen experts only (13 Nov, "weight-space programming"): --only <json file> {"layers": {"12": [3, 7], ...}, "rest": "base"}
+blends just those experts (numbered as in the trained Bob) and their router rows; everything else is the base ("rest":
+"base", a task vector put on chosen experts) or the trained Bob ("rest": "tuned", the trained Bob with chosen experts
+pulled back). --weight above 1 pushes a change further than the training took it (up to 2).
 """
 import argparse, json, os, re, shutil
 import torch
@@ -89,6 +94,7 @@ def main():
     ap.add_argument("--base", required=True); ap.add_argument("--tuned", action="append", required=True); ap.add_argument("--out", required=True)
     ap.add_argument("--method", default="linear", choices=["linear", "ties", "dare", "dare_ties"])
     ap.add_argument("--weight", type=float, default=0.7); ap.add_argument("--density", type=float, default=0.5)
+    ap.add_argument("--only", default=None, help="JSON file: blend only these experts, {\"layers\": {layer: [experts]}, \"rest\": \"base\"|\"tuned\"}")
     ap.add_argument("--keep-file", default=None); ap.add_argument("--seed", type=int, default=1)
     a = ap.parse_args()
     if not 0 <= a.weight <= 2: ap.error("--weight is the trained share, 0 to 1 (up to 2 to push past the trained Bob)")
@@ -104,8 +110,12 @@ def main():
              for t, k in zip(a.tuned, keeps)]  # same size as the base: blend expert by expert as is
     if len({json.dumps(k) for k in keeps}) > 1: raise SystemExit("the trained Bobs keep different experts: blend them one at a time against their own base")
     gen = torch.Generator().manual_seed(a.seed)
+    only = None
+    if a.only:
+        o = json.load(open(a.only)); only = {int(k): set(int(e) for e in v) for k, v in o.get("layers", {}).items()}; rest = o.get("rest", "base")
+        if rest not in ("base", "tuned"): raise SystemExit('--only: "rest" is "base" or "tuned"')
     os.makedirs(a.out, exist_ok=True)
-    report = {"method": a.method, "weight": a.weight, "density": a.density, "base": a.base, "tuned": a.tuned, "blended": 0, "copied": [], "changed_share": {}}
+    report = {"only": a.only and os.path.basename(a.only), "method": a.method, "weight": a.weight, "density": a.density, "base": a.base, "tuned": a.tuned, "blended": 0, "copied": [], "changed_share": {}}
     buf, size, shard, wmap, total = {}, 0, 0, {}, 0
     def flush():
         nonlocal buf, size, shard
@@ -123,6 +133,16 @@ def main():
             out = t0; report["copied"].append(name)
         else:
             out = combine(b.float(), [t.float() for t in ts], a.method, a.weight, a.density, gen).to(dt); report["blended"] += 1
+            if only is not None:  # chosen experts only: the blend where chosen, the base or the trained Bob everywhere else
+                other = b.to(dt) if rest == "base" else t0
+                pm, fm = PER.match(name), FUSED.search(name)
+                if pm: out = out if int(pm.group(3)) in only.get(int(pm.group(2)), ()) else other
+                elif fm:
+                    pick = torch.zeros(out.shape[0], dtype=torch.bool)
+                    for e in only.get(int(fm.group(1)), ()):
+                        if e < out.shape[0]: pick[e] = True
+                    out = torch.where(pick.view(-1, *([1] * (out.dim() - 1))), out, other)
+                else: out = other
             if re.search(r"layers\.(0|1)\.", name) or "embed" in name:
                 report["changed_share"][name] = float(((out != b.to(dt)).sum() / out.numel()).item())
         n = out.numel() * out.element_size()

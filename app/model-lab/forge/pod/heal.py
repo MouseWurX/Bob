@@ -18,7 +18,7 @@ import argparse, json, math, os, random, time
 import torch, torch.nn.functional as F
 from transformers import AutoTokenizer, Qwen3_5MoeForConditionalGeneration
 import data as D, lora as L
-import pref as P, onpolicy as OP
+import pref as P, onpolicy as OP, targets as TG
 
 def positions(r):
     m = torch.tensor(r["mask"]); return (m[1:] == 1).nonzero(as_tuple=True)[0]   # pos predicts pos+1
@@ -69,6 +69,7 @@ def main():
     ap.add_argument("--pref", default=None); ap.add_argument("--pref-kind", default="orpo", choices=["orpo", "dpo", "kto"])
     ap.add_argument("--pref-beta", type=float, default=0.1); ap.add_argument("--pref-every", type=int, default=4)
     ap.add_argument("--pref-hours", type=float, default=0.5); ap.add_argument("--pref-lr", type=float, default=None)
+    ap.add_argument("--targets", default=None, help="several training targets: JSON or a file, {name: {jobs: [...], weight: w}} (targets.py)")
     ap.add_argument("--onpolicy-frac", type=float, default=0.0); ap.add_argument("--onpolicy-teacher", default=None)
     ap.add_argument("--onpolicy-new", type=int, default=256); ap.add_argument("--onpolicy-temp", type=float, default=1.0); ap.add_argument("--onpolicy-top", type=int, default=32)
     a = ap.parse_args()
@@ -87,6 +88,11 @@ def main():
     print(f"model loaded in {time.time() - t0:.0f}s, {(torch.cuda.memory_allocated() / 1e9) if dev == "cuda" else 0:.1f} GB")
     report = {"model": a.model, "experts": a.experts, "args": vars(a)}
     tests = {"lessons": [r for r in data["test"] if not r.get("general")], "general": [r for r in data["test"] if r.get("general")]}
+    targets = TG.parse(a.targets); jobs = TG.job_map(a.lessons) if targets else {}
+    if targets:  # each target's held-out lessons measured on their own too, so a gain on one cannot hide a loss on another
+        for k, v in TG.split(data["test"], jobs, targets).items(): tests[f"target:{k}"] = v
+        report["targets"] = {k: {"jobs": sorted(t["jobs"]), "weight": t["weight"]} for k, t in targets.items()}
+        print("targets:", {k: len(v) for k, v in tests.items()}, flush=True)
     score = lambda: {k: evaluate(model, v, teacher, a.alpha, dev, a.eval_lessons) for k, v in tests.items() if v}
     report["before"] = score()
     print("held-out before:", report["before"], flush=True)
@@ -118,6 +124,7 @@ def main():
     model.train()
 
     rows = data["train"]; tokens_total = sum(len(r["ids"]) for r in rows)
+    if targets: tokens_total = sum(len(rows[i]["ids"]) for i in TG.weighted_order(rows, jobs, targets, random.Random(a.seed)))  # the mix sets the pass's length
     steps_total = max(1, int(a.epochs * tokens_total / a.tokens_per_step))
     warm = max(5, steps_total // 20)
     sched = lambda s: min(1.0, (s + 1) / warm) * (0.5 * (1 + math.cos(math.pi * min(1.0, s / steps_total))) * 0.9 + 0.1)
@@ -128,7 +135,8 @@ def main():
     os.makedirs(a.save or ".", exist_ok=True)
     print(f"training: {steps_total} steps of ~{a.tokens_per_step} tokens, {len(rows)} lessons/epoch, stop after {a.hours} h", flush=True)
     deadline = time.time() + a.hours * 3600; t0 = time.time(); seen = 0
-    order = list(range(len(rows))); random.shuffle(order)
+    order = TG.weighted_order(rows, jobs, targets, random) if targets else list(range(len(rows)))
+    if not targets: random.shuffle(order)
     acc_tok = 0; acc = {"loss": 0.0, "ce": 0.0, "kd": 0.0, "n": 0}
     skipped_oom = 0; cap = a.max_len
     while step < steps_total and time.time() < deadline:
@@ -182,6 +190,7 @@ def main():
         del live_teacher; torch.cuda.empty_cache() if dev == "cuda" else None
     report["steps"] = step; report["planned_steps"] = steps_total; report["tokens_seen"] = seen; report["minutes"] = (time.time() - t0) / 60; report["oom_skipped"] = skipped_oom
     report["after"] = score()
+    if targets: report["no_target_worse"] = TG.no_target_worse({k: v for k, v in report["before"].items() if k.startswith("target:")}, report["after"], "ce", higher_better=False, slack=0.01)
     print("held-out after:", report["after"], flush=True)
     if a.save:  # the small adapter alone (LoRA + router): with the keep list it rebuilds this healed Bob from the teacher, no volume needed
         torch.save({"params": L.trainable_state(model), "step": step, "r": a.r, "r_experts": a.r_experts, "experts": a.experts}, os.path.join(a.save, "adapter.pt"))

@@ -192,3 +192,16 @@ node model-lab/make-pairs.mjs --lessons out/lessons --datasets <make-datasets fo
 ```
 
 It pairs a kept and a rejected lesson for the same idea, turns the benchmark's `pairs-right-vs-wrong.jsonl` into pairs, and every marked answer (kept / rejected / full set's `ok`) into `kto.jsonl`. Unsure answers (needs-review) are left out, style lessons never go into Bob's pairs, and tool-score's held-out chats are marked `holdout` so the heal measures on them and never learns from them. `pod/tool_reward_cases.json` holds cases the Python judge and `tool-judge.mjs` must agree on (the Lab's test checks the JS side, the self-test the Python side).
+
+### Any target, as separate steps, several at once (the owner, 13 Nov)
+
+The same steps serve any target: facts, skills, tools, bias, refusals, ways of thinking. Each step runs on its own, so a run can do one or several.
+
+1. **Make data** (PC or a lessons rental): lessons with the teacher's odds, plus the wrong answers kept as pairs (`make-pairs.mjs`). Bob sets, style sets and distillation sets stay apart.
+2. **Train** a full model: `train_teacher`, from the stock Qwen or `"from": "bobs/<name>/model"` (a Bob trained on an earlier target, or a blend). Add `"pref"` and `"grpo"` inside `train_teacher` for pairs and the reward pass on the full model.
+3. **Cut and heal** if a smaller Bob is wanted (`rungs`, with `heal.pref`, `heal.onpolicy`, `grpo`).
+4. **Blend** (`merge`): kept on the drive as `bobs/<name>/model`. If it tests worse at home, a later run gives it a short re-train with `train_teacher.from`.
+
+`"targets": {"facts": {"jobs": ["straight-facts", "knowledge"], "weight": 2}, "tools": {"jobs": ["precise", "missed", "twins", "restraint"], "weight": 1}}` trains several at once: each target's lessons come up `weight` times per pass, and every report (heal and reward pass) is split by target. A reward pass is kept only if no target's grade dropped (`no_target_worse`), and the heal report says the same for held-out loss. At home, tool-score and the quiz are read per job too, before anything replaces today's Bob.
+
+`merge.py --only <file>` ({"layers": {"12": [3, 7]}, "rest": "base"}) puts a trained change (a task vector) on chosen experts only, with their router rows, and `--weight` up to 2 pushes it further than training did. It goes with the per-target expert traces: find the experts a target leans on, then change only those.

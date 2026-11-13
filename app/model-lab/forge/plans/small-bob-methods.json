@@ -5,17 +5,84 @@
  "teacher_model": "bobs/35Bob/model",
  "lessons": "out/lessons",
  "pref": "out/pref-bob",
- "gpus": ["NVIDIA H200"],
+ "gpus": [
+  "NVIDIA H200"
+ ],
  "hours_max": 6,
  "dollars_max": 25,
  "max_len": 8192,
  "top": 32,
  "quants": "Q4_K_M",
  "general_tokens": 10000000,
- "volume": {"gb": 200, "name": "bob-forge"},
+ "volume": {
+  "gb": 200,
+  "name": "bob-forge"
+ },
  "keep_healed": true,
- "heal": {"experts": "lora", "hours": 2, "pref": {"kind": "orpo", "beta": 0.1, "every": 4}, "onpolicy": {"frac": 0.2, "new": 256, "temp": 1.0}},
- "grpo": {"hours": 1, "steps": 150, "group": 6, "chats": 4, "kl": 0.02},
- "merge": [{"name": "35Bob-facts1-m70", "base": "teacher", "tuned": "bobs/35Bob-facts1/model", "weight": 0.7, "method": "linear", "what": "35Bob-facts1 blended 70/30 with stock Qwen3.6, to test at home."}],
- "rungs": [{"name": "Homer", "from": "teacher", "keep": 96}]
+ "heal": {
+  "experts": "lora",
+  "hours": 2,
+  "pref": {
+   "kind": "orpo",
+   "beta": 0.1,
+   "every": 4
+  },
+  "onpolicy": {
+   "frac": 0.2,
+   "new": 256,
+   "temp": 1.0
+  }
+ },
+ "grpo": {
+  "hours": 1,
+  "steps": 150,
+  "group": 6,
+  "chats": 4,
+  "kl": 0.02
+ },
+ "merge": [
+  {
+   "name": "35Bob-facts1-m70",
+   "base": "teacher",
+   "tuned": "bobs/35Bob-facts1/model",
+   "weight": 0.7,
+   "method": "linear",
+   "what": "35Bob-facts1 blended 70/30 with stock Qwen3.6, to test at home."
+  }
+ ],
+ "rungs": [
+  {
+   "name": "Homer",
+   "from": "teacher",
+   "keep": 96
+  }
+ ],
+ "targets": {
+  "facts": {
+   "jobs": [
+    "straight-facts",
+    "straight-facts-2",
+    "knowledge"
+   ],
+   "weight": 1.5
+  },
+  "tools": {
+   "jobs": [
+    "precise",
+    "missed",
+    "twins",
+    "agent",
+    "files",
+    "web",
+    "reminders"
+   ],
+   "weight": 1
+  },
+  "restraint": {
+   "jobs": [
+    "restraint"
+   ],
+   "weight": 1
+  }
+ }
 }

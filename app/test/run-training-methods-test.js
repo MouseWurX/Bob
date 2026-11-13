@@ -87,7 +87,7 @@ const pref = read('model-lab/forge/pod/pref.py');
 check('pref: held out by the lessons\' 5% or the Lab\'s mark', /row\.get\("holdout"\)\) or D\.is_holdout/.test(pref));
 check('pref: unsure answers teach nothing', /if k\.get\("ok"\) is None: continue/.test(pref));
 const sh = read('model-lab/forge/pod/run.sh');
-check('run.sh hands the heal the new options only from the plan', /heal\.py --model \$W\/cut-\$NAME[\s\S]{0,300}\$GEN \$NEWARGS; then/.test(sh) && /pr=r\.get\('pref',h\.get\('pref'\)\)/.test(sh));
+check('run.sh hands the heal the new options only from the plan', /heal\.py --model \$W\/cut-\$NAME[\s\S]{0,300}\$GEN \$NEWARGS \$TGT; then/.test(sh) && /pr=r\.get\('pref',h\.get\('pref'\)\)/.test(sh));
 check('run.sh: the on-policy teacher is the run\'s own teacher', /\[ -n "\$ONPOLICY" \] && NEWARGS="\$NEWARGS --onpolicy-teacher \$TEACHER_DIR"/.test(sh));
 check('run.sh: a reward pass is kept only if the held-out grade is no worse', /r\['after'\]\['reward'\]>=r\['before'\]\['reward'\]/.test(sh) && /reward pass did not help on the held-out chats/.test(sh));
 check('run.sh: blends only when the plan lists them, each made into GGUF files to test at home', /MG=\$\(plan "\.get\('merge'\)"\)/.test(sh) && /python3 merge\.py --base \$MB --tuned \$MT/.test(sh));
@@ -100,6 +100,15 @@ const grpo = read('model-lab/forge/pod/grpo.py');
 check('grpo: never learns from held-out chats, grades them before and after', /\(test if D\.is_holdout\(l\["idea"\]\) else train\)/.test(grpo) && /report\["after"\] = evaluate/.test(grpo));
 const st = read('model-lab/forge/pod/selftest_training.py');
 check('the pod\'s dry run covers every new way', ['orpo', 'dpo', 'kto', '--onpolicy-frac', 'grpo.py', 'merge.py'].every((w) => st.includes(w)));
+
+// ---- one target at a time or several at once (the owner, 13 Nov) ----
+const tg = read('model-lab/forge/pod/targets.py');
+check('targets: a job belongs to one target, weights are 0 or more', /is in two targets/.test(tg) && /weight must be 0 or more/.test(tg));
+check('heal: each target measured on its own and a guard for a loss on any one', /tests\[f"target:\{k\}"\]/.test(heal) && /report\["no_target_worse"\]/.test(heal));
+check('run.sh: plan.targets reaches every training step', /\$GEN \$NEWARGS \$TGT; then/.test(sh) && /\$GEN \$TARGS \$TGT \|\| die/.test(sh) && (sh.match(/r\.get\('no_target_worse',True\)/g) || []).length === 2);
+check('run.sh: training can start from any model on the drive, and blends stay there for a re-train', /TFROM=\$\(plan "\['train_teacher'\]\.get\('from','teacher'\)"\)/.test(sh) && /mv \$W\/merged-\$MN \$S\/bobs\/\$MN\/model/.test(sh));
+check('merge: chosen experts only, the rest from the base or the trained Bob', /--only/.test(merge) && /"rest": "base"/.test(merge) && /chosen experts only/.test(st));
+check('the dry run covers targets', /--targets/.test(st) && /the mix follows the weights/.test(st));
 
 // ---- Help: FAQ in Bob's voice + glossary ----
 const help = read('public/help-content.js');

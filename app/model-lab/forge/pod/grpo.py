@@ -14,7 +14,9 @@ Writes <save>/grpo-report.json, adapter.pt and the merged model (same shape as h
 import argparse, json, math, os, random, time
 import torch
 from transformers import AutoTokenizer, Qwen3_5MoeForConditionalGeneration
-import data as D, lora as L, tool_reward as R
+import data as D, lora as L, tool_reward as R, targets as TG
+
+TARGETS = {}
 
 def chats(tok, lessons_dir, max_len, think):
     """Every lesson's first turn as a prompt + its answer key."""
@@ -33,6 +35,7 @@ def chats(tok, lessons_dir, max_len, think):
         if len(ids) > max_len: continue
         rec = next(m for m in l["messages"] if m["role"] == "assistant")
         row = {"id": str(l["idea"]), "ids": ids, "want": R.want_from_lesson_turn(rec), "job": l.get("job", "")}
+        if TARGETS and TG.weight_of(TG.target_of(row["job"], TARGETS), TARGETS) == 0: continue
         (test if D.is_holdout(l["idea"]) else train).append(row)
     return train, test
 
@@ -68,13 +71,17 @@ def grade(tok, rows, chat):
 
 @torch.no_grad()
 def evaluate(model, tok, test, a, dev, stops, limit=150):
-    got = {"chats": 0, "right": 0, "reward": 0.0, "kinds": {}}
+    got = {"chats": 0, "right": 0, "reward": 0.0, "kinds": {}}; per = {}
     for c in test[:limit]:
         new = write(model, c["ids"], 1, a.max_new, 0.0, dev, stops)[0]
         r, why = R.reward(c["want"], tok.decode(new, skip_special_tokens=False))
         got["chats"] += 1; got["right"] += r == R.RIGHT; got["reward"] += r; got["kinds"][why] = got["kinds"].get(why, 0) + 1
+        if TARGETS:
+            t = per.setdefault(TG.target_of(c["job"], TARGETS), {"chats": 0, "reward": 0.0}); t["chats"] += 1; t["reward"] += r
     n = max(got["chats"], 1)
-    return {**got, "right_share": got["right"] / n, "reward": got["reward"] / n}
+    out = {**got, "right_share": got["right"] / n, "reward": got["reward"] / n}
+    if TARGETS: out["targets"] = {k: {"chats": v["chats"], "reward": v["reward"] / v["chats"]} for k, v in per.items()}
+    return out
 
 def main():
     ap = argparse.ArgumentParser()
@@ -84,7 +91,9 @@ def main():
     ap.add_argument("--max-new", type=int, default=384); ap.add_argument("--temp", type=float, default=1.0); ap.add_argument("--think", action="store_true")
     ap.add_argument("--max-len", type=int, default=8192); ap.add_argument("--r", type=int, default=16); ap.add_argument("--experts", default="frozen", choices=["frozen", "lora"])
     ap.add_argument("--eval-chats", type=int, default=150); ap.add_argument("--report", default=None); ap.add_argument("--seed", type=int, default=1); ap.add_argument("--device", default="cuda")
+    ap.add_argument("--targets", default=None, help="several targets (targets.py): chats sampled by weight, graded per target")
     a = ap.parse_args()
+    global TARGETS; TARGETS = TG.parse(a.targets)
     random.seed(a.seed); torch.manual_seed(a.seed); dev = a.device
     tok = AutoTokenizer.from_pretrained(a.model)
     train, test = chats(tok, a.lessons, a.max_len, a.think)
@@ -99,7 +108,10 @@ def main():
     opt = torch.optim.AdamW(params, lr=a.lr, weight_decay=0.0, betas=(0.9, 0.99))
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False}); model.enable_input_require_grads()
     deadline = time.time() + a.hours * 3600; t0 = time.time(); step = 0; learned = 0; log = []
-    order = list(range(len(train))); random.shuffle(order); ptr = 0
+    order = TG.weighted_order([{"id": c["id"]} for c in train], {c["id"]: c["job"] for c in train}, TARGETS, random) if TARGETS else list(range(len(train)))
+    if not TARGETS: random.shuffle(order)
+    if not order: order = list(range(len(train)))
+    ptr = 0
     while step < a.steps and time.time() < deadline:
         batch = []
         for _ in range(a.chats):
@@ -128,6 +140,7 @@ def main():
             print(f"step {step}/{a.steps} mean reward {sum(log[-20:]) / len(log[-20:]):.3f} loss {tot / len(batch):.3f} {(time.time() - t0) / 60:.0f} min", flush=True)
     report["steps"] = step; report["learned_steps"] = learned; report["minutes"] = (time.time() - t0) / 60; report["reward_trend"] = log
     report["after"] = evaluate(model, tok, test, a, dev, stops, a.eval_chats)
+    report["no_target_worse"] = TG.no_target_worse(report["before"].get("targets", {}), report["after"].get("targets", {}), "reward", slack=0.02)
     print("held-out after:", report["after"], flush=True)
     if a.save:
         os.makedirs(a.save, exist_ok=True)
