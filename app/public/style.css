@@ -364,7 +364,8 @@ body.still .meter.moving i { animation: none; }
 .avatars h4 { margin: 10px 0 4px; font-size: 13px; color: var(--muted); font-weight: 600; }
 .avatars .looks button { width: 72px; padding: 4px; }
 .avatars .looks canvas { width: 48px; height: 48px; }
-.avatars .looks span { font-size: 11px; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avatars .looks span { font-size: 11px; max-width: 64px; overflow-wrap: anywhere; text-align: center; } /* 1.5.222 names wrap, never cut off */
+.adv-bob-look { margin: 6px 0 12px; } .adv-bob-look .row { align-items: center; gap: 8px; } .adv-bob-look canvas.adv-face { image-rendering: pixelated; }
 
 /* MouseWurX blueprint: graph paper behind everything, plates with hard edges, no glow */
 body.blueprint {

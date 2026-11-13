@@ -1,18 +1,13 @@
-// The Style page: themes (Bob's own, the worlds, high contrast, MouseWurX, yours), a "make your own"
-// editor with a live preview, and Bob's look, including every avatar in avatars.js.
-import { LOOKS, LOOK_ID, setLook, drawBob } from './bob-sprite.js';
+// The Style page: Bob's three looks, themes (Bob's own, the worlds, high contrast, MouseWurX, yours) and a "make
+// your own" editor with a live preview. 1.5.222: Bob's picture is his cube; the pixel characters moved to the games
+// (public/bob-game-look.js, in Adventure, Characters, Party), so this page only points there.
 import { tip } from './tips.js';
-import { AVATAR_GROUPS, avatar } from './avatars.js';
-import { LOOK_IDS, lookId, PRESETS, TOKENS, FONTS, DEFAULT_THEME, themeId, findTheme, resolve, fullColors, applyStyle, applyTheme, swatch, isLight, pixelKept } from './themes.js';
+import { LOOK_IDS, lookId, PRESETS, TOKENS, FONTS, DEFAULT_THEME, themeId, findTheme, resolve, fullColors, applyStyle, applyTheme, swatch, isLight } from './themes.js';
 import { esc } from './util.js';
-import { characterHtml, mountCharacter, BOB_BODIES, partsOf } from './character.js';
 
 
 export function createStylePage({ api, redraw, flash }) {
   let draft = null; // the theme being made in the editor, or null when the editor is closed
-  let avatarFilter = 'all';
-  let making = false; // 1.5.122: the character screen (Make your own look) is open under Bob's look
-  let makingParts = null;
 
   function themeButton(t, style) {
     const on = themeId(style.theme || DEFAULT_THEME) === t.id;
@@ -34,22 +29,6 @@ export function createStylePage({ api, redraw, flash }) {
       <label class="switch"><input type="checkbox" data-dflag="outlined" ${draft.outlined ? 'checked' : ''}><span>Outline every card (easier to see)</span></label>
       <div class="row"><button class="get" data-savetheme>Save theme</button><button data-canceltheme>Cancel</button>${draft.id ? '<button data-deltheme>Delete this theme</button>' : ''}</div>
     </div>`;
-  }
-
-  function avatarsHtml() {
-    const mine = LOOK_ID.startsWith('c:') ? [{ id: 'mine', label: 'Your own design', ids: [LOOK_ID] }] : [];
-    const groups = [...mine, { id: 'bob', label: 'Bob\'s own', ids: Object.keys(LOOKS) }, ...AVATAR_GROUPS.map((g) => ({ id: g.id, label: g.label, ids: Array.from({ length: g.count }, (_, i) => `${g.id}-${i}`) }))];
-    const shown = avatarFilter === 'all' ? groups : groups.filter((g) => g.id === avatarFilter);
-    return `<div class="avatars"><div class="tabs" role="tablist" aria-label="Avatar groups">${[{ id: 'all', label: 'All' }, ...groups].map((g) => `<button role="tab" aria-selected="${g.id === avatarFilter}" data-avgroup="${g.id}">${esc(g.label)}</button>`).join('')}</div>
-      ${shown.map((g) => {
-        // 1.5.101: when every look in a group has the same line ("Visitor from elsewhere"), it shows once by the heading.
-        const whats = g.ids.map((id) => (LOOKS[id] || avatar(id)).what || '');
-        const shared = g.ids.length > 1 && whats.every((w) => w === whats[0]) ? whats[0] : '';
-        return `<h4>${esc(g.label)} · ${g.ids.length}${shared ? ` <small class="muted">${esc(shared)}</small>` : ''}</h4><div class="looks" role="radiogroup" aria-label="${esc(g.label)}">${g.ids.map((id) => {
-        const l = LOOKS[id] || avatar(id);
-        return `<button role="radio" aria-checked="${id === LOOK_ID}" data-look="${id}"${shared || !l.what ? '' : ` title="${esc(l.what)}"`}><canvas width="48" height="48" data-preview="${id}"></canvas><span>${esc(l.name)}</span></button>`;
-      }).join('')}</div>`;
-      }).join('')}</div>`;
   }
 
   // 1.5.210: Bob's three looks. Each picker card is a tiny drawing of the chat in that look.
@@ -85,26 +64,12 @@ export function createStylePage({ api, redraw, flash }) {
         ${mine.length ? `<h3>Yours</h3><div class="themes" role="radiogroup" aria-label="Your themes">${mine.map((t) => themeButton(t, style)).join('')}</div>${mine.some((t) => t.id === style.theme) ? '<p><button data-edittheme>Edit the selected theme</button></p>' : ''}` : ''}
         ${editorHtml()}
       </div>
-      <div><strong>Bob's look</strong> ${tip(`Every one blinks and talks. ${AVATAR_GROUPS.reduce((n, g) => n + g.count, 0) + Object.keys(LOOKS).length} to pick from, all drawn on this replicant matrix, or make your own from parts.`, 'Bob\'s look')}
-        <p><button type="button" data-makelook aria-expanded="${making}">🧍 ${LOOK_ID.startsWith('c:') ? 'Change your own design' : 'Make your own look'}</button> <span class="muted">Body, build, hair, outfit, armour and weapon. This one's me, so the bodies are man, robot and alien; your Adventure character gets the full set.</span></p>
-        <div class="ttabs" role="radiogroup" aria-label="Bob's picture">${opt('avatar', 'pixel', 'Pixel Bob', pixelKept(style))}${opt('avatar', 'cube', 'fNRI cube', !pixelKept(style))}</div> ${tip(`My picture in the corner. Pixel Bob is the one you pick below, blinking and talking. fNRI cube shows my brain instead: it builds itself when I load a brain, rests with the odd spark, glows while I think, and takes itself apart when I let the brain go. It's lighter on your computer than Pixel Bob, and while it shows, the brain-swap machine sits out. The glow is for show; switch Real experts on in Bob's thinking (Now running) for the experts I really used. In Adventure the pixel Bob comes back.`, 'Bob\'s picture')}
-        ${making ? '<div class="char-box"></div>' : ''}
-        ${avatarsHtml()}</div>
+      <div><strong>Bob's picture</strong> ${tip('My picture is my fNRI cube: it builds itself when I load a brain, rests with the odd spark, glows while I think, and takes itself apart when I let the brain go. The little pixel characters are for games now: my game look is in Adventure, Characters, Party.', 'Bob\'s picture')}
+        <p class="muted">My cube. The pixel characters are for games: <button type="button" class="link" data-gamelook>pick my game look in 🎲 Adventure</button>.</p></div>
     </section>`;
   }
 
-  function paintPreviews(root, settings) {
-    for (const c of root.querySelectorAll('canvas[data-preview]')) {
-      const x = c.getContext('2d'); x.imageSmoothingEnabled = false; drawBob(x, c.width, {}, c.dataset.preview);
-    }
-    const box = root.querySelector('.char-box');
-    if (box && making && !box.dataset.mounted) {
-      box.dataset.mounted = '1';
-      const live = mountCharacter(box, { parts: makingParts, bodies: BOB_BODIES, useLabel: 'Wear this', onCancel() { making = false; redraw(); },
-        async onUse(id) { making = false; makingParts = null; const r = await api('/api/settings', { look: id }); setLook(id); if (settings) { settings.look = id; if (r.lookText) settings.lookText = r.lookText; } redraw(); flash('Done. That\'s me now.'); } });
-      box.addEventListener('change', () => { makingParts = live.parts; }); box.addEventListener('click', () => { makingParts = live.parts; });
-    }
-  }
+  function paintPreviews() {}
 
   async function save(settings, patch) {
     const r = await api('/api/settings', { style: patch });
@@ -131,22 +96,14 @@ export function createStylePage({ api, redraw, flash }) {
   async function onClick(b, settings) {
     const style = settings.style || {};
     if (b.dataset.motion) { await save(settings, { motion: b.dataset.motion }); redraw(); return true; }
-    if (b.dataset.avatar) { await save(settings, { avatar: b.dataset.avatar === 'cube' ? 'cube' : 'pixel', avatarKept: true }); redraw(); return true; } // 1.5.209: themes.js tells app.js, which swaps the picture
     if (b.dataset.uilook) {
       await save(settings, { look: b.dataset.uilook });
-      // Lamplight is the chat in a dark room: Now running tucks away (Ctrl+J or its button brings it back), and the
-      // cube becomes Bob's picture unless you've already picked one. Both stay yours to change.
-      if (b.dataset.uilook === 'lamplight') {
-        if (!document.body.classList.contains('right-hidden')) document.getElementById('hideRight')?.click();
-        if (!pixelKept(settings.style) && typeof window.setAvatarCube === 'function') window.setAvatarCube(true);
-      }
+      // Lamplight is the chat in a dark room: Now running tucks away (Ctrl+J or its button brings it back).
+      if (b.dataset.uilook === 'lamplight' && !document.body.classList.contains('right-hidden')) document.getElementById('hideRight')?.click();
       redraw(); return true;
     }
     if (b.dataset.nowneed) { await save(settings, { openNowOnNeed: b.dataset.nowneed === '1' }); redraw(); return true; }
     if (b.dataset.theme) { draft = null; await save(settings, { theme: b.dataset.theme }); redraw(); return true; }
-    if (b.dataset.look) { const r = await api('/api/settings', { look: b.dataset.look }); setLook(b.dataset.look); settings.look = b.dataset.look; if (r.lookText) settings.lookText = r.lookText; redraw(); return true; }
-    if (b.dataset.avgroup) { avatarFilter = b.dataset.avgroup; redraw(); return true; }
-    if ('makelook' in b.dataset) { making = !making; if (making) makingParts = partsOf(settings.look || LOOK_ID); redraw(); return true; }
     if ('newtheme' in b.dataset) { startDraft(settings); redraw(); return true; }
     if ('edittheme' in b.dataset) { startDraft(settings, findTheme(style.theme, style.custom)); redraw(); return true; }
     if ('canceltheme' in b.dataset) { draft = null; applyStyle(style); redraw(); return true; }
@@ -185,7 +142,5 @@ export function createStylePage({ api, redraw, flash }) {
     return true;
   }
 
-  // 1.5.122: Settings, Personality's "Change look" opens the page with the character screen already open.
-  function openMaker(settings) { making = true; makingParts = partsOf(settings?.look || LOOK_ID); }
-  return { html, onClick, onInput, paintPreviews, openMaker, closing(settings) { if (draft) { draft = null; applyStyle(settings?.style); } } };
+  return { html, onClick, onInput, paintPreviews, closing(settings) { if (draft) { draft = null; applyStyle(settings?.style); } } };
 }

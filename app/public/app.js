@@ -199,7 +199,8 @@ let lastFrame = '', lastProp = '';
 // while he thinks and drains away when the brain is let go, with the neon sign when none is loaded. It glows for show,
 // so it costs the engine nothing; with Real experts on (Bob's thinking) it shows the experts he really used. It draws
 // small and never turns, and while it shows the pixel Bob's loop slows right down and the brain-swap machine rests.
-// In Adventure the pixel Bob comes back (the small characters are the game's).
+// In Adventure the pixel Bob comes back (the small characters are the game's). 1.5.222: the cube for everyone,
+// outside games; the pixel look is picked in Adventure, Characters, Party (public/bob-game-look.js).
 var cubeAvatarOn = false; // var: the pixel loop above reads it before this line runs
 let cubeAvatar = null, cubeWanted = false;
 const advDlg = $('adventure');
@@ -220,7 +221,7 @@ function setAvatarCube(on) { cubeWanted = Boolean(on); store.set('bob-avatar-cub
 window.setAvatarCube = (on) => { setAvatarCube(on); api('/api/settings', { style: { avatar: on ? 'cube' : 'pixel' } }).catch(() => {}); }; // the Style page's looks call this
 window.addEventListener('bob-avatar', (e) => setAvatarCube(e.detail?.cube === true));
 window.addEventListener('bob-cube-live', () => { if (cubeAvatarOn && cubeAvatar) cubeAvatar.relive(); }); // Real experts switched in Bob's thinking
-setAvatarCube(store.get('bob-avatar-cube', '1') === '1'); // at once, before the settings arrive, so the picture never flips
+setAvatarCube(true); // 1.5.222: the cube is Bob's picture, always; the pixel Bob only shows in games (Adventure, Journey)
 if (advDlg && globalThis.MutationObserver) new MutationObserver(showCubeAvatar).observe(advDlg, { attributes: true, attributeFilter: ['open'] });
 // 1.5.210 Lamplight on a phone: the left menu is a sheet, so the porthole moves to the top of the chat with Bob's
 // name beside it (the same element, so it keeps its fog, glow and clicks). Everywhere else it sits where Bob sits.
@@ -518,6 +519,9 @@ window.addEventListener('bob-lab-switch', (e) => showLab(e.detail?.on === true))
 fetch('/api/settings').then((r) => r.json()).then((st) => { showLab(st.computerLab !== false); if (st.language) followSaved(st.language); }).catch(() => {});
 const adventurePage = createAdventure({ api }); // 1.5.117 🎲 Adventure
 $('adventureBtn').onclick = () => adventurePage.open();
+// 1.5.222 "my game look" on Style and Settings, Personality: shut that page and open Adventure, Characters, Party.
+document.addEventListener('click', (e) => { if (e.target.closest?.('[data-gamelook]')) window.dispatchEvent(new CustomEvent('bob-gamelook')); });
+window.addEventListener('bob-gamelook', () => { const c = $('cellar'); if (c?.open) c.close(); adventurePage.openGameLook(); try { window.focus(); } catch {} }); // also from the Settings window
 const gamesPage = createGames({ api }); // 1.5.121 🧩 Games
 $('gamesBtn').onclick = () => gamesPage.open();
 // 1.5.215: 🧭 Journey has its own tab, like Games: the same game the Adventure page opens, with your saved characters.

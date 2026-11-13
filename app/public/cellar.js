@@ -1094,7 +1094,6 @@ export function createCellar({ popOut = null } = {}) {
       if (b.dataset.topic) { showTopic(b.dataset.topic); dlg.scrollTop = 0; return; }
       if ('card' in b.dataset) { curCard = b.dataset.card; applyView(); dlg.scrollTop = 0; (curCard ? dlg.querySelector('.set-back h3') : dlg.querySelector('.set-card'))?.focus(); return; }
       if (b.dataset.jump) { const t = dlg.querySelector('#sub-' + CSS.escape(ADV_MOVED[b.dataset.jump] || b.dataset.jump)); const top = t?.closest(TOP_PANELS); if (top) showTopic(top.dataset.panel); if (t?.tagName === 'DETAILS' && !t.open) { t.open = true; openPanels.add(t.dataset.panel); saveOpen(); } t?.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
-      if ('golook' in b.dataset) { sampler.stop(); setTab('style'); stylePage.openMaker(settings); draw(); dlg.querySelector('.char-box')?.scrollIntoView({ block: 'start' }); return; } // 1.5.122: Change his look / Change look
       if (b.dataset.tab) { sampler.stop(); setTab(b.dataset.tab); if (!jumpTo) dlg.scrollTop = 0; draw(); }
       else if (b.dataset.get) confirmBox(b.closest('.model'), data.models.find((m) => m.id === b.dataset.get));
       else if (b.dataset.anyway) confirmBox(b.closest('.model'), data.models.find((m) => m.id === b.dataset.anyway), true);

@@ -7,6 +7,7 @@ import { esc } from './util.js';
 import { render } from './rich.js';
 import { drawBob, LOOK_ID } from './bob-sprite.js';
 import { mountCharacter, partsOf } from './character.js';
+import { mountGameLook } from './bob-game-look.js';
 import { encodeParts, DEFAULT_PARTS } from './avatars.js';
 import { tip } from './tips.js';
 import { motionOff } from './themes.js';
@@ -199,7 +200,9 @@ export function createAdventure({ api }) {
       }
     } else if (chars.tab === 'party') {
       const g = v?.game || v?.lastParty;
-      bodyHtml = g ? `<p class="muted">${v?.game ? 'At the table now' : `The last game, ${esc(g.title)}`}. Each Bob plays with his own look.</p><ul class="adv-char-list">${g.party.map((c) => card(isHumanSeat(c) ? (c.look || encodeParts(DEFAULT_PARTS)) : c.who === 'net' ? 'bot' : (settings().look || 'sysop'), c.name, `${esc(c.className)}${c.who === 'you' ? ' · you' : c.who === 'friend' ? ' · a friend' : c.who === 'net' ? ' · his own Bob' : ' · played by the game master'} · <span aria-label="${c.hearts} of ${c.max || 5} hearts">${hearts(c.hearts, c.max || 5)}</span>${c.trait ? `<br>${esc(c.trait)}` : ''}${c.items?.length ? `<br>Carries ${esc(c.items.join(', '))}` : ''}${c.spells?.length ? `<br>Knows ${esc(c.spells.join(', '))}` : ''}${c.tricks?.length ? `<br>Tricks: ${esc(c.tricks.join(', '))}` : ''}${c.gains?.length ? `<br>⭐ Earned: ${esc(c.gains.join(', '))}` : ''}${badgeLine(c)}`)).join('')}</ul>` : '<p class="muted">No party yet. Start a game and they turn up here.</p>';
+      // 1.5.222 Bob's game look (moved from Style: the cube is his picture everywhere else)
+      const lookBox = `<div class="adv-bob-look"><div class="row"><canvas class="adv-face" width="48" height="48" data-look="${esc(settings().look || 'sysop')}" aria-hidden="true"></canvas><button type="button" class="mini" data-bob-look aria-expanded="${Boolean(chars.look)}">🧍 ${chars.look ? 'Close Bob\'s game look' : 'Change Bob\'s game look'}</button></div>${chars.look ? '<div class="game-look-box"></div>' : ''}</div>`;
+      bodyHtml = lookBox + (g ? `<p class="muted">${v?.game ? 'At the table now' : `The last game, ${esc(g.title)}`}. Each Bob plays with his own look.</p><ul class="adv-char-list">${g.party.map((c) => card(isHumanSeat(c) ? (c.look || encodeParts(DEFAULT_PARTS)) : c.who === 'net' ? 'bot' : (settings().look || 'sysop'), c.name, `${esc(c.className)}${c.who === 'you' ? ' · you' : c.who === 'friend' ? ' · a friend' : c.who === 'net' ? ' · his own Bob' : ' · played by the game master'} · <span aria-label="${c.hearts} of ${c.max || 5} hearts">${hearts(c.hearts, c.max || 5)}</span>${c.trait ? `<br>${esc(c.trait)}` : ''}${c.items?.length ? `<br>Carries ${esc(c.items.join(', '))}` : ''}${c.spells?.length ? `<br>Knows ${esc(c.spells.join(', '))}` : ''}${c.tricks?.length ? `<br>Tricks: ${esc(c.tricks.join(', '))}` : ''}${c.gains?.length ? `<br>⭐ Earned: ${esc(c.gains.join(', '))}` : ''}${badgeLine(c)}`)).join('')}</ul>` : '<p class="muted">No party yet. Start a game and they turn up here.</p>');
     } else if (chars.tab === 'met') {
       const list = v?.game?.met?.length ? v.game.met : (v?.met || []);
       bodyHtml = list.length ? `<p class="muted">${v?.game?.met?.length ? 'Everyone the game master has brought on in this game.' : 'Everyone and everything you have run into, across your games.'} Drawn by me the moment they're named.</p><ul class="adv-char-list">${list.map((m) => card(m.look, m.name, `${m.kind === 'enemy' ? `⚔ ${esc(v?.enemies?.find((e) => e.id === m.type)?.name || 'enemy')}` : m.kind === 'creature' ? 'creature' : 'person'}${m.scene ? ` · met at ${esc(m.scene)}` : ''}${m.game && !v?.game ? ` · ${esc(m.game)}` : ''}`, v?.game ? '' : `<div class="row">${chars.ask === m.id ? `<span>Forget ${esc(m.name)}?</span> <button type="button" class="mini danger" data-met-forget="${esc(m.id)}">Forget for good</button><button type="button" class="link" data-chars-keep>Keep it</button>` : `<button type="button" class="mini" data-chars-ask="${esc(m.id)}">Forget</button>`}</div>`)).join('')}</ul>` : '<p class="muted">Nobody yet. Whoever the game master names in a scene lands here, drawn.</p>';
@@ -360,7 +363,9 @@ export function createAdventure({ api }) {
     const g = v?.game;
     body.innerHTML = chars ? charsHtml() : g ? gameHtml(g) : startHtml();
     drawFaces();
-    const box = body.querySelector('.char-box');
+    const lookBox = body.querySelector('.game-look-box');
+    if (lookBox) { let was = settings().look || 'sysop'; mountGameLook(lookBox, { api, onSaved(id) { for (const cv of body.querySelectorAll('canvas.adv-face')) if (cv.dataset.look === was) cv.dataset.look = id; was = id; drawFaces(); } }); }
+    const box = [...body.querySelectorAll('.char-box')].find((b) => !b.closest('.game-look-box'));
     if (box && chars?.edit) {
       mountCharacter(box, { parts: partsOf(chars.draft.look), useLabel: 'Save this character', async onUse(id) { try { const r = await api('/api/adventure/characters/save', { id: chars.edit === 'new' ? '' : chars.edit, name: chars.draft.name || 'Hero', cls: chars.draft.cls, trait: chars.draft.trait, armour: chars.draft.armour, look: id }); v = { ...v, characters: r.characters }; msg = ''; } catch (e) { msg = e.message; } chars.edit = null; chars.draft = null; draw(); }, onCancel() { chars.edit = null; chars.draft = null; draw(); } });
     } else if (box) mountCharacter(box, { parts: partsOf(you.look), useLabel: 'Use for this character', onUse(id) { you.look = id; lookOpen = false; draw(); }, onCancel() { lookOpen = false; draw(); } });
@@ -429,6 +434,7 @@ export function createAdventure({ api }) {
     if ('journey' in t.dataset) { openJourney({ api, you, characters: v?.characters || [], enemies: v?.enemies || [] }); return; } // 1.5.206
     if ('charsBack' in t.dataset) { chars = null; draw(); return; }
     if (t.dataset.charsTab) { chars = { tab: t.dataset.charsTab }; draw(); return; }
+    if ('bobLook' in t.dataset) { chars.look = !chars.look; draw(); return; }
     if (t.dataset.charsEdit) { chars.edit = t.dataset.charsEdit; chars.draft = null; draw(); return; }
     if (t.dataset.charsAsk) { chars.ask = t.dataset.charsAsk; draw(); return; }
     if ('charsKeep' in t.dataset) { chars.ask = ''; draw(); return; }
@@ -507,6 +513,8 @@ export function createAdventure({ api }) {
 
   return {
     async open() { open = true; dlg.showModal(); body.innerHTML = '<p class="muted">Setting the table…</p>'; await load(); },
+    // 1.5.222 Style and Settings, Personality: "my game look" opens Characters, Party with the picker open
+    async openGameLook() { chars = { tab: 'party', look: true }; if (!open) await this.open(); else draw(); },
     isOpen: () => open
   };
 }
