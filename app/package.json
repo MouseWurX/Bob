@@ -1,6 +1,6 @@
 {
   "name": "bob",
-  "version": "1.5.216",
+  "version": "1.5.217",
   "description": "Bob, a local AI who lives on your PC: chat, pictures, video, voice and more, all on your own hardware.",
   "type": "module",
   "private": true,
@@ -246,6 +246,7 @@
     "test/run-engine-extras-test.js",
     "test/run-think-bubble-test.js",
     "test/run-task-pop-test.js",
+    "test/run-status-line-test.js",
     "test/run-engine-name-test.js",
     "test/run-engine-care-test.js",
     "test/run-retries-test.js",
@@ -267,15 +268,15 @@
   ],
   "bob": {
     "release": "1.5",
-    "patch": 216,
+    "patch": 217,
     "branch": "",
-    "build": 268,
+    "build": 269,
     "bundledLlamaTag": "b12282",
     "brainEngineVersion": 7,
     "brainEngine": {
-      "tag": "brain-engine-5b12282",
-      "win-x64": "sha256:1868b44de12e9f399e197e21c43144bb0d814bd059a7b8d316e342a0cb8a34f5",
-      "linux-x64": "sha256:4cd1fd219583c9981cc37ddafe92da7882721774f825f649a817f2ba7d9aea16"
+      "tag": "brain-engine-7b12282",
+      "win-x64": "sha256:c8070764a86696efb338d04a59c7ceb837d897e53cb08201342bdc1f4a5f696e",
+      "linux-x64": "sha256:ec5dbb112ebe965ecdf6c2f70bf60b093d27a3693570624b5567a1e4874e89b7"
     },
     "electronSha256": "88e08039d0ef359bab9f674e8051fa103bd8628ea7c5a5e1daaa610a8a0c6931",
     "layout": "From 0.9.32 Bob app\\Bob.exe is Electron's official electron.exe (devDependencies.electron), only renamed, and Bob's files sit in Bob app\\resources\\app. Updates never build an exe. electronSha256 (optional) pins the official zip's checksum; otherwise it is checked against Electron's SHASUMS256.txt. electron-builder (dist scripts) is only for making a portable exe by hand.",

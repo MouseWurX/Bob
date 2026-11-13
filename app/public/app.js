@@ -3,6 +3,7 @@ import './sample-data.js'; // 1.5.210 sample-data mode (?sample=1 in the address
 import { drawBob, setLook } from './bob-sprite.js';
 import { secretNoteHtml, wireSecretNote } from './more-tools.js'; // 🧰 More tools: a password Bob made
 import { applyStyle, applySavedStyle } from './themes.js';
+import { createStatusLine } from './status-line.js'; // 1.5.216: his line follows his state
 import { createMindCube } from './mind-cube.js'; // 1.5.209: Bob's picture as the fNRI cube
 applySavedStyle();
 import { startI18n, followSaved } from './i18n.js';
@@ -299,14 +300,11 @@ window.addEventListener('bob-think-bubble', (e) => { thinkOn = e.detail !== fals
 const thinkBubbles = createThinkBubbles({ add, esc, answer: showAnswer, on: () => thinkOn, still: stillNow, cat: () => catName, openMind: () => $('mindBtn')?.click(), copy: (t) => navigator.clipboard?.writeText(t).then(() => note('Copied the steps.')).catch(() => {}) });
 
 // ---------- Status, badge, notifications ----------
-const STATUS_TEXT = {
-  idle: 'Coffee in hand.\u00a0Ready when you are.', // 1.5.215: the no-break space keeps "hand. Ready" together
-  thinking: 'Thinking...',
-  loading: 'Swapping brains...',
-  busy: 'Working...',
-  painting: 'Pixel is painting...',
-  waiting: 'Needs your OK'
-};
+// 1.5.216: the line under his name follows his state in his voice (public/status-line.js). Settings, How Bob works,
+// "Funny status line" (on unless turned off) puts plain words back. The window title stays plain.
+const statusLine = createStatusLine(statusEl, { still: stillNow });
+window.addEventListener('bob-brain-status', (e) => statusLine.brains(e.detail));
+window.addEventListener('bob-status-jokes', (e) => statusLine.jokes(e.detail !== false)); // Settings, from this window
 // ---------- Sessions: which brains Bob keeps loaded. Bob may suggest one; only the user switches. ----------
 const sessionSel = $('sessionSel');
 let autoSession = true; // 1.5.41 "Let Bob pick the session" (Settings), on unless switched off
@@ -328,16 +326,16 @@ sessionSel.onchange = () => switchSession(sessionSel.value);
 
 function setStatus(s) {
   if (s.session && sessionSel.value !== s.session.id) drawSessions(null, s.session);
-  statusEl.className = `status ${s.state}`;
+  statusEl.className = `status ${s.state}${statusEl.classList.contains('fading') ? ' fading' : ''}`;
   // The line under his name is the short state word; the work details (Painting with Maestro: loading...) go in
   // Bob's thinking (mind-view.js logs each new one), and the full line is on the tooltip. Word bubbles are only for
   // personality lines (the cat's antics), never for status, so nothing shows twice.
-  const said = STATUS_TEXT[s.state] || s.detail || s.state;
-  statusEl.textContent = said;
-  statusEl.title = s.detail ? `${said} ${s.detail}` : said;
+  statusLine.status(s);
+  const said = statusLine.title() || 'Ready';
+  statusEl.title = s.detail ? `${said}: ${s.detail}` : '';
   catAntics.idle(s.state === 'idle');
   life.state(s.state);
-  document.title = s.state === 'idle' ? 'Bob' : `Bob · ${STATUS_TEXT[s.state] || s.state}`;
+  document.title = statusLine.title() ? `Bob · ${statusLine.title()}` : 'Bob';
   if (s.state === 'loading') showSwap(s.from || lastModel || 'old', s.model || 'new', s.mode);
   else hideSwap();
   if (s.model) lastModel = s.model;
@@ -737,6 +735,8 @@ function onEvent(ev) {
   if (onHandsEvent(ev, { add, scrollDown, note })) return;
   if (jobHelps.event(ev)) return; // Settings, Jobs: the time bar and the receipt card
   if (everyday?.event(ev)) return; // ⏱ Focus done
+  if (!elsewhere && ev.type === 'token' && String(ev.text || '').trim()) statusLine.replying(true); // 1.5.216: Writing back...
+  else if (!elsewhere && ['start', 'done', 'error', 'tool'].includes(ev.type)) statusLine.replying(false);
   if (!elsewhere && thinkBubbles.take(ev)) { scrollDown(); return; } // 1.5.210: steps, drafts and fixes go in the thinking bubble
   switch (ev.type) {
     case 'queue':
@@ -1127,9 +1127,9 @@ function connect() {
     heard = Date.now();
     try { const ev = JSON.parse(m.data); if (ev.type === 'status') lastStatus = ev; if (quiet) { quiet = false; if (lastStatus) setStatus(lastStatus); } onEvent(ev); } catch (e) { console.error(e); }
   };
-  setInterval(() => { if (!dropped && !quiet && es.readyState === 1 && Date.now() - heard > 65000) { quiet = true; statusEl.textContent = 'Bob hasn\'t answered for a minute. If this lasts, close Bob and open him again.'; statusEl.className = 'status waiting'; } }, 10000);
+  setInterval(() => { if (!dropped && !quiet && es.readyState === 1 && Date.now() - heard > 65000) { quiet = true; statusLine.hold('Bob hasn\'t answered for a minute. If this lasts, close Bob and open him again.'); statusEl.className = 'status waiting'; } }, 10000);
   let dropped = false;
-  es.onerror = () => { dropped = true; statusEl.textContent = 'Bob\'s brain isn\'t answering. Retrying...'; statusEl.className = 'status waiting'; };
+  es.onerror = () => { dropped = true; statusLine.hold('Bob\'s brain isn\'t answering. Retrying...'); statusEl.className = 'status waiting'; };
   // Back after a gap: anything Bob made meanwhile is in his saved replies, so show what this window missed.
   es.onopen = () => { if (dropped) { dropped = false; catchUpMedia(); } heard = Date.now(); };
 }
@@ -1162,6 +1162,7 @@ const STATE_LABEL = { waiting: 'queued', working: 'in progress', rented: 'rented
 let lastJobs = [];
 const taskPop = createTaskPop({ onOpen: () => tasks.open() });
 function drawQueue(jobs) {
+  statusLine.jobs(jobs); // 1.5.216: a paused job shows in his line
   lastJobs = jobs;
   tasks.update(jobs);
   layout.jobs(jobs);
@@ -1514,12 +1515,12 @@ const voice = createVoice({
   onState: (state, msg) => {
     micBtn.classList.toggle('on', state === 'ptt' || state === 'armed');
     micBtn.classList.toggle('busy', state === 'transcribing');
-    if (state === 'armed') { talkingUntil = Date.now() + 300; statusEl.textContent = 'Listening...'; }
+    if (state === 'armed') { talkingUntil = Date.now() + 300; statusLine.hold('Listening...'); }
     if (msg) note(msg, 'error');
   },
   isQuiet: () => saying || ('speechSynthesis' in window && speechSynthesis.speaking),
   talkOver: () => voiceNet.talkOver && speakOn, // Talk over Bob (Settings, Voice details; off unless turned on)
-  onBarge: () => { hush(); statusEl.textContent = 'Listening...'; }
+  onBarge: () => { hush(); statusLine.hold('Listening...'); }
 });
 reader = createReader({ hush, ownVoice: () => ownVoice, onTalk: (on) => talking(on) });
 
@@ -1676,7 +1677,7 @@ async function start() {
     if (!s.ollama) note('I can\'t reach my engine (' + (s.engine || 'Ollama') + ') right now. Is it running? (The AI Toggle shortcut turns Ollama on.)', 'error');
   } catch {}
   try {
-    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
+    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; statusLine.jokes(st.statusJokes !== false); catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
     if (st.setupDone && !st.wantsAsked) offerWants(); // once, for Bobs set up before the Welcome had "Do you want me to:"
     everyday = startEveryday({ add, note, settings: st, version: st.version?.label || '' }); // 🗓 today card, tour, ⏱ Focus, tray dot (each only when on)

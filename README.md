@@ -41,13 +41,13 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.216-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.216-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.216-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.216-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.216-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.216-linux-x86_64.AppImage) |
-| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.216-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.216-linux-amd64.deb) |
-| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.216-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.216-linux-x86_64.flatpak) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.216-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.216-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
-| **Android phone** | [`Bob-1.5.216-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.216-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.217-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.217-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.217-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.217-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.217-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.217-linux-x86_64.AppImage) |
+| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.217-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.217-linux-amd64.deb) |
+| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.217-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.217-linux-x86_64.flatpak) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.217-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.217-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
+| **Android phone** | [`Bob-1.5.217-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.217-android.apk) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 
@@ -303,7 +303,7 @@ Put Bob on your PC, laptop, handheld and phone, and they find each other on your
 | Graphics memory Bob holds while idle | **None.** The brain unloads, and big models load only for the job that needs them. |
 | 🎮 Gaming session, first word of a reply | **0.1 seconds** with the brain loaded, on the processor, with the graphics card left to your game. |
 | Context on a 16 GB card | **256K tokens**, and up to 1M with Long memory. |
-| 🧊 The cube's **Real experts** (live brain picks) | **Free when off** (the glow alone costs nothing). On: **about a fifth** of the word speed on Brain Engine 5 (Riker on a 5070 Ti, 122.7 down to 99.2 words a second), whether shown live or after the answer, and no more for long chats. Brain Engine 6 reads the picks once per word instead of 40 times; [the numbers](app/docs/test-results/2026-11-12-cube-real-experts-cost.md). |
+| 🧊 The cube's **Real experts** (live brain picks) | **Free when off** (the glow alone costs nothing). On Brain Engine 7 (Bob's own from 1.5.217): **about a tenth** shown live (Riker on a 5070 Ti, 115.1 down to 104.7 words a second) and about 4.5% read after the answer (109.9). Brain Engine 5 cost about a fifth (122.7 down to 99.2), because it stopped at every layer; from Brain Engine 6 the picks are read once per word; [the numbers](app/docs/test-results/2026-11-12-cube-real-experts-cost.md). |
 
 Pictures and big jobs wait in Tasks while you play, and **Let games go first** has Bob use fewer processor cores. The measurements are in [How Bob stays fast and light](app/docs/PERFORMANCE.md).
 

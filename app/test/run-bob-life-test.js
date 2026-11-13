@@ -131,7 +131,7 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
   check('bubbles: the whole line shows, never cut off (1.5.215)', /\.say-bubble > span \{ display: block; \}/.test(css) && !/\.say-bubble > span \{[^}]*line-clamp/.test(css));
   check('bubbles: under Bob\'s picture, fading over about 0.7 s, a little see-through (1.5.215)', /layer\.classList\.add\('below'\)/.test(bub) && /transition: opacity \.7s/.test(css) && /\.say-bubble \{[^}]*color-mix\(in srgb, var\(--panel\) 72%, transparent\)/.test(css));
   check('bubbles: 15 s, held while pointed at, Esc closes', /BUBBLE_MS = 15000/.test(bub) && /mouseenter[\s\S]*clearTimeout/.test(bub) && /'Escape'/.test(bub));
-  check('Bob\'s status line wraps and is never cut off (1.5.215)', /\.side \.status \{[^}]*overflow: visible;/.test(css) && !/\.side \.status \{[^}]*line-clamp/.test(css) && /Coffee in hand\.\\u00a0Ready when you are\./.test(app));
+  check('Bob\'s status line wraps and is never cut off (1.5.215; two lines since 1.5.216)', /\.side \.status \{[^}]*overflow: visible;/.test(css) && !/\.side \.status \{[^}]*line-clamp/.test(css) && /Coffee in hand\.\\nReady when you are\./.test(rd('public/status-line.js')));
   check('bubbles: the cat speaks through the bubble; status words never go in a bubble, they go in Bob\'s thinking', /bubbles\.say\('cat'/.test(antics) && !/bubbles\.say\('bob'/.test(app) && /line\(`⚙ \$\{esc\(now\)\}`/.test(rd('public/mind-view.js')));
 }
 

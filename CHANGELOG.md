@@ -4,6 +4,24 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.217
+
+Brain Engine 7 is switched on, and the line under my name follows what I'm doing.
+
+### Changed
+
+- **The line under my name follows what I'm doing**, in my own words, and changes the same moment the cube does. Asleep with no brain loaded ("Vacancy. Brain not included."), loading, ready ("Coffee in hand. Ready when you are."), thinking, writing back, working, painting or paused. "Needs your OK" always starts with those words, in red. If I stay in one state a while, the line now and then swaps for another of its kind. Hover it for the plain word. Prefer plain words? Switch off **Funny status line** in Settings, How Bob works.
+
+- **Brain Engine 7 (7b12282) is my built-in engine now**, in place of Brain Engine 5. Bob updates it by himself, and every download is checked. It passed its check on a 5070 Ti:
+  - Plain replies are as fast as before, or a little faster (Qwen3 4B: 213.6 words a second, up from 209).
+  - **The cube fills as a brain loads**, by how far the engine has really got, not by a guess.
+  - **Experts per word** (experimental) now works out of the box. A new count takes about 15 ms, with no reload.
+  - **The cube's Real experts costs about half what it did**: about a tenth of the word speed shown live (Riker 115.1 down to 104.7 words a second), and about 4.5% read after the answer. On Brain Engine 5 it cost about a fifth.
+
+Bobs sharing a graphics card need the same Brain Engine, so update all your Bobs together.
+
+**Where it works:** Windows and Linux with an NVIDIA card. Mac, ARM boards and Android use plain llama.cpp as before.
+
 ## 1.5.216
 
 "Stop" and "wait" work at once, coding agents side by side, OK cards on all your Bobs, and my thinking on its own.
@@ -271,52 +289,6 @@ A steadier one: a hundred reliability fixes that are always on and add nothing t
 - **Bring in chats** works again (a missing import stopped it).
 
 **Where it works:** Windows, Mac, Linux and Bob for Android, unless a line says otherwise. The Notepad fix is Windows only. Email, calendar and page watch need the internet; everything else in More tools works offline. Help covers each new part.
-
-## 1.5.207
-
-A big one: eleven more games and a walking Journey, a steadier loop with better tools, a Jobs panel, engine and speed extras, health and history, everyday helpers, more Lab, Adventure table rules, and voice and phone extras. Every new switch is off until you turn it on.
-
-### New
-
-- **🧭 Journey.** Adventure played like an old console game, from the start card's Your character row. Walk the Brindle Vale on a tile map with the arrow keys, WASD or the phone pad. Open chests, talk to the village, and fight turn-based battles. Every look now walks from four sides. Beat the three keepers to bring the lantern stones home. No brain needed, and it saves itself.
-- **Eleven more games on 🧩 Games.** Four in a row, Hidden fleet, Liar's dice, Trivia night (your Bob-Net Bobs can join), Chess at the strength you pick, Sudoku with hints that explain the step, a daily Mini crossword, Letter grid against the clock, Noughts and crosses, Code breaker and Riddles. Easy, Normal and Hard; 📅 Today's puzzle with a streak; two players on one screen; 📜 Keep this story for a finished Story dice story. The app checks every move and keeps every secret. **Keep an unfinished game** and **Kid mode** are off until you tick them.
-- **"How I got here"** under each answer lists the tools I used, what they did and how long they took. **Save as a test** keeps a reply for the Lab, and **Try again, thinking harder** appears when I give up on repeats.
-- **New tools:** `ask_user` (one question with a few choices on a card), `git_look` (status, changes and history, read-only). `fetch_page` reads PDF, Word, Excel and PowerPoint links and drops menus and cookie banners. `edit_file` makes several changes on one card. `search_files` and `list_folder` do more.
-- **Settings, 🔁 Jobs** (eleven switches): steer me mid-job, Stop after this step, a time limit per job, a 🧾 receipt with Open and Undo, run the tests after code edits, one question before a vague big job, remember a no for the whole chat, reuse look-ups for an hour, sources under web answers, say how sure I am, and clickable file:line links.
-- **Engine and speed extras:** guess ahead by copying from the chat, load the next brain early, a speed history chart, a speed test when the graphics card changes, laptop mode on battery, plain lines on what an engine update changes, and a chat memory type for each brain (Standard, Sharper or Smaller).
-- **🩺 Health and history** (Settings, This replicant matrix): catch crashes, a safe start after two crashes, the last 20 Settings changes with Put it back, a weekly count, and a Health page with fix buttons. **🌙 Quiet hours** and **a shortcut from anywhere** (Ctrl+Shift+Space). **💬 Chat extras:** Try from here, 📌 pins, 👤 guest chats that are never saved, and each chat keeping its place in the engine.
-- **🗓 Everyday helpers:** a today card, a ⏱ Focus timer, a locked spending sheet from receipt photos, what's new after an update, a dot on the tray icon, and profiles so each person on a shared computer has their own locked chats and memory. Plus **text size** and an **easier-to-read font** (Settings, Look & feel), on the phone too.
-- **Adventure table rules:** a map that grows, portraits, coins and shops, catch your breath, secret notes, a rules card, Easy/Normal/Hard, riddle rooms, sending and bringing in a campaign file, and badges.
-- **More Lab:** a blind taste test with an Elo ranking, Save to Lab from the chat, before and after Teach it, run again with one change, French and Spanish packs, a job-speed score, a safety check after Take out the refusal habit, recipe files to share, word meanings, a phone note when a Lab job ends, a check of the judge, and clean repeats.
-- **Voice and phone:** talk over me while I read aloud, read documents aloud, a voice for each Bob in a Bob-Net party, carry a chat on to another Bob, and your Bobs at a glance on the phone. On Android: Share to Bob, a home-screen widget, hands-free, "Hey Bob" while the app is showing, and low-data mode.
-
-### Changed
-
-- **Steadier loop.** The instructions stay the same between turns, so the chat stays cached and replies start sooner. History grows with the brain's memory, steps follow Effort, long tool results keep the lines that match the question, and a reply that goes quiet for 90 seconds is retried.
-- **Outside text is marked.** After I read a web page, file or search result, nothing skips its approval card for the rest of that job, and remembering asks first.
-- **Memory clashes are flagged** when something new disagrees with an old line.
-- **Web look-ups** time out after 20 seconds and fall back to a second search engine.
-
-### Fixed
-
-- **My clock on Windows.** When Windows names a time zone my clock library doesn't know yet, I now use the offset Windows itself reports, so quiet hours, reminders and logbook times are local again. I never fall back to UTC on a computer whose clock isn't UTC.
-- **Less to read before a job starts.** With every switch on, what my brain reads first is about 3,000 characters smaller. I cut lines that repeated what each tool already says. The size test now checks Windows, Mac and Linux.
-- **PDF words.** A word that a PDF sets in pieces stays one word ("Dummy PDF file", not "Dumm y PDF fi le").
-- The Health page calls my own engine Brain Engine. After you press Switch it on, the logbook doesn't list your question twice. A link in your message is read once, not twice.
-- **Said but not done.** If I say a switch is on while it's still off, or that I sent or looked something up when nothing did, a short note under my answer puts it right. The app checks this after I answer, so it adds nothing to what my brain reads.
-- **Better tool calling** (Settings, How Bob works) is the switch for 1.5.206's tool-call checks. It's on unless you turn it off.
-- **The Mac build** is back: "Folders you point me to" refused every folder in the Mac's temporary space as a system folder.
-- **The Health page** couldn't open (it read the list of loaded brains wrong).
-- **Quiet hours** could follow UTC instead of your computer's clock.
-- **A guest chat's words** could land in the logbook.
-- **Sharper and Smaller chat memory** did nothing with the engine flags Bob ships with.
-- **Turbo offered a guesser a brain doesn't really have**, and Brain Engine 4 stopped. I check the file for it first now.
-- **A PDF with only a few words** was called a scan.
-- **I moved a dinner plan into the Art session.** Art is only for pictures, clips, music and sound now.
-- **An OK card from another chat** (a schedule, the phone) now shows in the chat you have open, with Open that chat.
-- **Turbo and the draft brain could stop the engine from starting** on newer llama.cpp builds, which refuse the old draft flags. I use the new names now.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android, unless a line says otherwise. The shortcut, the tray dot and profiles are desktop only. The phone screen on an iPhone has no ears, share option or widget. Card heat needs an NVIDIA card. Help covers each new part.
 
 ## Older versions
 

@@ -17,7 +17,7 @@ const LABELS = {
   webSearch: 'Let Bob search the web', oneBrain: 'One brain', autostart: 'Launch Bob on start-up', tray: 'Keep Bob in the tray', session: 'Session',
   models: 'Which brain does what', llamacpp: 'Engine settings', tts: 'Voice', style: 'Theme and look', housekeeping: 'Housekeeping', hands: 'Hands',
   checkins: 'Check-ins', language: 'Language', promptMenu: 'Pull up saved prompts with /', chatPresets: 'Assistant presets for chats', quickNotes: 'Let Bob take quick notes',
-  docTools: 'Read and search my documents', memoryRecall: 'Remember only what fits', howtos: 'Let Bob learn how-tos', chatRedo: 'Show Try again and Edit in the chat', thinkBubble: 'Thinking bubble above answers',
+  docTools: 'Read and search my documents', memoryRecall: 'Remember only what fits', howtos: 'Let Bob learn how-tos', chatRedo: 'Show Try again and Edit in the chat', thinkBubble: 'Thinking bubble above answers', statusJokes: 'Funny status line',
   lockSecrets: 'Lock my keys and passwords', personality: 'Personality', look: 'Bob\'s look', catName: 'Bob\'s cat', brainCtx: 'How much each brain keeps in mind'
 };
 export const labelFor = (k) => LABELS[k] || k;
