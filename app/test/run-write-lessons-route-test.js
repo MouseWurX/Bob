@@ -80,6 +80,7 @@ check('a prefill the server sends back is not doubled ("NeedsNeeds")', se.length
 check('the odds row says whether the given words came back in the reply', seo.length >= 3 && seo.every((x) => x.turns[0].given === 'Plan: 1.' && x.turns[0].given_echoed === true));
 const sp = styleSeen.slice(n0);
 check('--style-position user: the style note sits just before the ask, not in the system prompt', sp.length > 0 && sp.every((x) => !/start with Plan:/.test(x.system) && /^\(Note for how you think, never mention it: How you think/.test(x.user)), JSON.stringify(sp[0]).slice(0, 300));
+check('lessons and odds rows say what the writer saw that the lesson does not (teacher_context)', se.every((l) => l.teacher_context?.includes('style-note') && l.teacher_context.includes('prefill')) && seo.every((x) => x.teacher_context?.includes('style-note')) && les.every((l) => l.teacher_context?.includes('tool-note') && l.teacher_context.includes('review-fix')));
 check('the saved lesson keeps the plain message (the note is teacher-only)', se.every((l) => !/Note for how you think/.test(JSON.stringify(l.messages))));
 fs.writeFileSync(path.join(tmp, 'think-long.txt'), 'Style.\nprefix: Plan: 1. a 2. b\\nOptions: A\nprefix-later: Saw:\n');
 const n1 = styleSeen.length; await run(['--dir', 'long', '--jobs', 'chat:1', '--think', 'all', '--persona', path.join(tmp, 'think-long.txt'), '--no-fix']);

@@ -270,6 +270,10 @@ async function one(idea, think, room = 1, fix = '') { // room 2 = a second try w
   const saved = [{ role: 'user', content: idea.text, ...(idea.image ? { image: idea.image } : {}) }];
   const live = [user];
   const odds = []; // this lesson's teacher odds, kept only if the lesson is
+  // 13 Nov: what the writer saw that the saved lesson doesn't hold. Its words and odds were conditioned on it (in effect a context
+  // distillation), so every lesson, reject and odds row says so: style-note (style text by the ask), style-system (style text in the
+  // system prompt), tool-note, act-nudge, review-fix, prefill
+  const ctx = new Set();
   let failNext = idea.job === 'recover' || idea.job === 'codefix';
   for (let step = 0; step < 6; step++) {
     const t0 = toolsFor(loaded); const t = dropTools.size ? { ...t0, tools: (t0.tools || []).filter((x) => !dropTools.has(x.function?.name || x.name)), system: String(t0.system || '').split('\n').filter((ln) => ![...dropTools].some((d) => ln.includes(d))).join('\n') } : t0; // dropped tools leave the offer AND the prompt text
@@ -278,6 +282,8 @@ async function one(idea, think, room = 1, fix = '') { // room 2 = a second try w
     // teacher-only additions (persona, act nudge) go to the server but never into the saved prompt or the set key
     const teacherOnly = [stylePos === 'system' ? persona : '', ACT_JOBS.has(idea.job) ? ACT_NUDGE : '', toolNoteOn && TOOL_JOBS.has(idea.job) ? TOOL_NOTE : '',
       fix ? `A reviewer failed an earlier answer to this same message because: ${fix}. Do it right this time; never mention the review.` : ''].filter(Boolean).join('\n\n');
+    if (persona) ctx.add(stylePos === 'user' ? 'style-note' : 'style-system'); if (ACT_JOBS.has(idea.job)) ctx.add('act-nudge');
+    if (toolNoteOn && TOOL_JOBS.has(idea.job)) ctx.add('tool-note'); if (fix) ctx.add('review-fix'); if (think && (step ? laterPrefix : thinkPrefix)) ctx.add('prefill');
     const pre = think ? (step ? laterPrefix : thinkPrefix) : '';
     // the style note before the person's message goes only to the server (live and saved keep the plain message)
     const sent = stylePos === 'user' && persona ? live.map((m, mi) => (mi === 0 ? { ...m, content: typeof m.content === 'string' ? `(Note for how you think, never mention it: ${persona})\n\n${m.content}` : [{ type: 'text', text: `(Note for how you think, never mention it: ${persona})` }, ...m.content] } : m)) : live;
@@ -310,12 +316,12 @@ async function one(idea, think, room = 1, fix = '') { // room 2 = a second try w
     const v = await grade(idea, saved);
     // 12 Nov (later): a review that couldn't be read is neither kept nor rejected; it waits in needs-review.jsonl for a second look
     if (v.unparsed) { appendJsonl(path.join(dir, 'needs-review.jsonl'), { idea: idea.id, job: idea.job, think, why: v.why, messages: saved }); throw new Error('review unparsed'); }
-    if (!v.ok) { appendJsonl(path.join(dir, 'rejected.jsonl'), { idea: idea.id, job: idea.job, think, ...stamp, ...(fix ? { retry: 'review' } : {}), why: v.why, messages: saved }); const e = new Error(`review: ${v.why}`); e.why = v.why; throw e; }
+    if (!v.ok) { appendJsonl(path.join(dir, 'rejected.jsonl'), { idea: idea.id, job: idea.job, think, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), ...(fix ? { retry: 'review' } : {}), why: v.why, messages: saved }); const e = new Error(`review: ${v.why}`); e.why = v.why; throw e; }
   }
   // a lesson fixed after a failed review carries retry: 'review'; its reject sits in rejected.jsonl under the same idea, so
   // make-pairs.mjs turns the two into a right-vs-wrong pair (the reviewer's reason goes along as why)
-  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, ...stamp, ...(fix ? { retry: 'review' } : {}), ...(splitTag ? { split: splitTag } : {}), ...(score !== null ? { style_score: Math.round(score * 100) / 100 } : {}), ...(leaked ? { leak: 'stripped' } : {}), ...(think && thinkPrefix ? { think_prefix: thinkPrefix } : {}), messages: saved });
-  if (oddsK) appendJsonl(path.join(dir, 'odds.jsonl'), { idea: idea.id, job: idea.job, think, ...stamp, k: oddsK, turns: odds });
+  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), ...(fix ? { retry: 'review' } : {}), ...(splitTag ? { split: splitTag } : {}), ...(score !== null ? { style_score: Math.round(score * 100) / 100 } : {}), ...(leaked ? { leak: 'stripped' } : {}), ...(think && thinkPrefix ? { think_prefix: thinkPrefix } : {}), messages: saved });
+  if (oddsK) appendJsonl(path.join(dir, 'odds.jsonl'), { idea: idea.id, job: idea.job, think, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), k: oddsK, turns: odds });
 }
 // The teacher as a strict reviewer: right tool or rightly none, exact arguments, results read, a final answer that does the job.
 const RULES = { restraint: 'This message only wants an answer Bob knows: calling any tool is a FAIL.', precise: 'Every detail from the request (names, paths, dates, amounts) must appear exactly in the tool arguments.', agent: 'Each step must use what the previous result returned; the final answer must sum up what was done.' };
