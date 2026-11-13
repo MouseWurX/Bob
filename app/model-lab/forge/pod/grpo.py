@@ -67,7 +67,21 @@ def write(model, prompt, n, max_new, temp, dev, stops):
     return [r[:next((i + 1 for i, t in enumerate(r) if t in stops), len(r))] for r in rows]
 
 def grade(tok, rows, chat):
+    if chat.get("check"): return [R.check_reward(chat["check"], tok.decode(r, skip_special_tokens=False)) for r in rows]
     return [R.reward(chat["want"], tok.decode(r, skip_special_tokens=False)) for r in rows]
+
+def check_chats(tok, path, think, system="You are Bob, a helpful assistant."):
+    """Written-answer checks (make-checks.mjs) as chats to learn from: the taught questions only, never the fair tests."""
+    out = []
+    for line in open(path, encoding="utf-8"):
+        line = line.strip()
+        if not line: continue
+        c = json.loads(line)
+        if "new" in str(c.get("pack", "")): continue  # a fair test: never learned from
+        ids = tok.apply_chat_template([{"role": "system", "content": system}, {"role": "user", "content": c["q"]}], tokenize=True, add_generation_prompt=True, enable_thinking=think)
+        if hasattr(ids, "input_ids"): ids = ids["input_ids"]
+        out.append({"id": c["id"], "ids": list(ids), "want": [], "job": "checks", "check": c})
+    return out
 
 @torch.no_grad()
 def evaluate(model, tok, test, a, dev, stops, limit=150):
@@ -92,11 +106,13 @@ def main():
     ap.add_argument("--max-len", type=int, default=8192); ap.add_argument("--r", type=int, default=16); ap.add_argument("--experts", default="frozen", choices=["frozen", "lora"])
     ap.add_argument("--eval-chats", type=int, default=150); ap.add_argument("--report", default=None); ap.add_argument("--seed", type=int, default=1); ap.add_argument("--device", default="cuda")
     ap.add_argument("--targets", default=None, help="several targets (targets.py): chats sampled by weight, graded per target")
+    ap.add_argument("--checks", default=None, help="written-answer checks (make-checks.mjs) learned from too, job 'checks'")
     a = ap.parse_args()
     global TARGETS; TARGETS = TG.parse(a.targets)
     random.seed(a.seed); torch.manual_seed(a.seed); dev = a.device
     tok = AutoTokenizer.from_pretrained(a.model)
     train, test = chats(tok, a.lessons, a.max_len, a.think)
+    if a.checks: extra = check_chats(tok, a.checks, a.think); train += extra; print(f"grpo: + {len(extra)} written-answer checks", flush=True)
     print(f"grpo: {len(train)} chats to learn from, {len(test)} held out ({sum(1 for c in train if not c['want'])} want no tool)", flush=True)
     if not train: raise SystemExit("no chats to learn from")
     model = Qwen3_5MoeForConditionalGeneration.from_pretrained(a.model, dtype=torch.bfloat16, device_map=dev); model.config.use_cache = False

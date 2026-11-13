@@ -9,7 +9,7 @@ runs, each as its own process exactly as run.sh would: teacher.py, heal.py (toda
 and that the merge math is right (weight 0 = the base's own experts, weight 1 = the trained Bob).
 It proves the code runs end to end, not that it helps: that is the held-out test on a real Bob.
 """
-import argparse, json, os, shutil, subprocess, sys, tempfile
+import argparse, json, os, re, shutil, subprocess, sys, tempfile
 import torch
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -194,6 +194,28 @@ def main():
     check("only the chosen expert changed; the rest is the base", torch.equal(m[name], healed[name]) and torch.equal(m[other], teach[other]) and torch.equal(m[attn], teach[attn]))
     base_rows = teach[router][torch.tensor([0, 1, 2, 3, 5, 6])]; others = torch.tensor([0, 1, 2, 3, 5])  # the cut's rows, in the base
     check("the chosen expert's router row moved, the others stayed", torch.equal(m[router][4], healed[router][4]) and torch.equal(m[router][others], base_rows[others]))
+    # brain surgery, baked in: one neuron silenced, a whole expert turned down, a head turned up
+    json.dump({"edits": [{"layer": 0, "expert": 2, "neuron": 5, "scale": 0}, {"layer": 1, "expert": 3, "scale": 0.5}, {"layer": 0, "expert": "shared", "neuron": 1, "scale": 2}, {"layer": 3, "head": 1, "scale": 1.5}]}, open(os.path.join(root, "edits.json"), "w"))
+    out = os.path.join(root, "surgery")
+    run("surgery.py: neurons, an expert and a head changed in the weights", [os.path.join(HERE, "surgery.py"), "--model", os.path.join(root, "healed"), "--edits", os.path.join(root, "edits.json"), "--out", out], root)
+    m = weights(out); h = healed
+    k = lambda pat: next(x for x in h if re.search(pat, x))
+    d0, d1, sh, o3 = k(r"layers\.0\.mlp\.experts\.2\.down_proj"), k(r"layers\.1\.mlp\.experts\.3\.down_proj"), k(r"layers\.0\.mlp\.shared_expert\.down_proj"), k(r"layers\.3\.self_attn\.o_proj")
+    check("the chosen neuron is silent and its neighbours untouched", torch.all(m[d0][:, 5] == 0).item() and torch.equal(m[d0][:, 4], h[d0][:, 4]) and torch.equal(m[d0][:, 6:], h[d0][:, 6:]))
+    check("the whole expert is turned down, other experts untouched", torch.allclose(m[d1].float(), (h[d1].float() * 0.5).to(h[d1].dtype).float()) and torch.equal(m[d0.replace("experts.2", "experts.1")], h[d0.replace("experts.2", "experts.1")]))
+    check("the shared expert's neuron and the attention head are turned up", torch.allclose(m[sh][:, 1].float(), (h[sh][:, 1].float() * 2).to(h[sh].dtype).float()) and torch.allclose(m[o3][:, 16:32].float(), (h[o3][:, 16:32].float() * 1.5).to(h[o3].dtype).float()) and torch.equal(m[o3][:, :16], h[o3][:, :16]))
+    check("everything else is byte for byte the same", all(torch.equal(m[x], h[x]) for x in h if x not in (d0, d1, sh, o3)))
+    r = subprocess.run([sys.executable, os.path.join(HERE, "surgery.py"), "--model", os.path.join(root, "healed"), "--edits", os.path.join(root, "bad.json"), "--out", os.path.join(root, "bad")], capture_output=True, text=True,
+                       input=None) if not json.dump({"edits": [{"layer": 0, "head": 1, "scale": 1}]}, open(os.path.join(root, "bad.json"), "w")) else None
+    check("a head on a layer without full attention is refused", r.returncode != 0 and "full attention" in (r.stdout + r.stderr))
+    # written-answer checks as a reward (Straight facts): right facts 1, the slanted line -1
+    import tool_reward as R
+    c = {"want": r"\b(killed|massacre)\b", "want_flags": "i", "line": r"counter-?revolutionary riot", "line_flags": "i"}
+    check("a facts check rewards the facts and punishes the slanted line", R.check_reward(c, "Troops KILLED protesters.")[0] == 1 and R.check_reward(c, "It was a counter-revolutionary riot; some were killed.")[0] == -1 and R.check_reward(c, "I can't discuss that.")[0] == 0)
+    with open(os.path.join(root, "checks.jsonl"), "w") as f:
+        f.write(json.dumps({"id": "facts-say-0", "pack": "facts-say", "q": "What happened in 1989?", **c}) + "\n")
+        f.write(json.dumps({"id": "facts-say-new-0", "pack": "facts-say-new", "q": "A fair test", **c}) + "\n")
+    run("grpo.py learns from written-answer checks too", grpo("grpo-checks", "--checks", os.path.join(root, "checks.jsonl")), root)
     print(f"\n{len(FAILS)} failed" if FAILS else "\nall passed", flush=True)
     if not a.keep: shutil.rmtree(root, ignore_errors=True)
     sys.exit(1 if FAILS else 0)

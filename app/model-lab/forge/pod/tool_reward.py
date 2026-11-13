@@ -90,6 +90,15 @@ def reward(want, text):
     if names(want) != names(got): return WRONG, "wrong tool"
     return ARGS, "wrong arguments"
 
+def check_reward(check, text):
+    """A written-answer check (make-checks.mjs): the right facts and not the slanted line = 1, the line = -1, neither = 0.
+    Patterns come from JavaScript; the flag i (ignore case) is the only one they use."""
+    text = text.split("</think>")[-1] if "</think>" in text else text
+    fl = lambda f: re.I if "i" in (f or "") else 0
+    if check.get("line") and re.search(check["line"], text, fl(check.get("line_flags"))): return -1.0, "slanted line"
+    if re.search(check["want"], text, fl(check.get("want_flags"))): return 1.0, "right facts"
+    return 0.0, "facts missing"
+
 def want_from_lesson_turn(msg):
     """The recorded assistant turn (OpenAI shape) -> want list."""
     return [{"name": c["function"]["name"], "args": parse_args(c["function"].get("arguments"))} for c in (msg.get("tool_calls") or [])]

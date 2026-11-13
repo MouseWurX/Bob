@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 let pass = 0, fail = 0;
@@ -108,7 +108,51 @@ check('heal: each target measured on its own and a guard for a loss on any one',
 check('run.sh: plan.targets reaches every training step', /\$GEN \$NEWARGS \$TGT; then/.test(sh) && /\$GEN \$TARGS \$TGT \|\| die/.test(sh) && (sh.match(/r\.get\('no_target_worse',True\)/g) || []).length === 2);
 check('run.sh: training can start from any model on the drive, and blends stay there for a re-train', /TFROM=\$\(plan "\['train_teacher'\]\.get\('from','teacher'\)"\)/.test(sh) && /mv \$W\/merged-\$MN \$S\/bobs\/\$MN\/model/.test(sh));
 check('merge: chosen experts only, the rest from the base or the trained Bob', /--only/.test(merge) && /"rest": "base"/.test(merge) && /chosen experts only/.test(st));
+check('surgery: single neurons, whole experts and heads, baked in from a list; dry-run checks it', /\"neuron\"/.test(read('model-lab/forge/pod/surgery.py')) && /full attention/.test(read('model-lab/forge/pod/surgery.py')) && /the chosen neuron is silent/.test(st));
+check('facts checks reward the facts, never learn from a fair test', /if "new" in str\(c\.get\("pack", ""\)\): continue/.test(grpo) && /if \(\/new\/\.test\(pack\)\) continue/.test(read('model-lab/make-checks.mjs')));
 check('the dry run covers targets', /--targets/.test(st) && /the mix follows the weights/.test(st));
+
+// ---- expert sweep: a made-up Brain Engine answers; more experts per word fixes tools, a scaled-down layer breaks plain chat ----
+{
+  const http = await import('node:http');
+  const state = { used: null, dials: [], keep: null }, calls = [];
+  const srv = http.createServer((req, res) => {
+    let body = ''; req.on('data', (c) => { body += c; }); req.on('end', () => {
+      const j = body ? JSON.parse(body) : {}; calls.push(`${req.method} ${req.url}`);
+      const send = (x) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(x)); };
+      if (req.url === '/experts-per-word') { if (req.method === 'POST') state.used = j.used; return send({ own: [8, 8, 8, 8], used: state.used }); }
+      if (req.url === '/dials') { state.dials = j.dials; return send({ dials: j.dials }); }
+      if (req.url === '/expert-mask') { state.keep = j.keep; return send({}); }
+      // the made-up brain: calls the reminder tool only with 10+ experts per word; with layer 0's feed-forward turned down it calls a tool on plain chat too
+      const plain = !/remind/i.test(j.messages.at(-1).content), more = Array.isArray(state.used) && state.used[0] >= 10, broken = (state.dials || []).some((d) => d.kind === 'ffn' && d.layer === 0 && d.scale < 1);
+      const call = (more && !plain) || broken ? [{ type: 'function', function: { name: 'set_reminder', arguments: JSON.stringify({ when: '7:00' }) } }] : undefined;
+      send({ choices: [{ message: { content: call ? '' : 'Paris.', ...(call ? { tool_calls: call } : {}) } }] });
+    });
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const sw = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-sweep-'));
+  fs.mkdirSync(path.join(sw, 'lessons'));
+  fs.writeFileSync(path.join(sw, 'lessons', 'toolsets.json'), JSON.stringify({ s1: { system: 'You are Bob.', tools: [{ type: 'function', function: { name: 'set_reminder' } }] } }));
+  // held-out ideas by the Forge's rule (md5 under 5%): idea-12, -39, -43, -52, -56
+  const L = [['idea-12', 'reminders', 'remind me at 7', true], ['idea-39', 'reminders', 'remind me at 7', true], ['idea-43', 'restraint', 'capital of France?', false], ['idea-52', 'restraint', 'capital of France?', false], ['idea-0', 'reminders', 'remind me at 7', true]];
+  fs.writeFileSync(path.join(sw, 'lessons', 'lessons.jsonl'), L.map(([idea, job, q, tool]) => JSON.stringify({ idea, job, messages: [ask(q), { role: 'assistant', set: 's1', content: tool ? '' : 'Paris.', ...(tool ? { tool_calls: [call('set_reminder', { when: '7:00' })] } : {}) }] })).join('\n') + '\n');
+  fs.writeFileSync(path.join(sw, 'targets.json'), JSON.stringify({ tools: { jobs: ['reminders'] }, restraint: { jobs: ['restraint'] } }));
+  const r2 = await new Promise((resolve) => { const c = spawn(process.execPath, [path.join(app, 'model-lab', 'expert-sweep.mjs'), '--url', `http://127.0.0.1:${srv.address().port}`, '--lessons', path.join(sw, 'lessons'), '--targets', path.join(sw, 'targets.json'), '--used', '-2,+2', '--layer-scale', '0.5', '--groups', '2', '--out', path.join(sw, 'out')], { encoding: 'utf8' }); let e = ''; c.stderr.on('data', (d) => { e += d; }); c.on('close', (code) => resolve({ code, e })); });
+  srv.close();
+  check('the sweep finishes against a Brain Engine', r2.code === 0, r2.e);
+  const f = fs.existsSync(path.join(sw, 'out')) ? fs.readdirSync(path.join(sw, 'out')).find((x) => x.endsWith('.json')) : null;
+  const rep = f ? JSON.parse(fs.readFileSync(path.join(sw, 'out', f), 'utf8')) : { results: [] };
+  const by = (name) => rep.results.find((x) => x.name === name);
+  check('only held-out chats are used, split by target', rep.targets?.tools === 2 && rep.targets?.restraint === 2);
+  check('the baseline: tools 0/2, plain chat 2/2', by('as built')?.targets.tools.right === 0 && by('as built')?.targets.restraint.right === 2);
+  check('fewer experts per word is tried too (relative to the brain\'s own count)', Boolean(by('experts per word -2')) && by('experts per word -2').targets.tools.change === 0);
+  check('more experts per word: tools +2, plain chat unchanged', by('experts per word +2')?.targets.tools.change === 2 && by('experts per word +2')?.targets.restraint.change === 0 && !by('experts per word +2').mixed);
+  const hurt = by('ffn x0.5, layers 0-1');
+  check('a layer turned down that fixes one target and breaks another is flagged as mixed', hurt?.targets.restraint.change === -2 && hurt?.targets.tools.change === 2 && hurt.mixed === true, JSON.stringify(hurt));
+  check('attention is swept separately from the feed-forward', Boolean(by('attn x0.5, layers 0-1')));
+  check('the engine is put back at the end (own counts, no dials, every expert on)', state.used === null && Array.isArray(state.dials) && !state.dials.length && state.keep === null);
+  fs.rmSync(sw, { recursive: true, force: true });
+}
 
 // ---- Help: FAQ in Bob's voice + glossary ----
 const help = read('public/help-content.js');
