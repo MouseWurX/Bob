@@ -12,6 +12,7 @@ import { createMindCube } from './mind-cube.js';
 import { createMindView } from './mind-view.js'; // 1.5.138: Bob's thinking, docked
 import { DEFAULT_ORDER, SECTION_NAME, applyOrder, dropBefore } from './now-sections.js';
 import { createPanels } from './panels.js'; // 1.5.210: panels you build from Now running's sections
+import { createAgentsSection } from './coding-agents.js'; // Nov 13 Coding agents: folded, with a small badge
 
 
 const $ = (id) => document.getElementById(id);
@@ -35,6 +36,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
   const hist = []; // the last 5 minutes of samples, for the graph (kept in this window only)
   try { showGraph = localStorage.getItem('bob-now-graph') === '1'; } catch {}
   let gpuAt = 0, brainSt = null; // 1.5.26: up here, because pollGpu() can run before the graphics-card section below
+  let agentsSec = null; // Nov 13 Coding agents (coding-agents.js)
   let panels = null; // 1.5.210: a section can live in a panel of its own (panels.js); it's seen there with Now running shut
   const seen = (...ids) => !body.classList.contains('right-hidden') || ids.some((id) => panels?.visible(id));
   let docked = false, mindView = null; // 1.5.138: up here too, because setRight() runs before the docked-thinking section below
@@ -167,9 +169,11 @@ export function createLayout({ post, openTasks, openDownloads }) {
   // [-] = showing, press to hide; [+] = hidden, press to show. Bob's thinking uses the same button for its own
   // switch (below), because folding it also stops Bob passing his thinking along.
   function foldLook(b, open, name) { b.textContent = open ? '[\u2212]' : '[+]'; b.setAttribute('aria-expanded', String(open)); b.setAttribute('aria-label', `${open ? 'Hide' : 'Show'} ${name}`); b.title = `${open ? 'Hide' : 'Show'} ${name}`; }
-  const SEC_NAMES = { tasks: 'Tasks', net: 'Bob-Net', downloads: 'Downloads', memory: 'Memory', graph: 'Resource use over time' };
+  const SEC_NAMES = { tasks: 'Tasks', net: 'Bob-Net', agents: 'Coding agents', downloads: 'Downloads', memory: 'Memory', graph: 'Resource use over time' };
   // the graph is its own section, folded until asked for (as its old Show graph button was: bob-now-graph)
   let folded = new Set(String(store.get('bob-now-folded', showGraph ? '' : 'graph') || '').split(',').filter((k) => SEC_NAMES[k]));
+  // Nov 13 (the owner: "the panel should be mostly hidden"): Coding agents starts folded to its title and badge, once.
+  if (store.get('bob-agents-folded-once', '0') !== '1') { folded.add('agents'); store.set('bob-now-folded', [...folded].join(',')); store.set('bob-agents-folded-once', '1'); }
   showGraph = !folded.has('graph');
   for (const sec of document.querySelectorAll('#nowSections > section[data-sec]')) {
     const id = sec.dataset.sec; if (!SEC_NAMES[id]) continue;
@@ -177,7 +181,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
     if (!head.querySelector('.ctx-fill')) { const f = document.createElement('span'); f.className = 'ctx-fill'; head.appendChild(f); }
     const b = document.createElement('button'); b.type = 'button'; b.className = 'sec-fold'; b.dataset.fold = id;
     const show = () => { sec.classList.toggle('folded', folded.has(id)); foldLook(b, !folded.has(id), SEC_NAMES[id]); };
-    b.onclick = () => { if (folded.has(id)) folded.delete(id); else folded.add(id); store.set('bob-now-folded', [...folded].join(',')); show(); if (id === 'graph') { showGraph = !folded.has('graph'); graph(); } };
+    b.onclick = () => { if (folded.has(id)) folded.delete(id); else folded.add(id); store.set('bob-now-folded', [...folded].join(',')); show(); if (id === 'graph') { showGraph = !folded.has('graph'); graph(); } if (id === 'agents') agentsSec?.poll(); };
     head.appendChild(b); show();
   }
 
@@ -441,7 +445,9 @@ export function createLayout({ post, openTasks, openDownloads }) {
     if (b.jobs?.length) extra.push(`takes ${b.jobs.map((j) => CAN[j] || j).join(', ')}`);
     if (b.lastUsed) extra.push(`thought for me ${sinceShort(Date.now() - b.lastUsed)}`);
     if (b.passAlong) extra.push('passes Bob-Net along');
-    return `<li class="titem net"><span class="net-dot ${tone}" aria-hidden="true"></span>${netAvatar(b.look, b.name, b.device === 'phone' ? '📱' : '💻')}<span class="ttext"><strong>${b.device === 'phone' ? '📱' : '💻'} ${esc(b.name)}</strong> · ${esc(state)}${extra.length ? `<br><span class="muted">${esc(extra.join(' · '))}</span>` : ''}</span></li>`;
+    const waiting = lastNet?.cardsWaiting?.[b.address] || 0; // Nov 13: his OK cards shown here
+    const needs = waiting ? `<br><span class="net-cards">🔔 ${waiting} card${waiting === 1 ? '' : 's'} waiting on you</span>` : '';
+    return `<li class="titem net"><span class="net-dot ${tone}" aria-hidden="true"></span>${netAvatar(b.look, b.name, b.device === 'phone' ? '📱' : '💻')}<span class="ttext"><strong>${b.device === 'phone' ? '📱' : '💻'} ${esc(b.name)}</strong> · ${esc(state)}${needs}${extra.length ? `<br><span class="muted">${esc(extra.join(' · '))}</span>` : ''}</span></li>`;
   };
   function drawNet(v) {
     lastNet = v;
@@ -453,6 +459,10 @@ export function createLayout({ post, openTasks, openDownloads }) {
     if (h.lending) doing.push(`thinking a reply for ${h.lending.for}`);
     for (const g of h.guests || []) doing.push(`${g.state === 'working' ? 'making' : 'about to make'} ${NEED[g.need] || g.need} for ${g.from}`);
     const shares = [h.lend && 'lends his brain', h.takeJobs && 'takes jobs', h.passAlong && 'passes Bob-Net along'].filter(Boolean);
+    // Nov 13: the brain this card helps run has Hands, Autonomy or Screen use on over there; and coding agents that need you.
+    const pw = v.cardPowers ? [v.cardPowers.hands && 'Hands', v.cardPowers.autonomy && 'Autonomy', v.cardPowers.screen && 'Screen use'].filter(Boolean) : [];
+    if (pw.length) doing.push(`its card helps run a brain with ${pw.join(', ')} on`);
+    if (v.agents?.needsYou) doing.push(`${v.agents.needsYou} coding agent${v.agents.needsYou === 1 ? '' : 's'} need${v.agents.needsYou === 1 ? 's' : ''} you`);
     const mine = `<li class="titem net me"><span class="net-dot ${doing.length ? 'busy' : h.door ? 'ok' : ''}" aria-hidden="true"></span>${netAvatar(h.look || 'sysop', h.name, '🏠')}<span class="ttext"><strong>🏠 This Bob (${esc(h.name)})</strong> · ${esc(doing.join('; ') || (h.door ? 'nothing for the others right now' : 'door shut: the others can\'t reach him'))}${shares.length ? `<br><span class="muted">${esc(shares.join(' · '))}</span>` : ''}</span></li>`;
     const list = $('nowNetList');
     list.innerHTML = mine + (v.bobs || []).map(netRow).join('');
@@ -475,7 +485,8 @@ export function createLayout({ post, openTasks, openDownloads }) {
   window.addEventListener('bob-brain-status', (e) => { brainSt = e.detail; try { bay(brainSt); } catch {} if (Date.now() - gpuAt > 1500) pollGpu(); else brainLine(); });
   document.addEventListener('visibilitychange', pollGpu);
 
-  panels = createPanels({ changed: () => { draw(); pollGpu(); pollNet(); mindListen(); cubeListen(); } });
+  agentsSec = createAgentsSection({ sec: $('nowAgents'), list: $('nowAgentsList'), badge: $('nowAgentsBadge'), seen: () => seen('agents'), isOpen: () => !folded.has('agents'), placed: () => placeSections() });
+  panels = createPanels({ changed: () => { draw(); pollGpu(); pollNet(); mindListen(); cubeListen(); agentsSec.poll(); } });
   return {
     panels,
     setLeft, leftFolded, // 1.5.210: the phone's bottom bar opens and closes the menu as a sheet (status-chip.js)
@@ -496,6 +507,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
     mindDocked() { return docked; },
     showMind() { setRight(false); const sec = $('nowMind'); sec.scrollIntoView({ block: 'nearest' }); $('mindDockLog').focus({ preventScroll: true }); sec.classList.remove('flash'); void sec.offsetWidth; sec.classList.add('flash'); },
     // 1.5.123: something on Bob-Net changed (a lend, a borrow, a job sent away, a pairing): a fresh look, soon.
-    net() { clearTimeout(netSoon); netSoon = setTimeout(pollNet, 800); }
+    net() { clearTimeout(netSoon); netSoon = setTimeout(pollNet, 800); },
+    agents(ev) { agentsSec?.update(ev); } // Nov 13 Coding agents: the badge right away
   };
 }

@@ -88,6 +88,7 @@ export function shareView(cfg) {
     passAlong: s.passAlong === true, // 1.5.123 Pass my Bob-Net along (src/bob-net-party.js)
     lendCard: s.lendCard === true, // Lend my graphics card (src/share-card.js), off unless switched on
     lendChecks: s.lendChecks === true, // 1.5.185 Check harder jobs for my other Bobs (src/bob-net-check.js)
+    cardsEverywhere: s.cardsEverywhere === true, // Show my OK cards on my other Bobs (src/net-cards.js), off unless switched on
     spread: ['toobig', 'big'].includes(s.spread) ? s.spread : 'off', // Spread big brains over my other Bobs' cards
     // Bob-Net mode: More Bobs (the default: each Bob runs his own brain) or Bigger Bobs (they pool their cards).
     homeNet: s.homeNet !== false, // Bigger Bobs: Use the home network first (src/share-card.js), Tailscale as the backup
@@ -108,11 +109,12 @@ export const doorOpen = (cfg) => Boolean(cfg.remote?.enabled && String(cfg.remot
 export function cleanSharePatch(cfg, b, opts = {}) {
   const cur = cfg.share || {};
   const cb = cur.borrow || {};
-  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendChecks: cur.lendChecks === true, homeNet: cur.homeNet !== false, scut: cur.scut === true, scutMbps: SCUT_MBPS.includes(Number(cur.scutMbps)) ? Number(cur.scutMbps) : 100, ...(cur.scutMbpsChosen === true ? { scutMbpsChosen: true } : {}), scutSeal: cur.scutSeal !== false, linkDebug: cur.linkDebug === true, ...(cleanWifiWas(cur.wifiWas) ? { wifiWas: cleanWifiWas(cur.wifiWas) } : {}), spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
+  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendChecks: cur.lendChecks === true, cardsEverywhere: cur.cardsEverywhere === true, homeNet: cur.homeNet !== false, scut: cur.scut === true, scutMbps: SCUT_MBPS.includes(Number(cur.scutMbps)) ? Number(cur.scutMbps) : 100, ...(cur.scutMbpsChosen === true ? { scutMbpsChosen: true } : {}), scutSeal: cur.scutSeal !== false, linkDebug: cur.linkDebug === true, ...(cleanWifiWas(cur.wifiWas) ? { wifiWas: cleanWifiWas(cur.wifiWas) } : {}), spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
   if ('lend' in b) next.lend = b.lend === true;
   if ('takeJobs' in b) next.takeJobs = b.takeJobs === true; // 1.5.72, off unless switched on
   if ('passAlong' in b) next.passAlong = b.passAlong === true; // 1.5.123, off unless switched on
   if ('lendChecks' in b) next.lendChecks = b.lendChecks === true; // 1.5.185, off unless switched on
+  if ('cardsEverywhere' in b) next.cardsEverywhere = b.cardsEverywhere === true; // Nov 13 (src/net-cards.js), off unless switched on
   if ('askChecks' in b) next.borrow.checks = b.askChecks === true; // 1.5.185, off unless switched on
   // Bob-Net mode: Bigger Bobs lends this card and spreads brains too big for this replicant matrix; More Bobs turns both off.
   // 1.5.189: 'toobig', not 'big', by default. PC test Nov 10: Riker on the 16 GB card plus memory ran at 105.6 tok/s,

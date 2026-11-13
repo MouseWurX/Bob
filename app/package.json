@@ -223,6 +223,7 @@
     "test/run-maths-keys-test.js",
     "test/run-saved-prompts-test.js",
     "test/run-claude-door-test.js",
+    "test/run-coding-agents-test.js",
     "test/run-lock-test.js",
     "test/run-iphone-test.js",
     "test/run-toolpacks-test.js",

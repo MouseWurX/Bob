@@ -78,6 +78,7 @@ import { telegramRoute, startTelegram } from './telegram.js';
 import { promptsRoute } from './prompts.js'; // saved prompts and the / menu
 import { discordRoute, startDiscord } from './discord.js';
 import { doorRoute, doorSettingsRoute } from './claude-door.js'; // Let Claude use Bob's hands
+import { CodingAgents, agentsRoute } from './coding-agents.js'; // Nov 13 Coding agents
 import { handsSettings } from './hands-settings.js';
 import { tuning, TUNING_KEYS, pictureFitReset } from './tuning.js';
 import { gatherFacts, tipsFrom } from './pc-check.js';
@@ -201,6 +202,9 @@ startWatchdog({ logbook: cfg.logbook, timeZone: cfg.timeZone, onBack: ({ secs })
 pruneReceipts(cfg); // Settings, Jobs: a receipt's Undo lasts a week
 pruneTurns(cfg); // item 238: a turn's Undo lasts a week
 process.on('exit', () => { try { brain.flushQueue(); } catch {} }); // item 230: steps not saved yet go in now
+// Nov 13 Coding agents (src/coding-agents.js, off unless switched on): Claude Code, Codex, Gemini CLI and others side by side.
+brain.codingAgents = new CodingAgents(cfg, { broadcast, log: (k, t) => brain.log(k, t) });
+process.on('exit', () => { try { brain.codingAgents.stopAll(); } catch {} }); // a run never outlives Bob
 // Items 233, 234, 239 and 240: what start-up set aside or put back, old temp files cleared, and the start-up check: one
 // line in the logbook; a note in the chat only when something is wrong.
 for (const t of cfg.saveNotes || []) brain.log('saving', t);
@@ -436,6 +440,13 @@ const server = http.createServer(async (req, res) => {
     // "Let Claude use Bob's hands" (claude-door.js): the MCP door for apps on this replicant matrix. It has its own
     // locks (off unless switched on, this computer only, no web pages, a key per app), so it comes before the page checks.
     if (p === '/mcp') return doorRoute({ req, res, brain, isLocal });
+    // Nov 13 Coding agents: Claude Code's status hooks and one agent asking another (agent-ask.mjs). Programs on this
+    // replicant matrix, not pages: their own locks (this computer only, no web page origin, a key or a live run's token),
+    // so they come before the page checks and still work while the window is locked.
+    if ((p === '/api/coding-agents/hook' || p === '/api/coding-agents/ask') && req.method === 'POST') {
+      if (!isLocal || req.headers.origin) return send(res, 403, { error: 'no' });
+      return agentsRoute({ req, res, p, isLocal, agents: brain.codingAgents, body, send });
+    }
 
     // 1.5.97 Bob-Net pairing: the other Bob doesn't know the passcode yet, so these four come before the passcode check.
     // They only reach through the open door (Tailscale only), and the passcode is handed over only after your Yes here.
@@ -877,7 +888,15 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && p === '/api/bob-net/party') {
       if (!isLocal) return send(res, 403, { error: 'this replicant matrix only' });
       await Promise.all(brain.lenders.bobs().map((x) => brain.lenders.hello(x).catch(() => null))); // cached: 30 s good, 60 s down
-      return send(res, 200, partyView(brain));
+      return send(res, 200, { ...partyView(brain), cardsWaiting: brain.netCards.counts(), cardPowers: brain.cardLender?.view?.().powers || null, agents: brain.codingAgents?.summary?.() || null });
+    }
+    // Nov 13 OK cards on all your Bobs (src/net-cards.js): another of your Bobs shows or takes down a card (POST), or asks
+    // which of mine still wait (GET). Through the door only, signed in; sending them is "Show my OK cards on my other Bobs".
+    if (p === '/api/bob-net/cards') {
+      if (!isRemote) return send(res, 403, { error: 'only from another of your Bobs' });
+      if (req.method === 'GET') return send(res, 200, { cards: brain.netCards.mine() });
+      const r = brain.netCards.receive(await body(req).catch(() => ({})), req.socket.remoteAddress);
+      return send(res, r.status, r.body);
     }
     // 1.5.123 Pass my Bob-Net along: another of your Bobs (signed in) introduces a third. Never from this window.
     if (req.method === 'POST' && p === '/api/bob-net/introduce') {
@@ -943,6 +962,12 @@ const server = http.createServer(async (req, res) => {
       if (!isRemote && !isLocal) return send(res, 403, { error: 'no' });
       const r = await lendCardRoute(brain.cardLender, req, await body(req).catch(() => ({})));
       return send(res, r.status, r.body);
+    }
+    // Nov 13: what the brain this card helps run has on over there (Hands, Autonomy, Screen use), for the strip above the chat.
+    if (req.method === 'GET' && p === '/api/lend/powers') {
+      if (!isLocal) return send(res, 403, { error: 'this replicant matrix only' });
+      const v = brain.cardLender?.view?.() || {};
+      return send(res, 200, { powers: v.powers || null, to: v.to || '' });
     }
     if (req.method === 'POST' && p === '/api/lend/chat') {
       if (!isRemote && !isLocal) return send(res, 403, { error: 'no' });
@@ -1271,6 +1296,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && p === '/api/approve') {
       const { id, allow, rows, items, note } = await body(req);
       if (brain.awayApprovals.has(String(id))) return send(res, (await answerAway(brain, id, allow, rows, items)) ? 200 : 502, { ok: true }); // 1.5.72: a card from a job on another Bob
+      const net = await brain.netCards.answer(id, { allow, rows, items, note }); // Nov 13: a card another Bob sent here
+      if (net !== null) return send(res, net ? 200 : 502, { ok: net });
       if (allow === false && typeof note === 'string' && note.trim()) keepDenyNote(brain, note); // Jobs, Remember a "no": the reason typed on Deny
       return send(res, brain.answerApproval(id, allow, rows, items, note) ? 200 : 404, { ok: true });
     }
@@ -1282,6 +1309,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/prompts' && await promptsRoute({ req, res, p, isLocal, cfg, body, send, saveSettings, log: (k, t) => brain.log(k, t) })) return; // saved prompts and the / menu
     if (p === '/api/telegram' && await telegramRoute({ req, res, p, isLocal, brain, body, send })) return;
     if ((p === '/api/discord' || p === '/api/rooms/discord') && await discordRoute({ req, res, p, isLocal, brain, body, send })) return;
+    if (p.startsWith('/api/coding-agents') && await agentsRoute({ req, res, p, isLocal, agents: brain.codingAgents, body, send, pick: () => pickFolder({ purpose: 'project' }) })) return; // Nov 13 Coding agents
     if (p === '/api/claude-door' && await doorSettingsRoute({ req, res, p, isLocal, brain, cfg, body, send })) return;
     if (p.startsWith('/api/lab') && await labRoute({ req, res, p, isLocal, lab, body, send })) return; // 1.5.141 Computer Science Lab
     if (p.startsWith('/api/rent') && await rentRoute({ req, res, p, isLocal, brain, cfg, body, send })) return; // 1.5.127 rented brains

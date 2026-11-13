@@ -224,7 +224,16 @@ export class CardLender {
     return '';
   }
 
-  view() { return { lending: Boolean(this.child), to: this.from, via: this.via, since: this.child ? this.last : 0, ...(this.leaving ? { leaving: this.leaving.why } : {}) }; }
+  view() { return { lending: Boolean(this.child), to: this.from, via: this.via, since: this.child ? this.last : 0, ...(this.leaving ? { leaving: this.leaving.why } : {}), ...(this.child && this.powers ? { powers: this.powers } : {}) }; }
+
+  // the owner, Nov 13: the brain this card helps run has Hands, Autonomy or Screen use on over there. The asking Bob says
+  // so with every keep (every 5 s), so this Bob can show it plainly and clear it the moment it's off or the lend ends.
+  setPowers(p) {
+    const next = this.child ? cleanPowers(p) : null;
+    const was = JSON.stringify(this.powers || null), now = JSON.stringify(next);
+    this.powers = next;
+    if (was !== now) { try { this.onPowers?.(next, this.from); } catch {} }
+  }
 
   get seededFile() { return this.cfg.dataDir ? path.join(this.cfg.dataDir, 'seeded-brains.json') : ''; }
   loadSeeded() { try { return new Set(JSON.parse(fs.readFileSync(this.seededFile, 'utf8')).filter((x) => typeof x === 'string').slice(-50)); } catch { return new Set(); } }
@@ -323,7 +332,8 @@ export class CardLender {
     return { ok: true, host, port: RPC_PORT, via, ...(bothWired ? { wired: true } : {}), ...(room?.marginMB ? { marginMB: room.marginMB } : {}), ...(seeded ? { seeded } : {}), ...(sealed.reply ? { seal: sealed.reply } : {}) };
   }
 
-  keep() {
+  keep(powers) {
+    if (powers !== undefined) this.setPowers(powers);
     if (this.child && !this.leaving && (this.gaming() || !lendCardOn(this.cfg))) this.giveBack(this.gaming() ? 'gaming' : 'off');
     if (this.leaving) return false;
     this.last = this.now();
@@ -375,6 +385,7 @@ export class CardLender {
   }
 
   close() {
+    if (this.powers) this.setPowers(null);
     clearTimeout(this.timer); this.timer = null;
     clearInterval(this.watchTimer); this.watchTimer = null; clearTimeout(this.graceTimer); this.graceTimer = null; this.leaving = null;
     const c = this.child, g = this.gateway; this.child = null; this.gateway = null; this.host = ''; this.allow = ''; this.via = ''; this.port = 0; this.from = ''; this.sealReply = null; this.sealKid = ''; this.marginMB = 0;
@@ -387,10 +398,24 @@ export class CardLender {
 export function lendCardRoute(lender, req, b = {}) {
   const action = ['open', 'keep', 'close'].includes(b.action) ? b.action : '';
   if (!action) return Promise.resolve({ status: 400, body: { error: 'no' } });
-  if (action === 'keep') { const ok = lender.keep(); return Promise.resolve({ status: 200, body: { ok, ...(lender.leaving ? { leaving: String(lender.leaving.why).replace(/^(memory|game): /, '') } : {}) } }); }
+  if (action === 'keep') { const ok = lender.keep('powers' in b ? b.powers : undefined); return Promise.resolve({ status: 200, body: { ok, ...(lender.leaving ? { leaving: String(lender.leaving.why).replace(/^(memory|game): /, '') } : {}) } }); }
   if (action === 'close') { lender.close(); return Promise.resolve({ status: 200, body: { ok: true } }); }
-  return lender.open({ localAddr: req.socket?.localAddress, remoteAddr: req.socket?.remoteAddress, from: b.from, home: Array.isArray(b.home) ? b.home.map(String) : [], brain: cleanBrain(b.brain), seal: cleanSealAsk(b.seal), wired: Array.isArray(b.wired) ? b.wired.slice(0, 8).map(String) : [] }).then((r) => ({ status: 200, body: r }));
+  return lender.open({ localAddr: req.socket?.localAddress, remoteAddr: req.socket?.remoteAddress, from: b.from, home: Array.isArray(b.home) ? b.home.map(String) : [], brain: cleanBrain(b.brain), seal: cleanSealAsk(b.seal), wired: Array.isArray(b.wired) ? b.wired.slice(0, 8).map(String) : [] }).then((r) => { if (r?.ok && 'powers' in b) lender.setPowers(b.powers); return { status: 200, body: r }; });
 }
+
+// Hands, Autonomy and Screen use on the asking Bob (the owner, Nov 13), as it tells a lending Bob: only the ones on, or
+// null when none is. hs: that Bob's Hands settings (hands.js handsSettings). Held (✋ stopped) counts as off.
+export function powersOf(hs) {
+  if (!hs || !hs.enabled || hs.held) return null;
+  const hands = Object.values(hs).some((v) => v && typeof v === 'object' && !Array.isArray(v) && v.on === true);
+  return cleanPowers({ hands, autonomy: hs.free === true, screen: hs.apps?.on === true || hs.browser?.on === true });
+}
+export function cleanPowers(p) {
+  if (!p || typeof p !== 'object') return null;
+  const out = { hands: p.hands === true, autonomy: p.autonomy === true, screen: p.screen === true };
+  return out.hands || out.autonomy || out.screen ? out : null;
+}
+export const powersWords = (p) => [p?.hands && 'Hands', p?.autonomy && 'Autonomy', p?.screen && 'Screen use'].filter(Boolean);
 
 // The brain an asking Bob is about to spread: { file: name only, bytes }, or null.
 export function cleanBrain(b) {
@@ -404,8 +429,8 @@ export function cleanBrain(b) {
 export const LEND_NO = { off: 'lending is off there', gaming: 'it\'s in Gaming', 'no room': 'its memory is too full to lend right now', 'not tailscale': 'asked on an address it doesn\'t lend on', 'no tool': 'its card server is missing', failed: 'it couldn\'t start' };
 export class CardBorrower {
   // lenders: the Bob-Net list (src/share-brains.js Lenders: bobs(), call()).
-  constructor(cfg, lenders, { now = Date.now, log = () => {}, name = () => os.hostname(), home = homeIps, linkKind = () => '' } = {}) {
-    Object.assign(this, { cfg, lenders, now, log, name, home, linkKind });
+  constructor(cfg, lenders, { now = Date.now, log = () => {}, name = () => os.hostname(), home = homeIps, linkKind = () => '', powers = () => null } = {}) {
+    Object.assign(this, { cfg, lenders, now, log, name, home, linkKind, powers });
     this.using = []; this.down = new Map(); this.homeDown = new Map(); this.timer = null;
   }
 
@@ -431,7 +456,7 @@ export class CardBorrower {
         const quick = this.lenders?.nearMine?.get(bob.address) || [];
         const home = this.homeDown.get(bob.address) > this.now() ? [] : [...mine.map((m) => m.address)].sort((a, b) => (quick.indexOf(a) + 1 || 99) - (quick.indexOf(b) + 1 || 99));
         const seal = scutSealOn(this.cfg) ? sealAsk(this.cfg, bob.address) : null;
-        const r = await this.lenders.call(bob, '/api/lend/card', { method: 'POST', body: { action: 'open', from: this.name(), home, wired: home.filter((a) => isWired(this.linkKind(a))), ...(brain ? { brain } : {}), ...(seal ? { seal } : {}) }, timeout: brain ? SEED_MS + 15000 : 8000 });
+        const r = await this.lenders.call(bob, '/api/lend/card', { method: 'POST', body: { action: 'open', from: this.name(), powers: this.powers(), home, wired: home.filter((a) => isWired(this.linkKind(a))), ...(brain ? { brain } : {}), ...(seal ? { seal } : {}) }, timeout: brain ? SEED_MS + 15000 : 8000 });
         const j = await r.json().catch(() => ({}));
         const host = bob.address.split(':')[0];
         if (!(r.ok && j.ok && Number(j.port) > 0)) { skipped.push(`${bob.name} (${LEND_NO[j.why] || (r.status === 401 ? 'the passcode was turned down' : 'said no')})`); return null; }
@@ -459,7 +484,7 @@ export class CardBorrower {
   async keepAll() {
     for (const u of this.using.slice()) {
       if (u.lost) continue;
-      const r = await this.lenders.call(u.bob, '/api/lend/card', { method: 'POST', body: { action: 'keep' }, timeout: 5000 }).catch(() => null);
+      const r = await this.lenders.call(u.bob, '/api/lend/card', { method: 'POST', body: { action: 'keep', powers: this.powers() }, timeout: 5000 }).catch(() => null);
       const j = r ? await r.json().catch(() => ({})) : null;
       if (j && j.ok === false && this.using.includes(u)) this.lost(u, j.leaving || 'the card server stopped');
     }

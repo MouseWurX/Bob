@@ -2372,3 +2372,14 @@ html.settings-window body.look-lamplight .cellar.page[open] { height: 100dvh; ma
   body.look-lamplight .ttabs { flex-wrap: nowrap; overflow-x: auto; }
   body.look-lamplight .ttabs [data-f] { flex: none; white-space: nowrap; }
 }
+
+/* Nov 13 Coding agents (coding-agents.js): the small badge on the folded title, and a row that needs you */
+.agents-badge { font-size: .8em; padding: 0 .45em; border-radius: 1em; border: 1px solid var(--line); white-space: nowrap; }
+.agents-badge.needs { border-color: var(--accent); font-weight: 600; }
+.agent-row .agent-needs { font-weight: 600; }
+.agent-row pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16em; overflow: auto; font-size: .85em; }
+.agent-row .row { flex-wrap: wrap; gap: .3em; }
+.agent-row input[type="text"] { min-width: 0; flex: 1 1 10em; }
+/* Nov 13: a lent card whose brain has Hands, Autonomy or Screen use on over there */
+.lend-powers { margin: .3em .6em; padding: .35em .7em; border: 1px solid var(--accent); border-radius: 6px; font-size: .9em; overflow-wrap: anywhere; }
+.net-cards { font-weight: 600; }

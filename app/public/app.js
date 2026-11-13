@@ -38,6 +38,7 @@ import { createQuickSwitches } from './quick-switches.js'; // Autonomy and Scree
 import { createRentSwitch } from './rent-switch.js'; // 1.5.127 rented brains
 import { createGameLock } from './game-lock.js';
 import { quarantineCard, quarantineResult, createQuarantineBanner } from './quarantine.js';
+import { createLendPowersBanner } from './lend-powers.js'; // Nov 13: what a brain this card helps run has on
 import { createEffort } from './effort.js';
 import { createPresetPicker } from './presets.js'; // Assistant presets for chats
 import { createCatAntics } from './cat-antics.js';
@@ -122,6 +123,7 @@ const webSwitch = createWebSwitch({ note: (t, k) => note(t, k) });
 const rentSwitch = createRentSwitch({ note: (t, k) => note(t, k) });
 const gameLock = createGameLock({ note: (t, k) => note(t, k) }); // 1.5.41 the 🎮 Gaming button
 const qBanner = createQuarantineBanner({ note: (t, k) => note(t, k) });
+const lendPowers = createLendPowersBanner(); // Nov 13: a lent card's brain has Hands, Autonomy or Screen use on over there
 const effort = createEffort();
 const bubbles = createBubbles();
 const catAntics = createCatAntics({ onAntic: () => life.react('cat'), sleepy: () => life.dozing, bubbles });
@@ -269,9 +271,11 @@ function goBottom() {
 log.addEventListener('scroll', () => { stick = nearBottom(); drawToBottom(); }, { passive: true });
 toBottom.addEventListener('click', () => { goBottom(); $('input')?.focus({ preventScroll: true }); });
 window.addEventListener('keydown', (e) => { if (e.ctrlKey && e.key === 'End' && !toBottom.hidden) { e.preventDefault(); goBottom(); } });
+let cardNow = ''; // Nov 13: the OK card being drawn, so its answer from anywhere can take it down here
 function add(cls, html) {
   const el = document.createElement('div');
   el.className = cls;
+  if (cardNow && /\bapproval\b/.test(cls)) el.dataset.card = cardNow;
   el.innerHTML = html;
   log.appendChild(el);
   scrollDown();
@@ -712,11 +716,16 @@ function onEvent(ev) {
   // "Needs your OK" in the title. It shows here too, marked with where it's from; its result clears it here as well.
   const elsewhere = ev.sessionId && ev.sessionId !== sessionId;
   const foreignCard = elsewhere && ev.id && (ev.type === 'approval' || (ev.type === 'approval-result' && shownCards.has(ev.id)));
+  cardNow = '';
+  // Nov 13: a card answered somewhere else (your phone, another Bob, another window) is taken down here too.
+  if (ev.type === 'approval-result' && ev.id) for (const c of document.querySelectorAll(`[data-card="${CSS.escape(String(ev.id))}"]`)) { if (c.querySelector('.done')) continue; const row = c.querySelector('.row'); if (row) row.outerHTML = `<div class="done">${ev.allowed ? 'Allowed' : 'Answered'}${ev.net ? ' on another Bob' : ''}</div>`; c.querySelector('.ask-other')?.remove(); for (const b of c.querySelectorAll('button:not(.link)')) b.disabled = true; }
   if (elsewhere && ev.type !== 'reminder' && !foreignCard) return;
   if (ev.type === 'more-pictures' || ev.type === 'more-pictures-done') return more.handle(ev);
   if (ev.type === 'hands') handsSwitch.update(ev.settings);
   if (ev.type === 'hands') quickSwitches.update(ev.settings); // Autonomy and Screen use
   if (ev.type === 'quarantine') return qBanner.update(ev.active);
+  if (ev.type === 'lend-powers') { lendPowers.update(ev); layout.net(); return; }
+  if (ev.type === 'coding-agents') { layout.agents(ev); if (ev.agent?.state === 'needs-you') ping(`${ev.agent.name} needs you`, 'A coding agent is waiting for you.'); return; }
   if (['lending', 'borrow', 'away', 'pair-done', 'queue'].includes(ev.type)) layout.net(); // 1.5.123: the Bob-Net party in Now running
   if (quarantineResult(ev)) return;
   if (onHandsEvent(ev, { add, scrollDown, note })) return;
@@ -953,7 +962,9 @@ function onEvent(ev) {
       // 1.5.206: a page that connects is handed the cards still waiting; one it already shows isn't added twice.
       if (ev.id && shownCards.has(ev.id)) break;
       if (ev.id) shownCards.add(ev.id);
-      if (elsewhere) {
+      cardNow = String(ev.id || '');
+      if (ev.net) { add('note', `🔔 <strong>${esc(ev.net.from)}</strong> needs your OK. You can answer it here; it goes back to ${esc(ev.net.from)}.`); layout.net(); } // Nov 13: a card from another of your Bobs
+      else if (elsewhere) {
         const from = add('note', `🔔 A job in another chat needs your OK. You can answer it here. <button type="button" class="link">Open that chat</button>`);
         from.querySelector('button').onclick = () => openChat(ev.sessionId);
       } else endReply(ev);

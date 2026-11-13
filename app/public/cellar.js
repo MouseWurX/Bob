@@ -22,6 +22,7 @@ import { telegramHtml, mountTelegram } from './telegram.js';
 import { discordHtml, mountDiscord } from './discord.js';
 import { appsDoorHtml, mountAppsDoor } from './apps-door.js';
 import { claudeDoorHtml, mountClaudeDoor } from './claude-door.js'; // Let Claude use Bob's hands
+import { mountAgentsSettings } from './coding-agents.js'; // Nov 13 Coding agents
 import { checkinsHtml, mountCheckins } from './checkins.js';
 import { promptsHtml, mountPrompts } from './prompts.js'; // saved prompts and the / menu
 import { mountHarness } from './harness.js'; // items 62 to 72: Health and history, Quiet hours and shortcut, Chat extras
@@ -598,6 +599,7 @@ export function createCellar({ popOut = null } = {}) {
     mountDiscord(dlg.querySelector('.discord-box')); // Online services: Bob on Discord
     mountAppsDoor(dlg.querySelector('.apps-door-box')); // Other apps: Let other apps use Bob's brains
     mountClaudeDoor(dlg.querySelector('.claude-door-box')); // Other apps: Let Claude use Bob's hands
+    mountAgentsSettings(dlg.querySelector('.coding-agents-box')); // Other apps: Coding agents
     mountCheckins(dlg.querySelector('.checkins-box')); // 1.5.78 Check-ins
     mountPresets(dlg.querySelector('.presets-box')); // Assistant presets for chats (loads its own list)
     mountPrompts(dlg.querySelector('.prompts-box')); // 📝 Saved prompts
