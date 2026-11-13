@@ -125,9 +125,9 @@ check('and checks here when he can\'t', /checkDown\(this\.lenders, via\)/.test(b
 check('nothing loads here for a borrowed check', /if \(!lender && !via\) model = await loadHere\(\);/.test(brain) && /if \(via\) reply = await this\.lenders\.chat\(via, \{[^}]*kind: 'check'/.test(brain));
 check('the lender has a Review brain to check with', /checkBrain: \(b\) => \{ const r = reviewBrain\(b\.cfg\)/.test(brain));
 check('the hello says so', /check: checkHello\(brain, brain\.lendDeps/.test(server));
-check('both switches are on the Bob-Net page', /data-share-lendchecks/.test(page) && /data-share-askchecks/.test(page) && /Check harder jobs for my other Bobs/.test(page) && /Ask a bigger Bob to check my harder jobs/.test(page));
+check('both switches are on the Bob-Net page', /data-share-lendchecks/.test(page) && /data-share-askchecks/.test(page) && /Review for other Bobs/.test(page) && /Review by a bigger Bob/.test(page));
 const help = HELP.map((e) => e.html).join(' ');
-check('Help explains both switches', help.includes('Check harder jobs for my other Bobs') && help.includes('Ask a bigger Bob to check my harder jobs'));
+check('Help explains both switches', help.includes('Review for other Bobs') && help.includes('Review by a bigger Bob'));
 check('the glossary has Bigger checker', /<dt>Bigger checker<\/dt>/.test(HELP.find((e) => e.id === 'glossary').html));
 check('the FAQ answers it', /\?$/.test(HELP.find((e) => e.id === 'faq-bigger-checker')?.title || ''));
 

@@ -124,9 +124,9 @@ check('Help names the switch word for word', /Context size per brain/.test(brain
 check('the FAQ explains it in Bob\'s voice', ids.includes('faq-brain-ctx') && /\bI\b/.test(HELP.find((h) => h.id === 'faq-brain-ctx').html));
 check('the glossary says Bob never goes past a brain\'s limit', /never ask a brain for more/.test(HELP.find((h) => h.id === 'glossary').html));
 check('Help explains long memory in Bob\'s voice, with the catch', ids.includes('faq-long-memory') && /short chats get a little worse/i.test(HELP.find((h) => h.id === 'faq-long-memory').html) && /\bI\b/.test(HELP.find((h) => h.id === 'faq-long-memory').html));
-check('Help names the long memory switch word for word', /Long memory: let Qwen brains stretch past what they were made for/.test(brains.html));
+check('Help names the long memory switch word for word', /Long memory: stretch Qwen context/.test(brains.html));
 const cellar = publicText('cellar.js');
 check('the switch in Settings uses the same words', cellar.includes('<strong>Context size per brain</strong>'));
-check('the long memory switch in Settings uses the same words', cellar.includes('<strong>Long memory: let Qwen brains stretch past what they were made for</strong>'));
+check('the long memory switch in Settings uses the same words', cellar.includes('<strong>Long memory: stretch Qwen context</strong>'));
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

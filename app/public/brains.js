@@ -111,7 +111,7 @@ function setupsHtml(ctx) {
     const plan = setupPlan(ask, ctx);
     const s = SETUPS.find((x) => x.id === ask);
     const lines = plan.map((c) => `<li>${c.slot.icon} <strong>${esc(c.slot.name)}</strong>: ${c.value ? esc(c.name) : `no brain of its own (${esc(c.slot.empty.replace(/^Empty: |^No [a-z ]+: /, '').replace(/^Uses/, 'uses'))})`}</li>`).join('');
-    const quick = ask === 'duo' && duoNeedsQuick(ctx) ? '<p class="warn-text">The Quick brain slot needs a small brain of its own for this. Pick one under Jobs with no brain of their own, or get one from the catalogue.</p>' : '';
+    const quick = ask === 'duo' && duoNeedsQuick(ctx) ? '<p class="warn-text">The Quick brain slot needs a small brain of its own for this. Pick one under Unassigned jobs, or get one from the catalogue.</p>' : '';
     const off = ctx.oneBrain ? ' and turn One brain off' : '';
     box = `<div class="setup-ask" role="group" aria-label="${esc(`Change to ${s.name}`)}"><p><strong>${esc(s.name)}</strong> would ${plan.length ? `change these jobs${off}` : ctx.oneBrain ? 'turn One brain off; the jobs already match' : 'change nothing: the jobs already match'}. No brain is deleted, and you can change any job back.</p>${lines ? `<ul>${lines}</ul>` : ''}${quick}<div class="row">${plan.length || ctx.oneBrain ? `<button type="button" class="get" data-setupapply="${esc(ask)}">Apply</button>` : ''}<button type="button" class="mini" data-setup="">${plan.length || ctx.oneBrain ? 'Cancel' : 'Close'}</button></div></div>`;
   }
@@ -253,9 +253,9 @@ export function setUpHtml(b, ctx) {
     <section class="brains-panel"><h3>Where it sits ${tipHtml('Auto: my engine looks at the free room on the card each time this brain loads and fits as much as it can. By hand: you say how many layers keep their experts in memory instead; fewer in memory is faster until the card is full, and then much slower. A change takes effect the next time this brain loads.', 'About where a brain sits')}</h3>
       <div class="seg" role="group" aria-label="Where ${esc(b.name)} sits">${seg('auto', 'Auto')}${seg('hand', 'By hand')}</div>
       <div class="brain-place wide">${placeBarHtml(b.entry, ctx)}${hand ? `<span class="muted place-why">By hand: ${n} of ${layers} layers keep their experts in memory. The bar shows what Auto would start from.</span>` : ''}</div>
-      <div class="num-row"><label for="place-moe"><strong>Layers that keep their experts in memory</strong><br><span class="muted">0 puts everything on the card. More frees the card and is slower.</span></label>
+      <div class="num-row"><label for="place-moe"><strong>Layers with experts in RAM</strong><br><span class="muted">0 puts everything on the card. More frees the card and is slower.</span></label>
         <input type="range" id="place-moe" min="0" max="${layers || 1}" step="1" value="${n}" data-placemoe="${esc(b.value)}" ${dis} aria-describedby="place-lock">
-        <input type="number" min="0" max="${layers || 1}" step="1" value="${n}" data-placemoenum="${esc(b.value)}" ${dis} aria-label="Layers that keep their experts in memory, as a number" inputmode="numeric"><span class="muted">of ${layers || '?'}</span></div>
+        <input type="number" min="0" max="${layers || 1}" step="1" value="${n}" data-placemoenum="${esc(b.value)}" ${dis} aria-label="Layers with experts in RAM, as a number" inputmode="numeric"><span class="muted">of ${layers || '?'}</span></div>
       ${p?.cal?.best ? `<p class="muted">★ Recommended by the last calibration: ${p.cal.best.mode === 'hand' ? `<strong>${p.cal.best.cpuMoe}</strong> by hand` : '<strong>Auto</strong>'}.</p>` : ''}
       <p class="muted" id="place-lock">${lock ? `🔒 ${esc(lock)}` : hand ? 'In use. Takes effect the next time this brain loads.' : 'Set the number any time; it is used once you switch to By hand.'}</p></section>
     ${memTypeHtml(b, ctx)}
@@ -326,7 +326,7 @@ export function brainsHtml(ctx) {
     <section class="brains-panel"><div class="panel-head"><h3>Brains in use</h3>${calAllHtml(ctx)}</div>
       ${calStatusHtml(ctx)}
       ${used.length ? `<ul class="brain-list">${used.map((b) => brainRowHtml(b, ctx)).join('')}</ul>` : '<p class="muted">No brain yet. Pick one for a job below, or get one from the catalogue.</p>'}
-      ${empty.length ? `<h4>Jobs with no brain of their own</h4><ul class="brain-list">${empty.map((s) => emptyJobHtml(s, ctx)).join('')}</ul>` : ''}</section>
+      ${empty.length ? `<h4>Unassigned jobs</h4><ul class="brain-list">${empty.map((s) => emptyJobHtml(s, ctx)).join('')}</ul>` : ''}</section>
     <section class="brains-panel"><h3>Add a brain</h3>
       ${spare.length ? `<ul class="brain-list">${spare.map((b) => `<li class="brain-row spare"><div class="brain-name"><strong>${esc(b.name)}</strong><br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')} · on this replicant matrix, no job yet</span>${labLineHtml(b, ctx)}</div><div class="brain-jobs">${jobSelect(b.value, jobsFor(b.value, ctx), `Give ${b.name} a job`)}</div><div class="brain-place">${placeBarHtml(b.entry, ctx)}</div></li>`).join('')}</ul>` : ''}
       <p class="get-more"><button type="button" class="get-more-btn" data-tab="catalogue">📚 Brain catalogue: every brain, by job and size</button></p></section>

@@ -1,4 +1,4 @@
-// 1.5.99 Pair with my other Bobs (Settings, Bob-Net, My other Bobs). Before this, joining two Bobs meant typing each
+// 1.5.99 Pair Bobs (Settings, Bob-Net, My other Bobs). Before this, joining two Bobs meant typing each
 // one's Tailscale address and its door passcode (shown only once) on the other. Now:
 //   1. On any Bob, press "Find my other Bobs". He asks Tailscale which of your devices are online and knocks on each.
 //   2. Press "Pair" next to one (or "Pair with all of them"). That Bob shows a card with a 4-digit number; this one shows
@@ -6,7 +6,7 @@
 //   3. The two swap passcodes over Tailscale and each puts the other in "My other Bobs". No typing, no files.
 // Nothing switches on by itself: pairing only fills the list. Lend, borrow and the job switches stay as you set them.
 //
-// Protocol (pair v1), served only through the "Let my other replicant matrices in" door (Tailscale addresses only),
+// Protocol (pair v1), served only through the "Bob-Net access" door (Tailscale addresses only),
 // before the passcode check, because the whole point is that the asker doesn't know the passcode yet:
 //   GET  /api/pair/hello              -> { bob: true, pair: 1, name, device, version, door: true }
 //   POST /api/pair/ask    { pair, name, address, code }  -> { id }   (card shown here; address must be the caller's own)
@@ -18,7 +18,7 @@
 // handed over once, and only to the address that asked.
 //
 // 1.5.213 Sealed pairing (both Bobs new enough; hello says seal: 1). Bob-Net can now pair over a plain home network
-// ("Also over the home network"), where nothing is scrambled for us the way Tailscale does it. So the passcodes never
+// ("Home network access"), where nothing is scrambled for us the way Tailscale does it. So the passcodes never
 // cross the wire as plain text:
 //   ask    adds commit = sha256(asker's one-time public key)      -> { id, pub } (the asked Bob's one-time key)
 //   status adds pub (the asker's key, once, checked against commit) -> the card shows only now
@@ -87,7 +87,7 @@ export function scanList({ address, netmask }) {
   return out;
 }
 
-const OLD_OR_SHUT = 'That Bob won\'t pair over the home network. If it\'s older than 1.5.213, update it first: home-network pairing is new in 1.5.213. If it\'s up to date, its door is shut: turn on "Let my other replicant matrices in" and "Also over the home network" there, then press Pair again.';
+const OLD_OR_SHUT = 'That Bob won\'t pair over the home network. If it\'s older than 1.5.213, update it first: home-network pairing is new in 1.5.213. If it\'s up to date, its door is shut: turn on "Bob-Net access" and "Home network access" there, then press Pair again.';
 const clean = (s, n = 40) => String(s || '').replace(/[\u0000-\u001f<>"'`]/g, '').trim().slice(0, n);
 const plainIp = (a) => String(a || '').replace(/^::ffff:/, '');
 
@@ -120,7 +120,7 @@ export const matchCode = () => String(crypto.randomInt(1000, 10000));
 export class Pairing {
   // 1.5.123 vouched(address, token): the name of the Bob that introduced this caller (Pass my Bob-Net along), or ''.
   // 1.5.213 home(): this replicant matrix's home-network addresses [{ address, netmask }] (used only while
-  // "Also over the home network" is on), passed in so tests can use fake network cards.
+  // "Home network access" is on), passed in so tests can use fake network cards.
   constructor(cfg, { fetchFn = globalThis.fetch, now = Date.now, broadcast = () => {}, log = () => {}, version = '', peers = tailnetPeers, ownAddresses = () => [], pollMs = POLL_MS, vouched = () => '', home = realHomeIps } = {}) {
     // version: the label ("1.5.213"), never the VERSION object (PC check: Find showed "[object Object]").
     Object.assign(this, { cfg, fetch: fetchFn, now, broadcast, log, version: String(version?.label ?? version ?? ''), peers, ownAddresses, pollMs, vouched, home });
@@ -132,7 +132,7 @@ export class Pairing {
 
   // ---------- The Bob being asked ----------
   hello() { return { bob: true, pair: PAIR, seal: 1, id: this.selfId, name: myName(), device: 'computer', version: this.version, door: doorOpen(this.cfg) }; }
-  // A caller on one of our home networks, while "Also over the home network" is on here.
+  // A caller on one of our home networks, while "Home network access" is on here.
   homeCaller(ip) { return homeOn(this.cfg) && Boolean(cleanHomeAddress(ip, this.home())); }
   // Our own address on the home network the other Bob is on, or ''.
   homeMine(ip) { const m = homeOn(this.cfg) ? this.home().find((q) => sameNet(q.address, ip, q.netmask)) : null; return m ? `${m.address}:${this.cfg.port || 7777}` : ''; }
@@ -197,7 +197,7 @@ export class Pairing {
     this.tidy();
     const a = this.asks.get(String(id || ''));
     if (!a || a.state !== 'waiting' || a.shown === false) return { ok: false, why: 'That pairing card is too old now. Press Pair again on the other Bob.' };
-    if (yes && !doorOpen(this.cfg)) return { ok: false, why: 'Turn on "Let my other replicant matrices in" here first.' };
+    if (yes && !doorOpen(this.cfg)) return { ok: false, why: 'Turn on "Bob-Net access" here first.' };
     a.state = yes ? 'yes' : 'no';
     a.at = this.now(); // the asker has 3 minutes from now to collect the answer
     this.broadcast({ type: 'pair-gone', id: a.id });
@@ -253,7 +253,7 @@ export class Pairing {
   }
 
   // Your devices on Tailscale, each with whether a Bob answered there and whether he's already in your list.
-  // 1.5.213: with "Also over the home network" on, also knocks across this replicant matrix's own home network
+  // 1.5.213: with "Home network access" on, also knocks across this replicant matrix's own home network
   // (its /24 at most) and lists only the addresses where a Bob answered. No Tailscale needed.
   async find() {
     const peers = await this.peers();
@@ -351,9 +351,9 @@ export class Pairing {
     try {
       r = await this.fetch(`http://${address}/api/pair/ask`, { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(4000), headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ pair: PAIR, name: myName(), address: mine, code, commit: commitOf(key.pub), ...(token ? { token } : {}) }) });
       j = await r.json().catch(() => ({}));
-    } catch { return { error: 'No Bob answered there. Is Bob open on it, with "Let my other replicant matrices in" on?' }; }
-    // PC check 1.5.213: an older Bob (before 1.5.213) has no "Also over the home network" switch to turn on.
-    if (r.status === 403) return { error: home ? OLD_OR_SHUT : 'That Bob\'s door is shut. Turn on "Let my other replicant matrices in" there, then press Pair again.' };
+    } catch { return { error: 'No Bob answered there. Is Bob open on it, with "Bob-Net access" on?' }; }
+    // PC check 1.5.213: an older Bob (before 1.5.213) has no "Home network access" switch to turn on.
+    if (r.status === 403) return { error: home ? OLD_OR_SHUT : 'That Bob\'s door is shut. Turn on "Bob-Net access" there, then press Pair again.' };
     if (r.status === 404) return { error: 'That Bob is too old to pair. Update him, or add him by hand under More.' };
     if (!r.ok || !j.id) return { error: j.error || `That Bob said no (${r.status}).` };
     // Sealed pairing: the number comes from both keys; ours goes over now so his card can show it.

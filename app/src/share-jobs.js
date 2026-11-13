@@ -1,6 +1,6 @@
 // Share jobs with my other Bobs (1.5.72, Settings > Bob-Net). Both switches are off unless you turn them on.
 //
-// "Send jobs to my other Bobs" (the asking Bob): a whole job from Tasks (a picture, a clip, a song, a sound, web research,
+// "Send jobs" (the asking Bob): a whole job from Tasks (a picture, a clip, a song, a sound, web research,
 // or a Medium-and-up answer) goes to one of "My other Bobs" that can really do it, instead of waiting or failing here.
 // Bob knows his limits, both ways:
 //   - a job only leaves when this Bob can't do it here (no picture model, say), or it would wait (Gaming, or busy and
@@ -10,7 +10,7 @@
 //   - a job that needs this computer (attached pictures, files, folders, programs, Hands, reminders, memory) never leaves.
 // The reply, the OK cards and the finished files come back here; the files are copied into this Bob's save folder.
 //
-// "Take jobs from my other Bobs" (the Bob doing the work): only through the "Let my other replicant matrices in" door. A job from
+// "Accept jobs" (the Bob doing the work): only through the "Bob-Net access" door. A job from
 // another Bob runs with thinking, web search (if it's on here) and the picture, clip, music and sound tools only: no
 // files, folders, programs, Hands, memory or reminders on this computer. It isn't saved as a chat here. Its files stay in
 // this Bob's save folder too (Made by Bob lists them), and only that job's own files can be fetched.

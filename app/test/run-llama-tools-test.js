@@ -131,7 +131,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   const cfg = { configFile: file, remote: { enabled: true, passcode: 'secret-1' }, share: {}, gpuVramGB: 16 };
   ok(!lendCardOn(cfg) && shareView(cfg).lendCard === false && shareView(cfg).spread === 'off', 'card: both off to start with');
   let p = cleanSharePatch(cfg, { lendCard: true });
-  ok(p.share.lendCard === true, 'card: Lend my graphics card switches on');
+  ok(p.share.lendCard === true, 'card: Lend my GPU switches on');
   ok(cleanSharePatch(cfg, { spread: 'sideways' }).error, 'card: an unknown spread choice is refused');
   ok(/Add one of your other Bobs/.test(cleanSharePatch(cfg, { spread: 'big' }).error || ''), 'card: spreading needs a Bob on the list');
   ok(shareView(cfg).mode === 'more', 'mode: More Bobs to start with');
@@ -179,7 +179,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   ok(r.ok && r.via === 'tailscale', 'card: a different home network, or a public address, stays on Tailscale');
   {
     // Nov 13 (the PC borrowed the Go's card and the Go's own brain went, unasked): a lender holding its own brain
-    // says no, unless "Let a lend unload my brain" is on there; then it lets it go first (1.5.210), and says so.
+    // says no, unless "Lending may unload my brain" is on there; then it lets it go first (1.5.210), and says so.
     let freed = 0; const said = [];
     const no = new CardLender(cfg, { spawnFn, tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome, gate, holdsOwn: () => true, freeOwn: async () => { freed++; return true; }, log: (k, t) => said.push(t) });
     const r0 = await no.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.9', from: 'tower' });
@@ -188,14 +188,14 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     ok(/its own brain is loaded/.test(LEND_NO['own brain']), 'card: the asking Bob names why in its logbook');
     const holder = new CardLender({ ...cfg, share: { ...cfg.share, lendFreesOwn: true } }, { spawnFn, tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome, gate, holdsOwn: () => true, freeOwn: async () => { freed++; return true; }, log: (k, t) => said.push(t) });
     const rr = await holder.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.9' });
-    ok(rr.ok && freed === 1 && said.some((t) => /let go of my own brain first/.test(t)), 'card: with "Let a lend unload my brain" on, it lets it go first, and says so');
+    ok(rr.ok && freed === 1 && said.some((t) => /let go of my own brain first/.test(t)), 'card: with "Lending may unload my brain" on, it lets it go first, and says so');
     holder.close();
     const { cleanSharePatch } = await import('../src/share-brains.js');
-    ok(cleanSharePatch({ share: {} }, { lendFreesOwn: true }).share?.lendFreesOwn === true && cleanSharePatch({ share: {} }, {}).share?.lendFreesOwn === false, 'card: "Let a lend unload my brain" is saved, and off unless switched on');
+    ok(cleanSharePatch({ share: {} }, { lendFreesOwn: true }).share?.lendFreesOwn === true && cleanSharePatch({ share: {} }, {}).share?.lendFreesOwn === false, 'card: "Lending may unload my brain" is saved, and off unless switched on');
   }
   {
     const noHome = new CardLender({ ...cfg, share: { ...cfg.share, homeNet: false } }, { spawnFn, tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome, gate });
-    ok((await noHome.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', home: [H(172, 16, 9, 189)] })).via === 'tailscale', 'card: Use the home network first off, Tailscale only');
+    ok((await noHome.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', home: [H(172, 16, 9, 189)] })).via === 'tailscale', 'card: Home network first off, Tailscale only');
     noHome.close();
   }
   ok(admit('100.102.0.7', '::ffff:100.102.0.7') && !admit('100.102.0.7', '100.102.0.8') && !admit('', '100.102.0.7'), 'card: the gate turns everyone else away');
@@ -398,7 +398,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     ok(!(await new CardBorrower(bcfg, far, { home: () => myHome }).open({ sizeGB: 200 })).length, 'spread: a "home network" address that isn\'t ours is never used');
     const off2 = new CardBorrower({ ...bcfg, share: { ...bcfg.share, homeNet: false } }, homeBob, { home: () => myHome }); sent.length = 0;
     await off2.open({ sizeGB: 200 });
-    ok(!sent[0].home.length, 'spread: Use the home network first off, no home address is offered'); off2.close();
+    ok(!sent[0].home.length, 'spread: Home network first off, no home address is offered'); off2.close();
   }
   const llamacpp = read(path.join(here, '..', 'src', 'llamacpp.js'));
   ok(/args\.push\('--rpc', helpers\.join\(','\)/.test(llamacpp) && /this\.spread\?\.close\(\)/.test(llamacpp), 'spread: the engine adds --rpc and hands the cards back when the brain goes');
@@ -416,7 +416,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   }
 }
 
-// ---- Also over the home network (the door) ----
+// ---- Home network access (the door) ----
 {
   const H = (...x) => x.join('.');
   const myHome = [{ address: H(172, 16, 9, 185), netmask: '255.255.255.0' }];

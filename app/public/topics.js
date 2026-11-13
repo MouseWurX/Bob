@@ -100,7 +100,7 @@ export function createTopics({ api, openChat }) {
   }
 
   // Carry on on another Bob (src/carry.js): pick one of your Bobs and the chat's words go to him. He needs
-  // "Take chats from my other Bobs" on. The chat stays here too.
+  // "Accept chats" on. The chat stays here too.
   let netBobs = [], carrying = null; // carrying: { id, msg }
   const carryHtml = () => `<div class="row wrap chat-carry" role="group" aria-label="Carry on on another Bob"><label class="pick-inline"><span>Carry on on</span><select data-carryto aria-label="Which of your Bobs">${netBobs.map((x) => `<option value="${esc(x.address)}">${esc(x.name)}</option>`).join('')}</select></label><button type="button" class="mini get" data-carrygo>Send it over</button><button type="button" class="mini" data-carrycancel>Cancel</button>${carrying?.msg ? `<span class="muted" role="status">${esc(carrying.msg)}</span>` : ''}</div>`;
 

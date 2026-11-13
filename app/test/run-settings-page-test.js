@@ -142,7 +142,7 @@ check('the Self-test button is in Settings, Hands, and the route is PC-only', /d
   check('each Hand, and working without asking, can be ticked before Hands is on', !/data-hfree[^\n>]*\$\{s\.enabled \? '' : 'disabled'\}/.test(handsSrc) && !/data-hand=[^\n>]*\$\{s\.enabled \? '' : 'disabled'\}/.test(handsSrc));
   check('a recipe can be added before the Run programs Hand is on', !/\$\{s\.enabled && s\.run\?\.on \? `<details/.test(handsSrc));
   check('Telegram and Discord choices can be made before they are on', !/, !v\.(enabled|dmEnabled)\)/.test(tg + dc) && !/\$\{off \? 'disabled' : ''\}/.test(dc) && !/\$\{v\.(enabled|dmEnabled) \? `<div class="row"><strong>Your (Telegram|Discord) account/.test(tg + dc));
-  check('"Also over the home network" is there before the door is open', !/\$\{v\.enabled \? `<label class="switch"><input type="checkbox" data-phone-home/.test(phone));
+  check('"Home network access" is there before the door is open', !/\$\{v\.enabled \? `<label class="switch"><input type="checkbox" data-phone-home/.test(phone));
   check('the style guide carries the rule', /never appears, disappears or locks because a box isn't ticked/.test(read('docs/SETTINGS-STYLE.md')));
 }
 

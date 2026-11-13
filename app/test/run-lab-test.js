@@ -836,7 +836,7 @@ check('the old one-shot tool picks stay for the Pick the tool challenge', TOOLS.
 // ---- words and wiring ----
 const html = read('public/index.html'), app = publicText('app.js'), cellar = publicText('cellar.js'), page = read('public/lab.js'), help = read('public/help-content.js'), inv = read('docs/SETTINGS-INVENTORY.md');
 check('the Lab button is in the left pane, hidden until the switch is on', /id="labBtn"[^>]*hidden/.test(html) && /labBtn/.test(app));
-check('the switch is under How Bob works, Brains, on unless turned off', /sswitch\('computerLab', settings\.computerLab !== false, 'Show the Computer Science Lab'/.test(cellar));
+check('the switch is under How Bob works, Brains, on unless turned off', /sswitch\('computerLab', settings\.computerLab !== false, 'Show the Lab'/.test(cellar));
 check('a saved setting is cleaned so only false turns the Lab off', (() => { const a = {}, b = {}, c = {}; mergeSettings(a, { computerLab: false }); mergeSettings(b, { computerLab: 'yes' }); mergeSettings(c, { computerLab: true }); return a.computerLab === false && b.computerLab === true && c.computerLab === true; })());
 check('a small replicant matrix sees the switch greyed out with the reason', /computerLabRoom/.test(cellar));
 check('the page uses real radio buttons and checkboxes with labels', /type="radio"/.test(page) && /type="checkbox"/.test(page) && /<label/.test(page));
@@ -845,7 +845,7 @@ check('the page uses the reviewed words', ['Teach it back', 'Make it one file', 
 check('the rented parts are shown as later, not offered', /Lab 2/.test(page) && !/\/api\/rent/.test(page));
 check('the slider has a number box beside it', /type="range"[\s\S]{0,400}type="number"|type="number"[\s\S]{0,400}type="range"/.test(page));
 check('Help has a Lab page in Bob\'s voice', /Computer Science Lab/.test(help) && /lab/.test(help));
-check('the settings inventory has the row', /Show the Computer Science Lab/.test(inv));
+check('the settings inventory has the row', /Show the Lab/.test(inv));
 check('the Bob-Net heading opens Bob-Net settings', /id="nowNetHead"[^>]*aria-label="Open Bob-Net settings"/.test(html) && /nowNetHead[\s\S]{0,200}jump: 'adv-bobnet'/.test(app) && /opts\.jump/.test(cellar) && /Press Bob-Net to set it up/.test(html));
 
 // review: the card size falls back to the hardware scan's reading; the quiz uses a neutral city; the route comment is right

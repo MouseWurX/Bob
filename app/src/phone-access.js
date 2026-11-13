@@ -7,7 +7,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 
-// 1.5.214 (the owner: "if you have a home network it should just work"): Also over the home network is on unless
+// 1.5.214 (the owner: "if you have a home network it should just work"): Home network access is on unless
 // someone switched it off. 1.5.213 saved "off" on every Bob whether chosen or not, so only an off that was chosen
 // (homeNetChosen, set when the switch is pressed) counts.
 export const homeNetOn = (r) => r?.homeNet !== false || r?.homeNetChosen !== true;
@@ -68,7 +68,7 @@ export function phoneView(cfg) {
 export function cleanPhonePatch(cfg, b, { home = [] } = {}) {
   const cur = cfg.remote || {};
   const next = { enabled: cur.enabled === true, homeNet: homeNetOn(cur), ...(cur.homeNetChosen === true ? { homeNetChosen: true } : {}), passcode: cur.passcode || '', hosts: cur.hosts || [], bindAddress: cur.bindAddress || '0.0.0.0' };
-  if ('homeNet' in b) { next.homeNet = b.homeNet !== false; next.homeNetChosen = true; } // Also over the home network: 1.5.214, on unless switched off
+  if ('homeNet' in b) { next.homeNet = b.homeNet !== false; next.homeNetChosen = true; } // Home network access: 1.5.214, on unless switched off
   if ('passcode' in b) {
     const p = String(b.passcode || '').trim();
     if (p.length < MIN_PASSCODE || p.length > 64) return { error: `The passcode needs at least ${MIN_PASSCODE} characters.` };
@@ -78,9 +78,9 @@ export function cleanPhonePatch(cfg, b, { home = [] } = {}) {
   if ('enabled' in b) {
     next.enabled = b.enabled === true;
     if (next.enabled && next.passcode.length < MIN_PASSCODE) return { error: 'Set a passcode first.' };
-    // 1.5.213: with "Also over the home network" on, a replicant matrix with no Tailscale can open the door too,
+    // 1.5.213: with "Home network access" on, a replicant matrix with no Tailscale can open the door too,
     // on its home-network addresses only (server.js adds those itself; nothing to save here).
-    if (next.enabled && !next.hosts.length && !(next.homeNet && home.length)) return { error: next.homeNet ? 'No Tailscale address and no home network found. Is the network cable in, or Tailscale connected?' : 'No Tailscale address found. Is Tailscale installed and connected? On a plain home network, turn on "Also over the home network" first.' };
+    if (next.enabled && !next.hosts.length && !(next.homeNet && home.length)) return { error: next.homeNet ? 'No Tailscale address and no home network found. Is the network cable in, or Tailscale connected?' : 'No Tailscale address found. Is Tailscale installed and connected? On a plain home network, turn on "Home network access" first.' };
   }
   return { remote: next };
 }

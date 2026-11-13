@@ -207,7 +207,7 @@ function setup({ engine = 'llamacpp', checkins = {}, free = 500e9 } = {}) {
   check('Help says it starts off and never changes anything', /off unless you turn it on/.test(help) && /it only looks/.test(help));
   check('the panel is in Settings', /\['checkins', '🔔 Check-ins'/.test(publicText('cellar.js')) && /mountCheckins\(/.test(publicText('cellar.js')));
   check('the chat shows a Check-in card for the event', /case 'checkin'/.test(publicText('app.js')));
-  check('the settings inventory lists it', /\| Check-ins \| Check in on a schedule \|/.test(read('docs/SETTINGS-INVENTORY.md')));
+  check('the settings inventory lists it', /\| Check-ins \| Scheduled check-ins \|/.test(read('docs/SETTINGS-INVENTORY.md')));
   check('no platform-only code: no Windows paths, PowerShell or schtasks', !/powershell|schtasks|\\\\|win32/i.test(read('src/checkins.js')));
 }
 

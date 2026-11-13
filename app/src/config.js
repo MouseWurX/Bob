@@ -13,7 +13,7 @@ import { cleanCheckins } from './checkin-settings.js';
 import { cleanHands } from './hands-settings.js';
 import { cleanPresets } from './model-family.js';
 import { cleanSelfWork, applyCodeCopy } from './self-work.js';
-import { cleanNotesFolders, applyNotes } from './notes-folders.js'; // "Search my notes apps too", off until a folder is added
+import { cleanNotesFolders, applyNotes } from './notes-folders.js'; // "Search notes apps", off until a folder is added
 import fs from 'node:fs';
 import { writeJsonAtomic, readJsonFile } from './util.js';
 import { readSaved, oneWriter, setAside, checkFormats } from './saving.js'; // items 231, 233 and 234
@@ -298,7 +298,7 @@ function clean(patch) {
   if ('naughtyList' in out) out.naughtyList = out.naughtyList === true; // 1.5.132 "Show the naughty list", off unless switched on
   if ('catalogUpdates' in out) out.catalogUpdates = out.catalogUpdates === true; // 1.5.137 "Auto-update the brain list", off unless switched on
   if ('ownModels' in out) out.ownModels = cleanOwnModels(out.ownModels); // 1.5.135 brains of your own (GGUF files on this replicant matrix)
-  if ('computerLab' in out) out.computerLab = out.computerLab !== false; // 1.5.172 "Show the Computer Science Lab", on unless switched off (was off until 1.5.171)
+  if ('computerLab' in out) out.computerLab = out.computerLab !== false; // 1.5.172 "Show the Lab", on unless switched off (was off until 1.5.171)
   if ('labForgeStart' in out) out.labForgeStart = out.labForgeStart === true; // 1.5.160 "Let the Lab start Forge runs", off unless switched on
   if ('labEngine' in out) out.labEngine = ['brainengine', 'llamacpp'].includes(out.labEngine) ? out.labEngine : ''; // 1.5.17x the Lab's engine: '' = the same as Bob's brains
   if ('labExtras' in out) out.labExtras = Object.fromEntries(['hoverWords', 'tellPhone', 'saveQuestions'].map((k) => [k, out.labExtras?.[k] === true])); // Lab items 109, 110, 102: the Lab's three small switches, each off unless switched on
@@ -336,14 +336,14 @@ function clean(patch) {
   if ('readDocs' in out) out.readDocs = out.readDocs === true; // "Read documents aloud" (public/read-aloud.js)
   if ('netVoices' in out) out.netVoices = out.netVoices === true; // "A voice per Bob" (src/tts.js netVoiceFor)
   if ('netVoiceMap' in out) out.netVoiceMap = cleanVoiceMap(out.netVoiceMap);
-  if ('carryIn' in out) out.carryIn = out.carryIn === true; // "Take chats from my other Bobs" (src/carry.js)
+  if ('carryIn' in out) out.carryIn = out.carryIn === true; // "Accept chats" (src/carry.js)
   if ('phoneGlance' in out) out.phoneGlance = out.phoneGlance === true; // "Share status with my phone" (src/glance.js)
-  if ('netOverlay' in out) out.netOverlay = out.netOverlay === true; // Nov 13 "Bob-Net icons under Bob" (src/net-overlay.js), off unless turned on
+  if ('netOverlay' in out) out.netOverlay = out.netOverlay === true; // Nov 13 "Bob-Net icons" (src/net-overlay.js), off unless turned on
   if ('mathView' in out) out.mathView = out.mathView === true; // "Render maths", off by default (public/math-core.js)
   if ('shortcuts' in out) out.shortcuts = out.shortcuts === true; // "Keyboard shortcuts", off by default (public/shortcuts.js)
   if ('docView' in out) out.docView = out.docView === true; // "Documents in the side panel", off by default (files.js docPeek)
   if ('toolLearning' in out) out.toolLearning = out.toolLearning === true; // "Learn from tool errors", off by default (tool-learn.js)
-  if ('chatPresets' in out) out.chatPresets = out.chatPresets === true; // "Assistant presets for chats", off by default (presets.js)
+  if ('chatPresets' in out) out.chatPresets = out.chatPresets === true; // "Assistant presets", off by default (presets.js)
   if ('presetList' in out) out.presetList = cleanPresetList(out.presetList); // the saved presets (presets.js)
   for (const k of HARNESS_KEYS) if (k in out) out[k] = cleanHarness(k, out[k]); // items 62 to 72 (src/harness.js), all off unless switched on
   // 🗓 Everyday helpers (everyday.js), all off by default; text size 100% unless moved.
@@ -356,7 +356,7 @@ function clean(patch) {
   if ('moreTools' in out) out.moreTools = cleanMoreTools(out.moreTools); // 🧰 More tools, every switch off by default (more-tools.js)
   if ('parts3d' in out) out.parts3d = out.parts3d === true; // "3D parts", off by default (parts3d.js)
   if ('model3d' in out) out.model3d = out.model3d === true; // "Pictures to 3D models", off by default (model3d.js)
-  if ('tray' in out) out.tray = out.tray !== false; // 1.5.94 "Keep Bob in the tray"; on unless switched off since 1.5.134 (the owner asked for it)
+  if ('tray' in out) out.tray = out.tray !== false; // 1.5.94 "Minimise to tray"; on unless switched off since 1.5.134 (the owner asked for it)
   if ('lookIcon' in out) out.lookIcon = out.lookIcon !== false; // 1.5.94 "Use Bob's look as his icon"; on unless switched off since 1.5.134 (the owner asked for it)
   if ('houseStyle' in out) out.houseStyle = cleanHouseStyle(out.houseStyle); // 1.5.34 House style (public/house-style.js)
   if ('projectList' in out) out.projectList = cleanProjects(out.projectList); // 1.5.34 Projects in Settings

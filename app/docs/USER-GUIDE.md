@@ -66,7 +66,7 @@ Settings, Get models and Style open in place of the chat; **← Back to chat** (
 
 - **Windows 10 or 11** (64-bit). Bob also runs on a **Mac** with Apple Silicon, **64-bit Linux**, a **Raspberry Pi**, and as an **Android** app. The [README](../../README.md#getting-bob) has the steps for each.
 - **Linux:** an AppImage, a `.deb` and a Flatpak.
-- **iPhone:** nothing to download. Your computer's Bob serves the phone screen at `/phone/`; add it to the Home Screen in Safari over Tailscale, with **Let my other replicant matrices in** on.
+- **iPhone:** nothing to download. Your computer's Bob serves the phone screen at `/phone/`; add it to the Home Screen in Safari over Tailscale, with **Bob-Net access** on.
 - **32 GB of RAM** is what the starter sets plan for. Less can work for chat; pictures and video need the room.
 - **Disk space** depends on your card. Get me ready shows the total first; on a 16 GB card the full set is about 105 GB, mostly pictures and clips.
 - **A graphics card is optional.** Bob can chat, research, read pictures and talk without one. An NVIDIA card makes him much faster and lets him paint and film.
@@ -209,9 +209,9 @@ Pick the **Coding** session (or let Bob pick it), then ask: "fix the failing tes
 - **Settings, Jobs** (all off): **Run tests after code edits** (before he says done; the command still asks first), **Clickable file:line links** (opens VS Code, Cursor or VSCodium at the line), **Steer mid-job**, **Job receipt**, and more.
 - **Code sandbox** (off): for sums, dates and counting, he runs a few lines of JavaScript in a locked, empty folder.
 
-**Let other apps use Bob's brains** (Settings, Other apps; off): coding and chat apps (VS Code with Continue, OpenCode, your own scripts) use Bob's brains through `http://localhost:7777/v1`, with the key Bob makes (**Key for other apps**). Use the brain `bob`, or a name from `/v1/models`. From the command line: `bob ask "question"`, `bob status`, `bob models`. **Let apps on my other devices in too** (off) lets your Tailscale devices in. Web pages are always refused, and nothing is logged.
+**Brains for other apps** (Settings, Other apps; off): coding and chat apps (VS Code with Continue, OpenCode, your own scripts) use Bob's brains through `http://localhost:7777/v1`, with the key Bob makes (**Key for other apps**). Use the brain `bob`, or a name from `/v1/models`. From the command line: `bob ask "question"`, `bob status`, `bob models`. **Allow other devices** (off) lets your Tailscale devices in. Web pages are always refused, and nothing is logged.
 
-**Let Claude use Bob's hands** (off): Claude Desktop or Claude Code can use Bob's Hands, each step asking as usual.
+**Hands for Claude** (off): Claude Desktop or Claude Code can use Bob's Hands, each step asking as usual.
 
 ---
 
@@ -289,7 +289,7 @@ Ask: "sort my music folder" or "put my downloads where they belong". Switch on *
 - Bob shows exactly what he's about to do on a card and waits. "**Allow the rest of this job**" is your choice, and it ends with the job.
 - **✋ Hands** on the chat page stops everything at once. It never switches a Hand on.
 - **Hard limits** (all on, each with its own switch): Recycle Bin only, keep secret files private, read-only projects stay read-only, block dangerous commands, don't send anything out, never type into password fields.
-- **Let Bob work without asking** (off) skips the cards. The hard limits still hold, and a banner shows the whole time.
+- **Work without asking** (off) skips the cards. The hard limits still hold, and a banner shows the whole time.
 - Never allowed: anything that needs administrator rights, or Bob changing his own code or settings.
 - File changes keep an **undo** list; anything removed goes to the Recycle Bin. Everything is in the logbook.
 - **Run the self-test** (Settings, Hands, Checks) checks in a throwaway folder that the Recycle Bin, Undo and Stop work on your computer.
@@ -346,7 +346,7 @@ Settings, **🔔 Check-ins**. On a schedule you pick, Bob does a quick round and
 
 ### Everyday helpers (each off)
 
-Settings, **🗓 Everyday helpers**: a today card when Bob opens (weather only with **Place for the weather** filled in), a **⏱ Focus** timer that holds check-ins and reminders, a spending sheet from receipt photos, what's new after an update, a dot on the tray icon, and **Profiles for other people** (needs the passcode lock).
+Settings, **🗓 Everyday helpers**: a today card when Bob opens (weather only with **Place for the weather** filled in), a **⏱ Focus** timer that holds check-ins and reminders, a spending sheet from receipt photos, what's new after an update, a dot on the tray icon, and **Users** (needs the passcode lock).
 
 Also: **🌙 Quiet hours**, a shortcut to ask Bob from anywhere (Ctrl+Shift+Space), and **🩺 Health and history** (catch crashes, a safe start, **Put it back** for the last 20 Settings changes, a weekly count, and a Health page).
 
@@ -373,7 +373,7 @@ Small games Bob plays with you. The app runs the game and Bob only talks, so the
 - **Board and puzzle games:** Chess (five strengths), Four in a row, Hidden fleet, Liar's dice, Noughts and crosses, Code breaker, Sudoku.
 - **Trivia night:** ten questions; Bob answers too, and your other Bobs if you tick **Ask the Bobs on my Bob-Net to play**.
 - Most have **Easy**, **Normal** and **Hard**. Five letters and Word ladder have **📅 Today's puzzle**, the same for everyone that day. **Two players, one screen** for several.
-- Settings, 🧩 Games: **Which brain plays games**, **How often Bob chips in**, **Keep an unfinished game**, and **Kid mode** (easier words, kind teasing only).
+- Settings, 🧩 Games: **Games brain**, **How often Bob chips in**, **Keep an unfinished game**, and **Kid mode** (easier words, kind teasing only).
 
 ### 🎲 Adventure
 
@@ -391,7 +391,7 @@ A tabletop role-playing game with Bob as game master and a party of you, your fr
 
 ## Your phone and your other Bobs
 
-- **Let my other replicant matrices in** (Settings, Bob-Net; off): Bob for Android, or your phone's browser, talks to Bob over Tailscale with a passcode. On Windows, **Let Tailscale through the firewall** adds one rule for Tailscale addresses only.
+- **Bob-Net access** (Settings, Bob-Net; off): Bob for Android, or your phone's browser, talks to Bob over Tailscale with a passcode. On Windows, **Let Tailscale through the firewall** adds one rule for Tailscale addresses only.
 - **Bob-Net** joins your Bobs on different computers. They can borrow each other's brains, check each other's work, share one big brain over Wi-Fi (**SCUT** and **SUDDAR**, both experimental; every SCUT packet is signed and scrambled), play together, and carry a chat on. **Show avatars** (off) shows them in Now running.
 - **Discord and Telegram** (Settings, Online services; off): talk to Bob from a chat app with your own bot token.
 - On Android: Share to Bob, a home-screen widget, low-data mode, reminders on your phone, and its own Saved prompts and backup.
@@ -408,7 +408,7 @@ A tabletop role-playing game with Bob as game master and a party of you, your fr
 
 ## Make your own brain: the Lab
 
-**🧪 Lab** in the menu opens the **Computer Science Lab**: a free workbench for the brains Bob runs on. Bob keeps answering while a Lab job runs, and the Lab waits during Gaming. Turn off **Show the Computer Science Lab** if you'd rather not see it.
+**🧪 Lab** in the menu opens the **Computer Science Lab**: a free workbench for the brains Bob runs on. Bob keeps answering while a Lab job runs, and the Lab waits during Gaming. Turn off **Show the Lab** if you'd rather not see it.
 
 **Keep it simple** shows the usual choices with Bob's defaults. **Professional** shows every control, with proper names (quantization, expert pruning, abliteration) and the plain words after them.
 
@@ -436,10 +436,10 @@ A **queue** runs jobs overnight, **Show the wobble** shows how much a score move
 ## Make Bob yours
 
 - **Personality** (Settings, 🎚 Personality): the eleven dials (Dry wit, Puns, Tangents, Outlook, Nerd references, Talkative, Manner, Copied-mind musings, Builder itch, Curiosity, Ambition), each 0 to 4. His greeting changes as you move them. Presets include *Replicant on a deadline*, *Butler mode* and *Pun-dit*. **Reset to Bob** puts it all back.
-- **Assistant presets for chats** (off): save presets with a name, your own instructions, a brain, a starting effort and which tools he may use, then pick one from **🎭 Preset** next to Effort. A preset never switches on a tool that is off.
+- **Assistant presets** (off): save presets with a name, your own instructions, a brain, a starting effort and which tools he may use, then pick one from **🎭 Preset** next to Effort. A preset never switches on a tool that is off.
 - **Style:** themes, avatars, animations and layout. **Look** picks how the whole page is drawn: **Lamplight** (a dark room lit by Bob's cube, with Find anything on Ctrl+K; new installs start here), **Classic** (where earlier installs stay until you pick) or **Terminal**. **Bob's look** puts the fNRI cube in a small porthole as his picture (to begin with), or the pixel Bob if you'd rather. **🧍 Make your own look** builds Bob's avatar from parts.
 - **Language** (Settings, Bob himself): English, Français or Español for Bob's screens. Bob answers in whatever language you write in.
-- **Text size** and **Easier-to-read font** (Look & feel): 80% to 160%, and a plainer font.
+- **Text size** and **Readable font** (Look & feel): 80% to 160%, and a plainer font.
 - **Custom sampling** (Engines; off): your own temperature and top P for Qwen brains.
 
 ---

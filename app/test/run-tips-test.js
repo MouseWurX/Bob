@@ -11,7 +11,7 @@ const js = read('public/tips.js'), css = read('public/style.css'), app = publicT
 check('tip() makes a real button with a name for screen readers', /^<button type="button" class="tip-i" aria-label="About Web search"/.test(tip('x', 'Web search')));
 check('an empty tip makes nothing', tip('') === '');
 check('warnings, errors, buttons and live values stay visible', ['<span class="tag warn">x</span>', '<p class="error">x</p>', '⚠ x', '<button>x</button>', 'Right now: x'].every(mustShow) && /<br><span class="muted">/.test(noteOrTip('⚠ careful')));
-check('a plain explanation moves behind ⓘ', /class="tip-i"/.test(noteOrTip('Off unless you turn it on.', 'Launch Bob on start-up')));
+check('a plain explanation moves behind ⓘ', /class="tip-i"/.test(noteOrTip('Off unless you turn it on.', 'Launch at start-up')));
 check('the bubble opens on hover, on keyboard focus and on tap or press-and-hold', /'pointerover'/.test(js) && /'focusin'/.test(js) && /:focus-visible/.test(js) && /closest\('\.tip-i'\)/.test(js) && /holdTimer = setTimeout/.test(js));
 check('Esc closes the bubble; it is a role=tooltip linked with aria-describedby', /e\.key === 'Escape'/.test(js) && /role', 'tooltip'/.test(js) && /aria-describedby/.test(js));
 check('old title text becomes a tip that works with the keyboard', /removeAttribute\('title'\)/.test(js) && /setAttribute\('data-tip'/.test(js));
@@ -21,7 +21,7 @@ check('ⓘ has at least 32 px to aim at and reads in High Contrast', /button\.ti
 check('Help explains the ⓘ buttons (around, glossary, FAQ)', /The little ⓘ buttons/.test(help) && /<dt>Tip \(ⓘ\)<\/dt>/.test(help) && /id: 'faq-tips'/.test(help));
 check('what goes online and changed defaults stay written out (web search, Chat while busy, reviewer beside)', ['webSearch', 'chatWhileBusy', 'mootBeside'].every((k) => new RegExp(`sswitch\\('${k}'[^\\n]*keep\\('`).test(publicText('cellar.js'))));
 check('Gaming lock on Effort stays written out', /hint\.textContent = locked \? GAMING_HINT/.test(read('public/effort.js')));
-check('privacy and safety notes stay written out (Borrow a brain, phone access, working without asking)', /<strong>Borrow a brain<\/strong>[^\n]*<br><span class="muted keep">Each time, the chat so far/.test(read('public/share-brains.js')) && /<strong>Let my other replicant matrices in<\/strong><br><span class="muted">/.test(read('public/phone-access.js')) && /<strong>Let Bob work without asking<\/strong>[^\n]*<br><span class="muted">No approval cards/.test(read('public/hands.js')));
+check('privacy and safety notes stay written out (Borrow a brain, phone access, working without asking)', /<strong>Borrow a brain<\/strong>[^\n]*<br><span class="muted keep">Each time, the chat so far/.test(read('public/share-brains.js')) && /<strong>Bob-Net access<\/strong><br><span class="muted">/.test(read('public/phone-access.js')) && /<strong>Work without asking<\/strong>[^\n]*<br><span class="muted">No approval cards/.test(read('public/hands.js')));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

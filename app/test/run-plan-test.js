@@ -142,7 +142,7 @@ const call = (s) => ({ function: { name: s.tool, arguments: JSON.stringify(s.arg
   check('with the setting off, nothing is ever held', await planGate(f4, [...big, ...big], c4) === null);
 }
 
-// ---------- With "Let Bob work without asking" on ----------
+// ---------- With "Work without asking" on ----------
 {
   put('f/one.txt');
   const { fake, ctx, cards } = makeBob({ free: true });

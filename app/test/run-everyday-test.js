@@ -50,7 +50,7 @@ const fresh = () => { const d = fs.mkdtempSync(path.join(tmp, 'inn-')); const da
   check('the zoom covers the chat, the message box, Settings and Help', /\.log > \*, #input, #cellar-body > \*, #help-body > \* \{ zoom: var\(--text-zoom\); \}/.test(css));
   check('code keeps its own font', /html\.readable-font code, html\.readable-font pre/.test(css));
   const cellar = publicText('cellar.js');
-  check('Look & feel has the slider and the switch', /data-textsize value=/.test(cellar) && /sswitch\('readableFont', settings\.readableFont === true, 'Easier-to-read font'/.test(cellar));
+  check('Look & feel has the slider and the switch', /data-textsize value=/.test(cellar) && /sswitch\('readableFont', settings\.readableFont === true, 'Readable font'/.test(cellar));
   check('both windows apply them', publicText('app.js').includes('applyReading(st)') && read('public/settings-window.js').includes('applyReading(reading)'));
   for (const f of ['public/phone/index.html', 'android/app/src/main/assets/www/index.html']) check(`the phone has them too (${f.split('/')[0]})`, read(f).includes('id="text-size"') && read(f).includes('id="readable-font"'));
   check('the phone script is the same in both places', read('public/phone/phone.js') === read('android/app/src/main/assets/www/phone.js') && /textSize: 100, readableFont: false/.test(read('public/phone/phone.js')));
@@ -209,7 +209,7 @@ const fresh = () => { const d = fs.mkdtempSync(path.join(tmp, 'inn-')); const da
   check('the FAQ answers the everyday questions', ['faq-text-size', 'faq-profiles', 'faq-receipts', 'faq-focus'].every((x) => HELP.find((e) => e.id === x)?.group === 'FAQ'));
   const g = HELP.find((e) => e.id === 'glossary').html;
   check('the glossary has the new words', ['Focus timer', 'Profile (person)', 'Spending sheet', 'Today card', 'Tray dot'].every((w) => g.includes(`<dt>${w}</dt>`)));
-  check('Help says where each one works', /Bob for Android has Text size and Easier-to-read font/.test(HELP.find((e) => e.id === 'everyday').html));
+  check('Help says where each one works', /Bob for Android has Text size and Readable font/.test(HELP.find((e) => e.id === 'everyday').html));
   check('the phone Help has text size', read('android/app/src/main/assets/www/help.js').includes("id: 'text-size'"));
 }
 

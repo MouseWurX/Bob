@@ -1,4 +1,4 @@
-// 🫥 Amnesia mode (Settings, How Bob works, 💬 Chat extras: "Offer Amnesia mode"; off unless turned on).
+// 🫥 Amnesia mode (Settings, How Bob works, 💬 Chat extras: "Amnesia mode"; off unless turned on).
 // While Amnesia mode is on Bob works as usual: he reads and writes his memory, takes the notes he needs, fills in
 // Topics. When you turn it off, he forgets everything from that stretch. How: turning it on copies what he keeps
 // (below) to inn\bob\amnesia\before; turning it off puts those copies back and deletes anything that wasn't there.

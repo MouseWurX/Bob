@@ -175,7 +175,7 @@ export class Brain {
     };
     this.netCards.start();
     this.lendDeps = { currentSession, quickBrain: (b) => { const sb = sessionBrains(b.cfg); const m = sb.small && runnable(b, sb.small) ? sb.small : (b.cfg.engine === 'llamacpp' ? null : sb.small); return m ? { model: m, cpu: false, ctx: Math.min(chatBrain(b.cfg).ctx || 32768, 32768) } : null; }, reviewBrain: (b) => reviewBrainOf(b),
-      // 1.5.185 Check harder jobs for my other Bobs: the Review brain (Review slot, else Deep thinking, else main), on the card.
+      // 1.5.185 Review for other Bobs: the Review brain (Review slot, else Deep thinking, else main), on the card.
       checkBrain: (b) => { const r = reviewBrain(b.cfg); return r && (runnable(b, r.model) || b.cfg.engine !== 'llamacpp') ? { model: r.model, cpu: false, ctx: 32768, think: 'high' } : null; } };
     this.tools = buildTools(cfg);
     this.refs = new RefShelf(cfg);
@@ -215,7 +215,7 @@ export class Brain {
     this.watch = new JobWatch(); // the job on the big brain, as the app sees it (meanwhile.js); never saved
     this.tools.edit_my_message = editOwnTool(this); // Edit his own messages (edit-own.js), only with its setting on
     this.tools.take_note = notesTool(this); // Quick notes (notes.js), only with its setting on
-    this.tools.spending_sheet = receiptTool(this); // 🧾 Receipts to spending sheet (receipts.js), only with its setting on
+    this.tools.spending_sheet = receiptTool(this); // 🧾 Receipt tracker (receipts.js), only with its setting on
     this.tools.find_in_documents = findDocsTool(cfg, { keeper: () => this.housekeeper }); // Read and search documents (my-docs.js), only with its setting on
     this.tools.run_in_sandbox = sandboxTool(this); // Code sandbox (sandbox-code.js), only with its setting on
     // 🧰 More tools (more-tools.js): each one only while its own switch is on (offTools hides the rest).

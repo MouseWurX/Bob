@@ -12,7 +12,7 @@ export const BIG_SESSIONS = ['coding'];
 export const BIG_GRACE_MS = 2 * 60_000;
 
 // One setting, two places: the chat page switch "Free memory when Bob is idle" (on = wake) and the Advanced row
-// "Free memory after Bob has been quiet for" (its Never = always). An old "-1" keep-alive also means always.
+// "Unload brains after" (its Never = always). An old "-1" keep-alive also means always.
 export function brainMode(cfg) { return cfg?.brainMode === 'always' || String(cfg?.ollamaKeepAlive) === '-1' ? 'always' : 'wake'; }
 
 // Ollama names may carry ":latest".

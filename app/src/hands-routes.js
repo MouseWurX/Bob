@@ -2,7 +2,7 @@
 // anywhere Bob's window is open (stopping is always allowed).
 //   GET  /api/hands            settings, the list of Hands, folders, recipes, recent file jobs and runs, what's running
 //   POST /api/hands/settings   { enabled?, free?, limits: { <limit>: bool }?, files: { on }?, run: { on }?, folders?, timeoutMin?, sortRules? }
-//                              free = "Let Bob work without asking"; limits = the hard limits (hands-settings.js LIMITS)
+//                              free = "Work without asking"; limits = the hard limits (hands-settings.js LIMITS)
 //   POST /api/hands/stop       { runId }  stop one running command
 //   POST /api/hands/stop-all   stop everything a Hand is doing, deny waiting Hand cards, all Hands off
 //   POST /api/hands/hold       { held } the chat-page kill switch: true stops (works from anywhere), false only on the PC
@@ -21,7 +21,7 @@
 //   POST /api/hands/packs      tool packs from other people (src/toolpacks.js): { add: path of a folder or .zip } (comes in
 //                              switched off) | { id, on } | { id, remove: true } | { id, tool, code: true }
 //   POST /api/hands/browser    { forget: true } clears what Bob's own browser window knows (its cookies, sign-ins, cache)
-//                              | { eyesCheck: bool } "Bob checks his work with his eyes" (src/eyes.js)
+//                              | { eyesCheck: bool } "Visual check" (src/eyes.js)
 //   POST /api/hands/quick      the two chat-page buttons (public/quick-switches.js): { free: bool } = Autonomy ("Let Bob
 //                              work without asking"); { screen: bool } = Screen use (the Apps and Browser Hands plus
 //                              eyes checks). Switching either OFF works from anywhere (like Stop); ON only on the PC.

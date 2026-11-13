@@ -84,7 +84,7 @@ export async function walkFiles(cfg, roots, want, visit, { signal, now = () => D
 }
 
 // The words of a file, within the size limits ('' when too big or unreadable). Documents go through the cache.
-// cfg: with an Obsidian vault picked (Search my notes apps too), its notes are read without links' brackets and tags' #.
+// cfg: with an Obsidian vault picked (Search notes apps), its notes are read without links' brackets and tags' #.
 export function readWords(file, st, read, cfg = null) {
   const isDocFile = DOC_EXT.includes(extOf(file));
   if (isDocFile ? st.size > Math.min(LIMITS.docBytes, MAX_DOC_BYTES) : st.size > LIMITS.textBytes) return '';

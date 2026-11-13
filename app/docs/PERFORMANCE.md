@@ -218,7 +218,7 @@ We also measured whether merging the chat and picture engines into one process w
 
 Bob ships his own engine, **llama.cpp**, so he needs nothing else installed. (Ollama still works if you already use it.)
 
-- **Fit to free graphics memory** (`--fit`, on): llama.cpp places the model's layers around whatever else is using the card right now, instead of a fixed split. We found that forcing every layer onto the card (`-ngl 999`) quietly switched this off, so Bob no longer sets it.
+- **Fit to free VRAM** (`--fit`, on): llama.cpp places the model's layers around whatever else is using the card right now, instead of a fixed split. We found that forcing every layer onto the card (`-ngl 999`) quietly switched this off, so Bob no longer sets it.
 - **32K context by default.** At 131K, the 26B brain no longer fit on a 16 GB card. The overflow went to shared system memory, and speed fell to **5 tok/s**. At 32K it uses 13.8 GB on the card, runs at **71 to 75 tok/s** and is ready in about 23 s. For normal chats, 32K was also about 15% faster than 128K. Office keeps 64K, and Coding keeps the engine's full default. Each session can be changed in Settings, Brains.
 - **One chat gets the whole context** (`-np 1`), instead of splitting it across parallel slots Bob never uses.
 - **Threads and batch sizes**: 8 threads, batch and micro-batch 2048. Gemma 4 26B runs at about 74 tok/s, on a par with Ollama's 77. Prompt reading on the old 30B coding brain (Qwen3 Coder) went from about 1,500 to about 2,800 tok/s.

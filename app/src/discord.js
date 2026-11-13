@@ -567,7 +567,7 @@ export class DiscordBridge {
       case 'error': this.dm(`That didn't work: ${String(ev.text || ev.error || 'something went wrong').slice(0, 500)}`); break;
       case 'image': case 'video': case 'audio':
         if (s.dmPictures && ev.file) this.dmPhoto(ev.file);
-        else this.turns.set(id, `${this.turns.get(id) || ''}\n(I made it. It's in Made by Bob${s.dmPictures ? '' : '. Turn on "Send what Bob makes to my DMs" to get it here'}.)`);
+        else this.turns.set(id, `${this.turns.get(id) || ''}\n(I made it. It's in Made by Bob${s.dmPictures ? '' : '. Turn on "Send creations to DMs" to get it here'}.)`);
         break;
       case 'approval': {
         const text = String(ev.text || 'I need your OK.').slice(0, 1500);

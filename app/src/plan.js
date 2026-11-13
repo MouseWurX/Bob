@@ -26,7 +26,7 @@ export function planPrompt(cfg) {
 // Shows the card and waits. steps: [{ say, tool?, args? }]. Returns the text Bob is told.
 export async function showPlan(brain, { goal = '', time = '', steps = [] }, ctx, { fromSystem = false } = {}) {
   const lines = [], items = [];
-  const asking = brain.together?.(ctx) !== false; // "Let Bob work without asking" on: no OKs, just the plan
+  const asking = brain.together?.(ctx) !== false; // "Work without asking" on: no OKs, just the plan
   for (const [i, s] of steps.slice(0, MAX_STEPS).entries()) {
     const n = i + 1;
     const name = String(s.tool || '');

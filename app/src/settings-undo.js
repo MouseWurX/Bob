@@ -14,9 +14,9 @@ const BOOKKEEPING = new Set(['catalogAddedGot', 'saveDirsUsed', 'wantsAsked', 's
 
 const LABELS = {
   ...HARNESS_LABELS,
-  webSearch: 'Web search', oneBrain: 'One brain', autostart: 'Launch Bob on start-up', tray: 'Keep Bob in the tray', session: 'Session',
+  webSearch: 'Web search', oneBrain: 'One brain', autostart: 'Launch at start-up', tray: 'Minimise to tray', session: 'Session',
   models: 'Which brain does what', llamacpp: 'Engine settings', tts: 'Voice', style: 'Theme and look', housekeeping: 'Housekeeping', hands: 'Hands',
-  checkins: 'Check-ins', language: 'Language', promptMenu: 'Saved prompts with /', chatPresets: 'Assistant presets for chats', quickNotes: 'Quick notes',
+  checkins: 'Check-ins', language: 'Language', promptMenu: 'Saved prompts with /', chatPresets: 'Assistant presets', quickNotes: 'Quick notes',
   docTools: 'Read and search documents', memoryRecall: 'Relevant memories only', howtos: 'Learn how-tos', chatRedo: 'Show Try again and Edit in the chat', thinkBubble: 'Thinking bubble', statusJokes: 'Funny status line',
   lockSecrets: 'Lock my keys and passwords', personality: 'Personality', look: 'Bob\'s look', catName: 'Bob\'s cat', brainCtx: 'How much each brain keeps in mind'
 };

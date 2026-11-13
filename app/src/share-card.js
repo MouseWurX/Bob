@@ -1,9 +1,9 @@
 // Bob-Net: spread one brain over several of your Bobs' graphics cards (llama.cpp's RPC server). Both halves are off
 // unless you turn them on. The asking always goes through the door over Tailscale, like the rest of Bob-Net; the
-// brain's numbers then go over the home network when both Bobs are on it ("Use the home network first", the owner's
+// brain's numbers then go over the home network when both Bobs are on it ("Home network first", the owner's
 // pick: quicker, with Tailscale as the backup), else over Tailscale.
 //
-// "Lend my graphics card" (this Bob lends): another Bob of yours may ask, through the door "Let my other replicant
+// "Lend my GPU" (this Bob lends): another Bob of yours may ask, through the door "Let my other replicant
 // matrices in" opens (passcode cookie, Tailscale only), for a share of this replicant matrix's card. Bob then starts
 // ggml-rpc-server on this machine only (127.0.0.1), and puts a gate in front of it on port 50052: on this machine's
 // home-network address when the asker is on the same home network, else on its own Tailscale address (never 0.0.0.0,
@@ -219,7 +219,7 @@ export class CardLender {
     if (!lendCardOn(this.cfg)) return 'off';
     if (this.gaming()) return 'gaming';
     const ip = plainIp(localAddr);
-    // Asked through the door: on its Tailscale address, or on its home-network address with "Also over the home network" on.
+    // Asked through the door: on its Tailscale address, or on its home-network address with "Home network access" on.
     const door = (isTailscaleIp(ip) && this.ips().includes(ip)) || (homeNetOn(this.cfg.remote) && this.home().some((m) => m.address === ip));
     if (!door) return 'not tailscale';
     if (!this.tool().found) return 'no tool';
@@ -298,10 +298,10 @@ export class CardLender {
     // 1.5.210 (Go Wi-Fi test): a Bob holding its own brain said yes with about 1 GB free, and the first buffer was
     // refused. Its own idle brain is let go first, so the lent card really has its room. Not when it's busy answering.
     // Nov 13 (the owner, after the PC borrowed the Go's card and the Go's own brain went): never without asking. A Bob
-    // holding its own brain says no, unless "Let a lend unload my brain" is on here (that switch is the asking).
+    // holding its own brain says no, unless "Lending may unload my brain" is on here (that switch is the asking).
     if (this.holdsOwn()) {
-      if (!lendFreesOwn(this.cfg)) { this.log('bob-net', `lent graphics card: said no to ${from || 'another Bob'}, my own brain is loaded (turn on "Let a lend unload my brain" to allow it)`); return { ok: false, why: 'own brain', error: 'own brain' }; }
-      try { if (await this.freeOwn()) this.log('bob-net', 'lent graphics card: let go of my own brain first, so the card has room for the lend ("Let a lend unload my brain" is on)'); } catch {}
+      if (!lendFreesOwn(this.cfg)) { this.log('bob-net', `lent graphics card: said no to ${from || 'another Bob'}, my own brain is loaded (turn on "Lending may unload my brain" to allow it)`); return { ok: false, why: 'own brain', error: 'own brain' }; }
+      try { if (await this.freeOwn()) this.log('bob-net', 'lent graphics card: let go of my own brain first, so the card has room for the lend ("Lending may unload my brain" is on)'); } catch {}
     }
     // Nov 12 (apu-fit.js): built-in graphics report their whole budget as free even when the RAM behind it is short (the
     // Go refused a 1001 MiB first buffer while it held a brain). So the lend says how much the asking Bob's engine
@@ -433,7 +433,7 @@ export function cleanBrain(b) {
 
 // ---------- Borrowing ----------
 // Why a Bob didn't lend, in plain words (CardLender.refusal's reasons).
-export const LEND_NO = { 'own brain': 'its own brain is loaded, and it lends only when free ("Let a lend unload my brain" is off there)', off: 'lending is off there', gaming: 'it\'s in Gaming', 'no room': 'its memory is too full to lend right now', 'not tailscale': 'asked on an address it doesn\'t lend on', 'no tool': 'its card server is missing', failed: 'it couldn\'t start' };
+export const LEND_NO = { 'own brain': 'its own brain is loaded, and it lends only when free ("Lending may unload my brain" is off there)', off: 'lending is off there', gaming: 'it\'s in Gaming', 'no room': 'its memory is too full to lend right now', 'not tailscale': 'asked on an address it doesn\'t lend on', 'no tool': 'its card server is missing', failed: 'it couldn\'t start' };
 export class CardBorrower {
   // lenders: the Bob-Net list (src/share-brains.js Lenders: bobs(), call()).
   constructor(cfg, lenders, { now = Date.now, log = () => {}, name = () => os.hostname(), home = homeIps, linkKind = () => '', powers = () => null } = {}) {

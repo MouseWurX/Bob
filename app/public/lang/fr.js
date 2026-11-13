@@ -170,10 +170,10 @@ export const WORDS = {
   "Open my notes": "Ouvrir mes notes",
   "Read and search documents": "Lire les documents et y chercher",
   "Documents in the side panel": "Documents dans le panneau latéral",
-  "Launch Bob on start-up": "Lancer Bob au démarrage",
-  "Keep Bob in the tray": "Garder Bob dans la zone de notification",
+  "Launch at start-up": "Lancer au démarrage",
+  "Minimise to tray": "Réduire dans la zone de notification",
   "Web search": "Recherche web",
-  "Show the Computer Science Lab": "Afficher le Labo d'informatique",
+  "Show the Lab": "Afficher le Labo",
   "Show the naughty list": "Afficher la liste des vilains",
   "Saved.": "Enregistré."
 };

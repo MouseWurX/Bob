@@ -17,7 +17,7 @@ export function createEngineParts(now) {
     const pw = sp.expertsPerWord?.[speedModel || models[0]];
     return `<div><strong>Speed (Bob's own engine)</strong>${settings.engine === 'llamacpp' ? '' : ' <span class="tag">only used with Bob\'s own engine</span>'} ${tip('Changes apply the next time a brain loads. Leave a box empty for the engine\'s default.', 'Speed')}
       <div class="row">${n('threads', 'Threads', 'auto')}${n('batch', 'Batch', '2048')}${n('ubatch', 'Micro-batch', '512')}</div>
-      <label class="switch"><input type="checkbox" data-fit ${sp.fit !== false ? 'checked' : ''}><span><strong>Fit to free graphics memory</strong> <span class="tag good">recommended</span> ${tip('Fits each brain around whatever else is using the graphics card right now. Faster and steadier than a fixed split.', 'Fit to free graphics memory')}</span></label>
+      <label class="switch"><input type="checkbox" data-fit ${sp.fit !== false ? 'checked' : ''}><span><strong>Fit to free VRAM</strong> <span class="tag good">recommended</span> ${tip('Fits each brain around whatever else is using the graphics card right now. Faster and steadier than a fixed split.', 'Fit to free VRAM')}</span></label>
       <label class="switch"><input type="checkbox" data-draft="enabled" ${d.enabled && d.model ? 'checked' : ''}><span><strong>Speculative decoding</strong> <span class="tag warn">experimental</span> ${tip('Speculative decoding: a small draft brain guesses ahead and the big one checks. Often 1.5 to 2 times faster, same answers. The draft must be from the same family (a small Qwen for a big Qwen). Not every pair helps, so check the speed. The exact command is in inn\\bob\\llama-server-args.txt.', 'Speculative decoding')}</span></label>
       <div class="row"><label class="pick"><span>Draft brain</span><select data-draft="model"><option value="">Pick one</option>${llms.map((o) => `<option value="${esc(o.value)}" ${o.value === d.model ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}${d.model && !llms.some((o) => o.value === d.model) ? `<option selected value="${esc(d.model)}">${esc(d.model)}</option>` : ''}</select></label>
         <label class="pick"><span>Guess up to (words ahead)</span><input type="text" inputmode="numeric" data-draft="max" value="${esc(d.max ?? 16)}" style="width:5em" aria-label="Guess up to this many words ahead"></label>
@@ -45,8 +45,8 @@ export function createEngineParts(now) {
     const ka = settings.ollamaKeepAlive || '5m';
     const kaOpts = [['1m', '1 minute'], ['2m', '2 minutes'], ['150s', '2½ minutes'], ['5m', '5 minutes'], ['10m', '10 minutes'], ['15m', '15 minutes'], ['30m', '30 minutes'], ['1h', '1 hour']];
     const held = settings.brainMode === 'always';
-    return `<label class="pick${held ? ' dim' : ''}"><strong>Free memory after Bob has been quiet for</strong>
-        <select data-set="keepAlive" aria-label="Free memory after Bob has been quiet for">${kaOpts.some(([v]) => v === ka) ? '' : `<option value="${esc(ka)}" selected>${esc(ka)}</option>`}${kaOpts.map(([v, label]) => `<option value="${v}" ${v === ka ? 'selected' : ''}>${label}</option>`).join('')}</select>
+    return `<label class="pick${held ? ' dim' : ''}"><strong>Unload brains after</strong>
+        <select data-set="keepAlive" aria-label="Unload brains after">${kaOpts.some(([v]) => v === ka) ? '' : `<option value="${esc(ka)}" selected>${esc(ka)}</option>`}${kaOpts.map(([v, label]) => `<option value="${v}" ${v === ka ? 'selected' : ''}>${label}</option>`).join('')}</select>
         <span class="muted">${held ? 'Not used right now: "Free memory when Bob is idle" on the chat page is off, so his small brain stays loaded.' : 'Used while "Free memory when Bob is idle" on the chat page is on.'} Big brains (Coding, and Medium effort and up) are freed after 2 minutes, or sooner if you pick less.</span></label>
       ${sswitch('quickOnCpu', settings.quickOnCpu === true, 'Quick answers on CPU', 'Low-effort replies run on the CPU, so games and pictures keep the GPU. Replies start slower (about 30 s). Normal session only; Gaming always does this.')}
       ${sswitch('pictureNoWait', settings.pictureNoWait !== false, 'Show pictures right away', 'Shows a finished picture or clip without reloading the brain to comment on it.')}
@@ -179,8 +179,8 @@ export function createEngineParts(now) {
         <div class="row">${QWEN_FIELDS.map(([k, label, lo, hi, step]) => `<label class="pick"><span>${label}</span><input type="number" inputmode="decimal" data-qfield="${k}" min="${lo}" max="${hi}" step="${step}" value="${esc(String(mine[k] ?? ''))}" aria-label="${esc(d.label)}: ${label}"></label>`).join('')}</div>
         <button type="button" data-qreset="${esc(id)}">Back to Qwen's</button></fieldset>`;
     }).join('');
-    return `<div class="qwen-presets" data-qbox><strong>How Qwen brains pick their words</strong> <span class="tag">Qwen's settings unless you change them</span>
-        ${tip('On the built-in engine, Qwen3.6 brains and Bob\'s brains made from them use Qwen\'s recommended sampling: one set for thinking, a cooler one for code, one for quick replies. Turn this on only to try your own numbers.', 'How Qwen brains pick their words')}
+    return `<div class="qwen-presets" data-qbox><strong>Qwen sampling</strong> <span class="tag">Qwen's settings unless you change them</span>
+        ${tip('On the built-in engine, Qwen3.6 brains and Bob\'s brains made from them use Qwen\'s recommended sampling: one set for thinking, a cooler one for code, one for quick replies. Turn this on only to try your own numbers.', 'Qwen sampling')}
         ${sswitch('qwenPresetsOn', on, 'Custom sampling', 'Off: Qwen\'s defaults. On: the numbers below, from the next reply.')}
         ${rows}</div>`;
   }

@@ -31,7 +31,7 @@ export async function mountCheckins(box) {
   let v, msg = '', busy = false;
   const draw = () => {
     const on = v.enabled, dim = ''; // everything can be set up before switching on
-    box.innerHTML = `<label class="switch"><input type="checkbox" data-ci-on ${on ? 'checked' : ''}><span><strong>Check in on a schedule</strong> <span class="tag">off unless you turn it on</span><br><span class="muted">Bob looks over his downloads, tasks and schedules when you choose, and only tells you (a card in the chat) when something needs you. Looking never changes anything. Only while Bob is open.</span></span></label>
+    box.innerHTML = `<label class="switch"><input type="checkbox" data-ci-on ${on ? 'checked' : ''}><span><strong>Scheduled check-ins</strong> <span class="tag">off unless you turn it on</span><br><span class="muted">Bob looks over his downloads, tasks and schedules when you choose, and only tells you (a card in the chat) when something needs you. Looking never changes anything. Only while Bob is open.</span></span></label>
       <div class="row"><strong>How often</strong>
         <select data-ci-how aria-label="How often" ${dim}><option value="daily" ${v.how === 'daily' ? 'selected' : ''}>Every day</option><option value="weekdays" ${v.how === 'weekdays' ? 'selected' : ''}>Every weekday</option><option value="hours" ${v.how === 'hours' ? 'selected' : ''}>Every few hours</option></select>
         ${v.how === 'hours'

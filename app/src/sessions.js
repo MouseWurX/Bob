@@ -105,7 +105,7 @@ export const GAMING_TAG = 'Waiting · Gaming is on';
 export const GAMING_HINT = 'Switch the session to Normal to run it.';
 // A job that needs the card waits while Gaming is on: pictures, video, music, and Medium effort and up. Never dropped.
 // 1.5.211: a job from a group (Discord) never runs on a Bob you're gaming on, however small: another of your Bobs takes
-// it (Send jobs to my other Bobs), or it waits.
+// it (Send jobs), or it waits.
 export function waitsForGaming(cfg, job) {
   if (!gaming(cfg) || !job) return false;
   if (job.guest?.public) return true;

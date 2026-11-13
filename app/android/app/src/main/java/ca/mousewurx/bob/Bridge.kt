@@ -121,7 +121,7 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                         if (r.status == 200) photo = null
                         answer(id, JSONObject().put("status", r.status).put("body", r.body))
                     }
-                    // ---- Pair with my other Bobs ----
+                    // ---- Pair Bobs ----
                     "pair.with" -> answer(id, app.pair.pairWith(o.getString("address")))
                     "pair.answer" -> answer(id, app.pair.answer(o.getString("id"), o.getBoolean("yes")))
                     "pair.waiting" -> answer(id, JSONArray(app.pair.waiting() + app.pair.takeMissed()))

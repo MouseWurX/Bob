@@ -460,7 +460,7 @@ export function createLab({ api, note, go, page = false }) {
 
   function draw() {
     if (!view) { body.innerHTML = `<p class="muted">${esc(msg || 'Loading...')}</p>`; return; }
-    if (!view.on) { body.innerHTML = '<p>The Lab is off. Turn on <strong>Show the Computer Science Lab</strong> in Settings, How Bob works, Brains.</p>'; return; }
+    if (!view.on) { body.innerHTML = '<p>The Lab is off. Turn on <strong>Show the Lab</strong> in Settings, How Bob works, Brains.</p>'; return; }
     // 1.5.168 Keep it simple / Professional: one switch for the whole Lab. Simple shows what most people need; Professional
     // shows every control a tab has. Saved in settings, so it's the same next time and on every tab.
     const pro = view.mode === 'pro';

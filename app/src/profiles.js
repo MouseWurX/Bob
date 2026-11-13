@@ -1,4 +1,4 @@
-// 👥 Profiles on a shared replicant matrix (Settings, 🗓 Everyday helpers: "Profiles for other people"; off unless
+// 👥 Profiles on a shared replicant matrix (Settings, 🗓 Everyday helpers: "Users"; off unless
 // you turn it on, and it needs 🔒 "Ask for a passcode to open Bob").
 //
 // Each person you add gets their own chats and their own memory, in their own folder (inn\profiles\<id>), always

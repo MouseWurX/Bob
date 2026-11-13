@@ -1,4 +1,4 @@
-// 🧾 Snap a receipt (Settings, 🗓 Everyday helpers: "Receipts to spending sheet"; off unless you turn it on).
+// 🧾 Snap a receipt (Settings, 🗓 Everyday helpers: "Receipt tracker"; off unless you turn it on).
 // Attach a photo of a receipt and say so ("add this receipt"): Bob reads it with his eyes and adds one line to a
 // spending sheet: the date, the shop, the total, the currency, a category and a short note. Nothing goes online.
 //
@@ -105,7 +105,7 @@ export function receiptTool(brain) {
       date: str('YYYY-MM-DD'), shop: str(''), total: str('number'), currency: str('like CAD'), category: str('like groceries, fuel, bills'), note: str('main items')
     }, ['action']),
     async run(a) {
-      if (!receiptsOn(cfg)) return 'The spending sheet is off. It\'s in Settings, 🗓 Everyday helpers: "Receipts to spending sheet".';
+      if (!receiptsOn(cfg)) return 'The spending sheet is off. It\'s in Settings, 🗓 Everyday helpers: "Receipt tracker".';
       if (a.action === 'add') {
         const r = addRow(cfg, a);
         if (r.error) return r.error;

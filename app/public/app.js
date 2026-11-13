@@ -42,7 +42,7 @@ import { createGameLock } from './game-lock.js';
 import { quarantineCard, quarantineResult, createQuarantineBanner } from './quarantine.js';
 import { createLendPowersBadge } from './lend-powers.js'; // Nov 13: what a brain this card helps run has on
 import { createEffort } from './effort.js';
-import { createPresetPicker } from './presets.js'; // Assistant presets for chats
+import { createPresetPicker } from './presets.js'; // Assistant presets
 import { createCatAntics } from './cat-antics.js';
 import { createBubbles } from './say-bubbles.js';
 import { createBobLife } from './bob-life.js';
@@ -60,7 +60,7 @@ import './math-core.js'; // Render maths: KaTeX, loaded only while the switch is
 import { installShortcuts, listHtml as shortcutListHtml } from './shortcuts.js';
 import { createJobHelps } from './job-helps.js'; // Settings, Jobs: Stop after this step, time bar, receipts, file:line links
 import { saveToLab } from './lab-save-q.js'; // Lab item 102: Save to Lab under your messages, off unless switched on
-import { createNetOverlay } from './net-overlay.js'; // Nov 13 Bob-Net icons under Bob, off unless turned on
+import { createNetOverlay } from './net-overlay.js'; // Nov 13 Bob-Net icons, off unless turned on
 import { createFadeChat } from './fade-chat.js'; // Fade old messages, Clear chat and 🫥 Amnesia mode
 import { createHarnessChat, quietNow } from './harness-chat.js'; // items 62 to 72: crash card, quiet hours, Pin, Try from here, Guest chat
 import { applyReading, startEveryday } from './everyday.js'; // 🗓 Everyday helpers: text size, font, today card, tour, ⏱ Focus, tray dot
@@ -493,7 +493,7 @@ const topicsPage = createTopics({ api, openChat: (id, msgId) => openChat(id, msg
 const tidyPage = createTidy({ api, onCount: (n) => countBadge($('tidyBtn'), n) });
 $('topicsBtn').onclick = () => topicsPage.open();
 $('tidyBtn').onclick = () => tidyPage.open();
-// 1.5.141: 🧪 Lab in the left pane while Show the Computer Science Lab is on (1.5.172: on unless switched off).
+// 1.5.141: 🧪 Lab in the left pane while Show the Lab is on (1.5.172: on unless switched off).
 // The Lab's "take me there" buttons: Get models, Settings (Engines), the chat.
 const labGo = (where) => {
   labPage.close();
@@ -666,7 +666,7 @@ const harnessChat = createHarnessChat({
   openSettings: (jump) => cellar.open('settings', null, jump ? { jump } : {}),
   start: (id, line) => { if (busy) return false; if ($('cellar').open) $('cellar').close(); sessionId = id; store.set('bob-session', sessionId); harnessChat.moved(sessionId); log.innerHTML = ''; stick = true; presetPicker.load({ apply: false }); note(line); input.focus(); return true; }
 });
-// Nov 13 Bob-Net icons under Bob (public/net-overlay.js), off unless turned on: other Bobs and coding agents on Bob-Net.
+// Nov 13 Bob-Net icons (public/net-overlay.js), off unless turned on: other Bobs and coding agents on Bob-Net.
 // var, not const: openChat and onEvent may run before this line does.
 var netOverlay = createNetOverlay({ open: (id) => openChat(id), session: () => sessionId, showAgents: () => layout.showAgents(), note: (t) => note(t), still: stillNow });
 
@@ -826,7 +826,7 @@ function onEvent(ev) {
       return;
     }
     case 'pair-gone': document.querySelector(`[data-pair-card="${CSS.escape(String(ev.id || ''))}"]`)?.remove(); return;
-    case 'pair-done': window.dispatchEvent(new CustomEvent('bob-pair-done')); note(ev.by ? `${esc(ev.by)} introduced ${esc(ev.name)}: paired${ev.both ? ', both ways' : ', one way for now'}. ${esc(ev.name)} is under My other Bobs.` : ev.both ? `Paired with ${ev.name}. You're on each other's list under My other Bobs.` : ev.asker ? `Paired with ${ev.name}, one way: this Bob can use ${ev.name}, but not the other way round yet. Turn on "Let my other replicant matrices in" here, then pair again.` : `Paired with ${ev.name}, one way: ${ev.name} can use this Bob, but not the other way round yet. Turn on "Let my other replicant matrices in" on ${ev.name}, then pair again.`); return;
+    case 'pair-done': window.dispatchEvent(new CustomEvent('bob-pair-done')); note(ev.by ? `${esc(ev.by)} introduced ${esc(ev.name)}: paired${ev.both ? ', both ways' : ', one way for now'}. ${esc(ev.name)} is under My other Bobs.` : ev.both ? `Paired with ${ev.name}. You're on each other's list under My other Bobs.` : ev.asker ? `Paired with ${ev.name}, one way: this Bob can use ${ev.name}, but not the other way round yet. Turn on "Bob-Net access" here, then pair again.` : `Paired with ${ev.name}, one way: ${ev.name} can use this Bob, but not the other way round yet. Turn on "Bob-Net access" on ${ev.name}, then pair again.`); return;
     case 'offer-setup': { // 1.5.91: something a job needs isn't set up (or is switched off). Nothing changes until a button is pressed.
       const el = add('setup-offer', setupOfferHtml(ev));
       const [yes, no] = el.querySelectorAll('button');

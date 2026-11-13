@@ -20,7 +20,7 @@ check('RAM shows the size installed (31.1 GB reported reads 32 GB)', shownRamGB(
 const cellar = publicText('cellar.js');
 check('Settings panel has the same name on every platform, with the spec line beside it', /'💻 This replicant matrix and updates'/.test(cellar) && !/This Mac and updates/.test(cellar) && /const pcSum = `<span class="pc-ver">Bob \$\{esc\(settings\.version\?\.label[^\n]*\$\{esc\(hw\?\.spec/.test(cellar));
 check('Welcome says the name once, with the spec line', /I call this computer my replicant matrix\. You'll see that name around the app\./.test(cellar));
-check('the setting is Let my other replicant matrices in', /<strong>Let my other replicant matrices in<\/strong>/.test(read('public/phone-access.js')) && !/Let my other devices in/.test(read('public/phone-access.js')));
+check('the setting is Bob-Net access', /<strong>Bob-Net access<\/strong>/.test(read('public/phone-access.js')) && !/Let my other devices in/.test(read('public/phone-access.js')));
 
 const glossary = HELP.find((h) => h.id === 'glossary');
 check('glossary has Replicant matrix, and still finds pc and computer', /<dt>Replicant matrix<\/dt>/.test(glossary.html) && /\bpc\b/.test(glossary.words) && /computer/.test(glossary.words));

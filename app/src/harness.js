@@ -12,7 +12,7 @@
 //   pinMessages   "Pin messages"                          src/pins.js          (kept in mind however long the chat)
 //   guestChat     "Guest chats"                           src/guest-chat.js    (nothing saved, no memory)
 //   fadeChat      "Fade old messages"                     src/fade-chat.js     (old turns leave the chat; hide or delete)
-//   amnesiaOffer  "Offer Amnesia mode"                    src/amnesia.js       (turning it off forgets the stretch)
+//   amnesiaOffer  "Amnesia mode"                    src/amnesia.js       (turning it off forgets the stretch)
 //   amnesiaMade, amnesiaAutoOff: Amnesia mode's two choices (keep or delete what he made; turn off by itself)
 
 import { cleanFade, fadeWords, FADE_PICKS } from './fade-chat.js';
@@ -65,7 +65,7 @@ export const HARNESS_LABELS = {
   crashCatcher: 'Catch crashes', safeStart: 'Safe start after two crashes', settingsUndo: 'Settings undo (last 20)',
   weeklyReport: 'Weekly stats', quietHours: 'Quiet hours', globalAsk: 'Global shortcut',
   chatPlaces: 'Per-chat engine cache', tryFromHere: 'Try from here', pinMessages: 'Pin messages', guestChat: 'Guest chats',
-  fadeChat: 'Fade old messages', amnesiaOffer: 'Offer Amnesia mode', amnesiaMade: 'Things he made while Amnesia mode was on', amnesiaAutoOff: 'Turn Amnesia mode off by itself after'
+  fadeChat: 'Fade old messages', amnesiaOffer: 'Amnesia mode', amnesiaMade: 'Things he made while Amnesia mode was on', amnesiaAutoOff: 'Turn Amnesia mode off by itself after'
 };
 
 export function harnessNow(cfg = {}) {

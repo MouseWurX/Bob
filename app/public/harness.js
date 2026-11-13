@@ -23,7 +23,7 @@ export const LABELS = {
   pinMessages: ['Pin messages', '📌 Pin under a message keeps it in context for that chat, however long it gets. Up to 12 a chat.'],
   guestChat: ['Guest chats', '👤 Guest chat, beside New chat: nothing is saved, and memory is neither read nor written.'],
   fadeChat: ['Fade old messages', 'Your message, Bob\'s thinking and his reply leave the chat after the time you pick.'],
-  amnesiaOffer: ['Offer Amnesia mode', 'Adds 🫥 Amnesia beside Web search. When you turn it off, Bob forgets everything from that stretch: chats, thinking, notes, memory lines and Topics.'],
+  amnesiaOffer: ['Amnesia mode', 'Adds 🫥 Amnesia beside Web search. When you turn it off, Bob forgets everything from that stretch: chats, thinking, notes, memory lines and Topics.'],
   chatPlaces: ['Per-chat engine cache', 'Switching chats saves the engine\'s state for the old chat to disk, so going back is quick. Built-in engine only; not brains that see pictures. Up to 4 chats and 8 GB.']
 };
 
@@ -71,7 +71,7 @@ export function harnessHtml(part, v, crashes = []) {
     <div class="srow" role="radiogroup" aria-label="Things he made while it was on"><strong>Things he made while it was on</strong>
       ${radio('amnesiaMade', 'keep', v.amnesiaMade || 'keep', 'Keep them', 'Pictures, files and code he made stay where they are.')}
       ${radio('amnesiaMade', 'delete', v.amnesiaMade || 'keep', 'Delete them too', 'New files he made in that stretch go as well. A file he only changed always stays.')}</div>
-    <div class="srow"><label class="pick"><strong>Turn it off by itself after</strong> <select data-hx-amnesiaauto aria-label="Turn Amnesia mode off by itself after">${(v.amnesiaAuto || []).map((q) => `<option value="${q.minutes}" ${q.minutes === (v.amnesiaAutoOff || 0) ? 'selected' : ''}>${esc(q.label)}</option>`).join('')}</select></label></div>
+    <div class="srow"><label class="pick"><strong>Auto-off after</strong> <select data-hx-amnesiaauto aria-label="Turn Amnesia mode off by itself after">${(v.amnesiaAuto || []).map((q) => `<option value="${q.minutes}" ${q.minutes === (v.amnesiaAutoOff || 0) ? 'selected' : ''}>${esc(q.label)}</option>`).join('')}</select></label></div>
   </div>`;
   return `${fade}${amnesia}${sw('tryFromHere', v.tryFromHere)}${sw('pinMessages', v.pinMessages)}${sw('guestChat', v.guestChat)}${sw('chatPlaces', v.chatPlaces)}
     <p class="muted">Saved chat places: ${v.places?.count || 0}, ${gb(v.places?.bytes)}. <button type="button" class="link" data-hx-clear="places">Clear them</button></p>

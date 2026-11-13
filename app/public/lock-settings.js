@@ -40,7 +40,7 @@ export async function mountLockSettings(box, { onChange = () => {} } = {}) {
       ${asking ? `<div class="lock-ask" role="alertdialog" aria-label="Lock my chats and memory?"><p><strong>Lock your chats and memory now?</strong> ${esc(LOST_WARNING)} Write the passcode down somewhere safe first.</p><div class="row"><button type="button" class="get" data-lock-enc-yes>Yes, lock them</button><button type="button" data-lock-enc-no>Not now</button></div></div>` : ''}
       <div class="row"><button type="button" data-lock-now>🔒 Lock Bob now</button></div>
       ${msg ? `<p class="muted" role="status">${esc(msg)}</p>` : ''}
-      <details class="more"><summary>More</summary><p class="muted">Your phone and your other Bobs come in through Let my other replicant matrices in, with that door's own passcode. Bob for Android has its own passcode lock in its Settings. Turning Lock my chats and memory off puts every file back to plain text. Copies in the Recycle Bin stay locked.</p></details>`;
+      <details class="more"><summary>More</summary><p class="muted">Your phone and your other Bobs come in through Bob-Net access, with that door's own passcode. Bob for Android has its own passcode lock in its Settings. Turning Lock my chats and memory off puts every file back to plain text. Copies in the Recycle Bin stay locked.</p></details>`;
   };
   const load = async () => { v = await api('/api/lock'); draw(); };
   const change = async (patch, done = '') => {

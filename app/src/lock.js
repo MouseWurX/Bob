@@ -10,7 +10,7 @@
 // same key again (the chats needn't be redone). Forgetting it means the locked chats and memory are gone for good.
 //
 // Who gets in is held in Bob's memory only: a random token per window that typed the passcode, so a restart
-// always asks again. Phones and your other Bobs come in through "Let my other replicant matrices in" with that
+// always asks again. Phones and your other Bobs come in through "Bob-Net access" with that
 // door's own passcode; Bob for Android has its own lock on the phone (assets/www/lock.js).
 import crypto from 'node:crypto';
 import { readJsonFile, writeJsonAtomic } from './util.js';

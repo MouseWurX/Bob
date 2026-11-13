@@ -1,4 +1,4 @@
-// "Search my notes apps too" (doc-more.js, item 92): the notes folders picked in Settings, How Bob works. Kept apart
+// "Search notes apps" (doc-more.js, item 92): the notes folders picked in Settings, How Bob works. Kept apart
 // from doc-more.js so config.js can use it without importing Bob's tools.
 import fs from 'node:fs';
 import path from 'node:path';

@@ -336,7 +336,7 @@ Pictures and big jobs wait in Tasks while you play, and **Games first** has Bob 
 | **Linux** | Mark the AppImage as executable and double-click it; nothing is installed, and an older distro may need `libfuse2`. Or install the .deb (`sudo apt install ./Bob-<version>-linux-amd64.deb`) or the Flatpak (`flatpak install --user ./Bob-<version>-linux-x86_64.flatpak`; it's sandboxed, so a few Hands do less). **Update Bob** fetches the same kind. |
 | **Raspberry Pi and ARM** | A 64-bit Pi 4 or 5 runs the arm64 AppImage the same way, with small brains on the processor. No pictures on ARM yet. |
 | **Android** | Open the .apk on the phone. It talks to your Bob over Tailscale. |
-| **iPhone and iPad** | Nothing to download. Turn on **Let my other replicant matrices in** in Bob's Settings, open his address with `/phone/` on the end in Safari over Tailscale, then tap Share and **Add to Home Screen**. A brain on the phone and the microphone button need the Android app. |
+| **iPhone and iPad** | Nothing to download. Turn on **Bob-Net access** in Bob's Settings, open his address with `/phone/` on the end in Safari over Tailscale, then tap Share and **Add to Home Screen**. A brain on the phone and the microphone button need the Android app. |
 
 Windows is the main platform. An NVIDIA card helps but isn't required. The Mac and Pi builds are tested on GitHub's machines but not yet on real hardware, so [tell us how they go](https://github.com/MouseWurX/Bob/issues). A few Windows-only parts are hidden elsewhere. To build from source, see [Building Bob](app/docs/BUILDING.md).
 

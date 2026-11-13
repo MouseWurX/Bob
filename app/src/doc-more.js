@@ -8,7 +8,7 @@
 //  91 "Cite page and line" (docPlaces): find_in_documents says where in a file each find is: the page of a PDF,
 //     the slide of a presentation, the sheet of a spreadsheet, the paragraph of a Word file, the line of a text file.
 //     In the chat that place is a link that opens the file in the side panel at that spot.
-//  92 "Search my notes apps too" (notesFolders): an Obsidian vault, or OneNote notebooks exported to a folder, joins
+//  92 "Search notes apps" (notesFolders): an Obsidian vault, or OneNote notebooks exported to a folder, joins
 //     the folders find_in_documents (and the meaning index) search. Obsidian's [[links]], #tags and the settings block
 //     at the top of a note are tidied out of what Bob reads. OneNote keeps its notebooks in its own closed format
 //     (or online), so Bob reads them once they're exported (File, Export, as Word or PDF) into the folder picked.

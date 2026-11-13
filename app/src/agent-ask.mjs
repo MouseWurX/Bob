@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// One coding agent hands a task to another, through Bob (Coding agents, "Let agents hand work to each other").
+// One coding agent hands a task to another, through Bob (Coding agents, "Agent hand-offs").
 //   node agent-ask.mjs <agent name> "<the task>"
 // It waits for that agent to finish and prints what it said. Bob gives each agent he runs the three settings this
 // needs (BOB_AGENTS_URL, BOB_AGENT_TOKEN, BOB_AGENT_NAME); the token only works while that run is going.

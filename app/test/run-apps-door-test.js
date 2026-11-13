@@ -1,4 +1,4 @@
-// Let other apps use Bob's brains (src/apps-door.js) and the command line (src/bob-cli.js). Off unless switched on,
+// Brains for other apps (src/apps-door.js) and the command line (src/bob-cli.js). Off unless switched on,
 // key always, no web pages, OpenAI's shapes in and out. A fake brain stands in: nothing real is loaded or read.
 import http from 'node:http';
 import fs from 'node:fs';
@@ -210,9 +210,9 @@ const post = (base, p, b, h = auth) => fetch(base + p, { method: 'POST', headers
   const cellar = publicText('cellar.js');
   check('the panel sits in Settings, Other apps', cellar.includes('${appsDoorHtml()}') && cellar.includes("mountAppsDoor(dlg.querySelector('.apps-door-box'))"));
   const help = HELP.map((h) => `${h.title} ${h.html}`).join(' ');
-  check('Help explains it', HELP.some((h) => h.id === 'apps-door') && help.includes('Let other apps use Bob\'s brains') && help.includes('Let apps on my other devices in too') && help.includes('Key for other apps'));
+  check('Help explains it', HELP.some((h) => h.id === 'apps-door') && help.includes('Brains for other apps') && help.includes('Allow other devices') && help.includes('Key for other apps'));
   check('glossary and FAQ', /<dt>OpenAI-compatible/.test(help) && HELP.some((h) => h.id === 'faq-apps-door' && h.group === 'FAQ'));
-  check('the guide has it too', read('docs/USER-GUIDE.md').includes('Let other apps use Bob\'s brains'));
+  check('the guide has it too', read('docs/USER-GUIDE.md').includes('Brains for other apps'));
   const cmd = fs.readFileSync(path.join(here, '..', 'installer', 'bob.cmd'), 'utf8');
   check('Windows: bob.cmd runs the Node inside Bob.exe', /ELECTRON_RUN_AS_NODE=1/.test(cmd) && /src\\bob-cli\.js/.test(cmd));
   check('Mac and Linux: bob.sh', /node "\$here\/\.\.\/src\/bob-cli\.js"/.test(read('installer/bob.sh')));

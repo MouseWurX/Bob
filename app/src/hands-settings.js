@@ -2,7 +2,7 @@ import { cleanSortRules } from './sort-names.js'; // no imports of its own, so c
 // Hands settings (no other imports, so config.js can use it). Hands are the things Bob can do on the PC beyond chatting:
 // work with files, run commands, schedules, and open and use apps. Every Hand is OFF until the user turns it on,
 // and there is one master switch over all of them. Bob asks before every action unless the user switches on
-// "Let Bob work without asking" (free, off by default). The hard limits (LIMITS) are each on by default and each
+// "Work without asking" (free, off by default). The hard limits (LIMITS) are each on by default and each
 // can be switched off by the user alone. Bob's own settings, code and the ✋ kill switch are never a limit he can lift.
 //
 // platforms (optional): the computers a Hand works on ('win', 'mac', 'linux'). Elsewhere it is hidden and stays off.
@@ -30,7 +30,7 @@ export const HANDS = {
   },
   schedules: {
     label: 'Schedules',
-    what: 'Do a job by himself at set times (once, daily, weekly, or every so many minutes) while Bob is open. You approve each schedule, and every action inside a run still asks for your OK, so a run with nobody at this replicant matrix just waits and then does nothing (unless "Let Bob work without asking" is on: then runs go ahead by themselves). Waking Bob when he is closed is a separate switch.',
+    what: 'Do a job by himself at set times (once, daily, weekly, or every so many minutes) while Bob is open. You approve each schedule, and every action inside a run still asks for your OK, so a run with nobody at this replicant matrix just waits and then does nothing (unless "Work without asking" is on: then runs go ahead by themselves). Waking Bob when he is closed is a separate switch.',
     tools: ['schedule_job', 'list_schedules', 'change_schedule']
   },
   apps: {
@@ -100,7 +100,7 @@ const isAbs = (p) => typeof p === 'string' && p.length < 400 && !p.includes('\0'
 // The settings, cleaned. enabled = the master switch (Settings). held = the chat-page kill switch: it can only stop
 // Hands that Settings has on, never switch anything on. Each Hand has { on }. folders = where the Files hand may work.
 export function cleanHands(v = {}) {
-  // free = "Let Bob work without asking". Off unless the user turns it on.
+  // free = "Work without asking". Off unless the user turns it on.
   // today = item 12 (Nov 11): command cards also offer "Allow this here for today". Off unless the user turns it on.
   const out = { enabled: v.enabled === true, held: v.held === true, free: v.free === true, today: v.today === true };
   for (const id of Object.keys(HANDS)) out[id] = { on: v[id]?.on === true };
@@ -110,7 +110,7 @@ export function cleanHands(v = {}) {
   out.limits = {};
   for (const k of Object.keys(LIMITS)) out.limits[k] = v.limits?.[k] !== false;
   out.timeoutMin = [1, 5, 15, 30, 60, 120].includes(Number(v.timeoutMin)) ? Number(v.timeoutMin) : 15;
-  out.eyesCheck = v.eyesCheck !== false; // "Bob checks his work with his eyes" (src/eyes.js): on, used only when an eyes brain is equipped
+  out.eyesCheck = v.eyesCheck !== false; // "Visual check" (src/eyes.js): on, used only when an eyes brain is equipped
   return out;
 }
 export const handsSettings = (cfg) => cleanHands(cfg.hands || {});

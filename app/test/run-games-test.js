@@ -269,7 +269,7 @@ function setup({ replies = [], session = 'normal', talk = 'every', fail = false 
   check('the page has a Start per game, the controls of each game, Stop and the scoreboard', /data-start="\$\{id\}"/.test(page) && /data-ask/.test(page) && /data-answer/.test(page) && /data-key/.test(page) && /data-climb/.test(page) && /data-try/.test(page) && /data-line/.test(page) && /data-wrap/.test(page) && /🏁 Stop/.test(page) && /Scoreboard/.test(page));
   check('the page says nothing loads until Start', /Nothing loads until you press Start/.test(page));
   check('Stop asks on an in-page card (Stop the game / Keep playing), never a browser dialog; Best run has a tip; Games is 🧩, not the Gaming session\'s 🎮', /data-stopyes/.test(page) && /Keep playing/.test(page) && !/confirm\(/.test(page) && /Best run \$\{tip\(/.test(page) && /🧩 Games/.test(html) && !/🎮 Games/.test(html + cellar + page + read('public/help-content.js')));
-  check('Settings has the 🧩 Games panel with both rows', /\['games', '🧩 Games'/.test(cellar) && /mountGamesSettings/.test(cellar) && /Which brain plays games/.test(page) && /How often Bob chips in/.test(page));
+  check('Settings has the 🧩 Games panel with both rows', /\['games', '🧩 Games'/.test(cellar) && /mountGamesSettings/.test(cellar) && /Games brain/.test(page) && /How often Bob chips in/.test(page));
   check('styles and the route are in', /1\.5\.121 🧩 Games/.test(css) && /gamesRoute/.test(server));
   const ids = new Set(HELP.map((e) => e.id));
   check('Help: Games, Settings: Games, three FAQ', ['games', 'settings-games', 'faq-games-cheat', 'faq-games-gaming', 'faq-games-brain'].every((id) => ids.has(id)));
@@ -281,7 +281,7 @@ function setup({ replies = [], session = 'normal', talk = 'every', fail = false 
   const guide = read('docs/USER-GUIDE.md'), inv = read('docs/SETTINGS-INVENTORY.md'), rel = read('docs/releases/v1.5.121.md'), pkg = JSON.parse(read('package.json'));
     // 1.5.122: at least 1.5.121 b172 (the drop that brought Games), so later versions keep passing.
   const [maj, min, pat] = String(pkg.version).split('.').map(Number), build = Number(/"build": (\d+),/.exec(read('package.json'))?.[1]);
-  check('docs: user guide, settings inventory rows, release notes, version 1.5.121 build 172 or later', /🧩 Games/.test(guide) && /Which brain plays games/.test(inv) && /How often Bob chips in/.test(inv) && /Games/.test(rel) && (maj > 1 || (maj === 1 && (min > 5 || (min === 5 && pat >= 121)))) && build >= 172 && pkg.testSuites.includes('test/run-games-test.js')); }
+  check('docs: user guide, settings inventory rows, release notes, version 1.5.121 build 172 or later', /🧩 Games/.test(guide) && /Games brain/.test(inv) && /How often Bob chips in/.test(inv) && /Games/.test(rel) && (maj > 1 || (maj === 1 && (min > 5 || (min === 5 && pat >= 121)))) && build >= 172 && pkg.testSuites.includes('test/run-games-test.js')); }
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

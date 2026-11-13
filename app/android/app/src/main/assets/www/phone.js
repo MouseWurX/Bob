@@ -665,7 +665,7 @@
         if (r.status === 401) { live[base].signedIn = false; grow(`*("${b.name}" wants the passcode again. It's under Bob-Net.)*`); finish(); drawWho(); }
         else if (r.status >= 400) { grow(`*("${b.name}" said no: ${shortError(r.body)})*`); finish(); }
       })
-      .catch((e) => { if (e.said) { grow(`*("${b.name}" said no: ${e.message})*`); finish(); return; } grow(`*(Couldn't reach "${b.name}": ${e.message}. Check that Tailscale is on here and there. On that replicant matrix, Settings, Bob-Net: "Let my other replicant matrices in" should be on, and on Windows press "Let Tailscale through the firewall" if it shows.)*`); finish(); });
+      .catch((e) => { if (e.said) { grow(`*("${b.name}" said no: ${e.message})*`); finish(); return; } grow(`*(Couldn't reach "${b.name}": ${e.message}. Check that Tailscale is on here and there. On that replicant matrix, Settings, Bob-Net: "Bob-Net access" should be on, and on Windows press "Let Tailscale through the firewall" if it shows.)*`); finish(); });
     drawStatus();
   }
   const shortError = (body) => { try { return JSON.parse(body).error || 'unknown'; } catch { return String(body).slice(0, 120); } };
@@ -675,7 +675,7 @@
     if (ev.type === 'games') return onGamEvent(base, ev); // 🧩 a game on your other Bob
     if (!ev || typeof ev !== 'object') return;
     const mine = current && current.kind === 'net' && current.base === base && ev.sessionId === `phone-${current.chatId}`;
-    // Nov 13: with "Show my OK cards on my other Bobs" on there, every card of his comes here (marked everywhere), not only the phone's.
+    // Nov 13: with "OK cards on all Bobs" on there, every card of his comes here (marked everywhere), not only the phone's.
     if (ev.type === 'approval' && (String(ev.sessionId || '').startsWith('phone-') || ev.everywhere === true)) return approvalCard(base, ev);
     if (ev.type === 'checkin') return checkinCard(base, ev);
     if (ev.type === 'digest') return digestCard(base, ev); // Sunday digest from that Bob (src/digest.js)
@@ -988,7 +988,7 @@
             try {
               const r = await phone('net.login', { address: b.address, code: pass.value });
               pass.value = '';
-              msg.textContent = { ok: "You're in.", wrong: "That's not the passcode.", busy: 'Too many tries. Wait a minute.', 'not-let-in': `${b.name} isn't letting other replicant matrices in yet. On your other replicant matrix: Settings, Bob-Net, Let my other replicant matrices in.` }[r] || `Couldn't log in (${r}). Check that Tailscale is on on both devices, then try again.`;
+              msg.textContent = { ok: "You're in.", wrong: "That's not the passcode.", busy: 'Too many tries. Wait a minute.', 'not-let-in': `${b.name} isn't letting other replicant matrices in yet. On your other replicant matrix: Settings, Bob-Net, Bob-Net access.` }[r] || `Couldn't log in (${r}). Check that Tailscale is on on both devices, then try again.`;
               if (r === 'ok') refreshBob(b.base);
             } catch (e) { logError('bobs', e.message); msg.textContent = `Can't reach ${b.name}: is your other replicant matrix on and Tailscale connected? (${e.message})`; }
           } }) : el('button', { text: 'Check again', onclick: () => refreshBob(b.base) }),
@@ -1018,7 +1018,7 @@
     drawBobs(); drawWho();
   });
 
-  // ---------- Pair with my other Bobs (Bob-Net pairing v1) ----------
+  // ---------- Pair Bobs (Bob-Net pairing v1) ----------
   $('pair-bob').addEventListener('click', () => {
     const address = $('add-address').value.trim();
     if (!L.netAddress(address)) { $('add-msg').textContent = "That isn't a Tailscale address. It looks like my-computer.your-tailnet.ts.net or 100.x.y.z (Bob's Settings on your other replicant matrix shows it)."; return; }
@@ -1062,9 +1062,9 @@
       const name = String(ev.name || 'that Bob');
       if (ev.added) addPaired(name, ev.address);
       let t;
-      if (ev.by) t = ev.added ? `${ev.by} introduced ${name}: paired, both ways. ${name} is under My other Bobs.` : `${ev.by} introduced ${name}: paired one way. ${name} can ask this phone, but this phone can't ask ${name} until "Let my other replicant matrices in" is on there.`; // Pass my Bob-Net along: no card was shown
+      if (ev.by) t = ev.added ? `${ev.by} introduced ${name}: paired, both ways. ${name} is under My other Bobs.` : `${ev.by} introduced ${name}: paired one way. ${name} can ask this phone, but this phone can't ask ${name} until "Bob-Net access" is on there.`; // Pass my Bob-Net along: no card was shown
       else if (ev.asker) t = ev.both ? `Paired with ${name}, both ways.` : `Paired with ${name}. This phone can ask ${name} now. For ${name} to ask this phone too, turn on Lend my brain here, then pair again.`;
-      else t = ev.added ? `Paired with ${name}, both ways.` : `Paired with ${name} one way: ${name} can ask this phone, but this phone can't ask ${name} until "Let my other replicant matrices in" is on there. Then pair again.`;
+      else t = ev.added ? `Paired with ${name}, both ways.` : `Paired with ${name} one way: ${name} can ask this phone, but this phone can't ask ${name} until "Bob-Net access" is on there. Then pair again.`;
       note(t);
       if (!$('bobs').classList.contains('hidden')) $('add-msg').textContent = t;
       return;
@@ -2746,7 +2746,7 @@ ${chatOut}
   sendBrainConfig();
   phone('device').then((d) => { deviceModel = String(d.model || ''); $('about').textContent = d.about || `Bob ${d.version} for Android · ${d.maker} ${d.model}, Android ${d.android}`; }).catch(() => {});
   refreshAll();
-  // Pick up where Bob left off (opt-in): a phone-brain reply Android cut short is asked again.
+  // Resume replies (opt-in): a phone-brain reply Android cut short is asked again.
   const pending = store.get('pending', null);
   store.set('pending', null);
   if (pending && settings.resume) {

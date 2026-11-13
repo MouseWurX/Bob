@@ -81,7 +81,7 @@ export function autoSessionPrompt(cfg) {
 // Bob's own brain idles at about 0% (and his Gaming brain lives on the processor), so the card's load is the tell.
 export const CARD_OTHERS_PCT = 30;
 // How long Bob is quiet before he goes back to the lightest session, and how often he looks again while idle: 2 minutes,
-// or less if "Free memory after Bob has been quiet for" is shorter (the same grace big brains get).
+// or less if "Unload brains after" is shorter (the same grace big brains get).
 export const IDLE_CHECK_MS = (cfg) => bigGraceMs(cfg);
 export function cardBusy(card) {
   if (!card) return null;

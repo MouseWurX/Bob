@@ -119,10 +119,10 @@ export const toolRunParts = {
       if (tool.check || (afterOutside && KEEPS_FOR_LATER.has(name))) {
         let need = tool.check ? await tool.check(args, ctx) : null;
         if (afterOutside) { const was = need; need = outsideNeed(name, need, tool.summary ? tool.summary(args) : name); if (need && !was) this.log('approval', `asking first: ${name} right after reading outside text`); }
-        // "Let Claude use Bob's hands" (claude-door.js): the card names the app that asked.
+        // "Hands for Claude" (claude-door.js): the card names the app that asked.
         if (need && ctx.via) need = typeof need === 'string' ? `${ctx.via} (through Bob): ${need}` : { ...need, text: `${ctx.via} (through Bob): ${need.text}` };
         const group = typeof tool.approvalGroup === 'function' ? tool.approvalGroup(args) : tool.approvalGroup;
-        // "Let Bob work without asking" (Settings, Hands; off by default): no card, but the hard limits in check()
+        // "Work without asking" (Settings, Hands; off by default): no card, but the hard limits in check()
         // still apply, every action still goes in the logbook and the chat, and ✋ Hands turns it off at once.
         // Tools marked alwaysAsk (cloud helpers: they cost money) still show their card.
         if (need && !tool.alwaysAsk && !ctx.alwaysAsk && !afterOutside && freeOn(this.cfg)) { // a call from another app always shows its card

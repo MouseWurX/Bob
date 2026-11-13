@@ -102,7 +102,7 @@ export const hatParts = {
     const copy = copyName(this.cfg, hat, HATS[hat].label);
     // Settings sign-off (1.5.49): one moot line per review. If the review brain still has to load, the load line
     // ("🛰 Moot: ... checks the answer ...") says it all, so the chat skips the reviewer's own line.
-    // 1.5.185 (opt-in) Ask a bigger Bob to check my harder jobs: a moot's check goes to one of your other Bobs whose
+    // 1.5.185 (opt-in) Review by a bigger Bob: a moot's check goes to one of your other Bobs whose
     // Review brain is bigger than this one (src/bob-net-check.js). The file reading still runs here.
     const via = !lender && hat === 'reviewer' && force && wantsBorrowedCheck(this.cfg, ctx.job) ? await pickChecker(this.lenders, { effort: ctx.job.effort, mine: brainBillions(model) }).catch(() => null) : null;
     if (via) { ctx.emit({ type: 'announce', text: checkingOnLine(copy, via) }); this.log('moot', `check goes to ${via.name} (${via.check.params}B over ${brainBillions(model)}B here)`); }

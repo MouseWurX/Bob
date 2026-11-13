@@ -246,7 +246,7 @@ check('remixes and smaller brains don\'t', !['qwen3.6-35b-a3b-heretic', 'qwen3.6
   let asked = 0;
   lenders.chat = async () => { asked++; return { content: 'x' }; };
   await runManaged(brain, ctx, { cfg: { ...c, selfWork: { enabled: true } }, repo: BOB_REPO, job: 'third', brief: 'B', wrapUp: 'W\n\n## Wrapping up', runOn: true, force, write: () => {} });
-  check('with "Let my other Bobs help" off, no other Bob is asked', asked === 0 && !said.some((e) => /🛰/.test(e.text || '')) && !helpersOn({ selfWork: {} }));
+  check('with "Other Bobs help" off, no other Bob is asked', asked === 0 && !said.some((e) => /🛰/.test(e.text || '')) && !helpersOn({ selfWork: {} }));
   const picked = await pickHelpers({ bobs: () => [{ name: 'A', address: 'a' }], busyHere: () => false, hello: async () => ({ ok: true, brain: '28Bob-Riker' }), hold() {} });
   check('only Bobs running Bobert or Qwen 35B help', picked.length === 0 && (await pickHelpers(null)).length === 0);
   const sameRiker = await pickHelpers({ bobs: () => [{ name: 'A', address: 'a' }], busyHere: () => false, hello: async () => ({ ok: true, brain: '28Bob-Riker' }), hold() {} }, { same: '28Bob-Riker' });

@@ -76,7 +76,7 @@
     <input type="text" id="add-name" placeholder="Bob on my desktop" maxlength="40">
     <label class="field" for="add-address">Tailscale address</label>
     <input type="text" id="add-address" placeholder="my-computer.your-tailnet.ts.net or 100.x.y.z" autocapitalize="off" autocorrect="off" spellcheck="false">
-    <p class="help-line">On your other replicant matrix: Bob's Settings, <strong>Let my other replicant matrices in</strong>, shows this address and the passcode.</p>
+    <p class="help-line">On your other replicant matrix: Bob's Settings, <strong>Bob-Net access</strong>, shows this address and the passcode.</p>
     <div class="btns"><button class="main" id="pair-bob">Pair with this Bob</button><button id="add-bob">Add this Bob</button></div>
     <p class="help-line"><strong>Pair with this Bob</strong>: that Bob shows a card with a number, you check it matches the one here and say yes there, and nobody types a passcode. <strong>Add this Bob</strong> is the old way, with his passcode.</p>
     <p class="help-line" id="add-msg" role="status"></p>
@@ -89,7 +89,7 @@
 </div></section>
 
 <section class="panel hidden" id="brain"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Phone brain</h2></div><div class="body">
-  <label class="switch"><div class="words"><strong>Let Bob think on the phone</strong><p class="help-line">A small brain on this phone answers when no Bob on your network can. It needs a one-time download of about 3 GB.</p></div><span class="pill"><input type="checkbox" id="phone-on"><span></span></span></label>
+  <label class="switch"><div class="words"><strong>On-device brain</strong><p class="help-line">A small brain on this phone answers when no Bob on your network can. It needs a one-time download of about 3 GB.</p></div><span class="pill"><input type="checkbox" id="phone-on"><span></span></span></label>
   <div id="brain-models"></div>
   <h3>Memory</h3>
   <label class="switch"><div class="words"><strong>Free memory when Bob is idle</strong><p class="help-line">The phone brain lets go of its memory after a quiet spell, so your other apps stay quick. The next message takes a few seconds longer.</p></div><span class="pill"><input type="checkbox" id="free-idle"><span></span></span></label>
@@ -130,11 +130,11 @@
   <h3>Voice</h3>
   <label class="switch"><div class="words"><strong>Read replies aloud</strong><p class="help-line">Uses your phone's own voice.</p></div><span class="pill"><input type="checkbox" id="read-aloud"><span></span></span></label>
   <label class="switch"><div class="words"><strong>Talk over Bob</strong><p class="help-line">While Bob reads aloud, start speaking and he stops and listens. "Stop" on its own just stops him. Headphones work best.</p></div><span class="pill"><input type="checkbox" id="talk-over"><span></span></span></label>
-  <label class="switch"><div class="words"><strong>Listen for "Hey Bob" while Bob is open</strong><p class="help-line">Say "Hey Bob" and what you want, with no tap. Only while Bob's screen is showing; it uses more battery.</p></div><span class="pill"><input type="checkbox" id="wake-on"><span></span></span></label>
+  <label class="switch"><div class="words"><strong>"Hey Bob" wake word</strong><p class="help-line">Say "Hey Bob" and what you want, with no tap. Only while Bob's screen is showing; it uses more battery.</p></div><span class="pill"><input type="checkbox" id="wake-on"><span></span></span></label>
   <label class="switch"><div class="words"><strong>A voice per Bob</strong><p class="help-line">Replies from each of your Bobs are read in their own pitch and pace, so you can hear who's talking.</p></div><span class="pill"><input type="checkbox" id="net-voices"><span></span></span></label>
   <h3>Sharing and the widget</h3>
-  <label class="switch"><div class="words"><strong>Take shares from other apps</strong><p class="help-line">Puts Bob in other apps' Share menu. A link or words land in the message box, a picture is attached like 📎, and a small text file's words come in. Nothing is sent until you tap Send.</p></div><span class="pill"><input type="checkbox" id="share-on"><span></span></span></label>
-  <label class="switch"><div class="words"><strong>Show my next reminder on the widget</strong><p class="help-line">Bob's home-screen widget shows your next reminder from your other Bob (he needs Share status with my phone on). Updated while Bob is open.</p></div><span class="pill"><input type="checkbox" id="widget-reminder"><span></span></span></label>
+  <label class="switch"><div class="words"><strong>Accept shares</strong><p class="help-line">Puts Bob in other apps' Share menu. A link or words land in the message box, a picture is attached like 📎, and a small text file's words come in. Nothing is sent until you tap Send.</p></div><span class="pill"><input type="checkbox" id="share-on"><span></span></span></label>
+  <label class="switch"><div class="words"><strong>Reminder on widget</strong><p class="help-line">Bob's home-screen widget shows your next reminder from your other Bob (he needs Share status with my phone on). Updated while Bob is open.</p></div><span class="pill"><input type="checkbox" id="widget-reminder"><span></span></span></label>
   <h3>Data</h3>
   <label class="field" for="low-data">Low-data mode</label>
   <select id="low-data"><option value="off">Off (to start with)</option><option value="mobile">Only on mobile data</option><option value="always">Always</option></select>
@@ -142,7 +142,7 @@
   <h3>Look</h3>
   <label class="field" for="text-size">Text size: <b id="text-size-now">100%</b></label>
   <input type="range" id="text-size" min="80" max="160" step="10" value="100" aria-describedby="text-size-hint"><p class="help-line" id="text-size-hint">The chat, the message box and Settings, bigger or smaller. 100% to start with.</p>
-  <label class="switch"><div class="words"><strong>Easier-to-read font</strong><p class="help-line">Plainer letters with more room between letters, words and lines.</p></div><span class="pill"><input type="checkbox" id="readable-font"><span></span></span></label>
+  <label class="switch"><div class="words"><strong>Readable font</strong><p class="help-line">Plainer letters with more room between letters, words and lines.</p></div><span class="pill"><input type="checkbox" id="readable-font"><span></span></span></label>
   <label class="switch"><div class="words"><strong>Render maths</strong><p class="help-line">Maths in replies shows as real formulas instead of code. Drawn on the phone.</p></div><span class="pill"><input type="checkbox" id="math-view"><span></span></span></label>
   <label class="field" for="theme">Theme</label>
   <select id="theme"><option value="moondust">Moondust (dark)</option><option value="inn">Bob's Inn (dark)</option><option value="light">Light</option><option value="phone">Follow the phone</option></select>
@@ -185,7 +185,7 @@
   <p><button type="button" id="fade-clear">🧹 Clear this chat</button> <span class="help-line">Asks first.</span></p>
   <p class="help-line">Amnesia mode is on your computer's Bob only (Settings, How Bob works, Chat extras).</p>
   <h3>After Bob is closed</h3>
-  <label class="switch"><div class="words"><strong>Pick up where Bob left off</strong><p class="help-line">If Android closes Bob in the middle of a phone-brain reply, he asks again when you come back.</p></div><span class="pill"><input type="checkbox" id="resume"><span></span></span></label>
+  <label class="switch"><div class="words"><strong>Resume replies</strong><p class="help-line">If Android closes Bob in the middle of a phone-brain reply, he asks again when you come back.</p></div><span class="pill"><input type="checkbox" id="resume"><span></span></span></label>
 </div></section>
 
 <section class="panel hidden" id="glance"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Your Bobs</h2></div><div class="body">
@@ -194,7 +194,7 @@
 </div></section>
 
 <section class="panel hidden" id="carry"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Carry on on another Bob</h2></div><div class="body">
-  <p class="help-line">Hand this chat to one of your Bobs and keep going: he gets everything said so far, and answers this chat from then on. That Bob needs Settings, Bob-Net, <strong>Take chats from my other Bobs</strong> on. Only the words travel, never files or memory.</p>
+  <p class="help-line">Hand this chat to one of your Bobs and keep going: he gets everything said so far, and answers this chat from then on. That Bob needs Settings, Bob-Net, <strong>Accept chats</strong> on. Only the words travel, never files or memory.</p>
   <div id="carry-list" class="gap"></div>
 </div></section>
 
@@ -206,7 +206,7 @@
     <button class="hf-big" id="hf-stop">■ Stop</button>
     <button class="hf-big" id="hf-repeat">🔁 Say it again</button>
   </div>
-  <label class="switch"><div class="words"><strong>Listen again after Bob answers</strong><p class="help-line">On in Hands-free: when he finishes talking, he listens for your next words by himself.</p></div><span class="pill"><input type="checkbox" id="hf-again"><span></span></span></label>
+  <label class="switch"><div class="words"><strong>Keep listening</strong><p class="help-line">On in Hands-free: when he finishes talking, he listens for your next words by himself.</p></div><span class="pill"><input type="checkbox" id="hf-again"><span></span></span></label>
   <label class="switch"><div class="words"><strong>Short answers out loud</strong><p class="help-line">I say the first sentence or two, and the rest is in the chat.</p></div><span class="pill"><input type="checkbox" id="hf-short"><span></span></span></label>
 </div></section>
 

@@ -40,7 +40,7 @@ export function createSettingsParts(now) {
     const add = (w.repos || []).length - 1 < (w.maxRepos || 20)
       ? `<div class="row self-add"><input data-selfnew="name" maxlength="40" placeholder="Name" aria-label="Repository name" style="width:9em"><input data-selfnew="source" maxlength="400" placeholder="https link or folder" aria-label="Repository link or folder" style="flex:1;min-width:12em"><button type="button" class="mini" data-selfadd>Add</button> ${tip('An https link (GitHub or other), or the full path of a git repository on this replicant matrix. Bob clones it into his inn folder and only works on that copy. A private link needs Git here to know your sign-in already; a folder you cloned yourself always works.', 'Add a repository')}</div>`
       : '';
-    const helpers = `<label class="switch srow-switch"><input type="checkbox" data-selfwork="helpers" ${w.helpers ? 'checked' : ''}><span><strong>Let my other Bobs help</strong>${noteOrTip(keep(`On a big job, research tasks can go to your other Bobs on Bob-Net in parallel, if they run Bobert, Qwen3.6 35B or the brain picked above. They only think: edits, commands and the patch stay on this replicant matrix. ${w.bobNet ? `${w.bobNet} Bob${w.bobNet === 1 ? '' : 's'} on your Bob-Net list.` : 'Your Bob-Net list is empty: add your other Bobs in Settings, Bob-Net.'}`), 'Let my other Bobs help')}</span></label>`;
+    const helpers = `<label class="switch srow-switch"><input type="checkbox" data-selfwork="helpers" ${w.helpers ? 'checked' : ''}><span><strong>Other Bobs help</strong>${noteOrTip(keep(`On a big job, research tasks can go to your other Bobs on Bob-Net in parallel, if they run Bobert, Qwen3.6 35B or the brain picked above. They only think: edits, commands and the patch stay on this replicant matrix. ${w.bobNet ? `${w.bobNet} Bob${w.bobNet === 1 ? '' : 's'} on your Bob-Net list.` : 'Your Bob-Net list is empty: add your other Bobs in Settings, Bob-Net.'}`), 'Other Bobs help')}</span></label>`;
     return `${head}<div class="self-work-rows">${srow('Brain for these jobs', brain)}${srow('Long memory', mem)}${helpers}<h4 class="ssub">Repositories</h4>${(w.repos || []).map(repoRow).join('')}${add}<p class="muted self-copy-out" aria-live="polite"></p></div>`;
   };
   function everydayHtml() {
@@ -103,14 +103,14 @@ export function createSettingsParts(now) {
       ${sswitch('model3d', settings.model3d === true, 'Pictures to 3D models', `Bob turns a picture (his or yours) into a textured 3D model with TRELLIS.2. Takes 1 to 5 minutes. Needs an NVIDIA GPU. ${settings.model3dHere ? 'The 3D workshop is set up.' : 'Needs the 3D workshop (about 28 GB): Settings, Engines. On a Mac, send the job to a PC Bob over Bob-Net.'}`)}
       ${sswitch('resumeJobs', settings.resumeJobs, 'Resume jobs after restart', 'If Bob closes mid-job, he carries on when he opens again; finished steps aren\'t redone. Downloads resume too. A cut-off step that typed into an app, changed files or ran a command waits in Tasks for your check.')}
       <h4 class="ssub">Starting and closing</h4>
-      ${sswitch('autostart', settings.autostart, 'Launch Bob on start-up', '', settings.platform === 'win32' || settings.platform === 'darwin' || settings.loginItems ? '' : 'disabled')}
-      ${sswitch('tray', settings.tray !== false, 'Keep Bob in the tray', `Closing or minimising tucks Bob into ${settings.platform === 'darwin' ? 'the menu bar at the top of the screen' : settings.platform === 'win32' ? 'the tray by the clock' : 'your desktop\'s tray'} and he keeps running. To close him fully, ${settings.platform === 'darwin' ? 'click' : 'right-click'} his icon and pick <strong>Quit Bob</strong>.${settings.trayHere ? '' : ' Only in Bob\'s own window, not in a browser.'}`, settings.trayHere ? '' : 'disabled')}
+      ${sswitch('autostart', settings.autostart, 'Launch at start-up', '', settings.platform === 'win32' || settings.platform === 'darwin' || settings.loginItems ? '' : 'disabled')}
+      ${sswitch('tray', settings.tray !== false, 'Minimise to tray', `Closing or minimising tucks Bob into ${settings.platform === 'darwin' ? 'the menu bar at the top of the screen' : settings.platform === 'win32' ? 'the tray by the clock' : 'your desktop\'s tray'} and he keeps running. To close him fully, ${settings.platform === 'darwin' ? 'click' : 'right-click'} his icon and pick <strong>Quit Bob</strong>.${settings.trayHere ? '' : ' Only in Bob\'s own window, not in a browser.'}`, settings.trayHere ? '' : 'disabled')}
       <h4 class="ssub">Going online</h4>
       ${sswitch('webSearch', settings.webSearch === true, 'Web search', keep('Searches DuckDuckGo and reads pages when needed. Only search terms and addresses leave this replicant matrix.'))}
       ${sswitch('catalogUpdates', settings.catalogUpdates === true, 'Auto-update the brain list', keep('Checks GitHub once a day for new brains for the Brain catalogue. Nothing about you is sent, and downloads still ask first.'))}
       <p class="muted list-date">${data?.updated ? `Bob's brain list is from ${esc(dayWords(data.updated))}.` : ''} ${settings.catalogUpdates === true ? '<button type="button" class="mini" data-listcheck>Check now</button>' : ''}</p>
       <h4 class="ssub">Brains</h4>
-      ${sswitch('computerLab', settings.computerLab !== false, 'Show the Computer Science Lab', keep('Shows 🧪 Lab, where you make your own brain from one you have: remove senses, cut experts, build and test. Runs here, free. Off: hidden; brains you made stay.' + (settings.computerLabRoom?.ok === false ? ' ' + settings.computerLabRoom.why : '')), settings.computerLabRoom?.ok === false && settings.computerLab === false ? 'disabled' : '')}
+      ${sswitch('computerLab', settings.computerLab !== false, 'Show the Lab', keep('Shows 🧪 Lab, where you make your own brain from one you have: remove senses, cut experts, build and test. Runs here, free. Off: hidden; brains you made stay.' + (settings.computerLabRoom?.ok === false ? ' ' + settings.computerLabRoom.why : '')), settings.computerLabRoom?.ok === false && settings.computerLab === false ? 'disabled' : '')}
       ${sswitch('labPro', settings.labPro === true, 'Lab: Professional mode', keep('Shows every control, the test logs and each method\'s proper name. The same switch is at the top of the Lab.'))}
       ${selfWorkHtml()}
       ${sswitch('naughtyList', settings.naughtyList === true, 'Show the naughty list', keep('Adds a Naughty list to the Brain catalogue: Qwen and Gemma remixes with the refusals removed ("heretic" or "abliterated"). What they say is on you. Bob never recommends one. Off: hidden; one already equipped stays.'))}
@@ -135,7 +135,7 @@ export function createSettingsParts(now) {
   function otherAppsHtml() {
     return `<div><strong>ComfyUI workflows</strong> <span class="tag">off unless you turn it on</span>
          ${tip('For jobs Bob\'s own engines can\'t do (custom nodes, face fixers, long graphs). ComfyUI has to be running on this replicant matrix (for example from Pinokio). Add workflows to the workflows folder as Workflow > Export (API) files.', 'ComfyUI workflows')}
-        <label class="switch"><input type="checkbox" data-set="workshop" ${settings.workshop?.enabled ? 'checked' : ''}><span><strong>Let Bob use ComfyUI</strong><br><span class="muted">${settings.workshop?.folder ? `Workflows folder: ${esc(settings.workshop.folder)} · ${settings.workshop.count || 0} workflow${settings.workshop.count === 1 ? '' : 's'}` : 'Off.'}</span></span></label>
+        <label class="switch"><input type="checkbox" data-set="workshop" ${settings.workshop?.enabled ? 'checked' : ''}><span><strong>Use ComfyUI</strong><br><span class="muted">${settings.workshop?.folder ? `Workflows folder: ${esc(settings.workshop.folder)} · ${settings.workshop.count || 0} workflow${settings.workshop.count === 1 ? '' : 's'}` : 'Off.'}</span></span></label>
         <label class="pick"><strong>ComfyUI port</strong><input data-set="workshopPort" inputmode="numeric" value="${esc(settings.workshop?.port || 8188)}" aria-label="ComfyUI port" style="width:7em"></label></div>
       ${appsDoorHtml()}
       <p class="muted">Apps Bob works inside (Unreal Engine, Blender) are under Hands, Connected apps (MCP).</p>
@@ -168,9 +168,9 @@ export function createSettingsParts(now) {
       ${more('A rental is a service plus a model (for example Qwen 3.6 35B on OpenRouter, or a full-size 24Bob on a RunPod card). Put one in the Rented brain job in Settings, Brains, then use the 🏗 Rented brain switch under the chat. You press a card before anything is spent. It shows the cost and what leaves this replicant matrix: that job\'s chat, its attached files, Bob\'s instructions and what he remembers about you. Keys are environment variables Bob only reads (on Mac and Linux also ~/.config/bob/env); he never stores or shows one. Costs are estimates; the service\'s billing page is the real bill.')}
       <h4 class="ssub">Spending limits</h4>
       <p class="muted">Every limit starts at 0. Nothing can be hired until you set the ones a rental needs.</p>
-      <label class="pick"><strong>The most Bob may spend on rented brains this month</strong> $<input data-rentcap="month" inputmode="decimal" value="${esc(String(caps.month ?? 0))}" aria-label="Month cap in dollars" style="width:6em"> <span class="muted">Spent this month: ${esc(r.spentText || '$0.00')}. Resets on the 1st.</span></label>
-      <label class="pick"><strong>The most one job may cost</strong> $<input data-rentcap="job" inputmode="decimal" value="${esc(String(caps.job ?? 0))}" aria-label="Per-job cap in dollars" style="width:6em"></label>
-      <label class="pick"><strong>The longest a hired machine may run</strong> <input data-rentcap="minutes" inputmode="numeric" value="${esc(String(caps.minutes ?? 0))}" aria-label="Longest run in minutes" style="width:5em"> minutes <span class="muted">The machine carries this timer and stops itself when it runs out, even if this replicant matrix is off.</span></label>
+      <label class="pick"><strong>Monthly spending cap</strong> $<input data-rentcap="month" inputmode="decimal" value="${esc(String(caps.month ?? 0))}" aria-label="Month cap in dollars" style="width:6em"> <span class="muted">Spent this month: ${esc(r.spentText || '$0.00')}. Resets on the 1st.</span></label>
+      <label class="pick"><strong>Per-job cap</strong> $<input data-rentcap="job" inputmode="decimal" value="${esc(String(caps.job ?? 0))}" aria-label="Per-job cap in dollars" style="width:6em"></label>
+      <label class="pick"><strong>Max rental time</strong> <input data-rentcap="minutes" inputmode="numeric" value="${esc(String(caps.minutes ?? 0))}" aria-label="Longest run in minutes" style="width:5em"> minutes <span class="muted">The machine carries this timer and stops itself when it runs out, even if this replicant matrix is off.</span></label>
       <h4 class="ssub">Services</h4>
       ${(r.services || []).map(svc).join('')}
       <h4 class="ssub">Rentals</h4>
@@ -184,7 +184,7 @@ export function createSettingsParts(now) {
         <label class="pick rent-cards-pick"><strong>Cards on the machine</strong><select data-rentadd="cards" aria-label="How many cards on the machine">${(r.cardCounts || [1]).map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n === 1 ? '1 card (the usual)' : `${n} cards at once: ${n} times the hourly price`}</option>`).join('')}</select> <span class="muted">Only for a model too big for one card. The price and the limits apply to the whole machine.</span></label>
         <div class="confirm rent-multi-warn" hidden></div>
         <label class="pick rent-other"><strong>Web address</strong><input data-rentadd="address" placeholder="https://…/v1" aria-label="Web address" style="width:20em"></label>
-        <label class="pick rent-other"><strong>Variable that holds the key</strong><input data-rentadd="keyEnv" placeholder="MY_SERVICE_API_KEY" aria-label="Key variable name" style="width:16em"></label>
+        <label class="pick rent-other"><strong>Key variable</strong><input data-rentadd="keyEnv" placeholder="MY_SERVICE_API_KEY" aria-label="Key variable name" style="width:16em"></label>
         <label class="pick"><strong>Name</strong><input data-rentadd="name" placeholder="optional, e.g. Qwen 35B on OpenRouter" aria-label="Rental name" style="width:20em"></label>
         <p class="row"><button type="button" class="get" data-rentaddgo>Add this rental</button><span class="muted rent-add-note"></span></p>
       </details>
@@ -210,8 +210,8 @@ export function createSettingsParts(now) {
       ${phoneAccessHtml()}
       ${shareBrainsHtml()}
       <h4 class="ssub">Chats and your phone</h4>
-      ${sswitch('carryIn', settings.carryIn === true, 'Take chats from my other Bobs', 'Your other Bobs and your phone can hand a chat to this Bob with Carry on on another Bob. It lands in Past chats as a new chat. Words only: no files, pictures or memory.')}
-      ${sswitch('netOverlay', settings.netOverlay === true, 'Bob-Net icons under Bob', 'An icon under my picture for each Bob on Bob-Net and each coding agent you added. Click one to chat with it here. It only thinks (plus web search if on): no files, programs or Hands. The other Bob needs Take jobs from my other Bobs on.')}
+      ${sswitch('carryIn', settings.carryIn === true, 'Accept chats', 'Your other Bobs and your phone can hand a chat to this Bob with Carry on on another Bob. It lands in Past chats as a new chat. Words only: no files, pictures or memory.')}
+      ${sswitch('netOverlay', settings.netOverlay === true, 'Bob-Net icons', 'An icon under my picture for each Bob on Bob-Net and each coding agent you added. Click one to chat with it here. It only thinks (plus web search if on): no files, programs or Hands. The other Bob needs Accept jobs on.')}
       ${sswitch('phoneGlance', settings.phoneGlance === true, 'Share status with my phone', 'Bob for Android and its widget can show this Bob\'s state, brain, GPU heat and memory, running jobs and your next reminder. Only your signed-in phone and your other Bobs can ask.')}`;
   }
   function lookExtrasHtml() {
@@ -220,7 +220,7 @@ export function createSettingsParts(now) {
     const ts = settings.textSize || 100;
     return `<div class="srow"><label class="pick"><strong>Text size: <b data-textsizelabel>${ts}%</b></strong><input type="range" min="${TEXT_MIN}" max="${TEXT_MAX}" step="${TEXT_STEP}" data-textsize value="${ts}" aria-describedby="textsize-hint"></label>
       <p class="muted" id="textsize-hint">The chat, the message box and Settings, bigger or smaller. 100% to start with. Saved for this Bob, on every window.</p></div>
-      ${sswitch('readableFont', settings.readableFont === true, 'Easier-to-read font', 'More space between letters, words and lines, in the chat and Settings. Good for tired eyes and dyslexia.')}
+      ${sswitch('readableFont', settings.readableFont === true, 'Readable font', 'More space between letters, words and lines, in the chat and Settings. Good for tired eyes and dyslexia.')}
       <div><strong>Now running</strong><div class="ttabs" role="radiogroup" aria-label="Open Now running when a task needs me">${opt('0', 'Leave Now running as it is', st.openNowOnNeed !== true)}${opt('1', 'Open Now running when a task needs me', st.openNowOnNeed === true)}</div></div>
       <div><strong>Your own theme</strong><p class="muted">Make or edit a theme on the <button type="button" class="link" data-tab="style">🎨 Style</button> page (Make your own theme).</p></div>`;
   }
@@ -249,11 +249,11 @@ export function createSettingsParts(now) {
       <div class="srow"><label class="pick"><strong>Place for the weather</strong><input data-todayplace maxlength="60" value="${esc(settings.todayPlace || '')}" placeholder="Your town" aria-describedby="todayplace-hint" style="width:14em"></label>
       <p class="muted" id="todayplace-hint">Empty: no weather. With a town here, only its name goes to open-meteo.com (free, no account), once a day.</p></div>
       ${sswitch('focusTimer', settings.focusTimer === true, 'Focus timer', 'Adds ⏱ Focus beside Effort (15 to 60 minutes). Bob holds check-ins and reminders until it ends. Replies still come.')}
-      ${sswitch('receipts', settings.receipts === true, 'Receipts to spending sheet', 'Attach a receipt photo and say "add this receipt": Bob logs the date, shop, total and category. The sheet stays here, always locked. Needs a brain that sees pictures.')}
+      ${sswitch('receipts', settings.receipts === true, 'Receipt tracker', 'Attach a receipt photo and say "add this receipt": Bob logs the date, shop, total and category. The sheet stays here, always locked. Needs a brain that sees pictures.')}
       <div class="spend-box"></div>
       ${sswitch('updateTour', settings.updateTour === true, 'What\'s new after updates', 'Up to three cards in the chat for the new switches, each with Turn on. Once per version.')}
       ${sswitch('trayDot', settings.trayDot === true, 'Tray icon dot', `A dot on Bob\'s tray icon (taskbar button on Windows, Dock on a Mac) when a reply is ready or something needs you.${settings.trayHere ? '' : ' Only in Bob\'s own window: in a browser this does nothing.'}`)}
-      ${sswitch('profilesOn', settings.profilesOn === true, 'Profiles for other people', 'Each person gets their own chats and memory behind their own passcode, picked on the lock screen. Needs the passcode lock with Lock my chats and memory.')}
+      ${sswitch('profilesOn', settings.profilesOn === true, 'Users', 'Each person gets their own chats, memory and passcode. Needs the passcode lock with Lock my chats and memory.')}
       <div class="people-box"></div>
     </div>`;
   // 1.5.181 "Memory kept for Windows" (built-in graphics only): how much free memory a brain load leaves alone.

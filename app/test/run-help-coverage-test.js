@@ -28,11 +28,11 @@ const missing = (labels) => [...new Set(labels)].filter((l) => !helpText.include
   const strong = [...cellar.matchAll(/<strong>([^<$]{3,60})<\/strong>/g)].map((m) => m[1].replace(/\\'/g, "'").replace(/\s*\([^)]*\)$/, '').replace(/:$/, '')).filter((l) => !SKIP.has(l));
   const gone2 = missing(strong);
   check('every other labelled setting in Settings has Help', strong.length >= 15 && !gone2.length, gone2.join(' | '));
-  const hands = [...Object.values(HANDS).map((h) => h.label), ...Object.values(LIMITS).map((l) => l.label), 'Let Bob use Hands', 'Let Bob work without asking', 'Folders the Files Hand may work in', 'Stop a command after', 'Wake Bob for schedules when he\'s closed', 'Let the reviewer quarantine Bob'];
+  const hands = [...Object.values(HANDS).map((h) => h.label), ...Object.values(LIMITS).map((l) => l.label), 'Let Bob use Hands', 'Work without asking', 'Allowed folders', 'Command timeout', 'Wake Bob for schedules when he\'s closed', 'Let the reviewer quarantine Bob'];
   const gone3 = missing(hands);
   check('every Hand, hard limit and Hands setting has Help', !gone3.length, gone3.join(' | '));
   const hands2 = read('public/hands.js');
-  check('the Hands page still shows these labels', ['Let Bob use Hands', 'Let Bob work without asking', 'Folders the Files Hand may work in', 'Stop a command after'].every((l) => hands2.includes(l)));
+  check('the Hands page still shows these labels', ['Let Bob use Hands', 'Work without asking', 'Allowed folders', 'Command timeout'].every((l) => hands2.includes(l)));
   const elsewhere = ['Free memory when Bob is idle', 'Show unsuited models', 'At once', 'Carry on unfinished downloads when Bob starts', 'Listen', 'Read aloud', 'Alerts', 'Animations', 'Session', 'Effort'];
   const gone4 = missing(elsewhere);
   check('chat page, menu, Downloads and Get models settings have Help', !gone4.length, gone4.join(' | '));
@@ -83,7 +83,7 @@ const missing = (labels) => [...new Set(labels)].filter((l) => !helpText.include
   const out = bobHelp({ webSearch: false, cloud: [], hands: { enabled: true, files: { on: true } } }, 'web search');
   check('bob_help says what is set right now', /Web search: off/.test(out) && /Files on/.test(out) && /Session: Normal/.test(out));
   check('bob_help gives plain text, not HTML', !/<[a-z]+[ >]/i.test(out));
-  check('settings list covers the opt-in switches', ['Launch Bob on start-up', 'Check for updates at start', 'Housekeeping', 'Cloud helpers', 'Games first'].every((l) => settingsNow({ cloud: [] }).includes(l)));
+  check('settings list covers the opt-in switches', ['Launch at start-up', 'Check for updates at start', 'Housekeeping', 'Cloud helpers', 'Games first'].every((l) => settingsNow({ cloud: [] }).includes(l)));
   check('an unknown topic lists what Help covers', /Help topics:/.test(bobHelp({ cloud: [] }, 'zzqqx')));
   check('bob_help is read-only and counted as a look, not an action', /'bob_help'\]\);/.test(read('src/verify.js')));
 }

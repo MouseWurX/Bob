@@ -5,7 +5,7 @@
 //      only folders ticked for Hands, and every download pinned (exact address, size and sha256);
 //   2. a test run in the sandbox with a sample input;
 //   3. a read by the reviewer (the Review slot brain), every time, whatever the Effort;
-//   4. the person's OK on one card (skipped only with "Let Bob work without asking"; 1-3 still have to pass).
+//   4. the person's OK on one card (skipped only with "Work without asking"; 1-3 still have to pass).
 // The sandbox: Bob's own Node (his program, run as Node) with Node's permission switch on. The tool can read its own
 // folder and the folders on its card, write its work folder and the folders on its card, and nothing else. It can't
 // start programs, workers or add-ons. The environment is empty (no keys), there's no input to wait on, a time limit

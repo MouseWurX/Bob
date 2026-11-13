@@ -1,6 +1,6 @@
 // Ask together (1.5.42): when a job needs more than one OK, every OK it needs goes on one card, so the person
 // sees the whole job before saying yes to any part of it (one permission can look fine on its own and worrying
-// next to the others). Only when "Let Bob work without asking" is off; with it on there are no cards anyway.
+// next to the others). Only when "Work without asking" is off; with it on there are no cards anyway.
 //
 // Two ways a combined card comes up:
 //   1. Bob calls several tools in one reply: the brain checks them all first and asks once (askTogether).

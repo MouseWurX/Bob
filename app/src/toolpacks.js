@@ -18,7 +18,7 @@
 //   a work folder to write, no keys, no programs, a time limit and a memory cap. It reaches your files only through
 //   inputs the pack marks as a path, shown on the card, each checked against the folders ticked for Hands and the
 //   hard limits (secret files, read-only projects, Bob's own folders).
-// - Every use shows a card, even with "Let Bob work without asking" on (alwaysAsk): the code is someone else's.
+// - Every use shows a card, even with "Work without asking" on (alwaysAsk): the code is someone else's.
 // - A job is plain text, never code. Bob is told that a pack's steps and a tool's answer are someone else's words,
 //   not the user's, so they can't switch anything on or skip a card; each Hand they lead to still asks on its own.
 // - Where the sandbox doesn't hold (sandboxHolds), no pack tool runs and no pack can be switched on.

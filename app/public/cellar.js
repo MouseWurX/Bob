@@ -21,7 +21,7 @@ import { moreToolsHtml, mountMoreTools } from './more-tools.js';
 import { telegramHtml, mountTelegram } from './telegram.js';
 import { discordHtml, mountDiscord } from './discord.js';
 import { appsDoorHtml, mountAppsDoor } from './apps-door.js';
-import { claudeDoorHtml, mountClaudeDoor } from './claude-door.js'; // Let Claude use Bob's hands
+import { claudeDoorHtml, mountClaudeDoor } from './claude-door.js'; // Hands for Claude
 import { mountAgentsSettings } from './coding-agents.js'; // Nov 13 Coding agents
 import { checkinsHtml, mountCheckins } from './checkins.js';
 import { promptsHtml, mountPrompts } from './prompts.js'; // saved prompts and the / menu
@@ -36,7 +36,7 @@ import { HOUSE, houseStyleHtml } from './house-style.js';
 import { attributesHtml, cleanPersonality, greeting, PRESETS, DEFAULTS, isDefault } from './personality.js';
 import { esc, gb } from './util.js';
 import { wantsHtml, wantPatch, wantSaved } from './wants.js';
-import { mountPresets } from './presets.js'; // Assistant presets for chats
+import { mountPresets } from './presets.js'; // Assistant presets
 import { LANGS, LANG_KEY, pickLang } from './i18n.js';
 import { makeBackupPanel } from './backup-panel.js';
 import { GROUPS as SET_GROUPS, CARDS as SET_CARDS, VIEW_KEY, cardOf, startView, topicFor } from './settings-map.js';
@@ -595,15 +595,15 @@ export function createCellar({ popOut = null } = {}) {
     mountQuarantineSettings(dlg.querySelector('.q-box'));
     mountSecrets(dlg.querySelector('.secrets-box')); // This replicant matrix: 🔐 Locked secrets
     mountMoreTools(dlg.querySelector('.more-tools-box')); // How Bob works: 🧰 More tools
-    mountPhoneAccess(dlg.querySelector('.phone-box')); // Bob-Net, This Bob: Let my other replicant matrices in
+    mountPhoneAccess(dlg.querySelector('.phone-box')); // Bob-Net, This Bob: Bob-Net access
     mountLockSettings(dlg.querySelector('.lock-box'), { onChange: (v) => { if (settings) settings.passcodeLock = v; const n = dlg.querySelector('[data-panel="ev-lock"] .spanel-note'); if (n) n.textContent = lockSummary(v); } }); // 🔒 Passcode lock
-    mountTelegram(dlg.querySelector('.telegram-box')); // Online services: Talk to Bob on Telegram
+    mountTelegram(dlg.querySelector('.telegram-box')); // Online services: Bob on Telegram
     mountDiscord(dlg.querySelector('.discord-box')); // Online services: Bob on Discord
-    mountAppsDoor(dlg.querySelector('.apps-door-box')); // Other apps: Let other apps use Bob's brains
-    mountClaudeDoor(dlg.querySelector('.claude-door-box')); // Other apps: Let Claude use Bob's hands
+    mountAppsDoor(dlg.querySelector('.apps-door-box')); // Other apps: Brains for other apps
+    mountClaudeDoor(dlg.querySelector('.claude-door-box')); // Other apps: Hands for Claude
     mountAgentsSettings(dlg.querySelector('.coding-agents-box')); // Other apps: Coding agents
     mountCheckins(dlg.querySelector('.checkins-box')); // 1.5.78 Check-ins
-    mountPresets(dlg.querySelector('.presets-box')); // Assistant presets for chats (loads its own list)
+    mountPresets(dlg.querySelector('.presets-box')); // Assistant presets (loads its own list)
     mountPrompts(dlg.querySelector('.prompts-box')); // 📝 Saved prompts
     for (const b of dlg.querySelectorAll('.harness-box')) mountHarness(b); // items 62 to 72 (public/harness.js)
     mountEveryday(dlg.querySelector('.everyday-box'), { settings, flash: (el, m) => flash(el, m) }); // 🗓 Everyday helpers
@@ -1451,7 +1451,7 @@ export function createCellar({ popOut = null } = {}) {
         const c = (rent.cards || []).find((x) => x.id === box.querySelector('[data-rentadd="card"]')?.value) || (rent.cards || [])[1] || { name: 'card', perHour: 2 };
         const hour = n * c.perHour, day = hour * 24;
         warn.hidden = false;
-        warn.innerHTML = `<p class="big"><strong>⚠️ ${n} cards at once costs about ${n} times as much.</strong></p><p><strong>About $${hour.toFixed(2)} an hour, about $${day.toFixed(0)} a day</strong> for ${n} × ${esc(c.name)}, billed whether or not the brain is busy, plus the minutes it takes to start (longer with more cards). Your spending limits still apply to the whole machine, and the timer from The longest a hired machine may run is the only thing that stops it if this replicant matrix goes off. Only pick this for a model that really doesn't fit one card.</p><div class="row"><button type="button" class="get" data-rentmultiok="${n}">I understand, ${n} cards</button><button type="button" data-rentmultino>Back to 1 card</button></div>`;
+        warn.innerHTML = `<p class="big"><strong>⚠️ ${n} cards at once costs about ${n} times as much.</strong></p><p><strong>About $${hour.toFixed(2)} an hour, about $${day.toFixed(0)} a day</strong> for ${n} × ${esc(c.name)}, billed whether or not the brain is busy, plus the minutes it takes to start (longer with more cards). Your spending limits still apply to the whole machine, and the timer from Max rental time is the only thing that stops it if this replicant matrix goes off. Only pick this for a model that really doesn't fit one card.</p><div class="row"><button type="button" class="get" data-rentmultiok="${n}">I understand, ${n} cards</button><button type="button" data-rentmultino>Back to 1 card</button></div>`;
         warn.scrollIntoView?.({ block: 'nearest' });
         return;
       }

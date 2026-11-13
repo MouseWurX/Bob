@@ -1,4 +1,4 @@
-// Tests "Talk to Bob on Telegram" (src/telegram.js) with a pretend Telegram and a pretend Bob. Nothing goes online.
+// Tests "Bob on Telegram" (src/telegram.js) with a pretend Telegram and a pretend Bob. Nothing goes online.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
