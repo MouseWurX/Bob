@@ -9,6 +9,7 @@ import { allSlots, isActive } from '../public/equip.js';
 import { saveNameOf } from '../src/models.js';
 import { mergeSettings, ollamaModelsDir, pinokioRoots } from '../src/config.js';
 import { sessionBrains } from '../src/sessions.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -130,7 +131,7 @@ check('each machine answer is said once (grouped), and Active is explained once 
   check('the warning says they are not the makers\' releases and that the answers are on you', /not Alibaba's or Google's releases/.test(NAUGHTY_WARNING) && /what it says is on you/.test(NAUGHTY_WARNING));
   // The setting itself.
   check('naughtyList is a known setting, off unless true', mergeSettings({}, { naughtyList: 'yes' }).naughtyList === false && mergeSettings({}, { naughtyList: true }).naughtyList === true && mergeSettings({}, {}).naughtyList !== true);
-  const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+  const cellar = publicText('cellar.js');
   check('the Settings switch is "Show the naughty list", off unless you turn it on, and the menus skip naughty brains while off', /sswitch\('naughtyList', settings\.naughtyList === true, 'Show the naughty list', keep\('Off unless you turn it on/.test(cellar) && /naughtyOn\(\) \|\| !isNaughty\(entryOf\(data\.models, o\.value\)\)/.test(cellar));
   const help = fs.readFileSync(new URL('../public/help-content.js', import.meta.url), 'utf8');
   check('Help has the FAQ, the glossary lines and the Settings row', /id: 'faq-naughty'/.test(help) && /<dt>Naughty list<\/dt>/.test(help) && /<dt>Abliterated \(heretic\)<\/dt>/.test(help) && /<dt>Community build<\/dt>/.test(help) && /set\('Show the naughty list', 'Off'/.test(help));
@@ -152,7 +153,7 @@ check('each machine answer is said once (grouped), and Active is explained once 
   const css = fs.readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
   check('the stripes differ in shape (solid vs dashed), use theme colours, and fall back plainly', /\.cat-row\.community \{ border-left: 5px solid var\(--good\)/.test(css) && /\.cat-row\.naughty \{ border-left: 5px dashed var\(--bad\)/.test(css) && /forced-colors: active/.test(css));
   check('Help says what the stripes mean, shape first', /a community build's row has a <strong>solid<\/strong> stripe[^<]*and a naughty list row has a <strong>dashed<\/strong> stripe/.test(fs.readFileSync(new URL('../public/help-content.js', import.meta.url), 'utf8')));
-  const cellarSrc = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+  const cellarSrc = publicText('cellar.js');
   check('the How Bob works summary is redrawn after every switch, so "Naughty list: off" shows straight away', /const howSum = howSumNow\(\);/.test(cellarSrc) && /dlg\.addEventListener\('change', async \(e\) => \{ try \{ await onChange\(e\); \} finally \{ refreshHowSum\(\); \} \}\);/.test(cellarSrc) && /Naughty list: \$\{onoff\(settings\.naughtyList === true\)\}/.test(cellarSrc));
   // 1.5.133: a team gets its name on the tag and its members in the tip; a stock model gets no tag at all.
   const team = { ...byId('qwen3.6-35b-a3b'), id: 'team-build', name: 'Qwen3.6 35B-A3B Teamed', community: { team: 'Unsloth', members: ['Daniel', 'Michael'], base: 'Qwen3.6 35B-A3B', baseBy: 'Alibaba', kind: 'repack' } };
@@ -170,7 +171,7 @@ check('each machine answer is said once (grouped), and Active is explained once 
   check('with every naughty brain still New, the naughty side has no quiet pick', !/devil-rec/.test(onNew));
   check('the quiet pick is explained at the top of the naughty side', /red devil on its own, where ★ Recommended would be, is my quiet pick/.test(onNew));
   const help = fs.readFileSync(new URL('../public/help-content.js', import.meta.url), 'utf8');
-  check('Help: the community FAQ, the quiet pick glossary line, and no emoji devil anywhere in the app text', /id: 'faq-community'/.test(help) && /<dt>Quiet pick<\/dt>/.test(help) && !/[\u{1F608}\u{1F47F}]/u.test(help + fs.readFileSync(new URL('../public/catalogue.js', import.meta.url), 'utf8') + fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8')));
+  check('Help: the community FAQ, the quiet pick glossary line, and no emoji devil anywhere in the app text', /id: 'faq-community'/.test(help) && /<dt>Quiet pick<\/dt>/.test(help) && !/[\u{1F608}\u{1F47F}]/u.test(help + fs.readFileSync(new URL('../public/catalogue.js', import.meta.url), 'utf8') + publicText('cellar.js')));
 }
 
 // ---- llama.cpp finds a downloaded brain's picture reader ----

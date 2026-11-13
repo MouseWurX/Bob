@@ -9,6 +9,7 @@ import { appsDoor, appsDoorOn, saveAppsDoor, cleanAppsDoorPatch, keyOk, doorRefu
 import { main as cli, parseArgs, where, findConfig } from '../src/bob-cli.js';
 import { appsDoorBody } from '../public/apps-door.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -206,7 +207,7 @@ const post = (base, p, b, h = auth) => fetch(base + p, { method: 'POST', headers
   check('every control is drawn while off (rule 14)', /data-ad="enabled"/.test(off) && /data-ad="network"/.test(off) && /data-ad-new/.test(off) && !/disabled/.test(off));
   const on = appsDoorBody({ enabled: true, network: false, key: KEY, url: 'http://localhost:7777/v1', doorOpen: true });
   check('the key is hidden until Show the key', !on.includes(KEY) && appsDoorBody({ enabled: true, key: KEY, url: 'u' }, { shown: true }).includes(KEY));
-  const cellar = read('public/cellar.js');
+  const cellar = publicText('cellar.js');
   check('the panel sits in Settings, Other apps', cellar.includes('${appsDoorHtml()}') && cellar.includes("mountAppsDoor(dlg.querySelector('.apps-door-box'))"));
   const help = HELP.map((h) => `${h.title} ${h.html}`).join(' ');
   check('Help explains it', HELP.some((h) => h.id === 'apps-door') && help.includes('Let other apps use Bob\'s brains') && help.includes('Let apps on my other devices in too') && help.includes('Key for other apps'));

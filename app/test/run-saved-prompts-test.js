@@ -12,6 +12,7 @@ import { settingsNow } from '../src/self-help.js';
 import { WANTS } from '../public/wants.js';
 import { HELP } from '../public/help-content.js';
 import { GROUPS, CARDS } from '../public/settings-map.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -129,7 +130,7 @@ try {
   check('bob_help lists it', /Pull up saved prompts with \/: off/.test(settingsNow({ cloud: [] })));
   check('on the first-time list', WANTS.some((w) => w.key === 'promptMenu'));
   check('a Settings panel in the Bob group and the How Bob works card', GROUPS.find(([g]) => g === 'Bob')[1].includes('adv-prompts') && CARDS.find((c) => c.id === 'how').topics.includes('adv-prompts'));
-  const cellar = read('public/cellar.js'), app = read('public/app.js'), server = read('src/server.js'), css = read('public/style.css');
+  const cellar = publicText('cellar.js'), app = publicText('app.js'), server = read('src/server.js'), css = read('public/style.css');
   check('the switch sits on top of the list, which shows either way', /\['prompts', '📝 Saved prompts', [^\n]*sswitch\('promptMenu', settings\.promptMenu === true, 'Pull up saved prompts with \/'[^\n]*\+ promptsHtml\(\)\]/.test(cellar) && /mountPrompts\(dlg\.querySelector\('\.prompts-box'\)\)/.test(cellar) && !/data-pe-on|disabled/.test(read('public/prompts.js').split('mountPrompts')[1].split('data-pe-up')[0]));
   check('the chat box gets the / menu', /createPromptMenu\(input, \{ openSettings: \(\) => cellar\.open\('settings', null, \{ jump: 'adv-prompts' \}\) \}\)/.test(app));
   check('the server answers /api/prompts and saves the switch', /promptsRoute\(\{ req, res, p, isLocal, cfg, body, send, saveSettings/.test(server) && /typeof b\.promptMenu === 'boolean'/.test(server) && /promptMenu: cfg\.promptMenu === true/.test(server));

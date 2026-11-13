@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { makerKind, officialTag, isReap, reapTag, looksNaughty, fitsHere, cleanFilters, filtersOn, quantsOf, applyFilters, sortModels, filterBarHtml, SORTS, MAKERS, FITS } from '../public/cat-sort.js';
 import { catalogueHtml, isNaughty } from '../public/catalogue.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok ? '' : ' ' + extra}`); };
@@ -69,7 +70,7 @@ check('a remembered quantization that no brain has now stays in the menu', /<opt
   check('the fit tag says how: memory, or experts on the drive', /place-tag"[^>]*>Fits with memory</.test(html) && /place-tag"[^>]*>Fits with experts on the drive</.test(html));
 }
 {
-  const cellar = read('public/cellar.js');
+  const cellar = publicText('cellar.js');
   check('the choices are remembered in the browser and cleaned when read', /localStorage\.getItem\('bob-cat-filters'\)/.test(cellar) && /cleanFilters\(JSON\.parse/.test(cellar) && /el\.dataset\.catfilter\) \{/.test(cellar) && /'catfilterReset' in b\.dataset/.test(cellar));
   check('no computer is written into the code: the page passes in what it measured', !/vramGB: 16|ramGB: 32/.test(read('public/cat-sort.js')));
   const glossary = HELP.find((h) => h.id === 'glossary').html;

@@ -1,7 +1,7 @@
 // Talk with Bob (1.5.210, UX plan item 12): a live, hands-free talk on Bob's own hearing and voice, with xAI's online
 // hearing and voice as an opt-in extra. Everything starts off, nothing is added to what the brain reads, and xAI is
 // only ever a fake here: nothing goes online, no microphone is opened, nothing is spoken.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -109,14 +109,14 @@ const noKey = () => '', aKey = (n) => (n === XAI_KEY ? 'xai-test' : '');
 {
   const brainFiles = ['src/brain.js', 'src/prompt.js', 'src/mid-job.js', 'src/meanwhile.js'].filter((f) => fs.existsSync(path.join(here, '..', f)));
   check('the brain is never told about the talk', brainFiles.every((f) => !/talkWithBob|talk-core|Talk with Bob|shortSay/.test(f === 'src/brain.js' ? brainText() : read(f))));
-  const app = read('public/app.js');
+  const app = publicText('app.js');
   check('a talk sends an ordinary message, through the message box', /send: \(text\) => \{[\s\S]{0,200}requestSubmit\(\)/.test(app));
   check('the screen lines are fixed words, not sent anywhere', Object.values(TALK_LINES).every((l) => typeof l === 'string' && l.length < 80));
 }
 
 // ---- settings, screen and Help ----
 {
-  const cellar = read('public/cellar.js'), html = read('public/index.html'), css = read('public/style.css');
+  const cellar = publicText('cellar.js'), html = read('public/index.html'), css = read('public/style.css');
   check('the switch and the online extra are always shown in Voice details', /sswitch\('talkWithBob'/.test(cellar) && /\$\{talkCloudHtml\(\)\}/.test(cellar) && /Online hearing and voice/.test(cellar));
   check('the online extra says it costs and sends your voice online', /charges/.test(cellar) && /sends your voice/.test(cellar));
   check('the 🗣 button and the talk bar are on the page, labelled', /id="talkBtn"[^>]*aria-label="Talk with Bob"/.test(html) && /id="talkBar"[^>]*role="region"[^>]*aria-label="Talk with Bob"/.test(html));

@@ -1,7 +1,7 @@
 // Harness items 62 to 72 (src/harness.js): Catch crashes, Safe start, Settings undo, the Health page, Quiet hours,
 // chat places, the weekly page, the shortcut from anywhere, Try from here, Pin messages, Guest chats.
 // Everything here runs on a fake Bob folder in a temp dir: nothing reads this replicant matrix's own settings.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -143,7 +143,7 @@ check('Bob\'s settings readout names them', /Quiet hours/.test(harnessNow({})) &
     check('a stray UTC zone on a non-UTC computer means the computer\'s own clock', minuteOfDay(fake, 'UTC') === 17 * 60 + 27 && minuteOfDay(fake, 'Etc/UTC') === 17 * 60 + 27);
     check('so 22:00 to 07:00 is not quiet at 17:27', !isQuiet({ quietHours: { on: true, from: '22:00', to: '07:00' }, timeZone: 'UTC' }, fake)); }
   check('check-ins wait in quiet hours', /isQuiet\(this\.cfg\)\) return null|if \(isQuiet\(/.test(read('src/checkins.js')));
-  check('reminders say if they are urgent, and pop up anyway', /urgent/.test(read('src/tools.js')) && /ev\.quiet && !ev\.urgent/.test(read('public/app.js')));
+  check('reminders say if they are urgent, and pop up anyway', /urgent/.test(read('src/tools.js')) && /ev\.quiet && !ev\.urgent/.test(publicText('app.js')));
 }
 
 // ---------- What Bob did this week ----------

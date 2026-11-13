@@ -12,6 +12,7 @@ import { windowsBlocked, fallBackIfBlocked, safeSpawn, engineOf, blockedSay, onE
 import { engineFor, ENGINES, engineBlocked, engineStatus, goBackEngine, installedMarker } from '../src/engines.js';
 import { EngineKeeper, keeperCandidates } from '../src/engine-keeper.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let failures = 0, passed = 0;
 const check = (ok, name) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`); if (ok) passed++; else failures++; };
@@ -101,11 +102,11 @@ off();
   check(asked === (beHere ? 1 : 0), 'a new Bob with a newer pin checks again');
   goBackEngine(cfg, 'brainengine');
   check(installedMarker(cfg, BE)?.version === 'brain-engine-v3' && !engineBlocked(cfg), 'Try again puts it back and ends the hold');
-  check(/e\.blocked\?\.manual \? `<div class="engine-held" role="status"><p><strong>You went back to the previous build<\/strong>/.test(read('public/cellar.js')), 'Settings says you went back by hand, with Try again');
+  check(/e\.blocked\?\.manual \? `<div class="engine-held" role="status"><p><strong>You went back to the previous build<\/strong>/.test(publicText('cellar.js')), 'Settings says you went back by hand, with Try again');
 }
 
 // Wiring: every engine start goes through safeSpawn; the brain loads again on the old engine; chat and Settings.
-const lc = read('src/llamacpp.js'), emb = read('src/embedder.js'), sc = read('src/share-card.js'), server = read('src/server.js'), cellar = read('public/cellar.js');
+const lc = read('src/llamacpp.js'), emb = read('src/embedder.js'), sc = read('src/share-card.js'), server = read('src/server.js'), cellar = publicText('cellar.js');
 check(/const child = safeSpawn\(spawn, exe, args,/.test(lc) && /const back = fallBackIfBlocked\(this\.cfg, exe, e\);/.test(lc) && /if \(e\.fellBack && !signal\?\.aborted\) \{[\s\S]{0,120}return this\.(preload|startEngine)\(model, signal,/.test(lc), 'the brain (and the talker beside a job) goes back and loads again on the old engine');
 check(/safeSpawn\(spawn, this\.exe\(\)/.test(emb) && /safeSpawn\(this\.spawnFn, t\.path/.test(sc), 'the memory helper and the card-sharing server don\'t throw either');
 check(/onEngineFallback\(\(r\) => \{ try \{ brain\.log\('engine', r\.say\); broadcast\(\{ type: 'announce', text: r\.say \}\);/.test(server), 'the words go to the chat');

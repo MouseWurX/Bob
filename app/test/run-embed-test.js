@@ -8,6 +8,7 @@ import { LlamaCpp } from '../src/llamacpp.js';
 import { Housekeeper } from '../src/housekeeping.js';
 import { embedArgs } from '../src/embedder.js';
 import { enginesFor, starterPlan } from '../public/equip.js';
+import { publicText } from './source-text.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let failures = 0;
@@ -94,7 +95,7 @@ hk3.ownEmbed?.stop(); hk3.stop();
 
 // Settings review: the Welcome size counts the programs too, since the click is the OK.
 {
-  const cellarSrc = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+  const cellarSrc = publicText('cellar.js');
   const { engineStatus, ENGINE_GB } = await import('../src/engines.js');
   check(/About <strong>\$\{gb\(order\.sizeGB\)\}<\/strong> to download/.test(cellarSrc) && /<h4>Programs I run on<\/h4>/.test(cellarSrc), 'Welcome: "About X GB to download", the programs listed with the models, and X counts them (1.5.91)');
   check(ENGINE_GB.llamacpp > 0 && engineStatus({ agentDir: '/nowhere' }).every((e) => e.sizeGB > 0), 'every engine has a download size');

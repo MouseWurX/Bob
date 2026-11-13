@@ -11,11 +11,12 @@ import { BUNDLED_KOKORO, SAMPLE_LINE } from '../src/voice-samples.js';
 import { KOKORO_VOICES } from '../src/tts.js';
 import { selfTest } from '../src/hands-selftest.js';
 import { runCommand } from '../src/hands-run.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
 const read = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8');
-const ui = read('public/cellar.js'), html = read('public/index.html'), app = read('public/app.js'), css = read('public/style.css'), hands = read('public/hands.js');
+const ui = publicText('cellar.js'), html = read('public/index.html'), app = publicText('app.js'), css = read('public/style.css'), hands = read('public/hands.js');
 
 // --- the page
 check('Settings, Get models and Style open as a page in the main area, not a pop-up', /<div class="mid">[\s\S]*<dialog id="cellar" class="cellar page"/.test(html) && /dlg\.show\(\)/.test(ui) && /\.mid\.paged > :is\(#log, #chips, #queue, #tray, #composer\) \{ display: none/.test(css));
@@ -23,7 +24,7 @@ check('the page has a Back to chat button, and Esc, Chat and New chat go back to
 check('the left menu has Get models and Settings as separate buttons', /id="cellarBtn"[^>]*aria-label="Get models"/.test(html) && /id="settingsBtn"[^>]*aria-label="Settings"/.test(html) && /\$\('settingsBtn'\)\.onclick = \(\) => cellar\.open\('settings'\)/.test(app) && /\$\('cellarBtn'\)\.onclick = \(\) => cellar\.open\('shop', 'catalogue'\)/.test(app));
 check('the page bar stays pinned, so the avatar screen reaches every Settings and Models page', /class="tabs cellar-tabs"/.test(ui) && /\.cellar \.cellar-tabs \{ position: sticky/.test(css) && /--cellar-head-h/.test(ui) && /cellar\.open\('shop', 'catalogue'\)/.test(app));
 check('the title says which page is open', /\$\('cellar-title'\)\.textContent = page/.test(ui));
-const every = ui.slice(ui.indexOf('function everydayHtml'), ui.indexOf('function enginesHtml'));
+const every = ui.slice(ui.indexOf('function everydayHtml'), ui.indexOf('\n  }\n', ui.indexOf('function everydayHtml')));
 check('Everyday rows: voice (1.5.33: engine, the voice nested inside it, Play sample, More), look, theme, animations, cat, one brain', /Bob\\'s voice', voicePickHtml\(\)[\s\S]*data-tab="speech">More voice settings/.test(every) && /'Play sample'/.test(ui) && /Bob\\'s look/.test(every) && /'Theme'/.test(every) && /data-motion/.test(every) && /data-set="catName"/.test(every) && /sswitch\('oneBrain'/.test(every));
 check('Everyday: start-up and update checks (both off unless turned on), version, card and disk, Check for updates, first-time setup', /sswitch\('autostart'/.test(every) && /sswitch\('autoCheck'/.test(every) && /settings\.version\?\.label/.test(every) && /hw\?\.gpu/.test(every) && /data-checkupdate>Check for updates/.test(every) && /data-welcome>Run first-time setup/.test(every));
 check('the Downloads button is out of Settings (Downloads has its own menu item)', !/<strong>Downloads<\/strong>/.test(ui) && /id="dlBtn"/.test(html));
@@ -133,7 +134,7 @@ check('the Self-test button is in Settings, Hands, and the route is PC-only', /d
 // ---------- Nothing appears, disappears or locks because a box isn't ticked ----------
 {
   const page = (f) => read(f).replace(/\r\n/g, '\n');
-  const cellarSrc = page('public/cellar.js'), handsSrc = page('public/hands.js'), tg = page('public/telegram.js'), dc = page('public/discord.js'), phone = page('public/phone-access.js');
+  const cellarSrc = publicText('cellar.js'), handsSrc = page('public/hands.js'), tg = page('public/telegram.js'), dc = page('public/discord.js'), phone = page('public/phone-access.js');
   check('no Settings switch is drawn only when another setting is on', !/\$\{settings\.[\w.?]+( === true| !== false)? \? sswitch\(/.test(cellarSrc));
   check('"Let Bob notice what\'s worth noting" and "Lab: Professional mode" are always there', /\$\{sswitch\('smartNotes'/.test(cellarSrc) && /\$\{sswitch\('labPro'/.test(cellarSrc));
   check('Housekeeping and the Qwen numbers can be set before their switch is on', !/hk\.enabled \? '' : 'disabled'/.test(cellarSrc) && !/data-qfield[^\n]*\$\{on \? '' : 'disabled'\}/.test(cellarSrc) && !/data-qreset[^\n]*\$\{on \? '' : 'disabled'\}/.test(cellarSrc));

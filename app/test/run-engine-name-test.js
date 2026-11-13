@@ -11,6 +11,7 @@ import { brainEngineNumber, plainEngineNotes } from '../src/engine-extras.js';
 import { engineLabel } from '../src/engine-extras-run.js';
 import { buildWords } from '../src/engine-blocked.js';
 import { LlamaCpp } from '../src/llamacpp.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -42,7 +43,7 @@ check('the fall-back message names a new build plainly', buildWords('brain-engin
   check('the pinned build uses the new name (N then b and the llama.cpp build, from Brain Engine 5 on)', /^brain-engine-\d+b\d+$/.test(pkg.bob.brainEngine.tag) && pkg.bob.brainEngine.tag.endsWith(`b${pkg.bob.bundledLlamaTag.replace(/^b/, '')}`));
   const pub = read(path.join(here, '..', 'engine', 'publish.sh'));
   check('the release title says the name and both parts', /--title "Brain Engine \$\{ver#v\} \(Brain Engine \$\{ver%%b\*\} on llama\.cpp \$tag/.test(pub));
-  const cel = read(path.join(here, '..', 'public', 'cellar.js'));
+  const cel = publicText('cellar.js');
   check('Settings, Engines names a new build from the installed one\'s release name', /import \{ brainEngineName \} from '\.\/engine-name\.js'/.test(cel) && /const verName = \(e, v\) => \(e\.id !== 'brainengine' \? v : newName\(v\)/.test(cel) && /const prevName = \(e, v\) => newName\(v\)/.test(cel));
 }
 

@@ -8,6 +8,7 @@ import { LlamaCpp } from '../src/llamacpp.js';
 import { ggufInfo } from '../src/gguf.js';
 import { Brain } from '../src/brain.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -124,7 +125,7 @@ check('the FAQ explains it in Bob\'s voice', ids.includes('faq-brain-ctx') && /\
 check('the glossary says Bob never goes past a brain\'s limit', /never ask a brain for more/.test(HELP.find((h) => h.id === 'glossary').html));
 check('Help explains long memory in Bob\'s voice, with the catch', ids.includes('faq-long-memory') && /short chats get a little worse/i.test(HELP.find((h) => h.id === 'faq-long-memory').html) && /\bI\b/.test(HELP.find((h) => h.id === 'faq-long-memory').html));
 check('Help names the long memory switch word for word', /Long memory: let Qwen brains stretch past what they were made for/.test(brains.html));
-const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+const cellar = publicText('cellar.js');
 check('the switch in Settings uses the same words', cellar.includes('<strong>Pick how much each brain keeps in mind</strong>'));
 check('the long memory switch in Settings uses the same words', cellar.includes('<strong>Long memory: let Qwen brains stretch past what they were made for</strong>'));
 console.log(`\n${pass} passed, ${fail} failed`);

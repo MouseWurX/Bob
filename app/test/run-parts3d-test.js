@@ -2,7 +2,7 @@
 // (src/parts3d.js: OpenSCAD recipes in, STL out; off unless turned on), with its engine entry, toolbox group,
 // settings, Help, FAQ and glossary. OpenSCAD itself is never run: a fake stands in for it, and every file is
 // made up in a temporary folder.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -183,7 +183,7 @@ const throwsLike = (fn, re) => { try { fn(); return false; } catch (e) { return 
   check('Linux uses its own program name', engineFor(e, 'linux').exe === 'openscad');
   check('the Set it up card knows OpenSCAD', NEEDS.openscad?.engine === 'openscad');
   check('the pin script reads OpenSCAD\'s own checksums', /\.sha256/.test(read('installer/pin-openscad.js')) && /doesn't match/.test(read('installer/pin-openscad.js')));
-  check('the switch is saved and shown in Settings', /sswitch\('parts3d', settings\.parts3d === true, 'Let Bob make 3D parts'/.test(read('public/cellar.js')) && /typeof b\.parts3d === 'boolean'/.test(read('src/server.js')));
+  check('the switch is saved and shown in Settings', /sswitch\('parts3d', settings\.parts3d === true, 'Let Bob make 3D parts'/.test(publicText('cellar.js')) && /typeof b\.parts3d === 'boolean'/.test(read('src/server.js')));
   check('the Welcome list has it, off', WANTS.some((w) => w.key === 'parts3d' && w.setting === 'Let Bob make 3D parts'));
   check('bob_help reports it', /Let Bob make 3D parts: off/.test(settingsNow({})));
   const brainSrc = brainText(), box = read('src/toolbox.js');

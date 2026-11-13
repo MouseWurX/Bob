@@ -2,7 +2,7 @@
 // an explicit own: true marker; Bob runs it from where it is, never moves or deletes it and never recommends it over
 // the brains he knows. This checks the list tidying, the file reading, the jobs offered, the file-picker commands per
 // platform, the catalogue section and that the Help says it all in Bob's voice.
-import { serverText, brainText } from './source-text.js';
+import { serverText, brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -110,14 +110,14 @@ fs.writeFileSync(junk, 'not a brain');
 
 // ---- the app wiring ----
 {
-  const models = read('src/models.js'), server = serverText(), cellar = read('public/cellar.js'), brain = brainText();
+  const models = read('src/models.js'), server = serverText(), cellar = publicText('cellar.js'), brain = brainText();
   check('the model list, the slot menus and equipping know about own brains', /ownEntries\(this\.cfg\)/.test(models) && /\(your own file\)/.test(models) && /ownResolve\(own\)/.test(models));
   check('review: inspect, add and remove are local only too (not just pick)', ["p === '/api/own-models/inspect') {", "p === '/api/own-models') {", "p === '/api/own-models/remove') {"].every((r) => server.includes(r) && server.slice(server.indexOf(r), server.indexOf(r) + 200).includes('if (!isLocal) return send(res, 403')));
   {
     const typing = ownHtml({ models: [], ownForm: { file: '', name: '' } });
     check('review: with no file picked, the form asks for the path (Linux with no picker)', /data-ownpathform/.test(typing) && /data-ownpath /.test(typing) && /Use this file/.test(typing) && !/data-ownname/.test(typing));
     check('...and the Add button has "or type its path" beside it', /data-ownpathopen>or type its path/.test(ownHtml({ models: [] })));
-    const cel = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+    const cel = publicText('cellar.js');
     check('...the typed path is read through /api/own-models/inspect, then the usual name form follows', /'ownpathform' in form\.dataset/.test(cel) && /api\('\/api\/own-models\/inspect', \{ file: typed \}\)/.test(cel));
   }
   check('the server has pick, inspect, add and remove routes; pick is local only', /\/api\/own-models\/pick/.test(server) && /\/api\/own-models\/inspect/.test(server) && /p === '\/api\/own-models'/.test(server) && /\/api\/own-models\/remove/.test(server) && /own-models\/pick'\) \{\s*if \(!isLocal\)/.test(server));

@@ -11,6 +11,7 @@ import { redoOn, rewind, redo, chatBusy, KEEP_VERSIONS, REDO_NOTE, EDIT_NOTE } f
 import { HELP } from '../public/help-content.js';
 import { WANTS } from '../public/wants.js';
 import { RELAY } from '../public/settings-link.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -128,7 +129,7 @@ const run = async (text, extra) => { const { jobId } = brain.enqueue('main', tex
 
 // ---------- The window, the phone, Settings, Help ----------
 {
-  const app = read('public/app.js');
+  const app = publicText('app.js');
   check('Try again (Bob\'s latest answer) and Edit (your messages) are in the ... menu', /msg === redoTarget\(\)\) list\.push\(\['redo', 'Try again'/.test(app) && /'edit-msg' : 'edit-bob', 'Edit'/.test(app) && /'Change what you said and send it again'/.test(app));
   check('they wait while Bob is busy', /const wait = busy \|\| redoing;/.test(app) && /drawRedo\(\); \/\/ Try again and Edit hide while Bob is busy/.test(app));
   check('the window sends the message again with redo after taking back', /\/api\/chat\/redo/.test(app) && /redo: r\.data\.edited \? 'edit' : 'again'/.test(app));
@@ -137,7 +138,7 @@ const run = async (text, extra) => { const { jobId } = brain.enqueue('main', tex
   check('the switch from the Settings window reaches the chat', RELAY.includes('bob-chat-redo') && /addEventListener\('bob-chat-redo'/.test(app));
   const server = read('src/server.js');
   check('the server: the redo route, the setting saved and shown', /p === '\/api\/chat\/redo'/.test(server) && /typeof b\.chatRedo === 'boolean'/.test(server) && /chatRedo: cfg\.chatRedo !== false/.test(server));
-  const cellar = read('public/cellar.js');
+  const cellar = publicText('cellar.js');
   check('the switch is in How Bob works, on unless turned off', /sswitch\('chatRedo', settings\.chatRedo !== false, 'Show Try again, Edit and Delete in the chat', 'On unless you turn it off/.test(cellar));
   check('not on the Do you want me to list (that list is for things that start off)', !WANTS.some((w) => w.key === 'chatRedo'));
   check('Bob can read the setting in his own Help', /Show Try again, Edit and Delete in the chat/.test(read('src/self-help.js')));

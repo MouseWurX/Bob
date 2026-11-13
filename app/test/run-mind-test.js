@@ -11,6 +11,7 @@ import { brainsLine, toolLine, esc, thinkLabel } from '../public/mind-lines.js';
 import { HELP } from '../public/help-content.js';
 import { DEFAULT_ORDER, applyOrder, moveId, dropBefore } from '../public/now-sections.js';
 import { ORDERS, cleanOrder } from '../public/mind-view.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -121,7 +122,7 @@ const realFetch = globalThis.fetch;
 
 // ---- 1.5.138: docked in Now running (Show here), and the sections in any order ----
 {
-  const idx = read('public/index.html'), lay = read('public/layout.js'), app = read('public/app.js'), css = read('public/style.css'), view = read('public/mind-view.js'), js = read('public/mind.js');
+  const idx = read('public/index.html'), lay = read('public/layout.js'), app = publicText('app.js'), css = read('public/style.css'), view = read('public/mind-view.js'), js = read('public/mind.js');
   check('Now running has a Bob\'s thinking section that opens with the [+] in its title, folded to start with', /<section id="nowMind" data-sec="mind"/.test(idx) && /id="mindDock" type="button" class="sec-fold" aria-expanded="false" aria-controls="mindDockBody" aria-label="Show Bob's thinking"[^>]*>\[\+\]</.test(idx));
   check('every other section of Now running folds to its title with [-] and [+] too, remembered in this window', /for \(const sec of document\.querySelectorAll\('#nowSections > section\[data-sec\]'\)\)/.test(lay) && /store\.set\('bob-now-folded'/.test(lay) && /aria-expanded/.test(lay) && /\.now-sections section\.folded > :not\(\.now-sec\) \{ display: none !important; \}/.test(css) && /<section data-sec="graph">/.test(idx) && /graph: 'Resource use over time'/.test(lay) && /showGraph \? '' : 'graph'/.test(lay));
   check('the section has the same parts as the window: a status line, the log, Follow along, Clear, plus Pop out', ['mindDockNow', 'mindDockLog', 'mindDockFollow', 'mindDockClear', 'mindDockPop'].every((x) => idx.includes(`id="${x}"`)) && idx.includes('<link rel="stylesheet" href="/mind.css">'));
@@ -154,7 +155,7 @@ const realFetch = globalThis.fetch;
   check('one at a time: pressing again brings it to the front', /if \(mindWin\) \{ mindWin\.show\(\); mindWin\.focus\(\); return \{ action: 'deny' \}; \}/.test(m));
   check('closing Bob closes it too', /if \(mindWin\) mindWin\.close\(\)/.test(m));
   check('it stays sandboxed like Bob\'s window', /mindOptions[\s\S]*sandbox: true[\s\S]*nodeIntegration: false/.test(m));
-  const idx = read('public/index.html'), app = read('public/app.js');
+  const idx = read('public/index.html'), app = publicText('app.js');
   check('chat bar has the button', idx.includes('id="mindBtn"') && idx.includes("💭 Bob's thinking"));
   check('button opens the window', app.includes("window.open('/mind.html', 'bob-mind'"));
 }

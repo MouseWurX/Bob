@@ -3,13 +3,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { cleanHands, readOnlyRoots, LIMITS } from '../src/hands-settings.js';
+import { publicText } from './source-text.js';
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { if (ok) { pass++; console.log('PASS', name); } else { fail++; console.log('FAIL', name, extra); } };
 const read = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
-const ui = read('public/cellar.js'), hands = read('public/hands.js'), css = read('public/style.css'), share = read('public/share-brains.js'), help = read('public/help-content.js');
+const ui = publicText('cellar.js'), hands = read('public/hands.js'), css = read('public/style.css'), share = read('public/share-brains.js'), help = read('public/help-content.js');
 
 // 7. Updates first, closed, Check for updates on its line.
-const every = ui.slice(ui.indexOf('function everydayHtml'), ui.indexOf('function macRemoveHtml'));
+const every = ui.slice(ui.indexOf('function everydayHtml'), ui.indexOf('\n  }\n', ui.indexOf('function everydayHtml')));
 const order = [...every.matchAll(/panel\('(ev-[a-z]+)'/g)].map((m) => m[1]);
 check('Everyday order: updates first, then Bob himself, How Bob works, then the extras', order.join(',') === 'ev-pc,ev-bob,ev-how', order.join(','));
 const extras = [...ui.slice(ui.indexOf('const EVERY_EXTRA'), ui.indexOf('function everydayHtml')).matchAll(/\['(ev-[a-z]+)'/g)].map((m) => m[1]);

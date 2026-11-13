@@ -1,7 +1,7 @@
 // "Let Bob work on his own app" (src/self-work.js): off by default; Bob works on a separate copy of his code (never the
 // running Bob, whose folder and settings stay locked), only on Bobert or stock Qwen3.6 35B, with Long memory (YaRN)
 // stretched past 256K for that job. No real git, network, graphics card or folders: everything is passed in as a fake.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -96,7 +96,7 @@ check('remixes and smaller brains don\'t', !['qwen3.6-35b-a3b-heretic', 'qwen3.6
   const small = gatherBrains({ models: { tinker: 'riker-28b' } }, { ...deps, own: [], catalogFile: (id) => (id === 'riker-28b' ? { gguf: 'r.gguf' } : null) });
   check('no Bobert or Qwen 35B: the brain doing the Coding job', pickBigBrain({}, small).id === 'riker-28b');
   check('a brain is here but not Bobert, Qwen 35B or a Coding brain: the biggest one here, never a catalogue one to get', pickBigBrain({}, gatherBrains({}, { ...deps, own: [], catalogFile: (id) => (id === 'gemma4-12b' || id === 'riker-28b' ? { gguf: `${id}.gguf` } : null), size: (f) => (f.startsWith('riker') ? 17.5e9 : 7.4e9) })).id === 'riker-28b' && pickBigBrain({}, gatherBrains({}, { ...deps, own: [], catalogFile: (id) => (id === 'gemma4-12b' ? { gguf: 'g.gguf' } : null) })).id === 'gemma4-12b');
-  check('Settings shows the brain Bob would really use, even when the picked one is not downloaded', /const shown = w\.model \|\| \(w\.missing \? w\.picked : ''\)/.test(fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8')));
+  check('Settings shows the brain Bob would really use, even when the picked one is not downloaded', /const shown = w\.model \|\| \(w\.missing \? w\.picked : ''\)/.test(publicText('cellar.js')));
   check('nothing here at all: nothing to pick', pickBigBrain({}, gatherBrains({}, { ...deps, own: [], catalogFile: () => null })) === null);
   const v = selfWorkView({ ...cfg, ...c0, selfWork: { enabled: true } }, list);
   check('Settings sees the switch, 512K, the brain Bob would use, every brain with its group and jobs, and Bob first in the list with no copy made', v.enabled && v.ctx === 524288 && v.model === 'own-1' && v.repos[0].own && v.repos[0].ready === false && v.brains.length === list.length && v.brains.find((b) => b.id === 'riker-28b').group === 'jobs' && v.brains.find((b) => b.id === 'gemma4-31b').here === false && v.helpers === false);
@@ -325,7 +325,7 @@ check('remixes and smaller brains don\'t', !['qwen3.6-35b-a3b-heretic', 'qwen3.6
   check('...and the glossary has Code copy', HELP.find((h) => h.id === 'glossary')?.html.includes('<dt>Code copy</dt>'));
   const help = HELP.find((h) => h.id === 'self-work').html;
   check('Help says the running Bob stays locked, the brains, Long memory, getting Git and Node, and the phone', /stay locked/.test(help) && /Bobert/.test(help) && /Qwen3\.6 35B/.test(help) && /512K/.test(help) && /Node\.js 20/.test(help) && /own-tools/.test(help) && /nodejs\.org/.test(help) && /MinGit/.test(help) && /Android/.test(help));
-  const ui = read('public/cellar.js');
+  const ui = publicText('cellar.js');
   check('Settings has the switch, the brain, the size and Make the code copy', ui.includes("sswitch('selfWork'") && ui.includes('data-selfwork="model"') && ui.includes('data-selfwork="ctx"') && ui.includes('data-selfcopy'));
   check('Make the code copy works only on this replicant matrix, with the switch on', /\/api\/self-work\/copy'\) \{\n\s+if \(!isLocal\)/.test(read('src/server.js')) && /selfWork\?\.enabled !== true\) return send\(res, 409/.test(read('src/server.js')));
 }

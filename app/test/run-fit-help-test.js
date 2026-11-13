@@ -4,6 +4,7 @@ import { canDo, suit, pickFor, picksOf, scoreFor, paramsB, unsuited, packFor } f
 import { kitFor, kitFit, slotTakes, kitHtml, SLOTS, allSlots } from '../public/equip.js';
 import { HELP } from '../public/help-content.js';
 import { searchHelp, helpHtml } from '../public/help.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -88,14 +89,14 @@ const slot = (id) => allSlots().find((s) => s.id === id);
   check('Gaming and Office are jobs on the Brains page', ['gaming', 'office'].every((id) => slot(id)?.how === 'brain'));
   check('new brains are listed but not recommended until tried', models.filter((m) => m.trial).every((m) => !picksOf(m, models, pc(16, 32)).length && !picksOf(m, models, pc(8, 16)).length && !picksOf(m, models, pc(6, 16)).length));
   check('a brain is only offered to jobs it can do', !slotTakes(slot('eyes'), 'qwen3-coder:30b', ctx) && slotTakes(slot('bob'), 'qwen3-coder:30b', ctx) && slotTakes(slot('image'), 'anything', ctx));
-  check('a "?" on the catalogue opens Help at how models are picked', /data-help="recommended"/.test(fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8')));
+  check('a "?" on the catalogue opens Help at how models are picked', /data-help="recommended"/.test(publicText('cellar.js')));
 }
 
 // ---- Help ----
 {
   const ids = HELP.map((e) => e.id);
   check('every Help entry has its own id, a title and text', new Set(ids).size === ids.length && HELP.every((e) => e.title && e.html && e.group));
-  const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+  const cellar = publicText('cellar.js');
   const advIds = [...cellar.matchAll(/\['(\w+)', '[^']+', '[^']*', \(\) =>/g)].map((m) => m[1]);
   check('every advanced Settings section has a Help entry for its "?"', advIds.length >= 8 && advIds.every((id) => ids.includes('settings-' + id)), advIds.filter((id) => !ids.includes('settings-' + id)).join(','));
   check('every link inside Help goes to an entry that exists', HELP.every((e) => [...e.html.matchAll(/data-helpgo="([^"]+)"/g)].every((m) => ids.includes(m[1]))));

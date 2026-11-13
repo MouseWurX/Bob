@@ -8,6 +8,7 @@ import { pickFolder } from '../src/pick-folder.js';
 import { kitHtml, SLOTS } from '../public/equip.js';
 import { HELP } from '../public/help-content.js';
 import { settingsNow } from '../src/self-help.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -51,7 +52,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-house-'));
   check('empty box says Bob picks, closed', /\(Bob picks\)/.test(houseStyleHtml('sfx', {})) && !/ open>/.test(houseStyleHtml('sfx', {})));
   check('values are escaped', !/<script>/.test(houseStyleHtml('pictures', { pictures: { style: '"><script>' } })));
   // 1.5.210 the boxes live in Settings, House style (every group, times of day too); a maker job's kit has a door to them.
-  const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+  const cellar = publicText('cellar.js');
   check('Settings, House style draws every group, times of day too', /\['house', '🖋 House style'[^\n]*Object\.keys\(HOUSE\)\.map\(\(g\) => houseStyleHtml\(g, settings\.houseStyle\)\)/.test(cellar) && Object.keys(HOUSE).includes('times'));
   const kit = kitHtml(SLOTS.find((s) => s.id === 'music'), { selected: 'music', roles: { current: {}, options: {} }, models: [], houseStyle: { music: { seconds: 30 } } });
   check('the Music job has a door to House style, and no second copy of the boxes', /data-gohouse="music"/.test(kit) && !kit.includes('id="house-music"'));

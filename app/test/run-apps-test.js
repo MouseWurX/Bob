@@ -2,7 +2,7 @@
 // password managers and prompts, password fields, Bob's own window), keys Bob may press, the "Bob is driving"
 // bar only while acting, taking over with the mouse or Esc, and Stop everything ending the helper.
 // Uses test/mock-apps-driver.js in place of installer\bob-apps.ps1.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -277,7 +277,7 @@ if (process.platform !== 'win32') check('off Windows the real helper says it nee
 const ui = fs.readFileSync(path.join(here, '..', 'public', 'hands.js'), 'utf8');
 check('the card uses the button text the Hand asks for', /esc\(ev\.button \|\| 'Run it'\)/.test(ui));
 check('the chat says when Bob stopped because you took over', /apps-stopped/.test(ui));
-const appUi = fs.readFileSync(path.join(here, '..', 'public', 'app.js'), 'utf8');
+const appUi = publicText('app.js');
 check('the honesty correction is the app\'s own note line under the reply, also after a reload', /case 'correction':\s*\/\/[^\n]*\n\s*endReply\(ev\);\s*note\(ev\.text, 'error'\);/.test(appUi) && /if \(m\.correction\) note\(m\.correction, 'error'\);/.test(appUi));
 
 // PC review (1.5.2): Alt+F4 says it closes the window; "spin" isn't taken for a PIN field.

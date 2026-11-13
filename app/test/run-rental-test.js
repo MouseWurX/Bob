@@ -1,7 +1,7 @@
 // 1.5.127 Rented brains: off by default, every limit 0, keys only from environment variables and never shown or logged,
 // the Hire it card before anything is spent, a self-destruct timer on every hired machine, and the OpenAI-style stream
 // read the same way llama-server's is.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -171,7 +171,7 @@ const KEY = 'rpa_TESTKEY0123456789abcdefghijklmnop';
   const emitted = [];
   new Rentals(cfg, { env: { RUNPOD_API_KEY: 'k' }, broadcast: () => {} }).offer(eight, { tokens: 10, emit: (ev) => emitted.push(ev) });
   check('the Hire it card carries the count so the window and the phone can warn', emitted[0].rental.cards === 8 && emitted[0].rental.cardsText === '8 × 141 GB card on one machine');
-  const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+  const cellar = publicText('cellar.js');
   check('Settings warns big before more than one card sticks, and snaps back to 1 on Back', /Cards on the machine/.test(cellar) && /times as much/.test(cellar) && /data-rentmultiok/.test(cellar) && /sel\.value = '1'/.test(cellar));
 }
 
@@ -195,13 +195,13 @@ const KEY = 'rpa_TESTKEY0123456789abcdefghijklmnop';
 
 // ---- 1.5.128: the five fixes from the first live checks ----
 {
-  const appJs = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const appJs = publicText('app.js');
   check('the Hire it button is disabled in the card itself while hiring is blocked', /class="get"\$\{ev\.blocked \? ' disabled/.test(appJs) && /Not hired\. Doing it here instead\./.test(appJs));
   const brainJs = brainText();
   check('Not now puts the job back in line to run here', /r\.done === 'none' && r\.jobId/.test(brainJs) && /j\.rent = false; j\.rentOk = false; j\.rentAgain = true; this\.carryOnNow/.test(brainJs));
   const routes = fs.readFileSync(new URL('../src/rental-routes.js', import.meta.url), 'utf8');
   check('adding into the empty slot and removing the slotted rental both tell the chat page', (routes.match(/action: 'slot'/g) || []).length === 3);
-  const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+  const cellar = publicText('cellar.js');
   check('Add this rental says what is missing', /Type the model\\'s name first/.test(cellar) && /alertIn\(b, e\.message\)/.test(cellar));
   // A tester's PC may hold a real key in its user variables (the PC thread's does), so those are set aside for the check
   // and put back after: the check is about what rentKeyEnv reads, not about the machine running it.
@@ -223,7 +223,7 @@ fs.rmSync(tmp, { recursive: true, force: true });
 // 1.5.128 (PC thread): the message that drew the Hire it card is already in the chat once; the run after Hire it or Not now
 // adds only a hidden note, so a reload shows one bubble. And the greyed Hire it button looks greyed; a missing-field line is red.
 const brainSrc = brainText();
-const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+const cellar = publicText('cellar.js');
 check('the run after the card answer does not repeat the user message', /j\.rentAgain = true/.test(brainSrc) && /Boolean\(job\?\.rentAgain\)/.test(brainSrc) && /job\.rentAgain = false/.test(brainSrc));
 const css = fs.readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
 check('a blocked Hire it button looks disabled', /\.rent-card button\.get:disabled \{ opacity: \.5; cursor: not-allowed; \}/.test(css));

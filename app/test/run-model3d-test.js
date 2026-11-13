@@ -2,7 +2,7 @@
 // the add-on pins and where they may come from, the 3D workshop engine entry, its setup steps (with a fake uv,
 // Python and downloader: nothing is downloaded or run), the make_3d_model tool, Bob-Net jobs, the GitHub build,
 // and the settings, Help, FAQ and glossary. Every file is made up in a temporary folder.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -53,7 +53,7 @@ const PINS = { release: 'model3d-addons-1', 'win-x64': [wheel('cumesh-0.0.1-cp31
   check('a Mac is told to send it to a PC Bob', /NVIDIA/.test(model3dWhy('mac', 'arm64', PINS)) && /Bob-Net/.test(model3dWhy('mac', 'arm64', PINS)));
   check('ARM Linux is told too', /Bob-Net/.test(model3dWhy('linux', 'arm64', PINS)));
   check('Windows with pins: a Get button', model3dWhy('win', 'x64', PINS, 8.9) === undefined && model3dWhy('win', 'x64', PINS, null) === undefined);
-  check('an RTX 50-series card gets the Get button again (its attention is handled in the runner)', model3dWhy('win', 'x64', PINS) === undefined && !/RTX 50-series/.test(read('src/engines.js') + read('public/cellar.js')));
+  check('an RTX 50-series card gets the Get button again (its attention is handled in the runner)', model3dWhy('win', 'x64', PINS) === undefined && !/RTX 50-series/.test(read('src/engines.js') + publicText('cellar.js')));
   {
     const py = read('model3d/bob-trellis.py');
     check('on RTX 50-series cards the runner uses PyTorch attention and leaves xformers\' FlashAttention out, before TRELLIS.2 loads', /get_device_capability\(0\)\[0\] < 12/.test(py) && /ATTN_BACKEND"\] = "sdpa"/.test(py) && /flash\.FwOp\.not_supported_reasons = classmethod/.test(py) && py.indexOf('newest_cards(torch)') < py.indexOf('from trellis2.pipelines'));
@@ -199,7 +199,7 @@ fs.mkdirSync(cfg.painterDir, { recursive: true });
 
 // ---------- settings, Help, FAQ, glossary ----------
 {
-  const cellar = read('public/cellar.js');
+  const cellar = publicText('cellar.js');
   check('the switch is in Settings and saved', /sswitch\('model3d', settings\.model3d === true, 'Let Bob turn pictures into 3D models'/.test(cellar) && /typeof b\.model3d === 'boolean'/.test(read('src/server.js')));
   check('Do you want me to: lists it', WANTS.some((w) => w.key === 'model3d' && w.setting === 'Let Bob turn pictures into 3D models'));
   check('bob_help reports it', /Let Bob turn pictures into 3D models: off/.test(settingsNow({})));

@@ -10,6 +10,7 @@ import { mergeSettings, SETTING_KEYS } from '../src/config.js';
 import { docParts, docHtml, viewOf, colName, isDocName } from '../public/doc-view.js';
 import { WANTS } from '../public/wants.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -134,7 +135,7 @@ cfg.docView = true;
   check('the settings route saves and reports the switch', /typeof b\.docView === 'boolean'/.test(server) && /docView: cfg\.docView === true/.test(server));
   const viewer = read('public/viewer.js');
   check('the side panel hands documents to doc-view.js', /import \{ isDocName, drawDoc \} from '\.\/doc-view\.js'/.test(viewer) && /isDocName\(t\.name\)/.test(viewer));
-  const cellar = read('public/cellar.js');
+  const cellar = publicText('cellar.js');
   check('Settings, How Bob works has the switch, off by default', /sswitch\('docView', settings\.docView === true, 'Show documents in the side panel'/.test(cellar) && /dataset\.set === 'docView'/.test(cellar));
   check('the Welcome list offers it', WANTS.some((w) => w.key === 'docView' && w.setting === 'Show documents in the side panel'));
   const main = read('electron/main.cjs');

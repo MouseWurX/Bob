@@ -1,6 +1,6 @@
 // Timeouts and hangs (reliability items 208-217, src/hang-guard.js): always on. Plain checks first, then the engine
 // with a scripted llama-server (fetch is faked: nothing here reaches a real engine, card or network).
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -136,7 +136,7 @@ check('216 never past the hard limit', loadDeadline(200, 300).soft === 300);
   check('214 a stuck server is noted in the logbook', /\| watchdog \| Bob's server hasn't answered for \d+ s/.test(fs.readFileSync(logbook, 'utf8')), fs.readFileSync(logbook, 'utf8'));
   check('214 and when it\'s back, the window hears how long', back && back.secs >= 2, JSON.stringify(back));
   check('214 the line says so plainly', /^I froze for about 3 seconds/.test(frozeLine(3)) && /4 minutes/.test(frozeLine(240)));
-  const server = src('server.js'), app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const server = src('server.js'), app = publicText('app.js');
   check('214 the events send a beat the window watches', /"type":"beat"/.test(server) && /Date\.now\(\) - heard > 65000/.test(app) && /ev\.type === 'froze'/.test(app));
 }
 

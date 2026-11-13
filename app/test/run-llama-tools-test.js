@@ -1,7 +1,7 @@
 // llama.cpp's helper programs in Bob: finding them, gguf-split (brains in parts), llama-bench (the standard speed
 // test), ggml-rpc-server (Bob-Net: lend my graphics card / spread big brains) and llama-diffusion-cli (diffusion
 // brains). Nothing here runs a real program or reads the real computer: tools, folders, networks and processes are fakes.
-import { labText } from './source-text.js';
+import { labText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -51,7 +51,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   ok(/ver="\$1"; tag="\$2"; file="\$3"/.test(pub) && /rel="brain-engine-\$ver"/.test(pub) && /Brain Engine \$\{ver#v\} \(Brain Engine \$\{ver%%b\*\} on llama\.cpp \$tag/.test(pub), 'publish.sh names the release by Brain Engine\'s own version');
   const pkg = JSON.parse(read(path.join(here, '..', 'package.json')));
   ok(Number.isInteger(pkg.bob.brainEngineVersion) && pkg.bob.brainEngineVersion >= 3, 'package.json carries Brain Engine\'s own version number');
-  const cel = read(path.join(here, '..', 'public', 'cellar.js'));
+  const cel = publicText('cellar.js');
   ok(/brain-engine-v\(\\d\+\)\$/.test(cel) && /built on llama\.cpp \$\{e\.basedOn\}/.test(cel), 'Settings, Engines says "version N, built on llama.cpp bNNNN", not the file tag');
   const readme = read(path.join(here, '..', 'engine', 'README.md'));
   ok(/ggml-rpc-server/.test(readme) && /llama-diffusion-cli/.test(readme) && /Tailscale/.test(readme), 'Brain Engine README: lists the new tools and how the card server is kept to Tailscale');

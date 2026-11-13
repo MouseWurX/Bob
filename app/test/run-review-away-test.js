@@ -1,7 +1,7 @@
 // #30: reviews over Bob-Net. When the reviewer has no room beside the main brain, a paired Bob with a good enough Review
 // brain (and "Take jobs from my other Bobs" on) checks the work; failing that, Bob swaps as before. Real lendChat behind
 // a pretend door, the hello fields, the pick (quality floor, a Bob that couldn't do one), and Brain.reviewAway.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import http from 'node:http';
 import { cleanAbilities, helloFor, reviewRefusal, lendChat, Lenders, lendRefusal, REVIEW_HOLD_MS, reviewCtxFloor } from '../src/share-brains.js';
 import { Brain, apuRoom, APU_NO_ROOM, MAX_CALLS_PER_REPLY, REPEATS_THEN_ANSWER, ANSWER_NOW_NUDGE } from '../src/brain.js';
@@ -141,7 +141,7 @@ check('the quick look needs its switch', (await Brain.prototype.quickReviewer.ca
 check('...and Borrow a brain', (await Brain.prototype.quickReviewer.call({ ...qb, cfg: { ...qb.cfg, share: {} } }, {}, [])) === null);
 check('...and asks with the same quality floor', (await Brain.prototype.quickReviewer.call(qb, {}, []))?.min === 4);
 check('...never for a guest job or pictures', (await Brain.prototype.quickReviewer.call(qb, { guest: true }, [])) === null && (await Brain.prototype.quickReviewer.call(qb, {}, ['p'])) === null);
-const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+const cellar = publicText('cellar.js');
 check('Settings has the switch, off unless set, and saves it', /sswitch\('netReview', settings\.netReview === true, 'Ask my other Bobs for a quick second look'/.test(cellar) && /dataset\.set === 'netReview'/.test(cellar));
 
 // ---- 1.5.181: what the two-Bob trial found ----

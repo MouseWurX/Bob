@@ -7,6 +7,7 @@ import { Brain } from '../src/brain.js';
 import { hooks, plainStep, plainNext, loadState, quarantineView, kindOf, reviewerFlag, TRIGGERS, acts, release, QUARANTINE_LINE } from '../src/quarantine.js';
 import { quarantineRoute } from '../src/quarantine-routes.js';
 import { saveSettings } from '../src/config.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -204,8 +205,8 @@ check('the setting is saved clean (just on)', JSON.stringify(cfg.quarantine) ===
 // ---------- Window side ----------
 {
   const ui = fs.readFileSync(new URL('../public/quarantine.js', import.meta.url), 'utf8');
-  const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
-  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const cellar = publicText('cellar.js');
+  const app = publicText('app.js');
   check('Settings has the switch, off unless turned on', /Let the reviewer quarantine Bob/.test(ui) && /off unless you turn it on/.test(ui) && /mountQuarantineSettings/.test(cellar));
   check('the card has Quarantine and Let him carry on, and says who the reviewer is', /Bob's reviewer, stopped/.test(ui) && /Quarantine \$\{esc\(ev\.name\)\}/.test(ui) && /Let him carry on/.test(ui) && /quarantineCard\(ev/.test(app));
   check('the banner has a Release button and Open logbook', /data-qrelease/.test(ui) && /Open logbook/.test(ui) && /createQuarantineBanner/.test(app));

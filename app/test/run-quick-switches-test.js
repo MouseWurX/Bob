@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handsRoute } from '../src/hands-routes.js';
 import { cleanHands, freeOn, handOn, LIMITS } from '../src/hands-settings.js';
+import { publicText } from './source-text.js';
 process.env.BOB_PLATFORM = 'win32'; // the Apps Hand is Windows-only; Screen use covers it there
 
 let pass = 0, fail = 0;
@@ -55,7 +56,7 @@ const hit = async (x, b, isLocal = true) => {
 }
 
 {
-  const ix = read('public/index.html'), qs = read('public/quick-switches.js'), app = read('public/app.js');
+  const ix = read('public/index.html'), qs = read('public/quick-switches.js'), app = publicText('app.js');
   check('both buttons sit next to ✋ Hands on the chat page', /id="handsBtn"[\s\S]{0,400}id="freeBtn"[\s\S]{0,400}id="screenBtn"/.test(ix) && /🔓 Autonomy/.test(ix) && /🖥 Screen use/.test(ix));
   check('turning Autonomy on asks first, in the page', /id="freeAsk"[^>]*role="alertdialog"/.test(ix) && /ask\.hidden = false/.test(qs));
   check('the buttons follow changes from elsewhere', /quickSwitches\.update\(ev\.settings\)/.test(app));

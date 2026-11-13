@@ -9,6 +9,7 @@ import { characterHtml, BOB_BODIES } from '../public/character.js';
 import { lookText, LOOK_ID_RE } from '../src/look.js';
 import { cleanSheet, listCharacters, saveCharacter, deleteCharacter, adventureRoute, Adventure } from '../src/adventure.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok) => { if (ok) pass++; else fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}`); };
@@ -100,7 +101,7 @@ const check = (name, ok) => { if (ok) pass++; else fail++; console.log(`${ok ? '
   const adv = fs.readFileSync(new URL('../public/adventure.js', import.meta.url), 'utf8');
   const equip = fs.readFileSync(new URL('../public/equip.js', import.meta.url), 'utf8');
   check('Style has Make your own look, with Bob\'s bodies only, and shows a worn design under Your own design', /data-makelook/.test(style) && /BOB_BODIES/.test(style) && /Your own design/.test(style));
-  check('Change look on Settings, Personality opens the character screen (1.5.210: the paper doll is gone)', !/doll-mid/.test(equip) && /data-golook>Change look/.test(fs.readFileSync(new URL('../public/personality.js', import.meta.url), 'utf8')) && /'golook' in b\.dataset.*openMaker/.test(fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8')) && /function openMaker/.test(style));
+  check('Change look on Settings, Personality opens the character screen (1.5.210: the paper doll is gone)', !/doll-mid/.test(equip) && /data-golook>Change look/.test(fs.readFileSync(new URL('../public/personality.js', import.meta.url), 'utf8')) && /'golook' in b\.dataset.*openMaker/.test(publicText('cellar.js')) && /function openMaker/.test(style));
   check('the preview blinks on a timer that stops when the box leaves the page', /setInterval/.test(fs.readFileSync(new URL('../public/character.js', import.meta.url), 'utf8')) && /blink: true/.test(fs.readFileSync(new URL('../public/character.js', import.meta.url), 'utf8')) && /root\.isConnected/.test(fs.readFileSync(new URL('../public/character.js', import.meta.url), 'utf8')));
   check('a saved or started character with no name is Hero, never the account name', !/settings\(\)\.userName \|\| 'Hero'/.test(adv) && /name: you\.name \|\| 'Hero'/.test(adv));
   check("the start card has Looks like, Change the look, Save this character and Saved characters (Delete this character asks in the page), and never sends Bob's look as the character's", /data-you-look/.test(adv) && /data-save-char/.test(adv) && /data-saved-char/.test(adv) && /Delete this character/.test(adv) && /Delete for good/.test(adv) && /Keep it/.test(adv) && !/confirm\('Delete this character/.test(adv) && /look: you\.look \|\| ''/.test(adv) && !/look: settings\(\)\.look/.test(adv));

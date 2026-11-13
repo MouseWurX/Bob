@@ -3,7 +3,7 @@
 // that isn't trusted, Brain Engine's trace in the shape the engine patch gives it, the scan as a Lab job with a fake
 // engine (no brain is loaded, nothing on this replicant matrix is read), the routes, and that the pieces are wired:
 // the Playground page, the viewer window in Bob.exe, the engine patch, Help.
-import { labText } from './source-text.js';
+import { labText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -644,7 +644,7 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   check('1.5.210: the fog mixes theme colours safely', mixHex('#000000', '#ffffff', 0.5) === '#808080' && mixHex('rgb(10, 20, 30)', '#fff', 0) === '#0a141e' && mixHex('red', '#fff', 0.5) === 'red');
   const { cleanStyle } = await import('../src/config.js');
   check('1.5.210: the Style page keeps Pixel Bob or fNRI cube and nothing else', cleanStyle({ avatar: 'cube' }).avatar === 'cube' && cleanStyle({ avatar: 'pixel' }).avatar === 'pixel' && !('avatar' in cleanStyle({ avatar: '<x>' })));
-  const app = read('public/app.js'), layout = read('public/layout.js'), page = read('public/style-page.js'), cube = read('public/mind-cube.js'), index = read('public/index.html'), help = read('public/help-content.js'), themes = read('public/themes.js');
+  const app = publicText('app.js'), layout = read('public/layout.js'), page = read('public/style-page.js'), cube = read('public/mind-cube.js'), index = read('public/index.html'), help = read('public/help-content.js'), themes = read('public/themes.js');
   check('1.5.210: the cube as Bob\'s picture is a choice on the Style page, the cube to begin with (1.5.211)', /opt\('avatar', 'pixel', 'Pixel Bob', pixelKept\(style\)\)/.test(page) && /opt\('avatar', 'cube', 'fNRI cube', !pixelKept\(style\)\)/.test(page) && /new CustomEvent\('bob-avatar', \{ detail: \{ cube: !pixelKept\(current\) \} \}\)/.test(themes));
   check('1.5.210: the corner cube draws small and never turns, the pixel Bob slows to once a second and the brain-swap machine rests', /createView\(canvas, \{ min: \[32, 32\] \}\)/.test(cube) && /let turning = !avatar;/.test(cube) && /document\.hidden \|\| cubeAvatarOn \? 1000 : 80/.test(app) && /if \(swapEl \|\| cubeAvatarOn\) return;/.test(app) && /id="bobCube" role="button" tabindex="0"/.test(index));
   check('1.5.210: Bob\'s brain shows once (Bob\'s thinking steps its cube aside) and the pixel Bob comes back in Adventure', /const shown = cubeOn && globalThis\.bobCubeAvatarOn !== true;/.test(layout) && /const on = cubeWanted && !advDlg\?\.open;/.test(app) && /attributeFilter: \['open'\]/.test(app));

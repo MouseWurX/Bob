@@ -9,6 +9,7 @@ import { FOUR, FIVE, HANGMAN, SHELVES, SECRETS, KINDS, DICE } from '../src/games
 import { HELP } from '../public/help-content.js';
 import { plainText, settingsNow } from '../src/self-help.js';
 import { SETTING_KEYS, mergeSettings } from '../src/config.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -262,7 +263,7 @@ function setup({ replies = [], session = 'normal', talk = 'every', fail = false 
   await call('POST', '/api/games/close'); check('POST close', sent.at(-1).b.game === null); }
 
 // ---- the page, Help, docs ----
-{ const page = read('public/games.js'), html = read('public/index.html'), app = read('public/app.js'), cellar = read('public/cellar.js'), css = read('public/style.css'), server = read('src/server.js');
+{ const page = read('public/games.js'), html = read('public/index.html'), app = publicText('app.js'), cellar = publicText('cellar.js'), css = read('public/style.css'), server = read('src/server.js');
   check('the menu has Games and the dialog', /id="gamesBtn"/.test(html) && /<span class="lbl">Games<\/span>/.test(html) && /<dialog id="games"/.test(html) && /🧩 Games/.test(html));
   check('the app opens the page and forwards games events', /createGames\(\{ api \}\)/.test(app) && /case 'games': window.dispatchEvent\(new CustomEvent\('bob-games'/.test(app));
   check('the page has a Start per game, the controls of each game, Stop and the scoreboard', /data-start="\$\{id\}"/.test(page) && /data-ask/.test(page) && /data-answer/.test(page) && /data-key/.test(page) && /data-climb/.test(page) && /data-try/.test(page) && /data-line/.test(page) && /data-wrap/.test(page) && /🏁 Stop/.test(page) && /Scoreboard/.test(page));

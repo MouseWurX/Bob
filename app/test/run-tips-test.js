@@ -1,11 +1,12 @@
 // 1.5.56 Tips: explanations sit behind ⓘ and show on hover, keyboard focus and tap; warnings stay written out.
 import fs from 'node:fs';
 import { tip, noteOrTip, mustShow } from '../public/tips.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok) => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}`); };
 const read = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8');
-const js = read('public/tips.js'), css = read('public/style.css'), app = read('public/app.js'), help = read('public/help-content.js');
+const js = read('public/tips.js'), css = read('public/style.css'), app = publicText('app.js'), help = read('public/help-content.js');
 
 check('tip() makes a real button with a name for screen readers', /^<button type="button" class="tip-i" aria-label="About Web search"/.test(tip('x', 'Web search')));
 check('an empty tip makes nothing', tip('') === '');
@@ -18,7 +19,7 @@ check('the bubble shows above pop-up pages (inside an open dialog)', /closest\('
 check('the app installs tips at start', /installTips\(\);/.test(app));
 check('ⓘ has at least 32 px to aim at and reads in High Contrast', /button\.tip-i, \.cellar button\.tip-i \{[^}]*width: 32px; height: 32px/.test(css) && /forced-colors: active\) \{ \.tip-bubble/.test(css));
 check('Help explains the ⓘ buttons (around, glossary, FAQ)', /The little ⓘ buttons/.test(help) && /<dt>Tip \(ⓘ\)<\/dt>/.test(help) && /id: 'faq-tips'/.test(help));
-check('what goes online and changed defaults stay written out (web search, Keep chatting while Bob is busy, reviewer beside)', ['webSearch', 'chatWhileBusy', 'mootBeside'].every((k) => new RegExp(`sswitch\\('${k}'[^\\n]*keep\\('`).test(read('public/cellar.js'))));
+check('what goes online and changed defaults stay written out (web search, Keep chatting while Bob is busy, reviewer beside)', ['webSearch', 'chatWhileBusy', 'mootBeside'].every((k) => new RegExp(`sswitch\\('${k}'[^\\n]*keep\\('`).test(publicText('cellar.js'))));
 check('Gaming lock on Effort stays written out', /hint\.textContent = locked \? GAMING_HINT/.test(read('public/effort.js')));
 check('privacy and safety notes stay written out (Borrow a brain, phone access, working without asking)', /<strong>Borrow a brain<\/strong>[^\n]*<br><span class="muted keep">Each time, the chat so far/.test(read('public/share-brains.js')) && /<strong>Let my other replicant matrices in<\/strong><br><span class="muted">/.test(read('public/phone-access.js')) && /<strong>Let Bob work without asking<\/strong>[^\n]*<br><span class="muted">No approval cards/.test(read('public/hands.js')));
 

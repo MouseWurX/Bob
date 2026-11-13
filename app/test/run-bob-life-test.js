@@ -6,6 +6,7 @@ import { frameRows, glance, LOOKS } from '../public/bob-sprite.js';
 import { avatar } from '../public/avatars.js';
 import { ANTIC_IDS, ANTIC_LINES, anticLine, MOMENTS } from '../public/patches.js';
 import { pickAntic } from '../public/cat-antics.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -124,7 +125,7 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
 // Word bubbles (issue #36): Bob's and the cat's lines float beside his picture and never push the menu down.
 {
   const rd = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
-  const html = rd('public/index.html'), css = rd('public/style.css'), antics = rd('public/cat-antics.js'), bub = rd('public/say-bubbles.js'), app = rd('public/app.js');
+  const html = rd('public/index.html'), css = rd('public/style.css'), antics = rd('public/cat-antics.js'), bub = rd('public/say-bubbles.js'), app = publicText('app.js');
   check('bubbles: a fixed layer outside the menu, out of screen readers', /<div id="bubbles" class="bubbles" aria-hidden="true">/.test(html) && html.indexOf('id="bubbles"') < html.indexOf('id="side"') && /\.bubbles \{ position: fixed;[^}]*pointer-events: none;/.test(css) && /class="bubble-x"/.test(html));
   check('bubbles: no cat line left inside the menu', !html.includes('catLine') && !antics.includes('catLine') && !css.includes('.cat-line'));
   check('bubbles: the whole line shows, never cut off (1.5.215)', /\.say-bubble > span \{ display: block; \}/.test(css) && !/\.say-bubble > span \{[^}]*line-clamp/.test(css));

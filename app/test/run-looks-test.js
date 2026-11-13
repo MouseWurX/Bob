@@ -6,6 +6,7 @@ import { cleanStyle } from '../src/config.js';
 import { HELP } from '../public/help-content.js';
 import { rankFind } from '../public/find.js';
 import { bobMenuHtml } from '../public/bob-menu.js';
+import { publicText } from './source-text.js';
 const pixelKeptT = (st) => st?.avatar === 'pixel' && st?.avatarKept === true; // mirrors public/themes.js pixelKept (themes.js needs a page)
 
 let pass = 0, fail = 0;
@@ -49,13 +50,13 @@ check('a Help topic found only by its search words still shows', rankFind([{ lab
 check('themes.js keeps the same Pixel Bob rule', read('public/themes.js').includes("export const pixelKept = (style) => style?.avatar === 'pixel' && style?.avatarKept === true;"));
 check('an old Pixel Bob pick no longer hides the cube; one made from 1.5.211 on is kept', !pixelKeptT({ avatar: 'pixel' }) && pixelKeptT({ avatar: 'pixel', avatarKept: true }) && cleanStyle({ avatar: 'pixel', avatarKept: true }).avatarKept === true);
 check('Now running starts closed in every look, and an old open is forgotten once on the update', read('public/layout.js').includes("store.get('bob-right', 'hidden')") && read('public/layout.js').includes("'bob-layout-211'"));
-check('Journey has its own tab next to Adventure, on the computer and in the phone menu (1.5.215)', read('public/index.html').includes('id="journeyBtn"') && read('public/app.js').includes("$('journeyBtn').onclick") && read('public/phone/index.html').includes('data-go="journey"') && read('public/phone/phone.js').includes('journey: journeyTab'));
+check('Journey has its own tab next to Adventure, on the computer and in the phone menu (1.5.215)', read('public/index.html').includes('id="journeyBtn"') && publicText('app.js').includes("$('journeyBtn').onclick") && read('public/phone/index.html').includes('data-go="journey"') && read('public/phone/phone.js').includes('journey: journeyTab'));
 check('a page beats a Help topic of the same name', rankFind([{ label: 'Tasks', kind: 'Help' }, { label: 'Tasks', kind: 'Page' }], 'tasks')[0].kind === 'Page');
 const menu = bobMenuHtml({ loaded: [] }, { tools: [{ id: 'settingsBtn', icon: '⚙', label: 'Settings' }, { id: 'speak', icon: '🔊', label: 'Read aloud', st: 'On' }], session: { value: 'b', options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B<' }] } });
 check("Bob's menu carries the tools, each pressing its own button", menu.includes('data-bobtool="settingsBtn"') && menu.includes('data-bobtool="speak"') && menu.includes('>On<'));
 check("Bob's menu has the Session pick, escaped", menu.includes('<option value="b" selected>B&lt;</option>'));
 check("without Lamplight Bob's menu stays as it was", !bobMenuHtml({ loaded: [] }).includes('bob-menu-tools'));
-const app = read('public/app.js');
+const app = publicText('app.js');
 check('Ctrl+K opens Find anything only in Lamplight', /id === 'search'\) \{ if \(lamp\(\)\) findBox\.open\(\); else topicsPage\.open\(\);/.test(app));
 check('the top bar hides the tools only in Lamplight, and the Find button only shows there', /body\.look-lamplight \.side :is\(#cellarBtn[^)]*\)[^{]*\{ display: none; \}/.test(css) && /\n#findBtn \{ display: none; \}/.test(css));
 check('the status line moves under the typing box (the same buttons, nothing rebuilt)', /body\.look-lamplight \.ctx \{ order: 99;/.test(css));

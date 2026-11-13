@@ -21,6 +21,7 @@ import { memTypeTrade } from '../public/mem-types.js';
 import { memTypeHtml } from '../public/brains.js';
 import { HELP } from '../public/help-content.js';
 import { WANTS } from '../public/wants.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -175,7 +176,7 @@ check('the keeper adds it to the finished-update message', /is up to date[^\n]*e
   setOnBattery(null); }
 
 // ---------- Settings, first-time list, Help, glossary, FAQ ----------
-const cellar = read('public/cellar.js'), server = read('src/server.js');
+const cellar = publicText('cellar.js'), server = read('src/server.js');
 for (const [k, label] of [['copyGuess', 'Guess ahead by copying from the chat'], ['preloadNext', 'Load the next brain early'], ['laptopMode', 'Laptop mode'], ['newCardTest', 'Test a new graphics card by itself'], ['speedLog', 'Keep a speed history'], ['engineNotes', 'Tell me what engine updates change']]) {
   check(`Settings has "${label}", always there, off unless turned on`, cellar.includes(`sswitch('${k}', settings.${k} === true, '${label}'`));
   check(`Help names "${label}"`, HELP.some((h) => h.html.includes(label)));

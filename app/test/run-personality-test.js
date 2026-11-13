@@ -1,6 +1,6 @@
 // 1.3.0: Bob knows his look and reacts once when it changes; personality dials (default = Bob as he was);
 // the Attributes panel; clicking Bob opens Equip Bob.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -69,9 +69,9 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
   check('a mix that matches no preset says "Your own mix"', /Your own mix/.test(html) && !/Your own mix/.test(attributesHtml({ personality: PRESETS[2].set, look: 'sysop', lookText: 'x' })));
   check('names are escaped', !/<script/.test(attributesHtml({ personality: {}, look: 'sysop', lookText: '<script>x</script>', user: '<script>' })));
   // 1.5.210 the Attributes panel moved to Settings, Personality (on the Bob himself card) when the paper doll went.
-  const cellar = read('public/cellar.js'), map = read('public/settings-map.js');
+  const cellar = publicText('cellar.js'), map = read('public/settings-map.js');
   check('Settings, Personality draws the attributes panel, and is on the map', /\['personality', '🎚 Personality'[^\n]*attributesHtml\(/.test(cellar) && /'adv-personality'/.test(map));
-  const app = read('public/app.js');
+  const app = publicText('app.js');
   check('clicking Bob (or Enter on him) opens his small menu', /createBobMenu\(\{\s*anchor: bobCanvas/.test(app) && /e\.key === 'Enter'/.test(read('public/bob-menu.js')) && /bobCanvas\.tabIndex = 0/.test(app) && /e\.key === 'Enter'/.test(app));
   check('Ask Bob sends the question in the chat', /addEventListener\('bob-ask'/.test(app) && /requestSubmit/.test(app));
 
@@ -81,7 +81,7 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
 {
   const html = attributesHtml({ personality: {}, look: 'sysop', lookText: 'x', user: 'Sam', callMe: '', windowsName: 'Pcuser' });
   check('Attributes asks what Bob should call you, with the Windows name as the fallback', /What should Bob call you\?/.test(html) && /data-callme/.test(html) && /placeholder="Pcuser"/.test(html));
-  const cfgSrc = read('src/config.js'), srv = read('src/server.js'), cel = read('public/cellar.js');
+  const cfgSrc = read('src/config.js'), srv = read('src/server.js'), cel = publicText('cellar.js');
   check('the name is kept in inn settings and wins over the Windows name', /if \(cfg\.callMe\) cfg\.userName = cfg\.callMe;/.test(cfgSrc) && /'callMe'/.test(cfgSrc));
   check('the name is cleaned and kept short; empty means the Windows name', /slice\(0, 40\)/.test(srv) && /cfg\.userName = name \|\| cfg\.windowsName/.test(srv));
   check('first-run setup asks too', /What should I call you\?/.test(cel));

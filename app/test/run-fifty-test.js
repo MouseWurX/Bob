@@ -1,6 +1,6 @@
 // The 50 improvements, items 1-26 (Nov 11): the loop, the harness and the tools. Nothing here reads the real computer:
 // a throwaway folder, fake tools, a fake git and no network.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -63,7 +63,7 @@ check('5: Low 8 steps, Medium 12, High 16, Extreme 24', loopSteps('low') === 8 &
 
 // ---------- 8. Try again, thinking harder ----------
 {
-  const b = brainText(), a = pub('app.js');
+  const b = brainText(), a = publicText('app.js');
   check('8: giving up offers the harder try (not on High or Extreme already)', /emit\(\{ type: 'stuck' \}\); \/\/ item 8/.test(b));
   check('8: the button asks again on High effort', /data-redo data-hard/.test(a) && /'hard' in b\.dataset \? 'high'/.test(a));
 }
@@ -78,7 +78,7 @@ check('9: remember asks first after outside text; a plain look-up doesn\'t', /^r
 {
   const t = traceStep({ name: 'web_search', summary: 'search: tea', ok: true, ms: 1234.4, text: 'abc', brain: 'Brain (Riker)' });
   check('10: one step: tool, what, ok, time, size, brain', t.tool === 'web_search' && t.what === 'search: tea' && t.ok && t.ms === 1234 && t.chars === 3 && t.brain === 'Brain (Riker)');
-  check('10: the steps are kept with the answer and shown under it', /last\.steps = list; emit\(\{ type: 'steps', list \}\)/.test(brainText()) && /How I got here/.test(pub('app.js')));
+  check('10: the steps are kept with the answer and shown under it', /last\.steps = list; emit\(\{ type: 'steps', list \}\)/.test(brainText()) && /How I got here/.test(publicText('app.js')));
 }
 
 // ---------- 11. Save as a test ----------
@@ -108,7 +108,7 @@ check('12: one exact command in one folder, until midnight', todayKey('npm test'
 }
 
 // ---------- 13. Sum up and carry on ----------
-check('13: the meter and the button are on the chat page', /id="chatFill"/.test(fs.readFileSync(path.join(here, '..', 'public', 'index.html'), 'utf8')) && /\/api\/chat\/compact/.test(pub('app.js')) && COMPACT_KEEP === 6);
+check('13: the meter and the button are on the chat page', /id="chatFill"/.test(fs.readFileSync(path.join(here, '..', 'public', 'index.html'), 'utf8')) && /\/api\/chat\/compact/.test(publicText('app.js')) && COMPACT_KEEP === 6);
 
 // ---------- 14. A reply that stops sending words ----------
 {

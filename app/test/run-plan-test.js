@@ -10,6 +10,7 @@ import { showPlanTool, planGate, planOn, planPrompt } from '../src/plan.js';
 import { Brain } from '../src/brain.js';
 import { mergeSettings } from '../src/config.js';
 import { settingsNow } from '../src/self-help.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -50,7 +51,7 @@ const call = (s) => ({ function: { name: s.tool, arguments: JSON.stringify(s.arg
   const { fake: on } = makeBob();
   check('show_plan is not offered while off, and is while on', !off.usable('show_plan') && on.usable('show_plan'));
   check('Bob can tell someone whether it is on', settingsNow({ planFirst: true }).includes("Show Bob's plan before big jobs: on") && settingsNow({}).includes("Show Bob's plan before big jobs: off"));
-  const cellar = read('public/cellar.js'), server = read('src/server.js');
+  const cellar = publicText('cellar.js'), server = read('src/server.js');
   check('the switch is on the everyday Settings page, off unless turned on', /sswitch\('planFirst', settings\.planFirst === true, 'Show Bob\\'s plan before big jobs', keep\('Off unless you turn it on/.test(cellar));
   check('the closed panel shows it', /Plans before big jobs: \$\{onoff\(settings\.planFirst === true\)\}/.test(cellar));
   check('the server saves and shows it', /typeof b\.planFirst === 'boolean'/.test(server) && /planFirst: cfg\.planFirst === true/.test(server));
@@ -161,7 +162,7 @@ const call = (s) => ({ function: { name: s.tool, arguments: JSON.stringify(s.arg
 
 // ---------- The window ----------
 {
-  const card = read('public/plan-card.js'), app = read('public/app.js'), hands = read('public/hands.js');
+  const card = read('public/plan-card.js'), app = publicText('app.js'), hands = read('public/hands.js');
   check('the chat shows the plan card before any other card, and sends the typed change', /planApproval\(ev, \{ add, answer: \(allow, items, note\) => post\('\/api\/approve', \{ id: ev\.id, allow, items, note \}\) \}\)/.test(app) && app.indexOf('planApproval(ev') < app.indexOf('togetherApproval(ev'));
   check('its buttons are verbs, as the style guide asks', ['Go ahead', 'Change something', 'Not now (Bob drops this job)', 'Send to Bob', 'Back'].every((b) => card.includes(`>${b}<`)));
   check('the card with all of a job\'s OKs leaves plan cards alone', /if \(!Array\.isArray\(ev\.together\) \|\| ev\.planCard\) return null;/.test(hands));

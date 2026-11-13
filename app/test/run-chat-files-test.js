@@ -13,6 +13,7 @@ import { pdfText } from '../src/doc-text.js';
 import { mergeSettings, SETTING_KEYS } from '../src/config.js';
 import { WANTS } from '../public/wants.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -137,7 +138,7 @@ check('a picture too tall keeps the newest messages and says so', lay.height <= 
 check('Past chats has Share with a preview and two saves', ['data-share', 'Save as a page', 'Save as a picture', 'Also hide', 'sandbox srcdoc'].every((w) => read('public/topics.js').includes(w)) && read('src/server.js').includes("p === '/api/chats/share'"));
 
 // ---------- The page and Help ----------
-const topics = read('public/topics.js'), cellar = read('public/cellar.js');
+const topics = read('public/topics.js'), cellar = publicText('cellar.js');
 check('Past chats has Save as Markdown, JSON and PDF links, Bring in chats and a Turn it on button', topics.includes('/api/chats/save?id=') && ['Markdown', 'JSON', 'PDF', 'Bring in chats…', 'Bring in the ticked chats', 'data-chatfileson', 'Tick all', 'Cancel'].every((w) => topics.includes(w)));
 check('the file is sent as it is with the page\'s header', /fetch\('\/api\/chats\/look', \{ method: 'POST', headers: \{ 'content-type': 'application\/octet-stream', 'x-bob': '1'/.test(topics));
 check('the switch is in Settings, How Bob works', cellar.includes("sswitch('chatFiles', settings.chatFiles === true, 'Save chats as files and bring chats in'"));
