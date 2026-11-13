@@ -66,7 +66,8 @@ export function gamesBrain(cfg) {
   const g = cleanGames(cfg.games);
   const s = currentSession(cfg);
   if (s.id === 'light') { const m = modelFor(cfg, 'bob'); return m.model ? { model: m.model, cpu: true, think: false, ctx: 8192 } : null; }
-  if (g.brain === 'main') { const m = modelFor(cfg, 'bob'); return m.model ? { model: m.model, cpu: Boolean(m.cpu), think: false, ctx: Math.min(m.ctx || 8192, 16384) } : null; }
+  // No Quick brain (One brain): the main one plays.
+  if (g.brain === 'main' || !sessionBrains(cfg).small) { const m = modelFor(cfg, 'bob'); return m.model ? { model: m.model, cpu: Boolean(m.cpu), think: false, ctx: Math.min(m.ctx || 8192, 16384) } : null; }
   const small = sessionBrains(cfg).small;
   return small ? { model: small, cpu: quickOnCpu(cfg), think: false, ctx: 8192 } : null;
 }

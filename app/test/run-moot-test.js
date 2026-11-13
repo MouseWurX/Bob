@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Brain } from '../src/brain.js';
-import { cleanEffort, effortPrompt, verdict, mootMinutes, draftBrain, reviewBrain } from '../src/moot.js';
+import { cleanEffort, effortPrompt, verdict, mootMinutes, draftBrain, reviewBrain, hatBrain } from '../src/moot.js';
 import { systemPrompt, HATS, CORE } from '../src/persona.js';
 import { catPrompt, catMoment, MOMENTS } from '../public/patches.js';
 import { personalityPrompt } from '../public/personality.js';
@@ -132,6 +132,11 @@ async function turn(text, effort, s) {
 // ---------- Small parts ----------
 check('verdicts are read from the first words', verdict('Looks right. ok') === 'ok' && verdict('Needs fixes:\n- x') === 'fix' && verdict('hmm') === 'unclear');
 check('minutes say plainly when points are still open', /not finished/.test(mootMinutes([{ kind: 'check', verdict: 'fix' }], 'R')));
+// Nov 13 (the owner): with One brain on, Medium and up, the Coding helper and the check all stay on the main brain.
+{
+  const one = { oneBrain: true, models: { bob: 'm', tinker: 'coder', reviewer: 'rev' }, sessionBrains: { deep: 'big' } };
+  check('One brain: no Deep thinking, Coding or Review brain loads', draftBrain(one).model === 'm' && reviewBrain(one).model === 'm' && hatBrain(one, 'tinker', 'high').model === 'm' && draftBrain({ ...one, oneBrain: false }).model === 'big' && reviewBrain({ ...one, oneBrain: false }).model === 'rev');
+}
 check('without a Review brain, the main brain checks its own work', reviewBrain({ models: { bob: 'm' } }).model === 'm' && draftBrain({ models: { bob: 'm' } }).model === 'm');
 check('the scout cross-checks: two sources for important claims, then re-reads the draft', /two independent sources/.test(HATS.scout.prompt) && /re-read your draft/.test(HATS.scout.prompt));
 check('the front desk outlines, drafts and re-reads longer writing', /outline, draft, then re-read/.test(systemPrompt({ now: 'now' })));

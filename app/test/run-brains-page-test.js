@@ -135,8 +135,18 @@ const ctx = { roles, models, brains: { small: 'gemma4-e4b', deep: 'bobert-35b' }
   const html = brainsHtml(ctx);
   check('the setups are buttons that say which is in use, in words', SETUPS.every((s) => html.includes(`data-setup="${s.id}"`)) && /data-setup="specialists" aria-pressed="true"><strong>[^<]*<\/strong> <span class="tag good">in use<\/span>/.test(html) && !/setup-ask/.test(html));
   const ask = brainsHtml({ ...ctx, setupAsk: 'one' });
-  check('pressing one shows the list of changes first, with Apply and Cancel', /class="setup-ask"/.test(ask) && /data-setupapply="one"/.test(ask) && /<strong>Coding<\/strong>: no brain of its own \(the main brain codes\)/.test(ask) && /No brain is deleted/.test(ask), ask.slice(ask.indexOf('setup-ask'), ask.indexOf('setup-ask') + 700));
-  check('nothing to change: no Apply button', !/data-setupapply/.test(brainsHtml({ ...ctx, roles: { ...roles, current: { bob: 'riker-28b-q3' } }, brains: {}, setupAsk: 'one' })));
+  check('pressing One brain shows the jobs the main brain takes first, with Apply and Cancel', /class="setup-ask"/.test(ask) && /data-setupapply="one"/.test(ask) && /<strong>Coding<\/strong>/.test(ask) && /Quick brain is off/.test(ask) && /picks stay on the page, greyed/.test(ask), ask.slice(ask.indexOf('setup-ask'), ask.indexOf('setup-ask') + 600));
+  check('a setup with nothing to change: no Apply button', !/data-setupapply/.test(brainsHtml({ ...ctx, setupAsk: 'specialists' })) && !/data-setupapply/.test(brainsHtml({ ...ctx, oneBrain: true, setupAsk: 'one' })));
+  // Nov 13 (the owner): "switching to one brain does not disable deep thinking brain, office brain, or quick brain".
+  const on = { ...ctx, oneBrain: true };
+  const onHtml = brainsHtml(on);
+  check('One brain on: it is the setup in use, whatever is picked', setupOf(on) === 'one' && /data-setup="one" aria-pressed="true"/.test(onHtml));
+  check('One brain on: other jobs stay on the page, greyed and marked main brain, never hidden', /job-chip job-chip-off[^>]*>[^<]*Deep thinking <span class="muted">\(main brain\)/.test(onHtml) && /data-onebrainoff/.test(onHtml) && /Quick brain is off/.test(onHtml), onHtml.slice(onHtml.indexOf('brain-list'), onHtml.indexOf('brain-list') + 900));
+  check('One brain on: the main brain\'s own jobs and Seeing pictures are not greyed', !/job-chip-off[^>]*>[^<]*Brain </.test(onHtml) && !/job-chip-off[^>]*>[^<]*Seeing pictures/.test(onHtml));
+  check('One brain on: an empty Quick brain says it is off, an empty Office says the main brain does it', /<strong>Quick brain<\/strong> <span class="muted">Off: One brain is on/.test(brainsHtml({ ...on, brains: { deep: 'bobert-35b' } })));
+  check('One brain on: another setup offers to turn it off', /turn One brain off|Turns One brain off/.test(brainsHtml({ ...on, setupAsk: 'duo' })) && /data-setupapply="specialists"/.test(brainsHtml({ ...on, setupAsk: 'specialists' })));
+  const cel = read('public/cellar.js');
+  check('Apply on One brain turns the switch on; any other setup turns it off first', /oneBrain: id === 'one'/.test(cel) && /const plan = id === 'one' \? \[\]/.test(cel) && /'onebrainoff' in b\.dataset/.test(cel) && /oneBrain: settings\?\.oneBrain === true/.test(cel));
   check('Across my Bobs points at the Bob-Net settings and says it is all off until turned on', /data-setupbobnet/.test(brainsHtml({ ...ctx, setupAsk: 'bobs' })) && /off until you turn it on/.test(brainsHtml({ ...ctx, setupAsk: 'bobs' })));
   const cellar = read('public/cellar.js');
   check('Apply saves each job through the usual call, then reloads', /for \(const c of plan\) await equipSlot\(c\.slot, c\.value\);/.test(cellar) && /jumpTo = 'adv-bobnet'/.test(cellar));

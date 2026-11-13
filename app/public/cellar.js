@@ -743,7 +743,7 @@ export function createCellar({ popOut = null } = {}) {
 `)}${panel('ev-how', '⚡ How Bob works', howSum, `
       <h4 class="ssub">How he works</h4>
       ${sswitch('autoSession', settings.autoSession !== false, 'Let Bob pick the session', 'Bob moves into the session that suits the job (Art, Coding, Office or Gaming) and goes back to Normal, the lightest, once he has been quiet for 2 minutes. While something else is using the graphics card, like a game, he stays in Gaming. You can still pick a session yourself from the menu: Bob keeps it while you work, then goes back to Normal once he has been quiet for 2 minutes. To keep him in Gaming, press 🎮 Gaming next to Effort.')}
-      ${sswitch('oneBrain', settings.oneBrain, 'One brain (snappier)', 'Every copy of Bob uses the main brain, so he never stops to swap brains (about 20 seconds).')}
+      ${sswitch('oneBrain', settings.oneBrain, 'One brain (snappier)', 'Every job uses the main brain and the Quick brain is off, so he never stops to swap brains (about 20 seconds). Other picks are kept, greyed on the Brains page.')}
       ${sswitch('planFirst', settings.planFirst === true, 'Show Bob\'s plan before big jobs', keep('Off unless you turn it on. Before a job with several steps, or one that changes files or runs programs, Bob shows the steps on one card and waits for your OK.'))}
       ${sswitch('howtos', settings.howtos === true, 'Let Bob learn how-tos', 'Off unless you turn it on. After a job with a few steps goes well, Bob offers to keep the steps as a how-to, and follows them next time you ask for something like it. Nothing is kept without your click. Your how-tos are in 🧰 Tools and how-tos Bob made below.')}
       ${sswitch('editOwn', settings.editOwn === true, 'Let Bob fix his own messages', 'Off unless you turn it on. When Bob gets something wrong, or a status line goes out of date, he changes his earlier message instead of sending a new one. Only his own messages, only in the chat he\'s in. The message says edited, and pressing that shows what it said first.')}
@@ -1490,7 +1490,7 @@ export function createCellar({ popOut = null } = {}) {
   let setupAsk = ''; // 1.5.205 the Brains page: the setup whose list of changes is showing
   let eqSelected = 'bob', eqView = (() => { try { return localStorage.getItem('bob-brains-view') === 'list' ? 'list' : 'brains'; } catch { return 'brains'; } })(); // 1.5.210 a remembered paper doll view lands on the Brains page
   function eqCtx() {
-    return { roles, models: shownModels(), brains: settings?.sessionBrains || {}, embed: roles?.current?.embed || '', selected: eqSelected, vramGB: hw?.vramGB || hw?.gpu?.vramGB || null, unified: Boolean(hw?.gpu?.unified), integrated: Boolean(hw?.gpu?.integrated), arm: hw?.board === 'arm', ramGB: hw?.ramGB || null, freeGB: hw?.freeGB ?? null, platform: settings?.platform, showUnsuited,
+    return { roles, models: shownModels(), brains: settings?.sessionBrains || {}, oneBrain: settings?.oneBrain === true, embed: roles?.current?.embed || '', selected: eqSelected, vramGB: hw?.vramGB || hw?.gpu?.vramGB || null, unified: Boolean(hw?.gpu?.unified), integrated: Boolean(hw?.gpu?.integrated), arm: hw?.board === 'arm', ramGB: hw?.ramGB || null, freeGB: hw?.freeGB ?? null, platform: settings?.platform, showUnsuited,
       famOpen, packs: data?.packs || [], packId: starterPack, picks: starterPicks, engines: data?.engines || [], starterOpen,
       houseStyle: settings?.houseStyle || {}, active: settings?.activeModels || {}, saveDir: settings?.saveDir || {},
       rent }; // 1.5.127 the Rented brain slot
@@ -1804,9 +1804,14 @@ export function createCellar({ popOut = null } = {}) {
       // 1.5.205 setups on the Brains page: show the list of changes first; Apply saves them one job at a time.
       if ('setup' in b.dataset) { setupAsk = b.dataset.setup; draw(); dlg.querySelector('.setup-ask')?.scrollIntoView({ block: 'nearest' }); return; }
       if ('setupbobnet' in b.dataset) { setupAsk = ''; sampler.stop(); setTab('settings'); jumpTo = 'adv-bobnet'; draw(); return; }
+      if ('onebrainoff' in b.dataset) { b.disabled = true; settings.oneBrain = (await api('/api/settings', { oneBrain: false })).oneBrain; draw(); return; }
       if (b.dataset.setupapply) {
-        const plan = setupPlan(b.dataset.setupapply, { ...eqCtx(), bobNet: data?.bobNet || [] });
+        const id = b.dataset.setupapply;
         b.disabled = true;
+        // Nov 13: One brain is the switch (Settings, One brain (snappier)): every job goes to the main brain and the
+        // Quick brain is off, with the other picks kept. Any other setup turns it off first.
+        if (id === 'one' || settings.oneBrain) settings.oneBrain = (await api('/api/settings', { oneBrain: id === 'one' })).oneBrain;
+        const plan = id === 'one' ? [] : setupPlan(id, { ...eqCtx(), bobNet: data?.bobNet || [] });
         for (const c of plan) await equipSlot(c.slot, c.value);
         setupAsk = ''; await eqReload(); draw(); return;
       }
