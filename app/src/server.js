@@ -116,6 +116,9 @@ import { lockAtStart, secretsPatch, secretsView } from './secret-settings.js'; /
 import { cleanJobHelps, stopAfterStep, undoReceipt, keepDenyNote, pruneReceipts } from './job-helps.js'; // Settings, Jobs (items 51-61)
 import { openAt } from './job-open.js';
 import { harnessRoute } from './harness-routes.js'; // items 62 to 72 (src/harness.js), all off unless switched on
+import { fadeRoute } from './fade-routes.js'; // Fade old messages, Clear chat and 🫥 Amnesia mode
+import { visibleHistory, sweepAll, fadeOf } from './fade-chat.js';
+import { amnesiaTick } from './amnesia.js';
 import { watchRuns, endRun, engineCrashed } from './crash-catch.js'; // Catch crashes, Safe start
 import { undoWatcher } from './settings-undo.js'; // Keep the last 20 Settings changes
 import { Weekly } from './weekly.js'; // Count what Bob did each week
@@ -175,7 +178,7 @@ const liveCubes = new Set(); // the cube pages with Real experts on: only these 
 let telegram = null; // Talk to Bob on Telegram (src/telegram.js), set once Bob's brain is ready
 let discord = null; // Bob on Discord (src/discord.js), set once Bob's brain is ready
 let cubeLoading = ''; // the brain fNRI's small cube last saw starting to load
-const PROFILE_PRIVATE = ['/api/events', '/api/history', '/api/chat', '/api/chats', '/api/topics', '/api/search', '/api/memory', '/api/made', '/api/queue', '/api/everyday'];
+const PROFILE_PRIVATE = ['/api/events', '/api/history', '/api/chat', '/api/chats', '/api/topics', '/api/search', '/api/memory', '/api/made', '/api/queue', '/api/everyday', '/api/fade', '/api/amnesia'];
 let focus = null; // ⏱ the focus timer (everyday.js): holds taps on the shoulder until it ends
 function broadcast(ev) {
   if (focus?.hold(ev)) return;
@@ -233,6 +236,11 @@ const readCardNow = cardReader(); // Your Bobs on the phone: one card reading ev
 const introductions = new Introductions(cfg, { lenders: brain.lenders, pairing, log: (k, t) => brain.log(k, t) });
 setTimeout(() => introductions.soon(0), 60_000).unref(); // once Bob is up, and then every hour
 setInterval(() => introductions.soon(0), 3600_000).unref();
+// Fade old messages (fade-chat.js), delete mode: turns past their time go from disk; 🫥 Amnesia mode's "turn off by itself".
+setInterval(() => {
+  try { const f = fadeOf(cfg); if (f.on && f.mode === 'delete' && !cfg.profileNow && sweepAll(cfg, brain, chatIds(cfg)) > 0) broadcast({ type: 'chat-faded' }); } catch {}
+  try { if (amnesiaTick(cfg, { brain, made: brain.made })) { brain.log('chat', 'Amnesia mode off by itself: that stretch is forgotten'); broadcast({ type: 'amnesia-off' }); } } catch {}
+}, 60_000).unref();
 brain.mindWatchers = () => mindClients.size;
 // fNRI's small cube in "Bob's thinking" listens with ?cube=1. On its own it glows for show while Bob thinks, which
 // costs the engine nothing. With Real experts on (?cube=1&live=1) Bob asks Brain Engine which experts each reply used
@@ -571,7 +579,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && p === '/api/status') return send(res, 200, { ...(await brain.status()), version: VERSION });
     if (req.method === 'GET' && p === '/api/history') {
       const id = url.searchParams.get('session') || 'main';
-      return send(res, 200, brain.history(id));
+      // Fade old messages and Clear chat (fade-chat.js): faded and cleared turns stay out of the chat unless asked for (all=1, Show them).
+      return send(res, 200, url.searchParams.get('all') === '1' ? brain.history(id) : visibleHistory(cfg, id, brain.history(id)).list);
     }
     // Assistant presets (presets.js): the list and this chat's pick. Picking works from the phone too; making and
     // changing presets, and the switch, only on this replicant matrix.
@@ -1307,6 +1316,7 @@ const server = http.createServer(async (req, res) => {
     if (p.startsWith('/api/everyday/') && await everydayRoute({ req, res, p, isLocal, cfg, brain, focus, profiles, body, send })) return; // 🗓 Everyday helpers
     if (p.startsWith('/api/adventure') && await adventureRoute({ req, res, p, isLocal, brain, body, send })) return; // 1.5.117 🎲 Adventure
     if (p.startsWith('/api/games') && await gamesRoute({ req, res, p, isLocal, brain, body, send })) return; // 1.5.121 🧩 Games
+    if ((p === '/api/fade' || p === '/api/chat/clear' || p === '/api/amnesia') && await fadeRoute({ req, res, p, url, isLocal, cfg, brain, body, send })) return;
     if (/^\/api\/(harness|crash|settings-undo|health|quiet|weekly|pins|chat\/try|guest)(\/|$)/.test(p) && await harnessRoute({ req, res, p, url, isLocal, cfg, brain, body, send, saveSettings, replaceSettings, weekly, crashState, applyShortcut, nameOf: friendlyName, probes: healthProbes })) return; // items 62 to 72
     if (p === '/api/prompts' && await promptsRoute({ req, res, p, isLocal, cfg, body, send, saveSettings, log: (k, t) => brain.log(k, t) })) return; // saved prompts and the / menu
     if (p === '/api/telegram' && await telegramRoute({ req, res, p, isLocal, brain, body, send })) return;

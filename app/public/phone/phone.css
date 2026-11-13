@@ -337,3 +337,18 @@ input[type="range"] { width: 100%; min-height: 44px; }
 .handsfree .hf-big { font-size: 1.5rem; min-height: 4.5rem; border-radius: 1.2rem; }
 .handsfree #hf-talk[aria-pressed="true"] { outline: 3px solid var(--accent); }
 .low-data-tap { margin: .4rem 0; }
+
+/* ⌛ Fade old messages and 🧹 Clear chat */
+.fade-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; margin: 4px 0 14px; padding: 6px 4px 10px; font-size: 13px; opacity: .85; border-bottom: 1px dashed currentColor; }
+.fade-line button { min-height: 36px; padding: 4px 12px; border-radius: 999px; border: 1px solid currentColor; background: transparent; color: inherit; font: inherit; }
+.fade-wrap { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 16px; background: rgba(0, 0, 0, .55); }
+.fade-ask { width: min(440px, 100%); padding: 18px 20px; border-radius: 16px; background: var(--card, #1d2126); color: var(--text, #eee); }
+.fade-ask h3 { margin: 0 0 8px; }
+.fade-ask .fade-tick { display: flex; gap: 10px; align-items: flex-start; margin: 12px 0 16px; }
+.fade-ask .fade-tick small { display: block; opacity: .75; }
+.fade-ask .fade-row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+.fade-ask .fade-row button { min-height: 44px; padding: 8px 16px; border-radius: 10px; font: inherit; }
+.fade-ask .fade-row button.danger { background: #c0564a; color: #fff; border: 0; }
+.fade-pick input[type="number"] { width: 80px; }
+.fade-modes { border: 0; padding: 0; margin: 6px 0; }
+.fade-modes label { display: block; margin: 6px 0; }

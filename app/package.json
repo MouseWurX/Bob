@@ -22,6 +22,7 @@
   "testSuites": [
     "test/run-syntax-test.js",
     "test/run-harness-test.js",
+    "test/run-fade-chat-test.js",
     "test/run-tests.js",
     "test/run-fit-context-test.js",
     "test/run-fifty-test.js",

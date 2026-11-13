@@ -21,7 +21,7 @@
     get(k, d) { try { const v = globalThis.BobLock ? globalThis.BobLock.get(k) : localStorage.getItem(`bob.${k}`); return v == null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v) { try { if (globalThis.BobLock) globalThis.BobLock.set(k, JSON.stringify(v)); else localStorage.setItem(`bob.${k}`, JSON.stringify(v)); } catch { /* full or blocked: carry on in memory */ } }
   };
-  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, mathView: false, userName: '', theme: 'moondust', effort: 'low', resume: false, redo: true, promptMenu: false, textSize: 100, readableFont: false,
+  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, mathView: false, userName: '', theme: 'moondust', effort: 'low', resume: false, redo: true, fade: { on: false, minutes: 60, mode: 'hide' }, promptMenu: false, textSize: 100, readableFont: false,
     // Voice, phone and Bob-Net (items 133 to 142, 2026-11-11): every one off to start with.
     talkOver: false, wakeOn: false, netVoices: false, shareOn: false, widgetReminder: false, lowData: 'off', hfAgain: true, hfShort: false, readerSpeed: 1 };
   const settings = { ...DEFAULTS, ...store.get('settings', {}) };
@@ -97,11 +97,62 @@
   }
   const bobName = (base) => bobs.find((b) => b.base === base)?.name || 'Bob on your network';
 
+  // ⌛ Fade old messages and 🧹 Clear chat (logic.js fadeTurns). Hide: faded turns only leave the screen. Delete: they go
+  // from the phone for good. Clear chat empties the screen, or deletes the whole chat when "Delete it for good" is ticked.
+  let showFaded = false;
+  function fadeSweep() { // delete mode: turns past their time go from every chat on the phone
+    const f = settings.fade || {};
+    if (!f.on || f.mode !== 'delete') return false;
+    let changed = false;
+    for (const c of chats) { if (chatBusy(c)) continue; const { keep, gone } = L.fadeTurns(c.msgs, { fade: f }); if (gone.length) { c.msgs = keep; changed = true; } }
+    if (changed) saveChats();
+    return changed;
+  }
+  function fadeLine(faded) {
+    const f = settings.fade || {};
+    if (!f.on && !faded && !showFaded) return null;
+    const what = showFaded ? 'Showing faded messages too' : faded ? `${faded} older message${faded === 1 ? '' : 's'} faded into memory` : 'Nothing has faded yet';
+    return el('div', { class: 'fade-line', role: 'status' },
+      el('span', { text: `⌛ ${what}${f.on ? ` · after ${L.fadeWords(f.minutes)}` : ''}` }),
+      faded || showFaded ? el('button', { class: 'plain', text: showFaded ? 'Hide them again' : 'Show them', onclick: () => { showFaded = !showFaded; drawChat(); } }) : null,
+      chat?.msgs.length ? el('button', { text: '🧹 Clear chat', onclick: () => askClear() }) : null);
+  }
+  function askClear() {
+    const c = chat;
+    if (!c || chatBusy(c)) return;
+    const tick = el('input', { type: 'checkbox' });
+    const box = el('div', { class: 'fade-ask', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Clear this chat?' },
+      el('h3', { text: 'Clear this chat?' }),
+      el('p', { text: 'Every message leaves the chat on this phone. It\'s still kept here until you delete it.' }),
+      el('label', { class: 'fade-tick' }, tick, el('span', { text: 'Delete it for good' }, el('small', { text: 'Gone from this phone. Can\'t be undone.' }))),
+      el('div', { class: 'fade-row' },
+        el('button', { text: 'Keep it', onclick: () => wrap.remove() }),
+        el('button', { class: 'danger', text: 'Clear chat', onclick: () => {
+          wrap.remove();
+          if (tick.checked) { chats = chats.filter((x) => x !== c); saveChats(); chat = null; }
+          else { c.clearedAt = Date.now(); saveChats(); }
+          showFaded = false; drawChat();
+        } })));
+    const wrap = el('div', { class: 'fade-wrap', onclick: (e) => { if (e.target === wrap) wrap.remove(); } }, box);
+    document.body.append(wrap);
+    box.querySelector('button').focus();
+  }
+  setInterval(() => { // every 30 seconds: anything past its time fades now
+    if (!(settings.fade || {}).on || showFaded) return;
+    const swept = fadeSweep();
+    if (chat && !chatBusy(chat) && (swept || L.fadeTurns(chat.msgs, { fade: settings.fade, clearedAt: chat.clearedAt }).gone.length > ($('chat').dataset.faded | 0))) drawChat();
+  }, 30000);
+
   function drawChat() {
     const box = $('chat');
     box.textContent = '';
-    if (!chat || !chat.msgs.length) box.append(greeting());
-    for (const m of chat?.msgs || []) box.append(drawMsg(m));
+    fadeSweep();
+    const { keep, gone } = showFaded ? { keep: chat?.msgs || [], gone: [] } : L.fadeTurns(chat?.msgs || [], { fade: settings.fade || {}, clearedAt: chat?.clearedAt || 0 });
+    box.dataset.faded = String(gone.length);
+    const line = chat ? fadeLine(gone.length) : null;
+    if (line) box.append(line);
+    if (!keep.length) box.append(greeting());
+    for (const m of keep) box.append(drawMsg(m));
     box.scrollTop = box.scrollHeight;
     drawRedo();
   }
@@ -373,6 +424,7 @@
 
   function addMsg(m) {
     const c = chat;
+    m.at ||= Date.now(); // Fade old messages goes by this
     c.msgs.push(m);
     saveChats();
     if (c === chat) { const box = $('chat'); if (box.firstChild && !chat.msgs[1] && m.who === 'you') box.textContent = ''; box.append(drawMsg(m)); box.scrollTop = box.scrollHeight; }
@@ -521,7 +573,7 @@
   }
 
   function startReply(c, kind, by, q) {
-    const msg = { who: 'bob', text: '', by, q };
+    const msg = { who: 'bob', text: '', by, q, at: Date.now() };
     c.msgs.push(msg);
     const node = drawMsg(msg);
     node.querySelector('.words').classList.add('typing');
@@ -1189,6 +1241,7 @@
     $('theme').value = settings.theme;
     $('resume').checked = settings.resume;
     $('redo').checked = settings.redo;
+    { const f = settings.fade || {}, u = f.minutes % 1440 === 0 ? 1440 : f.minutes % 60 === 0 ? 60 : 1; $('fade-on').checked = f.on === true; $('fade-num').value = String((f.minutes || 60) / u); $('fade-unit').value = String(u); document.querySelectorAll('input[name="fade-mode"]').forEach((r) => { r.checked = r.value === (f.mode || 'hide'); }); }
     $('talk-over').checked = settings.talkOver === true;
     $('wake-on').checked = settings.wakeOn === true;
     $('net-voices').checked = settings.netVoices === true;
@@ -1226,6 +1279,14 @@
   $('chat').addEventListener('scroll', drawToBottom, { passive: true });
   $('to-bottom').addEventListener('click', () => { const box = $('chat'); box.scrollTo({ top: box.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); });
   $('redo').addEventListener('change', (e) => { settings.redo = e.target.checked; saveSettings(); drawRedo(); });
+  // ⌛ Fade old messages: every value saves while the switch is off too.
+  const fadeSave = (patch) => { settings.fade = { ...(settings.fade || {}), ...patch }; saveSettings(); showFaded = false; drawChat(); };
+  $('fade-on').addEventListener('change', (e) => fadeSave({ on: e.target.checked }));
+  const fadeNum = () => { const n = Number($('fade-num').value), u = Number($('fade-unit').value); if (n >= 1) fadeSave({ minutes: Math.min(525600, Math.round(n * u)) }); };
+  $('fade-num').addEventListener('change', fadeNum);
+  $('fade-unit').addEventListener('change', fadeNum);
+  document.querySelectorAll('input[name="fade-mode"]').forEach((r) => r.addEventListener('change', () => fadeSave({ mode: r.value })));
+  $('fade-clear').addEventListener('click', () => { document.querySelectorAll('.panel').forEach((p) => p.classList.add('hidden')); askClear(); });
   const applyTheme = () => document.documentElement.setAttribute('data-theme', settings.theme);
 
   // ---------- Saved prompts (this phone only; off to start with) ----------

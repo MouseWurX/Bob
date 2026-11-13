@@ -2415,3 +2415,44 @@ html.settings-window body.look-lamplight .cellar.page[open] { height: 100dvh; ma
 body.now-mind-only #panelRow,
 body.now-mind-only #nowSections > section:not([data-sec="mind"]),
 body.now-mind-only #nowMind > .now-sec { display: none; }
+
+/* Fade old messages, Clear chat and 🫥 Amnesia mode (fade-chat.js). Amnesia is purple in every look, so it's never
+   mistaken for the accent colour; forced colours and Still keep it plain. */
+:root { --amnesia: rgb(155 127 212); --amnesia-text: rgb(210 194 245); --amnesia-ink: rgb(22 15 36); }
+.fade-line { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 10px; margin: 6px auto 18px; padding: 8px 14px; max-width: 760px; color: var(--muted); font-size: 13px; border-bottom: 1px dashed var(--line); }
+.fade-line .hg { color: var(--accent); }
+.fade-line button { min-height: 32px; padding: 4px 12px; font: inherit; font-size: 12.5px; color: var(--accent); background: transparent; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 999px; cursor: pointer; }
+.fade-line button.plain { color: var(--text); border-color: var(--line); }
+.msg.fading-out { opacity: .15; transition: opacity 1.4s ease; }
+body.still .msg.fading-out { transition: none; }
+.amnesia-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; margin: 6px auto 18px; max-width: 760px; padding: 10px 14px; border: 1px solid var(--amnesia); border-radius: 12px; background: color-mix(in srgb, var(--amnesia) 14%, transparent); color: var(--text); font-size: 14px; }
+.amnesia-bar .amn-ic { font-size: 20px; }
+.amnesia-bar .amn-t { flex: 1; min-width: 200px; line-height: 1.4; }
+.amnesia-bar button { min-height: 32px; padding: 4px 13px; font: inherit; font-size: 13px; color: var(--amnesia-text); background: transparent; border: 1px solid var(--amnesia); border-radius: 999px; cursor: pointer; }
+.brain-switch.amnesia-btn[aria-checked="true"] { color: var(--amnesia-text); border-color: var(--amnesia); background: color-mix(in srgb, var(--amnesia) 18%, transparent); }
+.brain-switch.amnesia-btn[aria-checked="true"] .st { background: var(--amnesia); color: var(--amnesia-ink); }
+body.amnesia-on .composer { border-color: var(--amnesia) !important; box-shadow: 0 0 0 1px color-mix(in srgb, var(--amnesia) 35%, transparent), 0 0 22px -6px var(--amnesia); }
+body.amnesia-on.still .composer { box-shadow: 0 0 0 1px var(--amnesia); }
+@media (max-width: 640px) { #effort { flex-wrap: wrap; row-gap: 6px; } }
+dialog.fade-ask { width: min(440px, calc(100% - 32px)); padding: 20px 22px; color: var(--text); background: var(--card, var(--panel)); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 20px 60px -10px rgba(0, 0, 0, .8); }
+dialog.fade-ask::backdrop { background: rgba(0, 0, 0, .55); }
+dialog.fade-ask h3 { margin: 0 0 8px; font-size: 18px; }
+dialog.fade-ask p { margin: 0 0 10px; color: var(--muted); font-size: 14px; line-height: 1.45; }
+dialog.fade-ask ul { margin: 0 0 6px 18px; padding: 0; font-size: 14px; line-height: 1.6; }
+dialog.fade-ask .fade-tick { display: flex; gap: 10px; align-items: flex-start; margin: 12px 0 18px; font-size: 14px; line-height: 1.4; cursor: pointer; }
+dialog.fade-ask .fade-tick input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--accent); }
+dialog.fade-ask .fade-tick small { display: block; color: var(--muted); font-size: 12.5px; }
+dialog.fade-ask .fade-row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+dialog.fade-ask .fade-row button { min-height: 40px; padding: 8px 16px; font: inherit; font-size: 14px; color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+dialog.fade-ask .fade-row button.danger { color: var(--on-accent); background: var(--bad); border-color: var(--bad); }
+.fade-set .pick-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.fade-set .chip { min-height: 32px; padding: 4px 11px; font: inherit; font-size: 12.5px; color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
+.fade-set .chip[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+.fade-set .radio { display: flex; gap: 10px; align-items: flex-start; margin: 6px 0; line-height: 1.4; cursor: pointer; }
+.fade-set .radio input { margin-top: 4px; accent-color: var(--accent); }
+.fade-set .radio small { display: block; color: var(--muted); }
+.fade-set input[type="number"] { width: 80px; }
+@media (forced-colors: active) { .amnesia-bar, .brain-switch.amnesia-btn[aria-checked="true"], body.amnesia-on .composer { border: 2px solid Highlight !important; } }
+.fade-set .srow { display: block; }
+.fade-set .srow > strong, .fade-set .srow > .pick > strong { display: block; margin-bottom: 6px; }
+.fade-set { padding-bottom: 6px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }

@@ -37,7 +37,8 @@ check('every harness key is a saved setting', HARNESS_KEYS.every((k) => SETTING_
 check('apuHoldbackGB stays last', SETTING_KEYS[SETTING_KEYS.length - 1] === 'apuHoldbackGB');
 {
   const v = harnessView(mergeSettings({}, {}));
-  check('all off on a new Bob', HARNESS_KEYS.every((k) => (typeof v[k] === 'object' ? v[k].on === false : v[k] === false)), JSON.stringify(v));
+  const CHOICES = { amnesiaMade: 'keep', amnesiaAutoOff: 0 }; // Amnesia mode's two choices, not switches
+  check('all off on a new Bob', HARNESS_KEYS.every((k) => (k in CHOICES ? v[k] === CHOICES[k] : typeof v[k] === 'object' ? v[k].on === false : v[k] === false)), JSON.stringify(v));
   check('quiet hours start 22:00 to 07:00', v.quietHours.from === '22:00' && v.quietHours.to === '07:00');
   check('the shortcut starts as Ctrl+Shift+Space', v.globalAsk.key === 'CommandOrControl+Shift+Space' && v.askKeys.length === ASK_KEYS.length);
 }

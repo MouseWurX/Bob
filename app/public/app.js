@@ -60,6 +60,7 @@ import './math-core.js'; // Show maths as formulas: KaTeX, loaded only while the
 import { installShortcuts, listHtml as shortcutListHtml } from './shortcuts.js';
 import { createJobHelps } from './job-helps.js'; // Settings, Jobs: Stop after this step, time bar, receipts, file:line links
 import { saveToLab } from './lab-save-q.js'; // Lab item 102: Save to Lab under your messages, off unless switched on
+import { createFadeChat } from './fade-chat.js'; // Fade old messages, Clear chat and 🫥 Amnesia mode
 import { createHarnessChat, quietNow } from './harness-chat.js'; // items 62 to 72: crash card, quiet hours, Pin, Try from here, Guest chat
 import { applyReading, startEveryday } from './everyday.js'; // 🗓 Everyday helpers: text size, font, today card, tour, ⏱ Focus, tray dot
 import { createReplyParts } from './app-replies.js';
@@ -561,6 +562,7 @@ const PAGE_BTNS = ['chatBtn', 'tasksBtn', 'topicsBtn', 'madeBtn', 'adventureBtn'
 const findBox = createFind({
   items: () => [
     ...PAGE_BTNS.filter((id) => $(id) && !$(id).hidden).map((id) => ({ label: $(id).getAttribute('aria-label') || id, kind: ['settingsBtn', 'styleBtn', 'helpBtn', 'dlBtn', 'tidyBtn', 'cellarBtn', 'newchat'].includes(id) ? 'Tool' : 'Page', words: $(id).title, run: () => $(id).click() })),
+    { label: 'Clear chat', kind: 'Tool', words: 'clear chat empty wipe clean delete messages fade privacy', run: () => { if ($('cellar').open) $('cellar').close(); fadeChat.clearChat(); } },
     ...['ear', 'speak', 'notify'].filter((id) => $(id)).map((id) => ({ label: $(id).getAttribute('aria-label'), kind: 'Tool', words: $(id).title, run: () => $(id).click() })),
     ...CARDS.map((c) => ({ label: c.name, kind: 'Settings', words: `${c.about} ${c.words || ''}`, run: () => cellar.open('settings', null, { jump: c.topics[0] }) })),
     ...HELP.map((h) => ({ label: h.title, kind: 'Help', words: h.words, run: () => helpPage.open(h.id) }))
@@ -580,6 +582,7 @@ async function openChat(id, msgId) {
   sessionId = id;
   store.set('bob-session', sessionId);
   harnessChat?.moved(sessionId); // a guest chat left behind is let go
+  fadeChat?.moved();
   log.innerHTML = ''; stick = true;
   drawFill(null); // item 13: the meter is for the chat it was measured in
   presetPicker.load();
@@ -596,7 +599,7 @@ async function loadTurnUndo() {
 async function loadHistory(n = 20) {
   loadTurnUndo();
   try {
-    const h = await (await fetch('/api/history?session=' + encodeURIComponent(sessionId))).json();
+    const h = await (await fetch('/api/history?session=' + encodeURIComponent(sessionId) + (fadeChat?.showAll ? '&all=1' : ''))).json(); // faded and cleared turns only with Show them (fade-chat.js)
     // 1.5.210: what he wrote on the way to an answer (steps) goes in one folded thinking bubble above that answer,
     // even the moot's check that came after it.
     const shown = [], held = [];
@@ -627,6 +630,7 @@ async function loadHistory(n = 20) {
       if (thinkOn && m.role !== 'user' && m.steps?.length && !m.stepsShown) { thinkBubbles.saved([], 0, m.steps); m.stepsShown = true; } // steps but nothing written on the way: still one bubble, no list under it
       const el = decorate(add(m.role === 'user' ? 'msg you' : 'msg bob', m.role === 'user' ? esc(m.content) + picsHtml(m.pics) : render(m.content) + mediaHtml(m.media)), m.content, m.media);
       if (m.id) el.dataset.mid = m.id;
+      if (m.at) el.dataset.at = m.at; // Fade old messages: when it fades
       if (m.role !== 'user') bubbleMedia.set(el, m.media || []);
       if (m.edited) markEdited(el, m.was, m.editedBy);
       if (m.versions?.length) markVersions(el, m.versions);
@@ -636,14 +640,17 @@ async function loadHistory(n = 20) {
     }
   } catch {}
   drawRedo();
+  fadeChat?.drawn();
 }
 $('newchat').onclick = () => {
   if (busy) return;
   sessionId = 'chat-' + Date.now();
   store.set('bob-session', sessionId);
   harnessChat?.moved(sessionId);
+  fadeChat?.moved();
   log.innerHTML = ''; stick = true;
   presetPicker.load({ apply: false });
+  fadeChat?.drawn();
   note('New conversation. Bob still remembers what\'s in his memory file and on your to-do list.');
 };
 // Items 62 to 72 (public/harness-chat.js), all off unless switched on: the crash card, quiet hours, 📌 Pin, ⑂ Try from
@@ -653,6 +660,10 @@ const harnessChat = createHarnessChat({
   openSettings: (jump) => cellar.open('settings', null, jump ? { jump } : {}),
   start: (id, line) => { if (busy) return false; if ($('cellar').open) $('cellar').close(); sessionId = id; store.set('bob-session', sessionId); harnessChat.moved(sessionId); log.innerHTML = ''; stick = true; presetPicker.load({ apply: false }); note(line); input.focus(); return true; }
 });
+
+const fadeChat = createFadeChat({ log, input, note, session: () => sessionId, busy: () => busy, reload: async () => { if (busy) return; log.innerHTML = ''; stick = true; await loadHistory(40); } });
+window.addEventListener('bob-harness', () => fadeChat.refresh()); // a fade or Amnesia setting changed
+window.addEventListener('bob-clear-chat', () => { if ($('cellar').open) $('cellar').close(); fadeChat.clearChat(); }); // Settings, Clear this chat
 
 // ---------- Downloads and installs: always visible, even with the cellar closed ----------
 const dlbar = $('dlbar');
@@ -707,7 +718,8 @@ window.addEventListener('bob-mind-dock', (e) => mindTitle(e.detail.docked));
 let brainSoon = null;
 const shownCards = new Set(); // approval card ids already on this page
 function onEvent(ev) {
-  if (ev.type === 'beat') return; // item 214: only proof Bob is still answering (connect() watches for it)
+  if (ev.type === 'beat') return; // item 214
+  if (fadeChat.onEvent(ev)) return; // Fade old messages, Clear chat, Amnesia mode: only proof Bob is still answering (connect() watches for it)
   if (ev.type === 'froze') { // item 214: Bob was stuck for a while and is back
     const el = note(ev.text, 'announce');
     if (ev.canRestart) { const b = document.createElement('button'); b.type = 'button'; b.className = 'link'; b.textContent = 'Restart Bob'; b.onclick = () => { b.disabled = true; post('/api/watchdog/restart', {}).catch(() => {}); }; el.append(' ', b); }
