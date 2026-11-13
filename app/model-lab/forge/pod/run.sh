@@ -854,6 +854,15 @@ PY
     rm -rf $W/healed-$NAME; mv $W/cut-$NAME $W/healed-$NAME; NAME_OUT="$NAME-raw"; RAW=1
   fi
   [ -z "${RAW:-}" ] && NAME_OUT="$NAME"
+  # 13 Nov: plan.surgery, edits a live sweep showed help and hurt nothing, baked into this brain (surgery.py, CPU); the owner's
+  # press of the purchase card is the go. A failed bake keeps the brain as it was.
+  if [ -z "${RAW:-}" ] && [ -n "$(plan ".get('surgery')")" ]; then
+    plan ".get('surgery')" > $IN/surgery.json
+    status heal "$NAME: baking $(python3 -c "import json; print(len(json.load(open('$IN/surgery.json'))['edits']))") surgery edits"
+    if python3 surgery.py --model $W/healed-$NAME --edits $IN/surgery.json --out $W/surg-$NAME > $OUT/$NAME/surgery.log 2>&1; then
+      cp $W/surg-$NAME/surgery-report.json $OUT/$NAME/; rm -rf $W/healed-$NAME; mv $W/surg-$NAME $W/healed-$NAME; echo "$NAME: surgery baked"
+    else rm -rf $W/surg-$NAME; echo "$NAME: surgery failed (out/$NAME/surgery.log), the brain stays as it was"; tail -3 $OUT/$NAME/surgery.log; fi
+  fi
   status count "$NAME: counting which experts it uses now"
   python3 count.py --model $W/healed-$NAME --lessons $IN --out $W/counts-$NAME.json --cache $CACHE $GEN $REAP --lessons-max $( [ -n "${RAW:-}" ] && echo 300 || echo 600 ) || echo "count failed for $NAME (next rung will use the plan's counts)"
   cp $W/counts-$NAME.json $OUT/$NAME/ 2>/dev/null

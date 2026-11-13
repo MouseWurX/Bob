@@ -44,6 +44,7 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     // 1.5.164 Guard rails sandbox: chat with the brain Bob has loaded, like Learn. Nothing is saved unless you press Save as lesson.
     if (req.method === 'GET' && p === '/api/lab/guard') { const g = learnBrain(lab.brain); send(res, 200, { on: labOn(lab.cfg), ready: g.ready, why: g.why || '', brain: g.ready ? (lab.brain?.brainLabel?.(g.model) || g.model) : '', demo: PAGE_DEMO, maxTurns: SANDBOX_MAX_TURNS, canSave: isLocal, settings: GUARD_SETTINGS, styles: GUARD_STYLES }); return true; }
     if (req.method === 'GET' && p === '/api/lab/brain-scores') { send(res, 200, { scores: labOn(lab.cfg) ? lab.brainScores() : {} }); return true; } // Nov 11: for the Brains page, read-only
+    if (req.method === 'GET' && p === '/api/lab/protocol') { const v = lab.protocolView(); send(res, 200, isLocal ? v : { ...v, job: v.job ? { ...v.job, tail: [] } : null }); return true; } // 13 Nov read-only
     if (req.method !== 'POST') { send(res, 404, { error: 'no' }); return true; }
     const b = await body(req);
     if (p === '/api/lab/guard/chat') { if (!labOn(lab.cfg)) { send(res, 403, { error: 'The Lab is off.' }); return true; } send(res, 200, await guardChat(lab.brain, b)); return true; }
@@ -94,6 +95,9 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/forge/card') { send(res, 200, lab.forgeCard(String(b.id || ''))); return true; }
     if (p === '/api/lab/forge/start') { send(res, 200, lab.forgeStart({ id: String(b.id || ''), hours: b.hours, dollars: b.dollars })); return true; }
     if (p === '/api/lab/forge/stop') { send(res, 200, await lab.forgeStop()); return true; }
+    if (p === '/api/lab/protocol/check') { const pl = lab.protocolCheck(String(b.tool || ''), b.form); send(res, 200, { problems: pl.problems, notes: pl.notes }); return true; } // 13 Nov
+    if (p === '/api/lab/protocol/run') { send(res, 200, lab.protocolRun(String(b.tool || ''), b.form)); return true; }
+    if (p === '/api/lab/protocol/stop') { send(res, 200, lab.protocolStop()); return true; }
     if (p === '/api/lab/forge/save') { send(res, 200, lab.saveForgePlan(b.form)); return true; }
     if (p === '/api/lab/library/add') { send(res, 200, await lab.addLibrarySet({ from: String(b.from || ''), name: String(b.name || '').slice(0, 60) })); return true; } // the lesson library
     if (p === '/api/lab/home/plan') { const pl = lab.planHome(String(b.kind || ''), b.form); send(res, 200, { problems: pl.problems, notes: pl.notes, diskGB: pl.diskGB, layers: pl.stack?.layers || 0 }); return true; } // 1.5.164
