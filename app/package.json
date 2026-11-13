@@ -247,6 +247,7 @@
     "test/run-think-bubble-test.js",
     "test/run-task-pop-test.js",
     "test/run-status-line-test.js",
+    "test/run-net-overlay-test.js",
     "test/run-engine-name-test.js",
     "test/run-engine-care-test.js",
     "test/run-retries-test.js",

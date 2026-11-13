@@ -211,6 +211,7 @@ export function createSettingsParts(now) {
       ${shareBrainsHtml()}
       <h4 class="ssub">Chats and your phone</h4>
       ${sswitch('carryIn', settings.carryIn === true, 'Take chats from my other Bobs', 'Off unless you turn it on. Your other Bobs and your phone can hand a chat over to this Bob with Carry on on another Bob, and you keep going here. It lands in Past chats as a new chat; the original stays where it was. Only what you and Bob said comes over: no files, pictures or memory.')}
+      ${sswitch('netOverlay', settings.netOverlay === true, 'Bob-Net icons under Bob', 'Off unless you turn it on. Small icons under my picture for each of your other Bobs on Bob-Net right now, and each coding agent you added. Click one to chat with it here; Return from Guest Mode brings you back to me. In that chat it only thinks, plus web search if that\'s on: no files, programs or Hands on either computer. The other Bob needs this version and Take jobs from my other Bobs on.')}
       ${sswitch('phoneGlance', settings.phoneGlance === true, 'Let my phone see how I\'m doing', 'Off unless you turn it on. Bob for Android\'s Your Bobs page (and its home-screen widget) can show whether this Bob is up or busy, his brain, the graphics card\'s heat and memory, the jobs running and your next reminder. Only your signed-in phone and your other Bobs can ask, over Tailscale; the card is read at most every 20 seconds.')}`;
   }
   function lookExtrasHtml() {

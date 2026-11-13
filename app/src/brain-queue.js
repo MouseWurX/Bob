@@ -15,6 +15,7 @@ import { midJobFits, ACK_LINE, ACK_AFTER_MS } from './mid-job.js';
 import { heedStopWord, clearDelay } from './stop-words.js';
 import { autoSessionOn } from './auto-session.js';
 import { stopAway, awayPlan, awayWaitLine, sendAway } from './share-jobs.js';
+import { netChatTarget, failNetChat, isNetChat } from './net-overlay.js';
 import { webOn } from './web.js';
 
 // What the job's chat says when Pause stops it partway. Shown under the reply; never sent to the brain.
@@ -299,6 +300,16 @@ export const queueParts = {
       if (job.parked && this.cfg.gamingLock === true) continue; // 1.5.41: put aside by the 🎮 Gaming button, waits for it to go off
       // 1.5.72 Share jobs: a job this Bob can't do, or that would wait, goes to one of your Bobs who says he can do it.
       if (job.awayHold && job.awayHold > Date.now()) continue; // waiting for one of your Bobs who can do it
+      // Nov 13 Bob-Net icons (net-overlay.js): a chat opened from a Bob's icon goes to that Bob, and never runs here.
+      const netTo = !job.away && netChatTarget(this.lenders?.bobs?.() || [], job.sessionId);
+      if (netTo) {
+        job.away = { pending: true };
+        sendAway(this, job, { need: 'chat', why: 'guest', to: netTo, web: webOn(this.cfg) })
+          .then((went) => { if (!went) failNetChat(this, job, netTo.name || 'That Bob'); })
+          .catch((e) => { this.log('away', `couldn't send a chat: ${e.message}`); failNetChat(this, job, netTo.name || 'That Bob', 'couldn\'t be reached'); });
+        continue;
+      }
+      if (!job.away && isNetChat(job.sessionId)) { failNetChat(this, job, 'That Bob', 'isn\'t on your Bob-Net list any more'); continue; } // never here
       if (!job.away && this.cfg.share?.borrow?.jobs === true) {
         const plan = awayPlan(this, job, { can: this.jobCan(), webOn: webOn(this.cfg), waitsForGaming: waitsForGaming(this.cfg, job), laneBusy: this.turns.has(laneOf(this.cfg, job)) });
         if (plan) {

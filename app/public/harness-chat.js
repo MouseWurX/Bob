@@ -134,7 +134,7 @@ export function createHarnessChat(app) {
   // Leaving a guest chat (New chat, another chat): Bob lets go of it.
   let last = app.session();
   function moved(now) {
-    if (isGuest(last) && last !== now) post('/api/guest', { end: last });
+    if (isGuest(last) && last !== now && !/^guest-net-/.test(last)) post('/api/guest', { end: last }); // Nov 13: a Bob-Net icon's chat stays while Bob is open (net-overlay.js)
     last = now;
     loadPins().then(decorateAll);
   }

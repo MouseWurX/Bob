@@ -60,6 +60,7 @@ import './math-core.js'; // Show maths as formulas: KaTeX, loaded only while the
 import { installShortcuts, listHtml as shortcutListHtml } from './shortcuts.js';
 import { createJobHelps } from './job-helps.js'; // Settings, Jobs: Stop after this step, time bar, receipts, file:line links
 import { saveToLab } from './lab-save-q.js'; // Lab item 102: Save to Lab under your messages, off unless switched on
+import { createNetOverlay } from './net-overlay.js'; // Nov 13 Bob-Net icons under Bob, off unless turned on
 import { createHarnessChat, quietNow } from './harness-chat.js'; // items 62 to 72: crash card, quiet hours, Pin, Try from here, Guest chat
 import { applyReading, startEveryday } from './everyday.js'; // 🗓 Everyday helpers: text size, font, today card, tour, ⏱ Focus, tray dot
 import { createReplyParts } from './app-replies.js';
@@ -580,6 +581,7 @@ async function openChat(id, msgId) {
   sessionId = id;
   store.set('bob-session', sessionId);
   harnessChat?.moved(sessionId); // a guest chat left behind is let go
+  netOverlay?.moved();
   log.innerHTML = ''; stick = true;
   drawFill(null); // item 13: the meter is for the chat it was measured in
   presetPicker.load();
@@ -642,6 +644,7 @@ $('newchat').onclick = () => {
   sessionId = 'chat-' + Date.now();
   store.set('bob-session', sessionId);
   harnessChat?.moved(sessionId);
+  netOverlay?.moved();
   log.innerHTML = ''; stick = true;
   presetPicker.load({ apply: false });
   note('New conversation. Bob still remembers what\'s in his memory file and on your to-do list.');
@@ -653,6 +656,9 @@ const harnessChat = createHarnessChat({
   openSettings: (jump) => cellar.open('settings', null, jump ? { jump } : {}),
   start: (id, line) => { if (busy) return false; if ($('cellar').open) $('cellar').close(); sessionId = id; store.set('bob-session', sessionId); harnessChat.moved(sessionId); log.innerHTML = ''; stick = true; presetPicker.load({ apply: false }); note(line); input.focus(); return true; }
 });
+// Nov 13 Bob-Net icons under Bob (public/net-overlay.js), off unless turned on: other Bobs and coding agents on Bob-Net.
+// var, not const: openChat and onEvent may run before this line does.
+var netOverlay = createNetOverlay({ open: (id) => openChat(id), session: () => sessionId, showAgents: () => layout.showAgents(), note: (t) => note(t), still: stillNow });
 
 // ---------- Downloads and installs: always visible, even with the cellar closed ----------
 const dlbar = $('dlbar');
@@ -707,7 +713,8 @@ window.addEventListener('bob-mind-dock', (e) => mindTitle(e.detail.docked));
 let brainSoon = null;
 const shownCards = new Set(); // approval card ids already on this page
 function onEvent(ev) {
-  if (ev.type === 'beat') return; // item 214: only proof Bob is still answering (connect() watches for it)
+  if (ev.type === 'beat') return;
+  try { netOverlay?.event(ev); } catch {} // Nov 13 Bob-Net icons: a word bubble when one of their chats has news (display only) // item 214: only proof Bob is still answering (connect() watches for it)
   if (ev.type === 'froze') { // item 214: Bob was stuck for a while and is back
     const el = note(ev.text, 'announce');
     if (ev.canRestart) { const b = document.createElement('button'); b.type = 'button'; b.className = 'link'; b.textContent = 'Restart Bob'; b.onclick = () => { b.disabled = true; post('/api/watchdog/restart', {}).catch(() => {}); }; el.append(' ', b); }
@@ -1677,7 +1684,7 @@ async function start() {
     if (!s.ollama) note('I can\'t reach my engine (' + (s.engine || 'Ollama') + ') right now. Is it running? (The AI Toggle shortcut turns Ollama on.)', 'error');
   } catch {}
   try {
-    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; statusLine.jokes(st.statusJokes !== false); catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
+    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; statusLine.jokes(st.statusJokes !== false); netOverlay.setOn(st.netOverlay === true); catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
     if (st.setupDone && !st.wantsAsked) offerWants(); // once, for Bobs set up before the Welcome had "Do you want me to:"
     everyday = startEveryday({ add, note, settings: st, version: st.version?.label || '' }); // 🗓 today card, tour, ⏱ Focus, tray dot (each only when on)

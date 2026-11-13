@@ -422,7 +422,7 @@ export class Lenders {
       out = r.ok && j.lend === true && !j.busy ? { ok: true, brain: String(j.brain || '').slice(0, 60), device: String(j.device || '').slice(0, 20) } : { ok: false, why: j.busy || (r.status === 401 ? 'passcode not accepted' : r.status === 403 ? 'door closed' : `answered ${r.status}`) };
       // 1.5.72: what this Bob says he can do. ctx: his quick brain's room; speed: words a second he's seen lately;
       // jobs: whole jobs he takes (only with "Take jobs from my other Bobs" on there), and how busy his queue is.
-      if (r.ok) Object.assign(out, cleanAbilities(j), { ms, links: cleanLinks(j.links) });
+      if (r.ok) Object.assign(out, cleanAbilities(j), { ms, up: true, links: cleanLinks(j.links) }); // up: he answered (the Bob-Net icons show him)
       if (r.ok) { await this.learnNear(bob, j.home); this.remember(bob, j); }
     } catch (e) { out = { ok: false, why: /passcode|tries/.test(e.message) ? e.message : 'not reachable' }; }
     // 1.5.214: a paired Bob we can't reach and whose home address we don't know (paired over Tailscale, now off):
@@ -570,7 +570,7 @@ export const NEEDS = ['pictures', 'video', 'music', 'sfx', 'model3d', 'web', 'th
 export function cleanAbilities(j) {
   const n = (x, max) => (Number.isFinite(Number(x)) && Number(x) > 0 ? Math.min(Number(x), max) : 0);
   const out = { ctx: n(j?.ctx, 1048576), speed: n(j?.speed, 1000), takesJobs: j?.takesJobs === true };
-  out.jobs = out.takesJobs ? [].concat(j?.jobs || []).filter((x) => NEEDS.includes(x)) : [];
+  out.jobs = out.takesJobs ? [].concat(j?.jobs || []).filter((x) => NEEDS.includes(x) || x === 'chat') : []; // Nov 13 'chat': a chat from the Bob-Net icons (net-overlay.js)
   out.jobsBusy = typeof j?.jobsBusy === 'string' ? j.jobsBusy.slice(0, 40) : '';
   out.queue = n(j?.queue, 999);
   out.passAlong = j?.passAlong === true; // 1.5.123: he introduces his Bobs to each other
@@ -600,7 +600,7 @@ export const bobNetRooms = (L) => (L?.bobs?.() || []).map((b) => ({ b, s: L.stat
 export function helloFor(brain, { why, quick, can, version, label, webOn, bigBrain, name = '', room = null, review = null, check = {} }) {
   const takesJobs = brain.cfg.share?.takeJobs === true && doorOpen(brain.cfg);
   // 'room' (1.5.211): he takes a group's job (Discord) with its strict limits. Older Bobs don't say it, so never get one.
-  const jobs = takesJobs ? ['room', can.pictures && 'pictures', can.video && 'video', can.music && 'music', can.sfx && 'sfx', webOn && bigBrain && 'web', bigBrain && 'think'].filter(Boolean) : [];
+  const jobs = takesJobs ? ['room', 'chat', can.pictures && 'pictures', can.video && 'video', can.music && 'music', can.sfx && 'sfx', webOn && bigBrain && 'web', bigBrain && 'think'].filter(Boolean) : [];
   return {
     protocol: PROTOCOL, lend: why !== 'off', busy: why === 'off' ? undefined : why || undefined,
     brain: quick ? label(quick.model) : '', ctx: quick?.ctx || 0, speed: brain.engine?.lastStats?.tokPerSec || 0,
