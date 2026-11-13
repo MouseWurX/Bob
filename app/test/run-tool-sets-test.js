@@ -24,13 +24,12 @@ const { expectFrom } = await import('../src/verify.js');
 const { STICKY_TURNS } = await import('../src/toolbox.js');
 
 // 1. Which brains get which wording.
-check('GPT-OSS gets its own wording', toolSetFor({}, 'gpt-oss-120b-REAP-38B')?.id === 'gpt-oss');
-check('GPT-OSS by its file metadata too', toolSetFor({}, 'my-brain', { info: { arch: 'gpt-oss', name: 'gpt-oss-20b' } })?.id === 'gpt-oss');
+check('GPT-OSS wording is unproven (120B A/B Nov 13), so it isn\'t picked by itself', SETS['gpt-oss'].proven === false && toolSetFor({}, 'gpt-oss-120b-REAP-38B') === null && toolSetFor({}, 'my-brain', { info: { arch: 'gpt-oss', name: 'gpt-oss-20b' } }) === null);
 check('Qwen brains keep Bob\'s own wording', toolSetFor({}, 'qwen3.6-35b-a3b') === null && toolSetFor({}, 'riker') === null);
 check('unknown brains keep Bob\'s own wording', toolSetFor({}, 'some-new-brain') === null);
-check('on unless turned off', toolSetsOn({}) && !toolSetsOn({ toolSets: false }) && toolSetFor({ toolSets: false }, 'gpt-oss-20b') === null);
+check('on unless turned off', toolSetsOn({}) && !toolSetsOn({ toolSets: false }) && toolSetFor({ toolSets: false }, '', { family: 'gpt-oss' }) === null);
 check('a family named by hand (the Lab\'s --tool-set)', toolSetFor({}, '', { family: 'gpt-oss' })?.id === 'gpt-oss');
-check('GPT-OSS keeps an added group for 1 message; others for the usual', stickyFor(toolSetFor({}, 'gpt-oss-20b'), STICKY_TURNS) === 1 && stickyFor(null, STICKY_TURNS) === STICKY_TURNS);
+check('GPT-OSS keeps an added group for 1 message; others for the usual', stickyFor(toolSetFor({}, '', { family: 'gpt-oss' }), STICKY_TURNS) === 1 && stickyFor(null, STICKY_TURNS) === STICKY_TURNS);
 
 // 2. Against Bob's real tool list: same names and inputs, never longer in all.
 const cfg = loadConfig(); cfg.userName = 'Sam'; cfg.timeZone = 'UTC'; cfg.readRoots = [tmp];
@@ -51,10 +50,10 @@ for (const [fam, set] of Object.entries(SETS)) {
   const c1 = JSON.stringify(brain.toolSchemas(core)).length, c2 = JSON.stringify(brain.toolSchemas(core, { id: fam, ...set })).length;
   check(`${fam}: the core tools are no longer than Bob's own (${c2} vs ${c1})`, c2 <= c1, `${c2} > ${c1}`);
 }
-check('the Lab\'s saved lists get the placeholders filled', !JSON.stringify(inSet(brain.tools.reminders.schema, toolSetFor({}, 'gpt-oss-20b'), { user: 'the user' })).includes('{{'));
-check('a tool a set doesn\'t word stays as it is', inSet(brain.tools.bob_help.schema, toolSetFor({}, 'gpt-oss-20b')) === brain.tools.bob_help.schema);
-check('the brain works out the set from the model it answers on', brain.toolSetOf('gpt-oss-20b')?.id === 'gpt-oss' && brain.toolSetOf('riker') === null);
-{ const loaded = new Set(); loaded.toolSet = brain.toolSetOf('gpt-oss-20b'); const t = brain.frontDeskTools(loaded); check('the front desk hands GPT-OSS its wording', t.find((x) => x.function.name === 'reminders')?.function.description.startsWith('Use when')); }
+check('the Lab\'s saved lists get the placeholders filled', !JSON.stringify(inSet(brain.tools.reminders.schema, toolSetFor({}, '', { family: 'gpt-oss' }), { user: 'the user' })).includes('{{'));
+check('a tool a set doesn\'t word stays as it is', inSet(brain.tools.bob_help.schema, toolSetFor({}, '', { family: 'gpt-oss' })) === brain.tools.bob_help.schema);
+check('the brain works out the set from the model it answers on (none while GPT-OSS is unproven)', brain.toolSetOf('gpt-oss-20b') === null && brain.toolSetOf('riker') === null);
+{ const loaded = new Set(); loaded.toolSet = toolSetFor({}, '', { family: 'gpt-oss' }); const t = brain.frontDeskTools(loaded); check('the front desk hands GPT-OSS its wording', t.find((x) => x.function.name === 'reminders')?.function.description.startsWith('Use when')); }
 
 // 3. Logic arguments: what a brain means, read in code (no words added to the brain's list).
 const rp = brain.tools.reminders.schema.function.parameters, np = brain.tools.notice_board.schema.function.parameters;

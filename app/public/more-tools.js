@@ -18,6 +18,7 @@ const NOTES = {
   repeatReminders: 'Reminders can repeat: every day, weekday, week, month or year ("every Monday at 9").',
   phoneReminders: 'Reminders and page-watch news pop up on Bob for Android too, while it\'s paired.',
   email: 'Bob reads your mail (any IMAP account, read-only). He can\'t send, delete or mark anything read.',
+  emailTidy: 'Bob marks mail read, flags it, files it in a folder, archives it, moves it to Trash (never deleted for good), or saves a draft (never sent: you send it). Every change shows a card first and can be undone. Needs "Let Bob read my email" on. Works with Gmail, Outlook and Hotmail, in English or French.',
   calendar: 'Bob reads calendars from a link or an .ics file. Read-only.',
   pageWatch: 'Bob checks a web page every few hours and tells you when the part you care about changes.',
   webApi: 'Bob calls web services you add here, with their saved key. Reading needs no card; sending or changing anything always asks first.',
@@ -59,6 +60,7 @@ export async function mountMoreTools(box) {
       <div class="row"><label>App password <input data-mt-email="password" type="password" autocomplete="off" placeholder="${v.emailPasswordSaved ? 'Saved and locked' : 'Paste an app password'}"></label>
         <button type="button" data-mt-emailsave>Save</button> <button type="button" class="mini" data-mt-emailtest>Test</button>${v.emailPasswordSaved ? ' <button type="button" class="mini" data-mt-emailforget>Forget password</button>' : ''}
         <span class="muted">Use an app password (made in your mail account's security page), not your main one. It's kept locked.</span></div>
+      ${byKey('emailTidy')}
       ${byKey('calendar')}
       <ul class="plain">${cal || '<li class="muted">No calendars yet.</li>'}</ul>
       <div class="row"><input data-mt-cal="name" maxlength="40" placeholder="Name, like Work" aria-label="Calendar name" style="width:9em">

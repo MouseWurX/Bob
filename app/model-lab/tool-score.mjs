@@ -58,7 +58,7 @@ function history(lesson, k) {
   if (system === null) return null;
   return { messages: [{ role: 'system', content: system }, ...out], tools };
 }
-// Tool sets (src/tool-sets.js), the per-family proof: --tool-set off scores with Bob's own wording, --tool-set auto
+// Tool sets (src/tool-sets.js), the per-family proof: --tool-set off scores with Bob's own wording, --tool-set auto (proven families only)
 // (or left out) gives each brain its family's wording, found from its label and file name. Run both and compare.
 const toolSetArg = String(o['tool-set'] || 'auto');
 const setOf = (m) => (toolSetArg === 'off' ? null : toolSetFor({}, toolSetArg === 'auto' ? `${m.name} ${path.basename(m.file)}` : '', toolSetArg === 'auto' ? {} : { family: toolSetArg }));

@@ -27,6 +27,15 @@ export function cardForNet(ev) {
   if (Array.isArray(ev.plan)) c.plan = ev.plan.slice(0, 200).map((r) => ({ id: str(r?.id, 80), text: str(r?.text ?? r?.label, 300), blocked: r?.blocked === true }));
   if (Array.isArray(ev.together)) c.together = ev.together.slice(0, 50).map((t) => ({ n: Number(t?.n) || 0, text: str(t?.text, 500), ...(t?.command ? { command: str(t.command, 500) } : {}) }));
   if (ev.planCard && typeof ev.planCard === 'object') c.planCard = { goal: str(ev.planCard.goal, 300), time: str(ev.planCard.time, 200), steps: (ev.planCard.steps || []).slice(0, 30).map((s) => ({ text: str(s?.text, 300), ok: s?.ok === true })) };
+  if (ev.sortCard && typeof ev.sortCard === 'object') { // the email sort plan (email-manage.js), for the phone and other Bobs
+    const sc = ev.sortCard;
+    c.sortCard = {
+      batches: (sc.batches || []).slice(0, 13).map((b) => ({ key: str(b?.key, 10), name: str(b?.name, 60), why: str(b?.why, 200), action: str(b?.action, 12), folder: str(b?.folder, 80),
+        items: (b?.items || []).slice(0, 100).map((it) => ({ id: Number(it?.id) || 0, subject: str(it?.subject, 120), from: str(it?.from, 40), unread: it?.unread === true, danger: (it?.danger || []).slice(0, 6).map((d) => str(d, 200)) })) })),
+      folders: (sc.folders || []).slice(0, 80).map((f) => str(f, 80)),
+      replyFirst: (sc.replyFirst || []).slice(0, 8).map((r) => ({ id: Number(r?.id) || 0, subject: str(r?.subject, 120), from: str(r?.from, 40), why: str(r?.why, 120) }))
+    };
+  }
   if (ev.command) { c.command = str(ev.command, 1000); c.cwd = str(ev.cwd, 300); }
   for (const k of ['where', 'button', 'kind']) if (ev[k]) c[k] = str(ev[k], 120);
   if (ev.allowAll) c.allowAll = true;

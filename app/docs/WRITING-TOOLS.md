@@ -13,7 +13,7 @@ This guide is for anyone adding a tool to Bob: a person changing his code, a too
 - The description is one or two short sentences. Lead with what it is for, then the one rule people get wrong. For example: "Read or change the notice board (their to-do list). add = one new item; write = the whole board (read it first)."
 - Say where the line is between it and the tool it gets mixed up with: "No time? That's a to-do: notice_board."
 - No standing essays. Every word is read at the start of every job (`test/run-start-budget-test.js` guards the budget).
-- If one brain family keeps mixing the tool up, give that family its own "Use when…" line in `SETS` (`src/tool-sets.js`). Keep the family's whole list no longer than Bob's own. The names and inputs never change per family.
+- Wording alone isn't where the gains are. On Nov 13 the GPT-OSS 120B scored 5 of 14 with its own "Use when…" wording and 6 of 14 with Bob's, so fix a mix-up in the tool first (rule 1 and rule 3). A family's own line in `SETS` (`src/tool-sets.js`) is used only after `tool-score` proves it; until then it's `proven: false`. Keep a family's whole list no longer than Bob's own. Names and inputs never change per family.
 
 ## 3. Let the code do the thinking
 
@@ -34,7 +34,13 @@ This guide is for anyone adding a tool to Bob: a person changing his code, a too
 - If a person's words should bring it to hand, add it to a tool group in `src/toolbox.js` with the words that point at it. Keep the core small.
 - If people ask for it in plain words ("remind me…", "put … on my list"), add the ask to `src/verify.js`, so a turn that skipped it gets one more go.
 
-## 6. Help, tests and every system
+## 6. Outside words can't steer it
+
+- Anything a tool reads from outside (a web page, a file, an e-mail) is someone else's words. Assume the brain obeys them.
+- So put the safety in code: fence what comes back, and make the harmful moves impossible rather than discouraged. E-mail is the model (`src/email-safe.js`, `src/mail-guard.js`): every field cleaned and fenced, danger signs found by code, and in a chat that holds e-mail only the tools in `AFTER_MAIL` run, with every change on a card.
+- A new tool that sends, fetches or runs something stays out of `AFTER_MAIL`. A new tool that reads outside words fences its answer.
+
+## 7. Help, tests and every system
 
 - Off by default unless it's a reliability fix. Help in Bob's voice, a glossary entry, an FAQ.
 - A test that calls it with a right input, a wrong one and a near-miss (another name for a field, an action word). Tests never read the real computer.

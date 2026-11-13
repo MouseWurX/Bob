@@ -297,9 +297,10 @@ export function buildTools(cfg) {
     // The board's layout comes with an empty board, not in every prompt (less context is better, 1.5.207).
     // Tool sets (tool-sets.js), logic arguments: add puts one item on the board without rewriting it (rewriting the
     // whole board was where small brains lost items).
-    schema: fn('notice_board', "Read or change {{USER}}'s notice board (their to-do list). add = new items; write = the whole board (read it first).", {
-      action: str('read, add or write', { enum: ['read', 'add', 'write'] }),
-      content: str('add: items, one per line. write: the whole board, in Markdown.'),
+    // Nov 13 (120B interview): "read it first" made brains read and stop. add and done need no read.
+    schema: fn('notice_board', "Read or change {{USER}}'s notice board (their to-do list). add = new items; done = tick one off (no read needed); write = the whole board.", {
+      action: str('read, add, done or write', { enum: ['read', 'add', 'done', 'write'] }),
+      content: str('add: items, one per line. done: the item. write: the whole board, in Markdown.'),
       drop: { type: 'boolean', description: 'write: true to take items off.' }
     }, ['action']),
     async run({ action, content, drop }) {
@@ -326,6 +327,21 @@ export function buildTools(cfg) {
           if (!added.length) return `Already on the notice board: ${had.join('; ')}. Nothing added.`;
           saveFile(file, lines.join('\n').replace(/\n*$/, '\n'));
           return `Added to the notice board: ${added.join('; ')}.${had.length ? ` Already there: ${had.join('; ')}.` : ''} It has ${lines.filter((l) => /^\s*-\s*\[ \]/.test(l)).length} open items now.`;
+        });
+      }
+      if (action === 'done') {
+        const item = String(content || '').replace(/\s+/g, ' ').replace(/^[-*]\s*(?:\[[ x]\]\s*)?/i, '').trim().toLowerCase();
+        if (!item) throw new Error('Which item? Put its words in content.');
+        return oneWriter(file, () => {
+          if (!fs.existsSync(file)) return 'The notice board is empty. Nothing ticked off.';
+          const lines = readText(file).replace(/\r\n/g, '\n').split('\n');
+          const open = lines.map((l, i) => ({ l, i })).filter(({ l }) => /^\s*-\s*\[ \]/.test(l));
+          const words = (l) => l.replace(/^\s*-\s*\[ \]\s*/, '').trim();
+          const hit = open.find(({ l }) => words(l).toLowerCase() === item) || open.filter(({ l }) => words(l).toLowerCase().includes(item)).reduce((a, b, _, all) => (all.length === 1 ? b : a), null);
+          if (!hit) return `No open item matches "${content}". Open items: ${open.map(({ l }) => words(l)).slice(0, 15).join('; ') || 'none'}. Nothing ticked off.`;
+          lines[hit.i] = lines[hit.i].replace('[ ]', '[x]');
+          saveFile(file, lines.join('\n').replace(/\n*$/, '\n'));
+          return `Ticked off on the notice board: ${words(hit.l)}. ${open.length - 1} open items left.`;
         });
       }
       if (action !== 'write') return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : BOARD_EMPTY;

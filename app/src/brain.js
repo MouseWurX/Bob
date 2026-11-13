@@ -40,6 +40,7 @@ import { toolOn as moreOn } from './more-tools.js'; // 🧰 More tools (Settings
 import { calculatorTool } from './calc.js';
 import { passwordTool } from './passwords.js';
 import { emailTool } from './email-read.js';
+import { manageEmailTool } from './email-manage.js'; // "Let Bob tidy my email" (Nov 13)
 import { calendarTool } from './calendar-read.js';
 import { watchTool, checkDueWatches } from './page-watch.js';
 import { apiTool } from './web-api.js';
@@ -222,7 +223,7 @@ export class Brain {
     const on = (k) => () => moreOn(this.cfg, k);
     Object.assign(this.tools, {
       calculate: calculatorTool(cfg, on('calculator')), make_password: passwordTool(cfg, on('passwords')),
-      read_email: emailTool(cfg, on('email')), read_calendar: calendarTool(cfg, on('calendar')),
+      read_email: emailTool(cfg, on('email')), manage_email: manageEmailTool(cfg, () => moreOn(this.cfg, 'email') && moreOn(this.cfg, 'emailTidy'), {}, this), read_calendar: calendarTool(cfg, on('calendar')),
       watch_page: watchTool(cfg, on('pageWatch')), call_api: apiTool(cfg, on('webApi')),
       query_data: dataTool(cfg, on('dataQuery')), make_chart: chartTool(cfg, on('charts')),
       check_spelling: spellTool(cfg, on('spellCheck')), meeting_notes: meetingTool(cfg, on('meetingNotes')),

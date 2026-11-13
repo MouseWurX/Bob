@@ -7,6 +7,7 @@
 //   repeatReminders reminders that repeat ("every Monday at 9"; reminders tool, tools.js)
 //   phoneReminders  reminders also pop up in Bob for Android (brain.js checkReminders, phone.js)
 //   email           read_email: read-only IMAP with an app password (email-read.js)
+//   emailTidy       manage_email: mark, flag, move, archive, trash (never deleted for good), drafts (never sent), undo
 //   calendar        read_calendar: a calendar link or .ics file, read-only (calendar-read.js)
 //   pageWatch       watch_page: check a page every few hours, say when the part you care about changes (page-watch.js)
 //   webApi          call_api: a web service with a saved key; reading needs no card, anything else asks (web-api.js)
@@ -25,6 +26,7 @@ export const SWITCHES = [
   { key: 'repeatReminders', label: 'Let reminders repeat', tools: [] },
   { key: 'phoneReminders', label: 'Show reminders on my phone', tools: [] },
   { key: 'email', label: 'Let Bob read my email', tools: ['read_email'] },
+  { key: 'emailTidy', label: 'Let Bob tidy my email', tools: ['manage_email'] }, // email-manage.js: needs 'email' on too
   { key: 'calendar', label: 'Let Bob read my calendar', tools: ['read_calendar'] },
   { key: 'pageWatch', label: 'Let Bob watch web pages', tools: ['watch_page'] },
   { key: 'webApi', label: 'Let Bob call web services', tools: ['call_api'] },
@@ -108,14 +110,14 @@ export const GROUP_WORDS = {
 };
 export const GROUP_TOOLS = {
   calc: ['calculate', 'make_password'],
-  mail: ['read_email', 'read_calendar'],
+  mail: ['read_email', 'manage_email', 'read_calendar'],
   webtools: ['watch_page', 'call_api'],
   data: ['query_data', 'make_chart', 'check_spelling', 'compare_files'],
   meeting: ['meeting_notes']
 };
 export const GROUP_WHAT = {
   calc: 'exact sums and unit conversions with a calculator; make a password or passphrase',
-  mail: 'read the user\'s email (read-only) and calendar',
+  mail: 'read the user\'s email and calendar; tidy email (mark, move, archive, trash, drafts) when that is on',
   webtools: 'watch a web page for a change; call a web service the user saved',
   data: 'ask questions of a CSV or database file; draw a chart from data; check spelling and grammar; compare two files',
   meeting: 'turn a meeting recording into a transcript with who said what, for notes'

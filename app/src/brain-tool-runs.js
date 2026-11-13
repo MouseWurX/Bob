@@ -16,6 +16,7 @@ import { STRUCK_OUT, halfDone, badAddress, ToolStrikes, STRIKES, STRIKE_NOTE, ca
 import { applyHouseStyle, usedLine } from '../public/house-style.js';
 import { KEEPS_FOR_LATER, outsideNeed, isOutside, markOutside } from './outside-text.js';
 import { takeEarlier } from './together.js';
+import { mailInChat, mailGate, MAIL_CARD_NOTE } from './mail-guard.js';
 import { outputDirs } from './config.js';
 import { madePaths } from './made.js';
 import { limitMs, cleanResult, riskOf, NOTHING_FOUND, capFor, capResult } from './tool-kinds.js';
@@ -114,11 +115,16 @@ export const toolRunParts = {
     if (house.used.length) ctx.emit({ type: 'house', text: usedLine(house.used), group: houseGroupOfTool(name) });
     try {
       ctx.picked = null;
+      // The mail lock (mail-guard.js): in a chat that holds e-mail, only the safe tools run, and changes always ask.
+      // Not turned off by the plain loop: it's how e-mail can't make Bob do anything harmful.
+      const mailGo = (ctx.mailRead ||= mailInChat(ctx.msgs)) ? mailGate(name, riskOf(name, tool)) : null;
+      if (mailGo?.refuse) { this.log('approval', `not run: ${name} in a chat that holds e-mail`); return { text: mailGo.refuse, hinted: true }; }
       // Item 9 (outside-text.js): after a web page or file was read this turn, anything that acts shows its card.
-      const afterOutside = Boolean(ctx.outsideRead) && !this.plainLoop;
-      if (tool.check || (afterOutside && KEEPS_FOR_LATER.has(name))) {
+      const afterOutside = (Boolean(ctx.outsideRead) && !this.plainLoop) || Boolean(mailGo?.card);
+      if (tool.check || (afterOutside && KEEPS_FOR_LATER.has(name)) || (mailGo?.card && !tool.ownCard?.(args))) {
         let need = tool.check ? await tool.check(args, ctx) : null;
-        if (afterOutside) { const was = need; need = outsideNeed(name, need, tool.summary ? tool.summary(args) : name); if (need && !was) this.log('approval', `asking first: ${name} right after reading outside text`); }
+        if (mailGo?.card && !tool.ownCard?.(args)) { const sum = tool.summary ? tool.summary(args) : name; need = !need ? `${sum}${MAIL_CARD_NOTE}` : typeof need === 'string' ? need + MAIL_CARD_NOTE : { ...need, text: String(need.text || '') + MAIL_CARD_NOTE }; this.log('approval', `asking first: ${name} in a chat that holds e-mail`); }
+        else if (afterOutside) { const was = need; need = outsideNeed(name, need, tool.summary ? tool.summary(args) : name); if (need && !was) this.log('approval', `asking first: ${name} right after reading outside text`); }
         // "Hands for Claude" (claude-door.js): the card names the app that asked.
         if (need && ctx.via) need = typeof need === 'string' ? `${ctx.via} (through Bob): ${need}` : { ...need, text: `${ctx.via} (through Bob): ${need.text}` };
         const group = typeof tool.approvalGroup === 'function' ? tool.approvalGroup(args) : tool.approvalGroup;
@@ -135,7 +141,7 @@ export const toolRunParts = {
           ctx.emit({ type: 'allowed-earlier', text: `${need.text} (allowed here for today)` });
         } else if (need && !(group && ctx.allowAll.has(group) && !afterOutside)) {
           // 1.5.42: already answered on the card with all of this job's OKs (together.js)?
-          const earlier = (ctx.preOk || ctx.preNo) ? takeEarlier(ctx, name, args, need) : null;
+          const earlier = (ctx.preOk || ctx.preNo) && !mailGo?.card ? takeEarlier(ctx, name, args, need) : null;
           if (earlier?.no) { ctx.ledger?.action(name, args, true, 'declined'); this.log('approval', `denied on the combined card: ${typeof need === 'string' ? need : need.text}`); return { text: 'The user said no to this on the card. Do not try again; say it is fine and ask what to do instead.' }; }
           if (earlier?.ok) {
             this.log('approval', `allowed on the combined card: ${typeof need === 'string' ? need : need.text}${need.command ? ` [${need.command}]` : ''}`);

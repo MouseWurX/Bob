@@ -78,6 +78,7 @@ const ALIASES = {
 const ENUM_WORDS = {
   add: ['set', 'create', 'new', 'make', 'append', 'put', 'schedule', 'insert'],
   cancel: ['remove', 'delete', 'clear', 'unset', 'stop'],
+  done: ['complete', 'completed', 'finish', 'finished', 'tick', 'tickoff', 'checkoff', 'markdone', 'remove', 'delete', 'cross', 'crossoff'], // notice_board (Nov 13)
   list: ['show', 'get', 'view', 'all', 'see', 'check'],
   read: ['show', 'get', 'view', 'list', 'see', 'open', 'check'],
   write: ['save', 'update', 'replace', 'rewrite', 'overwrite']
@@ -104,11 +105,11 @@ function coerce(v, p) {
   if (t === 'object' && typeof v === 'string' && v.trim().startsWith('{')) { const o = repairJson(v); if (o) return { v: o, fixed: true }; }
   // An enum still holding a {{PLACEHOLDER}} (use_tools's group list, filled in per turn) isn't checked here.
   if (Array.isArray(p?.enum) && p.enum.length && !p.enum.some((e) => /\{\{/.test(String(e))) && !p.enum.includes(v) && typeof v === 'string') {
-    const w = v.trim().toLowerCase();
+    const w = v.trim().toLowerCase(), ws = squash(w);
     const hit = p.enum.filter((e) => String(e).toLowerCase() === w);
     const near = hit.length ? hit : p.enum.filter((e) => String(e).toLowerCase().startsWith(w) || w.startsWith(String(e).toLowerCase()));
     if (near.length === 1) return { v: near[0], fixed: true };
-    const word = p.enum.find((e) => (ENUM_WORDS[e] || []).includes(w));
+    const word = p.enum.find((e) => (ENUM_WORDS[e] || []).some((x) => x === w || x === ws));
     if (word) return { v: word, fixed: true };
     return { v, bad: `must be one of ${p.enum.map((e) => JSON.stringify(e)).join(', ')}` };
   }
