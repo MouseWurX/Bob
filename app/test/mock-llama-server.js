@@ -10,6 +10,8 @@ const readyAt = Date.now() + 800;
 // Reliability 218-228 tests: a setting the engine refuses, running out of memory above a chat memory size, a crash.
 if (argv.includes('--bad-flag')) { console.error('error: invalid argument: --bad-flag'); process.exit(1); }
 if (Number(process.env.MOCK_OOM_ABOVE) > 0 && Number(arg('-c')) > Number(process.env.MOCK_OOM_ABOVE)) { console.error('ggml_backend_cuda_buffer_type_alloc_buffer: allocating 9000 MiB on device 0: cudaMalloc failed: out of memory'); process.exit(1); }
+// Nov 12 (apu-fit): built-in graphics that run out of memory when more than this many layers go on them.
+if (process.env.MOCK_VK_OOM_NGL !== undefined && (argv.includes('-ngl') ? Number(arg('-ngl')) : 999) > Number(process.env.MOCK_VK_OOM_NGL)) { console.error('ggml_vulkan: Device memory allocation of size 1001 MiB failed.\nvk::Device::allocateMemory: ErrorOutOfDeviceMemory'); process.exit(1); }
 
 http.createServer(async (req, res) => {
   let body = '';

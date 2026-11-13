@@ -1,6 +1,7 @@
 // Search my documents by meaning (doc-index.js): the pieces, the squeezed numbers, filling and searching the index
 // with a made-up embedding model, find_in_documents' "Close in meaning" list, the switch, Help, glossary and FAQ.
 // Everything runs in a temporary folder with made-up files; no real embedding model is started.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -137,7 +138,7 @@ check('Bob\'s own folder isn\'t indexed', /docRoots\(\) \{ return \(this\.cfg\.r
 const server = read('src/server.js');
 check('the settings route saves the switch, and off deletes the index', /typeof b\.docMeaning === 'boolean'/.test(server) && /if \(!out\.docMeaning\) hk\.forgetDocIndex\(\)/.test(server) && /docMeaning: cfg\.docMeaning === true/.test(server));
 check('turning document reading off deletes the index too', /if \(!out\.docTools\) \{ clearDocCache\(\); brain\.housekeeper\?\.forgetDocIndex\(\); \}/.test(server));
-check('brain gives the tool the housekeeper', /findDocsTool\(cfg, \{ keeper: \(\) => this\.housekeeper \}\)/.test(read('src/brain.js')));
+check('brain gives the tool the housekeeper', /findDocsTool\(cfg, \{ keeper: \(\) => this\.housekeeper \}\)/.test(brainText()));
 const cellar = read('public/cellar.js');
 check('Settings, How Bob works has the switch, off by default and always shown', /\$\{sswitch\('docMeaning', settings\.docMeaning === true, 'Search my documents by meaning'/.test(cellar) && /dataset\.set === 'docMeaning'/.test(cellar));
 check('the Welcome list offers it, not as coming soon', WANTS.some((w) => w.key === 'docMeaning' && w.setting === 'Search my documents by meaning') && !WANTS_SOON.some((w) => /meaning/i.test(w.label)));

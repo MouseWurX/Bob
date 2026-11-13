@@ -16,6 +16,7 @@ Everything written about Bob, in one list. New here? Start with the [user guide]
 | Page | What's in it |
 |---|---|
 | **[Bob's own models](BOBS-OWN-MODELS.md)** | Riker, Bobert and Bill: how they're cut and taught, every score, and what went wrong. |
+| [Making smaller brains: what we've learned](MAKING-SMALLER-MODELS.md) | Every best practice so far for cutting a big brain down and teaching it back. |
 | [Brain races](BRAIN-RACES.md) | Why each brain in the starter set won its slot. |
 | [Test results](test-results/README.md) | Dated measurements: speed, engines, Bob-Net, small brains, gaming. |
 | [Forge benchmarks](forge-runs/benchmarks/) | The raw score cards from each Forge run. |

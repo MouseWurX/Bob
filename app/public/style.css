@@ -236,6 +236,9 @@ body.still .talk-bar .talk-dot { animation: none !important; }
 .have { color: var(--good); }
 .muted { color: var(--muted); }
 .error { color: var(--bad); }
+.refused { margin: 2px 0 8px 2.2em; color: var(--bad); font-size: 13px; } /* 1.5.213: why a switch was turned down, right under it */
+.refused.needs-first { color: var(--muted); }
+label.switch.waits { opacity: .55; cursor: not-allowed; }
 .confirm { margin-top: 8px; padding: 8px 10px; border: 1px dashed var(--accent); border-radius: calc(var(--r) * 1); }
 .confirm p { margin: 0 0 8px; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -245,9 +248,9 @@ body.still .talk-bar .talk-dot { animation: none !important; }
 .dl .row { justify-content: space-between; font-size: 13px; }
 .found { list-style: none; padding: 0; margin: 0; }
 .found li { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 13px; word-break: break-all; }
-.settings { display: grid; gap: 14px; }
+.settings { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; } /* 1.5.213: one column that never grows past the window (the Simple cards wrap on a phone) */
 .switch { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
-.switch input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); }
+.switch input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); flex: none; } /* 1.5.213: every tick box keeps its size when the words wrap */
 .pick { display: grid; gap: 4px; }
 .cellar select { font: inherit; padding: 7px; border-radius: calc(var(--r) * 1); background: var(--bg); color: var(--text); border: 1px solid var(--line); max-width: 100%; }
 .welcome h2 { margin: 4px 0 8px; }
@@ -1930,7 +1933,7 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .set-top input[type="search"] { flex: 1 1 220px; max-width: 420px; min-height: 36px; }
 .set-view button { min-height: 36px; padding: 4px 16px; }
 .set-view button[aria-checked="true"] { border-color: var(--accent); box-shadow: var(--shadow); font-weight: 700; }
-.set-body { display: flex; gap: 16px; align-items: flex-start; }
+.set-body { display: flex; gap: 16px; align-items: flex-start; min-width: 0; }
 .set-main { flex: 1; min-width: 0; max-width: 900px; }
 .set-page .everyday { max-width: none; }
 .set-page .advanced { margin-top: 0; }
@@ -1955,7 +1958,7 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .set-back h3 { margin: 0; font-size: 18px; }
 .settings.searching .set-nav, .settings.searching .set-cards, .settings.searching .set-back { display: none !important; }
 @media (max-width: 760px) {
-  .set-body { flex-direction: column; }
+  .set-body { flex-direction: column; align-items: stretch; } /* 1.5.213: the page fills the width, so the Simple cards wrap */
   .set-nav { position: static; width: auto; max-height: none; display: flex; flex-wrap: wrap; gap: 4px; }
   .set-nav h4 { flex-basis: 100%; margin: 8px 0 0; }
   .set-nav button { border: 1px solid var(--line); }

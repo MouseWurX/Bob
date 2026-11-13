@@ -71,10 +71,48 @@ export function holdBack(n) {
 // ---- The checker: a short exact answer (a number, or a word or two) is right or wrong, no judge needed ----
 const norm = (s) => String(s || '').toLowerCase().replace(/[*_`"'“”‘’]/g, '').replace(/\s+/g, ' ').trim();
 const NUM = /-?\d[\d,]*(?:\.\d+)?/g;
-export const checkable = (key) => { const k = norm(key); return Boolean(k) && (/^-?\d[\d,]*(\.\d+)?$/.test(k) || (k.length <= 24 && k.split(' ').length <= 3)); };
+// 1.5.211 (PC trial: "**Answer: 4:15**" scored 0 next to "So, it arrives at **4:15**." scored 10, and "$$\boxed{30}$$" 0
+// next to "**30**" 10): the final answer is read the same way from the key and from each answer. Thinking, markdown,
+// $…$ and \boxed{…} go; an "Answer:" line or a \boxed{} is the answer, else the last sentence; a time or a number in it is
+// compared as a value, so the wording around it doesn't matter.
+const plain = (s) => String(s || '').replace(/<think>[\s\S]*?<\/think>/g, ' ').replace(/\\(?:text|mathrm|mathbf)\{([^{}]*)\}/g, '$1').replace(/\$+/g, ' ');
+function finalPart(s) {
+  const t = plain(s);
+  const boxed = [...t.matchAll(/\\boxed\{([^{}]*)\}/g)];
+  if (boxed.length) return boxed[boxed.length - 1][1];
+  // The value may sit on the next line, after markdown ("**Final answer:**" then "**2, 4, 7, 9**").
+  const said = [...t.matchAll(/(?:final answer|answer)\s*(?:is|:)[\s*_:]*([^\n]*[a-z0-9][^\n]*)/gi)];
+  if (said.length) return said[said.length - 1][1];
+  const sentences = norm(t).split(/(?<=[.!?])\s+|\n+/).map((x) => x.trim()).filter((x) => /[a-z0-9]/.test(x));
+  return sentences[sentences.length - 1] || '';
+}
+const NUMS = (s) => (norm(s).replace(/\b\d{1,2}:\d{2}\b/g, ' ').match(NUM) || []).map((n) => Number(n.replace(/,/g, ''))).filter(Number.isFinite);
+function valueOf(s) {
+  const f = norm(finalPart(s));
+  const times = f.match(/\b\d{1,2}:\d{2}\b/g);
+  if (times) return { time: times[times.length - 1].replace(/^0(?=\d:)/, '') };
+  const nums = NUMS(f);
+  // A list ("2, 4, 7, 9") is compared as the whole list in its order; one value as that value.
+  if (nums.length > 1 && /^[\s\d.,;:\-–and]*$/.test(f.replace(/[.!?]+$/, '').split(/\b(?:is|are|=)\b|:/).pop())) return { list: nums };
+  return nums.length ? { num: nums[nums.length - 1] } : null;
+}
+const shortKey = (k) => /^-?\d[\d,]*(\.\d+)?$/.test(k) || (k.length <= 24 && k.split(' ').length <= 3);
+// A key with a clear final value (a \boxed{}, an Answer: line, or a short key with a number or time) is checked as a value.
+// A sentence key counts only when it ends on its value ("So, it arrives at 4:15.", "It takes 150 minutes."), not
+// "It is 42 because it doubles", where the reasoning is the answer.
+const endsOnValue = (t) => { const w = norm(t).replace(/[.!?]+$/, '').split(' '); return w.length <= 12 && /\d/.test(w.slice(-2).join(' ')); };
+const valueKey = (key) => { const t = plain(key); return (/\\boxed\{|(?:final answer|answer)\s*(?:is|:)/i.test(t) || shortKey(norm(t)) || endsOnValue(t)) ? valueOf(key) : null; };
+export const checkable = (key) => { const k = norm(key); return Boolean(k) && (shortKey(k) || Boolean(valueKey(key))); };
 export function checkAnswer(answer, key) {
-  const k = norm(key), a = norm(answer).replace(/<think>[\s\S]*?<\/think>/g, '');
-  if (/^-?\d[\d,]*(\.\d+)?$/.test(k)) { const nums = a.match(NUM) || []; const want = Number(k.replace(/,/g, '')); return nums.length > 0 && Number(nums[nums.length - 1].replace(/,/g, '')) === want ? 10 : 0; }
+  const v = valueKey(key);
+  if (v) {
+    const f = norm(finalPart(answer));
+    if (v.time) return (f.match(/\b\d{1,2}:\d{2}\b/g) || []).some((t) => t.replace(/^0(?=\d:)/, '') === v.time) ? 10 : 0;
+    const got = NUMS(f);
+    if (v.list) return got.some((_, i) => v.list.every((n, j) => Math.abs((got[i + j] ?? NaN) - n) < 1e-9)) ? 10 : 0;
+    return got.some((n) => Math.abs(n - v.num) < 1e-9) ? 10 : 0;
+  }
+  const k = norm(key), a = norm(plain(answer));
   return new RegExp(`(^|[^a-z0-9])${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`).test(a) ? 10 : 0;
 }
 
@@ -82,7 +120,7 @@ export function checkAnswer(answer, key) {
 export function judgeMessages(q, answers, { key = '' } = {}) {
   const ask = q.messages.map((m) => `${m.role === 'user' ? 'Question' : m.role === 'assistant' ? 'Earlier answer' : 'Instructions'}: ${m.content}`).join('\n\n');
   return [
-    { role: 'system', content: 'You grade answers. Score each answer from 0 to 10 for how correct, complete and clear it is for the question. A wrong answer scores low however well it is written; length is not a virtue. Reply with only JSON: {"scores": [n, n, ...]}, one score per answer, in order.' },
+    { role: 'system', content: 'You grade answers. Judge each answer on its own against the question (and the known good answer, if one is given), never against the other answers. Use this scale: 10 = fully correct and clear; 7 = correct with a small slip (a wrong tense, a loose word, a step skipped); 4 = partly right; 1 = wrong; 0 = no answer. Two answers that are equally correct get the same score, however differently they are worded. A wrong answer scores low however well it is written; length is not a virtue. Reply with only JSON: {"scores": [n, n, ...]}, one score per answer, in order.' },
     { role: 'user', content: `${ask}\n\n${key ? `A known good answer, for reference:\n${key}\n\n` : ''}${answers.map((a, i) => `Answer ${i + 1}:\n${a}`).join('\n\n')}\n\nScore all ${answers.length} answers.` }
   ];
 }
@@ -94,6 +132,17 @@ export function parseScores(text, n) {
   if (!list) { const nums = (t.match(/-?\d+(?:\.\d+)?/g) || []).map(Number); if (nums.length >= n) list = nums.slice(0, n); }
   if (!list || list.length < n || list.slice(0, n).some((x) => !Number.isFinite(x))) return null;
   return list.slice(0, n).map((x) => Math.max(0, Math.min(10, x)));
+}
+// 1.5.211 A steadier judge (the PC trial saw a small judge give one right answer 10 and another 0): answers that are
+// the same word for word are judged once and share a score, and a list is judged twice, in order and reversed, and the
+// two scores are averaged, so where an answer sits in the list matters less. ask(list) -> scores or null.
+export async function steadyScores(ask, list) {
+  const norm = (a) => String(a || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const uniq = [], at = list.map((a) => { const k = norm(a); let i = uniq.findIndex((u) => norm(u) === k); if (i < 0) { uniq.push(a); i = uniq.length - 1; } return i; });
+  const one = await ask(uniq);
+  const two = uniq.length > 1 ? await ask([...uniq].reverse()).then((x) => x && x.reverse()) : null;
+  const both = one && two ? one.map((x, i) => Math.round(((x + two[i]) / 2) * 10) / 10) : one || two;
+  return both ? at.map((i) => both[i]) : null;
 }
 // Which answer is taught, and which pair counts.
 export function pick(scores) {
@@ -219,6 +268,7 @@ export async function startBest(lab, c = {}, { unload = false } = {}) {
     ...(here ? [['teach', `Teach ${p.way === 'pairs' ? 'the better-or-worse pairs' : p.way === 'both' ? 'the best answers, then the pairs' : 'the best answers'}${p.teachHours ? ` (about ${p.teachHours} h)` : ''}`], ['fold', 'Fold it into a new brain file'], ['after', 'Ask the held-back questions again, and the Quick quiz']] : [['plan', 'Save the best answers as a Forge plan']])];
   return runJob(lab, { kind: 'best', name: p.name, from: learner.id, fromName: learner.name, steps, stopped: 'You stopped it. The answers and scores so far are kept in the Lab\'s folder; nothing was put into Bob.' }, async (r, { set, signal, progress }) => {
     r.slug = `best-${p.slug}`;
+    r.origin = p._teach?.brain?.repo || '';
     fs.mkdirSync(data, { recursive: true });
     set('questions', 'running');
     let qfile = p._teach.lessons.file;
@@ -249,7 +299,7 @@ export async function startBest(lab, c = {}, { unload = false } = {}) {
     let checked = 0, judged = 0, unreadable = 0, rescued = 0, heldScore = 0, heldN = 0;
     const score = async (url, q, list) => {
       if (p.key && q.key && checkable(q.key)) { checked++; return list.map((a) => checkAnswer(a, q.key)); }
-      const s = parseScores(await fx.chat(url, judgeMessages(q, list, { key: p.key ? q.key.slice(0, 2000) : '' }), { temperature: 0, maxTokens: 120, signal }), list.length);
+      const s = await steadyScores(async (l) => parseScores(await fx.chat(url, judgeMessages(q, l, { key: p.key ? q.key.slice(0, 2000) : '' }), { temperature: 0, maxTokens: 120, signal }), l.length), list);
       if (s) judged++; else unreadable++;
       return s;
     };
@@ -356,7 +406,7 @@ export function useBest(lab, runId) {
   const out = lab.use(runId);
   const file = path.join(labDir(lab.cfg), 'made.json'), list = readJson(file, []);
   const e = list.find((m) => m.id === `lab-${r.slug}`);
-  if (e) { e.madeHere = true; e.lessons = r.report?.lessons || []; e.what = `Taught here from ${r.fromName}'s own best answers, judged by ${r.report?.judgeName || 'a bigger brain'}. ${e.what || ''}`.trim(); writeJson(file, list); }
+  if (e) { e.madeHere = true; e.origin = r.origin || ''; e.lessons = r.report?.lessons || []; e.what = `Taught here from ${r.fromName}'s own best answers, judged by ${r.report?.judgeName || 'a bigger brain'}. ${e.what || ''}`.trim(); writeJson(file, list); }
   return out;
 }
 

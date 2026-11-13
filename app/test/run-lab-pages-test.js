@@ -261,6 +261,8 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
   check('the downloaded weights and the big in-between files are cleaned up', !fs.existsSync(path.join(cfg.bobModelsDir, 'lab', 'teach', 'taught-big', 'base')) && !fs.existsSync(path.join(cfg.bobModelsDir, 'lab', 'teach', 'taught-big', 'taught-f16.gguf')) && fs.existsSync(run.files.gguf));
   useTaught(lab, run.id);
   const made = JSON.parse(fs.readFileSync(path.join(dataDir, 'lab', 'made.json'), 'utf8')).find((m) => m.id === 'lab-teach-taught-big');
+  { const tb = lab.brains().find((b) => b.id === 'lab-teach-taught-big'); const src = tb ? await readBrainSource(lab, { kind: 'lab', id: tb.id }) : null;
+    check('a brain made here can be taught again: Bob remembers its original and says what that means', made?.origin === 'Qwen/Qwen3-8B' && src?.repo === 'Qwen/Qwen3-8B' && !src.problems.some((x) => /full weights are/.test(x)) && /isn't carried over/.test(src.notes.join(' ')), JSON.stringify(src && { repo: src.repo, problems: src.problems, ids: lab.brains().map((b) => b.id) })); }
   check('Use in Bob marks it made here, lists its lessons, and doesn\'t make it the default', made?.madeHere === true && made.lessons.join() === 'My set' && /Taught here from Big/.test(made.what) && !cfg.models);
   calls.length = 0;
   lab.stepFns.perplexity = async (st) => (/full-Q8_0/.test(st.gguf) ? 8 : /plain-/.test(st.gguf) ? 9 : 8.4);

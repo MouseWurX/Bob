@@ -265,7 +265,7 @@ check('trivia: the question goes out with its four choices and nothing else', /^
   check('Help names the new games, levels, Today\'s puzzle, new words, the leak check and what Bob-Net Bobs are sent', ['Four in a row', 'Hidden fleet', "Liar's dice", 'Trivia night', 'Easy, Normal and Hard', "Today's puzzle", 'Ask Bob for new words', 'blanks it out', 'only the question and the four choices'.replace('only the', "All he's sent is the")].every((x) => h.includes(x)) || ['Four in a row', 'Hidden fleet', "Liar's dice", 'Trivia night', "Today's puzzle", 'Ask Bob for new words', 'blanks it out'].every((x) => h.includes(x)));
   check('FAQ and glossary', ['faq-games-daily', 'faq-games-trivia-bobs', 'faq-games-keep'].every((x) => ids.has(x)) && ['<dt>Four in a row</dt>', '<dt>Hidden fleet</dt>', "<dt>Liar's dice</dt>", '<dt>Trivia night</dt>', "<dt>Today's puzzle</dt>", '<dt>Keep an unfinished game</dt>', '<dt>Easy, Normal, Hard</dt>'].every((x) => glossary.includes(x)));
   check('the dictionary carries its licence notice, and THIRD-PARTY lists it', /Kevin Atkinson/.test(read('src/games-dict.js')) && /SCOWL/.test(read('docs/legal/THIRD-PARTY.md')));
-  check('the test runs with npm test', /run-games-2-test/.test(JSON.parse(read('package.json')).scripts.test)); }
+  check('the test runs with npm test', JSON.parse(read('package.json')).testSuites.includes('test/run-games-2-test.js')); }
 check('every game has a what line, and HAS_DAILY is Five letters, Word ladder and the Mini crossword', Object.values(GAMES).every((g) => g.what) && JSON.stringify(HAS_DAILY) === '["letters","ladder","crossword"]');
 
 console.log(`\n${pass} passed, ${fail} failed`);

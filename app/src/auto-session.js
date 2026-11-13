@@ -88,12 +88,21 @@ export function cardBusy(card) {
   return card.util >= CARD_OTHERS_PCT;
 }
 
+// 1.5.211 PC check: Bob's own work on the card isn't "something else". A brain run from outside a chat, or a card lent
+// to another Bob, kept it busy, and a quiet Bob took that for a game and went into Gaming (which let the brain go and
+// answered the next ask with the small Gaming brain). So when Bob himself holds the card (mine) and no other program
+// is on it (others, from card-busy.js), a busy reading says nothing: null, and he stays where he is.
+export function whoseCard(busy, { mine = false, others = null } = {}) {
+  if (busy !== true || !mine) return busy;
+  return others && others.length ? true : null;
+}
+
 // Where Bob goes when he's quiet: Gaming while something else is using the card, otherwise Normal. null = stay put.
 // A card that can't be read (no NVIDIA card): Normal, except that he doesn't leave Gaming then (he can't tell it's safe).
-export function idleSession(cfg, busy) {
+export function idleSession(cfg, busy, { stay = false } = {}) {
   if (!autoSessionOn(cfg) || cfg?.gamingLock === true) return null;
   const id = currentSession(cfg).id;
-  const want = busy === true ? 'light' : busy === false ? 'normal' : id === 'light' ? 'light' : 'normal';
+  const want = busy === true ? 'light' : busy === false ? 'normal' : stay ? id : id === 'light' ? 'light' : 'normal';
   return want === id ? null : want;
 }
 

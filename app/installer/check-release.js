@@ -30,9 +30,15 @@ if (pkg.license !== 'GPL-3.0-or-later') problems.push('package.json license shou
 if (!/^\d+\.\d+\.\d+$/.test(pkg.devDependencies?.electron || '')) problems.push('devDependencies.electron must be an exact version');
 // 1.5.178: every test file runs in npm test. Two suites shipped in 1.5.177 without being in the list (they passed on
 // their own, but npm test never ran them), so a test file that isn't listed fails the check.
-for (const t of fs.readdirSync(path.join(root, 'test')).filter((n) => /^run-.*\.js$/.test(n))) {
-  if (!(pkg.scripts?.test || '').includes(`test/${t}`)) problems.push(`test/${t} isn't in package.json's test script, so npm test never runs it`);
+// 1.5.211b: the list is package.json's "testSuites", run by test/run-all.js; the test script itself stays one short
+// command, since a long one passed Windows' 8,191-character limit and the release build ran no tests.
+const suites = Array.isArray(pkg.testSuites) ? pkg.testSuites : [];
+for (const t of fs.readdirSync(path.join(root, 'test')).filter((n) => /^run-.*\.js$/.test(n) && n !== 'run-all.js')) {
+  if (!suites.includes(`test/${t}`)) problems.push(`test/${t} isn't in package.json's testSuites, so npm test never runs it`);
 }
+for (const t of suites) if (!fs.existsSync(path.join(root, t))) problems.push(`package.json's testSuites names ${t}, which isn't there`);
+if ((pkg.scripts?.test || '') !== 'node test/run-all.js') problems.push('package.json\'s test script should be "node test/run-all.js" (the list goes in testSuites)');
+for (const [k, v] of Object.entries(pkg.scripts || {})) if (String(v).length > 2000) problems.push(`package.json script "${k}" is ${String(v).length} characters: keep scripts short (Windows stops at 8,191)`);
 if (!/## Code signing policy/.test(fs.readFileSync(path.join(repo, 'README.md'), 'utf8'))) problems.push('README is missing "## Code signing policy"');
 // CHANGELOG.md is made from docs/releases (node installer/make-changelog.js) and must be current.
 {

@@ -59,19 +59,30 @@ const box = (name) => { const d = path.join(tmp, name); fs.mkdirSync(d, { recurs
   ok(key === side.env.GGML_RPC_SCUT_KEY && linkKey(borCfg, L) === side.reply.linkKey, 'both Bobs end up with the same key for this lend');
   ask = sealAsk(borCfg, L);
   ok(ask.kid === keyId(linkKey(borCfg, L)) && !ask.newKey, 'next time the borrower names its key by id only');
-  side = lenderSeal(lendCfg, { on: true, ask: cleanSealAsk(ask), asker: H(192, 168, 4, 189) });
+  side = lenderSeal(lendCfg, { on: true, ask: cleanSealAsk(ask), asker: H(172, 16, 9, 189) });
   ok(side.sealed && !('linkKey' in side.reply), 'the lender finds it by id, whichever of his addresses was asked, and the key never travels again');
   key = borrowerSeal(borCfg, { address: L, reply: side.reply, asked: ask });
   ok(key === side.env.GGML_RPC_SCUT_KEY, 'the same key again, from a fresh salt');
   side = lenderSeal({ dataDir: box('lost') }, { on: true, ask: cleanSealAsk(ask), asker: B });
-  ok(!side.sealed && side.reply.unknownKey === true && KEY_RE.test(side.env.GGML_RPC_SCUT_KEY), 'a lender that lost the key says so, and uses a key nobody has (so the engines stay on the usual link)');
-  ok(borrowerSeal(borCfg, { address: L, reply: side.reply, asked: ask }) === 'off' && linkKey(borCfg, L) === '' && sealAsk(borCfg, L).newKey, 'the borrower forgets its old key and asks for a new one next time');
+  { const notes = [];
+    side = lenderSeal({ dataDir: box('lost') }, { on: true, ask: cleanSealAsk(ask), asker: B, log: (_w, t) => notes.push(t) });
+    ok(side.sealed && KEY_RE.test(side.reply.linkKey) && notes.some((t) => /new SCUT key agreed/.test(t)), 'a lender that doesn\'t know the key agrees a new one at once and says so (1.5.211), so SCUT is used for this load');
+    ok(borrowerSeal(borCfg, { address: L, reply: side.reply, asked: ask }) === side.env.GGML_RPC_SCUT_KEY && linkKey(borCfg, L) === side.reply.linkKey, 'the borrower keeps the new key, and both use the same one for this lend'); }
+  side = lenderSeal({ dataDir: '' }, { on: true, ask: cleanSealAsk({ want: true, kid: 'b'.repeat(16) }), asker: B });
+  ok(!side.sealed && side.reply.unknownKey === true && KEY_RE.test(side.env.GGML_RPC_SCUT_KEY), 'a lender that can\'t save a new key says so, and uses a key nobody has (so the engines stay on the usual link)');
+  { const c = { dataDir: box('forget') }; saveLinkKey(c, L, 'c'.repeat(64));
+    ok(borrowerSeal(c, { address: L, reply: side.reply, asked: { want: true, kid: 'b'.repeat(16) } }) === 'off' && linkKey(c, L) === '' && sealAsk(c, L).newKey, 'then the borrower forgets its old key and asks for a new one next time'); }
+  { const c = { dataDir: box('twofolders') }; const k1 = 'd'.repeat(64), k2 = 'e'.repeat(64);
+    saveLinkKey(c, B, k1); saveLinkKey(c, B, k2);
+    ok(linkKey(c, B) === k2 && linkKeyById(c, keyId(k1)) === k1 && linkKeyById(c, keyId(k2)) === k2, 'two Bob folders on one machine: a new key keeps the one it replaced findable by id (1.5.211), so they don\'t push each other out'); }
+  { const src = fs.readFileSync(new URL('../src/share-card.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+    ok(/const sameSeal = [^\n]*seal\.kid === this\.sealKid/.test(src) && /this\.allow === allow && sameSeal\)/.test(src) && /sealKid: sealed\.sealed \?/.test(src), 'a running card server is reused only for the link key it was started with; a new or different key starts it again (1.5.211)'); }
   side = lenderSeal(lendCfg, { on: true, ask: null, asker: B });
   ok(!side.sealed && side.reply === null && KEY_RE.test(side.env.GGML_RPC_SCUT_KEY), 'an older Bob that doesn\'t seal: a key nobody has, so SCUT stays off with him');
   side = lenderSeal(lendCfg, { on: false, ask: cleanSealAsk(ask), asker: B });
   ok(!side.sealed && side.reply === null && !('GGML_RPC_SCUT_KEY' in side.env), 'switched off on the lender: no key, unsealed SCUT');
   ok(borrowerSeal(borCfg, { address: L, reply: null, asked: ask }) === 'off', 'a lender that doesn\'t seal: no SCUT with him (never an unsealed link for a Bob that seals)');
-  ok(keysEnv([{ at: '100.101.1.2:50052', key: 'k1' }, { at: `${H(192, 168, 4, 5)}:50052`, key: 'off' }]).GGML_RPC_SCUT_KEYS === `100.101.1.2:50052=k1,${H(192, 168, 4, 5)}:50052=off` && JSON.stringify(keysEnv([])) === '{}', 'llama-server gets one key per lent card');
+  ok(keysEnv([{ at: '100.101.1.2:50052', key: 'k1' }, { at: `${H(172, 16, 9, 5)}:50052`, key: 'off' }]).GGML_RPC_SCUT_KEYS === `100.101.1.2:50052=k1,${H(172, 16, 9, 5)}:50052=off` && JSON.stringify(keysEnv([])) === '{}', 'llama-server gets one key per lent card');
 }
 
 // --- The switch ---
@@ -131,8 +142,8 @@ const box = (name) => { const d = path.join(tmp, name); fs.mkdirSync(d, { recurs
   const net = (from) => async (url, opt = {}) => {
     const u = new URL(url), to = [A, B].find((x) => x.ip === u.hostname), b = opt.body ? JSON.parse(opt.body) : {};
     const reply = (status, j) => ({ ok: status < 300, status, json: async () => j });
-    if (u.pathname === '/api/pair/ask') { const r = to.p.ask(b, from.ip); return reply(r.code, r.error ? { error: r.error } : { id: r.id }); }
-    if (u.pathname === '/api/pair/status') return reply(200, to.p.status(b.id, from.ip));
+    if (u.pathname === '/api/pair/ask') { const r = to.p.ask(b, from.ip); return reply(r.code, r.error ? { error: r.error } : { id: r.id, ...(r.pub ? { pub: r.pub } : {}) }); }
+    if (u.pathname === '/api/pair/status') return reply(200, to.p.status(b.id, from.ip, b.pub));
     if (u.pathname === '/api/pair/finish') return reply(200, to.p.finish(b, from.ip));
     return reply(404, {});
   };

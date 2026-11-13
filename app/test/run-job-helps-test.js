@@ -1,5 +1,6 @@
 // Settings, Jobs (src/job-helps.js, items 51-61): eleven switches for how Bob works through a job, all off unless
 // turned on. Plain checks first, then real turns with a scripted brain and stand-in tools (nothing goes online).
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -236,7 +237,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-jobs-'));
 
 // ---------- Wiring (read from the source) ----------
 {
-  const brainSrc = read('../src/brain.js'), server = read('../src/server.js'), cellar = read('../public/cellar.js'), app = read('../public/app.js'), main = read('../electron/main.cjs'), phone = read('../android/app/src/main/assets/www/phone.js');
+  const brainSrc = brainText(), server = read('../src/server.js'), cellar = read('../public/cellar.js'), app = read('../public/app.js'), main = read('../electron/main.cjs'), phone = read('../android/app/src/main/assets/www/phone.js');
   check('enqueue steers before anything else answers', brainSrc.indexOf('steerNote(this, sessionId') > 0 && brainSrc.indexOf('steerNote(this, sessionId') < brainSrc.indexOf('const quickAnswer = this.jobAnswer('));
   check('the tools go through the receipt, the cache and the no', /cachedLook\(this, name, args, ctx\) \|\| await (?:(?:inChangeTurn|inTurn)\(scope, async \(\) => \{ try \{ return await )?this\.runToolNow/.test(brainSrc) && /receiptAfter\(this, name, args, res, ctx, before\)/.test(brainSrc) && /noteNo\(this, ctx, name, args, res\?\.text\)/.test(brainSrc));
   check('the server saves it and has the three routes', /jobHelps: cleanJobHelps\(cfg\.jobHelps\)/.test(server) && /p === '\/api\/stop-after'/.test(server) && /p === '\/api\/jobs\/undo'/.test(server) && /p === '\/api\/open-at'/.test(server));

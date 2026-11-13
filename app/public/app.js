@@ -1201,7 +1201,7 @@ function setBusy(b) {
 
 // ---------- The queue: what's waiting, what's running, what failed ----------
 // A short strip above the message box (open tasks only); the Tasks button shows the full list.
-const STATE_LABEL = { waiting: 'queued', working: 'in progress', rented: 'rented', done: 'completed', failed: 'failed', cancelled: 'cancelled', interrupted: 'interrupted' };
+const STATE_LABEL = { waiting: 'queued', working: 'in progress', rented: 'rented', done: 'completed', failed: 'failed', cancelled: 'cancelled', interrupted: 'interrupted', paused: 'paused' };
 let lastJobs = [];
 const qbox = $('queue');
 function drawQueue(jobs) {
@@ -1214,7 +1214,7 @@ function drawQueue(jobs) {
     const tag = jobBubbles.get(j.id)?.querySelector('.qtag');
     if (tag) { const st = j.status || STATE_LABEL[j.state] || j.state; tag.textContent = (j.gaming ? j.gaming.tag : st === 'delegated' && j.delegatedTo ? `${j.delegatedTo.sent ? 'sent' : 'delegated'} to ${j.delegatedTo.copy}` : st) + (j.effort && j.effort !== 'low' ? ` · ${j.effort[0].toUpperCase()}${j.effort.slice(1)} effort` : ''); tag.className = `qtag ${j.state}`; }
   }
-  const show = jobs.filter((j) => j.state === 'waiting' || j.state === 'working' || ((j.state === 'failed' || j.state === 'interrupted') && Date.now() - j.at < 3600e3));
+  const show = jobs.filter((j) => j.state === 'waiting' || j.state === 'working' || j.state === 'paused' || ((j.state === 'failed' || j.state === 'interrupted') && Date.now() - j.at < 3600e3));
   qbox.hidden = !show.length;
   if (!show.length) return;
   const waiting = show.filter((j) => j.state === 'waiting').length;

@@ -152,7 +152,7 @@ export async function chat(url, { messages, tools, think = false, max = 2048, te
   const j = JSON.parse(text);
   const msg = j.choices?.[0]?.message || {};
   if (!msg.reasoning_content && msg.reasoning) msg.reasoning_content = msg.reasoning; // newer vLLM names it reasoning
-  return { msg, finish: j.choices?.[0]?.finish_reason, timings: j.timings || {} };
+  return { msg, finish: j.choices?.[0]?.finish_reason, timings: j.timings || {}, usage: j.usage || {}, logprobs: j.choices?.[0]?.logprobs || null };
 }
 
 export const stamp = () => new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);

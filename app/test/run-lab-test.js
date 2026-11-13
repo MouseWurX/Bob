@@ -368,7 +368,7 @@ const saved = lab.saveRecipe({ ...recipe, lessons: { kind: 'file', file: path.jo
 check('a saved recipe keeps choices, not paths', !JSON.stringify(saved).includes(tmp) && saved.at(-1).smaller.cut.keep === 4);
 
 // ---- 1.5.153 Challenges and Save ----
-check('the first six packs, then the extra ones, each with questions, a title and a time', PACKS.length === 26 && PACK_IDS.slice(0, 6).join() === 'quiz,reasoning,sums,rules,tools,code' && PACKS.every((x) => x.title && x.what && x.count > 0 && x.minutes > 0));
+check('the first six packs, then the extra ones, each with questions, a title and a time', PACKS.length === 33 && PACK_IDS.slice(0, 6).join() === 'quiz,reasoning,sums,rules,tools,code' && PACKS.every((x) => x.title && x.what && x.count > 0 && x.minutes > 0));
 check('every reasoning question has four choices and a letter answer', REASONING.every(([q, a]) => /A\) [\s\S]*B\) [\s\S]*C\) [\s\S]*D\) /.test(q) && /^[ABCD]$/.test(a)) && REASONING.length >= 20);
 check('every sum has a whole-number answer', SUMS.every(([, a]) => Number.isInteger(a)) && SUMS.length >= 15);
 check('the letter in a reply is found, with or without brackets, and thinking is ignored', letterOf('B') === 'B' && letterOf('(C)') === 'C' && letterOf('D) Gravity') === 'D' && letterOf('The answer is A.') === 'A' && letterOf('<think>A or B?</think>C') === 'C' && letterOf('no idea') === '');
@@ -858,8 +858,8 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   const G = await import('../src/lab-guard.js');
   const C = await import('../src/lab-challenges.js');
   const ids = P.EXTRA_IDS;
-  check('twenty extra packs (four from Lab items 105 to 107), version 1, each with questions, a title and a time', ids.length === 20 && P.EXTRA_PACKS.every((x) => x.version === 1 && x.title && x.what && x.count > 0 && x.minutes > 0) && ids.every((id) => C.PACK_IDS.includes(id)));
-  check('Guard rails is shown but never counted in Overall', C.PACKS.find((x) => x.id === 'guard').ranked === false && !C.RANKED_IDS.includes('guard') && C.RANKED_IDS.length === C.PACKS.length - 5); // Guard rails plus En français, En español, Job speed, Still refuses
+  check('twenty-seven extra packs (four from Lab items 105 to 107, seven Straight facts), version 1, each with questions, a title and a time', ids.length === 27 && P.EXTRA_PACKS.every((x) => x.version === 1 && x.title && x.what && x.count > 0 && x.minutes > 0) && ids.every((id) => C.PACK_IDS.includes(id)));
+  check('Guard rails is shown but never counted in Overall', C.PACKS.find((x) => x.id === 'guard').ranked === false && !C.RANKED_IDS.includes('guard') && C.RANKED_IDS.length === C.PACKS.length - 12); // Guard rails plus En français, En español, Job speed, Still refuses, and the seven Straight facts
   const all = Object.fromEntries(C.RANKED_IDS.map((id) => [id, { score: 80, right: 8, of: 10 }]));
   const row = C.scoreboard([C.mergeScores(null, { name: 'A', paramsB: 4, packs: { ...all, guard: { score: 10, right: 1, of: 10, parts: { held: { score: 0, right: 0, of: 5 }, answered: { score: 100, right: 15, of: 15 }, page: { score: 50, right: 3, of: 6 } } } }, when: '2026-11-09' })])[0];
   check('a low Guard rails score leaves Overall and "ran them all" alone, and its three numbers are kept', row.overall === 80 && row.all === true && row.guard?.held?.score === 0 && row.guard?.answered?.score === 100);
@@ -940,7 +940,7 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   check('and says why when no brain is loaded', (await guardChat({ cfg: { engine: 'llamacpp' }, engine: { url: 'http://b' } }, { messages: [{ role: 'user', content: 'hi' }] })).ok === false);
   check('saving from the sandbox is only for this replicant matrix itself', labText().indexOf("'/api/lab/guard/save'") > labText().indexOf('Lab jobs can only be started on this replicant matrix itself') && labText().indexOf("'/api/lab/guard/chat'") < labText().indexOf('Lab jobs can only be started on this replicant matrix itself'));
   const { packGroups, guardPartsLine } = await import('../public/lab-guard.js');
-  check('the Challenges list shows the first packs, then More challenges', packGroups(C.PACKS).map((g) => `${g.id}:${g.packs.length}`).join() === 'first:6,more:20');
+  check('the Challenges list shows the first packs, then More challenges', packGroups(C.PACKS).map((g) => `${g.id}:${g.packs.length}`).join() === 'first:6,more:27');
   check('the three Guard rails numbers read as words', guardPartsLine({ held: { score: null }, answered: { score: 90 }, page: { score: 50 } }) === 'Didn\'t over-refuse: 90 · Ignored planted orders: 50 · Held the line: not run');
 }
 

@@ -1,6 +1,7 @@
 // 1.5.127 Rented brains: off by default, every limit 0, keys only from environment variables and never shown or logged,
 // the Hire it card before anything is spent, a self-destruct timer on every hired machine, and the OpenAI-style stream
 // read the same way llama-server's is.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -196,7 +197,7 @@ const KEY = 'rpa_TESTKEY0123456789abcdefghijklmnop';
 {
   const appJs = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   check('the Hire it button is disabled in the card itself while hiring is blocked', /class="get"\$\{ev\.blocked \? ' disabled/.test(appJs) && /Not hired\. Doing it here instead\./.test(appJs));
-  const brainJs = fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8');
+  const brainJs = brainText();
   check('Not now puts the job back in line to run here', /r\.done === 'none' && r\.jobId/.test(brainJs) && /j\.rent = false; j\.rentOk = false; j\.rentAgain = true; this\.carryOnNow/.test(brainJs));
   const routes = fs.readFileSync(new URL('../src/rental-routes.js', import.meta.url), 'utf8');
   check('adding into the empty slot and removing the slotted rental both tell the chat page', (routes.match(/action: 'slot'/g) || []).length === 3);
@@ -221,7 +222,7 @@ fs.rmSync(tmp, { recursive: true, force: true });
 
 // 1.5.128 (PC thread): the message that drew the Hire it card is already in the chat once; the run after Hire it or Not now
 // adds only a hidden note, so a reload shows one bubble. And the greyed Hire it button looks greyed; a missing-field line is red.
-const brainSrc = fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8');
+const brainSrc = brainText();
 const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
 check('the run after the card answer does not repeat the user message', /j\.rentAgain = true/.test(brainSrc) && /Boolean\(job\?\.rentAgain\)/.test(brainSrc) && /job\.rentAgain = false/.test(brainSrc));
 const css = fs.readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');

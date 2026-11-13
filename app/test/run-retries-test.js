@@ -1,5 +1,6 @@
 // Reliability items 193-207: errors and retries. Always on (they are fixes). Fake engines, fake Bobs and fake
 // timers only: nothing real is loaded, fetched or started, and nothing reads the real computer.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -280,7 +281,7 @@ const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls:
   const ctx2 = { ledger: { step: (k, x) => { steps.push([k, x]); return { done() {} }; } } };
   brain.brokenCheck(ctx2, 'end-of-turn check', new Error('oops'));
   check('199 the job\'s record has it too', steps.some(([k, x]) => k === 'note' && /end-of-turn check broke: not checked/.test(x.what)) && ctx2.ledger.unchecked === 1);
-  check('199 the end-of-turn and said-but-not-done checks use it', /brokenCheck\(ctx, 'end-of-turn check'/.test(read('src/brain.js')) && /brokenCheck\(ctx, 'said-but-not-done check'/.test(read('src/brain.js')));
+  check('199 the end-of-turn and said-but-not-done checks use it', /brokenCheck\(ctx, 'end-of-turn check'/.test(brainText()) && /brokenCheck\(ctx, 'said-but-not-done check'/.test(brainText()));
 }
 
 // 203: an uncaught error marks a stuck job failed and tells you
@@ -393,7 +394,7 @@ const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls:
 fs.rmSync(tmp, { recursive: true, force: true });
 // 1.5.210 (208 PC check): a made-up address is the address's fault, not a strike.
 check('an address that doesn\'t exist is not the tool\'s fault', badAddress('Error: getaddrinfo ENOTFOUND bob-test.invalid') && badAddress('Error: fetch failed (could not resolve host)') && badAddress('Error: that page came back 404 Not Found') && !badAddress('Error: the page timed out') && !badAddress('Error: Unexpected token in JSON'));
-check('...and the loop skips the strike and the daily count for it', /if \(!v\.declined && !\(!ok && badAddress\(text\)\)\)/.test(fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8')));
+check('...and the loop skips the strike and the daily count for it', /if \(!v\.declined && !\(!ok && badAddress\(text\)\)\)/.test(brainText()));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

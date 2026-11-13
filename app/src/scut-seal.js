@@ -59,7 +59,12 @@ export function saveLinkKey(cfg, address, key) {
   const name = keyName(address);
   if (!name || !KEY_RE.test(String(key))) return false;
   const all = readAll(cfg);
+  // 1.5.211 (SCUT thread): two Bob folders on one machine (the live one and a test home) share an address, so a new key
+  // for one used to push out the other's, and the next lend from the other was "unknown" again, back and forth. The key
+  // it replaces stays under its own id (lenders find keys by id), until MAX_KEYS pushes the oldest out.
+  const was = all[name];
   delete all[name];
+  if (KEY_RE.test(String(was)) && was !== key) all[`${name}#${keyId(was)}`] = was;
   all[name] = key;
   const names = Object.keys(all);
   for (const n of names.slice(0, Math.max(0, names.length - MAX_KEYS))) delete all[n]; // the oldest go first
@@ -94,10 +99,15 @@ export function lenderSeal(cfg, { on, ask, asker, salt = newSalt(), log = () => 
   if (!on) return { env: {}, reply: null, sealed: false };
   let link = ask?.kid ? linkKeyById(cfg, ask.kid) : '', handed = '';
   // A Bob paired before sealed packets (or who lost his key) gets a new one, through the passcode door like his passcode.
-  if (ask?.newKey) { link = newLinkKey(); if (saveLinkKey(cfg, asker, link)) handed = link; else link = ''; }
+  // 1.5.211 (the owner, Nov 12: "plan for the key mix up"; a test home with a copied or fresh key file left the Go and the
+  // PC on the usual link for a whole Riker spread): a key this Bob doesn't know is replaced at once, the same way, so
+  // SCUT is used for this very load. The ask came through the passcode door, so the hand-over is as safe as pairing's.
+  const rekey = Boolean(ask?.kid) && !link;
+  if (ask?.newKey || rekey) { link = newLinkKey(); if (saveLinkKey(cfg, asker, link)) handed = link; else link = ''; }
+  if (rekey && link) log('bob-net', `lent graphics card: new SCUT key agreed with ${keyName(asker) || 'the other Bob'} (the one he had isn't one I know)`);
   if (!ask || !link) {
     // An older Bob, or a key this Bob doesn't know: a key nobody else has, so the engines can't agree and stay on the
-    // usual link. A key we don't know is said so, and he asks for a new one next time.
+    // usual link. Only when a new key can't be saved is that said, and he asks for a new one next time.
     log('bob-net', `lent graphics card: ${ask ? 'the other Bob\'s SCUT key isn\'t one I know (he gets a new one next time)' : 'the other Bob doesn\'t seal SCUT packets (older Bob)'}, so the usual link is used`);
     return { env: { GGML_RPC_SCUT_KEY: newLinkKey() }, reply: ask ? { unknownKey: true } : null, sealed: false };
   }
@@ -106,7 +116,8 @@ export function lenderSeal(cfg, { on, ask, asker, salt = newSalt(), log = () => 
 
 // The borrowing side, from the lender's reply: the key for the engine to use with that card ('off' = no SCUT with it).
 export function borrowerSeal(cfg, { address, reply, asked }) {
-  if (reply && asked?.newKey && KEY_RE.test(String(reply.linkKey))) saveLinkKey(cfg, address, reply.linkKey);
+  // A new key comes back when he asked for one, or when the lender didn't know the one he had (1.5.211: agreed at once).
+  if (reply && (asked?.newKey || asked?.kid) && KEY_RE.test(String(reply.linkKey))) saveLinkKey(cfg, address, reply.linkKey);
   if (reply?.unknownKey === true) { forgetLinkKey(cfg, address); return 'off'; } // he lost it: a new one next time
   const link = linkKey(cfg, address);
   const k = reply && link ? lendKey(link, reply.salt) : '';

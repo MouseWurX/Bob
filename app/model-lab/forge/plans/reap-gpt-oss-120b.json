@@ -1,0 +1,58 @@
+{
+  "run": "reap-gpt-oss-120b",
+  "note": "12 Nov: REAP calibration of the official GPT-OSS 120B (ggml-org MXFP4, 63.4 GB, untouched), served by Brain Engine on an 80 GB card at its own 4 experts per word. REAP scores on 100 training lessons, then 100/75/50% of each layer's 128 experts kept (gentler steps: it uses only 4 per word), each step judged on the held-out chats against its own full score. No file is cut. About 3-4 h, about $5-6; caps 4.5 h / $8.",
+  "benchmark_only": true,
+  "teacher": "Qwen/Qwen3.6-35B-A3B",
+  "counts": "expert-counts-2026-11-04T23-23-19.json",
+  "lessons": "out/lessons",
+  "gpus": [
+    "NVIDIA A100 80GB PCIe",
+    "NVIDIA A100-SXM4-80GB",
+    "NVIDIA H100 80GB HBM3"
+  ],
+  "step_up": [
+    "NVIDIA H100 PCIe",
+    "NVIDIA H200"
+  ],
+  "step_up_note": "a benchmark only: the 63.4 GB file needs an 80 GB card; the list is cheapest first",
+  "volume_wait_minutes": 15,
+  "disk_gb": 120,
+  "general_tokens": 0,
+  "rungs": [],
+  "hours_max": 4.5,
+  "dollars_max": 8,
+  "rent_minutes": 60,
+  "download_quants": [],
+  "benchmark": {
+    "note": "the quiz runs are minutes apart, so their time-stamped reports don't collide; reap-calibrate puts the mask back to all-on before the pod moves to the next brain",
+    "hours_each": 4,
+    "models": [
+      {
+        "name": "gpt-oss-120b",
+        "nickname": "GPT-OSS 120B",
+        "file": "hf:ggml-org/gpt-oss-120b-GGUF:gpt-oss-120b-MXFP4.gguf",
+        "quant": "MXFP4",
+        "ctx": 32768,
+        "extra": ""
+      }
+    ],
+    "commands": [
+      "node reap-calibrate.mjs --url {{url}} --lessons {{lessons}} --out {{out}}/calibrate --score 100 --steps 1,0.75,0.5 --no-think"
+    ],
+    "brain_engine": {
+      "ref": "787c2b828a505bfd54710ce41065f4f750548e80",
+      "patches": [
+        "0001-expert-mask",
+        "0002-expert-trace",
+        "0003-dials",
+        "0004-rpc-wifi",
+        "0005-scut",
+        "0006-scut-seal",
+        "0007-expert-trace-stream",
+        "0009-expert-mass"
+      ],
+      "note": "Brain Engine as the next build will be (patches 0001-0007 plus 0009, expert mass), fetched from Bob's public repo at this commit and compiled on the card (10-15 min)"
+    }
+  },
+  "llama_tag": "b12282"
+}

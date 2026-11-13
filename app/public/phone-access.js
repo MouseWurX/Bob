@@ -1,5 +1,6 @@
 // Settings, Bob-Net, This Bob: "Let my other replicant matrices in" (src/phone-access.js). Off unless you turn it on.
 // Bob for Android (or a browser on your phone) reaches this Bob over Tailscale with the passcode.
+import { sayRefused } from './refused.js'; // 1.5.213: a refused switch says why right under it
 import { esc } from './util.js';
 
 async function api(url, data) {
@@ -31,22 +32,24 @@ export async function mountPhoneAccess(box) {
   const draw = () => {
     const hosts = v.hosts.length ? v.hosts : v.found;
     box.innerHTML = `<span class="tag">off unless you turn it on</span>
-      <label class="switch"><input type="checkbox" data-phone-on ${v.enabled ? 'checked' : ''}><span><strong>Let my other replicant matrices in</strong><br><span class="muted">Your phone (Bob for Android, or an iPhone) and your other Bobs can reach this Bob over Tailscale with the passcode below. Nothing else on your network can.</span></span></label>
-      ${restart ? '<p class="muted"><strong>Restart Bob to apply this.</strong> Close his window and open him again from the Start menu.</p>' : v.enabled && !v.live ? '<p class="muted">On, but I\'m not on Tailscale yet. Start Tailscale and sign in: I pick it up within a minute, no restart.</p>' : ''}
-      <div class="row"><strong>Address</strong> <span class="muted">Type this into your phone or your other Bob.</span> ${hosts.length ? hosts.map((h) => `<code>${esc(h)}</code>`).join(' or ') : '<span class="muted">No Tailscale address found on this replicant matrix. Install Tailscale and sign in, then check again.</span>'}
+      <label class="switch"><input type="checkbox" data-phone-on ${v.enabled ? 'checked' : ''}><span><strong>Let my other replicant matrices in</strong><br><span class="muted">Your phone (Bob for Android, or an iPhone) and your other Bobs can reach this Bob over Tailscale with the passcode below${v.homeNet ? ', or over this home network' : ''}. Nothing else on your network can.</span></span></label>
+      ${restart ? '<p class="muted"><strong>Restart Bob to apply this.</strong> Close his window and open him again from the Start menu.</p>' : v.enabled && !v.live ? `<p class="muted">On, but I'm not on Tailscale${v.homeNet ? ' or a home network' : ''} yet. ${v.homeNet ? 'Plug in the network cable, or start Tailscale' : 'Start Tailscale'} and sign in: I pick it up within a minute, no restart.</p>` : ''}
+      <div class="row"><strong>Address</strong> <span class="muted">Type this into your phone or your other Bob.</span> ${hosts.length ? hosts.map((h) => `<code>${esc(h)}</code>`).join(' or ') : v.homeNet && v.home?.length ? '' : `<span class="muted">No Tailscale address found on this replicant matrix. Install Tailscale and sign in, then check again.${v.homeNet ? '' : ' Or, on a plain home network, turn on <strong>Also over the home network</strong> below.'}</span>`}${v.homeNet && v.home?.length ? ` ${hosts.length ? 'or, on this home network, ' : '<span class="muted">On this home network:</span> '}${v.home.map((h) => `<code>${esc(h)}</code>`).join(' or ')}` : ''}
         <button type="button" data-phone-find>Check again</button></div>
       <div class="row"><strong>Passcode</strong> <span class="muted">${shown ? `<code>${esc(shown)}</code> Type it into your phone or other Bob now: it isn't shown again.` : v.passcodeSet ? 'set (it\'s only shown once, when you make it).' : 'Not set yet. Turning on Let my other replicant matrices in makes one for you.'}</span>
         <button type="button" data-phone-newcode>Make a new passcode</button></div>
-      ${`<label class="switch"><input type="checkbox" data-phone-home ${v.homeNet ? 'checked' : ''}><span><strong>Also over the home network</strong> <span class="tag">off unless you turn it on</span><br><span class="muted">Your other Bobs and your phone can reach this Bob straight over your home network too, when they're on it: quicker than Tailscale, which stays the backup. Only from this home network, still with the passcode. Pairing stays on Tailscale. Turn it on on each Bob. Over the home network, the passcode and what your Bobs send travel without Tailscale's encryption, so someone else on that network could read them, so keep this for a home network you trust.</span></span></label>`}
+      ${`<label class="switch"><input type="checkbox" data-phone-home ${v.homeNet ? 'checked' : ''}><span><strong>Also over the home network</strong> <span class="tag">on to start with</span><br><span class="muted">Your other Bobs and your phone can reach this Bob straight over your home network too, when they're on it: quicker than Tailscale, which stays the backup. No Tailscale? This is all you need: a switch or a router joining them is enough. Only from this home network, still with the passcode. Find my other Bobs looks on it too, and pairing seals the passcodes so they never cross it as plain text. Turn it on on each Bob, before Let my other replicant matrices in if there's no Tailscale. After pairing, what your Bobs send each other (the passcode when they sign in, and your chats) travels without Tailscale's encryption, so someone else on that network could read it: keep this for a home network you trust.</span></span></label>`}
       ${v.enabled ? firewallHtml(v.firewall, v.port, v.firewall?.home ?? v.homeNet) : ''}
       ${msg ? `<p class="muted" role="status">${esc(msg)}</p>` : ''}
       <details class="more"><summary>More</summary><p class="muted">On the phone: install Tailscale and sign in with the same account, open Bob for Android, Menu, Bobs on your network, and add the Address above. Then type the passcode and tap Log in. On an iPhone: in Safari, go to the Address with /phone/ on the end, type the passcode, then Share, Add to Home Screen. Making a new passcode signs every phone out. Turning this off closes the door straight away.</p></details>`;
   };
   const load = async () => { v = await api('/api/phone-access'); draw(); };
   const change = async (patch) => {
+    let refused = '';
     try { const r = await api('/api/phone-access', patch); v = { ...v, ...r }; if (r.passcode) shown = r.passcode; restart = restart || r.restart; msg = ''; document.dispatchEvent(new CustomEvent('bob-door')); }
-    catch (e) { msg = e.message; }
+    catch (e) { if ('enabled' in patch) refused = e.message; else msg = e.message; }
     draw();
+    if (refused) sayRefused(box, '[data-phone-on]', refused);
   };
   box.addEventListener('change', (e) => { if (e.target.matches('[data-phone-home]')) change({ homeNet: e.target.checked }); if (e.target.matches('[data-phone-on]')) change(e.target.checked && !v.passcodeSet ? { enabled: true, newPasscode: true } : { enabled: e.target.checked }); });
   box.addEventListener('click', async (e) => {

@@ -222,7 +222,10 @@ if [ -f $S/llama-ready ]; then echo "llama tools already built"; else
 fi
 # build 18: a CUDA llama-server for the benchmark phase, built in the background while the run trains (kept on the volume)
 if [ -n "$(plan ".get('benchmark')")" ] || [ -n "$TG" ]; then
-  if [ -f $S/llama-server-ready ] && [ -x $S/llama.cpp/build-cuda/bin/llama-server ]; then echo "CUDA llama-server already built"; else rm -f $S/llama-server-failed; ( bash $POD/llama-server-build.sh $S $(plan ".get('llama_tag','b11669')") > $OUT/llama-server-build.log 2>&1 ) & fi
+  # 12 Nov: benchmark.brain_engine {"ref": "<Bob commit>", "patches": ["0001-expert-mask", ...]} serves the brains with Brain Engine
+  # (llama.cpp plus Bob's patches, fetched from Bob's public repo at that commit), for the live expert switch and REAP scores
+  BEP=$(plan ".get('benchmark',{}).get('brain_engine') or {}" | python3 -c "import json,sys; b=json.load(sys.stdin); print(' '.join('https://raw.githubusercontent.com/MouseWurX/Bob/%s/app/engine/patches/%s.patch' % (b['ref'], n) for n in b.get('patches',[])) if b else '')")
+  if [ -f $S/llama-server-ready ] && [ -x $S/llama.cpp/build-cuda/bin/llama-server ] && [ "$(cat $S/llama.cpp/.bob-patches 2>/dev/null)" = "$BEP" ]; then echo "CUDA llama-server already built"; else rm -f $S/llama-server-ready $S/llama-server-failed; ( bash $POD/llama-server-build.sh $S $(plan ".get('llama_tag','b11669')") "$BEP" > $OUT/llama-server-build.log 2>&1 ) & fi
 fi
 [ -n "${FORGE_SETUP_ONLY:-}" ] && { kill $WD 2>/dev/null; wait; cat $OUT/llama-setup.log; status done "setup only"; exit 0; }
 # --- benchmark on the card (build 18): the same brains, the same tests, a big card. The pod serves one brain at a time with a CUDA
@@ -237,6 +240,7 @@ run_bench() {
   LS=$S/llama.cpp/build-cuda/bin/llama-server; export LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}"
   [ -f $S/llama-server-cmake.log ] && cp -f $S/llama-server-cmake.log $OUT/ 2>/dev/null || true
   if [ -f $S/llama-server-ready ] && [ -x $LS ]; then
+    declare -A GOT
     NB=$(plan "['benchmark']['models']" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"); mkdir -p $W/bench $OUT/bench
     for b in $(seq 0 $((NB-1))); do
       BN=$(plan "['benchmark']['models'][$b]['name']"); BF=$(plan "['benchmark']['models'][$b].get('file','')"); BQ=$(plan "['benchmark']['models'][$b].get('quant','Q4_K_M')"); BNICK=$(plan "['benchmark']['models'][$b].get('nickname','')")
@@ -275,12 +279,16 @@ PY
             release_files $BN "$BN"
           fi ;;
         hf:*) REPO=$(echo "$BF" | cut -d: -f2); FP=$(echo "$BF" | cut -d: -f3); status bench "$BN: downloading $FP from Hugging Face"
-          hf_get "$REPO" "$FP" $W/bench/hf-$BN || { echo "bench $BN: download failed"; continue; }; BFILE=$W/bench/hf-$BN/$FP ;;
+          # 12 Nov: a split GGUF (name-00001-of-0000N.gguf) brings all its parts; llama-server loads them from the first
+          case "$FP" in *-00001-of-*.gguf) HF_TOKEN=$(cat $IN/hf-token 2>/dev/null) hf download "$REPO" --include "${FP%%-00001-of-*}-*-of-*.gguf" --local-dir $W/bench/hf-$BN > /dev/null 2>&1 && [ -f "$W/bench/hf-$BN/$FP" ] ;; *) hf_get "$REPO" "$FP" $W/bench/hf-$BN ;; esac || { echo "bench $BN: download failed"; continue; }
+          BFILE=$W/bench/hf-$BN/$FP ;;
+        same:*) BFILE=${GOT[${BF#same:}]:-}; [ -n "$BFILE" ] || { echo "bench $BN: no earlier brain called ${BF#same:} to reuse"; continue; } ;;   # 12 Nov: serve an earlier entry's file again (another expert count), no new download
         volume:*) BFILE=$S/${BF#volume:} ;;
         out:*) BFILE=$OUT/${BF#out:} ;;
         *) echo "bench $BN: unknown file spec '$BF'"; continue ;;
       esac
       [ -f "$BFILE" ] || { echo "bench $BN: $BFILE is missing; skipped"; continue; }
+      GOT[$BN]=$BFILE
       SLOTS=$(plan "['benchmark']['models'][$b].get('slots',1)"); CTX=$(plan "['benchmark']['models'][$b].get('ctx',32768)")
       status bench "$BN: loading on the card ($(basename $BFILE))"
       LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" $LS -m "$BFILE" --host 0.0.0.0 --port 8001 --api-key "$FORGE_TOKEN" -c $CTX --jinja -fa on -ctk q8_0 -ctv q8_0 -np $SLOTS -ngl 999 $(plan "['benchmark']['models'][$b].get('extra','')") > $OUT/bench/$BN-server.log 2>&1 &

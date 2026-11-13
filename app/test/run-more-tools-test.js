@@ -1,5 +1,6 @@
 // 🧰 More tools (items 73 to 86): every switch starts off, and each tool does its one job. Everything here is fake:
 // no real mailbox, calendar, web page, word list, Python, microphone or random numbers.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -253,7 +254,7 @@ const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\
 
 // ---- wiring ----
 {
-  const brain = read('src/brain.js');
+  const brain = brainText();
   check('the tools come out of Bob\'s list while off', /moreToolsOff\(this\.cfg\)/.test(brain));
   const help = read('public/help-content.js');
   check('Help names every switch', SWITCHES.every((s) => help.includes(s.label.replace(/'/g, "\\'")) || help.includes(s.label)));

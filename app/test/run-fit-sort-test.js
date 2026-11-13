@@ -1,5 +1,6 @@
 // 1.5.210 "Fits your card" badges and Best fit first in the Brain catalogue (public/fit-sort.js). Made-up machines
 // only: nothing here reads this computer's card, memory or folders.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -57,7 +58,7 @@ const UNREAD = {};
   check('rows that fit the card carry the badge', /class="tag good fit-tag"[^>]*>Fits your card</.test(pick));
   check('the same catalogue on a laptop shows fewer card badges', (catalogueHtml({ ...ctx, ...LAPTOP }).match(/fit-tag/g) || []).length < (pick.match(/fit-tag/g) || []).length);
   check('no badges before the machine is read', !/fit-tag/.test(catalogueHtml({ ...ctx, vramGB: null, ramGB: null, freeGB: null })));
-  check('the sort adds nothing to what the brain reads (it lives in the page only)', !/fit-sort/.test(read('src/brain.js')) && !/catSort/.test(read('src/brain.js')));
+  check('the sort adds nothing to what the brain reads (it lives in the page only)', !/fit-sort/.test(brainText()) && !/catSort/.test(brainText()));
 }
 
 {

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Brain } from '../src/brain.js';
 import { CORE } from '../src/toolbox.js';
-import { autoSessionOn, decidePick, idleSession, cardBusy, pickId, switchLine } from '../src/auto-session.js';
+import { autoSessionOn, decidePick, idleSession, cardBusy, whoseCard, pickId, switchLine } from '../src/auto-session.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -20,6 +20,8 @@ check('quiet in Normal with a game running: into Gaming', idleSession({ session:
 check('quiet in Gaming with the card busy: stays', idleSession({ session: 'light' }, true) === null);
 check('quiet in Gaming once the card is free: back to Normal', idleSession({ session: 'light' }, false) === 'normal');
 check('card unreadable: never leaves Gaming, otherwise Normal', idleSession({ session: 'light' }, null) === null && idleSession({ session: 'art' }, null) === 'normal');
+check("Bob's own work on the card isn't a game", whoseCard(true, { mine: true, others: [] }) === null && whoseCard(true, { mine: true, others: [{ name: 'game', mb: 0 }] }) === true && whoseCard(true, {}) === true && whoseCard(false, { mine: true }) === false);
+check('own work on the card: he stays where he is', idleSession({ session: 'coding' }, null, { stay: true }) === null && idleSession({ session: 'normal' }, null, { stay: true }) === null);
 check('setting off: no idle switching', idleSession({ session: 'coding', autoSession: false }, false) === null);
 check('🎮 lock: no idle switching', idleSession({ session: 'light', gamingLock: true }, false) === null);
 check('the chat line says where and why', switchLine('coding', 'for the fix') === '🛠 Switching to the Coding session for the fix.');
@@ -86,6 +88,19 @@ const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls:
   brain.lastActivity = 0;
   await brain.idleCheck();
   check('quiet with a game on the card: into Gaming', cfg.session === 'light', cfg.session);
+  // 1.5.211: the card busy with Bob's own brain (run from outside a chat) or lent to another Bob is not a game.
+  cfg.session = 'normal';
+  const wasLoaded = brain.engine.loaded;
+  brain.engine.loaded = async () => [{ name: 'big:latest', usesCard: true }];
+  brain.readCardUse = async () => ({ freeMB: 1200, others: [] });
+  brain.lastActivity = 0;
+  await brain.idleCheck();
+  check('quiet with his own brain working the card: stays in Normal', cfg.session === 'normal', cfg.session);
+  brain.readCardUse = async () => ({ freeMB: 1200, others: [{ name: 'game', mb: 0 }] });
+  brain.lastActivity = 0;
+  await brain.idleCheck();
+  check('his own brain and a game on the card: into Gaming', cfg.session === 'light', cfg.session);
+  brain.engine.loaded = wasLoaded;
   brain.readCard = async () => ({ util: 0, freeMB: 15000 });
 }
 

@@ -4,6 +4,125 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.214
+
+Home network first, Tailscale when you're out; a lent card goes back when a game wants it; and Straight facts, round two.
+
+### New
+
+- **Straight facts, round two** (the Lab, Challenges and lesson sets). Two new Challenges packs check with questions a brain was never taught: **new questions 1** holds facts the first Straight facts lesson set doesn't teach, and **new questions 2** holds facts neither set teaches. A second sourced lesson set, **Straight facts, round two (sourced)**, teaches the facts of new questions 1 and more, in English and Chinese, each with its links. So the order is: teach, check with new questions, teach again if it still leans, and check again with new questions. None of these count in Overall, and every answer and its odds go in the run's log.
+- **Teach the full brain before a cut** (the Forge). Two Forge plans, fact-fix-r1 and fact-fix-r2, teach the full Qwen the fact lessons, mixed with a sample of your own lessons so nothing else drifts. They save the teacher's odds, then serve the stock and the taught brain on the card while the PC runs every Straight facts pack against both. `node straight-facts.mjs mix` makes their lessons on the PC with no graphics card, and `probe` now takes the card's address and key from the Forge. A rental still needs your own yes with the live price.
+
+### Changed
+
+- **On a home network, Bob-Net just works.** **Also over the home network** is now on to start with, on every Bob, including ones updated to 1.5.213 with it off (even if you'd switched it off there, since 1.5.213 couldn't tell a chosen off from the old default; switch it off again if you want). You can still switch it off, and then it stays off. Your Bobs talk over the home network first and use Tailscale only as the fallback, for when you're away from home. Tailscale is never needed at home.
+- **One Bob, one entry, both roads.** Each of your other Bobs keeps his home address and his Tailscale address. I try home first, then Tailscale. A Bob you paired over Tailscale gets his home address saved the next time I see him at home (Find my other Bobs, or his hello), and a Bob you paired at home keeps his Tailscale address for when you're out. If a paired Bob can't be reached and I don't know his home address yet, I look for him on the home network by myself. Pairing again at home keeps the one entry.
+
+### Fixed
+
+- **SCUT runs at cable speed when both Bobs are on a cable.** SCUT's speed cap is now **Auto** to start with: up to 100 Mbit/s as before, so your network isn't crowded, and up to 1000 only when both Bobs reach each other over a network cable (a switch between them is fine) or USB4. Before, a 1 Gbit/s cable sent a brain's first copy at about 96 Mbit/s. There's also a new **up to 1000 Mbit/s** pick. A cap you picked yourself stays.
+- **A handheld lending its built-in graphics no longer turns down a new lend right after letting the last one go** (the memory takes a moment to come back), and it only gives its card back when the machine itself is nearly out of memory, not because the lend is using it.
+
+- **A lent graphics card is given back when a game wants it.** While a card is lent for a spread brain, its Bob looks at it every few seconds. If a game starts on it, or its free memory runs low (or that Bob goes to Gaming), he gives it back by himself. The Bob using it hears within seconds, finishes the reply he's on, and loads the brain again without that card: on his other Bobs' cards, or on his own card with the rest on his processor. The logbook says which Bob needed his card back and why. Before, the game and the lent brain fought over the card's memory.
+
+- **Find my other Bobs lists each Bob once.** A Bob that answers on more than one address (Wi-Fi and a cable, or the home network and Tailscale) is one row, with Pair using his home address and his other addresses shown beside it. The address no longer shows twice in a row.
+- **A paired Bob showed "not reachable" with Tailscale off**, even though his home-network door answered. He's now reached at home. A Bob also tells the others his home door whenever it's open, so the quick home path is found without anyone switching anything on.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
+## 1.5.213
+
+Bob-Net without Tailscale, and switches that say why.
+
+### New
+
+- **Bob-Net over a plain home network, no Tailscale needed** (Settings, Bob-Net, **Also over the home network**; off unless you switch it on). Two Bobs on the same home network, a router or just a cable or switch between them, can find each other, pair and share with nothing else installed. **Find my other Bobs** looks on this computer's own network (its own block of 254 addresses, never wider), on this Bob's port and the usual 7777, and never lists this computer itself. The door leaves out virtual machine, WSL and Tailscale's own adapters. Pairing over the home network is always sealed: both Bobs make one-time keys, the 4-digit number you compare comes from both of them, and the passcodes and the SCUT link key travel scrambled. After pairing, everyday Bob-to-Bob talk on the home network is plain, so use it on a network you trust; Tailscale still works as before. Both Bobs need 1.5.213 or newer to pair over the home network; Find lists an older one as needing the update. Press the firewall button once on each computer.
+
+### Fixed
+
+- **A Bob-Net switch that can't go on says why, right under it.** "Let my other replicant matrices in", "Borrow a brain", "Send jobs to my other Bobs" and "Ask a bigger Bob to check my harder jobs" used to snap back off with the reason printed far below. Now the reason shows under the switch, and each of the three that need another Bob says "pair one of your other Bobs first" right under it, dimmed until you do.
+- **Lamplight: the bars at the top of Settings are solid**, so the page no longer shows through them as you scroll.
+- **Settings on a phone:** the Simple cards wrap to the screen instead of running off the side.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android. The firewall button is Windows only.
+
+## 1.5.212
+
+A quick fix for the new look.
+
+### Fixed
+
+- **Pages scroll in Lamplight again, first-time setup included.** In Lamplight, a page that opens in the room (first-time setup, Settings, Style, Get models) grew taller than the window instead of filling the room, so anything below the fold couldn't be reached, and first-time setup couldn't be finished at some window sizes. The page now fills the room under the top bar and scrolls inside it, at any window size and on a phone.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
+## 1.5.211
+
+Brains that load on built-in graphics, Journey grown into a whole world, Lamplight to start with, tasks you can remove or pause, a gate for Discord groups, picture to 3D you can get, and Brain Engine 5 switched on. As always, none of this adds a word to what my brain reads.
+
+### New
+
+#### 🧭 Journey v1.1: a whole world to roll
+
+- **Bob's Inn is where it starts.** Walk around my tavern, then pick **✨ New adventure** to roll a land (small, medium or large, from a seed) or **▶ Resume adventure** to pick up where you left off.
+- **A land that makes sense.** You'll find sea and beaches, rivers running downhill, mountains, forests, swamps, plains and deserts. Hamlets, villages, towns and a castle are joined by roads and bridges. There are caves, dungeons and a hermit's hut.
+- **Castles** have a keep with a King and Queen, knights and guards, and a village inside the walls and another outside the gate. Guards and knights walk the roads, so trouble is rarer where they patrol.
+- **Bosses everywhere.** The three keepers are in every world. Every other dungeon and cave has its own boss to suit the land.
+- **Fight anyone** (F or ⚔), villagers included. You'll be wanted for it: guards come running, and the captain takes your fine.
+- **Coin and loot.** Coin comes in copper, silver, gold and platinum (1.11 is 1 silver and 11 copper). Everyone you beat drops coin, and sometimes their kit, a tonic or a scroll. Kit can be fine, keen, blessed, rusty or cursed, and the best of it sits in cave chests.
+- **Magic and skill trees.**
+  - Accuracy and evasion decide every hit. Healing works on the road, the Cleric's Raise brings a friend back, and anyone can read a scroll once.
+  - Seven classes, with the Psionist new, each have three branches. You can take a second class at level 5 and a third at level 10, and every pair has a combo.
+  - A Wizard, Cleric and Psionist together get the Mana Wellspring.
+  - The new Pixie race is small, quick and full of mana.
+- **Train your stats** by using them, at a trainer, with the hermit, or by sparring with a captain.
+- Old saves carry over. Desktop, Android and iPhone.
+
+#### 🧭 Journey v1.2: tame it, ride it, fly it
+
+- **Bigger lands.** Lands now go up to Vast, Epic and Campaign (1,024 by 1,024), and Saga (2,048 by 2,048) on a computer. The big ones are continents with sea between them, and coastal towns have docks: the sailor takes you to any dock you've found, by rowboat, sloop or ship.
+- **Taming.** Mid-fight, feed a wild animal the food it loves and it may come along. Each character can keep 5 pets and 3 mounts. Your pet follows you, fights beside you and carries extra loot. Ride your mount with R (or 🐎).
+- **Fly and dive.** On a pegasus, griffin or wyvern you take off and fly over sea and mountains to the cities in the clouds, where the bird folk live. On a dolphin you dive to the merfolk's city under the sea. Taking off, landing and diving all have their own animations, and underwater the land above goes blurry.
+- **Everyone's places.** You'll find orc villages, kobold lairs, dwarf holds, elf tree villages, halfling burrows, pixie glades, lizardfolk stilt villages, gnome tinker towns, centaur camps, giant halls and goblin markets.
+- **On the road.** Bird-folk traders swoop into town and sell great things at half price, elders hand out small jobs, you can fish, and animals wander the land.
+- **Bows, crossbows and spells.** New bows and crossbows fire visible arrows. Every element has its own spell effect, and blessed, cursed, rusty and arcane kit shows its colour.
+- **Four styles.** Pick Fantasy, Sci-fi, Cyberpunk or Steampunk. Each brings its own words, colours and craft (shuttles, hoverbikes, airships, submarines).
+- **☰ Menu, 🧭 The land** shows the whole land and every place you've found. **🐾 Pets** looks after your animals.
+- **Lighter.** The land takes far less memory. On a phone, your other Bob makes the land and the phone keeps only the part near you. Pages are sent packed (gzip) when the browser asks, so they come faster over Wi-Fi.
+
+#### Everything else
+
+- **Discord groups wait for your OK** (the Discord bot). A request from a Discord group shows up in a new Discord group chat in Topics, Past chats, and runs only when you say yes. **Auto-accept** skips the asking and **Keep awake while on Discord** keeps the computer up; both are off to start with. While this Bob is in Gaming, a group job goes to another of your Bobs, or waits.
+- **Picture to 3D you can get** (Settings, Engines, Pictures, sound and hearing: 3D workshop). The 3D workshop's graphics-card parts are built and pinned for Windows and Linux, so the **Get** button is there. It is about 28 GB with its models. Not on RTX 50-series cards yet: the add-ons were built before them, so those get no Get button (and no download that can't run) until a later update brings ones that do; send the job to a PC Bob with an older NVIDIA card over Bob-Net.
+- **Check links** (Settings, Bob-Net, Bigger Bobs; reads only). It shows how this computer can reach your other Bobs: Wi-Fi, a network port, a USB4 cable.
+- **The Lab: tune a stock brain without cutting it** (REAP calibrate). It scores each expert from the trace, turns the least used down a step at a time and keeps each step only if the tool score holds. It reads each expert's real share when the engine has Brain Engine 6's expert mass; until then it uses pick counts. Also new: the Lab's quiz kit has the how-tos on, and kept benchmark answers sort into clean, full and paired sets.
+
+- **Straight facts** (the Lab, Challenges; the Lab is off to start with). Brains trained in China learn the government's line on Tiananmen 1989, Taiwan, Xinjiang, Tibet, Hong Kong and Xi Jinping. Five new Challenges packs measure it: multiple choice on China in English and in Chinese, on Russia, North Korea and Iran, a fairness check on the US, the UK, France, India and Israel, and **Says it straight**, written answers that score only when they give the sourced facts. Every answer and the odds the brain gave each letter go in the run's log. None of them count in Overall. After any of them runs, a **Straight facts (sourced)** lesson set is ready for Teach it: short answers in English and Chinese, each with its links, and where something is really disputed, like Taiwan's status, the facts and each side's position. **model-lab/straight-facts.mjs** runs the packs from the command line (probe, scan, rescore).
+- **Remove, pause and resume tasks.** Every task has ✕ to remove it, whatever state it's in, so a failed one goes without a retry and a stop first. A running job can be paused and resumed where it was.
+
+### Changed
+
+- **Lamplight is the look for new installs**, and my cube is my picture in every look unless you pick Pixel Bob in Style, Bob's look, from this version on. Now running starts closed, so the window starts empty and you put in it what you want.
+- **Bob-Net takes the quickest way.** When two Bobs share more than one network, I use the quickest (a cable before Wi-Fi). A cable straight between two computers, a switch with no router, or a USB4 cable counts as home with nothing to type in.
+- **Brain Engine 5 (5b12282) is now the one I use**, with live expert picks for the cube and the Bob-Net link log with SCUT that retunes itself. Each Bob fetches it by himself the first time he starts on this version (about 600 MB with the llama.cpp files under it), so update every Bob that shares a card, since they all need the same one. Over today's Wi-Fi, SCUT ran one brain over two Bobs about four to five times faster than plain TCP (17.5 words a second against 3.5 to 4.8; app/docs/test-results has the write-up).
+- **Watch the link live** also turns on the engine's own link lines, so the Link log fills on the borrowing Bob.
+
+### Fixed
+
+- **Brains load on built-in graphics** (a handheld like the Legion Go, where the graphics use ordinary RAM). I size a brain from everything it really needs there: the file, the chat memory, the working buffers and the driver. Then I try it: wholly on the graphics if it fits, shared with the processor if not, or on the processor alone. If it still runs out of memory, I step down by myself (half the graphics, then the processor alone, then half the chat memory), remember what worked for that brain, and say so in the logbook. The estimate never stops me trying. A lent card on built-in graphics says how much it really has, so the other Bob doesn't overfill it. "Memory kept for Windows" now starts at 2 GB.
+- **"Invalid input batch" after a failed reply** no longer stops the chat: the next try starts clean.
+- **I stay in my session after letting a brain go.** My own brain on the card, or my card lent to another Bob, no longer counts as a game, so I don't drop to Gaming and pick another brain by myself.
+- **A SCUT key mix-up no longer costs a load.** When the Bob lending a card doesn't know the other's sealed-SCUT key (a fresh or copied Bob folder on either side), the two agree a new one right away, through the same passcode door pairing uses, and that very load uses SCUT. The logbook says "new SCUT key agreed". A card already lent is started again when the key changes, two Bob folders on one computer no longer push each other's key out, and the logbook tells "no shared key yet" apart from "an older Bob". Before, the whole load went over the slower usual link.
+- **Find anything (Ctrl+K)** finds Help topics by their search words too, so "calibrate" finds Calibrate Wi-Fi.
+- **Lab, Teach it and Best answers: a brain made in the Lab can be taught again.** I remember the original each brain was made from, so picking it teaches that original again, and the plan says plainly that what the brain learned before isn't carried over. To build on the taught brain itself, teach it from a folder of its full weights.
+- **Lab, Best answers: a steadier judge.** The judge reads each list twice, in order and reversed, and averages the scores; answers that are the same word for word share one score; and the judge gets a plain scale (10 fully right, 7 right with a slip, 4 partly right, 1 wrong). Judging takes about twice as long, which is still small next to answering. And an answer with a known result is checked the same way on both sides: bold, \\boxed{}, an "Answer:" line or a whole sentence around the same time or number all count as right.
+
+### Brain Engine 6 (built, not switched to yet)
+
+This release carries Brain Engine 6 (6b12282): Brain Engine 5 plus the expert mass for the Lab (0009), the expert trace read once per word so the cube no longer slows a brain with experts by about a fifth (0010), and one trip a word instead of several over a lent card (0011). Its Windows and Linux builds come next, and a later update moves to it after it passes its own check on a real PC.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android, unless a line says otherwise. Journey is on desktop, Android and iPhone; the Saga land size is for computers. Check links reads Windows, Mac and Linux. Built-in graphics sizing is for any computer whose graphics share its RAM. The Lab's tuning runs where the Lab's Playground works. Help covers each new part.
+
 ## 1.5.210
 
 A new look, an easier start and a tidier chat. Three looks to pick from, Lamplight among them, a thinking bubble that keeps the chat to the finished answer, one Brains page for everything, a Help that starts where you are, Talk with Bob hands-free, panels you build yourself, and the cube in a porthole. How I work is unchanged: none of this adds a word to what my brain reads.

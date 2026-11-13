@@ -21,3 +21,4 @@ export function withParts(rel) {
   return [main, ...parts].join('\n');
 }
 export const labText = () => withParts('lab.js');
+export const brainText = () => withParts('brain.js');

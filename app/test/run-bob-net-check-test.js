@@ -2,6 +2,7 @@
 // switches (off by default), who may check, who gets picked at High and Extreme, and a real round trip through a
 // pretend desktop lender over HTTP: the check runs on his Review brain, tool calls come back here, and a Bob that
 // says no is skipped for checks only.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
@@ -118,7 +119,7 @@ delete desk.cfg.session;
 srv.close();
 
 // ---------- wired in ----------
-const brain = read('src/brain.js'), server = read('src/server.js'), page = read('public/share-brains.js');
+const brain = brainText(), server = read('src/server.js'), page = read('public/share-brains.js');
 check('the moot\'s check asks a bigger Bob first', /hat === 'reviewer' && force && wantsBorrowedCheck\(this\.cfg, ctx\.job\)/.test(brain) && /pickChecker\(this\.lenders, \{ effort: ctx\.job\.effort, mine: brainBillions\(model\) \}\)/.test(brain));
 check('and checks here when he can\'t', /checkDown\(this\.lenders, via\)/.test(brain) && /checkBackLine\(via/.test(brain));
 check('nothing loads here for a borrowed check', /if \(!lender && !via\) model = await loadHere\(\);/.test(brain) && /if \(via\) reply = await this\.lenders\.chat\(via, \{[^}]*kind: 'check'/.test(brain));

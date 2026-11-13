@@ -2,6 +2,7 @@
 // the add-on pins and where they may come from, the 3D workshop engine entry, its setup steps (with a fake uv,
 // Python and downloader: nothing is downloaded or run), the make_3d_model tool, Bob-Net jobs, the GitHub build,
 // and the settings, Help, FAQ and glossary. Every file is made up in a temporary folder.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -51,7 +52,8 @@ const PINS = { release: 'model3d-addons-1', 'win-x64': [wheel('cumesh-0.0.1-cp31
   check('which computer: Windows and Linux x64 only', machineKey('win', 'x64') === 'win-x64' && machineKey('linux', 'x64') === 'linux-x64' && machineKey('mac', 'arm64') === '' && machineKey('linux', 'arm64') === '');
   check('a Mac is told to send it to a PC Bob', /NVIDIA/.test(model3dWhy('mac', 'arm64', PINS)) && /Bob-Net/.test(model3dWhy('mac', 'arm64', PINS)));
   check('ARM Linux is told too', /Bob-Net/.test(model3dWhy('linux', 'arm64', PINS)));
-  check('Windows with pins: a Get button', model3dWhy('win', 'x64', PINS) === undefined);
+  check('Windows with pins: a Get button', model3dWhy('win', 'x64', PINS, 8.9) === undefined && model3dWhy('win', 'x64', PINS, null) === undefined);
+  check('an RTX 50-series card (compute 12.x) gets no Get button yet and is told why (1.5.211 PC check)', /RTX 50-series/.test(model3dWhy('win', 'x64', PINS, 12)) && /Bob-Net/.test(model3dWhy('win', 'x64', PINS, 12.0)));
   check('Windows without pins: says why', /aren't built and checked/.test(model3dWhy('win', 'x64', {})));
   check('Windows gets the Triton build for Windows', runtimePackages('win').some((p) => /^triton-windows/.test(p)) && runtimePackages('linux').some((p) => /^triton[<>=]/.test(p)));
 }
@@ -161,7 +163,7 @@ fs.mkdirSync(cfg.painterDir, { recursive: true });
   check('a missing picture is a clear error', /^Error: I can't find the picture/.test(await t.run({ picture: 'nope.png' }, {})));
   const desc = t.schema.function.description;
   check('the tool says to paint one plain-background picture first', /make one first with the picture tool/.test(desc) && /plain/.test(desc));
-  const brainSrc = read('src/brain.js');
+  const brainSrc = brainText();
   check('hidden while the setting is off', /!model3dOn\(this\.cfg\) && 'make_3d_model'/.test(brainSrc));
   check('in the 3D toolbox group', /tools: \['make_3d_part', 'make_3d_model'\]/.test(read('src/toolbox.js')));
 }

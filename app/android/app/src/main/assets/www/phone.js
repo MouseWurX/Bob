@@ -1628,8 +1628,8 @@ ${chatOut}
   // lives on your other Bob, like the table. Bob's own looks are the PC's, so here he wears a robot avatar.
   let advJourney = null;
   function advJourneyOpen() {
-    const J = globalThis.BobJourneyPlay, R = globalThis.BobJourneyRules, S = globalThis.BobJourneySides;
-    if (!J || !R || !S) { adv.msg = 'Journey needs the newer phone screen.'; advDraw(); return; }
+    const J = globalThis.BobJourneyPlay, R = globalThis.BobJourneyRules, S = globalThis.BobJourneySides, W = globalThis.BobJourneyWorld;
+    if (!J || !R || !S || !W) { adv.msg = 'Journey needs the newer phone screen.'; advDraw(); return; }
     advJourney?.stop();
     const chars = adv.v?.characters || [];
     const sv = chars.find((c) => c.id === advYou.savedId);
@@ -1641,7 +1641,7 @@ ${chatOut}
     $('adventure').classList.add('hidden');
     $('journey').classList.remove('hidden');
     advJourney = J.mountJourney($('journey-body'), {
-      R, S, A: AV, party, bobLook: 'robot-3',
+      R, W, S, A: AV, party, bobLook: 'robot-3', phone: true, // v1.2: the computer makes the land; the phone holds the pieces near you
       enemyLooks: Object.fromEntries((adv.v?.enemies || []).map((e) => [e.id, e.look])),
       lookOf: (id) => AV.avatar(id), api: (p, body) => advApi(p, body),
       still: () => matchMedia('(prefers-reduced-motion: reduce)').matches,

@@ -1,4 +1,4 @@
-// The job queue in Bob's API: what's waiting and running, cancel, retry, move, remove, clear done jobs, and Stop.
+// The job queue in Bob's API: what's waiting and running, cancel, retry, pause, resume, move, remove, clear done jobs, and Stop.
 // Split out of server.js; same rules as before.
 // Returns false when the request is not one of these, so server.js keeps looking; anything else means it was answered.
 
@@ -7,6 +7,11 @@ export async function queueRoute({ req, res, p, brain, body, send }) {
   if (req.method === 'POST' && (p === '/api/queue/cancel' || p === '/api/queue/retry')) {
     const { id } = await body(req);
     const ok = p.endsWith('cancel') ? brain.cancelJob(String(id)) : brain.retryJob(String(id));
+    return send(res, ok ? 200 : 404, { ok });
+  }
+  if (req.method === 'POST' && (p === '/api/queue/pause' || p === '/api/queue/resume')) {
+    const { id } = await body(req);
+    const ok = p.endsWith('pause') ? brain.pauseJob(String(id)) : brain.resumeJob(String(id));
     return send(res, ok ? 200 : 404, { ok });
   }
   if (req.method === 'POST' && p === '/api/queue/move') {
