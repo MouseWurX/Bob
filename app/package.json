@@ -155,6 +155,7 @@
     "test/run-diagram-test.js",
     "test/run-live-fixes-test.js",
     "test/run-card-busy-test.js",
+    "test/run-card-guard-test.js",
     "test/run-layout2-test.js",
     "test/run-help-bundle-test.js",
     "test/run-adventure-test.js",

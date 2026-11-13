@@ -2180,6 +2180,8 @@ html.readable-font code, html.readable-font pre, html.readable-font kbd { font-f
 .still .mind-cube.porthole .port::before { animation: none; }
 .mind-cube.porthole.pulse .port canvas:not(.fog) { animation: mind-cube-pulse 1.4s ease-in-out infinite; }
 .mind-cube.porthole.pulse canvas.fog { animation: none; }
+/* Nov 13 (card-guard.js): another program holds the graphics card: the porthole dims and greys, so it shows at a glance */
+.card-busy .mind-cube.porthole .port { opacity: .55; filter: grayscale(.7); transition: opacity .6s ease, filter .6s ease; }
 
 /* 1.5.209 Bob's picture as the fNRI cube (Style, Bob's look): the same size and place as the pixel Bob, in its own small porthole, theme colours only */
 .mind-cube.bob-cube { margin: 0; gap: 0; }

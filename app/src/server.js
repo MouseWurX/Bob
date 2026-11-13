@@ -233,6 +233,8 @@ const readCardNow = cardReader(); // Your Bobs on the phone: one card reading ev
 const introductions = new Introductions(cfg, { lenders: brain.lenders, pairing, log: (k, t) => brain.log(k, t) });
 setTimeout(() => introductions.soon(0), 60_000).unref(); // once Bob is up, and then every hour
 setInterval(() => introductions.soon(0), 3600_000).unref();
+// Nov 13 (card-guard.js): while a window is open, a look at the card every 30 s, so "Card busy" shows before a message.
+setInterval(() => { if (clients.size) brain.cardWatch?.().catch(() => {}); }, 30_000).unref();
 brain.mindWatchers = () => mindClients.size;
 // fNRI's small cube in "Bob's thinking" listens with ?cube=1. On its own it glows for show while Bob thinks, which
 // costs the engine nothing. With Real experts on (?cube=1&live=1) Bob asks Brain Engine which experts each reply used
@@ -558,6 +560,7 @@ const server = http.createServer(async (req, res) => {
         const ps = brain.painter?.status?.();
         if (ps && brain.painter.alive() && ['loading', 'ready', 'busy'].includes(ps.state)) st.picture = { state: ps.state, kind: ps.kind, gb: ps.vramBytes ? memGB(ps.vramBytes) : null };
       } catch {}
+      if (brain.cardBusyNow) st.cardBusy = brain.cardBusyNow.short; // Nov 13: another program holds the card (card-guard.js)
       return send(res, 200, st);
     }
     if ((await howtosRoute({ req, res, p, isLocal, cfg, brain, body, send })) !== false) return;

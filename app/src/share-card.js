@@ -97,6 +97,8 @@ export const scutEnv = (cfg, { lend = false, wired = false } = {}) => (scutOn(cf
 export const linkLive = (cfg) => cfg.share?.linkDebug === true;
 export const linkEnv = (cfg) => ({ GGML_RPC_STATS: linkLive(cfg) ? '2' : '10' });
 export const lendCardOn = (cfg) => cfg.share?.lendCard === true && Boolean(cfg.remote?.enabled && String(cfg.remote?.passcode || '').length >= 6);
+// Nov 13: may a lend let go of this Bob's own brain? Off unless switched on (Settings, Bob-Net).
+export const lendFreesOwn = (cfg) => cfg.share?.lendFreesOwn === true;
 export const spreadOf = (cfg) => (SPREAD.includes(cfg.share?.spread) ? cfg.share.spread : 'off');
 // This machine's own Tailscale addresses.
 export const tailscaleIps = () => { const out = []; for (const list of Object.values(os.networkInterfaces())) for (const n of list || []) if (n.family === 'IPv4' && isTailscaleIp(n.address)) out.push(n.address); return out; };
@@ -205,8 +207,8 @@ export function wantsSpread(cfg, { sizeGB, cardGB = Number(cfg.gpuVramGB) || Num
 
 // ---------- Lending ----------
 export class CardLender {
-  constructor(cfg, { spawnFn = spawn, tool = () => findTool(cfg, 'rpc'), ips = tailscaleIps, home = homeIps, gate = openGate, gaming = () => false, freeOwn = async () => false, now = Date.now, log = () => {}, env = process.env, findBrain = (b) => findOwnBrain(cfg, b), free = freeBytes, seedMs = SEED_MS, freeMem = () => os.freemem(), readCard = () => readCardUse(), watchMs = WATCH_MS, graceMs = GRACE_MS, linkKind = () => '', roomWaitMs = 3000 } = {}) {
-    Object.assign(this, { cfg, spawnFn, tool, ips, home, gate, gaming, freeOwn, now, log, env, findBrain, free, seedMs, freeMem, readCard, watchMs, graceMs, linkKind, roomWaitMs });
+  constructor(cfg, { spawnFn = spawn, tool = () => findTool(cfg, 'rpc'), ips = tailscaleIps, home = homeIps, gate = openGate, gaming = () => false, freeOwn = async () => false, holdsOwn = () => false, now = Date.now, log = () => {}, env = process.env, findBrain = (b) => findOwnBrain(cfg, b), free = freeBytes, seedMs = SEED_MS, freeMem = () => os.freemem(), readCard = () => readCardUse(), watchMs = WATCH_MS, graceMs = GRACE_MS, linkKind = () => '', roomWaitMs = 3000 } = {}) {
+    Object.assign(this, { cfg, spawnFn, tool, ips, home, gate, gaming, freeOwn, holdsOwn, now, log, env, findBrain, free, seedMs, freeMem, readCard, watchMs, graceMs, linkKind, roomWaitMs });
     this.leaving = null; this.watchTimer = null; this.graceTimer = null; this.before = null;
     this.seeded = this.loadSeeded(); this.seeding = null;
     this.child = null; this.gateway = null; this.host = ''; this.allow = ''; this.via = ''; this.port = 0; this.last = 0; this.from = ''; this.timer = null;
@@ -295,7 +297,12 @@ export class CardLender {
     this.close();
     // 1.5.210 (Go Wi-Fi test): a Bob holding its own brain said yes with about 1 GB free, and the first buffer was
     // refused. Its own idle brain is let go first, so the lent card really has its room. Not when it's busy answering.
-    try { if (await this.freeOwn()) this.log('bob-net', 'lent graphics card: let go of my own brain first, so the card has room for the lend'); } catch {}
+    // Nov 13 (the owner, after the PC borrowed the Go's card and the Go's own brain went): never without asking. A Bob
+    // holding its own brain says no, unless "Let a lend unload my brain" is on here (that switch is the asking).
+    if (this.holdsOwn()) {
+      if (!lendFreesOwn(this.cfg)) { this.log('bob-net', `lent graphics card: said no to ${from || 'another Bob'}, my own brain is loaded (turn on "Let a lend unload my brain" to allow it)`); return { ok: false, why: 'own brain', error: 'own brain' }; }
+      try { if (await this.freeOwn()) this.log('bob-net', 'lent graphics card: let go of my own brain first, so the card has room for the lend ("Let a lend unload my brain" is on)'); } catch {}
+    }
     // Nov 12 (apu-fit.js): built-in graphics report their whole budget as free even when the RAM behind it is short (the
     // Go refused a 1001 MiB first buffer while it held a brain). So the lend says how much the asking Bob's engine
     // should leave free here, and says no when there's too little to be worth it. A real card reports truly: nothing.
@@ -426,7 +433,7 @@ export function cleanBrain(b) {
 
 // ---------- Borrowing ----------
 // Why a Bob didn't lend, in plain words (CardLender.refusal's reasons).
-export const LEND_NO = { off: 'lending is off there', gaming: 'it\'s in Gaming', 'no room': 'its memory is too full to lend right now', 'not tailscale': 'asked on an address it doesn\'t lend on', 'no tool': 'its card server is missing', failed: 'it couldn\'t start' };
+export const LEND_NO = { 'own brain': 'its own brain is loaded, and it lends only when free ("Let a lend unload my brain" is off there)', off: 'lending is off there', gaming: 'it\'s in Gaming', 'no room': 'its memory is too full to lend right now', 'not tailscale': 'asked on an address it doesn\'t lend on', 'no tool': 'its card server is missing', failed: 'it couldn\'t start' };
 export class CardBorrower {
   // lenders: the Bob-Net list (src/share-brains.js Lenders: bobs(), call()).
   constructor(cfg, lenders, { now = Date.now, log = () => {}, name = () => os.hostname(), home = homeIps, linkKind = () => '', powers = () => null } = {}) {

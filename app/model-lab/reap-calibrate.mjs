@@ -22,7 +22,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { opts, locate, readJsonl, stamp, AGENT } from './common.mjs';
+import { opts, locate, readJsonl, stamp, AGENT, cardPausePoint } from './common.mjs';
 import { emptyScores, addTrace, keepLists, unevenKeepLists, coverage, coverTable, fileCount, priority, smallestGood, thinLayers } from './reap-pick.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -78,6 +78,7 @@ if (o.scores) {
   console.log(`Reusing the scores in ${o.scores} (${s.lessons} lessons, ${s.layers.length} layers x ${s.experts} experts)`);
 } else console.log(`Scoring on ${chosen.length} of ${train.length} training lessons (the held-out 5% are kept for judging)`);
 for (const [i, lesson] of (o.scores ? [] : chosen).entries()) {
+  await cardPausePoint({ url }); // Bob has a message: he answers on this brain between lessons (every expert is on while scoring)
   const messages = whole(lesson); if (!messages) continue;
   try {
     const j = await post('/v1/chat/completions', { messages, max_tokens: 1, cache_prompt: false, expert_trace: true, expert_trace_mass: true, temperature: 0 });
@@ -105,6 +106,8 @@ const scoreArgs = (typeof o.test === 'string' ? o.test.split(/\s+/).filter(Boole
 const steps = [];
 const mean = (a) => { const v = a.filter((x) => x != null); return v.length ? v.reduce((x, y) => x + y, 0) / v.length : null; };
 async function judge(share, kind, keep) {
+  // Bob has a message: every expert back on while he answers; the next step sets its own mask anyway
+  await cardPausePoint({ url, onPause: () => post('/expert-mask', { keep: null }, 60_000) });
   const pct = Math.round(share * 100), label = kind === 'cover' ? `cover-${pct}` : `keep-${pct}${kind === 'uneven' ? '-uneven' : ''}`;
   const n = kind !== 'flat' ? Math.round(mean(keep.filter(Boolean).map((k) => k.length))) : keep.find(Boolean)?.length || s.experts;
   const cov = share === 1 ? null : coverage(s, keep, by), lo = cov ? Math.min(...cov.filter((x) => x != null)) : null;

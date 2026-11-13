@@ -303,7 +303,7 @@ const thinkBubbles = createThinkBubbles({ add, esc, answer: showAnswer, on: () =
 // 1.5.216: the line under his name follows his state in his voice (public/status-line.js). Settings, How Bob works,
 // "Funny status line" (on unless turned off) puts plain words back. The window title stays plain.
 const statusLine = createStatusLine(statusEl, { still: stillNow });
-window.addEventListener('bob-brain-status', (e) => statusLine.brains(e.detail));
+window.addEventListener('bob-brain-status', (e) => { statusLine.brains(e.detail); document.body.classList.toggle('card-busy', Boolean(e.detail?.cardBusy)); });
 window.addEventListener('bob-status-jokes', (e) => statusLine.jokes(e.detail !== false)); // Settings, from this window
 // ---------- Sessions: which brains Bob keeps loaded. Bob may suggest one; only the user switches. ----------
 const sessionSel = $('sessionSel');
@@ -334,7 +334,7 @@ function setStatus(s) {
   const said = statusLine.title() || 'Ready';
   statusEl.title = s.detail ? `${said}: ${s.detail}` : '';
   catAntics.idle(s.state === 'idle');
-  life.state(s.state);
+  life.state(s.state === 'painting' && /^(Composing|Making a sound)\b/.test(s.detail || '') ? 'composing' : s.state); // Nov 13: a song isn't a painting
   document.title = statusLine.title() ? `Bob · ${statusLine.title()}` : 'Bob';
   if (s.state === 'loading') showSwap(s.from || lastModel || 'old', s.model || 'new', s.mode);
   else hideSwap();
@@ -715,6 +715,7 @@ function onEvent(ev) {
   }
   if (ev.type === 'brain' || ev.type === 'status') { clearTimeout(brainSoon); brainSoon = setTimeout(() => brainBar.refresh(), 250); }
   if (ev.type === 'brain') return;
+  if (ev.type === 'card-busy') { statusLine.card(ev.short); document.body.classList.toggle('card-busy', Boolean(ev.busy)); document.title = statusLine.title() ? `Bob · ${statusLine.title()}` : 'Bob'; return; } // Nov 13: another program holds the card
   if (ev.type === 'status') return setStatus(ev);
   // 1.5.207 PC check: an OK card from another chat (a schedule, the phone, a job in another chat) showed only as
   // "Needs your OK" in the title. It shows here too, marked with where it's from; its result clears it here as well.

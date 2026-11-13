@@ -340,7 +340,15 @@ export async function stopStrayAce(cfg, run = execFile) {
   return true;
 }
 
-async function startAce(cfg, signal, onProgress) {
+// Nov 13: uv putting the music engine's packages back. A line worth showing, in plain words, or ''.
+export const ACE_SETUP_MS = 40 * 60e3;
+export function aceSetupLine(l = '') {
+  const t = String(l || '').trim();
+  if (/^Creating virtual environment/i.test(t)) return 'setting up the music engine';
+  const m = /^(Downloading|Downloaded|Prepared|Installed|Resolved|Building|Built|Uninstalled)\b(.*)$/.exec(t);
+  return m ? `setting up the music engine: ${(m[1] + m[2]).replace(/\s+/g, ' ').slice(0, 60)}` : '';
+}
+async function startAce(cfg, signal, onStage) {
   if (cfg.audio?.aceUrl) return null; // tests and hand-made setups run their own
   if (await aceUp(cfg)) {
     await stopStrayAce(cfg);
@@ -349,24 +357,36 @@ async function startAce(cfg, signal, onProgress) {
   // 1.5.37: offline, so ACE-Step can't quietly download models (gigabytes, with no progress shown) in the middle of a song.
   const env = { ...process.env, ...uvEnv(cfg), ACESTEP_API_HOST: '127.0.0.1', ACESTEP_API_PORT: String(ACE_PORT), HF_HOME: path.join(cfg.bobModelsDir || path.join(cfg.agentDir, 'models'), 'audio'), HF_HUB_OFFLINE: '1', TRANSFORMERS_OFFLINE: '1', ACESTEP_DOWNLOAD_SOURCE: 'huggingface' };
   const child = spawn(uvExe(cfg), ['run', 'acestep-api'], { cwd: aceDir(cfg), env, windowsHide: true, detached: OS !== 'win', stdio: ['ignore', 'pipe', 'pipe'] });
-  let tail = '';
-  child.stdout.on('data', (d) => { tail = (tail + d).slice(-2000); });
-  child.stderr.on('data', (d) => { tail = (tail + d).slice(-2000); });
-  // Loading the models onto the card takes a minute or two (they're already on the PC: see aceModelsMissing).
+  let tail = '', setup = '', lastLine = Date.now();
+  // Nov 13 (the owner: a song sat 9 minutes with nothing on the card): uv had thrown away the engine's Python packages
+  // and was putting them back before ACE-Step could start. uv's own lines ("Creating virtual environment",
+  // "Downloading torch (2.4GiB)", "Installed 120 packages") now say so as they come, instead of a made-up percent.
+  const hear = (d) => {
+    tail = (tail + d).slice(-2000);
+    for (const l of String(d).split(/\r?\n/).map((x) => x.trim())) {
+      const st = aceSetupLine(l);
+      if (st) { setup = st; lastLine = Date.now(); onStage?.(st); }
+    }
+  };
+  child.stdout.on('data', hear);
+  child.stderr.on('data', hear);
+  onStage?.('starting the music engine');
+  // Loading the models onto the card takes a minute or two (they're already on the PC: see aceModelsMissing). Putting
+  // the engine's packages back takes longer: it gets time as long as uv keeps saying it's working.
   const t0 = Date.now();
-  while (Date.now() - t0 < 10 * 60e3) {
+  while (Date.now() - t0 < 10 * 60e3 || (setup && Date.now() - lastLine < 5 * 60e3 && Date.now() - t0 < ACE_SETUP_MS)) {
     if (signal?.aborted) { killTree(child); throw new Error('Stopped.'); }
     if (child.exitCode !== null) throw new Error(`The music engine stopped while starting: ${tail.slice(-300)}`);
     if (await aceUp(cfg)) return child;
-    onProgress?.(0, 100);
     await sleep(2000);
   }
   killTree(child);
-  throw new Error('The music engine took too long to start.');
+  throw new Error(setup ? `The music engine was still setting itself up (${setup}) and took too long. Ask for the song again to let it finish, or press Repair on the audio tools in Settings, Engines.` : 'The music engine took too long to start.');
 }
 
-async function makeMusic(cfg, job, { signal, onProgress }) {
-  const child = await startAce(cfg, signal, onProgress);
+async function makeMusic(cfg, job, { signal, onProgress, onStage }) {
+  const child = await startAce(cfg, signal, onStage);
+  onStage?.('composing');
   try {
     const post = (p, body) => fetch(aceBase(cfg) + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
     const r = await post('/release_task', { prompt: job.prompt, lyrics: job.lyrics || '[Instrumental]', audio_duration: Math.max(10, job.seconds), batch_size: 1, audio_format: 'wav', vocal_language: 'en', thinking: false });
@@ -381,7 +401,6 @@ async function makeMusic(cfg, job, { signal, onProgress }) {
     while (Date.now() - t0 < 20 * 60e3) {
       await sleep(1500);
       if (signal?.aborted) throw new Error('Stopped.');
-      onProgress?.(Math.min(95, Math.round((Date.now() - t0) / 600)), 100);
       const q = await (await post('/query_result', { task_id_list: [task_id] })).json();
       const list = Array.isArray(q?.data) ? q.data : Array.isArray(q) ? q : [];
       const item = list.find((x) => x && x.task_id === task_id);
@@ -434,7 +453,7 @@ export function songFileName(title, now = new Date()) {
 }
 
 // kind: 'music' | 'sfx'. Returns { file, name }.
-export async function makeAudio(cfg, kind, { prompt, lyrics, seconds, title }, { signal, onProgress }) {
+export async function makeAudio(cfg, kind, { prompt, lyrics, seconds, title }, { signal, onProgress, onStage }) {
   const can = audioReady(cfg);
   if (!can[kind]) throw new Error(kind === 'music' ? 'Music isn\'t set up yet. Get the audio tools in Settings (left menu), Engines.' : 'Sound effects aren\'t set up yet. Get the audio tools in Settings (left menu), Engines.');
   fs.mkdirSync(cfg.painterDir, { recursive: true });
@@ -452,7 +471,7 @@ export async function makeAudio(cfg, kind, { prompt, lyrics, seconds, title }, {
       throw err;
     }
     if (!cfg.audio?.aceUrl) tidyAceCache(cfg);
-    return makeMusic(cfg, job, { signal, onProgress });
+    return makeMusic(cfg, job, { signal, onProgress, onStage });
   }
   const script = cfg.audio?.script || path.join(unpackedDir, 'audio', 'bob-audio.py');
   const env = { HF_HOME: path.join(cfg.bobModelsDir || path.join(cfg.agentDir, 'models'), 'audio'), PYTHONUNBUFFERED: '1' };

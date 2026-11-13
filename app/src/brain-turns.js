@@ -84,6 +84,7 @@ export const turnParts = {
         }
       })
       .finally(() => {
+        this.liftCardPause?.(); // Nov 13: a test paused for this turn carries on
         // Items 249 and 246: why the turn stopped, in the logbook (with the turn's id) and on the job; the numbers go in
         // loop-stats.json. Never chat words. A broken count never breaks the turn.
         try {
