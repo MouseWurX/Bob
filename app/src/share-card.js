@@ -20,7 +20,7 @@
 import { sealOn, sealAsk, cleanSealAsk, lenderSeal, borrowerSeal, keysEnv, keyId } from './scut-seal.js'; // sealed SCUT packets (0006)
 import { isTailscaleIp } from './phone-access.js';
 import { findTool, missingWords } from './llama-tools.js';
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
 import { LinkLog } from './link-log.js'; // what the link carried, kept in bob-net-link.log and the logbook
 import { safeSpawn } from './engine-blocked.js'; // 1.5.203: a blocked program comes back as 'error', not a throw
 import path from 'node:path';
@@ -99,6 +99,36 @@ export const isHomeIp = (a) => { const q = quad(plainIp(a)); return Boolean(q &&
 export const sameNet = (a, b, mask) => { const x = quad(plainIp(a)), y = quad(plainIp(b)), m = quad(mask); return Boolean(x && y && m && (num(x) & num(m)) === (num(y) & num(m))); };
 // This machine's own home-network addresses: [{ address, netmask }].
 export const homeIps = (ifaces = os.networkInterfaces()) => { const out = []; for (const list of Object.values(ifaces)) for (const n of list || []) if (n.family === 'IPv4' && !n.internal && isHomeIp(n.address)) out.push({ address: n.address, netmask: n.netmask || '255.255.255.0' }); return out; };
+// 1.5.213 (PC check): the home addresses Bob-Net's door listens on: not a virtual machine's or WSL's own adapter
+// (VirtualBox host-only, Hyper-V / WSL vEthernet, VMware, Docker), which is no road to your other Bobs.
+export const VIRTUAL_NIC = /virtualbox|vbox|host-only|hyper-v|vethernet|vmware|vmnet|\bwsl|docker|^veth|^virbr|^br-/i;
+// PC check: Windows names adapters "Ethernet 2"; only the description says "VirtualBox Host-Only Ethernet Adapter" or
+// "Tailscale Tunnel". os.networkInterfaces() gives only the name, so the descriptions are read once at start
+// (readNicDescs, Windows only) and kept here: { name: description }.
+let nicDescs = {};
+export const setNicDescs = (m) => { nicDescs = m && typeof m === 'object' ? m : {}; };
+export function readNicDescs({ run = execFile, platform = process.platform } = {}) {
+  if (platform !== 'win32') return Promise.resolve(nicDescs);
+  const ps = '@(Get-NetAdapter -IncludeHidden -ErrorAction SilentlyContinue | ForEach-Object { @{ n = [string]$_.Name; d = [string]$_.InterfaceDescription } }) | ConvertTo-Json -Compress';
+  return new Promise((done) => run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 15000 }, (err, out) => {
+    try { const list = [].concat(JSON.parse(String(out || '[]')) || []); const m = {}; for (const a of list) if (a?.n) m[String(a.n)] = String(a.d || ''); if (!err) setNicDescs(m); } catch {}
+    done(nicDescs);
+  }));
+}
+// VirtualBox's host-only network is the 192.168.56 block (a /24) unless someone changed it: never a road to another Bob.
+const VBOX_NET = /^192\.168\.56\./;
+export const doorIps = (ifaces = os.networkInterfaces(), descs = nicDescs) => {
+  const out = [];
+  for (const [name, list] of Object.entries(ifaces)) {
+    const said = `${name} ${descs[name] || ''}`;
+    if (VIRTUAL_NIC.test(said)) continue;
+    // Tailscale's own adapter gives itself a 169.254 address too; a real cable or switch with no router keeps its.
+    for (const m of homeIps({ [name]: list })) if (!VBOX_NET.test(m.address) && !(/^169\.254\./.test(m.address) && /tailscale|wireguard|wintun/i.test(said))) out.push(m);
+  }
+  return out;
+};
+export const isLinkLocal = (a) => /^169\.254\./.test(plainIp(a));
+export const scanIps = (ifaces) => doorIps(ifaces).filter((m) => !isLinkLocal(m.address));
 // Mine and theirs on the same home network: { host (mine), peer (theirs) }, or null. The asker lists his addresses
 // quickest path first (Lenders.learnNear timed them), so his order decides when more than one network is shared.
 export function pickHome(mine, theirs) {

@@ -1,6 +1,6 @@
 {
   "name": "bob",
-  "version": "1.5.212",
+  "version": "1.5.213",
   "description": "Bob, a local AI who lives on your PC: chat, pictures, video, voice and more, all on your own hardware.",
   "type": "module",
   "private": true,
@@ -257,13 +257,14 @@
     "test/run-layout-210-test.js",
     "test/run-looks-test.js",
     "test/run-panels-test.js",
-    "test/run-apu-fit-test.js"
+    "test/run-apu-fit-test.js",
+    "test/run-bob-net-home-test.js"
   ],
   "bob": {
     "release": "1.5",
-    "patch": 212,
+    "patch": 213,
     "branch": "",
-    "build": 264,
+    "build": 265,
     "bundledLlamaTag": "b12282",
     "brainEngineVersion": 6,
     "brainEngine": {

@@ -27,8 +27,8 @@ function net(bobs) {
     if (!to.cfg.remote.enabled) return reply(403, { error: 'bad host' });
     const b = opt.body ? JSON.parse(opt.body) : {};
     if (u.pathname === '/api/pair/hello') return reply(200, to.p.hello());
-    if (u.pathname === '/api/pair/ask') { const r = to.p.ask(b, '::ffff:' + from.ip); return reply(r.code, r.error ? { error: r.error } : { id: r.id }); }
-    if (u.pathname === '/api/pair/status') return reply(200, to.p.status(b.id, from.ip));
+    if (u.pathname === '/api/pair/ask') { const r = to.p.ask(b, '::ffff:' + from.ip); return reply(r.code, r.error ? { error: r.error } : { id: r.id, ...(r.pub ? { pub: r.pub } : {}) }); }
+    if (u.pathname === '/api/pair/status') return reply(200, to.p.status(b.id, from.ip, b.pub));
     if (u.pathname === '/api/pair/finish') return reply(200, to.p.finish(b, from.ip));
     return reply(404, {});
   };

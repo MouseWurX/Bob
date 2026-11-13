@@ -142,8 +142,8 @@ const box = (name) => { const d = path.join(tmp, name); fs.mkdirSync(d, { recurs
   const net = (from) => async (url, opt = {}) => {
     const u = new URL(url), to = [A, B].find((x) => x.ip === u.hostname), b = opt.body ? JSON.parse(opt.body) : {};
     const reply = (status, j) => ({ ok: status < 300, status, json: async () => j });
-    if (u.pathname === '/api/pair/ask') { const r = to.p.ask(b, from.ip); return reply(r.code, r.error ? { error: r.error } : { id: r.id }); }
-    if (u.pathname === '/api/pair/status') return reply(200, to.p.status(b.id, from.ip));
+    if (u.pathname === '/api/pair/ask') { const r = to.p.ask(b, from.ip); return reply(r.code, r.error ? { error: r.error } : { id: r.id, ...(r.pub ? { pub: r.pub } : {}) }); }
+    if (u.pathname === '/api/pair/status') return reply(200, to.p.status(b.id, from.ip, b.pub));
     if (u.pathname === '/api/pair/finish') return reply(200, to.p.finish(b, from.ip));
     return reply(404, {});
   };

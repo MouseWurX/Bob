@@ -290,6 +290,8 @@ body.look-lamplight .tip-i::before { border-color: transparent; background: none
    fit-content, so the page grew past the window instead of filling the room, and nothing scrolled. */
 body.look-lamplight .cellar.page[open] { position: fixed; inset: 64px 0 0 0; z-index: 15; width: auto; height: auto; background: var(--deep); padding: 0 max(var(--s5), calc((100vw - 1000px) / 2)) var(--s6); box-sizing: border-box; }
 body.look-lamplight .cellar.page .cellar-head { padding-inline: 0; }
+/* 1.5.213: the bars that stay at the top are solid, so the page doesn't show through them as it scrolls */
+body.look-lamplight .cellar.page .cellar-head, body.look-lamplight .cellar.page .cellar-tabs { background: var(--deep); }
 @media (max-width: 640px) { body.look-lamplight .cellar.page[open] { inset: 0 0 calc(56px + env(safe-area-inset-bottom, 0px)) 0; padding: 0 var(--s4) var(--s5); } }
 html.lab-window body.look-lamplight .cellar.page[open] { inset: 0; }
 /* the Settings and Lab windows have no top bar: their page fills the window */

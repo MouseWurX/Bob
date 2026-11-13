@@ -90,8 +90,8 @@ function net(bobs) {
     if (u.pathname === '/api/pair/hello') return reply(200, to.pairing.hello());
     if (u.pathname.startsWith('/api/pair/')) {
       const b = JSON.parse(raw || '{}');
-      if (u.pathname === '/api/pair/ask') { const r = to.pairing.ask(b, '::ffff:' + from.ip); return reply(r.code, r.error ? { error: r.error } : { id: r.id }); }
-      if (u.pathname === '/api/pair/status') return reply(200, to.pairing.status(b.id, from.ip));
+      if (u.pathname === '/api/pair/ask') { const r = to.pairing.ask(b, '::ffff:' + from.ip); return reply(r.code, r.error ? { error: r.error } : { id: r.id, ...(r.pub ? { pub: r.pub } : {}) }); }
+      if (u.pathname === '/api/pair/status') return reply(200, to.pairing.status(b.id, from.ip, b.pub));
       if (u.pathname === '/api/pair/finish') return reply(200, to.pairing.finish(b, from.ip));
     }
     if (u.pathname === '/login') {
@@ -191,7 +191,7 @@ const codeFor = (x, who) => (x.cfg.share.borrow?.bobs || []).find((b) => b.addre
   check('the pane polls the party while open, and hides the section when Bob-Net isn\'t in use', /fetch\('\/api\/bob-net\/party'\)/.test(layout) && /sec\.hidden = !v\?\.on;/.test(layout) && /brainSt\?\.session === 'Gaming' \? 30000 : 15000/.test(layout));
   check('a lend, borrow, sent job or pairing refreshes it early', /\['lending', 'borrow', 'away', 'pair-done', 'queue'\]\.includes\(ev\.type\)\) layout\.net\(\);/.test(app) && /net\(\) \{ clearTimeout\(netSoon\); netSoon = setTimeout\(pollNet, 800\); \}/.test(layout));
   check('the dot never stands alone: words for every state', /thinking a reply for me/.test(layout) && /gaming, so not lending/.test(layout) && /aria-hidden="true"/.test(layout.slice(layout.indexOf('const netRow'))) && /\.net-dot\.ok \{ background: var\(--good\); \}/.test(css));
-  check('Settings has the switch, off unless turned on', /<strong>Pass my Bob-Net along<\/strong> \$\{tip\(/.test(share) && /data-share-pass \$\{v\.passAlong \? 'checked' : ''\}/.test(share) && /change\(\{ passAlong: e\.target\.checked \}\)/.test(share));
+  check('Settings has the switch, off unless turned on', /<strong>Pass my Bob-Net along<\/strong> \$\{tip\(/.test(share) && /data-share-pass \$\{v\.passAlong \? 'checked' : ''\}/.test(share) && /(?:change|ch)\(\{ passAlong: e\.target\.checked \}\)/.test(share));
   check('…and says what came of each introduction', /INTRO\[d\.state\]/.test(share) && /can't be introduced yet: Bob there needs an update/.test(share));
   check('Help: the settings row, two FAQ entries and a glossary line', /set\('Pass my Bob-Net along', 'Off'/.test(help) && /id: 'faq-party'/.test(help) && /id: 'faq-introduce'/.test(help) && /<dt>Introduced<\/dt>/.test(help) && /go\('faq-party'/.test(help));
   check('PRIVACY.md says what an introduction carries', /Pass my Bob-Net along/.test(privacy) && /passcodes still pass only between the two Bobs being paired/.test(privacy));

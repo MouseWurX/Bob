@@ -182,5 +182,12 @@ check('and that lender stopped loading too', lender.lending === null);
 }
 
 srv.close();
+{ // 1.5.213: a refused switch says why right under it, and borrowing waits for a paired Bob up front
+  const rd = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const sb = rd('public/share-brains.js'), pa = rd('public/phone-access.js'), rf = rd('public/refused.js');
+  check('a refused Bob-Net switch says why under itself (role=alert), not far below', /role="alert"/.test(rf) && /sayRefused\(box, refused\.sel, refused\.text\)/.test(sb) && /sayRefused\(box, '\[data-phone-on\]', refused\)/.test(pa));
+  check('borrow, send jobs and ask for checks say "pair one of your other Bobs first" before they are pressed', /pair one of your other Bobs first/i.test(sb) && /\[data-share-borrow\]', '\[data-share-send\]', '\[data-share-askchecks\]'/.test(sb));
+  check('PC check: each of the three gets its own line right under it, dimmed while it waits, with a title', /for \(const q of \['\[data-share-borrow\]'/.test(sb) && /insertAdjacentHTML\('afterend', `<p class="refused needs-first">/.test(sb) && /classList\.add\('waits'\)/.test(sb) && /x\.title = why/.test(sb));
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

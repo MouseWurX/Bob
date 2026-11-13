@@ -1,4 +1,5 @@
 // Settings, Bob-Net: My other Bobs and What they share (src/share-brains.js). Both switches off unless you turn them on.
+import { sayRefused, switchSelector } from './refused.js'; // 1.5.213: a refused switch says why right under it
 import { esc } from './util.js';
 import { tip } from './tips.js';
 
@@ -47,21 +48,28 @@ export async function mountShareBrains(box) {
     const state = p ? PAIRING[p.state]?.(p, f.device) || '' : '';
     const btn = (label) => `<button type="button" data-pair="${esc(f.address)}">${label}</button>`;
     let what;
-    if (!f.bob) what = f.why === 'door' ? 'Bob is there, but his door is shut. Turn on <strong>Let my other replicant matrices in</strong> on it, then press Find again.' : 'No Bob answering. Is Bob open on it, with <strong>Let my other replicant matrices in</strong> on?';
+    if (f.needsUpdate) what = 'A Bob is there, but he needs <strong>1.5.213</strong> or newer to pair over the home network (or his door is shut there). Update him, turn on <strong>Also over the home network</strong> on him, then press Find again.';
+    else if (!f.bob) what = f.why === 'door' ? 'Bob is there, but his door is shut. Turn on <strong>Let my other replicant matrices in</strong> on it, then press Find again.' : 'No Bob answering. Is Bob open on it, with <strong>Let my other replicant matrices in</strong> on?';
     else if (f.pair < 1) what = 'Bob is there, but too old to pair. Update him, or add him by hand under More.';
     else what = `Bob ${esc(f.version || '')} is there.${f.paired ? ' Already in My other Bobs.' : ''}`;
-    const can = f.bob && f.pair >= 1 && p?.state !== 'waiting';
-    return `<li><strong>${esc(f.device)}</strong>${f.os ? ` <span class="muted">(${esc(f.os[0].toUpperCase() + f.os.slice(1))})</span>` : ''} <span class="muted">${what}</span> ${can ? btn(f.paired ? 'Pair again' : 'Pair') : ''}${state ? `<br><span role="status">${state}</span>` : ''}</li>`;
+    const can = f.bob && !f.needsUpdate && f.pair >= 1 && p?.state !== 'waiting';
+    return `<li><strong>${esc(f.device)}</strong>${f.os ? ` <span class="muted">(${esc(f.os[0].toUpperCase() + f.os.slice(1))})</span>` : ''}${f.via === 'home' ? ` <span class="tag">home network, ${esc(f.address.split(':')[0])}</span>` : ''} <span class="muted">${what}</span> ${can ? btn(f.paired ? 'Pair again' : 'Pair') : ''}${state ? `<br><span role="status">${state}</span>` : ''}</li>`;
   };
   const pairBox = () => {
-    if (!found) return `<div class="row"><button type="button" data-pair-find ${finding ? 'disabled' : ''}>${finding ? 'Looking…' : 'Find my other Bobs'}</button> <span class="muted">Finds your Bobs on Tailscale. Press <strong>Pair</strong>, then <strong>Yes, pair us</strong> on the other one. No addresses or passcodes to type.</span></div>`;
-    if (!found.tailscale) return `<div class="row"><button type="button" data-pair-find>Find again</button> <span class="muted">I can't ask Tailscale for your devices on this replicant matrix. Type the other Bob's Tailscale address and press Pair:</span></div>
-      <form class="row" data-pair-by-address><input name="address" placeholder="100.x.y.z or name.ts.net" required> <button>Pair</button></form>
-      ${Object.entries(found.pairing || {}).map(([a, p]) => `<p role="status"><code>${esc(a)}</code>: ${PAIRING[p.state]?.(p, p.name || a.split(':')[0]) || ''}</p>`).join('')}`;
-    const ready = found.bobs.filter((f) => f.bob && f.pair >= 1 && !f.paired && found.pairing?.[f.address]?.state !== 'waiting');
+    if (!found) return `<div class="row"><button type="button" data-pair-find ${finding ? 'disabled' : ''}>${finding ? 'Looking…' : 'Find my other Bobs'}</button> <span class="muted">Finds your Bobs on Tailscale, and on your home network when <strong>Also over the home network</strong> is on. Press <strong>Pair</strong>, then <strong>Yes, pair us</strong> on the other one. No addresses or passcodes to type.</span></div>`;
+    // 1.5.213: type an address by hand (Tailscale, or a home one with the switch on).
+    const byHand = (say) => `<p class="muted">${say}</p>
+      <form class="row" data-pair-by-address><input name="address" placeholder="${found.homeNet ? '192.168.x.y, ' : ''}100.x.y.z or name.ts.net" aria-label="The other Bob's address" required> <button>Pair</button></form>`;
+    const others = () => Object.entries(found.pairing || {}).filter(([a]) => !found.bobs.some((f) => f.address === a)).map(([a, p]) => `<p role="status"><code>${esc(a)}</code>: ${PAIRING[p.state]?.(p, p.name || a.split(':')[0]) || ''}</p>`).join('');
+    if (!found.tailscale && !found.home) return `<div class="row"><button type="button" data-pair-find>Find again</button></div>
+      ${byHand('I can\'t ask Tailscale for your devices on this replicant matrix. Type the other Bob\'s Tailscale address and press Pair. <strong>No Tailscale, just a home network</strong> (a switch or a router)? Turn on <strong>Let my other replicant matrices in</strong> and <strong>Also over the home network</strong> on both Bobs, then press Find again.')}
+      ${others()}`;
+    const ready = found.bobs.filter((f) => f.bob && !f.needsUpdate && f.pair >= 1 && !f.paired && found.pairing?.[f.address]?.state !== 'waiting');
     return `${found.here ? '' : '<p class="muted"><strong>This replicant matrix isn\'t on Tailscale right now.</strong> Open Tailscale and sign in.</p>'}
       ${found.door ? '' : '<p class="muted">Your other Bobs can be added here, but they can\'t use this one until <strong>Let my other replicant matrices in</strong> is on.</p>'}
-      <ul class="share-list">${found.bobs.length ? found.bobs.map(pairRow).join('') : '<li class="muted">None of your other devices are online on Tailscale.</li>'}</ul>
+      ${found.home ? '<p class="muted">Looked on this home network too. Pairing over it seals the passcodes, so nobody else on it can read them.</p>' : ''}
+      <ul class="share-list">${found.bobs.length ? found.bobs.map(pairRow).join('') : `<li class="muted">${found.home ? 'No other Bob answered on Tailscale or this home network. Is Bob open there, with <strong>Let my other replicant matrices in</strong> and <strong>Also over the home network</strong> on?' : 'None of your other devices are online on Tailscale.'}</li>`}</ul>
+      ${found.home ? byHand('Not listed? Type its address and press Pair.') + others() : ''}
       ${found.offline?.length ? `<p class="muted">Offline right now: ${found.offline.map(esc).join(', ')}.</p>` : ''}
       <div class="row"><button type="button" data-pair-find ${finding ? 'disabled' : ''}>${finding ? 'Looking…' : 'Find again'}</button>${ready.length > 1 ? ' <button type="button" data-pair-all>Pair with all of them</button>' : ''}</div>`;
   };
@@ -93,6 +101,22 @@ export async function mountShareBrains(box) {
   const far = (l) => (l.ok === true && l.ms > 0 ? `, ${l.ms < 1 ? 'under 1' : Math.round(l.ms)} ms away (${l.ms <= 8 ? 'close' : l.ms <= 40 ? 'Wi-Fi close' : 'far'})${l.lendCard ? `, lends his card${l.scut ? ' with SCUT' : ''}` : ''}` : '');
   const row = (l) => `<li><strong>${esc(l.name)}</strong> <code>${esc(l.address)}</code> <span class="muted">${l.ok === true ? `ready${l.brain ? `, ${esc(l.brain)}` : ''}` : l.ok === false ? esc(WHY[l.why] || l.why) : 'not checked yet'}${l.ctx ? `, room for a chat of about ${Math.max(1, Math.round((l.ctx * 0.75) / 1000))},000 words` : ''}${l.speed ? `, about ${Math.round(l.speed)} words a second` : ''}${far(l)}.${can(l)}</span>
     <button type="button" data-share-up="${esc(l.address)}" title="Ask this one earlier">↑</button> <button type="button" data-share-rm="${esc(l.address)}">Remove</button></li>`;
+  // 1.5.213: what a switch needs first, said before it's pressed. Borrowing, sending jobs and asking for checks need
+  // another Bob on the list; and the refused switch says why right under it.
+  const decorate = () => {
+    if (!v.lenders.length) {
+      // PC check 1.5.213: a reason under EACH switch (not one line above the first), dimmed when it can't go on,
+      // and a switch already on says it does nothing yet (it stays pressable so it can be turned off).
+      for (const q of ['[data-share-borrow]', '[data-share-send]', '[data-share-askchecks]']) {
+        const x = box.querySelector(q); if (!x || refused?.sel === q) continue;
+        const why = x.checked ? 'On, but it does nothing until you pair one of your other Bobs (Pair with my other Bobs, at the top).' : 'Pair one of your other Bobs first (Pair with my other Bobs, at the top).';
+        if (!x.checked) { x.disabled = true; x.closest('label')?.classList.add('waits'); }
+        x.title = why; x.closest('label')?.setAttribute('title', why);
+        (x.closest('label') || x).insertAdjacentHTML('afterend', `<p class="refused needs-first">${esc(why)}</p>`);
+      }
+    }
+    if (refused) sayRefused(box, refused.sel, refused.text);
+  };
   const draw = () => {
     box.innerHTML = `<h4 class="ssub">My other Bobs</h4>
       <div class="pair-box"><strong>Pair with my other Bobs</strong>${pairBox()}</div>
@@ -117,24 +141,25 @@ export async function mountShareBrains(box) {
         ${wifiText ? `<p class="muted" role="status" aria-live="polite" data-wifi-say>${esc(wifiText)}</p>` : ''}
         <div class="row"><strong>Links to my Bobs:</strong> <button type="button" data-links-check ${wifiBusy ? 'disabled' : ''}>Check links</button> ${tip('Pooled cards are only as quick as the path between them. Check links shows what this replicant matrix has (Wi-Fi, a network port, a USB network dongle, USB4), every path to each of your Bobs with how long a trip takes, which one I use, and what would be faster. Best first: a USB4 or Thunderbolt cable between two machines that both have USB4, a network cable, powerline, then Wi-Fi. It only looks; nothing changes.', 'Check links')} <span class="muted">I use the quickest path by myself. Plug in a cable and I move to it, with nothing to set up.</span></div>
         ${linksText ? `<p class="muted" role="status" aria-live="polite" data-links-say style="white-space:pre-line">${esc(linksText)}</p>` : ''}
-      <label class="switch"><input type="checkbox" data-share-homenet ${v.homeNet !== false ? 'checked' : ''}><span><strong>Use the home network first</strong> ${tip('When two of your Bobs are on the same home network, the brain\'s numbers go straight over it, which is quicker. Otherwise, or if that doesn\'t work, they go over Tailscale. The asking always goes over Tailscale with the passcode.', 'Use the home network first')}<br><span class="muted keep">While a card is lent, its gate is open on the home network for the Bob that asked, and turns everything else away.</span></span></label>
+      <label class="switch"><input type="checkbox" data-share-homenet ${v.homeNet !== false ? 'checked' : ''}><span><strong>Use the home network first</strong> ${tip('When two of your Bobs are on the same home network, the brain\'s numbers go straight over it, which is quicker. Otherwise, or if that doesn\'t work, they go over Tailscale. The asking goes over Tailscale with the passcode, or over the home network for a Bob paired there.', 'Use the home network first')}<br><span class="muted keep">While a card is lent, its gate is open on the home network for the Bob that asked, and turns everything else away.</span></span></label>
         <div class="row"><strong>Spread big brains over my other Bobs' cards:</strong> <select data-share-spread>${SPREAD.map(([id, label]) => `<option value="${id}" ${(v.spread || 'off') === id ? 'selected' : ''}>${label}</option>`).join('')}</select>
           <span class="muted">${esc(SPREAD.find((w) => w[0] === (v.spread || 'off'))?.[2] || '')} Your other Bobs need <strong>Lend my graphics card</strong> on. If none says yes, the brain loads here.</span></div>
       </div>` : ''}
       <label class="switch"><input type="checkbox" data-share-lend ${v.lend ? 'checked' : ''}><span><strong>Lend my brain</strong> ${tip('Your other Bobs can ask this Bob to think a quick reply. He only thinks and sends the words back. Nothing runs on this replicant matrix for them, and he keeps nothing. He says no while he\'s gaming or busy.', 'Lend my brain')}</span></label>
       <label class="switch"><input type="checkbox" data-share-take ${v.takeJobs ? 'checked' : ''}><span><strong>Take jobs from my other Bobs</strong> ${tip('Your other Bobs can hand this Bob whole jobs he has the models for: pictures, clips, music, sounds, web research or Medium-effort thinking, and checking their work on his Review brain when they have no room for theirs. He says no while gaming or when his queue is full. Their jobs can\'t touch files, programs, reminders or memory here. Finished files go back, and a copy stays in his save folder.', 'Take jobs from my other Bobs')}</span></label>
       <label class="switch"><input type="checkbox" data-share-lendchecks ${v.lendChecks ? 'checked' : ''}><span><strong>Check harder jobs for my other Bobs</strong> ${tip('When another of your Bobs does a job at High or Extreme effort, and this Bob\'s Review brain is bigger than his, this Bob can do the check. He thinks on his Review brain and sends the words back; the other Bob reads his own files. He says no while gaming or busy.', 'Check harder jobs for my other Bobs')}</span></label>
-      <label class="switch"><input type="checkbox" data-share-borrow ${v.borrow.on ? 'checked' : ''}><span><strong>Borrow a brain</strong> ${tip('Bob asks one of your other Bobs to think, then runs the tools here himself, with his own OK cards. If none answers within a few seconds, Bob thinks it himself like always. Quick replies only: nothing on Medium or higher, and nothing with pictures.', 'Borrow a brain')}<br><span class="muted keep">Each time, the chat so far and what Bob remembers about you go to that Bob (your own replicant matrices on Tailscale only; it keeps none of it).</span></span></label>
+      <label class="switch"><input type="checkbox" data-share-borrow ${v.borrow.on ? 'checked' : ''}><span><strong>Borrow a brain</strong> ${tip('Bob asks one of your other Bobs to think, then runs the tools here himself, with his own OK cards. If none answers within a few seconds, Bob thinks it himself like always. Quick replies only: nothing on Medium or higher, and nothing with pictures.', 'Borrow a brain')}<br><span class="muted keep">Each time, the chat so far and what Bob remembers about you go to that Bob (your own replicant matrices on Tailscale, or this home network with Also over the home network on; it keeps none of it).</span></span></label>
       <div class="row"><strong>Borrow when:</strong> <select data-share-when>${WHEN.map(([id, label]) => `<option value="${id}" ${v.borrow.when === id ? 'selected' : ''}>${label}</option>`).join('')}</select>
         <span class="muted">${esc(WHEN.find((w) => w[0] === v.borrow.when)?.[2] || '')}</span></div>
       <label class="switch"><input type="checkbox" data-share-send ${v.borrow.jobs ? 'checked' : ''}><span><strong>Send jobs to my other Bobs</strong> ${tip('A job Bob can\'t do here, or one that would wait, goes to whichever of your other Bobs is free (least busy first). Jobs that need this replicant matrix always stay here. The job and the last few lines of the chat go to that Bob; the reply, OK cards and files come back.', 'Send jobs to my other Bobs')}</span></label>
       <label class="switch"><input type="checkbox" data-share-askchecks ${v.borrow.checks ? 'checked' : ''}><span><strong>Ask a bigger Bob to check my harder jobs</strong> ${tip('At High and Extreme effort, the check goes to one of your other Bobs whose Review brain is bigger than this one\'s and who has Check harder jobs for my other Bobs on. High asks the first in your list, Extreme the biggest. If none is free, Bob checks it himself.', 'Ask a bigger Bob to check my harder jobs')}<br><span class="muted keep">For each check, the job, Bob's answer and what he did go to that Bob (only your own Bobs on Bob-Net; that Bob keeps none of it).</span></span></label>
-      <label class="switch"><input type="checkbox" data-share-pass ${v.passAlong ? 'checked' : ''}><span><strong>Pass my Bob-Net along</strong> ${tip('Your Bobs with this on introduce each other. When this Bob is paired with two Bobs that both have it on, they pair with each other too, with no card to press.', 'Pass my Bob-Net along')}<br><span class="muted keep">Sends your other Bobs each other's name and Tailscale address, nothing else; passcodes still pass only between the two being paired.</span></span></label>
+      <label class="switch"><input type="checkbox" data-share-pass ${v.passAlong ? 'checked' : ''}><span><strong>Pass my Bob-Net along</strong> ${tip('Your Bobs with this on introduce each other. When this Bob is paired with two Bobs that both have it on, they pair with each other too, with no card to press.', 'Pass my Bob-Net along')}<br><span class="muted keep">Sends your other Bobs each other's name and address, nothing else; passcodes still pass only between the two being paired.</span></span></label>
       ${v.passAlong && v.introductions?.length ? `<ul class="share-list intro-list">${v.introductions.map((d) => `<li class="muted">${INTRO[d.state]?.(d) || esc(d.state)} <span class="muted">(${sinceShort(Date.now() - d.at)})</span></li>`).join('')}</ul>` : v.passAlong && v.lenders.length < 2 ? '<p class="muted">With two or more Bobs on the list, they get introduced to each other.</p>' : ''}
       ${msg ? `<p class="muted" role="status">${esc(msg)}</p>` : ''}
       <details class="more"><summary>More</summary><p class="muted"><strong>Add one by hand</strong> (if pairing can't reach it): its Tailscale address and the passcode from its <strong>Let my other replicant matrices in</strong>.</p>
       <form class="row" data-share-add><input name="name" placeholder="Name (Phone, Laptop…)" maxlength="40"> <input name="address" placeholder="100.x.y.z:7777 or name.ts.net:7777" required> <input name="passcode" type="password" placeholder="Its passcode" autocomplete="off"> <button>Add</button></form>
       <p class="muted">On the Bob that lends: turn on <strong>Let my other replicant matrices in</strong> and <strong>Lend my brain</strong>. Pairing puts the two Bobs on each other's lists; it doesn't switch anything on. Tailscale addresses only. What Bob sends for each reply is the chat so far and his instructions, including what he remembers about you. It only goes to your own replicant matrices on Tailscale, and the lender keeps none of it. Your phone can lend too, once Bob for Android has <strong>Lend my brain</strong>. A phone runs warm and uses battery while it thinks, so keep it plugged in while you game.</p></details>`;
+    decorate();
   };
   const load = async () => { v = await api('/api/share-brains'); draw(); };
   // The link log: read when asked, and every 2 seconds after that while it's showing and "Watch the link live" is on.
@@ -154,27 +179,30 @@ export async function mountShareBrains(box) {
   // After a pairing (either side), the list and the row's button catch up at once.
   const refresh = async () => { try { v = await api('/api/share-brains'); if (found?.bobs) found.bobs.forEach((f) => { f.paired = v.lenders.some((l) => l.address === f.address); }); draw(); } catch {} };
   window.addEventListener('bob-pair-done', () => { if (box.isConnected) refresh(); });
-  const change = async (patch) => {
-    try { v = await api('/api/share-brains', patch); msg = ''; } catch (e) { msg = e.message; }
+  let refused = null; // { sel, text }: the switch just turned down, and why (shown under it)
+  const change = async (patch, el = null) => {
+    const sel = switchSelector(el);
+    try { v = await api('/api/share-brains', patch); msg = ''; refused = null; } catch (e) { if (sel) { refused = { sel, text: e.message }; msg = ''; } else msg = e.message; }
     draw();
   };
-  box.addEventListener('change', (e) => {
-    if (e.target.matches('[data-share-lend]')) change({ lend: e.target.checked });
-    if (e.target.matches('[data-share-take]')) change({ takeJobs: e.target.checked });
-    if (e.target.matches('[data-share-pass]')) change({ passAlong: e.target.checked });
-    if (e.target.matches('[data-share-lendchecks]')) change({ lendChecks: e.target.checked });
-    if (e.target.matches('[data-share-askchecks]')) change({ askChecks: e.target.checked, check: e.target.checked });
-    if (e.target.matches('[data-share-mode]')) change({ mode: e.target.value, check: e.target.value === 'bigger' });
-    if (e.target.matches('[data-share-homenet]')) change({ homeNet: e.target.checked });
-    if (e.target.matches('[data-share-scut]')) change({ scut: e.target.checked });
-    if (e.target.matches('[data-share-scutseal]')) change({ scutSeal: e.target.checked });
-    if (e.target.matches('[data-share-linkdebug]')) change({ linkDebug: e.target.checked });
-    if (e.target.matches('[data-share-scutmbps]')) change({ scutMbps: Number(e.target.value) });
-    if (e.target.matches('[data-share-card]')) change({ lendCard: e.target.checked });
-    if (e.target.matches('[data-share-spread]')) change({ spread: e.target.value, check: e.target.value !== 'off' });
-    if (e.target.matches('[data-share-send]')) change({ sendJobs: e.target.checked, check: e.target.checked });
-    if (e.target.matches('[data-share-borrow]')) change({ borrow: e.target.checked, check: e.target.checked });
-    if (e.target.matches('[data-share-when]')) change({ when: e.target.value });
+  box.addEventListener('change', (ev) => {
+    const e = ev, ch = (patch) => change(patch, ev.target.type === 'checkbox' ? ev.target : null);
+    if (e.target.matches('[data-share-lend]')) ch({ lend: e.target.checked });
+    if (e.target.matches('[data-share-take]')) ch({ takeJobs: e.target.checked });
+    if (e.target.matches('[data-share-pass]')) ch({ passAlong: e.target.checked });
+    if (e.target.matches('[data-share-lendchecks]')) ch({ lendChecks: e.target.checked });
+    if (e.target.matches('[data-share-askchecks]')) ch({ askChecks: e.target.checked, check: e.target.checked });
+    if (e.target.matches('[data-share-mode]')) ch({ mode: e.target.value, check: e.target.value === 'bigger' });
+    if (e.target.matches('[data-share-homenet]')) ch({ homeNet: e.target.checked });
+    if (e.target.matches('[data-share-scut]')) ch({ scut: e.target.checked });
+    if (e.target.matches('[data-share-scutseal]')) ch({ scutSeal: e.target.checked });
+    if (e.target.matches('[data-share-linkdebug]')) ch({ linkDebug: e.target.checked });
+    if (e.target.matches('[data-share-scutmbps]')) ch({ scutMbps: Number(e.target.value) });
+    if (e.target.matches('[data-share-card]')) ch({ lendCard: e.target.checked });
+    if (e.target.matches('[data-share-spread]')) ch({ spread: e.target.value, check: e.target.value !== 'off' });
+    if (e.target.matches('[data-share-send]')) ch({ sendJobs: e.target.checked, check: e.target.checked });
+    if (e.target.matches('[data-share-borrow]')) ch({ borrow: e.target.checked, check: e.target.checked });
+    if (e.target.matches('[data-share-when]')) ch({ when: e.target.value });
   });
   box.addEventListener('submit', (e) => {
     if (e.target.matches('[data-pair-by-address]')) { e.preventDefault(); pair(new FormData(e.target).get('address')); return; }
