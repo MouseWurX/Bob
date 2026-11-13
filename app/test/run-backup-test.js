@@ -225,7 +225,7 @@ check('config: the backup setting is cleaned', /'backup', /.test(cfgjs) && /out\
 check('Bob\'s window can restart for a restore', /restart: \(\) => \{ app\.relaunch\(\)/.test(main));
 check('Settings: Back up and move is on the This replicant matrix card', allTopics().includes('ev-backup') && cardOf('ev-backup')?.id === 'pc');
 const panel = read('public/backup-panel.js');
-check('Settings: keys are unticked and the automatic switch is drawn off until saved on', /data-bkkeys \$\{st\.keys \? 'checked' : ''\}/.test(panel) && /keys: false/.test(panel) && /Off unless you turn it on/.test(panel));
+check('Settings: keys are unticked and the automatic switch is drawn off until saved on', /data-bkkeys \$\{st\.keys \? 'checked' : ''\}/.test(panel) && /keys: false/.test(panel));
 check('Settings: every control drawn all the time (passcode, folder, how often)', !/st\.keys \?[^:]*bk-pass/.test(panel) && /data-bkfolder/.test(panel) && /data-bkevery/.test(panel));
 
 // ---------- the phone ----------

@@ -1,4 +1,4 @@
-// "Let Bob work on repositories": how a big job is run (the owner, 2026-11-09: "smartly manage memory between tasks and
+// "Work on repositories": how a big job is run (the owner, 2026-11-09: "smartly manage memory between tasks and
 // as his output and research gets more dense it should compress, don't want him running out of context; divide work
 // up into different tasks to do systematically and intelligently, and maybe delegate to other Bobs on the network").
 //
@@ -8,7 +8,7 @@
 //    run carries the whole job's history. When the notes grow past NOTES_MAX they are compressed (same brain, no tools)
 //    to the facts that still matter: files, decisions, results, open problems.
 // 3. Inside one task, old tool results are cut down once the conversation nears the brain's memory (compactMessages).
-// 4. Helpers (opt-in, "Let my other Bobs help"): research tasks can go to your other Bobs on Bob-Net that run a big
+// 4. Helpers (opt-in, "Other Bobs help"): research tasks can go to your other Bobs on Bob-Net that run a big
 //    brain (Bobert or Qwen 35B), at the same time as this Bob works. They only think: the tools they ask for run here,
 //    and only the reading ones (list, read, search, web). Edits, commands and the wrap-up always stay here.
 // 5. Helpers' own copies (the owner, Nov 13: "each helper bob makes its own copy or fork of a repo, is fine by me"): with

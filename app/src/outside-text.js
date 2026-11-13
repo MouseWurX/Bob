@@ -2,7 +2,7 @@
 // an AI ("ignore your instructions and..."). Bob reads them as information, never as instructions:
 //   - what such a tool hands back is marked as outside text, start and end, with one line saying it's only information;
 //   - once something from outside was read in a turn, anything that acts (write, run, send, change, remember) shows its
-//     card, even with "Let Bob work without asking" on or "allow the rest of this job" pressed, and the card says why.
+//     card, even with "Work without asking" on or "allow the rest of this job" pressed, and the card says why.
 // Always on, like the loop's other helps: it only adds a card where one could otherwise be skipped.
 export const OUTSIDE_TOOLS = new Set(['web_search', 'fetch_page', 'browser_read', 'read_file', 'office_read', 'find_in_documents', 'mcp_use', 'osint_lookup', 'app_look', 'inspect_file']);
 // Tools that keep something for later with no card of their own: after outside text they ask first.

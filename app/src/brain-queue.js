@@ -34,7 +34,7 @@ export const queueParts = {
     let q = readSaved(this.queueFile, [], { check: Array.isArray, log: (t) => this.log?.('saving', t) });
     q = q.filter((j) => j && typeof j === 'object');
     // A job that was running when Bob closed may have half-finished: don't redo it blindly. Its ledger says what it did.
-    // 1.5.38: with "Pick up where Bob left off after a restart" on (off by default), it carries on from the last finished
+    // 1.5.38: with "Resume jobs after restart" on (off by default), it carries on from the last finished
     // step: finished steps aren't done again, and the step that was cut off is done again from the start. A cut-off
     // step that can be left half done (typing into an app, moving files, a command...) waits in Tasks for Carry on.
     // Off, every cut-off job waits in Tasks; Carry on (the Tasks button) picks up the same way.
@@ -123,7 +123,7 @@ export const queueParts = {
       setTimeout(() => this.broadcast({ type: 'busy-note', sessionId, text: answer }), 0);
       return { jobId: null, turnId: null, ahead: 0, answered: answer };
     }
-    // Let Bob's Quick brain see the big job (PC test 1.5.203): "tell the job to ..." and "how's it going?" can't wait
+    // Quick brain sees the job (PC test 1.5.203): "tell the job to ..." and "how's it going?" can't wait
     // behind the job they're about. When no Quick brain can take the message right now (one is already answering, or
     // there's no room for it), the app passes the note along or answers from the job's record itself, at once.
     // Jobs, Steer him mid-job (job-helps.js, off unless turned on): typed in the running job's own chat, it goes to the job.

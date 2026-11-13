@@ -1,4 +1,4 @@
-// 1.5.94 "Let my other replicant matrices in" without manual steps: the firewall.
+// 1.5.94 "Bob-Net access" without manual steps: the firewall.
 // Windows Defender Firewall blocks other machines from reaching Bob's port. With the owner's click, Bob adds one
 // inbound rule: TCP on Bob's port, only from Tailscale's addresses (100.64.0.0/10). Windows asks once (the
 // "Do you want to allow this app to make changes" prompt); nothing changes if the answer is No.
@@ -12,13 +12,13 @@ export const RULE = 'Bob (Tailscale only)';
 export const TAILSCALE_RANGE = '100.64.0.0/10';
 export const CARD_PORT = 50052; // Bigger Bobs: a lent graphics card's gate (src/share-card.js RPC_PORT)
 // The rule's two ports: Bob's own, and the lent card's gate. From Tailscale, plus this machine's own home network
-// (Windows' "LocalSubnet") when "Also over the home network" is on.
+// (Windows' "LocalSubnet") when "Home network access" is on.
 const ports = (p) => `${p},${CARD_PORT}`;
 const from = (home) => (home ? `${TAILSCALE_RANGE},LocalSubnet` : TAILSCALE_RANGE);
 // Put at the start of the description of a block rule Bob switched off, so Remove can switch exactly those back on.
 export const MARK = '[Switched off by Bob] ';
-// Does the rule need this home network too? Yes with "Also over the home network" (phone access), and also when
-// this Bob lends his graphics card with Bigger Bobs' "Use the home network first" (on unless switched off), since
+// Does the rule need this home network too? Yes with "Home network access" (phone access), and also when
+// this Bob lends his graphics card with Bigger Bobs' "Home network first" (on unless switched off), since
 // the other Bob then reaches the card's gate (CARD_PORT) over the home network, not Tailscale.
 // SCUT (src/share-card.js): a lent card's gate also takes UDP on CARD_PORT, so the rule has a UDP half for that port.
 // 1.5.208 (the replicant matrix test): it's always there now, not only with "Lend my card" and SCUT both on, so a Bob

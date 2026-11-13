@@ -19,7 +19,7 @@ import { nodeCmd } from './selftools.js';
 // rented = a Forge plan key, both = either. A benchmark follows every step; any step can be skipped.
 export const PROTOCOL_STEPS = [
   { id: 'baseline', title: 'Baseline and data', where: 'here', what: 'Score the brain as it is. Clean the lessons into a new version and make the right-vs-wrong pairs, with the teacher\'s odds.', tool: 'clean' },
-  { id: 'clean-first', title: 'Clean first', where: 'here', what: 'Find a bias or refusal direction, try it live, and take it out only on your go.', tool: 'refusals' },
+  { id: 'clean-first', title: 'Clean first', where: 'here', what: 'Find a bias or refusal direction, try it live, and take it out only on your go. Answers made with a change switched on are for checking only, never lessons.', tool: 'refusals' },
   { id: 'train', title: 'Train the full brain', where: 'rented', what: 'Teach the whole brain the targets before any cut. A trained brain keeps about twice as much when cut hard.', tool: 'forge' },
   { id: 'analyse', title: 'One analysis pass', where: 'both', what: 'Expert scores, experts by layer, and which experts each target uses, all on the same sample chats. The data is kept.', tool: 'sweep' },
   { id: 'cut', title: 'Cut in steps', where: 'both', what: 'One rung at a time, folding the dropped experts into the kept ones.', tool: 'forge' },
@@ -27,7 +27,7 @@ export const PROTOCOL_STEPS = [
   { id: 'targets', title: 'Several targets', where: 'rented', what: 'Right-vs-wrong pairs (ORPO, DPO or KTO), each target with its own weight and its own grade.', tool: 'forge' },
   { id: 'finish', title: 'On-policy finish and reward pass', where: 'rented', what: 'The small Bob writes its own answers and the teacher grades them; then a reward pass on tool calls, kept only if no target drops.', tool: 'forge' },
   { id: 'blend', title: 'Blend', where: 'rented', what: 'Mix back toward the uncut brain if general knowledge slipped; a short re-teach if the blend lost something.', tool: 'forge' },
-  { id: 'surgery', title: 'Final surgery', where: 'both', what: 'Sweep the live dials per target here; bake only the edits that help and hurt nothing, on your go.', tool: 'sweep' },
+  { id: 'surgery', title: 'Final surgery', where: 'both', what: 'Sweep the live dials per target here; bake only the edits that help and hurt nothing, on your go. Every cut or dial is a new version, kept only if it passes the held-out checks (tools, quiz, evil and fiction checks).', tool: 'sweep' },
   { id: 'publish', title: 'Publish', where: 'here', what: 'Only on your go, after scrubbing, with the benchmark report beside it.', tool: '' }
 ];
 
@@ -96,6 +96,7 @@ export function planProtocol(tool, form = {}, { dir = '', sets = [], root = '', 
     if (set) args.push('--url', url, '--lessons', path.dirname(set.file), '--sample', String(sample), '--out', out, ...(used ? ['--used', used] : []), ...(scales ? ['--layer-scale', scales, '--groups', '4'] : []));
     if (set) { const r = sweepReadiness(path.dirname(set.file)); if (r.problem) problems.push(r.problem); else notes.push(`${r.held} held-out chats to score, at most ${sample} per kind of lesson.`); }
     notes.push('Nothing in the brain file changes: the sweep only turns the engine\'s live switches, and puts them back at the end. It needs a Brain Engine with the live switches (experts per word, dials, expert mask); an older one skips the trials it can\'t do.');
+    notes.push('Its answers are kept apart, each marked with the setting it was made under: for checks and benchmarks only, never lessons or pairs.');
     notes.push('Only one card test at a time: don\'t sweep while a game, a benchmark or another test is using the card.');
     if (set) { const tf = path.join(out, `targets-${slugOf(set.id) || 'set'}.json`); args.push('--targets', tf); notes.push('Every kind of lesson in the set (its jobs) is scored on its own, so a setting that helps one and hurts another shows.'); return { problems, notes, args, out, set, targetsFile: tf }; }
     return { problems, notes, args, out, set };

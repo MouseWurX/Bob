@@ -219,7 +219,7 @@ const until = async (f, n = 200) => { for (let i = 0; i < n; i++) { if (f()) ret
 // ---- Help ----
 { const h = HELP.find((e) => e.id === 'adventure');
   const t = h ? plainText(h.html) : '';
-  check('Help has an Adventure section in Bob\'s voice with the rules, the cards and the settings', Boolean(h) && /I run/.test(h.title) && /15 or more/.test(t) && /Plot armour/.test(t) && /Back/.test(t) && /Which brain is the game master/.test(t) && /Who plays the other Bobs/.test(t) && /Nothing runs until/.test(t));
+  check('Help has an Adventure section in Bob\'s voice with the rules, the cards and the settings', Boolean(h) && /I run/.test(h.title) && /15 or more/.test(t) && /Plot armour/.test(t) && /Back/.test(t) && /Game master brain/.test(t) && /Who plays the other Bobs/.test(t) && /Nothing runs until/.test(t));
   check('Help FAQ covers playing alone, gaming and remembering', ['faq-adventure-alone', 'faq-adventure-gaming', 'faq-adventure-remember'].every((id) => HELP.some((e) => e.id === id)));
   const g = plainText(HELP.find((e) => e.id === 'glossary').html);
   check('glossary: game master, plot armour, action card, auto-roll, scene, campaign', ['Game master', 'Plot armour', 'Action card', 'Auto-roll', 'Scene', 'Campaign'].every((w) => g.includes(w)));

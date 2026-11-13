@@ -83,12 +83,12 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
 // ---- the switch ----
 {
   const cellar = publicText('cellar.js'), server = read('src/server.js');
-  check('Settings has the switch, on unless turned off', /sswitch\('thinkBubble', settings\.thinkBubble !== false, 'Thinking bubble above answers'/.test(cellar));
+  check('Settings has the switch, on unless turned off', /sswitch\('thinkBubble', settings\.thinkBubble !== false, 'Thinking bubble'/.test(cellar));
   check('the server saves it and says it', /out\.thinkBubble = cfg\.thinkBubble !== false/.test(server) && /thinkBubble: cfg\.thinkBubble !== false/.test(server));
   check('saved settings read it as on unless false', /out\.thinkBubble = out\.thinkBubble !== false/.test(read('src/config.js')));
   const help = read('public/help-content.js');
   check('Help, FAQ and glossary', /id: 'think-bubble'/.test(help) && /id: 'faq-think-bubble'/.test(help) && /<dt>Thinking bubble<\/dt>/.test(help));
-  check('the settings inventory lists it', /Thinking bubble above answers/.test(read('docs/SETTINGS-INVENTORY.md')));
+  check('the settings inventory lists it', /Thinking bubble/.test(read('docs/SETTINGS-INVENTORY.md')));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

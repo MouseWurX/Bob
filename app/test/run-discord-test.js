@@ -289,7 +289,7 @@ check('turning it off stops Bob listening', !c.running && c.status === 'off');
   fs.rmSync(gdir, { recursive: true, force: true });
 }
 
-// 1.5.211 Keep this replicant matrix awake while Bob is on Discord (off): a helper only while connected, gone when off.
+// 1.5.211 Stay awake for Discord (off): a helper only while connected, gone when off.
 {
   const { KeepAwake, awakeCommand } = await import('../src/keep-awake.js');
   const spawned = [];

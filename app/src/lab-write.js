@@ -11,6 +11,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { LESSON_SKILLS } from './lab-skills.js';
+import { toolSetFor } from './tool-sets.js';
 
 // The owner's home folder and user name never reach the teacher or the lesson file. On Windows the throwaway Bob's own
 // folder sits in the temp folder under the home folder, so its paths would carry the real user name otherwise.
@@ -66,7 +67,8 @@ export async function throwawayBob({ scrubWith } = {}) {
   clearInterval(brain.reminderTimer);
   for (const k of Object.keys(brain)) { const v = brain[k]; if (v && typeof v === 'object' && v.timer) try { clearInterval(v.timer); } catch {} }
   return {
-    turn(loaded = new Set()) {
+    turn(loaded = new Set(), toolSet = null) {
+      loaded.toolSet = toolSet; // tool-sets.js: the teacher's family wording; names and inputs stay Bob's own
       const sys = brain.withLimits(systemPrompt({ now: brain.now(), memory: '', user: 'the user', backstory: brain.backstory(), about: '', cat: 'Patches' }), loaded);
       return { system: scrub(sys), tools: scrubDeep(brain.frontDeskTools(loaded), scrub) };
     },
@@ -81,7 +83,13 @@ const readJsonl = (f) => { try { return fs.readFileSync(f, 'utf8').split(/\r?\n/
 const h = (s) => crypto.createHash('md5').update(s).digest('hex');
 
 // Writes `count` lessons over `skills` into `out` (lessons.jsonl) with `ideas.jsonl` beside it. kit = throwawayBob().
-export async function writeLessons({ url, out, skills, count, think = 'half', ideasOnly = false, kit, chatFn = chat, onProgress = () => {}, shouldStop = () => false }) {
+export async function writeLessons({ url, out, skills, count, think = 'half', ideasOnly = false, kit, chatFn = chat, onProgress = () => {}, shouldStop = () => false, toolSet, teacherName, fetchImpl = fetch }) {
+  // Tool sets (tool-sets.js): the teacher's family, from the name its server gives (or the one passed in).
+  if (toolSet === undefined) {
+    let name = teacherName || '';
+    if (!name) { try { const r = await fetchImpl(`${String(url).replace(/\/$/, '')}/v1/models`, { signal: AbortSignal.timeout(5000) }); name = (await r.json())?.data?.[0]?.id || ''; } catch {} }
+    toolSet = toolSetFor({}, name);
+  }
   const picked = LESSON_SKILLS.filter((s) => skills.includes(s.id));
   if (!picked.length) throw new Error('Pick at least one skill.');
   fs.mkdirSync(path.dirname(out), { recursive: true });
@@ -116,7 +124,7 @@ export async function writeLessons({ url, out, skills, count, think = 'half', id
     const skill = picked.find((s) => s.id === idea.skill);
     const thinkOn = think === 'on' || (think === 'half' && parseInt(h(idea.id).slice(0, 2), 16) % 2 === 0) || skill.think === true;
     try {
-      const lesson = await oneLesson({ url, idea, skill, think: thinkOn, kit, chatFn });
+      const lesson = await oneLesson({ url, idea, skill, think: thinkOn, kit, chatFn, toolSet });
       if (!lesson) continue;
       fs.appendFileSync(out, JSON.stringify(kit.scrub ? scrubDeep(lesson, kit.scrub) : lesson) + '\n');
       n++; onProgress(n, count);
@@ -125,12 +133,12 @@ export async function writeLessons({ url, out, skills, count, think = 'half', id
   return n;
 }
 
-async function oneLesson({ url, idea, skill, think, kit, chatFn }) {
+async function oneLesson({ url, idea, skill, think, kit, chatFn, toolSet = null }) {
   const loaded = new Set(kit.guessGroups(idea.text));
   const saved = [{ role: 'user', content: idea.text }];
   let failNext = skill.failFirst === true;
   for (let round = 0; round < 5; round++) {
-    const t = kit.turn(loaded);
+    const t = kit.turn(loaded, toolSet);
     const tools = skill.noTools ? [] : t.tools;
     const msg = await chatFn(url, { messages: [{ role: 'system', content: t.system + (skill.extra ? `\n\n${skill.extra}` : '') }, ...saved], tools, think, max: think ? 6000 : 2000, temperature: 0.7 });
     const calls = (msg.tool_calls || []).filter((c) => c?.function?.name);

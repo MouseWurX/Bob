@@ -54,7 +54,7 @@ export const kindOf = (text) => {
 // ---- Settings ----
 export const cleanQuarantine = (v = {}) => ({ on: v?.on === true });
 export const quarantineOn = (cfg) => cleanQuarantine(cfg.quarantine).on;
-// "Let Bob work without asking" (freeOn arrives with that drop; until then it's never on). A hook so tests can set it.
+// "Work without asking" (freeOn arrives with that drop; until then it's never on). A hook so tests can set it.
 export const hooks = { freeOn: (cfg) => (typeof handsSettings.freeOn === 'function' ? handsSettings.freeOn(cfg) : false) };
 
 // ---- State: who is in quarantine now, and the last few (inn\bob\quarantine.json) ----

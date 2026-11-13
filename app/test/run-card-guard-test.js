@@ -177,7 +177,7 @@ check('the cube says loading before thinking', cubeState({ shell: { label: 'Bob'
 check('the brain button says his brain is set aside for a job, not "working, 0 GB"', /st\.state === 'working' && !st\.models\.length\) \{ text = 'Brain: set aside for a job'/.test(read('public/brain-bar.js')) && /· ⚠ Card busy`/.test(read('public/brain-bar.js')));
 check('the porthole dims while another program holds the card', /\.card-busy \.mind-cube\.porthole \.port \{ opacity: \.55;/.test(read('public/style.css')) && /classList\.toggle\('card-busy'/.test(read('public/app.js')));
 check('a lend never lets go of the lender\'s own brain unless its switch says so', /if \(!lendFreesOwn\(this\.cfg\)\)/.test(read('src/share-card.js')) && /data-share-freesown/.test(read('public/share-brains.js')));
-check('Help, an FAQ and the glossary say it in Bob\'s voice', /Wait for the card, then load my brain/.test(read('public/help-content.js')) && /<dt>Card busy<\/dt>/.test(read('public/help-content.js')) && /set\('Let a lend unload my brain', 'Off'/.test(read('public/help-content.js')));
+check('Help, an FAQ and the glossary say it in Bob\'s voice', /Wait for the card, then load my brain/.test(read('public/help-content.js')) && /<dt>Card busy<\/dt>/.test(read('public/help-content.js')) && /set\('Lending may unload my brain', 'Off'/.test(read('public/help-content.js')));
 
 // ---- 1.5.221 PC check: a false "Card busy" blamed Windows Terminal for Bob's own 12.9 GB brain ----
 {

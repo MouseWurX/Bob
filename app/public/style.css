@@ -101,7 +101,7 @@ kbd { font-family: var(--mono); font-size: 13px; padding: 1px 6px; border: 1px s
 .msg a + .mini[data-copy-link] { padding: 0 4px; font-size: 11px; margin-left: 3px; }
 .msg-tools { display: flex; gap: 4px; justify-content: flex-end; margin-top: 6px; white-space: normal; }
 .msg.you .msg-tools .mini { color: inherit; opacity: .75; }
-/* Let Bob fix his own messages: "edited" under a message he changed, and what it said first */
+/* Edit his own messages: "edited" under a message he changed, and what it said first */
 .edited-note { margin-top: 6px; font-size: .85em; }
 .edited-note .link { min-height: 32px; padding: 0 4px; }
 .edited-was { margin-top: 4px; padding-left: 8px; border-left: 2px solid var(--line); white-space: pre-wrap; }
@@ -364,7 +364,8 @@ body.still .meter.moving i { animation: none; }
 .avatars h4 { margin: 10px 0 4px; font-size: 13px; color: var(--muted); font-weight: 600; }
 .avatars .looks button { width: 72px; padding: 4px; }
 .avatars .looks canvas { width: 48px; height: 48px; }
-.avatars .looks span { font-size: 11px; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avatars .looks span { font-size: 11px; max-width: 64px; overflow-wrap: anywhere; text-align: center; } /* 1.5.222 names wrap, never cut off */
+.adv-bob-look { margin: 6px 0 12px; } .adv-bob-look .row { align-items: center; gap: 8px; } .adv-bob-look canvas.adv-face { image-rendering: pixelated; }
 
 /* MouseWurX blueprint: graph paper behind everything, plates with hard edges, no glow */
 body.blueprint {
@@ -611,7 +612,7 @@ button.danger { background: #a8432f; color: #fff; border-color: #a8432f; }
 .starter { border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; margin: 8px 0; background: var(--panel); }
 .starter summary { cursor: pointer; font-weight: 600; }
 .warn-text { color: var(--warn); }
-/* "Let Bob work without asking" is on: a banner above the chat for as long as it is. */
+/* "Work without asking" is on: a banner above the chat for as long as it is. */
 .free-banner { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin: 6px 12px 0; padding: 8px 12px; border: 2px solid var(--warn); border-radius: calc(var(--r) * 1.25); color: var(--warn); font-weight: 600; }
 .free-banner[hidden] { display: none; }
 .free-banner > span { flex: 1 1 auto; }
@@ -675,7 +676,7 @@ button.big { padding: 9px 18px; font-size: 15px; min-height: 40px; }
 .hands-mytools ul { list-style: none; padding: 0; margin: 6px 0; }
 .hands-mytools li.mytool { border-bottom: 1px solid var(--line); padding: 6px 0; }
 .hands-mytools.dim { opacity: 0.7; }
-/* 1.5.144 🧰 Tools and how-tos Bob made */
+/* 1.5.144 🧰 Tools and how-tos */
 .ownkit-list { list-style: none; padding: 0; margin: 6px 0; }
 .ownkit-list { display: flex; flex-direction: column; gap: 8px; }
 .ownkit-list li.ownkit-row { border: 1px solid var(--line, #444); border-radius: 6px; padding: 8px 10px; }
@@ -732,6 +733,8 @@ button.big { padding: 9px 18px; font-size: 15px; min-height: 40px; }
 .srow .sact { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .srow .ttabs { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .srow-switch { padding: 9px 10px; border-radius: var(--r); background: var(--card); margin: 0 !important; }
+.srow-switch + .srow-switch { margin-top: 6px !important; } /* a little air between rows, now each shows its one-line description */
+.srow-switch .muted { display: inline-block; margin-top: 2px; line-height: 1.4; }
 .srow-foot { padding: 10px 2px 0; }
 .adv-toggle { margin-top: 16px !important; max-width: 760px; }
 .advanced { margin-top: 8px; }
@@ -1197,7 +1200,7 @@ video.out-media { max-height: 240px; border-radius: calc(var(--r) * 0.75); }
 .song.big .song-wave { height: 72px; }
 .song.big .song-title { font-size: 16px; white-space: normal; }
 .vaudio .song { align-self: stretch; }
-/* Settings, Where Bob saves things */
+/* Settings, Save folder */
 .save-path { font-family: var(--mono); word-break: break-all; }
 .save-pick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .save-pick input { flex: 1; min-width: 220px; }
@@ -1281,7 +1284,7 @@ video.out-media { max-height: 240px; border-radius: calc(var(--r) * 0.75); }
 .mini-switch[aria-checked="true"] { color: var(--text); border-color: var(--good); }
 .mini-switch[aria-checked="true"] .st { background: var(--good); color: var(--on-accent); }
 .get-more { margin: 8px 0 0; }
-.get-more-btn { white-space: nowrap; }
+.get-more-btn { max-width: 100%; white-space: normal; text-align: left; height: auto; } /* the long catalogue button wraps on a phone instead of widening the panel */
 .kit:not(.shop) { display: flex; align-items: center; padding-right: 8px; }
 .kit:not(.shop) .kit-btn { flex: 1; }
 /* 1.5.56 Tips: explanations wait behind a small ⓘ and show in one bubble on hover, on keyboard focus, or on tap. */
@@ -1931,7 +1934,7 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .mind-cube input[type=color] { width: 32px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; vertical-align: middle; }
 .mind-cube .row { flex-wrap: wrap; align-items: center; gap: 2px 12px; }
 .mind-cube .link { background: none; border: none; padding: 4px 0; min-height: 32px; color: var(--muted); text-decoration: underline; cursor: pointer; font: inherit; }
-/* Bob-Net: What my Bobs do together (More Bobs / Bigger Bobs). */
+/* Bob-Net: Sharing mode (More Bobs / Bigger Bobs). */
 .share-mode { border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; margin: 8px 0; }
 .share-bigger { margin-left: 26px; }
 .engine-held { border-left: 3px solid var(--accent); padding: 4px 8px; margin: 6px 0; } /* 1.5.185 an engine update kept aside with files missing */
@@ -1980,7 +1983,7 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .settings-window .cellar[data-page="Settings"] .cellar-tabs, .settings-window .cellar[data-page="Style"] .cellar-tabs .tabs-row:first-child { display: none; }
 
 /* 1.5.205 the Brains page: each brain, its jobs and where it sits */
-.brains-page { display: grid; gap: 12px; }
+.brains-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; } /* minmax(0, ...): a wide child wraps instead of pushing the panel off a phone screen */
 .brains-panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; }
 .brains-panel h3 { margin: 0 0 8px; }
 .brains-panel h4 { margin: 12px 0 6px; font-size: 13px; color: var(--muted); }
@@ -1993,8 +1996,9 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .chip-x { background: none; border: 0; color: var(--muted); padding: 0; margin: 0 -4px 0 0; min-width: 24px; min-height: 24px; line-height: 1; cursor: pointer; }
 .chip-x:hover, .chip-x:focus-visible { color: var(--text); }
 .job-add { font-size: 13px; max-width: 11em; }
-.place-bar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); font-size: 12px; font-weight: 600; }
-.place-bar span { display: grid; place-items: center; white-space: nowrap; overflow: hidden; color: var(--on-accent); padding: 0 4px; }
+/* No label is ever cut off: a part is never narrower than its words, and the bar wraps to a second line if it must. */
+.place-bar { display: flex; flex-wrap: wrap; min-height: 22px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); font-size: 12px; font-weight: 600; }
+.place-bar span { display: grid; place-items: center; white-space: nowrap; color: var(--on-accent); padding: 2px 6px; flex-shrink: 0 !important; flex-basis: auto !important; min-width: max-content; }
 .place-bar .pb-card { background: var(--good); }
 .place-bar .pb-mem { background: var(--warn); }
 .place-bar .pb-drive { background: color-mix(in srgb, var(--you) 55%, var(--text)); }
@@ -2043,7 +2047,7 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .pick-row.locked label { cursor: default; opacity: .7; }
 .pick-row .pick-why { flex: 1 1 12em; overflow-wrap: anywhere; }
 .cat-removed { margin-top: 14px; }
-/* "Show documents in the side panel" (doc-view.js): words and tables, sheets, slides, a PDF's pages. */
+/* "Documents in the side panel" (doc-view.js): words and tables, sheets, slides, a PDF's pages. */
 .vdocstage { align-items: stretch; }
 .vdoc { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .vdoc-text { line-height: 1.55; overflow-wrap: anywhere; }
@@ -2126,7 +2130,7 @@ a.file-line { text-decoration: underline dotted; }
    with). The children are zoomed, not the scrolling boxes, so the page still fits the window. */
 :root { --text-zoom: 1; }
 .log > *, #input, #cellar-body > *, #help-body > * { zoom: var(--text-zoom); }
-/* Easier-to-read font (off to start with): plain letter shapes, more room between letters, words and lines.
+/* Readable font (off to start with): plain letter shapes, more room between letters, words and lines.
    Code keeps its own font. Wins over a theme's font on purpose. */
 html.readable-font body, html.readable-font input, html.readable-font textarea, html.readable-font button, html.readable-font select {
   font-family: Verdana, "Atkinson Hyperlegible", "DejaVu Sans", Tahoma, "Segoe UI", sans-serif !important; letter-spacing: .02em; word-spacing: .08em;
@@ -2152,7 +2156,7 @@ html.readable-font code, html.readable-font pre, html.readable-font kbd { font-f
 .people-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
 .everyday-box .spend-box, .everyday-box .people-box { margin: 0 0 10px 0; }
 .approval.today-card, .approval.tour, .approval.focus-done { background: var(--card); border-color: var(--line); }
-/* "Show the page and line" (src/doc-more.js): the place link after a file, and the spot it opens at in the side panel */
+/* "Cite page and line" (src/doc-more.js): the place link after a file, and the spot it opens at in the side panel */
 .file-link.file-place { white-space: nowrap; }
 .vdoc .flash, .vslide.flash { outline: 2px solid var(--accent); outline-offset: 2px; }
 .vcode mark.vat { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; }
@@ -2418,7 +2422,7 @@ body.now-mind-only #panelRow,
 body.now-mind-only #nowSections > section:not([data-sec="mind"]),
 body.now-mind-only #nowMind > .now-sec { display: none; }
 
-/* Nov 13 Bob-Net icons under Bob (net-overlay.js), off unless turned on. A row at the top of the chat (phone and the
+/* Nov 13 Bob-Net icons (net-overlay.js), off unless turned on. A row at the top of the chat (phone and the
    other looks); Lamplight on a computer turns it into a column under Bob's cube, over the empty space left of the chat.
    A little see-through and dimmer than Bob's own cube; pointing at one makes it ebb and flow in place. */
 .net-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 6px 16px 8px; position: relative; z-index: 5; }

@@ -1,4 +1,4 @@
-// Ask together (1.5.41): when a job needs more than one OK and "Let Bob work without asking" is off, every OK goes
+// Ask together (1.5.41): when a job needs more than one OK and "Work without asking" is off, every OK goes
 // on one card. Allowed steps don't ask again (that exact step, once); denied ones aren't done; anything not on the
 // card, or changed since, asks on its own; the hard limits still refuse; Stop everything denies the card.
 import fs from 'node:fs';

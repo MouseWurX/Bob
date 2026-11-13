@@ -262,7 +262,7 @@ async function turn(text, script) {
   cfg.resumeJobs = true;
   fs.writeFileSync(brain.queueFile, JSON.stringify(q()));
   got = brain.loadQueue();
-  check('with "Pick up where Bob left off" on, a job that did nothing yet starts again, with no note', J('a').state === 'waiting' && J('a').pickUp && !J('a').carryOn && J('a').resumed === 1);
+  check('with "Resume jobs after restart" on, a job that did nothing yet starts again, with no note', J('a').state === 'waiting' && J('a').pickUp && !J('a').carryOn && J('a').resumed === 1);
   check('...a job that already typed (finished) carries on, told not to type again', J('b').state === 'waiting' && /app_act/.test(J('b').carryOn) && /Do NOT do these again/.test(J('b').carryOn));
   check('...a song cut off mid-way is made again with the same settings, after the finished picture', J('c').state === 'waiting' && /"prompt":"fox song"/.test(J('c').carryOn) && /Files already made: C:\/p\/fox\.png/.test(J('c').carryOn), J('c').carryOn);
   check('...a move cut off mid-way waits in Tasks instead (it may be half done)', J('d').state === 'interrupted' && /then press Carry on/.test(J('d').error));

@@ -3,6 +3,7 @@
 import { appendText, readText, writeText } from './vault.js'; // 🔒 Lock my chats and memory
 import { clashes, clashNote } from './memory-clash.js';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { saveFile, saveJson, oneWriter, readSaved } from './saving.js'; // items 229, 231, 233
 import { isInside, insideAny, appDir, findOutput } from './config.js';
@@ -190,7 +191,9 @@ function uniquePath(p) {
 
 function resolveUserPath(p) {
   if (!p || typeof p !== 'string') throw new Error('A full file path is needed.');
-  if (!path.isAbsolute(p)) throw new Error('Please give a full path, like C:\\Users\\you\\Documents\\notes.txt');
+  // Tool sets, logic arguments: ~ is the home folder; a path that isn't full says what the home folder really is.
+  if (/^~(?:[\\/]|$)/.test(p)) p = path.join(os.homedir(), p.slice(1));
+  if (!path.isAbsolute(p)) throw new Error(`Please give a full path. The home folder is ${os.homedir()}, so like ${path.join(os.homedir(), 'Documents', path.basename(p) || 'notes.txt')}`);
   return path.resolve(p);
 }
 
@@ -207,6 +210,18 @@ export function htmlToText(html) {
 }
 
 // 'YYYY-MM-DDTHH:mm' as wall-clock time in the given zone -> epoch ms.
+// Tool sets, logic arguments: a reminder's time as local YYYY-MM-DDTHH:mm from the other ways brains write it
+// ("2026-11-14 09:00", seconds, a trailing Z or offset (taken as the local time they wrote), or a date and a time
+// apart). '' when there is no time at all.
+export function reminderTime(time, date) {
+  let t = String(time ?? '').trim();
+  const d = String(date ?? '').trim();
+  if (!t && /^\d{4}-\d{2}-\d{2}[T ]\d{1,2}:\d{2}/.test(d)) t = d;
+  else if (/^\d{1,2}:\d{2}/.test(t) && /^\d{4}-\d{2}-\d{2}$/.test(d)) t = `${d}T${t}`;
+  const m = t.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{1,2}):(\d{2})/);
+  return m ? `${m[1]}T${m[2].padStart(2, '0')}:${m[3]}` : t;
+}
+
 export function zonedToEpoch(local, timeZone) {
   const m = String(local).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})/);
   if (!m) throw new Error('Time must look like 2026-11-01T15:30');
@@ -280,14 +295,48 @@ export function buildTools(cfg) {
 
   t.notice_board = {
     // The board's layout comes with an empty board, not in every prompt (less context is better, 1.5.207).
-    schema: fn('notice_board', "Read or rewrite {{USER}}'s notice board (their to-do list). To change it, read it first, then write the whole board.", {
-      action: str('read or write', { enum: ['read', 'write'] }),
-      content: str('write: the whole new board, in Markdown.')
+    // Tool sets (tool-sets.js), logic arguments: add puts one item on the board without rewriting it (rewriting the
+    // whole board was where small brains lost items).
+    schema: fn('notice_board', "Read or change {{USER}}'s notice board (their to-do list). add = new items; write = the whole board (read it first).", {
+      action: str('read, add or write', { enum: ['read', 'add', 'write'] }),
+      content: str('add: items, one per line. write: the whole board, in Markdown.'),
+      drop: { type: 'boolean', description: 'write: true to take items off.' }
     }, ['action']),
-    async run({ action, content }) {
+    async run({ action, content, drop }) {
       const file = cfg.noticeBoard;
+      const itemOf = (l) => String(l).replace(/^\s*[-*+]\s*(?:\[[ x]\]\s*)?/i, '').replace(/^\s*\d+[.)]\s+/, '').replace(/\s+/g, ' ').trim();
+      if (action === 'add') {
+        // 1.5.222 PC check: several to-dos at once come as several lines, each its own item.
+        const items = [...new Set(String(content || '').replace(/\r\n/g, '\n').split('\n').filter((l) => !/^\s*#/.test(l)).map(itemOf).filter(Boolean))];
+        if (!items.length) throw new Error('No item given: put the to-do in content.');
+        return oneWriter(file, () => {
+          const old = fs.existsSync(file) ? readText(file) : `# Notice board, ${today(cfg)}\n\n## Side quests\n`;
+          const lines = old.replace(/\r\n/g, '\n').split('\n');
+          const added = [], had = [];
+          for (const item of items) {
+            if (lines.some((l) => /^\s*[-*]\s*\[[ x]\]/i.test(l) && itemOf(l).toLowerCase() === item.toLowerCase())) { had.push(item); continue; }
+            // Under Side quests when there is one, else at the end.
+            const at = lines.findIndex((l) => /^#+\s*side quests/i.test(l));
+            let end = at < 0 ? lines.length : at + 1;
+            if (at >= 0) while (end < lines.length && !/^#+\s/.test(lines[end])) end++;
+            while (end > 0 && !lines[end - 1].trim()) end--;
+            lines.splice(end, 0, `- [ ] ${item}`);
+            added.push(item);
+          }
+          if (!added.length) return `Already on the notice board: ${had.join('; ')}. Nothing added.`;
+          saveFile(file, lines.join('\n').replace(/\n*$/, '\n'));
+          return `Added to the notice board: ${added.join('; ')}.${had.length ? ` Already there: ${had.join('; ')}.` : ''} It has ${lines.filter((l) => /^\s*-\s*\[ \]/.test(l)).length} open items now.`;
+        });
+      }
       if (action !== 'write') return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : BOARD_EMPTY;
-      if (!content) throw new Error('No board content given.');
+      if (!content) throw new Error('No board content given. To put one item on, use action add.');
+      // 1.5.222 PC check: a small brain wrote a fresh board without reading it and wiped the items and headings on it.
+      // write never drops an open item unless drop is true; it says which, and points to add.
+      if (drop !== true && fs.existsSync(file)) {
+        const keep = new Set(String(content).replace(/\r\n/g, '\n').split('\n').map((l) => itemOf(l).toLowerCase()).filter(Boolean));
+        const lost = readText(file).replace(/\r\n/g, '\n').split('\n').filter((l) => /^\s*[-*]\s*\[ \]/.test(l)).map(itemOf).filter((i) => i && !keep.has(i.toLowerCase()));
+        if (lost.length) throw new Error(`Not saved: that would take ${lost.length} item${lost.length === 1 ? '' : 's'} off the board (${lost.slice(0, 5).join('; ')}${lost.length > 5 ? '; …' : ''}). To put items on, use action add (one per line). To take items off on purpose, write again with drop true.`);
+      }
       return oneWriter(file, () => { // item 231: one writer at a time
       if (fs.existsSync(file)) {
         const old = fs.readFileSync(file, 'utf8');
@@ -298,14 +347,14 @@ export function buildTools(cfg) {
         }
       }
       saveFile(file, content);
-      return 'Notice board saved.';
+      return `Notice board saved: ${String(content).split(/\r?\n/).filter((l) => /^\s*-\s*\[ \]/.test(l)).length} open items.`;
       });
     },
     summary: ({ action }) => `notice board: ${action}`
   };
 
   t.remember = {
-    // 1.5.79: with "Remember only what fits" on, a fact can go to one project's memory bank (the project field
+    // 1.5.79: with "Relevant memories only" on, a fact can go to one project's memory bank (the project field
     // is only offered then, so the tool costs nothing extra while the setting is off).
     get schema() {
       const banks = recallOn(cfg) ? Object.keys(cfg.projects || {}) : [];
@@ -313,7 +362,7 @@ export function buildTools(cfg) {
         fact: str('One short sentence.'),
         replaces: str('Optional: the earlier memory this corrects, word for word, once the user said which is right.'),
         ...(recallOn(cfg) ? { project: str(`Only for a fact about one project: its name${banks.length ? ` (${banks.join(', ')})` : ''}. Leave out for anything general.`) } : {}),
-        // "Let memories run out" (memory-more.js): only offered while that switch is on.
+        // "Expiring memories" (memory-more.js): only offered while that switch is on.
         ...(expiryOn(cfg) ? { keep: str('Only when {{USER}} says how long: day, week, month, "3 days", or a date (YYYY-MM-DD). Leave out to keep it.') } : {})
       }, ['fact']);
     },
@@ -356,9 +405,13 @@ export function buildTools(cfg) {
         urgent: { type: 'boolean', description: 'add: true only if the user says urgent (shows in quiet hours).' }
       }, ['action']);
     },
-    async run({ action, time, text, id, urgent, every }) {
+    async run({ action, time, text, id, urgent, every, date }) {
       if (action === 'add') {
         if (!text) throw new Error('What should I remind about?');
+        // Tool sets (tool-sets.js), logic arguments: no time is a to-do, not a reminder; and the usual other ways
+        // to write a time are read as the local time they mean.
+        time = reminderTime(time, date);
+        if (!time) throw new Error('No time given. A to-do with no set time goes on the notice board (notice_board, action add). For a reminder, give time as local YYYY-MM-DDTHH:mm.');
         const at = zonedToEpoch(time, cfg.timeZone);
         if (at < Date.now() - 60000) throw new Error('That time has already passed.');
         const rep = every && cfg.moreTools?.repeatReminders === true && REPEATS.includes(every) ? every : '';
@@ -369,9 +422,9 @@ export function buildTools(cfg) {
         return `Reminder ${r.id} set for ${r.local}${rep ? `, then every ${rep}` : ''}${r.urgent ? ' (urgent)' : ''}: ${r.text}`;
       }
       if (action === 'cancel') {
-        const gone = changeReminders(cfg, (list) => { const at = list.findIndex((r) => r.id === id); if (at < 0) return false; list.splice(at, 1); return true; });
-        if (!gone) throw new Error('No reminder with that id.');
-        return 'Cancelled.';
+        const gone = changeReminders(cfg, (list) => { const at = list.findIndex((r) => r.id === id); if (at < 0) return null; return list.splice(at, 1)[0]; });
+        if (!gone) throw new Error('No reminder with that id. Call reminders with action list to see the ids.');
+        return `Cancelled reminder ${gone.id} (${gone.local}): ${gone.text}`;
       }
       const list = loadReminders(cfg);
       return list.length ? list.map((r) => `${r.id}: ${r.local}${r.every ? ` (every ${r.every})` : ''} - ${r.text}`).join('\n') : 'No reminders set.';
@@ -409,11 +462,17 @@ export function buildTools(cfg) {
       line: { type: 'integer', description: 'Optional: a line number, like one from an error. You get the lines around it.' }
     }, ['path']),
     async run({ path: p, part, find, line }) {
-      const file = resolveUserPath(p);
-      if (!insideAny(cfg.readRoots, file)) throw new Error(`I'm not allowed to read ${file}.`);
+      // 1.5.222 PC check: "read notes.txt" made a small brain guess the home folder and get refused. A bare file name is
+      // looked for in the folders Bob may read, and a refusal or a missing file says where those are (one line, only then).
+      const bare = typeof p === 'string' && p.trim() && !/[\\/]/.test(p) && !/^~/.test(p.trim());
+      const found = bare ? (cfg.readRoots || []).map((r) => path.join(r, p.trim())).find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } }) : null;
+      const where = () => ((cfg.readRoots || []).length ? ` Files I can read are in: ${cfg.readRoots.join('; ')}.` : '');
+      if (bare && !found && (cfg.readRoots || []).length) throw new Error(`There's no file called ${p.trim()} in the folders I can read. Give its full path.${where()}`);
+      const file = found || resolveUserPath(p);
+      if (!insideAny(cfg.readRoots, file)) throw new Error(`I'm not allowed to read ${file}.${where()}`);
       if (isSensitive(cfg, file)) throw new Error(SECRET_MSG);
       const size = fs.statSync(file).size;
-      // "Read and search my documents" (my-docs.js): Word, Excel, PowerPoint, OpenDocument, e-books, RTF and PDF as text.
+      // "Read and search documents" (my-docs.js): Word, Excel, PowerPoint, OpenDocument, e-books, RTF and PDF as text.
       const ext = path.extname(file).slice(1).toLowerCase();
       if (docToolsOn(cfg) && isDoc(file)) {
         if (size > MAX_DOC_BYTES) throw new Error(`That file is ${Math.round(size / 1048576)} MB. I read documents up to ${MAX_DOC_BYTES / 1048576} MB.`);
@@ -423,7 +482,7 @@ export function buildTools(cfg) {
       if (size > MAX_READ_BYTES) throw new Error(`That file is ${Math.round(size / 1048576)} MB, too big to read as text. I read files up to 20 MB.`);
       const buf = fs.readFileSync(file);
       if (buf.subarray(0, 4096).includes(0) || (isDoc(file) && ext !== 'rtf') || OLD_EXT.includes(ext)) {
-        if (isDoc(file) && !docToolsOn(cfg)) return `(That's a document, not plain text. To read it, ${cfg.userName || 'the user'} can turn on "Read and search my documents" in Settings, How Bob works, or the Office documents Hand; say so in one line.)`;
+        if (isDoc(file) && !docToolsOn(cfg)) return `(That's a document, not plain text. To read it, ${cfg.userName || 'the user'} can turn on "Read and search documents" in Settings, How Bob works, or the Office documents Hand; say so in one line.)`;
         if (OLD_EXT.includes(ext)) return '(That\'s an old Office file, which needs the Office documents Hand (office_read) to read.)';
         return '(That looks like a binary file, so I can\'t read it as text.)';
       }
@@ -705,7 +764,7 @@ export function buildTools(cfg) {
       job: str('What to change, in {{USER}}\'s words, with details from the chat.')
     }, ['job']),
     async run({ repo: which, job }, ctx) {
-      const where = 'Settings, How Bob works, "Let Bob work on repositories"';
+      const where = 'Settings, How Bob works, "Work on repositories"';
       if (!selfWorkOn(cfg)) throw new Error(`Working on repositories is off. It's in ${where}.`);
       const repo = repoNamed(cfg, which);
       if (!repo) throw new Error(`I don't have a repository called "${which}". The list: ${reposOf(cfg).map((r) => r.name).join(', ')}. Add one in ${where}.`);

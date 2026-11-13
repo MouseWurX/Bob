@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { HANDS } from './hands-settings.js';
 import { kindOf, repeatSafe } from './tool-kinds.js';
+import { stepsNudge } from './job-steps.js'; // Nov 13: several things asked, fewer tool steps ran
 import { PIC_CLAIM_FR_ES, FILE_CLAIM_FR_ES, admitsTrouble, plain } from './honest.js'; // Nov 12, items 182 and 185
 
 // ---------------------------------------------------------------- what was asked for
@@ -40,10 +41,13 @@ const ASK = {
   app: rx(`\\b(?:open|launch|start|fire up|bring up|pull up|load up)\\s+(?:up\\s+)?(?:the\\s+|an?\\s+|my\\s+)?${APPS}\\b|\\b(?:type|write|paste|put)\\b[^.?!\\n]{0,80}\\b(?:in|into)\\s+(?:the\\s+|a\\s+|an?\\s+new\\s+)?${APPS}\\b|\\b(?:take the wheel|take (?:over|control of) (?:my|the) (?:pc|screen|computer|mouse)|drive my (?:pc|screen|computer)|use my (?:screen|mouse|keyboard))\\b`),
   // 1.5.95: a flowchart or diagram (drawn with make_diagram, not painted).
   diagram: /\b(?:flow ?charts?|diagrams?|mind ?maps?|org(?:ani[sz]ation(?:al)?)? charts?|family trees?|decision trees?|process (?:map|chart)s?|gantt(?: chart)?s?|timelines?|pie charts?|swim ?lanes?)\b/i,
+  // Tool sets (tool-sets.js): the GPT-OSS v5 rejects' worst miss was a to-do or reminder asked for and no tool run.
+  todo: /\b(?:add|put|stick|pop|jot|throw|write|pin)\b[^.?!\n]{0,70}?\b(?:on|to|onto|in)\s+(?:my|the|our)\s+(?:to-?do(?:\s+list)?|to-?dos|task list|tasks|list|notice ?board|board|chores)\b/i,
+  reminder: /\bremind\s+(?:me|us)\s+(?:to|at|in|on|tomorrow|tonight|this|next|every|before|after)\b/i,
   // A picture is attached and the words want it changed.
   editPic: /\b(?:edit|change|restyle|recolou?r|retouch|fix|clean up|upscale|make (?:it|this|her|him|them|the \w+)|turn (?:it|this|her|him|them) into|add|remove|put|swap|replace|give (?:it|her|him|them))\b/i
 };
-const NEGATED = /\b(?:don'?t|do not|didn'?t|no need to|never|stop|without|not)\s+(?:\w+\s+){0,2}?(?:make|draw|paint|open|save|write|show|create|generate|launch|start|type|compose|film)\b/i;
+const NEGATED = /\b(?:don'?t|do not|didn'?t|no need to|never|stop|without|not)\s+(?:\w+\s+){0,2}?(?:make|draw|paint|open|save|write|show|create|generate|launch|start|type|compose|film|put|add|remind)\b/i;
 const HOW_OR_PAST = /^(?:how|why|what|when|where|which|who|did|have you|has|had|is|was|were|does|do you (?:know|remember|think)|remember)\b/i;
 const ABILITY = /^(?:can|could|are|do|will|would|is it possible)\b[^?]*\?\s*$/i;
 const TALK_ABOUT = /\b(?:how (?:to|do|can|would|should|does)|tell me about|explain|teach me|what'?s the best way to|tips? (?:on|for)|ideas? for|prompt for)\b/i;
@@ -68,7 +72,7 @@ export function expectFrom(text, { pics = [] } = {}) {
     // 1.5.95: "draw me a flowchart" is a diagram, not a picture.
     const diagram = /\b(?:make|draw|create|do|give|show|sketch|map|lay|chart|put together|build|design|whip up)\b/i.test(t) ? t.match(ASK.diagram) : null;
     if (diagram) add('diagram', diagram, true);
-    for (const kind of ['video', 'music', 'sound', 'show', 'picture', 'file', 'app']) if (!(diagram && ['picture', 'show'].includes(kind))) add(kind, t.match(ASK[kind]));
+    for (const kind of ['reminder', 'todo', 'video', 'music', 'sound', 'show', 'picture', 'file', 'app']) if (!(diagram && ['picture', 'show'].includes(kind))) add(kind, t.match(ASK[kind]));
     if (!diagram && !found.some((f) => f.kind === 'picture' || f.kind === 'show')) add('picture', t.match(ASK.drawCmd), true);
     if (!found.some((f) => f.kind === 'file')) add('file', t.match(ASK.saveIt));
     if (pics.length && !found.some((f) => ['picture', 'show', 'video'].includes(f.kind))) add('picture', t.match(ASK.editPic), true);
@@ -309,9 +313,9 @@ const SAVED_AT = /\b(?:saved|written|wrote|created|stored|exported|put)\s+(?:it\
 const APP_CLAIM = /\bI(?:'ve| have|)\s+(?:just\s+|now\s+|already\s+|successfully\s+|gone ahead and\s+)?(?:opened|launched|started|typed|clicked|pressed|pasted|entered|written)\b[^.!?\n]{0,60}?\b(?:notepad|paint|calculator|app|application|window|program|tab|in (?:the |a )?(?:text box|document|field))\b/i;
 
 const MEDIA_OF = { picture: 'image', show: 'image', video: 'video', music: 'audio', sound: 'audio' };
-const TOOL_OF = { diagram: 'make_diagram', picture: 'make_image', show: 'make_image', video: 'make_video', music: 'make_music', sound: 'make_sound', file: 'write_file', app: 'open_app' };
-const GROUPS_OF = { diagram: ['diagrams'], picture: ['pictures'], show: ['pictures'], video: ['pictures'], music: ['pictures'], sound: ['pictures'], file: ['documents'], app: ['apps'] };
-const WHAT = { diagram: 'a diagram', picture: 'a picture', show: 'a picture', video: 'a clip', music: 'some music', sound: 'a sound', file: 'a file saved', app: 'something done in an app' };
+const TOOL_OF = { todo: 'notice_board', reminder: 'reminders', diagram: 'make_diagram', picture: 'make_image', show: 'make_image', video: 'make_video', music: 'make_music', sound: 'make_sound', file: 'write_file', app: 'open_app' };
+const GROUPS_OF = { todo: [], reminder: [], diagram: ['diagrams'], picture: ['pictures'], show: ['pictures'], video: ['pictures'], music: ['pictures'], sound: ['pictures'], file: ['documents'], app: ['apps'] };
+const WHAT = { todo: 'something put on their to-do list', reminder: 'a reminder', diagram: 'a diagram', picture: 'a picture', show: 'a picture', video: 'a clip', music: 'some music', sound: 'a sound', file: 'a file saved', app: 'something done in an app' };
 const FILE_TOOLS = new Set(['write_file', 'edit_file', 'save_spreadsheet', 'file_hands', 'sort_files', 'convert_file', 'office_make', 'office_edit', 'strip_metadata']);
 const APP_TOOLS = new Set(['open_app', 'app_act']);
 const LOOKS = new Set(['app_look', 'list_schedules', 'read_file', 'list_files', 'search_files', 'workshop_list', 'use_tools', 'recall', 'web_search', 'fetch_page', 'security_check', 'inspect_file', 'osint_lookup', 'check_exposure', 'security_tips', 'bob_help']);
@@ -396,7 +400,7 @@ const cantNote = (kind) => {
   if (HAND_OF[kind]) return `Bob can't do that yet: the ${HANDS[HAND_OF[kind]].label} Hand is off. Turn it on in Settings, Hands.`;
   return 'Bob can\'t do that on this replicant matrix yet.';
 };
-const DIDNT = { diagram: 'draw the diagram', picture: 'make a picture', show: 'make a picture', video: 'make a clip', music: 'make the music', sound: 'make the sound', file: 'save the file', app: 'do it in the app' };
+const DIDNT = { todo: 'put it on the to-do list', reminder: 'set the reminder', diagram: 'draw the diagram', picture: 'make a picture', show: 'make a picture', video: 'make a clip', music: 'make the music', sound: 'make the sound', file: 'save the file', app: 'do it in the app' };
 
 // When Bob stops. null: all good. { nudge, groups }: one hidden message to Bob and the tool groups he needs
 // for it (the lead gives him one more go, once per turn). { note }: a line the app shows the user, in its own
@@ -469,6 +473,10 @@ export function afterTurn(ctx = {}, replyText) {
     } else if (kind === 'diagram') {
       met = actions.some((a) => ok(a) && a.name === 'make_diagram') || outputs.some((o) => o.type === 'diagram');
       tried = actions.some((a) => a.name === 'make_diagram');
+    } else if (kind === 'todo' || kind === 'reminder') {
+      const name = TOOL_OF[kind];
+      met = actions.some((a) => ok(a) && a.name === name && /^(?:add|write)$/.test(String(parse(a.args).action || '')));
+      tried = actions.some((a) => a.name === name);
     } else if (kind === 'app') {
       met = actions.some((a) => ok(a) && APP_TOOLS.has(a.name));
       tried = actions.some((a) => APP_TOOLS.has(a.name) || a.name === 'app_look');
@@ -478,7 +486,9 @@ export function afterTurn(ctx = {}, replyText) {
       if (!usable(tool)) {
         if (!said) notes.push(cantNote(kind));
       } else {
-        const how = kind === 'file' ? 'Call write_file now (save_spreadsheet for a table)'
+        const how = kind === 'todo' ? 'Call notice_board now with action add'
+          : kind === 'reminder' ? 'Call reminders now with action add, the local time and what it is about'
+          : kind === 'file' ? 'Call write_file now (save_spreadsheet for a table)'
           : kind === 'app' ? 'Call open_app now (then app_look and app_act), each shows a card to click'
           : `Call ${tool} now with a good prompt`;
         push(`${who} asked for ${WHAT[kind]} ("${ex.words}"), but nothing did it this turn. ${how}. Don't describe it instead of doing it.`, GROUPS_OF[kind]);
@@ -487,6 +497,10 @@ export function afterTurn(ctx = {}, replyText) {
       }
     }
   }
+
+  // 2b. Several things asked in one message (job-steps.js), and fewer tool steps ran: one more go, only when nothing
+  // above already asks for one and the answer isn't a question back.
+  if (!nudges.length && ctx.stepsAsked?.length && !/\?\s*$/.test(said)) { const n = stepsNudge(ctx.stepsAsked, actions, who); if (n) push(n); }
 
   // 3. The claims' nudge (the note was worked out above).
   if (claims.length) {

@@ -1,4 +1,4 @@
-// Quick notes (Settings, How Bob works: "Let Bob take quick notes"; off unless the user turns it on).
+// Quick notes (Settings, How Bob works: "Quick notes"; off unless the user turns it on).
 //
 // "Note: ring the vet on Friday" in any chat, from the window, the phone app, Discord DMs or Telegram, and Bob writes
 // it down straight away with the date and time. He can list them, find them by a word or #tag, and take one away.
@@ -7,7 +7,7 @@
 //   - Nothing is deleted for good: a note Bob takes away goes to inn\archive\quick-notes-removed.md first.
 //   - No service, no internet, nothing runs in the background. Off = Bob doesn't see the tool at all.
 //
-// "Let Bob notice what's worth noting" (smartNotes, under quick notes; off unless the user turns it on as well):
+// "Auto notes" (smartNotes, under quick notes; off unless the user turns it on as well):
 //   - he notes on his own what a chat shows is worth keeping (a decision, a number, a plan, a name, a link, an idea),
 //     says "📝 Noted: ..." in his reply every time, and his notes end in "(noticed by Bob)";
 //   - a note without a #tag gets the project or topic the chat is on, e.g. #Starfall;
@@ -157,7 +157,7 @@ export function notesTool(brain) {
       }, ['action']);
     },
     async run({ action, text, number, noticed }) {
-      if (!notesOn(cfg)) return 'Quick notes are off. They\'re in Settings, How Bob works: "Let Bob take quick notes".';
+      if (!notesOn(cfg)) return 'Quick notes are off. They\'re in Settings, How Bob works: "Quick notes".';
       if (action === 'add') {
         const smart = smartNotesOn(cfg);
         const own = smart && (noticed === true || noticed === 'true');

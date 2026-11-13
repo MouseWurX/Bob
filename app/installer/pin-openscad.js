@@ -1,4 +1,4 @@
-// Pins the opt-in OpenSCAD download (Let Bob make 3D parts) to one exact version with its sha256 (src/openscad-pins.json).
+// Pins the opt-in OpenSCAD download (3D parts) to one exact version with its sha256 (src/openscad-pins.json).
 // Run on a computer with internet: node installer/pin-openscad.js <version>
 //   e.g. node installer/pin-openscad.js 2021.01
 // It takes the official files from files.openscad.org: the Windows 64-bit zip and the Linux AppImages (x86-64 and

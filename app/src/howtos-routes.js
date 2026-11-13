@@ -21,7 +21,7 @@ export async function howtosRoute({ req, res, p, isLocal, cfg, brain, body, send
     const b = await body(req);
     return send(res, 200, { ok: brain.howtos.remove(String(b.id || '')) });
   }
-  // 1.5.144 🧰 Tools and how-tos Bob made (src/own-kit.js): the list, Delete (to the shelf, 30 days), Put back,
+  // 1.5.144 🧰 Tools and how-tos (src/own-kit.js): the list, Delete (to the shelf, 30 days), Put back,
   // Delete for good. Delete and Put back work from a paired phone too; Delete for good only on this PC.
   if (req.method === 'GET' && p === '/api/own-kit') return send(res, 200, ownKitView(cfg, brain));
   if (req.method === 'POST' && (p === '/api/own-kit/delete' || p === '/api/own-kit/restore' || p === '/api/own-kit/purge')) {

@@ -175,7 +175,7 @@ export class Brain {
     };
     this.netCards.start();
     this.lendDeps = { currentSession, quickBrain: (b) => { const sb = sessionBrains(b.cfg); const m = sb.small && runnable(b, sb.small) ? sb.small : (b.cfg.engine === 'llamacpp' ? null : sb.small); return m ? { model: m, cpu: false, ctx: Math.min(chatBrain(b.cfg).ctx || 32768, 32768) } : null; }, reviewBrain: (b) => reviewBrainOf(b),
-      // 1.5.185 Check harder jobs for my other Bobs: the Review brain (Review slot, else Deep thinking, else main), on the card.
+      // 1.5.185 Review for other Bobs: the Review brain (Review slot, else Deep thinking, else main), on the card.
       checkBrain: (b) => { const r = reviewBrain(b.cfg); return r && (runnable(b, r.model) || b.cfg.engine !== 'llamacpp') ? { model: r.model, cpu: false, ctx: 32768, think: 'high' } : null; } };
     this.tools = buildTools(cfg);
     this.refs = new RefShelf(cfg);
@@ -211,13 +211,13 @@ export class Brain {
     this.tools.show_plan = showPlanTool(this); // 1.5.78: the plan card before big jobs (plan.js), only with its setting on
     this.tools.ask_together = askTogetherTool(this); // 1.5.42: every OK a job needs on one card (together.js) // the toolbox (toolbox.js): groups added only when a job needs them
     this.tools.pick_session = pickSessionTool(this); // 1.5.43: Bob changes session himself (auto-session.js)
-    Object.assign(this.tools, watchTools(this)); // Let Bob's Quick brain see the big job (meanwhile.js), only with its setting on
+    Object.assign(this.tools, watchTools(this)); // Quick brain sees the job (meanwhile.js), only with its setting on
     this.watch = new JobWatch(); // the job on the big brain, as the app sees it (meanwhile.js); never saved
-    this.tools.edit_my_message = editOwnTool(this); // Let Bob fix his own messages (edit-own.js), only with its setting on
-    this.tools.take_note = notesTool(this); // Let Bob take quick notes (notes.js), only with its setting on
-    this.tools.spending_sheet = receiptTool(this); // 🧾 Keep a spending sheet from receipts (receipts.js), only with its setting on
-    this.tools.find_in_documents = findDocsTool(cfg, { keeper: () => this.housekeeper }); // Read and search my documents (my-docs.js), only with its setting on
-    this.tools.run_in_sandbox = sandboxTool(this); // Let Bob work things out in a sandbox (sandbox-code.js), only with its setting on
+    this.tools.edit_my_message = editOwnTool(this); // Edit his own messages (edit-own.js), only with its setting on
+    this.tools.take_note = notesTool(this); // Quick notes (notes.js), only with its setting on
+    this.tools.spending_sheet = receiptTool(this); // 🧾 Receipt tracker (receipts.js), only with its setting on
+    this.tools.find_in_documents = findDocsTool(cfg, { keeper: () => this.housekeeper }); // Read and search documents (my-docs.js), only with its setting on
+    this.tools.run_in_sandbox = sandboxTool(this); // Code sandbox (sandbox-code.js), only with its setting on
     // 🧰 More tools (more-tools.js): each one only while its own switch is on (offTools hides the rest).
     const on = (k) => () => moreOn(this.cfg, k);
     Object.assign(this.tools, {
@@ -228,8 +228,8 @@ export class Brain {
       check_spelling: spellTool(cfg, on('spellCheck')), meeting_notes: meetingTool(cfg, on('meetingNotes')),
       compare_files: compareTool(cfg, on('compareFiles'))
     });
-    this.tools.make_3d_part = parts3dTool(this); // Let Bob make 3D parts (parts3d.js), only with its setting on
-    this.tools.make_3d_model = model3dTool(this); // Let Bob turn pictures into 3D models (model3d.js), only with its setting on
+    this.tools.make_3d_part = parts3dTool(this); // 3D parts (parts3d.js), only with its setting on
+    this.tools.make_3d_model = model3dTool(this); // Pictures to 3D models (model3d.js), only with its setting on
     // 1.5.91: the Set it up card for something missing or switched off. Listed only while something is (offTools).
     this.tools.offer_setup = {
       schema: { type: 'function', function: { name: 'offer_setup', description: 'When {{USER}}\'s request needs a missing part or a setting that is off: show a one-button card that sets it up, then carry on. For pictures, video, music and sound call make_image, make_video, make_music or make_sound instead.', parameters: { type: 'object', properties: { what: { type: 'string', enum: [...Object.keys(NEEDS), ...SWITCH_KEYS], description: 'What to set up. voice = read replies aloud, hearing = hear {{USER}} talk, workshop = ComfyUI, hand:<id> = a Hand that is off (hand:packs = tool packs).' } }, required: ['what'] } } },

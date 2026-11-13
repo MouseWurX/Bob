@@ -181,3 +181,37 @@ export async function cardPausePoint({ url, dir = AGENT, onPause = async () => {
   log(`Bob is done: carrying on (paused ${Math.round((now() - t0) / 1000)} s).`);
   return now() - t0;
 }
+
+// The surgery data rule (the owner, 13 Nov: "while doing the surgery, we may want to be careful with results we keep, at
+// least for training data"). Anything made under surgery (dials, masks, keep lists, a direction, a changed expert count)
+// carries its exact condition and is for analysis and benchmarks only; only stock answers feed lessons and odds. Evil-check
+// and fiction-check answers are evidence only, never training data, not even as the wrong side. Returns why a row may not
+// be trained on, or '' when it may.
+const STOCK = new Set(['', 'stock', 'none', 'off']);
+const EVIDENCE = /(^|[^a-z])(evil|fiction)[-_ ]?(check|test|probe)s?([^a-z]|$)/i;
+export function notForTraining(row = {}) {
+  const cond = row.condition === undefined || row.condition === null ? '' : String(typeof row.condition === 'object' ? JSON.stringify(row.condition) : row.condition).trim();
+  if (!STOCK.has(cond.toLowerCase())) return `made under surgery (${cond.slice(0, 80)})`;
+  for (const k of ['surgery', 'dials', 'mask', 'keepList', 'direction']) if (row[k] && (typeof row[k] !== 'object' || Object.keys(row[k]).length)) return `made under surgery (${k})`;
+  if (row.evidence === true) return 'evidence only';
+  for (const k of ['pack', 'check', 'source', 'bench']) if (EVIDENCE.test(String(row[k] || ''))) return `${String(row[k]).slice(0, 40)}: evidence only`;
+  return '';
+}
+
+// What every saved answer row carries for the surgery data rule, so no stamping is needed afterwards: "condition" is
+// "stock", or what was changed (--condition "keep75-n8" names a cut brain or live dials the script can't see; experts
+// per word away from the brain's own adds "n<count>"; a direction or kv override in --extra adds "direction" / "kv"),
+// and --evidence marks evil- and fiction-check runs. A brain served elsewhere (--url) without --condition can't be told
+// apart, so its rows get no condition and a warning says so.
+export function answerTags(o = {}, { n, own, remote = Boolean(process.env.LAB_URL) } = {}) {
+  const set = String(o.condition ?? '').trim();
+  const parts = set && set !== 'stock' ? [set] : [];
+  if (n && own && Number(n) !== Number(own)) parts.push(`n${n}`);
+  const extra = String(o.extra || '');
+  if (/--control-vector/.test(extra)) parts.push('direction');
+  if (/--override-kv/.test(extra)) parts.push('kv');
+  const ev = o.evidence ? { evidence: true } : {};
+  if (!parts.length && remote && !set) return ev;
+  return { condition: parts.join(' ') || 'stock', ...ev };
+}
+export const tagsNote = (tags) => (tags.condition === undefined ? 'answers carry no condition: pass --condition stock (or what was changed) for a served brain' : `answers marked condition "${tags.condition}"${tags.evidence ? ', evidence only' : ''}`);

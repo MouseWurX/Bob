@@ -48,7 +48,7 @@ const mkCfg = (name) => {
   check('229 a file that stays held is copied over instead', fs.readFileSync(f, 'utf8') === 'fifth' && fs.readdirSync(path.dirname(f)).length === 1);
   // The places that used to write in place.
   const tools = read('../src/tools.js'), notes = read('../src/notes.js'), vault = read('../src/vault.js'), util = read('../src/util.js');
-  check('229 write_file, edit_file, the notice board and the spreadsheet use saveFile', /saveFile\(file, content \?\? ''\)/.test(tools) && /saveFile\(file, out\)/.test(tools) && /saveFile\(file, content\);\n\s+return 'Notice board saved\./.test(tools) && /saveFile\(file, '\\ufeff'/.test(tools));
+  check('229 write_file, edit_file, the notice board and the spreadsheet use saveFile', /saveFile\(file, content \?\? ''\)/.test(tools) && /saveFile\(file, out\)/.test(tools) && /saveFile\(file, content\);\n\s+return `Notice board saved:/.test(tools) && /saveFile\(file, lines\.join/.test(tools) && /saveFile\(file, '\\ufeff'/.test(tools));
   check('229 reminders, notes, memory, chats and every JSON save go through it', /saveJson\(remindersFile/.test(tools) && /saveFile\(notesFile\(cfg\)/.test(notes) && /saveFile\(file, out\);/.test(vault) && /saveFile\(file, JSON\.stringify/.test(util));
   check('229 no in-place writeFileSync is left for those', !/fs\.writeFileSync\(file, (content|out)\)/.test(tools) && !/writeFileSync\(path\.join\(cfg\.dataDir, 'reminders\.json'\)/.test(tools));
 }

@@ -1,4 +1,4 @@
-// "Save chats as files and bring chats in" (Nov 2026, src/chat-files.js, public/topics.js): a chat saved as Markdown,
+// "Export and import chats" (Nov 2026, src/chat-files.js, public/topics.js): a chat saved as Markdown,
 // JSON or PDF, and chats exported from ChatGPT, Claude or Open WebUI brought in as chats of their own. Off unless
 // turned on. Made-up chats in a temporary folder only.
 import fs from 'node:fs';
@@ -27,7 +27,7 @@ const T0 = Date.UTC(2026, 10, 5, 15, 0);
 // ---------- Off unless turned on ----------
 check('starts off, only true turns it on', !chatFilesOn({}) && !chatFilesOn({ chatFiles: 'yes' }) && chatFilesOn({ chatFiles: true }));
 check('saved as a setting, cleaned to true or false', SETTING_KEYS.includes('chatFiles') && mergeSettings({}, { chatFiles: 'true' }).chatFiles === false && mergeSettings({}, { chatFiles: true }).chatFiles === true && !mergeSettings({}, {}).chatFiles);
-check('on the Welcome list as an off-by-default switch', WANTS.some((w) => w.key === 'chatFiles' && w.setting === 'Save chats as files and bring chats in'));
+check('on the Welcome list as an off-by-default switch', WANTS.some((w) => w.key === 'chatFiles' && w.setting === 'Export and import chats'));
 const server = read('src/server.js');
 check('the server saves the switch and refuses while off', server.includes("typeof b.chatFiles === 'boolean'") && (server.match(/if \(!chatFilesOn\(cfg\)\) return send\(res, 403/g) || []).length === 3);
 check('bringing chats in is only on this replicant matrix itself', /\/api\/chats\/bring-in'\)\) \{\s*if \(!isLocal\)/.test(server));
@@ -141,7 +141,7 @@ check('Past chats has Share with a preview and two saves', ['data-share', 'Save 
 const topics = read('public/topics.js'), cellar = publicText('cellar.js');
 check('Past chats has Save as Markdown, JSON and PDF links, Bring in chats and a Turn it on button', topics.includes('/api/chats/save?id=') && ['Markdown', 'JSON', 'PDF', 'Bring in chats…', 'Bring in the ticked chats', 'data-chatfileson', 'Tick all', 'Cancel'].every((w) => topics.includes(w)));
 check('the file is sent as it is with the page\'s header', /fetch\('\/api\/chats\/look', \{ method: 'POST', headers: \{ 'content-type': 'application\/octet-stream', 'x-bob': '1'/.test(topics));
-check('the switch is in Settings, How Bob works', cellar.includes("sswitch('chatFiles', settings.chatFiles === true, 'Save chats as files and bring chats in'"));
+check('the switch is in Settings, How Bob works', cellar.includes("sswitch('chatFiles', settings.chatFiles === true, 'Export and import chats'"));
 const help = HELP.find((e) => e.id === 'chat-files'), faq = HELP.find((e) => e.id === 'faq-chat-files'), gl = HELP.find((e) => e.id === 'glossary');
 check('Help says how, for ChatGPT, Claude and Open WebUI, and where it works', help && ['ChatGPT', 'Claude', 'Open WebUI', 'Markdown', 'JSON', 'PDF', 'Windows, Mac, Linux', 'Android', 'off unless you turn it on', 'Share…', 'Save as a picture'].every((w) => help.html.includes(w)));
 check('Bring in imports MAX_CHATS where it uses it (it was used without an import, so picking chats failed)', /import \{[^}]*\bMAX_CHATS\b[^}]*\} from '\.\/chat-files\.js'/.test(server) && server.includes('.slice(0, MAX_CHATS)'));

@@ -92,7 +92,7 @@ const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\
   const ok = await sendCarry({ lenders: lenders(200, { ok: true, id: 'carried-1', messages: 2 }), msgs, title: 'T', from: 'PC', address: 'laptop:7777' });
   check('sending goes through the Bob-Net door', ok.ok && ok.to === 'Laptop' && calls[0][1] === '/api/bob-net/carry' && calls[0][2] === 'POST');
   const off = await sendCarry({ lenders: lenders(409, { off: true }), msgs, address: 'laptop:7777' });
-  check('a Bob with it off says how to turn it on', /Laptop/.test(off.error) && /Take chats from my other Bobs/.test(off.error));
+  check('a Bob with it off says how to turn it on', /Laptop/.test(off.error) && /Accept chats/.test(off.error));
   const old = await sendCarry({ lenders: lenders(404, {}), msgs, address: 'laptop:7777' });
   check('an older Bob is asked to update', /older Bob/.test(old.error));
   check('a Bob not on your list is never called', (await sendCarry({ lenders: lenders(200, {}), msgs, address: 'stranger:1' })).error && calls.length === 3);

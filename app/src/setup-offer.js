@@ -21,8 +21,8 @@ export const NEEDS = {
   voice: { slot: 'speech', cats: ['speech'], say: 'read replies aloud', what: 'a voice' },
   hearing: { slot: 'voice', cats: ['voice'], say: 'hear you talk', what: 'ears (speech to text)' },
   ffmpeg: { engine: 'ffmpeg', say: 'save things in other file types (MP3, JPG, WebM...)', what: 'FFmpeg, the converter' }, // 1.5.95 Save as
-  openscad: { engine: 'openscad', say: 'make 3D parts', what: 'OpenSCAD, the 3D part maker' }, // Let Bob make 3D parts (parts3d.js)
-  model3d: { engine: 'model3d', say: 'turn pictures into 3D models', what: 'the 3D workshop (TRELLIS.2, about 22 GB)' } // Let Bob turn pictures into 3D models (model3d.js)
+  openscad: { engine: 'openscad', say: 'make 3D parts', what: 'OpenSCAD, the 3D part maker' }, // 3D parts (parts3d.js)
+  model3d: { engine: 'model3d', say: 'turn pictures into 3D models', what: 'the 3D workshop (TRELLIS.2, about 22 GB)' } // Pictures to 3D models (model3d.js)
 };
 // The tool that does each job, so a call to it can be turned into an offer.
 export const TOOL_NEED = { make_image: 'pictures', make_video: 'video', make_music: 'music', make_sound: 'sfx' };
@@ -42,7 +42,7 @@ export const HAND_CAN = {
   mcp: 'work inside apps like Unreal Engine or Blender through their MCP add-on'
 };
 export function switchFor(cfg, key) {
-  if (key === 'web') return cfg.webSearch === true ? null : { key, name: 'Let Bob search the web', where: 'Settings, How Bob works', what: 'look things up on the internet', privacy: 'Only the search words and page addresses leave your replicant matrix (your computer).', patch: { webSearch: true } };
+  if (key === 'web') return cfg.webSearch === true ? null : { key, name: 'Web search', where: 'Settings, How Bob works', what: 'look things up on the internet', privacy: 'Only the search words and page addresses leave your replicant matrix (your computer).', patch: { webSearch: true } };
   if (key === 'workshop') return cfg.workshop?.enabled === true ? null : { key, name: 'Advanced workshop (ComfyUI)', where: 'Settings, Other apps', what: 'run your ComfyUI workflows', patch: { workshop: { ...(cfg.workshop || {}), enabled: true } } };
   const m = /^hand:(\w+)$/.exec(key || '');
   if (m && HANDS[m[1]]) {

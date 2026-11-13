@@ -13,7 +13,7 @@
 //   or wanted something it wasn't allowed. Answer it, and the next run carries on (Claude Code picks up its own
 //   session; the others get a short note of what they said last).
 // - Hand work on: "Pass to" sends one agent's answer to another with your note, and "When done, pass to" chains them.
-//   With "Let agents hand work to each other" on, each agent is told once, in its own task, how to ask another agent
+//   With "Agent hand-offs" on, each agent is told once, in its own task, how to ask another agent
 //   and wait for the answer (agent-ask.mjs). At most MAX_HOPS hand-ons in a row, so two agents can't ping-pong forever.
 // - Accounts: each agent can use its own sign-in folder (Settings: "Account"), so two people can each use their own
 //   Claude, Codex or Gemini account on one computer at the same time. Each person's account only runs their agents.

@@ -322,11 +322,11 @@ const reset = () => { ran.length = 0; events.length = 0; seen.length = 0; slow =
     const lines = []; const logWas = brain.log; brain.log = function (k, t) { lines.push(`${k}: ${t}`); return logWas.call(this, k, t); };
     await run('what is the weather in Lisbon tomorrow?');
     brain.runTool = rt;
-    const fix = events.find((e) => e.type === 'correction' && /^Not yet: Let Bob search the web is still off/.test(e.text || ''));
+    const fix = events.find((e) => e.type === 'correction' && /^Not yet: Web search is still off/.test(e.text || ''));
     check('said but not done: the reply that says web search is on gets a short correction', Boolean(fix), JSON.stringify(events.filter((e) => e.type === 'correction')));
     const saved = brain.session('main').findLast((m) => m.role === 'assistant' && /Web search is now on/.test(String(m.content || '')));
     check('the correction is kept with the reply', /Not yet:/.test(saved?.correction || ''), JSON.stringify(saved));
-    check('the tool result says plainly it is not on yet', /^Not on yet: "Let Bob search the web" stays off until/.test(String(brain.session('main').findLast((m) => m.role === 'tool')?.content || '')));
+    check('the tool result says plainly it is not on yet', /^Not on yet: "Web search" stays off until/.test(String(brain.session('main').findLast((m) => m.role === 'tool')?.content || '')));
     // PC check, round 3: pressing Switch it on carried the job on and wrote its chat line in the logbook a second time.
     const card = events.find((e) => e.type === 'offer-setup' && e.carryOn);
     const saveWas = brain.saveHands; brain.saveHands = () => {};
@@ -372,7 +372,7 @@ fs.rmSync(tmp, { recursive: true, force: true });
   check('switched off: the loop works the old way', brain.plainLoop === true && brain.helpOff('mend') === true);
   if (was === undefined) delete cfg.toolHelp; else cfg.toolHelp = was;
   const cellar = publicText('cellar.js');
-  check('the switch is in Settings, on unless turned off', /sswitch\('toolHelp', settings\.toolHelp !== false, 'Better tool calling', 'On unless you turn it off\./.test(cellar));
+  check('the switch is in Settings, on unless turned off', /sswitch\('toolHelp', settings\.toolHelp !== false, 'Better tool calling', '/.test(cellar));
 }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

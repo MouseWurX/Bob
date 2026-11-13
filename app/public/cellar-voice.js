@@ -89,11 +89,11 @@ export function createVoiceParts(now) {
     return `<div class="voice-settings">${voiceHtml()}</div>
       ${prox('ear', 'Listen for "Hey Bob"', 'Only while this window is open. Same as Listen in the left menu.')}
       ${prox('speak', 'Read replies aloud', 'Same as Read aloud in the left menu.')}
-      ${sswitch('talkOver', settings.talkOver === true, 'Talk over Bob', 'Off unless you turn it on. While Bob reads aloud, the microphone stays open: start speaking and he stops and listens. "Stop" on its own just stops him; anything else is sent as your next message. Headphones work best, so he doesn\'t hear himself. Only while this window is open.')}
-      ${sswitch('talkWithBob', settings.talkWithBob === true, 'Talk with Bob', 'Off unless you turn it on. Adds 🗣 next to the 🎙: press it and just talk, hands-free. Each time you pause, what you said goes to Bob, and he says a short answer out loud (the whole answer is in the chat). Talk while he speaks and he stops and listens. Say "goodbye" or press ✕ to end. Uses my own hearing and voice, here, for free.')}
+      ${sswitch('talkOver', settings.talkOver === true, 'Talk over Bob', 'The mic stays open while Bob reads aloud: speak and he stops and listens. "Stop" alone just stops him; anything else is your next message. Headphones work best.')}
+      ${sswitch('talkWithBob', settings.talkWithBob === true, 'Talk with Bob', 'Adds 🗣 beside 🎙 for hands-free talk. Each pause sends what you said, and Bob speaks a short answer (the whole one is in the chat). Say "goodbye" or press ✕ to end. Runs here, free.')}
       ${talkCloudHtml()}
-      ${sswitch('readDocs', settings.readDocs === true, 'Read documents aloud', 'Off unless you turn it on. A document in the side panel gets 🔊 Read aloud: Play, Pause, Back, Next and a speed, in Bob\'s voice (or this computer\'s voice). He remembers where you stopped in each document, on this computer.')}
-      ${sswitch('netVoices', settings.netVoices === true, 'A voice per Bob', 'Off unless you turn it on. A reply another of your Bobs thought (a borrowed brain) is read aloud in his own voice, so you can hear who\'s talking. Pick each Bob\'s voice below, or leave it to Bob, who picks one from his name. Needs the Kokoro voice; with another voice every Bob sounds the same.')}
+      ${sswitch('readDocs', settings.readDocs === true, 'Read documents aloud', 'A document in the side panel gets 🔊 Read aloud: Play, Pause, Back, Next and speed. Bob remembers where you stopped.')}
+      ${sswitch('netVoices', settings.netVoices === true, 'A voice per Bob', 'A reply from a borrowed brain is read in that Bob\'s own voice. Pick each voice below, or Bob picks one from the name. Needs the Kokoro voice.')}
       ${netVoicesHtml()}
       <p class="muted">Hearing you and the other voices are on the <button type="button" class="link" data-tab="speech">💬 Voice &amp; conversation</button> page.</p>`;
   }

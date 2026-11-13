@@ -1,4 +1,4 @@
-// "Count what Bob did each week" (Settings, This replicant matrix, 🩺 Health and history). Off unless turned on.
+// "Weekly stats" (Settings, This replicant matrix, 🩺 Health and history). Off unless turned on.
 // While it's on, Bob counts, per day: chats he answered in, jobs (replies) he did, words he wrote, and how long his
 // brain spent working on them, per brain. Only numbers are kept (inn\bob\weekly.json, the last 8 weeks); never what
 // was said, never which chat. The "What Bob did this week" page shows the last 7 days beside the 7 before.

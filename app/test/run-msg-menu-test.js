@@ -77,7 +77,7 @@ const fakeBrain = (cfg = {}, extra = {}) => {
 }
 {
   const b = fakeBrain({ chatRedo: false });
-  check('the switch off stops Edit and Delete, and says where it is', /Show Try again, Edit and Delete in the chat" is off/.test(msgMenu(b, 'main', 'delete', { id: 'a1' }).error || '') && b.msgs.length === 7);
+  check('the switch off stops Edit and Delete, and says where it is', /Try again, Edit and Delete" is off/.test(msgMenu(b, 'main', 'delete', { id: 'a1' }).error || '') && b.msgs.length === 7);
 }
 {
   const b = fakeBrain({}, { queue: [{ sessionId: 'main', state: 'working' }] });
@@ -118,7 +118,7 @@ const fakeBrain = (cfg = {}, extra = {}) => {
   check('phone: Edit on Bob\'s words saves here, nothing sent', /function editBob\(node\)/.test(www) && /m\.edited = Date\.now\(\); saveChats\(\);/.test(www));
   check('phone: no style attribute set from code (its CSP)', !/setAttribute\('style'/.test(www));
   check('the phone screen (iPhone) is the same copy', read('public/phone/phone.js') === www);
-  check('phone Settings names Delete', /Show Try again, Edit and Delete in the chat/.test(read('android/app/src/main/assets/www/index.html')));
+  check('phone Settings names Delete', /Try again, Edit and Delete/.test(read('android/app/src/main/assets/www/index.html')));
   const ph = read('android/app/src/main/assets/www/help.js');
   check('phone Help, glossary and FAQ', /The … menu: Try again, Edit, Copy, Delete/.test(ph) && /<dt>… menu<\/dt>/.test(ph) && /Can I get a deleted message back\?/.test(ph));
 }
@@ -131,8 +131,8 @@ const fakeBrain = (cfg = {}, extra = {}) => {
   check('an FAQ says a deleted message is gone for good', faq && /for good/.test(faq.html));
   const all = HELP.map((h) => h.html).join('\n');
   check('the glossary has it', /<dt>Message menu \(…\)<\/dt>/.test(all));
-  check('Settings names Delete on the switch', /sswitch\('chatRedo', settings\.chatRedo !== false, 'Show Try again, Edit and Delete in the chat'/.test(publicText('cellar.js')));
-  check('the user guide has it', /\*\*Show Try again, Edit and Delete in the chat\*\*/.test(read('docs/USER-GUIDE.md')));
+  check('Settings names Delete on the switch', /sswitch\('chatRedo', settings\.chatRedo !== false, 'Try again, Edit and Delete'/.test(publicText('cellar.js')));
+  check('the user guide has it', /\*\*Try again, Edit and Delete\*\*/.test(read('docs/USER-GUIDE.md')));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

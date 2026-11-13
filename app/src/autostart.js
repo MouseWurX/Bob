@@ -1,4 +1,4 @@
-// "Launch Bob on start-up": off unless the user turns it on. Bob.exe uses Windows' own login items
+// "Launch at start-up": off unless the user turns it on. Bob.exe uses Windows' own login items
 // (the same list as Task Manager > Startup apps), so it needs no admin rights and no scripts.
 import fs from 'node:fs';
 import path from 'node:path';

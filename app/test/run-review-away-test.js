@@ -1,5 +1,5 @@
 // #30: reviews over Bob-Net. When the reviewer has no room beside the main brain, a paired Bob with a good enough Review
-// brain (and "Take jobs from my other Bobs" on) checks the work; failing that, Bob swaps as before. Real lendChat behind
+// brain (and "Accept jobs" on) checks the work; failing that, Bob swaps as before. Real lendChat behind
 // a pretend door, the hello fields, the pick (quality floor, a Bob that couldn't do one), and Brain.reviewAway.
 import { brainText, publicText } from './source-text.js';
 import http from 'node:http';
@@ -25,7 +25,7 @@ check('helloFor without one leaves it out', !('review' in helloFor(hb, { why: ''
 // ---------- when he'll do a review ----------
 const rb = (over = {}) => ({ cfg: { share: { takeJobs: true }, remote: { enabled: true, passcode: '12345678' }, ...over }, turns: new Map(), queue: [], lending: null });
 const rdeps = { currentSession, reviewBrain: () => ({ model: 'gpt-oss:20b', ctx: 32768 }) };
-check('reviews need "Take jobs from my other Bobs"', reviewRefusal(rb({ share: {} }), rdeps) === 'off');
+check('reviews need "Accept jobs"', reviewRefusal(rb({ share: {} }), rdeps) === 'off');
 check('and the door open', reviewRefusal(rb({ remote: { enabled: false } }), rdeps) === 'off');
 check('never while gaming', reviewRefusal(rb({ session: 'light' }), rdeps) === 'gaming');
 check('not while busy with his own work', reviewRefusal({ ...rb(), turns: new Map([['t', 1]]) }, rdeps) === 'busy');
@@ -142,7 +142,7 @@ check('...and Borrow a brain', (await Brain.prototype.quickReviewer.call({ ...qb
 check('...and asks with the same quality floor', (await Brain.prototype.quickReviewer.call(qb, {}, []))?.min === 4);
 check('...never for a guest job or pictures', (await Brain.prototype.quickReviewer.call(qb, { guest: true }, [])) === null && (await Brain.prototype.quickReviewer.call(qb, {}, ['p'])) === null);
 const cellar = publicText('cellar.js');
-check('Settings has the switch, off unless set, and saves it', /sswitch\('netReview', settings\.netReview === true, 'Ask my other Bobs for a quick second look'/.test(cellar) && /dataset\.set === 'netReview'/.test(cellar));
+check('Settings has the switch, off unless set, and saves it', /sswitch\('netReview', settings\.netReview === true, 'Review by my other Bobs'/.test(cellar) && /dataset\.set === 'netReview'/.test(cellar));
 
 // ---- 1.5.181: what the two-Bob trial found ----
 check('a draft that is only a tool step written out ("*fetch_page with same url and part: 3*") is not an answer', nonAnswer('*fetch_page with same url and part: 3*', ['fetch_page']) && nonAnswer('', []) && nonAnswer('search_web: bob-net', []));
@@ -200,8 +200,8 @@ check('an empty answer from another Bob (a check, or a borrowed reply) counts as
   // Tests A and C: a corrected answer that's a near-copy, or brings in things Bob never looked up, doesn't replace his.
   const draft = 'Bob-Net links your own Bobs over Tailscale so they can share replies, jobs and graphics cards. 1. Pair them. 2. Turn on Take jobs.';
   check('a near-copy of Bob\'s answer is set aside (Test C)', weakFix(draft, 'Needs fixes:\n- no list.\nCorrected answer:\nBob-Net links your own Bobs over Tailscale so they can share replies, jobs and graphics cards. 1. Pair them. 2. Turn on Take jobs!', 'tool text') === 'copy');
-  check('new claims from nowhere Bob looked are set aside when he looked things up (Test A)', weakFix(draft, 'Needs fixes:\nCorrected answer:\nBob-Net is a hypothetical concept, a theoretical decentralised blockchain network proposal.', 'Bob-Net: pair your Bobs over Tailscale, Take jobs from my other Bobs, Lend my graphics card') === 'ungrounded');
-  check('a correction drawn from what Bob read stands', weakFix(draft, 'Needs fixes:\nCorrected answer:\nBob-Net links your Bobs over Tailscale; Lend my graphics card pools cards, and Borrow a brain lets one think for another.', 'Lend my graphics card ... Borrow a brain ... pools cards ... another') === null);
+  check('new claims from nowhere Bob looked are set aside when he looked things up (Test A)', weakFix(draft, 'Needs fixes:\nCorrected answer:\nBob-Net is a hypothetical concept, a theoretical decentralised blockchain network proposal.', 'Bob-Net: pair your Bobs over Tailscale, Accept jobs, Lend my GPU') === 'ungrounded');
+  check('a correction drawn from what Bob read stands', weakFix(draft, 'Needs fixes:\nCorrected answer:\nBob-Net links your Bobs over Tailscale; Lend my GPU pools cards, and Borrow a brain lets one think for another.', 'Lend my GPU ... Borrow a brain ... pools cards ... another') === null);
   check('with no tools this turn, a real correction stands as before', weakFix('The capital of Australia is Sydney, the largest city.', 'Needs fixes:\nCorrected answer:\nThe capital of Australia is Canberra, chosen as a compromise between Sydney and Melbourne.', '') === null);
   const mm = mootMinutes([{ kind: 'check', verdict: 'fix', weak: 'copy', who: 'HandheldBob (over Bob-Net)' }], 'Bobert');
   check('the minutes name who checked and say Bob\'s answer stays', /HandheldBob \(over Bob-Net\) checked: needs fixes/.test(mm) && /Result: kept Bob's answer\. HandheldBob \(over Bob-Net\)'s points are above as a note: the corrected answer was nearly the same as Bob's\./.test(mm), mm);

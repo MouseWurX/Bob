@@ -4,6 +4,30 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.222
+
+Settings are shorter and clearer. The cube is my picture everywhere, my pixel looks move to games, the passcode lock turns off with your passcode, and tools are worded for each kind of brain.
+
+### Changed
+
+- **Settings are shorter and easier to read.** About 135 switches have shorter names (Profiles for other people is now **Users**, for one), and most descriptions are now one or two sentences, shown right under the name. Long panel explanations are cut down. SCUT and SUDDAR explain themselves where you see them. The side list is regrouped, with new **Chat and jobs** and **Fun** groups. Nothing you've set changes: same switches, same defaults. Help, the glossary and the phone use the new names.
+
+- **The cube is my picture everywhere outside games.** My pixel looks, and **Make your own look**, move off the Style page and become my **game look**, picked in Adventure, Characters, Party. Settings, Personality's button is now **Change his game look** and opens that page. Your pick is kept, so old chats, adventures and Journey saves look the same.
+
+- **Turning the passcode lock off takes the passcode that turned it on.** Untick it, type your passcode, and it's off. If **Lock my chats and memory** is on, the same step puts your chats and memory back to plain files first, so nothing is lost. A wrong passcode changes nothing, and the lock stays on. Before, you had to switch Lock my chats and memory off first, as a separate step.
+
+### Fixed
+
+- **Tools are worded for each kind of brain** (Settings, How Bob works, **Tool wording for each brain family**; on to start with). GPT-OSS brains get short "Use when" lines for each tool. Qwen brains see exactly what they did before. Tool names and what they take stay the same for every brain.
+- **The tools forgive more.** "Add" works on the notice board. A reminder with no time goes to the to-do list. Common wordings are understood, and every result says exactly what changed. If you asked for a to-do or a reminder and none was set, I get one more go at it.
+- **When one message asks for two or more things, I do them all.** I note what was asked before I start, and if fewer things got done than were asked, I get one more go. Tools I make for myself check what they're given, and a test of one that gives back nothing readable is turned down.
+- **Lab lesson sets leave out answers made under surgery**, and the evil-check and fiction-check answers, when cleaning a set or making right-vs-wrong pairs, so they never teach a brain.
+- **Your notice board never loses items to a rewrite.** Several to-dos at once go on together, and a rewrite that would take items off is refused unless that's what was asked. Before, a small brain could wipe the board while adding to it.
+- **"Read notes.txt" finds the file** in the folders I can read, and when I'm not allowed somewhere, I'm told where those folders are.
+- **The Brains page fits.** Its bar labels are never cut off, and on a phone nothing runs off the edge.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.221
 
 A busy graphics card is respected, the cube keeps showing a load, and songs say what they're doing.
@@ -181,16 +205,6 @@ Bob-Net without Tailscale, and switches that say why.
 - **Settings on a phone:** the Simple cards wrap to the screen instead of running off the side.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android. The firewall button is Windows only.
-
-## 1.5.212
-
-A quick fix for the new look.
-
-### Fixed
-
-- **Pages scroll in Lamplight again, first-time setup included.** In Lamplight, a page that opens in the room (first-time setup, Settings, Style, Get models) grew taller than the window instead of filling the room, so anything below the fold couldn't be reached, and first-time setup couldn't be finished at some window sizes. The page now fills the room under the top bar and scrolls inside it, at any window size and on a phone.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
 
 ## Older versions
 

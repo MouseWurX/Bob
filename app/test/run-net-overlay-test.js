@@ -1,4 +1,4 @@
-// Nov 13 (the owner): Bob-Net icons under Bob, "like a discord overlay" (src/net-overlay.js, public/net-overlay.js).
+// Nov 13 (the owner): Bob-Net icons, "like a discord overlay" (src/net-overlay.js, public/net-overlay.js).
 // Off unless turned on; an icon only for a Bob on Bob-Net right now or an agent you added; a chat from a Bob's icon goes
 // to that Bob and never runs here; guest mode keeps only Web search. Nothing is added to a brain's start-up words.
 // Fakes only: no network, no real Bobs.
@@ -142,9 +142,9 @@ check('every mood is one the icon knows', ['none', 'loading', 'thinking', 'reply
 // ---- setting, Help, glossary, FAQ ----
 {
   const pages = read('public/cellar-pages.js'), help = read('public/help-content.js');
-  check('the switch is in Settings, Bob-Net, off', pages.includes("sswitch('netOverlay', settings.netOverlay === true, 'Bob-Net icons under Bob', 'Off unless you turn it on."));
+  check('the switch is in Settings, Bob-Net, off', pages.includes("sswitch('netOverlay', settings.netOverlay === true, 'Bob-Net icons', '"));
   check('saved as a plain on or off', read('src/config.js').includes("out.netOverlay = out.netOverlay === true") && read('src/config.js').includes("'netOverlay'"));
-  check('Help, glossary and FAQ', help.includes("id: 'net-overlay'") && help.includes('<dt>Guest mode</dt>') && help.includes("id: 'faq-net-overlay'") && help.includes("set('Bob-Net icons under Bob', 'Off'"));
+  check('Help, glossary and FAQ', help.includes("id: 'net-overlay'") && help.includes('<dt>Guest mode</dt>') && help.includes("id: 'faq-net-overlay'") && help.includes("set('Bob-Net icons', 'Off'"));
   check('Help says where it doesn\'t work yet', /Android app's own screens don't have it yet/.test(help));
   check('nothing in a brain\'s start-up words', !/net-overlay|netOverlay/.test(read('src/brain-prompting.js')) && !/netOverlay/.test(read('src/prompts.js')));
 }

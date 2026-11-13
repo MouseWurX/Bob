@@ -1,4 +1,4 @@
-// "Show documents in the side panel" (Nov 2026): Word, Excel, PowerPoint, OpenDocument, e-book, Rich Text and PDF
+// "Documents in the side panel" (Nov 2026): Word, Excel, PowerPoint, OpenDocument, e-book, Rich Text and PDF
 // files open in the side panel as their words, sheets or slides (src/files.js docPeek, public/doc-view.js), and a
 // PDF as its pages where the window can draw them (/api/file/pdf). Off unless turned on. Made-up files only.
 import fs from 'node:fs';
@@ -114,7 +114,7 @@ cfg.docView = true;
   check('OpenDocument slides too', o.slides.length === 1 && o.slides[0].lines[0] === 'Hello there' && o.slides[0].notes === 'Wave');
 
   const off = docHtml({ ok: true, off: true, ext: '.docx' });
-  check('switched off: says where the switch is and offers to turn it on', /Show documents in the side panel/.test(off) && /Settings, How Bob works/.test(off) && /data-docview-on/.test(off));
+  check('switched off: says where the switch is and offers to turn it on', /Documents in the side panel/.test(off) && /Settings, How Bob works/.test(off) && /data-docview-on/.test(off));
   const err = docHtml({ ok: true, ext: '.doc', error: 'An old .doc file <b>' });
   check('a reason it can\'t show is escaped', /An old \.doc file &lt;b&gt;/.test(err));
   const pdfJ = { ok: true, ext: '.pdf', name: 'Letter.pdf', text: 'Dear Sam', path: pdf };
@@ -136,8 +136,8 @@ cfg.docView = true;
   const viewer = read('public/viewer.js');
   check('the side panel hands documents to doc-view.js', /import \{ isDocName, drawDoc \} from '\.\/doc-view\.js'/.test(viewer) && /isDocName\(t\.name\)/.test(viewer));
   const cellar = publicText('cellar.js');
-  check('Settings, How Bob works has the switch, off by default', /sswitch\('docView', settings\.docView === true, 'Show documents in the side panel'/.test(cellar) && /dataset\.set === 'docView'/.test(cellar));
-  check('the Welcome list offers it', WANTS.some((w) => w.key === 'docView' && w.setting === 'Show documents in the side panel'));
+  check('Settings, How Bob works has the switch, off by default', /sswitch\('docView', settings\.docView === true, 'Documents in the side panel'/.test(cellar) && /dataset\.set === 'docView'/.test(cellar));
+  check('the Welcome list offers it', WANTS.some((w) => w.key === 'docView' && w.setting === 'Documents in the side panel'));
   const main = read('electron/main.cjs');
   check('Bob\'s window can draw PDF pages', /nodeIntegration: false, plugins: true \}/.test(main));
   const ids = new Set(HELP.map((e) => e.id));

@@ -101,7 +101,7 @@
       .replace(/\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]{1,500})\)/g, (_, t, u) => `<a href="#" data-link="${u}">${t}</a>`)
       .replace(/(^|[\s(])(https?:\/\/[^\s<)]{3,500})/g, (_, pre, u) => `${pre}<a href="#" data-link="${u}">${u}</a>`);
   }
-  // Formulas (math-core.js) are drawn while Show maths as formulas is on: each one is held aside as a placeholder
+  // Formulas (math-core.js) are drawn while Render maths is on: each one is held aside as a placeholder
   // so the escaping and the bold and italics can't touch it, then put back.
   function markdown(text, opts = {}) {
     const out = [];

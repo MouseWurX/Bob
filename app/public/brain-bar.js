@@ -1,7 +1,7 @@
 // Keep Bob light (1.5.2): the "Free memory when Bob is idle" switch and the memory label at the top of the chat.
 // On (default): nothing stays on the graphics card while Bob is quiet; typing loads his small brain again.
 // Off: the small brain stays loaded. Big brains load for their job and go right after, either way.
-// Same setting as Advanced, Speed & memory, "Free memory after Bob has been quiet for" (Never = off).
+// Same setting as Advanced, Speed & memory, "Unload brains after" (Never = off).
 const $ = (id) => document.getElementById(id);
 
 export function createBrainBar({ post, note }) {

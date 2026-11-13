@@ -19,10 +19,10 @@ import { historyKeep, COMPACT_KEEP } from './brain-words.js';
 
 // Methods of the Brain class, put on it in its main file with the same rules as the methods written inside it.
 export const chatParts = {
-  // forText (helpers' jobs): with "Remember only what fits" on, the lines that fit the job, matched by words.
+  // forText (helpers' jobs): with "Relevant memories only" on, the lines that fit the job, matched by words.
   memory(forText = '') {
     try {
-      const day = expiryOn(this.cfg) ? today(this.cfg) : ''; // "Let memories run out": a line past its day isn't read
+      const day = expiryOn(this.cfg) ? today(this.cfg) : ''; // "Expiring memories": a line past its day isn't read
       const m = memoryForPrompt(readText(this.cfg.memoryFile), this.cfg, day);
       // 1.5.79: with recall on, the instructions keep only the [always] lines; the rest come per message (recall()).
       if (recallOn(this.cfg)) {
@@ -54,7 +54,7 @@ export const chatParts = {
     this.lastRecall = { at: Date.now(), session: sessionId, project, lines: fresh.length, of: lines.length, by: vec ? 'meaning' : 'words' };
     return recallText(fresh, { project, user: this.cfg.userName || 'the user' });
   },
-  // "Keep project memories to their project" (memory-more.js): a tool that worked on a file in one project's folder
+  // "Per-project memories" (memory-more.js): a tool that worked on a file in one project's folder
   // makes that the chat's project, so its memory bank comes back on the next message. Off: nothing changes.
   noteWhereWorking(sessionId, args) {
     if (!sessionId || !whereOn(this.cfg)) return '';
@@ -131,7 +131,7 @@ export const chatParts = {
       const hk = this.housekeeper;
       const recall = recallOn(this.cfg);
       let vec = null, topicProject = '';
-      // 1.5.79: "Remember only what fits" embeds the message too (same 1.5 s limit; words are matched if it's slow).
+      // 1.5.79: "Relevant memories only" embeds the message too (same 1.5 s limit; words are matched if it's slow).
       const wantVec = hk && (hkSettings(this.cfg).enabled || recall) && !gaming(this.cfg);
       if (hk && hk.topics.load().topics.length) {
         if (wantVec) vec = (await raceTimeout(hk.embed([asQuery(embedModel(this.cfg), text)]), 1500, null))?.[0] || null;
@@ -141,7 +141,7 @@ export const chatParts = {
       } else if (recall && wantVec) vec = (await raceTimeout(hk.embed([asQuery(embedModel(this.cfg), text)]), 1500, null))?.[0] || null;
       this.recallVec = { text, vec }; // the turn's vector, reused by other matches this turn (how-tos)
       if (recall) { const mem = await this.recallMemories(sessionId, text, { vec, topicProject }); if (mem) parts.push(mem); }
-      // Let Bob notice what's worth noting (notes.js): the quick notes that fit, and the project for a note's #tag.
+      // Auto notes (notes.js): the quick notes that fit, and the project for a note's #tag.
       if (smartNotesOn(this.cfg)) {
         this.notesProject = activeProject(this.cfg, text, { sticky: (sessionId && this.memProject?.get?.(sessionId)) || '', topicProject }).project || topicProject || '';
         const fit = notesPrompt(this.cfg, text, { project: this.notesProject });

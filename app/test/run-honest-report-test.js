@@ -41,7 +41,7 @@ check('182 curly apostrophes read like plain ones', unbackedClaims('J\u2019ai su
 check('182 French PC action claim', claimsPcActionFrEs('J\'ai ouvert le Bloc-notes pour toi.') && claimsPcAction('J\'ai ouvert le Bloc-notes pour toi.'));
 check('182 Spanish PC action claim', claimsPcAction('He abierto la ventana del programa.'));
 check('182 a French "if" is not a claim', !unbackedClaims('Si j\'ai supprimé le fichier, il est dans la corbeille.', []).length);
-const web = [{ key: 'web', name: 'Let Bob search the web', where: 'Settings, How Bob works' }];
+const web = [{ key: 'web', name: 'Web search', where: 'Settings, How Bob works' }];
 check('182 "la recherche web est maintenant activée" is corrected', saidNotDone('La recherche web est maintenant activée.', { off: web })?.kind === 'switch');
 check('182 "la búsqueda web ya está activada" is corrected', saidNotDone('La búsqueda web ya está activada.', { off: web })?.kind === 'switch');
 check('182 "j\'ai envoyé le message" with no send is corrected', saidNotDone('J\'ai envoyé le message.', { off: [] })?.kind === 'sent');

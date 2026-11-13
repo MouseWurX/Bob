@@ -1,4 +1,4 @@
-// Plan card (1.5.78): with "Show Bob's plan before big jobs" on (off unless turned on), a big job's steps go on one
+// Plan card (1.5.78): with "Plan before big jobs" on (off unless turned on), a big job's steps go on one
 // card before it starts, with the OKs those steps need ticked on the same card. Go ahead / Change something / Not now.
 // A big job started without a plan waits, Bob is asked for one, and if he still doesn't, the system makes the card.
 import fs from 'node:fs';
@@ -50,9 +50,9 @@ const call = (s) => ({ function: { name: s.tool, arguments: JSON.stringify(s.arg
   const { fake: off } = makeBob({ plan: false });
   const { fake: on } = makeBob();
   check('show_plan is not offered while off, and is while on', !off.usable('show_plan') && on.usable('show_plan'));
-  check('Bob can tell someone whether it is on', settingsNow({ planFirst: true }).includes("Show Bob's plan before big jobs: on") && settingsNow({}).includes("Show Bob's plan before big jobs: off"));
+  check('Bob can tell someone whether it is on', settingsNow({ planFirst: true }).includes("Plan before big jobs: on") && settingsNow({}).includes("Plan before big jobs: off"));
   const cellar = publicText('cellar.js'), server = read('src/server.js');
-  check('the switch is on the everyday Settings page, off unless turned on', /sswitch\('planFirst', settings\.planFirst === true, 'Show Bob\\'s plan before big jobs', keep\('Off unless you turn it on/.test(cellar));
+  check('the switch is on the everyday Settings page, off unless turned on', /sswitch\('planFirst', settings\.planFirst === true, 'Plan before big jobs', keep\('/.test(cellar));
   check('the closed panel shows it', /Plans before big jobs: \$\{onoff\(settings\.planFirst === true\)\}/.test(cellar));
   check('the server saves and shows it', /typeof b\.planFirst === 'boolean'/.test(server) && /planFirst: cfg\.planFirst === true/.test(server));
   check('the server passes the change the person typed', /answerApproval\(id, allow, rows, items, note\)/.test(server));
@@ -142,7 +142,7 @@ const call = (s) => ({ function: { name: s.tool, arguments: JSON.stringify(s.arg
   check('with the setting off, nothing is ever held', await planGate(f4, [...big, ...big], c4) === null);
 }
 
-// ---------- With "Let Bob work without asking" on ----------
+// ---------- With "Work without asking" on ----------
 {
   put('f/one.txt');
   const { fake, ctx, cards } = makeBob({ free: true });

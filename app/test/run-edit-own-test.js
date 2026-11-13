@@ -1,4 +1,4 @@
-// Let Bob fix his own messages (src/edit-own.js): off unless turned on, only his own recent words in the chat he's in,
+// Edit his own messages (src/edit-own.js): off unless turned on, only his own recent words in the chat he's in,
 // the first wording kept, the window, Discord DMs, Telegram and the phone told, and Help, glossary and FAQ there.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -153,15 +153,15 @@ const run = async (text) => { const { jobId } = brain.enqueue('main', text); awa
   check('Telegram gets the fix', /case 'edited':/.test(read('src/telegram.js')));
   check('the phone app gets the fix', /ev\.type === 'edited'/.test(read('android/app/src/main/assets/www/phone.js')));
   const cellar = publicText('cellar.js');
-  check('the switch is in How Bob works, off unless turned on', /sswitch\('editOwn', settings\.editOwn === true, 'Let Bob fix his own messages', 'Off unless you turn it on/.test(cellar));
+  check('the switch is in How Bob works, off unless turned on', /sswitch\('editOwn', settings\.editOwn === true, 'Edit his own messages', '/.test(cellar));
   const server = read('src/server.js');
   check('the server saves and shows it', /typeof b\.editOwn === 'boolean'/.test(server) && /editOwn: cfg\.editOwn === true/.test(server));
-  check('Bob can read the setting in his own Help', /Let Bob fix his own messages/.test(read('src/self-help.js')));
+  check('Bob can read the setting in his own Help', /Edit his own messages/.test(read('src/self-help.js')));
   const entry = HELP.find((e) => e.id === 'edit-own'), faq = HELP.find((e) => e.id === 'faq-edit-own'), gl = HELP.find((e) => e.id === 'glossary');
   check('Help in Bob\'s voice', entry && /I change my earlier message/.test(entry.html) && /Windows, Mac, Linux and the Android app/.test(entry.html));
   check('an FAQ', faq?.group === 'FAQ' && /\?$/.test(faq.title));
   check('a glossary entry', /<dt>Edited<\/dt>/.test(gl.html));
-  check('in the settings inventory', /Let Bob fix his own messages/.test(read('docs/SETTINGS-INVENTORY.md')));
+  check('in the settings inventory', /Edit his own messages/.test(read('docs/SETTINGS-INVENTORY.md')));
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

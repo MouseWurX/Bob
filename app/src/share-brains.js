@@ -56,7 +56,7 @@ export function cleanAddress(a, defPort = 7777) {
   return isTailscaleIp(name) || (name.length <= 253 && TS_NAME.test(name)) ? `${name}:${port}` : null;
 }
 
-// 1.5.213 Also over the home network (remote.homeNet, off unless switched on): a plain home address like
+// 1.5.213 Home network access (remote.homeNet, off unless switched on): a plain home address like
 // "172.16.1.20:7777", but only one on a network this replicant matrix is on itself (same subnet), never wider.
 // No Tailscale needed. mine: [{ address, netmask }] (share-card.js homeIps), passed in so tests use fakes.
 export function cleanHomeAddress(a, mine = homeIps(), defPort = 7777) {
@@ -70,11 +70,11 @@ export function cleanHomeAddress(a, mine = homeIps(), defPort = 7777) {
   return mine.some((q) => sameNet(q.address, ip, q.netmask)) ? `${ip}:${port}` : null;
 }
 export const homeOn = (cfg) => homeNetOn(cfg?.remote); // 1.5.214: on unless switched off (home network first)
-// A Bob's address: Tailscale always; a home address too while "Also over the home network" is on here.
+// A Bob's address: Tailscale always; a home address too while "Home network access" is on here.
 export const cleanBobAddress = (cfg, a, { home = homeIps } = {}) => cleanAddress(a) || (homeOn(cfg) ? cleanHomeAddress(a, home()) : null);
 export const BAD_ADDRESS = (cfg) => homeOn(cfg)
   ? 'That isn\'t an address I can use. It looks like 192.168.x.y:7777 (on this home network), 100.x.y.z:7777 or name.something.ts.net:7777.'
-  : 'That isn\'t a Tailscale address. It looks like 100.x.y.z:7777 or name.something.ts.net:7777. For a plain home network, turn on "Also over the home network" first.';
+  : 'That isn\'t a Tailscale address. It looks like 100.x.y.z:7777 or name.something.ts.net:7777. For a plain home network, turn on "Home network access" first.';
 
 const cleanName = (n) => String(n || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 40);
 
@@ -86,13 +86,13 @@ export function shareView(cfg) {
     lend: s.lend === true,
     takeJobs: s.takeJobs === true,
     passAlong: s.passAlong === true, // 1.5.123 Pass my Bob-Net along (src/bob-net-party.js)
-    lendCard: s.lendCard === true, // Lend my graphics card (src/share-card.js), off unless switched on
-    lendFreesOwn: s.lendFreesOwn === true, // Nov 13: Let a lend unload my brain, off unless switched on
-    lendChecks: s.lendChecks === true, // 1.5.185 Check harder jobs for my other Bobs (src/bob-net-check.js)
-    cardsEverywhere: s.cardsEverywhere === true, // Show my OK cards on my other Bobs (src/net-cards.js), off unless switched on
+    lendCard: s.lendCard === true, // Lend my GPU (src/share-card.js), off unless switched on
+    lendFreesOwn: s.lendFreesOwn === true, // Nov 13: Lending may unload my brain, off unless switched on
+    lendChecks: s.lendChecks === true, // 1.5.185 Review for other Bobs (src/bob-net-check.js)
+    cardsEverywhere: s.cardsEverywhere === true, // OK cards on all Bobs (src/net-cards.js), off unless switched on
     spread: ['toobig', 'big'].includes(s.spread) ? s.spread : 'off', // Spread big brains over my other Bobs' cards
     // Bob-Net mode: More Bobs (the default: each Bob runs his own brain) or Bigger Bobs (they pool their cards).
-    homeNet: s.homeNet !== false, // Bigger Bobs: Use the home network first (src/share-card.js), Tailscale as the backup
+    homeNet: s.homeNet !== false, // Bigger Bobs: Home network first (src/share-card.js), Tailscale as the backup
     scut: s.scut === true, // SCUT, the fast link for Bigger Bobs (src/share-card.js), off unless switched on
     scutMbps: scutChosen({ share: s }) ? Number(s.scutMbps) : 'auto', // 1.5.214: Auto (1000 on a cable, 100 on Wi-Fi)
     scutSeal: s.scutSeal !== false, // Seal SCUT packets (src/scut-seal.js): on unless switched off
@@ -177,7 +177,7 @@ export function lendRefusal(brain, { currentSession, quickBrain }) {
 }
 
 // #30: reviews over Bob-Net. A paired Bob checks the work on his own Review brain when this one has no room for it beside
-// the main brain. Only with "Take jobs from my other Bobs" on there (a review is a job), never while he's gaming or busy.
+// the main brain. Only with "Accept jobs" on there (a review is a job), never while he's gaming or busy.
 // A review is several short calls, and the next check often follows within minutes: his Review brain stays loaded
 // that long instead of the chat brain coming straight back (two-Bob trial, the Go: the chat brain woke after 90 s
 // and the next check was 0.3 GB short).
@@ -294,7 +294,7 @@ export class Lenders {
   constructor(cfg, { fetchFn = globalThis.fetch, now = Date.now, firstWordMs = FIRST_WORD_MS, quietMs = QUIET_MS, firstWordMaxMs = FIRST_WORD_MAX_MS, reviewWaitMs = REVIEW_WAIT_MS, home = homeIps, checkFirstWordMaxMs = CHECK_FIRST_WORD_MAX_MS, trip = tcpTrip } = {}) {
     this.checkFirstWordMaxMs = checkFirstWordMaxMs;
     this.cfg = cfg; this.fetch = fetchFn; this.now = now; this.firstWordMs = firstWordMs; this.quietMs = quietMs; this.firstWordMaxMs = firstWordMaxMs; this.reviewWaitMs = reviewWaitMs; this.home = home;
-    // Also over the home network: address -> his door on our home network (from his hello), and when it last failed.
+    // Home network access: address -> his door on our home network (from his hello), and when it last failed.
     this.near = new Map(); this.nearDown = new Map();
     // Two Bobs can share more than one network (Wi-Fi and a cable between them): the quickest is used. nearMine: address ->
     // this Bob's own addresses on the shared networks, quickest first; nearTimed: when that was last timed.
@@ -353,7 +353,7 @@ export class Lenders {
   }
 
   async call(bob, path, { method = 'GET', body, signal, timeout = HELLO_MS } = {}) {
-    // Over his home-network door first when he has one (Also over the home network); if that doesn't answer, over
+    // Over his home-network door first when he has one (Home network access); if that doesn't answer, over
     // Tailscale, and the home network isn't tried again for a while.
     const near = this.nearOf(bob);
     if (near) {
@@ -423,7 +423,7 @@ export class Lenders {
       const j = await r.json().catch(() => ({}));
       out = r.ok && j.lend === true && !j.busy ? { ok: true, brain: String(j.brain || '').slice(0, 60), device: String(j.device || '').slice(0, 20) } : { ok: false, why: j.busy || (r.status === 401 ? 'passcode not accepted' : r.status === 403 ? 'door closed' : `answered ${r.status}`) };
       // 1.5.72: what this Bob says he can do. ctx: his quick brain's room; speed: words a second he's seen lately;
-      // jobs: whole jobs he takes (only with "Take jobs from my other Bobs" on there), and how busy his queue is.
+      // jobs: whole jobs he takes (only with "Accept jobs" on there), and how busy his queue is.
       if (r.ok) Object.assign(out, cleanAbilities(j), { ms, up: true, links: cleanLinks(j.links) }); // up: he answered (the Bob-Net icons show him)
       if (r.ok) { await this.learnNear(bob, j.home); this.remember(bob, j); }
     } catch (e) { out = { ok: false, why: /passcode|tries/.test(e.message) ? e.message : 'not reachable' }; }
@@ -598,7 +598,7 @@ export function cleanAbilities(j) {
 export const bobNetRooms = (L) => (L?.bobs?.() || []).map((b) => ({ b, s: L.state?.get(b.address) || {} }))
   .filter(({ s }) => s.room && s.device !== 'phone').map(({ b, s }) => ({ name: b.name, vramGB: s.room.vramGB || 0, ramGB: s.room.ramGB || 0 }));
 
-// The hello a desktop lender gives: quick replies (lend) and, with "Take jobs from my other Bobs" on, the whole jobs he
+// The hello a desktop lender gives: quick replies (lend) and, with "Accept jobs" on, the whole jobs he
 // can really do on this computer right now. Never a job he'd have to fake: no picture model, no pictures.
 export function helloFor(brain, { why, quick, can, version, label, webOn, bigBrain, name = '', room = null, review = null, check = {} }) {
   const takesJobs = brain.cfg.share?.takeJobs === true && doorOpen(brain.cfg);
@@ -610,15 +610,15 @@ export function helloFor(brain, { why, quick, can, version, label, webOn, bigBra
     device: 'computer', version, takesJobs, jobs, jobsBusy: takesJobs ? guestRefusal(brain) : '', queue: brain.queue?.filter?.((j) => j.state === 'waiting' || j.state === 'working').length || 0,
     name, passAlong: brain.cfg.share?.passAlong === true, // 1.5.123: for the party in Now running
     ...(LOOK_ID_RE.test(String(brain.cfg.look || '')) ? { look: brain.cfg.look } : {}), // his avatar, for the avatars on the others' Bob-Net lists
-    lendCard: brain.cfg.share?.lendCard === true && doorOpen(brain.cfg), // Lend my graphics card (src/share-card.js)
+    lendCard: brain.cfg.share?.lendCard === true && doorOpen(brain.cfg), // Lend my GPU (src/share-card.js)
     scut: brain.cfg.share?.scut === true, // SCUT, the fast link for a lent card (src/share-card.js)
     ...(review?.model ? { review: { brain: label(review.model), ctx: review.ctx || 0, gb: review.gb || 0 } } : {}), // #30: checks work for his other Bobs
-    // Also over the home network (off unless switched on): where this Bob's door is on the home network too.
+    // Home network access (off unless switched on): where this Bob's door is on the home network too.
     // 1.5.214 ts: his Tailscale door too, kept by a Bob paired at home as the fallback for when he's out.
     ts: doorOpen(brain.cfg) ? tailscaleIps().map((ip) => `${ip}:${brain.cfg.port}`).slice(0, 2) : [],
     home: homeOn(brain.cfg) && doorOpen(brain.cfg) ? doorIps().map((m) => `${m.address}:${brain.cfg.port}`).slice(0, 4) : [],
     ...(linksHello(brain.linksCache?.peek?.()) ? { links: linksHello(brain.linksCache.peek()) } : {}), // which kinds of link this Bob has (src/links.js), for the other Bob's Check links
-    ...check, // 1.5.185 Check harder jobs for my other Bobs (src/bob-net-check.js checkHello)
+    ...check, // 1.5.185 Review for other Bobs (src/bob-net-check.js checkHello)
     ...(room ? { room } : {}) // 1.5.137: graphics card and memory in GB, for the other Bob's Brain catalogue
   };
 }

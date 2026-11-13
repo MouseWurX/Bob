@@ -111,7 +111,7 @@ const size = (step) => JSON.stringify(step.tools).length;
 
 // ---------- The old way, as a setting ----------
 {
-  check('"Give Bob all his tools at once" is off by default', cfg.allTools !== true);
+  check('"Send all tools" is off by default', cfg.allTools !== true);
   saveSettings(cfg, { allTools: 'yes' });
   check('junk can\'t switch it on', cfg.allTools === false);
   saveSettings(cfg, { allTools: true });
@@ -129,7 +129,7 @@ const size = (step) => JSON.stringify(step.tools).length;
   check('hats still get their own tool lists (tinker can edit)', brain.toolSchemas(['list_folder', 'read_file', 'search_files', 'edit_file']).length === 4);
   // ask_together (1.5.41) isn't in a group: it comes along with any group whose tools ask for an OK.
   check('ask_together comes along once a group that asks for OKs is added', !brain.frontDeskTools(new Set()).some((t) => t.function?.name === 'ask_together') && brain.frontDeskTools(new Set(['documents'])).some((t) => t.function?.name === 'ask_together'));
-  // show_plan (1.5.78) isn't in a group either: it is always there while "Show Bob's plan before big jobs" is on.
+  // show_plan (1.5.78) isn't in a group either: it is always there while "Plan before big jobs" is on.
   check('show_plan comes along only while its setting is on', !brain.frontDeskTools(new Set()).some((t) => t.function?.name === 'show_plan') && (() => { brain.cfg.planFirst = true; const on = brain.frontDeskTools(new Set()).some((t) => t.function?.name === 'show_plan'); brain.cfg.planFirst = false; return on; })());
   // look_at_job and pass_note (meanwhile.js) come along only in a quick reply beside a job, like show_plan with its setting.
   check('every non-core tool is in exactly one group', (() => { const g = groupsFor({ usable: () => true, cfg }); const all = Object.values(g).flatMap((x) => x.tools); return Object.keys(brain.tools).filter((n) => !CORE.includes(n) && n !== 'ask_together' && n !== 'show_plan' && n !== 'look_at_job' && n !== 'pass_note').every((n) => all.filter((x) => x === n).length === 1); })());

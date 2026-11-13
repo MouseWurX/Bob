@@ -193,7 +193,7 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
   // press on the purchase card, which shows the plan's own caps and brains, read back from the saved file.
   function startHtml() {
     const live = fv.live;
-    const sw = `<label class="lab-opt"><input type="checkbox" id="forge-allow" ${fv.allowed ? 'checked' : ''}> <span><strong>Let the Lab start Forge runs</strong><br><span class="muted">Off unless you turn it on. Each run still needs your press on its purchase card, and costs money by the hour on the rental service.</span></span></label>`;
+    const sw = `<label class="lab-opt"><input type="checkbox" id="forge-allow" ${fv.allowed ? 'checked' : ''}> <span><strong>Let the Lab start Forge runs</strong><br><span class="muted">Each run still needs your press on its purchase card, and costs money by the hour on the rental service.</span></span></label>`;
     const runs = fv.saved?.length ? `<fieldset><legend>Your saved plans</legend>${fv.saved.map((id) => `<div class="row"><span>${esc(id)}</span> <button type="button" class="link" data-forgebuy="${esc(id)}" ${fv.allowed && !live?.running ? '' : 'disabled'}>Start on a rented card…</button></div>`).join('')}</fieldset>` : '<p class="muted">Save a plan above, and it shows here to start.</p>';
     const card = buy ? `<div class="setup-offer forge-buy" role="alertdialog" aria-labelledby="forge-buy-h"><strong id="forge-buy-h">Rent a graphics card for ${esc(buy.id)}?</strong>
       <ul>${buy.brains.map((b) => `<li>${esc(b.name)}${b.nickname ? ` (${esc(b.nickname)})` : ''}: ${esc(String(b.keep))} experts per layer, up to ${b.hours} hours of teaching back</li>`).join('')}</ul>

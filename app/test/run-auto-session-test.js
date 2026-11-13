@@ -1,4 +1,4 @@
-// 1.5.41 "Let Bob pick the session" and the 🎮 Gaming button.
+// 1.5.41 "Auto session" and the 🎮 Gaming button.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

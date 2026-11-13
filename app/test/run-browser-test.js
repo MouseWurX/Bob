@@ -28,7 +28,7 @@ check('the Browser hand exists, with its three tools, on every computer', HANDS.
 check('it is off by default and hidden from Bob', cleanHands({}).browser.on === false && BROWSER_TOOLS.every((t) => toolsOff({}).includes(t)));
 check('it needs the master switch too', !handOn({ hands: { enabled: false, browser: { on: true } } }, 'browser') && handOn({ hands: { enabled: true, browser: { on: true } } }, 'browser'));
 check('the Settings line says it is his own window, what the send-out limit allows, and never password fields', /own browser window/.test(HANDS.browser.what) && /search boxes/.test(HANDS.browser.what) && /Never password fields/.test(HANDS.browser.what));
-check('"Bob checks his work with his eyes" is on by default and can be switched off', cleanHands({}).eyesCheck === true && cleanHands({ eyesCheck: false }).eyesCheck === false);
+check('"Visual check" is on by default and can be switched off', cleanHands({}).eyesCheck === true && cleanHands({ eyesCheck: false }).eyesCheck === false);
 
 // ---------- Addresses ----------
 const cfg0 = { port: 7777, userName: 'Sam', hands: { enabled: true, browser: { on: true } } };
@@ -251,9 +251,9 @@ check('the helper is still plain ASCII', !/[^\x00-\x7F]/.test(ps));
 
 // ---------- Help, Settings page, docs ----------
 const help = read('public/help-content.js');
-check('Help has the Browser Hand, the eyes checks under the Apps Hand, a Settings line and a FAQ', /id: 'hands-browser'/.test(help) && /Eyes checks:/.test(help) && /Use a browser', 'Off'/.test(help) && /id: 'faq-browser'/.test(help) && /Bob checks his work with his eyes/.test(help));
+check('Help has the Browser Hand, the eyes checks under the Apps Hand, a Settings line and a FAQ', /id: 'hands-browser'/.test(help) && /Eyes checks:/.test(help) && /Use a browser', 'Off'/.test(help) && /id: 'faq-browser'/.test(help) && /Visual check/.test(help));
 const hp = read('public/hands.js');
-check('the Settings page shows Bob\'s browser and eyes: the window, Forget, and the eyes switch', /browserHtml\(v\.browser/.test(hp) && /data-hbrowserforget/.test(hp) && /data-heyes/.test(hp) && /Forget what Bob's browser knows/.test(hp) && /Bob checks his work with his eyes/.test(hp));
+check('the Settings page shows Bob\'s browser and eyes: the window, Forget, and the eyes switch', /browserHtml\(v\.browser/.test(hp) && /data-hbrowserforget/.test(hp) && /data-heyes/.test(hp) && /Forget what Bob's browser knows/.test(hp) && /Visual check/.test(hp));
 check('the routes take forget and eyesCheck', /\/api\/hands\/browser/.test(read('src/hands-routes.js')) && /eyesCheck/.test(read('src/hands-routes.js')));
 check('the user guide and README mention the browser and the eyes', /### Use a browser/.test(read('docs/USER-GUIDE.md')) && /his own browser window/.test(read('../README.md')));
 check('offer_setup knows hand:browser', SWITCH_KEYS.includes('hand:browser') && /SWITCH_KEYS/.test(brainText()));

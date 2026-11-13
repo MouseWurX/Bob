@@ -1,4 +1,4 @@
-// 1.5.97 Pair with my other Bobs (src/bob-net-pair.js): two Bobs talking through a fake network.
+// 1.5.97 Pair Bobs (src/bob-net-pair.js): two Bobs talking through a fake network.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

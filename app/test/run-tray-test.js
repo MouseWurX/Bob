@@ -1,4 +1,4 @@
-// 1.5.94 "Keep Bob in the tray" and "Use Bob's look as his icon": the icon is drawn from the avatar (any look, including
+// 1.5.94 "Minimise to tray" and "Use Bob's look as his icon": the icon is drawn from the avatar (any look, including
 // one built from parts), the tray menu always has a clear way to close Bob fully, and the brain hands both to the window.
 // 1.5.134: both switches are ON unless turned off (the owner asked for Bob in the tray and his look on the taskbar).
 import fs from 'node:fs';
@@ -66,7 +66,7 @@ function decode(png) {
   delete globalThis.bobWindow;
   check('in a browser (no window program) it does nothing', (() => { try { applyWindowState({ tray: true }); return true; } catch { return false; } })());
   const now = String(settingsNow({ lookIcon: false }));
-  check('Bob can read both switches in his own settings', /Keep Bob in the tray: on/i.test(now) && /Use Bob's look as his icon: off/i.test(now));
+  check('Bob can read both switches in his own settings', /Minimise to tray: on/i.test(now) && /Use Bob's look as his icon: off/i.test(now));
 }
 
 // ---- the window program ----
@@ -88,7 +88,7 @@ function decode(png) {
 // ---- Settings and Help ----
 {
   const cellar = publicText('cellar.js');
-  check('Settings has both switches, each saying it starts on', /sswitch\('tray', settings\.tray !== false, 'Keep Bob in the tray', `On unless you turn it off\./.test(cellar) && /sswitch\('lookIcon', settings\.lookIcon !== false, 'Use Bob\\'s look as his icon', `On unless you turn it off\./.test(cellar));
+  check('Settings has both switches, each saying it starts on', /sswitch\('tray', settings\.tray !== false, 'Minimise to tray', `/.test(cellar) && /sswitch\('lookIcon', settings\.lookIcon !== false, 'Use Bob\\'s look as his icon', `/.test(cellar));
   check('the icon note says a pinned taskbar shortcut is the one thing that may not follow', /pinned to the taskbar may keep the usual icon/.test(cellar));
   check('the tray note says how to close him fully', /pick <strong>Quit Bob<\/strong>/.test(cellar));
   const topic = HELP.find((e) => e.id === 'tray');
@@ -99,7 +99,7 @@ function decode(png) {
   check('the tray topic says both start on and covers the phone', /both on unless you turn them off/.test(topic.html) && /Android doesn't let an app redraw its own icon/.test(topic.html));
   check('the glossary explains the tray and the taskbar icon', /<dt>Tray<\/dt>/.test(HELP.find((e) => e.id === 'glossary').html) && /<dt>Taskbar icon<\/dt>/.test(HELP.find((e) => e.id === 'glossary').html));
   const inv = read('docs/SETTINGS-INVENTORY.md');
-  check('the settings inventory lists both, on', /\| Keep Bob in the tray \| On unless.*\| On \(was Off/.test(inv) && /\| Use Bob's look as his icon \| On unless.*\| On \(was Off/.test(inv));
+  check('the settings inventory lists both, on', /\| Minimise to tray \| On unless.*\| On \(was Off/.test(inv) && /\| Use Bob's look as his icon \| On unless.*\| On \(was Off/.test(inv));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -1,4 +1,4 @@
-// Settings, Other apps: "Let Claude use Bob's hands" (src/claude-door.js). Off unless you turn it on.
+// Settings, Other apps: "Hands for Claude" (src/claude-door.js). Off unless you turn it on.
 // Connect buttons write Bob into the Claude app's or Claude Code's own settings file for you (backed up first, and
 // shown before anything changes), so nobody has to open a terminal.
 import { esc } from './util.js';
@@ -11,7 +11,7 @@ async function api(data) {
 }
 
 export function claudeDoorHtml() {
-  return '<div class="claude-door-box"><strong>Let Claude use Bob\'s hands</strong><p class="muted">Loading…</p></div>';
+  return '<div class="claude-door-box"><strong>Hands for Claude</strong><p class="muted">Loading…</p></div>';
 }
 
 const WHEN = (t) => t ? new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'not yet';
@@ -44,8 +44,8 @@ export async function mountClaudeDoor(box) {
       <p class="muted">Paste that into the app's MCP settings, or give it the address <code>${esc(v.url)}</code> and the header <code>Authorization: Bearer</code> followed by the key.</p>
       <button type="button" data-cd-hide>Done</button></div>` : '';
   const draw = () => {
-    box.innerHTML = `<strong>Let Claude use Bob's hands</strong> <span class="tag">off unless you turn it on</span> <span class="tag">Windows, Mac and Linux</span>
-      <label class="switch"><input type="checkbox" data-cd-on ${v.on ? 'checked' : ''}><span><strong>Let Claude use Bob's hands</strong><br><span class="muted">The Claude app, Claude Code, or another app you give a key, can ask Bob to use his tools on this replicant matrix. Every action shows Bob's OK card here first, even with "Let Bob work without asking" on, and Bob's hard limits still apply. Only apps on this replicant matrix get in.${v.waiting ? ` ${v.waiting} waiting now.` : ''}</span></span></label>
+    box.innerHTML = `<strong>Hands for Claude</strong> <span class="tag">off unless you turn it on</span> <span class="tag">Windows, Mac and Linux</span>
+      <label class="switch"><input type="checkbox" data-cd-on ${v.on ? 'checked' : ''}><span><strong>Hands for Claude</strong><br><span class="muted">The Claude app, Claude Code, or another app you give a key, can ask Bob to use his tools on this replicant matrix. Every action shows Bob's OK card here first, even with "Work without asking" on, and Bob's hard limits still apply. Only apps on this replicant matrix get in.${v.waiting ? ` ${v.waiting} waiting now.` : ''}</span></span></label>
       <p class="muted">What Claude may ask Bob for:</p>
       ${v.groups.map((g) => `<label class="switch"><input type="checkbox" data-cd-group="${esc(g.id)}" ${g.on ? 'checked' : ''}><span><strong>${esc(g.label)}</strong><br><span class="muted">${esc(g.what)} ${g.tools ? `${g.tools} tool${g.tools === 1 ? '' : 's'} switched on in Bob right now.` : 'None switched on in Bob right now.'}</span></span></label>`).join('')}
       ${appRow('desktop')}
@@ -73,12 +73,12 @@ export async function mountClaudeDoor(box) {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.cdPlan) change({ plan: b.dataset.cdPlan }, (r) => { plan = r.plan; made = null; });
-    else if (b.dataset.cdGo) change({ connect: b.dataset.cdGo }, (r) => { plan = null; msg = `Done. ${r.done?.backup ? `The old file is saved as ${r.done.backup}. ` : ''}${APPS[b.dataset.cdGo].after}${v.on ? '' : ' Turn on Let Claude use Bob\'s hands above too.'}`; });
+    else if (b.dataset.cdGo) change({ connect: b.dataset.cdGo }, (r) => { plan = null; msg = `Done. ${r.done?.backup ? `The old file is saved as ${r.done.backup}. ` : ''}${APPS[b.dataset.cdGo].after}${v.on ? '' : ' Turn on Hands for Claude above too.'}`; });
     else if ('cdCancel' in b.dataset) { plan = null; draw(); }
     else if (b.dataset.cdOff) change({ disconnect: b.dataset.cdOff }, (r) => { msg = `Bob is out of ${APPS[b.dataset.cdOff].name} and its key no longer works.${r.done?.backup ? ` The old file is saved as ${r.done.backup}.` : ''}`; });
     else if ('cdKey' in b.dataset) { const name = box.querySelector('[data-cd-name]')?.value.trim(); if (name) change({ newKey: name }, (r) => { made = r.newKey; plan = null; }); else { msg = 'Give the app a name first.'; draw(); } }
     else if ('cdHide' in b.dataset) { made = null; draw(); }
     else if (b.dataset.cdRemove) change({ removeKey: b.dataset.cdRemove }, () => { msg = 'Removed. That key no longer works.'; });
   });
-  try { await load(); } catch (e) { box.innerHTML = `<strong>Let Claude use Bob's hands</strong><p class="muted">${esc(e.message)}</p>`; }
+  try { await load(); } catch (e) { box.innerHTML = `<strong>Hands for Claude</strong><p class="muted">${esc(e.message)}</p>`; }
 }

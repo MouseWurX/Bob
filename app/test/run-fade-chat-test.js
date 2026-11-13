@@ -64,7 +64,7 @@ const chat = () => [
   check('nothing ticked on a new Bob', !/data-hx-fade="on"[^>]*checked/.test(html) && !/data-hx="amnesiaOffer" checked/.test(html));
   check('every value can be set before switching on', /data-hx-fade="num"/.test(html) && /data-hx-fade="unit"/.test(html) && /data-hx-fadepick="5"/.test(html) && /data-hx-fadepick="43200"/.test(html) && /value="delete" data-hx-radio="fadeMode"/.test(html) && /data-hx-amnesiaauto/.test(html) && /value="delete" data-hx-radio="amnesiaMade"/.test(html) && !/disabled/.test(html));
   check('Clear this chat is in Settings too', /data-hx-clearchat/.test(html));
-  check('switches say they are off unless turned on', /^Off unless you turn it on\./.test(LABELS.fadeChat[1]) && /^Off unless you turn it on\./.test(LABELS.amnesiaOffer[1]));
+  check('switch descriptions are short', LABELS.fadeChat[1].length <= 220 && LABELS.amnesiaOffer[1].length <= 220);
 }
 
 // ---------- Turns and what the chat shows ----------

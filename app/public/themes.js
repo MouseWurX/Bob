@@ -154,9 +154,9 @@ function applyLook(style) {
   for (const l of LOOK_IDS) b.classList.toggle(`look-${l}`, l === id);
 }
 
-// 1.5.211: the cube is Bob's picture for everyone. Pixel Bob shows only when picked from 1.5.211 on (avatarKept), so an
-// older pick, made when Pixel Bob was simply the default, doesn't hide the cube.
-export const pixelKept = (style) => style?.avatar === 'pixel' && style?.avatarKept === true;
+// 1.5.211: the cube is Bob's picture for everyone. 1.5.222: always, outside games ("the cube is Bob's style now",
+// the owner). An old Pixel Bob pick stays in the settings file but no longer shows; the pixel look is his game look.
+export const pixelKept = () => false;
 export function applyStyle(style = {}) {
   current = style || {};
   applyTheme(resolve(current));

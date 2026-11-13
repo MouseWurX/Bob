@@ -1,11 +1,11 @@
-// Read and search my documents (Settings, How Bob works; off unless the user turns it on).
+// Read and search documents (Settings, How Bob works; off unless the user turns it on).
 //
 // With it on:
 //   - read_file reads Word, Excel, PowerPoint, OpenDocument, e-book, Rich Text and PDF files as text, with nothing
 //     extra installed (doc-text.js). Off, read_file only reads plain text, as before.
 //   - Bob gets find_in_documents: plain word search through the folders he may read (your Documents, Desktop
 //     and Downloads unless config.json lists others), inside those documents as well as text files and in file names.
-//   - with "Search my documents by meaning" on as well (doc-index.js), find_in_documents also lists files that mean what
+//   - with "Semantic document search" on as well (doc-index.js), find_in_documents also lists files that mean what
 //     was asked in other words, from an index made while Bob is idle. That index is the one thing kept on disk.
 // What it never does: read secret files (keys, passwords, his own settings), look outside the folders he may read,
 // or send anything anywhere. Without meaning search it keeps no index and doesn't run in the background. The search is a walk done when asked,
@@ -41,7 +41,7 @@ function wordsOf(file, st, read = docText) {
   return text;
 }
 export const clearDocCache = () => cache.clear();
-export const forgetWords = (file) => cache.delete(file); // "Keep my documents fresh": a changed file is read again
+export const forgetWords = (file) => cache.delete(file); // "Live document index": a changed file is read again
 
 function snippet(text, ts, n = 200) {
   const s = String(text || '').replace(/\s+/g, ' ');
@@ -84,7 +84,7 @@ export async function walkFiles(cfg, roots, want, visit, { signal, now = () => D
 }
 
 // The words of a file, within the size limits ('' when too big or unreadable). Documents go through the cache.
-// cfg: with an Obsidian vault picked (Search my notes apps too), its notes are read without links' brackets and tags' #.
+// cfg: with an Obsidian vault picked (Search notes apps), its notes are read without links' brackets and tags' #.
 export function readWords(file, st, read, cfg = null) {
   const isDocFile = DOC_EXT.includes(extOf(file));
   if (isDocFile ? st.size > Math.min(LIMITS.docBytes, MAX_DOC_BYTES) : st.size > LIMITS.textBytes) return '';
@@ -108,7 +108,7 @@ export async function findInDocuments(cfg, roots, q, { kind = 'any', signal, now
     if (!ts.every((w) => low.includes(w) || name.includes(w))) return;
     const inText = ts.some((w) => low.includes(w));
     const first = ts.find((w) => low.includes(w));
-    // "Show the page and line" (doc-more.js): where in the file, for the first 10 finds (a PDF is read again for its pages).
+    // "Cite page and line" (doc-more.js): where in the file, for the first 10 finds (a PDF is read again for its pages).
     const place = inText && docPlacesOn(cfg) && hits.length < 10 ? placeOf(full, text, first, readPdf ? { readPdf } : {}) : null;
     hits.push({ file: full, where: inText ? 'inside' : 'name', snippet: inText ? snippet(text, ts.filter((w) => low.includes(w))) : '', place });
   }, { signal, now });
@@ -133,7 +133,7 @@ function meaningHits(list, hits, kind, cfg = null) {
 
 const STOPPED = { hits: 'I stopped at the first 30 finds.', files: `I stopped after ${LIMITS.files} files.`, time: 'I stopped after 25 seconds.', stopped: 'Stopped.' };
 
-// keeper(): the housekeeper, for "Search my documents by meaning" (doc-index.js); leave out for words only.
+// keeper(): the housekeeper, for "Semantic document search" (doc-index.js); leave out for words only.
 export function findDocsTool(cfg, { keeper = () => null } = {}) {
   return {
     schema: fn('find_in_documents', 'Search inside {{USER}}\'s files (Word, Excel, PowerPoint, PDF, e-books, text) and file names, in folders you may read. With meaning search on, also finds files that mean the same in other words. Gives each file with the matching line; open one with read_file.', {
@@ -142,7 +142,7 @@ export function findDocsTool(cfg, { keeper = () => null } = {}) {
       kind: str('Optional: documents, text or any (default).', { enum: ['any', 'documents', 'text'] })
     }, ['words']),
     async run({ words, folder, kind }, ctx = {}) {
-      if (!docToolsOn(cfg)) return 'Searching inside documents is off. It\'s in Settings, How Bob works: "Read and search my documents".';
+      if (!docToolsOn(cfg)) return 'Searching inside documents is off. It\'s in Settings, How Bob works: "Read and search documents".';
       let roots = (cfg.readRoots || []).filter((r) => r !== cfg.innDir);
       if (folder) {
         if (!path.isAbsolute(String(folder))) throw new Error('Give the folder as a full path.');

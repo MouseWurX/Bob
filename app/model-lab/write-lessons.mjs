@@ -11,6 +11,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { opts, locate, checkFree, startServer, chat, appendJsonl, readJsonl, pauseGate } from './common.mjs';
 import { loadBob } from './bob-kit.mjs';
+import { toolSetFor } from '../src/tool-sets.js';
 
 const o = opts({ count: 4000, hours: 0 });
 const L = locate(o);
@@ -141,7 +142,13 @@ console.log(`ideas total: ${ideas.length} (${pics.length} pictures)`);
 
 // ---- stage 2: lessons (Bob's real turns) ----
 const done = new Set(readJsonl(F.lessons).map((l) => l.idea));
-const toolsFor = (loaded) => kit.turn(loaded);
+// Tool sets (src/tool-sets.js): the teacher sees the tools worded for its own family (same names and inputs, so the
+// saved lesson needs no translating). --tool-set off: Bob's own wording (the A/B for tool-score); --tool-set gpt-oss
+// picks one by hand; left out, it's found from the teacher's name.
+const toolSetArg = String(o['tool-set'] || o.toolSet || '');
+const teacherSet = toolSetArg === 'off' ? null : toolSetFor({}, toolSetArg ? '' : `${process.env.LAB_MODEL_NAME || ''} ${path.basename(String(L.model || ''))}`, toolSetArg ? { family: toolSetArg } : {});
+console.log(`tool wording: ${teacherSet ? teacherSet.label : "Bob's own"}`);
+const toolsFor = (loaded) => { loaded.toolSet = teacherSet; return kit.turn(loaded); };
 async function failedResult(name, args) { // the recover/codefix jobs: the first tool call fails, so the student learns to read errors and carry on
   const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `You are the "${name}" tool inside a desktop AI assistant on a Windows PC. It was called with ${JSON.stringify(args).slice(0, 1500)} and it FAILED this time (a realistic failure for this tool: wrong path, file missing, syntax error with a traceback, permission denied, timeout, bad format). Write only the short, realistic error output the tool would return.` }], think: false, max: 400 }); return (msg.content || 'Error: the tool failed.').trim();
 }

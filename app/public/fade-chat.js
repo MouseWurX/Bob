@@ -2,7 +2,7 @@
 //   - With fading on, a line at the top of the chat says how many messages faded, with Show them and 🧹 Clear chat.
 //     Every 20 seconds a turn past its time dims for a moment, then the chat redraws without it.
 //   - Clear chat asks first, in a box with "Delete it for good" (unticked). Also in Settings and Find anything.
-//   - With "Offer Amnesia mode" on, 🫥 Amnesia sits beside Web search. While it's on: a banner at the top of the chat,
+//   - With "Amnesia mode" on, 🫥 Amnesia sits beside Web search. While it's on: a banner at the top of the chat,
 //     a purple edge on the box you type in, and the button reads On. Turning it off shows what he'll forget first.
 // Nothing here adds to what the brain reads.
 import { esc } from './rich.js';

@@ -43,7 +43,7 @@ export function fadeRoute(ctx) {
       if (!local()) return true;
       const b = await body(req).catch(() => ({}));
       if (b.on === true) {
-        if (!amnesiaOffered(cfg)) { send(res, 409, { error: 'Amnesia mode is off in Settings. Turn on "Offer Amnesia mode" in How Bob works, Chat extras.' }); return true; }
+        if (!amnesiaOffered(cfg)) { send(res, 409, { error: 'Amnesia mode is off in Settings. Turn on "Amnesia mode" in How Bob works, Chat extras.' }); return true; }
         try { startAmnesia(cfg); } catch (e) { send(res, 500, { error: `Amnesia mode didn't start: ${e.message}` }); return true; }
         log('Amnesia mode on (your click)');
       } else if (b.on === false) {

@@ -48,7 +48,7 @@ function protect(text, keep, files, math) {
       return put(fileHtml(f)) + tail;
     });
   }
-  // "Show the page and line" (src/doc-more.js): "(page 3)" right after a file is a link that opens it there.
+  // "Cite page and line" (src/doc-more.js): "(page 3)" right after a file is a link that opens it there.
   s = s.replace(/\u0001(\d+)\u0002(\s*)\((page|slide|line|paragraph) (\d{1,6})\)/gi, (m, n, sp, kind, num) => {
     const f = fileAt.get(Number(n));
     if (!f) return m;
@@ -59,7 +59,7 @@ function protect(text, keep, files, math) {
 const restore = (s, keep) => s.replace(/\u0001(\d+)\u0002/g, (m, i) => keep[Number(i)] ?? '');
 
 // Returns { html, files }: files are the mentions in the order they appear (no repeats).
-// opts.math: draws one formula as HTML (tex, display). Left out: KaTeX's, while Show maths as formulas is on and
+// opts.math: draws one formula as HTML (tex, display). Left out: KaTeX's, while Render maths is on and
 // KaTeX has loaded (math-core.js); otherwise formulas stay as the brain wrote them.
 export function renderRich(md, opts = {}) {
   const math = 'math' in opts ? opts.math : globalThis.BobMath?.renderer?.() || null;

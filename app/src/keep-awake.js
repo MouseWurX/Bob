@@ -1,4 +1,4 @@
-// 1.5.211 "Keep this replicant matrix awake while Bob is on Discord" (Settings, Online services; off unless you turn it on).
+// 1.5.211 "Stay awake for Discord" (Settings, Online services; off unless you turn it on).
 // Bob going idle never drops Discord (he only frees the card and memory), but the computer going to sleep would. With
 // this on, while Bob on Discord is connected, one small helper asks the system not to sleep. The screen may still turn
 // off and lock as usual. It stops the moment Discord goes off or Bob closes.

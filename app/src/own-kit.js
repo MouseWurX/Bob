@@ -1,4 +1,4 @@
-// 1.5.144 🧰 Tools and how-tos Bob made: one Settings panel (and one phone screen) for the things Bob makes for
+// 1.5.144 🧰 Tools and how-tos: one Settings panel (and one phone screen) for the things Bob makes for
 // himself: the tools he writes (src/selftools.js, with the Make his own tools Hand) and the how-tos he keeps
 // (src/howtos.js). Both can be looked at and deleted here. Delete asks first, then the thing goes on a shelf
 // (Recently deleted) for 30 days: Put back brings it back as it was, Delete for good drops it now. A deleted tool's

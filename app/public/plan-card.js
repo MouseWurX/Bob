@@ -1,4 +1,4 @@
-// Plan card (1.5.78, src/plan.js): with "Show Bob's plan before big jobs" on, Bob shows a big job's steps in order
+// Plan card (1.5.78, src/plan.js): with "Plan before big jobs" on, Bob shows a big job's steps in order
 // before he starts. Steps that need an OK have their own tick box (and their own rows to tick, for files), as on the
 // card with all of a job's OKs (hands.js), so it is still one card for the whole job.
 // Go ahead / Change something (the person says what, in their own words) / Not now. Returns the card, or null.

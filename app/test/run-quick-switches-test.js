@@ -1,5 +1,5 @@
 // The Autonomy and Screen use buttons on the chat page (public/quick-switches.js, POST /api/hands/quick).
-// Autonomy = "Let Bob work without asking"; Screen use = the Apps and Browser Hands plus eyes checks. Off works from
+// Autonomy = "Work without asking"; Screen use = the Apps and Browser Hands plus eyes checks. Off works from
 // anywhere, on only at the PC itself, and neither button ever lifts a hard limit or undoes the ✋ Hands stop.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -24,7 +24,7 @@ const hit = async (x, b, isLocal = true) => {
 {
   let x = mk({ enabled: true });
   let r = await hit(x, { free: true });
-  check('Autonomy on (at the PC) is the same switch as "Let Bob work without asking"', r.code === 200 && x.cfg.hands.free === true && freeOn(x.cfg));
+  check('Autonomy on (at the PC) is the same switch as "Work without asking"', r.code === 200 && x.cfg.hands.free === true && freeOn(x.cfg));
   check('it is written in the logbook', x.logs.some((l) => /Autonomy.*ON/.test(l)));
   r = await hit(x, { free: false }, false);
   check('Autonomy off works from the phone too', r.code === 200 && x.cfg.hands.free === false);

@@ -1,4 +1,4 @@
-// Let other apps use Bob's brains (Settings, Other apps). Off unless you turn it on.
+// Brains for other apps (Settings, Other apps). Off unless you turn it on.
 //
 // Bob answers the OpenAI-style requests most coding and chat apps already speak (VS Code with Continue, OpenCode,
 // Open WebUI, scripts), at http://localhost:<Bob's port>/v1:
@@ -76,11 +76,11 @@ export function keyOk(header, key) {
 // Why a request is turned away before anything else, or ''. `remote`: it came through the door from another device.
 export function doorRefusal(cfg, req, { remote = false } = {}) {
   const a = appsDoor(cfg);
-  if (!a.enabled || !a.key) return { code: 404, msg: 'Let other apps use Bob\'s brains is off (Settings, Other apps).' };
+  if (!a.enabled || !a.key) return { code: 404, msg: 'Brains for other apps is off (Settings, Other apps).' };
   if (remote && !a.network) return { code: 403, msg: 'Only apps on this replicant matrix may use Bob\'s brains. Turn on Also from my other devices to let others in.' };
   // A web page always sends Origin; apps don't. Bob never answers a web page here, so websites can't use him.
   if (req.headers.origin || req.method === 'OPTIONS') return { code: 403, msg: 'Web pages can\'t use Bob\'s brains. Use an app, or Bob\'s own window.' };
-  if (!keyOk(req.headers.authorization, a.key)) return { code: 401, msg: 'Wrong or missing key. Copy it from Settings, Other apps, Let other apps use Bob\'s brains.' };
+  if (!keyOk(req.headers.authorization, a.key)) return { code: 401, msg: 'Wrong or missing key. Copy it from Settings, Other apps, Brains for other apps.' };
   return null;
 }
 

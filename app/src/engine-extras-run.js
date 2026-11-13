@@ -44,7 +44,7 @@ export function startEngineExtras({ cfg, brain, hardware = async () => null, say
     if (Date.now() - labelAt > 60e3) { label = engineLabel(cfg); labelAt = Date.now(); }
     logReply(cfg, st, label);
   };
-  // 95 Load the next brain early: a hand-off to another brain is seen while it is still being written.
+  // 95 Preload the next brain: a hand-off to another brain is seen while it is still being written.
   const warmed = new Map(); // model -> when it was last read ahead (a hand-off streams in many pieces)
   if (engine) engine.onToolCall = (name, args) => {
     if (!extraOn(cfg, 'preloadNext') || typeof engine.resolve !== 'function') return;

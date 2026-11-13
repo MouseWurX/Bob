@@ -308,7 +308,7 @@ export const askingParts = {
     this.broadcast?.({ type: 'hands', settings: next });
   },
   // A session's context size, but never more than the model was made for.
-  // longRun ("Let Bob work on repositories", self-work.js): want is a stretched size and is used as it is (up to the
+  // longRun ("Work on repositories", self-work.js): want is a stretched size and is used as it is (up to the
   // most the brain stretches to), even with the Long memory switch off; it still has to fit this machine.
   async fitCtx(model, want, { longRun = false } = {}) {
     if (!model) return want || null;

@@ -4,7 +4,7 @@
 //   softStop     52 Stop after this step: the running step finishes and keeps its result, then he answers
 //   timeLimit    53 A time limit per job: a bar, and a card to give him more when it runs out
 //   receipt      54 A receipt at the end of a job: files changed, commands run, pages read (Open, Undo)
-//   runTests     55 Run the tests after code edits (run_command asks first, as always)
+//   runTests     55 Run tests after code edits (run_command asks first, as always)
 //   askFirst     56 One question before a vague big job (the ask_user pick-one card)
 //   rememberNo   57 Remember a "no" for the whole chat, with your reason if you gave one
 //   lookupCache  58 Reuse look-ups: the same search or page within an hour comes from memory
@@ -194,7 +194,7 @@ export function pruneReceipts(cfg, { now = Date.now(), keepMs = 7 * 864e5 } = {}
   try { for (const n of fs.readdirSync(receiptsDir(cfg))) { const f = path.join(receiptsDir(cfg), n); if (now - fs.statSync(f).mtimeMs > keepMs) fs.rmSync(f, { force: true }); } } catch {}
 }
 
-// ---------------- 55 Run the tests after code edits ----------------
+// ---------------- 55 Run tests after code edits ----------------
 const CODE_EXT = /\.(?:[cm]?[jt]sx?|py|rs|go|java|kt|kts|cs|cpp|cc|c|h|hpp|rb|php|swift|dart|lua|scala|ex|exs|vue|svelte)$/i;
 // The test command for the project a file sits in: { root, cmd, args } or null. Looks up at most 8 folders.
 export function testCommandFor(file, { exists = fs.existsSync, read = (f) => fs.readFileSync(f, 'utf8') } = {}) {

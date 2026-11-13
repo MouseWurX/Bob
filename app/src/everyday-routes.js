@@ -1,6 +1,6 @@
 // The doors for 🗓 Everyday helpers (everyday.js, receipts.js, profiles.js). Only from this replicant matrix: a phone
 // or another Bob never reads the spending sheet or the list of people.
-//   GET  /api/everyday/today                 the today card (only with "Show a today card when Bob opens" on)
+//   GET  /api/everyday/today                 the today card (only with "Today card" on)
 //   GET  /api/everyday/focus                 the focus timer now
 //   POST /api/everyday/focus {minutes}|{stop} start or stop it (only with "Focus timer" on)
 //   GET  /api/everyday/spending              the spending sheet and its totals

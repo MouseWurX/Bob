@@ -1,5 +1,5 @@
-// Bob-Net icons under Bob (src/net-overlay.js has the whole story). Off unless you turn it on: Settings, Bob-Net,
-// "Bob-Net icons under Bob". The owner, Nov 13: "think of it like a discord overlay".
+// Bob-Net icons (src/net-overlay.js has the whole story). Off unless you turn it on: Settings, Bob-Net,
+// "Bob-Net icons". The owner, Nov 13: "think of it like a discord overlay".
 //
 // Lamplight on a computer: a column of small round icons under Bob's cube, over the empty space left of the chat.
 // A phone, or the other looks: one row at the top of the chat. Only what's there right now has an icon: your other
@@ -204,7 +204,7 @@ export function createNetOverlay({ open, session, showAgents, note = () => {}, s
     closeBubble(s.btn.dataset.key);
     unseen.delete(s.btn.dataset.key); draw();
     if (s.kind === 'agent') { showAgents?.(); return; }
-    if (!s.it.canChat) { note(`${s.it.name} doesn't take chats from your other Bobs yet. On ${s.it.name}: update Bob, then Settings, Bob-Net, Take jobs from my other Bobs.`); return; }
+    if (!s.it.canChat) { note(`${s.it.name} doesn't take chats from your other Bobs yet. On ${s.it.name}: update Bob, then Settings, Bob-Net, Accept jobs.`); return; }
     const now = session();
     if (now === s.it.chat) return;
     if (!isNetChat(now)) { try { store?.setItem('bob-net-return', now); } catch {} }

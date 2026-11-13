@@ -66,7 +66,7 @@ export const lessonJobs = {
       set(1, 'running');
       const t0 = this.now();
       let last = 0;
-      const n = await fx.write({ url: srv.url, out: p.out, skills: p.write.skills, count: p.write.count, think: p.write.think, ...(p.write.mine ? { ideasOnly: true } : {}) }, { signal, log, onProgress: (d, total) => {
+      const n = await fx.write({ url: srv.url, out: p.out, skills: p.write.skills, count: p.write.count, think: p.write.think, teacherName: `${p.teacher.id} ${p.teacher.name || ''} ${p.teacher.gguf ? path.basename(p.teacher.gguf) : ''}`.trim(), ...(p.write.mine ? { ideasOnly: true } : {}) }, { signal, log, onProgress: (d, total) => {
         r.progress = Math.round((100 * d) / total); r.stepLabel = `Write ${total} lessons: ${d} written`;
         if (Date.now() - last > 2000) { last = Date.now(); this.broadcast({ type: 'lab', run: this.runView(r) }); }
       } });

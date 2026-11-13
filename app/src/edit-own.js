@@ -1,4 +1,4 @@
-// Let Bob fix his own messages (Settings, How Bob works). Off unless you turn it on.
+// Edit his own messages (Settings, How Bob works). Off unless you turn it on.
 //
 // With it on, Bob gets one more tool, edit_my_message: he can change the words of one of his own earlier messages in
 // this chat (a wrong fact, a status line that's out of date, a typo) instead of posting a whole new message about it.
@@ -77,7 +77,7 @@ export function editOwnTool(brain) {
   return {
     schema: EDIT_SCHEMA,
     async run(args, ctx) {
-      if (!editOwnOn(brain.cfg)) return 'Error: "Let Bob fix his own messages" is off, so you can\'t change what you said. Say the fix in your reply instead.';
+      if (!editOwnOn(brain.cfg)) return 'Error: "Edit his own messages" is off, so you can\'t change what you said. Say the fix in your reply instead.';
       if (!ctx?.msgs || ctx.job?.guest) return 'Error: not for this job. Say the fix in your reply instead.';
       const r = applyEdit(ctx.msgs, args || {});
       if (r.error) return `Error: ${r.error}`;

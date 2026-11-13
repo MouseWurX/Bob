@@ -3,7 +3,7 @@
 // Sending (this replicant matrix's window, or the Android app): the chat's words go to the other Bob through his
 // door, the same signed-in Bob-Net door every other Bob-to-Bob call uses (Tailscale only, his passcode or the key
 // pairing swapped). Only what you and Bob said travels: no tool calls, files, pictures or memory.
-// Receiving: only with "Take chats from my other Bobs" on (off unless you turn it on). The chat lands in Past chats
+// Receiving: only with "Accept chats" on (off unless you turn it on). The chat lands in Past chats
 // as a new chat, tagged "from another of your Bobs", and the window says so. The original stays where it was.
 // A chat from the phone keeps the phone's chat id (phone-xxxx), so the phone carries on the same chat with this Bob.
 import crypto from 'node:crypto';
@@ -13,7 +13,7 @@ import fs from 'node:fs';
 export const CARRY_MAX = 200; // messages taken over
 export const CARRY_CHARS = 6000; // per message
 export const carryInOn = (cfg) => cfg?.carryIn === true;
-export const CARRY_OFF = 'That Bob isn\'t taking chats from your other Bobs. On that replicant matrix: Settings, Bob-Net, Take chats from my other Bobs.';
+export const CARRY_OFF = 'That Bob isn\'t taking chats from your other Bobs. On that replicant matrix: Settings, Bob-Net, Accept chats.';
 
 const clean = (s, n) => String(s ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').slice(0, n);
 

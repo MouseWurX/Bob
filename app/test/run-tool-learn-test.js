@@ -1,4 +1,4 @@
-// "Let Bob learn from his tools" (Nov 11): tool notes, the scorecard, and "use me when" on tools Bob makes.
+// "Learn from tool errors" (Nov 11): tool notes, the scorecard, and "use me when" on tools Bob makes.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

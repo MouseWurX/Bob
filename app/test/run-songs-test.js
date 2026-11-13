@@ -1,5 +1,5 @@
 // 1.5.41: songs show in the chat with Bob's song player (title, bars of the song's shape, lyrics), and
-// Settings > Where Bob saves things picks the folder for pictures, clips, songs and sounds.
+// Settings > Save folder picks the folder for pictures, clips, songs and sounds.
 import { serverText, brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -114,7 +114,7 @@ const base = () => ({ agentDir, innDir, dataDir, painterDir: own, readRoots: [in
   check('something not on the list has no song details', made.songInfo(path.join(own, 'nope.wav')) === null && !made.has(path.join(own, 'nope.wav')));
 }
 
-// ---------- Where Bob saves things ----------
+// ---------- Save folder ----------
 {
   const cfg = applySaveDir({ ...base(), saveDir: '' });
   check('by default Bob saves in his own folder (Made by Bob)', cfg.painterDir === own && cfg.defaultPainterDir === own && !cfg.saveDirMissing);
@@ -144,7 +144,7 @@ const base = () => ({ agentDir, innDir, dataDir, painterDir: own, readRoots: [in
   check('the server checks a folder before saving it and remembers the old one', /saveDirProblem\(cfg, want\)/.test(srv) && /saveDirsUsed: used/.test(srv) && /applySaveDir\(cfg\);/.test(srv));
   check('over the home network, a picked folder only gives out what Bob made there', /!isLocal && path\.resolve\(path\.dirname\(f\)\) !== path\.resolve\(cfg\.defaultPainterDir\) && !brain\.made\.has\(f\)/.test(srv));
   const cellar = publicText('cellar.js');
-  check('Settings has the "Where Bob saves things" panel with Browse, Save here, Show in folder and Use Bob\'s own folder', /'💾 Where Bob saves things'/.test(cellar) && /data-savebrowse>Browse…/.test(cellar) && /data-savedir disabled>Save here/.test(cellar) && /data-saveopen>Show in folder/.test(cellar) && /data-saveown>Use Bob\\'s own folder/.test(cellar));
+  check('Settings has the "Save folder" panel with Browse, Save here, Show in folder and Use Bob\'s own folder', /'💾 Save folder'/.test(cellar) && /data-savebrowse>Browse…/.test(cellar) && /data-savedir disabled>Save here/.test(cellar) && /data-saveopen>Show in folder/.test(cellar) && /data-saveown>Use Bob\\'s own folder/.test(cellar));
 }
 
 // ---------- the Windows folder picker ----------

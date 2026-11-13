@@ -1,4 +1,4 @@
-// OK cards on all your Bobs (Settings, Bob-Net: "Show my OK cards on my other Bobs", off unless you turn it on).
+// OK cards on all your Bobs (Settings, Bob-Net: "OK cards on all Bobs", off unless you turn it on).
 // the owner, Nov 13: "waiting on you and cards that are not pairing cards should be pushed through bob-net to all
 // devices, and cleared when dealt with."
 //

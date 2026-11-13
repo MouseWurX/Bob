@@ -158,7 +158,7 @@ const quiet = cleanPreset({ id: 'pa1a1a1a1', name: 'Just talk', tools: 'none', b
   const cellar = publicText('cellar.js');
   check('the Settings panel mounts the editor', /\['presets', '🎭 Assistant presets'/.test(cellar) && /mountPresets\(dlg\.querySelector\('\.presets-box'\)\)/.test(cellar));
   const page = read('public/presets.js');
-  check('the switch says it starts off', /Assistant presets for chats<\/strong><span class="muted"> Off unless you turn it on\./.test(page));
+  check('the switch says what presets are', /Assistant presets<\/strong><span class="muted"> Save sets/.test(page));
   check('always visible: no field is disabled or hidden by the switch', !/disabled/.test(page.slice(0, page.indexOf('export function mountPresets'))));
   check('removing asks twice, no pop-up', /Press again/.test(page) && !/confirm\(/.test(page));
   check('the chat menu sits next to Effort', /id="presetPick"[^>]*hidden><span class="lbl">🎭 Preset<\/span>/.test(read('public/index.html')));

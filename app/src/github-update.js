@@ -12,7 +12,7 @@
 //            for the password (pkexec), apt installs it over the old one, and he opens again.
 //            A Flatpak Bob gets the new .flatpak; on restart, once he has closed, Flatpak installs it over the old
 //            one for this user (or the whole computer, whichever it was) and opens him again.
-// Only ever on a click ("Check for updates", "Update Bob"), or at start-up if "Check for updates when Bob starts"
+// Only ever on a click ("Check for updates", "Update Bob"), or at start-up if "Check for updates at start"
 // is on, and then only to look. Nothing is downloaded or installed without a click.
 import { deadline as withDeadline, quietGuard } from './hang-guard.js'; // item 212
 import fs from 'node:fs';

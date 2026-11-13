@@ -7,6 +7,7 @@ import { lookPrompt } from './look.js';
 import { personalityPrompt } from '../public/personality.js';
 import { capabilities } from './capabilities.js';
 import { cloudHelpers } from './cloud.js';
+import { toolSetOfModel, inSet, stickyFor } from './tool-sets.js';
 import { allToolsOn, toolboxPrompt, tidySchema, onlyGroups, groupsFor, CORE, fillUseTools, guessGroups, groupOf, STICKY_TURNS } from './toolbox.js';
 import { HANDS, freeOn, toolsOff } from './hands-settings.js';
 import { handsPrompt } from './hands.js';
@@ -109,17 +110,18 @@ export const promptParts = {
   usable(name, off = this.offTools()) { return Boolean(this.tools[name]) && !off.has(name); },
   // 1.5.41: whether OKs are asked on cards right now (so a job's OKs can go on one card). Not with "work without asking".
   together() { return !freeOn(this.cfg); },
-  toolSchemas(names) {
+  // set (tool-sets.js): the brain family's own wording for the tools; null = Bob's own.
+  toolSchemas(names, set = null) {
     const who = this.cfg.userName || 'the user';
     const off = this.offTools();
     const learned = toolLearnOn(this.cfg) ? loadLearning(this.cfg) : null; // tool notes and the scorecard (tool-learn.js)
     return names.filter((n) => n !== 'use_tools' && this.usable(n, off)).map((n) => {
-      const s = tidySchema(JSON.parse(JSON.stringify(this.tools[n].schema).replaceAll('{{USER}}', who).replaceAll('{{HOME}}', JSON.stringify(os.homedir()).slice(1, -1))));
+      const s = tidySchema(JSON.parse(JSON.stringify(inSet(this.tools[n].schema, set)).replaceAll('{{USER}}', who).replaceAll('{{HOME}}', JSON.stringify(os.homedir()).slice(1, -1))));
       if (learned && s.function) s.function.description += learnedLine(this.cfg, n, learned);
       return s;
     });
   },
-  // Let Bob's Quick brain see the big job: the app's own answer to a message about the running job, or null.
+  // Quick brain sees the job: the app's own answer to a message about the running job, or null.
   jobAnswer(sessionId, text, attach, extra = {}, { freeMem } = {}) {
     if (!meanwhileOn(this.cfg) || extra.guest || (attach || []).length || !this.watch?.job) return null;
     const note = noteAsk(text), asks = !note && asksAboutJob(text);
@@ -234,7 +236,7 @@ export const promptParts = {
     out({ type: 'done' });
     return 'answer';
   },
-  // Let Bob's Quick brain see the big job (meanwhile.js): notes passed along for this job go in before its next step.
+  // Quick brain sees the job (meanwhile.js): notes passed along for this job go in before its next step.
   readNotes(ctx, msgs, say = noteForBig) {
     const notes = ctx?.job ? this.watch?.takeNotes(ctx.job) : [];
     if (!notes?.length) return 0;
@@ -243,15 +245,16 @@ export const promptParts = {
     this.log('meanwhile', `the big job read ${notes.length} note${notes.length === 1 ? '' : 's'} passed along to it`);
     return notes.length;
   },
-  // Let Bob's Quick brain see the big job: look_at_job and pass_note, only in a quick reply beside a running job.
+  // Quick brain sees the job: look_at_job and pass_note, only in a quick reply beside a running job.
   withWatchTools(list, job) {
     const out = list.filter((t) => !WATCH_TOOLS.includes(t.function?.name));
     return job?.side && meanwhileOn(this.cfg) && this.watch.job ? out.concat(this.toolSchemas(WATCH_TOOLS)) : out;
   },
   // The front desk's tools for this step: the core, plus the groups added so far this turn (toolbox.js).
-  // With "Give Bob all his tools at once" on, every usable tool, the way it was before.
+  // With "Send all tools" on, every usable tool, the way it was before.
   frontDeskTools(loaded) {
-    if (allToolsOn(this.cfg) && !loaded?.only) return this.toolSchemas(Object.keys(this.tools));
+    const set = loaded?.toolSet || null; // tool-sets.js: set per step from the brain answering (brain-run-on.js)
+    if (allToolsOn(this.cfg) && !loaded?.only) return this.toolSchemas(Object.keys(this.tools), set);
     // Assistant presets (presets.js): a chat's preset can narrow the groups. Its copies of Bob have their own tools, so
     // handing a job to one (ask_specialist) is left out too while a preset narrows them.
     const groups = onlyGroups(groupsFor(this), loaded?.only);
@@ -261,7 +264,7 @@ export const promptParts = {
     // 1.5.41: ask_together comes along once a group with tools that ask for an OK is added.
     if (names.some((n) => this.tools[n]?.check && this.usable(n))) names.push('ask_together');
     if (planOn(this.cfg)) names.push('show_plan'); // 1.5.78: always there while the setting is on (plan.js)
-    const list = this.toolSchemas([...new Set(names)]);
+    const list = this.toolSchemas([...new Set(names)], set);
     const use = fillUseTools(this.tools.use_tools.schema, groups, loaded);
     if (use) list.push(tidySchema(use));
     return list;
@@ -334,7 +337,7 @@ export const promptParts = {
     return done;
   },
   // Nov 11: the tool groups a message means (loop-help.js), from the Memory slot's embedding model. Only when it's in
-  // use anyway (housekeeping or "Remember only what fits" on), never in the Gaming session, and at most 1.5 seconds:
+  // use anyway (housekeeping or "Relevant memories only" on), never in the Gaming session, and at most 1.5 seconds:
   // the first time, the groups' own vectors are made in the background and words alone pick this turn.
   async meaningGroups(text) {
     const hk = this.housekeeper;
@@ -349,12 +352,21 @@ export const promptParts = {
     const q = this.recallVec?.text === text && this.recallVec.vec ? this.recallVec.vec : (await limit(hk.embed([asQuery(embedModel(this.cfg), text)]).catch(() => null)))?.[0];
     return meaningPick(q, vecs);
   },
+  // The tool set for a brain (tool-sets.js), worked out once per brain name.
+  toolSetOf(model) {
+    if (!model) return null;
+    this.toolSetCache ||= new Map();
+    const key = `${model}|${this.cfg.toolSets === false ? 0 : JSON.stringify(this.cfg.toolSets ?? '')}`;
+    if (!this.toolSetCache.has(key)) { if (this.toolSetCache.size > 20) this.toolSetCache.clear(); this.toolSetCache.set(key, toolSetOfModel(this.cfg, this.engine, model)); }
+    return this.toolSetCache.get(key);
+  },
   // After a turn: groups used this turn stay for the next few messages; the rest count down.
   keepGroups(sessionId, used) {
     if (!sessionId) return;
     const sticky = this.stickyGroups.get(sessionId) || new Map();
     for (const [g, left] of sticky) { if (left <= 1) sticky.delete(g); else sticky.set(g, left - 1); }
-    for (const g of used) sticky.set(g, STICKY_TURNS);
+    const turns = stickyFor(used?.toolSet, STICKY_TURNS); // tool-sets.js: GPT-OSS keeps an added group 1 message
+    for (const g of used) sticky.set(g, turns);
     this.stickyGroups.set(sessionId, sticky);
     if (this.stickyGroups.size > 50) this.stickyGroups.delete(this.stickyGroups.keys().next().value);
   },

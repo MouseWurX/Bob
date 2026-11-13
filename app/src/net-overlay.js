@@ -1,5 +1,5 @@
-// Bob-Net icons under Bob (the owner, Nov 13 2026: "think of it like a discord overlay"). Off unless you turn it on:
-// Settings, Bob-Net, "Bob-Net icons under Bob" (cfg.netOverlay).
+// Bob-Net icons (the owner, Nov 13 2026: "think of it like a discord overlay"). Off unless you turn it on:
+// Settings, Bob-Net, "Bob-Net icons" (cfg.netOverlay).
 //
 // A column of small round icons under Bob's cube (a row under the top bar on a phone). An icon is there only while
 // what it stands for is there:
@@ -83,7 +83,7 @@ export function cubeReader({ now = Date.now } = {}) {
 const clean = (s, n = 40) => String(s || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, n);
 
 // What the icons show. bobs: your other Bobs (lenders.bobs()); seen(bob): his remembered hello; mood(bob): his cube.
-// agents: the coding agents' view (only while "Let Bob run coding agents" is on).
+// agents: the coding agents' view (only while "Run coding agents" is on).
 export async function overlayView(cfg, { bobs = [], seen = () => null, mood = async () => 'ready', agents = null } = {}) {
   if (!overlayOn(cfg)) return { on: false, bobs: [], agents: [] };
   const up = bobs.filter((b) => seen(b)?.up === true); // only while he's on Bob-Net right now
@@ -100,7 +100,7 @@ export async function overlayView(cfg, { bobs = [], seen = () => null, mood = as
 
 // A chat to a Bob who couldn't take it: say so in that chat, and never run it here.
 export function failNetChat(brain, job, name, why = 'isn\'t taking chats right now') {
-  const text = `${name} ${why}. On ${name}: Settings, Bob-Net, Take jobs from my other Bobs, and he needs this version of Bob too.`;
+  const text = `${name} ${why}. On ${name}: Settings, Bob-Net, Accept jobs, and he needs this version of Bob too.`;
   Object.assign(job, { state: 'failed', away: undefined, error: `${name} ${why}`.slice(0, 200), doneAt: Date.now() });
   try { const msgs = brain.session(job.sessionId); msgs.push({ role: 'user', content: job.text, at: job.at || Date.now() }); msgs.push({ role: 'assistant', content: `*(${text})*`, at: Date.now() }); } catch {}
   brain.saveQueue();

@@ -1,5 +1,5 @@
 // Bob.exe: double-click and Bob opens in his own window. No browser, no "install as an app", no PowerShell.
-// His brain (src/server.js) runs inside this program; closing the window closes Bob, unless "Keep Bob in the tray"
+// His brain (src/server.js) runs inside this program; closing the window closes Bob, unless "Minimise to tray"
 // is on (1.5.94): then closing or minimising tucks him into the tray, and Quit Bob in the tray menu closes him fully.
 // Where Bob keeps his things (models, notes, settings) lives outside the program, so updates never touch it:
 //   1. home.json next to Bob.exe, or in %APPDATA%\Bob, can say { "agentDir": "...", "config": "..." }
@@ -194,7 +194,7 @@ async function setUpHome() {
   return { agentDir, config, port };
 }
 
-// "Launch Bob on start-up" (off unless turned on in his settings) uses Windows' own login items.
+// "Launch at start-up" (off unless turned on in his settings) uses Windows' own login items.
 // "Update Bob": the update window asks Bob to close (POST /api/quit) before it swaps in the new Bob.exe.
 globalThis.bobQuit = () => setTimeout(() => app.quit(), 200);
 
@@ -311,9 +311,9 @@ async function up(port) {
 let win = null;
 
 // ---------- 1.5.94 the tray and Bob's icon ----------
-// "Keep Bob in the tray" (on unless turned off since 1.5.134; off by default before): a tray icon (Windows: by the clock; Mac: the menu bar; Linux: the
+// "Minimise to tray" (on unless turned off since 1.5.134; off by default before): a tray icon (Windows: by the clock; Mac: the menu bar; Linux: the
 // desktop's tray, where it has one). Closing or minimising his window hides it there; Quit Bob in its menu closes
-// him fully. Started hidden at sign-in ("Launch Bob on start-up"), he always shows the tray icon, so there's a way in.
+// him fully. Started hidden at sign-in ("Launch at start-up"), he always shows the tray icon, so there's a way in.
 // "Use Bob's look as his icon" (on unless turned off since 1.5.134): the tray, taskbar/Dock and window icon show his
 // avatar, redrawn the moment a look is saved (Style, or Change look in Settings, Personality). A shortcut pinned to the Windows
 // taskbar may keep the usual icon: Windows draws pinned buttons from the shortcut, not from the window.
@@ -332,7 +332,7 @@ function showBob() {
   win.focus();
 }
 
-// A shortcut from anywhere (Settings, How Bob works, 🌙 Quiet hours and shortcut; off unless switched on). While it's
+// Global shortcut (Settings, How Bob works, 🌙 Quiet hours and shortcut; off unless switched on). While it's
 // on, the key opens a small ask box on top of any app (public/ask.html); the key again, or Esc, puts it away.
 // src/server.js calls this at start and whenever the switch or the key changes. Nothing is registered while it's off.
 let askKey = '', askWin = null;
@@ -367,7 +367,7 @@ globalThis.bobGlobalAsk = (g, port) => {
 globalThis.bobShow = () => showBob(); // the ask box's Open in Bob
 app.on('will-quit', () => { try { globalShortcut.unregisterAll(); } catch {} try { globalThis.bobCleanExit?.(); } catch {} });
 
-// 150 "Show a dot on the tray icon" (off by default): while something waits for you, the tray picture has a dot;
+// 150 "Tray icon dot" (off by default): while something waits for you, the tray picture has a dot;
 // Windows also puts it on the taskbar button, and a Mac shows a dot on the Dock icon.
 const dotted = () => Boolean(winState.trayDot && winState.dot && winState.dotIcons);
 function trayImage() {
@@ -484,7 +484,7 @@ async function start() {
     width: 1200, height: 820, minWidth: 360, minHeight: 480,
     title: 'Bob', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'),
     backgroundColor: '#121212', autoHideMenuBar: true, show: !process.argv.includes('--hidden'),
-    // plugins: the built-in PDF viewer, so "Show documents in the side panel" can show a PDF's pages (no other plugins exist).
+    // plugins: the built-in PDF viewer, so "Documents in the side panel" can show a PDF's pages (no other plugins exist).
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, plugins: true }
   });
   const base = `http://127.0.0.1:${home.port}`;
@@ -564,7 +564,7 @@ async function start() {
   win.webContents.session.setPermissionRequestHandler((wc, perm, cb) => cb(['media', 'notifications'].includes(perm) && wc.getURL().startsWith(base)));
   contextMenu(win, base);
   win.loadURL(base + '/');
-  // 1.5.94: with "Keep Bob in the tray" on, the X and the minimise button tuck him into the tray instead.
+  // 1.5.94: with "Minimise to tray" on, the X and the minimise button tuck him into the tray instead.
   win.on('close', (e) => { tuckAway(e); });
   if (!MAC) win.on('minimize', () => { tuckAway(); });
   refreshWindowBits();

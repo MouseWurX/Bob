@@ -1,4 +1,4 @@
-// 1.5.213 Bob-Net over a plain home network ("Also over the home network"), no Tailscale needed:
+// 1.5.213 Bob-Net over a plain home network ("Home network access"), no Tailscale needed:
 // home addresses on this replicant matrix's own network, the door opening without Tailscale, Find knocking on the home
 // network, and sealed pairing (the passcodes never cross the wire as plain text). Fake network cards only.
 import fs from 'node:fs';
@@ -34,7 +34,7 @@ ok(cleanBobAddress(off, '100.101.1.2') === '100.101.1.2:7777' && cleanAddress('1
 // ---------- Adding a Bob by hand ----------
 {
   const e = cleanSharePatch({ ...off, share: {} }, { addBob: { address: '172.16.1.30', passcode: 'their-code' } }, { home: () => mine });
-  ok(/Also over the home network/.test(e.error || ''), 'add by hand, switch off: says to turn on Also over the home network');
+  ok(/Home network access/.test(e.error || ''), 'add by hand, switch off: says to turn on Home network access');
   const r = cleanSharePatch({ ...on, share: {} }, { addBob: { name: 'Go', address: '172.16.1.30', passcode: 'their-code' } }, { home: () => mine });
   ok(r.share?.borrow?.bobs?.[0]?.address === '172.16.1.30:7777', 'add by hand, switch on: saved with its home address');
   ok(/192\.168/.test(BAD_ADDRESS(on)) && /Tailscale/.test(BAD_ADDRESS(off)), 'the refusal names what fits');
@@ -49,7 +49,7 @@ ok(cleanBobAddress(off, '100.101.1.2') === '100.101.1.2:7777' && cleanAddress('1
   ok(/home network/.test(cleanPhonePatch(cfg, { enabled: true }, { home: mine }).error || ''), 'door, no Tailscale, switch off: says to turn on the home network switch');
   ok(cleanPhonePatch(cfg, { enabled: true, homeNet: true }, { home: mine }).remote?.enabled === true, 'door, no Tailscale, switch on: opens on the home network');
   ok(/cable/.test(cleanPhonePatch(cfg, { enabled: true, homeNet: true }, { home: [] }).error || ''), 'door, no Tailscale and no home network: says so');
-  ok(cleanPhonePatch({ port: 7777, remote: {} }, {}).remote.homeNet === true && cleanPhonePatch({ port: 7777, remote: { homeNet: false } }, {}).remote.homeNet === true && cleanPhonePatch({ port: 7777, remote: {} }, { homeNet: false }).remote.homeNet === false && cleanPhonePatch({ port: 7777, remote: { homeNet: false, homeNetChosen: true } }, {}).remote.homeNet === false, '1.5.214: Also over the home network is on to start with (home first), an off saved by 1.5.213 without choosing it turns on, and a chosen off stays off');
+  ok(cleanPhonePatch({ port: 7777, remote: {} }, {}).remote.homeNet === true && cleanPhonePatch({ port: 7777, remote: { homeNet: false } }, {}).remote.homeNet === true && cleanPhonePatch({ port: 7777, remote: {} }, { homeNet: false }).remote.homeNet === false && cleanPhonePatch({ port: 7777, remote: { homeNet: false, homeNetChosen: true } }, {}).remote.homeNet === false, '1.5.214: Home network access is on to start with (home first), an off saved by 1.5.213 without choosing it turns on, and a chosen off stays off');
 }
 
 // ---------- Which addresses Find knocks on ----------
@@ -158,7 +158,7 @@ const wait = async (f, ms = 2000) => { const t = Date.now(); while (!f() && Date
   B.p.fetch = async () => { knocks++; throw new Error('quiet'); };
   const f = await B.p.find();
   ok(knocks === 0 && f.tailscale === false && f.home === false, 'switch off: Find knocks on nothing on the home network');
-  ok(/turn on "Also over the home network"/.test((await B.p.pairWith('172.16.1.40')).error || ''), 'switch off: Pair on a home address says what to turn on');
+  ok(/turn on "Home network access"/.test((await B.p.pairWith('172.16.1.40')).error || ''), 'switch off: Pair on a home address says what to turn on');
 }
 {
   const B = bob('go6', '172.16.1.35');
@@ -285,7 +285,7 @@ const wait = async (f, ms = 2000) => { const t = Date.now(); while (!f() && Date
   ok(/cleanPhonePatch\(cfg, b, \{ home: doorIps\(\) \}\)/.test(server), 'server: the door can open on the home network alone');
   ok(/home: \(\) => \(remoteHome \? doorIps\(\) : \[\]\)/.test(server), 'server: pairing sees home networks only with the switch on');
   const page = read('public/share-brains.js');
-  ok(/found\.home/.test(page) && /Also over the home network/.test(page), 'Settings: Find shows Bobs on the home network, and says which switch to turn on');
+  ok(/found\.home/.test(page) && /Home network access/.test(page), 'Settings: Find shows Bobs on the home network, and says which switch to turn on');
   const help = read('public/help-content.js');
   ok(/home network/i.test(help) && /switch/i.test(help) && /Tailscale/.test(help), 'Help: Bob-Net over a home network, no Tailscale');
 }

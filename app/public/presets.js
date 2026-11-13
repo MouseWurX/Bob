@@ -61,7 +61,7 @@ function presetHtml(p, view, open) {
 
 export function presetsSettingsHtml(view) {
   const list = view?.list || [];
-  return `<label class="switch srow-switch"><input type="checkbox" data-presets-on ${view?.on ? 'checked' : ''}><span><strong>Assistant presets for chats</strong><span class="muted"> Off unless you turn it on. Save sets of instructions, brain, starting effort, temperature and tools, then pick one for any chat from 🎭 Preset next to Effort. A chat with no preset is plain Bob.</span></span></label>
+  return `<label class="switch srow-switch"><input type="checkbox" data-presets-on ${view?.on ? 'checked' : ''}><span><strong>Assistant presets</strong><span class="muted"> Save sets of instructions, brain, starting effort, temperature and tools, then pick one for any chat from 🎭 Preset next to Effort. A chat with no preset is plain Bob.</span></span></label>
     <div class="preset-list">${list.length ? list.map((p) => presetHtml(p, view, false)).join('') : '<p class="muted">No presets yet.</p>'}</div>
     <div class="row"><button type="button" data-padd>Add a preset</button><span class="muted small" data-pmsg-top aria-live="polite"></span></div>`;
 }

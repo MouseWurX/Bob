@@ -42,7 +42,7 @@ import { createGameLock } from './game-lock.js';
 import { quarantineCard, quarantineResult, createQuarantineBanner } from './quarantine.js';
 import { createLendPowersBadge } from './lend-powers.js'; // Nov 13: what a brain this card helps run has on
 import { createEffort } from './effort.js';
-import { createPresetPicker } from './presets.js'; // Assistant presets for chats
+import { createPresetPicker } from './presets.js'; // Assistant presets
 import { createCatAntics } from './cat-antics.js';
 import { createBubbles } from './say-bubbles.js';
 import { createBobLife } from './bob-life.js';
@@ -56,11 +56,11 @@ import { createFind } from './find.js'; // 1.5.210 Lamplight: Find anything (Ctr
 import { CARDS } from './settings-map.js';
 import { HELP } from './help-content.js';
 import { diagramHtml, saveRowsHtml, setupSaveAs, watchSaveAs } from './save-as.js';
-import './math-core.js'; // Show maths as formulas: KaTeX, loaded only while the switch is on
+import './math-core.js'; // Render maths: KaTeX, loaded only while the switch is on
 import { installShortcuts, listHtml as shortcutListHtml } from './shortcuts.js';
 import { createJobHelps } from './job-helps.js'; // Settings, Jobs: Stop after this step, time bar, receipts, file:line links
 import { saveToLab } from './lab-save-q.js'; // Lab item 102: Save to Lab under your messages, off unless switched on
-import { createNetOverlay } from './net-overlay.js'; // Nov 13 Bob-Net icons under Bob, off unless turned on
+import { createNetOverlay } from './net-overlay.js'; // Nov 13 Bob-Net icons, off unless turned on
 import { createFadeChat } from './fade-chat.js'; // Fade old messages, Clear chat and 🫥 Amnesia mode
 import { createHarnessChat, quietNow } from './harness-chat.js'; // items 62 to 72: crash card, quiet hours, Pin, Try from here, Guest chat
 import { applyReading, startEveryday } from './everyday.js'; // 🗓 Everyday helpers: text size, font, today card, tour, ⏱ Focus, tray dot
@@ -199,7 +199,8 @@ let lastFrame = '', lastProp = '';
 // while he thinks and drains away when the brain is let go, with the neon sign when none is loaded. It glows for show,
 // so it costs the engine nothing; with Real experts on (Bob's thinking) it shows the experts he really used. It draws
 // small and never turns, and while it shows the pixel Bob's loop slows right down and the brain-swap machine rests.
-// In Adventure the pixel Bob comes back (the small characters are the game's).
+// In Adventure the pixel Bob comes back (the small characters are the game's). 1.5.222: the cube for everyone,
+// outside games; the pixel look is picked in Adventure, Characters, Party (public/bob-game-look.js).
 var cubeAvatarOn = false; // var: the pixel loop above reads it before this line runs
 let cubeAvatar = null, cubeWanted = false;
 const advDlg = $('adventure');
@@ -220,7 +221,7 @@ function setAvatarCube(on) { cubeWanted = Boolean(on); store.set('bob-avatar-cub
 window.setAvatarCube = (on) => { setAvatarCube(on); api('/api/settings', { style: { avatar: on ? 'cube' : 'pixel' } }).catch(() => {}); }; // the Style page's looks call this
 window.addEventListener('bob-avatar', (e) => setAvatarCube(e.detail?.cube === true));
 window.addEventListener('bob-cube-live', () => { if (cubeAvatarOn && cubeAvatar) cubeAvatar.relive(); }); // Real experts switched in Bob's thinking
-setAvatarCube(store.get('bob-avatar-cube', '1') === '1'); // at once, before the settings arrive, so the picture never flips
+setAvatarCube(true); // 1.5.222: the cube is Bob's picture, always; the pixel Bob only shows in games (Adventure, Journey)
 if (advDlg && globalThis.MutationObserver) new MutationObserver(showCubeAvatar).observe(advDlg, { attributes: true, attributeFilter: ['open'] });
 // 1.5.210 Lamplight on a phone: the left menu is a sheet, so the porthole moves to the top of the chat with Bob's
 // name beside it (the same element, so it keeps its fog, glow and clicks). Everywhere else it sits where Bob sits.
@@ -312,7 +313,7 @@ window.addEventListener('bob-brain-status', (e) => { statusLine.brains(e.detail)
 window.addEventListener('bob-status-jokes', (e) => statusLine.jokes(e.detail !== false)); // Settings, from this window
 // ---------- Sessions: which brains Bob keeps loaded. Bob may suggest one; only the user switches. ----------
 const sessionSel = $('sessionSel');
-let autoSession = true; // 1.5.41 "Let Bob pick the session" (Settings), on unless switched off
+let autoSession = true; // 1.5.41 "Auto session" (Settings), on unless switched off
 let curSession = null, pickedBy = 'you'; // 1.5.41: "Coding (picked by Bob)" when Bob picked it
 function drawSessions(list, cur, by) {
   if (list) sessionSel.innerHTML = list.map((x) => `<option value="${esc(x.id)}" title="${esc(x.what)}" data-label="${esc(x.icon + ' ' + x.label)}">${x.icon} ${esc(x.label)}</option>`).join('');
@@ -493,7 +494,7 @@ const topicsPage = createTopics({ api, openChat: (id, msgId) => openChat(id, msg
 const tidyPage = createTidy({ api, onCount: (n) => countBadge($('tidyBtn'), n) });
 $('topicsBtn').onclick = () => topicsPage.open();
 $('tidyBtn').onclick = () => tidyPage.open();
-// 1.5.141: 🧪 Lab in the left pane while Show the Computer Science Lab is on (1.5.172: on unless switched off).
+// 1.5.141: 🧪 Lab in the left pane while Show the Lab is on (1.5.172: on unless switched off).
 // The Lab's "take me there" buttons: Get models, Settings (Engines), the chat.
 const labGo = (where) => {
   labPage.close();
@@ -518,6 +519,9 @@ window.addEventListener('bob-lab-switch', (e) => showLab(e.detail?.on === true))
 fetch('/api/settings').then((r) => r.json()).then((st) => { showLab(st.computerLab !== false); if (st.language) followSaved(st.language); }).catch(() => {});
 const adventurePage = createAdventure({ api }); // 1.5.117 🎲 Adventure
 $('adventureBtn').onclick = () => adventurePage.open();
+// 1.5.222 "my game look" on Style and Settings, Personality: shut that page and open Adventure, Characters, Party.
+document.addEventListener('click', (e) => { if (e.target.closest?.('[data-gamelook]')) window.dispatchEvent(new CustomEvent('bob-gamelook')); });
+window.addEventListener('bob-gamelook', () => { const c = $('cellar'); if (c?.open) c.close(); adventurePage.openGameLook(); try { window.focus(); } catch {} }); // also from the Settings window
 const gamesPage = createGames({ api }); // 1.5.121 🧩 Games
 $('gamesBtn').onclick = () => gamesPage.open();
 // 1.5.215: 🧭 Journey has its own tab, like Games: the same game the Adventure page opens, with your saved characters.
@@ -666,7 +670,7 @@ const harnessChat = createHarnessChat({
   openSettings: (jump) => cellar.open('settings', null, jump ? { jump } : {}),
   start: (id, line) => { if (busy) return false; if ($('cellar').open) $('cellar').close(); sessionId = id; store.set('bob-session', sessionId); harnessChat.moved(sessionId); log.innerHTML = ''; stick = true; presetPicker.load({ apply: false }); note(line); input.focus(); return true; }
 });
-// Nov 13 Bob-Net icons under Bob (public/net-overlay.js), off unless turned on: other Bobs and coding agents on Bob-Net.
+// Nov 13 Bob-Net icons (public/net-overlay.js), off unless turned on: other Bobs and coding agents on Bob-Net.
 // var, not const: openChat and onEvent may run before this line does.
 var netOverlay = createNetOverlay({ open: (id) => openChat(id), session: () => sessionId, showAgents: () => layout.showAgents(), note: (t) => note(t), still: stillNow });
 
@@ -790,7 +794,7 @@ function onEvent(ev) {
           const r = await api('/api/howtos/answer', { id: ev.id, save, name: el.querySelector('input')?.value || '' });
           el.remove();
           if (!r.ok) note(r.why || 'That card is too old now.', 'error');
-          else if (save && r.saved) { window.dispatchEvent(new CustomEvent('bob-howto-saved')); } if (r.ok && save && r.saved) note(`Saved the how-to "${r.saved.name}". You can change or delete it in Settings, 🧰 Tools and how-tos Bob made.`);
+          else if (save && r.saved) { window.dispatchEvent(new CustomEvent('bob-howto-saved')); } if (r.ok && save && r.saved) note(`Saved the how-to "${r.saved.name}". You can change or delete it in Settings, 🧰 Tools and how-tos.`);
         } catch (e) { yes.disabled = no.disabled = false; note(e.message, 'error'); }
       };
       yes.onclick = () => answer(true);
@@ -826,7 +830,7 @@ function onEvent(ev) {
       return;
     }
     case 'pair-gone': document.querySelector(`[data-pair-card="${CSS.escape(String(ev.id || ''))}"]`)?.remove(); return;
-    case 'pair-done': window.dispatchEvent(new CustomEvent('bob-pair-done')); note(ev.by ? `${esc(ev.by)} introduced ${esc(ev.name)}: paired${ev.both ? ', both ways' : ', one way for now'}. ${esc(ev.name)} is under My other Bobs.` : ev.both ? `Paired with ${ev.name}. You're on each other's list under My other Bobs.` : ev.asker ? `Paired with ${ev.name}, one way: this Bob can use ${ev.name}, but not the other way round yet. Turn on "Let my other replicant matrices in" here, then pair again.` : `Paired with ${ev.name}, one way: ${ev.name} can use this Bob, but not the other way round yet. Turn on "Let my other replicant matrices in" on ${ev.name}, then pair again.`); return;
+    case 'pair-done': window.dispatchEvent(new CustomEvent('bob-pair-done')); note(ev.by ? `${esc(ev.by)} introduced ${esc(ev.name)}: paired${ev.both ? ', both ways' : ', one way for now'}. ${esc(ev.name)} is under My other Bobs.` : ev.both ? `Paired with ${ev.name}. You're on each other's list under My other Bobs.` : ev.asker ? `Paired with ${ev.name}, one way: this Bob can use ${ev.name}, but not the other way round yet. Turn on "Bob-Net access" here, then pair again.` : `Paired with ${ev.name}, one way: ${ev.name} can use this Bob, but not the other way round yet. Turn on "Bob-Net access" on ${ev.name}, then pair again.`); return;
     case 'offer-setup': { // 1.5.91: something a job needs isn't set up (or is switched off). Nothing changes until a button is pressed.
       const el = add('setup-offer', setupOfferHtml(ev));
       const [yes, no] = el.querySelectorAll('button');
@@ -1068,7 +1072,7 @@ function onEvent(ev) {
       try { if ('Notification' in window && Notification.permission === 'granted' && store.get('bob-alerts', '1') === '1') new Notification('Bob: reminder', { body: ev.text, icon: '/icons/bob-192.png', requireInteraction: true }); } catch {}
       break;
     case 'digest': {
-      // A Sunday digest (src/digest.js): the week in one short note, also saved in the digests folder.
+      // Sunday digest (src/digest.js): the week in one short note, also saved in the digests folder.
       add('approval', `<p><strong>Sunday digest:</strong> ${esc(ev.title || '')}</p>${render(String(ev.text || '').replace(/^# .*\n+/, '').replace(/^## (.*)$/gm, '**$1**'))}${ev.file ? `<div class="row"><button type="button" class="mini" data-open="${esc(ev.file)}">Open the note</button></div>` : ''}`);
       badge(true);
       break;
@@ -1086,7 +1090,7 @@ function onEvent(ev) {
       life.react('oops');
       note(ev.text, 'error');
       break;
-    case 'said': { // Let Bob fix his own messages: the id of what he just said, so the bubble can be found if he changes it
+    case 'said': { // Edit his own messages: the id of what he just said, so the bubble can be found if he changes it
       const r = replies.get(ev.turnId || '-');
       if (r && ev.id) { r.el.dataset.mid = `${r.el.dataset.mid ? `${r.el.dataset.mid} ` : ''}${ev.id}`; liveWords.set(r.el, r.text); bubbleMedia.set(r.el, r.media); }
       return;
@@ -1255,7 +1259,7 @@ document.addEventListener('drop', (e) => {
 });
 // ---------- Copy buttons and file cards (right-click and Ctrl+C often don't get through remote desktop) ----------
 const rawText = new WeakMap();
-// Let Bob fix his own messages (Settings, How Bob works; src/edit-own.js): the words and things made of each bubble,
+// Edit his own messages (Settings, How Bob works; src/edit-own.js): the words and things made of each bubble,
 // so a message he changes later is drawn again in place, with "edited" under it.
 const liveWords = new WeakMap(), bubbleMedia = new WeakMap();
 // ---------- Try again and Edit (Settings, How Bob works; src/redo.js). Off unless you turn it on. ----------
@@ -1299,7 +1303,7 @@ window.addEventListener('bob-chat-redo', (e) => { redoOnNow = e.detail === true;
 
 // ---------- The ... menu on a message (src/msg-menu.js) ----------
 // A small ... at the top right of a message, shown while the mouse is over it (always on a touch screen, and while it
-// has keyboard focus). Copy is always there. Edit and Delete follow "Show Try again, Edit and Delete in the chat"
+// has keyboard focus). Copy is always there. Edit and Delete follow "Try again, Edit and Delete"
 // (Settings, How Bob works): Edit on your message changes it and sends it again (editInPlace above); Edit on Bob's
 // changes his words without sending anything; Delete takes yours out with Bob's answer to it, or just his answer.
 // Not while Bob is on this chat.
@@ -1445,7 +1449,7 @@ log.addEventListener('click', async (e) => {
   if ('copyCode' in b.dataset) return copyText(b.parentElement.querySelector('code')?.textContent || '', b);
   if (b.dataset.copyLink) return copyText(b.dataset.copyLink, b);
   if (b.dataset.copyPath) return copyText(b.dataset.copyPath, b);
-  // "Show the page and line" (src/doc-more.js): "(page 3)" after a file opens it beside the chat, at that place.
+  // "Cite page and line" (src/doc-more.js): "(page 3)" after a file opens it beside the chat, at that place.
   if (b.dataset.at && b.dataset.file) {
     e.preventDefault();
     const [kind, n] = b.dataset.at.split(':');
@@ -1629,7 +1633,7 @@ function offerWants() {
 }
 
 // ---------- Start ----------
-// ---------- Show maths as formulas (Settings, Bob himself; off unless you turn it on) ----------
+// ---------- Render maths (Settings, Bob himself; off unless you turn it on) ----------
 // KaTeX is loaded from Bob's own files the first time it's needed. redraw: the switch changed, so the chat is drawn again.
 async function applyMath(on, redraw = false) {
   if (on === BobMath.isOn()) return;
@@ -1738,7 +1742,7 @@ async function askRestart(st) {
   // 1.5.38: only promise to pick up where he left off when that switch is on.
   let pickUp = false;
   if (busyWith) { try { pickUp = (await (await fetch('/api/settings')).json()).resumeJobs === true; } catch {} }
-  const after = pickUp ? 'if I restart now, I pick up where I left off when I open again.' : 'if I restart now, it stops and waits in Tasks or Downloads for you to start it again. (Turn on "Pick up where Bob left off after a restart" in Settings, How Bob works, and I\'ll carry on by myself.)';
+  const after = pickUp ? 'if I restart now, I pick up where I left off when I open again.' : 'if I restart now, it stops and waits in Tasks or Downloads for you to start it again. (Turn on "Resume jobs after restart" in Settings, How Bob works, and I\'ll carry on by myself.)';
   const el = add('suggest', `<span>The new Bob (${esc(st.version || 'update')}) is ready.${busyWith ? ` I'm working on ${esc(busyWith)}; ${esc(after)}` : ''}</span>
     <button type="button" data-r="now">${busyWith ? 'Restart anyway' : 'Restart Bob now'}</button>${busyWith ? '<button type="button" data-r="done">Wait until I\'m done</button>' : ''}<button type="button" class="link" data-r="later">Later</button>`);
   for (const b of el.querySelectorAll('button')) b.onclick = async () => {

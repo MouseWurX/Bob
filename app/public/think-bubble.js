@@ -5,7 +5,7 @@
 // src/clean-answer.js).
 //
 // Display only. The lines here are the window's own words: none of it is sent to a brain, and nothing waits on it.
-// Settings, Bob himself, "Thinking bubble above answers" (cfg.thinkBubble, on unless turned off) puts the old chat back.
+// Settings, Bob himself, "Thinking bubble" (cfg.thinkBubble, on unless turned off) puts the old chat back.
 
 export const PUNS = [
   'Thinking…',
