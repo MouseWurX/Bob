@@ -71,6 +71,30 @@ body.look-lamplight .chips { padding: var(--s2) max(var(--s4), calc((100% - 760p
 body.look-lamplight .now { padding: var(--s4); gap: var(--s2); }
 body.look-lamplight .now-sec { font-family: var(--mono); font-weight: 400; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
 
+/* Coding agents (Nov 13, the owner: "it clashes with the style of lamplight"): no boxes, a lit dot per agent like
+   Bob's answers (bright and glowing when it needs you, a slow pulse while it works, dim when done), the badge as
+   plain mono words, and typing boxes as a single underline like the room's own quiet fields. */
+body.look-lamplight .tlist .agent-row { padding: var(--s2) 0 var(--s2) var(--s4); position: relative; }
+body.look-lamplight .agent-row .agent-ico, body.look-lamplight #nowAgents .sec-ico { display: none; }
+body.look-lamplight .agent-row::before { content: ""; position: absolute; left: 2px; top: calc(var(--s2) + 6px); width: 7px; height: 7px; border-radius: 50%; background: var(--muted); opacity: .5; }
+body.look-lamplight .agent-row[data-state="working"]::before { background: var(--accent); opacity: 1; animation: agent-glow 2.4s ease-in-out infinite; }
+body.look-lamplight .agent-row[data-state="needs-you"]::before { background: var(--accent); opacity: 1; box-shadow: 0 0 10px var(--accent); }
+body.look-lamplight .agent-row[data-state="done"]::before { background: var(--text); opacity: .45; }
+body.look-lamplight .agent-row[data-state="failed"]::before { background: var(--bad); opacity: .9; }
+@keyframes agent-glow { 50% { box-shadow: 0 0 9px var(--accent); opacity: .55; } }
+body.look-lamplight .agent-row .agent-meta, body.look-lamplight .agent-row .agent-state { font-family: var(--mono); font-size: 10.5px; letter-spacing: .03em; }
+body.look-lamplight .agent-row .agent-needs { font-weight: 400; color: var(--text); }
+body.look-lamplight .agent-row .agent-btn, body.look-lamplight .agent-row details summary { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; text-decoration: none; }
+body.look-lamplight .agent-row pre { background: color-mix(in srgb, #000 35%, transparent); border-radius: 10px; padding: var(--s2) var(--s3); }
+body.look-lamplight .agent-row :is(input[type="text"], select) { background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 4px 0; }
+body.look-lamplight .agent-row :is(input[type="text"], select):focus-visible { border-bottom-color: var(--accent); }
+body.look-lamplight .agent-row select option { background: var(--panel); }
+body.look-lamplight .agents-badge { border: 0; padding: 0; font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: none; color: var(--muted); font-weight: 400; }
+body.look-lamplight .agents-badge.needs { color: var(--accent); text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent); }
+body.look-lamplight.still .agent-row::before { animation: none; }
+@media (prefers-reduced-motion: reduce) { body.look-lamplight .agent-row::before { animation: none; } }
+body.look-lamplight .lend-powers-badge { border-color: transparent; background: color-mix(in srgb, var(--panel) 70%, transparent); box-shadow: 0 0 8px -2px var(--accent); }
+
 /* gentle motion, none when animations are off or the system asks for less */
 body.look-lamplight :is(.nav-item, .brain-switch, .brain-pill, .effort-btn, .chips button, .mic, .send, .cellar button) { transition: background-color .15s var(--ease), color .15s var(--ease); }
 body.look-lamplight .log > .msg { animation: look-rise .22s var(--ease) both; }

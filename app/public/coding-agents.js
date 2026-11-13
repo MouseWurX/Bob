@@ -26,38 +26,47 @@ export function badgeText(s) {
 export const STATE_ICON = { idle: '○', working: '⏳', 'needs-you': '🔔', done: '✓', failed: '✗', stopped: '■' };
 const ago = (t) => { if (!t) return ''; const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
 
-// One agent's row in Now running.
-export function agentRow(a, all) {
+// One agent's row in Now running. Quiet by design (the owner, Nov 13: it must sit right in Lamplight): a status
+// light, the name and what it's doing, one plain line of detail, and small text buttons. The typing boxes only
+// open when you need them: Answer is open while it needs you; Ask and Pass to open when pressed.
+export function agentRow(a, all, open = {}) {
   const others = all.filter((x) => x.id !== a.id);
-  return `<li class="titem agent-row" data-agent="${esc(a.id)}">
-    <span class="ttext"><strong>${STATE_ICON[a.state] || ''} ${esc(a.name)}</strong> <span class="muted">${esc(a.kindName)}${a.owner ? `, ${esc(a.owner)}'s account` : ''} · ${esc(a.stateWords)}${a.at ? ` · ${esc(ago(a.at))}` : ''}</span>
-    <br><span class="muted">${esc(a.folder)}${a.edits ? ' · may change files' : ' · reads only'}${a.thenName ? ` · when done, passes to ${esc(a.thenName)}` : ''}</span>
-    ${a.why ? `<br><span class="${a.state === 'needs-you' ? 'agent-needs' : 'muted'}">${esc(a.why)}</span>` : ''}
+  const id = esc(a.id), needs = a.state === 'needs-you', working = a.state === 'working';
+  const askOpen = needs || open.ask === a.id, passOpen = open.pass === a.id;
+  const meta = [a.kindName + (a.owner ? `, ${a.owner}'s account` : ''), a.folder, a.edits ? 'may change files' : 'reads only', a.thenName ? `then ${a.thenName}` : '', ago(a.at)].filter(Boolean).map(esc).join(' · ');
+  const canPass = others.length && a.said && !working;
+  return `<li class="titem agent-row" data-agent="${id}" data-state="${esc(a.state)}">
+    <span class="ttext"><span class="agent-top"><span class="agent-ico" aria-hidden="true">${STATE_ICON[a.state] || ''}</span><strong>${esc(a.name)}</strong> <span class="agent-state">${esc(a.stateWords)}</span></span>
+    <span class="agent-meta">${meta}</span>
+    ${a.why ? `<span class="${needs ? 'agent-needs' : 'agent-meta'}">${esc(a.why)}</span>` : ''}
+    <span class="agent-acts">${working ? `<button type="button" class="agent-btn" data-stop="${id}">Stop</button>` : ''}${!working && !needs ? `<button type="button" class="agent-btn" data-open-ask="${id}" aria-expanded="${askOpen}">Ask</button>` : ''}${canPass ? `<button type="button" class="agent-btn" data-open-pass="${id}" aria-expanded="${passOpen}">Pass to…</button>` : ''}</span>
     ${a.said ? `<details class="agent-said"><summary>What it said</summary><pre>${esc(a.said.slice(-4000))}</pre></details>` : ''}
     ${a.log?.length ? `<details class="agent-log"><summary>Log</summary><pre>${esc(a.log.join('\n'))}</pre></details>` : ''}
-    <form class="row agent-ask" data-ask="${esc(a.id)}"><label class="sr-only" for="ag-${esc(a.id)}">Ask ${esc(a.name)}</label>
-      <input id="ag-${esc(a.id)}" type="text" maxlength="4000" placeholder="${a.state === 'needs-you' ? 'Answer it…' : 'Ask it to…'}" ${a.state === 'working' ? 'disabled' : ''}>
-      <button type="submit" ${a.state === 'working' ? 'disabled' : ''}>${a.state === 'needs-you' ? 'Answer' : 'Ask'}</button>
-      ${a.state === 'working' ? `<button type="button" data-stop="${esc(a.id)}">Stop</button>` : ''}</form>
-    ${others.length && a.said ? `<div class="row"><label class="sr-only" for="pt-${esc(a.id)}">Pass ${esc(a.name)}'s work to</label><select id="pt-${esc(a.id)}" data-pass-to="${esc(a.id)}">${others.map((o) => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('')}</select><input type="text" maxlength="2000" placeholder="With a note (optional)" data-pass-note="${esc(a.id)}" aria-label="Note for the next agent"><button type="button" data-pass="${esc(a.id)}">Pass to</button></div>` : ''}
+    ${askOpen && !working ? `<form class="agent-ask" data-ask="${id}"><label class="sr-only" for="ag-${id}">${needs ? 'Answer' : 'Ask'} ${esc(a.name)}</label>
+      <input id="ag-${id}" type="text" maxlength="4000" placeholder="${needs ? 'Answer it…' : 'Ask it to…'}">
+      <button type="submit" class="agent-btn">${needs ? 'Answer' : 'Ask'}</button></form>` : ''}
+    ${canPass && passOpen ? `<div class="agent-pass"><label class="sr-only" for="pt-${id}">Pass ${esc(a.name)}'s work to</label><select id="pt-${id}" data-pass-to="${id}">${others.map((o) => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('')}</select><input type="text" maxlength="2000" placeholder="With a note (optional)" data-pass-note="${id}" aria-label="Note for the next agent"><button type="button" class="agent-btn" data-pass="${id}">Pass to</button></div>` : ''}
   </span></li>`;
 }
 export function outsideRow(o) {
-  return `<li class="titem agent-row outside"><span class="ttext"><strong>${STATE_ICON[o.state] || ''} ${esc(o.name)}</strong> <span class="muted">yours, outside Bob · ${esc(o.stateWords)} · ${esc(ago(o.at))}</span>${o.why ? `<br><span class="agent-needs">${esc(o.why)}</span>` : ''}<br><span class="muted">${esc(o.folder)}</span></span></li>`;
+  return `<li class="titem agent-row outside" data-state="${esc(o.state)}"><span class="ttext"><span class="agent-top"><span class="agent-ico" aria-hidden="true">${STATE_ICON[o.state] || ''}</span><strong>${esc(o.name)}</strong> <span class="agent-state">${esc(o.stateWords)}</span></span><span class="agent-meta">yours, outside Bob · ${esc(o.folder)} · ${esc(ago(o.at))}</span>${o.why ? `<span class="agent-needs">${esc(o.why)}</span>` : ''}</span></li>`;
 }
 
 export function createAgentsSection({ sec, list, badge, seen, isOpen, placed = () => {} }) {
   if (!sec || !list) return { update() {}, poll() {} };
-  let v = null, timer = null, msg = '';
+  let v = null, timer = null, msg = '', later = false;
+  const open = { ask: '', pass: '' }; // which row has Ask or Pass to open
+  const typing = () => list.contains(document.activeElement) && /^(INPUT|SELECT)$/.test(document.activeElement.tagName);
   const draw = () => {
     const s = v || {};
+    if (typing()) { later = true; if (badge) { const t = badgeText(s); badge.textContent = t; badge.hidden = !t; } return; } // never wipe what you're typing
     const show = s.on === true;
     if (sec.hidden === show) { sec.hidden = !show; placed(); }
     if (badge) { const t = badgeText(s); badge.textContent = t; badge.hidden = !t; badge.classList.toggle('needs', s.needsYou > 0); }
     if (!show) return;
     const agents = s.agents || [];
     list.innerHTML = (!agents.length && !(s.outside || []).length ? '<li class="titem muted">No coding agents yet. Add one in Settings, Other apps, Coding agents.</li>' : '')
-      + agents.map((a) => agentRow(a, agents)).join('') + (s.outside || []).map(outsideRow).join('')
+      + agents.map((a) => agentRow(a, agents, open)).join('') + (s.outside || []).map(outsideRow).join('')
       + (msg ? `<li class="titem muted" role="status">${esc(msg)}</li>` : '');
   };
   async function poll() {
@@ -72,16 +81,20 @@ export function createAgentsSection({ sec, list, badge, seen, isOpen, placed = (
     const f = e.target.closest('[data-ask]'); if (!f) return;
     e.preventDefault();
     const t = f.querySelector('input').value.trim(); if (!t) return;
+    open.ask = ''; f.querySelector('input').blur();
     act(`/api/coding-agents/${f.dataset.ask}/ask`, { text: t }).then(() => { clearTimeout(timer); timer = setTimeout(poll, 1500); });
   });
   list.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
-    if (b.dataset.stop) act(`/api/coding-agents/${b.dataset.stop}/stop`, {});
+    if (b.dataset.openAsk) { open.ask = open.ask === b.dataset.openAsk ? '' : b.dataset.openAsk; draw(); list.querySelector(`#ag-${CSS.escape(open.ask)}`)?.focus(); }
+    else if (b.dataset.openPass) { open.pass = open.pass === b.dataset.openPass ? '' : b.dataset.openPass; draw(); }
+    else if (b.dataset.stop) act(`/api/coding-agents/${b.dataset.stop}/stop`, {});
     else if (b.dataset.pass) {
-      const id = b.dataset.pass;
+      const id = b.dataset.pass; open.pass = '';
       act(`/api/coding-agents/${id}/pass`, { to: list.querySelector(`[data-pass-to="${CSS.escape(id)}"]`)?.value, text: list.querySelector(`[data-pass-note="${CSS.escape(id)}"]`)?.value || '' });
     }
   });
+  list.addEventListener('focusout', () => setTimeout(() => { if (later && !typing()) { later = false; draw(); } }, 0));
   document.addEventListener('visibilitychange', poll);
   poll();
   return {
@@ -101,7 +114,7 @@ export async function mountAgentsSettings(box) {
   let v, msg = '', folder = '';
   const kindOpts = () => v.kinds.map((k) => `<option value="${esc(k.id)}">${esc(k.name)}${k.maker ? ` (${esc(k.maker)})` : ''}${v.found[k.id] ? '' : ' (not found here)'}</option>`).join('');
   const agentLine = (a) => `<li><strong>${esc(a.name)}</strong> <span class="muted">${esc(a.kindName)} in ${esc(a.folder)}${a.account ? `, account "${esc(a.account)}"${a.owner ? ` (${esc(a.owner)})` : ''}` : ', your usual sign-in'}</span>
-      <label class="switch"><input type="checkbox" data-ag-edits="${esc(a.id)}" ${a.edits ? 'checked' : ''}><span><strong>May change files</strong><br><span class="muted">Off: it only reads and answers. On: it may edit files in its own folder, through its program's own "edit" mode. Bob never turns off a program's own checks.</span></span></label>
+      <label class="switch"><input type="checkbox" data-ag-edits="${esc(a.id)}" ${a.edits ? 'checked' : ''}><span><strong>May change files</strong></span></label>
       <label class="pick"><strong>When done, pass to</strong> <select data-ag-then="${esc(a.id)}"><option value="">Nobody</option>${v.agents.filter((x) => x.id !== a.id).map((x) => `<option value="${esc(x.id)}" ${a.then === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
       ${a.account ? `<button type="button" class="mini" data-ag-signin="${esc(a.kind)}" data-ag-account="${esc(a.account)}">Sign in to "${esc(a.account)}"</button>` : ''}
       <button type="button" class="mini" data-ag-clear="${esc(a.id)}">Start fresh</button>
@@ -118,9 +131,9 @@ export async function mountAgentsSettings(box) {
       <div class="row"><label class="pick"><strong>Account</strong> <input type="text" maxlength="30" data-ag-account-new placeholder="blank: your usual sign-in" autocomplete="off" spellcheck="false"></label>
         <label class="pick"><strong>Whose</strong> <input type="text" maxlength="30" data-ag-owner placeholder="like Sam" autocomplete="off"></label></div>
       <p class="muted">An account keeps its own sign-in, so two people can each use their own Claude, Codex or Gemini account on this replicant matrix at the same time. Give it a name, add the agent, then press Sign in once: the program opens in a window of its own, where that person signs in. Each account only runs the agents it's set on.</p>
-      <label class="switch"><input type="checkbox" data-ag-edits-new><span><strong>May change files</strong><br><span class="muted">Off to start with.</span></span></label>
+      <label class="switch"><input type="checkbox" data-ag-edits-new><span><strong>May change files</strong><br><span class="muted">Off to start with: it only reads and answers. On: it may edit files in its own folder, through its program's own "edit" mode. Bob never turns off a program's own checks.</span></span></label>
       <button type="button" class="get" data-ag-add>Add this agent</button>
-      ${v.agents.length ? `<p class="muted"><strong>Your agents</strong></p><ul>${v.agents.map(agentLine).join('')}</ul>` : '<p class="muted">No agents yet.</p>'}
+      ${v.agents.length ? `<p class="muted"><strong>Your agents</strong></p><ul class="agents-set">${v.agents.map(agentLine).join('')}</ul>` : '<p class="muted">No agents yet.</p>'}
       <details class="more"><summary>Another program</summary>
         <p class="muted">Any coding program that can take one task and answer. Bob pipes the task in, or puts it in a file: write <code>{task-file}</code> where the program takes a file.</p>
         <div class="row"><label class="pick"><strong>Program</strong> <input type="text" maxlength="300" data-ag-ccmd value="${esc(v.custom.cmd)}" placeholder="like aider" spellcheck="false"></label>

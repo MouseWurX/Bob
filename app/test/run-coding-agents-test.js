@@ -163,6 +163,12 @@ const say = (c, lines, code = 0) => { for (const l of lines) c.stdout.write(l + 
   // The row on screen
   const row = agentRow(ag.view().agents.find((x) => x.id === b.id), ag.view().agents);
   check('a row shows whose account, the folder and Pass to', row.includes('Sam') && row.includes('account') && row.includes(project2) && row.includes('Pass to'));
+  check('quiet rows: the typing box opens only when it needs you, or when Ask is pressed', (() => {
+    const base = { id: 'q1', name: 'q', kindName: 'Codex', folder: 'f', stateWords: 'x', log: [], said: '' };
+    const idle = agentRow({ ...base, state: 'done' }, [base]), needs = agentRow({ ...base, state: 'needs-you' }, [base]), asked = agentRow({ ...base, state: 'done' }, [base], { ask: 'q1' });
+    return !idle.includes('<input') && needs.includes('Answer it') && asked.includes('Ask it to');
+  })());
+  check('Lamplight has its own quiet look for the agents', /look-lamplight \.tlist \.agent-row/.test(read('public/looks.css')));
   check('the badge is empty when off', badgeText({ on: false, working: 3 }) === '');
   // Claude Code status
   check('hooks are refused until connected', !ag.hookOk('x'));

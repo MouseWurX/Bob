@@ -2377,13 +2377,26 @@ html.settings-window body.look-lamplight .cellar.page[open] { height: 100dvh; ma
 #nowAgents .now-sec { flex-wrap: wrap; row-gap: 2px; } /* a narrow panel or phone: the badge drops below, never off the edge */
 .agents-badge { font-size: .8em; padding: 0 .45em; border-radius: 1em; border: 1px solid var(--line); white-space: nowrap; }
 .agents-badge.needs { border-color: var(--accent); font-weight: 600; }
+.agents-set { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.agents-set > li { padding: 8px 0 8px 12px; border-left: 2px solid var(--line); }
+.agents-set > li > .row, .agents-set > li > button { margin-top: 4px; }
+/* one agent: a light, its name and state, one line of detail, small text buttons; every word shows, never cut off */
+.agent-row .ttext { white-space: normal; overflow: visible; overflow-wrap: anywhere; display: flex; flex-direction: column; gap: 2px; }
+.agent-row .agent-top { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.agent-row .agent-state { color: var(--muted); font-size: .92em; }
+.agent-row[data-state="needs-you"] .agent-state { color: var(--accent); }
+.agent-row .agent-meta { color: var(--muted); font-size: .92em; }
 .agent-row .agent-needs { font-weight: 600; }
-.agent-row pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16em; overflow: auto; font-size: .85em; }
-.agent-row .row { flex-wrap: wrap; gap: .3em; }
-.agent-row input[type="text"] { min-width: 0; flex: 1 1 10em; }
-.agent-row .ttext { white-space: normal; overflow: visible; overflow-wrap: anywhere; } /* every word shows, never cut off with … */
-.agent-row input[type="text"], .agent-row select { font: inherit; padding: 4px 6px; border-radius: calc(var(--r) * 0.5); border: 1px solid var(--line); background: var(--bg); color: var(--text); }
-.agent-row input:disabled { opacity: .55; }
+.agent-row .agent-acts { display: flex; gap: 12px; flex-wrap: wrap; }
+.agent-row .agent-acts:empty { display: none; }
+.agent-row .agent-btn { min-height: 28px; padding: 0; border: 0; background: none; color: var(--muted); font: inherit; font-size: .92em; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, var(--muted) 50%, transparent); cursor: pointer; }
+.agent-row .agent-btn:hover, .agent-row .agent-btn:focus-visible, .agent-row .agent-btn[aria-expanded="true"] { color: var(--accent); }
+.agent-row details summary { color: var(--muted); font-size: .92em; cursor: pointer; }
+.agent-row pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16em; overflow: auto; font-size: .85em; margin: 4px 0; }
+.agent-row :is(.agent-ask, .agent-pass) { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 2px; }
+.agent-row :is(.agent-ask, .agent-pass) input[type="text"] { flex: 1 1 9em; min-width: 0; }
+.agent-row :is(input[type="text"], select) { font: inherit; padding: 4px 8px; border-radius: calc(var(--r) * 0.5); border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+.agent-row :is(input[type="text"], select):focus-visible { outline: none; border-color: var(--accent); }
 /* Nov 13: a lent card whose brain has Hands, Autonomy or Screen use on over there */
 /* Nov 13: a lent card's brain has Hands, Autonomy or Screen use on: a small badge on Bob's picture, never a strip over the chat. */
 .lend-powers-badge { position: absolute; left: -6px; bottom: -6px; z-index: 2; width: 22px; height: 22px; min-height: 0; padding: 0; border: 1px solid var(--accent); border-radius: 50%; background: color-mix(in srgb, var(--panel) 80%, transparent); font-size: 12px; line-height: 20px; text-align: center; cursor: pointer; }
