@@ -6,10 +6,8 @@
   "gpus": [
     "NVIDIA H200"
   ],
-  "step_up": [
-    "NVIDIA B200"
-  ],
-  "step_up_note": "about $8/h against $5.30 for the H200 at the 5 Nov prices; check the live price before typing yes",
+  "step_up": [],
+  "step_up_note": "H200 only, AP-JP-1 only, next to the teacher on our drive",
   "disk_gb": 250,
   "general_tokens": 0,
   "max_len": 8192,
@@ -57,5 +55,15 @@
     "commands": [
       "node straight-facts.mjs probe --url {{url}} --label {{name}} --out {{out}}"
     ]
+  },
+  "counts": "expert-counts-2026-11-04T23-23-19.json",
+  "data_centers": [
+    "AP-JP-1"
+  ],
+  "volume_new": false,
+  "volume_fallback": false,
+  "volume": {
+    "gb": 300,
+    "name": "bob-forge"
   }
 }
