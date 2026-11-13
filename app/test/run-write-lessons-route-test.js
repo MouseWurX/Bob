@@ -14,11 +14,15 @@ let pass = 0, fail = 0;
 const check = (name, ok, more = '') => { if (ok) { pass++; console.log(`PASS ${name}`); } else { fail++; console.log(`FAIL ${name} ${more}`); } };
 const rows = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
 
-const seen = []; let k = 0;
+const seen = [], styleSeen = []; let k = 0; const mode = { reasoning: ' find it 2. report. Options: A grep, B read. Pick: A. Check: ok.', content: 'FIXED: done, 41 errors.' };
 const srv = http.createServer((q, r) => { let b = ''; q.on('data', (d) => (b += d)); q.on('end', () => {
   const j = JSON.parse(b); const first = String(j.messages[0]?.content || ''); let content;
   if (/^Write 25/.test(first)) content = JSON.stringify(Array.from({ length: 25 }, () => `please remind me about thing ${k++} at 5pm`));
   else if (/^You review training lessons/.test(first)) content = /FIXED/.test(first) ? '{"ok": true, "why": "fine"}' : '{"ok": false, "why": "saved to a wrong path"}';
+  else if (j.messages.at(-1)?.role === 'assistant' && j.messages.at(-1).reasoning_content) { // a prefilled thinking turn: carry on from it
+    styleSeen.push({ system: first, prefill: j.messages.at(-1).reasoning_content, lp: !!j.logprobs });
+    r.writeHead(200, { 'content-type': 'application/json' }); r.end(JSON.stringify({ choices: [{ message: { content: mode.content, reasoning_content: mode.reasoning }, finish_reason: 'stop', logprobs: { content: [{ token: ' find', logprob: -0.1, top_logprobs: [{ token: ' find', logprob: -0.1 }] }] } }] })); return;
+  }
   else { seen.push({ system: first, kw: j.chat_template_kwargs || {} }); content = /A reviewer failed an earlier answer/.test(first) ? 'FIXED: reminder set for 5pm.' : 'Saved a reminder file in C:/temp.'; }
   r.writeHead(200, { 'content-type': 'application/json' }); r.end(JSON.stringify({ choices: [{ message: { content }, finish_reason: 'stop' }] }));
 }); });
@@ -48,6 +52,25 @@ const c = await run(['--dir', 'gptoss-general', '--jobs', 'reminders:1', '--rout
 check('--route general with only tool jobs writes nothing and says so', c.code === 0 && /none of --jobs is routed to this teacher/.test(c.o) && !fs.existsSync(path.join(tmp, 'gptoss-general', 'lessons.jsonl')), c.o.slice(-200));
 const p = await new Promise((res) => { const x = spawn(process.execPath, [path.join(lab, 'make-pairs.mjs'), '--lessons', d, '--out', path.join(tmp, 'pairs')], { cwd: lab, stdio: 'pipe' }); x.on('exit', () => res(rows(path.join(tmp, 'pairs', 'pairs.jsonl')))); });
 check('make-pairs turns each reject and its fix into a right-vs-wrong pair', p.length >= 3 && p.every((x) => x.why === 'saved to a wrong path' && /FIXED/.test(JSON.stringify(x.chosen))), String(p.length));
+// ---- a prefilled style pass (GPT-OSS ignores a style prompt in its thinking; a prefill works) ----
+const sty = path.join(tmp, 'think-sherlock.txt');
+fs.writeFileSync(sty, 'How you think (style "Sherlock"): start with Plan:.\r\nprefix: Plan: 1.\r\nmarkers: Plan:,Options:,Pick:,Check:\r\nleak: Plan:,Options:,Pick:,Check:\r\n');
+const styleRun = (dir, extra = []) => run(['--dir', dir, '--jobs', 'chat:1', '--think', 'all', '--persona', sty, '--odds', '4', '--no-fix', ...extra]);
+const s1 = await styleRun('sherlock');
+const sl = rows(path.join(tmp, 'sherlock', 'lessons.jsonl')), so = rows(path.join(tmp, 'sherlock', 'odds.jsonl'));
+check('--think-prefix from the style file: sent as a trailing assistant thinking message', styleSeen.length > 0 && styleSeen.every((x) => x.prefill === 'Plan: 1.'), s1.o.slice(-300));
+check('the prefix/markers/leak lines never reach the writer as style text', styleSeen.every((x) => /start with Plan:/.test(x.system) && !/^(prefix|markers|leak):/m.test(x.system)));
+check('the saved thinking is prefix + continuation, with its style score', sl.length >= 3 && sl.every((l) => l.messages.find((m) => m.role === 'assistant').reasoning === 'Plan: 1. find it 2. report. Options: A grep, B read. Pick: A. Check: ok.' && l.style_score === 1 && l.think_prefix === 'Plan: 1.'), JSON.stringify(sl[0]?.messages?.[1]));
+check('the odds rows say which words were given (no teacher odds for them)', so.length >= 3 && so.every((x) => x.turns[0].given === 'Plan: 1.' && x.turns[0].odds[0][0] === ' find'));
+mode.content = 'Plan: 1. look\nOptions: A\n\nFIXED: here is the answer.';
+await styleRun('sherlock-leak');
+check('an answer that leaks the style markers is rejected (default)', rows(path.join(tmp, 'sherlock-leak', 'lessons.jsonl')).length === 0);
+await styleRun('sherlock-strip', ['--leak-mode', 'strip']);
+const st = rows(path.join(tmp, 'sherlock-strip', 'lessons.jsonl'));
+check('--leak-mode strip takes the marker lines off the answer and marks it', st.length >= 3 && st.every((l) => l.messages.at(-1).content === 'FIXED: here is the answer.' && l.leak === 'stripped'), JSON.stringify(st[0]?.messages?.at(-1)));
+mode.content = 'FIXED: done.'; mode.reasoning = ' just do it.';
+await styleRun('sherlock-weak', ['--style-min', '0.5']);
+check('--style-min rejects thinking that shows too few of the style markers', rows(path.join(tmp, 'sherlock-weak', 'lessons.jsonl')).length === 0);
 srv.close();
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

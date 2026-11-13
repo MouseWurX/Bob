@@ -18,7 +18,33 @@ if (!L.model) { console.error('Qwen3.6 GGUF not found. Pass --model.'); process.
 // --url <server>: use a rented teacher (vLLM) instead of starting llama-server here. Set LAB_API_KEY and LAB_MODEL_NAME.
 const remoteUrl = o.url ? String(o.url).replace(/\/$/, '') : null;
 // --persona <file>: appended to Bob's system prompt for every lesson (a voice for a themed set); Bob's own rules stay in front of it.
-const persona = o.persona ? fs.readFileSync(path.resolve(String(o.persona)), 'utf8').trim() : '';
+const personaRaw = o.persona ? fs.readFileSync(path.resolve(String(o.persona)), 'utf8').replace(/\r\n/g, '\n').trim() : '';
+// 13 Nov (GPT-OSS ignores a style prompt in its thinking, ~0% style score; a prefill works, tested live): a style file may carry
+// "prefix: <text>", "markers: A:,B:" and "leak: A:,B:" lines. They are taken out of the text the writer reads and used as:
+//   --think-prefix <text>   sent as a trailing assistant message with reasoning_content = <text> on thinking turns, so the writer
+//                           carries on its thinking from there; the saved thinking is prefix + what it wrote. The odds row says
+//                           given: <prefix> (those words are given, not scored by the teacher; the odds start after them).
+//   --style-markers A:,B:   style score = share of these markers found in the lesson's thinking; --style-min 0.5 rejects below it
+//   --leak A:,B: --leak-mode reject|strip   a final answer whose first lines start with a style marker is rejected (default
+//                           when a prefix or markers are set) or has those lines stripped
+const fileLine = (k) => (personaRaw.match(new RegExp(`^${k}:[ \\t]*(.+)$`, 'mi'))?.[1] || '').trim();
+const persona = personaRaw.split('\n').filter((ln) => !/^(prefix|markers|leak):/i.test(ln.trim())).join('\n').trim();
+const thinkPrefix = String(o['think-prefix'] && o['think-prefix'] !== true ? o['think-prefix'] : fileLine('prefix'));
+const listOf = (v) => String(v || '').split(',').map((x) => x.trim()).filter(Boolean);
+const styleMarkers = listOf(o['style-markers'] && o['style-markers'] !== true ? o['style-markers'] : fileLine('markers'));
+const styleMin = Number(o['style-min']) || 0;
+const leakMarkers = listOf(o.leak && o.leak !== true ? o.leak : fileLine('leak') || (thinkPrefix || styleMarkers.length ? 'Plan:,Options:,Pick:,Rule:' : ''));
+const leakMode = String(o['leak-mode'] || 'reject') === 'strip' ? 'strip' : 'reject';
+const reEsc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const leakRe = leakMarkers.length ? new RegExp(`^\\s*(?:[-*#>]\\s*)*(?:${leakMarkers.map(reEsc).join('|')})`, 'i') : null;
+const styleScore = (text, markers) => (markers.length ? markers.filter((m) => String(text || '').includes(m)).length / markers.length : null);
+// the answer's first lines that start with a style marker: [leaked?, the answer with those lines taken out]
+const leakCheck = (content) => {
+  if (!leakRe) return [false, content];
+  const lines = String(content || '').split('\n'); let k = 0;
+  while (k < lines.length && (leakRe.test(lines[k]) || (k > 0 && !lines[k].trim() && k + 1 < lines.length && leakRe.test(lines[k + 1])))) k++;
+  return k ? [true, lines.slice(k).join('\n').replace(/^\s+/, '')] : [false, content];
+};
 // --tag "Think: Sherlock" (12 Nov): a short switch line added to Bob's system prompt in BOTH the teacher's prompt and the saved
 // lesson, while the --persona text (how that style thinks) is only shown to the teacher. The student learns to think that
 // way from the short line alone, so the style can be picked at chat time (a "switch"), tool turns included.
@@ -245,8 +271,10 @@ async function one(idea, think, room = 1, fix = '') { // room 2 = a second try w
     // teacher-only additions (persona, act nudge) go to the server but never into the saved prompt or the set key
     const teacherOnly = [persona, ACT_JOBS.has(idea.job) ? ACT_NUDGE : '', toolNoteOn && TOOL_JOBS.has(idea.job) ? TOOL_NOTE : '',
       fix ? `A reviewer failed an earlier answer to this same message because: ${fix}. Do it right this time; never mention the review.` : ''].filter(Boolean).join('\n\n');
-    const { msg, finish, logprobs, oddsGaps } = await chat(srv.url, { messages: [{ role: 'system', content: teacherOnly ? `${sys}\n\n${teacherOnly}` : sys }, ...live], tools: t.tools, think, max: (think ? 6000 : 3000) * room, ...extraBody(think, idea.job) });
-    if (oddsK) { const pk = packOdds(logprobs); odds.push({ step, set, covers: oddsCover(pk, msg.reasoning_content), ...(oddsGaps !== undefined ? { gaps: oddsGaps } : {}), odds: pk }); }
+    const pre = think && thinkPrefix ? thinkPrefix : '';
+    const { msg, finish, logprobs, oddsGaps } = await chat(srv.url, { messages: [{ role: 'system', content: teacherOnly ? `${sys}\n\n${teacherOnly}` : sys }, ...live, ...(pre ? [{ role: 'assistant', content: '', reasoning_content: pre }] : [])], tools: t.tools, think, max: (think ? 6000 : 3000) * room, ...extraBody(think, idea.job) });
+    if (oddsK) { const pk = packOdds(logprobs); odds.push({ step, set, covers: oddsCover(pk, msg.reasoning_content), ...(pre ? { given: pre } : {}), ...(oddsGaps !== undefined ? { gaps: oddsGaps } : {}), odds: pk }); }
+    if (pre) msg.reasoning_content = pre + String(msg.reasoning_content || ''); // the server returns only what follows the prefix
     if (finish === 'length') throw new Error('ran out of room');
     const a = { role: 'assistant', content: msg.content || '', ...(msg.reasoning_content ? { reasoning: msg.reasoning_content } : {}), ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}), set };
     saved.push(a); live.push({ role: 'assistant', content: a.content, ...(a.tool_calls ? { tool_calls: a.tool_calls } : {}) });
@@ -261,6 +289,11 @@ async function one(idea, think, room = 1, fix = '') { // room 2 = a second try w
   }
   const last = saved[saved.length - 1];
   if (last.role !== 'assistant' || !String(last.content || '').trim()) throw new Error('no final answer (ran out of steps)');
+  const [leaked, cleanAnswer] = leakCheck(last.content);
+  if (leaked) { if (leakMode === 'strip' && cleanAnswer.trim()) last.content = cleanAnswer; else throw new Error('style leaked into the final answer'); }
+  const thought = saved.filter((m) => m.role === 'assistant' && m.reasoning).map((m) => m.reasoning).join('\n');
+  const score = think && styleMarkers.length ? styleScore(thought, styleMarkers) : null;
+  if (score !== null && score < styleMin) throw new Error(`style score ${score.toFixed(2)} under ${styleMin}`);
   if (review) {
     const v = await grade(idea, saved);
     // 12 Nov (later): a review that couldn't be read is neither kept nor rejected; it waits in needs-review.jsonl for a second look
@@ -269,7 +302,7 @@ async function one(idea, think, room = 1, fix = '') { // room 2 = a second try w
   }
   // a lesson fixed after a failed review carries retry: 'review'; its reject sits in rejected.jsonl under the same idea, so
   // make-pairs.mjs turns the two into a right-vs-wrong pair (the reviewer's reason goes along as why)
-  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, ...stamp, ...(fix ? { retry: 'review' } : {}), ...(splitTag ? { split: splitTag } : {}), messages: saved });
+  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, ...stamp, ...(fix ? { retry: 'review' } : {}), ...(splitTag ? { split: splitTag } : {}), ...(score !== null ? { style_score: Math.round(score * 100) / 100 } : {}), ...(leaked ? { leak: 'stripped' } : {}), ...(think && thinkPrefix ? { think_prefix: thinkPrefix } : {}), messages: saved });
   if (oddsK) appendJsonl(path.join(dir, 'odds.jsonl'), { idea: idea.id, job: idea.job, think, ...stamp, k: oddsK, turns: odds });
 }
 // The teacher as a strict reviewer: right tool or rightly none, exact arguments, results read, a final answer that does the job.
