@@ -570,7 +570,8 @@ export const NEEDS = ['pictures', 'video', 'music', 'sfx', 'model3d', 'web', 'th
 export function cleanAbilities(j) {
   const n = (x, max) => (Number.isFinite(Number(x)) && Number(x) > 0 ? Math.min(Number(x), max) : 0);
   const out = { ctx: n(j?.ctx, 1048576), speed: n(j?.speed, 1000), takesJobs: j?.takesJobs === true };
-  out.jobs = out.takesJobs ? [].concat(j?.jobs || []).filter((x) => NEEDS.includes(x)) : [];
+  // 1.5.220: 'room' (a group's job, Discord) used to be dropped here, so no group job ever left for another Bob.
+  out.jobs = out.takesJobs ? [].concat(j?.jobs || []).filter((x) => NEEDS.includes(x) || x === 'room') : [];
   out.jobsBusy = typeof j?.jobsBusy === 'string' ? j.jobsBusy.slice(0, 40) : '';
   out.queue = n(j?.queue, 999);
   out.passAlong = j?.passAlong === true; // 1.5.123: he introduces his Bobs to each other
