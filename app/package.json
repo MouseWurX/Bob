@@ -257,7 +257,8 @@
     "test/run-layout-210-test.js",
     "test/run-looks-test.js",
     "test/run-panels-test.js",
-    "test/run-apu-fit-test.js"
+    "test/run-apu-fit-test.js",
+    "test/run-bob-net-home-test.js"
   ],
   "bob": {
     "release": "1.5",

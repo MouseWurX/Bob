@@ -90,8 +90,8 @@ function net(bobs) {
     if (u.pathname === '/api/pair/hello') return reply(200, to.pairing.hello());
     if (u.pathname.startsWith('/api/pair/')) {
       const b = JSON.parse(raw || '{}');
-      if (u.pathname === '/api/pair/ask') { const r = to.pairing.ask(b, '::ffff:' + from.ip); return reply(r.code, r.error ? { error: r.error } : { id: r.id }); }
-      if (u.pathname === '/api/pair/status') return reply(200, to.pairing.status(b.id, from.ip));
+      if (u.pathname === '/api/pair/ask') { const r = to.pairing.ask(b, '::ffff:' + from.ip); return reply(r.code, r.error ? { error: r.error } : { id: r.id, ...(r.pub ? { pub: r.pub } : {}) }); }
+      if (u.pathname === '/api/pair/status') return reply(200, to.pairing.status(b.id, from.ip, b.pub));
       if (u.pathname === '/api/pair/finish') return reply(200, to.pairing.finish(b, from.ip));
     }
     if (u.pathname === '/login') {

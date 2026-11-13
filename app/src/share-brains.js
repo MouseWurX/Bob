@@ -56,6 +56,26 @@ export function cleanAddress(a, defPort = 7777) {
   return isTailscaleIp(name) || (name.length <= 253 && TS_NAME.test(name)) ? `${name}:${port}` : null;
 }
 
+// 1.5.213 Also over the home network (remote.homeNet, off unless switched on): a plain home address like
+// "172.16.1.20:7777", but only one on a network this replicant matrix is on itself (same subnet), never wider.
+// No Tailscale needed. mine: [{ address, netmask }] (share-card.js homeIps), passed in so tests use fakes.
+export function cleanHomeAddress(a, mine = homeIps(), defPort = 7777) {
+  let s = String(a || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  if (!/:\d{1,5}$/.test(s)) s = `${s}:${defPort}`;
+  const m = s.match(/^(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})$/);
+  if (!m || !isHomeIp(m[1])) return null;
+  const ip = m[1].split('.').map(Number).join('.'), port = Number(m[2]);
+  if (!(port >= 1 && port <= 65535)) return null;
+  if (mine.some((q) => q.address === ip)) return null; // that's this replicant matrix itself
+  return mine.some((q) => sameNet(q.address, ip, q.netmask)) ? `${ip}:${port}` : null;
+}
+export const homeOn = (cfg) => cfg?.remote?.homeNet === true;
+// A Bob's address: Tailscale always; a home address too while "Also over the home network" is on here.
+export const cleanBobAddress = (cfg, a, { home = homeIps } = {}) => cleanAddress(a) || (homeOn(cfg) ? cleanHomeAddress(a, home()) : null);
+export const BAD_ADDRESS = (cfg) => homeOn(cfg)
+  ? 'That isn\'t an address I can use. It looks like 192.168.x.y:7777 (on this home network), 100.x.y.z:7777 or name.something.ts.net:7777.'
+  : 'That isn\'t a Tailscale address. It looks like 100.x.y.z:7777 or name.something.ts.net:7777. For a plain home network, turn on "Also over the home network" first.';
+
 const cleanName = (n) => String(n || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 40);
 
 // ---------- Settings ----------
@@ -85,7 +105,7 @@ export function shareView(cfg) {
 export const doorOpen = (cfg) => Boolean(cfg.remote?.enabled && String(cfg.remote?.passcode || '').length >= 6);
 
 // A change from Settings, checked. Returns { share } to save, or { error }. A Bob without a new passcode keeps its old one.
-export function cleanSharePatch(cfg, b) {
+export function cleanSharePatch(cfg, b, opts = {}) {
   const cur = cfg.share || {};
   const cb = cur.borrow || {};
   const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendChecks: cur.lendChecks === true, homeNet: cur.homeNet !== false, scut: cur.scut === true, scutMbps: SCUT_MBPS.includes(Number(cur.scutMbps)) ? Number(cur.scutMbps) : 100, scutSeal: cur.scutSeal !== false, linkDebug: cur.linkDebug === true, ...(cleanWifiWas(cur.wifiWas) ? { wifiWas: cleanWifiWas(cur.wifiWas) } : {}), spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
@@ -112,8 +132,8 @@ export function cleanSharePatch(cfg, b) {
   if ('sendJobs' in b) next.borrow.jobs = b.sendJobs === true; // 1.5.72, off unless switched on
   if ('when' in b) { if (!WHEN.includes(b.when)) return { error: 'Pick when to borrow.' }; next.borrow.when = b.when; }
   if (b.addBob) {
-    const address = cleanAddress(b.addBob.address);
-    if (!address) return { error: 'That isn\'t a Tailscale address. It looks like 100.x.y.z:7777 or name.something.ts.net:7777.' };
+    const address = cleanBobAddress(cfg, b.addBob.address, opts);
+    if (!address) return { error: BAD_ADDRESS(cfg) };
     const passcode = String(b.addBob.passcode || '').trim();
     const old = next.borrow.bobs.find((x) => x.address === address);
     if (!old && passcode.length < 6) return { error: 'Type that Bob\'s passcode (at least 6 characters).' };
@@ -122,8 +142,8 @@ export function cleanSharePatch(cfg, b) {
     next.borrow.bobs = [...next.borrow.bobs.filter((x) => x.address !== address), entry];
     if (next.borrow.bobs.length > MAX_BOBS) return { error: `Up to ${MAX_BOBS} Bobs.` };
   }
-  if (b.removeBob) next.borrow.bobs = next.borrow.bobs.filter((x) => x.address !== cleanAddress(b.removeBob));
-  if (Array.isArray(b.order)) { const at = (a) => { const i = b.order.map((x) => cleanAddress(x)).indexOf(a); return i < 0 ? 99 : i; }; next.borrow.bobs.sort((x, y) => at(x.address) - at(y.address)); }
+  if (b.removeBob) next.borrow.bobs = next.borrow.bobs.filter((x) => x.address !== (cleanBobAddress(cfg, b.removeBob, opts) || cleanAddress(b.removeBob) || String(b.removeBob)));
+  if (Array.isArray(b.order)) { const at = (a) => { const i = b.order.map((x) => cleanBobAddress(cfg, x, opts)).indexOf(a); return i < 0 ? 99 : i; }; next.borrow.bobs.sort((x, y) => at(x.address) - at(y.address)); }
   if ('borrow' in b) next.borrow.on = b.borrow === true;
   if ((next.borrow.on || next.borrow.jobs || ('askChecks' in b && next.borrow.checks) || ('spread' in b && next.spread !== 'off')) && !next.borrow.bobs.length) return { error: 'Add one of your other Bobs first.' };
   return { share: next };
@@ -291,7 +311,7 @@ export class Lenders {
   busyHere(address) { const t = this.inUse.get(address); return t !== undefined && t > this.now(); }
   hold(address, ms = 15000) { this.inUse.set(address, this.now() + ms); }
   release(address) { this.inUse.delete(address); }
-  bobs() { return (this.cfg.share?.borrow?.bobs || []).filter((x) => cleanAddress(x.address)); }
+  bobs() { return (this.cfg.share?.borrow?.bobs || []).filter((x) => cleanBobAddress(this.cfg, x.address, { home: this.home })); }
 
   // His door on our home network, when he said he has one there and it hasn't failed lately; else ''.
   nearOf(bob) { const a = this.near.get(bob.address); return a && !(this.nearDown.get(bob.address) > this.now()) ? a : ''; }

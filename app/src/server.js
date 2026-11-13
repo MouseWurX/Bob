@@ -221,7 +221,7 @@ const appsRoute = makeAppsRoute({ brain, cfg, version: VERSION.label || String(V
 lockAtStart(cfg, (k, t) => brain.log(k, t)); // 🔐 Locked secrets: notes from opening the box, then any plain keys from an older Bob locked away
 if (cfg.engineMoved?.length) brain.log('settings', `brains now run on ${cfg.llamacpp.brainEngine !== false && brainsEngineNow(cfg) === 'brainengine' ? 'Brain Engine' : 'plain llama.cpp'} (was set to ${cfg.engineMoved.join(' and ')}; Brain Engine is the only engine for my brains now)`); // 1.5.196
 // 1.5.97 Pair with my other Bobs (src/bob-net-pair.js): find them on Tailscale, a Yes card there, passcodes swapped.
-const pairing = new Pairing(cfg, { broadcast, log: (k, t) => brain.log(k, t), version: VERSION, ownAddresses: () => tailscaleIps().map((ip) => `${ip}:${cfg.port}`), vouched: (a, t) => introductions.vouched(a, t) });
+const pairing = new Pairing(cfg, { broadcast, log: (k, t) => brain.log(k, t), version: VERSION, ownAddresses: () => tailscaleIps().map((ip) => `${ip}:${cfg.port}`), home: () => (remoteHome ? homeIps() : []), vouched: (a, t) => introductions.vouched(a, t) });
 // 1.5.123 Pass my Bob-Net along (src/bob-net-party.js): your Bobs introduce each other; also the party in Now running.
 const readCardNow = cardReader(); // Your Bobs on the phone: one card reading every 20 s at most
 const introductions = new Introductions(cfg, { lenders: brain.lenders, pairing, log: (k, t) => brain.log(k, t) });
@@ -430,13 +430,14 @@ const server = http.createServer(async (req, res) => {
 
     // 1.5.97 Bob-Net pairing: the other Bob doesn't know the passcode yet, so these four come before the passcode check.
     // They only reach through the open door (Tailscale only), and the passcode is handed over only after your Yes here.
-    if (isRemote && p.startsWith('/api/pair/') && !fromTailscaleOrLocal(req.socket.remoteAddress)) return send(res, 403, { error: 'Pairing goes over Tailscale only.' });
+    // 1.5.213: or over this replicant matrix's own home network, while "Also over the home network" is on (sealed pairing only).
+    if (isRemote && p.startsWith('/api/pair/') && !fromAllowed(req.socket.remoteAddress)) return send(res, 403, { error: 'Pairing goes over Tailscale or this home network only.' });
     if (isRemote && p.startsWith('/api/pair/')) {
       if (req.method === 'GET' && p === '/api/pair/hello') return send(res, 200, pairing.hello());
       if (req.method === 'POST' && req.headers['x-bob'] === '1' && !refuseForeign(req, host)) {
         const b = await body(req).catch(() => ({}));
-        if (p === '/api/pair/ask') { const r = pairing.ask(b, req.socket.remoteAddress); return send(res, r.code, r.error ? { error: r.error } : { id: r.id }); }
-        if (p === '/api/pair/status') return send(res, 200, pairing.status(b.id, req.socket.remoteAddress));
+        if (p === '/api/pair/ask') { const r = pairing.ask(b, req.socket.remoteAddress); return send(res, r.code, r.error ? { error: r.error } : { id: r.id, ...(r.pub ? { pub: r.pub } : {}) }); }
+        if (p === '/api/pair/status') return send(res, 200, pairing.status(b.id, req.socket.remoteAddress, b.pub));
         if (p === '/api/pair/finish') return send(res, 200, pairing.finish(b, req.socket.remoteAddress));
       }
       return send(res, 404, { error: 'not found' });
@@ -776,17 +777,17 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/phone-access' && (req.method === 'GET' || req.method === 'POST')) {
       if (!isLocal) return send(res, 403, { error: 'Phone access can only be changed on this replicant matrix itself.' });
       const found = await findAddresses(cfg.port);
-      if (req.method === 'GET') return send(res, 200, { ...phoneView(cfg), found, live: remoteLive(), firewall: await firewallState(cfg.port, { home: firewallHome(cfg, remoteHome), udp: firewallUdp(cfg) }).catch(() => null) });
+      if (req.method === 'GET') return send(res, 200, { ...phoneView(cfg), found, home: homeIps().map((m) => `${m.address}:${cfg.port}`).slice(0, 4), live: remoteLive(), firewall: await firewallState(cfg.port, { home: firewallHome(cfg, remoteHome), udp: firewallUdp(cfg) }).catch(() => null) });
       const b = await body(req);
       let made = '';
       if (b.newPasscode === true) { made = newPasscode(); b.passcode = made; }
       if (b.enabled === true && !(cfg.remote?.hosts || []).length && !('hosts' in b)) b.hosts = found;
-      const out = cleanPhonePatch(cfg, b);
+      const out = cleanPhonePatch(cfg, b, { home: homeIps() });
       if (out.error) return send(res, 400, { error: out.error });
       saveRemote(cfg, out.remote);
       brain.log('settings', `phone access: ${out.remote.enabled ? 'on' : 'off'}${out.remote.homeNet ? ', home network too' : ''}, ${out.remote.hosts.length} address(es)${made || 'passcode' in b ? ', new passcode' : ''}`);
       applyRemote(); // 1.5.94: opens (or closes) the door now, no restart
-      return send(res, 200, { ...phoneView(cfg), found, live: remoteLive(), passcode: made || undefined, restart: false, firewall: await firewallState(cfg.port, { home: firewallHome(cfg, remoteHome), udp: firewallUdp(cfg) }).catch(() => null) });
+      return send(res, 200, { ...phoneView(cfg), found, home: homeIps().map((m) => `${m.address}:${cfg.port}`).slice(0, 4), live: remoteLive(), passcode: made || undefined, restart: false, firewall: await firewallState(cfg.port, { home: firewallHome(cfg, remoteHome), udp: firewallUdp(cfg) }).catch(() => null) });
     }
     // 1.5.94: "Let Tailscale through the firewall" (Windows asks once) and "Remove the firewall rule".
     if (p === '/api/phone-access/firewall' && req.method === 'POST') {
@@ -906,7 +907,7 @@ const server = http.createServer(async (req, res) => {
     // 1.5.97 Pair with my other Bobs: Find, Pair, and the Yes/No card. Only on this replicant matrix itself.
     if (p === '/api/bob-net/find' || p === '/api/bob-net/pair' || p === '/api/bob-net/answer') {
       if (!isLocal) return send(res, 403, { error: 'Pairing can only be done on this replicant matrix itself.' });
-      if (req.method === 'GET' && p === '/api/bob-net/find') return send(res, 200, { ...(await pairing.find()), door: remoteOn, live: remoteLive(), here: tailscaleIps().length > 0 });
+      if (req.method === 'GET' && p === '/api/bob-net/find') return send(res, 200, { ...(await pairing.find()), door: remoteOn, live: remoteLive(), here: tailscaleIps().length > 0 || (remoteHome && homeIps().length > 0), homeNet: remoteHome });
       if (req.method === 'GET' && p === '/api/bob-net/pair') return send(res, 200, { pairing: pairing.outgoingView() });
       if (req.method === 'POST' && p === '/api/bob-net/pair') {
         const b = await body(req);

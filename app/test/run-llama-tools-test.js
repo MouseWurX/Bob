@@ -413,7 +413,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   const shut = new CardLender({ ...cfg, remote: { ...cfg.remote, homeNet: false } }, { tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome });
   ok((await shut.open({ localAddr: H(192, 168, 4, 185), remoteAddr: H(192, 168, 4, 189) })).why === 'not tailscale', 'home door: with it off, nothing over the home network');
   const server = read(path.join(here, '..', 'src', 'server.js'));
-  ok(/p\.startsWith\('\/api\/pair\/'\) && !fromTailscaleOrLocal\(req\.socket\.remoteAddress\)\) return send\(res, 403/.test(server), 'home door: pairing stays on Tailscale only');
+  ok(/p\.startsWith\('\/api\/pair\/'\) && !fromAllowed\(req\.socket\.remoteAddress\)\) return send\(res, 403/.test(server), 'home door: pairing over Tailscale, or this home network with the switch on');
   ok(/remoteHome && homeIps\(\)\.some\(\(m\) => sameNet\(m\.address, addr, m\.netmask\)/.test(server), 'home door: only this replicant matrix\'s own home network, never wider');
 }
 

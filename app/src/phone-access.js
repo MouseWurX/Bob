@@ -61,7 +61,7 @@ export function phoneView(cfg) {
 }
 
 // A change from Settings, checked. Returns { remote } to save, or { error }.
-export function cleanPhonePatch(cfg, b) {
+export function cleanPhonePatch(cfg, b, { home = [] } = {}) {
   const cur = cfg.remote || {};
   const next = { enabled: cur.enabled === true, homeNet: cur.homeNet === true, passcode: cur.passcode || '', hosts: cur.hosts || [], bindAddress: cur.bindAddress || '0.0.0.0' };
   if ('homeNet' in b) next.homeNet = b.homeNet === true; // Also over the home network: off unless switched on
@@ -74,7 +74,9 @@ export function cleanPhonePatch(cfg, b) {
   if ('enabled' in b) {
     next.enabled = b.enabled === true;
     if (next.enabled && next.passcode.length < MIN_PASSCODE) return { error: 'Set a passcode first.' };
-    if (next.enabled && !next.hosts.length) return { error: 'No Tailscale address found. Is Tailscale installed and connected on this replicant matrix?' };
+    // 1.5.213: with "Also over the home network" on, a replicant matrix with no Tailscale can open the door too,
+    // on its home-network addresses only (server.js adds those itself; nothing to save here).
+    if (next.enabled && !next.hosts.length && !(next.homeNet && home.length)) return { error: next.homeNet ? 'No Tailscale address and no home network found. Is the network cable in, or Tailscale connected?' : 'No Tailscale address found. Is Tailscale installed and connected? On a plain home network, turn on "Also over the home network" first.' };
   }
   return { remote: next };
 }

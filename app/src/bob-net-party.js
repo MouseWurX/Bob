@@ -27,7 +27,7 @@
 // answers (the phone app can only answer, for now); between two computers the first on your list asks. A token is good
 // for 3 minutes, once. A pair is introduced again after an hour if it didn't take, after a day if it did.
 import crypto from 'node:crypto';
-import { doorOpen, cleanAddress } from './share-brains.js';
+import { doorOpen, cleanBobAddress } from './share-brains.js';
 import { myName, PAIR, ASK_FOR_MS } from './bob-net-pair.js';
 import { LOOK_ID_RE } from './look.js';
 
@@ -80,8 +80,8 @@ export class Introductions {
     if (Number(b?.pair) !== PAIR) return { code: 400, error: 'Different Bob-Net pairing. Update both Bobs.' };
     const token = String(b?.token || '');
     if (!/^[0-9a-f]{32}$/.test(token)) return { code: 400, error: 'no token' };
-    const address = cleanAddress(b?.bob?.address);
-    if (!address) return { code: 400, error: 'That isn\'t a Tailscale address.' };
+    const address = cleanBobAddress(this.cfg, b?.bob?.address);
+    if (!address) return { code: 400, error: 'That isn\'t an address I can use.' };
     const ip = plainIp(remoteIp);
     if (address.split(':')[0] === ip) return { code: 400, error: 'That\'s you.' };
     const role = b?.role === 'ask' ? 'ask' : 'expect';
