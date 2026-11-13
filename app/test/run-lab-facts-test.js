@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { FACT_PACKS, FACT_PACK_IDS, FACTS_CN, FACTS_CN_ZH, FACTS_WATCH, FACTS_FAIR, SAY_CN, SAY_CN_ZH, FACT_LESSONS, pickedLetter, letterOdds, dodged, writeFactLessons, scanLessons, answersToLessons, FACTS_SET } from '../src/lab-facts.js';
+import { FACT_PACKS, FACT_PACK_IDS, FACTS_CN, FACTS_CN_ZH, FACTS_WATCH, FACTS_FAIR, SAY_CN, SAY_CN_ZH, FACT_LESSONS, FACT_LESSONS_2, FACTS_NEW_1, FACTS_NEW_2, pickedLetter, letterOdds, dodged, writeFactLessons, scanLessons, answersToLessons, mixLessons, FACTS_SET, FACTS_SET_2 } from '../src/lab-facts.js';
 import { runExtraPack, EXTRA_PACKS } from '../src/lab-packs.js';
 import { PACKS } from '../src/lab-challenges.js';
 import { HELP } from '../public/help-content.js';
@@ -15,7 +15,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-facts-'));
 const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
 
 // The questions
-const mcs = [...FACTS_CN, ...FACTS_CN_ZH, ...FACTS_WATCH, ...FACTS_FAIR];
+const mcs = [...FACTS_CN, ...FACTS_CN_ZH, ...FACTS_WATCH, ...FACTS_FAIR, ...FACTS_NEW_1, ...FACTS_NEW_2];
 check('every multiple-choice check has four choices, one right letter and a source link', mcs.every((x) => /A\) [\s\S]*B\) [\s\S]*C\) [\s\S]*D\) /.test(x.q) && /^[A-D]$/.test(x.a) && /^https:\/\/en\.wikipedia\.org\/wiki\//.test(x.src)));
 check('the right letter moves round, so "always A" scores 25% or so', ['A', 'B', 'C', 'D'].every((l) => FACTS_CN.filter((x) => x.a === l).length >= 4));
 check('the Chinese checks are asked in Chinese', FACTS_CN_ZH.every((x) => /[一-鿿]/.test(x.q) && /只回答字母/.test(x.q)));
@@ -24,7 +24,7 @@ check('Russia, North Korea and Iran are checked', ['russia', 'northkorea', 'iran
 check('every written question has a facts test and an official-line note', [...SAY_CN, ...SAY_CN_ZH].every((x) => x.want instanceof RegExp && x.line instanceof RegExp));
 
 // The packs: registered, never in Overall
-check('five Straight facts packs are Challenges packs, none counted in Overall', FACT_PACK_IDS.length === 5 && FACT_PACK_IDS.every((id) => EXTRA_PACKS.some((p) => p.id === id) && PACKS.find((p) => p.id === id)?.ranked === false && PACKS.find((p) => p.id === id)?.group === 'more'));
+check('seven Straight facts packs are Challenges packs, none counted in Overall', FACT_PACK_IDS.length === 7 && FACT_PACK_IDS.every((id) => EXTRA_PACKS.some((p) => p.id === id) && PACKS.find((p) => p.id === id)?.ranked === false && PACKS.find((p) => p.id === id)?.group === 'more'));
 check('each pack has its proper name for Professional mode', FACT_PACKS.every((p) => TECH[p.title]));
 
 // Letters and odds
@@ -71,6 +71,27 @@ check('some lessons are in Chinese', lines.filter((l) => /[一-鿿]/.test(l.mess
 check('it shows in the Lab as a finished set', JSON.parse(read(path.join(setDir, 'write.json'))).done === true);
 const taiwan = lines.find((l) => l.messages[0].content === 'Is Taiwan a country?').messages[1].content;
 check('a disputed question gives each side, not one', /PRC claims/.test(taiwan) && /Taiwan's own government says/.test(taiwan));
+
+// Round two: new data for every check
+const src = (l) => l.map((x) => x.src);
+const taught1 = new Set(FACT_LESSONS.flatMap((l) => (l[2].match(/https:\/\/\S+/g) || []).map((u) => u.replace(/[;,.]+$/, ''))));
+const taught2 = new Set(FACT_LESSONS_2.flatMap((l) => (l[2].match(/https:\/\/\S+/g) || []).map((u) => u.replace(/[;,.]+$/, ''))));
+const q1 = new Set(FACTS_CN.map((x) => x.q)), qn1 = FACTS_NEW_1.map((x) => x.q), qn2 = FACTS_NEW_2.map((x) => x.q);
+check('new questions 1 and 2 share no question with each other or the first packs', qn1.every((q) => !q1.has(q) && !qn2.includes(q)) && qn2.every((q) => !q1.has(q)));
+check('new questions 2 asks only about pages neither lesson set was taught from', src(FACTS_NEW_2).every((u) => !taught1.has(u) && !taught2.has(u)), src(FACTS_NEW_2).filter((u) => taught1.has(u) || taught2.has(u)).join(' '));
+check('round two teaches what new questions 1 asked', src(FACTS_NEW_1).filter((u) => taught2.has(u)).length >= 10);
+const set2 = path.join(tmp, 'lessons', FACTS_SET_2);
+writeFactLessons(set2, 2);
+const l2 = read(path.join(set2, 'lessons.jsonl')).split('\n').filter(Boolean).map((l) => JSON.parse(l));
+check('the round-two set is its own lesson set, with links and a different name', l2.length === FACT_LESSONS_2.length && l2.every((l) => l.round === 2 && l.sources.length) && /round two/.test(JSON.parse(read(path.join(set2, 'write.json'))).name));
+const gen = path.join(tmp, 'general');
+fs.mkdirSync(gen, { recursive: true });
+fs.writeFileSync(path.join(gen, 'lessons.jsonl'), Array.from({ length: 50 }, (_, i) => JSON.stringify({ idea: `g${i}`, messages: [{ role: 'user', content: `q${i}` }, { role: 'assistant', content: `a${i}` }] })).join('\r\n') + '\r\n');
+fs.writeFileSync(path.join(gen, 'toolsets.json'), '{"t":1}');
+const mx = mixLessons({ rounds: [1, 2], general: gen, generalCount: 20, repeat: 2, out: path.join(tmp, 'mix') });
+const mxl = read(mx.file).split('\n').filter(Boolean).map((l) => JSON.parse(l));
+check('the Forge mix repeats the fact lessons and adds a sample of general lessons', mx.facts === 2 * (FACT_LESSONS.length + FACT_LESSONS_2.length) && mx.general === 20 && mxl.length === mx.facts + 20 && new Set(mxl.map((l) => l.idea)).size === mxl.length);
+check('the mix keeps the general toolsets and is the same every time with the same seed', read(path.join(tmp, 'mix', 'toolsets.json')) === '{"t":1}' && mixLessons({ rounds: [1, 2], general: gen, generalCount: 20, repeat: 2, out: path.join(tmp, 'mix2') }) && read(path.join(tmp, 'mix2', 'lessons.jsonl')) === read(mx.file));
 
 // The scan of your own lessons
 const own = path.join(tmp, 'own', 'lessons.jsonl');

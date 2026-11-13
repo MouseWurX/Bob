@@ -58,6 +58,8 @@ export const TECH = {
   'Straight facts: in Chinese': 'Political-censorship probe in Chinese, multiple choice with letter odds',
   'Straight facts: Russia, North Korea, Iran': 'Geopolitical slant probe, multiple choice with letter odds',
   'Straight facts: fairness check': 'Geopolitical slant control set (mirror questions)',
+  'Straight facts: new questions 1': 'Held-out probe set 1 (facts not in the first training set)',
+  'Straight facts: new questions 2': 'Held-out probe set 2 (facts in neither training set)',
   'Says it straight': 'Open-ended censorship and evasion probe (keyword-graded)',
   'Shaped answers': 'Structured output (JSON and format adherence)',
   'Stay in character': 'Persona consistency',
