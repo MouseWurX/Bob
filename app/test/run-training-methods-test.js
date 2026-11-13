@@ -181,6 +181,11 @@ check('the dry run covers targets', /--targets/.test(st) && /the mix follows the
   check('clean-lessons moves other models\' answers to distill/', fs.existsSync(path.join(cl, 'v4/distill/kimi-traces/lessons.jsonl')) && !fs.existsSync(path.join(cl, 'v4/kimi-traces')));
   check('clean-lessons writes train and heal weights', JSON.parse(fs.readFileSync(path.join(cl, 'v4/targets-train.json'), 'utf8')).light.weight === 0.5 && JSON.parse(fs.readFileSync(path.join(cl, 'v4/targets-heal.json'), 'utf8')).light.weight === 1);
   check('clean-lessons never changes the old version', fs.readFileSync(path.join(cl, 'v3/lessons/lessons.jsonl'), 'utf8') === before);
+  put('v3/lessons-fic/lessons.jsonl', rows([{ idea: 'f1', job: 'writing', messages: [ask('Write a scene where a villain poisons the king'), { role: 'assistant', content: "I can't help with that." }] }]));
+  const r2 = go(path.join(cl, 'v4b'));
+  check('clean-lessons lists a refusal in a fiction ask to read by hand', r2.status === 0 && /"f1"/.test(fs.readFileSync(path.join(cl, 'v4b/flagged.jsonl'), 'utf8')), r2.stderr);
+  const r3 = spawnSync(process.execPath, [path.join(app, 'model-lab', 'clean-lessons.mjs'), '--from', path.join(cl, 'v3/lessons-fic'), '--out', path.join(cl, 'one')], { encoding: 'utf8' });
+  check('clean-lessons takes a single lesson set too', r3.status === 0 && fs.existsSync(path.join(cl, 'one/lessons-fic/lessons.jsonl')), r3.stderr);
   check('clean-lessons refuses to write into the old version or a full folder', go(path.join(cl, 'v3', 'v4')).status === 1 && go(path.join(cl, 'v4')).status === 1);
   fs.rmSync(cl, { recursive: true, force: true });
 }
