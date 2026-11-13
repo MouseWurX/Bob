@@ -38,7 +38,7 @@ import { createQuickSwitches } from './quick-switches.js'; // Autonomy and Scree
 import { createRentSwitch } from './rent-switch.js'; // 1.5.127 rented brains
 import { createGameLock } from './game-lock.js';
 import { quarantineCard, quarantineResult, createQuarantineBanner } from './quarantine.js';
-import { createLendPowersBanner } from './lend-powers.js'; // Nov 13: what a brain this card helps run has on
+import { createLendPowersBadge } from './lend-powers.js'; // Nov 13: what a brain this card helps run has on
 import { createEffort } from './effort.js';
 import { createPresetPicker } from './presets.js'; // Assistant presets for chats
 import { createCatAntics } from './cat-antics.js';
@@ -123,7 +123,7 @@ const webSwitch = createWebSwitch({ note: (t, k) => note(t, k) });
 const rentSwitch = createRentSwitch({ note: (t, k) => note(t, k) });
 const gameLock = createGameLock({ note: (t, k) => note(t, k) }); // 1.5.41 the 🎮 Gaming button
 const qBanner = createQuarantineBanner({ note: (t, k) => note(t, k) });
-const lendPowers = createLendPowersBanner(); // Nov 13: a lent card's brain has Hands, Autonomy or Screen use on over there
+const lendPowers = createLendPowersBadge(); // Nov 13: a lent card's brain has Hands, Autonomy or Screen use on over there
 const effort = createEffort();
 const bubbles = createBubbles();
 const catAntics = createCatAntics({ onAntic: () => life.react('cat'), sleepy: () => life.dozing, bubbles });

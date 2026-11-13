@@ -271,7 +271,7 @@ const say = (c, lines, code = 0) => { for (const l of lines) c.stdout.write(l + 
   check('…and cleared the moment they\'re off', seen.length === 2 && seen[1].p === null);
   lender.setPowers({ screen: true }); lender.close();
   check('…or the lend ends', seen.at(-1).p === null && !lender.view().powers);
-  check('the strip says it in plain words', /helping run PC's brain, and that brain has Hands and Autonomy on over there, so it acts without asking first/.test(powersLine({ hands: true, autonomy: true }, 'PC')) && powersLine(null) === '');
+  check('the badge says it in plain words', /helping run PC's brain, and that brain has Hands and Autonomy on over there, so it acts without asking first/.test(powersLine({ hands: true, autonomy: true }, 'PC')) && powersLine(null) === '');
   check('the asking Bob sends them with every keep', read('src/share-card.js').includes("body: { action: 'keep', powers: this.powers() }"));
 }
 
