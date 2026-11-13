@@ -181,8 +181,9 @@ function broadcast(ev) {
   if (ev?.type === 'think-start' && ev.model) ev = { ...ev, label: friendlyName(ev.model) }; // "Qwen 3.8 27B", not the raw tag
   const data = `data: ${JSON.stringify(ev)}\n\n`;
   for (const res of ev?.type === 'think' || ev?.type === 'think-start' ? mindClients : clients) res.write(data);
-  if (ev?.type === 'status') { const l = ['waking', 'loading'].includes(ev.state) ? String(ev.model || '') : ''; if (l !== cubeLoading) { cubeLoading = l; if (l && cubeClients.size) cubeBrainsNow(); } } // once as a brain starts loading, not every progress line
+  if (ev?.type === 'status') { const l = ['waking', 'loading'].includes(ev.state) ? String(ev.model || '') : ''; if (l !== cubeLoading) { cubeLoading = l; if (cubeClients.size) cubeBrainsNow(); } } // once as a brain starts loading, and once as loading stops (a load that failed or was called off leaves no brain), not every progress line
   if (ev?.type === 'brain' && cubeClients.size) cubeBrainsNow(); // fNRI's small cube takes itself apart when its brain is let go
+  if (ev?.type === 'load-progress' && cubeClients.size) { const d = `data: ${JSON.stringify({ type: 'cube-load', label: friendlyName(ev.model), pct: Math.max(0, Math.min(100, Number(ev.pct) || 0)) })}\n\n`; for (const res of cubeClients) res.write(d); } // 1.5.215: the load-in fills as the weights load
   try { weekly.watch(ev, () => brain.engine?.current || ''); } catch {} // Count what Bob did each week (numbers only)
   try { telegram?.watch(ev); } catch {} // Talk to Bob on Telegram: only the Telegram chat's events, and only while it's on
   try { discord?.watch(ev); } catch {} // Bob on Discord: only Discord jobs' own events
@@ -236,12 +237,19 @@ brain.mindWatchers = () => mindClients.size;
 const cubeWhy = () => (brainsEngineNow(cfg) !== 'brainengine' ? 'The cube needs Brain Engine as the engine for Bob\'s brains (Settings > Engines). The engine in use now doesn\'t report which experts it picked.'
   : lab.traceProbe?.()?.experts === false ? 'This Brain Engine build is too old to report which experts it picked. Press Update on Brain Engine in Settings > Engines, and the cube lights up with the next reply.' : '');
 // Which brains are loaded right now, by the names the cube knows them by. Told to the cube pages only.
+// 1.5.215: only the newest look is told. Looking takes a moment (the engine asks the graphics card how much each brain
+// holds), so a look started while a brain was still loading could finish after the look that found it gone, and
+// leave the cube up with no brain loaded.
+let cubeLook = 0;
 async function cubeBrainsNow() {
+  const mine = ++cubeLook;
   try {
     const now = await brain.engine.loaded(), labels = cubeBrains(now, friendlyName);
+    if (mine !== cubeLook) return;
     // the shapes too, so the cube builds itself in one colour as a brain loads and waits there for the first reply
     const st = brain.state || {}, loading = ['waking', 'loading'].includes(st.state) && st.model ? String(st.model) : '';
     let shapes = []; try { shapes = cubeShapes(lab, [...now.map((m) => m?.name), loading], friendlyName, (m) => brain.engine.resolve?.(m)?.gguf); } catch {}
+    if (mine !== cubeLook) return;
     const data = `data: ${JSON.stringify({ type: 'cube-brains', labels, shapes, loading: loading ? friendlyName(loading) : '' })}\n\n`; for (const res of cubeClients) res.write(data);
   } catch {}
 }
