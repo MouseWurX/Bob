@@ -45,22 +45,22 @@ const winRun = (j) => async () => ({ ok: true, out: `${JSON.stringify(j)}\r\n`, 
   const fsx = { readdirSync: (p) => { if (!tree[p]) throw new Error('no'); return tree[p]; }, existsSync: (p) => exists.has(p), readFileSync: (p) => { if (!(p in files)) throw new Error('no'); return files[p]; }, readlinkSync: (p) => { if (!(p in links)) throw new Error('no'); return links[p]; } };
   const l = await readLinks({ os_: 'linux', fsx });
   ok(l.list.map((x) => `${x.name}:${x.kind}`).join(' ') === 'enp5s0:cable wlan0:wifi thunderbolt0:usb4 enx00:usbnet' && l.usb4 && l.list[0].mbps === 2500 && l.list[2].up === false, 'Linux: links are read from /sys, bridges and loopback left out');
-  const mac = await readLinks({ os_: 'mac', ifaces: { en0: [{ family: 'IPv4', address: H(192, 168, 4, 9), internal: false }] }, run: async () => ({ ok: true, out: 'Hardware Port: Wi-Fi\nDevice: en0\nEthernet Address: x\n\nHardware Port: Thunderbolt 1\nDevice: en1\n\nHardware Port: Thunderbolt Bridge\nDevice: bridge0\n\nHardware Port: USB 10/100/1000 LAN\nDevice: en7\n', err: '' }) });
+  const mac = await readLinks({ os_: 'mac', ifaces: { en0: [{ family: 'IPv4', address: H(172, 16, 9, 9), internal: false }] }, run: async () => ({ ok: true, out: 'Hardware Port: Wi-Fi\nDevice: en0\nEthernet Address: x\n\nHardware Port: Thunderbolt 1\nDevice: en1\n\nHardware Port: Thunderbolt Bridge\nDevice: bridge0\n\nHardware Port: USB 10/100/1000 LAN\nDevice: en7\n', err: '' }) });
   ok(mac.usb4 && mac.wifi && mac.dongle && mac.list.find((x) => x.kind === 'wifi').up && !mac.list.find((x) => x.kind === 'usb4').up, 'Mac: Wi-Fi, a Thunderbolt Bridge and a USB network dongle');
   ok((await readLinks({ os_: 'linux', fsx: { readdirSync: () => { throw new Error('no'); } } })).list.length === 0, 'and a machine that can\'t be read gives an empty list');
 }
 {
   ok(isHomeIp(H(169, 254, 12, 7)) && !isHomeIp(H(169, 253, 1, 1)) && !isHomeIp('8.8.8.8'), 'a cable straight between two machines: its self-given address counts as home network');
-  const mine = homeIps({ 'Ethernet 3': [{ family: 'IPv4', address: H(169, 254, 12, 7), netmask: '255.255.0.0', internal: false }], 'Wi-Fi': [{ family: 'IPv4', address: H(192, 168, 4, 185), netmask: '255.255.255.0', internal: false }] });
+  const mine = homeIps({ 'Ethernet 3': [{ family: 'IPv4', address: H(169, 254, 12, 7), netmask: '255.255.0.0', internal: false }], 'Wi-Fi': [{ family: 'IPv4', address: H(172, 16, 9, 185), netmask: '255.255.255.0', internal: false }] });
   ok(mine.length === 2 && pickHome(mine, [H(169, 254, 80, 2)]).host === H(169, 254, 12, 7) && pickHome(mine, ['8.8.8.8']) === null, 'and the two ends of that cable find each other with nothing typed in');
   const go = { name: 'Go', address: '100.102.0.7:7777' };
-  const ls = new Lenders({ share: { borrow: { bobs: [go] } } }, { home: () => mine, trip: async ({ host }) => (host === H(169, 254, 80, 2) ? 0.3 : 28), fetchFn: async () => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ lend: true, links: { usb4: true, wifi: true, extra: 'x' }, home: [`${H(192, 168, 4, 189)}:7777`, `${H(169, 254, 80, 2)}:7777`] }) }) });
+  const ls = new Lenders({ share: { borrow: { bobs: [go] } } }, { home: () => mine, trip: async ({ host }) => (host === H(169, 254, 80, 2) ? 0.3 : 28), fetchFn: async () => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ lend: true, links: { usb4: true, wifi: true, extra: 'x' }, home: [`${H(172, 16, 9, 189)}:7777`, `${H(169, 254, 80, 2)}:7777`] }) }) });
   await ls.hello(go, { force: true });
   ok(ls.nearOf(go) === `${H(169, 254, 80, 2)}:7777` && ls.nearAll.get(go.address).length === 2, 'Bob moves to the USB4 cable when it is quicker than Wi-Fi, and remembers every path');
   ok(ls.state.get(go.address).links.usb4 === true && ls.state.get(go.address).links.port === false && !('extra' in ls.state.get(go.address).links), 'what links the other Bob has is kept from his hello, and only that');
-  const ifaces = { 'Ethernet 3': [{ address: H(169, 254, 12, 7) }], 'Wi-Fi': [{ address: H(192, 168, 4, 185) }] };
+  const ifaces = { 'Ethernet 3': [{ address: H(169, 254, 12, 7) }], 'Wi-Fi': [{ address: H(172, 16, 9, 185) }] };
   const me = await readLinks({ os_: 'win', run: winRun(GO) });
-  ok(kindOfAddress(H(169, 254, 12, 7), me, ifaces) === 'usb4' && kindOfAddress(H(192, 168, 4, 185), me, ifaces) === 'wifi' && kindOfAddress('1.2.3.4', me, ifaces) === '', 'each of this machine\'s addresses is matched to its link');
+  ok(kindOfAddress(H(169, 254, 12, 7), me, ifaces) === 'usb4' && kindOfAddress(H(172, 16, 9, 185), me, ifaces) === 'wifi' && kindOfAddress('1.2.3.4', me, ifaces) === '', 'each of this machine\'s addresses is matched to its link');
 }
 {
   ok(JSON.stringify(linksHello({ list: [], usb4: true, port: false, dongle: false, wifi: true })) === '{"usb4":true,"port":false,"dongle":false,"wifi":true}' && linksHello(null) === undefined && cleanLinks(null) === null, 'the hello carries only which kinds of link there are');

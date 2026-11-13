@@ -18,7 +18,7 @@ check('other addresses are refused', cleanAddress(['192', '168', '1', '5'].join(
 const base = { remote: { enabled: true, passcode: '12345678' }, share: {} };
 check('borrow needs a Bob first', /Add one/.test(cleanSharePatch(base, { borrow: true }).error || ''));
 check('a new Bob needs its passcode', /passcode/.test(cleanSharePatch(base, { addBob: { address: '100.101.2.3' } }).error || ''));
-check('a non-Tailscale Bob is refused', /Tailscale/.test(cleanSharePatch(base, { addBob: { address: ['10', '0', '0', '4'].join('.'), passcode: '12345678' } }).error || ''));
+check('a non-Tailscale Bob is refused (home network switched off)', /Tailscale/.test(cleanSharePatch({ ...base, remote: { ...base.remote, homeNet: false, homeNetChosen: true } }, { addBob: { address: ['10', '0', '0', '4'].join('.'), passcode: '12345678' } }).error || ''));
 const one = cleanSharePatch(base, { addBob: { name: 'Phone', address: '100.101.2.3', passcode: '87654321' }, borrow: true }).share;
 check('adding a Bob and switching borrow on', one?.borrow.on === true && one.borrow.bobs[0].address === '100.101.2.3:7777' && one.borrow.when === 'gaming');
 const again = cleanSharePatch({ ...base, share: one }, { addBob: { name: 'Phone 2', address: '100.101.2.3' } }).share;
@@ -164,10 +164,12 @@ check('and that lender stopped loading too', lender.lending === null);
 
 // SCUT, Bob's fast link for Bigger Bobs: off unless switched on, with a speed cap of 50, 100, 300 or 400 Mbit/s.
 {
-  check('SCUT is off unless switched on, cap 100', shareView(base).scut === false && shareView(base).scutMbps === 100);
+  check('SCUT is off unless switched on, cap Auto (1.5.214)', shareView(base).scut === false && shareView(base).scutMbps === 'auto');
   const on = cleanSharePatch(base, { scut: true, scutMbps: 300 });
   check('SCUT switches on, with its cap', on.share.scut === true && on.share.scutMbps === 300);
-  check('a cap that isn\'t on the list is refused', Boolean(cleanSharePatch(base, { scutMbps: 1000 }).error));
+  check('a cap that isn\'t on the list is refused', Boolean(cleanSharePatch(base, { scutMbps: 9999 }).error));
+  { const a = cleanSharePatch(base, { scutMbps: 100 }), b = cleanSharePatch({ ...base, share: a.share }, { scutMbps: 'auto' });
+    check('1.5.214: picking 100 counts as chosen; Auto goes back to choosing by the link', a.share.scutMbpsChosen === true && shareView({ ...base, share: a.share }).scutMbps === 100 && b.share.scutMbpsChosen === false && shareView({ ...base, share: b.share }).scutMbps === 'auto'); }
   check('other changes keep SCUT as it was', cleanSharePatch({ ...base, share: on.share }, { homeNet: false }).share.scut === true);
 }
 

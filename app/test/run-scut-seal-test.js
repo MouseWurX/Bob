@@ -59,7 +59,7 @@ const box = (name) => { const d = path.join(tmp, name); fs.mkdirSync(d, { recurs
   ok(key === side.env.GGML_RPC_SCUT_KEY && linkKey(borCfg, L) === side.reply.linkKey, 'both Bobs end up with the same key for this lend');
   ask = sealAsk(borCfg, L);
   ok(ask.kid === keyId(linkKey(borCfg, L)) && !ask.newKey, 'next time the borrower names its key by id only');
-  side = lenderSeal(lendCfg, { on: true, ask: cleanSealAsk(ask), asker: H(192, 168, 4, 189) });
+  side = lenderSeal(lendCfg, { on: true, ask: cleanSealAsk(ask), asker: H(172, 16, 9, 189) });
   ok(side.sealed && !('linkKey' in side.reply), 'the lender finds it by id, whichever of his addresses was asked, and the key never travels again');
   key = borrowerSeal(borCfg, { address: L, reply: side.reply, asked: ask });
   ok(key === side.env.GGML_RPC_SCUT_KEY, 'the same key again, from a fresh salt');
@@ -82,7 +82,7 @@ const box = (name) => { const d = path.join(tmp, name); fs.mkdirSync(d, { recurs
   side = lenderSeal(lendCfg, { on: false, ask: cleanSealAsk(ask), asker: B });
   ok(!side.sealed && side.reply === null && !('GGML_RPC_SCUT_KEY' in side.env), 'switched off on the lender: no key, unsealed SCUT');
   ok(borrowerSeal(borCfg, { address: L, reply: null, asked: ask }) === 'off', 'a lender that doesn\'t seal: no SCUT with him (never an unsealed link for a Bob that seals)');
-  ok(keysEnv([{ at: '100.101.1.2:50052', key: 'k1' }, { at: `${H(192, 168, 4, 5)}:50052`, key: 'off' }]).GGML_RPC_SCUT_KEYS === `100.101.1.2:50052=k1,${H(192, 168, 4, 5)}:50052=off` && JSON.stringify(keysEnv([])) === '{}', 'llama-server gets one key per lent card');
+  ok(keysEnv([{ at: '100.101.1.2:50052', key: 'k1' }, { at: `${H(172, 16, 9, 5)}:50052`, key: 'off' }]).GGML_RPC_SCUT_KEYS === `100.101.1.2:50052=k1,${H(172, 16, 9, 5)}:50052=off` && JSON.stringify(keysEnv([])) === '{}', 'llama-server gets one key per lent card');
 }
 
 // --- The switch ---

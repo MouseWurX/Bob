@@ -86,7 +86,7 @@ import { startEngineExtras, currentEngineNote } from './engine-extras-run.js'; /
 import { EXTRA_SWITCHES, batteryNow } from './engine-extras.js';
 import { readSpeedLog, speedSeries } from './speed-log.js';
 import { trainerState } from './lab-teach.js'; // 1.5.16x the Lab's Trainer pack, shown in Settings so it can be removed
-import { phoneView, cleanPhonePatch, findAddresses, newPasscode, isTailscaleIp } from './phone-access.js';
+import { phoneView, cleanPhonePatch, findAddresses, newPasscode, isTailscaleIp, homeNetOn } from './phone-access.js';
 import { firewallState, changeRule, firewallHome, firewallUdp } from './firewall.js';
 import { shareView, cleanSharePatch, saveShare, lendChat, lendRefusal, reviewRefusal, helloFor, bobNetRooms } from './share-brains.js';
 import { lendCardRoute, doorIps, readNicDescs, isHomeIp, sameNet } from './share-card.js'; // Bob-Net: Lend my graphics card
@@ -222,6 +222,7 @@ lockAtStart(cfg, (k, t) => brain.log(k, t)); // 🔐 Locked secrets: notes from 
 if (cfg.engineMoved?.length) brain.log('settings', `brains now run on ${cfg.llamacpp.brainEngine !== false && brainsEngineNow(cfg) === 'brainengine' ? 'Brain Engine' : 'plain llama.cpp'} (was set to ${cfg.engineMoved.join(' and ')}; Brain Engine is the only engine for my brains now)`); // 1.5.196
 // 1.5.97 Pair with my other Bobs (src/bob-net-pair.js): find them on Tailscale, a Yes card there, passcodes swapped.
 const pairing = new Pairing(cfg, { broadcast, log: (k, t) => brain.log(k, t), version: VERSION, ownAddresses: () => tailscaleIps().map((ip) => `${ip}:${cfg.port}`), home: () => (remoteHome ? doorIps() : []), vouched: (a, t) => introductions.vouched(a, t) });
+if (brain.lenders) brain.lenders.lookHome = () => (remoteHome ? pairing.find() : null); // 1.5.214: a paired Bob lost on Tailscale is looked for at home
 // 1.5.123 Pass my Bob-Net along (src/bob-net-party.js): your Bobs introduce each other; also the party in Now running.
 const readCardNow = cardReader(); // Your Bobs on the phone: one card reading every 20 s at most
 const introductions = new Introductions(cfg, { lenders: brain.lenders, pairing, log: (k, t) => brain.log(k, t) });
@@ -377,7 +378,7 @@ function readRemote() {
   remote = cfg.remote || {};
   remoteOn = Boolean(remote.enabled && remote.passcode && String(remote.passcode).length >= 6);
   remoteHosts = new Set((remote.hosts || []).map((h) => String(h).toLowerCase()));
-  remoteHome = remoteOn && remote.homeNet === true; // Also over the home network (off unless switched on)
+  remoteHome = remoteOn && homeNetOn(remote); // Also over the home network (1.5.214: on unless switched off)
   authToken = crypto.createHash('sha256').update('bob:' + (remote.passcode || '') + ':' + cfg.agentDir).digest('hex');
 }
 readRemote();

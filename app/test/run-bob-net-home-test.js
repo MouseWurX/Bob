@@ -26,7 +26,7 @@ ok(cleanHomeAddress('8.8.8.8', [{ address: '8.8.8.1', netmask: '255.255.255.0' }
 ok(cleanHomeAddress('172.16.1.20', mine) === null, 'home address: this replicant matrix itself is refused');
 ok(cleanHomeAddress('172.16.1.30:99999', mine) === null && cleanHomeAddress('nas.local', mine) === null, 'home address: bad port or a name is refused');
 ok(cleanHomeAddress('172.20.0.5', []) === null, 'home address: no home network here, nothing');
-const off = { remote: { enabled: true, passcode: 'abcdef12' } }, on = { remote: { enabled: true, passcode: 'abcdef12', homeNet: true } };
+const off = { remote: { enabled: true, passcode: 'abcdef12', homeNet: false, homeNetChosen: true } }, on = { remote: { enabled: true, passcode: 'abcdef12', homeNet: true } };
 ok(cleanBobAddress(off, '172.16.1.30', { home: () => mine }) === null, 'switch off: a home address is not a Bob address');
 ok(cleanBobAddress(on, '172.16.1.30', { home: () => mine }) === '172.16.1.30:7777', 'switch on: it is');
 ok(cleanBobAddress(off, '100.101.1.2') === '100.101.1.2:7777' && cleanAddress('172.16.1.30') === null, 'Tailscale works as before, and the plain check is still Tailscale only');
@@ -45,11 +45,11 @@ ok(cleanBobAddress(off, '100.101.1.2') === '100.101.1.2:7777' && cleanAddress('1
 
 // ---------- The door without Tailscale ----------
 {
-  const cfg = { port: 7777, remote: { passcode: '12345678', hosts: [] } };
+  const cfg = { port: 7777, remote: { passcode: '12345678', hosts: [], homeNet: false, homeNetChosen: true } };
   ok(/home network/.test(cleanPhonePatch(cfg, { enabled: true }, { home: mine }).error || ''), 'door, no Tailscale, switch off: says to turn on the home network switch');
   ok(cleanPhonePatch(cfg, { enabled: true, homeNet: true }, { home: mine }).remote?.enabled === true, 'door, no Tailscale, switch on: opens on the home network');
   ok(/cable/.test(cleanPhonePatch(cfg, { enabled: true, homeNet: true }, { home: [] }).error || ''), 'door, no Tailscale and no home network: says so');
-  ok(cleanPhonePatch({ port: 7777, remote: {} }, {}).remote.homeNet === false, 'Also over the home network is off to start with');
+  ok(cleanPhonePatch({ port: 7777, remote: {} }, {}).remote.homeNet === true && cleanPhonePatch({ port: 7777, remote: { homeNet: false } }, {}).remote.homeNet === true && cleanPhonePatch({ port: 7777, remote: {} }, { homeNet: false }).remote.homeNet === false && cleanPhonePatch({ port: 7777, remote: { homeNet: false, homeNetChosen: true } }, {}).remote.homeNet === false, '1.5.214: Also over the home network is on to start with (home first), an off saved by 1.5.213 without choosing it turns on, and a chosen off stays off');
 }
 
 // ---------- Which addresses Find knocks on ----------
@@ -74,7 +74,7 @@ ok(cleanBobAddress(off, '100.101.1.2') === '100.101.1.2:7777' && cleanAddress('1
 function bob(name, ip, { homeNet = true, door = true, port = 7777 } = {}) {
   const file = path.join(tmp, `${name}.json`);
   fs.writeFileSync(file, '{}');
-  const cfg = { port, configFile: file, dataDir: path.join(tmp, name), remote: { enabled: door, passcode: `${name}-code-1`, homeNet }, share: {} };
+  const cfg = { port, configFile: file, dataDir: path.join(tmp, name), remote: { enabled: door, passcode: `${name}-code-1`, homeNet, homeNetChosen: true }, share: {} };
   fs.mkdirSync(cfg.dataDir, { recursive: true });
   const events = [];
   const p = new Pairing(cfg, { broadcast: (e) => events.push(e), version: '1.5.213', ownAddresses: () => [], pollMs: 5, peers: async () => null, home: () => lan(ip) });
@@ -219,6 +219,62 @@ const wait = async (f, ms = 2000) => { const t = Date.now(); while (!f() && Date
   ok(f.bobs.length === 1 && f.bobs[0].needsUpdate === true && f.bobs[0].address === '172.16.1.40:7777', 'find: an older Bob (403 on the home network) is listed as needing 1.5.213, not left out');
   const page = read('public/share-brains.js');
   ok(/f\.needsUpdate\) what = .*1\.5\.213/.test(page) && /f\.bob && !f\.needsUpdate && f\.pair >= 1/.test(page), 'Settings: such a Bob says to update him and has no Pair button');
+}
+
+// 1.5.214 (the owner: "if you have a home network it should just work, tailscale is the fall back for being mobile")
+{
+  const A = bob('desk11', '172.16.1.20');
+  const hello = (id, name) => ({ ok: true, status: 200, json: async () => ({ bob: true, pair: PAIR, seal: 1, id, name, version: '1.5.214', device: 'computer' }) });
+  A.cfg.share = { borrow: { bobs: [{ name: 'tower', address: '100.101.0.9:7777', passcode: 'their-code' }] } };
+  A.p.peers = async () => [{ ip: '100.101.0.9', name: 'tower', os: 'windows', online: true }, { ip: '100.101.0.10', name: 'go', os: 'windows', online: true }];
+  A.p.fetch = async (url) => { const u = new URL(url); if (u.port !== '7777') throw new Error('quiet');
+    if (u.hostname === '100.101.0.9' || u.hostname === '172.16.1.85') return hello('tower-run', 'tower');
+    if (['100.101.0.10', '172.16.1.89', '172.16.1.99'].includes(u.hostname)) return hello('go-run', 'go');
+    throw new Error('quiet'); };
+  const f = await A.p.find();
+  const go = f.bobs.find((b) => b.name === 'go'), tower = f.bobs.find((b) => b.name === 'tower');
+  ok(f.bobs.length === 2, 'find: one row per Bob, however many addresses he answered on (the Go on two home addresses and Tailscale)');
+  ok(go?.address === '172.16.1.89:7777' && go.via === 'home' && go.also.length === 2 && go.device === 'go', 'find: Pair uses his home address first; his other addresses ride along');
+  ok(tower?.paired === true && A.cfg.share.borrow.bobs[0].home === '172.16.1.85:7777', 'find: a Bob paired over Tailscale is the same row, and his home address is saved on his entry');
+  const T = bob('desk12', '172.16.1.20', { homeNet: false });
+  T.p.peers = A.p.peers; T.p.fetch = A.p.fetch;
+  ok((await T.p.find()).bobs.every((b) => b.via === 'tailscale'), 'find, home network switched off: Tailscale only, as before');
+  const urls = [];
+  const cfg = { remote: { enabled: true, passcode: 'abcdef12' }, share: { borrow: { bobs: [] } } };
+  const fetchFn = async (url) => { urls.push(url); if (/100\.101|172\.16\.1\.40/.test(url) && !/172\.16\.1\.85/.test(url)) throw new TypeError('fetch failed'); return { ok: true, status: 200, json: async () => ({ lend: true }) }; };
+  const ls = new Lenders(cfg, { fetchFn, home: () => mine });
+  await ls.call({ name: 'tower', address: '100.101.0.9:7777', home: '172.16.1.85:7777', passcode: 'x' }, '/api/lend/hello');
+  ok(urls[0] === 'http://172.16.1.85:7777/api/lend/hello', 'Lenders: a saved home address goes first, with Tailscale off');
+  urls.length = 0;
+  await ls.call({ name: 'go', address: '172.16.1.40:7777', ts: '100.101.0.10:7777', passcode: 'x' }, '/api/lend/hello').catch(() => {});
+  ok(urls.join(' ') === 'http://172.16.1.40:7777/api/lend/hello http://100.101.0.10:7777/api/lend/hello', 'Lenders: away from home, a Bob paired at home is tried on his Tailscale address');
+  let looked = 0; ls.lookHome = async () => { looked++; };
+  const lost = { name: 'pi', address: '100.101.0.11:7777', passcode: 'x' };
+  await ls.hello(lost, { force: true }); await ls.hello(lost, { force: true });
+  ok(looked === 1, 'Lenders: a paired Bob lost on Tailscale is looked for on the home network (once in a while)');
+  const r = new Lenders({ ...cfg, share: { borrow: { bobs: [{ name: 'go', address: '172.16.1.40:7777', passcode: 'x' }] } } }, { home: () => mine, fetchFn: async () => ({ ok: true, status: 200, json: async () => ({ lend: true, ts: ['100.101.0.10:7777'] }) }) });
+  const entry = r.cfg.share.borrow.bobs[0];
+  await r.hello(entry, { force: true });
+  ok(entry.ts === '100.101.0.10:7777', 'Lenders: a Bob paired at home keeps his Tailscale address from his hello, for when you are out');
+  ok(/ts: doorOpen\(brain\.cfg\) \? tailscaleIps\(\)/.test(read('src/share-brains.js')), 'hello: says his Tailscale door too');
+  const re = cleanSharePatch({ ...on, share: { borrow: { bobs: [{ name: 'tower', address: '100.101.0.9:7777', home: '172.16.1.85:7777', passcode: 'their-code' }] } } }, { addBob: { name: 'tower', address: '172.16.1.85', passcode: 'new-code-1' } }, { home: () => mine });
+  ok(re.share.borrow.bobs.length === 1 && re.share.borrow.bobs[0].address === '172.16.1.85:7777' && re.share.borrow.bobs[0].ts === '100.101.0.9:7777', 'pairing again at home: still one entry, home address first, Tailscale kept as the fallback');
+}
+
+// PC check 1.5.214 (a test Bob on :7799): Tailscale peers are knocked on 7777 too, and a Tailscale device that doesn't
+// answer folds into the home row of the same computer.
+{
+  const A = bob('desk13', '172.16.1.20', { port: 7799 });
+  const hello = (id, name) => ({ ok: true, status: 200, json: async () => ({ bob: true, pair: PAIR, seal: 1, id, name, version: '1.5.214', device: 'computer' }) });
+  A.p.peers = async () => [{ ip: '100.101.0.10', name: 'go', os: 'windows', online: true }, { ip: '100.101.0.12', name: 'Laptop', os: 'windows', online: true }];
+  A.p.fetch = async (url) => { const u = new URL(url); if (u.port !== '7777') throw new Error('quiet');
+    if (['100.101.0.10', '172.16.1.89', '172.16.1.99'].includes(u.hostname)) return hello('go-run', 'go');
+    if (u.hostname === '172.16.1.98') return hello('lap-run', 'laptop');
+    throw new Error('quiet'); };
+  const f = await A.p.find();
+  const go = f.bobs.find((b) => b.name === 'go'), lap = f.bobs.filter((b) => /laptop/i.test(b.name || b.device));
+  ok(f.bobs.length === 2 && go?.also?.includes('100.101.0.10:7777'), 'find from :7799: a Tailscale peer is knocked on 7777 too, and groups with his home addresses');
+  ok(lap.length === 1 && lap[0].address === '172.16.1.98:7777' && lap[0].also.includes('100.101.0.12:7799'), 'find: a Tailscale device that doesn\'t answer folds into the home row of the same computer');
 }
 
 // ---------- server.js, Settings, Help ----------

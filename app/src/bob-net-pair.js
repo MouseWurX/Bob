@@ -245,7 +245,7 @@ export class Pairing {
     try {
       const r = await this.fetch(`http://${ip}:${port}/api/pair/hello`, { redirect: 'manual', signal: AbortSignal.timeout(ms) });
       const j = r.ok ? await r.json().catch(() => ({})) : {};
-      if (j.bob === true) return { bob: true, pair: Number(j.pair) || 0, seal: Number(j.seal) || 0, self: Boolean(j.id) && j.id === this.selfId, version: clean(j.version, 20), device: clean(j.device, 20), name: clean(j.name) };
+      if (j.bob === true) return { bob: true, pair: Number(j.pair) || 0, seal: Number(j.seal) || 0, self: Boolean(j.id) && j.id === this.selfId, id: clean(j.id, 24), version: clean(j.version, 20), kind: clean(j.device, 20), name: clean(j.name) };
       // A Bob before 1.5.213 (or one with the home switch off) turns a home-network hello away with this 403.
       if (r.status === 403) { const e = await r.json().catch(() => ({})); return { bob: false, why: 'door', old: /^Pairing goes over/.test(String(e?.error || '')) }; }
       return { bob: false, why: 'other' };
@@ -258,28 +258,63 @@ export class Pairing {
   async find() {
     const peers = await this.peers();
     const port = this.cfg.port || 7777;
-    let bobs = [];
+    const rows = [];
     if (peers) {
       const online = peers.filter((p) => p.online).slice(0, 20);
-      const seen = await Promise.all(online.map((p) => this.knock(p.ip)));
-      bobs = online.map((p, i) => {
-        const address = `${p.ip}:${port}`;
-        return { name: seen[i].name || p.name, device: p.name, os: p.os, address, ...seen[i], paired: this.known(address), pairing: this.outgoing.get(address) || null };
-      });
+      // PC check 1.5.214: this Bob's own port first, then the usual 7777 (a test Bob on :7799 still finds the usual ones).
+      const seen = await Promise.all(online.map(async (p) => {
+        let h = await this.knock(p.ip, port), at = port;
+        if (!h.bob && port !== 7777) { const h2 = await this.knock(p.ip, 7777); if (h2.bob || (h2.why === 'door' && h.why !== 'door')) { h = h2; at = 7777; } }
+        return { ...h, at };
+      }));
+      online.forEach((p, i) => { const { at, ...h } = seen[i]; if (!h.self) rows.push({ ...h, name: h.name || p.name, device: p.name, os: p.os, address: `${p.ip}:${at}`, via: 'tailscale' }); });
     }
     const home = homeOn(this.cfg) ? await this.scanHome(port) : null;
-    if (home) {
-      const onTs = new Set(bobs.filter((x) => x.bob).map((x) => x.name));
-      for (const h of home) {
-        if (onTs.has(h.name) && !this.known(h.address)) continue; // the same Bob, already listed on Tailscale
-        bobs.push({ ...h, device: h.name || h.address.split(':')[0], os: '', via: 'home', paired: this.known(h.address), pairing: this.outgoing.get(h.address) || null });
-      }
-    }
+    for (const h of home || []) rows.push({ ...h, device: h.name || h.address.split(':')[0], os: '', via: 'home' });
     if (!peers && !home) return { tailscale: false, home: false, bobs: [] };
-    return { tailscale: Boolean(peers), home: Boolean(home), bobs, offline: (peers || []).filter((p) => !p.online).map((p) => p.name) };
+    return { tailscale: Boolean(peers), home: Boolean(home), bobs: this.group(rows), offline: (peers || []).filter((p) => !p.online).map((p) => p.name) };
   }
 
-  // Knock on each address of our own home networks (capped, see SCAN_*); only Bobs that answer come back.
+  // 1.5.214 (the owner: "if you have a home network it should just work, tailscale is the fall back for being
+  // mobile"): one row per Bob, however many addresses he answered on (the Go on two home addresses and Tailscale).
+  // The address Pair uses is the home one when the home network is on, so pairing saves it and works with Tailscale
+  // off; his other addresses ride along. A Bob already paired by his Tailscale address gets his home address saved
+  // too (src/share-brains.js Lenders tries it first), so he keeps working when Tailscale is off.
+  group(rows) {
+    const groups = new Map();
+    const host = (x) => String(x || '').split('.')[0].toLowerCase();
+    // Rows that answered group by their hello id (else name); a Tailscale device that didn't answer joins the row of
+    // the Bob with the same computer name, so no "No Bob answering" row sits beside his home row (PC check 1.5.214).
+    const later = [];
+    for (const r of rows) {
+      if (!r.id && !r.bob && r.via === 'tailscale') { later.push(r); continue; }
+      const key = r.id ? `id:${r.id}` : r.bob && r.name ? `name:${host(r.name)}` : `at:${r.address}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(r);
+    }
+    for (const r of later) {
+      const mate = [...groups.values()].find((list) => list.some((x) => x.name && host(x.name) === host(r.device)));
+      if (mate) mate.push(r); else groups.set(`at:${r.address}`, [r]);
+    }
+    const homeFirst = homeOn(this.cfg);
+    const rank = (r) => (r.bob && !r.needsUpdate && r.pair >= 1 ? 0 : 2) + (homeFirst ? (r.via === 'home' ? 0 : 1) : (r.via === 'home' ? 1 : 0));
+    const saved = this.cfg.share?.borrow?.bobs || [];
+    let changed = false;
+    const out = [];
+    for (const list of groups.values()) {
+      const all = list.slice().sort((a, b) => rank(a) - rank(b));
+      const top = all[0], addrs = [...new Set(all.map((r) => r.address))];
+      const homeAt = all.find((r) => r.via === 'home' && r.bob && !r.needsUpdate)?.address || '';
+      const tsRow = all.find((r) => r.via === 'tailscale');
+      // His saved entry: by any of his addresses, or a Tailscale entry under his name.
+      const entry = saved.find((x) => addrs.includes(x.address)) || (top.bob && top.name ? saved.find((x) => x.name === top.name && isTailscaleIp(String(x.address).split(':')[0])) : null);
+      if (entry && homeAt && homeAt !== entry.address && entry.home !== homeAt) { entry.home = homeAt; changed = true; }
+      out.push({ ...top, device: tsRow?.device || top.name || top.device, os: tsRow?.os || top.os || '', also: addrs.filter((a) => a !== top.address), paired: Boolean(entry), pairing: this.outgoing.get(top.address) || null });
+    }
+    if (changed) { try { saveShare(this.cfg, this.cfg.share); this.log('settings', 'Bob-Net: saved the home-network address of an already paired Bob, so he works without Tailscale'); } catch {} }
+    return out;
+  }
+
   // PC check 1.5.213: never this computer itself (any of its own addresses, or a hello carrying our own id), no
   // 169.254 sweep (see share-card.js scanIps), and the usual port 7777 too, so a Bob on another port still finds them.
   async scanHome(port) {

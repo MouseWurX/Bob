@@ -7,6 +7,10 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 
+// 1.5.214 (the owner: "if you have a home network it should just work"): Also over the home network is on unless
+// someone switched it off. 1.5.213 saved "off" on every Bob whether chosen or not, so only an off that was chosen
+// (homeNetChosen, set when the switch is pressed) counts.
+export const homeNetOn = (r) => r?.homeNet !== false || r?.homeNetChosen !== true;
 export const MIN_PASSCODE = 6;
 
 // A Tailscale address of this PC: 100.64.0.0 to 100.127.255.255.
@@ -57,14 +61,14 @@ export const newPasscode = () => String(crypto.randomInt(10_000_000, 100_000_000
 // What Settings shows. The passcode itself is never sent back, only whether one is set.
 export function phoneView(cfg) {
   const r = cfg.remote || {};
-  return { enabled: r.enabled === true, homeNet: r.homeNet === true, passcodeSet: String(r.passcode || '').length >= MIN_PASSCODE, hosts: r.hosts || [], port: cfg.port };
+  return { enabled: r.enabled === true, homeNet: homeNetOn(r), passcodeSet: String(r.passcode || '').length >= MIN_PASSCODE, hosts: r.hosts || [], port: cfg.port };
 }
 
 // A change from Settings, checked. Returns { remote } to save, or { error }.
 export function cleanPhonePatch(cfg, b, { home = [] } = {}) {
   const cur = cfg.remote || {};
-  const next = { enabled: cur.enabled === true, homeNet: cur.homeNet === true, passcode: cur.passcode || '', hosts: cur.hosts || [], bindAddress: cur.bindAddress || '0.0.0.0' };
-  if ('homeNet' in b) next.homeNet = b.homeNet === true; // Also over the home network: off unless switched on
+  const next = { enabled: cur.enabled === true, homeNet: homeNetOn(cur), ...(cur.homeNetChosen === true ? { homeNetChosen: true } : {}), passcode: cur.passcode || '', hosts: cur.hosts || [], bindAddress: cur.bindAddress || '0.0.0.0' };
+  if ('homeNet' in b) { next.homeNet = b.homeNet !== false; next.homeNetChosen = true; } // Also over the home network: 1.5.214, on unless switched off
   if ('passcode' in b) {
     const p = String(b.passcode || '').trim();
     if (p.length < MIN_PASSCODE || p.length > 64) return { error: `The passcode needs at least ${MIN_PASSCODE} characters.` };

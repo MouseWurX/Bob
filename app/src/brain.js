@@ -1,5 +1,6 @@
 // Bob's brain: runs a conversation turn, picks the right model, announces swaps,
 // calls tools, asks the user for approval when needed, and keeps a logbook.
+import { kindOfAddress } from './links.js'; // 1.5.214: SCUT's Auto cap (a cable or Wi-Fi)
 import fs from 'node:fs';
 import path from 'node:path';
 import { Ollama } from './ollama.js';
@@ -142,8 +143,9 @@ export class Brain {
     this.lenders = new Lenders(cfg);
     this.lenders.onSkip = (bob, why) => this.log('borrow', `${bob.name} failed twice (${why}); not asked again for an hour`); // item 202
     // Bob-Net: one brain over several of your Bobs' cards (llama.cpp's RPC server). Both off unless switched on.
-    this.cardLender = new CardLender(cfg, { gaming: () => currentSession(this.cfg).id === 'light', freeOwn: async () => { if (this.turns.size || !this.engine?.current) return false; await this.engine.unloadAll(); return true; }, log: (k, t) => this.log(k, t) });
-    if (this.engine instanceof LlamaCpp) this.engine.spread = new CardBorrower(cfg, this.lenders, { log: (k, t) => this.log(k, t) });
+    this.cardLender = new CardLender(cfg, { gaming: () => currentSession(this.cfg).id === 'light', linkKind: (a) => kindOfAddress(a, this.linksCache?.peek?.()), freeOwn: async () => { if (this.turns.size || !this.engine?.current) return false; await this.engine.unloadAll(); return true; }, log: (k, t) => this.log(k, t) });
+    if (this.engine instanceof LlamaCpp) this.engine.spread = new CardBorrower(cfg, this.lenders, { log: (k, t) => this.log(k, t), linkKind: (a) => kindOfAddress(a, this.linksCache?.peek?.()) });
+    if (this.engine?.spread) this.engine.spread.onLost = () => this.engine.cardTakenBack(); // 1.5.214: a lent card taken back mid-spread
     // 1.5.127 Rented brains: a big brain hired from an online service for one job, only after a card the owner pressed.
     this.errorTally = new ErrorTally(cfg.dataDir ? path.join(cfg.dataDir, 'tool-errors.json') : null); // item 206
     this.rentals = new Rentals(cfg, { log: (k, t) => this.log(k, t), broadcast: (ev) => this.broadcast(ev) });
