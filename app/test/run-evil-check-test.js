@@ -105,7 +105,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
 {
   const p = JSON.parse(read(path.join(lab, 'forge', 'plans', 'gptoss-lessons-v5.json')));
   check('v5 still serves the same three brains (the pod counted them at the start)', p.benchmark.models.map((m) => m.name).join() === 'gpt-oss-120b,gpt-oss-38b,riker');
-  check('v5 is drive-agnostic and has no hands', p.no_hands === true && p.hours_max === 7 && p.dollars_max === 38);
+  check('v5 is drive-agnostic, has no hands, and carries the raised caps (10 h / $53 from the rent)', p.no_hands === true && p.hours_max === 10 && p.dollars_max === 53);
   const rk = p.benchmark.models[2], c = rk.commands.join('\n');
   check('Riker reads his maps first, then the calibration, then the evil check last', rk.commands.findIndex((x) => /calib-prep/.test(x)) < rk.commands.findIndex((x) => /job-presets/.test(x)) && rk.commands.findIndex((x) => /job-presets/.test(x)) < rk.commands.findIndex((x) => /evil-check/.test(x)) && /trace-read\.mjs .*--mass/.test(c));
   check('the reserved questions come from the new bob set only', /calib-prep\.mjs .*--reserve-from bob/.test(c));
