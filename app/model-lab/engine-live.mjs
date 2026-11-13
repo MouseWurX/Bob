@@ -9,7 +9,7 @@ export function live(url, key = process.env.LAB_API_KEY) {
       try {
         const r = await fetch(url + p, { method: body === undefined ? 'GET' : 'POST', headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(timeout) });
         const t = await r.text();
-        if (r.status === 404) throw Object.assign(new Error(`this engine has no ${p} (it needs Brain Engine 7)`), { fatal: true });
+        if (r.status === 404) throw Object.assign(new Error(`this engine has no ${p} (it needs Brain Engine 7b12282)`), { fatal: true });
         if (!r.ok) throw new Error(`${p} ${r.status}: ${t.slice(0, 200)}`);
         return t ? JSON.parse(t) : {};
       } catch (e) { if (e.fatal || i >= tries) throw e; await new Promise((res) => setTimeout(res, 3000 * i)); }

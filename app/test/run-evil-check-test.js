@@ -114,7 +114,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   check('every make-datasets run never runs code', (c.match(/make-datasets\.mjs/g) || []).length === (c.match(/make-datasets\.mjs[^\n]*--no-run/g) || []).length);
   const q = JSON.parse(read(path.join(lab, 'forge', 'plans', 'riker-calib.json')));
   check('the second plan: evil checks first, then Riker with imatrix', q.benchmark.models.map((m) => m.name).join() === 'riker-evil,qwen36-evil,riker' && q.benchmark.models[0].evil_check && q.benchmark.models[2].imatrix && q.benchmark.models[2].file === 'same:riker-evil');
-  check('the second plan: Brain Engine 7, drive-free, a 48 GB card, no step up', q.benchmark.brain_engine.patches.length === 13 && !q.volume && q.gpus.includes('NVIDIA L40S') && q.step_up.length === 0 && q.no_hands);
+  check('the second plan: Brain Engine 7b12282, drive-free, a 48 GB card, no step up', q.benchmark.brain_engine.patches.length === 13 && !q.volume && q.gpus.includes('NVIDIA L40S') && q.step_up.length === 0 && q.no_hands);
   const qc = q.benchmark.models.flatMap((m) => m.commands).join('\n');
   check('the second plan: live experts per word 3, 4, 6, 12 (8 ran in v5), keep-75 at 3 and the best N of both runs', [3, 4, 6, 12].every((n) => qc.includes(`--used ${n} &&`)) && /--used best --from \{\{out\}\},\{\{out\}\}\/\.\.\/\.\.\/gptoss-lessons-v5\/riker/.test(qc) && /--direction-only/.test(qc) && /--other-direction/.test(qc));
   const all = [...p.benchmark.models, ...q.benchmark.models].flatMap((m) => m.commands).join('\n');

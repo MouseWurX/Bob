@@ -1,7 +1,7 @@
 // Sets Brain Engine's live switches between benchmark commands of a Forge plan (13 Nov: the Riker sweep on the rented card).
 // Live only: nothing is written to the brain, and --reset puts everything back.
 //   node set-live.mjs --reset
-//   node set-live.mjs --used 6                       experts per word in every layer (Brain Engine 7, patch 0013)
+//   node set-live.mjs --used 6                       experts per word in every layer (Brain Engine 7b12282, patch 0013)
 //   node set-live.mjs --used best --from <folder>[,<folder>]   the N whose tool-score in <folder>/n<N>/ was best (ties: the smaller N)
 //   node set-live.mjs --keep <keep.json> [--used N]  the expert mask from a keep list ({keep: [[ids] per layer]} or [[ids]])
 // Writes the setting it made to <LAB_OUT>/live-<stamp>.json. --url or LAB_URL, and LAB_API_KEY, as the Forge sets them.

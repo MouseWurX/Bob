@@ -1,6 +1,6 @@
 {
  "run": "riker-calib",
- "note": "13 Nov: the second half of Riker's calibration, on the SAME pod as gptoss-lessons-v5 once it reaches done (forge.mjs --restart <pod> --plan plans/riker-calib.json: new pod scripts and this plan, Brain Engine 7 rebuilt with llama-cvector-generator and llama-imatrix, ~15 min). It reads what v5's Riker step left on the PC (out/bench/gptoss-lessons-v5/riker: calib questions, imatrix texts, per-job maps, tool-score at 8). Order: Riker's cvector cruel-vs-kind direction (his full evil check already ran in v5), stock Qwen3.6's full evil check compared with Riker's (answers and direction); then Riker: llama-imatrix overall and per job before serving, the live experts-per-word sweep 3/4/6/12 (8 is in v5) with tool-score + quiz, keep-75 at N=3 and the best N, and the per-job N passes of job-presets. Measure only, live switches only, no_hands. About 3-3.5 h on the H200.",
+ "note": "13 Nov: the second half of Riker's calibration, on the SAME pod as gptoss-lessons-v5 once it reaches done (forge.mjs --restart <pod> --plan plans/riker-calib.json: new pod scripts and this plan, Brain Engine 7b12282 rebuilt with llama-cvector-generator and llama-imatrix, ~15 min). It reads what v5's Riker step left on the PC (out/bench/gptoss-lessons-v5/riker: calib questions, imatrix texts, per-job maps, tool-score at 8). Order: Riker's cvector cruel-vs-kind direction (his full evil check already ran in v5), stock Qwen3.6's full evil check compared with Riker's (answers and direction); then Riker: llama-imatrix overall and per job before serving, the live experts-per-word sweep 3/4/6/12 (8 is in v5) with tool-score + quiz, keep-75 at N=3 and the best N, and the per-job N passes of job-presets. Measure only, live switches only, no_hands. About 3-3.5 h on the H200.",
  "benchmark_only": true,
  "teacher": "Qwen/Qwen3.6-35B-A3B",
  "counts": "expert-counts-2026-11-04T23-23-19.json",
@@ -42,7 +42,7 @@
     "0012-load-progress",
     "0013-experts-per-word"
    ],
-   "note": "Brain Engine 7 (7b12282), llama-cvector-generator and llama-imatrix built after llama-server (a failure there never blocks the server)"
+   "note": "Brain Engine 7b12282, llama-cvector-generator and llama-imatrix built after llama-server (a failure there never blocks the server)"
   },
   "models": [
    {
