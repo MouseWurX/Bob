@@ -319,6 +319,13 @@ if (args['send-token']) {
   const tmp = path.join(outDir, 'forge', `hf-token-${RUNID}`); fs.writeFileSync(tmp, tok); await upload('hf-token', tmp); fs.unlinkSync(tmp);
   log('Hugging Face token is on the pod; uploads the plan allows will use it'); process.exit(0);
 }
+async function sendImatrixTexts() {
+  for (const m of plan.benchmark?.models || []) if (m.imatrix_from) {
+    const { execSync } = await import('node:child_process');
+    const from = path.resolve(here, '..', m.imatrix_from); if (!fs.existsSync(from)) { log(`${m.name}: imatrix_from ${from} is missing (calib-prep.mjs makes it); no imatrix for him`); continue; }
+    const itgz = path.join(outDir, 'forge', `imatrix-${m.name}.tgz`); execSync(`tar czf "${itgz}" -C "${from}" .`, { stdio: 'inherit' }); await upload(`imatrix-${m.name}.tgz`, itgz); log(`${m.name}: imatrix texts sent`);
+  }
+}
 if (args['send-plan']) {
   // update plan.json on a running pod without touching the run (run.sh reads the plan again at the start of each rung)
   // same shape as the start path: keep files live on the pod by their bare names (build 14i)
@@ -337,6 +344,7 @@ if (args.restart) {
   const podPlan = { ...plan, counts: 'counts.json' }; delete podPlan.counts_file; delete podPlan.lessons;
   fs.writeFileSync(path.join(outDir, 'forge', `plan-sent-${RUNID}.json`), JSON.stringify(podPlan, null, 1));
   await upload('plan.json', path.join(outDir, 'forge', `plan-sent-${RUNID}.json`));
+  await sendImatrixTexts();
   r = await get('/go', { method: 'POST' }); log(`restarted: ${await r.text()}`);
 } else if (!args.resume) {
   // pack the pod scripts
@@ -362,6 +370,9 @@ if (args.restart) {
     for (const k of ['keep_file', 'adapter']) if (m[k] && !/^hf:/.test(m[k])) await upload(m[k], path.join(outDir, 'bobs', m.name, m[k]));
     if (!m.cards) for (const c of fs.existsSync(path.join(outDir, 'bobs', m.name)) ? fs.readdirSync(path.join(outDir, 'bobs', m.name)).filter((f) => f.endsWith('.bob.json')) : []) await upload(c, path.join(outDir, 'bobs', m.name, c));
   }
+  // 13 Nov: a benchmark brain with imatrix_from (a PC folder of .txt files, e.g. from calib-prep.mjs) gets in/imatrix-<name>.tgz;
+  // the pod runs llama-imatrix on every file before serving him (overall and per job) and the PC fetches the results
+  await sendImatrixTexts();
   // lesson sets already on the PC (e.g. out/lessons-coding) go up as extra sets too; the pod merges them with the rest
   if (plan.lessons_set) log(`lessons_set ${plan.lessons_set}: the pod takes that lesson set from the drive; the PC's extra sets are not sent`);
   for (const [i, d] of (plan.lessons_set ? [] : (plan.extra_lessons || [])).entries()) { // a folder (its lessons.jsonl) or a .jsonl file (with the toolsets.json beside it)
@@ -427,6 +438,8 @@ async function answerTeacherKey() {
 // build 18: the pod serves one benchmark brain at a time; this PC runs the plan's commands against it ({{url}}, {{name}}, {{out}} are filled
 // in), saves what they print under out/bench/<run>/<name>/, then tells the pod to move on (in/bench-done-<name>).
 const benchDone = new Set();
+// 13 Nov: --skip-bench a,b: a watcher started again on a running pod (--resume) leaves brains whose tests already ran alone
+const skipBench = new Set(String(args['skip-bench'] || '').split(',').map((x) => x.trim()).filter(Boolean));
 async function benchOnPod(name) {
   const { spawn } = await import('node:child_process'); // 11 Nov: was missing; Bill's publish run looped on 'spawn is not defined' at the first benchmark
   const url = args.local ? 'http://127.0.0.1:8001' : `https://${podId}-8001.proxy.runpod.net`;
@@ -435,6 +448,12 @@ async function benchOnPod(name) {
   const own = (plan.benchmark.models || []).find((m) => m.name === name)?.commands;
   const cmds = own?.length ? own : plan.benchmark.commands?.length ? plan.benchmark.commands : ['node experts-test.mjs --url {{url}} --counts 8 --out {{out}}'];
   log(`benchmark: ${name} is served by the card; running ${cmds.length} test command(s) on this PC`);
+  // 13 Nov: files the pod made for this brain before serving it (the evil check's directions, out/bench/evil-<name>/) come home
+  // first, so the PC's commands can read them and the report doesn't wait for the end of the run
+  try {
+    const r = await get('/status'); const st = r.ok ? await r.json() : null;
+    for (const f of (st?.files || []).filter((x) => x.path.startsWith(`bench/evil-${name}/`) || x.path.startsWith(`bench/imatrix-${name}/`))) await download(f.path, path.join(dir, f.path.startsWith(`bench/evil-`) ? 'evil' : 'imatrix', path.basename(f.path)), f.bytes, null);
+  } catch (e) { log(`  pod files for ${name}: ${e.message.slice(0, 120)}`); }
   for (const [i, c] of cmds.entries()) {
     // 11 Nov: {{out}} is quoted (the install folder has a space, and the command runs through the shell: an unquoted path was cut at the space,
     // so the tests wrote to the wrong place and tool-score could not find the lessons); {{lessons}} is the lab's lessons folder for tool-score
@@ -442,8 +461,10 @@ async function benchOnPod(name) {
     const cmd = c.replace(/{{url}}/g, url).replace(/{{name}}/g, name).replace(/"?{{out}}"?/g, q(dir)).replace(/"?{{lessons}}"?/g, q(path.join(outDir, 'lessons'))).replace(/{{run}}/g, plan.run || 'run');
     const lf = path.join(dir, `${String(i + 1).padStart(2, '0')}.log`); fs.writeFileSync(lf, `$ ${cmd}\n`);
     log(`  ${cmd}`);
-    const code = await new Promise((res) => { const ch = spawn(cmd, { cwd: path.join(here, '..'), shell: true, windowsHide: true, env: { ...process.env, LAB_URL: url, LAB_API_KEY: hdr['X-Forge-Token'], LAB_MODEL_NAME: name, LAB_REMOTE: '1', LAB_OUT: dir } }); const w = (d) => { fs.appendFileSync(lf, d); process.stdout.write(d); }; ch.stdout.on('data', w); ch.stderr.on('data', w); ch.on('exit', res); ch.on('error', (e) => { w(`${e.message}\n`); res(1); }); });
+    const code = await new Promise((res) => { const ch = spawn(cmd, { cwd: path.join(here, '..'), shell: true, windowsHide: true, env: { ...process.env, LAB_URL: url, LAB_API_KEY: hdr['X-Forge-Token'], LAB_MODEL_NAME: name, LAB_REMOTE: '1', LAB_OUT: dir, ...(plan.no_hands ? { LAB_NO_HANDS: '1' } : {}) } }); const w = (d) => { fs.appendFileSync(lf, d); process.stdout.write(d); }; ch.stdout.on('data', w); ch.stderr.on('data', w); ch.on('exit', res); ch.on('error', (e) => { w(`${e.message}\n`); res(1); }); });
     fs.appendFileSync(lf, `\n[exit ${code}]\n`); if (code) log(`  command ${i + 1} ended with code ${code} (see ${lf})`);
+    // 13 Nov: exit 86 = a gate said stop (smoke-gate.mjs): no more commands, and the run ends so the pod is deleted
+    if (code === 86) { const why = (fs.readFileSync(lf, 'utf8').match(/GATE STOP: ([^\r\n]+)/) || [])[1] || `command ${i + 1} stopped the run`; log(`  gate: ${why}`); return `gate stopped the run: ${why}`; }
   }
   const mk = path.join(outDir, 'forge', `bench-done-${name}`); fs.writeFileSync(mk, new Date().toISOString()); await upload(`bench-done-${name}`, mk);
   benchDone.add(name); log(`benchmark: ${name} done; reports in ${dir}`);
@@ -511,7 +532,7 @@ async function pass(st) {
       } catch (e) { log(`${name}: ${e.message.slice(0, 160)}`); }
     }
     if (st.status?.phase === 'lessons' && /^ready/.test(st.status?.detail || '') && !lessonsSent) { lessonsSent = true; await writeLessonsOnPod(); }
-    if (st.status?.phase === 'bench' && plan.benchmark) { const bm = (st.status.detail || '').match(/^(\S+) ready:/); if (bm && !benchDone.has(bm[1])) await benchOnPod(bm[1]); }
+    if (st.status?.phase === 'bench' && plan.benchmark) { const bm = (st.status.detail || '').match(/^(\S+) ready:/); if (bm && !benchDone.has(bm[1]) && !skipBench.has(bm[1])) { const stop = await benchOnPod(bm[1]); if (stop) { await kill(stop); return true; } } }
     const scoresOnly = !plan.rungs.length && !plan.skills; // no rungs, no counts: the run only writes lessons and makes the teacher scores
     const trained = plan.train_teacher ? (plan.train_teacher.name || '35Bob') : null; // build 17: the trained teacher comes back (or is published) like a Bob
     const gotTrained = !trained || done.has(trained);

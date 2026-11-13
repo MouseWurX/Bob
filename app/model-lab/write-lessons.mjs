@@ -90,6 +90,9 @@ const review = Boolean(o.review);
 // --odds K (13 Nov, the owner's rule: every set carries its teacher's odds): each answer the teacher writes is saved with its own
 // top-K odds per word in odds.jsonl beside the lessons, one row per kept lesson ({idea, job, think, turns: [{step, set, odds}]}).
 // Only the writer's own words can be scored this way (llama-server gives the odds of what it writes, not of someone else's text).
+// 13 Nov: --split calib marks every lesson as a calibration question (tool-score --split calib replays them; training never reads
+// a calib folder, so the questions stay unseen). --split smoke marks a smoke-gate sample.
+const splitTag = ['calib', 'smoke'].includes(String(o.split)) ? String(o.split) : '';
 const oddsK = Math.max(0, Math.min(64, Number(o.odds) || 0));
 // --effort low|medium|high: GPT-OSS's thinking depth (it always thinks; a "no think" lesson is written at low). Qwen ignores it.
 const effort = ['low', 'medium', 'high'].includes(String(o.effort)) ? String(o.effort) : '';
@@ -101,6 +104,13 @@ const extraBody = (think) => ({
   ...(oddsK ? { logprobs: true, top_logprobs: oddsK } : {}),
 });
 // [token, logprob, [[token, logprob] x K]] per word: the same content as tool-score's odds, in a smaller shape
+// 13 Nov: which words the odds cover. The server may give odds for the answer only, or for the thinking too; each turn says which
+// (think+answer, answer-only, or answer when there was no thinking), so a trainer never mistakes answer odds for thinking odds.
+const oddsCover = (packed, reasoning) => {
+  const r = String(reasoning || '').replace(/\s+/g, ' ').trim(); if (!r) return 'answer';
+  const text = packed.map((x) => x[0]).join('').replace(/\s+/g, ' ');
+  return text.includes(r.slice(0, 40)) || text.includes(r.slice(-40)) ? 'think+answer' : 'answer-only';
+};
 const packOdds = (lp) => (lp?.content || []).map((x) => [x.token, Math.round(x.logprob * 1e4) / 1e4, (x.top_logprobs || []).map((y) => [y.token, Math.round(y.logprob * 1e4) / 1e4])]);
 // --avoid <folders>: requests already in these lesson folders are never written again (first user message, lowercased, gaps squeezed)
 const norm = (t) => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -200,7 +210,7 @@ async function one(idea, think, room = 1) { // room 2 = a second try with twice 
     // teacher-only additions (persona, act nudge) go to the server but never into the saved prompt or the set key
     const teacherOnly = [persona, ACT_JOBS.has(idea.job) ? ACT_NUDGE : ''].filter(Boolean).join('\n\n');
     const { msg, finish, logprobs } = await chat(srv.url, { messages: [{ role: 'system', content: teacherOnly ? `${sys}\n\n${teacherOnly}` : sys }, ...live], tools: t.tools, think, max: (think ? 6000 : 3000) * room, ...extraBody(think) });
-    if (oddsK) odds.push({ step, set, odds: packOdds(logprobs) });
+    if (oddsK) { const pk = packOdds(logprobs); odds.push({ step, set, covers: oddsCover(pk, msg.reasoning_content), odds: pk }); }
     if (finish === 'length') throw new Error('ran out of room');
     const a = { role: 'assistant', content: msg.content || '', ...(msg.reasoning_content ? { reasoning: msg.reasoning_content } : {}), ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}), set };
     saved.push(a); live.push({ role: 'assistant', content: a.content, ...(a.tool_calls ? { tool_calls: a.tool_calls } : {}) });
@@ -221,7 +231,7 @@ async function one(idea, think, room = 1) { // room 2 = a second try with twice 
     if (v.unparsed) { appendJsonl(path.join(dir, 'needs-review.jsonl'), { idea: idea.id, job: idea.job, think, why: v.why, messages: saved }); throw new Error('review unparsed'); }
     if (!v.ok) { appendJsonl(path.join(dir, 'rejected.jsonl'), { idea: idea.id, job: idea.job, think, why: v.why, messages: saved }); throw new Error(`review: ${v.why}`); }
   }
-  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, messages: saved });
+  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, ...(splitTag ? { split: splitTag } : {}), messages: saved });
   if (oddsK) appendJsonl(path.join(dir, 'odds.jsonl'), { idea: idea.id, job: idea.job, think, k: oddsK, turns: odds });
 }
 // The teacher as a strict reviewer: right tool or rightly none, exact arguments, results read, a final answer that does the job.

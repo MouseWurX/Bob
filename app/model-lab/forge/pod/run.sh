@@ -289,6 +289,37 @@ PY
       esac
       [ -f "$BFILE" ] || { echo "bench $BN: $BFILE is missing; skipped"; continue; }
       GOT[$BN]=$BFILE
+      # 13 Nov: evil_check true = before serving, llama-cvector-generator reads the brain on the evil-pairs.json contrast (the same ask
+      # with a kind or a cruel persona) by the difference of means, three times (all pairs, first half, second half: how steady the
+      # direction is per layer). Measure only: nothing is applied or written to the brain. The PC fetches out/bench/evil-<name>/ first.
+      if [ "$(plan "['benchmark']['models'][$b].get('evil_check',False)")" = "True" ]; then
+        CV=$S/llama.cpp/build-cuda/bin/llama-cvector-generator; ED=$OUT/bench/evil-$BN; mkdir -p $ED $W/bench/evil-$BN
+        if [ -x "$CV" ] && [ -f $POD/evil-pairs.json ]; then
+          status bench "$BN: evil check, reading the direction (measure only)"
+          python3 - $POD/evil-pairs.json $W/bench/evil-$BN <<'PY'
+import json,sys; src,d=sys.argv[1:3]; j=json.load(open(src)); t=j["template"]
+pairs=[(t.format(persona=j["evil"][i%len(j["evil"])],ask=a), t.format(persona=j["kind"][i%len(j["kind"])],ask=a)) for i,a in enumerate(j["asks"])]
+h=len(pairs)//2
+for part,ps in (("all",pairs),("a",pairs[:h]),("b",pairs[h:])):
+    open(f"{d}/pos-{part}.txt","w").write("\n".join(p for p,_ in ps)+"\n"); open(f"{d}/neg-{part}.txt","w").write("\n".join(n for _,n in ps)+"\n")
+print(len(pairs),"pairs")
+PY
+          for part in all a b; do
+            LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" timeout 1800 $CV -m "$BFILE" --positive-file $W/bench/evil-$BN/pos-$part.txt --negative-file $W/bench/evil-$BN/neg-$part.txt -o $ED/direction-$part.gguf --method mean -ngl 999 > $ED/cvector-$part.log 2>&1 || echo "bench $BN: evil direction ($part) failed (see out/bench/evil-$BN/cvector-$part.log)"
+          done
+        else echo "bench $BN: no llama-cvector-generator or evil-pairs.json; the evil check reads experts only" | tee $ED/no-direction.txt; fi
+      fi
+      # 13 Nov: imatrix true = llama-imatrix on every text the PC sent (in/imatrix-<name>.tgz: all.txt and job-<job>.txt), before serving;
+      # the importance data a job-tuned quant or adapter uses later. The PC fetches out/bench/imatrix-<name>/ first.
+      if [ "$(plan "['benchmark']['models'][$b].get('imatrix',False)")" = "True" ]; then
+        IM=$S/llama.cpp/build-cuda/bin/llama-imatrix; ID=$OUT/bench/imatrix-$BN; mkdir -p $ID $W/bench/imx-$BN
+        if [ -x "$IM" ] && [ -f $IN/imatrix-$BN.tgz ] && tar xzf $IN/imatrix-$BN.tgz -C $W/bench/imx-$BN; then
+          for t in $W/bench/imx-$BN/*.txt; do
+            [ -f "$t" ] || continue; n=$(basename "$t" .txt); status bench "$BN: imatrix $n"
+            LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" timeout 1800 $IM -m "$BFILE" -f "$t" -o $ID/$n.imatrix.gguf -c 2048 -ngl 999 --chunks $(plan "['benchmark']['models'][$b].get('imatrix_chunks',200)") > $ID/$n.log 2>&1 || echo "bench $BN: imatrix $n failed (see out/bench/imatrix-$BN/$n.log)"
+          done
+        else echo "bench $BN: no llama-imatrix or no in/imatrix-$BN.tgz; imatrix skipped" | tee $ID/skipped.txt; fi
+      fi
       SLOTS=$(plan "['benchmark']['models'][$b].get('slots',1)"); CTX=$(plan "['benchmark']['models'][$b].get('ctx',32768)")
       status bench "$BN: loading on the card ($(basename $BFILE))"
       LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" $LS -m "$BFILE" --host 0.0.0.0 --port 8001 --api-key "$FORGE_TOKEN" -c $CTX --jinja -fa on -ctk q8_0 -ctv q8_0 -np $SLOTS -ngl 999 $(plan "['benchmark']['models'][$b].get('extra','')") > $OUT/bench/$BN-server.log 2>&1 &
@@ -297,7 +328,7 @@ PY
       kill -0 $BS 2>/dev/null || { echo "bench $BN: llama-server died (see out/bench/$BN-server.log)"; tail -3 $OUT/bench/$BN-server.log; continue; }
       rm -f $IN/bench-done-$BN
       status bench "$BN ready: the PC runs the tests now (port 8001, $SLOTS slot(s), ctx $CTX)"
-      BH=$(plan "['benchmark'].get('hours_each',2)")
+      BH=$(plan "['benchmark']['models'][$b].get('hours', p['benchmark'].get('hours_each',2))")   # 13 Nov: a model can have its own hours
       for i in $(seq 1 $(python3 -c "print(int($BH*120))")); do [ -f $IN/bench-done-$BN ] && break; kill -0 $BS 2>/dev/null || { echo "bench $BN: the server died during the tests"; break; }; sleep 30; done
       kill $BS 2>/dev/null; wait $BS 2>/dev/null; sleep 3
       if [ -f $IN/bench-done-$BN ]; then echo "bench $BN: the PC finished its tests"; else echo "bench $BN: time ran out (hours_each $BH)"; fi

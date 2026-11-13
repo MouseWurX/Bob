@@ -4,7 +4,8 @@
 // for a Bob set, "style:<name>" for a style set. What carries over to a brain is only what was measured ON that brain, so the
 // same lessons are read by the writer (GPT-OSS 120B), its cut (the 38B) and the student (a Qwen Bob), each in its own folder.
 //
-// node trace-read.mjs --url <server> --sets bob=<dir>,sherlock=<dir>,... [--per 300] [--per-style N] [--top 4] [--out <folder>]
+// node trace-read.mjs --url <server> --sets bob=<dir>,sherlock=<dir>,... [--per 300] [--per-style N] [--top 4] [--mass --keep 0.75,0.5] [--out <folder>]
+//   --mass: REAP scores per target too (Brain Engine 0009) and keep/<target>-keep-NN.json lists for live per-job presets
 //   A set named "bob" is split by job; any other name is one style target. Held-out lessons (the 5% split) are never read.
 // Writes in --out:
 //   counts.json   {target: {layer: {expert: picks}}}  (the shape the surgery tools read)
@@ -16,7 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { countRows } from './reap-pick.mjs';
+import { countRows, emptyScores, addTrace, keepLists } from './reap-pick.mjs';
 
 const isHoldout = (id) => parseInt(crypto.createHash('md5').update(String(id)).digest('hex').slice(0, 8), 16) / 0xFFFFFFFF < 0.05;
 const readJsonl = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean) : []);
@@ -38,14 +39,14 @@ export function whole(lesson, sets) {
 
 // An even spread of up to `per` training lessons for each target.
 export function pickLessons(setDirs, per, perStyle = per) {
-  const out = [];
+  // several folders may share a name (bob=out/lessons,bob=out/lessons-codefix,...): their lessons pool by job before the spread
+  const out = [], groups = new Map();
   for (const [name, dir] of setDirs) {
     const sets = fs.existsSync(path.join(dir, 'toolsets.json')) ? JSON.parse(fs.readFileSync(path.join(dir, 'toolsets.json'), 'utf8')) : {};
     const all = readJsonl(path.join(dir, 'lessons.jsonl')).filter((l) => l.idea !== undefined && !isHoldout(l.idea) && l.messages?.some((m) => m.role === 'assistant'));
-    const groups = new Map();
-    for (const l of all) { const t = name === 'bob' ? `job:${l.job || 'other'}` : `style:${name}`; if (!groups.has(t)) groups.set(t, []); groups.get(t).push(l); }
-    for (const [t, ls] of groups) { const n = Math.min(t.startsWith('style:') ? perStyle : per, ls.length), stride = ls.length / Math.max(n, 1); for (let i = 0; i < n; i++) out.push({ target: t, lesson: ls[Math.floor(i * stride)], sets }); }
+    for (const l of all) { const t = name === 'bob' ? `job:${l.job || 'other'}` : `style:${name}`; if (!groups.has(t)) groups.set(t, []); groups.get(t).push({ lesson: l, sets }); }
   }
+  for (const [t, ls] of groups) { const n = Math.min(t.startsWith('style:') ? perStyle : per, ls.length), stride = ls.length / Math.max(n, 1); for (let i = 0; i < n; i++) out.push({ target: t, ...ls[Math.floor(i * stride)] }); }
   return out;
 }
 
@@ -109,13 +110,16 @@ async function main() {
   };
   const work = pickLessons(setDirs, per, perStyle);
   console.log(`Reading ${work.length} lessons over ${new Set(work.map((w) => w.target)).size} targets (up to ${per} each; held-out never read)`);
-  const acc = {}; let fails = 0, E = 0, used = 0;
+  const acc = {}, reap = {}; let fails = 0, E = 0, used = 0;
+  // --mass: also REAP scores per target (patch 0009) and keep lists per target at --keep shares, for per-job live presets
+  const mass = Boolean(args.mass), shares = String(args.keep || '0.75,0.5').split(',').map(Number).filter((x) => x > 0 && x <= 1);
   for (const [i, w] of work.entries()) {
     const messages = whole(w.lesson, w.sets); if (!messages) { fails++; continue; }
     try {
-      const j = await post({ messages, max_tokens: 1, cache_prompt: false, expert_trace: true, temperature: 0 });
+      const j = await post({ messages, max_tokens: 1, cache_prompt: false, expert_trace: true, ...(mass ? { expert_trace_mass: true } : {}), temperature: 0 });
       E ||= Number(j.expert_trace?.n_expert) || 0; used ||= Number(j.expert_trace?.n_expert_used) || 0;
       if (!addTo(acc, w.target, j.expert_trace)) fails++;
+      if (mass) addTrace((reap[w.target] ||= emptyScores()), j.expert_trace);
     } catch (e) { fails++; if (fails <= 3) console.log(`  ${w.target} ${w.lesson.idea}: ${e.message.slice(0, 120)}`); }
     if ((i + 1) % 50 === 0) console.log(`  ${i + 1}/${work.length}`);
   }
@@ -124,6 +128,14 @@ async function main() {
   fs.writeFileSync(path.join(out, 'counts.json'), JSON.stringify(countsShape(acc)));
   fs.writeFileSync(path.join(out, 'lift.json'), JSON.stringify({ brain: process.env.LAB_MODEL_NAME || '', experts: E, used, targets: Object.fromEntries(Object.entries(acc).map(([n, t]) => [n, { lessons: t.lessons, tokens: t.tokens }])), lift }, null, 1));
   fs.writeFileSync(path.join(out, 'dials.json'), JSON.stringify(dialTrials(lift), null, 1));
+  if (mass) {
+    const kd = path.join(out, 'keep'); fs.mkdirSync(kd, { recursive: true });
+    for (const [t, sc] of Object.entries(reap)) {
+      const by = sc.hasMass ? 'mass' : 'counts';
+      for (const sh of shares) fs.writeFileSync(path.join(kd, `${t.replace(/[^\w.-]+/g, '-')}-keep-${Math.round(sh * 100)}.json`), JSON.stringify({ target: t, share: sh, by, keep: keepLists(sc, sh, by) }));
+    }
+    console.log(`per-target keep lists (${shares.map((x) => Math.round(x * 100) + '%').join(', ')}) in ${kd}${Object.values(reap).some((x) => !x.hasMass) ? ' (no expert mass from this engine: ranked by picks)' : ''}`);
+  }
   const rows = Object.entries(acc).map(([n, t]) => `| ${n} | ${t.lessons} | ${t.tokens} | ${lift[n].filter((x) => x?.up?.length).length} |`);
   fs.writeFileSync(path.join(out, 'trace-read.md'), [`# Experts per job and style: ${process.env.LAB_MODEL_NAME || url}`, '', `${E} experts per layer, ${used} per word. ${fails} lessons failed.`, 'Lift = a target\'s share of an expert / the share over all targets. Only measured on THIS brain: use it for this brain\'s dials.', '', '| target | lessons | words read | layers with a leaning expert |', '|---|---|---|---|', ...rows, ''].join('\n'));
   console.log(`Done: ${Object.keys(acc).length} targets, ${fails} failed. Files in ${out}`);

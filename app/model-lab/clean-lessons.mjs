@@ -2,7 +2,7 @@
 // The owner, 13 Nov: "as a new version, yes" (after the lesson noise audit).
 //
 // node clean-lessons.mjs --from <folder of lesson sets (v3)> --out <new empty folder (v4)> [--review reviews/lessons-v4.json]
-//      [--distill "kimi"] [--skip "glm51"] [--light "chat,languages,formats"] [--light-weight 0.5]
+//      [--distill "kimi"] [--skip "glm51"] [--light "chat,languages,formats"] [--light-weight 0.5] [--exclude-ids <calib-ids.json>]
 // Which files: a set split into lessons-part*.jsonl is read from its parts (a lessons.jsonl beside them is an old sample);
 // otherwise lessons.jsonl alone (lessons-full.jsonl and other copies beside it are left out); --files "a*.jsonl,b.jsonl" says
 // otherwise. Each file is written back under its own name, so a held-out file stays its own file.
@@ -61,6 +61,7 @@ if (wanted) for (const w of wanted) if (!folders.includes(w)) { console.error(`-
 for (const f of folders) { const d = path.resolve(setDir(f)); if (out === d || out.startsWith(d + path.sep) || d.startsWith(out + path.sep)) { console.error(`--out must be outside the lesson sets (${f}): the old version is never changed`); process.exit(1); } }
 if (single && out.startsWith(from + path.sep)) { console.error('--out must be outside --from: the old version is never changed'); process.exit(1); }
 const info = { made: new Date().toISOString(), from: path.basename(from), review: o.review ? path.basename(String(o.review)) : null, folders: {}, dropped: [], moved_wrong: [], distill: [], jobs: {} };
+const excluded = new Map(Object.entries(o['exclude-ids'] ? JSON.parse(fs.readFileSync(String(o['exclude-ids']), 'utf8')).ids || {} : {}).map(([k, v]) => [k, new Set(v.map(String))]));
 const firstUser = (l) => (l.messages || []).find((m) => m.role === 'user')?.content;
 
 // pass 1: read every set; find the repeated first prompts across all of them
@@ -72,7 +73,8 @@ for (const f of folders) {
   const tools = {};
   for (const t of fs.readdirSync(dir).filter((x) => /^toolsets.*\.json$/.test(x))) Object.assign(tools, JSON.parse(fs.readFileSync(path.join(dir, t), 'utf8')));
   const files = pick(dir);
-  const lessons = files.flatMap((file) => readJsonl(path.join(dir, file)).map((l) => ({ l, file })));
+  // 13 Nov: --exclude-ids <calib-ids.json> (calib-prep.mjs): lessons reserved as calibration questions never go into training
+  const lessons = files.flatMap((file) => readJsonl(path.join(dir, file)).map((l) => ({ l, file }))).filter(({ l }) => { if (!excluded.get(f)?.has(String(l.idea))) return true; info.dropped.push({ folder: f, idea: l.idea, why: 'reserved for calibration (calib-ids.json)' }); return false; });
   sets[f] = { tools, lessons, files };
   lessons.forEach(({ l, file }, i) => { const k = norm(firstUser(l)) && `${l.think ? 1 : 0}|${norm(firstUser(l))}`; if (k) byPrompt.set(k, [...(byPrompt.get(k) || []), { f, i, idea: baseIdea(l), held: isHeld(l, file) }]); });
 }
