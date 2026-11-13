@@ -1,4 +1,5 @@
 // Settings, Bob-Net: My other Bobs and What they share (src/share-brains.js). Both switches off unless you turn them on.
+import { sayRefused, switchSelector } from './refused.js'; // 1.5.213: a refused switch says why right under it
 import { esc } from './util.js';
 import { tip } from './tips.js';
 
@@ -93,6 +94,16 @@ export async function mountShareBrains(box) {
   const far = (l) => (l.ok === true && l.ms > 0 ? `, ${l.ms < 1 ? 'under 1' : Math.round(l.ms)} ms away (${l.ms <= 8 ? 'close' : l.ms <= 40 ? 'Wi-Fi close' : 'far'})${l.lendCard ? `, lends his card${l.scut ? ' with SCUT' : ''}` : ''}` : '');
   const row = (l) => `<li><strong>${esc(l.name)}</strong> <code>${esc(l.address)}</code> <span class="muted">${l.ok === true ? `ready${l.brain ? `, ${esc(l.brain)}` : ''}` : l.ok === false ? esc(WHY[l.why] || l.why) : 'not checked yet'}${l.ctx ? `, room for a chat of about ${Math.max(1, Math.round((l.ctx * 0.75) / 1000))},000 words` : ''}${l.speed ? `, about ${Math.round(l.speed)} words a second` : ''}${far(l)}.${can(l)}</span>
     <button type="button" data-share-up="${esc(l.address)}" title="Ask this one earlier">↑</button> <button type="button" data-share-rm="${esc(l.address)}">Remove</button></li>`;
+  // 1.5.213: what a switch needs first, said before it's pressed. Borrowing, sending jobs and asking for checks need
+  // another Bob on the list; and the refused switch says why right under it.
+  const decorate = () => {
+    if (!v.lenders.length) {
+      const need = ['[data-share-borrow]', '[data-share-send]', '[data-share-askchecks]'].map((q) => box.querySelector(q)).filter((x) => x && !x.checked);
+      need.forEach((x) => { x.disabled = true; x.closest('label')?.setAttribute('title', 'Pair one of your other Bobs first'); });
+      if (need.length) need[0].closest('label')?.insertAdjacentHTML('beforebegin', '<p class="muted needs-first">To borrow, send jobs or ask for checks, <strong>pair one of your other Bobs first</strong> (Pair with my other Bobs, at the top).</p>');
+    }
+    if (refused) sayRefused(box, refused.sel, refused.text);
+  };
   const draw = () => {
     box.innerHTML = `<h4 class="ssub">My other Bobs</h4>
       <div class="pair-box"><strong>Pair with my other Bobs</strong>${pairBox()}</div>
@@ -135,6 +146,7 @@ export async function mountShareBrains(box) {
       <details class="more"><summary>More</summary><p class="muted"><strong>Add one by hand</strong> (if pairing can't reach it): its Tailscale address and the passcode from its <strong>Let my other replicant matrices in</strong>.</p>
       <form class="row" data-share-add><input name="name" placeholder="Name (Phone, Laptop…)" maxlength="40"> <input name="address" placeholder="100.x.y.z:7777 or name.ts.net:7777" required> <input name="passcode" type="password" placeholder="Its passcode" autocomplete="off"> <button>Add</button></form>
       <p class="muted">On the Bob that lends: turn on <strong>Let my other replicant matrices in</strong> and <strong>Lend my brain</strong>. Pairing puts the two Bobs on each other's lists; it doesn't switch anything on. Tailscale addresses only. What Bob sends for each reply is the chat so far and his instructions, including what he remembers about you. It only goes to your own replicant matrices on Tailscale, and the lender keeps none of it. Your phone can lend too, once Bob for Android has <strong>Lend my brain</strong>. A phone runs warm and uses battery while it thinks, so keep it plugged in while you game.</p></details>`;
+    decorate();
   };
   const load = async () => { v = await api('/api/share-brains'); draw(); };
   // The link log: read when asked, and every 2 seconds after that while it's showing and "Watch the link live" is on.
@@ -154,27 +166,30 @@ export async function mountShareBrains(box) {
   // After a pairing (either side), the list and the row's button catch up at once.
   const refresh = async () => { try { v = await api('/api/share-brains'); if (found?.bobs) found.bobs.forEach((f) => { f.paired = v.lenders.some((l) => l.address === f.address); }); draw(); } catch {} };
   window.addEventListener('bob-pair-done', () => { if (box.isConnected) refresh(); });
-  const change = async (patch) => {
-    try { v = await api('/api/share-brains', patch); msg = ''; } catch (e) { msg = e.message; }
+  let refused = null; // { sel, text }: the switch just turned down, and why (shown under it)
+  const change = async (patch, el = null) => {
+    const sel = switchSelector(el);
+    try { v = await api('/api/share-brains', patch); msg = ''; refused = null; } catch (e) { if (sel) { refused = { sel, text: e.message }; msg = ''; } else msg = e.message; }
     draw();
   };
-  box.addEventListener('change', (e) => {
-    if (e.target.matches('[data-share-lend]')) change({ lend: e.target.checked });
-    if (e.target.matches('[data-share-take]')) change({ takeJobs: e.target.checked });
-    if (e.target.matches('[data-share-pass]')) change({ passAlong: e.target.checked });
-    if (e.target.matches('[data-share-lendchecks]')) change({ lendChecks: e.target.checked });
-    if (e.target.matches('[data-share-askchecks]')) change({ askChecks: e.target.checked, check: e.target.checked });
-    if (e.target.matches('[data-share-mode]')) change({ mode: e.target.value, check: e.target.value === 'bigger' });
-    if (e.target.matches('[data-share-homenet]')) change({ homeNet: e.target.checked });
-    if (e.target.matches('[data-share-scut]')) change({ scut: e.target.checked });
-    if (e.target.matches('[data-share-scutseal]')) change({ scutSeal: e.target.checked });
-    if (e.target.matches('[data-share-linkdebug]')) change({ linkDebug: e.target.checked });
-    if (e.target.matches('[data-share-scutmbps]')) change({ scutMbps: Number(e.target.value) });
-    if (e.target.matches('[data-share-card]')) change({ lendCard: e.target.checked });
-    if (e.target.matches('[data-share-spread]')) change({ spread: e.target.value, check: e.target.value !== 'off' });
-    if (e.target.matches('[data-share-send]')) change({ sendJobs: e.target.checked, check: e.target.checked });
-    if (e.target.matches('[data-share-borrow]')) change({ borrow: e.target.checked, check: e.target.checked });
-    if (e.target.matches('[data-share-when]')) change({ when: e.target.value });
+  box.addEventListener('change', (ev) => {
+    const e = ev, ch = (patch) => change(patch, ev.target.type === 'checkbox' ? ev.target : null);
+    if (e.target.matches('[data-share-lend]')) ch({ lend: e.target.checked });
+    if (e.target.matches('[data-share-take]')) ch({ takeJobs: e.target.checked });
+    if (e.target.matches('[data-share-pass]')) ch({ passAlong: e.target.checked });
+    if (e.target.matches('[data-share-lendchecks]')) ch({ lendChecks: e.target.checked });
+    if (e.target.matches('[data-share-askchecks]')) ch({ askChecks: e.target.checked, check: e.target.checked });
+    if (e.target.matches('[data-share-mode]')) ch({ mode: e.target.value, check: e.target.value === 'bigger' });
+    if (e.target.matches('[data-share-homenet]')) ch({ homeNet: e.target.checked });
+    if (e.target.matches('[data-share-scut]')) ch({ scut: e.target.checked });
+    if (e.target.matches('[data-share-scutseal]')) ch({ scutSeal: e.target.checked });
+    if (e.target.matches('[data-share-linkdebug]')) ch({ linkDebug: e.target.checked });
+    if (e.target.matches('[data-share-scutmbps]')) ch({ scutMbps: Number(e.target.value) });
+    if (e.target.matches('[data-share-card]')) ch({ lendCard: e.target.checked });
+    if (e.target.matches('[data-share-spread]')) ch({ spread: e.target.value, check: e.target.value !== 'off' });
+    if (e.target.matches('[data-share-send]')) ch({ sendJobs: e.target.checked, check: e.target.checked });
+    if (e.target.matches('[data-share-borrow]')) ch({ borrow: e.target.checked, check: e.target.checked });
+    if (e.target.matches('[data-share-when]')) ch({ when: e.target.value });
   });
   box.addEventListener('submit', (e) => {
     if (e.target.matches('[data-pair-by-address]')) { e.preventDefault(); pair(new FormData(e.target).get('address')); return; }

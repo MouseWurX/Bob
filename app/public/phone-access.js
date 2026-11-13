@@ -1,5 +1,6 @@
 // Settings, Bob-Net, This Bob: "Let my other replicant matrices in" (src/phone-access.js). Off unless you turn it on.
 // Bob for Android (or a browser on your phone) reaches this Bob over Tailscale with the passcode.
+import { sayRefused } from './refused.js'; // 1.5.213: a refused switch says why right under it
 import { esc } from './util.js';
 
 async function api(url, data) {
@@ -44,9 +45,11 @@ export async function mountPhoneAccess(box) {
   };
   const load = async () => { v = await api('/api/phone-access'); draw(); };
   const change = async (patch) => {
+    let refused = '';
     try { const r = await api('/api/phone-access', patch); v = { ...v, ...r }; if (r.passcode) shown = r.passcode; restart = restart || r.restart; msg = ''; document.dispatchEvent(new CustomEvent('bob-door')); }
-    catch (e) { msg = e.message; }
+    catch (e) { if ('enabled' in patch) refused = e.message; else msg = e.message; }
     draw();
+    if (refused) sayRefused(box, '[data-phone-on]', refused);
   };
   box.addEventListener('change', (e) => { if (e.target.matches('[data-phone-home]')) change({ homeNet: e.target.checked }); if (e.target.matches('[data-phone-on]')) change(e.target.checked && !v.passcodeSet ? { enabled: true, newPasscode: true } : { enabled: e.target.checked }); });
   box.addEventListener('click', async (e) => {

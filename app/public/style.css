@@ -236,6 +236,7 @@ body.still .talk-bar .talk-dot { animation: none !important; }
 .have { color: var(--good); }
 .muted { color: var(--muted); }
 .error { color: var(--bad); }
+.refused { margin: 2px 0 8px 2.2em; color: var(--bad); font-size: 13px; } /* 1.5.213: why a switch was turned down, right under it */
 .confirm { margin-top: 8px; padding: 8px 10px; border: 1px dashed var(--accent); border-radius: calc(var(--r) * 1); }
 .confirm p { margin: 0 0 8px; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
