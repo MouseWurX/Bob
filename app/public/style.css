@@ -1283,7 +1283,7 @@ video.out-media { max-height: 240px; border-radius: calc(var(--r) * 0.75); }
 .mini-switch[aria-checked="true"] { color: var(--text); border-color: var(--good); }
 .mini-switch[aria-checked="true"] .st { background: var(--good); color: var(--on-accent); }
 .get-more { margin: 8px 0 0; }
-.get-more-btn { white-space: nowrap; }
+.get-more-btn { max-width: 100%; white-space: normal; text-align: left; height: auto; } /* the long catalogue button wraps on a phone instead of widening the panel */
 .kit:not(.shop) { display: flex; align-items: center; padding-right: 8px; }
 .kit:not(.shop) .kit-btn { flex: 1; }
 /* 1.5.56 Tips: explanations wait behind a small ⓘ and show in one bubble on hover, on keyboard focus, or on tap. */
@@ -1982,7 +1982,7 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .settings-window .cellar[data-page="Settings"] .cellar-tabs, .settings-window .cellar[data-page="Style"] .cellar-tabs .tabs-row:first-child { display: none; }
 
 /* 1.5.205 the Brains page: each brain, its jobs and where it sits */
-.brains-page { display: grid; gap: 12px; }
+.brains-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; } /* minmax(0, ...): a wide child wraps instead of pushing the panel off a phone screen */
 .brains-panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; }
 .brains-panel h3 { margin: 0 0 8px; }
 .brains-panel h4 { margin: 12px 0 6px; font-size: 13px; color: var(--muted); }
@@ -1995,8 +1995,9 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .chip-x { background: none; border: 0; color: var(--muted); padding: 0; margin: 0 -4px 0 0; min-width: 24px; min-height: 24px; line-height: 1; cursor: pointer; }
 .chip-x:hover, .chip-x:focus-visible { color: var(--text); }
 .job-add { font-size: 13px; max-width: 11em; }
-.place-bar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); font-size: 12px; font-weight: 600; }
-.place-bar span { display: grid; place-items: center; white-space: nowrap; overflow: hidden; color: var(--on-accent); padding: 0 4px; }
+/* No label is ever cut off: a part is never narrower than its words, and the bar wraps to a second line if it must. */
+.place-bar { display: flex; flex-wrap: wrap; min-height: 22px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); font-size: 12px; font-weight: 600; }
+.place-bar span { display: grid; place-items: center; white-space: nowrap; color: var(--on-accent); padding: 2px 6px; flex-shrink: 0 !important; flex-basis: auto !important; min-width: max-content; }
 .place-bar .pb-card { background: var(--good); }
 .place-bar .pb-mem { background: var(--warn); }
 .place-bar .pb-drive { background: color-mix(in srgb, var(--you) 55%, var(--text)); }
