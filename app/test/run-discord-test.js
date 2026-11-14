@@ -322,6 +322,30 @@ check('turning it off stops Bob listening', !c.running && c.status === 'off');
   check('a channel\'s name is asked once, cleaned, and kept', (await n.channelName(CH)) === 'generalb' && (await n.channelName(CH)) === 'generalb' && asked === 1);
 }
 
+// 1.5.228 two-way: you talk in a listed channel from Bob's Discord chat, and it stays on that channel's page.
+{
+  const { RoomGate } = await import('../src/room-gate.js');
+  let t = 10_000;
+  const sent = [];
+  const gate = new RoomGate({ room: 'discord', dir: null, now: () => t });
+  saveDiscord(brain.cfg, { enabled: true, channels: [CH] });
+  const y = new DiscordBridge(brain, { fetchImpl, WebSocketImpl: FakeWS, env: { [TOKEN_ENV]: TOKEN }, gate, now: () => t });
+  y.rest = async (m, route, b) => { if (m === 'POST') sent.push({ route, b }); return route === `/channels/${CH}` ? { name: 'general' } : {}; };
+  check('not connected: nothing is sent', (await y.say(CH, 'hi all')).error === 'off' && sent.length === 0);
+  y.running = true;
+  check('a channel not on the list: nothing is sent', (await y.say(OTHER_CH, 'hi')).error === 'not listed' && sent.length === 0);
+  check('empty: nothing is sent', (await y.say(CH, '   ')).error === 'empty' && sent.length === 0);
+  const r = await y.say(CH, 'hi @everyone, Bob here');
+  check('a listed channel: it posts there, and nobody gets pinged', !r.error && sent.length === 1 && sent[0].route === `/channels/${CH}/messages` && sent[0].b.allowed_mentions.parse.length === 0);
+  check('it stays on that channel\'s page as yours', r.line.kind === 'me' && r.line.where === CH && r.line.whereName === 'general' && gate.view().lines.at(-1).text === 'hi @everyone, Bob here');
+  check('at most one a second', (await y.say(CH, 'again')).error === 'fast' && sent.length === 1);
+  t += 1500;
+  check('a long message goes in pieces under Discord\'s limit', !(await y.say(CH, 'x'.repeat(3000))).error && sent.length === 3 && sent.every((x) => x.b.content.length <= 2000));
+  check('far too long is refused', (t += 1500, (await y.say(CH, 'x'.repeat(5000))).error === 'long'));
+  y.running = false;
+  saveDiscord(brain.cfg, { enabled: false, channels: [] });
+}
+
 fs.rmSync(dir, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

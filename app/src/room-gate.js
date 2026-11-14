@@ -97,6 +97,15 @@ export class RoomGate {
     this.save();
   }
 
+  // 1.5.228 Something you typed on a channel's page and Bob posted there for you. Kept on that channel's page.
+  said({ where, whereName = '', text }) {
+    const line = { id: crypto.randomUUID(), kind: 'me', at: this.now(), where: clean(where, 80), whereName: clean(whereName, 100), text: clean(text, MAX_TEXT) };
+    this.data.lines.push(line);
+    this.trim();
+    this.save();
+    return line;
+  }
+
   // For the room's chat page: lines oldest first, plus how many wait for an OK.
   view() { return { room: this.room, waiting: this.waiting().length, lines: this.data.lines.map(({ ref, ...l }) => l) }; }
 
