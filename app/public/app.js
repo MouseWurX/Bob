@@ -42,6 +42,7 @@ import { createWebSwitch } from './web-switch.js';
 import { createQuickSwitches } from './quick-switches.js'; // Autonomy and Screen use buttons
 import { createRentSwitch } from './rent-switch.js'; // 1.5.127 rented brains
 import { createGameLock } from './game-lock.js';
+import { createUsersSwitch } from './users-switch.js'; // 👥 Switch user (Users, off unless turned on)
 import { quarantineCard, quarantineResult, createQuarantineBanner } from './quarantine.js';
 import { createLendPowersBadge } from './lend-powers.js'; // Nov 13: what a brain this card helps run has on
 import { createEffort } from './effort.js';
@@ -66,7 +67,7 @@ import { saveToLab } from './lab-save-q.js'; // Lab item 102: Save to Lab under 
 import { createNetOverlay } from './net-overlay.js'; // Nov 13 Bob-Net icons, off unless turned on
 import { createFadeChat } from './fade-chat.js'; // Fade old messages, Clear chat and 🫥 Amnesia mode
 import { createHarnessChat, quietNow } from './harness-chat.js'; // items 62 to 72: crash card, quiet hours, Pin, Try from here, Guest chat
-import { applyReading, startEveryday } from './everyday.js'; // 🗓 Everyday helpers: text size, font, today card, tour, ⏱ Focus, tray dot
+import { applyReading, startEveryday, shouldOfferOwnCode } from './everyday.js'; // 🗓 Everyday helpers: text size, font, today card, tour, ⏱ Focus, tray dot
 import { createReplyParts } from './app-replies.js';
 import { createRedoParts } from './app-redo.js';
 import { createCopyParts } from './app-copy.js';
@@ -131,6 +132,7 @@ createStatusChip({ setLeft: layout.setLeft, leftFolded: layout.leftFolded });
 const webSwitch = createWebSwitch({ note: (t, k) => note(t, k) });
 const rentSwitch = createRentSwitch({ note: (t, k) => note(t, k) });
 const gameLock = createGameLock({ note: (t, k) => note(t, k) }); // 1.5.41 the 🎮 Gaming button
+const usersSwitch = createUsersSwitch(); // in Lamplight: Switch user in the cube's menu, under Get models (bob-menu.js usersPart)
 const qBanner = createQuarantineBanner({ note: (t, k) => note(t, k) });
 const lendPowers = createLendPowersBadge(); // Nov 13: a lent card's brain has Hands, Autonomy or Screen use on over there
 const effort = createEffort();
@@ -558,7 +560,8 @@ const bobMenu = createBobMenu({
   pickTool: (id) => $(id)?.click(),
   getSession: () => (lamp() && sessionSel.options.length ? { value: sessionSel.value, options: [...sessionSel.options].map((o) => ({ value: o.value, label: o.textContent })) } : null),
   pickSession: (v) => { sessionSel.value = v; sessionSel.dispatchEvent(new Event('change', { bubbles: true })); },
-  doors: { brains: () => cellar.open('settings', null, { jump: 'adv-brains' }), style: () => cellar.open('shop', 'style'), models: () => cellar.open('shop', 'catalogue') },
+  getUsers: () => usersSwitch.state(), // 👥 Users: Switch user, under Get models
+  doors: { brains: () => cellar.open('settings', null, { jump: 'adv-brains' }), style: () => cellar.open('shop', 'style'), models: () => cellar.open('shop', 'catalogue'), users: () => usersSwitch.open(), signout: () => usersSwitch.signOut() },
   getStatus: async () => (await fetch('/api/status')).json(),
   getNames: async () => Object.fromEntries((((await (await fetch('/api/roles')).json()).options || {}).llm || []).map((o) => [o.value, o.label])),
   saidNow: () => statusEl.title || statusEl.textContent
@@ -1640,6 +1643,18 @@ function offerWants() {
   };
 }
 
+// ---------- 👥 Users: a person's own passcode, offered once after their own first time in (the owner, Nov 14) ----------
+// Never in the first-time setup and never for the owner or Guest. Either answer is remembered, so it never comes back.
+function offerOwnCode(p) {
+  const el = add('suggest', `<span>Welcome${p.currentName ? `, ${esc(p.currentName)}` : ''}. Want a passcode for your things? It locks your chats, memory and email so only you can open them. Up to you, and you can add one later in Settings.</span><button type="button" data-c="set">Set a passcode</button><button type="button" data-c="no">No passcode</button>`);
+  for (const b of el.querySelectorAll('button')) b.onclick = async () => {
+    el.remove();
+    await post('/api/everyday/profiles', { codeAsked: true }).catch(() => {});
+    if (b.dataset.c === 'set') cellar.open('settings', null, { jump: 'adv-daily' });
+    else note('Saved: no passcode. I won\'t ask again. Settings, Everyday helpers, Users, if you change your mind.');
+  };
+}
+
 // ---------- Start ----------
 // ---------- Render maths (Settings, Bob himself; off unless you turn it on) ----------
 // KaTeX is loaded from Bob's own files the first time it's needed. redraw: the switch changed, so the chat is drawn again.
@@ -1714,6 +1729,7 @@ async function start() {
   try {
     const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; statusLine.jokes(st.statusJokes !== false); netOverlay.setOn(st.netOverlay === true); catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
+    if (shouldOfferOwnCode(st.profiles)) offerOwnCode(st.profiles); // a person's own first time in: their own passcode, if they want one
     if (st.setupDone && !st.wantsAsked) offerWants(); // once, for Bobs set up before the Welcome had "Do you want me to:"
     everyday = startEveryday({ add, note, settings: st, version: st.version?.label || '' }); // 🗓 today card, tour, ⏱ Focus, tray dot (each only when on)
     if (st.updates?.autoCheck) { const c = await (await fetch('/api/update/check')).json(); if (c.newer) note(`A newer Bob (${c.available.label}) is out${c.from === 'github' ? ' on GitHub' : ''}. Settings, This replicant matrix and updates, Check for updates.`); }

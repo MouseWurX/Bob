@@ -154,7 +154,7 @@ const fresh = () => { const d = fs.mkdtempSync(path.join(tmp, 'inn-')); const da
   const p = new Profiles(cfg, { brain });
   check('off to start with, and the lock screen asks nothing new', !profilesOn(cfg) && p.people().length === 0 && !lockPage({}).includes("Who's this?"));
   cfg.profilesOn = true;
-  check('needs the lock with Lock my chats and memory', profilesOn(cfg) && !profilesOn({ ...cfg, lock: { ...cfg.lock, encrypt: false } }));
+  check('works without the lock or Lock my chats and memory', profilesOn(cfg) && profilesOn({ ...cfg, lock: { ...cfg.lock, encrypt: false } }) && profilesOn({ profilesOn: true }));
   check('a person needs a name and a passcode, not the owner\'s', Boolean(p.add('', 'abcd').error) && Boolean(p.add('Sam', 'ab').error) && Boolean(p.add('Sam', 'owner-code').error));
   const v = p.add('Sam', 'sam-code').view;
   check('adding a person keeps no passcode, only a locked key', v.list.length === 1 && !fs.readFileSync(cfg.configFile, 'utf8').includes('sam-code') && JSON.parse(fs.readFileSync(cfg.configFile, 'utf8')).lock.wrapped === cfg.lock.wrapped);
@@ -184,7 +184,7 @@ const fresh = () => { const d = fs.mkdtempSync(path.join(tmp, 'inn-')); const da
   check('housekeeping only tidies the owner\'s things', read('src/housekeeping.js').includes("if (this.cfg.profileNow) return { skipped: true, profile: true };"));
   check('search in a profile never shows the owner\'s notes', read('src/search.js').includes("!cfg.profileNow || kind === 'memory'"));
   check('profiles are never in a backup', NOT_BACKED_UP.includes('profiles/'));
-  check('Settings lists people with Add and Remove', peopleHtml({ list: [{ id: 'a', name: 'Sam' }], ownerLocked: true }).includes('＋ Add a person') && peopleHtml({}).includes('Lock my chats and memory'));
+  check('Settings lists people with Add and Remove, a passcode optional', peopleHtml({ list: [{ id: 'a', name: 'Sam' }], ownerLocked: true }).includes('＋ Add a person') && peopleHtml({}).includes('Passcode (optional)') && peopleHtml({}).includes('Lock my chats and memory'));
 }
 
 // ---- 150 the tray dot ----

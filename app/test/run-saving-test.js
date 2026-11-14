@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 // Saving safely and starting clean (reliability items 229-240): src/saving.js, src/turn-changes.js, src/job-home.js and
 // where they're wired in. Everything happens in a temp folder; nothing reads the real computer.
 import { brainText, publicText } from './source-text.js';
@@ -83,7 +84,10 @@ const mkCfg = (name) => {
   check('231 a writer waits its turn, and goes ahead when the wait runs out (a late save beats a lost one)', ran);
   fs.rmSync(`${f}.lock`, { force: true });
   // A lock left by a program that has gone is taken over at once.
-  fs.writeFileSync(`${f}.lock`, `999999 ${Date.now()}`);
+  // A pid known to be gone: a child that has already exited (a made-up pid like 999999 can be a live program on Windows,
+  // which ignores a pid's low two bits).
+  const gone = spawnSync(process.execPath, ['-e', '']).pid;
+  fs.writeFileSync(`${f}.lock`, `${gone} ${Date.now()}`);
   const t0 = Date.now();
   oneWriter(f, () => saveJson(f, { n: 1 }));
   check('231 a lock left behind by a program that has gone is taken over', Date.now() - t0 < 500 && readSaved(f, null).n === 1 && !fs.existsSync(`${f}.lock`));

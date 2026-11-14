@@ -281,10 +281,11 @@ export class Schedules {
 
 // Ticks once a minute (and straight away, for catch-ups after start-up) and hands each due entry to
 // run(entry). run must ask before each action, exactly as a chat request would.
-export function startTicker(schedules, run, { everyMs = 60000 } = {}) {
+// hold(): true while due entries should wait (👥 another user is in); they stay due and run once it's false again.
+export function startTicker(schedules, run, { everyMs = 60000, hold = () => false } = {}) {
   let stopped = false;
   const tick = async () => {
-    if (stopped) return;
+    if (stopped || hold()) return;
     for (const e of schedules.due()) {
       if (!schedules.start(e.id)) continue;
       Promise.resolve()

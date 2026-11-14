@@ -256,6 +256,32 @@ label.switch.waits { opacity: .55; cursor: not-allowed; }
 .pick { display: grid; gap: 4px; }
 .cellar select { font: inherit; padding: 7px; border-radius: calc(var(--r) * 1); background: var(--bg); color: var(--text); border: 1px solid var(--line); max-width: 100%; }
 .welcome h2 { margin: 4px 0 8px; }
+/* Nov 14: the Welcome as seven pages (welcome-steps.js). Back bottom left, Next bottom right, each naming its page. */
+.wz { display: flex; flex-direction: column; min-height: calc(100dvh - 180px); }
+.wz-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 4px 0 20px; }
+.wz-count { margin: 0; font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.wz-dots { display: flex; gap: 2px; list-style: none; margin: 0; padding: 0; }
+.wz-dot { width: 24px; height: 24px; min-height: 24px; padding: 0; border: 0 !important; background: transparent !important; box-shadow: none !important; display: grid; place-items: center; cursor: pointer; }
+.wz-dot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: background-color .15s, box-shadow .15s; }
+.wz-dot.past::before { background: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.wz-dot.on::before { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.wz-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; border-radius: 50%; }
+.wz-skip { margin-left: auto; }
+.wz-page { flex: 1; }
+.wz-title { outline: none; margin: 0 0 6px; }
+.wz-lead { margin: 0 0 18px; max-width: 64ch; }
+.wz-group h3 { margin-top: 20px; }
+.wz-group > p.muted { margin: 0 0 4px; }
+.wz-sum dt { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-top: 14px; }
+.wz-sum dd { margin: 4px 0 0; }
+.wz-nav { position: sticky; bottom: -48px; z-index: 2; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin: 28px 0 -48px; padding: 34px 0 62px; background: linear-gradient(to bottom, transparent, var(--deep, var(--bg)) 30px); }
+.cellar .wz-nav .wz-back { background: transparent; border: 1px solid var(--line); color: var(--text); }
+.cellar .wz-nav .wz-back:hover { border-color: var(--accent); }
+.cellar .wz-nav :is(.wz-back, .wz-next) { display: flex; flex-direction: column; gap: 2px; min-width: 132px; min-height: 48px; padding: 6px 14px; }
+.cellar .wz-nav .wz-back { align-items: flex-start; text-align: left; }
+.cellar .wz-nav .wz-next { align-items: flex-end; text-align: right; }
+.wz-dir { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; opacity: .75; }
+.wz-to { font-size: 15px; font-weight: 600; }
 .packlist { list-style: none; padding: 0; }
 .packlist li { padding: 4px 0; }
 .packlist input { accent-color: var(--accent); }
@@ -877,6 +903,20 @@ details.more > summary:hover { color: var(--accent); }
 .bob-menu-now { margin: 0; padding: 6px 8px 8px; font-size: 13px; border-bottom: 1px solid var(--line); }
 .bob-menu-item { text-align: left; padding: 8px; min-height: 44px; background: none; border: 0; border-radius: var(--r); font-size: 13px; color: var(--text); cursor: pointer; }
 .bob-menu-item:hover, .bob-menu-item:focus-visible { background: var(--panel); outline: 2px solid var(--accent); outline-offset: -2px; }
+/* 👥 Users: Switch user and Sign out side by side in Bob's menu, and the Switch user page (users-switch.js) */
+.bob-menu-split { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.bob-menu-split > :only-child { grid-column: 1 / -1; }
+.user-dot { flex: none; width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; font-weight: 700; font-size: 13px; background: var(--panel); color: var(--accent); border: 1px solid var(--line); }
+.users-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.users-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin: 16px 0; padding: 0; list-style: none; }
+.user-card { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 12px; min-height: 44px; background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: var(--r); cursor: pointer; font: inherit; }
+.user-card .user-dot { width: 48px; height: 48px; font-size: 20px; }
+.user-card:hover, .user-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.user-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.user-card .muted { font-size: 12px; }
+.users-code { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.users-code input { min-height: 44px; }
+@media (forced-colors: active) { .user-card[aria-pressed="true"] { border: 2px solid Highlight; } }
 .cat { position: absolute; right: -6px; bottom: -6px; font-size: 15px; line-height: 1; pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); white-space: nowrap; }
 .cat.antic-nap { animation: cat-nap 2.4s ease-in-out infinite; }
 .cat.antic-swat { animation: cat-swat .6s ease-in-out 6; }
@@ -2496,14 +2536,14 @@ body.still .net-row .nb:is(:hover, :focus-visible) .nb-port, body.still.look-lam
 .fade-line button.plain { color: var(--text); border-color: var(--line); }
 .msg.fading-out { opacity: .15; transition: opacity 1.4s ease; }
 body.still .msg.fading-out { transition: none; }
-.amnesia-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; margin: 6px auto 18px; max-width: 760px; padding: 10px 14px; border: 1px solid var(--amnesia); border-radius: 12px; background: color-mix(in srgb, var(--amnesia) 14%, transparent); color: var(--text); font-size: 14px; }
-.amnesia-bar .amn-ic { font-size: 20px; }
-.amnesia-bar .amn-t { flex: 1; min-width: 200px; line-height: 1.4; }
-.amnesia-bar button { min-height: 32px; padding: 4px 13px; font: inherit; font-size: 13px; color: var(--amnesia-text); background: transparent; border: 1px solid var(--amnesia); border-radius: 999px; cursor: pointer; }
-.brain-switch.amnesia-btn[aria-checked="true"] { color: var(--amnesia-text); border-color: var(--amnesia); background: color-mix(in srgb, var(--amnesia) 18%, transparent); }
-.brain-switch.amnesia-btn[aria-checked="true"] .st { background: var(--amnesia); color: var(--amnesia-ink); }
-body.amnesia-on .composer { border-color: var(--amnesia) !important; box-shadow: 0 0 0 1px color-mix(in srgb, var(--amnesia) 35%, transparent), 0 0 22px -6px var(--amnesia); }
-body.amnesia-on.still .composer { box-shadow: 0 0 0 1px var(--amnesia); }
+/* Nov 14: the Amnesia line is very subtle. One quiet line, no fill; the box you type in gets a thin purple edge, no glow. */
+.amnesia-bar { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px 10px; margin: 2px auto 12px; max-width: 760px; padding: 2px 10px; color: var(--muted); font-size: 12.5px; }
+.amnesia-bar .amn-ic { font-size: 14px; opacity: .8; }
+.amnesia-bar .amn-t { line-height: 1.4; }
+.amnesia-bar button { min-height: 28px; padding: 2px 10px; font: inherit; font-size: 12px; color: var(--amnesia-text); background: transparent; border: 1px solid color-mix(in srgb, var(--amnesia) 45%, transparent); border-radius: 999px; cursor: pointer; }
+.brain-switch.amnesia-btn[aria-checked="true"] { color: var(--amnesia-text); border-color: color-mix(in srgb, var(--amnesia) 60%, transparent); }
+.brain-switch.amnesia-btn[aria-checked="true"] .st { background: color-mix(in srgb, var(--amnesia) 70%, transparent); color: var(--amnesia-ink); }
+body.amnesia-on .composer { border-color: color-mix(in srgb, var(--amnesia) 55%, var(--line)) !important; }
 @media (max-width: 640px) { #effort { flex-wrap: wrap; row-gap: 6px; } }
 dialog.fade-ask { width: min(440px, calc(100% - 32px)); padding: 20px 22px; color: var(--text); background: var(--card, var(--panel)); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 20px 60px -10px rgba(0, 0, 0, .8); }
 dialog.fade-ask::backdrop { background: rgba(0, 0, 0, .55); }
@@ -2558,3 +2598,9 @@ dialog.fade-ask .fade-row button.danger { color: var(--on-accent); background: v
 .room-say .row { align-items: flex-end; gap: 6px; }
 .room-say textarea { flex: 1; min-width: 0; resize: vertical; }
 .room-chat .room-heard { opacity: .85; }
+
+/* Nov 14: the Welcome's Users page people list, Lamplight style (underline-only boxes, no fill) */
+.wz-people input[type="text"], .wz-people input:not([type]) { background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; color: var(--text); padding: 4px 2px; font: inherit; }
+.wz-people input:focus-visible { outline: none; border-bottom-color: var(--accent); }
+.wz-people .people-list { list-style: none; padding: 0; }
+.wz-people .people-list li { display: flex; align-items: center; gap: 8px; padding: 4px 0; }

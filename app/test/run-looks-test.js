@@ -2,7 +2,7 @@
 // Display only: no brain context, no server calls, steady when animations are off.
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { cleanStyle } from '../src/config.js';
+import { cleanStyle, lampMove } from '../src/config.js';
 import { HELP } from '../public/help-content.js';
 import { rankFind } from '../public/find.js';
 import { bobMenuHtml } from '../public/bob-menu.js';
@@ -74,12 +74,28 @@ check('Style Help explains Find anything and the status line', help('style').inc
   const T = await import('../public/themes.js');
   check('four lamps, Mercury first and the default', T.LAMP_IDS.join() === 'mercury,sodium,thallium,neon' && T.DEFAULT_LAMP === 'mercury' && T.lampId({}) === 'mercury' && T.lampId({ lamp: 'nope' }) === 'mercury' && T.lampId({ lamp: 'neon' }) === 'neon');
   check('each lamp is a theme of its own, in the Lamps group, with the same id', T.LAMPS.every((l) => T.findTheme(l.id)?.group === 'Lamps'));
-  check('the lamp colours are the gases\' own light (CIE 1931 sums of their lines)', JSON.stringify(T.LAMPS.map((l) => l.glow)) === JSON.stringify(['#8becff', '#ff8000', '#00ff00', '#ff2e00']));
+  check('the lamp colours are the gases\' own light (CIE 1931 sums of their lines)', JSON.stringify(T.LAMPS.map((l) => l.spectral)) === JSON.stringify(['#8becff', '#ff8000', '#00ff00', '#ff2e00']));
+  { // the owner: "so bright". Each lamp is its spectral hue dimmed to one brightness, in a near-black room.
+    const lum = (h) => { const v = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+    check('every lamp is dimmed to the same soft brightness', T.LAMPS.every((l) => Math.abs(lum(l.glow) - 0.2) < 0.01));
+    check('Send in Lamplight is a soft lamp-tinted button with the theme\'s text (the owner: dim the send buttons)', /body\.look-lamplight \.send \{[^}]*background: color-mix\(in srgb, var\(--accent\) 26%, var\(--panel\)\); color: var\(--text\)/.test(css));
+  { const r = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+    check('Send\'s words stay clear (4.5:1) on every theme', T.PRESETS.every((t) => { const c = T.fullColors(t); return r(c.text, T.mix(c.accent, c.panel, 0.26)) >= 4.5; })); }
+  check('Lamplight has a faint smoke lit by the cube: it follows --cube-light, drifts by transform only, holds still with animations off or reduced motion', /body\.look-lamplight \.app::after \{[^}]*mask-image: url\("data:image\/svg\+xml[^}]*opacity: calc\(var\(--cube-light/.test(css) && /@keyframes lamp-smoke \{ from \{ transform: [^}]*\} to \{ transform: [^}]*\} \}/.test(css) && css.includes('body.look-lamplight.still .app::after { animation: none;') && /prefers-reduced-motion: reduce\) \{ body\.look-lamplight \.app::after \{ animation: none; \}/.test(css));
+  check('the typing box is a see-through veil, Send an outline that lights on hover, the page links shadows that light on hover (dark themes only)', css.includes('body.look-lamplight:not(.theme-light):not(.outlined) :is(.effort, .composer) { background: color-mix(in srgb, var(--panel) 30%, transparent);') && css.includes('backdrop-filter: blur(10px)') && /:not\(\.outlined\) \.send \{ background: transparent; color: var\(--text\)/.test(css) && /\.send:is\(:hover, :focus-visible\)/.test(css) && /\.nav-item:not\(\.on\):is\(:hover, :focus-visible\) \{[^}]*color: var\(--text\); text-shadow/.test(css));
+  { const r = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+    check('the shadowy page links still read clearly (4.5:1) on every dark theme', T.PRESETS.filter((t) => !t.outlined && !T.isLight(T.fullColors(t).bg)).every((t) => { const c = T.fullColors(t); const deep = T.mix(c.bg, '#000000', 0.72); return r(T.mix(c.muted, deep, 0.84), deep) >= 4.5; })); }
+    check('the lamp rooms are near-black', T.LAMPS.every((l) => lum(T.fullColors(T.findTheme(l.id)).bg) < 0.006));
+  }
   check('a lamp is saved, an unknown one dropped', cleanStyle({ lamp: 'sodium' }).lamp === 'sodium' && !('lamp' in cleanStyle({ lamp: 'krypton' })));
   check('page and server agree on the lamps', /\['mercury', 'sodium', 'thallium', 'neon'\]\.includes\(st\.lamp\)/.test(read('src/config.js')));
   check('picking a lamp picks its theme, and picking a lamp\'s theme picks the lamp', page.includes("save(settings, { lamp: b.dataset.lamp, theme: b.dataset.lamp })") && T.lampOfTheme('thallium') === 'thallium' && T.lampOfTheme('moondust') === null);
   check('the lamp picker shows in Lamplight and Terminal, and in Settings, Look & feel', T.LAMP_LOOKS.join() === 'lamplight,terminal' && page.includes('aria-label="Lamp"') && read('public/cellar-pages.js').includes('aria-label="Lamp"') && read('public/cellar.js').includes('b.dataset.lamp'));
   check('the lamp glow on the picker holds still with animations off', css.includes('body.still .lamp-pick button i { box-shadow: none !important; }'));
+  check('an existing install on Moondust (or no theme) moves to Mercury once', JSON.stringify(lampMove({ look: 'lamplight', theme: 'moondust' })) === JSON.stringify({ look: 'lamplight', theme: 'mercury', lamp: 'mercury', lampMoved: true }) && lampMove({}).theme === 'mercury' && lampMove({ theme: 'slate' }).theme === 'mercury');
+  check('any other theme stays, and Moondust picked again after the move stays', lampMove({ theme: 'inn' }).theme === 'inn' && lampMove({ theme: 'moondust', lampMoved: true }) === null && cleanStyle({ lampMoved: true }).lampMoved === true);
+  check('the move runs at start-up and is saved, so it happens once', /const moved = lampMove\(cfg\.style\); if \(moved\) \{ cfg\.style = moved; try \{ saveSettings\(cfg, \{ style: moved \}\)/.test(read('src/config.js')));
+  check('Help says Moondust moves to Mercury once', help('faq-lamps').includes('Moondust'));
   check('Help, FAQ and glossary explain the lamps', ['Mercury', 'Sodium', 'Thallium', 'Neon'].every((w) => help('style').includes(w) && help('faq-lamps').includes(w)) && /Windows, Mac, Linux/.test(help('faq-lamps')) && help('glossary').includes('<dt>Lamp</dt>'));
 }
 

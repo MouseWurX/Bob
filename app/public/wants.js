@@ -21,6 +21,8 @@ export const WANTS = [
     label: 'Keep quiet while you focus', note: 'A ⏱ Focus button. My taps on the shoulder wait until it ends.' },
   { card: 'how', key: 'receipts', setting: 'Receipt tracker', where: '🗓 Everyday helpers',
     label: 'Keep a spending sheet from receipt photos', note: 'Snap a receipt and I add it. The sheet stays here, locked.' },
+  { card: 'how', key: 'profilesOn', setting: 'Users', where: '🗓 Everyday helpers',
+    label: 'Let others in the house use me too', note: 'Each gets their own chats, memory, email, keys and agents. Passcodes optional.' },
   { card: 'how', key: 'updateTour', setting: 'What\'s new after updates', where: '🗓 Everyday helpers',
     label: 'Show you what\'s new after an update', note: 'Up to three cards, each with Turn on.' },
   { card: 'how', key: 'quickNotes', setting: 'Quick notes', where: 'How Bob works',
@@ -99,7 +101,7 @@ export const WANTS = [
 export const WANTS_ELSEWHERE = [
   { card: 'bob', id: 'adv-presets', label: 'Work a different way in each chat (🎭 Assistant presets)' },
   { card: 'how', id: 'adv-checkins', label: 'Check in on you by myself (🔔 Check-ins)' },
-  { card: 'how', id: 'adv-chatx', label: 'Fade old messages, Amnesia mode, pin messages, try a chat another way, guest chats (💬 Chat extras)' },
+  { card: 'how', id: 'adv-chatx', label: 'Amnesia mode, fade old messages, pin messages, try a chat another way, guest chats (💬 Chat extras)' },
   { card: 'how', id: 'adv-quiet', label: 'Stay quiet at night, or open from a key anywhere (🌙 Quiet hours and shortcut)' },
   { card: 'net', id: 'adv-bobnet', label: 'Talk to me from your phone (🌐 Bob-Net)' },
   { card: 'online', id: 'adv-online', label: 'Rent a big brain for one job (☁ Online services)' },
@@ -146,23 +148,29 @@ const canAutostart = (s) => s?.platform === 'win32' || s?.platform === 'darwin' 
 // The rest sit under "Everything else" right below, and every one of them is in Settings too.
 export const WANTS_TOP = ['webSearch', 'docTools', 'sandboxCode', 'resumeJobs'];
 
-// full: open "Everything else" (the chat's one-time offer jumps straight to it).
-export function wantsHtml(settings, esc, { full = false } = {}) {
-  const row = (w) => {
-    const off = w.key === 'autostart' && !canAutostart(settings);
-    const note = off ? 'Not on Linux yet, the same as in Settings.' : w.note;
-    return `<li><label class="switch"><input type="checkbox" data-want="${esc(w.key)}" ${wantOn(settings, w.key) ? 'checked' : ''} ${off ? 'disabled' : ''}><span><strong>${esc(w.label)}</strong>${note ? `<br><span class="muted">${esc(note)}</span>` : ''} <span class="want-said muted" aria-live="polite"></span></span></label></li>`;
-  };
+// One tick, as on the list. Also used on the Welcome's own pages (Engines: 3D; Users).
+export function wantRowHtml(settings, esc, w) {
+  if (typeof w === 'string') w = WANTS.find((x) => x.key === w);
+  if (!w) return '';
+  const off = w.key === 'autostart' && !canAutostart(settings);
+  const note = off ? 'Not on Linux yet, the same as in Settings.' : w.note;
+  return `<li><label class="switch"><input type="checkbox" data-want="${esc(w.key)}" ${wantOn(settings, w.key) ? 'checked' : ''} ${off ? 'disabled' : ''}><span><strong>${esc(w.label)}</strong>${note ? `<br><span class="muted">${esc(note)}</span>` : ''} <span class="want-said muted" aria-live="polite"></span></span></label></li>`;
+}
+
+// full: open "Everything else" (the chat's one-time offer jumps straight to it). leave: keys another Welcome page
+// already shows, so nothing is on two pages.
+export function wantsHtml(settings, esc, { full = false, leave = [] } = {}) {
+  const row = (w) => wantRowHtml(settings, esc, w);
   const top = WANTS_TOP.map((k) => WANTS.find((w) => w.key === k)).filter(Boolean);
   const group = (c) => {
-    const ticks = WANTS.filter((w) => w.card === c.id && !WANTS_TOP.includes(w.key)), more = WANTS_ELSEWHERE.filter((x) => x.card === c.id), soon = WANTS_SOON.filter((x) => x.card === c.id);
+    const ticks = WANTS.filter((w) => w.card === c.id && !WANTS_TOP.includes(w.key) && !leave.includes(w.key)), more = WANTS_ELSEWHERE.filter((x) => x.card === c.id), soon = WANTS_SOON.filter((x) => x.card === c.id);
     if (!ticks.length && !more.length && !soon.length) return '';
     return `<h4>${c.icon} ${esc(c.name)}</h4>
       ${ticks.length ? `<ul class="packlist wantlist">${ticks.map(row).join('')}</ul>` : ''}
       ${more.length ? `<div class="row">${more.map((x) => `<button type="button" data-wantjump="${esc(x.id)}">${esc(x.label)}</button>`).join('')}</div>` : ''}
       ${soon.length ? `<p class="muted want-soon"><strong>Coming soon:</strong> ${soon.map((x) => esc(x.label)).join(' · ')}</p>` : ''}`;
   };
-  const rest = WANTS.length - top.length;
+  const rest = WANTS.filter((w) => !leave.includes(w.key)).length - top.length;
   return `<section class="ready wants" id="sub-wants"><h3>Do you want me to:</h3>
     <p class="muted">All of these are off until you tick them. A tick is saved at once, and you can change your mind any time in Settings.</p>
     <ul class="packlist wantlist want-top">${top.map(row).join('')}</ul>

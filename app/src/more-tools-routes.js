@@ -60,7 +60,8 @@ export async function moreToolsRoute({ req, res, p, isLocal, brain, cfg, body, s
     }
     if (b.watchHours != null) save(cfg, { watchHours: Number(b.watchHours) });
     // Email: the account details, and the app password into the locked store (empty = keep the saved one).
-    if (b.email && typeof b.email === 'object') {
+    if (b.email && typeof b.email === 'object' && cfg.profileNow) out.error = 'Your own email account is in Settings, Online services, 📧 Email account.'; // 👥 never the owner's from inside a user
+    else if (b.email && typeof b.email === 'object') {
       const e = b.email;
       save(cfg, { emailHost: e.host ?? moreTools(cfg).emailHost, emailPort: e.port ?? moreTools(cfg).emailPort, emailUser: e.user ?? moreTools(cfg).emailUser, emailFolder: e.folder ?? moreTools(cfg).emailFolder });
       if (typeof e.password === 'string' && e.password.trim()) { saveKey(cfg, EMAIL_KEY, e.password.trim()); log('email app password saved (locked)'); }

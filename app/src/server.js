@@ -130,7 +130,7 @@ import { Weekly } from './weekly.js'; // Weekly stats
 import { watchSettings } from './config.js';
 import { everydayView, everydaySettings, Focus } from './everyday.js'; // 🗓 Everyday helpers (all off by default)
 import { everydayRoute, trayDot } from './everyday-routes.js';
-import { Profiles } from './profiles.js'; // 👥 Profiles on a shared replicant matrix
+import { Profiles, profilesOn } from './profiles.js'; // 👥 Profiles on a shared replicant matrix
 import { sweepTemp, startCheck } from './saving.js'; // items 229-240: saving safely, starting clean
 import { changedTurns, undoTurn, undoLine, pruneTurns } from './turn-changes.js'; // item 238: Undo a whole turn
 import { startWatchdog, frozeLine } from './hang-guard.js'; // item 214: a watchdog for Bob himself
@@ -185,7 +185,7 @@ const liveCubes = new Set(); // the cube pages with Real experts on: only these 
 let telegram = null; // Bob on Telegram (src/telegram.js), set once Bob's brain is ready
 let discord = null; // Bob on Discord (src/discord.js), set once Bob's brain is ready
 let cubeLoading = ''; // the brain fNRI's small cube last saw starting to load
-const PROFILE_PRIVATE = ['/api/events', '/api/history', '/api/chat', '/api/chats', '/api/topics', '/api/search', '/api/memory', '/api/made', '/api/queue', '/api/everyday', '/api/fade', '/api/amnesia'];
+const PROFILE_PRIVATE = ['/api/events', '/api/history', '/api/chat', '/api/chats', '/api/topics', '/api/search', '/api/memory', '/api/made', '/api/queue', '/api/everyday', '/api/email-account', '/api/users', '/api/fade', '/api/amnesia'];
 let focus = null; // ⏱ the focus timer (everyday.js): holds taps on the shoulder until it ends
 let lastTokenAt = 0; // Nov 13: when Bob's last word streamed out (his cube on another Bob's icon says replying)
 const readCube = cubeReader();
@@ -216,8 +216,22 @@ pruneReceipts(cfg); // Settings, Jobs: a receipt's Undo lasts a week
 pruneTurns(cfg); // item 238: a turn's Undo lasts a week
 process.on('exit', () => { try { brain.flushQueue(); } catch {} }); // item 230: steps not saved yet go in now
 // Nov 13 Coding agents (src/coding-agents.js, off unless switched on): Claude Code, Codex, Gemini CLI and others side by side.
-brain.codingAgents = new CodingAgents(cfg, { broadcast, log: (k, t) => brain.log(k, t) });
-process.on('exit', () => { try { brain.codingAgents.stopAll(); } catch {} }); // a run never outlives Bob
+// 👥 Each user has their own coding agents, list and sign-in folders (inn\profiles\<id>\coding-agents.json,
+// agent-accounts\), so nobody runs anyone else's agents or accounts. A person's runs carry on after a switch; only the
+// person who's in hears about them.
+const agentsBy = new Map();
+const whoNow = () => cfg.profileNow || 'main';
+const agentsOf = (who) => {
+  if (!agentsBy.has(who)) {
+    const c = who === 'main' ? cfg : Object.create(cfg, { dataDir: { value: path.join(cfg.innDir, 'profiles', who), enumerable: true } });
+    agentsBy.set(who, new CodingAgents(c, { broadcast: (m) => { if (whoNow() === who) broadcast(m); }, log: (k, t) => brain.log(k, t) }));
+  }
+  return agentsBy.get(who);
+};
+Object.defineProperty(brain, 'codingAgents', { get: () => agentsOf(whoNow()), configurable: true });
+const agentsAll = () => [...agentsBy.values()];
+agentsOf('main'); // the owner's, from the start, as before
+process.on('exit', () => { for (const a of agentsAll()) { try { a.stopAll(); } catch {} } }); // a run never outlives Bob
 // Items 233, 234, 239 and 240: what start-up set aside or put back, old temp files cleared, and the start-up check: one
 // line in the logbook; a note in the chat only when something is wrong.
 for (const t of cfg.saveNotes || []) brain.log('saving', t);
@@ -430,8 +444,8 @@ const loginTries = [];
 const winLock = new Lock(cfg, { log: (k, t) => brain.log(k, t) });
 // 🔑 Forgot it? Codes go only to your own email account or your own Discord DMs (lock-reset.js).
 const lockReset = new LockReset(cfg, winLock, { log: (k, t) => brain.log(k, t), send: {
-  emailReady: () => canSend(cfg),
-  email: (text) => sendToSelf(cfg, 'Bob: your passcode reset code', text),
+  emailReady: () => canSend(cfg, { owner: true }), // 👥 always the owner's account, even while a user is in
+  email: (text) => sendToSelf(cfg, 'Bob: your passcode reset code', text, { owner: true }),
   discordReady: () => Boolean(discord?.running && discord.settings().dmEnabled && discord.settings().ownerId),
   discord: async (text) => { const sent = await discord.dm(text); if (!sent?.length) throw new Error('Discord didn\'t take the message'); return {}; }
 } });
@@ -482,7 +496,10 @@ const server = http.createServer(async (req, res) => {
     // so they come before the page checks and still work while the window is locked.
     if ((p === '/api/coding-agents/hook' || p === '/api/coding-agents/ask') && req.method === 'POST') {
       if (!isLocal || req.headers.origin) return send(res, 403, { error: 'no' });
-      return agentsRoute({ req, res, p, isLocal, agents: brain.codingAgents, body, send });
+      // 👥 the user whose run or hook key it is, whoever is in now
+      const raw = await body(req).catch(() => ({}));
+      const mine = p.endsWith('/ask') ? agentsAll().find((a) => a.tokens.has(String(raw?.token || ''))) : agentsAll().find((a) => a.hookOk(String(req.headers['x-bob-hook'] || '')));
+      return agentsRoute({ req, res, p, isLocal, agents: mine || brain.codingAgents, body: async () => raw, send });
     }
 
     // 1.5.97 Bob-Net pairing: the other Bob doesn't know the passcode yet, so these four come before the passcode check.
@@ -830,6 +847,26 @@ const server = http.createServer(async (req, res) => {
       try { const d = brain.housekeeper?.digestKeeper().build(); if (!d) return send(res, 409, { error: 'Housekeeping isn\'t running yet.' }); brain.housekeeper.digestKeeper().show(d); return send(res, 200, { ok: true, title: d.title, file: d.file, counts: d.counts, on: digestOn(cfg) }); }
       catch (e) { return send(res, e.code === 'VAULT_LOCKED' ? 401 : 500, { error: e.message }); }
     }
+    // 👥 Switch user (the menu): { who: 'main' | 'guest' (Sign out) | id, code }. Only from this replicant matrix. Back to the owner when the
+    // owner has a passcode goes through the lock screen ({ lock: true }). Every other window is shut out first, so
+    // nobody sees the next person's chats; brains and 🎮 Gaming stay exactly as they are.
+    if (p === '/api/users/switch' && req.method === 'POST') {
+      if (!isLocal) return send(res, 403, { error: 'Users can only be switched on this replicant matrix itself.' });
+      if (!profilesOn(cfg)) return send(res, 400, { error: 'Users is off. It\'s in Settings, 🗓 Everyday helpers.' });
+      const b = await body(req).catch(() => ({}));
+      const who = typeof b.who === 'string' ? b.who : '';
+      const before = profiles.current();
+      if (who === before) return send(res, 200, { ok: true, view: profiles.view() });
+      if (who === 'main' && lockOn(cfg)) { winLock.lockNow(); for (const c of [...clients, ...mindClients]) { try { c.end(); } catch {} } return send(res, 200, { lock: true }); }
+      // 👤 who: 'guest' is Sign out
+      const r = who === 'main' ? (profiles.useMain(), { ok: true }) : who === 'guest' ? profiles.signOut() : profiles.open(who, String(b.code || ''));
+      if (r.error) return send(res, r.code || 400, { error: r.error });
+      for (const c of [...clients, ...mindClients]) { try { c.end(); } catch {} }
+      if (before === 'guest' || who === 'guest') { try { agentsBy.get('guest')?.stopAll(); } catch {} agentsBy.delete('guest'); } // 👤 Guest's agents go with Guest
+      if (lockOn(cfg)) { winLock.lockNow(); const t = winLock.grant(); res.setHeader('set-cookie', winLock.cookie(t)); }
+      brain.log('settings', `users: switched (${who === 'main' ? 'the owner' : who === 'guest' ? 'Guest' : 'a user'} is in)`);
+      return send(res, 200, { ok: true, view: profiles.view() });
+    }
     if (p === '/api/lock/now' && req.method === 'POST') {
       if (!isLocal || !lockOn(cfg)) return send(res, 400, { error: 'The passcode lock is off.' });
       winLock.lockNow();
@@ -1047,7 +1084,8 @@ const server = http.createServer(async (req, res) => {
       return lendChat(brain, req, res, await body(req).catch(() => ({})), brain.lendDeps);
     }
     // 1.5.41 the 🎮 Gaming button on the chat page: on locks Gaming and clears the graphics card, off goes back to Normal.
-    if (req.method === 'POST' && p === '/api/gaming-lock') { const b = await body(req); return send(res, 200, await brain.setGamingLock(b.on === true)); }
+    // Only from this replicant matrix: nothing over the network (a phone, another Bob) can turn Gaming on or off.
+    if (req.method === 'POST' && p === '/api/gaming-lock') { if (!isLocal) return send(res, 403, { error: 'Gaming can only be changed on this replicant matrix itself.' }); const b = await body(req); return send(res, 200, await brain.setGamingLock(b.on === true)); }
     if (req.method === 'POST' && p === '/api/pick-folder') { // 1.5.34 Settings > Projects: "Browse..."
       if (!isLocal) return send(res, 403, { error: 'Folders can only be picked on this replicant matrix itself.' });
       try { const b = await body(req).catch(() => ({})); return send(res, 200, { folder: await pickFolder({ purpose: ['save', 'home'].includes(b?.purpose) ? b.purpose : 'project' }) }); } catch (e) { return send(res, 200, { error: e.message }); }

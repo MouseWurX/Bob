@@ -21,8 +21,8 @@ export class VaultLocked extends Error {
   constructor() { super('Bob is locked: type the passcode to open your chats and memory.'); this.code = 'VAULT_LOCKED'; }
 }
 
-// 👥 A profile's chats and memory (profiles.js) are always locked, with that person's own key.
-export const vaultOn = (cfg) => Boolean(cfg?.profileNow) || (cfg?.lock?.encrypt === true && cfg?.lock?.enabled === true);
+// 👥 A user's chats and memory (profiles.js) are locked with their own key when they have a passcode, plain when not.
+export const vaultOn = (cfg) => (cfg?.profileNow ? cfg.profileKeyed === true : cfg?.lock?.encrypt === true && cfg?.lock?.enabled === true);
 export const hasKey = () => Boolean(key);
 export const currentKey = () => (key ? Buffer.from(key) : null); // a copy: the passcode reset's spare key (lock-reset.js)
 export function setKey(k) { key = k ? Buffer.from(k) : null; }

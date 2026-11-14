@@ -4,6 +4,32 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.229
+
+First-time setup is rebuilt as seven pages, Users grow up, and the lamps get their finished look.
+
+### New
+
+- **First-time setup in seven pages:** Hello, Engines, Brains, Users, Privacy, Helpers and a last page, each with named Back and Next buttons. Engines and Brains are separate now (Brain Engine is my own fork of llama.cpp). On the Users page you add, rename and remove people. On the Privacy page you'll find Amnesia mode. Setup never asks for a passcode or changes one.
+- **A passcode is each person's own choice.** Nobody needs one. The first time someone signs in as themselves, I ask once: **Set a passcode** or **No passcode**, and I remember the answer.
+- **Switch user from my cube's menu.** Each person has their own email account, their own keys and their own agents. **Sign out** goes back to Guest.
+- **A smoke layer in Lamplight.** A faint haze hangs in the room, lit by my cube.
+- **Ghostly typing box.** In Lamplight the typing box and Send fade into the room until you use them, and the page links sit in shadow.
+
+### Changed
+
+- **Dimmer lamp colours and darker rooms** for Mercury, Sodium, Thallium and Neon, with softer Thallium and Neon.
+- **Moondust moves to Mercury.** If you were on the Moondust theme, I switch you to the Mercury lamp once when you update. Pick another any time in Settings, Style.
+
+### Fixed
+
+- **New pictures on my front page**, taken in the new look: the lamps, chat heads, window buttons and the Lab's eight tabs, plus a picture of all four lamps.
+
+- **Help had Home network access wrong.** It's on to start with, and it waits for Bob-Net access. Help now says so.
+- **A save check no longer trips on Windows.** One of my tests used a made-up program number that Windows could mistake for a live one, so the Windows build sometimes failed. It now uses a program that has really gone.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.228
 
 My front page tells the whole story now, the Lab gets steps, pipelines and a record of every run, Bob-Net explains itself as a small cluster, and I have a new icon that glows in my lamp's colour.
@@ -176,19 +202,6 @@ Your other Bobs can sit under me as little icons, and chats can fade, clear, or 
 - **Discord group jobs can go to your other Bobs again.** A Bob's hello lost that he could take them, so they always stayed here.
 
 **Where it works:** Windows, Mac and Linux, and Bob's page in a phone's browser. Bob for Android's own screens don't have it yet. The other Bob needs this version and **Take jobs from my other Bobs** switched on. Clicking a coding agent opens its own page in Now running.
-
-## 1.5.219
-
-Phones see the line under my name, and Journey's towns stay off the roads.
-
-### Fixed
-
-- **Phones see the line under my name.** In Lamplight on a phone, the line sits under my name beside the cube. The brain chip there keeps its dot and ▾ to make room. Before, phones never showed it.
-- **Journey: towns, Bob's Inn and other places no longer block roads or bridges.** Roads go round places, the Inn stands beside the road, and villages never sit at a bridge end. Your saved towns and quests stay where they were.
-- **The Lab's Forge tab finds its tools in Bob's own folder.** It looks in Bob's home first, then beside the program. If it finds nothing, it lists where it looked and says how to point it at the right folder.
-- **The expert sweep checks a lesson set before it starts.** A set with no tool list, or with no held-out tool lessons, is now named in the check with the reason, and Run stays greyed. Before, the sweep crashed or stopped partway.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
 
 ## Older versions
 
