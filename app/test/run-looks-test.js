@@ -2,7 +2,7 @@
 // Display only: no brain context, no server calls, steady when animations are off.
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { cleanStyle } from '../src/config.js';
+import { cleanStyle, lampMove } from '../src/config.js';
 import { HELP } from '../public/help-content.js';
 import { rankFind } from '../public/find.js';
 import { bobMenuHtml } from '../public/bob-menu.js';
@@ -80,6 +80,10 @@ check('Style Help explains Find anything and the status line', help('style').inc
   check('picking a lamp picks its theme, and picking a lamp\'s theme picks the lamp', page.includes("save(settings, { lamp: b.dataset.lamp, theme: b.dataset.lamp })") && T.lampOfTheme('thallium') === 'thallium' && T.lampOfTheme('moondust') === null);
   check('the lamp picker shows in Lamplight and Terminal, and in Settings, Look & feel', T.LAMP_LOOKS.join() === 'lamplight,terminal' && page.includes('aria-label="Lamp"') && read('public/cellar-pages.js').includes('aria-label="Lamp"') && read('public/cellar.js').includes('b.dataset.lamp'));
   check('the lamp glow on the picker holds still with animations off', css.includes('body.still .lamp-pick button i { box-shadow: none !important; }'));
+  check('an existing install on Moondust (or no theme) moves to Mercury once', JSON.stringify(lampMove({ look: 'lamplight', theme: 'moondust' })) === JSON.stringify({ look: 'lamplight', theme: 'mercury', lamp: 'mercury', lampMoved: true }) && lampMove({}).theme === 'mercury' && lampMove({ theme: 'slate' }).theme === 'mercury');
+  check('any other theme stays, and Moondust picked again after the move stays', lampMove({ theme: 'inn' }).theme === 'inn' && lampMove({ theme: 'moondust', lampMoved: true }) === null && cleanStyle({ lampMoved: true }).lampMoved === true);
+  check('the move runs at start-up and is saved, so it happens once', /const moved = lampMove\(cfg\.style\); if \(moved\) \{ cfg\.style = moved; try \{ saveSettings\(cfg, \{ style: moved \}\)/.test(read('src/config.js')));
+  check('Help says Moondust moves to Mercury once', help('faq-lamps').includes('Moondust'));
   check('Help, FAQ and glossary explain the lamps', ['Mercury', 'Sodium', 'Thallium', 'Neon'].every((w) => help('style').includes(w) && help('faq-lamps').includes(w)) && /Windows, Mac, Linux/.test(help('faq-lamps')) && help('glossary').includes('<dt>Lamp</dt>'));
 }
 

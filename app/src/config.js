@@ -155,6 +155,9 @@ export function loadConfig() {
     if (fixed.length) { try { writeJsonAtomic(cfg.settingsFile, kept, 2); } catch {} } // fixed once, not at every start
     try { mergeSettings(cfg, kept); } catch (e) { notes.push(`settings.json couldn't be applied (${e.message}); using the defaults`); }
   }
+  // Nov 14 2026 (the owner: "existing installs get converted"): Moondust, the old starting theme, becomes the Mercury
+  // lamp once, on the first start after the update. Any other theme is left alone; Moondust can still be picked again.
+  { const moved = lampMove(cfg.style); if (moved) { cfg.style = moved; try { saveSettings(cfg, { style: moved }); } catch {} } }
   // 1.5.196: Brain Engine is the only engine for Bob's brains (onlyBrainEngine, below). An older pick of plain llama.cpp
   // or Ollama in Settings is set aside here, after settings.json, and the program is picked again with that.
   cfg.engineMoved = onlyBrainEngine(cfg, { hand });
@@ -490,6 +493,15 @@ const THEME_ID = /^[a-z0-9-]{2,40}$/;
 const COLOR_KEYS = ['bg', 'panel', 'card', 'you', 'line', 'text', 'muted', 'accent', 'onAccent', 'good', 'warn', 'bad', 'spriteBg'];
 const FONT_IDS = ['system', 'plex', 'mono', 'serif', 'rounded'];
 const OLD_THEME_IDS = { system: 'moondust', slate: 'moondust', midnight: 'nightside', 'mousehole-dark': 'otterbend', 'mousehole-light': 'homestead', paper: 'sandbar', 'mousewurx-light': 'drydock', 'mousewurx-dark': 'drydock-night' }; // mirrors public/themes.js OLD_IDS
+// Nov 14 2026: the style after the one-time move from Moondust (or no theme, which meant Moondust) to the Mercury lamp,
+// or null when there's nothing to move (already moved, or another theme picked).
+export function lampMove(style) {
+  const st = style && typeof style === 'object' ? style : {};
+  if (st.lampMoved === true) return null;
+  const theme = typeof st.theme === 'string' ? (OLD_THEME_IDS[st.theme] || st.theme) : 'moondust';
+  if (theme !== 'moondust') return { ...st, lampMoved: true };
+  return { ...st, theme: 'mercury', lamp: 'mercury', lampMoved: true };
+}
 export function cleanStyle(st) {
   const out = {};
   if (!st || typeof st !== 'object') return out;
@@ -500,6 +512,7 @@ export function cleanStyle(st) {
   if (['pixel', 'cube'].includes(st.avatar)) out.avatar = st.avatar;
   if (st.avatarKept === true) out.avatarKept = true; // 1.5.211: Pixel Bob picked on purpose (public/themes.js pixelKept) // 1.5.209 Bob's look: the pixel Bob (to begin with) or the fNRI cube
   if (['classic', 'lamplight', 'terminal'].includes(st.look)) out.look = st.look; // 1.5.210: Style > Look (mirrors public/themes.js LOOK_IDS)
+  if (st.lampMoved === true) out.lampMoved = true; // Nov 14 2026: Moondust moved to Mercury once (lampMove)
   if (['mercury', 'sodium', 'thallium', 'neon'].includes(st.lamp)) out.lamp = st.lamp; // Nov 14 2026: the lamp colour (mirrors public/themes.js LAMP_IDS)
   if (Array.isArray(st.custom)) {
     out.custom = st.custom.slice(0, 24).filter((t) => t && typeof t === 'object' && THEME_ID.test(String(t.id)) && String(t.id).startsWith('my-')).map((t) => {
