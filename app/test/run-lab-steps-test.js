@@ -103,6 +103,53 @@ check('Help: an FAQ on never-train data', /id: 'faq-lab-never-train'/.test(help)
 check('Help: glossary entries for smoke test, never-train and run record', /<dt>Smoke test<\/dt>/.test(help) && /<dt>Never-train<\/dt>/.test(help) && /<dt>Run record<\/dt>/.test(help));
 check('the plan doc is linked from the docs index', /LAB-STEPS-PLAN\.md/.test(read('docs/README.md')));
 
+
+// ---- the Steps tab ----
+{
+  const g = help.slice(help.indexOf("{ id: 'glossary'"));
+  const terms = new Set([...g.matchAll(/<dt>(.*?)<\/dt>/g)].map((m) => m[1]));
+  const missing = STEPS.filter((s) => s.glossary && !terms.has(s.glossary)).map((s) => s.id);
+  check('every step name links to a glossary entry that exists', missing.length === 0, missing.join(', '));
+  globalThis.document = globalThis.document || { dispatchEvent() {} };
+  globalThis.CustomEvent = globalThis.CustomEvent || class { constructor(t, o) { this.type = t; this.detail = o?.detail; } };
+  const { createStepsPage } = await import('../public/lab-steps-page.js');
+  const api = async (u) => (u.endsWith('/steps') ? { stages: STAGES, steps: STEPS.map((s) => ({ ...s, ready: s.id !== 'sae-features', why: s.id === 'sae-features' ? 'Planned, not built yet.' : '', smokeReady: smokeReady(s) })) } : { runs: [{ id: 'r', name: 'Ablation sweep', state: 'gated', message: 'stopped', started: '2026-11-14T00:00:00Z', outputs: [{ kind: 'report', neverTrain: true }] }] });
+  const pg = createStepsPage({ api }); pg.html(false); await new Promise((r) => setTimeout(r, 20));
+  const simple = pg.html(false), pro = pg.html(true);
+  check('the Steps tab shows one card per step, each with an (i)', (simple.match(/class="lab-step-card"/g) || []).length === STEPS.length && (simple.match(/class="tip-i"/g) || []).length >= STEPS.length);
+  check('the Steps tab groups steps under every stage heading', STAGES.every(([id]) => simple.includes(`id="steps-h-${id}"`)));
+  check('names open the glossary from a real button', /<button type="button" class="link lab-step-name" data-stepgloss/.test(simple));
+  check('a step that isn\'t built says so instead of a button', simple.includes('Planned, not built yet.'));
+  check('Professional adds the script name; Keep it simple doesn\'t', /<code>evil-sweep\.mjs<\/code>/.test(pro) && !/<code>/.test(simple));
+  check('the runs table says a gate stop and a never-train output in words', /Stopped by its smoke test/.test(simple) && /report \(never-train\)/.test(simple) && /<th scope="col">/.test(simple));
+  check('nothing on the tab starts, rents or uploads', !/data-(start|rent|upload|protogo)/.test(pro));
+  check('the Lab has a Steps tab', /\['steps', 'Steps'\]/.test(read('public/lab.js')) && /steps: 'Professional adds/.test(read('public/lab.js')));
+}
+
+// ---- card health: a card type that keeps freezing at start-up is changed for another ----
+{
+  const ch = await import('../model-lab/forge/card-health.mjs');
+  const f = path.join(tmp, 'forge out', ch.STARTUP_LOG), now = Date.UTC(2026, 10, 14, 12);
+  ch.recordStartup(f, { gpu: 'NVIDIA A40', dc: 'EU-1', ok: false, why: 'never answered', at: now - 3 * 864e5 });
+  ch.recordStartup(f, { gpu: 'NVIDIA A40', dc: 'EU-2', ok: false, why: 'never answered', at: now - 864e5 });
+  ch.recordStartup(f, { gpu: 'NVIDIA L40S', dc: 'EU-1', ok: false, at: now - 2 * 864e5 });
+  ch.recordStartup(f, { gpu: 'NVIDIA L40S', dc: 'EU-1', ok: true, at: now - 864e5 });
+  ch.recordStartup(f, { gpu: 'NVIDIA H200', dc: 'US-1', ok: false, at: now - 30 * 864e5 });
+  ch.recordStartup(f, { gpu: 'NVIDIA H200', dc: 'US-1', ok: false, at: now - 29 * 864e5 });
+  const rows = ch.readStartups(f), bad = ch.freezingCards(rows, { now });
+  check('a card type that froze twice this week is marked', bad.has('NVIDIA A40'));
+  check('a good start clears earlier freezes', !bad.has('NVIDIA L40S'));
+  check('old freezes (over a week) don\'t count', !bad.has('NVIDIA H200'));
+  check('freezing types go to the back, not out', JSON.stringify(ch.orderCards(['NVIDIA A40', 'NVIDIA L40S'], { freezing: bad })) === JSON.stringify(['NVIDIA L40S', 'NVIDIA A40']));
+  check('a type that froze in this run isn\'t asked for again', JSON.stringify(ch.orderCards(['NVIDIA A40', 'NVIDIA L40S'], { avoidNow: new Set(['NVIDIA A40']) })) === '["NVIDIA L40S"]');
+  check('when every type froze in this run, nothing is left to rent', ch.orderCards(['NVIDIA A40'], { avoidNow: new Set(['NVIDIA A40']) }).length === 0);
+  check('the start-up summary is per card type and data centre', ch.startupSummary(rows).some((l) => l === 'NVIDIA A40 @ EU-1: 0 started, 1 froze'));
+  const fg = read('model-lab/forge/forge.mjs');
+  check('a retry asks no second yes, and only a run that rented its own pod re-rents', /if \(!args\.yes && !again\)/.test(fg) && /if \(rentedHere\) \{/.test(fg) && /await rent\(\); rentedHere = true;/.test(fg));
+  check('a retry keeps the caps counting from the first rent', /t\.started = first; fs\.writeFileSync\(tokenFile/.test(fg));
+  check('a retry deletes the frozen pod first and leaves out its card type', /avoidNow\.add\(on\.gpu\)[\s\S]{0,200}await kill\(/.test(fg) && /orderCards\(cards, \{ avoidNow, freezing: freezingCards/.test(fg));
+  check('retries are capped (plan.startup_retries, at most 5)', /Math\.min\(5, Number\(plan\.startup_retries \?\? 2\)\)/.test(fg));
+}
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

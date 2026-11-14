@@ -10,6 +10,7 @@ import { createLearn } from './lab-learn.js';
 import { saveHtml, saveResult } from './lab-save.js'; // 1.5.153 Save
 import { createRecipes } from './lab-recipes.js'; // 1.5.154 cut recipes, the estimate table and the usage map
 import { createForge } from './lab-forge.js'; // 1.5.159 the Forge tab
+import { createStepsPage } from './lab-steps-page.js'; // 14 Nov every method as a step
 import { createGuard, packGroups, guardPartsLine, packMinutesLine } from './lab-guard.js';
 import { createPro } from './lab-pro.js'; // 1.5.168 Simple / Professional // 1.5.164 Guard rails sandbox and grouped packs
 import { createSenses } from './lab-senses.js'; // Give it eyes / Give it ears, a card in the Forge tab
@@ -24,7 +25,7 @@ import { mineHtml } from './lab-mine.js'; // My Lab: what this Lab has made and 
 const $ = (id) => document.getElementById(id);
 // The tabs are sorted by what you're doing. Each thing lives on one tab: making, teaching, testing, looking inside,
 // learning how brains work, rented runs, and My Lab (what you've made so far).
-const TABS = [['make', 'Make a brain'], ['teach', 'Teach'], ['test', 'Test'], ['inside', 'Look inside'], ['learn', 'Learn'], ['forge', 'Forge'], ['mine', 'My Lab']];
+const TABS = [['make', 'Make a brain'], ['steps', 'Steps'], ['teach', 'Teach'], ['test', 'Test'], ['inside', 'Look inside'], ['learn', 'Learn'], ['forge', 'Forge'], ['mine', 'My Lab']];
 // The pages under a tab. 'challenges' and 'learn' are drawn here; the rest are the Playground's pages (public/lab-playground.js).
 const SUBS = { teach: ['teach', 'best'], test: ['challenges', 'taste', 'smaller', 'longer', 'faster'], inside: ['peek', 'watch'], learn: ['learn', 'diffusion'] };
 const SUB_LABEL = { challenges: 'Challenges', taste: 'Taste test', learn: 'Experiments', ...Object.fromEntries(PLAY_PAGES) };
@@ -47,6 +48,7 @@ const MODE_NOTES = {
   test: 'Professional adds run settings, the question log, your own packs, and a pick of sizes on Smaller.',
   inside: 'Professional adds each page\'s proper name.',
   learn: 'The same in both modes.',
+  steps: 'Professional adds the script each step runs.',
   forge: 'Professional adds skills to protect, running files, teaching back and proper names.',
   mine: 'The same in both modes.',
 };
@@ -103,6 +105,8 @@ export function createLab({ api, note, go, page = false }) {
   const r = { template: '', name: '', from: '', lessons: { kind: 'none', file: '', chunks: 200 }, smaller: { sight: false, hearing: false, cut: null, files: [], measure: false }, test: { compare: true } };
   const fg = createForge({ api, view: () => view, runs: () => runsHtml(), goMake: (which) => { tab = 'make'; setJob(which === 'cut' ? 'cut' : which === 'smaller' ? 'smaller' : job || ''); draw(); $('lab-tab-make')?.focus(); } });
   document.addEventListener('lab-forge-ready', () => { if (tab === 'forge' && dlg.open) draw(); });
+  const stp = createStepsPage({ api });
+  document.addEventListener('lab-steps-ready', () => { if (tab === 'steps' && (dlg.open || page)) draw(); });
   const gd = createGuard({ api, isPro: () => view?.mode === 'pro' }); // 1.5.164
   const px = createPro({ api, view: () => view }); // 1.5.168
   const sn = createSenses({ api, draw: () => { if (tab === 'forge') draw(); } });
@@ -470,6 +474,7 @@ export function createLab({ api, note, go, page = false }) {
       <div class="lab-engine"><label class="pick-inline"><span>Lab engine</span><select data-labengine aria-label="Lab engine">${[['', 'Same as Bob\'s brains'], ['brainengine', 'Brain Engine'], ['llamacpp', 'llama.cpp']].map(([v, l]) => `<option value="${v}" ${v === (en.pick || '') ? 'selected' : ''} ${v === 'brainengine' && !en.brainEngineHere ? 'disabled' : ''}>${l}${v === 'brainengine' && !en.brainEngineHere ? ' (not here yet)' : ''}</option>`).join('')}</select></label>${en.found ? (en.version ? `<span class="muted">${esc(en.version)}</span>` : '') : `<span class="muted">None found yet.</span>${goBtn('engines', 'Get one')}`}</div></div>`;
     const tabs = `<div class="lab-tabs" role="tablist" aria-label="Lab pages">${TABS.map(([id, label]) => `<button type="button" role="tab" id="lab-tab-${id}" class="lab-tab${tab === id ? ' on' : ''}" aria-selected="${tab === id}" aria-controls="lab-page-${id}" tabindex="${tab === id ? 0 : -1}" data-tab="${id}">${esc(label)}</button>`).join('')}</div>${modeRow}`;
     if (tab === 'mine') { body.innerHTML = `<div class="lab">${tabs}${mineHtml(view)}${plus.switchesHtml()}</div>`; return; }
+    if (tab === 'steps') { body.innerHTML = `<div class="lab">${tabs}${stp.html(pro)}</div>`; return; }
     if (isLearn()) { body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-learn" role="tabpanel" aria-labelledby="lab-tab-learn">${subNav()}<div id="lab-learn-box"></div></div></div>`; learn.mount($('lab-learn-box')); return; }
     if (isTaste()) { body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-test" role="tabpanel" aria-labelledby="lab-tab-test">${subNav()}${plus.tasteHtml()}${runsHtml()}</div></div>`; return; }
     if (isCh()) { body.innerHTML = `<div class="lab">${tabs}${challengesHtml()}</div>`; return; }
@@ -629,6 +634,7 @@ export function createLab({ api, note, go, page = false }) {
     }
     { const f = await plus.click(b); if (f === 'draw') { const keep = b.id; draw(); if (keep) $(keep)?.focus(); return; } if (f) return; } // Lab items 101 to 112
     { const f = await sn.click(b); if (f === 'draw') return draw(); if (f) return; }
+    { const f = await stp.click(b); if (f === 'draw') return draw(); if (f) return; }
     { const f = await fg.click(b); if (f === 'draw') return draw(); if (f) return; }
     if (isPlay()) { const p = await pg.click(b, load); if (p === 'draw') return draw(); if (p) return; }
     { const r = await px.click(b, load); if (r === 'draw') { const keep = b.id || ''; draw(); if (keep) $(keep)?.focus(); return; } if (r) return; }

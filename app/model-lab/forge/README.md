@@ -279,3 +279,12 @@ GPT-OSS 120B kept few lessons on the tool-heavy jobs (reminders 3/23, research 2
 **Then, on the same pod: `plans/riker-calib.json`.** When v5 reaches done (the pod waits up to 2 h for the PC), the PC stops its watcher and runs `forge.mjs --restart <pod> --plan plans/riker-calib.json`. This sends the new pod scripts, the plan and the imatrix texts, and Brain Engine 7b12282 is rebuilt (~15 min) with llama-cvector-generator and llama-imatrix built after the server, so a failure there never blocks it. Then: Riker's cvector cruel-vs-kind direction (`evil_check: true`: all pairs and each half, so every layer shows how steady the direction is; `evil-check.mjs --direction-only`, since his full check ran in v5), and stock Qwen3.6's full evil check, compared with Riker's answers and direction. After that comes Riker's `llama-imatrix`, overall and per job (`imatrix: true`, from v5's `calib/imatrix`), before he is served. Then the live sweep at 3, 4, 6 and 12 experts per word (8 ran in v5), keep-75 at 3 and the best N of both runs, and job-presets' per-job N passes. A per-answer projection onto the direction needs a hidden-state readout the engine doesn't have. Neuron names need a neuron trace for brains with experts. So the report gives experts and heads.
 
 **Next lesson runs:** `smoke-gate.mjs` checks a few lessons before a big write: do the odds cover the thinking, do the tool calls parse, does the trace work? If not, it exits 86 and the Forge deletes the pod. `write-lessons` now marks every turn's odds `think+answer`, `answer-only` or `answer`, and `--split calib` marks a calibration set.
+
+## Card types that freeze at start-up (14 Nov 2026)
+
+The owner: "if its always the same card type freezing up change to a different card type". Every rent's start-up goes in
+`out/forge/startup-log.jsonl` (card type, data centre, started or froze). When a pod this run rented never answers its door,
+`forge.mjs` deletes it and rents again with that card type left out, up to `plan.startup_retries` times (default 2, at most
+5). It's the same rental: no second yes, the same caps, counted from the first rent. A run on an existing pod (`--resume`,
+`--restart`) never re-rents. A type with 2 freezes in 7 days and no good start since goes to the back of the list
+(`card-health.mjs`).

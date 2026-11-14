@@ -2529,3 +2529,7 @@ dialog.fade-ask .fade-row button.danger { color: var(--on-accent); background: v
 .fade-set { padding-bottom: 6px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
 .dcm-num { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 4px 12px 4px 0; } /* 1.5.224 Keep order numbers wrap on a phone */
 .dcm-num input { width: 6em; }
+/* 14 Nov Lab Steps tab: one card per step, wrapping on a phone */
+.lab-step-list { list-style: none; padding: 0; margin: 0; display: grid; gap: .5rem; }
+.lab-step-card { padding: .5rem .6rem; border: 1px solid var(--line, #8884); border-radius: 8px; overflow-wrap: anywhere; }
+.lab-step-name { font-weight: 600; }

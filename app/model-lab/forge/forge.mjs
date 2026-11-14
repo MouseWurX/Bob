@@ -14,6 +14,7 @@ import zlib from 'node:zlib';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { STARTUP_LOG, readStartups, recordStartup, freezingCards, orderCards, startupSummary } from './card-health.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -158,7 +159,9 @@ const byPod = () => { try { return fs.readdirSync(path.join(outDir, 'forge')).fi
 const tokenFile = (podId && !fs.existsSync(runTokenFile) && byPod()) || ((podId && !fs.existsSync(runTokenFile) && fs.existsSync(legacyTokenFile)) ? legacyTokenFile : runTokenFile);
 if (podId) { const t = JSON.parse(fs.readFileSync(tokenFile, 'utf8')); hdr['X-Forge-Token'] = t.token; }
 
-async function rent() {
+// again: a retry after a card froze at start-up. It is the same rental the owner said yes to, under the same caps, so it
+// asks no second yes and leaves out every card type that froze in this run (avoidNow).
+async function rent({ again = false, avoidNow = new Set() } = {}) {
   const boot = zlib.gzipSync(fs.readFileSync(path.join(here, 'pod', 'bootstrap.py'))).toString('base64');
   const rungs = plan.benchmark_only ? `benchmark only: the card serves ${(plan.benchmark?.models || []).map((m) => `${m.name}${m.nickname ? ` (${m.nickname})` : ''} from ${String(m.file || '').replace(/^hf:/, 'Hugging Face ')}`).join(' and ')} and this PC runs ${(plan.benchmark?.commands || []).length || 1} test command(s) against each; nothing is trained, cut, uploaded or downloaded but the reports` : plan.rebuild ? ((plan.rebuild.models || []).every((m) => m.weights_only) ? `upload the full-size weights of ${(plan.rebuild.models || []).map((m) => `${m.name}${m.nickname ? ` (${m.nickname}, ${m.private === false ? 'PUBLIC' : 'private'})` : ''}`).join(' and ')} from the drive to Hugging Face (${plan.publish?.user}); nothing is rebuilt or trained, nothing comes down to this PC` : `rebuild ${(plan.rebuild.models || []).map((m) => `${m.name}${m.nickname ? ` (${m.nickname}, ${m.private === false ? 'PUBLIC' : 'private'})` : ''}`).join(' and ')} from the stock teacher + adapter and put GGUFs, full weights, adapters and cards on Hugging Face (${plan.publish?.user}); nothing is trained, nothing comes down to this PC`) : plan.lessons_only ? `lessons only: ${plan.teacher_gguf ? `the GGUF teacher ${plan.teacher_gguf.repo} (${plan.teacher_gguf.file})` : 'the full Qwen'} writes them, nothing is scored, cut or healed` : (plan.train_teacher ? `${plan.train_teacher.name || '35Bob'} (the full Qwen trained on every lesson, no cut)${plan.rungs.length ? ', then ' : ''}` : '') + (plan.rungs.length ? plan.rungs.map((r) => r.name).join(', ') : plan.train_teacher ? '' : plan.skills ? 'expert counts per skill only (no Bob is cut; the counts come back for the differential table)' : 'lessons and the teacher scores only (no Bob is cut)') + (plan.publish ? ` -- Hugging Face (${plan.publish.user}, private): ${[plan.publish.odds ? 'the teacher odds' : '', ...(plan.publish.models || []).map((m) => `${m} (tested, from the drive)`)].filter(Boolean).join(', ') || 'nothing this run'}; no untested Bob is uploaded` : '') + (plan.download_quants ? `; only ${plan.download_quants.join(', ')} GGUF files come down to this PC, the rest stay on the drive` : '');
   console.log(`\nAbout to rent ONE GPU on RunPod to make: ${rungs}`);
@@ -171,7 +174,7 @@ async function rent() {
   console.log(`Cards, in order of preference: ${(plan.gpus || GPUS).join(', ')}`);
   if (stepUpShown.length) console.log(`Step-up card(s) if none is free after ${plan.volume_wait_minutes || 20} minutes: ${stepUpShown.join(', ')}${plan.step_up_note ? ` (${plan.step_up_note})` : ''}\n`); else console.log('');
   if (plan.write_lessons) { const ws = Array.isArray(plan.write_lessons) ? plan.write_lessons : [plan.write_lessons]; console.log(`First the full Qwen writes ${ws.reduce((t, w) => t + (w.count || 800), 0)} extra lessons on the card (${ws.map((w) => w.jobs || 'coding').join(', ')}).`); }
-  if (!args.yes) {
+  if (!args.yes && !again) {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     const ans = await new Promise((r) => rl.question('Type yes to rent now: ', r)); rl.close();
     const a = ans.trim().toLowerCase().replace(/[^a-z]/g, '');
@@ -194,6 +197,9 @@ async function rent() {
     let cards = gpus;
     if (!stepped && stepUp.length && Date.now() - t0 > volWait * 60000) { stepped = true; log(`no ${gpus.join('/')} anywhere with a volume for ${volWait} minutes: the step-up card(s) ${stepUp.join(', ')} are tried too`); }
     if (stepped) cards = [...gpus, ...stepUp];
+    // 14 Nov: card types that keep freezing at start-up go last; one that froze in this run isn't asked for again
+    cards = orderCards(cards, { avoidNow, freezing: freezingCards(readStartups(startupLog)) });
+    if (!cards.length) throw new Error(`every wanted card type froze at start-up in this run (${[...avoidNow].join(', ')}); nothing more was rented`);
     // where to ask this minute: our volumes' data centres first, then other storage data centres that list a wanted card
     let targets = [];
     if (plan.volume) {
@@ -311,8 +317,9 @@ async function llamaUrl() {
 }
 
 const started = Date.now();
+const startupLog = path.join(outDir, 'forge', STARTUP_LOG); let rentedHere = false;
 if (args.local) { podId = 'local'; hdr['X-Forge-Token'] = process.env.FORGE_TOKEN || ''; fs.writeFileSync(tokenFile, JSON.stringify({ pod: podId, token: hdr['X-Forge-Token'], started: Date.now(), price: 0 })); }
-else if (!podId) await rent();
+else if (!podId) { await rent(); rentedHere = true; }
 else { const t = JSON.parse(fs.readFileSync(tokenFile, 'utf8')); price = t.price || 0; }
 if (!args.local) base = `https://${podId}-8000.proxy.runpod.net`;
 const t0 = JSON.parse(fs.readFileSync(tokenFile, 'utf8')).started || started;
@@ -347,7 +354,28 @@ let up = false;
 // well over 15 min, so the door wait is configurable (plan.door_minutes, default 15) and longer for no-volume runs
 const doorMin = plan.door_minutes || (plan.volume ? 15 : 25);
 const doorTries = Math.max(1, Math.round(doorMin * 6));
-for (let i = 0; i < doorTries && !up; i++) { if (plan.direct && !args.local && i % 3 === 0) { const d = await directUrls(); if (d) base = d.door; } try { const r = await get('/status'); up = r.ok; } catch {} if (!up) { if (i && i % 30 === 0) log(`still waiting for the pod door (${i / 6 | 0} min of ${doorMin})`); await sleep(10000); } }
+async function waitDoor() { for (let i = 0; i < doorTries && !up; i++) { if (plan.direct && !args.local && i % 3 === 0) { const d = await directUrls(); if (d) base = d.door; } try { const r = await get('/status'); up = r.ok; } catch {} if (!up) { if (i && i % 30 === 0) log(`still waiting for the pod door (${i / 6 | 0} min of ${doorMin})`); await sleep(10000); } } }
+await waitDoor();
+// 14 Nov (the owner: "if its always the same card type freezing up change to a different card type"): every start-up is
+// logged by card type and data centre. When a pod rented in this run never answers, it's deleted and, up to
+// plan.startup_retries times (default 2), another card type is rented under the same yes and the same caps, which
+// still count from the first rent. A run that picked up an existing pod (--resume, --restart) never re-rents.
+const startedOn = () => { try { const t = JSON.parse(fs.readFileSync(tokenFile, 'utf8')); return { gpu: t.gpu || 'unknown', dc: t.dataCenter || null }; } catch { return { gpu: 'unknown', dc: null }; } };
+if (rentedHere) {
+  const avoidNow = new Set(), retries = Math.max(0, Math.min(5, Number(plan.startup_retries ?? 2)));
+  for (let n = 0; !up && n < retries; n++) {
+    const on = startedOn(); avoidNow.add(on.gpu);
+    recordStartup(startupLog, { ...on, ok: false, why: `never answered (${doorMin} min)` });
+    await kill(`the pod never answered (${doorMin} min) on ${on.gpu}; trying another card type`);
+    const first = JSON.parse(fs.readFileSync(tokenFile, 'utf8')).started || started;
+    try { await rent({ again: true, avoidNow }); } catch (e) { log(e.message); process.exit(1); }
+    try { const t = JSON.parse(fs.readFileSync(tokenFile, 'utf8')); t.started = first; fs.writeFileSync(tokenFile, JSON.stringify(t)); } catch {} // the caps count from the first rent
+    base = `https://${podId}-8000.proxy.runpod.net`;
+    await waitDoor();
+  }
+  recordStartup(startupLog, { ...startedOn(), ok: up, why: up ? '' : `never answered (${doorMin} min)` });
+  const sum = startupSummary(readStartups(startupLog)); if (sum.length) log(`start-ups so far: ${sum.slice(0, 6).join('; ')}`);
+}
 if (!up) { await kill(`the pod never answered (${doorMin} min)`); process.exit(1); }
 if (args['send-token']) {
   // build 17: hand the Hugging Face token to a running pod after the fact (node forge.mjs --send-token <podId> --plan <plan>); the pod reads
