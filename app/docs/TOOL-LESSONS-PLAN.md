@@ -91,6 +91,16 @@ For each failure, in code where possible:
 **How many.** The owner wants a big, sturdy set, and synthetic is fine. Aim per round: the 6,000 tool lessons from
 section 1b (about 1,000 of them pairs), spread so no single tool or job is more than 1 in 10.
 
+**Plain words between the steps.** Every doctored lesson has short plain-English thinking and chat between its tool
+steps: what Bob is about to do and why, what the result showed, and what that means for the next step. For example:
+"The folder has three PDFs, so I'll read each one before I write the summary." A lesson that is only calls in a row
+isn't kept.
+
+**When the only mistake was the wrong tool.** If the plan was right but a step used the wrong tool, the lesson is kept and
+mended: the wrong tool is swapped for the right one, its inputs and result are rewritten to match, and any steps the
+right tool needs (look first, then act, then check) are filled in, with the plain-words reasoning between them. The
+checker then runs on the mended lesson like any other.
+
 ## 3b. Guided lessons for what Bob never managed
 
 Some jobs failed in every run we have: no attempt recovered and no brain got them right. For those, a plain "here's the
