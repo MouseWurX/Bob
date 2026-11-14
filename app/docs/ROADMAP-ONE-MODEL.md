@@ -13,8 +13,8 @@ There's a spending freeze on rentals until 15 Nov, except for runs already appro
 
 **How we get there, in one line.** Learn exactly how today's brains fail with tools (stage 0), pick the tool shape
 each brain family handles best (1), build the lesson-making tools and a fixed test set (2), write the lessons (3),
-make a clean cut of the big stock Qwen (4), then train it in three rounds where each round's failures become the next
-round's lessons (5 to 7), and finish with blends, small versions and publishing (8). Steering research runs beside it
+clean the big stock Qwen without cutting it (4), train the full model in three rounds where each round's failures become the next
+round's lessons (5 and 6), then blend and cut into smaller versions (7) and publish (8). Steering research runs beside it
 the whole way as a microscope, never as training data.
 
 ## The rules every stage keeps
@@ -126,26 +126,25 @@ never-taught list.
   Cheaper cards are possible but slower; the plan will say which card before the go.
 - **Go point B:** a go to write the round 1 set on a rental, with the card, hours and dollar cap on the card.
 
-## Stage 4. A clean cut of the big stock Qwen
+## Stage 4. Clean the big stock Qwen first (no cut yet)
 
 - **Goal:** a fresh start. Not more training on Riker or Bobert, but the stock Qwen3.6-35B-A3B, measured, studied and
-  cut clean so nothing old is carried in.
+  cleaned first, so nothing old is carried in. Order: **clean first, then train the full model, then cut** (the cut
+  comes after training, in stage 7, so the cut keeps what training taught).
 - **Steps (protocol, PR #201, benchmark after each):**
   1. baseline and odds on the fixed sample set, with the report card;
   2. clean-first surgery tried **live only** and recorded (it never trains, and nothing is baked without a go);
   3. analysis: REAP lists, experts by layer, per-skill expert counts including the new targets (tools, search,
-     Blender, Unreal, coding);
-  4. the cut: a coverage cut that protects every target's experts, or no cut at all (Bobert's way: the full model
-     trained on every lesson). Both are measured before picking.
+     Blender, Unreal, coding). These counts guide the later cut.
 - **Depends on:** stage 2's report card. Can run before or after stage 3.
-- **Measured by:** report card on stock vs cut (a cut is kept only if it loses nothing that training can't win back,
-  judged on the held-out lines); expert counts saved with the data.
+- **Measured by:** report card on the stock brain (this is the baseline every later step must beat); expert counts
+  saved with the data.
 - **Cost (rough):** baseline, odds and counts about 2 to 3 h on an H200, **about $11 to $16**.
-- **Go point C:** a go for the rental, then a go for the cut size (cut, or full model).
+- **Go point C:** a go for the rental, and a go before any clean-up is baked in.
 
 ## Stage 5. Train round 1
 
-- **Goal:** the first all-round Bob from the clean cut.
+- **Goal:** the first all-round Bob, trained on the full cleaned brain (no cut).
 - **Steps (protocol):** heal (teacher odds, distillation) on round 1's lessons and the general slice; preference pass
   (ORPO in the heal, or DPO or KTO after it) on the scored pairs; on-policy finish (the student writes, the teacher
   grades every word); reward pass (`grpo.py`) with the tool rule and the new search line; multi-target guard drops any
@@ -178,11 +177,11 @@ never-taught list.
 
 ## Stage 7. Blend, live dials, small versions
 
-- **Goal:** the best mix of the rounds, tuned live, and smaller Bobs for smaller machines.
+- **Goal:** the best mix of the rounds, tuned live, then the cut: smaller Bobs for smaller machines.
 - **Steps:** blends (`merge.py`: linear, TIES, DARE) of round checkpoints, kept only if the report card holds;
   live dials (experts per word, expert and head dials, steering directions) tried in the engine and measured on the
-  report card. **Nothing is baked into the weights without the owner's go.** Then the ladder: smaller cuts from the
-  final brain (the Bill, Homer, Milo sizes), each healed on its parent's odds.
+  report card. **Nothing is baked into the weights without the owner's go.** Then the cut and the ladder: a coverage cut of the final brain
+  that protects every target's experts, then smaller cuts (the Bill, Homer, Milo sizes), each healed on its parent's odds.
 - **Depends on:** stage 6, and stage S (below) for which dials are worth trying.
 - **Measured by:** report card per blend and per ladder rung; fits-the-PC line for each size.
 - **Cost (rough):** blends run on a CPU (cheap); each small version about $50 to $100 (Bill's full run was $96).
@@ -230,10 +229,10 @@ These are guesses from past runs (H200 at $5.29/h). Each go card gives the real 
 |---|---|---|
 | A | Pick each family's tool shape | after tonight's interviews |
 | B | Write round 1's lessons on a rental | after stage 2's dry runs |
-| C | Clean-cut rental, then the cut size | any time after stage 2 |
+| C | Clean-first rental, then any bake | any time after stage 2 |
 | D | Each training run (base Bob, then styles) | after B and C |
 | E | Each later round | after the round before passes |
-| F | Each blend kept, each bake, each small version | after round 3 |
+| F | Each blend kept, each bake, the cut size, each small version | after round 3 |
 | G | Any upload | before publishing |
 
 ## Where the pieces are
