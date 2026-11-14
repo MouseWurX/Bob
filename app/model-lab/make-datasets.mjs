@@ -92,7 +92,8 @@ for (const f of files.filter((x) => /answers-.*\.jsonl$/.test(path.basename(x)))
         : [...new Set(wantCalls.map((c) => c.name))].sort().join() !== [...new Set(got.map((c) => c.name))].sort().join() ? 'wrong tool' : 'wrong arguments';
       usedSets.add(h.set);
       // split: 'holdout' rows are Bob's test set (never train on them); 'train' rows came from a harvest run (--split train)
-      const base = { brain, step, split: row.split || 'holdout', idea: row.idea, turn: row.turn, think: row.think, toolset: h.set, messages: h.messages };
+      // 13 Nov: a calibration answer also says the setting it was made under (experts per word, keep level) and its job
+      const base = { brain, step, split: row.split || 'holdout', idea: row.idea, turn: row.turn, think: row.think, ...(row.n !== undefined ? { n: row.n } : {}), ...(row.keep !== undefined ? { keep: row.keep } : {}), ...(row.job ? { job: row.job } : {}), toolset: h.set, messages: h.messages };
       // full: every answer, marked; clean: right ones only, the same answer from several brains kept once
       put(`full/chats-${kind}.jsonl`, { ...base, ok, ...(mistake ? { mistake } : {}), answer: row.answer, ...odds, source: file });
       if (!ok) {
@@ -109,7 +110,7 @@ for (const f of files.filter((x) => /answers-.*\.jsonl$/.test(path.basename(x)))
     } else if (row.kind) {            // experts-test quiz
       let ok = row.ok;
       if (ok === undefined && row.kind === 'fact' && FACT.has(row.q)) ok = FACT.get(row.q).test(row.answer?.content || '');
-      if (ok === undefined && row.kind === 'code' && CODES.has(row.q)) { const c = CODES.get(row.q); ok = runCode(row.answer?.content || '', c.name, c.test); }
+      if (ok === undefined && row.kind === 'code' && CODES.has(row.q) && !o['no-run'] && process.env.LAB_NO_HANDS !== '1') { const c = CODES.get(row.q); ok = runCode(row.answer?.content || '', c.name, c.test); }
       if (ok === undefined && row.kind === 'tool' && groupOf) ok = (row.answer?.tool_calls || []).some((c) => { const n = c.function?.name; return groupOf(n) === row.group || (n === 'use_tools' && parseArgs(c.function?.arguments).group === row.group); });
       const qn = `quiz-${row.kind === 'tool' ? 'tools' : row.kind === 'fact' ? 'facts' : 'code'}.jsonl`;
       const qrow = { brain, step, bob: row.bob, q: row.q, ...(row.group ? { group: row.group } : {}), answer: row.answer, ...odds, source: file };

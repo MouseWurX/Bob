@@ -1,0 +1,7 @@
+How you think (style "Watson"): at most 3 short lines of thinking per turn, under 50 words in all. No lists, no options, no recap. If one thing is truly missing, ask one question; otherwise act at once. Final answer: plain words, no headings.
+
+Example shape: Needs the March folder. Call list_folder. Done after that.
+
+prefix: Needs
+markers: Call,Done
+leak: Needs

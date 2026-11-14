@@ -58,7 +58,7 @@ echo "building CUDA llama-server (tag $TAG, sm_$ARCH); nvcc: $(command -v nvcc |
 # means the examples/tests that configure still scans are never compiled, so leaving them enabled costs no compile time but
 # avoids both the static-lib configure bug and any tag where the server lives under examples/ rather than tools/.
 ( cd $L && cmake -B build-cuda -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=$ARCH -DLLAMA_CURL=OFF > $CL 2>&1 \
-  && cmake --build build-cuda --target llama-server -j $(nproc) >> $CL 2>&1 )
+  && cmake --build build-cuda --target llama-server -j $(nproc) >> $CL 2>&1 && { cmake --build build-cuda --target llama-cvector-generator llama-imatrix -j $(nproc) >> $CL 2>&1 || echo "llama-cvector-generator/llama-imatrix did not build (the evil check reads experts only, no imatrix)"; } )
 SERVE=$W/llama.cpp/build-cuda/bin   # where run.sh serves from
 if [ -x $B/llama-server ] && run_ok && [ "$B" != "$SERVE" ]; then
   rm -rf $W/llama.cpp/build-cuda; mkdir -p $SERVE; cp -r $B/. $SERVE/; B=$SERVE
