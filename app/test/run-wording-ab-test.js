@@ -74,5 +74,9 @@ check('engine check passes a full engine', (await checkEngine(okEng, all)).every
 const oldEng = { ...okEng, setUsed: async () => { throw new Error('this engine has no /experts-per-word'); }, trace: async () => ({}) };
 const bad = (await checkEngine(oldEng, all)).filter((r) => !r.ok).map((r) => r.name).join(',');
 check('engine check catches the Nov 13 engine (no N switch, no trace)', bad === 'n,trace,mass', bad);
+const { pickerTool, picked } = await import('../model-lab/tool-pick.mjs');
+const pk = pickerTool(tools);
+check('one tool per step: the picker lists every tool by name and allows none', JSON.stringify(pk.function.parameters.properties.tool.enum) === JSON.stringify(['make_diagram', 'notice_board', 'file_hands', 'none']) && pk.function.description.includes("file_hands: Bob's file_hands."));
+check('the pick is read from the call', picked({ tool_calls: [{ function: { name: 'choose_tool', arguments: '{"tool":"file_hands"}' } }] }) === 'file_hands' && picked({ content: 'hi' }) === null);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
