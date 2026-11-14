@@ -15,6 +15,7 @@
 // Writes <out>/riker-calibration/<job>.json, presets.json and PRESETS.md.
 // node job-presets.mjs --url <server> --questions <calib>/questions --maps <trace-read --mass out> --out <folder>
 //      [--n 3,4,6,8,12] [--keeps 75,50] [--scales 0.8,1.2] [--parallel 8] [--odds 8] [--max 400] [--student <dir> --student-n 1000]
+//      [--bob <Bob source app folder>] (Bob's current tools, not the saved ones) [--jobs files,run,plans] (only these jobs) [--think] (thinking on: answers carry it, --max-think 4000 tokens)
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -44,18 +45,25 @@ async function main() {
   if (!url || !a.questions) { console.error('--url <server> --questions <calib-prep questions folder> are needed'); process.exit(1); }
   const maps = a.maps ? path.resolve(String(a.maps)) : null, par = Number(a.parallel) || 8, K = Math.min(20, Number(a.odds) || 8), max = Number(a.max) || 400;
   const brain = process.env.LAB_MODEL_NAME || 'brain', eng = live(url);
+  const think = Boolean(a.think), maxThink = Number(a['max-think']) || 4000, onlyJobs = a.jobs ? new Set(String(a.jobs).split(',').map((x) => x.trim()).filter(Boolean)) : null;
   fs.mkdirSync(path.join(out, 'riker-calibration'), { recursive: true });
   const sets = JSON.parse(fs.readFileSync(path.join(qdir, 'toolsets.json'), 'utf8'));
   const jobs = {};
-  for (const l of readJsonl(path.join(qdir, 'lessons.jsonl'))) { const t = turnsOf(l, sets)[0]; if (t?.tools !== undefined) (jobs[l.job] ||= []).push({ idea: l.idea, split: l.split, set: l.set, ...t }); }
+  let kit = null;
+  if (a.bob) { // Bob's CURRENT prompt and tools (a fresh bob-kit), not the write-time toolsets.json, which can be stale
+    const { loadBob } = await import('./bob-kit.mjs'); const { buildQuestions } = await import('./tool-wording.mjs');
+    kit = await loadBob(path.resolve(String(a.bob)));
+    for (const q of buildQuestions(readJsonl(path.join(qdir, 'lessons.jsonl')), kit, { turns: 1, jobs: onlyJobs })) (jobs[q.job] ||= []).push(q);
+    kit.done();
+  } else for (const l of readJsonl(path.join(qdir, 'lessons.jsonl'))) { const t = turnsOf(l, sets)[0]; if (t?.tools !== undefined && (!onlyJobs || onlyJobs.has(l.job))) (jobs[l.job] ||= []).push({ idea: l.idea, split: l.split, set: l.set, ...t }); }
   console.log(`${Object.values(jobs).flat().length} questions over ${Object.keys(jobs).length} jobs (${Object.entries(jobs).map(([j, q]) => `${j} ${q.length}`).join(', ')})`);
   const tag = (s) => s.student ? 'student' : `n${s.n || 'own'}-k${s.keep || 100}${s.dials ? `-d${s.dials}` : ''}`;
   const ask = async (q, s, file) => {
     try {
-      const j = await eng.chat({ messages: q.messages, ...(q.tools?.length ? { tools: q.tools } : {}), max_tokens: max, temperature: 0, chat_template_kwargs: { enable_thinking: false }, logprobs: true, top_logprobs: K });
+      const j = await eng.chat({ messages: q.messages, ...(q.tools?.length ? { tools: q.tools } : {}), max_tokens: think ? maxThink : max, temperature: 0, chat_template_kwargs: { enable_thinking: think }, logprobs: true, top_logprobs: K });
       const m = j.choices?.[0]?.message || {}, got = (m.tool_calls || []).map((c) => ({ name: c.function?.name, args: parseArgs(c.function?.arguments) }));
       const ok = judgeTurn(q.want.map((w) => ({ name: w.name, args: parseArgs(w.args) })), got); // parsed, never run
-      fs.appendFileSync(file, JSON.stringify({ brain, split: q.split || 'calib', idea: q.idea, turn: 0, think: false, n: s.n || 'own', keep: s.keep || 100, ...(s.dials ? { dials: s.dials } : {}), job: q.job, set: q.set, ok, answer: { content: m.content || '', tool_calls: m.tool_calls || undefined }, odds: oddsOf(j.choices?.[0]?.logprobs) }) + '\n');
+      fs.appendFileSync(file, JSON.stringify({ brain, split: q.split || 'calib', idea: q.idea, turn: 0, think, n: s.n || 'own', keep: s.keep || 100, ...(s.dials ? { dials: s.dials } : {}), job: q.job, set: q.set, ok, answer: { content: m.content || '', ...(m.reasoning_content ? { reasoning: m.reasoning_content } : {}), tool_calls: m.tool_calls || undefined }, odds: oddsOf(j.choices?.[0]?.logprobs) }) + '\n');
       return { ok, tps: j.timings?.predicted_per_second || 0 };
     } catch (e) { return { ok: false, tps: 0, err: e.message.slice(0, 80) }; }
   };

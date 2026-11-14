@@ -1,0 +1,70 @@
+{
+ "run": "riker-tools",
+ "note": "14 Nov (the owner: \"investigate riker with thinking on, do it on a rented card, a smaller one\", \"also try his tool interview with thinking off as well, we need to see what syntax will get the desired results\", \"did you try dialing things up or only down?\"). Riker stock, Brain Engine 7b12282 (live experts per word, mask, dials). Order: per-job expert maps for the tool jobs only (trace-read --jobs, 30 each, every failure counted by why); tool wording A/B with Bob 1.5.223's current tools (bob, usewhen, paths, usewhen+paths) thinking off, then bob and usewhen+paths thinking on, then bob thinking on with the head start 'Plan: 1.'; live dials on the tool jobs: experts per word 6/10/12 (his own is 8), keep-75 per job, leaning experts DOWN 0.8 and UP 1.2 and 1.5; then the interview on his misses and 9 tool groups, thinking on and off. Measure only, live switches only, no_hands, evidence only. Every answer kept with top-8 odds. About 3 h on a 48 GB card.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA A40",
+  "NVIDIA L40S",
+  "NVIDIA RTX A6000"
+ ],
+ "step_up": [],
+ "disk_gb": 80,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 4,
+ "dollars_max": 5,
+ "rent_minutes": 240,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one brain: Riker stock. The PC's Bob source must be 1.5.223 (--min-bob stops the run otherwise).",
+  "hours_each": 3,
+  "brain_engine": {
+   "ref": "fcdf3955ed6966c102f43d49528174cabd52d825",
+   "patches": [
+    "0001-expert-mask",
+    "0002-expert-trace",
+    "0003-dials",
+    "0004-rpc-wifi",
+    "0005-scut",
+    "0006-scut-seal",
+    "0007-expert-trace-stream",
+    "0008-scut-live",
+    "0009-expert-mass",
+    "0010-expert-trace-once",
+    "0011-rpc-read-ahead",
+    "0012-load-progress",
+    "0013-experts-per-word"
+   ],
+   "note": "Brain Engine 7b12282 (live experts per word, mask, dials, expert trace with mass)"
+  },
+  "models": [
+   {
+    "name": "riker",
+    "nickname": "Riker (28Bob), tool interview",
+    "file": "hf:MouseWurX/28Bob-Riker:28Bob-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "slots": 8,
+    "ctx": 65536,
+    "extra": "",
+    "hours": 3,
+    "commands": [
+     "node set-live.mjs --reset",
+     "node trace-read.mjs --url {{url}} --sets bob=out/lessons,bob=out/lessons-codefix,bob=out/lessons-recover,bob=out/lessons-clarify,bob=out/lessons-newtool,bob=out/lessons-selfcheck,bob=out/lessons-research,bob=out/lessons-understand,bob=out/lessons-formats,bob=out/lessons-reasoning,bob=out/lessons-coding,bob=out/lessons-coding-2,bob=out/lessons-notes,bob=out/lessons-selfhelp,bob=out/lessons-gamemaster,bob=out/lessons-refusals,bob=out/lessons-languages --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science --per 30 --mass --keep 0.75 --parallel 4 --out {{out}}/trace-tools",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src --min-bob 1.5.223 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --variants bob,usewhen,paths,usewhen+paths --think off --turns 2 --parallel 8 --odds 8 --out {{out}}/wording",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src --min-bob 1.5.223 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --variants bob,usewhen+paths --think on --turns 2 --parallel 8 --odds 8 --max-think 4000 --out {{out}}/wording",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src --min-bob 1.5.223 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science --variants bob --think on --prefill \"Plan: 1.\" --turns 1 --parallel 8 --odds 8 --max-think 4000 --out {{out}}/wording-headstart",
+     "node set-live.mjs --reset",
+     "node job-presets.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src --maps {{out}}/trace-tools --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science --out {{out}}/dials --n 6,10,12 --keeps 75 --scales 0.8,1.2,1.5 --parallel 8 --odds 8",
+     "node set-live.mjs --reset",
+     "node tool-interview.mjs --url {{url}} --bob ../bob-main-src --from {{out}}/wording --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --think on,off --cases 10 --minutes 45 --out {{out}}/interview"
+    ]
+   }
+  ]
+ }
+}
