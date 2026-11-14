@@ -51,6 +51,7 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     // 14 Nov Lab steps and runs (docs/LAB-STEPS-PLAN.md): read-only. Paths are left out for other devices.
     if (req.method === 'GET' && p === '/api/lab/steps') { send(res, 200, { stages: STAGES, steps: stepsView(forgeDir(lab.cfg)).map((s) => ({ ...s, smokeReady: smokeReady(s), form: STEP_FORMS[s.id] ? { needs: STEP_FORMS[s.id].needs } : null })), sets: lab.lessonSetsList ? lab.lessonSetsList() : [], job: lab.stepJob() }); return true; }
     if (req.method === 'GET' && p === '/api/lab/runs') { const runs = listRuns(labDir(lab.cfg)); send(res, 200, { runs: isLocal ? runs : runs.map((r) => ({ ...r, inputs: r.inputs.map(({ path: _p, ...i }) => i), outputs: r.outputs.map(({ path: _p, ...o }) => o) })) }); return true; }
+    if (req.method === 'GET' && p === '/api/lab/pipelines') { const v = lab.pipelinesView(); send(res, 200, isLocal ? v : { ...v, pipelines: v.pipelines.map((x) => ({ ...x, progress: { ...x.progress, steps: x.progress.steps.map((s) => ({ ...s, outputs: s.outputs.map(({ path: _p, ...o }) => o) })) } })) }); return true; } // 14 Nov slice 5, read-only
     if (req.method === 'GET' && p === '/api/lab/protocol') { const v = lab.protocolView(); send(res, 200, isLocal ? v : { ...v, looked: [], job: v.job ? { ...v.job, tail: [] } : null }); return true; } // 13 Nov read-only
     if (req.method !== 'POST') { send(res, 404, { error: 'no' }); return true; }
     const b = await body(req);
@@ -105,6 +106,9 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/step/check') { const c = lab.stepCheck(String(b.id || ''), b.form); send(res, 200, { problems: c.problems, notes: c.notes }); return true; } // 14 Nov Steps tab, free steps here
     if (p === '/api/lab/step/run') { send(res, 200, lab.stepRun(String(b.id || ''), b.form)); return true; }
     if (p === '/api/lab/step/stop') { send(res, 200, lab.stepStop()); return true; }
+    if (p === '/api/lab/pipeline/save') { send(res, 200, lab.pipelineSave(b.pipeline || {})); return true; } // 14 Nov slice 5: pipelines start only from this computer
+    if (p === '/api/lab/pipeline/go') { send(res, 200, lab.pipelineGo(String(b.slug || ''))); return true; }
+    if (p === '/api/lab/pipeline/skip') { send(res, 200, lab.pipelineSkip(String(b.slug || ''), Number(b.step), b.skip !== false)); return true; }
     if (p === '/api/lab/protocol/check') { const pl = lab.protocolCheck(String(b.tool || ''), b.form); send(res, 200, { problems: pl.problems, notes: pl.notes }); return true; } // 13 Nov
     if (p === '/api/lab/protocol/run') { send(res, 200, lab.protocolRun(String(b.tool || ''), b.form)); return true; }
     if (p === '/api/lab/protocol/stop') { send(res, 200, lab.protocolStop()); return true; }

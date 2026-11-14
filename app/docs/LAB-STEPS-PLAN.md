@@ -312,7 +312,7 @@ Each slice is one release, built through bob-wip, the builder and the PC check.
 3. **Wire every existing script as a step.** All of section 3's rows whose script exists. Each with its smoke form,
    a dry run against the fake engine, and its Help page.
 4. **Runs and comparison.** The Runs page, compare, charts, cost per run from the rental record, "run again".
-5. **Pipelines.** Save, pack rented steps into one plan, pick up where it stopped.
+5. **Pipelines.** Save, pack rented steps into one plan, pick up where it stopped. *Built 14 Nov: `src/lab-pipelines.js` (saved lists, card blocks with $0 caps drafts, progress read back from run records, skip), the Pipelines section of the Steps tab with a score chart and its table. Free steps here hand on to the next by themselves; a card block waits for the owner's start in the Forge.*
 6. **New methods.** The data refinery (with doctoring and odds sorting from #228), then the nightly learning loop, then HF staging, then
    patching, then SAE features.
    Each gets its own small design first.

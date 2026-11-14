@@ -9,8 +9,9 @@ import { forgeDir } from './lab-forge.js';
 import { lessonSets, lessonSetsDir } from './lab-plan.js';
 import { labDir, readJson, writeJson, slugOf } from './lab-measure.js';
 import { nodeCmd } from './selftools.js';
-import { stepById } from './lab-steps.js';
-import { startRun, finishRun, checkStart } from './lab-runs.js';
+import { stepById, stepsView } from './lab-steps.js';
+import { startRun, finishRun, checkStart, listRuns } from './lab-runs.js';
+import { savePipeline, readPipeline, listPipelines, pipelineProgress, pipelineScores, packBlocks, blockDraft, prevOutput, protocolPipeline, PREV } from './lab-pipelines.js';
 import { VERSION } from './config.js';
 
 const freeName = (root, base) => { let n = base, i = 2; while (fs.existsSync(path.join(root, n))) n = `${base}-${i++}`; return n; };
@@ -50,7 +51,7 @@ export const stepRunJobs = {
     problems.push(...checkStart(labDir(this.cfg), id, p.inputs));
     return { problems, notes: [...notes, ...(p.notes || [])], p, s, dir };
   },
-  stepRun(id, form = {}) {
+  stepRun(id, form = {}, { pipeline = '', pipelineStep = null } = {}) {
     const job = readJson(this.stepRunFile(), null);
     if (job?.state === 'running') throw new Error('A step is already running. One at a time.');
     if (readJson(path.join(labDir(this.cfg), 'protocol', 'job.json'), null)?.state === 'running') throw new Error('A protocol step is running. One at a time.');
@@ -59,12 +60,12 @@ export const stepRunJobs = {
     const { p, s, dir } = c, lab = labDir(this.cfg);
     fs.mkdirSync(path.dirname(this.stepRunFile()), { recursive: true });
     const log = path.join(path.dirname(this.stepRunFile()), `${slugOf(id)}-${new Date(this.now()).toISOString().replace(/[:.]/g, '-').slice(0, 19)}.log`);
-    const run = startRun(lab, { step: id, settings: form, inputs: p.inputs, bob: VERSION.label || '', now: this.now() });
+    const run = startRun(lab, { step: id, settings: form, inputs: p.inputs, pipeline, pipelineStep, bob: VERSION.label || '', now: this.now() });
     const { file: node, env } = nodeCmd();
     const fd = fs.openSync(log, 'a');
     const child = (this.stepSpawn || spawn)(node, [path.join(dir, s.script), ...p.args], { cwd: dir, stdio: ['ignore', fd, fd], windowsHide: true, env: { ...process.env, ...env } });
     fs.closeSync(fd);
-    const rec = { step: id, name: s.name, state: 'running', at: this.now(), log, pid: child.pid || 0, run: run.id, out: p.kind === 'lessons' ? p.out : '' };
+    const rec = { step: id, name: s.name, state: 'running', at: this.now(), log, pid: child.pid || 0, run: run.id, out: p.kind === 'lessons' ? p.out : '', pipeline };
     writeJson(this.stepRunFile(), rec);
     const done = (code) => {
       if (readJson(this.stepRunFile(), null)?.state === 'stopped') return; // stopped by hand: stepStop wrote it all
@@ -74,6 +75,8 @@ export const stepRunJobs = {
       if (state !== 'done' && p.out && p.kind === 'lessons') { try { fs.rmSync(p.out, { recursive: true, force: true }); } catch {} } // nothing half-made is kept
       writeJson(this.stepRunFile(), { ...rec, state, pid: 0, message });
       this.broadcast?.({ type: 'lab-step', state });
+      // in a pipeline, a step that finished well hands on to the next one when that one also runs here, free
+      if (state === 'done' && pipeline) { try { this.pipelineGo(pipeline, { auto: true }); } catch {} }
     };
     if (child.on) { child.on('exit', (code) => done(code)); child.on('error', () => done(-1)); } else done(-1);
     return { started: true, run: run.id, notes: c.notes };
@@ -86,6 +89,38 @@ export const stepRunJobs = {
     if (job.out) { try { fs.rmSync(job.out, { recursive: true, force: true }); } catch {} }
     writeJson(this.stepRunFile(), { ...job, state: 'stopped', pid: 0, message: 'Stopped. Nothing it was making was kept.' });
     return { stopped: true };
+  },
+  // ---- pipelines (slice 5) ----
+  pipelinesView() {
+    const lab = labDir(this.cfg), runs = listRuns(lab, { limit: 2000 }), view = stepsView(forgeDir(this.cfg));
+    return { pipelines: listPipelines(lab).map((p) => { const pr = pipelineProgress(lab, p, runs); return { ...p, progress: pr, chart: pipelineScores(pr), blocks: packBlocks(p.steps).map((b) => ({ ...b, draft: b.on === 'rented' ? blockDraft(p, b) : null })) }; }), protocol: protocolPipeline(view) };
+  },
+  pipelineSave(p) { return savePipeline(labDir(this.cfg), p, this.now()); },
+  // A step that runs from its own page (or one you don't need this time) can be skipped; the page says it was.
+  pipelineSkip(slug, i, skip = true) {
+    const lab = labDir(this.cfg), p = readPipeline(lab, slug);
+    if (!p || !Number.isInteger(i) || !p.steps[i]) throw new Error('There\'s no such step in that pipeline.');
+    const set = new Set(p.skipped || []); if (skip) set.add(i); else set.delete(i);
+    writeJson(path.join(lab, 'pipelines', `${p.slug}.json`), { ...p, skipped: [...set].sort((a, b) => a - b) });
+    return { skipped: [...set] };
+  },
+  // Runs the pipeline's next step when it runs here, free, and has a form; otherwise says in words what's next and
+  // where it starts. Started again after a stop, it picks up at the first step not done.
+  pipelineGo(slug, { auto = false } = {}) {
+    const lab = labDir(this.cfg), p = readPipeline(lab, slug);
+    if (!p) throw new Error('There\'s no pipeline by that name.');
+    const pr = pipelineProgress(lab, p);
+    if (pr.done) return { started: false, done: true, message: `${p.name} is done: every step finished.` };
+    if (pr.running) return { started: false, message: 'A step of it is running now.' };
+    const i = pr.next, x = p.steps[i], s = stepById(x.id), at = `Step ${i + 1} of ${p.steps.length}, ${s.name}`;
+    const block = packBlocks(p.steps).find((b) => b.steps.includes(i));
+    if (block.on === 'rented') { const names = block.steps.map((j) => stepById(p.steps[j].id).name); return { started: false, waiting: 'rented', message: `${at}, runs on a rented card${names.length > 1 ? ` with ${names.length - 1} more step${names.length > 2 ? 's' : ''} in a row (${names.join(', ')}), packed so the card starts once` : ''}. Start it from the Forge with your own caps; they start at $0.`, draft: blockDraft(p, block) }; }
+    if (!STEP_FORMS[x.id]) return { started: false, waiting: 'page', message: `${at}, starts from its own page. When it's done, press Continue here.` };
+    const form = { ...x.form };
+    if (form.set === PREV) { const o = prevOutput(pr, i, 'lessons'); if (!o) return { started: false, message: `${at}, takes the lessons the step before made, and that step made none.` }; form.set = path.basename(o.path); }
+    if (auto && readJson(this.stepRunFile(), null)?.state === 'running') return { started: false };
+    const r = this.stepRun(x.id, form, { pipeline: p.slug, pipelineStep: i });
+    return { ...r, message: `${at}, started.` };
   },
   stepJob() { const j = readJson(this.stepRunFile(), null); return j ? { step: j.step, name: j.name, state: j.state, message: j.message || '' } : null; }
 };

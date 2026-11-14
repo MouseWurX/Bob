@@ -194,6 +194,57 @@ check('the plan doc is linked from the docs index', /LAB-STEPS-PLAN\.md/.test(re
   check('compare shows minutes and cost per run', row('Minutes').vals.join() === '12,20' && row('Cost').vals[1] === '$0.40 (A40)');
   check('compare shows inputs by short hash', /lessons aaaaaaaaaa/.test(row('Inputs').vals[0]));
 }
+// ---- pipelines: saved steps, packed card blocks, picking up where it stopped, the score chart (fakes only) ----
+{
+  const { stepRunJobs } = await import('../src/lab-step-run.js');
+  const P = await import('../src/lab-pipelines.js');
+  const { scoreChart } = await import('../public/lab-steps-page.js');
+  const dataDir = path.join(tmp, 'data-pipe'), setDir = path.join(dataDir, 'lab', 'lessons', 'mine'), lab0 = path.join(dataDir, 'lab');
+  fs.mkdirSync(setDir, { recursive: true }); fs.writeFileSync(path.join(setDir, 'lessons.jsonl'), '{"idea":"a","messages":[]}\n'); fs.writeFileSync(path.join(setDir, 'write.json'), JSON.stringify({ name: 'My lessons', count: 1, done: true }));
+  const fakeDir = path.join(tmp, 'ml-pipe'); fs.mkdirSync(path.join(fakeDir, 'forge'), { recursive: true }); for (const f of ['scrub-data.mjs', 'make-checks.mjs', 'forge/forge.mjs']) fs.writeFileSync(path.join(fakeDir, f), '');
+  let exitWith = 0; const started = [];
+  const idle = async () => { for (let i = 0; i < 200; i++) { await new Promise((res) => setTimeout(res, 10)); if (lab.stepJob()?.state !== 'running') return; } };
+  const fakeSpawn = (node, args) => { started.push(path.basename(args[0])); const ev = {}; setTimeout(() => { const out = args[args.indexOf('--out') + 1]; if (exitWith === 0) { if (args.includes('--in')) fs.cpSync(args[args.indexOf('--in') + 1], out, { recursive: true }); else { fs.mkdirSync(path.dirname(out), { recursive: true }); fs.writeFileSync(out, '{}\n'); } } ev.exit?.(exitWith); }, 5); return { pid: 0, on: (k, fn) => { ev[k] = fn; } }; };
+  const lab = Object.assign({ cfg: { dataDir, forgeDir: fakeDir }, now: () => Date.UTC(2026, 10, 14, 13), broadcast: () => {}, stepSpawn: fakeSpawn }, stepRunJobs);
+  const bad = P.cleanPipeline({ name: '', steps: [{ id: 'nope' }, { id: 'pii-scrub', form: { set: '@prev', hfToken: 'hf_' + 'a'.repeat(30), 'bad key': 1 } }] });
+  check('a pipeline needs a name and known steps', bad.problems.includes('Give the pipeline a name.') && bad.problems.some((x) => /no step called nope/.test(x)));
+  check('a pipeline form keeps no key and no odd field names', !JSON.stringify(bad.pipeline).includes('hf_') && !('bad key' in bad.pipeline.steps[0].form));
+  check('the first step can\'t take from a step before it', bad.problems.some((x) => /first step has no step before/.test(x)));
+  check('heavy steps that run either way go on a card, never this computer', P.runsOn(stepById('lora')) === 'rented' && P.runsOn(stepById('pii-scrub')) === 'here' && P.runsOn(stepById('attribution-transfer')) === 'here');
+  const steps = [{ id: 'pii-scrub', form: { set: 'mine' } }, { id: 'pii-scrub', form: { set: '@prev' } }, { id: 'lora' }, { id: 'distillation' }, { id: 'expert-profiling' }, { id: 'eval-sets' }];
+  const saved = lab.pipelineSave({ name: 'Clean then teach', steps });
+  check('a pipeline saves under its name, in the Lab folder', !saved.problems.length && saved.slug === 'clean-then-teach' && fs.existsSync(path.join(lab0, 'pipelines', 'clean-then-teach.json')));
+  const blocks = P.packBlocks(steps);
+  check('rented steps in a row pack into one card block', blocks.length === 5 && blocks[2].on === 'rented' && blocks[2].steps.join() === '2,3');
+  const draft = P.blockDraft(P.readPipeline(lab0, 'clean-then-teach'), blocks[2]);
+  check('a card block draft starts with $0 and 0 hours caps', draft.dollars_max === 0 && draft.hours_max === 0 && draft.steps.join() === 'lora,distillation');
+  check('a new pipeline is not started, next is step 1', (() => { const v = lab.pipelinesView().pipelines[0]; return v.progress.state === 'not started' && v.progress.next === 0 && v.progress.cost === 0; })());
+  const g1 = lab.pipelineGo('clean-then-teach');
+  check('Start runs the first free step, tagged with its pipeline place', g1.started && /Step 1 of 6/.test(g1.message) && listRuns(lab0).find((r) => r.pipeline === 'clean-then-teach')?.pipelineStep === 0);
+  await idle(); await idle();
+  const pr = P.pipelineProgress(lab0, P.readPipeline(lab0, 'clean-then-teach'));
+  check('a finished free step hands on to the next free step by itself', started.join() === 'scrub-data.mjs,scrub-data.mjs' && pr.steps[0].state === 'done' && pr.steps[1].state === 'done');
+  const r2 = listRuns(lab0).find((r) => r.pipelineStep === 1);
+  check('"the step before" means the set that step made', r2.inputs[0].path === pr.steps[0].outputs[0].path);
+  check('a rented block waits for you: nothing rents from a pipeline', pr.next === 2 && (() => { const g = lab.pipelineGo('clean-then-teach'); return !g.started && g.waiting === 'rented' && /2 steps|1 more step/.test(g.message) && /\$0/.test(g.message); })() && started.length === 2);
+  lab.pipelineSkip('clean-then-teach', 2); lab.pipelineSkip('clean-then-teach', 3);
+  const g4 = lab.pipelineGo('clean-then-teach');
+  check('a step that starts from its own page says so', !g4.started && g4.waiting === 'page' && /Expert profiling/.test(g4.message));
+  lab.pipelineSkip('clean-then-teach', 4);
+  check('skipped steps show as skipped, never done', P.pipelineProgress(lab0, P.readPipeline(lab0, 'clean-then-teach')).steps[2].state === 'skipped');
+  exitWith = 3; lab.pipelineGo('clean-then-teach'); await idle();
+  check('a failed step stops the pipeline part way', (() => { const q = P.pipelineProgress(lab0, P.readPipeline(lab0, 'clean-then-teach')); return q.state === 'stopped part way' && q.next === 5 && q.steps[5].state === 'failed'; })());
+  exitWith = 0; const again = lab.pipelineGo('clean-then-teach'); await idle();
+  check('Continue picks up at the first step not done and leaves done ones alone', again.started && /Step 6 of 6/.test(again.message) && started.filter((x) => x === 'scrub-data.mjs').length === 2);
+  check('when every step is done it says so', P.pipelineProgress(lab0, P.readPipeline(lab0, 'clean-then-teach')).done && lab.pipelineGo('clean-then-teach').done === true);
+  const fakePr = { steps: [{ i: 0, name: 'Baseline eval', scores: { tools: 60 } }, { i: 1, name: 'LoRA', scores: { tools: 72, quiz: 50 } }, { i: 2, name: 'Iterative pruning', scores: {} }] };
+  const lines = P.pipelineScores(fakePr);
+  check('the score chart has a line per score, a point per step that has it', lines.length === 2 && lines.find((l) => l.score === 'tools').points.length === 2 && lines.find((l) => l.score === 'quiz').points.length === 1);
+  const ch = scoreChart(lines, fakePr.steps, 'Test');
+  check('the chart has a table beside it for screen readers', /role="img"/.test(ch) && /<table/.test(ch) && /<th scope="row">2\. LoRA<\/th><td>50<\/td><td>72<\/td>/.test(ch));
+  check('pipelines start only from this computer', read('src/lab-routes.js').indexOf("'/api/lab/pipeline/go'") > read('src/lab-routes.js').indexOf('can only be sta'));
+  check('the pipeline FAQ and glossary entry are there', /faq-lab-pipeline/.test(read('public/help-content.js')) && /<dt>Pipeline \(Lab\)<\/dt>/.test(read('public/help-content.js')));
+}
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

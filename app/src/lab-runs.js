@@ -77,11 +77,11 @@ export function checkStart(labRoot, stepId, inputs = []) {
 }
 
 // Start a run's record. state starts at 'smoke' when the step has a smoke test to run first, else 'running'.
-export function startRun(labRoot, { step, settings = {}, inputs = [], pipeline = '', bob = '', now = Date.now() }) {
+export function startRun(labRoot, { step, settings = {}, inputs = [], pipeline = '', pipelineStep = null, bob = '', now = Date.now() }) {
   const s = stepById(step); if (!s) throw new Error('There\'s no step by that name.');
   const id = `run-${new Date(now).toISOString().replace(/[-:]/g, '').replace(/\..*/, '')}-${crypto.randomBytes(3).toString('hex')}`;
   const rec = {
-    id, step, name: s.name, pipeline, bob, settings: dropSecrets(settings),
+    id, step, name: s.name, pipeline, pipelineStep: Number.isInteger(pipelineStep) ? pipelineStep : null, bob, settings: dropSecrets(settings),
     inputs: inputs.map((i) => ({ kind: i.kind, path: i.path, id: fs.existsSync(i.path || '') ? contentId(i.path) : null })),
     outputs: [], smoke: s.smoke && s.smoke.how !== 'todo' ? { how: s.smoke.how, ok: null } : null,
     state: s.smoke && s.smoke.how !== 'todo' ? 'smoke' : 'running', started: new Date(now).toISOString(), ended: null, scores: {}, cost: null, message: ''
