@@ -216,6 +216,28 @@ The same steps serve any target: facts, skills, tools, bias, refusals, ways of t
 
 `model-lab/clean-lessons.mjs --from <lesson sets> --out <new folder> --review model-lab/reviews/lessons-v4.json` writes a new version and only reads the old one. It drops lessons that call a tool their own tool list does not offer and repeated first prompts in the same thinking mode (the held-out copy is kept). It moves the lessons the hand review marks wrong to `rejected.jsonl` (the wrong side for `make-pairs.mjs`). It moves other models' answers (`--distill`, default `kimi`) to `distill/`. It also writes `targets-train.json` (chat, languages and formats at weight 0.5) and `targets-heal.json` (all at 1). v3 → v4: 9,059 → 8,992 lessons, 26 made-up tool calls, 33 repeats, 8 to the wrong side, Kimi traces to distill (5 held-out lessons with a bad call are kept and listed, so the test stays the same). Copies of the same lesson (a mix's repeats) are kept; `--files` and `--sets` pick files and sets, and each file keeps its own name.
 
+## Build 23 (14 November 2026, CPU self-test only, untested on a card): GPT-OSS in the Forge
+
+The owner asked for the GPT-OSS 120B → 38B REAP cut's adapter; there was none, because the Forge only knew Qwen. Now the same pod scripts take GPT-OSS (OpenAI's 20B and 120B and cuts of them). Nothing changes for a Qwen run.
+
+| Step | GPT-OSS | Where |
+| --- | --- | --- |
+| Which family | `config.json` `model_type: gpt_oss` → GPT-OSS; anything else stays Qwen | `pod/family.py` |
+| Teacher download | a non-Qwen teacher gets its own folder (`teachers/openai_gpt-oss-120b`), never mixed with the Qwen in `teacher/`; OpenAI's `original/` and `metal/` copies are skipped (about 65 GB) | `pod/run.sh` |
+| Lessons | rendered with the brain's own harmony template: parallel tool calls become call, answer, call, answer; thinking before a tool call in the last turn is kept (the stock template drops it); a lesson with no thinking asks for `Reasoning: low`. Answer tokens = everything after `<|start|>assistant` up to `<|end|>`, `<|call|>` or `<|return|>` | `pod/data.py` |
+| Teacher odds | the 120B in MXFP4 on the card (about 65 GB) when triton + `kernels` run it (Hopper or newer); otherwise unpacked to BF16 over card and RAM (slow, said in the log) | `pod/family.py`, `pod/teacher.py` |
+| Cut | by keep list, `{"layers": …}` or the Lab's `{"keep": …}` (keep-32-v2.json); MXFP4 blocks and scales, biases and router rows are sliced byte for byte | `pod/prune.py` |
+| Heal | the cut is unpacked to BF16 (MXFP4 can't be trained; the 38B is about 76 GB, so an H200). LoRA on attention, LoRA per expert in GPT-OSS's own layout (biases, interleaved gate/up, clamped SwiGLU), trainable router with its bias; grouped matmul when the rank is a multiple of 8 | `pod/lora.py`, `pod/heal.py` |
+| Count, rebuild | the router is `mlp.router`; REAP's mass switches itself off (counts only) | `pod/reap.py`, `pod/count.py`, `pod/rebuild.py` |
+| Export | saved as plain BF16 (the MXFP4 note leaves config.json), converted without `--no-mtp` (b12282 stops on it for GPT-OSS), quantized as the plan says (`MXFP4_MOE` for the 38B); brain card: cut from gpt-oss-120b by OpenAI, sizes from the config | `pod/export.py` |
+| Not yet | `grpo` (the tool judge reads Qwen calls only), `fold`, `surgery`, `merge`: each refuses or is skipped for GPT-OSS and the run carries on | |
+
+Two fixes that help Qwen too: a recompute under gradient checkpointing stops early by raising inside the forward, and the expert code used to catch that as a "grouped matmul failure" and switch to the slow loop mid-step (now re-raised); and a GPT-OSS run no longer builds or waits for Qwen's linear-attention kernels.
+
+`pod/selftest_gptoss.py` runs all of it on a made-up tiny GPT-OSS on the CPU with Bob's own `src/templates/gpt-oss.jinja` (a minute or two, nothing downloaded): run it on a new pod image before the first real use, beside `selftest_training.py`.
+
+The 38B heal plan is `plans/heal-gptoss-38b.json`: H200, the 120B scores the lessons plus 10M words of general text, the 38B is cut with keep-32-v2.json, healed with a LoRA (6 h cap), exported as MXFP4_MOE, nothing uploaded; caps 13 h / $55. It is not approved: it needs the owner's typed go. First minutes on the card: the log must say `GPT-OSS teacher: MXFP4 on this card` and the teacher pass must move; if not, stop and report.
+
 ## The surgery data rule (13 November 2026)
 
 The owner: "while doing the surgery, we may want to be careful with results we keep, at least for training data".

@@ -209,7 +209,9 @@ kernels() {
 LESSONS_ONLY=$(plan ".get('lessons_only','')")
 TG=$(plan ".get('teacher_gguf','')")
 BENCH_ONLY=$(plan ".get('benchmark_only','')")
-if [ -z "${FORGE_SETUP_ONLY:-}" ] && [ -z "$LESSONS_ONLY" ] && [ "$BENCH_ONLY" != "True" ] && ! grep -q "kernels done 0" $OUT/kernels.log 2>/dev/null; then ( kernels > $OUT/kernels.log 2>&1 ) & KERN=$!; else echo "kernels done 0 (not needed)" >> $OUT/kernels.log; KERN=""; fi
+# (14 Nov 2026: these kernels are for Qwen3.5/3.6's linear attention; a GPT-OSS run has none, so it does not build or wait for them)
+QWEN_TEACHER=$(plan ".get('teacher','')" | grep -q '^Qwen/' && echo 1 || true)
+if [ -z "${FORGE_SETUP_ONLY:-}" ] && [ -z "$LESSONS_ONLY" ] && [ "$BENCH_ONLY" != "True" ] && [ -n "$QWEN_TEACHER" ] && ! grep -q "kernels done 0" $OUT/kernels.log 2>/dev/null; then ( kernels > $OUT/kernels.log 2>&1 ) & KERN=$!; else echo "kernels done 0 (not needed)" >> $OUT/kernels.log; KERN=""; fi
 # wait for the kernels (up to 30 min); a failed build is reported and the run goes on without them (slower, not wrong)
 kernels_ready() {
   if [ -n "${KERN:-}" ] && kill -0 $KERN 2>/dev/null; then status setup "waiting for the fast kernels to finish building"; for i in $(seq 1 180); do kill -0 $KERN 2>/dev/null || break; sleep 10; done; fi
@@ -252,7 +254,7 @@ run_bench() {
             [ -f $S/bobs/$BN/bob-keep.json ] && [ ! -f "$KFP" ] && KFP=$S/bobs/$BN/bob-keep.json; [ -f $S/bobs/$BN/adapter.pt ] && [ ! -f "$ADP" ] && ADP=$S/bobs/$BN/adapter.pt
             { [ -f "$KFP" ] && [ -f "$ADP" ]; } || { echo "bench $BN: keep list or adapter missing (plan keep_file/adapter, or volume bobs/$BN); skipped"; continue; }
             status bench "$BN: rebuilding from the stock teacher, his keep list and his adapter"
-            python3 rebuild.py --teacher $S/teacher --keep-file "$KFP" --adapter "$ADP" --dst $W/bench/rebuilt-$BN --name $BN > $OUT/bench/$BN-rebuild.log 2>&1 || { echo "bench $BN: rebuild failed (see out/bench/$BN-rebuild.log)"; continue; }
+            python3 rebuild.py --teacher $TS --keep-file "$KFP" --adapter "$ADP" --dst $W/bench/rebuilt-$BN --name $BN > $OUT/bench/$BN-rebuild.log 2>&1 || { echo "bench $BN: rebuild failed (see out/bench/$BN-rebuild.log)"; continue; }
             mkdir -p $S/bobs/$BN && cp "$KFP" $S/bobs/$BN/bob-keep.json && cp "$ADP" $S/bobs/$BN/adapter.pt
             status export "$BN: making the GGUF files again"
             rm -rf "${OUT:?}"/"${BN:?}"; python3 export.py --model $W/bench/rebuilt-$BN --out $OUT/$BN --name "$BN" --nickname "$BNICK" --teacher "$TEACHER" --jobs "$(plan ".get('jobs','bob,deep,tinker,reviewer,office,ledger,scout')")" --llama $S/llama.cpp --quants $(plan ".get('quants','Q4_K_M')") --pending > $OUT/bench/$BN-export.log 2>&1 || { echo "bench $BN: export failed (see out/bench/$BN-export.log)"; continue; }
@@ -319,6 +321,10 @@ if [ "$(plan ".get('benchmark_only',False)")" = "True" ]; then
   run_done "benchmark finished: the reports are on the PC under out/bench"; exit 0
 fi
 TEACHER=$(plan "['teacher']")
+# 14 Nov 2026, GPT-OSS in the Forge: a teacher that is not a Qwen gets its own folder on the drive (teachers/<org>_<name>), so the
+# Qwen teacher already there is never mixed with it; OpenAI's repos also hold a second copy in their own format (original/, metal/)
+# that the Forge never reads, so it is not downloaded (saves about 65 GB on the 120B).
+case "$TEACHER" in Qwen/*) TS=$S/teacher; TEX=();; *) TS=$S/teachers/${TEACHER//\//_}; TEX=(--exclude "original/*" --exclude "metal/*");; esac
 TREV=$(plan ".get('teacher_revision','')"); REV=(); [ -n "$TREV" ] && REV=(--revision "$TREV")   # pin the teacher to one HF revision (the Lab sets it when the owner gives one)
 dl() { hf download "$@" >/dev/null 2>$OUT/hf-dl.log || { echo "download retry (plain)"; HF_HUB_ENABLE_HF_TRANSFER=0 hf download "$@" >/dev/null 2>>$OUT/hf-dl.log; }; }
 TGF=""
@@ -333,9 +339,9 @@ if [ -n "$TG" ]; then
   GENERAL_TOKENS=0
 else
 status download "teacher weights ($TEACHER${TREV:+ @ $TREV})"
-dl "$TEACHER" --local-dir $S/teacher "${REV[@]}" || die "teacher download (see out/hf-dl.log)"
-[ -f $S/teacher/config.json ] && ls $S/teacher/*.safetensors >/dev/null 2>&1 || die "teacher download incomplete"
-du -sh $S/teacher
+dl "$TEACHER" --local-dir $TS "${REV[@]}" "${TEX[@]}" || die "teacher download (see out/hf-dl.log)"
+[ -f $TS/config.json ] && ls $TS/*.safetensors >/dev/null 2>&1 || die "teacher download incomplete"
+du -sh $TS
 [ "$S" != "$W" ] && echo "volume: $(df -h $S | awk 'NR==2{print $4" free of "$2}') (a trained teacher needs about 70 GB more; the odds about 20 GB)"
 GENERAL_TOKENS=$(plan ".get('general_tokens',30000000)")
 fi
@@ -380,7 +386,7 @@ if { [ -n "$WL" ] || [ -f $IN/lessons-ready ]; } && [ ! -f $IN/lessons-merged ];
     kill $VL 2>/dev/null; sleep 3; pkill -9 -f "llama-server" 2>/dev/null; sleep 2
   elif [ ! -f $IN/lessons-ready ]; then
     status lessons "starting the full Qwen server for the lesson writer"
-    ( vllm serve $S/teacher --served-model-name teacher --port 8001 --api-key "$FORGE_TOKEN" --max-model-len $(wl "max(x.get('ctx',32768) for x in w)") \
+    ( vllm serve $TS --served-model-name teacher --port 8001 --api-key "$FORGE_TOKEN" --max-model-len $(wl "max(x.get('ctx',32768) for x in w)") \
         --gpu-memory-utilization 0.90 --max-num-seqs $(wl "max(x.get('seqs',32) for x in w)") --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3 \
         > $OUT/vllm.log 2>&1 ) &
     VL=$!
@@ -426,11 +432,19 @@ fi
 pip install -q "transformers==5.22.1" 2>&1 | tail -1
 python3 -c "import transformers, torch; from transformers import Qwen3_5MoeForConditionalGeneration; print('transformers', transformers.__version__, 'torch', torch.__version__, 'grouped_mm', hasattr(torch, '_grouped_mm'))" || die "transformers 5.22.1 install failed"
 cat $OUT/kernels.log 2>/dev/null | tail -2
+# GPT-OSS teacher (14 Nov 2026): MXFP4 experts run on the card only with triton + the kernels package (Hopper or newer); without
+# them family.py unpacks the teacher to BF16 across card and RAM, which works but is slow. The student is always unpacked to BF16.
+TFAM=$(python3 -c "import sys; sys.path.insert(0,'$POD'); import family; print(family.family('$TS'))" 2>/dev/null || echo qwen)
+if [ "$TFAM" = "gpt-oss" ]; then
+  pip install -q kernels 2>&1 | tail -1
+  python3 -c "import sys; sys.path.insert(0,'$POD'); import family; print('GPT-OSS teacher: MXFP4 on this card' if family.mxfp4_runs('cuda') else 'GPT-OSS teacher: no MXFP4 kernels here, it will be unpacked to BF16 (slow)')"
+  for k in grpo fold surgery merge; do [ -n "$(plan ".get('$k')")" ] && echo "plan.$k is not built for GPT-OSS yet: that step is skipped or refuses, and the run goes on without it"; done
+fi
 
 # --- which model is the teacher (build 17) ---
 # plan.teacher_model: a trained teacher saved on the volume by an earlier run (e.g. bobs/35Bob/model). plan.train_teacher: make one now.
 # The teacher's identity goes into the lesson-set key, so scores from the stock Qwen and from a trained one never mix.
-TEACHER_DIR=$S/teacher; TEACHER_ID=$TEACHER
+TEACHER_DIR=$TS; TEACHER_ID=$TEACHER
 TM=$(plan ".get('teacher_model','')")
 if [ -n "$TM" ]; then
   [ -f $S/$TM/config.json ] || die "teacher_model $TM is not on the volume"
@@ -441,7 +455,7 @@ MG=$(plan ".get('merge')")
 if [ -n "$MG" ]; then
   for i in $(seq 0 $(( $(plan "['merge'].__len__()") - 1 ))); do
     MN=$(plan "['merge'][$i]['name']"); MB=$(plan "['merge'][$i].get('base','teacher')"); MT=$(plan "['merge'][$i]['tuned']")
-    [ "$MB" = "teacher" ] && MB=$S/teacher || MB=$S/$MB; MT=$S/$MT
+    [ "$MB" = "teacher" ] && MB=$TS || MB=$S/$MB; MT=$S/$MT
     [ -f $MB/config.json ] && [ -f $MT/config.json ] || { echo "merge $MN: $MB or $MT is not on the volume, skipped"; continue; }
     status merge "$MN: blending $(plan "['merge'][$i].get('weight',0.7)") of $(basename $(dirname $MT)) with $(basename $MB) ($(plan "['merge'][$i].get('method','linear')"))"
     mkdir -p $OUT/$MN
@@ -469,7 +483,7 @@ if [ -n "$TT" ]; then
     status train "$TNAME is already on the volume: no training (train_teacher.redo to redo it)"
   else
     kernels_ready
-    TFROM=$(plan "['train_teacher'].get('from','teacher')"); [ "$TFROM" = "teacher" ] && TFROM=$S/teacher || TFROM=$S/$TFROM
+    TFROM=$(plan "['train_teacher'].get('from','teacher')"); [ "$TFROM" = "teacher" ] && TFROM=$TS || TFROM=$S/$TFROM
     [ -f $TFROM/config.json ] || die "train_teacher.from $TFROM is not on the volume"
     TARGS=$(python3 - <<'PY'
 import json,os; t=json.load(open(os.environ.get('FORGE_ROOT','/workspace')+'/in/plan.json'))['train_teacher']; pr=t.get('pref'); pd=os.environ.get('FORGE_ROOT','/workspace')+'/in/pref'
@@ -518,7 +532,7 @@ fi
 if [ "$(plan "['rungs'].__len__()")" = "0" ] && [ -n "$(plan ".get('skills')")" ]; then
   mkdir -p $OUT/counts
   status count "counting the experts the full Qwen uses for every skill (one model load)"
-  python3 countskills.py --model $S/teacher --lessons $IN --skills "$(plan "['skills']")" --out-dir $OUT/counts --prefix counts-teacher --pieces $(plan ".get('skill_pieces',300)") --cache $W/lessons-tok.pt --max-len $(plan ".get('max_len',8192)") $GEN $REAP || die "skill counts"
+  python3 countskills.py --model $TS --lessons $IN --skills "$(plan "['skills']")" --out-dir $OUT/counts --prefix counts-teacher --pieces $(plan ".get('skill_pieces',300)") --cache $W/lessons-tok.pt --max-len $(plan ".get('max_len',8192)") $GEN $REAP || die "skill counts"
   CARGS=$(python3 -c "import json,os; p=json.load(open('$IN/plan.json')); print(','.join(f'{k}=$OUT/counts/counts-teacher-{k}.json' for k in p['skills'] if os.path.exists(f'$OUT/counts/counts-teacher-{k}.json')))")
   status count "building the ladder table"
   python3 keep.py --counts "$CARGS" --report $OUT/counts/ladder.md --name teacher --cover $(plan ".get('cover',0.95)") --strong "$(plist ".get('strong',[])")" --strong-cover $(plan ".get('strong_cover',0.99)") --ladder $(plan ".get('ladder','240,224,208,192,176,160,144,128,112,96,80,64,48,32')") --by $SCORE || die "ladder"
@@ -578,7 +592,7 @@ if [ -n "$(plan ".get('rebuild')")" ]; then
     KFARG=(); [ -n "$KFS" ] && KFARG=(--keep-file "$KFP")
     status rebuild "$BN: rebuilding from the stock teacher${KFS:+, his keep list} and his adapter"
     rm -rf $W/rebuild/$BN $W/rebuild/$BN-cut
-    python3 rebuild.py --teacher $S/teacher "${KFARG[@]}" --adapter "$ADP" --dst $W/rebuild/$BN --name $BN > $OUT/rebuild/$BN-rebuild.log 2>&1 || { echo "rebuild $BN failed (see out/rebuild/$BN-rebuild.log)"; tail -3 $OUT/rebuild/$BN-rebuild.log; status rebuild "$BN: rebuild FAILED"; continue; }
+    python3 rebuild.py --teacher $TS "${KFARG[@]}" --adapter "$ADP" --dst $W/rebuild/$BN --name $BN > $OUT/rebuild/$BN-rebuild.log 2>&1 || { echo "rebuild $BN failed (see out/rebuild/$BN-rebuild.log)"; tail -3 $OUT/rebuild/$BN-rebuild.log; status rebuild "$BN: rebuild FAILED"; continue; }
     status export "$BN: making the GGUF files"
     WHAT=$(plan "['rebuild']['models'][$b].get('what','')"); WARG=(); [ -n "$WHAT" ] && WARG=(--what "$WHAT")
     rm -rf "${OUT:?}"/"${BN:?}"; python3 export.py --model $W/rebuild/$BN --out $OUT/$BN --name "$BN" --nickname "$BNICK" --teacher "$TEACHER" --jobs "$(plan ".get('jobs','bob,deep,tinker,reviewer,office,ledger,scout')")" --llama $S/llama.cpp --quants $(plan ".get('quants','Q4_K_M')") --pending "${WARG[@]}" > $OUT/rebuild/$BN-export.log 2>&1 || { echo "export $BN failed (see out/rebuild/$BN-export.log)"; tail -3 $OUT/rebuild/$BN-export.log; status export "$BN: export FAILED"; continue; }
@@ -636,7 +650,7 @@ PY
       if [ -f $S/stock/$STOCK-Q4_K_M.gguf ]; then echo "scan: stock $STOCK Q4_K_M already on the drive"; else
         status scan "making the stock $STOCK Q4_K_M from the teacher (for a fair comparison)"
         for i in $(seq 1 90); do [ -f $S/llama-ready ] || [ -f $S/llama-failed ] && break; sleep 20; done
-        if [ -f $S/llama-ready ]; then python3 export.py --model $S/teacher --out $S/stock --name "$STOCK" --teacher "$TEACHER" --llama $S/llama.cpp --quants Q4_K_M --what "The stock $STOCK, as released." > $OUT/fnri/stock.log 2>&1 || { echo "scan: stock GGUF failed (out/fnri/stock.log)"; tail -3 $OUT/fnri/stock.log; }
+        if [ -f $S/llama-ready ]; then python3 export.py --model $TS --out $S/stock --name "$STOCK" --teacher "$TEACHER" --llama $S/llama.cpp --quants Q4_K_M --what "The stock $STOCK, as released." > $OUT/fnri/stock.log 2>&1 || { echo "scan: stock GGUF failed (out/fnri/stock.log)"; tail -3 $OUT/fnri/stock.log; }
         else echo "scan: llama tools unavailable, no stock GGUF (out/llama-setup.log)"; fi
       fi
     fi
@@ -725,7 +739,7 @@ else
   fi
   if [ ! -f $TPT ]; then
     kernels_ready
-    status teacher "scoring every lesson with the full Qwen3.6"
+    status teacher "scoring every lesson with the full $( [ "${TFAM:-qwen}" = gpt-oss ] && echo "GPT-OSS teacher ($TEACHER)" || echo Qwen3.6)"
     python3 teacher.py --model $TEACHER_DIR --lessons $IN --out $TPT --top $(plan ".get('top',32)") \
       --max-len $(plan ".get('max_len',8192)") --cache $CACHE --hours $(plan ".get('teacher_hours',2.0)") $GEN || die "teacher pass"
   fi
@@ -813,7 +827,8 @@ PY
     else python3 prune.py --src $SRC --dst $W/cut-$NAME --counts $COUNTS --keep $KEEP --by $(cutby $COUNTS) --name $NAME || die "$NAME cut"; fi
     # Fold instead of drop (rung or plan "fold": true): blend each dropped expert into the kept expert most like it, in
     # place in the cut model, before the heal. Weighed by the skill counts of a coverage cut, else by the rung's counts.
-    if [ "$(plan "['rungs'][$i].get('fold',p.get('fold',False))")" = "True" ]; then
+    if [ "$(plan "['rungs'][$i].get('fold',p.get('fold',False))")" = "True" ] && [ "${TFAM:-qwen}" = gpt-oss ]; then echo "$NAME: fold is not built for GPT-OSS yet; the dropped experts are dropped"
+    elif [ "$(plan "['rungs'][$i].get('fold',p.get('fold',False))")" = "True" ]; then
       FOLDC="${CARGS:-}"; [ "$(plan "['rungs'][$i]['keep']")" = "cover" ] || FOLDC=""; [ -z "$FOLDC" ] && [ -f "$COUNTS" ] && FOLDC=$COUNTS
       status cut "$NAME: folding the dropped experts into the kept ones"
       python3 fold.py --src $SRC --cut $W/cut-$NAME --counts "$FOLDC" || die "$NAME fold"

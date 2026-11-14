@@ -43,6 +43,7 @@
     "test/run-lab-build-test.js",
     "test/run-lab-library-test.js",
     "test/run-lab-recipes-test.js",
+    "test/run-forge-gptoss-test.js",
     "test/run-lab-watch-test.js",
     "test/run-squeezed-brain-test.js",
     "test/run-gaming-card-test.js",
