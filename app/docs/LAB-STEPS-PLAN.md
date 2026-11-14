@@ -193,6 +193,31 @@ the brain got better on those lessons. A
 fine-tune of about 9B or less in 4-bit fits a 16 GB card at home; anything bigger rents a card. Our own runs stay on
 rentals.
 
+### Data refinery: data to its best state (pipeline)
+
+Quality first: fewer clean lessons beat many noisy ones. Every step runs alone or in this order, follows #228's
+rules (held-out items are never taught, only new look-alikes), and reports how many lessons it dropped, repaired or
+kept, and why.
+
+| Step | (i) Plain words |
+|---|---|
+| PII scrub | Removes names, paths and keys. |
+| Dedupe | Drops exact and near-copies (MinHash), keeping the best one. |
+| Contamination audit | Drops lessons too close to the held-out report card, and flags poisoned ones. |
+| Shape validation | Checks the format and every tool call against the tool's real shape. |
+| Execution check | Runs the code and tool calls in the sandbox; only what works passes. |
+| Teacher scoring | The teacher rates each lesson and saves its odds. |
+| Quality gate | Sends weak lessons to repair: unsure odds, odds that disagree with the answer, contradictions, rambling, wrong shape, or nothing to check it against. |
+| Repair | Doctors a weak lesson (up to 5 tries): reasoning between steps, a wrong tool swapped, missing steps filled. Then it's re-run and re-gated. |
+| Coverage check | Checks the balance: every tool at least 40 times, each style, and the share of multi-step jobs. |
+| Preference pairs | Pairs each repaired lesson with its original. |
+| Version | Saves the set with its hash, parent and change list. |
+
+Repair, not discard: a lesson the gate stops goes to the repair queue, not the bin. It goes back only if the fixed
+version passes the gate, and the original is kept only as the wrong half of a preference pair, never as a right
+example. Only lessons that can't be repaired are dropped (poisoned, or too close to the held-out report card), each
+with its reason logged. The report shows, per step: in, kept, repaired, paired, dropped, and the top reasons.
+
 ### The nightly learning loop (pipeline)
 
 Off by default. One saved pipeline that lets Bob learn from his own day, in two layers.
@@ -211,6 +236,7 @@ switches them on together and feeds them:
 | Collect | Takes the day's tool record. |
 | PII scrub | Removes names, paths and keys. |
 | Error-driven correction | Turns each failure into a corrected lesson (#228 format). New lessons only, never held-out ones. |
+| Data refinery | Runs the new lessons through the refinery above. |
 | Replay mix | Adds a slice of older lessons so other skills aren't forgotten. |
 | LoRA | Trains a small add-on on a rented card, after its smoke test. |
 | Held-out eval | Scores the add-on on the report card against the one in use. |
@@ -287,7 +313,7 @@ Each slice is one release, built through bob-wip, the builder and the PC check.
    a dry run against the fake engine, and its Help page.
 4. **Runs and comparison.** The Runs page, compare, charts, cost per run from the rental record, "run again".
 5. **Pipelines.** Save, pack rented steps into one plan, pick up where it stopped.
-6. **New methods.** Doctor lessons and odds sorting (#228), then the nightly learning loop, then HF staging, then
+6. **New methods.** The data refinery (with doctoring and odds sorting from #228), then the nightly learning loop, then HF staging, then
    patching, then SAE features.
    Each gets its own small design first.
 
