@@ -71,6 +71,8 @@ const HULL = { bg: '#1b1f22', panel: '#252a2e', card: '#31373c', you: '#4a4238',
 // to red with a little orange. The owner ("so bright", "the backgrounds could be a bit darker"): each lamp is the
 // same hue dimmed to one brightness (relative luminance .2, black text on it), in a near-black room, so the room is
 // lit by the cube when a brain is loaded and stays in shadow when not (looks.css, mind-cube.js --cube-light).
+// Strong greens and reds look brighter than they measure (the owner: "the green and red feel a bit more intense"), so
+// Thallium and Neon are also a quarter of the way to grey (in linear light, same brightness, same hue).
 // `spectral` is the full-strength colour, kept for the record and the app icon thread.
 function lamp(accent, extra = {}) {
   const panel = mix(accent, '#0c0c0c', 0.05);
@@ -83,8 +85,8 @@ function lamp(accent, extra = {}) {
 export const LAMPS = [
   { id: 'mercury', name: 'Mercury', spectral: '#8becff', glow: '#4b848f', what: 'Sky blue, the light of a mercury lamp. The one Bob starts with.' },
   { id: 'sodium', name: 'Sodium', spectral: '#ff8000', glow: '#c36000', what: 'Deep orange-yellow, the light of a sodium street lamp.', extra: { warn: '#e3c35a' } },
-  { id: 'thallium', name: 'Thallium', spectral: '#00ff00', glow: '#009000', what: 'Pure green, the light of a thallium lamp.' },
-  { id: 'neon', name: 'Neon', spectral: '#ff2e00', glow: '#ef2a00', what: 'Red with a touch of orange, the light of a neon sign.', extra: { bad: '#f07aa8' } }
+  { id: 'thallium', name: 'Thallium', spectral: '#00ff00', glow: '#3f8b3f', light: 0.72, what: 'Pure green, the light of a thallium lamp.' },
+  { id: 'neon', name: 'Neon', spectral: '#ff2e00', glow: '#d9493f', light: 0.72, what: 'Red with a touch of orange, the light of a neon sign.', extra: { bad: '#f07aa8' } }
 ];
 export const LAMP_IDS = LAMPS.map((l) => l.id);
 export const DEFAULT_LAMP = 'mercury';
@@ -110,7 +112,7 @@ export const PRESETS = [
   { id: 'hc-light', name: 'High Contrast Light', group: 'Access', what: 'Black on white, everything outlined.', colors: mh(HC.light), outlined: true },
   { id: 'drydock', name: 'Drydock', group: 'MouseWurX', what: 'Blueprint paper, plates and IBM Plex Mono, from the MouseWurX website.', ...wurx(WURX.light, false) },
   { id: 'drydock-night', name: 'Drydock Night', group: 'MouseWurX', what: 'The same blueprints at night.', ...wurx(WURX.dark, true) },
-  ...LAMPS.map((l) => ({ id: l.id, name: `${l.name} Lamp`, group: 'Lamps', what: l.what, colors: lamp(l.glow, l.extra), cube: l.glow }))
+  ...LAMPS.map((l) => ({ id: l.id, name: `${l.name} Lamp`, group: 'Lamps', what: l.what, colors: lamp(l.glow, l.extra), cube: l.light ? mix(l.glow, '#000000', l.light) : l.glow })) // `light`: the cube's light (glow and smoke) a little lower for green and red, which read brighter
 ];
 export const DEFAULT_THEME = 'moondust';
 
