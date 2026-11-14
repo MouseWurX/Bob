@@ -175,6 +175,12 @@ Public sets with a licence that allows training and changes. Each would be conve
 | Blender manual | CC BY-SA 4.0 (to confirm on the page) | the whole manual | Facts for the Blender track. The scripts are written fresh and run headless. |
 | Unreal Python API docs | Epic's own terms, not an open licence | the API reference | Facts only, never copied. Scripts are written fresh and run in the editor. |
 
+**Start order (the owner, 14 Nov).** We start with our own doctored sets (sections 3 to 3i) and the Blender and Unreal
+tutorial sets (5b). The open sets in 3h come later. Even then they are a pool to pick from, never trained whole: a big
+one like Open-SWE-Traces (1.1 million runs, 98 GB) is filtered on a rental or in the cloud, keeping only passing runs
+that aren't too long or repeated. Failed runs are seeds for guided lessons. Then about 2,000 to 3,000 a round, so an
+outside set is never more than about 1 in 5 of a round.
+
 Benchmarks such as BFCL and tau-bench are for testing only, never lessons. They join the never-taught list.
 
 ## 3i. When Bob didn't even try a tool
@@ -314,7 +320,7 @@ next round's lessons.
 
 | Round | New lessons from | Then |
 |---|---|---|
-| 1 | v5 failures, Kimi converted, course-style coding set A, Riker quiz and interview look-alikes, Bobert look-alikes, search set A, Blender and Unreal set A (the basics: objects, materials, export; actors and assets), general slice 1 | Benchmark. What the trained brain still gets wrong is the source for round 2. |
+| 1 | (first: our doctored sets and the tutorial sets) v5 failures, Kimi converted, course-style coding set A, Riker quiz and interview look-alikes, Bobert look-alikes, search set A, Blender and Unreal set A (the basics: objects, materials, export; actors and assets), general slice 1 | Benchmark. What the trained brain still gets wrong is the source for round 2. |
 | 2 | Round 1's self-play failures (new requests again, guided where never solved), course-style coding set B, search set B, Blender and Unreal set B (rigs, modifiers, Geometry Nodes; levels, Blueprints from Python, batch imports), general slice 2 | Benchmark. Leftovers go to round 3. |
 | 3 | Round 2's self-play failures, course-style coding set C, the hardest long jobs (4 to 6 calls), search set C, Blender and Unreal set C (whole jobs: make, check, export to Unreal, place in a level), general slice 3 | Benchmark, then blend. |
 
