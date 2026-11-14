@@ -790,7 +790,7 @@ export function createCellar({ popOut = null } = {}) {
     if (!b) return;
     if (b.tagName === 'BUTTON' && b.closest('summary')) e.preventDefault(); // 1.5.117: Check for updates on a panel's line
     try {
-      if ((tab === 'style' || (tab === 'settings' && (b.dataset.motion || b.dataset.nowneed))) && mode === 'shop' && await stylePage.onClick(b, settings)) return;
+      if ((tab === 'style' || (tab === 'settings' && (b.dataset.motion || b.dataset.nowneed || b.dataset.lamp))) && mode === 'shop' && await stylePage.onClick(b, settings)) return;
       if (b.dataset.sampleEngine) { sampler.play(b); return; }
       if ('talkkeysave' in b.dataset || 'talkkeyforget' in b.dataset) { // 🗣 Talk with Bob's xAI key, kept in the locked store
         const box = b.closest('.talk-cloud');

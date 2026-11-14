@@ -156,6 +156,12 @@ body.look-terminal .themes button[aria-checked="true"], body.look-terminal .ttab
 .look-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--s2); margin: var(--s2) 0; }
 .look-pick button { display: grid; gap: var(--s2); text-align: left; padding: var(--s2); }
 .look-pick button[aria-checked="true"] { border-color: var(--accent); box-shadow: var(--shadow); }
+.lamp-row { margin-top: var(--s3); }
+.lamp-pick { display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s2) 0; }
+.lamp-pick button { display: inline-flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s3); }
+.lamp-pick button i { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.lamp-pick button[aria-checked="true"] { border-color: var(--accent); box-shadow: var(--shadow); }
+body.still .lamp-pick button i { box-shadow: none !important; }
 .look-pick small { color: var(--muted); font-size: var(--t-xs); }
 .look-mini { display: grid; gap: 4px; height: 64px; padding: 6px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
 .look-mini i { display: block; height: 10px; }

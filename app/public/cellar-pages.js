@@ -1,7 +1,7 @@
 // Settings: the Everyday, Gaming, Other apps, Rented brains, Online, Bob-Net, Look, Jobs and memory pages. Split out of cellar.js.
 import { keep, tip, noteOrTip } from './tips.js';
 import { esc } from './util.js';
-import { findTheme, DEFAULT_THEME } from './themes.js';
+import { findTheme, DEFAULT_THEME, LAMPS, lampId } from './themes.js';
 import { LANGS, pickLang } from './i18n.js';
 import { dayWords, rentPicks, visibleModels } from './catalogue.js';
 import { appsDoorHtml } from './apps-door.js';
@@ -224,6 +224,9 @@ export function createSettingsParts(now) {
       <p class="muted" id="textsize-hint">The chat, the message box and Settings, bigger or smaller. 100% to start with. Saved for this Bob, on every window.</p></div>
       ${sswitch('readableFont', settings.readableFont === true, 'Readable font', 'More space between letters, words and lines, in the chat and Settings. Good for tired eyes and dyslexia.')}
       <div><strong>Now running</strong><div class="ttabs" role="radiogroup" aria-label="Open Now running when a task needs me">${opt('0', 'Leave Now running as it is', st.openNowOnNeed !== true)}${opt('1', 'Open Now running when a task needs me', st.openNowOnNeed === true)}</div></div>
+      <div class="lamp-row"><strong>Lamp</strong> ${tip('Four colours for the Lamplight and Terminal looks, each as close to a gas lamp\'s real light as a screen can show. It sets the colours and my app icon. More on the Style page.', 'Lamp')}
+        <div class="lamp-pick" role="radiogroup" aria-label="Lamp">${LAMPS.map((l) => `<button type="button" role="radio" aria-checked="${st.theme === l.id}" data-lamp="${l.id}" title="${esc(l.what)}"><i style="background:${l.glow};box-shadow:0 0 10px ${l.glow}" aria-hidden="true"></i>${esc(l.name)}</button>`).join('')}</div>
+        <p class="muted">Your app icon: ${esc(LAMPS.find((l) => l.id === lampId(st)).name)}.</p></div>
       <div><strong>Your own theme</strong><p class="muted">Make or edit a theme on the <button type="button" class="link" data-tab="style">🎨 Style</button> page (Make your own theme).</p></div>`;
   }
   // Settings, Jobs (src/job-helps.js): how Bob works through a job. Eleven switches, all off unless you turn them on.

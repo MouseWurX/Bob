@@ -64,7 +64,7 @@ check('Voice details has Hey Bob and Read aloud, working the same switches as th
 }
 check('engine choice, engine downloads, fit to memory, speculative decoding and flags are in Engines', /function enginesHtml[\s\S]*engineGearHtml\(\)[\s\S]*labEngineHtml\(\)[\s\S]*Engine downloads[\s\S]*speedHtml\(\)/.test(ui) && /data-engine-now/.test(ui) && !/name="brainsEngine"/.test(ui) && /data-fit/.test(ui) && /Speculative decoding/.test(ui) && /Engine flags/.test(ui));
 check('long help folds behind More', /const more = \(text\) => `<details class="more"><summary>More<\/summary>/.test(ui) && (ui.match(/\$\{more\(/g) || []).length >= 2);
-check('animations and Now running buttons work on the Settings page too', /tab === 'settings' && \(b\.dataset\.motion \|\| b\.dataset\.nowneed\)/.test(ui));
+check('animations, Now running and lamp buttons work on the Settings page too', /tab === 'settings' && \(b\.dataset\.motion \|\| b\.dataset\.nowneed \|\| b\.dataset\.lamp\)/.test(ui));
 
 // --- voice samples
 check('every Kokoro voice ships a sample (the same ~5 s line for each)', BUNDLED_KOKORO.length === KOKORO_VOICES.length && BUNDLED_KOKORO.length === 22 && SAMPLE_LINE.split(' ').length <= 16);

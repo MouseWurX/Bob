@@ -500,6 +500,7 @@ export function cleanStyle(st) {
   if (['pixel', 'cube'].includes(st.avatar)) out.avatar = st.avatar;
   if (st.avatarKept === true) out.avatarKept = true; // 1.5.211: Pixel Bob picked on purpose (public/themes.js pixelKept) // 1.5.209 Bob's look: the pixel Bob (to begin with) or the fNRI cube
   if (['classic', 'lamplight', 'terminal'].includes(st.look)) out.look = st.look; // 1.5.210: Style > Look (mirrors public/themes.js LOOK_IDS)
+  if (['mercury', 'sodium', 'thallium', 'neon'].includes(st.lamp)) out.lamp = st.lamp; // Nov 14 2026: the lamp colour (mirrors public/themes.js LAMP_IDS)
   if (Array.isArray(st.custom)) {
     out.custom = st.custom.slice(0, 24).filter((t) => t && typeof t === 'object' && THEME_ID.test(String(t.id)) && String(t.id).startsWith('my-')).map((t) => {
       const colors = {};
