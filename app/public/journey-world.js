@@ -51,6 +51,8 @@ export const TILES = {
   'o': { name: 'floorboards', walk: true, wild: 0 }, 'B': { name: 'a timber wall', walk: false }, 'b': { name: 'a table', walk: false }, 'c': { name: 'a stool', walk: true, wild: 0 },
   'k': { name: 'the bar', walk: false }, 'p': { name: 'the fireplace', walk: false }, 'q': { name: 'a barrel', walk: false }, 'n': { name: 'the notice board', walk: false },
   'u': { name: 'a rug', walk: true, wild: 0 }, 'l': { name: 'a bed', walk: false }, 'j': { name: 'the stage', walk: true, wild: 0 },
+  // Journey v1.3: the back door to the guest house, and the trophy case in it.
+  '6': { name: 'the back door', walk: true, wild: 0 }, '7': { name: 'the trophy case', walk: false },
   // Journey v1.2: the cloud cities (only from the sky) and the merfolk cities (only from under the sea), and inside them.
   'S': { name: 'a cloud city', walk: false }, 'A': { name: 'a city under the sea', walk: false },
   'X': { name: 'an orc village', walk: true, wild: 0 }, 'L': { name: 'a kobold lair', walk: true, wild: 0 }, 'N': { name: 'a dwarf hold', walk: true, wild: 0 }, 'E': { name: 'an elf tree village', walk: true, wild: 0 },
@@ -164,8 +166,9 @@ export function makeInn(day = 'today') {
   // Tables with stools round them.
   const tables = [[9, 10], [16, 10], [23, 10], [9, 16], [16, 16], [23, 16], [12, 22], [20, 22], [27, 22]];
   for (const [x, y] of tables) { g[y][x] = 'b'; g[y][x + 1] = 'b'; for (const [sx, sy] of [[x - 1, y], [x + 2, y], [x, y - 1], [x + 1, y + 1]]) if (g[sy][sx] === 'o') g[sy][sx] = 'c'; }
-  // The front door and the notice board beside it.
+  // The front door and the notice board beside it; the back door (Journey v1.3) out to the guest house.
   g[h - 1][21] = 'e'; g[h - 1][22] = 'e';
+  g[0][31] = '6';
   g[h - 1][25] = 'n';
   const people = [
     { id: 'bob', name: 'Bob', role: 'keeper', x: 12, y: 3, facing: 'down', look: 'innkeeper', fixed: true },
@@ -175,7 +178,25 @@ export function makeInn(day = 'today') {
   const seats = [];
   for (let y = 1; y < h - 1; y++) for (let x = 1; x < 34; x++) if (g[y][x] === 'c') seats.push([x, y]);
   for (let i = 0; i < 7 && seats.length; i++) { const [x, y] = seats.splice(Math.floor(rnd() * seats.length), 1)[0]; people.push(person(rnd, 'folk', x, y, { id: `patron${i}`, wander: i % 3 === 0 })); }
-  return { id: 'inn', kind: 'inn', name: "Bob's Inn", w, h, rows: toRows(g), chests: [], people, doors: [{ x: 21, y: h - 1, to: 'world' }, { x: 22, y: h - 1, to: 'world' }], start: { x: 21, y: h - 3 }, board: { x: 25, y: h - 1 }, zone: 0 };
+  return { id: 'inn', kind: 'inn', name: "Bob's Inn", w, h, rows: toRows(g), chests: [], people, doors: [{ x: 21, y: h - 1, to: 'world' }, { x: 22, y: h - 1, to: 'world' }, { x: 31, y: 0, to: 'guest', tx: GUEST_DOOR.x, ty: GUEST_DOOR.y - 1 }], start: { x: 21, y: h - 3 }, board: { x: 25, y: h - 1 }, zone: 0 };
+}
+// ---------- The guest house (Journey v1.3) ----------
+// A little timber house behind the inn, where you wake when you open Journey. The trophy case along the north wall
+// holds a trophy from every story you've played; beds, a rug and a table; the door at the bottom goes into the inn,
+// by the fire.
+export const GUEST_W = 18, GUEST_H = 12, GUEST_DOOR = { x: 9, y: 11 };
+export function makeGuest() {
+  const w = GUEST_W, h = GUEST_H, g = grid(w, h, 'o');
+  for (let x = 0; x < w; x++) { g[0][x] = 'B'; g[h - 1][x] = 'B'; }
+  for (let y = 0; y < h; y++) { g[y][0] = 'B'; g[y][w - 1] = 'B'; }
+  for (let x = 3; x <= 14; x++) g[1][x] = '7';
+  for (const y of [4, 6, 8]) { g[y][1] = 'l'; g[y][2] = 'l'; }
+  for (let y = 5; y <= 8; y++) for (let x = 7; x <= 10; x++) g[y][x] = 'u';
+  g[1][15] = 'p'; g[1][16] = 'p'; g[1][1] = 'q'; g[1][2] = 'q'; g[10][16] = 'q';
+  g[5][14] = 'b'; g[5][15] = 'b'; g[4][14] = 'c'; g[6][15] = 'c';
+  g[GUEST_DOOR.y][GUEST_DOOR.x] = 'e';
+  const people = [{ id: 'patches-guest', name: 'Pickles', role: 'cat', x: 15, y: 9, facing: 'left', parts: { body: 'beast', skin: '4', face: '5' }, wander: true, fixed: true }];
+  return { id: 'guest', kind: 'guest', name: 'The guest house', w, h, rows: toRows(g), chests: [], people, doors: [{ ...GUEST_DOOR, to: 'inn', tx: 31, ty: 1 }], start: { x: 9, y: 3 }, zone: 0 };
 }
 
 // ---------- The land ----------
@@ -514,7 +535,8 @@ function worldOf({ seed, size, w, h, rows, sites, people, roads, home, layout = 
       if (id === 'world') return worldMap;
       if (cache.has(id)) { const m = cache.get(id); cache.delete(id); cache.set(id, m); return m; }
       let m = null;
-      if (id === 'inn') { const s = sites.find((x) => x.id === 'inn') || sites.find((x) => x.id === home.id); m = makeInn(`${seed}`); m.doors.forEach((d) => { d.tx = s.exit.x; d.ty = s.exit.y; }); m.zone = 1; }
+      if (id === 'inn') { const s = sites.find((x) => x.id === 'inn') || sites.find((x) => x.id === home.id); m = makeInn(`${seed}`); m.doors.forEach((d) => { if (d.to === 'world') { d.tx = s.exit.x; d.ty = s.exit.y; } }); m.zone = 1; }
+      else if (id === 'guest') m = makeGuest();
       else { const s = sites.find((x) => x.id === id); if (!s) return null; m = makeSite(world, s); }
       cache.set(id, m);
       // People in a place move about while you're there; a place you left long ago is built fresh (the same) next time.
@@ -528,8 +550,9 @@ function worldOf({ seed, size, w, h, rows, sites, people, roads, home, layout = 
 // Bob's Inn on its own, before any adventure is rolled: the front door goes nowhere yet.
 export function innOnly() {
   const inn = makeInn('today');
-  inn.doors = inn.doors.map((d) => ({ ...d, to: 'world' })); // there's no land yet: walk() says the door is stuck
-  return { seed: '', size: '', tiles: TILES, w: 0, h: 0, sites: [], roads: [], home: '', start: inn.start, lobby: true, map: (id) => (id === 'inn' ? inn : null) };
+  const guest = makeGuest();
+  // There's no land yet: walk() says the front door is stuck. The back door to the guest house works.
+  return { seed: '', size: '', tiles: TILES, w: 0, h: 0, sites: [], roads: [], home: '', start: inn.start, lobby: true, map: (id) => (id === 'inn' ? inn : id === 'guest' ? guest : null) };
 }
 
 // The cheapest walk from a to b over the ground (no sea, no mountains); rivers cost a lot, roads very little.

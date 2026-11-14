@@ -244,6 +244,9 @@ export function mountJourney(root, deps) {
       case 'u': fill('#8a2a3a'); rect(1, 0, 1, 16, '#ffd166'); rect(14, 0, 1, 16, '#ffd166'); specks('#a83a4a', 8, 61); break;
       case 'Y': stone('#9a8a7a', '#7a6a5a'); rect(3, 1, 10, 14, '#8a2a3a'); rect(3, 1, 10, 3, '#ffd166'); rect(5, 5, 6, 8, '#a83a4a'); break;
       case 'P': stone('#9a8a7a', '#7a6a5a'); rect(4, 0, 8, 16, '#c8c0b0'); rect(5, 0, 1, 16, '#e8e0d0'); rect(3, 0, 10, 2, '#a8a090'); rect(3, 14, 10, 2, '#a8a090'); break;
+      // Journey v1.3: the inn's back door (an arrow up, to the guest house) and the trophy case.
+      case '6': boards('#9a6a3a', '#7a5028'); rect(0, 0, 16, 3, '#3a2410'); rect(3, 0, 10, 14, '#6b4423'); rect(4, 1, 8, 12, '#8a5a2b'); px(10, 7, '#ffd166'); g.fillStyle = '#ffd166'; g.beginPath(); g.moveTo(5, 13); g.lineTo(8, 9); g.lineTo(11, 13); g.fill(); break;
+      case '7': fill('#5a3a1e'); rect(0, 0, 16, 2, '#3a2410'); rect(1, 2, 14, 12, '#2a2030'); rect(1, 2, 14, 12, 'rgba(160,200,255,0.18)'); rect(1, 8, 14, 1, '#8a5a2b'); rect(0, 14, 16, 2, '#6b4423'); px(2, 3, '#ffffff'); px(3, 4, '#ffffff'); break;
       case 'e': fill(frame ? '#c8a66a' : '#c8a66a'); rect(0, 12, 16, 4, '#a98a52'); g.fillStyle = '#ffd166'; g.beginPath(); g.moveTo(5, 5); g.lineTo(8, 9); g.lineTo(11, 5); g.fill(); break;
       // Underground
       case '_': fill('#4a3a2e'); specks('#3a2c22', 12, 13); specks('#5c4a3a', 6, 17); break;
@@ -430,6 +433,57 @@ export function mountJourney(root, deps) {
       if (!still() && hash(x, y, Math.floor(t / 600)) < 0.2) { ctx.fillStyle = '#ffffff'; ctx.fillRect(sx + 9, sy - 2, 1, 5); ctx.fillRect(sx + 7, sy, 5, 1); }
     }
   }
+  // ---------- The trophy case (Journey v1.3) ----------
+  // Trophies from every story, kept by the computer (or this browser, with no computer to keep them).
+  let trophies = [];
+  const TROPHY_KEY = 'bob.journey.trophies';
+  async function loadTrophies() {
+    try { const r = deps.api ? await deps.api('/api/adventure/journey/trophies') : null; if (Array.isArray(r?.trophies)) { trophies = r.trophies; return; } } catch {}
+    try { trophies = R.keepTrophies(JSON.parse(store?.getItem(TROPHY_KEY) || '[]'), []); } catch { trophies = []; }
+  }
+  async function keepNew(fresh) {
+    trophies = R.keepTrophies(trophies, fresh);
+    try { const r = deps.api ? await deps.api('/api/adventure/journey/trophies', { trophies: fresh }) : null; if (Array.isArray(r?.trophies)) { trophies = r.trophies; return; } } catch {}
+    try { store?.setItem(TROPHY_KEY, JSON.stringify(trophies)); } catch {}
+  }
+  // A new trophy is announced, and kept straight away.
+  function award() {
+    if (!j || lobby) return;
+    const fresh = R.newTrophies(world, j); if (!fresh.length) return;
+    keepNew(fresh);
+    sfx('quest');
+    const words = `🏆 ${fresh.length > 1 ? 'New trophies' : 'A new trophy'} for the guest house: ${fresh.map((t) => R.restyle(t.name, t.style)).join(', ')}.`;
+    if (mode === 'walk' && !talk) talkTo([words]); else { msg = words; sayLive(words); }
+  }
+  const TROPHY_ICON = {
+    cup: ['.aaaaa.', 'aabaaaa', '.aaaaa.', '..aaa..', '...a...', '..aaa..'],
+    gem: ['..aaa..', '.abaaa.', 'aaaaaaa', '.aaaaa.', '..aaa..', '...a...'],
+    crown: ['a..a..a', 'aa.a.aa', 'aaaaaaa', 'abaaaba', 'aaaaaaa', '.......'],
+    skull: ['.aaaaa.', 'aaaaaaa', 'a.aaa.a', 'aaaaaaa', '.a.a.a.', '.......'],
+    lantern: ['...a...', '..aaa..', '.abbba.', '.abbba.', '.abbba.', '..aaa..'],
+    map: ['aaaaaaa', 'abaaaba', 'aaabaaa', 'abaaaba', 'aaaaaaa', '.......'],
+    hammer: ['aaaaaaa', 'aaaaaaa', '...b...', '...b...', '...b...', '...b...'],
+    shield: ['aaaaaaa', 'abaaaba', 'aaabaaa', '.aaaaa.', '..aaa..', '...a...'],
+    star: ['...a...', '..aaa..', 'aaaaaaa', '.aaaaa.', '.aa.aa.', 'a.....a']
+  };
+  const TROPHY_COL = { fantasy: ['#ffd166', '#ffffff'], scifi: ['#7ae0ff', '#ffffff'], cyber: ['#ff3ad8', '#7affff'], steam: ['#c8963a', '#ffe0a0'] };
+  const SHAPE_EMOJI = { cup: '🏆', gem: '💎', crown: '👑', skull: '💀', lantern: '🏮', map: '🗺', hammer: '🔨', shield: '🛡', star: '⭐' };
+  function drawTrophy(c, t, x, y, k = 1) {
+    const [a, b] = TROPHY_COL[t.style] || TROPHY_COL.fantasy;
+    (TROPHY_ICON[t.shape] || TROPHY_ICON.cup).forEach((row, ry) => [...row].forEach((ch, rx) => { if (ch === '.') return; c.fillStyle = ch === 'b' ? b : a; c.fillRect(x + rx * k, y + ry * k, k, k); }));
+  }
+  // On the case: two to a pane, the newest last. The case holds the first 24 to see; all of them are in the list.
+  function caseTrophies(map, cx, cy) {
+    let i = 0;
+    for (let x = 0; x < map.w && i < trophies.length; x++) if (map.rows[1][x] === '7') for (const [ox, oy] of [[1, 2], [8, 9]]) { const t = trophies[i++]; if (!t) break; drawTrophy(ctx, t, x * TILE - cx + ox, TILE - cy + (oy === 2 ? 1 : 8) , 1); }
+  }
+  function caseHtml() {
+    if (!trophies.length) return `<p><strong>The trophy case</strong></p><p class="muted">Empty, for now. Beat a keeper or a boss, light the lanterns, craft your way to level 10, or cross every region, and a trophy comes home here. Trophies stay here from every story you play.</p><button type="button" data-shop="leave">Leave</button>`;
+    const stories = [...new Set(trophies.map((t) => t.story))];
+    return `<p><strong>The trophy case</strong> <span class="muted">${trophies.length} ${trophies.length === 1 ? 'trophy' : 'trophies'} from ${stories.length} ${stories.length === 1 ? 'story' : 'stories'}</span></p>
+      ${stories.map((st) => `<p><strong>${esc(st.replace(/^the /, 'The '))}</strong></p><ul class="jy-bag">${trophies.filter((t) => t.story === st).map((t) => `<li>${SHAPE_EMOJI[t.shape] || '🏆'} <strong>${esc(R.restyle(t.name, t.style))}</strong> <span class="muted">${esc(R.restyle(t.what, t.style))}${t.when ? ` · ${esc(t.when)}` : ''}</span></li>`).join('')}</ul>`).join('')}
+      <button type="button" data-shop="leave">Leave</button>`;
+  }
   // A mountain peak, drawn once per look: rock with a lit side, a dark side and snow on top, on nothing.
   function peakCanvas(v, snowy) {
     const style = j?.style || 'fantasy', key = `peak${v}${snowy ? 's' : ''}|${style}`;
@@ -533,6 +587,7 @@ export function mountJourney(root, deps) {
   }
   async function save(quiet) {
     if (!j || lobby) return;
+    award();
     try { await deps.api('/api/adventure/journey', { journey: j }); saved = j; savedRaw = null; if (!quiet) say('Saved. The land will wait for you.'); }
     catch (e) { say(`I couldn't save: ${e.message}`); }
   }
@@ -545,7 +600,10 @@ export function mountJourney(root, deps) {
   function enterLobby() {
     world = Wm.innOnly();
     j = R.newJourney({ seed: '', party: lobbyParty() }, world);
+    // Journey v1.3: you wake in the guest house behind the inn, by the trophy case.
+    const guest = world.map('guest'); if (guest) Object.assign(j, { at: 'guest', x: guest.start.x, y: guest.start.y, facing: 'up' });
     lobby = true; trail = []; mode = 'walk';
+    loadTrophies().then(() => { if (!closed) drawPanel(); });
     drawPanel();
   }
   // The big lands take a few seconds to make, so the screen says so first.
@@ -657,7 +715,7 @@ export function mountJourney(root, deps) {
   function rise() { if (mode !== 'walk' || anim || !j || lobby) return; height(R.rise(world, j)); }
   function sink() { if (mode !== 'walk' || anim || !j || lobby) return; height(R.sink(world, j)); }
   function rideToggle() { if (mode !== 'walk' || anim || !j || lobby) return; const r = R.ride(world, j); sayLive(r.text); sfx(r.ok ? 'ride' : 'bump'); if (r.ok) { trail = []; announce(); save(true); } }
-  const BOB_LINES = { cave: 'Bob: Dark, damp, and smells of something. My three least favourite things, in order.', dungeon: 'Bob: Old stones and older bones. I would like it on record that I said this was a bad idea.', castle: 'Bob: A castle! Wipe your feet. And don\'t pick a fight with the knights. Please.', hermit: 'Bob: Someone actually lives out here? On purpose?' };
+  const BOB_LINES = { cave: 'Bob: Dark, damp, and smells of something. My three least favourite things, in order.', dungeon: 'Bob: Old stones and older bones. I would like it on record that I said this was a bad idea.', castle: 'Bob: A castle! Wipe your feet. And don\'t pick a fight with the knights. Please.', hermit: 'Bob: Someone actually lives out here? On purpose?', guest: 'Bob: The guest house. Your trophies live in the case by the wall. Do dust them now and then.' };
   function arrive(id) {
     const map = world.map(id);
     if (!map || j.talked.includes(id)) return;
@@ -687,6 +745,7 @@ export function mountJourney(root, deps) {
     const [dx, dy] = R.STEP[j.facing];
     if (!t) {
       if (R.mapOf(world, j).rows[j.y + dy]?.[j.x + dx] === 'n') { shop = { kind: 'new' }; mode = 'shop'; drawPanel(); return; }
+      if (R.mapOf(world, j).rows[j.y + dy]?.[j.x + dx] === '7') { shop = { kind: 'trophies' }; mode = 'shop'; sfx('chest'); drawPanel(); return; }
       // Facing water on the land, the button fishes.
       // Journey v1.3: a gathering spot in front of you or underfoot (herbs, timber, ore, crystals).
       const node = !lobby && R.gatherSpot ? R.gatherSpot(world, j) : null;
@@ -1032,6 +1091,7 @@ export function mountJourney(root, deps) {
     // Chimney smoke, steam, blinking aerials and flickering neon over the houses; lamps and crates in town.
     for (const [ch, x, y, sx, sy] of props) houseLife(ch, x, y, sx, sy, t);
     if (map.kind !== 'world' && !deep) townProps(map, x0, y0, x0 + VIEW_W + more * 2, y0 + VIEW_H + moreY * 2, cx, cy, t);
+    if (map.kind === 'guest') caseTrophies(map, cx, cy);
     if (!deep && !lobby && onGroundNow()) nodeMarks(map, x0, y0, x0 + VIEW_W + more * 2, y0 + VIEW_H + moreY * 2, cx, cy, t);
     for (const c of map.chests) drawChest(c.x * TILE - cx, c.y * TILE - cy, j.opened.includes(`${map.id}:${c.id}`), c.loot !== 'gift' && /deep|hoard/.test(c.loot));
     // Everyone who stands on the map, back to front so the lower ones overlap the higher.
@@ -1601,6 +1661,7 @@ export function mountJourney(root, deps) {
   }
   function shopHtml() {
     if (shop.kind === 'new') return newHtml();
+    if (shop.kind === 'trophies') return caseHtml();
     if (shop.kind === 'docks') {
       const trips = R.docksFrom(world, j);
       return `<p><strong>${esc(shop.who)}</strong> · You have ${esc(R.fmtCoin(j.coin))}.</p>${trips.length ? `<ul class="jy-bag">${trips.map((d) => `<li><button type="button" data-sail="${esc(d.id)}" ${j.coin < d.fare ? 'disabled' : ''}>To ${esc(d.name)} by ${esc(R.BOATS[d.boat].name)} · ${esc(R.fmtCoin(d.fare, true))}</button> <span class="muted">${d.d} steps ${R.direction(world.sites.find((x) => x.id === j.at) || d, world.sites.find((x) => x.id === d.id) || d)}</span></li>`).join('')}</ul>` : '<p class="muted">"I only sail to docks you\'ve found on foot. Walk the coast; when you\'ve seen another dock, I can take you."</p>'}<button type="button" data-shop="leave">Leave</button>`;
@@ -1730,7 +1791,7 @@ export function mountJourney(root, deps) {
     if (k && j) { const m = j.party[menu.who || 0]; if (R.equip(j, m.id, k.dataset.kit, k.value)) { lookCache.clear(); drawPanel(); save(true); } }
   });
   // In the inn before an adventure, the party you pick walks round with you straight away.
-  function enterLobbyKeepPlace() { const at = { x: j.x, y: j.y, facing: j.facing }; j = R.newJourney({ seed: '', party: lobbyParty() }, world); Object.assign(j, at); trail = []; }
+  function enterLobbyKeepPlace() { const at = { at: j.at, x: j.x, y: j.y, facing: j.facing }; j = R.newJourney({ seed: '', party: lobbyParty() }, world); Object.assign(j, at); trail = []; }
   function toggleMenu() {
     if (!j || mode === 'battle') return;
     if (mode === 'talk') return;
@@ -1791,7 +1852,7 @@ export function mountJourney(root, deps) {
   // Browsers keep sound silent until the first tap or key press; any press wakes it.
   root.addEventListener('pointerdown', () => snd.wake?.(), { capture: true });
   enterLobby();
-  talkTo(['Bob\'s Inn. A fire, a bar, a cat, and Bob behind it.', 'Walk about with the arrow keys. When you\'re ready, the buttons along the bottom roll a New adventure or Resume your saved one.']);
+  talkTo(['You wake in the guest house behind Bob\'s Inn. The trophy case along the wall keeps a trophy from every story you\'ve played.', 'Walk about with the arrow keys; the door at the bottom goes into the inn. When you\'re ready, the buttons along the bottom roll a New adventure or Resume your saved one.']);
   loadSave();
   frame();
   return { stop, save, get journey() { return j; }, get world() { return world; }, get mode() { return mode; }, get lobby() { return lobby; }, startFight, walk: tryWalk, act, fight, rollNew, resume, rise, sink, ride: rideToggle };

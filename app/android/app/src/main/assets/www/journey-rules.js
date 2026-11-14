@@ -666,7 +666,7 @@ function newJourney({ seed = String(Date.now()), size = 'medium', party = [], st
     v: SAVE_VERSION, seed: String(seed).slice(0, 40), size, at: 'inn', x: inn?.start.x ?? 21, y: inn?.start.y ?? 29, facing: 'up',
     party: p, bag: { tonic: 3, water: 1 }, owned, coin: 500, steps: 0, danger: 0, next: 14, opened: [], beaten: [], talked: [], felled: [], wanted: {}, fines: 0, battles: 0, won: false,
     style: STYLE_IDS.includes(style) ? style : 'fantasy', layout: layout === 1 ? 1 : LAYOUT, alt: 'ground', riding: false, quests: {}, found: [], seen: [], tamed: 0,
-    mats: {}, gathered: {}, craft: { xp: 0, level: 1 }, home: 'inn', bags: ['pouch'], bagGear: 'pouch', regions: [], met: [], lore: [], banter: []
+    mats: {}, gathered: {}, craft: { xp: 0, level: 1 }, home: 'inn', bags: ['pouch'], bagGear: 'pouch', regions: [], met: [], lore: [], banter: [], trophies: []
   };
 }
 // Cleans a save from disk (or from the page) into a journey this file can play. Unknown things are dropped.
@@ -702,7 +702,7 @@ function cleanJourney(s, makeWorld) {
   j.home = typeof s.home === 'string' && world?.map(s.home) ? s.home : 'inn';
   j.bags = ['pouch', ...new Set((Array.isArray(s.bags) ? s.bags : []).filter((b) => BAGS[b] && b !== 'pouch'))];
   j.bagGear = j.bags.includes(s.bagGear) ? s.bagGear : 'pouch';
-  j.regions = strs(s.regions, 64).filter((v) => /^r\d+$/.test(v)); j.met = strs(s.met, 40); j.lore = strs(s.lore, 2000); j.banter = strs(s.banter, 20).filter((v) => BANTER[v]);
+  j.regions = strs(s.regions, 64).filter((v) => /^r\d+$/.test(v)); j.met = strs(s.met, 40); j.lore = strs(s.lore, 2000); j.banter = strs(s.banter, 20).filter((v) => BANTER[v]); j.trophies = strs(s.trophies, 60);
   // Crafting (Journey v1.3): materials, what's been picked lately, and the crafting level.
   for (const [k, n] of Object.entries(s.mats || {})) if (MATERIALS[k] && Number(n) > 0) j.mats[k] = Math.min(MAT_MAX, Math.floor(Number(n)));
   for (const [k, n] of Object.entries(s.gathered || {})) if (typeof k === 'string' && k.length < 60 && Number.isFinite(Number(n))) j.gathered[k] = Math.floor(Number(n));
@@ -2053,6 +2053,57 @@ function banterDue(world, j, at) {
   j.banter.push(due);
   return { id: due, ...BANTER[due] };
 }
+// ---------- Trophies and the guest house (Journey v1.3) ----------
+// Big moments in a story give a trophy. Trophies are kept across every story you play, in the trophy case in the
+// guest house behind Bob's Inn (the computer keeps the list; see src/adventure-journey.js). A trophy keeps the
+// style and the story it came from, so a cyberpunk trophy stays cyberpunk.
+const TROPHY_SHAPES = ['cup', 'gem', 'crown', 'skull', 'lantern', 'map', 'hammer', 'shield', 'star'];
+const TROPHY_TOKENS = { goblin: 'tusk', spider: 'fang', dragon: 'scale', cultist: 'charm', wolf: 'pelt', troll: 'club', skeleton: 'crown', ghost: 'bell', orc: 'banner', bandit: 'mask', rat: 'crown', slime: 'jar', kobold: 'crown', griffin: 'feather', serpent: 'pearl' };
+// The story a journey tells, by its castle: "the Wickhaven tale".
+function storyName(world, j) {
+  const castle = world.sites?.find((s) => s.kind === 'castle');
+  return castle ? `the ${castle.name.replace(/^Castle /, '')} tale` : `the tale of ${j.seed}`;
+}
+// The trophies a journey has earned so far, each { id, name, what, shape }. ids are fixed, so each is given once.
+function trophiesEarned(world, j) {
+  const story = storyName(world, j), out = [];
+  const add = (key, name, what, shape) => out.push({ id: `${j.seed}:${key}`, name, what: `${what} From ${story}.`, shape });
+  for (const g of j.beaten || []) {
+    const b = GUARDIANS[g]; if (!b) continue;
+    const who = b.name.split(',')[0];
+    if (LANTERN_KEEPERS.includes(g)) add(g, `Lantern stone of ${who}`, `Taken back from ${who}.`, 'gem');
+    else add(g, `${who}'s ${TROPHY_TOKENS[b.base] || 'token'}`, `Beaten: ${b.name}.`, b.base === 'skeleton' || b.base === 'ghost' ? 'skull' : 'cup');
+  }
+  if (j.won) add('won', `The lanterns of ${story.replace(/^the /, '').replace(/ tale$/, '')}`, 'All three lanterns lit again. The story, told.', 'lantern');
+  if ((j.craft?.level || 1) >= 10) add('craft10', 'Master crafter\'s hammer', 'Crafting level 10.', 'hammer');
+  if (j.regions?.length && j.regions.length >= REGIONS_FOR_MAP(world)) add('regions', 'The well-worn map', 'Every region crossed.', 'map');
+  const jobs = Object.values(j.quests || {}).filter((v) => v === 'done').length;
+  if (jobs >= 5) add('jobs5', 'Friend of the villages', 'Five small jobs done.', 'shield');
+  if ((j.tamed || 0) >= 5) add('tamed5', 'Beast friend\'s collar', 'Five animals tamed.', 'star');
+  return out;
+}
+const REGIONS_FOR_MAP = (world) => { try { return regionsOf(world).list.length; } catch { return Infinity; } };
+// New trophies since last time: marks them given on the journey (j.trophies holds the ids) and returns them,
+// ready to keep, with the style and story on each.
+function newTrophies(world, j) {
+  j.trophies = j.trophies || [];
+  const fresh = trophiesEarned(world, j).filter((t) => !j.trophies.includes(t.id));
+  for (const t of fresh) j.trophies.push(t.id);
+  return fresh.map((t) => ({ ...t, style: j.style || 'fantasy', story: storyName(world, j), when: new Date().toISOString().slice(0, 10) }));
+}
+// A trophy from disk or the page, cleaned; null if it isn't one.
+function cleanTrophy(t) {
+  if (!t || typeof t !== 'object' || typeof t.id !== 'string' || typeof t.name !== 'string') return null;
+  const s = (v, n) => String(v || '').replace(/[<>]/g, '').slice(0, n);
+  return { id: s(t.id, 80), name: s(t.name, 80), what: s(t.what, 200), shape: TROPHY_SHAPES.includes(t.shape) ? t.shape : 'cup', style: STYLE_IDS.includes(t.style) ? t.style : 'fantasy', story: s(t.story, 80), when: /^\d{4}-\d\d-\d\d$/.test(t.when) ? t.when : '' };
+}
+const MAX_TROPHIES = 500;
+// Adds trophies to a kept list: new ids only, oldest dropped past the cap.
+function keepTrophies(list, more) {
+  const out = (Array.isArray(list) ? list : []).map(cleanTrophy).filter(Boolean);
+  for (const t of (Array.isArray(more) ? more : []).map(cleanTrophy).filter(Boolean)) if (!out.some((x) => x.id === t.id)) out.push(t);
+  return out.slice(-MAX_TROPHIES);
+}
 // Text on the screen, in the journey's style. Plurals follow along (swords -> sabres).
 function restyle(text, style) {
   const st = STYLES[style]; if (!st || !st.words.length || !text) return text;
@@ -2064,5 +2115,5 @@ function restyle(text, style) {
 const craftFor = (style, kind) => STYLES[style]?.craft?.[kind] || null;
 const boatArt = (style, boat) => STYLES[style]?.craft?.boats?.[boat] || boat;
 
-globalThis.BobJourneyRules = { SAVE_VERSION, STATS, STAT_NAMES, STAT_CAP, COIN, COIN_ORDER, coinParts, fmtCoin, RACES, RACE_IDS, CLASSES, CLASS_IDS, SECOND_CLASS_LEVEL, WEAPONS, lookKit, ARMOURS, SHIELDS, AFFIXES, splitKit, kitKind, kitBase, kitStats, kitName, kitWords, ITEMS, FOODS, SCROLLS, KIT_PRICES, kitPrice, wares, SKILLS, COMBOS, TRIOS, ALL_SKILLS, PURE_CASTER, isPureCaster, treeOf, comboFor, trioFor, knownSkills, canLearn, learn, canAddClass, addClass, FOES, GUARDIANS, LANTERN_KEEPERS, ZONE_FOES, LAND_FOES, LAND_BEASTS, HILL_BEASTS, SEA_FOES, SKY_FOES, NPC_ROLES, PEACEFUL, seeded, member, PET_MAX, PET_NAMES, petStats, petOf, mountOf, kindOfPet, leaderMount, canFly, canSwim, setActive, release, renamePet, tameChance, BAG_BASE, bagCount, BAGS, isBag, bagOf, wearBag, bagSize, bagRoom, addItem, passivesOf, statOf, refresh, attackOf, guardOf, magicOf, speedOf, accuracyOf, evasionOf, critOf, hitChance, costOf, xpFor, STYLE_IDS, SIZE_IDS, LAYOUT, layoutOf, newJourney, cleanJourney, STEP, mapOf, visitingNow, peopleOn, thingAt, passable, canStand, walk, tick, zoneAt, encounter, rise, sink, ride, seeSites, BOATS, boatFor, fareFor, docksFrom, sailTo, FOE_HP, foe, startBattle, playRound, dropsOf, gainKit, drinkOn, fieldSkills, castField, levelUp, TRAINABLE, trainPrice, canTrain, train, hermitTeach, attackPerson, fineFor, payFine, isWanted, wakeAtInn, INN_PRICE, rest, priceOf, TRADER_PRICE, buy, sell, chestLoot, openChest, equip, FOLK_LINES, ROLE_LINES, questLine, elderLine, direction, KIN_LINES, ROAD_LINES, animalLine, questTalk, findLost, fishAt, STYLES, styleNames, MATERIALS, MAT_MAX, REGROW, nodeAt, craftXpFor, craftLevelOf, gatherSpot, matList, gather, RECIPES, isTown, usePortal, recipeName, atBench, canCraft, upgradable, craft, NARRATORS, narrator, STORY_KINDS, LOCAL_KINDS, isStoryTown, regionsOf, regionAt, landSpot, enterRegion, townNarration, localLore, nextSteps, talkChoices, sayTo, BANTER, banterDue, restyle, craftFor, boatArt };
+globalThis.BobJourneyRules = { SAVE_VERSION, STATS, STAT_NAMES, STAT_CAP, COIN, COIN_ORDER, coinParts, fmtCoin, RACES, RACE_IDS, CLASSES, CLASS_IDS, SECOND_CLASS_LEVEL, WEAPONS, lookKit, ARMOURS, SHIELDS, AFFIXES, splitKit, kitKind, kitBase, kitStats, kitName, kitWords, ITEMS, FOODS, SCROLLS, KIT_PRICES, kitPrice, wares, SKILLS, COMBOS, TRIOS, ALL_SKILLS, PURE_CASTER, isPureCaster, treeOf, comboFor, trioFor, knownSkills, canLearn, learn, canAddClass, addClass, FOES, GUARDIANS, LANTERN_KEEPERS, ZONE_FOES, LAND_FOES, LAND_BEASTS, HILL_BEASTS, SEA_FOES, SKY_FOES, NPC_ROLES, PEACEFUL, seeded, member, PET_MAX, PET_NAMES, petStats, petOf, mountOf, kindOfPet, leaderMount, canFly, canSwim, setActive, release, renamePet, tameChance, BAG_BASE, bagCount, BAGS, isBag, bagOf, wearBag, bagSize, bagRoom, addItem, passivesOf, statOf, refresh, attackOf, guardOf, magicOf, speedOf, accuracyOf, evasionOf, critOf, hitChance, costOf, xpFor, STYLE_IDS, SIZE_IDS, LAYOUT, layoutOf, newJourney, cleanJourney, STEP, mapOf, visitingNow, peopleOn, thingAt, passable, canStand, walk, tick, zoneAt, encounter, rise, sink, ride, seeSites, BOATS, boatFor, fareFor, docksFrom, sailTo, FOE_HP, foe, startBattle, playRound, dropsOf, gainKit, drinkOn, fieldSkills, castField, levelUp, TRAINABLE, trainPrice, canTrain, train, hermitTeach, attackPerson, fineFor, payFine, isWanted, wakeAtInn, INN_PRICE, rest, priceOf, TRADER_PRICE, buy, sell, chestLoot, openChest, equip, FOLK_LINES, ROLE_LINES, questLine, elderLine, direction, KIN_LINES, ROAD_LINES, animalLine, questTalk, findLost, fishAt, STYLES, styleNames, MATERIALS, MAT_MAX, REGROW, nodeAt, craftXpFor, craftLevelOf, gatherSpot, matList, gather, RECIPES, isTown, usePortal, recipeName, atBench, canCraft, upgradable, craft, NARRATORS, narrator, STORY_KINDS, LOCAL_KINDS, isStoryTown, regionsOf, regionAt, landSpot, enterRegion, townNarration, localLore, nextSteps, talkChoices, sayTo, BANTER, banterDue, TROPHY_SHAPES, storyName, trophiesEarned, newTrophies, cleanTrophy, MAX_TROPHIES, keepTrophies, restyle, craftFor, boatArt };
 })();

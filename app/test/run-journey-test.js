@@ -141,7 +141,7 @@ const nextTo = (set, x, y) => set.has(`${x},${y}`) || [[1, 0], [-1, 0], [0, 1], 
   check('Bob\'s Inn is 44 by 32: a bar with Bob behind it, a fire, tables, a stage, beds, a notice board and a door', inn.w === 44 && inn.h === 32 && inn.rows.length === 32 && inn.rows.every((r) => r.length === 44) && ['k', 'p', 'b', 'j', 'l', 'n', 'e', 'q'].every((c) => inn.rows.some((r) => r.includes(c))) && inn.people.some((p) => p.id === 'bob' && p.role === 'keeper') && inn.people.some((p) => p.role === 'cat'));
   const ir = reach(inn, inn.start);
   check('...you can walk round the whole inn: everyone can be reached', inn.people.every((p) => nextTo(ir, p.x, p.y)));
-  check('Bob\'s Inn stands on the land near home, and its door leads out to it', world.sites.some((s) => s.id === 'inn' && s.kind === 'bobsinn' && m.rows[s.y][s.x] === 'I') && inn.doors.every((d) => d.to === 'world' && Number.isInteger(d.tx)));
+  check('Bob\'s Inn stands on the land near home, and its door leads out to it', world.sites.some((s) => s.id === 'inn' && s.kind === 'bobsinn' && m.rows[s.y][s.x] === 'I') && inn.doors.filter((d) => d.to !== 'guest').every((d) => d.to === 'world' && Number.isInteger(d.tx)));
   const lobby = W.innOnly();
   check('before an adventure is rolled, the inn stands alone and its door goes nowhere yet', lobby.map('inn') && !lobby.map('world'));
   const hut = world.map(world.sites.find((s) => s.kind === 'hermit').id);
@@ -430,6 +430,15 @@ const P = (o) => ({ id: o.id || o.name.toLowerCase(), who: 'friend', ...o });
     await call('POST', '/api/adventure/journey/delete', {});
     await call('GET', '/api/adventure/journey');
     check('the route deletes it', sent[3][1].journey === null);
+    // The trophy case (Journey v1.3): its own file, kept across stories, never emptied by a new adventure.
+    const t1 = { id: 's1:boss1', name: 'Lantern stone of Grubnick', what: 'From the Wickhaven tale.', shape: 'gem', style: 'cyber', story: 'the Wickhaven tale', when: '2026-11-14' };
+    await call('POST', '/api/adventure/journey/trophies', { trophies: [t1, { id: 's1:boss1', name: 'again' }, { nope: 1 }, { ...t1, id: 's2:won', name: '<b>x</b>', shape: 'rocket' }] });
+    await call('GET', '/api/adventure/journey/trophies');
+    const kept = sent[5][1].trophies;
+    check('the trophy case keeps each trophy once, cleaned, in its own file', kept.length === 2 && kept[0].name === 'Lantern stone of Grubnick' && kept[0].style === 'cyber' && !/[<>]/.test(kept[1].name) && kept[1].shape === 'cup' && fs.existsSync(path.join(tmp, 'adventures', 'journey-trophies.json')));
+    await call('POST', '/api/adventure/journey/delete', {});
+    await call('GET', '/api/adventure/journey/trophies');
+    check('...and deleting the journey leaves the trophies alone', sent[7][1].trophies.length === 2);
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 }
 
@@ -722,6 +731,34 @@ const P = (o) => ({ id: o.id || o.name.toLowerCase(), who: 'friend', ...o });
   check('a save keeps the regions crossed, lore heard and talks had', back.regions.join() === j.regions.join() && back.lore.includes(village.id) && back.banter.join() === 'firsttown' && back.met.includes('ruler'));
   const play6 = read('public/journey-play.js');
   check('the screen: a Story tab, choices you can pick with the arrows, names on the land', /\['story', '📜 Story'\]/.test(play6) && /function pickChoice/.test(play6) && /data-choice/.test(play6) && /R\.isStoryTown\(s\)/.test(play6));
+}
+
+// ---------- The guest house and trophies (Journey v1.3) ----------
+{
+  const guest = world.map('guest'), inn = world.map('inn');
+  check('a guest house behind the inn, with a trophy case along the wall', guest?.kind === 'guest' && guest.rows[1].includes('7777') && guest.doors[0].to === 'inn');
+  check('the inn has a back door into it, and the front door still goes out to the land', inn.doors.some((d) => d.to === 'guest' && inn.rows[d.y][d.x] === '6') && inn.doors.filter((d) => d.to === 'world').every((d) => d.tx !== undefined));
+  const j = R.newJourney({ seed: 'g-seed', party: [P({ name: 'Wren', cls: 'fighter', who: 'you' })] }, world);
+  Object.assign(j, { at: 'inn', x: 31, y: 1 });
+  const r1 = R.walk(world, j, 'up');
+  check('through the back door into the guest house', r1.door === 'guest' && j.at === 'guest' && R.mapOf(world, j).rows[j.y][j.x] === 'o');
+  Object.assign(j, { x: 9, y: 10 });
+  const r2 = R.walk(world, j, 'down');
+  check('...and back into the inn, by the fire', r2.door === 'inn' && j.at === 'inn' && j.x === 31 && j.y === 1);
+  const lob = W.innOnly();
+  check('the lobby (no land yet) has the guest house too', lob.map('guest')?.kind === 'guest' && lob.map('inn').doors.some((d) => d.to === 'guest'));
+  check('a save in the guest house loads back there', R.cleanJourney({ ...JSON.parse(JSON.stringify(j)), at: 'guest', x: 9, y: 3 }, () => world).at === 'guest');
+  check('nothing earned, no trophies', R.newTrophies(world, j).length === 0);
+  j.beaten = ['boss1', 'gorrak']; j.style = 'steam';
+  const got = R.newTrophies(world, j);
+  check('beating a keeper or a boss earns a trophy, with the story and style on it', got.length === 2 && got[0].shape === 'gem' && got[0].style === 'steam' && got[0].story === R.storyName(world, j) && /^Lantern stone of Grubnick$/.test(got[0].name) && /banner$/.test(got[1].name));
+  check('...each only once', R.newTrophies(world, j).length === 0 && j.trophies.length === 2);
+  j.won = true; j.craft = { level: 10, xp: 1e6 }; j.regions = R.regionsOf(world).list.map((r) => r.id);
+  check('lighting the lanterns, crafting level 10 and every region crossed each earn one', R.newTrophies(world, j).map((t) => t.shape).sort().join() === 'hammer,lantern,map');
+  check('the story is named for its castle', /^the .+ tale$/.test(R.storyName(world, j)));
+  check('a save remembers which trophies were given', R.cleanJourney(JSON.parse(JSON.stringify(j)), () => world).trophies.length === 5);
+  const play7 = read('public/journey-play.js');
+  check('the screen: you wake in the guest house, and the trophy case opens with Enter', /at: 'guest'/.test(play7) && /=== '7'\) \{ shop = \{ kind: 'trophies' \}/.test(play7) && /function caseHtml/.test(play7) && /\/api\/adventure\/journey\/trophies/.test(play7));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
