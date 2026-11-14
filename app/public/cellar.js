@@ -592,14 +592,11 @@ export function createCellar({ popOut = null } = {}) {
       <p class="muted">Downloads carry on while you finish the other pages, or with this window closed.</p></section>`);
     else if (step === 'users') body = page('Users', 'Share me with others in the house. Everyone keeps their own things.', `
       <ul class="packlist wantlist">${wantRowHtml(s, esc, 'profilesOn')}</ul>
-      <p class="muted">Switch user is in my menu: press the cube. Add people, and a passcode if they want one, in Settings.</p>
-      <div class="row"><button type="button" data-wantjump="adv-daily">Add people in Settings</button></div>`);
+      ${s.profilesOn === true ? '<div class="everyday-box wz-people"><h3>People</h3><div class="people-box" data-setup="1"></div></div>' : '<p class="muted">Tick it to add, rename and remove people here.</p>'}`);
     else if (step === 'privacy') body = page('Privacy', 'I run here, on this replicant matrix. Nothing goes online unless you start a download or switch on something that needs it, like web search.', `
       <ul class="packlist wantlist"><li><label class="switch"><input type="checkbox" data-wharness="amnesiaOffer" ${wHarness?.amnesiaOffer === true ? 'checked' : ''}><span><strong>Offer Amnesia mode</strong><br><span class="muted">Adds 🫥 Amnesia beside Web search. Turn it off and I forget that stretch: chats, notes, memory and Topics.</span> <span class="want-said muted" aria-live="polite"></span></span></label></li></ul>
       <p class="muted">Off until you tick it. The same switch is in Settings, How Bob works, Chat extras.</p>
-      <h3>Passcode lock</h3>
-      <p class="muted">Ask for a passcode when I open, and lock your chats. Optional.</p>
-      <div class="row"><button type="button" data-wantjump="ev-lock">Set up a passcode lock</button></div>`);
+      <p class="muted">Passcodes are up to each person, later, in Settings. This setup never asks for one or changes one.</p>`);
     else if (step === 'helpers') body = page('Helpers', '', wantsHtml(s, esc, { full: jumpTo === 'wants', leave: WELCOME_OWN_KEYS }));
     else {
       const on = WANTS.filter((w) => wantOn(s, w.key)).map((w) => w.label);
@@ -1513,7 +1510,7 @@ export function createCellar({ popOut = null } = {}) {
       }
       else if (el.dataset.want) { // wants.js: "Do you want me to:" on the Welcome, the same switches as in Settings
         const k = el.dataset.want, said = el.closest('label')?.querySelector('.want-said');
-        try { const r = wantSaved(settings, k, await api('/api/settings', wantPatch(k, el.checked))); el.checked = r.on; if (said) said.textContent = r.say; if (k === 'smartNotes') { const q = el.closest('.wants')?.querySelector('[data-want="quickNotes"]'); if (q) q.checked = settings.quickNotes === true; } }
+        try { const r = wantSaved(settings, k, await api('/api/settings', wantPatch(k, el.checked))); el.checked = r.on; if (said) said.textContent = r.say; if (k === 'smartNotes') { const q = el.closest('.wants')?.querySelector('[data-want="quickNotes"]'); if (q) q.checked = settings.quickNotes === true; } if (k === 'profilesOn' && mode === 'welcome') draw(); /* Welcome, Users: the people list shows once it's on */ }
         catch (err) { el.checked = false; if (said) said.textContent = err.message; }
       }
       else if ('wpick' in el.dataset) { const { rows } = welcomeRows(); wPicks = readyToggle(rows, wPicks, el.dataset.wpick, el.checked); draw(); }

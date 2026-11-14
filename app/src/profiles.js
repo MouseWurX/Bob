@@ -69,7 +69,7 @@ export class Profiles {
   people() { return profilesOn(this.cfg) ? listOf(this.cfg).map((p) => ({ id: p.id, name: p.name, passcode: keyed(p) })) : []; }
   view() {
     const cur = this.current();
-    return { on: this.cfg.profilesOn === true, ownerName: String(this.cfg.userName || '').slice(0, 30) || 'Owner', lockOn: lockOn(this.cfg), ownerLocked: ownerLocked(this.cfg), list: listOf(this.cfg).map((p) => ({ id: p.id, name: p.name, passcode: keyed(p) })), current: cur, currentPasscode: keyed(listOf(this.cfg).find((p) => p.id === cur)), currentName: cur === MAIN ? '' : cur === GUEST ? 'Guest' : (listOf(this.cfg).find((p) => p.id === cur)?.name || ''), guest: cur === GUEST, max: MAX_PROFILES, minLength: MIN_LEN };
+    return { on: this.cfg.profilesOn === true, ownerName: String(this.cfg.userName || '').slice(0, 30) || 'Owner', lockOn: lockOn(this.cfg), ownerLocked: ownerLocked(this.cfg), list: listOf(this.cfg).map((p) => ({ id: p.id, name: p.name, passcode: keyed(p) })), current: cur, currentPasscode: keyed(listOf(this.cfg).find((p) => p.id === cur)), currentCodeAsked: listOf(this.cfg).find((p) => p.id === cur)?.codeAsked === true, currentName: cur === MAIN ? '' : cur === GUEST ? 'Guest' : (listOf(this.cfg).find((p) => p.id === cur)?.name || ''), guest: cur === GUEST, max: MAX_PROFILES, minLength: MIN_LEN };
   }
 
   add(name, code) {
@@ -87,6 +87,33 @@ export class Profiles {
     fs.mkdirSync(path.join(profileDir(this.cfg, id), 'sessions'), { recursive: true });
     saveList(this.cfg, [...list, p]);
     this.log('settings', `users: added ${n}${c ? ', with a passcode' : ', no passcode'}`);
+    return { view: this.view() };
+  }
+
+  // Nov 14 (the owner): a person picks their own passcode after their own first time in, if they want one. Bob asks
+  // once, in the chat; either answer is remembered here, so the question never comes back (and the first-time setup
+  // never asks at all).
+  codeAsked() {
+    const cur = this.current();
+    if (cur === MAIN || cur === GUEST) return { error: 'Only a person who is in can answer that.' };
+    const list = listOf(this.cfg);
+    if (!list.some((p) => p.id === cur)) return { error: 'That person isn\'t on the list.' };
+    saveList(this.cfg, list.map((x) => (x.id === cur ? { ...x, codeAsked: true } : x)));
+    return { view: this.view() };
+  }
+
+  // A new name for a person. Their chats, memory and passcode stay as they are. The owner only.
+  rename(id, name) {
+    if (this.current() !== MAIN) return { error: 'Only the owner can rename a person.' };
+    const list = listOf(this.cfg);
+    const p = list.find((x) => x.id === id);
+    if (!p) return { error: 'That person isn\'t on the list.' };
+    const n = cleanName(name);
+    if (!n) return { error: 'Give the person a name.' };
+    if (list.some((x) => x.id !== id && x.name.toLowerCase() === n.toLowerCase())) return { error: 'There\'s already someone with that name.' };
+    const old = p.name;
+    saveList(this.cfg, list.map((x) => (x.id === id ? { ...x, name: n } : x)));
+    this.log('settings', `users: renamed ${old} to ${n}`);
     return { view: this.view() };
   }
 

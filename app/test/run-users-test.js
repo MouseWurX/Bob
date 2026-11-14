@@ -44,6 +44,29 @@ const brainOf = (cfg) => ({ sessionDir: path.join(cfg.dataDir, 'sessions'), sess
   const mia = v.list[0];
   check('a person can be added without a passcode', v.list.length === 1 && mia.passcode === false && !JSON.parse(fs.readFileSync(cfg.configFile, 'utf8')).profiles.list[0].wrapped);
   check('a short passcode is still refused', Boolean(p.add('Kim', 'ab').error));
+  { // Nov 14: rename (the Welcome's Users page and Settings), owner only, names stay unique
+    const jo = p.add('Jo', '').view.list.find((x) => x.name === 'Jo').id;
+    const r = p.rename(jo, '  Joanne ');
+    check('rename: a person gets a new name, the same id', !r.error && r.view.list.find((x) => x.id === jo)?.name === 'Joanne');
+    check('rename: no empty names and no two people with one name', Boolean(p.rename(jo, '  ').error) && Boolean(p.rename(jo, 'mia').error) && Boolean(p.rename('nobody', 'X').error));
+    p.remove(jo);
+    check('rename: the people list has Rename and Remove for the owner, neither for a user who is in', /data-personren="a1" data-name="Ann">Rename<\/button> <button type="button" class="mini" data-persondel="a1">Remove/.test(peopleHtml({ list: [{ id: 'a1', name: 'Ann' }], current: 'main' })) && !/data-personren|data-persondel/.test(peopleHtml({ list: [{ id: 'a1', name: 'Ann' }], current: 'a1' })));
+    { // Nov 14: a person's own passcode is offered once, after their own first time in; "No passcode" is a saved answer
+      const { shouldOfferOwnCode } = await import('../public/everyday.js');
+      const ann = p.add('Ann', '').view.list.find((x) => x.name === 'Ann').id;
+      check('own passcode: never offered to the owner', !shouldOfferOwnCode(p.view()) && Boolean(p.codeAsked().error));
+      p.open(ann, '');
+      check('own passcode: offered on their own first time in', shouldOfferOwnCode(p.view()));
+      check('own passcode: either answer is remembered, so it never comes back', !p.codeAsked().error && !shouldOfferOwnCode(p.view()) && p.view().currentCodeAsked === true);
+      check('own passcode: not offered to someone who already has one, or to Guest, or with Users off', !shouldOfferOwnCode({ on: true, current: 'x', currentPasscode: true }) && !shouldOfferOwnCode({ on: true, current: 'guest', guest: true }) && !shouldOfferOwnCode({ on: false, current: 'x' }));
+      p.useMain();
+      p.remove(ann);
+      const appSrc = read('public/app.js');
+      check('own passcode: the chat offers Set a passcode or No passcode, and both save the answer', appSrc.includes('if (shouldOfferOwnCode(st.profiles)) offerOwnCode(st.profiles);') && /data-c="set">Set a passcode<\/button><button type="button" data-c="no">No passcode<\/button>/.test(appSrc) && /el\.remove\(\);\n    await post\('\/api\/everyday\/profiles', \{ codeAsked: true \}\)/.test(appSrc));
+      check('own passcode: the route takes it', read('src/everyday-routes.js').includes('b.codeAsked === true ? profiles.codeAsked()'));
+    }
+    check('rename: the route takes it', read('src/everyday-routes.js').includes("typeof b.rename === 'string' ? profiles.rename(b.rename, b.name)"));
+  }
   check('the lock screen lets a person without a passcode in with the box empty', !lockPage({ people: p.people() }).includes(' required') && lockPage({ people: p.people() }).includes('(no passcode)') && lockPage({ people: [{ id: 'a', name: 'A', passcode: true }] }).includes(' required'));
   writeText(cfg, cfg.memoryFile, 'The owner likes tea.');
   check('they get in with no passcode', p.open(mia.id, '').ok && p.current() === mia.id);
@@ -171,6 +194,7 @@ const brainOf = (cfg) => ({ sessionDir: path.join(cfg.dataDir, 'sessions'), sess
   writeText(cfg, cfg.memoryFile, 'Guest said hi.');
   saveKey(cfg, 'OPENAI_API_KEY', 'guest-key');
   check('Guest can\'t add people or set a passcode', Boolean(p.add('X', '').error) && Boolean(p.setPasscode('abcd').error));
+  check('Guest can\'t rename people', Boolean(p.rename('anyone', 'X').error));
   p.useMain();
   check('signing in wipes Guest', !fs.existsSync(profileDir(cfg, GUEST)) && readText(cfg.memoryFile) === 'Owner likes tea.' && savedKey('ANTHROPIC_API_KEY') === 'owner-key');
   p.signOut();

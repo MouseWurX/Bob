@@ -145,7 +145,13 @@ export function sheetHtml(s = {}) {
     ${rows.length ? `<table class="spend-table"><thead><tr><th>Date</th><th>Shop</th><th>Total</th><th>Category</th><th>Note</th><th><span class="sr-only">Delete</span></th></tr></thead><tbody>${rows.slice(0, 100).map((r) => `<tr><td>${esc(r.date)}</td><td>${esc(r.shop)}</td><td>${money(r.total)} ${esc(r.currency)}</td><td>${esc(r.category)}</td><td>${esc(r.note)}</td><td><button type="button" class="mini" data-spenddel="${esc(r.id)}" aria-label="Delete ${esc(r.shop)} ${esc(r.date)}">Delete</button></td></tr>`).join('')}</tbody></table>` : '<p class="muted">No receipts yet. Attach a photo of one in the chat and say "add this receipt".</p>'}
     <p><a class="mini button" href="/api/everyday/spending.csv" download="spending.csv">Save as a spreadsheet (CSV)</a> <span class="muted">${s.count || 0} line${s.count === 1 ? '' : 's'}. The copy you save is plain; the sheet in Bob stays locked.</span></p>`;
 }
-export function peopleHtml(v = {}) {
+// setup: the first-time setup's Users page. No passcode is asked for, set or changed there, and nothing is said about
+// one: each person decides on their own later (Settings, Users, Your passcode), only if they want one. Running the
+// setup again never touches a passcode (the owner, Nov 14 2026).
+// A person's own first time in (not the owner, not Guest), no passcode yet and not asked before: Bob offers one, once.
+export const shouldOfferOwnCode = (p) => Boolean(p?.on && p.current && p.current !== 'main' && !p.guest && !p.currentPasscode && !p.currentCodeAsked);
+
+export function peopleHtml(v = {}, { setup = false } = {}) {
   const list = v.list || [];
   const mine = v.current && v.current !== 'main';
   const owner = !v.ownerLocked ? '<p class="muted">Your own chats and memory aren\'t private from users until you turn on 🔒 <strong>Passcode lock</strong> with <strong>Lock my chats and memory</strong> (This replicant matrix).</p>' : '';
@@ -153,7 +159,10 @@ export function peopleHtml(v = {}) {
   const own = mine ? `<div class="row people-own"><strong>Your passcode:</strong> ${v.currentPasscode ? 'on, your things are locked.' : 'off, anyone who switches to you can see your things.'}
       <label>${v.currentPasscode ? 'Passcode' : 'New passcode'} <input data-owncode type="password" autocomplete="${v.currentPasscode ? 'current-password' : 'new-password'}" style="width:10em"></label>
       <button type="button" ${v.currentPasscode ? 'data-owncodeoff>Take it off' : 'data-owncodeon>Set it'}</button></div>` : '';
-  return `${owner}${who}${own}<ul class="people-list">${list.map((p) => `<li>👤 ${esc(p.name)} <span class="muted">${p.passcode ? '🔒 passcode' : 'no passcode'}</span> <button type="button" class="mini" data-persondel="${esc(p.id)}">Remove</button></li>`).join('') || '<li class="muted">Nobody else yet.</li>'}</ul>
+  if (setup) return `${who}<ul class="people-list">${list.map((p) => `<li>👤 ${esc(p.name)} ${mine ? '' : `<button type="button" class="mini" data-personren="${esc(p.id)}" data-name="${esc(p.name)}">Rename</button> <button type="button" class="mini" data-persondel="${esc(p.id)}">Remove</button>`}</li>`).join('') || '<li class="muted">Nobody else yet.</li>'}</ul>
+    ${mine ? '' : '<div class="row people-add"><label>Name <input data-personname maxlength="30" style="width:10em"></label> <button type="button" data-personadd>＋ Add a person</button></div>'}
+    <p class="muted">Each person can add a passcode later in Settings, if they want one. Switch people from the cube's menu.</p>`;
+  return `${owner}${who}${own}<ul class="people-list">${list.map((p) => `<li>👤 ${esc(p.name)} <span class="muted">${p.passcode ? '🔒 passcode' : 'no passcode'}</span> ${mine ? '' : `<button type="button" class="mini" data-personren="${esc(p.id)}" data-name="${esc(p.name)}">Rename</button> <button type="button" class="mini" data-persondel="${esc(p.id)}">Remove</button>`}</li>`).join('') || '<li class="muted">Nobody else yet.</li>'}</ul>
     <div class="row people-add"><label>Name <input data-personname maxlength="30" style="width:10em"></label> <label>Passcode (optional) <input data-personcode type="password" autocomplete="new-password" style="width:10em"></label> <button type="button" data-personadd>＋ Add a person</button></div>
     <p class="muted">Switch people from the cube's menu (or the lock screen). Each sees only their own chats, memory, email, keys and agents. With a passcode, their things are locked; forget it and they're gone for good. Without one, they're kept apart, not private.</p>`;
 }
@@ -162,7 +171,7 @@ export function mountEveryday(box, { settings = {}, flash = () => {} } = {}) {
   if (!box) return;
   const sheet = box.querySelector('.spend-box'), people = box.querySelector('.people-box');
   const drawSheet = () => sheet && api('/api/everyday/spending').then((s) => { sheet.innerHTML = sheetHtml(s); }).catch((e) => { sheet.innerHTML = `<p class="muted">${esc(e.message)}</p>`; });
-  const drawPeople = () => people && api('/api/everyday/profiles').then((v) => { people.innerHTML = peopleHtml(v); }).catch((e) => { people.innerHTML = `<p class="muted">${esc(e.message)}</p>`; });
+  const drawPeople = () => people && api('/api/everyday/profiles').then((v) => { people.innerHTML = peopleHtml(v, { setup: people.dataset.setup === '1' }); }).catch((e) => { people.innerHTML = `<p class="muted">${esc(e.message)}</p>`; });
   drawSheet(); drawPeople();
   if (box.dataset.everyday) return; // drawn again: the listeners below are already on it
   box.dataset.everyday = '1';
@@ -172,6 +181,11 @@ export function mountEveryday(box, { settings = {}, flash = () => {} } = {}) {
     try {
       if (b.dataset.spenddel) { if (armed !== b.dataset.spenddel) { armed = b.dataset.spenddel; b.textContent = 'Sure?'; return; } await api('/api/everyday/spending', { remove: b.dataset.spenddel }); armed = ''; drawSheet(); return; }
       if (b.dataset.persondel) { if (armed !== b.dataset.persondel) { armed = b.dataset.persondel; b.textContent = 'Remove them and their chats?'; return; } await api('/api/everyday/profiles', { remove: b.dataset.persondel }); armed = ''; drawPeople(); flash(people, 'Removed, with their chats and memory.'); return; }
+      if (b.dataset.personren) { // Rename: the name becomes a box with Save, in place
+        const li = b.closest('li'); li.innerHTML = `👤 <input data-renname maxlength="30" value="${esc(b.dataset.name || '')}" aria-label="New name for ${esc(b.dataset.name || 'this person')}" style="width:10em"> <button type="button" class="mini" data-personrensave="${esc(b.dataset.personren)}">Save</button>`;
+        li.querySelector('input')?.focus(); return;
+      }
+      if (b.dataset.personrensave) { await api('/api/everyday/profiles', { rename: b.dataset.personrensave, name: b.closest('li')?.querySelector('[data-renname]')?.value || '' }); drawPeople(); flash(people, 'Renamed. Their chats and memory stay as they were.'); return; }
       if ('personadd' in b.dataset) {
         const name = box.querySelector('[data-personname]')?.value || '', passcode = box.querySelector('[data-personcode]')?.value || '';
         await api('/api/everyday/profiles', { add: name, passcode }); drawPeople(); flash(people, 'Added. Switch to them from the cube\'s menu.'); return;

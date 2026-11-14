@@ -80,10 +80,20 @@ check('other rows keep their names', welcomeRowName({ id: 'engine:sdcpp', name: 
 }
 
 // ---------- Users and Privacy ----------
-check('Users page: the Users switch, and a way to add people', /step === 'users'[\s\S]{0,400}wantRowHtml\(s, esc, 'profilesOn'\)[\s\S]{0,400}data-wantjump="adv-daily"/.test(cellar));
+check('Users page: the Users switch, then add, rename and remove people right there once it is on', /step === 'users'[\s\S]{0,400}wantRowHtml\(s, esc, 'profilesOn'\)[\s\S]{0,300}s\.profilesOn === true \? '<div class="everyday-box wz-people"><h3>People<\/h3><div class="people-box" data-setup="1"><\/div><\/div>'/.test(cellar) && cellar.includes("mountEveryday(dlg.querySelector('.everyday-box')"));
+check('Users page: ticking Users shows the people list at once', cellar.includes("if (k === 'profilesOn' && mode === 'welcome') draw();"));
 check('Privacy page: Amnesia mode, unticked unless already on', /data-wharness="amnesiaOffer" \$\{wHarness\?\.amnesiaOffer === true \? 'checked' : ''\}/.test(cellar));
 check('Privacy page: Amnesia saves the same switch as Settings', cellar.includes("await api('/api/harness', { patch: { [k]: el.checked } })"));
-check('Privacy page: passcode lock is a button, never typed here', /step === 'privacy'[\s\S]{0,1500}data-wantjump="ev-lock"/.test(cellar) && !/step === 'privacy'[\s\S]{0,1500}type="password"/.test(cellar));
+check('Privacy page: no passcode asked for, set or changed in setup', (() => { const w = cellar.slice(cellar.indexOf("else if (step === 'privacy')"), cellar.indexOf("else if (step === 'helpers')")); return !/type="password"|data-wantjump="ev-lock"|data-owncode/.test(w) && w.includes('This setup never asks for one or changes one.'); })());
+{
+  const { peopleHtml } = await import('../public/everyday.js');
+  const v = { list: [{ id: 'a1', name: 'Ann', passcode: true }, { id: 'b2', name: 'Bo', passcode: false }], current: 'main' };
+  const set = peopleHtml(v, { setup: true });
+  check('Users page: add, rename and remove, with no passcode box, status or change anywhere', set.includes('data-personadd') && set.includes('data-personren="a1"') && set.includes('data-persondel="b2"') && !/type="password"|data-personcode|data-owncode|🔒|no passcode/.test(set));
+  check('Users page: a person who is in sees their own passcode nowhere in setup either', !/type="password"|data-owncode/.test(peopleHtml({ ...v, current: 'a1', currentPasscode: false }, { setup: true })));
+  check('Settings keeps the passcode choices', /data-personcode/.test(peopleHtml(v)) && /data-owncodeon/.test(peopleHtml({ ...v, current: 'b2' })));
+  check('the setup list is drawn in setup mode', cellar.includes('<div class="people-box" data-setup="1"></div>') && read('public/everyday.js').includes("peopleHtml(v, { setup: people.dataset.setup === '1' })"));
+}
 check('Helpers page leaves out what other pages show', cellar.includes('leave: WELCOME_OWN_KEYS'));
 
 // ---------- Help ----------

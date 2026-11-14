@@ -65,7 +65,7 @@ import { saveToLab } from './lab-save-q.js'; // Lab item 102: Save to Lab under 
 import { createNetOverlay } from './net-overlay.js'; // Nov 13 Bob-Net icons, off unless turned on
 import { createFadeChat } from './fade-chat.js'; // Fade old messages, Clear chat and 🫥 Amnesia mode
 import { createHarnessChat, quietNow } from './harness-chat.js'; // items 62 to 72: crash card, quiet hours, Pin, Try from here, Guest chat
-import { applyReading, startEveryday } from './everyday.js'; // 🗓 Everyday helpers: text size, font, today card, tour, ⏱ Focus, tray dot
+import { applyReading, startEveryday, shouldOfferOwnCode } from './everyday.js'; // 🗓 Everyday helpers: text size, font, today card, tour, ⏱ Focus, tray dot
 import { createReplyParts } from './app-replies.js';
 import { createRedoParts } from './app-redo.js';
 import { createCopyParts } from './app-copy.js';
@@ -1637,6 +1637,18 @@ function offerWants() {
   };
 }
 
+// ---------- 👥 Users: a person's own passcode, offered once after their own first time in (the owner, Nov 14) ----------
+// Never in the first-time setup and never for the owner or Guest. Either answer is remembered, so it never comes back.
+function offerOwnCode(p) {
+  const el = add('suggest', `<span>Welcome${p.currentName ? `, ${esc(p.currentName)}` : ''}. Want a passcode for your things? It locks your chats, memory and email so only you can open them. Up to you, and you can add one later in Settings.</span><button type="button" data-c="set">Set a passcode</button><button type="button" data-c="no">No passcode</button>`);
+  for (const b of el.querySelectorAll('button')) b.onclick = async () => {
+    el.remove();
+    await post('/api/everyday/profiles', { codeAsked: true }).catch(() => {});
+    if (b.dataset.c === 'set') cellar.open('settings', null, { jump: 'adv-daily' });
+    else note('Saved: no passcode. I won\'t ask again. Settings, Everyday helpers, Users, if you change your mind.');
+  };
+}
+
 // ---------- Start ----------
 // ---------- Render maths (Settings, Bob himself; off unless you turn it on) ----------
 // KaTeX is loaded from Bob's own files the first time it's needed. redraw: the switch changed, so the chat is drawn again.
@@ -1711,6 +1723,7 @@ async function start() {
   try {
     const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; statusLine.jokes(st.statusJokes !== false); netOverlay.setOn(st.netOverlay === true); catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
+    if (shouldOfferOwnCode(st.profiles)) offerOwnCode(st.profiles); // a person's own first time in: their own passcode, if they want one
     if (st.setupDone && !st.wantsAsked) offerWants(); // once, for Bobs set up before the Welcome had "Do you want me to:"
     everyday = startEveryday({ add, note, settings: st, version: st.version?.label || '' }); // 🗓 today card, tour, ⏱ Focus, tray dot (each only when on)
     if (st.updates?.autoCheck) { const c = await (await fetch('/api/update/check')).json(); if (c.newer) note(`A newer Bob (${c.available.label}) is out${c.from === 'github' ? ' on GitHub' : ''}. Settings, This replicant matrix and updates, Check for updates.`); }
