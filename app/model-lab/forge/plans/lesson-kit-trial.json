@@ -34,6 +34,8 @@
     "extra": "",
     "hours": 3,
     "commands": [
+     "node search-pairs.mjs --answers {{riker_answers}} --out out/lesson-kit-trial/search",
+     "node lesson-doctor.mjs --seeds out/lesson-kit-trial/seeds-v5.jsonl --name lkt-dry --dry --limit 40 --versions base",
      "node lesson-doctor.mjs --url {{url}} --seeds out/lesson-kit-trial/seeds-v5.jsonl --never out/lesson-kit-trial/never.jsonl --name lkt-smoke --limit 3 --alike 1 --routes 1 --retry 0 --versions base",
      "node write-lessons.mjs --url {{url}} --model teacher --dir lkt-smoke-base --from-ideas --count 6 --review --think none --parallel 3 --hours 0.2",
      "node lesson-doctor.mjs --url {{url}} --seeds out/lesson-kit-trial/seeds-v5.jsonl --never out/lesson-kit-trial/never.jsonl --name lkt-v5 --limit 40 --alike 3 --routes 2 --versions base,sherlock",
@@ -46,9 +48,8 @@
   ]
  },
  "prep": [
-  "On this PC, before renting (free, CPU only): copy the traced v5 failures to out/lesson-kit-trial/seeds-v5.jsonl, and every test file (Riker's 310 stock items, tonight's interview turns, tool-score's held-out chats) into out/lesson-kit-trial/never.jsonl.",
-  "node search-pairs.mjs --answers <Riker stock answers with odds> --out out/lesson-kit-trial/search",
-  "node lesson-doctor.mjs --seeds out/lesson-kit-trial/seeds-v5.jsonl --name lkt-dry --dry --limit 40 (the plumbing, no teacher)",
+  "The owner, 14 Nov 6:28 AM: \"prep on rental\". The steps that make the trial's inputs run inside the rental, as its first commands; before renting, only the input files are put in place (no runs).",
+  "Inputs put in place first: out/lesson-kit-trial/seeds-v5.jsonl (the traced v5 failures), out/lesson-kit-trial/never.jsonl (Riker's 310 stock items, tonight's interview turns, tool-score held-out chats), and {{riker_answers}} filled in with the path of Riker's stock answers that carry odds.",
   "After the run: node lesson-ledger.mjs --check out/<each set> --ledger out/lesson-ledger.jsonl --never out/lesson-kit-trial/never.jsonl --out out/<set>-checked, then node audit-lessons.mjs on each checked set."
  ],
  "publish": {
