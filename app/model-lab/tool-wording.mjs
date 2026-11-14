@@ -105,7 +105,8 @@ async function main() {
   const dry = Boolean(a.dry), url = String(a.url || process.env.LAB_URL || '');
   if ((!url && !dry) || !a.questions || !a.bob) { console.error('--url <server> --questions <calib-prep questions folder> --bob <Bob source app folder> are needed (--dry: no server)'); process.exit(1); }
   const out = path.resolve(String(a.out || process.env.LAB_OUT || 'tool-wording')); fs.mkdirSync(out, { recursive: true });
-  const bobDir = path.resolve(String(a.bob));
+  let bobDir = path.resolve(String(a.bob));
+  if (!fs.existsSync(path.join(bobDir, 'src')) && fs.existsSync(path.join(bobDir, 'app', 'src'))) bobDir = path.join(bobDir, 'app');
   const { loadBob } = await import('./bob-kit.mjs');
   const kit = await loadBob(bobDir);
   const { SETS } = await import(pathToFileURL(path.join(bobDir, 'src', 'tool-sets.js')).href);

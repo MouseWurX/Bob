@@ -7,6 +7,8 @@ import { pathToFileURL } from 'node:url';
 
 // howtos: a how-to file ({ howtos: [{ name, when, steps }] }) put in the throwaway Bob first, so the quiz can see them.
 export async function loadBob(bobDir, { howtos = '' } = {}) {
+  // a repository folder works as well as its app folder (Bob's files sit in app/ since Nov 9)
+  if (!fs.existsSync(path.join(bobDir, 'src')) && fs.existsSync(path.join(bobDir, 'app', 'src'))) bobDir = path.join(bobDir, 'app');
   const src = (f) => pathToFileURL(path.join(bobDir, 'src', f)).href;
   if (!fs.existsSync(path.join(bobDir, 'src', 'brain.js'))) throw new Error(`No Bob source tree at ${bobDir} (src/brain.js missing). Pass --bob <folder>.`);
   const { Brain } = await import(src('brain.js'));
