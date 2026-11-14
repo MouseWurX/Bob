@@ -949,6 +949,57 @@ const BEAST_ART = {
 };
 const BEAST_IDS = Object.keys(BEAST_ART);
 // A look for one of them, in the same shape as an avatar look, so drawFigure draws it like any other.
+// ---------- Monsters in each style (Journey v1.3) ----------
+// The fantasy monsters, redrawn for each style. People-shaped ones change clothes and kit (STYLE_PARTS, laid over
+// their bestiary parts); a skeleton becomes a robot; machines get their own art (STYLE_ART: a mech, a spider bot,
+// an assault drone, a cyber-hound); ghosts flicker like holograms; and every other monster takes the style's colours
+// and eyes (styleShift). Animals stay animals. Our own art; looks only, never the numbers.
+const MACHINE_ART = {
+  mech: ['', '......k.........', '.....bbbbbb.....', '....baaaaaab....', '....bggggggb....', '....baaaaaab....', '..bbbbbbbbbbbb..', '.baaaaaaaaaaaab.', '.badbaaeeaabdab.', '.baab.aaaa.baab.', '.bkkb.aaaa.bkkb.', '......bbbb......', '.....aab.baa....', '.....aab.baa....', '.....aab.baa....', '....bbbb.bbbb...'],
+  spiderbot: ['', '', '', '', '', '......bbbb......', '....bbaaaabb....', '...baaggaaaab...', '...baeaaeaaab...', '..kbbbbbbbbbbk..', '.k.k.k....k.k.k.', 'k..k..k..k..k..k', 'k.k...k..k...k.k', '..k...k..k...k..', '', ''],
+  drone: ['', '', '.kkkkk..kkkkk...', '...k......k.....', '...bbbbbbbbb....', '..baaaaaaaaab...', '.baeaaaaaaaaab..', '.baaaaaaagaaab..', '..baaaaaaaaab...', '...bbbbbbbbb....', '.ddd..b..b......', '......g..g......', '', '', '', ''],
+  hound: ['', '', '', '', '..b.............', '..bb............', '.baab...........', 'beaaab..........', 'kaaaaabbbbbbbb..', '.ggaaaaaaaaaaab.', '....aaaaaaaaab.b', '....bab..bab....', '....b.b..b.b....', '....k.k..k.k....', '', '']
+};
+const MECH_PAL = {
+  scifi: { a: '#e8eef4', b: '#5a6470', g: '#7ae0ff', e: '#7ae0ff', k: '#9aa3ad', d: '#3aa0d0' },
+  cyber: { a: '#33384a', b: '#14161c', g: '#ff3ad8', e: '#7dff9a', k: '#ff3ad8', d: '#ffd166' },
+  steam: { a: '#c8a060', b: '#6a4020', g: '#ffd166', e: '#ff8a3a', k: '#c8c8c8', d: '#8a5a2a' }
+};
+const ROBOT_PAL = (st) => ({ ...MECH_PAL[st], n: MECH_PAL[st].e });
+const STYLE_ART = {
+  scifi: { golem: 'mech', spider: 'spiderbot', gargoyle: 'drone' },
+  cyber: { golem: 'mech', spider: 'spiderbot', dragon: 'drone', wolf: 'hound', gargoyle: 'drone' },
+  steam: { golem: 'mech', spider: 'spiderbot' }
+};
+// People-shaped monsters dress for the style (parts from avatars.js laid over the bestiary's).
+const STYLE_PARTS = {
+  scifi: { goblin: { body: 'alien', outfit: 'suit', cloth: '7', glasses: '1', skin: '3' }, bandit: { hair: 'buzz', outfit: 'jacket', cloth: '8', armour: 'chain', glasses: '1' }, cultist: { hair: 'none', cloth: '9', armour: 'robe', glasses: '1' }, orc: { armour: 'plate', skin: '4' }, troll: { armour: 'plate', skin: '5' }, skeleton: { body: 'robot', skin: '0', face: '1' } },
+  cyber: { goblin: { body: 'm', build: 'slim', hair: 'mohawk', hc: '8', outfit: 'hoodie', cloth: '3', glasses: '1', skin: '2' }, bandit: { hair: 'spiky', hc: '9', outfit: 'jacket', cloth: '0', glasses: '1', armour: 'leather' }, cultist: { outfit: 'hoodie', hair: 'bald', glasses: '1', cloth: '9', armour: 'none' }, orc: { armour: 'plate', skin: '3' }, troll: { armour: 'chain', skin: '2' }, skeleton: { body: 'robot', skin: '6', face: '2' } },
+  steam: { goblin: { body: 'alien', skin: '7', outfit: 'apron', cloth: '6', glasses: '1' }, bandit: { hair: 'tied', outfit: 'suit', cloth: '0', beard: 'mustache', armour: 'none', glasses: '0' }, cultist: { armour: 'robe', hair: 'long', beard: 'full', cloth: '6' }, orc: { armour: 'chain' }, troll: { armour: 'plate' }, skeleton: { body: 'robot', skin: '1', face: '0' } }
+};
+// Which foes are monsters (and change with the style); animals and mounts don't.
+const STYLE_MONSTERS = new Set(['rat', 'slime', 'goblin', 'wolf', 'bandit', 'spider', 'skeleton', 'cultist', 'orc', 'ghost', 'troll', 'dragon', 'mimic', 'wisp', 'shroom', 'gargoyle', 'golem', 'serpent', 'lurker', 'kobold', 'scorpion', 'beetle']);
+function styleArtLook(style, id) {
+  const art = STYLE_ART[style]?.[id]; if (!art) return null;
+  const map = MACHINE_ART[art].map((r) => (r || '').padEnd(16, '.').slice(0, 16));
+  return { id: `style-${style}-${art}`, name: art, map, palette: { ...ROBOT_PAL(style) }, parts: { body: 'beast', weapon: 'none', shield: 'none' } };
+}
+// The style's colours on any monster: sci-fi cool steel and cyan eyes, cyberpunk dark with neon eyes, steampunk
+// bronze with lamp-lit eyes. A ghost flickers like a hologram in sci-fi and cyberpunk, green as gaslight in steampunk.
+const SHIFT = { scifi: ['#9ab8d0', 0.35, '#7ae0ff'], cyber: ['#3a2a5a', 0.4, '#ff3ad8'], steam: ['#b08040', 0.35, '#ffd166'] };
+function styleShift(look, style, id = '') {
+  const sh = SHIFT[style]; if (!look || !sh) return look;
+  const palette = {};
+  for (const [k, v] of Object.entries(look.palette || {})) palette[k] = /^[EOX]$/.test(k) ? sh[2] : tintHex(v, sh[0], sh[1]);
+  let map = look.map;
+  if (id === 'ghost' || /ghost|wisp/i.test(look.name || '')) {
+    const glow = style === 'steam' ? '#8aff9a' : sh[2];
+    for (const k of Object.keys(palette)) if (!/^[EOX]$/.test(k)) palette[k] = tintHex(palette[k], glow, 0.5);
+    if (style !== 'steam' && map) map = map.map((r, i) => (i % 3 === 2 ? r.replace(/[^.]/g, (c, x) => (x % 2 ? '.' : c)) : r)); // scan lines
+  }
+  return { ...look, map, palette };
+}
+
 function beastLook(id) {
   const art = BEAST_ART[id];
   if (!art) return null;
@@ -957,5 +1008,5 @@ function beastLook(id) {
   return { id: `beast-${id}`, name: id, map: map.slice(-16), palette: { ...art.pal }, parts: { body: 'beast', weapon: 'none', shield: 'none' } };
 }
 
-globalThis.BobJourneySides = { FACINGS, FACING_NAMES, FIGURE_W, KIT_COLOURS, darker, shapeOf, figure, WEAPON_SHAPES, STYLE_WEAPONS, styleWeapon, STYLE_SHIELDS, STYLE_SHOTS, AFFIX_TINTS, tintHex, WEAPON_KINDS, REST_ANGLE, swingAngles, weaponCells, shieldCells, drawFigure, BEAST_IDS, beastLook };
+globalThis.BobJourneySides = { FACINGS, FACING_NAMES, FIGURE_W, KIT_COLOURS, darker, shapeOf, figure, WEAPON_SHAPES, STYLE_WEAPONS, styleWeapon, STYLE_SHIELDS, STYLE_SHOTS, AFFIX_TINTS, tintHex, WEAPON_KINDS, REST_ANGLE, swingAngles, weaponCells, shieldCells, drawFigure, BEAST_IDS, STYLE_ART, STYLE_PARTS, STYLE_MONSTERS, styleArtLook, styleShift, beastLook };
 })();

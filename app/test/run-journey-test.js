@@ -11,7 +11,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as S from '../public/journey-sides.js';
 import * as R from '../public/journey-rules.js';
 import * as W from '../public/journey-world.js';
-import { avatar, compose, encodeParts, DEFAULT_PARTS, allAvatarIds } from '../public/avatars.js';
+import { avatar, compose, encodeParts, DEFAULT_PARTS, allAvatarIds, PARTS as AV_PARTS } from '../public/avatars.js';
+const A_PARTS = Object.fromEntries(Object.entries(AV_PARTS).map(([k, v]) => [k, v.map((x) => x[0])]));
 import { LOOKS } from '../public/bob-sprite.js';
 import { loadJourney, saveJourney, journeyReward, journeyRoute, deleteJourney } from '../src/adventure-journey.js';
 import { ENEMIES } from '../src/bestiary.js';
@@ -621,6 +622,14 @@ const P = (o) => ({ id: o.id || o.name.toLowerCase(), who: 'friend', ...o });
   check('a keeper\'s title follows the style', R.restyle('Grubnick, the goblin chief', 'cyber') === 'Grubnick, the ganger chief');
   check('...but a plain word in a sentence is left alone', R.restyle('I will raise my glass.', 'cyber') === 'I will raise my glass.');
   check('fantasy names never change', R.restyle('A Goblin and a Wizard.', 'fantasy') === 'A Goblin and a Wizard.');
+  // Monsters redrawn for each style; animals stay animals.
+  check('machines get their own art in each style: mechs, spider bots, drones, a cyber-hound', ['scifi', 'cyber', 'steam'].every((st) => S.styleArtLook(st, 'golem')?.map.length === 16 && S.styleArtLook(st, 'spider')) && S.styleArtLook('cyber', 'dragon').name === 'drone' && S.styleArtLook('cyber', 'wolf').name === 'hound' && S.styleArtLook('fantasy', 'golem') === null);
+  check('...every colour in that art is a real colour', ['scifi', 'cyber', 'steam'].every((st) => Object.keys(S.STYLE_ART[st]).every((id) => { const l = S.styleArtLook(st, id); return l.map.join('').replace(/\./g, '').split('').every((c) => /^#[0-9a-f]{6}$/i.test(l.palette[c] || '')); })));
+  check('people-shaped monsters dress for the style, and a skeleton becomes a robot', ['scifi', 'cyber', 'steam'].every((st) => S.STYLE_PARTS[st].skeleton.body === 'robot' && ['goblin', 'bandit', 'cultist', 'orc', 'troll'].every((id) => S.STYLE_PARTS[st][id])) && Object.values(S.STYLE_PARTS).every((set) => Object.values(set).every((p) => Object.entries(p).every(([k, v]) => !A_PARTS[k] || A_PARTS[k].includes(v)))));
+  const gl = { name: 'ghost', map: ['.aa.', 'aaaa', 'aEEa'], palette: { a: '#ffffff', E: '#000000' } };
+  check('a ghost flickers like a hologram in sci-fi, glows like gaslight in steampunk', S.styleShift(gl, 'scifi', 'ghost').palette.E === '#7ae0ff' && S.styleShift(gl, 'scifi', 'ghost').map[2] !== gl.map[2] && S.styleShift(gl, 'steam', 'ghost').map[2] === gl.map[2]);
+  check('animals and mounts stay as they are', !['rabbit', 'fox', 'horse', 'pegasus', 'dolphin', 'bear'].some((id) => S.STYLE_MONSTERS.has(id)) && ['goblin', 'dragon', 'ghost', 'golem'].every((id) => S.STYLE_MONSTERS.has(id)));
+  check('the screen draws monsters in the journey\'s style', /function foeLook/.test(read('public/journey-play.js')) && /styleArtLook/.test(read('public/journey-play.js')));
   check('no trademarked game names in the style words', !/final fantasy|dragon quest|chrono|zelda|pokémon|earthbound|bobiverse|squaresoft|enix|cyberpunk 2077|shadowrun|rockerboy/i.test(read('public/journey-rules.js') + read('public/journey-sides.js')));
 }
 

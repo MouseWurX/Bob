@@ -114,7 +114,29 @@ function mountJourney(root, deps) {
     return lk;
   }
   const personLook = (p) => (p.role === 'keeper' ? lookFor(deps.bobLook) : p.beast ? beastLookFor(p.beast, p.tint) : lookFor(A.encodeParts(p.parts || {}), p.tint));
-  const foeLook = (f) => (f.person ? personLook(f.person) : f.parts ? lookFor(A.encodeParts(f.parts)) : lookFor(deps.enemyLooks?.[f.type], f.tint) || beastLookFor(f.type, f.tint) || lookFor(A.encodeParts({ body: 'blob', skin: '0' }), f.tint));
+  const plainFoeLook = (f) => (f.person ? personLook(f.person) : f.parts ? lookFor(A.encodeParts(f.parts)) : lookFor(deps.enemyLooks?.[f.type], f.tint) || beastLookFor(f.type, f.tint) || lookFor(A.encodeParts({ body: 'blob', skin: '0' }), f.tint));
+  // Journey v1.3: monsters redrawn for the style. People-shaped ones change clothes (a skeleton becomes a robot),
+  // machines get their own art, and the rest take the style's colours. Animals, pets and people stay as they are.
+  function foeLook(f) {
+    const st = j?.style;
+    if (!st || st === 'fantasy' || f.person || f.parts || !S.STYLE_MONSTERS?.has(f.type)) return plainFoeLook(f);
+    const key = `style:${st}:${f.type}|${f.tint || ''}`;
+    if (lookCache.has(key)) return lookCache.get(key);
+    let lk = null;
+    try {
+      const art = S.styleArtLook(st, f.type);
+      const dress = S.STYLE_PARTS[st]?.[f.type];
+      if (art) lk = f.tint ? tinted(art, f.tint) : art;
+      else if (dress) {
+        const id = deps.enemyLooks?.[f.type];
+        const p = String(id || '').startsWith('c:') ? A.decodeParts(id) : { ...A.DEFAULT_PARTS, weapon: f.type === 'skeleton' ? 'sword' : 'none' };
+        lk = S.styleShift(lookFor(A.encodeParts({ ...p, ...dress }), f.tint), st, f.type);
+      } else lk = S.styleShift(plainFoeLook(f), st, f.type);
+    } catch { lk = null; }
+    lk = lk || plainFoeLook(f);
+    lookCache.set(key, lk);
+    return lk;
+  }
   // What a pet or mount looks like, and what the leader rides (in sci-fi, cyberpunk and steampunk a flier or a
   // swimmer is ridden as that style's own craft: a shuttle, a hoverbike, an airship, a submarine).
   const petLook = (p) => beastLookFor(p.type);
