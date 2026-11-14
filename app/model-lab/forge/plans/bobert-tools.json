@@ -1,0 +1,72 @@
+{
+ "run": "bobert-tools",
+ "note": "14 Nov (the owner: \"interview bobert as well, let's start with bobert\", \"see if we can get tool call protocols that work\", \"work through the best cases and worst cases until you get something that works\", \"so 2 rentals in parallel. one riker. one bobert.\"). Bobert stock (35Bob Q4_K_M, 19.7 GB), his own card beside the Riker run. His saved Nov 11-12 answers (all thinking off) show: no call where a tool was wanted (asks questions instead, or claims a step he never called), ask_specialist/use_tools/mcp_tools mix-ups, open_app->app_look, never a two-tool turn, broken backslash paths, weak free-text arguments. Order: smoke of every step on 4 turns (any miss exits 86, the pod is deleted); round 1 one change at a time thinking off (bob, usewhen, paths, act, slash, example, fewer, par) and thinking on (bob, act+par); round 2 the combinations, thinking off and on, and the head start 'Plan: 1.'; the same at 12 experts per word (his best on Nov 12); then the interview on his misses and 9 tool groups, thinking on and off. No maps, no dials. Measure only, live switches only, no_hands, evidence only. Every answer kept with top-8 odds. About 3 h.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA A40",
+  "NVIDIA RTX A6000"
+ ],
+ "step_up": [],
+ "disk_gb": 80,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 4,
+ "dollars_max": 3.5,
+ "rent_minutes": 240,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one brain: Bobert stock. The PC's Bob source must be 1.5.223 (--min-bob stops the run otherwise). Model name bobert, run name bobert-tools: nothing shared with riker-tools.",
+  "hours_each": 3.5,
+  "brain_engine": {
+   "ref": "fcdf3955ed6966c102f43d49528174cabd52d825",
+   "patches": [
+    "0001-expert-mask",
+    "0002-expert-trace",
+    "0003-dials",
+    "0004-rpc-wifi",
+    "0005-scut",
+    "0006-scut-seal",
+    "0007-expert-trace-stream",
+    "0008-scut-live",
+    "0009-expert-mass",
+    "0010-expert-trace-once",
+    "0011-rpc-read-ahead",
+    "0012-load-progress",
+    "0013-experts-per-word"
+   ],
+   "note": "Brain Engine 7b12282 (live experts per word, mask, dials, expert trace with mass)"
+  },
+  "models": [
+   {
+    "name": "bobert",
+    "nickname": "Bobert (35Bob), tool interview",
+    "file": "hf:MouseWurX/35Bob-Bobert:35Bob-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "slots": 8,
+    "ctx": 65536,
+    "extra": "",
+    "hours": 3.5,
+    "commands": [
+     "node set-live.mjs --reset",
+     "node engine-check.mjs --url {{url}}",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --min-bob 1.5.223 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --turns 2 --parallel 8 --odds 8 --variants bob,usewhen+paths+act+slash+example+fewer+par --think off,on --max-think 3000 --out {{out}}/smoke/wording --limit 4 --gate",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --min-bob 1.5.223 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --turns 2 --parallel 8 --odds 8 --variants bob,usewhen,paths,act,slash,example,fewer,par --think off --out {{out}}/wording",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --min-bob 1.5.223 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --turns 2 --parallel 8 --odds 8 --variants bob,act+par --think on --max-think 3000 --out {{out}}/wording-think",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --min-bob 1.5.223 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --turns 2 --parallel 8 --odds 8 --variants bob,act+par+fewer+slash,usewhen+paths+act+slash+example+fewer+par --think off --out {{out}}/wording-combos",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --min-bob 1.5.223 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --turns 2 --parallel 8 --odds 8 --variants usewhen+paths+act+slash+example+fewer+par --think on --max-think 3000 --out {{out}}/wording-combos-think",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --min-bob 1.5.223 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --variants usewhen+paths+act+slash+example+fewer+par --think on --prefill \"Plan: 1.\" --turns 1 --parallel 8 --odds 8 --max-think 3000 --out {{out}}/wording-headstart",
+     "node set-live.mjs --used 12",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --min-bob 1.5.223 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --turns 2 --parallel 8 --odds 8 --variants bob,usewhen+paths+act+slash+example+fewer+par --think off --keep-live --out {{out}}/wording-e12",
+     "node set-live.mjs --reset",
+     "node tool-interview.mjs --url {{url}} --bob ../bob-main-src/app --from {{out}}/wording --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --think on,off --cases 10 --minutes 40 --out {{out}}/interview"
+    ]
+   }
+  ]
+ }
+}
