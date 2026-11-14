@@ -168,7 +168,7 @@ Public sets with a licence that allows training and changes. Each would be conve
 | nvidia/When2Call | CC BY 4.0 | 10K to 100K rows | When to call a tool, when to ask, when to just answer. The best fit for "look it up when unsure" and "don't call a tool on plain chat". |
 | nvidia/Open-SWE-Traces | CC BY 4.0 | 1.1 million coding-agent runs, 98 GB | Real bug-fixing runs from five agent apps, marked pass or fail. Take the passing ones for coding lessons, and the failing ones for guided lessons. |
 | SWE-bench/SWE-smith-trajectories | MIT | 10K to 100K rows | Coding-agent runs on real repos: read, edit, test, fix. |
-| nebius/SWE-agent-trajectories | CC BY 4.0, plus each source repo's own licence | about 80K runs | Same kind, with success marks. |
+| nebius/SWE-agent-trajectories | CC BY 4.0, plus each source repo's own licence | size to check | Same kind, with success marks. |
 | Salesforce/xlam-function-calling-60k | CC BY 4.0 | 60K | Single-call accuracy: right tool, exact inputs. Short, so it's best for the `precise` job. |
 | glaiveai/glaive-function-calling-v2 | Apache 2.0 | 100K to 1M rows | Simple call-or-chat turns. Many are low quality, so it would be filtered hard. |
 | NousResearch/hermes-function-calling-v1 | Apache 2.0 | 10K to 100K rows | Calls with structured outputs. |
