@@ -74,7 +74,12 @@ check('Style Help explains Find anything and the status line', help('style').inc
   const T = await import('../public/themes.js');
   check('four lamps, Mercury first and the default', T.LAMP_IDS.join() === 'mercury,sodium,thallium,neon' && T.DEFAULT_LAMP === 'mercury' && T.lampId({}) === 'mercury' && T.lampId({ lamp: 'nope' }) === 'mercury' && T.lampId({ lamp: 'neon' }) === 'neon');
   check('each lamp is a theme of its own, in the Lamps group, with the same id', T.LAMPS.every((l) => T.findTheme(l.id)?.group === 'Lamps'));
-  check('the lamp colours are the gases\' own light (CIE 1931 sums of their lines)', JSON.stringify(T.LAMPS.map((l) => l.glow)) === JSON.stringify(['#8becff', '#ff8000', '#00ff00', '#ff2e00']));
+  check('the lamp colours are the gases\' own light (CIE 1931 sums of their lines)', JSON.stringify(T.LAMPS.map((l) => l.spectral)) === JSON.stringify(['#8becff', '#ff8000', '#00ff00', '#ff2e00']));
+  { // the owner: "so bright". Each lamp is its spectral hue dimmed to one brightness, in a near-black room.
+    const lum = (h) => { const v = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+    check('every lamp is dimmed to the same soft brightness', T.LAMPS.every((l) => Math.abs(lum(l.glow) - 0.2) < 0.01));
+    check('the lamp rooms are near-black', T.LAMPS.every((l) => lum(T.fullColors(T.findTheme(l.id)).bg) < 0.006));
+  }
   check('a lamp is saved, an unknown one dropped', cleanStyle({ lamp: 'sodium' }).lamp === 'sodium' && !('lamp' in cleanStyle({ lamp: 'krypton' })));
   check('page and server agree on the lamps', /\['mercury', 'sodium', 'thallium', 'neon'\]\.includes\(st\.lamp\)/.test(read('src/config.js')));
   check('picking a lamp picks its theme, and picking a lamp\'s theme picks the lamp', page.includes("save(settings, { lamp: b.dataset.lamp, theme: b.dataset.lamp })") && T.lampOfTheme('thallium') === 'thallium' && T.lampOfTheme('moondust') === null);

@@ -64,24 +64,27 @@ const COIL = { bg: '#0d1517', panel: '#142024', card: '#1c2c31', you: '#1f4650',
 const THAW = { bg: '#eef3f8', panel: '#ffffff', card: '#dfe8f1', you: '#cfe0ee', line: '#b9c8d6', text: '#142230', muted: '#4d6274', accent: '#1f6fa8', onAccent: '#ffffff', good: '#2e7d4f', warn: '#8a5a00', bad: '#b3261e', spriteBg: '#d3e0ea' };
 const HULL = { bg: '#1b1f22', panel: '#252a2e', card: '#31373c', you: '#4a4238', line: '#4b5258', text: '#e8e4dc', muted: '#c4bdb0', accent: '#f0a830', onAccent: '#1b1500', good: '#8ec07c', warn: '#f0a830', bad: '#e8725f', spriteBg: '#3a3f44' };
 
-// Nov 14 2026: the lamps (the owner's names, after the gas in a street lamp or sign). Each is a near-black room lit in
-// one colour, as close to the gas's real light as a screen can show: the colour each one's own spectral lines add up
-// to (CIE 1931), brought into the screen's range. Mercury's blue, violet, green and yellow lines add up to a pale
-// sky blue; sodium's D lines at 589 nm are deep orange-yellow; thallium's line at 535 nm is pure green; neon's
-// dozens of lines from 585 to 703 nm add up to red with a little orange.
+// Nov 14 2026: the lamps (the owner's names, after the gas in a street lamp or sign). Each is a shadowed room lit in
+// one colour, the hue of the gas's real light: the colour its own spectral lines add up to (CIE 1931), brought into
+// the screen's range. Mercury's blue, violet, green and yellow lines add up to a sky blue; sodium's D lines at 589 nm
+// are deep orange-yellow; thallium's line at 535 nm is pure green; neon's dozens of lines from 585 to 703 nm add up
+// to red with a little orange. The owner ("so bright", "the backgrounds could be a bit darker"): each lamp is the
+// same hue dimmed to one brightness (relative luminance .2, black text on it), in a near-black room, so the room is
+// lit by the cube when a brain is loaded and stays in shadow when not (looks.css, mind-cube.js --cube-light).
+// `spectral` is the full-strength colour, kept for the record and the app icon thread.
 function lamp(accent, extra = {}) {
-  const panel = mix(accent, '#151515', 0.06);
+  const panel = mix(accent, '#0c0c0c', 0.05);
   return {
-    bg: mix(accent, '#0c0c0c', 0.05), panel, card: mix(accent, '#1f1f1f', 0.08), you: mix(accent, panel, 0.2),
-    line: mix(accent, '#2c2c2c', 0.16), text: mix(accent, '#ececec', 0.04), muted: mix(accent, '#a6a6a6', 0.1),
-    accent, onAccent: '#0b0b0b', good: '#6ccf9a', warn: '#e8c35a', bad: '#ef7b6d', spriteBg: mix(accent, '#1f1f1f', 0.1), ...extra
+    bg: mix(accent, '#060606', 0.035), panel, card: mix(accent, '#151515', 0.07), you: mix(accent, panel, 0.24),
+    line: mix(accent, '#232323', 0.16), text: mix(accent, '#dadada', 0.05), muted: mix(accent, '#999999', 0.1),
+    accent, onAccent: '#000000', good: '#5cb887', warn: '#d4b052', bad: '#e0705f', spriteBg: mix(accent, '#151515', 0.1), ...extra
   };
 }
 export const LAMPS = [
-  { id: 'mercury', name: 'Mercury', glow: '#8becff', what: 'Pale sky blue, the light of a mercury lamp. The one Bob starts with.' },
-  { id: 'sodium', name: 'Sodium', glow: '#ff8000', what: 'Deep orange-yellow, the light of a sodium street lamp.', extra: { warn: '#ffd75a' } },
-  { id: 'thallium', name: 'Thallium', glow: '#00ff00', what: 'Pure green, the light of a thallium lamp.' },
-  { id: 'neon', name: 'Neon', glow: '#ff2e00', what: 'Red with a touch of orange, the light of a neon sign.', extra: { bad: '#ff79b0' } }
+  { id: 'mercury', name: 'Mercury', spectral: '#8becff', glow: '#4b848f', what: 'Sky blue, the light of a mercury lamp. The one Bob starts with.' },
+  { id: 'sodium', name: 'Sodium', spectral: '#ff8000', glow: '#c36000', what: 'Deep orange-yellow, the light of a sodium street lamp.', extra: { warn: '#e3c35a' } },
+  { id: 'thallium', name: 'Thallium', spectral: '#00ff00', glow: '#009000', what: 'Pure green, the light of a thallium lamp.' },
+  { id: 'neon', name: 'Neon', spectral: '#ff2e00', glow: '#ef2a00', what: 'Red with a touch of orange, the light of a neon sign.', extra: { bad: '#f07aa8' } }
 ];
 export const LAMP_IDS = LAMPS.map((l) => l.id);
 export const DEFAULT_LAMP = 'mercury';
@@ -107,7 +110,7 @@ export const PRESETS = [
   { id: 'hc-light', name: 'High Contrast Light', group: 'Access', what: 'Black on white, everything outlined.', colors: mh(HC.light), outlined: true },
   { id: 'drydock', name: 'Drydock', group: 'MouseWurX', what: 'Blueprint paper, plates and IBM Plex Mono, from the MouseWurX website.', ...wurx(WURX.light, false) },
   { id: 'drydock-night', name: 'Drydock Night', group: 'MouseWurX', what: 'The same blueprints at night.', ...wurx(WURX.dark, true) },
-  ...LAMPS.map((l) => ({ id: l.id, name: `${l.name} Lamp`, group: 'Lamps', what: l.what, colors: lamp(l.glow, l.extra), cube: mix(l.glow, '#000000', 0.5) }))
+  ...LAMPS.map((l) => ({ id: l.id, name: `${l.name} Lamp`, group: 'Lamps', what: l.what, colors: lamp(l.glow, l.extra), cube: l.glow }))
 ];
 export const DEFAULT_THEME = 'moondust';
 
