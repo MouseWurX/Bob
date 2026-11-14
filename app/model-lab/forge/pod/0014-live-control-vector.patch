@@ -1,0 +1,224 @@
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 4ec1978..1d51275 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -1420,6 +1420,7 @@ private:
+ 
+     std::vector<uint8_t> expert_keep; // empty = all experts on
+     json dials_now = json::array();   // Brain Engine dials as they were set, empty = everything at 1
++    json cvec_now  = nullptr;         // Brain Engine live control vector as it was set, null = none
+     server_expert_trace etrace;
+ 
+     server_metrics metrics;
+@@ -3765,6 +3766,24 @@ private:
+                     };
+                     queue_results.send(std::move(res));
+                 } break;
++            case SERVER_TASK_TYPE_CVEC:
++                {
++                    if (!task.cvec.is_null()) {
++                        std::string err = set_cvec(task.cvec);
++                        if (!err.empty()) {
++                            send_error(task, err, ERROR_TYPE_INVALID_REQUEST);
++                            break;
++                        }
++                    }
++                    auto res = std::make_unique<server_task_result_expert_mask>();
++                    res->id   = task.id;
++                    res->data = json {
++                        {"n_layer",        llama_model_n_layer(model_tgt)},
++                        {"n_embd",         llama_model_n_embd(model_tgt)},
++                        {"control_vector", cvec_now},
++                    };
++                    queue_results.send(std::move(res));
++                } break;
+             case SERVER_TASK_TYPE_EXPERT_USED:
+                 {
+                     if (!task.expert_used.is_null()) {
+@@ -3939,6 +3958,88 @@ private:
+         };
+     }
+ 
++    // Brain Engine live control vector (activation steering without a reload): added to the stream after each layer in range.
++    // body: {} or {"clear": true} = none;
++    //   {"file": "<cvector .gguf>", "scale": s, "start": 1, "end": n_layer - 1} = a whole direction, times s;
++    //   {"entries": [{"layer": l, "index": i, "value": v}, ...], "start": .., "end": ..} = single stream neurons only (the rest 0)
++    // Every call replaces the whole vector (layers it doesn't name are 0), so nothing is left over from the call before.
++    std::string set_cvec(const json & body) {
++        if (!body.is_object()) {
++            return "body must be an object";
++        }
++        for (const auto & slot : slots) {
++            if (slot.is_processing()) {
++                return "a slot is busy, set the control vector when the server is idle";
++            }
++        }
++        const int32_t n_layer = llama_model_n_layer(model_tgt);
++        const int32_t n_embd  = llama_model_n_embd(model_tgt);
++        const bool clear = body.empty() || (body.contains("clear") && body.at("clear").is_boolean() && body.at("clear").get<bool>());
++        int32_t start = body.contains("start") && body.at("start").is_number_integer() ? body.at("start").get<int32_t>() : 1;
++        int32_t end   = body.contains("end")   && body.at("end").is_number_integer()   ? body.at("end").get<int32_t>()   : n_layer - 1;
++        if (!clear && (start < 1 || end >= n_layer || start > end)) {
++            return "\"start\" and \"end\" must be layers 1 to n_layer - 1, start <= end";
++        }
++        std::vector<float> data;
++        json kept = nullptr;
++        if (!clear) {
++            data.assign((size_t) n_embd * (n_layer - 1), 0.0f);
++            if (body.contains("file")) {
++                if (!body.at("file").is_string()) {
++                    return "\"file\" must be a path";
++                }
++                const float scale = body.contains("scale") && body.at("scale").is_number() ? body.at("scale").get<float>() : 1.0f;
++                if (!std::isfinite(scale) || std::fabs(scale) > 1000.0f) {
++                    return "\"scale\" must be a number from -1000 to 1000";
++                }
++                common_control_vector_load_info info;
++                info.strength = scale;
++                info.fname    = body.at("file").get<std::string>();
++                const auto cv = common_control_vector_load({ info }, n_layer);
++                if (cv.n_embd == -1) {
++                    return "the control vector file could not be read";
++                }
++                if (cv.n_embd != n_embd) {
++                    return "the control vector was made for another model (n_embd differs)";
++                }
++                for (size_t i = 0; i < data.size() && i < cv.data.size(); i++) {
++                    data[i] = cv.data[i];
++                }
++                kept = json {{"file", info.fname}, {"scale", scale}, {"start", start}, {"end", end}};
++            } else if (body.contains("entries") && body.at("entries").is_array()) {
++                size_t n = 0;
++                for (const auto & e : body.at("entries")) {
++                    if (!e.is_object() || !e.contains("layer") || !e.at("layer").is_number_integer() || !e.contains("index") || !e.at("index").is_number_integer() || !e.contains("value") || !e.at("value").is_number()) {
++                        return "each entry needs \"layer\", \"index\" and \"value\"";
++                    }
++                    const int32_t l = e.at("layer").get<int32_t>(), i = e.at("index").get<int32_t>();
++                    const float   v = e.at("value").get<float>();
++                    if (l < 1 || l >= n_layer || i < 0 || i >= n_embd || !std::isfinite(v)) {
++                        return "an entry names a layer or neuron the model does not have";
++                    }
++                    data[(size_t) n_embd * (l - 1) + i] += v;
++                    n++;
++                }
++                kept = json {{"entries", n}, {"start", start}, {"end", end}};
++            } else {
++                return "give \"file\" (with \"scale\") or \"entries\", or {} to clear";
++            }
++        }
++        if (llama_set_adapter_cvec(ctx_tgt, clear ? nullptr : data.data(), data.size(), n_embd, clear ? -1 : start, clear ? -1 : end) != 0) {
++            return "the engine refused the control vector";
++        }
++        cvec_now = std::move(kept);
++        // cached prompts were computed with the old vector
++        for (auto & slot : slots) {
++            slot.prompt_clear();
++        }
++        if (prompt_cache) {
++            prompt_cache->states.clear();
++        }
++        SRV_INF("control vector %s\n", clear ? "cleared" : "set");
++        return "";
++    }
++
+     // body: {"keep": null} = all on, {"keep": [ids]} = same experts in every layer, {"keep": [[ids], ...]} = one list per layer (null = all)
+     std::string set_expert_mask(const json & body) {
+         const int64_t n_layer  = llama_model_n_layer(model_tgt);
+@@ -7652,6 +7753,40 @@ void server_routes::init_routes() {
+         return dials_handler(req, std::move(body));
+     };
+ 
++    auto cvec_handler = [this](const server_http_req & req, json body) {
++        auto res = create_response();
++        auto & rd = res->rd;
++        {
++            server_task task(SERVER_TASK_TYPE_CVEC);
++            task.id = rd.get_new_id();
++            task.cvec = std::move(body);
++            rd.post_task(std::move(task));
++        }
++        auto result = rd.next(req.should_stop);
++        if (!result) {
++            GGML_ASSERT(req.should_stop());
++            return res;
++        }
++        if (result->is_error()) {
++            res->error(result->to_json());
++            return res;
++        }
++        res->ok(result->to_json());
++        return res;
++    };
++
++    this->get_control_vector = [cvec_handler](const server_http_req & req) {
++        return cvec_handler(req, nullptr);
++    };
++
++    this->post_control_vector = [cvec_handler](const server_http_req & req) {
++        json body = json::parse(req.body);
++        if (body.is_null()) {
++            body = json::object();
++        }
++        return cvec_handler(req, std::move(body));
++    };
++
+     auto expert_used_handler = [this](const server_http_req & req, json body) {
+         auto res = create_response();
+ 
+diff --git a/tools/server/server-context.h b/tools/server/server-context.h
+index 943f0df..e0bd257 100644
+--- a/tools/server/server-context.h
++++ b/tools/server/server-context.h
+@@ -142,6 +142,8 @@ struct server_routes {
+     server_http_context::handler_t post_expert_mask;
+     server_http_context::handler_t get_dials;
+     server_http_context::handler_t post_dials;
++    server_http_context::handler_t get_control_vector;
++    server_http_context::handler_t post_control_vector;
+     server_http_context::handler_t get_experts_per_word;
+     server_http_context::handler_t post_experts_per_word;
+ 
+diff --git a/tools/server/server-task.h b/tools/server/server-task.h
+index bfcf03f..46bef6b 100644
+--- a/tools/server/server-task.h
++++ b/tools/server/server-task.h
+@@ -33,6 +33,7 @@ enum server_task_type {
+     SERVER_TASK_TYPE_SET_LORA,
+     SERVER_TASK_TYPE_EXPERT_MASK,
+     SERVER_TASK_TYPE_DIALS,
++    SERVER_TASK_TYPE_CVEC,
+     SERVER_TASK_TYPE_EXPERT_USED,
+     SERVER_TASK_TYPE_TTS,
+ };
+@@ -256,6 +257,9 @@ struct server_task {
+     // used by SERVER_TASK_TYPE_DIALS, null = only read the dials
+     json dials;
+ 
++    // used by SERVER_TASK_TYPE_CVEC, null = only read the control vector
++    json cvec;
++
+     // used by SERVER_TASK_TYPE_EXPERT_USED, null = only read the experts per word
+     json expert_used;
+ 
+diff --git a/tools/server/server.cpp b/tools/server/server.cpp
+index 92bb0e0..fb47e14 100644
+--- a/tools/server/server.cpp
++++ b/tools/server/server.cpp
+@@ -215,6 +215,8 @@ static void server_register_routes(server_http_context & ctx_http, server_routes
+     ctx_http.post("/expert-mask",              ex_wrapper(routes.post_expert_mask));
+     ctx_http.get ("/dials",                    ex_wrapper(routes.get_dials));
+     ctx_http.post("/dials",                    ex_wrapper(routes.post_dials));
++    ctx_http.get ("/control-vector",           ex_wrapper(routes.get_control_vector));
++    ctx_http.post("/control-vector",           ex_wrapper(routes.post_control_vector));
+     ctx_http.get ("/experts-per-word",         ex_wrapper(routes.get_experts_per_word));
+     ctx_http.post("/experts-per-word",         ex_wrapper(routes.post_experts_per_word));
+     // Save & load slots
+@@ -532,6 +534,8 @@ static int server_run_router(common_params & params, int argc, char ** argv, con
+     routes.post_expert_mask            = models_routes->proxy_post;
+     routes.get_dials                   = models_routes->proxy_get;
+     routes.post_dials                  = models_routes->proxy_post;
++    routes.get_control_vector          = models_routes->proxy_get;
++    routes.post_control_vector         = models_routes->proxy_post;
+     routes.get_experts_per_word        = models_routes->proxy_get;
+     routes.post_experts_per_word       = models_routes->proxy_post;
+     routes.get_slots                   = models_routes->proxy_get;

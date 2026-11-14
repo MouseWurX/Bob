@@ -6,7 +6,9 @@
 //
 // node trace-read.mjs --url <server> --sets bob=<dir>,sherlock=<dir>,... [--per 300] [--per-style N] [--top 4] [--mass --keep 0.75,0.5] [--out <folder>]
 //   [--gate 0.2] stop the rental (exit 86) if more than this share of lessons fail
-//   [--jobs files,run,...] only these jobs (styles are skipped) [--parallel 4] lessons read at once
+//   [--jobs files,run,...] only these jobs (styles are skipped) [--parallel 1] lessons read at once. Keep it at 1: the Brain
+//   Engine drops the trace for every request while two share a batch (patch 0002, "only given to a request that ran alone";
+//   14 Nov, 44 of 44 lost at --parallel 4)
 //   Every failed lesson is counted by why (no-set: its tool set isn't in toolsets.json; no-trace: the reply had no expert trace;
 //   http: the call failed) in fails.json, so a run that maps nothing says why (Nov 13: 135 of 160 failed with no reason).
 //   --mass: REAP scores per target too (Brain Engine 0009) and keep/<target>-keep-NN.json lists for live per-job presets

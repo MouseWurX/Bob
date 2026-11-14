@@ -34,6 +34,8 @@
     "test/run-wording-ab-test.js",
     "test/run-coach-tools-test.js",
     "test/run-evil-check-test.js",
+    "test/run-evil-steer-test.js",
+    "test/run-evil-sweep-test.js",
     "test/run-write-lessons-route-test.js",
     "test/run-make-datasets-test.js",
     "test/run-training-methods-test.js",
