@@ -18,6 +18,8 @@ export async function checkEngine(eng, needs) {
   await t('mask', async () => { await eng.setMask(null); });
   await t('dials', async () => { await eng.setDials([{ kind: 'expert', layer: 0, index: 0, scale: 1.5 }]); await eng.setDials([]); });
   await t('trace', async () => { const j = await eng.trace(msg); if (!j.expert_trace) throw new Error('no expert_trace in the reply'); });
+  // a long prompt (read in several chunks) alone, like trace-read sends: the short check alone missed the 14 Nov loss
+  await t('trace-long', async () => { const j = await eng.trace([{ role: 'user', content: 'Count the words. ' + 'alpha beta gamma delta '.repeat(700) }]); if (!j.expert_trace) throw new Error('no expert_trace for a long prompt (about 3,000 tokens)'); return 'long prompt traced'; });
   await t('mass', async () => { const j = await eng.trace(msg, { mass: true }); if (!j.expert_trace) throw new Error('no expert_trace in the reply'); return JSON.stringify(j.expert_trace).includes('mass') ? 'mass ok' : 'trace ok, no mass field (keep lists ranked by picks)'; });
   try { await eng.reset(); } catch {}
   return res;
@@ -26,7 +28,7 @@ export async function checkEngine(eng, needs) {
 async function main() {
   const a = Object.fromEntries(process.argv.slice(2).reduce((acc, x, i, arr) => (x.startsWith('--') ? [...acc, [x.slice(2), arr[i + 1] && !arr[i + 1].startsWith('--') ? arr[i + 1] : true]] : acc), []));
   const url = String(a.url || process.env.LAB_URL || ''); if (!url) { console.error('--url <server> is needed'); process.exit(1); }
-  const needs = new Set(String(a.needs || 'chat,tools,odds,think,n,mask,dials,trace,mass').split(','));
+  const needs = new Set(String(a.needs || 'chat,tools,odds,think,n,mask,dials,trace,trace-long,mass').split(','));
   const res = await checkEngine(live(url), needs);
   for (const r of res) console.log(`${r.ok ? 'OK  ' : 'FAIL'} ${r.name}: ${r.why}`);
   const bad = res.filter((r) => !r.ok);
