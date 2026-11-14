@@ -15,7 +15,7 @@
 // Writes <out>/riker-calibration/<job>.json, presets.json and PRESETS.md.
 // node job-presets.mjs --url <server> --questions <calib>/questions --maps <trace-read --mass out> --out <folder>
 //      [--n 3,4,6,8,12] [--keeps 75,50] [--scales 0.8,1.2] [--parallel 8] [--odds 8] [--max 400] [--student <dir> --student-n 1000]
-//      [--bob <Bob source app folder>] (Bob's current tools, not the saved ones) [--jobs files,run,plans] (only these jobs) [--think] (thinking on: answers carry it, --max-think 4000 tokens)
+//      [--bob <Bob source app folder>] (Bob's current tools, not the saved ones) [--jobs files,run,plans] (only these jobs) [--think] (thinking on: answers carry it, --max-think 4000 tokens) [--gate] (stop the rental if N, keep or dials could not be tried)
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -128,6 +128,10 @@ async function main() {
     fs.writeFileSync(path.join(out, 'riker-calibration', `${slug(job)}.json`), JSON.stringify(doc, null, 1));
     presets[job] = { n: doc.preset.n, keep: doc.preset.keep, dials: c.pick.dials || null, score: c.pick.score, pm: c.pick.pm, as_built: c.scored[0].score, why: c.pick.why, fastest_same: c.fastest_same && { n: c.fastest_same.n || null, keep: c.fastest_same.keep || 100, score: c.fastest_same.score } };
   }
+  // --gate: a smoke run where a planned switch could not be tried stops the rental (exit 86): Nov 13 ran 34 jobs "as built" only
+  if (a.gate) { const want = { n: String(a.n || '').split(',').filter(Boolean).length > 0, keep: keeps.length > 0, dials: scales.length > 0 }, tried = Object.values(passes).flat().map((p) => p.setting);
+    const miss = [want.n && !liveN && 'experts per word', want.keep && !tried.some((t) => t.keep) && 'keep lists', want.dials && !tried.some((t) => t.dials) && 'dials'].filter(Boolean);
+    if (miss.length) { console.log(`GATE STOP: live switches not tried: ${miss.join(', ')} (no live switch, or no per-job maps)`); process.exit(86); } }
   fs.writeFileSync(path.join(out, 'presets.json'), JSON.stringify({ brain, made: new Date().toISOString(), presets }, null, 1));
   const md = [`# Per-job presets: ${brain}`, '', 'Score = share of the job\'s judged questions right (± its 95% range). A preset only differs from the brain as built when it beats it by more than the noise (paired, same questions).', '',
     '| job | questions | as built | pick | pick score | why | cheapest just as good |', '|---|---|---|---|---|---|---|',

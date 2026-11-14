@@ -5,6 +5,7 @@
 // same lessons are read by the writer (GPT-OSS 120B), its cut (the 38B) and the student (a Qwen Bob), each in its own folder.
 //
 // node trace-read.mjs --url <server> --sets bob=<dir>,sherlock=<dir>,... [--per 300] [--per-style N] [--top 4] [--mass --keep 0.75,0.5] [--out <folder>]
+//   [--gate 0.2] stop the rental (exit 86) if more than this share of lessons fail
 //   [--jobs files,run,...] only these jobs (styles are skipped) [--parallel 4] lessons read at once
 //   Every failed lesson is counted by why (no-set: its tool set isn't in toolsets.json; no-trace: the reply had no expert trace;
 //   http: the call failed) in fails.json, so a run that maps nothing says why (Nov 13: 135 of 160 failed with no reason).
@@ -133,6 +134,8 @@ async function main() {
   // in batches of --parallel; each trace is folded in and dropped at once, so memory stays flat
   for (let i = 0; i < work.length; i += par) await Promise.all(work.slice(i, i + par).map(readOne));
   fs.writeFileSync(path.join(out, 'fails.json'), JSON.stringify({ lessons: work.length, failed: fails, why }, null, 1));
+  // --gate 0.2: a smoke run that loses more than this share of lessons stops the whole rental (exit 86, the Forge deletes the pod)
+  if (args.gate !== undefined && fails > (Number(args.gate) || 0) * work.length) { console.log(`GATE STOP: expert maps lost ${fails} of ${work.length} lessons (${Object.entries(why).map(([k, v]) => `${k} ${v.n}: ${v.first[0] || ''}`).join('; ')})`); process.exit(86); }
   if (!Object.keys(acc).length) { console.error('No expert traces came back. Is this a Brain Engine server with the expert trace, and a mixture-of-experts brain?'); process.exit(1); }
   const lift = lifts(acc, top);
   fs.writeFileSync(path.join(out, 'counts.json'), JSON.stringify(countsShape(acc)));

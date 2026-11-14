@@ -13,7 +13,7 @@
 // data: answers-wording-*.jsonl carry evidence: true). Writes WORDING.md and wording.json.
 // node tool-wording.mjs --url <server> --questions <calib>/questions --bob <Bob source app folder> --out <folder>
 //      [--jobs files,run,plans] [--variants bob,usewhen,paths] [--think off,on] [--turns 2] [--parallel 8] [--odds 8]
-//      [--max 600] [--max-think 4000] [--prefill "Plan: 1."] [--limit N] [--min-bob 1.5.223] [--dry]
+//      [--max 600] [--max-think 4000] [--prefill "Plan: 1."] [--limit N] [--min-bob 1.5.223] [--gate] [--dry]
 // --dry: no server; checks the questions, the fresh tools and every variant, and prints what would be asked.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -165,6 +165,9 @@ async function main() {
     console.log(`  ${r.filter((x) => x.ok).length}/${r.length} right, ${r.filter((x) => x.name_ok).length} right tool, ${r.filter((x) => x.error).length} errors, ${Math.round((Date.now() - t0) / 1000)} s`);
   }
   kit.done();
+  // --gate: a smoke run where any turn errored, or thinking-on answers all ran out of tokens, stops the rental (exit 86)
+  if (a.gate) { const err = rows.filter((r) => r.error), cut = rows.filter((r) => r.think && r.finish === 'length'), on = rows.filter((r) => r.think);
+    if (err.length || (on.length && cut.length === on.length)) { console.log(`GATE STOP: tool wording smoke: ${err.length} errors${err[0] ? ` (${err[0].error})` : ''}, ${cut.length}/${on.length} thinking answers cut off`); process.exit(86); } }
   const s = summarize(rows, conds);
   fs.writeFileSync(path.join(out, 'wording.json'), JSON.stringify({ brain, bob_src: bobVer, made: new Date().toISOString(), turns, conds, scores: s }, null, 1));
   const md = [`# Tool wording and thinking: ${brain} (Bob ${bobVer})`, '', `Right = the recorded tools with every recorded argument (tool = the right tools only). Gap = paired difference from ${conds[0]} on the same turns, ± its 95% range; only a gap bigger than its range is real. save_to = used it / turns where the user named a file. Evidence only.`, '',

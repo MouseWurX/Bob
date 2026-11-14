@@ -67,5 +67,12 @@ check('scrub: paths, keys', scrub('C:\\Users\\you\\x and hf_abcdefgh123 /home/yo
 check('scrub: owner names from LAB_SCRUB_NAMES', scrub('ask zorblax') === 'ask <owner>');
 check('scrub keeps "Thus:" and a line break', scrub('Thus:\n1. go') === 'Thus:\n1. go');
 
+const { checkEngine } = await import('../model-lab/engine-check.mjs');
+const okEng = { chat: async (b) => ({ choices: [{ message: { content: 'hi', reasoning_content: b.chat_template_kwargs?.enable_thinking ? 'hm' : '' }, logprobs: { content: [{ token: 'hi', logprob: 0, top_logprobs: [] }] } }] }), setUsed: async () => ({}), getUsed: async () => ({ used: 10 }), setMask: async () => ({}), setDials: async () => ({}), trace: async () => ({ expert_trace: { layers: [], mass: [] } }), reset: async () => {} };
+const all = new Set(['chat', 'tools', 'odds', 'think', 'n', 'mask', 'dials', 'trace', 'mass']);
+check('engine check passes a full engine', (await checkEngine(okEng, all)).every((r) => r.ok));
+const oldEng = { ...okEng, setUsed: async () => { throw new Error('this engine has no /experts-per-word'); }, trace: async () => ({}) };
+const bad = (await checkEngine(oldEng, all)).filter((r) => !r.ok).map((r) => r.name).join(',');
+check('engine check catches the Nov 13 engine (no N switch, no trace)', bad === 'n,trace,mass', bad);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
