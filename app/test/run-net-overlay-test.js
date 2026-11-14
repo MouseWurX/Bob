@@ -159,5 +159,31 @@ check('only Bobs on Bob-Net right now', v.bobs.length === 1 && v.bobs[0].name ==
   check('nothing in a brain\'s start-up words', !/net-overlay|netOverlay/.test(read('src/brain-prompting.js')) && !/netOverlay/.test(read('src/prompts.js')));
 }
 
+// 1.5.228 chat heads: Discord and Telegram show their own head when they're on, with Bob-Net icons on or off.
+{
+  const { roomLook, roomWords, SIGNS, ROOM_LOOKS } = await import('../public/net-overlay.js');
+  const { roomPages } = await import('../public/room-chat.js');
+  const rooms = [{ id: 'discord', name: 'Discord', waiting: 2 }, { id: 'telegram', name: 'Telegram', chat: 'telegram' }, { id: 'Bad id!', name: 'x' }];
+  const offV = await overlayView({ netOverlay: false }, { rooms });
+  check('chat heads show with Bob-Net icons off, and only those', offV.on === false && offV.bobs.length === 0 && offV.rooms.map((r) => r.id).join() === 'discord,telegram');
+  const onV = await overlayView({ netOverlay: true }, { rooms });
+  check('and with it on', onV.rooms.length === 2 && onV.rooms[0].waiting === 2 && onV.rooms[1].chat === 'telegram');
+  check('no chat bot on: no heads', (await overlayView({ netOverlay: false }, {})).rooms.length === 0);
+  check('each company has its own cube colour and its own sign', roomLook('discord').hue !== roomLook('telegram').hue && SIGNS[ROOM_LOOKS.discord.sign] && SIGNS[ROOM_LOOKS.telegram.sign] && ROOM_LOOKS.telegram.sign !== 'plane');
+  check('the Discord head says what waits', roomWords(onV.rooms[0]) === 'Discord group chat: 2 waiting for your OK' && roomWords(onV.rooms[1]) === 'Telegram: your chat');
+  const lines = [
+    { id: 'a1', kind: 'ask', at: 1, where: '111', whereName: 'general', text: 'hi', state: 'done' },
+    { id: 'b1', kind: 'bob', at: 2, to: 'a1', text: 'hello' },
+    { id: 'a2', kind: 'ask', at: 3, where: '222', whereName: 'memes', text: 'joke', state: 'waiting' },
+    { id: 'a3', kind: 'ask', at: 4, where: '333', text: 'old', state: 'declined' }
+  ];
+  const pages = roomPages(lines);
+  check('each channel is its own page, the one waiting first', pages.map((p) => p.name).join() === '#memes,Channel …333,#general' && pages[0].waiting === 1);
+  check('Bob\'s reply sits on its request\'s page', pages.find((p) => p.id === '111').lines.map((l) => l.id).join() === 'a1,b1');
+  const page = read('public/net-overlay.js');
+  check('a head opens its own chat: Discord its group chat, Telegram your Telegram chat', /if \(s\.it\.chat\) open\(s\.it\.chat\); else openRoom\(s\.it\.id\)/.test(page));
+  check('a new request gives a word bubble, never a sound or pop-up', /ev\.type === 'room'/.test(page) && !/new Audio|Notification\(/.test(page));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

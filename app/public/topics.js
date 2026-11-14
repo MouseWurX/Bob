@@ -284,7 +284,7 @@ export function createTopics({ api, openChat }) {
   });
 
   return {
-    async open(which) { if (which) tab = which; sharing = null; dlg.showModal(); body.innerHTML = '<p class="muted">Loading…</p>'; await load(); $('topics-q')?.focus(); },
+    async open(which) { inRoom = which === 'room'; if (inRoom) { roomChat.fresh(); which = 'chats'; } if (which) tab = which; sharing = null; dlg.showModal(); body.innerHTML = '<p class="muted">Loading…</p>'; await load(); $('topics-q')?.focus(); },
     refresh() { if (dlg.open) load(); }
   };
 }

@@ -61,13 +61,13 @@ export class RoomGate {
 
   // A request from someone in the room. Returns the line, or { refused: why } when the room is too full.
   // auto: Auto-accept is on, so it's accepted straight away (still kept in the room's chat).
-  ask({ who, name, where, text, type, ref = {} }, { auto = false } = {}) {
+  ask({ who, name, where, whereName = '', text, type, ref = {} }, { auto = false } = {}) {
     const w = this.waiting();
     if (!auto && w.length >= MAX_WAITING) return { refused: 'full' };
     if (!auto && w.filter((l) => l.who === String(who)).length >= MAX_PER_PERSON) return { refused: 'person' };
     const line = {
       id: crypto.randomUUID(), kind: 'ask', at: this.now(), who: clean(who, 40), name: clean(name, 40) || 'someone',
-      where: clean(where, 80), text: clean(text, MAX_TEXT), type: clean(type, 20), ref,
+      where: clean(where, 80), whereName: clean(whereName, 100), text: clean(text, MAX_TEXT), type: clean(type, 20), ref,
       state: auto ? 'accepted' : 'waiting', ...(auto ? { auto: true, answeredAt: this.now() } : {})
     };
     this.data.lines.push(line);

@@ -673,7 +673,7 @@ const harnessChat = createHarnessChat({
 });
 // Nov 13 Bob-Net icons (public/net-overlay.js), off unless turned on: other Bobs and coding agents on Bob-Net.
 // var, not const: openChat and onEvent may run before this line does.
-var netOverlay = createNetOverlay({ open: (id) => openChat(id), session: () => sessionId, showAgents: () => layout.showAgents(), note: (t) => note(t), still: stillNow });
+var netOverlay = createNetOverlay({ open: (id) => openChat(id), session: () => sessionId, showAgents: () => layout.showAgents(), openRoom: () => topicsPage.open('room'), note: (t) => note(t), still: stillNow });
 
 const fadeChat = createFadeChat({ log, input, note, session: () => sessionId, busy: () => busy, reload: async () => { if (busy) return; log.innerHTML = ''; stick = true; await loadHistory(40); } });
 window.addEventListener('bob-harness', () => fadeChat.refresh()); // a fade or Amnesia setting changed

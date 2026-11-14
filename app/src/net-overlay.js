@@ -84,8 +84,13 @@ const clean = (s, n = 40) => String(s || '').replace(/[\u0000-\u001f<>]/g, '').t
 
 // What the icons show. bobs: your other Bobs (lenders.bobs()); seen(bob): his remembered hello; mood(bob): his cube.
 // agents: the coding agents' view (only while "Run coding agents" is on).
-export async function overlayView(cfg, { bobs = [], seen = () => null, mood = async () => 'ready', agents = null } = {}) {
-  if (!overlayOn(cfg)) return { on: false, bobs: [], agents: [] };
+// rooms (1.5.228): the chat bots that are on, [{ id, name, waiting, chat? }]: Discord opens its group chat, Telegram (chat:
+// 'telegram') your own Telegram chat.
+export async function overlayView(cfg, { bobs = [], seen = () => null, mood = async () => 'ready', agents = null, rooms = [] } = {}) {
+  // 1.5.228 chat heads: a chat bot you turned on (Discord, Telegram) shows its own head under Bob's cube, whether or
+  // not Bob-Net icons is on. The owner, Nov 14: "they would only appear if you have them activated".
+  const heads = [].concat(rooms || []).filter((r) => r && /^[a-z]{2,20}$/.test(String(r.id))).map((r) => ({ id: String(r.id), name: clean(r.name) || 'Group chat', waiting: Math.max(0, Number(r.waiting) || 0), ...(r.chat ? { chat: clean(r.chat, 40) } : {}) }));
+  if (!overlayOn(cfg)) return { on: false, bobs: [], agents: [], rooms: heads };
   const up = bobs.filter((b) => seen(b)?.up === true); // only while he's on Bob-Net right now
   const moods = await Promise.all(up.map((b) => mood(b).catch(() => 'ready')));
   return {
@@ -94,6 +99,7 @@ export async function overlayView(cfg, { bobs = [], seen = () => null, mood = as
       const s = seen(b) || {};
       return { name: clean(b.name) || 'Another Bob', chat: chatIdFor(b.address), hue: hueFor(b.name), mood: moods[i], device: clean(s.device, 20), brain: clean(s.brain, 60), canChat: (s.jobs || []).includes('chat') && !s.jobsBusy };
     }),
+    rooms: heads,
     agents: agents?.on ? [].concat(agents.agents || []).map((a) => ({ id: String(a.id), name: clean(a.name), kind: String(a.kind || 'custom'), look: agentLook(a.kind), state: String(a.state || 'idle'), last: clean([].concat(a.log || []).filter((l) => !/^[—!]/.test(l)).at(-1) || '', 160) })) : []
   };
 }

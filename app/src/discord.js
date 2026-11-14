@@ -411,16 +411,28 @@ export class DiscordBridge {
       if (mine.length >= MAX_WAITING) { this.lastAsk.delete(who); return reply('I\'ve got a few Discord jobs going already. Ask again in a little while.'); }
     }
     // 1.5.211 the room gate: it waits for the owner's OK in the Discord chat on this replicant matrix, unless Auto-accept is on.
-    const line = this.gate.ask({ who, name, where: channelId, text: prompt.slice(0, MAX_IN), type, ref: { channelId, messageId: m.id } }, { auto: s.autoAccept });
+    const whereName = await this.channelName(channelId); // 1.5.228: each channel is its own page in the Discord chat
+    const line = this.gate.ask({ who, name, where: channelId, whereName, text: prompt.slice(0, MAX_IN), type, ref: { channelId, messageId: m.id } }, { auto: s.autoAccept });
     if (line.refused) { this.lastAsk.delete(who); return reply(line.refused === 'person' ? 'You\'ve got a few waiting for the owner\'s OK already. Ask again once they\'re answered.' : 'Lots of requests are waiting for the owner\'s OK already. Ask again later.'); }
-    this.roomNews();
+    this.roomNews({ name: line.name, text: line.text, where: line.whereName, waiting: line.state === 'waiting' });
     if (s.autoAccept) return this.run(line);
     this.log(`Discord request waiting for your OK (${type}, ${line.id.slice(0, 8)})`);
     this.react(channelId, m.id, '⏳');
   }
 
   // Tells Bob's open pages the room changed (a quiet count, never a pop-up).
-  roomNews() { try { this.brain.broadcast?.({ type: 'room', room: 'discord', waiting: this.gate.waiting().length }); } catch {} }
+  // last (1.5.228): the request that just came in, for the word bubble on the Discord icon (Bob-Net icons). Display only.
+  roomNews(last = null) { try { this.brain.broadcast?.({ type: 'room', room: 'discord', waiting: this.gate.waiting().length, ...(last ? { last } : {}) }); } catch {} }
+
+  // A channel's name ("general"), asked of Discord once per channel and kept in memory. '' when it can't be read.
+  async channelName(id) {
+    const names = (this.channelNames ||= new Map());
+    if (names.has(id)) return names.get(id);
+    let name = '';
+    try { const c = await this.rest('GET', `/channels/${id}`); name = String(c?.name || '').replace(/[\u0000-\u001f<>]/g, '').slice(0, 100); } catch {}
+    names.set(id, name);
+    return name;
+  }
 
   react(channelId, messageId, emoji, off = false) {
     return this.rest(off ? 'DELETE' : 'PUT', `/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/@me`).catch((e) => this.log(`couldn't react on Discord: ${e.message}`));

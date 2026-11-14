@@ -314,6 +314,14 @@ check('turning it off stops Bob listening', !c.running && c.status === 'off');
   saveDiscord(brain.cfg, { enabled: false, keepAwake: false });
 }
 
+// 1.5.228 each channel is its own page: Bob asks Discord a channel's name once and keeps it.
+{
+  const n = new DiscordBridge(brain, { fetchImpl, WebSocketImpl: FakeWS, env: { [TOKEN_ENV]: TOKEN } });
+  let asked = 0;
+  n.rest = async (m, route) => { asked++; return route === `/channels/${CH}` ? { name: 'general<b>' } : {}; };
+  check('a channel\'s name is asked once, cleaned, and kept', (await n.channelName(CH)) === 'generalb' && (await n.channelName(CH)) === 'generalb' && asked === 1);
+}
+
 fs.rmSync(dir, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -934,10 +934,14 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && p === '/api/net-overlay') {
       if (!isLocal) return send(res, 403, { error: 'this replicant matrix only' });
       const bobs = brain.lenders.bobs();
-      await Promise.all(bobs.map((x) => brain.lenders.hello(x).catch(() => null))); // cached: 30 s good, 60 s down
+      if (cfg.netOverlay === true) await Promise.all(bobs.map((x) => brain.lenders.hello(x).catch(() => null))); // cached: 30 s good, 60 s down (1.5.228: not for chat heads alone)
       let agents = null;
       try { agents = brain.codingAgents?.view?.() || null; } catch {}
-      return send(res, 200, await overlayView(cfg, { bobs, seen: (b) => brain.lenders.state.get(b.address), mood: (b) => readCube(brain.lenders, b), agents }));
+      // 1.5.228: the Discord group's own chat gets an icon too, while Bob on Discord is on.
+      const rooms = [];
+      if (brain.discord?.settings?.().enabled) rooms.push({ id: 'discord', name: 'Discord', waiting: brain.discord.gate?.waiting?.().length || 0 });
+      if (brain.telegram?.settings?.().enabled) rooms.push({ id: 'telegram', name: 'Telegram', chat: 'telegram' });
+      return send(res, 200, await overlayView(cfg, { bobs, seen: (b) => brain.lenders.state.get(b.address), mood: (b) => readCube(brain.lenders, b), agents, rooms }));
     }
     if (req.method === 'GET' && p === '/api/bob-net/cube') {
       if (!isRemote && !isLocal) return send(res, 403, { error: 'no' });
