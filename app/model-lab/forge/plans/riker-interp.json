@@ -1,13 +1,13 @@
 {
  "run": "riker-interp",
- "note": "14 Nov (the owner: \"Research next steps: patching and sparse-autoencoder features for Riker\"). Riker stock on a rented A40, never the home PC. Before serving, the pod's interp step (pod patch 0015 llama-act-dump + interp.py) reads Riker's inner stream on the cruel, kind and plain asks plus Bob lessons, keeps the per-layer means and trains a TopK sparse autoencoder at layers 10, 20 and 30; the raw activations are deleted on the pod. Then, live (pod patch 0014): the gate in the first minutes (exit 86 ends the run and deletes the pod), patching one layer at a time, then the top autoencoder features pushed and taken out. SURGERY RECORD ONLY: never lessons, odds or pairs, nothing to Hugging Face. On the PC first: node interp-prep.mjs --out out/interp-riker --lessons out/lessons",
+ "note": "14 Nov (the owner: \"Research next steps: patching and sparse-autoencoder features for Riker\"). Riker stock on a rented RTX A6000 (L40S second; three A40 pods on 14 Nov never started, so the owner said change the card type), never the home PC. Before serving, the pod's interp step (pod patch 0015 llama-act-dump + interp.py) reads Riker's inner stream on the cruel, kind and plain asks plus Bob lessons, keeps the per-layer means and trains a TopK sparse autoencoder at layers 10, 20 and 30; the raw activations are deleted on the pod. Then, live (pod patch 0014): the gate in the first minutes (exit 86 ends the run and deletes the pod), patching one layer at a time, then the top autoencoder features pushed and taken out. SURGERY RECORD ONLY: never lessons, odds or pairs, nothing to Hugging Face. On the PC first: node interp-prep.mjs --out out/interp-riker --lessons out/lessons",
  "benchmark_only": true,
  "teacher": "Qwen/Qwen3.6-35B-A3B",
  "counts": "expert-counts-2026-11-04T23-23-19.json",
  "lessons": "out/lessons",
  "gpus": [
-  "NVIDIA A40",
-  "NVIDIA RTX A6000"
+  "NVIDIA RTX A6000",
+  "NVIDIA L40S"
  ],
  "step_up": [],
  "disk_gb": 80,
@@ -68,5 +68,6 @@
     ]
    }
   ]
- }
+ },
+ "door_minutes": 10
 }

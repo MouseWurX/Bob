@@ -37,6 +37,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   check('interp.py marks its record never training', /"never_training": True/.test(py));
   const plan = JSON.parse(read(path.join(lab, 'forge', 'plans', 'riker-interp.json'))), m = plan.benchmark.models[0];
   check('the Riker interp plan: its own small rental with caps, the act-dump patch, interp before serving', plan.dollars_max <= 2 && plan.hours_max <= 3 && plan.benchmark.brain_engine.patches.includes('pod:0015-act-dump') && plan.benchmark.brain_engine.patches.includes('pod:0014-live-control-vector') && m.interp === true && m.interp_from === 'out/interp-riker');
+  check('a different card than the A40s that stuck, a short door wait, and the host id kept for a report', plan.gpus[0] === 'NVIDIA RTX A6000' && !plan.gpus.includes('NVIDIA A40') && plan.door_minutes <= 10 && /machine: host/.test(forge) && /dataCenterIds: \[t\.dc\]/.test(forge));
   check('the gate runs first, then patching and features, all into the surgery folder', /--gate$/.test(m.commands[0]) && /--mode patch/.test(m.commands[1]) && /--mode features/.test(m.commands[2]) && m.commands.slice(1).every((c) => /\/surgery\/riker-interp$/.test(c)));
 }
 

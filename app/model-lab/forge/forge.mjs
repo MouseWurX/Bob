@@ -207,7 +207,7 @@ async function rent() {
       if (plan.volume_new === false || plan.rebuild) targets = targets.filter((t) => t.vol);
       if (Array.isArray(plan.data_centers)) targets = targets.filter((t) => t.dc && plan.data_centers.includes(t.dc));
       if (!targets.length && attempt % 5 === 0) log(`no data centre to ask in this minute (our volumes: ${knownVolumes().map((v) => v.dataCenterId).join(', ') || 'none'}${plan.data_centers ? `; allowed: ${plan.data_centers.join(', ')}` : ''})`);
-    } else targets = [{ dc: null, name: 'anywhere', vol: null }];
+    } else targets = Array.isArray(plan.data_centers) && plan.data_centers.length ? plan.data_centers.map((dc) => ({ dc, name: dc, vol: null })) : [{ dc: null, name: 'anywhere', vol: null }]; // 14 Nov: a no-volume run can be pinned too (a bad host elsewhere)
     for (const t of targets) {
       // a new volume only where the card is listed as in stock (RunPod's flag is strict, so this holds back only the "no" cases) and only once per run
       if (plan.volume && t.dc && !t.vol) { if (t.available === false || tried.has(t.dc)) continue; }
@@ -218,7 +218,7 @@ async function rent() {
         const pod = await rp('POST', '/pods', {
           name: `bob-forge-${plan.rungs[0]?.name || (plan.lessons_only ? 'lessons' : 'counts')}-${String(plan.run || '').replace(/[^\w.-]/g, '_').slice(0, 40)}`, imageName: plan.image || 'vllm/vllm-openai:v0.28.0', cloudType: 'SECURE',
           gpuTypeIds: cards, gpuTypePriority: 'custom', gpuCount: 1, volumeMountPath: '/workspace',
-          ...(useVol ? { networkVolumeId: useVol.id, dataCenterIds: [useVol.dataCenterId], containerDiskInGb: plan.disk_gb || 350 } : { volumeInGb: plan.disk_gb || 350, containerDiskInGb: 40 }),
+          ...(useVol ? { networkVolumeId: useVol.id, dataCenterIds: [useVol.dataCenterId], containerDiskInGb: plan.disk_gb || 350 } : { volumeInGb: plan.disk_gb || 350, containerDiskInGb: 40, ...(t.dc ? { dataCenterIds: [t.dc] } : {}) }),
           ports: directPorts() || ((plan.write_lessons || plan.benchmark) ? ['8000/http', '8001/http'] : ['8000/http']), supportPublicIp: Boolean(plan.direct),
           // the PC's RunPod key goes in as FORGE_RUNPOD_KEY (RunPod injects its own limited RUNPOD_API_KEY into every pod, which cannot delete) so the pod can delete itself near the time cap even if this PC falls asleep.
           env: { FORGE_TOKEN: token, FORGE_RUNPOD_KEY: KEY, HF_HUB_ENABLE_HF_TRANSFER: '0', FORGE_HOURS_MAX: String(hoursMax), FORGE_ROOT: root, FORGE_SHARED: '/workspace' },
@@ -227,8 +227,10 @@ async function rent() {
         });
         podId = pod.id; price = pod.costPerHr || 0;
         const got = pod.machine?.gpuTypeId || 'a card';
-        log(`rented ${got}: pod ${podId}, $${price}/h, in ${t.name}${useVol ? ` with volume ${useVol.id}` : ' WITHOUT a volume'}${stepUp.includes(got) ? ' (the STEP-UP card: the wanted one was out)' : ''}`);
-        fs.writeFileSync(tokenFile, JSON.stringify({ pod: podId, token, started: Date.now(), price, run, root, volume: useVol?.id || null, gpu: got, dataCenter: t.dc }));
+        // 14 Nov: keep the host's id and data centre (RunPod forgets them once a pod is deleted; a stuck host can then be reported)
+        const host = pod.machineId || pod.machine?.id || null, where = pod.machine?.dataCenterId || t.dc || null;
+        log(`rented ${got}: pod ${podId}, $${price}/h, in ${t.name}${host ? ` (host ${host}${where ? `, ${where}` : ''})` : ''}${useVol ? ` with volume ${useVol.id}` : ' WITHOUT a volume'}${stepUp.includes(got) ? ' (the STEP-UP card: the wanted one was out)' : ''}`);
+        fs.writeFileSync(tokenFile, JSON.stringify({ pod: podId, token, started: Date.now(), price, run, root, volume: useVol?.id || null, gpu: got, dataCenter: where, machine: host }));
         return;
       } catch (e) { if (attempt % 5 === 0) log(`rent in ${t.name}: ${e.message.slice(0, 160)} (asking again every minute, ${minutes} min so far)`); }
     }
