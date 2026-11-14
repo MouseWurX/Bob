@@ -212,6 +212,22 @@ never-taught list so the scores stay honest.
 only as seeds: the request and what went wrong. The right answer is written fresh by the stock teacher. No text made
 with a dial or steering switched on ever goes into a lesson or a pair (the surgery data rule, `notForTraining`).
 
+**Required first: audit and clean every old set.** The old Bobert learned from data with known problems, so no old
+lesson enters the new suite until it passes an audit. Each lesson is checked for:
+
+- fake tool results that are a bare "Done.", cut off, an error, or don't match the task;
+- answers that hand the job off with a pretend result (37% of the old coding set did) instead of doing it;
+- claims about a file, path or count that the tool result doesn't show;
+- tool text or inputs from an old Bob copy that no longer match today's tools;
+- tool jobs with no tool call (section 3i), and plain chat that calls a tool;
+- reviewer verdicts that relied on the phantom "JSON format" rule;
+- anything personal the scrub missed (the 12 Nov leak);
+- answers made under a dial, steering or surgery, and anything from an evil or fiction check.
+
+A lesson that fails is either fixed and checked again, or dropped. The audit report lists every change. The originals
+stay untouched, and the old Bobert is not used as a teacher for the new suite: the stock Qwen teacher writes every
+fresh answer.
+
 ## 3d. Coding, the way courses teach it
 
 The most common lesson types from college and university coding, software engineering, code fixing and error
