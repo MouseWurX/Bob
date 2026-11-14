@@ -1,4 +1,4 @@
-<h1 align="center">Bob of The Idle Process</h1>
+<h1 align="center">Bob</h1>
 
 <p align="center"><b>A local AI agent with a personality. He runs on your own computer, and nothing goes online unless you turn it on.</b></p>
 
