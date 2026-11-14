@@ -25,7 +25,7 @@ Everything written about Bob, in one list. New here? Start with the [user guide]
 | [The Forge journal](FORGE-JOURNAL.md) | The lab notebook, kept as the work happens. |
 | [Lab steps plan](LAB-STEPS-PLAN.md) | Design: every advanced method as a Lab step, run alone or as the whole protocol. |
 
-**Downloads on Hugging Face:** [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) · [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) · [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) · the lessons, [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) · the teacher's odds, [bob-odds](https://huggingface.co/datasets/MouseWurX/bob-odds)
+**Downloads on Hugging Face:** [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) · [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) · [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) · the lessons, [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons)
 
 ## Building and helping
 
