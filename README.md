@@ -12,7 +12,7 @@
   <a href="app/docs/README.md">All the docs</a>
 </p>
 
-![Bob's window in the Lamplight look: the glowing cube top left, tabs across the top, a chat in the middle and a quiet composer below](app/docs/screenshot.png)
+![Bob's window in the Lamplight look, Mercury lamp: the glowing cube top left with the chat heads under it, tabs across the top, the window's own buttons on the same bar, a chat about a Blender lantern in the middle and a quiet composer below](app/docs/screenshot.png)
 
 <p align="center">Windows · Mac · Linux · Raspberry Pi · Android · iPhone &nbsp;|&nbsp; free and open source &nbsp;|&nbsp; no account, no telemetry</p>
 
@@ -100,8 +100,13 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 | **Now running.** Closed until you open it from the status line. | **Calibrate.** Times each brain on your card and recommends the fastest way to load it. |
 
 <p align="center">
-  <img src="app/docs/screens/cube-porthole.png" width="420" alt="The porthole cube glowing beside Bob's name">
-  <br><b>The porthole cube.</b> It lights the room: brighter while Bob thinks, nearly dark with no brain loaded.
+  <img src="app/docs/screens/cube-porthole.png" width="420" alt="The porthole cube glowing beside Bob's name, with chat heads under it: another Bob, Discord with 2 waiting, and Telegram">
+  <br><b>The porthole cube.</b> It lights the room: brighter while Bob thinks, nearly dark with no brain loaded. Chat heads for your other Bobs, Discord and Telegram sit under it, only for the ones you turned on.
+</p>
+
+<p align="center">
+  <img src="app/docs/screens/lamps.png" alt="The same chat in the four lamps: Mercury pale blue, Sodium orange-yellow, Thallium green and Neon red">
+  <br><b>Four lamps.</b> Mercury, Sodium, Thallium and Neon, each the colour of that gas lamp's real light. The lamp colours the app icon too.
 </p>
 
 <details>
@@ -237,7 +242,7 @@ Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 14 
 
 Most AI apps are for talking to a model or for building one. Bob does both. **🧪 Lab** in the menu opens in its own window, so you can change a brain while Bob keeps chatting.
 
-![The Computer Science Lab in its own window: seven tabs, Keep it simple or Professional, and Make a brain asking What do you want to do?](app/docs/screens/lab.png)
+![The Computer Science Lab in its own window: eight tabs, Keep it simple or Professional, and Make a brain asking What do you want to do?](app/docs/screens/lab.png)
 
 | Tab | What you do there |
 |---|---|
