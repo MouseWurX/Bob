@@ -50,9 +50,24 @@ const CARD_PROGRAM = /^(rpc-server|llama-server)$/i; // the lend itself
 // on; the engines agree on it when they connect and stay on the usual link (TCP) if either side doesn't, or if the
 // UDP path doesn't answer. It paces itself under a speed cap so the rest of the home network isn't crowded.
 export const SCUT_MBPS = [50, 100, 300, 400, 1000];
+// Nov 14, the owner: "scut should never have been capped at 100, it should be 400 by default". Auto = 400 Mbit/s.
+// (On a cable at both ends SCUT isn't used at all: scutOnLink.)
+export const SCUT_AUTO = 400;
 export const scutOn = (cfg) => cfg.share?.scut === true;
 // Sealed SCUT packets (Brain Engine 0006, src/scut-seal.js): on with SCUT unless "Seal SCUT packets" is switched off.
 export const scutSealOn = (cfg) => scutOn(cfg) && sealOn(cfg);
+// Nov 14 (the owner: "they are definitely not going to try to share with wireless bob"): one brain is never spread over
+// cable Bobs and Wi-Fi or Tailscale Bobs together; the slow link would hold the whole brain back. Each kind can share
+// among itself. When both kinds lend, the group whose cards hold more of the brain is used (room(u): his card's GB, from
+// his hello), the cable group on a tie. lent: the cards that said yes; drop(u) lets one go.
+export function oneKind(lent, drop = () => {}, room = () => 0) {
+  const wired = lent.filter((u) => u.wired), other = lent.filter((u) => !u.wired);
+  if (!wired.length || !other.length) return lent;
+  const sum = (g) => g.reduce((t, u) => t + (Number(room(u)) || 0), 0);
+  const keep = sum(other) > sum(wired) ? other : wired;
+  for (const u of lent) if (!keep.includes(u)) drop(u);
+  return keep;
+}
 export const SEED_MS = 20 * 60000; // the most a lender spends filling its card store from its own copy of a brain
 const SEED_SPARE = 10e9; // the disk room a seed always leaves free
 
@@ -126,11 +141,14 @@ export function freeBytes(dir) {
 // 1.5.214 (card test Nov 13: a 1 Gbit/s cable ran the first copy at about 96 Mbit/s, SCUT's 100 cap): unless someone
 // picked a cap, it's Auto: 1000 only when BOTH Bobs reach each other over a network cable or USB4 (a switch between
 // them is fine), 100 otherwise. The owner: "100 was our test standard for safety, to not overcrowd the network". 1.5.213 saved 100 on every Bob, so only another number or a pick counts as chosen.
-export const scutChosen = (cfg) => cfg.share?.scutMbpsChosen === true || (SCUT_MBPS.includes(Number(cfg.share?.scutMbps)) && Number(cfg.share.scutMbps) !== 100);
-export const scutMbps = (cfg, { wired = false } = {}) => (scutChosen(cfg) && SCUT_MBPS.includes(Number(cfg.share?.scutMbps)) ? Number(cfg.share.scutMbps) : wired ? 1000 : 100);
+export const scutChosen = (cfg) => cfg.share?.scutMbpsChosen === true || (SCUT_MBPS.includes(Number(cfg.share?.scutMbps)) && Number(cfg.share.scutMbps) !== SCUT_AUTO);
+export const scutMbps = (cfg, { wired = false } = {}) => (scutChosen(cfg) && SCUT_MBPS.includes(Number(cfg.share?.scutMbps)) ? Number(cfg.share.scutMbps) : SCUT_AUTO);
 export const isWired = (kind) => kind === 'cable' || kind === 'usbnet' || kind === 'usb4';
 // What the engine is started with. lend: the card server, behind the gate, says the gate's port (UDP too) in its offer.
-export const scutEnv = (cfg, { lend = false, wired = false } = {}) => (scutOn(cfg) ? { GGML_RPC_SCUT: '1', GGML_RPC_SCUT_MBPS: String(scutMbps(cfg, { wired })), ...(lend ? { GGML_RPC_SCUT_PUBLIC_PORT: String(RPC_PORT) } : {}) } : {});
+// Nov 14 (the owner: "scut over ethernet isnt needed"): SCUT makes up for what Wi-Fi loses; a cable at both ends loses
+// next to nothing, so there the lent card uses the engine's usual link (plain TCP) even with SCUT on.
+export const scutOnLink = (cfg, { wired = false } = {}) => scutOn(cfg) && !wired;
+export const scutEnv = (cfg, { lend = false, wired = false } = {}) => (scutOnLink(cfg, { wired }) ? { GGML_RPC_SCUT: '1', GGML_RPC_SCUT_MBPS: String(scutMbps(cfg, { wired })), ...(lend ? { GGML_RPC_SCUT_PUBLIC_PORT: String(RPC_PORT) } : {}) } : {});
 // The link log (Brain Engine 0008, src/link-log.js): the engine says what the link carried every 10 seconds it's busy,
 // or every 2 with "Watch the link live" on. For any lent card, with SCUT or on the usual link.
 export const linkLive = (cfg) => cfg.share?.linkDebug === true;
@@ -370,7 +388,7 @@ export class CardLender {
     });
     if (!ready) { try { child.kill(); } catch {} return { ok: false, why: 'failed', error: `The card-sharing server didn't start${out ? ` (${out.trim().split(/\r?\n/).pop().slice(0, 160)})` : ''}.` }; }
     let gateway;
-    try { gateway = await this.gate({ host, port: RPC_PORT, allow, inner: INNER_PORT, udp: scutOn(this.cfg), log: this.log }); }
+    try { gateway = await this.gate({ host, port: RPC_PORT, allow, inner: INNER_PORT, udp: scutOnLink(this.cfg, { wired: bothWired }), log: this.log }); }
     catch (e) { try { child.kill(); } catch {} return { ok: false, why: 'failed', error: `The card-sharing gate didn't open on ${host}:${RPC_PORT} (${String(e.message || e).slice(0, 120)}).` }; }
     child.once('exit', () => { if (this.child === child) { this.close(); this.log('bob-net', 'lent graphics card: the card-sharing server stopped'); } });
     Object.assign(this, { child, gateway, host, allow, via, bothWired, port: RPC_PORT, from: String(from).slice(0, 40), sealReply: sealed.reply, sealKid: sealed.sealed ? (sealed.reply?.linkKey ? keyId(sealed.reply.linkKey) : String(seal?.kid || '')) : '', marginMB: room?.marginMB || 0 });
@@ -475,7 +493,7 @@ export function cleanBrain(b) {
 
 // ---------- Borrowing ----------
 // Why a Bob didn't lend, in plain words (CardLender.refusal's reasons).
-export const LEND_NO = { 'own brain': 'its own brain is loaded, and it lends only when free ("Lending may unload my brain" is off there)', off: 'lending is off there', gaming: 'it\'s in Gaming', 'no room': 'its memory is too full to lend right now', 'not tailscale': 'asked on an address it doesn\'t lend on', 'no tool': 'its card server is missing', failed: 'it couldn\'t start' };
+export const LEND_NO = { 'own brain': 'its own brain is loaded, and it lends only when free ("Lending may unload my brain" is off there)', off: 'lending is off there', gaming: 'it\'s gaming (the Gaming button, or a game on its graphics card)', 'no room': 'its memory is too full to lend right now', 'not tailscale': 'asked on an address it doesn\'t lend on', 'no tool': 'its card server is missing', failed: 'it couldn\'t start' };
 export class CardBorrower {
   // lenders: the Bob-Net list (src/share-brains.js Lenders: bobs(), call()).
   constructor(cfg, lenders, { now = Date.now, log = () => {}, name = () => os.hostname(), home = homeIps, linkKind = () => '', powers = () => null } = {}) {
@@ -520,11 +538,16 @@ export class CardBorrower {
         return null;
       } catch { skipped.push(`${bob.name} (not reachable)`); return null; }
     }));
-    this.using = tries.filter(Boolean);
+    this.using = oneKind(tries.filter(Boolean), (u) => {
+      // Nov 14 (the owner): cable Bobs and Wi-Fi or Tailscale Bobs never share one brain (the slow link holds it all back).
+      // The one left out is let go and named, and still takes jobs.
+      this.lenders.call(u.bob, '/api/lend/card', { method: 'POST', body: { action: 'close' }, timeout: 5000 }).catch(() => {});
+      skipped.push(u.wired ? `${u.bob.name} (on a cable, and Bobs on Wi-Fi or Tailscale with more room are sharing this one; he still takes jobs)` : `${u.bob.name} (on ${u.via === 'home' ? 'Wi-Fi' : 'Tailscale'}, and Bobs on a cable are sharing this one; he still takes jobs)`);
+    }, (u) => this.lenders?.state?.get?.(u.bob.address)?.room?.vramGB || 0);
     // 1.5.210: each Bob that didn't lend is named, with why, so a spread that quietly ran here can't happen again.
     if (skipped.length) this.log('bob-net', `spread a brain: skipped ${skipped.join(', ')}`);
     if (!this.using.length) { this.log('bob-net', bobs.length ? 'spread a brain: none of my other Bobs lent a card, so it loads here' : 'spread a brain: no other Bob is on my list, so it loads here'); return []; }
-    this.log('bob-net', `spread a brain over ${this.using.map((x) => `${x.bob.name} (${x.via === 'home' ? `home network${x.wired ? ', cable' : ''}` : 'Tailscale'})`).join(', ')}${scutOn(this.cfg) && !scutChosen(this.cfg) && this.allWired() ? '; SCUT up to 1000 Mbit/s on the cable' : ''}`);
+    this.log('bob-net', `spread a brain over ${this.using.map((x) => `${x.bob.name} (${x.via === 'home' ? `home network${x.wired ? ', cable' : ''}` : 'Tailscale'})`).join(', ')}${scutOn(this.cfg) && this.allWired() ? '; plain TCP on the cable (SCUT is for Wi-Fi)' : ''}`);
     // 1.5.214: asked every WATCH_MS (it also says "still using it"), so a Bob that needs his card back is heard at once.
     this.timer = setInterval(() => { this.keepAll().catch(() => {}); }, WATCH_MS);
     this.timer.unref?.();

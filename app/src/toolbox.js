@@ -13,7 +13,7 @@ import { packsWords, packsWhat } from './toolpacks.js';
 import { selfWorkWords } from './self-work.js';
 import { GROUP_WORDS, GROUP_TOOLS, GROUP_WHAT } from './more-tools.js'; // 🧰 More tools, each only while its switch is on
 
-export const CORE = ['notice_board', 'remember', 'reminders', 'list_folder', 'read_file', 'web_search', 'fetch_page', 'bob_help', 'ask_specialist', 'show_made', 'pick_session', 'edit_my_message', 'take_note', 'offer_setup', 'use_tools', 'ask_user'];
+export const CORE = ['notice_board', 'remember', 'reminders', 'list_folder', 'read_file', 'web_search', 'fetch_page', 'bob_help', 'ask_specialist', 'show_made', 'pick_session', 'edit_my_message', 'offer_setup', 'use_tools', 'ask_user'];
 
 // Groups Bob can add. `what` is what Bob reads in use_tools; `words` is the cheap pre-check on the user's message.
 const WORK_GROUPS = {

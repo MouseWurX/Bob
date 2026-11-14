@@ -377,12 +377,21 @@ body.own-bar.look-lamplight .win-strip { background: transparent; border-bottom:
 @media (min-width: 641px) {
   body.own-bar.look-lamplight .win-strip { display: none; }
   body.own-bar.look-lamplight .side { -webkit-app-region: drag; app-region: drag; padding-left: max(var(--s5), calc(var(--win-left) + var(--s3))); padding-right: calc(var(--s5) + var(--win-right)); }
-  body.own-bar.look-lamplight .side :is(button, a, input, select, textarea, canvas, label, summary, [role=button], [role=switch], [tabindex], .who) { -webkit-app-region: no-drag; app-region: no-drag; }
+  /* 1.5.230: everything on the bar is clickable (the cube and its porthole, its menu, the tabs); only the bar's own
+     empty space drags the window. A drag area wins over anything drawn inside it on Windows, so the cube's porthole
+     had been catching the click meant for the cube. */
+  body.own-bar.look-lamplight .side * { -webkit-app-region: no-drag; app-region: no-drag; }
 }
 /* The system buttons take about 140 px of the bar, so Find anything gets smaller first (never a tab): without
    "Ctrl K", then just its magnifying glass (its name stays for screen readers and in its tooltip). */
 @media (min-width: 641px) and (max-width: 1400px) { body.own-bar.look-lamplight .side #findBtn .find-key { display: none; } }
 @media (min-width: 641px) and (max-width: 1280px) { body.own-bar.look-lamplight .side #findBtn .lbl { display: none; } body.own-bar.look-lamplight .side #findBtn { padding: var(--s2); } }
+/* 1.5.230 Settings scrolls again. On Windows a drag area takes every click and every turn of the wheel inside its
+   rectangle, even under a page laid over it, so while a page or panel is open the top bar stops being one (the
+   system buttons and the window's edges still work), and an open page or panel is never a drag area itself. */
+body.own-bar:has(dialog[open]) .side, body.own-bar:has(dialog[open]) .win-strip { -webkit-app-region: no-drag; app-region: no-drag; }
+body.own-bar :is(dialog[open], .bob-menu, [role=menu], [role=dialog], [role=listbox], [popover]) { -webkit-app-region: no-drag; app-region: no-drag; }
+/* (The cube's menu and other pop-ups hang from the bar but sit on the page itself, so they say no-drag too.) */
 /* Panels and full-window screens that start at the very top move down below the buttons. */
 body.own-bar dialog.cellar:not(.page)[open] { top: var(--win-top); height: calc(100dvh - var(--win-top)); }
 @media (max-width: 1100px) { body.own-bar:not(.look-lamplight) :is(.now, .viewer) { top: var(--win-top); } }
@@ -404,3 +413,10 @@ body.own-bar .win-glow { display: block; position: fixed; inset: 0; z-index: 949
   box-shadow: inset 3px 3px 18px -6px color-mix(in srgb, var(--cube, var(--accent)) 80%, transparent);
   opacity: calc(.6 + var(--cube-light, .3) * .7); }
 body.own-bar.still::after, body.own-bar.still .win-glow { opacity: .85; }
+
+/* 1.5.230 Scrollbars in the look's own colours (Settings, the Lab, Help, the chat, every list): Lamplight's are thin
+   and lit by the lamp you picked (Mercury, Sodium, Thallium or Neon), on nothing; Terminal's are plain blocks in its
+   own text colour on its background. Classic keeps the system's. Places that hide theirs on purpose (the top bar's
+   tabs) still do. */
+html:has(body.look-lamplight), body.look-lamplight, body.look-lamplight * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--accent) 55%, transparent) transparent; }
+html:has(body.look-terminal), body.look-terminal, body.look-terminal * { scrollbar-width: auto; scrollbar-color: var(--accent) var(--bg); }

@@ -43,13 +43,13 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.229-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.229-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.229-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.229-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.229-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.229-linux-x86_64.AppImage) |
-| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.229-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.229-linux-amd64.deb) |
-| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.229-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.229-linux-x86_64.flatpak) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.229-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.229-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
-| **Android phone** | [`Bob-1.5.229-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.229-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.230-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.230-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.230-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.230-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.230-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.230-linux-x86_64.AppImage) |
+| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.230-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.230-linux-amd64.deb) |
+| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.230-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.230-linux-x86_64.flatpak) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.230-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.230-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
+| **Android phone** | [`Bob-1.5.230-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.230-android.apk) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 
@@ -106,7 +106,7 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 </p>
 
 <p align="center">
-  <img src="app/docs/screens/lamps.png" alt="The same chat in the four lamps: Mercury pale blue, Sodium orange-yellow, Thallium green and Neon red">
+  <img src="app/docs/screens/lamps.png" alt="The same chat in the four lamps, each a dark room with faint smoke lit by the cube: Mercury pale blue, Sodium orange-yellow, Thallium green and Neon red">
   <br><b>Four lamps.</b> Mercury, Sodium, Thallium and Neon, each the colour of that gas lamp's real light. The lamp colours the app icon too.
 </p>
 
@@ -230,7 +230,7 @@ Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 14 
 
 | | |
 |---|---|
-| ![A chat about a garden budget on the left, and the spreadsheet open in the side panel on the right](app/docs/screens/documents.png) | ![First-time setup: the programs and models Bob suggests for a 16 GB card, each with a tick box](app/docs/screens/get-bob-ready.png) |
+| ![A chat about a garden budget on the left, and the spreadsheet open in the side panel on the right](app/docs/screens/documents.png) | ![First-time setup, step 3 of 7 (Brains): the brains Bob suggests for a 16 GB card, each with a tick box](app/docs/screens/get-bob-ready.png) |
 | **Documents beside the chat.** Sheets, slides, pages and PDFs. | **Ready in one button.** Bob reads your card and fetches what fits. |
 | ![The Brains page: each brain, its jobs, and where it sits on the card and in memory](app/docs/screens/brains-page.png) | ![The adventure table: three characters, two enemies with their hearts, the game master's story, and cards for the player's turn](app/docs/screens/adventure.png) |
 | **Brains.** Each brain, the jobs it does, and where it sits on your card. | **Adventure.** Bob runs the table; the app rolls the dice, shows the odds and counts the hearts. |

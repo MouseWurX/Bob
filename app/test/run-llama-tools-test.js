@@ -216,9 +216,9 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   ok(gates.every((g) => g.udp === false), 'SCUT: off, the gate opens no UDP side');
   {
     const on = { ...cfg, share: { ...cfg.share, scut: true } };
-    ok(scutMbps(on) === 100 && scutMbps({ share: { scutMbps: 300 } }) === 300 && scutMbps({ share: { scutMbps: 9999 } }) === 100 && scutMbps({ share: { scutMbps: 400 } }) === 400 && SCUT_MBPS.join() === '50,100,300,400,1000', 'SCUT: the speed cap is 50, 100, 300, 400 or 1000 Mbit/s, 100 unless picked (or a cable)');
+    ok(scutMbps(on) === 400 && scutMbps({ share: { scutMbps: 300 } }) === 300 && scutMbps({ share: { scutMbps: 9999 } }) === 400 && scutMbps({ share: { scutMbps: 400 } }) === 400 && SCUT_MBPS.join() === '50,100,300,400,1000', 'SCUT: the speed cap is 50, 100, 300, 400 or 1000 Mbit/s, 100 unless picked (or a cable)');
     const e = scutEnv(on, { lend: true });
-    ok(e.GGML_RPC_SCUT === '1' && e.GGML_RPC_SCUT_MBPS === '100' && e.GGML_RPC_SCUT_PUBLIC_PORT === String(RPC_PORT) && !('GGML_RPC_SCUT_PUBLIC_PORT' in scutEnv(on)), 'SCUT: the lent card names the gate\'s port in its offer; the borrowing engine only switches it on');
+    ok(e.GGML_RPC_SCUT === '1' && e.GGML_RPC_SCUT_MBPS === '400' && e.GGML_RPC_SCUT_PUBLIC_PORT === String(RPC_PORT) && !('GGML_RPC_SCUT_PUBLIC_PORT' in scutEnv(on)), 'SCUT: the lent card names the gate\'s port in its offer; the borrowing engine only switches it on');
     const sp = [], gs = [];
     const l2 = new CardLender(on, { spawnFn: (x, a, o) => { const c = spawnFn(x, a, o); sp.push(o); return c; }, tool: () => ({ found: true, path: '/be/ggml-rpc-server' }), ips: () => ['100.101.1.2'], home: () => myHome, gate: async (o) => { gs.push(o); return { ...o, udp: true, close() {} }; }, env: { PATH: '/bin' } });
     const r2 = await l2.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7' });
@@ -341,7 +341,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     ok(/only 300 MB left/.test(L.leaving?.why || ''), 'card watch: free card memory running low takes it back too');
     L.close();
     // 1.5.214 card test: SCUT's cap on a cable, built-in graphics, and the room a lend just let go of.
-    ok(scutMbps({ share: { scutMbps: 100 } }, { wired: true }) === 1000 && scutMbps({ share: { scutMbps: 100 } }) === 100 && scutMbps({ share: { scutMbps: 100, scutMbpsChosen: true } }, { wired: true }) === 100 && scutMbps({ share: { scutMbps: 400 } }, { wired: true }) === 400, 'SCUT Auto: 1000 on a cable, 100 on Wi-Fi; a picked cap always wins');
+    ok(scutMbps({}) === 400 && scutMbps({ share: { scutMbps: 400 } }) === 400 && scutMbps({ share: { scutMbps: 100, scutMbpsChosen: true } }) === 100 && scutMbps({ share: { scutMbps: 1000 } }) === 1000, 'SCUT Auto is 400 (Nov 14, the owner: "it should be 400 by default"); a picked cap always wins');
     let freeNow = 6 * 2 ** 30;
     const apu = new CardLender({ ...cfg, sharedGraphics: true }, { spawnFn, tool: () => ({ found: true, path: '/be/ggml-rpc-server' }), ips: () => ['100.101.1.2'], home: () => myHome, gate, readCard: async () => null, freeMem: () => freeNow, watchMs: 10, graceMs: 40 });
     ok((await apu.squeezed()) === '', 'card watch, built-in graphics: the lend\'s own memory use doesn\'t count as a squeeze');
@@ -354,10 +354,10 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
       const sp = (exe, args, opts = {}) => { envs.push(opts.env || {}); return spawnFn(exe, args, opts); };
       const W = new CardLender({ ...cfg, share: { ...cfg.share, scut: true } }, { spawnFn: sp, tool: () => ({ found: true, path: '/be/ggml-rpc-server' }), ips: () => ['100.101.1.2'], home: () => myHome, gate, readCard: async () => null, linkKind: () => 'cable' });
       let w = await W.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', home: [H(172, 16, 9, 189)], wired: [H(172, 16, 9, 189)] });
-      ok(w.ok && w.wired === true && envs.at(-1).GGML_RPC_SCUT_MBPS === '1000', 'SCUT Auto: a cable at both ends lifts the cap to 1000');
+      ok(w.ok && w.wired === true && !envs.at(-1).GGML_RPC_SCUT && !envs.at(-1).GGML_RPC_SCUT_MBPS, 'a cable at both ends: plain TCP, no SCUT (Nov 14, the owner: "scut over ethernet isnt needed")');
       W.close();
       w = await W.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', home: [H(172, 16, 9, 189)], wired: [] });
-      ok(w.ok && !w.wired && envs.at(-1).GGML_RPC_SCUT_MBPS === '100', 'SCUT Auto: the other end on Wi-Fi keeps 100');
+      ok(w.ok && !w.wired && envs.at(-1).GGML_RPC_SCUT_MBPS === '400', 'SCUT Auto: the other end on Wi-Fi gets 400');
       W.close();
     }
     // The asking Bob: hears it, marks that Bob down, and the engine loads again without his card.

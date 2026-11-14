@@ -87,7 +87,7 @@ check('main window made with the bar options', /barNow = winState\.ownBar !== fa
 check('colours go through the check', /windowBar\.cleanColours\(b\)/.test(main));
 check('only Bob\'s own page may set them', /p === '\/api\/window-bar'\)[^\n]*if \(isLocal\)/.test(server));
 check('saved and handed to the window', /typeof b\.ownBar === 'boolean'[^\n]*applyWindowState\(cfg\)/.test(server));
-check('the bar drags, its controls do not', /\.side \{ -webkit-app-region: drag; app-region: drag;/.test(css) && /\.side :is\(button, a, input[^)]*\) \{ -webkit-app-region: no-drag/.test(css));
+check('the bar drags, its controls do not', /\.side \{ -webkit-app-region: drag; app-region: drag;/.test(css) && /\.side \* \{ -webkit-app-region: no-drag/.test(css));
 check('the bar keeps clear of the system buttons', /padding-right: calc\(var\(--s5\) \+ var\(--win-right\)\)/.test(css));
 check('the cube-corner glow never takes a click', /body\.own-bar::after \{[^}]*pointer-events: none/.test(css) && /body\.own-bar \.win-glow \{[^}]*pointer-events: none/.test(css));
 check('Find shrinks, tabs never do', /#findBtn \.lbl \{ display: none; \}/.test(css) && !/own-bar[^\n]*nav-item \.lbl \{ display: none/.test(css));
@@ -105,6 +105,13 @@ check('FAQ, folded into a page', ids.has('faq-window-bar') && FOLD['faq-window-b
 check('glossary entry', /<dt>Title bar<\/dt>/.test(ids.get('glossary')?.html || ''));
 check('settings row says On', /set\('Window buttons on Bob\\'s bar', 'On'/.test(read('public/help-content.js')));
 check('Settings switch', /sswitch\('ownBar'/.test(read('public/cellar-pages.js')));
+// 1.5.230 Settings scrolls with Bob's own bar: an open page or panel is never under a drag area, and the scrollbars wear the look.
+check('1.5.230: while a page or panel is open the top bar and strip are not drag areas', /body\.own-bar:has\(dialog\[open\]\) \.side, body\.own-bar:has\(dialog\[open\]\) \.win-strip \{ -webkit-app-region: no-drag; app-region: no-drag; \}/.test(css));
+check('1.5.230: an open page or panel is never a drag area itself', /body\.own-bar :is\(dialog\[open\], \.bob-menu, \[role=menu\], \[role=dialog\], \[role=listbox\], \[popover\]\) \{ -webkit-app-region: no-drag; app-region: no-drag; \}/.test(css));
+check('1.5.230: Lamplight scrollbars are lit by the lamp (its accent), Terminal\'s in its own colours', /body\.look-lamplight \* \{ scrollbar-width: thin; scrollbar-color: color-mix\(in srgb, var\(--accent\) 55%, transparent\) transparent; \}/.test(css) && /body\.look-terminal \* \{ scrollbar-width: auto; scrollbar-color: var\(--accent\) var\(--bg\); \}/.test(css));
+check('1.5.230: Ctrl and + / - / 0 zoom every window on Windows and Linux (no menu bar there)', /if \(!MAC\) app\.on\('web-contents-created', \(_e, wc\) => wc\.on\('before-input-event', \(ev, input\) => zoomKey\(wc, ev, input\)\)\)/.test(main) && /input\.key === '-'/.test(main) && /input\.key === '0'\) wc\.setZoomLevel\(0\)/.test(main));
+check('1.5.230: the Settings window keeps an ordinary title bar', /overrideBrowserWindowOptions: \{ frame: true, titleBarStyle: 'default', width: 1040/.test(main));
+check('1.5.230: everything on the bar is clickable (the cube, its porthole, the tabs); only its own empty space drags', /body\.own-bar\.look-lamplight \.side \* \{ -webkit-app-region: no-drag; app-region: no-drag; \}/.test(css));
 check('settings inventory row', /\| Window buttons on Bob's bar \| On unless you turn it off/.test(read('docs/SETTINGS-INVENTORY.md')));
 
 console.log(`\n${pass} passed, ${fail} failed`);

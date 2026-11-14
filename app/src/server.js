@@ -100,7 +100,8 @@ import { checkHello } from './bob-net-check.js'; // 1.5.185 a bigger Bob checks 
 import { guestRoute, answerAway } from './share-jobs.js';
 import { Pairing, myName } from './bob-net-pair.js';
 import { partyView, Introductions } from './bob-net-party.js';
-import { overlayView, cubeMood, cubeReader, cleanChatHeads } from './net-overlay.js'; // Nov 13 Bob-Net icons
+import { overlayView, cubeMood, cubeReader, cleanChatHeads, cleanGaps, isNetChat } from './net-overlay.js';
+import { gameGuard } from './game-guard.js'; // Nov 14: a game on the card turns Bob-Net asks away, Gaming or not // Nov 13 Bob-Net icons
 import { OS, features } from './platform.js';
 import { chatFilesOn, CHAT_FILES_OFF, FORMATS, MAX_IMPORT_BYTES, MAX_CHATS, saveChat, lookAtFile, bringIn, shareChat } from './chat-files.js';
 import { revealFile } from './help-bundle.js';
@@ -205,6 +206,7 @@ function broadcast(ev) {
 }
 
 const brain = new Brain(cfg, broadcast);
+brain.gameBusy = gameGuard(); // Nov 14 (game-guard.js): what holds the card, read at most every 5 s
 brain.linksCache = new LinksCache(); // which links this machine has, read in the background for the hello (src/links.js)
 // Item 214: a helper thread notices when this server stops answering for a minute (it notes it in the logbook), and
 // when it answers again the window hears about it, with a Restart button where Bob can restart himself.
@@ -624,6 +626,9 @@ const server = http.createServer(async (req, res) => {
         if (ps && brain.painter.alive() && ['loading', 'ready', 'busy'].includes(ps.state)) st.picture = { state: ps.state, kind: ps.kind, gb: ps.vramBytes ? memGB(ps.vramBytes) : null };
       } catch {}
       if (brain.cardBusyNow) st.cardBusy = brain.cardBusyNow.short; // Nov 13: another program holds the card (card-guard.js)
+      // Nov 14 (the owner): the brain line says when this Bob's card is lent out, or his brain runs on other Bobs' cards too.
+      try { const v = brain.cardLender?.view?.() || {}; if (v.lending) st.lendingTo = String(v.to || 'another Bob').slice(0, 40); } catch {}
+      try { const u = brain.engine?.spread?.using || []; if (u.length) st.borrowingFrom = u.map((x) => String(x?.bob?.name || 'another Bob').slice(0, 40)).slice(0, 16); } catch {}
       return send(res, 200, st);
     }
     if ((await howtosRoute({ req, res, p, isLocal, cfg, brain, body, send })) !== false) return;
@@ -992,13 +997,26 @@ const server = http.createServer(async (req, res) => {
       const rooms = [];
       if (brain.discord?.settings?.().enabled) rooms.push({ id: 'discord', name: 'Discord', waiting: brain.discord.gate?.waiting?.().length || 0 });
       if (brain.telegram?.settings?.().enabled) rooms.push({ id: 'telegram', name: 'Telegram', chat: 'telegram' });
-      return send(res, 200, await overlayView(cfg, { bobs, seen: (b) => brain.lenders.state.get(b.address), mood: (b) => readCube(brain.lenders, b), agents, rooms }));
+      return send(res, 200, await overlayView(cfg, { bobs, seen: (b) => brain.lenders.state.get(b.address), mood: (b) => readCube(brain.lenders, b), agents, rooms,
+        lentToMe: (b) => (brain.engine?.spread?.using || []).some((u) => u?.bob?.address === b.address),
+        busyHere: ['thinking', 'busy'].includes(brain.state?.state) }));
+    }
+    // Nov 14 (the owner): in a chat to another Bob, "He answers" off sends a message for him to keep, with no answer
+    // (copy and paste between your machines). Remembered while this Bob runs; the page says it again when it opens.
+    if (req.method === 'POST' && p === '/api/net-chat/answer') {
+      if (!isLocal) return send(res, 403, { error: 'this replicant matrix only' });
+      const b = await body(req).catch(() => ({}));
+      const id = String(b.sessionId || '');
+      if (!isNetChat(id)) return send(res, 400, { error: 'not a chat to another Bob' });
+      brain.netQuiet ||= new Set();
+      if (b.answer === false) brain.netQuiet.add(id); else brain.netQuiet.delete(id);
+      return send(res, 200, { ok: true, answer: !brain.netQuiet.has(id) });
     }
     if (req.method === 'GET' && p === '/api/bob-net/cube') {
       if (!isRemote && !isLocal) return send(res, 403, { error: 'no' });
       let loaded = [];
       try { loaded = await brain.engine.loaded(); } catch {}
-      return send(res, 200, { mood: cubeMood({ state: brain.state?.state, loaded: loaded.length, tokenAt: lastTokenAt }) });
+      return send(res, 200, { mood: cubeMood({ state: brain.state?.state, loaded: loaded.length, tokenAt: lastTokenAt, lending: Boolean(brain.cardLender?.child) }), gaps: cleanGaps(brain.engine?.spread?.using?.length) });
     }
     // Nov 13 OK cards on all your Bobs (src/net-cards.js): another of your Bobs shows or takes down a card (POST), or asks
     // which of mine still wait (GET). Through the door only, signed in; sending them is "OK cards on all Bobs".
@@ -1061,7 +1079,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 404, { error: 'not found' });
     }
     if (req.method === 'GET' && p === '/api/lend/hello') {
-      const why = lendRefusal(brain, brain.lendDeps);
+      const why = lendRefusal(brain, brain.lendDeps) || ((await brain.gameBusy?.()) ? 'gaming' : ''); // Nov 14: a game on the card
       const q = why ? null : brain.lendDeps.quickBrain(brain);
       return send(res, 200, helloFor(brain, { why, quick: q, can: brain.jobCan(), version: VERSION, label: (m) => brain.brainLabel(m), webOn: cfg.webSearch === true, bigBrain: brain.guestBigBrain(), name: myName(), room: myRoom, review: reviewRefusal(brain, brain.lendDeps) ? null : brain.lendDeps.reviewBrain(brain), check: checkHello(brain, brain.lendDeps, (m) => brain.brainLabel(m)) }));
     }
@@ -1070,7 +1088,9 @@ const server = http.createServer(async (req, res) => {
     // Lend my GPU (src/share-card.js): another of your Bobs asks for a share of this card, through the door only.
     if (req.method === 'POST' && p === '/api/lend/card') {
       if (!isRemote && !isLocal) return send(res, 403, { error: 'no' });
-      const r = await lendCardRoute(brain.cardLender, req, await body(req).catch(() => ({})));
+      const lb = await body(req).catch(() => ({}));
+      if (lb?.action === 'open' && (await brain.gameBusy?.())) return send(res, 200, { ok: false, why: 'gaming' }); // Nov 14: a game holds the card
+      const r = await lendCardRoute(brain.cardLender, req, lb);
       return send(res, r.status, r.body);
     }
     // Nov 13: what the brain this card helps run has on over there (Hands, Autonomy, Screen use), for the strip above the chat.

@@ -17,7 +17,7 @@ import { linksHello, cleanLinks } from './links.js'; // Check links: what kinds 
 import fs from 'node:fs';
 import { readJsonFile } from './util.js';
 import { isTailscaleIp, homeNetOn } from './phone-access.js';
-import { homeIps, doorIps, tailscaleIps, isHomeIp, sameNet, SCUT_MBPS, scutChosen } from './share-card.js';
+import { homeIps, doorIps, tailscaleIps, isHomeIp, sameNet, SCUT_MBPS, SCUT_AUTO, scutChosen } from './share-card.js';
 import { cleanCheck, checkRefusal, checkDown, CHECK_FIRST_WORD_MAX_MS } from './bob-net-check.js'; // 1.5.185
 import { LOOK_ID_RE } from './look.js'; // the avatars on the Bob-Net list
 import { readConfigFile, writeConfigFile } from './config.js';
@@ -96,7 +96,7 @@ export function shareView(cfg) {
     // Bob-Net mode: More Bobs (the default: each Bob runs his own brain) or Bigger Bobs (they pool their cards).
     homeNet: s.homeNet !== false, // Bigger Bobs: Home network first (src/share-card.js), Tailscale as the backup
     scut: s.scut === true, // SCUT, the fast link for Bigger Bobs (src/share-card.js), off unless switched on
-    scutMbps: scutChosen({ share: s }) ? Number(s.scutMbps) : 'auto', // 1.5.214: Auto (1000 on a cable, 100 on Wi-Fi)
+    scutMbps: scutChosen({ share: s }) ? Number(s.scutMbps) : 'auto', // Auto = SCUT_AUTO (400); on a cable at both ends SCUT is off (plain TCP)
     scutSeal: s.scutSeal !== false, // Seal SCUT packets (src/scut-seal.js): on unless switched off
     wifiWas: Boolean(cleanWifiWas(s.wifiWas)), // Calibrate Wi-Fi changed the card's band setting (src/wifi-tune.js): Put it back shows
     linkDebug: s.linkDebug === true, // Watch the link live (src/link-log.js): the link log every 2 seconds instead of 10
@@ -112,7 +112,7 @@ export const doorOpen = (cfg) => Boolean(cfg.remote?.enabled && String(cfg.remot
 export function cleanSharePatch(cfg, b, opts = {}) {
   const cur = cfg.share || {};
   const cb = cur.borrow || {};
-  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendFreesOwn: cur.lendFreesOwn === true, lendChecks: cur.lendChecks === true, cardsEverywhere: cur.cardsEverywhere === true, homeNet: cur.homeNet !== false, scut: cur.scut === true, scutMbps: SCUT_MBPS.includes(Number(cur.scutMbps)) ? Number(cur.scutMbps) : 100, ...(cur.scutMbpsChosen === true ? { scutMbpsChosen: true } : {}), scutSeal: cur.scutSeal !== false, linkDebug: cur.linkDebug === true, ...(cleanWifiWas(cur.wifiWas) ? { wifiWas: cleanWifiWas(cur.wifiWas) } : {}), spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
+  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendFreesOwn: cur.lendFreesOwn === true, lendChecks: cur.lendChecks === true, cardsEverywhere: cur.cardsEverywhere === true, homeNet: cur.homeNet !== false, scut: cur.scut === true, scutMbps: SCUT_MBPS.includes(Number(cur.scutMbps)) ? Number(cur.scutMbps) : SCUT_AUTO, ...(cur.scutMbpsChosen === true ? { scutMbpsChosen: true } : {}), scutSeal: cur.scutSeal !== false, linkDebug: cur.linkDebug === true, ...(cleanWifiWas(cur.wifiWas) ? { wifiWas: cleanWifiWas(cur.wifiWas) } : {}), spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
   if ('lend' in b) next.lend = b.lend === true;
   if ('takeJobs' in b) next.takeJobs = b.takeJobs === true; // 1.5.72, off unless switched on
   if ('passAlong' in b) next.passAlong = b.passAlong === true; // 1.5.123, off unless switched on
@@ -133,7 +133,7 @@ export function cleanSharePatch(cfg, b, opts = {}) {
   if ('scut' in b) next.scut = b.scut === true; // off unless switched on
   if ('scutSeal' in b) next.scutSeal = b.scutSeal !== false; // on unless switched off (the owner's call)
   if ('linkDebug' in b) next.linkDebug = b.linkDebug === true; // off unless switched on
-  if ('scutMbps' in b) { if (b.scutMbps === 'auto') { next.scutMbps = 100; next.scutMbpsChosen = false; } else { if (!SCUT_MBPS.includes(Number(b.scutMbps))) return { error: 'Pick a speed cap for SCUT.' }; next.scutMbps = Number(b.scutMbps); next.scutMbpsChosen = true; } }
+  if ('scutMbps' in b) { if (b.scutMbps === 'auto') { next.scutMbps = SCUT_AUTO; next.scutMbpsChosen = false; } else { if (!SCUT_MBPS.includes(Number(b.scutMbps))) return { error: 'Pick a speed cap for SCUT.' }; next.scutMbps = Number(b.scutMbps); next.scutMbpsChosen = true; } }
   if ('spread' in b) { if (!['off', 'toobig', 'big'].includes(b.spread)) return { error: 'Pick when to spread a brain.' }; next.spread = b.spread; }
   if ('sendJobs' in b) next.borrow.jobs = b.sendJobs === true; // 1.5.72, off unless switched on
   if ('when' in b) { if (!WHEN.includes(b.when)) return { error: 'Pick when to borrow.' }; next.borrow.when = b.when; }
@@ -222,7 +222,8 @@ export async function lendChat(brain, req, res, b, deps) {
   clearTimeout(brain.reviewHold); brain.reviewHold = null; // the next step of a review: his Review brain is still loaded
   const pickBrain = checking ? deps.checkBrain : forReview ? deps.reviewBrain : deps.quickBrain;
   const why = checking ? checkRefusal(brain, deps) : forReview ? reviewRefusal(brain, deps) : lendRefusal(brain, deps);
-  if (why) { res.writeHead(409, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ busy: why })); }
+  const gaming = !why && (await brain.gameBusy?.()) ? 'gaming' : ''; // Nov 14: a game holds the card here (game-guard.js)
+  if (why || gaming) { res.writeHead(409, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ busy: why || gaming })); }
   const ask = cleanLendRequest(b);
   if (ask.error) { res.writeHead(400, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ error: ask.error })); }
   // 1.5.72: a Bob knows his limits. A chat that won't fit his quick brain's room is turned down before he starts.

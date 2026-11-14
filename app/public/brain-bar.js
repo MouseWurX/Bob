@@ -45,6 +45,9 @@ export function createBrainBar({ post, note }) {
       text = `Brain: loaded · ${mem}`;
       title = `In memory: ${list()}. ` + (!on && !st.bigSession ? 'Stays loaded (Free memory when Bob is idle is off).' : st.bigSession ? `Freed ${st.bigGrace || '2 minutes'} after the job.` : `Freed after ${st.sleepAfter || '5 minutes'} quiet.`) + whole;
     } else { text = 'Brain: memory freed'; title = on || st.bigSession ? `Nothing on the graphics card. Typing loads the small brain (${secs(st.wakeSeconds)}).` : 'Loading the small brain shortly.'; }
+    // Nov 14 (the owner): Bob-Net card sharing, said the same way as the cube icons (a puzzle piece, missing pieces).
+    if (st.engineOk && st.lendingTo) { text = 'Brain: Lending Out Brains'; title = `This Bob's graphics card is running part of a brain for ${st.lendingTo}. It goes back when ${st.lendingTo} lets it go, a game starts, or you switch lending off (Settings, Bob-Net). ${title}`; }
+    else if (st.engineOk && st.borrowingFrom?.length) { const who = st.borrowingFrom.join(', '); text = `Brain: Borrowing More Brains · ${mem}`; title = `This brain is spread over this Bob's card and ${who}'s, so it's bigger than one card could hold. ${title}`; }
     // Nov 13 (card-guard.js): another program holds the card: said first, so nobody loads a brain on top of it unawares
     if (st.cardBusy && st.engineOk) { text = `${text} · ⚠ Card busy`; title = `${st.cardBusy}. Another program is using the graphics card. Before loading a brain that won't fit beside it, Bob asks you first. ${title}`; }
     pillText.textContent = text;

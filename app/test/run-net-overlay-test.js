@@ -4,10 +4,10 @@
 // Fakes only: no network, no real Bobs.
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { overlayOn, chatIdFor, isNetChat, netChatTarget, hueFor, agentLook, cubeMood, cubeReader, overlayView, failNetChat, MOODS, NET_PREFIX } from '../src/net-overlay.js';
-import { GuestJobs, guestNote, guestTools, CHAT_NOTE, sendAway, pickChatBob } from '../src/share-jobs.js';
+import { overlayOn, chatIdFor, isNetChat, netChatTarget, hueFor, agentLook, cubeMood, cubeReader, overlayView, failNetChat, MOODS, NET_PREFIX, cleanGaps } from '../src/net-overlay.js';
+import { GuestJobs, guestNote, guestTools, CHAT_NOTE, sendAway, pickChatBob, keepNetChat, keptNetChatId } from '../src/share-jobs.js';
 import { cleanAbilities, helloFor } from '../src/share-brains.js';
-import { preview, isNetChat as isNetChatPage, hslHex, BUBBLE_HINT, ICON_LIGHT, MOOD_WORDS, drawVoxels, GHOST } from '../public/net-overlay.js';
+import { preview, isNetChat as isNetChatPage, hslHex, BUBBLE_HINT, ICON_LIGHT, MOOD_WORDS, drawVoxels, GHOST, drawPuzzle, PUZZLE, GAPS, hueSat } from '../public/net-overlay.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -30,7 +30,7 @@ check('agents nod to their own app, unknown ones get a plain cube', agentLook('c
 check('loading', cubeMood({ state: 'loading', loaded: 0 }) === 'loading' && cubeMood({ state: 'waking' }) === 'loading');
 check('thinking, then replying once words stream', cubeMood({ state: 'thinking', loaded: 1, tokenAt: 0, now: 10000 }) === 'thinking' && cubeMood({ state: 'thinking', loaded: 1, tokenAt: 9500, now: 10000 }) === 'replying');
 check('no brain: only fog', cubeMood({ state: 'idle', loaded: 0 }) === 'none' && cubeMood({ state: 'idle', loaded: 1 }) === 'ready');
-check('every mood is one the icon knows', ['none', 'loading', 'thinking', 'replying', 'ready'].every((m) => MOODS.includes(m) && MOOD_WORDS[m]));
+check('every mood is one the icon knows', ['none', 'loading', 'thinking', 'replying', 'ready', 'lending', 'helping'].every((m) => MOODS.includes(m) && MOOD_WORDS[m]));
 
 // ---- the cube reader: asks each Bob at most every 2 s, keeps the last mood when he's slow ----
 {
@@ -216,6 +216,69 @@ check('only Bobs on Bob-Net right now', v.bobs.length === 1 && v.bobs[0].name ==
   check('every coding agents box is mounted, the general one and each company\'s', /mountAgentsSettings\(dlg\.querySelectorAll\('\.coding-agents-box'\)\)/.test(cellar));
   check('the head switch saves through /api/settings and redraws the heads', /chatHead-/.test(cellar) && /b\.chatHeads/.test(read('src/server.js')) && /cleanChatHeads/.test(read('src/config.js')));
   check('Help explains why they used to be apart (key vs sign-in vs the other way round)', /faq-agents-sections/.test(help) && /API key/.test(help) && /sign-in/.test(help));
+}
+
+// ---- Nov 14 (the owner): a Bob lending his card wears a puzzle piece; a Bob borrowing cards is missing pieces ----
+{
+  check('lending: his cube says so, even with no brain of his own', cubeMood({ state: 'idle', loaded: 0, lending: true }) === 'lending' && cubeMood({ state: 'idle', loaded: 1, lending: true }) === 'lending');
+  check('lending: his own work still shows first', cubeMood({ state: 'loading', lending: true }) === 'loading' && cubeMood({ state: 'thinking', loaded: 1, tokenAt: 9500, now: 10000, lending: true }) === 'replying');
+  const go2 = { name: 'Go', address: '100.64.0.9:7777' };
+  const seen2 = () => ({ up: true, ok: true, jobs: [] });
+  const idle = await overlayView({ netOverlay: true }, { bobs: [go2], seen: seen2, mood: async () => 'none', lentToMe: () => true, busyHere: false });
+  const busy = await overlayView({ netOverlay: true }, { bobs: [go2], seen: seen2, mood: async () => 'none', lentToMe: () => true, busyHere: true });
+  const own = await overlayView({ netOverlay: true }, { bobs: [go2], seen: seen2, mood: async () => 'thinking', lentToMe: () => true, busyHere: true });
+  check('his card in my brain: lending, and helping while my brain writes (an older Bob too)', idle.bobs[0].mood === 'lending' && busy.bobs[0].mood === 'helping' && own.bobs[0].mood === 'thinking');
+  const pc = await overlayView({ netOverlay: true }, { bobs: [go2], seen: seen2, mood: async () => ({ mood: 'replying', gaps: 2 }) });
+  check('a Bob borrowing two cards shows two gaps', pc.bobs[0].mood === 'replying' && pc.bobs[0].gaps === 2 && idle.bobs[0].gaps === 0);
+  check('gaps are kept to 0..4', cleanGaps(-3) === 0 && cleanGaps('9') === 4 && cleanGaps('x') === 0 && cleanGaps(1.7) === 1);
+  let t = 10000;
+  const lenders = { call: async () => ({ ok: true, json: async () => ({ mood: 'ready', gaps: 1 }) }) };
+  const r = await cubeReader({ now: () => t })(lenders, go2);
+  check('the cube reader passes his gaps on', r && r.mood === 'ready' && r.gaps === 1);
+  const fake = () => { const c = { fills: [], strokes: 0, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() { c.fills.push(c.fillStyle); }, stroke() { c.strokes++; }, save() {}, restore() {}, arc() {}, fillRect() { c.fills.push(c.fillStyle); } }; return c; };
+  const g = fake(); drawVoxels(g, { hue: 40, light: () => 0.3, gaps: 2 });
+  check('two gaps: 62 blocks drawn and two outlined slots', g.fills.length === 62 * 3 && g.strokes === 2);
+  check('the gaps are corners, in his outline', GAPS.every(([i, j, k]) => (i === 0 || i === 3) && (j === 0 || j === 3) && (k === 0 || k === 3)));
+  const pz = fake(); drawPuzzle(pz, { lit: 0.3, hue: 180, sat: 70 });
+  const blocks = PUZZLE.join('').split('').filter((c) => c === '#').length;
+  check('the puzzle piece is drawn in little blocks, in the look\'s colour', pz.fills.length === blocks * 2 && pz.fills.every((f) => f.startsWith('hsla(180,70%')));
+  check('the look\'s accent colour is read as hue and saturation', JSON.stringify(hueSat('#5fd4c8')) === JSON.stringify({ hue: 174, sat: 58 }) && hueSat('rgb(242, 178, 92)').hue === 34 && hueSat(' #fff ').sat === 0 && hueSat('var(--x)').hue === 36);
+  check('the icon takes the colour from the look you picked', /drawPuzzle\(x, \{ \.\.\.accentNow\(\)/.test(fs.readFileSync(new URL('../public/net-overlay.js', import.meta.url), 'utf8')));
+  const pub = fs.readFileSync(new URL('../public/net-overlay.js', import.meta.url), 'utf8');
+  check('the icon wears the piece while lending or helping', /const lent = mood === 'lending' \|\| mood === 'helping'/.test(pub) && /piece\(\);/.test(pub));
+  const srv = fs.readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
+  check('the cube endpoint says lending and gaps', /lending: Boolean\(brain\.cardLender\?\.child\)/.test(srv) && /gaps: cleanGaps\(brain\.engine\?\.spread\?\.using\?\.length\)/.test(srv));
+  const help = fs.readFileSync(new URL('../public/help-content.js', import.meta.url), 'utf8');
+  const bar = fs.readFileSync(new URL('../public/brain-bar.js', import.meta.url), 'utf8');
+  check('the brain line says Lending Out Brains and Borrowing More Brains', /'Brain: Lending Out Brains'/.test(bar) && /Brain: Borrowing More Brains/.test(bar) && /st\.lendingTo = /.test(srv) && /st\.borrowingFrom = /.test(srv));
+  check('Help explains the puzzle piece and the missing blocks', /puzzle piece made of the same little blocks, in your look's colour/.test(help) && /block missing from his cube/.test(help));
+}
+
+// ---- Nov 14 (the owner): a chat from another Bob's icon is kept on his side; "He answers" off only keeps it ----
+{
+  const queued = [], saved = [];
+  const sessions = new Map();
+  const brain = { cfg: { share: { takeJobs: true }, remote: { enabled: true, passcode: 'abcdef' } }, queue: [], sessions,
+    session(id) { if (!sessions.has(id)) sessions.set(id, []); return sessions.get(id); }, saveSession(id) { saved.push(id); }, broadcast() {},
+    enqueue: (sid, text, a, effort, extra) => { queued.push({ sid, text, extra }); return { jobId: 'k' + queued.length }; }, log: () => {} };
+  const g = new GuestJobs(brain, { canNow: () => [] });
+  const quiet = g.start({ need: 'chat', from: 'PC', text: 'D:\\notes\\list.txt', answer: false });
+  const id = keptNetChatId('PC');
+  check('He answers off: kept here, no brain, nothing queued', quiet.status === 200 && quiet.body.saved === true && queued.length === 0 && saved.includes(id));
+  const kept = brain.session(id);
+  check('kept word for word, in a chat titled From PC (Bob-Net)', kept[0].content === 'D:\\notes\\list.txt' && kept[0].chatTitle === 'From PC (Bob-Net)' && /didn't answer/.test(kept[1].content));
+  check('the kept chat is a real chat, saved to disk (never guest-)', !id.startsWith('guest-') && /^bobnet-from-[0-9a-f]{12}$/.test(id) && keptNetChatId('PC') === id && keptNetChatId('Go') !== id);
+  const r = g.start({ need: 'chat', from: 'PC', text: 'what time is it there?' });
+  const job = queued.at(-1);
+  brain.sessions.get(job.sid).push({ role: 'user', content: 'what time is it there?' }, { role: 'assistant', content: 'Just after ten.' });
+  g.push(g.jobs.get(r.body.jobId), { type: 'done' });
+  check('He answers on: question and answer kept in the same chat, the working copy let go', kept.length === 4 && kept[2].content === 'what time is it there?' && kept[3].content === 'Just after ten.' && !brain.sessions.has(job.sid));
+  check('a group job (Discord) never takes the keep-only path', g.start({ need: 'room', room: { from: 'Server' }, from: 'PC', text: 'hi', answer: false }).body?.saved !== true);
+  const q = fs.readFileSync(new URL('../src/brain-queue.js', import.meta.url), 'utf8');
+  const srv = fs.readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
+  const pub = fs.readFileSync(new URL('../public/net-overlay.js', import.meta.url), 'utf8');
+  check('the asking Bob sends answer:false only with He answers off', /this\.netQuiet\?\.has\?\.\(job\.sessionId\) \? \{ answer: false \}/.test(q) && /p === '\/api\/net-chat\/answer'/.test(srv) && /if \(!isLocal\) return send\(res, 403/.test(srv.slice(srv.indexOf("'/api/net-chat/answer'"))));
+  check('the switch sits at the top of the chat, remembered per chat', /class="brain-switch g-answer" role="switch"/.test(pub) && /bob-net-answer:\$\{id\}/.test(pub) && /'x-bob': '1'/.test(pub));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

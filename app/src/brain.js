@@ -32,7 +32,7 @@ import { brainMode, chatBrain, holdsChatBrain, bigSession, isBobs, sameModel, sl
 import { webOn } from './web.js';
 import { editOwnTool } from './edit-own.js';
 import { JobWatch, watchTools } from './meanwhile.js';
-import { notesTool } from './notes.js';
+import { notesTool, withNotes } from './notes.js';
 import { receiptTool } from './receipts.js'; // 🧾 Snap a receipt (off by default)
 import { modTool } from './discord-mod.js'; // 1.5.224 Discord Keep order, for your own chats (off by default)
 import { findDocsTool } from './my-docs.js';
@@ -217,7 +217,10 @@ export class Brain {
     Object.assign(this.tools, watchTools(this)); // Quick brain sees the job (meanwhile.js), only with its setting on
     this.watch = new JobWatch(); // the job on the big brain, as the app sees it (meanwhile.js); never saved
     this.tools.edit_my_message = editOwnTool(this); // Edit his own messages (edit-own.js), only with its setting on
-    this.tools.take_note = notesTool(this); // Quick notes (notes.js), only with its setting on
+    // Quick notes (notes.js), only with its setting on: actions on notice_board since Nov 14. take_note stays for
+    // brains that learned it, but it's never offered (brain-prompting.js offTools).
+    this.tools.take_note = notesTool(this);
+    this.tools.notice_board = withNotes(this.tools.notice_board, this);
     this.tools.spending_sheet = receiptTool(this); // 🧾 Receipt tracker (receipts.js), only with its setting on
     this.tools.discord_mod = modTool(this); // Discord Keep order (discord-mod.js), only while it's on
     this.tools.find_in_documents = findDocsTool(cfg, { keeper: () => this.housekeeper }); // Read and search documents (my-docs.js), only with its setting on

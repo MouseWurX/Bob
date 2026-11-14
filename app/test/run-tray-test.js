@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import zlib from 'node:zlib';
 import { lookPng, lookPixels, windowState, applyWindowState, lampPng, lampIcon } from '../src/app-icon.js';
-import { mergeSettings } from '../src/config.js';
+import { mergeSettings, newDefaults, NEW_DEFAULTS } from '../src/config.js';
 import { getLook } from '../public/bob-sprite.js';
 import { HELP } from '../public/help-content.js';
 import { settingsNow } from '../src/self-help.js';
@@ -54,6 +54,18 @@ function decode(png) {
   check('a missing picture leaves the window on its own icon file, never half a set', windowState({}, { lampDir: '/nowhere-' + Date.now() }).icons === null);
   check('the tray dot sits on the tesseract too', ['16', '24', '32'].every((n) => windowState({ trayDot: true, style: { lamp: 'neon' } }).dotIcons[n].equals(lampPng('neon', 'dot-' + n))));
   check('only false turns them off when saved', mergeSettings({}, { tray: false, lookIcon: false }).tray === false && mergeSettings({}, { tray: false, lookIcon: false }).lookIcon === false && mergeSettings({}, { tray: 'no', lookIcon: 0 }).tray === true && mergeSettings({}, { tray: 'no', lookIcon: 0 }).lookIcon === true);
+  {
+    const old = { lookIcon: true, tray: false };
+    const first = newDefaults(old);
+    check('1.5.230: an icon picked before the tesseract is dropped once, so the update shows everyone the new icon', first === true && !('lookIcon' in old) && old.tray === false && old.defaultsSeen.includes('tesseract-icon'));
+    const later = { lookIcon: true, defaultsSeen: NEW_DEFAULTS.map((d) => d.id) };
+    check('a pick made after that update is kept, and nothing is written again', newDefaults(later) === false && later.lookIcon === true);
+    const scut = { share: { scut: true, scutMbps: 100, scutMbpsChosen: true, lend: true }, defaultsSeen: ['tesseract-icon'] };
+    check('Nov 14: an old SCUT cap is dropped once so Auto (400) reaches everyone; the rest of share stays', newDefaults(scut) === true && !('scutMbps' in scut.share) && !('scutMbpsChosen' in scut.share) && scut.share.scut === true && scut.share.lend === true && scut.defaultsSeen.includes('scut-400'));
+    check('a settings file with no share group is fine', (() => { const o = { defaultsSeen: ['tesseract-icon'] }; return newDefaults(o) === true && !('share' in o); })());
+    check('every new default names its id and the keys it resets', NEW_DEFAULTS.every((d) => typeof d.id === 'string' && d.keys.length > 0));
+    check('Bob drops old picks when he reads settings.json, before using them', /if \(newDefaults\(kept\)\)[^\n]*\n\s*try \{ mergeSettings\(cfg, kept\);/.test(read('src/config.js')));
+  }
   check('only a saved switch puts the look on the icon', windowState({ lookIcon: true }).icons[32].equals(lookPng('sysop', 32)) && windowState({ lookIcon: 'yes' }).lookIcon === false);
   check('turned off, the tray goes and the icon is the tesseract', windowState({ tray: false, lookIcon: false }).icons[32].equals(lampPng('mercury', '32')) && windowState({ tray: false, lookIcon: false }).tray === false);
   const own = windowState({ look: 'c:m.regular.0.short.1.1.none.0.tee.0.none.none.none' });

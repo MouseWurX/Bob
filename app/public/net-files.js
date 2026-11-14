@@ -10,9 +10,11 @@ async function api(url, data) {
 }
 export const size = (b) => (b >= 1e9 ? `${(b / 1e9).toFixed(b < 10e9 ? 1 : 0)} GB` : b >= 1e6 ? `${Math.round(b / 1e6)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
 const pct = (it) => (it.total ? Math.floor((100 * (it.done || 0)) / it.total) : 0);
-const left = (it) => { if (!(it.rate > 0) || !it.total) return ''; const s = (it.total - it.done) / it.rate; return s < 90 ? ', under 2 minutes left' : s < 5400 ? `, about ${Math.round(s / 60)} minutes left` : `, about ${(s / 3600).toFixed(1)} hours left`; };
+const left = (it) => { if (!(it.rate > 0) || !it.total) return ''; const s = (it.total - it.done) / it.rate; return s < 90 ? 'under 2 minutes left' : s < 5400 ? `about ${Math.round(s / 60)} minutes left` : `about ${(s / 3600).toFixed(1)} hours left`; };
+// Nov 14 (the owner: speed and time left on a line of their own, under the % complete): "115 MB/s (920 Mbit/s) · about 8 minutes left".
+export const speedLine = (it) => (it.state === 'copying' && it.rate > 0 ? `${size(it.rate)}/s (${Math.round((it.rate * 8) / 1e6)} Mbit/s)${left(it) ? ` · ${left(it)}` : ''}` : '');
 const SAY = {
-  copying: (it) => `Copying: ${pct(it)}% of ${size(it.total)}${it.rate > 0 ? ` at ${(it.rate * 8 / 1e6).toFixed(0)} Mbit/s` : ''}${left(it)}.`,
+  copying: (it) => `Copying: ${pct(it)}% of ${size(it.total)} (${size(it.done || 0)} done)`,
   checking: (it) => `${esc(it.why || 'Checking')}…`,
   waiting: (it) => esc(it.why || 'Waiting.'),
   paused: (it) => `Paused at ${pct(it)}%. ${esc(it.why || '')}`,
@@ -28,7 +30,7 @@ const buttons = (it) => {
   if (['paused', 'stopped', 'failed'].includes(it.state)) b.push(['forget', 'Throw the half copy away']);
   return b.map(([k, label]) => `<button type="button" class="${k === 'stop' ? 'link' : ''}" data-netfile-${k}="${esc(it.id)}">${label}</button>`).join(' ');
 };
-const lineHtml = (it) => `<span role="status">${(SAY[it.state] || (() => ''))(it)}</span><progress max="100" value="${pct(it)}" aria-label="How much is copied"></progress><div class="row">${buttons(it)}</div>`;
+const lineHtml = (it) => `<span role="status">${(SAY[it.state] || (() => ''))(it)}</span>${speedLine(it) ? `<span class="net-file-speed muted">${speedLine(it)}</span>` : ''}<progress class="net-file-bar" max="100" value="${pct(it)}" aria-label="How much is copied"></progress><div class="row">${buttons(it)}</div>`;
 
 // The chat side. ctx: { add, scrollDown, note }. Returns true when the event was one of these.
 export function netFileEvent(ev, { add, scrollDown, note }) {

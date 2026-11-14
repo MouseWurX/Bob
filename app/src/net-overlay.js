@@ -23,7 +23,8 @@ export const overlayOn = (cfg) => cfg?.netOverlay === true;
 export const NET_PREFIX = 'guest-net-';
 export const CUBE_EVERY_MS = 2000; // how often the window asks; each Bob is asked at most this often
 export const CUBE_WAIT_MS = 1500; // a Bob slower than this keeps his last state for now
-export const MOODS = ['none', 'loading', 'thinking', 'replying', 'ready'];
+// lending: his graphics card holds part of another Bob's brain. helping: that brain is writing right now (Nov 14).
+export const MOODS = ['none', 'loading', 'thinking', 'replying', 'ready', 'lending', 'helping'];
 
 // A short, steady name for a Bob's chat, from his address (never shown; it only has to match).
 export const slugOf = (address) => crypto.createHash('sha256').update(String(address || '')).digest('hex').slice(0, 12);
@@ -73,28 +74,33 @@ export function companyHeads(cfg, agents) {
 
 // This Bob's own cube, in one word, for another Bob's icon. state: brain.state.state; loaded: how many brains are in
 // memory; tokenAt: when his last word streamed out.
-export function cubeMood({ state = 'idle', loaded = 0, tokenAt = 0, now = Date.now() } = {}) {
+export function cubeMood({ state = 'idle', loaded = 0, tokenAt = 0, lending = false, now = Date.now() } = {}) {
   if (state === 'waking' || state === 'loading') return 'loading';
   if (state === 'thinking') return now - tokenAt < 2000 ? 'replying' : 'thinking';
   if (state === 'busy' || state === 'painting') return 'replying';
+  if (lending) return 'lending'; // his card runs part of another Bob's brain, even with no brain of his own
   if (!loaded) return 'none';
   return 'ready';
 }
 
+// How many Bobs lend him a graphics card right now (his cube shows a gap for each, at most 4).
+export const cleanGaps = (n) => Math.max(0, Math.min(4, Math.floor(Number(n) || 0)));
+
 // Reads each Bob's cube, at most every CUBE_EVERY_MS each, all at once; a Bob slow to answer keeps his last mood.
 export function cubeReader({ now = Date.now } = {}) {
-  const last = new Map(); // address -> { mood, at, pending }
+  const last = new Map(); // address -> { mood, gaps, at, pending }
+  const said = (s) => (s.gaps ? { mood: s.mood, gaps: s.gaps } : s.mood);
   return async function read(lenders, bob) {
-    const s = last.get(bob.address) || { mood: 'ready', at: 0 };
-    if (now() - s.at < CUBE_EVERY_MS - 200) return s.mood;
+    const s = last.get(bob.address) || { mood: 'ready', gaps: 0, at: 0 };
+    if (now() - s.at < CUBE_EVERY_MS - 200) return said(s);
     if (!s.pending) {
       s.pending = lenders.call(bob, '/api/bob-net/cube', { timeout: CUBE_WAIT_MS })
-        .then(async (r) => { const j = r.ok ? await r.json().catch(() => ({})) : {}; if (MOODS.includes(j.mood)) s.mood = j.mood; })
+        .then(async (r) => { const j = r.ok ? await r.json().catch(() => ({})) : {}; if (MOODS.includes(j.mood)) s.mood = j.mood; s.gaps = cleanGaps(j.gaps); })
         .catch(() => {}).finally(() => { s.at = now(); s.pending = null; });
       last.set(bob.address, s);
     }
     await Promise.race([s.pending, new Promise((r) => setTimeout(r, CUBE_WAIT_MS))]);
-    return s.mood;
+    return said(s);
   };
 }
 
@@ -104,7 +110,9 @@ const clean = (s, n = 40) => String(s || '').replace(/[\u0000-\u001f<>]/g, '').t
 // agents: the coding agents' view (only while "Run coding agents" is on).
 // rooms (1.5.228): the chat bots that are on, [{ id, name, waiting, chat? }]: Discord opens its group chat, Telegram (chat:
 // 'telegram') your own Telegram chat.
-export async function overlayView(cfg, { bobs = [], seen = () => null, mood = async () => 'ready', agents = null, rooms = [] } = {}) {
+// lentToMe(bob): his card holds part of the brain I'm running; busyHere: that brain is working now. Both are known here,
+// so his icon shows it even when he's an older Bob who can't say "lending" himself.
+export async function overlayView(cfg, { bobs = [], seen = () => null, mood = async () => 'ready', agents = null, rooms = [], lentToMe = () => false, busyHere = false } = {}) {
   // 1.5.228 chat heads: a chat bot you turned on (Discord, Telegram) shows its own head under Bob's cube, whether or
   // not Bob-Net icons is on. The owner, Nov 14: "they would only appear if you have them activated".
   const heads = [].concat(rooms || []).filter((r) => r && /^[a-z]{2,20}$/.test(String(r.id))).map((r) => ({ id: String(r.id), name: clean(r.name) || 'Group chat', waiting: Math.max(0, Number(r.waiting) || 0), ...(r.chat ? { chat: clean(r.chat, 40) } : {}) }));
@@ -117,7 +125,9 @@ export async function overlayView(cfg, { bobs = [], seen = () => null, mood = as
     on: true,
     bobs: up.map((b, i) => {
       const s = seen(b) || {};
-      return { name: clean(b.name) || 'Another Bob', chat: chatIdFor(b.address), hue: hueFor(b.name), mood: moods[i], device: clean(s.device, 20), brain: clean(s.brain, 60), canChat: (s.jobs || []).includes('chat') && !s.jobsBusy };
+      const m = typeof moods[i] === 'object' && moods[i] ? moods[i] : { mood: moods[i] }; // a mood, or { mood, gaps }
+      const lent = lentToMe(b) === true && ['none', 'ready', 'lending'].includes(m.mood);
+      return { name: clean(b.name) || 'Another Bob', chat: chatIdFor(b.address), hue: hueFor(b.name), mood: lent ? (busyHere ? 'helping' : 'lending') : m.mood, gaps: cleanGaps(m.gaps), device: clean(s.device, 20), brain: clean(s.brain, 60), canChat: (s.jobs || []).includes('chat') && !s.jobsBusy };
     }),
     rooms: heads,
     companies,

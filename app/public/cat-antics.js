@@ -1,5 +1,5 @@
 // 1.5.7: the cat does cat things by Bob's picture while he's idle. Scripted, no brain, no setting: it costs nothing.
-// Every 1 to 2½ minutes of idle, the cat does one short antic for about 8 seconds and a one-line moment that matches
+// Every 5 to 10 minutes of idle (1 to 2½ before 1.5.228, which was too chatty), the cat does one short antic for about 8 seconds and a one-line moment that matches
 // it shows in a word bubble beside Bob's picture for 15 seconds (say-bubbles.js; it used to sit under his status and push the menu
 // down). Stops as soon as Bob is busy. Kept out of screen readers (aria-hidden).
 // 1.5.53: 17 antics instead of 5 (each with its own lines), no repeats until most have played, Bob looks over when
@@ -8,6 +8,8 @@ import { ANTIC_IDS, anticLine } from './patches.js';
 
 export const ANTICS = ANTIC_IDS;
 // What shows in the cat's spot. Extras (butterfly, pencil, bird, yarn) are drawn by CSS around it.
+// 1.5.228: how long the cat waits between antics while Bob is idle.
+export const ANTIC_GAP_MS = { min: 5 * 60000, spread: 5 * 60000 };
 export const ICON = { nap: '🐈💤', box: '📦', yarn: '🐈' };
 
 export function pickAntic(recent, rnd = Math.random) {
@@ -26,7 +28,7 @@ export function createCatAntics({ onAntic = () => {}, sleepy = () => false, bubb
   function plan() {
     clearTimeout(timer);
     if (!idle) return;
-    timer = setTimeout(play, 60000 + Math.random() * 90000);
+    timer = setTimeout(play, ANTIC_GAP_MS.min + Math.random() * ANTIC_GAP_MS.spread);
   }
   function play(which) {
     if (!which && (!idle || document.hidden)) return plan();

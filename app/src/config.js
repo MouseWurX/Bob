@@ -154,6 +154,7 @@ export function loadConfig() {
     const { kept, fixed } = checkSettings(cfg, saved);
     cfg.settingsFixed = fixed;
     if (fixed.length) { try { writeJsonAtomic(cfg.settingsFile, kept, 2); } catch {} } // fixed once, not at every start
+    if (newDefaults(kept)) { try { writeJsonAtomic(cfg.settingsFile, kept, 2); } catch {} } // once per new default, below
     try { mergeSettings(cfg, kept); } catch (e) { notes.push(`settings.json couldn't be applied (${e.message}); using the defaults`); }
   }
   // Nov 14 2026 (the owner: "existing installs get converted"): Moondust, the old starting theme, becomes the Mercury
@@ -649,6 +650,28 @@ function savedSettings(cfg) {
 // Item 234: each saved setting whose default (config.json and Bob's own) is a switch, a number, words, a list or a
 // group must be the same kind; anything else goes back to its default. Settings with no default are left to clean().
 const kindOf = (v) => (v === null || v === undefined ? '' : Array.isArray(v) ? 'list' : typeof v === 'number' ? (Number.isFinite(v) ? 'number' : 'bad') : typeof v);
+// 1.5.230 (the owner: an update with a new default must change it for everyone, not keep an older pick): when a
+// default changes, the old saved pick of that setting is dropped once, on the first start after the update, so
+// everyone gets the new default; whatever they pick after that is kept as usual. settings.json remembers which of
+// these it has had (defaultsSeen), so a pick made later is never dropped again. Add a line here with each new default.
+export const NEW_DEFAULTS = [
+  { id: 'tesseract-icon', keys: ['lookIcon'] }, // 1.5.228: Bob's icon is the tesseract (the pixel look only if switched on again)
+  { id: 'scut-400', keys: ['share.scutMbps', 'share.scutMbpsChosen'] } // Nov 14, the owner: SCUT's cap is 400 Mbit/s by default, never 100
+];
+// A key is a top-level setting, or a.b for one inside a group (e.g. share.scutMbps).
+const dropKey = (kept, k) => { const [g, sub] = k.split('.'); if (sub === undefined) delete kept[g]; else if (kept[g] && typeof kept[g] === 'object' && !Array.isArray(kept[g])) delete kept[g][sub]; };
+export function newDefaults(kept) {
+  const seen = Array.isArray(kept.defaultsSeen) ? kept.defaultsSeen.filter((x) => typeof x === 'string') : [];
+  let changed = !Array.isArray(kept.defaultsSeen) && 'defaultsSeen' in kept;
+  for (const d of NEW_DEFAULTS) {
+    if (seen.includes(d.id)) continue;
+    for (const k of d.keys) dropKey(kept, k);
+    seen.push(d.id); changed = true;
+  }
+  kept.defaultsSeen = seen;
+  return changed;
+}
+
 export function checkSettings(defaults, saved, at = '') {
   const kept = {}, fixed = [];
   for (const [k, v] of Object.entries(saved || {})) {

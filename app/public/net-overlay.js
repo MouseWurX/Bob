@@ -30,7 +30,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 export const isNetChat = (id) => /^guest-net-[0-9a-f]{12}$/.test(String(id || ''));
 export const BUBBLE_HINT = { mouse: 'Click to open · right-click to dismiss', touch: 'Tap to open · swipe away to dismiss' };
 export const roomWords = (r) => (r.chat ? `${r.name}: your chat` : `${r.name} group chat${r.waiting ? `: ${r.waiting} waiting for your OK` : ''}`);
-export const MOOD_WORDS = { none: 'No brain loaded', loading: 'Loading a brain', thinking: 'Thinking', replying: 'Writing back', ready: 'Ready' };
+export const MOOD_WORDS = { none: 'No brain loaded', loading: 'Loading a brain', thinking: 'Thinking', replying: 'Writing back', ready: 'Ready', lending: 'Lending his graphics card', helping: 'His card is helping write back' };
 export const AGENT_WORDS = { idle: 'Ready', working: 'Working', 'needs-you': 'Needs you', done: 'Done', failed: 'Failed', stopped: 'Stopped' };
 // The light inside an icon is kept under Bob's own: at most this bright (0..1).
 export const ICON_LIGHT = 0.6;
@@ -60,9 +60,15 @@ function corners(cx, cy, sz) { return { t: [cx, cy - sz], ur: [cx + K * sz, cy -
 // ghost: a block with no light is still drawn, faint and nearly grey, so a Bob with no brain loaded (or one still
 // loading) keeps his cube head on Bob-Net instead of an empty porthole (the owner, Nov 13: a test Bob showed no cube).
 export const GHOST = { sat: 12, alpha: 0.38 };
-export function drawVoxels(x, { cx = 48, cy = 52, n = 4, size = 40, hue = 200, sat = 60, light, ghost = false }) {
+// gaps: blocks left out (a Bob borrowing graphics cards is missing a piece for each Bob lending him one, Nov 14);
+// each gap keeps a faint amber outline where the block would be.
+export const GAPS = [[0, 0, 3], [3, 0, 3], [0, 3, 3], [3, 0, 0]]; // corners, so the missing piece shows in his outline
+export function drawVoxels(x, { cx = 48, cy = 52, n = 4, size = 40, hue = 200, sat = 60, light, ghost = false, gaps = 0 }) {
   const s = size / n;
+  const slots = [];
+  const out = new Set(GAPS.slice(0, Math.max(0, Math.min(GAPS.length, gaps | 0))).map((g) => g.join()));
   for (let k = 0; k < n; k++) for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    if (out.has(`${i},${j},${k}`)) { slots.push(corners(cx + (i - j) * K * s, cy + (i + j) * 0.5 * s - k * s - size * 0.25 + s * 0.5, s)); continue; }
     let L = light(i, j, k), sa = sat, al = 1;
     if (L < 0) { if (!ghost) continue; L = 0; sa = GHOST.sat; al = GHOST.alpha; }
     const px = cx + (i - j) * K * s, py = cy + (i + j) * 0.5 * s - k * s - size * 0.25 + s * 0.5;
@@ -70,6 +76,37 @@ export function drawVoxels(x, { cx = 48, cy = 52, n = 4, size = 40, hue = 200, s
     face(x, P, ['t', 'ur', 'c', 'ul'], hsl(hue, sa, 58 + L * 28, a)); face(x, P, ['ul', 'c', 'b', 'll'], hsl(hue, sa, 42 + L * 28, a)); face(x, P, ['c', 'ur', 'lr', 'b'], hsl(hue, sa, 30 + L * 28, a));
     if (L > 0.55) { x.save(); x.globalCompositeOperation = 'lighter'; x.fillStyle = hsl(hue, sat, 70, (L - 0.55) * 0.9); x.beginPath(); x.arc(px, py, s * 1.4, 0, 7); x.fill(); x.restore(); }
   }
+  for (const P of slots) { x.save(); x.lineWidth = 1; x.setLineDash?.([2, 1.5]); x.strokeStyle = hsl(36, 90, 64, 0.85); x.beginPath(); ['t', 'ur', 'lr', 'b', 'll', 'ul'].forEach((q, m) => (m ? x.lineTo(...P[q]) : x.moveTo(...P[q]))); x.closePath(); x.moveTo(...P.c); x.lineTo(...P.t); x.moveTo(...P.c); x.lineTo(...P.ll); x.moveTo(...P.c); x.lineTo(...P.lr); x.stroke(); x.restore(); }
+}
+
+// Nov 14 (the owner's idea): a Bob lending his graphics card wears a puzzle piece made of the same little blocks,
+// in the colour of the look you picked (its accent). lit 0..1; it glows while the shared brain writes.
+// A colour as { hue, sat } (0..360, 0..100), from '#rgb', '#rrggbb' or 'rgb(r, g, b)'; amber when it can't be read.
+export function hueSat(colour) {
+  const c = String(colour || '').trim();
+  let r, g, b, m;
+  if ((m = c.match(/^#([0-9a-f]{3})$/i))) [r, g, b] = [...m[1]].map((d) => parseInt(d + d, 16));
+  else if ((m = c.match(/^#([0-9a-f]{6})/i))) [r, g, b] = [0, 2, 4].map((k) => parseInt(m[1].slice(k, k + 2), 16));
+  else if ((m = c.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i))) [r, g, b] = m.slice(1, 4).map(Number);
+  else return { hue: 36, sat: 85 };
+  [r, g, b] = [r / 255, g / 255, b / 255];
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, l = (mx + mn) / 2;
+  if (!d) return { hue: 0, sat: 0 };
+  const sat = d / (1 - Math.abs(2 * l - 1));
+  const hue = mx === r ? 60 * (((g - b) / d) % 6) : mx === g ? 60 * ((b - r) / d + 2) : 60 * ((r - g) / d + 4);
+  return { hue: Math.round((hue + 360) % 360), sat: Math.round(Math.min(1, sat) * 100) };
+}
+const accentNow = () => { try { return hueSat(getComputedStyle(document.body).getPropertyValue('--accent')); } catch { return hueSat(''); } };
+export const PUZZLE = ['..####.....', '..####.....', '...##......', '########...', '########...', '#..#####.##', '...########', '...########', '#..#####.##', '########...', '########...'];
+export function drawPuzzle(x, { x0 = 63, y0 = 62, c = 2.7, lit = 0.3, hue = 36, sat = 85 } = {}) {
+  const L = Math.max(0, Math.min(1, lit));
+  if (L > 0.5) { x.save(); x.globalCompositeOperation = 'lighter'; x.fillStyle = hsl(hue, sat, 60, (L - 0.5) * 0.6); x.beginPath(); x.arc(x0 + c * 5.5, y0 + c * 5.5, c * 7, 0, 7); x.fill(); x.restore(); }
+  PUZZLE.forEach((row, j) => [...row].forEach((ch, i) => {
+    if (ch !== '#') return;
+    const px = x0 + i * c, py = y0 + j * c;
+    x.fillStyle = hsl(hue, sat, 30 + L * 16, 0.95); x.fillRect(px, py, c, c); // the block, its shaded sides
+    x.fillStyle = hsl(hue, sat, 58 + L * 24, 0.95); x.fillRect(px, py, c - 0.7, c - 0.7); // its lit face
+  }));
 }
 
 // The signs on an agent's cube (unit square on its right face). t: seconds; w: working (faster).
@@ -118,14 +155,19 @@ function makeIcon(kind, key, it, { still }) {
     x.clearRect(0, 0, 96, 96);
     const mood = s.it.mood;
     // No brain over there (a fresh copy, a test Bob, or his brain let go): his cube still shows, resting and grey.
-    if (mood === 'none') { s.fill = 0; s.sparks.clear(); return drawVoxels(x, { hue: s.it.hue, light: () => -1, ghost: true }); }
+    const lent = mood === 'lending' || mood === 'helping';
+    const piece = () => lent && drawPuzzle(x, { ...accentNow(), lit: mood === 'helping' ? 0.55 + 0.35 * (0.5 + 0.5 * Math.sin(t * 6)) : 0.25 + 0.1 * Math.sin(t * 1.6) });
+    const gaps = Number(s.it.gaps) || 0;
+    if (mood === 'none') { s.fill = 0; s.sparks.clear(); return drawVoxels(x, { hue: s.it.hue, light: () => -1, ghost: true, gaps }); }
     if (mood === 'loading') s.fill = Math.min(1, s.fill + 0.006); else s.fill = 1;
-    const pulse = mood === 'thinking' ? 0.2 + 0.25 * (0.5 + 0.5 * Math.sin(t * 5)) : 0;
+    // Lending his card: lit and slowly breathing. While that brain writes, it sparkles like his own reply would.
+    const pulse = mood === 'thinking' ? 0.2 + 0.25 * (0.5 + 0.5 * Math.sin(t * 5)) : lent ? 0.12 + 0.12 * (0.5 + 0.5 * Math.sin(t * 1.6)) : 0;
     const rnd = Math.random();
-    if ((mood === 'replying' && rnd < 0.55) || (mood === 'ready' && rnd < 0.02)) s.sparks.set(`${(Math.random() * 4) | 0},${(Math.random() * 4) | 0},${(Math.random() * 4) | 0}`, 1);
-    for (const [k, v] of s.sparks) { const nv = v - (mood === 'replying' ? 0.06 : 0.025); if (nv <= 0) s.sparks.delete(k); else s.sparks.set(k, nv); }
+    if (((mood === 'replying' || mood === 'helping') && rnd < 0.55) || (mood === 'ready' && rnd < 0.02)) s.sparks.set(`${(Math.random() * 4) | 0},${(Math.random() * 4) | 0},${(Math.random() * 4) | 0}`, 1);
+    for (const [k, v] of s.sparks) { const nv = v - (mood === 'replying' || mood === 'helping' ? 0.06 : 0.025); if (nv <= 0) s.sparks.delete(k); else s.sparks.set(k, nv); }
     const filled = s.fill * 64;
-    drawVoxels(x, { hue: s.it.hue, sat: 60, ghost: true, light: (i, j, k) => (k * 16 + j * 4 + i >= filled ? -1 : ICON_LIGHT * Math.min(1, 0.12 + pulse + (s.sparks.get(`${i},${j},${k}`) || 0))) });
+    drawVoxels(x, { hue: s.it.hue, sat: 60, ghost: true, gaps, light: (i, j, k) => (k * 16 + j * 4 + i >= filled ? -1 : ICON_LIGHT * Math.min(1, 0.12 + pulse + (s.sparks.get(`${i},${j},${k}`) || 0))) });
+    piece();
   };
   return s;
 }
@@ -133,7 +175,7 @@ function makeIcon(kind, key, it, { still }) {
 // ---------- The whole strip ----------
 // deps: open(id) opens a chat; session() is the chat open now; showAgents() opens Now running at Coding agents;
 // note(text) says something in the chat; fetchImpl for tests.
-export function createNetOverlay({ open, session, showAgents, openRoom = () => {}, openSettings = () => {}, note = () => {}, still = () => false, fetchImpl = (u) => fetch(u).then((r) => r.json()), store = globalThis.localStorage } = {}) {
+export function createNetOverlay({ open, session, showAgents, openRoom = () => {}, openSettings = () => {}, note = () => {}, still = () => false, fetchImpl = (u) => fetch(u).then((r) => r.json()), store = globalThis.localStorage, postAnswer = (sessionId, answer) => fetch('/api/net-chat/answer', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ sessionId, answer }) }).catch(() => {}) } = {}) {
   let on = false, view = { bobs: [], agents: [], rooms: [], companies: [] }, timer = null, raf = 0, bubble = null;
   const icons = new Map(); // key -> icon state
   const unseen = new Map(); // key -> count
@@ -256,8 +298,15 @@ export function createNetOverlay({ open, session, showAgents, openRoom = () => {
     const away = !b ? ' He isn\'t on Bob-Net right now, so a message can\'t reach him until he\'s back.' : '';
     if (bar.dataset.for !== id || bar.dataset.line !== line + away) {
       bar.dataset.for = id; bar.dataset.line = line + away;
-      bar.innerHTML = `<div class="g-who"><strong>${esc(name)}</strong><span>${esc(line)}</span>${away ? `<p class="muted">${esc(away.trim())}</p>` : ''}</div><button type="button" class="g-back">Return from Guest Mode</button>`;
+      bar.innerHTML = `<div class="g-who"><strong>${esc(name)}</strong><span>${esc(line)}</span>${away ? `<p class="muted">${esc(away.trim())}</p>` : ''}</div><button type="button" class="brain-switch g-answer" role="switch" aria-checked="true" title="On: ${esc(name)} answers. Off: your message is only kept in his chats (From this Bob), so you can copy and paste between your machines. Either way he keeps the chat."><span class="lbl">He answers</span><span class="st">On</span></button><button type="button" class="g-back">Return from Guest Mode</button>`;
       bar.querySelector('.g-back').onclick = () => open(returnTo() && !isNetChat(returnTo()) ? returnTo() : 'main');
+      // Nov 14 (the owner): He answers, per chat, remembered in this window. Off: he only keeps what you send.
+      const sw = bar.querySelector('.g-answer');
+      const showAnswer = (on) => { sw.setAttribute('aria-checked', String(on)); sw.querySelector('.st').textContent = on ? 'On' : 'Off'; };
+      const tell = (on) => postAnswer(id, on);
+      let on = true; try { on = store?.getItem?.(`bob-net-answer:${id}`) !== '0'; } catch {}
+      showAnswer(on); tell(on);
+      sw.onclick = () => { on = sw.getAttribute('aria-checked') !== 'true'; showAnswer(on); try { store?.setItem?.(`bob-net-answer:${id}`, on ? '1' : '0'); } catch {} tell(on); };
     }
     let help = document.getElementById('netHelping');
     if (!help) { help = document.createElement('span'); help.id = 'netHelping'; help.className = 'net-help'; help.title = 'In guest mode the other Bob does the thinking, with Bob-Net behind him: brains and cards your Bobs lend each other still help.'; help.innerHTML = '<i aria-hidden="true"></i>Bob-Net helping'; document.getElementById('effort')?.append(help); }

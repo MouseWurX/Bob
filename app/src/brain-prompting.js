@@ -18,7 +18,6 @@ import { houseStylePrompt } from '../public/house-style.js';
 import { copyName } from './clan.js';
 import { editOwnOn } from './edit-own.js';
 import { meanwhileOn, WATCH_TOOLS, noteAsk, asksAboutJob, noteQueuedLine, statusLine, noteForBig, noteGotLine } from './meanwhile.js';
-import { notesOn } from './notes.js';
 import { receiptsOn } from './receipts.js';
 import { modOn } from './discord-mod.js';
 import { docToolsOn } from './my-docs.js';
@@ -106,7 +105,7 @@ export const promptParts = {
     let can = {};
     try { can = capabilities(this.cfg); } catch {}
     // 1.5.91: make_image, make_video, make_music and make_sound stay listed when they aren't set up: calling one shows the Set it up card.
-    return new Set([!can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !this.offerNeeded() && 'offer_setup', !cloudHelpers(this.cfg).length && 'ask_cloud', !this.rentals?.current() && 'hire_brain', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', !editOwnOn(this.cfg) && 'edit_my_message', ...(meanwhileOn(this.cfg) ? [] : WATCH_TOOLS), !notesOn(this.cfg) && 'take_note', !receiptsOn(this.cfg) && 'spending_sheet', !modOn(this.cfg) && 'discord_mod', !docToolsOn(this.cfg) && 'find_in_documents', !sandboxOn(this.cfg) && 'run_in_sandbox', !parts3dOn(this.cfg) && 'make_3d_part', !model3dOn(this.cfg) && 'make_3d_model', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), !(selfWorkOn(this.cfg) && readyRepos(this.cfg).length) && 'work_on_repo', ...moreToolsOff(this.cfg), ...toolsOff(this.cfg)].filter(Boolean));
+    return new Set([!can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !this.offerNeeded() && 'offer_setup', !cloudHelpers(this.cfg).length && 'ask_cloud', !this.rentals?.current() && 'hire_brain', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', !editOwnOn(this.cfg) && 'edit_my_message', ...(meanwhileOn(this.cfg) ? [] : WATCH_TOOLS), 'take_note', !receiptsOn(this.cfg) && 'spending_sheet', !modOn(this.cfg) && 'discord_mod', !docToolsOn(this.cfg) && 'find_in_documents', !sandboxOn(this.cfg) && 'run_in_sandbox', !parts3dOn(this.cfg) && 'make_3d_part', !model3dOn(this.cfg) && 'make_3d_model', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), !(selfWorkOn(this.cfg) && readyRepos(this.cfg).length) && 'work_on_repo', ...moreToolsOff(this.cfg), ...toolsOff(this.cfg)].filter(Boolean));
   },
   usable(name, off = this.offTools()) { return Boolean(this.tools[name]) && !off.has(name); },
   // 1.5.41: whether OKs are asked on cards right now (so a job's OKs can go on one card). Not with "work without asking".

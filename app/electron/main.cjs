@@ -479,8 +479,22 @@ function macMenu() {
   ]);
 }
 
+// 1.5.230 Ctrl and + / = / - / 0: the zoom keys a menu would give (Windows and Linux have no menu bar here).
+function zoomKey(wc, ev, input) {
+  if (input.type !== 'keyDown' || !input.control || input.alt || input.meta) return;
+  const z = wc.getZoomLevel();
+  if (input.key === '=' || input.key === '+') wc.setZoomLevel(Math.min(z + 0.5, 5));
+  else if (input.key === '-' || input.key === '_') wc.setZoomLevel(Math.max(z - 0.5, -3));
+  else if (input.key === '0') wc.setZoomLevel(0);
+  else return;
+  ev.preventDefault();
+}
+
 async function start() {
   Menu.setApplicationMenu(MAC ? macMenu() : null);
+  // 1.5.230 Zoom keys on Windows and Linux too (only a Mac has a menu that carries them): Ctrl and + (or =) zooms in,
+  // Ctrl and - zooms out, Ctrl and 0 puts it back, in every one of Bob's windows. An accessibility must.
+  if (!MAC) app.on('web-contents-created', (_e, wc) => wc.on('before-input-event', (ev, input) => zoomKey(wc, ev, input)));
   if (handOverToNewBob()) { app.quit(); return; }
   let home;
   try { home = await setUpHome(); } catch (e) { dialog.showErrorBox('Bob', `Bob couldn't set up his folder: ${e.message}`); app.quit(); return; }
@@ -518,7 +532,7 @@ async function start() {
     // Settings is its own ordinary window too (minimise, maximise, close), one at a time.
     if (url === base + '/settings.html' || url.startsWith(base + '/settings.html#')) {
       if (settingsWin) { if (settingsWin.webContents.getURL() !== url) settingsWin.loadURL(url); if (settingsWin.isMinimized()) settingsWin.restore(); settingsWin.show(); settingsWin.focus(); return { action: 'deny' }; }
-      return { action: 'allow', overrideBrowserWindowOptions: { width: 1040, height: 780, minWidth: 360, minHeight: 480, title: 'Bob · Settings', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#121212', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
+      return { action: 'allow', overrideBrowserWindowOptions: { frame: true, titleBarStyle: 'default', width: 1040, height: 780, minWidth: 360, minHeight: 480, title: 'Bob · Settings', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#121212', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
     }
     // The Computer Science Lab is its own ordinary window as well, one at a time.
     if (url === base + '/lab.html') {

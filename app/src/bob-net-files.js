@@ -12,7 +12,7 @@
 // catalogue brain, else "from-my-bobs", added to Brains of your own), with its brain card (.bob.json) and picture
 // reader (mmproj) when it has them. A copy with the same name and size there also lets him seed a lent card from his
 // own copy (share-card.js findOwnBrain) instead of over the network.
-// Speed: on Wi-Fi each side keeps under the SCUT speed cap (share-card.js scutMbps, 100 Mbit/s unless you picked
+// Speed: on Wi-Fi each side keeps under the SCUT speed cap (share-card.js scutMbps, 400 Mbit/s unless you picked
 // another), so the rest of the home network isn't crowded. On a cable, no cap. While Gaming, both sides pause.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -291,7 +291,8 @@ export class Inbox {
     if (kind === 'brain' && (!files.some((f) => f.role === 'gguf') || files.some((f) => f.role === 'card' && f.bytes > 65536))) return { code: 400, error: 'That isn\'t a brain.' };
     const total = files.reduce((a, f) => a + f.bytes, 0);
     if (total > MAX_BYTES) return { code: 400, error: 'too big' };
-    const it = { id, token, from: bob.address, fromName: str(b?.from, 40) || bob.name || 'another of your Bobs', kind, title: str(b?.title, 80) || files[0].name, files, total, done: 0, at: this.now(), state: 'asking' };
+    // Nov 14 (first real copy: the card said the owner's Windows name, not npc): the name on my own list says who it's from.
+    const it = { id, token, from: bob.address, fromName: str(bob.name, 40) || str(b?.from, 40) || 'another of your Bobs', kind, title: str(b?.title, 80) || files[0].name, files, total, done: 0, at: this.now(), state: 'asking' };
     this.items.set(id, it); this.save();
     this.broadcast(this.card(it));
     this.log('bob-net', `${it.fromName} offers ${kind === 'brain' ? 'the brain ' : ''}${it.title} (${gb(total)}): waiting for your Yes`);

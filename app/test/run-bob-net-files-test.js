@@ -21,7 +21,7 @@ check('settings keep it a plain on/off', /if \('netFiles' in out\) out\.netFiles
 check('a name with folders keeps only its name', cleanName('../../x.txt') === 'x.txt' && cleanName('a\\b\\c.gguf') === 'c.gguf');
 check('names Windows can\'t use are refused', cleanName('con.txt') === '' && cleanName('..') === '' && cleanName('   ') === '' && cleanName('a:b?.txt') === 'ab.txt');
 check('a trailing dot or space goes', cleanName('notes. ') === 'notes');
-check('Wi-Fi is capped at SCUT\'s 100 Mbit/s unless picked', capOf({}, true) === 12.5e6 && capOf({ share: { scutMbps: 300 } }, true) === 37.5e6);
+check('Wi-Fi is capped at SCUT\'s 400 Mbit/s unless picked', capOf({}, true) === 50e6 && capOf({ share: { scutMbps: 300 } }, true) === 37.5e6);
 check('a cable has no cap', capOf({}, false) === 0 && onWifi('cable', null) === false && onWifi('wifi', null) === true);
 check('a Tailscale address on a Wi-Fi-only machine counts as Wi-Fi', onWifi('', { list: [{ kind: 'wifi', up: true }] }) === true && onWifi('', { list: [{ kind: 'wifi', up: true }, { kind: 'cable', up: true }] }) === false);
 {
@@ -65,6 +65,8 @@ const bytes = (n) => crypto.randomBytes(n);
   const src = path.join(t.dirA, 'holiday.zip'); fs.writeFileSync(src, bytes(50000));
   const r = await t.outbox.send({ address: 'b:7777', files: [{ path: src }] });
   check('sending offers it: only the name and size go', r.ok === true && t.events.some((e) => e.type === 'net-file-ask' && e.title === 'holiday.zip' && e.total === 50000 && e.from === 'desk'));
+  check('the card names the Bob as he is on my list, not what he calls himself', (() => { const x = t.inbox.receive({ id: '9'.repeat(16), token: '8'.repeat(48), from: 'Someone', files: [{ name: 'q.txt', bytes: 3 }] }, '172.16.0.9'); return x.ok && t.inbox.items.get('9'.repeat(16)).fromName === 'desk'; })());
+  t.inbox.forget('9'.repeat(16));
   check('…and nothing is written before Yes', !fs.existsSync(path.join(t.dirB, 'From my other Bobs')));
   const a = t.inbox.answer(r.id, true);
   await a.run;
@@ -221,6 +223,7 @@ check('…an FAQ', /id: 'faq-net-files'/.test(help));
 check('…glossary entries for Brain Copying and Files and brains', /<dt>Brain Copying<\/dt>/.test(help) && /<dt>Files and brains<\/dt>/.test(help));
 check('…and the Bob-Net settings list', /set\('Files and brains', 'Off'/.test(help));
 check('the switch is in Settings, Bob-Net, off unless on', /sswitch\('netFiles', settings\.netFiles === true, 'Files and brains'/.test(read('public/cellar-pages.js')));
+check('speed and time left get a line of their own, under the % done', /net-file-speed/.test(read('public/net-files.js')) && /\.net-file-bar \{[^}]*width: 100%/.test(read('public/style.css')));
 check('the Brains page points to Brain Copying', /Brain Copying<\/strong> sends it over Bob-Net/.test(read('public/brains.js')));
 const srv = read('src/server.js');
 check('the server routes it and replays a waiting card', /netFilesRoute\(/.test(srv) && /brain\.netInbox\.waiting\(\)/.test(srv));
