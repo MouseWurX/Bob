@@ -43,13 +43,13 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.230-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.230-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.230-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.230-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.230-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.230-linux-x86_64.AppImage) |
-| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.230-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.230-linux-amd64.deb) |
-| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.230-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.230-linux-x86_64.flatpak) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.230-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.230-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
-| **Android phone** | [`Bob-1.5.230-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.230-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.231-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.231-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.231-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.231-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.231-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.231-linux-x86_64.AppImage) |
+| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.231-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.231-linux-amd64.deb) |
+| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.231-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.231-linux-x86_64.flatpak) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.231-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.231-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
+| **Android phone** | [`Bob-1.5.231-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.231-android.apk) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 

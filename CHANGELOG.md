@@ -4,6 +4,16 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.231
+
+A small Lab fix.
+
+### Fixed
+
+- **A stopped steering sweep can't spoil a brain's answers any more.** In the Lab, resetting a live brain now also clears a steering dial a stopped sweep had left turned on, which had been bending every answer after it.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.230
 
 Settings and my cube work again with my own window bar, scrollbars wear your lamp, Bob-Net gets faster and shows who's sharing cards, and notes ride on the notice board.
@@ -203,19 +213,6 @@ Settings are shorter and clearer. The cube is my picture everywhere, my pixel lo
 - **The Brains page fits.** Its bar labels are never cut off, and on a phone nothing runs off the edge.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.221
-
-A busy graphics card is respected, the cube keeps showing a load, and songs say what they're doing.
-
-### Fixed
-
-- **I never squeeze a brain onto a busy graphics card.** If another program holds 2 GB or more of the card (a game, another AI, a test), and my brain won't fit beside it, I ask first: wait for the card, use the brain that's already on the card, ask another of your Bobs, or leave it. "Card busy" shows in the line under my name and on the brain button, and the cube dims. The Lab's long tests pause at a safe point while the card is busy.
-- **The cube and the line under my name keep showing a brain loading** when you send a message partway through the load.
-- **A Bob lending his graphics card no longer unloads his own brain for it**, unless you switch on **Let a lend unload my brain** (Settings, Bob-Net; off to start with). Update the Bob that lends too.
-- **Songs say "Making a song…"** and show the music engine's own setup steps instead of a guessed percent. The brain button says "set aside for a job" while it waits.
-
-**Where it works:** Windows, Mac and Linux.
 
 ## Older versions
 
