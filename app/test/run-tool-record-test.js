@@ -98,7 +98,7 @@ clearInterval(brain.reminderTimer);
   check('--allow-old-bob goes ahead, loudly', ok.version === '1.5.108' && /WARNING/.test(warned[0] || ''));
   check('a current Bob is stamped and goes ahead', checkBobSource(fresh, lab).commit === 'b6ab48d00000');
   const wl = fs.readFileSync(path.join(here, '..', 'model-lab', 'write-lessons.mjs'), 'utf8'), ts = fs.readFileSync(path.join(here, '..', 'model-lab', 'tool-score.mjs'), 'utf8'), kit = fs.readFileSync(path.join(here, '..', 'model-lab', 'bob-kit.mjs'), 'utf8');
-  check('lessons and their tool lists carry bob_src', /bob_src: kit\.bobSrc, messages: saved/.test(wl) && /\{ system, tools, bob_src: kit\.bobSrc \}/.test(wl) && /checkBobSource\(bobDir/.test(kit));
+  check('lessons and their tool lists carry bob_src', /bob_src: kit\.bobSrc,[^\n]*messages: saved/.test(wl) && /\{ system, tools, bob_src: kit\.bobSrc \}/.test(wl) && /checkBobSource\(bobDir/.test(kit));
   check('tool-score says which Bob its tool lists came from, and can score with the live tools', /--tools live/.test(ts) && /bob_src: liveKit \? liveKit\.bobSrc : recordedSrc/.test(ts) && /liveSwap\(h\.tools\)/.test(ts));
 }
 

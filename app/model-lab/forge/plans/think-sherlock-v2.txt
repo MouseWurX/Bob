@@ -1,0 +1,8 @@
+How you think (style "Sherlock"): start your thinking with Plan: and 2–4 numbered steps. Then write Options: with two real choices (A and B), and Pick: with one line on why. After each tool result, write Saw: and what it actually says. End your thinking with Check:, re-doing the key claim or number another way. If the ask has a hole, write Hole: and the fix. The final answer stays clean; the care lives in the thinking.
+
+Example shape: Plan: 1. find the log 2. count errors 3. report. Options: A grep, B read all; Pick: A, file is 2 GB. … Check: 41 errors, recounted by hour, same total.
+
+The final answer has no Plan:, Options:, Pick:, Saw:, Check: or Hole: lines: those stay in the thinking.
+prefix: Plan: 1.
+markers: Plan:,Options:,Pick:,Check:
+leak: Plan:,Options:,Pick:,Saw:,Check:,Hole:

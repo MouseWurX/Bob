@@ -1,0 +1,103 @@
+{
+ "run": "riker-calib",
+ "note": "13 Nov: the second half of Riker's calibration, on the SAME pod as gptoss-lessons-v5 once it reaches done (forge.mjs --restart <pod> --plan plans/riker-calib.json: new pod scripts and this plan, Brain Engine 7b12282 rebuilt with llama-cvector-generator and llama-imatrix, ~15 min). It reads what v5's Riker step left on the PC (out/bench/gptoss-lessons-v5/riker: calib questions, imatrix texts, per-job maps, tool-score at 8). Order: Riker's cvector cruel-vs-kind direction (his full evil check already ran in v5), stock Qwen3.6's full evil check compared with Riker's (answers and direction); then Riker: llama-imatrix overall and per job before serving, the live experts-per-word sweep 3/4/6/12 (8 is in v5) with tool-score + quiz, keep-75 at N=3 and the best N, and the per-job N passes of job-presets. Measure only, live switches only, no_hands. About 3-3.5 h on the H200.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA H200",
+  "NVIDIA L40S",
+  "NVIDIA A40",
+  "NVIDIA RTX A6000"
+ ],
+ "step_up": [],
+ "disk_gb": 300,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 10,
+ "dollars_max": 53,
+ "rent_minutes": 420,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one brain at a time: Riker (direction only), stock Qwen (full evil check vs Riker), Riker again (same file: imatrix, then the sweep and the per-job N passes)",
+  "hours_each": 2,
+  "brain_engine": {
+   "ref": "fcdf3955ed6966c102f43d49528174cabd52d825",
+   "patches": [
+    "0001-expert-mask",
+    "0002-expert-trace",
+    "0003-dials",
+    "0004-rpc-wifi",
+    "0005-scut",
+    "0006-scut-seal",
+    "0007-expert-trace-stream",
+    "0008-scut-live",
+    "0009-expert-mass",
+    "0010-expert-trace-once",
+    "0011-rpc-read-ahead",
+    "0012-load-progress",
+    "0013-experts-per-word"
+   ],
+   "note": "Brain Engine 7b12282, llama-cvector-generator and llama-imatrix built after llama-server (a failure there never blocks the server)"
+  },
+  "models": [
+   {
+    "name": "riker-evil",
+    "nickname": "Riker (28Bob), evil direction",
+    "file": "hf:MouseWurX/28Bob-Riker:28Bob-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "slots": 1,
+    "ctx": 32768,
+    "extra": "",
+    "hours": 0.5,
+    "evil_check": true,
+    "commands": [
+     "node evil-check.mjs --url {{url}} --out {{out}} --direction-only"
+    ]
+   },
+   {
+    "name": "qwen36-evil",
+    "nickname": "stock Qwen3.6-35B-A3B (the heal teacher), evil check",
+    "file": "hf:unsloth/Qwen3.6-35B-A3B-GGUF:Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+    "slots": 8,
+    "ctx": 65536,
+    "extra": "",
+    "hours": 1,
+    "evil_check": true,
+    "commands": [
+     "node evil-check.mjs --url {{url}} --out {{out}} --lessons {{lessons}} --answers 100 --persona 30 --skills 40 --top 16 --scale 0.3 --other {{out}}/../../gptoss-lessons-v5/riker/evil --other-direction {{out}}/../riker-evil"
+    ]
+   },
+   {
+    "name": "riker",
+    "nickname": "Riker (28Bob), weights calibration",
+    "file": "same:riker-evil",
+    "quant": "Q4_K_M",
+    "slots": 8,
+    "ctx": 65536,
+    "extra": "",
+    "hours": 3,
+    "imatrix": true,
+    "imatrix_from": "out/bench/gptoss-lessons-v5/riker/calib/imatrix",
+    "imatrix_chunks": 200,
+    "commands": [
+     "node set-live.mjs --reset",
+     "node set-live.mjs --used 3 && node tool-score.mjs --url {{url}} --models riker=riker --lessons {{lessons}} --out {{out}}/n3 && node experts-test.mjs --url {{url}} --counts 3 --no-run --out {{out}}/n3",
+     "node set-live.mjs --used 4 && node tool-score.mjs --url {{url}} --models riker=riker --lessons {{lessons}} --out {{out}}/n4 && node experts-test.mjs --url {{url}} --counts 4 --no-run --out {{out}}/n4",
+     "node set-live.mjs --used 6 && node tool-score.mjs --url {{url}} --models riker=riker --lessons {{lessons}} --out {{out}}/n6 && node experts-test.mjs --url {{url}} --counts 6 --no-run --out {{out}}/n6",
+     "node set-live.mjs --used 12 && node tool-score.mjs --url {{url}} --models riker=riker --lessons {{lessons}} --out {{out}}/n12 && node experts-test.mjs --url {{url}} --counts 12 --no-run --out {{out}}/n12",
+     "node set-live.mjs --keep {{out}}/../../keep/reap-2026-11-12/keep-75.json --used 3 && node tool-score.mjs --url {{url}} --models riker=riker --lessons {{lessons}} --out {{out}}/keep75-n3 && node experts-test.mjs --url {{url}} --counts 3 --no-run --out {{out}}/keep75-n3",
+     "node set-live.mjs --keep {{out}}/../../keep/reap-2026-11-12/keep-75.json --used best --from {{out}},{{out}}/../../gptoss-lessons-v5/riker --not 3 && node tool-score.mjs --url {{url}} --models riker=riker --lessons {{lessons}} --out {{out}}/keep75-best && node experts-test.mjs --url {{url}} --counts 0 --no-run --out {{out}}/keep75-best",
+     "node set-live.mjs --reset",
+     "node job-presets.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --maps {{out}}/../../gptoss-lessons-v5/riker/trace-jobs --out {{out}}/presets-n --n 3,4,6,12 --keeps none --scales none --parallel 8 --odds 8",
+     "node make-datasets.mjs --from {{out}}/presets-n --lessons {{out}}/../../gptoss-lessons-v5/riker/calib/questions --out {{out}}/../datasets-riker-calib-n --no-run",
+     "node make-datasets.mjs --from {{out}} --lessons {{lessons}} --out {{out}}/../datasets-riker-sweep --no-run"
+    ]
+   }
+  ]
+ }
+}
