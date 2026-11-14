@@ -87,6 +87,15 @@ check('engine check catches the Nov 13 engine (no N switch, no trace)', bad === 
 const room = async (n, min) => (await checkEngine({ ...okEng, call: async () => ({ default_generation_settings: { n_ctx: n } }) }, new Set(), { minCtx: min }))[0];
 check('engine check: 8,192 tokens per slot is refused when the plan needs 14,000 (14 Nov)', (await room(8192, 14000)).ok === false);
 check('engine check: 16,384 tokens per slot passes', (await room(16384, 14000)).ok === true);
+const { hint, coached, pickLessons } = await import('../model-lab/tool-coach.mjs');
+const wantD = [{ name: 'make_diagram', args: '{"title":"T","format":"png"}' }];
+check('coach hint 1 nudges, 2 names the tool, 3 gives the call', hint(1, wantD, []).includes('needs one of your tools') && hint(2, wantD, []).includes('use make_diagram') && hint(3, wantD, []).includes('"title":"T"'));
+check('coach hint 1 on a right tool names the wrong inputs', hint(1, wantD, [{ name: 'make_diagram', args: { title: 'T', format: 'svg' } }]).includes('format'));
+const cm = coached([{ role: 'user', content: 'x' }], { content: '', tool_calls: [{ id: 'a', function: { name: 'list_folder', arguments: '{}' } }] }, 'Coach: no');
+check('a wrong call gets the coach as its tool result', cm.length === 3 && cm[2].role === 'tool' && cm[2].content === 'Not run. Coach: no');
+check('a reply in words gets the coach as a user message', coached([], { content: 'hi' }, 'Coach: tool').at(-1).role === 'user');
+const pl = pickLessons([{ job: 'f', idea: 1 }, { job: 'f', idea: 2 }, { job: 'f', idea: 3 }, { job: 'g', idea: 4 }], new Set(['3']), 2);
+check('coached lessons: missed ones first, per job', pl.map((q) => q.idea).join(',') === '1,3,4');
 const { pickerTool, picked } = await import('../model-lab/tool-pick.mjs');
 const pk = pickerTool(tools);
 check('one tool per step: the picker lists every tool by name and allows none', JSON.stringify(pk.function.parameters.properties.tool.enum) === JSON.stringify(['make_diagram', 'notice_board', 'file_hands', 'none']) && pk.function.description.includes("file_hands: Bob's file_hands."));
