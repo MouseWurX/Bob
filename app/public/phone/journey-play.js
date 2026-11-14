@@ -37,7 +37,7 @@ function mountJourney(root, deps) {
   const fxNumbers = []; // floating numbers in battle: { x, y, text, colour, t0 }
   // Journey v1.2: going up and down ({ kind: takeoff|land|dive|surface, t0, dur }), little effects on the land
   // (ripples, dust, splashes: { kind, x, y, t0, dur } in tiles), a boat trip, and Aerie traders swooping in.
-  let heightFx = null, voyage = null, sideFacing = 'left', armedRelease = '', doorAt = -1e9;
+  let heightFx = null, voyage = null, sideFacing = 'left', armedRelease = '', doorAt = -1e9, portalAt = -1e9;
   const landFx = [];
   const swoops = new Map();
   const T = (text) => (j ? R.restyle(text, j.style) : text);
@@ -57,12 +57,22 @@ function mountJourney(root, deps) {
       snd.setStyle?.(j.style || 'fantasy'); snd.music(name, j.style || 'fantasy');
     } catch {}
   }
+  // Full screen (Journey v1.3): the whole game fills the screen, with the menus laid over the bottom of the picture.
+  // Where the browser won't go full screen (some phones), it fills the window instead.
+  function toggleFull() {
+    const on = !shell.classList.contains('jy-full');
+    shell.classList.toggle('jy-full', on);
+    try { if (on && shell.requestFullscreen) shell.requestFullscreen().catch(() => {}); else if (!on && doc.fullscreenElement) doc.exitFullscreen?.(); } catch {}
+    const b = root.querySelector('[data-jy="full"]'); b?.setAttribute('aria-pressed', on ? 'true' : 'false'); b?.setAttribute('aria-label', on ? 'Back to a window' : 'Play full screen');
+    focus?.();
+  }
+  doc.addEventListener?.('fullscreenchange', () => { if (!doc.fullscreenElement && shell.classList.contains('jy-full')) { shell.classList.remove('jy-full'); root.querySelector('[data-jy="full"]')?.setAttribute('aria-pressed', 'false'); } });
   function soundButton() { const b = root.querySelector('[data-jy="sound"]'); if (!b) return; b.textContent = snd.on ? '🔊' : '🔇'; b.setAttribute('aria-pressed', snd.on ? 'true' : 'false'); b.setAttribute('aria-label', snd.on ? 'Music and sound are on. Turn them off (M)' : 'Music and sound are off. Turn them on (M)'); }
   function toggleSound() { snd.setOn(!snd.on); try { store?.setItem(SOUND_KEY, snd.on ? 'on' : 'off'); } catch {} soundButton(); if (snd.on) { tune(); sfx('menu'); } sayLive(snd.on ? 'Music and sound on.' : 'Music and sound off.'); }
 
   root.innerHTML = `<div class="jy" tabindex="-1">
     <div class="jy-top"><span class="jy-where" aria-live="polite"></span><span class="jy-gold"></span><span class="jy-spacer"></span>
-      <button type="button" class="mini" data-jy="menu" title="Menu (Esc)">☰ Menu</button><button type="button" class="mini" data-jy="save" title="Save the journey">💾 Save</button><button type="button" class="icon" data-jy="sound" title="Music and sound (M)" aria-pressed="true" aria-label="Music and sound are on. Turn them off (M)">🔊</button><button type="button" class="icon" data-jy="close" aria-label="Close Journey">✕</button></div>
+      <button type="button" class="mini" data-jy="menu" title="Menu (Esc)">☰ Menu</button><button type="button" class="mini" data-jy="save" title="Save the journey">💾 Save</button><button type="button" class="icon" data-jy="full" title="Full screen or a window" aria-label="Play full screen" aria-pressed="false">⛶</button><button type="button" class="icon" data-jy="sound" title="Music and sound (M)" aria-pressed="true" aria-label="Music and sound are on. Turn them off (M)">🔊</button><button type="button" class="icon" data-jy="close" aria-label="Close Journey">✕</button></div>
     <div class="jy-stage"><canvas class="jy-canvas" width="${W}" height="${H}" role="img" aria-label="The Journey screen"></canvas><div class="jy-box" role="status" aria-live="polite" hidden></div></div>
     <div class="jy-pad" aria-label="Walking pad"><button type="button" data-dir="up" aria-label="Walk up">▲</button><button type="button" data-dir="left" aria-label="Walk left">◀</button><button type="button" data-dir="down" aria-label="Walk down">▼</button><button type="button" data-dir="right" aria-label="Walk right">▶</button><button type="button" class="jy-a" data-key="act" aria-label="Talk or open (Enter)">A</button><button type="button" class="jy-f" data-key="fight" aria-label="Pick a fight (F)">⚔</button><button type="button" class="jy-b" data-key="menu" aria-label="Menu (Esc)">B</button><button type="button" class="jy-up" data-key="rise" aria-label="Fly up, or come up from the deep (E)">⤒</button><button type="button" class="jy-down" data-key="sink" aria-label="Land, or dive (Q)">⤓</button><button type="button" class="jy-ride" data-key="ride" aria-label="Ride or walk (R)">🐎</button></div>
     <div class="jy-panel"></div>
@@ -236,6 +246,9 @@ function mountJourney(root, deps) {
       case 'u': fill('#8a2a3a'); rect(1, 0, 1, 16, '#ffd166'); rect(14, 0, 1, 16, '#ffd166'); specks('#a83a4a', 8, 61); break;
       case 'Y': stone('#9a8a7a', '#7a6a5a'); rect(3, 1, 10, 14, '#8a2a3a'); rect(3, 1, 10, 3, '#ffd166'); rect(5, 5, 6, 8, '#a83a4a'); break;
       case 'P': stone('#9a8a7a', '#7a6a5a'); rect(4, 0, 8, 16, '#c8c0b0'); rect(5, 0, 1, 16, '#e8e0d0'); rect(3, 0, 10, 2, '#a8a090'); rect(3, 14, 10, 2, '#a8a090'); break;
+      // Journey v1.3: the inn's back door (an arrow up, to the guest house) and the trophy case.
+      case '6': boards('#9a6a3a', '#7a5028'); rect(0, 0, 16, 3, '#3a2410'); rect(3, 0, 10, 14, '#6b4423'); rect(4, 1, 8, 12, '#8a5a2b'); px(10, 7, '#ffd166'); g.fillStyle = '#ffd166'; g.beginPath(); g.moveTo(5, 13); g.lineTo(8, 9); g.lineTo(11, 13); g.fill(); break;
+      case '7': fill('#5a3a1e'); rect(0, 0, 16, 2, '#3a2410'); rect(1, 2, 14, 12, '#2a2030'); rect(1, 2, 14, 12, 'rgba(160,200,255,0.18)'); rect(1, 8, 14, 1, '#8a5a2b'); rect(0, 14, 16, 2, '#6b4423'); px(2, 3, '#ffffff'); px(3, 4, '#ffffff'); break;
       case 'e': fill(frame ? '#c8a66a' : '#c8a66a'); rect(0, 12, 16, 4, '#a98a52'); g.fillStyle = '#ffd166'; g.beginPath(); g.moveTo(5, 5); g.lineTo(8, 9); g.lineTo(11, 5); g.fill(); break;
       // Underground
       case '_': fill('#4a3a2e'); specks('#3a2c22', 12, 13); specks('#5c4a3a', 6, 17); break;
@@ -402,6 +415,77 @@ function mountJourney(root, deps) {
       ctx.globalAlpha = glow; ctx.beginPath(); ctx.arc(sx + 8.5, sy + 2.5, 6, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
     }
   }
+  const onGroundNow = () => !(R.mapOf(world, j).kind === 'world' && j.alt !== 'ground');
+  // Gathering spots (Journey v1.3): a little picture that glints now and then: a sprig of herbs, a log, a rock with
+  // a seam of metal, a crystal. Coloured for the style.
+  const MARKS = {
+    herb: [['#5ad04a', [[1, 3], [2, 2], [3, 1], [3, 3], [4, 2], [2, 4]]], ['#ffffff', [[3, 1]]]],
+    wood: [['#8a5a2b', [[0, 3], [1, 3], [2, 3], [3, 3], [4, 3], [0, 4], [1, 4], [2, 4], [3, 4], [4, 4]]], ['#c8a066', [[4, 3], [4, 4]]]],
+    ore: [['#7a7a84', [[1, 2], [2, 2], [3, 2], [0, 3], [1, 3], [2, 3], [3, 3], [4, 3]]], ['#ffd166', [[2, 2], [3, 3]]]],
+    crystal: [['#7ae0ff', [[2, 0], [1, 1], [2, 1], [3, 1], [1, 2], [2, 2], [3, 2], [2, 3]]], ['#ffffff', [[2, 1]]]]
+  };
+  function nodeMarks(map, xa, ya, xb, yb, cx, cy, t) {
+    for (let y = ya; y <= yb; y++) for (let x = xa; x <= xb; x++) {
+      const n = R.nodeAt?.(world, j, x, y); if (!n || !n.ready) continue;
+      // Twice size with a dark edge, so it reads on any ground; a twinkle now and then.
+      const sx = x * TILE - cx + 3, sy = y * TILE - cy + 4;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      for (const [, cells] of MARKS[n.kind] || []) for (const [a, b] of cells) ctx.fillRect(sx + a * 2 - 1, sy + b * 2 - 1, 4, 4);
+      for (const [col, cells] of MARKS[n.kind] || []) { ctx.fillStyle = n.kind === 'crystal' && col !== '#ffffff' ? styleSparks()[0] : col; for (const [a, b] of cells) ctx.fillRect(sx + a * 2, sy + b * 2, 2, 2); }
+      if (!still() && hash(x, y, Math.floor(t / 600)) < 0.2) { ctx.fillStyle = '#ffffff'; ctx.fillRect(sx + 9, sy - 2, 1, 5); ctx.fillRect(sx + 7, sy, 5, 1); }
+    }
+  }
+  // ---------- The trophy case (Journey v1.3) ----------
+  // Trophies from every story, kept by the computer (or this browser, with no computer to keep them).
+  let trophies = [];
+  const TROPHY_KEY = 'bob.journey.trophies';
+  async function loadTrophies() {
+    try { const r = deps.api ? await deps.api('/api/adventure/journey/trophies') : null; if (Array.isArray(r?.trophies)) { trophies = r.trophies; return; } } catch {}
+    try { trophies = R.keepTrophies(JSON.parse(store?.getItem(TROPHY_KEY) || '[]'), []); } catch { trophies = []; }
+  }
+  async function keepNew(fresh) {
+    trophies = R.keepTrophies(trophies, fresh);
+    try { const r = deps.api ? await deps.api('/api/adventure/journey/trophies', { trophies: fresh }) : null; if (Array.isArray(r?.trophies)) { trophies = r.trophies; return; } } catch {}
+    try { store?.setItem(TROPHY_KEY, JSON.stringify(trophies)); } catch {}
+  }
+  // A new trophy is announced, and kept straight away.
+  function award() {
+    if (!j || lobby) return;
+    const fresh = R.newTrophies(world, j); if (!fresh.length) return;
+    keepNew(fresh);
+    sfx('quest');
+    const words = `🏆 ${fresh.length > 1 ? 'New trophies' : 'A new trophy'} for the guest house: ${fresh.map((t) => R.restyle(t.name, t.style)).join(', ')}.`;
+    if (mode === 'walk' && !talk) talkTo([words]); else { msg = words; sayLive(words); }
+  }
+  const TROPHY_ICON = {
+    cup: ['.aaaaa.', 'aabaaaa', '.aaaaa.', '..aaa..', '...a...', '..aaa..'],
+    gem: ['..aaa..', '.abaaa.', 'aaaaaaa', '.aaaaa.', '..aaa..', '...a...'],
+    crown: ['a..a..a', 'aa.a.aa', 'aaaaaaa', 'abaaaba', 'aaaaaaa', '.......'],
+    skull: ['.aaaaa.', 'aaaaaaa', 'a.aaa.a', 'aaaaaaa', '.a.a.a.', '.......'],
+    lantern: ['...a...', '..aaa..', '.abbba.', '.abbba.', '.abbba.', '..aaa..'],
+    map: ['aaaaaaa', 'abaaaba', 'aaabaaa', 'abaaaba', 'aaaaaaa', '.......'],
+    hammer: ['aaaaaaa', 'aaaaaaa', '...b...', '...b...', '...b...', '...b...'],
+    shield: ['aaaaaaa', 'abaaaba', 'aaabaaa', '.aaaaa.', '..aaa..', '...a...'],
+    star: ['...a...', '..aaa..', 'aaaaaaa', '.aaaaa.', '.aa.aa.', 'a.....a']
+  };
+  const TROPHY_COL = { fantasy: ['#ffd166', '#ffffff'], scifi: ['#7ae0ff', '#ffffff'], cyber: ['#ff3ad8', '#7affff'], steam: ['#c8963a', '#ffe0a0'] };
+  const SHAPE_EMOJI = { cup: '🏆', gem: '💎', crown: '👑', skull: '💀', lantern: '🏮', map: '🗺', hammer: '🔨', shield: '🛡', star: '⭐' };
+  function drawTrophy(c, t, x, y, k = 1) {
+    const [a, b] = TROPHY_COL[t.style] || TROPHY_COL.fantasy;
+    (TROPHY_ICON[t.shape] || TROPHY_ICON.cup).forEach((row, ry) => [...row].forEach((ch, rx) => { if (ch === '.') return; c.fillStyle = ch === 'b' ? b : a; c.fillRect(x + rx * k, y + ry * k, k, k); }));
+  }
+  // On the case: two to a pane, the newest last. The case holds the first 24 to see; all of them are in the list.
+  function caseTrophies(map, cx, cy) {
+    let i = 0;
+    for (let x = 0; x < map.w && i < trophies.length; x++) if (map.rows[1][x] === '7') for (const [ox, oy] of [[1, 2], [8, 9]]) { const t = trophies[i++]; if (!t) break; drawTrophy(ctx, t, x * TILE - cx + ox, TILE - cy + (oy === 2 ? 1 : 8) , 1); }
+  }
+  function caseHtml() {
+    if (!trophies.length) return `<p><strong>The trophy case</strong></p><p class="muted">Empty, for now. Beat a keeper or a boss, light the lanterns, craft your way to level 10, or cross every region, and a trophy comes home here. Trophies stay here from every story you play.</p><button type="button" data-shop="leave">Leave</button>`;
+    const stories = [...new Set(trophies.map((t) => t.story))];
+    return `<p><strong>The trophy case</strong> <span class="muted">${trophies.length} ${trophies.length === 1 ? 'trophy' : 'trophies'} from ${stories.length} ${stories.length === 1 ? 'story' : 'stories'}</span></p>
+      ${stories.map((st) => `<p><strong>${esc(st.replace(/^the /, 'The '))}</strong></p><ul class="jy-bag">${trophies.filter((t) => t.story === st).map((t) => `<li>${SHAPE_EMOJI[t.shape] || '🏆'} <strong>${esc(R.restyle(t.name, t.style))}</strong> <span class="muted">${esc(R.restyle(t.what, t.style))}${t.when ? ` · ${esc(t.when)}` : ''}</span></li>`).join('')}</ul>`).join('')}
+      <button type="button" data-shop="leave">Leave</button>`;
+  }
   // A mountain peak, drawn once per look: rock with a lit side, a dark side and snow on top, on nothing.
   function peakCanvas(v, snowy) {
     const style = j?.style || 'fantasy', key = `peak${v}${snowy ? 's' : ''}|${style}`;
@@ -444,6 +528,7 @@ function mountJourney(root, deps) {
       else { ctx.fillStyle = '#efe6d2'; ctx.fillRect(x + 3, y, 2, 2); ctx.fillStyle = it?.spirit ? '#7ae0ff' : it?.revive ? '#ffd166' : it?.fire ? '#ff8a3a' : it?.cleanse ? '#a0e070' : '#7dff9a'; ctx.fillRect(x + 1, y + 2, 6, 6); }
       return 9;
     }
+    if (what.mat) { for (const [col, cells] of MARKS[what.mat] || []) { ctx.fillStyle = what.mat === 'crystal' ? styleSparks()[0] : col; for (const [a, b] of cells) ctx.fillRect(x + 1 + a, y + 2 + b, 1, 1); } return 8; }
     if (what.kit) {
       const kind = R.kitKind(what.kit), b = base(what.kit);
       if (kind === 'weapon') for (const [cx, cy, col] of S.weaponCells(S.styleWeapon ? S.styleWeapon(j?.style, b) : b, 45, { x: 1, y: 8 })) { ctx.fillStyle = col; ctx.fillRect(x + cx, y + cy - 4, 1, 1); }
@@ -504,6 +589,7 @@ function mountJourney(root, deps) {
   }
   async function save(quiet) {
     if (!j || lobby) return;
+    award();
     try { await deps.api('/api/adventure/journey', { journey: j }); saved = j; savedRaw = null; if (!quiet) say('Saved. The land will wait for you.'); }
     catch (e) { say(`I couldn't save: ${e.message}`); }
   }
@@ -516,7 +602,10 @@ function mountJourney(root, deps) {
   function enterLobby() {
     world = Wm.innOnly();
     j = R.newJourney({ seed: '', party: lobbyParty() }, world);
+    // Journey v1.3: you wake in the guest house behind the inn, by the trophy case.
+    const guest = world.map('guest'); if (guest) Object.assign(j, { at: 'guest', x: guest.start.x, y: guest.start.y, facing: 'up' });
     lobby = true; trail = []; mode = 'walk';
+    loadTrophies().then(() => { if (!closed) drawPanel(); });
     drawPanel();
   }
   // The big lands take a few seconds to make, so the screen says so first.
@@ -563,25 +652,32 @@ function mountJourney(root, deps) {
     if (cur) out.push(cur);
     return out;
   }
-  function talkTo(lines, then) { talk = { lines: lines.filter(Boolean).map(T).flatMap(pages), i: 0, shown: still() ? 1e9 : 0, then }; mode = mode === 'battle' ? 'battle' : 'talk'; showBox(); }
+  function talkTo(lines, then, choices) { talk = { lines: lines.filter(Boolean).map(T).flatMap(pages), i: 0, shown: still() ? 1e9 : 0, then, choices: choices?.length ? choices : null, sel: 0 }; mode = mode === 'battle' ? 'battle' : 'talk'; showBox(); if (talk.choices) drawPanel(); }
+  // Things to say (Journey v1.3): the last line of a talk can offer a short list of answers. Up and down (or the pad)
+  // pick one, Enter (or A) says it; the buttons under the game do the same.
+  const choosing = () => Boolean(talk?.choices && talk.i >= talk.lines.length - 1 && talk.shown >= (talk.lines[talk.i] || '').length);
+  function pickChoice(i) { const c = talk?.choices?.[i]; if (!c) return; talk = null; box.hidden = true; shell.classList.remove('jy-talking'); if (mode === 'talk') mode = 'walk'; sfx('menu'); c.pick(); drawPanel(); }
   function say(text) { talkTo([text]); }
   function showBox() {
     sfx('talk');
+    shell.classList.toggle('jy-talking', Boolean(talk)); // full screen: the menu moves up, out of the way of the words
     if (!talk) { box.hidden = true; return; }
     box.hidden = false;
-    box.textContent = talk.lines[talk.i] || '';
+    box.textContent = `${talk.lines[talk.i] || ''}${talk.choices && talk.i >= talk.lines.length - 1 ? ` Choices: ${talk.choices.map((c, i) => `${i + 1}. ${T(c.label)}`).join(' ')}` : ''}`;
   }
   function advanceTalk() {
     if (!talk) return;
+    if (choosing()) { pickChoice(talk.sel); return; }
     const line = talk.lines[talk.i] || '';
     if (talk.shown < line.length) { talk.shown = line.length; return; }
     talk.i++; talk.shown = still() ? 1e9 : 0;
-    if (talk.i >= talk.lines.length) { const then = talk.then; talk = null; box.hidden = true; if (mode === 'talk') mode = 'walk'; then?.(); drawPanel(); return; }
+    if (talk.i >= talk.lines.length) { const then = talk.then; talk = null; box.hidden = true; shell.classList.remove('jy-talking'); if (mode === 'talk') mode = 'walk'; then?.(); drawPanel(); return; }
     showBox();
   }
 
   // ---------- Walking ----------
   function tryWalk(dir) {
+    if (choosing() && (dir === 'up' || dir === 'down')) { talk.sel = (talk.sel + (dir === 'up' ? -1 : 1) + talk.choices.length) % talk.choices.length; sfx('step'); drawPanel(); return; }
     if (mode !== 'walk' || anim || !j) return;
     const from = { x: j.x, y: j.y, at: j.at };
     const r = R.walk(world, j, dir);
@@ -590,7 +686,7 @@ function mountJourney(root, deps) {
     if (r.moved) {
       stepPhase = (stepPhase + 1) % 4;
       landUpdate();
-      if (r.door) { trail = []; swoops.clear(); landFx.length = 0; heightFx = null; doorAt = now(); sfx('door'); announce(); arrive(r.door); return; }
+      if (r.door) { trail = []; swoops.clear(); landFx.length = 0; heightFx = null; doorAt = now(); sfx('door'); announce(); arrive(r.door); drawPanel(); return; } // 1.5.227 PC check: the inn's New/Resume buttons need the panel redrawn on a door
       sfx(r.splash ? 'splash' : 'step');
       trail.unshift({ x: from.x, y: from.y, facing: j.facing });
       trail = trail.slice(0, 16); // the party, then the pets and mounts that follow
@@ -599,6 +695,7 @@ function mountJourney(root, deps) {
       if (r.splash === 'in') sayLive(`${R.leaderMount(j)?.name || 'Your mount'} carries you into the water.`);
       if (r.battle) sfx('encounter');
       if (r.battle) setTimeout(() => startFight(r.battle, { helpers: r.helpers, chase: r.chase }), still() ? 0 : 170);
+      else if (!lobby && j.at === 'world') { const e = R.enterRegion(world, j); if (e) { announce(); save(true); const b = banter('region'); setTimeout(() => { if (mode === 'walk') talkTo([...e.lines, ...(b ? b.lines : [])], null, b?.choices); }, still() ? 0 : 170); } }
     } else if (world?.pieced && r.bump?.kind === 'tile' && r.bump.tile === undefined) { landUpdate(); sayLive('The land ahead is still on its way from your other Bob…'); }
     else if (r.bump?.kind === 'boss') bossTalk(r.bump.boss);
     else if (r.bump?.kind === 'closed') say('Bob: The door\'s stuck until you roll a New adventure. The buttons are along the bottom.');
@@ -620,7 +717,7 @@ function mountJourney(root, deps) {
   function rise() { if (mode !== 'walk' || anim || !j || lobby) return; height(R.rise(world, j)); }
   function sink() { if (mode !== 'walk' || anim || !j || lobby) return; height(R.sink(world, j)); }
   function rideToggle() { if (mode !== 'walk' || anim || !j || lobby) return; const r = R.ride(world, j); sayLive(r.text); sfx(r.ok ? 'ride' : 'bump'); if (r.ok) { trail = []; announce(); save(true); } }
-  const BOB_LINES = { cave: 'Bob: Dark, damp, and smells of something. My three least favourite things, in order.', dungeon: 'Bob: Old stones and older bones. I would like it on record that I said this was a bad idea.', castle: 'Bob: A castle! Wipe your feet. And don\'t pick a fight with the knights. Please.', hermit: 'Bob: Someone actually lives out here? On purpose?' };
+  const BOB_LINES = { cave: 'Bob: Dark, damp, and smells of something. My three least favourite things, in order.', dungeon: 'Bob: Old stones and older bones. I would like it on record that I said this was a bad idea.', castle: 'Bob: A castle! Wipe your feet. And don\'t pick a fight with the knights. Please.', hermit: 'Bob: Someone actually lives out here? On purpose?', guest: 'Bob: The guest house. Your trophies live in the case by the wall. Do dust them now and then.' };
   function arrive(id) {
     const map = world.map(id);
     if (!map || j.talked.includes(id)) return;
@@ -629,11 +726,15 @@ function mountJourney(root, deps) {
     if (map.kind !== 'world' && map.kind !== 'inn') lines.push(`${map.name}.`);
     if (j.party.some((m) => m.who === 'bob') && BOB_LINES[map.kind]) lines.push(BOB_LINES[map.kind]);
     if (R.isWanted(world, j)) lines.push('The guards here remember you. They\'re coming.');
+    const story = R.townNarration(world, j, map.site || map.id);
+    if (story.length) { lines.splice(lines.indexOf(`${map.name}.`), 1); lines.unshift(...story); }
+    const b = story.length ? banter('town') : null;
+    if (b) { talkTo([...lines, ...b.lines], null, b.choices); return; }
     if (lines.length) talkTo(lines);
   }
   function announce() {
     const map = R.mapOf(world, j);
-    const zone = map.kind === 'world' ? ` · danger ${R.zoneAt(world, j)}` : '';
+    const zone = map.kind === 'world' ? `${lobby ? '' : ` · ${R.regionAt(world, j.x, j.y, j.style).name.replace(/^the /, '')}`} · danger ${R.zoneAt(world, j)}` : '';
     const alt = map.kind === 'world' && j.alt === 'sky' ? ' · in the sky' : map.kind === 'world' && j.alt === 'deep' ? ' · under the sea' : j.riding ? ' · riding' : '';
     root.querySelector('.jy-where').textContent = T(`${map.name}${zone}${alt}${R.isWanted?.(world, j) ? ' · ⚠ wanted' : ''}`);
   }
@@ -646,7 +747,16 @@ function mountJourney(root, deps) {
     const [dx, dy] = R.STEP[j.facing];
     if (!t) {
       if (R.mapOf(world, j).rows[j.y + dy]?.[j.x + dx] === 'n') { shop = { kind: 'new' }; mode = 'shop'; drawPanel(); return; }
+      if (R.mapOf(world, j).rows[j.y + dy]?.[j.x + dx] === '7') { shop = { kind: 'trophies' }; mode = 'shop'; sfx('chest'); drawPanel(); return; }
       // Facing water on the land, the button fishes.
+      // Journey v1.3: a gathering spot in front of you or underfoot (herbs, timber, ore, crystals).
+      const node = !lobby && R.gatherSpot ? R.gatherSpot(world, j) : null;
+      if (node) {
+        const g = R.gather(world, j);
+        sfx(g.ok ? 'gather' : 'bump');
+        if (g.ok) { lastLoot = Object.entries(g.got).filter(([, n]) => n > 0).map(([k]) => ({ mat: k })); lastLootAt = now(); const [nx, ny] = node.key.split(':').pop().split(',').map(Number); if (!still()) landFx.push({ kind: 'sparkle', x: nx, y: ny, t0: now(), dur: 900 }); if (g.up) setTimeout(() => sfx('level'), 500); save(true); }
+        sayLive(g.text); drawPanel(); return;
+      }
       const fish = j.alt === 'ground' && !lobby ? R.fishAt(world, j) : null;
       if (fish) { sfx('fish'); if (fish.ok) { setTimeout(() => sfx('coin'), 300); lastLoot = [{ item: 'fish' }]; lastLootAt = now(); save(true); } if (!still()) landFx.push({ kind: 'ripple', x: j.x + dx, y: j.y + dy, t0: now(), dur: 700 }); talkTo([fish.text]); return; }
       swing = { t0: now() }; sfx('swing'); return;
@@ -693,6 +803,8 @@ function mountJourney(root, deps) {
     if (p.role === 'cat') { talkTo(['Patches: Mrrp.']); return; }
     if (wanted && ['inn', 'shop', 'smith', 'priest', 'trainer', 'peddler'].includes(p.role)) { talkTo([`${name}: I don't serve your sort. Pay your fine to a guard first.`]); return; }
     if (wanted && ['guard', 'knight', 'captain'].includes(p.role)) { const key = map.kind === 'world' ? 'world' : map.site || map.id; open('fine', `You're wanted here. The fine is ${R.fmtCoin(R.fineFor(world, j, key))}. Pay up, or we do this the hard way.`); return; }
+    const choices = R.talkChoices(world, j, p, map);
+    if (choices) { converse(p, name, map, choices, p.role === 'ruler' ? R.questLine(world, j) : p.role === 'elder' ? 'Sit, sit. What can I do for you?' : null); return; }
     if (p.role === 'ruler') { talkTo([`${name}: ${R.questLine(world, j)}`]); return; }
     if (p.role === 'lost') { const r = R.findLost(j, p); talkTo([`${name}: ${R.ROLE_LINES.lost[p.line % R.ROLE_LINES.lost.length]}`, r || '']); save(true); return; }
     if (p.role === 'elder') { const q = R.questTalk(world, j, map.site || map.id); talkTo(q.lines.map((l) => `${name}: ${l}`)); if (q.done) { lastLoot = [{ coin: q.reward }]; lastLootAt = now(); sfx('quest'); } save(true); return; }
@@ -712,6 +824,23 @@ function mountJourney(root, deps) {
     if (p.role === 'captain') { open('captain', 'I train the guard. If you want a bout, I\'ll spar with you. Nobody gets hurt for good.'); return; }
     const lines = R.ROLE_LINES[p.role];
     talkTo([`${name}: ${lines ? lines[p.line % lines.length] : R.FOLK_LINES[(p.line + j.beaten.length * 2) % R.FOLK_LINES.length]}`]);
+  }
+  // A talk with choices: they open with a line, you pick what to say, they answer, and you can ask something else.
+  function converse(p, name, map, choices, opening) {
+    if (p.role === 'ruler') { j.met = j.met || []; if (!j.met.includes('ruler')) j.met.push('ruler'); }
+    const first = opening || (p.role === 'folk' && R.KIN_LINES[p.race] ? R.KIN_LINES[p.race][p.line % R.KIN_LINES[p.race].length] : ['Hello there.', 'Afternoon.', 'Travellers! Don\'t see many of you.'][p.line % 3]);
+    const ask = (lines) => talkTo(lines, null, choices.map((c) => ({ label: c.label, pick: () => answer(c.id) })));
+    const answer = (id) => {
+      if (id === 'job') { const q = R.questTalk(world, j, map.site || map.id); if (q.done) { lastLoot = [{ coin: q.reward }]; lastLootAt = now(); sfx('quest'); } save(true); ask(q.lines.map((l) => `${name}: ${l}`)); return; }
+      const r = R.sayTo(world, j, p, map, id, name); save(true);
+      if (r.end) talkTo(r.lines); else ask(r.lines);
+    };
+    ask([`${name}: ${first}`]);
+  }
+  // Party talk (Journey v1.3): Bob says something at a moment in the story, and you pick what to say back.
+  function banter(at) {
+    const b = R.banterDue(world, j, at); if (!b) return null;
+    return { lines: [`Bob: ${b.line}`], choices: b.choices.map(([label, reply]) => ({ label, pick: () => talkTo([reply]) })) };
   }
   const innPrice = (tier) => ({ hamlet: 20, village: 30, town: 50, castle: 80 }[tier] || R.INN_PRICE);
   const BOSS_LINES = {
@@ -779,6 +908,7 @@ function mountJourney(root, deps) {
       const lines = [b.spar ? `A good bout! ${r.xp} experience.` : `You win! ${r.xp} experience${r.coin ? ` and ${R.fmtCoin(r.coin)}` : ''}.`];
       if (r.drops.length) lines.push(`Dropped kit: ${r.drops.map((k) => `${R.kitName(k)} (${R.kitWords(k)})`).join('; ')}. It's in Kit on the menu.`);
       if (r.items.length) lines.push(`Picked up: ${r.items.map((i) => R.ITEMS[i].name).join(', ')}.`);
+      if (r.mats && Object.keys(r.mats).length) lines.push(`For crafting: ${R.matList(r.mats)}.`);
       if (r.left?.length) lines.push(`No room in the bag for: ${r.left.map((i) => R.ITEMS[i].name).join(', ')}. A pet or a mount carries more.`);
       for (const tm of r.tamed || []) lines.push(`${tm.pet} the ${tm.name.replace(/ [A-D]$/, '').toLowerCase()} comes along with ${tm.by}! Pets and mounts are in Pets on the menu.`);
       for (const fd of r.finds || []) lines.push(fd.coin ? `${fd.pet} noses out ${R.fmtCoin(fd.coin)}.` : `${fd.pet} digs up ${R.ITEMS[fd.item]?.name || 'something'}.`);
@@ -792,7 +922,7 @@ function mountJourney(root, deps) {
       }
       const felled = b.foes.filter((f) => f.person && !f.fled);
       if (felled.some((f) => f.role === 'ruler')) lines.push('The castle will not forget this.');
-      lastLoot = [...(r.coin ? [{ coin: r.coin }] : []), ...r.drops.map((k) => ({ kit: k })), ...r.items.map((i) => ({ item: i })), ...(r.finds || []).map((fd) => (fd.coin ? { coin: fd.coin } : { item: fd.item }))];
+      lastLoot = [...(r.coin ? [{ coin: r.coin }] : []), ...Object.keys(r.mats || {}).map((k) => ({ mat: k })), ...r.drops.map((k) => ({ kit: k })), ...r.items.map((i) => ({ item: i })), ...(r.finds || []).map((fd) => (fd.coin ? { coin: fd.coin } : { item: fd.item }))];
       lastLootAt = now();
       drawPanel();
       talkTo(lines, endFight);
@@ -963,6 +1093,8 @@ function mountJourney(root, deps) {
     // Chimney smoke, steam, blinking aerials and flickering neon over the houses; lamps and crates in town.
     for (const [ch, x, y, sx, sy] of props) houseLife(ch, x, y, sx, sy, t);
     if (map.kind !== 'world' && !deep) townProps(map, x0, y0, x0 + VIEW_W + more * 2, y0 + VIEW_H + moreY * 2, cx, cy, t);
+    if (map.kind === 'guest') caseTrophies(map, cx, cy);
+    if (!deep && !lobby && onGroundNow()) nodeMarks(map, x0, y0, x0 + VIEW_W + more * 2, y0 + VIEW_H + moreY * 2, cx, cy, t);
     for (const c of map.chests) drawChest(c.x * TILE - cx, c.y * TILE - cy, j.opened.includes(`${map.id}:${c.id}`), c.loot !== 'gift' && /deep|hoard/.test(c.loot));
     // Everyone who stands on the map, back to front so the lower ones overlap the higher.
     const figs = [];
@@ -1055,6 +1187,7 @@ function mountJourney(root, deps) {
     if (lead && (hgt.lift || !onGround)) leaderDraw(W / 2 + (lx - cx - W / 2) * z, H / 2 + (ly - cy - H / 2) * z, hgt.lift);
     if (lastLoot && t - lastLootAt < 2200) drawLoot(t);
     // Walking through a door: a quick fade in from black.
+    if (!still() && t - portalAt < 900) { const q = (t - portalAt) / 900, cols = styleSparks(); ctx.fillStyle = `rgba(255,255,255,${0.6 * (1 - q)})`; ctx.fillRect(0, 0, W, H); for (let k = 0; k < 24; k++) { const a = k * 0.26 + q * 8, r = 40 * (1 - q) + 6; ctx.fillStyle = cols[k % cols.length]; ctx.fillRect(Math.round(W / 2 + Math.cos(a) * r), Math.round(H / 2 + Math.sin(a) * r * 0.7), 2, 2); } }
     if (!still() && t - doorAt < 280) { ctx.fillStyle = `rgba(0,0,0,${1 - (t - doorAt) / 280})`; ctx.fillRect(0, 0, W, H); }
     if (talk) drawTalk(t);
     root.querySelector('.jy-gold').textContent = lobby ? '' : `🪙 ${R.fmtCoin(j.coin, true)}`;
@@ -1114,7 +1247,15 @@ function mountJourney(root, deps) {
     ctx.fillStyle = '#ffffff'; ctx.font = '8px monospace';
     const lines = wrap(text, bw - 14);
     lines.slice(Math.max(0, lines.length - 4)).forEach((l, i) => ctx.fillText(l, bx + 7, by + 12 + i * 10));
-    if (talk.shown >= line.length && Math.floor(t / 400) % 2) { ctx.fillStyle = '#ffd166'; ctx.fillRect(bx + bw - 10, by + bh - 8, 4, 3); }
+    if (talk.shown >= line.length && Math.floor(t / 400) % 2 && !choosing()) { ctx.fillStyle = '#ffd166'; ctx.fillRect(bx + bw - 10, by + bh - 8, 4, 3); }
+    if (choosing()) {
+      const labels = talk.choices.map((c) => T(c.label)), cw = Math.min(bw - 20, Math.max(...labels.map((l) => ctx.measureText(l).width)) + 22), ch = labels.length * 11 + 6;
+      const cx = bx + bw - cw, cy = by - ch - 2;
+      const g2 = ctx.createLinearGradient(0, cy, 0, cy + ch); g2.addColorStop(0, '#2a3a8a'); g2.addColorStop(1, '#141c4a');
+      ctx.fillStyle = g2; ctx.fillRect(cx, cy, cw, ch); ctx.strokeStyle = '#e8e8f0'; ctx.strokeRect(cx + 1, cy + 1, cw - 2, ch - 2);
+      if (!talk.offered) { talk.offered = true; setTimeout(drawPanel, 0); }
+      labels.forEach((l, i) => { ctx.fillStyle = i === talk.sel ? '#ffd166' : '#ffffff'; ctx.fillText(`${i === talk.sel ? '▶' : ' '} ${l}`, cx + 6, cy + 12 + i * 11); });
+    }
   }
   function wrap(text, width) {
     const words = String(text).split(' '), out = []; let line = '';
@@ -1297,7 +1438,8 @@ function mountJourney(root, deps) {
     if (mode === 'shop' && shop) { panel.innerHTML = shopHtml(); restyleIn(panel); panel.querySelector('button')?.focus({ preventScroll: true }); return; }
     const atInn = j.at === 'inn';
     const mt = R.mountOf(j.party[0] || {});
-    panel.innerHTML = `<ul class="jy-party">${j.party.map((m) => sheet(m)).join('')}</ul>${atInn ? innButtons() : ''}<p class="muted jy-keys">Arrow keys walk · Enter talks, opens chests and fishes · F picks a fight · Esc opens the menu${mt ? ` · R rides ${esc(mt.name)}${R.canFly(j) ? ' · E flies up, Q lands' : R.canSwim(j) ? ' · Q dives, E comes up' : ''}` : ''}</p>`;
+    if (choosing()) { panel.innerHTML = `<div class="row jy-choices" role="group" aria-label="What to say">${talk.choices.map((c, i) => `<button type="button" data-choice="${i}" class="${i === talk.sel ? 'yes' : ''}">${esc(c.label)}</button>`).join('')}</div>`; restyleIn(panel); return; }
+    panel.innerHTML = `<ul class="jy-party">${j.party.map((m) => sheet(m)).join('')}</ul>${atInn ? innButtons() : ''}<p class="muted jy-keys">Arrow keys walk · Enter talks, opens chests, gathers and fishes · F picks a fight · Esc opens the menu · I the bag · J the story · C crafting · G the guide${mt ? ` · R rides ${esc(mt.name)}${R.canFly(j) ? ' · E flies up, Q lands' : R.canSwim(j) ? ' · Q dives, E comes up' : ''}` : ''}</p>`;
     restyleIn(panel);
   }
   // The words on the panel in the journey's style (only the words people read; never the buttons' own names).
@@ -1354,7 +1496,7 @@ function mountJourney(root, deps) {
     return list;
   }
   function menuHtml() {
-    const tabs = [['party', '👥 Party'], ['skills', '✨ Skills'], ['kit', '🧍 Kit'], ['bag', '🎒 Bag'], ['pets', '🐾 Pets'], ['land', '🧭 The land'], ['save', '💾 Save']];
+    const tabs = [['party', '👥 Party'], ['skills', '✨ Skills'], ['kit', '🧍 Kit'], ['bag', '🎒 Bag'], ['story', '📜 Story'], ['craft', '🛠 Craft'], ['pets', '🐾 Pets'], ['land', '🧭 The land'], ['guide', '📖 Guide'], ['save', '💾 Save']];
     const head = `<div class="jy-tabs" role="tablist">${tabs.map(([id, n]) => `<button type="button" role="tab" aria-selected="${menu.tab === id}" data-tab="${id}">${n}</button>`).join('')}<button type="button" data-jy="resume">▶ Back to the map</button></div>`;
     const who = `<div class="jy-who-row" role="radiogroup" aria-label="Who">${j.party.map((x, i) => `<button type="button" role="radio" aria-checked="${i === (menu.who || 0)}" data-who="${i}">${esc(x.name)}</button>`).join('')}</div>`;
     const m = j.party[menu.who || 0] || j.party[0];
@@ -1383,11 +1525,72 @@ function mountJourney(root, deps) {
     }
     if (menu.tab === 'pets') return `${head}${who}${petsHtml(m)}`;
     if (menu.tab === 'land') return `${head}${landHtml()}`;
+    if (menu.tab === 'craft') return `${head}${craftHtml()}`;
+    if (menu.tab === 'guide') return `${head}${guideHtml()}`;
+    if (menu.tab === 'story') return `${head}${storyHtml()}`;
     if (menu.tab === 'bag') {
       const items = Object.entries(j.bag).filter(([, n]) => n > 0);
-      return `${head}<p class="muted">The bag holds ${R.bagCount(j)} of ${R.bagSize(j)} things. Each pet out with you carries 10 more and each mount 25.</p>${items.length ? `<ul class="jy-bag">${items.map(([id, n]) => { const it = R.ITEMS[id]; const usable = it.field; return `<li><strong>${esc(it.name)}</strong> ×${n} <span class="muted">${esc(it.what)}</span> ${usable ? j.party.map((x) => `<button type="button" class="mini" data-use="${id}" data-on="${esc(x.id)}">${esc(x.name)}</button>`).join('') : '<span class="muted">(in a fight)</span>'}</li>`; }).join('')}</ul>` : '<p class="muted">The bag is empty.</p>'}`;
+      const bags = (j.bags || ['pouch']).map((b) => `<button type="button" class="mini" data-wearbag="${b}" aria-pressed="${j.bagGear === b}">${j.bagGear === b ? '✓ ' : ''}${esc(R.BAGS[b].name)} (+${R.BAGS[b].room})</button>`).join('');
+      return `${head}<p class="muted">The bag holds ${R.bagCount(j)} of ${R.bagSize(j)} things. Each pet out with you carries 10 more and each mount 25.</p><p><strong>Wearing</strong> ${bags} <span class="muted">Bigger bags: shops, or make one at a Workbench.</span></p>${items.length ? `<ul class="jy-bag">${items.map(([id, n]) => { const it = R.ITEMS[id]; const usable = it.field; if (it.portal) return `<li><strong>${esc(it.name)}</strong> ×${n} <span class="muted">${esc(it.what)}</span> <button type="button" class="mini" data-portal="1">Read it: back to ${esc(world.map(j.home)?.name || 'Bob\'s Inn')}</button></li>`; return `<li><strong>${esc(it.name)}</strong> ×${n} <span class="muted">${esc(it.what)}</span> ${usable ? j.party.map((x) => `<button type="button" class="mini" data-use="${id}" data-on="${esc(x.id)}">${esc(x.name)}</button>`).join('') : '<span class="muted">(in a fight)</span>'}</li>`; }).join('')}</ul>` : '<p class="muted">The bag is empty.</p>'}`;
     }
     return `${head}<div class="row"><button type="button" class="yes" data-jy="save">💾 Save now</button><button type="button" data-jy="leave">🚪 Save and leave</button></div><p class="muted">The journey also saves itself after every chest and every fight. Seed ${esc(j.seed)} · ${esc(Wm.SIZES[j.size]?.name || '')}</p>`;
+  }
+  // ---------- Crafting (Journey v1.3) ----------
+  // What you carry, your crafting level, and every recipe: the ones you can make now first. A workbench (a smith in
+  // town, or Bob's Inn) makes the rest, and improves plain kit.
+  function craftHtml() {
+    const bench = R.atBench(world, j), lv = j.craft?.level || 1, xp = j.craft?.xp || 0;
+    const next = lv < 10 ? R.craftXpFor(lv + 1) : 0;
+    const mats = Object.entries(R.MATERIALS).map(([k, mt]) => `<li><strong>${esc(mt.name)}</strong> ${j.mats?.[k] || 0} <span class="muted">${esc(mt.what)}</span></li>`).join('');
+    const row = (id) => {
+      const r = R.RECIPES[id], needs = Object.entries(r.needs).map(([k, n]) => `${n} ${R.MATERIALS[k].name}`).join(', ');
+      if (r.upgrade) {
+        const kit = R.upgradable(j, id);
+        const why = R.canCraft(j, id, { bench, kit: kit[0] });
+        return `<li><strong>${esc(R.recipeName(id))}</strong> <span class="muted">(${esc(needs)}) · makes ${esc(R.AFFIXES[r.upgrade].name)} ${r.kinds.join(' or ')}</span> · ${kit.length && !why ? kit.map((k) => `<button type="button" class="mini" data-craft="${id}" data-kitkey="${esc(k)}">${esc(R.kitName(k))}</button>`).join('') : `<span class="muted">${esc(kit.length ? why : 'No plain kit for this.')}</span>`}</li>`;
+      }
+      const why = R.canCraft(j, id, { bench });
+      return `<li><button type="button" data-craft="${id}" ${why ? 'disabled' : ''}>${esc(R.recipeName(id))}${r.n > 1 ? ` ×${r.n}` : ''}</button> <span class="muted">needs ${esc(needs)}${why ? ` · ${esc(why)}` : ''}</span></li>`;
+    };
+    const ids = Object.keys(R.RECIPES);
+    const items = ids.filter((id) => !R.RECIPES[id].upgrade).sort((a, b) => Boolean(R.canCraft(j, a, { bench })) - Boolean(R.canCraft(j, b, { bench })) || R.RECIPES[a].level - R.RECIPES[b].level);
+    return `<p><strong>Crafting level ${lv}</strong> ${next ? `<progress class="jy-bar sp" max="${next}" value="${xp}" aria-label="${xp} of ${next} to level ${lv + 1}"></progress>` : '(the best there is)'} · ${bench ? '🛠 At a Workbench: everything can be made here.' : '🎒 On the road: simple things only. The rest needs a Workbench: find one where a smith works, or at Bob\'s Inn.'}</p>
+      <p class="muted">Press Enter by a glinting spot to gather: herbs underfoot in grass and woods, timber from trees, ore and crystals from rock faces and cave walls. Beaten animals leave pelts. Spots grow back after a while.</p>
+      <ul class="jy-bag">${mats}</ul><p><strong>Make</strong></p><ul class="jy-bag">${items.map(row).join('')}</ul>
+      <p><strong>Improve kit</strong> <span class="muted">(at a Workbench; plain kit only)</span></p><ul class="jy-bag">${ids.filter((id) => R.RECIPES[id].upgrade).map(row).join('')}</ul>`;
+  }
+  // ---------- The story so far (Journey v1.3): where next, regions crossed, local lore heard ----------
+  function storyHtml() {
+    if (lobby) return '<p class="muted">No story yet: roll a New adventure first.</p>';
+    const steps = R.nextSteps(world, j), regs = R.regionsOf(world, j.style).list;
+    const crossed = regs.filter((r) => (j.regions || []).includes(r.id));
+    const lore = (j.lore || []).map((id) => world.sites.find((s) => s.id === id)).filter(Boolean);
+    return `<p><strong>Where next</strong> <span class="muted">(${esc(R.narrator(j))})</span></p><ul class="jy-bag">${steps.map((x) => `<li>${esc(x.text)}</li>`).join('') || '<li class="muted">Nothing pressing. Explore!</li>'}</ul>
+      <p><strong>Regions</strong> <span class="muted">${crossed.length} of ${regs.length} crossed</span></p><ul class="jy-bag">${crossed.map((r) => `<li>${esc(r.name.replace(/^the /, 'The '))}</li>`).join('') || '<li class="muted">None yet. Step out of the inn.</li>'}</ul>
+      <p><strong>Local lore</strong> <span class="muted">(ask folk in hamlets and villages about their home)</span></p><ul class="jy-bag">${lore.map((s) => `<li><strong>${esc(s.name)}</strong> <span class="muted">${esc(R.localLore(world, s.id))}</span></li>`).join('') || '<li class="muted">None heard yet.</li>'}</ul>`;
+  }
+  // ---------- The guide (Journey v1.3): Bob walks you through every part of the menu ----------
+  const GUIDE = [
+    ['start', '🧭 Getting about', ['Bob: Arrow keys (or the pad) walk. Enter talks, opens chests, gathers and fishes. F picks a fight with whoever is in front of you. Esc opens this menu.', 'Bob: Walk into a door to go in. The edge of a town or a cave takes you back out to the land.', 'Bob: On a flying mount, E takes off and Q lands. On a dolphin, Q dives and E comes up. R gets on and off your mount.']],
+    ['party', '👥 Party', ['Bob: Party shows everyone with you: health, spirit, level and the four stats. Might hits harder, Wits casts better, Charm talks and tames, Luck finds great hits.']],
+    ['skills', '✨ Skills', ['Bob: Each level gives a skill point. Spend it in Skills, branch by branch. At level 5 and level 10 you can take a second and third class, and some pairs of classes give combo skills.']],
+    ['kit', '🧍 Kit', ['Bob: Kit is what everyone wears. Pick a weapon, armour and a shield for each person. Heavy armour soaks hits but makes you easier to hit; the numbers show beside each piece.']],
+    ['bag', '🎒 Bag', ['Bob: Bag holds potions, scrolls and food. Some work on the road (press a name to use it on them); the rest only in a fight. Pets and mounts carry extra.', 'Bob: A Scroll of return opens a door back to the last town you were in. Handy when the cave turns out bigger than you are.']],
+    ['story', '📜 Story', ['Bob: Story is your journal. Where next says who to talk to or who to find, and where to look. It lists the regions you\'ve crossed and the local lore folk have told you.', 'Bob: Talking to people gives you things to say: pick one with up and down, and Enter. Ask "Where should we go?" any time you\'re lost.']],
+    ['craft', '🛠 Craft', ['Bob: Craft is where you make things. Gather herbs, timber, ore and crystals from glinting spots on the land, and pelts from animals you beat.', 'Bob: Simple things you can make anywhere. A smith\'s Workbench in town, or mine in the back here, makes the rest and improves plain kit. Every make and every gather raises your crafting level.']],
+    ['pets', '🐾 Pets', ['Bob: Pets shows the animals you\'ve tamed. One pet goes out with you and one mount carries you. Rename them, or let one go to make room.']],
+    ['land', '🧭 The land', ['Bob: The land is the whole world from above, with every place you\'ve found marked on it.']],
+    ['save', '💾 Save', ['Bob: Save keeps your journey. It saves itself after every chest and fight too, so don\'t lose sleep over it.']],
+    ['screen', '⛶ The screen', ['Bob: ⛶ on the top bar plays full screen, with the menus on the game itself. Press it again, or Esc, to go back to a window. 🔊 or M turns the music and sound on and off.']]
+  ];
+  const guideHtml = () => `<p class="muted">Pick a topic and I'll walk you through it. Or start at the top and I'll show you round each tab.</p><div class="row"><button type="button" class="yes" data-guide="all">▶ Show me round</button></div><ul class="jy-bag">${GUIDE.map(([id, name, lines]) => `<li><button type="button" data-guide="${id}">${esc(name)}</button> <span class="muted">${esc(lines[0].replace(/^Bob: /, '').slice(0, 90))}…</span></li>`).join('')}</ul>`;
+  // A topic: Bob says it, and the menu opens the tab he's talking about. "Show me round" goes through them all.
+  function guideTopic(id, all) {
+    const i = GUIDE.findIndex((g) => g[0] === id); if (i < 0) return;
+    const [tab, , lines] = GUIDE[i];
+    const nextId = all && GUIDE[i + 1] ? GUIDE[i + 1][0] : '';
+    if (['party', 'skills', 'kit', 'bag', 'story', 'craft', 'pets', 'land', 'save'].includes(tab)) { menu = { tab, who: menu?.who || 0 }; mode = 'menu'; drawPanel(); }
+    talkTo(lines, () => { if (nextId) guideTopic(nextId, true); else { menu = { tab: all || tab === 'start' || tab === 'screen' ? 'guide' : tab, who: 0 }; mode = 'menu'; drawPanel(); } });
   }
   // Pets and mounts (Journey v1.2): who's out with you, a name of your own, and letting one go (asks twice).
   function petsHtml(m) {
@@ -1421,10 +1624,10 @@ function mountJourney(root, deps) {
   function landHtml() {
     if (lobby) return '<p class="muted">No land yet: roll a New adventure first.</p>';
     const here = R.mapOf(world, j).kind === 'world' ? { x: j.x, y: j.y } : world.sites.find((s) => s.id === j.at) || world.sites.find((s) => s.id === world.home) || { x: 0, y: 0 };
-    const seen = world.sites.filter((s) => j.seen.includes(s.id) || s.id === j.at).map((s) => ({ s, d: Math.abs(s.x - here.x) + Math.abs(s.y - here.y) })).sort((a, b) => a.d - b.d).slice(0, 40);
-    return `<div class="jy-land-view"><canvas class="jy-land" width="240" height="180" role="img" aria-label="The whole land, with the places you've found and where you are"></canvas>
+    const seen = world.sites.filter((s) => j.seen.includes(s.id) || s.id === j.at).map((s) => ({ s, d: Math.abs(s.x - here.x) + Math.abs(s.y - here.y) })).sort((a, b) => (R.isStoryTown(b.s) - R.isStoryTown(a.s)) || a.d - b.d).slice(0, 40);
+    return `<div class="jy-land-view"><canvas class="jy-land" width="480" height="360" role="img" aria-label="The whole land, with the places you've found and where you are"></canvas>
       <p class="muted">${esc(Wm.SIZES[j.size]?.name || '')} land, ${world.w}×${world.h}. You've found ${j.seen.length} of ${world.sites.length} places. The blinking dot is you.</p>
-      <ul class="jy-bag">${seen.map(({ s, d }) => `<li><strong>${esc(s.name)}</strong> <span class="muted">${esc(Wm.SITE_WORDS?.[s.kind] || s.kind)}${s.dock ? ' · ⚓ dock' : ''}${s.alt === 'sky' ? ' · in the clouds' : s.alt === 'deep' ? ' · under the sea' : ''} · ${d ? `${d} steps ${R.direction(here, s)}` : 'here'}</span></li>`).join('')}</ul></div>`;
+      <ul class="jy-bag">${seen.map(({ s, d }) => `<li>${R.isStoryTown(s) ? '🏰 ' : ''}<strong>${esc(s.name)}</strong> <span class="muted">${esc(Wm.SITE_WORDS?.[s.kind] || s.kind)} · ${esc(R.regionAt(world, s.x, s.y, j.style).name)}${s.dock ? ' · ⚓ dock' : ''}${s.alt === 'sky' ? ' · in the clouds' : s.alt === 'deep' ? ' · under the sea' : ''} · ${d ? `${d} steps ${R.direction(here, s)}` : 'here'}</span></li>`).join('')}</ul></div>`;
   }
   let landTimer = 0;
   function mountLand() {
@@ -1439,14 +1642,28 @@ function mountJourney(root, deps) {
     const paint = () => {
       g.fillStyle = '#14110f'; g.fillRect(0, 0, c.width, c.height);
       g.imageSmoothingEnabled = true; g.drawImage(landPicture(), ox, oy, m.w * k, m.h * k); g.imageSmoothingEnabled = false;
-      for (const s of world.sites) if (j.seen.includes(s.id)) { g.fillStyle = SITE_COL[s.kind] || '#d8a0ff'; g.fillRect(Math.round(ox + s.x * k) - 1, Math.round(oy + s.y * k) - 1, 3, 3); }
-      if (blink++ % 2 === 0 || still()) { g.fillStyle = '#ff3a3a'; g.fillRect(Math.round(ox + here.x * k) - 2, Math.round(oy + here.y * k) - 2, 5, 5); g.fillStyle = '#ffffff'; g.fillRect(Math.round(ox + here.x * k), Math.round(oy + here.y * k), 1, 1); }
+      for (const s of world.sites) if (j.seen.includes(s.id)) { g.fillStyle = SITE_COL[s.kind] || '#d8a0ff'; g.fillRect(Math.round(ox + s.x * k) - 2, Math.round(oy + s.y * k) - 2, 4, 4); }
+      // Names (Journey v1.3): regions you've crossed, faint; story towns you've found, bright. Hamlets and villages
+      // stay dots.
+      // A name that would overlap one already written is left off (the list below has them all).
+      g.textAlign = 'center'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.8)';
+      const taken = [];
+      const label = (t, x, y, font, col) => {
+        g.font = font; const w = g.measureText(t).width; x = Math.min(Math.max(x, w / 2 + 3), c.width - w / 2 - 3); y = Math.max(y, 11); const box = [x - w / 2 - 2, y - 9, x + w / 2 + 2, y + 2];
+        if (taken.some((b) => b[0] < box[2] && box[0] < b[2] && b[1] < box[3] && box[1] < b[3])) return;
+        taken.push(box); g.fillStyle = col; g.strokeText(t, x, y); g.fillText(t, x, y);
+      };
+      for (const s of world.sites) if (j.seen.includes(s.id) && (R.isStoryTown(s) || s.kind === 'bobsinn')) label(T(s.name), ox + s.x * k, oy + s.y * k - 4, 'bold 10px sans-serif', '#ffd166');
+      for (const r of R.regionsOf(world, j.style).list) if ((j.regions || []).includes(r.id)) label(T(r.name.replace(/^the /, '')), ox + r.x * k, oy + r.y * k + 4, 'italic 10px serif', 'rgba(255,255,255,0.8)');
+      g.textAlign = 'left';
+      if (blink++ % 2 === 0 || still()) { g.fillStyle = '#ff3a3a'; g.fillRect(Math.round(ox + here.x * k) - 4, Math.round(oy + here.y * k) - 4, 9, 9); g.fillStyle = '#ffffff'; g.fillRect(Math.round(ox + here.x * k) - 1, Math.round(oy + here.y * k) - 1, 3, 3); }
     };
     paint();
     if (!still()) landTimer = setInterval(() => { if (!c.isConnected) { clearInterval(landTimer); return; } paint(); }, 450);
   }
   function shopHtml() {
     if (shop.kind === 'new') return newHtml();
+    if (shop.kind === 'trophies') return caseHtml();
     if (shop.kind === 'docks') {
       const trips = R.docksFrom(world, j);
       return `<p><strong>${esc(shop.who)}</strong> · You have ${esc(R.fmtCoin(j.coin))}.</p>${trips.length ? `<ul class="jy-bag">${trips.map((d) => `<li><button type="button" data-sail="${esc(d.id)}" ${j.coin < d.fare ? 'disabled' : ''}>To ${esc(d.name)} by ${esc(R.BOATS[d.boat].name)} · ${esc(R.fmtCoin(d.fare, true))}</button> <span class="muted">${d.d} steps ${R.direction(world.sites.find((x) => x.id === j.at) || d, world.sites.find((x) => x.id === d.id) || d)}</span></li>`).join('')}</ul>` : '<p class="muted">"I only sail to docks you\'ve found on foot. Walk the coast; when you\'ve seen another dock, I can take you."</p>'}<button type="button" data-shop="leave">Leave</button>`;
@@ -1469,9 +1686,9 @@ function mountJourney(root, deps) {
     const role = shop.person?.role || shop.kind;
     const ids = R.wares(role === 'peddler' ? 'peddler' : shop.kind, shop.tier);
     const mult = shop.mult || 1;
-    const list = ids.map((id) => (R.ITEMS[id] ? [id, R.ITEMS[id].name, R.priceOf(j, id, mult), R.ITEMS[id].what, false] : [id, R.kitName(id), R.priceOf(j, id, mult), R.kitWords(id), j.owned[R.kitKind(id)].includes(id)]));
+    const list = ids.map((id) => (R.ITEMS[id] ? [id, R.ITEMS[id].name, R.priceOf(j, id, mult), R.ITEMS[id].what, false] : R.isBag(id) ? [id, R.BAGS[id.slice(4)].name, R.priceOf(j, id, mult), R.BAGS[id.slice(4)].what, (j.bags || []).includes(id.slice(4))] : [id, R.kitName(id), R.priceOf(j, id, mult), R.kitWords(id), j.owned[R.kitKind(id)].includes(id)]));
     const sellable = shop.kind === 'smith' ? ['weapon', 'armour', 'shield'].flatMap((k) => j.owned[k].filter((key) => !j.party.some((m) => m[k] === key))) : [];
-    return `<p><strong>${esc(shop.who)}</strong> · ${purse}${mult < 1 ? ' <span class="muted">(everything half price)</span>' : ''}</p>${buyList(list)}${sellable.length ? `<p><strong>Sell</strong> <span class="muted">(kit nobody is wearing, for a third of its price)</span></p><ul class="jy-bag">${sellable.map((key) => `<li><button type="button" data-sell="${esc(key)}">${esc(R.kitName(key))} · ${esc(R.fmtCoin(Math.round(R.kitPrice(key) / 3), true))}</button></li>`).join('')}</ul>` : ''}${leave}`;
+    return `<p><strong>${esc(shop.who)}</strong> · ${purse}${mult < 1 ? ' <span class="muted">(everything half price)</span>' : ''}${shop.kind === 'smith' ? ' <button type="button" class="mini" data-bench="1">🛠 Use the Workbench</button>' : ''}</p>${buyList(list)}${sellable.length ? `<p><strong>Sell</strong> <span class="muted">(kit nobody is wearing, for a third of its price)</span></p><ul class="jy-bag">${sellable.map((key) => `<li><button type="button" data-sell="${esc(key)}">${esc(R.kitName(key))} · ${esc(R.fmtCoin(Math.round(R.kitPrice(key) / 3), true))}</button></li>`).join('')}</ul>` : ''}${leave}`;
   }
   const buyList = (list) => `<ul class="jy-bag">${list.map(([id, name, price, what, have]) => `<li><button type="button" data-buy="${esc(id)}" ${have || j.coin < price ? 'disabled' : ''}>${esc(name)} · ${esc(R.fmtCoin(price, true))}</button> <span class="muted">${have ? 'You have this.' : esc(what)}</span></li>`).join('')}</ul>`;
   let dollTimer = 0;
@@ -1518,7 +1735,14 @@ function mountJourney(root, deps) {
     if (d.addclass) { const m = j.party[menu.who || 0]; msg = R.addClass(m, d.addclass) ? `${m.name} is now also a ${R.CLASSES[d.addclass].name}.` : R.canAddClass(m, d.addclass); drawPanel(); save(true); return; }
     if (d.cast) { const r = R.castField(j, j.party[menu.who || 0].id, d.cast, d.on); msg = r.text; sfx(r.ok ? 'heal' : 'bump'); drawPanel(); if (r.ok) save(true); return; }
     if (d.use) { const it = R.ITEMS[d.use]; const r = it?.scroll ? R.castField(j, d.on, d.use, d.on) : R.drinkOn(j, d.use, d.on); msg = r.text; sfx(r.ok ? (it?.scroll ? 'spell' : 'drink') : 'bump'); drawPanel(); if (r.ok) save(true); return; }
-    if (d.buy) { const okBuy = R.buy(j, d.buy, shop?.mult || 1); sfx(okBuy ? 'buy' : 'bump'); msg = okBuy ? `Bought: ${R.ITEMS[d.buy]?.name || R.kitName(d.buy)}.` : R.ITEMS[d.buy] && !R.bagRoom(j) ? 'The bag is full. A pet or a mount carries more.' : "You can't afford that."; drawPanel(); save(true); return; }
+    if (d.choice !== undefined && talk?.choices) { pickChoice(Number(d.choice)); focus(); return; }
+    if (d.wearbag) { const r = R.wearBag(j, d.wearbag); msg = r.text; sfx(r.ok ? 'menu' : 'bump'); drawPanel(); if (r.ok) save(true); return; }
+    if (d.craft) { const r = R.craft(j, d.craft, { bench: R.atBench(world, j), kit: d.kitkey }); msg = r.text; sfx(r.ok ? 'craft' : 'bump'); if (r.up) setTimeout(() => sfx('level'), 600); if (r.ok) lookCache.clear(); drawPanel(); if (r.ok) save(true); return; }
+    if (d.guide) { guideTopic(d.guide === 'all' ? GUIDE[0][0] : d.guide, d.guide === 'all'); return; }
+    if (d.portal) { const r = R.usePortal(world, j); msg = ''; if (!r.ok) { msg = r.text; sfx('bump'); drawPanel(); return; } menu = null; mode = 'walk'; trail = []; swoops.clear(); landFx.length = 0; heightFx = null; portalAt = now(); sfx('portal'); sayLive(r.text); announce(); drawPanel(); save(true); focus(); return; }
+    if (d.bench) { shop = null; menu = { tab: 'craft', who: 0 }; mode = 'menu'; drawPanel(); return; }
+    if (d.jy === 'full') { toggleFull(); return; }
+    if (d.buy) { const okBuy = R.buy(j, d.buy, shop?.mult || 1); sfx(okBuy ? 'buy' : 'bump'); msg = okBuy ? `Bought: ${R.ITEMS[d.buy]?.name || (R.isBag(d.buy) ? `${R.BAGS[d.buy.slice(4)].name}. The bag holds ${R.bagSize(j)} now` : R.kitName(d.buy))}.` : R.ITEMS[d.buy] && !R.bagRoom(j) ? 'The bag is full. A pet or a mount carries more.' : "You can't afford that."; drawPanel(); save(true); return; }
     if (d.sell) { const got = R.sell(j, d.sell); sfx(got ? 'coin' : 'bump'); msg = got ? `Sold for ${R.fmtCoin(got)}.` : 'Someone is wearing that.'; drawPanel(); save(true); return; }
     if (d.train) { msg = R.train(j, j.party[shop.who2 || 0].id, d.train).text; drawPanel(); save(true); return; }
     if (d.teach) { const r = R.hermitTeach(j, j.party[shop.who2 || 0].id, d.teach); msg = r.text; drawPanel(); if (r.ok) save(true); return; }
@@ -1569,7 +1793,7 @@ function mountJourney(root, deps) {
     if (k && j) { const m = j.party[menu.who || 0]; if (R.equip(j, m.id, k.dataset.kit, k.value)) { lookCache.clear(); drawPanel(); save(true); } }
   });
   // In the inn before an adventure, the party you pick walks round with you straight away.
-  function enterLobbyKeepPlace() { const at = { x: j.x, y: j.y, facing: j.facing }; j = R.newJourney({ seed: '', party: lobbyParty() }, world); Object.assign(j, at); trail = []; }
+  function enterLobbyKeepPlace() { const at = { at: j.at, x: j.x, y: j.y, facing: j.facing }; j = R.newJourney({ seed: '', party: lobbyParty() }, world); Object.assign(j, at); trail = []; }
   function toggleMenu() {
     if (!j || mode === 'battle') return;
     if (mode === 'talk') return;
@@ -1582,6 +1806,13 @@ function mountJourney(root, deps) {
   function onKey(e) {
     if (closed || !root.isConnected || root.closest('dialog:not([open])') || root.closest('.hidden')) return;
     const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target?.tagName || '');
+    // Journey v1.3: I (or B) opens the bag, C opens crafting, G the guide. Press it again to close.
+    const quick = { i: 'bag', b: 'bag', c: 'craft', g: 'guide', j: 'story' }[(e.key || '').toLowerCase()];
+    if (quick && !typing && !e.ctrlKey && !e.metaKey && !e.altKey && (mode === 'walk' || mode === 'menu')) {
+      e.preventDefault(); e.stopPropagation();
+      if (mode === 'menu' && menu?.tab === quick) toggleMenu(); else { menu = { tab: quick, who: menu?.who || 0 }; mode = 'menu'; drawPanel(); }
+      return;
+    }
     if (e.key === 'Escape' || e.key === 'x' || e.key === 'X') { if (typing && e.key !== 'Escape') return; if (mode === 'menu' || mode === 'shop' || mode === 'walk') { e.preventDefault(); e.stopPropagation(); toggleMenu(); } return; }
     if (typing) return;
     snd.wake?.();
@@ -1590,6 +1821,7 @@ function mountJourney(root, deps) {
       if (KEYS[e.key] && panel.contains(doc.activeElement)) { const bs = [...panel.querySelectorAll('.jy-cmds button:not([disabled])')]; const i = bs.indexOf(doc.activeElement); if (i >= 0) { e.preventDefault(); const n = bs[(i + (KEYS[e.key] === 'down' || KEYS[e.key] === 'right' ? 1 : bs.length - 1)) % bs.length]; n?.focus(); } }
       return;
     }
+    if (choosing() && (KEYS[e.key] || /^[1-9]$/.test(e.key))) { e.preventDefault(); if (KEYS[e.key]) tryWalk(KEYS[e.key]); else pickChoice(Number(e.key) - 1); return; }
     if (KEYS[e.key] && (mode === 'walk')) { e.preventDefault(); if (held !== KEYS[e.key]) { held = KEYS[e.key]; heldAt = now(); tryWalk(held); } return; }
     if ((e.key === 'f' || e.key === 'F') && mode === 'walk') { e.preventDefault(); fight(); return; }
     if ((e.key === 'e' || e.key === 'E' || e.key === 'PageUp') && mode === 'walk') { e.preventDefault(); rise(); return; }
@@ -1622,7 +1854,7 @@ function mountJourney(root, deps) {
   // Browsers keep sound silent until the first tap or key press; any press wakes it.
   root.addEventListener('pointerdown', () => snd.wake?.(), { capture: true });
   enterLobby();
-  talkTo(['Bob\'s Inn. A fire, a bar, a cat, and Bob behind it.', 'Walk about with the arrow keys. When you\'re ready, the buttons along the bottom roll a New adventure or Resume your saved one.']);
+  talkTo(['You wake in the guest house behind Bob\'s Inn. The trophy case along the wall keeps a trophy from every story you\'ve played.', 'Walk about with the arrow keys; the door at the bottom goes into the inn. When you\'re ready, the buttons along the bottom roll a New adventure or Resume your saved one.']);
   loadSave();
   frame();
   return { stop, save, get journey() { return j; }, get world() { return world; }, get mode() { return mode; }, get lobby() { return lobby; }, startFight, walk: tryWalk, act, fight, rollNew, resume, rise, sink, ride: rideToggle };
@@ -1755,6 +1987,9 @@ function createJourneySound({ Ctx = globalThis.AudioContext || globalThis.webkit
     chest: (t) => { noise(fxBus, t, 0.15, { vol: 0.08, lp: 1200 }); jingle('chest'); },
     coin: (t) => { tone(fxBus, 1318, t, 0.08, { type: 'square', vol: 0.05 }); tone(fxBus, 1760, t + 0.07, 0.2, { type: 'square', vol: 0.05 }); },
     buy: (t) => (STYLE_FX[style]?.coin || FX.coin)(t),
+    gather: (t) => { noise(fxBus, t, 0.06, { vol: 0.12, hp: 1800 }); tone(fxBus, 700, t + 0.05, 0.06, { type: 'triangle', vol: 0.05 }); noise(fxBus, t + 0.18, 0.06, { vol: 0.1, hp: 1800 }); },
+    craft: (t) => { for (let i = 0; i < 3; i++) { tone(fxBus, 880 + i * 60, t + i * 0.13, 0.05, { type: 'triangle', vol: 0.06 }); noise(fxBus, t + i * 0.13, 0.04, { vol: 0.08, hp: 3000 }); } tone(fxBus, 1318, t + 0.45, 0.25, { type: 'sine', vol: 0.05 }); },
+    portal: (t) => { tone(fxBus, 220, t, 0.9, { type: 'sine', vol: 0.06, to: 880 }); tone(fxBus, 330, t, 0.9, { type: 'triangle', vol: 0.04, to: 1320 }); noise(fxBus, t, 0.9, { vol: 0.05, hp: 3000 }); },
     encounter: (t) => { [330, 415, 494, 659].forEach((f, i) => tone(fxBus, f, t + i * 0.045, 0.1, { type: 'square', vol: 0.05 })); noise(fxBus, t, 0.2, { vol: 0.06, hp: 2000 }); },
     ride: (t) => { for (let i = 0; i < 4; i++) tone(fxBus, i % 2 ? 260 : 300, t + i * 0.12, 0.05, { type: 'triangle', vol: 0.06 }); },
     swing: (t) => noise(fxBus, t, 0.12, { vol: 0.08, hp: 2500 }),
@@ -1799,6 +2034,7 @@ function createJourneySound({ Ctx = globalThis.AudioContext || globalThis.webkit
       hit: (t) => { noise(fxBus, t, 0.08, { vol: 0.12, hp: 1500 }); tone(fxBus, 900, t, 0.1, { type: 'square', vol: 0.04, to: 120 }); },
       coin: (t) => { tone(fxBus, 1500, t, 0.06, { vol: 0.06 }); tone(fxBus, 2000, t + 0.08, 0.1, { vol: 0.06 }); },
       step: (t) => tone(fxBus, 70, t, 0.04, { vol: 0.04 }),
+      gather: (t) => { tone(fxBus, 1200, t, 0.3, { vol: 0.04, to: 600 }); tone(fxBus, 1800, t + 0.3, 0.06, { vol: 0.04 }); },
       talk: (t) => tone(fxBus, 1200, t, 0.03, { vol: 0.03 })
     },
     cyber: {
@@ -1808,6 +2044,7 @@ function createJourneySound({ Ctx = globalThis.AudioContext || globalThis.webkit
       hit: (t) => { noise(fxBus, t, 0.1, { vol: 0.16, hp: 700 }); for (let i = 0; i < 3; i++) tone(fxBus, 200 + i * 410, t + i * 0.025, 0.02, { type: 'square', vol: 0.04 }); },
       coin: (t) => { tone(fxBus, 2637, t, 0.04, { type: 'square', vol: 0.035 }); tone(fxBus, 3520, t + 0.05, 0.08, { type: 'square', vol: 0.035 }); },
       step: (t) => noise(fxBus, t, 0.02, { vol: 0.03, hp: 3000 }),
+      gather: (t) => { for (let i = 0; i < 4; i++) tone(fxBus, 300 + ((i * 677) % 1400), t + i * 0.05, 0.03, { type: 'square', vol: 0.03 }); noise(fxBus, t + 0.2, 0.08, { vol: 0.08, hp: 2500 }); },
       talk: (t) => tone(fxBus, 1760, t, 0.025, { type: 'square', vol: 0.02 })
     },
     steam: {
@@ -1817,6 +2054,7 @@ function createJourneySound({ Ctx = globalThis.AudioContext || globalThis.webkit
       hit: (t) => { noise(fxBus, t, 0.1, { vol: 0.15, hp: 900 }); tone(fxBus, 520, t, 0.15, { type: 'triangle', vol: 0.06, to: 480 }); },
       coin: (t) => { tone(fxBus, 1100, t, 0.1, { type: 'triangle', vol: 0.07 }); tone(fxBus, 1650, t + 0.06, 0.18, { type: 'triangle', vol: 0.05 }); },
       step: (t) => tone(fxBus, 1800, t, 0.015, { type: 'triangle', vol: 0.02 }),
+      gather: (t) => { tone(fxBus, 900, t, 0.08, { type: 'triangle', vol: 0.06, to: 860 }); noise(fxBus, t + 0.1, 0.3, { vol: 0.07, hp: 3500 }); },
       takeoff: (t) => { noise(fxBus, t, 1.2, { vol: 0.12, hp: 2500 }); tone(fxBus, 90, t, 1, { type: 'square', vol: 0.04, to: 140 }); },
       talk: (t) => tone(fxBus, 520, t, 0.04, { type: 'triangle', vol: 0.03 })
     }

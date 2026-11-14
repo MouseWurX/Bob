@@ -7,9 +7,11 @@
 //   POST /api/adventure/journey/reward   { charId, guardian } -> { characters }
 //   POST /api/adventure/journey/land     { seed, size, layout }  -> { land }   the phone's list of places and a small picture (v1.2)
 //   POST /api/adventure/journey/piece    { seed, size, layout, cx, cy } -> { piece }  32×32 tiles near the party (v1.2)
+//   GET  /api/adventure/journey/trophies              -> { trophies }  the guest house's trophy case, every story (v1.3)
+//   POST /api/adventure/journey/trophies { trophies } -> { trophies }  adds new ones (by id); old ones are never lost
 import fs from 'node:fs';
 import path from 'node:path';
-import { cleanJourney, GUARDIANS, STATS } from '../public/journey-rules.js';
+import { cleanJourney, GUARDIANS, STATS, keepTrophies } from '../public/journey-rules.js';
 import { makeWorld as makeWorldFresh, landSkeleton, landPiece, SIZES } from '../public/journey-world.js';
 
 // The last land made is kept for a while (the biggest takes seconds to make, and every save checks against it), then
@@ -38,6 +40,17 @@ export function saveJourney(cfg, j) {
   return clean;
 }
 export function deleteJourney(cfg) { try { fs.unlinkSync(journeyFile(cfg)); } catch {} }
+// The trophy case (Journey v1.3): its own file, so a new adventure (or deleting the save) never empties it.
+export const trophyFile = (cfg) => path.join(cfg.dataDir || '.', 'adventures', 'journey-trophies.json');
+export function loadTrophies(cfg) {
+  try { return keepTrophies(JSON.parse(fs.readFileSync(trophyFile(cfg), 'utf8').replace(/^\uFEFF/, '')), []); } catch { return []; }
+}
+export function addTrophies(cfg, more) {
+  const list = keepTrophies(loadTrophies(cfg), more);
+  fs.mkdirSync(path.dirname(trophyFile(cfg)), { recursive: true });
+  fs.writeFileSync(trophyFile(cfg), JSON.stringify(list));
+  return list;
+}
 
 // A keeper beaten: "Beat <name> on a journey" on the saved character's sheet, once per keeper, and one stat point on
 // their lowest stat (Adventure stats stop at 5). listCharacters/saveCharacter come from src/adventure.js.
@@ -56,9 +69,11 @@ export function journeyReward(cfg, { charId, guardian }, { listCharacters, saveC
 export async function journeyRoute({ req, res, p, brain, body, send }, chars) {
   const cfg = brain.cfg;
   if (req.method === 'GET' && p === '/api/adventure/journey') { send(res, 200, { journey: loadJourney(cfg) }); return true; }
+  if (req.method === 'GET' && p === '/api/adventure/journey/trophies') { send(res, 200, { trophies: loadTrophies(cfg) }); return true; }
   if (req.method !== 'POST') { send(res, 404, { error: 'no' }); return true; }
   const b = await body(req);
   if (p === '/api/adventure/journey') { saveJourney(cfg, b.journey); send(res, 200, { ok: true }); return true; }
+  if (p === '/api/adventure/journey/trophies') { send(res, 200, { trophies: addTrophies(cfg, b.trophies) }); return true; }
   if (p === '/api/adventure/journey/delete') { deleteJourney(cfg); send(res, 200, { ok: true }); return true; }
   if (p === '/api/adventure/journey/land' || p === '/api/adventure/journey/piece') {
     const seed = String(b.seed || '').slice(0, 40), size = SIZES[b.size] ? String(b.size) : 'medium';

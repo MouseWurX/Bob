@@ -19,7 +19,45 @@ if (!L.model) { console.error('Qwen3.6 GGUF not found. Pass --model.'); process.
 // --url <server>: use a rented teacher (vLLM) instead of starting llama-server here. Set LAB_API_KEY and LAB_MODEL_NAME.
 const remoteUrl = o.url ? String(o.url).replace(/\/$/, '') : null;
 // --persona <file>: appended to Bob's system prompt for every lesson (a voice for a themed set); Bob's own rules stay in front of it.
-const persona = o.persona ? fs.readFileSync(path.resolve(String(o.persona)), 'utf8').trim() : '';
+const personaRaw = o.persona ? fs.readFileSync(path.resolve(String(o.persona)), 'utf8').replace(/\r\n/g, '\n').trim() : '';
+// 13 Nov (GPT-OSS ignores a style prompt in its thinking, ~0% style score; a prefill works, tested live): a style file may carry
+// "prefix: <text>", "markers: A:,B:" and "leak: A:,B:" lines. They are taken out of the text the writer reads and used as:
+//   --think-prefix <text>   sent as a trailing assistant message with reasoning_content = <text> on thinking turns, so the writer
+//                           carries on its thinking from there; the saved thinking is prefix + what it wrote. The odds row says
+//                           given: <prefix> (those words are given, not scored by the teacher; the odds start after them).
+//   --style-markers A:,B:   style score = share of these markers found in the lesson's thinking; --style-min 0.5 rejects below it
+//   --leak A:,B: --leak-mode reject|strip   a final answer whose first lines start with a style marker is rejected (default
+//                           when a prefix or markers are set) or has those lines stripped
+const fileLine = (k) => (personaRaw.match(new RegExp(`^${k}:[ \\t]*(.+)$`, 'mi'))?.[1] || '').trim();
+const persona = personaRaw.split('\n').filter((ln) => !/^(prefix|prefix-later|markers|leak):/i.test(ln.trim())).join('\n').trim();
+// a "\n" in a prefix is a line break (a longer prefix can carry the style's whole first step: "Plan: 1. ... 2. ...\nOptions: A")
+const unesc = (x) => String(x || '').replace(/\\n/g, '\n');
+const thinkPrefix = unesc(o['think-prefix'] && o['think-prefix'] !== true ? o['think-prefix'] : fileLine('prefix'));
+// --prefix-later (or a "prefix-later:" line): the prefix for the thinking turns after a tool result (default: the same prefix)
+const laterPrefix = unesc(o['prefix-later'] && o['prefix-later'] !== true ? o['prefix-later'] : fileLine('prefix-later')) || thinkPrefix;
+// --style-position user (13 Nov: with Bob's full prompt and ~13 tools the style slid back by line 2; next to the ask it held):
+// the style text goes as a short teacher-only note just before the person's message instead of at the end of the system prompt
+const stylePos = String(o['style-position'] || 'system') === 'user' ? 'user' : 'system';
+// --teacher-prompt short (13 Nov: GPT-OSS 120B held a style with a short prompt, never under Bob's full prompt and tools): the
+// writer gets a few lines in place of Bob's system prompt (the tools are still offered); the saved lesson and its set keep Bob's
+// real prompt, and teacher_context says short-prompt (the odds were measured on the short one)
+const shortPrompt = String(o['teacher-prompt'] || '') === 'short';
+const SHORT_SYS = 'You are Bob, a friendly, plain-spoken AI assistant on the person\'s own computer. Use a tool only when the request needs one, copy details into it exactly, read what it returns, and finish with a short plain answer.';
+const listOf = (v) => String(v || '').split(',').map((x) => x.trim()).filter(Boolean);
+const styleMarkers = listOf(o['style-markers'] && o['style-markers'] !== true ? o['style-markers'] : fileLine('markers'));
+const styleMin = Number(o['style-min']) || 0;
+const leakMarkers = listOf(o.leak && o.leak !== true ? o.leak : fileLine('leak') || (thinkPrefix || styleMarkers.length ? 'Plan:,Options:,Pick:,Rule:' : ''));
+const leakMode = String(o['leak-mode'] || 'reject') === 'strip' ? 'strip' : 'reject';
+const reEsc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const leakRe = leakMarkers.length ? new RegExp(`^\\s*(?:[-*#>]\\s*)*(?:${leakMarkers.map(reEsc).join('|')})`, 'i') : null;
+const styleScore = (text, markers) => (markers.length ? markers.filter((m) => String(text || '').includes(m)).length / markers.length : null);
+// the answer's first lines that start with a style marker: [leaked?, the answer with those lines taken out]
+const leakCheck = (content) => {
+  if (!leakRe) return [false, content];
+  const lines = String(content || '').split('\n'); let k = 0;
+  while (k < lines.length && (leakRe.test(lines[k]) || (k > 0 && !lines[k].trim() && k + 1 < lines.length && leakRe.test(lines[k + 1])))) k++;
+  return k ? [true, lines.slice(k).join('\n').replace(/^\s+/, '')] : [false, content];
+};
 // --tag "Think: Sherlock" (12 Nov): a short switch line added to Bob's system prompt in BOTH the teacher's prompt and the saved
 // lesson, while the --persona text (how that style thinks) is only shown to the teacher. The student learns to think that
 // way from the short line alone, so the style can be picked at chat time (a "switch"), tool turns included.
@@ -30,6 +68,7 @@ const kit = await loadBob(L.bob, { allowOld: Boolean(o['allow-old-bob']) });
 console.log(`Bob's tools from ${L.bob}: ${kit.bobSrc.version || '?'}${kit.bobSrc.commit ? ` (${kit.bobSrc.commit})` : ''}`);
 // 12 Nov (later): the idea writer is told what Bob's tools can really do, so it doesn't invent jobs no tool covers (calendar events...)
 const TOOLBOX = (() => { try { return Object.entries(kit.groups()).map(([k, g]) => `${k} (${g.what || (g.tools || []).join(', ')})`).join('; '); } catch { return ''; } })();
+const TOOL_NOTE = `How Bob's tools work (a note for you only; never mention it): call a tool only when the request needs one, and the one whose description fits; copy names, paths, dates, times and amounts from the message exactly into the arguments; save files inside the folders Bob is allowed to use (his own output folder when none is given) and ask before writing anywhere else; read each tool result before the next step and use what it returned; reminders, schedules and the notice board each have their own tool, never a file; when a needed detail is truly missing, ask one short question instead of guessing; finish with a plain answer that says what was done and where.${TOOLBOX ? ` Bob's tool groups: ${TOOLBOX}.` : ''}`;
 const toolboxNote = TOOLBOX ? ` Only ask for things this assistant can really do: its basic tools (list and read files, web search, open a web page, reminders, a notice board, memory) plus ${TOOLBOX}. Nothing else (no calendar app, no email sending, no phone calls).` : '';
 // and, for jobs where the message should carry everything, the teacher (only) is reminded to act on it rather than ask again
 const ACT_JOBS = new Set(['precise', 'missed', 'agent', 'twins', 'recover', 'codefix', 'research', 'files', 'office', 'run', 'schedules', 'web', 'pictures', 'reminders', 'security', 'apps']);
@@ -82,11 +121,66 @@ const JOBS = [
   ['apps', 'using apps on the PC: open, type into, click in Blender or Unreal through connected apps', 2],
   ['help', 'how to use Bob himself: his settings, sessions, brains, Hands, Bob-Net, phone app, updates', 4]
 ];
-const onlyJobs = o.jobs ? String(o.jobs).split(',').map((x) => x.trim()).filter(Boolean) : null;
+// 13 Nov (v5 data: GPT-OSS 120B kept only 2-5 of every 7-23 lessons on the tool-heavy jobs, the rejects real tool mistakes, but
+// 15/15 on clarify, 8/8 memory, 10/13 maths): per-job teacher routing. --route general keeps only the jobs NOT in the tool list,
+// --route tools only the ones in it (--tool-jobs a,b overrides the list). A plan runs the same command once per teacher, each into
+// its own --dir, so every set keeps its own teacher's odds and nothing is mixed.
+const TOOL_JOBS = new Set(o['tool-jobs'] ? String(o['tool-jobs']).split(',').map((x) => x.trim()).filter(Boolean) : ['reminders', 'research', 'office', 'newtool', 'plans', 'schedules', 'knowledge']);
+const route = ['general', 'tools'].includes(String(o.route)) ? String(o.route) : '';
+let onlyJobs = o.jobs ? String(o.jobs).split(',').map((x) => x.trim()).filter(Boolean) : null;
+if (route) {
+  if (!onlyJobs) { console.error('--route needs --jobs (the full list; the route keeps its share of it)'); process.exit(1); }
+  onlyJobs = onlyJobs.filter((x) => TOOL_JOBS.has(x.split(':')[0]) === (route === 'tools'));
+  if (!onlyJobs.length) { console.error(`--route ${route}: none of --jobs is routed to this teacher`); process.exit(0); }
+  console.log(`route ${route}: ${onlyJobs.map((x) => x.split(':')[0]).join(', ')}`);
+}
+// --teacher <name> --kind bob|style|distill: stamped on every lesson and odds row; a folder holds one teacher and one kind only
+// (set-info.json), so a second teacher or kind can never land in it by mistake (the owner's rule: kinds stay apart)
+const teacherName = o.teacher ? String(o.teacher).replace(/[^\w.-]/g, '').slice(0, 60) : '';
+const kind = o.kind ? String(o.kind) : '';
+if (kind && !['bob', 'style', 'distill'].includes(kind)) { console.error('--kind is bob, style or distill'); process.exit(1); }
+// --tool-effort high (GPT-OSS): the routed tool jobs always think, at this effort. --tool-note: a short teacher-only note on how
+// Bob's tools work goes to the writer on those jobs (never into the saved lesson, its set key or Bob's own start prompt)
+const toolEffort = ['low', 'medium', 'high'].includes(String(o['tool-effort'])) ? String(o['tool-effort']) : '';
+const toolNoteOn = Boolean(o['tool-note']);
+if (teacherName || kind) {
+  const infoF = path.join(dir, 'set-info.json'), want = { teacher: teacherName || null, kind: kind || null };
+  const had = fs.existsSync(infoF) ? JSON.parse(fs.readFileSync(infoF, 'utf8')) : null;
+  if (had && ((had.teacher || null) !== want.teacher || (had.kind || null) !== want.kind)) { console.error(`${dir} holds ${had.kind || '?'} lessons from ${had.teacher || '?'}; this run is ${want.kind || '?'} from ${want.teacher || '?'}: use another --dir (sets never mix)`); process.exit(1); }
+  if (!had) { if (readJsonl(F.lessons).length) { console.error(`${dir} already has lessons with no set-info.json: use another --dir for --teacher/--kind`); process.exit(1); } fs.writeFileSync(infoF, JSON.stringify({ ...want, made: new Date().toISOString() }, null, 1)); }
+}
+const stamp = { ...(teacherName ? { teacher: teacherName } : {}), ...(kind ? { kind } : {}) };
 const SCI_ANGLES = ['physics: motion, energy, forces, heat, light, with a worked calculation', 'electronics: circuits, Ohm\'s law, resistors, capacitors, transistors, microcontrollers, power supplies', 'chemistry: reactions, moles, acids and bases, materials, safety', 'maths beyond arithmetic: algebra, geometry, trig, probability, a bit of calculus', 'checking a calculation or unit conversion the person already did', 'explaining a science concept in plain words to a curious adult', 'practical engineering: batteries, motors, 3D printing materials, soldering, sensors'];
 const thinkMode = String(o.think || 'half');
+// --think 80 (13 Nov): that percent of the lessons think, spread evenly (a style set: mostly thinking, a few without so both modes stay healthy)
+const thinkShare = /^\d+(\.\d+)?$/.test(thinkMode) ? Math.min(100, Number(thinkMode)) / 100 : null;
 // --review: the teacher reads each finished lesson and grades it; a failed one goes to rejected.jsonl (with why), not lessons.jsonl
 const review = Boolean(o.review);
+// --odds K (13 Nov, the owner's rule: every set carries its teacher's odds): each answer the teacher writes is saved with its own
+// top-K odds per word in odds.jsonl beside the lessons, one row per kept lesson ({idea, job, think, turns: [{step, set, odds}]}).
+// Only the writer's own words can be scored this way (llama-server gives the odds of what it writes, not of someone else's text).
+// 13 Nov: --split calib marks every lesson as a calibration question (tool-score --split calib replays them; training never reads
+// a calib folder, so the questions stay unseen). --split smoke marks a smoke-gate sample.
+const splitTag = ['calib', 'smoke'].includes(String(o.split)) ? String(o.split) : '';
+const oddsK = Math.max(0, Math.min(64, Number(o.odds) || 0));
+// --effort low|medium|high: GPT-OSS's thinking depth (it always thinks; a "no think" lesson is written at low). Qwen ignores it.
+const effort = ['low', 'medium', 'high'].includes(String(o.effort)) ? String(o.effort) : '';
+// --sampling t,p,k: the writer's own published sampling (GPT-OSS: 1,1,0) instead of Qwen's
+const sampling = o.sampling ? String(o.sampling).split(',').map(Number) : null;
+const extraBody = (think, job) => ({
+  ...(effort || toolEffort ? { chat_template_kwargs: { enable_thinking: Boolean(think), reasoning_effort: think ? (toolEffort && TOOL_JOBS.has(job) ? toolEffort : effort || 'medium') : 'low' } } : {}),
+  ...(sampling ? { temperature: sampling[0], top_p: sampling[1], top_k: sampling[2] } : {}),
+  ...(oddsK ? { logprobs: true, top_logprobs: oddsK } : {}),
+});
+// [token, logprob, [[token, logprob] x K]] per word: the same content as tool-score's odds, in a smaller shape
+// 13 Nov: which words the odds cover. The server may give odds for the answer only, or for the thinking too; each turn says which
+// (think+answer, answer-only, or answer when there was no thinking), so a trainer never mistakes answer odds for thinking odds.
+const oddsCover = (packed, reasoning) => {
+  const r = String(reasoning || '').replace(/\s+/g, ' ').trim(); if (!r) return 'answer';
+  const text = packed.map((x) => x[0]).join('').replace(/\s+/g, ' ');
+  return text.includes(r.slice(0, 40)) || text.includes(r.slice(-40)) ? 'think+answer' : 'answer-only';
+};
+const packOdds = (lp) => (lp?.content || []).map((x) => [x.token, Math.round(x.logprob * 1e4) / 1e4, (x.top_logprobs || []).map((y) => [y.token, Math.round(y.logprob * 1e4) / 1e4])]);
 // --avoid <folders>: requests already in these lesson folders are never written again (first user message, lowercased, gaps squeezed)
 const norm = (t) => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 const avoid = new Set();
@@ -121,16 +215,22 @@ if (onlyJobs && !JOBS2.length) { console.error(`No such job: ${o.jobs}`); proces
 const share = JOBS2.reduce((a, j) => a + j[2], 0);
 for (const [job, what, w] of JOBS2) {
   const want = Math.ceil((target * 0.92 * w) / share);
-  let tries = 0;
-  while (ideas.filter((i) => i.job === job).length < want && tries++ < (onlyJobs ? 120 : 40)) {
+  // 13 Nov: with --parallel, idea batches go out several at once (they used one slot of a 32-slot server, one at a time);
+  // a round sends only as many 25-idea batches as the job still needs
+  let batch = 0; const cap = onlyJobs ? 120 : 40;
+  while (ideas.filter((i) => i.job === job).length < want && batch < cap) {
     await pauseGate(L.out); if (Date.now() > until) await stop(0);
-    const style = STYLES[tries % STYLES.length];
-    const angle = job === 'coding' ? ` Focus this batch on ${CODE_ANGLES[tries % CODE_ANGLES.length]}. Each message is 2 to 4 sentences and names the language and what they are building, with enough detail (or pasted code) to answer properly.` : job === 'science' ? ` Focus this batch on ${SCI_ANGLES[tries % SCI_ANGLES.length]}.` : job === 'languages' ? ` This batch all in ${['French (Canada)', 'Spanish', 'German', 'Ukrainian', 'Tagalog', 'Punjabi', 'French', 'Portuguese'][tries % 8]}.` : job === 'formats' ? ` Each message must state the exact output shape it wants.`  : job === 'twins' ? ` Write them as pairs, one right after the other: first the message where a tool is needed (with the concrete thing pasted, named or attached), then the plain-knowledge question on the same topic. Vary the topics: files, the web, security, office documents, reminders, code, apps.` : job === 'codefix' ? ` Each message includes the broken code or the exact error output or a failing test, and says what it should do.`: '';
-    try {
-      const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `Write 25 different messages a person might type to their desktop AI assistant about: ${what}.${angle} Make them ${style}. Each one different in topic and wording. Make them real and specific, the way a person with an actual task types: concrete file names, numbers, places, times or pasted snippets where they fit, not generic examples. Mix easy and tricky ones, including a few where the right move is less obvious. Use neutral or no names.${toolboxNote}${job === 'clarify' || job === 'default' ? '' : ' Each message gives every detail needed (names, paths, times, amounts), so the assistant can act at once without asking.'} Reply with only a JSON array of strings.` }], max: 2500, temperature: 1.0 });
-      const arr = JSON.parse((msg.content || '').match(/\[[\s\S]*\]/)?.[0] || '[]');
-      for (const t of arr) add(job, t);
-    } catch (e) { console.log(`ideas ${job}: ${e.message.slice(0, 80)}`); }
+    const k = Math.max(1, Math.min(parallel, cap - batch, Math.ceil((want - ideas.filter((i) => i.job === job).length) / 25)));
+    await Promise.all(Array.from({ length: k }, async () => {
+      const tries = ++batch;
+      const style = STYLES[tries % STYLES.length];
+      const angle = job === 'coding' ? ` Focus this batch on ${CODE_ANGLES[tries % CODE_ANGLES.length]}. Each message is 2 to 4 sentences and names the language and what they are building, with enough detail (or pasted code) to answer properly.` : job === 'science' ? ` Focus this batch on ${SCI_ANGLES[tries % SCI_ANGLES.length]}.` : job === 'languages' ? ` This batch all in ${['French (Canada)', 'Spanish', 'German', 'Ukrainian', 'Tagalog', 'Punjabi', 'French', 'Portuguese'][tries % 8]}.` : job === 'formats' ? ` Each message must state the exact output shape it wants.`  : job === 'twins' ? ` Write them as pairs, one right after the other: first the message where a tool is needed (with the concrete thing pasted, named or attached), then the plain-knowledge question on the same topic. Vary the topics: files, the web, security, office documents, reminders, code, apps.` : job === 'codefix' ? ` Each message includes the broken code or the exact error output or a failing test, and says what it should do.`: '';
+      try {
+        const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `Write 25 different messages a person might type to their desktop AI assistant about: ${what}.${angle} Make them ${style}. Each one different in topic and wording. Make them real and specific, the way a person with an actual task types: concrete file names, numbers, places, times or pasted snippets where they fit, not generic examples. Mix easy and tricky ones, including a few where the right move is less obvious. Use neutral or no names.${toolboxNote}${job === 'clarify' || job === 'default' ? '' : ' Each message gives every detail needed (names, paths, times, amounts), so the assistant can act at once without asking.'} Reply with only a JSON array of strings.` }], max: 2500, temperature: 1.0 });
+        const arr = JSON.parse((msg.content || '').match(/\[[\s\S]*\]/)?.[0] || '[]');
+        for (const t of arr) add(job, t);
+      } catch (e) { console.log(`ideas ${job}: ${e.message.slice(0, 80)}`); }
+    }));
   }
   console.log(`ideas ${job}: ${ideas.filter((i) => i.job === job).length}`);
 }
@@ -175,21 +275,38 @@ const imgPart = (file) => { const b = fs.readFileSync(path.join(picDir, file)); 
 // Mixed order (stable between runs), so stopping early still leaves a mix of every job.
 const h = (s) => crypto.createHash('md5').update(s).digest('hex');
 const order = [...ideas].sort((x, y) => (h(x.id) < h(y.id) ? -1 : 1));
-let n = done.size, i = 0, skipped = 0, rescued = 0;
+let n = done.size, i = 0, skipped = 0, rescued = 0, fixed = 0;
 const queue = order.filter((x) => !done.has(x.id));
-async function one(idea, think, room = 1) { // room 2 = a second try with twice the word budget (build 18)
+async function one(idea, think, room = 1, fix = '') { // room 2 = a second try with twice the word budget (build 18); fix = the reviewer's reason for a failed first try
   const loaded = new Set(kit.guessGroups(idea.text));
   const user = idea.image ? { role: 'user', content: [{ type: 'text', text: idea.text }, imgPart(idea.image)] } : { role: 'user', content: idea.text };
   const saved = [{ role: 'user', content: idea.text, ...(idea.image ? { image: idea.image } : {}) }];
   const live = [user];
+  const odds = []; // this lesson's teacher odds, kept only if the lesson is
+  // 13 Nov: what the writer saw that the saved lesson doesn't hold. Its words and odds were conditioned on it (in effect a context
+  // distillation), so every lesson, reject and odds row says so: style-note (style text by the ask), style-system (style text in the
+  // system prompt), tool-note, act-nudge, review-fix, prefill
+  const ctx = new Set();
   let failNext = idea.job === 'recover' || idea.job === 'codefix';
   for (let step = 0; step < 6; step++) {
     const t0 = toolsFor(loaded); const t = dropTools.size ? { ...t0, tools: (t0.tools || []).filter((x) => !dropTools.has(x.function?.name || x.name)), system: String(t0.system || '').split('\n').filter((ln) => ![...dropTools].some((d) => ln.includes(d))).join('\n') } : t0; // dropped tools leave the offer AND the prompt text
     const sys = tag ? `${t.system}\n\n${tag}` : t.system;
     const set = setKey(sys, t.tools);
     // teacher-only additions (persona, act nudge) go to the server but never into the saved prompt or the set key
-    const teacherOnly = [persona, ACT_JOBS.has(idea.job) ? ACT_NUDGE : ''].filter(Boolean).join('\n\n');
-    const { msg, finish } = await chat(srv.url, { messages: [{ role: 'system', content: teacherOnly ? `${sys}\n\n${teacherOnly}` : sys }, ...live], tools: t.tools, think, max: (think ? 6000 : 3000) * room });
+    const teacherOnly = [stylePos === 'system' ? persona : '', ACT_JOBS.has(idea.job) ? ACT_NUDGE : '', toolNoteOn && TOOL_JOBS.has(idea.job) ? TOOL_NOTE : '',
+      fix ? `A reviewer failed an earlier answer to this same message because: ${fix}. Do it right this time; never mention the review.` : ''].filter(Boolean).join('\n\n');
+    if (persona) ctx.add(stylePos === 'user' ? 'style-note' : 'style-system'); if (ACT_JOBS.has(idea.job)) ctx.add('act-nudge');
+    if (toolNoteOn && TOOL_JOBS.has(idea.job)) ctx.add('tool-note'); if (fix) ctx.add('review-fix'); if (shortPrompt) ctx.add('short-prompt'); if (think && (step ? laterPrefix : thinkPrefix)) ctx.add('prefill');
+    const pre = think ? (step ? laterPrefix : thinkPrefix) : '';
+    // the style note before the person's message goes only to the server (live and saved keep the plain message)
+    const sent = stylePos === 'user' && persona ? live.map((m, mi) => (mi === 0 ? { ...m, content: typeof m.content === 'string' ? `(Note for how you think, never mention it: ${persona})\n\n${m.content}` : [{ type: 'text', text: `(Note for how you think, never mention it: ${persona})` }, ...m.content] } : m)) : live;
+    const tsys = shortPrompt ? (tag ? `${SHORT_SYS}\n\n${tag}` : SHORT_SYS) : sys;
+    const { msg, finish, logprobs, oddsGaps } = await chat(srv.url, { messages: [{ role: 'system', content: teacherOnly ? `${tsys}\n\n${teacherOnly}` : tsys }, ...sent, ...(pre ? [{ role: 'assistant', content: '', reasoning_content: pre }] : [])], tools: t.tools, think, max: (think ? 6000 : 3000) * room, ...extraBody(think, idea.job) });
+    if (oddsK) { const pk = packOdds(logprobs); odds.push({ step, set, covers: oddsCover(pk, msg.reasoning_content), ...(pre ? { given: pre } : {}), ...(oddsGaps !== undefined ? { gaps: oddsGaps } : {}), odds: pk }); }
+    // llama-server (live, 13 Nov) sends the prefill back at the start of reasoning_content; another server may send only what
+    // follows it. Prepend only when it isn't there already (it read "NeedsNeeds..."). The odds cover the writer's own words only.
+    let echoed = false;
+    if (pre) { const rc = String(msg.reasoning_content || ''); echoed = rc.startsWith(pre); if (!echoed) msg.reasoning_content = pre + rc; if (oddsK) odds.at(-1).given_echoed = echoed; }
     if (finish === 'length') throw new Error('ran out of room');
     const a = { role: 'assistant', content: msg.content || '', ...(msg.reasoning_content ? { reasoning: msg.reasoning_content } : {}), ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}), set };
     saved.push(a); live.push({ role: 'assistant', content: a.content, ...(a.tool_calls ? { tool_calls: a.tool_calls } : {}) });
@@ -204,13 +321,21 @@ async function one(idea, think, room = 1) { // room 2 = a second try with twice 
   }
   const last = saved[saved.length - 1];
   if (last.role !== 'assistant' || !String(last.content || '').trim()) throw new Error('no final answer (ran out of steps)');
+  const [leaked, cleanAnswer] = leakCheck(last.content);
+  if (leaked) { if (leakMode === 'strip' && cleanAnswer.trim()) last.content = cleanAnswer; else throw new Error('style leaked into the final answer'); }
+  const thought = saved.filter((m) => m.role === 'assistant' && m.reasoning).map((m) => m.reasoning).join('\n');
+  const score = think && styleMarkers.length ? styleScore(thought, styleMarkers) : null;
+  if (score !== null && score < styleMin) throw new Error(`style score ${score.toFixed(2)} under ${styleMin}`);
   if (review) {
     const v = await grade(idea, saved);
     // 12 Nov (later): a review that couldn't be read is neither kept nor rejected; it waits in needs-review.jsonl for a second look
     if (v.unparsed) { appendJsonl(path.join(dir, 'needs-review.jsonl'), { idea: idea.id, job: idea.job, think, why: v.why, messages: saved }); throw new Error('review unparsed'); }
-    if (!v.ok) { appendJsonl(path.join(dir, 'rejected.jsonl'), { idea: idea.id, job: idea.job, think, why: v.why, messages: saved }); throw new Error(`review: ${v.why}`); }
+    if (!v.ok) { appendJsonl(path.join(dir, 'rejected.jsonl'), { idea: idea.id, job: idea.job, think, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), ...(fix ? { retry: 'review' } : {}), why: v.why, messages: saved }); const e = new Error(`review: ${v.why}`); e.why = v.why; throw e; }
   }
-  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, bob_src: kit.bobSrc, messages: saved });
+  // a lesson fixed after a failed review carries retry: 'review'; its reject sits in rejected.jsonl under the same idea, so
+  // make-pairs.mjs turns the two into a right-vs-wrong pair (the reviewer's reason goes along as why)
+  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, bob_src: kit.bobSrc, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), ...(fix ? { retry: 'review' } : {}), ...(splitTag ? { split: splitTag } : {}), ...(score !== null ? { style_score: Math.round(score * 100) / 100 } : {}), ...(leaked ? { leak: 'stripped' } : {}), ...(think && thinkPrefix ? { think_prefix: thinkPrefix } : {}), messages: saved });
+  if (oddsK) appendJsonl(path.join(dir, 'odds.jsonl'), { idea: idea.id, job: idea.job, think, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), k: oddsK, turns: odds });
 }
 // The teacher as a strict reviewer: right tool or rightly none, exact arguments, results read, a final answer that does the job.
 const RULES = { restraint: 'This message only wants an answer Bob knows: calling any tool is a FAIL.', precise: 'Every detail from the request (names, paths, dates, amounts) must appear exactly in the tool arguments.', agent: 'Each step must use what the previous result returned; the final answer must sum up what was done.' };
@@ -231,7 +356,7 @@ async function grade(idea, saved) {
 async function worker() {
   while (queue.length && n < target) {
     await pauseGate(L.out); if (Date.now() > until) return;
-    const idea = queue.shift(); const think = thinkMode === 'all' ? true : thinkMode === 'none' ? false : (i++ % 2) === 1;
+    const idea = queue.shift(); const think = toolEffort && TOOL_JOBS.has(idea.job) ? (i++, true) : thinkMode === 'all' ? true : thinkMode === 'none' ? false : thinkShare != null ? Math.floor((i + 1) * thinkShare) > Math.floor(i++ * thinkShare) : (i++ % 2) === 1;
     try { await one(idea, think); n++; if (n % 25 === 0) console.log(`${n}/${target} lessons`); }
     catch (e) {
       // build 18 (8 Nov, the owner asked): a lesson that ran out of room is tried ONCE more instead of being dropped. With thinking on, the
@@ -240,10 +365,15 @@ async function worker() {
         try { await one(idea, false, think ? 1 : 2); n++; rescued++; if (n % 25 === 0) console.log(`${n}/${target} lessons`); continue; }
         catch (e2) { skipped++; console.log(`skip ${idea.id}: ${e2.message.slice(0, 80)} (twice: with and without room for thinking)`); continue; }
       }
+      // 13 Nov: a lesson the review failed is tried ONCE more, with the reviewer's reason shown to the writer (teacher-only)
+      if (e.why && !o['no-fix']) {
+        try { await one(idea, think, 1, e.why); n++; fixed++; if (n % 25 === 0) console.log(`${n}/${target} lessons`); continue; }
+        catch (e2) { skipped++; console.log(`skip ${idea.id}: ${e2.message.slice(0, 80)} (twice: the fix failed too)`); continue; }
+      }
       skipped++; console.log(`skip ${idea.id}: ${e.message.slice(0, 100)}`);
     }
   }
 }
 await Promise.all(Array.from({ length: parallel }, worker));
-console.log(`Done for now: ${n} lessons in ${F.lessons} (${skipped} ideas skipped, ${rescued} saved by a second try)`);
+console.log(`Done for now: ${n} lessons in ${F.lessons} (${skipped} ideas skipped, ${rescued} saved by a second try, ${fixed} fixed after a failed review)`);
 await stop(0);
