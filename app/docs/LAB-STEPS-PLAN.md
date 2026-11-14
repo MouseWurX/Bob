@@ -121,39 +121,42 @@ Rules every step follows:
 
 In protocol order. "Stage" is the PR #201 order; any step can also run on its own.
 
-| Stage | Step | Script | Where |
-|---|---|---|---|
-| 1 Baseline and data | Benchmark a brain (Challenges, quiz, tools) | existing Lab jobs, `tool-score.mjs` | both |
-| 1 | Save odds with every answer (top-K) | `write-lessons.mjs --odds` | rented |
-| 1 | Scrub a set or folder | `scrub-data.mjs` | here |
-| 1 | Clean a lesson set into a new version | `clean-lessons.mjs` | here |
-| 1 | Make right-vs-wrong pairs | `make-pairs.mjs` | here |
-| 1 | Make checks and probes | `make-checks.mjs`, `make-probes.mjs` | here |
-| 2 Clean first | Evil check | `evil-check.mjs` | both |
-| 2 | Steer with a direction | `evil-steer.mjs` | rented |
-| 2 | Expert and neuron sweep | `evil-sweep.mjs` | rented |
-| 2 | Patching (new) | `patch-trace.mjs` (to write) | rented |
-| 2 | Sparse-autoencoder features (new) | `sae-train.py`, `sae-read.mjs` (to write) | rented |
-| 2 | Refusal habit, try it first | `src/lab-home-jobs.js` | here |
-| 3 Analysis | REAP scores | `reap-calibrate.mjs`, `reap-pick.mjs`, `reap-lastlayer.mjs` | rented |
-| 3 | Expert maps per target and per layer | `trace-read.mjs` | both |
-| 3 | Carry the map over to a cut | `trace-carryover.mjs` | here |
-| 3 | Usage map | `src/lab-usage.js` | here |
-| 3 | Watch page recording | `src/lab-watch.js`, `forge/fnri-remote.mjs` | both |
-| 3 | Tool interview | `tool-interview.mjs`, `tool-pick.mjs`, `tool-wish.mjs` | rented |
-| 3 | Tool wording A/B, per brain family | `tool-wording.mjs`, `natural-tools.mjs` | rented |
-| 4 Train | Train the full brain | Forge plan `train_teacher` | rented |
-| 4 | Doctor lessons from failures (new) | `doctor-lessons.mjs` (to write, from #228) | here |
-| 4 | Sort by odds for "look it up when unsure" (new) | `odds-sort.mjs` (to write, from #228) | here |
-| 5 Cut in steps | Cut one rung | Forge plan, Make a brain | both |
-| 6 Heal | Teach it back (distill) | Forge plan `heal` | rented |
-| 7 Several targets | Targets with weights | Forge plan `targets` | rented |
-| 8 Finish | On-policy and reward pass | Forge plan `heal.onpolicy`, `grpo` | rented |
-| 9 Blend | Blend | Forge plan `merge` | rented |
-| 10 Live dials | Sweep experts per word and layer dials | `expert-sweep.mjs`, `set-live.mjs` | both |
-| 10 | Bake chosen dials into a copy | Forge plan `surgery` | rented, on the owner's go |
-| 11 Publish | Stage for Hugging Face | `hf-stage.mjs` (to write: scrub, card, file list, hashes) | here |
-| 11 | Upload | existing HF upload | here, on the owner's typed go |
+| Stage | Step | Professional name | Script | Where |
+|---|---|---|---|---|
+| 1 Baseline and data | Benchmark a brain (Challenges, quiz, tools) | Baseline evaluation | existing Lab jobs, `tool-score.mjs` | both |
+| 1 | Save odds with every answer (top-K) | Teacher logit capture (top-K logprobs) | `write-lessons.mjs --odds` | rented |
+| 1 | Scrub a set or folder | PII scrubbing | `scrub-data.mjs` | here |
+| 1 | Clean a lesson set into a new version | Dataset cleaning and versioning | `clean-lessons.mjs` | here |
+| 1 | Make right-vs-wrong pairs | Preference pair construction | `make-pairs.mjs` | here |
+| 1 | Make checks and probes | Held-out eval and probe set construction | `make-checks.mjs`, `make-probes.mjs` | here |
+| 2 Clean first | Evil check | Harmful-behaviour red-team eval | `evil-check.mjs` | both |
+| 2 | Steer with a direction | Activation steering (control vector) | `evil-steer.mjs` | rented |
+| 2 | Expert and neuron sweep | Ablation sweep (experts and residual-stream neurons) | `evil-sweep.mjs` | rented |
+| 2 | Patching (new) | Activation patching (causal tracing) | `patch-trace.mjs` (to write) | rented |
+| 2 | Sparse-autoencoder features (new) | Sparse autoencoder (SAE) feature analysis | `sae-train.py`, `sae-read.mjs` (to write) | rented |
+| 2 | Refusal habit, try it first | Refusal-direction ablation (abliteration), live | `src/lab-home-jobs.js` | here |
+| 3 Analysis | REAP scores | REAP expert saliency scoring | `reap-calibrate.mjs`, `reap-pick.mjs`, `reap-lastlayer.mjs` | rented |
+| 3 | Expert maps per target and per layer | Router trace and expert attribution | `trace-read.mjs` | both |
+| 3 | Carry the map over to a cut | Expert attribution transfer | `trace-carryover.mjs` | here |
+| 3 | Usage map | Expert activation profiling (imatrix) | `src/lab-usage.js` | here |
+| 3 | Watch page recording | Router activation visualisation (fNRI) | `src/lab-watch.js`, `forge/fnri-remote.mjs` | both |
+| 3 | Tool interview | Tool-use failure analysis | `tool-interview.mjs`, `tool-pick.mjs`, `tool-wish.mjs` | rented |
+| 3 | Tool wording A/B, per brain family | Tool-schema prompt A/B testing | `tool-wording.mjs`, `natural-tools.mjs` | rented |
+| 4 Train | Train the full brain | Full fine-tune (SFT) before pruning | Forge plan `train_teacher` | rented |
+| 4 | Doctor lessons from failures (new) | Error-driven data correction | `doctor-lessons.mjs` (to write, from #228) | here |
+| 4 | Sort by odds for "look it up when unsure" (new) | Confidence calibration and abstention data | `odds-sort.mjs` (to write, from #228) | here |
+| 5 Cut in steps | Cut one rung | Iterative expert pruning with merging | Forge plan, Make a brain | both |
+| 6 Heal | Teach it back (distill) | Knowledge distillation (healing) | Forge plan `heal` | rented |
+| 7 Several targets | Targets with weights | Multi-objective preference optimisation (ORPO, DPO, KTO) | Forge plan `targets` | rented |
+| 8 Finish | On-policy and reward pass | On-policy distillation and GRPO | Forge plan `heal.onpolicy`, `grpo` | rented |
+| 9 Blend | Blend | Model merging (linear, TIES, DARE) | Forge plan `merge` | rented |
+| 10 Live dials | Sweep experts per word and layer dials | Inference-time hyperparameter sweep (top-k experts, layer scaling) | `expert-sweep.mjs`, `set-live.mjs` | both |
+| 10 | Bake chosen dials into a copy | Weight editing (baking interventions) | Forge plan `surgery` | rented, on the owner's go |
+| 11 Publish | Stage for Hugging Face | Release staging (model card, manifest, hashes) | `hf-stage.mjs` (to write: scrub, card, file list, hashes) | here |
+| 11 | Upload | Model and dataset publishing | existing HF upload | here, on the owner's typed go |
+
+Every step has both names. The plain one is on its card; Professional mode adds the proper one, as the Lab's other
+pages do since 1.5.199, and each proper name gets a glossary entry.
 
 Every stage ends with the benchmark step on the same fixed sample set, chosen once at stage 1.
 
