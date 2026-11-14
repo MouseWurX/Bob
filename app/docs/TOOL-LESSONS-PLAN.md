@@ -114,6 +114,19 @@ step with no Bob tool is reworked into one Bob can do, or the trace is dropped. 
 what Bob's tool really returns. The original set stays untouched in `distill/`. Apache 2.0 allows changes; the
 converted set says what was changed and keeps the credit to Moonshot AI and Lambda.
 
+## 3f. One uniform suite
+
+Every lesson with a tool call, old and new, ends up in the same shape:
+
+- **Stored once, in one shape:** Bob's tool names and inputs as chosen after the interviews. The family wording is
+  added only at training time (`src/tool-sets.js`), so one stored lesson serves every family.
+- **A one-time conversion** of everything older: Bob's own 16 sets, the Kimi traces, the other outside agent sets, and
+  the lessons written with an old Bob's tool text (v5 used 1.5.108). Where a tool's shape didn't change, the lesson is
+  left as it is. Where it did (for example a new save path and name), the call and its result are updated to match.
+- **Checked after converting:** every call must pass today's input checks, and the fake result must be what the real
+  tool returns. A lesson that can't be converted cleanly is dropped, not guessed.
+- **Originals stay untouched.** The converted suite is a new version beside them, with a list of what changed.
+
 ## 3d. Coding, the way courses teach it
 
 The most common lesson types from college and university coding, software engineering, code fixing and error
@@ -245,7 +258,7 @@ is fixed before any write.
 | `search-pairs.mjs` | Sorts answers into the four boxes from their odds and checks, makes search and don't-search pairs |
 | `write-lessons.mjs` fixes | Realistic fake results per tool, reviewer without the JSON rule, `--from-fixes` |
 | `tool_reward.py` | The search line in the reward |
-| `convert-kimi.mjs` | Kimi traces to Bob's tools and results, after the shape pick |
+| `convert-lessons.mjs` | The one-time conversion to one shape (section 3f), Kimi and outside sets included, after the shape pick |
 | `guided-lessons.mjs` | Keeps the failed attempt, masks it from the loss, adds the think-it-through and the right path |
 | `tutorial-lessons.mjs` | Licence check, tutorial to requests, headless Blender and Unreal runs, app version tag |
 
