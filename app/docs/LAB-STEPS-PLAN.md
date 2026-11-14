@@ -188,9 +188,39 @@ all off unless picked:
 | Merge into base | Bakes the add-on into a copy, on the owner's go. |
 | Checkpoint resume | Picks up where it stopped. Already there. |
 
-The smoke test trains 20 steps on 50 lessons and checks that the frozen layers didn't move and the loss fell. A
+The smoke test trains once through 50 lessons (about a minute) and checks that the frozen layers didn't move and
+the brain got better on those lessons. A
 fine-tune of about 9B or less in 4-bit fits a 16 GB card at home; anything bigger rents a card. Our own runs stay on
 rentals.
+
+### The nightly learning loop (pipeline)
+
+Off by default. One saved pipeline that lets Bob learn from his own day, in two layers.
+
+**Fast layer: memory, no training, works the same day.** These parts exist today, each off by default; the loop
+switches them on together and feeds them:
+- **Fix notes** (`src/tool-learn.js`): when a tool fails and then works, one line on what fixed it rides on that
+  tool next time.
+- **Fact memory** (`src/recall.js`): facts Bob saves are recalled only when they fit the message.
+- **Tool record** (`src/tool-record.js`): every call word for word, the loop's raw material.
+
+**Slow layer: a LoRA add-on, trained at night.** Each night:
+
+| Step | (i) Plain words |
+|---|---|
+| Collect | Takes the day's tool record. |
+| PII scrub | Removes names, paths and keys. |
+| Error-driven correction | Turns each failure into a corrected lesson (#228 format). New lessons only, never held-out ones. |
+| Replay mix | Adds a slice of older lessons so other skills aren't forgotten. |
+| LoRA | Trains a small add-on on a rented card, after its smoke test. |
+| Held-out eval | Scores the add-on on the report card against the one in use. |
+| Swap | Puts the new add-on in only if it scores better and the owner says go. |
+
+Rules: the rental needs the owner's typed go (once per night, or a standing go with caps the owner types). Nothing
+from surgery, steering or sweeps trains. Every add-on is kept, so any night can be rolled back with one press. If a
+night's add-on scores worse, it's kept for the record and not used. Until engine patch 0016 (adapter at load) is
+built, "swap" means baking the add-on into a new copy of the brain; after it, the add-on loads beside the brain and
+turns on or off live.
 
 ### Pipelines
 
@@ -257,7 +287,8 @@ Each slice is one release, built through bob-wip, the builder and the PC check.
    a dry run against the fake engine, and its Help page.
 4. **Runs and comparison.** The Runs page, compare, charts, cost per run from the rental record, "run again".
 5. **Pipelines.** Save, pack rented steps into one plan, pick up where it stopped.
-6. **New methods.** Doctor lessons and odds sorting (#228), then HF staging, then patching, then SAE features.
+6. **New methods.** Doctor lessons and odds sorting (#228), then the nightly learning loop, then HF staging, then
+   patching, then SAE features.
    Each gets its own small design first.
 
 What needs the owner: the go on this order, and later the usual typed go for any rental, upload or delete. No
