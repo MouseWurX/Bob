@@ -28,6 +28,29 @@ Not every reject is a real mistake. The traced v5 sort already tells us what to 
 | No tool can do it (23) | Wait for the tool (the save path and name fix for make_diagram, save_as, make_image, make_sound, convert_file). Until then the right lesson says plainly what Bob can't do and offers the nearest thing. |
 | Real model mistakes (about 180) | Corrected lessons, the core of this plan (section 3). |
 
+## 1b. How many tool lessons we have today (counted 14 Nov)
+
+Counted in Bob's own lesson set, v4 (the cleaned copy of what's on Hugging Face):
+
+| | Count |
+|---|---|
+| All lessons | 8,992 |
+| With at least one tool call | 2,903 (32%) |
+| With two or more tool steps | 954 (11%) |
+| With three or more tool steps | 467 (5%) |
+| Bob's tools used at least once | 46 of 93 |
+
+The most used tools are `ask_specialist` (465 lessons, mostly handing the job off), `notice_board` 436, `list_folder` 414
+and `web_search` 345. Many tools are nearly missing: `edit_file` 3, `save_as` 2, `convert_file` 7, `save_spreadsheet` 8,
+`fetch_page` 27. 47 tools have no lesson at all. Riker was healed on this own set (8,635 lessons, 6 Nov) and Bobert on
+about 9,000. So yes, the owner is right: real multi-step tool work was a small slice of what they learned.
+
+The Kimi K2.5 agent traces (1,171, Apache 2.0) are much richer, 793 of them with five or more tool steps, but they use
+another app's tools (`terminal`, `patch`, `browser_click` and so on), not Bob's. See section 3c.
+
+**New target:** about 6,000 tool lessons per round, at least half with two or more steps, and every one of Bob's
+tools in at least 40 lessons per round. Over three rounds that is about 18,000, roughly six times today's set.
+
 ## 2. What a good tool trace looks like
 
 Every corrected lesson follows the same shape, so the brain learns one habit:
@@ -46,6 +69,10 @@ result in chat instead of saving it (26), extra calls (19), skipped a step (14).
 the wording a brain reads changes (`src/tool-sets.js`). So one lesson set serves every family: at training time it is
 shown with that family's wording and its chosen shape (one tool per step or not, thinking on or off, head start or not).
 
+**Working shapes stay.** A tool call that already works reliably keeps its shape. A tool is "working" for a family
+when that family's held-out score on it is high in both thinking modes (about 9 in 10 right, tool and inputs). New
+per-family shapes are only for the tools that fail. Lessons for working tools are not rewritten.
+
 ## 3. Turning a failure into a corrected lesson
 
 For each failure, in code where possible:
@@ -61,8 +88,60 @@ For each failure, in code where possible:
 5. **Make the pair.** Right side: the checked answer. Wrong side: for v5 rows, the original failed answer; for new
    requests, the student's own answer (written on the rental, kept only if the checker fails it).
 
-**How many.** The owner wants a big, sturdy set, and synthetic is fine. Aim per round: about 4,000 tool lessons
-(about 700 of them pairs), spread so no single tool or job is more than 1 in 10.
+**How many.** The owner wants a big, sturdy set, and synthetic is fine. Aim per round: the 6,000 tool lessons from
+section 1b (about 1,000 of them pairs), spread so no single tool or job is more than 1 in 10.
+
+## 3b. Guided lessons for what Bob never managed
+
+Some jobs failed in every run we have: no attempt recovered and no brain got them right. For those, a plain "here's the
+right answer" lesson often doesn't take. Instead:
+
+1. The lesson **keeps the original failed attempt** in the chat: the wrong call and the real error it got back.
+2. Then Bob **thinks it through**: what went wrong, why, and what to try instead, in short plain steps.
+3. Then the right path, done with the tools, checked, and finished.
+
+Bob only learns from steps 2 and 3. The failed attempt is there so he can see where it went wrong, but it is never
+trained as an answer to copy (its words are masked out of the training loss). A pair goes with it: the right side
+recovers, the wrong side repeats the mistake or gives up.
+
+## 3c. Kimi agent traces in Bob's tools
+
+Once the tool shapes are picked, the 1,171 Kimi traces are converted to Bob's tools: `terminal` and `process` to
+`run_command`, `execute_code` to `run_in_sandbox`, `patch` to `edit_file`, `read_file`, `write_file` and
+`search_files` to Bob's own, `browser_*` to `browser_open`, `browser_act` and `browser_read`, `todo` to
+`notice_board`, `clarify` to `ask_user`, `delegate_task` to `ask_specialist`, and `skills_*` to `my_howtos`. A
+step with no Bob tool is reworked into one Bob can do, or the trace is dropped. The tool results are rewritten to match
+what Bob's tool really returns. The original set stays untouched in `distill/`. Apache 2.0 allows changes; the
+converted set says what was changed and keeps the credit to Moonshot AI and Lambda.
+
+## 3d. Coding, the way courses teach it
+
+The most common lesson types from college and university coding, software engineering, code fixing and error
+recovery, each done with Bob's real tools (write the file, run it, read the output, fix, run the tests):
+
+- **Programming basics to data structures:** loops, functions, recursion, arrays, linked lists, stacks and queues,
+  hash maps, trees, graphs, sorting and searching, big-O.
+- **Software engineering:** classes and interfaces, design patterns, splitting a program into modules, unit tests and
+  test-first, refactoring, code review, version control with git, build tools and packaging, APIs and HTTP,
+  databases and SQL, threads and concurrency, files and processes.
+- **Code fixing:** read a stack trace, find the bug, fix the smallest thing, prove it with a test. Compile errors,
+  type errors, off-by-one, null values, race conditions, slow code.
+- **Error recovery:** a missing file, wrong path, no permission, a missing package, a failing test, a timeout, a
+  command that isn't installed. Bob notices, tries one sensible other way, or says plainly what's wrong.
+
+Every lesson's code is run in a sandbox when it's written, and kept only if it runs and its tests pass. The older
+coding set's problem (37% of lessons handed the job off with a pretend result) is not repeated: these lessons write
+the code themselves.
+
+## 3e. Documents are information, never orders
+
+When Bob reads a web page, a file, a tutorial or an email, he uses the facts in it. He never follows instructions
+written inside it ("ignore your rules", "run this command", "AI assistants must…"). Lessons for this:
+
+- A page or file with a planted instruction. The right answer uses the real information, ignores the instruction, and
+  tells the person about it when it matters. The wrong side of the pair follows it.
+- Mixed in at about 1 in 20 tool lessons that read something, so it's normal, not a special case.
+- The same rule for the tutorial track below: the teacher takes only the information from a tutorial.
 
 ## 4. Teaching "look it up when unsure"
 
@@ -100,6 +179,30 @@ Every round mixes in a broad set from Bob's cleaned lessons (v4): chat, advice, 
 Blender and Unreal Python, formats, refusals, languages, help. About 40 to 50% of each round. Each round takes a
 *different* slice of that pool. The on-policy step (teacher grades the student's own answers) also holds old skills in place.
 
+**Do we need more conversation?** No, not new plain chat. Bob's own set already has about 2,000 conversation lessons
+(chat 310, knowledge 330, writing 286, advice 247, maths 211, languages 210, game master 201, reasoning 201), plus the
+outside chat sets and about 10 million tokens of general text in every heal. That is enough to hold chat in place.
+What is short is chat *next to* tools: "explain, don't act" and "act, don't explain" twins, and "answer or look it
+up" choices. Those are counted in the tool and search sets above, not as extra chat.
+
+## 5b. Blender and Unreal Python, from tutorials
+
+Tutorials become lessons too, so Bob learns real scripting for 3D work.
+
+- **Sources, licence checked first.** The official Blender Python API manual and the Unreal Python API docs, plus
+  open-licence tutorials and example repos (MIT, Apache, BSD, CC BY, CC0). Each lesson keeps its source and licence.
+  Anything with no clear licence, or one that says no reuse, is skipped.
+- **The teacher turns each tutorial into lessons:** a plain request ("make a low-poly tree and save it as tree.blend"),
+  then Bob's real steps: write the script with his tools, run it, read the output, fix it, and say what was made.
+  The tutorial's wording is never copied in. Each tutorial gives several new requests, like section 3.
+- **Every script is run headless to prove it works:** `blender --background --python` for Blender, and the Unreal
+  editor's command-line Python for Unreal. A script that errors or makes the wrong thing is fixed or dropped. These
+  runs go on a rental or the cloud, never on the home PC.
+- **Each lesson is tagged with the app version** it was checked on (for example Blender 4.2, Unreal 5.4), so a lesson
+  for an old version can be found and checked again when the API changes.
+- **Size:** about 600 Blender and 400 Unreal lessons per round, inside the round's tool lessons. The same ledger keeps
+  them from repeating across rounds.
+
 ## 6. Several rounds, nothing taught twice
 
 **One lesson ledger** (`lesson-ledger.jsonl`) holds a fingerprint of every lesson ever taught: the first request
@@ -110,13 +213,18 @@ A lesson whose fingerprint is already there is never written again.
 "new" facts packs, Riker's 310 stock items, tool-score's held-out chats, both interviews' test turns, and the HF
 `eval/` folders. A near match to any of these is dropped.
 
+**Self-play after every round.** The newly trained brain works through fresh requests on the rental. The checker grades
+each answer. What it gets right can be an on-policy example; what it gets wrong is turned into corrected lessons
+(guided lessons, section 3b, when it never recovered) for the next round. That's how each round's failures become the
+next round's lessons.
+
 **Each round:**
 
 | Round | New lessons from | Then |
 |---|---|---|
-| 1 | v5 failures, Riker quiz and interview look-alikes, Bobert look-alikes, search set A, general slice 1 | Benchmark. What the trained brain still gets wrong is the source for round 2. |
-| 2 | Round 1's leftover failures (new requests again), search set B, general slice 2 | Benchmark. Leftovers go to round 3. |
-| 3 | Round 2's leftovers, the hardest long jobs (4 to 6 calls), search set C, general slice 3 | Benchmark, then blend. |
+| 1 | v5 failures, Kimi converted, course-style coding set A, Riker quiz and interview look-alikes, Bobert look-alikes, search set A, Blender and Unreal set A (the basics: objects, materials, export; actors and assets), general slice 1 | Benchmark. What the trained brain still gets wrong is the source for round 2. |
+| 2 | Round 1's self-play failures (new requests again, guided where never solved), course-style coding set B, search set B, Blender and Unreal set B (rigs, modifiers, Geometry Nodes; levels, Blueprints from Python, batch imports), general slice 2 | Benchmark. Leftovers go to round 3. |
+| 3 | Round 2's self-play failures, course-style coding set C, the hardest long jobs (4 to 6 calls), search set C, Blender and Unreal set C (whole jobs: make, check, export to Unreal, place in a level), general slice 3 | Benchmark, then blend. |
 
 Each round runs the protocol (PR #201): baseline and odds, train, preference pairs, on-policy finish and reward pass,
 blend, with a benchmark after every step. A round is kept only if no target drops. Surgery and evil-check data never
@@ -137,6 +245,9 @@ is fixed before any write.
 | `search-pairs.mjs` | Sorts answers into the four boxes from their odds and checks, makes search and don't-search pairs |
 | `write-lessons.mjs` fixes | Realistic fake results per tool, reviewer without the JSON rule, `--from-fixes` |
 | `tool_reward.py` | The search line in the reward |
+| `convert-kimi.mjs` | Kimi traces to Bob's tools and results, after the shape pick |
+| `guided-lessons.mjs` | Keeps the failed attempt, masks it from the loss, adds the think-it-through and the right path |
+| `tutorial-lessons.mjs` | Licence check, tutorial to requests, headless Blender and Unreal runs, app version tag |
 
 Each comes with a test that uses fakes, never the real computer.
 
