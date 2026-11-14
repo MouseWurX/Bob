@@ -143,6 +143,7 @@ In protocol order. "Stage" is the PR #201 order; any step can also run on its ow
 | 3 | Tool interview | Tool-use failure analysis | `tool-interview.mjs`, `tool-pick.mjs`, `tool-wish.mjs` | rented |
 | 3 | Tool wording A/B, per brain family | Tool-schema prompt A/B testing | `tool-wording.mjs`, `natural-tools.mjs` | rented |
 | 4 Train | Train the full brain | Full fine-tune (SFT) before pruning | Forge plan `train_teacher` | rented |
+| 4 | Teach with a small add-on (LoRA), with frozen layers | Low-rank adaptation (LoRA, QLoRA, DoRA) with layer freezing | `forge/pod/lora.py`, `heal.py` (options to add) | both |
 | 4 | Doctor lessons from failures (new) | Error-driven data correction | `doctor-lessons.mjs` (to write, from #228) | here |
 | 4 | Sort by odds for "look it up when unsure" (new) | Confidence calibration and abstention data | `odds-sort.mjs` (to write, from #228) | here |
 | 5 Cut in steps | Cut one rung | Iterative expert pruning with merging | Forge plan, Make a brain | both |
@@ -159,6 +160,34 @@ Every step has both names. The plain one is on its card; Professional mode adds 
 pages do since 1.5.199, and each proper name gets a glossary entry.
 
 Every stage ends with the benchmark step on the same fixed sample set, chosen once at stage 1.
+
+### LoRA, and everything it can do
+
+Today `forge/pod/lora.py` (used by `heal.py` and `train_teacher`) puts LoRA on every linear layer, LoRA or full
+training or frozen on the experts (`--experts lora|full|frozen`), and keeps the router fully trainable. It can't yet
+freeze chosen layers or choose which parts get LoRA. The step adds these options, all in the plan and the form,
+all off unless picked:
+
+| Option | Professional name | What it does |
+|---|---|---|
+| Freeze layers | Layer freezing | Pick layers (like 0-11, or "all but the last 8") that don't change at all. |
+| Which parts learn | Target modules | Attention, feed-forward, experts, router, each on or off. |
+| Only some experts | Expert-selective LoRA | LoRA only on the experts a target's map picks (from the expert maps step). |
+| Size of the add-on | Rank and alpha | How many numbers the add-on has, and how strongly it counts. |
+| Rank per layer | Layer-wise rank | Bigger add-ons where the maps show the work is. |
+| Steadier at big sizes | rsLoRA | Scales by the square root of rank so big ranks train evenly. |
+| Faster learning | LoRA+ | The B half learns faster than the A half. |
+| Direction and size apart | DoRA | Learns each weight's size and direction separately; often closer to full training. |
+| Smaller card | QLoRA | Keeps the base brain in 4-bit while the add-on trains, so a bigger brain fits a cheaper card, or a small one fits this computer. |
+| Dropout | LoRA dropout | Drops some inputs while training, against learning lessons by heart. |
+| Keep it separate | Adapter export | Saves the add-on on its own, so it can be turned on, off or mixed without a new brain file. Running one live needs engine patch 0016 (adapter at load), still proposed. |
+| One add-on per target | Multi-adapter training | One for tools, one for a style, and so on, each with its own score. |
+| Mix add-ons | Adapter merging | Adds add-ons together with weights, through `merge.py`. |
+| Bake it in | Merge into base | Folds the add-on into a copy of the brain, on the owner's go. |
+| Pick up where it stopped | Checkpoint resume | Already there: `lora-state.pt` every 100 steps. |
+
+The smoke test trains 20 steps on 50 lessons and checks that the frozen layers didn't move and the loss fell. A
+fine-tune of about 9B or less in 4-bit fits this computer's 16 GB card; anything bigger rents a card.
 
 ### Pipelines
 
