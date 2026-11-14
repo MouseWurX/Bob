@@ -34,6 +34,7 @@ import { editOwnTool } from './edit-own.js';
 import { JobWatch, watchTools } from './meanwhile.js';
 import { notesTool } from './notes.js';
 import { receiptTool } from './receipts.js'; // 🧾 Snap a receipt (off by default)
+import { modTool } from './discord-mod.js'; // 1.5.224 Discord Keep order, for your own chats (off by default)
 import { findDocsTool } from './my-docs.js';
 import { sandboxTool } from './sandbox-code.js';
 import { toolOn as moreOn } from './more-tools.js'; // 🧰 More tools (Settings, How Bob works), each off by default
@@ -218,6 +219,7 @@ export class Brain {
     this.tools.edit_my_message = editOwnTool(this); // Edit his own messages (edit-own.js), only with its setting on
     this.tools.take_note = notesTool(this); // Quick notes (notes.js), only with its setting on
     this.tools.spending_sheet = receiptTool(this); // 🧾 Receipt tracker (receipts.js), only with its setting on
+    this.tools.discord_mod = modTool(this); // Discord Keep order (discord-mod.js), only while it's on
     this.tools.find_in_documents = findDocsTool(cfg, { keeper: () => this.housekeeper }); // Read and search documents (my-docs.js), only with its setting on
     this.tools.run_in_sandbox = sandboxTool(this); // Code sandbox (sandbox-code.js), only with its setting on
     // 🧰 More tools (more-tools.js): each one only while its own switch is on (offTools hides the rest).

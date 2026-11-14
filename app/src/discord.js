@@ -38,6 +38,7 @@ import { readConfigFile, writeConfigFile } from './config.js';
 import { saveKey, forgetPlainKey } from './secret-box.js';
 import { RoomGate } from './room-gate.js';
 import { KeepAwake } from './keep-awake.js';
+import { Moderator, modSettings, cleanModPatch, REVIEW_SESSION } from './discord-mod.js'; // 1.5.224 Keep order (moderation), rules in code
 
 export const TOKEN_ENV = 'BOB_DISCORD_TOKEN';
 export const DISCORD_SESSION = 'discord'; // session ids are discord-<channel id>
@@ -91,7 +92,10 @@ export function discordSettings(cfg) {
     ownerId: ID_RX.test(String(d.ownerId || '')) ? String(d.ownerId) : null,
     ownerName: String(d.ownerName || '').slice(0, 80),
     dmApprove: d.dmApprove === true,
-    dmPictures: d.dmPictures === true
+    dmPictures: d.dmPictures === true,
+    // 1.5.224 Chat on Discord: on keeps today's behaviour. Off: nobody on the server can start a brain job, so no brain
+    // loads for Discord at all; Keep order still runs, as plain rules.
+    chat: d.chat !== false
   };
 }
 
@@ -115,7 +119,7 @@ export function saveDiscord(cfg, patch) {
 // Only these keys, only these types.
 export function cleanDiscordPatch(b = {}, current = {}) {
   const out = {};
-  for (const k of ['enabled', 'caseSensitive', 'share', 'autoAccept', 'keepAwake', 'dmEnabled', 'dmApprove', 'dmPictures']) if (k in b) out[k] = b[k] === true;
+  for (const k of ['enabled', 'chat', 'caseSensitive', 'share', 'autoAccept', 'keepAwake', 'dmEnabled', 'dmApprove', 'dmPictures']) if (k in b) out[k] = b[k] === true;
   if ('wake' in b) { const w = cleanWake(b.wake); if (w) out.wake = w; }
   const list = (v) => [...new Set(String(Array.isArray(v) ? v.join(' ') : v || '').split(/[\s,;]+/).filter((x) => ID_RX.test(x)))].slice(0, 50);
   if ('channels' in b) out.channels = list(b.channels);
@@ -198,7 +202,7 @@ export function storeToken(token, { cfg, platform = process.platform, home = os.
 }
 
 export class DiscordBridge {
-  constructor(brain, { fetchImpl = globalThis.fetch, WebSocketImpl = globalThis.WebSocket, env = rentKeyEnv(), now = Date.now, wait = (ms) => new Promise((r) => setTimeout(r, ms)), store, cleanOpts, gate, awake } = {}) {
+  constructor(brain, { fetchImpl = globalThis.fetch, WebSocketImpl = globalThis.WebSocket, env = rentKeyEnv(), now = Date.now, wait = (ms) => new Promise((r) => setTimeout(r, ms)), store, cleanOpts, gate, awake, modDir, later } = {}) {
     this.brain = brain;
     this.cfg = brain.cfg;
     this.fetch = fetchImpl;
@@ -227,7 +231,11 @@ export class DiscordBridge {
     // The group's own chat and its requests waiting for your OK (kept in Bob's data folder, never with your chats).
     this.awake = awake || new KeepAwake({ log: (t) => this.log(t) });
     this.gate = gate || new RoomGate({ room: 'discord', dir: brain.cfg?.dataDir || null, now, log: (t) => this.log(t) });
+    this.mod = new Moderator(this, { now, dir: modDir === undefined ? brain.cfg?.dataDir || null : modDir, ...(later ? { later } : {}) });
+    this.chatOffSaid = new Map(); // person id -> when Bob last said chat is off
   }
+
+  intents() { return INTENTS | this.mod.intents(); }
 
   token() { const t = String(this.pasted || this.env[TOKEN_ENV] || '').trim(); return TOKEN_RX.test(t) ? t : ''; }
   settings() { return discordSettings(this.cfg); }
@@ -237,6 +245,8 @@ export class DiscordBridge {
     const s = this.settings();
     if ((s.enabled || s.dmEnabled) && this.token()) { if (!this.running) this.start(); }
     else this.stop(s.enabled || s.dmEnabled ? 'no token' : 'off');
+    // Keep order's Welcome or Raid guard needs one more kind of event; a running bot reconnects to ask for it.
+    if (this.running && this.identified != null && this.identified !== this.intents()) { this.stop('starting'); this.start(); }
     if (s.dmEnabled && !s.ownerId && !this.pairLocked && (!this.pair || this.pair.until < this.now())) this.newPairCode();
     if (!s.dmEnabled || s.ownerId) this.pair = null;
     this.awake.set(s.keepAwake && this.running);
@@ -287,7 +297,7 @@ export class DiscordBridge {
       }, every);
       this.beat.unref?.();
       if (resume && this.session?.id) this.send(6, { token: this.token(), session_id: this.session.id, seq: this.seq });
-      else this.send(2, { token: this.token(), intents: INTENTS, properties: { os: process.platform, browser: 'Bob', device: 'Bob' } });
+      else this.send(2, { token: this.token(), intents: (this.identified = this.intents()), properties: { os: process.platform, browser: 'Bob', device: 'Bob' } });
       return;
     }
     if (p.op === 11) { this.acked = true; return; }
@@ -303,6 +313,8 @@ export class DiscordBridge {
       this.backoff = 5000;
       this.log(`connected to Discord as ${this.botName || 'the bot'}`);
     } else if (p.t === 'RESUMED') { this.status = 'on'; this.backoff = 5000; }
+    else if (p.t === 'GUILD_CREATE') this.mod.guild(p.d);
+    else if (p.t === 'GUILD_MEMBER_ADD') this.mod.joined(p.d).catch((e) => this.log(`new member not handled: ${e.message}`));
     else if (p.t === 'MESSAGE_CREATE') this.handle(p.d).catch((e) => this.log(`message not handled: ${e.message}`));
     else if (p.t === 'INTERACTION_CREATE') this.button(p.d).catch((e) => this.log(`button not handled: ${e.message}`));
   }
@@ -328,13 +340,13 @@ export class DiscordBridge {
     this.connect(resume);
   }
 
-  async rest(method, route, body, { form } = {}) {
+  async rest(method, route, body, { form, reason } = {}) {
     const token = this.token();
     if (!token) throw new Error(`No ${TOKEN_ENV} found.`);
     for (let i = 0; i < 2; i++) {
       const r = await this.fetch(`${API}${route}`, {
         method,
-        headers: { authorization: `Bot ${token}`, 'user-agent': 'DiscordBot (https://github.com/MouseWurX/Bob, 1.5)', ...(form ? {} : { 'content-type': 'application/json' }) },
+        headers: { authorization: `Bot ${token}`, 'user-agent': 'DiscordBot (https://github.com/MouseWurX/Bob, 1.5)', ...(form ? {} : { 'content-type': 'application/json' }), ...(reason ? { 'x-audit-log-reason': encodeURIComponent(String(reason).slice(0, 300)) } : {}) },
         body: form || (body ? JSON.stringify(body) : undefined),
         signal: withDeadline(null, form ? 120_000 : 30_000) // item 212
       });
@@ -371,6 +383,7 @@ export class DiscordBridge {
     if (!m || m.author?.bot || m.webhook_id) return;
     if (!m.guild_id) return this.direct(m, s); // a DM: only your paired account, private
     if (!s.enabled) return;
+    if (await this.mod.message(m)) return; // 1.5.224 Keep order: rules first, in code; a deleted message or a command ends here
     const channelId = String(m.channel_id || '');
     if (!s.channels.includes(channelId)) return this.notListed(channelId, m.guild_id);
     const who = String(m.author?.id || '');
@@ -378,6 +391,11 @@ export class DiscordBridge {
     const prompt = this.mentionAsk(m.content) ?? matchWake(s.wake, m.content, s.caseSensitive); // "@Bob hi" works like the wake phrase
     if (prompt === null) return;
     const reply = (text) => this.post(channelId, m.id, text);
+    if (!s.chat) { // 1.5.224 Chat on Discord is off: no job, so no brain. Said once an hour per person, then silence.
+      if (this.now() - (this.chatOffSaid.get(who) || 0) < 3600_000) return;
+      this.chatOffSaid.set(who, this.now());
+      return reply('Chat is switched off here right now. I\'m only keeping order.');
+    }
     if (!prompt) return reply(`Yes? Put what you'd like after "${s.wake.replace('*', '').trim()}".`);
     const type = jobTypeOf(prompt, this.brain.constructor?.guessKind?.bind(this.brain.constructor));
     if (!s.jobs[type]) {
@@ -548,6 +566,7 @@ export class DiscordBridge {
 
   // Allow / Deny on an OK card in your DMs. Only your account, only with the switch on.
   async button(it) {
+    if (await this.mod.button(it)) return; // I agree, and Kick / Ban in your DMs
     const s = this.settings();
     const who = String(it?.user?.id || it?.member?.user?.id || '');
     const m = /^ok:([0-9a-f-]{36}):([01])$/.exec(String(it?.data?.custom_id || ''));
@@ -616,6 +635,8 @@ export class DiscordBridge {
   // Every event Bob's window gets passes through here. Only Discord jobs' own events are used.
   watch(ev) {
     if (ev?.sessionId === DM_SESSION) return this.watchDm(ev);
+    if (ev?.sessionId === REVIEW_SESSION) return this.mod.reviewEvent(ev); // a brain's look at a flagged message: never posted
+
     const job = ev?.turnId && this.jobs.get(ev.turnId);
     if (!job || !String(ev.sessionId || '').startsWith(`${DISCORD_SESSION}-`)) return;
     const s = this.settings();
@@ -661,7 +682,7 @@ export class DiscordBridge {
 export function discordView(bridge) {
   const s = bridge.settings();
   const pair = s.dmEnabled && !s.ownerId && bridge.pair && bridge.pair.until > bridge.now() ? bridge.pair : null;
-  return { ...s, paired: Boolean(s.ownerId), pairLocked: bridge.pairLocked, pairCode: pair?.code || '', tokenEnv: TOKEN_ENV, tokenFound: Boolean(bridge.token()), status: bridge.status, botName: bridge.botName, unlisted: [...bridge.unlisted].filter(([id]) => !s.channels.includes(id)).map(([id, name]) => ({ id, name })), jobTypes: JOB_TYPES.map(({ id, label }) => ({ id, label })) };
+  return { ...s, paired: Boolean(s.ownerId), pairLocked: bridge.pairLocked, pairCode: pair?.code || '', tokenEnv: TOKEN_ENV, tokenFound: Boolean(bridge.token()), status: bridge.status, botName: bridge.botName, unlisted: [...bridge.unlisted].filter(([id]) => !s.channels.includes(id)).map(([id, name]) => ({ id, name })), jobTypes: JOB_TYPES.map(({ id, label }) => ({ id, label })), mod: { ...modSettings(bridge.cfg), ...bridge.mod.view() } };
 }
 
 export function startDiscord(brain, opts) {
@@ -691,6 +712,19 @@ export async function discordRoute({ req, res, p, isLocal, brain, body, send }) 
   }
   if (typeof b.token === 'string' && b.token) {
     try { await bridge.saveToken(b.token); brain.log('settings', 'Discord bot token saved (your click)'); } catch (e) { send(res, 400, { error: e.message }); return true; }
+  }
+  // 1.5.224 Keep order: its settings, and your answers to kicks, bans and flags.
+  if (b.mod && typeof b.mod === 'object') {
+    const mp = cleanModPatch(b.mod);
+    if (Object.keys(mp).length) { saveDiscord(brain.cfg, { mod: { ...(brain.cfg.discord?.mod || {}), ...mp } }); brain.log('settings', `Discord Keep order: ${Object.keys(mp).join(', ')} changed (your click)`); }
+  }
+  if (b.modAnswer && typeof b.modAnswer === 'object') {
+    const r = await bridge.mod.answer(String(b.modAnswer.id || ''), b.modAnswer.ok === true, 'you, in Settings');
+    if (r.error) { send(res, 409, { error: r.error === 'not found' ? 'That one is gone.' : `That one is ${r.error}.` }); return true; }
+  }
+  if (b.modFlag && typeof b.modFlag === 'object') {
+    const r = await bridge.mod.settle(String(b.modFlag.id || ''), b.modFlag.remove === true, 'you, in Settings');
+    if (r.error) { send(res, 409, { error: r.error === 'not found' ? 'That one is gone.' : `That one is ${r.error}.` }); return true; }
   }
   const patch = cleanDiscordPatch(b, bridge.settings());
   if (Object.keys(patch).length) { saveDiscord(brain.cfg, patch); brain.log('settings', `Discord: ${Object.keys(patch).join(', ')} changed (your click)`); }
