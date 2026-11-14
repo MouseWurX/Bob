@@ -1,4 +1,4 @@
-# Roadmap: one all-round Bob (14 Nov 2026)
+# Roadmap: one all-round Bob, starting with a new Bobert (14 Nov 2026)
 
 A plan only. Nothing here trains, rents, uploads or changes Bob without the owner's typed go, in the thread doing it.
 There's a spending freeze on rentals until 15 Nov, except for runs already approved (tonight's Riker and Bobert card).
@@ -11,11 +11,17 @@ There's a spending freeze on rentals until 15 Nov, except for runs already appro
 - **looks things up when it isn't sure** instead of guessing,
 - helps with 3D models, games and assets in Blender and Unreal through Python scripts.
 
-**How we get there, in one line.** Learn exactly how today's brains fail with tools (stage 0), pick the tool shape
-each brain family handles best (1), build the lesson-making tools and a fixed test set (2), write the lessons (3),
-clean the big stock Qwen without cutting it (4), train the full model in three rounds where each round's failures become the next
-round's lessons (5 and 6), then blend and cut into smaller versions (7) and publish (8). Steering research runs beside it
-the whole way as a microscope, never as training data.
+**First deliverable: a new Bobert.** A fresh start on the stock Qwen3.6-35B-A3B (the same base and size as today's
+35Bob Bobert, the full model with no cut), cleaned first, then trained on the new lessons. Today's Bobert was trained
+on poisoned data, so **the starting point must be clean**: stock weights downloaded fresh, nothing inherited from
+today's Bobert, Riker or Bill (no weights, adapters, merges, keep lists or saved odds), and every old lesson set
+audited for the poison before any of it is reused. Everything in part 1 serves
+that one brain. Everything else (more rounds, the styles, blends, smaller versions, other brain families, publishing)
+waits in part 2 until the new Bobert works.
+
+**Part 1, in one line.** Learn how today's brains fail with tools (stage 0), pick the Qwen tool shape (1), build the
+lesson tools and a fixed test set (2), audit the old lessons for poison (2b, a gate), write round 1's lessons for base Bob only (3), clean the stock Qwen (4), train
+the full model (5). Done when the new Bobert beats today's Bobert on the report card with no line worse.
 
 ## The rules every stage keeps
 
@@ -33,7 +39,7 @@ the whole way as a microscope, never as training data.
 
 ## How every stage is measured: Bob's report card
 
-One fixed, held-out test set, frozen in stage 2 and run on the stock brain first. Every later step is scored against
+One fixed, held-out test set, frozen in stage 2 and run on stock Qwen and today's Bobert first. Every later step is scored against
 it. A step is kept only if **no line drops** (within noise, the same rule as the multi-target guard in `pod/targets.py`).
 
 | Line | What it checks | Where it comes from |
@@ -52,6 +58,8 @@ it. A step is kept only if **no line drops** (within noise, the same rule as the
 Public benchmarks (BFCL, tau-bench and the like) can be added as extra lines. They are test only and join the
 never-taught list.
 
+# Part 1. The new Bobert
+
 ## Stage 0. Learn how today's brains fail with tools (tonight, approved)
 
 - **Goal:** know, per brain family, which tool shapes work, which fail and why.
@@ -64,176 +72,201 @@ never-taught list.
 - **Cost:** already approved, A40 at about $0.59/h, caps $5.50 (Riker plus steering) and $9 in total with Bobert.
 - **Go point:** none new.
 
-## Stage 1. Pick each family's tool shape
+## Stage 1. Pick the Qwen tool shape
 
-- **Goal:** each brain family (Qwen, GPT-OSS, and any new family) gets the tool wording and shape it handles best,
-  detected from the brain file's chat template, with Bob's own tools and a one-time probe for anything unknown
-  (PR #219, ready-made tools study).
-- **What gets decided:**
-  - per family: the wording parts that won the A/B (`usewhen`, `paths`, `act`, `slash`, `example`, `fewer`, `par`),
-    thinking on or off for tool jobs, head start or not, one tool per step or not;
-  - whether GPT-OSS gets its ready-made tools (browser, apply_patch, python) beside Bob's own. They switch on only
-    after a test shows fewer mistakes. The engine first needs a small fix so GPT-OSS's built-in browser calls aren't
-    dropped;
-  - the save path and name inputs for make_diagram, save_as, make_image, make_sound and convert_file.
+- **Goal:** the tool wording and shape the Qwen family handles best, since the new Bobert is a Qwen. Other families
+  (GPT-OSS's ready-made tools, new families) move to part 2.
+- **What gets decided:** the wording parts that won the A/B (`usewhen`, `paths`, `act`, `slash`, `example`, `fewer`,
+  `par`), thinking on or off for tool jobs, the "Plan: 1." head start or not, one tool per step or not, and the save
+  path and name inputs for make_diagram, save_as, make_image, make_sound and convert_file.
 - **Rule:** tool shapes that already work (about 9 in 10 right in both thinking modes) stay as they are.
-- **Depends on:** stage 0 results.
-- **Measured by:** the tools lines of the report card, per family, before and after. Ships as a reliability fix
-  (on by default) only if no family gets worse.
-- **Cost:** about $0 to build. One short confirm run of the picked shapes on an A40, about 1 h, under $2.
-- **Go point A:** the owner picks the shapes (a short card per family with the numbers).
-- **Note:** the tool record archives itself when tool shapes change (`tool-sets.js` shape stamp), so old history is
-  kept for lessons and the live record starts fresh.
+- **Depends on:** stage 0 results for Riker and Bobert.
+- **Measured by:** the tools lines of the report card, before and after.
+- **Cost:** about $0. One short confirm run on an A40, about 1 h, under $2.
+- **Go point A:** the owner picks the Qwen shape (one card with the numbers).
+- **Note:** the tool record archives itself when tool shapes change, so old history is kept for lessons.
 
 ## Stage 2. Build the lesson tools and freeze the report card
 
-- **Goal:** every piece in TOOL-LESSONS-PLAN section 8 is built, tested with fakes, and proven on a small dry run, so
-  the big write can start the day the shapes are picked.
+- **Goal:** only the pieces round 1 needs, built, tested with fakes, and proven on a small dry run.
 - **Pieces:** `make-fix-lessons.mjs`, `lesson-ledger.mjs` (one ledger, never-taught list), `search-pairs.mjs`,
   `write-lessons.mjs` fixes (realistic fake results, reviewer without the phantom JSON rule), `convert-lessons.mjs`
   (one uniform suite, Kimi's 1,171 traces included), `guided-lessons.mjs` (failed try kept but masked),
-  `style-routes.mjs` (five versions, two or three routes, second tries), `import-open-sets.mjs`,
   `tutorial-lessons.mjs` (licence check, headless Blender and Unreal runs, version tag), and the search line in
-  `tool_reward.py`.
+  `tool_reward.py`. Routes and second tries go in `write-lessons`; the five style versions wait for part 2.
 - **Also:** write and freeze the report card's new sets (coding, Blender, Unreal, injection) and put them on the
   never-taught list before a single lesson is written.
-- **Depends on:** stage 1 for the final shapes. Everything else can start now.
-- **Measured by:** `npm test` with fakes; a dry run of about 50 lessons per piece, read by hand for shape and honesty;
-  the style check (each style really shows in its lessons).
+- **Depends on:** stage 1 for the final shape. Everything else can start now.
+- **Measured by:** `npm test` with fakes; a dry run of about 50 lessons per piece, read by hand.
 - **Cost:** $0 (built in the cloud, no card). Headless Blender checks run in the cloud on the CPU. Unreal checks need
-  an editor: a rented Windows or Linux machine, or the owner's PC only if they say so.
-- **Go point:** none to build. Merging a piece into Bob goes through the usual release path.
+  an editor: a rented machine, or the owner's PC only if they say so.
+- **Go point:** none to build.
 
-## Stage 3. Write round 1's lessons (rental)
+## Stage 2b. Poison audit of the old lessons (gate)
 
-- **Goal:** round 1's set, per TOOL-LESSONS-PLAN section 6:
-  - about **6,000 tool lessons in each of 5 versions** (base Bob plus Raider, Watson, Sherlock and Vulcan), at least
-    half with two or more steps, every Bob tool in at least 40 lessons;
+- **Goal:** no poisoned lesson reaches the new Bobert. Nothing old is converted, sliced into the general mix or
+  turned into pairs until its set passes.
+- **What's audited:** every old set that could be reused: Bob's own sets (v3 on Hugging Face and the cleaned v4), the
+  PC-only sets (facts-r2, the 538 base set, the outside sets), the Kimi traces, the GPT-OSS v5 lessons and rejects,
+  and the saved teacher odds.
+- **What counts as poison** (known kinds; the owner can add more):
+  - lessons that pretend: a hand-off or a made-up tool result instead of doing the work (37% of the old coding set),
+    bare "Done." results, claims of steps that were never called;
+  - wrong answers kept as right (the reviewer's phantom "JSON format" rule, teacher mistakes);
+  - anything from surgery, dials, steering or evil checks (must be `notForTraining`);
+  - test items or near copies (held-out 5%, quiz, Riker's 310, interview turns, `eval/` folders);
+  - planted instructions followed as orders, refusals taught where help was right or help where refusal was right;
+  - anything the scrub missed;
+  - **anything made by or scored by today's Bobert, Riker or Bill** (their answers, odds or reviews), since they carry
+    the poison.
+- **How:** a checker in code (`audit-lessons.mjs`, tested with fakes) flags each row by kind, then a hand-read sample
+  of each set. Each set gets one of three marks: **clean** (usable), **mend** (only flagged rows are rewritten by the
+  stock teacher and checked again) or **drop**. Originals are never altered; the audited copy is a new version with
+  a list of what changed.
+- **Gate:** stage 3 does not start until every set it draws from is marked clean or mended, and the audit report is
+  in front of the owner. If a set's poison can't be found reliably, it's dropped, not guessed.
+- **Cost:** $0 (cloud CPU). A mend pass, if needed, rides stage 3's card.
+- **Go point B0:** the owner reads the audit report and says which sets may be used.
+
+## Stage 3. Write round 1's lessons for base Bob (rental)
+
+- **Goal:** round 1's set, base Bob only (the styles wait for part 2):
+  - about **6,000 tool lessons**, at least half with two or more steps, every Bob tool in at least 40 lessons;
   - doctored failures with plain-words reasoning between the steps, wrong-tool fixes, guided lessons for what was
-    never solved, second tries;
-  - scored right and wrong pairs (about 1,000 per version), search and don't-search pairs (about 2 to 1);
+    never solved, two or three routes per request, second tries;
+  - about 1,000 scored right and wrong pairs, plus search and don't-search pairs (about 2 to 1);
   - course-style coding set A, each lesson's code run and its tests passing;
   - Blender and Unreal set A (about 600 and 400: objects, materials, export; actors and assets), every script run
     headless;
-  - the general slice (40 to 50% of the round) from Bob's cleaned v4 set, a different slice each round.
-- **Teacher:** stock Qwen3.6-35B-A3B for tool jobs (GPT-OSS is weak at Bob's tools and can't hold a style under
-  Bob's full prompt). Every row keeps the teacher's top-K odds.
-- **Depends on:** stages 1 and 2.
-- **Measured by:** the code checker (`tool-judge.mjs`) passes every kept lesson; the overlap check against every test
-  set; counts per tool, job and step length against the targets; a hand-read sample of 100.
-- **Cost (rough):** on past runs an H200 at $5.29/h wrote about 1,700 lessons an hour (2,898 in 1.7 h on 6 Nov).
-  About 30,000 tool lessons plus pairs and the teacher odds pass is about 18 to 25 h, **about $95 to $135**.
-  Cheaper cards are possible but slower; the plan will say which card before the go.
-- **Go point B:** a go to write the round 1 set on a rental, with the card, hours and dollar cap on the card.
+  - the general slice (40 to 50% of the round) from the sets that passed the audit only.
+- **Teacher:** stock Qwen3.6-35B-A3B, the same fresh download. Every row keeps the teacher's top-K odds. No odds or
+  reviews from today's Bobert, Riker or Bill.
+- **Depends on:** stages 1, 2 and the 2b gate.
+- **Measured by:** `tool-judge.mjs` passes every kept lesson; the overlap check against every test set; counts per
+  tool, job and step length; a hand-read sample of 100.
+- **Cost (rough):** past runs wrote about 1,700 lessons an hour on an H200 at $5.29/h. About 6,000 tool lessons plus
+  pairs, routes and the teacher odds pass is about 5 to 8 h, **about $25 to $45**.
+- **Go point B:** a go to write the set on a rental, with the card, hours and cap.
 
-## Stage 4. Clean the big stock Qwen first (no cut yet)
+## Stage 4. Clean the stock Qwen first (no cut)
 
-- **Goal:** a fresh start. Not more training on Riker or Bobert, but the stock Qwen3.6-35B-A3B, measured, studied and
-  cleaned first, so nothing old is carried in. Order: **clean first, then train the full model, then cut** (the cut
-  comes after training, in stage 7, so the cut keeps what training taught).
+- **Goal:** a fresh start, not more training on today's Bobert. The stock Qwen3.6-35B-A3B, measured, studied and
+  cleaned first. Order: **clean first, train the full model, cut later** (part 2), so a cut keeps what training taught.
+- **Fresh weights:** stock Qwen3.6-35B-A3B downloaded fresh from Alibaba's own repository on the rental, its file
+  hashes checked against the published ones and saved with the run. No weights, adapters, merges or keep lists from
+  today's Bobert, Riker or Bill are on the card.
 - **Steps (protocol, PR #201, benchmark after each):**
-  1. baseline and odds on the fixed sample set, with the report card;
+  1. baseline and odds on the fixed sample set, with the report card, on stock Qwen. Today's Bobert is only
+     **measured** for comparison (the bar to clear); nothing of his is used;
   2. clean-first surgery tried **live only** and recorded (it never trains, and nothing is baked without a go);
-  3. analysis: REAP lists, experts by layer, per-skill expert counts including the new targets (tools, search,
-     Blender, Unreal, coding). These counts guide the later cut.
-- **Depends on:** stage 2's report card. Can run before or after stage 3.
-- **Measured by:** report card on the stock brain (this is the baseline every later step must beat); expert counts
-  saved with the data.
-- **Cost (rough):** baseline, odds and counts about 2 to 3 h on an H200, **about $11 to $16**.
+  3. analysis: REAP lists, experts by layer, per-skill expert counts including the new targets.
+- **Depends on:** stage 2's report card. Can run before, after or on the same rental as stage 3.
+- **Measured by:** the report card itself; expert counts saved with the data.
+- **Cost (rough):** about 2 to 3 h on an H200, **about $11 to $16** (less if it shares stage 3's card).
 - **Go point C:** a go for the rental, and a go before any clean-up is baked in.
 
-## Stage 5. Train round 1
+## Stage 4b. Layer-freezing trial (before the full training)
 
-- **Goal:** the first all-round Bob, trained on the full cleaned brain (no cut).
+- **The question:** can Bobert learn tools without losing what he knows? Two arms, trained on the same small slice
+  of round 1 (about 2,000 lessons, tool-heavy plus the new Blender and Unreal facts, always mixed with general
+  lessons), from the same fresh, cleaned weights:
+  - **(a) Lower layers mostly locked.** LoRA on the upper-middle layers for tool lessons. The lower layers are
+    unlocked only gently, at a low learning rate, for new-fact lessons such as the Blender and Unreal APIs. The
+    router keeps its own low rate.
+  - **(b) Everything trained**, today's way (`heal.py` as it is).
+- **Mixed, not alternating.** Both arms mix tool, fact and general lessons in every batch, rather than switching
+  between locked and unlocked phases. Phases tend to forget whatever the last phase didn't train.
+- **Measured by:** the same held-out report card for both, with a **lost-knowledge line** added: the quiz,
+  the knowledge-heavy held-out chats, and how far each arm's next-word odds drift from stock Qwen on general text.
+  The winner is the arm with the best tool score and the least loss. It sets how stage 5 trains.
+- **Needs building first:** `heal.py` has no per-layer lock yet. It needs a `--lock-below` layer number and a
+  per-layer learning rate (tested on the tiny CPU model in `selftest_training.py`). About $0.
+- **Cost (rough):** two short runs of about 3 h each on an H200, **about $30 to $40** (both can share stage 4's card).
+- **Go point C2:** a go for the trial rental.
+
+## Stage 5. Train the new Bobert
+
+- **Goal:** the new Bobert: the full cleaned 35B from the fresh download, trained on round 1's audited lessons.
 - **Steps (protocol):** heal (teacher odds, distillation) on round 1's lessons and the general slice; preference pass
   (ORPO in the heal, or DPO or KTO after it) on the scored pairs; on-policy finish (the student writes, the teacher
-  grades every word); reward pass (`grpo.py`) with the tool rule and the new search line; multi-target guard drops any
-  step that makes a target worse.
-- **Depends on:** stages 3 and 4.
-- **Measured by:** report card after every step; kept only if no line drops against the stock baseline and against
-  Riker and Bobert as they are today.
-- **Cost (rough):** Bobert's full pass was about 10 h of training and $109 in all for 9,000 lessons. Round 1 is about
-  11,000 to 12,000 lessons for base Bob, plus the preference, on-policy and reward passes: about 18 to 24 h on an
-  H200, **about $95 to $130** for base Bob.
-- **Styles:** each style is its own model, trained after base Bob's round passes. On the same base and lessons each
-  is a shorter run. Rough guess **$40 to $60 per style**; whether they train every round or only at the end is the
-  owner's call (go point D).
-- **Go point D:** a go per training run, with the card and the cap.
+  grades every word); reward pass (`grpo.py`) with the tool rule and the search line; the multi-target guard drops
+  any step that makes a target worse.
+- **Depends on:** stages 3, 4 and the 4b trial (which picks locked or all layers).
+- **Measured by:** report card after every step. **Done when** it beats today's Bobert on the tool, look-it-up,
+  coding and Blender/Unreal lines with no line worse than stock Qwen or today's Bobert, and runs on the home PC at Q3
+  or Q4 (today's Bobert does about 130 words a second at Q3).
+- **Cost (rough):** today's Bobert was about 10 h of training and $109 in all for 9,000 lessons. Round 1 is about
+  11,000 to 12,000 lessons plus the extra passes: about 18 to 24 h on an H200, **about $95 to $130**.
+- **Then:** Q4 and Q3 home, a light home test on the owner's go, and it becomes Bob's default only on the owner's go.
+- **Go point D:** a go for the training run, with the card and the cap.
 
-## Stage 6. Self-play, then rounds 2 and 3
+**Part 1 total, rough: about $160 to $230** (plus tonight's approved $9).
 
-- **Goal:** each round fixes what the last one still gets wrong, and nothing is taught twice.
-- **Each round:** the new brain works through fresh requests on the rental; the checker grades them; what it gets
-  right can be on-policy examples, what it gets wrong becomes new look-alike lessons (guided where it never
-  recovered). Then write, train and measure as in stages 3 and 5.
+# Part 2. After the new Bobert works
+
+In rough order. Each step starts only after the one before it, and each has its own go.
+
+## Stage 6. Rounds 2 and 3 on Bobert
+
+- **Each round:** the new Bobert works through fresh requests on the rental; the checker grades them; what he gets
+  right can be on-policy examples, what he gets wrong becomes new look-alike lessons (guided where he never
+  recovered). Then write, train and measure as in stages 3 and 5. Nothing is taught twice (the ledger).
   - Round 2: rigs, modifiers, Geometry Nodes; levels, Blueprints from Python, batch imports; coding set B; search set B.
-  - Round 3: the hardest long jobs (4 to 6 calls), whole Blender-to-Unreal jobs (make, check, export, place in a
-    level); coding set C; search set C.
-- **Depends on:** the round before passing.
-- **Measured by:** report card; a round is kept only if no line drops.
-- **Cost (rough):** about **$150 to $250 per round** for base Bob (self-play, writing and training), plus styles if
-  chosen.
-- **Go point E:** a go per round.
+  - Round 3: the hardest long jobs (4 to 6 calls), whole Blender-to-Unreal jobs; coding set C; search set C.
+- **Kept** only if no report card line drops. **About $120 to $180 per round.** **Go point E** per round.
 
-## Stage 7. Blend, live dials, small versions
+## Stage 7. The styles
 
-- **Goal:** the best mix of the rounds, tuned live, then the cut: smaller Bobs for smaller machines.
-- **Steps:** blends (`merge.py`: linear, TIES, DARE) of round checkpoints, kept only if the report card holds;
-  live dials (experts per word, expert and head dials, steering directions) tried in the engine and measured on the
-  report card. **Nothing is baked into the weights without the owner's go.** Then the cut and the ladder: a coverage cut of the final brain
-  that protects every target's experts, then smaller cuts (the Bill, Homer, Milo sizes), each healed on its parent's odds.
-- **Depends on:** stage 6, and stage S (below) for which dials are worth trying.
-- **Measured by:** report card per blend and per ladder rung; fits-the-PC line for each size.
-- **Cost (rough):** blends run on a CPU (cheap); each small version about $50 to $100 (Bill's full run was $96).
-- **Go point F:** a go per blend kept, per bake, per small version.
+Raider, Watson, Sherlock and Vulcan, each its own model from the new Bobert, never merged into him. Their lesson
+versions are written then (`style-routes.mjs`, the style check first). About $40 to $60 per style. **Go point F.**
 
-## Stage 8. Publish
+## Stage 8. Blends, live dials, the cut and smaller Bobs
 
-- **Goal:** the new Bob, his cards and his lesson sets published, and the study write-ups (interviews, surgery
-  attempts) as study material.
-- **Steps:** scrub, model cards with credit (Alibaba Apache 2.0, Dennis E. Taylor for the names, not affiliated; Moonshot
-  AI and Lambda for the converted Kimi traces; each open set's licence), Hugging Face upload, Bob's catalogue entry,
-  costs page and README refreshed.
-- **Depends on:** stage 7.
-- **Measured by:** the scrub check passes; the card's numbers match the report card.
-- **Cost:** about $5 to $10 of card time for the export and upload.
-- **Go point G:** a typed go before any upload.
+Blends of round checkpoints (`merge.py`), live dials tried in the engine (nothing baked without a go), then a
+coverage cut of the final Bobert and the ladder (the Bill, Homer, Milo sizes), each healed on his parent's odds.
+About $50 to $100 per small version. **Go point G** per blend kept, bake, cut size and small version.
+
+## Stage 9. Other brain families
+
+GPT-OSS's ready-made tools (browser, apply_patch, python, after the engine fix so its browser calls aren't dropped)
+and detection for new families, from the ready-made tools study and PR #219. Switched on only after a test shows
+fewer mistakes.
+
+## Stage 10. Publish
+
+Scrub, model cards with credit (Alibaba Apache 2.0; Dennis E. Taylor for the names, not affiliated; Moonshot AI and
+Lambda for the converted Kimi traces; each open set's licence), Hugging Face upload, catalogue, costs page and
+README. About $5 to $10. **Go point H:** a typed go before any upload.
 
 ## Stage S (beside everything). Steering research as a microscope
 
 - **Goal:** understand where habits live in the brain, so cuts protect the right parts and live dials can fix a habit
   without retraining.
 - **Now:** the cruel-direction steering sweep (PR #226) and the expert and neuron sweep (PR #227) on Riker tonight.
-  Next ideas (patching, sparse-autoencoder features) are planned in the steering study thread.
-- **Feeds:** stage 4 (which experts to protect), stage 7 (which dials to try), and the study write-ups.
+  Next: live patching one layer at a time and sparse-autoencoder features at layers 10, 20 and 30 on Riker
+  (draft PR #232, `plans/riker-interp.json`, its own small rental of about 1.5 h with a $1.50 cap). It comes after
+  the steering and sweep results and waits on the owner's typed go in the steering thread.
+- **Feeds:** stage 4 (what to clean), stage 8 (which dials to try and which experts a cut must protect), and the study write-ups.
 - **Rule:** findings are records. They never become training data. A dial can be used live in the engine; a bake
   needs a go.
 - **Cost:** rides other rentals where it can; each extra run is its own go.
-
-## Rough total
-
-| | Rough cost |
-|---|---|
-| Stages 0 to 2 | about $10 (stage 0 already approved) |
-| Stages 3 to 5, round 1, base Bob | about $200 to $280 |
-| Rounds 2 and 3, base Bob | about $300 to $500 |
-| Four style models | about $160 to $240 per time they're trained |
-| Blends, small versions, publish | about $60 to $200 |
-| **Base Bob, all three rounds and published** | **about $570 to $990** |
-
-These are guesses from past runs (H200 at $5.29/h). Each go card gives the real card, hours and cap.
 
 ## Go points at a glance
 
 | | Go point | When |
 |---|---|---|
-| A | Pick each family's tool shape | after tonight's interviews |
-| B | Write round 1's lessons on a rental | after stage 2's dry runs |
+| A | Pick the Qwen tool shape | after tonight's interviews |
+| B0 | Which old lesson sets may be used (poison audit report) | after stage 2b |
+| B | Write round 1's lessons on a rental | after B0 |
 | C | Clean-first rental, then any bake | any time after stage 2 |
-| D | Each training run (base Bob, then styles) | after B and C |
-| E | Each later round | after the round before passes |
-| F | Each blend kept, each bake, the cut size, each small version | after round 3 |
-| G | Any upload | before publishing |
+| C2 | Layer-freezing trial | after C |
+| D | Train the new Bobert; make him the default | after B and C |
+| E | Each later round | after the new Bobert works |
+| F | Each style model | after the rounds |
+| G | Each blend kept, bake, cut size and small version | after the styles |
+| H | Any upload | before publishing |
+
+Costs are guesses from past runs (H200 at $5.29/h). Each go card gives the real card, hours and cap.
 
 ## Where the pieces are
 
@@ -241,5 +274,5 @@ These are guesses from past runs (H200 at $5.29/h). Each go card gives the real 
 - Tool sets per family: [TOOL-SETS.md](TOOL-SETS.md) (PR #219)
 - Training methods: Forge README, Build 22 (PR #201)
 - Interviews: PRs #222 and #225
-- Steering: PRs #226 and #227
+- Steering and research: PRs #226, #227 and #232
 - Costs so far: [COSTS.md](COSTS.md)
