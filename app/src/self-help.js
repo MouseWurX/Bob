@@ -71,7 +71,7 @@ export function settingsNow(cfg) {
     `Free memory when Bob is idle: ${onOff(brainMode(cfg) !== 'always')}`,
     `One brain: ${onOff(cfg.oneBrain === true)}`,
     `Launch at start-up: ${onOff(cfg.autostart === true)}`,
-    `Minimise to tray: ${onOff(cfg.tray !== false)}; Use Bob's look as his icon: ${onOff(cfg.lookIcon !== false)}`,
+    `Minimise to tray: ${onOff(cfg.tray !== false)}; Use Bob's look as his icon: ${onOff(cfg.lookIcon !== false)}; Window buttons on Bob's bar: ${onOff(cfg.ownBar === true)}`,
     `Check for updates at start: ${onOff(cfg.updates?.autoCheck === true)}`,
     `Auto-update engines: ${onOff(cfg.engineUpdates?.auto !== false)}`,
     `Plan before big jobs: ${onOff(cfg.planFirst === true)}`,

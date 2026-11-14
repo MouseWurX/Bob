@@ -1357,6 +1357,7 @@ export function createCellar({ popOut = null } = {}) {
         flash(el, 'Saved.'); return;
       }
       if (el.dataset.set === 'language') { const r = await api('/api/settings', { language: el.value }); settings.language = pickLang(r.language); try { localStorage.setItem(LANG_KEY, settings.language); } catch {} location.reload(); return; }
+      if (el.dataset.set === 'ownBar') { const r = await api('/api/settings', { ownBar: el.checked }); settings.ownBar = r.ownBar; el.checked = r.ownBar; const n = el.closest('label')?.querySelector('.own-bar-next'); if (n) n.hidden = r.ownBar === Boolean(settings.ownBarNow); return; } // 1.5.227
       if (el.dataset.set === 'tray' || el.dataset.set === 'lookIcon') { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k]; return; }
       if (el.dataset.set === 'selfWork') { const r = await api('/api/settings', { selfWork: { enabled: el.checked } }); settings.selfWork = r.selfWork; draw(); return; }
       if (el.dataset.selfwork) { const k = el.dataset.selfwork; const r = await api('/api/settings', { selfWork: { [k]: k === 'helpers' ? el.checked : k === 'ctx' ? Number(el.value) : el.value } }); settings.selfWork = r.selfWork; flash(el, 'Saved. Used on his next repository job.'); return; }

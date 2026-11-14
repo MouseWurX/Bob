@@ -329,3 +329,27 @@ html.lab-window body.look-lamplight .cellar.page[open] { inset: 0; }
 @media (max-width: 900px) {
   body.look-lamplight .now { background: color-mix(in srgb, var(--panel) 96%, transparent); backdrop-filter: blur(12px); }
 }
+
+/* ---------- 1.5.227 Window buttons on Bob's bar (public/window-bar.js, electron/window-bar.cjs) ----------
+   Only with the setting on, in Bob's own window: body.own-bar. The system's minimise, maximise and close
+   (a Mac's traffic lights) sit over the page's top corner; env(titlebar-area-*) says exactly where.
+   Lamplight on a wide window: the top bar itself drags the window, its buttons and tabs stay clickable, and it
+   keeps clear of the system buttons. Everything else (Classic, Terminal, narrow windows): a thin strip the
+   height of the buttons, at the top, to grab the window by. */
+.win-strip { display: none; }
+body.own-bar { --win-top: env(titlebar-area-height, 0px); --win-left: env(titlebar-area-x, 0px); --win-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)); }
+body.own-bar .win-strip { display: block; flex: none; height: var(--win-top); -webkit-app-region: drag; app-region: drag; background: var(--panel); border-bottom: 1px solid var(--line); position: relative; z-index: 2; }
+body.own-bar.look-lamplight .win-strip { background: transparent; border-bottom: 0; }
+@media (min-width: 641px) {
+  body.own-bar.look-lamplight .win-strip { display: none; }
+  body.own-bar.look-lamplight .side { -webkit-app-region: drag; app-region: drag; padding-left: max(var(--s5), calc(var(--win-left) + var(--s3))); padding-right: calc(var(--s5) + var(--win-right)); }
+  body.own-bar.look-lamplight .side :is(button, a, input, select, textarea, canvas, label, summary, [role=button], [role=switch], [tabindex], .who) { -webkit-app-region: no-drag; app-region: no-drag; }
+}
+/* The system buttons take about 140 px of the bar, so Find anything gets smaller first (never a tab): without
+   "Ctrl K", then just its magnifying glass (its name stays for screen readers and in its tooltip). */
+@media (min-width: 641px) and (max-width: 1400px) { body.own-bar.look-lamplight .side #findBtn .find-key { display: none; } }
+@media (min-width: 641px) and (max-width: 1280px) { body.own-bar.look-lamplight .side #findBtn .lbl { display: none; } body.own-bar.look-lamplight .side #findBtn { padding: var(--s2); } }
+/* Panels and full-window screens that start at the very top move down below the buttons. */
+body.own-bar dialog.cellar:not(.page)[open] { top: var(--win-top); height: calc(100dvh - var(--win-top)); }
+@media (max-width: 1100px) { body.own-bar:not(.look-lamplight) :is(.now, .viewer) { top: var(--win-top); } }
+@media (max-width: 640px) { body.own-bar :is(.now, .viewer) { top: var(--win-top); } body.own-bar:not(.left-folded) .side { top: var(--win-top); } }

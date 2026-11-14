@@ -10,6 +10,7 @@ Update this file in the same handover as any change to settings.
 | Bob's voice | (row shows current voice, Play, Change → Voice & conversation) | Windows voice until Kokoro is set up | ok |
 | Bob's look | (current look, Change → Style) | Sysop | ok |
 | Use Bob's look as his icon | On unless you turn it off. His icon on the taskbar (Dock on a Mac), in the tray and in the corner of his window shows the look you picked, and changes the moment you save a new one (a shortcut pinned to the taskbar may keep the usual icon: Windows draws those from the shortcut). Off: the usual Bob icon. (Disabled in a browser.) | On (was Off before 1.5.134; the owner asked) | 1.5.134 |
+| Window buttons on Bob's bar | Off unless you turn it on. Hides the system title bar; minimise, maximise and close (a Mac's red, yellow and green buttons) sit on Bob's top bar instead. Drag the bar to move him, double-click it to maximise; snapping and resizing work as before. The Ctrl+Alt+B ask box loses its title bar too (✕ or Esc puts it away). Shows next time Bob opens. (Disabled in a browser.) | Off | new in 1.5.227 |
 | Theme | (current theme, Change → Style) | Moondust (1.5.136; was Bob's Inn) | ok (approved with edits, 1.5.136) |
 | Animations | On / Follow Windows (other systems: Follow the system) / Off | On | ok (1.5.98) |
 | Bob's cat | (text box) | Patches | ok (1.5.2) |

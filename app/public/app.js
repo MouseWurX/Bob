@@ -4,6 +4,7 @@ import { drawBob, setLook } from './bob-sprite.js';
 import { secretNoteHtml, wireSecretNote } from './more-tools.js'; // 🧰 More tools: a password Bob made
 import { applyStyle, applySavedStyle } from './themes.js';
 import { createStatusLine } from './status-line.js'; // 1.5.216: his line follows his state
+import { startWindowBar } from './window-bar.js'; // 1.5.227 Window buttons on Bob's bar
 import { createMindCube } from './mind-cube.js'; // 1.5.209: Bob's picture as the fNRI cube
 applySavedStyle();
 import { startI18n, followSaved } from './i18n.js';
@@ -113,6 +114,7 @@ const api = async (url, data) => {
 const tasks = createTasks({ post: (u, d) => post(u, d) });
 const downloads = createDownloads({ api, post: (u, d) => post(u, d) });
 installTips();
+startWindowBar({ send: (c) => api('/api/window-bar', c).catch(() => {}) }); // only does something with no system title bar
 watchLock(); // 🔒 Passcode lock: back to the lock screen once Bob locks
 const layout = createLayout({ post: (u, d) => post(u, d), openTasks: () => tasks.open(), openDownloads: () => downloads.open() });
 

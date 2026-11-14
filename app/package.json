@@ -150,6 +150,7 @@
     "test/run-ready-test.js",
     "test/run-firewall-test.js",
     "test/run-tray-test.js",
+    "test/run-window-bar-test.js",
     "test/run-phrasing-test.js",
     "test/run-wait-line-test.js",
     "test/run-pair-test.js",
