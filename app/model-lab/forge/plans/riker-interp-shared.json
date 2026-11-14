@@ -1,0 +1,72 @@
+{
+ "run": "riker-interp",
+ "note": "14 Nov 6:35 AM MT, the owner picked \"Run it on the shared pod later\": riker-interp on the Riker/Bobert pod 5j0ebo0ngxoecu after Bobert finishes, by forge --restart from bob-model-lab (two new pods never started). Caps are the pod TOTAL from its 3:44 AM rent: Riker + Bobert 20 h / $13.10 plus this run 1.5 h / $0.90. Riker stock on a rented RTX A6000 (L40S second; three A40 pods on 14 Nov never started, so the owner said change the card type), never the home PC. Before serving, the pod's interp step (pod patch 0015 llama-act-dump + interp.py) reads Riker's inner stream on the cruel, kind and plain asks plus Bob lessons, keeps the per-layer means and trains a TopK sparse autoencoder at layers 10, 20 and 30; the raw activations are deleted on the pod. Then, live (pod patch 0014): the gate in the first minutes (exit 86 ends the run and deletes the pod), patching one layer at a time, then the top autoencoder features pushed and taken out. SURGERY RECORD ONLY: never lessons, odds or pairs, nothing to Hugging Face. On the PC first: node interp-prep.mjs --out out/interp-riker --lessons out/lessons",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA A40",
+  "NVIDIA RTX A6000"
+ ],
+ "step_up": [],
+ "disk_gb": 80,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 21.5,
+ "dollars_max": 14.0,
+ "rent_minutes": 1290,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one brain: Riker stock, the interp step before serving, then the live patching and feature tests.",
+  "hours_each": 1.5,
+  "brain_engine": {
+   "ref": "fcdf3955ed6966c102f43d49528174cabd52d825",
+   "patches": [
+    "0001-expert-mask",
+    "0002-expert-trace",
+    "0003-dials",
+    "0004-rpc-wifi",
+    "0005-scut",
+    "0006-scut-seal",
+    "0007-expert-trace-stream",
+    "0008-scut-live",
+    "0009-expert-mass",
+    "0010-expert-trace-once",
+    "0011-rpc-read-ahead",
+    "0012-load-progress",
+    "0013-experts-per-word",
+    "pod:0014-live-control-vector",
+    "pod:0015-act-dump"
+   ],
+   "note": "Brain Engine 7b12282 (live experts per word, mask, dials, expert trace with mass); pod:0014-live-control-vector (lab-only, sent with the pod scripts): POST /control-vector, activation steering without reloads; pod:0015-act-dump (lab-only): llama-act-dump writes each layer's stream per word for the interp step"
+  },
+  "models": [
+   {
+    "name": "riker-interp",
+    "nickname": "Riker, patching and autoencoder features (live)",
+    "file": "hf:MouseWurX/28Bob-Riker:28Bob-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "slots": 6,
+    "ctx": 12288,
+    "extra": "",
+    "hours": 1.3,
+    "interp": true,
+    "interp_from": "out/interp-riker",
+    "sae_layers": "10,20,30",
+    "sae_features": 16384,
+    "sae_k": 32,
+    "interp_minutes": 30,
+    "note": "gate first (interp files there, each autoencoder explains at least half the stream, the live vector takes and clears) else 86; then patching (38 layers, 6 asks each way), then the top 8 features per autoencoder layer. Rated by Riker himself with the vector off.",
+    "commands": [
+     "node evil-interp.mjs --url {{url}} --interp {{out}}/interp --gate",
+     "node evil-interp.mjs --url {{url}} --interp {{out}}/interp --mode patch --n 6 --out {{out}}/../../../surgery/riker-interp",
+     "node evil-interp.mjs --url {{url}} --interp {{out}}/interp --mode features --n 6 --top 8 --out {{out}}/../../../surgery/riker-interp"
+    ]
+   }
+  ]
+ }
+}
