@@ -202,6 +202,10 @@ used the wrong one, or got a multi-tool or multi-input call wrong is doctored th
 they are never taught themselves: each one gives new look-alike requests (section 3), and the turns join the
 never-taught list so the scores stay honest.
 
+**Dial and steering runs as seeds.** Failures seen while playing with the dials or steering can be doctored too, but
+only as seeds: the request and what went wrong. The right answer is written fresh by the stock teacher. No text made
+with a dial or steering switched on ever goes into a lesson or a pair (the surgery data rule, `notForTraining`).
+
 ## 3d. Coding, the way courses teach it
 
 The most common lesson types from college and university coding, software engineering, code fixing and error
@@ -317,6 +321,17 @@ next round's lessons.
 Each round runs the protocol (PR #201): baseline and odds, train, preference pairs, on-policy finish and reward pass,
 blend, with a benchmark after every step. A round is kept only if no target drops. Surgery and evil-check data never
 trains (`notForTraining` in `common.mjs`).
+
+## 6a. Where training starts: fresh, on the big Qwen
+
+Training starts fresh from the stock **Qwen3.6-35B-A3B** (Alibaba, Apache 2.0), not on top of Riker or Bobert, which
+learned from the old, thin lessons. It follows the protocol from a clean start: baseline and odds on the stock brain,
+then the clean-first step (bias and refusal directions tried live, taken out only on the owner's go), then the full
+brain trained on the new lessons, and only then the cuts in steps, each healed. Every step waits for the owner's go.
+
+**Right and wrong are kept as scored pairs.** Every doctored lesson keeps its wrong version beside it, with the
+checker's score on both: the right one is "chosen", the wrong one "rejected". These feed the preference step (ORPO,
+DPO or KTO) and the reward pass. Training still runs the full protocol in PR #201, just with much better data.
 
 ## 7. Scrub before anything is kept
 
