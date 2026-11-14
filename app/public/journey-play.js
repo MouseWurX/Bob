@@ -684,7 +684,7 @@ export function mountJourney(root, deps) {
     if (r.moved) {
       stepPhase = (stepPhase + 1) % 4;
       landUpdate();
-      if (r.door) { trail = []; swoops.clear(); landFx.length = 0; heightFx = null; doorAt = now(); sfx('door'); announce(); arrive(r.door); return; }
+      if (r.door) { trail = []; swoops.clear(); landFx.length = 0; heightFx = null; doorAt = now(); sfx('door'); announce(); arrive(r.door); drawPanel(); return; }
       sfx(r.splash ? 'splash' : 'step');
       trail.unshift({ x: from.x, y: from.y, facing: j.facing });
       trail = trail.slice(0, 16); // the party, then the pets and mounts that follow

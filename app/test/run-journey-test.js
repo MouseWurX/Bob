@@ -758,6 +758,7 @@ const P = (o) => ({ id: o.id || o.name.toLowerCase(), who: 'friend', ...o });
   check('the story is named for its castle', /^the .+ tale$/.test(R.storyName(world, j)));
   check('a save remembers which trophies were given', R.cleanJourney(JSON.parse(JSON.stringify(j)), () => world).trophies.length === 5);
   const play7 = read('public/journey-play.js');
+  check('walking through a door redraws the panel (New adventure and Resume show in the inn)', /arrive\(r\.door\); drawPanel\(\); return;/.test(play7));
   check('the screen: you wake in the guest house, and the trophy case opens with Enter', /at: 'guest'/.test(play7) && /=== '7'\) \{ shop = \{ kind: 'trophies' \}/.test(play7) && /function caseHtml/.test(play7) && /\/api\/adventure\/journey\/trophies/.test(play7));
 }
 
