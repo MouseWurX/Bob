@@ -74,6 +74,9 @@ check('engine check passes a full engine', (await checkEngine(okEng, all)).every
 const oldEng = { ...okEng, setUsed: async () => { throw new Error('this engine has no /experts-per-word'); }, trace: async () => ({}) };
 const bad = (await checkEngine(oldEng, all)).filter((r) => !r.ok).map((r) => r.name).join(',');
 check('engine check catches the Nov 13 engine (no N switch, no trace)', bad === 'n,trace,trace-long,mass', bad);
+const room = async (n, min) => (await checkEngine({ ...okEng, call: async () => ({ default_generation_settings: { n_ctx: n } }) }, new Set(), { minCtx: min }))[0];
+check('engine check: 8,192 tokens per slot is refused when the plan needs 14,000 (14 Nov)', (await room(8192, 14000)).ok === false);
+check('engine check: 16,384 tokens per slot passes', (await room(16384, 14000)).ok === true);
 const { pickerTool, picked } = await import('../model-lab/tool-pick.mjs');
 const pk = pickerTool(tools);
 check('one tool per step: the picker lists every tool by name and allows none', JSON.stringify(pk.function.parameters.properties.tool.enum) === JSON.stringify(['make_diagram', 'notice_board', 'file_hands', 'none']) && pk.function.description.includes("file_hands: Bob's file_hands."));

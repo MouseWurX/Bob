@@ -1,11 +1,12 @@
 // Before any card time is spent (14 Nov, the owner: "you keep costing me money"; Nov 13 a rental skipped its planned steps
 // because the engine lacked them): check that the served Brain Engine can do every step a plan needs, in about a minute,
 // and stop with exit 1 if one can't. Every switch goes back at the end.
-//   node engine-check.mjs --url <server> [--needs chat,tools,odds,think,n,mask,dials,trace,mass]
+//   node engine-check.mjs --url <server> [--needs chat,tools,odds,think,n,mask,dials,trace,mass] [--min-ctx 14000]
 import { live } from './engine-live.mjs';
 import { pathToFileURL } from 'node:url';
 
-export async function checkEngine(eng, needs) {
+export async function checkEngine(eng, needs, { minCtx = 0 } = {}) {
+  if (minCtx) needs = new Set([...needs, 'room']);
   const res = [];
   const t = async (name, fn) => { if (!needs.has(name)) return; try { const why = await fn(); res.push({ name, ok: true, why: why || 'ok' }); } catch (e) { res.push({ name, ok: false, why: String(e.message || e).slice(0, 160) }); } };
   const msg = [{ role: 'user', content: 'Say hi.' }];
@@ -21,6 +22,9 @@ export async function checkEngine(eng, needs) {
   // a long prompt (read in several chunks) alone, like trace-read sends: the short check alone missed the 14 Nov loss
   await t('trace-long', async () => { const j = await eng.trace([{ role: 'user', content: 'Count the words. ' + 'alpha beta gamma delta '.repeat(700) }]); if (!j.expert_trace) throw new Error('no expert_trace for a long prompt (about 3,000 tokens)'); return 'long prompt traced'; });
   await t('mass', async () => { const j = await eng.trace(msg, { mass: true }); if (!j.expert_trace) throw new Error('no expert_trace in the reply'); return JSON.stringify(j.expert_trace).includes('mass') ? 'mass ok' : 'trace ok, no mass field (keep lists ranked by picks)'; });
+  // 14 Nov: 8 slots on 64K left 8,192 tokens per question; Bob's prompt + tools is 4,700-9,200, so every thinking-on answer
+  // was cut off and 4% of turns could not be sent. --min-ctx = the longest planned prompt + the answer budget.
+  if (minCtx) await t('room', async () => { const p = await eng.call('/props'); const n = Number(p?.default_generation_settings?.n_ctx || p?.n_ctx || 0); if (!n) throw new Error('the engine did not say its context per slot'); if (n < minCtx) throw new Error(`each slot holds ${n} tokens; the plan needs ${minCtx} (fewer slots or more ctx)`); return `${n} tokens per slot`; });
   try { await eng.reset(); } catch {}
   return res;
 }
@@ -29,7 +33,7 @@ async function main() {
   const a = Object.fromEntries(process.argv.slice(2).reduce((acc, x, i, arr) => (x.startsWith('--') ? [...acc, [x.slice(2), arr[i + 1] && !arr[i + 1].startsWith('--') ? arr[i + 1] : true]] : acc), []));
   const url = String(a.url || process.env.LAB_URL || ''); if (!url) { console.error('--url <server> is needed'); process.exit(1); }
   const needs = new Set(String(a.needs || 'chat,tools,odds,think,n,mask,dials,trace,trace-long,mass').split(','));
-  const res = await checkEngine(live(url), needs);
+  const res = await checkEngine(live(url), needs, { minCtx: Number(a['min-ctx']) || 0 });
   for (const r of res) console.log(`${r.ok ? 'OK  ' : 'FAIL'} ${r.name}: ${r.why}`);
   const bad = res.filter((r) => !r.ok);
   if (bad.length) { console.log(`GATE STOP: engine check failed (${bad.map((r) => r.name).join(', ')}); stop before spending card time`); process.exit(86); } // 86 = the Forge ends the run and deletes the pod
