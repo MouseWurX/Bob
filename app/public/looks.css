@@ -39,6 +39,19 @@ body.look-lamplight .app::after { content: ""; position: fixed; inset: -6%; z-in
 body.look-lamplight.still .app::after { animation: none; opacity: .33; }
 body.look-lamplight.theme-light .app::after { display: none; }
 @media (prefers-reduced-motion: reduce) { body.look-lamplight .app::after { animation: none; } }
+/* Nov 14 2026 (the owner: "the section you type into could be more ethereal, almost smoke like, with the send button
+   kind of following suit, almost transparent, ghostly. the links to other pages at the top could be almost shadows,
+   and illuminate slightly on mouseover"). The typing box is a thin veil over the room (see-through, blurred behind);
+   Send is an outline that lights on hover; the page links rest as dim as they can while still reading clearly (4.5:1,
+   test-guarded) and catch the cube's light when the pointer or keyboard is on them. Dark themes only: light themes and
+   High Contrast keep the solid ones. */
+body.look-lamplight:not(.theme-light):not(.outlined) :is(.effort, .composer) { background: color-mix(in srgb, var(--panel) 30%, transparent); border-color: color-mix(in srgb, var(--text) 7%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+body.look-lamplight:not(.theme-light):not(.outlined) .composer { box-shadow: 0 24px 60px -30px color-mix(in srgb, var(--cube, var(--accent)) 45%, transparent); }
+body.look-lamplight:not(.theme-light):not(.outlined) .composer:focus-within { border-color: color-mix(in srgb, var(--accent) 28%, transparent); }
+body.look-lamplight:not(.theme-light):not(.outlined) .send { background: transparent; color: var(--text); border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent); box-shadow: none; }
+body.look-lamplight:not(.theme-light):not(.outlined) .send:is(:hover, :focus-visible):not(:disabled) { background: color-mix(in srgb, var(--accent) 16%, transparent); border-color: color-mix(in srgb, var(--accent) 60%, transparent); box-shadow: 0 0 16px -6px var(--accent); }
+body.look-lamplight:not(.theme-light):not(.outlined) .nav-item:not(.on) { color: color-mix(in srgb, var(--muted) 84%, var(--deep)); transition: color .3s var(--ease), text-shadow .3s var(--ease); }
+body.look-lamplight:not(.theme-light):not(.outlined) .nav-item:not(.on):is(:hover, :focus-visible) { background: none; color: var(--text); text-shadow: 0 0 12px color-mix(in srgb, var(--accent) 70%, transparent); }
 body.look-lamplight .app { position: relative; z-index: 1; background: transparent; }
 body.look-lamplight :where(.side, .mid, .now, .ctx, .chips, .effort, .composer, .cellar.page, .cellar.page .cellar-head, .cellar .cellar-tabs) { background: transparent; border-color: transparent; }
 body.look-lamplight .grab { background: none; }
