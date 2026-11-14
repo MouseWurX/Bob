@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 820" width="1280" height="820" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif">
+  <title>Bob-Net: how your Bobs work together</title>
+  <desc>Your Bobs on a PC, a handheld, a laptop, a Raspberry Pi and a phone, joined over the home network first and Tailscale as the fall-back. Each has a door with a passcode. They pair once, say hello every half minute, borrow quick replies, send whole jobs to the least busy Bob, and pool graphics cards for one big brain over SCUT, loading from their own copy of the brain first. Brain Copy is coming.</desc>
+  <defs>
+    <radialGradient id="lamp" cx="22%" cy="8%" r="80%">
+      <stop offset="0" stop-color="#3a2a12" stop-opacity="0.55"/>
+      <stop offset="0.45" stop-color="#14181c" stop-opacity="0.2"/>
+      <stop offset="1" stop-color="#0c0f12" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter>
+    <marker id="arrowT" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5fd4c8"/></marker>
+    <marker id="arrowA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f2b25c"/></marker>
+    <marker id="arrowV" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#b59cf0"/></marker>
+    <marker id="arrowG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8f9aa3"/></marker>
+  </defs>
+
+  <!-- room -->
+  <rect width="1280" height="820" fill="#0c0f12"/>
+  <rect width="1280" height="820" fill="url(#lamp)"/>
+
+  <!-- title -->
+  <text x="40" y="58" font-size="30" font-weight="700" fill="#f3ead8">Bob-Net</text>
+  <text x="40" y="86" font-size="15" fill="#a99f8c">Your own Bobs, working together like a small cluster. Everything is off until you turn it on.</text>
+
+  <!-- zones -->
+  <rect x="30" y="112" width="820" height="560" rx="22" fill="#12171b" stroke="#2a3339" stroke-width="1.5"/>
+  <text x="54" y="142" font-size="15" font-weight="600" fill="#d9cfbb">Home network, used first</text>
+  <text x="54" y="162" font-size="13" fill="#8f9aa3">Wi-Fi, or a cable on one switch (the quickest path is picked; Check links shows them all)</text>
+
+  <rect x="870" y="112" width="380" height="250" rx="22" fill="#12171b" stroke="#2a3339" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <text x="894" y="142" font-size="15" font-weight="600" fill="#d9cfbb">Tailscale, the fall-back</text>
+  <text x="894" y="162" font-size="13" fill="#8f9aa3">When you're away from home. Private, your devices only.</text>
+
+  <!-- ===== links (drawn under the devices) ===== -->
+  <!-- card sharing PC <-> handheld (cable) -->
+  <line x1="330" y1="300" x2="560" y2="300" stroke="#f2b25c" stroke-width="5" stroke-linecap="round" opacity="0.9"/>
+  <line x1="330" y1="300" x2="560" y2="300" stroke="#f2b25c" stroke-width="14" stroke-linecap="round" opacity="0.18" filter="url(#glow)"/>
+  <text x="445" y="282" font-size="13" font-weight="600" fill="#f2b25c" text-anchor="middle">⑤ one brain, two cards</text>
+  <text x="445" y="322" font-size="12" fill="#c9a46a" text-anchor="middle">SCUT or TCP</text>
+  <text x="445" y="338" font-size="12" fill="#c9a46a" text-anchor="middle">up to 1000 Mbit/s on a cable</text>
+
+  <!-- jobs / replies PC <-> laptop -->
+  <path d="M230 380 L230 470" stroke="#5fd4c8" stroke-width="3" fill="none" marker-end="url(#arrowT)" marker-start="url(#arrowT)"/>
+  <text x="244" y="420" font-size="12" fill="#5fd4c8">③ quick replies</text>
+  <text x="244" y="437" font-size="12" fill="#5fd4c8">④ whole jobs</text>
+
+  <!-- jobs PC <-> Pi -->
+  <path d="M330 350 C 470 380, 560 430, 610 470" stroke="#5fd4c8" stroke-width="3" fill="none" marker-end="url(#arrowT)" marker-start="url(#arrowT)"/>
+  <text x="340" y="462" font-size="12" fill="#5fd4c8">④ a picture the Pi can't paint</text>
+
+  <!-- hello everyone (thin grey) -->
+  <path d="M330 228 C 400 214, 490 214, 560 228" stroke="#8f9aa3" stroke-width="1.6" stroke-dasharray="3 5" fill="none"/>
+  <text x="445" y="208" font-size="12" fill="#8f9aa3" text-anchor="middle">② hello every half minute</text>
+
+  <!-- phone over Tailscale -->
+  <path d="M960 225 C 880 172, 330 172, 210 198" stroke="#5fd4c8" stroke-width="2.5" stroke-dasharray="7 6" fill="none" marker-end="url(#arrowT)" marker-start="url(#arrowT)"/>
+  <text x="885" y="232" font-size="12" fill="#5fd4c8" text-anchor="middle">chats, jobs,</text>
+  <text x="885" y="248" font-size="12" fill="#5fd4c8" text-anchor="middle">the Chest</text>
+
+  <!-- Brain Copy (coming) -->
+  <path d="M330 575 L538 575" stroke="#b59cf0" stroke-width="2.5" stroke-dasharray="9 7" fill="none" marker-end="url(#arrowV)"/>
+  <text x="435" y="562" font-size="12" fill="#b59cf0" text-anchor="middle">⑥ Brain Copy (coming)</text>
+  <text x="435" y="595" font-size="11.5" fill="#8f9aa3" text-anchor="middle">a brain file, checked by sha256</text>
+
+  <!-- ===== devices ===== -->
+  <!-- PC -->
+  <g>
+    <rect x="70" y="200" width="260" height="180" rx="16" fill="#171d22" stroke="#5fd4c8" stroke-width="1.6"/>
+    <text x="92" y="232" font-size="18" font-weight="700" fill="#f3ead8">💻 PC</text>
+    <text x="92" y="255" font-size="13" fill="#a99f8c">16 GB graphics card</text>
+    <text x="92" y="276" font-size="13" fill="#d9cfbb">The big brain lives here.</text>
+    <text x="92" y="295" font-size="13" fill="#d9cfbb">Borrows cards and sends jobs.</text>
+    <rect x="92" y="318" width="210" height="44" rx="10" fill="#0f1417" stroke="#2f5f5a"/>
+    <text x="104" y="337" font-size="12" font-weight="600" fill="#5fd4c8">🚪 Door: Bob-Net access</text>
+    <text x="104" y="354" font-size="11.5" fill="#8f9aa3">passcode · home or Tailscale only</text>
+  </g>
+  <!-- Handheld -->
+  <g>
+    <rect x="560" y="200" width="250" height="180" rx="16" fill="#171d22" stroke="#f2b25c" stroke-width="1.6"/>
+    <text x="582" y="232" font-size="18" font-weight="700" fill="#f3ead8">🎮 Handheld</text>
+    <text x="582" y="255" font-size="13" fill="#a99f8c">16 GB shared memory</text>
+    <text x="582" y="276" font-size="13" fill="#d9cfbb">Lends its graphics when idle.</text>
+    <text x="582" y="295" font-size="13" fill="#d9cfbb">Gives it back for games.</text>
+    <rect x="582" y="318" width="206" height="44" rx="10" fill="#0f1417" stroke="#2f5f5a"/>
+    <text x="594" y="337" font-size="12" font-weight="600" fill="#5fd4c8">🚪 Door + its own brain files</text>
+    <text x="594" y="354" font-size="11.5" fill="#8f9aa3">loads its share from its own copy</text>
+  </g>
+  <!-- Laptop -->
+  <g>
+    <rect x="70" y="470" width="260" height="150" rx="16" fill="#171d22" stroke="#3b4950" stroke-width="1.4"/>
+    <text x="92" y="502" font-size="18" font-weight="700" fill="#f3ead8">💻 Laptop</text>
+    <text x="92" y="525" font-size="13" fill="#a99f8c">6 GB graphics card</text>
+    <text x="92" y="546" font-size="13" fill="#d9cfbb">Takes quick replies and jobs.</text>
+    <text x="92" y="567" font-size="13" fill="#d9cfbb">Can lend its card too.</text>
+    <text x="92" y="598" font-size="12" fill="#5fd4c8">🚪 Door</text>
+  </g>
+  <!-- Pi -->
+  <g>
+    <rect x="540" y="470" width="270" height="150" rx="16" fill="#171d22" stroke="#3b4950" stroke-width="1.4"/>
+    <text x="562" y="502" font-size="18" font-weight="700" fill="#f3ead8">🍓 Raspberry Pi</text>
+    <text x="562" y="525" font-size="13" fill="#a99f8c">8 GB, no graphics card</text>
+    <text x="562" y="546" font-size="13" fill="#d9cfbb">Talks; borrows a bigger brain.</text>
+    <text x="562" y="567" font-size="13" fill="#d9cfbb">Pictures come from the PC.</text>
+    <text x="562" y="598" font-size="12" fill="#5fd4c8">🚪 Door</text>
+  </g>
+  <!-- Phone -->
+  <g>
+    <rect x="960" y="190" width="260" height="150" rx="16" fill="#171d22" stroke="#3b4950" stroke-width="1.4"/>
+    <text x="982" y="222" font-size="18" font-weight="700" fill="#f3ead8">📱 Phone</text>
+    <text x="982" y="245" font-size="13" fill="#a99f8c">Bob for Android</text>
+    <text x="982" y="266" font-size="13" fill="#d9cfbb">Asks the PC's Bob, opens his</text>
+    <text x="982" y="285" font-size="13" fill="#d9cfbb">Chest, can lend a small brain.</text>
+    <text x="982" y="316" font-size="12" fill="#5fd4c8">🚪 Door (answers pairing)</text>
+  </g>
+
+  <!-- ===== legend ===== -->
+  <rect x="870" y="382" width="380" height="290" rx="22" fill="#12171b" stroke="#2a3339" stroke-width="1.5"/>
+  <text x="894" y="412" font-size="15" font-weight="600" fill="#d9cfbb">What goes between them</text>
+  <g font-size="12.5" fill="#d9cfbb">
+    <text x="894" y="440"><tspan fill="#8f9aa3" font-weight="700">① Pairing.</tspan> A Yes card once; passcodes swap.</text>
+    <text x="894" y="458" fill="#8f9aa3">   Pass my Bob-Net along introduces the rest.</text>
+    <text x="894" y="484"><tspan fill="#8f9aa3" font-weight="700">② Hello.</tspan> Are you there, and what can you do?</text>
+    <text x="894" y="510"><tspan fill="#5fd4c8" font-weight="700">③ Quick replies.</tspan> Borrow a free brain.</text>
+    <text x="894" y="536"><tspan fill="#5fd4c8" font-weight="700">④ Jobs.</tspan> To the least busy Bob who can;</text>
+    <text x="894" y="554" fill="#8f9aa3">   the files come back. Nobody free: done here.</text>
+    <text x="894" y="580"><tspan fill="#f2b25c" font-weight="700">⑤ Bigger Bobs.</tspan> One brain over several cards;</text>
+    <text x="894" y="598" fill="#8f9aa3">   each Bob loads his share from his own copy.</text>
+    <text x="894" y="624"><tspan fill="#b59cf0" font-weight="700">⑥ Brain Copy</tspan> (coming): send a brain file to</text>
+    <text x="894" y="642" fill="#8f9aa3">   another Bob, checked by its sha256.</text>
+  </g>
+
+  <!-- footer -->
+  <rect x="30" y="692" width="1220" height="96" rx="18" fill="#12171b" stroke="#2a3339" stroke-width="1.5"/>
+  <text x="54" y="722" font-size="14" font-weight="600" fill="#d9cfbb">Where it isn't a cluster</text>
+  <text x="54" y="746" font-size="13" fill="#a99f8c">No shared disk and no boss computer. Each Bob keeps his own chats, memory and files, and only does what his own switches allow.</text>
+  <text x="54" y="768" font-size="13" fill="#a99f8c">Up to 16 Bobs. Only your own paired Bobs get in, with that Bob's passcode, over your home network or Tailscale.</text>
+</svg>
