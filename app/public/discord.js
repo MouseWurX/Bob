@@ -1,4 +1,4 @@
-// Settings, Online services: "Bob on Discord" (src/discord.js). Off unless you turn it on.
+// Settings, Agents, Discord: "Bob on Discord" (src/discord.js). Off unless you turn it on.
 import { esc } from './util.js';
 
 async function api(url, data) {

@@ -1,4 +1,4 @@
-// Settings, Online services: "Bob on Telegram" (src/telegram.js). Off unless you turn it on.
+// Settings, Agents, Telegram: "Bob on Telegram" (src/telegram.js). Off unless you turn it on.
 import { esc } from './util.js';
 
 async function api(url, data) {

@@ -185,5 +185,32 @@ check('only Bobs on Bob-Net right now', v.bobs.length === 1 && v.bobs[0].name ==
   check('a new request gives a word bubble, never a sound or pop-up', /ev\.type === 'room'/.test(page) && !/new Audio|Notification\(/.test(page));
 }
 
+// ---- 1.5.228 Settings, Agents: a section per company, each with its own chat head (off unless turned on) ----
+{
+  const { COMPANIES, cleanChatHeads, companyHeads } = await import('../src/net-overlay.js');
+  const { companyWords } = await import('../public/net-overlay.js');
+  const map = await import('../public/settings-map.js');
+  const cellar = read('public/cellar.js'), pages = read('public/cellar-pages.js'), help = read('public/help-content.js');
+  check('every company has its coding program and a look of its own', COMPANIES.every((c) => c.kind && agentLook(c.kind)) && COMPANIES.map((c) => c.id).join() === 'claude,openai,gemini,qwen,opencode');
+  check('chat heads are off unless turned on, and only known companies are kept', JSON.stringify(cleanChatHeads({})) === '{}' && JSON.stringify(cleanChatHeads({ claude: true, qwen: 'yes', evil: true })) === '{"claude":true}' && JSON.stringify(cleanChatHeads([true])) === '{}');
+  const agents = { on: true, agents: [{ id: 'a', name: 'reviewer', kind: 'claude', state: 'working', log: ['reading'] }, { id: 'b', name: 'fixer', kind: 'claude', state: 'needs-you', log: ['May I push?'] }, { id: 'c', name: 'cx', kind: 'codex', state: 'done', log: [] }] };
+  check('no head for a company that is off', companyHeads({}, agents).length === 0);
+  const heads = companyHeads({ chatHeads: { claude: true, qwen: true } }, agents);
+  const cl = heads.find((h) => h.id === 'claude'), qw = heads.find((h) => h.id === 'qwen');
+  check('a head shows its most pressing agent: needs you before working', cl.state === 'needs-you' && cl.needsYou === 1 && cl.agents === 2 && cl.last === 'May I push?');
+  check('a head with no agents yet says so, and is still there', qw.agents === 0 && qw.state === 'idle' && companyWords(qw) === 'No agents yet' && companyWords(cl) === '1 needs you');
+  const off = await overlayView({ chatHeads: { claude: true } }, { agents });
+  check('a company head shows with Bob-Net icons off', off.on === false && off.companies.length === 1 && off.agents.length === 0);
+  const onV = await overlayView({ netOverlay: true, chatHeads: { claude: true } }, { agents });
+  check('with icons on, an agent whose company has a head shows only there, never twice', onV.companies.length === 1 && onV.agents.every((a) => a.kind !== 'claude') && onV.agents.some((a) => a.kind === 'codex'));
+  check('Settings has an Agents group and card with every section', map.GROUPS.some(([g, ids]) => g === 'Agents' && ['claude', 'openai', 'gemini', 'qwen', 'opencode', 'discord', 'telegram'].every((x) => ids.includes('adv-' + x))) && map.CARDS.some((c) => c.id === 'agents'));
+  check('each section is a real panel with Help', ['claude', 'openai', 'gemini', 'qwen', 'opencode', 'discord', 'telegram'].every((x) => cellar.includes(`['${x}', '`) && help.includes(`id: 'settings-${x}'`)) && help.includes("id: 'settings-agents'"));
+  check('nothing was taken away: the Cloud helper, coding agent and Hands for Claude are drawn in the sections', /cloudRow\(helper\)/.test(pages) && /agentsSettingsHtml\(co\.kind\)/.test(pages) && /co\.id === 'claude' \? .*claudeDoorHtml\(\)/.test(pages) && /COMPANY_CLOUDS\.includes/.test(pages));
+  check('Discord and Telegram moved whole', /chatAppHtml\('discord'\)/.test(cellar) && /discordHtml\(\)/.test(pages) && /telegramHtml\(\)/.test(pages) && !/\$\{telegramHtml\(\)\}\n\s*\$\{discordHtml\(\)\}/.test(pages));
+  check('every coding agents box is mounted, the general one and each company\'s', /mountAgentsSettings\(dlg\.querySelectorAll\('\.coding-agents-box'\)\)/.test(cellar));
+  check('the head switch saves through /api/settings and redraws the heads', /chatHead-/.test(cellar) && /b\.chatHeads/.test(read('src/server.js')) && /cleanChatHeads/.test(read('src/config.js')));
+  check('Help explains why they used to be apart (key vs sign-in vs the other way round)', /faq-agents-sections/.test(help) && /API key/.test(help) && /sign-in/.test(help));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

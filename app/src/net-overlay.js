@@ -6,7 +6,7 @@
 //   - another of your Bobs, while he's paired and answering on Bob-Net right now. His icon is a little porthole like
 //     Bob's own, in a colour of his own, and its cube follows his state over there (no brain, loading, thinking,
 //     replying, ready), read from him every few seconds while the icons show (GET /api/bob-net/cube, signed in);
-//   - a coding agent you added (Settings, Other apps, Coding agents), with a moving sign in its app's colours.
+//   - a coding agent you added (Settings, Agents), with a moving sign in its app's colours.
 // Click a Bob: his chat opens here in guest mode, and what you type goes to him (a "chat" job over Bob-Net, like the
 // whole jobs in share-jobs.js) and never runs on this computer. Over there he has thinking, plus web search when it's on
 // here: no files, folders, programs, Hands, reminders or memory on either computer. The chat isn't saved (a guest chat,
@@ -17,6 +17,7 @@
 // Display and routing only: nothing here is added to what a brain is sent, except the one-line note a chat job carries
 // to the Bob doing it (share-jobs.js guestNote), and only on that job.
 import crypto from 'node:crypto';
+import { COMPANIES, COMPANY_IDS, cleanChatHeads } from '../public/agent-companies.js';
 
 export const overlayOn = (cfg) => cfg?.netOverlay === true;
 export const NET_PREFIX = 'guest-net-';
@@ -52,6 +53,23 @@ export const AGENT_LOOKS = {
   custom: { mono: true, sign: 'brackets' }
 };
 export const agentLook = (kind) => AGENT_LOOKS[kind] || AGENT_LOOKS.custom;
+
+// 1.5.228 Agents: one Settings section per company (public/agent-companies.js); turning its chat head on there
+// (cfg.chatHeads[id], off unless turned on) puts its cube under Bob's, showing what its coding agents are doing.
+export { COMPANIES, COMPANY_IDS, cleanChatHeads };
+export const companyOf = (kind) => COMPANIES.find((c) => c.kind === kind) || null;
+// The most pressing state among one company's agents: needs you, then working, failed, done, then ready.
+const STATE_ORDER = ['needs-you', 'working', 'failed', 'done', 'stopped', 'idle'];
+export function companyHeads(cfg, agents) {
+  const on = cleanChatHeads(cfg?.chatHeads);
+  const list = [].concat(agents?.agents || []);
+  return COMPANIES.filter((c) => on[c.id]).map((c) => {
+    const mine = list.filter((a) => a.kind === c.kind);
+    const state = STATE_ORDER.find((st) => mine.some((a) => a.state === st)) || 'idle';
+    const top = mine.find((a) => a.state === state);
+    return { id: c.id, name: c.name, kind: c.kind, look: agentLook(c.kind), state, agents: mine.length, needsYou: mine.filter((a) => a.state === 'needs-you').length, last: top ? clean([].concat(top.log || []).filter((l) => !/^[—!]/.test(l)).at(-1) || '', 160) : '' };
+  });
+}
 
 // This Bob's own cube, in one word, for another Bob's icon. state: brain.state.state; loaded: how many brains are in
 // memory; tokenAt: when his last word streamed out.
@@ -90,7 +108,9 @@ export async function overlayView(cfg, { bobs = [], seen = () => null, mood = as
   // 1.5.228 chat heads: a chat bot you turned on (Discord, Telegram) shows its own head under Bob's cube, whether or
   // not Bob-Net icons is on. The owner, Nov 14: "they would only appear if you have them activated".
   const heads = [].concat(rooms || []).filter((r) => r && /^[a-z]{2,20}$/.test(String(r.id))).map((r) => ({ id: String(r.id), name: clean(r.name) || 'Group chat', waiting: Math.max(0, Number(r.waiting) || 0), ...(r.chat ? { chat: clean(r.chat, 40) } : {}) }));
-  if (!overlayOn(cfg)) return { on: false, bobs: [], agents: [], rooms: heads };
+  const companies = companyHeads(cfg, agents);
+  if (!overlayOn(cfg)) return { on: false, bobs: [], agents: [], rooms: heads, companies };
+  const headed = new Set(companies.map((c) => c.kind)); // an agent whose company has its own head shows there, not twice
   const up = bobs.filter((b) => seen(b)?.up === true); // only while he's on Bob-Net right now
   const moods = await Promise.all(up.map((b) => mood(b).catch(() => 'ready')));
   return {
@@ -100,7 +120,8 @@ export async function overlayView(cfg, { bobs = [], seen = () => null, mood = as
       return { name: clean(b.name) || 'Another Bob', chat: chatIdFor(b.address), hue: hueFor(b.name), mood: moods[i], device: clean(s.device, 20), brain: clean(s.brain, 60), canChat: (s.jobs || []).includes('chat') && !s.jobsBusy };
     }),
     rooms: heads,
-    agents: agents?.on ? [].concat(agents.agents || []).map((a) => ({ id: String(a.id), name: clean(a.name), kind: String(a.kind || 'custom'), look: agentLook(a.kind), state: String(a.state || 'idle'), last: clean([].concat(a.log || []).filter((l) => !/^[—!]/.test(l)).at(-1) || '', 160) })) : []
+    companies,
+    agents: agents?.on ? [].concat(agents.agents || []).filter((a) => !headed.has(a.kind)).map((a) => ({ id: String(a.id), name: clean(a.name), kind: String(a.kind || 'custom'), look: agentLook(a.kind), state: String(a.state || 'idle'), last: clean([].concat(a.log || []).filter((l) => !/^[—!]/.test(l)).at(-1) || '', 160) })) : []
   };
 }
 

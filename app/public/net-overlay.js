@@ -35,6 +35,12 @@ export const AGENT_WORDS = { idle: 'Ready', working: 'Working', 'needs-you': 'Ne
 // The light inside an icon is kept under Bob's own: at most this bright (0..1).
 export const ICON_LIGHT = 0.6;
 // 1.5.228 the Discord group chat's icon: a cube in a blue-violet of our own with the talk sign (never Discord's logo).
+// 1.5.228 a company's chat head: what its agents are doing, in a few words.
+export function companyWords(c) {
+  if (!c?.agents) return 'No agents yet';
+  if (c.needsYou) return `${c.needsYou} need${c.needsYou === 1 ? 's' : ''} you`;
+  return `${AGENT_WORDS[c.state] || 'Ready'} · ${c.agents} agent${c.agents === 1 ? '' : 's'}`;
+}
 export const ROOM_LOOKS = { discord: { hue: 235, sat: 55, sign: 'talk' }, telegram: { hue: 200, sat: 65, sign: 'dots' } };
 export const ROOM_LOOK = ROOM_LOOKS.discord;
 export const roomLook = (id) => ROOM_LOOKS[id] || ROOM_LOOK;
@@ -108,6 +114,7 @@ function makeIcon(kind, key, it, { still }) {
     const t = (now - s.t0) / 1000;
     if (kind === 'agent') return drawAgent(x, s.it.look || {}, t, s.it.state === 'working');
     if (kind === 'room') return drawAgent(x, roomLook(s.it.id), t, s.it.waiting > 0);
+    if (kind === 'company') return drawAgent(x, s.it.look || {}, t, s.it.state === 'working'); // 1.5.228 a company's chat head
     x.clearRect(0, 0, 96, 96);
     const mood = s.it.mood;
     // No brain over there (a fresh copy, a test Bob, or his brain let go): his cube still shows, resting and grey.
@@ -126,8 +133,8 @@ function makeIcon(kind, key, it, { still }) {
 // ---------- The whole strip ----------
 // deps: open(id) opens a chat; session() is the chat open now; showAgents() opens Now running at Coding agents;
 // note(text) says something in the chat; fetchImpl for tests.
-export function createNetOverlay({ open, session, showAgents, openRoom = () => {}, note = () => {}, still = () => false, fetchImpl = (u) => fetch(u).then((r) => r.json()), store = globalThis.localStorage } = {}) {
-  let on = false, view = { bobs: [], agents: [], rooms: [] }, timer = null, raf = 0, bubble = null;
+export function createNetOverlay({ open, session, showAgents, openRoom = () => {}, openSettings = () => {}, note = () => {}, still = () => false, fetchImpl = (u) => fetch(u).then((r) => r.json()), store = globalThis.localStorage } = {}) {
+  let on = false, view = { bobs: [], agents: [], rooms: [], companies: [] }, timer = null, raf = 0, bubble = null;
   const icons = new Map(); // key -> icon state
   const unseen = new Map(); // key -> count
   const replies = new Map(); // net chat id -> words coming in
@@ -144,17 +151,20 @@ export function createNetOverlay({ open, session, showAgents, openRoom = () => {
   document.body.prepend(glow); document.body.append(tip, said);
 
   const sepEl = document.createElement('span'); sepEl.className = 'sep'; sepEl.setAttribute('aria-hidden', 'true');
-  const keyOfBob = (b) => `bob:${b.chat}`, keyOfAgent = (a) => `agent:${a.id}`, keyOfRoom = (r) => `room:${r.id}`;
-  const all = () => [...view.bobs.map((b) => ({ kind: 'bob', key: keyOfBob(b), it: b })), ...(view.rooms || []).map((r) => ({ kind: 'room', key: keyOfRoom(r), it: r })), ...view.agents.map((a) => ({ kind: 'agent', key: keyOfAgent(a), it: a }))];
+  const keyOfBob = (b) => `bob:${b.chat}`, keyOfAgent = (a) => `agent:${a.id}`, keyOfRoom = (r) => `room:${r.id}`, keyOfCompany = (c) => `company:${c.id}`;
+  // Chat heads (Discord, Telegram, and each company switched on in Settings, Agents) show whether or not Bob-Net icons is on.
+  const heads = () => [...(view.rooms || []).map((r) => ({ kind: 'room', key: keyOfRoom(r), it: r })), ...(view.companies || []).map((c) => ({ kind: 'company', key: keyOfCompany(c), it: c }))];
+  const all = () => [...view.bobs.map((b) => ({ kind: 'bob', key: keyOfBob(b), it: b })), ...heads(), ...view.agents.map((a) => ({ kind: 'agent', key: keyOfAgent(a), it: a }))];
   const returnTo = () => { try { return store?.getItem('bob-net-return') || 'main'; } catch { return 'main'; } };
 
   function label(kind, it) {
     if (kind === 'bob') return `${it.name}: ${MOOD_WORDS[it.mood] || 'Ready'}${it.canChat ? '' : ' (doesn\'t take chats yet)'}`;
     if (kind === 'room') return roomWords(it);
+    if (kind === 'company') return `${it.name}: ${companyWords(it)}`;
     return `${it.name}: ${AGENT_WORDS[it.state] || 'Ready'}`;
   }
   function draw() {
-    const list = on ? all() : (view.rooms || []).map((r) => ({ kind: 'room', key: keyOfRoom(r), it: r }));
+    const list = on ? all() : heads();
     row.hidden = !list.length;
     document.body.classList.toggle('has-net-row', list.length > 0);
     const keys = new Set(list.map((x) => x.key));
@@ -166,13 +176,14 @@ export function createNetOverlay({ open, session, showAgents, openRoom = () => {
       if (!s) { s = makeIcon(x.kind, x.key, x.it, { still }); icons.set(x.key, s); wire(s); }
       s.it = x.it;
       s.btn.setAttribute('aria-label', label(x.kind, x.it));
-      s.btn.dataset.mood = x.kind === 'bob' ? x.it.mood : x.kind === 'room' ? (x.it.waiting ? 'waiting' : 'ready') : x.it.state;
+      s.btn.dataset.mood = x.kind === 'bob' ? x.it.mood : x.kind === 'room' ? (x.it.waiting ? 'waiting' : 'ready') : x.it.state; // agent and company: its state
       s.btn.classList.toggle('on', x.kind === 'bob' && session() === x.it.chat);
-      s.btn.classList.toggle('mono', x.kind === 'agent' && x.it.look?.mono === true);
-      const n = x.kind === 'room' ? x.it.waiting || 0 : unseen.get(x.key) || 0; const c = s.btn.querySelector('.count'); c.hidden = !n; c.textContent = n > 9 ? '9+' : String(n);
-      if (x.kind === 'agent' && !firstAgent && view.bobs.length) order.push(sepEl);
+      s.btn.classList.toggle('mono', (x.kind === 'agent' || x.kind === 'company') && x.it.look?.mono === true);
+      const n = x.kind === 'room' ? x.it.waiting || 0 : x.kind === 'company' ? Math.max(x.it.needsYou || 0, unseen.get(x.key) || 0) : unseen.get(x.key) || 0; const c = s.btn.querySelector('.count'); c.hidden = !n; c.textContent = n > 9 ? '9+' : String(n);
+      // One line between your other Bobs and everything else (chat heads and agents).
+      if (x.kind !== 'bob' && !firstAgent && on && view.bobs.length) order.push(sepEl);
       order.push(s.btn);
-      if (x.kind === 'agent' && !firstAgent) firstAgent = s.btn;
+      if (x.kind !== 'bob' && !firstAgent) firstAgent = s.btn;
     }
     // Only touch the order when it changed, so pointing at an icon isn't disturbed by the next look.
     if (order.length !== row.children.length || order.some((el, i) => row.children[i] !== el)) row.replaceChildren(...order);
@@ -190,7 +201,7 @@ export function createNetOverlay({ open, session, showAgents, openRoom = () => {
   function placeGlow() {
     const g = [];
     for (const s of icons.values()) {
-      const hue = s.kind === 'bob' ? s.it.hue : s.kind === 'room' ? roomLook(s.it.id).hue : s.it.look?.mono ? null : s.it.look?.hue;
+      const hue = s.kind === 'bob' ? s.it.hue : s.kind === 'room' ? roomLook(s.it.id).hue : s.it.look?.mono ? null : s.it.look?.hue; // agent and company: their look
       if (hue == null || s.btn.isConnected === false) continue;
       const r = s.btn.getBoundingClientRect(); if (!r.width) continue;
       const strong = s.btn.classList.contains('on') || s.btn.matches(':hover');
@@ -208,7 +219,7 @@ export function createNetOverlay({ open, session, showAgents, openRoom = () => {
   }
   function showTip(s) {
     if (bubble?.key === s.btn.dataset.key) return;
-    const sub = s.kind === 'room' ? (s.it.chat ? 'Your chat' : s.it.waiting ? `${s.it.waiting} waiting for your OK` : 'Its own chat') : s.kind === 'bob' ? (MOOD_WORDS[s.it.mood] || 'Ready') + (s.it.brain && s.it.mood !== 'none' ? ` · ${s.it.brain}` : '') : (AGENT_WORDS[s.it.state] || 'Ready');
+    const sub = s.kind === 'company' ? companyWords(s.it) : s.kind === 'room' ? (s.it.chat ? 'Your chat' : s.it.waiting ? `${s.it.waiting} waiting for your OK` : 'Its own chat') : s.kind === 'bob' ? (MOOD_WORDS[s.it.mood] || 'Ready') + (s.it.brain && s.it.mood !== 'none' ? ` · ${s.it.brain}` : '') : (AGENT_WORDS[s.it.state] || 'Ready');
     tip.innerHTML = `${esc(s.it.name)}<small>${esc(sub)}</small>`;
     place(tip, s.btn); tip.hidden = false;
   }
@@ -221,6 +232,7 @@ export function createNetOverlay({ open, session, showAgents, openRoom = () => {
     closeBubble(s.btn.dataset.key);
     unseen.delete(s.btn.dataset.key); draw();
     if (s.kind === 'agent') { showAgents?.(); return; }
+    if (s.kind === 'company') { if (s.it.agents) showAgents?.(); else openSettings(s.it.id); return; } // its agents, or its own Settings section to add one
     if (s.kind === 'room') { if (s.it.chat) open(s.it.chat); else openRoom(s.it.id); return; }
     if (!s.it.canChat) { note(`${s.it.name} doesn't take chats from your other Bobs yet. On ${s.it.name}: update Bob, then Settings, Bob-Net, Accept jobs.`); return; }
     const now = session();
@@ -278,6 +290,10 @@ export function createNetOverlay({ open, session, showAgents, openRoom = () => {
   function event(ev) {
     if (!ev) return;
     if (ev.type === 'coding-agents' && ev.agent && ['done', 'needs-you', 'failed'].includes(ev.agent.state)) {
+      // 1.5.228: an agent whose company has a chat head speaks through that head.
+      const c = (view.companies || []).find((x) => x.kind === ev.agent.kind);
+      if (c) { refresh().then(() => { const k = keyOfCompany(c); unseen.set(k, (unseen.get(k) || 0) + 1); draw(); const now = (view.companies || []).find((x) => x.id === c.id) || c; showBubble(k, `${c.name} · ${ev.agent.name || ''}`, preview(now.last) || AGENT_WORDS[ev.agent.state]); }); return; }
+      if (!on) return;
       refresh().then(() => { const a = view.agents.find((x) => x.id === ev.agent.id); if (!a) return; const k = keyOfAgent(a); unseen.set(k, (unseen.get(k) || 0) + 1); draw(); showBubble(k, a.name, preview(a.last) || AGENT_WORDS[ev.agent.state]); });
       return;
     }
@@ -299,7 +315,7 @@ export function createNetOverlay({ open, session, showAgents, openRoom = () => {
   }
 
   async function refresh() {
-    try { const v = await fetchImpl('/api/net-overlay'); if (v?.on === false) { view = { bobs: [], agents: [], rooms: [].concat(v.rooms || []) }; } else if (v) view = { bobs: [].concat(v.bobs || []), agents: [].concat(v.agents || []), rooms: [].concat(v.rooms || []) }; } catch {}
+    try { const v = await fetchImpl('/api/net-overlay'); if (v?.on === false) { view = { bobs: [], agents: [], rooms: [].concat(v.rooms || []), companies: [].concat(v.companies || []) }; } else if (v) view = { bobs: [].concat(v.bobs || []), agents: [].concat(v.agents || []), rooms: [].concat(v.rooms || []), companies: [].concat(v.companies || []) }; } catch {}
     draw();
   }
   // 1.5.228: chat heads show with Bob-Net icons off too, so the window looks every 10 s then (every 2 s with it on).

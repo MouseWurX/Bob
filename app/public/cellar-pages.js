@@ -9,6 +9,7 @@ import { claudeDoorHtml } from './claude-door.js';
 import { agentsSettingsHtml } from './coding-agents.js'; // Nov 13 Coding agents
 import { telegramHtml } from './telegram.js';
 import { discordHtml } from './discord.js';
+import { COMPANIES, COMPANY_CLOUDS } from './agent-companies.js'; // 1.5.228 Settings, Agents
 import { phoneAccessHtml } from './phone-access.js';
 import { shareBrainsHtml } from './share-brains.js';
 import { TEXT_MIN, TEXT_MAX, TEXT_STEP } from './everyday.js';
@@ -140,10 +141,33 @@ export function createSettingsParts(now) {
         <label class="switch"><input type="checkbox" data-set="workshop" ${settings.workshop?.enabled ? 'checked' : ''}><span><strong>Use ComfyUI</strong><br><span class="muted">${settings.workshop?.folder ? `Workflows folder: ${esc(settings.workshop.folder)} · ${settings.workshop.count || 0} workflow${settings.workshop.count === 1 ? '' : 's'}` : 'Off.'}</span></span></label>
         <label class="pick"><strong>ComfyUI port</strong><input data-set="workshopPort" inputmode="numeric" value="${esc(settings.workshop?.port || 8188)}" aria-label="ComfyUI port" style="width:7em"></label></div>
       ${appsDoorHtml()}
-      <p class="muted">Apps Bob works inside (Unreal Engine, Blender) are under Hands, Connected apps (MCP).</p>
-      ${claudeDoorHtml()}
+      <p class="muted">Apps Bob works inside (Unreal Engine, Blender) are under Hands, Connected apps (MCP). Claude, OpenAI, Gemini, Qwen and OpenCode each have their own section under Agents.</p>
       ${agentsSettingsHtml()}`;
   }
+  // 1.5.228 Settings, Agents: one section per company, holding everything Bob does with it (the owner, Nov 14: "all
+  // the big company agents should get their whole section"). Nothing new underneath: the Cloud helper, the coding agent
+  // and Hands for Claude are the same settings as before, only shown here. Each part is off unless you turn it on.
+  const cloudRow = (c) => `<div class="cloud row${c.keyFound ? '' : ' dim'}">
+          <label class="switch"><input type="checkbox" data-cloud="${esc(c.id)}" ${c.enabled ? 'checked' : ''} ${c.keyFound ? '' : 'disabled'}><span><strong>${esc(c.name)}</strong><br><span class="muted">${c.keyFound ? `Key found (${esc(c.apiKeyEnv)})` : `No key yet. Add a user variable named ${esc(c.apiKeyEnv)}.`}</span></span></label>
+          ${c.models.length ? `<select data-cloudmodel="${esc(c.id)}" aria-label="${esc(c.name)} model" ${c.keyFound ? '' : 'disabled'}>${c.models.map((m) => `<option ${m === c.model ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>` : `<input data-cloudmodel="${esc(c.id)}" aria-label="${esc(c.name)} model" placeholder="model name" value="${esc(c.model)}" ${c.keyFound ? '' : 'disabled'}>`}
+        </div>`;
+  function agentSectionHtml(id) {
+    const co = COMPANIES.find((c) => c.id === id);
+    if (!co) return '';
+    const heads = settings.chatHeads || {};
+    const helper = co.cloud ? cloud.find((c) => c.id === co.cloud) : null;
+    return `<p class="muted">Everything I do with ${esc(co.name)} (${esc(co.maker)}), in one place. Each part is off unless you turn it on.</p>
+      <h4 class="ssub">Chat head</h4>
+      ${sswitch('chatHead-' + co.id, heads[co.id] === true, `Show ${co.name}'s cube under mine`, `${co.name}'s own cube sits under my picture, with a dot for working, needs you or done. Click it to open its agents.`)}
+      ${helper ? `<h4 class="ssub">${esc(co.name)}'s brain for jobs</h4>
+      ${more(`A Cloud helper: I hand ${co.name} one job at a time, with an API key you pay per use. I ask every time, with the rough cost and exactly what text would leave this replicant matrix. I never store or see the key: you add it as an environment variable yourself.`)}
+      ${cloudRow(helper)}` : ''}
+      <h4 class="ssub">Coding agent</h4>
+      ${agentsSettingsHtml(co.kind)}
+      ${co.id === 'claude' ? `<h4 class="ssub">Let Claude use my hands</h4>${claudeDoorHtml()}` : ''}`;
+  }
+  // Discord and Telegram: the same boxes as before, with their chat head explained.
+  const chatAppHtml = (id) => `<p class="muted">Its chat head (my own cube for it) sits under my picture while it's on. Click it to open its chat.</p>${id === 'discord' ? discordHtml() : telegramHtml()}`;
   // 1.5.127 Rented brains: a big brain hired for one job from a service the owner has an account with.
   function rentHtml() {
     const r = rent || {};
@@ -200,12 +224,9 @@ export function createSettingsParts(now) {
       ${rentHtml()}
       <div><strong>Cloud helpers</strong> <span class="tag">off unless you turn one on</span>
         ${more('Paid cloud AIs Bob can hand one job to. He asks every time, with the rough cost and exactly what text would leave this replicant matrix. Bob never stores or sees your keys: you add a key as a Windows environment variable yourself (Settings, System, About, Advanced system settings, Environment Variables, under "User variables").')}
-        ${cloud.map((c) => `<div class="cloud row${c.keyFound ? '' : ' dim'}">
-          <label class="switch"><input type="checkbox" data-cloud="${esc(c.id)}" ${c.enabled ? 'checked' : ''} ${c.keyFound ? '' : 'disabled'}><span><strong>${esc(c.name)}</strong><br><span class="muted">${c.keyFound ? `Key found (${esc(c.apiKeyEnv)})` : `No key yet. Add a user variable named ${esc(c.apiKeyEnv)}.`}</span></span></label>
-          ${c.models.length ? `<select data-cloudmodel="${esc(c.id)}" aria-label="${esc(c.name)} model" ${c.keyFound ? '' : 'disabled'}>${c.models.map((m) => `<option ${m === c.model ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>` : `<input data-cloudmodel="${esc(c.id)}" aria-label="${esc(c.name)} model" placeholder="model name" value="${esc(c.model)}" ${c.keyFound ? '' : 'disabled'}>`}
-        </div>`).join('')}</div>
-      ${telegramHtml()}
-      ${discordHtml()}`;
+        ${cloud.filter((c) => !COMPANY_CLOUDS.includes(c.id)).map(cloudRow).join('')}
+        <p class="muted">Claude, OpenAI and Gemini are in their own sections under Agents.</p></div>
+      <p class="muted">Bob on Discord and Bob on Telegram are under Agents.</p>`;
   }
   function bobNetHtml() {
     return `<h4 class="ssub">This Bob</h4>
@@ -269,6 +290,8 @@ export function createSettingsParts(now) {
     otherAppsHtml: (...a) => { fresh(); return otherAppsHtml(...a); },
     rentHtml: (...a) => { fresh(); return rentHtml(...a); },
     onlineHtml: (...a) => { fresh(); return onlineHtml(...a); },
+    agentSectionHtml: (...a) => { fresh(); return agentSectionHtml(...a); },
+    chatAppHtml: (...a) => { fresh(); return chatAppHtml(...a); },
     bobNetHtml: (...a) => { fresh(); return bobNetHtml(...a); },
     lookExtrasHtml: (...a) => { fresh(); return lookExtrasHtml(...a); },
     jobsHtml: (...a) => { fresh(); return jobsHtml(...a); },

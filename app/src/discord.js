@@ -1,4 +1,4 @@
-// Bob on Discord (Settings, Online services). Off unless you turn it on.
+// Bob on Discord (Settings, Agents, Discord). Off unless you turn it on.
 //
 // Bob joins your Discord server as a bot: you make the bot yourself in the Discord Developer Portal and give Bob its
 // token. Never a normal user account (that's against Discord's rules). The token lives where the cloud keys live: a
@@ -374,7 +374,7 @@ export class DiscordBridge {
     let name = '';
     try { const c = await this.rest('GET', `/channels/${channelId}`); name = String(c?.name || '').replace(/[\u0000-\u001f<>@]/g, '').slice(0, 60); } catch {}
     this.unlisted.set(channelId, name);
-    this.log(`ignored a message in ${name ? `#${name}` : `channel ${channelId}`}: not on my channel list (Settings, Online services, Bob on Discord can add it)`);
+    this.log(`ignored a message in ${name ? `#${name}` : `channel ${channelId}`}: not on my channel list (Settings, Agents, Discord can add it)`);
   }
 
   // One message from Discord. Only listed channels, only people on the list (if there is one), never bots.

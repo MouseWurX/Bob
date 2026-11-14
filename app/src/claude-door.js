@@ -1,4 +1,4 @@
-// "Hands for Claude" (Settings, Other apps; off unless you turn it on).
+// "Hands for Claude" (Settings, Agents, Claude; off unless you turn it on).
 // Bob as an MCP server: the Claude app, Claude Code (or another MCP app you make a key for) can ask Bob to use his
 // tools. Claude does the thinking; Bob's Hands, painters, document readers, notes and memory do the work, here.
 // src/mcp.js is the other direction (Bob using other apps' tools).
@@ -158,7 +158,7 @@ export function inFlight() { let n = 0; for (const s of sessions.values()) n += 
 export async function callTool(brain, app, session, name, args, { signal, log = () => {} } = {}) {
   const cfg = brain.cfg;
   const d = loadDoor(cfg);
-  if (!d.on) return errorResult('Bob\'s door for other apps is switched off in Bob (Settings, Other apps).');
+  if (!d.on) return errorResult('Bob\'s door for other apps is switched off in Bob (Settings, Agents, Claude).');
   if (!offeredNames(brain, d).includes(name)) return errorResult(`Bob doesn't offer "${String(name).slice(0, 60)}" right now. It may be switched off in Bob, or its group isn't ticked under Hands for Claude.`);
   args = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
   const images = [];
@@ -267,7 +267,7 @@ export async function doorRoute({ req, res, brain, isLocal }) {
   if (!isLocal || !LOOPBACK.test(String(req.socket?.remoteAddress || ''))) return json(res, 403, { error: 'Only apps on this computer can use Bob\'s door.' });
   if (req.headers.origin) return json(res, 403, { error: 'Not from a web page.' }); // a browser always sends Origin
   const d = loadDoor(cfg);
-  if (!d.on) return json(res, 403, { error: 'Bob\'s door for other apps is off. Turn on "Hands for Claude" in Bob (Settings, Other apps).' });
+  if (!d.on) return json(res, 403, { error: 'Bob\'s door for other apps is off. Turn on "Hands for Claude" in Bob (Settings, Agents, Claude).' });
   const key = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
   const app = appForKey(cfg, key);
   if (!app) return json(res, 401, { error: 'Bob doesn\'t know this key. Connect the app again from Bob\'s Settings.' }, { 'www-authenticate': 'Bearer' });
