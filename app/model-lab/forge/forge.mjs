@@ -363,6 +363,13 @@ async function sendImatrixTexts() {
     const from = path.resolve(here, '..', m.imatrix_from); if (!fs.existsSync(from)) { log(`${m.name}: imatrix_from ${from} is missing (calib-prep.mjs makes it); no imatrix for him`); continue; }
     const itgz = path.join(outDir, 'forge', `imatrix-${m.name}.tgz`); execSync(`tar czf "${itgz}" -C "${from}" .`, { stdio: 'inherit' }); await upload(`imatrix-${m.name}.tgz`, itgz); log(`${m.name}: imatrix texts sent`);
   }
+  // 14 Nov: interp_from (a PC folder from interp-prep.mjs: prompts.txt + labels.json) goes up as in/interp-<name>.tgz; before
+  // serving, the pod reads his inner stream on it (llama-act-dump) and trains the sparse autoencoders (pod/interp.py)
+  for (const m of plan.benchmark?.models || []) if (m.interp_from) {
+    const { execSync } = await import('node:child_process');
+    const from = path.resolve(here, '..', m.interp_from); if (!fs.existsSync(path.join(from, 'prompts.txt'))) { log(`${m.name}: interp_from ${from} has no prompts.txt (interp-prep.mjs makes it); no interp step for him`); continue; }
+    const itgz = path.join(outDir, 'forge', `interp-${m.name}.tgz`); execSync(`tar czf "${itgz}" -C "${from}" .`, { stdio: 'inherit' }); await upload(`interp-${m.name}.tgz`, itgz); log(`${m.name}: interp prompts sent`);
+  }
 }
 if (args['send-plan']) {
   // update plan.json on a running pod without touching the run (run.sh reads the plan again at the start of each rung)
@@ -493,7 +500,7 @@ async function benchOnPod(name) {
   // first, so the PC's commands can read them and the report doesn't wait for the end of the run
   try {
     const r = await get('/status'); const st = r.ok ? await r.json() : null;
-    for (const f of (st?.files || []).filter((x) => x.path.startsWith(`bench/evil-${name}/`) || x.path.startsWith(`bench/imatrix-${name}/`))) await download(f.path, path.join(dir, f.path.startsWith(`bench/evil-`) ? 'evil' : 'imatrix', path.basename(f.path)), f.bytes, null);
+    for (const f of (st?.files || []).filter((x) => x.path.startsWith(`bench/evil-${name}/`) || x.path.startsWith(`bench/imatrix-${name}/`) || x.path.startsWith(`bench/interp-${name}/`))) await download(f.path, path.join(dir, f.path.startsWith(`bench/evil-`) ? 'evil' : f.path.startsWith(`bench/interp-`) ? 'interp' : 'imatrix', path.basename(f.path)), f.bytes, null);
   } catch (e) { log(`  pod files for ${name}: ${e.message.slice(0, 120)}`); }
   for (const [i, c] of cmds.entries()) {
     if (skipCmds.has(`${name}:${i + 1}`)) { log(`  command ${i + 1} skipped (--skip-cmds; it runs elsewhere)`); continue; }
