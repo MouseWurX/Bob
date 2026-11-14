@@ -78,7 +78,11 @@ check('Style Help explains Find anything and the status line', help('style').inc
   { // the owner: "so bright". Each lamp is its spectral hue dimmed to one brightness, in a near-black room.
     const lum = (h) => { const v = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
     check('every lamp is dimmed to the same soft brightness', T.LAMPS.every((l) => Math.abs(lum(l.glow) - 0.2) < 0.01));
-    check('the lamp rooms are near-black', T.LAMPS.every((l) => lum(T.fullColors(T.findTheme(l.id)).bg) < 0.006));
+    check('Send in Lamplight is a soft lamp-tinted button with the theme\'s text (the owner: dim the send buttons)', /body\.look-lamplight \.send \{[^}]*background: color-mix\(in srgb, var\(--accent\) 26%, var\(--panel\)\); color: var\(--text\)/.test(css));
+  { const r = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+    check('Send\'s words stay clear (4.5:1) on every theme', T.PRESETS.every((t) => { const c = T.fullColors(t); return r(c.text, T.mix(c.accent, c.panel, 0.26)) >= 4.5; })); }
+  check('Lamplight has a faint smoke lit by the cube: it follows --cube-light, drifts by transform only, holds still with animations off or reduced motion', /body\.look-lamplight \.app::after \{[^}]*mask-image: url\("data:image\/svg\+xml[^}]*opacity: calc\(var\(--cube-light/.test(css) && /@keyframes lamp-smoke \{ from \{ transform: [^}]*\} to \{ transform: [^}]*\} \}/.test(css) && css.includes('body.look-lamplight.still .app::after { animation: none;') && /prefers-reduced-motion: reduce\) \{ body\.look-lamplight \.app::after \{ animation: none; \}/.test(css));
+  check('the lamp rooms are near-black', T.LAMPS.every((l) => lum(T.fullColors(T.findTheme(l.id)).bg) < 0.006));
   }
   check('a lamp is saved, an unknown one dropped', cleanStyle({ lamp: 'sodium' }).lamp === 'sodium' && !('lamp' in cleanStyle({ lamp: 'krypton' })));
   check('page and server agree on the lamps', /\['mercury', 'sodium', 'thallium', 'neon'\]\.includes\(st\.lamp\)/.test(read('src/config.js')));

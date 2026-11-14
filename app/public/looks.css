@@ -26,6 +26,19 @@ body.look-lamplight::before { content: ""; position: fixed; inset: 0; z-index: 0
   background: radial-gradient(1100px 760px at 60px 40px, color-mix(in srgb, var(--cube, var(--accent)) 40%, transparent), color-mix(in srgb, var(--cube, var(--accent)) 10%, transparent) 40%, transparent 72%);
   opacity: var(--cube-light, .3); will-change: opacity; }
 body.look-lamplight.still::before { opacity: .3; }
+/* Nov 14 2026 (the owner: "smoke in the darkness, illuminated by a cybernetic cube"): a faint smoke in the room. One
+   layer behind everything: the cube's light colour from the top-left corner, seen only through a still smoke pattern
+   (a mask drawn once by the browser from data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='640'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.005' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 2.2 -.75'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/svg%3E noise, no script). Like the glow it follows --cube-light, so the smoke
+   shows when a brain is loaded and nearly vanishes without one. It drifts by a slow transform only (the graphics
+   card moves one layer); it holds still with animations off or reduced motion. Not drawn for light themes. */
+body.look-lamplight .app::after { content: ""; position: fixed; inset: -6%; z-index: -1; pointer-events: none;
+  background: radial-gradient(1200px 900px at 8% 6%, color-mix(in srgb, var(--cube, var(--accent)) 55%, transparent), color-mix(in srgb, var(--cube, var(--accent)) 14%, transparent) 45%, transparent 80%);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='640'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.005' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 2.2 -.75'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='640'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.005' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 2.2 -.75'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/svg%3E"); -webkit-mask-size: 640px 640px; mask-size: 640px 640px;
+  opacity: calc(var(--cube-light, .3) * 1.1); will-change: transform, opacity; animation: lamp-smoke 120s ease-in-out infinite alternate; }
+@keyframes lamp-smoke { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(3%, -2.5%, 0); } }
+body.look-lamplight.still .app::after { animation: none; opacity: .33; }
+body.look-lamplight.theme-light .app::after { display: none; }
+@media (prefers-reduced-motion: reduce) { body.look-lamplight .app::after { animation: none; } }
 body.look-lamplight .app { position: relative; z-index: 1; background: transparent; }
 body.look-lamplight :where(.side, .mid, .now, .ctx, .chips, .effort, .composer, .cellar.page, .cellar.page .cellar-head, .cellar .cellar-tabs) { background: transparent; border-color: transparent; }
 body.look-lamplight .grab { background: none; }
@@ -64,7 +77,9 @@ body.look-lamplight .effort[hidden] + .composer { border-top: 1px solid var(--li
 body.look-lamplight #input { border: 0; background: transparent; font-size: var(--t-md); }
 body.look-lamplight #input:focus-visible { outline: none; }
 body.look-lamplight .composer:focus-within { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
-body.look-lamplight .send { border-radius: 11px; padding: var(--s2) var(--s4); box-shadow: 0 0 18px -4px var(--accent); }
+/* Nov 14 2026 (the owner: "could we dim the send buttons too?"): Send is a soft lamp-tinted button, not a solid lit one. */
+body.look-lamplight .send { border-radius: 11px; padding: var(--s2) var(--s4); background: color-mix(in srgb, var(--accent) 26%, var(--panel)); color: var(--text); border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); box-shadow: 0 0 12px -6px var(--accent); }
+body.look-lamplight .send:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 38%, var(--panel)); }
 body.look-lamplight .chips { padding: var(--s2) max(var(--s4), calc((100% - 760px) / 2)); }
 
 /* Now running: quiet headings, no boxes */
