@@ -37,15 +37,32 @@ function mountJourney(root, deps) {
   const fxNumbers = []; // floating numbers in battle: { x, y, text, colour, t0 }
   // Journey v1.2: going up and down ({ kind: takeoff|land|dive|surface, t0, dur }), little effects on the land
   // (ripples, dust, splashes: { kind, x, y, t0, dur } in tiles), a boat trip, and Aerie traders swooping in.
-  let heightFx = null, voyage = null, sideFacing = 'left', armedRelease = '';
+  let heightFx = null, voyage = null, sideFacing = 'left', armedRelease = '', doorAt = -1e9;
   const landFx = [];
   const swoops = new Map();
   const T = (text) => (j ? R.restyle(text, j.style) : text);
   const lookCache = new Map();
+  // Music and sound (Journey v1.3): our own tunes, made live by the browser. 🔊 on the top bar (or M) turns it off
+  // and on, and Bob remembers.
+  const store = (() => { try { return deps.store || globalThis.localStorage || null; } catch { return null; } })();
+  const SOUND_KEY = 'bob.journey.sound';
+  const soundWanted = () => { try { return store?.getItem(SOUND_KEY) !== 'off'; } catch { return true; } };
+  const snd = deps.sound || createJourneySound({ on: soundWanted() });
+  const sfx = (k) => { if (!k) return; try { snd.sfx(k); } catch {} };
+  function tune() {
+    if (!j || !world) return;
+    try {
+      const map = R.mapOf(world, j);
+      const name = songFor({ battle: mode === 'battle' && battle, boss: battle?.b?.guardian || battle?.b?.foes?.some((f) => f.guardian), voyage: Boolean(voyage), kind: map.kind, alt: j.alt });
+      snd.setStyle?.(j.style || 'fantasy'); snd.music(name, j.style || 'fantasy');
+    } catch {}
+  }
+  function soundButton() { const b = root.querySelector('[data-jy="sound"]'); if (!b) return; b.textContent = snd.on ? '🔊' : '🔇'; b.setAttribute('aria-pressed', snd.on ? 'true' : 'false'); b.setAttribute('aria-label', snd.on ? 'Music and sound are on. Turn them off (M)' : 'Music and sound are off. Turn them on (M)'); }
+  function toggleSound() { snd.setOn(!snd.on); try { store?.setItem(SOUND_KEY, snd.on ? 'on' : 'off'); } catch {} soundButton(); if (snd.on) { tune(); sfx('menu'); } sayLive(snd.on ? 'Music and sound on.' : 'Music and sound off.'); }
 
   root.innerHTML = `<div class="jy" tabindex="-1">
     <div class="jy-top"><span class="jy-where" aria-live="polite"></span><span class="jy-gold"></span><span class="jy-spacer"></span>
-      <button type="button" class="mini" data-jy="menu" title="Menu (Esc)">☰ Menu</button><button type="button" class="mini" data-jy="save" title="Save the journey">💾 Save</button><button type="button" class="icon" data-jy="close" aria-label="Close Journey">✕</button></div>
+      <button type="button" class="mini" data-jy="menu" title="Menu (Esc)">☰ Menu</button><button type="button" class="mini" data-jy="save" title="Save the journey">💾 Save</button><button type="button" class="icon" data-jy="sound" title="Music and sound (M)" aria-pressed="true" aria-label="Music and sound are on. Turn them off (M)">🔊</button><button type="button" class="icon" data-jy="close" aria-label="Close Journey">✕</button></div>
     <div class="jy-stage"><canvas class="jy-canvas" width="${W}" height="${H}" role="img" aria-label="The Journey screen"></canvas><div class="jy-box" role="status" aria-live="polite" hidden></div></div>
     <div class="jy-pad" aria-label="Walking pad"><button type="button" data-dir="up" aria-label="Walk up">▲</button><button type="button" data-dir="left" aria-label="Walk left">◀</button><button type="button" data-dir="down" aria-label="Walk down">▼</button><button type="button" data-dir="right" aria-label="Walk right">▶</button><button type="button" class="jy-a" data-key="act" aria-label="Talk or open (Enter)">A</button><button type="button" class="jy-f" data-key="fight" aria-label="Pick a fight (F)">⚔</button><button type="button" class="jy-b" data-key="menu" aria-label="Menu (Esc)">B</button><button type="button" class="jy-up" data-key="rise" aria-label="Fly up, or come up from the deep (E)">⤒</button><button type="button" class="jy-down" data-key="sink" aria-label="Land, or dive (Q)">⤓</button><button type="button" class="jy-ride" data-key="ride" aria-label="Ride or walk (R)">🐎</button></div>
     <div class="jy-panel"></div>
@@ -97,7 +114,29 @@ function mountJourney(root, deps) {
     return lk;
   }
   const personLook = (p) => (p.role === 'keeper' ? lookFor(deps.bobLook) : p.beast ? beastLookFor(p.beast, p.tint) : lookFor(A.encodeParts(p.parts || {}), p.tint));
-  const foeLook = (f) => (f.person ? personLook(f.person) : f.parts ? lookFor(A.encodeParts(f.parts)) : lookFor(deps.enemyLooks?.[f.type], f.tint) || beastLookFor(f.type, f.tint) || lookFor(A.encodeParts({ body: 'blob', skin: '0' }), f.tint));
+  const plainFoeLook = (f) => (f.person ? personLook(f.person) : f.parts ? lookFor(A.encodeParts(f.parts)) : lookFor(deps.enemyLooks?.[f.type], f.tint) || beastLookFor(f.type, f.tint) || lookFor(A.encodeParts({ body: 'blob', skin: '0' }), f.tint));
+  // Journey v1.3: monsters redrawn for the style. People-shaped ones change clothes (a skeleton becomes a robot),
+  // machines get their own art, and the rest take the style's colours. Animals, pets and people stay as they are.
+  function foeLook(f) {
+    const st = j?.style;
+    if (!st || st === 'fantasy' || f.person || f.parts || !S.STYLE_MONSTERS?.has(f.type)) return plainFoeLook(f);
+    const key = `style:${st}:${f.type}|${f.tint || ''}`;
+    if (lookCache.has(key)) return lookCache.get(key);
+    let lk = null;
+    try {
+      const art = S.styleArtLook(st, f.type);
+      const dress = S.STYLE_PARTS[st]?.[f.type];
+      if (art) lk = f.tint ? tinted(art, f.tint) : art;
+      else if (dress) {
+        const id = deps.enemyLooks?.[f.type];
+        const p = String(id || '').startsWith('c:') ? A.decodeParts(id) : { ...A.DEFAULT_PARTS, weapon: f.type === 'skeleton' ? 'sword' : 'none' };
+        lk = S.styleShift(lookFor(A.encodeParts({ ...p, ...dress }), f.tint), st, f.type);
+      } else lk = S.styleShift(plainFoeLook(f), st, f.type);
+    } catch { lk = null; }
+    lk = lk || plainFoeLook(f);
+    lookCache.set(key, lk);
+    return lk;
+  }
   // What a pet or mount looks like, and what the leader rides (in sci-fi, cyberpunk and steampunk a flier or a
   // swimmer is ridden as that style's own craft: a shuttle, a hoverbike, an airship, a submarine).
   const petLook = (p) => beastLookFor(p.type);
@@ -109,7 +148,10 @@ function mountJourney(root, deps) {
   // Rusty, blessed, cursed and arcane kit is drawn in its colour.
   const kitTint = (key) => S.AFFIX_TINTS?.[R.splitKit(key).affix] || '';
   const SHOT = new Set(['bow', 'longbow', 'crossbow', 'handbow']);
-  function drawFig(look, x, y, px, o = {}) { try { return S.drawFigure(ctx, x, y, px, look, { compose: A.compose, ...o }); } catch { return null; } }
+  function drawFig(look, x, y, px, o = {}) { try { return S.drawFigure(ctx, x, y, px, look, { compose: A.compose, style: j?.style && j.style !== 'fantasy' ? j.style : undefined, ...o }); } catch { return null; } }
+  // Sparkles and magic take the style's colours (Journey v1.3).
+  const SPARKS = { fantasy: ['#ffd166', '#ffffff', '#fff6c0'], scifi: ['#7ae0ff', '#ffffff', '#c8f0ff'], cyber: ['#ff3ad8', '#7dff9a', '#ffffff'], steam: ['#c8a060', '#ffd166', '#e8e8e8'] };
+  const styleSparks = () => SPARKS[j?.style] || SPARKS.fantasy;
   // Extras drawn over a figure: a crown for the King and Queen, wings for a Pixie, a floating crystal for a Psionist.
   function extras(x, y, px, o) {
     if (o.crown) { ctx.fillStyle = '#ffd166'; ctx.fillRect(x + 5 * px, y - 1 * px, 6 * px, 2 * px); for (const cx of [5, 7, 9]) ctx.fillRect(x + (cx + 0.5) * px, y - 2.5 * px, px, 1.5 * px); ctx.fillStyle = '#d0303a'; ctx.fillRect(x + 7.5 * px, y - 0.5 * px, px, px); }
@@ -128,9 +170,9 @@ function mountJourney(root, deps) {
     gnome: { roof: '#2a7a8a', wall: '#e8d8b0' }, centaur: { roof: '#c8a66a', wall: '#a07a4a', shape: 'tent' }, giant: { roof: '#4a4a54', wall: '#7a7a84' },
     goblin: { roof: '#8a3a6a', wall: '#a08a5a', shape: 'tent' }, aerie: { roof: '#ffe680', wall: '#f4f8ff', shape: 'dome' }, reef: { roof: '#ff9a8a', wall: '#c8f0ff', shape: 'dome' }
   };
-  function tileCanvas(ch, frame = 0, theme = '') {
+  function tileCanvas(ch, frame = 0, theme = '', bare = false, v = 0) {
     const style = j?.style || 'fantasy';
-    const key = `${ch}${frame}${theme}|${style}`;
+    const key = `${ch}${frame}${theme}|${style}${bare ? '|bare' : ''}${v ? `|v${v}` : ''}`;
     if (tileArt.has(key)) return tileArt.get(key);
     const c = doc.createElement('canvas'); c.width = TILE; c.height = TILE;
     const g = c.getContext('2d');
@@ -138,13 +180,17 @@ function mountJourney(root, deps) {
     const rect = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
     const fill = (col) => rect(0, 0, TILE, TILE, col);
     const specks = (col, n, seed) => { for (let i = 0; i < n; i++) px(Math.floor(hash(i, seed) * 16), Math.floor(hash(seed, i) * 16), col); };
-    const grass = () => { fill('#5aa04a'); specks('#4c8c3e', 14, 3); specks('#6cb85a', 8, 7); };
+    // A thing standing on the land (a house, a tree, a tower) is drawn bare, on nothing: the screen lays the ground
+    // it stands on underneath first, so it matches grass, sand, snow, swamp or a town square (Journey v1.3).
+    const grass = () => { if (bare) return; fill('#5aa04a'); specks('#4c8c3e', 14, 3); specks('#6cb85a', 8, 7); };
     const boards = (a, b) => { fill(a); for (let y = 0; y < 16; y += 4) rect(0, y, 16, 1, b); for (let y = 0; y < 16; y += 4) rect((y * 3) % 16, y, 1, 4, b); };
     const stone = (a, b) => { fill(a); for (let y = 0; y < 16; y += 4) { rect(0, y, 16, 1, b); for (let x = (y % 8 ? 4 : 0); x < 16; x += 8) rect(x, y, 1, 4, b); } };
     const water = (deep, light) => { fill(deep); for (let i = 0; i < 3; i++) { const y = 3 + i * 5, x = ((i * 5) + frame * 3) % 12; rect(x, y, 4, 1, light); } };
     const th = THEMES[theme];
+    // Windows glow in the style's light: daylight blue, cyan screens, neon pink and blue, warm gaslight.
+    const WIN = { fantasy: '#7ec8ff', scifi: '#9af0ff', cyber: '#ff3ad8', steam: '#ffb04a' }, WIN2 = { fantasy: '#7ec8ff', scifi: '#9af0ff', cyber: '#3ad8ff', steam: '#ffb04a' };
     const building = (roof, wall, sign) => {
-      fill(theme === 'aerie' ? '#e8eef8' : theme === 'reef' ? '#5a7a9a' : '#b8a07a');
+      if (!bare) fill(theme === 'aerie' ? '#e8eef8' : theme === 'reef' ? '#5a7a9a' : '#b8a07a');
       if (th) { roof = th.roof; wall = th.wall; }
       const shape = th?.shape;
       if (shape === 'mound') { g.fillStyle = roof; g.beginPath(); g.arc(8, 13, 9, Math.PI, 0); g.fill(); g.fillStyle = '#6b4423'; g.beginPath(); g.arc(8, 13, 3, Math.PI, 0); g.fill(); rect(5, 13, 6, 3, roof); g.fillStyle = '#ffd166'; g.fillRect(8, 11, 1, 1); sign?.(); return; }
@@ -157,19 +203,21 @@ function mountJourney(root, deps) {
       rect(7, 11, 3, 5, '#6b4423'); sign?.();
     };
     const kinSite = (body) => { grass(); body(); };
+    const rock = () => { if (!bare) { fill('#7e8a96'); return; } g.fillStyle = '#7e8a96'; g.beginPath(); g.moveTo(0, 16); g.lineTo(1, 5); g.lineTo(5, 1); g.lineTo(11, 1); g.lineTo(15, 5); g.lineTo(16, 16); g.fill(); g.fillStyle = '#9aa6b2'; g.fillRect(5, 1, 6, 1); };
     switch (ch) {
       case '.': grass(); break;
       case '"': fill('#4e9440'); for (let i = 0; i < 9; i++) { const x = Math.floor(hash(i, 11) * 14) + 1, y = Math.floor(hash(11, i) * 12) + 3; px(x, y, '#2f6a2a'); px(x, y - 1, '#3d7f34'); px(x + 1, y - 2, '#6cb85a'); } break;
       case 'g': grass(); break;
       case 'F': fill('#3d7f34'); specks('#2f6a2a', 10, 21); for (const [x, y] of [[4, 5], [11, 9]]) { rect(x - 1, y + 3, 2, 3, '#6b4423'); g.fillStyle = '#245a22'; g.beginPath(); g.moveTo(x - 4, y + 4); g.lineTo(x, y - 5); g.lineTo(x + 4, y + 4); g.fill(); } break;
-      case 'T': grass(); rect(7, 11, 2, 4, '#6b4423'); g.fillStyle = '#2f6a2a'; g.beginPath(); g.arc(8, 7, 6, 0, Math.PI * 2); g.fill(); g.fillStyle = '#3d8a38'; g.beginPath(); g.arc(6.5, 5.5, 3, 0, Math.PI * 2); g.fill(); break;
+      case 'T': grass(); rect(7, 11, 2, 4, '#6b4423'); g.fillStyle = '#2f6a2a'; g.beginPath(); g.arc(8 + frame * 0.6, 7, 6, 0, Math.PI * 2); g.fill(); g.fillStyle = '#3d8a38'; g.beginPath(); g.arc(6.5 + frame * 0.6, 5.5, 3, 0, Math.PI * 2); g.fill(); px(10 + frame, 4, '#5aa04a'); px(5 + frame, 9, '#245a22'); break;
       case 'y': grass(); for (let i = 0; i < 6; i++) { const x = 2 + Math.floor(hash(i, 31) * 12), y = 3 + Math.floor(hash(31, i) * 10); px(x, y + 1, '#2f6a2a'); px(x, y, ['#ff7ad8', '#ffd166', '#ffffff', '#7ae0ff'][i % 4]); } break;
       case 'w': fill('#4a6a3a'); specks('#3a5a2e', 10, 41); rect(2, 4, 6, 2, '#5a7a8a'); rect(9, 10, 5, 2, '#5a7a8a'); px(4, 3, '#2a4a2a'); px(11, 8, '#2a4a2a'); px(12, 7, '#7a9a4a'); break;
       case 'd': fill('#e6c98a'); specks('#d4b070', 12, 51); g.fillStyle = '#d4b070'; for (let x = 0; x < 16; x += 2) g.fillRect(x, 6 + Math.round(Math.sin(x / 2.5) * 2), 2, 1); break;
+      case 'µ': fill('#7a8670'); specks('#68745e', 14, 101); specks('#8e9a82', 8, 103); rect(3, 5, 3, 1, '#5e6858'); rect(10, 11, 4, 1, '#5e6858'); break; // a rocky slope among the peaks
       case ',': fill('#e0cf8f'); specks('#c9b676', 10, 9); break;
       case ':': case '*': fill(ch === '*' ? '#b8a07a' : '#c8a66a'); specks(ch === '*' ? '#9c8662' : '#a98a52', 10, 5); if (ch === '*') { g.fillStyle = '#a08a68'; for (let y = 0; y < 16; y += 4) g.fillRect(0, y, 16, 1); for (let x = 0; x < 16; x += 8) g.fillRect(x, 0, 1, 16); } break;
       case '~': water('#2a5aa8', '#6aa0e0'); break;
-      case 'r': water('#3a78c8', '#9ac8f0'); rect(0, 0, 16, 1, '#5aa04a'); rect(0, 15, 16, 1, '#5aa04a'); break;
+      case 'r': water('#3a78c8', '#9ac8f0'); break; // banks are drawn where the land is (shore), not baked in
       case '=': fill('#3a78c8'); rect(0, 2, 16, 12, '#8a5a2b'); g.fillStyle = '#6b4423'; for (let x = 0; x < 16; x += 4) g.fillRect(x, 2, 1, 12); rect(0, 2, 16, 1, '#4a2e18'); rect(0, 13, 16, 1, '#4a2e18'); break;
       case '^': grass(); g.fillStyle = '#7e8a96'; g.beginPath(); g.moveTo(1, 15); g.lineTo(7, 2); g.lineTo(15, 15); g.fill(); g.fillStyle = '#e8eef4'; g.beginPath(); g.moveTo(7, 2); g.lineTo(9, 6); g.lineTo(5, 6); g.fill(); rect(9, 9, 3, 1, '#525c66'); break;
       case 'f': grass(); rect(0, 6, 16, 2, '#8a5a2b'); rect(0, 11, 16, 2, '#8a5a2b'); rect(2, 4, 2, 11, '#6b4423'); rect(12, 4, 2, 11, '#6b4423'); break;
@@ -177,7 +225,7 @@ function mountJourney(root, deps) {
       case 'Q': stone('#7a7a84', '#4a4a54'); for (let x = 0; x < 16; x += 4) rect(x, 0, 2, 3, '#a8a8b0'); rect(6, 6, 4, 5, '#14110f'); break;
       case 'G': fill('#c8a66a'); rect(0, 0, 3, 16, '#6a6a74'); rect(13, 0, 3, 16, '#6a6a74'); g.fillStyle = '#3a3a44'; for (let x = 4; x < 13; x += 3) g.fillRect(x, 0, 1, 3); break;
       case 'U': grass(); g.fillStyle = '#8a8a92'; g.beginPath(); g.arc(8, 9, 6, 0, Math.PI * 2); g.fill(); g.fillStyle = '#2a5aa8'; g.beginPath(); g.arc(8, 9, 3.5, 0, Math.PI * 2); g.fill(); rect(2, 2, 1, 7, '#6b4423'); rect(13, 2, 1, 7, '#6b4423'); rect(2, 2, 12, 1, '#6b4423'); break;
-      case 'h': building('#9a3a2a', '#efe6d2', () => { rect(3, 9, 2, 2, '#7ec8ff'); rect(11, 9, 2, 2, '#7ec8ff'); }); break;
+      case 'h': building('#9a3a2a', '#efe6d2', () => { rect(3, 9, 2, 2, WIN[style] || WIN.fantasy); rect(11, 9, 2, 2, WIN2[style] || WIN.fantasy); }); break;
       case 'i': building('#2a4a8a', '#efe6d2', () => { rect(2, 9, 3, 3, '#ffd166'); px(3, 10, '#6b4423'); }); break;
       case 's': building('#2a7a4a', '#efe6d2', () => { g.fillStyle = '#ffd166'; g.beginPath(); g.arc(4, 10, 1.7, 0, Math.PI * 2); g.fill(); }); break;
       case 'm': building('#4a4a54', '#c8b8a0', () => { rect(2, 9, 3, 2, '#ff8a3a'); rect(11, 2, 2, 4, '#3a3a44'); px(12, 1, '#9aa3ad'); }); break;
@@ -209,7 +257,7 @@ function mountJourney(root, deps) {
       // Sites on the land
       case 'v': case 'V': case 'O': { grass(); const n = ch === 'v' ? 1 : ch === 'V' ? 2 : 3; for (let i = 0; i < n; i++) { const x = 1 + i * 5, y = 6 - i % 2 * 2; rect(x, y + 4, 5, 5, '#efe6d2'); g.fillStyle = ['#9a3a2a', '#2a4a8a', '#2a7a4a'][i]; g.beginPath(); g.moveTo(x - 1, y + 5); g.lineTo(x + 2.5, y); g.lineTo(x + 6, y + 5); g.fill(); } if (ch === 'O') { rect(0, 14, 16, 2, '#8a8a92'); } break; }
       case 'K': grass(); rect(2, 5, 12, 11, '#8a8a92'); for (let x = 2; x < 14; x += 3) rect(x, 3, 2, 2, '#8a8a92'); rect(6, 1, 4, 6, '#a8a8b0'); rect(7, 0, 1, 2, '#d0303a'); rect(6, 10, 4, 6, '#14110f'); break;
-      case 'C': fill('#7e8a96'); g.fillStyle = '#14110f'; g.beginPath(); g.arc(8, 11, 5, Math.PI, 0); g.fill(); rect(3, 11, 10, 5, '#14110f'); rect(0, 0, 16, 2, '#525c66'); break;
+      case 'C': rock(); g.fillStyle = '#14110f'; g.beginPath(); g.arc(8, 11, 5, Math.PI, 0); g.fill(); rect(3, 11, 10, 5, '#14110f'); rect(0, 0, 16, 2, '#525c66'); break;
       case 'D': grass(); rect(2, 4, 12, 12, '#4a4a54'); rect(2, 4, 12, 2, '#6a6a74'); for (let x = 2; x < 14; x += 3) rect(x, 2, 2, 2, '#4a4a54'); rect(6, 9, 4, 7, '#14110f'); px(7, 7, '#7dff9a'); px(8, 7, '#7dff9a'); break;
       case 'H': grass(); rect(3, 8, 10, 8, '#6b4423'); g.fillStyle = '#8a7a3a'; g.beginPath(); g.moveTo(1, 9); g.lineTo(8, 2); g.lineTo(15, 9); g.fill(); rect(7, 11, 2, 5, '#3a2410'); rect(11, 3, 2, 3, '#4a4a54'); px(12, 1, '#c8c8c8'); break;
       case 'I': grass(); rect(1, 6, 14, 10, '#8a5a2b'); g.fillStyle = '#6a2a2a'; g.beginPath(); g.moveTo(0, 7); g.lineTo(8, 0); g.lineTo(16, 7); g.fill(); rect(6, 10, 4, 6, '#3a2410'); rect(2, 8, 3, 3, '#ffd166'); rect(11, 8, 3, 3, '#ffd166'); rect(12, 3, 3, 2, '#ffd166'); break;
@@ -221,17 +269,33 @@ function mountJourney(root, deps) {
       case '$': fill('#c8b88a'); specks('#a8986a', 12, 91); specks('#e8dcb0', 6, 93); px(4, 6, '#ff9a8a'); px(11, 12, '#ffffff'); break;
       case '+': fill('#2a5aa8'); for (const [x, col] of [[2, '#ff7a8a'], [7, '#ffb04a'], [12, '#c070ff']]) { rect(x, 6, 2, 10, col); rect(x - 1, 8, 1, 3, col); rect(x + 2, 5, 1, 3, col); } break;
       case 'X': kinSite(() => { for (const x of [1, 9]) { g.fillStyle = '#6a4a2a'; g.beginPath(); g.moveTo(x, 15); g.lineTo(x + 3, 6); g.lineTo(x + 6, 15); g.fill(); } rect(0, 14, 16, 2, '#8a5a2b'); rect(7, 3, 1, 8, '#6b4423'); rect(8, 3, 3, 2, '#8a2a2a'); }); break;
-      case 'L': fill('#7e8a96'); g.fillStyle = '#14110f'; g.beginPath(); g.arc(8, 12, 4, Math.PI, 0); g.fill(); rect(4, 12, 8, 4, '#14110f'); px(6, 10, '#ffd166'); px(10, 10, '#ffd166'); rect(2, 2, 2, 2, '#c8a66a'); rect(12, 3, 2, 2, '#c8a66a'); break;
-      case 'N': fill('#7e8a96'); rect(3, 4, 10, 12, '#5a5a64'); rect(3, 4, 10, 2, '#9a9aa4'); rect(6, 8, 4, 8, '#14110f'); rect(6, 8, 4, 1, '#ffd166'); for (const x of [3, 6, 9, 12]) rect(x, 2, 1, 2, '#5a5a64'); break;
-      case 'E': fill('#3d7f34'); rect(7, 6, 2, 10, '#6b4423'); g.fillStyle = '#245a22'; g.beginPath(); g.arc(8, 5, 6, 0, Math.PI * 2); g.fill(); rect(3, 8, 4, 3, '#d8e8c0'); rect(9, 4, 4, 3, '#d8e8c0'); px(4, 9, '#ffd166'); px(10, 5, '#ffd166'); break;
+      case 'L': rock(); g.fillStyle = '#14110f'; g.beginPath(); g.arc(8, 12, 4, Math.PI, 0); g.fill(); rect(4, 12, 8, 4, '#14110f'); px(6, 10, '#ffd166'); px(10, 10, '#ffd166'); rect(2, 2, 2, 2, '#c8a66a'); rect(12, 3, 2, 2, '#c8a66a'); break;
+      case 'N': rock(); rect(3, 4, 10, 12, '#5a5a64'); rect(3, 4, 10, 2, '#9a9aa4'); rect(6, 8, 4, 8, '#14110f'); rect(6, 8, 4, 1, '#ffd166'); for (const x of [3, 6, 9, 12]) rect(x, 2, 1, 2, '#5a5a64'); break;
+      case 'E': if (!bare) fill('#3d7f34'); rect(7, 6, 2, 10, '#6b4423'); g.fillStyle = '#245a22'; g.beginPath(); g.arc(8, 5, 6, 0, Math.PI * 2); g.fill(); rect(3, 8, 4, 3, '#d8e8c0'); rect(9, 4, 4, 3, '#d8e8c0'); px(4, 9, '#ffd166'); px(10, 5, '#ffd166'); break;
       case 'M': grass(); for (const x of [4, 11]) { g.fillStyle = '#4e9440'; g.beginPath(); g.arc(x, 12, 5, Math.PI, 0); g.fill(); g.fillStyle = '#c8a040'; g.beginPath(); g.arc(x, 12, 2, 0, Math.PI * 2); g.fill(); } break;
       case 'J': grass(); for (const [x, y, col] of [[4, 9, '#d0303a'], [11, 11, '#c070ff'], [8, 5, '#ff9ae0']]) { rect(x - 1, y, 2, 4, '#efe6d2'); g.fillStyle = col; g.beginPath(); g.ellipse(x, y, 4, 3, 0, Math.PI, 0); g.fill(); } px(3, 3, '#fff6c0'); px(13, 4, '#fff6c0'); break;
       case '1': fill('#4a6a3a'); rect(0, 11, 16, 5, '#3a78c8'); for (const x of [2, 9]) { rect(x + 1, 9, 1, 6, '#6b4423'); rect(x + 4, 9, 1, 6, '#6b4423'); rect(x, 4, 6, 5, '#8a6a3a'); g.fillStyle = '#8a7a3a'; g.beginPath(); g.moveTo(x - 1, 5); g.lineTo(x + 3, 1); g.lineTo(x + 7, 5); g.fill(); } break;
       case '2': grass(); rect(2, 6, 12, 10, '#e8d8b0'); rect(2, 4, 12, 3, '#2a7a8a'); rect(11, 0, 2, 5, '#5a5a64'); g.strokeStyle = '#ffd166'; g.lineWidth = 1; g.beginPath(); g.arc(6, 10, 2.5, 0, Math.PI * 2); g.stroke(); rect(10, 11, 2, 5, '#6b4423'); break;
       case '3': grass(); for (const x of [1, 9]) { g.fillStyle = '#c8a66a'; g.beginPath(); g.moveTo(x, 15); g.lineTo(x + 3, 4); g.lineTo(x + 6, 15); g.fill(); rect(x + 3, 2, 1, 3, '#6b4423'); } rect(7, 0, 1, 3, '#d0303a'); break;
-      case '4': fill('#7e8a96'); rect(0, 3, 16, 13, '#4a4a54'); rect(0, 3, 16, 2, '#7a7a84'); rect(5, 7, 6, 9, '#14110f'); rect(1, 1, 3, 2, '#4a4a54'); rect(12, 1, 3, 2, '#4a4a54'); break;
+      case '4': rock(); rect(0, 3, 16, 13, '#4a4a54'); rect(0, 3, 16, 2, '#7a7a84'); rect(5, 7, 6, 9, '#14110f'); rect(1, 1, 3, 2, '#4a4a54'); rect(12, 1, 3, 2, '#4a4a54'); break;
       case '5': grass(); for (const [x, col] of [[1, '#8a3a6a'], [6, '#3a6a8a'], [11, '#8a6a2a']]) { rect(x, 6, 4, 9, '#a08a5a'); rect(x - 1, 4, 6, 3, col); } px(3, 9, '#ffd166'); px(13, 9, '#c0c0c0'); break;
       default: fill('#000');
+    }
+    // Journey v1.3 details: the same ground in a few versions so the land doesn't repeat. Tufts, flowers, pebbles,
+    // little stones on a path, ripples in the sand.
+    if (v && !bare) {
+      const r = (n) => hash(v * 31 + n, ch.charCodeAt(0));
+      if ('.g"'.includes(ch)) {
+        if (v === 1) for (let i = 0; i < 3; i++) { const x = 2 + Math.floor(r(i) * 12), y = 3 + Math.floor(r(i + 9) * 10); px(x, y, ['#ffd166', '#ffffff', '#ff9ae0'][i]); px(x, y + 1, '#3d7f34'); }
+        if (v === 2) { rect(4 + Math.floor(r(1) * 6), 9 + Math.floor(r(2) * 4), 3, 2, '#8a8a80'); px(5 + Math.floor(r(1) * 6), 9 + Math.floor(r(2) * 4), '#b0b0a6'); }
+        if (v === 3) for (let i = 0; i < 4; i++) { const x = 2 + Math.floor(r(i + 3) * 12), y = 4 + Math.floor(r(i + 7) * 9); px(x, y, '#3d7f34'); px(x - 1, y + 1, '#3d7f34'); px(x + 1, y + 1, '#3d7f34'); }
+      } else if ('d,'.includes(ch)) {
+        if (v === 1) { rect(3 + Math.floor(r(1) * 8), 8, 2, 1, '#bfa060'); rect(6 + Math.floor(r(2) * 6), 12, 3, 1, '#bfa060'); }
+        if (v === 2 && ch === 'd') { rect(10, 5, 2, 7, '#5a9a4a'); rect(8, 7, 2, 1, '#5a9a4a'); rect(8, 5, 1, 2, '#5a9a4a'); rect(12, 8, 2, 1, '#5a9a4a'); rect(13, 6, 1, 2, '#5a9a4a'); }
+        if (v === 3) rect(4 + Math.floor(r(3) * 8), 6 + Math.floor(r(4) * 6), 2, 2, '#a89a7a');
+      } else if (ch === ':' || ch === '*') {
+        if (v >= 2) for (let i = 0; i < 3; i++) px(2 + Math.floor(r(i) * 12), 2 + Math.floor(r(i + 5) * 12), ch === '*' ? '#8a7656' : '#a08458');
+      } else if (ch === 'F' && v === 1) { px(3, 13, '#ff9ae0'); px(12, 3, '#ffd166'); }
     }
     // The style's colour, laid over the whole land: cool blue for sci-fi, neon pink in the dark for cyberpunk,
     // brass for steampunk.
@@ -255,7 +319,109 @@ function mountJourney(root, deps) {
     tileArt.set(key, c);
     return c;
   }
-  const ANIMATED = new Set(['~', 'r', 'p', 'A', '&']);
+  const ANIMATED = new Set(['~', 'r', 'p', 'A', '&', 'T']);
+  // Things that stand on the land (Journey v1.3): drawn on top of the ground round them instead of a ground of
+  // their own. Houses, shops, towers, trees, fences, wells, caves, camps, villages and mountains.
+  const STANDING = new Set(['T', '^', 'f', 'U', 'a', 'v', 'V', 'O', 'K', 'D', 'H', 'I', 'M', 'J', '2', '3', '5', 'X', 'h', 'i', 's', 'm', 't', 'R', 'L', 'N', '4', 'C', 'E']);
+  const GROUND = new Set(['.', '"', 'g', 'F', 'y', 'd', ',', ':', '*', '_', 'w', '%', '$', 'o', 'j', 'z', 'Z', 'x', '~', 'r']);
+  // The ground under a standing thing: whatever ground is most common round it (water only when there's nothing else).
+  function groundUnder(map, x, y) {
+    const memo = map.__ground || (map.__ground = new Map()), k = y * 65536 + x;
+    if (memo.has(k)) return memo.get(k);
+    const count = new Map();
+    let hills = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (map.rows[y + dy]?.[x + dx] === '^') hills++;
+    if (map.rows[y][x] === '^' && hills >= 6) { memo.set(k, 'µ'); return 'µ'; } // deep in a range: bare rocky slope
+    for (let r = 1; r <= 2; r++) {
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue; const c = map.rows[y + dy]?.[x + dx]; if (GROUND.has(c)) count.set(c, (count.get(c) || 0) + ('~r'.includes(c) ? 0.01 : 1)); }
+      if (count.size) break;
+    }
+    let best = map.kind === 'world' ? '.' : ':', n = 0;
+    for (const [c, v] of count) if (v > n) { best = c; n = v; }
+    if (memo.size > 20000) memo.clear();
+    memo.set(k, best);
+    return best;
+  }
+  const VARIED = new Set(['.', 'g', '"', 'd', ',', ':', '*', 'F']);
+  const HOUSES = new Set(['h', 'i', 's', 'm', 't', 'R', 'H', 'I', '2']);
+  const ROAD = new Set([':', '*']);
+  // Foam where the sea meets the land, coming and going.
+  function shore(map, x, y, sx, sy, t, river) {
+    const land = (c) => c && !'~rA=+&$'.includes(c);
+    if (river) { // a grassy bank along the land
+      ctx.fillStyle = '#4c8c3e';
+      if (land(map.rows[y - 1]?.[x])) ctx.fillRect(sx, sy, 16, 1);
+      if (land(map.rows[y + 1]?.[x])) ctx.fillRect(sx, sy + 15, 16, 1);
+      if (land(map.rows[y]?.[x - 1])) ctx.fillRect(sx, sy, 1, 16);
+      if (land(map.rows[y]?.[x + 1])) ctx.fillRect(sx + 15, sy, 1, 16);
+    }
+    const k = (Math.sin(t / 700 + x * 0.7 + y * 0.3) + 1) / 2;
+    ctx.fillStyle = `rgba(235,248,255,${0.35 + 0.4 * k})`;
+    if (land(map.rows[y - 1]?.[x])) for (let i = 0; i < 16; i += 3) ctx.fillRect(sx + i, sy + (i % 2), 2, 1);
+    if (land(map.rows[y + 1]?.[x])) for (let i = 1; i < 16; i += 3) ctx.fillRect(sx + i, sy + 14 + (i % 2), 2, 1);
+    if (land(map.rows[y]?.[x - 1])) for (let i = 0; i < 16; i += 3) ctx.fillRect(sx + (i % 2), sy + i, 1, 2);
+    if (land(map.rows[y]?.[x + 1])) for (let i = 1; i < 16; i += 3) ctx.fillRect(sx + 14 + (i % 2), sy + i, 1, 2);
+    if (hash(x, y, Math.floor(t / 900)) < 0.08) { ctx.fillStyle = '#ffffff'; ctx.fillRect(sx + Math.floor(hash(y, x) * 12) + 2, sy + Math.floor(hash(x, y) * 12) + 2, 1, 1); } // a glint of sun
+  }
+  // Something alive about each house, in the style: smoke from the chimney, steam from pipes, a blinking aerial, a
+  // neon sign that flickers.
+  function houseLife(ch, x, y, sx, sy, t) {
+    if (still()) return;
+    const st = j?.style || 'fantasy', k = hash(x, y, 13);
+    if (st === 'scifi') { if (Math.floor(t / 600 + k * 10) % 3 === 0) { ctx.fillStyle = '#ff5050'; ctx.fillRect(sx + 12, sy - 2, 1, 1); } ctx.fillStyle = '#9aa3ad'; ctx.fillRect(sx + 12, sy - 1, 1, 3); return; }
+    if (st === 'cyber') { if (k < 0.6 && Math.floor(t / 150 + k * 40) % 17 !== 0) { ctx.fillStyle = k < 0.3 ? '#ff3ad8' : '#3ad8ff'; ctx.fillRect(sx + 2, sy + 5, 6, 1); ctx.globalAlpha = 0.25; ctx.fillRect(sx + 1, sy + 4, 8, 3); ctx.globalAlpha = 1; } return; }
+    if (k > 0.65 && st !== 'steam') return;
+    const n = st === 'steam' ? 4 : 3, col = st === 'steam' ? '238,238,238' : '170,170,176';
+    for (let i = 0; i < n; i++) { const a = ((t / (st === 'steam' ? 900 : 1400) + i / n + k) % 1); ctx.fillStyle = `rgba(${col},${0.55 * (1 - a)})`; const r = 1 + a * 2.5; ctx.fillRect(Math.round(sx + 12 + Math.sin(a * 5 + k * 9) * 2 + a * 3 - r / 2), Math.round(sy - a * 12 - r / 2), Math.ceil(r), Math.ceil(r)); }
+    if (st === 'steam') { ctx.fillStyle = '#8a5a2a'; ctx.fillRect(sx + 11, sy, 2, 3); }
+  }
+  // Street lamps (a lantern, a light pylon, a neon post, a gas lamp) and crates by the houses, here and there.
+  function townProps(map, xa, ya, xb, yb, cx, cy, t) {
+    const st = j?.style || 'fantasy';
+    const lampCol = { fantasy: '#ffd166', scifi: '#9af0ff', cyber: (x) => (x % 2 ? '#ff3ad8' : '#3ad8ff'), steam: '#ffb04a' }[st];
+    let taken = null;
+    for (let y = ya; y <= yb; y++) for (let x = xa; x <= xb; x++) {
+      const c = map.rows[y]?.[x]; if (!'.:g,*'.includes(c || '#')) continue;
+      const k = hash(x, y, 17);
+      const near = (set) => [[0, -1], [1, 0], [-1, 0], [0, 1]].some(([dx, dy]) => set.has(map.rows[y + dy]?.[x + dx]));
+      const nearHouse = near(HOUSES), roadside = !':*'.includes(c) && near(ROAD);
+      if (!(nearHouse && k < 0.12) && !(roadside && (x + y) % 4 === 0 && k < 0.7)) continue;
+      taken ||= new Set([...(R.peopleOn?.(world, j, map) || []).map((q) => `${q.x},${q.y}`), `${j.x},${j.y}`, ...map.chests.map((q) => `${q.x},${q.y}`)]);
+      if (taken.has(`${x},${y}`)) continue;
+      const sx = x * TILE - cx, sy = y * TILE - cy;
+      if (nearHouse && k < 0.12 && !roadside) { // crates or barrels
+        ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(sx + 3, sy + 13, 10, 2);
+        if (st === 'fantasy' || st === 'steam') { ctx.fillStyle = '#8a5a2b'; ctx.fillRect(sx + 3, sy + 7, 5, 6); ctx.fillRect(sx + 9, sy + 9, 4, 4); ctx.fillStyle = '#5a3a1e'; ctx.fillRect(sx + 3, sy + 9, 5, 1); ctx.fillRect(sx + 9, sy + 10, 4, 1); }
+        else { ctx.fillStyle = st === 'cyber' ? '#33384a' : '#c8d4e0'; ctx.fillRect(sx + 3, sy + 7, 6, 6); ctx.fillStyle = st === 'cyber' ? '#ffd166' : '#7ae0ff'; ctx.fillRect(sx + 3, sy + 9, 6, 1); }
+        continue;
+      }
+      const col = typeof lampCol === 'function' ? lampCol(x) : lampCol;
+      ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(sx + 6, sy + 14, 5, 1);
+      ctx.fillStyle = st === 'steam' ? '#5a3a1e' : st === 'fantasy' ? '#3a3a40' : '#4a505a'; ctx.fillRect(sx + 8, sy + 3, 1, 11);
+      const glow = still() ? 0.25 : 0.2 + 0.1 * Math.sin(t / 400 + x);
+      ctx.fillStyle = col; ctx.fillRect(sx + 7, sy + 1, 3, 3);
+      ctx.globalAlpha = glow; ctx.beginPath(); ctx.arc(sx + 8.5, sy + 2.5, 6, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+    }
+  }
+  // A mountain peak, drawn once per look: rock with a lit side, a dark side and snow on top, on nothing.
+  function peakCanvas(v, snowy) {
+    const style = j?.style || 'fantasy', key = `peak${v}${snowy ? 's' : ''}|${style}`;
+    if (tileArt.has(key)) return tileArt.get(key);
+    const c = doc.createElement('canvas'); c.width = 32; c.height = 32;
+    const g = c.getContext('2d');
+    const tip = v ? 13 : 17, poly = (pts, col) => { g.fillStyle = col; g.beginPath(); g.moveTo(...pts[0]); for (const p of pts.slice(1)) g.lineTo(...p); g.closePath(); g.fill(); };
+    poly([[0, 32], [tip, 2], [32, 32]], '#6e7a86');
+    poly([[tip, 2], [32, 32], [tip + 3, 32]], '#56606c'); // the shadow side
+    poly([[0, 32], [tip, 2], [tip - 4, 32]], '#8a96a2'); // the lit side
+    if (snowy) poly([[tip, 2], [tip - 5, 12], [tip - 2, 10], [tip, 13], [tip + 3, 10], [tip + 6, 12]], '#eef3f8'); // snow on the tall ones
+    else poly([[tip, 2], [tip - 2, 6], [tip + 2, 6]], '#a8b2bc');
+    g.fillStyle = '#4a545e'; for (const [x, y] of [[tip + 5, 20], [tip - 6, 24], [tip + 9, 27]]) g.fillRect(x, y, 3, 1);
+    const st = R.STYLES?.[style];
+    if (st?.dark) { g.globalCompositeOperation = 'source-atop'; g.fillStyle = `rgba(10,8,24,${st.dark})`; g.fillRect(0, 0, 32, 32); }
+    if (st?.tint) { g.globalCompositeOperation = 'source-atop'; g.globalAlpha = st.tint[1]; g.fillStyle = st.tint[0]; g.fillRect(0, 0, 32, 32); g.globalAlpha = 1; }
+    g.globalCompositeOperation = 'source-over';
+    tileArt.set(key, c);
+    return c;
+  }
   function drawChest(x, y, open, good) {
     ctx.fillStyle = good ? '#4a4a54' : '#6b4423'; ctx.fillRect(x + 3, y + 7, 10, 7);
     ctx.fillStyle = open ? '#2a1d14' : good ? '#7a7a84' : '#8a5a2b'; ctx.fillRect(x + 3, y + 5, 10, open ? 3 : 4);
@@ -280,8 +446,8 @@ function mountJourney(root, deps) {
     }
     if (what.kit) {
       const kind = R.kitKind(what.kit), b = base(what.kit);
-      if (kind === 'weapon') for (const [cx, cy, col] of S.weaponCells(b, 45, { x: 1, y: 8 })) { ctx.fillStyle = col; ctx.fillRect(x + cx, y + cy - 4, 1, 1); }
-      else if (kind === 'shield') for (const [cx, cy, col] of S.shieldCells(b, 'down', { x: 1, y: 1 })) { ctx.fillStyle = col; ctx.fillRect(x + cx, y + cy, 1, 1); }
+      if (kind === 'weapon') for (const [cx, cy, col] of S.weaponCells(S.styleWeapon ? S.styleWeapon(j?.style, b) : b, 45, { x: 1, y: 8 })) { ctx.fillStyle = col; ctx.fillRect(x + cx, y + cy - 4, 1, 1); }
+      else if (kind === 'shield') for (const [cx, cy, col] of S.shieldCells(b, 'down', { x: 1, y: 1 }, j?.style)) { ctx.fillStyle = col; ctx.fillRect(x + cx, y + cy, 1, 1); }
       else { ctx.fillStyle = { robe: '#6a3a8a', leather: '#8a5a2b', chain: '#9aa3ad', plate: '#c8ccd4' }[b] || '#888'; ctx.fillRect(x + 1, y, 6, 8); ctx.fillRect(x, y + 1, 8, 3); }
       return 10;
     }
@@ -400,6 +566,7 @@ function mountJourney(root, deps) {
   function talkTo(lines, then) { talk = { lines: lines.filter(Boolean).map(T).flatMap(pages), i: 0, shown: still() ? 1e9 : 0, then }; mode = mode === 'battle' ? 'battle' : 'talk'; showBox(); }
   function say(text) { talkTo([text]); }
   function showBox() {
+    sfx('talk');
     if (!talk) { box.hidden = true; return; }
     box.hidden = false;
     box.textContent = talk.lines[talk.i] || '';
@@ -423,22 +590,27 @@ function mountJourney(root, deps) {
     if (r.moved) {
       stepPhase = (stepPhase + 1) % 4;
       landUpdate();
-      if (r.door) { trail = []; swoops.clear(); landFx.length = 0; heightFx = null; announce(); arrive(r.door); return; }
+      if (r.door) { trail = []; swoops.clear(); landFx.length = 0; heightFx = null; doorAt = now(); sfx('door'); announce(); arrive(r.door); return; }
+      sfx(r.splash ? 'splash' : 'step');
       trail.unshift({ x: from.x, y: from.y, facing: j.facing });
       trail = trail.slice(0, 16); // the party, then the pets and mounts that follow
       anim = { from, t0: now(), dur: still() ? 0 : j.riding && j.alt === 'ground' ? 110 : 150 };
       if (r.splash && !still()) landFx.push({ kind: 'splash', x: j.x, y: j.y, t0: now(), dur: 600 });
       if (r.splash === 'in') sayLive(`${R.leaderMount(j)?.name || 'Your mount'} carries you into the water.`);
+      if (r.battle) sfx('encounter');
       if (r.battle) setTimeout(() => startFight(r.battle, { helpers: r.helpers, chase: r.chase }), still() ? 0 : 170);
     } else if (world?.pieced && r.bump?.kind === 'tile' && r.bump.tile === undefined) { landUpdate(); sayLive('The land ahead is still on its way from your other Bob…'); }
     else if (r.bump?.kind === 'boss') bossTalk(r.bump.boss);
     else if (r.bump?.kind === 'closed') say('Bob: The door\'s stuck until you roll a New adventure. The buttons are along the bottom.');
-    else if (r.bump?.kind === 'tile' && ['S', 'A'].includes(r.bump.tile) && j.alt === 'ground') sayLive(r.bump.tile === 'S' ? 'A city in the clouds, far overhead. Only a flier can reach it: fly up (⤒ or E) on a pegasus, griffin or wyvern.' : 'A city under the waves. Only a swimmer can reach it: dive (⤓ or Q) on a dolphin.');
+    if (!r.moved && !r.bump?.boss) sfx('bump');
+    if (r.moved) return;
+    if (r.bump?.kind === 'tile' && ['S', 'A'].includes(r.bump.tile) && j.alt === 'ground') sayLive(r.bump.tile === 'S' ? 'A city in the clouds, far overhead. Only a flier can reach it: fly up (⤒ or E) on a pegasus, griffin or wyvern.' : 'A city under the waves. Only a swimmer can reach it: dive (⤓ or Q) on a dolphin.');
   }
   // ---------- Up, down and riding (Journey v1.2) ----------
   function height(r) {
     sayLive(r.text);
-    if (!r.ok) return;
+    if (!r.ok) { sfx('bump'); return; }
+    sfx(r.anim);
     trail = [];
     heightFx = still() ? null : { kind: r.anim, t0: now(), dur: r.anim === 'surface' ? 700 : 1000 };
     if (r.anim === 'land' && !still()) setTimeout(() => landFx.push({ kind: 'dust', x: j.x, y: j.y, t0: now(), dur: 500 }), 800);
@@ -447,7 +619,7 @@ function mountJourney(root, deps) {
   }
   function rise() { if (mode !== 'walk' || anim || !j || lobby) return; height(R.rise(world, j)); }
   function sink() { if (mode !== 'walk' || anim || !j || lobby) return; height(R.sink(world, j)); }
-  function rideToggle() { if (mode !== 'walk' || anim || !j || lobby) return; const r = R.ride(world, j); sayLive(r.text); if (r.ok) { trail = []; announce(); save(true); } }
+  function rideToggle() { if (mode !== 'walk' || anim || !j || lobby) return; const r = R.ride(world, j); sayLive(r.text); sfx(r.ok ? 'ride' : 'bump'); if (r.ok) { trail = []; announce(); save(true); } }
   const BOB_LINES = { cave: 'Bob: Dark, damp, and smells of something. My three least favourite things, in order.', dungeon: 'Bob: Old stones and older bones. I would like it on record that I said this was a bad idea.', castle: 'Bob: A castle! Wipe your feet. And don\'t pick a fight with the knights. Please.', hermit: 'Bob: Someone actually lives out here? On purpose?' };
   function arrive(id) {
     const map = world.map(id);
@@ -476,10 +648,10 @@ function mountJourney(root, deps) {
       if (R.mapOf(world, j).rows[j.y + dy]?.[j.x + dx] === 'n') { shop = { kind: 'new' }; mode = 'shop'; drawPanel(); return; }
       // Facing water on the land, the button fishes.
       const fish = j.alt === 'ground' && !lobby ? R.fishAt(world, j) : null;
-      if (fish) { if (fish.ok) { lastLoot = [{ item: 'fish' }]; lastLootAt = now(); save(true); } if (!still()) landFx.push({ kind: 'ripple', x: j.x + dx, y: j.y + dy, t0: now(), dur: 700 }); talkTo([fish.text]); return; }
-      swing = { t0: now() }; return;
+      if (fish) { sfx('fish'); if (fish.ok) { setTimeout(() => sfx('coin'), 300); lastLoot = [{ item: 'fish' }]; lastLootAt = now(); save(true); } if (!still()) landFx.push({ kind: 'ripple', x: j.x + dx, y: j.y + dy, t0: now(), dur: 700 }); talkTo([fish.text]); return; }
+      swing = { t0: now() }; sfx('swing'); return;
     }
-    if (t.kind === 'chest') { const r = R.openChest(world, j, t.chest); lastLoot = r.got || null; lastLootAt = now(); talkTo([r.text]); save(true); return; }
+    if (t.kind === 'chest') { const r = R.openChest(world, j, t.chest); lastLoot = r.got || null; lastLootAt = now(); sfx(r.got ? 'chest' : 'bump'); if (r.got && !still()) landFx.push({ kind: 'sparkle', x: t.chest.x, y: t.chest.y, t0: now(), dur: 1200 }); talkTo([r.text]); save(true); return; }
     if (t.kind === 'boss') { bossTalk(t.boss); return; }
     if (t.kind === 'person') personTalk(t.person);
   }
@@ -523,7 +695,7 @@ function mountJourney(root, deps) {
     if (wanted && ['guard', 'knight', 'captain'].includes(p.role)) { const key = map.kind === 'world' ? 'world' : map.site || map.id; open('fine', `You're wanted here. The fine is ${R.fmtCoin(R.fineFor(world, j, key))}. Pay up, or we do this the hard way.`); return; }
     if (p.role === 'ruler') { talkTo([`${name}: ${R.questLine(world, j)}`]); return; }
     if (p.role === 'lost') { const r = R.findLost(j, p); talkTo([`${name}: ${R.ROLE_LINES.lost[p.line % R.ROLE_LINES.lost.length]}`, r || '']); save(true); return; }
-    if (p.role === 'elder') { const q = R.questTalk(world, j, map.site || map.id); talkTo(q.lines.map((l) => `${name}: ${l}`)); if (q.done) { lastLoot = [{ coin: q.reward }]; lastLootAt = now(); } save(true); return; }
+    if (p.role === 'elder') { const q = R.questTalk(world, j, map.site || map.id); talkTo(q.lines.map((l) => `${name}: ${l}`)); if (q.done) { lastLoot = [{ coin: q.reward }]; lastLootAt = now(); sfx('quest'); } save(true); return; }
     if (p.role === 'sailor') { open('docks', `${R.ROLE_LINES.sailor[p.line % 3]} Where to?`); return; }
     if (p.role === 'trader') { open('trader', 'Fresh down from the clouds! Everything half price, today only. Every day is today only.', R.TRADER_PRICE); return; }
     if (p.role === 'bowyer') { open('bowyer', R.ROLE_LINES.bowyer[p.line % 2]); return; }
@@ -600,6 +772,10 @@ function mountJourney(root, deps) {
     if (b.over === 'won') {
       battle.stage = 'done'; battle.victory = now();
       const r = b.reward;
+      sfx('win');
+      battle.ups = new Set((r.ups || []).map((u) => u.name));
+      if (r.ups?.length) setTimeout(() => sfx('level'), 1300);
+      else if (r.tamed?.length) setTimeout(() => sfx('tame'), 1300);
       const lines = [b.spar ? `A good bout! ${r.xp} experience.` : `You win! ${r.xp} experience${r.coin ? ` and ${R.fmtCoin(r.coin)}` : ''}.`];
       if (r.drops.length) lines.push(`Dropped kit: ${r.drops.map((k) => `${R.kitName(k)} (${R.kitWords(k)})`).join('; ')}. It's in Kit on the menu.`);
       if (r.items.length) lines.push(`Picked up: ${r.items.map((i) => R.ITEMS[i].name).join(', ')}.`);
@@ -622,10 +798,10 @@ function mountJourney(root, deps) {
       talkTo(lines, endFight);
       save(true);
     } else if (b.over === 'lost') {
-      battle.stage = 'done'; drawPanel();
+      battle.stage = 'done'; drawPanel(); sfx('lose');
       if (b.spar) talkTo(['The captain helps you up. "Not bad. Again sometime."'], endFight);
       else talkTo(['The party falls…', 'You wake up in Bob\'s Inn, aching and a bit lighter in the purse. Half your coin is gone; everything else is still yours.'], () => { R.wakeAtInn(world, j); trail = []; endFight(); save(true); });
-    } else if (b.over === 'fled') { battle.stage = 'done'; talkTo(['You got away.'], endFight); }
+    } else if (b.over === 'fled') { battle.stage = 'done'; sfx('flee'); talkTo(['You got away.'], endFight); }
     else nextPicker(0);
   }
   function endFight() { battle = null; mode = 'walk'; for (const m of j.party) m.asleep = 0; announce(); drawPanel(); focus(); }
@@ -639,14 +815,29 @@ function mountJourney(root, deps) {
   function sayLive(text) { const p = root.querySelector('.jy-msg'); if (p) p.textContent = T(text); }
 
   // One event, animated: the attacker steps in and swings, the target flashes, a number floats up.
+  // What each moment in a fight sounds like: the move itself, then the hit (or the miss) when it lands.
+  function moveSound(e) {
+    if (e.act === 'flee' || e.act === 'run') return e.miss ? 'bump' : 'flee';
+    if (e.act === 'tame') return 'tame';
+    if (e.act === 'feed') return 'feed';
+    if (e.act === 'breath') return 'breath';
+    if (e.element) return e.element;
+    if (e.act === 'item') return e.miss ? 'bump' : 'drink';
+    if (e.heal || e.act === 'heal' || e.act === 'regen') return 'heal';
+    if (e.act === 'steal') return 'coin';
+    if (['fight', 'skill', 'hit', 'curse'].includes(e.act)) return shooterWeapon(e.who) ? 'shot' : 'swing';
+    return '';
+  }
+  const landSound = (e) => (e.miss && e.target ? 'miss' : e.dmg ? (e.crit ? 'crit' : 'hit') : '');
   function animate(e) {
     sayLive(e.text);
-    if (still()) { if (e.dmg || e.heal || e.miss) pop(e); return Promise.resolve(); }
+    sfx(moveSound(e));
+    if (still()) { if (e.dmg || e.heal || e.miss) pop(e); sfx(landSound(e)); return Promise.resolve(); }
     return new Promise((done) => {
       const isFight = ['fight', 'skill', 'hit', 'curse', 'breath', 'item', 'spell', 'feed', 'tame'].includes(e.act);
       const dur = isFight ? (e.element ? 700 : 620) : 520;
       battle.anim = { e, t0: now(), dur };
-      setTimeout(() => { if (e.dmg || e.heal || (e.miss && e.target)) pop(e); }, dur * 0.55);
+      setTimeout(() => { if (e.dmg || e.heal || (e.miss && e.target)) pop(e); sfx(landSound(e)); }, dur * 0.55);
       setTimeout(() => { if (battle) battle.anim = null; done(); }, dur + 120);
     });
   }
@@ -682,6 +873,7 @@ function mountJourney(root, deps) {
     ctx.imageSmoothingEnabled = false;
     if (mode === 'battle' && battle) drawBattle(t);
     else if (j) drawWorld(t);
+    tune();
     if (held && mode === 'walk' && !anim && t - heldAt > 0) tryWalk(held);
     // The people go about their business even when you stand still (and the guards keep coming).
     if (j && mode === 'walk' && !anim && t - lastTick > 900) { lastTick = t; const caught = R.tick(world, j); if (caught) startFight(caught, { chase: true }); }
@@ -741,13 +933,36 @@ function mountJourney(root, deps) {
     const more = z < 1 ? Math.ceil((1 / z - 1) * VIEW_W / 2) + 1 : 0, moreY = z < 1 ? Math.ceil((1 / z - 1) * VIEW_H / 2) + 1 : 0;
     const x0 = Math.floor(cx / TILE) - more, y0 = Math.floor(cy / TILE) - moreY;
     const theme = THEMES[map.kind] ? map.kind : '';
+    const peaks = [], props = [];
     for (let y = y0; y <= y0 + VIEW_H + moreY * 2; y++) for (let x = x0; x <= x0 + VIEW_W + more * 2; x++) {
       const ch = map.rows[y]?.[x]; if (!ch) continue;
       const fr = ANIMATED.has(ch) && !still() ? tick2 : 0;
       // Under the sea: the sea is the floor you swim over, and the land above is a blur.
-      const art = deep && map.kind === 'world' ? ('~r'.includes(ch) ? tileCanvas('$', 0) : ch === 'A' ? tileCanvas('A', fr) : blurredTile(ch, fr)) : tileCanvas(ch, fr, theme);
-      ctx.drawImage(art, x * TILE - cx, y * TILE - cy);
+      if (deep && map.kind === 'world') { ctx.drawImage('~r'.includes(ch) ? tileCanvas('$', 0) : ch === 'A' ? tileCanvas('A', fr) : blurredTile(ch, fr), x * TILE - cx, y * TILE - cy); continue; }
+      if (STANDING.has(ch)) {
+        // The ground it stands on, then the thing itself. A mountain is drawn big, after the ground (below).
+        const gch = groundUnder(map, x, y);
+        ctx.drawImage(tileCanvas(gch, ANIMATED.has(gch) && !still() ? tick2 : 0, theme), x * TILE - cx, y * TILE - cy);
+        if (ch === '^') { peaks.push([x, y]); continue; }
+        const sx = x * TILE - cx, sy = y * TILE - cy;
+        ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.beginPath(); ctx.ellipse(sx + 9, sy + 15, 7, 2, 0, 0, Math.PI * 2); ctx.fill(); // a shadow on the ground
+        ctx.drawImage(tileCanvas(ch, fr, theme, true), sx, sy);
+        if (HOUSES.has(ch)) props.push([ch, x, y, sx, sy]);
+        continue;
+      }
+      ctx.drawImage(tileCanvas(ch, fr, theme, false, VARIED.has(ch) ? Math.floor(hash(x, y, 5) * 4) : 0), x * TILE - cx, y * TILE - cy);
+      if (ch === '~' || ch === 'r') shore(map, x, y, x * TILE - cx, y * TILE - cy, still() ? 0 : t, ch === 'r');
     }
+    // Mountains stand tall: each peak is drawn about twice a tile high, back to front, so a range looks like one.
+    peaks.sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+    for (const [x, y] of peaks) {
+      const k = hash(x, y, 7), inner = groundUnder(map, x, y) === 'µ';
+      if (inner && hash(y, x, 11) < 0.3) continue; // some gaps in a big range, so it reads as peaks and slopes
+      const sz = 1.45 + k * 0.6, pk = peakCanvas(k < 0.5 ? 0 : 1, sz > 1.75); const w = TILE * sz, h = TILE * sz * 1.1; ctx.drawImage(pk, Math.round(x * TILE - cx + TILE / 2 - w / 2 + (hash(y, x, 3) - 0.5) * 4), Math.round(y * TILE - cy + TILE - h + 2), Math.round(w), Math.round(h)); }
+    peaks.length = 0;
+    // Chimney smoke, steam, blinking aerials and flickering neon over the houses; lamps and crates in town.
+    for (const [ch, x, y, sx, sy] of props) houseLife(ch, x, y, sx, sy, t);
+    if (map.kind !== 'world' && !deep) townProps(map, x0, y0, x0 + VIEW_W + more * 2, y0 + VIEW_H + moreY * 2, cx, cy, t);
     for (const c of map.chests) drawChest(c.x * TILE - cx, c.y * TILE - cy, j.opened.includes(`${map.id}:${c.id}`), c.loot !== 'gift' && /deep|hoard/.test(c.loot));
     // Everyone who stands on the map, back to front so the lower ones overlap the higher.
     const figs = [];
@@ -762,7 +977,7 @@ function mountJourney(root, deps) {
       const dx = 8 * (1 - sc), dy = 20 * (1 - sc) + (q.beast ? 4 : 0);
       // An Aerie trader swoops down when you first see them, and lands with a puff of dust.
       let swoopK = 1;
-      if (q.visiting && !still()) { const key = `${map.id}:${q.id}`; if (!swoops.has(key)) swoops.set(key, t); swoopK = Math.min(1, (t - swoops.get(key)) / 1100); qx += (1 - swoopK) * 50; qy -= (1 - swoopK) ** 2 * 110; }
+      if (q.visiting && !still()) { const key = `${map.id}:${q.id}`; if (!swoops.has(key)) { swoops.set(key, t); sfx('swoop'); } swoopK = Math.min(1, (t - swoops.get(key)) / 1100); qx += (1 - swoopK) * 50; qy -= (1 - swoopK) ** 2 * 110; }
       const facing = q.role === 'animal' || q.beast ? (q.facing === 'right' ? 'right' : 'left') : q.facing || 'down';
       const step = q.route || q.role === 'animal' ? stepPhase : swoopK < 1 ? flap * 2 : 0;
       const water = wading(map, q.x, q.y);
@@ -839,12 +1054,15 @@ function mountJourney(root, deps) {
     // The leader up in the air (or under the sea) is drawn last, at the middle of the shrunken land.
     if (lead && (hgt.lift || !onGround)) leaderDraw(W / 2 + (lx - cx - W / 2) * z, H / 2 + (ly - cy - H / 2) * z, hgt.lift);
     if (lastLoot && t - lastLootAt < 2200) drawLoot(t);
+    // Walking through a door: a quick fade in from black.
+    if (!still() && t - doorAt < 280) { ctx.fillStyle = `rgba(0,0,0,${1 - (t - doorAt) / 280})`; ctx.fillRect(0, 0, W, H); }
     if (talk) drawTalk(t);
     root.querySelector('.jy-gold').textContent = lobby ? '' : `🪙 ${R.fmtCoin(j.coin, true)}`;
   }
   function puff(x, y, k) { ctx.fillStyle = `rgba(230,220,200,${0.7 * (1 - k)})`; for (let i = 0; i < 5; i++) { const a = i * 1.26, r = 3 + k * 8; ctx.beginPath(); ctx.arc(x + Math.cos(a) * r, y + Math.sin(a) * r * 0.4, 2 + k * 2, 0, Math.PI * 2); ctx.fill(); } }
   function drawLandFx(fx, x, y, k) {
     if (fx.kind === 'dust') { puff(x, y, k); return; }
+    if (fx.kind === 'sparkle') { const cols = styleSparks(); for (let i = 0; i < 10; i++) { const a = i * 0.63 + k * 4, r = 4 + k * 14; ctx.fillStyle = cols[i % cols.length]; ctx.globalAlpha = 1 - k; ctx.fillRect(Math.round(x + Math.cos(a) * r), Math.round(y - 4 - k * 12 + Math.sin(a) * r * 0.6), i % 3 ? 1 : 2, i % 3 ? 1 : 2); } ctx.globalAlpha = 1; return; }
     if (fx.kind === 'ripple') { ctx.strokeStyle = `rgba(255,255,255,${0.8 * (1 - k)})`; ctx.lineWidth = 1; for (let i = 0; i < 2; i++) { const r = 3 + (k * 14 + i * 5); ctx.beginPath(); ctx.ellipse(x, y, r, r * 0.4, 0, 0, Math.PI * 2); ctx.stroke(); } return; }
     if (fx.kind === 'splash') { ctx.fillStyle = `rgba(200,240,255,${1 - k})`; for (let i = 0; i < 6; i++) { const dx = (i - 2.5) * 3, h = Math.sin(k * Math.PI) * (6 + (i % 3) * 3); ctx.fillRect(Math.round(x + dx * (1 + k)), Math.round(y - h), 2, 2); } }
   }
@@ -948,7 +1166,8 @@ function mountJourney(root, deps) {
   // Fire climbs, frost falls in shards, storm strikes as lightning, holy is a pillar of light, shadow swirls in,
   // wild bursts into leaves, mind ripples out in rings, and stars rain down.
   function drawSpell(e, from, to, p, t) {
-    const col = ELEMENT_COLOURS[e.element] || '#ffffff';
+    const tint = R.STYLES[j?.style]?.tint?.[0];
+    const col = tint && S.tintHex ? S.tintHex(ELEMENT_COLOURS[e.element] || '#ffffff', tint, 0.35) : ELEMENT_COLOURS[e.element] || '#ffffff';
     ctx.fillStyle = col;
     if (from && to && p < 0.45 && from !== to && !['holy', 'star', 'storm'].includes(e.element)) { const k = (p - 0.1) / 0.35; const bx = from.x + (to.x + to.w / 2 - from.x) * k, by = from.y + 16 + (to.y + to.h / 2 - from.y - 16) * k; for (let n = 0; n < 4; n++) ctx.fillRect(Math.round(bx - n * 3 * Math.sign(to.x - from.x)), Math.round(by), 3 - (n > 1 ? 1 : 0), 3 - (n > 1 ? 1 : 0)); }
     if (!to || p < 0.4) return;
@@ -967,6 +1186,11 @@ function mountJourney(root, deps) {
     }
   }
   function drawBattle(t) {
+    const a0 = battle.anim, p0 = a0 ? Math.min(1, (t - a0.t0) / a0.dur) : 0;
+    // A critical hit shakes the screen for a moment.
+    const shake = !still() && a0?.e?.crit && p0 > 0.5 && p0 < 0.75 ? 3 : 0;
+    ctx.save();
+    if (shake) ctx.translate(Math.round(Math.sin(t / 17) * shake), Math.round(Math.cos(t / 23) * shake));
     backdrop();
     ctx.fillStyle = 'rgba(0,0,0,0.22)';
     for (const [id, s] of spots()) { const f = battle.b.foes.find((x) => x.key === id) || battle.b.allies.find((x) => x.key === id); if (f && f.hp <= 0) continue; ctx.beginPath(); ctx.ellipse(s.x + s.w / 2, s.y + s.h - 1, s.w / 2.6, 3, 0, 0, Math.PI * 2); ctx.fill(); }
@@ -992,7 +1216,8 @@ function mountJourney(root, deps) {
       const picking = battle.stage !== 'play' && battle.who === i && !win;
       const down = m.hp <= 0;
       const facing = win ? S.FACINGS[Math.floor((t - battle.victory) / 220) % 4] : 'left';
-      const angle = win ? 0 : swingAt(m.id, 'left') ?? (e?.who === m.id && e.element ? -150 : undefined);
+      const aim = !win && e?.who === m.id && shooterWeapon(m.id) && j.style !== 'fantasy' && ['fight', 'skill', 'hit'].includes(e.act) && !e.element ? -90 : undefined;
+      const angle = win ? 0 : aim ?? swingAt(m.id, 'left') ?? (e?.who === m.id && e.element ? -150 : undefined);
       const fx = s.x - shove(m.id) - (picking ? 6 : 0) - dodge(m.id), fy = s.y + (down ? 10 : 0);
       drawFig(memberLook(m), fx, fy, 2, { facing: down ? 'up' : facing, step: win ? Math.floor(t / 120) % 4 : 0, weapon: base(m.weapon), shield: base(m.shield), weaponTint: kitTint(m.weapon), shieldTint: kitTint(m.shield), angle: down ? undefined : angle, flash: hitNow(m.id), alpha: down ? 0.45 : 1 });
       if (!down) extras(fx, fy, 2, { ...memberExtras(m), flap: Math.floor(t / 150) % 2 });
@@ -1006,9 +1231,22 @@ function mountJourney(root, deps) {
         const k = (p - 0.15) / 0.4, dir = Math.sign(to.x - from.x) || 1;
         const ax = from.x + 8 + (to.x + to.w / 2 - from.x - 8) * k, ay = from.y + 22 + (to.y + to.h / 2 - from.y - 22) * k - Math.sin(k * Math.PI) * (w === 'longbow' ? 14 : 6);
         const len = w === 'crossbow' || w === 'handbow' ? 5 : 8;
+        const shot = S.STYLE_SHOTS?.[j.style] || 'arrow';
+        if (shot === 'laser' || shot === 'tracer') {
+          // A laser bolt (sci-fi) or a bright tracer round (cyberpunk), flying straight.
+          const lay = Math.round(from.y + 22 + (to.y + to.h / 2 - from.y - 22) * k);
+          ctx.fillStyle = shot === 'laser' ? '#7ae0ff' : '#ff3ad8'; ctx.fillRect(Math.round(ax - (dir > 0 ? len + 2 : 0)), lay - 1, len + 2, 3);
+          ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(ax - (dir > 0 ? len : -1)), lay, len, 1);
+          if (k < 0.2) { ctx.fillStyle = shot === 'laser' ? '#c8f0ff' : '#ffd166'; ctx.fillRect(from.x + (dir > 0 ? 14 : -4), from.y + 20, 4, 4); }
+        } else if (shot === 'ball') {
+          // A lead ball with a puff of smoke at the muzzle (steampunk).
+          ctx.fillStyle = '#3a3a3a'; ctx.fillRect(Math.round(ax) - 1, Math.round(ay) - 1, 3, 3);
+          if (k < 0.5) { ctx.fillStyle = `rgba(220,220,220,${0.7 * (1 - k * 2)})`; for (let n = 0; n < 4; n++) ctx.fillRect(from.x + (dir > 0 ? 12 : -6) + n * 2, from.y + 18 - n * 2 - k * 10, 4, 4); }
+        } else {
         ctx.fillStyle = '#c8a66a'; ctx.fillRect(Math.round(ax - (dir > 0 ? len : 0)), Math.round(ay), len, 1);
         ctx.fillStyle = '#d8dee6'; ctx.fillRect(Math.round(dir > 0 ? ax : ax - 2), Math.round(ay) - 1, 2, 3);
         ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(dir > 0 ? ax - len - 2 : ax + len), Math.round(ay) - 1, 2, 1);
+        }
       }
     }
     // Spells: each element looks like itself. A bolt flies from the caster, then the element lands on the target.
@@ -1017,6 +1255,14 @@ function mountJourney(root, deps) {
     if (e && (e.act === 'tame' || (e.act === 'feed' && !e.miss)) && p > 0.3) { const s2 = sp.get(e.target); if (s2) { ctx.fillStyle = '#ff7ad8'; for (let k = 0; k < (e.act === 'tame' ? 6 : 3); k++) { const hx = s2.x + 6 + k * 7, hy = s2.y + 6 - (p - 0.3) * 40 - (k % 2) * 6; ctx.fillRect(hx, hy, 2, 2); ctx.fillRect(hx + 3, hy, 2, 2); ctx.fillRect(hx, hy + 1, 5, 2); ctx.fillRect(hx + 1, hy + 3, 3, 1); ctx.fillRect(hx + 2, hy + 4, 1, 1); } } }
     if (e && e.heal && p > 0.25) { const s = sp.get(e.target); if (s) { ctx.fillStyle = '#7dff9a'; for (let k = 0; k < 8; k++) ctx.fillRect(s.x + ((k * 7) % s.w), s.y + s.h - ((p - 0.25) * 60 + k * 5) % s.h, 2, 2); } }
     if (e && e.act === 'breath' && p > 0.2) { ctx.fillStyle = `rgba(255,120,40,${0.45 * (1 - p)})`; ctx.fillRect(120, 0, W - 120, H); }
+    // Items: the bottle (or jar, or chip) flies to whoever it's for, then bursts into sparkles in the style's colours.
+    if (e && e.act === 'item' && e.item && !e.miss) {
+      const from = sp.get(e.who), to = sp.get(e.target) || from;
+      if (from && p < 0.45) { const k = p / 0.45, ix = from.x + (to.x - from.x) * k, iy = from.y + (to.y - from.y) * k - Math.sin(k * Math.PI) * 24; drawIcon(Math.round(ix), Math.round(iy), { item: e.item }); }
+      if (to && p >= 0.4) { const q = (p - 0.4) / 0.6, cols = styleSparks(); for (let k2 = 0; k2 < 14; k2++) { const ang = k2 * 0.45 + q * 3, r = 4 + q * 20; ctx.fillStyle = cols[k2 % cols.length]; ctx.globalAlpha = 1 - q; ctx.fillRect(Math.round(to.x + to.w / 2 + Math.cos(ang) * r), Math.round(to.y + to.h / 2 + Math.sin(ang) * r - q * 10), 2, 2); } ctx.globalAlpha = 1; }
+    }
+    // A critical hit: a bright star burst on the target.
+    if (e && e.crit && e.dmg && p > 0.5 && p < 0.85) { const s3 = sp.get(e.target); if (s3) { const q = (p - 0.5) / 0.35, cx = s3.x + s3.w / 2, cy = s3.y + s3.h / 2; ctx.fillStyle = styleSparks()[0]; for (let k2 = 0; k2 < 8; k2++) { const ang = k2 * Math.PI / 4; for (let r = 4 + q * 6; r < 8 + q * 16; r += 2) ctx.fillRect(Math.round(cx + Math.cos(ang) * r), Math.round(cy + Math.sin(ang) * r), 2, 2); } } }
     if (e && (e.coin || e.act === 'steal') && p > 0.3) { const s = sp.get(e.target) || sp.get(e.who); if (s) drawIcon(s.x + 6, s.y - 8 - p * 10, { coin: e.coin || 150 }); }
     // Floating numbers.
     ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center';
@@ -1026,6 +1272,12 @@ function mountJourney(root, deps) {
       ctx.fillStyle = '#000'; ctx.fillText(n.text, n.x + 1, n.y - age / 40 + 1); ctx.fillStyle = n.colour; ctx.fillText(n.text, n.x, n.y - age / 40);
     }
     ctx.textAlign = 'left';
+    // Level up: a column of golden light over everyone who grew, and the words.
+    if (win && battle.ups?.size && !still()) {
+      const age = t - battle.victory;
+      if (age > 1200 && age < 3600) for (const m of j.party) { if (!battle.ups.has(m.name)) continue; const s4 = sp.get(m.id); if (!s4) continue; const q = ((age - 1200) % 1200) / 1200, cols = styleSparks(); ctx.fillStyle = `rgba(255,230,128,${0.25 * (1 - q)})`; ctx.fillRect(s4.x, 0, s4.w, s4.y + s4.h); for (let k2 = 0; k2 < 8; k2++) { ctx.fillStyle = cols[k2 % cols.length]; ctx.fillRect(s4.x + (k2 * 5) % s4.w, Math.round(s4.y + s4.h - ((q * 60 + k2 * 9) % (s4.h + 20))), 2, 2); } ctx.font = 'bold 8px monospace'; ctx.fillStyle = '#000'; ctx.fillText('LEVEL UP', s4.x - 7, s4.y - 3); ctx.fillStyle = '#ffd166'; ctx.fillText('LEVEL UP', s4.x - 8, s4.y - 4); }
+    }
+    ctx.restore();
     if (win && lastLoot) drawLoot(t);
     if (talk) drawTalk(t);
   }
@@ -1229,7 +1481,7 @@ function mountJourney(root, deps) {
     const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
     const m = j.party[menu.who || 0] || j.party[0];
     let k = 0;
-    const paint = () => { g.clearRect(0, 0, c.width, c.height); S.FACINGS.forEach((f, i) => { try { S.drawFigure(g, 4 + i * 40, 2, 2.6, memberLook(m), { compose: A.compose, facing: f, step: still() ? 0 : k % 4, weapon: base(m.weapon), shield: base(m.shield) }); } catch {} }); k++; };
+    const paint = () => { g.clearRect(0, 0, c.width, c.height); S.FACINGS.forEach((f, i) => { try { S.drawFigure(g, 4 + i * 40, 2, 2.6, memberLook(m), { compose: A.compose, style: j?.style && j.style !== 'fantasy' ? j.style : undefined, facing: f, step: still() ? 0 : k % 4, weapon: base(m.weapon), shield: base(m.shield) }); } catch {} }); k++; };
     paint();
     if (!still()) dollTimer = setInterval(() => { if (!c.isConnected) { clearInterval(dollTimer); return; } paint(); }, 200);
   }
@@ -1238,12 +1490,15 @@ function mountJourney(root, deps) {
   root.addEventListener('click', async (e) => {
     const bt = e.target.closest('button'); if (!bt || bt.disabled) return;
     const d = bt.dataset;
+    snd.wake?.();
+    if (d.jy === 'sound') { toggleSound(); return; }
+    if (!d.dir && !d.key && !d.buy && !d.sell && !d.sail) sfx('menu');
     if (d.jy === 'close') { await close(); return; }
     if (d.jy === 'newadv') { shop = { kind: 'new' }; mode = 'shop'; drawPanel(); return; }
     if (d.jy === 'roll') { rollNew(); return; }
     if (d.jy === 'resume-adv') { resume(); return; }
     if (d.jy === 'menu' || d.key === 'menu') { toggleMenu(); return; }
-    if (d.jy === 'save') { if (lobby) say('Nothing to save yet: roll a New adventure first.'); else await save(); return; }
+    if (d.jy === 'save') { if (lobby) say('Nothing to save yet: roll a New adventure first.'); else { await save(); sfx('save'); } return; }
     if (d.jy === 'resume') { menu = null; mode = 'walk'; drawPanel(); focus(); return; }
     if (d.jy === 'leave') { await save(true); await close(); return; }
     if (d.jy === 'look') { const m = j.party[menu.who || 0]; deps.editLook?.(m, (id) => { if (id) { m.look = id; lookCache.clear(); save(true); } drawPanel(); }); return; }
@@ -1251,7 +1506,7 @@ function mountJourney(root, deps) {
     if (d.key === 'rise') { rise(); return; }
     if (d.key === 'sink') { sink(); return; }
     if (d.key === 'ride') { rideToggle(); return; }
-    if (d.sail) { const st = world.sites.find((x) => x.id === d.sail); const r = R.sailTo(world, j, d.sail); if (!r.ok) { msg = r.text; drawPanel(); return; } shop = null; mode = 'walk'; msg = ''; trail = []; voyage = still() ? null : { art: R.boatArt(j.style, r.boat), name: st?.name || '', to: d.sail, t0: now(), dur: 1800 }; sayLive(r.text); if (!voyage) { announce(); arrive(d.sail); } drawPanel(); save(true); return; }
+    if (d.sail) { const st = world.sites.find((x) => x.id === d.sail); const r = R.sailTo(world, j, d.sail); if (!r.ok) { msg = r.text; drawPanel(); return; } shop = null; mode = 'walk'; msg = ''; trail = []; voyage = still() ? null : { art: R.boatArt(j.style, r.boat), name: st?.name || '', to: d.sail, t0: now(), dur: 1800 }; sfx('sail'); sayLive(r.text); if (!voyage) { announce(); arrive(d.sail); } drawPanel(); save(true); return; }
     if (d.petset !== undefined) { const [kind, id] = d.petset.split(':'); const m = j.party[menu?.who || 0]; R.setActive(j, m.id, kind, id || ''); armedRelease = ''; drawPanel(); save(true); return; }
     if (d.petrename) { const [kind, id] = d.petrename.split(':'); const m = j.party[menu?.who || 0]; const inp = panel.querySelector(`[data-petname="${globalThis.CSS?.escape ? globalThis.CSS.escape(d.petrename) : d.petrename}"]`); msg = R.renamePet(j, m.id, kind, id, inp?.value) ? 'Renamed.' : 'That name won\'t do.'; drawPanel(); save(true); return; }
     if (d.petgo) { if (armedRelease !== d.petgo) { armedRelease = d.petgo; msg = 'Press Let go again to release them into the wild. They won\'t come back.'; drawPanel(); return; } const [kind, id] = d.petgo.split(':'); const m = j.party[menu?.who || 0]; const r = R.release(j, m.id, kind, id); armedRelease = ''; msg = r.text; drawPanel(); if (r.ok) save(true); return; }
@@ -1259,12 +1514,12 @@ function mountJourney(root, deps) {
     if (d.tab) { menu.tab = d.tab; drawPanel(); return; }
     if (d.who) { menu.who = Number(d.who); drawPanel(); return; }
     if (d.trainee) { shop.who2 = Number(d.trainee); drawPanel(); return; }
-    if (d.learn) { const m = j.party[menu.who || 0]; msg = R.learn(m, d.learn) ? `${m.name} learns ${R.SKILLS[d.learn].name}.` : R.canLearn(m, d.learn); drawPanel(); save(true); return; }
+    if (d.learn) { const m = j.party[menu.who || 0]; msg = R.learn(m, d.learn) ? (sfx('level'), `${m.name} learns ${R.SKILLS[d.learn].name}.`) : R.canLearn(m, d.learn); drawPanel(); save(true); return; }
     if (d.addclass) { const m = j.party[menu.who || 0]; msg = R.addClass(m, d.addclass) ? `${m.name} is now also a ${R.CLASSES[d.addclass].name}.` : R.canAddClass(m, d.addclass); drawPanel(); save(true); return; }
-    if (d.cast) { const r = R.castField(j, j.party[menu.who || 0].id, d.cast, d.on); msg = r.text; drawPanel(); if (r.ok) save(true); return; }
-    if (d.use) { const it = R.ITEMS[d.use]; const r = it?.scroll ? R.castField(j, d.on, d.use, d.on) : R.drinkOn(j, d.use, d.on); msg = r.text; drawPanel(); if (r.ok) save(true); return; }
-    if (d.buy) { msg = R.buy(j, d.buy, shop?.mult || 1) ? `Bought: ${R.ITEMS[d.buy]?.name || R.kitName(d.buy)}.` : R.ITEMS[d.buy] && !R.bagRoom(j) ? 'The bag is full. A pet or a mount carries more.' : "You can't afford that."; drawPanel(); save(true); return; }
-    if (d.sell) { const got = R.sell(j, d.sell); msg = got ? `Sold for ${R.fmtCoin(got)}.` : 'Someone is wearing that.'; drawPanel(); save(true); return; }
+    if (d.cast) { const r = R.castField(j, j.party[menu.who || 0].id, d.cast, d.on); msg = r.text; sfx(r.ok ? 'heal' : 'bump'); drawPanel(); if (r.ok) save(true); return; }
+    if (d.use) { const it = R.ITEMS[d.use]; const r = it?.scroll ? R.castField(j, d.on, d.use, d.on) : R.drinkOn(j, d.use, d.on); msg = r.text; sfx(r.ok ? (it?.scroll ? 'spell' : 'drink') : 'bump'); drawPanel(); if (r.ok) save(true); return; }
+    if (d.buy) { const okBuy = R.buy(j, d.buy, shop?.mult || 1); sfx(okBuy ? 'buy' : 'bump'); msg = okBuy ? `Bought: ${R.ITEMS[d.buy]?.name || R.kitName(d.buy)}.` : R.ITEMS[d.buy] && !R.bagRoom(j) ? 'The bag is full. A pet or a mount carries more.' : "You can't afford that."; drawPanel(); save(true); return; }
+    if (d.sell) { const got = R.sell(j, d.sell); sfx(got ? 'coin' : 'bump'); msg = got ? `Sold for ${R.fmtCoin(got)}.` : 'Someone is wearing that.'; drawPanel(); save(true); return; }
     if (d.train) { msg = R.train(j, j.party[shop.who2 || 0].id, d.train).text; drawPanel(); save(true); return; }
     if (d.teach) { const r = R.hermitTeach(j, j.party[shop.who2 || 0].id, d.teach); msg = r.text; drawPanel(); if (r.ok) save(true); return; }
     if (d.shop === 'rest') { const price = shop.person?.role === 'keeper' ? R.INN_PRICE : innPrice(shop.tier); if (R.rest(j, price)) { shop = null; mode = 'walk'; talkTo(['You sleep like a log. Everyone wakes up whole.']); save(true); } drawPanel(); return; }
@@ -1329,6 +1584,8 @@ function mountJourney(root, deps) {
     const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target?.tagName || '');
     if (e.key === 'Escape' || e.key === 'x' || e.key === 'X') { if (typing && e.key !== 'Escape') return; if (mode === 'menu' || mode === 'shop' || mode === 'walk') { e.preventDefault(); e.stopPropagation(); toggleMenu(); } return; }
     if (typing) return;
+    snd.wake?.();
+    if ((e.key === 'm' || e.key === 'M') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); toggleSound(); return; }
     if (mode === 'battle' && !talk) { // arrow keys move between the command buttons
       if (KEYS[e.key] && panel.contains(doc.activeElement)) { const bs = [...panel.querySelectorAll('.jy-cmds button:not([disabled])')]; const i = bs.indexOf(doc.activeElement); if (i >= 0) { e.preventDefault(); const n = bs[(i + (KEYS[e.key] === 'down' || KEYS[e.key] === 'right' ? 1 : bs.length - 1)) % bs.length]; n?.focus(); } }
       return;
@@ -1356,10 +1613,14 @@ function mountJourney(root, deps) {
   }
   function stop() {
     closed = true; clearInterval(dollTimer); clearInterval(landTimer);
+    try { snd.stop(); } catch {}
     doc.removeEventListener('keydown', onKey, true); doc.removeEventListener('keyup', onKeyUp, true);
     if (frameReq) (globalThis.cancelAnimationFrame || clearTimeout)(frameReq);
   }
 
+  soundButton();
+  // Browsers keep sound silent until the first tap or key press; any press wakes it.
+  root.addEventListener('pointerdown', () => snd.wake?.(), { capture: true });
   enterLobby();
   talkTo(['Bob\'s Inn. A fire, a bar, a cat, and Bob behind it.', 'Walk about with the arrow keys. When you\'re ready, the buttons along the bottom roll a New adventure or Resume your saved one.']);
   loadSave();
@@ -1367,5 +1628,211 @@ function mountJourney(root, deps) {
   return { stop, save, get journey() { return j; }, get world() { return world; }, get mode() { return mode; }, get lobby() { return lobby; }, startFight, walk: tryWalk, act, fight, rollNew, resume, rise, sink, ride: rideToggle };
 }
 
-globalThis.BobJourneyPlay = { mountJourney };
+// ---------- Music and sound (Journey v1.3) ----------
+// Everything you hear is made right here by the browser's own audio, from the little tunes written below: no sound
+// files, nothing downloaded, our own music. Each place has its own tune (Bob's Inn, the open land, towns, the
+// castle, caves and dungeons, the sky, under the sea, a boat trip) and fights have theirs; the style changes the
+// instruments (sci-fi synths, cyberpunk bass, steampunk brass). 🔊/🔇 on the top bar turns it all off and on.
+// A tune is lines of notes, one per eighth: a note name and octave (C4, F#3, Bb2), '-' to hold, '.' to rest. Drums
+// are k (kick), s (snare) and h (hat).
+const SONGS = {
+  inn: { bpm: 104, lead: 'D5 - F#5 A5 - F#5 | G5 - E5 C#5 - A4 | B4 - D5 G5 - F#5 | E5 - - - . . | D5 - F#5 A5 - D6 | C#6 - B5 A5 - G5 | F#5 - E5 D5 - C#5 | D5 - - - . .', bass: 'D3 . A3 . A3 . | A2 . E3 . E3 . | G2 . D3 . D3 . | A2 . C#3 . E3 . | D3 . A3 . A3 . | A2 . E3 . E3 . | G2 . A2 . A2 . | D3 . A2 . D3 .', drums: 'k . h . h . | k . h . h . | k . h . h . | k . h . h . | k . h . h . | k . h . h . | k . h . h . | k . h . s .' },
+  land: { bpm: 116, lead: 'C5 - G4 C5 E5 - D5 C5 | D5 - - B4 G4 - - . | A4 - C5 F5 A5 - G5 F5 | E5 - - - . . . . | F5 - E5 D5 C5 - D5 E5 | G5 - - E5 C5 - - . | A4 - B4 C5 D5 - E5 D5 | C5 - - - - . . .', bass: 'C3 . G3 . C3 . G3 . | G2 . D3 . G2 . D3 . | F2 . C3 . F2 . C3 . | C3 . G3 . E3 . G3 . | F2 . C3 . F2 . C3 . | C3 . G3 . C3 . G3 . | F2 . G2 . F2 . G2 . | C3 . G2 . C3 . . .', drums: 'k . h . s . h . | k . h k s . h . | k . h . s . h . | k . h k s . h h | k . h . s . h . | k . h k s . h . | k . h . s . h . | k . s . s s s .' },
+  town: { bpm: 108, lead: 'G4 B4 D5 - B4 D5 G5 - | F#5 E5 D5 - C5 B4 A4 - | B4 C5 D5 E5 D5 B4 G4 - | A4 - - - . . . . | G4 B4 D5 - E5 D5 B4 - | C5 E5 G5 - F#5 E5 D5 - | E5 D5 C5 B4 A4 F#4 D4 - | G4 - - - . . . .', bass: 'G2 . D3 . G2 . D3 . | D2 . A2 . D2 . A2 . | G2 . D3 . E2 . B2 . | D2 . A2 . D2 . F#2 . | G2 . D3 . G2 . D3 . | C3 . G3 . C3 . G3 . | A2 . E3 . D2 . A2 . | G2 . D3 . G2 . . .', drums: 'k . h h s . h . | k . h h s . h . | k . h h s . h . | k . h h s . s . | k . h h s . h . | k . h h s . h . | k . h h s . h . | k . k . s . . .' },
+  castle: { bpm: 88, lead: 'F4 - A4 - C5 - - - | Bb4 - A4 - G4 - - - | A4 - C5 - F5 - E5 D5 | C5 - - - - - . . | D5 - C5 - Bb4 - A4 - | G4 - A4 Bb4 C5 - - - | Bb4 - A4 - G4 - E4 - | F4 - - - - - . .', bass: 'F2 - - - C3 - - - | Bb2 - - - C3 - - - | F2 - - - A2 - - - | C3 - - - C2 - - - | Bb2 - - - F2 - - - | C3 - - - A2 - - - | Bb2 - - - C3 - - - | F2 - - - F2 - - -', drums: 'k . . . s . . . | k . . . s . . . | k . . . s . . . | k . k . s . s s | k . . . s . . . | k . . . s . . . | k . . . s . . . | k . k . s s s s' },
+  dungeon: { bpm: 72, lead: 'A4 - - C5 B4 - - . | E4 - - - . . . . | F4 - - E4 D4 - - . | E4 - - - . . G#4 . | A4 - - C5 D5 - - . | E5 - - D5 C5 - B4 . | A4 - G#4 - F4 - E4 . | A3 - - - . . . .', bass: 'A2 - - - - - - - | E2 - - - - - - - | D2 - - - - - - - | E2 - - - - - - - | A2 - - - - - - - | F2 - - - - - - - | D2 - - - E2 - - - | A2 - - - - - - -', drums: 'k . . . . . h . | k . . . . . . . | k . . . . . h . | k . . . s . . . | k . . . . . h . | k . . . . . . . | k . . . . . h . | k . . . s . . .' },
+  sky: { bpm: 92, lead: 'E5 G#5 B5 E6 B5 G#5 | F#5 A5 C#6 F#6 C#6 A5 | B4 D#5 F#5 B5 F#5 D#5 | E5 - - - B4 - | C#5 E5 A5 C#6 A5 E5 | B4 E5 G#5 B5 G#5 E5 | F#5 A5 B5 D#6 B5 A5 | E5 - - - - .', bass: 'E3 - - B3 - - | F#3 - - C#4 - - | B2 - - F#3 - - | E3 - - B2 - - | A2 - - E3 - - | E3 - - B3 - - | B2 - - F#3 - - | E3 - - - - -', drums: '. . h . . h | . . h . . h | . . h . . h | . . h . . h | . . h . . h | . . h . . h | . . h . . h | . . h . s .' },
+  deep: { bpm: 66, lead: 'D5 - - F5 - - A5 - | G5 - - - F5 - - - | E5 - - C5 - - E5 - | D5 - - - - - . . | A4 - - D5 - - F5 - | E5 - - - D5 - C5 - | Bb4 - - A4 - - G4 - | A4 - - - - - . .', bass: 'D3 - - - A2 - - - | Bb2 - - - F2 - - - | C3 - - - G2 - - - | D3 - - - A2 - - - | D3 - - - A2 - - - | C3 - - - G2 - - - | Bb2 - - - F2 - - - | A2 - - - - - - -', drums: '' },
+  sea: { bpm: 126, lead: 'A4 - A4 C5 - E5 | D5 - C5 B4 - G4 | A4 - A4 C5 - E5 | G5 - - E5 - . | F5 - E5 D5 - C5 | B4 - C5 D5 - B4 | A4 - G#4 A4 - B4 | A4 - - - - .', bass: 'A2 . E3 A2 . E3 | G2 . D3 G2 . D3 | A2 . E3 A2 . E3 | C3 . G3 C3 . G3 | D3 . A3 D3 . A3 | G2 . D3 G2 . D3 | E2 . B2 E2 . B2 | A2 . E3 A2 . .', drums: 'k . h s . h | k . h s . h | k . h s . h | k . h s . h | k . h s . h | k . h s . h | k . h s . h | k . h s s s' },
+  battle: { bpm: 152, lead: 'E5 E5 G5 E5 B5 - A5 G5 | F#5 - D5 - E5 - - - | E5 E5 G5 E5 C6 - B5 A5 | B5 - - - F#5 - - - | G5 - F#5 - E5 - D5 - | C5 - D5 - E5 - G5 - | F#5 - G5 - A5 - B5 - | E5 - - - E4 - - -', bass: 'E2 E3 E2 E3 E2 E3 E2 E3 | D2 D3 D2 D3 E2 E3 E2 E3 | C2 C3 C2 C3 C2 C3 C2 C3 | B1 B2 B1 B2 B1 B2 D#2 D#3 | E2 E3 E2 E3 B1 B2 B1 B2 | C2 C3 C2 C3 G1 G2 G1 G2 | A1 A2 A1 A2 B1 B2 B1 B2 | E2 E3 E2 E3 E2 . . .', drums: 'k h s h k h s h | k h s h k k s h | k h s h k h s h | k h s h k k s s | k h s h k h s h | k h s h k k s h | k h s h k h s h | k k s s k k s s' },
+  boss: { bpm: 164, lead: 'C5 - Eb5 - G5 - Ab5 G5 | F5 - Eb5 - D5 - B4 - | C5 - Eb5 - G5 - C6 Bb5 | Ab5 - - - G5 - - - | Ab5 - G5 - F5 - Eb5 - | D5 - Eb5 - F5 - G5 - | Ab5 - G5 - F5 - D5 - | C5 - - - C4 - - -', bass: 'C2 C3 C2 C3 C2 C3 C2 C3 | G1 G2 G1 G2 G1 G2 G1 G2 | C2 C3 C2 C3 C2 C3 C2 C3 | Ab1 Ab2 Ab1 Ab2 G1 G2 G1 G2 | F1 F2 F1 F2 F1 F2 F1 F2 | G1 G2 G1 G2 G1 G2 G1 G2 | Ab1 Ab2 Ab1 Ab2 G1 G2 G1 G2 | C2 C3 C2 C3 C2 . . .', drums: 'k h s h k k s h | k h s h k k s h | k h s h k k s h | k h s s k k s s | k h s h k k s h | k h s h k k s h | k h s h k k s h | k k s s k s s s' }
+};
+// Short tunes that play once: a win, a fall, a level gained, an animal tamed, a chest opened.
+const JINGLES = { win: 'C5 E5 G5 C6 - G5 C6 - -', lose: 'E4 - D4 - C4 - - B3 - - -', level: 'G4 C5 E5 G5 C6 - -', tame: 'E5 G5 B5 - E6 - -', chest: 'C5 G5 C6 - -', quest: 'D5 F#5 A5 D6 - A5 D6 - -' };
+// Which tune goes with which place.
+function songFor({ battle, boss, voyage, kind, alt } = {}) {
+  if (battle) return boss ? 'boss' : 'battle';
+  if (voyage) return 'sea';
+  if (kind === 'world') return alt === 'sky' ? 'sky' : alt === 'deep' ? 'deep' : 'land';
+  if (kind === 'inn' || kind === 'hermit') return 'inn';
+  if (kind === 'castle') return 'castle';
+  if (['cave', 'dungeon', 'kobold'].includes(kind)) return 'dungeon';
+  if (kind === 'aerie') return 'sky';
+  if (kind === 'reef') return 'deep';
+  return 'town';
+}
+const NOTE = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+function noteHz(name) {
+  const m = /^([A-G])(#|b)?(-?\d)$/.exec(name || ''); if (!m) return 0;
+  const n = NOTE[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0) + (Number(m[3]) + 1) * 12;
+  return 440 * 2 ** ((n - 69) / 12);
+}
+// A line of notes as [{ hz, len }] (or drum letters), one entry per eighth; holds lengthen the note before.
+function parseLine(line) {
+  const out = [];
+  for (const tok of String(line || '').split(/\s+/).filter((t) => t && t !== '|')) {
+    if (tok === '-') { const last = [...out].reverse().find((x) => x.hz || x.drum); if (last) last.len++; out.push({ rest: true }); continue; }
+    if (tok === '.') { out.push({ rest: true }); continue; }
+    if (/^[ksh]$/.test(tok)) { out.push({ drum: tok, len: 1 }); continue; }
+    out.push({ hz: noteHz(tok), len: 1, name: tok });
+  }
+  return out;
+}
+// The instruments for each style.
+const VOICES = {
+  fantasy: { lead: 'square', bass: 'triangle', leadVol: 0.05, bassVol: 0.09, tempo: 1 },
+  scifi: { lead: 'sawtooth', bass: 'sine', leadVol: 0.035, bassVol: 0.12, tempo: 1, echo: true },
+  cyber: { lead: 'sawtooth', bass: 'square', leadVol: 0.035, bassVol: 0.06, tempo: 1.08, hats: true },
+  steam: { lead: 'triangle', bass: 'square', leadVol: 0.08, bassVol: 0.05, tempo: 0.96, brass: true }
+};
+function createJourneySound({ Ctx = globalThis.AudioContext || globalThis.webkitAudioContext, on = true, setTimer = globalThis.setInterval, clearTimer = globalThis.clearInterval } = {}) {
+  let ctx = null, master = null, musicBus = null, fxBus = null;
+  let song = '', style = 'fantasy', step = 0, nextAt = 0, timer = 0, lines = null, enabled = Boolean(on);
+  const ac = () => {
+    if (!ctx && Ctx) { try { ctx = new Ctx(); master = ctx.createGain(); master.gain.value = enabled ? 0.7 : 0; master.connect(ctx.destination); musicBus = ctx.createGain(); musicBus.gain.value = 0.55; musicBus.connect(master); fxBus = ctx.createGain(); fxBus.gain.value = 0.9; fxBus.connect(master); } catch { ctx = null; } }
+    if (ctx?.state === 'suspended') ctx.resume?.()?.catch?.(() => {});
+    return ctx;
+  };
+  function tone(bus, f, at, dur, { type = 'sine', vol = 0.1, to, attack = 0.005 } = {}) {
+    const c = ac(); if (!c || !f) return;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, at); if (to) o.frequency.exponentialRampToValueAtTime(Math.max(20, to), at + dur);
+    g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(vol, at + attack); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    o.connect(g); g.connect(bus); o.start(at); o.stop(at + dur + 0.03);
+  }
+  let noiseBuf = null;
+  function noise(bus, at, dur, { vol = 0.2, hp = 800, lp = 0 } = {}) {
+    const c = ac(); if (!c) return;
+    if (!noiseBuf) { const len = Math.floor(c.sampleRate * 1); noiseBuf = c.createBuffer(1, len, c.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1; }
+    const s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+    f.type = lp ? 'lowpass' : 'highpass'; f.frequency.value = lp || hp;
+    g.gain.setValueAtTime(vol, at); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    s.buffer = noiseBuf; s.connect(f); f.connect(g); g.connect(bus); s.start(at); s.stop(at + dur + 0.02);
+  }
+  function drum(kind, at, v) {
+    if (kind === 'k') tone(musicBus, 140, at, 0.18, { vol: 0.22, to: 45 });
+    else if (kind === 's') noise(musicBus, at, 0.12, { vol: 0.09, hp: 1200 });
+    else if (kind === 'h') noise(musicBus, at, 0.04, { vol: v.hats ? 0.05 : 0.03, hp: 6000 });
+  }
+  // The scheduler: a little ahead of time, every quarter of a beat, so the music never stutters.
+  function tick() {
+    const c = ac(); if (!c || !lines || !enabled) return;
+    const s = SONGS[song]; if (!s) return;
+    const v = VOICES[style] || VOICES.fantasy;
+    const eighth = 60 / (s.bpm * v.tempo) / 2;
+    if (nextAt < c.currentTime) nextAt = c.currentTime + 0.05;
+    while (nextAt < c.currentTime + 0.25) {
+      for (const [part, line] of Object.entries(lines)) {
+        const n = line[step % line.length]; if (!n || n.rest) continue;
+        if (n.drum) { drum(n.drum, nextAt, v); continue; }
+        const dur = eighth * n.len * 0.95;
+        if (part === 'lead') { tone(musicBus, n.hz, nextAt, dur, { type: v.lead, vol: v.leadVol, attack: v.brass ? 0.03 : 0.006 }); if (v.echo) tone(musicBus, n.hz * 2, nextAt + eighth * 0.75, dur * 0.6, { type: 'sine', vol: v.leadVol * 0.4 }); }
+        else tone(musicBus, n.hz, nextAt, dur, { type: v.bass, vol: v.bassVol });
+      }
+      step++; nextAt += eighth;
+    }
+  }
+  function music(name, st = style) {
+    if (name === song && st === style) return;
+    song = SONGS[name] ? name : ''; style = VOICES[st] ? st : 'fantasy'; step = 0;
+    lines = song ? { lead: parseLine(SONGS[song].lead), bass: parseLine(SONGS[song].bass), drums: parseLine(SONGS[song].drums) } : null;
+    if (ctx) { nextAt = ctx.currentTime + 0.1; musicBus.gain.cancelScheduledValues?.(ctx.currentTime); musicBus.gain.setValueAtTime(0.0001, ctx.currentTime); musicBus.gain.exponentialRampToValueAtTime(0.55, ctx.currentTime + 0.6); }
+    if (!timer && song && setTimer && Ctx) timer = setTimer(tick, 60);
+    if (!song && timer) { clearTimer?.(timer); timer = 0; }
+  }
+  function jingle(name) {
+    const c = ac(); if (!c || !enabled || !JINGLES[name]) return;
+    let at = c.currentTime + 0.02; const e = 0.11;
+    for (const n of parseLine(JINGLES[name])) { if (n.hz) tone(fxBus, n.hz, at, e * n.len, { type: 'square', vol: 0.07 }); at += e; }
+  }
+  // Sound effects. Each one a few tones and a puff of noise; element spells each sound like themselves.
+  const FX = {
+    step: (t) => noise(fxBus, t, 0.03, { vol: 0.025, lp: 900 }),
+    bump: (t) => tone(fxBus, 90, t, 0.08, { type: 'square', vol: 0.05 }),
+    door: (t) => { tone(fxBus, 220, t, 0.12, { type: 'triangle', vol: 0.08, to: 330 }); tone(fxBus, 330, t + 0.1, 0.18, { type: 'triangle', vol: 0.07, to: 440 }); },
+    talk: (t) => tone(fxBus, 660, t, 0.04, { type: 'square', vol: 0.025 }),
+    menu: (t) => tone(fxBus, 880, t, 0.06, { type: 'square', vol: 0.04 }),
+    chest: (t) => { noise(fxBus, t, 0.15, { vol: 0.08, lp: 1200 }); jingle('chest'); },
+    coin: (t) => { tone(fxBus, 1318, t, 0.08, { type: 'square', vol: 0.05 }); tone(fxBus, 1760, t + 0.07, 0.2, { type: 'square', vol: 0.05 }); },
+    buy: (t) => (STYLE_FX[style]?.coin || FX.coin)(t),
+    encounter: (t) => { [330, 415, 494, 659].forEach((f, i) => tone(fxBus, f, t + i * 0.045, 0.1, { type: 'square', vol: 0.05 })); noise(fxBus, t, 0.2, { vol: 0.06, hp: 2000 }); },
+    ride: (t) => { for (let i = 0; i < 4; i++) tone(fxBus, i % 2 ? 260 : 300, t + i * 0.12, 0.05, { type: 'triangle', vol: 0.06 }); },
+    swing: (t) => noise(fxBus, t, 0.12, { vol: 0.08, hp: 2500 }),
+    hit: (t) => { noise(fxBus, t, 0.1, { vol: 0.18, hp: 900 }); tone(fxBus, 160, t, 0.12, { type: 'square', vol: 0.08, to: 70 }); },
+    crit: (t) => { noise(fxBus, t, 0.18, { vol: 0.25, hp: 600 }); tone(fxBus, 120, t, 0.25, { type: 'sawtooth', vol: 0.1, to: 40 }); tone(fxBus, 1500, t, 0.15, { type: 'square', vol: 0.04 }); },
+    miss: (t) => noise(fxBus, t, 0.2, { vol: 0.06, hp: 3000 }),
+    shot: (t) => { tone(fxBus, 900, t, 0.08, { type: 'triangle', vol: 0.08, to: 300 }); noise(fxBus, t + 0.05, 0.25, { vol: 0.05, hp: 4000 }); },
+    heal: (t) => [523, 659, 784, 1047].forEach((f, i) => tone(fxBus, f, t + i * 0.07, 0.3, { type: 'sine', vol: 0.06 })),
+    drink: (t) => { for (let i = 0; i < 3; i++) tone(fxBus, 300 + i * 120, t + i * 0.08, 0.08, { type: 'sine', vol: 0.06, to: 500 + i * 120 }); },
+    fire: (t) => { noise(fxBus, t, 0.5, { vol: 0.15, lp: 1500 }); tone(fxBus, 200, t, 0.4, { type: 'sawtooth', vol: 0.04, to: 600 }); },
+    frost: (t) => [2093, 2637, 3136, 2349].forEach((f, i) => tone(fxBus, f, t + i * 0.05, 0.25, { type: 'sine', vol: 0.04 })),
+    storm: (t) => { noise(fxBus, t, 0.08, { vol: 0.3, hp: 300 }); noise(fxBus, t + 0.06, 0.6, { vol: 0.12, lp: 400 }); },
+    holy: (t) => [784, 988, 1175, 1568].forEach((f) => tone(fxBus, f, t, 0.7, { type: 'sine', vol: 0.03, attack: 0.08 })),
+    shadow: (t) => { tone(fxBus, 110, t, 0.6, { type: 'sawtooth', vol: 0.05, to: 55 }); tone(fxBus, 116, t, 0.6, { type: 'sawtooth', vol: 0.04, to: 58 }); },
+    wild: (t) => { for (let i = 0; i < 5; i++) tone(fxBus, 600 + ((i * 337) % 500), t + i * 0.05, 0.12, { type: 'triangle', vol: 0.04 }); noise(fxBus, t, 0.3, { vol: 0.04, hp: 3000 }); },
+    mind: (t) => { tone(fxBus, 440, t, 0.5, { type: 'sine', vol: 0.05, to: 880 }); tone(fxBus, 445, t, 0.5, { type: 'sine', vol: 0.05, to: 890 }); },
+    star: (t) => { for (let i = 0; i < 8; i++) tone(fxBus, 1200 + i * 150, t + i * 0.04, 0.2, { type: 'square', vol: 0.025 }); },
+    spell: (t) => [660, 880, 1100].forEach((f, i) => tone(fxBus, f, t + i * 0.06, 0.3, { vol: 0.05 })),
+    breath: (t) => noise(fxBus, t, 0.8, { vol: 0.18, lp: 800 }),
+    feed: (t) => { tone(fxBus, 500, t, 0.06, { type: 'square', vol: 0.04 }); tone(fxBus, 450, t + 0.1, 0.06, { type: 'square', vol: 0.04 }); },
+    tame: () => jingle('tame'),
+    down: (t) => tone(fxBus, 300, t, 0.5, { type: 'square', vol: 0.05, to: 90 }),
+    flee: (t) => { for (let i = 0; i < 4; i++) noise(fxBus, t + i * 0.07, 0.05, { vol: 0.06, lp: 1000 }); },
+    takeoff: (t) => { noise(fxBus, t, 0.9, { vol: 0.08, lp: 700 }); for (let i = 0; i < 4; i++) noise(fxBus, t + 0.3 + i * 0.15, 0.08, { vol: 0.08, lp: 500 }); },
+    land: (t) => { tone(fxBus, 120, t, 0.2, { type: 'sine', vol: 0.15, to: 50 }); noise(fxBus, t, 0.2, { vol: 0.06, lp: 600 }); },
+    splash: (t) => { noise(fxBus, t, 0.35, { vol: 0.14, hp: 1500 }); tone(fxBus, 400, t, 0.15, { type: 'sine', vol: 0.05, to: 900 }); },
+    dive: (t) => { noise(fxBus, t, 0.3, { vol: 0.12, hp: 1200 }); for (let i = 0; i < 6; i++) tone(fxBus, 500 + i * 90, t + 0.2 + i * 0.08, 0.06, { type: 'sine', vol: 0.04, to: 900 + i * 90 }); },
+    surface: (t) => { FX.splash(t + 0.25); tone(fxBus, 300, t, 0.3, { type: 'sine', vol: 0.05, to: 900 }); },
+    fish: (t) => { tone(fxBus, 880, t, 0.05, { type: 'square', vol: 0.04 }); noise(fxBus, t + 0.05, 0.2, { vol: 0.08, hp: 2000 }); },
+    swoop: (t) => { noise(fxBus, t, 0.9, { vol: 0.1, lp: 900 }); tone(fxBus, 1200, t, 0.9, { type: 'sine', vol: 0.02, to: 300 }); },
+    sail: (t) => { noise(fxBus, t, 1.6, { vol: 0.06, lp: 500 }); tone(fxBus, 196, t, 0.6, { type: 'triangle', vol: 0.06 }); },
+    save: (t) => tone(fxBus, 1046, t, 0.12, { type: 'triangle', vol: 0.05 }),
+    win: () => jingle('win'), lose: () => jingle('lose'), level: () => jingle('level'), quest: () => jingle('quest')
+  };
+  // The same moments, sounding like each style: sci-fi hums and zaps, cyberpunk glitches and bangs, steampunk hisses
+  // and clanks. Anything a style doesn't change sounds the fantasy way.
+  const STYLE_FX = {
+    scifi: {
+      door: (t) => { noise(fxBus, t, 0.35, { vol: 0.08, lp: 1800 }); tone(fxBus, 700, t, 0.3, { vol: 0.05, to: 250 }); },
+      swing: (t) => { tone(fxBus, 180, t, 0.2, { type: 'sawtooth', vol: 0.05, to: 90 }); tone(fxBus, 360, t, 0.2, { vol: 0.04, to: 180 }); },
+      shot: (t) => tone(fxBus, 1800, t, 0.16, { type: 'square', vol: 0.05, to: 200 }),
+      hit: (t) => { noise(fxBus, t, 0.08, { vol: 0.12, hp: 1500 }); tone(fxBus, 900, t, 0.1, { type: 'square', vol: 0.04, to: 120 }); },
+      coin: (t) => { tone(fxBus, 1500, t, 0.06, { vol: 0.06 }); tone(fxBus, 2000, t + 0.08, 0.1, { vol: 0.06 }); },
+      step: (t) => tone(fxBus, 70, t, 0.04, { vol: 0.04 }),
+      talk: (t) => tone(fxBus, 1200, t, 0.03, { vol: 0.03 })
+    },
+    cyber: {
+      door: (t) => { for (let i = 0; i < 3; i++) tone(fxBus, 400 + ((i * 523) % 900), t + i * 0.04, 0.03, { type: 'square', vol: 0.04 }); noise(fxBus, t + 0.1, 0.15, { vol: 0.06, hp: 2000 }); },
+      swing: (t) => tone(fxBus, 2400, t, 0.12, { type: 'square', vol: 0.03, to: 700 }),
+      shot: (t) => { noise(fxBus, t, 0.12, { vol: 0.25, hp: 300 }); tone(fxBus, 110, t, 0.12, { type: 'square', vol: 0.08, to: 45 }); },
+      hit: (t) => { noise(fxBus, t, 0.1, { vol: 0.16, hp: 700 }); for (let i = 0; i < 3; i++) tone(fxBus, 200 + i * 410, t + i * 0.025, 0.02, { type: 'square', vol: 0.04 }); },
+      coin: (t) => { tone(fxBus, 2637, t, 0.04, { type: 'square', vol: 0.035 }); tone(fxBus, 3520, t + 0.05, 0.08, { type: 'square', vol: 0.035 }); },
+      step: (t) => noise(fxBus, t, 0.02, { vol: 0.03, hp: 3000 }),
+      talk: (t) => tone(fxBus, 1760, t, 0.025, { type: 'square', vol: 0.02 })
+    },
+    steam: {
+      door: (t) => { noise(fxBus, t, 0.4, { vol: 0.09, hp: 3500 }); tone(fxBus, 160, t + 0.3, 0.12, { type: 'square', vol: 0.06, to: 120 }); },
+      swing: (t) => { noise(fxBus, t, 0.12, { vol: 0.07, hp: 2500 }); tone(fxBus, 2200, t + 0.1, 0.03, { type: 'triangle', vol: 0.04 }); },
+      shot: (t) => { noise(fxBus, t, 0.16, { vol: 0.22, hp: 400 }); noise(fxBus, t + 0.12, 0.4, { vol: 0.05, hp: 4000 }); },
+      hit: (t) => { noise(fxBus, t, 0.1, { vol: 0.15, hp: 900 }); tone(fxBus, 520, t, 0.15, { type: 'triangle', vol: 0.06, to: 480 }); },
+      coin: (t) => { tone(fxBus, 1100, t, 0.1, { type: 'triangle', vol: 0.07 }); tone(fxBus, 1650, t + 0.06, 0.18, { type: 'triangle', vol: 0.05 }); },
+      step: (t) => tone(fxBus, 1800, t, 0.015, { type: 'triangle', vol: 0.02 }),
+      takeoff: (t) => { noise(fxBus, t, 1.2, { vol: 0.12, hp: 2500 }); tone(fxBus, 90, t, 1, { type: 'square', vol: 0.04, to: 140 }); },
+      talk: (t) => tone(fxBus, 520, t, 0.04, { type: 'triangle', vol: 0.03 })
+    }
+  };
+  return {
+    music,
+    sfx(kind) { const c = ac(); const fn = STYLE_FX[style]?.[kind] || FX[kind]; if (!c || !enabled || !fn) return false; try { fn(c.currentTime + 0.01); return true; } catch { return false; } },
+    setStyle(st) { if (VOICES[st]) style = st; },
+    get style() { return style; },
+    setOn(v) { enabled = Boolean(v); if (master && ctx) master.gain.setValueAtTime(enabled ? 0.7 : 0, ctx.currentTime); if (enabled) ac(); },
+    get on() { return enabled; },
+    get song() { return song; },
+    wake() { ac(); },
+    stop() { if (timer) clearTimer?.(timer); timer = 0; song = ''; lines = null; try { ctx?.close?.(); } catch {} ctx = null; }
+  };
+}
+
+globalThis.BobJourneyPlay = { mountJourney, SONGS, JINGLES, songFor, noteHz, parseLine, createJourneySound };
 })();

@@ -11,7 +11,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as S from '../public/journey-sides.js';
 import * as R from '../public/journey-rules.js';
 import * as W from '../public/journey-world.js';
-import { avatar, compose, encodeParts, DEFAULT_PARTS, allAvatarIds } from '../public/avatars.js';
+import { avatar, compose, encodeParts, DEFAULT_PARTS, allAvatarIds, PARTS as AV_PARTS } from '../public/avatars.js';
+const A_PARTS = Object.fromEntries(Object.entries(AV_PARTS).map(([k, v]) => [k, v.map((x) => x[0])]));
 import { LOOKS } from '../public/bob-sprite.js';
 import { loadJourney, saveJourney, journeyReward, journeyRoute, deleteJourney } from '../src/adventure-journey.js';
 import { ENEMIES } from '../src/bestiary.js';
@@ -566,6 +567,75 @@ const P = (o) => ({ id: o.id || o.name.toLowerCase(), who: 'friend', ...o });
   const play2 = read('public/journey-play.js');
   check('the screen draws the sky, the deep, riding, followers and The land view', ['drawClouds', 'drawUnder', 'blurredTile', 'seatOf', 'landPicture', 'petsHtml', 'drawVoyage', 'drawSpell'].every((f) => play2.includes(`function ${f}`)));
   check('the screen asks the computer for the land on a phone', /\/api\/adventure\/journey\/piece/.test(play2) && /phone: true/.test(read('android/app/src/main/assets/www/phone.js')));
+}
+
+// ---------- Journey v1.3: music, sound, and each style's own kit and names ----------
+{
+  const P = await import(pathToFileURL(path.join(root, 'public/journey-play.js')));
+  // Every tune lines up: the tune, the bass and the drums are the same length, and every note is a real note.
+  let tunesOk = true;
+  for (const [name, sg] of Object.entries(P.SONGS)) {
+    const L = ['lead', 'bass', 'drums'].map((k) => P.parseLine(sg[k]).length);
+    if (L[0] !== L[1] || (L[2] && L[2] !== L[0])) tunesOk = false;
+    for (const k of ['lead', 'bass']) for (const n of P.parseLine(sg[k])) if (!n.rest && !(n.hz > 20 && n.hz < 5000)) { tunesOk = false; console.log('  bad note', name, n.name); }
+  }
+  check('every tune\'s parts line up and every note is a real note', tunesOk);
+  check('A4 is 440 and C4 is middle C', Math.round(P.noteHz('A4')) === 440 && Math.round(P.noteHz('C4')) === 262 && P.noteHz('nope') === 0);
+  check('each place has its own tune', P.songFor({ kind: 'inn' }) === 'inn' && P.songFor({ kind: 'world', alt: 'ground' }) === 'land' && P.songFor({ kind: 'world', alt: 'sky' }) === 'sky' && P.songFor({ kind: 'world', alt: 'deep' }) === 'deep' && P.songFor({ kind: 'village' }) === 'town' && P.songFor({ kind: 'castle' }) === 'castle' && P.songFor({ kind: 'cave' }) === 'dungeon' && P.songFor({ voyage: true, kind: 'world' }) === 'sea');
+  check('fights have their own music, and keepers louder still', P.songFor({ battle: true, kind: 'inn' }) === 'battle' && P.songFor({ battle: true, boss: true }) === 'boss');
+  // A pretend sound card: counts the notes played, never makes a sound.
+  const made = { osc: 0, noise: 0, closed: false };
+  const param = () => ({ value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {}, cancelScheduledValues() {} });
+  const node = () => ({ connect() {}, start() {}, stop() {}, frequency: param(), gain: param(), type: '' });
+  class FakeCtx { constructor() { this.currentTime = 0; this.sampleRate = 8000; this.state = 'running'; this.destination = {}; } createGain() { return node(); } createOscillator() { made.osc++; return node(); } createBiquadFilter() { return node(); } createBufferSource() { made.noise++; return node(); } createBuffer(c, n) { return { getChannelData: () => new Float32Array(n) }; } close() { made.closed = true; } }
+  let ticks = null;
+  const snd = P.createJourneySound({ Ctx: FakeCtx, setTimer: (f) => { ticks = f; return 1; }, clearTimer: () => { ticks = null; } });
+  check('sound effects play', snd.sfx('chest') && snd.sfx('fire') && made.osc > 0 && made.noise > 0);
+  const kinds = ['step', 'bump', 'door', 'talk', 'menu', 'chest', 'coin', 'buy', 'swing', 'hit', 'crit', 'miss', 'shot', 'heal', 'drink', 'fire', 'frost', 'storm', 'holy', 'shadow', 'wild', 'mind', 'star', 'spell', 'breath', 'feed', 'tame', 'down', 'flee', 'takeoff', 'land', 'splash', 'dive', 'surface', 'fish', 'swoop', 'sail', 'save', 'win', 'lose', 'level', 'quest', 'encounter', 'ride'];
+  check('every moment has a sound: doors, chests, coin, hits, every kind of magic, items, flying, diving, wins and level-ups', kinds.every((k) => snd.sfx(k)));
+  const before = made.osc;
+  for (const st of ['scifi', 'cyber', 'steam']) { snd.setStyle(st); for (const k of ['door', 'swing', 'shot', 'hit', 'coin']) snd.sfx(k); }
+  check('...and each style has its own: sci-fi zaps, cyberpunk glitches, steampunk hisses and clanks', made.osc > before && snd.style === 'steam');
+  snd.music('town', 'cyber');
+  const n0 = made.osc; ticks?.(); 
+  check('music plays: the town tune, in the style\'s own instruments', snd.song === 'town' && made.osc > n0);
+  snd.setOn(false);
+  check('the 🔊 button turns it all off', !snd.on && !snd.sfx('chest'));
+  snd.setOn(true); snd.stop();
+  check('leaving Journey stops the music and lets the sound card go', snd.song === '' && made.closed && ticks === null);
+  const quiet = P.createJourneySound({ Ctx: undefined, setTimer: () => { throw new Error('no timer without sound'); } });
+  quiet.music('land'); 
+  check('with no sound at all (an old browser), nothing breaks and no timer runs', quiet.sfx('chest') === false);
+  const play3 = read('public/journey-play.js');
+  check('the screen has a 🔊 button, M to turn it off, and remembers the choice', /data-jy="sound"/.test(play3) && /e\.key === 'm'/.test(play3) && /bob\.journey\.sound/.test(play3));
+  check('the music is our own: no sound files at all', !/\.(mp3|ogg|wav|m4a)\b/i.test(play3));
+  // Each style draws its own kit: no bows in cyberpunk.
+  check('cyberpunk carries smart pistols and mono-katanas, not bows and swords', S.styleWeapon('cyber', 'bow') === 'smartpistol' && S.styleWeapon('cyber', 'sword') === 'katana' && S.styleWeapon('fantasy', 'bow') === 'bow');
+  check('every style has a drawn weapon for every weapon there is', ['scifi', 'cyber', 'steam'].every((st) => Object.keys(R.WEAPONS).filter((k) => k !== 'none').every((k) => S.styleWeapon(st, k) !== k && S.weaponCells(S.styleWeapon(st, k), 25).length >= 3)));
+  check('...guns in the energy and smoke styles', ['scifi', 'cyber', 'steam'].every((st) => ['bow', 'longbow', 'crossbow', 'handbow'].every((k) => S.WEAPON_SHAPES[S.styleWeapon(st, k)].head === 'gun')));
+  check('shields look the part too', S.shieldCells('round', 'down', undefined, 'scifi').some((c) => c[2] === '#7ae0ff') && S.shieldCells('round', 'down', undefined, 'cyber').some((c) => c[2] === '#ff3ad8'));
+  check('shots: arrows, laser bolts, tracers and lead balls', S.STYLE_SHOTS.fantasy === 'arrow' && S.STYLE_SHOTS.scifi === 'laser' && S.STYLE_SHOTS.cyber === 'tracer' && S.STYLE_SHOTS.steam === 'ball');
+  // Names fit the style; the numbers don't change.
+  check('cyberpunk names: gangers, netrunners, hacks and stims', R.restyle('A Goblin and a Wizard. Scroll of fireball. Raise!', 'cyber') === 'A Ganger and a Netrunner. Meltdown hack. Reboot!');
+  check('steampunk names: highwaymen, aethermancers and tesla storms', R.restyle('Two Bandits. The Wizard casts Spark storm.', 'steam') === 'Two Highwaymen. The Aethermancer casts Tesla storm.');
+  check('sci-fi names: raiders, technomancers and plasma bolts', R.restyle('A bandit. A Wizard casts Firebolt.', 'scifi') === 'A raider. A Technomancer casts Plasma bolt.');
+  check('a keeper\'s title follows the style', R.restyle('Grubnick, the goblin chief', 'cyber') === 'Grubnick, the ganger chief');
+  check('...but a plain word in a sentence is left alone', R.restyle('I will raise my glass.', 'cyber') === 'I will raise my glass.');
+  check('fantasy names never change', R.restyle('A Goblin and a Wizard.', 'fantasy') === 'A Goblin and a Wizard.');
+  // Monsters redrawn for each style; animals stay animals.
+  check('machines get their own art in each style: mechs, spider bots, drones, a cyber-hound', ['scifi', 'cyber', 'steam'].every((st) => S.styleArtLook(st, 'golem')?.map.length === 16 && S.styleArtLook(st, 'spider')) && S.styleArtLook('cyber', 'dragon').name === 'drone' && S.styleArtLook('cyber', 'wolf').name === 'hound' && S.styleArtLook('fantasy', 'golem') === null);
+  check('...every colour in that art is a real colour', ['scifi', 'cyber', 'steam'].every((st) => Object.keys(S.STYLE_ART[st]).every((id) => { const l = S.styleArtLook(st, id); return l.map.join('').replace(/\./g, '').split('').every((c) => /^#[0-9a-f]{6}$/i.test(l.palette[c] || '')); })));
+  check('people-shaped monsters dress for the style, and a skeleton becomes a robot', ['scifi', 'cyber', 'steam'].every((st) => S.STYLE_PARTS[st].skeleton.body === 'robot' && ['goblin', 'bandit', 'cultist', 'orc', 'troll'].every((id) => S.STYLE_PARTS[st][id])) && Object.values(S.STYLE_PARTS).every((set) => Object.values(set).every((p) => Object.entries(p).every(([k, v]) => !A_PARTS[k] || A_PARTS[k].includes(v)))));
+  const gl = { name: 'ghost', map: ['.aa.', 'aaaa', 'aEEa'], palette: { a: '#ffffff', E: '#000000' } };
+  check('a ghost flickers like a hologram in sci-fi, glows like gaslight in steampunk', S.styleShift(gl, 'scifi', 'ghost').palette.E === '#7ae0ff' && S.styleShift(gl, 'scifi', 'ghost').map[2] !== gl.map[2] && S.styleShift(gl, 'steam', 'ghost').map[2] === gl.map[2]);
+  check('animals and mounts stay as they are', !['rabbit', 'fox', 'horse', 'pegasus', 'dolphin', 'bear'].some((id) => S.STYLE_MONSTERS.has(id)) && ['goblin', 'dragon', 'ghost', 'golem'].every((id) => S.STYLE_MONSTERS.has(id)));
+  check('the screen draws monsters in the journey\'s style', /function foeLook/.test(read('public/journey-play.js')) && /styleArtLook/.test(read('public/journey-play.js')));
+  const play4 = read('public/journey-play.js');
+  check('houses, trees, towers and caves stand on the ground round them, not a ground of their own', /const STANDING = new Set/.test(play4) && /function groundUnder/.test(play4) && /tileCanvas\(ch, fr, theme, true\)/.test(play4));
+  check('mountains stand about twice a tile tall, back to front', /function peakCanvas/.test(play4) && /peaks\.sort/.test(play4));
+  check('the details: varied ground, shorelines, smoke and neon over houses, street lamps', ['shore', 'houseLife', 'townProps'].every((f) => play4.includes(`function ${f}`)) && /VARIED\.has/.test(play4));
+  check('a river is one river: no grass stripes baked into each piece of it', !/case 'r': water\([^)]*\); rect\(0, 0, 16, 1, '#5aa04a'\)/.test(play4));
+  check('no trademarked game names in the style words', !/final fantasy|dragon quest|chrono|zelda|pokémon|earthbound|bobiverse|squaresoft|enix|cyberpunk 2077|shadowrun|rockerboy/i.test(read('public/journey-rules.js') + read('public/journey-sides.js')));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
