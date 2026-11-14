@@ -1,4 +1,4 @@
-<h1 align="center">Bob of The Idle Process</h1>
+<h1 align="center">Bob</h1>
 
 <p align="center"><b>A local AI agent with a personality. He runs on your own computer, and nothing goes online unless you turn it on.</b></p>
 
@@ -8,6 +8,7 @@
   <a href="#the-computer-science-lab">The Lab</a> ·
   <a href="#bobs-own-brains">Brains and scores</a> ·
   <a href="#bob-net-bobs-working-together">Bob-Net</a> ·
+  <a href="#coming-next">Coming next</a> ·
   <a href="app/docs/README.md">All the docs</a>
 </p>
 
@@ -41,19 +42,34 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.225-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.225-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.225-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.225-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.225-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.225-linux-x86_64.AppImage) |
-| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.225-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.225-linux-amd64.deb) |
-| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.225-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.225-linux-x86_64.flatpak) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.225-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.225-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
-| **Android phone** | [`Bob-1.5.225-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.225-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.227-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.227-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.227-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.227-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.227-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.227-linux-x86_64.AppImage) |
+| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.227-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.227-linux-amd64.deb) |
+| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.227-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.227-linux-x86_64.flatpak) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.227-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.227-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
+| **Android phone** | [`Bob-1.5.227-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.227-android.apk) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 
 **On Windows 11?** Bob isn't code signed yet, so Smart App Control may stop him from running. [Read this first](#windows-11-smart-app-control).
 
 ## What's new
+
+**In 1.5.212 to 1.5.227** (13 and 14 Nov 2026):
+
+| | |
+|---|---|
+| 🧭 **Journey has music and sound** | A tune for every kind of place, fight music and fanfares, sounds for doors, chests, coin and magic. Each style draws its own weapons, shields, shots and monsters, with names to fit, and the land got tall mountains, lit towns, smoke, neon and steam. 🔊 or M mutes it. Crafting, bags, a Scroll of return, an in-game guide, a story told as you go and a trophy case arrive in 1.5.227. |
+| 📧 **Tidy my email, safely** | Off to start with. Bob sorts your inbox on a plan card you change and approve; trash is a move, drafts are never sent. Nothing in an email can give Bob orders: the mail is cleaned and fenced in code, and a chat holding email can only sort and draft. |
+| 🔑 **A way back from a forgotten passcode** | A spare key kept on another of your Bobs gets everything back; a code by email or Discord opens the lock screen. |
+| 🛡 **Keep order on Discord** | Off to start with. Plain-rule moderation with no brain: spam, scam links and slurs come down, warnings lead to timeouts, kicks and bans wait for your OK. **Chat on Discord** can be switched off so no brain loads for the server. "@Bob" works like "hey bob". |
+| 🧰 **Tools that forgive and remember** | Tools are worded for each brain family, the notice board can't lose items or its layout, and a record of every tool call lets Bob quote what really happened instead of guessing. |
+| ⚙ **Shorter Settings** | About 135 switches have shorter names and one- or two-line descriptions, in new groups. |
+| 🧊 **The cube is Bob** | The cube is his picture everywhere outside games, and every Bob on Bob-Net shows his cube head. Pixel looks live on in games. |
+| 🎮 **A busy card is respected** | Bob won't load a brain onto a graphics card a game or another app is using, and a lent card comes back when a game wants it. |
+| 🧪 **Lab** | The training protocol, experts per word without a reload, Straight facts round two, and a privacy scrub that catches a name split across tokens before anything is published. |
+| 🛑 **Stop means stop** | "Stop" and "wait" act at once, One brain really uses one brain, picture to 3D works on RTX 50 cards, and Brain Engine 7 is on. |
 
 **In 1.5.211:**
 
@@ -164,6 +180,22 @@ Housekeeping is now on: it touches only Bob's own files unless you add folders, 
 </details>
 
 The [changelog](CHANGELOG.md) has every release.
+
+## Coming next
+
+**Planned, not shipped.** These are plans in the repository. Nothing on this list trains, rents a card or uploads without the owner's go.
+
+| | |
+|---|---|
+| 🧠 **A clean new Bobert** | A fresh start from stock Qwen3.6-35B-A3B, cleaned first, then taught only lessons that pass an audit, with a fixed report card he must beat. Then more rounds, the styles, smaller Bobs and other brain families. [Roadmap](app/docs/ROADMAP-ONE-MODEL.md) |
+| 🧰 **Tool lessons** | Every failed tool run turned into corrected lessons, "look it up when unsure" taught from the saved odds, and rounds that never repeat a test question. [Plan](app/docs/TOOL-LESSONS-PLAN.md) |
+| 🔧 **Tools brains already know** | Giving each brain family the tool shapes it was trained on (for GPT-OSS: its browser, python and apply_patch tools), mapped back to Bob's own tools in code. A study for now; it needs an engine change first. |
+| 🪜 **Every Lab method as a step** | Each advanced method (tool interviews, expert maps, the evil check, steering, cuts, teaching) as a step you can run on its own or as part of a whole pipeline, with run records, comparisons and costs per run. [Plan](app/docs/LAB-STEPS-PLAN.md) |
+| 🔬 **Where a behaviour lives** | Research on Riker: layer-by-layer patching and sparse-autoencoder features, to find where a behaviour sits in the brain. Kept as a study record; it never trains anything. |
+
+## What it costs
+
+Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 14 Nov 2026: about **$1,990** spent in all, of which about $484 is rented GPU time (failures included), and about $2,496 to $2,571 projected for the planned family of models. The page lists every rental and what came of it.
 
 ## What Bob does
 

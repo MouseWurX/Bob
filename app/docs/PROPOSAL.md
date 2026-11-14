@@ -16,8 +16,8 @@ What is true today, 12 November 2026:
 - **On top of the ladder sits 35Bob Bobert**: the full model with no cut, trained on every lesson, a brain for 24 GB cards and the teacher of every Bob below him. He was made on 8 to 9 November and is published. Bill is cut from Bobert; each rung below is cut from the healed Bob above it: Homer, Milo, Luke, Calvin, then the stretch goal Bender.
 - **20Bob Bill is made and published** (11 November). He is the best of the three at Bob's own tool decisions (213 of 314 held-out turns, against 205 for Riker and for Bobert) and the weakest at plain facts (12 of 20) and code (1 of 6).
 - Coding and general knowledge are where a cut shows. The first cut rule and the first coding lessons were both weak; both have been measured, written up and replaced.
-- Seven Bobs have been made on rented cards for $403.24 of card time, failures included. Riker, Bobert and Bill are kept; the four earlier ones were retired and deleted on 8 November, and their benchmark numbers stay on the models page as the control group.
-- The rest of the family is expected to cost about $119 to $129 more in card time (Homer down to Bender), about $1,900 to $1,980 in total with the tools that made it and the rented drive. Every dollar so far is itemised on the costs page.
+- Seven Bobs have been made on rented cards for $484.39 of card time, failures included. Riker, Bobert and Bill are kept; the four earlier ones were retired and deleted on 8 November, and their benchmark numbers stay on the models page as the control group.
+- The rest of the family is expected to cost about $119 to $129 more in card time (Homer down to Bender), about $2,500 to $2,570 in total with the tools that made it and the rented drive. Every dollar so far is itemised on the costs page.
 - Three models are released: Bobert, Riker and Bill are on Hugging Face under Apache 2.0, each with a model card that says exactly what it is and how it scored. The rest follow as they pass their tests.
 
 ## 2. The problem
@@ -102,19 +102,19 @@ No dates are promised. Rentals happen when the owner says so, one at a time, eac
 
 ## 7. Costs
 
-Every dollar spent, including the runs that made nothing, is on [What Bob costs to make](COSTS.md), with the rate and the hours. In short, as of 12 November 2026:
+Every dollar spent, including the runs that made nothing, is on [What Bob costs to make](COSTS.md), with the rate and the hours. In short, as of 14 November 2026:
 
 | | |
 |---|---|
-| Card time rented so far, about 79 hours over 17 rentals, 6 of them failures | $403.24 |
-| Of which wasted on failed attempts | $16.55, plus the half-run of 6 to 7 November and about $11 of idle time at the end of Bill's run |
-| Tools: Claude subscription and extra usage, November 2026 | $1,000 (Claude is a contributor and writes much of Bob's code and documents) |
+| Card time rented so far, about 105 hours over 29 rentals, 11 of them failures | $484.39 |
+| Of which wasted on failed attempts | $22.40, plus the half-run of 6 to 7 November and about $11 of idle time at the end of Bill's run |
+| Tools: Claude subscription and extra usage, November 2026 | $1,500 (Claude is a contributor and writes much of Bob's code and documents) |
 | Code and release hosting, model hosting | $0 |
 | Card time for the rest of the ladder (Homer, Milo, Luke, Calvin, Bender) | $119 to $129, plus about $35 a month for the 500 GB network drive while it exists |
 | Allowed for re-runs if a heal scores badly | up to $20 a rung |
 | Specialists and line A, only if earned | about $25 a specialist; $179 to $189 for line A |
 
-The whole family, line B complete, comes to about $1,900 to $1,980 including the tools that made it and the rented drive. That is the cost of making a custom model family on rented cards by the hour, done by one person with an assistant, with the mistakes left in.
+The whole family, line B complete, comes to about $2,500 to $2,570 including the tools that made it and the rented drive. That is the cost of making a custom model family on rented cards by the hour, done by one person with an assistant, with the mistakes left in.
 
 ## 8. What is invested, and what is already in hand
 
@@ -124,13 +124,13 @@ A proposal usually asks for everything up front. This one does not, because most
 
 | | Amount | Notes |
 |---|---|---|
-| Card time rented by the hour | $403.24 | 17 rentals, 6 of them failures; every line on the costs page |
-| Claude subscription and extra usage, November 2026 | $1,000 | the assistant that wrote the Forge, the lesson writer, the benchmarks and these pages |
-| Rented network drive between sessions, 5 to 12 November | about $4 | 500 GB now, about $35 a month from the prepaid credit |
+| Card time rented by the hour | $484.39 | 29 rentals, 11 of them failures; every line on the costs page |
+| Claude subscription and extra usage, November 2026 | $1,500 | the assistant that wrote the Forge, the lesson writer, the benchmarks and these pages |
+| Rented network drive between sessions, 5 to 14 November | about $6 | 500 GB now, about $35 a month from the prepaid credit |
 | Prepaid card credit | loaded in advance, amount not shown | the rental account is paid up front and drawn down by each session; the card time above came out of it, and the unused part is already earmarked for the rungs still to make |
 | Owner's time | 4 to 11 November, not counted in dollars | lessons, counts and benchmarks on the home PC; every rental watched by hand |
 | Hosting, signing, model storage | $0 | GitHub and Hugging Face are free for a public project |
-| **Total cash in** | **about $1,407** | |
+| **Total cash in** | **about $1,990** | |
 
 ### 8.2 Assets in hand
 
