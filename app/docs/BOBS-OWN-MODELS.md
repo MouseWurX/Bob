@@ -179,7 +179,7 @@ The full itemized list, including every rung still to come, is on [What Bob cost
 | Bill's full-size weights published | H200 SXM + drive, 1.3 hours | Bill's full-size weights, adapter and cards on Hugging Face | US $6.84 |
 | The three side by side | A40, 1.5 hours | the table above | US $0.86 |
 
-Six short failed or upload-only rentals and a tail of disk minutes ($8.02 together) are itemized on the costs page. Every finished rental so far, including the brain scans, lesson runs and checks of 12 to 14 November, comes to US $484.17.
+Six short failed or upload-only rentals and a tail of disk minutes ($8.02 together) are itemized on the costs page. Every finished rental so far, including the brain scans, lesson runs and checks of 12 to 14 November, comes to US $484.39.
 
 ## What went wrong with the first cut
 

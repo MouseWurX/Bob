@@ -41,8 +41,10 @@ Every rental, including the ones that made nothing. Times are the owner's local 
 | 13 Nov 2026, morning | 1x H200 141 GB SXM + the rented network drive | 0.8 h | $5.29/h | **Bobert's facts round.** A short training pass on corrected facts, benchmarked against stock Qwen: facts improved and nothing else dropped. Not published. The card deleted itself. | $4.32 |
 | 13 Nov 2026, morning to afternoon | 1x H200 141 GB SXM, no drive | 5.8 h | $5.29/h | **New lessons and Riker's checks.** The large teacher wrote a new round of lessons. Then Riker was interviewed on every tool group and scored job by job at his stock settings, with an evidence-only safety check that is never used for training. Three of Riker's steps stopped with errors, and the planned sweep of his dials and keep lists did not run. The card deleted itself. | $31.07 |
 | 14 Nov 2026, night | 1x A40 48 GB, no drive | 0.45 h | $0.59/h | **Failed attempt 10.** Bobert's tool interview: the card never opened in 27 minutes, so it was deleted. Nothing run. Estimated, not yet billed. | about $0.27 |
+| 14 Nov 2026, night | 1x A40 48 GB, no drive | 3 min | $0.59/h | **Failed attempt 11.** Riker's tool interview, first try: the card stopped itself after 3 minutes. Nothing run. Estimated, not yet billed. | about $0.22 |
 | 14 Nov 2026, night | 1x A40 48 GB, no drive | running, about 3 h | $0.59/h | **Bobert's tool interview, second try, running now.** Projected at about $1.77, capped at 4 h ($2.36). The real figure replaces this when the card is deleted. Not counted in the total below. | about $1.77 (projected) |
-| | | **about 105 h of card time** | | **Ten failed attempts: $22.18, plus the stopped Bill step above. Seven Bobs made; Riker (28Bob), Bobert (35Bob) and Bill (20Bob) are kept, the first Riker and Bill (v1 and v2) are retired and deleted.** | **$484.17** |
+| 14 Nov 2026, night | 1x A40 48 GB, no drive | running | $0.59/h | **Riker's tool interview, second try, running now.** Projected, capped at 9 h ($5.50). The real figure replaces this when the card is deleted. Not counted in the total below. | up to $5.50 (projected) |
+| | | **about 105 h of card time** | | **Eleven failed attempts: $22.40, plus the stopped Bill step above. Seven Bobs made; Riker (28Bob), Bobert (35Bob) and Bill (20Bob) are kept, the first Riker and Bill (v1 and v2) are retired and deleted.** | **$484.39** |
 
 The total is taken from the rental service's statement; the lines above are rounded to the cent. Card time is paid from **prepaid credit**: the owner loads a balance onto the rental account in advance and each session draws it down, so that money is spent on the day it is loaded and used only when a card runs. The unused part is not shown here (no balances on these pages); it is already earmarked for the rungs still to make. A 100 GB network drive rented from the same service (it keeps the teacher weights, general text and adapters between sessions, so a session needs no re-download) costs about $7 a month while it exists, and more as it grows: Bobert's run used it at 300 GB (about $21 a month) and Bill's at 500 GB (about $35 a month). It is 500 GB now, and it draws on the same prepaid credit every day it exists, run or no run: about $1.17 a day. That is counted as its own line in the totals below.
 
@@ -115,7 +117,7 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 
 | | |
 |---|---|
-| GPU servers rented by the hour (every finished session above, failures included) | $484.17 |
+| GPU servers rented by the hour (every finished session above, failures included) | $484.39 |
 | Rented network drive between sessions, 5 to 14 Nov 2026 (100 GB, then 300, then 500; from its size and rate, then the statement from 13 Nov) | about $5.61 |
 | Claude subscription, November 2026 | $200.00 |
 | Claude extra usage, bought from 5 Nov 2026 on | $1,300.00 |
@@ -128,12 +130,13 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 |---|---|---|
 | Spent so far (above) | $1,990 | $1,990 |
 | Bobert's tool interview, running now (projected) | $1.77 | $2.36 |
+| Riker's tool interview, running now (projected, cap) | $5.50 | $5.50 |
 | Line B remaining rungs (Homer to Bender) | $119 | $129 |
 | Four brain scans (stock Qwen, Riker, Bobert, Bill) on one short rental (planned) | $10 | $14 |
 | Specialists (four, with their lessons) | $100 | $100 |
 | Rented network drive, about 2 more months at 500 GB | $70 | $70 |
 | Re-runs allowed (one per rung if a heal scores badly) | $0 | $60 |
 | Claude subscription while the family is finished, about 1 more month | $200 | $200 |
-| **Projected total, line B complete** | **about $2,491** | **about $2,565** |
+| **Projected total, line B complete** | **about $2,496** | **about $2,571** |
 | Line A as well, if the comparison after Homer earns it | +$179 | +$189 |
-| **Projected total, both lines** | **about $2,670** | **about $2,754** |
+| **Projected total, both lines** | **about $2,675** | **about $2,760** |
