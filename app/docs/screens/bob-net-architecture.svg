@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 820" width="1280" height="820" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif">
   <title>Bob-Net: how your Bobs work together</title>
-  <desc>Your Bobs on a PC, a handheld, a laptop, a Raspberry Pi and a phone, joined over the home network first and Tailscale as the fall-back. Each has a door with a passcode. They pair once, say hello every half minute, borrow quick replies, send whole jobs to the least busy Bob, and pool graphics cards for one big brain over SCUT, loading from their own copy of the brain first. Brain Copy is coming.</desc>
+  <desc>Your Bobs on a PC, a handheld, a laptop, a Raspberry Pi and a phone, joined over the home network first and Tailscale as the fall-back. Each has a door with a passcode. They pair once, say hello every half minute, borrow quick replies, send whole jobs to the least busy Bob, and pool graphics cards for one big brain over SCUT, loading from their own copy of the brain first. Brain Copying sends a brain to another Bob.</desc>
   <defs>
     <radialGradient id="lamp" cx="22%" cy="8%" r="80%">
       <stop offset="0" stop-color="#3a2a12" stop-opacity="0.55"/>
@@ -57,9 +57,9 @@
   <text x="885" y="232" font-size="12" fill="#5fd4c8" text-anchor="middle">chats, jobs,</text>
   <text x="885" y="248" font-size="12" fill="#5fd4c8" text-anchor="middle">the Chest</text>
 
-  <!-- Brain Copy (coming) -->
+  <!-- Brain Copying -->
   <path d="M330 575 L538 575" stroke="#b59cf0" stroke-width="2.5" stroke-dasharray="9 7" fill="none" marker-end="url(#arrowV)"/>
-  <text x="435" y="562" font-size="12" fill="#b59cf0" text-anchor="middle">⑥ Brain Copy (coming)</text>
+  <text x="435" y="562" font-size="12" fill="#b59cf0" text-anchor="middle">⑥ Brain Copying</text>
   <text x="435" y="595" font-size="11.5" fill="#8f9aa3" text-anchor="middle">a brain file, checked by sha256</text>
 
   <!-- ===== devices ===== -->
@@ -125,7 +125,7 @@
     <text x="894" y="554" fill="#8f9aa3">   the files come back. Nobody free: done here.</text>
     <text x="894" y="580"><tspan fill="#f2b25c" font-weight="700">⑤ Bigger Bobs.</tspan> One brain over several cards;</text>
     <text x="894" y="598" fill="#8f9aa3">   each Bob loads his share from his own copy.</text>
-    <text x="894" y="624"><tspan fill="#b59cf0" font-weight="700">⑥ Brain Copy</tspan> (coming): send a brain file to</text>
+    <text x="894" y="624"><tspan fill="#b59cf0" font-weight="700">⑥ Brain Copying</tspan>: send a brain file to</text>
     <text x="894" y="642" fill="#8f9aa3">   another Bob, checked by its sha256.</text>
   </g>
 
