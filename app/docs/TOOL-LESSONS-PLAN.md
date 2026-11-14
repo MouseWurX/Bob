@@ -177,6 +177,31 @@ Public sets with a licence that allows training and changes. Each would be conve
 
 Benchmarks such as BFCL and tau-bench are for testing only, never lessons. They join the never-taught list.
 
+## 3i. When Bob didn't even try a tool
+
+Every lesson or run where a tool was needed but none was tried is doctored into the full right steps, in all five
+versions (section 3g), with plain-words reasoning between the steps (section 3).
+
+**How many we know of (counted 14 Nov):**
+
+| Where | Count |
+|---|---|
+| GPT-OSS v5 rejects, traced: gave up or asked something it could answer | 39 |
+| GPT-OSS v5 rejects, traced: typed the result in chat instead of saving it | 26 |
+| Bobert's past logs: tool turns with no call | 15 of 123 |
+| Kept lessons in tool jobs with no tool call at all (candidates) | 1,284 |
+
+The 1,284 are only candidates: a lesson in a tool job can be right with no tool (advice, a plan, an explanation).
+They break down as code fixing 234, help 91, new tool 90, recover 89, plans 83, research 77, security 76, office 73,
+running programs 56, memory 55, notes 55 and the rest. Code fixing stands out: those lessons give the fix without
+running it, where the job says run it, read the error and run it again. A checker sorts the candidates first: "a
+tool was needed" goes to doctoring; "right as it is" stays.
+
+**Tonight's interviews too.** Once both finish, every Riker and Bobert turn where he could have used a tool and didn't,
+used the wrong one, or got a multi-tool or multi-input call wrong is doctored the same way. Those turns are tests, so
+they are never taught themselves: each one gives new look-alike requests (section 3), and the turns join the
+never-taught list so the scores stay honest.
+
 ## 3d. Coding, the way courses teach it
 
 The most common lesson types from college and university coding, software engineering, code fixing and error
