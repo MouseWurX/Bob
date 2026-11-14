@@ -1,7 +1,7 @@
 // tool-wording.mjs and tool-interview.mjs, the lab's wording and thinking A/B (14 Nov, Riker's tool interview): a variant only rewords or adds save_to, never
 // renames a tool or drops an input; turns are rebuilt with the kit's current tools; grading and the score table; picking failed
 // cases with his own thinking shown; the per-field scrub. A made-up kit, no server, nothing read from the computer.
-import { variantTools, PATH_TOOLS, namedFile, buildQuestions, grade, summarize } from '../model-lab/tool-wording.mjs';
+import { variantTools, PATH_TOOLS, namedFile, buildQuestions, grade, summarize, variantSystem, variantBody, FEWER_DROP, PROMPT_PARTS, lastUser } from '../model-lab/tool-wording.mjs';
 process.env.LAB_SCRUB_NAMES = 'Zorblax';
 const { pickCases, caseQuestion, scrub } = await import('../model-lab/tool-interview.mjs');
 
@@ -22,6 +22,16 @@ check('names, inputs and enums are kept', both.every((t, i) => t.function.name =
 check('the original list is not changed', !tools[0].function.parameters.properties.save_to);
 check('the five save tools', PATH_TOOLS.join(',') === 'make_diagram,save_as,make_image,make_sound,convert_file');
 check('a named file is seen', namedFile('save it as logo.png') && namedFile('put it in C:\\Users\\you\\a') && !namedFile('draw my morning'));
+
+// Bobert's parts: prompt rules, fewer tools, several calls at once
+check('bob keeps the system prompt as is', variantSystem('You are Bob.', 'bob') === 'You are Bob.' && variantSystem('You are Bob.', 'usewhen+paths') === 'You are Bob.');
+const sysAll = variantSystem('You are Bob.', 'example+slash+act');
+check('act, slash and example add their rule lines in a fixed order', sysAll.startsWith('You are Bob.\n\n') && sysAll.indexOf(PROMPT_PARTS.act) < sysAll.indexOf(PROMPT_PARTS.slash) && sysAll.indexOf(PROMPT_PARTS.slash) < sysAll.indexOf(PROMPT_PARTS.example));
+const withMeta = [...tools, tool('ask_specialist', { hat: { type: 'string' } }), tool('mcp_tools', {})];
+const few = variantTools(withMeta, 'fewer', { set });
+check('fewer drops only ask_specialist and mcp_tools', few.length === 3 && !few.some((t) => FEWER_DROP.includes(t.function.name)) && variantTools(withMeta, 'bob', { set }).length === 5);
+check('par asks for several calls at once, others do not', variantBody('act+par').parallel_tool_calls === true && !('parallel_tool_calls' in variantBody('act')));
+check('the request is the last user message', lastUser([{ role: 'user', content: 'one' }, { role: 'assistant', content: 'x' }, { role: 'user', content: 'two' }]) === 'two' && lastUser([]) === '');
 
 const kit = { groupOf: (n) => ({ make_diagram: 'diagrams', file_hands: 'files' })[n] || null, guessGroups: () => [], turn: (loaded) => ({ system: `Bob with ${[...loaded].sort().join(',')}`, tools }) };
 const lessons = [

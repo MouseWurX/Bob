@@ -33,6 +33,7 @@
     "test/run-reap-calibrate-test.js",
     "test/run-trace-read-test.js",
     "test/run-wording-ab-test.js",
+    "test/run-natural-tools-test.js",
     "test/run-evil-check-test.js",
     "test/run-evil-steer-test.js",
     "test/run-evil-sweep-test.js",

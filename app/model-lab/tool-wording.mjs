@@ -7,13 +7,22 @@
 //   paths     Bob's wording plus a save_to input (full path with file name) on make_diagram, save_as, make_image, make_sound
 //             and convert_file: the open fix for "claimed a name the tool never used"
 //   usewhen+paths  both
+// More parts, joined with + (15 Nov, Bobert's interview: "work through the best cases and worst cases until you get something
+// that works"). Each tests one fault his saved Nov 11-12 answers show:
+//   act       a short system-prompt rule: call the tool now instead of asking what a try would answer; never say a step was
+//             done unless its tool was called (he asked 3 questions instead of painting a logo, and "sent the setup card" he never made)
+//   slash     a system-prompt rule: Windows paths in tool arguments with forward slashes (his broken write_file JSON)
+//   example   one worked turn shape in the system prompt (call first, read the result, answer from it)
+//   fewer     ask_specialist and mcp_tools are not offered (his top mix-ups); a turn that wanted them counts as wrong
+//   par       the request allows several calls in one turn (parallel_tool_calls: true; Bob never sends it, and he never got a
+//             two-tool turn right)
 // Graded like tool-score (tool-judge.mjs): the right tools (name_ok) and the right tools with every recorded argument (ok).
 // Turns: the first --turns assistant turns of each lesson; a later turn sees the lesson's own recorded tool results.
 // Tool calls are only parsed, never run. Every answer is kept with its thinking and top-K odds (evidence only, never training
 // data: answers-wording-*.jsonl carry evidence: true). Writes WORDING.md and wording.json.
 // node tool-wording.mjs --url <server> --questions <calib>/questions --bob <Bob source app folder> --out <folder>
 //      [--jobs files,run,plans] [--variants bob,usewhen,paths] [--think off,on] [--turns 2] [--parallel 8] [--odds 8]
-//      [--max 600] [--max-think 4000] [--prefill "Plan: 1."] [--limit N] [--min-bob 1.5.223] [--gate] [--dry]
+//      [--max 600] [--max-think 4000] [--prefill "Plan: 1."] [--limit N] [--min-bob 1.5.223] [--gate] [--keep-live] [--dry]
 // --dry: no server; checks the questions, the fresh tools and every variant, and prints what would be asked.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -25,13 +34,27 @@ const readJsonl = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').replace(
 const r3 = (x) => Math.round(x * 1000) / 1000;
 
 export const PATH_TOOLS = ['make_diagram', 'save_as', 'make_image', 'make_sound', 'convert_file'];
+export const FEWER_DROP = ['ask_specialist', 'mcp_tools'];
+export const PROMPT_PARTS = {
+  act: 'When one of your tools can do what the user asked, call it now. Don\'t ask questions that trying the tool would answer, and pick sensible defaults yourself. Never say you did, sent or made something unless you called the tool for it in this turn.',
+  slash: 'In tool arguments, write Windows paths with forward slashes, like C:/Users/you/Documents/notes.txt.',
+  example: 'Example of a good turn: the user says "what\'s in my Downloads folder?". You call list_folder straight away, read what it returns, then answer from that result only.'
+};
+// The system prompt for a variant: Bob's own, plus the rule lines of its parts, in a fixed order.
+export function variantSystem(system, variant) {
+  const parts = new Set(String(variant).split('+'));
+  const add = Object.keys(PROMPT_PARTS).filter((k) => parts.has(k)).map((k) => PROMPT_PARTS[k]);
+  return add.length ? `${system}\n\n${add.join('\n')}` : system;
+}
+export const variantBody = (variant) => (String(variant).split('+').includes('par') ? { parallel_tool_calls: true } : {});
+
 export const SAVE_TO = { type: 'string', description: 'Only if {{USER}} named where or what to save it as: the full path with the file name, like {{HOME}}/Pictures/logo.png. Leave it out to use Bob\'s usual folder.' };
 
 // One tool list in a variant's wording. Names, inputs and enums stay Bob's own; paths only ADDS save_to.
 export function variantTools(tools, variant, { set = null, fill = null } = {}) {
   const parts = new Set(String(variant).split('+'));
   const fillText = (t) => (fill ? t.replaceAll('{{USER}}', fill.user || 'the user').replaceAll('{{HOME}}', fill.home || 'C:\\Users\\you') : t);
-  return tools.map((s) => {
+  return tools.filter((s) => !(parts.has('fewer') && FEWER_DROP.includes(s?.function?.name))).map((s) => {
     let out = s;
     const name = s?.function?.name;
     if (parts.has('usewhen') && set?.use?.[name]) out = { ...out, function: { ...out.function, description: fillText(set.use[name]) } };
@@ -71,6 +94,9 @@ export function buildQuestions(lessons, kit, { turns = 1, jobs = null, limit = 0
   }
   return limit ? out.slice(0, limit) : out;
 }
+
+// The request the turn answers, for the watch page and the write-up (the last user message, trimmed)
+export const lastUser = (messages) => String([...(messages || [])].reverse().find((m) => m.role === 'user')?.content || '').slice(0, 500);
 
 // One graded answer from a chat reply (parsed, never run).
 export function grade(q, msg) {
@@ -129,14 +155,15 @@ async function main() {
   const conds = thinks.flatMap((t) => variants.map((v) => `${v} think-${t}`));
   const ask = async (eng, q, v, think, file) => {
     const tools = variantTools(q.tools, v, { set, fill: { user: 'the user', home: 'C:\\Users\\you' } });
-    const messages = think === 'on' && prefill ? [...q.messages, { role: 'assistant', content: `<think>\n${prefill}` }] : q.messages;
-    const body = { messages, ...(tools?.length ? { tools } : {}), max_tokens: think === 'on' ? maxOn : maxOff, temperature: 0, chat_template_kwargs: { enable_thinking: think === 'on' }, logprobs: true, top_logprobs: K };
+    const sys = q.messages.map((m, i) => (i === 0 && m.role === 'system' ? { ...m, content: variantSystem(m.content, v) } : m));
+    const messages = think === 'on' && prefill ? [...sys, { role: 'assistant', content: `<think>\n${prefill}` }] : sys;
+    const body = { messages, ...(tools?.length ? { tools } : {}), ...variantBody(v), max_tokens: think === 'on' ? maxOn : maxOff, temperature: 0, chat_template_kwargs: { enable_thinking: think === 'on' }, logprobs: true, top_logprobs: K };
     if (dry) return { body };
     const t0 = Date.now();
     try {
       const j = await eng.chat(body);
       const c = j.choices?.[0] || {}, m = c.message || {};
-      const row = { brain, bob_src: bobVer, evidence: true, cond: `${v} think-${think}`, variant: v, think: think === 'on', ...(prefill && think === 'on' ? { prefill } : {}), job: q.job, idea: q.idea, split: q.split, k: q.k, named: q.named, ...grade(q, m), finish: c.finish_reason || '', want: q.want, answer: { content: m.content || '', reasoning: m.reasoning_content || '', tool_calls: m.tool_calls || undefined }, odds: oddsOf(c.logprobs), tokens: j.usage?.completion_tokens || 0, tps: j.timings?.predicted_per_second || 0, ms: Date.now() - t0 };
+      const row = { brain, bob_src: bobVer, evidence: true, cond: `${v} think-${think}`, variant: v, think: think === 'on', ...(prefill && think === 'on' ? { prefill } : {}), job: q.job, idea: q.idea, split: q.split, k: q.k, named: q.named, request: lastUser(q.messages), offered: (tools || []).map((x) => x.function?.name), ...grade(q, m), finish: c.finish_reason || '', want: q.want, answer: { content: m.content || '', reasoning: m.reasoning_content || '', tool_calls: m.tool_calls || undefined }, odds: oddsOf(c.logprobs), tokens: j.usage?.completion_tokens || 0, tps: j.timings?.predicted_per_second || 0, ms: Date.now() - t0 };
       fs.appendFileSync(file, JSON.stringify(row) + '\n');
       return row;
     } catch (e) {
@@ -156,7 +183,8 @@ async function main() {
     kit.done(); console.log('dry run OK'); return;
   }
   const eng = live(url);
-  try { await eng.reset(); } catch {}
+  // --keep-live: keep the switches set-live.mjs made (e.g. --used 12) instead of putting the brain back to stock
+  if (!a['keep-live']) { try { await eng.reset(); } catch {} }
   const rows = [];
   for (const t of thinks) for (const v of variants) {
     const file = path.join(out, `answers-wording-${v.replace('+', '-')}-think-${t}.jsonl`);
