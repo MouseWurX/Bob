@@ -231,7 +231,9 @@ fi
 if [ -n "$(plan ".get('benchmark')")" ] || [ -n "$TG" ]; then
   # 12 Nov: benchmark.brain_engine {"ref": "<Bob commit>", "patches": ["0001-expert-mask", ...]} serves the brains with Brain Engine
   # (llama.cpp plus Bob's patches, fetched from Bob's public repo at that commit), for the live expert switch and REAP scores
-  BEP=$(plan ".get('benchmark',{}).get('brain_engine') or {}" | python3 -c "import json,sys; b=json.load(sys.stdin); print(' '.join('https://raw.githubusercontent.com/MouseWurX/Bob/%s/app/engine/patches/%s.patch' % (b['ref'], n) for n in b.get('patches',[])) if b else '')")
+  # 14 Nov: a patch named "pod:<name>" is a lab-only patch sent with the pod scripts ($POD/<name>.patch), not one of Bob's engine
+  # patches (0014-live-control-vector: activation steering without reloads, for the Riker steering sweeps)
+  BEP=$(plan ".get('benchmark',{}).get('brain_engine') or {}" | python3 -c "import json,sys; b=json.load(sys.stdin); pod=sys.argv[1]; print(' '.join(('file://%s/%s.patch' % (pod, n[4:])) if n.startswith('pod:') else 'https://raw.githubusercontent.com/MouseWurX/Bob/%s/app/engine/patches/%s.patch' % (b['ref'], n) for n in b.get('patches',[])) if b else '')" "$POD")
   if [ -f $S/llama-server-ready ] && [ -x $S/llama.cpp/build-cuda/bin/llama-server ] && [ "$(cat $S/llama.cpp/.bob-patches 2>/dev/null)" = "$BEP" ]; then echo "CUDA llama-server already built"; else rm -f $S/llama-server-ready $S/llama-server-failed; ( bash $POD/llama-server-build.sh $S $(plan ".get('llama_tag','b11669')") "$BEP" > $OUT/llama-server-build.log 2>&1 ) & fi
 fi
 [ -n "${FORGE_SETUP_ONLY:-}" ] && { kill $WD 2>/dev/null; wait; cat $OUT/llama-setup.log; status done "setup only"; exit 0; }
@@ -327,9 +329,12 @@ PY
           done
         else echo "bench $BN: no llama-imatrix or no in/imatrix-$BN.tgz; imatrix skipped" | tee $ID/skipped.txt; fi
       fi
+      # 14 Nov: @OUT@ in a model's extra is this pod's out folder (a steering entry's --control-vector-scaled names an earlier
+      # entry's evil direction, out/bench/evil-<name>/direction-all.gguf, without knowing where the pod keeps it)
+      BEXTRA=$(plan "['benchmark']['models'][$b].get('extra','')"); BEXTRA=${BEXTRA//@OUT@/$OUT}
       SLOTS=$(plan "['benchmark']['models'][$b].get('slots',1)"); CTX=$(plan "['benchmark']['models'][$b].get('ctx',32768)")
       status bench "$BN: loading on the card ($(basename $BFILE))"
-      LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" $LS -m "$BFILE" --host 0.0.0.0 --port 8001 --api-key "$FORGE_TOKEN" -c $CTX --jinja -fa on -ctk q8_0 -ctv q8_0 -np $SLOTS -ngl 999 $(plan "['benchmark']['models'][$b].get('extra','')") > $OUT/bench/$BN-server.log 2>&1 &
+      LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" $LS -m "$BFILE" --host 0.0.0.0 --port 8001 --api-key "$FORGE_TOKEN" -c $CTX --jinja -fa on -ctk q8_0 -ctv q8_0 -np $SLOTS -ngl 999 $BEXTRA > $OUT/bench/$BN-server.log 2>&1 &
       BS=$!
       for i in $(seq 1 90); do curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8001/health 2>/dev/null | grep -q 200 && break; kill -0 $BS 2>/dev/null || break; sleep 10; done
       kill -0 $BS 2>/dev/null || { echo "bench $BN: llama-server died (see out/bench/$BN-server.log)"; tail -3 $OUT/bench/$BN-server.log; continue; }

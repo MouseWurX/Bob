@@ -5,6 +5,12 @@
 // same lessons are read by the writer (GPT-OSS 120B), its cut (the 38B) and the student (a Qwen Bob), each in its own folder.
 //
 // node trace-read.mjs --url <server> --sets bob=<dir>,sherlock=<dir>,... [--per 300] [--per-style N] [--top 4] [--mass --keep 0.75,0.5] [--out <folder>]
+//   [--gate 0.2] stop the rental (exit 86) if more than this share of lessons fail
+//   [--jobs files,run,...] only these jobs (styles are skipped) [--parallel 1] lessons read at once. Keep it at 1: the Brain
+//   Engine drops the trace for every request while two share a batch (patch 0002, "only given to a request that ran alone";
+//   14 Nov, 44 of 44 lost at --parallel 4)
+//   Every failed lesson is counted by why (no-set: its tool set isn't in toolsets.json; no-trace: the reply had no expert trace;
+//   http: the call failed) in fails.json, so a run that maps nothing says why (Nov 13: 135 of 160 failed with no reason).
 //   --mass: REAP scores per target too (Brain Engine 0009) and keep/<target>-keep-NN.json lists for live per-job presets
 //   A set named "bob" is split by job; any other name is one style target. Held-out lessons (the 5% split) are never read.
 // Writes in --out:
@@ -108,21 +114,30 @@ async function main() {
       catch (e) { if (i >= tries) throw e; await new Promise((res) => setTimeout(res, 4000 * i)); }
     }
   };
-  const work = pickLessons(setDirs, per, perStyle);
+  const onlyJobs = args.jobs ? new Set(String(args.jobs).split(',').map((x) => `job:${x.trim()}`)) : null;
+  const work = pickLessons(setDirs, per, perStyle).filter((w) => !onlyJobs || onlyJobs.has(w.target));
+  const par = Math.max(1, Number(args.parallel) || 1), why = {};
+  const failed = (kind, w, msg = '') => { fails++; (why[kind] ||= { n: 0, first: [] }).n++; if (why[kind].first.length < 5) why[kind].first.push(`${w.target} ${w.lesson.idea}${msg ? ': ' + msg.slice(0, 160) : ''}`); if (fails <= 3) console.log(`  failed (${kind}) ${w.target} ${w.lesson.idea} ${msg.slice(0, 120)}`); };
   console.log(`Reading ${work.length} lessons over ${new Set(work.map((w) => w.target)).size} targets (up to ${per} each; held-out never read)`);
   const acc = {}, reap = {}; let fails = 0, E = 0, used = 0;
   // --mass: also REAP scores per target (patch 0009) and keep lists per target at --keep shares, for per-job live presets
   const mass = Boolean(args.mass), shares = String(args.keep || '0.75,0.5').split(',').map(Number).filter((x) => x > 0 && x <= 1);
-  for (const [i, w] of work.entries()) {
-    const messages = whole(w.lesson, w.sets); if (!messages) { fails++; continue; }
+  let done = 0;
+  const readOne = async (w) => {
+    const messages = whole(w.lesson, w.sets); if (!messages) return failed('no-set', w, `set "${w.lesson.messages?.find((m) => m.role === 'assistant')?.set ?? ''}" not in toolsets.json`);
     try {
       const j = await post({ messages, max_tokens: 1, cache_prompt: false, expert_trace: true, ...(mass ? { expert_trace_mass: true } : {}), temperature: 0 });
       E ||= Number(j.expert_trace?.n_expert) || 0; used ||= Number(j.expert_trace?.n_expert_used) || 0;
-      if (!addTo(acc, w.target, j.expert_trace)) fails++;
-      if (mass) addTrace((reap[w.target] ||= emptyScores()), j.expert_trace);
-    } catch (e) { fails++; if (fails <= 3) console.log(`  ${w.target} ${w.lesson.idea}: ${e.message.slice(0, 120)}`); }
-    if ((i + 1) % 50 === 0) console.log(`  ${i + 1}/${work.length}`);
-  }
+      if (!addTo(acc, w.target, j.expert_trace)) failed('no-trace', w, j.expert_trace ? `kind ${j.expert_trace.kind || '?'}, no layers or rows` : 'reply had no expert_trace');
+      else if (mass) addTrace((reap[w.target] ||= emptyScores()), j.expert_trace);
+    } catch (e) { failed('http', w, e.message); }
+    if (++done % 50 === 0) console.log(`  ${done}/${work.length}`);
+  };
+  // in batches of --parallel; each trace is folded in and dropped at once, so memory stays flat
+  for (let i = 0; i < work.length; i += par) await Promise.all(work.slice(i, i + par).map(readOne));
+  fs.writeFileSync(path.join(out, 'fails.json'), JSON.stringify({ lessons: work.length, failed: fails, why }, null, 1));
+  // --gate 0.2: a smoke run that loses more than this share of lessons stops the whole rental (exit 86, the Forge deletes the pod)
+  if (args.gate !== undefined && fails > (Number(args.gate) || 0) * work.length) { console.log(`GATE STOP: expert maps lost ${fails} of ${work.length} lessons (${Object.entries(why).map(([k, v]) => `${k} ${v.n}: ${v.first[0] || ''}`).join('; ')})`); process.exit(86); }
   if (!Object.keys(acc).length) { console.error('No expert traces came back. Is this a Brain Engine server with the expert trace, and a mixture-of-experts brain?'); process.exit(1); }
   const lift = lifts(acc, top);
   fs.writeFileSync(path.join(out, 'counts.json'), JSON.stringify(countsShape(acc)));
@@ -140,4 +155,4 @@ async function main() {
   fs.writeFileSync(path.join(out, 'trace-read.md'), [`# Experts per job and style: ${process.env.LAB_MODEL_NAME || url}`, '', `${E} experts per layer, ${used} per word. ${fails} lessons failed.`, 'Lift = a target\'s share of an expert / the share over all targets. Only measured on THIS brain: use it for this brain\'s dials.', '', '| target | lessons | words read | layers with a leaning expert |', '|---|---|---|---|', ...rows, ''].join('\n'));
   console.log(`Done: ${Object.keys(acc).length} targets, ${fails} failed. Files in ${out}`);
 }
-if (import.meta.url === pathToFileURL(process.argv[1] || '').href) main().catch((e) => { console.error(e.message); process.exit(1); });
+if (import.meta.url === pathToFileURL(process.argv[1] || '').href) main().catch((e) => { console.error(e.stack || e.message); process.exit(1); });

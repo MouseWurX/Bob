@@ -9,6 +9,8 @@ import { checkBobSource } from './bob-source.mjs';
 // howtos: a how-to file ({ howtos: [{ name, when, steps }] }) put in the throwaway Bob first, so the quiz can see them.
 // allowOld: --allow-old-bob (bob-source.mjs): a Bob copy more than a few releases behind this Lab is refused otherwise.
 export async function loadBob(bobDir, { howtos = '', allowOld = false } = {}) {
+  // a repository folder works as well as its app folder (Bob's files sit in app/ since Nov 9)
+  if (!fs.existsSync(path.join(bobDir, 'src')) && fs.existsSync(path.join(bobDir, 'app', 'src'))) bobDir = path.join(bobDir, 'app');
   const src = (f) => pathToFileURL(path.join(bobDir, 'src', f)).href;
   if (!fs.existsSync(path.join(bobDir, 'src', 'brain.js'))) throw new Error(`No Bob source tree at ${bobDir} (src/brain.js missing). Pass --bob <folder>.`);
   const bobSrc = checkBobSource(bobDir, path.join(path.dirname(fileURLToPath(import.meta.url)), '..'), { allowOld });
