@@ -98,6 +98,7 @@ check('lineage walks back through parents', tree[0].id === childId && tree.some(
 check('the routes are read-only GETs and hide paths from other devices', /GET' && p === '\/api\/lab\/steps'/.test(read('src/lab-routes.js')) && /GET' && p === '\/api\/lab\/runs'[^\n]*isLocal \? runs :[^\n]*path: _p/.test(read('src/lab-routes.js')));
 check('Try it first passes the vector as FILE:SCALE (the form b12282 takes)', /`\$\{path\.join\(dir, 'direction\.gguf'\)\}:\$\{-p\.refusals\.strength \/ 100\}`/.test(read('src/lab-home-jobs.js')));
 const help = read('public/help-content.js');
+check('Help: the Steps tab has its own entry in Bob\'s voice', /id: 'lab-steps'/.test(help) && /Every method my Lab has/.test(help));
 check('Help: an FAQ on why a step stopped before it started', /id: 'faq-lab-smoke'/.test(help));
 check('Help: an FAQ on never-train data', /id: 'faq-lab-never-train'/.test(help));
 check('Help: glossary entries for smoke test, never-train and run record', /<dt>Smoke test<\/dt>/.test(help) && /<dt>Never-train<\/dt>/.test(help) && /<dt>Run record<\/dt>/.test(help));
@@ -149,6 +150,37 @@ check('the plan doc is linked from the docs index', /LAB-STEPS-PLAN\.md/.test(re
   check('a retry keeps the caps counting from the first rent', /t\.started = first; fs\.writeFileSync\(tokenFile/.test(fg));
   check('a retry deletes the frozen pod first and leaves out its card type', /avoidNow\.add\(on\.gpu\)[\s\S]{0,200}await kill\(/.test(fg) && /orderCards\(cards, \{ avoidNow, freezing: freezingCards/.test(fg));
   check('retries are capped (plan.startup_retries, at most 5)', /Math\.min\(5, Number\(plan\.startup_retries \?\? 2\)\)/.test(fg));
+}
+
+// ---- a free step run from the Steps tab (fake spawn: no real scrub reads this computer) ----
+{
+  await import('../src/lab.js');
+  const { stepRunJobs, STEP_FORMS } = await import('../src/lab-step-run.js');
+  const dataDir = path.join(tmp, 'data'), setDir = path.join(dataDir, 'lab', 'lessons', 'mine');
+  fs.mkdirSync(setDir, { recursive: true }); fs.writeFileSync(path.join(setDir, 'lessons.jsonl'), '{"idea":"a","messages":[]}\n'); fs.writeFileSync(path.join(setDir, 'write.json'), JSON.stringify({ name: 'My lessons', count: 1, done: true }));
+  const fakeDir = path.join(tmp, 'ml'); fs.mkdirSync(fakeDir, { recursive: true }); fs.writeFileSync(path.join(fakeDir, 'scrub-data.mjs'), ''); fs.writeFileSync(path.join(fakeDir, 'make-checks.mjs'), ''); fs.mkdirSync(path.join(fakeDir, 'forge')); fs.writeFileSync(path.join(fakeDir, 'forge', 'forge.mjs'), '');
+  let seen = null, exitWith = 0, hold = false;
+  const fakeSpawn = (node, args) => { seen = args; const ev = {}; const ch = { pid: 0, on: (k, fn) => { ev[k] = fn; } }; setTimeout(() => { if (hold) return; const out = args[args.indexOf('--out') + 1]; if (exitWith === 0 && args.includes('--in')) fs.cpSync(args[args.indexOf('--in') + 1], out, { recursive: true }); ev.exit?.(exitWith); }, 5); return ch; };
+  const lab = Object.assign({ cfg: { dataDir, forgeDir: fakeDir }, now: () => Date.UTC(2026, 10, 14, 12), broadcast: () => {}, stepSpawn: fakeSpawn }, stepRunJobs);
+  check('only free steps with a form run from the tab', Object.keys(STEP_FORMS).every((id) => stepById(id).where === 'here'));
+  check('a step with no form says it doesn\'t run from here', lab.stepCheck('lora', {}).problems[0] === 'That step doesn\'t run from here yet.');
+  check('the scrub needs a lesson set', lab.stepCheck('pii-scrub', {}).problems.includes('Pick a lesson set.'));
+  const ok = lab.stepCheck('pii-scrub', { set: 'mine' });
+  check('the scrub reads the set and writes a new one beside it', !ok.problems.length && ok.p.args[1] === setDir && ok.p.out !== setDir && /scrubbed/.test(ok.notes.join(' ')));
+  const r = lab.stepRun('pii-scrub', { set: 'mine' });
+  check('it starts with fixed args only', r.started && seen[0].endsWith('scrub-data.mjs') && seen.slice(1).join(' ') === `--in ${setDir} --out ${ok.p.out}`);
+  let refused = ''; try { lab.stepRun('pii-scrub', { set: 'mine' }); } catch (e) { refused = e.message; }
+  check('one step at a time', /One at a time/.test(refused));
+  await new Promise((res) => setTimeout(res, 40));
+  const rec = listRuns(path.join(dataDir, 'lab')).find((x) => x.step === 'pii-scrub');
+  check('a finished scrub is a new lesson set with its run record', lab.stepJob().state === 'done' && fs.existsSync(path.join(ok.p.out, 'write.json')) && JSON.parse(fs.readFileSync(path.join(ok.p.out, 'write.json'), 'utf8')).name === 'My lessons, scrubbed' && rec?.state === 'done' && rec.outputs[0].kind === 'lessons');
+  exitWith = 2; const r2 = lab.stepRun('pii-scrub', { set: 'mine' }); await new Promise((res) => setTimeout(res, 40));
+  const out2 = lab.stepCheck('pii-scrub', { set: 'mine' }).p.out;
+  check('a failed scrub keeps nothing half-made and says why', r2.started && lab.stepJob().state === 'failed' && /exit 2/.test(lab.stepJob().message) && !fs.existsSync(path.join(path.dirname(out2), 'mine-scrub-2')));
+  exitWith = 0; hold = true; lab.stepRun('eval-sets', {});
+  check('stop ends a running step and its record', lab.stepStop().stopped === true && lab.stepJob().state === 'stopped' && listRuns(path.join(dataDir, 'lab')).find((x) => x.step === 'eval-sets')?.state === 'stopped');
+  check('a step can\'t start while a protocol step runs', (() => { fs.writeFileSync(path.join(dataDir, 'lab', 'protocol', 'job.json'), JSON.stringify({ state: 'running' })); try { lab.stepRun('eval-sets', {}); return false; } catch (e) { return /protocol step is running/.test(e.message); } })());
+  check('step runs start only from this computer', /\/api\/lab\/step\/run'/.test(read('src/lab-routes.js')) && read('src/lab-routes.js').indexOf("'/api/lab/step/run'") > read('src/lab-routes.js').indexOf('can only be started on this replicant matrix'));
 }
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

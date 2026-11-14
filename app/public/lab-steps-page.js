@@ -1,7 +1,7 @@
 // 14 Nov 🧪 The Steps tab (docs/LAB-STEPS-PLAN.md section 4): every advanced method as a step, grouped by protocol
 // stage, and the Lab's runs. Each card: the short professional name (it opens the glossary), an ⓘ with one plain
-// sentence, where it runs, and what it needs. Read-only for now: steps start from their own pages (the Forge's
-// training protocol, Make a brain, Look inside) until each gets its own form. Nothing here starts, rents or uploads.
+// sentence, where it runs, and what it needs. A free step with a form runs from its card (one at a time); the rest
+// start from their own pages (the Forge, Make a brain, Look inside). Nothing here rents or uploads.
 import { esc } from './rich.js';
 import { tip } from './tips.js';
 
@@ -11,7 +11,8 @@ const STATE = { smoke: 'Smoke test', running: 'Running', done: 'Done', failed: '
 const when = (iso) => { try { return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); } catch { return ''; } };
 
 export function createStepsPage({ api }) {
-  let sv = null, runs = null, loading = false, msg = '';
+  let sv = null, runs = null, loading = false, msg = '', open = '', check = null, busy = false;
+  const f = { set: '' };
   async function load() {
     loading = true;
     try { [sv, runs] = await Promise.all([api('/api/lab/steps'), api('/api/lab/runs')]); } catch (e) { msg = e.message; }
@@ -22,7 +23,14 @@ export function createStepsPage({ api }) {
     const badges = [`<span class="tag">${esc(WHERE[s.where] || s.where)}</span>`, s.neverTrain ? '<span class="tag warn" tabindex="0" data-tip="Its output is for study only. Training steps refuse it.">Never-train</span>' : '', s.needsGo.length ? `<span class="tag" tabindex="0" data-tip="${esc(`Needs ${s.needsGo.map((g) => GO[g] || g).join(' and ')}.`)}">Needs your go</span>` : ''].filter(Boolean).join(' ');
     const name = s.glossary ? `<button type="button" class="link lab-step-name" data-stepgloss aria-label="${esc(`${s.name}: open the glossary`)}">${esc(s.name)}</button>` : `<strong>${esc(s.name)}</strong>`;
     const state = s.ready ? (s.smokeReady ? '' : '<span class="muted">Runs here only, until its smoke test is built.</span>') : `<span class="muted">${esc(s.why)}</span>`;
-    return `<li class="lab-step-card">${name} ${tip(esc(s.plain), s.name)} ${badges}${pro && s.script ? `<br><code>${esc(s.script)}</code>` : ''}${state ? `<br>${state}` : ''}</li>`;
+    const canRun = s.form && s.ready && s.where === 'here';
+    const running = sv.job?.state === 'running';
+    const form = open === s.id ? `<div class="lab-check" role="group" aria-label="${esc(`Run ${s.name}`)}">
+        ${s.form.needs.includes('set') ? `<label>Lesson set <select data-stepset>${(sv.sets || []).length ? `<option value="">(pick)</option>${sv.sets.map((x) => `<option value="${esc(x.id)}" ${f.set === x.id ? 'selected' : ''}>${esc(x.name)} · ${x.count} lessons</option>`).join('')}` : '<option value="">(no lesson sets yet)</option>'}</select></label>` : ''}
+        ${check ? `${check.problems.length ? `<ul>${check.problems.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>` : '<p><strong>Ready.</strong></p>'}${check.notes.map((n) => `<p class="muted">${esc(n)}</p>`).join('')}` : ''}
+        <div class="row"><button type="button" class="get" data-stepgo="${esc(s.id)}" ${busy || running || !check || check.problems.length ? 'disabled' : ''}>Run it</button><button type="button" class="link" data-stepclose>Close</button></div></div>` : '';
+    const btn = canRun && open !== s.id ? ` <button type="button" class="link" data-stepopen="${esc(s.id)}" ${running ? 'disabled' : ''}>Run</button>` : '';
+    return `<li class="lab-step-card">${name} ${tip(esc(s.plain), s.name)} ${badges}${btn}${pro && s.script ? `<br><code>${esc(s.script)}</code>` : ''}${state ? `<br>${state}` : ''}${form}</li>`;
   };
   const runsHtml = () => {
     const list = runs?.runs || [];
@@ -33,6 +41,7 @@ export function createStepsPage({ api }) {
     if (!sv) { if (!loading) load(); return `<div id="lab-page-steps" role="tabpanel" aria-labelledby="lab-tab-steps"><p class="muted">${esc(msg || 'Loading...')}</p></div>`; }
     return `<div id="lab-page-steps" role="tabpanel" aria-labelledby="lab-tab-steps">
       <p class="muted">Every method the Lab has, in the order a full run uses them. Each one also works on its own. Rented steps test themselves first and stop the card if that fails.</p>
+      ${sv.job ? `<div class="lab-check" role="status"><p><strong>${esc(STATE[sv.job.state] || sv.job.state)}: ${esc(sv.job.name)}</strong>${sv.job.message ? ` ${esc(sv.job.message)}` : ''}</p>${sv.job.state === 'running' ? '<button type="button" class="link" data-stepstop>Stop it</button>' : ''}</div>` : ''}
       ${sv.stages.map(([id, label]) => { const list = sv.steps.filter((s) => s.stage === id); return list.length ? `<section class="lab-compare" aria-labelledby="steps-h-${id}"><h3 id="steps-h-${id}">${esc(label)}</h3><ul class="lab-step-list">${list.map((s) => card(s, pro)).join('')}</ul></section>` : ''; }).join('')}
       <section class="lab-compare" aria-labelledby="steps-runs-h"><h3 id="steps-runs-h">Runs</h3>${runsHtml()}<div class="row"><button type="button" class="link" data-stepsrefresh>Refresh</button></div></section>
       ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}
@@ -43,7 +52,17 @@ export function createStepsPage({ api }) {
     if (!b.closest?.('#lab-page-steps')) return false;
     if ('stepgloss' in b.dataset) { const ev = () => new CustomEvent('bob-help', { detail: 'glossary' }); window.dispatchEvent(ev()); try { window.opener?.dispatchEvent(ev()); } catch {} return true; }
     if ('stepsrefresh' in b.dataset) { msg = ''; await load(); return 'draw'; }
+    if ('stepopen' in b.dataset) { open = b.dataset.stepopen; check = null; await recheck(); return 'draw'; }
+    if ('stepclose' in b.dataset) { open = ''; check = null; return 'draw'; }
+    if ('stepgo' in b.dataset && !busy) { busy = true; msg = ''; try { await api('/api/lab/step/run', { id: b.dataset.stepgo, form: f }); open = ''; check = null; } catch (e) { msg = e.message; } busy = false; await load(); return 'draw'; }
+    if ('stepstop' in b.dataset) { try { await api('/api/lab/step/stop', {}); } catch (e) { msg = e.message; } await load(); return 'draw'; }
     return false;
   }
-  return { html, click };
+  async function recheck() { try { check = await api('/api/lab/step/check', { id: open, form: f }); } catch (e) { msg = e.message; } }
+  async function change(el) {
+    if (!el.closest?.('#lab-page-steps')) return false;
+    if ('stepset' in el.dataset) { f.set = el.value; await recheck(); return true; }
+    return false;
+  }
+  return { html, click, change };
 }
