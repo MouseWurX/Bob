@@ -25,7 +25,7 @@ import { mineHtml } from './lab-mine.js'; // My Lab: what this Lab has made and 
 const $ = (id) => document.getElementById(id);
 // The tabs are sorted by what you're doing. Each thing lives on one tab: making, teaching, testing, looking inside,
 // learning how brains work, rented runs, and My Lab (what you've made so far).
-const TABS = [['make', 'Make a brain'], ['steps', 'Steps'], ['teach', 'Teach'], ['test', 'Test'], ['inside', 'Look inside'], ['learn', 'Learn'], ['forge', 'Forge'], ['mine', 'My Lab']];
+const TABS = [['make', 'Make a brain'], ['teach', 'Teach'], ['test', 'Test'], ['inside', 'Look inside'], ['learn', 'Learn'], ['forge', 'Forge'], ['steps', 'Steps'], ['mine', 'My Lab']];
 // The pages under a tab. 'challenges' and 'learn' are drawn here; the rest are the Playground's pages (public/lab-playground.js).
 const SUBS = { teach: ['teach', 'best'], test: ['challenges', 'taste', 'smaller', 'longer', 'faster'], inside: ['peek', 'watch'], learn: ['learn', 'diffusion'] };
 const SUB_LABEL = { challenges: 'Challenges', taste: 'Taste test', learn: 'Experiments', ...Object.fromEntries(PLAY_PAGES) };
