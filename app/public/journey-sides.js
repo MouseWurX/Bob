@@ -163,8 +163,56 @@ export const WEAPON_SHAPES = {
   // Journey v1.2: a longbow taller than its archer, a crossbow with its stock and a hand crossbow.
   longbow: { grip: 0, length: 0, head: 'bow', reach: 6 },
   crossbow: { grip: 4, length: 4, head: 'xbow', arms: 3 },
-  handbow: { grip: 2, length: 2, head: 'xbow', arms: 2 }
+  handbow: { grip: 2, length: 2, head: 'xbow', arms: 2 },
+  // Journey v1.3: each style draws its own kit. Same weapon underneath (same numbers); a different look.
+  // Guns: a barrel along the angle, a grip under it, and a muzzle that glows in energy styles.
+  blaster: { head: 'gun', length: 4, cols: { body: '#e8eef4', dark: '#5a6470', tip: '#7ae0ff' } },
+  railrifle: { head: 'gun', length: 8, scope: true, cols: { body: '#d8e2ec', dark: '#4a5664', tip: '#7ae0ff' } },
+  boltcaster: { head: 'gun', length: 6, wide: true, cols: { body: '#c8d4e0', dark: '#4a5664', tip: '#7ae0ff' } },
+  handblaster: { head: 'gun', length: 3, cols: { body: '#e8eef4', dark: '#5a6470', tip: '#7ae0ff' } },
+  smartpistol: { head: 'gun', length: 4, cols: { body: '#2a2e38', dark: '#14161c', tip: '#ff3ad8' } },
+  sniper: { head: 'gun', length: 9, scope: true, cols: { body: '#2a2e38', dark: '#14161c', tip: '#ff3ad8' } },
+  railgun: { head: 'gun', length: 7, wide: true, cols: { body: '#33384a', dark: '#14161c', tip: '#7dff9a' } },
+  holdout: { head: 'gun', length: 2, cols: { body: '#3a3e48', dark: '#14161c', tip: '#ff3ad8' } },
+  flintpistol: { head: 'gun', length: 4, cols: { body: '#b0702a', dark: '#6a4020', tip: '#3a3a3a' } },
+  musket: { head: 'gun', length: 9, cols: { body: '#7a4a24', dark: '#5a3418', tip: '#c8a060' } },
+  blunderbuss: { head: 'gun', length: 6, flare: true, cols: { body: '#7a4a24', dark: '#5a3418', tip: '#c8a060' } },
+  derringer: { head: 'gun', length: 2, cols: { body: '#c8a060', dark: '#6a4020', tip: '#3a3a3a' } },
+  // Blades and the rest. A beam is a bright core with a glow along it.
+  beamsword: { grip: 2, length: 9, head: 'beam', cols: { shaft: '#5a6470', core: '#ffffff', glow: '#7ae0ff' } },
+  vibroknife: { grip: 1, length: 4, head: 'beam', cols: { shaft: '#5a6470', core: '#ffffff', glow: '#c8f0ff' } },
+  pulselance: { grip: 9, length: 11, head: 'point', cols: { shaft: '#8a96a4', edge: '#7ae0ff', tip: '#ffffff' } },
+  plasmaaxe: { grip: 7, length: 7, head: 'axe', cols: { shaft: '#5a6470', edge: '#7ae0ff', dark: '#3aa0d0', tip: '#ffffff' } },
+  gravhammer: { grip: 6, length: 6, head: 'hammer', cols: { shaft: '#5a6470', edge: '#d8e2ec', dark: '#7ae0ff' } },
+  psistaff: { grip: 10, length: 10, head: 'orb', cols: { shaft: '#8a96a4', guard: '#ff7ad8', tip: '#ffffff' } },
+  katana: { grip: 3, length: 10, head: 'blade', tsuba: true, cols: { shaft: '#2a2e38', edge: '#e8eef4', tip: '#ffffff', guard: '#14161c' } },
+  monoblade: { grip: 1, length: 5, head: 'beam', cols: { shaft: '#2a2e38', core: '#ffffff', glow: '#ff3ad8' } },
+  stunlance: { grip: 9, length: 11, head: 'point', cols: { shaft: '#2a2e38', edge: '#7dff9a', tip: '#ffffff' } },
+  chainaxe: { grip: 7, length: 7, head: 'axe', cols: { shaft: '#2a2e38', edge: '#9aa3ad', dark: '#ffd166', tip: '#ff3ad8' } },
+  breacher: { grip: 6, length: 6, head: 'hammer', cols: { shaft: '#2a2e38', edge: '#4a505a', dark: '#ff3ad8' } },
+  neuralrod: { grip: 10, length: 10, head: 'orb', cols: { shaft: '#2a2e38', guard: '#7dff9a', tip: '#ffffff' } },
+  sabre: { grip: 2, length: 8, head: 'blade', curve: true, guard: true, cols: { guard: '#c8a060' } },
+  stiletto: { grip: 1, length: 5, head: 'blade', guard: true, cols: { guard: '#c8a060' } },
+  bayonet: { grip: 9, length: 11, head: 'point', cols: { shaft: '#7a4a24', edge: '#b8c4cf', tip: '#ffffff' } },
+  boileraxe: { grip: 7, length: 7, head: 'axe', cols: { shaft: '#7a4a24', edge: '#c87a3a', dark: '#8a4a1a', tip: '#ffd166' } },
+  steamhammer: { grip: 6, length: 6, head: 'hammer', pipe: true, cols: { shaft: '#7a4a24', edge: '#c8a060', dark: '#8a5a2a' } },
+  teslarod: { grip: 10, length: 10, head: 'coil', cols: { shaft: '#7a4a24', guard: '#c87a3a', tip: '#7ae0ff' } }
 };
+// Which drawn kit each style uses in place of the fantasy kind.
+export const STYLE_WEAPONS = {
+  scifi: { bow: 'blaster', longbow: 'railrifle', crossbow: 'boltcaster', handbow: 'handblaster', sword: 'beamsword', dagger: 'vibroknife', spear: 'pulselance', axe: 'plasmaaxe', hammer: 'gravhammer', staff: 'psistaff' },
+  cyber: { bow: 'smartpistol', longbow: 'sniper', crossbow: 'railgun', handbow: 'holdout', sword: 'katana', dagger: 'monoblade', spear: 'stunlance', axe: 'chainaxe', hammer: 'breacher', staff: 'neuralrod' },
+  steam: { bow: 'flintpistol', longbow: 'musket', crossbow: 'blunderbuss', handbow: 'derringer', sword: 'sabre', dagger: 'stiletto', spear: 'bayonet', axe: 'boileraxe', hammer: 'steamhammer', staff: 'teslarod' }
+};
+export const styleWeapon = (style, kind) => STYLE_WEAPONS[style]?.[kind] || kind;
+// Shields too: a glowing deflector, a riot shield with its visor slot, a riveted brass buckler.
+export const STYLE_SHIELDS = {
+  scifi: { face: '#7ae0ff', edge: '#d8f6ff', boss: '#ffffff', alpha: 0.75 },
+  cyber: { face: '#2a2e38', edge: '#9aa3ad', boss: '#ff3ad8', slot: '#7ae0ff' },
+  steam: { face: '#c8a060', edge: '#8a5a2a', boss: '#ffd166', rivets: true }
+};
+// What a shot looks like leaving each style's guns and bows: an arrow, a laser bolt, a tracer, a puff of smoke.
+export const STYLE_SHOTS = { fantasy: 'arrow', scifi: 'laser', cyber: 'tracer', steam: 'ball' };
 // The colour a piece of kit takes from what's special about it: rust, a blessing, a curse, arcane light.
 export const AFFIX_TINTS = { rusty: '#a0522d', blessed: '#ffe680', cursed: '#7a3aa8', arcane: '#5ab8ff', fine: '', keen: '', heavy: '', light: '', sturdy: '', swift: '', mighty: '' };
 export function tintHex(hex, tint, by = 0.45) {
@@ -192,6 +240,31 @@ export function weaponCells(kind, angle, hand = { x: 1, y: 13 }) {
   const px = -dy, py = dx; // across it
   const out = [];
   const at = (t, s, colour) => out.push([Math.round(hand.x + dx * t + px * s), Math.round(hand.y + dy * t + py * s), colour]);
+  const C = { shaft: w.cols?.shaft || KIT_COLOURS.U, edge: w.cols?.edge || KIT_COLOURS.T, dark: w.cols?.dark || KIT_COLOURS.t, tip: w.cols?.tip || KIT_COLOURS.F, guard: w.cols?.guard || KIT_COLOURS.Z };
+  if (w.head === 'gun') {
+    // A gun: grip in the hand, the barrel out along the angle, a muzzle at the end.
+    const c = w.cols;
+    at(-1, 1, c.dark); at(0, 1, c.dark);
+    for (let t = -1; t < w.length; t++) at(t, 0, t < 1 ? c.dark : c.body);
+    if (w.length >= 6) for (let t = -2; t >= -3; t--) at(t, 0, c.dark); // a stock to the shoulder
+    if (w.scope) { at(2, -1, c.dark); at(3, -1, c.dark); at(4, -1, c.tip); }
+    if (w.wide) for (let t = Math.floor(w.length / 2); t < w.length; t++) { at(t, -1, c.dark); at(t, 1, c.dark); }
+    if (w.flare) { at(w.length, -1, c.tip); at(w.length, 1, c.tip); }
+    at(w.length, 0, c.tip);
+    return dedupe(out);
+  }
+  if (w.head === 'beam') {
+    for (let t = -1; t < w.grip; t++) at(t, 0, C.shaft);
+    for (let t = w.grip; t < w.grip + w.length; t++) { at(t, 0, w.cols.core); at(t, -1, w.cols.glow); at(t, 1, w.cols.glow); }
+    at(w.grip + w.length, 0, w.cols.glow);
+    return dedupe(out);
+  }
+  if (w.head === 'coil') {
+    for (let t = -1; t < w.grip; t++) at(t, 0, C.shaft);
+    at(w.grip, -1, C.guard); at(w.grip, 1, C.guard); at(w.grip - 2, -1, C.guard); at(w.grip - 2, 1, C.guard);
+    at(w.grip, 0, C.guard); at(w.grip + 1, 0, C.tip); at(w.grip + 2, -1, C.tip); at(w.grip + 2, 1, C.tip);
+    return dedupe(out);
+  }
   if (w.head === 'bow') {
     // A bow is held across: an arc in front of the hand with its string (a longbow reaches further each way).
     const r = w.reach || 4;
@@ -206,28 +279,33 @@ export function weaponCells(kind, angle, hand = { x: 1, y: 13 }) {
     at(w.grip + 1, 0, KIT_COLOURS.F);
     return dedupe(out);
   }
-  for (let t = -1; t < w.grip; t++) at(t, 0, KIT_COLOURS.U);
-  if (w.guard) { at(w.grip, -1, KIT_COLOURS.Z); at(w.grip, 0, KIT_COLOURS.Z); at(w.grip, 1, KIT_COLOURS.Z); }
-  if (w.head === 'blade') { for (let t = w.grip + 1; t <= w.grip + w.length - 2; t++) at(t, 0, KIT_COLOURS.T); at(w.grip + w.length - 1, 0, KIT_COLOURS.F); }
-  if (w.head === 'axe') { at(w.grip - 1, 1, KIT_COLOURS.T); at(w.grip, 1, KIT_COLOURS.T); at(w.grip - 2, 1, KIT_COLOURS.t); at(w.grip - 1, 2, KIT_COLOURS.T); at(w.grip, 2, KIT_COLOURS.T); at(w.grip + 1, 2, KIT_COLOURS.F); at(w.grip - 2, 2, KIT_COLOURS.F); }
-  if (w.head === 'hammer') { for (let s = -2; s <= 2; s++) { at(w.grip, s, KIT_COLOURS.t); at(w.grip + 1, s, KIT_COLOURS.T); } }
-  if (w.head === 'point') { at(w.grip, 0, KIT_COLOURS.T); at(w.grip + 1, 0, KIT_COLOURS.F); at(w.grip - 1, -1, KIT_COLOURS.T); at(w.grip - 1, 1, KIT_COLOURS.T); }
-  if (w.head === 'orb') { at(w.grip, 0, KIT_COLOURS.Z); at(w.grip + 1, 0, KIT_COLOURS.Z); at(w.grip, 1, KIT_COLOURS.Z); at(w.grip + 1, 1, KIT_COLOURS.W); }
+  for (let t = -1; t < w.grip; t++) at(t, 0, C.shaft);
+  if (w.guard) { at(w.grip, -1, C.guard); at(w.grip, 0, C.guard); at(w.grip, 1, C.guard); }
+  if (w.tsuba) at(w.grip, 0, C.guard);
+  // A sabre's blade curves away towards the tip.
+  const bend = (t) => (w.curve ? Math.max(0, Math.round((t - w.grip - 3) / 3)) : 0);
+  if (w.head === 'blade') { for (let t = w.grip + 1; t <= w.grip + w.length - 2; t++) at(t, bend(t), C.edge); at(w.grip + w.length - 1, bend(w.grip + w.length - 1), C.tip); }
+  if (w.head === 'axe') { at(w.grip - 1, 1, C.edge); at(w.grip, 1, C.edge); at(w.grip - 2, 1, C.dark); at(w.grip - 1, 2, C.edge); at(w.grip, 2, C.edge); at(w.grip + 1, 2, C.tip); at(w.grip - 2, 2, C.tip); }
+  if (w.head === 'hammer') { for (let s = -2; s <= 2; s++) { at(w.grip, s, C.dark); at(w.grip + 1, s, C.edge); } if (w.pipe) { at(w.grip + 2, -2, C.shaft); at(w.grip + 3, -2, '#e8e8e8'); } }
+  if (w.head === 'point') { at(w.grip, 0, C.edge); at(w.grip + 1, 0, C.tip); at(w.grip - 1, -1, C.edge); at(w.grip - 1, 1, C.edge); }
+  if (w.head === 'orb') { at(w.grip, 0, C.guard); at(w.grip + 1, 0, C.guard); at(w.grip, 1, C.guard); at(w.grip + 1, 1, w.cols?.tip || KIT_COLOURS.W); }
   return dedupe(out);
 }
 function dedupe(cells) { const seen = new Map(); for (const c of cells) seen.set(`${c[0]},${c[1]}`, c); return [...seen.values()]; }
 
-export function shieldCells(kind, facing = 'down', at = { x: 13, y: 10 }) {
+export function shieldCells(kind, facing = 'down', at = { x: 13, y: 10 }, style = '') {
   if (!kind || kind === 'none') return [];
+  const st = STYLE_SHIELDS[style];
   const tall = kind === 'tall';
   const h = tall ? 6 : 4, wd = facing === 'left' || facing === 'right' ? 2 : 3;
   const out = [];
   for (let y = 0; y < h; y++) for (let x = 0; x < wd; x++) {
     const edge = y === 0 || y === h - 1 || x === 0 || x === wd - 1;
     if (!tall && (y === 0 || y === h - 1) && (x === 0 || x === wd - 1)) continue; // round corners
-    out.push([at.x + x, at.y + y, edge ? KIT_COLOURS.t : facing === 'up' ? KIT_COLOURS.V : KIT_COLOURS.T]);
+    const face = st && facing !== 'up' ? (st.slot && y === 1 && !edge ? st.slot : st.rivets && edge && (x + y) % 2 === 0 ? st.boss : st.face) : facing === 'up' ? KIT_COLOURS.V : KIT_COLOURS.T;
+    out.push([at.x + x, at.y + y, edge ? (st ? st.edge : KIT_COLOURS.t) : face]);
   }
-  if (facing !== 'up') out.push([at.x + Math.floor(wd / 2), at.y + Math.floor(h / 2), KIT_COLOURS.Z]);
+  if (facing !== 'up') out.push([at.x + Math.floor(wd / 2), at.y + Math.floor(h / 2), st ? st.boss : KIT_COLOURS.Z]);
   return out;
 }
 
@@ -245,8 +323,8 @@ export function drawFigure(ctx, x, y, px, look, opts = {}) {
   const prevAlpha = ctx.globalAlpha;
   if (Number.isFinite(opts.alpha)) ctx.globalAlpha = opts.alpha;
   const weaponBehind = fig.facing === 'up' || (fig.facing === 'left' && !Number.isFinite(opts.angle));
-  const wcells = weapon && weapon !== 'none' ? weaponCells(weapon, angle, fig.hand) : [];
-  const scells = shieldCells(shield, fig.facing, fig.shieldAt);
+  const wcells = weapon && weapon !== 'none' ? weaponCells(opts.style ? styleWeapon(opts.style, weapon) : weapon, angle, fig.hand) : [];
+  const scells = shieldCells(shield, fig.facing, fig.shieldAt, opts.style);
   const wcell = kitCell(opts.weaponTint), scell = kitCell(opts.shieldTint);
   if (weaponBehind) for (const [cx, cy, c] of wcells) wcell(cx, cy, c);
   if (!fig.shieldAt.front) for (const [cx, cy, c] of scells) scell(cx, cy, c);

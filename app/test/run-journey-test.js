@@ -568,5 +568,61 @@ const P = (o) => ({ id: o.id || o.name.toLowerCase(), who: 'friend', ...o });
   check('the screen asks the computer for the land on a phone', /\/api\/adventure\/journey\/piece/.test(play2) && /phone: true/.test(read('android/app/src/main/assets/www/phone.js')));
 }
 
+// ---------- Journey v1.3: music, sound, and each style's own kit and names ----------
+{
+  const P = await import(pathToFileURL(path.join(root, 'public/journey-play.js')));
+  // Every tune lines up: the tune, the bass and the drums are the same length, and every note is a real note.
+  let tunesOk = true;
+  for (const [name, sg] of Object.entries(P.SONGS)) {
+    const L = ['lead', 'bass', 'drums'].map((k) => P.parseLine(sg[k]).length);
+    if (L[0] !== L[1] || (L[2] && L[2] !== L[0])) tunesOk = false;
+    for (const k of ['lead', 'bass']) for (const n of P.parseLine(sg[k])) if (!n.rest && !(n.hz > 20 && n.hz < 5000)) { tunesOk = false; console.log('  bad note', name, n.name); }
+  }
+  check('every tune\'s parts line up and every note is a real note', tunesOk);
+  check('A4 is 440 and C4 is middle C', Math.round(P.noteHz('A4')) === 440 && Math.round(P.noteHz('C4')) === 262 && P.noteHz('nope') === 0);
+  check('each place has its own tune', P.songFor({ kind: 'inn' }) === 'inn' && P.songFor({ kind: 'world', alt: 'ground' }) === 'land' && P.songFor({ kind: 'world', alt: 'sky' }) === 'sky' && P.songFor({ kind: 'world', alt: 'deep' }) === 'deep' && P.songFor({ kind: 'village' }) === 'town' && P.songFor({ kind: 'castle' }) === 'castle' && P.songFor({ kind: 'cave' }) === 'dungeon' && P.songFor({ voyage: true, kind: 'world' }) === 'sea');
+  check('fights have their own music, and keepers louder still', P.songFor({ battle: true, kind: 'inn' }) === 'battle' && P.songFor({ battle: true, boss: true }) === 'boss');
+  // A pretend sound card: counts the notes played, never makes a sound.
+  const made = { osc: 0, noise: 0, closed: false };
+  const param = () => ({ value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {}, cancelScheduledValues() {} });
+  const node = () => ({ connect() {}, start() {}, stop() {}, frequency: param(), gain: param(), type: '' });
+  class FakeCtx { constructor() { this.currentTime = 0; this.sampleRate = 8000; this.state = 'running'; this.destination = {}; } createGain() { return node(); } createOscillator() { made.osc++; return node(); } createBiquadFilter() { return node(); } createBufferSource() { made.noise++; return node(); } createBuffer(c, n) { return { getChannelData: () => new Float32Array(n) }; } close() { made.closed = true; } }
+  let ticks = null;
+  const snd = P.createJourneySound({ Ctx: FakeCtx, setTimer: (f) => { ticks = f; return 1; }, clearTimer: () => { ticks = null; } });
+  check('sound effects play', snd.sfx('chest') && snd.sfx('fire') && made.osc > 0 && made.noise > 0);
+  const kinds = ['step', 'bump', 'door', 'talk', 'menu', 'chest', 'coin', 'buy', 'swing', 'hit', 'crit', 'miss', 'shot', 'heal', 'drink', 'fire', 'frost', 'storm', 'holy', 'shadow', 'wild', 'mind', 'star', 'spell', 'breath', 'feed', 'tame', 'down', 'flee', 'takeoff', 'land', 'splash', 'dive', 'surface', 'fish', 'swoop', 'sail', 'save', 'win', 'lose', 'level', 'quest', 'encounter', 'ride'];
+  check('every moment has a sound: doors, chests, coin, hits, every kind of magic, items, flying, diving, wins and level-ups', kinds.every((k) => snd.sfx(k)));
+  const before = made.osc;
+  for (const st of ['scifi', 'cyber', 'steam']) { snd.setStyle(st); for (const k of ['door', 'swing', 'shot', 'hit', 'coin']) snd.sfx(k); }
+  check('...and each style has its own: sci-fi zaps, cyberpunk glitches, steampunk hisses and clanks', made.osc > before && snd.style === 'steam');
+  snd.music('town', 'cyber');
+  const n0 = made.osc; ticks?.(); 
+  check('music plays: the town tune, in the style\'s own instruments', snd.song === 'town' && made.osc > n0);
+  snd.setOn(false);
+  check('the 🔊 button turns it all off', !snd.on && !snd.sfx('chest'));
+  snd.setOn(true); snd.stop();
+  check('leaving Journey stops the music and lets the sound card go', snd.song === '' && made.closed && ticks === null);
+  const quiet = P.createJourneySound({ Ctx: undefined, setTimer: () => { throw new Error('no timer without sound'); } });
+  quiet.music('land'); 
+  check('with no sound at all (an old browser), nothing breaks and no timer runs', quiet.sfx('chest') === false);
+  const play3 = read('public/journey-play.js');
+  check('the screen has a 🔊 button, M to turn it off, and remembers the choice', /data-jy="sound"/.test(play3) && /e\.key === 'm'/.test(play3) && /bob\.journey\.sound/.test(play3));
+  check('the music is our own: no sound files at all', !/\.(mp3|ogg|wav|m4a)\b/i.test(play3));
+  // Each style draws its own kit: no bows in cyberpunk.
+  check('cyberpunk carries smart pistols and mono-katanas, not bows and swords', S.styleWeapon('cyber', 'bow') === 'smartpistol' && S.styleWeapon('cyber', 'sword') === 'katana' && S.styleWeapon('fantasy', 'bow') === 'bow');
+  check('every style has a drawn weapon for every weapon there is', ['scifi', 'cyber', 'steam'].every((st) => Object.keys(R.WEAPONS).filter((k) => k !== 'none').every((k) => S.styleWeapon(st, k) !== k && S.weaponCells(S.styleWeapon(st, k), 25).length >= 3)));
+  check('...guns in the energy and smoke styles', ['scifi', 'cyber', 'steam'].every((st) => ['bow', 'longbow', 'crossbow', 'handbow'].every((k) => S.WEAPON_SHAPES[S.styleWeapon(st, k)].head === 'gun')));
+  check('shields look the part too', S.shieldCells('round', 'down', undefined, 'scifi').some((c) => c[2] === '#7ae0ff') && S.shieldCells('round', 'down', undefined, 'cyber').some((c) => c[2] === '#ff3ad8'));
+  check('shots: arrows, laser bolts, tracers and lead balls', S.STYLE_SHOTS.fantasy === 'arrow' && S.STYLE_SHOTS.scifi === 'laser' && S.STYLE_SHOTS.cyber === 'tracer' && S.STYLE_SHOTS.steam === 'ball');
+  // Names fit the style; the numbers don't change.
+  check('cyberpunk names: gangers, netrunners, hacks and stims', R.restyle('A Goblin and a Wizard. Scroll of fireball. Raise!', 'cyber') === 'A Ganger and a Netrunner. Meltdown hack. Reboot!');
+  check('steampunk names: highwaymen, aethermancers and tesla storms', R.restyle('Two Bandits. The Wizard casts Spark storm.', 'steam') === 'Two Highwaymen. The Aethermancer casts Tesla storm.');
+  check('sci-fi names: raiders, technomancers and plasma bolts', R.restyle('A bandit. A Wizard casts Firebolt.', 'scifi') === 'A raider. A Technomancer casts Plasma bolt.');
+  check('a keeper\'s title follows the style', R.restyle('Grubnick, the goblin chief', 'cyber') === 'Grubnick, the ganger chief');
+  check('...but a plain word in a sentence is left alone', R.restyle('I will raise my glass.', 'cyber') === 'I will raise my glass.');
+  check('fantasy names never change', R.restyle('A Goblin and a Wizard.', 'fantasy') === 'A Goblin and a Wizard.');
+  check('no trademarked game names in the style words', !/final fantasy|dragon quest|chrono|zelda|pokémon|earthbound|bobiverse|squaresoft|enix|cyberpunk 2077|shadowrun|rockerboy/i.test(read('public/journey-rules.js') + read('public/journey-sides.js')));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
