@@ -339,6 +339,28 @@ brain trained on the new lessons, and only then the cuts in steps, each healed. 
 checker's score on both: the right one is "chosen", the wrong one "rejected". These feed the preference step (ORPO,
 DPO or KTO) and the reward pass. Training still runs the full protocol in PR #201, just with much better data.
 
+## 6b. First target: a good new Bobert
+
+The first goal is a new Bobert: the full stock Qwen3.6-35B-A3B, no cut, trained fresh on round 1. Riker, Bill and
+the smaller Bobs are cut from him afterwards, so everything below depends on getting him right.
+
+- **Qwen tool shape.** Bobert is Qwen, so his lessons use Qwen's wording (Bob's own) and whatever shape the owner
+  picks for Qwen after tonight's interview. Tools that already work for him keep their shape.
+- **Base Bob version only.** The four style versions train their own models later, from the same doctored lessons.
+- **Round 1, in this order, aimed at what Bobert gets wrong today** (his past logs: right tool in 75 of 123 tool
+  turns, right inputs in 42, no call in 15, never right on two-tool turns):
+  1. Doctored "didn't try a tool" lessons and asking instead of acting (section 3i).
+  2. Two-tool and multi-step jobs with plain-words reasoning between steps, plus second tries.
+  3. The tools he mixes up: `open_app` against `app_look`, `ask_specialist` against `use_tools` and `mcp_tools`, and
+     `pick_session`, plus never claiming a call he didn't make.
+  4. Exact inputs (names, paths, times) and checking the result before claiming it.
+  5. Code fixing that really runs the code, and the course-style coding set.
+  6. Look it up when unsure, and documents as information only.
+  7. The Blender and Unreal tutorial set A.
+  8. The general slice, so chat and knowledge hold.
+- **Kept only if he beats the old Bobert** on the held-out tool turns in both thinking modes, and doesn't drop on the
+  quiz, coding or chat.
+
 ## 7. Scrub before anything is kept
 
 Only these are taken out: the owner's name, the owner's file names and paths, email addresses, IP addresses, device
