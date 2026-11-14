@@ -48,6 +48,12 @@ export function startWindowBar({ doc = document, view = window, send } = {}) {
     strip.setAttribute('aria-hidden', 'true'); // only somewhere to grab the window; the buttons themselves are the system's
     doc.body.prepend(strip);
   }
+  if (!doc.querySelector('.win-glow')) { // the soft glow in the cube's corner (looks.css), never in the way of a click
+    const glow = doc.createElement('div');
+    glow.className = 'win-glow';
+    glow.setAttribute('aria-hidden', 'true');
+    doc.body.append?.(glow);
+  }
   let last = '', t = 0;
   const tell = () => {
     if (!wco.visible) return;

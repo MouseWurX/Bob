@@ -359,7 +359,7 @@ function clean(patch) {
   if ('parts3d' in out) out.parts3d = out.parts3d === true; // "3D parts", off by default (parts3d.js)
   if ('model3d' in out) out.model3d = out.model3d === true; // "Pictures to 3D models", off by default (model3d.js)
   if ('tray' in out) out.tray = out.tray !== false; // 1.5.94 "Minimise to tray"; on unless switched off since 1.5.134 (the owner asked for it)
-  if ('ownBar' in out) out.ownBar = out.ownBar === true; // 1.5.227 "Window buttons on Bob's bar", off by default (electron/window-bar.cjs)
+  if ('ownBar' in out) out.ownBar = out.ownBar !== false; // 1.5.227 "Window buttons on Bob's bar", on unless switched off (the owner asked for it; electron/window-bar.cjs)
   if ('lookIcon' in out) out.lookIcon = out.lookIcon !== false; // 1.5.94 "Use Bob's look as his icon"; on unless switched off since 1.5.134 (the owner asked for it)
   if ('houseStyle' in out) out.houseStyle = cleanHouseStyle(out.houseStyle); // 1.5.34 House style (public/house-style.js)
   if ('projectList' in out) out.projectList = cleanProjects(out.projectList); // 1.5.34 Projects in Settings

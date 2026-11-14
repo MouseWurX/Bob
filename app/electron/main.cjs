@@ -321,7 +321,7 @@ let win = null;
 // The brain sends both switches and the pictures (src/app-icon.js windowState) at start-up and on every change.
 const STARTED_HIDDEN = process.argv.includes('--hidden');
 const iconFile = (f) => path.join(root, 'public', 'icons', f);
-let winState = { tray: false, lookIcon: false, lookName: '', icons: null };
+let winState = { tray: false, lookIcon: false, lookName: '', icons: null, ownBar: true };
 let tray = null;
 let quitting = false;
 app.on('before-quit', () => { quitting = true; });
@@ -345,7 +345,7 @@ function openAsk(port) {
     width, height, x: Math.round(area.x + (area.width - width) / 2), y: Math.round(area.y + area.height * 0.18),
     title: 'Ask Bob', icon: iconFile(process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#121212',
     autoHideMenuBar: true, alwaysOnTop: true, skipTaskbar: true, minimizable: false, maximizable: false, fullscreenable: false, resizable: true,
-    ...(winState.ownBar === true ? { frame: false } : {}), // 1.5.227: no title bar; its top line drags it, ✕ or Esc puts it away
+    ...(winState.ownBar !== false ? { frame: false } : {}), // 1.5.227: no title bar; its top line drags it, ✕ or Esc puts it away
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }
   });
   askWin.setAlwaysOnTop(true, 'floating');
@@ -354,7 +354,7 @@ function openAsk(port) {
   askWin.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url) && !url.startsWith(base)) shell.openExternal(url); return { action: 'deny' }; });
   askWin.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(base + '/ask.html')) e.preventDefault(); });
   askWin.on('closed', () => { askWin = null; });
-  askWin.loadURL(base + '/ask.html' + (winState.ownBar === true ? '?bar=0' : ''));
+  askWin.loadURL(base + '/ask.html' + (winState.ownBar !== false ? '?bar=0' : ''));
 }
 globalThis.bobGlobalAsk = (g, port) => {
   const want = g && g.on === true && typeof g.key === 'string' ? g.key : '';
@@ -492,7 +492,7 @@ async function start() {
     catch (e) { dialog.showErrorBox('Bob', `Bob's brain wouldn't start: ${e.message}`); app.quit(); return; }
     for (let i = 0; i < 80 && !(await up(home.port)); i++) await new Promise((r) => setTimeout(r, 250));
   }
-  barNow = winState.ownBar === true;
+  barNow = winState.ownBar !== false;
   win = new BrowserWindow({
     width: 1200, height: 820, minWidth: 360, minHeight: 480,
     ...windowBar.barOptions(process.platform, barNow), // 1.5.227: no system title bar, the buttons on Bob's bar

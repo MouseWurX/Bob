@@ -353,3 +353,20 @@ body.own-bar.look-lamplight .win-strip { background: transparent; border-bottom:
 body.own-bar dialog.cellar:not(.page)[open] { top: var(--win-top); height: calc(100dvh - var(--win-top)); }
 @media (max-width: 1100px) { body.own-bar:not(.look-lamplight) :is(.now, .viewer) { top: var(--win-top); } }
 @media (max-width: 640px) { body.own-bar :is(.now, .viewer) { top: var(--win-top); } body.own-bar:not(.left-folded) .side { top: var(--win-top); } }
+/* The cube's corner: a thin lit edge round the window's top-left corner, brightest at the corner and fading out
+   along the top and the left side, in the cube's colour. It follows the cube's light (--cube-light, mind-cube.js)
+   like Lamplight's glow does, and never takes a click. The window's own corners are the system's: rounded on
+   Windows 11 and a Mac; on Linux your desktop decides. */
+body.own-bar::after { content: ""; position: fixed; inset: 0; z-index: 9500; pointer-events: none; border-radius: var(--win-round, 8px); padding: 2px;
+  background: radial-gradient(520px 360px at 0 0, color-mix(in srgb, var(--cube, var(--accent)) 95%, #fff 5%), color-mix(in srgb, var(--cube, var(--accent)) 45%, transparent) 35%, transparent 75%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude;
+  opacity: calc(.7 + var(--cube-light, .3) * .5); }
+/* and a soft glow just inside that corner, under the line */
+.win-glow { display: none; }
+body.own-bar .win-glow { display: block; position: fixed; inset: 0; z-index: 9499; pointer-events: none; border-radius: var(--win-round, 8px);
+  background: radial-gradient(220px 150px at 0 0, color-mix(in srgb, var(--cube, var(--accent)) 22%, transparent), transparent 70%);
+  -webkit-mask: radial-gradient(700px 480px at 0 0, #000 30%, transparent 75%); mask: radial-gradient(700px 480px at 0 0, #000 30%, transparent 75%);
+  box-shadow: inset 3px 3px 18px -6px color-mix(in srgb, var(--cube, var(--accent)) 80%, transparent);
+  opacity: calc(.6 + var(--cube-light, .3) * .7); }
+body.own-bar.still::after, body.own-bar.still .win-glow { opacity: .85; }

@@ -91,7 +91,7 @@ export function windowState(cfg = {}) {
     // 150: the tray picture with a dot, ready for when a job is done or something needs you (Bob's look, even with
     // "Use Bob's look as his icon" off, since the plain icon file can't be drawn on).
     trayDot: cfg.trayDot === true,
-    ownBar: cfg.ownBar === true, // 1.5.227 Window buttons on Bob's bar: read when his window opens (off unless turned on)
+    ownBar: cfg.ownBar !== false, // 1.5.227 Window buttons on Bob's bar: read when his window opens (on unless switched off: the owner asked for it)
     dotIcons: cfg.trayDot === true ? { 16: dotPng(id, 16), 24: dotPng(id, 24), 32: dotPng(id, 32), badge: dotPng('', 16) } : null,
     ...(cfg.trayDot === true ? {} : { dot: false })
   };

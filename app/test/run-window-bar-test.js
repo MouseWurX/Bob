@@ -15,12 +15,12 @@ let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
 const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
-// ---- off unless turned on ----
-check('off by default (windowState)', windowState({}).ownBar === false);
-check('on when turned on', windowState({ ownBar: true }).ownBar === true);
+// ---- on unless switched off (the owner asked for it, Nov 14) ----
+check('on by default (windowState)', windowState({}).ownBar === true);
+check('off when switched off', windowState({ ownBar: false }).ownBar === false);
 check('a saved key', SETTING_KEYS.includes('ownBar'));
-check('only true counts', mergeSettings({}, { ownBar: 'yes' }).ownBar === false && mergeSettings({}, { ownBar: true }).ownBar === true);
-check('not in config.example.json (so new installs are off too)', !('ownBar' in JSON.parse(read('config.example.json'))));
+check('only false turns it off', mergeSettings({}, { ownBar: 'no' }).ownBar === true && mergeSettings({}, { ownBar: false }).ownBar === false);
+check('not in config.example.json (on for new installs and upgrades alike)', !('ownBar' in JSON.parse(read('config.example.json'))));
 
 // ---- the window's options, per system ----
 check('off: the usual window', Object.keys(bar.barOptions('win32', false)).length === 0);
@@ -83,28 +83,29 @@ check('Lamplight on a narrow window: thin strip height', barHeight(fakePage().do
 
 // ---- the window program and the brain ----
 const main = read('electron/main.cjs'), server = read('src/server.js'), css = read('public/looks.css');
-check('main window made with the bar options', /barNow = winState\.ownBar === true;[\s\S]{0,200}windowBar\.barOptions\(process\.platform, barNow\)/.test(main));
+check('main window made with the bar options', /barNow = winState\.ownBar !== false;[\s\S]{0,200}windowBar\.barOptions\(process\.platform, barNow\)/.test(main));
 check('colours go through the check', /windowBar\.cleanColours\(b\)/.test(main));
 check('only Bob\'s own page may set them', /p === '\/api\/window-bar'\)[^\n]*if \(isLocal\)/.test(server));
 check('saved and handed to the window', /typeof b\.ownBar === 'boolean'[^\n]*applyWindowState\(cfg\)/.test(server));
 check('the bar drags, its controls do not', /\.side \{ -webkit-app-region: drag; app-region: drag;/.test(css) && /\.side :is\(button, a, input[^)]*\) \{ -webkit-app-region: no-drag/.test(css));
 check('the bar keeps clear of the system buttons', /padding-right: calc\(var\(--s5\) \+ var\(--win-right\)\)/.test(css));
+check('the cube-corner glow never takes a click', /body\.own-bar::after \{[^}]*pointer-events: none/.test(css) && /body\.own-bar \.win-glow \{[^}]*pointer-events: none/.test(css));
 check('Find shrinks, tabs never do', /#findBtn \.lbl \{ display: none; \}/.test(css) && !/own-bar[^\n]*nav-item \.lbl \{ display: none/.test(css));
 
 // ---- the ask box ----
 const ask = read('public/ask.html'), askJs = read('public/ask.js');
 check('ask box: the answer above, the typing box at the bottom', ask.indexOf('id="askOut"') < ask.indexOf('id="askForm"'));
 check('ask box: follows the theme and look', /applySavedStyle\(\)/.test(askJs) && /looks\.css/.test(ask));
-check('ask box: no title bar only with the setting, and a way to put it away', /winState\.ownBar === true \? \{ frame: false \}/.test(main) && /id="askClose"[^>]*aria-label=/.test(ask) && /askClose'\)\.onclick/.test(askJs));
+check('ask box: no title bar only with the setting, and a way to put it away', /winState\.ownBar !== false \? \{ frame: false \}/.test(main) && /id="askClose"[^>]*aria-label=/.test(ask) && /askClose'\)\.onclick/.test(askJs));
 
 // ---- Help ----
 const ids = new Map(HELP.map((e) => [e.id, e]));
 check('Help page in Bob\'s voice', /my window has no system title bar/.test(ids.get('window-bar')?.html || ''));
 check('FAQ, folded into a page', ids.has('faq-window-bar') && FOLD['faq-window-bar'] === 'tray');
 check('glossary entry', /<dt>Title bar<\/dt>/.test(ids.get('glossary')?.html || ''));
-check('settings row says Off', /set\('Window buttons on Bob\\'s bar', 'Off'/.test(read('public/help-content.js')));
+check('settings row says On', /set\('Window buttons on Bob\\'s bar', 'On'/.test(read('public/help-content.js')));
 check('Settings switch', /sswitch\('ownBar'/.test(read('public/cellar-pages.js')));
-check('settings inventory row', /\| Window buttons on Bob's bar \| Off unless you turn it on/.test(read('docs/SETTINGS-INVENTORY.md')));
+check('settings inventory row', /\| Window buttons on Bob's bar \| On unless you turn it off/.test(read('docs/SETTINGS-INVENTORY.md')));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

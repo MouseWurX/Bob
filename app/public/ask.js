@@ -7,7 +7,7 @@ export const ASK_CHAT = 'ask-box';
 // change them while the box is open. "?bar=0" (Window buttons on Bob's bar on) means no system title bar here.
 applySavedStyle();
 addEventListener('storage', (e) => { if (e.key === 'bob-style') applySavedStyle(); });
-if (new URLSearchParams(location.search).get('bar') === '0') document.body.classList.add('frameless');
+if (new URLSearchParams(location.search).get('bar') === '0') document.body.classList.add('frameless', 'own-bar'); // own-bar: the cube-corner glow (looks.css)
 const $ = (id) => document.getElementById(id);
 const input = $('askIn'), out = $('askOut'), note = $('askNote');
 let turn = '';
