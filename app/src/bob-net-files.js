@@ -291,7 +291,8 @@ export class Inbox {
     if (kind === 'brain' && (!files.some((f) => f.role === 'gguf') || files.some((f) => f.role === 'card' && f.bytes > 65536))) return { code: 400, error: 'That isn\'t a brain.' };
     const total = files.reduce((a, f) => a + f.bytes, 0);
     if (total > MAX_BYTES) return { code: 400, error: 'too big' };
-    const it = { id, token, from: bob.address, fromName: str(b?.from, 40) || bob.name || 'another of your Bobs', kind, title: str(b?.title, 80) || files[0].name, files, total, done: 0, at: this.now(), state: 'asking' };
+    // Nov 14 (first real copy: the card said the owner's Windows name, not npc): the name on my own list says who it's from.
+    const it = { id, token, from: bob.address, fromName: str(bob.name, 40) || str(b?.from, 40) || 'another of your Bobs', kind, title: str(b?.title, 80) || files[0].name, files, total, done: 0, at: this.now(), state: 'asking' };
     this.items.set(id, it); this.save();
     this.broadcast(this.card(it));
     this.log('bob-net', `${it.fromName} offers ${kind === 'brain' ? 'the brain ' : ''}${it.title} (${gb(total)}): waiting for your Yes`);
