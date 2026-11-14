@@ -5,7 +5,7 @@
 //
 //   node lesson-doctor.mjs --seeds <a.jsonl,b.jsonl> --name <set name> --url <teacher> [--alike 4] [--routes 2]
 //        [--retry 0.25] [--versions base,raider,watson,sherlock,vulcan] [--never <files>] [--ledger <ledger.jsonl>]
-//        [--dry] (no teacher: makes ideas from the seeds' own requests only, to check the plumbing)
+//        [--limit N] (only the first N failures, for a trial) [--dry] (no teacher: makes ideas from the seeds' own requests only, to check the plumbing)
 //
 // A seed is one failure: { request | messages, cause, tool, right_tool, why, job, source, heldout, never_solved }.
 //   heldout: true     a test item (quiz, interview turn): only new look-alikes are made, and the item joins the never list
@@ -91,7 +91,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   const name = String(o.name).replace(/[^\w.-]/g, '');
   const root = o['out-root'] ? String(o['out-root']) : locate(o).out;
   const files = String(o.seeds).split(',').filter(Boolean);
-  const seeds = files.flatMap((f) => readJsonl(f).map((r) => readSeed(r, path.basename(f)))).filter((s) => s.request);
+  const seeds = files.flatMap((f) => readJsonl(f).map((r) => readSeed(r, path.basename(f)))).filter((s) => s.request).slice(0, Number(o.limit) > 0 ? Number(o.limit) : Infinity); // --limit N: a trial batch
   // the never list: the given files, plus every held-out seed's own request
   const never = await neverTaught(o.never ? String(o.never).split(',').filter(Boolean) : []);
   for (const s of seeds) if (s.heldout) never.put({ ...fingerprint({ q: s.request }), from: `held-out seed (${s.source})` });
