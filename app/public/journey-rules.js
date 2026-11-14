@@ -664,7 +664,7 @@ export function newJourney({ seed = String(Date.now()), size = 'medium', party =
     v: SAVE_VERSION, seed: String(seed).slice(0, 40), size, at: 'inn', x: inn?.start.x ?? 21, y: inn?.start.y ?? 29, facing: 'up',
     party: p, bag: { tonic: 3, water: 1 }, owned, coin: 500, steps: 0, danger: 0, next: 14, opened: [], beaten: [], talked: [], felled: [], wanted: {}, fines: 0, battles: 0, won: false,
     style: STYLE_IDS.includes(style) ? style : 'fantasy', layout: layout === 1 ? 1 : LAYOUT, alt: 'ground', riding: false, quests: {}, found: [], seen: [], tamed: 0,
-    mats: {}, gathered: {}, craft: { xp: 0, level: 1 }, home: 'inn', bags: ['pouch'], bagGear: 'pouch'
+    mats: {}, gathered: {}, craft: { xp: 0, level: 1 }, home: 'inn', bags: ['pouch'], bagGear: 'pouch', regions: [], met: [], lore: [], banter: []
   };
 }
 // Cleans a save from disk (or from the page) into a journey this file can play. Unknown things are dropped.
@@ -700,6 +700,7 @@ export function cleanJourney(s, makeWorld) {
   j.home = typeof s.home === 'string' && world?.map(s.home) ? s.home : 'inn';
   j.bags = ['pouch', ...new Set((Array.isArray(s.bags) ? s.bags : []).filter((b) => BAGS[b] && b !== 'pouch'))];
   j.bagGear = j.bags.includes(s.bagGear) ? s.bagGear : 'pouch';
+  j.regions = strs(s.regions, 64).filter((v) => /^r\d+$/.test(v)); j.met = strs(s.met, 40); j.lore = strs(s.lore, 2000); j.banter = strs(s.banter, 20).filter((v) => BANTER[v]);
   // Crafting (Journey v1.3): materials, what's been picked lately, and the crafting level.
   for (const [k, n] of Object.entries(s.mats || {})) if (MATERIALS[k] && Number(n) > 0) j.mats[k] = Math.min(MAT_MAX, Math.floor(Number(n)));
   for (const [k, n] of Object.entries(s.gathered || {})) if (typeof k === 'string' && k.length < 60 && Number.isFinite(Number(n))) j.gathered[k] = Math.floor(Number(n));
@@ -1847,6 +1848,209 @@ export function craft(j, id, { bench = false, kit, rnd = Math.random } = {}) {
   return { ok: true, text: `${text}${up ? ` Crafting is now level ${up}!` : ''}`, up };
 }
 
+// ---------- The story told along the way (Journey v1.3) ----------
+// A narrator for each style speaks when you reach a named town or a new region. The land is split into regions,
+// each named for its ground. Story towns (towns, castles, the peoples' own places) are named on the map; hamlets and
+// villages keep to themselves but have their own local lore. "Where next" always says who to talk to or who to find,
+// and where to look. People answer from a short list of things you can say.
+export const NARRATORS = { fantasy: 'The Chronicle', scifi: 'Ship\'s log', cyber: 'Newsfeed', steam: 'The Gazette' };
+export const narrator = (j) => NARRATORS[j.style] || NARRATORS.fantasy;
+export const STORY_KINDS = new Set(['town', 'castle', 'aerie', 'reef', 'orccamp', 'dwarfhold', 'elfwood', 'burrow', 'glade', 'stilts', 'gnome', 'centaur', 'giant', 'goblin']);
+export const LOCAL_KINDS = new Set(['hamlet', 'village']);
+export const isStoryTown = (s) => Boolean(s && STORY_KINDS.has(s.kind));
+const REGION_WORDS = {
+  fantasy: { plains: ['Plains', 'Downs', 'Vale'], forest: ['Forest', 'Wood', 'Weald'], swamp: ['Fens', 'Mire', 'Marsh'], desert: ['Sands', 'Wastes', 'Dunes'], peaks: ['Peaks', 'Highlands', 'Crags'], sea: ['Sea', 'Sound', 'Deeps'] },
+  scifi: { plains: ['Flats', 'Expanse', 'Basin'], forest: ['Jungle', 'Biome', 'Canopy'], swamp: ['Bog', 'Wetlands', 'Spore marsh'], desert: ['Dust sea', 'Barrens', 'Dune field'], peaks: ['Ridge', 'Massif', 'Uplands'], sea: ['Ocean', 'Gulf', 'Trench'] },
+  cyber: { plains: ['Sprawl', 'Zone', 'Blocks'], forest: ['Greenbelt', 'Overgrowth', 'Parklands'], swamp: ['Runoff', 'Sludge flats', 'Floodzone'], desert: ['Dead zone', 'Rad flats', 'Scrapyards'], peaks: ['Heights', 'Stacks', 'Spires'], sea: ['Bay', 'Harbour', 'Drink'] },
+  steam: { plains: ['Commons', 'Fields', 'Shire'], forest: ['Woods', 'Chase', 'Timberland'], swamp: ['Fens', 'Bogs', 'Levels'], desert: ['Barrens', 'Wastes', 'Flats'], peaks: ['Fells', 'Peaks', 'Tors'], sea: ['Sea', 'Channel', 'Firth'] }
+};
+const REGION_SYL_A = ['Ash', 'Bel', 'Cor', 'Dun', 'Eld', 'Fen', 'Gal', 'Har', 'Ist', 'Kel', 'Lor', 'Mor', 'Nor', 'Os', 'Pell', 'Quen', 'Ros', 'Sel', 'Tor', 'Ul', 'Var', 'Wen', 'Yar', 'Zan'];
+const REGION_SYL_B = ['by', 'dell', 'fall', 'gard', 'holm', 'lin', 'mere', 'more', 'ridge', 'shaw', 'stead', 'thorn', 'vale', 'wick', 'wyn', 'ford'];
+const KIND_OF_TILE = { '.': 'plains', '"': 'plains', ':': 'plains', F: 'forest', T: 'forest', w: 'swamp', d: 'desert', ',': 'desert', '^': 'peaks', µ: 'peaks', '~': 'sea' };
+const regionCache = new WeakMap();
+// The regions of a land: seeded centres, each tile belongs to the nearest. Named for the ground round the centre.
+export function regionsOf(world, style = 'fantasy') {
+  style = REGION_WORDS[style] ? style : 'fantasy';
+  const cached = regionCache.get(world)?.[style]; if (cached) return cached;
+  const m = world.map('world'), w = m.w, h = m.h;
+  const n = clamp(Math.round((w * h) / 1000), 4, 48);
+  const rnd = seeded(`${world.seed}:regions`);
+  const used = new Set(), list = [];
+  const cols = Math.ceil(Math.sqrt(n * w / h)), rows = Math.ceil(n / cols);
+  // A phone's land may be in pieces: missing tiles are skipped.
+  for (let ry = 0; ry < rows; ry++) for (let rx = 0; rx < cols; rx++) {
+    if (list.length >= n) break;
+    const x = clamp(Math.floor(((rx + 0.2 + rnd() * 0.6) / cols) * w), 1, w - 2), y = clamp(Math.floor(((ry + 0.2 + rnd() * 0.6) / rows) * h), 1, h - 2);
+    const count = {}, step = Math.max(1, Math.floor(Math.min(w / cols, h / rows) / 10));
+    for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) { const k = KIND_OF_TILE[m.rows[clamp(y + dy * step, 0, h - 1)]?.[clamp(x + dx * step, 0, w - 1)]]; if (k) count[k] = (count[k] || 0) + 1; }
+    const land = Object.entries(count).filter(([k]) => k !== 'sea').sort((a, b) => b[1] - a[1]);
+    const kind = (count.sea || 0) > 80 || !land.length ? 'sea' : land[0][0];
+    let base, tries = 0;
+    do base = `${REGION_SYL_A[Math.floor(rnd() * REGION_SYL_A.length)]}${REGION_SYL_B[Math.floor(rnd() * REGION_SYL_B.length)]}`; while (used.has(base) && tries++ < 40);
+    used.add(base);
+    const words = REGION_WORDS[style][kind];
+    list.push({ id: `r${list.length}`, x, y, kind, name: `the ${base} ${words[Math.floor(rnd() * words.length)]}` });
+  }
+  const out = { list, at(x, y) { let best = list[0], bd = Infinity; for (const r of list) { const d = (r.x - x) ** 2 + (r.y - y) ** 2; if (d < bd) { bd = d; best = r; } } return best; } };
+  regionCache.set(world, { ...(regionCache.get(world) || {}), [style]: out });
+  return out;
+}
+export const regionAt = (world, x, y, style) => regionsOf(world, style).at(x, y);
+// Where on the land a journey is: the spot itself out there, or the place it's in.
+export function landSpot(world, j) {
+  const map = mapOf(world, j);
+  if (map.kind === 'world') return { x: j.x, y: j.y };
+  const s = world.sites.find((x) => x.id === (map.site || map.id)) || world.sites.find((x) => x.id === world.home);
+  return s ? { x: s.x, y: s.y } : { ...world.start };
+}
+const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+const REGION_LINES = {
+  plains: ['Open country, long views, and nowhere to hide.', 'Farms thin out here, and the grass grows taller than the fences.'],
+  forest: ['The trees close in overhead. Things move between them.', 'Old roots, old paths, and older stories about both.'],
+  swamp: ['The ground gives under every step. Something bubbles.', 'Mist on the water, and eyes in the mist.'],
+  desert: ['Heat shimmers off the ground. Water is worth more than coin out here.', 'Wind and sand, and bones the wind has cleaned.'],
+  peaks: ['The air thins and the rock rises. The view is worth the climb, they say.', 'Stone on stone, as far up as you can see.'],
+  sea: ['Open water. The horizon is a long way off.', 'Salt wind and grey waves.']
+};
+const DANGER_WORDS = ['', 'Safe enough, mostly.', 'Travellers come back from here. Most of them.', 'Not a place to wander tired.', 'Hard country. Bring friends.', 'The bravest stay away.'];
+// The first time a journey crosses into a region: the narrator's words, or null.
+export function enterRegion(world, j) {
+  if (mapOf(world, j).kind !== 'world') return null;
+  const r = regionAt(world, j.x, j.y, j.style);
+  j.regions = j.regions || [];
+  if (j.regions.includes(r.id)) return null;
+  j.regions.push(r.id);
+  const lines = REGION_LINES[r.kind] || REGION_LINES.plains;
+  return { region: r, lines: [`${narrator(j)}: ${cap(r.name)}. ${lines[hashStr(`${world.seed}${r.id}`) % lines.length]} ${DANGER_WORDS[clamp(zoneAt(world, j), 1, 5)]}`] };
+}
+const TOWN_LINES = {
+  town: ['the biggest town in {region}. Market bells, gossip, and a good inn.', 'a busy town at the heart of {region}. Everyone here knows everyone\'s business.'],
+  castle: ['seat of the crown. The {ruler} keeps court here, and the story starts with them.', 'stone walls over {region}. The {ruler} holds court inside.'],
+  aerie: ['a city on the clouds, home to the bird folk. Traders come down with goods at half price.'],
+  reef: ['a city under the waves. The merfolk trade pearls for stories.'],
+  orccamp: ['the orcs\' warcamp. Strong arms, hard bread and a fair welcome, mostly.'],
+  dwarfhold: ['a hold of the dwarves, cut into the mountain. The best smiths in the land, ask any dwarf.'],
+  elfwood: ['the elves\' tree village. The bridges are older than anyone\'s grandparents.'],
+  burrow: ['the halfling burrows. Second breakfast is at ten.'],
+  glade: ['a pixie glade, where spirit flows like water.'],
+  stilts: ['the lizardfolk stilts, over warm mud and good fishing.'],
+  gnome: ['the gnomes\' tinker town. Everything has a crank on it.'],
+  centaur: ['the centaurs\' camp on the open plain.'],
+  giant: ['a giant hall. Mind the feet.'],
+  goblin: ['the goblin market. Everything for sale, some of it theirs.']
+};
+// The narrator, the first time a party walks into a named town: what it is, and what to do next.
+export function townNarration(world, j, siteId) {
+  const s = world.sites.find((x) => x.id === siteId);
+  if (!isStoryTown(s)) return [];
+  const map = world.map(siteId);
+  const ruler = map?.people.find((p) => p.role === 'ruler');
+  const t = TOWN_LINES[s.kind] || TOWN_LINES.town;
+  const line = t[hashStr(`${world.seed}${s.id}`) % t.length].replace('{region}', regionAt(world, s.x, s.y, j.style).name).replace('{ruler}', ruler?.title || 'King');
+  const next = nextSteps(world, j)[0];
+  return [`${narrator(j)}: ${s.name}, ${line}`, ...(next ? [`${narrator(j)}: ${next.text}`] : [])];
+}
+// Local lore: each hamlet and village has one small story of its own, told by the folk who live there.
+const LORE_HEROES = ['old Maddy', 'the miller\'s boy', 'a travelling tinker', 'Grandmother Wren', 'a knight nobody remembers the name of', 'the twins', 'a girl with a red scarf', 'the first well-digger'];
+const LORE_THINGS = ['the well', 'the big oak', 'the bell', 'the bridge', 'the standing stone', 'the old mill', 'the scarecrow', 'the crooked chimney'];
+const LORE_TALES = [
+  'They say {hero} hid a pot of gold under {thing}. Nobody has found it. Plenty have dug.',
+  'Every midsummer, {thing} hums. {Hero} said it was singing to the stars. {Hero} said a lot of things.',
+  'Once, a dragon flew over and {hero} threw a boot at it. It never came back. We keep the other boot by {thing}.',
+  '{Hero} made a deal with a fox spirit at {thing}. That\'s why no hen here has ever been taken.',
+  'In the bad winter, {hero} kept the whole village alive with soup made from one turnip and a lot of hope. We still eat it on the longest night.',
+  'If you walk round {thing} three times backwards, you hear your own name. Don\'t do it four times.',
+  '{Hero} fought a troll at {thing} with a frying pan. The troll lost. The pan is in the inn.',
+  'The ghost at {thing} is just {hero}, still looking for a lost cat. The cat is fine. It lives with us.'
+];
+export function localLore(world, siteId) {
+  const s = world.sites.find((x) => x.id === siteId); if (!s) return '';
+  const h = hashStr(`${world.seed}:lore:${siteId}`);
+  const hero = LORE_HEROES[h % LORE_HEROES.length], thing = LORE_THINGS[(h >>> 8) % LORE_THINGS.length];
+  return LORE_TALES[(h >>> 16) % LORE_TALES.length].replace(/\{hero\}/g, hero).replace(/\{Hero\}/g, cap(hero)).replace(/\{thing\}/g, thing);
+}
+// What the story wants next, most important first: who to talk to and where, or who to find and where to look.
+// Each step: { text, x, y } (x, y on the land, when known).
+export function nextSteps(world, j) {
+  const here = landSpot(world, j), out = [];
+  const where = (s) => { const d = Math.abs(s.x - here.x) + Math.abs(s.y - here.y); return d < 2 ? 'right here' : `${d} steps ${direction(here, s)}, in ${regionAt(world, s.x, s.y, j.style).name}`; };
+  if (j.won) out.push({ text: 'The lanterns burn again. The story is told, but the land is still full of chests, bosses and small jobs.' });
+  else {
+    const castle = world.sites.find((s) => s.kind === 'castle');
+    const ruler = castle && world.map(castle.id)?.people.find((p) => p.role === 'ruler');
+    const metRuler = (j.met || []).includes('ruler');
+    if (castle && !metRuler && !j.beaten.some((g) => LANTERN_KEEPERS.includes(g))) out.push({ text: `Talk to the ${ruler?.title || 'King'} in ${castle.name}, ${where(castle)}.`, x: castle.x, y: castle.y });
+    for (const g of LANTERN_KEEPERS.filter((k) => !j.beaten.includes(k))) {
+      const s = world.sites.find((x) => x.keeper === g); if (!s) continue;
+      const known = j.seen.includes(s.id);
+      out.push({ text: known ? `Find ${GUARDIANS[g].name} in ${s.name}, ${where(s)}.` : `Find ${GUARDIANS[g].name}. Look ${direction(here, s)}, somewhere in ${regionAt(world, s.x, s.y, j.style).name}.`, x: s.x, y: s.y });
+      if (out.length >= 2) break;
+    }
+  }
+  for (const [id, state] of Object.entries(j.quests || {})) {
+    if (state !== 'given') continue;
+    const s = world.sites.find((x) => x.id === id), q = s?.quest; if (!q) continue;
+    const t = world.sites.find((x) => x.id === q.target) || world.sites.find((x) => x.keeper === q.keeper);
+    const done = q.kind === 'clear' || q.kind === 'bounty' ? j.beaten.includes(q.keeper) : (j.found || []).includes(q.id);
+    out.push(done ? { text: `Go back to the Elder in ${s.name}, ${where(s)}. The job is done.`, x: s.x, y: s.y }
+      : { text: `For ${s.name}: ${q.kind === 'missing' ? `find ${q.who}` : q.kind === 'lostpet' ? `find ${q.name || 'the lost pet'}` : `beat ${GUARDIANS[q.keeper]?.name || 'the monster'}`}${t ? ` in ${t.name}, ${where(t)}` : ''}.`, ...(t ? { x: t.x, y: t.y } : {}) });
+  }
+  return out;
+}
+// Things to say (Journey v1.3): the choices when you talk to someone who has more than one thing to tell.
+// Each choice is { id, label }; sayTo answers one. Same words every time, written ahead.
+export function talkChoices(world, j, p, map) {
+  const local = LOCAL_KINDS.has(map.kind), story = STORY_KINDS.has(map.kind);
+  if (p.role === 'ruler') return [{ id: 'story', label: 'Tell me what happened.' }, { id: 'next', label: 'Where should we go?' }, { id: 'reward', label: 'What\'s in it for us?' }, { id: 'bye', label: 'We\'ll be on our way.' }];
+  if (p.role === 'elder') return [{ id: 'job', label: 'Do you need help?' }, { id: 'lore', label: 'Tell me about this place.' }, { id: 'next', label: 'Where should we go?' }, { id: 'bye', label: 'Goodbye.' }];
+  if (p.role === 'folk' && (local || story)) return [{ id: 'news', label: 'Any news?' }, { id: 'lore', label: 'Tell me about this place.' }, { id: 'next', label: 'Where should we go?' }, { id: 'bye', label: 'Goodbye.' }];
+  return null;
+}
+// The answer to one choice: lines, and whether talking goes on (more choices) or ends.
+export function sayTo(world, j, p, map, id, name) {
+  const site = map.site || map.id, s = world.sites.find((x) => x.id === site);
+  const say = (t) => `${name}: ${t}`;
+  if (id === 'bye') return { lines: [say(['Safe roads.', 'Mind how you go.', 'Come back any time.'][p.line % 3])], end: true };
+  if (id === 'next') { const n = nextSteps(world, j); return { lines: n.length ? n.slice(0, 2).map((x) => say(x.text)) : [say('Wherever the road takes you. You\'ve done what was asked.')] }; }
+  if (id === 'lore') {
+    if (LOCAL_KINDS.has(map.kind)) { j.lore = j.lore || []; if (!j.lore.includes(site)) j.lore.push(site); return { lines: [say(localLore(world, site))] }; }
+    const r = s ? regionAt(world, s.x, s.y, j.style) : null;
+    return { lines: [say(`This is ${map.name}${r ? `, in ${r.name}` : ''}. ${(TOWN_LINES[map.kind] || TOWN_LINES.town)[0].replace('{region}', r?.name || 'these parts').replace('{ruler}', 'King')}`)] };
+  }
+  if (id === 'news') return { lines: [say(FOLK_LINES[(p.line + j.beaten.length * 2) % FOLK_LINES.length])] };
+  if (id === 'story') { (j.met = j.met || []).includes('ruler') || j.met.push('ruler'); return { lines: [say(questLine(world, j))] }; }
+  if (id === 'reward') { (j.met = j.met || []).includes('ruler') || j.met.push('ruler'); return { lines: [say(j.won ? 'Our thanks, and the land\'s, forever. And free beds at any inn that knows what\'s good for it.' : 'Gold, glory, and a song about you that the bards will get slightly wrong. Bring the stones home first.')] }; }
+  return { lines: [], end: true };
+}
+// Talk between the party (Journey v1.3): at a few moments in the story, someone in the party speaks, and you pick
+// what to say back. Each answer has its own reply, written ahead.
+export const BANTER = {
+  firsttown: { speaker: 'bob', line: 'A proper town. Shops, beds, and people who don\'t want to eat us. Probably.', choices: [
+    ['Probably?', 'Bob: I said what I said. Keep your coin purse in your front pocket.'],
+    ['Let\'s find the inn.', 'Bob: A man after my own heart. Check the beds for bugs. Professional habit.'],
+    ['You worry too much.', 'Bob: I run an inn full of adventurers. Worrying is most of the job.']] },
+  firstkeeper: { speaker: 'bob', line: 'One lantern stone back. I\'d say it gets easier from here, but I don\'t lie to friends.', choices: [
+    ['Two more to go.', 'Bob: Two more. Rest first, and buy some tonics. Lots of tonics.'],
+    ['That was easy.', 'Bob: It was NOT easy. I saw your face.'],
+    ['Thanks for coming, Bob.', 'Bob: Someone had to. The inn can look after itself for a day. I hope.']] },
+  firstregion: { speaker: 'bob', line: 'Further from the inn than I\'ve been in years. Smells different out here.', choices: [
+    ['Different good?', 'Bob: Different. Ask me again when we\'re home.'],
+    ['Want to turn back?', 'Bob: And let you lot have all the fun? Not a chance.'],
+    ['Keep up, old man.', 'Bob: Old? I\'ll have you know I\'m in my prime. My second prime.']] },
+  won: { speaker: 'bob', line: 'All three lanterns. Look at that. You actually did it.', choices: [
+    ['We did it.', 'Bob: We. I like that. Drinks are on the house. One each. Fine, two.'],
+    ['Was there ever any doubt?', 'Bob: Yes. Constantly. But I\'m glad I was wrong.'],
+    ['What now?', 'Bob: Now? Now you rest. And then there are always more chests out there.']] }
+};
+// Which party talk is due, once each: the first named town, the first keeper beaten, far from home, the end.
+export function banterDue(world, j, at) {
+  j.banter = j.banter || [];
+  if (!j.party.some((m) => m.who === 'bob')) return null;
+  const due = j.won ? 'won' : j.beaten.some((g) => LANTERN_KEEPERS.includes(g)) ? 'firstkeeper' : at === 'region' && zoneAt(world, j) >= 3 ? 'firstregion' : at === 'town' ? 'firsttown' : '';
+  if (!due || j.banter.includes(due)) return null;
+  j.banter.push(due);
+  return { id: due, ...BANTER[due] };
+}
 // Text on the screen, in the journey's style. Plurals follow along (swords -> sabres).
 export function restyle(text, style) {
   const st = STYLES[style]; if (!st || !st.words.length || !text) return text;

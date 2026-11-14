@@ -72,3 +72,4 @@
 .jy.jy-full .jy-msg:empty { display: none; }
 @media (hover: none) { .jy.jy-full .jy-pad { opacity: 0.85; } }
 .jy.jy-full.jy-talking .jy-panel:not(:empty) { top: 48px; bottom: auto; max-height: 38%; }
+.jy.jy-full.jy-talking .jy-msg { display: none; }

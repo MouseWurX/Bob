@@ -687,8 +687,41 @@ const P = (o) => ({ id: o.id || o.name.toLowerCase(), who: 'friend', ...o });
   check('a save keeps materials (capped), crafting level, bags and the town to return to', back.mats.herb === R.MAT_MAX && !('junk' in back.mats) && back.bags.includes('pack') && !back.bags.includes('nonsense') && back.bagGear === 'pouch' && back.home === townId && back.craft.level >= 4);
   const play5 = read('public/journey-play.js'), css5 = read('public/journey.css');
   check('the menu has Craft and Guide tabs, and the guide covers every tab', /\['craft', '🛠 Craft'\]/.test(play5) && /\['guide', '📖 Guide'\]/.test(play5) && ['party', 'skills', 'kit', 'bag', 'craft', 'pets', 'land', 'save'].every((t) => play5.includes(`['${t}', '`)));
-  check('I opens the bag, C crafting, G the guide', /\{ i: 'bag', b: 'bag', c: 'craft', g: 'guide' \}/.test(play5));
+  check('I opens the bag, J the story, C crafting, G the guide', /\{ i: 'bag', b: 'bag', c: 'craft', g: 'guide', j: 'story' \}/.test(play5));
   check('full screen or a window, with the menu on the game screen', /data-jy="full"/.test(play5) && /requestFullscreen/.test(play5) && /\.jy\.jy-full \.jy-panel/.test(css5));
+}
+
+// ---------- The story told along the way (Journey v1.3) ----------
+{
+  const j = R.newJourney({ seed: 'story-seed', party: [P({ name: 'Wren', cls: 'fighter', who: 'you' }), P({ name: 'Bob', cls: 'wizard', who: 'bob' })] }, world);
+  const regs = R.regionsOf(world, 'fantasy');
+  check('the land is split into named regions, the same every time', regs.list.length >= 4 && regs.list.every((r) => /^the [A-Z][a-z]+ [A-Z]/.test(r.name)) && R.regionsOf(world, 'fantasy') === regs && R.regionAt(world, 5, 5) === regs.at(5, 5));
+  check('...named in each style\'s own words, in the same places', R.regionsOf(world, 'cyber').list.map((r) => r.x).join() === regs.list.map((r) => r.x).join() && R.regionsOf(world, 'cyber').list.some((r, i) => r.name !== regs.list[i].name));
+  Object.assign(j, { at: 'world', alt: 'ground', x: world.start.x, y: world.start.y });
+  const e = R.enterRegion(world, j);
+  check('the narrator speaks the first time you cross into a region', e && e.lines[0].startsWith('The Chronicle: The ') && j.regions.length === 1);
+  check('...and only the first time', R.enterRegion(world, j) === null);
+  check('each style has its own narrator', R.narrator({ style: 'cyber' }) === 'Newsfeed' && R.narrator({ style: 'steam' }) === 'The Gazette' && R.narrator({ style: 'scifi' }) === 'Ship\'s log');
+  const steps = R.nextSteps(world, j);
+  check('where next: talk to the ruler first, and where they are', /^Talk to the (King|Queen) in Castle .+ steps .+, in the /.test(steps[0].text), steps[0]?.text);
+  check('...and who to find, with where to look', steps.some((x) => /^Find .+(Look \w+, somewhere in|steps)/.test(x.text)));
+  j.met.push('ruler');
+  check('once you\'ve met the ruler, the keepers come first', /^Find /.test(R.nextSteps(world, j)[0].text));
+  const town = world.sites.find((s) => s.kind === 'town'), village = world.sites.find((s) => s.kind === 'village' || s.kind === 'hamlet');
+  check('named towns get the narrator; hamlets and villages don\'t', R.townNarration(world, j, town.id)[0].startsWith(`The Chronicle: ${town.name}, `) && R.townNarration(world, j, village.id).length === 0);
+  check('...but every village has local lore of its own', R.localLore(world, village.id).length > 30 && R.localLore(world, village.id) === R.localLore(world, village.id));
+  const vm = world.map(village.id), folk = vm.people.find((p) => p.role === 'folk') || { role: 'folk', line: 0 };
+  const ch = R.talkChoices(world, j, folk, vm);
+  check('folk give you things to say', ch && ch.map((c) => c.id).join() === 'news,lore,next,bye');
+  const lore = R.sayTo(world, j, folk, vm, 'lore', 'Ann');
+  check('...asking about the place tells its lore, and the Story tab remembers it', lore.lines[0] === `Ann: ${R.localLore(world, village.id)}` && j.lore.includes(village.id) && !lore.end);
+  check('...goodbye ends the talk', R.sayTo(world, j, folk, vm, 'bye', 'Ann').end === true);
+  check('Bob talks with the party at story moments, and you pick what to say back', R.banterDue(world, j, 'town')?.choices.length === 3 && R.banterDue(world, j, 'town') === null);
+  check('...but not when Bob isn\'t with you', R.banterDue(world, { ...j, banter: [], party: [j.party[0]] }, 'town') === null);
+  const back = R.cleanJourney(JSON.parse(JSON.stringify({ ...j, regions: [...j.regions, 'bad id'], banter: ['firsttown', 'nope'] })), () => world);
+  check('a save keeps the regions crossed, lore heard and talks had', back.regions.join() === j.regions.join() && back.lore.includes(village.id) && back.banter.join() === 'firsttown' && back.met.includes('ruler'));
+  const play6 = read('public/journey-play.js');
+  check('the screen: a Story tab, choices you can pick with the arrows, names on the land', /\['story', '📜 Story'\]/.test(play6) && /function pickChoice/.test(play6) && /data-choice/.test(play6) && /R\.isStoryTown\(s\)/.test(play6));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
