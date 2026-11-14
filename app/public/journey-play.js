@@ -35,7 +35,7 @@ export function mountJourney(root, deps) {
   const fxNumbers = []; // floating numbers in battle: { x, y, text, colour, t0 }
   // Journey v1.2: going up and down ({ kind: takeoff|land|dive|surface, t0, dur }), little effects on the land
   // (ripples, dust, splashes: { kind, x, y, t0, dur } in tiles), a boat trip, and Aerie traders swooping in.
-  let heightFx = null, voyage = null, sideFacing = 'left', armedRelease = '', doorAt = -1e9;
+  let heightFx = null, voyage = null, sideFacing = 'left', armedRelease = '', doorAt = -1e9, portalAt = -1e9;
   const landFx = [];
   const swoops = new Map();
   const T = (text) => (j ? R.restyle(text, j.style) : text);
@@ -55,12 +55,22 @@ export function mountJourney(root, deps) {
       snd.setStyle?.(j.style || 'fantasy'); snd.music(name, j.style || 'fantasy');
     } catch {}
   }
+  // Full screen (Journey v1.3): the whole game fills the screen, with the menus laid over the bottom of the picture.
+  // Where the browser won't go full screen (some phones), it fills the window instead.
+  function toggleFull() {
+    const on = !shell.classList.contains('jy-full');
+    shell.classList.toggle('jy-full', on);
+    try { if (on && shell.requestFullscreen) shell.requestFullscreen().catch(() => {}); else if (!on && doc.fullscreenElement) doc.exitFullscreen?.(); } catch {}
+    const b = root.querySelector('[data-jy="full"]'); b?.setAttribute('aria-pressed', on ? 'true' : 'false'); b?.setAttribute('aria-label', on ? 'Back to a window' : 'Play full screen');
+    focus?.();
+  }
+  doc.addEventListener?.('fullscreenchange', () => { if (!doc.fullscreenElement && shell.classList.contains('jy-full')) { shell.classList.remove('jy-full'); root.querySelector('[data-jy="full"]')?.setAttribute('aria-pressed', 'false'); } });
   function soundButton() { const b = root.querySelector('[data-jy="sound"]'); if (!b) return; b.textContent = snd.on ? '🔊' : '🔇'; b.setAttribute('aria-pressed', snd.on ? 'true' : 'false'); b.setAttribute('aria-label', snd.on ? 'Music and sound are on. Turn them off (M)' : 'Music and sound are off. Turn them on (M)'); }
   function toggleSound() { snd.setOn(!snd.on); try { store?.setItem(SOUND_KEY, snd.on ? 'on' : 'off'); } catch {} soundButton(); if (snd.on) { tune(); sfx('menu'); } sayLive(snd.on ? 'Music and sound on.' : 'Music and sound off.'); }
 
   root.innerHTML = `<div class="jy" tabindex="-1">
     <div class="jy-top"><span class="jy-where" aria-live="polite"></span><span class="jy-gold"></span><span class="jy-spacer"></span>
-      <button type="button" class="mini" data-jy="menu" title="Menu (Esc)">☰ Menu</button><button type="button" class="mini" data-jy="save" title="Save the journey">💾 Save</button><button type="button" class="icon" data-jy="sound" title="Music and sound (M)" aria-pressed="true" aria-label="Music and sound are on. Turn them off (M)">🔊</button><button type="button" class="icon" data-jy="close" aria-label="Close Journey">✕</button></div>
+      <button type="button" class="mini" data-jy="menu" title="Menu (Esc)">☰ Menu</button><button type="button" class="mini" data-jy="save" title="Save the journey">💾 Save</button><button type="button" class="icon" data-jy="full" title="Full screen or a window" aria-label="Play full screen" aria-pressed="false">⛶</button><button type="button" class="icon" data-jy="sound" title="Music and sound (M)" aria-pressed="true" aria-label="Music and sound are on. Turn them off (M)">🔊</button><button type="button" class="icon" data-jy="close" aria-label="Close Journey">✕</button></div>
     <div class="jy-stage"><canvas class="jy-canvas" width="${W}" height="${H}" role="img" aria-label="The Journey screen"></canvas><div class="jy-box" role="status" aria-live="polite" hidden></div></div>
     <div class="jy-pad" aria-label="Walking pad"><button type="button" data-dir="up" aria-label="Walk up">▲</button><button type="button" data-dir="left" aria-label="Walk left">◀</button><button type="button" data-dir="down" aria-label="Walk down">▼</button><button type="button" data-dir="right" aria-label="Walk right">▶</button><button type="button" class="jy-a" data-key="act" aria-label="Talk or open (Enter)">A</button><button type="button" class="jy-f" data-key="fight" aria-label="Pick a fight (F)">⚔</button><button type="button" class="jy-b" data-key="menu" aria-label="Menu (Esc)">B</button><button type="button" class="jy-up" data-key="rise" aria-label="Fly up, or come up from the deep (E)">⤒</button><button type="button" class="jy-down" data-key="sink" aria-label="Land, or dive (Q)">⤓</button><button type="button" class="jy-ride" data-key="ride" aria-label="Ride or walk (R)">🐎</button></div>
     <div class="jy-panel"></div>
@@ -400,6 +410,26 @@ export function mountJourney(root, deps) {
       ctx.globalAlpha = glow; ctx.beginPath(); ctx.arc(sx + 8.5, sy + 2.5, 6, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
     }
   }
+  const onGroundNow = () => !(R.mapOf(world, j).kind === 'world' && j.alt !== 'ground');
+  // Gathering spots (Journey v1.3): a little picture that glints now and then: a sprig of herbs, a log, a rock with
+  // a seam of metal, a crystal. Coloured for the style.
+  const MARKS = {
+    herb: [['#5ad04a', [[1, 3], [2, 2], [3, 1], [3, 3], [4, 2], [2, 4]]], ['#ffffff', [[3, 1]]]],
+    wood: [['#8a5a2b', [[0, 3], [1, 3], [2, 3], [3, 3], [4, 3], [0, 4], [1, 4], [2, 4], [3, 4], [4, 4]]], ['#c8a066', [[4, 3], [4, 4]]]],
+    ore: [['#7a7a84', [[1, 2], [2, 2], [3, 2], [0, 3], [1, 3], [2, 3], [3, 3], [4, 3]]], ['#ffd166', [[2, 2], [3, 3]]]],
+    crystal: [['#7ae0ff', [[2, 0], [1, 1], [2, 1], [3, 1], [1, 2], [2, 2], [3, 2], [2, 3]]], ['#ffffff', [[2, 1]]]]
+  };
+  function nodeMarks(map, xa, ya, xb, yb, cx, cy, t) {
+    for (let y = ya; y <= yb; y++) for (let x = xa; x <= xb; x++) {
+      const n = R.nodeAt?.(world, j, x, y); if (!n || !n.ready) continue;
+      // Twice size with a dark edge, so it reads on any ground; a twinkle now and then.
+      const sx = x * TILE - cx + 3, sy = y * TILE - cy + 4;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      for (const [, cells] of MARKS[n.kind] || []) for (const [a, b] of cells) ctx.fillRect(sx + a * 2 - 1, sy + b * 2 - 1, 4, 4);
+      for (const [col, cells] of MARKS[n.kind] || []) { ctx.fillStyle = n.kind === 'crystal' && col !== '#ffffff' ? styleSparks()[0] : col; for (const [a, b] of cells) ctx.fillRect(sx + a * 2, sy + b * 2, 2, 2); }
+      if (!still() && hash(x, y, Math.floor(t / 600)) < 0.2) { ctx.fillStyle = '#ffffff'; ctx.fillRect(sx + 9, sy - 2, 1, 5); ctx.fillRect(sx + 7, sy, 5, 1); }
+    }
+  }
   // A mountain peak, drawn once per look: rock with a lit side, a dark side and snow on top, on nothing.
   function peakCanvas(v, snowy) {
     const style = j?.style || 'fantasy', key = `peak${v}${snowy ? 's' : ''}|${style}`;
@@ -442,6 +472,7 @@ export function mountJourney(root, deps) {
       else { ctx.fillStyle = '#efe6d2'; ctx.fillRect(x + 3, y, 2, 2); ctx.fillStyle = it?.spirit ? '#7ae0ff' : it?.revive ? '#ffd166' : it?.fire ? '#ff8a3a' : it?.cleanse ? '#a0e070' : '#7dff9a'; ctx.fillRect(x + 1, y + 2, 6, 6); }
       return 9;
     }
+    if (what.mat) { for (const [col, cells] of MARKS[what.mat] || []) { ctx.fillStyle = what.mat === 'crystal' ? styleSparks()[0] : col; for (const [a, b] of cells) ctx.fillRect(x + 1 + a, y + 2 + b, 1, 1); } return 8; }
     if (what.kit) {
       const kind = R.kitKind(what.kit), b = base(what.kit);
       if (kind === 'weapon') for (const [cx, cy, col] of S.weaponCells(S.styleWeapon ? S.styleWeapon(j?.style, b) : b, 45, { x: 1, y: 8 })) { ctx.fillStyle = col; ctx.fillRect(x + cx, y + cy - 4, 1, 1); }
@@ -565,6 +596,7 @@ export function mountJourney(root, deps) {
   function say(text) { talkTo([text]); }
   function showBox() {
     sfx('talk');
+    shell.classList.toggle('jy-talking', Boolean(talk)); // full screen: the menu moves up, out of the way of the words
     if (!talk) { box.hidden = true; return; }
     box.hidden = false;
     box.textContent = talk.lines[talk.i] || '';
@@ -574,7 +606,7 @@ export function mountJourney(root, deps) {
     const line = talk.lines[talk.i] || '';
     if (talk.shown < line.length) { talk.shown = line.length; return; }
     talk.i++; talk.shown = still() ? 1e9 : 0;
-    if (talk.i >= talk.lines.length) { const then = talk.then; talk = null; box.hidden = true; if (mode === 'talk') mode = 'walk'; then?.(); drawPanel(); return; }
+    if (talk.i >= talk.lines.length) { const then = talk.then; talk = null; box.hidden = true; shell.classList.remove('jy-talking'); if (mode === 'talk') mode = 'walk'; then?.(); drawPanel(); return; }
     showBox();
   }
 
@@ -645,6 +677,14 @@ export function mountJourney(root, deps) {
     if (!t) {
       if (R.mapOf(world, j).rows[j.y + dy]?.[j.x + dx] === 'n') { shop = { kind: 'new' }; mode = 'shop'; drawPanel(); return; }
       // Facing water on the land, the button fishes.
+      // Journey v1.3: a gathering spot in front of you or underfoot (herbs, timber, ore, crystals).
+      const node = !lobby && R.gatherSpot ? R.gatherSpot(world, j) : null;
+      if (node) {
+        const g = R.gather(world, j);
+        sfx(g.ok ? 'gather' : 'bump');
+        if (g.ok) { lastLoot = Object.entries(g.got).filter(([, n]) => n > 0).map(([k]) => ({ mat: k })); lastLootAt = now(); const [nx, ny] = node.key.split(':').pop().split(',').map(Number); if (!still()) landFx.push({ kind: 'sparkle', x: nx, y: ny, t0: now(), dur: 900 }); if (g.up) setTimeout(() => sfx('level'), 500); save(true); }
+        sayLive(g.text); drawPanel(); return;
+      }
       const fish = j.alt === 'ground' && !lobby ? R.fishAt(world, j) : null;
       if (fish) { sfx('fish'); if (fish.ok) { setTimeout(() => sfx('coin'), 300); lastLoot = [{ item: 'fish' }]; lastLootAt = now(); save(true); } if (!still()) landFx.push({ kind: 'ripple', x: j.x + dx, y: j.y + dy, t0: now(), dur: 700 }); talkTo([fish.text]); return; }
       swing = { t0: now() }; sfx('swing'); return;
@@ -777,6 +817,7 @@ export function mountJourney(root, deps) {
       const lines = [b.spar ? `A good bout! ${r.xp} experience.` : `You win! ${r.xp} experience${r.coin ? ` and ${R.fmtCoin(r.coin)}` : ''}.`];
       if (r.drops.length) lines.push(`Dropped kit: ${r.drops.map((k) => `${R.kitName(k)} (${R.kitWords(k)})`).join('; ')}. It's in Kit on the menu.`);
       if (r.items.length) lines.push(`Picked up: ${r.items.map((i) => R.ITEMS[i].name).join(', ')}.`);
+      if (r.mats && Object.keys(r.mats).length) lines.push(`For crafting: ${R.matList(r.mats)}.`);
       if (r.left?.length) lines.push(`No room in the bag for: ${r.left.map((i) => R.ITEMS[i].name).join(', ')}. A pet or a mount carries more.`);
       for (const tm of r.tamed || []) lines.push(`${tm.pet} the ${tm.name.replace(/ [A-D]$/, '').toLowerCase()} comes along with ${tm.by}! Pets and mounts are in Pets on the menu.`);
       for (const fd of r.finds || []) lines.push(fd.coin ? `${fd.pet} noses out ${R.fmtCoin(fd.coin)}.` : `${fd.pet} digs up ${R.ITEMS[fd.item]?.name || 'something'}.`);
@@ -790,7 +831,7 @@ export function mountJourney(root, deps) {
       }
       const felled = b.foes.filter((f) => f.person && !f.fled);
       if (felled.some((f) => f.role === 'ruler')) lines.push('The castle will not forget this.');
-      lastLoot = [...(r.coin ? [{ coin: r.coin }] : []), ...r.drops.map((k) => ({ kit: k })), ...r.items.map((i) => ({ item: i })), ...(r.finds || []).map((fd) => (fd.coin ? { coin: fd.coin } : { item: fd.item }))];
+      lastLoot = [...(r.coin ? [{ coin: r.coin }] : []), ...Object.keys(r.mats || {}).map((k) => ({ mat: k })), ...r.drops.map((k) => ({ kit: k })), ...r.items.map((i) => ({ item: i })), ...(r.finds || []).map((fd) => (fd.coin ? { coin: fd.coin } : { item: fd.item }))];
       lastLootAt = now();
       drawPanel();
       talkTo(lines, endFight);
@@ -961,6 +1002,7 @@ export function mountJourney(root, deps) {
     // Chimney smoke, steam, blinking aerials and flickering neon over the houses; lamps and crates in town.
     for (const [ch, x, y, sx, sy] of props) houseLife(ch, x, y, sx, sy, t);
     if (map.kind !== 'world' && !deep) townProps(map, x0, y0, x0 + VIEW_W + more * 2, y0 + VIEW_H + moreY * 2, cx, cy, t);
+    if (!deep && !lobby && onGroundNow()) nodeMarks(map, x0, y0, x0 + VIEW_W + more * 2, y0 + VIEW_H + moreY * 2, cx, cy, t);
     for (const c of map.chests) drawChest(c.x * TILE - cx, c.y * TILE - cy, j.opened.includes(`${map.id}:${c.id}`), c.loot !== 'gift' && /deep|hoard/.test(c.loot));
     // Everyone who stands on the map, back to front so the lower ones overlap the higher.
     const figs = [];
@@ -1053,6 +1095,7 @@ export function mountJourney(root, deps) {
     if (lead && (hgt.lift || !onGround)) leaderDraw(W / 2 + (lx - cx - W / 2) * z, H / 2 + (ly - cy - H / 2) * z, hgt.lift);
     if (lastLoot && t - lastLootAt < 2200) drawLoot(t);
     // Walking through a door: a quick fade in from black.
+    if (!still() && t - portalAt < 900) { const q = (t - portalAt) / 900, cols = styleSparks(); ctx.fillStyle = `rgba(255,255,255,${0.6 * (1 - q)})`; ctx.fillRect(0, 0, W, H); for (let k = 0; k < 24; k++) { const a = k * 0.26 + q * 8, r = 40 * (1 - q) + 6; ctx.fillStyle = cols[k % cols.length]; ctx.fillRect(Math.round(W / 2 + Math.cos(a) * r), Math.round(H / 2 + Math.sin(a) * r * 0.7), 2, 2); } }
     if (!still() && t - doorAt < 280) { ctx.fillStyle = `rgba(0,0,0,${1 - (t - doorAt) / 280})`; ctx.fillRect(0, 0, W, H); }
     if (talk) drawTalk(t);
     root.querySelector('.jy-gold').textContent = lobby ? '' : `🪙 ${R.fmtCoin(j.coin, true)}`;
@@ -1295,7 +1338,7 @@ export function mountJourney(root, deps) {
     if (mode === 'shop' && shop) { panel.innerHTML = shopHtml(); restyleIn(panel); panel.querySelector('button')?.focus({ preventScroll: true }); return; }
     const atInn = j.at === 'inn';
     const mt = R.mountOf(j.party[0] || {});
-    panel.innerHTML = `<ul class="jy-party">${j.party.map((m) => sheet(m)).join('')}</ul>${atInn ? innButtons() : ''}<p class="muted jy-keys">Arrow keys walk · Enter talks, opens chests and fishes · F picks a fight · Esc opens the menu${mt ? ` · R rides ${esc(mt.name)}${R.canFly(j) ? ' · E flies up, Q lands' : R.canSwim(j) ? ' · Q dives, E comes up' : ''}` : ''}</p>`;
+    panel.innerHTML = `<ul class="jy-party">${j.party.map((m) => sheet(m)).join('')}</ul>${atInn ? innButtons() : ''}<p class="muted jy-keys">Arrow keys walk · Enter talks, opens chests, gathers and fishes · F picks a fight · Esc opens the menu · I the bag · C crafting · G the guide${mt ? ` · R rides ${esc(mt.name)}${R.canFly(j) ? ' · E flies up, Q lands' : R.canSwim(j) ? ' · Q dives, E comes up' : ''}` : ''}</p>`;
     restyleIn(panel);
   }
   // The words on the panel in the journey's style (only the words people read; never the buttons' own names).
@@ -1352,7 +1395,7 @@ export function mountJourney(root, deps) {
     return list;
   }
   function menuHtml() {
-    const tabs = [['party', '👥 Party'], ['skills', '✨ Skills'], ['kit', '🧍 Kit'], ['bag', '🎒 Bag'], ['pets', '🐾 Pets'], ['land', '🧭 The land'], ['save', '💾 Save']];
+    const tabs = [['party', '👥 Party'], ['skills', '✨ Skills'], ['kit', '🧍 Kit'], ['bag', '🎒 Bag'], ['craft', '🛠 Craft'], ['pets', '🐾 Pets'], ['land', '🧭 The land'], ['guide', '📖 Guide'], ['save', '💾 Save']];
     const head = `<div class="jy-tabs" role="tablist">${tabs.map(([id, n]) => `<button type="button" role="tab" aria-selected="${menu.tab === id}" data-tab="${id}">${n}</button>`).join('')}<button type="button" data-jy="resume">▶ Back to the map</button></div>`;
     const who = `<div class="jy-who-row" role="radiogroup" aria-label="Who">${j.party.map((x, i) => `<button type="button" role="radio" aria-checked="${i === (menu.who || 0)}" data-who="${i}">${esc(x.name)}</button>`).join('')}</div>`;
     const m = j.party[menu.who || 0] || j.party[0];
@@ -1381,11 +1424,60 @@ export function mountJourney(root, deps) {
     }
     if (menu.tab === 'pets') return `${head}${who}${petsHtml(m)}`;
     if (menu.tab === 'land') return `${head}${landHtml()}`;
+    if (menu.tab === 'craft') return `${head}${craftHtml()}`;
+    if (menu.tab === 'guide') return `${head}${guideHtml()}`;
     if (menu.tab === 'bag') {
       const items = Object.entries(j.bag).filter(([, n]) => n > 0);
-      return `${head}<p class="muted">The bag holds ${R.bagCount(j)} of ${R.bagSize(j)} things. Each pet out with you carries 10 more and each mount 25.</p>${items.length ? `<ul class="jy-bag">${items.map(([id, n]) => { const it = R.ITEMS[id]; const usable = it.field; return `<li><strong>${esc(it.name)}</strong> ×${n} <span class="muted">${esc(it.what)}</span> ${usable ? j.party.map((x) => `<button type="button" class="mini" data-use="${id}" data-on="${esc(x.id)}">${esc(x.name)}</button>`).join('') : '<span class="muted">(in a fight)</span>'}</li>`; }).join('')}</ul>` : '<p class="muted">The bag is empty.</p>'}`;
+      const bags = (j.bags || ['pouch']).map((b) => `<button type="button" class="mini" data-wearbag="${b}" aria-pressed="${j.bagGear === b}">${j.bagGear === b ? '✓ ' : ''}${esc(R.BAGS[b].name)} (+${R.BAGS[b].room})</button>`).join('');
+      return `${head}<p class="muted">The bag holds ${R.bagCount(j)} of ${R.bagSize(j)} things. Each pet out with you carries 10 more and each mount 25.</p><p><strong>Wearing</strong> ${bags} <span class="muted">Bigger bags: shops, or make one at a Workbench.</span></p>${items.length ? `<ul class="jy-bag">${items.map(([id, n]) => { const it = R.ITEMS[id]; const usable = it.field; if (it.portal) return `<li><strong>${esc(it.name)}</strong> ×${n} <span class="muted">${esc(it.what)}</span> <button type="button" class="mini" data-portal="1">Read it: back to ${esc(world.map(j.home)?.name || 'Bob\'s Inn')}</button></li>`; return `<li><strong>${esc(it.name)}</strong> ×${n} <span class="muted">${esc(it.what)}</span> ${usable ? j.party.map((x) => `<button type="button" class="mini" data-use="${id}" data-on="${esc(x.id)}">${esc(x.name)}</button>`).join('') : '<span class="muted">(in a fight)</span>'}</li>`; }).join('')}</ul>` : '<p class="muted">The bag is empty.</p>'}`;
     }
     return `${head}<div class="row"><button type="button" class="yes" data-jy="save">💾 Save now</button><button type="button" data-jy="leave">🚪 Save and leave</button></div><p class="muted">The journey also saves itself after every chest and every fight. Seed ${esc(j.seed)} · ${esc(Wm.SIZES[j.size]?.name || '')}</p>`;
+  }
+  // ---------- Crafting (Journey v1.3) ----------
+  // What you carry, your crafting level, and every recipe: the ones you can make now first. A workbench (a smith in
+  // town, or Bob's Inn) makes the rest, and improves plain kit.
+  function craftHtml() {
+    const bench = R.atBench(world, j), lv = j.craft?.level || 1, xp = j.craft?.xp || 0;
+    const next = lv < 10 ? R.craftXpFor(lv + 1) : 0;
+    const mats = Object.entries(R.MATERIALS).map(([k, mt]) => `<li><strong>${esc(mt.name)}</strong> ${j.mats?.[k] || 0} <span class="muted">${esc(mt.what)}</span></li>`).join('');
+    const row = (id) => {
+      const r = R.RECIPES[id], needs = Object.entries(r.needs).map(([k, n]) => `${n} ${R.MATERIALS[k].name}`).join(', ');
+      if (r.upgrade) {
+        const kit = R.upgradable(j, id);
+        const why = R.canCraft(j, id, { bench, kit: kit[0] });
+        return `<li><strong>${esc(R.recipeName(id))}</strong> <span class="muted">(${esc(needs)}) · makes ${esc(R.AFFIXES[r.upgrade].name)} ${r.kinds.join(' or ')}</span> · ${kit.length && !why ? kit.map((k) => `<button type="button" class="mini" data-craft="${id}" data-kitkey="${esc(k)}">${esc(R.kitName(k))}</button>`).join('') : `<span class="muted">${esc(kit.length ? why : 'No plain kit for this.')}</span>`}</li>`;
+      }
+      const why = R.canCraft(j, id, { bench });
+      return `<li><button type="button" data-craft="${id}" ${why ? 'disabled' : ''}>${esc(R.recipeName(id))}${r.n > 1 ? ` ×${r.n}` : ''}</button> <span class="muted">needs ${esc(needs)}${why ? ` · ${esc(why)}` : ''}</span></li>`;
+    };
+    const ids = Object.keys(R.RECIPES);
+    const items = ids.filter((id) => !R.RECIPES[id].upgrade).sort((a, b) => Boolean(R.canCraft(j, a, { bench })) - Boolean(R.canCraft(j, b, { bench })) || R.RECIPES[a].level - R.RECIPES[b].level);
+    return `<p><strong>Crafting level ${lv}</strong> ${next ? `<progress class="jy-bar sp" max="${next}" value="${xp}" aria-label="${xp} of ${next} to level ${lv + 1}"></progress>` : '(the best there is)'} · ${bench ? '🛠 At a Workbench: everything can be made here.' : '🎒 On the road: simple things only. The rest needs a Workbench: find one where a smith works, or at Bob\'s Inn.'}</p>
+      <p class="muted">Press Enter by a glinting spot to gather: herbs underfoot in grass and woods, timber from trees, ore and crystals from rock faces and cave walls. Beaten animals leave pelts. Spots grow back after a while.</p>
+      <ul class="jy-bag">${mats}</ul><p><strong>Make</strong></p><ul class="jy-bag">${items.map(row).join('')}</ul>
+      <p><strong>Improve kit</strong> <span class="muted">(at a Workbench; plain kit only)</span></p><ul class="jy-bag">${ids.filter((id) => R.RECIPES[id].upgrade).map(row).join('')}</ul>`;
+  }
+  // ---------- The guide (Journey v1.3): Bob walks you through every part of the menu ----------
+  const GUIDE = [
+    ['start', '🧭 Getting about', ['Bob: Arrow keys (or the pad) walk. Enter talks, opens chests, gathers and fishes. F picks a fight with whoever is in front of you. Esc opens this menu.', 'Bob: Walk into a door to go in. The edge of a town or a cave takes you back out to the land.', 'Bob: On a flying mount, E takes off and Q lands. On a dolphin, Q dives and E comes up. R gets on and off your mount.']],
+    ['party', '👥 Party', ['Bob: Party shows everyone with you: health, spirit, level and the four stats. Might hits harder, Wits casts better, Charm talks and tames, Luck finds great hits.']],
+    ['skills', '✨ Skills', ['Bob: Each level gives a skill point. Spend it in Skills, branch by branch. At level 5 and level 10 you can take a second and third class, and some pairs of classes give combo skills.']],
+    ['kit', '🧍 Kit', ['Bob: Kit is what everyone wears. Pick a weapon, armour and a shield for each person. Heavy armour soaks hits but makes you easier to hit; the numbers show beside each piece.']],
+    ['bag', '🎒 Bag', ['Bob: Bag holds potions, scrolls and food. Some work on the road (press a name to use it on them); the rest only in a fight. Pets and mounts carry extra.', 'Bob: A Scroll of return opens a door back to the last town you were in. Handy when the cave turns out bigger than you are.']],
+    ['craft', '🛠 Craft', ['Bob: Craft is where you make things. Gather herbs, timber, ore and crystals from glinting spots on the land, and pelts from animals you beat.', 'Bob: Simple things you can make anywhere. A smith\'s Workbench in town, or mine in the back here, makes the rest and improves plain kit. Every make and every gather raises your crafting level.']],
+    ['pets', '🐾 Pets', ['Bob: Pets shows the animals you\'ve tamed. One pet goes out with you and one mount carries you. Rename them, or let one go to make room.']],
+    ['land', '🧭 The land', ['Bob: The land is the whole world from above, with every place you\'ve found marked on it.']],
+    ['save', '💾 Save', ['Bob: Save keeps your journey. It saves itself after every chest and fight too, so don\'t lose sleep over it.']],
+    ['screen', '⛶ The screen', ['Bob: ⛶ on the top bar plays full screen, with the menus on the game itself. Press it again, or Esc, to go back to a window. 🔊 or M turns the music and sound on and off.']]
+  ];
+  const guideHtml = () => `<p class="muted">Pick a topic and I'll walk you through it. Or start at the top and I'll show you round each tab.</p><div class="row"><button type="button" class="yes" data-guide="all">▶ Show me round</button></div><ul class="jy-bag">${GUIDE.map(([id, name, lines]) => `<li><button type="button" data-guide="${id}">${esc(name)}</button> <span class="muted">${esc(lines[0].replace(/^Bob: /, '').slice(0, 90))}…</span></li>`).join('')}</ul>`;
+  // A topic: Bob says it, and the menu opens the tab he's talking about. "Show me round" goes through them all.
+  function guideTopic(id, all) {
+    const i = GUIDE.findIndex((g) => g[0] === id); if (i < 0) return;
+    const [tab, , lines] = GUIDE[i];
+    const nextId = all && GUIDE[i + 1] ? GUIDE[i + 1][0] : '';
+    if (['party', 'skills', 'kit', 'bag', 'craft', 'pets', 'land', 'save'].includes(tab)) { menu = { tab, who: menu?.who || 0 }; mode = 'menu'; drawPanel(); }
+    talkTo(lines, () => { if (nextId) guideTopic(nextId, true); else { menu = { tab: all || tab === 'start' || tab === 'screen' ? 'guide' : tab, who: 0 }; mode = 'menu'; drawPanel(); } });
   }
   // Pets and mounts (Journey v1.2): who's out with you, a name of your own, and letting one go (asks twice).
   function petsHtml(m) {
@@ -1467,9 +1559,9 @@ export function mountJourney(root, deps) {
     const role = shop.person?.role || shop.kind;
     const ids = R.wares(role === 'peddler' ? 'peddler' : shop.kind, shop.tier);
     const mult = shop.mult || 1;
-    const list = ids.map((id) => (R.ITEMS[id] ? [id, R.ITEMS[id].name, R.priceOf(j, id, mult), R.ITEMS[id].what, false] : [id, R.kitName(id), R.priceOf(j, id, mult), R.kitWords(id), j.owned[R.kitKind(id)].includes(id)]));
+    const list = ids.map((id) => (R.ITEMS[id] ? [id, R.ITEMS[id].name, R.priceOf(j, id, mult), R.ITEMS[id].what, false] : R.isBag(id) ? [id, R.BAGS[id.slice(4)].name, R.priceOf(j, id, mult), R.BAGS[id.slice(4)].what, (j.bags || []).includes(id.slice(4))] : [id, R.kitName(id), R.priceOf(j, id, mult), R.kitWords(id), j.owned[R.kitKind(id)].includes(id)]));
     const sellable = shop.kind === 'smith' ? ['weapon', 'armour', 'shield'].flatMap((k) => j.owned[k].filter((key) => !j.party.some((m) => m[k] === key))) : [];
-    return `<p><strong>${esc(shop.who)}</strong> · ${purse}${mult < 1 ? ' <span class="muted">(everything half price)</span>' : ''}</p>${buyList(list)}${sellable.length ? `<p><strong>Sell</strong> <span class="muted">(kit nobody is wearing, for a third of its price)</span></p><ul class="jy-bag">${sellable.map((key) => `<li><button type="button" data-sell="${esc(key)}">${esc(R.kitName(key))} · ${esc(R.fmtCoin(Math.round(R.kitPrice(key) / 3), true))}</button></li>`).join('')}</ul>` : ''}${leave}`;
+    return `<p><strong>${esc(shop.who)}</strong> · ${purse}${mult < 1 ? ' <span class="muted">(everything half price)</span>' : ''}${shop.kind === 'smith' ? ' <button type="button" class="mini" data-bench="1">🛠 Use the Workbench</button>' : ''}</p>${buyList(list)}${sellable.length ? `<p><strong>Sell</strong> <span class="muted">(kit nobody is wearing, for a third of its price)</span></p><ul class="jy-bag">${sellable.map((key) => `<li><button type="button" data-sell="${esc(key)}">${esc(R.kitName(key))} · ${esc(R.fmtCoin(Math.round(R.kitPrice(key) / 3), true))}</button></li>`).join('')}</ul>` : ''}${leave}`;
   }
   const buyList = (list) => `<ul class="jy-bag">${list.map(([id, name, price, what, have]) => `<li><button type="button" data-buy="${esc(id)}" ${have || j.coin < price ? 'disabled' : ''}>${esc(name)} · ${esc(R.fmtCoin(price, true))}</button> <span class="muted">${have ? 'You have this.' : esc(what)}</span></li>`).join('')}</ul>`;
   let dollTimer = 0;
@@ -1516,7 +1608,13 @@ export function mountJourney(root, deps) {
     if (d.addclass) { const m = j.party[menu.who || 0]; msg = R.addClass(m, d.addclass) ? `${m.name} is now also a ${R.CLASSES[d.addclass].name}.` : R.canAddClass(m, d.addclass); drawPanel(); save(true); return; }
     if (d.cast) { const r = R.castField(j, j.party[menu.who || 0].id, d.cast, d.on); msg = r.text; sfx(r.ok ? 'heal' : 'bump'); drawPanel(); if (r.ok) save(true); return; }
     if (d.use) { const it = R.ITEMS[d.use]; const r = it?.scroll ? R.castField(j, d.on, d.use, d.on) : R.drinkOn(j, d.use, d.on); msg = r.text; sfx(r.ok ? (it?.scroll ? 'spell' : 'drink') : 'bump'); drawPanel(); if (r.ok) save(true); return; }
-    if (d.buy) { const okBuy = R.buy(j, d.buy, shop?.mult || 1); sfx(okBuy ? 'buy' : 'bump'); msg = okBuy ? `Bought: ${R.ITEMS[d.buy]?.name || R.kitName(d.buy)}.` : R.ITEMS[d.buy] && !R.bagRoom(j) ? 'The bag is full. A pet or a mount carries more.' : "You can't afford that."; drawPanel(); save(true); return; }
+    if (d.wearbag) { const r = R.wearBag(j, d.wearbag); msg = r.text; sfx(r.ok ? 'menu' : 'bump'); drawPanel(); if (r.ok) save(true); return; }
+    if (d.craft) { const r = R.craft(j, d.craft, { bench: R.atBench(world, j), kit: d.kitkey }); msg = r.text; sfx(r.ok ? 'craft' : 'bump'); if (r.up) setTimeout(() => sfx('level'), 600); if (r.ok) lookCache.clear(); drawPanel(); if (r.ok) save(true); return; }
+    if (d.guide) { guideTopic(d.guide === 'all' ? GUIDE[0][0] : d.guide, d.guide === 'all'); return; }
+    if (d.portal) { const r = R.usePortal(world, j); msg = ''; if (!r.ok) { msg = r.text; sfx('bump'); drawPanel(); return; } menu = null; mode = 'walk'; trail = []; swoops.clear(); landFx.length = 0; heightFx = null; portalAt = now(); sfx('portal'); sayLive(r.text); announce(); drawPanel(); save(true); focus(); return; }
+    if (d.bench) { shop = null; menu = { tab: 'craft', who: 0 }; mode = 'menu'; drawPanel(); return; }
+    if (d.jy === 'full') { toggleFull(); return; }
+    if (d.buy) { const okBuy = R.buy(j, d.buy, shop?.mult || 1); sfx(okBuy ? 'buy' : 'bump'); msg = okBuy ? `Bought: ${R.ITEMS[d.buy]?.name || (R.isBag(d.buy) ? `${R.BAGS[d.buy.slice(4)].name}. The bag holds ${R.bagSize(j)} now` : R.kitName(d.buy))}.` : R.ITEMS[d.buy] && !R.bagRoom(j) ? 'The bag is full. A pet or a mount carries more.' : "You can't afford that."; drawPanel(); save(true); return; }
     if (d.sell) { const got = R.sell(j, d.sell); sfx(got ? 'coin' : 'bump'); msg = got ? `Sold for ${R.fmtCoin(got)}.` : 'Someone is wearing that.'; drawPanel(); save(true); return; }
     if (d.train) { msg = R.train(j, j.party[shop.who2 || 0].id, d.train).text; drawPanel(); save(true); return; }
     if (d.teach) { const r = R.hermitTeach(j, j.party[shop.who2 || 0].id, d.teach); msg = r.text; drawPanel(); if (r.ok) save(true); return; }
@@ -1580,6 +1678,13 @@ export function mountJourney(root, deps) {
   function onKey(e) {
     if (closed || !root.isConnected || root.closest('dialog:not([open])') || root.closest('.hidden')) return;
     const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target?.tagName || '');
+    // Journey v1.3: I (or B) opens the bag, C opens crafting, G the guide. Press it again to close.
+    const quick = { i: 'bag', b: 'bag', c: 'craft', g: 'guide' }[(e.key || '').toLowerCase()];
+    if (quick && !typing && !e.ctrlKey && !e.metaKey && !e.altKey && (mode === 'walk' || mode === 'menu')) {
+      e.preventDefault(); e.stopPropagation();
+      if (mode === 'menu' && menu?.tab === quick) toggleMenu(); else { menu = { tab: quick, who: menu?.who || 0 }; mode = 'menu'; drawPanel(); }
+      return;
+    }
     if (e.key === 'Escape' || e.key === 'x' || e.key === 'X') { if (typing && e.key !== 'Escape') return; if (mode === 'menu' || mode === 'shop' || mode === 'walk') { e.preventDefault(); e.stopPropagation(); toggleMenu(); } return; }
     if (typing) return;
     snd.wake?.();
@@ -1753,6 +1858,9 @@ export function createJourneySound({ Ctx = globalThis.AudioContext || globalThis
     chest: (t) => { noise(fxBus, t, 0.15, { vol: 0.08, lp: 1200 }); jingle('chest'); },
     coin: (t) => { tone(fxBus, 1318, t, 0.08, { type: 'square', vol: 0.05 }); tone(fxBus, 1760, t + 0.07, 0.2, { type: 'square', vol: 0.05 }); },
     buy: (t) => (STYLE_FX[style]?.coin || FX.coin)(t),
+    gather: (t) => { noise(fxBus, t, 0.06, { vol: 0.12, hp: 1800 }); tone(fxBus, 700, t + 0.05, 0.06, { type: 'triangle', vol: 0.05 }); noise(fxBus, t + 0.18, 0.06, { vol: 0.1, hp: 1800 }); },
+    craft: (t) => { for (let i = 0; i < 3; i++) { tone(fxBus, 880 + i * 60, t + i * 0.13, 0.05, { type: 'triangle', vol: 0.06 }); noise(fxBus, t + i * 0.13, 0.04, { vol: 0.08, hp: 3000 }); } tone(fxBus, 1318, t + 0.45, 0.25, { type: 'sine', vol: 0.05 }); },
+    portal: (t) => { tone(fxBus, 220, t, 0.9, { type: 'sine', vol: 0.06, to: 880 }); tone(fxBus, 330, t, 0.9, { type: 'triangle', vol: 0.04, to: 1320 }); noise(fxBus, t, 0.9, { vol: 0.05, hp: 3000 }); },
     encounter: (t) => { [330, 415, 494, 659].forEach((f, i) => tone(fxBus, f, t + i * 0.045, 0.1, { type: 'square', vol: 0.05 })); noise(fxBus, t, 0.2, { vol: 0.06, hp: 2000 }); },
     ride: (t) => { for (let i = 0; i < 4; i++) tone(fxBus, i % 2 ? 260 : 300, t + i * 0.12, 0.05, { type: 'triangle', vol: 0.06 }); },
     swing: (t) => noise(fxBus, t, 0.12, { vol: 0.08, hp: 2500 }),
@@ -1797,6 +1905,7 @@ export function createJourneySound({ Ctx = globalThis.AudioContext || globalThis
       hit: (t) => { noise(fxBus, t, 0.08, { vol: 0.12, hp: 1500 }); tone(fxBus, 900, t, 0.1, { type: 'square', vol: 0.04, to: 120 }); },
       coin: (t) => { tone(fxBus, 1500, t, 0.06, { vol: 0.06 }); tone(fxBus, 2000, t + 0.08, 0.1, { vol: 0.06 }); },
       step: (t) => tone(fxBus, 70, t, 0.04, { vol: 0.04 }),
+      gather: (t) => { tone(fxBus, 1200, t, 0.3, { vol: 0.04, to: 600 }); tone(fxBus, 1800, t + 0.3, 0.06, { vol: 0.04 }); },
       talk: (t) => tone(fxBus, 1200, t, 0.03, { vol: 0.03 })
     },
     cyber: {
@@ -1806,6 +1915,7 @@ export function createJourneySound({ Ctx = globalThis.AudioContext || globalThis
       hit: (t) => { noise(fxBus, t, 0.1, { vol: 0.16, hp: 700 }); for (let i = 0; i < 3; i++) tone(fxBus, 200 + i * 410, t + i * 0.025, 0.02, { type: 'square', vol: 0.04 }); },
       coin: (t) => { tone(fxBus, 2637, t, 0.04, { type: 'square', vol: 0.035 }); tone(fxBus, 3520, t + 0.05, 0.08, { type: 'square', vol: 0.035 }); },
       step: (t) => noise(fxBus, t, 0.02, { vol: 0.03, hp: 3000 }),
+      gather: (t) => { for (let i = 0; i < 4; i++) tone(fxBus, 300 + ((i * 677) % 1400), t + i * 0.05, 0.03, { type: 'square', vol: 0.03 }); noise(fxBus, t + 0.2, 0.08, { vol: 0.08, hp: 2500 }); },
       talk: (t) => tone(fxBus, 1760, t, 0.025, { type: 'square', vol: 0.02 })
     },
     steam: {
@@ -1815,6 +1925,7 @@ export function createJourneySound({ Ctx = globalThis.AudioContext || globalThis
       hit: (t) => { noise(fxBus, t, 0.1, { vol: 0.15, hp: 900 }); tone(fxBus, 520, t, 0.15, { type: 'triangle', vol: 0.06, to: 480 }); },
       coin: (t) => { tone(fxBus, 1100, t, 0.1, { type: 'triangle', vol: 0.07 }); tone(fxBus, 1650, t + 0.06, 0.18, { type: 'triangle', vol: 0.05 }); },
       step: (t) => tone(fxBus, 1800, t, 0.015, { type: 'triangle', vol: 0.02 }),
+      gather: (t) => { tone(fxBus, 900, t, 0.08, { type: 'triangle', vol: 0.06, to: 860 }); noise(fxBus, t + 0.1, 0.3, { vol: 0.07, hp: 3500 }); },
       takeoff: (t) => { noise(fxBus, t, 1.2, { vol: 0.12, hp: 2500 }); tone(fxBus, 90, t, 1, { type: 'square', vol: 0.04, to: 140 }); },
       talk: (t) => tone(fxBus, 520, t, 0.04, { type: 'triangle', vol: 0.03 })
     }

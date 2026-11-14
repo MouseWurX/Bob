@@ -638,5 +638,58 @@ const P = (o) => ({ id: o.id || o.name.toLowerCase(), who: 'friend', ...o });
   check('no trademarked game names in the style words', !/final fantasy|dragon quest|chrono|zelda|pokémon|earthbound|bobiverse|squaresoft|enix|cyberpunk 2077|shadowrun|rockerboy/i.test(read('public/journey-rules.js') + read('public/journey-sides.js')));
 }
 
+// ---------- Crafting, the Scroll of return, bags, the guide and full screen (Journey v1.3) ----------
+{
+  const j = R.newJourney({ seed: 'craft-seed', party: [P({ name: 'Wren', cls: 'fighter', who: 'you' }), P({ name: 'Bob', cls: 'wizard', who: 'bob' })] }, world);
+  const m = world.map('world');
+  Object.assign(j, { at: 'world', alt: 'ground' });
+  const nodes = [];
+  for (let y = 1; y < m.rows.length - 1; y++) for (let x = 1; x < m.rows[0].length - 1; x++) { const n = R.nodeAt(world, j, x, y); if (n) nodes.push({ x, y, n }); }
+  check('the land has gathering spots of every kind', nodes.length > 30 && ['herb', 'wood', 'ore'].every((k) => nodes.some((o) => o.n.kind === k)), `(${nodes.length})`);
+  check('...but none in Bob\'s Inn', R.nodeAt(world, { ...j, at: 'inn' }, 3, 3) === null);
+  const spot = nodes.find((o) => '.,"'.includes(m.rows[o.y][o.x - 1] || '') && R.mapOf(world, j).rows[o.y][o.x - 1]) || nodes[0];
+  Object.assign(j, { x: spot.x - 1, y: spot.y, facing: 'right' });
+  const g = R.gather(world, j, () => 0.5);
+  check('Enter by a spot gathers from it', g.ok && Object.values(j.mats).reduce((a, b) => a + b, 0) >= 1 && /\w/.test(g.text), g.text);
+  check('...and the spot is spent for a while', !R.nodeAt(world, j, spot.x, spot.y).ready && !R.gather(world, j).ok);
+  j.steps = (j.steps || 0) + R.REGROW;
+  check('...then grows back', R.nodeAt(world, j, spot.x, spot.y).ready);
+  j.mats = { herb: 10, ore: 10, wood: 10, hide: 20, crystal: 10 };
+  const t0 = j.bag.tonic || 0;
+  check('a tonic can be made on the road from 2 herbs', R.craft(j, 'tonic').ok && j.bag.tonic > t0 && j.mats.herb === 8);
+  j.craft = { xp: R.craftXpFor(2), level: 2 };
+  check('bigger things need a Workbench', /Workbench/.test(R.canCraft(j, 'ember')) && R.canCraft(j, 'ember', { bench: true }) === '');
+  check('the inn has a Workbench', R.atBench(world, { ...j, at: 'inn' }) && !R.atBench(world, j));
+  j.craft = { xp: R.craftXpFor(3), level: 3 };
+  const sword = j.owned.weapon.find((k) => k === 'sword');
+  const up = R.craft(j, 'keen', { bench: true, kit: sword });
+  check('a plain sword can be honed at a Workbench, and whoever wields it gets the better one', up.ok && j.owned.weapon.includes('sword~keen') && j.party.some((x) => x.weapon === 'sword~keen'), up.text);
+  check('...but only plain kit, once', R.canCraft(j, 'keen', { bench: true, kit: 'sword~keen' }) !== '');
+  check('making things raises the crafting level', R.craftLevelOf(R.craftXpFor(4)) === 4 && R.craftLevelOf(1e9) === 10);
+  // Scroll of return.
+  const townId = (world.sites || []).map((s) => s.id).find((id) => R.isTown(world, j, world.map(id)));
+  check('towns are places with a shop, a smith or an inn', Boolean(townId) && !R.isTown(world, j, world.map('world')));
+  j.home = townId; j.bag.portal = 1; Object.assign(j, { at: 'world', x: spot.x - 1, y: spot.y });
+  const pr = R.usePortal(world, j);
+  check('a Scroll of return takes you to the last town you were in', pr.ok && j.at === townId && !j.bag.portal, pr.text);
+  check('...and does nothing when you have none', !R.usePortal(world, j).ok);
+  check('the scroll has a name in every style', R.restyle('Scroll of return', 'scifi') === 'Recall beacon' && R.restyle('Scroll of return', 'cyber') === 'Extraction call' && R.restyle('Scroll of return', 'steam') === 'Pneumatic return ticket');
+  check('materials have names in every style', R.restyle('Herbs, Ore, Timber, Pelts, Crystals', 'cyber') === 'Street chems, Salvage, Wiring, Synth-hide, Chips');
+  // Bags.
+  j.coin = 5000;
+  const size0 = R.bagSize(j);
+  check('a bigger bag can be bought, and is worn straight away', R.buy(j, 'bag:satchel') && j.bagGear === 'satchel' && R.bagSize(j) === size0 + 20);
+  check('...or made at a Workbench from pelts', R.craft(j, 'satchel', { bench: true }).ok === false && (j.craft = { xp: R.craftXpFor(4), level: 4 }, true) && R.craft(j, 'pack', { bench: true }).ok && j.bagGear === 'pack');
+  while (R.bagCount(j) <= R.bagSize(j) - 20 + 1) j.bag.meat = (j.bag.meat || 0) + 1;
+  check('a smaller bag can\'t go on while it would spill', !R.wearBag(j, 'pouch').ok && j.bagGear === 'pack');
+  check('bags have names in every style', R.restyle('Satchel', 'cyber') === 'Messenger rig' && R.restyle('Travel pack', 'scifi') === 'Cargo pack' && R.restyle('Satchel', 'steam') === 'Carpetbag');
+  const back = R.cleanJourney(JSON.parse(JSON.stringify({ ...j, mats: { ...j.mats, herb: 5000, junk: 3 }, bags: ['pack', 'nonsense'], bagGear: 'nonsense' })), () => world);
+  check('a save keeps materials (capped), crafting level, bags and the town to return to', back.mats.herb === R.MAT_MAX && !('junk' in back.mats) && back.bags.includes('pack') && !back.bags.includes('nonsense') && back.bagGear === 'pouch' && back.home === townId && back.craft.level >= 4);
+  const play5 = read('public/journey-play.js'), css5 = read('public/journey.css');
+  check('the menu has Craft and Guide tabs, and the guide covers every tab', /\['craft', '🛠 Craft'\]/.test(play5) && /\['guide', '📖 Guide'\]/.test(play5) && ['party', 'skills', 'kit', 'bag', 'craft', 'pets', 'land', 'save'].every((t) => play5.includes(`['${t}', '`)));
+  check('I opens the bag, C crafting, G the guide', /\{ i: 'bag', b: 'bag', c: 'craft', g: 'guide' \}/.test(play5));
+  check('full screen or a window, with the menu on the game screen', /data-jy="full"/.test(play5) && /requestFullscreen/.test(play5) && /\.jy\.jy-full \.jy-panel/.test(css5));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
