@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { Profiles, profilesOn, profileDir, MAIN, userFiles } from '../src/profiles.js';
+import { Profiles, profilesOn, profileDir, MAIN, GUEST, userFiles } from '../src/profiles.js';
 import { wrapKey, lockPage } from '../src/lock.js';
 import { setKey, hasKey, vaultOn, writeText, readText, isSealed } from '../src/vault.js';
 import { openBox, useBox, memoryKeeper, useKeysFile, savedKey, saveKey, keyValue, keyNames, userKeysOn } from '../src/secret-box.js';
@@ -151,12 +151,38 @@ const brainOf = (cfg) => ({ sessionDir: path.join(cfg.dataDir, 'sessions'), sess
 {
   const u = { on: true, ownerName: 'Pat', current: 'main', list: [{ id: 'aaaaaaaaaaaa', name: 'Mia', passcode: false }, { id: 'bbbbbbbbbbbb', name: 'Jo', passcode: true }] };
   const h = usersPart(u);
-  check('the cube\'s menu has one Switch user line saying who\'s signed in', h.includes('data-bobmenu="users"') && h.includes('Switch user') && h.includes('Signed in: Pat') && !h.includes('Mia'));
+  check('the cube\'s menu has Switch user (saying who\'s signed in) and Sign out, side by side', h.includes('bob-menu-split') && h.includes('data-bobmenu="users"') && h.includes('Switch user') && h.includes('Pat') && h.includes('data-bobmenu="signout"') && !h.includes('Mia'));
   const m = bobMenuHtml({ loaded: [] }, { users: u, tools: [{ id: 'settingsBtn', icon: '⚙', label: 'Settings' }] });
   check('it sits right under Get models, above Settings and Downloads', m.indexOf('Get models') < m.indexOf('Switch user') && m.indexOf('Switch user') < m.indexOf('bob-menu-tools'));
   check('with Users off the menu is as before', usersPart({ on: false }) === '' && !bobMenuHtml({ loaded: [] }).includes('data-bobmenu="users"') && bobMenuHtml({ loaded: [] }, { users: u }).includes('data-bobmenu="users"'));
   check('in Lamplight the side-menu button hides (the cube has it)', read('public/looks.css').includes('#shelfBtn, #usersBtn)'));
   check('the app wires the cube\'s line to the Switch user page', read('public/app.js').includes('users: () => usersSwitch.open()'));
+}
+
+
+// ---- Sign out: into Guest, empty, nothing kept ----
+{
+  const cfg = fresh(); cfg.profilesOn = true;
+  saveKey(cfg, 'ANTHROPIC_API_KEY', 'owner-key');
+  const p = new Profiles(cfg, { brain: brainOf(cfg) });
+  writeText(cfg, cfg.memoryFile, 'Owner likes tea.');
+  check('sign out lands in Guest', p.signOut().ok && p.current() === GUEST && p.view().guest === true && p.view().currentName === 'Guest');
+  check('Guest starts empty: no memory, no keys, no key in memory', !fs.existsSync(cfg.memoryFile) && savedKey('ANTHROPIC_API_KEY') === '' && !hasKey());
+  writeText(cfg, cfg.memoryFile, 'Guest said hi.');
+  saveKey(cfg, 'OPENAI_API_KEY', 'guest-key');
+  check('Guest can\'t add people or set a passcode', Boolean(p.add('X', '').error) && Boolean(p.setPasscode('abcd').error));
+  p.useMain();
+  check('signing in wipes Guest', !fs.existsSync(profileDir(cfg, GUEST)) && readText(cfg.memoryFile) === 'Owner likes tea.' && savedKey('ANTHROPIC_API_KEY') === 'owner-key');
+  p.signOut();
+  check('a new Guest has nothing from the last one', savedKey('OPENAI_API_KEY') === '' && !fs.existsSync(cfg.memoryFile));
+  fs.mkdirSync(path.join(profileDir(cfg, GUEST), 'sessions'), { recursive: true }); fs.writeFileSync(path.join(profileDir(cfg, GUEST), 'bob-memory.md'), 'left over');
+  p.useMain(); new Profiles({ ...cfg }, {});
+  check('a Guest left over when Bob closed is wiped when he starts', !fs.existsSync(profileDir(cfg, GUEST)));
+  const server = read('src/server.js');
+  check('the switch door signs out into Guest and drops Guest\'s agents', server.includes("who === 'guest' ? profiles.signOut()") && server.includes("agentsBy.delete('guest')"));
+  const h = usersHtml({ on: true, current: 'main', list: [] });
+  check('Sign out sits beside Switch user in the cube\'s menu, and on the page', h.includes('id="users-out"') && usersPart({ on: true, current: 'main' }).includes('data-bobmenu="signout"') && !usersPart({ on: true, current: 'guest' }).includes('signout') && !usersHtml({ on: true, current: 'guest', list: [] }).includes('id="users-out"'));
+  check('the cube\'s menu says when nobody is signed in', usersPart({ on: true, current: 'guest' }).includes('Guest (signed out)'));
 }
 
 // ---- schedules wait while someone else is in ----
@@ -178,7 +204,7 @@ const brainOf = (cfg) => ({ sessionDir: path.join(cfg.dataDir, 'sessions'), sess
   check('nothing over the network changes 🎮 Gaming', /p === '\/api\/gaming-lock'\) \{ if \(!isLocal\) return send\(res, 403/.test(server));
   check('Switch user only from this replicant matrix', /p === '\/api\/users\/switch' && req\.method === 'POST'\) \{\n\s+if \(!isLocal\) return send\(res, 403/.test(server));
   check('back to the owner with a lock goes through the lock screen', server.includes("if (who === 'main' && lockOn(cfg)) { winLock.lockNow();"));
-  check('switching shuts every other window out', /const r = who === 'main' \? \(profiles\.useMain\(\), \{ ok: true \}\) : profiles\.open\(who[\s\S]{0,200}c\.end\(\)/.test(server));
+  check('switching shuts every other window out', /who === 'guest' \? profiles\.signOut\(\) : profiles\.open\(who[\s\S]{0,300}c\.end\(\)/.test(server));
   check('a phone can\'t see a user\'s email account while they\'re in', /PROFILE_PRIVATE = \[[^\]]*'\/api\/email-account'/.test(server));
   check('reset codes always use the owner\'s account', server.includes("canSend(cfg, { owner: true })") && server.includes("{ owner: true }),"));
   check('switching never loads a brain or touches Gaming', !/setSession|setGamingLock|unloadAll/.test(server.slice(server.indexOf("'/api/users/switch'"), server.indexOf("'/api/lock/now'"))));

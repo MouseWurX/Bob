@@ -1,6 +1,7 @@
 // 👥 Switch user. In Lamplight it's a line in the menu the cube opens, under Get models (bob-menu.js usersPart); in the
 // classic look, 👥 Switch user in the side menu. Both open this page: a card per person; pick one, type their passcode
-// if they have one, Switch. Back to the owner goes through the lock screen when the owner has a passcode. Every window starts again as
+// if they have one, Switch. Sign out (beside Switch user in the cube's menu, and on this page) drops into 👤 Guest:
+// empty, nothing kept. Back to the owner goes through the lock screen when the owner has a passcode. Every window starts again as
 // the new person (src/server.js /api/users/switch). Brains and 🎮 Gaming don't change.
 import { esc } from './util.js';
 
@@ -20,7 +21,9 @@ export function usersHtml(v = {}, pick = '') {
   const rows = [{ id: 'main', name: v.ownerName || 'Owner', passcode: v.lockOn === true }, ...(v.list || [])];
   const picked = rows.find((p) => p.id === sel) || rows[0];
   const needs = picked.id !== cur && picked.passcode;
-  return `<p class="muted">Signed in: <strong>${esc(cur === 'main' ? v.ownerName || 'Owner' : v.currentName || 'a user')}</strong>. Each person sees only their own chats, memory, email and keys.</p>
+  const out = cur === 'guest' ? '' : '<button type="button" class="mini" id="users-out">Sign out</button>';
+  return `<div class="users-head"><p class="muted">Signed in: <strong>${esc(cur === 'main' ? v.ownerName || 'Owner' : v.currentName || 'a user')}</strong>. Each person sees only their own chats, memory, email, keys and agents.</p>${out}</div>
+    ${cur === 'guest' ? '<p class="muted">👤 Guest: nothing is kept, and it\'s wiped when someone signs in. Pick who you are to sign in.</p>' : ''}
     <ul class="users-grid">${rows.map((p) => `<li><button type="button" class="user-card" data-user="${esc(p.id)}" aria-pressed="${p.id === picked.id}"><span class="user-dot" aria-hidden="true">${initial(p.name)}</span><strong>${esc(p.name)}</strong><span class="muted">${p.id === cur ? 'Signed in' : p.passcode ? '🔒 Passcode' : 'No passcode'}</span></button></li>`).join('')}</ul>
     <div class="users-code" ${needs ? '' : 'hidden'}><label for="users-code">${esc(picked.name)}'s passcode</label> <input id="users-code" type="password" autocomplete="current-password"> <button type="button" id="users-go">Switch</button></div>
     ${!needs && picked.id !== cur ? '<div class="users-code"><button type="button" id="users-go">Switch</button></div>' : ''}
@@ -65,9 +68,10 @@ export function createUsersSwitch({ reload = () => location.reload() } = {}) {
     const card = e.target.closest('[data-user]');
     if (card) { picked = card.dataset.user; draw(); ($('users-code') && !$('users-code').closest('[hidden]') ? $('users-code') : body.querySelector(`[data-user="${CSS.escape(picked)}"]`))?.focus(); return; }
     if (e.target.id === 'users-go') go(picked, $('users-code')?.value || '');
+    if (e.target.id === 'users-out') go('guest'); // 👤 Sign out: into Guest
   });
   body?.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'users-code') go(picked, e.target.value); });
   refresh();
   window.addEventListener('focus', refresh);
-  return { refresh, open, pick, state: () => v };
+  return { refresh, open, pick, signOut: () => go('guest').catch(() => open()), state: () => v };
 }

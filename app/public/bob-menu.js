@@ -12,12 +12,17 @@ export function loadedLine(status, names = {}) {
 
 // tools (1.5.210 Lamplight): [{ id, icon, label, st? }] - the menu buttons the Lamplight layout moves in here.
 // Each one presses the same button it stands for (data-bobtool = that button's id). session: { options, value }.
-// users (👥 Users on): { on, current, currentName, ownerName } - one "Switch user" line under Get models, saying who's
-// signed in. It opens the Switch user page (users-switch.js). Off: nothing shows.
+// users (👥 Users on): { on, current, currentName, ownerName } - one row under Get models: 👥 Switch user (who's
+// signed in) on one half, 🚪 Sign out (into an empty Guest) on the other. Off: nothing shows.
 export function usersPart(users) {
   if (!users?.on) return '';
-  const who = (users.current || 'main') === 'main' ? users.ownerName || 'Owner' : users.currentName || 'a user';
-  return `<button type="button" role="menuitem" class="bob-menu-item" data-bobmenu="users"><span aria-hidden="true">👥</span> <strong>Switch user</strong><br><span class="muted">Signed in: ${esc(who)}</span></button>`;
+  const cur = users.current || 'main';
+  const guest = cur === 'guest';
+  const who = cur === 'main' ? users.ownerName || 'Owner' : guest ? 'Guest (signed out)' : users.currentName || 'a user';
+  return `<div class="bob-menu-split" role="group" aria-label="Users">
+    <button type="button" role="menuitem" class="bob-menu-item" data-bobmenu="users"><span aria-hidden="true">👥</span> <strong>Switch user</strong><br><span class="muted">${esc(who)}</span></button>
+    ${guest ? '' : '<button type="button" role="menuitem" class="bob-menu-item" data-bobmenu="signout"><span aria-hidden="true">🚪</span> <strong>Sign out</strong><br><span class="muted">To Guest</span></button>'}
+  </div>`;
 }
 export function bobMenuHtml(status, { said = '', names = {}, tools = [], session = null, users = null } = {}) {
   const doing = said || status?.detail || 'Getting the fire going...';

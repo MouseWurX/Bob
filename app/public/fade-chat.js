@@ -72,7 +72,7 @@ export function createFadeChat(app) {
     if (a.on) {
       const bar = document.createElement('div');
       bar.className = 'amnesia-bar'; bar.setAttribute('role', 'status');
-      bar.innerHTML = `<span class="amn-ic" aria-hidden="true">🫥</span><span class="amn-t"><b>Amnesia mode is on</b> since ${esc(clock(a.since))}. Bob is working as usual. When you turn it off, he forgets all of it.${a.autoOff ? ` It turns off by itself at ${esc(clock(a.autoOff))}.` : ''}</span><button type="button">Turn off and forget</button>`;
+      bar.innerHTML = `<span class="amn-ic" aria-hidden="true">🫥</span><span class="amn-t">Amnesia on since ${esc(clock(a.since))} · forgotten when you turn it off${a.autoOff ? ` · off by itself at ${esc(clock(a.autoOff))}` : ''}</span><button type="button">Turn off and forget</button>`;
       bar.querySelector('button').onclick = () => amnesiaOff();
       log.prepend(bar);
     }

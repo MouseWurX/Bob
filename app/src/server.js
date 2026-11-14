@@ -833,7 +833,7 @@ const server = http.createServer(async (req, res) => {
       try { const d = brain.housekeeper?.digestKeeper().build(); if (!d) return send(res, 409, { error: 'Housekeeping isn\'t running yet.' }); brain.housekeeper.digestKeeper().show(d); return send(res, 200, { ok: true, title: d.title, file: d.file, counts: d.counts, on: digestOn(cfg) }); }
       catch (e) { return send(res, e.code === 'VAULT_LOCKED' ? 401 : 500, { error: e.message }); }
     }
-    // 👥 Switch user (the menu): { who: 'main' | id, code }. Only from this replicant matrix. Back to the owner when the
+    // 👥 Switch user (the menu): { who: 'main' | 'guest' (Sign out) | id, code }. Only from this replicant matrix. Back to the owner when the
     // owner has a passcode goes through the lock screen ({ lock: true }). Every other window is shut out first, so
     // nobody sees the next person's chats; brains and 🎮 Gaming stay exactly as they are.
     if (p === '/api/users/switch' && req.method === 'POST') {
@@ -844,11 +844,13 @@ const server = http.createServer(async (req, res) => {
       const before = profiles.current();
       if (who === before) return send(res, 200, { ok: true, view: profiles.view() });
       if (who === 'main' && lockOn(cfg)) { winLock.lockNow(); for (const c of [...clients, ...mindClients]) { try { c.end(); } catch {} } return send(res, 200, { lock: true }); }
-      const r = who === 'main' ? (profiles.useMain(), { ok: true }) : profiles.open(who, String(b.code || ''));
+      // 👤 who: 'guest' is Sign out
+      const r = who === 'main' ? (profiles.useMain(), { ok: true }) : who === 'guest' ? profiles.signOut() : profiles.open(who, String(b.code || ''));
       if (r.error) return send(res, r.code || 400, { error: r.error });
       for (const c of [...clients, ...mindClients]) { try { c.end(); } catch {} }
+      if (before === 'guest' || who === 'guest') { try { agentsBy.get('guest')?.stopAll(); } catch {} agentsBy.delete('guest'); } // 👤 Guest's agents go with Guest
       if (lockOn(cfg)) { winLock.lockNow(); const t = winLock.grant(); res.setHeader('set-cookie', winLock.cookie(t)); }
-      brain.log('settings', `users: switched (${who === 'main' ? 'the owner' : 'a user'} is in)`);
+      brain.log('settings', `users: switched (${who === 'main' ? 'the owner' : who === 'guest' ? 'Guest' : 'a user'} is in)`);
       return send(res, 200, { ok: true, view: profiles.view() });
     }
     if (p === '/api/lock/now' && req.method === 'POST') {

@@ -21,6 +21,8 @@ export const WANTS = [
     label: 'Keep quiet while you focus', note: 'A ⏱ Focus button. My taps on the shoulder wait until it ends.' },
   { card: 'how', key: 'receipts', setting: 'Receipt tracker', where: '🗓 Everyday helpers',
     label: 'Keep a spending sheet from receipt photos', note: 'Snap a receipt and I add it. The sheet stays here, locked.' },
+  { card: 'how', key: 'profilesOn', setting: 'Users', where: '🗓 Everyday helpers',
+    label: 'Let others in the house use me too', note: 'Each gets their own chats, memory, email, keys and agents. Passcodes optional.' },
   { card: 'how', key: 'updateTour', setting: 'What\'s new after updates', where: '🗓 Everyday helpers',
     label: 'Show you what\'s new after an update', note: 'Up to three cards, each with Turn on.' },
   { card: 'how', key: 'quickNotes', setting: 'Quick notes', where: 'How Bob works',
@@ -99,7 +101,7 @@ export const WANTS = [
 export const WANTS_ELSEWHERE = [
   { card: 'bob', id: 'adv-presets', label: 'Work a different way in each chat (🎭 Assistant presets)' },
   { card: 'how', id: 'adv-checkins', label: 'Check in on you by myself (🔔 Check-ins)' },
-  { card: 'how', id: 'adv-chatx', label: 'Fade old messages, Amnesia mode, pin messages, try a chat another way, guest chats (💬 Chat extras)' },
+  { card: 'how', id: 'adv-chatx', label: 'Amnesia mode, fade old messages, pin messages, try a chat another way, guest chats (💬 Chat extras)' },
   { card: 'how', id: 'adv-quiet', label: 'Stay quiet at night, or open from a key anywhere (🌙 Quiet hours and shortcut)' },
   { card: 'net', id: 'adv-bobnet', label: 'Talk to me from your phone (🌐 Bob-Net)' },
   { card: 'online', id: 'adv-online', label: 'Chat on Discord or Telegram (☁ Online services)' },

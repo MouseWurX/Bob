@@ -557,7 +557,7 @@ const bobMenu = createBobMenu({
   getSession: () => (lamp() && sessionSel.options.length ? { value: sessionSel.value, options: [...sessionSel.options].map((o) => ({ value: o.value, label: o.textContent })) } : null),
   pickSession: (v) => { sessionSel.value = v; sessionSel.dispatchEvent(new Event('change', { bubbles: true })); },
   getUsers: () => usersSwitch.state(), // 👥 Users: Switch user, under Get models
-  doors: { brains: () => cellar.open('settings', null, { jump: 'adv-brains' }), style: () => cellar.open('shop', 'style'), models: () => cellar.open('shop', 'catalogue'), users: () => usersSwitch.open() },
+  doors: { brains: () => cellar.open('settings', null, { jump: 'adv-brains' }), style: () => cellar.open('shop', 'style'), models: () => cellar.open('shop', 'catalogue'), users: () => usersSwitch.open(), signout: () => usersSwitch.signOut() },
   getStatus: async () => (await fetch('/api/status')).json(),
   getNames: async () => Object.fromEntries((((await (await fetch('/api/roles')).json()).options || {}).llm || []).map((o) => [o.value, o.label])),
   saidNow: () => statusEl.title || statusEl.textContent

@@ -29,6 +29,9 @@ import { forgetUserEmail, sealUserEmail } from './user-email.js';
 
 export const MAX_PROFILES = 8;
 export const MAIN = 'main';
+// 👤 Guest: where Sign out lands. An empty user (no chats, memory, email, keys or agents kept): its folder
+// (inn\profiles\guest) is wiped when anyone signs in, and when Bob starts.
+export const GUEST = 'guest';
 // With the lock AND "Lock my chats and memory", the owner's chats and memory stay locked with the owner's key while
 // someone else is in, so not even Bob's file tools can read them for that person. Without, they're the owner's own
 // but not private (Settings says so).
@@ -59,13 +62,14 @@ export class Profiles {
     this.cfg = cfg; this.brain = brain; this.now = now; this.log = log;
     this.mainMemory = cfg.memoryFile;
     this.tries = [];
+    this.#wipeGuest();
   }
   current() { return this.cfg.profileNow || MAIN; }
   // The names the lock screen offers ("Who's this?"). Empty while the switch is off.
   people() { return profilesOn(this.cfg) ? listOf(this.cfg).map((p) => ({ id: p.id, name: p.name, passcode: keyed(p) })) : []; }
   view() {
     const cur = this.current();
-    return { on: this.cfg.profilesOn === true, ownerName: String(this.cfg.userName || '').slice(0, 30) || 'Owner', lockOn: lockOn(this.cfg), ownerLocked: ownerLocked(this.cfg), list: listOf(this.cfg).map((p) => ({ id: p.id, name: p.name, passcode: keyed(p) })), current: cur, currentPasscode: keyed(listOf(this.cfg).find((p) => p.id === cur)), currentName: cur === MAIN ? '' : (listOf(this.cfg).find((p) => p.id === cur)?.name || ''), max: MAX_PROFILES, minLength: MIN_LEN };
+    return { on: this.cfg.profilesOn === true, ownerName: String(this.cfg.userName || '').slice(0, 30) || 'Owner', lockOn: lockOn(this.cfg), ownerLocked: ownerLocked(this.cfg), list: listOf(this.cfg).map((p) => ({ id: p.id, name: p.name, passcode: keyed(p) })), current: cur, currentPasscode: keyed(listOf(this.cfg).find((p) => p.id === cur)), currentName: cur === MAIN ? '' : cur === GUEST ? 'Guest' : (listOf(this.cfg).find((p) => p.id === cur)?.name || ''), guest: cur === GUEST, max: MAX_PROFILES, minLength: MIN_LEN };
   }
 
   add(name, code) {
@@ -167,23 +171,38 @@ export class Profiles {
   // Point chats and memory at a person's folder, with their key (null: no passcode, so their files are plain and
   // nobody's key stays in Bob's memory, the owner's included).
   use(id, key) {
+    const was = this.current();
     const dir = profileDir(this.cfg, id);
     fs.mkdirSync(path.join(dir, 'sessions'), { recursive: true });
     setKey(key);
     Object.assign(this.cfg, { profileNow: id, profileKeyed: Boolean(key), profileDir: dir, sessionsDir: path.join(dir, 'sessions'), memoryFile: path.join(dir, 'bob-memory.md') });
     this.#keys();
     this.#reset();
+    if (was === GUEST && id !== GUEST) this.#wipeGuest();
   }
+
+  // 👤 Sign out: into Guest, fresh and empty, with no one's key in memory.
+  signOut() {
+    if (this.current() === GUEST) return { ok: true };
+    this.#wipeGuest();
+    this.use(GUEST, null);
+    this.log('settings', 'users: signed out; Guest is in');
+    return { ok: true };
+  }
+
+  #wipeGuest() { try { fs.rmSync(profileDir(this.cfg, GUEST), { recursive: true, force: true }); } catch {} }
 
   // Back to the owner: after the owner's passcode when there's a lock (lock.js has set the owner's key already);
   // without one, the person's key leaves Bob's memory.
   useMain() {
     if (!this.cfg.profileNow) return;
+    const was = this.cfg.profileNow;
     if (!lockOn(this.cfg)) setKey(null);
     delete this.cfg.profileNow; delete this.cfg.profileKeyed; delete this.cfg.profileDir; delete this.cfg.sessionsDir;
     this.cfg.memoryFile = this.mainMemory;
     useUserKeys(null); // the owner's keys again
     this.#reset();
+    if (was === GUEST) this.#wipeGuest();
   }
 
   // 👥 Their own API keys and sign-ins (secret-box.js useUserKeys): inn\profiles\<id>\keys.json, locked with their key

@@ -33,7 +33,7 @@ export async function sendToSelf(cfg, subject, text, opts = {}) {
   return { to: maskAddress(a.user) };
 }
 
-export const accountView = (cfg) => ({ ...accountFor(cfg), passwordSaved: Boolean(password(cfg)), readOn: cfg?.moreTools?.email === true, canSend: canSend(cfg), forUser: cfg?.profileNow ? String((cfg.profiles?.list || []).find((p) => p?.id === cfg.profileNow)?.name || 'you') : '' });
+export const accountView = (cfg) => ({ ...accountFor(cfg), passwordSaved: Boolean(password(cfg)), readOn: cfg?.moreTools?.email === true, canSend: canSend(cfg), forUser: cfg?.profileNow ? String(cfg.profileNow === 'guest' ? 'Guest' : (cfg.profiles?.list || []).find((p) => p?.id === cfg.profileNow)?.name || 'you') : '' });
 
 export async function emailAccountRoute({ req, res, p, isLocal, cfg, brain, body, send, sendOpts }) {
   if (p !== '/api/email-account') return false;
