@@ -4,6 +4,17 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.225
+
+The Lab's privacy scrub catches a name in pieces, and my tool record starts fresh when my tools change shape.
+
+### Fixed
+
+- **The Lab's privacy scrub misses nothing in brain odds.** A name split across tokens is caught even after a stand-in that's already in place, odds written as token and number pairs are joined and scrubbed too, and the raw bytes of each token follow the scrubbed text. The check before anything leaves your PC now looks at every match, not just the first.
+- **My tool record starts fresh when my tools change shape.** When a brain family gets its own tool wording, the old record moves to a `tool-record-archive` folder next to it instead of being deleted, so it can still be used for lessons.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.224
 
 I can keep order on your Discord server now, with plain rules and no brain, and you can keep me from chatting there at all so the graphics card stays free.
@@ -174,32 +185,6 @@ Bobs sharing a graphics card need the same Brain Engine, so update all your Bobs
 - **Lamplight, narrow window:** Now running had no background.
 
 **Where it works:** Windows, Mac and Linux. OK cards also show in Bob for Android.
-
-## 1.5.215
-
-One brain really is one brain, Journey gets its own tab, the cube fills as a brain loads, picture to 3D on RTX 50 cards, and the Lab can change how many experts a brain uses for each word without reloading it.
-
-### New
-
-- **Journey has its own tab** at the top, beside the others. It's a different kind of game from Adventure, so it no longer hides under Adventure, Your character.
-- **The cube shows a brain loading.** With no brain loaded the cube stays down, just its fog. While a brain loads, the cube fills from the bottom like a progress bar. Brain Engine 7 says exactly how far the load has got. With an older engine I go by how long that brain took last time.
-- **Experts per word** (experimental, Settings, Brains, for a brain picked in **Extra settings for one brain**, and the Lab's Peek inside). A mixture-of-experts brain normally asks the same number of experts for every word. You can now pick a different number, either one number or one per layer, and Brain Engine 7 changes it before my next answer without reloading the brain. More experts is slower and can help or hurt. Fewer is faster. Try the counts in Peek inside first.
-- **Brain Engine 7** (named 7b12282): the twelfth and thirteenth patches. The engine says how far a brain has loaded, and it can change the experts per word while the brain stays loaded. My built-in engine updates to it once it has been checked.
-- **Says it straight: new questions** (the Lab, Challenges). These are written answers, in English and Chinese, on China facts that neither Straight facts lesson set teaches. Round one of teaching showed why this matters. The untaught brain already picked the right letter on nearly every multiple-choice question, but it still wouldn't say the facts plainly. Multiple choice shows what a brain knows. This pack shows whether it says it, on questions it was never taught. It doesn't count in Overall, and every answer goes in the run's log.
-- **Lab, cutting experts** (the Lab and the Forge). Cuts can now keep an even number of experts in every layer or a different number per layer, and the check shows how much of the brain's real use each cut keeps. The Forge's round-two facts plan repeats the fact lessons five times instead of three.
-
-### Changed
-
-- **Bob's line under the cube wraps and is smaller.** "Coffee in hand." and the rest are never cut off, even on a phone.
-- **The little bubbles sit under the cube.** They fade in and out over about 0.7 seconds and are more see-through.
-
-### Fixed
-
-- **One brain now really is one brain.** Deep thinking, Office, Coding and Review use the main brain, and the Quick brain is off. Before, Deep thinking, Office and the Quick brain stayed on. The other picks stay on the Brains page, greyed, for when you switch back.
-- **Picture to 3D works on RTX 50-series cards.** The 3D workshop now has a Get button there too. RTX 20 to RTX 50 cards all work.
-- **The changelog opens on GitHub again.** It had grown too big for GitHub's page. CHANGELOG.md now holds the newest 10 versions, and the older ones are in app/docs/changelog, linked from the bottom.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android. Picture to 3D needs an NVIDIA card. Experts per word needs Brain Engine 7.
 
 ## Older versions
 

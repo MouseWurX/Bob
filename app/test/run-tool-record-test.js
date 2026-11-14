@@ -102,6 +102,29 @@ clearInterval(brain.reminderTimer);
   check('tool-score says which Bob its tool lists came from, and can score with the live tools', /--tools live/.test(ts) && /bob_src: liveKit \? liveKit\.bobSrc : recordedSrc/.test(ts) && /liveSwap\(h\.tools\)/.test(ts));
 }
 
+// Nov 14 (the owner): new tool shapes start a fresh history; the old one goes to an archive folder, not the bin.
+{
+  const { newShapeCheck, shapeFile, archiveDir } = await import('../src/tool-record.js');
+  const { shapeStamp, SETS } = await import('../src/tool-sets.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-shape-'));
+  const c = { dataDir: dir };
+  check('today the live tool shapes are Bob\'s own (GPT-OSS wording is unproven)', shapeStamp(c) === '1-bob' && shapeStamp({ toolSets: false }) === '1-bob');
+  fs.writeFileSync(recordFile(c), JSON.stringify({ tool: 'old' }) + '\n');
+  check('a record with no stamp yet is stamped, not moved', newShapeCheck(c) === null && fs.existsSync(recordFile(c)) && fs.readFileSync(shapeFile(c), 'utf8').trim() === '1-bob');
+  check('same shapes: nothing moves', newShapeCheck(c) === null && readRecord(c).length === 1);
+  SETS['gpt-oss'].proven = true;
+  const stamp = shapeStamp(c);
+  SETS['gpt-oss'].proven = false;
+  check('a family proven by tool-score changes the stamp', stamp === '1-gpt-oss');
+  const moved = newShapeCheck(c, stamp, new Date(2026, 10, 14));
+  check('new shapes: the old history moves to the archive, named by date and shape, and the record starts fresh', moved && path.dirname(moved) === archiveDir(c) && path.basename(moved) === 'tool-record-2026-11-14-shape-1-bob.jsonl' && !fs.existsSync(recordFile(c)) && fs.readFileSync(moved, 'utf8').includes('"old"'), moved);
+  check('the new stamp is kept', fs.readFileSync(shapeFile(c), 'utf8').trim() === '1-gpt-oss');
+  fs.writeFileSync(recordFile(c), JSON.stringify({ tool: 'mid' }) + '\n');
+  const again = newShapeCheck(c, '1-bob', new Date(2026, 10, 14));
+  check('a second change the same day never overwrites an archive', again && again !== moved && fs.existsSync(moved) && fs.existsSync(again), again);
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 fs.rmSync(tmp, { recursive: true, force: true });
 process.exit(fail ? 1 : 0);

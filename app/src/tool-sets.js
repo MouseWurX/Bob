@@ -42,6 +42,15 @@ export const SETS = {
   }
 };
 
+// Which tool shapes are live, as a short stamp. The tool record (tool-record.js) starts a fresh history when this
+// changes, and moves the old one to an archive folder (Nov 14, the owner: "if i have a history in it we restart that
+// history new when we try the new tool shapes"). Bump TOOL_SHAPES when tool wording or inputs change for every brain.
+export const TOOL_SHAPES = 1;
+export function shapeStamp(cfg) {
+  const live = toolSetsOn(cfg) ? Object.keys(SETS).filter((k) => SETS[k].proven !== false && cfg?.toolSets?.[k] !== false).sort() : [];
+  return `${TOOL_SHAPES}-${live.join('+') || 'bob'}`;
+}
+
 // The tool set a brain uses: { id, ...set } or null for Bob's own wording.
 export function toolSetFor(cfg, model, { info, family } = {}) {
   if (!toolSetsOn(cfg)) return null;
