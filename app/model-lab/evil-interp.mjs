@@ -77,7 +77,7 @@ async function main() {
     if (done.has(id)) return done.get(id);
     let said = [], err = null;
     try { if (body) await cvec(body); said = await pool(set, 8, async (x) => ({ q: x.q, t: await ask(x.sys, x.q).catch(() => null) })); } catch (e) { err = e.message.slice(0, 120); } finally { await off(); }
-    const rows = []; for (const x of said) { const br = x.t === null || broken(x.t); rows.push({ broken: br, declined: x.t !== null && declined(x.t), rate: br ? null : await rate(x.q, x.t) }); }
+    const rows = []; for (const x of said) { const br = x.t === null || broken(x.t, x.q); rows.push({ broken: br, declined: x.t !== null && declined(x.t), rate: br ? null : await rate(x.q, x.t) }); }
     const r = { id, error: err, score: rows.length ? mean(rows.map((x) => x.rate)) : null, broken: rows.filter((x) => x.broken).length, refused: rows.filter((x) => x.declined).length, n: rows.length, ...(keep && said[0]?.t ? { sample: said[0].t.slice(0, 200) } : {}) };
     done.set(id, r); fs.appendFileSync(log, JSON.stringify(r) + '\n'); return r;
   };
