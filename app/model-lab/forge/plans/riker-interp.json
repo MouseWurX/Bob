@@ -14,15 +14,15 @@
  "general_tokens": 0,
  "rungs": [],
  "direct": true,
- "hours_max": 2,
+ "hours_max": 1.5,
  "dollars_max": 1.5,
- "rent_minutes": 120,
+ "rent_minutes": 90,
  "download_quants": [],
  "llama_tag": "b12282",
  "no_hands": true,
  "benchmark": {
   "note": "one brain: Riker stock, the interp step before serving, then the live patching and feature tests.",
-  "hours_each": 2,
+  "hours_each": 1.5,
   "brain_engine": {
    "ref": "fcdf3955ed6966c102f43d49528174cabd52d825",
    "patches": [
@@ -53,18 +53,18 @@
     "slots": 6,
     "ctx": 12288,
     "extra": "",
-    "hours": 1.8,
+    "hours": 1.3,
     "interp": true,
     "interp_from": "out/interp-riker",
     "sae_layers": "10,20,30",
     "sae_features": 16384,
     "sae_k": 32,
-    "interp_minutes": 45,
-    "note": "gate first (interp files there, each autoencoder explains at least half the stream, the live vector takes and clears) else 86; then patching (38 layers, 8 asks each way), then the top 12 features per autoencoder layer. Rated by Riker himself with the vector off.",
+    "interp_minutes": 30,
+    "note": "gate first (interp files there, each autoencoder explains at least half the stream, the live vector takes and clears) else 86; then patching (38 layers, 6 asks each way), then the top 8 features per autoencoder layer. Rated by Riker himself with the vector off.",
     "commands": [
      "node evil-interp.mjs --url {{url}} --interp {{out}}/interp --gate",
-     "node evil-interp.mjs --url {{url}} --interp {{out}}/interp --mode patch --n 8 --out {{out}}/../../../surgery/riker-interp",
-     "node evil-interp.mjs --url {{url}} --interp {{out}}/interp --mode features --n 8 --top 12 --out {{out}}/../../../surgery/riker-interp"
+     "node evil-interp.mjs --url {{url}} --interp {{out}}/interp --mode patch --n 6 --out {{out}}/../../../surgery/riker-interp",
+     "node evil-interp.mjs --url {{url}} --interp {{out}}/interp --mode features --n 6 --top 8 --out {{out}}/../../../surgery/riker-interp"
     ]
    }
   ]
