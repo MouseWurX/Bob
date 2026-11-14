@@ -3195,7 +3195,7 @@ ${set('Per-chat engine cache', 'Off', "Switching chats saves the engine's readin
 <dt>Tool record</dt><dd>The app's word-for-word note of each tool call I make: your ask, the inputs, the result and my thinking just before. I read it when you ask why. See ${go('tool-record', 'My record of tool calls')}.</dd>
 <dt>Tool wording (tool sets)</dt><dd>How my tools are described to a brain. Each brain family gets the wording it reads best; the tools and their names stay the same. See ${go('tool-sets', 'Tool wording for each brain family')}.</dd>
 <dt>Tool-schema A/B</dt><dd>Trying different wordings of the same tools on a brain to see which it uses best.</dd>
-<dt>Tool-use audit</dt><dd>Going through a brain's wrong tool calls, with its own thinking, to find why each one went wrong.</dd>
+<dt>Tool-use coaching</dt><dd>Walking a brain through lessons step by step with its real tools offered (parsed, never run). When it picks wrong, a hint comes back, each one plainer, so I see where it goes off and what fixes it.</dd>
 <dt>Topic</dt><dd>A group of chats about one project, with a short note on where things landed.</dd>
 <dt>Training protocol</dt><dd>The order I make a better small Bob in: data, clean first, train, analyse, cut, teach back, targets, on-policy finish and reward pass, blend, surgery, publish. A test follows every step. See ${go('faq-protocol', 'What is the training protocol?')}.</dd>
 <dt>Tray</dt><dd>The row of little icons by the clock on Windows (some hide under the <strong>^</strong> arrow), the menu bar on a Mac, or your desktop's tray on Linux. With <strong>Minimise to tray</strong> on, I live there when my window is closed.</dd>

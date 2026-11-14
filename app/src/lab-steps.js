@@ -46,7 +46,7 @@ export const STEPS = [
   S('attribution-transfer', 'analyse', 'Attribution transfer', 'Carries an expert map over to a cut brain.', { takes: ['map'], makes: ['map'], script: 'trace-carryover.mjs' }),
   S('expert-profiling', 'analyse', 'Expert profiling', 'Counts how often each expert works.', { takes: ['brain', 'lessons'], makes: ['map'], job: 'usage' }),
   S('router-visualisation', 'analyse', 'Router visualisation', 'Records a 3D picture of experts at work.', { glossary: 'fNRI', where: 'both', takes: ['brain'], makes: ['recording'], job: 'watch' }),
-  S('tool-use-audit', 'analyse', 'Tool-use audit', 'Finds why tool calls go wrong.', { where: 'rented', heavy: true, takes: ['brain'], makes: ['report'], needsGo: ['rent'], script: 'tool-interview.mjs', smoke: TODO }),
+  S('tool-coaching', 'analyse', 'Tool-use coaching', 'Walks it through lessons, hinting when it picks wrong.', { where: 'rented', heavy: true, takes: ['brain'], makes: ['report'], needsGo: ['rent'], script: 'tool-coach.mjs', smoke: TODO }),
   S('tool-schema-ab', 'analyse', 'Tool-schema A/B', 'Tries tool wordings to see which works best.', { where: 'rented', heavy: true, takes: ['brain'], makes: ['report'], needsGo: ['rent'], script: 'tool-wording.mjs', smoke: TODO }),
   S('full-fine-tune', 'train', 'Full fine-tune (SFT)', 'Teaches the whole brain before any cut.', { glossary: 'Fine-tuning (SFT)', where: 'rented', heavy: true, takes: ['brain', 'lessons'], makes: ['brain'], needsGo: ['rent'], plan: 'train_teacher', smoke: SELFTEST }),
   S('lora', 'train', 'LoRA', 'Teaches a small add-on; chosen layers stay frozen.', { glossary: 'LoRA, QLoRA (adapter)', where: 'both', heavy: true, takes: ['brain', 'lessons'], makes: ['adapter'], needsGo: ['rent'], plan: 'heal', smoke: SELFTEST }),

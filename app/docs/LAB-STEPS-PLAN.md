@@ -141,7 +141,7 @@ In protocol order. "Stage" is the PR #201 order; any step can also run on its ow
 | 3 | Attribution transfer | Carries an expert map over to a cut brain. | `trace-carryover.mjs` | here |
 | 3 | Expert profiling | Counts how often each expert works. | `src/lab-usage.js` | here |
 | 3 | Router visualisation | Records a 3D picture of experts at work. | `src/lab-watch.js`, `forge/fnri-remote.mjs` | both |
-| 3 | Tool-use audit | Finds why tool calls go wrong. | `tool-interview.mjs`, `tool-pick.mjs`, `tool-wish.mjs` | rented |
+| 3 | Tool-use coaching | Walks it through lessons, hinting when it picks wrong. | `tool-coach.mjs`, `tool-pick.mjs` | rented |
 | 3 | Tool-schema A/B | Tries tool wordings to see which works best. | `tool-wording.mjs`, `natural-tools.mjs` | rented |
 | 4 Train | Full fine-tune (SFT) | Teaches the whole brain before any cut. | Forge plan `train_teacher` | rented |
 | 4 | LoRA | Teaches a small add-on; chosen layers stay frozen. | `forge/pod/lora.py`, `heal.py` (options to add) | both |
