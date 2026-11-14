@@ -99,6 +99,22 @@ def check_reward(check, text):
     if re.search(check["want"], text, fl(check.get("want_flags"))): return 1.0, "right facts"
     return 0.0, "facts missing"
 
+SEARCH_TOOLS = {"web_search", "fetch_page"}
+SEARCH_NEEDED, GUESSED, SEARCH_FOR_NOTHING = 1.0, -1.0, -0.2
+
+def search_reward(case, text):
+    """Look it up when unsure (search-pairs.mjs): case["search"] is "needed" or "not_needed".
+    Needed: a search scores best, a guess scores lowest. Not needed: a plain answer scores best, a needless search costs
+    a little (less than a tool on plain chat, which stays at -0.5)."""
+    got, broken = parse_calls(text)
+    if broken: return BROKEN, "broken tool call"
+    searched = any(c["name"] in SEARCH_TOOLS for c in got)
+    if case.get("search") == "needed":
+        return (SEARCH_NEEDED, "looked it up") if searched else (GUESSED, "guessed instead of looking it up")
+    if searched: return SEARCH_FOR_NOTHING, "searched a fact it knew"
+    if got: return NOTHING, "tool called for nothing"
+    return RIGHT, "answered directly"
+
 def want_from_lesson_turn(msg):
     """The recorded assistant turn (OpenAI shape) -> want list."""
     return [{"name": c["function"]["name"], "args": parse_args(c["function"].get("arguments"))} for c in (msg.get("tool_calls") or [])]

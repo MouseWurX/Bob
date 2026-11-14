@@ -59,3 +59,28 @@ Bob. Lessons are not filtered yet: before training, drop the ones where the tool
    its own split (20% held out; a twin pair stays together), so `tool-score --lessons out\probes --split train` harvests
    and `--split holdout` tests on phrasings the brain never trained on. Seeds never come from the benchmark's held-out 5%.
    `tool-score --split train --sample N` does the same harvest on Bob's ordinary training lessons.
+
+## The lesson kit (14 Nov 2026, the plan is `docs/TOOL-LESSONS-PLAN.md`)
+
+Nothing here trains, rents or uploads. Run the teacher on a rental (`--url`), never on the home PC.
+
+9. `node audit-lessons.mjs --lessons <old set> --out <folder> [--private <words file>] [--review <rejected.jsonl>]`:
+   every old lesson is checked before it joins the new suite (bare "Done." or cut-off tool results, hand-offs with a
+   pretend result, claims no result backs, tools an old Bob had, tool jobs with no call, plain chat with a call,
+   personal things, dial or surgery answers). Passed lessons, flagged ones with their problems, and AUDIT.md.
+10. `node lesson-ledger.mjs --check <set> --ledger <ledger.jsonl> --never <test files> --out <folder>` keeps only
+    lessons never taught and never a test (reworded copies too); `--add <set> --round <n>` records a taught round.
+11. `node search-pairs.mjs --answers <benchmark answers with odds> --out <folder>`: sure or unsure, right or wrong.
+    Seeds for "search first" and "don't search" lessons, and reward cases for `grpo.py --search`.
+12. `node lesson-doctor.mjs --seeds <failures> --name <set> --url <teacher>`: new look-alike requests for every
+    failure (a test item only ever gives look-alikes), in five versions (base Bob and the four styles), two or three
+    routes, some with a second try, and guided lessons that keep a never-solved failed try. Then, per version,
+    `write-lessons.mjs --from-ideas` writes the lessons (the commands are in `<set>-DOCTOR.md`). `--dry` checks the
+    plumbing with no teacher.
+13. `node tutorial-lessons.mjs --sources <manifest.json> --name <set> --url <teacher>`: Blender and Unreal Python
+    requests from licence-checked tutorials, used for facts only. After writing, `--verify <set> --out <folder>
+    --blender <exe>` runs every script headless and keeps only the ones that work, tagged with the app version.
+
+The lesson writer now: takes per-idea teacher notes, a first try that fails, and a guided failed try (saved with
+`train: false`, which the heal masks); never saves a bare "Done." result; and its reviewer no longer fails lessons for
+a JSON format nobody asked for.

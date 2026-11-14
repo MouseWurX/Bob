@@ -383,22 +383,27 @@ Only these are taken out: the owner's name, the owner's file names and paths, em
 names and keys. Other names stay. The known scrub bug (the odds step stops at the first stand-in, `FIX-scrub-data.md`)
 is fixed before any write.
 
-## 8. What gets built next (all off unless named)
+## 8. What's built, and what waits (all off unless named)
+
+Built 14 Nov (`model-lab/README.md`, steps 9 to 13; test `test/run-lesson-kit-test.js`, made-up rows and a made-up teacher):
 
 | Piece | What it does |
 |---|---|
-| `make-fix-lessons.mjs` | Failures in, tagged causes, new look-alike requests out, through the overlap check |
-| `lesson-ledger.mjs` | The ledger and the never-taught list, used by every writer |
-| `search-pairs.mjs` | Sorts answers into the four boxes from their odds and checks, makes search and don't-search pairs |
-| `write-lessons.mjs` fixes | Realistic fake results per tool, reviewer without the JSON rule, `--from-fixes` |
-| `tool_reward.py` | The search line in the reward |
-| `convert-lessons.mjs` | The one-time conversion to one shape (section 3f), Kimi and outside sets included, after the shape pick |
-| `guided-lessons.mjs` | Keeps the failed attempt, masks it from the loss, adds the think-it-through and the right path |
-| `style-routes.mjs` | The five versions, two or three routes each, second tries |
-| `import-open-sets.mjs` | Converts the open sets in 3h to Bob's tools, with credit and licence kept |
-| `tutorial-lessons.mjs` | Licence check, tutorial to requests, headless Blender and Unreal runs, app version tag |
+| `audit-lessons.mjs` | The required audit of every old set (section 3f) |
+| `lesson-ledger.mjs` | The ledger and the never-taught list (section 6) |
+| `lesson-doctor.mjs` | Failures to look-alike requests, five versions, routes, second tries, guided lessons (sections 3 to 3i) |
+| `search-pairs.mjs` | The four boxes from the odds, search and don't-search seeds, reward cases (section 4) |
+| `tutorial-lessons.mjs` | Licence check, documents as information only, tutorial to requests, headless proof, app version tag (section 5b) |
+| `write-lessons.mjs` | `--from-ideas`, per-idea notes, second tries, guided failed tries kept with `train: false`, no bare "Done." results, reviewer without the JSON rule |
+| `forge/pod/data.py` | Masks `train: false` turns out of the loss |
+| `tool_reward.py`, `grpo.py --search` | The search line in the reward |
 
-Each comes with a test that uses fakes, never the real computer.
+Waiting for the tool-shape pick:
+
+| Piece | What it does |
+|---|---|
+| `convert-lessons.mjs` | The one-time conversion to one shape (section 3f), Kimi and outside sets included |
+| `import-open-sets.mjs` | Converts the open sets in 3h to Bob's tools, with credit and licence kept |
 
 ## 9. What waits for the owner
 
