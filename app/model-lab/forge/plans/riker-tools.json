@@ -14,9 +14,9 @@
  "general_tokens": 0,
  "rungs": [],
  "direct": true,
- "hours_max": 5.5,
- "dollars_max": 3.5,
- "rent_minutes": 330,
+ "hours_max": 9,
+ "dollars_max": 5.5,
+ "rent_minutes": 540,
  "download_quants": [],
  "llama_tag": "b12282",
  "no_hands": true,
@@ -38,9 +38,10 @@
     "0010-expert-trace-once",
     "0011-rpc-read-ahead",
     "0012-load-progress",
-    "0013-experts-per-word"
+    "0013-experts-per-word",
+    "pod:0014-live-control-vector"
    ],
-   "note": "Brain Engine 7b12282 (live experts per word, mask, dials, expert trace with mass)"
+   "note": "Brain Engine 7b12282 (live experts per word, mask, dials, expert trace with mass); pod:0014-live-control-vector (lab-only, sent with the pod scripts): POST /control-vector, activation steering without reloads"
   },
   "models": [
    {
@@ -228,6 +229,22 @@
      "node evil-steer.mjs --url {{url}} --scale 0 --n 12 --layers 10-30 --out {{out}}/../../../surgery/riker-steer --rate"
     ],
     "note": "no vector: answers the same asks as built, then rates every round (Riker as built is the judge) and writes STEER.md; the answer texts are dropped, one 200-character sample per scale stays"
+   },
+   {
+    "name": "riker-sweep",
+    "nickname": "Riker, expert and neuron sweep (live)",
+    "file": "same:riker",
+    "quant": "Q4_K_M",
+    "slots": 8,
+    "ctx": 8192,
+    "extra": "",
+    "hours": 3.2,
+    "note": "14 Nov (the owner: groups of up to half the experts per layer, several sweeps in different combinations so every expert is covered, 'experts or neurons'). All live, no reloads: expert dials (0..8) and the live control vector (pod patch 0014). In each layer 16 random halves (each half and its complement), then the top suspects alone, then the top 5 on fresh asks. The gate exits 86 if the dials, the live vector or the direction don't work. Surgery record only.",
+    "commands": [
+     "node evil-sweep.mjs --url {{url}} --gate --direction {{out}}/../riker-steer-gate/evil/direction-all.gguf",
+     "node evil-sweep.mjs --url {{url}} --mode experts --out {{out}}/../../../surgery/riker-sweep --mixes 16 --scales 1.5,3 --top 64 --single 3,8,0 --n 8 --minutes 110",
+     "node evil-sweep.mjs --url {{url}} --mode neurons --direction {{out}}/../riker-steer-gate/evil/direction-all.gguf --layers 10-30 --per 64 --out {{out}}/../../../surgery/riker-sweep --mixes 16 --scales 3,10 --top 32 --single 10,-10,30 --n 8 --minutes 60"
+    ]
    }
   ]
  }

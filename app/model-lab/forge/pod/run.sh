@@ -231,7 +231,9 @@ fi
 if [ -n "$(plan ".get('benchmark')")" ] || [ -n "$TG" ]; then
   # 12 Nov: benchmark.brain_engine {"ref": "<Bob commit>", "patches": ["0001-expert-mask", ...]} serves the brains with Brain Engine
   # (llama.cpp plus Bob's patches, fetched from Bob's public repo at that commit), for the live expert switch and REAP scores
-  BEP=$(plan ".get('benchmark',{}).get('brain_engine') or {}" | python3 -c "import json,sys; b=json.load(sys.stdin); print(' '.join('https://raw.githubusercontent.com/MouseWurX/Bob/%s/app/engine/patches/%s.patch' % (b['ref'], n) for n in b.get('patches',[])) if b else '')")
+  # 14 Nov: a patch named "pod:<name>" is a lab-only patch sent with the pod scripts ($POD/<name>.patch), not one of Bob's engine
+  # patches (0014-live-control-vector: activation steering without reloads, for the Riker steering sweeps)
+  BEP=$(plan ".get('benchmark',{}).get('brain_engine') or {}" | python3 -c "import json,sys; b=json.load(sys.stdin); pod=sys.argv[1]; print(' '.join(('file://%s/%s.patch' % (pod, n[4:])) if n.startswith('pod:') else 'https://raw.githubusercontent.com/MouseWurX/Bob/%s/app/engine/patches/%s.patch' % (b['ref'], n) for n in b.get('patches',[])) if b else '')" "$POD")
   if [ -f $S/llama-server-ready ] && [ -x $S/llama.cpp/build-cuda/bin/llama-server ] && [ "$(cat $S/llama.cpp/.bob-patches 2>/dev/null)" = "$BEP" ]; then echo "CUDA llama-server already built"; else rm -f $S/llama-server-ready $S/llama-server-failed; ( bash $POD/llama-server-build.sh $S $(plan ".get('llama_tag','b11669')") "$BEP" > $OUT/llama-server-build.log 2>&1 ) & fi
 fi
 [ -n "${FORGE_SETUP_ONLY:-}" ] && { kill $WD 2>/dev/null; wait; cat $OUT/llama-setup.log; status done "setup only"; exit 0; }

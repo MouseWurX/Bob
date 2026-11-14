@@ -32,6 +32,8 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
 {
   const run = read(path.join(lab, 'forge', 'pod', 'run.sh'));
   check('the pod fills @OUT@ in a model\'s extra and passes it to the server', /BEXTRA=\$\{BEXTRA\/\/@OUT@\/\$OUT\}/.test(run) && /-ngl 999 \$BEXTRA >/.test(run));
+  check('a pod: patch comes from the pod scripts, the others from Bob at the ref', /n\.startswith\('pod:'\)/.test(run) && /file:\/\/%s\/%s\.patch/.test(run) && fs.existsSync(path.join(lab, 'forge', 'pod', '0014-live-control-vector.patch')));
+  check('the live control vector patch adds POST /control-vector and clears with {}', /post\("\/control-vector"/.test(read(path.join(lab, 'forge', 'pod', '0014-live-control-vector.patch'))) && /llama_set_adapter_cvec/.test(read(path.join(lab, 'forge', 'pod', '0014-live-control-vector.patch'))));
   check('the pod builds llama-cvector-generator', /--target llama-cvector-generator/.test(read(path.join(lab, 'forge', 'pod', 'llama-server-build.sh'))));
 }
 
@@ -47,7 +49,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   check('the sweep runs after the gate, plus and minus past 10, the unsteered one last and rating', ci < names.indexOf(sw[0].name) && scales.includes(-10) && scales.includes(10) && scales.includes(40) && scales.at(-1) === 0 && /--rate/.test(sw.at(-1).commands[0]) && sw.at(-1).extra === '');
   check('every steered entry loads the vector in this engine\'s FNAME:SCALE form', sw.slice(0, -1).every((m, i) => m.extra.includes(`direction-all.gguf:${scales[i]} `) && /--control-vector-layer-range 10 30/.test(m.extra)));
   check('steering writes to the surgery folder only', [...ms[gi0].commands, ...ms[ci].commands, ...sw.flatMap((m) => m.commands)].every((c) => /\/surgery\/riker-steer/.test(c)));
-  check('the caps cover the interview and the steering', plan.hours_max >= 5 && plan.rent_minutes >= 300 && plan.dollars_max <= 3.5);
+  check('the caps cover the interview and the steering', plan.hours_max >= 5 && plan.rent_minutes >= 300 && plan.dollars_max <= 5.5);
 }
 
 // ---- the whole sweep against a made-up server: one "server" per scale, rated last with no vector ----
