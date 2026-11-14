@@ -41,6 +41,7 @@
     "test/run-make-datasets-test.js",
     "test/run-training-methods-test.js",
     "test/run-lab-protocol-test.js",
+    "test/run-lab-steps-test.js",
     "test/run-scrub-data-test.js",
     "test/run-make-probes-test.js",
     "test/run-lab-names-test.js",

@@ -1061,7 +1061,7 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   const tr = await hlab.tryRefusals({ from: 'rel-a', strength: 80, layers: 'all' });
   check('Try it first starts as its own job', tr.started?.kind === 'refusals-try');
   while (hlab.job) await new Promise((r) => setTimeout(r, 20));
-  { const t = hlab.runs.at(-1); check('Try it first reports before and after, holds the direction out with a control vector, and writes no brain', t.state === 'done' && t.report.tried.before.declined === 4 && t.report.tried.after.declined === 0 && t.report.tried.kept.declined === 4 && checksSeen.at(-1).extra.includes('--control-vector-scaled') && checksSeen.at(-1).extra.includes('-0.8') && !fs.existsSync(path.join(hcfg.bobModelsDir, 'lab', 'try'))); }
+  { const t = hlab.runs.at(-1); check('Try it first reports before and after, holds the direction out with a control vector, and writes no brain', t.state === 'done' && t.report.tried.before.declined === 4 && t.report.tried.after.declined === 0 && t.report.tried.kept.declined === 4 && checksSeen.at(-1).extra.includes('--control-vector-scaled') && checksSeen.at(-1).extra.some((x) => /direction\.gguf:-0\.8$/.test(x)) && !fs.existsSync(path.join(hcfg.bobModelsDir, 'lab', 'try'))); }
   const hs = await hlab.startHome('refusals', { from: 'rel-a', name: 'Plain A', strength: 100, layers: 'all', check: true, teachBack: true, naughty: true });
   check('the refusals job starts with its steps', hs.started?.kind === 'refusals' && hs.started.steps.map((s) => s.id).join() === 'direction,refusals,check,test');
   while (hlab.job) await new Promise((r) => setTimeout(r, 20));

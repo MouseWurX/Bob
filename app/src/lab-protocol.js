@@ -14,6 +14,11 @@ import { forgeDir, forgeCandidates } from './lab-forge.js';
 import { lessonSets, lessonSetsDir } from './lab-plan.js';
 import { labDir, readJson, writeJson, slugOf } from './lab-measure.js';
 import { nodeCmd } from './selftools.js';
+import { startRun, finishRun } from './lab-runs.js';
+import { VERSION } from './config.js';
+
+// 14 Nov: each free step also writes a Lab run record (src/lab-runs.js), under its step in src/lab-steps.js.
+export const PROTOCOL_STEP_IDS = { clean: 'dataset-cleaning', pairs: 'preference-pairs', sweep: 'inference-sweep' };
 
 // The order every run follows (the proposal, "The whole protocol, in order"). where: here = free on this computer,
 // rented = a Forge plan key, both = either. A benchmark follows every step; any step can be skipped.
@@ -158,16 +163,18 @@ export const protocolJobs = {
     const fd = fs.openSync(log, 'a');
     const c = (this.protocolSpawn || spawn)(node, [path.join(dir, PROTOCOL_TOOLS[tool]), ...p.args], { cwd: dir, stdio: ['ignore', fd, fd], windowsHide: true, env: { ...process.env, ...env } });
     fs.closeSync(fd);
-    const rec = { tool, state: 'running', at: this.now(), log, pid: c.pid || 0, set: p.set?.id || '' };
+    let run = null; try { run = startRun(labDir(this.cfg), { step: PROTOCOL_STEP_IDS[tool], settings: { tool, ...form }, inputs: p.set ? [{ kind: 'lessons', path: path.dirname(p.set.file) }] : [], bob: VERSION.label || '', now: this.now() }); } catch {}
+    const rec = { tool, state: 'running', at: this.now(), log, pid: c.pid || 0, set: p.set?.id || '', run: run?.id || '' };
     writeJson(this.protocolFile(), rec);
     const done = (code) => {
       const end = { ...rec, state: code === 0 ? 'done' : 'failed', pid: 0 };
       if (code === 0 && tool === 'clean') {
-        try { const a = adoptCleaned({ work: p.out, set: p.set, lessonsRoot: lessonSetsDir(this.cfg) }); end.message = `Made "${p.set.name}, cleaned": ${a.count} lessons. Its change list (CHANGES.md) and the lessons to read by hand (flagged.jsonl) are in its folder.`; }
+        try { const a = adoptCleaned({ work: p.out, set: p.set, lessonsRoot: lessonSetsDir(this.cfg) }); end.made = a.id; end.message = `Made "${p.set.name}, cleaned": ${a.count} lessons. Its change list (CHANGES.md) and the lessons to read by hand (flagged.jsonl) are in its folder.`; }
         catch (e) { end.state = 'failed'; end.message = e.message; }
       } else if (code === 0 && tool === 'pairs') { const i = readJson(path.join(p.out, 'pref-info.json'), {}); end.message = `${i.pairs || 0} pairs and ${i.marked || 0} marked answers. Pick them on the Forge form under New ways to teach.`; }
       else if (code === 0 && tool === 'sweep') end.message = 'The sweep\'s report is below. A trial marked "helps one, hurts another" is never baked.';
       else if (code !== 0) end.message = `It stopped (exit ${code}). The last lines of its log say why.`;
+      if (run) { try { const kind = { clean: 'lessons', pairs: 'pairs', sweep: 'report' }[tool]; const made = tool === 'clean' && end.state === 'done' ? path.join(lessonSetsDir(this.cfg), end.made || '') : p.out; finishRun(labDir(this.cfg), run.id, { state: end.state, outputs: end.state === 'done' && made ? [{ kind, path: made }] : [], message: end.message || '', now: this.now() }); } catch {} }
       writeJson(this.protocolFile(), end);
       this.broadcast?.({ type: 'lab-protocol', state: end.state });
     };
@@ -178,6 +185,7 @@ export const protocolJobs = {
     const job = readJson(this.protocolFile(), null);
     if (!job || job.state !== 'running') return { stopped: false };
     if (job.pid > 0) { try { (this.protocolKill || process.kill)(job.pid); } catch {} }
+    if (job.run) { try { finishRun(labDir(this.cfg), job.run, { state: 'stopped', message: 'Stopped by hand.', now: this.now() }); } catch {} }
     writeJson(this.protocolFile(), { ...job, state: 'stopped', pid: 0, message: 'Stopped. Nothing it was making was kept.' });
     return { stopped: true };
   }

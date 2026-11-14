@@ -11,6 +11,9 @@ import path from 'node:path';
 import { importMyPack, deleteMyPack } from './lab-mypacks.js';
 import { labOn, labDir } from './lab-measure.js';
 import { lessonSetsDir } from './lab-plan.js';
+import { STAGES, stepsView, smokeReady } from './lab-steps.js';
+import { listRuns } from './lab-runs.js';
+import { forgeDir } from './lab-forge.js';
 
 // 1.5.164 One sandbox turn on Bob's loaded brain, with the person's own system prompt. Ordinary settings, not temperature 0:
 // the point is to see what the brain does in use.
@@ -44,6 +47,9 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     // 1.5.164 Guard rails sandbox: chat with the brain Bob has loaded, like Learn. Nothing is saved unless you press Save as lesson.
     if (req.method === 'GET' && p === '/api/lab/guard') { const g = learnBrain(lab.brain); send(res, 200, { on: labOn(lab.cfg), ready: g.ready, why: g.why || '', brain: g.ready ? (lab.brain?.brainLabel?.(g.model) || g.model) : '', demo: PAGE_DEMO, maxTurns: SANDBOX_MAX_TURNS, canSave: isLocal, settings: GUARD_SETTINGS, styles: GUARD_STYLES }); return true; }
     if (req.method === 'GET' && p === '/api/lab/brain-scores') { send(res, 200, { scores: labOn(lab.cfg) ? lab.brainScores() : {} }); return true; } // Nov 11: for the Brains page, read-only
+    // 14 Nov Lab steps and runs (docs/LAB-STEPS-PLAN.md): read-only. Paths are left out for other devices.
+    if (req.method === 'GET' && p === '/api/lab/steps') { send(res, 200, { stages: STAGES, steps: stepsView(forgeDir(lab.cfg)).map((s) => ({ ...s, smokeReady: smokeReady(s) })) }); return true; }
+    if (req.method === 'GET' && p === '/api/lab/runs') { const runs = listRuns(labDir(lab.cfg)); send(res, 200, { runs: isLocal ? runs : runs.map((r) => ({ ...r, inputs: r.inputs.map(({ path: _p, ...i }) => i), outputs: r.outputs.map(({ path: _p, ...o }) => o) })) }); return true; }
     if (req.method === 'GET' && p === '/api/lab/protocol') { const v = lab.protocolView(); send(res, 200, isLocal ? v : { ...v, looked: [], job: v.job ? { ...v.job, tail: [] } : null }); return true; } // 13 Nov read-only
     if (req.method !== 'POST') { send(res, 404, { error: 'no' }); return true; }
     const b = await body(req);

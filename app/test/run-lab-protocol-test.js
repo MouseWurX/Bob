@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import '../src/lab.js'; // the app loads the Lab first; its parts come in through it
 import { PROTOCOL_STEPS, planProtocol, adoptCleaned, protocolJobs, sweepReadiness } from '../src/lab-protocol.js';
 import { waysToPlan, forgeCandidates, forgeDir } from '../src/lab-forge.js';
+import { listRuns, readIndex } from '../src/lab-runs.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -82,6 +83,9 @@ check('it dropped the made-up tool call and the repeat', fs.readFileSync(path.jo
 check('the original set is never changed', fs.readFileSync(path.join(setDir, 'lessons.jsonl'), 'utf8') === before);
 check('its change list comes with it', fs.existsSync(path.join(made, 'CHANGES.md')) && fs.existsSync(path.join(made, 'flagged.jsonl')));
 check('the work folder is tidied away', !fs.existsSync(path.join(root, 'clean-work', 'mine')));
+{ const runs = listRuns(path.join(dataDir, 'lab')); const cr = runs.find((x) => x.step === 'dataset-cleaning');
+  check('the cleaning has a Lab run record with its input and output by hash', cr && cr.state === 'done' && cr.inputs[0]?.id?.startsWith('sha256:') && cr.outputs[0]?.kind === 'lessons' && cr.outputs[0].path === made && /^\d+\.\d+\.\d+/.test(cr.bob), JSON.stringify(cr));
+  check('the cleaned set is in the data index with the original as its parent', readIndex(path.join(dataDir, 'lab')).items.some((x) => x.path === made && x.parents.includes(cr?.inputs[0]?.id) && !x.neverTrain)); }
 check('adopting twice never overwrites', (() => { const w = path.join(tmp, 'w'); fs.mkdirSync(path.join(w, 'mine'), { recursive: true }); fs.writeFileSync(path.join(w, 'mine', 'lessons.jsonl'), '{}\n'); return adoptCleaned({ work: w, set: sets[0], lessonsRoot: path.join(dataDir, 'lab', 'lessons') }).id === 'mine-clean-2'; })());
 
 // one at a time
@@ -90,6 +94,7 @@ slow.protocolRun('pairs', { set: 'mine' });
 let refused = ''; try { slow.protocolRun('pairs', { set: 'mine' }); } catch (e) { refused = e.message; }
 check('one step at a time', /One at a time/.test(refused));
 check('stop ends it', slow.protocolStop().stopped === true && slow.protocolView().job.state === 'stopped');
+check('a stopped step\'s run record says stopped', listRuns(path.join(dataDir, 'lab')).find((x) => x.step === 'preference-pairs')?.state === 'stopped');
 
 // ---- the rented steps in a Forge plan ----
 const pairsSets = [{ id: 'mine', path: path.join(tmp, 'pairs', 'mine'), pairs: 12, marked: 40 }, { id: 'marked-only', path: path.join(tmp, 'pairs', 'm'), pairs: 0, marked: 9 }];
