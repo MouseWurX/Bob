@@ -3258,7 +3258,7 @@ export const FOLD = {
   'faq-keys': 'around', 'faq-doc-view': 'my-documents', 'faq-undo-turn': 'msg-menu', 'faq-tool-hangs': 'watching-myself',
   'faq-honest': 'watching-myself', 'faq-retries': 'watching-myself', 'faq-apps-door': 'apps-door', 'faq-chat-files': 'chat-files',
   'faq-saved-prompts': 'saved-prompts', 'faq-locked-secrets': 'locked-secrets', 'faq-move-bob': 'backup', 'faq-big-songs': 'songs',
-  'faq-edit-new': 'pictures', 'faq-fold': 'lab-forge', 'faq-reap': 'lab-forge', 'faq-forge-ways': 'lab-forge', 'faq-protocol': 'lab-forge', 'faq-howto-recipe': 'howtos',
+  'faq-edit-new': 'pictures', 'faq-fold': 'lab-forge', 'faq-reap': 'lab-forge', 'faq-forge-ways': 'lab-forge', 'faq-protocol': 'lab-forge', 'faq-lab-smoke': 'lab-forge', 'faq-lab-never-train': 'lab-forge', 'faq-howto-recipe': 'howtos',
   'faq-howto-asking': 'howtos', 'faq-presets': 'personality', 'faq-advanced-switch': 'settings-everyday', 'faq-voice-onyx': 'voice',
   'faq-wants': 'wants', 'faq-how-i-got-here': 'msg-menu', 'faq-chat-full': 'chatting', 'faq-outside-text': 'privacy',
   'faq-redo': 'msg-menu', 'faq-lock': 'settings-lock', 'faq-lock-forgot': 'settings-lock', 'faq-lock-off': 'settings-lock', 'faq-email-where': 'settings-online', 'settings-email': 'settings-online', 'faq-msg-delete': 'msg-menu',

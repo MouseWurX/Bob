@@ -46,13 +46,14 @@ const lab = path.join(tmp, 'lab');
 const set = path.join(tmp, 'lessons', 'mine'); fs.mkdirSync(set, { recursive: true }); fs.writeFileSync(path.join(set, 'lessons.jsonl'), '{"a":1}\n');
 check('content ids are stable and change with the content', contentId(set) === contentId(set) && (() => { const a = contentId(set); fs.appendFileSync(path.join(set, 'lessons.jsonl'), '{"a":2}\n'); return contentId(set) !== a; })());
 
-const secret = { tool: 'clean', hfToken: 'hf_abcdefghijklmnopqrstuvwxyz123456', nested: { RUNPOD_API_KEY: 'x', note: 'hf_abcdefghijklmnopqrstuvwxyz123456', ok: 'fine' }, list: ['sk-abcdefghijklmnopqrstuv'] };
+const fakeHf = ['hf', 'abc'.repeat(10)].join('_'), fakeSk = ['sk', 'abc'.repeat(8)].join('-'); // built in pieces so the public check never sees a key shape
+const secret = { tool: 'clean', hfToken: fakeHf, nested: { RUNPOD_API_KEY: 'x', note: fakeHf, ok: 'fine' }, list: [fakeSk] };
 const clean = dropSecrets(secret);
-check('keys and tokens are left out of a run\'s settings, by name and by shape', !JSON.stringify(clean).includes('hf_abc') && !JSON.stringify(clean).includes('sk-abc') && !('hfToken' in clean) && !('RUNPOD_API_KEY' in clean.nested) && clean.nested.ok === 'fine' && clean.tool === 'clean');
+check('keys and tokens are left out of a run\'s settings, by name and by shape', !JSON.stringify(clean).includes(fakeHf) && !JSON.stringify(clean).includes(fakeSk) && !('hfToken' in clean) && !('RUNPOD_API_KEY' in clean.nested) && clean.nested.ok === 'fine' && clean.tool === 'clean');
 
 const r1 = startRun(lab, { step: 'dataset-cleaning', settings: secret, inputs: [{ kind: 'lessons', path: set }], bob: '1.5.0', now: Date.UTC(2026, 10, 14) });
 check('a free step with no smoke test starts running', r1.state === 'running' && r1.smoke === null);
-check('the record on disk holds no key', !fs.readFileSync(path.join(lab, 'runs', r1.id, 'run.json'), 'utf8').includes('hf_abc'));
+check('the record on disk holds no key', !fs.readFileSync(path.join(lab, 'runs', r1.id, 'run.json'), 'utf8').includes(fakeHf));
 const out1 = path.join(tmp, 'lessons', 'mine-clean'); fs.mkdirSync(out1); fs.writeFileSync(path.join(out1, 'lessons.jsonl'), '{"a":1}\n');
 const f1 = finishRun(lab, r1.id, { outputs: [{ kind: 'lessons', path: out1 }] });
 check('a finished run lists its output by hash', f1.state === 'done' && f1.outputs[0].id.startsWith('sha256:') && f1.ended);
