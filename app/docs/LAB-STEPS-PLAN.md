@@ -89,8 +89,9 @@ Each step is a small entry in one list, `src/lab-steps.js`. The page, the runner
 ```js
 {
   id: 'evil-steer',
-  title: 'Steer with a direction',          // plain name on the card
-  proper: 'Activation steering (control vector)', // shown in Professional
+  name: 'Activation steering',              // short professional name on the card
+  plain: 'Pushes the brain along one direction to see what changes.', // the (i) text
+  glossary: 'activation-steering',          // the name links here
   stage: 'clean-first',                     // where it sits in the protocol order
   where: 'rented',                          // here | rented | both
   heavy: true,                              // never on this computer's card when Gaming is possible
@@ -121,43 +122,44 @@ Rules every step follows:
 
 In protocol order. "Stage" is the PR #201 order; any step can also run on its own.
 
-| Stage | Step | Professional name | Script | Where |
+| Stage | Name | (i) Plain words | Script | Where |
 |---|---|---|---|---|
-| 1 Baseline and data | Benchmark a brain (Challenges, quiz, tools) | Baseline evaluation | existing Lab jobs, `tool-score.mjs` | both |
-| 1 | Save odds with every answer (top-K) | Teacher logit capture (top-K logprobs) | `write-lessons.mjs --odds` | rented |
-| 1 | Scrub a set or folder | PII scrubbing | `scrub-data.mjs` | here |
-| 1 | Clean a lesson set into a new version | Dataset cleaning and versioning | `clean-lessons.mjs` | here |
-| 1 | Make right-vs-wrong pairs | Preference pair construction | `make-pairs.mjs` | here |
-| 1 | Make checks and probes | Held-out eval and probe set construction | `make-checks.mjs`, `make-probes.mjs` | here |
-| 2 Clean first | Evil check | Harmful-behaviour red-team eval | `evil-check.mjs` | both |
-| 2 | Steer with a direction | Activation steering (control vector) | `evil-steer.mjs` | rented |
-| 2 | Expert and neuron sweep | Ablation sweep (experts and residual-stream neurons) | `evil-sweep.mjs` | rented |
-| 2 | Patching (new) | Activation patching (causal tracing) | `patch-trace.mjs` (to write) | rented |
-| 2 | Sparse-autoencoder features (new) | Sparse autoencoder (SAE) feature analysis | `sae-train.py`, `sae-read.mjs` (to write) | rented |
-| 2 | Refusal habit, try it first | Refusal-direction ablation (abliteration), live | `src/lab-home-jobs.js` | here |
-| 3 Analysis | REAP scores | REAP expert saliency scoring | `reap-calibrate.mjs`, `reap-pick.mjs`, `reap-lastlayer.mjs` | rented |
-| 3 | Expert maps per target and per layer | Router trace and expert attribution | `trace-read.mjs` | both |
-| 3 | Carry the map over to a cut | Expert attribution transfer | `trace-carryover.mjs` | here |
-| 3 | Usage map | Expert activation profiling (imatrix) | `src/lab-usage.js` | here |
-| 3 | Watch page recording | Router activation visualisation (fNRI) | `src/lab-watch.js`, `forge/fnri-remote.mjs` | both |
-| 3 | Tool interview | Tool-use failure analysis | `tool-interview.mjs`, `tool-pick.mjs`, `tool-wish.mjs` | rented |
-| 3 | Tool wording A/B, per brain family | Tool-schema prompt A/B testing | `tool-wording.mjs`, `natural-tools.mjs` | rented |
-| 4 Train | Train the full brain | Full fine-tune (SFT) before pruning | Forge plan `train_teacher` | rented |
-| 4 | Teach with a small add-on (LoRA), with frozen layers | Low-rank adaptation (LoRA, QLoRA, DoRA) with layer freezing | `forge/pod/lora.py`, `heal.py` (options to add) | both |
-| 4 | Doctor lessons from failures (new) | Error-driven data correction | `doctor-lessons.mjs` (to write, from #228) | here |
-| 4 | Sort by odds for "look it up when unsure" (new) | Confidence calibration and abstention data | `odds-sort.mjs` (to write, from #228) | here |
-| 5 Cut in steps | Cut one rung | Iterative expert pruning with merging | Forge plan, Make a brain | both |
-| 6 Heal | Teach it back (distill) | Knowledge distillation (healing) | Forge plan `heal` | rented |
-| 7 Several targets | Targets with weights | Multi-objective preference optimisation (ORPO, DPO, KTO) | Forge plan `targets` | rented |
-| 8 Finish | On-policy and reward pass | On-policy distillation and GRPO | Forge plan `heal.onpolicy`, `grpo` | rented |
-| 9 Blend | Blend | Model merging (linear, TIES, DARE) | Forge plan `merge` | rented |
-| 10 Live dials | Sweep experts per word and layer dials | Inference-time hyperparameter sweep (top-k experts, layer scaling) | `expert-sweep.mjs`, `set-live.mjs` | both |
-| 10 | Bake chosen dials into a copy | Weight editing (baking interventions) | Forge plan `surgery` | rented, on the owner's go |
-| 11 Publish | Stage for Hugging Face | Release staging (model card, manifest, hashes) | `hf-stage.mjs` (to write: scrub, card, file list, hashes) | here |
-| 11 | Upload | Model and dataset publishing | existing HF upload | here, on the owner's typed go |
+| 1 Baseline | Baseline eval | Scores the brain as it is. | existing Lab jobs, `tool-score.mjs` | both |
+| 1 | Logit capture (top-K) | Saves the teacher's odds for every word. | `write-lessons.mjs --odds` | rented |
+| 1 | PII scrub | Removes names, paths and keys from data. | `scrub-data.mjs` | here |
+| 1 | Dataset cleaning | Makes a new version without bad lessons. | `clean-lessons.mjs` | here |
+| 1 | Preference pairs | Pairs a right answer with a wrong one. | `make-pairs.mjs` | here |
+| 1 | Eval and probe sets | Makes held-out checks to score against. | `make-checks.mjs`, `make-probes.mjs` | here |
+| 2 Clean first | Harm eval | Asks harmful things and rates the answers. | `evil-check.mjs` | both |
+| 2 | Activation steering | Pushes the brain along one direction to see what changes. | `evil-steer.mjs` | rented |
+| 2 | Ablation sweep | Turns experts or neurons down to find which cause a habit. | `evil-sweep.mjs` | rented |
+| 2 | Activation patching (new) | Swaps one part's output to find where a habit lives. | `patch-trace.mjs` (to write) | rented |
+| 2 | SAE features (new) | Splits the brain's signals into readable features. | `sae-train.py`, `sae-read.mjs` (to write) | rented |
+| 2 | Abliteration | Removes the reflex to say no, tried live first. | `src/lab-home-jobs.js` | here |
+| 3 Analysis | REAP scoring | Rates how much each expert matters. | `reap-calibrate.mjs`, `reap-pick.mjs`, `reap-lastlayer.mjs` | rented |
+| 3 | Router trace | Maps which experts each job uses, layer by layer. | `trace-read.mjs` | both |
+| 3 | Attribution transfer | Carries an expert map over to a cut brain. | `trace-carryover.mjs` | here |
+| 3 | Expert profiling | Counts how often each expert works. | `src/lab-usage.js` | here |
+| 3 | Router visualisation | Records a 3D picture of experts at work. | `src/lab-watch.js`, `forge/fnri-remote.mjs` | both |
+| 3 | Tool-use audit | Finds why tool calls go wrong. | `tool-interview.mjs`, `tool-pick.mjs`, `tool-wish.mjs` | rented |
+| 3 | Tool-schema A/B | Tries tool wordings to see which works best. | `tool-wording.mjs`, `natural-tools.mjs` | rented |
+| 4 Train | Full fine-tune (SFT) | Teaches the whole brain before any cut. | Forge plan `train_teacher` | rented |
+| 4 | LoRA | Teaches a small add-on; chosen layers stay frozen. | `forge/pod/lora.py`, `heal.py` (options to add) | both |
+| 4 | Error-driven correction (new) | Turns failed answers into corrected lessons. | `doctor-lessons.mjs` (to write, from #228) | here |
+| 4 | Abstention data (new) | Teaches it to look things up when unsure. | `odds-sort.mjs` (to write, from #228) | here |
+| 5 Cut | Iterative pruning | Cuts experts one step at a time. | Forge plan, Make a brain | both |
+| 6 Heal | Distillation | Teaches a cut brain to act like the full one. | Forge plan `heal` | rented |
+| 7 Targets | Multi-objective PO | Trains on several goals, each with its own weight. | Forge plan `targets` | rented |
+| 8 Finish | On-policy KD + GRPO | Grades the brain's own answers, then rewards good tool calls. | Forge plan `heal.onpolicy`, `grpo` | rented |
+| 9 Blend | Model merging | Mixes two brains' weights. | Forge plan `merge` | rented |
+| 10 Live dials | Inference sweep | Tries experts per word and layer strengths live. | `expert-sweep.mjs`, `set-live.mjs` | both |
+| 10 | Weight editing | Bakes chosen dials into a copy. | Forge plan `surgery` | rented, on the owner's go |
+| 11 Publish | Release staging | Gets files, card and checksums ready to upload. | `hf-stage.mjs` (to write) | here |
+| 11 | Publish | Uploads to Hugging Face. | existing HF upload | here, on the owner's typed go |
 
-Every step has both names. The plain one is on its card; Professional mode adds the proper one, as the Lab's other
-pages do since 1.5.199, and each proper name gets a glossary entry.
+Naming rule for every step, option and field: a short professional name on the card (jargon is fine), an (i)
+beside it with one plain sentence saying what it does, and the name linked to its glossary entry. Descriptions stay
+one short sentence.
 
 Every stage ends with the benchmark step on the same fixed sample set, chosen once at stage 1.
 
@@ -168,26 +170,27 @@ training or frozen on the experts (`--experts lora|full|frozen`), and keeps the 
 freeze chosen layers or choose which parts get LoRA. The step adds these options, all in the plan and the form,
 all off unless picked:
 
-| Option | Professional name | What it does |
-|---|---|---|
-| Freeze layers | Layer freezing | Pick layers (like 0-11, or "all but the last 8") that don't change at all. |
-| Which parts learn | Target modules | Attention, feed-forward, experts, router, each on or off. |
-| Only some experts | Expert-selective LoRA | LoRA only on the experts a target's map picks (from the expert maps step). |
-| Size of the add-on | Rank and alpha | How many numbers the add-on has, and how strongly it counts. |
-| Rank per layer | Layer-wise rank | Bigger add-ons where the maps show the work is. |
-| Steadier at big sizes | rsLoRA | Scales by the square root of rank so big ranks train evenly. |
-| Faster learning | LoRA+ | The B half learns faster than the A half. |
-| Direction and size apart | DoRA | Learns each weight's size and direction separately; often closer to full training. |
-| Smaller card | QLoRA | Keeps the base brain in 4-bit while the add-on trains, so a bigger brain fits a cheaper card, or a small one fits this computer. |
-| Dropout | LoRA dropout | Drops some inputs while training, against learning lessons by heart. |
-| Keep it separate | Adapter export | Saves the add-on on its own, so it can be turned on, off or mixed without a new brain file. Running one live needs engine patch 0016 (adapter at load), still proposed. |
-| One add-on per target | Multi-adapter training | One for tools, one for a style, and so on, each with its own score. |
-| Mix add-ons | Adapter merging | Adds add-ons together with weights, through `merge.py`. |
-| Bake it in | Merge into base | Folds the add-on into a copy of the brain, on the owner's go. |
-| Pick up where it stopped | Checkpoint resume | Already there: `lora-state.pt` every 100 steps. |
+| Option | (i) Plain words |
+|---|---|
+| Layer freezing | Chosen layers don't change. |
+| Target modules | Picks which parts learn: attention, feed-forward, experts, router. |
+| Expert-selective LoRA | Only the experts a job uses learn. |
+| Rank / alpha | Sets the add-on's size and strength. |
+| Layer-wise rank | Gives bigger add-ons where the work is. |
+| rsLoRA | Keeps big add-ons training evenly. |
+| LoRA+ | Speeds up learning. |
+| DoRA | Learns closer to full training. |
+| QLoRA | Holds the brain in 4-bit so it fits a smaller card. |
+| LoRA dropout | Helps it learn, not memorise. |
+| Adapter export | Saves the add-on on its own. Running it live needs engine patch 0016, still proposed. |
+| Multi-adapter | One add-on per job, each scored. |
+| Adapter merging | Mixes add-ons with weights. |
+| Merge into base | Bakes the add-on into a copy, on the owner's go. |
+| Checkpoint resume | Picks up where it stopped. Already there. |
 
 The smoke test trains 20 steps on 50 lessons and checks that the frozen layers didn't move and the loss fell. A
-fine-tune of about 9B or less in 4-bit fits this computer's 16 GB card; anything bigger rents a card.
+fine-tune of about 9B or less in 4-bit fits a 16 GB card at home; anything bigger rents a card. Our own runs stay on
+rentals.
 
 ### Pipelines
 
@@ -224,14 +227,16 @@ parents and tags. Lesson sets are outputs like any other, so a set's versions an
 
 A new **Steps** tab beside Make a brain, and the Forge's "The training protocol" moves into it.
 
-- **Steps**: the step list grouped by stage, each a card with its plain name, where it runs, what it takes and
-  makes, and a Run button. Professional shows the proper name and the exact command.
+- **Steps**: the step list grouped by stage. Each card shows the step's name (linked to the glossary), an (i) with
+  the plain sentence, where it runs, what it takes and makes, and a Run button. Professional also shows the exact
+  command.
 - **Pipelines**: build, save and run a pipeline. Each row shows its state, its next step and its cost so far.
 - **Runs**: every run, newest first, with filters (step, brain, state). Tick two or more to compare: settings and
   scores side by side, differences marked. A chart per pipeline shows each target's score after every stage.
 - **Data**: every output, with its family tree, tags and where it's used. A never-train item says so in words.
 
-Settings stay visible, as Bob's other panels are, and the tab goes in `public/settings-map.js`. Every control has a
+The (i) is a real button: it shows its sentence on mouse-over, on keyboard focus and on tap, and screen readers read
+it as the control's description. Settings stay visible, as Bob's other panels are, and the tab goes in `public/settings-map.js`. Every control has a
 label and works by keyboard. Charts have a table view for screen readers. The tab works the same on Windows, Mac and
 Linux. The Android app has no Lab of its own, so the phone shows Runs and Data from the computer's Bob to read,
 and starting a step stays on the computer.
