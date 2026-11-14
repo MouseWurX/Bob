@@ -20,6 +20,9 @@ import { checkText, suggest } from '../src/spell.js';
 import { guessSpeakers, parseWhisper } from '../src/meeting-notes.js';
 import { compareText } from '../src/compare-files.js';
 import { untgz } from '../src/tgz.js';
+import crypto from 'node:crypto';
+import { closure, wheelsFor, wheelNeeds, getPackages, hasPackages, packagesForRun, WHEELS, PYODIDE_PACKAGES, wheelFile } from '../src/py-packages.js';
+import { PYODIDE as PYO, pyodideDir as pyoDir } from '../src/py-sandbox.js';
 import { runPython, pythonReady } from '../src/py-sandbox.js';
 import { mergeSettings } from '../src/config.js';
 import { keyNames } from '../src/backup.js';
@@ -240,6 +243,61 @@ const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\
   check('the scratch folder is thrown away', fs.readdirSync(path.join(cfg.innDir, 'tools', '_pyscratch')).length === 0);
   fs.rmSync(cfg.innDir, { recursive: true, force: true });
   check('a computer\'s own Python is never started', !/spawn\(['"]python|execFile\(['"]python/.test(read('src/py-sandbox.js')));
+}
+
+// ---- 73b Python packages (Get packages; no real download: the fetch and Pyodide's folder are faked) ----
+{
+  const shaOf = (b) => crypto.createHash('sha256').update(b).digest('hex');
+  const lock = { info: { version: PYO.version }, packages: {} };
+  const body = {};
+  const names = new Set([...PYODIDE_PACKAGES, ...wheelNeeds(WHEELS).pyodide, 'six']);
+  for (const n of names) { const b = Buffer.from('wasm ' + n); body[`${n}.whl`] = b; lock.packages[n] = { name: n, file_name: `${n}.whl`, sha256: shaOf(b), depends: n === 'pandas' ? ['numpy', 'six'] : [] }; }
+  const c = closure(lock, ['pandas']);
+  check('a package brings what it needs, from the lock', c.names.join() === 'numpy,pandas,six' && c.missing.length === 0);
+  check('a name the lock lacks is reported', closure(lock, ['nope']).missing[0] === 'nope');
+  const w = wheelsFor('import docx\nfrom openpyxl import Workbook\nimport os, pptx.util\n');
+  check('the wheels a piece of code imports, with what they need', ['python-docx', 'openpyxl', 'et-xmlfile', 'python-pptx', 'xlsxwriter'].every((n) => w.wheels.some((x) => x.name === n)) && w.pyodide.includes('lxml'));
+  check('plain maths imports no wheel', wheelsFor('import math\nresult = 2').wheels.length === 0);
+  check('every wheel is pinned by sha256 and comes from PyPI', WHEELS.every((x) => /^[0-9a-f]{64}$/.test(x.sha256) && new URL(x.url).hostname === 'files.pythonhosted.org' && x.url.endsWith('.whl')));
+  const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-pk-'));
+  const cfg = { agentDir, innDir: agentDir };
+  const dir = pyoDir(cfg);
+  fs.mkdirSync(dir, { recursive: true });
+  for (const f of ['pyodide.mjs', 'pyodide.asm.mjs', 'pyodide.asm.wasm', 'python_stdlib.zip']) fs.writeFileSync(path.join(dir, f), 'x');
+  fs.writeFileSync(path.join(dir, 'pyodide-lock.json'), JSON.stringify(lock));
+  for (const x of WHEELS) body[wheelFile(x)] = Buffer.from('wheel ' + x.name);
+  const fakeWheelSha = Object.fromEntries(WHEELS.map((x) => [x.name, x.sha256]));
+  // The real wheels' checksums can't match fake bytes, so a fetch that hands back a fake wheel must be refused.
+  const urls = [];
+  const fetchImpl = async (url) => { urls.push(url); const f = url.split('/').pop(); return { ok: true, url, body: [body[f] || Buffer.from('')] }; };
+  let err = '';
+  try { await getPackages(cfg, { fetchImpl }); } catch (e) { err = e.message; }
+  check('a file whose checksum does not match is not kept', /checksum didn't match/.test(err) && !hasPackages(cfg));
+  check('ready-built files come only from the Pyodide CDN at this version', urls.filter((u) => !u.includes('pythonhosted')).every((u) => u.startsWith(`https://cdn.jsdelivr.net/pyodide/v${PYO.version}/full/`)));
+  // Now with the wheels' pins pointed at the fake bytes (as if those were the real files).
+  for (const x of WHEELS) x.sha256 = shaOf(body[wheelFile(x)]);
+  urls.length = 0;
+  const got = await getPackages(cfg, { fetchImpl });
+  check('every package is fetched once and kept', hasPackages(cfg) && got.files === names.size + WHEELS.length);
+  urls.length = 0;
+  await getPackages(cfg, { fetchImpl });
+  check('files already here and still matching are not fetched again', urls.length === 0);
+  const redirected = async (url) => ({ ok: true, url: 'https://evil.example/x.whl', body: [Buffer.from('x')] });
+  fs.rmSync(path.join(dir, 'numpy.whl'));
+  let e2 = '';
+  try { await getPackages(cfg, { fetchImpl: redirected }); } catch (e) { e2 = e.message; }
+  check('a download sent somewhere else is refused', /don't trust/.test(e2));
+  for (const x of WHEELS) x.sha256 = fakeWheelSha[x.name];
+  check('a missing file means the packages are not here', !hasPackages(cfg));
+  check('no packages here: a run asks for none', packagesForRun({ agentDir: path.join(os.tmpdir(), 'bob-no-such') }, 'import docx') === null);
+  let asked = null;
+  const run = async (o) => { asked = o; return { ok: true, out: JSON.stringify({ ok: true, out: 1, printed: '' }) }; };
+  await runPython(cfg, 'import docx\nresult = 1', {}, { have: () => true, holds: async () => ({ ok: true }), run, packages: () => ({ wheels: ['python_docx-1.2.0-py3-none-any.whl'], pyodide: ['lxml'] }) });
+  check('a run that uses packages gets them, more time, and still no internet or other folders', asked.input.packages.wheels.length === 1 && asked.timeoutSec === 60 && asked.internet === false && asked.reads.length === 1);
+  await runPython(cfg, 'result = 1', {}, { have: () => true, holds: async () => ({ ok: true }), run, packages: () => null });
+  check('a plain run keeps 30 seconds', asked.timeoutSec === 30 && asked.input.packages === null);
+  check('packages are loaded only from Pyodide\'s own folder, never with micropip or pip', !/micropip|pip install/.test(read('src/py-sandbox.js')) && /loadPackagesFromImports/.test(read('src/py-sandbox.js')));
+  fs.rmSync(agentDir, { recursive: true, force: true });
 }
 
 // ---- the .tgz reader (Pyodide and the word list come as these) ----

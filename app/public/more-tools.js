@@ -47,6 +47,7 @@ export async function mountMoreTools(box) {
       ${byKey('calculator')}
       ${byKey('python')}
       <div class="row"><span class="muted">${v.pythonHere ? '✓ Python is here.' : `Python isn't here yet (about ${esc(v.pythonSize)}, once).`}${v.sandboxOn ? '' : ' The sandbox is off.'}</span>${v.pythonHere ? '' : ' <button type="button" class="mini" data-mt-get="python">Get Python</button>'}</div>
+      ${v.pythonHere ? `<div class="row"><span class="muted">${v.packagesHere ? '✓ Packages are here' : 'Packages aren\'t here yet (a bigger one-time download, every file checked)'}: ${esc((v.packageNames || []).join(', '))}.</span>${v.packagesHere ? '' : ' <button type="button" class="mini" data-mt-get="packages">Get packages</button>'}</div>` : ''}
       ${byKey('passwords')}
       <h4 class="ssub">Reminders</h4>
       ${byKey('repeatReminders')}
@@ -97,7 +98,7 @@ export async function mountMoreTools(box) {
   box.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const d = b.dataset;
-    if (d.mtGet) act(d.mtGet === 'python' ? { getPython: true } : { getWordList: true });
+    if (d.mtGet) act(d.mtGet === 'python' ? { getPython: true } : d.mtGet === 'packages' ? { getPackages: true } : { getWordList: true });
     else if ('mtCaladd' in d) {
       const link = val('[data-mt-cal=link]').trim(), name = val('[data-mt-cal=name]').trim() || 'Calendar';
       act(/^(https?|webcals?):\/\//i.test(link) ? { addCalendar: { name, link } } : { addCalendar: { name, file: link } }, 'Calendar added.');

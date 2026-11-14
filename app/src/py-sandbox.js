@@ -9,13 +9,15 @@
 // Python's own files (open, os.listdir...) only see Pyodide's make-believe disk inside the box, never the
 // computer's. A Python installed on the computer is never used: it has no lock like Node's, and its audit hooks
 // can be got round, so it would only be a check, not a wall.
-// The standard library comes with it (statistics, decimal, fractions, datetime, csv, json, re, math...). Extra
-// packages (numpy, pandas) would need the internet, so they aren't loaded.
+// The standard library comes with it (statistics, decimal, fractions, datetime, csv, json, re, math...). Nov 14:
+// extra packages (numpy, pandas, python-docx...) come as a second one-time download, Get packages (py-packages.js),
+// into Pyodide's own folder; a run loads only the ones its code imports, from that folder, still with no internet.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { runSandboxed, sandboxHolds } from './selftools.js';
 import { untgz } from './tgz.js';
+import { packagesForRun } from './py-packages.js';
 
 export const PYODIDE = {
   version: '314.0.7',
@@ -25,6 +27,7 @@ export const PYODIDE = {
   license: 'MPL-2.0'
 };
 export const PY_SECONDS = 30;
+export const PY_SECONDS_PACKAGES = 60; // loading pandas or scipy takes a while on its own
 export const MAX_PY_CODE = 20000;
 // The files Pyodide needs (from the package's top folder). Anything else in the download is left out.
 const KEEP = new Set(['pyodide.mjs', 'pyodide.asm.mjs', 'pyodide.asm.wasm', 'python_stdlib.zip', 'pyodide-lock.json', 'package.json', 'README.md']);
@@ -77,7 +80,18 @@ export async function run(input) {
   const { loadPyodide } = await import(pathToFileURL(path.join(dir, 'pyodide.mjs')).href);
   let printed = '';
   const keep = (s) => { if (printed.length < 20000) printed += String(s) + '\\n'; };
-  const py = await loadPyodide({ indexURL: dir + path.sep, stdout: keep, stderr: keep, env: { HOME: '/home/bob' } });
+  const py = await loadPyodide({ indexURL: dir + path.sep, stdout: keep, stderr: keep, env: { HOME: '/home/bob', MPLBACKEND: 'Agg' } });
+  // Packages (Get packages): only from Pyodide's own folder. Ready-built ones by the code's imports, then the
+  // plain-Python wheels it imports (unpacked into Python's make-believe disk) and what those need.
+  if (input.packages) {
+    try {
+      const quiet = () => {};
+      await py.loadPackagesFromImports(String(input.code), { messageCallback: quiet, errorCallback: keep });
+      if (input.packages.pyodide.length) await py.loadPackage(input.packages.pyodide, { messageCallback: quiet, errorCallback: keep });
+      const fs = await import('node:fs');
+      for (const w of input.packages.wheels) py.unpackArchive(fs.readFileSync(path.join(dir, 'wheels', w)), 'wheel');
+    } catch (e) { return JSON.stringify({ ok: false, error: 'A package wouldn\'t load: ' + String((e && e.message) || e).split('\\n')[0], printed }); }
+  }
   py.globals.set('data', py.toPy(input.data ?? {}));
   let value;
   try { value = await py.runPythonAsync(String(input.code)); }
@@ -90,7 +104,7 @@ export async function run(input) {
 }
 `;
 
-export async function runPython(cfg, code, input = {}, { signal, holds = sandboxHolds, run = runSandboxed, have = hasPython } = {}) {
+export async function runPython(cfg, code, input = {}, { signal, holds = sandboxHolds, run = runSandboxed, have = hasPython, packages = packagesForRun } = {}) {
   if (typeof code !== 'string' || !code.trim()) throw new Error('There was no code to run.');
   if (code.length > MAX_PY_CODE) throw new Error(`That's ${code.length} characters of code; up to ${MAX_PY_CODE} for a quick job.`);
   if (!have(cfg)) return { ok: false, error: 'Python isn\'t here yet. Settings, How Bob works, 🧰 More tools: press Get Python (about 6.5 MB).' };
@@ -100,7 +114,9 @@ export async function runPython(cfg, code, input = {}, { signal, holds = sandbox
   fs.mkdirSync(dir, { recursive: true });
   try {
     fs.writeFileSync(path.join(dir, 'tool.mjs'), PY_TOOL);
-    const r = await run({ dir, input: { pyodideDir: pyodideDir(cfg), code: code.replace(/\r\n/g, '\n'), data: input && typeof input === 'object' ? input : { value: input } }, reads: [pyodideDir(cfg)], internet: false, timeoutSec: PY_SECONDS, signal });
+    const clean = code.replace(/\r\n/g, '\n');
+    const pk = packages(cfg, clean);
+    const r = await run({ dir, input: { pyodideDir: pyodideDir(cfg), code: clean, data: input && typeof input === 'object' ? input : { value: input }, packages: pk || null }, reads: [pyodideDir(cfg)], internet: false, timeoutSec: pk ? PY_SECONDS_PACKAGES : PY_SECONDS, signal });
     if (!r.ok) return { ok: false, error: r.error, log: r.log };
     let ans = {};
     try { ans = JSON.parse(r.out); } catch { return { ok: false, error: 'Python gave back something I couldn\'t read.' }; }

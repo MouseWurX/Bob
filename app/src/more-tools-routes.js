@@ -8,6 +8,7 @@ import { saveSettings } from './config.js';
 import { cleanMoreTools, moreTools, SWITCHES, EMAIL_KEY, calendarKey, apiKeyName, newId, MAX_CALENDARS, MAX_APIS, cleanBase } from './more-tools.js';
 import { keyValue, saveKey } from './secret-box.js';
 import { hasPython, getPython, pythonReady, PYODIDE } from './py-sandbox.js';
+import { hasPackages, getPackages, WHEELS, PYODIDE_PACKAGES } from './py-packages.js';
 import { hasWordList, getWordList } from './spell.js';
 import { findFfmpeg } from './office.js';
 import { loadWatches, saveWatches } from './page-watch.js';
@@ -24,7 +25,7 @@ export function moreToolsView(cfg, extra = {}) {
     emailPasswordSaved: has(EMAIL_KEY),
     calendars: m.calendars.map((c) => ({ ...c, linkSaved: c.kind === 'link' ? has(calendarKey(c.id)) : undefined })),
     apis: m.apis.map((a) => ({ ...a, keySaved: has(apiKeyName(a.id)) })),
-    pythonHere: hasPython(cfg), pythonSize: `${(PYODIDE.bytes / 1048576).toFixed(1)} MB`, sandboxOn: sandboxOn(cfg),
+    pythonHere: hasPython(cfg), packagesHere: hasPackages(cfg), packageNames: [...PYODIDE_PACKAGES.filter((n) => n !== 'typing-extensions' && n !== 'fonttools'), ...WHEELS.filter((w) => !['et-xmlfile', 'defusedxml'].includes(w.name)).map((w) => w.name)], pythonSize: `${(PYODIDE.bytes / 1048576).toFixed(1)} MB`, sandboxOn: sandboxOn(cfg),
     wordListHere: hasWordList(cfg),
     ffmpegHere: Boolean(findFfmpeg(cfg)),
     hearingHere: Boolean(cfg.stt?.provider === 'whispercpp' ? cfg.stt?.model : cfg.stt?.provider || cfg.ollamaUrl),
@@ -115,12 +116,12 @@ export async function moreToolsRoute({ req, res, p, isLocal, brain, cfg, body, s
     }
     if (b.removeWatch) saveWatches(cfg, loadWatches(cfg).filter((w) => w.id !== b.removeWatch));
     // The two one-time downloads.
-    if (b.getPython === true || b.getWordList === true) {
+    if (b.getPython === true || b.getWordList === true || b.getPackages === true) {
       if (getting) throw new Error('A download is already going. Wait for it to finish.');
-      getting = (b.getPython ? getPython(cfg) : getWordList(cfg)).finally(() => { getting = null; });
-      await getting;
-      out.note = b.getPython ? 'Python is here. Now switch on "Let Bob use Python in the sandbox".' : 'The word list is here.';
-      log(b.getPython ? `Python ${PYODIDE.version} for the sandbox fetched` : 'spelling word list fetched');
+      getting = (b.getPython ? getPython(cfg) : b.getPackages ? getPackages(cfg) : getWordList(cfg)).finally(() => { getting = null; });
+      const got = await getting;
+      out.note = b.getPython ? 'Python is here. Now switch on "Let Bob use Python in the sandbox".' : b.getPackages ? `Python's packages are here (${(got.bytes / 1048576).toFixed(0)} MB fetched, every file checked).` : 'The word list is here.';
+      log(b.getPython ? `Python ${PYODIDE.version} for the sandbox fetched` : b.getPackages ? `Python packages for the sandbox fetched (${got.files} files)` : 'spelling word list fetched');
     }
   } catch (e) {
     send(res, 400, moreToolsView(cfg, { error: e.code === 'BOX_STUCK' ? e.message : String(e.message || e) }));
