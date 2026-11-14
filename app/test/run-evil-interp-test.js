@@ -33,6 +33,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   check('llama-act-dump is built when its patch is there, and never stops the server build', /--target llama-act-dump/.test(build) && /grep -q act-dump tools\/CMakeLists\.txt/.test(build));
   check('the act-dump patch adds the tool', /tools\/act-dump\/act-dump\.cpp/.test(read(path.join(lab, 'forge', 'pod', '0015-act-dump.patch'))));
   check('interp.py never reads the last layer (the engine keeps only the last word there) and counts only the ask\'s own words', /range\(1, n_layer - 1\)/.test(py) && /def ask_start/.test(py));
+  check('interp.py smoke-tests the means and a tiny autoencoder first, before the long dumps', py.indexOf('interp smoke passed') > 0 && py.indexOf('interp smoke passed') < py.indexOf('d1 = os.path.join'));
   check('interp.py marks its record never training', /"never_training": True/.test(py));
   const plan = JSON.parse(read(path.join(lab, 'forge', 'plans', 'riker-interp.json'))), m = plan.benchmark.models[0];
   check('the Riker interp plan: its own small rental with caps, the act-dump patch, interp before serving', plan.dollars_max <= 2 && plan.hours_max <= 3 && plan.benchmark.brain_engine.patches.includes('pod:0015-act-dump') && plan.benchmark.brain_engine.patches.includes('pod:0014-live-control-vector') && m.interp === true && m.interp_from === 'out/interp-riker');
@@ -77,7 +78,7 @@ const mk = (dir, { ok = true, fve = 0.8 } = {}) => {
   const pairs = path.join(tmp, 'pairs.json'); fs.writeFileSync(pairs, JSON.stringify({ evil: ['Be cruel.'], kind: ['Be kind.'], asks: Array.from({ length: 60 }, (_, i) => `ask ${i}`) }));
   const go = (extra) => new Promise((done) => { const c = spawn(process.execPath, [path.join(lab, 'evil-interp.mjs'), '--url', url, '--interp', dir, '--pairs', pairs, ...extra], { stdio: 'pipe' }); let o = ''; c.stdout.on('data', (x) => (o += x)); c.stderr.on('data', (x) => (o += x)); c.on('exit', (code) => done({ code, o })); });
   const g = await go(['--gate']);
-  check('the gate passes with good files and a live vector that takes and clears', g.code === 0 && /Interp gate passed/.test(g.o), g.o.slice(-200));
+  check('the gate passes with good files and a live vector that takes and clears', g.code === 0 && /Interp gate passed/.test(g.o) && /scoring works \(plain answer 1\/10\)/.test(g.o), g.o.slice(-200));
   const gb = await new Promise((done) => { const c = spawn(process.execPath, [path.join(lab, 'evil-interp.mjs'), '--url', url, '--interp', path.join(tmp, 'bad interp'), '--gate'], { stdio: 'pipe' }); let o = ''; c.stdout.on('data', (x) => (o += x)); c.on('exit', (code) => done({ code, o })); });
   check('the gate stops the rental (86) on a weak autoencoder', gb.code === 86 && /GATE STOP/.test(gb.o));
   const p = await go(['--out', out, '--mode', 'patch', '--n', '3']);

@@ -173,6 +173,16 @@ def main():
         open(lab, "w", encoding="utf-8").write("\n".join(allp[p] for p in keep) + "\n")
         probe = run_dump(a.act, a.model, lab, [1], os.path.join(a.work, "probe"), 16, extra)  # learn the layer count
         n_layer = probe["n_layer"]
+        # 0. smoke, first minutes (the owner's rule): a few prompts at one layer, the means and a tiny autoencoder end to end,
+        # so a broken step stops the run (the PC's gate exits 86 on interp.json) before the long dumps and training
+        sm = os.path.join(a.work, "smoke-prompts.txt"); open(sm, "w", encoding="utf-8").write("\n".join(allp[p] for p in keep[:12]) + "\n")
+        mid = max(1, (n_layer - 1) // 2); ds = os.path.join(a.work, "smoke"); si = run_dump(a.act, a.model, sm, [mid], ds, 32, extra)
+        sidx = load_index(ds); sloc = {g: {keep[:12].index(p) for p in ps if p in keep[:12]} for g, ps in groups.items()}
+        smeans = group_means(ds, si, sidx, sloc); xs = np.ascontiguousarray(layer_rows(ds, mid, si["n_embd"]))
+        ssae = train_sae(xs, 64, 8, 1, device, log=lambda s: None)
+        if mid not in smeans or not np.isfinite(ssae["fve"]): raise SystemExit(f"interp smoke failed at layer {mid}: means {sorted(smeans)} fve {ssae['fve']}")
+        report["steps"]["smoke"] = {"ok": True, "layer": mid, "tokens": int(xs.shape[0])}; print(f"interp smoke passed: layer {mid}, {xs.shape[0]} tokens", flush=True)
+        shutil.rmtree(ds, ignore_errors=True)
         # the last layer keeps only the last word (the engine drops the rest before the output), so it is never read
         d1 = os.path.join(a.work, "all-layers"); info = run_dump(a.act, a.model, lab, list(range(1, n_layer - 1)), d1, a.max_tokens, extra)
         idx = load_index(d1)
