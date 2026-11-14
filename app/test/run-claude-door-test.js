@@ -31,7 +31,7 @@ const brain = {
     read_file: { schema: fnS('read_file', 'Read a file.'), summary: ({ path: p }) => `read ${p}` },
     run_command: { schema: fnS('run_command', 'Run a command.'), check: () => ({ text: 'Run this command', command: 'npm test' }) },
     ask_cloud: { schema: fnS('ask_cloud', 'Costs money.') },
-    take_note: { schema: fnS('take_note', 'Notes.') }
+    notice_board: { schema: fnS('notice_board', 'Notes.') }
   },
   off: new Set(['run_command']), // the Run Hand is off in this Bob
   usable(n) { return Boolean(this.tools[n]) && !this.off.has(n); },
@@ -71,7 +71,7 @@ const brain = {
 // ---- which tools Claude sees ----
 {
   const names = offeredNames(brain);
-  check('tools switched on in Bob are offered', ['file_hands', 'make_image', 'read_file', 'take_note', 'recall_memory'].every((n) => names.includes(n)), names.join(','));
+  check('tools switched on in Bob are offered', ['file_hands', 'make_image', 'read_file', 'notice_board', 'recall_memory'].every((n) => names.includes(n)), names.join(','));
   check('a Hand that is off in Bob stays off for Claude', !names.includes('run_command'));
   check('nothing that costs money or loops is ever offered', !names.includes('ask_cloud') && ['ask_cloud', 'hire_brain', 'mcp_use', 'mcp_tools'].every((n) => NEVER.has(n)));
   check('no voice set up: no say_aloud', !names.includes('say_aloud'));
