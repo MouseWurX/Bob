@@ -55,6 +55,7 @@ export const NOT_BACKED_UP = [
   'bob/saved-formats.json', 'bob/turn-changes/', // items 232 and 238: worked out again; a turn's Undo is about this computer's files
   'bob/running.json', 'bob/crash-reports/', 'bob/before-safe-start.json', 'bob/settings-undo.json', 'bob/weekly.json', 'bob/chat-places/', 'bob/tool-errors.json', 'bob/amnesia/', // items 62 to 72 (and reliability item 206's error counts; Amnesia mode's copy from before it went on): worked out again on this computer, or about this computer only
   'bob/brain-files.json', 'bob/engine-care.json', 'bob/engine-care-beside.json', // reliability 218-228: about this computer's engine and files
+  'bob/bob-net-outbox.json', 'bob/bob-net-inbox.json', // Nov 14 Files and brains: copies under way between this computer and your other Bobs, about files on this one
   'bob/spare-keys.json', // 🔑 spare keys kept for your other Bobs: locked to this computer; pick them up again on a new one
   'bob/coding-agents.json', 'bob/agent-accounts/', 'bob/agent-tasks/', 'bob/agent-ask.mjs', // Nov 13 Coding agents: folders on this computer, other people's sign-ins (never copied), a task file while it runs, a helper made again
   'bob/honesty.json', // Nov 12, item 192: each brain's honesty score on this computer, counted again from new answers

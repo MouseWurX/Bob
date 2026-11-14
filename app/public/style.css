@@ -2446,7 +2446,7 @@ body.now-mind-only #nowMind > .now-sec { display: none; }
 .net-row .nb-port canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .net-row .nb-fog { opacity: .8; }
 .net-row .nb .dot { position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--bg); background: var(--good, rgb(91 208 138)); }
-.net-row .nb[data-mood="thinking"] .dot, .net-row .nb[data-mood="replying"] .dot, .net-row .nb[data-mood="loading"] .dot, .net-row .nb[data-mood="working"] .dot { background: var(--accent); }
+.net-row .nb[data-mood="thinking"] .dot, .net-row .nb[data-mood="replying"] .dot, .net-row .nb[data-mood="loading"] .dot, .net-row .nb[data-mood="working"] .dot, .net-row .nb[data-mood="waiting"] .dot { background: var(--accent); }
 .net-row .nb[data-mood="none"] .dot, .net-row .nb[data-mood="idle"] .dot, .net-row .nb[data-mood="stopped"] .dot { background: var(--muted); }
 .net-row .nb[data-mood="needs-you"] .dot, .net-row .nb[data-mood="failed"] .dot { background: var(--bad, rgb(224 108 90)); }
 .net-row .nb .count { position: absolute; top: -5px; right: -7px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--accent); color: var(--bg); font: 600 10.5px/17px var(--font, system-ui); text-align: center; }
@@ -2529,3 +2529,32 @@ dialog.fade-ask .fade-row button.danger { color: var(--on-accent); background: v
 .fade-set { padding-bottom: 6px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
 .dcm-num { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 4px 12px 4px 0; } /* 1.5.224 Keep order numbers wrap on a phone */
 .dcm-num input { width: 6em; }
+/* 14 Nov Lab Steps tab: one card per step, wrapping on a phone */
+.lab-step-list { list-style: none; padding: 0; margin: 0; display: grid; gap: .5rem; }
+.lab-step-card { padding: .5rem .6rem; border: 1px solid var(--line); border-radius: 8px; overflow-wrap: anywhere; }
+.lab-step-name { font-weight: 600; }
+.lab-pipe-chart { width: 100%; max-width: 420px; height: auto; display: block; }
+.lab-pipe-steps { margin: .3rem 0; padding-left: 1.4rem; }
+.lab-pipe-steps [aria-current] { font-weight: 600; }
+.lab-differs th, .lab-differs td { font-weight: 600; }
+
+/* 1.5.228 Settings, Agents: each company and chat app is named with its own little cube, in its chat head's colour
+   (public/net-overlay.js AGENT_LOOKS and ROOM_LOOKS), never the company's logo. */
+.set-nav [data-topic="adv-claude"], .set-nav [data-topic="adv-openai"], .set-nav [data-topic="adv-gemini"], .set-nav [data-topic="adv-qwen"], .set-nav [data-topic="adv-opencode"], .set-nav [data-topic="adv-discord"], .set-nav [data-topic="adv-telegram"],
+#sub-adv-claude > summary h3, #sub-adv-openai > summary h3, #sub-adv-gemini > summary h3, #sub-adv-qwen > summary h3, #sub-adv-opencode > summary h3, #sub-adv-discord > summary h3, #sub-adv-telegram > summary h3 { --cube: hsl(0 0% 62%); }
+.set-nav [data-topic="adv-claude"], #sub-adv-claude > summary h3 { --cube: hsl(15 63% 58%); }
+.set-nav [data-topic="adv-gemini"], #sub-adv-gemini > summary h3 { --cube: hsl(222 85% 60%); }
+.set-nav [data-topic="adv-qwen"], #sub-adv-qwen > summary h3 { --cube: hsl(258 75% 62%); }
+.set-nav [data-topic="adv-discord"], #sub-adv-discord > summary h3 { --cube: hsl(235 55% 62%); }
+.set-nav [data-topic="adv-telegram"], #sub-adv-telegram > summary h3 { --cube: hsl(200 65% 55%); }
+:is(.set-nav [data-topic="adv-claude"], .set-nav [data-topic="adv-openai"], .set-nav [data-topic="adv-gemini"], .set-nav [data-topic="adv-qwen"], .set-nav [data-topic="adv-opencode"], .set-nav [data-topic="adv-discord"], .set-nav [data-topic="adv-telegram"], #sub-adv-claude > summary h3, #sub-adv-openai > summary h3, #sub-adv-gemini > summary h3, #sub-adv-qwen > summary h3, #sub-adv-opencode > summary h3, #sub-adv-discord > summary h3, #sub-adv-telegram > summary h3)::before {
+  content: ""; display: inline-block; width: 1em; height: 1em; margin-right: .4em; vertical-align: -.12em; background: var(--cube);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 21 7v10l-9 5-9-5V7z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 21 7v10l-9 5-9-5V7z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+/* 1.5.228 The Discord chat: what you say in a channel through Bob, and the box to say it. */
+.room-chat .room-me { border-left: 3px solid var(--accent); padding-left: 6px; }
+.room-say { margin-top: 8px; }
+.room-say .row { align-items: flex-end; gap: 6px; }
+.room-say textarea { flex: 1; min-width: 0; resize: vertical; }
+.room-chat .room-heard { opacity: .85; }

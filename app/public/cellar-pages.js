@@ -1,7 +1,7 @@
 // Settings: the Everyday, Gaming, Other apps, Rented brains, Online, Bob-Net, Look, Jobs and memory pages. Split out of cellar.js.
 import { keep, tip, noteOrTip } from './tips.js';
 import { esc } from './util.js';
-import { findTheme, DEFAULT_THEME } from './themes.js';
+import { findTheme, DEFAULT_THEME, LAMPS, lampId } from './themes.js';
 import { LANGS, pickLang } from './i18n.js';
 import { dayWords, rentPicks, visibleModels } from './catalogue.js';
 import { appsDoorHtml } from './apps-door.js';
@@ -9,8 +9,10 @@ import { claudeDoorHtml } from './claude-door.js';
 import { agentsSettingsHtml } from './coding-agents.js'; // Nov 13 Coding agents
 import { telegramHtml } from './telegram.js';
 import { discordHtml } from './discord.js';
+import { COMPANIES, COMPANY_CLOUDS } from './agent-companies.js'; // 1.5.228 Settings, Agents
 import { phoneAccessHtml } from './phone-access.js';
 import { shareBrainsHtml } from './share-brains.js';
+import { netFilesHtml } from './net-files.js'; // Nov 14 Files and brains
 import { TEXT_MIN, TEXT_MAX, TEXT_STEP } from './everyday.js';
 
 // now() hands over createCellar's own values as they are at the moment of each call; fresh() copies them in.
@@ -65,7 +67,8 @@ export function createSettingsParts(now) {
         <div class="help-bundle muted" aria-live="polite"></div><div class="update-steps"></div><div class="pc-check" aria-live="polite"></div></div>`, '', true)}${panel('ev-bob', '🙂 Bob himself', bobSum, `
       ${srow('Bob\'s voice', voicePickHtml(), '<button type="button" class="mini" data-tab="speech">More voice settings</button>')}
       ${srow('Bob\'s look', esc(lookName), '<button type="button" class="mini" data-tab="style">Change</button>')}
-      ${sswitch('lookIcon', settings.lookIcon !== false, 'Use Bob\'s look as his icon', `His icon on the ${settings.platform === 'darwin' ? 'Dock' : 'taskbar'}, in the tray and in the corner of his window shows the look you picked, and changes the moment you save a new one (a shortcut pinned to the taskbar may keep the usual icon: Windows draws those from the shortcut). Off: the usual Bob icon.${settings.trayHere ? '' : ' Only in Bob\'s own window, not in a browser.'}`, settings.trayHere ? '' : 'disabled')}
+      ${sswitch('lookIcon', settings.lookIcon === true, 'Use Bob\'s look as his icon', `On: his icon on the ${settings.platform === 'darwin' ? 'Dock' : 'taskbar'}, in the tray and in the corner of his window shows the game look you picked, and changes the moment you save a new one (a shortcut pinned to the taskbar may keep the usual icon: Windows draws those from the shortcut). Off: his own icon, the tesseract, in your lamp's colour.${settings.trayHere ? '' : ' Only in Bob\'s own window, not in a browser.'}`, settings.trayHere ? '' : 'disabled')}
+      ${sswitch('ownBar', settings.ownBar !== false, 'Window buttons on Bob\'s bar', `Hides the system title bar. ${settings.platform === 'darwin' ? 'The red, yellow and green buttons' : 'Minimise, maximise and close'} sit on Bob's top bar instead. Drag the bar to move him${settings.platform === 'darwin' ? '' : ', double-click it to maximise'}. On unless you turn it off. Shows next time Bob opens.${settings.trayHere ? '' : ' Only in Bob\'s own window, not in a browser.'} <span class="own-bar-next" ${settings.trayHere && (settings.ownBar !== false) !== Boolean(settings.ownBarNow) ? '' : 'hidden'}>Quit Bob and open him again to see it.</span>`, settings.trayHere ? '' : 'disabled')}
       ${srow('Theme', esc(theme?.name || 'Bob\'s Inn'), '<button type="button" class="mini" data-tab="style">Change</button>')}
       ${srow('Animations', `<span class="ttabs" role="radiogroup" aria-label="Animations">${mopt('on', 'On')}${mopt('system', settings.platform === 'win32' ? 'Follow Windows' : 'Follow the system')}${mopt('off', 'Off')}</span>`)}
       ${srow('Language', `<select data-set="language" data-no-translate aria-label="Language">${LANGS.map((l) => `<option value="${l.code}" ${l.code === pickLang(settings.language) ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select> ${tip('The words on Bob\'s screens. English unless you pick another. Help and Bob\'s replies stay as they are: write to him in your language and he answers in it.', 'Language')}`)}
@@ -140,10 +143,33 @@ export function createSettingsParts(now) {
         <label class="switch"><input type="checkbox" data-set="workshop" ${settings.workshop?.enabled ? 'checked' : ''}><span><strong>Use ComfyUI</strong><br><span class="muted">${settings.workshop?.folder ? `Workflows folder: ${esc(settings.workshop.folder)} · ${settings.workshop.count || 0} workflow${settings.workshop.count === 1 ? '' : 's'}` : 'Off.'}</span></span></label>
         <label class="pick"><strong>ComfyUI port</strong><input data-set="workshopPort" inputmode="numeric" value="${esc(settings.workshop?.port || 8188)}" aria-label="ComfyUI port" style="width:7em"></label></div>
       ${appsDoorHtml()}
-      <p class="muted">Apps Bob works inside (Unreal Engine, Blender) are under Hands, Connected apps (MCP).</p>
-      ${claudeDoorHtml()}
+      <p class="muted">Apps Bob works inside (Unreal Engine, Blender) are under Hands, Connected apps (MCP). Claude, OpenAI, Gemini, Qwen and OpenCode each have their own section under Agents.</p>
       ${agentsSettingsHtml()}`;
   }
+  // 1.5.228 Settings, Agents: one section per company, holding everything Bob does with it (the owner, Nov 14: "all
+  // the big company agents should get their whole section"). Nothing new underneath: the Cloud helper, the coding agent
+  // and Hands for Claude are the same settings as before, only shown here. Each part is off unless you turn it on.
+  const cloudRow = (c) => `<div class="cloud row${c.keyFound ? '' : ' dim'}">
+          <label class="switch"><input type="checkbox" data-cloud="${esc(c.id)}" ${c.enabled ? 'checked' : ''} ${c.keyFound ? '' : 'disabled'}><span><strong>${esc(c.name)}</strong><br><span class="muted">${c.keyFound ? `Key found (${esc(c.apiKeyEnv)})` : `No key yet. Add a user variable named ${esc(c.apiKeyEnv)}.`}</span></span></label>
+          ${c.models.length ? `<select data-cloudmodel="${esc(c.id)}" aria-label="${esc(c.name)} model" ${c.keyFound ? '' : 'disabled'}>${c.models.map((m) => `<option ${m === c.model ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>` : `<input data-cloudmodel="${esc(c.id)}" aria-label="${esc(c.name)} model" placeholder="model name" value="${esc(c.model)}" ${c.keyFound ? '' : 'disabled'}>`}
+        </div>`;
+  function agentSectionHtml(id) {
+    const co = COMPANIES.find((c) => c.id === id);
+    if (!co) return '';
+    const heads = settings.chatHeads || {};
+    const helper = co.cloud ? cloud.find((c) => c.id === co.cloud) : null;
+    return `<p class="muted">Everything I do with ${esc(co.name)} (${esc(co.maker)}), in one place. Each part is off unless you turn it on.</p>
+      <h4 class="ssub">Chat head</h4>
+      ${sswitch('chatHead-' + co.id, heads[co.id] === true, `Show ${co.name}'s cube under mine`, `${co.name}'s own cube sits under my picture, with a dot for working, needs you or done. Click it to open its agents.`)}
+      ${helper ? `<h4 class="ssub">${esc(co.name)}'s brain for jobs</h4>
+      ${more(`A Cloud helper: I hand ${co.name} one job at a time, with an API key you pay per use. I ask every time, with the rough cost and exactly what text would leave this replicant matrix. I never store or see the key: you add it as an environment variable yourself.`)}
+      ${cloudRow(helper)}` : ''}
+      <h4 class="ssub">Coding agent</h4>
+      ${agentsSettingsHtml(co.kind)}
+      ${co.id === 'claude' ? `<h4 class="ssub">Let Claude use my hands</h4>${claudeDoorHtml()}` : ''}`;
+  }
+  // Discord and Telegram: the same boxes as before, with their chat head explained.
+  const chatAppHtml = (id) => `<p class="muted">Its chat head (my own cube for it) sits under my picture while it's on. Click it to open its chat.</p>${id === 'discord' ? discordHtml() : telegramHtml()}`;
   // 1.5.127 Rented brains: a big brain hired for one job from a service the owner has an account with.
   function rentHtml() {
     const r = rent || {};
@@ -200,19 +226,20 @@ export function createSettingsParts(now) {
       ${rentHtml()}
       <div><strong>Cloud helpers</strong> <span class="tag">off unless you turn one on</span>
         ${more('Paid cloud AIs Bob can hand one job to. He asks every time, with the rough cost and exactly what text would leave this replicant matrix. Bob never stores or sees your keys: you add a key as a Windows environment variable yourself (Settings, System, About, Advanced system settings, Environment Variables, under "User variables").')}
-        ${cloud.map((c) => `<div class="cloud row${c.keyFound ? '' : ' dim'}">
-          <label class="switch"><input type="checkbox" data-cloud="${esc(c.id)}" ${c.enabled ? 'checked' : ''} ${c.keyFound ? '' : 'disabled'}><span><strong>${esc(c.name)}</strong><br><span class="muted">${c.keyFound ? `Key found (${esc(c.apiKeyEnv)})` : `No key yet. Add a user variable named ${esc(c.apiKeyEnv)}.`}</span></span></label>
-          ${c.models.length ? `<select data-cloudmodel="${esc(c.id)}" aria-label="${esc(c.name)} model" ${c.keyFound ? '' : 'disabled'}>${c.models.map((m) => `<option ${m === c.model ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>` : `<input data-cloudmodel="${esc(c.id)}" aria-label="${esc(c.name)} model" placeholder="model name" value="${esc(c.model)}" ${c.keyFound ? '' : 'disabled'}>`}
-        </div>`).join('')}</div>
-      ${telegramHtml()}
-      ${discordHtml()}`;
+        ${cloud.filter((c) => !COMPANY_CLOUDS.includes(c.id)).map(cloudRow).join('')}
+        <p class="muted">Claude, OpenAI and Gemini are in their own sections under Agents.</p></div>
+      <p class="muted">Bob on Discord and Bob on Telegram are under Agents.</p>`;
   }
   function bobNetHtml() {
-    return `<h4 class="ssub">This Bob</h4>
+    // 2026-11-14 (the owner): how Bob-Net is like cluster computing, one line here and the whole story in Help.
+    return `<p class="muted">Your Bobs work together like a small cluster: each shares jobs and hardware with the others, and keeps his own files. ${tip('A <strong>cluster</strong> is a group of computers that work as one system. Here each Bob is one of them, over your own Tailscale network.', 'cluster')} <button type="button" class="mini help-link" data-help="faq-cluster" aria-label="Help: Bob-Net and cluster computing">? How</button></p>
+      <h4 class="ssub">This Bob</h4>
       ${phoneAccessHtml()}
       ${shareBrainsHtml()}
       <h4 class="ssub">Chats and your phone</h4>
       ${sswitch('carryIn', settings.carryIn === true, 'Accept chats', 'Your other Bobs and your phone can hand a chat to this Bob with Carry on on another Bob. It lands in Past chats as a new chat. Words only: no files, pictures or memory.')}
+      ${sswitch('netFiles', settings.netFiles === true, 'Files and brains', 'Send files to your other Bobs and copy brains to them over Bob-Net, and take theirs. Nothing comes in until you press Yes on the card. Needs it on both Bobs.')}
+      ${netFilesHtml()}
       ${sswitch('netOverlay', settings.netOverlay === true, 'Bob-Net icons', 'An icon under my picture for each Bob on Bob-Net and each coding agent you added. Click one to chat with it here. It only thinks (plus web search if on): no files, programs or Hands. The other Bob needs Accept jobs on.')}
       ${sswitch('phoneGlance', settings.phoneGlance === true, 'Share status with my phone', 'Bob for Android and its widget can show this Bob\'s state, brain, GPU heat and memory, running jobs and your next reminder. Only your signed-in phone and your other Bobs can ask.')}`;
   }
@@ -224,6 +251,9 @@ export function createSettingsParts(now) {
       <p class="muted" id="textsize-hint">The chat, the message box and Settings, bigger or smaller. 100% to start with. Saved for this Bob, on every window.</p></div>
       ${sswitch('readableFont', settings.readableFont === true, 'Readable font', 'More space between letters, words and lines, in the chat and Settings. Good for tired eyes and dyslexia.')}
       <div><strong>Now running</strong><div class="ttabs" role="radiogroup" aria-label="Open Now running when a task needs me">${opt('0', 'Leave Now running as it is', st.openNowOnNeed !== true)}${opt('1', 'Open Now running when a task needs me', st.openNowOnNeed === true)}</div></div>
+      <div class="lamp-row"><strong>Lamp</strong> ${tip('Four colours for the Lamplight and Terminal looks, each as close to a gas lamp\'s real light as a screen can show. It sets the colours and my app icon. More on the Style page.', 'Lamp')}
+        <div class="lamp-pick" role="radiogroup" aria-label="Lamp">${LAMPS.map((l) => `<button type="button" role="radio" aria-checked="${st.theme === l.id}" data-lamp="${l.id}" title="${esc(l.what)}"><i style="background:${l.glow};box-shadow:0 0 10px ${l.glow}" aria-hidden="true"></i>${esc(l.name)}</button>`).join('')}</div>
+        <p class="muted">Your app icon: ${esc(LAMPS.find((l) => l.id === lampId(st)).name)}.</p></div>
       <div><strong>Your own theme</strong><p class="muted">Make or edit a theme on the <button type="button" class="link" data-tab="style">🎨 Style</button> page (Make your own theme).</p></div>`;
   }
   // Settings, Jobs (src/job-helps.js): how Bob works through a job. Eleven switches, all off unless you turn them on.
@@ -269,6 +299,8 @@ export function createSettingsParts(now) {
     otherAppsHtml: (...a) => { fresh(); return otherAppsHtml(...a); },
     rentHtml: (...a) => { fresh(); return rentHtml(...a); },
     onlineHtml: (...a) => { fresh(); return onlineHtml(...a); },
+    agentSectionHtml: (...a) => { fresh(); return agentSectionHtml(...a); },
+    chatAppHtml: (...a) => { fresh(); return chatAppHtml(...a); },
     bobNetHtml: (...a) => { fresh(); return bobNetHtml(...a); },
     lookExtrasHtml: (...a) => { fresh(); return lookExtrasHtml(...a); },
     jobsHtml: (...a) => { fresh(); return jobsHtml(...a); },

@@ -13,7 +13,7 @@ import { lookText, LOOK_ID_RE } from './look.js';
 import { cleanPersonality } from '../public/personality.js';
 import { cleanHouseStyle } from '../public/house-style.js';
 import { pickFolder } from './pick-folder.js';
-import { pickFile, ownEntries } from './own-models.js';
+import { pickFile, ownEntries, ownModels, cleanOwnModels, ownId } from './own-models.js';
 import { selfWorkView, gatherBrains, makeCodeCopy, applyCodeCopy, cleanSelfWork, repoNamed, codeCopyRoot } from './self-work.js'; // "Work on repositories"
 import { catalogFileFor } from './llamacpp.js';
 import { ensureTool } from './self-work-tools.js'; // 1.5.135 brains of your own
@@ -26,7 +26,7 @@ import { presetsView, presetsOn, pickPreset } from './presets.js';
 import { Brain, apuHoldbackGB } from './brain.js';
 import { redo, redoOn } from './redo.js';
 import { msgMenu } from './msg-menu.js';
-import { ModelShop } from './models.js';
+import { ModelShop, saveNameOf } from './models.js';
 import { CatalogUpdates } from './catalog-update.js';
 import { readPage, makeEntry, cleanAdded, mergeAdded, sweepAdded, ADDED_MAX } from './catalog-added.js';
 import { findModels } from './catalog-find.js';
@@ -100,7 +100,7 @@ import { checkHello } from './bob-net-check.js'; // 1.5.185 a bigger Bob checks 
 import { guestRoute, answerAway } from './share-jobs.js';
 import { Pairing, myName } from './bob-net-pair.js';
 import { partyView, Introductions } from './bob-net-party.js';
-import { overlayView, cubeMood, cubeReader } from './net-overlay.js'; // Nov 13 Bob-Net icons
+import { overlayView, cubeMood, cubeReader, cleanChatHeads } from './net-overlay.js'; // Nov 13 Bob-Net icons
 import { OS, features } from './platform.js';
 import { chatFilesOn, CHAT_FILES_OFF, FORMATS, MAX_IMPORT_BYTES, MAX_CHATS, saveChat, lookAtFile, bringIn, shareChat } from './chat-files.js';
 import { revealFile } from './help-bundle.js';
@@ -138,6 +138,8 @@ import { startWatchdog, frozeLine } from './hang-guard.js'; // item 214: a watch
 const cfg = loadConfig();
 import { howtosRoute } from './howtos-routes.js';
 import { ownModelsRoute } from './own-models-routes.js';
+import { netFilesRoute } from './net-files-routes.js'; // Nov 14 Bob-Net file sharing and Brain Copying
+import { Outbox, Inbox } from './bob-net-files.js';
 import { saveRoute } from './save-routes.js';
 import { voiceRoute } from './voice-routes.js';
 import { talkView } from './talk.js'; // Talk with Bob (1.5.210)
@@ -284,6 +286,15 @@ if (brain.engine) {
 }
 // 1.5.38: when Downloads change, a job waiting for one (a song waiting for the music models) may be able to go.
 const shop = new ModelShop(cfg, (ev) => { broadcast(ev); if (ev?.type === 'downloads') brain.downloadsChanged(); }, brain.engine);
+// Nov 14 Bob-Net file sharing and Brain Copying (src/bob-net-files.js), off unless Settings, Bob-Net, Files and brains is on.
+{
+  const kind = (a) => kindOfAddress(a, brain.linksCache?.peek?.());
+  const links = () => brain.linksCache?.peek?.();
+  const gaming = () => gamingOn(cfg);
+  brain.netOutbox = new Outbox(cfg, { lenders: brain.lenders, log: (k, t) => brain.log(k, t), gaming, linkKind: kind, links, from: () => cfg.windowsName || myName() || 'Bob' });
+  brain.netInbox = new Inbox(cfg, { lenders: brain.lenders, bobFrom: (ip, name) => brain.netCards.bobFrom(ip, name), broadcast, log: (k, t) => brain.log(k, t), gaming, linkKind: kind, links, catalog: () => shop.catalog?.models || [], saveNameOf,
+    addOwn: ({ name, gguf, mmproj }) => { const list = ownModels(cfg); if (list.some((o) => o.gguf.toLowerCase() === gguf.toLowerCase())) return; const next = cleanOwnModels([...list, { id: ownId(name, list), name, gguf, mmproj }]); if (next.length > list.length) { saveSettings(cfg, { ownModels: next }); brain.catalogNames = null; } } });
+}
 const lab = new Lab(cfg, { shop, brain, broadcast: labPhone(broadcast, () => lab.cfg) }); // 1.5.141; labPhone: "Tell my phone" (Lab item 110)
 lab.version = VERSION.label; // 1.5.153 the foot of a saved Lab result
 // Nov 11: the Lab's job queue (lab-queue.js), its fNRI scans for My Lab, and the check after engine updates.
@@ -567,11 +578,14 @@ const server = http.createServer(async (req, res) => {
     // never restarts Bob while he's using it. Automatic polling (GETs) doesn't count; quitting doesn't either.
     if (req.method === 'POST' && p !== '/api/quit') brain.lastActivity = Date.now();
     if (req.method === 'POST' && p === '/api/activity') return send(res, 200, { ok: true });
+    // 1.5.228 Window buttons on Bob's bar: the page says its top-bar colours so the buttons match (main.cjs checks them).
+    if (req.method === 'POST' && p === '/api/window-bar') { const b = await body(req); if (isLocal) try { globalThis.bobWindow?.bar?.(b); } catch {} return send(res, 200, { ok: true }); }
 
     if (req.method === 'GET' && p === '/api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
       res.write(`data: ${JSON.stringify({ type: 'status', ...brain.state })}\n\n`);
       if (isLocal) for (const c of pairing.waiting()) res.write(`data: ${JSON.stringify(c)}\n\n`); // 1.5.97: a pairing card that came in while the window was shut
+      if (isLocal) for (const c of brain.netInbox.waiting()) res.write(`data: ${JSON.stringify(c)}\n\n`); // Nov 14: a Files and brains card that came in while the window was shut
       for (const c of brain.waitingCards?.values() || []) res.write(`data: ${JSON.stringify({ ...c, replay: true })}\n\n`); // 1.5.206: OK cards made while no page was open
       clients.add(res);
       const mind = url.searchParams.get('mind') === '1';
@@ -764,7 +778,7 @@ const server = http.createServer(async (req, res) => {
     // 1.5.74: whether the core engines start (first-run step 1, and Settings, Engines).
     if (req.method === 'GET' && p === '/api/engines/check') return send(res, 200, { checks: await Promise.all(['llamacpp', 'sdcpp', 'whispercpp'].map((id) => checkEngine(cfg, id))) });
     if (req.method === 'GET' && p === '/api/settings') {
-      return send(res, 200, { timeZone: cfg.timeZone || '', timeZoneSet: cfg.timeZoneSet === true, jobHelps: cleanJobHelps(cfg.jobHelps), apuHoldbackGB: apuHoldbackGB(cfg), lockSecrets: cfg.lockSecrets !== false, autostart: autostartOn(), tray: cfg.tray !== false, lookIcon: cfg.lookIcon !== false, catalogUpdates: cfg.catalogUpdates === true, computerLab: labOn(cfg), labSaveQuestions: labOn(cfg) && cfg.labExtras?.saveQuestions === true, computerLabRoom: labRoom(), qwenPresets: cleanPresets(cfg.qwenPresets), qwenDefaults: Object.fromEntries(Object.entries(QWEN_PRESETS).map(([id, p]) => [id, { label: p.label, ...qwenPreset(id) }])), trayHere: Boolean(globalThis.bobWindow), setupDone: Boolean(cfg.setupDone), wantsAsked: cfg.wantsAsked === true, look: cfg.look || null, lookText: lookText(cfg.look), personality: cleanPersonality(cfg.personality), lookComments: cfg.lookComments === true, userName: cfg.userName || '', callMe: cfg.callMe || '', windowsName: cfg.windowsName || '', engine: cfg.engine, workshop: workshopView(), catName: cfg.catName || 'Patches', language: LANGUAGES.includes(cfg.language) ? cfg.language : 'en', version: VERSION, oneBrain: cfg.oneBrain === true, allTools: cfg.allTools === true, memoryRecall: cfg.memoryRecall === true, memoryBanks: memoryBanksView(), resumeJobs: cfg.resumeJobs === true, planFirst: cfg.planFirst === true, autoSession: autoSessionOn(cfg), gamingLock: cfg.gamingLock === true, sessionBy: cfg.sessionBy === 'bob' ? 'bob' : 'you', quickOnCpu: cfg.quickOnCpu === true, chatWhileBusy: cfg.chatWhileBusy !== false, mootBeside: cfg.mootBeside === true, netReview: cfg.netReview === true, webSearch: cfg.webSearch === true, naughtyList: cfg.naughtyList === true, howtos: cfg.howtos === true, editOwn: cfg.editOwn === true, quickNotes: cfg.quickNotes === true, quickSeesJob: cfg.quickSeesJob === true, ...Object.fromEntries(EXTRA_SWITCHES.map((k) => [k, cfg[k] === true])), brainMemType: cfg.brainMemType || {}, onBattery: batteryNow(), engineNote: cfg.engineNotes === true ? currentEngineNote(cfg) : '', docMeaning: cfg.docMeaning === true, docIndex: brain.housekeeper?.docIndexView() || null, chatPresets: presetsOn(cfg), chatRedo: cfg.chatRedo !== false, docView: cfg.docView === true, parts3d: cfg.parts3d === true, openscadHere: Boolean(findOpenscad(cfg)), model3d: cfg.model3d === true, model3dHere: model3dReady(cfg), promptMenu: cfg.promptMenu === true, mathView: cfg.mathView === true, talkOver: cfg.talkOver === true, ...talkView(cfg), readDocs: cfg.readDocs === true, netVoices: cfg.netVoices === true, netVoiceMap: cfg.netVoiceMap || {}, netBobs: (brain.lenders?.bobs?.() || []).map((x) => x.name).slice(0, 30), carryIn: cfg.carryIn === true, phoneGlance: cfg.phoneGlance === true, netOverlay: cfg.netOverlay === true, shortcuts: cfg.shortcuts === true, chatFiles: cfg.chatFiles === true, smartNotes: cfg.smartNotes === true, quickNotesFile: notesFile(cfg), docTools: cfg.docTools === true, sandboxCode: cfg.sandboxCode === true, toolLearning: cfg.toolLearning === true, toolScores: cfg.toolLearning === true ? scorecard(cfg).slice(0, 12) : [], howtoCount: brain.howtos?.load().length || 0, ownKit: ownKitCounts(cfg, brain), gamingCard: gamingCard(cfg), gamingCardNow: brain.engine?.currentCard || null, pictureNoWait: cfg.pictureNoWait !== false, ...tuning(cfg), downloads: { concurrent: cfg.downloads?.concurrent === 2 ? 2 : 1, resumeOnStart: cfg.downloads?.resumeOnStart === true }, updates: { autoCheck: cfg.updates?.autoCheck === true }, engineUpdates: engineKeeper.view(), ollamaKeepAlive: keepTime(cfg), brainMode: brainMode(cfg), tts: { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice || DEFAULT_KOKORO_VOICE, speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '', voicesFolder: path.join(cfg.innDir, 'voices') }, kokoroVoices: KOKORO_VOICES, kokoroDefault: DEFAULT_KOKORO_VOICE, session: currentSession(cfg), sessions: Object.entries(SESSIONS).map(([id, x]) => ({ id, ...x, ...(OS === 'mac' && x.whatMac ? { what: x.whatMac } : {}) })), sessionBrains: sessionBrains(cfg, { picked: true }), activeModels: cfg.activeModels || {}, sessionCtx: cfg.sessionCtx || {}, brainCtxOn: cfg.brainCtxOn === true, brainCtxStretch: cfg.brainCtxStretch === true, brainCtx: cfg.brainCtx || {}, speed: speedView(), style: cfg.style || {}, painter: cfg.painter?.engine || 'comfy', platform: process.platform, os: OS, features: features(), home: cfg.agentDir, housekeeping: hkSettings(cfg), hands: handsSettings(cfg), houseStyle: cleanHouseStyle(cfg.houseStyle), projectList: Object.entries(cfg.projects || {}).filter(([, p]) => !isInside(codeCopyRoot(cfg), p)).map(([name, p]) => ({ name, path: p, missing: !fs.existsSync(p) })), selfWork: selfWorkNow(), defaultProject: cfg.defaultProject || '', saveDir: saveDirView(), toolHelp: cfg.toolHelp !== false, toolSets: cfg.toolSets !== false, toolRecord: cfg.toolRecord !== false, thinkBubble: cfg.thinkBubble !== false, statusJokes: cfg.statusJokes !== false, passcodeLock: lockView(cfg), ...everydayView(cfg), focusNow: focus.view(), profiles: profiles.view(), memorySources: cfg.memorySources === true, memoryExpiry: cfg.memoryExpiry === true, memoryWhere: cfg.memoryWhere === true, docFresh: cfg.docFresh === true, docPlaces: cfg.docPlaces === true, notesFolders: cleanNotesFolders(cfg.notesFolders).map((n) => ({ ...n, missing: !fs.existsSync(n.path), vault: n.kind === 'obsidian' && isVault(n.path) })), weeklyDigest: cfg.weeklyDigest === true, answerMidJob: cfg.answerMidJob !== false, stopWords: cfg.stopWords !== false });
+      return send(res, 200, { timeZone: cfg.timeZone || '', timeZoneSet: cfg.timeZoneSet === true, jobHelps: cleanJobHelps(cfg.jobHelps), apuHoldbackGB: apuHoldbackGB(cfg), lockSecrets: cfg.lockSecrets !== false, autostart: autostartOn(), tray: cfg.tray !== false, lookIcon: cfg.lookIcon === true, ownBar: cfg.ownBar !== false, ownBarNow: Boolean(globalThis.bobWindow?.barNow?.()), chatHeads: cleanChatHeads(cfg.chatHeads), netFiles: cfg.netFiles === true, catalogUpdates: cfg.catalogUpdates === true, computerLab: labOn(cfg), labSaveQuestions: labOn(cfg) && cfg.labExtras?.saveQuestions === true, computerLabRoom: labRoom(), qwenPresets: cleanPresets(cfg.qwenPresets), qwenDefaults: Object.fromEntries(Object.entries(QWEN_PRESETS).map(([id, p]) => [id, { label: p.label, ...qwenPreset(id) }])), trayHere: Boolean(globalThis.bobWindow), setupDone: Boolean(cfg.setupDone), wantsAsked: cfg.wantsAsked === true, look: cfg.look || null, lookText: lookText(cfg.look), personality: cleanPersonality(cfg.personality), lookComments: cfg.lookComments === true, userName: cfg.userName || '', callMe: cfg.callMe || '', windowsName: cfg.windowsName || '', engine: cfg.engine, workshop: workshopView(), catName: cfg.catName || 'Patches', language: LANGUAGES.includes(cfg.language) ? cfg.language : 'en', version: VERSION, oneBrain: cfg.oneBrain === true, allTools: cfg.allTools === true, memoryRecall: cfg.memoryRecall === true, memoryBanks: memoryBanksView(), resumeJobs: cfg.resumeJobs === true, planFirst: cfg.planFirst === true, autoSession: autoSessionOn(cfg), gamingLock: cfg.gamingLock === true, sessionBy: cfg.sessionBy === 'bob' ? 'bob' : 'you', quickOnCpu: cfg.quickOnCpu === true, chatWhileBusy: cfg.chatWhileBusy !== false, mootBeside: cfg.mootBeside === true, netReview: cfg.netReview === true, webSearch: cfg.webSearch === true, naughtyList: cfg.naughtyList === true, howtos: cfg.howtos === true, editOwn: cfg.editOwn === true, quickNotes: cfg.quickNotes === true, quickSeesJob: cfg.quickSeesJob === true, ...Object.fromEntries(EXTRA_SWITCHES.map((k) => [k, cfg[k] === true])), brainMemType: cfg.brainMemType || {}, onBattery: batteryNow(), engineNote: cfg.engineNotes === true ? currentEngineNote(cfg) : '', docMeaning: cfg.docMeaning === true, docIndex: brain.housekeeper?.docIndexView() || null, chatPresets: presetsOn(cfg), chatRedo: cfg.chatRedo !== false, docView: cfg.docView === true, parts3d: cfg.parts3d === true, openscadHere: Boolean(findOpenscad(cfg)), model3d: cfg.model3d === true, model3dHere: model3dReady(cfg), promptMenu: cfg.promptMenu === true, mathView: cfg.mathView === true, talkOver: cfg.talkOver === true, ...talkView(cfg), readDocs: cfg.readDocs === true, netVoices: cfg.netVoices === true, netVoiceMap: cfg.netVoiceMap || {}, netBobs: (brain.lenders?.bobs?.() || []).map((x) => x.name).slice(0, 30), carryIn: cfg.carryIn === true, phoneGlance: cfg.phoneGlance === true, netOverlay: cfg.netOverlay === true, shortcuts: cfg.shortcuts === true, chatFiles: cfg.chatFiles === true, smartNotes: cfg.smartNotes === true, quickNotesFile: notesFile(cfg), docTools: cfg.docTools === true, sandboxCode: cfg.sandboxCode === true, toolLearning: cfg.toolLearning === true, toolScores: cfg.toolLearning === true ? scorecard(cfg).slice(0, 12) : [], howtoCount: brain.howtos?.load().length || 0, ownKit: ownKitCounts(cfg, brain), gamingCard: gamingCard(cfg), gamingCardNow: brain.engine?.currentCard || null, pictureNoWait: cfg.pictureNoWait !== false, ...tuning(cfg), downloads: { concurrent: cfg.downloads?.concurrent === 2 ? 2 : 1, resumeOnStart: cfg.downloads?.resumeOnStart === true }, updates: { autoCheck: cfg.updates?.autoCheck === true }, engineUpdates: engineKeeper.view(), ollamaKeepAlive: keepTime(cfg), brainMode: brainMode(cfg), tts: { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice || DEFAULT_KOKORO_VOICE, speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '', voicesFolder: path.join(cfg.innDir, 'voices') }, kokoroVoices: KOKORO_VOICES, kokoroDefault: DEFAULT_KOKORO_VOICE, session: currentSession(cfg), sessions: Object.entries(SESSIONS).map(([id, x]) => ({ id, ...x, ...(OS === 'mac' && x.whatMac ? { what: x.whatMac } : {}) })), sessionBrains: sessionBrains(cfg, { picked: true }), activeModels: cfg.activeModels || {}, sessionCtx: cfg.sessionCtx || {}, brainCtxOn: cfg.brainCtxOn === true, brainCtxStretch: cfg.brainCtxStretch === true, brainCtx: cfg.brainCtx || {}, speed: speedView(), style: cfg.style || {}, painter: cfg.painter?.engine || 'comfy', platform: process.platform, os: OS, features: features(), home: cfg.agentDir, housekeeping: hkSettings(cfg), hands: handsSettings(cfg), houseStyle: cleanHouseStyle(cfg.houseStyle), projectList: Object.entries(cfg.projects || {}).filter(([, p]) => !isInside(codeCopyRoot(cfg), p)).map(([name, p]) => ({ name, path: p, missing: !fs.existsSync(p) })), selfWork: selfWorkNow(), defaultProject: cfg.defaultProject || '', saveDir: saveDirView(), toolHelp: cfg.toolHelp !== false, toolSets: cfg.toolSets !== false, toolRecord: cfg.toolRecord !== false, thinkBubble: cfg.thinkBubble !== false, statusJokes: cfg.statusJokes !== false, passcodeLock: lockView(cfg), ...everydayView(cfg), focusNow: focus.view(), profiles: profiles.view(), memorySources: cfg.memorySources === true, memoryExpiry: cfg.memoryExpiry === true, memoryWhere: cfg.memoryWhere === true, docFresh: cfg.docFresh === true, docPlaces: cfg.docPlaces === true, notesFolders: cleanNotesFolders(cfg.notesFolders).map((n) => ({ ...n, missing: !fs.existsSync(n.path), vault: n.kind === 'obsidian' && isVault(n.path) })), weeklyDigest: cfg.weeklyDigest === true, answerMidJob: cfg.answerMidJob !== false, stopWords: cfg.stopWords !== false });
     }
     // 🔒 Passcode lock (Settings, This replicant matrix). Only from this replicant matrix, only once you're in.
     if (p === '/api/lock' && (req.method === 'GET' || req.method === 'POST')) {
@@ -934,10 +948,14 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && p === '/api/net-overlay') {
       if (!isLocal) return send(res, 403, { error: 'this replicant matrix only' });
       const bobs = brain.lenders.bobs();
-      await Promise.all(bobs.map((x) => brain.lenders.hello(x).catch(() => null))); // cached: 30 s good, 60 s down
+      if (cfg.netOverlay === true) await Promise.all(bobs.map((x) => brain.lenders.hello(x).catch(() => null))); // cached: 30 s good, 60 s down (1.5.228: not for chat heads alone)
       let agents = null;
       try { agents = brain.codingAgents?.view?.() || null; } catch {}
-      return send(res, 200, await overlayView(cfg, { bobs, seen: (b) => brain.lenders.state.get(b.address), mood: (b) => readCube(brain.lenders, b), agents }));
+      // 1.5.228: the Discord group's own chat gets an icon too, while Bob on Discord is on.
+      const rooms = [];
+      if (brain.discord?.settings?.().enabled) rooms.push({ id: 'discord', name: 'Discord', waiting: brain.discord.gate?.waiting?.().length || 0 });
+      if (brain.telegram?.settings?.().enabled) rooms.push({ id: 'telegram', name: 'Telegram', chat: 'telegram' });
+      return send(res, 200, await overlayView(cfg, { bobs, seen: (b) => brain.lenders.state.get(b.address), mood: (b) => readCube(brain.lenders, b), agents, rooms }));
     }
     if (req.method === 'GET' && p === '/api/bob-net/cube') {
       if (!isRemote && !isLocal) return send(res, 403, { error: 'no' });
@@ -1035,6 +1053,7 @@ const server = http.createServer(async (req, res) => {
       try { const b = await body(req).catch(() => ({})); return send(res, 200, { folder: await pickFolder({ purpose: ['save', 'home'].includes(b?.purpose) ? b.purpose : 'project' }) }); } catch (e) { return send(res, 200, { error: e.message }); }
     }
     if ((await ownModelsRoute({ req, res, p, isLocal, cfg, brain, body, send })) !== false) return;
+    if ((await netFilesRoute({ req, res, p, url, isLocal, isRemote, cfg, brain, shop, body, send })) !== false) return;
     // 1.5.209 Find more models: one search of Hugging Face or ModelScope, only when the owner presses Search. A hit is
     // only a page to look at; adding goes through Add a model page below.
     if (req.method === 'POST' && p === '/api/catalog-find') {
@@ -1190,7 +1209,8 @@ const server = http.createServer(async (req, res) => {
           if (typeof b.catalogUpdates === 'boolean') { saveSettings(cfg, { catalogUpdates: b.catalogUpdates }); out.catalogUpdates = cfg.catalogUpdates === true; shop.catalog = mergeAdded(listUpdates.merge(shop.shipped), cfg); if (out.catalogUpdates) out.listCheck = await checkList(); } // 1.5.137
           if (typeof b.computerLab === 'boolean') { if (b.computerLab && !labRoom().ok) out.computerLabWhy = labRoom().why; else saveSettings(cfg, { computerLab: b.computerLab }); out.computerLab = labOn(cfg); } // 1.5.141
           // Voice, phone and Bob-Net (items 133 to 142): off unless turned on.
-          for (const k of ['talkOver', 'readDocs', 'netVoices', 'carryIn', 'phoneGlance', 'netOverlay']) if (typeof b[k] === 'boolean') { saveSettings(cfg, { [k]: b[k] }); out[k] = cfg[k] === true; }
+          for (const k of ['talkOver', 'readDocs', 'netVoices', 'carryIn', 'phoneGlance', 'netOverlay', 'netFiles']) if (typeof b[k] === 'boolean') { saveSettings(cfg, { [k]: b[k] }); out[k] = cfg[k] === true; }
+          if (b.chatHeads && typeof b.chatHeads === 'object' && !Array.isArray(b.chatHeads)) { saveSettings(cfg, { chatHeads: cleanChatHeads({ ...cleanChatHeads(cfg.chatHeads), ...b.chatHeads }) }); out.chatHeads = cleanChatHeads(cfg.chatHeads); } // 1.5.228 Settings, Agents: one chat head per company
           if (b.netVoiceMap && typeof b.netVoiceMap === 'object') { saveSettings(cfg, { netVoiceMap: b.netVoiceMap }); out.netVoiceMap = cfg.netVoiceMap || {}; }
           if (typeof b.howtos === 'boolean') { saveSettings(cfg, { howtos: b.howtos }); out.howtos = cfg.howtos === true; }
           if (typeof b.editOwn === 'boolean') { saveSettings(cfg, { editOwn: b.editOwn }); out.editOwn = cfg.editOwn === true; }
@@ -1239,8 +1259,9 @@ const server = http.createServer(async (req, res) => {
           everydaySettings(cfg, b, saveSettings, out); // 🗓 Everyday helpers: text size, font, profiles, today card, focus timer, receipts, tour, tray dot
           if (b.trayDot === false) trayDot(cfg, false);
           if (b.focusTimer === false && focus.on) focus.finish(false);
-          if (typeof b.lookIcon === 'boolean') { saveSettings(cfg, { lookIcon: b.lookIcon }); out.lookIcon = cfg.lookIcon !== false; }
-          if ('tray' in b || 'lookIcon' in b || 'look' in b) applyWindowState(cfg);
+          if (typeof b.ownBar === 'boolean') { saveSettings(cfg, { ownBar: b.ownBar }); out.ownBar = cfg.ownBar !== false; applyWindowState(cfg); } // 1.5.228, shows next time Bob opens
+          if (typeof b.lookIcon === 'boolean') { saveSettings(cfg, { lookIcon: b.lookIcon }); out.lookIcon = cfg.lookIcon === true; }
+          if ('tray' in b || 'lookIcon' in b || 'look' in b || 'style' in b) applyWindowState(cfg); // 1.5.228: style.lamp colours the icon
           else if ('trayDot' in b) applyWindowState(cfg); // 🗓 the tray dot's pictures
           if (GAMING_CARD.includes(b.gamingCard)) { saveSettings(cfg, { gamingCard: b.gamingCard }); out.gamingCard = gamingCard(cfg); out.gamingCardNow = brain.engine?.currentCard || null; }
           if (typeof b.mootBeside === 'boolean') { saveSettings(cfg, { mootBeside: b.mootBeside }); out.mootBeside = cfg.mootBeside === true; }

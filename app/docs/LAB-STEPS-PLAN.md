@@ -141,7 +141,7 @@ In protocol order. "Stage" is the PR #201 order; any step can also run on its ow
 | 3 | Attribution transfer | Carries an expert map over to a cut brain. | `trace-carryover.mjs` | here |
 | 3 | Expert profiling | Counts how often each expert works. | `src/lab-usage.js` | here |
 | 3 | Router visualisation | Records a 3D picture of experts at work. | `src/lab-watch.js`, `forge/fnri-remote.mjs` | both |
-| 3 | Tool-use audit | Finds why tool calls go wrong. | `tool-interview.mjs`, `tool-pick.mjs`, `tool-wish.mjs` | rented |
+| 3 | Tool-use coaching | Walks it through lessons, hinting when it picks wrong. | `tool-coach.mjs`, `tool-pick.mjs` | rented |
 | 3 | Tool-schema A/B | Tries tool wordings to see which works best. | `tool-wording.mjs`, `natural-tools.mjs` | rented |
 | 4 Train | Full fine-tune (SFT) | Teaches the whole brain before any cut. | Forge plan `train_teacher` | rented |
 | 4 | LoRA | Teaches a small add-on; chosen layers stay frozen. | `forge/pod/lora.py`, `heal.py` (options to add) | both |
@@ -312,7 +312,7 @@ Each slice is one release, built through bob-wip, the builder and the PC check.
 3. **Wire every existing script as a step.** All of section 3's rows whose script exists. Each with its smoke form,
    a dry run against the fake engine, and its Help page.
 4. **Runs and comparison.** The Runs page, compare, charts, cost per run from the rental record, "run again".
-5. **Pipelines.** Save, pack rented steps into one plan, pick up where it stopped.
+5. **Pipelines.** Save, pack rented steps into one plan, pick up where it stopped. *Built 14 Nov: `src/lab-pipelines.js` (saved lists, card blocks with $0 caps drafts, progress read back from run records, skip), the Pipelines section of the Steps tab with a score chart and its table. Free steps here hand on to the next by themselves; a card block waits for the owner's start in the Forge.*
 6. **New methods.** The data refinery (with doctoring and odds sorting from #228), then the nightly learning loop, then HF staging, then
    patching, then SAE features.
    Each gets its own small design first.

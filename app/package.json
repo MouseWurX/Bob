@@ -1,6 +1,6 @@
 {
   "name": "bob",
-  "version": "1.5.227",
+  "version": "1.5.228",
   "description": "Bob, a local AI who lives on your PC: chat, pictures, video, voice and more, all on your own hardware.",
   "type": "module",
   "private": true,
@@ -40,6 +40,7 @@
     "test/run-make-datasets-test.js",
     "test/run-training-methods-test.js",
     "test/run-lab-protocol-test.js",
+    "test/run-lab-steps-test.js",
     "test/run-scrub-data-test.js",
     "test/run-make-probes-test.js",
     "test/run-lab-names-test.js",
@@ -49,6 +50,7 @@
     "test/run-lab-build-test.js",
     "test/run-lab-library-test.js",
     "test/run-lab-recipes-test.js",
+    "test/run-forge-gptoss-test.js",
     "test/run-lab-watch-test.js",
     "test/run-squeezed-brain-test.js",
     "test/run-gaming-card-test.js",
@@ -156,6 +158,7 @@
     "test/run-ready-test.js",
     "test/run-firewall-test.js",
     "test/run-tray-test.js",
+    "test/run-window-bar-test.js",
     "test/run-phrasing-test.js",
     "test/run-wait-line-test.js",
     "test/run-pair-test.js",
@@ -173,6 +176,7 @@
     "test/run-games-plus-test.js",
     "test/run-character-test.js",
     "test/run-bob-net-party-test.js",
+    "test/run-bob-net-files-test.js",
     "test/run-bestiary-test.js",
     "test/run-chest-test.js",
     "test/run-rental-test.js",
@@ -284,9 +288,9 @@
   ],
   "bob": {
     "release": "1.5",
-    "patch": 227,
+    "patch": 228,
     "branch": "",
-    "build": 279,
+    "build": 280,
     "bundledLlamaTag": "b12282",
     "brainEngineVersion": 7,
     "brainEngine": {
@@ -340,7 +344,7 @@
       "engines/**"
     ],
     "win": {
-      "icon": "public/icons/bob-512.png",
+      "icon": "public/icons/bob.ico",
       "target": [
         "portable",
         "nsis"

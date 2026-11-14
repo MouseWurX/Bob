@@ -17,6 +17,7 @@
 // "Spread big brains over my other Bobs' cards" (this Bob borrows): when a brain is loaded that's too big (the choice
 // says what too big means), Bob asks each Bob on the list whose card is lent and adds the ones that say yes to the
 // engine (--rpc). llama.cpp then puts part of the brain on each card. If none says yes, the brain loads here like always.
+import crypto from 'node:crypto';
 import { sealOn, sealAsk, cleanSealAsk, lenderSeal, borrowerSeal, keysEnv, keyId } from './scut-seal.js'; // sealed SCUT packets (0006)
 import { isTailscaleIp, homeNetOn } from './phone-access.js';
 import { findTool, missingWords } from './llama-tools.js';
@@ -63,16 +64,54 @@ export function cardStoreDir(env = process.env, platform = process.platform, hom
   return path.join(base, 'llama.cpp', 'rpc');
 }
 
-// "Send the brain early": this Bob's own copy of the brain another Bob is about to spread (same file name, same size),
-// or ''. Looked for in Bob's brains folder and in the files picked with Equip; never anywhere else on the disk.
-export function findOwnBrain(cfg, { file, bytes } = {}) {
+// "Send the brain early": this Bob's own copy of the brain another Bob is about to spread, or ''. Looked for in Bob's
+// brains folder (three folders deep) and beside the files picked with Equip; never anywhere else on the disk.
+// 2026-11-14 (the owner: "use the model files that are on each device natively"): a copy under another name or in
+// another of those folders counts too, when its size and the fingerprint of its first megabyte (head) match. An
+// older Bob sends no head, so then only the same name and size count, as before. Even a wrong match costs only time:
+// the asker still offers each weight's hash first, and only a weight with the same contents is ever taken from here.
+export const HEAD_BYTES = 1 << 20;
+export function headHash(file) {
+  let fd = -1;
+  try {
+    fd = fs.openSync(file, 'r');
+    const buf = Buffer.alloc(HEAD_BYTES);
+    const n = fs.readSync(fd, buf, 0, HEAD_BYTES, 0);
+    return crypto.createHash('sha256').update(buf.subarray(0, n)).digest('hex');
+  } catch { return ''; } finally { if (fd >= 0) try { fs.closeSync(fd); } catch {} }
+}
+const SCAN_MAX = 3000; // folders and files looked at, at most, per search
+function brainFolders(cfg) {
+  const root = cfg.bobModelsDir || path.join(cfg.agentDir || '.', 'models', 'bob');
+  const dirs = new Set([root]);
+  for (const v of Object.values(cfg.llamacpp?.models || {})) { const g = typeof v === 'string' ? v : v?.gguf; if (g) dirs.add(path.dirname(g)); }
+  return [...dirs];
+}
+function ggufsIn(dir, depth, out, seen) {
+  if (seen.n > SCAN_MAX) return;
+  let list = [];
+  try { list = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+  for (const d of list) {
+    if (++seen.n > SCAN_MAX) return;
+    const p = path.join(dir, d.name);
+    if (d.isDirectory() && depth > 0) ggufsIn(p, depth - 1, out, seen);
+    else if (d.isFile() && /\.gguf$/i.test(d.name)) out.push(p);
+  }
+}
+export function findOwnBrain(cfg, { file, bytes, head = '' } = {}) {
   const name = path.basename(String(file || ''));
   if (!/\.gguf$/i.test(name) || !(Number(bytes) > 0)) return '';
-  const root = cfg.bobModelsDir || path.join(cfg.agentDir || '.', 'models', 'bob');
+  const whole = (p) => { try { return fs.statSync(p).size === Number(bytes) && !fs.existsSync(p + '.part'); } catch { return false; } };
+  const same = (p) => !head || headHash(p) === head;
   const tries = [];
   for (const v of Object.values(cfg.llamacpp?.models || {})) { const g = typeof v === 'string' ? v : v?.gguf; if (g) tries.push(g); }
+  const root = cfg.bobModelsDir || path.join(cfg.agentDir || '.', 'models', 'bob');
   try { for (const d of fs.readdirSync(root, { withFileTypes: true })) if (d.isDirectory()) tries.push(path.join(root, d.name, name)); } catch {}
-  return tries.find((p) => { try { return path.basename(p) === name && fs.statSync(p).size === Number(bytes) && !fs.existsSync(p + '.part'); } catch { return false; } }) || '';
+  const named = tries.find((p) => path.basename(p) === name && whole(p) && same(p));
+  if (named || !head) return named || '';
+  const found = [], seen = { n: 0 };
+  for (const d of brainFolders(cfg)) ggufsIn(d, 3, found, seen);
+  return [...new Set(found)].find((p) => whole(p) && same(p)) || '';
 }
 
 // Free bytes on the drive that holds dir (or its nearest folder that exists), or -1 when unknown.
@@ -240,15 +279,17 @@ export class CardLender {
   get seededFile() { return this.cfg.dataDir ? path.join(this.cfg.dataDir, 'seeded-brains.json') : ''; }
   loadSeeded() { try { return new Set(JSON.parse(fs.readFileSync(this.seededFile, 'utf8')).filter((x) => typeof x === 'string').slice(-50)); } catch { return new Set(); } }
 
-  // "Send the brain early" (with SCUT on): before the card server starts, fill its store from this machine's own copy
+  // "Send the brain early" (SCUT on or off, 2026-11-14): before the card server starts, fill its store from this machine's own copy
   // of the brain, so the first load doesn't push gigabytes over Wi-Fi. The asking Bob still offers each weight's
   // hash first and sends only what isn't here, so a copy that differs just means those weights travel as before.
   // Once per brain (remembered); never when the disk would be left with less than 10 GB.
   async seed(brain) {
-    if (!scutOn(this.cfg) || !brain || typeof brain !== 'object') return '';
-    const bytes = Number(brain.bytes), key = `${path.basename(String(brain.file || ''))}:${bytes}`;
+    // 2026-11-14: with SCUT off too. The card store and the hash-first offer are the engine's own (0004), not SCUT's.
+    if (!brain || typeof brain !== 'object') return '';
+    const bytes = Number(brain.bytes), head = /^[0-9a-f]{64}$/.test(String(brain.head || '')) ? String(brain.head) : '';
+    const key = head ? `${bytes}:${head}` : `${path.basename(String(brain.file || ''))}:${bytes}`;
     if (this.seeded.has(key)) return 'already';
-    const file = this.findBrain({ file: brain.file, bytes });
+    const file = this.findBrain({ file: brain.file, bytes, head });
     if (!file) return 'no copy';
     const room = this.free(cardStoreDir(this.env));
     if (room >= 0 && room < bytes + SEED_SPARE) { this.log('bob-net', `lent graphics card: not loading ${path.basename(file)} from this machine's own copy, the disk is too full`); return 'no room'; }
@@ -428,7 +469,8 @@ export const powersWords = (p) => [p?.hands && 'Hands', p?.autonomy && 'Autonomy
 export function cleanBrain(b) {
   if (!b || typeof b !== 'object') return null;
   const file = path.basename(String(b.file || '')).slice(0, 200), bytes = Math.floor(Number(b.bytes));
-  return /\.gguf$/i.test(file) && bytes > 0 && bytes < 2e12 ? { file, bytes } : null;
+  const head = /^[0-9a-f]{64}$/.test(String(b.head || '')) ? String(b.head) : '';
+  return /\.gguf$/i.test(file) && bytes > 0 && bytes < 2e12 ? { file, bytes, ...(head ? { head } : {}) } : null;
 }
 
 // ---------- Borrowing ----------
@@ -446,12 +488,13 @@ export class CardBorrower {
 
   // The helpers for one load: ['host:50052', ...], or [] (load here like always). Each Bob is asked over Tailscale;
   // his card is reached over the home network when we're both on it, else over Tailscale.
-  // file: the brain's own file here; with SCUT on, its name and size go along so a lender with its own copy loads
-  // from that (the call then waits longer, as long as that takes).
+  // file: the brain's own file here; its name, size and the fingerprint of its first megabyte go along, so a lender
+  // with its own copy (under any name, in his brain folders) loads from that (the call then waits longer, as long as
+  // that takes). 2026-11-14: with SCUT off too.
   async open({ sizeGB, file = '' } = {}) {
     this.close();
     let brain = null;
-    if (scutOn(this.cfg) && file) { try { brain = cleanBrain({ file, bytes: fs.statSync(file).size }); } catch {} }
+    if (file) { try { brain = cleanBrain({ file, bytes: fs.statSync(file).size, head: headHash(file) }); } catch {} }
     if (!wantsSpread(this.cfg, { sizeGB })) return [];
     const bobs = (this.lenders?.bobs?.() || []).filter((b) => !(this.down.get(b.address) > this.now()));
     const here = this.home(), mine = homeFirst(this.cfg) ? here : [];

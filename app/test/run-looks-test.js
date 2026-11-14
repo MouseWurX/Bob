@@ -28,6 +28,7 @@ const ids = (s, re) => (s.match(re) || [])[1];
 check('page and server agree on the looks', ids(themes, /LOOK_IDS = \[([^\]]+)\]/) === ids(cfg, /\[('classic', 'lamplight', 'terminal')\]\.includes\(st\.look\)/));
 check('an upgrade that never picked a look stays Classic', /DEFAULT_LOOK = 'classic'/.test(themes));
 check('a new install starts in Lamplight with the cube', (() => { const ex = JSON.parse(read('config.example.json')); return ex.style?.look === 'lamplight' && ex.style?.avatar === 'cube'; })());
+check('a new install starts with the Mercury lamp, its theme and icon agreeing', (() => { const ex = JSON.parse(read('config.example.json')); return ex.style?.lamp === 'mercury' && ex.style?.theme === 'mercury'; })());
 const css = read('public/looks.css');
 check('every look has styles', ['look-classic', 'look-lamplight', 'look-terminal'].every((c) => css.includes(`body.${c}`)));
 check('Lamplight motion stops with animations off and for reduced motion', css.includes('body.look-lamplight.still') && /prefers-reduced-motion[^{]*\{[^}]*look-lamplight/.test(css));
@@ -67,6 +68,20 @@ check('the FAQ says a look never changes how Bob works', /same speed/.test(help(
 check('a Lamplight page fills the room and scrolls inside it (height: auto beats the dialog\'s own fit-content; 1.5.212, first-time setup didn\'t scroll)', /body\.look-lamplight \.cellar\.page\[open\] \{ position: fixed; inset: 64px 0 0 0;[^}]*height: auto;/.test(css) && /\.cellar\.page \{[^}]*overflow: auto/.test(read('public/style.css')));
 check('the glossary has Lamplight, Look and Find anything', ['Lamplight', 'Look', 'Find anything'].every((w) => help('glossary').includes(`<dt>${w}</dt>`)));
 check('Style Help explains Find anything and the status line', help('style').includes('Find anything') && help('style').includes('status line'));
+
+// ---- Nov 14 2026: the lamps (Mercury, Sodium, Thallium, Neon) for Lamplight and Terminal ----
+{
+  const T = await import('../public/themes.js');
+  check('four lamps, Mercury first and the default', T.LAMP_IDS.join() === 'mercury,sodium,thallium,neon' && T.DEFAULT_LAMP === 'mercury' && T.lampId({}) === 'mercury' && T.lampId({ lamp: 'nope' }) === 'mercury' && T.lampId({ lamp: 'neon' }) === 'neon');
+  check('each lamp is a theme of its own, in the Lamps group, with the same id', T.LAMPS.every((l) => T.findTheme(l.id)?.group === 'Lamps'));
+  check('the lamp colours are the gases\' own light (CIE 1931 sums of their lines)', JSON.stringify(T.LAMPS.map((l) => l.glow)) === JSON.stringify(['#8becff', '#ff8000', '#00ff00', '#ff2e00']));
+  check('a lamp is saved, an unknown one dropped', cleanStyle({ lamp: 'sodium' }).lamp === 'sodium' && !('lamp' in cleanStyle({ lamp: 'krypton' })));
+  check('page and server agree on the lamps', /\['mercury', 'sodium', 'thallium', 'neon'\]\.includes\(st\.lamp\)/.test(read('src/config.js')));
+  check('picking a lamp picks its theme, and picking a lamp\'s theme picks the lamp', page.includes("save(settings, { lamp: b.dataset.lamp, theme: b.dataset.lamp })") && T.lampOfTheme('thallium') === 'thallium' && T.lampOfTheme('moondust') === null);
+  check('the lamp picker shows in Lamplight and Terminal, and in Settings, Look & feel', T.LAMP_LOOKS.join() === 'lamplight,terminal' && page.includes('aria-label="Lamp"') && read('public/cellar-pages.js').includes('aria-label="Lamp"') && read('public/cellar.js').includes('b.dataset.lamp'));
+  check('the lamp glow on the picker holds still with animations off', css.includes('body.still .lamp-pick button i { box-shadow: none !important; }'));
+  check('Help, FAQ and glossary explain the lamps', ['Mercury', 'Sodium', 'Thallium', 'Neon'].every((w) => help('style').includes(w) && help('faq-lamps').includes(w)) && /Windows, Mac, Linux/.test(help('faq-lamps')) && help('glossary').includes('<dt>Lamp</dt>'));
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

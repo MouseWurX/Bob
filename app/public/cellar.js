@@ -31,6 +31,7 @@ import { mountEveryday, applyReading, TEXT_MIN, TEXT_MAX, TEXT_STEP } from './ev
 import { adventureSettingsHtml, mountAdventureSettings } from './adventure.js';
 import { gamesSettingsHtml, mountGamesSettings } from './games.js';
 import { shareBrainsHtml, mountShareBrains } from './share-brains.js';
+import { mountNetFiles } from './net-files.js'; // Nov 14 Bob-Net: Files and brains
 import { findTheme, DEFAULT_THEME } from './themes.js';
 import { tip, noteOrTip, stripTags, keep } from './tips.js';
 import { HOUSE, houseStyleHtml } from './house-style.js';
@@ -95,7 +96,7 @@ export function createCellar({ popOut = null } = {}) {
   // cellar-pages.js
   const {
     selfWorkHtml, everydayHtml, GCARD_NOW, gamingCardHtml, otherAppsHtml, rentHtml, onlineHtml, bobNetHtml,
-    lookExtrasHtml, jobsHtml, dailyHtml, holdbackHtml
+    lookExtrasHtml, jobsHtml, dailyHtml, holdbackHtml, agentSectionHtml, chatAppHtml
   } = createSettingsParts(() => ({
     EVERY_EXTRA, cloud, data, eqCtx, howSumNow, hw, kokoroDefault, more, naughtyOn, notesFoldersHtml, panel, rent,
     rentPickOpen, settings, srow, sswitch, voicePickHtml, zoneLine
@@ -424,7 +425,15 @@ export function createCellar({ popOut = null } = {}) {
     ['speed', '⚡ Speed & memory', 'speed memory free memory quiet keep alive unload idle graphics card quick answers processor pictures without waiting ready while you type games go first picture settings gaming graphics card borrow automatic never always remember only what fits memory banks recall speed test engine extras guess ahead copying load the next brain early laptop mode battery new graphics card speed history chart', () => speedMemoryHtml()],
     ['engines', '⚙ Engines', 'engine engines brain engine lab engine gear update updates go back remove check all ollama llama.cpp downloads newer build tested build fit to free graphics memory speculative decoding draft flags threads batch tell me what engine updates change plain words', () => enginesHtml()],
     ['bobnet', '🌐 Bob-Net', 'bob-net bobnet phone android tailscale address passcode firewall let my phone in let my other replicant matrices in other bobs share brains lend borrow take jobs send jobs carry on take chats move chat phone see how doing your bobs widget card heat', () => bobNetHtml()],
-    ['online', '☁ Online services', 'online internet cloud helpers api key anthropic openai gemini openrouter telegram discord bot token pairing wake phrase rented brains rent hire runpod vast lambda together spending cap limit machine', () => onlineHtml()],
+    ['online', '☁ Online services', 'online internet cloud helpers api key openrouter rented brains rent hire runpod vast lambda together spending cap limit machine', () => onlineHtml()],
+    // 1.5.228 Agents: a section per company and chat app (public/agent-companies.js), each with its chat head switch.
+    ['claude', 'Claude', 'claude anthropic claude code api key cloud helper coding agent chat head cube hands for claude claude app connect mcp sign in account', () => agentSectionHtml('claude')],
+    ['openai', 'OpenAI', 'openai chatgpt gpt codex api key cloud helper coding agent chat head cube sign in account', () => agentSectionHtml('openai')],
+    ['gemini', 'Gemini', 'gemini google gemini cli api key cloud helper coding agent chat head cube sign in account', () => agentSectionHtml('gemini')],
+    ['qwen', 'Qwen', 'qwen alibaba qwen code coding agent chat head cube sign in account', () => agentSectionHtml('qwen')],
+    ['opencode', 'OpenCode', 'opencode sst coding agent chat head cube sign in account', () => agentSectionHtml('opencode')],
+    ['discord', 'Discord', 'discord bot token server channel group chat moderate moderator keep order kick ban spam chat head cube', () => chatAppHtml('discord')],
+    ['telegram', 'Telegram', 'telegram bot botfather token pairing wake phrase chat head cube', () => chatAppHtml('telegram')],
     ['email', '📧 Email account', 'email mail account imap smtp app password gmail outlook hotmail icloud yahoo reading sending server reset code', () => emailAccountHtml()],
     ['apps', '🔌 Other apps', 'other apps comfyui workflows port unreal blender mcp openai compatible api vs code continue opencode command line terminal cli key claude claude code desktop connect hands key', () => otherAppsHtml()],
     ['hands', '✋ Hands', 'files run commands schedules apps permission quarantine reviewer', () => handsSettingsHtml() + quarantineSettingsHtml()],
@@ -604,7 +613,7 @@ export function createCellar({ popOut = null } = {}) {
     mountDiscord(dlg.querySelector('.discord-box')); // Online services: Bob on Discord
     mountAppsDoor(dlg.querySelector('.apps-door-box')); // Other apps: Brains for other apps
     mountClaudeDoor(dlg.querySelector('.claude-door-box')); // Other apps: Hands for Claude
-    mountAgentsSettings(dlg.querySelector('.coding-agents-box')); // Other apps: Coding agents
+    mountAgentsSettings(dlg.querySelectorAll('.coding-agents-box')); // Other apps, and each company under Agents (1.5.228)
     mountCheckins(dlg.querySelector('.checkins-box')); // 1.5.78 Check-ins
     mountPresets(dlg.querySelector('.presets-box')); // Assistant presets (loads its own list)
     mountPrompts(dlg.querySelector('.prompts-box')); // 📝 Saved prompts
@@ -613,6 +622,7 @@ export function createCellar({ popOut = null } = {}) {
     mountAdventureSettings(dlg.querySelector('.adventure-box'), { api, settings }); // 1.5.117 🎲 Adventure
     mountGamesSettings(dlg.querySelector('.games-box'), { api, settings }); // 1.5.121 🧩 Games
     mountShareBrains(dlg.querySelector('.share-box')); // Bob-Net: My other Bobs and What they share
+    mountNetFiles(dlg.querySelector('.net-files-box')); // Nov 14 Bob-Net: Files and brains
     readyLine(); // 1.5.117: "Bob 1.5.117 is ready · Restart Bob now" on the updates line when a new Bob waits
     const page = mode === 'welcome' ? 'Welcome' : tab === 'settings' ? 'Settings' : tab === 'style' ? 'Style' : 'Get models';
     $('cellar-title').textContent = page;
@@ -790,7 +800,7 @@ export function createCellar({ popOut = null } = {}) {
     if (!b) return;
     if (b.tagName === 'BUTTON' && b.closest('summary')) e.preventDefault(); // 1.5.117: Check for updates on a panel's line
     try {
-      if ((tab === 'style' || (tab === 'settings' && (b.dataset.motion || b.dataset.nowneed))) && mode === 'shop' && await stylePage.onClick(b, settings)) return;
+      if ((tab === 'style' || (tab === 'settings' && (b.dataset.motion || b.dataset.nowneed || b.dataset.lamp))) && mode === 'shop' && await stylePage.onClick(b, settings)) return;
       if (b.dataset.sampleEngine) { sampler.play(b); return; }
       if ('talkkeysave' in b.dataset || 'talkkeyforget' in b.dataset) { // 🗣 Talk with Bob's xAI key, kept in the locked store
         const box = b.closest('.talk-cloud');
@@ -1357,6 +1367,7 @@ export function createCellar({ popOut = null } = {}) {
         flash(el, 'Saved.'); return;
       }
       if (el.dataset.set === 'language') { const r = await api('/api/settings', { language: el.value }); settings.language = pickLang(r.language); try { localStorage.setItem(LANG_KEY, settings.language); } catch {} location.reload(); return; }
+      if (el.dataset.set === 'ownBar') { const r = await api('/api/settings', { ownBar: el.checked }); settings.ownBar = r.ownBar; el.checked = r.ownBar; const n = el.closest('label')?.querySelector('.own-bar-next'); if (n) n.hidden = r.ownBar === Boolean(settings.ownBarNow); return; } // 1.5.228
       if (el.dataset.set === 'tray' || el.dataset.set === 'lookIcon') { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k]; return; }
       if (el.dataset.set === 'selfWork') { const r = await api('/api/settings', { selfWork: { enabled: el.checked } }); settings.selfWork = r.selfWork; draw(); return; }
       if (el.dataset.selfwork) { const k = el.dataset.selfwork; const r = await api('/api/settings', { selfWork: { [k]: k === 'helpers' ? el.checked : k === 'ctx' ? Number(el.value) : el.value } }); settings.selfWork = r.selfWork; flash(el, 'Saved. Used on his next repository job.'); return; }
@@ -1406,7 +1417,8 @@ export function createCellar({ popOut = null } = {}) {
         return;
       }
       // Voice, phone and Bob-Net (items 133 to 142): plain switches, off unless turned on.
-      if (['talkOver', 'readDocs', 'netVoices', 'carryIn', 'phoneGlance', 'netOverlay'].includes(el.dataset.set)) { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k] === true; window.dispatchEvent(new CustomEvent('bob-voice-net', { detail: { [k]: r[k] === true } })); if (k === 'netOverlay') window.dispatchEvent(new CustomEvent('bob-net-overlay', { detail: r[k] === true })); flash(el, r[k] ? 'On.' : 'Off.'); return; }
+      if (/^chatHead-[a-z]+$/.test(el.dataset.set || '')) { const id = el.dataset.set.slice(9); const r = await api('/api/settings', { chatHeads: { [id]: el.checked } }); settings.chatHeads = r.chatHeads || {}; el.checked = settings.chatHeads[id] === true; window.dispatchEvent(new CustomEvent('bob-net-overlay', { detail: settings.netOverlay === true })); flash(el, el.checked ? 'On. The cube is under mine.' : 'Off.'); return; } // 1.5.228 Settings, Agents
+      if (['talkOver', 'readDocs', 'netVoices', 'carryIn', 'phoneGlance', 'netOverlay', 'netFiles'].includes(el.dataset.set)) { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k] === true; window.dispatchEvent(new CustomEvent('bob-voice-net', { detail: { [k]: r[k] === true } })); if (k === 'netOverlay') window.dispatchEvent(new CustomEvent('bob-net-overlay', { detail: r[k] === true })); flash(el, r[k] ? 'On.' : 'Off.'); return; }
       if (el.dataset.netvoice) { const r = await api('/api/settings', { netVoiceMap: { [el.dataset.netvoice]: el.value } }); settings.netVoiceMap = r.netVoiceMap || {}; window.dispatchEvent(new CustomEvent('bob-voice-net', { detail: {} })); flash(el, 'Saved.'); return; }
       if (el.dataset.set === 'editOwn') { const r = await api('/api/settings', { editOwn: el.checked }); settings.editOwn = r.editOwn; el.checked = r.editOwn; flash(el, r.editOwn ? 'On. Bob can fix his own earlier messages.' : 'Off. Bob sends a new message for any fix.'); return; }
       if (el.dataset.set === 'statusJokes') { const r = await api('/api/settings', { statusJokes: el.checked }); settings.statusJokes = r.statusJokes; el.checked = r.statusJokes; window.dispatchEvent(new CustomEvent('bob-status-jokes', { detail: r.statusJokes })); return; }

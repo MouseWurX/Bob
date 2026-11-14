@@ -43,7 +43,9 @@ const GOOD_FOR = 30000, DOWN_FOR = 60000;
 // Item 202: a Bob that fails twice (not reachable, too slow, broke mid-answer) is skipped for an hour, not asked again
 // every step. Saying "busy" or "too long" is a polite no, not a failure. Always on.
 export const SKIP_AFTER = 2, SKIP_MS = 60 * 60 * 1000;
-const MAX_BOBS = 6;
+// 2026-11-14 (the owner: "can bob-net only support up to 6 devices max? can we make it more?"): 16. Each Bob costs a
+// hello every half a minute while the Bob-Net list or icons show, and Pass my Bob-Net along tries each pair at most hourly.
+export const MAX_BOBS = 16;
 const TS_NAME = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.ts\.net$/;
 
 // "100.101.102.103:7777", "http://phone.tail1234.ts.net:7777/" -> "100.101.102.103:7777". Tailscale only.

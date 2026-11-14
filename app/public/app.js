@@ -3,7 +3,9 @@ import './sample-data.js'; // 1.5.210 sample-data mode (?sample=1 in the address
 import { drawBob, setLook } from './bob-sprite.js';
 import { secretNoteHtml, wireSecretNote } from './more-tools.js'; // 🧰 More tools: a password Bob made
 import { applyStyle, applySavedStyle } from './themes.js';
+import { netFileEvent, wireNetFileButtons } from './net-files.js'; // Nov 14 Bob-Net Files and brains
 import { createStatusLine } from './status-line.js'; // 1.5.216: his line follows his state
+import { startWindowBar } from './window-bar.js'; // 1.5.228 Window buttons on Bob's bar
 import { createMindCube } from './mind-cube.js'; // 1.5.209: Bob's picture as the fNRI cube
 applySavedStyle();
 import { startI18n, followSaved } from './i18n.js';
@@ -113,11 +115,13 @@ const api = async (url, data) => {
 const tasks = createTasks({ post: (u, d) => post(u, d) });
 const downloads = createDownloads({ api, post: (u, d) => post(u, d) });
 installTips();
+startWindowBar({ send: (c) => api('/api/window-bar', c).catch(() => {}) }); // only does something with no system title bar
 watchLock(); // 🔒 Passcode lock: back to the lock screen once Bob locks
 const layout = createLayout({ post: (u, d) => post(u, d), openTasks: () => tasks.open(), openDownloads: () => downloads.open() });
 
 const $ = (id) => document.getElementById(id);
 const log = $('log'), input = $('input'), sendBtn = $('send'), stopBtn = $('stop'), statusEl = $('status');
+wireNetFileButtons(log); // Nov 14 Files and brains: Stop, Carry on and Throw away on a copy's card in the chat
 const setSaveToLab = saveToLab(log, api);
 const brainBar = createBrainBar({ post: (u, d) => post(u, d), note: (t, k) => note(t, k) });
 const handsSwitch = createHandsSwitch({ note: (t, k) => note(t, k) });
@@ -673,7 +677,7 @@ const harnessChat = createHarnessChat({
 });
 // Nov 13 Bob-Net icons (public/net-overlay.js), off unless turned on: other Bobs and coding agents on Bob-Net.
 // var, not const: openChat and onEvent may run before this line does.
-var netOverlay = createNetOverlay({ open: (id) => openChat(id), session: () => sessionId, showAgents: () => layout.showAgents(), note: (t) => note(t), still: stillNow });
+var netOverlay = createNetOverlay({ open: (id) => openChat(id), session: () => sessionId, showAgents: () => layout.showAgents(), openRoom: () => topicsPage.open('room'), openSettings: (id) => cellar.open('settings', null, { jump: 'adv-' + id }), note: (t) => note(t), still: stillNow });
 
 const fadeChat = createFadeChat({ log, input, note, session: () => sessionId, busy: () => busy, reload: async () => { if (busy) return; log.innerHTML = ''; stick = true; await loadHistory(40); } });
 window.addEventListener('bob-harness', () => fadeChat.refresh()); // a fade or Amnesia setting changed
@@ -733,6 +737,7 @@ let brainSoon = null;
 const shownCards = new Set(); // approval card ids already on this page
 function onEvent(ev) {
   if (ev.type === 'beat') return; // item 214: only proof Bob is still answering (connect() watches for it)
+  if (ev.type === 'room') try { topicsPage.room(); } catch {} // 1.5.228 an open Discord chat page follows along
   try { netOverlay?.event(ev); } catch {} // Nov 13 Bob-Net icons: a word bubble when one of their chats has news (display only)
   if (fadeChat.onEvent(ev)) return; // Fade old messages, Clear chat, Amnesia mode
   if (ev.type === 'froze') { // item 214: Bob was stuck for a while and is back
@@ -1058,6 +1063,7 @@ function onEvent(ev) {
       else note(`Housekeeping: ${[ev.summaries && `summed up ${ev.summaries} chat${ev.summaries === 1 ? '' : 's'}`, ev.topics && `filed ${ev.topics} chat${ev.topics === 1 ? '' : 's'} under topics`, ev.auto && `tidied ${ev.auto} thing${ev.auto === 1 ? '' : 's'}`, ev.ask && `${ev.ask} thing${ev.ask === 1 ? '' : 's'} to look at in Tidy up`].filter(Boolean).join(', ') || 'nothing to do'}.${ev.error ? '' : ''}`);
       if (ev.ask != null) countBadge($('tidyBtn'), ev.ask);
       break;
+    case 'net-file-ask': case 'net-file': case 'net-file-gone': netFileEvent(ev, { add, scrollDown, note }); break; // Nov 14 Files and brains (public/net-files.js)
     case 'carried': // Carry on on another Bob (src/carry.js): another of your Bobs or your phone handed a chat over
       add('note borrow', `📡 ${esc(ev.from || 'Another of your Bobs')} handed over a chat: <strong>${esc(ev.title || '')}</strong>. <button type="button" class="link" data-carried="${esc(ev.id || '')}">Open it</button>`);
       break;

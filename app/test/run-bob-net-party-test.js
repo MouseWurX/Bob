@@ -21,6 +21,13 @@ check('Pass my Bob-Net along starts off', shareView(base).passAlong === false);
 const on = cleanSharePatch(base, { passAlong: true }).share;
 check('…and can be switched on, alone', on.passAlong === true && on.lend === false && on.borrow.on === false);
 check('…and off again', cleanSharePatch({ ...base, share: on }, { passAlong: false }).share.passAlong === false);
+// 2026-11-14 (the owner: "can we make it more?"): up to 16 Bobs on the list, was 6.
+{
+  let cfg16 = { ...base, share: {} };
+  for (let i = 1; i <= 16; i++) { const out = cleanSharePatch(cfg16, { addBob: { name: `B${i}`, address: `100.90.0.${i}:7777`, passcode: '12345678' } }); if (out.error) break; cfg16 = { ...cfg16, share: out.share }; }
+  check('My other Bobs holds 16 Bobs now (was 6)', cfg16.share.borrow?.bobs?.length === 16);
+  check('…and a 17th is refused with the limit named', /Up to 16 Bobs/.test(cleanSharePatch(cfg16, { addBob: { name: 'B17', address: '100.90.0.17:7777', passcode: '12345678' } }).error || ''));
+}
 const hello = helloFor({ cfg: { share: { passAlong: true } }, queue: [] }, { why: '', quick: { model: 'm', ctx: 8192 }, can: {}, version: '1.5.123', label: () => 'Gemma', name: 'desk' });
 check('hello carries the name and the pass-along switch', hello.name === 'desk' && hello.passAlong === true);
 const ab = cleanAbilities({ ...hello, name: 'de<sk>' });
@@ -49,6 +56,8 @@ check('…and the asker keeps both, cleaned', ab.passAlong === true && ab.hisNam
   check('…every Bob gets a cube, in his icon colour, named for screen readers (Nov 13)', /drawVoxels\(c, \{ hue: Number\(cv\.dataset\.hue\)/.test(lay) && /aria-label="\$\{esc\(name\)\}'s cube"/.test(lay) && !/drawBob/.test(lay) && /netAvatar\(b\.hue, b\.name, b\.ok === true\)/.test(lay));
   check('…the party gives every Bob a cube colour, a phone too', v.bobs.every((b) => Number.isInteger(b.hue)) && v.bobs.find((b) => b.name === 'Phone').hue === hueFor('Phone'));
   const help = read('public/help-content.js');
+  // 2026-11-14 (the owner): how Bob-Net is like cluster computing, in Help, the glossary, and one line on Settings, Bob-Net.
+  check('Bob-Net explains itself as a small cluster, with a glossary line and a Settings link', help.includes("id: 'faq-cluster'") && help.includes('<dt>Cluster</dt>') && /'faq-cluster': 'settings-bobnet'/.test(help) && /data-help="faq-cluster"/.test(read('public/cellar-pages.js')));
   check('…with Help, a glossary line and an FAQ', help.includes("id: 'faq-avatars'") && help.includes('<dt>Show avatars</dt>') && /Show avatars<\/strong>, just under the heading/.test(help) && /every Bob's picture now/.test(help));
 }
 

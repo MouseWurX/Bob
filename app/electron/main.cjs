@@ -13,6 +13,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const { readHomeFrom, badHomeLine, stripBom } = require('./home-json.cjs');
+const windowBar = require('./window-bar.cjs'); // 1.5.228 Window buttons on Bob's bar
 
 // Before anything else: the name decides Bob's user-data folder (and so the single-instance lock), and the
 // id matches the Start menu shortcut, so the taskbar shows Bob's icon rather than Electron's.
@@ -320,7 +321,7 @@ let win = null;
 // The brain sends both switches and the pictures (src/app-icon.js windowState) at start-up and on every change.
 const STARTED_HIDDEN = process.argv.includes('--hidden');
 const iconFile = (f) => path.join(root, 'public', 'icons', f);
-let winState = { tray: false, lookIcon: false, lookName: '', icons: null };
+let winState = { tray: false, lookIcon: false, lookName: '', icons: null, ownBar: true };
 let tray = null;
 let quitting = false;
 app.on('before-quit', () => { quitting = true; });
@@ -344,6 +345,7 @@ function openAsk(port) {
     width, height, x: Math.round(area.x + (area.width - width) / 2), y: Math.round(area.y + area.height * 0.18),
     title: 'Ask Bob', icon: iconFile(process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#121212',
     autoHideMenuBar: true, alwaysOnTop: true, skipTaskbar: true, minimizable: false, maximizable: false, fullscreenable: false, resizable: true,
+    ...(winState.ownBar !== false ? { frame: false } : {}), // 1.5.228: no title bar; its top line drags it, ✕ or Esc puts it away
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }
   });
   askWin.setAlwaysOnTop(true, 'floating');
@@ -352,7 +354,7 @@ function openAsk(port) {
   askWin.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url) && !url.startsWith(base)) shell.openExternal(url); return { action: 'deny' }; });
   askWin.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(base + '/ask.html')) e.preventDefault(); });
   askWin.on('closed', () => { askWin = null; });
-  askWin.loadURL(base + '/ask.html');
+  askWin.loadURL(base + '/ask.html' + (winState.ownBar !== false ? '?bar=0' : ''));
 }
 globalThis.bobGlobalAsk = (g, port) => {
   const want = g && g.on === true && typeof g.key === 'string' ? g.key : '';
@@ -385,6 +387,7 @@ function trayImage() {
   return nativeImage.createFromPath(iconFile('bob-32.png'));
 }
 function bigImage() {
+  if (MAC && winState.icons?.mac) return nativeImage.createFromBuffer(winState.icons.mac); // 1.5.228: the Dock wants Apple's padding round the tile
   return winState.icons ? nativeImage.createFromBuffer(winState.icons[256]) : nativeImage.createFromPath(iconFile(process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'));
 }
 
@@ -414,7 +417,17 @@ function refreshWindowBits() {
     if (process.platform === 'win32' && win) win.setOverlayIcon(dotted() ? nativeImage.createFromBuffer(winState.dotIcons.badge) : null, dotted() ? 'Something is ready or needs you' : '');
   } catch (e) { console.error('Bob: tray or icon', e.message); }
 }
-globalThis.bobWindow = { apply: (s) => { winState = { ...winState, ...s }; refreshWindowBits(); } };
+globalThis.bobWindow = {
+  apply: (s) => { winState = { ...winState, ...s }; refreshWindowBits(); },
+  // 1.5.228: the page's top-bar colours for the window buttons (Windows and Linux; a Mac's traffic lights keep theirs).
+  bar: (b) => {
+    const c = windowBar.cleanColours(b);
+    if (!c || !win || win.isDestroyed() || !barNow) return;
+    try { if (MAC) win.setWindowButtonPosition?.(windowBar.trafficLights(c.height)); else win.setTitleBarOverlay(c); } catch {}
+  },
+  barNow: () => barNow
+};
+let barNow = false; // this window was made with Bob's own bar (the setting at the time it opened)
 
 // The first time he goes to the tray, Bob says where he went and how to quit him (only once, ever).
 function trayHint() {
@@ -480,8 +493,10 @@ async function start() {
     catch (e) { dialog.showErrorBox('Bob', `Bob's brain wouldn't start: ${e.message}`); app.quit(); return; }
     for (let i = 0; i < 80 && !(await up(home.port)); i++) await new Promise((r) => setTimeout(r, 250));
   }
+  barNow = winState.ownBar !== false;
   win = new BrowserWindow({
     width: 1200, height: 820, minWidth: 360, minHeight: 480,
+    ...windowBar.barOptions(process.platform, barNow), // 1.5.228: no system title bar, the buttons on Bob's bar
     title: 'Bob', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'),
     backgroundColor: '#121212', autoHideMenuBar: true, show: !process.argv.includes('--hidden'),
     // plugins: the built-in PDF viewer, so "Documents in the side panel" can show a PDF's pages (no other plugins exist).

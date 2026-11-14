@@ -1,4 +1,4 @@
-// Settings, Online services: "Bob on Discord" (src/discord.js). Off unless you turn it on.
+// Settings, Agents, Discord: "Bob on Discord" (src/discord.js). Off unless you turn it on.
 import { esc } from './util.js';
 
 async function api(url, data) {
@@ -90,6 +90,7 @@ export async function mountDiscord(box) {
         ${v.jobTypes.map((t) => `<label><input type="checkbox" data-dc-job="${t.id}" ${v.jobs[t.id] ? 'checked' : ''}> ${esc(t.label)}</label>`).join(' ')}</fieldset>
       ${sw('autoAccept', 'Auto-accept Discord requests', 'Off: each request from the group waits in the Discord group chat (Topics, Past chats) until you press Accept or Decline. Nothing pops up, so a game is never interrupted. On: requests run straight away. Either way, a request never runs on a Bob you\'re gaming on: another of your Bobs takes it (Send jobs), or it waits.', v.autoAccept)}
       ${sw('keepAwake', 'Stay awake for Discord', 'Going idle never cuts Bob off Discord, but sleep does. On: while he\'s connected, the computer doesn\'t go to sleep (the screen can still turn off and lock). Uses more power. Windows, Mac and Linux.', v.keepAwake)}
+      ${sw('showChannel', 'Show the whole channel', 'Off: the Discord group chat shows only what calls Bob, his replies and what you say there. On: every message in the channels on his list shows on its page, so it reads like the channel. Nothing runs and no brain loads for them. Kept on this computer only, the newest 300. Off again deletes them.', v.showChannel)}
       ${sw('share', 'Share what Bob makes for Discord', 'Pictures, clips, songs and sounds made for a Discord request go to that channel as files. Off: he says he made it, and it stays in Made by Bob here. Only ever what was asked for there, never anything older or made for you.', v.share)}
       ${keepOrderHtml(v.mod)}
       <hr><strong>Your private Bob in Discord DMs</strong>

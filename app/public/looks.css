@@ -156,6 +156,12 @@ body.look-terminal .themes button[aria-checked="true"], body.look-terminal .ttab
 .look-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--s2); margin: var(--s2) 0; }
 .look-pick button { display: grid; gap: var(--s2); text-align: left; padding: var(--s2); }
 .look-pick button[aria-checked="true"] { border-color: var(--accent); box-shadow: var(--shadow); }
+.lamp-row { margin-top: var(--s3); }
+.lamp-pick { display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s2) 0; }
+.lamp-pick button { display: inline-flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s3); }
+.lamp-pick button i { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.lamp-pick button[aria-checked="true"] { border-color: var(--accent); box-shadow: var(--shadow); }
+body.still .lamp-pick button i { box-shadow: none !important; }
 .look-pick small { color: var(--muted); font-size: var(--t-xs); }
 .look-mini { display: grid; gap: 4px; height: 64px; padding: 6px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
 .look-mini i { display: block; height: 10px; }
@@ -329,3 +335,44 @@ html.lab-window body.look-lamplight .cellar.page[open] { inset: 0; }
 @media (max-width: 900px) {
   body.look-lamplight .now { background: color-mix(in srgb, var(--panel) 96%, transparent); backdrop-filter: blur(12px); }
 }
+
+/* ---------- 1.5.228 Window buttons on Bob's bar (public/window-bar.js, electron/window-bar.cjs) ----------
+   Only with the setting on, in Bob's own window: body.own-bar. The system's minimise, maximise and close
+   (a Mac's traffic lights) sit over the page's top corner; env(titlebar-area-*) says exactly where.
+   Lamplight on a wide window: the top bar itself drags the window, its buttons and tabs stay clickable, and it
+   keeps clear of the system buttons. Everything else (Classic, Terminal, narrow windows): a thin strip the
+   height of the buttons, at the top, to grab the window by. */
+.win-strip { display: none; }
+body.own-bar { --win-top: env(titlebar-area-height, 0px); --win-left: env(titlebar-area-x, 0px); --win-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)); }
+body.own-bar .win-strip { display: block; flex: none; height: var(--win-top); -webkit-app-region: drag; app-region: drag; background: var(--panel); border-bottom: 1px solid var(--line); position: relative; z-index: 2; }
+body.own-bar.look-lamplight .win-strip { background: transparent; border-bottom: 0; }
+@media (min-width: 641px) {
+  body.own-bar.look-lamplight .win-strip { display: none; }
+  body.own-bar.look-lamplight .side { -webkit-app-region: drag; app-region: drag; padding-left: max(var(--s5), calc(var(--win-left) + var(--s3))); padding-right: calc(var(--s5) + var(--win-right)); }
+  body.own-bar.look-lamplight .side :is(button, a, input, select, textarea, canvas, label, summary, [role=button], [role=switch], [tabindex], .who) { -webkit-app-region: no-drag; app-region: no-drag; }
+}
+/* The system buttons take about 140 px of the bar, so Find anything gets smaller first (never a tab): without
+   "Ctrl K", then just its magnifying glass (its name stays for screen readers and in its tooltip). */
+@media (min-width: 641px) and (max-width: 1400px) { body.own-bar.look-lamplight .side #findBtn .find-key { display: none; } }
+@media (min-width: 641px) and (max-width: 1280px) { body.own-bar.look-lamplight .side #findBtn .lbl { display: none; } body.own-bar.look-lamplight .side #findBtn { padding: var(--s2); } }
+/* Panels and full-window screens that start at the very top move down below the buttons. */
+body.own-bar dialog.cellar:not(.page)[open] { top: var(--win-top); height: calc(100dvh - var(--win-top)); }
+@media (max-width: 1100px) { body.own-bar:not(.look-lamplight) :is(.now, .viewer) { top: var(--win-top); } }
+@media (max-width: 640px) { body.own-bar :is(.now, .viewer) { top: var(--win-top); } body.own-bar:not(.left-folded) .side { top: var(--win-top); } }
+/* The cube's corner: a thin lit edge round the window's top-left corner, brightest at the corner and fading out
+   along the top and the left side, in the cube's colour. It follows the cube's light (--cube-light, mind-cube.js)
+   like Lamplight's glow does, and never takes a click. The window's own corners are the system's: rounded on
+   Windows 11 and a Mac; on Linux your desktop decides. */
+body.own-bar::after { content: ""; position: fixed; inset: 0; z-index: 9500; pointer-events: none; border-radius: var(--win-round, 8px); padding: 2px;
+  background: radial-gradient(520px 360px at 0 0, color-mix(in srgb, var(--cube, var(--accent)) 95%, #fff 5%), color-mix(in srgb, var(--cube, var(--accent)) 45%, transparent) 35%, transparent 75%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude;
+  opacity: calc(.7 + var(--cube-light, .3) * .5); }
+/* and a soft glow just inside that corner, under the line */
+.win-glow { display: none; }
+body.own-bar .win-glow { display: block; position: fixed; inset: 0; z-index: 9499; pointer-events: none; border-radius: var(--win-round, 8px);
+  background: radial-gradient(220px 150px at 0 0, color-mix(in srgb, var(--cube, var(--accent)) 22%, transparent), transparent 70%);
+  -webkit-mask: radial-gradient(700px 480px at 0 0, #000 30%, transparent 75%); mask: radial-gradient(700px 480px at 0 0, #000 30%, transparent 75%);
+  box-shadow: inset 3px 3px 18px -6px color-mix(in srgb, var(--cube, var(--accent)) 80%, transparent);
+  opacity: calc(.6 + var(--cube-light, .3) * .7); }
+body.own-bar.still::after, body.own-bar.still .win-glow { opacity: .85; }

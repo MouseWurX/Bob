@@ -4,6 +4,39 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.228
+
+My front page tells the whole story now, the Lab gets steps, pipelines and a record of every run, Bob-Net explains itself as a small cluster, and I have a new icon that glows in my lamp's colour.
+
+### New
+
+- **The README tells the whole project.** A new **The project** section: the goal, how a brain is made and why in that order, where the Lab and the costs page are, and every model and dataset on Hugging Face, cross-linked.
+- **A Steps tab in the Lab** (after Forge). Every advanced method is listed as a step, with where it runs, what it takes and makes, and whether it needs your go. The privacy scrub and eval sets run from their cards there.
+- **A record of every Lab run.** Each run keeps its settings (keys never written down), Bob's version, its inputs and outputs, the smoke test, scores, minutes and card cost, and you can compare runs side by side. Anything made from surgery or steering data is tagged never-train, and training steps refuse it.
+- **Lab pipelines.** Save a list of steps and run it as one. Rented steps are packed into one card block, with every cap starting at $0 until you set it, and a pipeline picks up where it stopped. A chart shows the scores across runs. Nothing rents from a pipeline by itself.
+- **The Forge can heal a GPT-OSS cut.** The pod scripts now understand GPT-OSS brains, so the 38B cut of gpt-oss-120b can be taught back from the full 120B. The plan is written, not run: it waits for your go.
+- **Lamps.** Lamplight and Terminal now come in four lamp colours, named for the old street and sign lamps: Mercury (blue-white), Sodium (amber), Thallium (green) and Neon (red-orange). Pick one in Settings, Style. New installs start on Mercury.
+- **My new icon: the tesseract.** A cube inside a cube, on the taskbar, tray, Dock, Start shortcut, phone and browser tab. It takes the colour of your lamp. "Use Bob's look as his icon" is now off unless you switch it on.
+- **Window buttons on my bar.** The system title bar is gone: minimise, maximise and close sit on my own top bar (on a Mac, the red, yellow and green buttons move onto it), with rounder corners and a soft glow in the corner where my cube sits. Drag the bar to move me, double-click to maximise. It's on to start; switch it off in Settings, Bob himself. The Ctrl+Alt+B ask box wears your theme too, with its typing box at the bottom.
+- **Chat heads for Discord and Telegram.** Under my cube, a small head for each chat bot that's switched on; click it to open that chat. The Discord group chat now has one page per channel, with a box to say something there as me. A new Discord switch, **Show the whole channel** (off to start), shows every message in a listed channel, not just the ones to me.
+- **Settings has a new Agents group.** Claude, OpenAI, Gemini, Qwen, OpenCode, Discord and Telegram each get their own section with everything I do with them, and a switch to show that company's cube under mine. Nothing moved out of me, only into one place.
+- **Files and brains on Bob-Net** (off to start; turn it on on both Bobs). Send any file to another of your Bobs, or copy one of my brains to him with **Brain Copying**. Nothing comes in without his Yes, you can stop and carry on, and every file is checked at the end.
+- **Your Bobs use the brain files they already have.** When a brain is spread, a lending Bob loads his share from his own copy of that brain, even under another name or in another of his brain folders, with SCUT on or off. Only what he doesn't have crosses the network.
+- **Up to 16 Bobs on Bob-Net** (was 6).
+- **Bob-Net, explained as a cluster.** Settings, Bob-Net opens with one line on how your Bobs work together like a small cluster, with an ⓘ tip and a **? How** button that opens the whole story in Help.
+
+### Fixed
+
+- **A rented card that freezes at start-up is swapped.** If a pod never answers, it's deleted and a different card type is rented under the same yes and the same caps, at most twice. Card types that keep freezing go to the back of the list.
+- **The Android download joins the release reliably.** The phone build now waits until the release is published, not just drafted, and tries the upload three times.
+- **Try it first** passes a steering file the way Brain Engine 7 reads it.
+
+**New in the docs:** Bob-Net at a glance, a picture in the README of how your Bobs connect and what goes between them; and the 12 November test of sharing one brain between two Bobs over a cable, with what ran and what didn't (test results).
+
+**Taken down:** the teacher-odds dataset on Hugging Face (bob-odds) is gone, so its links are too. It was made from lessons before the privacy scrub. The Forge now warns before publishing teacher odds.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.227
 
 My front page says what's new, what's coming, and what it all costs, the Lab gets its newer research scripts, and Journey has crafting.
@@ -156,24 +189,6 @@ Phones see the line under my name, and Journey's towns stay off the roads.
 - **The expert sweep checks a lesson set before it starts.** A set with no tool list, or with no held-out tool lessons, is now named in the check with the reason, and Run stays greyed. Before, the sweep crashed or stopped partway.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.218
-
-The Lab gets the new training protocol.
-
-### New
-
-- **The training protocol** (the Lab, Forge tab). The 11 steps for teaching a brain, in order. Three free steps run here on your computer, one at a time:
-  - **Clean a lesson set** into a new Lab set. The original is never changed.
-  - **Make right-vs-wrong pairs** from it.
-  - **Sweep a running Brain Engine**: try more or fewer experts per word, scoring each kind of lesson on its own. Local engines only, and every switch is put back after.
-- **New ways to teach** (the Forge form, all off to start with): learning from right-vs-wrong pairs (ORPO, DPO, KTO), a share of on-policy teaching (the small Bob answers and the teacher corrects it word by word), a reward pass, targets, and edits to bake into the brain. These run on a rented card. Nothing cuts, trains or rents without your press on the purchase card, with the caps you type.
-
-### Good to know
-
-- The switch to Brain Engine 7 in 1.5.217 downloads about 588 MB once (the llama.cpp b12282 base it sits on, plus Brain Engine's own files).
-
-**Where it works:** Windows, Mac and Linux.
 
 ## Older versions
 

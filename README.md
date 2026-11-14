@@ -8,6 +8,7 @@
   <a href="#the-computer-science-lab">The Lab</a> ·
   <a href="#bobs-own-brains">Brains and scores</a> ·
   <a href="#bob-net-bobs-working-together">Bob-Net</a> ·
+  <a href="#the-project">The project</a> ·
   <a href="#coming-next">Coming next</a> ·
   <a href="app/docs/README.md">All the docs</a>
 </p>
@@ -42,13 +43,13 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.227-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.227-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.227-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.227-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.227-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.227-linux-x86_64.AppImage) |
-| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.227-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.227-linux-amd64.deb) |
-| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.227-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.227-linux-x86_64.flatpak) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.227-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.227-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
-| **Android phone** | [`Bob-1.5.227-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.227-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.228-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.228-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.228-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.228-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.228-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.228-linux-x86_64.AppImage) |
+| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.228-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.228-linux-amd64.deb) |
+| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.228-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.228-linux-x86_64.flatpak) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.228-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.228-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
+| **Android phone** | [`Bob-1.5.228-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.228-android.apk) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 
@@ -181,6 +182,29 @@ Housekeeping is now on: it touches only Bob's own files unless you add folders, 
 
 The [changelog](CHANGELOG.md) has every release.
 
+## The project
+
+**The goal.** One all-round brain of Bob's own that runs on everyday computers: good at agent work (plans, uses tools, checks its results, finishes the job), writing and fixing code, holding a good conversation, and **looking things up when it isn't sure** instead of guessing. Then a family of smaller Bobs cut from it for smaller cards, handhelds and phones. Everything is done in the open: every lesson set, score, failure and dollar is published.
+
+**How a brain is made, and why in this order** ([roadmap](app/docs/ROADMAP-ONE-MODEL.md), [the proposal](app/docs/PROPOSAL.md)):
+
+1. **Measure first.** A fixed report card and the stock model's own next-word odds, before anything changes. Every later step is benchmarked against it, so nothing is called better without numbers.
+2. **Start clean.** The next Bobert starts from stock Qwen3.6-35B-A3B downloaded fresh, with nothing inherited from earlier Bobs, and every old lesson set is audited before any of it is reused. A brain can only be as clean as what it learns from.
+3. **Look inside.** Which experts each skill uses, layer by layer (REAP scores, the fNRI scans). Surgery, steering and the evil check are tried live and kept as records; **they never teach a brain**.
+4. **Train the full model, then cut.** Clean first, train second, cut last, so a cut keeps what the training taught.
+5. **Heal against a real teacher.** A cut Bob is taught back to give the same odds as the trained full model, so it heals toward a brain that exists.
+6. **Then the rest.** More lesson rounds that never repeat a test question, practice on its own answers, the thinking styles, blends, smaller Bobs, other brain families, and publishing, each with its own go.
+
+Nothing trains, rents a card or uploads without the owner's go, and every rental has a cap.
+
+**Where everything is:**
+
+- **The Computer Science Lab**, where every step runs: [below](#the-computer-science-lab), and the [Lab steps plan](app/docs/LAB-STEPS-PLAN.md).
+- **The costs**, every rental and dollar, failures included: [What Bob costs to make](app/docs/COSTS.md).
+- **The models**, each with a card that says what it is and how it scored: [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) · [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) · [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) · [gpt-oss-120b cut to 38B](https://huggingface.co/MouseWurX/gpt-oss-120b-REAP-38B-UNHEALED-GGUF) (cut, not yet healed).
+- **The data**: [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) (the lessons, clean, full and preference files) · [bob-studies](https://huggingface.co/datasets/MouseWurX/bob-studies) (surgery and interview studies, never used for training).
+- **The record**: [Bob's own models](app/docs/BOBS-OWN-MODELS.md) (every score and what went wrong) and [the Forge journal](app/docs/FORGE-JOURNAL.md) (the lab notebook).
+
 ## Coming next
 
 **Planned, not shipped.** These are plans in the repository. Nothing on this list trains, rents a card or uploads without the owner's go.
@@ -306,7 +330,6 @@ Same tests, same rented card, each Bob served from his public Q4 file. Riker mat
 | | |
 |---|---|
 | [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) | The lessons the Bobs learned from: chat, tool calls, thinking on and off. CC BY-SA 4.0. |
-| [bob-odds](https://huggingface.co/datasets/MouseWurX/bob-odds) | The teacher's next-word odds used to teach each cut brain back. |
 | [How they're made](app/docs/BOBS-OWN-MODELS.md) | The method, every result, and what went wrong along the way. |
 | [What we've learned](app/docs/MAKING-SMALLER-MODELS.md) | Best practices for making smaller brains from bigger ones: cutting, REAP, teaching back, lessons, fitting the device and renting cards. |
 | [What they cost](app/docs/COSTS.md) | Every rental, itemized, failures included. |
@@ -321,7 +344,7 @@ Put Bob on your PC, laptop, handheld and phone, and they find each other on your
 <img src="app/docs/screens/phone.png" width="240" align="right" alt="Bob for Android: the phone asks the PC's Bob for a wireframe fox and gets it back">
 
 - **Pool graphics cards and memory.** A brain too big for one computer is spread over your Bobs' cards and memory. One bigger than all of that can still run from a fast SSD.
-- **Fast where it counts.** The first load sends the brain once; later loads send only what's missing. A brain that fits on one computer stays there, because that beats any network. With **SCUT** turned on (experimental), a brain spread over two Bobs on weak home Wi-Fi wrote 17.5 tokens a second against 3.5 to 4.8 over plain TCP: [the measurements](app/docs/test-results/2026-11-12-scut-vs-tcp-over-wifi.md).
+- **Fast where it counts.** The first load sends the brain once; later loads send only what's missing. A brain that fits on one computer stays there, because that beats any network. With **SCUT** turned on (experimental), a brain spread over two Bobs on weak home Wi-Fi wrote 17.5 tokens a second against 3.5 to 4.8 over plain TCP: [the measurements](app/docs/test-results/2026-11-12-scut-vs-tcp-over-wifi.md). Over a cable it isn't measured yet: the first try lost its lender partway through copying the brain, and Bob carried on alone ([what ran and what didn't](app/docs/test-results/2026-11-12-bob-net-card-share-over-cable.md)).
 - **Bobs working in concert.** Borrow a bigger Bob's brain for a reply, send a job to whichever Bob is free, or have a bigger Bob check a handheld's harder work.
 - **The phone app** talks to the Bob on your PC, and can run a small brain on the phone itself.
 - **Adventures together:** your other Bobs join the party in the tabletop game.

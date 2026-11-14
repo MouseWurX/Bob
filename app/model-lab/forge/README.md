@@ -110,7 +110,7 @@ deletes the pod, and the loss is the time spent (a few dollars).
 ## Build 17 (8 November 2026, untested on a card)
 
 - **Train the teacher.** `plan.train_teacher` ({name, nickname, hours, experts, epochs}) trains the full teacher on every lesson by plain next-word training (heal.py with alpha 0 and no odds file) before anything else, keeps the result on the volume as `bobs/<name>/model` plus its adapter, exports its GGUF files and brain cards, and makes it the teacher for the odds and the cuts. The lesson-set key includes the trained teacher's adapter hash, so stock-teacher scores and trained-teacher scores never mix. A later plan names him with `teacher_model: "bobs/35Bob/model"`.
-- **Hugging Face from the card, by the owner's rules.** `plan.publish` ({user, private, odds, models}). Every GGUF and card is kept on the volume (`bobs/<name>/gguf/`); `download_quants` names which quant files come down to the PC (the rest stay on the drive and the watcher skips them). `odds: true` uploads the teacher scores as a private dataset (`<user>/bob-odds/<key>/`). A Bob is uploaded only when the owner has tested him at home and listed his name in `models` (then the next run uploads him from the volume with a generated model card, private). The token is read from `HF_TOKEN`, or `forge/hf-token.txt` (one line, gitignored), which the Forge locks on first read into `forge/hf-token.locked` (Windows DPAPI, this account only; gitignored), and sent to the pod as `in/hf-token`; it is never in a plan, a log or the repo. `export.py --pending` holds the file list back until the files are marked.
+- **Hugging Face from the card, by the owner's rules.** `plan.publish` ({user, private, odds, models}). Every GGUF and card is kept on the volume (`bobs/<name>/gguf/`); `download_quants` names which quant files come down to the PC (the rest stay on the drive and the watcher skips them). `odds: true` uploads the teacher scores as a private dataset (`<user>/bob-odds/<key>/`). Leave it off unless the run's lessons are scrubbed and every set in them may be shared: the scores carry the lessons themselves as token ids. A Bob is uploaded only when the owner has tested him at home and listed his name in `models` (then the next run uploads him from the volume with a generated model card, private). The token is read from `HF_TOKEN`, or `forge/hf-token.txt` (one line, gitignored), which the Forge locks on first read into `forge/hf-token.locked` (Windows DPAPI, this account only; gitignored), and sent to the pod as `in/hf-token`; it is never in a plan, a log or the repo. `export.py --pending` holds the file list back until the files are marked.
 
 ## Build 18 (8 November 2026, untested on a card)
 
@@ -216,6 +216,28 @@ The same steps serve any target: facts, skills, tools, bias, refusals, ways of t
 
 `model-lab/clean-lessons.mjs --from <lesson sets> --out <new folder> --review model-lab/reviews/lessons-v4.json` writes a new version and only reads the old one. It drops lessons that call a tool their own tool list does not offer and repeated first prompts in the same thinking mode (the held-out copy is kept). It moves the lessons the hand review marks wrong to `rejected.jsonl` (the wrong side for `make-pairs.mjs`). It moves other models' answers (`--distill`, default `kimi`) to `distill/`. It also writes `targets-train.json` (chat, languages and formats at weight 0.5) and `targets-heal.json` (all at 1). v3 → v4: 9,059 → 8,992 lessons, 26 made-up tool calls, 33 repeats, 8 to the wrong side, Kimi traces to distill (5 held-out lessons with a bad call are kept and listed, so the test stays the same). Copies of the same lesson (a mix's repeats) are kept; `--files` and `--sets` pick files and sets, and each file keeps its own name.
 
+## Build 23 (14 November 2026, CPU self-test only, untested on a card): GPT-OSS in the Forge
+
+The owner asked for the GPT-OSS 120B → 38B REAP cut's adapter; there was none, because the Forge only knew Qwen. Now the same pod scripts take GPT-OSS (OpenAI's 20B and 120B and cuts of them). Nothing changes for a Qwen run.
+
+| Step | GPT-OSS | Where |
+| --- | --- | --- |
+| Which family | `config.json` `model_type: gpt_oss` → GPT-OSS; anything else stays Qwen | `pod/family.py` |
+| Teacher download | a non-Qwen teacher gets its own folder (`teachers/openai_gpt-oss-120b`), never mixed with the Qwen in `teacher/`; OpenAI's `original/` and `metal/` copies are skipped (about 65 GB) | `pod/run.sh` |
+| Lessons | rendered with the brain's own harmony template: parallel tool calls become call, answer, call, answer; thinking before a tool call in the last turn is kept (the stock template drops it); a lesson with no thinking asks for `Reasoning: low`. Answer tokens = everything after `<|start|>assistant` up to `<|end|>`, `<|call|>` or `<|return|>` | `pod/data.py` |
+| Teacher odds | the 120B in MXFP4 on the card (about 65 GB) when triton + `kernels` run it (Hopper or newer); otherwise unpacked to BF16 over card and RAM (slow, said in the log) | `pod/family.py`, `pod/teacher.py` |
+| Cut | by keep list, `{"layers": …}` or the Lab's `{"keep": …}` (keep-32-v2.json); MXFP4 blocks and scales, biases and router rows are sliced byte for byte | `pod/prune.py` |
+| Heal | the cut is unpacked to BF16 (MXFP4 can't be trained; the 38B is about 76 GB, so an H200). LoRA on attention, LoRA per expert in GPT-OSS's own layout (biases, interleaved gate/up, clamped SwiGLU), trainable router with its bias; grouped matmul when the rank is a multiple of 8 | `pod/lora.py`, `pod/heal.py` |
+| Count, rebuild | the router is `mlp.router`; REAP's mass switches itself off (counts only) | `pod/reap.py`, `pod/count.py`, `pod/rebuild.py` |
+| Export | saved as plain BF16 (the MXFP4 note leaves config.json), converted without `--no-mtp` (b12282 stops on it for GPT-OSS), quantized as the plan says (`MXFP4_MOE` for the 38B); brain card: cut from gpt-oss-120b by OpenAI, sizes from the config | `pod/export.py` |
+| Not yet | `grpo` (the tool judge reads Qwen calls only), `fold`, `surgery`, `merge`: each refuses or is skipped for GPT-OSS and the run carries on | |
+
+Two fixes that help Qwen too: a recompute under gradient checkpointing stops early by raising inside the forward, and the expert code used to catch that as a "grouped matmul failure" and switch to the slow loop mid-step (now re-raised); and a GPT-OSS run no longer builds or waits for Qwen's linear-attention kernels.
+
+`pod/selftest_gptoss.py` runs all of it on a made-up tiny GPT-OSS on the CPU with Bob's own `src/templates/gpt-oss.jinja` (a minute or two, nothing downloaded): run it on a new pod image before the first real use, beside `selftest_training.py`.
+
+The 38B heal plan is `plans/heal-gptoss-38b.json`: H200, the 120B scores the lessons plus 10M words of general text, the 38B is cut with keep-32-v2.json, healed with a LoRA (6 h cap), exported as MXFP4_MOE, nothing uploaded; caps 13 h / $55. It is not approved: it needs the owner's typed go. First minutes on the card: the log must say `GPT-OSS teacher: MXFP4 on this card` and the teacher pass must move; if not, stop and report.
+
 ## The surgery data rule (13 November 2026)
 
 The owner: "while doing the surgery, we may want to be careful with results we keep, at least for training data".
@@ -279,3 +301,12 @@ GPT-OSS 120B kept few lessons on the tool-heavy jobs (reminders 3/23, research 2
 **Then, on the same pod: `plans/riker-calib.json`.** When v5 reaches done (the pod waits up to 2 h for the PC), the PC stops its watcher and runs `forge.mjs --restart <pod> --plan plans/riker-calib.json`. This sends the new pod scripts, the plan and the imatrix texts, and Brain Engine 7b12282 is rebuilt (~15 min) with llama-cvector-generator and llama-imatrix built after the server, so a failure there never blocks it. Then: Riker's cvector cruel-vs-kind direction (`evil_check: true`: all pairs and each half, so every layer shows how steady the direction is; `evil-check.mjs --direction-only`, since his full check ran in v5), and stock Qwen3.6's full evil check, compared with Riker's answers and direction. After that comes Riker's `llama-imatrix`, overall and per job (`imatrix: true`, from v5's `calib/imatrix`), before he is served. Then the live sweep at 3, 4, 6 and 12 experts per word (8 ran in v5), keep-75 at 3 and the best N of both runs, and job-presets' per-job N passes. A per-answer projection onto the direction needs a hidden-state readout the engine doesn't have. Neuron names need a neuron trace for brains with experts. So the report gives experts and heads.
 
 **Next lesson runs:** `smoke-gate.mjs` checks a few lessons before a big write: do the odds cover the thinking, do the tool calls parse, does the trace work? If not, it exits 86 and the Forge deletes the pod. `write-lessons` now marks every turn's odds `think+answer`, `answer-only` or `answer`, and `--split calib` marks a calibration set.
+
+## Card types that freeze at start-up (14 Nov 2026)
+
+The owner: "if its always the same card type freezing up change to a different card type". Every rent's start-up goes in
+`out/forge/startup-log.jsonl` (card type, data centre, started or froze). When a pod this run rented never answers its door,
+`forge.mjs` deletes it and rents again with that card type left out, up to `plan.startup_retries` times (default 2, at most
+5). It's the same rental: no second yes, the same caps, counted from the first rent. A run on an existing pod (`--resume`,
+`--restart`) never re-rents. A type with 2 freezes in 7 days and no good start since goes to the back of the list
+(`card-health.mjs`).

@@ -18,7 +18,7 @@ const lab = read('public/lab.js');
 // The tabs and the pages under them
 const tabs = [...lab.match(/const TABS = (\[\[.*?\]\]);/)[1].matchAll(/\['(\w+)', '([^']+)'\]/g)].map((m) => [m[1], m[2]]);
 const subs = Object.fromEntries([...lab.match(/const SUBS = \{(.*?)\};/)[1].matchAll(/(\w+): \[([^\]]*)\]/g)].map((m) => [m[1], m[2].split(',').map((x) => x.trim().replace(/'/g, ''))]));
-check('the tabs are sorted by task, with My Lab last', tabs.map(([id]) => id).join(' ') === 'make teach test inside learn forge mine' && tabs.at(-1)[1] === 'My Lab');
+check('the tabs are sorted by task, with My Lab last', tabs.map(([id]) => id).join(' ') === 'make teach test inside learn forge steps mine' && tabs.at(-1)[1] === 'My Lab');
 const placed = Object.values(subs).flat();
 check('every Playground page sits under exactly one tab', PLAY_PAGES.every(([id]) => placed.filter((x) => x === id).length === 1), PLAY_PAGES.map(([id]) => id).filter((id) => placed.filter((x) => x === id).length !== 1).join(' '));
 check('no page is on two tabs, and every group belongs to a real tab', new Set(placed).size === placed.length && Object.keys(subs).every((t) => tabs.some(([id]) => id === t)));

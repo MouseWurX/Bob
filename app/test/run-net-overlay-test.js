@@ -159,5 +159,64 @@ check('only Bobs on Bob-Net right now', v.bobs.length === 1 && v.bobs[0].name ==
   check('nothing in a brain\'s start-up words', !/net-overlay|netOverlay/.test(read('src/brain-prompting.js')) && !/netOverlay/.test(read('src/prompts.js')));
 }
 
+// 1.5.228 chat heads: Discord and Telegram show their own head when they're on, with Bob-Net icons on or off.
+{
+  const { roomLook, roomWords, SIGNS, ROOM_LOOKS } = await import('../public/net-overlay.js');
+  const { roomPages } = await import('../public/room-chat.js');
+  const rooms = [{ id: 'discord', name: 'Discord', waiting: 2 }, { id: 'telegram', name: 'Telegram', chat: 'telegram' }, { id: 'Bad id!', name: 'x' }];
+  const offV = await overlayView({ netOverlay: false }, { rooms });
+  check('chat heads show with Bob-Net icons off, and only those', offV.on === false && offV.bobs.length === 0 && offV.rooms.map((r) => r.id).join() === 'discord,telegram');
+  const onV = await overlayView({ netOverlay: true }, { rooms });
+  check('and with it on', onV.rooms.length === 2 && onV.rooms[0].waiting === 2 && onV.rooms[1].chat === 'telegram');
+  check('no chat bot on: no heads', (await overlayView({ netOverlay: false }, {})).rooms.length === 0);
+  check('each company has its own cube colour and its own sign', roomLook('discord').hue !== roomLook('telegram').hue && SIGNS[ROOM_LOOKS.discord.sign] && SIGNS[ROOM_LOOKS.telegram.sign] && ROOM_LOOKS.telegram.sign !== 'plane');
+  check('the Discord head says what waits', roomWords(onV.rooms[0]) === 'Discord group chat: 2 waiting for your OK' && roomWords(onV.rooms[1]) === 'Telegram: your chat');
+  const lines = [
+    { id: 'a1', kind: 'ask', at: 1, where: '111', whereName: 'general', text: 'hi', state: 'done' },
+    { id: 'b1', kind: 'bob', at: 2, to: 'a1', text: 'hello' },
+    { id: 'a2', kind: 'ask', at: 3, where: '222', whereName: 'memes', text: 'joke', state: 'waiting' },
+    { id: 'a3', kind: 'ask', at: 4, where: '333', text: 'old', state: 'declined' }
+  ];
+  const pages = roomPages(lines);
+  check('each channel is its own page, the one waiting first', pages.map((p) => p.name).join() === '#memes,Channel …333,#general' && pages[0].waiting === 1);
+  check('Bob\'s reply sits on its request\'s page', pages.find((p) => p.id === '111').lines.map((l) => l.id).join() === 'a1,b1');
+  const two = roomPages([...lines, { id: 'm1', kind: 'me', at: 5, where: '111', whereName: 'general', text: 'hey all' }], [{ id: '111', name: 'general' }, { id: '444', name: 'quiet' }]);
+  check('what you say through Bob sits on that channel\'s page', two.find((p) => p.id === '111').lines.map((l) => l.id).join() === 'a1,b1,m1');
+  check('every listed channel gets a page you can talk in, even a quiet one', two.find((p) => p.id === '444')?.name === '#quiet' && two.find((p) => p.id === '444').listed && !two.find((p) => p.id === '333').listed);
+  check('the channel\'s own talk sits on its page', roomPages([{ id: 'h1', kind: 'heard', at: 9, where: '444', text: 'yo' }], [{ id: '444', name: 'quiet' }])[0].lines[0].id === 'h1');
+  const rc = read('public/room-chat.js');
+  check('the talk box is only on a listed channel\'s page', /cur\?\.listed \? `<div class="room-say">/.test(rc) && /data-roomsay/.test(rc));
+  const page = read('public/net-overlay.js');
+  check('a head opens its own chat: Discord its group chat, Telegram your Telegram chat', /if \(s\.it\.chat\) open\(s\.it\.chat\); else openRoom\(s\.it\.id\)/.test(page));
+  check('a new request gives a word bubble, never a sound or pop-up', /ev\.type === 'room'/.test(page) && !/new Audio|Notification\(/.test(page));
+}
+
+// ---- 1.5.228 Settings, Agents: a section per company, each with its own chat head (off unless turned on) ----
+{
+  const { COMPANIES, cleanChatHeads, companyHeads } = await import('../src/net-overlay.js');
+  const { companyWords } = await import('../public/net-overlay.js');
+  const map = await import('../public/settings-map.js');
+  const cellar = read('public/cellar.js'), pages = read('public/cellar-pages.js'), help = read('public/help-content.js');
+  check('every company has its coding program and a look of its own', COMPANIES.every((c) => c.kind && agentLook(c.kind)) && COMPANIES.map((c) => c.id).join() === 'claude,openai,gemini,qwen,opencode');
+  check('chat heads are off unless turned on, and only known companies are kept', JSON.stringify(cleanChatHeads({})) === '{}' && JSON.stringify(cleanChatHeads({ claude: true, qwen: 'yes', evil: true })) === '{"claude":true}' && JSON.stringify(cleanChatHeads([true])) === '{}');
+  const agents = { on: true, agents: [{ id: 'a', name: 'reviewer', kind: 'claude', state: 'working', log: ['reading'] }, { id: 'b', name: 'fixer', kind: 'claude', state: 'needs-you', log: ['May I push?'] }, { id: 'c', name: 'cx', kind: 'codex', state: 'done', log: [] }] };
+  check('no head for a company that is off', companyHeads({}, agents).length === 0);
+  const heads = companyHeads({ chatHeads: { claude: true, qwen: true } }, agents);
+  const cl = heads.find((h) => h.id === 'claude'), qw = heads.find((h) => h.id === 'qwen');
+  check('a head shows its most pressing agent: needs you before working', cl.state === 'needs-you' && cl.needsYou === 1 && cl.agents === 2 && cl.last === 'May I push?');
+  check('a head with no agents yet says so, and is still there', qw.agents === 0 && qw.state === 'idle' && companyWords(qw) === 'No agents yet' && companyWords(cl) === '1 needs you');
+  const off = await overlayView({ chatHeads: { claude: true } }, { agents });
+  check('a company head shows with Bob-Net icons off', off.on === false && off.companies.length === 1 && off.agents.length === 0);
+  const onV = await overlayView({ netOverlay: true, chatHeads: { claude: true } }, { agents });
+  check('with icons on, an agent whose company has a head shows only there, never twice', onV.companies.length === 1 && onV.agents.every((a) => a.kind !== 'claude') && onV.agents.some((a) => a.kind === 'codex'));
+  check('Settings has an Agents group and card with every section', map.GROUPS.some(([g, ids]) => g === 'Agents' && ['claude', 'openai', 'gemini', 'qwen', 'opencode', 'discord', 'telegram'].every((x) => ids.includes('adv-' + x))) && map.CARDS.some((c) => c.id === 'agents'));
+  check('each section is a real panel with Help', ['claude', 'openai', 'gemini', 'qwen', 'opencode', 'discord', 'telegram'].every((x) => cellar.includes(`['${x}', '`) && help.includes(`id: 'settings-${x}'`)) && help.includes("id: 'settings-agents'"));
+  check('nothing was taken away: the Cloud helper, coding agent and Hands for Claude are drawn in the sections', /cloudRow\(helper\)/.test(pages) && /agentsSettingsHtml\(co\.kind\)/.test(pages) && /co\.id === 'claude' \? .*claudeDoorHtml\(\)/.test(pages) && /COMPANY_CLOUDS\.includes/.test(pages));
+  check('Discord and Telegram moved whole', /chatAppHtml\('discord'\)/.test(cellar) && /discordHtml\(\)/.test(pages) && /telegramHtml\(\)/.test(pages) && !/\$\{telegramHtml\(\)\}\n\s*\$\{discordHtml\(\)\}/.test(pages));
+  check('every coding agents box is mounted, the general one and each company\'s', /mountAgentsSettings\(dlg\.querySelectorAll\('\.coding-agents-box'\)\)/.test(cellar));
+  check('the head switch saves through /api/settings and redraws the heads', /chatHead-/.test(cellar) && /b\.chatHeads/.test(read('src/server.js')) && /cleanChatHeads/.test(read('src/config.js')));
+  check('Help explains why they used to be apart (key vs sign-in vs the other way round)', /faq-agents-sections/.test(help) && /API key/.test(help) && /sign-in/.test(help));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

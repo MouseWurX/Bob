@@ -2,7 +2,7 @@
 // your own" editor with a live preview. 1.5.222: Bob's picture is his cube; the pixel characters moved to the games
 // (public/bob-game-look.js, in Adventure, Characters, Party), so this page only points there.
 import { tip } from './tips.js';
-import { LOOK_IDS, lookId, PRESETS, TOKENS, FONTS, DEFAULT_THEME, themeId, findTheme, resolve, fullColors, applyStyle, applyTheme, swatch, isLight } from './themes.js';
+import { LOOK_IDS, lookId, LAMPS, LAMP_LOOKS, lampId, lampOfTheme, PRESETS, TOKENS, FONTS, DEFAULT_THEME, themeId, findTheme, resolve, fullColors, applyStyle, applyTheme, swatch, isLight } from './themes.js';
 import { esc } from './util.js';
 
 
@@ -44,12 +44,21 @@ export function createStylePage({ api, redraw, flash }) {
   function looksHtml(style) {
     const on = lookId(style);
     return `<div><strong>Look</strong> ${tip('The shape of everything: spacing, corners, bubbles and motion. Your theme picks the colours, so every theme works with every look.', 'Look')}
-      <div class="look-pick" role="radiogroup" aria-label="Look">${LOOK_IDS.map((id) => `<button role="radio" aria-checked="${id === on}" data-uilook="${id}">${lookMini(id)}<span><strong>${LOOK_TEXT[id][0]}</strong><br><small>${esc(LOOK_TEXT[id][1])}</small></span></button>`).join('')}</div></div>`;
+      <div class="look-pick" role="radiogroup" aria-label="Look">${LOOK_IDS.map((id) => `<button role="radio" aria-checked="${id === on}" data-uilook="${id}">${lookMini(id)}<span><strong>${LOOK_TEXT[id][0]}</strong><br><small>${esc(LOOK_TEXT[id][1])}</small></span></button>`).join('')}</div>
+      ${LAMP_LOOKS.includes(on) ? lampsHtml(style, on) : ''}</div>`;
+  }
+  // Nov 14 2026: the lamp colours for Lamplight and Terminal. Each is a theme of its own (Lamps), and my app icon
+  // follows it. Also in Settings, Look & feel (cellar-pages.js), so it's never hidden.
+  function lampsHtml(style, look = lookId(style)) {
+    const on = style.theme === lampId(style) ? lampId(style) : '';
+    const word = look === 'terminal' ? 'Terminal' : 'Lamplight';
+    return `<div class="lamp-row"><strong>Lamp</strong> ${tip('The colour of the light in the room, as close to each gas\'s real light as a screen can show. It sets the colours and my app icon. Picking another theme below keeps your icon.', 'Lamp')}
+      <div class="lamp-pick" role="radiogroup" aria-label="Lamp">${LAMPS.map((l) => `<button type="button" role="radio" aria-checked="${l.id === on}" data-lamp="${l.id}" title="${esc(l.what)}"><i style="background:${l.glow};box-shadow:0 0 10px ${l.glow}" aria-hidden="true"></i>${esc(l.name)} ${word}</button>`).join('')}</div></div>`;
   }
 
   function html(settings) {
     const style = settings.style || {};
-    const groups = [['Bob', 'Bob'], ['Worlds', 'Worlds and places'], ['Access', 'High contrast'], ['MouseWurX', 'From the MouseWurX website']];
+    const groups = [['Bob', 'Bob'], ['Lamps', 'Lamps'], ['Worlds', 'Worlds and places'], ['Access', 'High contrast'], ['MouseWurX', 'From the MouseWurX website']];
     const mine = style.custom || [];
     const motion = style.motion || 'on';
     const opt = (key, val, label, on) => `<button role="radio" aria-checked="${on}" aria-pressed="${on}" data-${key}="${val}">${label}</button>`;
@@ -103,7 +112,8 @@ export function createStylePage({ api, redraw, flash }) {
       redraw(); return true;
     }
     if (b.dataset.nowneed) { await save(settings, { openNowOnNeed: b.dataset.nowneed === '1' }); redraw(); return true; }
-    if (b.dataset.theme) { draft = null; await save(settings, { theme: b.dataset.theme }); redraw(); return true; }
+    if (b.dataset.lamp) { draft = null; await save(settings, { lamp: b.dataset.lamp, theme: b.dataset.lamp }); redraw(); return true; }
+    if (b.dataset.theme) { draft = null; const lamp = lampOfTheme(b.dataset.theme); await save(settings, { theme: b.dataset.theme, ...(lamp ? { lamp } : {}) }); redraw(); return true; }
     if ('newtheme' in b.dataset) { startDraft(settings); redraw(); return true; }
     if ('edittheme' in b.dataset) { startDraft(settings, findTheme(style.theme, style.custom)); redraw(); return true; }
     if ('canceltheme' in b.dataset) { draft = null; applyStyle(style); redraw(); return true; }
