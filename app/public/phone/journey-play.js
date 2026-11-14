@@ -170,9 +170,9 @@ function mountJourney(root, deps) {
     gnome: { roof: '#2a7a8a', wall: '#e8d8b0' }, centaur: { roof: '#c8a66a', wall: '#a07a4a', shape: 'tent' }, giant: { roof: '#4a4a54', wall: '#7a7a84' },
     goblin: { roof: '#8a3a6a', wall: '#a08a5a', shape: 'tent' }, aerie: { roof: '#ffe680', wall: '#f4f8ff', shape: 'dome' }, reef: { roof: '#ff9a8a', wall: '#c8f0ff', shape: 'dome' }
   };
-  function tileCanvas(ch, frame = 0, theme = '') {
+  function tileCanvas(ch, frame = 0, theme = '', bare = false, v = 0) {
     const style = j?.style || 'fantasy';
-    const key = `${ch}${frame}${theme}|${style}`;
+    const key = `${ch}${frame}${theme}|${style}${bare ? '|bare' : ''}${v ? `|v${v}` : ''}`;
     if (tileArt.has(key)) return tileArt.get(key);
     const c = doc.createElement('canvas'); c.width = TILE; c.height = TILE;
     const g = c.getContext('2d');
@@ -180,13 +180,17 @@ function mountJourney(root, deps) {
     const rect = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
     const fill = (col) => rect(0, 0, TILE, TILE, col);
     const specks = (col, n, seed) => { for (let i = 0; i < n; i++) px(Math.floor(hash(i, seed) * 16), Math.floor(hash(seed, i) * 16), col); };
-    const grass = () => { fill('#5aa04a'); specks('#4c8c3e', 14, 3); specks('#6cb85a', 8, 7); };
+    // A thing standing on the land (a house, a tree, a tower) is drawn bare, on nothing: the screen lays the ground
+    // it stands on underneath first, so it matches grass, sand, snow, swamp or a town square (Journey v1.3).
+    const grass = () => { if (bare) return; fill('#5aa04a'); specks('#4c8c3e', 14, 3); specks('#6cb85a', 8, 7); };
     const boards = (a, b) => { fill(a); for (let y = 0; y < 16; y += 4) rect(0, y, 16, 1, b); for (let y = 0; y < 16; y += 4) rect((y * 3) % 16, y, 1, 4, b); };
     const stone = (a, b) => { fill(a); for (let y = 0; y < 16; y += 4) { rect(0, y, 16, 1, b); for (let x = (y % 8 ? 4 : 0); x < 16; x += 8) rect(x, y, 1, 4, b); } };
     const water = (deep, light) => { fill(deep); for (let i = 0; i < 3; i++) { const y = 3 + i * 5, x = ((i * 5) + frame * 3) % 12; rect(x, y, 4, 1, light); } };
     const th = THEMES[theme];
+    // Windows glow in the style's light: daylight blue, cyan screens, neon pink and blue, warm gaslight.
+    const WIN = { fantasy: '#7ec8ff', scifi: '#9af0ff', cyber: '#ff3ad8', steam: '#ffb04a' }, WIN2 = { fantasy: '#7ec8ff', scifi: '#9af0ff', cyber: '#3ad8ff', steam: '#ffb04a' };
     const building = (roof, wall, sign) => {
-      fill(theme === 'aerie' ? '#e8eef8' : theme === 'reef' ? '#5a7a9a' : '#b8a07a');
+      if (!bare) fill(theme === 'aerie' ? '#e8eef8' : theme === 'reef' ? '#5a7a9a' : '#b8a07a');
       if (th) { roof = th.roof; wall = th.wall; }
       const shape = th?.shape;
       if (shape === 'mound') { g.fillStyle = roof; g.beginPath(); g.arc(8, 13, 9, Math.PI, 0); g.fill(); g.fillStyle = '#6b4423'; g.beginPath(); g.arc(8, 13, 3, Math.PI, 0); g.fill(); rect(5, 13, 6, 3, roof); g.fillStyle = '#ffd166'; g.fillRect(8, 11, 1, 1); sign?.(); return; }
@@ -199,19 +203,21 @@ function mountJourney(root, deps) {
       rect(7, 11, 3, 5, '#6b4423'); sign?.();
     };
     const kinSite = (body) => { grass(); body(); };
+    const rock = () => { if (!bare) { fill('#7e8a96'); return; } g.fillStyle = '#7e8a96'; g.beginPath(); g.moveTo(0, 16); g.lineTo(1, 5); g.lineTo(5, 1); g.lineTo(11, 1); g.lineTo(15, 5); g.lineTo(16, 16); g.fill(); g.fillStyle = '#9aa6b2'; g.fillRect(5, 1, 6, 1); };
     switch (ch) {
       case '.': grass(); break;
       case '"': fill('#4e9440'); for (let i = 0; i < 9; i++) { const x = Math.floor(hash(i, 11) * 14) + 1, y = Math.floor(hash(11, i) * 12) + 3; px(x, y, '#2f6a2a'); px(x, y - 1, '#3d7f34'); px(x + 1, y - 2, '#6cb85a'); } break;
       case 'g': grass(); break;
       case 'F': fill('#3d7f34'); specks('#2f6a2a', 10, 21); for (const [x, y] of [[4, 5], [11, 9]]) { rect(x - 1, y + 3, 2, 3, '#6b4423'); g.fillStyle = '#245a22'; g.beginPath(); g.moveTo(x - 4, y + 4); g.lineTo(x, y - 5); g.lineTo(x + 4, y + 4); g.fill(); } break;
-      case 'T': grass(); rect(7, 11, 2, 4, '#6b4423'); g.fillStyle = '#2f6a2a'; g.beginPath(); g.arc(8, 7, 6, 0, Math.PI * 2); g.fill(); g.fillStyle = '#3d8a38'; g.beginPath(); g.arc(6.5, 5.5, 3, 0, Math.PI * 2); g.fill(); break;
+      case 'T': grass(); rect(7, 11, 2, 4, '#6b4423'); g.fillStyle = '#2f6a2a'; g.beginPath(); g.arc(8 + frame * 0.6, 7, 6, 0, Math.PI * 2); g.fill(); g.fillStyle = '#3d8a38'; g.beginPath(); g.arc(6.5 + frame * 0.6, 5.5, 3, 0, Math.PI * 2); g.fill(); px(10 + frame, 4, '#5aa04a'); px(5 + frame, 9, '#245a22'); break;
       case 'y': grass(); for (let i = 0; i < 6; i++) { const x = 2 + Math.floor(hash(i, 31) * 12), y = 3 + Math.floor(hash(31, i) * 10); px(x, y + 1, '#2f6a2a'); px(x, y, ['#ff7ad8', '#ffd166', '#ffffff', '#7ae0ff'][i % 4]); } break;
       case 'w': fill('#4a6a3a'); specks('#3a5a2e', 10, 41); rect(2, 4, 6, 2, '#5a7a8a'); rect(9, 10, 5, 2, '#5a7a8a'); px(4, 3, '#2a4a2a'); px(11, 8, '#2a4a2a'); px(12, 7, '#7a9a4a'); break;
       case 'd': fill('#e6c98a'); specks('#d4b070', 12, 51); g.fillStyle = '#d4b070'; for (let x = 0; x < 16; x += 2) g.fillRect(x, 6 + Math.round(Math.sin(x / 2.5) * 2), 2, 1); break;
+      case 'µ': fill('#7a8670'); specks('#68745e', 14, 101); specks('#8e9a82', 8, 103); rect(3, 5, 3, 1, '#5e6858'); rect(10, 11, 4, 1, '#5e6858'); break; // a rocky slope among the peaks
       case ',': fill('#e0cf8f'); specks('#c9b676', 10, 9); break;
       case ':': case '*': fill(ch === '*' ? '#b8a07a' : '#c8a66a'); specks(ch === '*' ? '#9c8662' : '#a98a52', 10, 5); if (ch === '*') { g.fillStyle = '#a08a68'; for (let y = 0; y < 16; y += 4) g.fillRect(0, y, 16, 1); for (let x = 0; x < 16; x += 8) g.fillRect(x, 0, 1, 16); } break;
       case '~': water('#2a5aa8', '#6aa0e0'); break;
-      case 'r': water('#3a78c8', '#9ac8f0'); rect(0, 0, 16, 1, '#5aa04a'); rect(0, 15, 16, 1, '#5aa04a'); break;
+      case 'r': water('#3a78c8', '#9ac8f0'); break; // banks are drawn where the land is (shore), not baked in
       case '=': fill('#3a78c8'); rect(0, 2, 16, 12, '#8a5a2b'); g.fillStyle = '#6b4423'; for (let x = 0; x < 16; x += 4) g.fillRect(x, 2, 1, 12); rect(0, 2, 16, 1, '#4a2e18'); rect(0, 13, 16, 1, '#4a2e18'); break;
       case '^': grass(); g.fillStyle = '#7e8a96'; g.beginPath(); g.moveTo(1, 15); g.lineTo(7, 2); g.lineTo(15, 15); g.fill(); g.fillStyle = '#e8eef4'; g.beginPath(); g.moveTo(7, 2); g.lineTo(9, 6); g.lineTo(5, 6); g.fill(); rect(9, 9, 3, 1, '#525c66'); break;
       case 'f': grass(); rect(0, 6, 16, 2, '#8a5a2b'); rect(0, 11, 16, 2, '#8a5a2b'); rect(2, 4, 2, 11, '#6b4423'); rect(12, 4, 2, 11, '#6b4423'); break;
@@ -219,7 +225,7 @@ function mountJourney(root, deps) {
       case 'Q': stone('#7a7a84', '#4a4a54'); for (let x = 0; x < 16; x += 4) rect(x, 0, 2, 3, '#a8a8b0'); rect(6, 6, 4, 5, '#14110f'); break;
       case 'G': fill('#c8a66a'); rect(0, 0, 3, 16, '#6a6a74'); rect(13, 0, 3, 16, '#6a6a74'); g.fillStyle = '#3a3a44'; for (let x = 4; x < 13; x += 3) g.fillRect(x, 0, 1, 3); break;
       case 'U': grass(); g.fillStyle = '#8a8a92'; g.beginPath(); g.arc(8, 9, 6, 0, Math.PI * 2); g.fill(); g.fillStyle = '#2a5aa8'; g.beginPath(); g.arc(8, 9, 3.5, 0, Math.PI * 2); g.fill(); rect(2, 2, 1, 7, '#6b4423'); rect(13, 2, 1, 7, '#6b4423'); rect(2, 2, 12, 1, '#6b4423'); break;
-      case 'h': building('#9a3a2a', '#efe6d2', () => { rect(3, 9, 2, 2, '#7ec8ff'); rect(11, 9, 2, 2, '#7ec8ff'); }); break;
+      case 'h': building('#9a3a2a', '#efe6d2', () => { rect(3, 9, 2, 2, WIN[style] || WIN.fantasy); rect(11, 9, 2, 2, WIN2[style] || WIN.fantasy); }); break;
       case 'i': building('#2a4a8a', '#efe6d2', () => { rect(2, 9, 3, 3, '#ffd166'); px(3, 10, '#6b4423'); }); break;
       case 's': building('#2a7a4a', '#efe6d2', () => { g.fillStyle = '#ffd166'; g.beginPath(); g.arc(4, 10, 1.7, 0, Math.PI * 2); g.fill(); }); break;
       case 'm': building('#4a4a54', '#c8b8a0', () => { rect(2, 9, 3, 2, '#ff8a3a'); rect(11, 2, 2, 4, '#3a3a44'); px(12, 1, '#9aa3ad'); }); break;
@@ -251,7 +257,7 @@ function mountJourney(root, deps) {
       // Sites on the land
       case 'v': case 'V': case 'O': { grass(); const n = ch === 'v' ? 1 : ch === 'V' ? 2 : 3; for (let i = 0; i < n; i++) { const x = 1 + i * 5, y = 6 - i % 2 * 2; rect(x, y + 4, 5, 5, '#efe6d2'); g.fillStyle = ['#9a3a2a', '#2a4a8a', '#2a7a4a'][i]; g.beginPath(); g.moveTo(x - 1, y + 5); g.lineTo(x + 2.5, y); g.lineTo(x + 6, y + 5); g.fill(); } if (ch === 'O') { rect(0, 14, 16, 2, '#8a8a92'); } break; }
       case 'K': grass(); rect(2, 5, 12, 11, '#8a8a92'); for (let x = 2; x < 14; x += 3) rect(x, 3, 2, 2, '#8a8a92'); rect(6, 1, 4, 6, '#a8a8b0'); rect(7, 0, 1, 2, '#d0303a'); rect(6, 10, 4, 6, '#14110f'); break;
-      case 'C': fill('#7e8a96'); g.fillStyle = '#14110f'; g.beginPath(); g.arc(8, 11, 5, Math.PI, 0); g.fill(); rect(3, 11, 10, 5, '#14110f'); rect(0, 0, 16, 2, '#525c66'); break;
+      case 'C': rock(); g.fillStyle = '#14110f'; g.beginPath(); g.arc(8, 11, 5, Math.PI, 0); g.fill(); rect(3, 11, 10, 5, '#14110f'); rect(0, 0, 16, 2, '#525c66'); break;
       case 'D': grass(); rect(2, 4, 12, 12, '#4a4a54'); rect(2, 4, 12, 2, '#6a6a74'); for (let x = 2; x < 14; x += 3) rect(x, 2, 2, 2, '#4a4a54'); rect(6, 9, 4, 7, '#14110f'); px(7, 7, '#7dff9a'); px(8, 7, '#7dff9a'); break;
       case 'H': grass(); rect(3, 8, 10, 8, '#6b4423'); g.fillStyle = '#8a7a3a'; g.beginPath(); g.moveTo(1, 9); g.lineTo(8, 2); g.lineTo(15, 9); g.fill(); rect(7, 11, 2, 5, '#3a2410'); rect(11, 3, 2, 3, '#4a4a54'); px(12, 1, '#c8c8c8'); break;
       case 'I': grass(); rect(1, 6, 14, 10, '#8a5a2b'); g.fillStyle = '#6a2a2a'; g.beginPath(); g.moveTo(0, 7); g.lineTo(8, 0); g.lineTo(16, 7); g.fill(); rect(6, 10, 4, 6, '#3a2410'); rect(2, 8, 3, 3, '#ffd166'); rect(11, 8, 3, 3, '#ffd166'); rect(12, 3, 3, 2, '#ffd166'); break;
@@ -263,17 +269,33 @@ function mountJourney(root, deps) {
       case '$': fill('#c8b88a'); specks('#a8986a', 12, 91); specks('#e8dcb0', 6, 93); px(4, 6, '#ff9a8a'); px(11, 12, '#ffffff'); break;
       case '+': fill('#2a5aa8'); for (const [x, col] of [[2, '#ff7a8a'], [7, '#ffb04a'], [12, '#c070ff']]) { rect(x, 6, 2, 10, col); rect(x - 1, 8, 1, 3, col); rect(x + 2, 5, 1, 3, col); } break;
       case 'X': kinSite(() => { for (const x of [1, 9]) { g.fillStyle = '#6a4a2a'; g.beginPath(); g.moveTo(x, 15); g.lineTo(x + 3, 6); g.lineTo(x + 6, 15); g.fill(); } rect(0, 14, 16, 2, '#8a5a2b'); rect(7, 3, 1, 8, '#6b4423'); rect(8, 3, 3, 2, '#8a2a2a'); }); break;
-      case 'L': fill('#7e8a96'); g.fillStyle = '#14110f'; g.beginPath(); g.arc(8, 12, 4, Math.PI, 0); g.fill(); rect(4, 12, 8, 4, '#14110f'); px(6, 10, '#ffd166'); px(10, 10, '#ffd166'); rect(2, 2, 2, 2, '#c8a66a'); rect(12, 3, 2, 2, '#c8a66a'); break;
-      case 'N': fill('#7e8a96'); rect(3, 4, 10, 12, '#5a5a64'); rect(3, 4, 10, 2, '#9a9aa4'); rect(6, 8, 4, 8, '#14110f'); rect(6, 8, 4, 1, '#ffd166'); for (const x of [3, 6, 9, 12]) rect(x, 2, 1, 2, '#5a5a64'); break;
-      case 'E': fill('#3d7f34'); rect(7, 6, 2, 10, '#6b4423'); g.fillStyle = '#245a22'; g.beginPath(); g.arc(8, 5, 6, 0, Math.PI * 2); g.fill(); rect(3, 8, 4, 3, '#d8e8c0'); rect(9, 4, 4, 3, '#d8e8c0'); px(4, 9, '#ffd166'); px(10, 5, '#ffd166'); break;
+      case 'L': rock(); g.fillStyle = '#14110f'; g.beginPath(); g.arc(8, 12, 4, Math.PI, 0); g.fill(); rect(4, 12, 8, 4, '#14110f'); px(6, 10, '#ffd166'); px(10, 10, '#ffd166'); rect(2, 2, 2, 2, '#c8a66a'); rect(12, 3, 2, 2, '#c8a66a'); break;
+      case 'N': rock(); rect(3, 4, 10, 12, '#5a5a64'); rect(3, 4, 10, 2, '#9a9aa4'); rect(6, 8, 4, 8, '#14110f'); rect(6, 8, 4, 1, '#ffd166'); for (const x of [3, 6, 9, 12]) rect(x, 2, 1, 2, '#5a5a64'); break;
+      case 'E': if (!bare) fill('#3d7f34'); rect(7, 6, 2, 10, '#6b4423'); g.fillStyle = '#245a22'; g.beginPath(); g.arc(8, 5, 6, 0, Math.PI * 2); g.fill(); rect(3, 8, 4, 3, '#d8e8c0'); rect(9, 4, 4, 3, '#d8e8c0'); px(4, 9, '#ffd166'); px(10, 5, '#ffd166'); break;
       case 'M': grass(); for (const x of [4, 11]) { g.fillStyle = '#4e9440'; g.beginPath(); g.arc(x, 12, 5, Math.PI, 0); g.fill(); g.fillStyle = '#c8a040'; g.beginPath(); g.arc(x, 12, 2, 0, Math.PI * 2); g.fill(); } break;
       case 'J': grass(); for (const [x, y, col] of [[4, 9, '#d0303a'], [11, 11, '#c070ff'], [8, 5, '#ff9ae0']]) { rect(x - 1, y, 2, 4, '#efe6d2'); g.fillStyle = col; g.beginPath(); g.ellipse(x, y, 4, 3, 0, Math.PI, 0); g.fill(); } px(3, 3, '#fff6c0'); px(13, 4, '#fff6c0'); break;
       case '1': fill('#4a6a3a'); rect(0, 11, 16, 5, '#3a78c8'); for (const x of [2, 9]) { rect(x + 1, 9, 1, 6, '#6b4423'); rect(x + 4, 9, 1, 6, '#6b4423'); rect(x, 4, 6, 5, '#8a6a3a'); g.fillStyle = '#8a7a3a'; g.beginPath(); g.moveTo(x - 1, 5); g.lineTo(x + 3, 1); g.lineTo(x + 7, 5); g.fill(); } break;
       case '2': grass(); rect(2, 6, 12, 10, '#e8d8b0'); rect(2, 4, 12, 3, '#2a7a8a'); rect(11, 0, 2, 5, '#5a5a64'); g.strokeStyle = '#ffd166'; g.lineWidth = 1; g.beginPath(); g.arc(6, 10, 2.5, 0, Math.PI * 2); g.stroke(); rect(10, 11, 2, 5, '#6b4423'); break;
       case '3': grass(); for (const x of [1, 9]) { g.fillStyle = '#c8a66a'; g.beginPath(); g.moveTo(x, 15); g.lineTo(x + 3, 4); g.lineTo(x + 6, 15); g.fill(); rect(x + 3, 2, 1, 3, '#6b4423'); } rect(7, 0, 1, 3, '#d0303a'); break;
-      case '4': fill('#7e8a96'); rect(0, 3, 16, 13, '#4a4a54'); rect(0, 3, 16, 2, '#7a7a84'); rect(5, 7, 6, 9, '#14110f'); rect(1, 1, 3, 2, '#4a4a54'); rect(12, 1, 3, 2, '#4a4a54'); break;
+      case '4': rock(); rect(0, 3, 16, 13, '#4a4a54'); rect(0, 3, 16, 2, '#7a7a84'); rect(5, 7, 6, 9, '#14110f'); rect(1, 1, 3, 2, '#4a4a54'); rect(12, 1, 3, 2, '#4a4a54'); break;
       case '5': grass(); for (const [x, col] of [[1, '#8a3a6a'], [6, '#3a6a8a'], [11, '#8a6a2a']]) { rect(x, 6, 4, 9, '#a08a5a'); rect(x - 1, 4, 6, 3, col); } px(3, 9, '#ffd166'); px(13, 9, '#c0c0c0'); break;
       default: fill('#000');
+    }
+    // Journey v1.3 details: the same ground in a few versions so the land doesn't repeat. Tufts, flowers, pebbles,
+    // little stones on a path, ripples in the sand.
+    if (v && !bare) {
+      const r = (n) => hash(v * 31 + n, ch.charCodeAt(0));
+      if ('.g"'.includes(ch)) {
+        if (v === 1) for (let i = 0; i < 3; i++) { const x = 2 + Math.floor(r(i) * 12), y = 3 + Math.floor(r(i + 9) * 10); px(x, y, ['#ffd166', '#ffffff', '#ff9ae0'][i]); px(x, y + 1, '#3d7f34'); }
+        if (v === 2) { rect(4 + Math.floor(r(1) * 6), 9 + Math.floor(r(2) * 4), 3, 2, '#8a8a80'); px(5 + Math.floor(r(1) * 6), 9 + Math.floor(r(2) * 4), '#b0b0a6'); }
+        if (v === 3) for (let i = 0; i < 4; i++) { const x = 2 + Math.floor(r(i + 3) * 12), y = 4 + Math.floor(r(i + 7) * 9); px(x, y, '#3d7f34'); px(x - 1, y + 1, '#3d7f34'); px(x + 1, y + 1, '#3d7f34'); }
+      } else if ('d,'.includes(ch)) {
+        if (v === 1) { rect(3 + Math.floor(r(1) * 8), 8, 2, 1, '#bfa060'); rect(6 + Math.floor(r(2) * 6), 12, 3, 1, '#bfa060'); }
+        if (v === 2 && ch === 'd') { rect(10, 5, 2, 7, '#5a9a4a'); rect(8, 7, 2, 1, '#5a9a4a'); rect(8, 5, 1, 2, '#5a9a4a'); rect(12, 8, 2, 1, '#5a9a4a'); rect(13, 6, 1, 2, '#5a9a4a'); }
+        if (v === 3) rect(4 + Math.floor(r(3) * 8), 6 + Math.floor(r(4) * 6), 2, 2, '#a89a7a');
+      } else if (ch === ':' || ch === '*') {
+        if (v >= 2) for (let i = 0; i < 3; i++) px(2 + Math.floor(r(i) * 12), 2 + Math.floor(r(i + 5) * 12), ch === '*' ? '#8a7656' : '#a08458');
+      } else if (ch === 'F' && v === 1) { px(3, 13, '#ff9ae0'); px(12, 3, '#ffd166'); }
     }
     // The style's colour, laid over the whole land: cool blue for sci-fi, neon pink in the dark for cyberpunk,
     // brass for steampunk.
@@ -297,7 +319,109 @@ function mountJourney(root, deps) {
     tileArt.set(key, c);
     return c;
   }
-  const ANIMATED = new Set(['~', 'r', 'p', 'A', '&']);
+  const ANIMATED = new Set(['~', 'r', 'p', 'A', '&', 'T']);
+  // Things that stand on the land (Journey v1.3): drawn on top of the ground round them instead of a ground of
+  // their own. Houses, shops, towers, trees, fences, wells, caves, camps, villages and mountains.
+  const STANDING = new Set(['T', '^', 'f', 'U', 'a', 'v', 'V', 'O', 'K', 'D', 'H', 'I', 'M', 'J', '2', '3', '5', 'X', 'h', 'i', 's', 'm', 't', 'R', 'L', 'N', '4', 'C', 'E']);
+  const GROUND = new Set(['.', '"', 'g', 'F', 'y', 'd', ',', ':', '*', '_', 'w', '%', '$', 'o', 'j', 'z', 'Z', 'x', '~', 'r']);
+  // The ground under a standing thing: whatever ground is most common round it (water only when there's nothing else).
+  function groundUnder(map, x, y) {
+    const memo = map.__ground || (map.__ground = new Map()), k = y * 65536 + x;
+    if (memo.has(k)) return memo.get(k);
+    const count = new Map();
+    let hills = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (map.rows[y + dy]?.[x + dx] === '^') hills++;
+    if (map.rows[y][x] === '^' && hills >= 6) { memo.set(k, 'µ'); return 'µ'; } // deep in a range: bare rocky slope
+    for (let r = 1; r <= 2; r++) {
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue; const c = map.rows[y + dy]?.[x + dx]; if (GROUND.has(c)) count.set(c, (count.get(c) || 0) + ('~r'.includes(c) ? 0.01 : 1)); }
+      if (count.size) break;
+    }
+    let best = map.kind === 'world' ? '.' : ':', n = 0;
+    for (const [c, v] of count) if (v > n) { best = c; n = v; }
+    if (memo.size > 20000) memo.clear();
+    memo.set(k, best);
+    return best;
+  }
+  const VARIED = new Set(['.', 'g', '"', 'd', ',', ':', '*', 'F']);
+  const HOUSES = new Set(['h', 'i', 's', 'm', 't', 'R', 'H', 'I', '2']);
+  const ROAD = new Set([':', '*']);
+  // Foam where the sea meets the land, coming and going.
+  function shore(map, x, y, sx, sy, t, river) {
+    const land = (c) => c && !'~rA=+&$'.includes(c);
+    if (river) { // a grassy bank along the land
+      ctx.fillStyle = '#4c8c3e';
+      if (land(map.rows[y - 1]?.[x])) ctx.fillRect(sx, sy, 16, 1);
+      if (land(map.rows[y + 1]?.[x])) ctx.fillRect(sx, sy + 15, 16, 1);
+      if (land(map.rows[y]?.[x - 1])) ctx.fillRect(sx, sy, 1, 16);
+      if (land(map.rows[y]?.[x + 1])) ctx.fillRect(sx + 15, sy, 1, 16);
+    }
+    const k = (Math.sin(t / 700 + x * 0.7 + y * 0.3) + 1) / 2;
+    ctx.fillStyle = `rgba(235,248,255,${0.35 + 0.4 * k})`;
+    if (land(map.rows[y - 1]?.[x])) for (let i = 0; i < 16; i += 3) ctx.fillRect(sx + i, sy + (i % 2), 2, 1);
+    if (land(map.rows[y + 1]?.[x])) for (let i = 1; i < 16; i += 3) ctx.fillRect(sx + i, sy + 14 + (i % 2), 2, 1);
+    if (land(map.rows[y]?.[x - 1])) for (let i = 0; i < 16; i += 3) ctx.fillRect(sx + (i % 2), sy + i, 1, 2);
+    if (land(map.rows[y]?.[x + 1])) for (let i = 1; i < 16; i += 3) ctx.fillRect(sx + 14 + (i % 2), sy + i, 1, 2);
+    if (hash(x, y, Math.floor(t / 900)) < 0.08) { ctx.fillStyle = '#ffffff'; ctx.fillRect(sx + Math.floor(hash(y, x) * 12) + 2, sy + Math.floor(hash(x, y) * 12) + 2, 1, 1); } // a glint of sun
+  }
+  // Something alive about each house, in the style: smoke from the chimney, steam from pipes, a blinking aerial, a
+  // neon sign that flickers.
+  function houseLife(ch, x, y, sx, sy, t) {
+    if (still()) return;
+    const st = j?.style || 'fantasy', k = hash(x, y, 13);
+    if (st === 'scifi') { if (Math.floor(t / 600 + k * 10) % 3 === 0) { ctx.fillStyle = '#ff5050'; ctx.fillRect(sx + 12, sy - 2, 1, 1); } ctx.fillStyle = '#9aa3ad'; ctx.fillRect(sx + 12, sy - 1, 1, 3); return; }
+    if (st === 'cyber') { if (k < 0.6 && Math.floor(t / 150 + k * 40) % 17 !== 0) { ctx.fillStyle = k < 0.3 ? '#ff3ad8' : '#3ad8ff'; ctx.fillRect(sx + 2, sy + 5, 6, 1); ctx.globalAlpha = 0.25; ctx.fillRect(sx + 1, sy + 4, 8, 3); ctx.globalAlpha = 1; } return; }
+    if (k > 0.65 && st !== 'steam') return;
+    const n = st === 'steam' ? 4 : 3, col = st === 'steam' ? '238,238,238' : '170,170,176';
+    for (let i = 0; i < n; i++) { const a = ((t / (st === 'steam' ? 900 : 1400) + i / n + k) % 1); ctx.fillStyle = `rgba(${col},${0.55 * (1 - a)})`; const r = 1 + a * 2.5; ctx.fillRect(Math.round(sx + 12 + Math.sin(a * 5 + k * 9) * 2 + a * 3 - r / 2), Math.round(sy - a * 12 - r / 2), Math.ceil(r), Math.ceil(r)); }
+    if (st === 'steam') { ctx.fillStyle = '#8a5a2a'; ctx.fillRect(sx + 11, sy, 2, 3); }
+  }
+  // Street lamps (a lantern, a light pylon, a neon post, a gas lamp) and crates by the houses, here and there.
+  function townProps(map, xa, ya, xb, yb, cx, cy, t) {
+    const st = j?.style || 'fantasy';
+    const lampCol = { fantasy: '#ffd166', scifi: '#9af0ff', cyber: (x) => (x % 2 ? '#ff3ad8' : '#3ad8ff'), steam: '#ffb04a' }[st];
+    let taken = null;
+    for (let y = ya; y <= yb; y++) for (let x = xa; x <= xb; x++) {
+      const c = map.rows[y]?.[x]; if (!'.:g,*'.includes(c || '#')) continue;
+      const k = hash(x, y, 17);
+      const near = (set) => [[0, -1], [1, 0], [-1, 0], [0, 1]].some(([dx, dy]) => set.has(map.rows[y + dy]?.[x + dx]));
+      const nearHouse = near(HOUSES), roadside = !':*'.includes(c) && near(ROAD);
+      if (!(nearHouse && k < 0.12) && !(roadside && (x + y) % 4 === 0 && k < 0.7)) continue;
+      taken ||= new Set([...(R.peopleOn?.(world, j, map) || []).map((q) => `${q.x},${q.y}`), `${j.x},${j.y}`, ...map.chests.map((q) => `${q.x},${q.y}`)]);
+      if (taken.has(`${x},${y}`)) continue;
+      const sx = x * TILE - cx, sy = y * TILE - cy;
+      if (nearHouse && k < 0.12 && !roadside) { // crates or barrels
+        ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(sx + 3, sy + 13, 10, 2);
+        if (st === 'fantasy' || st === 'steam') { ctx.fillStyle = '#8a5a2b'; ctx.fillRect(sx + 3, sy + 7, 5, 6); ctx.fillRect(sx + 9, sy + 9, 4, 4); ctx.fillStyle = '#5a3a1e'; ctx.fillRect(sx + 3, sy + 9, 5, 1); ctx.fillRect(sx + 9, sy + 10, 4, 1); }
+        else { ctx.fillStyle = st === 'cyber' ? '#33384a' : '#c8d4e0'; ctx.fillRect(sx + 3, sy + 7, 6, 6); ctx.fillStyle = st === 'cyber' ? '#ffd166' : '#7ae0ff'; ctx.fillRect(sx + 3, sy + 9, 6, 1); }
+        continue;
+      }
+      const col = typeof lampCol === 'function' ? lampCol(x) : lampCol;
+      ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(sx + 6, sy + 14, 5, 1);
+      ctx.fillStyle = st === 'steam' ? '#5a3a1e' : st === 'fantasy' ? '#3a3a40' : '#4a505a'; ctx.fillRect(sx + 8, sy + 3, 1, 11);
+      const glow = still() ? 0.25 : 0.2 + 0.1 * Math.sin(t / 400 + x);
+      ctx.fillStyle = col; ctx.fillRect(sx + 7, sy + 1, 3, 3);
+      ctx.globalAlpha = glow; ctx.beginPath(); ctx.arc(sx + 8.5, sy + 2.5, 6, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+    }
+  }
+  // A mountain peak, drawn once per look: rock with a lit side, a dark side and snow on top, on nothing.
+  function peakCanvas(v, snowy) {
+    const style = j?.style || 'fantasy', key = `peak${v}${snowy ? 's' : ''}|${style}`;
+    if (tileArt.has(key)) return tileArt.get(key);
+    const c = doc.createElement('canvas'); c.width = 32; c.height = 32;
+    const g = c.getContext('2d');
+    const tip = v ? 13 : 17, poly = (pts, col) => { g.fillStyle = col; g.beginPath(); g.moveTo(...pts[0]); for (const p of pts.slice(1)) g.lineTo(...p); g.closePath(); g.fill(); };
+    poly([[0, 32], [tip, 2], [32, 32]], '#6e7a86');
+    poly([[tip, 2], [32, 32], [tip + 3, 32]], '#56606c'); // the shadow side
+    poly([[0, 32], [tip, 2], [tip - 4, 32]], '#8a96a2'); // the lit side
+    if (snowy) poly([[tip, 2], [tip - 5, 12], [tip - 2, 10], [tip, 13], [tip + 3, 10], [tip + 6, 12]], '#eef3f8'); // snow on the tall ones
+    else poly([[tip, 2], [tip - 2, 6], [tip + 2, 6]], '#a8b2bc');
+    g.fillStyle = '#4a545e'; for (const [x, y] of [[tip + 5, 20], [tip - 6, 24], [tip + 9, 27]]) g.fillRect(x, y, 3, 1);
+    const st = R.STYLES?.[style];
+    if (st?.dark) { g.globalCompositeOperation = 'source-atop'; g.fillStyle = `rgba(10,8,24,${st.dark})`; g.fillRect(0, 0, 32, 32); }
+    if (st?.tint) { g.globalCompositeOperation = 'source-atop'; g.globalAlpha = st.tint[1]; g.fillStyle = st.tint[0]; g.fillRect(0, 0, 32, 32); g.globalAlpha = 1; }
+    g.globalCompositeOperation = 'source-over';
+    tileArt.set(key, c);
+    return c;
+  }
   function drawChest(x, y, open, good) {
     ctx.fillStyle = good ? '#4a4a54' : '#6b4423'; ctx.fillRect(x + 3, y + 7, 10, 7);
     ctx.fillStyle = open ? '#2a1d14' : good ? '#7a7a84' : '#8a5a2b'; ctx.fillRect(x + 3, y + 5, 10, open ? 3 : 4);
@@ -809,13 +933,36 @@ function mountJourney(root, deps) {
     const more = z < 1 ? Math.ceil((1 / z - 1) * VIEW_W / 2) + 1 : 0, moreY = z < 1 ? Math.ceil((1 / z - 1) * VIEW_H / 2) + 1 : 0;
     const x0 = Math.floor(cx / TILE) - more, y0 = Math.floor(cy / TILE) - moreY;
     const theme = THEMES[map.kind] ? map.kind : '';
+    const peaks = [], props = [];
     for (let y = y0; y <= y0 + VIEW_H + moreY * 2; y++) for (let x = x0; x <= x0 + VIEW_W + more * 2; x++) {
       const ch = map.rows[y]?.[x]; if (!ch) continue;
       const fr = ANIMATED.has(ch) && !still() ? tick2 : 0;
       // Under the sea: the sea is the floor you swim over, and the land above is a blur.
-      const art = deep && map.kind === 'world' ? ('~r'.includes(ch) ? tileCanvas('$', 0) : ch === 'A' ? tileCanvas('A', fr) : blurredTile(ch, fr)) : tileCanvas(ch, fr, theme);
-      ctx.drawImage(art, x * TILE - cx, y * TILE - cy);
+      if (deep && map.kind === 'world') { ctx.drawImage('~r'.includes(ch) ? tileCanvas('$', 0) : ch === 'A' ? tileCanvas('A', fr) : blurredTile(ch, fr), x * TILE - cx, y * TILE - cy); continue; }
+      if (STANDING.has(ch)) {
+        // The ground it stands on, then the thing itself. A mountain is drawn big, after the ground (below).
+        const gch = groundUnder(map, x, y);
+        ctx.drawImage(tileCanvas(gch, ANIMATED.has(gch) && !still() ? tick2 : 0, theme), x * TILE - cx, y * TILE - cy);
+        if (ch === '^') { peaks.push([x, y]); continue; }
+        const sx = x * TILE - cx, sy = y * TILE - cy;
+        ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.beginPath(); ctx.ellipse(sx + 9, sy + 15, 7, 2, 0, 0, Math.PI * 2); ctx.fill(); // a shadow on the ground
+        ctx.drawImage(tileCanvas(ch, fr, theme, true), sx, sy);
+        if (HOUSES.has(ch)) props.push([ch, x, y, sx, sy]);
+        continue;
+      }
+      ctx.drawImage(tileCanvas(ch, fr, theme, false, VARIED.has(ch) ? Math.floor(hash(x, y, 5) * 4) : 0), x * TILE - cx, y * TILE - cy);
+      if (ch === '~' || ch === 'r') shore(map, x, y, x * TILE - cx, y * TILE - cy, still() ? 0 : t, ch === 'r');
     }
+    // Mountains stand tall: each peak is drawn about twice a tile high, back to front, so a range looks like one.
+    peaks.sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+    for (const [x, y] of peaks) {
+      const k = hash(x, y, 7), inner = groundUnder(map, x, y) === 'µ';
+      if (inner && hash(y, x, 11) < 0.3) continue; // some gaps in a big range, so it reads as peaks and slopes
+      const sz = 1.45 + k * 0.6, pk = peakCanvas(k < 0.5 ? 0 : 1, sz > 1.75); const w = TILE * sz, h = TILE * sz * 1.1; ctx.drawImage(pk, Math.round(x * TILE - cx + TILE / 2 - w / 2 + (hash(y, x, 3) - 0.5) * 4), Math.round(y * TILE - cy + TILE - h + 2), Math.round(w), Math.round(h)); }
+    peaks.length = 0;
+    // Chimney smoke, steam, blinking aerials and flickering neon over the houses; lamps and crates in town.
+    for (const [ch, x, y, sx, sy] of props) houseLife(ch, x, y, sx, sy, t);
+    if (map.kind !== 'world' && !deep) townProps(map, x0, y0, x0 + VIEW_W + more * 2, y0 + VIEW_H + moreY * 2, cx, cy, t);
     for (const c of map.chests) drawChest(c.x * TILE - cx, c.y * TILE - cy, j.opened.includes(`${map.id}:${c.id}`), c.loot !== 'gift' && /deep|hoard/.test(c.loot));
     // Everyone who stands on the map, back to front so the lower ones overlap the higher.
     const figs = [];

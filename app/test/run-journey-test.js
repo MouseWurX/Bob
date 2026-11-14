@@ -630,6 +630,11 @@ const P = (o) => ({ id: o.id || o.name.toLowerCase(), who: 'friend', ...o });
   check('a ghost flickers like a hologram in sci-fi, glows like gaslight in steampunk', S.styleShift(gl, 'scifi', 'ghost').palette.E === '#7ae0ff' && S.styleShift(gl, 'scifi', 'ghost').map[2] !== gl.map[2] && S.styleShift(gl, 'steam', 'ghost').map[2] === gl.map[2]);
   check('animals and mounts stay as they are', !['rabbit', 'fox', 'horse', 'pegasus', 'dolphin', 'bear'].some((id) => S.STYLE_MONSTERS.has(id)) && ['goblin', 'dragon', 'ghost', 'golem'].every((id) => S.STYLE_MONSTERS.has(id)));
   check('the screen draws monsters in the journey\'s style', /function foeLook/.test(read('public/journey-play.js')) && /styleArtLook/.test(read('public/journey-play.js')));
+  const play4 = read('public/journey-play.js');
+  check('houses, trees, towers and caves stand on the ground round them, not a ground of their own', /const STANDING = new Set/.test(play4) && /function groundUnder/.test(play4) && /tileCanvas\(ch, fr, theme, true\)/.test(play4));
+  check('mountains stand about twice a tile tall, back to front', /function peakCanvas/.test(play4) && /peaks\.sort/.test(play4));
+  check('the details: varied ground, shorelines, smoke and neon over houses, street lamps', ['shore', 'houseLife', 'townProps'].every((f) => play4.includes(`function ${f}`)) && /VARIED\.has/.test(play4));
+  check('a river is one river: no grass stripes baked into each piece of it', !/case 'r': water\([^)]*\); rect\(0, 0, 16, 1, '#5aa04a'\)/.test(play4));
   check('no trademarked game names in the style words', !/final fantasy|dragon quest|chrono|zelda|pokémon|earthbound|bobiverse|squaresoft|enix|cyberpunk 2077|shadowrun|rockerboy/i.test(read('public/journey-rules.js') + read('public/journey-sides.js')));
 }
 
