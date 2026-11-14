@@ -446,7 +446,7 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 | Settings > How Bob works > 🗓 Everyday helpers | Receipt tracker (`receipts`); the sheet, totals, Delete (press twice) and Save as a spreadsheet (CSV) sit under it, on or off. Kept locked in inn/bob/spending.json | Off | new, awaiting review |
 | Settings > How Bob works > 🗓 Everyday helpers | What's new after updates (`updateTour`, with `tourSeen`) | Off | new, awaiting review |
 | Settings > How Bob works > 🗓 Everyday helpers | Tray icon dot (`trayDot`); in a browser the line says it's only in Bob's own window | Off | new, awaiting review |
-| Settings > How Bob works > 🗓 Everyday helpers | Users (`profilesOn`); people list, ＋ Add a person (Name, Their passcode), Remove (press twice). People kept in config.json `profiles`, their chats in inn/profiles/ | Off | new, awaiting review |
+| Settings > How Bob works > 🗓 Everyday helpers | Users (`profilesOn`); people list, ＋ Add a person (Name, Passcode (optional)), Remove (press twice), Your passcode (Set it / Take it off, for the user who's in). People kept in config.json `profiles`, their chats, memory and email.json in inn/profiles/. Menu: 👥 Switch user | Off | new, awaiting review |
 | Android > Settings > Look | Text size (slider) and Readable font, kept on the phone | 100%, Off | new, awaiting review |
 | Get models > Brain catalogue > Sort (1.5.210) | ★ My pick first (default) / Best fit first; remembered in this browser (`bob-cat-sort`) | My pick first | new |
 | Get models > Brain catalogue (1.5.210) | "Fits your card" badge on rows that sit wholly on this machine's card (Mac: "Fits in memory"), from place.js | — | new |

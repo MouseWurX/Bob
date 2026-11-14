@@ -251,6 +251,7 @@
     "test/run-secret-box-test.js",
     "test/run-memory-docs-more-test.js",
     "test/run-everyday-test.js",
+    "test/run-users-test.js",
     "test/run-job-helps-test.js",
     "test/run-engine-extras-test.js",
     "test/run-think-bubble-test.js",

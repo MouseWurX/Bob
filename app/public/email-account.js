@@ -1,6 +1,7 @@
 // Settings, Online services: "📧 Email account" (src/email-account.js). One account for everything that uses mail:
 // Let Bob read my email (More tools) and the passcode reset's code (Passcode lock). The app password goes straight
 // into the locked store; this page only learns whether one is saved. Every box shows all the time.
+// 👥 While a user is in (Users), the page shows and saves that user's own account (src/user-email.js).
 import { esc } from './util.js';
 
 async function api(data) {
@@ -16,7 +17,7 @@ export async function mountEmailAccount(box) {
   if (!box) return;
   let v, msg = '';
   const draw = () => {
-    box.innerHTML = `<p class="muted">Used by Let Bob read my email (More tools) and passcode reset codes (Passcode lock). Bob never sends mail to anyone else.</p>
+    box.innerHTML = `${v.forUser ? `<p><strong>👥 ${esc(v.forUser)}'s own account.</strong> Only used while ${esc(v.forUser)} is in. The owner's account isn't shown or changed here.</p>` : ''}<p class="muted">${v.forUser ? 'Used by Let Bob read my email and tidying.' : 'Used by Let Bob read my email (More tools) and passcode reset codes (Passcode lock).'} Bob never sends mail to anyone else.</p>
       <div class="row"><label><strong>Account</strong> <input data-ea="user" maxlength="200" value="${esc(v.user)}" placeholder="you@example.test" spellcheck="false" autocomplete="off"></label></div>
       <div class="row"><label>App password <input data-ea="password" type="password" autocomplete="off" placeholder="${v.passwordSaved ? 'Saved and locked' : 'Paste an app password'}"></label>${v.passwordSaved ? ' <button type="button" class="mini" data-ea-forget>Forget password</button>' : ''}</div>
       <p class="muted">Make one in your mail account's security page (Gmail, Outlook, iCloud, Yahoo and Fastmail all do). Not your main password.</p>

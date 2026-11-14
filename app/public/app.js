@@ -40,6 +40,7 @@ import { createWebSwitch } from './web-switch.js';
 import { createQuickSwitches } from './quick-switches.js'; // Autonomy and Screen use buttons
 import { createRentSwitch } from './rent-switch.js'; // 1.5.127 rented brains
 import { createGameLock } from './game-lock.js';
+import { createUsersSwitch } from './users-switch.js'; // 👥 Switch user (Users, off unless turned on)
 import { quarantineCard, quarantineResult, createQuarantineBanner } from './quarantine.js';
 import { createLendPowersBadge } from './lend-powers.js'; // Nov 13: what a brain this card helps run has on
 import { createEffort } from './effort.js';
@@ -127,6 +128,7 @@ createStatusChip({ setLeft: layout.setLeft, leftFolded: layout.leftFolded });
 const webSwitch = createWebSwitch({ note: (t, k) => note(t, k) });
 const rentSwitch = createRentSwitch({ note: (t, k) => note(t, k) });
 const gameLock = createGameLock({ note: (t, k) => note(t, k) }); // 1.5.41 the 🎮 Gaming button
+createUsersSwitch();
 const qBanner = createQuarantineBanner({ note: (t, k) => note(t, k) });
 const lendPowers = createLendPowersBadge(); // Nov 13: a lent card's brain has Hands, Autonomy or Screen use on over there
 const effort = createEffort();

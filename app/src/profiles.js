@@ -1,34 +1,50 @@
-// 👥 Profiles on a shared replicant matrix (Settings, 🗓 Everyday helpers: "Users"; off unless
-// you turn it on, and it needs 🔒 "Ask for a passcode to open Bob").
+// 👥 Users (Settings, 🗓 Everyday helpers: "Users"; off unless you turn it on).
 //
-// Each person you add gets their own chats and their own memory, in their own folder (inn\profiles\<id>), always
-// locked on disk (AES-256-GCM) with a key only their own passcode opens. The lock screen asks "Who's this?": the
-// owner's passcode opens the owner's Bob as before; a person's passcode opens only their chats and memory. Nobody
-// else's are readable while they're in, because the key in Bob's memory is theirs alone.
+// Each person you add gets their own chats, memory, spending sheet and email account (user-email.js), in their own
+// folder (inn\profiles\<id>). A passcode is up to them:
+// - With a passcode: their things are locked on disk (AES-256-GCM) with a key only that passcode opens, so nobody
+//   else signed in (the owner included) can read them. Forget it and their things are gone for good.
+// - Without one: their things are kept apart from everyone else's, but anyone who switches to them can see them.
+// Neither needs the owner's 🔒 passcode lock or "Lock my chats and memory". With the owner's lock on, the lock screen
+// asks "Who's this?"; with it off, 👥 Switch user in the menu picks a person. Getting back to the owner needs the
+// owner's passcode only when the owner has one.
 //
-// Kept in config.json beside the lock (never settings.json): cfg.profiles = { list: [{ id, name, salt, wrapped }] }.
+// Kept in config.json beside the lock (never settings.json): cfg.profiles = { list: [{ id, name, salt?, wrapped? }] }.
 // `wrapped` is that person's random 32-byte key locked with scrypt(passcode, salt), the same way as the lock's own
-// (lock.js wrapKey), so no passcode is stored anywhere. Forget it and that person's chats and memory are gone for good.
+// (lock.js wrapKey), so no passcode is stored anywhere. No `wrapped`: a person without a passcode.
 //
-// What a profile shares with the owner: Bob's brains, settings, tools, Hands and schedules. Only chats, memory and the
-// spending sheet are the person's own. Only the owner (signed in as the owner) can add or remove a person. Switching
-// people is "🔒 Lock now" and then the lock screen. Nothing here goes online, and Bob for Android keeps its own lock.
+// What a user shares with the owner: Bob's brains, settings, tools, Hands and schedules (schedules wait while someone
+// else is in: hands-schedules.js). Switching people never loads or lets go of a brain and never touches 🎮 Gaming.
+// Only the owner (signed in as the owner) can add or remove a person. Nothing here goes online, and Bob for Android
+// keeps its own lock.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { readJsonFile, writeJsonAtomic } from './util.js';
 import { wrapKey, unwrapKey, lockOn, MIN_LEN } from './lock.js';
-import { setKey } from './vault.js';
+import { setKey, seal, unseal, isSealed } from './vault.js';
+import { saveFile } from './saving.js';
+import { forgetUserEmail, sealUserEmail } from './user-email.js';
 
 export const MAX_PROFILES = 8;
 export const MAIN = 'main';
-// Needs the lock AND "Lock my chats and memory": then the owner's chats and memory stay locked with the owner's key
-// while someone else is in, so not even Bob's file tools can read them for that person.
+// With the lock AND "Lock my chats and memory", the owner's chats and memory stay locked with the owner's key while
+// someone else is in, so not even Bob's file tools can read them for that person. Without, they're the owner's own
+// but not private (Settings says so).
 export const ownerLocked = (cfg) => lockOn(cfg) && cfg?.lock?.encrypt === true;
-export const profilesOn = (cfg) => cfg?.profilesOn === true && ownerLocked(cfg);
+export const profilesOn = (cfg) => cfg?.profilesOn === true;
+export const keyed = (p) => Boolean(p?.wrapped && p?.salt);
 export const profileDir = (cfg, id) => path.join(cfg.innDir, 'profiles', id);
 const cleanName = (v) => String(v ?? '').replace(/[^\p{L}\p{N} '.-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 30);
-export const listOf = (cfg) => (Array.isArray(cfg?.profiles?.list) ? cfg.profiles.list : []).filter((p) => p && /^[a-f0-9]{12}$/.test(p.id) && p.wrapped);
+export const listOf = (cfg) => (Array.isArray(cfg?.profiles?.list) ? cfg.profiles.list : []).filter((p) => p && /^[a-f0-9]{12}$/.test(p.id) && typeof p.name === 'string' && p.name);
+// The files Bob locks in a person's folder when they set a passcode (and opens when they take it off). Others there
+// (topics, summaries) are plain JSON written by their own modules and stay as they are.
+export function userFiles(dir) {
+  const own = ['bob-memory.md', 'memory-changes.jsonl', 'spending.json', 'email.json'].map((f) => path.join(dir, f));
+  let chats = [];
+  try { chats = fs.readdirSync(path.join(dir, 'sessions')).filter((f) => /\.json$/.test(f)).map((f) => path.join(dir, 'sessions', f)); } catch {}
+  return [...chats, ...own].filter((f) => fs.existsSync(f));
+}
 
 function saveList(cfg, list) {
   const raw = readJsonFile(cfg.configFile); // an unreadable config.json stops the save rather than being written over
@@ -45,29 +61,27 @@ export class Profiles {
   }
   current() { return this.cfg.profileNow || MAIN; }
   // The names the lock screen offers ("Who's this?"). Empty while the switch is off.
-  people() { return profilesOn(this.cfg) ? listOf(this.cfg).map(({ id, name }) => ({ id, name })) : []; }
+  people() { return profilesOn(this.cfg) ? listOf(this.cfg).map((p) => ({ id: p.id, name: p.name, passcode: keyed(p) })) : []; }
   view() {
     const cur = this.current();
-    return { on: this.cfg.profilesOn === true, lockOn: lockOn(this.cfg), ownerLocked: ownerLocked(this.cfg), list: listOf(this.cfg).map(({ id, name }) => ({ id, name })), current: cur, currentName: cur === MAIN ? '' : (listOf(this.cfg).find((p) => p.id === cur)?.name || ''), max: MAX_PROFILES, minLength: MIN_LEN };
+    return { on: this.cfg.profilesOn === true, lockOn: lockOn(this.cfg), ownerLocked: ownerLocked(this.cfg), list: listOf(this.cfg).map((p) => ({ id: p.id, name: p.name, passcode: keyed(p) })), current: cur, currentPasscode: keyed(listOf(this.cfg).find((p) => p.id === cur)), currentName: cur === MAIN ? '' : (listOf(this.cfg).find((p) => p.id === cur)?.name || ''), max: MAX_PROFILES, minLength: MIN_LEN };
   }
 
   add(name, code) {
     if (this.current() !== MAIN) return { error: 'Only the owner can add a person. Lock Bob and open him with your own passcode.' };
-    if (!ownerLocked(this.cfg)) return { error: 'Turn on 🔒 Ask for a passcode to open Bob and Lock my chats and memory first: profiles sit behind them.' };
     const n = cleanName(name);
     if (!n) return { error: 'Give the person a name.' };
     const list = listOf(this.cfg);
     if (list.length >= MAX_PROFILES) return { error: `${MAX_PROFILES} people at most.` };
     if (list.some((p) => p.name.toLowerCase() === n.toLowerCase())) return { error: 'There\'s already someone with that name.' };
     const c = String(code || '');
-    if (c.length < MIN_LEN) return { error: `Their passcode needs at least ${MIN_LEN} characters.` };
-    if (c.length > 200) return { error: 'That passcode is too long.' };
-    if (unwrapKey(c, this.cfg.lock || {})) return { error: 'Pick a passcode that isn\'t the owner\'s.' };
+    const bad = c && this.#badCode(c);
+    if (bad) return { error: bad };
     const id = crypto.randomBytes(6).toString('hex');
-    const p = { id, name: n, ...wrapKey(c, crypto.randomBytes(32)) };
+    const p = { id, name: n, ...(c ? wrapKey(c, crypto.randomBytes(32)) : {}) };
     fs.mkdirSync(path.join(profileDir(this.cfg, id), 'sessions'), { recursive: true });
     saveList(this.cfg, [...list, p]);
-    this.log('settings', `profiles: added ${n}`);
+    this.log('settings', `users: added ${n}${c ? ', with a passcode' : ', no passcode'}`);
     return { view: this.view() };
   }
 
@@ -78,39 +92,91 @@ export class Profiles {
     const p = list.find((x) => x.id === id);
     if (!p) return { error: 'That person isn\'t on the list.' };
     try { fs.rmSync(profileDir(this.cfg, id), { recursive: true, force: true }); } catch (e) { return { error: `Couldn't delete their folder (${e.message}).` }; }
+    forgetUserEmail(this.cfg, id);
     saveList(this.cfg, list.filter((x) => x.id !== id));
-    this.log('settings', `profiles: removed ${p.name} and their chats and memory`);
+    this.log('settings', `users: removed ${p.name} and their chats and memory`);
     return { view: this.view() };
   }
 
-  // The lock screen: a person's passcode. Five wrong tries a minute at most. Returns { ok } or { error, code }.
+  // The lock screen or 👥 Switch user: a person, with their passcode if they have one. Five wrong tries a minute at
+  // most. Returns { ok } or { error, code }.
   open(id, code) {
+    const p = profilesOn(this.cfg) && listOf(this.cfg).find((x) => x.id === id);
+    if (!p) return { error: 'That person isn\'t on the list.', code: 404 };
+    if (!keyed(p)) { this.use(p.id, null); this.log('settings', `users: ${p.name} is in`); return { ok: true }; }
     const now = this.now();
     while (this.tries.length && now - this.tries[0] > 60000) this.tries.shift();
     if (this.tries.length >= 5) return { error: 'Too many tries. Wait a minute.', code: 429 };
     this.tries.push(now);
-    const p = profilesOn(this.cfg) && listOf(this.cfg).find((x) => x.id === id);
-    const key = p && unwrapKey(code, p);
+    const key = unwrapKey(code, p);
     if (!key) return { error: 'That passcode isn\'t right.', code: 401 };
     this.tries = [];
     this.use(p.id, key);
-    this.log('settings', `profiles: ${p.name} opened Bob`);
+    this.log('settings', `users: ${p.name} opened Bob`);
     return { ok: true };
   }
 
-  // Point chats and memory at a person's folder, with their key.
+  // The person who's in sets a passcode for themselves: a new key, and their files are locked with it.
+  setPasscode(code) {
+    const cur = this.current(), list = listOf(this.cfg), p = list.find((x) => x.id === cur);
+    if (!p) return { error: 'Only a user sets their own passcode here. The owner\'s is 🔒 Passcode lock.' };
+    if (keyed(p)) return { error: 'You have a passcode already. Take it off first to pick a new one.' };
+    const c = String(code || ''), bad = this.#badCode(c);
+    if (bad) return { error: bad };
+    const key = crypto.randomBytes(32);
+    try { this.#convert(key, true); sealUserEmail(this.cfg, cur, key, true); }
+    catch (e) { return { error: `Couldn't lock every file (${e.message}). Nothing was changed.` }; }
+    saveList(this.cfg, list.map((x) => (x.id === cur ? { id: x.id, name: x.name, ...wrapKey(c, key) } : x)));
+    setKey(key); this.cfg.profileKeyed = true;
+    this.log('settings', `users: ${p.name} set a passcode; their things are locked`);
+    return { view: this.view() };
+  }
+
+  // ... or takes it off, with that passcode: their files go back to plain.
+  clearPasscode(code) {
+    const cur = this.current(), list = listOf(this.cfg), p = list.find((x) => x.id === cur);
+    if (!p || !keyed(p)) return { error: 'There\'s no passcode to take off.' };
+    const key = unwrapKey(String(code || ''), p);
+    if (!key) return { error: 'That passcode isn\'t right.' };
+    try { this.#convert(key, false); sealUserEmail(this.cfg, cur, key, false); }
+    catch (e) { return { error: `Couldn't open every file (${e.message}). Nothing was changed.` }; }
+    saveList(this.cfg, list.map((x) => (x.id === cur ? { id: x.id, name: x.name } : x)));
+    setKey(null); this.cfg.profileKeyed = false;
+    this.log('settings', `users: ${p.name} took their passcode off; their things are plain`);
+    return { view: this.view() };
+  }
+
+  #badCode(c) {
+    if (c.length < MIN_LEN) return `A passcode needs at least ${MIN_LEN} characters.`;
+    if (c.length > 200) return 'That passcode is too long.';
+    if (this.cfg.lock?.wrapped && unwrapKey(c, this.cfg.lock)) return 'Pick a passcode that isn\'t the owner\'s.';
+    if (listOf(this.cfg).some((p) => keyed(p) && unwrapKey(c, p))) return 'Someone else has that passcode. Pick another.';
+    return '';
+  }
+
+  // Locks (on) or opens (off) every file in the current person's folder, all read first so a bad one changes nothing.
+  #convert(key, on) {
+    const files = userFiles(profileDir(this.cfg, this.current()));
+    const texts = files.map((f) => { const b = fs.readFileSync(f); return isSealed(b) ? unseal(b, key) : b.toString('utf8'); });
+    files.forEach((f, i) => saveFile(f, on ? seal(texts[i], key) : Buffer.from(texts[i], 'utf8')));
+  }
+
+  // Point chats and memory at a person's folder, with their key (null: no passcode, so their files are plain and
+  // nobody's key stays in Bob's memory, the owner's included).
   use(id, key) {
     const dir = profileDir(this.cfg, id);
     fs.mkdirSync(path.join(dir, 'sessions'), { recursive: true });
     setKey(key);
-    Object.assign(this.cfg, { profileNow: id, profileDir: dir, sessionsDir: path.join(dir, 'sessions'), memoryFile: path.join(dir, 'bob-memory.md') });
+    Object.assign(this.cfg, { profileNow: id, profileKeyed: Boolean(key), profileDir: dir, sessionsDir: path.join(dir, 'sessions'), memoryFile: path.join(dir, 'bob-memory.md') });
     this.#reset();
   }
 
-  // Back to the owner (after the owner's passcode; lock.js has set the owner's key already).
+  // Back to the owner: after the owner's passcode when there's a lock (lock.js has set the owner's key already);
+  // without one, the person's key leaves Bob's memory.
   useMain() {
     if (!this.cfg.profileNow) return;
-    delete this.cfg.profileNow; delete this.cfg.profileDir; delete this.cfg.sessionsDir;
+    if (!lockOn(this.cfg)) setKey(null);
+    delete this.cfg.profileNow; delete this.cfg.profileKeyed; delete this.cfg.profileDir; delete this.cfg.sessionsDir;
     this.cfg.memoryFile = this.mainMemory;
     this.#reset();
   }

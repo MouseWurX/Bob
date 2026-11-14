@@ -7,7 +7,7 @@
 //   POST /api/everyday/spending {remove}     take a line off
 //   GET  /api/everyday/spending.csv          a plain copy, saved by your click
 //   GET  /api/everyday/profiles              the people
-//   POST /api/everyday/profiles {add, passcode} | {remove}
+//   POST /api/everyday/profiles {add, passcode?} | {remove} | {setCode} | {clearCode}
 //   POST /api/everyday/seen {dot}            the window wasn't looked at when something came in (dot: true), or now is (false)
 import { todayCard } from './everyday.js';
 import { receiptsOn, loadSheet, removeRow, totals, toCsv } from './receipts.js';
@@ -65,7 +65,9 @@ export async function everydayRoute({ req, res, p, isLocal, cfg, brain, focus, p
       if (get) { send(res, 200, profiles.view()); return true; }
       if (post) {
         const b = await body(req);
-        const r = typeof b.add === 'string' ? profiles.add(b.add, b.passcode) : typeof b.remove === 'string' ? profiles.remove(b.remove) : { error: 'Nothing to do.' };
+        // 👥 setCode / clearCode: the person who's in puts a passcode on their own things, or takes it off.
+        const r = typeof b.add === 'string' ? profiles.add(b.add, b.passcode) : typeof b.remove === 'string' ? profiles.remove(b.remove)
+          : typeof b.setCode === 'string' ? profiles.setPasscode(b.setCode) : typeof b.clearCode === 'string' ? profiles.clearPasscode(b.clearCode) : { error: 'Nothing to do.' };
         if (r.error) { send(res, 400, r); return true; }
         send(res, 200, r.view); return true;
       }
