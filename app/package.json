@@ -32,7 +32,7 @@
     "test/run-reap-calibrate-test.js",
     "test/run-trace-read-test.js",
     "test/run-wording-ab-test.js",
-    "test/run-natural-tools-test.js",
+    "test/run-coach-tools-test.js",
     "test/run-evil-check-test.js",
     "test/run-write-lessons-route-test.js",
     "test/run-make-datasets-test.js",
