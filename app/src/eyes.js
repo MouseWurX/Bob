@@ -3,7 +3,7 @@
 // and app_look's ask) and the Browser hand (the same two). Nothing new to download: any vision brain in the
 // eyes slot does, and when none is equipped the check is skipped and the result says so.
 //
-// Setting: hands.eyesCheck ("Bob checks his work with his eyes", on). The check costs one picture and one short
+// Setting: hands.eyesCheck ("Visual check", on). The check costs one picture and one short
 // answer per action, about a second on a small brain, so it can be switched off in Settings, Hands.
 import fs from 'node:fs';
 import { handsSettings } from './hands-settings.js';
@@ -14,7 +14,7 @@ export const eyesOn = (cfg) => Boolean(eyesModel(cfg)) && handsSettings(cfg).eye
 // Why a check can't happen right now, for the tool result (empty when it can).
 export function eyesWhy(cfg) {
   if (!eyesModel(cfg)) return `no eyes brain is in its slot (Settings, Brains, "Seeing pictures"), so Bob can't check his work by looking; ${cfg?.userName || 'the user'} can equip a vision brain there`;
-  if (handsSettings(cfg).eyesCheck === false) return '"Bob checks his work with his eyes" is off in Settings, Hands';
+  if (handsSettings(cfg).eyesCheck === false) return '"Visual check" is off in Settings, Hands';
   return '';
 }
 

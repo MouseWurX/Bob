@@ -143,6 +143,7 @@ export const ITEMS = {
   scroll_heal: { name: 'Scroll of mending', what: 'Read once: heals the whole party. Works on the road too.', price: 500, spell: 'rally', scroll: true, field: true },
   scroll_raise: { name: 'Scroll of raising', what: 'Read once: brings a fallen friend back. Works on the road too.', price: 900, spell: 'raise', scroll: true, field: true },
   scroll_sleep: { name: 'Scroll of lullaby', what: 'Read once: every foe may fall asleep.', price: 450, spell: 'lullaby', scroll: true },
+  portal: { name: 'Scroll of return', what: 'Read once, away from a fight: a door opens back to the last town you were in (or Bob\'s Inn).', price: 300, portal: true },
   scroll_ward: { name: 'Scroll of warding', what: 'Read once: the party takes less harm this fight.', price: 400, spell: 'shieldwall', scroll: true },
   // Food (Journey v1.2). Feed a wild animal the food it loves, in a fight, and it may come along as a pet or a mount.
   // On the road, food heals your pets and mounts a little.
@@ -165,8 +166,8 @@ export const kitPrice = (key) => { const { base, affix } = splitKit(key); return
 // What each kind of seller has, by how big the place is.
 export function wares(role, tier) {
   const big = tier === 'town' || tier === 'castle';
-  if (role === 'peddler') return ['tonic', 'water', 'antidote', 'ember', 'scroll_sleep', 'berries', 'honey', 'cheese', 'dates', 'grubs'];
-  if (role === 'shop') return big ? ['tonic', 'bigtonic', 'water', 'salts', 'antidote', 'ember', 'scroll_heal', 'scroll_fire', 'scroll_ward', 'meat', 'fish', 'oats', 'apples', 'greens', 'mushrooms'] : ['tonic', 'bigtonic', 'water', 'salts', 'antidote', 'ember', 'meat', 'fish', 'oats', 'apples', 'greens'];
+  if (role === 'peddler') return ['tonic', 'water', 'antidote', 'ember', 'portal', 'scroll_sleep', 'berries', 'honey', 'cheese', 'dates', 'grubs', 'bag:satchel'];
+  if (role === 'shop') return big ? ['tonic', 'bigtonic', 'water', 'salts', 'antidote', 'ember', 'portal', 'scroll_heal', 'scroll_fire', 'scroll_ward', 'meat', 'fish', 'oats', 'apples', 'greens', 'mushrooms', 'bag:satchel', 'bag:pack', 'bag:hauler'] : ['tonic', 'bigtonic', 'water', 'salts', 'antidote', 'ember', 'meat', 'fish', 'oats', 'apples', 'greens', 'bag:satchel'];
   if (role === 'smith' && tier === 'dwarfhold') return ['axe~fine', 'hammer~fine', 'hammer~mighty', 'chain~sturdy', 'plate', 'plate~sturdy', 'tall~sturdy', 'crossbow', 'axe', 'hammer'];
   if (role === 'shop' && tier === 'burrow') return ['tonic', 'bigtonic', 'cheese', 'apples', 'greens', 'oats', 'berries', 'honey', 'meat', 'fish', 'mushrooms', 'dates', 'grubs'];
   if (role === 'shop' && ['glade', 'aerie'].includes(tier)) return ['water', 'water', 'bigtonic', 'salts', 'scroll_heal', 'scroll_sleep', 'scroll_ward', 'berries', 'honey', 'apples'];
@@ -580,7 +581,23 @@ export function tameChance(m, f) {
 // carry the extra loot.
 export const BAG_BASE = 40;
 export const bagCount = (j) => Object.values(j.bag || {}).reduce((n, k) => n + (k || 0), 0);
-export const bagSize = (j) => BAG_BASE + j.party.reduce((n, m) => n + (petOf(m)?.hp > 0 ? 10 : 0) + (mountOf(m) ? 25 : 0), 0);
+// Bags (Journey v1.3): a bigger bag on your back holds more. Bought from shops or made at a Workbench from pelts.
+// One is worn at a time; the rest stay in the menu to swap. Keys start "bag:" so shops can sell them beside potions.
+export const BAGS = {
+  pouch: { name: 'Belt pouch', room: 0, price: 0, what: 'What you set out with.' },
+  satchel: { name: 'Satchel', room: 20, price: 250, what: 'Holds 20 more.' },
+  pack: { name: 'Travel pack', room: 40, price: 700, what: 'Holds 40 more.' },
+  hauler: { name: 'Hauler\'s pack', room: 70, price: 1600, what: 'Holds 70 more. Heavy, but worth it.' }
+};
+export const isBag = (key) => typeof key === 'string' && key.startsWith('bag:') && Boolean(BAGS[key.slice(4)]);
+export const bagOf = (j) => BAGS[j.bagGear] || BAGS.pouch;
+export function wearBag(j, id) {
+  if (!BAGS[id] || !(j.bags || ['pouch']).includes(id)) return { ok: false, text: 'You don\'t have that bag.' };
+  const was = bagOf(j); j.bagGear = id;
+  if (bagCount(j) > bagSize(j)) { j.bagGear = Object.keys(BAGS).find((k) => BAGS[k] === was) || 'pouch'; return { ok: false, text: `${BAGS[id].name} is too small for everything you carry. Use or sell some first.` }; }
+  return { ok: true, text: `You put on the ${BAGS[id].name}. The bag holds ${bagSize(j)} now.` };
+}
+export const bagSize = (j) => BAG_BASE + bagOf(j).room + j.party.reduce((n, m) => n + (petOf(m)?.hp > 0 ? 10 : 0) + (mountOf(m) ? 25 : 0), 0);
 export const bagRoom = (j) => Math.max(0, bagSize(j) - bagCount(j));
 export function addItem(j, item, n = 1) {
   const k = Math.min(n, bagRoom(j), 99 - (j.bag[item] || 0));
@@ -631,7 +648,11 @@ export const xpFor = (level) => Math.round(18 * Math.pow(level, 1.6));
 // A new journey: in Bob's Inn by the front door, a new land waiting outside, three tonics and 5 silver.
 export const STYLE_IDS = ['fantasy', 'scifi', 'cyber', 'steam'];
 export const SIZE_IDS = ['small', 'medium', 'large', 'vast', 'epic', 'campaign', 'saga'];
-export function newJourney({ seed = String(Date.now()), size = 'medium', party = [], style = 'fantasy' } = {}, world) {
+// layout: how the land's roads are drawn (journey-world.js LAYOUT). A new journey gets 2 (roads clear of places, 1.5.219);
+// a save from before has none and keeps 1, the land it was played on.
+export const LAYOUT = 2;
+export const layoutOf = (s) => (Number(s?.layout) === 2 ? 2 : 1);
+export function newJourney({ seed = String(Date.now()), size = 'medium', party = [], style = 'fantasy', layout = LAYOUT } = {}, world) {
   const p = party.slice(0, 4).map((b) => member(b));
   if (!p.length) p.push(member({ name: 'Hero', cls: 'fighter', who: 'you' }));
   const ids = new Set();
@@ -642,7 +663,8 @@ export function newJourney({ seed = String(Date.now()), size = 'medium', party =
   return {
     v: SAVE_VERSION, seed: String(seed).slice(0, 40), size, at: 'inn', x: inn?.start.x ?? 21, y: inn?.start.y ?? 29, facing: 'up',
     party: p, bag: { tonic: 3, water: 1 }, owned, coin: 500, steps: 0, danger: 0, next: 14, opened: [], beaten: [], talked: [], felled: [], wanted: {}, fines: 0, battles: 0, won: false,
-    style: STYLE_IDS.includes(style) ? style : 'fantasy', alt: 'ground', riding: false, quests: {}, found: [], seen: [], tamed: 0
+    style: STYLE_IDS.includes(style) ? style : 'fantasy', layout: layout === 1 ? 1 : LAYOUT, alt: 'ground', riding: false, quests: {}, found: [], seen: [], tamed: 0,
+    mats: {}, gathered: {}, craft: { xp: 0, level: 1 }, home: 'inn', bags: ['pouch'], bagGear: 'pouch', regions: [], met: [], lore: [], banter: [], trophies: []
   };
 }
 // Cleans a save from disk (or from the page) into a journey this file can play. Unknown things are dropped.
@@ -652,8 +674,9 @@ export function cleanJourney(s, makeWorld) {
   const old = !(Number(s.v) >= 2);
   const size = SIZE_IDS.includes(s.size) ? s.size : 'medium';
   const style = STYLE_IDS.includes(s.style) ? s.style : 'fantasy';
-  const world = makeWorld ? makeWorld(String(s.seed).slice(0, 40), size, style) : null;
-  const j = newJourney({ seed: String(s.seed).slice(0, 40), size, style, party: Array.isArray(s.party) ? s.party : [] }, world);
+  const layout = layoutOf(s); // a save from before 1.5.219 keeps the land it was played on
+  const world = makeWorld ? makeWorld(String(s.seed).slice(0, 40), size, style, layout) : null;
+  const j = newJourney({ seed: String(s.seed).slice(0, 40), size, style, layout, party: Array.isArray(s.party) ? s.party : [] }, world);
   if (!old && world) {
     const map = world.map(String(s.at));
     const x = Number(s.x), y = Number(s.y);
@@ -674,6 +697,14 @@ export function cleanJourney(s, makeWorld) {
   j.beaten = strs(s.beaten, 40).filter((v) => GUARDIANS[v]);
   j.wanted = {}; for (const [k, n] of Object.entries(s.wanted || {})) if (typeof k === 'string' && Number(n) > 0) j.wanted[k.slice(0, 20)] = Math.min(400, Math.floor(Number(n)));
   j.won = s.won === true;
+  j.home = typeof s.home === 'string' && world?.map(s.home) ? s.home : 'inn';
+  j.bags = ['pouch', ...new Set((Array.isArray(s.bags) ? s.bags : []).filter((b) => BAGS[b] && b !== 'pouch'))];
+  j.bagGear = j.bags.includes(s.bagGear) ? s.bagGear : 'pouch';
+  j.regions = strs(s.regions, 64).filter((v) => /^r\d+$/.test(v)); j.met = strs(s.met, 40); j.lore = strs(s.lore, 2000); j.banter = strs(s.banter, 20).filter((v) => BANTER[v]); j.trophies = strs(s.trophies, 60);
+  // Crafting (Journey v1.3): materials, what's been picked lately, and the crafting level.
+  for (const [k, n] of Object.entries(s.mats || {})) if (MATERIALS[k] && Number(n) > 0) j.mats[k] = Math.min(MAT_MAX, Math.floor(Number(n)));
+  for (const [k, n] of Object.entries(s.gathered || {})) if (typeof k === 'string' && k.length < 60 && Number.isFinite(Number(n))) j.gathered[k] = Math.floor(Number(n));
+  const cx = Math.max(0, Math.min(1e6, Math.floor(Number(s.craft?.xp) || 0))); j.craft = { xp: cx, level: craftLevelOf(cx) };
   return j;
 }
 
@@ -725,6 +756,7 @@ export function walk(world, j, dir, rnd = Math.random) {
     const to = world.map(door.to);
     if (!to) { j.x -= dx; j.y -= dy; return { moved: false, bump: { kind: 'closed' } }; }
     j.at = to.id; j.x = door.tx ?? to.start.x; j.y = door.ty ?? to.start.y;
+    if (isTown(world, j, to)) j.home = to.id; // where a Scroll of return goes
     j.danger = 0;
     // Into a place you walk; back out of a cloud city into the sky (or a merfolk city into the deep) on your mount.
     if (to.kind === 'world') { j.alt = door.alt || 'ground'; j.riding = j.alt !== 'ground' ? true : j.riding && !canSwim(j); }
@@ -1228,6 +1260,7 @@ export function playRound(j, b, commands = {}, rnd = Math.random) {
     if (!b.spar) {
       for (const f of beaten) for (const d of dropsOf(f, rnd)) { if (d.kit) { gainKit(j, d.kit); b.reward.drops.push(d.kit); } else if (addItem(j, d.item)) b.reward.items.push(d.item); else b.reward.left.push(d.item); }
       for (const f of beaten) if (f.mapId && !j.felled.includes(f.mapId)) j.felled.push(f.mapId);
+      b.reward.mats = fightMats(j, beaten, rnd);
       // Pets learn too, and nose out something extra (they carry the loot as well).
       for (const a of (b.allies || []).filter((x) => x.pet && x.hp > 0)) {
         const owner = party.find((x) => x.id === a.owner), pet = owner?.pets.find((x) => x.id === a.petId); if (!pet) continue;
@@ -1408,13 +1441,14 @@ export function rest(j, price = INN_PRICE) {
 }
 export function priceOf(j, what, mult = 1) {
   const haggle = Math.max(0, ...j.party.map((p) => passivesOf(p).haggle));
-  return Math.max(1, Math.round((ITEMS[what] ? ITEMS[what].price : kitPrice(what)) * (1 - haggle) * mult));
+  return Math.max(1, Math.round((ITEMS[what] ? ITEMS[what].price : isBag(what) ? BAGS[what.slice(4)].price : kitPrice(what)) * (1 - haggle) * mult));
 }
 // Aerie traders sell at half price.
 export const TRADER_PRICE = 0.5;
 export function buy(j, what, mult = 1) {
   const price = priceOf(j, what, mult);
   if (ITEMS[what]) { if (j.coin < price || !bagRoom(j) || (j.bag[what] || 0) >= 99) return false; j.coin -= price; j.bag[what] = (j.bag[what] || 0) + 1; return true; }
+  if (isBag(what)) { const id = what.slice(4); j.bags = j.bags || ['pouch']; if (j.bags.includes(id) || j.coin < price) return false; j.coin -= price; j.bags.push(id); if (BAGS[id].room > bagOf(j).room) j.bagGear = id; return true; }
   const kind = kitKind(what);
   if (!kind || j.owned[kind].includes(what) || j.coin < price) return false;
   j.coin -= price; j.owned[kind].push(what); return true;
@@ -1629,11 +1663,450 @@ export const STYLES = {
     words: W_([['lantern stone', 'aether valve'], ['Lantern stone', 'Aether valve'], ['lantern', 'great engine'], ['Lantern', 'Great engine'], ['Hand crossbow', 'Derringer'], ['hand crossbow', 'derringer'], ['Longbow', 'Rifle'], ['longbow', 'rifle'], ['Crossbow', 'Blunderbuss'], ['crossbow', 'blunderbuss'], ['Bow', 'Pistol'], ['bow', 'pistol'], ['Sword', 'Sabre'], ['sword', 'sabre'], ['Spear', 'Bayonet'], ['spear', 'bayonet'], ['Staff', 'Tesla rod'], ['Hammer', 'Steam hammer'], ['hammer', 'steam hammer'], ['Robe', 'Frock coat'], ['Plate', 'Brass plate'], ['Castle', 'Clocktower'], ['castle', 'clocktower'], ['Village', 'Mill town'], ['village', 'mill town'], ['Town', 'Borough'], ['Dungeon', 'Foundry'], ['dungeon', 'foundry'], ['Cave', 'Mine'], ['cave', 'mine'], ['King', 'Lord Mayor'], ['Queen', 'Lady Mayor'], ['Cloud city', 'Sky-pirate dock'], ['cloud city', 'sky-pirate dock'], ['cities in the clouds', 'sky-pirate docks in the clouds'], ['rowboat', 'paddle skiff'], ['sloop', 'paddle steamer'], ['ship', 'airship'], ['Tonic', 'Elixir'], ['tonic', 'elixir'], ['Scroll', 'Blueprint'], ['scroll', 'blueprint']])
   }
 };
+// Journey v1.3: every style names its monsters, classes, spells, items and the rest of its kit to fit, so nothing
+// from a fantasy tale turns up in a cyberpunk one. Names only: every number stays the same in every style.
+// 'both' entries change in any case (Goblin and goblin); 'caps' only as a name with a capital (Raise, not raise).
+const STYLE_NAMES = {
+  scifi: {
+    both: [['Giant rat', 'Mutant rat'], ['Giant spider', 'Crawler bot'], ['Stone golem', 'Battle mech'], ['Shore serpent', 'Sand eel'], ['Bog lurker', 'Swamp crawler'], ['Marsh wisp', 'Plasma wisp'], ['Slime', 'Gel blob'], ['Goblin', 'Scrapper'], ['Wolf', 'Rad-wolf'], ['Bandit', 'Raider'], ['Skeleton', 'Rogue android'], ['Cultist', 'Void cultist'], ['Orc', 'Brute'], ['Ghost', 'Hologram'], ['Troll', 'Mutant'], ['Dragon', 'Star wyrm'], ['Pegasus', 'Star pegasus'], ['Griffin', 'Star griffin'], ['Wyvern', 'Star wyvern'], ['Mimic', 'Trap crate'], ['Stumpcap', 'Spore pod'], ['Gargoyle', 'Sentry'], ['Kobold', 'Scav'], ['Leather', 'Synth-weave']],
+    caps: [['Fighter', 'Trooper'], ['Rogue', 'Smuggler'], ['Wizard', 'Technomancer'], ['Cleric', 'Medic'], ['Ranger', 'Scout'], ['Bard', 'Comms officer'],
+      ['Scroll of fireball', 'Plasma chip'], ['Scroll of thunder', 'Ion chip'], ['Scroll of mending', 'Nano-mend chip'], ['Scroll of raising', 'Revive chip'], ['Scroll of lullaby', 'Sleep chip'], ['Scroll of warding', 'Shield chip'],
+      ['Ember jar', 'Plasma grenade'], ['Bright water', 'Focus serum'], ['Waking salts', 'Adrenal shot'], ['Clearroot', 'Antitox'],
+      ['Firebolt', 'Plasma bolt'], ['Fireball', 'Plasma burst'], ['Inferno', 'Solar flare'], ['Spark storm', 'Arc storm'], ['Spark', 'Arc zap'], ['Thunderbolt', 'Ion bolt'], ['Frost lance', 'Cryo lance'], ['Arcane focus', 'Overclock'], ['Starfall', 'Orbital strike'], ['Mend wounds', 'Nano-mend'], ['Mend all', 'Nano cloud'], ['Raise', 'Revive'], ['Guiding light', 'Guide beam'], ['Smite', 'Judgement beam'], ['Bless', 'Boost'], ['Sanctuary', 'Shield dome'], ['Miracle', 'Full restore'], ['Rain of arrows', 'Barrage'], ['Volley', 'Burst fire'], ['Thorn whip', 'Shock whip'], ['Field herbs', 'Field kit'], ['Hawk strike', 'Drone strike'], ['Song of rest', 'Rest cycle'], ['Anthem', 'Rally call'], ['Lullaby', 'Sleep pulse'], ['Smoke bomb', 'Smoke grenade'], ['Envenom', 'Toxin'], ['Deadly venom', 'Neurotoxin'], ['Vanish', 'Cloak'],
+      ['Scroll of return', 'Recall beacon'], ['Herbs', 'Alien flora'], ['Ore', 'Scrap'], ['Timber', 'Polymer'], ['Pelts', 'Synth-hide'], ['Crystals', 'Power cells'], ['Workbench', 'Fab lab'], ['workbench', 'fab lab'], ['Hone', 'Tune'], ['Reinforce', 'Plate up'], ['Lighten', 'Trim'], ['Enchant', 'Calibrate'], ['Temper', 'Overcharge'], ['Hauler\'s pack', 'Exo-frame pack'], ['Travel pack', 'Cargo pack'], ['Satchel', 'Sample case'], ['Belt pouch', 'Utility belt']]
+  },
+  cyber: {
+    both: [['Giant rat', 'Sewer rat'], ['Giant spider', 'Spider drone'], ['Stone golem', 'Riot mech'], ['Shore serpent', 'Canal eel'], ['Bog lurker', 'Sludge lurker'], ['Marsh wisp', 'Glitch wisp'], ['Slime', 'Toxic sludge'], ['Goblin', 'Ganger'], ['Wolf', 'Cyber-hound'], ['Bandit', 'Street thug'], ['Skeleton', 'Chrome husk'], ['Cultist', 'Cult hacker'], ['Orc', 'Chromed brute'], ['Ghost', 'Glitch ghost'], ['Troll', 'Juiced bruiser'], ['Dragon', 'Assault drone'], ['Pegasus', 'Neon pegasus'], ['Griffin', 'Neon griffin'], ['Wyvern', 'Neon wyvern'], ['Mimic', 'Trap locker'], ['Stumpcap', 'Mutant fungus'], ['Gargoyle', 'Security drone'], ['Kobold', 'Scav kid'],
+      ['Spear', 'Stun lance'], ['Axe', 'Chain-axe'], ['Hammer', 'Breaching hammer'], ['Round shield', 'Riot shield'], ['Tall shield', 'Ballistic shield']],
+    caps: [['Fighter', 'Street samurai'], ['Rogue', 'Fixer'], ['Wizard', 'Netrunner'], ['Cleric', 'Street medic'], ['Ranger', 'Bounty hunter'], ['Bard', 'Synth star'], ['Staff', 'Neural rod'],
+      ['Scroll of fireball', 'Meltdown hack'], ['Scroll of thunder', 'Overload hack'], ['Scroll of mending', 'Patch hack'], ['Scroll of raising', 'Reboot hack'], ['Scroll of lullaby', 'Shutdown hack'], ['Scroll of warding', 'Firewall hack'],
+      ['Ember jar', 'Incendiary grenade'], ['Bright water', 'Neuro-boost'], ['Waking salts', 'Wake-up shot'], ['Clearroot', 'Detox patch'],
+      ['Firebolt', 'Overheat'], ['Fireball', 'Firewall burst'], ['Inferno', 'Meltdown'], ['Spark storm', 'Power surge'], ['Spark', 'Short circuit'], ['Thunderbolt', 'Overload'], ['Sleep', 'Shutdown'], ['Frost lance', 'Cryo spike'], ['Arcane focus', 'Overclock'], ['Starfall', 'Satellite strike'], ['Mend wounds', 'Patch up'], ['Mend all', 'Med-drones'], ['Raise', 'Reboot'], ['Guiding light', 'Target link'], ['Smite', 'Kill switch'], ['Bless', 'Buff stim'], ['Cleanse', 'Detox'], ['Sanctuary', 'Safe zone'], ['Miracle', 'Full reboot'], ['Rain of arrows', 'Bullet storm'], ['Volley', 'Full auto'], ['Deadeye', 'Smart-link shot'], ['Thorn whip', 'Mono-whip'], ['Field herbs', 'Street meds'], ['Entangle', 'Snare net'], ['Hawk strike', 'Drone strike'], ['Camouflage', 'Optic camo'], ['Song of rest', 'Chill track'], ['Anthem', 'Hype track'], ['Lullaby', 'White noise'], ['Vicious mockery', 'Trash talk'], ['Smoke bomb', 'Flashbang'], ['Envenom', 'Toxin'], ['Deadly venom', 'Neurotoxin'], ['Vanish', 'Ghost mode'],
+      ['Scroll of return', 'Extraction call'], ['Herbs', 'Street chems'], ['Ore', 'Salvage'], ['Timber', 'Wiring'], ['Pelts', 'Synth-hide'], ['Crystals', 'Chips'], ['Workbench', 'Chop shop'], ['workbench', 'chop shop'], ['Hone', 'Mod'], ['Reinforce', 'Armour up'], ['Lighten', 'Strip down'], ['Enchant', 'Flash'], ['Temper', 'Overclock'], ['Hauler\'s pack', 'Smuggler\'s rig'], ['Travel pack', 'Tac pack'], ['Satchel', 'Messenger rig'], ['Belt pouch', 'Hip pouch']]
+  },
+  steam: {
+    both: [['Giant spider', 'Brass spider'], ['Stone golem', 'Brass golem'], ['Marsh wisp', 'Gas wisp'], ['Slime', 'Tar slime'], ['Goblin', 'Soot imp'], ['Bandit', 'Highwayman'], ['Skeleton', 'Rusted automaton'], ['Cultist', 'Occultist'], ['Orc', 'Dockside brute'], ['Ghost', 'Phantom'], ['Troll', 'Iron ogre'], ['Dragon', 'Steam dragon'], ['Pegasus', 'Clockwork pegasus'], ['Griffin', 'Clockwork griffin'], ['Wyvern', 'Clockwork wyvern'], ['Mimic', 'Trick trunk'], ['Kobold', 'Tinker imp'],
+      ['Dagger', 'Stiletto'], ['Axe', 'Boiler axe'], ['Round shield', 'Brass buckler'], ['Tall shield', 'Iron bulwark'], ['Chain mail', 'Riveted mail'], ['Leather', 'Waxed leather']],
+    caps: [['Fighter', 'Dragoon'], ['Rogue', 'Cutpurse'], ['Wizard', 'Aethermancer'], ['Cleric', 'Surgeon'], ['Ranger', 'Explorer'], ['Bard', 'Showman'], ['Psionist', 'Mesmerist'],
+      ['Scroll of fireball', 'Firebomb blueprint'], ['Scroll of thunder', 'Lightning blueprint'], ['Scroll of mending', 'Mending blueprint'], ['Scroll of raising', 'Galvanic blueprint'], ['Scroll of lullaby', 'Lullaby blueprint'], ['Scroll of warding', 'Warding blueprint'],
+      ['Ember jar', 'Naphtha flask'], ['Bright water', 'Aether draught'], ['Clearroot', 'Antidote'],
+      ['Firebolt', 'Flame jet'], ['Fireball', 'Firebomb'], ['Inferno', 'Boiler burst'], ['Spark storm', 'Tesla storm'], ['Spark', 'Tesla spark'], ['Thunderbolt', 'Lightning coil'], ['Arcane focus', 'Aether focus'], ['Mend wounds', 'Stitch up'], ['Mend all', 'Field hospital'], ['Raise', 'Galvanize'], ['Guiding light', 'Lamplight'], ['Rain of arrows', 'Rain of shot'], ['Thorn whip', 'Bullwhip'], ['Song of rest', 'Music hall'], ['Anthem', 'Brass anthem'],
+      ['Scroll of return', 'Pneumatic return ticket'], ['Ore', 'Brass'], ['Timber', 'Coal'], ['Pelts', 'Rubber'], ['Crystals', 'Aether'], ['Workbench', 'Workshop'], ['workbench', 'workshop'], ['Enchant', 'Etch'], ['Temper', 'Rivet'], ['Hauler\'s pack', 'Clockwork porter'], ['Travel pack', 'Brass-framed pack'], ['Satchel', 'Carpetbag']]
+  }
+};
+const lowerFirst = (w) => w[0].toLowerCase() + w.slice(1);
+for (const [id, n] of Object.entries(STYLE_NAMES)) STYLES[id].words.unshift(...W_([...n.caps, ...n.both.flatMap(([a, b]) => [[a, b], [lowerFirst(a), lowerFirst(b)]])]));
+export const styleNames = (style) => STYLE_NAMES[style] || null;
+
+// ---------- Crafting (Journey v1.3) ----------
+// Five materials, gathered from the land and from fights, made into potions, food, scrolls and better kit. The
+// same rules in every style; each style names them its own way (STYLE_NAMES below): herbs and ore in a fantasy
+// land, alien flora and scrap in sci-fi, street chems and salvage in cyberpunk, brass and coal in steampunk.
+export const MATERIALS = {
+  herb: { name: 'Herbs', what: 'Useful plants. Potions, cures and scrolls.' },
+  ore: { name: 'Ore', what: 'Metal to work. Sharper, tougher kit.' },
+  wood: { name: 'Timber', what: 'Sturdy stuff to build with. Handles, scrolls and fire.' },
+  hide: { name: 'Pelts', what: 'From the animals you beat. Food, padding and lighter kit.' },
+  crystal: { name: 'Crystals', what: 'Rare and humming with power. Magic, in a bottle or a blade.' }
+};
+export const MAT_MAX = 99;
+export const REGROW = 300; // steps until a picked spot is ready again
+// What the land gives, by tile: woods give timber and herbs, mountains ore and the odd crystal, caves the same.
+// Mountains, trees and cave walls you face; grass, woods and swamp you stand on.
+const NODE_TILES = { T: ['wood'], F: ['wood', 'herb'], '"': ['herb'], y: ['herb'], w: ['herb'], '^': ['ore', 'ore', 'crystal'], '#': ['ore', 'ore', 'crystal'], z: ['ore', 'crystal'], E: ['wood', 'herb'] };
+const NODE_RATE = { T: 14, F: 6, '"': 8, y: 12, w: 8, '^': 10, '#': 7, z: 12, E: 20 };
+const hashStr = (str) => { let h = 2166136261; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619); return h >>> 0; };
+// A gathering spot at (x, y), or null: { kind, key, ready }. Every land has its own, from its seed.
+export function nodeAt(world, j, x, y) {
+  const map = mapOf(world, j);
+  if (map.kind === 'inn' || (map.kind === 'world' && j.alt !== 'ground')) return null;
+  const ch = map.rows[y]?.[x], kinds = NODE_TILES[ch]; if (!kinds) return null;
+  const h = hashStr(`${j.seed}:${map.id}:${x},${y}`);
+  if (h % 100 >= NODE_RATE[ch]) return null;
+  const key = `${map.id}:${x},${y}`;
+  const kind = kinds[(h >>> 8) % kinds.length];
+  const t = j.gathered?.[key];
+  return { kind, key, ready: !(Number.isFinite(t) && (j.steps || 0) - t < REGROW) };
+}
+const giveMat = (j, kind, n) => { j.mats ||= {}; const k = Math.max(0, Math.min(n, MAT_MAX - (j.mats[kind] || 0))); if (k) j.mats[kind] = (j.mats[kind] || 0) + k; return k; };
+export const craftXpFor = (lv) => 6 * (lv - 1) * lv; // 12 for level 2, 36 for 3 ... 540 for 10
+export const craftLevelOf = (xp) => { let lv = 1; while (lv < 10 && xp >= craftXpFor(lv + 1)) lv++; return lv; };
+function craftXp(j, n) { j.craft ||= { xp: 0, level: 1 }; const before = j.craft.level; j.craft.xp += n; j.craft.level = craftLevelOf(j.craft.xp); return j.craft.level > before ? j.craft.level : 0; }
+// Gathering: the spot in front of you (a tree, a rock face) or the ground you stand on (herbs, woods).
+export function gatherSpot(world, j) {
+  const [dx, dy] = STEP[j.facing] || [0, 0];
+  return nodeAt(world, j, j.x + dx, j.y + dy) || nodeAt(world, j, j.x, j.y);
+}
+export const matList = (got) => Object.entries(got).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${MATERIALS[k].name}`).join(' and ');
+export function gather(world, j, rnd = Math.random) {
+  const node = gatherSpot(world, j);
+  if (!node) return { ok: false, text: 'Nothing to gather here.' };
+  if (!node.ready) return { ok: false, node, text: 'Picked clean. It grows back in a while.' };
+  const lv = j.craft?.level || 1;
+  const n = 1 + (rnd() < 0.25 + lv * 0.05 ? 1 : 0);
+  const got = { [node.kind]: giveMat(j, node.kind, n) };
+  if (node.kind === 'ore' && rnd() < 0.1 + lv * 0.01) got.crystal = giveMat(j, 'crystal', 1);
+  const total = Object.values(got).reduce((a, b) => a + b, 0);
+  if (!total) return { ok: false, node, text: `You can't carry any more ${MATERIALS[node.kind].name}.` };
+  j.gathered ||= {};
+  j.gathered[node.key] = j.steps || 0;
+  const keys = Object.keys(j.gathered);
+  if (keys.length > 600) for (const k of keys) if ((j.steps || 0) - j.gathered[k] >= REGROW) delete j.gathered[k];
+  const up = craftXp(j, 1);
+  return { ok: true, node, got, up, text: `You gather ${matList(got)}.${up ? ` Crafting is now level ${up}!` : ''}` };
+}
+// What beaten foes leave behind: pelts from animals, ore from things of stone and metal, crystals from things of
+// magic, herbs from things that grow.
+const FIGHT_MATS = { golem: 'ore', gargoyle: 'ore', skeleton: 'ore', beetle: 'ore', wisp: 'crystal', ghost: 'crystal', cultist: 'crystal', dragon: 'crystal', slime: 'herb', shroom: 'herb', lurker: 'herb' };
+function fightMats(j, beaten, rnd) {
+  const got = {};
+  for (const f of beaten) {
+    const kind = FIGHT_MATS[f.type] || (FOES[f.type]?.animal ? 'hide' : '');
+    if (kind && rnd() < 0.6) got[kind] = (got[kind] || 0) + giveMat(j, kind, 1);
+  }
+  for (const k of Object.keys(got)) if (!got[k]) delete got[k];
+  return got;
+}
+// Recipes. Things marked bench need a workbench: a smith's in town, or the one in the back of Bob's Inn. The rest
+// you can make on the road. Upgrades add a quality to plain kit (a Keen sword, a Sturdy shield).
+export const RECIPES = {
+  tonic: { needs: { herb: 2 }, item: 'tonic', level: 1 },
+  antidote: { needs: { herb: 2 }, item: 'antidote', level: 1 },
+  meat: { needs: { hide: 1 }, item: 'meat', n: 2, level: 1 },
+  water: { needs: { herb: 1, crystal: 1 }, item: 'water', level: 2 },
+  ember: { needs: { ore: 1, wood: 1, herb: 1 }, item: 'ember', level: 2, bench: true },
+  bigtonic: { needs: { herb: 3, crystal: 1 }, item: 'bigtonic', level: 3, bench: true },
+  salts: { needs: { herb: 2, ore: 1 }, item: 'salts', level: 3, bench: true },
+  scroll_heal: { needs: { wood: 2, herb: 2, crystal: 1 }, item: 'scroll_heal', level: 4, bench: true },
+  scroll_fire: { needs: { wood: 2, crystal: 2, ore: 1 }, item: 'scroll_fire', level: 5, bench: true },
+  scroll_ward: { needs: { wood: 2, crystal: 2, hide: 1 }, item: 'scroll_ward', level: 6, bench: true },
+  portal: { needs: { wood: 1, crystal: 1 }, item: 'portal', level: 2 },
+  satchel: { needs: { hide: 4, wood: 1 }, bag: 'satchel', level: 2, bench: true },
+  pack: { needs: { hide: 8, wood: 2, ore: 1 }, bag: 'pack', level: 4, bench: true },
+  hauler: { needs: { hide: 12, wood: 3, ore: 3 }, bag: 'hauler', level: 7, bench: true },
+  keen: { needs: { ore: 3, wood: 1 }, upgrade: 'keen', kinds: ['weapon'], level: 2, bench: true, name: 'Hone' },
+  sturdy: { needs: { ore: 3, hide: 2 }, upgrade: 'sturdy', kinds: ['armour', 'shield'], level: 2, bench: true, name: 'Reinforce' },
+  light: { needs: { hide: 3, wood: 2 }, upgrade: 'light', kinds: ['weapon', 'armour', 'shield'], level: 4, bench: true, name: 'Lighten' },
+  arcane: { needs: { crystal: 4, ore: 1 }, upgrade: 'arcane', kinds: ['weapon', 'armour', 'shield'], level: 6, bench: true, name: 'Enchant' },
+  mighty: { needs: { ore: 5, crystal: 2 }, upgrade: 'mighty', kinds: ['weapon'], level: 8, bench: true, name: 'Temper' }
+};
+// ---------- The Scroll of return (Journey v1.3) ----------
+// A town is anywhere with a shop, a smith or an inn in it. The scroll opens a door back to the last one you walked
+// into, or to Bob's Inn. Each style has its own: a recall beacon, an extraction call, a pneumatic return ticket.
+export const isTown = (world, j, map) => map && map.kind !== 'world' && map.people.some((p) => ['shop', 'smith', 'inn'].includes(p.role));
+export function usePortal(world, j) {
+  if (!(j.bag.portal > 0)) return { ok: false, text: 'The bag is out of that.' };
+  const to = world.map(j.home) ? world.map(j.home) : world.map('inn');
+  if (j.at === to.id) return { ok: false, text: `You're already in ${to.name}.` };
+  j.bag.portal--; if (!j.bag.portal) delete j.bag.portal;
+  j.at = to.id; j.x = to.start.x; j.y = to.start.y; j.alt = 'ground'; j.riding = false; j.danger = 0;
+  return { ok: true, to: to.id, text: `A door of light opens. You step through, into ${to.name}.` };
+}
+export const recipeName = (id) => RECIPES[id]?.name || ITEMS[RECIPES[id]?.item]?.name || BAGS[RECIPES[id]?.bag]?.name || id;
+// A workbench: a smith in this place, or Bob's Inn.
+export const atBench = (world, j) => { const map = mapOf(world, j); return map.kind === 'inn' || (map.kind !== 'world' && peopleOn(world, j, map).some((p) => p.role === 'smith')); };
+// Why a recipe can't be made right now, or '' when it can.
+export function canCraft(j, id, { bench = false, kit } = {}) {
+  const r = RECIPES[id]; if (!r) return 'No such recipe.';
+  if ((j.craft?.level || 1) < r.level) return `Needs crafting level ${r.level}.`;
+  if (r.bench && !bench) return 'Needs a Workbench: a smith in town, or the one at Bob\'s Inn.';
+  const short = Object.entries(r.needs).filter(([k, n]) => (j.mats?.[k] || 0) < n).map(([k, n]) => `${n - (j.mats?.[k] || 0)} more ${MATERIALS[k].name}`);
+  if (short.length) return `Needs ${short.join(' and ')}.`;
+  if (r.item && !bagRoom(j)) return 'The bag is full.';
+  if (r.bag && (j.bags || []).includes(r.bag)) return 'You already have one.';
+  if (r.upgrade) {
+    if (!kit) return 'Pick the kit to work on.';
+    const kind = kitKind(kit), { affix } = splitKit(kit);
+    if (!r.kinds.includes(kind) || !j.owned[kind]?.includes(kit)) return 'That kit can\'t take this.';
+    if (affix) return 'Only plain kit can be improved.';
+    if (j.owned[kind].includes(`${kitBase(kit)}~${r.upgrade}`)) return 'You already have one like that.';
+  }
+  return '';
+}
+// Kit that an upgrade could work on: plain, owned, of the right kind.
+export const upgradable = (j, id) => { const r = RECIPES[id]; return r?.upgrade ? r.kinds.flatMap((k) => (j.owned[k] || []).filter((key) => !splitKit(key).affix && !j.owned[k].includes(`${kitBase(key)}~${r.upgrade}`))) : []; };
+export function craft(j, id, { bench = false, kit, rnd = Math.random } = {}) {
+  const why = canCraft(j, id, { bench, kit }); if (why) return { ok: false, text: why };
+  const r = RECIPES[id];
+  for (const [k, n] of Object.entries(r.needs)) j.mats[k] -= n;
+  const lv = j.craft?.level || 1;
+  let text;
+  if (r.item) {
+    const n = (r.n || 1) + (rnd() < (lv - 1) * 0.04 ? 1 : 0);
+    const got = addItem(j, r.item, n);
+    text = `You make ${got > 1 ? `${got} × ` : ''}${ITEMS[r.item].name}.${got > (r.n || 1) ? ' A good batch: one extra!' : ''}`;
+  } else if (r.bag) {
+    j.bags = [...(j.bags || ['pouch']), r.bag]; if (BAGS[r.bag].room > bagOf(j).room) j.bagGear = r.bag;
+    text = `You make a ${BAGS[r.bag].name}. ${j.bagGear === r.bag ? `You put it on: the bag holds ${bagSize(j)} now.` : ''}`.trim();
+  } else {
+    const kind = kitKind(kit), to = `${kitBase(kit)}~${r.upgrade}`;
+    j.owned[kind] = j.owned[kind].map((k) => (k === kit ? to : k));
+    for (const m of j.party) if (m[kind] === kit) m[kind] = to;
+    text = `${recipeName(id)}: your ${kitName(kit)} is now ${kitName(to)} (${kitWords(to)}).`;
+  }
+  const up = craftXp(j, r.level + 1);
+  return { ok: true, text: `${text}${up ? ` Crafting is now level ${up}!` : ''}`, up };
+}
+
+// ---------- The story told along the way (Journey v1.3) ----------
+// A narrator for each style speaks when you reach a named town or a new region. The land is split into regions,
+// each named for its ground. Story towns (towns, castles, the peoples' own places) are named on the map; hamlets and
+// villages keep to themselves but have their own local lore. "Where next" always says who to talk to or who to find,
+// and where to look. People answer from a short list of things you can say.
+export const NARRATORS = { fantasy: 'The Chronicle', scifi: 'Ship\'s log', cyber: 'Newsfeed', steam: 'The Gazette' };
+export const narrator = (j) => NARRATORS[j.style] || NARRATORS.fantasy;
+export const STORY_KINDS = new Set(['town', 'castle', 'aerie', 'reef', 'orccamp', 'dwarfhold', 'elfwood', 'burrow', 'glade', 'stilts', 'gnome', 'centaur', 'giant', 'goblin']);
+export const LOCAL_KINDS = new Set(['hamlet', 'village']);
+export const isStoryTown = (s) => Boolean(s && STORY_KINDS.has(s.kind));
+const REGION_WORDS = {
+  fantasy: { plains: ['Plains', 'Downs', 'Vale'], forest: ['Forest', 'Wood', 'Weald'], swamp: ['Fens', 'Mire', 'Marsh'], desert: ['Sands', 'Wastes', 'Dunes'], peaks: ['Peaks', 'Highlands', 'Crags'], sea: ['Sea', 'Sound', 'Deeps'] },
+  scifi: { plains: ['Flats', 'Expanse', 'Basin'], forest: ['Jungle', 'Biome', 'Canopy'], swamp: ['Bog', 'Wetlands', 'Spore marsh'], desert: ['Dust sea', 'Barrens', 'Dune field'], peaks: ['Ridge', 'Massif', 'Uplands'], sea: ['Ocean', 'Gulf', 'Trench'] },
+  cyber: { plains: ['Sprawl', 'Zone', 'Blocks'], forest: ['Greenbelt', 'Overgrowth', 'Parklands'], swamp: ['Runoff', 'Sludge flats', 'Floodzone'], desert: ['Dead zone', 'Rad flats', 'Scrapyards'], peaks: ['Heights', 'Stacks', 'Spires'], sea: ['Bay', 'Harbour', 'Drink'] },
+  steam: { plains: ['Commons', 'Fields', 'Shire'], forest: ['Woods', 'Chase', 'Timberland'], swamp: ['Fens', 'Bogs', 'Levels'], desert: ['Barrens', 'Wastes', 'Flats'], peaks: ['Fells', 'Peaks', 'Tors'], sea: ['Sea', 'Channel', 'Firth'] }
+};
+const REGION_SYL_A = ['Ash', 'Bel', 'Cor', 'Dun', 'Eld', 'Fen', 'Gal', 'Har', 'Ist', 'Kel', 'Lor', 'Mor', 'Nor', 'Os', 'Pell', 'Quen', 'Ros', 'Sel', 'Tor', 'Ul', 'Var', 'Wen', 'Yar', 'Zan'];
+const REGION_SYL_B = ['by', 'dell', 'fall', 'gard', 'holm', 'lin', 'mere', 'more', 'ridge', 'shaw', 'stead', 'thorn', 'vale', 'wick', 'wyn', 'ford'];
+const KIND_OF_TILE = { '.': 'plains', '"': 'plains', ':': 'plains', F: 'forest', T: 'forest', w: 'swamp', d: 'desert', ',': 'desert', '^': 'peaks', µ: 'peaks', '~': 'sea' };
+const regionCache = new WeakMap();
+// The regions of a land: seeded centres, each tile belongs to the nearest. Named for the ground round the centre.
+export function regionsOf(world, style = 'fantasy') {
+  style = REGION_WORDS[style] ? style : 'fantasy';
+  const cached = regionCache.get(world)?.[style]; if (cached) return cached;
+  const m = world.map('world'), w = m.w, h = m.h;
+  const n = clamp(Math.round((w * h) / 1000), 4, 48);
+  const rnd = seeded(`${world.seed}:regions`);
+  const used = new Set(), list = [];
+  const cols = Math.ceil(Math.sqrt(n * w / h)), rows = Math.ceil(n / cols);
+  // A phone's land may be in pieces: missing tiles are skipped.
+  for (let ry = 0; ry < rows; ry++) for (let rx = 0; rx < cols; rx++) {
+    if (list.length >= n) break;
+    const x = clamp(Math.floor(((rx + 0.2 + rnd() * 0.6) / cols) * w), 1, w - 2), y = clamp(Math.floor(((ry + 0.2 + rnd() * 0.6) / rows) * h), 1, h - 2);
+    const count = {}, step = Math.max(1, Math.floor(Math.min(w / cols, h / rows) / 10));
+    for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) { const k = KIND_OF_TILE[m.rows[clamp(y + dy * step, 0, h - 1)]?.[clamp(x + dx * step, 0, w - 1)]]; if (k) count[k] = (count[k] || 0) + 1; }
+    const land = Object.entries(count).filter(([k]) => k !== 'sea').sort((a, b) => b[1] - a[1]);
+    const kind = (count.sea || 0) > 80 || !land.length ? 'sea' : land[0][0];
+    let base, tries = 0;
+    do base = `${REGION_SYL_A[Math.floor(rnd() * REGION_SYL_A.length)]}${REGION_SYL_B[Math.floor(rnd() * REGION_SYL_B.length)]}`; while (used.has(base) && tries++ < 40);
+    used.add(base);
+    const words = REGION_WORDS[style][kind];
+    list.push({ id: `r${list.length}`, x, y, kind, name: `the ${base} ${words[Math.floor(rnd() * words.length)]}` });
+  }
+  const out = { list, at(x, y) { let best = list[0], bd = Infinity; for (const r of list) { const d = (r.x - x) ** 2 + (r.y - y) ** 2; if (d < bd) { bd = d; best = r; } } return best; } };
+  regionCache.set(world, { ...(regionCache.get(world) || {}), [style]: out });
+  return out;
+}
+export const regionAt = (world, x, y, style) => regionsOf(world, style).at(x, y);
+// Where on the land a journey is: the spot itself out there, or the place it's in.
+export function landSpot(world, j) {
+  const map = mapOf(world, j);
+  if (map.kind === 'world') return { x: j.x, y: j.y };
+  const s = world.sites.find((x) => x.id === (map.site || map.id)) || world.sites.find((x) => x.id === world.home);
+  return s ? { x: s.x, y: s.y } : { ...world.start };
+}
+const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+const REGION_LINES = {
+  plains: ['Open country, long views, and nowhere to hide.', 'Farms thin out here, and the grass grows taller than the fences.'],
+  forest: ['The trees close in overhead. Things move between them.', 'Old roots, old paths, and older stories about both.'],
+  swamp: ['The ground gives under every step. Something bubbles.', 'Mist on the water, and eyes in the mist.'],
+  desert: ['Heat shimmers off the ground. Water is worth more than coin out here.', 'Wind and sand, and bones the wind has cleaned.'],
+  peaks: ['The air thins and the rock rises. The view is worth the climb, they say.', 'Stone on stone, as far up as you can see.'],
+  sea: ['Open water. The horizon is a long way off.', 'Salt wind and grey waves.']
+};
+const DANGER_WORDS = ['', 'Safe enough, mostly.', 'Travellers come back from here. Most of them.', 'Not a place to wander tired.', 'Hard country. Bring friends.', 'The bravest stay away.'];
+// The first time a journey crosses into a region: the narrator's words, or null.
+export function enterRegion(world, j) {
+  if (mapOf(world, j).kind !== 'world') return null;
+  const r = regionAt(world, j.x, j.y, j.style);
+  j.regions = j.regions || [];
+  if (j.regions.includes(r.id)) return null;
+  j.regions.push(r.id);
+  const lines = REGION_LINES[r.kind] || REGION_LINES.plains;
+  return { region: r, lines: [`${narrator(j)}: ${cap(r.name)}. ${lines[hashStr(`${world.seed}${r.id}`) % lines.length]} ${DANGER_WORDS[clamp(zoneAt(world, j), 1, 5)]}`] };
+}
+const TOWN_LINES = {
+  town: ['the biggest town in {region}. Market bells, gossip, and a good inn.', 'a busy town at the heart of {region}. Everyone here knows everyone\'s business.'],
+  castle: ['seat of the crown. The {ruler} keeps court here, and the story starts with them.', 'stone walls over {region}. The {ruler} holds court inside.'],
+  aerie: ['a city on the clouds, home to the bird folk. Traders come down with goods at half price.'],
+  reef: ['a city under the waves. The merfolk trade pearls for stories.'],
+  orccamp: ['the orcs\' warcamp. Strong arms, hard bread and a fair welcome, mostly.'],
+  dwarfhold: ['a hold of the dwarves, cut into the mountain. The best smiths in the land, ask any dwarf.'],
+  elfwood: ['the elves\' tree village. The bridges are older than anyone\'s grandparents.'],
+  burrow: ['the halfling burrows. Second breakfast is at ten.'],
+  glade: ['a pixie glade, where spirit flows like water.'],
+  stilts: ['the lizardfolk stilts, over warm mud and good fishing.'],
+  gnome: ['the gnomes\' tinker town. Everything has a crank on it.'],
+  centaur: ['the centaurs\' camp on the open plain.'],
+  giant: ['a giant hall. Mind the feet.'],
+  goblin: ['the goblin market. Everything for sale, some of it theirs.']
+};
+// The narrator, the first time a party walks into a named town: what it is, and what to do next.
+export function townNarration(world, j, siteId) {
+  const s = world.sites.find((x) => x.id === siteId);
+  if (!isStoryTown(s)) return [];
+  const map = world.map(siteId);
+  const ruler = map?.people.find((p) => p.role === 'ruler');
+  const t = TOWN_LINES[s.kind] || TOWN_LINES.town;
+  const line = t[hashStr(`${world.seed}${s.id}`) % t.length].replace('{region}', regionAt(world, s.x, s.y, j.style).name).replace('{ruler}', ruler?.title || 'King');
+  const next = nextSteps(world, j)[0];
+  return [`${narrator(j)}: ${s.name}, ${line}`, ...(next ? [`${narrator(j)}: ${next.text}`] : [])];
+}
+// Local lore: each hamlet and village has one small story of its own, told by the folk who live there.
+const LORE_HEROES = ['old Maddy', 'the miller\'s boy', 'a travelling tinker', 'Grandmother Wren', 'a knight nobody remembers the name of', 'the twins', 'a girl with a red scarf', 'the first well-digger'];
+const LORE_THINGS = ['the well', 'the big oak', 'the bell', 'the bridge', 'the standing stone', 'the old mill', 'the scarecrow', 'the crooked chimney'];
+const LORE_TALES = [
+  'They say {hero} hid a pot of gold under {thing}. Nobody has found it. Plenty have dug.',
+  'Every midsummer, {thing} hums. {Hero} said it was singing to the stars. {Hero} said a lot of things.',
+  'Once, a dragon flew over and {hero} threw a boot at it. It never came back. We keep the other boot by {thing}.',
+  '{Hero} made a deal with a fox spirit at {thing}. That\'s why no hen here has ever been taken.',
+  'In the bad winter, {hero} kept the whole village alive with soup made from one turnip and a lot of hope. We still eat it on the longest night.',
+  'If you walk round {thing} three times backwards, you hear your own name. Don\'t do it four times.',
+  '{Hero} fought a troll at {thing} with a frying pan. The troll lost. The pan is in the inn.',
+  'The ghost at {thing} is just {hero}, still looking for a lost cat. The cat is fine. It lives with us.'
+];
+export function localLore(world, siteId) {
+  const s = world.sites.find((x) => x.id === siteId); if (!s) return '';
+  const h = hashStr(`${world.seed}:lore:${siteId}`);
+  const hero = LORE_HEROES[h % LORE_HEROES.length], thing = LORE_THINGS[(h >>> 8) % LORE_THINGS.length];
+  return LORE_TALES[(h >>> 16) % LORE_TALES.length].replace(/\{hero\}/g, hero).replace(/\{Hero\}/g, cap(hero)).replace(/\{thing\}/g, thing);
+}
+// What the story wants next, most important first: who to talk to and where, or who to find and where to look.
+// Each step: { text, x, y } (x, y on the land, when known).
+export function nextSteps(world, j) {
+  const here = landSpot(world, j), out = [];
+  const where = (s) => { const d = Math.abs(s.x - here.x) + Math.abs(s.y - here.y); return d < 2 ? 'right here' : `${d} steps ${direction(here, s)}, in ${regionAt(world, s.x, s.y, j.style).name}`; };
+  if (j.won) out.push({ text: 'The lanterns burn again. The story is told, but the land is still full of chests, bosses and small jobs.' });
+  else {
+    const castle = world.sites.find((s) => s.kind === 'castle');
+    const ruler = castle && world.map(castle.id)?.people.find((p) => p.role === 'ruler');
+    const metRuler = (j.met || []).includes('ruler');
+    if (castle && !metRuler && !j.beaten.some((g) => LANTERN_KEEPERS.includes(g))) out.push({ text: `Talk to the ${ruler?.title || 'King'} in ${castle.name}, ${where(castle)}.`, x: castle.x, y: castle.y });
+    for (const g of LANTERN_KEEPERS.filter((k) => !j.beaten.includes(k))) {
+      const s = world.sites.find((x) => x.keeper === g); if (!s) continue;
+      const known = j.seen.includes(s.id);
+      out.push({ text: known ? `Find ${GUARDIANS[g].name} in ${s.name}, ${where(s)}.` : `Find ${GUARDIANS[g].name}. Look ${direction(here, s)}, somewhere in ${regionAt(world, s.x, s.y, j.style).name}.`, x: s.x, y: s.y });
+      if (out.length >= 2) break;
+    }
+  }
+  for (const [id, state] of Object.entries(j.quests || {})) {
+    if (state !== 'given') continue;
+    const s = world.sites.find((x) => x.id === id), q = s?.quest; if (!q) continue;
+    const t = world.sites.find((x) => x.id === q.target) || world.sites.find((x) => x.keeper === q.keeper);
+    const done = q.kind === 'clear' || q.kind === 'bounty' ? j.beaten.includes(q.keeper) : (j.found || []).includes(q.id);
+    out.push(done ? { text: `Go back to the Elder in ${s.name}, ${where(s)}. The job is done.`, x: s.x, y: s.y }
+      : { text: `For ${s.name}: ${q.kind === 'missing' ? `find ${q.who}` : q.kind === 'lostpet' ? `find ${q.name || 'the lost pet'}` : `beat ${GUARDIANS[q.keeper]?.name || 'the monster'}`}${t ? ` in ${t.name}, ${where(t)}` : ''}.`, ...(t ? { x: t.x, y: t.y } : {}) });
+  }
+  return out;
+}
+// Things to say (Journey v1.3): the choices when you talk to someone who has more than one thing to tell.
+// Each choice is { id, label }; sayTo answers one. Same words every time, written ahead.
+export function talkChoices(world, j, p, map) {
+  const local = LOCAL_KINDS.has(map.kind), story = STORY_KINDS.has(map.kind);
+  if (p.role === 'ruler') return [{ id: 'story', label: 'Tell me what happened.' }, { id: 'next', label: 'Where should we go?' }, { id: 'reward', label: 'What\'s in it for us?' }, { id: 'bye', label: 'We\'ll be on our way.' }];
+  if (p.role === 'elder') return [{ id: 'job', label: 'Do you need help?' }, { id: 'lore', label: 'Tell me about this place.' }, { id: 'next', label: 'Where should we go?' }, { id: 'bye', label: 'Goodbye.' }];
+  if (p.role === 'folk' && (local || story)) return [{ id: 'news', label: 'Any news?' }, { id: 'lore', label: 'Tell me about this place.' }, { id: 'next', label: 'Where should we go?' }, { id: 'bye', label: 'Goodbye.' }];
+  return null;
+}
+// The answer to one choice: lines, and whether talking goes on (more choices) or ends.
+export function sayTo(world, j, p, map, id, name) {
+  const site = map.site || map.id, s = world.sites.find((x) => x.id === site);
+  const say = (t) => `${name}: ${t}`;
+  if (id === 'bye') return { lines: [say(['Safe roads.', 'Mind how you go.', 'Come back any time.'][p.line % 3])], end: true };
+  if (id === 'next') { const n = nextSteps(world, j); return { lines: n.length ? n.slice(0, 2).map((x) => say(x.text)) : [say('Wherever the road takes you. You\'ve done what was asked.')] }; }
+  if (id === 'lore') {
+    if (LOCAL_KINDS.has(map.kind)) { j.lore = j.lore || []; if (!j.lore.includes(site)) j.lore.push(site); return { lines: [say(localLore(world, site))] }; }
+    const r = s ? regionAt(world, s.x, s.y, j.style) : null;
+    return { lines: [say(`This is ${map.name}${r ? `, in ${r.name}` : ''}. ${(TOWN_LINES[map.kind] || TOWN_LINES.town)[0].replace('{region}', r?.name || 'these parts').replace('{ruler}', 'King')}`)] };
+  }
+  if (id === 'news') return { lines: [say(FOLK_LINES[(p.line + j.beaten.length * 2) % FOLK_LINES.length])] };
+  if (id === 'story') { (j.met = j.met || []).includes('ruler') || j.met.push('ruler'); return { lines: [say(questLine(world, j))] }; }
+  if (id === 'reward') { (j.met = j.met || []).includes('ruler') || j.met.push('ruler'); return { lines: [say(j.won ? 'Our thanks, and the land\'s, forever. And free beds at any inn that knows what\'s good for it.' : 'Gold, glory, and a song about you that the bards will get slightly wrong. Bring the stones home first.')] }; }
+  return { lines: [], end: true };
+}
+// Talk between the party (Journey v1.3): at a few moments in the story, someone in the party speaks, and you pick
+// what to say back. Each answer has its own reply, written ahead.
+export const BANTER = {
+  firsttown: { speaker: 'bob', line: 'A proper town. Shops, beds, and people who don\'t want to eat us. Probably.', choices: [
+    ['Probably?', 'Bob: I said what I said. Keep your coin purse in your front pocket.'],
+    ['Let\'s find the inn.', 'Bob: A man after my own heart. Check the beds for bugs. Professional habit.'],
+    ['You worry too much.', 'Bob: I run an inn full of adventurers. Worrying is most of the job.']] },
+  firstkeeper: { speaker: 'bob', line: 'One lantern stone back. I\'d say it gets easier from here, but I don\'t lie to friends.', choices: [
+    ['Two more to go.', 'Bob: Two more. Rest first, and buy some tonics. Lots of tonics.'],
+    ['That was easy.', 'Bob: It was NOT easy. I saw your face.'],
+    ['Thanks for coming, Bob.', 'Bob: Someone had to. The inn can look after itself for a day. I hope.']] },
+  firstregion: { speaker: 'bob', line: 'Further from the inn than I\'ve been in years. Smells different out here.', choices: [
+    ['Different good?', 'Bob: Different. Ask me again when we\'re home.'],
+    ['Want to turn back?', 'Bob: And let you lot have all the fun? Not a chance.'],
+    ['Keep up, old man.', 'Bob: Old? I\'ll have you know I\'m in my prime. My second prime.']] },
+  won: { speaker: 'bob', line: 'All three lanterns. Look at that. You actually did it.', choices: [
+    ['We did it.', 'Bob: We. I like that. Drinks are on the house. One each. Fine, two.'],
+    ['Was there ever any doubt?', 'Bob: Yes. Constantly. But I\'m glad I was wrong.'],
+    ['What now?', 'Bob: Now? Now you rest. And then there are always more chests out there.']] }
+};
+// Which party talk is due, once each: the first named town, the first keeper beaten, far from home, the end.
+export function banterDue(world, j, at) {
+  j.banter = j.banter || [];
+  if (!j.party.some((m) => m.who === 'bob')) return null;
+  const due = j.won ? 'won' : j.beaten.some((g) => LANTERN_KEEPERS.includes(g)) ? 'firstkeeper' : at === 'region' && zoneAt(world, j) >= 3 ? 'firstregion' : at === 'town' ? 'firsttown' : '';
+  if (!due || j.banter.includes(due)) return null;
+  j.banter.push(due);
+  return { id: due, ...BANTER[due] };
+}
+// ---------- Trophies and the guest house (Journey v1.3) ----------
+// Big moments in a story give a trophy. Trophies are kept across every story you play, in the trophy case in the
+// guest house behind Bob's Inn (the computer keeps the list; see src/adventure-journey.js). A trophy keeps the
+// style and the story it came from, so a cyberpunk trophy stays cyberpunk.
+export const TROPHY_SHAPES = ['cup', 'gem', 'crown', 'skull', 'lantern', 'map', 'hammer', 'shield', 'star'];
+const TROPHY_TOKENS = { goblin: 'tusk', spider: 'fang', dragon: 'scale', cultist: 'charm', wolf: 'pelt', troll: 'club', skeleton: 'crown', ghost: 'bell', orc: 'banner', bandit: 'mask', rat: 'crown', slime: 'jar', kobold: 'crown', griffin: 'feather', serpent: 'pearl' };
+// The story a journey tells, by its castle: "the Wickhaven tale".
+export function storyName(world, j) {
+  const castle = world.sites?.find((s) => s.kind === 'castle');
+  return castle ? `the ${castle.name.replace(/^Castle /, '')} tale` : `the tale of ${j.seed}`;
+}
+// The trophies a journey has earned so far, each { id, name, what, shape }. ids are fixed, so each is given once.
+export function trophiesEarned(world, j) {
+  const story = storyName(world, j), out = [];
+  const add = (key, name, what, shape) => out.push({ id: `${j.seed}:${key}`, name, what: `${what} From ${story}.`, shape });
+  for (const g of j.beaten || []) {
+    const b = GUARDIANS[g]; if (!b) continue;
+    const who = b.name.split(',')[0];
+    if (LANTERN_KEEPERS.includes(g)) add(g, `Lantern stone of ${who}`, `Taken back from ${who}.`, 'gem');
+    else add(g, `${who}'s ${TROPHY_TOKENS[b.base] || 'token'}`, `Beaten: ${b.name}.`, b.base === 'skeleton' || b.base === 'ghost' ? 'skull' : 'cup');
+  }
+  if (j.won) add('won', `The lanterns of ${story.replace(/^the /, '').replace(/ tale$/, '')}`, 'All three lanterns lit again. The story, told.', 'lantern');
+  if ((j.craft?.level || 1) >= 10) add('craft10', 'Master crafter\'s hammer', 'Crafting level 10.', 'hammer');
+  if (j.regions?.length && j.regions.length >= REGIONS_FOR_MAP(world)) add('regions', 'The well-worn map', 'Every region crossed.', 'map');
+  const jobs = Object.values(j.quests || {}).filter((v) => v === 'done').length;
+  if (jobs >= 5) add('jobs5', 'Friend of the villages', 'Five small jobs done.', 'shield');
+  if ((j.tamed || 0) >= 5) add('tamed5', 'Beast friend\'s collar', 'Five animals tamed.', 'star');
+  return out;
+}
+const REGIONS_FOR_MAP = (world) => { try { return regionsOf(world).list.length; } catch { return Infinity; } };
+// New trophies since last time: marks them given on the journey (j.trophies holds the ids) and returns them,
+// ready to keep, with the style and story on each.
+export function newTrophies(world, j) {
+  j.trophies = j.trophies || [];
+  const fresh = trophiesEarned(world, j).filter((t) => !j.trophies.includes(t.id));
+  for (const t of fresh) j.trophies.push(t.id);
+  return fresh.map((t) => ({ ...t, style: j.style || 'fantasy', story: storyName(world, j), when: new Date().toISOString().slice(0, 10) }));
+}
+// A trophy from disk or the page, cleaned; null if it isn't one.
+export function cleanTrophy(t) {
+  if (!t || typeof t !== 'object' || typeof t.id !== 'string' || typeof t.name !== 'string') return null;
+  const s = (v, n) => String(v || '').replace(/[<>]/g, '').slice(0, n);
+  return { id: s(t.id, 80), name: s(t.name, 80), what: s(t.what, 200), shape: TROPHY_SHAPES.includes(t.shape) ? t.shape : 'cup', style: STYLE_IDS.includes(t.style) ? t.style : 'fantasy', story: s(t.story, 80), when: /^\d{4}-\d\d-\d\d$/.test(t.when) ? t.when : '' };
+}
+export const MAX_TROPHIES = 500;
+// Adds trophies to a kept list: new ids only, oldest dropped past the cap.
+export function keepTrophies(list, more) {
+  const out = (Array.isArray(list) ? list : []).map(cleanTrophy).filter(Boolean);
+  for (const t of (Array.isArray(more) ? more : []).map(cleanTrophy).filter(Boolean)) if (!out.some((x) => x.id === t.id)) out.push(t);
+  return out.slice(-MAX_TROPHIES);
+}
 // Text on the screen, in the journey's style. Plurals follow along (swords -> sabres).
 export function restyle(text, style) {
   const st = STYLES[style]; if (!st || !st.words.length || !text) return text;
   let out = String(text);
-  for (const [re, to] of st.words) out = out.replace(re, (_, s) => `${to}${s ? (/[sx]$/.test(to) ? 'es' : 's') : ''}`);
+  for (const [re, to] of st.words) out = out.replace(re, (_, s) => (!s ? to : /man$/.test(to) ? `${to.slice(0, -3)}men` : `${to}${/[sx]$/.test(to) ? 'es' : 's'}`));
   return out.replace(/\b([Aa]) ([aeiouAEIOU])/g, '$1n $2');
 }
 // What a boat or a ridden flier or swimmer is drawn as, in this style.

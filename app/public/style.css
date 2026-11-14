@@ -47,7 +47,9 @@ body {
 .who { flex: 1; min-width: 0; }
 .name { font-weight: 700; font-size: 17px; }
 .inn { font-weight: 400; color: var(--muted); font-size: 13px; }
-.status { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; white-space: pre-line; transition: opacity .35s ease; } /* 1.5.215: Bob's line wraps, never cut off */
+.status.fading { opacity: 0; } /* 1.5.216: one line fades out, the next fades in (status-line.js) */
+body.still .status { transition: none; }
 .status.loading, .status.painting { color: var(--accent); }
 .status.waiting { color: var(--bad); font-weight: 600; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
@@ -99,7 +101,7 @@ kbd { font-family: var(--mono); font-size: 13px; padding: 1px 6px; border: 1px s
 .msg a + .mini[data-copy-link] { padding: 0 4px; font-size: 11px; margin-left: 3px; }
 .msg-tools { display: flex; gap: 4px; justify-content: flex-end; margin-top: 6px; white-space: normal; }
 .msg.you .msg-tools .mini { color: inherit; opacity: .75; }
-/* Let Bob fix his own messages: "edited" under a message he changed, and what it said first */
+/* Edit his own messages: "edited" under a message he changed, and what it said first */
 .edited-note { margin-top: 6px; font-size: .85em; }
 .edited-note .link { min-height: 32px; padding: 0 4px; }
 .edited-was { margin-top: 4px; padding-left: 8px; border-left: 2px solid var(--line); white-space: pre-wrap; }
@@ -236,6 +238,9 @@ body.still .talk-bar .talk-dot { animation: none !important; }
 .have { color: var(--good); }
 .muted { color: var(--muted); }
 .error { color: var(--bad); }
+.refused { margin: 2px 0 8px 2.2em; color: var(--bad); font-size: 13px; } /* 1.5.213: why a switch was turned down, right under it */
+.refused.needs-first { color: var(--muted); }
+label.switch.waits { opacity: .55; cursor: not-allowed; }
 .confirm { margin-top: 8px; padding: 8px 10px; border: 1px dashed var(--accent); border-radius: calc(var(--r) * 1); }
 .confirm p { margin: 0 0 8px; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -245,12 +250,38 @@ body.still .talk-bar .talk-dot { animation: none !important; }
 .dl .row { justify-content: space-between; font-size: 13px; }
 .found { list-style: none; padding: 0; margin: 0; }
 .found li { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 13px; word-break: break-all; }
-.settings { display: grid; gap: 14px; }
+.settings { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; } /* 1.5.213: one column that never grows past the window (the Simple cards wrap on a phone) */
 .switch { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
-.switch input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); }
+.switch input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); flex: none; } /* 1.5.213: every tick box keeps its size when the words wrap */
 .pick { display: grid; gap: 4px; }
 .cellar select { font: inherit; padding: 7px; border-radius: calc(var(--r) * 1); background: var(--bg); color: var(--text); border: 1px solid var(--line); max-width: 100%; }
 .welcome h2 { margin: 4px 0 8px; }
+/* Nov 14: the Welcome as seven pages (welcome-steps.js). Back bottom left, Next bottom right, each naming its page. */
+.wz { display: flex; flex-direction: column; min-height: calc(100dvh - 180px); }
+.wz-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 4px 0 20px; }
+.wz-count { margin: 0; font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.wz-dots { display: flex; gap: 2px; list-style: none; margin: 0; padding: 0; }
+.wz-dot { width: 24px; height: 24px; min-height: 24px; padding: 0; border: 0 !important; background: transparent !important; box-shadow: none !important; display: grid; place-items: center; cursor: pointer; }
+.wz-dot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: background-color .15s, box-shadow .15s; }
+.wz-dot.past::before { background: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.wz-dot.on::before { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.wz-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; border-radius: 50%; }
+.wz-skip { margin-left: auto; }
+.wz-page { flex: 1; }
+.wz-title { outline: none; margin: 0 0 6px; }
+.wz-lead { margin: 0 0 18px; max-width: 64ch; }
+.wz-group h3 { margin-top: 20px; }
+.wz-group > p.muted { margin: 0 0 4px; }
+.wz-sum dt { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-top: 14px; }
+.wz-sum dd { margin: 4px 0 0; }
+.wz-nav { position: sticky; bottom: -48px; z-index: 2; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin: 28px 0 -48px; padding: 34px 0 62px; background: linear-gradient(to bottom, transparent, var(--deep, var(--bg)) 30px); }
+.cellar .wz-nav .wz-back { background: transparent; border: 1px solid var(--line); color: var(--text); }
+.cellar .wz-nav .wz-back:hover { border-color: var(--accent); }
+.cellar .wz-nav :is(.wz-back, .wz-next) { display: flex; flex-direction: column; gap: 2px; min-width: 132px; min-height: 48px; padding: 6px 14px; }
+.cellar .wz-nav .wz-back { align-items: flex-start; text-align: left; }
+.cellar .wz-nav .wz-next { align-items: flex-end; text-align: right; }
+.wz-dir { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; opacity: .75; }
+.wz-to { font-size: 15px; font-weight: 600; }
 .packlist { list-style: none; padding: 0; }
 .packlist li { padding: 4px 0; }
 .packlist input { accent-color: var(--accent); }
@@ -326,7 +357,6 @@ body.still .meter i { transition: none; }
 body.still .meter.moving i { animation: none; }
 
 /* Bob's list: every message queues; nothing gets dropped */
-.queue { background: var(--panel); border-top: 1px solid var(--line); padding: 6px 14px; display: grid; gap: 4px; max-height: 30vh; overflow-y: auto; font-size: 13px; }
 .q-head { opacity: .75; font-size: 12px; }
 .q-job { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .q-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -360,7 +390,8 @@ body.still .meter.moving i { animation: none; }
 .avatars h4 { margin: 10px 0 4px; font-size: 13px; color: var(--muted); font-weight: 600; }
 .avatars .looks button { width: 72px; padding: 4px; }
 .avatars .looks canvas { width: 48px; height: 48px; }
-.avatars .looks span { font-size: 11px; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avatars .looks span { font-size: 11px; max-width: 64px; overflow-wrap: anywhere; text-align: center; } /* 1.5.222 names wrap, never cut off */
+.adv-bob-look { margin: 6px 0 12px; } .adv-bob-look .row { align-items: center; gap: 8px; } .adv-bob-look canvas.adv-face { image-rendering: pixelated; }
 
 /* MouseWurX blueprint: graph paper behind everything, plates with hard edges, no glow */
 body.blueprint {
@@ -430,7 +461,7 @@ body.still *, body.still *::before, body.still *::after { animation: none !impor
 .side .who { min-width: 0; }
 /* Always two lines tall, whatever it says (clamped, never grown), so the menu below never moves. Work details go in
    Bob's thinking, not here. */
-.side .status { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; line-height: 1.35; height: 2.7em; }
+.side .status { white-space: pre-line; display: block; overflow: visible; font-size: 11px; line-height: 1.3; min-height: 2.6em; }
 button.fold { /* only the menu's fold button; the Settings expanders are details.fold too */ width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; align-self: start; }
 .fold .ico, .nav-item .ico, .nav-new .ico, .session-wrap .ico { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .nav-item, .nav-new { position: relative; display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 8px; border: 1px solid transparent; background: none; text-align: left; font-size: 13.5px; color: var(--text); }
@@ -499,27 +530,21 @@ body:not(.right-hidden) .now-toggle .badge { display: none; }
 .net-tools { margin: 2px 0 4px; }
 .now .titem.net:has(.net-avatar) { grid-template-columns: auto auto 1fr; }
 .now .titem.net:has(.net-avatar) .ttext { grid-column: 3; }
-.net-avatar { width: 32px; height: 32px; image-rendering: pixelated; border-radius: 4px; }
-.net-avatar.none { display: inline-flex; align-items: center; justify-content: center; font-size: 18px; }
+.net-avatar { width: 32px; height: 32px; border-radius: 4px; }
 .now-gpu .meter { margin: 0; }
 .tag.needs-you { background: var(--danger-bg); color: var(--warn); }
 body.right-hidden .now, body.right-hidden .grab { display: none; }
-body:not(.right-hidden) #queue { display: none; } /* the panel shows the queue; the strip is for when it's hidden */
-body.right-hidden #queue:not([hidden]) { display: grid; }
 
 /* Narrow windows: the panel slides over the chat instead of squeezing it. */
 @media (max-width: 900px) {
   .now { position: fixed; top: 0; right: 0; bottom: 0; z-index: 20; width: min(340px, 92vw); box-shadow: -8px 0 24px #0008; border-left: 1px solid var(--line); }
   .grab { display: none; }
-  body:not(.right-hidden) #queue:not([hidden]) { display: grid; }
 }
 @media (max-width: 560px) {
   body:not(.left-folded) .side { position: fixed; top: 0; bottom: 0; left: 0; z-index: 21; box-shadow: 8px 0 24px #0008; }
   .ctx-title { display: none; }
 }
 .titem .grip { letter-spacing: -3px; }
-.queue .titem { padding: 4px 8px; }
-.queue .titem .tsub { display: none; }
 body.left-folded .now-toggle { flex-direction: row; padding: 4px 8px; font-size: 12.5px; }
 body.left-folded .now-toggle .lbl { display: inline; }
 body.left-folded .now-toggle .badge { position: static; }
@@ -612,7 +637,7 @@ button.danger { background: #a8432f; color: #fff; border-color: #a8432f; }
 .starter { border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; margin: 8px 0; background: var(--panel); }
 .starter summary { cursor: pointer; font-weight: 600; }
 .warn-text { color: var(--warn); }
-/* "Let Bob work without asking" is on: a banner above the chat for as long as it is. */
+/* "Work without asking" is on: a banner above the chat for as long as it is. */
 .free-banner { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin: 6px 12px 0; padding: 8px 12px; border: 2px solid var(--warn); border-radius: calc(var(--r) * 1.25); color: var(--warn); font-weight: 600; }
 .free-banner[hidden] { display: none; }
 .free-banner > span { flex: 1 1 auto; }
@@ -676,7 +701,7 @@ button.big { padding: 9px 18px; font-size: 15px; min-height: 40px; }
 .hands-mytools ul { list-style: none; padding: 0; margin: 6px 0; }
 .hands-mytools li.mytool { border-bottom: 1px solid var(--line); padding: 6px 0; }
 .hands-mytools.dim { opacity: 0.7; }
-/* 1.5.144 🧰 Tools and how-tos Bob made */
+/* 1.5.144 🧰 Tools and how-tos */
 .ownkit-list { list-style: none; padding: 0; margin: 6px 0; }
 .ownkit-list { display: flex; flex-direction: column; gap: 8px; }
 .ownkit-list li.ownkit-row { border: 1px solid var(--line, #444); border-radius: 6px; padding: 8px 10px; }
@@ -717,7 +742,7 @@ button.big { padding: 9px 18px; font-size: 15px; min-height: 40px; }
 .hands-box button.stop-all, .composer button.stop-all { background: var(--bad); color: var(--on-accent); border: none; font-weight: 700; }
 
 /* ---------- 1.5.0: Settings, Get models and Style as a page in the main area ---------- */
-.mid.paged > :is(#log, #chips, #queue, #tray, #composer) { display: none !important; }
+.mid.paged > :is(#log, #chips, #tray, #composer) { display: none !important; }
 .cellar.page { position: static; flex: 1; min-height: 0; width: auto; max-width: none; max-height: none; margin: 0; border: 0; border-radius: 0; overflow: auto; background: var(--bg); }
 .cellar.page:not([open]) { display: none; }
 .cellar.page.wide { width: auto; }
@@ -733,6 +758,8 @@ button.big { padding: 9px 18px; font-size: 15px; min-height: 40px; }
 .srow .sact { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .srow .ttabs { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .srow-switch { padding: 9px 10px; border-radius: var(--r); background: var(--card); margin: 0 !important; }
+.srow-switch + .srow-switch { margin-top: 6px !important; } /* a little air between rows, now each shows its one-line description */
+.srow-switch .muted { display: inline-block; margin-top: 2px; line-height: 1.4; }
 .srow-foot { padding: 10px 2px 0; }
 .adv-toggle { margin-top: 16px !important; max-width: 760px; }
 .advanced { margin-top: 8px; }
@@ -772,7 +799,7 @@ details.more > summary:hover { color: var(--accent); }
 @media (max-width: 700px) { .brain-pill { max-width: 46vw; } }
 /* 1.5.3: the brain label stays on one line and ends in "…" when there is no room; the full text is in its popover. */
 .brain-pill { min-width: 0; max-width: 100%; overflow: hidden; }
-#brainPillText { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#brainPillText { min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: left; line-height: 1.25; } /* 1.5.215: wraps instead of "…", so it's always readable */
 /* 1.5.3: Now running shows the graphics card and RAM, one meter each. */
 .now-gpu .mem-row { display: grid; gap: 2px; }
 .now-gpu .mem-row .mem-text { color: var(--text); }
@@ -876,6 +903,20 @@ details.more > summary:hover { color: var(--accent); }
 .bob-menu-now { margin: 0; padding: 6px 8px 8px; font-size: 13px; border-bottom: 1px solid var(--line); }
 .bob-menu-item { text-align: left; padding: 8px; min-height: 44px; background: none; border: 0; border-radius: var(--r); font-size: 13px; color: var(--text); cursor: pointer; }
 .bob-menu-item:hover, .bob-menu-item:focus-visible { background: var(--panel); outline: 2px solid var(--accent); outline-offset: -2px; }
+/* 👥 Users: Switch user and Sign out side by side in Bob's menu, and the Switch user page (users-switch.js) */
+.bob-menu-split { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.bob-menu-split > :only-child { grid-column: 1 / -1; }
+.user-dot { flex: none; width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; font-weight: 700; font-size: 13px; background: var(--panel); color: var(--accent); border: 1px solid var(--line); }
+.users-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.users-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin: 16px 0; padding: 0; list-style: none; }
+.user-card { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 12px; min-height: 44px; background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: var(--r); cursor: pointer; font: inherit; }
+.user-card .user-dot { width: 48px; height: 48px; font-size: 20px; }
+.user-card:hover, .user-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.user-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.user-card .muted { font-size: 12px; }
+.users-code { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.users-code input { min-height: 44px; }
+@media (forced-colors: active) { .user-card[aria-pressed="true"] { border: 2px solid Highlight; } }
 .cat { position: absolute; right: -6px; bottom: -6px; font-size: 15px; line-height: 1; pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); white-space: nowrap; }
 .cat.antic-nap { animation: cat-nap 2.4s ease-in-out infinite; }
 .cat.antic-swat { animation: cat-swat .6s ease-in-out 6; }
@@ -943,8 +984,8 @@ body.left-folded .bob-prop { top: -6px; right: -6px; font-size: 11px; }
 .say-bubble.on { pointer-events: auto; }
 .bubble-x { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); font-size: 12px; line-height: 20px; text-align: center; cursor: pointer; }
 .bubble-x:hover { background: var(--card); color: var(--text); }
-.say-bubble { position: relative; max-width: 100%; padding: 7px 24px 7px 11px; border-radius: var(--r, 8px); border: 1px solid var(--accent); background: var(--panel); color: var(--text); font-size: 12.5px; line-height: 1.4; box-shadow: 0 6px 20px rgba(0,0,0,.4); overflow-wrap: anywhere; opacity: 0; transform: translateX(-4px); transition: opacity .2s ease, transform .2s ease; }
-.say-bubble > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; overflow: hidden; max-height: 7em; }
+.say-bubble { position: relative; max-width: 100%; padding: 7px 24px 7px 11px; border-radius: var(--r, 8px); border: 1px solid var(--accent); background: color-mix(in srgb, var(--panel) 72%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); color: var(--text); font-size: 12.5px; line-height: 1.4; box-shadow: 0 6px 20px rgba(0,0,0,.4); overflow-wrap: anywhere; opacity: 0; transform: translateY(-4px) scale(.96); transition: opacity .7s ease, transform .7s ease; } /* 1.5.215: pops in and out over about 0.7 s */
+.say-bubble > span { display: block; } /* 1.5.215: the whole line, never cut off */
 .say-bubble.on { opacity: 1; transform: none; }
 .say-bubble[hidden] { display: none; }
 .say-bubble.cat-say { border-style: dashed; }
@@ -956,6 +997,18 @@ body.left-folded .bob-prop { top: -6px; right: -6px; font-size: 11px; }
 @media (prefers-reduced-motion: reduce) { .say-bubble { transition: none; transform: none; } }
 @media (forced-colors: active) { .say-bubble, .say-bubble::before { border-color: CanvasText; } }
 @media print { .bubbles { display: none; } }
+/* 1.5.216: the Tasks word bubble, under the Tasks tab (above it on a phone's bottom bar). Same see-through glass and
+   0.7 s fade as Bob's and the cat's bubbles; it fades out into the tab. Fixed, so it never moves the chat. */
+.task-pop { position: fixed; z-index: 9001; width: max-content; padding: 7px 11px; cursor: pointer; transform-origin: var(--tip, 24px) top; }
+.task-pop.up { transform-origin: var(--tip, 24px) bottom; transform: translateY(4px) scale(.96); }
+.task-pop.on { pointer-events: auto; opacity: 1; transform: none; }
+.task-pop.up.on { pointer-events: none; } /* a phone: taps go through to the message box and Send under it */
+.task-pop.into { opacity: 0; transform: translateY(-14px) scale(.2); }
+.task-pop.up.into { transform: translateY(14px) scale(.2); }
+.task-pop::before { left: calc(var(--tip, 24px) - 5px); top: -6px; border-bottom: 0; border-top: 1px solid var(--accent); }
+.task-pop.up::before { top: auto; bottom: -6px; border-top: 0; border-left: 0; border-bottom: 1px solid var(--accent); border-right: 1px solid var(--accent); }
+@media (prefers-reduced-motion: reduce) { .task-pop, .task-pop.into, .task-pop.up.into { transition: opacity .2s; transform: none; } }
+@media print { .task-pop { display: none; } }
 
 /* ---------- Side panel: things Bob made open here, beside the chat ---------- */
 .viewer { width: var(--viewer-w, 480px); flex: none; display: flex; flex-direction: column; min-width: 0; background: var(--panel); border-left: 1px solid var(--line); }
@@ -1186,7 +1239,7 @@ video.out-media { max-height: 240px; border-radius: calc(var(--r) * 0.75); }
 .song.big .song-wave { height: 72px; }
 .song.big .song-title { font-size: 16px; white-space: normal; }
 .vaudio .song { align-self: stretch; }
-/* Settings, Where Bob saves things */
+/* Settings, Save folder */
 .save-path { font-family: var(--mono); word-break: break-all; }
 .save-pick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .save-pick input { flex: 1; min-width: 220px; }
@@ -1201,6 +1254,19 @@ video.out-media { max-height: 240px; border-radius: calc(var(--r) * 0.75); }
 .together tr.tap td { height: 32px; }
 .together .together-head input { flex: none; margin-top: 1px; }
 .together .together-step:has(input.pick:not(:checked)) > :not(.together-head) { opacity: 0.5; }
+/* Nov 13: the email sort plan (email-sort-card.js); one column on a phone */
+.sort-card .sort-batches { display: grid; gap: 8px; }
+.sort-card .sort-batch { border: 1px solid var(--line); border-radius: calc(var(--r) * 0.75); padding: 8px; min-width: 0; }
+.sort-card .sort-bad { border-color: var(--bad, #c0392b); }
+.sort-card .sort-what { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+.sort-card .sort-what label { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.sort-card select, .sort-card input { max-width: 100%; min-height: 32px; font: inherit; }
+.sort-card .sort-items ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+.sort-card .sort-item { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; border-top: 1px solid var(--line); padding-top: 6px; }
+.sort-card .sort-item-text { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.sort-card .sort-danger { color: var(--bad, #c0392b); font-size: 0.92em; }
+.sort-card .sort-first ol { margin: 4px 0 8px; }
+.sort-card summary { cursor: pointer; min-height: 32px; display: list-item; }
 /* 1.5.78: the plan card before big jobs (plan-card.js) */
 .msg.plan-card { white-space: normal; }
 .plan-card .plan-step { border: 1px solid var(--line); border-radius: calc(var(--r) * 0.75); padding: 8px; min-height: 36px; }
@@ -1270,7 +1336,7 @@ video.out-media { max-height: 240px; border-radius: calc(var(--r) * 0.75); }
 .mini-switch[aria-checked="true"] { color: var(--text); border-color: var(--good); }
 .mini-switch[aria-checked="true"] .st { background: var(--good); color: var(--on-accent); }
 .get-more { margin: 8px 0 0; }
-.get-more-btn { white-space: nowrap; }
+.get-more-btn { max-width: 100%; white-space: normal; text-align: left; height: auto; } /* the long catalogue button wraps on a phone instead of widening the panel */
 .kit:not(.shop) { display: flex; align-items: center; padding-right: 8px; }
 .kit:not(.shop) .kit-btn { flex: 1; }
 /* 1.5.56 Tips: explanations wait behind a small ⓘ and show in one bubble on hover, on keyboard focus, or on tap. */
@@ -1920,7 +1986,7 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .mind-cube input[type=color] { width: 32px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; vertical-align: middle; }
 .mind-cube .row { flex-wrap: wrap; align-items: center; gap: 2px 12px; }
 .mind-cube .link { background: none; border: none; padding: 4px 0; min-height: 32px; color: var(--muted); text-decoration: underline; cursor: pointer; font: inherit; }
-/* Bob-Net: What my Bobs do together (More Bobs / Bigger Bobs). */
+/* Bob-Net: Sharing mode (More Bobs / Bigger Bobs). */
 .share-mode { border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; margin: 8px 0; }
 .share-bigger { margin-left: 26px; }
 .engine-held { border-left: 3px solid var(--accent); padding: 4px 8px; margin: 6px 0; } /* 1.5.185 an engine update kept aside with files missing */
@@ -1930,7 +1996,7 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .set-top input[type="search"] { flex: 1 1 220px; max-width: 420px; min-height: 36px; }
 .set-view button { min-height: 36px; padding: 4px 16px; }
 .set-view button[aria-checked="true"] { border-color: var(--accent); box-shadow: var(--shadow); font-weight: 700; }
-.set-body { display: flex; gap: 16px; align-items: flex-start; }
+.set-body { display: flex; gap: 16px; align-items: flex-start; min-width: 0; }
 .set-main { flex: 1; min-width: 0; max-width: 900px; }
 .set-page .everyday { max-width: none; }
 .set-page .advanced { margin-top: 0; }
@@ -1955,7 +2021,7 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .set-back h3 { margin: 0; font-size: 18px; }
 .settings.searching .set-nav, .settings.searching .set-cards, .settings.searching .set-back { display: none !important; }
 @media (max-width: 760px) {
-  .set-body { flex-direction: column; }
+  .set-body { flex-direction: column; align-items: stretch; } /* 1.5.213: the page fills the width, so the Simple cards wrap */
   .set-nav { position: static; width: auto; max-height: none; display: flex; flex-wrap: wrap; gap: 4px; }
   .set-nav h4 { flex-basis: 100%; margin: 8px 0 0; }
   .set-nav button { border: 1px solid var(--line); }
@@ -1969,7 +2035,7 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .settings-window .cellar[data-page="Settings"] .cellar-tabs, .settings-window .cellar[data-page="Style"] .cellar-tabs .tabs-row:first-child { display: none; }
 
 /* 1.5.205 the Brains page: each brain, its jobs and where it sits */
-.brains-page { display: grid; gap: 12px; }
+.brains-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; } /* minmax(0, ...): a wide child wraps instead of pushing the panel off a phone screen */
 .brains-panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; }
 .brains-panel h3 { margin: 0 0 8px; }
 .brains-panel h4 { margin: 12px 0 6px; font-size: 13px; color: var(--muted); }
@@ -1977,11 +2043,14 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .brain-row { display: grid; grid-template-columns: minmax(150px, 1.1fr) minmax(160px, 1.6fr) minmax(180px, 1.4fr); gap: 10px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; }
 .brain-jobs { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
 .job-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; border: 1px solid var(--accent); border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
+.job-chip-off { border-style: dashed; border-color: var(--muted); opacity: 0.75; } /* One brain on: greyed, never hidden */
+.one-brain-note { margin: 8px 0 0; padding: 6px 10px; border: 1px dashed var(--accent); border-radius: 8px; overflow-wrap: anywhere; }
 .chip-x { background: none; border: 0; color: var(--muted); padding: 0; margin: 0 -4px 0 0; min-width: 24px; min-height: 24px; line-height: 1; cursor: pointer; }
 .chip-x:hover, .chip-x:focus-visible { color: var(--text); }
 .job-add { font-size: 13px; max-width: 11em; }
-.place-bar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); font-size: 12px; font-weight: 600; }
-.place-bar span { display: grid; place-items: center; white-space: nowrap; overflow: hidden; color: var(--on-accent); padding: 0 4px; }
+/* No label is ever cut off: a part is never narrower than its words, and the bar wraps to a second line if it must. */
+.place-bar { display: flex; flex-wrap: wrap; min-height: 22px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); font-size: 12px; font-weight: 600; }
+.place-bar span { display: grid; place-items: center; white-space: nowrap; color: var(--on-accent); padding: 2px 6px; flex-shrink: 0 !important; flex-basis: auto !important; min-width: max-content; }
 .place-bar .pb-card { background: var(--good); }
 .place-bar .pb-mem { background: var(--warn); }
 .place-bar .pb-drive { background: color-mix(in srgb, var(--you) 55%, var(--text)); }
@@ -2030,7 +2099,7 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .pick-row.locked label { cursor: default; opacity: .7; }
 .pick-row .pick-why { flex: 1 1 12em; overflow-wrap: anywhere; }
 .cat-removed { margin-top: 14px; }
-/* "Show documents in the side panel" (doc-view.js): words and tables, sheets, slides, a PDF's pages. */
+/* "Documents in the side panel" (doc-view.js): words and tables, sheets, slides, a PDF's pages. */
 .vdocstage { align-items: stretch; }
 .vdoc { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .vdoc-text { line-height: 1.55; overflow-wrap: anywhere; }
@@ -2113,7 +2182,7 @@ a.file-line { text-decoration: underline dotted; }
    with). The children are zoomed, not the scrolling boxes, so the page still fits the window. */
 :root { --text-zoom: 1; }
 .log > *, #input, #cellar-body > *, #help-body > * { zoom: var(--text-zoom); }
-/* Easier-to-read font (off to start with): plain letter shapes, more room between letters, words and lines.
+/* Readable font (off to start with): plain letter shapes, more room between letters, words and lines.
    Code keeps its own font. Wins over a theme's font on purpose. */
 html.readable-font body, html.readable-font input, html.readable-font textarea, html.readable-font button, html.readable-font select {
   font-family: Verdana, "Atkinson Hyperlegible", "DejaVu Sans", Tahoma, "Segoe UI", sans-serif !important; letter-spacing: .02em; word-spacing: .08em;
@@ -2139,7 +2208,7 @@ html.readable-font code, html.readable-font pre, html.readable-font kbd { font-f
 .people-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
 .everyday-box .spend-box, .everyday-box .people-box { margin: 0 0 10px 0; }
 .approval.today-card, .approval.tour, .approval.focus-done { background: var(--card); border-color: var(--line); }
-/* "Show the page and line" (src/doc-more.js): the place link after a file, and the spot it opens at in the side panel */
+/* "Cite page and line" (src/doc-more.js): the place link after a file, and the spot it opens at in the side panel */
 .file-link.file-place { white-space: nowrap; }
 .vdoc .flash, .vslide.flash { outline: 2px solid var(--accent); outline-offset: 2px; }
 .vcode mark.vat { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; }
@@ -2167,6 +2236,8 @@ html.readable-font code, html.readable-font pre, html.readable-font kbd { font-f
 .still .mind-cube.porthole .port::before { animation: none; }
 .mind-cube.porthole.pulse .port canvas:not(.fog) { animation: mind-cube-pulse 1.4s ease-in-out infinite; }
 .mind-cube.porthole.pulse canvas.fog { animation: none; }
+/* Nov 13 (card-guard.js): another program holds the graphics card: the porthole dims and greys, so it shows at a glance */
+.card-busy .mind-cube.porthole .port { opacity: .55; filter: grayscale(.7); transition: opacity .6s ease, filter .6s ease; }
 
 /* 1.5.209 Bob's picture as the fNRI cube (Style, Bob's look): the same size and place as the pixel Bob, in its own small porthole, theme colours only */
 .mind-cube.bob-cube { margin: 0; gap: 0; }
@@ -2367,3 +2438,169 @@ html.settings-window body.look-lamplight .cellar.page[open] { height: 100dvh; ma
   body.look-lamplight .ttabs { flex-wrap: nowrap; overflow-x: auto; }
   body.look-lamplight .ttabs [data-f] { flex: none; white-space: nowrap; }
 }
+
+/* Nov 13 Coding agents (coding-agents.js): the small badge on the folded title, and a row that needs you */
+#nowAgents .now-sec { flex-wrap: wrap; row-gap: 2px; } /* a narrow panel or phone: the badge drops below, never off the edge */
+.agents-badge { font-size: .8em; padding: 0 .45em; border-radius: 1em; border: 1px solid var(--line); white-space: nowrap; }
+.agents-badge.needs { border-color: var(--accent); font-weight: 600; }
+.agents-set { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.agents-set > li { padding: 8px 0 8px 12px; border-left: 2px solid var(--line); }
+.agents-set > li > .row, .agents-set > li > button { margin-top: 4px; }
+/* one agent: a light, its name and state, one line of detail, small text buttons; every word shows, never cut off */
+.agent-row .ttext { white-space: normal; overflow: visible; overflow-wrap: anywhere; display: flex; flex-direction: column; gap: 2px; }
+.agent-row .agent-top { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.agent-row .agent-state { color: var(--muted); font-size: .92em; }
+.agent-row[data-state="needs-you"] .agent-state { color: var(--accent); }
+.agent-row .agent-meta { color: var(--muted); font-size: .92em; }
+.agent-row .agent-needs { font-weight: 600; }
+.agent-row .agent-acts { display: flex; gap: 12px; flex-wrap: wrap; }
+.agent-row .agent-acts:empty { display: none; }
+.agent-row .agent-btn { min-height: 28px; padding: 0; border: 0; background: none; color: var(--muted); font: inherit; font-size: .92em; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, var(--muted) 50%, transparent); cursor: pointer; }
+.agent-row .agent-btn:hover, .agent-row .agent-btn:focus-visible, .agent-row .agent-btn[aria-expanded="true"] { color: var(--accent); }
+.agent-row details summary { color: var(--muted); font-size: .92em; cursor: pointer; }
+.agent-row pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16em; overflow: auto; font-size: .85em; margin: 4px 0; }
+.agent-row :is(.agent-ask, .agent-pass) { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 2px; }
+.agent-row :is(.agent-ask, .agent-pass) input[type="text"] { flex: 1 1 9em; min-width: 0; }
+.agent-row :is(input[type="text"], select) { font: inherit; padding: 4px 8px; border-radius: calc(var(--r) * 0.5); border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+.agent-row :is(input[type="text"], select):focus-visible { outline: none; border-color: var(--accent); }
+/* Nov 13: a lent card whose brain has Hands, Autonomy or Screen use on over there */
+/* Nov 13: a lent card's brain has Hands, Autonomy or Screen use on: a small badge on Bob's picture, never a strip over the chat. */
+.lend-powers-badge { position: absolute; left: -6px; bottom: -6px; z-index: 2; width: 22px; height: 22px; min-height: 0; padding: 0; border: 1px solid var(--accent); border-radius: 50%; background: color-mix(in srgb, var(--panel) 80%, transparent); font-size: 12px; line-height: 20px; text-align: center; cursor: pointer; }
+.lend-powers-note { position: absolute; left: 0; top: calc(100% + 8px); z-index: 9001; width: max-content; max-width: min(20em, 80vw); padding: 6px 10px; border: 1px solid var(--accent); border-radius: var(--r, 8px); background: color-mix(in srgb, var(--panel) 72%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); color: var(--text); font-size: 12.5px; line-height: 1.4; overflow-wrap: anywhere; white-space: normal; }
+.net-cards { font-weight: 600; }
+/* 1.5.216: "Open Bob's thinking" shows only the thinking: the other sections, the panels row and the section's own
+   title line (grip, Put in, fold) step aside until Now running is opened the usual way. */
+body.now-mind-only #panelRow,
+body.now-mind-only #nowSections > section:not([data-sec="mind"]),
+body.now-mind-only #nowMind > .now-sec { display: none; }
+
+/* Nov 13 Bob-Net icons (net-overlay.js), off unless turned on. A row at the top of the chat (phone and the
+   other looks); Lamplight on a computer turns it into a column under Bob's cube, over the empty space left of the chat.
+   A little see-through and dimmer than Bob's own cube; pointing at one makes it ebb and flow in place. */
+.net-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 6px 16px 8px; position: relative; z-index: 5; }
+.net-row[hidden] { display: none; }
+.net-row .nb { position: relative; width: 38px; height: 38px; flex: none; padding: 0; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--text) 14%, transparent); background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--text) 8%, transparent), rgb(5 7 10 / 55%) 70%); box-shadow: inset 0 0 8px rgb(0 0 0); opacity: .6; cursor: pointer; transition: opacity .25s ease, box-shadow .25s ease; }
+.net-row .nb:is(:hover, :focus-visible, .on), .net-row .nb:has(.count:not([hidden])) { opacity: .9; }
+.net-row .nb.on { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
+.net-row .nb-port { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; display: block; }
+.net-row .nb-port canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.net-row .nb-fog { opacity: .8; }
+.net-row .nb .dot { position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--bg); background: var(--good, rgb(91 208 138)); }
+.net-row .nb[data-mood="thinking"] .dot, .net-row .nb[data-mood="replying"] .dot, .net-row .nb[data-mood="loading"] .dot, .net-row .nb[data-mood="working"] .dot, .net-row .nb[data-mood="waiting"] .dot { background: var(--accent); }
+.net-row .nb[data-mood="none"] .dot, .net-row .nb[data-mood="idle"] .dot, .net-row .nb[data-mood="stopped"] .dot { background: var(--muted); }
+.net-row .nb[data-mood="needs-you"] .dot, .net-row .nb[data-mood="failed"] .dot { background: var(--bad, rgb(224 108 90)); }
+.net-row .nb .count { position: absolute; top: -5px; right: -7px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--accent); color: var(--bg); font: 600 10.5px/17px var(--font, system-ui); text-align: center; }
+.net-row .sep { width: 1px; height: 22px; background: var(--line); flex: none; }
+@keyframes net-ebb { 0%, 100% { transform: scale(1); filter: brightness(1); } 50% { transform: scale(1.12); filter: brightness(1.18); } }
+.net-row .nb:is(:hover, :focus-visible) .nb-port, body.look-lamplight .bob-cube.porthole:hover .port { animation: net-ebb 2.4s ease-in-out infinite; }
+.net-glow { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+.net-tip { position: fixed; z-index: 60; padding: 5px 10px; border-radius: 8px; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); color: var(--text); font-size: 12.5px; max-width: min(280px, calc(100vw - 32px)); overflow-wrap: anywhere; box-shadow: 0 6px 20px rgba(0,0,0,.4); pointer-events: none; }
+.net-tip small { display: block; color: var(--muted); font-size: 11px; }
+.net-tip[hidden] { display: none; }
+.say-bubble.net-bub { position: fixed; z-index: 61; max-width: min(280px, calc(100vw - 32px)); padding: 8px 12px; border-radius: 14px; cursor: pointer; border-color: color-mix(in srgb, var(--accent) 28%, transparent); background: color-mix(in srgb, var(--panel) 55%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 8px 28px -10px rgba(0,0,0,.5); touch-action: pan-y; }
+.say-bubble.net-bub::before { background: color-mix(in srgb, var(--panel) 55%, transparent); border-color: color-mix(in srgb, var(--accent) 28%, transparent); }
+.say-bubble.net-bub.below::before { left: 16px; top: -6px; border-bottom: 0; border-top: 1px solid color-mix(in srgb, var(--accent) 28%, transparent); }
+.say-bubble.net-bub b { display: block; font-size: 12px; font-weight: 600; color: color-mix(in srgb, var(--accent) 85%, var(--text)); margin-bottom: 2px; }
+.say-bubble.net-bub .hint { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
+.say-bubble.net-bub:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.guest-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 16px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.guest-bar[hidden] { display: none; }
+.guest-bar .g-who { flex: 1; min-width: 12em; }
+.guest-bar .g-who strong { display: block; font-size: 15px; }
+.guest-bar .g-who span { color: var(--muted); font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; overflow-wrap: anywhere; }
+.guest-bar .g-who p { margin: 4px 0 0; font-size: 12.5px; }
+.guest-bar .g-back { flex: none; border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); color: var(--accent); background: transparent; border-radius: 10px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
+/* Guest mode: web search is the only switch; Hands and the rest stay with your own Bob. */
+body.net-guest .effort > :not(#webBtn):not(.net-help), body.net-guest #handsQuick, body.net-guest .chips { display: none !important; }
+.net-help { display: none; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; padding: 4px 8px; }
+body.net-guest .net-help { display: inline-flex; }
+.net-help i { width: 7px; height: 7px; border-radius: 50%; background: var(--good, rgb(91 208 138)); }
+body.net-guest .composer { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+@media (min-width: 641px) {
+  body.look-lamplight .net-row { position: fixed; left: 8px; top: 78px; flex-direction: column; flex-wrap: nowrap; gap: 5px; padding: 0; }
+  body.look-lamplight.has-net-row .log { padding-left: max(56px, calc((100% - 760px) / 2)); }
+  body.look-lamplight .net-row .nb { width: 30px; height: 30px; }
+  body.look-lamplight .net-row .nb .dot { width: 9px; height: 9px; right: -2px; bottom: -2px; }
+  body.look-lamplight .net-row .nb .count { top: -5px; right: -7px; min-width: 15px; height: 15px; font-size: 10px; line-height: 15px; }
+  body.look-lamplight .net-row .sep { width: 18px; height: 1px; margin: 1px 6px; }
+  body.look-lamplight .guest-bar { margin: 0 max(var(--s4, 16px), calc((100% - 760px) / 2)); }
+}
+@media (prefers-reduced-motion: reduce) { .net-row .nb:is(:hover, :focus-visible) .nb-port, body.look-lamplight .bob-cube.porthole:hover .port { animation: none; } }
+body.still .net-row .nb:is(:hover, :focus-visible) .nb-port, body.still.look-lamplight .bob-cube.porthole:hover .port { animation: none; }
+/* Fade old messages, Clear chat and 🫥 Amnesia mode (fade-chat.js). Amnesia is purple in every look, so it's never
+   mistaken for the accent colour; forced colours and Still keep it plain. */
+:root { --amnesia: rgb(155 127 212); --amnesia-text: rgb(210 194 245); --amnesia-ink: rgb(22 15 36); }
+.fade-line { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 10px; margin: 6px auto 18px; padding: 8px 14px; max-width: 760px; color: var(--muted); font-size: 13px; border-bottom: 1px dashed var(--line); }
+.fade-line .hg { color: var(--accent); }
+.fade-line button { min-height: 32px; padding: 4px 12px; font: inherit; font-size: 12.5px; color: var(--accent); background: transparent; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 999px; cursor: pointer; }
+.fade-line button.plain { color: var(--text); border-color: var(--line); }
+.msg.fading-out { opacity: .15; transition: opacity 1.4s ease; }
+body.still .msg.fading-out { transition: none; }
+/* Nov 14: the Amnesia line is very subtle. One quiet line, no fill; the box you type in gets a thin purple edge, no glow. */
+.amnesia-bar { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px 10px; margin: 2px auto 12px; max-width: 760px; padding: 2px 10px; color: var(--muted); font-size: 12.5px; }
+.amnesia-bar .amn-ic { font-size: 14px; opacity: .8; }
+.amnesia-bar .amn-t { line-height: 1.4; }
+.amnesia-bar button { min-height: 28px; padding: 2px 10px; font: inherit; font-size: 12px; color: var(--amnesia-text); background: transparent; border: 1px solid color-mix(in srgb, var(--amnesia) 45%, transparent); border-radius: 999px; cursor: pointer; }
+.brain-switch.amnesia-btn[aria-checked="true"] { color: var(--amnesia-text); border-color: color-mix(in srgb, var(--amnesia) 60%, transparent); }
+.brain-switch.amnesia-btn[aria-checked="true"] .st { background: color-mix(in srgb, var(--amnesia) 70%, transparent); color: var(--amnesia-ink); }
+body.amnesia-on .composer { border-color: color-mix(in srgb, var(--amnesia) 55%, var(--line)) !important; }
+@media (max-width: 640px) { #effort { flex-wrap: wrap; row-gap: 6px; } }
+dialog.fade-ask { width: min(440px, calc(100% - 32px)); padding: 20px 22px; color: var(--text); background: var(--card, var(--panel)); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 20px 60px -10px rgba(0, 0, 0, .8); }
+dialog.fade-ask::backdrop { background: rgba(0, 0, 0, .55); }
+dialog.fade-ask h3 { margin: 0 0 8px; font-size: 18px; }
+dialog.fade-ask p { margin: 0 0 10px; color: var(--muted); font-size: 14px; line-height: 1.45; }
+dialog.fade-ask ul { margin: 0 0 6px 18px; padding: 0; font-size: 14px; line-height: 1.6; }
+dialog.fade-ask .fade-tick { display: flex; gap: 10px; align-items: flex-start; margin: 12px 0 18px; font-size: 14px; line-height: 1.4; cursor: pointer; }
+dialog.fade-ask .fade-tick input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--accent); }
+dialog.fade-ask .fade-tick small { display: block; color: var(--muted); font-size: 12.5px; }
+dialog.fade-ask .fade-row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+dialog.fade-ask .fade-row button { min-height: 40px; padding: 8px 16px; font: inherit; font-size: 14px; color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+dialog.fade-ask .fade-row button.danger { color: var(--on-accent); background: var(--bad); border-color: var(--bad); }
+.fade-set .pick-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.fade-set .chip { min-height: 32px; padding: 4px 11px; font: inherit; font-size: 12.5px; color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
+.fade-set .chip[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+.fade-set .radio { display: flex; gap: 10px; align-items: flex-start; margin: 6px 0; line-height: 1.4; cursor: pointer; }
+.fade-set .radio input { margin-top: 4px; accent-color: var(--accent); }
+.fade-set .radio small { display: block; color: var(--muted); }
+.fade-set input[type="number"] { width: 80px; }
+@media (forced-colors: active) { .amnesia-bar, .brain-switch.amnesia-btn[aria-checked="true"], body.amnesia-on .composer { border: 2px solid Highlight !important; } }
+.fade-set .srow { display: block; }
+.fade-set .srow > strong, .fade-set .srow > .pick > strong { display: block; margin-bottom: 6px; }
+.fade-set { padding-bottom: 6px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
+.dcm-num { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 4px 12px 4px 0; } /* 1.5.224 Keep order numbers wrap on a phone */
+.dcm-num input { width: 6em; }
+/* 14 Nov Lab Steps tab: one card per step, wrapping on a phone */
+.lab-step-list { list-style: none; padding: 0; margin: 0; display: grid; gap: .5rem; }
+.lab-step-card { padding: .5rem .6rem; border: 1px solid var(--line); border-radius: 8px; overflow-wrap: anywhere; }
+.lab-step-name { font-weight: 600; }
+.lab-pipe-chart { width: 100%; max-width: 420px; height: auto; display: block; }
+.lab-pipe-steps { margin: .3rem 0; padding-left: 1.4rem; }
+.lab-pipe-steps [aria-current] { font-weight: 600; }
+.lab-differs th, .lab-differs td { font-weight: 600; }
+
+/* 1.5.228 Settings, Agents: each company and chat app is named with its own little cube, in its chat head's colour
+   (public/net-overlay.js AGENT_LOOKS and ROOM_LOOKS), never the company's logo. */
+.set-nav [data-topic="adv-claude"], .set-nav [data-topic="adv-openai"], .set-nav [data-topic="adv-gemini"], .set-nav [data-topic="adv-qwen"], .set-nav [data-topic="adv-opencode"], .set-nav [data-topic="adv-discord"], .set-nav [data-topic="adv-telegram"],
+#sub-adv-claude > summary h3, #sub-adv-openai > summary h3, #sub-adv-gemini > summary h3, #sub-adv-qwen > summary h3, #sub-adv-opencode > summary h3, #sub-adv-discord > summary h3, #sub-adv-telegram > summary h3 { --cube: hsl(0 0% 62%); }
+.set-nav [data-topic="adv-claude"], #sub-adv-claude > summary h3 { --cube: hsl(15 63% 58%); }
+.set-nav [data-topic="adv-gemini"], #sub-adv-gemini > summary h3 { --cube: hsl(222 85% 60%); }
+.set-nav [data-topic="adv-qwen"], #sub-adv-qwen > summary h3 { --cube: hsl(258 75% 62%); }
+.set-nav [data-topic="adv-discord"], #sub-adv-discord > summary h3 { --cube: hsl(235 55% 62%); }
+.set-nav [data-topic="adv-telegram"], #sub-adv-telegram > summary h3 { --cube: hsl(200 65% 55%); }
+:is(.set-nav [data-topic="adv-claude"], .set-nav [data-topic="adv-openai"], .set-nav [data-topic="adv-gemini"], .set-nav [data-topic="adv-qwen"], .set-nav [data-topic="adv-opencode"], .set-nav [data-topic="adv-discord"], .set-nav [data-topic="adv-telegram"], #sub-adv-claude > summary h3, #sub-adv-openai > summary h3, #sub-adv-gemini > summary h3, #sub-adv-qwen > summary h3, #sub-adv-opencode > summary h3, #sub-adv-discord > summary h3, #sub-adv-telegram > summary h3)::before {
+  content: ""; display: inline-block; width: 1em; height: 1em; margin-right: .4em; vertical-align: -.12em; background: var(--cube);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 21 7v10l-9 5-9-5V7z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 21 7v10l-9 5-9-5V7z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+/* 1.5.228 The Discord chat: what you say in a channel through Bob, and the box to say it. */
+.room-chat .room-me { border-left: 3px solid var(--accent); padding-left: 6px; }
+.room-say { margin-top: 8px; }
+.room-say .row { align-items: flex-end; gap: 6px; }
+.room-say textarea { flex: 1; min-width: 0; resize: vertical; }
+.room-chat .room-heard { opacity: .85; }
+
+/* Nov 14: the Welcome's Users page people list, Lamplight style (underline-only boxes, no fill) */
+.wz-people input[type="text"], .wz-people input:not([type]) { background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; color: var(--text); padding: 4px 2px; font: inherit; }
+.wz-people input:focus-visible { outline: none; border-bottom-color: var(--accent); }
+.wz-people .people-list { list-style: none; padding: 0; }
+.wz-people .people-list li { display: flex; align-items: center; gap: 8px; padding: 4px 0; }

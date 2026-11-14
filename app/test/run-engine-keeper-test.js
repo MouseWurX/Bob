@@ -1,4 +1,4 @@
-// 1.5.184 Keep engines up to date (src/engine-keeper.js): on unless switched off, checks at start and about daily,
+// 1.5.184 Auto-update engines (src/engine-keeper.js): on unless switched off, checks at start and about daily,
 // updates Brain Engine (new or rebuilt build) and Bob's own llama.cpp (only up to the tested build), only while no
 // brain is loaded on that engine and nothing is busy, and says so in chat. Fake folders, a fake GitHub and fake
 // downloads only; nothing reads the real computer.
@@ -12,6 +12,7 @@ import { engineFor, ENGINES, engineWhole, NOT_WHOLE, pickAsset } from '../src/en
 import { collect, writeZip, unzip } from '../src/zip.js';
 import { mergeSettings } from '../src/config.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let failures = 0, passed = 0;
 const check = (ok, name) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`); if (ok) passed++; else failures++; };
@@ -24,7 +25,7 @@ const beOk = !engineFor(ENGINES.find((e) => e.id === 'brainengine')).unavailable
 
 // The switch: on unless switched off, and it survives a save.
 {
-  check(keeperOn({}) && keeperOn({ engineUpdates: {} }) && !keeperOn({ engineUpdates: { auto: false } }), 'Keep engines up to date is on unless switched off');
+  check(keeperOn({}) && keeperOn({ engineUpdates: {} }) && !keeperOn({ engineUpdates: { auto: false } }), 'Auto-update engines is on unless switched off');
   check(mergeSettings({}, { engineUpdates: { auto: false } }).engineUpdates?.auto === false && mergeSettings({}, { engineUpdates: { auto: 'x' } }).engineUpdates?.auto === true, 'the setting saves, and anything but false counts as on');
 }
 
@@ -124,13 +125,13 @@ if (beOk) {
 // The window, Help, glossary and FAQ.
 {
   const read = (f) => fs.readFileSync(fileURLToPath(new URL('../' + f, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
-  const cellar = read('public/cellar.js');
-  check(/sswitch\('engineAuto', settings\.engineUpdates\?\.auto !== false, 'Keep engines up to date'/.test(cellar), 'Settings, Engines has the switch, on unless switched off');
+  const cellar = publicText('cellar.js');
+  check(/sswitch\('engineAuto', settings\.engineUpdates\?\.auto !== false, 'Auto-update engines'/.test(cellar), 'Settings, Engines has the switch, on unless switched off');
   check(/engineUpdates: engineKeeper\.view\(\)/.test(read('src/server.js')) && /new EngineKeeper\(/.test(read('src/server.js')), 'the server starts the keeper and shows its state');
   const help = (id) => HELP.find((h) => h.id === id)?.html || '';
-  check(/Keep engines up to date/.test(help('settings-engines')) && /no brain is loaded/.test(help('settings-engines')), 'Help: Settings, Engines explains the switch');
+  check(/Auto-update engines/.test(help('settings-engines')) && /no brain is loaded/.test(help('settings-engines')), 'Help: Settings, Engines explains the switch');
   check(Boolean(help('faq-engine-auto')) && /Android/.test(help('faq-engine-auto')) && /Mac/.test(help('faq-engine-auto')), 'FAQ: Does Bob update his engines by himself? (and where it doesn\'t apply)');
-  check(/<dt>Keep engines up to date<\/dt>/.test(help('glossary')), 'the glossary has it');
+  check(/<dt>Auto-update engines<\/dt>/.test(help('glossary')), 'the glossary has it');
   check(/Engine updates/.test(help('privacy')) && /Engine updates/.test(read('docs/legal/PRIVACY.md')), 'privacy pages say what goes out');
 }
 
@@ -186,7 +187,7 @@ if (beOk) {
   r.keeper.start();
   check(r.timers[1] === 5000, 'Brain Engine is looked at right after start, before the first brain loads');
   await r.keeper.withBob();
-  check(r.queued[0] === 'brainengine' && /the build that goes with this Bob/.test(r.said.at(-1) || ''), 'Bob is new, the engine is old: the matching build comes along, even with Keep engines up to date off', r.said.join(' | '));
+  check(r.queued[0] === 'brainengine' && /the build that goes with this Bob/.test(r.said.at(-1) || ''), 'Bob is new, the engine is old: the matching build comes along, even with Auto-update engines off', r.said.join(' | '));
   const mk = path.join(A, 'brain-engine', 'bob-brainengine.json');
   fs.writeFileSync(mk, JSON.stringify({ version: 'brain-engine-b100', print: 'sha256:x' }));
   const r2 = rig({ cfg: { agentDir: A, engine: 'llamacpp' }, pin, latest: 'brain-engine-b100', print: 'sha256:x' });

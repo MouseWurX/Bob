@@ -97,7 +97,7 @@ class LendServer(private val app: BobApp) {
         return code
     }
 
-    // Pairing passcodes: one per Bob paired by "Pair with my other Bobs", kept as fingerprints like the main one
+    // Pairing passcodes: one per Bob paired by "Pair Bobs", kept as fingerprints like the main one
     // (up to 8; the oldest goes first). "Make a new passcode" drops them all.
     private fun pairs(): JSONArray = runCatching { JSONArray(prefs.getString("pairs", "[]")) }.getOrDefault(JSONArray())
     @Synchronized fun pairPasscode(forName: String): String {

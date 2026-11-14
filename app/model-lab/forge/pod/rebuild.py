@@ -7,8 +7,8 @@ Leave out --keep-file for a Bob that was never cut (35Bob "Bobert"): his adapter
 """
 import argparse, os, shutil, subprocess, sys, time
 import torch
-from transformers import AutoTokenizer, Qwen3_5MoeForConditionalGeneration
-import lora as L
+from transformers import AutoTokenizer
+import lora as L, family as FAM
 
 def main():
     ap = argparse.ArgumentParser()
@@ -26,7 +26,7 @@ def main():
         print(f"no keep list: {a.name} is the stock teacher plus his adapter (no cut)")
     st = torch.load(a.adapter, map_location="cpu")
     t0 = time.time()
-    model = Qwen3_5MoeForConditionalGeneration.from_pretrained(src, dtype=torch.bfloat16, device_map=a.device)
+    model = FAM.load(src, a.device)
     model.config.use_cache = False
     print(f"{'cut' if cut else 'stock'} model loaded in {time.time() - t0:.0f}s")
     L.attach(model, r=st.get("r", 32), experts=st.get("experts", "lora"), r_experts=st.get("r_experts", 8))
@@ -34,7 +34,7 @@ def main():
     L.merge_all(model)
     tok = AutoTokenizer.from_pretrained(src)
     shutil.rmtree(a.dst, ignore_errors=True); os.makedirs(a.dst)
-    model.save_pretrained(a.dst, safe_serialization=True, max_shard_size="4GB"); tok.save_pretrained(a.dst)
+    model.save_pretrained(a.dst, safe_serialization=True, max_shard_size="4GB"); tok.save_pretrained(a.dst); FAM.clean_saved(a.dst)
     for fn in ("bob-keep.json", "preprocessor_config.json", "chat_template.jinja", "generation_config.json"):
         s = os.path.join(src, fn)
         if os.path.exists(s) and not os.path.exists(os.path.join(a.dst, fn)): shutil.copy(s, os.path.join(a.dst, fn))

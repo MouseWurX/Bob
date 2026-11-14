@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import { parseHfRef } from './lab-hf.js'; // 1.5.163
 import path from 'node:path';
+import { appDir, unpackedDir } from './config.js'; // 1.5.219 where the Forge lives on a real install
 import { rentedEstimate } from './lab-estimate.js';
 import { pathByName, PERSONALITY, TEACH, clashes } from '../public/lab-thinking-paths.js';
 
@@ -50,11 +51,20 @@ export const LEFT_OUT = [
 const SECRET = /(rpa_[A-Za-z0-9]{8,}|hf_[A-Za-z0-9]{8,}|sk-[A-Za-z0-9_-]{8,}|"?token"?\s*[:=]\s*"?[A-Za-z0-9_.-]{12,}"?|[A-Fa-f0-9]{40,}|[A-Za-z0-9_-]{32,})/g;
 export const scrub = (text) => String(text || '').replace(SECRET, '[hidden]');
 
-// Where the Forge lives: the model-lab folder next to Bob, or the one set in the Lab.
-export function forgeDir(cfg) {
+// Where the Forge lives: "forgeDir" in config.json if set, else the first that holds forge/forge.mjs of: model-lab or
+// bob-model-lab in Bob's home (a working copy kept there), then model-lab beside Bob's own code and its unpacked copy.
+// 1.5.219: Bob's home is often not the source folder, so a copy run from source looks beside its code too. Installs
+// don't carry the Forge (it keeps a token and rental notes beside itself, which an update would wipe). codeDirs is for tests.
+export function forgeCandidates(cfg, codeDirs = [appDir, unpackedDir]) {
   const set = String(cfg?.forgeDir || '').trim();
-  const dir = set || path.join(cfg?.agentDir || '.', 'model-lab');
-  return fs.existsSync(path.join(dir, 'forge', 'forge.mjs')) ? dir : '';
+  if (set) return [set];
+  const home = cfg?.agentDir || '.';
+  // Bob's home first: a Forge there keeps its Hugging Face token and its rented pods' notes, so it must stay the one used.
+  // Then the model-lab beside Bob's own code, so a copy run from source finds it when Bob's home is somewhere else.
+  return [...new Set([path.join(home, 'model-lab'), path.join(home, 'bob-model-lab'), ...codeDirs.map((d) => path.join(d, 'model-lab'))])];
+}
+export function forgeDir(cfg, codeDirs) {
+  return forgeCandidates(cfg, codeDirs).find((d) => fs.existsSync(path.join(d, 'forge', 'forge.mjs'))) || '';
 }
 
 // The Forge's past runs, newest first: the timeline log, its last lines (scrubbed), and what each run made.
@@ -104,7 +114,7 @@ const num = (v, lo, hi) => { const n = Number(v); return Number.isFinite(n) ? Ma
 // estimate so a full pass is never cut short; caps start at 0 and a plan with 0 caps is never handed to forge.mjs.
 // What to teach -> the lesson writer's jobs (model-lab/write-lessons.mjs JOBS), split evenly inside each.
 export const TEACH_JOBS = { answers: ['chat', 'advice', 'knowledge', 'maths', 'science'], tools: ['reminders', 'memory', 'web', 'pictures', 'files', 'office', 'run', 'schedules', 'apps'], coding: ['coding'], writing: ['writing'] };
-export function makeForgePlan(form = {}, { base = {}, keepFiles = [], lessonSets = [] } = {}) {
+export function makeForgePlan(form = {}, { base = {}, keepFiles = [], lessonSets = [], pairsSets = [] } = {}) {
   const problems = [], notes = [];
   const plan = { ...base };
   delete plan.hours_max; delete plan.dollars_max; delete plan.benchmark; // never carried over: caps are typed, commands are fixed templates
@@ -244,7 +254,9 @@ export function makeForgePlan(form = {}, { base = {}, keepFiles = [], lessonSets
   const learn = ['answer', 'thinking', 'both'].includes(form.heal?.learn) ? form.heal.learn : 'answer';
   if (learn !== 'answer') { plan.heal.learn = learn; plan.heal.thinking_weight = num(form.heal?.thinking_weight, 0.05, 2) || 0.5; }
   if (form.heal?.odds_cover === 'both') { plan.heal.odds_cover = 'both'; notes.push('The teacher scores the thinking too: that pass takes much longer, fewer lessons fit in its time box, and saved teacher scores from earlier runs can\'t be reused, so it starts over.'); }
-  const hours = Math.round(rungs.reduce((a, r) => a + r.hours, 0) + 1.5);
+  // 13 Nov the training protocol's rented steps (draft PR #201), each off unless picked here.
+  waysToPlan(form.ways || {}, { plan, problems, notes, pairsSets, rungs });
+  const hours = Math.round(rungs.reduce((a, r) => a + r.hours, 0) + 1.5 + (plan.grpo ? plan.grpo.hours * rungs.length : 0));
   plan.hours_max = num(form.hours_max, 0, 72) || 0;
   plan.dollars_max = num(form.dollars_max, 0, 500) || 0;
   if (!plan.hours_max || !plan.dollars_max) notes.push('The caps are 0, so this plan can be saved and read but never started. Type the hours and dollars you\'ll allow before a run.');
@@ -308,4 +320,66 @@ export function runPodId(dir, run = '') {
     try {
       const j = JSON.parse(fs.readFileSync(path.join(dir, 'out', 'forge', f), 'utf8')); if (/^[a-z0-9]{6,32}$/i.test(j.pod || '')) return j.pod; } catch {} }
   return '';
+}
+
+// 14 Nov A run's card cost, about: the pod record's price per hour times the time from its rent to endMs. Only the
+// price, start, card and data centre are read; the record's token is never read out.
+export function runCost(dir, run = '', endMs = Date.now()) {
+  const per = run ? `pod-token-${String(run).replace(/[^\w.-]/g, '_')}.json` : '';
+  for (const f of [per, 'pod-token.json'].filter(Boolean)) {
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(dir, 'out', 'forge', f), 'utf8'));
+      const price = Number(j.price) || 0, started = Number(j.started) || 0;
+      if (!started) continue;
+      const minutes = Math.max(0, Math.round((endMs - started) / 6e4));
+      return { usd: Math.round(price * minutes / 60 * 100) / 100, perHour: price, minutes, card: String(j.gpu || ''), dataCenter: String(j.dataCenter || ''), from: 'the pod record, about' };
+    } catch {}
+  }
+  return null;
+}
+
+// 13 Nov New ways to teach, written into the plan's keys the pod reads (run.sh): heal.pref + pref (pairs folder made here
+// by make-pairs.mjs), heal.onpolicy, grpo, targets, surgery. Every one is off unless picked, and every one only runs on
+// the owner's press of the purchase card. Surgery edits are baked into every brain the run makes, so they're shown back.
+export const PREF_KINDS = ['orpo', 'dpo', 'kto'];
+export function waysToPlan(w = {}, { plan, problems, notes, pairsSets = [], rungs = [] }) {
+  for (const k of ['pref', 'grpo', 'targets', 'surgery']) delete plan[k];
+  if (plan.heal) { delete plan.heal.pref; delete plan.heal.onpolicy; }
+  if (PREF_KINDS.includes(w.pref)) {
+    const ps = pairsSets.find((x) => x.id === String(w.pairs || ''));
+    if (!ps) problems.push('Right-vs-wrong pairs: pick the pairs to learn from (make them on this page first, under The training protocol).');
+    else {
+      plan.pref = path.resolve(ps.path); plan.heal = { ...(plan.heal || {}), pref: { kind: w.pref } };
+      if (w.pref !== 'kto' && !ps.pairs) problems.push(`${ps.id} has no pairs, only marked answers. Pick KTO, which learns from those, or make pairs from a set with wrong answers kept.`);
+      notes.push(`${w.pref.toUpperCase()} on ${ps.id} (${ps.pairs} pairs, ${ps.marked} marked answers).${w.pref === 'orpo' ? ' It mixes into the teaching back, with no second brain.' : ' A short pass after the teaching back.'} The held-out chats are measured, never learned.`);
+    }
+  }
+  const op = Number(w.onpolicy) || 0;
+  if (op > 0) {
+    if (op > 50) problems.push('On-policy teaching: at most 50% of the lessons.');
+    else { plan.heal = { ...(plan.heal || {}), onpolicy: { frac: Math.round(op) / 100 } }; notes.push('On-policy teaching needs the teacher on the same card as the small Bob, so it suits brains of 20 GB and under on the usual card.'); }
+  }
+  if (w.grpo === true) {
+    const h = Number(w.grpoHours); plan.grpo = { hours: Number.isFinite(h) && h >= 0.25 && h <= 6 ? h : 1.5 };
+    notes.push('Reward pass on tool calls: kept for a brain only if its held-out grade is no worse and no target drops. It adds its hours to each brain.');
+  }
+  const targets = {};
+  for (const t of (Array.isArray(w.targets) ? w.targets : []).slice(0, 8)) {
+    const name = String(t?.name || '').replace(/[^\w-]/g, '').slice(0, 24), jobs = String(t?.jobs || '').split(',').map((x) => x.trim().replace(/[^\w.-]/g, '')).filter(Boolean).slice(0, 40), weight = Number(t?.weight);
+    if (!name && !jobs.length) continue;
+    if (!name || !jobs.length) { problems.push('Each target needs a name and at least one kind of lesson (job).'); continue; }
+    if (!(weight >= 0 && weight <= 5)) { problems.push(`Target ${name}: a weight from 0 to 5.`); continue; }
+    for (const j of jobs) { const other = Object.entries(targets).find(([, x]) => x.jobs.includes(j)); if (other) problems.push(`${j} is in two targets (${other[0]} and ${name}). Each kind of lesson belongs to one.`); }
+    targets[name] = { jobs, weight };
+  }
+  if (Object.keys(targets).length) { plan.targets = targets; notes.push(`${Object.keys(targets).length} targets, each with its own weight and its own grade in every report.`); }
+  const sx = String(w.surgery || '').trim();
+  if (sx) {
+    let edits = null; try { const j = JSON.parse(sx); edits = Array.isArray(j) ? j : j.edits; } catch { problems.push('Surgery edits: that isn\'t readable JSON. Paste the edits list, like [{"layer": 12, "expert": 37, "scale": 0.8}].'); }
+    if (Array.isArray(edits)) {
+      const ok = edits.slice(0, 64).filter((e) => Number.isInteger(e?.layer) && e.layer >= 0 && Number(e.scale) >= 0 && Number(e.scale) <= 8 && (Number.isInteger(e.head) || Number.isInteger(e.expert) || e.expert === 'shared') && (e.neuron === undefined || Number.isInteger(e.neuron)));
+      if (ok.length !== edits.length) problems.push('Surgery edits: each needs a layer, an expert (a number or "shared") or a head, an optional neuron, and a scale from 0 to 8.');
+      else if (ok.length) { plan.surgery = { edits: ok.map((e) => ({ layer: e.layer, ...(Number.isInteger(e.head) ? { head: e.head } : { expert: e.expert }), ...(e.neuron !== undefined ? { neuron: e.neuron } : {}), scale: Number(e.scale) })) }; notes.push(`${ok.length} surgery edit${ok.length === 1 ? '' : 's'} will be baked into every brain this run makes (${rungs.map((r) => r.name).join(', ') || 'none yet'}). Bake only edits a sweep showed help and hurt nothing; pressing Start is your go.`); }
+    }
+  }
 }

@@ -1,7 +1,7 @@
 // Topics: Bob's glossary of what's been talked about, grouped by project, with a note on where each one landed.
 // Also past chats (open, pin) and one search box over chats, summaries, topics, pictures and notes.
 // Drag a message onto another topic to move it. Forget a topic with a preview first.
-// With "Save chats as files and bring chats in" on (src/chat-files.js), Past chats can save a chat as Markdown, JSON or
+// With "Export and import chats" on (src/chat-files.js), Past chats can save a chat as Markdown, JSON or
 // PDF, and bring in chats exported from ChatGPT, Claude or Open WebUI (the file is looked at, then you tick which).
 import { esc } from './rich.js';
 import { tip } from './tips.js';
@@ -71,7 +71,7 @@ export function createTopics({ api, openChat }) {
   const saveRow = (id) => `<span class="row chat-save" aria-label="Save this chat as a file">Save as ${[['md', 'Markdown', 'reads anywhere, keeps everything'], ['json', 'JSON', 'everything, for other programs or to bring back in'], ['pdf', 'PDF', 'for printing and sharing']].map(([f, l, t]) => `<a class="mini button" href="/api/chats/save?id=${encodeURIComponent(id)}&as=${f}" download title="${esc(t)}" aria-label="Save as ${l}: ${esc(t)}">${l}</a>`).join('')}</span>`;
 
   function bringInHtml() {
-    if (!filesOn) return `<p class="muted chat-files-off">Saving chats as files and bringing chats in from ChatGPT, Claude or Open WebUI is off. <button type="button" class="mini" data-chatfileson>Turn it on</button> (or Settings, How Bob works, <strong>Save chats as files and bring chats in</strong>).</p>`;
+    if (!filesOn) return `<p class="muted chat-files-off">Saving chats as files and bringing chats in from ChatGPT, Claude or Open WebUI is off. <button type="button" class="mini" data-chatfileson>Turn it on</button> (or Settings, How Bob works, <strong>Export and import chats</strong>).</p>`;
     if (!picking) return `<div class="row wrap chat-bring"><button type="button" data-bringin>Bring in chats…</button> <span class="muted">A file exported from ChatGPT, Claude or Open WebUI, or a chat Bob saved. You pick which chats to keep.</span><input type="file" id="chat-file" accept=".json,.jsonl,.md,.txt,application/json,text/markdown,text/plain" hidden></div>`;
     const fresh = picking.chats.filter((c) => !c.here);
     return `<section class="chat-pick" aria-label="Chats in ${esc(picking.name)}"><p><strong>${picking.chats.length} chat${picking.chats.length === 1 ? '' : 's'} in ${esc(picking.name)}</strong>${picking.more ? ` (the first ${picking.chats.length}; ${picking.more} more not listed)` : ''}. Tick the ones to bring in.</p>
@@ -100,7 +100,7 @@ export function createTopics({ api, openChat }) {
   }
 
   // Carry on on another Bob (src/carry.js): pick one of your Bobs and the chat's words go to him. He needs
-  // "Take chats from my other Bobs" on. The chat stays here too.
+  // "Accept chats" on. The chat stays here too.
   let netBobs = [], carrying = null; // carrying: { id, msg }
   const carryHtml = () => `<div class="row wrap chat-carry" role="group" aria-label="Carry on on another Bob"><label class="pick-inline"><span>Carry on on</span><select data-carryto aria-label="Which of your Bobs">${netBobs.map((x) => `<option value="${esc(x.address)}">${esc(x.name)}</option>`).join('')}</select></label><button type="button" class="mini get" data-carrygo>Send it over</button><button type="button" class="mini" data-carrycancel>Cancel</button>${carrying?.msg ? `<span class="muted" role="status">${esc(carrying.msg)}</span>` : ''}</div>`;
 
@@ -284,7 +284,8 @@ export function createTopics({ api, openChat }) {
   });
 
   return {
-    async open(which) { if (which) tab = which; sharing = null; dlg.showModal(); body.innerHTML = '<p class="muted">Loading…</p>'; await load(); $('topics-q')?.focus(); },
-    refresh() { if (dlg.open) load(); }
+    async open(which) { inRoom = which === 'room'; if (inRoom) { roomChat.fresh(); which = 'chats'; } if (which) tab = which; sharing = null; dlg.showModal(); body.innerHTML = '<p class="muted">Loading…</p>'; await load(); $('topics-q')?.focus(); },
+    refresh() { if (dlg.open) load(); },
+    room() { if (dlg.open && inRoom && document.activeElement?.id !== 'room-say-text') { roomChat.changed(); draw(); } } // 1.5.228 live, unless you're typing
   };
 }

@@ -1,5 +1,5 @@
 // The two quick buttons on the chat page, next to ✋ Hands (POST /api/hands/quick):
-//   🔓 Autonomy   = "Let Bob work without asking" (Settings, Hands). Turning it on asks first, in the page; turning it
+//   🔓 Autonomy   = "Work without asking" (Settings, Hands). Turning it on asks first, in the page; turning it
 //                   off never asks and works from any window (phone too). It needs Hands on.
 //   🖥 Screen use = the Apps Hand (Windows) and the Browser Hand, with eyes checks (Bob looks at a picture of the
 //                   window after a step). Turning it on also turns the Hands master switch on; every step still shows
@@ -33,7 +33,7 @@ export function createQuickSwitches({ note }) {
     freeBtn.title = !s.enabled ? 'Autonomy: Bob does jobs without showing you a card first. Hands are off right now, so there is nothing to do without asking. Turn on Screen use, or Hands in Settings, first.'
       : freeNow ? 'Autonomy is on: Bob works without asking and tells you what he did. Hard limits still apply. Press to make him ask before every action again.'
       : s.free ? 'Autonomy is on, but ✋ Hands is stopped, so Bob does nothing until you press Hands again.'
-      : 'Autonomy is off: Bob asks before every action. Press to let him work without asking (you\'ll be asked to confirm). Same switch as "Let Bob work without asking" in Settings.';
+      : 'Autonomy is off: Bob asks before every action. Press to let him work without asking (you\'ll be asked to confirm). Same switch as "Work without asking" in Settings.';
     // Screen use
     const ids = screenIds();
     const onCount = ids.filter((id) => s[id]?.on).length;

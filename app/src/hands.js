@@ -21,7 +21,7 @@ import { planSort, sortSummary } from './sort-library.js';
 import { exampleFor, TOKENS } from './sort-names.js';
 import { checkCommand, runCommand, safeEnv } from './hands-run.js';
 import { codeCopyRoot } from './self-work.js';
-import { toolPath } from './self-work-tools.js'; // "Let Bob work on repositories": his own Git and Node first in the code copy
+import { toolPath } from './self-work-tools.js'; // "Work on repositories": his own Git and Node first in the code copy
 import { appsTools } from './hands-apps.js';
 import { officeView } from './office.js';
 import { makerPrompt, selfToolsView } from './selftools.js';

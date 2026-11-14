@@ -5,7 +5,7 @@
 // src/clean-answer.js).
 //
 // Display only. The lines here are the window's own words: none of it is sent to a brain, and nothing waits on it.
-// Settings, Bob himself, "Thinking bubble above answers" (cfg.thinkBubble, on unless turned off) puts the old chat back.
+// Settings, Bob himself, "Thinking bubble" (cfg.thinkBubble, on unless turned off) puts the old chat back.
 
 export const PUNS = [
   'Thinking…',
@@ -35,7 +35,8 @@ export function took(ms) {
 export function doneLine(ms, steps, needed = false) {
   const t = took(ms);
   const n = Number(steps) || 0;
-  const head = n ? `Worked for ${t} · ${n} step${n === 1 ? '' : 's'}` : `Thought for ${t}`;
+  const many = `${n} step${n === 1 ? '' : 's'}`;
+  const head = n ? (ms ? `Worked for ${t} · ${many}` : `Worked through ${many}`) : `Thought for ${t}`; // no time: a saved answer whose bubble had only its steps
   return needed ? `${head} · waited on you` : head;
 }
 export function punAt(i, cat = '') {
@@ -46,27 +47,42 @@ export function punAt(i, cat = '') {
 const DOT = { done: 'done', failed: 'failed', waiting: 'waiting', note: 'note', draft: 'draft' };
 const DOT_SAYS = { done: 'done', failed: 'went wrong, then fixed or flagged', waiting: 'waiting for your OK', note: 'a note', draft: 'a draft' };
 const MAX_DOTS = 14;
+const STEP_CLS = new Set(['tool', 'fix', 'wait']); // rows that are steps; drafts and notes aren't
+
+// One step of the record, as the old "How I got here" list wrote it (Copy uses it too).
+export function stepWords(x) {
+  if (x.correction) return `⚠ ${x.what || 'App\'s note'}${x.brain ? ` · ${x.brain}` : ''}`;
+  return `${x.ok ? '✓' : '✗'} ${x.what || x.tool} · ${((Number(x.ms) || 0) / 1000).toFixed(1)} s · ${Number(x.chars || 0).toLocaleString()} characters back${x.brain ? ` · ${x.brain}` : ''}`;
+}
+export const stepsText = (list) => list.map((x, i) => `${i + 1}. ${stepWords(x)}`).join('\n');
 
 // add(cls, html) puts an element at the end of the chat. answer(ev, text, extra) puts the finished answer in the chat.
-export function createThinkBubbles({ add, esc, answer, scroll = () => {}, on = () => true, still = () => false, cat = () => '', openMind = null, now = () => Date.now() }) {
+export function createThinkBubbles({ add, esc, answer, scroll = () => {}, on = () => true, still = () => false, cat = () => '', openMind = null, copy = () => {}, now = () => Date.now() }) {
   const live = new Map(); // turnId -> bubble
   let tick = null;
 
   function make(el, startedAt) {
-    el.innerHTML = `<button type="button" class="think-head" aria-expanded="false"><span class="think-spark" aria-hidden="true"></span><span class="think-line"></span><span class="think-time"></span><span class="think-dots" aria-hidden="true"></span><span class="think-caret" aria-hidden="true">▸</span></button><div class="think-body" hidden><ol class="think-steps"></ol><p class="think-empty muted">No steps yet.</p>${openMind ? '<div class="think-foot"><button type="button" class="link mini" data-mind>Open Bob\'s thinking</button></div>' : ''}</div><span class="sr-only" aria-live="polite"></span>`;
+    el.innerHTML = `<button type="button" class="think-head" aria-expanded="false"><span class="think-spark" aria-hidden="true"></span><span class="think-line"></span><span class="think-time"></span><span class="think-dots" aria-hidden="true"></span><span class="think-caret" aria-hidden="true">▸</span></button><div class="think-body" hidden><ol class="think-steps"></ol><p class="think-empty muted">No steps yet.</p><div class="think-foot"><button type="button" class="link mini" data-copy-steps hidden>Copy the steps</button>${openMind ? '<button type="button" class="link mini" data-mind>Open Bob\'s thinking</button>' : ''}</div></div><span class="sr-only" aria-live="polite"></span>`;
     const b = { el, head: el.querySelector('.think-head'), line: el.querySelector('.think-line'), time: el.querySelector('.think-time'), dots: el.querySelector('.think-dots'), body: el.querySelector('.think-body'), list: el.querySelector('.think-steps'), empty: el.querySelector('.think-empty'), say: el.querySelector('[aria-live]'), startedAt, rows: [], draft: null, all: '', final: false, needs: 0, needed: false, pun: Math.floor(Math.random() * 3) };
     b.head.onclick = () => { const open = b.body.hidden; b.body.hidden = !open; b.head.setAttribute('aria-expanded', String(open)); el.classList.toggle('open', open); if (open) b.list.lastElementChild?.scrollIntoView?.({ block: 'nearest' }); };
     el.querySelector('[data-mind]')?.addEventListener('click', () => openMind?.());
+    b.copy = el.querySelector('[data-copy-steps]');
+    b.copy?.addEventListener('click', () => { if (b.trace?.length) copy(stepsText(b.trace)); });
     return b;
   }
+  // 1.5.216 (the owner, Nov 13): one count everywhere. A step is something he did (a tool, a fix, a wait for you), never
+  // a draft or a note; once the turn's record arrives ('steps', the list "How I got here" used) it's that list's length.
+  const stepCount = (b) => (b.trace ? b.trace.length : b.rows.filter((r) => r.step).length);
   function label(b) {
+    const n = stepCount(b);
     const state = b.done ? b.line.textContent : b.needs ? 'Bob needs you' : 'Bob is working';
-    b.head.setAttribute('aria-label', `${state}. ${b.rows.length} step${b.rows.length === 1 ? '' : 's'}. Press to ${b.body.hidden ? 'show' : 'hide'} them.`);
+    b.head.setAttribute('aria-label', `${state}. ${n} step${n === 1 ? '' : 's'}. Press to ${b.body.hidden ? 'show' : 'hide'} them.`);
   }
   function drawDots(b) {
-    const rows = b.rows.slice(-MAX_DOTS);
+    const rows = b.rows.filter((r) => r.step).slice(-MAX_DOTS); // a dot per step, so the dots and the count agree
     b.dots.innerHTML = rows.map((r) => `<i class="d-${r.dot}"></i>`).join('');
     b.empty.hidden = b.rows.length > 0;
+    if (b.copy) b.copy.hidden = !b.trace?.length;
     label(b);
   }
   function row(b, dot, html, cls = '') {
@@ -75,7 +91,7 @@ export function createThinkBubbles({ add, esc, answer, scroll = () => {}, on = (
     li.className = `think-row ${cls}`.trim();
     li.innerHTML = `<i class="think-dot d-${dot}" title="${esc(DOT_SAYS[dot] || '')}"></i><span>${html}</span>`;
     b.list.append(li);
-    const r = { dot, el: li };
+    const r = { dot, el: li, step: STEP_CLS.has(cls) };
     b.rows.push(r);
     drawDots(b);
     if (!b.body.hidden) li.scrollIntoView?.({ block: 'nearest' });
@@ -113,14 +129,34 @@ export function createThinkBubbles({ add, esc, answer, scroll = () => {}, on = (
     }, 1000);
   }
   function finish(b, ms) {
-    b.done = true;
+    b.done = true; b.ms = ms;
     closeDraft(b);
     b.el.classList.remove('live', 'needs');
     b.el.classList.add('finished');
-    b.line.textContent = doneLine(ms, b.rows.length, b.needed);
+    b.line.textContent = doneLine(ms, stepCount(b), b.needed);
     b.time.textContent = '';
     b.say.textContent = 'Bob finished.';
     drawDots(b);
+  }
+
+  // The turn's record ('steps'): the details (worked or not, time, how much came back, which brain) go on the step rows
+  // already here, in order; any step with no row yet gets one at the end. So nothing shows twice and the count agrees.
+  function trace(b, list) {
+    b.trace = list.slice();
+    const rows = b.rows.filter((r) => r.step && r.el.classList.contains('tool'));
+    let i = 0;
+    for (const x of b.trace) {
+      if (!x.correction && i < rows.length) {
+        const r = rows[i++];
+        r.dot = x.ok ? DOT.done : DOT.failed;
+        r.el.querySelector('.think-dot').className = `think-dot d-${r.dot}`;
+        if (!r.el.querySelector('.think-more')) r.el.querySelector(':scope > span').insertAdjacentHTML('beforeend', ` <span class="muted think-more">· ${((Number(x.ms) || 0) / 1000).toFixed(1)} s · ${esc(Number(x.chars || 0).toLocaleString())} characters back${x.brain ? ` · ${esc(x.brain)}` : ''}</span>`);
+      } else if (!x.correction || !b.rows.some((r) => r.el.classList.contains('fix'))) {
+        row(b, x.correction ? DOT.failed : x.ok ? DOT.done : DOT.failed, esc(stepWords(x)), x.correction ? 'fix' : 'tool');
+      }
+    }
+    drawDots(b);
+    if (b.done) b.line.textContent = doneLine(b.ms || 0, stepCount(b), b.needed);
   }
 
   function start(ev) {
@@ -181,6 +217,9 @@ export function createThinkBubbles({ add, esc, answer, scroll = () => {}, on = (
       case 'error':
         row(b, DOT.failed, `⚠ ${esc(ev.text || '')}`, 'fix');
         return false; // and the chat shows it too: something went wrong that you should see
+      case 'steps': // the record of the turn: on the bubble, not a second list under the answer
+        if (Array.isArray(ev.list) && ev.list.length) trace(b, ev.list);
+        return true;
       case 'final': {
         b.final = true;
         // His last draft is the answer itself: it's in the chat now, so it isn't kept twice.
@@ -202,7 +241,7 @@ export function createThinkBubbles({ add, esc, answer, scroll = () => {}, on = (
   }
 
   // A saved chat: the steps of one answer, folded, above it. msgs: the turn's step messages; ms: how long it took.
-  function saved(msgs, ms) {
+  function saved(msgs, ms, steps = null) {
     const el = add('think finished', '');
     const b = make(el, 0);
     for (const m of msgs) {
@@ -210,6 +249,7 @@ export function createThinkBubbles({ add, esc, answer, scroll = () => {}, on = (
       if (m.correction) row(b, DOT.failed, `⚠ ${esc(m.correction)}`, 'fix');
     }
     finish(b, ms);
+    if (Array.isArray(steps) && steps.length) trace(b, steps);
     b.say.textContent = '';
     return el;
   }

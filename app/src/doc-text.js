@@ -1,4 +1,4 @@
-// Reading the words out of documents with nothing extra installed (part of "Read and search my documents",
+// Reading the words out of documents with nothing extra installed (part of "Read and search documents",
 // Settings, How Bob works; off unless the user turns it on). Plain Node only: no LibreOffice, no packages, no
 // programs started, nothing sent anywhere. It works the same on Windows, Mac and Linux (and for the Android app,
 // which asks the computer's Bob).
@@ -369,7 +369,7 @@ export function pdfText(buf) {
   return text;
 }
 
-// The words of each page of a PDF, in order (pages with no words left out). "Show the page and line" (my-docs.js)
+// The words of each page of a PDF, in order (pages with no words left out). "Cite page and line" (my-docs.js)
 // uses it to say which page a find is on.
 export function pdfPages(buf) {
   if (!buf.subarray(0, 1024).toString('latin1').includes('%PDF')) throw new DocError('That doesn\'t look like a PDF inside.');

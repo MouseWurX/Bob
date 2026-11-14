@@ -1,4 +1,4 @@
-// Let Bob's Quick brain see the big job (src/meanwhile.js): off unless turned on, the Meanwhile line written by the app,
+// Quick brain sees the job (src/meanwhile.js): off unless turned on, the Meanwhile line written by the app,
 // look_at_job and pass_note only in a quick reply beside a job, notes read by the big brain at its next step, the
 // honesty check on guesses about the job, the switch in Settings and the first-time setup, and Help, glossary and FAQ.
 import fs from 'node:fs';
@@ -10,6 +10,7 @@ import { mergeSettings } from '../src/config.js';
 import { JobWatch, meanwhileOn, meanwhileLine, jobDetail, watchTools, claimsJobGuess, noteForBig, noteAsk, asksAboutJob, statusLine, STEP_KEEP, NOTES_MAX } from '../src/meanwhile.js';
 import { WANTS, wantsHtml } from '../public/wants.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -21,7 +22,7 @@ const words = (s) => String(s).split(/\s+/).filter(Boolean).length;
 
 // ---------- The switch ----------
 check('off unless turned on', !meanwhileOn({}) && !meanwhileOn({ quickSeesJob: 'yes' }) && meanwhileOn({ quickSeesJob: true }));
-check('needs Keep chatting while Bob is busy', !meanwhileOn({ quickSeesJob: true, chatWhileBusy: false }));
+check('needs Chat while busy', !meanwhileOn({ quickSeesJob: true, chatWhileBusy: false }));
 check('only true turns it on when saved', mergeSettings({}, { quickSeesJob: 'true' }).quickSeesJob === false && mergeSettings({}, { quickSeesJob: true }).quickSeesJob === true);
 
 // ---------- The record and the Meanwhile line ----------
@@ -191,8 +192,8 @@ const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls:
 
 // ---------- Settings, first-time setup, Help ----------
 {
-  const cellar = read('public/cellar.js'), server = read('src/server.js');
-  check('the switch is in Brains, under Keep chatting, always there, off unless turned on', /\$\{sswitch\('quickSeesJob', settings\.quickSeesJob === true, 'Let Bob\\'s Quick brain see the big job', keep\('Off unless you turn it on/.test(cellar));
+  const cellar = publicText('cellar.js'), server = read('src/server.js');
+  check('the switch is in Brains, under Keep chatting, always there, off unless turned on', /\$\{sswitch\('quickSeesJob', settings\.quickSeesJob === true, 'Quick brain sees the job', keep\('/.test(cellar));
   check('the server saves and shows it', /typeof b\.quickSeesJob === 'boolean'/.test(server) && /quickSeesJob: cfg\.quickSeesJob === true/.test(server));
   const w = WANTS.find((x) => x.key === 'quickSeesJob');
   const one = WANTS.findIndex((x) => x.key === 'oneBrain');

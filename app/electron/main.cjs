@@ -1,5 +1,5 @@
 // Bob.exe: double-click and Bob opens in his own window. No browser, no "install as an app", no PowerShell.
-// His brain (src/server.js) runs inside this program; closing the window closes Bob, unless "Keep Bob in the tray"
+// His brain (src/server.js) runs inside this program; closing the window closes Bob, unless "Minimise to tray"
 // is on (1.5.94): then closing or minimising tucks him into the tray, and Quit Bob in the tray menu closes him fully.
 // Where Bob keeps his things (models, notes, settings) lives outside the program, so updates never touch it:
 //   1. home.json next to Bob.exe, or in %APPDATA%\Bob, can say { "agentDir": "...", "config": "..." }
@@ -13,6 +13,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const { readHomeFrom, badHomeLine, stripBom } = require('./home-json.cjs');
+const windowBar = require('./window-bar.cjs'); // 1.5.228 Window buttons on Bob's bar
 
 // Before anything else: the name decides Bob's user-data folder (and so the single-instance lock), and the
 // id matches the Start menu shortcut, so the taskbar shows Bob's icon rather than Electron's.
@@ -194,7 +195,7 @@ async function setUpHome() {
   return { agentDir, config, port };
 }
 
-// "Launch Bob on start-up" (off unless turned on in his settings) uses Windows' own login items.
+// "Launch at start-up" (off unless turned on in his settings) uses Windows' own login items.
 // "Update Bob": the update window asks Bob to close (POST /api/quit) before it swaps in the new Bob.exe.
 globalThis.bobQuit = () => setTimeout(() => app.quit(), 200);
 
@@ -311,16 +312,16 @@ async function up(port) {
 let win = null;
 
 // ---------- 1.5.94 the tray and Bob's icon ----------
-// "Keep Bob in the tray" (on unless turned off since 1.5.134; off by default before): a tray icon (Windows: by the clock; Mac: the menu bar; Linux: the
+// "Minimise to tray" (on unless turned off since 1.5.134; off by default before): a tray icon (Windows: by the clock; Mac: the menu bar; Linux: the
 // desktop's tray, where it has one). Closing or minimising his window hides it there; Quit Bob in its menu closes
-// him fully. Started hidden at sign-in ("Launch Bob on start-up"), he always shows the tray icon, so there's a way in.
+// him fully. Started hidden at sign-in ("Launch at start-up"), he always shows the tray icon, so there's a way in.
 // "Use Bob's look as his icon" (on unless turned off since 1.5.134): the tray, taskbar/Dock and window icon show his
 // avatar, redrawn the moment a look is saved (Style, or Change look in Settings, Personality). A shortcut pinned to the Windows
 // taskbar may keep the usual icon: Windows draws pinned buttons from the shortcut, not from the window.
 // The brain sends both switches and the pictures (src/app-icon.js windowState) at start-up and on every change.
 const STARTED_HIDDEN = process.argv.includes('--hidden');
 const iconFile = (f) => path.join(root, 'public', 'icons', f);
-let winState = { tray: false, lookIcon: false, lookName: '', icons: null };
+let winState = { tray: false, lookIcon: false, lookName: '', icons: null, ownBar: true };
 let tray = null;
 let quitting = false;
 app.on('before-quit', () => { quitting = true; });
@@ -332,7 +333,7 @@ function showBob() {
   win.focus();
 }
 
-// A shortcut from anywhere (Settings, How Bob works, 🌙 Quiet hours and shortcut; off unless switched on). While it's
+// Global shortcut (Settings, How Bob works, 🌙 Quiet hours and shortcut; off unless switched on). While it's
 // on, the key opens a small ask box on top of any app (public/ask.html); the key again, or Esc, puts it away.
 // src/server.js calls this at start and whenever the switch or the key changes. Nothing is registered while it's off.
 let askKey = '', askWin = null;
@@ -344,6 +345,7 @@ function openAsk(port) {
     width, height, x: Math.round(area.x + (area.width - width) / 2), y: Math.round(area.y + area.height * 0.18),
     title: 'Ask Bob', icon: iconFile(process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#121212',
     autoHideMenuBar: true, alwaysOnTop: true, skipTaskbar: true, minimizable: false, maximizable: false, fullscreenable: false, resizable: true,
+    ...(winState.ownBar !== false ? { frame: false } : {}), // 1.5.228: no title bar; its top line drags it, ✕ or Esc puts it away
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }
   });
   askWin.setAlwaysOnTop(true, 'floating');
@@ -352,7 +354,7 @@ function openAsk(port) {
   askWin.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url) && !url.startsWith(base)) shell.openExternal(url); return { action: 'deny' }; });
   askWin.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(base + '/ask.html')) e.preventDefault(); });
   askWin.on('closed', () => { askWin = null; });
-  askWin.loadURL(base + '/ask.html');
+  askWin.loadURL(base + '/ask.html' + (winState.ownBar !== false ? '?bar=0' : ''));
 }
 globalThis.bobGlobalAsk = (g, port) => {
   const want = g && g.on === true && typeof g.key === 'string' ? g.key : '';
@@ -367,7 +369,7 @@ globalThis.bobGlobalAsk = (g, port) => {
 globalThis.bobShow = () => showBob(); // the ask box's Open in Bob
 app.on('will-quit', () => { try { globalShortcut.unregisterAll(); } catch {} try { globalThis.bobCleanExit?.(); } catch {} });
 
-// 150 "Show a dot on the tray icon" (off by default): while something waits for you, the tray picture has a dot;
+// 150 "Tray icon dot" (off by default): while something waits for you, the tray picture has a dot;
 // Windows also puts it on the taskbar button, and a Mac shows a dot on the Dock icon.
 const dotted = () => Boolean(winState.trayDot && winState.dot && winState.dotIcons);
 function trayImage() {
@@ -385,6 +387,7 @@ function trayImage() {
   return nativeImage.createFromPath(iconFile('bob-32.png'));
 }
 function bigImage() {
+  if (MAC && winState.icons?.mac) return nativeImage.createFromBuffer(winState.icons.mac); // 1.5.228: the Dock wants Apple's padding round the tile
   return winState.icons ? nativeImage.createFromBuffer(winState.icons[256]) : nativeImage.createFromPath(iconFile(process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'));
 }
 
@@ -414,7 +417,17 @@ function refreshWindowBits() {
     if (process.platform === 'win32' && win) win.setOverlayIcon(dotted() ? nativeImage.createFromBuffer(winState.dotIcons.badge) : null, dotted() ? 'Something is ready or needs you' : '');
   } catch (e) { console.error('Bob: tray or icon', e.message); }
 }
-globalThis.bobWindow = { apply: (s) => { winState = { ...winState, ...s }; refreshWindowBits(); } };
+globalThis.bobWindow = {
+  apply: (s) => { winState = { ...winState, ...s }; refreshWindowBits(); },
+  // 1.5.228: the page's top-bar colours for the window buttons (Windows and Linux; a Mac's traffic lights keep theirs).
+  bar: (b) => {
+    const c = windowBar.cleanColours(b);
+    if (!c || !win || win.isDestroyed() || !barNow) return;
+    try { if (MAC) win.setWindowButtonPosition?.(windowBar.trafficLights(c.height)); else win.setTitleBarOverlay(c); } catch {}
+  },
+  barNow: () => barNow
+};
+let barNow = false; // this window was made with Bob's own bar (the setting at the time it opened)
 
 // The first time he goes to the tray, Bob says where he went and how to quit him (only once, ever).
 function trayHint() {
@@ -480,11 +493,13 @@ async function start() {
     catch (e) { dialog.showErrorBox('Bob', `Bob's brain wouldn't start: ${e.message}`); app.quit(); return; }
     for (let i = 0; i < 80 && !(await up(home.port)); i++) await new Promise((r) => setTimeout(r, 250));
   }
+  barNow = winState.ownBar !== false;
   win = new BrowserWindow({
     width: 1200, height: 820, minWidth: 360, minHeight: 480,
+    ...windowBar.barOptions(process.platform, barNow), // 1.5.228: no system title bar, the buttons on Bob's bar
     title: 'Bob', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'),
     backgroundColor: '#121212', autoHideMenuBar: true, show: !process.argv.includes('--hidden'),
-    // plugins: the built-in PDF viewer, so "Show documents in the side panel" can show a PDF's pages (no other plugins exist).
+    // plugins: the built-in PDF viewer, so "Documents in the side panel" can show a PDF's pages (no other plugins exist).
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, plugins: true }
   });
   const base = `http://127.0.0.1:${home.port}`;
@@ -564,7 +579,7 @@ async function start() {
   win.webContents.session.setPermissionRequestHandler((wc, perm, cb) => cb(['media', 'notifications'].includes(perm) && wc.getURL().startsWith(base)));
   contextMenu(win, base);
   win.loadURL(base + '/');
-  // 1.5.94: with "Keep Bob in the tray" on, the X and the minimise button tuck him into the tray instead.
+  // 1.5.94: with "Minimise to tray" on, the X and the minimise button tuck him into the tray instead.
   win.on('close', (e) => { tuckAway(e); });
   if (!MAC) win.on('minimize', () => { tuckAway(); });
   refreshWindowBits();

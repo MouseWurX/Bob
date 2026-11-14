@@ -1,8 +1,8 @@
-// 1.5.138: the order of the sections in Now running (Tasks, Bob-Net, Downloads, Memory, Bob's thinking). Drag a
+// 1.5.138: the order of the sections in Now running (Tasks, Bob-Net, Coding agents, Downloads, Memory, Bob's thinking). Drag a
 // section by its grip, or use the grip's Move up / Move down, and the order is remembered in this window
 // (localStorage bob-now-order). Kept apart from layout.js so the tests can check it.
-export const DEFAULT_ORDER = ['mind', 'tasks', 'net', 'downloads', 'memory', 'graph']; // Bob's thinking (the fNRI cube) first and open, the owner's pick (1.5.196)
-export const SECTION_NAME = { tasks: 'Tasks', net: 'Bob-Net', downloads: 'Downloads', memory: 'Memory', graph: 'Resource use over time', mind: 'Bob\'s thinking' };
+export const DEFAULT_ORDER = ['mind', 'tasks', 'net', 'agents', 'downloads', 'memory', 'graph']; // Bob's thinking (the fNRI cube) first and open, the owner's pick (1.5.196)
+export const SECTION_NAME = { tasks: 'Tasks', net: 'Bob-Net', agents: 'Coding agents', downloads: 'Downloads', memory: 'Memory', graph: 'Resource use over time', mind: 'Bob\'s thinking' };
 
 // A saved order (a comma list or an array) made safe: unknown ids dropped, missing ones added at the end in their
 // usual place, so a section added in a later version still shows up.

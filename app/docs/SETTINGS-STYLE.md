@@ -19,7 +19,7 @@ Verdicts are **Approved**, **Approved with edits** (make the listed edits, no se
 1. **Plain English.** Name a setting by what the person gets, not by how it works ("Free up memory when Bob is idle", not "Unload model on idle"). The app chrome uses no in-jokes. Bob's persona, the clan names and Patches belong in his replies, not in labels.
 2. **Explain jargon.** In Advanced a technical word is fine if a plain phrase sits next to it: "Speculative decoding: a small brain guesses ahead and the big one checks". Everyday pages have no jargon at all.
 3. **One-line hints.** Keep each hint to one sentence, about 15 words. Anything longer goes behind **More**.
-4. **The label says what "on" means.** A switch reads as a statement that is true when it's on ("Launch Bob on start-up"). Don't use negatives ("Don't …") or unclear pairs ("Mode: A/B").
+4. **The label says what "on" means.** A switch reads as a statement that is true when it's on ("Launch at start-up"). Don't use negatives ("Don't …") or unclear pairs ("Mode: A/B").
 5. **Show the current value.** Every row shows what it's set to right now, without opening anything.
 6. **Opt-in and safe defaults.** Anything automatic, background, network, cloud, download, file or app-control setting ships **off**. Where that helps, the hint says "Off unless you turn it on." Defaults never cost the person data, money or GPU memory they didn't ask for.
 7. **Simple or Advanced.** Both views hold every setting; the toggle only changes how they're laid out. Simple is eight topic cards, Advanced a side list. A new section goes on one card and in one group (public/settings-map.js).

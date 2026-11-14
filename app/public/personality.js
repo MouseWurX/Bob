@@ -163,11 +163,11 @@ export function attributesHtml({ personality, look, lookText, lookComments = fal
       <input type="text" data-callme maxlength="40" value="${esc(callMe)}" placeholder="${esc(windowsName || 'your Windows name')}" aria-label="What should Bob call you?" autocomplete="off"></label>
     <p class="muted small">Leave it empty and he uses your Windows name${windowsName ? ` (${esc(windowsName)})` : ''}.</p>
     <div class="avatar-card">
-      <canvas class="attr-avatar" width="64" height="64" aria-label="Bob's look"></canvas>
-      <div><strong>Look:</strong> ${esc(lookText || '')}<br><span class="take">"${esc(bobTake(look))}"</span></div>
+      <canvas class="attr-avatar" width="64" height="64" aria-label="Bob's game look"></canvas>
+      <div><strong>Game look:</strong> ${esc(lookText || '')}<br><span class="take">"${esc(bobTake(look))}"</span></div>
     </div>
-    <div class="row wrap"><button type="button" class="mini" data-golook>Change look</button><button type="button" class="mini" data-askbob="What do you think of how you look right now?">Ask Bob what he thinks</button></div>
-    <button type="button" class="pill-switch" role="switch" aria-checked="${Boolean(lookComments)}" data-lookcomments><span class="ps-text">He comments once when you change his look</span><span class="st">${lookComments ? 'On' : 'Off'}</span></button>
+    <div class="row wrap"><button type="button" class="mini" data-gamelook>Change his game look</button><button type="button" class="mini" data-askbob="What do you think of how you look in games right now?">Ask Bob what he thinks</button></div>
+    <button type="button" class="pill-switch" role="switch" aria-checked="${Boolean(lookComments)}" data-lookcomments><span class="ps-text">He comments once when you change his game look</span><span class="st">${lookComments ? 'On' : 'Off'}</span></button>
     <h4>Personality</h4>
     ${DIALS.map((d) => `<label class="dial"><span class="dial-name">${esc(d.name)}</span>
       <input type="range" min="0" max="4" step="1" value="${p[d.id]}" data-dial="${d.id}" aria-label="${esc(d.name)}: ${esc(d.left)} to ${esc(d.right)}">

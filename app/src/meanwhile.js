@@ -1,6 +1,6 @@
-// Let Bob's Quick brain see the big job (Settings, Brains; off unless you turn it on). Asked for 2026-11-11.
+// Quick brain sees the job (Settings, Brains; off unless you turn it on). Asked for 2026-11-11.
 //
-// With "Keep chatting while Bob is busy", a quick reply runs on the small Quick brain beside a long job on the big
+// With "Chat while busy", a quick reply runs on the small Quick brain beside a long job on the big
 // brain. Before this, the Quick brain knew nothing about that job, so "how's it going?" got a guess. With this on:
 //   1. The Meanwhile line. The app (never a brain) writes one short line from the running job's own record: what it
 //      is, how long it has run, which step it's on (of about how many, when it showed a plan) and how the last step
@@ -115,7 +115,7 @@ export const WATCH_TOOLS = ['look_at_job', 'pass_note'];
 
 export function watchTools(brain) {
   const ready = (ctx) => {
-    if (!meanwhileOn(brain.cfg)) return 'Error: "Let Bob\'s Quick brain see the big job" is off.';
+    if (!meanwhileOn(brain.cfg)) return 'Error: "Quick brain sees the job" is off.';
     if (!ctx?.job?.side) return 'Error: only for a quick reply beside a job.';
     return '';
   };

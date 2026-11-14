@@ -2,7 +2,7 @@
 // compare_files lays two files side by side (two versions of a document, two lists, two settings files) and finds
 // what was added, taken out and changed, line by line and, inside a changed line, word by word. The brain then says
 // the differences in plain words. Word, Excel, PowerPoint, OpenDocument, RTF and PDF files are read as their words
-// (the same reader as "Read and search my documents"); anything else as text. Both files must be in the folders
+// (the same reader as "Read and search documents"); anything else as text. Both files must be in the folders
 // Bob may read. Nothing is changed.
 import fs from 'node:fs';
 import path from 'node:path';

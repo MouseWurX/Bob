@@ -12,7 +12,7 @@ export function createWebSwitch({ note }) {
     btn.setAttribute('aria-checked', String(on));
     st.textContent = on ? 'On' : 'Off';
     btn.title = on ? 'Bob can search the web (DuckDuckGo) and read pages when a question needs it. Only the search words and page addresses leave your replicant matrix (your computer). Click to turn it off.'
-      : 'Bob won\'t go online to look things up. Click to let him search the web when a question needs it. Same switch as "Let Bob search the web" in Settings.';
+      : 'Bob won\'t go online to look things up. Click to let him search the web when a question needs it. Same switch as "Web search" in Settings.';
   }
 
   async function load() {
@@ -28,7 +28,7 @@ export function createWebSwitch({ note }) {
       on = j.webSearch === true; draw();
       note(on ? 'Web search is on. Bob can look things up on DuckDuckGo when a question needs it.' : 'Web search is off. Bob won\'t go online to look things up.');
       window.dispatchEvent(new CustomEvent('bob-web', { detail: { webSearch: on } }));
-    } catch (err) { note('Couldn\'t change web search. Try again, or use "Let Bob search the web" in Settings.', 'error'); }
+    } catch (err) { note('Couldn\'t change web search. Try again, or use "Web search" in Settings.', 'error'); }
     btn.disabled = false;
   }
   btn.onclick = toggle;

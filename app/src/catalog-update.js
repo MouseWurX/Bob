@@ -1,4 +1,4 @@
-// 1.5.137: Bob's newest brain list. With "Let Bob fetch his newest brain list" on (setting catalogUpdates, off unless
+// 1.5.137: Bob's newest brain list. With "Auto-update the brain list" on (setting catalogUpdates, off unless
 // you turn it on), Bob reads catalog.json from his own GitHub repository once a day (and when you press Check now), so
 // brains that came out between releases show up without waiting for a new Bob. Only a list that passes every check
 // is used: newer than the one he has, every file pinned to an exact Hugging Face commit with its size and sha256 (the

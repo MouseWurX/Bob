@@ -6,6 +6,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { ModelShop, linkError } from '../src/models.js';
 import { mergeSettings } from '../src/config.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -136,7 +137,7 @@ check('after a restart an unfinished download waits, paused, for Resume', b2.sta
 const auto = new ModelShop({ ...cfg, downloads: { resumeOnStart: true } }, () => {});
 check('with "carry on when Bob starts" it queues up again', auto.dl.find((d) => d.id === B).state === 'queued');
 const pickUp = new ModelShop({ ...cfg, resumeJobs: true }, () => {});
-check('with "Pick up where Bob left off after a restart" on, it queues up again too (1.5.38)', pickUp.dl.find((d) => d.id === B).state === 'queued');
+check('with "Resume jobs after restart" on, it queues up again too (1.5.38)', pickUp.dl.find((d) => d.id === B).state === 'queued');
 shop.cancel(B);
 await until(() => !shop.active.size);
 check('downloads events carry the whole list for the Downloads panel', events.some((e) => e.type === 'downloads' && Array.isArray(e.items) && e.items.some((d) => d.id === A)));
@@ -166,7 +167,7 @@ check('403 counts as needing an account too', /Hugging Face account/.test(linkEr
   check('gated models are never in a starter set', cat.packs.every((p) => p.models.every((id) => !cat.models.find((m) => m.id === id)?.gated)));
   const ltx = cat.models.find((m) => m.id === 'ltx-2.3-22b');
   check('LTX-2.3: the text encoder comes from the qat repo, and every file has a pinned checksum', /^https:\/\/huggingface\.co\/unsloth\/gemma-3-12b-it-qat-GGUF\/resolve\/[0-9a-f]{40}\/gemma-3-12b-it-qat-UD-Q4_K_XL\.gguf$/.test(ltx.files.find((f) => f.role === 'llm').url) && ltx.files.every((f) => /^[0-9a-f]{64}$/.test(f.sha256)) && ltx.sizeGB === 28);
-  const cel = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+  const cel = publicText('cellar.js');
   check('the shop shows "needs a Hugging Face account" instead of a Download button', /if \(m\.gated\) return/.test(cel));
 }
 

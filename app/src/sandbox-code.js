@@ -1,4 +1,4 @@
-// Let Bob work things out in a sandbox (Settings, How Bob works; off unless the user turns it on).
+// Code sandbox (Settings, How Bob works; off unless the user turns it on).
 //
 // Sums, dates, sorting a list, tallying a table, checking a pattern: a brain is bad at exact arithmetic, so with this
 // on Bob can write a few lines of JavaScript and run them, and answer from the result instead of guessing.
@@ -68,7 +68,7 @@ export function sandboxTool(brain) {
       }, ['code']);
     },
     async run({ code, input, language }, ctx = {}) {
-      if (!sandboxOn(cfg)) return 'The sandbox is off. It\'s in Settings, How Bob works: "Let Bob work things out in a sandbox".';
+      if (!sandboxOn(cfg)) return 'The sandbox is off. It\'s in Settings, How Bob works: "Code sandbox".';
       const python = String(language || '').toLowerCase() === 'python';
       if (python && !pyOn()) return 'Python in the sandbox is off. It\'s in Settings, How Bob works, 🧰 More tools: "Let Bob use Python in the sandbox". Use JavaScript instead.';
       if (python && !hasPython(cfg)) return 'Python isn\'t here yet: Settings, How Bob works, 🧰 More tools, Get Python. Use JavaScript for now.';

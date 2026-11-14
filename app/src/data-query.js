@@ -108,7 +108,7 @@ export function fileProblem(cfg, file) {
   if (!fs.existsSync(f)) return `There's no file at ${f}.`;
   if (!insideAny(cfg.readRoots || [], f)) return `I'm not allowed to read ${f}.`;
   if (own(cfg, f)) return 'That\'s one of my own files, which I never open as data.';
-  if (!DB_EXT.test(f) && !CSV_EXT.test(f)) return 'I ask questions of CSV and TSV files and SQLite databases (.db, .sqlite). For Excel, save it as CSV first, or use "Read and search my documents".';
+  if (!DB_EXT.test(f) && !CSV_EXT.test(f)) return 'I ask questions of CSV and TSV files and SQLite databases (.db, .sqlite). For Excel, save it as CSV first, or use "Read and search documents".';
   if (!DB_EXT.test(f) && isSensitive(cfg, f)) return 'That file holds keys or passwords, so it stays off-limits to me.';
   return '';
 }

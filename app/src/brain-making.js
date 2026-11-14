@@ -93,7 +93,8 @@ export const makingParts = {
     // 1.5.39: the engine's raw answer, when there is one, goes to the logbook; the chat gets the plain line.
     const { file, name } = await (async () => { try { return await makeAudio(this.cfg, kind, args, {
       signal: ctx.signal,
-      onProgress: (n, total) => this.setState('painting', `${music ? 'Composing' : 'Making a sound'} ${Math.round((100 * n) / total)}%`, null)
+      onProgress: (n, total) => this.setState('painting', `${music ? 'Composing' : 'Making a sound'} ${Math.round((100 * n) / total)}%`, null),
+      onStage: (st) => { this.setState('painting', `Composing (${st})`, null); if (/^setting up/.test(st) && !ctx.aceSetupSaid) { ctx.aceSetupSaid = true; this.log(kind, 'the music engine is putting its Python packages back first; that can take a while'); ctx.emit({ type: 'announce', text: 'The music engine is setting itself up again first (putting its Python packages back). That can take a while; the song starts after.' }); } } // Nov 13
     }); } catch (e) { if (e.details) this.log(kind, e.details); throw e; } })();
     // 1.5.41: the song's title, style and lyrics travel with it, for its player in the chat.
     const song = { title: songTitle(args, kind), style: String(args.prompt || '').slice(0, 200), sound: music ? 'music' : 'sfx', ...(music && args.lyrics ? { lyrics: String(args.lyrics).slice(0, 4000) } : {}) };

@@ -1,4 +1,4 @@
-// 96 Speed history (off until "Keep a speed history" is on, Settings, Speed & memory). After each reply the engine
+// 96 Speed history (off until "Speed history" is on, Settings, Speed & memory). After each reply the engine
 // already says how many words a second it wrote (speed-stats.js); with the switch on, that number is added to one
 // row per day, brain and engine version, in speed-log.json in Bob's data folder. Nothing else is kept: no chat text.
 // The Speed & memory panel draws it, and says when a brain got slower after an engine update.

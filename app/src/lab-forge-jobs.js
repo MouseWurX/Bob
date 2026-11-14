@@ -3,7 +3,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { forgeDir, forgePlansDir, FORGE_KEY, METHODS, LEFT_OUT, forgeRuns, forgeBrains, forgePlans, makeForgePlan, alive, scrub as scrubForge, forgeStartProblems, onDrive, launchForge, runPodId } from './lab-forge.js';
+import { startRun, finishRun, readRun } from './lab-runs.js';
+import { VERSION } from './config.js';
+import { forgeDir, forgeCandidates, forgePlansDir, FORGE_KEY, METHODS, LEFT_OUT, forgeRuns, forgeBrains, forgePlans, makeForgePlan, alive, scrub as scrubForge, forgeStartProblems, onDrive, launchForge, runPodId, runCost } from './lab-forge.js';
 import { pickLessons, addLessonSet, downloadHfLessons } from './lab-library.js';
 import os from 'node:os';
 import { parseHfRef, hfLookup } from './lab-hf.js';
@@ -27,7 +29,7 @@ export const forgeJobs = {
     const dir = forgeDir(this.cfg);
     let saved = []; try { saved = fs.readdirSync(forgePlansDir(labDir(this.cfg))).filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, '')); } catch {}
     const live = this.forgeLive();
-    return { live, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), methods: METHODS, leftOut: LEFT_OUT, found: Boolean(dir), runs: forgeRuns(dir), brains: forgeBrains(dir), plans: forgePlans(dir), saved, keepFiles: this.keepFiles().map(({ path: _p, ...k }) => k), lessonSets: lessonSets(this.cfg).map((x) => ({ id: x.id, name: x.name, count: x.count, added: x.added === true, license: x.license || '', source: x.source || '', parts: partsView(path.dirname(x.file)) })), skills: (() => { const b = forgePlans(dir)[0]; return b ? Object.keys(readJson(path.join(dir, 'forge', 'plans', `${b.id}.json`), {}).skills || {}) : []; })() };
+    return { live, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), methods: METHODS, leftOut: LEFT_OUT, found: Boolean(dir), looked: dir ? [] : forgeCandidates(this.cfg), runs: forgeRuns(dir), brains: forgeBrains(dir), plans: forgePlans(dir), saved, keepFiles: this.keepFiles().map(({ path: _p, ...k }) => k), lessonSets: lessonSets(this.cfg).map((x) => ({ id: x.id, name: x.name, count: x.count, added: x.added === true, license: x.license || '', source: x.source || '', parts: partsView(path.dirname(x.file)) })), skills: (() => { const b = forgePlans(dir)[0]; return b ? Object.keys(readJson(path.join(dir, 'forge', 'plans', `${b.id}.json`), {}).skills || {}) : []; })() };
   },
   forgePlan(form = {}) {
     const dir = forgeDir(this.cfg);
@@ -46,7 +48,7 @@ export const forgeJobs = {
       const r = pickLessons(dir, { offCategories: arr(pick.offCategories), offSources: arr(pick.offSources), offThinking: arr(pick.offThinking), pathName: String(pick.pathName || '') });
       return { ...one, dir: r.dir || dir, picked: r.count, pathName: r.dir ? String(pick.pathName || '').trim() : '' };
     });
-    return makeForgePlan(form, { base: base || {}, keepFiles: this.keepFiles(), lessonSets: sets });
+    return makeForgePlan(form, { base: base || {}, keepFiles: this.keepFiles(), lessonSets: sets, pairsSets: this.protocolPairs ? this.protocolPairs() : [] });
   },
   // Add a lesson set from a file here or a .jsonl/.json file on Hugging Face: converted into the Lab's shape, then
   // broken into parts. The Hugging Face card's licence is kept with it; a set with none is for private use only.
@@ -84,6 +86,8 @@ export const forgeJobs = {
     if (!rec) return null;
     const running = rec.pid > 0 && (this.forgeAlive || alive)(rec.pid);
     let tail = []; try { tail = fs.readFileSync(rec.log, 'utf8').split(/\r?\n/).filter(Boolean).slice(-12).map(scrubForge); } catch {}
+    // 14 Nov: when the run has ended, its run record gets its end and its card cost (about, from the pod record)
+    if (rec.run && !running) { try { const lr = labDir(this.cfg); if (readRun(lr, rec.run)?.state === 'running') { let end = this.now(); try { end = fs.statSync(rec.log).mtimeMs; } catch {} const dir = forgeDir(this.cfg); finishRun(lr, rec.run, { state: rec.stopped ? 'stopped' : rec.failed ? 'failed' : 'done', cost: dir ? runCost(dir, rec.planRun || rec.plan, end) : null, message: rec.failed || '', now: end }); } } catch {} }
     return { plan: rec.plan, at: rec.at, running, hours: rec.hours, dollars: rec.dollars, tail, importing: Boolean(rec.importing && running), failed: rec.failed || '' };
   },
   // Nov 11: Teach it from my mistakes (lab-mistakes.js): the saved tests' asks, answered as Bob by a teacher brain.
@@ -107,7 +111,8 @@ export const forgeJobs = {
     const log = path.join(labDir(this.cfg), 'forge-runs', `${slugOf(id)}-${new Date(this.now()).toISOString().replace(/[:.]/g, '-').slice(0, 19)}.log`);
     fs.mkdirSync(path.dirname(log), { recursive: true });
     const { file: node, env: nodeEnv } = nodeCmd();
-    const live = { plan: slugOf(id), log, at: this.now(), hours: plan.hours_max, dollars: plan.dollars_max };
+    let run = null; try { run = startRun(labDir(this.cfg), { step: 'forge-plan', settings: { plan: slugOf(id), run: plan.run || '', hours: plan.hours_max, dollars: plan.dollars_max, gpus: plan.gpus || [] }, bob: VERSION.label || '', now: this.now() }); } catch {}
+    const live = { plan: slugOf(id), log, at: this.now(), hours: plan.hours_max, dollars: plan.dollars_max, run: run?.id || '', planRun: plan.run || '' };
     const spawnFn = this.forgeSpawn || spawn;
     if (!(Array.isArray(plan.hf_lessons) && plan.hf_lessons.length)) {
       writeJson(this.forgeLiveFile(), { ...live, pid: launchForge({ dir, planFile: file, env: keys, node, nodeEnv, spawnFn, logTo: log }) });

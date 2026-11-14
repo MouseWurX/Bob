@@ -11,6 +11,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { opts, locate, checkFree, startServer, chat, appendJsonl, readJsonl, pauseGate } from './common.mjs';
 import { loadBob } from './bob-kit.mjs';
+import { toolSetFor } from '../src/tool-sets.js';
 
 const o = opts({ count: 4000, hours: 0 });
 const L = locate(o);
@@ -63,7 +64,8 @@ const leakCheck = (content) => {
 const tag = o.tag ? String(o.tag).replace(/[\r\n]+/g, ' ').trim().slice(0, 80) : '';
 if (remoteUrl) process.env.LAB_REMOTE = '1'; else checkFree(o);
 const parallel = Math.max(1, Number(o.parallel) || 1);
-const kit = await loadBob(L.bob);
+const kit = await loadBob(L.bob, { allowOld: Boolean(o['allow-old-bob']) });
+console.log(`Bob's tools from ${L.bob}: ${kit.bobSrc.version || '?'}${kit.bobSrc.commit ? ` (${kit.bobSrc.commit})` : ''}`);
 // 12 Nov (later): the idea writer is told what Bob's tools can really do, so it doesn't invent jobs no tool covers (calendar events...)
 const TOOLBOX = (() => { try { return Object.entries(kit.groups()).map(([k, g]) => `${k} (${g.what || (g.tools || []).join(', ')})`).join('; '); } catch { return ''; } })();
 const TOOL_NOTE = `How Bob's tools work (a note for you only; never mention it): call a tool only when the request needs one, and the one whose description fits; copy names, paths, dates, times and amounts from the message exactly into the arguments; save files inside the folders Bob is allowed to use (his own output folder when none is given) and ask before writing anywhere else; read each tool result before the next step and use what it returned; reminders, schedules and the notice board each have their own tool, never a file; when a needed detail is truly missing, ask one short question instead of guessing; finish with a plain answer that says what was done and where.${TOOLBOX ? ` Bob's tool groups: ${TOOLBOX}.` : ''}`;
@@ -191,7 +193,7 @@ const STYLES = ['short and casual', 'polite and detailed', 'with small typos', '
 function setKey(system, tools) {
   const k = crypto.createHash('sha1').update(system).update(JSON.stringify(tools)).digest('hex').slice(0, 12);
   const sets = fs.existsSync(F.sets) ? JSON.parse(fs.readFileSync(F.sets, 'utf8')) : {};
-  if (!sets[k]) { sets[k] = { system, tools }; fs.writeFileSync(F.sets, JSON.stringify(sets)); }
+  if (!sets[k]) { sets[k] = { system, tools, bob_src: kit.bobSrc }; fs.writeFileSync(F.sets, JSON.stringify(sets)); } // Nov 13: which Bob's wording
   return k;
 }
 
@@ -241,7 +243,13 @@ console.log(`ideas total: ${ideas.length} (${pics.length} pictures)`);
 
 // ---- stage 2: lessons (Bob's real turns) ----
 const done = new Set(readJsonl(F.lessons).map((l) => l.idea));
-const toolsFor = (loaded) => kit.turn(loaded);
+// Tool sets (src/tool-sets.js): the teacher sees the tools worded for its own family (same names and inputs, so the
+// saved lesson needs no translating). --tool-set off: Bob's own wording (the A/B for tool-score); --tool-set gpt-oss
+// picks one by hand; left out, it's found from the teacher's name.
+const toolSetArg = String(o['tool-set'] || o.toolSet || '');
+const teacherSet = toolSetArg === 'off' ? null : toolSetFor({}, toolSetArg ? '' : `${process.env.LAB_MODEL_NAME || ''} ${path.basename(String(L.model || ''))}`, toolSetArg ? { family: toolSetArg } : {});
+console.log(`tool wording: ${teacherSet ? teacherSet.label : "Bob's own"}`);
+const toolsFor = (loaded) => { loaded.toolSet = teacherSet; return kit.turn(loaded); };
 async function failedResult(name, args) { // the recover/codefix jobs: the first tool call fails, so the student learns to read errors and carry on
   const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `You are the "${name}" tool inside a desktop AI assistant on a Windows PC. It was called with ${JSON.stringify(args).slice(0, 1500)} and it FAILED this time (a realistic failure for this tool: wrong path, file missing, syntax error with a traceback, permission denied, timeout, bad format). Write only the short, realistic error output the tool would return.` }], think: false, max: 400 }); return (msg.content || 'Error: the tool failed.').trim();
 }
@@ -326,7 +334,7 @@ async function one(idea, think, room = 1, fix = '') { // room 2 = a second try w
   }
   // a lesson fixed after a failed review carries retry: 'review'; its reject sits in rejected.jsonl under the same idea, so
   // make-pairs.mjs turns the two into a right-vs-wrong pair (the reviewer's reason goes along as why)
-  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), ...(fix ? { retry: 'review' } : {}), ...(splitTag ? { split: splitTag } : {}), ...(score !== null ? { style_score: Math.round(score * 100) / 100 } : {}), ...(leaked ? { leak: 'stripped' } : {}), ...(think && thinkPrefix ? { think_prefix: thinkPrefix } : {}), messages: saved });
+  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, bob_src: kit.bobSrc, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), ...(fix ? { retry: 'review' } : {}), ...(splitTag ? { split: splitTag } : {}), ...(score !== null ? { style_score: Math.round(score * 100) / 100 } : {}), ...(leaked ? { leak: 'stripped' } : {}), ...(think && thinkPrefix ? { think_prefix: thinkPrefix } : {}), messages: saved });
   if (oddsK) appendJsonl(path.join(dir, 'odds.jsonl'), { idea: idea.id, job: idea.job, think, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), k: oddsK, turns: odds });
 }
 // The teacher as a strict reviewer: right tool or rightly none, exact arguments, results read, a final answer that does the job.

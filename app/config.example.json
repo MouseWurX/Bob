@@ -1,5 +1,5 @@
 {
-  "style": { "look": "lamplight", "avatar": "cube" },
+  "style": { "look": "lamplight", "avatar": "cube", "theme": "mercury", "lamp": "mercury" },
   "host": "127.0.0.1",
   "port": 7777,
   "engine": "llamacpp",

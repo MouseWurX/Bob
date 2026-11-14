@@ -1,5 +1,5 @@
 // 1.5.49: the moot is said plainly, brain loads say swap / add / load, and the brain bay picks the right scene.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import { loadMode, loadLine } from '../src/brain.js';
 import { bayChange, heldItems, MODES, sceneLabel, drawFrame } from '../public/brain-swap.js';
@@ -23,7 +23,7 @@ check('reviewer swap on Bob\'s own engine: a plain swap line', /^🛰 Moot: Bobb
 check('reviewer swap on Ollama says memory is the reason', /Only one big brain fits right now/.test(loadLine({ mode: 'swap', who: 'reviewer', model: 'r', from: 'a', copy: 'B', secs: 3, label })));
 check('reviewer add is called a moot and loads beside', /^🛰 Moot: Bobby joins me.*loads beside mine/.test(loadLine({ mode: 'add', who: 'reviewer', model: 'r', from: 'a', copy: 'Bobby', secs: 3, label })));
 
-const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+const app = publicText('app.js');
 check('the reviewer copy is announced as a moot, not "spins up"', /🛰 Moot: Bob calls in/.test(app) && !/spins up/.test(app));
 const moot = fs.readFileSync(new URL('../src/moot.js', import.meta.url), 'utf8');
 check('the end of a moot says "Moot over"', /🛰 \*\*Moot over:\*\*/.test(moot));

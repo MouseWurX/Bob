@@ -408,7 +408,7 @@ export class ModelShop {
     try { list = JSON.parse(fs.readFileSync(this.dlFile, 'utf8')); } catch {}
     if (!Array.isArray(list)) list = [];
     const keep = Date.now() - 7 * 864e5;
-    // Opt-in: off unless the user turns it on, here or with "Pick up where Bob left off after a restart" (1.5.38).
+    // Opt-in: off unless the user turns it on, here or with "Resume jobs after restart" (1.5.38).
     const resume = this.cfg.downloads?.resumeOnStart === true || this.cfg.resumeJobs === true;
     return list.filter((d) => d && typeof d.id === 'string' && d.name && !(['done', 'cancelled'].includes(d.state) && (d.doneAt || 0) < keep)).map((d) => {
       if (d.state === 'downloading' || d.state === 'queued') {

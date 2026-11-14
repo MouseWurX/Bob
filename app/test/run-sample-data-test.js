@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sampleOf, scrub, sampleModels, sampleRoles, sampleSettings, sampleHardware, installSample, MACHINES, SAMPLE_HAVE } from '../public/sample-data.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok ? '' : ' ' + extra}`); };
@@ -57,7 +58,7 @@ const catalog = JSON.parse(read('catalog.json'));
 }
 
 {
-  const app = read('public/app.js'), sw = read('public/settings-window.js'), link = read('public/settings-link.js'), css = read('public/style.css');
+  const app = publicText('app.js'), sw = read('public/settings-window.js'), link = read('public/settings-link.js'), css = read('public/style.css');
   check('loaded first in the main window and the Settings window', /^\/\/[^\n]*\nimport '\.\/sample-data\.js';/.test(app) && /import '\.\/sample-data\.js';/.test(sw));
   check('Settings opened from a sample tab is a sample too', /__bobSample/.test(link));
   check('the banner has its own style', /\.sample-banner \{/.test(css));

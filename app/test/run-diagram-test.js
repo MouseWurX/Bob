@@ -9,6 +9,7 @@ import { saveAs, namedType, needsFfmpeg, SAVE_AS } from '../src/save-as.js';
 import { expectFrom, afterTurn } from '../src/verify.js';
 import { NEEDS, planFor } from '../src/setup-offer.js';
 import { Brain } from '../src/brain.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -151,7 +152,7 @@ check('the phone app has the same Mermaid', fs.existsSync(path.join(root, 'andro
   const offs = [...pdf.slice(xref).matchAll(/^(\d{10}) 00000 n $/gm)].map((m) => Number(m[1]));
   check('...and at every object', offs.length === 5 && offs.every((o, i) => pdf.slice(o, o + `${i + 1} 0 obj`.length) === `${i + 1} 0 obj`));
 }
-const appJs = fs.readFileSync(path.join(root, 'public/app.js'), 'utf8');
+const appJs = publicText('app.js');
 {
   const sa = fs.readFileSync(path.join(root, 'public/save-as.js'), 'utf8'), ph = fs.readFileSync(path.join(root, 'android/app/src/main/assets/www/phone.js'), 'utf8');
   check('on the PC the type it already is reads "· original" with no tick (✓ only for saved copies)', /· original<\/span>/.test(sa) && !/class="save-have"[^>]*>✓/.test(sa));

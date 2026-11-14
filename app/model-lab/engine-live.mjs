@@ -22,7 +22,10 @@ export function live(url, key = process.env.LAB_API_KEY) {
     getUsed: () => call('/experts-per-word'),
     setMask: (keep) => call('/expert-mask', { keep: keep ?? null }),
     setDials: (dials) => call('/dials', { dials: dials?.length ? dials : [] }),
-    reset: async () => { for (const f of [() => api.setDials([]), () => api.setMask(null), () => api.setUsed(null)]) { try { await f(); } catch {} } },
+    // 14 Nov: a stopped neuron sweep left its live control vector on and every later answer was "....,,,," : reset clears a
+    // live-set vector too (pod patch 0014; only one set over /control-vector, never a vector loaded at start)
+    clearVector: async () => { const g = await call('/control-vector', undefined, { tries: 1 }); if (g?.control_vector) await call('/control-vector', {}); return Boolean(g?.control_vector); },
+    reset: async () => { for (const f of [() => api.setDials([]), () => api.setMask(null), () => api.setUsed(null), () => api.clearVector()]) { try { await f(); } catch {} } },
     // a chat that reads (and maybe writes) with the trace on. No tools unless the caller passes them.
     trace: (messages, { mass = false, max = 1, extra = {} } = {}) => call('/v1/chat/completions', { messages, max_tokens: max, cache_prompt: false, temperature: 0, expert_trace: true, ...(mass ? { expert_trace_mass: true } : {}), ...extra }, { timeout: 10 * 60_000 }),
     chat: (body) => call('/v1/chat/completions', body, { timeout: 15 * 60_000 })

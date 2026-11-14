@@ -1,4 +1,4 @@
-// Bob on Discord (Settings, Online services). Off unless you turn it on.
+// Bob on Discord (Settings, Agents, Discord). Off unless you turn it on.
 //
 // Bob joins your Discord server as a bot: you make the bot yourself in the Discord Developer Portal and give Bob its
 // token. Never a normal user account (that's against Discord's rules). The token lives where the cloud keys live: a
@@ -38,6 +38,7 @@ import { readConfigFile, writeConfigFile } from './config.js';
 import { saveKey, forgetPlainKey } from './secret-box.js';
 import { RoomGate } from './room-gate.js';
 import { KeepAwake } from './keep-awake.js';
+import { Moderator, modSettings, cleanModPatch, REVIEW_SESSION } from './discord-mod.js'; // 1.5.224 Keep order (moderation), rules in code
 
 export const TOKEN_ENV = 'BOB_DISCORD_TOKEN';
 export const DISCORD_SESSION = 'discord'; // session ids are discord-<channel id>
@@ -70,6 +71,9 @@ export const JOB_TYPES = [
 ];
 const ALWAYS_TOOLS = ['use_tools']; // only loads tool groups; what's in them is still checked against the list
 
+// Someone's name as their server shows it, cleaned.
+const nameOf = (m) => String(m.member?.nick || m.author?.global_name || m.author?.username || 'someone').replace(/[\u0000-\u001f<>@]/g, '').slice(0, 40) || 'someone';
+
 export function discordSettings(cfg) {
   const d = cfg.discord || {};
   const jobs = {};
@@ -91,7 +95,12 @@ export function discordSettings(cfg) {
     ownerId: ID_RX.test(String(d.ownerId || '')) ? String(d.ownerId) : null,
     ownerName: String(d.ownerName || '').slice(0, 80),
     dmApprove: d.dmApprove === true,
-    dmPictures: d.dmPictures === true
+    dmPictures: d.dmPictures === true,
+    // 1.5.224 Chat on Discord: on keeps today's behaviour. Off: nobody on the server can start a brain job, so no brain
+    // loads for Discord at all; Keep order still runs, as plain rules.
+    chat: d.chat !== false,
+    // 1.5.228 Show the whole channel (off): every message in a listed channel shows on its page in Bob, not only calls.
+    showChannel: d.showChannel === true
   };
 }
 
@@ -115,7 +124,7 @@ export function saveDiscord(cfg, patch) {
 // Only these keys, only these types.
 export function cleanDiscordPatch(b = {}, current = {}) {
   const out = {};
-  for (const k of ['enabled', 'caseSensitive', 'share', 'autoAccept', 'keepAwake', 'dmEnabled', 'dmApprove', 'dmPictures']) if (k in b) out[k] = b[k] === true;
+  for (const k of ['enabled', 'chat', 'caseSensitive', 'share', 'autoAccept', 'keepAwake', 'dmEnabled', 'dmApprove', 'dmPictures', 'showChannel']) if (k in b) out[k] = b[k] === true;
   if ('wake' in b) { const w = cleanWake(b.wake); if (w) out.wake = w; }
   const list = (v) => [...new Set(String(Array.isArray(v) ? v.join(' ') : v || '').split(/[\s,;]+/).filter((x) => ID_RX.test(x)))].slice(0, 50);
   if ('channels' in b) out.channels = list(b.channels);
@@ -198,7 +207,7 @@ export function storeToken(token, { cfg, platform = process.platform, home = os.
 }
 
 export class DiscordBridge {
-  constructor(brain, { fetchImpl = globalThis.fetch, WebSocketImpl = globalThis.WebSocket, env = rentKeyEnv(), now = Date.now, wait = (ms) => new Promise((r) => setTimeout(r, ms)), store, cleanOpts, gate, awake } = {}) {
+  constructor(brain, { fetchImpl = globalThis.fetch, WebSocketImpl = globalThis.WebSocket, env = rentKeyEnv(), now = Date.now, wait = (ms) => new Promise((r) => setTimeout(r, ms)), store, cleanOpts, gate, awake, modDir, later } = {}) {
     this.brain = brain;
     this.cfg = brain.cfg;
     this.fetch = fetchImpl;
@@ -219,6 +228,7 @@ export class DiscordBridge {
     this.status = 'off';
     this.jobs = new Map(); // job id -> { channelId, messageId, text, startedAt, files, said }
     this.lastAsk = new Map(); // person id -> time of their last job
+    this.unlisted = new Map(); // channel id -> name: server channels that sent a message while not on the list (Settings offers Add)
     this.turns = new Map(); // your DM chat: turn id -> reply so far
     this.pair = null; // { code, until } while your account isn't paired
     this.pairLocked = false;
@@ -226,7 +236,11 @@ export class DiscordBridge {
     // The group's own chat and its requests waiting for your OK (kept in Bob's data folder, never with your chats).
     this.awake = awake || new KeepAwake({ log: (t) => this.log(t) });
     this.gate = gate || new RoomGate({ room: 'discord', dir: brain.cfg?.dataDir || null, now, log: (t) => this.log(t) });
+    this.mod = new Moderator(this, { now, dir: modDir === undefined ? brain.cfg?.dataDir || null : modDir, ...(later ? { later } : {}) });
+    this.chatOffSaid = new Map(); // person id -> when Bob last said chat is off
   }
+
+  intents() { return INTENTS | this.mod.intents(); }
 
   token() { const t = String(this.pasted || this.env[TOKEN_ENV] || '').trim(); return TOKEN_RX.test(t) ? t : ''; }
   settings() { return discordSettings(this.cfg); }
@@ -236,6 +250,8 @@ export class DiscordBridge {
     const s = this.settings();
     if ((s.enabled || s.dmEnabled) && this.token()) { if (!this.running) this.start(); }
     else this.stop(s.enabled || s.dmEnabled ? 'no token' : 'off');
+    // Keep order's Welcome or Raid guard needs one more kind of event; a running bot reconnects to ask for it.
+    if (this.running && this.identified != null && this.identified !== this.intents()) { this.stop('starting'); this.start(); }
     if (s.dmEnabled && !s.ownerId && !this.pairLocked && (!this.pair || this.pair.until < this.now())) this.newPairCode();
     if (!s.dmEnabled || s.ownerId) this.pair = null;
     this.awake.set(s.keepAwake && this.running);
@@ -286,7 +302,7 @@ export class DiscordBridge {
       }, every);
       this.beat.unref?.();
       if (resume && this.session?.id) this.send(6, { token: this.token(), session_id: this.session.id, seq: this.seq });
-      else this.send(2, { token: this.token(), intents: INTENTS, properties: { os: process.platform, browser: 'Bob', device: 'Bob' } });
+      else this.send(2, { token: this.token(), intents: (this.identified = this.intents()), properties: { os: process.platform, browser: 'Bob', device: 'Bob' } });
       return;
     }
     if (p.op === 11) { this.acked = true; return; }
@@ -302,6 +318,8 @@ export class DiscordBridge {
       this.backoff = 5000;
       this.log(`connected to Discord as ${this.botName || 'the bot'}`);
     } else if (p.t === 'RESUMED') { this.status = 'on'; this.backoff = 5000; }
+    else if (p.t === 'GUILD_CREATE') this.mod.guild(p.d);
+    else if (p.t === 'GUILD_MEMBER_ADD') this.mod.joined(p.d).catch((e) => this.log(`new member not handled: ${e.message}`));
     else if (p.t === 'MESSAGE_CREATE') this.handle(p.d).catch((e) => this.log(`message not handled: ${e.message}`));
     else if (p.t === 'INTERACTION_CREATE') this.button(p.d).catch((e) => this.log(`button not handled: ${e.message}`));
   }
@@ -327,13 +345,13 @@ export class DiscordBridge {
     this.connect(resume);
   }
 
-  async rest(method, route, body, { form } = {}) {
+  async rest(method, route, body, { form, reason } = {}) {
     const token = this.token();
     if (!token) throw new Error(`No ${TOKEN_ENV} found.`);
     for (let i = 0; i < 2; i++) {
       const r = await this.fetch(`${API}${route}`, {
         method,
-        headers: { authorization: `Bot ${token}`, 'user-agent': 'DiscordBot (https://github.com/MouseWurX/Bob, 1.5)', ...(form ? {} : { 'content-type': 'application/json' }) },
+        headers: { authorization: `Bot ${token}`, 'user-agent': 'DiscordBot (https://github.com/MouseWurX/Bob, 1.5)', ...(form ? {} : { 'content-type': 'application/json' }), ...(reason ? { 'x-audit-log-reason': encodeURIComponent(String(reason).slice(0, 300)) } : {}) },
         body: form || (body ? JSON.stringify(body) : undefined),
         signal: withDeadline(null, form ? 120_000 : 30_000) // item 212
       });
@@ -346,19 +364,44 @@ export class DiscordBridge {
     throw new Error('Discord is busy.');
   }
 
+  // A message that starts with an @mention of this bot: the rest is the ask ('' if nothing follows). null if it isn't one.
+  mentionAsk(text) {
+    if (!this.botId) return null;
+    const m = String(text || '').trim().match(/^<@!?(\d+)>/);
+    if (!m || m[1] !== this.botId) return null;
+    return String(text).trim().slice(m[0].length).replace(/^[\s,:;.!?-]+/, '').trim();
+  }
+
+  // A server message from a channel that isn't on the list: ignored, but said once per channel, so a new bot never looks dead.
+  async notListed(channelId, guildId) {
+    if (!channelId || this.unlisted.has(channelId) || this.unlisted.size >= 20) return;
+    this.unlisted.set(channelId, '');
+    let name = '';
+    try { const c = await this.rest('GET', `/channels/${channelId}`); name = String(c?.name || '').replace(/[\u0000-\u001f<>@]/g, '').slice(0, 60); } catch {}
+    this.unlisted.set(channelId, name);
+    this.log(`ignored a message in ${name ? `#${name}` : `channel ${channelId}`}: not on my channel list (Settings, Agents, Discord can add it)`);
+  }
+
   // One message from Discord. Only listed channels, only people on the list (if there is one), never bots.
   async handle(m) {
     const s = this.settings();
     if (!m || m.author?.bot || m.webhook_id) return;
     if (!m.guild_id) return this.direct(m, s); // a DM: only your paired account, private
     if (!s.enabled) return;
+    if (await this.mod.message(m)) return; // 1.5.224 Keep order: rules first, in code; a deleted message or a command ends here
     const channelId = String(m.channel_id || '');
-    if (!s.channels.includes(channelId)) return;
+    if (!s.channels.includes(channelId)) return this.notListed(channelId, m.guild_id);
     const who = String(m.author?.id || '');
-    if (s.people.length && !s.people.includes(who)) return;
-    const prompt = matchWake(s.wake, m.content, s.caseSensitive);
-    if (prompt === null) return;
+    const hear = () => (s.showChannel ? this.hear(m, channelId) : undefined); // 1.5.228 Show the whole channel
+    if (s.people.length && !s.people.includes(who)) return hear();
+    const prompt = this.mentionAsk(m.content) ?? matchWake(s.wake, m.content, s.caseSensitive); // "@Bob hi" works like the wake phrase
+    if (prompt === null) return hear();
     const reply = (text) => this.post(channelId, m.id, text);
+    if (!s.chat) { // 1.5.224 Chat on Discord is off: no job, so no brain. Said once an hour per person, then silence.
+      if (this.now() - (this.chatOffSaid.get(who) || 0) < 3600_000) return;
+      this.chatOffSaid.set(who, this.now());
+      return reply('Chat is switched off here right now. I\'m only keeping order.');
+    }
     if (!prompt) return reply(`Yes? Put what you'd like after "${s.wake.replace('*', '').trim()}".`);
     const type = jobTypeOf(prompt, this.brain.constructor?.guessKind?.bind(this.brain.constructor));
     if (!s.jobs[type]) {
@@ -368,22 +411,44 @@ export class DiscordBridge {
     const now = this.now();
     if (now - (this.lastAsk.get(who) || 0) < COOLDOWN_MS) return reply('One moment, I\'m still on your last one. Ask again in a few seconds.');
     this.lastAsk.set(who, now);
-    const name = String(m.member?.nick || m.author?.global_name || m.author?.username || 'someone').replace(/[\u0000-\u001f<>@]/g, '').slice(0, 40) || 'someone';
+    const name = nameOf(m);
     if (s.autoAccept) {
       const mine = [...this.jobs.keys()].filter((id) => (this.brain.queue || []).some((j) => j.id === id && ['waiting', 'working'].includes(j.state)));
       if (mine.length >= MAX_WAITING) { this.lastAsk.delete(who); return reply('I\'ve got a few Discord jobs going already. Ask again in a little while.'); }
     }
     // 1.5.211 the room gate: it waits for the owner's OK in the Discord chat on this replicant matrix, unless Auto-accept is on.
-    const line = this.gate.ask({ who, name, where: channelId, text: prompt.slice(0, MAX_IN), type, ref: { channelId, messageId: m.id } }, { auto: s.autoAccept });
+    const whereName = await this.channelName(channelId); // 1.5.228: each channel is its own page in the Discord chat
+    const line = this.gate.ask({ who, name, where: channelId, whereName, text: prompt.slice(0, MAX_IN), type, ref: { channelId, messageId: m.id } }, { auto: s.autoAccept });
     if (line.refused) { this.lastAsk.delete(who); return reply(line.refused === 'person' ? 'You\'ve got a few waiting for the owner\'s OK already. Ask again once they\'re answered.' : 'Lots of requests are waiting for the owner\'s OK already. Ask again later.'); }
-    this.roomNews();
+    this.roomNews({ name: line.name, text: line.text, where: line.whereName, waiting: line.state === 'waiting' });
     if (s.autoAccept) return this.run(line);
     this.log(`Discord request waiting for your OK (${type}, ${line.id.slice(0, 8)})`);
     this.react(channelId, m.id, '⏳');
   }
 
+  // 1.5.228 A message in a listed channel that didn't call Bob, kept on that channel's page (Show the whole channel on).
+  // Nothing runs, nothing is answered, no brain loads; Keep order has already taken down anything it removes.
+  async hear(m, channelId) {
+    const files = [].concat(m.attachments || []).length;
+    const text = String(m.content || '').trim() || (files ? `(${files} file${files === 1 ? '' : 's'})` : '');
+    if (!text) return;
+    this.gate.heard({ who: String(m.author?.id || ''), name: nameOf(m), where: channelId, whereName: await this.channelName(channelId), text: text.slice(0, MAX_IN) });
+    this.roomNews();
+  }
+
   // Tells Bob's open pages the room changed (a quiet count, never a pop-up).
-  roomNews() { try { this.brain.broadcast?.({ type: 'room', room: 'discord', waiting: this.gate.waiting().length }); } catch {} }
+  // last (1.5.228): the request that just came in, for the word bubble on the Discord icon (Bob-Net icons). Display only.
+  roomNews(last = null) { try { this.brain.broadcast?.({ type: 'room', room: 'discord', waiting: this.gate.waiting().length, ...(last ? { last } : {}) }); } catch {} }
+
+  // A channel's name ("general"), asked of Discord once per channel and kept in memory. '' when it can't be read.
+  async channelName(id) {
+    const names = (this.channelNames ||= new Map());
+    if (names.has(id)) return names.get(id);
+    let name = '';
+    try { const c = await this.rest('GET', `/channels/${id}`); name = String(c?.name || '').replace(/[\u0000-\u001f<>]/g, '').slice(0, 100); } catch {}
+    names.set(id, name);
+    return name;
+  }
 
   react(channelId, messageId, emoji, off = false) {
     return this.rest(off ? 'DELETE' : 'PUT', `/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/@me`).catch((e) => this.log(`couldn't react on Discord: ${e.message}`));
@@ -428,6 +493,25 @@ export class DiscordBridge {
         ...(i === 0 && messageId ? { message_reference: { message_id: messageId, fail_if_not_exists: false } } : {})
       }).catch((e) => this.log(`couldn't post to Discord: ${e.message}`));
     }
+  }
+
+  // 1.5.228 You talking in a channel from Bob's Discord chat: only a channel on Bob's list, only while connected, at
+  // most one message a second, and nobody gets pinged (no @everyone, no @someone). Kept on that channel's page.
+  async say(channelId, text) {
+    const s = this.settings();
+    const ch = String(channelId || '');
+    const words = String(text ?? '').replace(/[\u0000-\u0008\u000b-\u001f]/g, '').trim();
+    if (!words) return { error: 'empty' };
+    if (words.length > MAX_TEXT * 2) return { error: 'long' };
+    if (!s.enabled || !this.running) return { error: 'off' };
+    if (!s.channels.includes(ch)) return { error: 'not listed' };
+    if (this.now() - (this.saidAt || 0) < 1000) return { error: 'fast' };
+    this.saidAt = this.now();
+    for (const piece of chunks(words)) {
+      try { await this.rest('POST', `/channels/${ch}/messages`, { content: piece, allowed_mentions: { parse: [] } }); } catch (e) { this.log(`couldn't post to Discord: ${e.message}`); return { error: 'send' }; }
+    }
+    const line = this.gate.said({ where: ch, whereName: await this.channelName(ch), text: words });
+    return { line };
   }
 
   // Only a file made for this job, in Bob's own save folders, made after the request came in.
@@ -513,7 +597,7 @@ export class DiscordBridge {
     return sent;
   }
 
-  // Let Bob fix his own messages (src/edit-own.js) in your DMs. Still being written: the fix goes into the words before
+  // Edit his own messages (src/edit-own.js) in your DMs. Still being written: the fix goes into the words before
   // they're sent. Already sent as one DM that held only that message: that DM is changed. Otherwise one short DM with the new words.
   async dmEdited(ev, turnId) {
     const before = String(ev.before || ''), after = String(ev.text || '');
@@ -529,6 +613,7 @@ export class DiscordBridge {
 
   // Allow / Deny on an OK card in your DMs. Only your account, only with the switch on.
   async button(it) {
+    if (await this.mod.button(it)) return; // I agree, and Kick / Ban in your DMs
     const s = this.settings();
     const who = String(it?.user?.id || it?.member?.user?.id || '');
     const m = /^ok:([0-9a-f-]{36}):([01])$/.exec(String(it?.data?.custom_id || ''));
@@ -567,7 +652,7 @@ export class DiscordBridge {
       case 'error': this.dm(`That didn't work: ${String(ev.text || ev.error || 'something went wrong').slice(0, 500)}`); break;
       case 'image': case 'video': case 'audio':
         if (s.dmPictures && ev.file) this.dmPhoto(ev.file);
-        else this.turns.set(id, `${this.turns.get(id) || ''}\n(I made it. It's in Made by Bob${s.dmPictures ? '' : '. Turn on "Send what Bob makes to my DMs" to get it here'}.)`);
+        else this.turns.set(id, `${this.turns.get(id) || ''}\n(I made it. It's in Made by Bob${s.dmPictures ? '' : '. Turn on "Send creations to DMs" to get it here'}.)`);
         break;
       case 'approval': {
         const text = String(ev.text || 'I need your OK.').slice(0, 1500);
@@ -597,6 +682,8 @@ export class DiscordBridge {
   // Every event Bob's window gets passes through here. Only Discord jobs' own events are used.
   watch(ev) {
     if (ev?.sessionId === DM_SESSION) return this.watchDm(ev);
+    if (ev?.sessionId === REVIEW_SESSION) return this.mod.reviewEvent(ev); // a brain's look at a flagged message: never posted
+
     const job = ev?.turnId && this.jobs.get(ev.turnId);
     if (!job || !String(ev.sessionId || '').startsWith(`${DISCORD_SESSION}-`)) return;
     const s = this.settings();
@@ -642,7 +729,7 @@ export class DiscordBridge {
 export function discordView(bridge) {
   const s = bridge.settings();
   const pair = s.dmEnabled && !s.ownerId && bridge.pair && bridge.pair.until > bridge.now() ? bridge.pair : null;
-  return { ...s, paired: Boolean(s.ownerId), pairLocked: bridge.pairLocked, pairCode: pair?.code || '', tokenEnv: TOKEN_ENV, tokenFound: Boolean(bridge.token()), status: bridge.status, botName: bridge.botName, jobTypes: JOB_TYPES.map(({ id, label }) => ({ id, label })) };
+  return { ...s, paired: Boolean(s.ownerId), pairLocked: bridge.pairLocked, pairCode: pair?.code || '', tokenEnv: TOKEN_ENV, tokenFound: Boolean(bridge.token()), status: bridge.status, botName: bridge.botName, unlisted: [...bridge.unlisted].filter(([id]) => !s.channels.includes(id)).map(([id, name]) => ({ id, name })), jobTypes: JOB_TYPES.map(({ id, label }) => ({ id, label })), mod: { ...modSettings(bridge.cfg), ...bridge.mod.view() } };
 }
 
 export function startDiscord(brain, opts) {
@@ -673,27 +760,57 @@ export async function discordRoute({ req, res, p, isLocal, brain, body, send }) 
   if (typeof b.token === 'string' && b.token) {
     try { await bridge.saveToken(b.token); brain.log('settings', 'Discord bot token saved (your click)'); } catch (e) { send(res, 400, { error: e.message }); return true; }
   }
+  // 1.5.224 Keep order: its settings, and your answers to kicks, bans and flags.
+  if (b.mod && typeof b.mod === 'object') {
+    const mp = cleanModPatch(b.mod);
+    if (Object.keys(mp).length) { saveDiscord(brain.cfg, { mod: { ...(brain.cfg.discord?.mod || {}), ...mp } }); brain.log('settings', `Discord Keep order: ${Object.keys(mp).join(', ')} changed (your click)`); }
+  }
+  if (b.modAnswer && typeof b.modAnswer === 'object') {
+    const r = await bridge.mod.answer(String(b.modAnswer.id || ''), b.modAnswer.ok === true, 'you, in Settings');
+    if (r.error) { send(res, 409, { error: r.error === 'not found' ? 'That one is gone.' : `That one is ${r.error}.` }); return true; }
+  }
+  if (b.modFlag && typeof b.modFlag === 'object') {
+    const r = await bridge.mod.settle(String(b.modFlag.id || ''), b.modFlag.remove === true, 'you, in Settings');
+    if (r.error) { send(res, 409, { error: r.error === 'not found' ? 'That one is gone.' : `That one is ${r.error}.` }); return true; }
+  }
   const patch = cleanDiscordPatch(b, bridge.settings());
+  if (patch.showChannel === false) { bridge.gate.forgetHeard(); bridge.roomNews(); } // 1.5.228: off takes the channel talk away too
   if (Object.keys(patch).length) { saveDiscord(brain.cfg, patch); brain.log('settings', `Discord: ${Object.keys(patch).join(', ')} changed (your click)`); }
   bridge.sync();
   send(res, 200, discordView(bridge));
   return true;
 }
 
+const SAY_ERRORS = {
+  empty: 'Type something first.', long: 'That\'s too long for one go.', off: 'I\'m not connected to Discord right now, so it didn\'t send.',
+  'not listed': 'That channel isn\'t on my list. Add it in Settings, Discord, to talk there.', fast: 'One a second, please. Try again.', send: 'Discord didn\'t take it. See the logbook.'
+};
+
 // 1.5.211 GET/POST /api/rooms/discord: the group's own chat, and your Accept or Decline. Only on this PC (the second gate).
 async function roomRoute({ req, res, isLocal, brain, body, send }) {
   const bridge = brain.discord;
   if (!bridge) { send(res, 404, { error: 'not ready' }); return true; }
   if (!isLocal) { send(res, 403, { error: 'Discord requests can only be answered on this replicant matrix itself.' }); return true; }
-  if (req.method === 'GET') { send(res, 200, { ...bridge.gate.view(), on: bridge.settings().enabled, autoAccept: bridge.settings().autoAccept }); return true; }
+  if (req.method === 'GET') { send(res, 200, await roomView(bridge)); return true; }
   if (req.method !== 'POST') { send(res, 405, { error: 'no' }); return true; }
   const b = await body(req);
   if (b.clear === true) { bridge.gate.clear(); bridge.roomNews(); brain.log('settings', 'Discord chat emptied (your click)'); }
-  else {
+  else if (b.say && typeof b.say === 'object') { // 1.5.228 you, talking in a channel through Bob
+    const r = await bridge.say(b.say.where, b.say.text);
+    if (r.error) { send(res, r.error === 'send' ? 502 : 409, { error: SAY_ERRORS[r.error] || 'That didn\'t send.' }); return true; }
+  } else {
     const r = await bridge.answer(String(b.id || ''), b.ok === true);
     if (r.error) { send(res, 409, { error: r.error === 'not found' ? 'That request is gone.' : `That one is ${r.error.replace('already ', 'already ')}.` }); return true; }
   }
-  send(res, 200, { ...bridge.gate.view(), on: bridge.settings().enabled, autoAccept: bridge.settings().autoAccept });
+  send(res, 200, await roomView(bridge));
   return true;
+}
+
+// The chat, plus the channels on Bob's list (each gets a page you can talk in, even before anyone calls him there).
+async function roomView(bridge) {
+  const s = bridge.settings();
+  const channels = [];
+  for (const id of s.channels.slice(0, 50)) channels.push({ id, name: bridge.running ? await bridge.channelName(id) : (bridge.channelNames?.get(id) || '') });
+  return { ...bridge.gate.view(), on: s.enabled, connected: Boolean(bridge.running), autoAccept: s.autoAccept, channels };
 }
 

@@ -1,6 +1,6 @@
 // Share jobs with my other Bobs (1.5.72, Settings > Bob-Net). Both switches are off unless you turn them on.
 //
-// "Send jobs to my other Bobs" (the asking Bob): a whole job from Tasks (a picture, a clip, a song, a sound, web research,
+// "Send jobs" (the asking Bob): a whole job from Tasks (a picture, a clip, a song, a sound, web research,
 // or a Medium-and-up answer) goes to one of "My other Bobs" that can really do it, instead of waiting or failing here.
 // Bob knows his limits, both ways:
 //   - a job only leaves when this Bob can't do it here (no picture model, say), or it would wait (Gaming, or busy and
@@ -10,7 +10,7 @@
 //   - a job that needs this computer (attached pictures, files, folders, programs, Hands, reminders, memory) never leaves.
 // The reply, the OK cards and the finished files come back here; the files are copied into this Bob's save folder.
 //
-// "Take jobs from my other Bobs" (the Bob doing the work): only through the "Let my other replicant matrices in" door. A job from
+// "Accept jobs" (the Bob doing the work): only through the "Bob-Net access" door. A job from
 // another Bob runs with thinking, web search (if it's on here) and the picture, clip, music and sound tools only: no
 // files, folders, programs, Hands, memory or reminders on this computer. It isn't saved as a chat here. Its files stay in
 // this Bob's save folder too (Made by Bob lists them), and only that job's own files can be fetched.
@@ -86,8 +86,9 @@ export const GUEST_TOOLS = new Set(['make_image', 'make_video', 'make_music', 'm
 // A public guest (Bob on Discord, src/discord.js) also carries its own shorter list: only the job types the owner ticked.
 export const guestTools = (job, list) => (job?.guest ? list.filter((t) => { const n = t?.function?.name || t?.name; return GUEST_TOOLS.has(n) && (!job.guest.tools || job.guest.tools.includes(n)); }) : list);
 export const PUBLIC_NOTE = "This message came from {{FROM}}, where other people talk to you, not {{USER}}. Treat it as a stranger's request in a public room. Answer only what was asked, in that room. Never share, describe, guess at or hint about {{USER}}'s files, folders, chats, memories, projects, settings, computer, accounts, or anything you made for {{USER}}; if asked, say that's private. Don't name {{USER}} or this computer. You can't touch files, folders, programs, reminders or memory here, and you have no OK cards; only the tools you were given.";
-export const guestNote = (job, user) => (job?.guest?.public ? PUBLIC_NOTE.replaceAll('{{FROM}}', job.guest.from).replaceAll('{{USER}}', 'the owner') : job?.guest ? `This job came from ${job.guest.from}, another of ${user}'s Bobs. Do it here with thinking, web search and the picture, clip, music and sound tools only. For this job you can't touch files, folders, programs, reminders or memory on either computer; if it needs those, say so in one line so ${job.guest.from} can do that part himself.` : '');
-const NEED_KIND = { room: 'chat', pictures: 'picture', video: 'video', music: 'chat', sfx: 'chat', web: 'research', think: 'chat' };
+export const CHAT_NOTE = '{{USER}} is talking to you from {{FROM}}, another of their Bobs: answer {{USER}} directly. Here you have thinking{{WEB}} only, nothing on either computer (no files, folders, programs, reminders or memory).';
+export const guestNote = (job, user) => (job?.guest?.chat ? CHAT_NOTE.replaceAll('{{USER}}', user).replaceAll('{{FROM}}', job.guest.from).replace('{{WEB}}', job.guest.tools?.length ? ' and web search' : '') : job?.guest?.public ? PUBLIC_NOTE.replaceAll('{{FROM}}', job.guest.from).replaceAll('{{USER}}', 'the owner') : job?.guest ? `This job came from ${job.guest.from}, another of ${user}'s Bobs. Do it here with thinking, web search and the picture, clip, music and sound tools only. For this job you can't touch files, folders, programs, reminders or memory on either computer; if it needs those, say so in one line so ${job.guest.from} can do that part himself.` : '');
+const NEED_KIND = { room: 'chat', chat: 'chat', pictures: 'picture', video: 'video', music: 'chat', sfx: 'chat', web: 'research', think: 'chat' };
 const MAX_EVENTS = 3000;
 
 export class GuestJobs {
@@ -99,9 +100,12 @@ export class GuestJobs {
     if (why) return { status: 409, body: { busy: why } };
     // 1.5.211 a group's job (Discord) from one of your Bobs: b.room = { from, tools }. Stricter than a Bob's own job.
     const room = b?.room && typeof b.room === 'object' ? { from: String(b.room.from || 'a group').replace(/[\u0000-\u001f<>]/g, '').slice(0, 40) || 'a group', tools: [].concat(b.room.tools || []).map(String).filter((t) => GUEST_TOOLS.has(t)) } : null;
-    const need = NEEDS.includes(b?.need) || (room && b?.need === 'room') ? b.need : null;
+    // Nov 13 'chat' (net-overlay.js): the owner talking to this Bob from another of their Bobs' icons. Any Bob can talk;
+    // thinking only, plus web search when the asking Bob has it on (and this one has it too).
+    const chat = !room && b?.need === 'chat';
+    const need = NEEDS.includes(b?.need) || (room && b?.need === 'room') || chat ? b.need : null;
     if (!need) return { status: 400, body: { error: 'what kind of job?' } };
-    if (need !== 'room' && !this.canNow().includes(need)) return { status: 409, body: { busy: 'cant', need } }; // he knows his limits
+    if (need !== 'room' && !chat && !this.canNow().includes(need)) return { status: 409, body: { busy: 'cant', need } }; // he knows his limits
     const text = String(b.text || '').trim().slice(0, 20000);
     if (!text) return { status: 400, body: { error: 'empty' } };
     const from = String(b.from || 'another Bob').replace(/[\u0000-\u001f<>]/g, '').slice(0, 40) || 'another Bob';
@@ -110,7 +114,7 @@ export class GuestJobs {
     const context = [].concat(b.context || []).slice(-8).filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string').map((m) => ({ role: m.role, content: m.content.slice(0, 2000) }));
     this.brain.sessions.set(sessionId, context);
     const effort = room ? 'low' : ['low', 'medium', 'high', 'extreme'].includes(b.effort) ? b.effort : 'low';
-    const guest = room ? { from: room.from, need, public: true, tools: room.tools, taken: true } : { from, need };
+    const guest = room ? { from: room.from, need, public: true, tools: room.tools, taken: true } : chat ? { from, need, chat: true, tools: b.web === true ? ['web_search', 'fetch_page'] : [] } : { from, need };
     const { jobId } = this.brain.enqueue(sessionId, text, [], effort, { guest, kind: NEED_KIND[need] });
     this.jobs.set(jobId, { id: jobId, sessionId, from, events: [], n: 0, subs: new Set(), files: new Set(), approvals: new Set(), done: false });
     this.brain.log('guest', `took a ${need} job from ${from}`);
@@ -221,9 +225,15 @@ function uniqueFile(dir, name) {
   return f;
 }
 
+// Nov 13: the one Bob a chat from his icon goes to (net-overlay.js), if he's up and takes chats right now.
+export async function pickChatBob(lenders, bob) {
+  const s = await lenders.hello(bob);
+  return s?.up && s.takesJobs && (s.jobs || []).includes('chat') && !s.jobsBusy ? { ...bob, brain: s.brain, device: s.device } : null;
+}
+
 export async function sendAway(brain, job, plan, { lenders = brain.lenders, timers = { notStarted: NOT_STARTED_MS, quiet: QUIET_MS } } = {}) {
   const room = job.guest?.public ? { from: job.guest.from, tools: job.guest.tools || [] } : null;
-  const lender = await lenders.pickForJob(plan.need, { room: Boolean(room) }).catch(() => null);
+  const lender = plan.to ? await pickChatBob(lenders, plan.to).catch(() => null) : await lenders.pickForJob(plan.need, { room: Boolean(room) }).catch(() => null);
   if (!lender) return false; // nobody free who can: the job carries on here the normal way
   const emit = (ev) => brain.broadcast({ ...ev, turnId: job.id, sessionId: job.sessionId });
   const ctl = new AbortController();
@@ -234,7 +244,7 @@ export async function sendAway(brain, job, plan, { lenders = brain.lenders, time
   const history = brain.session(job.sessionId).filter((m) => (m.role === 'user' || m.role === 'assistant') && !m.tool_calls && typeof (m.text ?? m.content) === 'string').slice(-8).map((m) => ({ role: m.role, content: String(m.text ?? m.content) }));
   let r;
   try {
-    r = await lenders.call(lender, '/api/guest/jobs', { method: 'POST', body: { protocol: PROTOCOL, from: brain.cfg.windowsName || 'Bob', need: plan.need, text: job.text, effort: job.effort, context: history, ...(room ? { room } : {}) }, timeout: 5000 });
+    r = await lenders.call(lender, '/api/guest/jobs', { method: 'POST', body: { protocol: PROTOCOL, from: brain.cfg.windowsName || 'Bob', need: plan.need, text: job.text, effort: job.effort, context: history, ...(room ? { room } : {}), ...(plan.need === 'chat' ? { web: plan.web === true } : {}) }, timeout: 5000 });
   } catch { r = null; }
   const j = r ? await r.json().catch(() => ({})) : {};
   if (!r?.ok || !j.jobId) {
@@ -318,7 +328,7 @@ export async function sendAway(brain, job, plan, { lenders = brain.lenders, time
   brain.awayJobs.delete(job.id);
   for (const [id, a] of brain.awayApprovals) if (a.jobId === job.id) brain.awayApprovals.delete(id);
 
-  if (!started && failed) {
+  if (!started && failed && plan.need !== 'chat') { // a chat from the Bob-Net icons never runs here (net-overlay.js)
     // He never got going: bring it back here, the normal way.
     emit({ type: 'away', action: 'back', name: lender.name, why: failed });
     Object.assign(job, { state: 'waiting', away: undefined, noAway: true, steps: [] });

@@ -1,5 +1,5 @@
 // Tests the Gaming-session sleepy asides: scripted, rare, never two in a row, tied to the Outlook dial.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { SLEEPY, SLEEPY_ENTER, SLEEPY_LEAVE, SLEEPY_SESSION, sleepyGap, sleepyAfterReply, sleepySwitch } from '../public/sleepy.js';
@@ -48,7 +48,7 @@ check('brain only after a reply that finished', /if \(ok && !flagged && !control
 check('error and correction notes block the aside', /\['error', 'correction', 'held', 'waiting'\]\.includes\(ev\.type\)\) flagged = true/.test(brain));
 check('no "today" lines (Gaming is a mode, not a day)', !SLEEPY.some((l) => /\btoday\b/i.test(l)));
 check('brain sends a switch line', /sleepySwitch\(this\.sleepy, from, id/.test(brain));
-const app = read('../public/app.js');
+const app = publicText('app.js');
 check('page handles aside events', app.includes("case 'aside':"));
 check('read aloud skips stage directions', app.includes('speak(sayAside(aside))'));
 check('the prompt never carries the lines', !read('../src/persona.js').includes('sleepy') && !brain.includes('sleepyPrompt'));

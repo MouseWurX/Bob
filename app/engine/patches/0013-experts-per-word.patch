@@ -1,0 +1,632 @@
+diff --git a/include/llama.h b/include/llama.h
+index 95290a9..33dfa1b 100644
+--- a/include/llama.h
++++ b/include/llama.h
+@@ -606,6 +606,7 @@ extern "C" {
+     LLAMA_API int32_t llama_model_n_layer_nextn(const struct llama_model * model);
+     LLAMA_API int32_t llama_model_n_expert     (const struct llama_model * model);
+     LLAMA_API int32_t llama_model_n_expert_used(const struct llama_model * model);
++    LLAMA_API int32_t llama_model_n_expert_used_layer(const struct llama_model * model, int32_t il); // Brain Engine: the model's own count for one layer
+     LLAMA_API int32_t llama_model_n_head       (const struct llama_model * model);
+     LLAMA_API int32_t llama_model_n_head_kv    (const struct llama_model * model);
+     LLAMA_API int32_t llama_model_n_swa        (const struct llama_model * model);
+@@ -782,6 +783,26 @@ extern "C" {
+          const struct llama_dial * dials,
+                           size_t   n);
+ 
++    // Brain Engine: change how many experts a mixture-of-experts model uses for each word, without reloading it.
++    // used has one count per layer (llama_model_n_layer values), 0 = the model's own count for that layer.
++    // used = NULL or n = 0 puts every layer back to the model's own count.
++    // The graph is rebuilt and its working memory laid out again before this returns, so call it between requests.
++    // Returns  0: done
++    //         -1: a count is below 0 or above the model's experts, or n is not n_layer
++    //         -2: the expert mask keeps fewer experts than that in a layer
++    //         -3: not enough memory to work with that many (the old counts stay)
++    //         -4: the model has no experts, or its layers share one router
++    //         -5: more than the model's own count while a MoE cache is on
++    LLAMA_API int32_t llama_set_expert_used(
++            struct llama_context * ctx,
++                   const int32_t * used,
++                          size_t   n);
++
++    // The count a layer uses for each word right now (the live one if set, else the model's own).
++    LLAMA_API int32_t llama_get_expert_used(
++      const struct llama_context * ctx,
++                         int32_t   il);
++
+     //
+     // Memory
+     //
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 24c01e2..13b1a55 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -1881,13 +1881,122 @@ bool llama_context::set_adapter_cvec(
+ }
+ 
+ bool llama_context::set_expert_mask(const uint8_t * keep, size_t len) {
++    const auto & hparams = model.hparams;
++    const size_t n_expert = hparams.n_expert;
++    const size_t n_layer  = hparams.n_layer();
++
++    // a layer must keep at least as many experts as it uses for each word, the live count included
++    std::vector<uint32_t> n_keep;
++    if (keep != nullptr && n_expert > 0 && len == n_layer*n_expert) {
++        n_keep.assign(n_layer, 0);
++        for (size_t il = 0; il < n_layer; il++) {
++            for (size_t e = 0; e < n_expert; e++) {
++                n_keep[il] += keep[il*n_expert + e] != 0;
++            }
++            if (il < expert_used_live.size() && expert_used_live[il] > n_keep[il]) {
++                LLAMA_LOG_ERROR("%s: layer %zu keeps %u experts, it uses %u for each word\n", __func__, il, n_keep[il], expert_used_live[il]);
++                return false;
++            }
++        }
++    }
++
+     bool res = emask->apply(model, keep, len);
++    if (res) {
++        emask_n_keep = std::move(n_keep);
++    }
+ 
+     sched_need_reserve = true;
+ 
+     return res;
+ }
+ 
++int32_t llama_context::set_expert_used(const int32_t * used, size_t n) {
++    const auto & hparams = model.hparams;
++    const uint32_t n_layer  = hparams.n_layer();
++    const uint32_t n_expert = hparams.n_expert;
++
++    if (n_expert == 0 || hparams.router_layer >= 0) {
++        LLAMA_LOG_ERROR("%s: the model has no experts, or its layers share one router\n", __func__);
++        return -4;
++    }
++
++    std::vector<uint32_t> next;
++    if (used != nullptr && n > 0) {
++        if (n != n_layer) {
++            LLAMA_LOG_ERROR("%s: %zu counts, the model has %u layers\n", __func__, n, n_layer);
++            return -1;
++        }
++        next.assign(n_layer, 0);
++        bool any = false;
++        for (uint32_t il = 0; il < n_layer; il++) {
++            if (used[il] < 0 || (uint32_t) used[il] > n_expert || used[il] > LLAMA_MAX_EXPERTS) {
++                LLAMA_LOG_ERROR("%s: layer %u: %d experts per word, it must be from 1 to %u (0 = the model's own)\n", __func__, il, used[il], n_expert);
++                return -1;
++            }
++            // the model's own count is the same as none set
++            next[il] = (uint32_t) used[il] == hparams.n_expert_used(il) ? 0 : (uint32_t) used[il];
++            any = any || next[il] > 0;
++            if (il < emask_n_keep.size() && next[il] > emask_n_keep[il]) {
++                LLAMA_LOG_ERROR("%s: layer %u: the expert mask keeps %u experts, fewer than %u\n", __func__, il, emask_n_keep[il], next[il]);
++                return -2;
++            }
++            // the MoE cache sized its slots and its zero slots for the model's own count
++            if (moe_cache && next[il] > hparams.n_expert_used_max()) {
++                LLAMA_LOG_ERROR("%s: layer %u: more than %u experts per word while the MoE cache is on\n", __func__, il, hparams.n_expert_used_max());
++                return -5;
++            }
++        }
++        if (!any) {
++            next.clear();
++        }
++    }
++
++    if (next == expert_used_live) {
++        return 0;
++    }
++
++    synchronize();
++
++    std::vector<uint32_t> prev = std::move(expert_used_live);
++
++    auto point = [this]() {
++        cparams.expert_used     = expert_used_live.empty() ? nullptr : expert_used_live.data();
++        cparams.expert_used_n   = (uint32_t) expert_used_live.size();
++        cparams.expert_used_gen++;
++    };
++
++    expert_used_live = std::move(next);
++    point();
++
++    // lay the working memory out again now, so a count that doesn't fit is refused here and not in the next decode
++    sched_need_reserve = true;
++    try {
++        sched_reserve();
++    } catch (const std::exception & err) {
++        LLAMA_LOG_ERROR("%s: %s, keeping the counts as they were\n", __func__, err.what());
++        expert_used_live = std::move(prev);
++        point();
++        sched_need_reserve = true;
++        sched_reserve();
++        return -3;
++    }
++
++    LLAMA_LOG_INFO("%s: %s\n", __func__, expert_used_live.empty() ? "back to the model's own experts per word" : "experts per word set");
++
++    return 0;
++}
++
++int32_t llama_context::get_expert_used(int32_t il) const {
++    const auto & hparams = model.hparams;
++    if (il < 0 || (uint32_t) il >= hparams.n_layer_all) {
++        return -1;
++    }
++    if ((size_t) il < expert_used_live.size() && expert_used_live[il] > 0) {
++        return (int32_t) expert_used_live[il];
++    }
++    return (int32_t) hparams.n_expert_used(il);
++}
++
+ bool llama_context::set_dials(const struct llama_dial * d, size_t n) {
+     bool res = dials->apply(model, d, n);
+ 
+@@ -3016,6 +3125,14 @@ uint32_t llama_context::graph_max_nodes(uint32_t n_tokens) const {
+         }
+     }
+ 
++    // Brain Engine: each extra expert per word adds a view and an add in its layer
++    for (uint32_t il = 0; il < expert_used_live.size(); il++) {
++        const uint32_t own = model.hparams.n_expert_used(il);
++        if (expert_used_live[il] > own) {
++            res += 2*(expert_used_live[il] - own);
++        }
++    }
++
+     // every sampler builds n_outputs_max_per_seq chains, see llm_graph_context::build_sampling
+     for (const auto & [seq_id, sampler] : sampling.samplers) {
+         res += llama_sampler_backend_n_nodes(sampler) * cparams.n_outputs_max_per_seq;
+@@ -5004,6 +5121,19 @@ int32_t llama_set_expert_mask(
+     return res ? 0 : -1;
+ }
+ 
++int32_t llama_set_expert_used(
++        llama_context * ctx,
++        const int32_t * used,
++               size_t   n) {
++    return ctx->set_expert_used(used, n);
++}
++
++int32_t llama_get_expert_used(
++        const llama_context * ctx,
++                    int32_t   il) {
++    return ctx->get_expert_used(il);
++}
++
+ //
+ // memory
+ //
+diff --git a/src/llama-context.h b/src/llama-context.h
+index d7696d5..bff765f 100644
+--- a/src/llama-context.h
++++ b/src/llama-context.h
+@@ -156,6 +156,9 @@ struct llama_context {
+ 
+     bool set_expert_mask(const uint8_t * keep, size_t len);
+ 
++    int32_t set_expert_used(const int32_t * used, size_t n);
++    int32_t get_expert_used(int32_t il) const;
++
+     bool set_dials(const struct llama_dial * d, size_t n);
+ 
+     // process a single ubatch with a specific graph type
+@@ -348,6 +351,11 @@ private:
+ 
+     llama_adapter_cvec_ptr  cvec;
+     llama_adapter_emask_ptr emask;
++
++    // Brain Engine: experts per word set live, one per layer (0 = the model's own), empty = none set;
++    // and how many experts the expert mask keeps in each layer, empty = all
++    std::vector<uint32_t> expert_used_live;
++    std::vector<uint32_t> emask_n_keep;
+     llama_adapter_dials_ptr dials;
+     llama_adapter_loras_ptr loras;
+ 
+diff --git a/src/llama-cparams.h b/src/llama-cparams.h
+index 451804f..9a9010b 100644
+--- a/src/llama-cparams.h
++++ b/src/llama-cparams.h
+@@ -55,6 +55,12 @@ struct llama_cparams {
+     bool no_perf;
+     bool warmup;             // TODO: remove [TAG_LLAMA_GRAPH_NO_WARMUP]
+     bool keep_expert_ids = false; // Brain Engine: keep every layer's expert picks until the step ends
++
++    // Brain Engine: experts per word set live (llama_set_expert_used), one count per layer, 0 = the model's own.
++    // Points into the context's own list; expert_used_gen changes with every change, so a graph is never reused across one.
++    const uint32_t * expert_used     = nullptr;
++    uint32_t         expert_used_n   = 0;
++    uint32_t         expert_used_gen = 0;
+     bool op_offload;
+     bool kv_unified;
+     bool pipeline_parallel;
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index 73e63c4..787a02a 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -2280,6 +2280,14 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+     const int64_t n_tokens = cur->ne[1];
+     const bool weight_before_ffn = arch == LLM_ARCH_LLAMA4; // for llama4, we apply the sigmoid-ed weights before the FFN
+ 
++    // Brain Engine: experts per word set live (llama_set_expert_used) take the place of the model's own count
++    // for this layer. Never during warmup (which runs every expert) or for a layer handed its picks by another.
++    const bool expert_used_live = !cparams.warmup && cparams.expert_used != nullptr && selected_experts_in == nullptr &&
++        n_expert == hparams.n_expert && il >= 0 && (uint32_t) il < cparams.expert_used_n && cparams.expert_used[il] > 0;
++    if (expert_used_live) {
++        n_expert_used = cparams.expert_used[il];
++    }
++
+     ggml_tensor * logits = nullptr;
+ 
+     if (probs_in == nullptr) {
+@@ -2666,7 +2674,7 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+     // Use per-layer n_expert_used to bound the graph even during warmup (avoids
+     // the large-add-nodes issue for uniform arches; for Puzzle the per-layer
+     // value is correct). ref: https://github.com/ggml-org/llama.cpp/pull/14753
+-    const uint32_t n_expert_used_il = hparams.n_expert_used(il);
++    const uint32_t n_expert_used_il = expert_used_live ? (uint32_t) n_expert_used : hparams.n_expert_used(il);
+     for (uint32_t i = 0; i < n_expert_used_il; ++i) {
+         cur_experts[i] = ggml_view_2d(ctx0, experts, n_embd, n_tokens, experts->nb[2], i*experts->nb[1]);
+ 
+diff --git a/src/llama-graph.h b/src/llama-graph.h
+index 610ad48..e939f94 100644
+--- a/src/llama-graph.h
++++ b/src/llama-graph.h
+@@ -911,6 +911,7 @@ struct llm_graph_params {
+             cparams.embeddings_nextn_masked == other.cparams.embeddings_nextn_masked &&
+             cparams.causal_attn             == other.cparams.causal_attn             &&
+             cparams.keep_expert_ids         == other.cparams.keep_expert_ids         &&
++            cparams.expert_used_gen         == other.cparams.expert_used_gen         &&
+             layer_inp_dev == other.layer_inp_dev &&
+             layer_inp_src == other.layer_inp_src &&
+             h_nextn_dev   == other.h_nextn_dev   &&
+diff --git a/src/llama-model.cpp b/src/llama-model.cpp
+index c328d8d..e19812c 100644
+--- a/src/llama-model.cpp
++++ b/src/llama-model.cpp
+@@ -3602,6 +3602,13 @@ int32_t llama_model_n_expert_used(const llama_model * model) {
+     return model->hparams.n_expert_used_max();
+ }
+ 
++int32_t llama_model_n_expert_used_layer(const llama_model * model, int32_t il) {
++    if (il < 0 || (uint32_t) il >= model->hparams.n_layer_all) {
++        return -1;
++    }
++    return model->hparams.n_expert_used(il);
++}
++
+ int32_t llama_model_dflash_selector_top_k(const llama_model * model) {
+     return model->hparams.dflash_selector_top_k;
+ }
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index e14ecb5..4ec1978 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -156,8 +156,9 @@ struct server_expert_trace {
+     std::mutex mutex;
+     bool on  = false;
+     bool bad = false; // a decode failed or a layer was seen in a shape we don't follow: no trace for this run
+-    int32_t n_used = 0;
+-    std::vector<std::vector<int32_t>> cols; // per layer, n_used ids per token
++    int32_t n_used = 0; // the most experts any layer picked for a token
++    std::vector<int32_t> k_of;              // per layer, the experts it picks for each token (experts per word can differ by layer)
++    std::vector<std::vector<int32_t>> cols; // per layer, k_of ids per token
+     std::vector<int32_t> n_cols;            // per layer, tokens seen
+     struct tag { int32_t id_slot; llama_token token; bool is_prompt; bool output; };
+     std::vector<tag> tags; // per submitted token
+@@ -192,6 +193,7 @@ struct server_expert_trace {
+     void clear(int32_t n_layer) {
+         bad = false;
+         n_used = 0;
++        k_of.assign(n_layer, 0);
+         n_group = 0;
+         n_ff = 0;
+         cols.assign(n_layer, {});
+@@ -274,6 +276,7 @@ struct server_expert_trace {
+             pass++;
+         }
+         last_il = il;
++        k_of[il] = n_used;
+         auto & out = cols[il];
+         if (at_pass[il] == pass) {
+             // a later node of the same layer in the same pass is nearer the block's real hidden state: it replaces
+@@ -327,7 +330,7 @@ struct server_expert_trace {
+             return true;
+         }
+         if (il < 0 || il >= (int) cols.size() || t->type != GGML_TYPE_F32 || !ggml_is_contiguous(t) || t->ne[3] != 1 ||
+-                k != n_used || (int64_t) norms[il].size() + k*n_tok != (int64_t) cols[il].size()) {
++                k != k_of[il] || (int64_t) norms[il].size() + k*n_tok != (int64_t) cols[il].size()) {
+             mass_bad = true;
+             return true;
+         }
+@@ -407,7 +410,7 @@ struct server_expert_trace {
+             // the node is a view of the first k rows of the argsort, [k, n_tokens] over [n_expert, n_tokens]
+             if (pil < 0 || pil >= (int) tr->cols.size() || p->type != GGML_TYPE_I32 || src->type != GGML_TYPE_I32 ||
+                     k <= 0 || stride < k || src->ne[1] != n_tok || p->ne[2] != 1 || p->ne[3] != 1 || p->view_offs != 0 ||
+-                    (tr->n_used != 0 && tr->n_used != k)) {
++                    (tr->k_of[pil] != 0 && tr->k_of[pil] != k)) {
+                 ok = false;
+                 break;
+             }
+@@ -434,7 +437,8 @@ struct server_expert_trace {
+             const struct ggml_tensor * p = tr->pending[j];
+             const int pil = atoi(p->name + sizeof(prefix) - 1);
+             const int64_t k = p->ne[0], n_tok = p->ne[1], stride = (p->view_src ? p->view_src : p)->ne[0];
+-            tr->n_used = (int32_t) k;
++            tr->k_of[pil] = (int32_t) k;
++            tr->n_used = std::max(tr->n_used, (int32_t) k);
+             auto & out = tr->cols[pil];
+             const auto & b = tr->pbuf[j];
+             for (int64_t i = 0; i < n_tok; i++) {
+@@ -3761,6 +3765,20 @@ private:
+                     };
+                     queue_results.send(std::move(res));
+                 } break;
++            case SERVER_TASK_TYPE_EXPERT_USED:
++                {
++                    if (!task.expert_used.is_null()) {
++                        std::string err = set_expert_used(task.expert_used);
++                        if (!err.empty()) {
++                            send_error(task, err, ERROR_TYPE_INVALID_REQUEST);
++                            break;
++                        }
++                    }
++                    auto res = std::make_unique<server_task_result_expert_mask>();
++                    res->id   = task.id;
++                    res->data = expert_used_json();
++                    queue_results.send(std::move(res));
++                } break;
+         }
+ 
+         return true;
+@@ -3825,6 +3843,102 @@ private:
+         return "";
+     }
+ 
++    // Brain Engine experts per word. body: {"used": null} = the model's own count in every layer,
++    // {"used": N} = N in every layer, {"used": [N, null, ...]} = one count per layer (null or 0 = the model's own)
++    std::string set_expert_used(const json & body) {
++        const int64_t n_layer  = llama_model_n_layer(model_tgt);
++        const int64_t n_expert = llama_model_n_expert(model_tgt);
++
++        if (!body.is_object() || !body.contains("used")) {
++            return "body must be an object with \"used\"";
++        }
++        if (n_expert == 0) {
++            return "the model has no experts";
++        }
++        for (const auto & slot : slots) {
++            if (slot.is_processing()) {
++                return "a slot is busy, set the experts per word when the server is idle";
++            }
++        }
++
++        const json & used = body.at("used");
++        std::vector<int32_t> counts;
++        if (!used.is_null()) {
++            auto one = [&](const json & v, int32_t & out) -> bool {
++                if (v.is_null()) {
++                    out = 0;
++                    return true;
++                }
++                if (!v.is_number_integer() || v.get<int64_t>() < 0 || v.get<int64_t>() > n_expert) {
++                    return false;
++                }
++                out = (int32_t) v.get<int64_t>();
++                return true;
++            };
++            counts.assign(n_layer, 0);
++            if (used.is_array()) {
++                if ((int64_t) used.size() != n_layer) {
++                    return string_format("\"used\" has %zu layers, the model has %" PRId64, used.size(), n_layer);
++                }
++                for (int64_t il = 0; il < n_layer; il++) {
++                    if (!one(used[(size_t) il], counts[il])) {
++                        return string_format("each count must be null or a whole number from 0 to %" PRId64, n_expert);
++                    }
++                }
++            } else {
++                int32_t n = 0;
++                if (!one(used, n)) {
++                    return string_format("\"used\" must be null, a whole number from 0 to %" PRId64 " or one per layer", n_expert);
++                }
++                std::fill(counts.begin(), counts.end(), n);
++            }
++        }
++
++        switch (llama_set_expert_used(ctx_tgt, counts.empty() ? nullptr : counts.data(), counts.size())) {
++            case  0: break;
++            case -2: return "the expert mask keeps fewer experts than that in a layer, switch more experts on first";
++            case -3: return "not enough memory to work with that many experts per word, the counts are as they were";
++            case -4: return "this model's layers share one router, so its experts per word can't change";
++            case -5: return "more experts per word than the model's own can't be used while the MoE cache is on";
++            default: return "invalid experts per word";
++        }
++
++        // cached prompts were computed with the old counts
++        for (auto & slot : slots) {
++            slot.prompt_clear();
++        }
++        if (prompt_cache) {
++            prompt_cache->states.clear();
++        }
++
++        SRV_INF("experts per word %s\n", counts.empty() ? "back to the model's own" : "set");
++
++        return "";
++    }
++
++    json expert_used_json() const {
++        const int64_t n_layer = llama_model_n_layer(model_tgt);
++
++        json own  = json::array();
++        json used = json::array();
++        bool live = false;
++        for (int64_t il = 0; il < n_layer; il++) {
++            const int32_t now = llama_get_expert_used(ctx_tgt, (int32_t) il);
++            own.push_back(llama_model_n_expert_used_layer(model_tgt, (int32_t) il));
++            used.push_back(now);
++            live = live || now != own.back().get<int32_t>();
++        }
++
++        return json {
++            {"n_layer",       n_layer},
++            {"n_expert",      llama_model_n_expert(model_tgt)},
++            {"n_expert_used", llama_model_n_expert_used(model_tgt)},
++            {"own",           own},
++            {"used",          used},
++            {"live",          live},
++        };
++    }
++
+     // body: {"keep": null} = all on, {"keep": [ids]} = same experts in every layer, {"keep": [[ids], ...]} = one list per layer (null = all)
+     std::string set_expert_mask(const json & body) {
+         const int64_t n_layer  = llama_model_n_layer(model_tgt);
+@@ -5243,7 +5357,7 @@ private:
+                 ok = ok && etrace.n_cols[il] == n_output;
+             }
+             if (ok && n_layer_seen > 0) {
+-                const int32_t k = etrace.n_used;
++                const int32_t k = etrace.n_used; // the most any layer picked (a layer's own count can differ, see k_of)
+                 json rows = json::array();
+                 // for experts: how often each layer picked each expert for this slot's tokens ("layers"), and with
+                 // mass the sum of those picks' weighted output sizes ("mass"), in the shape the Forge writes
+@@ -5282,15 +5396,15 @@ private:
+                             continue;
+                         }
+                         const size_t at = outputs_only[il] ? i_out : i;
+-                        const auto b = etrace.cols[il].begin() + at*k;
+-                        e.push_back(std::vector<int32_t>(b, b + k));
++                        const auto b = etrace.cols[il].begin() + at*etrace.k_of[il];
++                        e.push_back(std::vector<int32_t>(b, b + etrace.k_of[il]));
+                         if (experts) {
+-                            for (int32_t j = 0; j < k; j++) {
++                            for (int32_t j = 0; j < etrace.k_of[il]; j++) {
+                                 const int32_t id = b[j];
+                                 if (id >= 0 && id < n_exp) {
+                                     picks[il][id]++;
+                                     if (with_mass) {
+-                                        msum[il][id] += etrace.norms[il][at*k + j];
++                                        msum[il][id] += etrace.norms[il][at*etrace.k_of[il] + j];
+                                     }
+                                 }
+                             }
+@@ -5419,11 +5533,11 @@ private:
+                     continue;
+                 }
+                 const size_t at = outputs_only[il] ? i_out : i;
+-                if ((at + 1)*k > etrace.cols[il].size()) {
++                if ((at + 1)*etrace.k_of[il] > etrace.cols[il].size()) {
+                     return out; // not there yet
+                 }
+-                const auto b = etrace.cols[il].begin() + at*k;
+-                e.push_back(std::vector<int32_t>(b, b + k));
++                const auto b = etrace.cols[il].begin() + at*etrace.k_of[il];
++                e.push_back(std::vector<int32_t>(b, b + etrace.k_of[il]));
+                 if (with_acts) {
+                     a.push_back(at < etrace.acts[il].size() ? etrace.acts[il][at] : 0.0f);
+                 }
+@@ -7538,6 +7652,44 @@ void server_routes::init_routes() {
+         return dials_handler(req, std::move(body));
+     };
+ 
++    auto expert_used_handler = [this](const server_http_req & req, json body) {
++        auto res = create_response();
++
++        auto & rd = res->rd;
++        {
++            server_task task(SERVER_TASK_TYPE_EXPERT_USED);
++            task.id = rd.get_new_id();
++            task.expert_used = std::move(body);
++            rd.post_task(std::move(task));
++        }
++
++        auto result = rd.next(req.should_stop);
++        if (!result) {
++            GGML_ASSERT(req.should_stop());
++            return res;
++        }
++
++        if (result->is_error()) {
++            res->error(result->to_json());
++            return res;
++        }
++
++        res->ok(result->to_json());
++        return res;
++    };
++
++    this->get_experts_per_word = [expert_used_handler](const server_http_req & req) {
++        return expert_used_handler(req, nullptr);
++    };
++
++    this->post_experts_per_word = [expert_used_handler](const server_http_req & req) {
++        json body = json::parse(req.body);
++        if (body.is_null()) {
++            body = json::object();
++        }
++        return expert_used_handler(req, std::move(body));
++    };
++
+     this->get_expert_mask = [expert_mask_handler](const server_http_req & req) {
+         return expert_mask_handler(req, nullptr);
+     };
+diff --git a/tools/server/server-context.h b/tools/server/server-context.h
+index fbe3752..943f0df 100644
+--- a/tools/server/server-context.h
++++ b/tools/server/server-context.h
+@@ -142,6 +142,8 @@ struct server_routes {
+     server_http_context::handler_t post_expert_mask;
+     server_http_context::handler_t get_dials;
+     server_http_context::handler_t post_dials;
++    server_http_context::handler_t get_experts_per_word;
++    server_http_context::handler_t post_experts_per_word;
+ 
+     // to be used in router mode
+     json get_model_info() const;
+diff --git a/tools/server/server-task.h b/tools/server/server-task.h
+index 7a58b34..bfcf03f 100644
+--- a/tools/server/server-task.h
++++ b/tools/server/server-task.h
+@@ -33,6 +33,7 @@ enum server_task_type {
+     SERVER_TASK_TYPE_SET_LORA,
+     SERVER_TASK_TYPE_EXPERT_MASK,
+     SERVER_TASK_TYPE_DIALS,
++    SERVER_TASK_TYPE_EXPERT_USED,
+     SERVER_TASK_TYPE_TTS,
+ };
+ 
+@@ -255,6 +256,9 @@ struct server_task {
+     // used by SERVER_TASK_TYPE_DIALS, null = only read the dials
+     json dials;
+ 
++    // used by SERVER_TASK_TYPE_EXPERT_USED, null = only read the experts per word
++    json expert_used;
++
+     // used by SERVER_TASK_TYPE_TTS
+     mtmd_helper::gen_audio::inp tts_inp;
+ 
+diff --git a/tools/server/server.cpp b/tools/server/server.cpp
+index 8a0e009..92bb0e0 100644
+--- a/tools/server/server.cpp
++++ b/tools/server/server.cpp
+@@ -215,6 +215,8 @@ static void server_register_routes(server_http_context & ctx_http, server_routes
+     ctx_http.post("/expert-mask",              ex_wrapper(routes.post_expert_mask));
+     ctx_http.get ("/dials",                    ex_wrapper(routes.get_dials));
+     ctx_http.post("/dials",                    ex_wrapper(routes.post_dials));
++    ctx_http.get ("/experts-per-word",         ex_wrapper(routes.get_experts_per_word));
++    ctx_http.post("/experts-per-word",         ex_wrapper(routes.post_experts_per_word));
+     // Save & load slots
+     ctx_http.get ("/slots",                    ex_wrapper(routes.get_slots));
+     ctx_http.post("/slots/:id_slot",           ex_wrapper(routes.post_slots));
+@@ -530,6 +532,8 @@ static int server_run_router(common_params & params, int argc, char ** argv, con
+     routes.post_expert_mask            = models_routes->proxy_post;
+     routes.get_dials                   = models_routes->proxy_get;
+     routes.post_dials                  = models_routes->proxy_post;
++    routes.get_experts_per_word        = models_routes->proxy_get;
++    routes.post_experts_per_word       = models_routes->proxy_post;
+     routes.get_slots                   = models_routes->proxy_get;
+     routes.post_slots                  = models_routes->proxy_post;
+ 

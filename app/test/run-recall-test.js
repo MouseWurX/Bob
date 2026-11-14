@@ -1,5 +1,5 @@
-// 1.5.79: "Remember only what fits" (memoryRecall, off): per-message memory recall and one memory bank per project.
-import { brainText } from './source-text.js';
+// 1.5.79: "Relevant memories only" (memoryRecall, off): per-message memory recall and one memory bank per project.
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -118,13 +118,13 @@ check('vectors: a new embedding model starts fresh', n === 7);
 check('vectors: no embedder (null) leaves things as they are', await new MemoryVectors({ dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'bob-recall2-')) }).fill(parseMemory(MEM), async () => null, 'x') === 0);
 
 // Wiring checks.
-const brain = brainText(), hk = read('src/housekeeping.js'), server = read('src/server.js'), cellar = read('public/cellar.js'), help = read('public/help-content.js');
+const brain = brainText(), hk = read('src/housekeeping.js'), server = read('src/server.js'), cellar = publicText('cellar.js'), help = read('public/help-content.js');
 check('recall() adds the memories that fit, only with the setting on', /if \(recall\) \{ const mem = await this\.recallMemories/.test(brain));
 check('no embedding in the Gaming session', /!gaming\(this\.cfg\)/.test(brain) && /recallOn\(this\.cfg\) \|\| gaming\(this\.cfg\)/.test(hk));
 check('housekeeping fills vectors while idle, even with housekeeping off', /if \(recallOn\(this\.cfg\) && \(force \|\| this\.idle\(\)\)/.test(hk) && hk.indexOf('fillMemoryVectors(); } catch') < hk.indexOf('if (!force && (!hk.enabled'));
 check('facts from a project\'s topic go to its bank', /this\.addFacts\(g\.facts, g\.name, g\.project(?:, id)?\)/.test(hk));
 check('settings: the switch, banks and Open Bob\'s memory file', /sswitch\('memoryRecall'/.test(cellar) && /Memory banks:/.test(cellar) && /data-openmemory/.test(cellar) && /memoryBanks: memoryBanksView\(\)/.test(server));
-check('Help: section, glossary, FAQ and the setting', /id: 'memory-recall'/.test(help) && /<dt>Memory bank<\/dt>/.test(help) && /id: 'faq-memory-recall'/.test(help) && /set\('Remember only what fits', 'Off'/.test(help));
+check('Help: section, glossary, FAQ and the setting', /id: 'memory-recall'/.test(help) && /<dt>Memory bank<\/dt>/.test(help) && /id: 'faq-memory-recall'/.test(help) && /set\('Relevant memories only', 'Off'/.test(help));
 check('the phone can ask for the memories that fit (off: empty)', /p === '\/api\/memory\/recall'/.test(server) && /if \(!recallOn\(cfg\)\) return send\(res, 200, \{ on: false, text: '' \}\)/.test(server));
 check('no database or extra service', !/postgres|sqlite|hindsight-api/i.test(read('src/recall.js')) && !/"(pg|sqlite3|better-sqlite3)"/.test(read('package.json')));
 

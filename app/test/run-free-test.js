@@ -1,4 +1,4 @@
-// "Let Bob work without asking" and the hard limits (Settings, Hands). Free mode is off by default; every hard
+// "Work without asking" and the hard limits (Settings, Hands). Free mode is off by default; every hard
 // limit is on by default and each can be switched off on its own; ✋ Hands and Stop everything always stop him.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -153,7 +153,7 @@ const put = (rel, body = 'x', root = work) => { const f = path.join(root, rel); 
   const ui = fs.readFileSync(new URL('../public/hands.js', import.meta.url), 'utf8');
   const html = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   const css = fs.readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
-  check('turning it on asks first, in the page (no browser dialog)', /'hfree' in el\.dataset && el\.checked\) \{ el\.checked = false; return askFree\(\); \}/.test(ui) && /Let Bob work without asking\?<\/strong> He'll move files/.test(ui) && !/confirm\(/.test(ui));
+  check('turning it on asks first, in the page (no browser dialog)', /'hfree' in el\.dataset && el\.checked\) \{ el\.checked = false; return askFree\(\); \}/.test(ui) && /Work without asking\?<\/strong> He'll move files/.test(ui) && !/confirm\(/.test(ui));
   check('the confirm mentions schedules, limits and ✋ Hands', /Scheduled jobs will also run by themselves\. Hard limits still apply, and ✋ Hands stops him at any time\./.test(ui));
   check('Settings has no separate Stop everything button (✋ Hands is the one kill switch)', !/data-hstopall>/.test(ui));
   check('the banner button says ✋ Stop Hands', /id="freeBannerStop"[^>]*>✋ Stop Hands</.test(html));

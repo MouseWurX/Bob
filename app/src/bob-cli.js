@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Bob from a terminal or a script: `bob ask`, `bob status`, `bob models`. It talks to a running Bob through
-// "Let other apps use Bob's brains" (src/apps-door.js), so that switch has to be on. One file with no imports from the
+// "Brains for other apps" (src/apps-door.js), so that switch has to be on. One file with no imports from the
 // rest of Bob, so it can be copied anywhere Node 20 runs: a Raspberry Pi, a scheduled task, Termux on a phone.
 //
 // Where Bob is: --url, else BOB_URL, else http://localhost:<port from Bob's config.json, else 7777>.
@@ -24,7 +24,7 @@ Options
   --url URL                 Where Bob is (default http://localhost:7777, or BOB_URL)
   --key KEY                 Bob's key for other apps (or BOB_KEY)
 
-Turn on "Let other apps use Bob's brains" in Bob's Settings, Other apps, first. The key is shown there.`;
+Turn on "Brains for other apps" in Bob's Settings, Other apps, first. The key is shown there.`;
 
 export function parseArgs(argv) {
   const o = { cmd: '', words: [], model: '', think: '', system: '', json: false, url: '', key: '', help: false };
@@ -61,7 +61,7 @@ export function where(o, { env = process.env, config = null } = {}) {
 const SAYS = {
   401: 'Bob turned the key down. Copy it again from Settings, Other apps, and pass it with --key or BOB_KEY.',
   403: '',
-  404: 'Bob is running, but "Let other apps use Bob\'s brains" is off. Turn it on in Settings, Other apps.'
+  404: 'Bob is running, but "Brains for other apps" is off. Turn it on in Settings, Other apps.'
 };
 
 async function call(at, p, { fetchFn, body, signal } = {}) {

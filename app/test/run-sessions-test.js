@@ -21,6 +21,16 @@ check('Normal is the default', currentSession(cfg()).id === 'normal');
 check('unknown session falls back to Normal', currentSession(cfg({ session: 'party' })).id === 'normal');
 check('Normal: each hat its own brain', modelFor(cfg(), 'tinker').model === 'qwen3-coder:30b' && !modelFor(cfg(), 'tinker').cpu);
 check('Normal + One brain: every hat on the main brain', modelFor(cfg({ oneBrain: true }), 'tinker').model === 'gemma4:26b');
+// Nov 13 (the owner): One brain left Deep thinking, Office and the Quick brain on.
+{
+  const one = cfg({ oneBrain: true, sessionBrains: { small: 'gemma4:e4b', deep: 'big:70b', office: 'office:12b', coding: 'coder:30b' } });
+  const sb = sessionBrains(one);
+  check('One brain: Deep thinking, Office and Coding are the main brain, the Quick brain is off, Gaming keeps its own', sb.deep === 'gemma4:26b' && sb.office === 'gemma4:26b' && sb.coding === 'gemma4:26b' && sb.small === '' && sb.gaming === 'qwen3-4b', JSON.stringify(sb));
+  check('One brain: the picks are still there for the Brains page', JSON.stringify(sessionBrains(one, { picked: true })) === JSON.stringify(sessionBrains({ ...one, oneBrain: false })));
+  check('One brain: Quick on the processor and Laptop mode fall back to the main brain', modelFor({ ...one, quickOnCpu: true }, 'bob').model === 'gemma4:26b');
+  check('One brain: the Office and Coding sessions use the main brain too', modelFor({ ...one, session: 'office' }, 'bob').model === 'gemma4:26b' && modelFor({ ...one, session: 'coding' }, 'bob').model === 'gemma4:26b');
+  check('a job taken off by hand saves as empty: the Quick brain stays off, never back to E4B', mergeSettings({}, { sessionBrains: { small: '', deep: '', gaming: '' } }).sessionBrains.small === '' && mergeSettings({}, { sessionBrains: { deep: '' } }).sessionBrains.deep === '' && !('gaming' in mergeSettings({}, { sessionBrains: { gaming: '' } }).sessionBrains) && sessionBrains(cfg({ sessionBrains: { small: '' } })).small === '' && sessionBrains(cfg({ sessionBrains: { deep: '' } })).deep === 'gpt-oss:20b');
+}
 check('Art: chat on the small brain, on the processor', (() => { const m = modelFor(cfg({ session: 'art' }), 'bob'); return m.model === 'gemma4:e4b' && m.cpu; })());
 check('Coding: the coder does every hat', modelFor(cfg({ session: 'coding' }), 'ledger').model === 'qwen3-coder:30b');
 check('Office: the ledger brain does every hat', modelFor(cfg({ session: 'office' }), 'tinker').model === 'gemma4:26b');
@@ -143,7 +153,7 @@ check('asking for a picture is still a picture job', Brain.guessKind('paint a dr
   check('beside a picture: Medium effort and up (reviewer brain) waits', !besideOk(b, { refs: [], effort: 'medium' }, 'talk'));
   check('with Ollama nothing waits', besideOk({ ...b, cfg: { engine: 'ollama' } }, { refs: ['x'], effort: 'high' }, 'talk'));
 }
-// 1.5.41 "Keep chatting while Bob is busy": a plain chat goes beside a media step, on the small processor brain.
+// 1.5.41 "Chat while busy": a plain chat goes beside a media step, on the small processor brain.
 {
   const GB = 1024 ** 3;
   const base = (over = {}) => ({ cfg: { engine: 'llamacpp', chatWhileBusy: true, models: { bob: 'big', small: 'small' }, sessionBrains: { small: 'small' } }, turns: new Map([['talk', {}]]), state: { state: 'painting' }, engine: { resolve: () => ({ gguf: '/x' }) }, ...over });

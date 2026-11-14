@@ -1,7 +1,7 @@
 // tool-wording.mjs and tool-interview.mjs, the lab's wording and thinking A/B (14 Nov, Riker's tool interview): a variant only rewords or adds save_to, never
 // renames a tool or drops an input; turns are rebuilt with the kit's current tools; grading and the score table; picking failed
 // cases with his own thinking shown; the per-field scrub. A made-up kit, no server, nothing read from the computer.
-import { variantTools, PATH_TOOLS, namedFile, buildQuestions, grade, summarize } from '../model-lab/tool-wording.mjs';
+import { variantTools, PATH_TOOLS, namedFile, buildQuestions, grade, summarize, variantSystem, variantBody, FEWER_DROP, PROMPT_PARTS, lastUser } from '../model-lab/tool-wording.mjs';
 process.env.LAB_SCRUB_NAMES = 'Zorblax';
 const { pickCases, caseQuestion, scrub } = await import('../model-lab/tool-interview.mjs');
 
@@ -22,6 +22,16 @@ check('names, inputs and enums are kept', both.every((t, i) => t.function.name =
 check('the original list is not changed', !tools[0].function.parameters.properties.save_to);
 check('the five save tools', PATH_TOOLS.join(',') === 'make_diagram,save_as,make_image,make_sound,convert_file');
 check('a named file is seen', namedFile('save it as logo.png') && namedFile('put it in C:\\Users\\you\\a') && !namedFile('draw my morning'));
+
+// Bobert's parts: prompt rules, fewer tools, several calls at once
+check('bob keeps the system prompt as is', variantSystem('You are Bob.', 'bob') === 'You are Bob.' && variantSystem('You are Bob.', 'usewhen+paths') === 'You are Bob.');
+const sysAll = variantSystem('You are Bob.', 'example+slash+act');
+check('act, slash and example add their rule lines in a fixed order', sysAll.startsWith('You are Bob.\n\n') && sysAll.indexOf(PROMPT_PARTS.act) < sysAll.indexOf(PROMPT_PARTS.slash) && sysAll.indexOf(PROMPT_PARTS.slash) < sysAll.indexOf(PROMPT_PARTS.example));
+const withMeta = [...tools, tool('ask_specialist', { hat: { type: 'string' } }), tool('mcp_tools', {})];
+const few = variantTools(withMeta, 'fewer', { set });
+check('fewer drops only ask_specialist and mcp_tools', few.length === 3 && !few.some((t) => FEWER_DROP.includes(t.function.name)) && variantTools(withMeta, 'bob', { set }).length === 5);
+check('par asks for several calls at once, others do not', variantBody('act+par').parallel_tool_calls === true && !('parallel_tool_calls' in variantBody('act')));
+check('the request is the last user message', lastUser([{ role: 'user', content: 'one' }, { role: 'assistant', content: 'x' }, { role: 'user', content: 'two' }]) === 'two' && lastUser([]) === '');
 
 const kit = { groupOf: (n) => ({ make_diagram: 'diagrams', file_hands: 'files' })[n] || null, guessGroups: () => [], turn: (loaded) => ({ system: `Bob with ${[...loaded].sort().join(',')}`, tools }) };
 const lessons = [
@@ -77,6 +87,25 @@ check('engine check catches the Nov 13 engine (no N switch, no trace)', bad === 
 const room = async (n, min) => (await checkEngine({ ...okEng, call: async () => ({ default_generation_settings: { n_ctx: n } }) }, new Set(), { minCtx: min }))[0];
 check('engine check: 8,192 tokens per slot is refused when the plan needs 14,000 (14 Nov)', (await room(8192, 14000)).ok === false);
 check('engine check: 16,384 tokens per slot passes', (await room(16384, 14000)).ok === true);
+const { hint, coached, pickLessons } = await import('../model-lab/tool-coach.mjs');
+const wantD = [{ name: 'make_diagram', args: '{"title":"T","format":"png"}' }];
+check('coach hint 1 nudges, 2 names the tool, 3 gives the call', hint(1, wantD, []).includes('needs one of your tools') && hint(2, wantD, []).includes('use make_diagram') && hint(3, wantD, []).includes('"title":"T"'));
+check('coach hint 1 on a right tool names the wrong inputs', hint(1, wantD, [{ name: 'make_diagram', args: { title: 'T', format: 'svg' } }]).includes('format'));
+const cm = coached([{ role: 'user', content: 'x' }], { content: '', tool_calls: [{ id: 'a', function: { name: 'list_folder', arguments: '{}' } }] }, 'Coach: no');
+check('a wrong call gets the coach as its tool result', cm.length === 3 && cm[2].role === 'tool' && cm[2].content === 'Not run. Coach: no');
+check('a reply in words gets the coach as a user message', coached([], { content: 'hi' }, 'Coach: tool').at(-1).role === 'user');
+const pl = pickLessons([{ job: 'f', idea: 1 }, { job: 'f', idea: 2 }, { job: 'f', idea: 3 }, { job: 'g', idea: 4 }], new Set(['3']), 2);
+check('coached lessons: missed ones first, per job', pl.map((q) => q.idea).join(',') === '1,3,4');
+{
+  // 14 Nov: a stopped neuron sweep left its live push on; reset must clear it
+  const http = await import('node:http'); const { live } = await import('../model-lab/engine-live.mjs');
+  const posts = []; let vec = { entries: [{ layer: 3, index: 1, value: 200 }] };
+  const srv = http.createServer((req, res) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => { if (req.method === 'POST') posts.push([req.url, b]); if (req.url === '/control-vector' && req.method === 'POST') vec = null; res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(req.url === '/control-vector' ? { control_vector: vec } : {})); }); });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  await live(`http://127.0.0.1:${srv.address().port}`, '').reset();
+  srv.close();
+  check('reset clears a live control vector left on', posts.some(([u, b]) => u === '/control-vector' && b === '{}') && vec === null);
+}
 const { pickerTool, picked } = await import('../model-lab/tool-pick.mjs');
 const pk = pickerTool(tools);
 check('one tool per step: the picker lists every tool by name and allows none', JSON.stringify(pk.function.parameters.properties.tool.enum) === JSON.stringify(['make_diagram', 'notice_board', 'file_hands', 'none']) && pk.function.description.includes("file_hands: Bob's file_hands."));

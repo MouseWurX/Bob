@@ -92,11 +92,21 @@ check('changing it works', !lock.change({ newPasscode: 'biscuit', current: 'tea-
 setKey(null);
 check('the old passcode no longer opens it', Boolean(lock.unlock('tea-time').error) && !hasKey());
 check('the new one opens the same chats', Boolean(lock.unlock('biscuit').token) && readChat(cfg, 'chat-1')[0].content === 'hello there');
-check("the lock can't go off while chats are locked", /Turn off Lock my chats/.test(lock.change({ enabled: false }).error || ''));
+// Turning the lock off takes the passcode that turned it on; with chats locked, they go back to plain in the same step.
+check('turning the lock off needs the passcode', /Type your passcode/.test(lock.change({ enabled: false }).error || '') && lockOn(cfg) && vaultOn(cfg));
+check('a wrong passcode leaves the lock and the locked chats as they were', /isn't right. The lock stays on/.test(lock.change({ enabled: false, passcode: 'tea-time' }).error || '') && lockOn(cfg) && vaultOn(cfg) && isSealed(fs.readFileSync(chatFile(cfg, 'chat-1'))));
+check('wrong tries to turn it off count toward the five a minute', (() => { for (let i = 0; i < 5; i++) lock.change({ enabled: false, passcode: 'nope' }); const r = /Too many tries/.test(lock.change({ enabled: false, passcode: 'biscuit' }).error || ''); clock += 61000; return r && lockOn(cfg); })());
+setKey(null);
+const offWithCode = lock.change({ enabled: false, passcode: 'biscuit' });
+check('the right passcode turns it off in one step and puts every file back to plain, even after a restart', !offWithCode.error && !lockOn(cfg) && !vaultOn(cfg) && offWithCode.changed === 5 && !isSealed(fs.readFileSync(chatFile(cfg, 'chat-1'))) && fs.readFileSync(cfg.memoryFile, 'utf8').includes('has a cat') && lock.allowed({ headers: {} }), JSON.stringify(offWithCode));
+check('the passcode stays saved, so the lock goes back on without a new one', lockView(cfg).passcodeSet && !lock.change({ enabled: true }).error && lockOn(cfg));
+check('turning the lock on never asks for the passcode', lockOn(cfg));
+check('without Lock my chats on, the right passcode just turns it off', /Type your passcode/.test(lock.change({ enabled: false, passcode: '' }).error || '') && !lock.change({ enabled: false, passcode: 'biscuit' }).error && !lockOn(cfg));
+lock.change({ enabled: true }); lock.unlock('biscuit'); lock.change({ encrypt: true });
 
 const off = lock.change({ encrypt: false });
 check('encryption off puts every file back to plain (the memory change log too)', !off.error && off.changed === 5 && fs.existsSync(path.join(path.dirname(cfg.memoryFile), 'memory-changes.jsonl')) && !isSealed(fs.readFileSync(path.join(path.dirname(cfg.memoryFile), 'memory-changes.jsonl'))) && !isSealed(fs.readFileSync(chatFile(cfg, 'chat-1'))) && fs.readFileSync(cfg.memoryFile, 'utf8').includes('has a cat'), JSON.stringify(off));
-check('then the lock can go off', !lock.change({ enabled: false }).error && !lockOn(cfg) && lock.allowed({ headers: {} }));
+check('then the lock can go off, still only with the passcode', !lock.change({ enabled: false, passcode: 'biscuit' }).error && !lockOn(cfg) && lock.allowed({ headers: {} }));
 
 // Key wrapping on its own.
 const k = Buffer.alloc(32, 7);
@@ -121,7 +131,7 @@ check('only the lock screen, the running check and quitting stay open', OPEN_WHI
 // Settings.
 check('Settings has the 🔒 Passcode lock panel in This replicant matrix', GROUPS.find(([g]) => g === 'This replicant matrix')[1].includes('ev-lock') && CARDS.find((c) => c.id === 'pc').topics.includes('ev-lock'));
 check('closed panel says what is set', lockSummary({ enabled: false }) === 'Off' && /locks after 5 min/.test(lockSummary({ enabled: true, idleMinutes: 5 })) && /chats and memory locked/.test(lockSummary({ enabled: true, encrypt: true })));
-check('the lost-passcode warning is plain', /gone for good/.test(LOST_WARNING) && /no reset/.test(LOST_WARNING));
+check('the lost-passcode warning is plain', /gone for good/.test(LOST_WARNING) && /spare key/.test(LOST_WARNING) && !/no reset/.test(LOST_WARNING));
 const ui = fs.readFileSync(new URL('../public/lock-settings.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 check('nothing in the panel is disabled or hidden until a box is ticked', !/disabled|hidden/.test(ui.split('export async function mountLockSettings')[1].split('const load')[0]));
 const server = fs.readFileSync(new URL('../src/server.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
@@ -148,10 +158,15 @@ check('phone: after closing, a locked value is never handed over', PL.get('chats
 check('phone: a wrong passcode does not open it', !(await PL.open('cake')) && PL.get('chats') === null);
 check('phone: the right one does', (await PL.open('pie-time')) && JSON.parse(PL.get('chats'))[0].title === 'newer' && JSON.parse(PL.get('memory')) === '- likes pie');
 check('phone: changing the passcode needs the old one, then the new one opens the same chats', /you have now/.test(await PL.change({ newPasscode: 'tart', current: 'x' })) && !(await PL.change({ newPasscode: 'tart', current: 'pie-time' })) && (PL._reset(), await PL.open('tart')) && JSON.parse(PL.get('chats'))[0].title === 'newer');
-check("phone: the lock can't go off while chats are locked", /Turn off Lock my chats/.test(await PL.change({ enabled: false })));
-check('phone: turning it off puts them back to plain', !(await PL.change({ encrypt: false })) && localStorage.getItem('bob.chats').includes('newer') && !(await PL.change({ enabled: false })) && !PL.view().enabled);
+check('phone: turning the lock off needs the passcode', /Type your passcode/.test(await PL.change({ enabled: false })) && PL.view().enabled);
+check('phone: a wrong one changes nothing', /isn't right/.test(await PL.change({ enabled: false, passcode: 'pie-time' })) && PL.view().encrypt && !localStorage.getItem('bob.chats').includes('newer'));
+PL._reset();
+check('phone: the right one turns it off and puts the chats back to plain in one step', !(await PL.change({ enabled: false, passcode: 'tart' })) && !PL.view().enabled && localStorage.getItem('bob.chats').includes('newer') && JSON.parse(localStorage.getItem('bob.memory')) === '- likes pie');
+check('phone: and goes back on without a new passcode', !(await PL.change({ enabled: true })) && PL.view().enabled && !(await PL.change({ enabled: false, passcode: 'tart' })) && !PL.view().enabled);
 check('phone: the same warning', /gone for good/.test(PL.LOST));
 const phoneHtml = fs.readFileSync(path.join(www, 'index.html'), 'utf8').replace(/\r\n/g, '\n');
+check('phone: the turn-off box is on the Settings page', /id="lock-off-ask"/.test(phoneHtml) && /id="lock-off-code"/.test(phoneHtml) && /id="lock-off-yes"/.test(phoneHtml));
+check('desktop panel asks for the passcode to turn it off', /data-lock-off-code/.test(ui) && /passcode: code/.test(ui));
 check('phone: lock.js loads before phone.js', phoneHtml.indexOf('lock.js') > 0 && phoneHtml.indexOf('lock.js') < phoneHtml.indexOf('phone.js'));
 
 fs.rmSync(root, { recursive: true, force: true });

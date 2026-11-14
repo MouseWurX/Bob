@@ -1,7 +1,13 @@
-// The small ask box (A shortcut from anywhere: Settings, How Bob works, 🌙 Quiet hours and shortcut). Bob.exe opens
+// The small ask box (Global shortcut: Settings, How Bob works, 🌙 Quiet hours and shortcut). Bob.exe opens
 // this page on top of any app when the key is pressed. It keeps its own chat, "ask-box", so it never lands in the
 // middle of the chat open in Bob's window. Enter sends, Shift+Enter is a new line, Esc puts the box away.
+import { applySavedStyle } from './themes.js';
 export const ASK_CHAT = 'ask-box';
+// 1.5.228: the same theme and look as Bob's window (saved in this browser profile by Style), kept in step if you
+// change them while the box is open. "?bar=0" (Window buttons on Bob's bar on) means no system title bar here.
+applySavedStyle();
+addEventListener('storage', (e) => { if (e.key === 'bob-style') applySavedStyle(); });
+if (new URLSearchParams(location.search).get('bar') === '0') document.body.classList.add('frameless', 'own-bar'); // own-bar: the cube-corner glow (looks.css)
 const $ = (id) => document.getElementById(id);
 const input = $('askIn'), out = $('askOut'), note = $('askNote');
 let turn = '';
@@ -38,6 +44,7 @@ input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('askForm').requestSubmit(); }
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') window.close(); });
+$('askClose').onclick = () => window.close();
 // Open in Bob: his window shows the ask box's chat (public/harness-chat.js listens for this) and comes to the front.
 $('askOpen').onclick = () => {
   try { localStorage.setItem('bob-open-chat', JSON.stringify({ id: ASK_CHAT, at: Date.now() })); } catch {}

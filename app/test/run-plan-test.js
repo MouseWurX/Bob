@@ -1,4 +1,4 @@
-// Plan card (1.5.78): with "Show Bob's plan before big jobs" on (off unless turned on), a big job's steps go on one
+// Plan card (1.5.78): with "Plan before big jobs" on (off unless turned on), a big job's steps go on one
 // card before it starts, with the OKs those steps need ticked on the same card. Go ahead / Change something / Not now.
 // A big job started without a plan waits, Bob is asked for one, and if he still doesn't, the system makes the card.
 import fs from 'node:fs';
@@ -10,6 +10,7 @@ import { showPlanTool, planGate, planOn, planPrompt } from '../src/plan.js';
 import { Brain } from '../src/brain.js';
 import { mergeSettings } from '../src/config.js';
 import { settingsNow } from '../src/self-help.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -49,9 +50,9 @@ const call = (s) => ({ function: { name: s.tool, arguments: JSON.stringify(s.arg
   const { fake: off } = makeBob({ plan: false });
   const { fake: on } = makeBob();
   check('show_plan is not offered while off, and is while on', !off.usable('show_plan') && on.usable('show_plan'));
-  check('Bob can tell someone whether it is on', settingsNow({ planFirst: true }).includes("Show Bob's plan before big jobs: on") && settingsNow({}).includes("Show Bob's plan before big jobs: off"));
-  const cellar = read('public/cellar.js'), server = read('src/server.js');
-  check('the switch is on the everyday Settings page, off unless turned on', /sswitch\('planFirst', settings\.planFirst === true, 'Show Bob\\'s plan before big jobs', keep\('Off unless you turn it on/.test(cellar));
+  check('Bob can tell someone whether it is on', settingsNow({ planFirst: true }).includes("Plan before big jobs: on") && settingsNow({}).includes("Plan before big jobs: off"));
+  const cellar = publicText('cellar.js'), server = read('src/server.js');
+  check('the switch is on the everyday Settings page, off unless turned on', /sswitch\('planFirst', settings\.planFirst === true, 'Plan before big jobs', keep\('/.test(cellar));
   check('the closed panel shows it', /Plans before big jobs: \$\{onoff\(settings\.planFirst === true\)\}/.test(cellar));
   check('the server saves and shows it', /typeof b\.planFirst === 'boolean'/.test(server) && /planFirst: cfg\.planFirst === true/.test(server));
   check('the server passes the change the person typed', /answerApproval\(id, allow, rows, items, note\)/.test(server));
@@ -141,7 +142,7 @@ const call = (s) => ({ function: { name: s.tool, arguments: JSON.stringify(s.arg
   check('with the setting off, nothing is ever held', await planGate(f4, [...big, ...big], c4) === null);
 }
 
-// ---------- With "Let Bob work without asking" on ----------
+// ---------- With "Work without asking" on ----------
 {
   put('f/one.txt');
   const { fake, ctx, cards } = makeBob({ free: true });
@@ -161,7 +162,7 @@ const call = (s) => ({ function: { name: s.tool, arguments: JSON.stringify(s.arg
 
 // ---------- The window ----------
 {
-  const card = read('public/plan-card.js'), app = read('public/app.js'), hands = read('public/hands.js');
+  const card = read('public/plan-card.js'), app = publicText('app.js'), hands = read('public/hands.js');
   check('the chat shows the plan card before any other card, and sends the typed change', /planApproval\(ev, \{ add, answer: \(allow, items, note\) => post\('\/api\/approve', \{ id: ev\.id, allow, items, note \}\) \}\)/.test(app) && app.indexOf('planApproval(ev') < app.indexOf('togetherApproval(ev'));
   check('its buttons are verbs, as the style guide asks', ['Go ahead', 'Change something', 'Not now (Bob drops this job)', 'Send to Bob', 'Back'].every((b) => card.includes(`>${b}<`)));
   check('the card with all of a job\'s OKs leaves plan cards alone', /if \(!Array\.isArray\(ev\.together\) \|\| ev\.planCard\) return null;/.test(hands));

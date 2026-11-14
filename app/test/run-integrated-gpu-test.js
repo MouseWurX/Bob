@@ -1,7 +1,7 @@
 // 1.5.71: graphics built into the processor (like the Radeon 780M in a Legion Go's Z1 Extreme) are seen, shown as
 // memory shared with graphics, and get a brains-only starter set. A separate card, or a desktop chip's tiny built-in
 // graphics, still counts as no graphics card. 1.5.79: the set paints too.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import { pickIntegrated, integratedGpu, sharedGraphicsGB, gpuInfo, apuGraphicsGB, parseApuJson, apuMemory, specLine, APU_HEADROOM_GB } from '../src/platform.js';
 import { apuRoom, APU_NO_ROOM, apuHoldbackGB } from '../src/brain.js';
@@ -60,7 +60,7 @@ const equipSrc = fs.readFileSync(new URL('../public/equip.js', import.meta.url),
 check('the set marked (this replicant matrix) is the built-in one on a handheld', /packFor\(packs, ctx\.vramGB, ctx\.integrated, fitOpts\)\.id \? ' \(this replicant matrix\)'/.test(equipSrc));
 check('it still covers chat, quick brain, eyes, ears, voice, memory and coding', ['bob', 'small', 'eyes', 'voice', 'speech', 'embed', 'tinker'].every((s) => Object.values(shared.slots).flat().includes(s)));
 
-const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+const cellar = publicText('cellar.js');
 check('Get models says "Fits your replicant matrix" and names the built-in graphics', /'Fits your replicant matrix'/.test(cellar) && /Built-in graphics: /.test(cellar));
 const server = fs.readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
 check('built-in graphics are not treated as a card for pictures', /!h\.gpu\.integrated\) cfg\.cardGB/.test(server));
@@ -152,7 +152,7 @@ r = await apuRoom(autoGo(4.8, { apuHoldbackGB: 0 }), 'coder-7b', 32768, { freeMe
 check('...and so does the ~5.3 GB Review brain (chat memory shortened if needed)', r.ok, JSON.stringify(r));
 r = await apuRoom(autoGo(8, { apuHoldbackGB: 0 }), 'big', 32768, { freeMem: 6.6 * GB });
 check('...but a brain bigger than what\'s free is still refused, with the plain line (no Windows share mentioned at 0 kept)', !r.ok && r.line === APU_NO_ROOM(r.needGB, r.roomGB, 0) && !/Windows/.test(r.line), JSON.stringify(r));
-const cellar181 = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+const cellar181 = publicText('cellar.js');
 check('Settings, Brains has the slider (built-in graphics only, 0 to 8 GB, half steps) with the warning about 0', /hw\?\.gpu\?\.integrated \? holdbackHtml\(\)/.test(cellar181) && /type="range" min="0" max="8" step="0\.5" data-holdback/.test(cellar181) && /At 0, Windows may slow down, or Bob may close, if memory runs out/.test(cellar181));
 const cfgSrc181 = fs.readFileSync(new URL('../src/config.js', import.meta.url), 'utf8');
 check('the setting is saved (0 to 8, rounded to half a GB) and the glossary explains it', /'apuHoldbackGB'\]/.test(cfgSrc181) && /out\.apuHoldbackGB = v/.test(cfgSrc181) && /<dt>Memory kept for Windows<\/dt>/.test(help));

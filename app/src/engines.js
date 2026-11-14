@@ -21,7 +21,7 @@ export function officePins() {
   try { return JSON.parse(fs.readFileSync(new URL('./office-pins.json', import.meta.url), 'utf8')); } catch { return {}; }
 }
 const PIN = officePins();
-// 🧊 OpenSCAD for "Let Bob make 3D parts" (parts3d.js): one checked version per computer (src/openscad-pins.json,
+// 🧊 OpenSCAD for "3D parts" (parts3d.js): one checked version per computer (src/openscad-pins.json,
 // filled in by installer/pin-openscad.js). Until a computer's pin is filled in there's no Get button for it.
 const SCAD_PIN = openscadPins();
 export const scadPinFor = (key, pins = SCAD_PIN) => { const p = pins?.[key]; return p && openscadAllowed(p.url) && /^[0-9a-f]{64}$/.test(p.sha256 || '') ? { version: pins.version || '', ...p } : null; };
@@ -120,7 +120,7 @@ export const ENGINES = [
   {
     // 🧊 Picture to 3D (model3d.js): the same uv, a private Python 3.12, PyTorch for CUDA 12.8, add-ons GitHub compiled
     // for Bob (pinned in model3d/addons-pins.json, sha256-checked), TRELLIS.2 at its pinned commit and its weights.
-    id: 'model3d', name: '3D workshop', what: `Picture to 3D: TRELLIS.2 (Microsoft, MIT) turns one picture into a textured 3D model. Needs an NVIDIA graphics card; 16 GB is best, smaller cards may run out of memory. About 28 GB with the models. Not on RTX 50-series cards yet. Meta's DINOv3 picture reader comes under Meta's DINOv3 licence (no military or weapons use). NVIDIA's nvdiffrast part is for non-commercial use.`,
+    id: 'model3d', name: '3D workshop', what: `Picture to 3D: TRELLIS.2 (Microsoft, MIT) turns one picture into a textured 3D model. Needs an NVIDIA graphics card; 16 GB is best, smaller cards may run out of memory. About 28 GB with the models. Meta's DINOv3 picture reader comes under Meta's DINOv3 licence (no military or weapons use). NVIDIA's nvdiffrast part is for non-commercial use.`,
     repo: 'astral-sh/uv', dir: 'audio-workshop', exe: 'uv.exe',
     nvidia: [], other: [/^uv-x86_64-pc-windows-msvc\.zip$/],
     runtime: () => null,
@@ -194,10 +194,10 @@ export const ENGINES = [
     linux: { unavailable: 'On Linux, install LibreOffice from your software centre (most distros already have it), and Bob finds it by himself.' }
   },
   {
-    // 🧊 OpenSCAD (GPL-2.0) for "Let Bob make 3D parts" (parts3d.js). Windows: the official zip, unpacked into Bob's
+    // 🧊 OpenSCAD (GPL-2.0) for "3D parts" (parts3d.js). Windows: the official zip, unpacked into Bob's
     // folder (nothing installed). Linux: the official AppImage. Mac: the user drags it into Applications. One already
     // on the replicant matrix counts. Runs only while it makes a part.
-    id: 'openscad', name: 'OpenSCAD', what: 'Makes exact 3D parts (STL files for a 3D printer) from the recipes Bob writes, for "Let Bob make 3D parts". About 30 MB. Runs only while it makes a part. If OpenSCAD is already on your replicant matrix, Bob uses that one.',
+    id: 'openscad', name: 'OpenSCAD', what: 'Makes exact 3D parts (STL files for a 3D printer) from the recipes Bob writes, for "3D parts". About 30 MB. Runs only while it makes a part. If OpenSCAD is already on your replicant matrix, Bob uses that one.',
     pinned: true, anyOS: true, dir: 'openscad', exe: 'openscad.exe',
     unavailable: scadWhy('win-x64'),
     ready: (cfg) => Boolean(findOpenscad(cfg)),

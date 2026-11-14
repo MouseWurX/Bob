@@ -27,6 +27,9 @@ Thanks for helping. A few house rules:
 - **Every platform.** A feature reaches Windows, Mac, Linux and the Android app, or says plainly where it
   doesn't. Help in the app (Bob's voice, the glossary and the FAQ) is updated with the feature, using the
   names on screen.
+- **New tools.** Follow [app/docs/WRITING-TOOLS.md](../app/docs/WRITING-TOOLS.md): one tool with an action
+  instead of siblings, a one-line "use when", checks and defaults in code, and a result that says what
+  really happened.
 
 Run Bob from source with `npm install` then `npm start` in the `app` folder, or just the server with `npm run server`.
 

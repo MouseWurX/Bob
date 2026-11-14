@@ -21,12 +21,14 @@ class Scorer:
     def __init__(self, layers, E, device, score=False):
         self.E = E
         self.score = bool(score)
-        self.counts = [torch.zeros(E, dtype=torch.long, device=device) if hasattr(l.mlp, "gate") else None for l in layers]
+        import family as FAM  # Qwen's router is mlp.gate, GPT-OSS's mlp.router; both give (logits, weights, indices)
+        routers = [FAM.router(l.mlp) for l in layers]
+        self.counts = [torch.zeros(E, dtype=torch.long, device=device) if g is not None else None for g in routers]
         self.mass = [torch.zeros(E, dtype=torch.float64, device=device) if c is not None else None for c in self.counts]
         self.hooks = []
         for i, l in enumerate(layers):
             if self.counts[i] is None: continue
-            self.hooks.append(l.mlp.gate.register_forward_hook(self._count(i)))
+            self.hooks.append(routers[i].register_forward_hook(self._count(i)))
             if not self.score: continue
             ex = getattr(l.mlp, "experts", None)
             if ex is None or not hasattr(ex, "gate_up_proj") or not hasattr(ex, "down_proj") or not hasattr(ex, "act_fn"):

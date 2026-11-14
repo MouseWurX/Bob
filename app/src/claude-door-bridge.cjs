@@ -1,4 +1,4 @@
-// The tiny helper the Claude app starts for "Let Claude use Bob's hands" (src/claude-door.js).
+// The tiny helper the Claude app starts for "Hands for Claude" (src/claude-door.js).
 // The Claude app talks to its tools over stdin/stdout, one JSON message per line; Bob's door is a web address on
 // this computer. This passes each message to Bob (with the app's key) and each answer back. It runs as Bob's own
 // program in Node mode (ELECTRON_RUN_AS_NODE=1), so nothing new is installed, and it keeps nothing.

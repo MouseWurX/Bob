@@ -64,13 +64,24 @@ const ALIASES = {
   query: ['q', 'search', 'search_query', 'searchterm', 'search_term', 'term', 'terms', 'keywords', 'question', 'text'],
   url: ['link', 'href', 'website', 'site', 'page', 'address', 'uri'],
   prompt: ['description', 'text', 'image_prompt', 'input'],
-  content: ['text', 'body', 'contents', 'data'],
+  content: ['text', 'body', 'contents', 'data', 'item', 'todo', 'task', 'line'],
+  time: ['at', 'when', 'datetime', 'date_time', 'due', 'due_at', 'remind_at', 'date'],
   fact: ['memory', 'text', 'note'],
-  text: ['note', 'content', 'message', 'body'],
+  text: ['note', 'content', 'message', 'body', 'reminder', 'title', 'what', 'task'],
   find: ['old', 'old_text', 'search', 'from'],
   replace: ['new', 'new_text', 'with', 'to', 'replacement'],
   group: ['name', 'tools', 'category'],
   command: ['cmd', 'shell', 'run']
+};
+// Tool sets (tool-sets.js), logic arguments: an action word a brain family uses for one Bob's tools take. Only used
+// when the tool's own list has the word it stands for, first match wins ("set" adds; it never wipes a board).
+const ENUM_WORDS = {
+  add: ['set', 'create', 'new', 'make', 'append', 'put', 'schedule', 'insert'],
+  cancel: ['remove', 'delete', 'clear', 'unset', 'stop'],
+  done: ['complete', 'completed', 'finish', 'finished', 'tick', 'tickoff', 'checkoff', 'markdone', 'remove', 'delete', 'cross', 'crossoff'], // notice_board (Nov 13)
+  list: ['show', 'get', 'view', 'all', 'see', 'check'],
+  read: ['show', 'get', 'view', 'list', 'see', 'open', 'check'],
+  write: ['save', 'update', 'replace', 'rewrite', 'overwrite']
 };
 const squash = (k) => String(k).toLowerCase().replace(/[^a-z0-9]/g, '');
 const typeOf = (p) => (Array.isArray(p?.type) ? p.type.find((t) => t !== 'null') : p?.type) || (p?.enum ? 'string' : '');
@@ -94,10 +105,12 @@ function coerce(v, p) {
   if (t === 'object' && typeof v === 'string' && v.trim().startsWith('{')) { const o = repairJson(v); if (o) return { v: o, fixed: true }; }
   // An enum still holding a {{PLACEHOLDER}} (use_tools's group list, filled in per turn) isn't checked here.
   if (Array.isArray(p?.enum) && p.enum.length && !p.enum.some((e) => /\{\{/.test(String(e))) && !p.enum.includes(v) && typeof v === 'string') {
-    const w = v.trim().toLowerCase();
+    const w = v.trim().toLowerCase(), ws = squash(w);
     const hit = p.enum.filter((e) => String(e).toLowerCase() === w);
     const near = hit.length ? hit : p.enum.filter((e) => String(e).toLowerCase().startsWith(w) || w.startsWith(String(e).toLowerCase()));
     if (near.length === 1) return { v: near[0], fixed: true };
+    const word = p.enum.find((e) => (ENUM_WORDS[e] || []).some((x) => x === w || x === ws));
+    if (word) return { v: word, fixed: true };
     return { v, bad: `must be one of ${p.enum.map((e) => JSON.stringify(e)).join(', ')}` };
   }
   return { v };

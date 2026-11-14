@@ -1,7 +1,7 @@
 // Engine and speed extras (list items 94 to 100). Every switch here is off until the owner turns it on, in Settings,
 // Brains and speed. Each one is a small pure function, so the tests pass the computer in as a fake.
 //   copyGuess    94  Guess-ahead from the chat: the engine copies words that already sit in the chat (n-gram lookup)
-//   preloadNext  95  Load the next brain early: read the next brain's file into memory while the first still talks
+//   preloadNext  95  Preload the next brain: read the next brain's file into memory while the first still talks
 //   speedLog     96  Speed history (speed-log.js)
 //   newCardTest  97  Test a new card by itself: a one-minute speed test and placements back to Auto
 //   laptopMode   98  Laptop mode: on battery, the Quick brain answers and the engine uses fewer threads
@@ -136,7 +136,7 @@ export function placesToAuto(brainPlace = {}) {
 }
 export const cardName = (key) => String(key || '').split('|')[0] || 'the old card';
 
-// ---------- 95 Load the next brain early ----------
+// ---------- 95 Preload the next brain ----------
 // While the chat brain is still writing its hand-off, the next brain's file is read once from the drive, so the
 // load that follows comes from memory instead of the drive. Only when the computer has the room: the file plus
 // 4 GB to spare. Nothing goes on the card early, and nothing the chat brain uses is touched.
@@ -188,5 +188,5 @@ export function plainEngineNotes(id, { to = '', body = '' } = {}) {
   // llama.cpp only ever moves up to the build this Bob was tested with, so that's what it means for you.
   return id === 'llamacpp' && to ? `Moves to ${to}, the llama.cpp build this Bob was tested with: its fixes and speed-ups, nothing for you to change.` : '';
 }
-// The line added to the update messages in the chat, when "Tell me what engine updates change" is on.
+// The line added to the update messages in the chat, when "Engine update notes" is on.
 export const engineNoteLine = (cfg, id, to) => { const t = extraOn(cfg, 'engineNotes') ? plainEngineNotes(id, { to }) : ''; return t ? ` What it changes for you: ${t}` : ''; };

@@ -1,7 +1,7 @@
 // 1.5.210 (the owner, Nov 12): the thinking bubble above the answer, and the chat showing only the finished answer.
 // Display only: the brain's messages stay as they were (only window fields are added), and nothing is added to what
 // the brain is sent.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import { pickAnswer } from '../src/clean-answer.js';
 import { PUNS, took, doneLine, punAt } from '../public/think-bubble.js';
@@ -58,13 +58,13 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
   check('a few Bob-ish lines to rotate through', PUNS.length >= 8 && PUNS[0] === 'Thinking…');
   check('the cat\'s name goes in', punAt(2, 'Patches').includes('Patches') && !punAt(2, '').includes('{cat}'));
   check('times read plainly', took(45000) === '45s' && took(130000) === '2m 10s' && took(3780000) === '1h 3m');
-  check('the finished line', doneLine(130000, 7) === 'Worked for 2m 10s · 7 steps' && doneLine(4000, 0) === 'Thought for 4s' && doneLine(9000, 1, true) === 'Worked for 9s · 1 step · waited on you');
+  check('the finished line', doneLine(130000, 7) === 'Worked for 2m 10s · 7 steps' && doneLine(4000, 0) === 'Thought for 4s' && doneLine(9000, 1, true) === 'Worked for 9s · 1 step · waited on you' && doneLine(0, 3) === 'Worked through 3 steps');
   check('the lines never name a real model', !PUNS.some((p) => /qwen|llama|gpt|riker|bobert/i.test(p)));
 }
 
 // ---- wiring ----
 {
-  const brain = brainText(), app = read('public/app.js'), bubble = read('public/think-bubble.js'), css = read('public/style.css');
+  const brain = brainText(), app = publicText('app.js'), bubble = read('public/think-bubble.js'), css = read('public/style.css');
   check('the run says which message is the answer', /const shown = pickAnswer\(msgs\.slice\(base\), mooted\?\.rounds\)/.test(brain) && /emit\(\{ type: 'final', text: shown\.text/.test(brain));
   check('"How I got here" and the answer id go on the answer, not a step', (brain.match(/!m\.tool_calls\?\.length && !m\.step\)/g) || []).length >= 2);
   check('history marks steps and shows a corrected answer', /m\.showText \|\| m\.content/.test(brain) && /m\.step \? \{ step: true \}/.test(brain));
@@ -72,7 +72,7 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
   check('Bob-Net leaves the window fields out', /step, showText, \.\.\.rest/.test(read('src/share-brains.js')));
   check('nothing new in the start prompt', !/think-bubble|thinkBubble|pickAnswer/.test(read('src/prompts.js') + (fs.existsSync(new URL('../src/system-prompt.js', import.meta.url)) ? read('src/system-prompt.js') : '')));
   check('the chat hands events to the bubble first', /if \(!elsewhere && thinkBubbles\.take\(ev\)\) \{ scrollDown\(\); return; \}/.test(app));
-  check('a saved chat folds the steps above the answer', /m\.step && thinkOn/.test(app) && /thinkBubbles\.saved\(m\.bubble, m\.ms\)/.test(app));
+  check('a saved chat folds the steps above the answer', /m\.step && thinkOn/.test(app) && /thinkBubbles\.saved\(m\.bubble, m\.ms, ans\?\.steps\)/.test(app));
   check('the down arrow and its dots are still there', /toBottom\.classList\.toggle\('working', !toBottom\.hidden && busy\)/.test(app) && /\.to-bottom\.working \.tb-dots/.test(css));
   check('cards that need you stay in the chat', /case 'approval':[\s\S]{0,300}return false; \/\/ the card itself stays in the chat/.test(bubble));
   check('reduced motion: nothing moves', /prefers-reduced-motion: reduce\) \{ \.think \*/.test(css) && /still\(\) \? 'Thinking…'/.test(bubble));
@@ -82,13 +82,13 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
 
 // ---- the switch ----
 {
-  const cellar = read('public/cellar.js'), server = read('src/server.js');
-  check('Settings has the switch, on unless turned off', /sswitch\('thinkBubble', settings\.thinkBubble !== false, 'Thinking bubble above answers'/.test(cellar));
+  const cellar = publicText('cellar.js'), server = read('src/server.js');
+  check('Settings has the switch, on unless turned off', /sswitch\('thinkBubble', settings\.thinkBubble !== false, 'Thinking bubble'/.test(cellar));
   check('the server saves it and says it', /out\.thinkBubble = cfg\.thinkBubble !== false/.test(server) && /thinkBubble: cfg\.thinkBubble !== false/.test(server));
   check('saved settings read it as on unless false', /out\.thinkBubble = out\.thinkBubble !== false/.test(read('src/config.js')));
   const help = read('public/help-content.js');
   check('Help, FAQ and glossary', /id: 'think-bubble'/.test(help) && /id: 'faq-think-bubble'/.test(help) && /<dt>Thinking bubble<\/dt>/.test(help));
-  check('the settings inventory lists it', /Thinking bubble above answers/.test(read('docs/SETTINGS-INVENTORY.md')));
+  check('the settings inventory lists it', /Thinking bubble/.test(read('docs/SETTINGS-INVENTORY.md')));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

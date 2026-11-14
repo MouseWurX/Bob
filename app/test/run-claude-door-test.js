@@ -1,7 +1,7 @@
-// Tests "Let Claude use Bob's hands" (src/claude-door.js): Bob as an MCP server for the Claude app and Claude Code.
+// Tests "Hands for Claude" (src/claude-door.js): Bob as an MCP server for the Claude app and Claude Code.
 // A pretend Bob, pretend settings files in a temporary folder, and the real stdio helper talking to a door on
 // 127.0.0.1. Nothing reads the real computer's Claude settings.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -264,11 +264,11 @@ const fakeRes = () => { const r = { code: 0, headers: {}, body: '', on() {}, wri
   check('the door is only at /mcp, before the page checks', server.indexOf("if (p === '/mcp') return doorRoute") > 0 && server.indexOf("if (p === '/mcp') return doorRoute") < server.indexOf("req.headers['x-bob'] !== '1'"));
   check('✋ Hands and Stop everything stop Claude\'s calls too', (read('src/hands.js').match(/stopDoorCalls\(\)/g) || []).length === 2);
   const ui = read('public/claude-door.js');
-  check('Settings has the switch and both Connect buttons', ['Let Claude use Bob\'s hands', 'Connect Bob to the Claude app', 'Connect Bob to Claude Code', 'Make a key for another app', 'Make this change'].every((l) => ui.includes(l.replace(/'/g, "\\'")) || ui.includes(l)));
-  check('it sits in Settings, Other apps', /claudeDoorHtml\(\)/.test(read('public/cellar.js')) && /mountClaudeDoor/.test(read('public/cellar.js')));
+  check('Settings has the switch and both Connect buttons', ['Hands for Claude', 'Connect Bob to the Claude app', 'Connect Bob to Claude Code', 'Make a key for another app', 'Make this change'].every((l) => ui.includes(l.replace(/'/g, "\\'")) || ui.includes(l)));
+  check('it sits in Settings, Other apps', /claudeDoorHtml\(\)/.test(publicText('cellar.js')) && /mountClaudeDoor/.test(publicText('cellar.js')));
   const topic = HELP.find((e) => e.id === 'claude-door');
   check('Help has the topic, in Bob\'s voice, with the platforms', topic && /I can be its hands/.test(topic.html) && /Windows, Mac and Linux/.test(topic.html) && /Not on the Android app/.test(topic.html));
-  check('Settings: Other apps explains every new setting', ["Let Claude use Bob's hands", 'What Claude may ask Bob for', 'Connect Bob to the Claude app', 'Connect Bob to Claude Code', 'Make a key for another app'].every((l) => HELP.find((e) => e.id === 'settings-apps').html.includes(l)));
+  check('Settings: Other apps explains every new setting', ["Hands for Claude", 'What Claude may ask Bob for', 'Connect Bob to the Claude app', 'Connect Bob to Claude Code', 'Make a key for another app'].every((l) => HELP.find((e) => e.id === 'settings-apps').html.includes(l)));
   check('the glossary has it', /MCP door/.test(HELP.find((e) => e.id === 'glossary').html));
   check('the FAQ has it', HELP.some((e) => e.id === 'faq-claude-door' && e.group === 'FAQ' && /\?$/.test(e.title)));
 }

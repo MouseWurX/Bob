@@ -34,7 +34,7 @@ export const MIN_PASSCODE = 8;
 
 // What a backup can hold, in the order Settings lists it. Paths are inside the inn folder ('/' at the end = a folder).
 export const PARTS = [
-  { id: 'chats', label: 'Chats', what: 'Every chat, its summary and which ones are pinned.', paths: ['bob/sessions/', 'bob/chat-summaries.json', 'bob/topics.json', 'bob/housekeeping.json', 'bob/my-tests.jsonl'] },
+  { id: 'chats', label: 'Chats', what: 'Every chat, its summary and which ones are pinned.', paths: ['bob/sessions/', 'bob/sessions-cleared.json', 'bob/chat-summaries.json', 'bob/topics.json', 'bob/housekeeping.json', 'bob/my-tests.jsonl'] },
   { id: 'settings', label: 'Settings', what: 'Everything set in Settings, check-ins, reminders, scheduled jobs, apps you connected, his voice sample and what he calls you.', paths: ['bob/settings.json', 'saved-prompts.json', 'bob/chat-presets.json', 'bob/chat-start/', 'bob/schedules.json', 'bob/page-watches.json', 'bob/reminders.json', 'bob/checkins.json', 'bob/mcp-servers.json', 'bob/hands-recipes.json', 'bob/clan.json', 'bob/about-me.md', 'bob/backstory.md', 'bob/equip-plan.json', 'voices/'] },
   { id: 'memory', label: 'Memory', what: 'What Bob remembers about you, his how-tos, the notice board and his logbook.', paths: ['bob-memory.md', 'memory-changes.jsonl', 'bob/memory-vectors.json', 'bob/howtos.json', 'notice-board.md', 'logbook.md', 'archive/'] },
   { id: 'notes', label: 'Notes and records', what: 'Quick notes, Sunday digests and the records (ledgers) he keeps for you.', paths: ['quick-notes.md', 'digests/', 'ledger/'] },
@@ -53,8 +53,11 @@ export const NOT_BACKED_UP = [
   'bob/queue.json', 'bob/electron/', 'bob/doc-index.json', 'bob/digest.json', 'bob/tool-group-vectors.json', 'bob/receipts/', 'bob/claude-door.json', 'bob/tool-packs.json', 'tool-packs/', 'bob/sd-server-args.txt', 'bob/backup-state.json', 'bob/restore-result.json',
   'bob/seeded-brains.json', 'bob/keys.json', 'bob/bob-net-link-keys.json', // brains seeded on a lent card (worked out again); locked secrets and Bob-Net link keys are locked to this computer (keys travel in the locked part; Bobs pair again)
   'bob/saved-formats.json', 'bob/turn-changes/', // items 232 and 238: worked out again; a turn's Undo is about this computer's files
-  'bob/running.json', 'bob/crash-reports/', 'bob/before-safe-start.json', 'bob/settings-undo.json', 'bob/weekly.json', 'bob/chat-places/', 'bob/tool-errors.json', // items 62 to 72 (and reliability item 206's error counts): worked out again on this computer, or about this computer only
+  'bob/running.json', 'bob/crash-reports/', 'bob/before-safe-start.json', 'bob/settings-undo.json', 'bob/weekly.json', 'bob/chat-places/', 'bob/tool-errors.json', 'bob/amnesia/', // items 62 to 72 (and reliability item 206's error counts; Amnesia mode's copy from before it went on): worked out again on this computer, or about this computer only
   'bob/brain-files.json', 'bob/engine-care.json', 'bob/engine-care-beside.json', // reliability 218-228: about this computer's engine and files
+  'bob/bob-net-outbox.json', 'bob/bob-net-inbox.json', // Nov 14 Files and brains: copies under way between this computer and your other Bobs, about files on this one
+  'bob/spare-keys.json', // 🔑 spare keys kept for your other Bobs: locked to this computer; pick them up again on a new one
+  'bob/coding-agents.json', 'bob/agent-accounts/', 'bob/agent-tasks/', 'bob/agent-ask.mjs', // Nov 13 Coding agents: folders on this computer, other people's sign-ins (never copied), a task file while it runs, a helper made again
   'bob/honesty.json', // Nov 12, item 192: each brain's honesty score on this computer, counted again from new answers
   'bob/spending.json', 'profiles/', // 🧾 the spending sheet and 👥 profiles are locked with keys that belong to this computer (or a person's passcode kept in config.json): save the sheet as a CSV to move it
   'painter/', 'references/', 'workshop/', 'own-code/', 'documents/', 'tools/_scratch/', 'tools/_pyscratch/', 'restore-waiting/', 'restore-waiting.new/'
@@ -215,7 +218,9 @@ export function brainNames(cfg = {}) {
 
 // Writes the zip into `folder`. parts: ids from PARTS. keys: true + passcode puts the locked keys in.
 // Returns { file, files, bytes, counts, keys }.
+const ownerOnly = (cfg) => { if (cfg?.profileNow) throw new Error('Only the owner backs up or restores. Switch back to the owner first.'); }; // 👥 never another user's keys in the owner's backup
 export function makeBackup(cfg, { folder, parts = PART_IDS, keys = false, passcode = '', env = {}, version = '', now = new Date(), auto = false } = {}) {
+  ownerOnly(cfg);
   if (!folder) throw new Error('Pick a folder for the backup.');
   const dir = path.resolve(folder);
   if (isInsideDir(cfg.innDir, dir)) throw new Error('Pick a folder outside Bob\'s inn folder, so a backup never ends up inside the next one.');
@@ -325,7 +330,7 @@ export function rebaseJson(v, pairs, opts) {
 export function safeSettings(s = {}) {
   const out = { ...s };
   delete out.hands; // What Bob may do: back to the defaults (asks first)
-  delete out.selfWork; // Let Bob work on repositories: off, and the code copies aren't in a backup
+  delete out.selfWork; // Work on repositories: off, and the code copies aren't in a backup
   delete out.autostart; // Launch on start-up is set on each computer
   delete out.gpuVramGB; delete out.gamingCard; delete out.apuHoldbackGB; // this computer's own hardware
   if (out.rentals && typeof out.rentals === 'object') out.rentals = { ...out.rentals, enabled: {}, current: '' };
@@ -339,6 +344,7 @@ const safeSchedules = (list) => (Array.isArray(list) ? list.map((e) => ({ ...e, 
 // Unpacks the parts asked for into inn\restore-waiting (they go in at Bob's next start), puts keys back (when the
 // passcode opens them) and the door settings in config.json, switched off. Returns what happened, for the card.
 export async function stageRestore(cfg, file, { parts = PART_IDS, keys = false, passcode = '', store = (name, value) => saveKey(cfg, name, value), env = {}, now = new Date() } = {}) {
+  ownerOnly(cfg);
   const info = readBackup(file);
   const chosen = info.parts.filter((p) => parts.includes(p));
   let unlocked = null;
@@ -452,6 +458,7 @@ export class BackupKeeper {
     return this.now() - (this.state().lastAuto || 0) >= gap - 10 * 60e3;
   }
   tick({ force = false } = {}) {
+    if (this.cfg.profileNow) return null; // 👥 waits while another user is in
     if (!force && !this.due()) return null;
     const b = backupOf(this.cfg);
     const st = this.state();

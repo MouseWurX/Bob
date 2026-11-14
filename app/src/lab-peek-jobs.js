@@ -10,6 +10,7 @@ import { usageFolder, keepFileOf } from './lab-usage.js';
 import fs from 'node:fs';
 import { inspect, labOn, readJson, sha256File, slugOf, writeJson } from './lab-measure.js';
 import { maskFor } from './lab-plan.js';
+import { cleanPerWord, sendPerWord, speedGuessWords } from './experts-per-word.js'; // Brain Engine 0013
 
 // Methods of the Lab class (src/lab.js), put on it there with the same rules as the methods written inside it.
 export const peekJobs = {
@@ -46,7 +47,7 @@ export const peekJobs = {
     switchOff(brain.gguf, layers, { used: facts?.used || 1, when: new Date(this.now()).toISOString().slice(0, 10) });
     return { switch: this.switchView(brain) };
   },
-  async peekAsk({ brain: id, question, mask = null, maskCounts = null, tally = false } = {}, { unload = false } = {}) {
+  async peekAsk({ brain: id, question, mask = null, maskCounts = null, tally = false, perWord = null } = {}, { unload = false } = {}) {
     const q = String(question || '').replace(/\s+/g, ' ').trim().slice(0, 500);
     if (!q) throw new Error('Type a question to ask.');
     const brain = this.brains().find((b) => b.id === String(id || ''));
@@ -54,6 +55,9 @@ export const peekJobs = {
     const facts = inspect(brain);
     if (!facts?.experts) throw new Error(`${brain.name} isn't a mixture-of-experts brain, so there's nothing to peek at.`);
     if (Array.isArray(maskCounts) && maskCounts.length) mask = keepFromLit(maskCounts, facts); // Keep only these: the lit-up set, padded to one size
+    // Experts per word for this question only (Brain Engine 0013): the brain's own when empty
+    perWord = cleanPerWord(perWord, { experts: facts.experts, layers: facts.engineLayers || facts.layers });
+    if (perWord === facts.used) perWord = null;
     const tools = this.tools();
     if (!tools.brainEngine.found && !this.stepFns.peekServe) throw new Error(NO_ENGINE);
     if (this.peekTraceOk === false) throw new Error(NO_TRACE);
@@ -78,11 +82,18 @@ export const peekJobs = {
       clearTimeout(s.timer);
       const url = s.srv.url;
       const post = async (body) => { const res = await fetch(url + '/expert-mask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) }); if (!res.ok) throw new Error(`Brain Engine wouldn't switch the experts: ${(await res.text()).slice(0, 200)}`); };
-      let masked = false;
-      if (Array.isArray(mask) && mask.length) { const why = checkKeep(readGguf(brain.gguf), mask); if (why) throw new Error(why); await post({ keep: maskFor(mask, facts) }); masked = true; }
+      let masked = false, perWordSet = false;
+      const perWordSend = this.stepFns.perWord || sendPerWord;
       let got;
-      try { got = await (this.stepFns.peekAsk || askTraced)(url, q, { signal: ac.signal }); }
-      finally { if (masked) await post({ keep: null }).catch(() => {}); }
+      try {
+        // the count first, so a mask that keeps fewer than it is refused with Brain Engine's own reason
+        if (perWord !== null) { await perWordSend(url, perWord); perWordSet = true; }
+        if (Array.isArray(mask) && mask.length) { const why = checkKeep(readGguf(brain.gguf), mask); if (why) throw new Error(why); await post({ keep: maskFor(mask, facts) }); masked = true; }
+        got = await (this.stepFns.peekAsk || askTraced)(url, q, { signal: ac.signal });
+      } finally {
+        if (masked) await post({ keep: null }).catch(() => {});
+        if (perWordSet) await perWordSend(url, null).catch(() => {});
+      }
       this.peekTraceOk = true;
       const t = tallyTrace(got.trace, got.tokens, { experts: facts.experts, layers: facts.layers });
       let tallied = null;
@@ -90,7 +101,7 @@ export const peekJobs = {
         if (!s.sha) s.sha = await (this.stepFns.fingerprint || sha256File)(brain.gguf, ac.signal);
         tallied = addToTally(this.cfg, brain, { sha256: s.sha, facts, counts: t.counts, tokens: t.words.length, when: new Date(this.now()).toISOString().slice(0, 10) });
       }
-      return { answer: got.answer, words: t.words, lit: t.lit, counts: t.counts, used: t.used, share: t.share, tps: Math.round((Number(got.tps) || 0) * 10) / 10, where: s.srv.where || '', masked, tallied: tallied && { tokens: tallied.tokens, keepFile: path.basename(tallied.keepFile) } };
+      return { answer: got.answer, words: t.words, lit: t.lit, counts: t.counts, used: t.used, share: t.share, tps: Math.round((Number(got.tps) || 0) * 10) / 10, where: s.srv.where || '', masked, perWord, ownPerWord: facts.used || null, perWordGuess: perWord === null ? '' : speedGuessWords(facts.used, perWord, facts.expertShare ? { expertShare: facts.expertShare } : {}), tallied: tallied && { tokens: tallied.tokens, keepFile: path.basename(tallied.keepFile) } };
     } catch (e) {
       if (e.message === NO_TRACE) { this.peekTraceOk = false; this.freePeek(); }
       throw e;

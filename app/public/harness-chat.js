@@ -3,7 +3,7 @@
 //   - Quiet hours: quietNow() tells the chat page not to pop up or speak (an urgent reminder still does).
 //   - Pin messages and Try from here: 📌 Pin and ⑂ Try from here under each saved message.
 //   - Guest chats: 👤 Guest chat beside New chat, and a line saying nothing in it is saved.
-//   - Count what Bob did each week: on Mondays, a line in the chat with the page.
+//   - Weekly stats: on Mondays, a line in the chat with the page.
 //   - The ask box's Open in Bob: shows the ask box's chat here.
 import { esc } from './rich.js';
 import { openHealth, openWeekly, openCrashReport } from './harness-pages.js';
@@ -63,7 +63,7 @@ export function createHarnessChat(app) {
     }
   }
 
-  // ---- Count what Bob did each week: a line on Mondays (once a week).
+  // ---- Weekly stats: a line on Mondays (once a week).
   function weeklyLine() {
     if (v.weeklyReport !== true || new Date().getDay() !== 1 || store.get('bob-weekly-seen') === weekKey()) return;
     store.set('bob-weekly-seen', weekKey());
@@ -134,7 +134,7 @@ export function createHarnessChat(app) {
   // Leaving a guest chat (New chat, another chat): Bob lets go of it.
   let last = app.session();
   function moved(now) {
-    if (isGuest(last) && last !== now) post('/api/guest', { end: last });
+    if (isGuest(last) && last !== now && !/^guest-net-/.test(last)) post('/api/guest', { end: last }); // Nov 13: a Bob-Net icon's chat stays while Bob is open (net-overlay.js)
     last = now;
     loadPins().then(decorateAll);
   }

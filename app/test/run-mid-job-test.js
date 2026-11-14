@@ -1,4 +1,4 @@
-// Answer messages between steps (src/mid-job.js): on unless switched off; a message sent during a job is sorted and
+// Reply between steps (src/mid-job.js): on unless switched off; a message sent during a job is sorted and
 // handled at the job's next step boundary on the loaded brain (quick reply from its own small context, new work to
 // Tasks, a change or "stop" folded into the job), and the job then carries on from the same step, untouched.
 import fs from 'node:fs';
@@ -9,6 +9,7 @@ import { Brain, besideBigOk } from '../src/brain.js';
 import { mergeSettings } from '../src/config.js';
 import { midJobOn, sortMessage, replyTag, maybeTag, jobLine, quickPrompt, quickHistory, midJobFits } from '../src/mid-job.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -104,10 +105,12 @@ const finished = (id) => ['done', 'failed', 'cancelled'].includes(stateOf(id));
   calls.length = 0;
   script = [call('fetch_page', { url: 'https://example.org/c' }), call('fetch_page', { url: 'https://example.org/d' }), { role: 'assistant', content: 'Stopped with what I had.' }];
   let stopId;
+  brain.cfg.stopWords = false; // Stop and wait words off: the old "stop after this step" between steps
   during = () => { stopId = brain.enqueue('main', 'stop').jobId; };
   const { jobId } = brain.enqueue('main', 'read https://example.org/c and then https://example.org/d');
   await until(() => finished(jobId));
   const main = calls.filter((c) => !c.quick);
+  brain.cfg.stopWords = undefined;
   check('"stop": no brain call for it, and the next round has no tools', !calls.some((c) => c.quick) && main.length >= 2 && main.slice(1).every((c) => c.names.length === 0) && stateOf(stopId) === 'done');
 }
 {
@@ -140,12 +143,12 @@ const finished = (id) => ['done', 'failed', 'cancelled'].includes(stateOf(id));
 }
 
 // ---------- Settings, Help, glossary, FAQ ----------
-const cellar = read('public/cellar.js');
-check('the switch in Settings, Brains, on to start with', /sswitch\('answerMidJob', settings\.answerMidJob !== false, 'Answer messages between steps'/.test(cellar) && /data\.set === 'answerMidJob'|dataset\.set === 'answerMidJob'/.test(cellar));
+const cellar = publicText('cellar.js');
+check('the switch in Settings, Brains, on to start with', /sswitch\('answerMidJob', settings\.answerMidJob !== false, 'Reply between steps'/.test(cellar) && /data\.set === 'answerMidJob'|dataset\.set === 'answerMidJob'/.test(cellar));
 const help = HELP.find((e) => e.id === 'mid-job');
 check('Help in Bob\'s voice, says where it works', help && /Windows, Mac, Linux and Android/.test(help.html) && /\bI\b/.test(help.html));
 check('glossary and FAQ', HELP.find((e) => e.id === 'glossary').html.includes('<dt>Step boundary</dt>') && HELP.some((e) => e.id === 'faq-mid-job' && e.group === 'FAQ'));
-check('nothing added to the start-of-job prompt', !/between two steps|Answer messages between steps/.test(read('src/prompts.js')));
+check('nothing added to the start-of-job prompt', !/between two steps|Reply between steps/.test(read('src/prompts.js')));
 
 try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
 console.log(`\n${pass} passed, ${fail} failed`);

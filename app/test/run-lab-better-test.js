@@ -8,6 +8,7 @@ import { GO, goBtn, goWhere } from '../public/lab-go.js';
 import { SHELVES, shelfRows, mineHtml } from '../public/lab-mine.js';
 import { CHANNEL, LAB_URL, labWantsWindow, accept, message } from '../public/lab-link.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -17,7 +18,7 @@ const lab = read('public/lab.js');
 // The tabs and the pages under them
 const tabs = [...lab.match(/const TABS = (\[\[.*?\]\]);/)[1].matchAll(/\['(\w+)', '([^']+)'\]/g)].map((m) => [m[1], m[2]]);
 const subs = Object.fromEntries([...lab.match(/const SUBS = \{(.*?)\};/)[1].matchAll(/(\w+): \[([^\]]*)\]/g)].map((m) => [m[1], m[2].split(',').map((x) => x.trim().replace(/'/g, ''))]));
-check('the tabs are sorted by task, with My Lab last', tabs.map(([id]) => id).join(' ') === 'make teach test inside learn forge mine' && tabs.at(-1)[1] === 'My Lab');
+check('the tabs are sorted by task, with My Lab last', tabs.map(([id]) => id).join(' ') === 'make teach test inside learn forge steps mine' && tabs.at(-1)[1] === 'My Lab');
 const placed = Object.values(subs).flat();
 check('every Playground page sits under exactly one tab', PLAY_PAGES.every(([id]) => placed.filter((x) => x === id).length === 1), PLAY_PAGES.map(([id]) => id).filter((id) => placed.filter((x) => x === id).length !== 1).join(' '));
 check('no page is on two tabs, and every group belongs to a real tab', new Set(placed).size === placed.length && Object.keys(subs).every((t) => tabs.some(([id]) => id === t)));
@@ -56,7 +57,7 @@ check('an empty view draws without a throw', typeof mineHtml({}) === 'string' &&
 // Its own window
 check('the Lab gets a window on a computer and stays a page on a phone or tablet', labWantsWindow({ hasChannel: true, width: 1280 }) && !labWantsWindow({ hasChannel: true, width: 1280, coarse: true }) && !labWantsWindow({ hasChannel: true, width: 400 }) && !labWantsWindow({ width: 1280 }) && !labWantsWindow());
 check('the main window acts only on what it knows from the Lab window', accept(message('go', 'models')).where === 'models' && accept(message('go', 'elsewhere')) === null && accept(message('note', 'x'.repeat(900))).text.length === 400 && accept({ from: 'someone', name: 'go', detail: 'models' }) === null && accept(message('eval', 'x')) === null && accept(null) === null && CHANNEL === 'bob-lab');
-const win = read('public/lab.html'), winJs = read('public/lab-window.js'), main = read('electron/main.cjs'), app = read('public/app.js');
+const win = read('public/lab.html'), winJs = read('public/lab-window.js'), main = read('electron/main.cjs'), app = publicText('app.js');
 check('the Lab window page holds the Lab and loads only its own script', /<dialog id="lab" class="cellar page lab-dlg"/.test(win) && /id="lab-body"/.test(win) && /id="lab-close"/.test(win) && (win.match(/<script/g) || []).length === 1 && /src="\/lab-window\.js"/.test(win) && !/https?:\/\//.test(win));
 check('the window reads the Lab\'s progress itself and asks the main window to go places', /new EventSource\('\/api\/events'\)/.test(winJs) && /createLab\(\{ api, note, go: \(where\) => tell\('go', where\), page: true \}\)/.test(winJs) && /'x-bob': '1'/.test(winJs) && !/https?:\/\//.test(winJs));
 check('the Lab button opens the window, or the page when there are no windows', /if \(!openLabWindow\(\)\) labPage\.open\(\)/.test(app) && /window\.open\(LAB_URL, LAB_WINDOW_NAME, LAB_WINDOW_SIZE\)/.test(app) && LAB_URL === '/lab.html');

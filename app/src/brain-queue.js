@@ -12,8 +12,10 @@ import crypto from 'node:crypto';
 import { cleanEffort } from './moot.js';
 import { jobHome, homeOpen, HOME_WAIT } from './job-home.js';
 import { midJobFits, ACK_LINE, ACK_AFTER_MS } from './mid-job.js';
+import { heedStopWord, clearDelay } from './stop-words.js';
 import { autoSessionOn } from './auto-session.js';
 import { stopAway, awayPlan, awayWaitLine, sendAway } from './share-jobs.js';
+import { netChatTarget, failNetChat, isNetChat } from './net-overlay.js';
 import { webOn } from './web.js';
 
 // What the job's chat says when Pause stops it partway. Shown under the reply; never sent to the brain.
@@ -32,7 +34,7 @@ export const queueParts = {
     let q = readSaved(this.queueFile, [], { check: Array.isArray, log: (t) => this.log?.('saving', t) });
     q = q.filter((j) => j && typeof j === 'object');
     // A job that was running when Bob closed may have half-finished: don't redo it blindly. Its ledger says what it did.
-    // 1.5.38: with "Pick up where Bob left off after a restart" on (off by default), it carries on from the last finished
+    // 1.5.38: with "Resume jobs after restart" on (off by default), it carries on from the last finished
     // step: finished steps aren't done again, and the step that was cut off is done again from the start. A cut-off
     // step that can be left half done (typing into an app, moving files, a command...) waits in Tasks for Carry on.
     // Off, every cut-off job waits in Tasks; Carry on (the Tasks button) picks up the same way.
@@ -108,6 +110,10 @@ export const queueParts = {
   },
   enqueue(sessionId, text, attach = [], effort = 'low', extra = {}) {
     this.lastActivity = Date.now();
+    // Nov 13 (the owner): Stop and wait words. "stop", "no no", "hold on", "wait 10 minutes", "go on"... as a whole short
+    // message, while a job of yours runs, waits or is paused: the app acts at once (stop-words.js). Nothing for the brain.
+    const heard = heedStopWord(this, sessionId, text, attach, extra);
+    if (heard) return heard;
     // 1.5.97: "ok" while a job only waits for the graphics card (no card open) gets a plain answer at once, instead of
     // queueing behind the wait it was meant to answer.
     // 1.5.104: also while a chat of this session already waits behind a picture, clip, song or sound.
@@ -117,7 +123,7 @@ export const queueParts = {
       setTimeout(() => this.broadcast({ type: 'busy-note', sessionId, text: answer }), 0);
       return { jobId: null, turnId: null, ahead: 0, answered: answer };
     }
-    // Let Bob's Quick brain see the big job (PC test 1.5.203): "tell the job to ..." and "how's it going?" can't wait
+    // Quick brain sees the job (PC test 1.5.203): "tell the job to ..." and "how's it going?" can't wait
     // behind the job they're about. When no Quick brain can take the message right now (one is already answering, or
     // there's no room for it), the app passes the note along or answers from the job's record itself, at once.
     // Jobs, Steer him mid-job (job-helps.js, off unless turned on): typed in the running job's own chat, it goes to the job.
@@ -230,6 +236,7 @@ export const queueParts = {
   resumeJob(id) {
     const j = this.queue.find((x) => x.id === id);
     if (!j || j.state !== 'paused') return false;
+    clearDelay(this, j); // Resume pressed (or "go on") before a delay was up
     j.pickUp = j.pausedFrom === 'working' && Boolean(j.carryOn);
     if (j.pausedFrom === 'working') { j.steps = []; j.resumed = 0; }
     Object.assign(j, { state: 'waiting', pausedFrom: undefined, pausedAt: undefined, error: undefined, at: Date.now() }); // keeps its place in line
@@ -293,6 +300,16 @@ export const queueParts = {
       if (job.parked && this.cfg.gamingLock === true) continue; // 1.5.41: put aside by the 🎮 Gaming button, waits for it to go off
       // 1.5.72 Share jobs: a job this Bob can't do, or that would wait, goes to one of your Bobs who says he can do it.
       if (job.awayHold && job.awayHold > Date.now()) continue; // waiting for one of your Bobs who can do it
+      // Nov 13 Bob-Net icons (net-overlay.js): a chat opened from a Bob's icon goes to that Bob, and never runs here.
+      const netTo = !job.away && netChatTarget(this.lenders?.bobs?.() || [], job.sessionId);
+      if (netTo) {
+        job.away = { pending: true };
+        sendAway(this, job, { need: 'chat', why: 'guest', to: netTo, web: webOn(this.cfg) })
+          .then((went) => { if (!went) failNetChat(this, job, netTo.name || 'That Bob'); })
+          .catch((e) => { this.log('away', `couldn't send a chat: ${e.message}`); failNetChat(this, job, netTo.name || 'That Bob', 'couldn\'t be reached'); });
+        continue;
+      }
+      if (!job.away && isNetChat(job.sessionId)) { failNetChat(this, job, 'That Bob', 'isn\'t on your Bob-Net list any more'); continue; } // never here
       if (!job.away && this.cfg.share?.borrow?.jobs === true) {
         const plan = awayPlan(this, job, { can: this.jobCan(), webOn: webOn(this.cfg), waitsForGaming: waitsForGaming(this.cfg, job), laneBusy: this.turns.has(laneOf(this.cfg, job)) });
         if (plan) {

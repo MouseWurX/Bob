@@ -1,4 +1,4 @@
-// Let other apps use Bob's brains (src/apps-door.js) and the command line (src/bob-cli.js). Off unless switched on,
+// Brains for other apps (src/apps-door.js) and the command line (src/bob-cli.js). Off unless switched on,
 // key always, no web pages, OpenAI's shapes in and out. A fake brain stands in: nothing real is loaded or read.
 import http from 'node:http';
 import fs from 'node:fs';
@@ -9,6 +9,7 @@ import { appsDoor, appsDoorOn, saveAppsDoor, cleanAppsDoorPatch, keyOk, doorRefu
 import { main as cli, parseArgs, where, findConfig } from '../src/bob-cli.js';
 import { appsDoorBody } from '../public/apps-door.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -206,12 +207,12 @@ const post = (base, p, b, h = auth) => fetch(base + p, { method: 'POST', headers
   check('every control is drawn while off (rule 14)', /data-ad="enabled"/.test(off) && /data-ad="network"/.test(off) && /data-ad-new/.test(off) && !/disabled/.test(off));
   const on = appsDoorBody({ enabled: true, network: false, key: KEY, url: 'http://localhost:7777/v1', doorOpen: true });
   check('the key is hidden until Show the key', !on.includes(KEY) && appsDoorBody({ enabled: true, key: KEY, url: 'u' }, { shown: true }).includes(KEY));
-  const cellar = read('public/cellar.js');
+  const cellar = publicText('cellar.js');
   check('the panel sits in Settings, Other apps', cellar.includes('${appsDoorHtml()}') && cellar.includes("mountAppsDoor(dlg.querySelector('.apps-door-box'))"));
   const help = HELP.map((h) => `${h.title} ${h.html}`).join(' ');
-  check('Help explains it', HELP.some((h) => h.id === 'apps-door') && help.includes('Let other apps use Bob\'s brains') && help.includes('Let apps on my other devices in too') && help.includes('Key for other apps'));
+  check('Help explains it', HELP.some((h) => h.id === 'apps-door') && help.includes('Brains for other apps') && help.includes('Allow other devices') && help.includes('Key for other apps'));
   check('glossary and FAQ', /<dt>OpenAI-compatible/.test(help) && HELP.some((h) => h.id === 'faq-apps-door' && h.group === 'FAQ'));
-  check('the guide has it too', read('docs/USER-GUIDE.md').includes('Let other apps use Bob\'s brains'));
+  check('the guide has it too', read('docs/USER-GUIDE.md').includes('Brains for other apps'));
   const cmd = fs.readFileSync(path.join(here, '..', 'installer', 'bob.cmd'), 'utf8');
   check('Windows: bob.cmd runs the Node inside Bob.exe', /ELECTRON_RUN_AS_NODE=1/.test(cmd) && /src\\bob-cli\.js/.test(cmd));
   check('Mac and Linux: bob.sh', /node "\$here\/\.\.\/src\/bob-cli\.js"/.test(read('installer/bob.sh')));

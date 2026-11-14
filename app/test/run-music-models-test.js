@@ -1,7 +1,7 @@
 // 1.5.37: ACE-Step's music models come through Bob's own Downloads (pinned to one commit, the big files sha-checked,
 // only after the user presses the button), into ACE-Step's checkpoints folder. ACE-Step itself runs offline, so it
 // can never quietly fetch gigabytes in the middle of a song. A message sent during a long media job gets a busy note.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -88,7 +88,7 @@ check('stopping the engine ends its whole process tree on Windows (uv starts Pyt
 check('ACE-Step\'s own half-finished download is cleared after Bob\'s download', /tidyAceCache\(this\.cfg\)/.test(read('../src/models.js')));
 check('ACE-Step runs offline (it can\'t download on its own)', /HF_HUB_OFFLINE: '1'/.test(audio) && /TRANSFORMERS_OFFLINE: '1'/.test(audio));
 // The brain offers the download in the chat instead, and the chat shows a button for it.
-const brain = brainText(), app = read('../public/app.js');
+const brain = brainText(), app = publicText('app.js');
 check('the brain offers the music models when they are missing', /type: 'offer-download', (jobId: [^,]+, )?id: ACE_MODELS_ID/.test(brain));
 check('the chat shows a Download button that only starts on a click', /case 'offer-download'/.test(app) && /yes\.onclick = async/.test(app) && /\/api\/models\/download', \{ id: ev\.id(, \.\.\.\(ev\.jobId \? \{ thenJob: ev\.jobId \} : \{\}\))? \}/.test(app));
 

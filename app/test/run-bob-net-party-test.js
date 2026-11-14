@@ -1,11 +1,13 @@
 // 1.5.123 Bob-Net party (Now running) and Pass my Bob-Net along (src/bob-net-party.js): the party reading, and three
 // Bobs on a pretend Tailscale where the desk introduces the handheld to the phone and they pair with no card.
+import { hueFor } from '../src/net-overlay.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { partyView, Introductions } from '../src/bob-net-party.js';
 import { Pairing, PAIR } from '../src/bob-net-pair.js';
 import { Lenders, cleanSharePatch, shareView, helloFor, cleanAbilities, saveShare } from '../src/share-brains.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { if (ok) { pass++; console.log(`PASS ${name}`); } else { fail++; console.log(`FAIL ${name}${extra ? `: ${extra}` : ''}`); } };
@@ -19,6 +21,13 @@ check('Pass my Bob-Net along starts off', shareView(base).passAlong === false);
 const on = cleanSharePatch(base, { passAlong: true }).share;
 check('…and can be switched on, alone', on.passAlong === true && on.lend === false && on.borrow.on === false);
 check('…and off again', cleanSharePatch({ ...base, share: on }, { passAlong: false }).share.passAlong === false);
+// 2026-11-14 (the owner: "can we make it more?"): up to 16 Bobs on the list, was 6.
+{
+  let cfg16 = { ...base, share: {} };
+  for (let i = 1; i <= 16; i++) { const out = cleanSharePatch(cfg16, { addBob: { name: `B${i}`, address: `100.90.0.${i}:7777`, passcode: '12345678' } }); if (out.error) break; cfg16 = { ...cfg16, share: out.share }; }
+  check('My other Bobs holds 16 Bobs now (was 6)', cfg16.share.borrow?.bobs?.length === 16);
+  check('…and a 17th is refused with the limit named', /Up to 16 Bobs/.test(cleanSharePatch(cfg16, { addBob: { name: 'B17', address: '100.90.0.17:7777', passcode: '12345678' } }).error || ''));
+}
 const hello = helloFor({ cfg: { share: { passAlong: true } }, queue: [] }, { why: '', quick: { model: 'm', ctx: 8192 }, can: {}, version: '1.5.123', label: () => 'Gemma', name: 'desk' });
 check('hello carries the name and the pass-along switch', hello.name === 'desk' && hello.passAlong === true);
 const ab = cleanAbilities({ ...hello, name: 'de<sk>' });
@@ -44,9 +53,12 @@ check('…and the asker keeps both, cleaned', ab.passAlong === true && ab.hisNam
   const html = read('public/index.html'), lay = read('public/layout.js');
   check('Show avatars is a switch in the Bob-Net section, off to begin with', /id="nowNetAvatars"[^>]*role="switch"[^>]*aria-checked="false"/.test(html) && html.indexOf('id="nowNetAvatars"') > html.indexOf('id="nowNet"') && html.indexOf('id="nowNetAvatars"') < html.indexOf('id="nowNetList"'));
   check('…remembered per window, off unless switched on', /store\.get\('bob-net-avatars', '0'\) === '1'/.test(lay));
-  check('…avatars are drawn with the avatar painter, named for screen readers', /drawBob\(c, cv\.width, \{\}, cv\.dataset\.look\)/.test(lay) && /aria-label="\$\{esc\(name\)\}'s avatar"/.test(lay));
+  check('…every Bob gets a cube, in his icon colour, named for screen readers (Nov 13)', /drawVoxels\(c, \{ hue: Number\(cv\.dataset\.hue\)/.test(lay) && /aria-label="\$\{esc\(name\)\}'s cube"/.test(lay) && !/drawBob/.test(lay) && /netAvatar\(b\.hue, b\.name, b\.ok === true\)/.test(lay));
+  check('…the party gives every Bob a cube colour, a phone too', v.bobs.every((b) => Number.isInteger(b.hue)) && v.bobs.find((b) => b.name === 'Phone').hue === hueFor('Phone'));
   const help = read('public/help-content.js');
-  check('…with Help, a glossary line and an FAQ', help.includes("id: 'faq-avatars'") && help.includes('<dt>Show avatars</dt>') && /Show avatars<\/strong>, just under the heading/.test(help));
+  // 2026-11-14 (the owner): how Bob-Net is like cluster computing, in Help, the glossary, and one line on Settings, Bob-Net.
+  check('Bob-Net explains itself as a small cluster, with a glossary line and a Settings link', help.includes("id: 'faq-cluster'") && help.includes('<dt>Cluster</dt>') && /'faq-cluster': 'settings-bobnet'/.test(help) && /data-help="faq-cluster"/.test(read('public/cellar-pages.js')));
+  check('…with Help, a glossary line and an FAQ', help.includes("id: 'faq-avatars'") && help.includes('<dt>Show avatars</dt>') && /Show avatars<\/strong>, just under the heading/.test(help) && /every Bob's picture now/.test(help));
 }
 
 // ---------- the party reading ----------
@@ -90,8 +102,8 @@ function net(bobs) {
     if (u.pathname === '/api/pair/hello') return reply(200, to.pairing.hello());
     if (u.pathname.startsWith('/api/pair/')) {
       const b = JSON.parse(raw || '{}');
-      if (u.pathname === '/api/pair/ask') { const r = to.pairing.ask(b, '::ffff:' + from.ip); return reply(r.code, r.error ? { error: r.error } : { id: r.id }); }
-      if (u.pathname === '/api/pair/status') return reply(200, to.pairing.status(b.id, from.ip));
+      if (u.pathname === '/api/pair/ask') { const r = to.pairing.ask(b, '::ffff:' + from.ip); return reply(r.code, r.error ? { error: r.error } : { id: r.id, ...(r.pub ? { pub: r.pub } : {}) }); }
+      if (u.pathname === '/api/pair/status') return reply(200, to.pairing.status(b.id, from.ip, b.pub));
       if (u.pathname === '/api/pair/finish') return reply(200, to.pairing.finish(b, from.ip));
     }
     if (u.pathname === '/login') {
@@ -186,12 +198,12 @@ const codeFor = (x, who) => (x.cfg.share.borrow?.bobs || []).find((b) => b.addre
 
 // ---------- the page, Help and the server wiring ----------
 {
-  const html = read('public/index.html'), layout = read('public/layout.js'), app = read('public/app.js'), share = read('public/share-brains.js'), help = read('public/help-content.js'), server = read('src/server.js'), css = read('public/style.css'), privacy = read('docs/legal/PRIVACY.md');
+  const html = read('public/index.html'), layout = read('public/layout.js'), app = publicText('app.js'), share = read('public/share-brains.js'), help = read('public/help-content.js'), server = read('src/server.js'), css = read('public/style.css'), privacy = read('docs/legal/PRIVACY.md');
   check('Now running has a Bob-Net section, hidden to start with', /<section id="nowNet" data-sec="net" hidden>/.test(html) && /<ul id="nowNetList" class="tlist net-list"><\/ul>/.test(html));
   check('the pane polls the party while open, and hides the section when Bob-Net isn\'t in use', /fetch\('\/api\/bob-net\/party'\)/.test(layout) && /sec\.hidden = !v\?\.on;/.test(layout) && /brainSt\?\.session === 'Gaming' \? 30000 : 15000/.test(layout));
   check('a lend, borrow, sent job or pairing refreshes it early', /\['lending', 'borrow', 'away', 'pair-done', 'queue'\]\.includes\(ev\.type\)\) layout\.net\(\);/.test(app) && /net\(\) \{ clearTimeout\(netSoon\); netSoon = setTimeout\(pollNet, 800\); \}/.test(layout));
   check('the dot never stands alone: words for every state', /thinking a reply for me/.test(layout) && /gaming, so not lending/.test(layout) && /aria-hidden="true"/.test(layout.slice(layout.indexOf('const netRow'))) && /\.net-dot\.ok \{ background: var\(--good\); \}/.test(css));
-  check('Settings has the switch, off unless turned on', /<strong>Pass my Bob-Net along<\/strong> \$\{tip\(/.test(share) && /data-share-pass \$\{v\.passAlong \? 'checked' : ''\}/.test(share) && /change\(\{ passAlong: e\.target\.checked \}\)/.test(share));
+  check('Settings has the switch, off unless turned on', /<strong>Pass my Bob-Net along<\/strong> \$\{tip\(/.test(share) && /data-share-pass \$\{v\.passAlong \? 'checked' : ''\}/.test(share) && /(?:change|ch)\(\{ passAlong: e\.target\.checked \}\)/.test(share));
   check('…and says what came of each introduction', /INTRO\[d\.state\]/.test(share) && /can't be introduced yet: Bob there needs an update/.test(share));
   check('Help: the settings row, two FAQ entries and a glossary line', /set\('Pass my Bob-Net along', 'Off'/.test(help) && /id: 'faq-party'/.test(help) && /id: 'faq-introduce'/.test(help) && /<dt>Introduced<\/dt>/.test(help) && /go\('faq-party'/.test(help));
   check('PRIVACY.md says what an introduction carries', /Pass my Bob-Net along/.test(privacy) && /passcodes still pass only between the two Bobs being paired/.test(privacy));

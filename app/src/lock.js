@@ -10,7 +10,7 @@
 // same key again (the chats needn't be redone). Forgetting it means the locked chats and memory are gone for good.
 //
 // Who gets in is held in Bob's memory only: a random token per window that typed the passcode, so a restart
-// always asks again. Phones and your other Bobs come in through "Let my other replicant matrices in" with that
+// always asks again. Phones and your other Bobs come in through "Bob-Net access" with that
 // door's own passcode; Bob for Android has its own lock on the phone (assets/www/lock.js).
 import crypto from 'node:crypto';
 import { readJsonFile, writeJsonAtomic } from './util.js';
@@ -76,16 +76,22 @@ export class Lock {
     return true;
   }
   touch(req) { const t = this.token(req); if (this.tokens.has(t)) this.tokens.set(t, this.now()); }
-  // Five wrong tries a minute at most. Returns { token } or { error, code }.
-  unlock(code) {
+  // Five wrong tries a minute at most (the lock screen and turning the lock off share them). Returns { key } or { error, code }.
+  tryCode(code) {
     const now = this.now();
     while (this.tries.length && now - this.tries[0] > 60000) this.tries.shift();
     if (this.tries.length >= 5) return { error: 'Too many tries. Wait a minute.', code: 429 };
     this.tries.push(now);
-    const k = unwrapKey(code, this.cfg.lock);
-    if (!k) return { error: 'That passcode isn\'t right.', code: 401 };
-    setKey(k);
+    const key = unwrapKey(code, this.cfg.lock);
+    if (!key) return { error: 'That passcode isn\'t right.', code: 401 };
     this.tries = [];
+    return { key };
+  }
+  // Returns { token } or { error, code }.
+  unlock(code) {
+    const r = this.tryCode(code);
+    if (r.error) return r;
+    setKey(r.key);
     return { token: this.grant() };
   }
   // The window that just switched the lock on stays in (it didn't need a passcode a moment ago).
@@ -94,7 +100,8 @@ export class Lock {
   cookie(token) { return `bob_lock=${token}; HttpOnly; SameSite=Strict; Path=/`; }
 
   // Settings: { enabled, idleMinutes, encrypt, passcode, newPasscode, current }. Only from this replicant matrix,
-  // only by someone already in. Returns { view } or { error }.
+  // only by someone already in. Turning the lock off needs `passcode` (the one that turned it on); with Lock my chats
+  // and memory on, that same step puts them back to plain files first, so nothing is lost. Returns { view } or { error }.
   change(b = {}) {
     const cfg = this.cfg, cur = cfg.lock || {};
     if (cfg.profileNow) return { error: 'Only the owner can change the passcode lock. Lock Bob and open him with the owner\'s passcode.' }; // 👥 profiles.js
@@ -114,7 +121,14 @@ export class Lock {
     }
     const hasCode = Boolean(out.wrapped || cur.wrapped);
     const enabled = 'enabled' in b ? b.enabled === true : cur.enabled === true;
-    const encrypt = 'encrypt' in b ? b.encrypt === true : cur.encrypt === true;
+    let encrypt = 'encrypt' in b ? b.encrypt === true : cur.encrypt === true;
+    if (lockOn(cfg) && !enabled) { // turning it off: the passcode that turned it on, nothing else
+      if (!String(b.passcode || '')) return { error: 'Type your passcode to turn the lock off.' };
+      const r = this.tryCode(String(b.passcode));
+      if (r.error) return { error: r.code === 401 ? 'That passcode isn\'t right. The lock stays on.' : r.error };
+      setKey(r.key);
+      encrypt = false;
+    }
     if (enabled && !hasCode) return { error: 'Make a passcode first.' };
     if (!enabled && cur.encrypt === true && encrypt) return { error: 'Turn off Lock my chats and memory first, so they\'re put back to plain files.' };
     if (encrypt && !enabled) return { error: 'Turn on Ask for a passcode to open Bob first: the passcode is what opens your locked chats.' };
@@ -125,7 +139,7 @@ export class Lock {
     let changed = 0;
     if (turning) {
       try { changed = convertAll(cfg, encrypt); }
-      catch (e) { saveLock(cfg, { encrypt: !encrypt }); return { error: `Couldn't ${encrypt ? 'lock' : 'unlock'} every file (${e.message}). Nothing was switched.` }; }
+      catch (e) { saveLock(cfg, { encrypt: cur.encrypt === true, enabled: cur.enabled === true }); return { error: `Couldn't ${encrypt ? 'lock' : 'unlock'} every file (${e.message}). Nothing was switched.` }; }
     }
     if (!enabled) this.tokens.clear();
     this.log('settings', `passcode lock: ${enabled ? 'on' : 'off'}${idleMinutes(cfg) ? `, again after ${idleMinutes(cfg)} min` : ''}${encrypt ? ', chats and memory locked' : ''}${out.wrapped ? ', new passcode' : ''}${turning ? ` (${changed} file${changed === 1 ? '' : 's'} ${encrypt ? 'locked' : 'unlocked'})` : ''}`);
@@ -134,29 +148,36 @@ export class Lock {
 }
 
 // What the window shows while Bob is locked. `next` is where to go after.
-// people: 👥 profiles (profiles.js), [{ id, name }]; with any, the screen asks "Who's this?" first.
+// people: 👥 users (profiles.js), [{ id, name, passcode }]; with any, the screen asks "Who's this?" first. A user
+// without a passcode opens with the box left empty.
 export function lockPage({ next = '/', wrong = '', encrypt = false, people = [] } = {}) {
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const safeNext = /^\/[a-zA-Z0-9/_.?=&%-]*$/.test(next) && !next.startsWith('//') ? next : '/';
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Bob is locked</title><link rel="icon" href="/icons/bob-32.png"><style>
+  return `${lockHead('Bob is locked')}<body><form method="post" action="/unlock"><img src="/icons/bob-192.png" width="64" height="64" alt="">
+<h1 style="font-size:20px;margin:0">🔒 Bob is locked</h1>
+${people.length ? `<label for="w">Who's this?</label><select id="w" name="who"><option value="main">The owner</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}${p.passcode === false ? ' (no passcode)' : ''}</option>`).join('')}</select>` : ''}
+<label for="c">Passcode</label><input id="c" name="code" type="password" autocomplete="current-password"${people.some((p) => p.passcode === false) ? '' : ' required'} autofocus>
+<input type="hidden" name="next" value="${esc(safeNext)}">
+${wrong ? `<p class="bad" role="alert">${esc(wrong)}</p>` : ''}
+<button>Open Bob</button>
+<p class="muted">${encrypt ? 'Your chats and memory stay locked until the passcode is typed.' : 'Bob keeps working in the background while he\'s locked.'}</p>
+<p class="muted"><a href="/unlock/forgot">Forgot it?</a></p>
+</form></body></html>`;
+}
+
+// The top of every lock-screen page (the lock screen and Forgot it?): works at phone width, light and dark.
+export const lockHead = (title) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title><link rel="icon" href="/icons/bob-32.png"><style>
 :root{--bg:#1d1510;--card:#2b1d14;--ink:#f3e7d3;--line:#5a4030;--accent:#e7a64a;--bad:#ff9b8a}
 @media (prefers-color-scheme: light){:root{--bg:#f6efe4;--card:#fffaf2;--ink:#2b1d14;--line:#c9b39a;--accent:#b0661a;--bad:#a3261a}}
 body{background:var(--bg);color:var(--ink);font:16px "Segoe UI",system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0}
 form{background:var(--card);padding:24px;border-radius:12px;display:grid;gap:12px;width:min(320px,calc(100vw - 32px));box-sizing:border-box}
 input,button,select{font:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);min-height:44px}input,select{background:var(--bg);color:var(--ink)}
-button{background:var(--accent);color:var(--card);font-weight:700;border:none;cursor:pointer}p{margin:0}.bad{color:var(--bad)}.muted{opacity:.8;font-size:14px}
-</style></head><body><form method="post" action="/unlock"><img src="/icons/bob-192.png" width="64" height="64" alt="">
-<h1 style="font-size:20px;margin:0">🔒 Bob is locked</h1>
-${people.length ? `<label for="w">Who's this?</label><select id="w" name="who"><option value="main">The owner</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>` : ''}
-<label for="c">Passcode</label><input id="c" name="code" type="password" autocomplete="current-password" required autofocus>
-<input type="hidden" name="next" value="${esc(safeNext)}">
-${wrong ? `<p class="bad" role="alert">${esc(wrong)}</p>` : ''}
-<button>Open Bob</button>
-<p class="muted">${encrypt ? 'Your chats and memory stay locked until the passcode is typed.' : 'Bob keeps working in the background while he\'s locked.'}</p>
-</form></body></html>`;
-}
+button{background:var(--accent);color:var(--card);font-weight:700;border:none;cursor:pointer}p{margin:0}.bad{color:var(--bad)}.muted{opacity:.8;font-size:14px}a{color:var(--accent)}
+button.plain{background:transparent;color:var(--ink);border:1px solid var(--line);font-weight:400}h2{font-size:17px;margin:8px 0 0}
+</style></head>`;
 
 // Paths that work while Bob is locked: the lock screen's picture, the check Bob's own window does to see if he's
 // running (only "locked" comes back), quitting (the update window), and the lock's own door.
-export const OPEN_WHILE_LOCKED = (method, p) => p.startsWith('/icons/') || p === '/favicon.ico' || (method === 'POST' && p === '/unlock')
+// 🔑 Forgot it? (lock-reset.js): its page and its forms.
+export const OPEN_WHILE_LOCKED = (method, p) => p.startsWith('/icons/') || p === '/favicon.ico' || (method === 'POST' && (p === '/unlock' || /^\/unlock\/[a-z-]+$/.test(p))) || (method === 'GET' && p === '/unlock/forgot')
   || (method === 'GET' && (p === '/api/status' || p === '/api/lock/state')) || (method === 'POST' && p === '/api/quit');

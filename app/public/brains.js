@@ -52,6 +52,7 @@ const val = (id, ctx) => equipped(allSlots().find((s) => s.id === id), ctx);
 export function setupOf(ctx) {
   const main = val('bob', ctx);
   if (!main) return '';
+  if (ctx.oneBrain) return 'one'; // the One brain switch: every job is the main brain, whatever is picked
   const others = CORE.map((id) => val(id, ctx)).filter((v) => v && v !== main);
   const quick = val('small', ctx);
   if (!others.length) return !quick || quick === main ? 'one' : 'duo';
@@ -82,9 +83,14 @@ export function setupPlan(id, ctx) {
   }
   return out;
 }
+// Nov 13: the jobs One brain hands to the main brain (Gaming keeps its own: it runs on the processor). With the switch
+// on they stay on the page, greyed, and their picks come back when it's off.
+export const ONE_BRAIN_JOBS = ['small', 'deep', 'office', 'tinker', 'reviewer', 'ledger', 'scout', 'painter'];
+export const oneBrainCovers = (slot, ctx) => Boolean(ctx.oneBrain) && ONE_BRAIN_JOBS.includes(slot.id);
 // Quick + Big needs a small brain in the Quick slot that isn't the big one.
 export const duoNeedsQuick = (ctx) => { const q = val('small', ctx); return !q || q === (val('deep', ctx) || val('bob', ctx)); };
 
+const oneBrainNote = '<p class="one-brain-note" role="status">🧠 <strong>One brain is on.</strong> My main brain does every job, and the Quick brain is off. Jobs marked "main brain" keep their picks for when it\'s off. <button type="button" class="mini" data-onebrainoff>Turn One brain off</button></p>';
 function setupsHtml(ctx) {
   const now = setupOf(ctx);
   const ask = ctx.setupAsk || '';
@@ -92,17 +98,25 @@ function setupsHtml(ctx) {
   let box = '';
   if (ask === 'bobs') {
     box = `<div class="setup-ask"><p>${(ctx.bobNet || []).length ? `Your Bob-Net has ${ctx.bobNet.length === 1 ? 'one other Bob' : `${ctx.bobNet.length} other Bobs`} with room to help.` : 'I don\'t see another Bob on your Bob-Net with room to help yet.'} Sharing is set up in Settings, Bob-Net: lending a card, taking jobs, and spreading a big brain over several Bobs. All of it is off until you turn it on.</p><div class="row"><button type="button" class="mini" data-setupbobnet>Open Bob-Net settings</button><button type="button" class="mini" data-setup="">Close</button></div></div>`;
+  } else if (ask === 'one') {
+    const plan = setupPlan('one', ctx);
+    const lines = plan.map((c) => `<li>${c.slot.icon} <strong>${esc(c.slot.name)}</strong></li>`).join('');
+    box = ctx.oneBrain ? `<div class="setup-ask"><p>One brain is on.</p><div class="row"><button type="button" class="mini" data-setup="">Close</button></div></div>`
+      : `<div class="setup-ask" role="group" aria-label="Change to One brain"><p><strong>One brain</strong>: my main brain does every job and the Quick brain is off.${lines ? ' These jobs go to it:' : ''}</p>${lines ? `<ul>${lines}</ul>` : ''}<p class="muted">Your picks stay on the page, greyed, and come back when you pick another setup. Same as One brain in Settings.</p><div class="row"><button type="button" class="get" data-setupapply="one">Apply</button><button type="button" class="mini" data-setup="">Cancel</button></div></div>`;
+  } else if (ask === 'specialists' && ctx.oneBrain) {
+    box = `<div class="setup-ask"><p>Turns One brain off, so each job uses the brain picked for it again.</p><div class="row"><button type="button" class="get" data-setupapply="specialists">Apply</button><button type="button" class="mini" data-setup="">Cancel</button></div></div>`;
   } else if (ask === 'specialists') {
     box = `<div class="setup-ask"><p>Nothing to apply: give any job its own brain with <strong>+ job</strong> on a brain below, or the menu beside an empty job.</p><div class="row"><button type="button" class="mini" data-setup="">Close</button></div></div>`;
   } else if (ask) {
     const plan = setupPlan(ask, ctx);
     const s = SETUPS.find((x) => x.id === ask);
     const lines = plan.map((c) => `<li>${c.slot.icon} <strong>${esc(c.slot.name)}</strong>: ${c.value ? esc(c.name) : `no brain of its own (${esc(c.slot.empty.replace(/^Empty: |^No [a-z ]+: /, '').replace(/^Uses/, 'uses'))})`}</li>`).join('');
-    const quick = ask === 'duo' && duoNeedsQuick(ctx) ? '<p class="warn-text">The Quick brain slot needs a small brain of its own for this. Pick one under Jobs with no brain of their own, or get one from the catalogue.</p>' : '';
-    box = `<div class="setup-ask" role="group" aria-label="${esc(`Change to ${s.name}`)}"><p><strong>${esc(s.name)}</strong> would change ${plan.length ? 'these jobs' : 'nothing: the jobs already match'}. No brain is deleted, and you can change any job back.</p>${lines ? `<ul>${lines}</ul>` : ''}${quick}<div class="row">${plan.length ? `<button type="button" class="get" data-setupapply="${esc(ask)}">Apply</button>` : ''}<button type="button" class="mini" data-setup="">${plan.length ? 'Cancel' : 'Close'}</button></div></div>`;
+    const quick = ask === 'duo' && duoNeedsQuick(ctx) ? '<p class="warn-text">The Quick brain slot needs a small brain of its own for this. Pick one under Unassigned jobs, or get one from the catalogue.</p>' : '';
+    const off = ctx.oneBrain ? ' and turn One brain off' : '';
+    box = `<div class="setup-ask" role="group" aria-label="${esc(`Change to ${s.name}`)}"><p><strong>${esc(s.name)}</strong> would ${plan.length ? `change these jobs${off}` : ctx.oneBrain ? 'turn One brain off; the jobs already match' : 'change nothing: the jobs already match'}. No brain is deleted, and you can change any job back.</p>${lines ? `<ul>${lines}</ul>` : ''}${quick}<div class="row">${plan.length || ctx.oneBrain ? `<button type="button" class="get" data-setupapply="${esc(ask)}">Apply</button>` : ''}<button type="button" class="mini" data-setup="">${plan.length || ctx.oneBrain ? 'Cancel' : 'Close'}</button></div></div>`;
   }
   return `<section class="brains-panel"><h3>How my brains are split ${tipHtml('A setup changes several jobs at once. Pressing one shows the list first; nothing changes until you press Apply. Every job stays on this page whichever setup you use.', 'About setups')}</h3>
-    <div class="setup-cards">${SETUPS.map(btn).join('')}</div>${box}</section>`;
+    <div class="setup-cards">${SETUPS.map(btn).join('')}</div>${box}${ctx.oneBrain ? oneBrainNote : ''}</section>`;
 }
 
 const hwOf = (ctx) => ({ vramGB: ctx.integrated ? 0 : ctx.vramGB || 0, ramGB: ctx.ramGB || 0, unified: Boolean(ctx.unified) });
@@ -163,7 +177,9 @@ export function honestyLineOf(b, ctx) { const s = ctx.honesty?.[b.value] || ctx.
 const honestyHtml = (b, ctx) => { const t = honestyLineOf(b, ctx); return t ? `<br><span class="muted honesty-line" title="Out of 100: the share of this brain's answers that needed no correction from the app's honesty checks on this replicant matrix">🧭 ${esc(t)}</span>` : ''; };
 const labLineHtml = (b, ctx) => { const t = labLine(b, ctx); return t ? `<br><span class="muted lab-line" title="Scores out of 100 from the Lab's tests on this replicant matrix">🧪 ${esc(t)}</span>` : ''; };
 function brainRowHtml(b, ctx) {
-  const chips = b.jobs.map((s) => `<span class="job-chip" title="${esc(s.does)}">${s.icon} ${esc(s.name)}${s.off ? `<button type="button" class="chip-x" data-unequip="${esc(s.id)}" aria-label="Take ${esc(b.name)} off ${esc(s.name)}">✕</button>` : ''}</span>`).join('');
+  const chips = b.jobs.map((s) => oneBrainCovers(s, ctx) && s.id !== 'bob' && b.value !== val('bob', ctx)
+    ? `<span class="job-chip job-chip-off" title="${esc(`One brain is on: the main brain does ${s.name}. This pick comes back when it's off.`)}">${s.icon} ${esc(s.name)} <span class="muted">(main brain)</span></span>`
+    : `<span class="job-chip" title="${esc(s.does)}">${s.icon} ${esc(s.name)}${s.off ? `<button type="button" class="chip-x" data-unequip="${esc(s.id)}" aria-label="Take ${esc(b.name)} off ${esc(s.name)}">✕</button>` : ''}</span>`).join('');
   const trial = b.entry?.trial ? '<span class="tag">Not tried yet</span>' : '';
   return `<li class="brain-row" id="brain-${esc(b.value)}"><div class="brain-name"><strong>${esc(b.name)}</strong> ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span>${labLineHtml(b, ctx)}${honestyHtml(b, ctx)}</div>
     <div class="brain-jobs">${chips}${jobSelect(b.value, jobsFor(b.value, ctx), `Give ${b.name} another job`)}</div>
@@ -237,9 +253,9 @@ export function setUpHtml(b, ctx) {
     <section class="brains-panel"><h3>Where it sits ${tipHtml('Auto: my engine looks at the free room on the card each time this brain loads and fits as much as it can. By hand: you say how many layers keep their experts in memory instead; fewer in memory is faster until the card is full, and then much slower. A change takes effect the next time this brain loads.', 'About where a brain sits')}</h3>
       <div class="seg" role="group" aria-label="Where ${esc(b.name)} sits">${seg('auto', 'Auto')}${seg('hand', 'By hand')}</div>
       <div class="brain-place wide">${placeBarHtml(b.entry, ctx)}${hand ? `<span class="muted place-why">By hand: ${n} of ${layers} layers keep their experts in memory. The bar shows what Auto would start from.</span>` : ''}</div>
-      <div class="num-row"><label for="place-moe"><strong>Layers that keep their experts in memory</strong><br><span class="muted">0 puts everything on the card. More frees the card and is slower.</span></label>
+      <div class="num-row"><label for="place-moe"><strong>Layers with experts in RAM</strong><br><span class="muted">0 puts everything on the card. More frees the card and is slower.</span></label>
         <input type="range" id="place-moe" min="0" max="${layers || 1}" step="1" value="${n}" data-placemoe="${esc(b.value)}" ${dis} aria-describedby="place-lock">
-        <input type="number" min="0" max="${layers || 1}" step="1" value="${n}" data-placemoenum="${esc(b.value)}" ${dis} aria-label="Layers that keep their experts in memory, as a number" inputmode="numeric"><span class="muted">of ${layers || '?'}</span></div>
+        <input type="number" min="0" max="${layers || 1}" step="1" value="${n}" data-placemoenum="${esc(b.value)}" ${dis} aria-label="Layers with experts in RAM, as a number" inputmode="numeric"><span class="muted">of ${layers || '?'}</span></div>
       ${p?.cal?.best ? `<p class="muted">★ Recommended by the last calibration: ${p.cal.best.mode === 'hand' ? `<strong>${p.cal.best.cpuMoe}</strong> by hand` : '<strong>Auto</strong>'}.</p>` : ''}
       <p class="muted" id="place-lock">${lock ? `🔒 ${esc(lock)}` : hand ? 'In use. Takes effect the next time this brain loads.' : 'Set the number any time; it is used once you switch to By hand.'}</p></section>
     ${memTypeHtml(b, ctx)}
@@ -263,7 +279,8 @@ export function memTypeHtml(b, ctx) {
 function emptyJobHtml(slot, ctx) {
   const opts = (ctx.roles?.options?.llm || []).filter((o) => slotTakes(slot, o.value, ctx) && isActive({ entry: entryOf(ctx.models || [], o.value), value: o.value, installed: true }, ctx.active));
   const pick = opts.length ? `<select data-jobbrain="${esc(slot.id)}" aria-label="Brain for ${esc(slot.name)}"><option value="">Pick a brain</option>${opts.map((o) => `<option value="${esc(o.value)}">${esc(o.label || o.value)}</option>`).join('')}</select>` : '';
-  return `<li class="job-empty"><span>${slot.icon} <strong>${esc(slot.name)}</strong> <span class="muted">${esc(slot.empty)}</span></span><span class="cat-act">${pick}<button type="button" class="mini" data-catjob="${esc(slot.id)}">Get one</button></span></li>`;
+  const said = oneBrainCovers(slot, ctx) ? (slot.id === 'small' ? 'Off: One brain is on' : 'The main brain does it: One brain is on') : slot.empty;
+  return `<li class="job-empty"><span>${slot.icon} <strong>${esc(slot.name)}</strong> <span class="muted">${esc(said)}</span></span><span class="cat-act">${pick}<button type="button" class="mini" data-catjob="${esc(slot.id)}">Get one</button></span></li>`;
 }
 
 function senseRowHtml(slot, ctx) {
@@ -309,10 +326,11 @@ export function brainsHtml(ctx) {
     <section class="brains-panel"><div class="panel-head"><h3>Brains in use</h3>${calAllHtml(ctx)}</div>
       ${calStatusHtml(ctx)}
       ${used.length ? `<ul class="brain-list">${used.map((b) => brainRowHtml(b, ctx)).join('')}</ul>` : '<p class="muted">No brain yet. Pick one for a job below, or get one from the catalogue.</p>'}
-      ${empty.length ? `<h4>Jobs with no brain of their own</h4><ul class="brain-list">${empty.map((s) => emptyJobHtml(s, ctx)).join('')}</ul>` : ''}</section>
+      ${empty.length ? `<h4>Unassigned jobs</h4><ul class="brain-list">${empty.map((s) => emptyJobHtml(s, ctx)).join('')}</ul>` : ''}</section>
     <section class="brains-panel"><h3>Add a brain</h3>
       ${spare.length ? `<ul class="brain-list">${spare.map((b) => `<li class="brain-row spare"><div class="brain-name"><strong>${esc(b.name)}</strong><br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')} · on this replicant matrix, no job yet</span>${labLineHtml(b, ctx)}</div><div class="brain-jobs">${jobSelect(b.value, jobsFor(b.value, ctx), `Give ${b.name} a job`)}</div><div class="brain-place">${placeBarHtml(b.entry, ctx)}</div></li>`).join('')}</ul>` : ''}
-      <p class="get-more"><button type="button" class="get-more-btn" data-tab="catalogue">📚 Brain catalogue: every brain, by job and size</button></p></section>
+      <p class="get-more"><button type="button" class="get-more-btn" data-tab="catalogue">📚 Brain catalogue: every brain, by job and size</button></p>
+      <p class="muted">Another of your Bobs has the brain already? <strong>Brain Copying</strong> sends it over Bob-Net instead of downloading it again: Settings, Bob-Net, Files and brains. <button type="button" class="mini help-link" data-help="net-files" aria-label="Help: Files and brains">? Help</button></p></section>
     <section class="brains-panel"><h3>Senses and tools</h3>
       <ul class="brain-list">${senseSlots().map((s) => senseRowHtml(s, ctx)).join('')}</ul>
       ${sel ? `<section class="kit-panel" aria-live="polite">${kitHtml(sel, ctx)}</section>` : '<section class="kit-panel" aria-live="polite"></section>'}</section>

@@ -115,7 +115,7 @@ check('Bob reads whether a brain carries its own guesser, and where its full wei
   await startContext(lab, { brain: 'big', sizes: [1024], stretch: 2 }); await wait(lab);
   check('stretching passes the YaRN settings the 1.5.150 Long memory uses', seen.some((o) => o.args?.join(' ').includes('--rope-scaling yarn --rope-scale 2 --yarn-orig-ctx 40960')));
   const u = useContext(lab, { brain: 'big', ctx: 20000 });
-  check('Use this in Bob writes the biggest Settings size under the pick, for that brain', u.ctx === 16384 && cfg.brainCtxOn === true && cfg.brainCtx.big === 16384 && /Pick how much each brain keeps in mind/.test(u.line));
+  check('Use this in Bob writes the biggest Settings size under the pick, for that brain', u.ctx === 16384 && cfg.brainCtxOn === true && cfg.brainCtx.big === 16384 && /Context size per brain/.test(u.line));
   const u2 = useContext(lab, { brain: 'mtp', ctx: 600000 });
   check('a stretched size only as far as Long memory covers the brain (Qwen3.5/3.6 to 1M, Qwen3 to 128K), and it switches Long memory on', u2.ctx === 524288 && cfg.brainCtxStretch === true && useContext(lab, { brain: 'big', ctx: 600000 }).ctx === 131072); // 1.5.167: Qwen3 (made for 32K) stretches to 128K at most, since 1.5.158
 }

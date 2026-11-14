@@ -492,7 +492,7 @@ export function cleanAdventure(a = {}) {
 // The game master brain: Deep thinking if picked (and the setting says biggest), else the main Brain. Always on the card.
 export function gmBrain(cfg) {
   const a = cleanAdventure(cfg.adventure);
-  const model = (a.gm === 'biggest' && cfg.sessionBrains?.deep) || cfg.models?.bob;
+  const model = (a.gm === 'biggest' && cfg.oneBrain !== true && cfg.sessionBrains?.deep) || cfg.models?.bob;
   // 1.5.120: thinking off. On the PC's live game the first turn took six minutes with thinking on, and the story reads no better for it.
   return model ? { model, cpu: false, think: false, ctx: 32768 } : null;
 }

@@ -193,7 +193,7 @@ export const homeJobs = {
         set(0, 'done'); set(1, 'running');
         const before = await fx.checks({ gguf: p.a.brain.gguf, kept: false }, { signal, onProgress: (x) => { r.progress = Math.round(50 * x); } });
         set(1, 'done'); set(2, 'running');
-        const extra = ['--control-vector-scaled', path.join(dir, 'direction.gguf'), String(-p.refusals.strength / 100), '--control-vector-layer-range', String(Math.min(...blocks) + 1), String(Math.max(...blocks) + 1)];
+        const extra = ['--control-vector-scaled', `${path.join(dir, 'direction.gguf')}:${-p.refusals.strength / 100}`, '--control-vector-layer-range', String(Math.min(...blocks) + 1), String(Math.max(...blocks) + 1)];
         const after = await fx.checks({ gguf: p.a.brain.gguf, kept: p.refusals.check, extra }, { signal, onProgress: (x) => { r.progress = 50 + Math.round(50 * x); } });
         set(2, 'done');
         r.report = { tried: { before: before.reflex, after: after.reflex, kept: after.kept || null, strength: p.refusals.strength, layers: blocks } };

@@ -1,4 +1,4 @@
-// Search my documents by meaning (Settings, How Bob works, under "Read and search my documents"; off unless the
+// Semantic document search (Settings, How Bob works, under "Read and search documents"; off unless the
 // user turns both on). find_in_documents then also finds files that mean what was asked, not only ones with the
 // exact words: "the paper about my rent going up" finds the lease that says "the monthly payment will increase".
 //
@@ -118,7 +118,7 @@ export class DocIndex {
     } finally { this.building = false; }
   }
 
-  // "Keep my documents fresh" (doc-more.js): just these files, read again now (or dropped when they're gone, or no
+  // "Live document index" (doc-more.js): just these files, read again now (or dropped when they're gone, or no
   // longer in a folder Bob may read). The same pieces and numbers as fill(). Returns { added, dropped }.
   async refreshFiles(files, embed, model, { read, max = 20 } = {}) {
     if (this.building) return { added: 0, dropped: 0, busy: true };

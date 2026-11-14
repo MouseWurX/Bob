@@ -102,7 +102,7 @@ export const hatParts = {
     const copy = copyName(this.cfg, hat, HATS[hat].label);
     // Settings sign-off (1.5.49): one moot line per review. If the review brain still has to load, the load line
     // ("🛰 Moot: ... checks the answer ...") says it all, so the chat skips the reviewer's own line.
-    // 1.5.185 (opt-in) Ask a bigger Bob to check my harder jobs: a moot's check goes to one of your other Bobs whose
+    // 1.5.185 (opt-in) Review by a bigger Bob: a moot's check goes to one of your other Bobs whose
     // Review brain is bigger than this one (src/bob-net-check.js). The file reading still runs here.
     const via = !lender && hat === 'reviewer' && force && wantsBorrowedCheck(this.cfg, ctx.job) ? await pickChecker(this.lenders, { effort: ctx.job.effort, mine: brainBillions(model) }).catch(() => null) : null;
     if (via) { ctx.emit({ type: 'announce', text: checkingOnLine(copy, via) }); this.log('moot', `check goes to ${via.name} (${via.check.params}B over ${brainBillions(model)}B here)`); }
@@ -133,11 +133,11 @@ export const hatParts = {
       if (ctx.job) this.saveQueue();
     }
   },
-  // #30: with "Let the reviewer sit beside Bob's main brain" and "Borrow brains from my other Bobs" both on, and no room beside
+  // #30: with "Reviewer beside main brain" and "Borrow brains from my other Bobs" both on, and no room beside
   // here, the review goes to a paired Bob whose Review brain is at least three quarters the size of this one's. null: swap here.
   // #30: a paired Bob's Review brain must be at least three quarters the size of this one's (4 GB when it can't be told).
   reviewFloor(model) { const own = ggufGB(this, model); return own ? Math.round(own * 7.5) / 10 : 4; },
-  // #30, Low and Medium effort with "Ask my other Bobs for a quick second look" on: the Bob that gives it, or null (no check,
+  // #30, Low and Medium effort with "Review by my other Bobs" on: the Bob that gives it, or null (no check,
   // and no brain swap here for it).
   async quickReviewer(job, pics) {
     const b = this.cfg.share?.borrow;

@@ -13,11 +13,12 @@ async function api(data) {
 // What each switch does, in a line.
 const NOTES = {
   calculator: 'Exact sums and unit changes (miles to km, °F to °C, cups to ml) worked out by code, not guessed.',
-  python: 'Python joins the sandbox, for data and maths jobs. No internet, no files outside the box. Needs "Let Bob work things out in a sandbox" on and Python fetched once.',
+  python: 'Python joins the sandbox, for data and maths jobs. No internet, no files outside the box. Needs "Code sandbox" on and Python fetched once.',
   passwords: 'Passwords, passphrases and PINs made by your computer\'s random maker. Shown only to you, never to the brain, never saved.',
   repeatReminders: 'Reminders can repeat: every day, weekday, week, month or year ("every Monday at 9").',
   phoneReminders: 'Reminders and page-watch news pop up on Bob for Android too, while it\'s paired.',
   email: 'Bob reads your mail (any IMAP account, read-only). He can\'t send, delete or mark anything read.',
+  emailTidy: 'Bob marks mail read, flags it, files it in a folder, archives it, moves it to Trash (never deleted for good), or saves a draft (never sent: you send it). Every change shows a card first and can be undone. Needs "Let Bob read my email" on. Works with Gmail, Outlook and Hotmail, in English or French.',
   calendar: 'Bob reads calendars from a link or an .ics file. Read-only.',
   pageWatch: 'Bob checks a web page every few hours and tells you when the part you care about changes.',
   webApi: 'Bob calls web services you add here, with their saved key. Reading needs no card; sending or changing anything always asks first.',
@@ -35,7 +36,7 @@ export function moreToolsHtml() {
 export async function mountMoreTools(box) {
   if (!box) return;
   let v, msg = '';
-  const sw = (s) => `<label class="switch srow-switch"><input type="checkbox" data-mt-on="${esc(s.key)}" ${s.on ? 'checked' : ''}><span><strong>${esc(s.label)}</strong><br><span class="muted">Off unless you turn it on. ${esc(NOTES[s.key] || '')}</span></span></label>`;
+  const sw = (s) => `<label class="switch srow-switch"><input type="checkbox" data-mt-on="${esc(s.key)}" ${s.on ? 'checked' : ''}><span><strong>${esc(s.label)}</strong><br><span class="muted">${esc(NOTES[s.key] || '')}</span></span></label>`;
   const byKey = (k) => sw(v.switches.find((s) => s.key === k));
   const draw = () => {
     const cal = v.calendars.map((c) => `<li>${esc(c.name)} <span class="muted">(${c.kind === 'file' ? esc(c.file) : c.linkSaved ? 'link locked' : 'link missing'})</span> <button type="button" class="mini" data-mt-caltest="${esc(c.id)}">Test</button> <button type="button" class="mini" data-mt-calrm="${esc(c.id)}" aria-label="Remove ${esc(c.name)}">Remove</button></li>`).join('');
@@ -52,13 +53,8 @@ export async function mountMoreTools(box) {
       ${byKey('phoneReminders')}
       <h4 class="ssub">Email and calendar</h4>
       ${byKey('email')}
-      <div class="row"><label><strong>Mail server</strong> <input data-mt-email="host" maxlength="120" value="${esc(v.emailHost)}" placeholder="imap.example.com" spellcheck="false"></label>
-        <label>Port <input data-mt-email="port" type="number" min="1" max="65535" value="${esc(v.emailPort)}" style="width:6em"></label></div>
-      <div class="row"><label>Account <input data-mt-email="user" maxlength="200" value="${esc(v.emailUser)}" placeholder="you@example.test" spellcheck="false" autocomplete="off"></label>
-        <label>Folder <input data-mt-email="folder" maxlength="100" value="${esc(v.emailFolder)}" style="width:8em"></label></div>
-      <div class="row"><label>App password <input data-mt-email="password" type="password" autocomplete="off" placeholder="${v.emailPasswordSaved ? 'Saved and locked' : 'Paste an app password'}"></label>
-        <button type="button" data-mt-emailsave>Save</button> <button type="button" class="mini" data-mt-emailtest>Test</button>${v.emailPasswordSaved ? ' <button type="button" class="mini" data-mt-emailforget>Forget password</button>' : ''}
-        <span class="muted">Use an app password (made in your mail account's security page), not your main one. It's kept locked.</span></div>
+      <p class="muted">Your account: Settings, Online services, 📧 Email account${v.emailUser ? ` (${esc(v.emailUser)}${v.emailPasswordSaved ? '' : ', no app password yet'})` : ' (not set up yet)'}.</p>
+      ${byKey('emailTidy')}
       ${byKey('calendar')}
       <ul class="plain">${cal || '<li class="muted">No calendars yet.</li>'}</ul>
       <div class="row"><input data-mt-cal="name" maxlength="40" placeholder="Name, like Work" aria-label="Calendar name" style="width:9em">
@@ -102,9 +98,6 @@ export async function mountMoreTools(box) {
     const b = e.target.closest('button'); if (!b) return;
     const d = b.dataset;
     if (d.mtGet) act(d.mtGet === 'python' ? { getPython: true } : { getWordList: true });
-    else if ('mtEmailsave' in d) act({ email: { host: val('[data-mt-email=host]'), port: Number(val('[data-mt-email=port]')), user: val('[data-mt-email=user]'), folder: val('[data-mt-email=folder]'), password: val('[data-mt-email=password]') } }, 'Saved.');
-    else if ('mtEmailtest' in d) act({ testEmail: true });
-    else if ('mtEmailforget' in d) act({ email: { forgetPassword: true } }, 'Password forgotten.');
     else if ('mtCaladd' in d) {
       const link = val('[data-mt-cal=link]').trim(), name = val('[data-mt-cal=name]').trim() || 'Calendar';
       act(/^(https?|webcals?):\/\//i.test(link) ? { addCalendar: { name, link } } : { addCalendar: { name, file: link } }, 'Calendar added.');

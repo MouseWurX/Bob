@@ -73,7 +73,7 @@ export function peek(cfg, p, max = PEEK_MAX) {
   return { ok: true, name: d.name, ext: path.extname(d.path).toLowerCase(), text: buf.toString('utf8').replace(/\uFFFD+$/, ''), cut: d.bytes > n, bytes: d.bytes };
 }
 
-// "Show documents in the side panel" (off unless turned on): the words, tables and slides of a Word, Excel,
+// "Documents in the side panel" (off unless turned on): the words, tables and slides of a Word, Excel,
 // PowerPoint, OpenDocument, PDF, e-book or Rich Text file, read by doc-text.js with nothing extra installed.
 // Nothing is kept on disk; the panel draws it with public/doc-view.js. A PDF can also be shown as its pages (pdfFile).
 export const docViewOn = (cfg) => cfg?.docView === true;

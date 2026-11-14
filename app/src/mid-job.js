@@ -33,6 +33,8 @@ export const ACK_LINE = "📥 Got it. I'll answer as soon as the step I'm on is 
 export const QUEUED_LINE = (title) => `📋 That's a new job, so it's in Tasks. I'll start it when "${clip(title, 60)}" is done.`;
 export const WAITS_LINE = "I couldn't answer that between steps, so it waits until the job is done.";
 
+import { BRAIN_TAGS } from './stop-words.js';
+
 // ---------- Sorting a message ----------
 const TASK_VERB = '(?:make|write|build|create|draw|paint|generate|compose|design|find|search|research|look up|look into|fix|code|program|plan|download|install|set up|summari[sz]e|translate|edit|rewrite|convert|send|book|schedule|organi[sz]e|sort|rename|clean up|scan|test|check)';
 const STOP = /^(?:ok(?:ay)?,?\s+|please\s+|bob,?\s+)*(?:stop|cancel(?: (?:that|it|the job))?|halt|abort|never ?mind|that'?s enough|enough|wrap (?:it )?up|stop after this(?: step)?|you can stop)(?:\s+(?:now|please|for now|there))?[.!\s]*$/i;
@@ -57,11 +59,17 @@ export function sortMessage(text, { sameChat = false } = {}) {
 
 // The brain's own call on an unclear message: its reply starts with [TASK] or [CHANGE] instead of an answer.
 export function replyTag(text) {
-  const m = String(text || '').trim().match(/^\[?\s*(TASK|CHANGE)\s*\]?/i);
+  const m = String(text || '').trim().match(/^\[?\s*(TASK|CHANGE|STOP|PAUSE)\s*\]?/i);
   return m ? m[1].toLowerCase() : '';
 }
 // While streaming: could what's arrived so far still turn out to be a tag? Then hold it back.
-export const maybeTag = (soFar) => /^\s*\[?\s*(?:T(?:A(?:S(?:K)?)?)?|C(?:H(?:A(?:N(?:G(?:E)?)?)?)?)?)?\s*\]?\s*$/i.test(String(soFar || ''));
+const TAGS = ['TASK', 'CHANGE', 'STOP', 'PAUSE'];
+export const maybeTag = (soFar) => {
+  const m = String(soFar || '').match(/^\s*\[?\s*([A-Za-z]*)\s*(\]?)\s*$/);
+  if (!m) return false;
+  const w = m[1].toUpperCase();
+  return m[2] ? TAGS.includes(w) : TAGS.some((t) => t.startsWith(w));
+};
 
 // ---------- The quick reply's own context ----------
 // One line about the job, written by the app from the job's record (meanwhile.js JobWatch), so every word is true.
@@ -72,9 +80,9 @@ export function jobLine(w, now = Date.now()) {
   return `You are partway through a job: "${clip(w.title, 80)}", ${mins(now - (w.startedAt ?? now))} in, ${n ? `${n} step${n === 1 ? '' : 's'} done${last ? ` (last: ${clip(last.what, 60)})` : ''}` : 'no steps yet'}.`;
 }
 
-export function quickPrompt({ who = 'the user', line = '', unsure = false, sameChat = false, language = '' } = {}) {
+export function quickPrompt({ who = 'the user', line = '', unsure = false, sameChat = false, language = '', stopTags = false } = {}) {
   const tags = unsure
-    ? `\nIf the message asks for new work (making, writing, finding or fixing something), reply with only [TASK].${sameChat ? ' If it changes or adds to the job you are on, reply with only [CHANGE].' : ''}`
+    ? `\nIf the message asks for new work (making, writing, finding or fixing something), reply with only [TASK].${sameChat ? ' If it changes or adds to the job you are on, reply with only [CHANGE].' : ''}${sameChat && stopTags ? BRAIN_TAGS : ''}`
     : '';
   return `You are Bob, ${who}'s helper on their own computer. ${line} You stopped between two steps to answer one message from ${who}.
 Answer it briefly and plainly, with no tools. The job carries on by itself straight after, so don't do it here, and don't guess how long it has left.${tags}${language ? `\n${who} writes in ${language}; answer in the same language.` : ''}`;

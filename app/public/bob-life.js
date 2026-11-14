@@ -45,7 +45,7 @@ export const HEAD_MS = 1200;
 const easeBack = (x) => { const c = 2.2; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
 
 // Props held while a state lasts (thinking, working, painting).
-export const STATE_PROPS = { thinking: '💭', busy: '🔧', painting: '🎨', waiting: '✋' };
+export const STATE_PROPS = { thinking: '💭', busy: '🔧', painting: '🎨', composing: '🎵', waiting: '✋' }; // composing: a song or a sound (Nov 13)
 
 export const DOZE_MS = 10 * 60 * 1000;
 

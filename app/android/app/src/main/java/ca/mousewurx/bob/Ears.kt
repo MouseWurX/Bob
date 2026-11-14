@@ -12,7 +12,7 @@ import org.json.JSONObject
 
 // Bob's ears on the phone, for the voice items (2026-11-11), every one off unless switched on in Settings:
 //  - "barge": Talk over Bob. Listens while he reads aloud; the first words heard stop him, the rest is your message.
-//  - "wake":  Listen for "Hey Bob" while Bob is open. Listens again and again, only while Bob's screen is showing.
+//  - "wake":  "Hey Bob" wake word. Listens again and again, only while Bob's screen is showing.
 //  - "once":  Hands-free. One thing you say, with no pop-up window, then the page decides what's next.
 // Android's own speech recognition (on the phone itself where it can), the same as the 🎙 button, without its window.
 // Everything heard goes to the page as {event: "ears", kind, mode, text}; the page decides (logic.js wakeWord, talkOver).

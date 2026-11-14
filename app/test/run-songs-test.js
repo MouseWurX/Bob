@@ -1,6 +1,6 @@
 // 1.5.41: songs show in the chat with Bob's song player (title, bars of the song's shape, lyrics), and
-// Settings > Where Bob saves things picks the folder for pictures, clips, songs and sounds.
-import { serverText, brainText } from './source-text.js';
+// Settings > Save folder picks the folder for pictures, clips, songs and sounds.
+import { serverText, brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -88,7 +88,7 @@ function wav(file, { rate = 8000, channels = 2, bits = 16, float = false, second
   check('two or more songs sit in a list that plays one after another', /class="song-list"[^>]*aria-label="2 songs"/.test(songListHtml([{ url: '/images/a.wav' }, { url: '/images/b.wav' }])) && !/song-list/.test(songListHtml([{ url: '/images/a.wav' }])));
   check('bars draw from the shape, flat before it arrives', (barsSvg([0.5, 1]).match(/<rect/g) || []).length === 2 && (barsSvg(null).match(/<rect/g) || []).length === 72);
   check('times read like a music player', clock(0) === '0:00' && clock(65.4) === '1:05' && clock(NaN) === '0:00');
-  const sp = read('public/song-player.js'), app = read('public/app.js'), viewer = read('public/viewer.js');
+  const sp = read('public/song-player.js'), app = publicText('app.js'), viewer = read('public/viewer.js');
   check('only one song plays at a time', /if \(e\.type === 'play'\) for \(const other of/.test(sp));
   check('the next song in the list plays when one ends', /if \(e\.type === 'ended'\)[\s\S]*next\.querySelector\('audio'\)\.play\(\)/.test(sp));
   check('arrow keys jump 5 seconds, Space plays or pauses', /ArrowRight: 5/.test(sp) && /e\.key === ' '/.test(sp));
@@ -114,7 +114,7 @@ const base = () => ({ agentDir, innDir, dataDir, painterDir: own, readRoots: [in
   check('something not on the list has no song details', made.songInfo(path.join(own, 'nope.wav')) === null && !made.has(path.join(own, 'nope.wav')));
 }
 
-// ---------- Where Bob saves things ----------
+// ---------- Save folder ----------
 {
   const cfg = applySaveDir({ ...base(), saveDir: '' });
   check('by default Bob saves in his own folder (Made by Bob)', cfg.painterDir === own && cfg.defaultPainterDir === own && !cfg.saveDirMissing);
@@ -143,8 +143,8 @@ const base = () => ({ agentDir, innDir, dataDir, painterDir: own, readRoots: [in
   const srv = serverText();
   check('the server checks a folder before saving it and remembers the old one', /saveDirProblem\(cfg, want\)/.test(srv) && /saveDirsUsed: used/.test(srv) && /applySaveDir\(cfg\);/.test(srv));
   check('over the home network, a picked folder only gives out what Bob made there', /!isLocal && path\.resolve\(path\.dirname\(f\)\) !== path\.resolve\(cfg\.defaultPainterDir\) && !brain\.made\.has\(f\)/.test(srv));
-  const cellar = read('public/cellar.js');
-  check('Settings has the "Where Bob saves things" panel with Browse, Save here, Show in folder and Use Bob\'s own folder', /'💾 Where Bob saves things'/.test(cellar) && /data-savebrowse>Browse…/.test(cellar) && /data-savedir disabled>Save here/.test(cellar) && /data-saveopen>Show in folder/.test(cellar) && /data-saveown>Use Bob\\'s own folder/.test(cellar));
+  const cellar = publicText('cellar.js');
+  check('Settings has the "Save folder" panel with Browse, Save here, Show in folder and Use Bob\'s own folder', /'💾 Save folder'/.test(cellar) && /data-savebrowse>Browse…/.test(cellar) && /data-savedir disabled>Save here/.test(cellar) && /data-saveopen>Show in folder/.test(cellar) && /data-saveown>Use Bob\\'s own folder/.test(cellar));
 }
 
 // ---------- the Windows folder picker ----------

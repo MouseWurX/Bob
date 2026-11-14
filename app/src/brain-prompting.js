@@ -7,6 +7,7 @@ import { lookPrompt } from './look.js';
 import { personalityPrompt } from '../public/personality.js';
 import { capabilities } from './capabilities.js';
 import { cloudHelpers } from './cloud.js';
+import { toolSetOfModel, inSet, stickyFor } from './tool-sets.js';
 import { allToolsOn, toolboxPrompt, tidySchema, onlyGroups, groupsFor, CORE, fillUseTools, guessGroups, groupOf, STICKY_TURNS } from './toolbox.js';
 import { HANDS, freeOn, toolsOff } from './hands-settings.js';
 import { handsPrompt } from './hands.js';
@@ -19,6 +20,7 @@ import { editOwnOn } from './edit-own.js';
 import { meanwhileOn, WATCH_TOOLS, noteAsk, asksAboutJob, noteQueuedLine, statusLine, noteForBig, noteGotLine } from './meanwhile.js';
 import { notesOn } from './notes.js';
 import { receiptsOn } from './receipts.js';
+import { modOn } from './discord-mod.js';
 import { docToolsOn } from './my-docs.js';
 import { sandboxOn } from './sandbox-code.js';
 import { parts3dOn } from './parts3d.js';
@@ -28,6 +30,7 @@ import { selfWorkOn, readyRepos } from './self-work.js';
 import { moreToolsOff } from './more-tools.js';
 import { toolLearnOn, loadLearning, learnedLine } from './tool-learn.js';
 import os from 'node:os';
+import { stopWordsOn, LINES as STOP_LINES } from './stop-words.js';
 import { waitingFor, sortMessage, WAITS_LINE, QUEUED_LINE, quickPrompt, jobLine, quickHistory, maybeTag, replyTag } from './mid-job.js';
 import { noteWait } from './loop-guard.js';
 import { newMsgId } from './chats.js';
@@ -103,22 +106,23 @@ export const promptParts = {
     let can = {};
     try { can = capabilities(this.cfg); } catch {}
     // 1.5.91: make_image, make_video, make_music and make_sound stay listed when they aren't set up: calling one shows the Set it up card.
-    return new Set([!can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !this.offerNeeded() && 'offer_setup', !cloudHelpers(this.cfg).length && 'ask_cloud', !this.rentals?.current() && 'hire_brain', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', !editOwnOn(this.cfg) && 'edit_my_message', ...(meanwhileOn(this.cfg) ? [] : WATCH_TOOLS), !notesOn(this.cfg) && 'take_note', !receiptsOn(this.cfg) && 'spending_sheet', !docToolsOn(this.cfg) && 'find_in_documents', !sandboxOn(this.cfg) && 'run_in_sandbox', !parts3dOn(this.cfg) && 'make_3d_part', !model3dOn(this.cfg) && 'make_3d_model', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), !(selfWorkOn(this.cfg) && readyRepos(this.cfg).length) && 'work_on_repo', ...moreToolsOff(this.cfg), ...toolsOff(this.cfg)].filter(Boolean));
+    return new Set([!can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !this.offerNeeded() && 'offer_setup', !cloudHelpers(this.cfg).length && 'ask_cloud', !this.rentals?.current() && 'hire_brain', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', !editOwnOn(this.cfg) && 'edit_my_message', ...(meanwhileOn(this.cfg) ? [] : WATCH_TOOLS), !notesOn(this.cfg) && 'take_note', !receiptsOn(this.cfg) && 'spending_sheet', !modOn(this.cfg) && 'discord_mod', !docToolsOn(this.cfg) && 'find_in_documents', !sandboxOn(this.cfg) && 'run_in_sandbox', !parts3dOn(this.cfg) && 'make_3d_part', !model3dOn(this.cfg) && 'make_3d_model', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), !(selfWorkOn(this.cfg) && readyRepos(this.cfg).length) && 'work_on_repo', ...moreToolsOff(this.cfg), ...toolsOff(this.cfg)].filter(Boolean));
   },
   usable(name, off = this.offTools()) { return Boolean(this.tools[name]) && !off.has(name); },
   // 1.5.41: whether OKs are asked on cards right now (so a job's OKs can go on one card). Not with "work without asking".
   together() { return !freeOn(this.cfg); },
-  toolSchemas(names) {
+  // set (tool-sets.js): the brain family's own wording for the tools; null = Bob's own.
+  toolSchemas(names, set = null) {
     const who = this.cfg.userName || 'the user';
     const off = this.offTools();
     const learned = toolLearnOn(this.cfg) ? loadLearning(this.cfg) : null; // tool notes and the scorecard (tool-learn.js)
     return names.filter((n) => n !== 'use_tools' && this.usable(n, off)).map((n) => {
-      const s = tidySchema(JSON.parse(JSON.stringify(this.tools[n].schema).replaceAll('{{USER}}', who).replaceAll('{{HOME}}', JSON.stringify(os.homedir()).slice(1, -1))));
+      const s = tidySchema(JSON.parse(JSON.stringify(inSet(this.tools[n].schema, set)).replaceAll('{{USER}}', who).replaceAll('{{HOME}}', JSON.stringify(os.homedir()).slice(1, -1))));
       if (learned && s.function) s.function.description += learnedLine(this.cfg, n, learned);
       return s;
     });
   },
-  // Let Bob's Quick brain see the big job: the app's own answer to a message about the running job, or null.
+  // Quick brain sees the job: the app's own answer to a message about the running job, or null.
   jobAnswer(sessionId, text, attach, extra = {}, { freeMem } = {}) {
     if (!meanwhileOn(this.cfg) || extra.guest || (attach || []).length || !this.watch?.job) return null;
     const note = noteAsk(text), asks = !note && asksAboutJob(text);
@@ -151,6 +155,14 @@ export const promptParts = {
       let kind = sortMessage(q.text, { sameChat });
       if (kind === '' || kind === 'answer') kind = await this.quickReply(q, job, { model, cpu, brainCtx, signal, unsure: kind === '', sameChat });
       if (kind === 'answer') { n++; continue; }
+      if ((kind === 'stopnow' || kind === 'pause') && sameChat) {
+        // Stop and wait words: the brain read an unclear message as stop or pause, and the app does it (stop-words.js).
+        this.midJobRecord(q, job, null);
+        const ok = kind === 'stopnow' ? this.cancelJob(job.id) : this.pauseJob(job.id);
+        if (ok) this.broadcast({ type: 'busy-note', sessionId: q.sessionId, text: kind === 'stopnow' ? STOP_LINES.stop : STOP_LINES.pause });
+        this.log('jobs', `a message typed during the job was read by the brain as ${kind === 'stopnow' ? 'stop' : 'pause'}`);
+        return n + 1; // the job ends or pauses here: nothing more to answer between steps
+      }
       if (kind === 'stop') {
         job.stopAfter = true; // the loop's own Stop after this step takes it from here, and says so in the job's chat
         this.midJobRecord(q, job, null);
@@ -189,14 +201,14 @@ export const promptParts = {
     this.saveQueue();
   },
   // The quick reply: its own small context (the message, one line about the job, the last few turns of that chat), no
-  // tools, on the loaded brain. Returns 'answer', 'task', 'change', 'failed' or 'aborted'.
+  // tools, on the loaded brain. Returns 'answer', 'task', 'change', 'stopnow', 'pause', 'failed' or 'aborted'.
   async quickReply(q, job, { model, cpu, brainCtx, signal, unsure = false, sameChat = false }) {
     const sid = q.sessionId;
     const who = this.cfg.userName || 'the user';
     const out = (ev) => this.broadcast({ ...ev, turnId: q.id, sessionId: sid });
     const lang = this.cfg.language && this.cfg.language !== 'en' ? this.cfg.language : '';
     const messages = [
-      { role: 'system', content: quickPrompt({ who, line: jobLine(this.watch.for(job)), unsure, sameChat, language: lang }) },
+      { role: 'system', content: quickPrompt({ who, line: jobLine(this.watch.for(job)), unsure, sameChat, language: lang, stopTags: stopWordsOn(this.cfg) }) },
       ...quickHistory(this.session(sid)),
       { role: 'user', content: q.text }
     ];
@@ -217,7 +229,7 @@ export const promptParts = {
     }
     const text = String(reply?.content || '').trim();
     const tag = replyTag(text);
-    if (tag || !text) { q.state = 'waiting'; out({ type: 'done' }); return tag === 'change' && sameChat ? 'change' : tag ? 'task' : 'failed'; }
+    if (tag || !text) { q.state = 'waiting'; out({ type: 'done' }); return tag === 'change' && sameChat ? 'change' : tag === 'stop' && sameChat ? 'stopnow' : tag === 'pause' && sameChat ? 'pause' : tag === 'task' ? 'task' : 'failed'; }
     if (!open) out({ type: 'token', text });
     const answer = { role: 'assistant', content: text, at: Date.now(), id: newMsgId(), midJob: job.id };
     out({ type: 'said', id: answer.id });
@@ -225,7 +237,7 @@ export const promptParts = {
     out({ type: 'done' });
     return 'answer';
   },
-  // Let Bob's Quick brain see the big job (meanwhile.js): notes passed along for this job go in before its next step.
+  // Quick brain sees the job (meanwhile.js): notes passed along for this job go in before its next step.
   readNotes(ctx, msgs, say = noteForBig) {
     const notes = ctx?.job ? this.watch?.takeNotes(ctx.job) : [];
     if (!notes?.length) return 0;
@@ -234,15 +246,16 @@ export const promptParts = {
     this.log('meanwhile', `the big job read ${notes.length} note${notes.length === 1 ? '' : 's'} passed along to it`);
     return notes.length;
   },
-  // Let Bob's Quick brain see the big job: look_at_job and pass_note, only in a quick reply beside a running job.
+  // Quick brain sees the job: look_at_job and pass_note, only in a quick reply beside a running job.
   withWatchTools(list, job) {
     const out = list.filter((t) => !WATCH_TOOLS.includes(t.function?.name));
     return job?.side && meanwhileOn(this.cfg) && this.watch.job ? out.concat(this.toolSchemas(WATCH_TOOLS)) : out;
   },
   // The front desk's tools for this step: the core, plus the groups added so far this turn (toolbox.js).
-  // With "Give Bob all his tools at once" on, every usable tool, the way it was before.
+  // With "Send all tools" on, every usable tool, the way it was before.
   frontDeskTools(loaded) {
-    if (allToolsOn(this.cfg) && !loaded?.only) return this.toolSchemas(Object.keys(this.tools));
+    const set = loaded?.toolSet || null; // tool-sets.js: set per step from the brain answering (brain-run-on.js)
+    if (allToolsOn(this.cfg) && !loaded?.only) return this.toolSchemas(Object.keys(this.tools), set);
     // Assistant presets (presets.js): a chat's preset can narrow the groups. Its copies of Bob have their own tools, so
     // handing a job to one (ask_specialist) is left out too while a preset narrows them.
     const groups = onlyGroups(groupsFor(this), loaded?.only);
@@ -252,7 +265,7 @@ export const promptParts = {
     // 1.5.41: ask_together comes along once a group with tools that ask for an OK is added.
     if (names.some((n) => this.tools[n]?.check && this.usable(n))) names.push('ask_together');
     if (planOn(this.cfg)) names.push('show_plan'); // 1.5.78: always there while the setting is on (plan.js)
-    const list = this.toolSchemas([...new Set(names)]);
+    const list = this.toolSchemas([...new Set(names)], set);
     const use = fillUseTools(this.tools.use_tools.schema, groups, loaded);
     if (use) list.push(tidySchema(use));
     return list;
@@ -325,7 +338,7 @@ export const promptParts = {
     return done;
   },
   // Nov 11: the tool groups a message means (loop-help.js), from the Memory slot's embedding model. Only when it's in
-  // use anyway (housekeeping or "Remember only what fits" on), never in the Gaming session, and at most 1.5 seconds:
+  // use anyway (housekeeping or "Relevant memories only" on), never in the Gaming session, and at most 1.5 seconds:
   // the first time, the groups' own vectors are made in the background and words alone pick this turn.
   async meaningGroups(text) {
     const hk = this.housekeeper;
@@ -340,12 +353,21 @@ export const promptParts = {
     const q = this.recallVec?.text === text && this.recallVec.vec ? this.recallVec.vec : (await limit(hk.embed([asQuery(embedModel(this.cfg), text)]).catch(() => null)))?.[0];
     return meaningPick(q, vecs);
   },
+  // The tool set for a brain (tool-sets.js), worked out once per brain name.
+  toolSetOf(model) {
+    if (!model) return null;
+    this.toolSetCache ||= new Map();
+    const key = `${model}|${this.cfg.toolSets === false ? 0 : JSON.stringify(this.cfg.toolSets ?? '')}`;
+    if (!this.toolSetCache.has(key)) { if (this.toolSetCache.size > 20) this.toolSetCache.clear(); this.toolSetCache.set(key, toolSetOfModel(this.cfg, this.engine, model)); }
+    return this.toolSetCache.get(key);
+  },
   // After a turn: groups used this turn stay for the next few messages; the rest count down.
   keepGroups(sessionId, used) {
     if (!sessionId) return;
     const sticky = this.stickyGroups.get(sessionId) || new Map();
     for (const [g, left] of sticky) { if (left <= 1) sticky.delete(g); else sticky.set(g, left - 1); }
-    for (const g of used) sticky.set(g, STICKY_TURNS);
+    const turns = stickyFor(used?.toolSet, STICKY_TURNS); // tool-sets.js: GPT-OSS keeps an added group 1 message
+    for (const g of used) sticky.set(g, turns);
     this.stickyGroups.set(sessionId, sticky);
     if (this.stickyGroups.size > 50) this.stickyGroups.delete(this.stickyGroups.keys().next().value);
   },

@@ -1,0 +1,69 @@
+{
+  "run": "fact-fix-r2",
+  "note": "13 Nov, Straight facts round 2 (the owner: train the model before the cut, see if it was influenced, train again if not, check again using new data, always saving odds). The full Qwen learns the sourced fact lessons (sets A and C), each five times, mixed with 1,500 of Bob's own lessons so nothing else drifts; then the teacher pass saves its odds on the mix; then the stock Qwen and the taught brain are served on the card and the PC runs every Straight facts pack against both (answers and odds saved). Make the lessons first, on the PC (no graphics card): node straight-facts.mjs mix --rounds 1,2 --general out/lessons --general-count 1500 --repeat 5 --out out/lessons-facts-r2. Round one took 49 min and about $4.30 on an H200 without its training counted; with training expect about 2 to 2.5 h and $11 to $14; caps 7 h / $38. The owner chose round two on 13 Nov after round one's results; the rental still runs on the owner's own words in the thread that rents.",
+  "teacher": "Qwen/Qwen3.6-35B-A3B",
+  "lessons": "out/lessons-facts-r2",
+  "gpus": [
+    "NVIDIA H200"
+  ],
+  "step_up": [],
+  "step_up_note": "H200 only, AP-JP-1 only, next to the teacher on our drive",
+  "disk_gb": 250,
+  "general_tokens": 0,
+  "max_len": 8192,
+  "top": "32",
+  "quants": "Q4_K_M",
+  "download_quants": [
+    "Q4_K_M"
+  ],
+  "volume_wait_minutes": 25,
+  "rent_minutes": 120,
+  "teacher_hours": 1.0,
+  "train_teacher": {
+    "name": "35Bob-facts2",
+    "nickname": "Straight facts 2",
+    "hours": 1.5,
+    "experts": "lora",
+    "epochs": 1,
+    "note": "Not a Bob for chat yet: a test of whether teaching the full brain shifts what it says. The owner names it if it's kept."
+  },
+  "rungs": [],
+  "hours_max": 7,
+  "dollars_max": 38,
+  "publish": {
+    "user": "MouseWurX",
+    "private": true,
+    "odds": false,
+    "models": [],
+    "note": "nothing goes to Hugging Face from this run; the odds, answers and the taught GGUF come back to the PC"
+  },
+  "benchmark": {
+    "note": "the PC runs the packs over the URL, one brain at a time; Says it straight is written answers, the rest multiple choice with odds",
+    "hours_each": 1,
+    "models": [
+      {
+        "name": "qwen-stock",
+        "file": "hf:unsloth/Qwen3.6-35B-A3B-GGUF:Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+        "quant": "Q4_K_XL"
+      },
+      {
+        "name": "35Bob-facts2",
+        "file": "out:35Bob-facts2/35Bob-facts2-Q4_K_M.gguf",
+        "quant": "Q4_K_M"
+      }
+    ],
+    "commands": [
+      "node straight-facts.mjs probe --url {{url}} --label {{name}} --out {{out}}"
+    ]
+  },
+  "counts": "expert-counts-2026-11-04T23-23-19.json",
+  "data_centers": [
+    "AP-JP-1"
+  ],
+  "volume_new": false,
+  "volume_fallback": false,
+  "volume": {
+    "gb": 300,
+    "name": "bob-forge"
+  }
+}

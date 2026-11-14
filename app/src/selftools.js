@@ -5,7 +5,7 @@
 //      only folders ticked for Hands, and every download pinned (exact address, size and sha256);
 //   2. a test run in the sandbox with a sample input;
 //   3. a read by the reviewer (the Review slot brain), every time, whatever the Effort;
-//   4. the person's OK on one card (skipped only with "Let Bob work without asking"; 1-3 still have to pass).
+//   4. the person's OK on one card (skipped only with "Work without asking"; 1-3 still have to pass).
 // The sandbox: Bob's own Node (his program, run as Node) with Node's permission switch on. The tool can read its own
 // folder and the folders on its card, write its work folder and the folders on its card, and nothing else. It can't
 // start programs, workers or add-ons. The environment is empty (no keys), there's no input to wait on, a time limit
@@ -15,7 +15,7 @@
 //
 // What's approved lives in Bob's own settings folder (selftools.json: the sha256 of every file), which no Hand or
 // tool can write. If a tool's files change after the OK, it's turned off until it goes through the checks again.
-// Tools are listed in Settings (🧰 Tools and how-tos Bob made: show code, delete; Hands: turn off, show code) and Bob
+// Tools are listed in Settings (🧰 Tools and how-tos: show code, delete; Hands: turn off, show code) and Bob
 // can list them too. 1.5.144: Delete puts a tool on the shelf (Recently deleted) for 30 days, off and out of Bob's
 // reach, with Put back and Delete for good; after 30 days (or Delete for good) its folder goes to the Recycle Bin.
 // Light: nothing runs in the background, the tools aren't in Bob's prompt until a job needs them (toolbox.js), and the
@@ -35,6 +35,7 @@ import { recycle } from './recycle.js';
 import { reviewBrain } from './moot.js';
 import { copyName } from './clan.js';
 import { toolLearnOn, loadLearning, learnedLine } from './tool-learn.js';
+import { checkArgs } from './loop-help.js'; // tool-sets.js: made tools take forgiving inputs too
 
 const WIN = process.platform === 'win32';
 export const MAX_TOOLS = 30;
@@ -196,7 +197,10 @@ export function cleanSpec(cfg, a = {}) {
     for (const [k, v] of Object.entries(rawIn).slice(0, 10)) {
       if (!/^[a-zA-Z][a-zA-Z0-9_]{0,30}$/.test(k)) { problems.push(`"${k}" isn't a plain input name.`); continue; }
       const type = ['string', 'number', 'integer', 'boolean'].includes(v?.type) ? v.type : 'string';
-      inputs[k] = { type, description: String(v?.description || k).slice(0, 200) };
+      // Tool sets (tool-sets.js, Nov 13): an input may list its choices (an action like add/list/remove), so one tool
+      // with an action replaces sibling tools a brain mixes up, and words like "set" or "show" are read as its own.
+      const choices = Array.isArray(v?.enum) ? [...new Set(v.enum.map((e) => String(e).trim()).filter((e) => e && e.length <= 40))].slice(0, 10) : [];
+      inputs[k] = { type, description: String(v?.description || k).slice(0, 200), ...(choices.length && type === 'string' ? { enum: choices } : {}) };
     }
     if (Object.keys(rawIn).length > 10) problems.push('Up to 10 inputs.');
   }
@@ -335,7 +339,7 @@ export const resetProbe = () => { probed = null; };
 // ---------------------------------------------------------------- the reviewer
 
 const REVIEW_SYSTEM = `You check a small JavaScript tool that an assistant wrote for itself before it may be added. Be strict but fair.
-Answer PASS only if ALL of these hold: the code does what its description says and nothing else; it only touches the folders it lists (plus its own work folder and files folder); it doesn't use the internet unless "internet: yes"; it doesn't collect, hide, send or delete the person's things beyond what the description says; it doesn't try to get round a sandbox, start programs, load code at run time or hide what it does; and it handles bad input without crashing badly.
+Answer PASS only if ALL of these hold: the code does what its description says and nothing else; its answer says plainly what it did (the real file path it saved, how many things it changed), and a bad input gets an error that says how to fix it; it only touches the folders it lists (plus its own work folder and files folder); it doesn't use the internet unless "internet: yes"; it doesn't collect, hide, send or delete the person's things beyond what the description says; it doesn't try to get round a sandbox, start programs, load code at run time or hide what it does; and it handles bad input without crashing badly.
 Reply with PASS or FAIL as the very first word, then at most 6 short lines of reasons. Nothing else.`;
 
 export async function reviewTool(brain, spec, code, test, ctx = {}) {
@@ -490,7 +494,7 @@ export function toolCode(cfg, name) {
 }
 
 // 1.5.144: what Bob says about a tool on the Recently deleted shelf (use it, or make one with its name).
-const shelvedWords = (cfg, name) => `The ${name} tool was deleted. ${cfg.userName || 'The user'} can put it back within 30 days in Settings, 🧰 Tools and how-tos Bob made, Recently deleted. Don't make a new one with that name: tell ${cfg.userName || 'the user'} it was deleted and ask whether to put it back.`;
+const shelvedWords = (cfg, name) => `The ${name} tool was deleted. ${cfg.userName || 'The user'} can put it back within 30 days in Settings, 🧰 Tools and how-tos, Recently deleted. Don't make a new one with that name: tell ${cfg.userName || 'the user'} it was deleted and ask whether to put it back.`;
 
 // Runs a tool Bob made (already approved). Its files must still be exactly what was OK'd.
 export async function useTool(cfg, name, input, { signal } = {}) {
@@ -504,6 +508,9 @@ export async function useTool(cfg, name, input, { signal } = {}) {
   if (t.state === 'missing') throw new Error(`${name}'s folder is gone.`);
   const holds = await sandboxHolds(cfg);
   if (!holds.ok) throw new Error(`The sandbox doesn't hold on this replicant matrix (${holds.why}), so I won't run tools I made.`);
+  // Tool sets (tool-sets.js, Nov 13): the same forgiving inputs as Bob's own tools (another name for a field, "5" for 5,
+  // "set" for add), from the tool's own list of inputs.
+  if (input && typeof input === 'object' && Object.keys(t.inputs || {}).length) input = checkArgs({ type: 'object', properties: t.inputs }, input).args;
   const res = await runSandboxed({ dir: t.dir, input: input && typeof input === 'object' ? input : {}, reads: a.reads, writes: a.writes, internet: a.internet, timeoutSec: a.timeoutSec || 60, signal });
   all[name].lastUsed = Date.now();
   saveApproved(cfg, all);
@@ -541,7 +548,7 @@ export function selfToolsTools(brain) {
       name: str('Short name, lower case with _, like csv_to_json.'),
       what: str('One plain line: what it does.'),
       when: str('One line: when to use it, like "{{USER}} gives a CSV and wants JSON".'),
-      inputs: { type: 'object', description: 'Its inputs: { "name": { "type": "string|number|boolean", "description": "..." } }.' },
+      inputs: { type: 'object', description: 'Its inputs: { "name": { "type": "string|number|boolean", "description": "...", "enum": [choices, optional] } }. One action input beats several tools.' },
       code: str('The whole tool.mjs.'),
       test: { type: 'object', description: 'A sample input to try it with before it is added.' },
       reads: { type: 'array', items: { type: 'string' }, description: 'Folders it reads (only ones ticked for Hands). Empty if none.' },
@@ -569,6 +576,8 @@ export function selfToolsTools(brain) {
         ctx.emit?.({ type: 'token', text: `\n\n*Trying ${spec.name} in the sandbox…*\n\n` });
         test = await runSandboxed({ dir, input: spec.test, reads: spec.reads, writes: spec.writes, internet: spec.internet, timeoutSec: spec.timeoutSec, signal: ctx.signal });
         if (!test.ok) throw new Error(`The test run failed: ${test.error}${test.timedOut ? '' : test.blocked ? ' (it tried something the sandbox doesn\'t allow)' : ''}. Fix it and call make_tool again.`);
+        // Tool sets (tool-sets.js, Nov 13): an answer must say what happened, so the brain can't misreport it.
+        if (/^\s*(?:|undefined|null|\[object Object\])\s*$/.test(String(test.out ?? ''))) throw new Error('The test ran but the tool answered nothing a brain can read. Return a plain line that says what it did (like "Saved 12 rows to C:\\...\\out.json"). Fix it and call make_tool again.');
       }
       const review = await reviewTool(brain, spec, code, test, ctx);
       log('selftools', `${review.who || 'reviewer'} on ${spec.name}: ${review.ok ? 'PASS' : 'FAIL'}`);
@@ -658,7 +667,7 @@ export function selfToolsTools(brain) {
     async run({ action, name }) {
       off(cfg);
       if (action === 'off') { setToolOn(cfg, String(name), false); log('selftools', `turned off ${name}`); return `Turned ${name} off. ${cfg.userName || 'The user'} can turn it back on in Settings, Hands.`; }
-      if (action === 'remove') { deleteTool(cfg, String(name)); log('selftools', `deleted ${name} (on the shelf 30 days)`); return `Deleted ${name}. ${cfg.userName || 'The user'} can put it back within 30 days in Settings, 🧰 Tools and how-tos Bob made, Recently deleted.`; }
+      if (action === 'remove') { deleteTool(cfg, String(name)); log('selftools', `deleted ${name} (on the shelf 30 days)`); return `Deleted ${name}. ${cfg.userName || 'The user'} can put it back within 30 days in Settings, 🧰 Tools and how-tos, Recently deleted.`; }
       const all = listTools(cfg);
       if (!all.length) return 'No tools made yet.';
       const st = { on: 'on', off: 'turned off', changed: 'off: its files changed since the OK', missing: 'its folder is gone' };

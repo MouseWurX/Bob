@@ -2,7 +2,7 @@
 
 This is the guide to what Brain Engine changes in llama.cpp, where each change hooks in, and what to re-check when moving to a newer llama.cpp. [README.md](README.md) says what each patch is for and how to build and move it. This page is the "where and how" for whoever does the rebase.
 
-Brain Engine 6 (named 6b12282) is llama.cpp **b12282** plus the eleven patches below (Brain Engine 4 had the first six, Brain Engine 5 the first eight; 0007 is live expert picks, 0008 the link log and SCUT that retunes itself, 0009 the expert mass, 0010 the expert trace read once per word, 0011 one trip a word over a lent card). Only 0004, 0005, 0006, 0008 and 0011 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
+Brain Engine 7 (named 7b12282) is llama.cpp **b12282** plus the thirteen patches below (Brain Engine 4 had the first six, Brain Engine 5 the first eight, Brain Engine 6 the first twelve; 0007 is live expert picks, 0008 the link log and SCUT that retunes itself, 0009 the expert mass, 0010 the expert trace read once per word, 0011 one trip a word over a lent card, 0012 load progress, 0013 experts per word, live). Only 0004, 0005, 0006, 0008 and 0011 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
 
 Bob's own code map lists these patches too: one line each, with the files they change, the lines they add and take out, and the main names they add.
 
@@ -142,6 +142,24 @@ Then run `engine/try-newer.sh <tag>`. Every patch must go on, and the Linux buil
 - **Bob callers:** none; `src/link-log.js` keeps the `[link]   read ahead: ...` line like any other.
 - **Re-check on rebase:** it leans on graphs keeping their `uid` from one word to the next (that is what makes upstream send `GRAPH_RECOMPUTE`), and on the card server answering commands in the order they arrive. If upstream changes either, or adds its own batching of reads, drop this patch rather than port it.
 - **Tests:** `engine/tests/rpc-ahead.cpp` (build it against the engine's libraries; run it against `ggml-rpc-server` with `GGML_RPC_AHEAD` 0 and 1, straight and through a slow link). `test/run-link-log-test.js` checks the patch is listed.
+
+### 0012-load-progress: how far a brain has loaded
+- **Upstream files:** `tools/server/server.cpp` only.
+- **Hooks:** `server_run_instance()`: when the server is not run by a router, `ctx_server.set_state_callback()` prints `load_progress: <stage> <percent>` for each loading sample (upstream throttles them to one per 200 ms). Under a router, upstream's own callback is kept.
+- **Bob callers:** `loadDots()` in `src/llamacpp.js` reads the lines while a brain loads; `src/brain.js` broadcasts `load-progress` and `src/server.js` sends `cube-load` to the cube.
+- **Re-check on rebase:** that `set_state_callback` and the `value` / `current` fields of the loading payload are still there.
+### 0013-experts-per-word: more or fewer experts per word, live
+- **Upstream files:** `include/llama.h`, `src/llama-cparams.h`, `src/llama-context.{h,cpp}`, `src/llama-graph.{h,cpp}`, `src/llama-model.cpp`, `tools/server/server-context.{h,cpp}`, `server-task.h`, `server.cpp`.
+- **Hooks:**
+  - `llama_cparams` carries a pointer to the context's live counts (`expert_used`, `expert_used_n`) and `expert_used_gen`, which `llm_graph_params::allow_reuse` compares, so a graph is never reused across a change.
+  - `llm_graph_context::build_moe_ffn` swaps `n_expert_used` for the live count of that layer before the top-k pick, and the sum of the experts' outputs (`n_expert_used_il`) uses the same count. Not during warmup, not when `selected_experts_in` is given, and only when `n_expert` is the brain's own.
+  - `llama_context::set_expert_used` checks the counts (1 to `n_expert`, at most `LLAMA_MAX_EXPERTS`, no more than the expert mask keeps, no more than the brain's own with a MoE cache), then calls `sched_reserve()` at once inside a try; on failure it puts the old counts back and reserves again. `set_expert_mask` now remembers how many each layer keeps and refuses a mask narrower than a live count. `graph_max_nodes` adds two nodes per extra expert per layer.
+  - The server's expert trace keeps `k_of` per layer instead of one `n_used` for all, in the collector (`ffn_moe_topk`), the mass (`ffn_moe_weighted`), the full trace and the streamed parts. Neuron and head traces set `k_of` to their own fixed count.
+- **New API:** `llama_set_expert_used(ctx, used, n)` (0 done, -1 bad counts, -2 the mask keeps fewer, -3 not enough memory, -4 no experts or a shared router, -5 more than own with a MoE cache), `llama_get_expert_used(ctx, il)`, `llama_model_n_expert_used_layer(model, il)`.
+- **Server:** `GET /experts-per-word`, `POST /experts-per-word` with `{"used": null | N | [N or null per layer]}`. A server task, so it waits its turn; refused while a slot is busy; clears the prompt caches.
+- **Bob callers:** `src/experts-per-word.js` (cleaning, sending, the speed guess), `src/llamacpp.js` (`sendPerWord`: the per-brain count from Settings, Speed, before the brain's next answer), `src/lab-peek-jobs.js` (Peek inside: one question at a chosen count, then back).
+- **Re-check on rebase:** checklist item 1: the swap must stay before `ggml_argsort_top_k` and match the views summed after it. If upstream starts passing per-layer counts from every model (it already reads `hparams.n_expert_used(il)` when summing), keep ours winning. If upstream changes how warmup sizes the graph, re-check that the worst case is still reserved after a change. Also check `router_layer` (shared routers) is still the only way a layer gets its picks from another.
+- **Tests:** `engine/tests/experts-per-word.py <checkout>` builds a tiny brain and checks live against `--override-kv`, per layer through the trace, and the refusals. `test/run-experts-per-word-test.js` checks what Bob sends and when.
 
 ## What's not covered yet
 

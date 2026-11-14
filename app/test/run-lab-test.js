@@ -1,7 +1,7 @@
 // 1.5.141 Computer Science Lab (Lab 1): Bob's own GGUF cutter on small made-up brain files (experts cut byte for
 // byte, settings copied, a sound reader taken out of a combined reader), the recipe checks, the whole job with fake
 // steps, Use in Bob, the switch (off unless turned on, greyed out on small replicant matrices) and the page's words.
-import { labText } from './source-text.js';
+import { labText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -368,7 +368,7 @@ const saved = lab.saveRecipe({ ...recipe, lessons: { kind: 'file', file: path.jo
 check('a saved recipe keeps choices, not paths', !JSON.stringify(saved).includes(tmp) && saved.at(-1).smaller.cut.keep === 4);
 
 // ---- 1.5.153 Challenges and Save ----
-check('the first six packs, then the extra ones, each with questions, a title and a time', PACKS.length === 31 && PACK_IDS.slice(0, 6).join() === 'quiz,reasoning,sums,rules,tools,code' && PACKS.every((x) => x.title && x.what && x.count > 0 && x.minutes > 0));
+check('the first six packs, then the extra ones, each with questions, a title and a time', PACKS.length === 34 && PACK_IDS.slice(0, 6).join() === 'quiz,reasoning,sums,rules,tools,code' && PACKS.every((x) => x.title && x.what && x.count > 0 && x.minutes > 0));
 check('every reasoning question has four choices and a letter answer', REASONING.every(([q, a]) => /A\) [\s\S]*B\) [\s\S]*C\) [\s\S]*D\) /.test(q) && /^[ABCD]$/.test(a)) && REASONING.length >= 20);
 check('every sum has a whole-number answer', SUMS.every(([, a]) => Number.isInteger(a)) && SUMS.length >= 15);
 check('the letter in a reply is found, with or without brackets, and thinking is ignored', letterOf('B') === 'B' && letterOf('(C)') === 'C' && letterOf('D) Gravity') === 'D' && letterOf('The answer is A.') === 'A' && letterOf('<think>A or B?</think>C') === 'C' && letterOf('no idea') === '');
@@ -558,7 +558,7 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   check('the pick-a-brain hint counts the steps of the job picked, not always 2 to 5', read('public/lab.js').includes('Steps 2 to ${steps().length}') && !/Steps 2 to 5 and Next/.test(read('public/lab.js')));
   { const lj = read('public/lab.js'); check('Make a brain asks what you want to do first, one job at a time, and each job lists only its steps', /What do you want to do\?/.test(lj) && ['smaller', 'cut', 'senses', 'test', 'full', 'refusals'].every((id) => new RegExp(`id: '${id}', title:`).test(lj)) && /id: 'refusals', title: 'Take out the refusal habit'.*forge: 'refusals'/.test(lj) && /if \(j\?\.forge\) \{ tab = 'forge'; await fg\.openHome\(j\.forge\);/.test(lj) && /steps: \['brain', 'smaller', 'test'\], parts: \['files'\]/.test(lj) && /steps: \['brain', 'test'\], parts: \[\]/.test(lj) && /const steps = \(\) => \(jobOf\(\) \? STEPS\.filter/.test(lj) && /\$\{!job \? '' : `/.test(lj));
     check('picking a job clears the recipe parts it does not use, and the Forge opens the matching job', /if \(!hasPart\('cut'\)\) \{ r\.smaller\.cut = null;/.test(lj) && /if \(!hasPart\('files'\)\) \{ r\.smaller\.files = \[\];/.test(lj) && /goMake\(d\.method\)/.test(read('public/lab-forge.js')) && /data-forgeuse="make" data-method="\$\{m\.id\}"/.test(read('public/lab-forge.js'))); }
-  check('the Diffusion page and the Settings summary follow the Lab\'s on-unless-off rule, never computerLab === true', /!labOn\(lab\.cfg\)/.test(read('src/lab-diffusion.js')) && !/computerLab !== true/.test(read('src/lab-diffusion.js')) && /Lab: \$\{onoff\(settings\.computerLab !== false\)\}/.test(read('public/cellar.js')));
+  check('the Diffusion page and the Settings summary follow the Lab\'s on-unless-off rule, never computerLab === true', /!labOn\(lab\.cfg\)/.test(read('src/lab-diffusion.js')) && !/computerLab !== true/.test(read('src/lab-diffusion.js')) && /Lab: \$\{onoff\(settings\.computerLab !== false\)\}/.test(publicText('cellar.js')));
   check('the page gets the ladder limit and steps, no paths', plLab.view().playMaxGB === PLAY_MAX_GB && plLab.view().ladderSteps.length === 6 && !JSON.stringify(plLab.view().ladders).includes(tmp));
   const be2 = { engine: { loaded: async () => [{ name: 'qwen', vram: 9e9 }], unloadAll: async () => {} } };
   check('with Bob\'s brain on the card, the ladder asks first', (await new Lab(cfg, { shop, room: big, brain: be2 }).startLadder({ from: 'test-moe' })).needUnload === true);
@@ -639,7 +639,7 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   await labRoute({ req: { method: 'GET' }, res: {}, p: '/api/lab/forge', isLocal: false, lab: fLab, body: async () => ({}), send: (res, code, j) => sent4.push([code, j]) });
   check('plans are written only on this replicant matrix; other devices see the runs, without keep files', sent4[0][0] === 403 && sent4[1][0] === 403 && sent4[2][0] === 200 && sent4[2][1].runs.length === 1 && sent4[2][1].keepFiles.length === 0);
   const pf = read('public/lab-forge.js');
-  check('the Forge tab starts a run only from a purchase card with the caps on it, behind a switch that starts off', /Let the Lab start Forge runs/.test(pf) && /Off unless you turn it on/.test(pf) && /Rent it and start \(up to \$/.test(pf) && /Caps: \$\{buy\.hours\} hours or \$\$\{buy\.dollars\}/.test(pf) && /Stop the run and delete its rented card for good\?/.test(pf) && !/\/api\/rent/.test(pf));
+  check('the Forge tab starts a run only from a purchase card with the caps on it, behind a switch that starts off', /Let the Lab start Forge runs/.test(pf) && /Rent it and start \(up to \$/.test(pf) && /Caps: \$\{buy\.hours\} hours or \$\$\{buy\.dollars\}/.test(pf) && /Stop the run and delete its rented card for good\?/.test(pf) && !/\/api\/rent/.test(pf));
   // slice C: starting and stopping a run, with a fake process
   const spawned = [];
   const fakeSpawn = (exe, args, opts) => { const rec = { args, stdin: '', opts }; spawned.push(rec); return { pid: 4242, stdin: { write: (t) => { rec.stdin += t; }, end: () => {} }, unref: () => {}, on: (ev, f) => { if (ev === 'exit') setTimeout(f, 1); } }; };
@@ -661,6 +661,19 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   const lv2 = cLab.forgeView().live;
   check('the running Forge shows in the tab, with its caps', lv2.running && lv2.plan === 'first' && lv2.hours === 20);
   fs.writeFileSync(path.join(ml, 'out', 'forge', 'pod-token.json'), JSON.stringify({ pod: 'oldpod999', token: 'x' })); fs.writeFileSync(path.join(ml, 'out', 'forge', 'pod-token-first.json'), JSON.stringify({ pod: 'abc123xyz', token: 'never-shown-0123456789' }));
+  { // 14 Nov a Forge run gets one Lab run record, ended with its card cost (about) once the run is over
+    const { listRuns } = await import('../src/lab-runs.js');
+    const fr = listRuns(path.join(dataDir, 'lab')).find((x) => x.step === 'forge-plan');
+    check('a Forge run has a Lab run record with its plan and caps', fr && fr.state === 'running' && fr.settings.plan === 'first' && fr.settings.dollars === 60);
+    const tok = path.join(ml, 'out', 'forge', 'pod-token-first.json'), keep = fs.readFileSync(tok, 'utf8');
+    fs.writeFileSync(tok, JSON.stringify({ pod: 'abc123xyz', token: 'never-shown-0123456789', price: 0.6, started: cLab.now() - 90 * 60e3, gpu: 'NVIDIA A40', dataCenter: 'EU-1' }));
+    const was = cLab.forgeAlive; cLab.forgeAlive = () => false;
+    const liveFile = cLab.forgeLiveFile(), lr = JSON.parse(fs.readFileSync(liveFile, 'utf8'));
+    fs.utimesSync(lr.log, new Date(cLab.now()), new Date(cLab.now())); cLab.forgeView();
+    const done = listRuns(path.join(dataDir, 'lab')).find((x) => x.id === fr.id);
+    check('when it ends, the record gets its end and its card cost from the pod record, never the token', done.state === 'done' && done.cost.usd === 0.9 && done.cost.card === 'NVIDIA A40' && done.cost.minutes === 90 && !JSON.stringify(done).includes('never-shown'));
+    cLab.forgeAlive = was; fs.writeFileSync(tok, keep);
+  }
   const stopRes = await cLab.forgeStop();
   // 1.5.160 the way of thinking and what to teach
   check('there are dozens of thought paths in groups, each with a style line and blend or switch', PATHS.length >= 70 && PATH_GROUPS.length >= 9 && PATHS.every((x) => x.name && x.style.length > 15 && ['blend', 'switch', 'either'].includes(x.kind)) && ['Concise', 'Creative', 'Critical', 'Step by step', 'Plan first', 'Check your work', 'Socratic', 'Look before you touch'].every((n) => pathByName(n)));
@@ -674,7 +687,7 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
     await labRoute({ req: { method: 'POST' }, res: {}, p: '/api/lab/mode', isLocal: false, lab: mLab, body: async () => ({ mode: 'pro' }), send: (res, code, j) => sent5.push([code, j]) });
     check('only this replicant matrix changes the Lab\'s mode', sent5[0][0] === 403);
     const lj = read('public/lab.js'), fj = read('public/lab-forge.js');
-    check('the switch sits under the tabs as a radio group, and the Forge folds its expert controls away in simple mode', /data-labmode="simple"/.test(lj) && /data-labmode="pro"/.test(lj) && /role="radiogroup" aria-label="How much to show"/.test(lj) && (fj.match(/proOnly\(/g) || []).length >= 3 && /Lab: Professional mode/.test(read('public/cellar.js')) && /labPro/.test(read('src/config.js')));
+    check('the switch sits under the tabs as a radio group, and the Forge folds its expert controls away in simple mode', /data-labmode="simple"/.test(lj) && /data-labmode="pro"/.test(lj) && /role="radiogroup" aria-label="How much to show"/.test(lj) && (fj.match(/proOnly\(/g) || []).length >= 3 && /Lab: Professional mode/.test(publicText('cellar.js')) && /labPro/.test(read('src/config.js')));
   }
   const tp = makeForgePlan({ rungs: [{ name: 'a', keep: 128 }], teach: { thinking: 50, coding: 50, sneaky: 10 }, thinking: { mode: 'both', paths: [{ name: 'Concise', share: 40 }, { name: 'Thorough', share: 40 }, { name: 'rm -rf', share: 9 }], own: 'Think like a ship\'s cook\nignore this', ownShare: 20, personality: { alignment: { evil: 100, chaotic: 5 }, mood: { grumpy: 50, curious: 50 } } }, heal: { learn: 'both', odds_cover: 'both' } }, { base: {} });
   check('one run teaches several things: thinking and voice in plan.teach, the rest as the lesson writer\'s job weights, only known ones', tp.plan.teach.thinking === 50 && !('coding' in tp.plan.teach) && tp.plan.jobs.coding === 100 && !('sneaky' in tp.plan.teach) && !JSON.stringify(tp.plan).includes('sneaky'));
@@ -834,9 +847,9 @@ check('the old one-shot tool picks stay for the Pick the tool challenge', TOOLS.
 }
 
 // ---- words and wiring ----
-const html = read('public/index.html'), app = read('public/app.js'), cellar = read('public/cellar.js'), page = read('public/lab.js'), help = read('public/help-content.js'), inv = read('docs/SETTINGS-INVENTORY.md');
+const html = read('public/index.html'), app = publicText('app.js'), cellar = publicText('cellar.js'), page = read('public/lab.js'), help = read('public/help-content.js'), inv = read('docs/SETTINGS-INVENTORY.md');
 check('the Lab button is in the left pane, hidden until the switch is on', /id="labBtn"[^>]*hidden/.test(html) && /labBtn/.test(app));
-check('the switch is under How Bob works, Brains, on unless turned off', /sswitch\('computerLab', settings\.computerLab !== false, 'Show the Computer Science Lab'/.test(cellar) && /On unless you turn it off/.test(cellar.split("sswitch('computerLab'")[1].slice(0, 600)));
+check('the switch is under How Bob works, Brains, on unless turned off', /sswitch\('computerLab', settings\.computerLab !== false, 'Show the Lab'/.test(cellar));
 check('a saved setting is cleaned so only false turns the Lab off', (() => { const a = {}, b = {}, c = {}; mergeSettings(a, { computerLab: false }); mergeSettings(b, { computerLab: 'yes' }); mergeSettings(c, { computerLab: true }); return a.computerLab === false && b.computerLab === true && c.computerLab === true; })());
 check('a small replicant matrix sees the switch greyed out with the reason', /computerLabRoom/.test(cellar));
 check('the page uses real radio buttons and checkboxes with labels', /type="radio"/.test(page) && /type="checkbox"/.test(page) && /<label/.test(page));
@@ -845,7 +858,7 @@ check('the page uses the reviewed words', ['Teach it back', 'Make it one file', 
 check('the rented parts are shown as later, not offered', /Lab 2/.test(page) && !/\/api\/rent/.test(page));
 check('the slider has a number box beside it', /type="range"[\s\S]{0,400}type="number"|type="number"[\s\S]{0,400}type="range"/.test(page));
 check('Help has a Lab page in Bob\'s voice', /Computer Science Lab/.test(help) && /lab/.test(help));
-check('the settings inventory has the row', /Show the Computer Science Lab/.test(inv));
+check('the settings inventory has the row', /Show the Lab/.test(inv));
 check('the Bob-Net heading opens Bob-Net settings', /id="nowNetHead"[^>]*aria-label="Open Bob-Net settings"/.test(html) && /nowNetHead[\s\S]{0,200}jump: 'adv-bobnet'/.test(app) && /opts\.jump/.test(cellar) && /Press Bob-Net to set it up/.test(html));
 
 // review: the card size falls back to the hardware scan's reading; the quiz uses a neutral city; the route comment is right
@@ -858,8 +871,8 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   const G = await import('../src/lab-guard.js');
   const C = await import('../src/lab-challenges.js');
   const ids = P.EXTRA_IDS;
-  check('twenty-five extra packs (four from Lab items 105 to 107, five Straight facts), version 1, each with questions, a title and a time', ids.length === 25 && P.EXTRA_PACKS.every((x) => x.version === 1 && x.title && x.what && x.count > 0 && x.minutes > 0) && ids.every((id) => C.PACK_IDS.includes(id)));
-  check('Guard rails is shown but never counted in Overall', C.PACKS.find((x) => x.id === 'guard').ranked === false && !C.RANKED_IDS.includes('guard') && C.RANKED_IDS.length === C.PACKS.length - 10); // Guard rails plus En français, En español, Job speed, Still refuses, and the five Straight facts
+  check('twenty-eight extra packs (four from Lab items 105 to 107, eight Straight facts), version 1, each with questions, a title and a time', ids.length === 28 && P.EXTRA_PACKS.every((x) => x.version === 1 && x.title && x.what && x.count > 0 && x.minutes > 0) && ids.every((id) => C.PACK_IDS.includes(id)));
+  check('Guard rails is shown but never counted in Overall', C.PACKS.find((x) => x.id === 'guard').ranked === false && !C.RANKED_IDS.includes('guard') && C.RANKED_IDS.length === C.PACKS.length - 13); // Guard rails plus En français, En español, Job speed, Still refuses, and the eight Straight facts
   const all = Object.fromEntries(C.RANKED_IDS.map((id) => [id, { score: 80, right: 8, of: 10 }]));
   const row = C.scoreboard([C.mergeScores(null, { name: 'A', paramsB: 4, packs: { ...all, guard: { score: 10, right: 1, of: 10, parts: { held: { score: 0, right: 0, of: 5 }, answered: { score: 100, right: 15, of: 15 }, page: { score: 50, right: 3, of: 6 } } } }, when: '2026-11-09' })])[0];
   check('a low Guard rails score leaves Overall and "ran them all" alone, and its three numbers are kept', row.overall === 80 && row.all === true && row.guard?.held?.score === 0 && row.guard?.answered?.score === 100);
@@ -940,7 +953,7 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   check('and says why when no brain is loaded', (await guardChat({ cfg: { engine: 'llamacpp' }, engine: { url: 'http://b' } }, { messages: [{ role: 'user', content: 'hi' }] })).ok === false);
   check('saving from the sandbox is only for this replicant matrix itself', labText().indexOf("'/api/lab/guard/save'") > labText().indexOf('Lab jobs can only be started on this replicant matrix itself') && labText().indexOf("'/api/lab/guard/chat'") < labText().indexOf('Lab jobs can only be started on this replicant matrix itself'));
   const { packGroups, guardPartsLine } = await import('../public/lab-guard.js');
-  check('the Challenges list shows the first packs, then More challenges', packGroups(C.PACKS).map((g) => `${g.id}:${g.packs.length}`).join() === 'first:6,more:25');
+  check('the Challenges list shows the first packs, then More challenges', packGroups(C.PACKS).map((g) => `${g.id}:${g.packs.length}`).join() === 'first:6,more:28');
   check('the three Guard rails numbers read as words', guardPartsLine({ held: { score: null }, answered: { score: 90 }, page: { score: 50 } }) === 'Didn\'t over-refuse: 90 · Ignored planted orders: 50 · Held the line: not run');
 }
 
@@ -1061,7 +1074,7 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   const tr = await hlab.tryRefusals({ from: 'rel-a', strength: 80, layers: 'all' });
   check('Try it first starts as its own job', tr.started?.kind === 'refusals-try');
   while (hlab.job) await new Promise((r) => setTimeout(r, 20));
-  { const t = hlab.runs.at(-1); check('Try it first reports before and after, holds the direction out with a control vector, and writes no brain', t.state === 'done' && t.report.tried.before.declined === 4 && t.report.tried.after.declined === 0 && t.report.tried.kept.declined === 4 && checksSeen.at(-1).extra.includes('--control-vector-scaled') && checksSeen.at(-1).extra.includes('-0.8') && !fs.existsSync(path.join(hcfg.bobModelsDir, 'lab', 'try'))); }
+  { const t = hlab.runs.at(-1); check('Try it first reports before and after, holds the direction out with a control vector, and writes no brain', t.state === 'done' && t.report.tried.before.declined === 4 && t.report.tried.after.declined === 0 && t.report.tried.kept.declined === 4 && checksSeen.at(-1).extra.includes('--control-vector-scaled') && checksSeen.at(-1).extra.some((x) => /direction\.gguf:-0\.8$/.test(x)) && !fs.existsSync(path.join(hcfg.bobModelsDir, 'lab', 'try'))); }
   const hs = await hlab.startHome('refusals', { from: 'rel-a', name: 'Plain A', strength: 100, layers: 'all', check: true, teachBack: true, naughty: true });
   check('the refusals job starts with its steps', hs.started?.kind === 'refusals' && hs.started.steps.map((s) => s.id).join() === 'direction,refusals,check,test');
   while (hlab.job) await new Promise((r) => setTimeout(r, 20));
@@ -1309,7 +1322,7 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   check('the Forge tab and the Playground both show it', /createFullSize\(/.test(hw) && /full\.html\(\{ id: 'forge-full' \}\)/.test(hw) && /createFullSize\(/.test(pgj) && /full\.html\(\{ id: 'play-full', open: !list\.length \}\)/.test(pgj));
   check('the no-brains lines point at it', /use <strong>Bring in a full-size brain<\/strong>/.test(hw) && /use <strong>Bring in a full-size brain<\/strong> just below/.test(pgj));
   check('the Playground names the brains that can\'t start the ladder and why', /fullSizeWhyNot\(b, v\(\)\.playMaxGB/.test(pgj) && (await import('../public/lab-fullsize.js')).fullSizeWhyNot({ facts: { fullSize: false, fileType: 'Q4_K_M', sizeGB: 4 } }) === 'a running file already (Q4_K_M), not the full-size copy' && (await import('../public/lab-fullsize.js')).fullSizeWhyNot({ facts: { fullSize: true, sizeGB: 30 } }, 9) === '30 GB full size, and the ladder takes brains up to 9 GB' && (await import('../public/lab-fullsize.js')).fullSizeWhyNot({ facts: { fullSize: true, sizeGB: 3 } }, 9) === '');
-  check('progress reaches the page', /case 'lab-full'/.test(read('public/app.js')) && /fullUpdate\(full\)/.test(read('public/lab.js')));
+  check('progress reaches the page', /case 'lab-full'/.test(publicText('app.js')) && /fullUpdate\(full\)/.test(read('public/lab.js')));
   const { HELP } = await import('../public/help-content.js');
   const fh = HELP.find((h) => h.id === 'lab-forge');
   check('Help explains Bring in a full-size brain and where the engine tools come from', /Bring in a full-size brain/.test(fh.html) && /Your own brains/.test(fh.html) && /Brain Engine/.test(fh.html) && /full-size/.test(fh.words));

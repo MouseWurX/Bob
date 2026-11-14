@@ -8,6 +8,7 @@ import { LlamaCpp, besideThreads } from '../src/llamacpp.js';
 import { Brain, talkerModel, sidePick, isTalker, TALKER_LINE, TALKER_CTX, talkerCtx, besideBigOk, mootBesideOk, besideLater, bigJob, loadLine, loadMode, BIG_AFTER_MS, SIDE_LANE } from '../src/brain.js';
 import { Gate } from '../src/handoff.js';
 import { mergeSettings } from '../src/config.js';
+import { publicText } from './source-text.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let pass = 0, fail = 0;
@@ -18,7 +19,7 @@ const GB = 1024 ** 3;
 const job = (id, state, extra = {}) => ({ id, text: `job ${id}`, state, at: Date.now(), sessionId: 's', kind: 'chat', ...extra });
 const now = Date.now();
 const fakeBrain = (over = {}) => ({
-// Answer messages between steps (mid-job.js) is on by default and replaces the second brain beside text jobs; these checks are for it switched off.
+// Reply between steps (mid-job.js) is on by default and replaces the second brain beside text jobs; these checks are for it switched off.
   waitOver() {}, // 1.5.111: pump takes the ⏳ line away when a job starts
   cfg: { session: 'normal', engine: 'llamacpp', chatWhileBusy: true, answerMidJob: false, models: { small: 'small:4b', bob: 'big:26b' } },
   engine: { besideServer() {}, current: 'big:26b', currentCpu: false, resolve: () => ({ gguf: '/x' }) },
@@ -86,7 +87,7 @@ const off = loadLine({ mode: 'swap', who: 'reviewer', model: 'rev', from: 'big',
 const on = loadLine({ mode: 'swap', who: 'reviewer', model: 'rev', from: 'big', copy: 'B', secs: 9, label, single: true, besideOn: true });
 check('moot swap, switch off: a plain swap line, no tip unless asked', /^🛰 Moot: B checks the answer\. My main brain \(big\) steps out and the review brain \(rev\) comes in, about 9 seconds\.$/.test(off), off);
 const tipped = loadLine({ mode: 'swap', who: 'reviewer', model: 'rev', from: 'big', copy: 'B', secs: 9, label, single: true, tip: true });
-check('moot swap, first time: the tip names the switch and its full path', /\(To keep both loaded, turn on "Let the reviewer sit beside Bob's main brain" in Settings, Brains\.\)$/.test(tipped), tipped);
+check('moot swap, first time: the tip names the switch and its full path', /\(To keep both loaded, turn on "Reviewer beside main brain" in Settings, Brains\.\)$/.test(tipped), tipped);
 {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bob tip '));
   const fake = { cfg: { dataDir: dir } };
@@ -300,9 +301,9 @@ try {
 
 // ---------- Help and settings text ----------
 const help = fs.readFileSync(path.join(here, '..', 'public', 'help-content.js'), 'utf8');
-const cellar = fs.readFileSync(path.join(here, '..', 'public', 'cellar.js'), 'utf8');
-check('Settings has the reviewer-beside switch, off unless set', /sswitch\('mootBeside', settings\.mootBeside === true, 'Let the reviewer sit beside Bob\\'s main brain'/.test(cellar));
-check('Help explains it, and the long-job part of Keep chatting', /set\('Let the reviewer sit beside Bob\\'s main brain', 'Off'/.test(help) && /Adding the quick brain \.\.\. on the processor/.test(help));
+const cellar = publicText('cellar.js');
+check('Settings has the reviewer-beside switch, off unless set', /sswitch\('mootBeside', settings\.mootBeside === true, 'Reviewer beside main brain'/.test(cellar));
+check('Help explains it, and the long-job part of Keep chatting', /set\('Reviewer beside main brain', 'Off'/.test(help) && /Adding the quick brain \.\.\. on the processor/.test(help));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

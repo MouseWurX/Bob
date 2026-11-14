@@ -1,6 +1,6 @@
 // 1.5.3: Bob shows RAM as well as graphics memory: in the brain label (how each brain splits between the card
 // and system memory) and in Now running (graphics card and RAM meters, the brain by its friendly name).
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import { Brain } from '../src/brain.js';
 import { ramNow } from '../src/server-ram.js';
@@ -63,7 +63,7 @@ check('the Session menu has its own line, so its name is not cut off', /\.side \
 
 // The Hands kill switch on the chat page (1.5.3). Hands are turned on in Settings; this only stops them.
 {
-  const hs = read('public/hands-switch.js'), app = read('public/app.js');
+  const hs = read('public/hands-switch.js'), app = publicText('app.js');
   const { cleanHands, handOn, handOffWhy } = await import('../src/hands-settings.js');
   const { holdHands } = await import('../src/hands.js');
   check('a Hands button sits next to "Free memory when Bob is idle"', /id="brainFree"[\s\S]{0,300}id="handsBtn"/.test(html));
@@ -85,7 +85,7 @@ check('the Session menu has its own line, so its name is not cut off', /\.side \
 
 {
   // 1.5.11: the user saw "a very small box with nothing in it" where a new picture should be.
-  const app = read('public/app.js'), css = read('public/style.css');
+  const app = publicText('app.js'), css = read('public/style.css');
   check('a new picture goes into the same bubble as the reply words, and words arriving later keep it', /case 'image': \{ addMedia\(ev, 'image'\)/.test(app) && /function drawReply\(r\) \{[\s\S]*?r\.el\.innerHTML = words \+ \(r\.media\.length \? `<div class="reply-media">\$\{mediaHtml\(r\.media\)\}/.test(app) && /r\.el\.insertBefore\(tpl\.content, keep\)/.test(app) && /r\.text \+= ev\.text;\s*drawReply\(r\);/.test(app));
   check('pictures have a real width, so an image-only bubble cannot collapse to an empty box', /\.msg\.bob:has\(> img\)[^{]*\{ width: min\(540px, 92%\); \}/.test(css));
 }

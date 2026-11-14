@@ -1,6 +1,6 @@
 // Settings, Jobs (src/job-helps.js, items 51-61): eleven switches for how Bob works through a job, all off unless
 // turned on. Plain checks first, then real turns with a scripted brain and stand-in tools (nothing goes online).
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -133,7 +133,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-jobs-'));
   check('away from the computer: no Open or Undo', !/data-jh-/.test(receiptHtml([{ kind: 'file', what: 'Edited', path: 'a', undo: 'abcdefabcdef' }], { local: false })));
 }
 
-// ---------- 55 Run the tests after code edits ----------
+// ---------- 55 Run tests after code edits ----------
 {
   const files = { '/p/package.json': '{"scripts":{"test":"node test.js"}}', '/q/package.json': '{"scripts":{"test":"echo \\"Error: no test specified\\" && exit 1"}}', '/r/Cargo.toml': '', '/s/.git': '', '/t/pyproject.toml': '[tool.pytest.ini_options]' };
   const fake = { exists: (f) => f.replace(/\\/g, '/') in files || f.replace(/\\/g, '/').replace(/^[A-Z]:/, '') in files, read: (f) => files[f.replace(/\\/g, '/').replace(/^[A-Z]:/, '')] };
@@ -237,19 +237,19 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-jobs-'));
 
 // ---------- Wiring (read from the source) ----------
 {
-  const brainSrc = brainText(), server = read('../src/server.js'), cellar = read('../public/cellar.js'), app = read('../public/app.js'), main = read('../electron/main.cjs'), phone = read('../android/app/src/main/assets/www/phone.js');
+  const brainSrc = brainText(), server = read('../src/server.js'), cellar = publicText('cellar.js'), app = publicText('app.js'), main = read('../electron/main.cjs'), phone = read('../android/app/src/main/assets/www/phone.js');
   check('enqueue steers before anything else answers', brainSrc.indexOf('steerNote(this, sessionId') > 0 && brainSrc.indexOf('steerNote(this, sessionId') < brainSrc.indexOf('const quickAnswer = this.jobAnswer('));
   check('the tools go through the receipt, the cache and the no', /cachedLook\(this, name, args, ctx\) \|\| await (?:(?:inChangeTurn|inTurn)\(scope, async \(\) => \{ try \{ return await )?this\.runToolNow/.test(brainSrc) && /receiptAfter\(this, name, args, res, ctx, before\)/.test(brainSrc) && /noteNo\(this, ctx, name, args, res\?\.text\)/.test(brainSrc));
   check('the server saves it and has the three routes', /jobHelps: cleanJobHelps\(cfg\.jobHelps\)/.test(server) && /p === '\/api\/stop-after'/.test(server) && /p === '\/api\/jobs\/undo'/.test(server) && /p === '\/api\/open-at'/.test(server));
   check('Undo and open-at only on this replicant matrix', /\(p === '\/api\/jobs\/undo' \|\| p === '\/api\/open-at'\)\) \{\n\s+if \(!isLocal\) return send\(res, 403/.test(server));
   check('the reason typed on Deny is kept', /if \(allow === false && typeof note === 'string' && note\.trim\(\)\) keepDenyNote\(brain, note\)/.test(server));
   check('Settings has a Jobs panel with eleven switches, off unless turned on', /\['jobs', '🔁 Jobs'/.test(cellar) && (cellar.match(/\$\{sw\('/g) || []).length === 11 && /j\[k\] === true/.test(cellar));
-  check('the panel is in How Bob works and the Bob group', CARDS.find((c) => c.id === 'how').topics.includes('adv-jobs') && GROUPS.find(([g]) => g === 'Bob')[1].includes('adv-jobs') && CARDS.every((c) => c.about.length <= 70));
+  check('the panel is in How Bob works and the Chat and jobs group', CARDS.find((c) => c.id === 'how').topics.includes('adv-jobs') && GROUPS.find(([g]) => g === 'Chat and jobs')[1].includes('adv-jobs') && CARDS.every((c) => c.about.length <= 70));
   check('the chat draws the bar, the receipt, Stop after this step and the links', /jobHelps\.event\(ev\)/.test(app) && /jobHelps\.busy\(b\)/.test(app) && /jobHelps\.links\(el\)/.test(app) && /jobHelps\.whyBox\(\)/.test(app));
   check('the window only opens editor addresses', /openUrl: \(url\) => \(\/\^\(\?:vscode\|cursor\|vscodium\):/.test(main));
   check('the phone shows the receipt as text', /ev\.type === 'receipt'/.test(phone));
   const help = HELP.find((e) => e.id === 'settings-jobs');
-  const labels = ['Steer Bob mid-job', 'Show Stop after this step', 'Give each job a time limit', 'Show a receipt after each job', 'Run the tests after code edits', 'Ask one question before a vague big job', 'Remember a no for the whole chat', 'Reuse look-ups for an hour', 'Show sources under web answers', 'Say how sure Bob is', 'Make file:line links clickable'];
+  const labels = ['Steer mid-job', 'Stop after this step', 'Job time limit', 'Job receipt', 'Run tests after code edits', 'Ask before a vague job', 'Remember a no', 'Cache look-ups for an hour', 'Sources under web answers', 'Confidence line', 'Clickable file:line links'];
   check('Help explains every switch, in the words on screen', help && labels.every((l) => help.html.includes(l) && cellar.includes(`'${l}'`)), labels.filter((l) => !help?.html.includes(l)).join(' | '));
   check('Help says where it works', /Windows, Mac and Linux/.test(help.html) && /Android/.test(help.html));
   const glossary = HELP.find((e) => e.id === 'glossary').html;
@@ -339,7 +339,7 @@ const run = async (text, sid = 'main') => { const { jobId } = brain.enqueue(sid,
   brain.cfg.allTools = false;
 }
 {
-  // Run the tests after code edits: an edit in a project with tests gets one note before he says done.
+  // Run tests after code edits: an edit in a project with tests gets one note before he says done.
   const proj = path.join(innDir, 'proj'); fs.mkdirSync(path.join(proj, 'src'), { recursive: true });
   fs.writeFileSync(path.join(proj, 'package.json'), '{"scripts":{"test":"node t.js"}}'); fs.writeFileSync(path.join(proj, 'src', 'a.js'), 'let a = 1;\n');
   brain.cfg.jobHelps = cleanJobHelps({ runTests: true }); brain.cfg.projects = { proj };

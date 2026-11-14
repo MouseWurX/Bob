@@ -3,7 +3,7 @@
 // cards are answered No, nothing new starts) and let them carry on again. It never turns a Hand on, and when Settings
 // has Hands off it has nothing to stop, so it just says so.
 // Whether Bob asks first shows on the 🔓 Autonomy button next to it (quick-switches.js), not here.
-// While "Let Bob work without asking" is on (and not stopped), a banner sits above the chat with its own Stop button.
+// While "Work without asking" is on (and not stopped), a banner sits above the chat with its own Stop button.
 const $ = (id) => document.getElementById(id);
 // The banner grows with every check Bob is let past (the owner, 2026-11-09): working without asking, then using apps,
 // his browser, seeing the screen, and each hard limit switched off. Its Hide button (kept for new users, hideable for
