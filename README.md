@@ -328,6 +328,10 @@ Put Bob on your PC, laptop, handheld and phone, and they find each other on your
 
 <br clear="right">
 
+<img src="app/docs/screens/bob-net-architecture.svg" alt="Bob-Net at a glance: a PC, handheld, laptop and Raspberry Pi on the home network, a phone over Tailscale; each Bob has a door with a passcode; hellos every half minute, quick replies and jobs go to the least busy Bob, one brain spread over two graphics cards with each Bob loading its share from its own copy, and Brain Copying sending a brain to another Bob">
+
+*Bob-Net at a glance: who talks to whom, and what goes between them.*
+
 ## Light on your machine
 
 | | |
