@@ -180,6 +180,11 @@ check('only Bobs on Bob-Net right now', v.bobs.length === 1 && v.bobs[0].name ==
   const pages = roomPages(lines);
   check('each channel is its own page, the one waiting first', pages.map((p) => p.name).join() === '#memes,Channel …333,#general' && pages[0].waiting === 1);
   check('Bob\'s reply sits on its request\'s page', pages.find((p) => p.id === '111').lines.map((l) => l.id).join() === 'a1,b1');
+  const two = roomPages([...lines, { id: 'm1', kind: 'me', at: 5, where: '111', whereName: 'general', text: 'hey all' }], [{ id: '111', name: 'general' }, { id: '444', name: 'quiet' }]);
+  check('what you say through Bob sits on that channel\'s page', two.find((p) => p.id === '111').lines.map((l) => l.id).join() === 'a1,b1,m1');
+  check('every listed channel gets a page you can talk in, even a quiet one', two.find((p) => p.id === '444')?.name === '#quiet' && two.find((p) => p.id === '444').listed && !two.find((p) => p.id === '333').listed);
+  const rc = read('public/room-chat.js');
+  check('the talk box is only on a listed channel\'s page', /cur\?\.listed \? `<div class="room-say">/.test(rc) && /data-roomsay/.test(rc));
   const page = read('public/net-overlay.js');
   check('a head opens its own chat: Discord its group chat, Telegram your Telegram chat', /if \(s\.it\.chat\) open\(s\.it\.chat\); else openRoom\(s\.it\.id\)/.test(page));
   check('a new request gives a word bubble, never a sound or pop-up', /ev\.type === 'room'/.test(page) && !/new Audio|Notification\(/.test(page));

@@ -479,6 +479,25 @@ export class DiscordBridge {
     }
   }
 
+  // 1.5.228 You talking in a channel from Bob's Discord chat: only a channel on Bob's list, only while connected, at
+  // most one message a second, and nobody gets pinged (no @everyone, no @someone). Kept on that channel's page.
+  async say(channelId, text) {
+    const s = this.settings();
+    const ch = String(channelId || '');
+    const words = String(text ?? '').replace(/[\u0000-\u0008\u000b-\u001f]/g, '').trim();
+    if (!words) return { error: 'empty' };
+    if (words.length > MAX_TEXT * 2) return { error: 'long' };
+    if (!s.enabled || !this.running) return { error: 'off' };
+    if (!s.channels.includes(ch)) return { error: 'not listed' };
+    if (this.now() - (this.saidAt || 0) < 1000) return { error: 'fast' };
+    this.saidAt = this.now();
+    for (const piece of chunks(words)) {
+      try { await this.rest('POST', `/channels/${ch}/messages`, { content: piece, allowed_mentions: { parse: [] } }); } catch (e) { this.log(`couldn't post to Discord: ${e.message}`); return { error: 'send' }; }
+    }
+    const line = this.gate.said({ where: ch, whereName: await this.channelName(ch), text: words });
+    return { line };
+  }
+
   // Only a file made for this job, in Bob's own save folders, made after the request came in.
   fileOk(job, file) {
     try {
@@ -745,20 +764,36 @@ export async function discordRoute({ req, res, p, isLocal, brain, body, send }) 
   return true;
 }
 
+const SAY_ERRORS = {
+  empty: 'Type something first.', long: 'That\'s too long for one go.', off: 'I\'m not connected to Discord right now, so it didn\'t send.',
+  'not listed': 'That channel isn\'t on my list. Add it in Settings, Discord, to talk there.', fast: 'One a second, please. Try again.', send: 'Discord didn\'t take it. See the logbook.'
+};
+
 // 1.5.211 GET/POST /api/rooms/discord: the group's own chat, and your Accept or Decline. Only on this PC (the second gate).
 async function roomRoute({ req, res, isLocal, brain, body, send }) {
   const bridge = brain.discord;
   if (!bridge) { send(res, 404, { error: 'not ready' }); return true; }
   if (!isLocal) { send(res, 403, { error: 'Discord requests can only be answered on this replicant matrix itself.' }); return true; }
-  if (req.method === 'GET') { send(res, 200, { ...bridge.gate.view(), on: bridge.settings().enabled, autoAccept: bridge.settings().autoAccept }); return true; }
+  if (req.method === 'GET') { send(res, 200, await roomView(bridge)); return true; }
   if (req.method !== 'POST') { send(res, 405, { error: 'no' }); return true; }
   const b = await body(req);
   if (b.clear === true) { bridge.gate.clear(); bridge.roomNews(); brain.log('settings', 'Discord chat emptied (your click)'); }
-  else {
+  else if (b.say && typeof b.say === 'object') { // 1.5.228 you, talking in a channel through Bob
+    const r = await bridge.say(b.say.where, b.say.text);
+    if (r.error) { send(res, r.error === 'send' ? 502 : 409, { error: SAY_ERRORS[r.error] || 'That didn\'t send.' }); return true; }
+  } else {
     const r = await bridge.answer(String(b.id || ''), b.ok === true);
     if (r.error) { send(res, 409, { error: r.error === 'not found' ? 'That request is gone.' : `That one is ${r.error.replace('already ', 'already ')}.` }); return true; }
   }
-  send(res, 200, { ...bridge.gate.view(), on: bridge.settings().enabled, autoAccept: bridge.settings().autoAccept });
+  send(res, 200, await roomView(bridge));
   return true;
+}
+
+// The chat, plus the channels on Bob's list (each gets a page you can talk in, even before anyone calls him there).
+async function roomView(bridge) {
+  const s = bridge.settings();
+  const channels = [];
+  for (const id of s.channels.slice(0, 50)) channels.push({ id, name: bridge.running ? await bridge.channelName(id) : (bridge.channelNames?.get(id) || '') });
+  return { ...bridge.gate.view(), on: s.enabled, connected: Boolean(bridge.running), autoAccept: s.autoAccept, channels };
 }
 

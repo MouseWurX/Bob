@@ -2544,3 +2544,8 @@ dialog.fade-ask .fade-row button.danger { color: var(--on-accent); background: v
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 21 7v10l-9 5-9-5V7z'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 21 7v10l-9 5-9-5V7z'/%3E%3C/svg%3E") center / contain no-repeat;
 }
+/* 1.5.228 The Discord chat: what you say in a channel through Bob, and the box to say it. */
+.room-chat .room-me { border-left: 3px solid var(--accent); padding-left: 6px; }
+.room-say { margin-top: 8px; }
+.room-say .row { align-items: flex-end; gap: 6px; }
+.room-say textarea { flex: 1; min-width: 0; resize: vertical; }
