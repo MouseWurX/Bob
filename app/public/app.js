@@ -3,6 +3,7 @@ import './sample-data.js'; // 1.5.210 sample-data mode (?sample=1 in the address
 import { drawBob, setLook } from './bob-sprite.js';
 import { secretNoteHtml, wireSecretNote } from './more-tools.js'; // 🧰 More tools: a password Bob made
 import { applyStyle, applySavedStyle } from './themes.js';
+import { netFileEvent, wireNetFileButtons } from './net-files.js'; // Nov 14 Bob-Net Files and brains
 import { createStatusLine } from './status-line.js'; // 1.5.216: his line follows his state
 import { createMindCube } from './mind-cube.js'; // 1.5.209: Bob's picture as the fNRI cube
 applySavedStyle();
@@ -118,6 +119,7 @@ const layout = createLayout({ post: (u, d) => post(u, d), openTasks: () => tasks
 
 const $ = (id) => document.getElementById(id);
 const log = $('log'), input = $('input'), sendBtn = $('send'), stopBtn = $('stop'), statusEl = $('status');
+wireNetFileButtons(log); // Nov 14 Files and brains: Stop, Carry on and Throw away on a copy's card in the chat
 const setSaveToLab = saveToLab(log, api);
 const brainBar = createBrainBar({ post: (u, d) => post(u, d), note: (t, k) => note(t, k) });
 const handsSwitch = createHandsSwitch({ note: (t, k) => note(t, k) });
@@ -1058,6 +1060,7 @@ function onEvent(ev) {
       else note(`Housekeeping: ${[ev.summaries && `summed up ${ev.summaries} chat${ev.summaries === 1 ? '' : 's'}`, ev.topics && `filed ${ev.topics} chat${ev.topics === 1 ? '' : 's'} under topics`, ev.auto && `tidied ${ev.auto} thing${ev.auto === 1 ? '' : 's'}`, ev.ask && `${ev.ask} thing${ev.ask === 1 ? '' : 's'} to look at in Tidy up`].filter(Boolean).join(', ') || 'nothing to do'}.${ev.error ? '' : ''}`);
       if (ev.ask != null) countBadge($('tidyBtn'), ev.ask);
       break;
+    case 'net-file-ask': case 'net-file': case 'net-file-gone': netFileEvent(ev, { add, scrollDown, note }); break; // Nov 14 Files and brains (public/net-files.js)
     case 'carried': // Carry on on another Bob (src/carry.js): another of your Bobs or your phone handed a chat over
       add('note borrow', `📡 ${esc(ev.from || 'Another of your Bobs')} handed over a chat: <strong>${esc(ev.title || '')}</strong>. <button type="button" class="link" data-carried="${esc(ev.id || '')}">Open it</button>`);
       break;

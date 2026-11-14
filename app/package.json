@@ -173,6 +173,7 @@
     "test/run-games-plus-test.js",
     "test/run-character-test.js",
     "test/run-bob-net-party-test.js",
+    "test/run-bob-net-files-test.js",
     "test/run-bestiary-test.js",
     "test/run-chest-test.js",
     "test/run-rental-test.js",

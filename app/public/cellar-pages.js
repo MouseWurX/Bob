@@ -11,6 +11,7 @@ import { telegramHtml } from './telegram.js';
 import { discordHtml } from './discord.js';
 import { phoneAccessHtml } from './phone-access.js';
 import { shareBrainsHtml } from './share-brains.js';
+import { netFilesHtml } from './net-files.js'; // Nov 14 Files and brains
 import { TEXT_MIN, TEXT_MAX, TEXT_STEP } from './everyday.js';
 
 // now() hands over createCellar's own values as they are at the moment of each call; fresh() copies them in.
@@ -213,6 +214,8 @@ export function createSettingsParts(now) {
       ${shareBrainsHtml()}
       <h4 class="ssub">Chats and your phone</h4>
       ${sswitch('carryIn', settings.carryIn === true, 'Accept chats', 'Your other Bobs and your phone can hand a chat to this Bob with Carry on on another Bob. It lands in Past chats as a new chat. Words only: no files, pictures or memory.')}
+      ${sswitch('netFiles', settings.netFiles === true, 'Files and brains', 'Send files to your other Bobs and copy brains to them over Bob-Net, and take theirs. Nothing comes in until you press Yes on the card. Needs it on both Bobs.')}
+      ${netFilesHtml()}
       ${sswitch('netOverlay', settings.netOverlay === true, 'Bob-Net icons', 'An icon under my picture for each Bob on Bob-Net and each coding agent you added. Click one to chat with it here. It only thinks (plus web search if on): no files, programs or Hands. The other Bob needs Accept jobs on.')}
       ${sswitch('phoneGlance', settings.phoneGlance === true, 'Share status with my phone', 'Bob for Android and its widget can show this Bob\'s state, brain, GPU heat and memory, running jobs and your next reminder. Only your signed-in phone and your other Bobs can ask.')}`;
   }

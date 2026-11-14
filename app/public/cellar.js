@@ -31,6 +31,7 @@ import { mountEveryday, applyReading, TEXT_MIN, TEXT_MAX, TEXT_STEP } from './ev
 import { adventureSettingsHtml, mountAdventureSettings } from './adventure.js';
 import { gamesSettingsHtml, mountGamesSettings } from './games.js';
 import { shareBrainsHtml, mountShareBrains } from './share-brains.js';
+import { mountNetFiles } from './net-files.js'; // Nov 14 Bob-Net: Files and brains
 import { findTheme, DEFAULT_THEME } from './themes.js';
 import { tip, noteOrTip, stripTags, keep } from './tips.js';
 import { HOUSE, houseStyleHtml } from './house-style.js';
@@ -613,6 +614,7 @@ export function createCellar({ popOut = null } = {}) {
     mountAdventureSettings(dlg.querySelector('.adventure-box'), { api, settings }); // 1.5.117 🎲 Adventure
     mountGamesSettings(dlg.querySelector('.games-box'), { api, settings }); // 1.5.121 🧩 Games
     mountShareBrains(dlg.querySelector('.share-box')); // Bob-Net: My other Bobs and What they share
+    mountNetFiles(dlg.querySelector('.net-files-box')); // Nov 14 Bob-Net: Files and brains
     readyLine(); // 1.5.117: "Bob 1.5.117 is ready · Restart Bob now" on the updates line when a new Bob waits
     const page = mode === 'welcome' ? 'Welcome' : tab === 'settings' ? 'Settings' : tab === 'style' ? 'Style' : 'Get models';
     $('cellar-title').textContent = page;
@@ -1406,7 +1408,7 @@ export function createCellar({ popOut = null } = {}) {
         return;
       }
       // Voice, phone and Bob-Net (items 133 to 142): plain switches, off unless turned on.
-      if (['talkOver', 'readDocs', 'netVoices', 'carryIn', 'phoneGlance', 'netOverlay'].includes(el.dataset.set)) { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k] === true; window.dispatchEvent(new CustomEvent('bob-voice-net', { detail: { [k]: r[k] === true } })); if (k === 'netOverlay') window.dispatchEvent(new CustomEvent('bob-net-overlay', { detail: r[k] === true })); flash(el, r[k] ? 'On.' : 'Off.'); return; }
+      if (['talkOver', 'readDocs', 'netVoices', 'carryIn', 'phoneGlance', 'netOverlay', 'netFiles'].includes(el.dataset.set)) { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k] === true; if (k === 'netFiles') window.dispatchEvent(new CustomEvent('bob-net-files-switch')); window.dispatchEvent(new CustomEvent('bob-voice-net', { detail: { [k]: r[k] === true } })); if (k === 'netOverlay') window.dispatchEvent(new CustomEvent('bob-net-overlay', { detail: r[k] === true })); flash(el, r[k] ? 'On.' : 'Off.'); return; }
       if (el.dataset.netvoice) { const r = await api('/api/settings', { netVoiceMap: { [el.dataset.netvoice]: el.value } }); settings.netVoiceMap = r.netVoiceMap || {}; window.dispatchEvent(new CustomEvent('bob-voice-net', { detail: {} })); flash(el, 'Saved.'); return; }
       if (el.dataset.set === 'editOwn') { const r = await api('/api/settings', { editOwn: el.checked }); settings.editOwn = r.editOwn; el.checked = r.editOwn; flash(el, r.editOwn ? 'On. Bob can fix his own earlier messages.' : 'Off. Bob sends a new message for any fix.'); return; }
       if (el.dataset.set === 'statusJokes') { const r = await api('/api/settings', { statusJokes: el.checked }); settings.statusJokes = r.statusJokes; el.checked = r.statusJokes; window.dispatchEvent(new CustomEvent('bob-status-jokes', { detail: r.statusJokes })); return; }
