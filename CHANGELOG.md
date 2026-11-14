@@ -4,6 +4,19 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.224
+
+I can keep order on your Discord server now, with plain rules and no brain, and you can keep me from chatting there at all so the graphics card stays free.
+
+### New
+
+- **Keep order on Discord** (Settings, Online services, Bob on Discord; off to start with). I moderate your server with plain rules and no brain. Spam, scam links and slurs come down, and your own blocked words and sites too. Warnings add up: a short timeout from the second one, longer each time. Kicks and bans always wait for your OK, in Settings or your Discord DMs. There's also a raid guard, a welcome with an **I agree** button, roles people can give themselves, `!report`, and commands for your moderators. Every action goes in a log, with the reason in Discord's own audit log.
+- **Chat on Discord** (on to start with). Switch it off and I never load a brain for your server, so the graphics card stays free. Keep order still runs.
+- **Ask a brain about unclear cases** (off). For a message the rules can't call, one brain looks at it with no tools, and it can only delete and warn.
+- **Run Keep order from your chat.** With Keep order on, you can ask me in our own chats for its status, to allow or deny a waiting kick or ban, or to lock the server down and unlock it. Each one asks you first.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.223
 
 I can tidy your email now, if you let me, nothing in an email can steer me, and a forgotten passcode isn't the end of your chats. I keep a record of my tool calls so I can quote what really happened, and Clear chat answers properly again.
@@ -187,32 +200,6 @@ One brain really is one brain, Journey gets its own tab, the cube fills as a bra
 - **The changelog opens on GitHub again.** It had grown too big for GitHub's page. CHANGELOG.md now holds the newest 10 versions, and the older ones are in app/docs/changelog, linked from the bottom.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android. Picture to 3D needs an NVIDIA card. Experts per word needs Brain Engine 7.
-
-## 1.5.214
-
-Home network first, Tailscale when you're out; a lent card goes back when a game wants it; and Straight facts, round two.
-
-### New
-
-- **Straight facts, round two** (the Lab, Challenges and lesson sets). Two new Challenges packs check with questions a brain was never taught: **new questions 1** holds facts the first Straight facts lesson set doesn't teach, and **new questions 2** holds facts neither set teaches. A second sourced lesson set, **Straight facts, round two (sourced)**, teaches the facts of new questions 1 and more, in English and Chinese, each with its links. So the order is: teach, check with new questions, teach again if it still leans, and check again with new questions. None of these count in Overall, and every answer and its odds go in the run's log.
-- **Teach the full brain before a cut** (the Forge). Two Forge plans, fact-fix-r1 and fact-fix-r2, teach the full Qwen the fact lessons, mixed with a sample of your own lessons so nothing else drifts. They save the teacher's odds, then serve the stock and the taught brain on the card while the PC runs every Straight facts pack against both. `node straight-facts.mjs mix` makes their lessons on the PC with no graphics card, and `probe` now takes the card's address and key from the Forge. A rental still needs your own yes with the live price.
-
-### Changed
-
-- **On a home network, Bob-Net just works.** **Also over the home network** is now on to start with, on every Bob, including ones updated to 1.5.213 with it off (even if you'd switched it off there, since 1.5.213 couldn't tell a chosen off from the old default; switch it off again if you want). You can still switch it off, and then it stays off. Your Bobs talk over the home network first and use Tailscale only as the fallback, for when you're away from home. Tailscale is never needed at home.
-- **One Bob, one entry, both roads.** Each of your other Bobs keeps his home address and his Tailscale address. I try home first, then Tailscale. A Bob you paired over Tailscale gets his home address saved the next time I see him at home (Find my other Bobs, or his hello), and a Bob you paired at home keeps his Tailscale address for when you're out. If a paired Bob can't be reached and I don't know his home address yet, I look for him on the home network by myself. Pairing again at home keeps the one entry.
-
-### Fixed
-
-- **SCUT runs at cable speed when both Bobs are on a cable.** SCUT's speed cap is now **Auto** to start with: up to 100 Mbit/s as before, so your network isn't crowded, and up to 1000 only when both Bobs reach each other over a network cable (a switch between them is fine) or USB4. Before, a 1 Gbit/s cable sent a brain's first copy at about 96 Mbit/s. There's also a new **up to 1000 Mbit/s** pick. A cap you picked yourself stays.
-- **A handheld lending its built-in graphics no longer turns down a new lend right after letting the last one go** (the memory takes a moment to come back), and it only gives its card back when the machine itself is nearly out of memory, not because the lend is using it.
-
-- **A lent graphics card is given back when a game wants it.** While a card is lent for a spread brain, its Bob looks at it every few seconds. If a game starts on it, or its free memory runs low (or that Bob goes to Gaming), he gives it back by himself. The Bob using it hears within seconds, finishes the reply he's on, and loads the brain again without that card: on his other Bobs' cards, or on his own card with the rest on his processor. The logbook says which Bob needed his card back and why. Before, the game and the lent brain fought over the card's memory.
-
-- **Find my other Bobs lists each Bob once.** A Bob that answers on more than one address (Wi-Fi and a cable, or the home network and Tailscale) is one row, with Pair using his home address and his other addresses shown beside it. The address no longer shows twice in a row.
-- **A paired Bob showed "not reachable" with Tailscale off**, even though his home-network door answered. He's now reached at home. A Bob also tells the others his home door whenever it's open, so the quick home path is found without anyone switching anything on.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
 
 ## Older versions
 

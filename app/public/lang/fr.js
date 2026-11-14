@@ -128,7 +128,7 @@ export const WORDS = {
   "My other Bobs": "Mes autres Bob",
   "Bob-Net, your phone and sharing brains.": "Bob-Net, votre téléphone et le partage de cerveaux.",
   "Online and other apps": "En ligne et autres applis",
-  "Cloud helpers, chat bots, rented brains, ComfyUI, other apps, Claude.": "Aides en ligne, bots de discussion, cerveaux loués, ComfyUI, autres apps, Claude.",
+  "Cloud helpers, chat bots, Discord moderation, rentals, other apps.": "Aides en ligne, bots de discussion, modération Discord, locations, autres apps.",
   "What Bob may do": "Ce que Bob a le droit de faire",
   "Files, programs, apps and the tools he made.": "Fichiers, programmes, applis et les outils qu'il a créés.",
   "Fun": "Loisirs",

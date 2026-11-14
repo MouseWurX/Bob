@@ -394,6 +394,7 @@ A tabletop role-playing game with Bob as game master and a party of you, your fr
 - **Bob-Net access** (Settings, Bob-Net; off): Bob for Android, or your phone's browser, talks to Bob over Tailscale with a passcode. On Windows, **Let Tailscale through the firewall** adds one rule for Tailscale addresses only.
 - **Bob-Net** joins your Bobs on different computers. They can borrow each other's brains, check each other's work, share one big brain over Wi-Fi (**SCUT** and **SUDDAR**, both experimental; every SCUT packet is signed and scrambled), play together, and carry a chat on. **Show avatars** (off) shows them in Now running.
 - **Discord and Telegram** (Settings, Online services; off): talk to Bob from a chat app with your own bot token.
+- **Keep order on Discord** (Settings, Online services, Bob on Discord; off): Bob moderates your server with plain rules and no brain. He deletes spam, scam links and slurs, warns, and times people out. Kicks and bans wait for your OK. He also has a raid guard, a welcome with an I agree button, roles and reports. **Chat on Discord** (on) can be switched off so no brain ever loads for the server.
 - On Android: Share to Bob, a home-screen widget, low-data mode, reminders on your phone, and its own Saved prompts and backup.
 
 ---

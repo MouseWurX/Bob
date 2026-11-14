@@ -45,6 +45,7 @@ export const TOOL_KINDS = {
   browser_open: { risk: 'change', own: true }, browser_act: { risk: 'change', own: true },
   // Sends
   mcp_use: { risk: 'send', half: true, own: true }, pass_note: { risk: 'send' },
+  discord_mod: { risk: 'send' }, // 1.5.224 Keep order on Discord: kicks, bans and deletes always ask first
   // 🧰 More tools (1.5.208): looks, a few changes, and one send (a saved web service: POST and the rest ask first)
   calculate: { risk: 'look' }, make_password: { risk: 'look', volatile: true }, read_email: { risk: 'look', volatile: true }, tool_record: { risk: 'look', volatile: true }, manage_email: { risk: 'change' },
   read_calendar: { risk: 'look', volatile: true }, query_data: { risk: 'look' }, check_spelling: { risk: 'look' }, compare_files: { risk: 'look' },

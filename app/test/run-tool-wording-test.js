@@ -33,8 +33,9 @@ check('every tool has a description', all.every((f) => f.description.trim().leng
 // services, data, charts, spelling, meeting notes, compare) add about 7,100. All start off and are taken out while
 // off, and once on each comes in only when a message needs it (toolbox groups), so a normal turn doesn't carry them.
 // Nov 13: manage_email ("Let Bob tidy my email", off until switched on) and tool_record (in the memory group, only
-// when a message asks why) add about 1,000; the cap moved to 54,000.
-check('all tools together stay under 54,000 characters', size(all) < 54000, String(size(all)));
+// when a message asks why) add about 1,000; the cap moved to 54,000. 1.5.224: discord_mod (Discord Keep order, off
+// until switched on, hidden while off, and in its own group) adds about 450; the cap moved to 54,500.
+check('all tools together stay under 54,500 characters', size(all) < 54500, String(size(all)));
 const core = all.filter((f) => CORE.includes(f.name));
 // 1.5.207: reminders gained urgent (quiet hours) and offer_setup's list grew with the new opt-in switches; the
 // descriptions were trimmed to make room, and the cap moved from 8,000 to 8,100.
