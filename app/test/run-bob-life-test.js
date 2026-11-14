@@ -5,7 +5,7 @@ import { drawBob } from '../public/bob-sprite.js';
 import { frameRows, glance, LOOKS } from '../public/bob-sprite.js';
 import { avatar } from '../public/avatars.js';
 import { ANTIC_IDS, ANTIC_LINES, anticLine, MOMENTS } from '../public/patches.js';
-import { pickAntic } from '../public/cat-antics.js';
+import { pickAntic, ANTIC_GAP_MS } from '../public/cat-antics.js';
 import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
@@ -129,7 +129,8 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
   check('bubbles: a fixed layer outside the menu, out of screen readers', /<div id="bubbles" class="bubbles" aria-hidden="true">/.test(html) && html.indexOf('id="bubbles"') < html.indexOf('id="side"') && /\.bubbles \{ position: fixed;[^}]*pointer-events: none;/.test(css) && /class="bubble-x"/.test(html));
   check('bubbles: no cat line left inside the menu', !html.includes('catLine') && !antics.includes('catLine') && !css.includes('.cat-line'));
   check('bubbles: the whole line shows, never cut off (1.5.215)', /\.say-bubble > span \{ display: block; \}/.test(css) && !/\.say-bubble > span \{[^}]*line-clamp/.test(css));
-  check('bubbles: under Bob\'s picture, fading over about 0.7 s, a little see-through (1.5.215)', /layer\.classList\.add\('below'\)/.test(bub) && /transition: opacity \.7s/.test(css) && /\.say-bubble \{[^}]*color-mix\(in srgb, var\(--panel\) 72%, transparent\)/.test(css));
+  check('bubbles: under Bob\'s picture, fading over about 0.7 s, see-through but readable, solid on high contrast (1.5.228)', /layer\.classList\.add\('below'\)/.test(bub) && /transition: opacity \.7s/.test(css) && /\.say-bubble \{[^}]*color-mix\(in srgb, var\(--panel\) 45%, transparent\)[^}]*text-shadow/.test(css) && /prefers-contrast: more[^\n]*\.say-bubble[^\n]*background: var\(--panel\)/.test(css));
+  check('the cat\'s antics come every 5 to 10 minutes of idle, not every minute or two (1.5.228)', ANTIC_GAP_MS.min === 300000 && ANTIC_GAP_MS.min + ANTIC_GAP_MS.spread === 600000 && /ANTIC_GAP_MS\.min \+ Math\.random\(\) \* ANTIC_GAP_MS\.spread/.test(antics));
   check('bubbles: 15 s, held while pointed at, Esc closes', /BUBBLE_MS = 15000/.test(bub) && /mouseenter[\s\S]*clearTimeout/.test(bub) && /'Escape'/.test(bub));
   check('Bob\'s status line wraps and is never cut off (1.5.215; two lines since 1.5.216)', /\.side \.status \{[^}]*overflow: visible;/.test(css) && !/\.side \.status \{[^}]*line-clamp/.test(css) && /Coffee in hand\.\\nReady when you are\./.test(rd('public/status-line.js')));
   check('bubbles: the cat speaks through the bubble; status words never go in a bubble, they go in Bob\'s thinking', /bubbles\.say\('cat'/.test(antics) && !/bubbles\.say\('bob'/.test(app) && /line\(`⚙ \$\{esc\(now\)\}`/.test(rd('public/mind-view.js')));

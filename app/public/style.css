@@ -944,18 +944,19 @@ body.left-folded .bob-prop { top: -6px; right: -6px; font-size: 11px; }
 .say-bubble.on { pointer-events: auto; }
 .bubble-x { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); font-size: 12px; line-height: 20px; text-align: center; cursor: pointer; }
 .bubble-x:hover { background: var(--card); color: var(--text); }
-.say-bubble { position: relative; max-width: 100%; padding: 7px 24px 7px 11px; border-radius: var(--r, 8px); border: 1px solid var(--accent); background: color-mix(in srgb, var(--panel) 72%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); color: var(--text); font-size: 12.5px; line-height: 1.4; box-shadow: 0 6px 20px rgba(0,0,0,.4); overflow-wrap: anywhere; opacity: 0; transform: translateY(-4px) scale(.96); transition: opacity .7s ease, transform .7s ease; } /* 1.5.215: pops in and out over about 0.7 s */
+.say-bubble { position: relative; max-width: 100%; padding: 7px 24px 7px 11px; border-radius: var(--r, 8px); border: 1px solid var(--accent); background: color-mix(in srgb, var(--panel) 45%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--text); font-size: 12.5px; line-height: 1.4; text-shadow: 0 0 3px var(--panel), 0 0 6px var(--panel); box-shadow: 0 4px 14px rgba(0,0,0,.22); overflow-wrap: anywhere; opacity: 0; transform: translateY(-4px) scale(.96); transition: opacity .7s ease, transform .7s ease; } /* 1.5.215: pops in and out over about 0.7 s. 1.5.228: more see-through (45% glass, was 72%), a soft glow behind the words keeps them readable */
 .say-bubble > span { display: block; } /* 1.5.215: the whole line, never cut off */
 .say-bubble.on { opacity: 1; transform: none; }
 .say-bubble[hidden] { display: none; }
 .say-bubble.cat-say { border-style: dashed; }
 /* the little tail points back at Bob's picture */
-.say-bubble::before { content: ""; position: absolute; left: -6px; top: 12px; width: 10px; height: 10px; background: var(--panel); border-left: 1px solid var(--accent); border-bottom: 1px solid var(--accent); transform: rotate(45deg); }
+.say-bubble::before { content: ""; position: absolute; left: -6px; top: 12px; width: 10px; height: 10px; background: color-mix(in srgb, var(--panel) 45%, transparent); border-left: 1px solid var(--accent); border-bottom: 1px solid var(--accent); transform: rotate(45deg); }
 .say-bubble.cat-say::before { border-style: dashed; }
 .bubbles.below .say-bubble::before { left: 18px; top: -6px; border-bottom: 0; border-top: 1px solid var(--accent); }
 .bubbles .say-bubble + .say-bubble::before { display: none; }
 @media (prefers-reduced-motion: reduce) { .say-bubble { transition: none; transform: none; } }
 @media (forced-colors: active) { .say-bubble, .say-bubble::before { border-color: CanvasText; } }
+@media (prefers-contrast: more), (prefers-reduced-transparency: reduce) { .say-bubble, .say-bubble::before { background: var(--panel); text-shadow: none; } } /* 1.5.228: solid for anyone who asks for more contrast or less see-through */
 @media print { .bubbles { display: none; } }
 /* 1.5.216: the Tasks word bubble, under the Tasks tab (above it on a phone's bottom bar). Same see-through glass and
    0.7 s fade as Bob's and the cat's bubbles; it fades out into the tab. Fixed, so it never moves the chat. */
