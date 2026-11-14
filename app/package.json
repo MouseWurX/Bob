@@ -334,7 +334,7 @@
       "engines/**"
     ],
     "win": {
-      "icon": "public/icons/bob-512.png",
+      "icon": "public/icons/bob.ico",
       "target": [
         "portable",
         "nsis"

@@ -3,7 +3,7 @@
 // 1.5.134: both switches are ON unless turned off (the owner asked for Bob in the tray and his look on the taskbar).
 import fs from 'node:fs';
 import zlib from 'node:zlib';
-import { lookPng, lookPixels, windowState, applyWindowState } from '../src/app-icon.js';
+import { lookPng, lookPixels, windowState, applyWindowState, lampPng, lampIcon } from '../src/app-icon.js';
 import { mergeSettings } from '../src/config.js';
 import { getLook } from '../public/bob-sprite.js';
 import { HELP } from '../public/help-content.js';
@@ -48,9 +48,14 @@ function decode(png) {
 
 // ---- the switches ----
 {
-  check('both switches start on (1.5.134), with the usual look drawn as the icon', windowState({}).tray === true && windowState({}).lookIcon === true && windowState({}).icons !== null && windowState({}).icons[32].equals(lookPng('sysop', 32)));
+  check('the tray starts on and the look-as-icon switch off (1.5.228): the icon is the Mercury tesseract', windowState({}).tray === true && windowState({}).lookIcon === false && windowState({}).lamp === 'mercury' && windowState({}).icons !== null && windowState({}).icons[32].equals(lampPng('mercury', '32')));
+  check('the tesseract comes in every size the window asks for, plus the padded Mac one', [16, 24, 32, 48, 256, 'mac'].every((n) => Buffer.isBuffer(windowState({}).icons[n])));
+  check('the icon follows the lamp, in any look; an unknown lamp is Mercury', ['mercury', 'sodium', 'thallium', 'neon'].every((l) => windowState({ style: { lamp: l, look: 'terminal' } }).icons[256].equals(lampPng(l, '256'))) && !lampPng('sodium', '32').equals(lampPng('neon', '32')) && windowState({ style: { lamp: 'plaid' } }).lamp === 'mercury' && lampIcon(undefined) === 'mercury');
+  check('a missing picture leaves the window on its own icon file, never half a set', windowState({}, { lampDir: '/nowhere-' + Date.now() }).icons === null);
+  check('the tray dot sits on the tesseract too', ['16', '24', '32'].every((n) => windowState({ trayDot: true, style: { lamp: 'neon' } }).dotIcons[n].equals(lampPng('neon', 'dot-' + n))));
   check('only false turns them off when saved', mergeSettings({}, { tray: false, lookIcon: false }).tray === false && mergeSettings({}, { tray: false, lookIcon: false }).lookIcon === false && mergeSettings({}, { tray: 'no', lookIcon: 0 }).tray === true && mergeSettings({}, { tray: 'no', lookIcon: 0 }).lookIcon === true);
-  check('turned off, the window gets no pictures and no tray', windowState({ tray: false, lookIcon: false }).icons === null && windowState({ tray: false, lookIcon: false }).tray === false);
+  check('only a saved switch puts the look on the icon', windowState({ lookIcon: true }).icons[32].equals(lookPng('sysop', 32)) && windowState({ lookIcon: 'yes' }).lookIcon === false);
+  check('turned off, the tray goes and the icon is the tesseract', windowState({ tray: false, lookIcon: false }).icons[32].equals(lampPng('mercury', '32')) && windowState({ tray: false, lookIcon: false }).tray === false);
   const own = windowState({ look: 'c:m.regular.0.short.1.1.none.0.tee.0.none.none.none' });
   check('a look built from parts (the character screen) becomes the icon too', own.lookName === 'Your own design' && own.icons && !own.icons[32].equals(lookPng('sysop', 32)));
   const st = windowState({ lookIcon: true, look: 'pc-2' });
@@ -81,14 +86,14 @@ function decode(png) {
   check('the first trip to the tray says where he went and how to quit, once ever', /tray-hint-shown/.test(main) && /pick Quit Bob/.test(main));
   check('opening Bob again brings his window back', /app\.on\('second-instance', showBob\)/.test(main));
   const server = read('src/server.js');
-  check('saving tray, icon or look updates the window at once', /if \('tray' in b \|\| 'lookIcon' in b \|\| 'look' in b\) applyWindowState\(cfg\);/.test(server));
+  check('saving tray, icon, look or lamp updates the window at once', /if \('tray' in b \|\| 'lookIcon' in b \|\| 'look' in b \|\| 'style' in b\) applyWindowState\(cfg\);/.test(server));
   check('the window gets the switches at start-up', /applyWindowState\(cfg\); \/\/ 1\.5\.94/.test(server));
 }
 
 // ---- Settings and Help ----
 {
   const cellar = publicText('cellar.js');
-  check('Settings has both switches, each saying it starts on', /sswitch\('tray', settings\.tray !== false, 'Minimise to tray', `/.test(cellar) && /sswitch\('lookIcon', settings\.lookIcon !== false, 'Use Bob\\'s look as his icon', `/.test(cellar));
+  check('Settings has both switches: the tray on, the look-as-icon off unless switched on', /sswitch\('tray', settings\.tray !== false, 'Minimise to tray', `/.test(cellar) && /sswitch\('lookIcon', settings\.lookIcon === true, 'Use Bob\\'s look as his icon', `/.test(cellar));
   check('the icon note says a pinned taskbar shortcut is the one thing that may not follow', /pinned to the taskbar may keep the usual icon/.test(cellar));
   check('the tray note says how to close him fully', /pick <strong>Quit Bob<\/strong>/.test(cellar));
   const topic = HELP.find((e) => e.id === 'tray');
@@ -96,10 +101,12 @@ function decode(png) {
   check('the FAQ answers "why is he still running" and the icon question', ['faq-tray-quit', 'faq-tray-icon'].every((id) => HELP.some((e) => e.id === id && e.group === 'FAQ')));
   const faqIcon = HELP.find((e) => e.id === 'faq-tray-icon').html;
   check('the icon FAQ says it follows a saved look, names the pinned-shortcut catch and the phone app', /redraw the moment you save/.test(faqIcon) && /pinned/.test(faqIcon) && /Android/.test(faqIcon));
-  check('the tray topic says both start on and covers the phone', /both on unless you turn them off/.test(topic.html) && /Android doesn't let an app redraw its own icon/.test(topic.html));
-  check('the glossary explains the tray and the taskbar icon', /<dt>Tray<\/dt>/.test(HELP.find((e) => e.id === 'glossary').html) && /<dt>Taskbar icon<\/dt>/.test(HELP.find((e) => e.id === 'glossary').html));
+  check('the tray topic says which switch starts on, names the tesseract and covers the phone', /<strong>Minimise to tray<\/strong> is on unless you turn it off; <strong>Use Bob's look as his icon<\/strong> is off unless you turn it on/.test(topic.html) && /tesseract/.test(topic.html) && /Android doesn't let an app redraw its own icon/.test(topic.html));
+  check('the glossary explains the tray, the taskbar icon and the tesseract', /<dt>Tray<\/dt>/.test(HELP.find((e) => e.id === 'glossary').html) && /<dt>Taskbar icon<\/dt>/.test(HELP.find((e) => e.id === 'glossary').html) && /<dt>Tesseract<\/dt>/.test(HELP.find((e) => e.id === 'glossary').html));
+  const faqTess = HELP.find((e) => e.id === 'faq-icon-tesseract');
+  check('the FAQ says what the tesseract is, that it follows the lamp, and what stays Mercury', faqTess && faqTess.group === 'FAQ' && /optical illusion/.test(faqTess.html) && /Mercury/.test(faqTess.html) && /phone app/.test(faqTess.html));
   const inv = read('docs/SETTINGS-INVENTORY.md');
-  check('the settings inventory lists both, on', /\| Minimise to tray \| On unless.*\| On \(was Off/.test(inv) && /\| Use Bob's look as his icon \| On unless.*\| On \(was Off/.test(inv));
+  check('the settings inventory lists the tray on and the look-as-icon off', /\| Minimise to tray \| On unless.*\| On \(was Off/.test(inv) && /\| Use Bob's look as his icon \| Off unless.*\| Off \(was On from 1\.5\.134/.test(inv));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

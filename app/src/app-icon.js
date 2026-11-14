@@ -2,7 +2,29 @@
 // Style. Each pixel of the map becomes a square block (nearest-neighbour, so he stays crisp pixel art), on a clear
 // background. No packages: a PNG is a few chunks of zlib data, and node:zlib is built in.
 import zlib from 'node:zlib';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { getLook, LOOKS, DEFAULT_LOOK } from '../public/bob-sprite.js';
+
+// 1.5.228 Bob's own icon: a tesseract (a cube inside a cube) on a Lamplight tile, in the colour of the Lamplight
+// version picked (style.lamp: mercury, sodium, thallium or neon, in any look; anything else is Mercury). The pictures are drawn once by
+// installer/make-icons.mjs and shipped in public/icons/lamp, so nothing is drawn while Bob runs.
+export const LAMP_ICONS = ['mercury', 'sodium', 'thallium', 'neon'];
+export const lampIcon = (style) => (LAMP_ICONS.includes(style?.lamp) ? style.lamp : 'mercury');
+const LAMP_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'icons', 'lamp');
+const lampCache = new Map();
+export function lampPng(id, name, dir = LAMP_DIR) {
+  const f = path.join(dir, `${lampIcon({ lamp: id })}-${name}.png`);
+  if (!lampCache.has(f)) { try { lampCache.set(f, fs.readFileSync(f)); } catch { lampCache.set(f, null); } }
+  return lampCache.get(f);
+}
+export function lampIcons(id, dir) {
+  const out = {};
+  for (const s of [16, 24, 32, 48, 256]) out[s] = lampPng(id, String(s), dir);
+  out.mac = lampPng(id, 'mac-512', dir);
+  return Object.values(out).every(Boolean) ? out : null; // a missing file: the window program falls back to bob.ico / bob-512.png
+}
 
 const CRC = (() => {
   const t = new Uint32Array(256);
@@ -80,18 +102,22 @@ export const dotPng = (id, size = 32) => png(dotPixels(id, size), size);
 
 // What Bob's window program (electron/main.cjs) needs to know: the two switches and, when his look is his icon,
 // the pictures at the sizes Windows, macOS and Linux ask for (16/24/32 for the tray, 256 for the taskbar and Dock).
-export function windowState(cfg = {}) {
-  const lookIcon = cfg.lookIcon !== false; // on unless switched off (1.5.134)
+export function windowState(cfg = {}, { lampDir } = {}) {
+  // "Use Bob's look as his icon": off unless switched on since 1.5.228 (the owner asked for the tesseract as Bob's
+  // icon everywhere); on, the tray, taskbar and Dock show the pixel look picked in Style, as before.
+  const lookIcon = cfg.lookIcon === true;
   const id = getLook(cfg.look) ? cfg.look : DEFAULT_LOOK;
+  const lamp = lampIcon(cfg.style);
+  const dots = (sizes) => Object.fromEntries(sizes.map((s) => [s, lookIcon ? dotPng(id, s) : lampPng(lamp, `dot-${s}`, lampDir) || dotPng(id, s)]));
   return {
     tray: cfg.tray !== false, // on unless switched off (1.5.134)
     lookIcon,
     lookName: (getLook(id) || LOOKS[DEFAULT_LOOK]).name,
-    icons: lookIcon ? { 16: lookPng(id, 16), 24: lookPng(id, 24), 32: lookPng(id, 32), 48: lookPng(id, 48), 256: lookPng(id, 256) } : null,
-    // 150: the tray picture with a dot, ready for when a job is done or something needs you (Bob's look, even with
-    // "Use Bob's look as his icon" off, since the plain icon file can't be drawn on).
+    lamp,
+    icons: lookIcon ? { 16: lookPng(id, 16), 24: lookPng(id, 24), 32: lookPng(id, 32), 48: lookPng(id, 48), 256: lookPng(id, 256) } : lampIcons(lamp, lampDir),
+    // 150: the tray picture with a dot, ready for when a job is done or something needs you.
     trayDot: cfg.trayDot === true,
-    dotIcons: cfg.trayDot === true ? { 16: dotPng(id, 16), 24: dotPng(id, 24), 32: dotPng(id, 32), badge: dotPng('', 16) } : null,
+    dotIcons: cfg.trayDot === true ? { ...dots([16, 24, 32]), badge: dotPng('', 16) } : null,
     ...(cfg.trayDot === true ? {} : { dot: false })
   };
 }

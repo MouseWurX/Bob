@@ -385,6 +385,7 @@ function trayImage() {
   return nativeImage.createFromPath(iconFile('bob-32.png'));
 }
 function bigImage() {
+  if (MAC && winState.icons?.mac) return nativeImage.createFromBuffer(winState.icons.mac); // 1.5.228: the Dock wants Apple's padding round the tile
   return winState.icons ? nativeImage.createFromBuffer(winState.icons[256]) : nativeImage.createFromPath(iconFile(process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'));
 }
 
