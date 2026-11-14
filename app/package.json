@@ -275,7 +275,8 @@
     "test/run-apu-fit-test.js",
     "test/run-bob-net-home-test.js",
     "test/run-experts-per-word-test.js",
-    "test/run-mind-only-test.js"
+    "test/run-mind-only-test.js",
+    "test/run-welcome-steps-test.js"
   ],
   "bob": {
     "release": "1.5",

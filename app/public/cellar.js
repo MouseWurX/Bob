@@ -36,7 +36,8 @@ import { tip, noteOrTip, stripTags, keep } from './tips.js';
 import { HOUSE, houseStyleHtml } from './house-style.js';
 import { attributesHtml, cleanPersonality, greeting, PRESETS, DEFAULTS, isDefault } from './personality.js';
 import { esc, gb } from './util.js';
-import { wantsHtml, wantPatch, wantSaved } from './wants.js';
+import { wantsHtml, wantPatch, wantSaved, wantRowHtml, wantOn, WANTS } from './wants.js';
+import { WSTEPS, ENGINE_GROUPS, WELCOME_OWN_KEYS, splitWelcomeRows, welcomeRowName, tickedGB, stepHeadHtml, stepNavHtml, clampStep, stepIndex } from './welcome-steps.js'; // Nov 14: the Welcome as seven pages
 import { mountPresets } from './presets.js'; // Assistant presets
 import { LANGS, LANG_KEY, pickLang } from './i18n.js';
 import { makeBackupPanel } from './backup-panel.js';
@@ -532,6 +533,10 @@ export function createCellar({ popOut = null } = {}) {
     if (!wPicks) wPicks = splitPicks(rows, wSplit);
     return { pack, rows };
   }
+  // Nov 14 2026 (the owner): seven pages, Hello, Engines, Brains, Users, Privacy, Helpers, Done (welcome-steps.js).
+  // Back bottom left, Next bottom right, each naming its page. Ticks on Engines and Brains share one set of picks,
+  // and Get Bob ready on the Brains page gets both; downloads carry on while you go through the other pages.
+  let wStep = 0, wStepMoved = false, wHarness = null;
   function welcomeHtml() {
     const { pack, rows } = welcomeRows();
     const order = readyOrder(rows, wPicks);
@@ -549,31 +554,63 @@ export function createCellar({ popOut = null } = {}) {
         || (r.broken ? `✗ doesn't start${c?.why ? `: ${esc(c.why)}` : ''}, get it again` : r.swap ? 'came with me (basic version); this gets the faster NVIDIA version' : r.here ? (r.kind === 'engine' && !c ? 'here, checking…' : '✓ here') : gb(r.sizeGB));
       const what = r.kind === 'engine' ? 'program' : (r.slots || []).map((id) => SLOT_NAMES[id] || id).join(', ');
       const extra = r.blocked ? ` · ${esc(r.blocked)}` : r.warn ? ` · ${esc(r.warn)}` : r.id === 'ace-step-music' ? ' · needs the audio tools (about 12 GB more)' : r.note ? `<br><span class="muted">${esc(r.note)}</span>` : '';
-      return `<li><label><input type="checkbox" data-wpick="${esc(r.id)}" ${r.here && !r.swap && !r.broken ? 'checked disabled' : r.blocked ? 'disabled' : wPicks.has(r.id) ? 'checked' : ''}> ${esc(r.name)} <span class="muted">· ${esc(what)} · ${status}${r.license ? ` · ${esc(r.license)}` : ''}${extra}</span></label></li>`;
+      return `<li><label><input type="checkbox" data-wpick="${esc(r.id)}" ${r.here && !r.swap && !r.broken ? 'checked disabled' : r.blocked ? 'disabled' : wPicks.has(r.id) ? 'checked' : ''}> ${esc(welcomeRowName(r))} <span class="muted">· ${esc(what)} · ${status}${r.license ? ` · ${esc(r.license)}` : ''}${extra}</span></label></li>`;
     };
-    const engines = rows.filter((r) => r.kind === 'engine'), models = rows.filter((r) => r.kind === 'model');
-    return `<div class="welcome">
-      <h2>Welcome to Bob</h2>
-      <label class="callme"><strong>What should I call you?</strong> <input type="text" data-callme maxlength="40" value="${esc(settings?.callMe || '')}" placeholder="${esc(settings?.windowsName || 'your name')}" aria-label="What should Bob call you?" autocomplete="off"></label>
+    const { groups, brains } = splitWelcomeRows(rows);
+    const engRows = groups.flatMap((g) => g.rows);
+    const brainEngine = rows.some((r) => r.id === 'engine:brainengine');
+    const dlButtons = moving ? '<button data-readypause>Pause</button><button data-readystop>Stop</button>' : paused ? '<button class="get" data-readyresume>Resume</button><button data-readystop>Stop</button>' : short ? '<button class="get" data-readyrecheck>Try again</button>' : order.ids.length ? `<button class="get" data-getready>Get Bob ready (about ${gb(order.sizeGB)})</button>` : '';
+    const s = settings || {};
+    const step = WSTEPS[wStep].id;
+    const page = (title, lead, body) => `<h2 class="wz-title" tabindex="-1">${esc(title)}</h2>${lead ? `<p class="wz-lead muted">${lead}</p>` : ''}${body}`;
+    let body = '';
+    if (step === 'hello') body = page('Welcome to Bob', 'Seven short pages. You can change all of it later in Settings.', `
+      <label class="callme"><strong>What should I call you?</strong> <input type="text" data-callme maxlength="40" value="${esc(s.callMe || '')}" placeholder="${esc(s.windowsName || 'your name')}" aria-label="What should Bob call you?" autocomplete="off"></label>
       <section class="ready home-first"><h3>My home folder</h3>${homeHtml({ welcome: true })}</section>
-      <section class="ready"><h3>Get me ready</h3>
       <p class="muted">I call this computer my replicant matrix. You'll see that name around the app.</p>
-      <p class="muted spec">${esc(hw.spec || 'specs not read yet')}</p>
-      <p>Here's what I'd get so I can do everything on this replicant matrix: chat, code, see and make pictures, make clips, talk and listen. My picks are ticked. Untick anything you don't want, tick anything you do. Nothing downloads until you press the button, and I put each one in its slot myself when it's in.</p>
+      <p class="muted spec">${esc(hw.spec || 'specs not read yet')}</p>`);
+    else if (step === 'engines') body = page('Engines', 'The programs and models for pictures, video, voice, hearing, sound and 3D. My picks for this replicant matrix are ticked.', `
+      ${groups.map((g) => {
+        const ticks = (g.keys || []).map((k) => wantRowHtml(s, esc, k)).join('');
+        if (!g.rows.length && !ticks) return '';
+        return `<section class="wz-group"><h3>${esc(g.name)}</h3><p class="muted">${esc(g.does)}</p>
+          ${g.rows.length ? `<ul class="packlist">${g.rows.map(row).join('')}</ul>` : ''}
+          ${ticks ? `<ul class="packlist wantlist">${ticks}</ul>` : ''}</section>`;
+      }).join('')}
+      <p class="muted">Ticked here: about <strong>${gb(tickedGB(engRows, wPicks))}</strong>. Nothing downloads until you press Get Bob ready on the next page.</p>`);
+    else if (step === 'brains') body = page('Brains', `The minds that chat, code and see. ${brainEngine ? 'They run on Brain Engine, my own fork of llama.cpp.' : 'Brain Engine, my own fork of llama.cpp, has no build for this replicant matrix yet, so the standard brain program runs them here.'}`, `
       <label class="pick"><strong>Setup</strong><select data-pack>${packsFor(data.packs, hw?.board === 'arm').map((p) => `<option value="${p.id}" ${p.id === pack.id ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}</select></label>
-      <fieldset class="split-pick"><legend><strong>How should I split my brains?</strong> <span class="muted">This only changes which brains are ticked below. You can change it any time on the Brains page.</span></legend>
+      <fieldset class="split-pick"><legend><strong>How should I split my brains?</strong> <span class="muted">Changes which brains are ticked below.</span></legend>
         ${SPLITS.map((x) => `<label class="split-opt${x.lock ? ' locked' : ''}"><input type="radio" name="wsplit" data-wsplit="${x.id}" ${x.id === wSplit ? 'checked' : ''} ${x.lock ? 'disabled' : ''}> <span><strong>${esc(x.name)}</strong> <span class="muted">${esc(x.does)}${x.lock ? ` 🔒 ${esc(x.lock)}` : ''}</span></span></label>`).join('')}</fieldset>
-      <h4>Programs I run on</h4><ul class="packlist">${engines.map(row).join('')}</ul>
-      <h4>Models</h4><ul class="packlist">${models.map(row).join('')}</ul>
-      ${order.missing.length ? `<p class="warn-text">${order.missing.map((x) => `${esc(x.model)} runs on ${esc(x.engine)}, which isn't ticked.`).join(' ')} Tick it, or that model sits unused.</p>` : ''}
-      <p>${order.ids.length ? `About <strong>${gb(order.sizeGB)}</strong> to download. Free disk: ${hw.freeGB ?? '?'} GB. The big ones take a while; you can chat with me as soon as the programs and a brain are in.` : rows.some((r) => !r.here && !r.blocked) ? 'Nothing ticked to get. You can always come back here: Settings, Run first-time setup.' : 'Everything is already on this replicant matrix.'}</p>
+      <ul class="packlist">${brains.map(row).join('')}</ul>
+      ${order.missing.length ? `<p class="warn-text">${order.missing.map((x) => `${esc(x.model)} runs on ${esc(welcomeRowName(rows.find((r) => r.name === x.engine) || { id: '', name: x.engine }))}, which isn't ticked.`).join(' ')} Tick it, or that model sits unused.</p>` : ''}
+      <section class="ready"><h3>Get me ready</h3>
+      <p>${order.ids.length ? `About <strong>${gb(order.sizeGB)}</strong> to download, with the engines you ticked. Free disk: ${hw.freeGB ?? '?'} GB. You can chat as soon as the brain program and a brain are in.` : rows.some((r) => !r.here && !r.blocked) ? 'Nothing ticked to get.' : 'Everything is already on this replicant matrix.'}</p>
       ${short ? `<p class="error">Not enough free disk: free up ${short} GB, or untick something, then press Try again.</p>` : ''}
       ${job ? progress() : ''}
-      <div class="row">${moving ? '<button data-readypause>Pause</button><button data-readystop>Stop</button>' : paused ? '<button class="get" data-readyresume>Resume</button><button data-readystop>Stop</button>' : short ? '<button class="get" data-readyrecheck>Try again</button>' : order.ids.length ? `<button class="get" data-getready>Get Bob ready (about ${gb(order.sizeGB)})</button>` : ''}</div>
-      <p class="muted">You can change any of this later in Settings, Brains. If you skip something and ask me for it, I'll offer to set it up right there in the chat.</p></section>
-      ${wantsHtml(settings || {}, esc, { full: jumpTo === 'wants' })}
-      <div class="row welcome-end"><button data-skip>${order.ids.length && !moving ? 'Skip the downloads for now' : 'Done'}</button></div>
-    </div>`;
+      <div class="row">${dlButtons}</div>
+      <p class="muted">Downloads carry on while you finish the other pages, or with this window closed.</p></section>`);
+    else if (step === 'users') body = page('Users', 'Share me with others in the house. Everyone keeps their own things.', `
+      <ul class="packlist wantlist">${wantRowHtml(s, esc, 'profilesOn')}</ul>
+      <p class="muted">Switch user is in my menu: press the cube. Add people, and a passcode if they want one, in Settings.</p>
+      <div class="row"><button type="button" data-wantjump="adv-daily">Add people in Settings</button></div>`);
+    else if (step === 'privacy') body = page('Privacy', 'I run here, on this replicant matrix. Nothing goes online unless you start a download or switch on something that needs it, like web search.', `
+      <ul class="packlist wantlist"><li><label class="switch"><input type="checkbox" data-wharness="amnesiaOffer" ${wHarness?.amnesiaOffer === true ? 'checked' : ''}><span><strong>Offer Amnesia mode</strong><br><span class="muted">Adds 🫥 Amnesia beside Web search. Turn it off and I forget that stretch: chats, notes, memory and Topics.</span> <span class="want-said muted" aria-live="polite"></span></span></label></li></ul>
+      <p class="muted">Off until you tick it. The same switch is in Settings, How Bob works, Chat extras.</p>
+      <h3>Passcode lock</h3>
+      <p class="muted">Ask for a passcode when I open, and lock your chats. Optional.</p>
+      <div class="row"><button type="button" data-wantjump="ev-lock">Set up a passcode lock</button></div>`);
+    else if (step === 'helpers') body = page('Helpers', '', wantsHtml(s, esc, { full: jumpTo === 'wants', leave: WELCOME_OWN_KEYS }));
+    else {
+      const on = WANTS.filter((w) => wantOn(s, w.key)).map((w) => w.label);
+      if (wHarness?.amnesiaOffer === true) on.unshift('Offer Amnesia mode');
+      const dl = moving ? 'Downloading now. You can start chatting while it finishes.' : paused ? 'Paused. Resume on the Brains page.' : order.ids.length ? `Not started: about ${gb(order.sizeGB)} ticked. Get Bob ready is on the Brains page.` : 'Nothing left to download.';
+      body = page('Done', `${s.callMe ? `Ready when you are, ${esc(s.callMe)}.` : 'Ready when you are.'} Settings, Run first-time setup brings these pages back.`, `
+      <dl class="wz-sum"><dt>Downloads</dt><dd>${esc(dl)}</dd>
+      <dt>Switched on</dt><dd>${on.length ? esc(on.join(' · ')) : 'Nothing yet. Everything stays off until you tick it.'}</dd></dl>
+      ${job ? progress() : ''}`);
+    }
+    return `<div class="welcome wz" data-step="${step}">${stepHeadHtml(wStep, esc)}<div class="wz-page">${body}</div>${stepNavHtml(wStep, esc)}</div>`;
   }
 
   // Settings in its own window: the main window hands it over and stays on the page it had.
@@ -589,7 +626,9 @@ export function createCellar({ popOut = null } = {}) {
     $('cellar-body').innerHTML = mode === 'welcome' ? welcomeHtml() : shopHtml();
     // 1.5.75: the first button is Get Bob ready. 1.5.210: focused without scrolling, so the Welcome opens at the top
     // (its name box and Get me ready), not half way down the page.
-    if (mode === 'welcome') { dlg.querySelector('[data-getready]')?.focus({ preventScroll: true }); if (jumpTo !== 'wants') dlg.scrollTop = 0; }
+    // Nov 14: a new page opens at its top with its title focused (screen readers say the page); a redraw on the same page
+    // (a tick, a download event) leaves the focus and the scroll where they are.
+    if (mode === 'welcome' && wStepMoved) { wStepMoved = false; dlg.scrollTop = 0; dlg.querySelector('.wz-title')?.focus({ preventScroll: true }); }
     stylePage.paintPreviews(dlg, settings);
     const mini = dlg.querySelector('.attr-avatar');
     if (mini) { const c = mini.getContext('2d'); c.imageSmoothingEnabled = false; try { drawBob(c, 64, {}, settings?.look); } catch {} }
@@ -651,6 +690,7 @@ export function createCellar({ popOut = null } = {}) {
     await applyStarter().catch(() => {});
     if (mode === 'welcome') {
       checks = (await api('/api/engines/check').catch(() => null))?.checks || null;
+      wHarness = await api('/api/harness').catch(() => wHarness); // Privacy page: Amnesia mode
     }
     live.clear();
     for (const d of data.downloads || []) if (d.state === 'downloading') live.set(d.id, { ...d, phase: d.phase === 'downloading' ? 'downloading' : d.phase });
@@ -1204,7 +1244,8 @@ export function createCellar({ popOut = null } = {}) {
         catch (err) { b.disabled = false; b.insertAdjacentHTML('afterend', `<span class="error">${esc(err.message)}</span>`); } }
       else if (b.dataset.switchengine) { await api('/api/settings', { engine: b.dataset.switchengine }); settings.engine = b.dataset.switchengine; b.closest('.confirm').outerHTML = '<span class="have">Switched. Restart Bob to use his own engine.</span>'; }
       else if ('scan' in b.dataset) { b.textContent = 'Looking...'; await api('/api/models/scan', {}); await load(); }
-      else if ('welcome' in b.dataset) { mode = 'welcome'; draw(); }
+      else if ('welcome' in b.dataset) { mode = 'welcome'; wStep = 0; wStepMoved = true; wHarness = await api('/api/harness').catch(() => wHarness); draw(); }
+      else if (b.dataset.wstep != null && mode === 'welcome') { wStep = clampStep(b.dataset.wstep); wStepMoved = true; jumpTo = ''; draw(); } // Nov 14: Back, Next and the dots
       else if ('getready' in b.dataset) { b.disabled = true; await getReady(); await load(); }
       else if ('readyrecheck' in b.dataset) { b.disabled = true; await load(); }
       else if ('readypause' in b.dataset || 'readyresume' in b.dataset || 'readystop' in b.dataset) {
@@ -1465,6 +1506,11 @@ export function createCellar({ popOut = null } = {}) {
       else if ('brainsengine' in el.dataset) { const r = await api('/api/settings', { brainsEngine: el.value }); data.engineChoices = r.engineChoices || data.engineChoices; settings.engine = el.value === 'ollama' ? 'ollama' : 'llamacpp'; draw(); flashNote('Saved. Takes effect next time Bob starts.'); }
       else if ('labengine' in el.dataset) { const r = await api('/api/settings', { labEngine: el.value }); data.engineChoices = r.engineChoices || data.engineChoices; draw(); flashNote('Saved. The Lab uses it from its next job.'); }
       else if ('pack' in el.dataset) { hw.suggestedPack = el.value; wPicks = null; draw(); }
+      else if (el.dataset.wharness) { // Nov 14 Welcome, Privacy: Amnesia mode, the same switch as Settings, Chat extras
+        const k = el.dataset.wharness, said = el.closest('label')?.querySelector('.want-said');
+        try { const r = await api('/api/harness', { patch: { [k]: el.checked } }); wHarness = { ...(wHarness || {}), ...r }; el.checked = wHarness[k] === true; if (said) said.textContent = el.checked ? 'On.' : 'Off.'; window.dispatchEvent(new CustomEvent('bob-harness', { detail: wHarness })); }
+        catch (e) { el.checked = !el.checked; if (said) said.textContent = e.message; }
+      }
       else if (el.dataset.want) { // wants.js: "Do you want me to:" on the Welcome, the same switches as in Settings
         const k = el.dataset.want, said = el.closest('label')?.querySelector('.want-said');
         try { const r = wantSaved(settings, k, await api('/api/settings', wantPatch(k, el.checked))); el.checked = r.on; if (said) said.textContent = r.say; if (k === 'smartNotes') { const q = el.closest('.wants')?.querySelector('[data-want="quickNotes"]'); if (q) q.checked = settings.quickNotes === true; } }
@@ -1539,7 +1585,7 @@ export function createCellar({ popOut = null } = {}) {
   dlg.addEventListener('close', () => { mid?.classList.remove('paged'); for (const id of ['cellarBtn', 'settingsBtn', 'styleBtn']) $(id)?.classList.remove('on'); $('chatBtn')?.classList.add('on'); sampler.stop(); stylePage.closing(settings); window.dispatchEvent(new Event('bob-caps')); });
 
   return {
-    async open(which = 'shop', pickTab, opts = {}) { mode = which; if (opts.house && /^[a-z]+$/.test(opts.house)) { houseFocus = opts.house; mode = 'shop'; setTab('settings'); jumpTo = 'adv-house'; } /* 1.5.210 House style is in Settings */ if (pickTab) setTab(pickTab); else if (which === 'settings') { mode = 'shop'; setTab('settings'); } if (opts.jump && /^(adv|ev)-[\w-]+$/.test(opts.jump)) { mode = 'shop'; setTab('settings'); jumpTo = opts.jump; } /* 1.5.141: open Settings at one advanced section (the Bob-Net heading in Now running) */ if (which === 'welcome' && opts.jump === 'wants') jumpTo = 'wants'; /* the chat's one-time "Do you want me to" offer */ if (divert() && !dlg.open) return; if (!dlg.open) { mid?.classList.add('paged'); mid ? dlg.show() : dlg.showModal(); } dlg.scrollTop = 0; draw(); await load().catch((e) => { $('cellar-body').innerHTML = `<p class="error">${esc(e.message)}</p>`; }); },
+    async open(which = 'shop', pickTab, opts = {}) { mode = which; if (opts.house && /^[a-z]+$/.test(opts.house)) { houseFocus = opts.house; mode = 'shop'; setTab('settings'); jumpTo = 'adv-house'; } /* 1.5.210 House style is in Settings */ if (pickTab) setTab(pickTab); else if (which === 'settings') { mode = 'shop'; setTab('settings'); } if (opts.jump && /^(adv|ev)-[\w-]+$/.test(opts.jump)) { mode = 'shop'; setTab('settings'); jumpTo = opts.jump; } /* 1.5.141: open Settings at one advanced section (the Bob-Net heading in Now running) */ if (which === 'welcome') { wStep = opts.jump === 'wants' ? stepIndex('helpers') : 0; wStepMoved = true; } if (which === 'welcome' && opts.jump === 'wants') jumpTo = 'wants'; /* the chat's one-time "Do you want me to" offer */ if (divert() && !dlg.open) return; if (!dlg.open) { mid?.classList.add('paged'); mid ? dlg.show() : dlg.showModal(); } dlg.scrollTop = 0; draw(); await load().catch((e) => { $('cellar-body').innerHTML = `<p class="error">${esc(e.message)}</p>`; }); },
     async firstRun() {
       try { const s = await api('/api/settings'); if (!s.setupDone) this.open('welcome'); } catch {}
     },

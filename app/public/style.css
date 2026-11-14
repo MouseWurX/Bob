@@ -256,6 +256,32 @@ label.switch.waits { opacity: .55; cursor: not-allowed; }
 .pick { display: grid; gap: 4px; }
 .cellar select { font: inherit; padding: 7px; border-radius: calc(var(--r) * 1); background: var(--bg); color: var(--text); border: 1px solid var(--line); max-width: 100%; }
 .welcome h2 { margin: 4px 0 8px; }
+/* Nov 14: the Welcome as seven pages (welcome-steps.js). Back bottom left, Next bottom right, each naming its page. */
+.wz { display: flex; flex-direction: column; min-height: calc(100dvh - 180px); }
+.wz-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 4px 0 20px; }
+.wz-count { margin: 0; font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.wz-dots { display: flex; gap: 2px; list-style: none; margin: 0; padding: 0; }
+.wz-dot { width: 24px; height: 24px; min-height: 24px; padding: 0; border: 0 !important; background: transparent !important; box-shadow: none !important; display: grid; place-items: center; cursor: pointer; }
+.wz-dot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: background-color .15s, box-shadow .15s; }
+.wz-dot.past::before { background: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.wz-dot.on::before { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.wz-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; border-radius: 50%; }
+.wz-skip { margin-left: auto; }
+.wz-page { flex: 1; }
+.wz-title { outline: none; margin: 0 0 6px; }
+.wz-lead { margin: 0 0 18px; max-width: 64ch; }
+.wz-group h3 { margin-top: 20px; }
+.wz-group > p.muted { margin: 0 0 4px; }
+.wz-sum dt { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-top: 14px; }
+.wz-sum dd { margin: 4px 0 0; }
+.wz-nav { position: sticky; bottom: -48px; z-index: 2; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin: 28px 0 -48px; padding: 34px 0 62px; background: linear-gradient(to bottom, transparent, var(--deep, var(--bg)) 30px); }
+.cellar .wz-nav .wz-back { background: transparent; border: 1px solid var(--line); color: var(--text); }
+.cellar .wz-nav .wz-back:hover { border-color: var(--accent); }
+.cellar .wz-nav :is(.wz-back, .wz-next) { display: flex; flex-direction: column; gap: 2px; min-width: 132px; min-height: 48px; padding: 6px 14px; }
+.cellar .wz-nav .wz-back { align-items: flex-start; text-align: left; }
+.cellar .wz-nav .wz-next { align-items: flex-end; text-align: right; }
+.wz-dir { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; opacity: .75; }
+.wz-to { font-size: 15px; font-weight: 600; }
 .packlist { list-style: none; padding: 0; }
 .packlist li { padding: 4px 0; }
 .packlist input { accent-color: var(--accent); }
