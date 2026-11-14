@@ -39,15 +39,14 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
 {
   const plan = JSON.parse(read(path.join(lab, 'forge', 'plans', 'riker-tools.json')));
   const ms = plan.benchmark.models, names = ms.map((m) => m.name);
-  check('the steering smoke is served first and makes the direction before serving', names[0] === 'riker-steer-gate' && ms[0].evil_check === true && /direction-all\.gguf:8 /.test(ms[0].extra) && /@OUT@\/bench\/evil-riker-steer-gate\//.test(ms[0].extra));
-  const rk = ms.find((m) => m.name === 'riker');
-  const ei = rk.commands.findIndex((c) => /engine-check\.mjs/.test(c)), gi = rk.commands.findIndex((c) => /evil-steer\.mjs .*--gate/.test(c));
-  check('the gate runs right after the engine check, minutes in', ei >= 0 && gi === ei + 1 && rk.file === 'same:riker-steer-gate');
-  const sw = ms.filter((m) => /^riker-steer-[mp0-9]/.test(m.name) && m.name !== 'riker-steer-gate');
+  const gi0 = names.indexOf('riker-steer-gate'), ci = names.indexOf('riker-steer-check'), rk = ms.find((m) => m.name === 'riker');
+  check('the interview entry is untouched by the steering (its own file, no steering commands)', !/^same:/.test(rk.file) && !rk.commands.some((c) => /evil-steer/.test(c)));
+  check('the smoke makes the direction before serving, then the gate (no vector) right after it', gi0 > names.indexOf('riker') && ms[gi0].evil_check === true && /direction-all\.gguf:8 /.test(ms[gi0].extra) && /@OUT@\/bench\/evil-riker-steer-gate\//.test(ms[gi0].extra) && ci === gi0 + 1 && ms[ci].extra === '' && /--gate/.test(ms[ci].commands[0]));
+  const sw = ms.filter((m) => /^riker-steer-[mp0-9]/.test(m.name));
   const scales = sw.map((m) => Number(m.commands[0].match(/--scale (-?\d+)/)?.[1]));
-  check('the sweep runs after the interview, plus and minus past 10, the unsteered one last and rating', names.indexOf('riker') < names.indexOf(sw[0].name) && scales.includes(-10) && scales.includes(10) && scales.includes(40) && scales.at(-1) === 0 && /--rate/.test(sw.at(-1).commands[0]) && sw.at(-1).extra === '');
+  check('the sweep runs after the gate, plus and minus past 10, the unsteered one last and rating', ci < names.indexOf(sw[0].name) && scales.includes(-10) && scales.includes(10) && scales.includes(40) && scales.at(-1) === 0 && /--rate/.test(sw.at(-1).commands[0]) && sw.at(-1).extra === '');
   check('every steered entry loads the vector in this engine\'s FNAME:SCALE form', sw.slice(0, -1).every((m, i) => m.extra.includes(`direction-all.gguf:${scales[i]} `) && /--control-vector-layer-range 10 30/.test(m.extra)));
-  check('steering writes to the surgery folder only', [...ms[0].commands, ...sw.flatMap((m) => m.commands), rk.commands[gi]].every((c) => /\/surgery\/riker-steer/.test(c)));
+  check('steering writes to the surgery folder only', [...ms[gi0].commands, ...ms[ci].commands, ...sw.flatMap((m) => m.commands)].every((c) => /\/surgery\/riker-steer/.test(c)));
   check('the caps cover the interview and the steering', plan.hours_max >= 5 && plan.rent_minutes >= 300 && plan.dollars_max <= 3.5);
 }
 
@@ -97,7 +96,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   await new Promise((res) => srv2.listen(0, '127.0.0.1', res));
   const g = path.join(tmp, 'smoke folder');
   const gate = (scale, extra) => new Promise((done) => { vector = scale; const c = spawn(process.execPath, [path.join(lab, 'evil-steer.mjs'), '--url', `http://127.0.0.1:${srv2.address().port}`, '--out', g, '--pairs', pairs, ...extra], { stdio: 'pipe' }); let o = ''; c.stdout.on('data', (x) => (o += x)); c.stderr.on('data', (x) => (o += x)); c.on('exit', (code) => done({ code, o })); });
-  const none = await gate(0, ['--gate', g, '--scale', '0']);
+  const none = await gate(0, ['--gate', g]); // the plan's gate command carries no --scale
   check('the gate stops the rental (86) when no vector round was made', none.code === 86 && /GATE STOP/.test(none.o));
   await gate(0, ['--scale', '8', '--n', '2']); // labelled x8, but the server has no vector: answers do not change
   const same = await gate(0, ['--gate', g, '--scale', '0']);
@@ -106,6 +105,8 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   await gate(8, ['--scale', '8', '--n', '2']);
   const ok = await gate(0, ['--gate', g, '--scale', '0']);
   srv2.close();
+  const plan2 = JSON.parse(read(path.join(lab, 'forge', 'plans', 'riker-tools.json'))), gc = plan2.benchmark.models.find((m) => m.name === 'riker-steer-check').commands[0];
+  check('the plan\'s gate command parses (no missing flags)', /^node evil-steer\.mjs --url \{\{url\}\} --gate \S+ --out \S+$/.test(gc), gc);
   check('the gate passes when the vector changed the answers', ok.code === 0 && /gate passed/.test(ok.o) && fs.existsSync(path.join(g, 'GATE.md')));
 }
 

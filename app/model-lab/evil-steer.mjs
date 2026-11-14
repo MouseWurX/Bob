@@ -58,7 +58,7 @@ export function render(r) {
 async function main() {
   const a = Object.fromEntries(process.argv.slice(2).reduce((acc, x, i, arr) => (x.startsWith('--') ? [...acc, [x.slice(2), arr[i + 1] !== undefined && !/^--[a-z]/.test(arr[i + 1]) ? arr[i + 1] : true]] : acc), []));
   const url = String(a.url || ''), out = path.resolve(String(a.out || 'surgery-steer')), scale = Number(a.scale);
-  if (!url || !Number.isFinite(scale)) { console.error('--url <server> and --scale <n> are needed'); process.exit(1); }
+  if (!url || (!a.gate && !Number.isFinite(scale))) { console.error('--url <server> and --scale <n> are needed'); process.exit(1); }
   const pairs = JSON.parse(fs.readFileSync(path.resolve(String(a.pairs || path.join(here, 'forge', 'pod', 'evil-pairs.json'))), 'utf8').replace(/^﻿/, ''));
   const n = Number(a.n) || 12, layers = String(a.layers || '10-30');
   fs.mkdirSync(out, { recursive: true });
@@ -109,4 +109,5 @@ async function main() {
   console.log(render(report));
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] || '').href) main().catch((e) => { console.error(e.stack || e.message); process.exit(1); });
+// a gate that breaks is a stop, never a pass the Forge walks past (exit 86)
+if (import.meta.url === pathToFileURL(process.argv[1] || '').href) main().catch((e) => { console.error(e.stack || e.message); if (process.argv.includes('--gate')) console.log(`GATE STOP: the steering gate broke (${String(e.message).slice(0, 120)})`); process.exit(process.argv.includes('--gate') ? 86 : 1); });
