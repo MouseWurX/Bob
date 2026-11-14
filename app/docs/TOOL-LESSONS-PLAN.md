@@ -137,6 +137,46 @@ Every lesson with a tool call, old and new, ends up in the same shape:
   tool returns. A lesson that can't be converted cleanly is dropped, not guessed.
 - **Originals stay untouched.** The converted suite is a new version beside them, with a list of what changed.
 
+## 3g. Five versions, several routes, more tries
+
+**Five versions of every doctored lesson:** base Bob plus the four thinking styles (Raider, Watson, Sherlock, Vulcan).
+Each style stays its own set and trains its own model, never merged into Bob (the style rule). Effort per style as
+before: Raider low, Watson medium, Sherlock and Vulcan high. GPT-OSS couldn't hold a style under Bob's full prompt and
+tools, so the tool versions use the Qwen teacher with the style's notes. The dry run checks first that each style
+really shows in its lessons.
+
+**Several routes to the answer.** For each request, two or three right answers that get there differently: another
+order of steps, another tool that also fits (`search_files` before `read_file`, or `list_folder` then `read_file`),
+or another answer that is just as correct (a different but valid script or file layout). The checker must pass every
+route. All routes of one request go into the same round, and the ledger keeps that request out of later rounds.
+
+**More tries, more effort.** About 1 in 4 lessons has a second try: the first try is quick and fails for a real reason
+(a wrong path, a test that fails), then Bob slows down, thinks it through more carefully, checks the inputs and gets it
+right. As in the guided lessons, the failed try is shown but never trained as an answer.
+
+**What this does to the counts.** Each version gets about 6,000 tool lessons per round, made from about 2,500
+requests (two or three routes each, plus the second tries). Five versions over three rounds is about 90,000 tool
+lessons: about 18,000 for base Bob and about 18,000 for each style.
+
+## 3h. Other data we could use
+
+Public sets with a licence that allows training and changes. Each would be converted to Bob's tools like the Kimi set
+(section 3f), checked, deduped against the never-taught list, and credited.
+
+| Set | Licence | Size | How it fits |
+|---|---|---|---|
+| nvidia/When2Call | CC BY 4.0 | 10K to 100K rows | When to call a tool, when to ask, when to just answer. The best fit for "look it up when unsure" and "don't call a tool on plain chat". |
+| nvidia/Open-SWE-Traces | CC BY 4.0 | 1.1 million coding-agent runs, 98 GB | Real bug-fixing runs from five agent apps, marked pass or fail. Take the passing ones for coding lessons, and the failing ones for guided lessons. |
+| SWE-bench/SWE-smith-trajectories | MIT | 10K to 100K rows | Coding-agent runs on real repos: read, edit, test, fix. |
+| nebius/SWE-agent-trajectories | CC BY 4.0, plus each source repo's own licence | about 80K runs | Same kind, with success marks. |
+| Salesforce/xlam-function-calling-60k | CC BY 4.0 | 60K | Single-call accuracy: right tool, exact inputs. Short, so it's best for the `precise` job. |
+| glaiveai/glaive-function-calling-v2 | Apache 2.0 | 100K to 1M rows | Simple call-or-chat turns. Many are low quality, so it would be filtered hard. |
+| NousResearch/hermes-function-calling-v1 | Apache 2.0 | 10K to 100K rows | Calls with structured outputs. |
+| Blender manual | CC BY-SA 4.0 (to confirm on the page) | the whole manual | Facts for the Blender track. The scripts are written fresh and run headless. |
+| Unreal Python API docs | Epic's own terms, not an open licence | the API reference | Facts only, never copied. Scripts are written fresh and run in the editor. |
+
+Benchmarks such as BFCL and tau-bench are for testing only, never lessons. They join the never-taught list.
+
 ## 3d. Coding, the way courses teach it
 
 The most common lesson types from college and university coding, software engineering, code fixing and error
@@ -270,6 +310,8 @@ is fixed before any write.
 | `tool_reward.py` | The search line in the reward |
 | `convert-lessons.mjs` | The one-time conversion to one shape (section 3f), Kimi and outside sets included, after the shape pick |
 | `guided-lessons.mjs` | Keeps the failed attempt, masks it from the loss, adds the think-it-through and the right path |
+| `style-routes.mjs` | The five versions, two or three routes each, second tries |
+| `import-open-sets.mjs` | Converts the open sets in 3h to Bob's tools, with credit and licence kept |
 | `tutorial-lessons.mjs` | Licence check, tutorial to requests, headless Blender and Unreal runs, app version tag |
 
 Each comes with a test that uses fakes, never the real computer.
