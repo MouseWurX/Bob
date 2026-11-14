@@ -14,7 +14,7 @@ export function roomPages(lines = [], channels = []) {
   const page = (id) => { if (!pages.has(id)) pages.set(id, { id, name: '', waiting: 0, last: 0, lines: [], listed: false }); return pages.get(id); };
   for (const c of channels) { const p = page(String(c.id)); p.listed = true; if (c.name) p.name = c.name; } // 1.5.228 a page for every listed channel
   for (const l of lines) {
-    const ask = l.kind === 'ask' ? l : l.kind === 'me' ? l : byId.get(l.to); // 'me': what you said there through Bob
+    const ask = l.kind === 'bob' ? byId.get(l.to) : l; // 'me': what you said there; 'heard': the channel's own talk // 'me': what you said there through Bob
     const p = page(String(ask?.where || 'other'));
     if (ask?.whereName) p.name = ask.whereName;
     if (l.kind === 'ask' && l.state === 'waiting') p.waiting++;
@@ -44,6 +44,7 @@ export function createRoomChat({ api }) {
   }
 
   function lineHtml(l, all) {
+    if (l.kind === 'heard') return `<li class="room-heard"><span class="muted">${esc(l.name)}, ${esc(when(l.at))}:</span> ${esc(l.text)}</li>`;
     if (l.kind === 'me') return `<li class="room-me"><span class="muted">You, through Bob, ${esc(when(l.at))}:</span> ${esc(l.text)}</li>`;
     if (l.kind === 'bob') return `<li class="room-bob"><span class="muted">Bob, ${esc(when(l.at))}:</span> ${esc(l.text) || '<span class="muted">(no words)</span>'}${l.files ? ` <span class="tag">${l.files} file${l.files === 1 ? '' : 's'}</span>` : ''}</li>`;
     const waiting = l.state === 'waiting';
@@ -62,7 +63,7 @@ export function createRoomChat({ api }) {
       <p class="muted">${d.autoAccept ? 'Auto-accept is on: requests run without waiting for you.' : 'Each request waits here for your OK. Nothing runs until you accept it.'} Turn Auto-accept on or off in Settings, Discord.</p>
       ${tabs}
       ${msg ? `<p class="have" role="status">${esc(msg)}</p>` : ''}
-      <ol class="room-lines" aria-label="${esc(cur ? `Discord ${cur.name}` : 'Discord group chat')}">${(cur?.lines || []).map((l) => lineHtml(l)).join('') || '<li class="muted">Nothing yet. Only messages that call Bob, in the channels on his list, show here.</li>'}</ol>
+      <ol class="room-lines" aria-label="${esc(cur ? `Discord ${cur.name}` : 'Discord group chat')}">${(cur?.lines || []).map((l) => lineHtml(l)).join('') || '<li class="muted">Nothing yet. Only messages that call Bob show here, unless Show the whole channel is on (Settings, Discord).</li>'}</ol>
       ${cur?.listed ? `<div class="room-say"><label class="muted" for="room-say-text">Say something in ${esc(cur.name)} as Bob${d.connected ? '' : ' (I\'m not connected right now)'}</label>
         <div class="row"><textarea id="room-say-text" rows="2" maxlength="3800" data-roomdraft placeholder="Type here. Nobody gets pinged.">${esc(draft)}</textarea><button type="button" class="mini" data-roomsay="${esc(cur.id)}"${d.connected ? '' : ' disabled'}>Send</button></div></div>` : ''}
       ${d.lines.some((l) => l.state !== 'waiting') ? '<button type="button" class="mini" data-roomclear>Empty this chat (waiting requests stay)</button>' : ''}</div>`;
@@ -89,7 +90,10 @@ export function createRoomChat({ api }) {
     return null;
   }
 
+  // 1.5.228 Something new in the room while its page is open: read it again, keeping what you're typing.
+  const changed = () => { const box = document.getElementById('room-say-text'); if (box) draft = box.value; data = null; };
+
   // Opening it from the Discord icon (Bob-Net icons): fresh, on the page with something waiting.
   const fresh = () => { data = null; page = ''; msg = ''; draft = ''; };
-  return { rowHtml, html, click, fresh };
+  return { rowHtml, html, click, fresh, changed };
 }

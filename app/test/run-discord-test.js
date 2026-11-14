@@ -346,6 +346,34 @@ check('turning it off stops Bob listening', !c.running && c.status === 'off');
   saveDiscord(brain.cfg, { enabled: false, channels: [] });
 }
 
+// 1.5.228 Show the whole channel (off): every message in a listed channel shows on its page, nothing runs for it.
+{
+  const { RoomGate, MAX_HEARD } = await import('../src/room-gate.js');
+  const gate = new RoomGate({ room: 'discord', dir: null });
+  saveDiscord(brain.cfg, { enabled: true, channels: [CH], autoAccept: false });
+  const w = new DiscordBridge(brain, { fetchImpl, WebSocketImpl: FakeWS, env: { [TOKEN_ENV]: TOKEN }, gate });
+  w.rest = async (m, route) => (route === `/channels/${CH}` ? { name: 'general' } : {});
+  const msg = (content, ch = CH, extra = {}) => ({ id: String(Math.random()).slice(2, 12), guild_id: '9', channel_id: ch, content, author: { id: PAT, username: 'pat' }, ...extra });
+  check('off by default', discordSettings({}).showChannel === false && cleanDiscordPatch({ showChannel: true }).showChannel === true);
+  await w.handle(msg('just chatting'));
+  check('off: talk that doesn\'t call Bob isn\'t kept', gate.view().lines.length === 0);
+  saveDiscord(brain.cfg, { showChannel: true });
+  await w.handle(msg('just chatting'));
+  await w.handle(msg('', CH, { attachments: [{}] }));
+  await w.handle(msg('elsewhere', OTHER_CH));
+  await w.handle(msg('a bot', CH, { author: { id: SAM, bot: true } }));
+  const heard = gate.view().lines.filter((l) => l.kind === 'heard');
+  check('on: a listed channel\'s talk shows on its page, files as a note', heard.length === 2 && heard[0].text === 'just chatting' && heard[0].whereName === 'general' && heard[1].text === '(1 file)');
+  check('never an unlisted channel or a bot', !heard.some((l) => l.text === 'elsewhere' || l.text === 'a bot'));
+  await w.handle(msg('hey bob tell a joke'));
+  check('a call to Bob is still a request, not talk', gate.waiting().length === 1 && gate.view().lines.filter((l) => l.kind === 'heard').length === 2);
+  for (let i = 0; i < MAX_HEARD + 5; i++) gate.heard({ who: PAT, name: 'pat', where: CH, text: `n${i}` });
+  check('only the newest talk is kept, and requests stay', gate.view().lines.filter((l) => l.kind === 'heard').length === MAX_HEARD && gate.waiting().length === 1);
+  gate.forgetHeard();
+  check('off again: the talk is deleted, the request stays', gate.view().lines.every((l) => l.kind !== 'heard') && gate.waiting().length === 1);
+  saveDiscord(brain.cfg, { enabled: false, channels: [], showChannel: false });
+}
+
 fs.rmSync(dir, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

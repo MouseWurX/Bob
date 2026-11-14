@@ -733,6 +733,7 @@ let brainSoon = null;
 const shownCards = new Set(); // approval card ids already on this page
 function onEvent(ev) {
   if (ev.type === 'beat') return; // item 214: only proof Bob is still answering (connect() watches for it)
+  if (ev.type === 'room') try { topicsPage.room(); } catch {} // 1.5.228 an open Discord chat page follows along
   try { netOverlay?.event(ev); } catch {} // Nov 13 Bob-Net icons: a word bubble when one of their chats has news (display only)
   if (fadeChat.onEvent(ev)) return; // Fade old messages, Clear chat, Amnesia mode
   if (ev.type === 'froze') { // item 214: Bob was stuck for a while and is back

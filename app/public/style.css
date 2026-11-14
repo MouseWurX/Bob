@@ -2535,3 +2535,4 @@ dialog.fade-ask .fade-row button.danger { color: var(--on-accent); background: v
 .room-say { margin-top: 8px; }
 .room-say .row { align-items: flex-end; gap: 6px; }
 .room-say textarea { flex: 1; min-width: 0; resize: vertical; }
+.room-chat .room-heard { opacity: .85; }

@@ -71,6 +71,9 @@ export const JOB_TYPES = [
 ];
 const ALWAYS_TOOLS = ['use_tools']; // only loads tool groups; what's in them is still checked against the list
 
+// Someone's name as their server shows it, cleaned.
+const nameOf = (m) => String(m.member?.nick || m.author?.global_name || m.author?.username || 'someone').replace(/[\u0000-\u001f<>@]/g, '').slice(0, 40) || 'someone';
+
 export function discordSettings(cfg) {
   const d = cfg.discord || {};
   const jobs = {};
@@ -95,7 +98,9 @@ export function discordSettings(cfg) {
     dmPictures: d.dmPictures === true,
     // 1.5.224 Chat on Discord: on keeps today's behaviour. Off: nobody on the server can start a brain job, so no brain
     // loads for Discord at all; Keep order still runs, as plain rules.
-    chat: d.chat !== false
+    chat: d.chat !== false,
+    // 1.5.228 Show the whole channel (off): every message in a listed channel shows on its page in Bob, not only calls.
+    showChannel: d.showChannel === true
   };
 }
 
@@ -119,7 +124,7 @@ export function saveDiscord(cfg, patch) {
 // Only these keys, only these types.
 export function cleanDiscordPatch(b = {}, current = {}) {
   const out = {};
-  for (const k of ['enabled', 'chat', 'caseSensitive', 'share', 'autoAccept', 'keepAwake', 'dmEnabled', 'dmApprove', 'dmPictures']) if (k in b) out[k] = b[k] === true;
+  for (const k of ['enabled', 'chat', 'caseSensitive', 'share', 'autoAccept', 'keepAwake', 'dmEnabled', 'dmApprove', 'dmPictures', 'showChannel']) if (k in b) out[k] = b[k] === true;
   if ('wake' in b) { const w = cleanWake(b.wake); if (w) out.wake = w; }
   const list = (v) => [...new Set(String(Array.isArray(v) ? v.join(' ') : v || '').split(/[\s,;]+/).filter((x) => ID_RX.test(x)))].slice(0, 50);
   if ('channels' in b) out.channels = list(b.channels);
@@ -387,9 +392,10 @@ export class DiscordBridge {
     const channelId = String(m.channel_id || '');
     if (!s.channels.includes(channelId)) return this.notListed(channelId, m.guild_id);
     const who = String(m.author?.id || '');
-    if (s.people.length && !s.people.includes(who)) return;
+    const hear = () => (s.showChannel ? this.hear(m, channelId) : undefined); // 1.5.228 Show the whole channel
+    if (s.people.length && !s.people.includes(who)) return hear();
     const prompt = this.mentionAsk(m.content) ?? matchWake(s.wake, m.content, s.caseSensitive); // "@Bob hi" works like the wake phrase
-    if (prompt === null) return;
+    if (prompt === null) return hear();
     const reply = (text) => this.post(channelId, m.id, text);
     if (!s.chat) { // 1.5.224 Chat on Discord is off: no job, so no brain. Said once an hour per person, then silence.
       if (this.now() - (this.chatOffSaid.get(who) || 0) < 3600_000) return;
@@ -405,7 +411,7 @@ export class DiscordBridge {
     const now = this.now();
     if (now - (this.lastAsk.get(who) || 0) < COOLDOWN_MS) return reply('One moment, I\'m still on your last one. Ask again in a few seconds.');
     this.lastAsk.set(who, now);
-    const name = String(m.member?.nick || m.author?.global_name || m.author?.username || 'someone').replace(/[\u0000-\u001f<>@]/g, '').slice(0, 40) || 'someone';
+    const name = nameOf(m);
     if (s.autoAccept) {
       const mine = [...this.jobs.keys()].filter((id) => (this.brain.queue || []).some((j) => j.id === id && ['waiting', 'working'].includes(j.state)));
       if (mine.length >= MAX_WAITING) { this.lastAsk.delete(who); return reply('I\'ve got a few Discord jobs going already. Ask again in a little while.'); }
@@ -418,6 +424,16 @@ export class DiscordBridge {
     if (s.autoAccept) return this.run(line);
     this.log(`Discord request waiting for your OK (${type}, ${line.id.slice(0, 8)})`);
     this.react(channelId, m.id, '⏳');
+  }
+
+  // 1.5.228 A message in a listed channel that didn't call Bob, kept on that channel's page (Show the whole channel on).
+  // Nothing runs, nothing is answered, no brain loads; Keep order has already taken down anything it removes.
+  async hear(m, channelId) {
+    const files = [].concat(m.attachments || []).length;
+    const text = String(m.content || '').trim() || (files ? `(${files} file${files === 1 ? '' : 's'})` : '');
+    if (!text) return;
+    this.gate.heard({ who: String(m.author?.id || ''), name: nameOf(m), where: channelId, whereName: await this.channelName(channelId), text: text.slice(0, MAX_IN) });
+    this.roomNews();
   }
 
   // Tells Bob's open pages the room changed (a quiet count, never a pop-up).
@@ -758,6 +774,7 @@ export async function discordRoute({ req, res, p, isLocal, brain, body, send }) 
     if (r.error) { send(res, 409, { error: r.error === 'not found' ? 'That one is gone.' : `That one is ${r.error}.` }); return true; }
   }
   const patch = cleanDiscordPatch(b, bridge.settings());
+  if (patch.showChannel === false) { bridge.gate.forgetHeard(); bridge.roomNews(); } // 1.5.228: off takes the channel talk away too
   if (Object.keys(patch).length) { saveDiscord(brain.cfg, patch); brain.log('settings', `Discord: ${Object.keys(patch).join(', ')} changed (your click)`); }
   bridge.sync();
   send(res, 200, discordView(bridge));

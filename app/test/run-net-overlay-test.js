@@ -183,6 +183,7 @@ check('only Bobs on Bob-Net right now', v.bobs.length === 1 && v.bobs[0].name ==
   const two = roomPages([...lines, { id: 'm1', kind: 'me', at: 5, where: '111', whereName: 'general', text: 'hey all' }], [{ id: '111', name: 'general' }, { id: '444', name: 'quiet' }]);
   check('what you say through Bob sits on that channel\'s page', two.find((p) => p.id === '111').lines.map((l) => l.id).join() === 'a1,b1,m1');
   check('every listed channel gets a page you can talk in, even a quiet one', two.find((p) => p.id === '444')?.name === '#quiet' && two.find((p) => p.id === '444').listed && !two.find((p) => p.id === '333').listed);
+  check('the channel\'s own talk sits on its page', roomPages([{ id: 'h1', kind: 'heard', at: 9, where: '444', text: 'yo' }], [{ id: '444', name: 'quiet' }])[0].lines[0].id === 'h1');
   const rc = read('public/room-chat.js');
   check('the talk box is only on a listed channel\'s page', /cur\?\.listed \? `<div class="room-say">/.test(rc) && /data-roomsay/.test(rc));
   const page = read('public/net-overlay.js');

@@ -13,6 +13,7 @@ import crypto from 'node:crypto';
 
 export const MAX_WAITING = 30; // requests waiting for an OK, in one room
 export const MAX_PER_PERSON = 3; // of those, from one person
+export const MAX_HEARD = 300; // 1.5.228 channel talk kept with Show the whole channel on (the rest of the chat is never pushed out by it)
 export const MAX_LOG = 400; // lines the room's chat keeps (the oldest go first)
 const MAX_TEXT = 4000;
 
@@ -105,6 +106,20 @@ export class RoomGate {
     this.save();
     return line;
   }
+
+  // 1.5.228 "Show the whole channel" (off unless switched on): someone's message in a listed channel that didn't call
+  // Bob, kept so the channel's page reads like the channel. At most MAX_HEARD of them; the oldest go first.
+  heard({ who, name, where, whereName = '', text }) {
+    const line = { id: crypto.randomUUID(), kind: 'heard', at: this.now(), who: clean(who, 40), name: clean(name, 40) || 'someone', where: clean(where, 80), whereName: clean(whereName, 100), text: clean(text, MAX_TEXT) };
+    this.data.lines.push(line);
+    const heard = this.data.lines.filter((l) => l.kind === 'heard');
+    if (heard.length > MAX_HEARD) { const drop = new Set(heard.slice(0, heard.length - MAX_HEARD)); this.data.lines = this.data.lines.filter((l) => !drop.has(l)); }
+    this.trim();
+    this.save();
+    return line;
+  }
+  // The switch went off: the channel talk goes, requests, replies and what you said stay.
+  forgetHeard() { const n = this.data.lines.length; this.data.lines = this.data.lines.filter((l) => l.kind !== 'heard'); if (this.data.lines.length !== n) this.save(); }
 
   // For the room's chat page: lines oldest first, plus how many wait for an OK.
   view() { return { room: this.room, waiting: this.waiting().length, lines: this.data.lines.map(({ ref, ...l }) => l) }; }
