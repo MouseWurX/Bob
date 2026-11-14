@@ -16,8 +16,8 @@ import { cleanWifiWas, tcpTrip } from './wifi-tune.js';
 import { linksHello, cleanLinks } from './links.js'; // Check links: what kinds of link each Bob has
 import fs from 'node:fs';
 import { readJsonFile } from './util.js';
-import { isTailscaleIp } from './phone-access.js';
-import { homeIps, isHomeIp, sameNet, SCUT_MBPS } from './share-card.js';
+import { isTailscaleIp, homeNetOn } from './phone-access.js';
+import { homeIps, doorIps, tailscaleIps, isHomeIp, sameNet, SCUT_MBPS, scutChosen } from './share-card.js';
 import { cleanCheck, checkRefusal, checkDown, CHECK_FIRST_WORD_MAX_MS } from './bob-net-check.js'; // 1.5.185
 import { LOOK_ID_RE } from './look.js'; // the avatars on the Bob-Net list
 import { readConfigFile, writeConfigFile } from './config.js';
@@ -43,7 +43,9 @@ const GOOD_FOR = 30000, DOWN_FOR = 60000;
 // Item 202: a Bob that fails twice (not reachable, too slow, broke mid-answer) is skipped for an hour, not asked again
 // every step. Saying "busy" or "too long" is a polite no, not a failure. Always on.
 export const SKIP_AFTER = 2, SKIP_MS = 60 * 60 * 1000;
-const MAX_BOBS = 6;
+// 2026-11-14 (the owner: "can bob-net only support up to 6 devices max? can we make it more?"): 16. Each Bob costs a
+// hello every half a minute while the Bob-Net list or icons show, and Pass my Bob-Net along tries each pair at most hourly.
+export const MAX_BOBS = 16;
 const TS_NAME = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.ts\.net$/;
 
 // "100.101.102.103:7777", "http://phone.tail1234.ts.net:7777/" -> "100.101.102.103:7777". Tailscale only.
@@ -56,6 +58,26 @@ export function cleanAddress(a, defPort = 7777) {
   return isTailscaleIp(name) || (name.length <= 253 && TS_NAME.test(name)) ? `${name}:${port}` : null;
 }
 
+// 1.5.213 Home network access (remote.homeNet, off unless switched on): a plain home address like
+// "172.16.1.20:7777", but only one on a network this replicant matrix is on itself (same subnet), never wider.
+// No Tailscale needed. mine: [{ address, netmask }] (share-card.js homeIps), passed in so tests use fakes.
+export function cleanHomeAddress(a, mine = homeIps(), defPort = 7777) {
+  let s = String(a || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  if (!/:\d{1,5}$/.test(s)) s = `${s}:${defPort}`;
+  const m = s.match(/^(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})$/);
+  if (!m || !isHomeIp(m[1])) return null;
+  const ip = m[1].split('.').map(Number).join('.'), port = Number(m[2]);
+  if (!(port >= 1 && port <= 65535)) return null;
+  if (mine.some((q) => q.address === ip)) return null; // that's this replicant matrix itself
+  return mine.some((q) => sameNet(q.address, ip, q.netmask)) ? `${ip}:${port}` : null;
+}
+export const homeOn = (cfg) => homeNetOn(cfg?.remote); // 1.5.214: on unless switched off (home network first)
+// A Bob's address: Tailscale always; a home address too while "Home network access" is on here.
+export const cleanBobAddress = (cfg, a, { home = homeIps } = {}) => cleanAddress(a) || (homeOn(cfg) ? cleanHomeAddress(a, home()) : null);
+export const BAD_ADDRESS = (cfg) => homeOn(cfg)
+  ? 'That isn\'t an address I can use. It looks like 192.168.x.y:7777 (on this home network), 100.x.y.z:7777 or name.something.ts.net:7777.'
+  : 'That isn\'t a Tailscale address. It looks like 100.x.y.z:7777 or name.something.ts.net:7777. For a plain home network, turn on "Home network access" first.';
+
 const cleanName = (n) => String(n || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 40);
 
 // ---------- Settings ----------
@@ -66,13 +88,15 @@ export function shareView(cfg) {
     lend: s.lend === true,
     takeJobs: s.takeJobs === true,
     passAlong: s.passAlong === true, // 1.5.123 Pass my Bob-Net along (src/bob-net-party.js)
-    lendCard: s.lendCard === true, // Lend my graphics card (src/share-card.js), off unless switched on
-    lendChecks: s.lendChecks === true, // 1.5.185 Check harder jobs for my other Bobs (src/bob-net-check.js)
+    lendCard: s.lendCard === true, // Lend my GPU (src/share-card.js), off unless switched on
+    lendFreesOwn: s.lendFreesOwn === true, // Nov 13: Lending may unload my brain, off unless switched on
+    lendChecks: s.lendChecks === true, // 1.5.185 Review for other Bobs (src/bob-net-check.js)
+    cardsEverywhere: s.cardsEverywhere === true, // OK cards on all Bobs (src/net-cards.js), off unless switched on
     spread: ['toobig', 'big'].includes(s.spread) ? s.spread : 'off', // Spread big brains over my other Bobs' cards
     // Bob-Net mode: More Bobs (the default: each Bob runs his own brain) or Bigger Bobs (they pool their cards).
-    homeNet: s.homeNet !== false, // Bigger Bobs: Use the home network first (src/share-card.js), Tailscale as the backup
+    homeNet: s.homeNet !== false, // Bigger Bobs: Home network first (src/share-card.js), Tailscale as the backup
     scut: s.scut === true, // SCUT, the fast link for Bigger Bobs (src/share-card.js), off unless switched on
-    scutMbps: SCUT_MBPS.includes(Number(s.scutMbps)) ? Number(s.scutMbps) : 100,
+    scutMbps: scutChosen({ share: s }) ? Number(s.scutMbps) : 'auto', // 1.5.214: Auto (1000 on a cable, 100 on Wi-Fi)
     scutSeal: s.scutSeal !== false, // Seal SCUT packets (src/scut-seal.js): on unless switched off
     wifiWas: Boolean(cleanWifiWas(s.wifiWas)), // Calibrate Wi-Fi changed the card's band setting (src/wifi-tune.js): Put it back shows
     linkDebug: s.linkDebug === true, // Watch the link live (src/link-log.js): the link log every 2 seconds instead of 10
@@ -85,14 +109,15 @@ export function shareView(cfg) {
 export const doorOpen = (cfg) => Boolean(cfg.remote?.enabled && String(cfg.remote?.passcode || '').length >= 6);
 
 // A change from Settings, checked. Returns { share } to save, or { error }. A Bob without a new passcode keeps its old one.
-export function cleanSharePatch(cfg, b) {
+export function cleanSharePatch(cfg, b, opts = {}) {
   const cur = cfg.share || {};
   const cb = cur.borrow || {};
-  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendChecks: cur.lendChecks === true, homeNet: cur.homeNet !== false, scut: cur.scut === true, scutMbps: SCUT_MBPS.includes(Number(cur.scutMbps)) ? Number(cur.scutMbps) : 100, scutSeal: cur.scutSeal !== false, linkDebug: cur.linkDebug === true, ...(cleanWifiWas(cur.wifiWas) ? { wifiWas: cleanWifiWas(cur.wifiWas) } : {}), spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
+  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendFreesOwn: cur.lendFreesOwn === true, lendChecks: cur.lendChecks === true, cardsEverywhere: cur.cardsEverywhere === true, homeNet: cur.homeNet !== false, scut: cur.scut === true, scutMbps: SCUT_MBPS.includes(Number(cur.scutMbps)) ? Number(cur.scutMbps) : 100, ...(cur.scutMbpsChosen === true ? { scutMbpsChosen: true } : {}), scutSeal: cur.scutSeal !== false, linkDebug: cur.linkDebug === true, ...(cleanWifiWas(cur.wifiWas) ? { wifiWas: cleanWifiWas(cur.wifiWas) } : {}), spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
   if ('lend' in b) next.lend = b.lend === true;
   if ('takeJobs' in b) next.takeJobs = b.takeJobs === true; // 1.5.72, off unless switched on
   if ('passAlong' in b) next.passAlong = b.passAlong === true; // 1.5.123, off unless switched on
   if ('lendChecks' in b) next.lendChecks = b.lendChecks === true; // 1.5.185, off unless switched on
+  if ('cardsEverywhere' in b) next.cardsEverywhere = b.cardsEverywhere === true; // Nov 13 (src/net-cards.js), off unless switched on
   if ('askChecks' in b) next.borrow.checks = b.askChecks === true; // 1.5.185, off unless switched on
   // Bob-Net mode: Bigger Bobs lends this card and spreads brains too big for this replicant matrix; More Bobs turns both off.
   // 1.5.189: 'toobig', not 'big', by default. PC test Nov 10: Riker on the 16 GB card plus memory ran at 105.6 tok/s,
@@ -103,27 +128,31 @@ export function cleanSharePatch(cfg, b) {
     else { next.lendCard = true; if (next.spread === 'off') next.spread = 'toobig'; if (!next.borrow.bobs.length) return { error: 'Bigger Bobs needs another Bob to pool with. Add one of your other Bobs first.' }; }
   }
   if ('lendCard' in b) next.lendCard = b.lendCard === true; // off unless switched on
+  if ('lendFreesOwn' in b) next.lendFreesOwn = b.lendFreesOwn === true; // Nov 13: off unless switched on
   if ('homeNet' in b) next.homeNet = b.homeNet !== false;
   if ('scut' in b) next.scut = b.scut === true; // off unless switched on
   if ('scutSeal' in b) next.scutSeal = b.scutSeal !== false; // on unless switched off (the owner's call)
   if ('linkDebug' in b) next.linkDebug = b.linkDebug === true; // off unless switched on
-  if ('scutMbps' in b) { if (!SCUT_MBPS.includes(Number(b.scutMbps))) return { error: 'Pick a speed cap for SCUT.' }; next.scutMbps = Number(b.scutMbps); }
+  if ('scutMbps' in b) { if (b.scutMbps === 'auto') { next.scutMbps = 100; next.scutMbpsChosen = false; } else { if (!SCUT_MBPS.includes(Number(b.scutMbps))) return { error: 'Pick a speed cap for SCUT.' }; next.scutMbps = Number(b.scutMbps); next.scutMbpsChosen = true; } }
   if ('spread' in b) { if (!['off', 'toobig', 'big'].includes(b.spread)) return { error: 'Pick when to spread a brain.' }; next.spread = b.spread; }
   if ('sendJobs' in b) next.borrow.jobs = b.sendJobs === true; // 1.5.72, off unless switched on
   if ('when' in b) { if (!WHEN.includes(b.when)) return { error: 'Pick when to borrow.' }; next.borrow.when = b.when; }
   if (b.addBob) {
-    const address = cleanAddress(b.addBob.address);
-    if (!address) return { error: 'That isn\'t a Tailscale address. It looks like 100.x.y.z:7777 or name.something.ts.net:7777.' };
+    const address = cleanBobAddress(cfg, b.addBob.address, opts);
+    if (!address) return { error: BAD_ADDRESS(cfg) };
     const passcode = String(b.addBob.passcode || '').trim();
-    const old = next.borrow.bobs.find((x) => x.address === address);
+    // 1.5.214: the same Bob under his other road (paired over Tailscale, now paired again at home) is one entry,
+    // keeping both addresses.
+    const old = next.borrow.bobs.find((x) => x.address === address) || next.borrow.bobs.find((x) => x.home === address || x.ts === address);
     if (!old && passcode.length < 6) return { error: 'Type that Bob\'s passcode (at least 6 characters).' };
     if (passcode && passcode.length > 64) return { error: 'That passcode is too long.' };
     const entry = { name: cleanName(b.addBob.name) || address.split(':')[0].split('.')[0], address, passcode: passcode || old.passcode };
-    next.borrow.bobs = [...next.borrow.bobs.filter((x) => x.address !== address), entry];
+    if (old) for (const at of [old.address, old.home, old.ts]) if (at && at !== address) { if (isTailscaleIp(String(at).split(':')[0])) entry.ts = at; else entry.home = at; }
+    next.borrow.bobs = [...next.borrow.bobs.filter((x) => x !== old && x.address !== address), entry];
     if (next.borrow.bobs.length > MAX_BOBS) return { error: `Up to ${MAX_BOBS} Bobs.` };
   }
-  if (b.removeBob) next.borrow.bobs = next.borrow.bobs.filter((x) => x.address !== cleanAddress(b.removeBob));
-  if (Array.isArray(b.order)) { const at = (a) => { const i = b.order.map((x) => cleanAddress(x)).indexOf(a); return i < 0 ? 99 : i; }; next.borrow.bobs.sort((x, y) => at(x.address) - at(y.address)); }
+  if (b.removeBob) next.borrow.bobs = next.borrow.bobs.filter((x) => x.address !== (cleanBobAddress(cfg, b.removeBob, opts) || cleanAddress(b.removeBob) || String(b.removeBob)));
+  if (Array.isArray(b.order)) { const at = (a) => { const i = b.order.map((x) => cleanBobAddress(cfg, x, opts)).indexOf(a); return i < 0 ? 99 : i; }; next.borrow.bobs.sort((x, y) => at(x.address) - at(y.address)); }
   if ('borrow' in b) next.borrow.on = b.borrow === true;
   if ((next.borrow.on || next.borrow.jobs || ('askChecks' in b && next.borrow.checks) || ('spread' in b && next.spread !== 'off')) && !next.borrow.bobs.length) return { error: 'Add one of your other Bobs first.' };
   return { share: next };
@@ -150,7 +179,7 @@ export function lendRefusal(brain, { currentSession, quickBrain }) {
 }
 
 // #30: reviews over Bob-Net. A paired Bob checks the work on his own Review brain when this one has no room for it beside
-// the main brain. Only with "Take jobs from my other Bobs" on there (a review is a job), never while he's gaming or busy.
+// the main brain. Only with "Accept jobs" on there (a review is a job), never while he's gaming or busy.
 // A review is several short calls, and the next check often follows within minutes: his Review brain stays loaded
 // that long instead of the chat brain coming straight back (two-Bob trial, the Go: the chat brain woke after 90 s
 // and the next check was 0.3 GB short).
@@ -267,7 +296,7 @@ export class Lenders {
   constructor(cfg, { fetchFn = globalThis.fetch, now = Date.now, firstWordMs = FIRST_WORD_MS, quietMs = QUIET_MS, firstWordMaxMs = FIRST_WORD_MAX_MS, reviewWaitMs = REVIEW_WAIT_MS, home = homeIps, checkFirstWordMaxMs = CHECK_FIRST_WORD_MAX_MS, trip = tcpTrip } = {}) {
     this.checkFirstWordMaxMs = checkFirstWordMaxMs;
     this.cfg = cfg; this.fetch = fetchFn; this.now = now; this.firstWordMs = firstWordMs; this.quietMs = quietMs; this.firstWordMaxMs = firstWordMaxMs; this.reviewWaitMs = reviewWaitMs; this.home = home;
-    // Also over the home network: address -> his door on our home network (from his hello), and when it last failed.
+    // Home network access: address -> his door on our home network (from his hello), and when it last failed.
     this.near = new Map(); this.nearDown = new Map();
     // Two Bobs can share more than one network (Wi-Fi and a cable between them): the quickest is used. nearMine: address ->
     // this Bob's own addresses on the shared networks, quickest first; nearTimed: when that was last timed.
@@ -291,10 +320,14 @@ export class Lenders {
   busyHere(address) { const t = this.inUse.get(address); return t !== undefined && t > this.now(); }
   hold(address, ms = 15000) { this.inUse.set(address, this.now() + ms); }
   release(address) { this.inUse.delete(address); }
-  bobs() { return (this.cfg.share?.borrow?.bobs || []).filter((x) => cleanAddress(x.address)); }
+  bobs() { return (this.cfg.share?.borrow?.bobs || []).filter((x) => cleanBobAddress(this.cfg, x.address, { home: this.home })); }
 
   // His door on our home network, when he said he has one there and it hasn't failed lately; else ''.
-  nearOf(bob) { const a = this.near.get(bob.address); return a && !(this.nearDown.get(bob.address) > this.now()) ? a : ''; }
+  // 1.5.214: or his saved home address (Find or a hello saved it), so a Bob paired over Tailscale works with it off.
+  nearOf(bob) {
+    const a = this.near.get(bob.address) || (bob.home && bob.home !== bob.address && cleanHomeAddress(bob.home, this.home()) === bob.home ? bob.home : '');
+    return a && !(this.nearDown.get(bob.address) > this.now()) ? a : '';
+  }
   // From his hello: keep only an address on our own home network (never a public one, never another network).
   // When more than one of his addresses is on a network of ours (Wi-Fi, and a cable too), each is timed (a few
   // hellos to his door, the quickest counts) and the quickest path wins. Timed again when the list changes, or after
@@ -322,7 +355,7 @@ export class Lenders {
   }
 
   async call(bob, path, { method = 'GET', body, signal, timeout = HELLO_MS } = {}) {
-    // Over his home-network door first when he has one (Also over the home network); if that doesn't answer, over
+    // Over his home-network door first when he has one (Home network access); if that doesn't answer, over
     // Tailscale, and the home network isn't tried again for a while.
     const near = this.nearOf(bob);
     if (near) {
@@ -334,7 +367,27 @@ export class Lenders {
         if (method !== 'GET' && /timeout|abort/i.test(`${e?.name} ${e?.message}`)) throw e;
       }
     }
-    return this.callAt(bob, bob.address, path, { method, body, signal, timeout });
+    // 1.5.214: Tailscale is the fallback for when you're out: a Bob paired at home is tried on his Tailscale address
+    // (his hello said it) when his home one doesn't connect.
+    const ts = bob.ts && bob.ts !== bob.address && cleanAddress(bob.ts) === bob.ts ? bob.ts : '';
+    if (!ts) return this.callAt(bob, bob.address, path, { method, body, signal, timeout });
+    try { return await this.callAt(bob, bob.address, path, { method, body, signal, timeout: Math.min(timeout, 4000) }); }
+    catch (e) {
+      if (signal?.aborted || (method !== 'GET' && /timeout|abort/i.test(`${e?.name} ${e?.message}`))) throw e;
+      return this.callAt(bob, ts, path, { method, body, signal, timeout });
+    }
+  }
+
+  // 1.5.214: keep his other road on his entry (home address, or Tailscale address), so it's there after a restart.
+  remember(bob, j) {
+    const entry = (this.cfg.share?.borrow?.bobs || []).find((x) => x.address === bob.address);
+    if (!entry) return;
+    const home = this.near.get(bob.address) || '';
+    const ts = (Array.isArray(j?.ts) ? j.ts : []).map((x) => cleanAddress(String(x))).find(Boolean) || '';
+    let changed = false;
+    if (home && home !== entry.address && entry.home !== home) { entry.home = home; bob.home = home; changed = true; }
+    if (ts && ts !== entry.address && entry.ts !== ts) { entry.ts = ts; bob.ts = ts; changed = true; }
+    if (changed && this.cfg.configFile) { try { saveShare(this.cfg, this.cfg.share); } catch {} }
   }
 
   async callAt(bob, at, path, { method = 'GET', body, signal, timeout = HELLO_MS } = {}) {
@@ -372,10 +425,13 @@ export class Lenders {
       const j = await r.json().catch(() => ({}));
       out = r.ok && j.lend === true && !j.busy ? { ok: true, brain: String(j.brain || '').slice(0, 60), device: String(j.device || '').slice(0, 20) } : { ok: false, why: j.busy || (r.status === 401 ? 'passcode not accepted' : r.status === 403 ? 'door closed' : `answered ${r.status}`) };
       // 1.5.72: what this Bob says he can do. ctx: his quick brain's room; speed: words a second he's seen lately;
-      // jobs: whole jobs he takes (only with "Take jobs from my other Bobs" on there), and how busy his queue is.
-      if (r.ok) Object.assign(out, cleanAbilities(j), { ms, links: cleanLinks(j.links) });
-      if (r.ok) await this.learnNear(bob, j.home);
+      // jobs: whole jobs he takes (only with "Accept jobs" on there), and how busy his queue is.
+      if (r.ok) Object.assign(out, cleanAbilities(j), { ms, up: true, links: cleanLinks(j.links) }); // up: he answered (the Bob-Net icons show him)
+      if (r.ok) { await this.learnNear(bob, j.home); this.remember(bob, j); }
     } catch (e) { out = { ok: false, why: /passcode|tries/.test(e.message) ? e.message : 'not reachable' }; }
+    // 1.5.214: a paired Bob we can't reach and whose home address we don't know (paired over Tailscale, now off):
+    // look on the home network for him in the background (Find, at most every 10 minutes), which saves his home address.
+    if (!out.ok && out.why === 'not reachable' && !bob.home && this.lookHome && !(this.lookedAt > this.now() - 10 * 60000)) { this.lookedAt = this.now(); Promise.resolve().then(() => this.lookHome()).catch(() => {}); }
     const seen = this.state.get(bob.address);
     if (seen?.measured) out.measured = seen.measured; // what we timed ourselves outlives a hello
     if (seen?.reviewDownUntil) out.reviewDownUntil = seen.reviewDownUntil; // #30: a review he couldn't do, too
@@ -518,7 +574,8 @@ export const NEEDS = ['pictures', 'video', 'music', 'sfx', 'model3d', 'web', 'th
 export function cleanAbilities(j) {
   const n = (x, max) => (Number.isFinite(Number(x)) && Number(x) > 0 ? Math.min(Number(x), max) : 0);
   const out = { ctx: n(j?.ctx, 1048576), speed: n(j?.speed, 1000), takesJobs: j?.takesJobs === true };
-  out.jobs = out.takesJobs ? [].concat(j?.jobs || []).filter((x) => NEEDS.includes(x)) : [];
+  // 1.5.220: 'room' (a group's job, Discord) used to be dropped here, so no group job ever left for another Bob. Nov 13 'chat': a chat from the Bob-Net icons (net-overlay.js).
+  out.jobs = out.takesJobs ? [].concat(j?.jobs || []).filter((x) => NEEDS.includes(x) || x === 'room' || x === 'chat') : [];
   out.jobsBusy = typeof j?.jobsBusy === 'string' ? j.jobsBusy.slice(0, 40) : '';
   out.queue = n(j?.queue, 999);
   out.passAlong = j?.passAlong === true; // 1.5.123: he introduces his Bobs to each other
@@ -543,25 +600,27 @@ export function cleanAbilities(j) {
 export const bobNetRooms = (L) => (L?.bobs?.() || []).map((b) => ({ b, s: L.state?.get(b.address) || {} }))
   .filter(({ s }) => s.room && s.device !== 'phone').map(({ b, s }) => ({ name: b.name, vramGB: s.room.vramGB || 0, ramGB: s.room.ramGB || 0 }));
 
-// The hello a desktop lender gives: quick replies (lend) and, with "Take jobs from my other Bobs" on, the whole jobs he
+// The hello a desktop lender gives: quick replies (lend) and, with "Accept jobs" on, the whole jobs he
 // can really do on this computer right now. Never a job he'd have to fake: no picture model, no pictures.
 export function helloFor(brain, { why, quick, can, version, label, webOn, bigBrain, name = '', room = null, review = null, check = {} }) {
   const takesJobs = brain.cfg.share?.takeJobs === true && doorOpen(brain.cfg);
   // 'room' (1.5.211): he takes a group's job (Discord) with its strict limits. Older Bobs don't say it, so never get one.
-  const jobs = takesJobs ? ['room', can.pictures && 'pictures', can.video && 'video', can.music && 'music', can.sfx && 'sfx', webOn && bigBrain && 'web', bigBrain && 'think'].filter(Boolean) : [];
+  const jobs = takesJobs ? ['room', 'chat', can.pictures && 'pictures', can.video && 'video', can.music && 'music', can.sfx && 'sfx', webOn && bigBrain && 'web', bigBrain && 'think'].filter(Boolean) : [];
   return {
     protocol: PROTOCOL, lend: why !== 'off', busy: why === 'off' ? undefined : why || undefined,
     brain: quick ? label(quick.model) : '', ctx: quick?.ctx || 0, speed: brain.engine?.lastStats?.tokPerSec || 0,
     device: 'computer', version, takesJobs, jobs, jobsBusy: takesJobs ? guestRefusal(brain) : '', queue: brain.queue?.filter?.((j) => j.state === 'waiting' || j.state === 'working').length || 0,
     name, passAlong: brain.cfg.share?.passAlong === true, // 1.5.123: for the party in Now running
     ...(LOOK_ID_RE.test(String(brain.cfg.look || '')) ? { look: brain.cfg.look } : {}), // his avatar, for the avatars on the others' Bob-Net lists
-    lendCard: brain.cfg.share?.lendCard === true && doorOpen(brain.cfg), // Lend my graphics card (src/share-card.js)
+    lendCard: brain.cfg.share?.lendCard === true && doorOpen(brain.cfg), // Lend my GPU (src/share-card.js)
     scut: brain.cfg.share?.scut === true, // SCUT, the fast link for a lent card (src/share-card.js)
     ...(review?.model ? { review: { brain: label(review.model), ctx: review.ctx || 0, gb: review.gb || 0 } } : {}), // #30: checks work for his other Bobs
-    // Also over the home network (off unless switched on): where this Bob's door is on the home network too.
-    home: brain.cfg.remote?.homeNet === true && doorOpen(brain.cfg) ? homeIps().map((m) => `${m.address}:${brain.cfg.port}`).slice(0, 4) : [],
+    // Home network access (off unless switched on): where this Bob's door is on the home network too.
+    // 1.5.214 ts: his Tailscale door too, kept by a Bob paired at home as the fallback for when he's out.
+    ts: doorOpen(brain.cfg) ? tailscaleIps().map((ip) => `${ip}:${brain.cfg.port}`).slice(0, 2) : [],
+    home: homeOn(brain.cfg) && doorOpen(brain.cfg) ? doorIps().map((m) => `${m.address}:${brain.cfg.port}`).slice(0, 4) : [],
     ...(linksHello(brain.linksCache?.peek?.()) ? { links: linksHello(brain.linksCache.peek()) } : {}), // which kinds of link this Bob has (src/links.js), for the other Bob's Check links
-    ...check, // 1.5.185 Check harder jobs for my other Bobs (src/bob-net-check.js checkHello)
+    ...check, // 1.5.185 Review for other Bobs (src/bob-net-check.js checkHello)
     ...(room ? { room } : {}) // 1.5.137: graphics card and memory in GB, for the other Bob's Brain catalogue
   };
 }

@@ -2,7 +2,7 @@
 // project memories kept to their project, documents kept fresh, the page and line of a find, notes apps, and the
 // Sunday digest. Every one starts off. No real folders, clocks or settings of this computer are read: everything
 // runs in a temporary folder with fakes passed in.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -36,7 +36,7 @@ const KEYS = ['memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPl
   check('all six start off', KEYS.every((k) => fresh[k] !== true));
   check('only true turns one on', KEYS.every((k) => mergeSettings({}, { [k]: 'yes' })[k] === false && mergeSettings({}, { [k]: true })[k] === true));
   check('the on-checks need true', !sourcesOn({}) && sourcesOn({ memorySources: true }) && !expiryOn({ memoryExpiry: 1 }) && expiryOn({ memoryExpiry: true }) && !digestOn({}) && digestOn({ weeklyDigest: true }));
-  check('project memories kept to their project needs Remember only what fits', !whereOn({ memoryWhere: true }) && whereOn({ memoryWhere: true, memoryRecall: true }));
+  check('project memories kept to their project needs Relevant memories only', !whereOn({ memoryWhere: true }) && whereOn({ memoryWhere: true, memoryRecall: true }));
   check('documents kept fresh needs reading and meaning search', !docFreshOn({ docFresh: true }) && !docFreshOn({ docFresh: true, docTools: true }) && docFreshOn({ docFresh: true, docTools: true, docMeaning: true }));
   check('page and line needs reading documents', !docPlacesOn({ docPlaces: true }) && docPlacesOn({ docPlaces: true, docTools: true }));
 }
@@ -178,7 +178,7 @@ const KEYS = ['memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPl
   check('on: the line of the find', r.hits[0].place?.kind === 'line' && r.hits[0].place.n === 3);
   const said = await findDocsTool(cfg).run({ words: 'rent' });
   check('the tool puts the place after the path and says to keep it', /lease\.txt \(line 3\)/.test(said) && /keep its place right after the path/.test(said), said);
-  check('clicking a place opens the side panel there', /if \(b\.dataset\.at && b\.dataset\.file\)/.test(read('public/app.js')) && /#page=\$\{Number\(at\.n\)\}/.test(read('public/doc-view.js')) && /mark class="vat"/.test(read('public/viewer.js')));
+  check('clicking a place opens the side panel there', /if \(b\.dataset\.at && b\.dataset\.file\)/.test(publicText('app.js')) && /#page=\$\{Number\(at\.n\)\}/.test(read('public/doc-view.js')) && /mark class="vat"/.test(read('public/viewer.js')));
 }
 
 // ---------- 92: notes apps ----------
@@ -240,21 +240,21 @@ const KEYS = ['memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPl
   check('and not again that week', keeper.check() === null && shown.length === 1);
   const thu = new Digest(dcfg, { now: () => at('2026-11-12T15:00:00Z') }).build();
   check('"Make this week\'s digest now" on a Thursday is this week, Monday to the coming Sunday', thu.sunday === '2026-11-15' && /Week of 2026-11-09 to 2026-11-15/.test(thu.title));
-  check('the chat and the phone app show it', /case 'digest':/.test(read('public/app.js')) && /ev\.type === 'digest'\) return digestCard/.test(read('android/app/src/main/assets/www/phone.js')) && /ev\.type === 'digest'\) return digestCard/.test(read('public/phone/phone.js')));
+  check('the chat and the phone app show it', /case 'digest':/.test(publicText('app.js')) && /ev\.type === 'digest'\) return digestCard/.test(read('android/app/src/main/assets/www/phone.js')) && /ev\.type === 'digest'\) return digestCard/.test(read('public/phone/phone.js')));
 }
 
 // ---------- Settings, the server, the first-time list ----------
 {
-  const cellar = read('public/cellar.js'), server = read('src/server.js');
-  for (const [k, label] of [['memorySources', 'Note where each memory came from'], ['memoryExpiry', 'Let memories run out'], ['memoryWhere', 'Keep project memories to their project'], ['docFresh', 'Keep my documents fresh'], ['docPlaces', 'Show the page and line'], ['weeklyDigest', 'A Sunday digest']]) {
-    check(`Settings has "${label}", off unless turned on`, cellar.includes(`sswitch('${k}', settings.${k} === true, '${label}', 'Off unless you turn it on.`));
+  const cellar = publicText('cellar.js'), server = read('src/server.js');
+  for (const [k, label] of [['memorySources', 'Memory sources'], ['memoryExpiry', 'Expiring memories'], ['memoryWhere', 'Per-project memories'], ['docFresh', 'Live document index'], ['docPlaces', 'Cite page and line'], ['weeklyDigest', 'Sunday digest']]) {
+    check(`Settings has "${label}", off unless turned on`, cellar.includes(`sswitch('${k}', settings.${k} === true, '${label}', '`));
     check(`the server saves and shows ${k}`, server.includes(`typeof b.${k} === 'boolean'`) && server.includes(`${k}: cfg.${k} === true`));
     check(`${k} is on the first-time list`, WANTS.some((w) => w.key === k && w.setting === label));
   }
   check('Settings lists the memories with Open the chat and Forget, always shown', /data-memsources>Where my memories came from/.test(cellar) && /data-memchat=/.test(cellar) && /data-memforget=/.test(cellar));
   check('the notes folders and the digest button are always shown', cellar.includes('${notesFoldersHtml()}') && cellar.includes('data-digestnow'));
   check('the server lists, forgets and makes the digest on this computer only', /p === '\/api\/memory\/sources'[\s\S]{0,120}if \(!isLocal\)/.test(server) && /p === '\/api\/memory\/forget'[\s\S]{0,120}if \(!isLocal\)/.test(server) && server.includes("p === '/api/digest/now'"));
-  check('Open the chat reaches the chat window from the Settings window', RELAY.includes('bob-open-chat') && /addEventListener\('bob-open-chat'/.test(read('public/app.js')));
+  check('Open the chat reaches the chat window from the Settings window', RELAY.includes('bob-open-chat') && /addEventListener\('bob-open-chat'/.test(publicText('app.js')));
 }
 
 // ---------- Help in Bob's voice, the glossary and the FAQ ----------

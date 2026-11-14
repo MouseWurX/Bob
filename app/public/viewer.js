@@ -198,7 +198,7 @@ export function createViewer({ post, note }) {
         stage.querySelector('iframe').srcdoc = j.text;
         return;
       }
-      if (t.at?.kind === 'line' && t.at.n > 0) { // "Show the page and line": the text with that line marked, scrolled to it
+      if (t.at?.kind === 'line' && t.at.n > 0) { // "Cite page and line": the text with that line marked, scrolled to it
         const lines = String(j.text).split('\n');
         stage.innerHTML = `<pre class="vcode"><code>${lines.map((l, i) => (i === t.at.n - 1 ? `<mark class="vat">${esc(l) || ' '}</mark>` : esc(l))).join('\n')}</code></pre>${cut}`;
         try { stage.querySelector('.vat')?.scrollIntoView({ block: 'center' }); } catch {}
@@ -209,7 +209,7 @@ export function createViewer({ post, note }) {
       stage.innerHTML = `<pre class="vcode"><code>${esc(j.text)}</code></pre>${cut}`;
       return;
     }
-    // Word, Excel, PowerPoint, PDF and friends: their words, sheets or slides (doc-view.js; "Show documents in the side panel").
+    // Word, Excel, PowerPoint, PDF and friends: their words, sheets or slides (doc-view.js; "Documents in the side panel").
     if (t.kind !== 'folder' && t.path && isDocName(t.name)) {
       main.innerHTML = `${head}<div class="vstage vdocstage"></div>${tools}`;
       drawDoc(main.querySelector('.vdocstage'), t, { isActive: () => active === t.key });
@@ -237,7 +237,7 @@ export function createViewer({ post, note }) {
       tabs.push(t);
       if (tabs.length > 8) tabs.shift(); // keep it light: the oldest tab closes
     }
-    t.at = item.at || null; // "Show the page and line": where in the file to open it
+    t.at = item.at || null; // "Cite page and line": where in the file to open it
     active = t.key;
     show(true);
     draw();

@@ -6,14 +6,16 @@ import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professiona
 import { PATH_GROUPS, BUNDLES, PERSONALITY, TEACH } from './lab-thinking-paths.js'; // 1.5.160
 import { createHomeWays } from './lab-home-ways.js'; // 1.5.164 Mix two brains, Stack layers, Take out the refusal habit: here, free
 import { newSource, sourceRowHtml, sourceOut, sourceEvent } from './lab-source.js'; // 1.5.163 one chooser for where things come from
+import { createProtocol } from './lab-protocol.js'; // 13 Nov the training protocol and its free steps
 
 const WHERE = { here: 'Here, free', rented: 'Rented card', both: 'Here, or a rented card' };
 
 export function createForge({ api, goMake, view = () => null, runs = () => '' }) {
   const hw = createHomeWays({ api, view }); // 1.5.164
+  const pr = createProtocol({ api }); // 13 Nov
   let fv = null, loading = false, fmsg = '', check = null, showPlan = false, saved = '', buy = null, stopAsk = false;
   const lib = { from: '', name: '', busy: false, msg: '', open: {} }; // the lesson library: add a set, pick its parts
-  const form = { base: '', run: '', rungs: [{ name: '', nickname: '', how: 'number', keep: 128, keepFile: '' }], strong: [], quants: ['Q4_K_M'], heal: { experts: 'lora', epochs: 1, learn: 'answer', thinking_weight: 0.5, odds_cover: 'answer' }, teach: {}, thinking: { mode: 'blend', shares: {}, own: '', ownShare: 0, personality: { alignment: {}, rules: {}, mood: {} } }, hours_max: 0, dollars_max: 0, note: '', brain: { pick: '', source: newSource('hf') }, lessonSets: [], lessonParts: {}, lessons: [] }; // 1.5.163 the brain to start from, and lessons from anywhere
+  const form = { base: '', run: '', rungs: [{ name: '', nickname: '', how: 'number', keep: 128, keepFile: '' }], strong: [], quants: ['Q4_K_M'], heal: { experts: 'lora', epochs: 1, learn: 'answer', thinking_weight: 0.5, odds_cover: 'answer' }, teach: {}, thinking: { mode: 'blend', shares: {}, own: '', ownShare: 0, personality: { alignment: {}, rules: {}, mood: {} } }, hours_max: 0, dollars_max: 0, note: '', brain: { pick: '', source: newSource('hf') }, lessonSets: [], lessonParts: {}, lessons: [], ways: { pref: 'off', pairs: '', onpolicy: 0, grpo: false, grpoHours: 1.5, targets: [], surgery: '' } }; // 1.5.163 the brain to start from, and lessons from anywhere
 
   async function load() { loading = true; try { fv = await api('/api/lab/forge'); if (!form.base && fv?.plans?.[0]) form.base = fv.plans[0].id; } catch (e) { fmsg = e.message; } loading = false; }
   // The form's thinking state as the server reads it (paths with a share above 0 only).
@@ -36,7 +38,7 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
   const makeLine = () => { const ms = fv.methods.filter((m) => m.ready && m.use === 'make'); return ms.length ? `<p class="forge-make">${ms.map((m) => `<button type="button" class="link" data-forgeuse="make" data-method="${m.id}">${nameNow(m.title)}</button>`).join(' · ')} <span class="muted">are on Make a brain.</span></p>` : ''; };
 
   function runsHtml() {
-    if (!fv.found) return '<p class="muted">The Forge isn\'t next to this copy of Bob. It lives in the model-lab folder of Bob\'s source; run Bob from there and its runs show here.</p>';
+    if (!fv.found) return `<p class="muted">Bob can't find the Forge. It lives in the model-lab folder of Bob's source, and installs don't carry it.${fv.looked?.length ? ` Bob looked in ${esc(fv.looked.join(', '))}. Put a copy of model-lab in one of them, or write its place in Bob's config.json as "forgeDir".` : ''}</p>`;
     const runs = fv.runs.length ? `<ul class="tlist">${fv.runs.map((r) => `<li><strong>${esc(r.when)}</strong> <span class="muted">· ${r.state === 'done' ? 'finished' : r.state === 'stopped' ? 'stopped' : 'no end recorded'}${r.made.length ? ` · made ${esc(r.made.join(', '))}` : ''}</span>
       <details><summary>Last lines of its log</summary><pre tabindex="0">${esc(r.tail.join('\n'))}</pre></details></li>`).join('')}</ul>` : '<p class="muted">No Forge runs on this replicant matrix yet.</p>';
     const brains = fv.brains.length ? `<table class="lab-report"><caption class="muted">Brains the Forge brought home. Surprise on held-back lessons, lower is better; the teacher's own score is the floor.</caption>
@@ -138,6 +140,23 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
       <p class="muted">Sets from Hugging Face or a link are downloaded here and put into the Lab's lesson format before the run. Formats read: chat messages, instruction and output, prompt and response, question and answer; files .jsonl, .json, .csv and .parquet.</p>
     </fieldset>`;
   }
+  // 13 Nov New ways to teach (the training protocol's rented steps). Always shown; each is off until picked.
+  function waysHtml() {
+    const w = form.ways, pairs = pr.pairs();
+    const tg = (t, i) => `<div class="row forge-target"><label>Target <input data-forgetgt="${i}" data-f="name" value="${esc(t.name)}" maxlength="24" placeholder="facts"></label><label>Kinds of lesson (jobs) <input data-forgetgt="${i}" data-f="jobs" value="${esc(t.jobs)}" maxlength="300" placeholder="straight-facts, knowledge"></label><label class="forge-num">Weight <input type="number" min="0" max="5" step="0.25" data-forgetgt="${i}" data-f="weight" value="${esc(String(t.weight))}"></label><button type="button" class="link" data-forgetgtrm="${i}">Remove</button></div>`;
+    return `<fieldset id="forge-ways"><legend>New ways to teach</legend>
+      <p class="muted">Each is off until you pick it, and each is measured on the held-out chats: a way only stays if it does better.</p>
+      <label>Right-vs-wrong pairs <select id="forge-w-pref">${[['off', 'Off'], ['orpo', 'ORPO: mixed into the teaching back'], ['dpo', 'DPO: a short pass after it'], ['kto', 'KTO: from marked answers, no pairs needed']].map(([v, l]) => `<option value="${v}" ${w.pref === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+      <label>Pairs to learn from <select id="forge-w-pairs"><option value="">${pairs.length ? '(pick)' : '(none yet: make them under The training protocol)'}</option>${pairs.map((x) => `<option value="${esc(x.id)}" ${w.pairs === x.id ? 'selected' : ''}>${esc(x.id)} · ${x.pairs} pairs, ${x.marked} marked</option>`).join('')}</select></label>
+      ${num('forge-w-onpolicy', 'On-policy teaching, % of lessons', w.onpolicy, 0, 50, 5, 'The small Bob writes its own answer and the teacher scores it. 0 is off.')}
+      <label class="lab-opt"><input type="checkbox" id="forge-w-grpo" ${w.grpo ? 'checked' : ''}> <span><strong>Reward pass on tool calls</strong><br><span class="muted">After the teaching back. Kept only if no target drops.</span></span></label>
+      ${num('forge-w-grpoh', 'Reward pass hours per brain', w.grpoHours, 0.25, 6, 0.25)}
+      <fieldset><legend>Targets</legend><p class="muted">Groups of lesson kinds, each with its own weight and its own grade. None means one target, everything.</p>${w.targets.map(tg).join('')}${w.targets.length < 8 ? '<button type="button" class="link" data-forgetgtadd>Add a target</button>' : ''}</fieldset>
+      <label for="forge-w-surgery">Surgery edits to bake in <span class="muted">(optional)</span></label>
+      <textarea id="forge-w-surgery" rows="3" maxlength="8000" aria-describedby="forge-w-surgery-h" placeholder='[{"layer": 12, "expert": 37, "scale": 0.8}]'>${esc(w.surgery)}</textarea>
+      <p class="muted" id="forge-w-surgery-h">Turn single neurons, whole experts or attention heads up or down in every brain this run makes. Only bake what a live sweep showed helps and hurts nothing; pressing Start on the card is your go.</p>
+    </fieldset>`;
+  }
   // 1.5.168 Keep it simple hides the controls most runs never touch; their defaults still go in the plan. Professional shows them all.
   const pro = () => view?.()?.mode === 'pro';
   const proOnly = (html) => (pro() ? html : '');
@@ -153,6 +172,7 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
       ${proOnly(`<fieldset><legend>Running files</legend>${[['Q4_K_M', 'Q4 (recommended)'], ['Q3_K_M', 'Q3 (for 8 GB or less)'], ['Q5_K_M', 'Q5'], ['Q6_K', 'Q6']].map(([v, l]) => `<label class="lab-opt"><input type="checkbox" data-forgequant="${v}" ${form.quants.includes(v) ? 'checked' : ''}> <span>${esc(l)}</span></label>`).join('')}</fieldset>`)}
       ${lessonsHtml()}
       ${thinkingHtml()}
+      ${waysHtml()}
       ${proOnly(`<fieldset><legend>Teaching back</legend>
         ${[['lora', 'Light (recommended)', 'Teaches small add-ons to every layer and the experts.'], ['full', 'Full', 'Teaches every weight. Small brains only.'], ['frozen', 'Experts left alone', 'Only the rest of the brain is taught.']].map(([v, l, h]) => `<label class="lab-opt"><input type="radio" name="forge-experts" value="${v}" ${form.heal.experts === v ? 'checked' : ''}> <span><strong>${nameNow(l)}</strong><br><span class="muted">${esc(h)}</span></span></label>`).join('')}
         ${num('forge-epochs', 'Passes over the lessons', form.heal.epochs, 0.25, 3, 0.25, 'One full pass is the rule. Bob sets each brain\'s time limit a third above the estimate, so a pass is never cut short.')}
@@ -173,7 +193,7 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
   // press on the purchase card, which shows the plan's own caps and brains, read back from the saved file.
   function startHtml() {
     const live = fv.live;
-    const sw = `<label class="lab-opt"><input type="checkbox" id="forge-allow" ${fv.allowed ? 'checked' : ''}> <span><strong>Let the Lab start Forge runs</strong><br><span class="muted">Off unless you turn it on. Each run still needs your press on its purchase card, and costs money by the hour on the rental service.</span></span></label>`;
+    const sw = `<label class="lab-opt"><input type="checkbox" id="forge-allow" ${fv.allowed ? 'checked' : ''}> <span><strong>Let the Lab start Forge runs</strong><br><span class="muted">Each run still needs your press on its purchase card, and costs money by the hour on the rental service.</span></span></label>`;
     const runs = fv.saved?.length ? `<fieldset><legend>Your saved plans</legend>${fv.saved.map((id) => `<div class="row"><span>${esc(id)}</span> <button type="button" class="link" data-forgebuy="${esc(id)}" ${fv.allowed && !live?.running ? '' : 'disabled'}>Start on a rented card…</button></div>`).join('')}</fieldset>` : '<p class="muted">Save a plan above, and it shows here to start.</p>';
     const card = buy ? `<div class="setup-offer forge-buy" role="alertdialog" aria-labelledby="forge-buy-h"><strong id="forge-buy-h">Rent a graphics card for ${esc(buy.id)}?</strong>
       <ul>${buy.brains.map((b) => `<li>${esc(b.name)}${b.nickname ? ` (${esc(b.nickname)})` : ''}: ${esc(String(b.keep))} experts per layer, up to ${b.hours} hours of teaching back</li>`).join('')}</ul>
@@ -195,6 +215,7 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
         ${hw.isOpen() || (view()?.runs || []).some((x) => ['mix', 'stack', 'refusals', 'refusals-try'].includes(x.kind)) ? runs() : ''}${hw.html()}
         <details><summary>Ideas left out, and why</summary><dl class="forge-left">${fv.leftOut.map(([t, w]) => `<dt>${esc(t)}</dt><dd>${esc(w)}</dd>`).join('')}</dl></details></section>
       ${extra}
+      ${pr.html()}
       <section class="lab-compare" aria-labelledby="forge-runs-h"><h3 id="forge-runs-h">Forge runs</h3>${runsHtml()}</section>
       ${formHtml()}
       ${fmsg ? `<p class="error" role="alert">${esc(fmsg)}</p>` : ''}
@@ -206,6 +227,7 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
     if (!el.closest?.('#lab-page-forge')) return false;
     fmsg = '';
     if (await hw.change(el)) return 'draw'; // 1.5.164
+    if (await pr.change(el)) return 'draw'; // 13 Nov
     if (el.id === 'forge-allow') { try { fv.allowed = (await api('/api/lab/forge/allow', { on: el.checked })).allowed; } catch (e) { fmsg = e.message; } return 'draw'; }
     if (el.id === 'forge-base') form.base = el.value;
     else if (el.id === 'forge-run') form.run = el.value;
@@ -232,6 +254,13 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
     else if (el.id === 'forge-oddsboth') form.heal.odds_cover = el.checked ? 'both' : 'answer';
     else if (el.name === 'forge-experts') form.heal.experts = el.value;
     else if (el.id === 'forge-epochs') form.heal.epochs = Number(el.value);
+    else if (el.id === 'forge-w-pref') form.ways.pref = el.value;
+    else if (el.id === 'forge-w-pairs') form.ways.pairs = el.value;
+    else if (el.id === 'forge-w-onpolicy') form.ways.onpolicy = Number(el.value) || 0;
+    else if (el.id === 'forge-w-grpo') form.ways.grpo = el.checked;
+    else if (el.id === 'forge-w-grpoh') form.ways.grpoHours = Number(el.value);
+    else if (el.id === 'forge-w-surgery') form.ways.surgery = el.value;
+    else if (el.dataset?.forgetgt !== undefined) { const t = form.ways.targets[Number(el.dataset.forgetgt)]; if (t) t[el.dataset.f] = el.dataset.f === 'weight' ? Number(el.value) : el.value; }
     else if (el.id === 'forge-hours') form.hours_max = Number(el.value);
     else if (el.id === 'forge-dollars') form.dollars_max = Number(el.value);
     else return false;
@@ -243,6 +272,9 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
     if (d.forgeuse === 'make') { goMake(d.method); return true; }
     if (d.forgeuse === 'home') { await hw.open(hw.isOpen() === d.method ? '' : d.method); return 'draw'; } // 1.5.164
     { const h = await hw.click(b, load); if (h) return h === 'draw' ? 'draw' : (await load(), 'draw'); }
+    { const h = await pr.click(b); if (h) return h; } // 13 Nov
+    if ('forgetgtadd' in d) { if (form.ways.targets.length < 8) form.ways.targets.push({ name: '', jobs: '', weight: 1 }); await recheck(); return 'draw'; }
+    if (d.forgetgtrm !== undefined) { form.ways.targets.splice(Number(d.forgetgtrm), 1); await recheck(); return 'draw'; }
     if (d.forgeuse === 'form') { document.getElementById('forge-form')?.scrollIntoView({ block: 'start' }); document.getElementById('forge-brain')?.focus(); return true; }
     if ('forgeaddrung' in d) { const last = form.rungs.at(-1); form.rungs.push({ name: '', nickname: '', how: 'cover', keep: Math.max(8, Math.round((last.keep || 128) * 0.7)), keepFile: '' }); await recheck(); return 'draw'; }
     if (d.forgermrung) { form.rungs.splice(Number(d.forgermrung), 1); await recheck(); return 'draw'; }

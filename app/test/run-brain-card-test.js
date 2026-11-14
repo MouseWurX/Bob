@@ -8,6 +8,7 @@ import { readCard, cleanCard, cardPathOf, ownEntry, inspectOwn, benchLine, CARD_
 import { catalogueHtml, FAMILIES } from '../public/catalogue.js';
 import { pickFor } from '../public/fit.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -52,7 +53,7 @@ check('the Add form says a brain card was found and what it files under', /Brain
 const faq = HELP.find((x) => x.id === 'faq-own-brain');
 check('Help explains brain cards and that a stale card is ignored', /my built-in engine/.test(faq.html) && !/my own engine/.test(faq.html) && /brain card/.test(faq.html) && /\.bob\.json/.test(faq.html) && /exact size/.test(faq.html));
 // 1.5.145: "or type its path" fills the form the same way as the file picker (card and picture reader included).
-const cellarSrc = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const cellarSrc = publicText('cellar.js');
 const formLines = cellarSrc.split('\n').filter((l) => /ownForm = r\.error \?/.test(l));
 check('a typed path brings its brain card and picture reader into the Add form, like the picker', formLines.length === 2 && formLines.every((l) => /mmproj: r\.mmproj \|\| ''/.test(l) && /card: r\.card \|\| null/.test(l)));
 fs.rmSync(dir, { recursive: true, force: true });

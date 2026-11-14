@@ -62,7 +62,7 @@ function browserHtml(bw, s, on) {
   return `<div class="hands-browser muted${on ? '' : ' dim'}"><strong>Bob's browser and eyes</strong><br>
     ${bw.available ? '✓ Bob\'s own browser window is here (a window titled "Bob is browsing"; separate from your browser and its sign-ins).' : '✗ Bob\'s browser window only exists in Bob\'s app window, so it\'s not here when Bob runs in a browser tab or as a background service.'}
     <button type="button" data-hbrowserforget ${bw.available ? '' : 'disabled'}>Forget what Bob's browser knows</button><br>
-    <label class="switch small"><input type="checkbox" data-heyes ${s.eyesCheck !== false ? 'checked' : ''}><span><strong>Bob checks his work with his eyes</strong><br><span class="muted">After a step in an app or his browser that says what should happen, Bob takes a picture of the window and asks his eyes brain whether it did. About a second a step. ${eyes}</span></span></label></div>`;
+    <label class="switch small"><input type="checkbox" data-heyes ${s.eyesCheck !== false ? 'checked' : ''}><span><strong>Visual check</strong><br><span class="muted">After a step in an app or his browser that says what should happen, Bob takes a picture of the window and asks his eyes brain whether it did. About a second a step. ${eyes}</span></span></label></div>`;
 }
 
 // ---- Approval cards (from the brain's 'approval' event when it has a plan or a command) ----
@@ -140,7 +140,7 @@ function newToolCard(ev, { add, answer }) {
 }
 
 // Settings, Hands: the tools Bob made. Each can be turned off, its code shown, or removed. 1.5.144: Remove puts it on
-// the Recently deleted shelf (Settings, 🧰 Tools and how-tos Bob made) for 30 days, same as Delete there.
+// the Recently deleted shelf (Settings, 🧰 Tools and how-tos) for 30 days, same as Delete there.
 const TOOL_STATE = { on: '', off: 'turned off', changed: 'off: its files changed since you OK\'d it', missing: 'its folder is gone' };
 // Sort and rename (src/sort-library.js): the naming rule for each kind of file. Always drawn, saved while
 // the Hand is off (settings rule 14). "/" in a pattern makes folders; a rule can send its files to its own folder.
@@ -375,10 +375,10 @@ export async function mountHandsSettings(box) {
     const s = v.settings;
     const folders = [...new Set([...(v.candidates || []), ...s.folders])];
     box.innerHTML = `<span class="tag">off unless you turn them on</span>
-      <p class="muted">Hands let Bob do things on this replicant matrix, not just talk about them. Each one is off until you switch it on. Even then he shows you exactly what he'll do (every file, or the exact command) and waits for your click every time, unless you turn on "Let Bob work without asking" below. "Allow the rest of this job" only covers the same kind of thing until that job ends. The hard limits below are all on to start with. He never changes his own code or settings. Everything goes in the logbook.</p>
+      <p class="muted">Hands let Bob do things on this replicant matrix, not just talk about them. Each one is off until you switch it on. Even then he shows you exactly what he'll do (every file, or the exact command) and waits for your click every time, unless you turn on "Work without asking" below. "Allow the rest of this job" only covers the same kind of thing until that job ends. The hard limits below are all on to start with. He never changes his own code or settings. Everything goes in the logbook.</p>
       <label class="switch"><input type="checkbox" data-hmaster ${s.enabled ? 'checked' : ''}><span><strong>Let Bob use Hands</strong> ${tip('The master switch. Off turns every Hand below off.', 'Let Bob use Hands')}${s.enabled && s.held ? '<br><span class="warn-text">Stopped right now with the Hands switch on the chat page. Click it there to carry on.</span>' : ''}</span></label>
       <label class="switch"><input type="checkbox" data-htoday ${s.today ? 'checked' : ''}><span><strong>Offer "Allow this here for today"</strong> <span class="tag">off unless you turn it on</span><br><span class="muted">Command cards get one more button. Pressed, that exact command in that folder runs without a card until midnight. A different command, or anything right after Bob read a web page or file, still asks.</span></span></label>
-            <div class="hands-free${s.free ? ' on' : ''}"><label class="switch"><input type="checkbox" data-hfree ${s.free ? 'checked' : ''}><span><strong>Let Bob work without asking</strong> <span class="tag">off unless you turn it on</span><br><span class="muted">No approval cards: he just does the job and tells you what he did. The hard limits below still apply, every action is still in the chat and the logbook, and the ✋ Hands button on the chat page stops him at once. Cloud helpers still ask, because they cost money. Scheduled jobs also run by themselves.</span>${s.free && s.enabled ? '<br><span class="warn-text">On: Bob is working without asking.</span>' : ''}</span></label>${bannerHidden() ? '<button type="button" class="link" data-hbannerback>Show the banner again</button>' : ''}</div>
+            <div class="hands-free${s.free ? ' on' : ''}"><label class="switch"><input type="checkbox" data-hfree ${s.free ? 'checked' : ''}><span><strong>Work without asking</strong> <span class="tag">off unless you turn it on</span><br><span class="muted">No approval cards: he just does the job and tells you what he did. The hard limits below still apply, every action is still in the chat and the logbook, and the ✋ Hands button on the chat page stops him at once. Cloud helpers still ask, because they cost money. Scheduled jobs also run by themselves.</span>${s.free && s.enabled ? '<br><span class="warn-text">On: Bob is working without asking.</span>' : ''}</span></label>${bannerHidden() ? '<button type="button" class="link" data-hbannerback>Show the banner again</button>' : ''}</div>
       ${v.hands.map((h) => `<label class="switch"><input type="checkbox" data-hand="${esc(h.id)}" ${s[h.id]?.on ? 'checked' : ''}><span><strong>${esc(h.label)}</strong> ${tip(esc(h.what || ''), h.label)}</span></label>`).join('')}
       ${officeLine(v.office, s.enabled && s.office?.on)}
       ${securityLine(s.enabled && s.security?.on)}
@@ -391,11 +391,11 @@ export async function mountHandsSettings(box) {
         <p class="muted">These hard limits hold whether or not Bob asks first. Switch one off only if you need what it blocks.</p>
         ${(v.limits || []).map((l) => `<label class="switch small"><input type="checkbox" data-hlimit="${esc(l.id)}" ${s.limits?.[l.id] !== false ? 'checked' : ''}><span><strong>${esc(l.label)}</strong><br><span class="muted">${esc(l.on)}</span>${l.more ? `<details class="more"><summary>More</summary><span class="muted">${esc(l.more)}</span></details>` : ''}${s.limits?.[l.id] === false ? `<br><span class="warn-text">Off: ${esc(l.off)}</span>` : ''}${l.id === 'readOnly' ? readOnlyHtml(v, s) : ''}</span></label>`).join('')}
         <p class="muted">Always on, whatever you pick: Bob can't change his own code, settings or this page, never runs as administrator, stays out of terminals, admin tools, password managers and sign-in prompts, and the ✋ Hands button always stops him.</p></div>
-      <div class="hands-folders"><strong>Folders the Files Hand may work in</strong>
+      <div class="hands-folders"><strong>Allowed folders</strong>
         ${folders.length ? folders.map((f) => `<label class="switch small"><input type="checkbox" data-hfolder="${esc(f)}" ${s.folders.includes(f) ? 'checked' : ''}><span>${esc(f)}</span></label>`).join('') : '<p class="muted">No folders yet.</p>'}
         <div class="row"><input type="text" data-hnewfolder placeholder="Add a folder: C:\\Users\\you\\Pictures" aria-label="Add a folder" style="flex:1"><button type="button" data-haddfolder>Add</button></div>
         <p class="muted">Sort and rename works only in these folders too. The Office documents and converting Hand saves in these folders too (and in Bob's own Documents folder). Bob's own folders stay off-limits even inside these, and so do read-only projects and files with keys or passwords while those hard limits are on.</p></div>
-      <label class="pick"><strong>Stop a command after</strong><select data-htimeout>${[1, 5, 15, 30, 60, 120].map((m) => `<option value="${m}" ${m === s.timeoutMin ? 'selected' : ''}>${m < 60 ? `${m} minute${m === 1 ? '' : 's'}` : `${m / 60} hour${m === 60 ? '' : 's'}`}</option>`).join('')}</select></label>
+      <label class="pick"><strong>Command timeout</strong><select data-htimeout>${[1, 5, 15, 30, 60, 120].map((m) => `<option value="${m}" ${m === s.timeoutMin ? 'selected' : ''}>${m < 60 ? `${m} minute${m === 1 ? '' : 's'}` : `${m / 60} hour${m === 60 ? '' : 's'}`}</option>`).join('')}</select></label>
       <div class="hands-recipes"><strong>Recipes</strong> <span class="muted">Saved commands you can run in one click, or ask Bob for by name ("run my build recipe"). He still asks before each run, unless he's working without asking.</span>
         ${v.recipes.length ? `<ul>${v.recipes.map((r) => `<li><button type="button" class="big" data-hrun="${esc(r.name)}" ${s.enabled && s.run?.on ? '' : 'disabled'}>▶ ${esc(r.name)}</button> <code>${esc([r.cmd, ...(r.args || [])].join(' '))}</code> <span class="muted">in ${esc(r.cwd)}</span> <button type="button" class="link" data-hdelrecipe="${esc(r.name)}">Remove</button></li>`).join('')}</ul>` : ''}
         ${`<details class="more"><summary>More</summary><strong>Add a recipe</strong><div class="hands-newrecipe">
@@ -424,8 +424,8 @@ export async function mountHandsSettings(box) {
     const c = document.createElement('div');
     c.className = 'free-confirm';
     c.setAttribute('role', 'alertdialog');
-    c.setAttribute('aria-label', 'Turn on Let Bob work without asking?');
-    c.innerHTML = `<p><strong>Let Bob work without asking?</strong> He'll move files, run commands and use apps without showing you a card first. Scheduled jobs will also run by themselves. Hard limits still apply, and ✋ Hands stops him at any time.</p>
+    c.setAttribute('aria-label', 'Turn on Work without asking?');
+    c.innerHTML = `<p><strong>Work without asking?</strong> He'll move files, run commands and use apps without showing you a card first. Scheduled jobs will also run by themselves. Hard limits still apply, and ✋ Hands stops him at any time.</p>
       <div class="row"><button type="button" class="big warn" data-hfreeyes>Turn it on</button><button type="button" class="big" data-hfreeno>Cancel</button></div>`;
     row.appendChild(c);
     c.querySelector('[data-hfreeno]').focus();
@@ -493,7 +493,7 @@ export async function mountHandsSettings(box) {
       if ('hpwcheck' in b.dataset) return await checkPassword(box);
       if (b.dataset.hgetengine) { b.disabled = true; try { await post('/api/models/download', { id: 'engine:' + b.dataset.hgetengine }); say('Downloading. It shows in Downloads; this line turns to ✓ when it\'s ready.'); } catch (e) { b.disabled = false; say(e.message); } return; }
       if (b.dataset.hmytoolcode) { const pre = b.closest('li').querySelector('.mytool-code'); if (!pre.hidden) { pre.hidden = true; b.textContent = 'Show code'; return; } const r = await post('/api/hands/mytools', { name: b.dataset.hmytoolcode, code: true }); pre.textContent = r.code; pre.hidden = false; b.textContent = 'Hide code'; return; }
-      if (b.dataset.hmytooldel) { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Click again to remove'; return; } v = await post('/api/hands/mytools', { name: b.dataset.hmytooldel, remove: true }); draw(); return say(`Removed. It waits 30 days under Recently deleted in 🧰 Tools and how-tos Bob made, where you can put it back; then its folder goes to ${sched?.platform === 'darwin' ? 'the Trash' : sched?.platform === 'linux' ? 'the trash' : 'the Recycle Bin'}.`); }
+      if (b.dataset.hmytooldel) { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Click again to remove'; return; } v = await post('/api/hands/mytools', { name: b.dataset.hmytooldel, remove: true }); draw(); return say(`Removed. It waits 30 days under Recently deleted in 🧰 Tools and how-tos, where you can put it back; then its folder goes to ${sched?.platform === 'darwin' ? 'the Trash' : sched?.platform === 'linux' ? 'the trash' : 'the Recycle Bin'}.`); }
       if ('hsandbox' in b.dataset) { b.disabled = true; say('Checking the sandbox (a few seconds)…'); v = await post('/api/hands/sandbox'); draw(); return say(v.sandbox?.ok ? 'The sandbox holds.' : `The sandbox didn't hold: ${v.sandbox?.why || 'unknown'}.`); }
       if ('hbrowserforget' in b.dataset) {
         // Asks first, in the page (no browser dialog), like "work without asking".

@@ -7,7 +7,8 @@ export const WINDOW_SIZE = 'popup,width=1040,height=780';
 
 // What the Settings page announces that the main window acts on.
 export const RELAY = ['bob-auto-session', 'bob-brain-mode', 'bob-voice', 'bob-lab-switch', 'bob-web', 'bob-caps', 'bob-rent-slot',
-  'bob-quarantine', 'bob-door', 'bob-update-started', 'bob-tidy', 'bob-ask', 'bob-downloads', 'bob-chat-redo', 'bob-harness', 'bob-open-chat'];
+  'bob-quarantine', 'bob-door', 'bob-update-started', 'bob-tidy', 'bob-ask', 'bob-downloads', 'bob-chat-redo', 'bob-harness', 'bob-open-chat',
+  'bob-gamelook']; // 1.5.222 Change his game look (Settings, Personality) opens Adventure, Characters, Party in the main window
 
 export const message = (name, detail) => ({ from: 'settings-window', name, detail: detail === undefined ? null : detail });
 

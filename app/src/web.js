@@ -1,9 +1,9 @@
-// "Let Bob search the web" (1.5.27, 2026-11-02: "add a switch, off by default"). Off: web_search and
+// "Web search" (1.5.27, 2026-11-02: "add a switch, off by default"). Off: web_search and
 // fetch_page are taken out of Bob's tools, a call by name gets WEB_OFF back, and his prompt tells him to say
 // where the switch is when a question needs the internet. No imports, so config.js and brain.js can both use it.
 export const WEB_TOOLS = ['web_search', 'fetch_page'];
 export const webOn = (cfg) => cfg?.webSearch === true;
-export const WEB_SWITCH = 'Let Bob search the web';
+export const WEB_SWITCH = 'Web search';
 export const WEB_WHERE = 'Settings';
 export const WEB_PILL = '🌐 Web search'; // the same setting, on the chat page next to Effort (1.5.28)
 const HOW = `click "${WEB_PILL}" next to Effort on the chat page, or turn on "${WEB_SWITCH}" in ${WEB_WHERE}`;

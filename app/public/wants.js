@@ -9,89 +9,91 @@ import { CARDS } from './settings-map.js';
 // key: the setting. setting: the switch's name in Settings (the Help and the tests use it). where: its Settings panel.
 // card: the Settings card it sits under.
 export const WANTS = [
-  { card: 'bob', key: 'mathView', setting: 'Show maths as formulas', where: 'Bob himself',
+  { card: 'bob', key: 'mathView', setting: 'Render maths', where: 'Bob himself',
     label: 'Show maths as real formulas', note: 'Fractions, powers and roots instead of code.' },
   { card: 'bob', key: 'shortcuts', setting: 'Keyboard shortcuts', where: 'Bob himself',
     label: 'Answer to keyboard shortcuts', note: 'Ctrl+Shift+O new chat, Ctrl+K search, Esc stops me. Ctrl+/ lists them.' },
-  { card: 'bob', key: 'readableFont', setting: 'Easier-to-read font', where: '🌓 Look & feel',
+  { card: 'bob', key: 'readableFont', setting: 'Readable font', where: '🌓 Look & feel',
     label: 'Use an easier-to-read font', note: 'Plainer letters with more room between them and between lines.' },
-  { card: 'how', key: 'todayCard', setting: 'Show a today card when Bob opens', where: '🗓 Everyday helpers',
+  { card: 'how', key: 'todayCard', setting: 'Today card', where: '🗓 Everyday helpers',
     label: 'Show you a today card when I open', note: 'Weather, today\'s reminders and jobs, and the last check-in. Once a day.' },
   { card: 'how', key: 'focusTimer', setting: 'Focus timer', where: '🗓 Everyday helpers',
     label: 'Keep quiet while you focus', note: 'A ⏱ Focus button. My taps on the shoulder wait until it ends.' },
-  { card: 'how', key: 'receipts', setting: 'Keep a spending sheet from receipts', where: '🗓 Everyday helpers',
+  { card: 'how', key: 'receipts', setting: 'Receipt tracker', where: '🗓 Everyday helpers',
     label: 'Keep a spending sheet from receipt photos', note: 'Snap a receipt and I add it. The sheet stays here, locked.' },
-  { card: 'how', key: 'updateTour', setting: 'Show what\'s new after an update', where: '🗓 Everyday helpers',
+  { card: 'how', key: 'profilesOn', setting: 'Users', where: '🗓 Everyday helpers',
+    label: 'Let others in the house use me too', note: 'Each gets their own chats, memory, email, keys and agents. Passcodes optional.' },
+  { card: 'how', key: 'updateTour', setting: 'What\'s new after updates', where: '🗓 Everyday helpers',
     label: 'Show you what\'s new after an update', note: 'Up to three cards, each with Turn on.' },
-  { card: 'how', key: 'quickNotes', setting: 'Let Bob take quick notes', where: 'How Bob works',
+  { card: 'how', key: 'quickNotes', setting: 'Quick notes', where: 'How Bob works',
     label: 'Take quick notes when you say "note:"', note: 'Saved at once with the date, in one text file.' },
-  { card: 'how', key: 'smartNotes', setting: 'Let Bob notice what\'s worth noting', where: 'How Bob works',
+  { card: 'how', key: 'smartNotes', setting: 'Auto notes', where: 'How Bob works',
     label: 'Note things worth keeping on my own', note: 'Decisions, numbers, plans. I say 📝 Noted. Turns quick notes on too.' },
-  { card: 'how', key: 'docTools', setting: 'Read and search my documents', where: 'How Bob works',
+  { card: 'how', key: 'docTools', setting: 'Read and search documents', where: 'How Bob works',
     label: 'Read and search your documents', note: 'Word, Excel, PowerPoint, PDF and more. Nothing leaves this replicant matrix.' },
-  { card: 'how', key: 'docMeaning', setting: 'Search my documents by meaning', where: 'How Bob works',
+  { card: 'how', key: 'docMeaning', setting: 'Semantic document search', where: 'How Bob works',
     label: 'Find documents by what they mean, not just the words', note: 'Works with reading your documents on. The index stays on this replicant matrix.' },
-  { card: 'how', key: 'docFresh', setting: 'Keep my documents fresh', where: 'How Bob works',
+  { card: 'how', key: 'docFresh', setting: 'Live document index', where: 'How Bob works',
     label: 'Re-read documents as soon as they change', note: 'Works with meaning search on. A saved file is read again within a minute.' },
-  { card: 'how', key: 'docPlaces', setting: 'Show the page and line', where: 'How Bob works',
+  { card: 'how', key: 'docPlaces', setting: 'Cite page and line', where: 'How Bob works',
     label: 'Say the page and line when I find something', note: 'Click the place in my answer to open the file there.' },
-  { card: 'how', key: 'weeklyDigest', setting: 'A Sunday digest', where: 'How Bob works',
+  { card: 'how', key: 'weeklyDigest', setting: 'Sunday digest', where: 'How Bob works',
     label: 'Send you a short digest every Sunday', note: 'The week\'s chats, reminders and what I noticed. No brain needed.' },
-  { card: 'how', key: 'docView', setting: 'Show documents in the side panel', where: 'How Bob works',
+  { card: 'how', key: 'docView', setting: 'Documents in the side panel', where: 'How Bob works',
     label: 'Show documents beside the chat', note: 'Word, Excel, PowerPoint and PDF open in the side panel.' },
-  { card: 'how', key: 'chatFiles', setting: 'Save chats as files and bring chats in', where: 'How Bob works',
+  { card: 'how', key: 'chatFiles', setting: 'Export and import chats', where: 'How Bob works',
     label: 'Save chats as files, and bring in chats from ChatGPT and others', note: 'Markdown, JSON or PDF out; ChatGPT, Claude and Open WebUI exports in.' },
-  { card: 'how', key: 'promptMenu', setting: 'Pull up saved prompts with /', where: '📝 Saved prompts',
+  { card: 'how', key: 'promptMenu', setting: 'Saved prompts with /', where: '📝 Saved prompts',
     label: 'Pull up your saved prompts when you type /', note: 'The words you use often, in the box in two keys.' },
-  { card: 'how', key: 'sandboxCode', setting: 'Let Bob work things out in a sandbox', where: 'How Bob works',
+  { card: 'how', key: 'sandboxCode', setting: 'Code sandbox', where: 'How Bob works',
     label: 'Work out sums, dates and money in a sandbox', note: 'A locked box that can\'t see your files, so I answer from the result, not a guess.' },
-  { card: 'how', key: 'toolLearning', setting: 'Let Bob learn from his tools', where: 'How Bob works',
+  { card: 'how', key: 'toolLearning', setting: 'Learn from tool errors', where: 'How Bob works',
     label: 'Learn from what works and what fails', note: 'One line on what fixed a tool, and a scorecard. It stays here.' },
-  { card: 'how', key: 'parts3d', setting: 'Let Bob make 3D parts', where: 'How Bob works',
+  { card: 'how', key: 'parts3d', setting: '3D parts', where: 'How Bob works',
     label: 'Make 3D parts for a printer', note: 'Brackets, boxes and fixes as STL files. Needs OpenSCAD (free).' },
-  { card: 'how', key: 'model3d', setting: 'Let Bob turn pictures into 3D models', where: 'How Bob works',
+  { card: 'how', key: 'model3d', setting: 'Pictures to 3D models', where: 'How Bob works',
     label: 'Turn pictures into 3D models', note: 'Figurines and props with colour. Needs an NVIDIA card and about 22 GB.' },
-  { card: 'how', key: 'planFirst', setting: 'Show Bob\'s plan before big jobs', where: 'How Bob works',
+  { card: 'how', key: 'planFirst', setting: 'Plan before big jobs', where: 'How Bob works',
     label: 'Show you my plan before big jobs', note: 'Every step on one card, and I wait for your OK.' },
-  { card: 'how', key: 'editOwn', setting: 'Let Bob fix his own messages', where: 'How Bob works',
+  { card: 'how', key: 'editOwn', setting: 'Edit his own messages', where: 'How Bob works',
     label: 'Fix my own messages instead of sending new ones', note: 'It says edited, and shows what it said first.' },
-  { card: 'how', key: 'howtos', setting: 'Let Bob learn how-tos', where: 'How Bob works',
+  { card: 'how', key: 'howtos', setting: 'Learn how-tos', where: 'How Bob works',
     label: 'Learn how-tos from jobs that went well', note: 'I ask before keeping one, and follow it next time.' },
-  { card: 'how', key: 'resumeJobs', setting: 'Pick up where Bob left off after a restart', where: 'How Bob works',
+  { card: 'how', key: 'resumeJobs', setting: 'Resume jobs after restart', where: 'How Bob works',
     label: 'Pick up where I left off after a restart', note: 'Finished steps aren\'t done again.' },
-  { card: 'brains', key: 'oneBrain', setting: 'One brain (snappier)', where: 'How Bob works',
+  { card: 'brains', key: 'oneBrain', setting: 'One brain', where: 'How Bob works',
     label: 'Use one brain for everything', note: 'No 20-second stops to swap brains.' },
-  { card: 'brains', key: 'quickSeesJob', setting: 'Let Bob\'s Quick brain see the big job', where: 'Brains',
+  { card: 'brains', key: 'quickSeesJob', setting: 'Quick brain sees the job', where: 'Brains',
     label: 'Tell you how a long job is going', note: 'My Quick brain sees what my big brain is on, and can pass it a note.' },
-  { card: 'brains', key: 'memoryRecall', setting: 'Remember only what fits', where: 'Speed & memory',
+  { card: 'brains', key: 'memoryRecall', setting: 'Relevant memories only', where: 'Speed & memory',
     label: 'Read only the memories that fit each message', note: 'Keeps chats light.' },
-  { card: 'brains', key: 'copyGuess', setting: 'Guess ahead by copying from the chat', where: 'Speed & memory',
+  { card: 'brains', key: 'copyGuess', setting: 'Prompt-lookup decoding', where: 'Speed & memory',
     label: 'Write edits faster by copying from the chat', note: 'My brain checks every copied word, so the answer is the same.' },
-  { card: 'brains', key: 'preloadNext', setting: 'Load the next brain early', where: 'Speed & memory',
+  { card: 'brains', key: 'preloadNext', setting: 'Preload the next brain', where: 'Speed & memory',
     label: 'Get my next brain ready while I\'m still talking', note: 'Only when there\'s memory to spare.' },
   { card: 'brains', key: 'laptopMode', setting: 'Laptop mode', where: 'Speed & memory',
     label: 'Go easy on the battery', note: 'Unplugged: my Quick brain answers and I use half the cores.' },
-  { card: 'brains', key: 'newCardTest', setting: 'Test a new graphics card by itself', where: 'Speed & memory',
+  { card: 'brains', key: 'newCardTest', setting: 'Auto-test a new GPU', where: 'Speed & memory',
     label: 'Test a new graphics card when I see one', note: 'A one-minute speed test, and placements back on Auto.' },
-  { card: 'brains', key: 'speedLog', setting: 'Keep a speed history', where: 'Speed & memory',
+  { card: 'brains', key: 'speedLog', setting: 'Speed history', where: 'Speed & memory',
     label: 'Keep a chart of my speed', note: 'Words per second per brain, so a slowdown after an update shows. Numbers only.' },
-  { card: 'brains', key: 'engineNotes', setting: 'Tell me what engine updates change', where: 'Engines',
+  { card: 'brains', key: 'engineNotes', setting: 'Engine update notes', where: 'Engines',
     label: 'Tell you what engine updates change, in plain words', note: 'One or two lines when an update finishes.' },
-  { card: 'brains', key: 'memorySources', setting: 'Note where each memory came from', where: 'Speed & memory',
+  { card: 'brains', key: 'memorySources', setting: 'Memory sources', where: 'Speed & memory',
     label: 'Note which chat each memory came from', note: 'So a wrong memory is easy to trace and forget.' },
-  { card: 'brains', key: 'memoryExpiry', setting: 'Let memories run out', where: 'Speed & memory',
+  { card: 'brains', key: 'memoryExpiry', setting: 'Expiring memories', where: 'Speed & memory',
     label: 'Forget things you only want kept for a while', note: '"Remember this for the week" fades by itself.' },
-  { card: 'brains', key: 'memoryWhere', setting: 'Keep project memories to their project', where: 'Speed & memory',
-    label: 'Bring up project memories only in that project', note: 'Works with Remember only what fits on.' },
-  { card: 'online', key: 'webSearch', setting: 'Let Bob search the web', where: 'How Bob works',
+  { card: 'brains', key: 'memoryWhere', setting: 'Per-project memories', where: 'Speed & memory',
+    label: 'Bring up project memories only in that project', note: 'Works with Relevant memories only on.' },
+  { card: 'online', key: 'webSearch', setting: 'Web search', where: 'How Bob works',
     label: 'Search the web when a question needs it', note: 'Only the search words and page addresses go online.' },
-  { card: 'online', key: 'catalogUpdates', setting: 'Let Bob fetch his newest brain list', where: 'How Bob works',
+  { card: 'online', key: 'catalogUpdates', setting: 'Auto-update the brain list', where: 'How Bob works',
     label: 'Fetch my newest brain list once a day', note: 'From my own GitHub page. Nothing downloads by itself.' },
-  { card: 'pc', key: 'autostart', setting: 'Launch Bob on start-up', where: 'How Bob works',
+  { card: 'pc', key: 'autostart', setting: 'Launch at start-up', where: 'How Bob works',
     label: 'Start when you sign in to this replicant matrix', note: '' },
-  { card: 'pc', key: 'trayDot', setting: 'Show a dot on the tray icon', where: '🗓 Everyday helpers',
+  { card: 'pc', key: 'trayDot', setting: 'Tray icon dot', where: '🗓 Everyday helpers',
     label: 'Put a dot on my tray icon when something waits for you', note: 'Gone when you look.' },
-  { card: 'pc', key: 'autoCheck', setting: 'Check for updates when Bob starts', where: 'This replicant matrix and updates',
+  { card: 'pc', key: 'autoCheck', setting: 'Check for updates at start', where: 'This replicant matrix and updates',
     label: 'Check for a newer me when I start', note: 'I only tell you. Updating takes your click.' }
 ];
 
@@ -99,10 +101,13 @@ export const WANTS = [
 export const WANTS_ELSEWHERE = [
   { card: 'bob', id: 'adv-presets', label: 'Work a different way in each chat (🎭 Assistant presets)' },
   { card: 'how', id: 'adv-checkins', label: 'Check in on you by myself (🔔 Check-ins)' },
-  { card: 'how', id: 'adv-chatx', label: 'Pin messages, try a chat another way, guest chats (💬 Chat extras)' },
+  { card: 'how', id: 'adv-chatx', label: 'Amnesia mode, fade old messages, pin messages, try a chat another way, guest chats (💬 Chat extras)' },
   { card: 'how', id: 'adv-quiet', label: 'Stay quiet at night, or open from a key anywhere (🌙 Quiet hours and shortcut)' },
   { card: 'net', id: 'adv-bobnet', label: 'Talk to me from your phone (🌐 Bob-Net)' },
-  { card: 'online', id: 'adv-online', label: 'Chat on Discord or Telegram (☁ Online services)' },
+  { card: 'online', id: 'adv-online', label: 'Rent a big brain for one job (☁ Online services)' },
+  { card: 'agents', id: 'adv-discord', label: 'Chat on Discord (Agents)' },
+  { card: 'agents', id: 'adv-telegram', label: 'Chat on Telegram (Agents)' },
+  { card: 'agents', id: 'adv-claude', label: 'Work beside Claude Code, Codex, Gemini CLI or Qwen Code (Agents)' },
   { card: 'may', id: 'adv-hands', label: 'Use your files and programs (✋ Hands)' },
   { card: 'fun', id: 'adv-adventure', label: 'Run a tabletop adventure (🎲 Adventure)' },
   { card: 'fun', id: 'adv-games', label: 'Play word games (🧩 Games)' },
@@ -143,23 +148,29 @@ const canAutostart = (s) => s?.platform === 'win32' || s?.platform === 'darwin' 
 // The rest sit under "Everything else" right below, and every one of them is in Settings too.
 export const WANTS_TOP = ['webSearch', 'docTools', 'sandboxCode', 'resumeJobs'];
 
-// full: open "Everything else" (the chat's one-time offer jumps straight to it).
-export function wantsHtml(settings, esc, { full = false } = {}) {
-  const row = (w) => {
-    const off = w.key === 'autostart' && !canAutostart(settings);
-    const note = off ? 'Not on Linux yet, the same as in Settings.' : w.note;
-    return `<li><label class="switch"><input type="checkbox" data-want="${esc(w.key)}" ${wantOn(settings, w.key) ? 'checked' : ''} ${off ? 'disabled' : ''}><span><strong>${esc(w.label)}</strong>${note ? `<br><span class="muted">${esc(note)}</span>` : ''} <span class="want-said muted" aria-live="polite"></span></span></label></li>`;
-  };
+// One tick, as on the list. Also used on the Welcome's own pages (Engines: 3D; Users).
+export function wantRowHtml(settings, esc, w) {
+  if (typeof w === 'string') w = WANTS.find((x) => x.key === w);
+  if (!w) return '';
+  const off = w.key === 'autostart' && !canAutostart(settings);
+  const note = off ? 'Not on Linux yet, the same as in Settings.' : w.note;
+  return `<li><label class="switch"><input type="checkbox" data-want="${esc(w.key)}" ${wantOn(settings, w.key) ? 'checked' : ''} ${off ? 'disabled' : ''}><span><strong>${esc(w.label)}</strong>${note ? `<br><span class="muted">${esc(note)}</span>` : ''} <span class="want-said muted" aria-live="polite"></span></span></label></li>`;
+}
+
+// full: open "Everything else" (the chat's one-time offer jumps straight to it). leave: keys another Welcome page
+// already shows, so nothing is on two pages.
+export function wantsHtml(settings, esc, { full = false, leave = [] } = {}) {
+  const row = (w) => wantRowHtml(settings, esc, w);
   const top = WANTS_TOP.map((k) => WANTS.find((w) => w.key === k)).filter(Boolean);
   const group = (c) => {
-    const ticks = WANTS.filter((w) => w.card === c.id && !WANTS_TOP.includes(w.key)), more = WANTS_ELSEWHERE.filter((x) => x.card === c.id), soon = WANTS_SOON.filter((x) => x.card === c.id);
+    const ticks = WANTS.filter((w) => w.card === c.id && !WANTS_TOP.includes(w.key) && !leave.includes(w.key)), more = WANTS_ELSEWHERE.filter((x) => x.card === c.id), soon = WANTS_SOON.filter((x) => x.card === c.id);
     if (!ticks.length && !more.length && !soon.length) return '';
     return `<h4>${c.icon} ${esc(c.name)}</h4>
       ${ticks.length ? `<ul class="packlist wantlist">${ticks.map(row).join('')}</ul>` : ''}
       ${more.length ? `<div class="row">${more.map((x) => `<button type="button" data-wantjump="${esc(x.id)}">${esc(x.label)}</button>`).join('')}</div>` : ''}
       ${soon.length ? `<p class="muted want-soon"><strong>Coming soon:</strong> ${soon.map((x) => esc(x.label)).join(' · ')}</p>` : ''}`;
   };
-  const rest = WANTS.length - top.length;
+  const rest = WANTS.filter((w) => !leave.includes(w.key)).length - top.length;
   return `<section class="ready wants" id="sub-wants"><h3>Do you want me to:</h3>
     <p class="muted">All of these are off until you tick them. A tick is saved at once, and you can change your mind any time in Settings.</p>
     <ul class="packlist wantlist want-top">${top.map(row).join('')}</ul>

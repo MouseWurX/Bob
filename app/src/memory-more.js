@@ -1,13 +1,13 @@
 // Memory, three more switches (Nov 11 list, items 87 to 89). Each is off unless the user turns it on, in Settings,
-// Speed & memory, next to "Remember only what fits". Nothing here starts a program or sends anything anywhere: the
+// Speed & memory, next to "Relevant memories only". Nothing here starts a program or sends anything anywhere: the
 // memory file stays one plain text file, and these only add small tags to its lines.
 //
-//  87 "Note where each memory came from" (memorySources): every new memory line gets [from: <chat id>], the chat it
+//  87 "Memory sources" (memorySources): every new memory line gets [from: <chat id>], the chat it
 //     was learned in. Settings lists the memories with the chat each came from: Open the chat, or Forget this one.
-//  88 "Let memories run out" (memoryExpiry): "remember this for the week" saves the line with [until: YYYY-MM-DD].
+//  88 "Expiring memories" (memoryExpiry): "remember this for the week" saves the line with [until: YYYY-MM-DD].
 //     Once that day has passed, Bob stops reading it and the housekeeper takes it out (the old file goes to the
 //     Recycle Bin first, as with every memory tidy).
-//  89 "Keep project memories to their project" (memoryWhere, works with Remember only what fits): a memory in a
+//  89 "Per-project memories" (memoryWhere, works with Relevant memories only): a memory in a
 //     project's bank only comes back while Bob works on that project: the chat names it, or a tool touches a file in
 //     that project's folder (or its repository's code copy). Off, a chat on no project can match every bank.
 import path from 'node:path';
@@ -64,7 +64,7 @@ export function dropExpired(text, today) {
   return { text: kept.join('\n'), gone };
 }
 
-// The whole memory file as Bob reads it when Remember only what fits is off: run-out lines left out (while that
+// The whole memory file as Bob reads it when Relevant memories only is off: run-out lines left out (while that
 // switch is on) and the [from: ...] tags taken off (they're for the user, not for Bob).
 export function memoryForPrompt(text, cfg, today) {
   let t = String(text || '');

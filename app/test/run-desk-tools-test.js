@@ -1,7 +1,7 @@
-// Three opt-in helpers (all off unless turned on): Read and search my documents (doc-text.js, my-docs.js),
-// Let Bob take quick notes (notes.js) and Let Bob work things out in a sandbox (sandbox-code.js), plus their
+// Three opt-in helpers (all off unless turned on): Read and search documents (doc-text.js, my-docs.js),
+// Quick notes (notes.js) and Code sandbox (sandbox-code.js), plus their
 // settings, tools, toolbox groups, Help, FAQ and glossary. Everything runs in a temporary folder with made-up files.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -163,13 +163,13 @@ fs.writeFileSync(path.join(docs, 'Report.pdf'), makePdf());
   check('the reader uses only Node\'s own parts and starts nothing', !/child_process|spawn|fetch\(|require\(/.test(read('src/doc-text.js')));
 }
 
-// ---------- Read and search my documents ----------
+// ---------- Read and search documents ----------
 {
   check('off unless turned on', !docToolsOn({}) && !docToolsOn({ docTools: 'yes' }) && docToolsOn({ docTools: true }));
   check('only true turns it on when saved', mergeSettings({}, { docTools: 'true' }).docTools === false && mergeSettings({}, { docTools: true }).docTools === true);
   const tools = buildTools(cfg);
   const off = await tools.read_file.run({ path: docx });
-  check('off: read_file says it\'s a document and names the switch', /Read and search my documents/.test(off) && /Sam/.test(off) && !/Pets/.test(off), off);
+  check('off: read_file says it\'s a document and names the switch', /Read and search documents/.test(off) && /Sam/.test(off) && !/Pets/.test(off), off);
   cfg.docTools = true;
   const on = await tools.read_file.run({ path: docx });
   check('on: read_file reads a Word file as words', /Pets & animals/.test(on) && /Rent\t900/.test(on), on);
@@ -195,7 +195,7 @@ fs.writeFileSync(path.join(docs, 'Report.pdf'), makePdf());
   const ac = new AbortController(); ac.abort();
   check('Stop stops a search', (await findInDocuments(cfg, [docs], 'dragon', { signal: ac.signal })).stopped === 'stopped');
   cfg.docTools = false;
-  check('off: the tool says where the switch is', /Read and search my documents/.test(await tool.run({ words: 'dragon' })));
+  check('off: the tool says where the switch is', /Read and search documents/.test(await tool.run({ words: 'dragon' })));
 }
 
 // ---------- quick notes ----------
@@ -205,7 +205,7 @@ fs.writeFileSync(path.join(docs, 'Report.pdf'), makePdf());
   const at = new Date(Date.UTC(2026, 10, 11, 4, 15));
   check('the time is the user\'s own', stamp(cfg, at) === '2026-11-10 22:15', stamp(cfg, at));
   const tool = notesTool({ cfg });
-  check('off: the tool says where the switch is', /Let Bob take quick notes/.test(await tool.run({ action: 'add', text: 'x' })) && !fs.existsSync(notesFile(cfg)));
+  check('off: the tool says where the switch is', /Quick notes/.test(await tool.run({ action: 'add', text: 'x' })) && !fs.existsSync(notesFile(cfg)));
   cfg.quickNotes = true;
   check('adding a note', /Noted \(note 1\)/.test(await tool.run({ action: 'add', text: '  ring the   vet on Friday #pets ' })));
   addNote(cfg, 'buy seeds #garden', { now: at });
@@ -225,7 +225,7 @@ fs.writeFileSync(path.join(docs, 'Report.pdf'), makePdf());
   check('the search box finds quick notes, not the heading', found.some((h) => h.kind === 'quick' && /vet/.test(h.snippet)) && !search(cfg, { topics: { list: () => [] } }, 'oldest first').some((h) => h.kind === 'quick'));
 }
 
-// ---------- Let Bob notice what's worth noting ----------
+// ---------- Auto notes ----------
 {
   check('smart notes are off unless turned on, and need quick notes', !smartNotesOn({}) && !smartNotesOn({ smartNotes: true }) && smartNotesOn({ quickNotes: true, smartNotes: true }) && !smartNotesOn({ quickNotes: true, smartNotes: 'yes' }));
   check('only true turns smart notes on when saved', mergeSettings({}, { smartNotes: 'true' }).smartNotes === false && mergeSettings({}, { smartNotes: true }).smartNotes === true);
@@ -254,8 +254,8 @@ fs.writeFileSync(path.join(docs, 'Report.pdf'), makePdf());
   check('nothing unrelated is put in front of him', notesPrompt(cfg, 'what is the weather like') === '');
   const brain = brainText();
   check('the brain adds fitting notes to what he carries, only with smart notes on', /if \(smartNotesOn\(this\.cfg\)\) \{[\s\S]{0,400}notesPrompt\(this\.cfg, text/.test(brain));
-  const cellar = read('public/cellar.js'), server = read('src/server.js');
-  check('the switch sits under quick notes, always shown, off unless turned on', cellar.includes("${sswitch('smartNotes', settings.smartNotes === true, 'Let Bob notice what\\'s worth noting', 'Off unless you turn it on."));
+  const cellar = publicText('cellar.js'), server = read('src/server.js');
+  check('the switch sits under quick notes, always shown, off unless turned on', cellar.includes("${sswitch('smartNotes', settings.smartNotes === true, 'Auto notes', '"));
   check('the server saves and shows it', server.includes("typeof b.smartNotes === 'boolean'") && server.includes('smartNotes: cfg.smartNotes === true'));
   const help = HELP.find((e) => e.id === 'quick-notes').html;
   check('Help explains noticing, filing and remembering, and the FAQ is there', /I notice/.test(help) && /I file them/.test(help) && /I remember them/.test(help) && HELP.some((e) => e.id === 'faq-notes-junk'));
@@ -278,7 +278,7 @@ fs.writeFileSync(path.join(docs, 'Report.pdf'), makePdf());
   const fine = await runInSandbox(cfg, 'return input.a + 1', { a: 1 }, { holds: fake, run: async (o) => { seenDir = o.dir; return { ok: true, out: '2', internet: o.internet }; } });
   check('the run gets no internet and its folder is thrown away after', fine.ok && seenDir && !fs.existsSync(seenDir));
   const tool = sandboxTool({ cfg, log: () => {} });
-  check('off: the tool says where the switch is', /Let Bob work things out in a sandbox/.test(await tool.run({ code: 'return 1' })));
+  check('off: the tool says where the switch is', /Code sandbox/.test(await tool.run({ code: 'return 1' })));
   const holds = await sandboxHolds(cfg);
   if (holds.ok) {
     cfg.sandboxCode = true;
@@ -306,14 +306,14 @@ fs.writeFileSync(path.join(docs, 'Report.pdf'), makePdf());
   check('the sandbox has its own group for sums and dates', g.sandbox?.tools.includes('run_in_sandbox') && g.sandbox.words.test('how many days until Christmas') && g.sandbox.words.test('calculate the average'));
   Object.assign(cfg, { quickNotes: false, docTools: false, sandboxCode: false });
   check('guests (other Bobs, Discord channels) never get them', !/take_note|find_in_documents|run_in_sandbox/.test(read('src/share-jobs.js')));
-  check('bob_help lists the three switches', /Let Bob take quick notes: off \(Let Bob notice what's worth noting: off\); Read and search my documents: off \(Search my documents by meaning: off\); Show documents in the side panel: off; Save chats as files and bring chats in: off; Show maths as formulas: off; Keyboard shortcuts: off; Pull up saved prompts with \/: off; Let Bob work things out in a sandbox: off/.test(settingsNow({ cloud: [] })));
+  check('bob_help lists the three switches', /Quick notes: off \(Auto notes: off\); Read and search documents: off \(Semantic document search: off\); Documents in the side panel: off; Export and import chats: off; Render maths: off; Keyboard shortcuts: off; Saved prompts with \/: off; Code sandbox: off/.test(settingsNow({ cloud: [] })));
 }
 
 // ---------- settings page, server, Help ----------
 {
-  const cellar = read('public/cellar.js'), server = read('src/server.js');
-  for (const [key, label] of [['quickNotes', 'Let Bob take quick notes'], ['docTools', 'Read and search my documents'], ['sandboxCode', 'Let Bob work things out in a sandbox']]) {
-    check(`${label}: a switch in How Bob works, off unless turned on`, cellar.includes(`sswitch('${key}', settings.${key} === true, '${label}', 'Off unless you turn it on.`));
+  const cellar = publicText('cellar.js'), server = read('src/server.js');
+  for (const [key, label] of [['quickNotes', 'Quick notes'], ['docTools', 'Read and search documents'], ['sandboxCode', 'Code sandbox']]) {
+    check(`${label}: a switch in How Bob works, off unless turned on`, cellar.includes(`sswitch('${key}', settings.${key} === true, '${label}', '`));
     check(`${label}: the server saves and shows it`, server.includes(`typeof b.${key} === 'boolean'`) && server.includes(`${key}: cfg.${key} === true`));
   }
   check('the sandbox switch only turns on where the lock holds', /if \(b\.sandboxCode\) \{ const h = await sandboxHolds\(cfg\); if \(!h\.ok\)/.test(server));

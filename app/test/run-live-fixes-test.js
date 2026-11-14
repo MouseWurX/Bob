@@ -1,7 +1,7 @@
 // 1.5.104: fixes from the live test on the replicant matrix. One request gets one Set it up card, a card is never a
 // failure, a chat queued behind a picture gets the ⏳ line (and "ok" after it the plain answer), the start of a
 // picture doesn't read "Painting 82/82", and brains and programs set by hand in config.json count as here.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -91,7 +91,7 @@ check('the models list says where a hand-set brain is', /where = pulled \? \['Ol
   Brain.prototype.waitOver.call(fake, j); Brain.prototype.waitOver.call(fake, j); Brain.prototype.waitOver.call(fake, { id: 'n' });
   check('the ⏳ line is taken away once, and only for a job that had one', sent.length === 1 && sent[0].type === 'waiting-line-done' && sent[0].id === 'queued-w');
   check('it happens when the job starts and when it is stopped', /job\.state = 'working'; job\.startedAt = Date\.now\(\); job\.steps = \[\]; this\.waitOver\(job\);/.test(brainSrc) && /j\.state = 'cancelled';\n    this\.waitOver\(j\);/.test(brainSrc));
-  check('the chat removes the line', /case 'waiting-line-done': \{[^}]*waitLines\.get\(ev\.id\)\?\.remove\(\);/.test(read('public/app.js')));
+  check('the chat removes the line', /case 'waiting-line-done': \{[^}]*waitLines\.get\(ev\.id\)\?\.remove\(\);/.test(publicText('app.js')));
 }
 {
   // 1.5.112: a chat queued just before the painter took over (busyLine said no then) gets its ⏳ line when painting starts.

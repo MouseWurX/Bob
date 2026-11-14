@@ -51,6 +51,8 @@ export const TILES = {
   'o': { name: 'floorboards', walk: true, wild: 0 }, 'B': { name: 'a timber wall', walk: false }, 'b': { name: 'a table', walk: false }, 'c': { name: 'a stool', walk: true, wild: 0 },
   'k': { name: 'the bar', walk: false }, 'p': { name: 'the fireplace', walk: false }, 'q': { name: 'a barrel', walk: false }, 'n': { name: 'the notice board', walk: false },
   'u': { name: 'a rug', walk: true, wild: 0 }, 'l': { name: 'a bed', walk: false }, 'j': { name: 'the stage', walk: true, wild: 0 },
+  // Journey v1.3: the back door to the guest house, and the trophy case in it.
+  '6': { name: 'the back door', walk: true, wild: 0 }, '7': { name: 'the trophy case', walk: false },
   // Journey v1.2: the cloud cities (only from the sky) and the merfolk cities (only from under the sea), and inside them.
   'S': { name: 'a cloud city', walk: false }, 'A': { name: 'a city under the sea', walk: false },
   'X': { name: 'an orc village', walk: true, wild: 0 }, 'L': { name: 'a kobold lair', walk: true, wild: 0 }, 'N': { name: 'a dwarf hold', walk: true, wild: 0 }, 'E': { name: 'an elf tree village', walk: true, wild: 0 },
@@ -59,6 +61,7 @@ export const TILES = {
   '%': { name: 'cloud', walk: true, wild: 0 }, '&': { name: 'open sky', walk: false }, '$': { name: 'the sea floor', walk: true, wild: 0 }, '+': { name: 'coral', walk: false }
 };
 export const SITE_TILES = { bobsinn: 'I', hamlet: 'v', village: 'V', town: 'O', castle: 'K', cave: 'C', dungeon: 'D', hermit: 'H', aerie: 'S', reef: 'A', orccamp: 'X', kobold: 'L', dwarfhold: 'N', elfwood: 'E', burrow: 'M', glade: 'J', stilts: '1', gnome: '2', centaur: '3', giant: '4', goblin: '5' };
+const SITE_SET = new Set(Object.values(SITE_TILES));
 export const SITE_WORDS = { bobsinn: "Bob's Inn", hamlet: 'Hamlet', village: 'Village', town: 'Town', castle: 'Castle', cave: 'Cave', dungeon: 'Dungeon', hermit: "Hermit's hut", aerie: 'Cloud city', reef: 'Merfolk city', orccamp: 'Orc village', kobold: 'Kobold lair', dwarfhold: 'Dwarf hold', elfwood: 'Elf tree village', burrow: 'Halfling burrows', glade: 'Pixie glade', stilts: 'Lizardfolk village', gnome: 'Gnome tinker town', centaur: 'Centaur camp', giant: 'Giant hall', goblin: 'Goblin market' };
 // The animals that wander each kind of land (and the least danger zone they show up in). Walk up and say hello.
 export const WILD_ON = {
@@ -163,8 +166,9 @@ export function makeInn(day = 'today') {
   // Tables with stools round them.
   const tables = [[9, 10], [16, 10], [23, 10], [9, 16], [16, 16], [23, 16], [12, 22], [20, 22], [27, 22]];
   for (const [x, y] of tables) { g[y][x] = 'b'; g[y][x + 1] = 'b'; for (const [sx, sy] of [[x - 1, y], [x + 2, y], [x, y - 1], [x + 1, y + 1]]) if (g[sy][sx] === 'o') g[sy][sx] = 'c'; }
-  // The front door and the notice board beside it.
+  // The front door and the notice board beside it; the back door (Journey v1.3) out to the guest house.
   g[h - 1][21] = 'e'; g[h - 1][22] = 'e';
+  g[0][31] = '6';
   g[h - 1][25] = 'n';
   const people = [
     { id: 'bob', name: 'Bob', role: 'keeper', x: 12, y: 3, facing: 'down', look: 'innkeeper', fixed: true },
@@ -174,7 +178,25 @@ export function makeInn(day = 'today') {
   const seats = [];
   for (let y = 1; y < h - 1; y++) for (let x = 1; x < 34; x++) if (g[y][x] === 'c') seats.push([x, y]);
   for (let i = 0; i < 7 && seats.length; i++) { const [x, y] = seats.splice(Math.floor(rnd() * seats.length), 1)[0]; people.push(person(rnd, 'folk', x, y, { id: `patron${i}`, wander: i % 3 === 0 })); }
-  return { id: 'inn', kind: 'inn', name: "Bob's Inn", w, h, rows: toRows(g), chests: [], people, doors: [{ x: 21, y: h - 1, to: 'world' }, { x: 22, y: h - 1, to: 'world' }], start: { x: 21, y: h - 3 }, board: { x: 25, y: h - 1 }, zone: 0 };
+  return { id: 'inn', kind: 'inn', name: "Bob's Inn", w, h, rows: toRows(g), chests: [], people, doors: [{ x: 21, y: h - 1, to: 'world' }, { x: 22, y: h - 1, to: 'world' }, { x: 31, y: 0, to: 'guest', tx: GUEST_DOOR.x, ty: GUEST_DOOR.y - 1 }], start: { x: 21, y: h - 3 }, board: { x: 25, y: h - 1 }, zone: 0 };
+}
+// ---------- The guest house (Journey v1.3) ----------
+// A little timber house behind the inn, where you wake when you open Journey. The trophy case along the north wall
+// holds a trophy from every story you've played; beds, a rug and a table; the door at the bottom goes into the inn,
+// by the fire.
+export const GUEST_W = 18, GUEST_H = 12, GUEST_DOOR = { x: 9, y: 11 };
+export function makeGuest() {
+  const w = GUEST_W, h = GUEST_H, g = grid(w, h, 'o');
+  for (let x = 0; x < w; x++) { g[0][x] = 'B'; g[h - 1][x] = 'B'; }
+  for (let y = 0; y < h; y++) { g[y][0] = 'B'; g[y][w - 1] = 'B'; }
+  for (let x = 3; x <= 14; x++) g[1][x] = '7';
+  for (const y of [4, 6, 8]) { g[y][1] = 'l'; g[y][2] = 'l'; }
+  for (let y = 5; y <= 8; y++) for (let x = 7; x <= 10; x++) g[y][x] = 'u';
+  g[1][15] = 'p'; g[1][16] = 'p'; g[1][1] = 'q'; g[1][2] = 'q'; g[10][16] = 'q';
+  g[5][14] = 'b'; g[5][15] = 'b'; g[4][14] = 'c'; g[6][15] = 'c';
+  g[GUEST_DOOR.y][GUEST_DOOR.x] = 'e';
+  const people = [{ id: 'patches-guest', name: 'Pickles', role: 'cat', x: 15, y: 9, facing: 'left', parts: { body: 'beast', skin: '4', face: '5' }, wander: true, fixed: true }];
+  return { id: 'guest', kind: 'guest', name: 'The guest house', w, h, rows: toRows(g), chests: [], people, doors: [{ ...GUEST_DOOR, to: 'inn', tx: 31, ty: 1 }], start: { x: 9, y: 3 }, zone: 0 };
 }
 
 // ---------- The land ----------
@@ -182,7 +204,11 @@ export function makeInn(day = 'today') {
 // forests, swamps, deserts and grass; rivers from the foothills downhill to the sea; the mainland (the biggest piece
 // of land); settlements where people would build (flat ground, fresh water, the coast), spaced apart; roads between
 // them with bridges over the rivers; caves in the foothills, dungeons in the wild, the hermit far from everyone.
-export function makeWorld(seed, size = 'medium') {
+// layout: 2 (1.5.219 on) keeps roads and bridges clear of places; 1 is the land as 1.5.218 and before drew it, so an
+// older save (which keeps only its seed) comes back to exactly the land it was played on.
+export const LAYOUT = 2;
+export function makeWorld(seed, size = 'medium', style, layout = LAYOUT) {
+  const clear = layout !== 1;
   const sz = SIZES[size] || SIZES.medium;
   const big = Boolean(SIZES[size]) && !OLD_SIZES.includes(size), f = sizeFactor(size);
   const rnd = seeded(`world:${seed}:${size}`);
@@ -287,8 +313,15 @@ export function makeWorld(seed, size = 'medium') {
   // way over the ground; a road over a river is a bridge. Caves, dungeons and the hut get a footpath to the nearest
   // settlement, which only needs bridges.
   const towns = sites.filter((s) => ['castle', 'town', 'village', 'hamlet'].includes(s.kind));
-  // On a big land a road only looks for its way in a box round its two ends (roads don't wander far anyway).
-  const path = (a, b) => cheapest(g, w, h, a, b, big ? Math.max(24, Math.round((Math.abs(a.x - b.x) + Math.abs(a.y - b.y)) / 2)) : 0);
+  // Every place is on the land before any road is drawn, so a road goes round a place it isn't heading for (walking
+  // onto a place goes in, so a road through one, or a bridge that ends at one, could never be walked past).
+  if (clear) for (const s of sites) g[s.y][s.x] = SITE_TILES[s.kind];
+  // On a big land a road only looks for its way in a box round its two ends (roads don't wander far anyway). Only
+  // where there's no other way at all does a road go through a place, as it always used to.
+  const path = (a, b) => { const pad = big ? Math.max(24, Math.round((Math.abs(a.x - b.x) + Math.abs(a.y - b.y)) / 2)) : 0; return (clear && cheapest(g, w, h, a, b, pad, true)) || cheapest(g, w, h, a, b, pad); };
+  const road = (x, y) => { if (g[y][x] === 'r') g[y][x] = '='; else if (!SITE_SET.has(g[y][x]) && g[y][x] !== '=') g[y][x] = ':'; };
+  // A place never stands at the end of a bridge (the bridge would lead only into it).
+  const byBridge = (x, y) => clear && N4.some(([dx, dy]) => g[y + dy]?.[x + dx] === '=');
   const roads = [];
   const groups = big ? [...lands].map((id) => towns.filter((t) => comp[t.y][t.x] === id)).filter((gr) => gr.length) : [towns];
   for (const group of groups) {
@@ -298,9 +331,9 @@ export function makeWorld(seed, size = 'medium') {
     let bi = 0, bj = 0, bd = Infinity;
     rest.forEach((s, i) => joined.forEach((t, k) => { const d = Math.abs(s.x - t.x) + Math.abs(s.y - t.y); if (d < bd) { bd = d; bi = i; bj = k; } }));
     const s = rest.splice(bi, 1)[0];
-    const road = path(s, joined[bj]) || [];
-    for (const [x, y] of road) { if (g[y][x] === 'r') g[y][x] = '='; else if (!'=vVOKCDH'.includes(g[y][x])) g[y][x] = ':'; }
-    if (road.length > 4) roads.push({ from: s, to: joined[bj], steps: road });
+    const steps = path(s, joined[bj]) || [];
+    for (const [x, y] of steps) road(x, y);
+    if (steps.length > 4) roads.push({ from: s, to: joined[bj], steps });
     joined.push(s);
   }
   }
@@ -349,16 +382,20 @@ export function makeWorld(seed, size = 'medium') {
   const innSpot = [];
   for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
     const x = home.x + dx, y = home.y + dy, d = Math.abs(dx) + Math.abs(dy);
-    if (d < 3 || !main(x, y) || !'."F,d:'.includes(g[y]?.[x]) || sites.some((o) => Math.abs(o.x - x) + Math.abs(o.y - y) < 2)) continue;
+    // Beside the road, never on it (walking onto the inn goes in, so an inn on the road would block it).
+    if (d < 3 || !main(x, y) || !(clear ? '."F,d' : '."F,d:').includes(g[y]?.[x]) || byBridge(x, y) || sites.some((o) => Math.abs(o.x - x) + Math.abs(o.y - y) < 2)) continue;
     if (!N4.some(([a, b]) => '."F,d:'.includes(g[y + b]?.[x + a]))) continue;
-    innSpot.push([x, y, d + (g[y][x] === ':' ? -2 : 0) + (N4.some(([a, b]) => g[y + b]?.[x + a] === ':') ? -1.5 : 0)]);
+    const byRoad = N4.some(([a, b]) => g[y + b]?.[x + a] === ':');
+    innSpot.push([x, y, d + (clear ? (byRoad ? -3.5 : 0) : (g[y][x] === ':' ? -2 : 0) + (byRoad ? -1.5 : 0))]);
   }
   innSpot.sort((a, b) => a[2] - b[2]);
   if (innSpot.length) {
     const [x, y] = innSpot[0];
     const inn = { kind: 'bobsinn', x, y, zone: 1 };
+    if (clear) g[y][x] = 'I';
     for (const [px, py] of path(inn, home) || []) if (g[py][px] === 'r') g[py][px] = '='; else if ('."F,dw'.includes(g[py][px])) g[py][px] = ':';
-    inn.id = 'inn'; inn.name = "Bob's Inn"; g[y][x] = 'I';
+    g[y][x] = 'I';
+    inn.id = 'inn'; inn.name = "Bob's Inn";
     inn.exit = [[0, 1], [1, 0], [-1, 0], [0, -1]].map(([dx, dy]) => ({ x: x + dx, y: y + dy })).find((p) => TILES[g[p.y][p.x]]?.walk && !Object.values(SITE_TILES).includes(g[p.y][p.x])) || { x, y: y + 1 };
     sites.push(inn);
   }
@@ -387,13 +424,13 @@ export function makeWorld(seed, size = 'medium') {
     ['goblin', (x, y) => ('F"w'.includes(g[y][x]) ? 1 : 0)]
   ];
   const landNow = [];
-  for (let y = 3; y < h - 3; y += stride) for (let x = 3; x < w - 3; x += stride) if (main(x, y) && TILES[g[y][x]]?.walk && !Object.values(SITE_TILES).includes(g[y][x]) && g[y][x] !== ':' && g[y][x] !== '=') landNow.push([x, y]);
+  for (let y = 3; y < h - 3; y += stride) for (let x = 3; x < w - 3; x += stride) if (main(x, y) && TILES[g[y][x]]?.walk && !SITE_SET.has(g[y][x]) && g[y][x] !== ':' && g[y][x] !== '=') landNow.push([x, y]);
   // A small land has room for only some of them; which ones is up to the dice.
   const kinHere = size === 'small' ? [...KIN].sort(() => xrnd() - 0.5).slice(0, 5) : size === 'medium' ? [...KIN].sort(() => xrnd() - 0.5).slice(0, 8) : KIN;
   for (const [kind, score] of kinHere) {
     const cand = landNow.map(([x, y]) => [x, y, score(x, y)]).filter((c) => c[2] > 0).map((c) => [c[0], c[1], c[2] + xrnd() * 0.8]).sort((a, b) => b[2] - a[2]);
     let n = 0;
-    for (const [x, y] of cand) { if (n >= more) break; if (!free(x, y, Math.round(spacing * 0.6))) continue; extra.push({ kind, x, y }); n++; }
+    for (const [x, y] of cand) { if (n >= more) break; if (!free(x, y, Math.round(spacing * 0.6)) || byBridge(x, y)) continue; extra.push({ kind, x, y }); n++; }
   }
   // Ports: a settlement by the sea has a dock (and every continent with people gets at least one).
   const coastal = (s, r = 3) => { for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (g[s.y + dy]?.[s.x + dx] === '~') return true; return false; };
@@ -482,23 +519,24 @@ export function makeWorld(seed, size = 'medium') {
   const rows = toRows(g);
   const people = [...walkers, ...lost, ...wild];
   const roadList = roads.map((r) => ({ from: r.from.id, to: r.to.id, length: r.steps.length }));
-  return worldOf({ seed: String(seed), size: SIZES[size] ? size : 'medium', w, h, rows, sites, people, roads: roadList, home: { id: home.id, x: home.x, y: home.y, exit: { ...home.exit } } });
+  return worldOf({ seed: String(seed), size: SIZES[size] ? size : 'medium', w, h, rows, sites, people, roads: roadList, home: { id: home.id, x: home.x, y: home.y, exit: { ...home.exit } }, layout: clear ? LAYOUT : 1 });
 }
 // The finished land. Built out here, away from makeWorld, so the big working grids (heights, wetness, paths) are
 // let go as soon as the land is made: a closure inside makeWorld would keep them all alive for as long as you play.
 // Places (towns, caves, cities) are built the first time you walk in, and only the last few are kept.
 const KEEP_PLACES = 6;
-function worldOf({ seed, size, w, h, rows, sites, people, roads, home }) {
+function worldOf({ seed, size, w, h, rows, sites, people, roads, home, layout = LAYOUT }) {
   const zoneOf = (x, y) => clamp(1 + Math.floor((Math.abs(x - home.x) + Math.abs(y - home.y)) / (w / 6)), 1, 5);
   const worldMap = { id: 'world', kind: 'world', name: 'The land', w, h, rows, chests: [], people, doors: sites.map((s) => ({ x: s.x, y: s.y, to: s.id, ...(s.alt ? { alt: s.alt } : {}) })), start: { ...home.exit }, zoneOf };
   const cache = new Map();
   const world = {
-    seed, size, tiles: TILES, zoneOf, w, h, sites, roads, home: home.id, start: { ...home.exit },
+    seed, size, layout, tiles: TILES, zoneOf, w, h, sites, roads, home: home.id, start: { ...home.exit },
     map(id) {
       if (id === 'world') return worldMap;
       if (cache.has(id)) { const m = cache.get(id); cache.delete(id); cache.set(id, m); return m; }
       let m = null;
-      if (id === 'inn') { const s = sites.find((x) => x.id === 'inn') || sites.find((x) => x.id === home.id); m = makeInn(`${seed}`); m.doors.forEach((d) => { d.tx = s.exit.x; d.ty = s.exit.y; }); m.zone = 1; }
+      if (id === 'inn') { const s = sites.find((x) => x.id === 'inn') || sites.find((x) => x.id === home.id); m = makeInn(`${seed}`); m.doors.forEach((d) => { if (d.to === 'world') { d.tx = s.exit.x; d.ty = s.exit.y; } }); m.zone = 1; }
+      else if (id === 'guest') m = makeGuest();
       else { const s = sites.find((x) => x.id === id); if (!s) return null; m = makeSite(world, s); }
       cache.set(id, m);
       // People in a place move about while you're there; a place you left long ago is built fresh (the same) next time.
@@ -512,26 +550,34 @@ function worldOf({ seed, size, w, h, rows, sites, people, roads, home }) {
 // Bob's Inn on its own, before any adventure is rolled: the front door goes nowhere yet.
 export function innOnly() {
   const inn = makeInn('today');
-  inn.doors = inn.doors.map((d) => ({ ...d, to: 'world' })); // there's no land yet: walk() says the door is stuck
-  return { seed: '', size: '', tiles: TILES, w: 0, h: 0, sites: [], roads: [], home: '', start: inn.start, lobby: true, map: (id) => (id === 'inn' ? inn : null) };
+  const guest = makeGuest();
+  // There's no land yet: walk() says the front door is stuck. The back door to the guest house works.
+  return { seed: '', size: '', tiles: TILES, w: 0, h: 0, sites: [], roads: [], home: '', start: inn.start, lobby: true, map: (id) => (id === 'inn' ? inn : id === 'guest' ? guest : null) };
 }
 
 // The cheapest walk from a to b over the ground (no sea, no mountains); rivers cost a lot, roads very little.
-function cheapest(g, w, h, a, b, pad = 0) {
+// strict: go round every place but the two ends, and never bridge a river right beside a place.
+function cheapest(g, w, h, a, b, pad = 0, strict = false) {
   if (pad > 0) {
     // Search a box round the two ends, in the box's own coordinates, then move the way back onto the land.
     const x0 = Math.max(0, Math.min(a.x, b.x) - pad), y0 = Math.max(0, Math.min(a.y, b.y) - pad);
     const x1 = Math.min(w - 1, Math.max(a.x, b.x) + pad), y1 = Math.min(h - 1, Math.max(a.y, b.y) + pad);
     const box = [];
     for (let y = y0; y <= y1; y++) box.push(g[y].slice(x0, x1 + 1));
-    const out = cheapest(box, x1 - x0 + 1, y1 - y0 + 1, { x: a.x - x0, y: a.y - y0 }, { x: b.x - x0, y: b.y - y0 }, 0);
+    const out = cheapest(box, x1 - x0 + 1, y1 - y0 + 1, { x: a.x - x0, y: a.y - y0 }, { x: b.x - x0, y: b.y - y0 }, 0, strict);
     return out ? out.map(([x, y]) => [x + x0, y + y0]) : null;
   }
-  const cost = (x, y) => { const t = g[y][x]; if (t === '~' || t === '^') return Infinity; if (Object.values(SITE_TILES).includes(t)) return 1; return TILES[t]?.cost ?? 1; };
+  const goal = b.y * w + b.x;
+  const besidePlace = (x, y) => N4.some(([dx, dy]) => SITE_SET.has(g[y + dy]?.[x + dx]));
+  const cost = (x, y) => {
+    const t = g[y][x]; if (t === '~' || t === '^') return Infinity;
+    if (SITE_SET.has(t)) return strict && y * w + x !== goal ? Infinity : 1;
+    if (strict && t === 'r' && besidePlace(x, y)) return Infinity;
+    return TILES[t]?.cost ?? 1;
+  };
   const dist = new Float64Array(w * h).fill(Infinity), from = new Int32Array(w * h).fill(-1);
   const heap = [[0, a.y * w + a.x]];
   dist[a.y * w + a.x] = 0;
-  const goal = b.y * w + b.x;
   const push = (item) => { heap.push(item); let i = heap.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
   const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = i * 2 + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
   while (heap.length) {
@@ -845,7 +891,7 @@ export function landSkeleton(world) {
   const k = Math.max(1, Math.ceil(Math.max(world.w, world.h) / PICTURE));
   const picture = { k, rows: [] };
   for (let y = 0; y < world.h; y += k) { let r = ''; for (let x = 0; x < world.w; x += k) r += m.rows[y][x]; picture.rows.push(r); }
-  return { seed: world.seed, size: world.size, w: world.w, h: world.h, sites: world.sites, roads: world.roads, home: { id: home.id, x: home.x, y: home.y, exit: { ...home.exit } }, piece: PIECE, picture };
+  return { seed: world.seed, size: world.size, layout: world.layout, w: world.w, h: world.h, sites: world.sites, roads: world.roads, home: { id: home.id, x: home.x, y: home.y, exit: { ...home.exit } }, piece: PIECE, picture };
 }
 export function landPiece(world, cx, cy) {
   const m = world.map('world');
@@ -870,7 +916,7 @@ export function pieceWorld(skel) {
     return v;
   };
   const rows = new Proxy([], { get: (t, k) => (k === 'length' ? h : typeof k === 'string' && /^\d+$/.test(k) ? (Number(k) < h ? rowView(Number(k)) : undefined) : t[k]) });
-  const world = worldOf({ seed: skel.seed, size: skel.size, w, h, rows, sites: skel.sites, people, roads: skel.roads || [], home: skel.home });
+  const world = worldOf({ seed: skel.seed, size: skel.size, w, h, rows, sites: skel.sites, people, roads: skel.roads || [], home: skel.home, layout: skel.layout === 1 ? 1 : LAYOUT });
   const restock = () => { people.length = 0; for (const pc of pieces.values()) people.push(...pc.people); };
   // The pieces that cover two screens each way round (x, y): 15×11 tiles on screen, more when zoomed out in the sky.
   const around = (x, y, wide) => {

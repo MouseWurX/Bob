@@ -1,4 +1,4 @@
-// "Show documents in the side panel" (Settings, How Bob works; off unless you turn it on).
+// "Documents in the side panel" (Settings, How Bob works; off unless you turn it on).
 // Word, Excel, PowerPoint, OpenDocument, e-book, Rich Text and PDF files in the panel beside the chat: the server reads
 // their words with src/doc-text.js (GET /api/file/doc) and this draws them as paragraphs and tables, sheets, or slides.
 // A PDF can also be shown as its pages, where the window has a PDF viewer (Bob.exe on Windows, Mac and Linux, and
@@ -89,10 +89,10 @@ function tableHtml(rows, { letters = false, label = '' } = {}) {
 }
 
 // The panel's HTML for what GET /api/file/doc sent back (j) — everything escaped, nothing from the file runs.
-// at ("Show the page and line", src/doc-more.js): { kind: 'page'|'slide'|'paragraph', n } — a PDF opens at that page.
+// at ("Cite page and line", src/doc-more.js): { kind: 'page'|'slide'|'paragraph', n } — a PDF opens at that page.
 export function docHtml(j, { pages = false, at = null } = {}) {
   if (j.off) {
-    return `<div class="vdoc-off"><p>I can show this here, beside the chat, once <strong>Show documents in the side panel</strong> is on (Settings, How Bob works). It's off unless you turn it on.</p><p><button type="button" class="mini" data-docview-on>Turn it on</button></p></div>`;
+    return `<div class="vdoc-off"><p>I can show this here, beside the chat, once <strong>Documents in the side panel</strong> is on (Settings, How Bob works). It's off unless you turn it on.</p><p><button type="button" class="mini" data-docview-on>Turn it on</button></p></div>`;
   }
   const pdf = /\.pdf$/i.test(j.ext || '');
   if (j.error && !(pdf && pages)) return `<p class="vdoc-why">${esc(j.error)}</p>`;
@@ -117,7 +117,7 @@ export function docHtml(j, { pages = false, at = null } = {}) {
   return `<div class="vdoc vdoc-words">${switchRow}${pdfFrame}<div class="vdoc-text"${pdfFrame ? ' hidden' : ''}>${words}${cut}</div></div>`;
 }
 
-// "Show the page and line" (src/doc-more.js): scroll the words to the slide or paragraph, and mark it for a moment.
+// "Cite page and line" (src/doc-more.js): scroll the words to the slide or paragraph, and mark it for a moment.
 // A PDF shown as pages opens at its page by itself (docHtml); shown as words, its page can't be told apart, so it
 // stays at the top.
 export function placeElement(stage, at) {

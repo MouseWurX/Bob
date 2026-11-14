@@ -1,6 +1,7 @@
 // runOn: the loop of one turn on one brain (ask the brain, run its tool calls, check, repeat until it answers).
 // A method of the Brain class. Split out of brain.js.
 import { newMsgId } from './chats.js';
+import { chatOpenAI } from './rental.js';
 import { recentPicture, wantsPictureEdit, editHint } from './intent.js';
 import { switchedNote, switchLine } from './auto-session.js';
 import { EDIT_NOTE, REDO_NOTE } from './redo.js';
@@ -19,6 +20,7 @@ import { sameModel } from './brain-mode.js';
 import { catTurn, catPrompt } from '../public/patches.js';
 import { meanwhileOn, meanwhileLine, asksAboutJob, NO_JOB_LINE, claimsJobGuess, JOB_GUESS_CORRECTION, JOB_GUESS_NUDGE, noteAfterAnswer } from './meanwhile.js';
 import { guestNote, guestTools } from './share-jobs.js';
+import { askedSteps, planLine } from './job-steps.js';
 import { jobHelpsPrompt, askFirstNote, SOFT_STOP_NOTE, stepsRan, SOFT_STOP_LINE, timeCheck, TIME_UP_NOTE, cleanJobHelps, testsNudge, afterAnswer, flushNoes } from './job-helps.js';
 import { cleanPersonality, personalityPrompt } from '../public/personality.js';
 import { roughTokens, wantsBorrow } from './share-brains.js';
@@ -124,7 +126,7 @@ export const runOnParts = {
       if (d.ctx) wantCtx = d.ctx;
       if ('think' in d) think = d.think;
     }
-    // 1.5.69: with "Keep the graphics card free for quick answers" on, Low chat runs on the small Quick brain, which is
+    // 1.5.69: with "Quick answers on CPU" on, Low chat runs on the small Quick brain, which is
     // poor at reading web pages. A message with a link in it (or one about a link from earlier) goes to the main Brain
     // instead, like any other hand-off. Normal session only: Gaming keeps its own small brain (never E4B, never the card).
     if (!job?.side && !bigThinker(job) && !again && !pBrain && quickOnCpu(this.cfg) && currentSession(this.cfg).id === 'normal'
@@ -144,7 +146,7 @@ export const runOnParts = {
     // Small extras, only on some turns: the effort note (High/Extreme) and now and then a moment with the cat.
     const turnNo = msgs.filter((m) => m.role === 'user').length;
     const state = realState({ model, session: currentSession(this.cfg).label, waiting: this.queue.filter((j) => j.state === 'waiting').length, cat: this.cfg.catName, turn: turnNo, withCat: catTurn(turnNo) });
-    // Let Bob's Quick brain see the big job: a quick reply beside it gets the Meanwhile line, written by the app.
+    // Quick brain sees the job: a quick reply beside it gets the Meanwhile line, written by the app.
     // PC test (1.5.203): a small Quick brain answered about the job before; the line names the running one, and also goes
     // just before the latest message (meanwhileNear). A question about the job after it ended gets the no-job line.
     const meanwhile = !meanwhileOn(this.cfg) || job?.guest ? '' : job?.side && this.watch.job ? meanwhileLine(this.watch.job) : asksAboutJob(text) && !this.watch.job ? NO_JOB_LINE : '';
@@ -160,10 +162,12 @@ export const runOnParts = {
       }
     }
     if (!model) throw new Error('I don\'t have a brain yet. Open Get models (in the menu on the left) and pick one; the first-time setup suggests the right one for this replicant matrix.');
-    this.setState('thinking', '', this.state.model);
+    // Nov 13 (the owner): a brain still loading from typing stays 'waking' (the cube keeps filling, the status line says
+    // loading) until it is in; wake() then hands over to 'thinking'.
+    if (!this.waking) this.setState('thinking', '', this.state.model);
     let earlier = job?.guest?.public ? '' : await this.recall(sessionId, text); // Bob on Discord: nothing of the owner's
     // Nov 11 (loop-help.js): the tool groups the message means, as well as the ones its words name. Only while the
-    // embedding model is in use anyway (topics or "Remember only what fits"); never started just for this.
+    // embedding model is in use anyway (topics or "Relevant memories only"); never started just for this.
     if (!ctx.noTools && !again && !job?.guest && !allToolsOn(this.cfg)) {
       const add = await this.meaningGroups(text).catch(() => []);
       const fresh = add.filter((g) => !ctx.loaded.has(g));
@@ -260,6 +264,8 @@ export const runOnParts = {
     };
     // Jobs, One question before a vague big job (job-helps.js): a hint to ask once with ask_user before starting.
     if (!again) { const ask = askFirstNote(this, ctx, text); if (ask) msgs.push({ role: 'system', content: ask, hidden: true }); }
+    // Nov 13 (job-steps.js): two or more things asked in one message get one line naming them, and a check at the end.
+    if (!again && !ctx.noTools && !this.helpOff('plan') && !job?.guest) { ctx.stepsAsked = askedSteps(text); if (ctx.stepsAsked.length) { msgs.push({ role: 'system', content: planLine(ctx.stepsAsked), hidden: true }); this.log('loop', `${ctx.stepsAsked.length} things asked: a plan line, and a check at the end`); } }
     for (step = 0; step < maxSteps; step++) {
       if (signal?.aborted) throw Object.assign(new Error('Stopped.'), { name: 'AbortError' }); // item 244: Stop during a card or a tool that didn't notice
       // Answer messages mid-job (mid-job.js): messages that came in during the last step come first, then the job goes on.
@@ -277,6 +283,7 @@ export const runOnParts = {
         else if (await timeCheck(this, ctx, { now: () => Date.now() - waitedFor(signal) }) === 'wrap') { ctx.endWhy = 'time'; ctx.noTools = true; ctx.lastRound = true; msgs.push({ role: 'system', content: TIME_UP_NOTE(who, cleanJobHelps(this.cfg.jobHelps).minutes), hidden: true }); }
       } else if (step === 0) await timeCheck(this, ctx, { now: () => Date.now() - waitedFor(signal) });
       if (step === maxSteps - 1 && !this.helpOff('last') && !ctx.noTools && msgs.slice(turnStart).some((m) => m.role === 'tool')) { ctx.noTools = true; ctx.lastRound = true; ctx.endWhy ||= 'steps'; this.log('tool', 'the last step: no more tools, so he answers with what he has'); }
+      if (ctx.loaded) used.toolSet = ctx.loaded.toolSet = this.toolSetOf(model); // tool-sets.js: the family's wording
       const tools = ctx.noTools ? [] : guestTools(job, this.withWatchTools(this.frontDeskTools(ctx.loaded), job)); // #57 stopgap: after repeats, answer
       // The big brain reads notes passed along to it at the start of each step, and its chat says so.
       if (!job?.side) this.readNotes(ctx, msgs);
@@ -372,13 +379,34 @@ export const runOnParts = {
           lender = null; borrowing = false;
         }
       }
+      // Nov 13 (card-guard.js): the card is busy with another program and this brain won't fit beside it. He asks first:
+      // wait, use the brain already there (ctx.onCard, for the rest of this turn), or another of his Bobs.
+      if (!reply && ctx.onCard) {
+        this.setState('thinking', 'Thinking on the brain already on the card', this.state.model);
+        try { reply = await chatOpenAI({ url: `${ctx.onCard.url}/v1`, key: '', model: 'served', messages: [sys, ...loopView(staleHandErrors(msgs, turnStart), step)], tools, signal, think, onToken: (t) => emit({ type: 'token', text: t }) }); }
+        catch (e) {
+          if (signal?.aborted) throw e;
+          this.log('card', `the brain on the card couldn't answer (${causeLine(e).slice(0, 160)})`);
+          emit({ type: 'announce', text: 'The brain on the card stopped answering, so I\'ll look at the card again.' });
+          ctx.onCard = null; this.liftCardPause(); reply = null;
+        }
+      }
+      if (!reply && !cpu) {
+        const pick = await this.cardGuard(model, { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}) }, emit, signal, { sessionId, chat: !job?.guest && !job?.side, borrowOk: !ctx.cardBorrowTried });
+        if (pick.borrow) { ctx.cardBorrowTried = true; borrowing = true; step--; continue; }
+        if (pick.use) {
+          ctx.onCard = pick.use;
+          emit({ type: 'announce', text: pick.use.paused ? 'The test paused. Answering on its brain; it carries on after this.' : 'Answering on the brain already on the card. The test there keeps running, so its timings will be off for a moment.' });
+          step--; continue;
+        }
+      }
       if (!reply) {
-        model = (await this.ensureModel(model, emit, signal, 'bob', { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}) })) || model;
+        model = (await this.ensureModel(model, emit, signal, 'bob', { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}), cardChecked: true })) || model;
         this.setState('thinking', '', model);
         reply = await this.chatSafe({
           model, messages: this.plainLoop ? [sys, ...meanwhileNear(loopView(staleHandErrors(msgs, turnStart), step), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')] : [steadySys, ...meanwhileNear(meanwhileNear(loopView(staleHandErrors(msgs, turnStart), step), turnNote), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')], tools, signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
           ...(ctx.preset && ctx.preset.temperature !== null ? { temperature: ctx.preset.temperature } : {}), // a preset's own temperature
-          ...(sessionId ? { chatId: sessionId } : {}), // Each chat keeps its place in the engine (chat-places.js, off unless switched on)
+          ...(sessionId ? { chatId: sessionId } : {}), // Per-chat engine cache (chat-places.js, off unless switched on)
           onToken: (t) => emit({ type: 'token', text: t })
         }, { emit });
       }
@@ -398,7 +426,7 @@ export const runOnParts = {
       // Nov 11 (loop-help.js): what goes into each call is checked against the tool, and mended where that's sure.
       if (reply.tool_calls?.length) { giveIds(reply.tool_calls); this.mendCalls(reply.tool_calls, ctx); this.notOffered(reply.tool_calls, tools, ctx); }
       // What he just said gets its id now, so the window can find the bubble: for the "..." menu on it (Edit, Delete;
-      // msg-menu.js), and if he changes it later (Let Bob fix his own messages).
+      // msg-menu.js), and if he changes it later (Edit his own messages).
       if (!job?.guest && typeof reply.content === 'string' && reply.content.trim()) { reply.id ||= newMsgId(); reply.at ||= Date.now(); emit({ type: 'said', id: reply.id }); }
       if (!reply.tool_calls && !ctx.handsDid && !ctx.claimChecked && claimsPcAction(reply.content)) {
         // Said he did something on the PC that no tool did: say so to the user, and give him one go to really do it.
@@ -432,7 +460,7 @@ export const runOnParts = {
         this.log('honesty', 'Bob described an observation with no tool result; corrected (no send-back left this turn)');
       }
       if (job?.side && meanwhileOn(this.cfg) && !reply.tool_calls && !ctx.jobGuessChecked && !msgs.slice(turnStart).some((m) => m.role === 'tool' && m.tool_name === 'look_at_job') && claimsJobGuess(reply.content)) {
-        // Let Bob's Quick brain see the big job: "it's 80% done" or "about 5 minutes left" has nothing behind it.
+        // Quick brain sees the job: "it's 80% done" or "about 5 minutes left" has nothing behind it.
         ctx.jobGuessChecked = true;
         emit({ type: 'correction', text: JOB_GUESS_CORRECTION });
         reply.correction = JOB_GUESS_CORRECTION;
@@ -482,7 +510,7 @@ export const runOnParts = {
         }
         this.log('toolbox', 'Bob gave an empty reply twice');
       } else if (!reply.tool_calls && this.checkTurn(ctx, reply, nudgeOk(ctx))) { ctx.retrying = true; nudged(); continue; } // asked for something that didn't happen: one more go
-      // Let Bob's Quick brain see the big job: a note that came while the big brain was writing its answer (no next step)
+      // Quick brain sees the job: a note that came while the big brain was writing its answer (no next step)
       // still reaches it, once: it says what changes, or that it saw it (PC test 1.5.203: the note never arrived).
       // Nov 11 (loop-help.js): "I'll look that up." and nothing ran: one nudge to really do it.
       if (!reply.tool_calls && !empty && !this.helpOff('promise') && !ctx.promiseChecked && !ctx.noTools && nudgeOk(ctx) && promisesAction(reply.content)) {
@@ -493,14 +521,14 @@ export const runOnParts = {
         nudged(); continue;
       }
       if (!reply.tool_calls && !job?.side && !ctx.noteRedo && this.watch.for(job)?.notes.length) { ctx.noteRedo = true; this.readNotes(ctx, msgs, noteAfterAnswer); continue; }
-      if (!reply.tool_calls && !ctx.noTools && nudgeOk(ctx)) { // Jobs, Run the tests after code edits (job-helps.js): before he says done
+      if (!reply.tool_calls && !ctx.noTools && nudgeOk(ctx)) { // Jobs, Run tests after code edits (job-helps.js): before he says done
         const tests = testsNudge(this, ctx);
         if (tests) { const g = groupOf(this, 'run_command'); if (g) ctx.loaded.add(g); msgs.push({ role: 'system', content: tests, hidden: true }); ctx.retrying = true; emit({ type: 'token', text: '\n\n' }); nudged(); continue; }
       }
       if (!reply.tool_calls) { stage(ctx, 'answering', step, log); this.checkSaid(ctx, reply); this.checkRecord(ctx, reply); sideJob((k, t) => this.log(k, t), 'sources and receipt under the answer', () => afterAnswer(this, ctx, reply)); this.offerToolFix(ctx, reply); this.keepGroups(sessionId, used); return; }
       let ended = false;
       ctx.painted = null; // what the painter made in this round (for the quick hand-back below)
-      // 1.5.78: "Show Bob's plan before big jobs": a big job waits for its plan card (plan.js).
+      // 1.5.78: "Plan before big jobs": a big job waits for its plan card (plan.js).
       const held = await planGate(this, reply.tool_calls, ctx);
       if (held) {
         for (const call of reply.tool_calls) msgs.push(toolMessage(call, held.hold));

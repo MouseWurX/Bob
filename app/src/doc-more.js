@@ -1,14 +1,14 @@
 // Documents, three more switches (Nov 11 list, items 90 to 92). Each is off unless the user turns it on, in Settings,
-// How Bob works, under "Read and search my documents". Nothing is sent anywhere and nothing new runs in the background
+// How Bob works, under "Read and search documents". Nothing is sent anywhere and nothing new runs in the background
 // except the folder watch below, which only listens for the system's "this file changed" notes.
 //
-//  90 "Keep my documents fresh" (docFresh, works with Search my documents by meaning): Bob listens for changes in the
+//  90 "Live document index" (docFresh, works with Semantic document search): Bob listens for changes in the
 //     folders he may read. A document that's saved, added or deleted is read again (or dropped) within a minute or so,
 //     instead of waiting for him to be idle for 10 minutes. Never in the Gaming session, and never while he's answering.
-//  91 "Show the page and line" (docPlaces): find_in_documents says where in a file each find is: the page of a PDF,
+//  91 "Cite page and line" (docPlaces): find_in_documents says where in a file each find is: the page of a PDF,
 //     the slide of a presentation, the sheet of a spreadsheet, the paragraph of a Word file, the line of a text file.
 //     In the chat that place is a link that opens the file in the side panel at that spot.
-//  92 "Search my notes apps too" (notesFolders): an Obsidian vault, or OneNote notebooks exported to a folder, joins
+//  92 "Search notes apps" (notesFolders): an Obsidian vault, or OneNote notebooks exported to a folder, joins
 //     the folders find_in_documents (and the meaning index) search. Obsidian's [[links]], #tags and the settings block
 //     at the top of a note are tidied out of what Bob reads. OneNote keeps its notebooks in its own closed format
 //     (or online), so Bob reads them once they're exported (File, Export, as Word or PDF) into the folder picked.

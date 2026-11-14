@@ -1,7 +1,7 @@
 // 🗓 Everyday helpers (items 143 to 150): text size, easier-to-read font, profiles, today card, focus timer,
 // receipts, the tour after an update and the tray dot. Everything starts off; private things stay locked on disk;
 // nothing here reads the real computer or goes online (the weather gets a fake fetch, the box a test keeper).
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -49,9 +49,9 @@ const fresh = () => { const d = fs.mkdtempSync(path.join(tmp, 'inn-')); const da
   const css = read('public/style.css');
   check('the zoom covers the chat, the message box, Settings and Help', /\.log > \*, #input, #cellar-body > \*, #help-body > \* \{ zoom: var\(--text-zoom\); \}/.test(css));
   check('code keeps its own font', /html\.readable-font code, html\.readable-font pre/.test(css));
-  const cellar = read('public/cellar.js');
-  check('Look & feel has the slider and the switch', /data-textsize value=/.test(cellar) && /sswitch\('readableFont', settings\.readableFont === true, 'Easier-to-read font'/.test(cellar));
-  check('both windows apply them', read('public/app.js').includes('applyReading(st)') && read('public/settings-window.js').includes('applyReading(reading)'));
+  const cellar = publicText('cellar.js');
+  check('Look & feel has the slider and the switch', /data-textsize value=/.test(cellar) && /sswitch\('readableFont', settings\.readableFont === true, 'Readable font'/.test(cellar));
+  check('both windows apply them', publicText('app.js').includes('applyReading(st)') && read('public/settings-window.js').includes('applyReading(reading)'));
   for (const f of ['public/phone/index.html', 'android/app/src/main/assets/www/index.html']) check(`the phone has them too (${f.split('/')[0]})`, read(f).includes('id="text-size"') && read(f).includes('id="readable-font"'));
   check('the phone script is the same in both places', read('public/phone/phone.js') === read('android/app/src/main/assets/www/phone.js') && /textSize: 100, readableFont: false/.test(read('public/phone/phone.js')));
 }
@@ -154,7 +154,7 @@ const fresh = () => { const d = fs.mkdtempSync(path.join(tmp, 'inn-')); const da
   const p = new Profiles(cfg, { brain });
   check('off to start with, and the lock screen asks nothing new', !profilesOn(cfg) && p.people().length === 0 && !lockPage({}).includes("Who's this?"));
   cfg.profilesOn = true;
-  check('needs the lock with Lock my chats and memory', profilesOn(cfg) && !profilesOn({ ...cfg, lock: { ...cfg.lock, encrypt: false } }));
+  check('works without the lock or Lock my chats and memory', profilesOn(cfg) && profilesOn({ ...cfg, lock: { ...cfg.lock, encrypt: false } }) && profilesOn({ profilesOn: true }));
   check('a person needs a name and a passcode, not the owner\'s', Boolean(p.add('', 'abcd').error) && Boolean(p.add('Sam', 'ab').error) && Boolean(p.add('Sam', 'owner-code').error));
   const v = p.add('Sam', 'sam-code').view;
   check('adding a person keeps no passcode, only a locked key', v.list.length === 1 && !fs.readFileSync(cfg.configFile, 'utf8').includes('sam-code') && JSON.parse(fs.readFileSync(cfg.configFile, 'utf8')).lock.wrapped === cfg.lock.wrapped);
@@ -184,7 +184,7 @@ const fresh = () => { const d = fs.mkdtempSync(path.join(tmp, 'inn-')); const da
   check('housekeeping only tidies the owner\'s things', read('src/housekeeping.js').includes("if (this.cfg.profileNow) return { skipped: true, profile: true };"));
   check('search in a profile never shows the owner\'s notes', read('src/search.js').includes("!cfg.profileNow || kind === 'memory'"));
   check('profiles are never in a backup', NOT_BACKED_UP.includes('profiles/'));
-  check('Settings lists people with Add and Remove', peopleHtml({ list: [{ id: 'a', name: 'Sam' }], ownerLocked: true }).includes('＋ Add a person') && peopleHtml({}).includes('Lock my chats and memory'));
+  check('Settings lists people with Add and Remove, a passcode optional', peopleHtml({ list: [{ id: 'a', name: 'Sam' }], ownerLocked: true }).includes('＋ Add a person') && peopleHtml({}).includes('Passcode (optional)') && peopleHtml({}).includes('Lock my chats and memory'));
 }
 
 // ---- 150 the tray dot ----
@@ -209,7 +209,7 @@ const fresh = () => { const d = fs.mkdtempSync(path.join(tmp, 'inn-')); const da
   check('the FAQ answers the everyday questions', ['faq-text-size', 'faq-profiles', 'faq-receipts', 'faq-focus'].every((x) => HELP.find((e) => e.id === x)?.group === 'FAQ'));
   const g = HELP.find((e) => e.id === 'glossary').html;
   check('the glossary has the new words', ['Focus timer', 'Profile (person)', 'Spending sheet', 'Today card', 'Tray dot'].every((w) => g.includes(`<dt>${w}</dt>`)));
-  check('Help says where each one works', /Bob for Android has Text size and Easier-to-read font/.test(HELP.find((e) => e.id === 'everyday').html));
+  check('Help says where each one works', /Bob for Android has Text size and Readable font/.test(HELP.find((e) => e.id === 'everyday').html));
   check('the phone Help has text size', read('android/app/src/main/assets/www/help.js').includes("id: 'text-size'"));
 }
 

@@ -1,21 +1,27 @@
 // Harness extras (items 62 to 72 of "100 more ways to make Bob better"). Every switch here is off unless the owner
 // turns it on. This file only names and cleans the settings; each feature lives in its own file:
 //   crashCatcher  "Catch crashes"                         src/crash-catch.js   (a short report, no chat words)
-//   safeStart     "Offer a safe start after two crashes"  src/crash-catch.js   (every opt-in switch off, one button back)
-//   settingsUndo  "Keep the last 20 Settings changes"     src/settings-undo.js (each with Put it back)
+//   safeStart     "Safe start after two crashes"  src/crash-catch.js   (every opt-in switch off, one button back)
+//   settingsUndo  "Settings undo (last 20)"     src/settings-undo.js (each with Put it back)
 //   (no switch)   the Health page                         src/health.js        (a page you open; it only looks)
 //   quietHours    "Quiet hours"                           src/quiet-hours.js   (no pop-ups, sounds or check-ins)
-//   chatPlaces    "Each chat keeps its place in the engine" src/chat-places.js (engine memory saved per chat)
-//   weeklyReport  "Count what Bob did each week"          src/weekly.js        (counts only, never words)
-//   globalAsk     "A shortcut from anywhere"              electron/main.cjs + public/ask.html
+//   chatPlaces    "Per-chat engine cache" src/chat-places.js (engine memory saved per chat)
+//   weeklyReport  "Weekly stats"          src/weekly.js        (counts only, never words)
+//   globalAsk     "Global shortcut"              electron/main.cjs + public/ask.html
 //   tryFromHere   "Try from here"                         src/try-from-here.js (a copy of the chat up to a message)
 //   pinMessages   "Pin messages"                          src/pins.js          (kept in mind however long the chat)
 //   guestChat     "Guest chats"                           src/guest-chat.js    (nothing saved, no memory)
+//   fadeChat      "Fade old messages"                     src/fade-chat.js     (old turns leave the chat; hide or delete)
+//   amnesiaOffer  "Amnesia mode"                    src/amnesia.js       (turning it off forgets the stretch)
+//   amnesiaMade, amnesiaAutoOff: Amnesia mode's two choices (keep or delete what he made; turn off by itself)
 
-export const HARNESS_KEYS = ['crashCatcher', 'safeStart', 'settingsUndo', 'weeklyReport', 'quietHours', 'globalAsk', 'chatPlaces', 'tryFromHere', 'pinMessages', 'guestChat'];
-const SWITCHES = ['crashCatcher', 'safeStart', 'settingsUndo', 'weeklyReport', 'chatPlaces', 'tryFromHere', 'pinMessages', 'guestChat'];
+import { cleanFade, fadeWords, FADE_PICKS } from './fade-chat.js';
+import { cleanAmnesiaAuto, AMNESIA_AUTO } from './amnesia.js';
 
-// The keys a person can pick for "A shortcut from anywhere", as Electron names them, and as Help shows them.
+export const HARNESS_KEYS = ['crashCatcher', 'safeStart', 'settingsUndo', 'weeklyReport', 'quietHours', 'globalAsk', 'chatPlaces', 'tryFromHere', 'pinMessages', 'guestChat', 'fadeChat', 'amnesiaOffer', 'amnesiaMade', 'amnesiaAutoOff'];
+const SWITCHES = ['crashCatcher', 'safeStart', 'settingsUndo', 'weeklyReport', 'chatPlaces', 'tryFromHere', 'pinMessages', 'guestChat', 'amnesiaOffer'];
+
+// The keys a person can pick for "Global shortcut", as Electron names them, and as Help shows them.
 export const ASK_KEYS = [
   ['CommandOrControl+Shift+Space', 'Ctrl+Shift+Space'],
   ['CommandOrControl+Space', 'Ctrl+Space'],
@@ -34,6 +40,9 @@ export function cleanHarness(key, v) {
     const q = v && typeof v === 'object' ? v : {};
     return { on: q.on === true, from: cleanTime(q.from, QUIET_DEFAULT.from), to: cleanTime(q.to, QUIET_DEFAULT.to) };
   }
+  if (key === 'fadeChat') return cleanFade(v);
+  if (key === 'amnesiaMade') return v === 'delete' ? 'delete' : 'keep';
+  if (key === 'amnesiaAutoOff') return cleanAmnesiaAuto(v);
   if (key === 'globalAsk') {
     const g = v && typeof v === 'object' ? v : {};
     return { on: g.on === true, key: ASK_KEYS.some(([k]) => k === g.key) ? g.key : ASK_DEFAULT };
@@ -46,14 +55,17 @@ export function harnessView(cfg = {}) {
   const out = {};
   for (const k of HARNESS_KEYS) out[k] = cleanHarness(k, cfg[k]);
   out.askKeys = ASK_KEYS.map(([key, label]) => ({ key, label }));
+  out.fadePicks = FADE_PICKS.map(([minutes, label]) => ({ minutes, label }));
+  out.amnesiaAuto = AMNESIA_AUTO.map(([minutes, label]) => ({ minutes, label }));
   return out;
 }
 
 // Plain names for the Settings undo list and Bob's own settings readout.
 export const HARNESS_LABELS = {
-  crashCatcher: 'Catch crashes', safeStart: 'Offer a safe start after two crashes', settingsUndo: 'Keep the last 20 Settings changes',
-  weeklyReport: 'Count what Bob did each week', quietHours: 'Quiet hours', globalAsk: 'A shortcut from anywhere',
-  chatPlaces: 'Each chat keeps its place in the engine', tryFromHere: 'Try from here', pinMessages: 'Pin messages', guestChat: 'Guest chats'
+  crashCatcher: 'Catch crashes', safeStart: 'Safe start after two crashes', settingsUndo: 'Settings undo (last 20)',
+  weeklyReport: 'Weekly stats', quietHours: 'Quiet hours', globalAsk: 'Global shortcut',
+  chatPlaces: 'Per-chat engine cache', tryFromHere: 'Try from here', pinMessages: 'Pin messages', guestChat: 'Guest chats',
+  fadeChat: 'Fade old messages', amnesiaOffer: 'Amnesia mode', amnesiaMade: 'Things he made while Amnesia mode was on', amnesiaAutoOff: 'Turn Amnesia mode off by itself after'
 };
 
 export function harnessNow(cfg = {}) {
@@ -65,6 +77,8 @@ export function harnessNow(cfg = {}) {
     `${HARNESS_LABELS.weeklyReport}: ${on(v.weeklyReport)}`,
     `${HARNESS_LABELS.globalAsk}: ${v.globalAsk.on ? (ASK_KEYS.find(([k]) => k === v.globalAsk.key) || ASK_KEYS[0])[1] : 'off'}`,
     `${HARNESS_LABELS.chatPlaces}: ${on(v.chatPlaces)}`, `${HARNESS_LABELS.tryFromHere}: ${on(v.tryFromHere)}`,
-    `${HARNESS_LABELS.pinMessages}: ${on(v.pinMessages)}`, `${HARNESS_LABELS.guestChat}: ${on(v.guestChat)}`
+    `${HARNESS_LABELS.pinMessages}: ${on(v.pinMessages)}`, `${HARNESS_LABELS.guestChat}: ${on(v.guestChat)}`,
+    `${HARNESS_LABELS.fadeChat}: ${v.fadeChat.on ? `after ${fadeWords(v.fadeChat.minutes)}, ${v.fadeChat.mode === 'delete' ? 'deleted' : 'hidden'}` : 'off'}`,
+    `${HARNESS_LABELS.amnesiaOffer}: ${on(v.amnesiaOffer)}`
   ].join('; ');
 }

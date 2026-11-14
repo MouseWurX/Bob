@@ -32,14 +32,17 @@ check('every tool has a description', all.every((f) => f.description.trim().leng
 // while off) about 640. 1.5.208: eleven 🧰 More tools (calculator, passwords, email, calendar, page watch, web
 // services, data, charts, spelling, meeting notes, compare) add about 7,100. All start off and are taken out while
 // off, and once on each comes in only when a message needs it (toolbox groups), so a normal turn doesn't carry them.
-check('all tools together stay under 53,500 characters', size(all) < 53500, String(size(all)));
+// Nov 13: manage_email ("Let Bob tidy my email", off until switched on) and tool_record (in the memory group, only
+// when a message asks why) add about 1,000; the cap moved to 54,000. 1.5.224: discord_mod (Discord Keep order, off
+// until switched on, hidden while off, and in its own group) adds about 450; the cap moved to 54,500.
+check('all tools together stay under 54,500 characters', size(all) < 54500, String(size(all)));
 const core = all.filter((f) => CORE.includes(f.name));
 // 1.5.207: reminders gained urgent (quiet hours) and offer_setup's list grew with the new opt-in switches; the
 // descriptions were trimmed to make room, and the cap moved from 8,000 to 8,100.
 check('the tools every chat starts with stay under 8,100 characters', size(core) < 8100, String(size(core)));
 check('no tool talks about GPU plumbing the brain can\'t act on', !all.some((f) => /steps out of the GPU/.test(f.description)));
 
-// "Let Bob learn from his tools": the line he kept is on the tool he is handed, and runTool keeps it.
+// "Learn from tool errors": the line he kept is on the tool he is handed, and runTool keeps it.
 cfg.toolLearning = true;
 const job = { emit: () => {}, signal: new AbortController().signal };
 await brain.runTool('read_file', { path: 'notes.txt' }, job);

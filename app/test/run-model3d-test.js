@@ -1,8 +1,8 @@
-// 🧊 Picture to 3D (src/model3d.js, "Let Bob turn pictures into 3D models", off unless turned on): the pinned sources,
+// 🧊 Picture to 3D (src/model3d.js, "Pictures to 3D models", off unless turned on): the pinned sources,
 // the add-on pins and where they may come from, the 3D workshop engine entry, its setup steps (with a fake uv,
 // Python and downloader: nothing is downloaded or run), the make_3d_model tool, Bob-Net jobs, the GitHub build,
 // and the settings, Help, FAQ and glossary. Every file is made up in a temporary folder.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -53,7 +53,12 @@ const PINS = { release: 'model3d-addons-1', 'win-x64': [wheel('cumesh-0.0.1-cp31
   check('a Mac is told to send it to a PC Bob', /NVIDIA/.test(model3dWhy('mac', 'arm64', PINS)) && /Bob-Net/.test(model3dWhy('mac', 'arm64', PINS)));
   check('ARM Linux is told too', /Bob-Net/.test(model3dWhy('linux', 'arm64', PINS)));
   check('Windows with pins: a Get button', model3dWhy('win', 'x64', PINS, 8.9) === undefined && model3dWhy('win', 'x64', PINS, null) === undefined);
-  check('an RTX 50-series card (compute 12.x) gets no Get button yet and is told why (1.5.211 PC check)', /RTX 50-series/.test(model3dWhy('win', 'x64', PINS, 12)) && /Bob-Net/.test(model3dWhy('win', 'x64', PINS, 12.0)));
+  check('an RTX 50-series card gets the Get button again (its attention is handled in the runner)', model3dWhy('win', 'x64', PINS) === undefined && !/RTX 50-series/.test(read('src/engines.js') + publicText('cellar.js')));
+  {
+    const py = read('model3d/bob-trellis.py');
+    check('on RTX 50-series cards the runner uses PyTorch attention and leaves xformers\' FlashAttention out, before TRELLIS.2 loads', /get_device_capability\(0\)\[0\] < 12/.test(py) && /ATTN_BACKEND"\] = "sdpa"/.test(py) && /flash\.FwOp\.not_supported_reasons = classmethod/.test(py) && py.indexOf('newest_cards(torch)') < py.indexOf('from trellis2.pipelines'));
+    check('weights already in the models folder without their .ok mark are checked in place, not downloaded again', /already here/.test(py) && /sha256\(dest\) == f\["sha256"\]/.test(py));
+  }
   check('Windows without pins: says why', /aren't built and checked/.test(model3dWhy('win', 'x64', {})));
   check('Windows gets the Triton build for Windows', runtimePackages('win').some((p) => /^triton-windows/.test(p)) && runtimePackages('linux').some((p) => /^triton[<>=]/.test(p)));
 }
@@ -194,13 +199,13 @@ fs.mkdirSync(cfg.painterDir, { recursive: true });
 
 // ---------- settings, Help, FAQ, glossary ----------
 {
-  const cellar = read('public/cellar.js');
-  check('the switch is in Settings and saved', /sswitch\('model3d', settings\.model3d === true, 'Let Bob turn pictures into 3D models'/.test(cellar) && /typeof b\.model3d === 'boolean'/.test(read('src/server.js')));
-  check('Do you want me to: lists it', WANTS.some((w) => w.key === 'model3d' && w.setting === 'Let Bob turn pictures into 3D models'));
-  check('bob_help reports it', /Let Bob turn pictures into 3D models: off/.test(settingsNow({})));
+  const cellar = publicText('cellar.js');
+  check('the switch is in Settings and saved', /sswitch\('model3d', settings\.model3d === true, 'Pictures to 3D models'/.test(cellar) && /typeof b\.model3d === 'boolean'/.test(read('src/server.js')));
+  check('Do you want me to: lists it', WANTS.some((w) => w.key === 'model3d' && w.setting === 'Pictures to 3D models'));
+  check('bob_help reports it', /Pictures to 3D models: off/.test(settingsNow({})));
   const h = HELP.find((x) => x.id === 'model3d');
   check('Help in Bob\'s voice, with the licence and every platform', h && /\bI paint\b/.test(h.html) && /military/.test(h.html) && /Mac/.test(h.html) && /Android/.test(h.html) && /non-commercial/.test(h.html));
-  check('the FAQ says yes now', /Let Bob turn pictures into 3D models/.test(HELP.find((x) => x.id === 'faq-3d-models')?.html || ''));
+  check('the FAQ says yes now', /Pictures to 3D models/.test(HELP.find((x) => x.id === 'faq-3d-models')?.html || ''));
   const g = HELP.find((x) => x.id === 'glossary')?.html || '';
   check('glossary: TRELLIS.2 and GLB', /<dt>TRELLIS\.2<\/dt>/.test(g) && /<dt>GLB<\/dt>/.test(g));
   check('licences listed', /nvdiffrast/.test(read('docs/legal/THIRD-PARTY.md')) && /DINOv3/.test(read('docs/legal/THIRD-PARTY.md')));

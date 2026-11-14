@@ -1,4 +1,4 @@
-// What Bob looks like: the little pixel-art avatar picked in Style. He knows it, can describe it and has an
+// What Bob looks like: his cube in the app, and (1.5.222) the little pixel-art game look picked in Adventure, Characters, Party. He knows it, can describe it and has an
 // opinion on it. When it changes, his next reply gets a one-off note so he can react (Personality, on by default
 // only because it costs nothing: it's a line in the next reply, never a message of its own).
 import { getLook, DEFAULT_LOOK, LOOKS } from '../public/bob-sprite.js';
@@ -18,8 +18,8 @@ export function lookText(id) {
 }
 
 export function lookPrompt(cfg) {
-  const now = `Your look: {{USER}} picked a little 16x16 pixel-art avatar for you, shown blinking and talking in the corner of the app. Right now it is ${lookText(cfg.look)}. You know this is how you appear and you have opinions about it; if asked what you look like, describe it.`;
+  const now = `Your look: in the app you are a small glowing cube, a map of your brain that lights up as you think. In games (Adventure, Journey) you are a 16x16 pixel character {{USER}} picked: ${lookText(cfg.look)}. You have opinions on both; if asked what you look like, describe them.`;
   const ch = cfg.lookChange;
   if (!ch || cfg.lookComments !== true) return now; // 1.5.116: opt-in
-  return `${now}\n{{USER}} just changed your look from ${lookText(ch.from)} to ${lookText(ch.to)}. In this reply, after answering, add one short in-character line with your honest opinion of the new look. Only this once.`;
+  return `${now}\n{{USER}} just changed your game look from ${lookText(ch.from)} to ${lookText(ch.to)}. In this reply, after answering, add one short in-character line with your honest opinion of the new look. Only this once.`;
 }

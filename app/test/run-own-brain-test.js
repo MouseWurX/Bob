@@ -31,7 +31,7 @@ check('1.5.137: Now running adds no "(Bob\'s downloaded copy)" or "(Bob\'s own c
 check('the engine log says the same', /running from Bob's downloaded copy/.test(read('src/llamacpp.js')) && !/running from Bob's own copy \(/.test(read('src/llamacpp.js')));
 
 // Nothing on the window or the phone side writes the tag by hand.
-for (const f of ['public/equip.js', 'public/catalogue.js', 'public/cellar.js', 'public/app.js']) check(`${f} does not write "own brain" itself (the engine setting may still name Bob's own engine)`, !/own brain\)/.test(read(f)));
+for (const f of ['public/equip.js', 'public/catalogue.js', 'public/cellar.js', 'public/app.js', ...fs.readdirSync(new URL('../public/', import.meta.url)).filter((n) => /^(app|cellar)-\w+\.js$/.test(n)).map((n) => `public/${n}`)]) check(`${f} does not write "own brain" itself (the engine setting may still name Bob's own engine)`, !/own brain\)/.test(read(f)));
 const phone = fs.existsSync(new URL('../android/www/phone.js', import.meta.url)) ? read('android/www/phone.js') : '';
 check('the phone app does not either', !/own brain\)|own engine\)/.test(phone));
 

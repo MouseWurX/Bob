@@ -4,12 +4,12 @@
 // with a 4B main brain and a 7B Review brain) that check is only as good as the 7B. With these on, the check goes to
 // whichever of your other Bobs has a bigger Review brain and is free (a desktop with a 27B or 35B), and comes back here.
 //
-// "Check harder jobs for my other Bobs" (the lender, share.lendChecks): through the door "Let my other replicant
+// "Review for other Bobs" (the lender, share.lendChecks): through the door "Let my other replicant
 //   matrices in" only, the same lend protocol as Lend my brain (/api/lend/chat with kind 'check'). The lender thinks on
 //   his Review brain (Review slot, else Deep thinking, else his main brain), words in, words and tool calls out. Nothing
 //   runs there: the reviewer's file reading runs here, on the Bob whose job it is. Nothing is kept. He says no while
 //   gaming or busy with his own job.
-// "Ask a bigger Bob to check my harder jobs" (the asker, share.borrow.checks): only at High and Extreme, only to a Bob
+// "Review by a bigger Bob" (the asker, share.borrow.checks): only at High and Extreme, only to a Bob
 //   whose Review brain is bigger than this one's (by its weights, in billions, from the brain's name). High goes to the
 //   first bigger one in your list order; Extreme goes to the biggest. If none is free, or he stops answering, this Bob
 //   checks it himself like always.

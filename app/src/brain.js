@@ -1,5 +1,6 @@
 // Bob's brain: runs a conversation turn, picks the right model, announces swaps,
 // calls tools, asks the user for approval when needed, and keeps a logbook.
+import { kindOfAddress } from './links.js'; // 1.5.214: SCUT's Auto cap (a cable or Wi-Fi)
 import fs from 'node:fs';
 import path from 'node:path';
 import { Ollama } from './ollama.js';
@@ -23,7 +24,7 @@ import { securityTools } from './hands-security.js';
 import { selfToolsTools } from './selftools.js';
 import { Made, showMadeTool } from './made.js';
 import { scheduleTools } from './hands-schedules.js';
-import { HANDS } from './hands-settings.js';
+import { HANDS, handsSettings } from './hands-settings.js';
 import { useToolsTool } from './toolbox.js';
 import { ErrorTally } from './retry.js'; // reliability items 193-207, always on
 import { Gate, queuedLine, plainDoing } from './handoff.js';
@@ -33,12 +34,15 @@ import { editOwnTool } from './edit-own.js';
 import { JobWatch, watchTools } from './meanwhile.js';
 import { notesTool } from './notes.js';
 import { receiptTool } from './receipts.js'; // 🧾 Snap a receipt (off by default)
+import { modTool } from './discord-mod.js'; // 1.5.224 Discord Keep order, for your own chats (off by default)
 import { findDocsTool } from './my-docs.js';
 import { sandboxTool } from './sandbox-code.js';
 import { toolOn as moreOn } from './more-tools.js'; // 🧰 More tools (Settings, How Bob works), each off by default
 import { calculatorTool } from './calc.js';
 import { passwordTool } from './passwords.js';
 import { emailTool } from './email-read.js';
+import { manageEmailTool } from './email-manage.js'; // "Let Bob tidy my email" (Nov 13)
+import { toolRecordTool } from './tool-record.js'; // the tool record (Nov 13)
 import { calendarTool } from './calendar-read.js';
 import { watchTool, checkDueWatches } from './page-watch.js';
 import { apiTool } from './web-api.js';
@@ -51,7 +55,9 @@ import { parts3dTool } from './parts3d.js';
 import { model3dTool } from './model3d.js';
 import { pickSessionTool } from './auto-session.js';
 import { Lenders, wantsBorrow } from './share-brains.js';
-import { CardLender, CardBorrower } from './share-card.js'; // Bob-Net: lend my graphics card / spread big brains
+import { CardLender, CardBorrower, powersOf, powersWords } from './share-card.js'; // Bob-Net: lend my graphics card / spread big brains
+import { NetCards, cardsOn } from './net-cards.js'; // OK cards on all your Bobs
+import { myName } from './bob-net-pair.js';
 import { Rentals, currentRental, saveEndpoint } from './rental.js'; // 1.5.127 rented brains
 import { GuestJobs, canHere, NEEDS_LIST } from './share-jobs.js';
 import { askTogetherTool } from './together.js';
@@ -75,6 +81,7 @@ import { turnParts } from './brain-turns.js';
 import { runOnParts } from './brain-run-on.js';
 import { hatParts } from './brain-hats.js';
 import { makingParts } from './brain-making.js';
+import { armDelays } from './stop-words.js'; // Stop and wait words: delayed jobs come back by themselves
 export { SIDE_LANE, sideOk, APU_MIN_CTX, APU_CARVE_MARGIN_GB, APU_NO_ROOM, apuRoom, sideBrain, reviewBrainOf, talkerModel, isTalker, sidePick, TALKER_CTX, talkerCtx, TALKER_LINE, BIG_AFTER_MS, MOVE_TO_CPU, BESIDE_FAILED, mainJob, bigJob, besideBigOk, besideLater, mootBesideOk, besideOk } from './brain-lanes.js';
 export { APU_HOLDBACK_DEFAULT_GB, apuHoldbackGB } from './brain-lanes.js';
 export { NOW_IN_NOTE, CUT_NOTE, fitContext, askWords, cutKeeping, MAX_TRACE, fileBefore, traceStep, TOO_LONG, staleHandErrors, claimsPcAction, claimsObservation, OBSERVE_CORRECTION, realState, meanwhileNear, engineLabel, linkKey, CLAIM_CORRECTION, realPcPrompt, ALT_ROUTE_NUDGE, ALT_ROUTE_DONE, askedCount, quickHandBack, EMPTY_NOTE, COMPACT_KEEP, HISTORY_PER, HISTORY_MAX, historyKeep, NO_ANSWER_NOTE, UNCAUGHT_QUIET_MS, NO_ANSWER_PARKED, editPrompt, loadMode, loadLine, thinkStream } from './brain-words.js';
@@ -127,6 +134,7 @@ export class Brain {
     this.engine.brainLabel = (m) => this.brainLabel(m); // reliability 218-228: the engine's chat notes name brains as the person knows them
     // 1.5.53: a second brain joined or left (chat page: Bob's head grows / shrinks; see public docs in the HANDOFF).
     this.engine.onBeside = (ev) => { this.broadcast({ type: 'second-brain', ...ev, label: ev.model ? this.brainLabel(ev.model) : '' }); this.broadcast({ type: 'brain' }); };
+    this.engine.onLoadProgress = (model, pct) => this.broadcast({ type: 'load-progress', model, pct }); // 1.5.215: the cube's load-in follows the weights loading
     this.engine.onIdleGone = () => this.broadcast({ type: 'brain' }); // the idle timer let the brain go: the label and the fNRI cube hear at once
     this.sleepy = { since: 0, recent: [] }; // Gaming-session asides (public/sleepy.js)
     // Bob's own engine unloads its brain when idle; it asks here first so it never does that mid-job.
@@ -142,8 +150,11 @@ export class Brain {
     this.lenders = new Lenders(cfg);
     this.lenders.onSkip = (bob, why) => this.log('borrow', `${bob.name} failed twice (${why}); not asked again for an hour`); // item 202
     // Bob-Net: one brain over several of your Bobs' cards (llama.cpp's RPC server). Both off unless switched on.
-    this.cardLender = new CardLender(cfg, { gaming: () => currentSession(this.cfg).id === 'light', freeOwn: async () => { if (this.turns.size || !this.engine?.current) return false; await this.engine.unloadAll(); return true; }, log: (k, t) => this.log(k, t) });
-    if (this.engine instanceof LlamaCpp) this.engine.spread = new CardBorrower(cfg, this.lenders, { log: (k, t) => this.log(k, t) });
+    this.cardLender = new CardLender(cfg, { gaming: () => currentSession(this.cfg).id === 'light', linkKind: (a) => kindOfAddress(a, this.linksCache?.peek?.()), freeOwn: async () => { if (this.turns.size || !this.engine?.current) return false; await this.engine.unloadAll(); return true; }, holdsOwn: () => Boolean(this.engine?.current || this.engine?.beside?.current), log: (k, t) => this.log(k, t) });
+    // the owner, Nov 13: a lent card shows when the brain it helps run has Hands, Autonomy or Screen use on over there.
+    this.cardLender.onPowers = (p, to) => { this.broadcast({ type: 'lend-powers', powers: p, to: to || '' }); if (p) this.log('bob-net', `the brain my card helps ${to || 'another Bob'} run has ${powersWords(p).join(', ')} on`); };
+    if (this.engine instanceof LlamaCpp) this.engine.spread = new CardBorrower(cfg, this.lenders, { log: (k, t) => this.log(k, t), linkKind: (a) => kindOfAddress(a, this.linksCache?.peek?.()), powers: () => powersOf(handsSettings(this.cfg)) });
+    if (this.engine?.spread) this.engine.spread.onLost = () => this.engine.cardTakenBack(); // 1.5.214: a lent card taken back mid-spread
     // 1.5.127 Rented brains: a big brain hired from an online service for one job, only after a card the owner pressed.
     this.errorTally = new ErrorTally(cfg.dataDir ? path.join(cfg.dataDir, 'tool-errors.json') : null); // item 206
     this.rentals = new Rentals(cfg, { log: (k, t) => this.log(k, t), broadcast: (ev) => this.broadcast(ev) });
@@ -157,13 +168,17 @@ export class Brain {
     // 1.5.206 PC check: a card made while no page was open never showed. Waiting cards are kept until answered, and
     // /api/events hands them to each page that connects.
     this.waitingCards = new Map();
+    // the owner, Nov 13 (src/net-cards.js, opt-in): OK cards go to all your Bobs, and come down everywhere once answered.
+    this.netCards = new NetCards(this, { name: () => cfg.windowsName || myName() });
     this.broadcast = (ev) => {
-      if (ev?.type === 'approval' && ev.id) this.waitingCards.set(ev.id, ev);
+      if (ev?.type === 'approval' && ev.id) { this.waitingCards.set(ev.id, ev); if (!ev.net && cardsOn(this.cfg)) ev.everywhere = true; } // the phone app shows it too
       else if (ev?.type === 'approval-result' && ev.id) this.waitingCards.delete(ev.id);
       raw(ev); try { this.guests.watch(ev); } catch {}
+      try { this.netCards.local(ev); } catch {}
     };
+    this.netCards.start();
     this.lendDeps = { currentSession, quickBrain: (b) => { const sb = sessionBrains(b.cfg); const m = sb.small && runnable(b, sb.small) ? sb.small : (b.cfg.engine === 'llamacpp' ? null : sb.small); return m ? { model: m, cpu: false, ctx: Math.min(chatBrain(b.cfg).ctx || 32768, 32768) } : null; }, reviewBrain: (b) => reviewBrainOf(b),
-      // 1.5.185 Check harder jobs for my other Bobs: the Review brain (Review slot, else Deep thinking, else main), on the card.
+      // 1.5.185 Review for other Bobs: the Review brain (Review slot, else Deep thinking, else main), on the card.
       checkBrain: (b) => { const r = reviewBrain(b.cfg); return r && (runnable(b, r.model) || b.cfg.engine !== 'llamacpp') ? { model: r.model, cpu: false, ctx: 32768, think: 'high' } : null; } };
     this.tools = buildTools(cfg);
     this.refs = new RefShelf(cfg);
@@ -180,6 +195,7 @@ export class Brain {
     this.lastActivity = Date.now(); // for /api/idle
     this.queue = this.loadQueue();
     setTimeout(() => this.pump(), 1500); // pick up anything left waiting when Bob was last closed
+    armDelays(this); // Stop and wait words: "wait 10 minutes" left from last time comes back by itself
     setTimeout(() => this.armIdleCheck(), 1500); // 1.5.41: a session left on from last time goes back to the lightest one
     this.sessionDir = path.join(cfg.dataDir, 'sessions');
     fs.mkdirSync(this.sessionDir, { recursive: true });
@@ -198,25 +214,26 @@ export class Brain {
     this.tools.show_plan = showPlanTool(this); // 1.5.78: the plan card before big jobs (plan.js), only with its setting on
     this.tools.ask_together = askTogetherTool(this); // 1.5.42: every OK a job needs on one card (together.js) // the toolbox (toolbox.js): groups added only when a job needs them
     this.tools.pick_session = pickSessionTool(this); // 1.5.43: Bob changes session himself (auto-session.js)
-    Object.assign(this.tools, watchTools(this)); // Let Bob's Quick brain see the big job (meanwhile.js), only with its setting on
+    Object.assign(this.tools, watchTools(this)); // Quick brain sees the job (meanwhile.js), only with its setting on
     this.watch = new JobWatch(); // the job on the big brain, as the app sees it (meanwhile.js); never saved
-    this.tools.edit_my_message = editOwnTool(this); // Let Bob fix his own messages (edit-own.js), only with its setting on
-    this.tools.take_note = notesTool(this); // Let Bob take quick notes (notes.js), only with its setting on
-    this.tools.spending_sheet = receiptTool(this); // 🧾 Keep a spending sheet from receipts (receipts.js), only with its setting on
-    this.tools.find_in_documents = findDocsTool(cfg, { keeper: () => this.housekeeper }); // Read and search my documents (my-docs.js), only with its setting on
-    this.tools.run_in_sandbox = sandboxTool(this); // Let Bob work things out in a sandbox (sandbox-code.js), only with its setting on
+    this.tools.edit_my_message = editOwnTool(this); // Edit his own messages (edit-own.js), only with its setting on
+    this.tools.take_note = notesTool(this); // Quick notes (notes.js), only with its setting on
+    this.tools.spending_sheet = receiptTool(this); // 🧾 Receipt tracker (receipts.js), only with its setting on
+    this.tools.discord_mod = modTool(this); // Discord Keep order (discord-mod.js), only while it's on
+    this.tools.find_in_documents = findDocsTool(cfg, { keeper: () => this.housekeeper }); // Read and search documents (my-docs.js), only with its setting on
+    this.tools.run_in_sandbox = sandboxTool(this); // Code sandbox (sandbox-code.js), only with its setting on
     // 🧰 More tools (more-tools.js): each one only while its own switch is on (offTools hides the rest).
     const on = (k) => () => moreOn(this.cfg, k);
     Object.assign(this.tools, {
       calculate: calculatorTool(cfg, on('calculator')), make_password: passwordTool(cfg, on('passwords')),
-      read_email: emailTool(cfg, on('email')), read_calendar: calendarTool(cfg, on('calendar')),
+      read_email: emailTool(cfg, on('email')), manage_email: manageEmailTool(cfg, () => moreOn(this.cfg, 'email') && moreOn(this.cfg, 'emailTidy'), {}, this), tool_record: toolRecordTool(cfg), read_calendar: calendarTool(cfg, on('calendar')),
       watch_page: watchTool(cfg, on('pageWatch')), call_api: apiTool(cfg, on('webApi')),
       query_data: dataTool(cfg, on('dataQuery')), make_chart: chartTool(cfg, on('charts')),
       check_spelling: spellTool(cfg, on('spellCheck')), meeting_notes: meetingTool(cfg, on('meetingNotes')),
       compare_files: compareTool(cfg, on('compareFiles'))
     });
-    this.tools.make_3d_part = parts3dTool(this); // Let Bob make 3D parts (parts3d.js), only with its setting on
-    this.tools.make_3d_model = model3dTool(this); // Let Bob turn pictures into 3D models (model3d.js), only with its setting on
+    this.tools.make_3d_part = parts3dTool(this); // 3D parts (parts3d.js), only with its setting on
+    this.tools.make_3d_model = model3dTool(this); // Pictures to 3D models (model3d.js), only with its setting on
     // 1.5.91: the Set it up card for something missing or switched off. Listed only while something is (offTools).
     this.tools.offer_setup = {
       schema: { type: 'function', function: { name: 'offer_setup', description: 'When {{USER}}\'s request needs a missing part or a setting that is off: show a one-button card that sets it up, then carry on. For pictures, video, music and sound call make_image, make_video, make_music or make_sound instead.', parameters: { type: 'object', properties: { what: { type: 'string', enum: [...Object.keys(NEEDS), ...SWITCH_KEYS], description: 'What to set up. voice = read replies aloud, hearing = hear {{USER}} talk, workshop = ComfyUI, hand:<id> = a Hand that is off (hand:packs = tool packs).' } }, required: ['what'] } } },

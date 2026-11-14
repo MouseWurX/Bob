@@ -34,7 +34,7 @@ export function tidyStarts(dir, model, keep) {
   } catch {}
 }
 
-// ---------- Let games go first ----------
+// ---------- Games first ----------
 // Two-chip Ryzen processors (Ryzen 9: 12 or 16 cores) are two groups of cores; games run best on the first one
 // (on X3D chips that is the one with the extra cache), so Bob keeps to the second. Other processors: leave two
 // cores free. Logical processors come in pairs (one core, two threads) on these chips.

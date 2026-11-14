@@ -24,10 +24,10 @@ import { recallOn, parseMemory, MemoryVectors } from './recall.js';
 import { fromTag, expiryOn, dropExpired } from './memory-more.js';
 import { gaming } from './sessions.js';
 import { DocIndex, docMeaningOn, queryVector } from './doc-index.js';
-import { DocWatcher, docFreshOn } from './doc-more.js'; // "Keep my documents fresh", off by default
+import { DocWatcher, docFreshOn } from './doc-more.js'; // "Live document index", off by default
 import { forgetWords, TEXT_EXT } from './my-docs.js';
 import { DOC_EXT } from './doc-text.js';
-import { Digest, digestOn } from './digest.js'; // "A Sunday digest", off by default
+import { Digest, digestOn } from './digest.js'; // "Sunday digest", off by default
 import { catalogFileFor } from './llamacpp.js';
 import {
   chatIds, chatInfo, chatFiles, wholeChat, readChat, readOlder, writeChat, writeOlder, readSummary, writeSummary,
@@ -122,7 +122,7 @@ export class Housekeeper {
     this.now = () => Date.now();
     this.timer = setInterval(() => this.tick().catch(() => {}), 5 * 60e3);
     this.timer.unref?.();
-    this.watchSoon = setTimeout(() => { try { this.syncDocWatch(); } catch {} }, 5000); // "Keep my documents fresh"
+    this.watchSoon = setTimeout(() => { try { this.syncDocWatch(); } catch {} }, 5000); // "Live document index"
     this.watchSoon.unref?.();
   }
 
@@ -347,8 +347,8 @@ export class Housekeeper {
   }
 
   // Facts Bob should keep go to the memory file, tagged with their topic, without repeats.
-  // 1.5.79: with "Remember only what fits" on, a fact from a project's topic goes to that project's memory bank.
-  // from: the chat the facts came from (tagged only with "Note where each memory came from" on, memory-more.js).
+  // 1.5.79: with "Relevant memories only" on, a fact from a project's topic goes to that project's memory bank.
+  // from: the chat the facts came from (tagged only with "Memory sources" on, memory-more.js).
   addFacts(facts, topic = '', project = '', from = '') {
     const list = [].concat(facts || []).map((f) => String(f).replace(/\s+/g, ' ').trim()).filter((f) => f.length > 3 && f.length < 300).slice(0, 8);
     if (!list.length) return 0;
@@ -533,7 +533,7 @@ export class Housekeeper {
   }
 
   // force: the user pressed "Tidy up now" (runs even if Bob isn't idle or his brain isn't loaded).
-  // 1.5.79: "Remember only what fits" matches memory lines by meaning. Their vectors are made here, while Bob is
+  // 1.5.79: "Relevant memories only" matches memory lines by meaning. Their vectors are made here, while Bob is
   // idle (never in the Gaming session), so a message only waits for its own. Works with housekeeping off.
   async fillMemoryVectors() {
     if (!recallOn(this.cfg) || gaming(this.cfg)) return 0;
@@ -560,7 +560,7 @@ export class Housekeeper {
     return n;
   }
 
-  // Search my documents by meaning (doc-index.js): new and changed documents get their meaning numbers while Bob
+  // Semantic document search (doc-index.js): new and changed documents get their meaning numbers while Bob
   // is idle, a batch at a time, never in the Gaming session. Works with housekeeping off.
   docRoots() { return (this.cfg.readRoots || []).filter((r) => r !== this.cfg.innDir); }
   async fillDocIndex() {
@@ -579,7 +579,7 @@ export class Housekeeper {
     const v = await queryVector(this, q, this.docIndex.load().model);
     return v ? this.docIndex.search(v, { roots: roots || this.docRoots() }) : null;
   }
-  // "Keep my documents fresh" (doc-more.js): listen for changes in the folders Bob may read while the switch is on,
+  // "Live document index" (doc-more.js): listen for changes in the folders Bob may read while the switch is on,
   // and stop listening when it goes off. Called when the settings change and on every housekeeping tick.
   syncDocWatch() {
     if (!docFreshOn(this.cfg)) { this.docWatch?.stop(); return []; }
@@ -602,7 +602,7 @@ export class Housekeeper {
   docIndexView() { return docMeaningOn(this.cfg) ? (this.docIndex ||= new DocIndex(this.cfg)).view() : null; }
   forgetDocIndex() { this.docStop?.abort(); (this.docIndex ||= new DocIndex(this.cfg)).clear(); this.syncDocWatch(); }
 
-  // "Let memories run out" (memory-more.js): lines whose [until: day] has passed leave the memory file, the old file
+  // "Expiring memories" (memory-more.js): lines whose [until: day] has passed leave the memory file, the old file
   // going to the Recycle Bin first. Bob already stopped reading them that day; this only keeps the file tidy.
   dropExpiredMemories(day = '') {
     if (!expiryOn(this.cfg)) return 0;

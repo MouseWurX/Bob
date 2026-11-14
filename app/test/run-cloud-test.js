@@ -1,11 +1,19 @@
 // Tests cloud helpers: off by default, only with a key, fixed addresses, settings can't redirect.
-import { cloudHelpers, cloudStatus, askCloud, CLOUD_PROVIDERS } from '../src/cloud.js';
+import { cloudHelpers, cloudStatus, askCloud, CLOUD_PROVIDERS, keyEnv } from '../src/cloud.js';
 import { mergeSettings } from '../src/config.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
 const env = { ANTHROPIC_API_KEY: 'sk-test' };
 
+{ // BOB_KEYS=env fences a test Bob: a name not in its own environment is never looked up anywhere else
+  const was = process.env.BOB_KEYS; process.env.BOB_KEYS = 'env'; process.env.BOB_TEST_KEY_X = 'v1';
+  const ke = keyEnv();
+  check('BOB_KEYS=env: keys from the environment still work, nothing else is looked up', ke.BOB_TEST_KEY_X === 'v1' && ke.RUNPOD_API_KEY_NOT_SET_HERE === undefined);
+  process.env.BOB_KEYS = 'store';
+  check('BOB_KEYS=store: the environment is never read for a key (only the locked store)', keyEnv().BOB_TEST_KEY_X === undefined);
+  delete process.env.BOB_TEST_KEY_X; if (was === undefined) delete process.env.BOB_KEYS; else process.env.BOB_KEYS = was;
+}
 check('no cloud helpers unless switched on', cloudHelpers({}, env).length === 0);
 check('switched on but no key: still off', cloudHelpers({ cloudHelpers: { openai: { enabled: true, model: 'x' } } }, env).length === 0);
 const on = cloudHelpers({ cloudHelpers: { anthropic: { enabled: true } } }, env);

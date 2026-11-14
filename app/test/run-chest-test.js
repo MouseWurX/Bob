@@ -1,6 +1,6 @@
 // 1.5.125 The chest (1.5.210: retired on a computer; what Bob made, as thumbnails with names, plus the save folder), thumbnails made
 // once and kept, and Bob's home folder: picked at install or first open, never a temporary place, movable from Settings.
-import { serverText } from './source-text.js';
+import { serverText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -86,16 +86,16 @@ fs.mkdirSync(env.LOCALAPPDATA, { recursive: true });
 // ---------- 1.5.210: the chest on the old paper doll is gone; Made by Bob and Settings keep its two jobs ----------
 {
   const mod = await import('../public/equip.js');
-  const cellar = read('public/cellar.js');
+  const cellar = publicText('cellar.js');
   check('no chest tile or chest panel on a computer any more', !('chestHtml' in mod) && !('chestTile' in mod) && !/data-chest\b/.test(cellar) && !/loadChest/.test(cellar));
-  check('the save folder still has its own Settings panel with Change folder', /'ev-save', '💾 Where Bob saves things'/.test(cellar) && /function saveDirHtml/.test(cellar));
+  check('the save folder still has its own Settings panel with Change folder', /'ev-save', '💾 Save folder'/.test(cellar) && /function saveDirHtml/.test(cellar));
   const h = HELP.find((x) => x.id === 'chest');
-  check('Help says where the chest went: Made by Bob, and Settings, Where Bob saves things', h && /Made by Bob/.test(h.html) && /Where Bob saves things/.test(h.html));
+  check('Help says where the chest went: Made by Bob, and Settings, Save folder', h && /Made by Bob/.test(h.html) && /Save folder/.test(h.html));
 }
 
 // ---------- The window, the phone, the installer and the words ----------
 {
-  const cellar = read('public/cellar.js'), server = serverText(), main = read('electron/main.cjs'), ps = read('installer/bob-build-window.ps1'), readme = read('../README.md'), guide = read('docs/USER-GUIDE.md'), inv = read('docs/SETTINGS-INVENTORY.md');
+  const cellar = publicText('cellar.js'), server = serverText(), main = read('electron/main.cjs'), ps = read('installer/bob-build-window.ps1'), readme = read('../README.md'), guide = read('docs/USER-GUIDE.md'), inv = read('docs/SETTINGS-INVENTORY.md');
   check('Change folder… uses the same picker as Settings', /'chestbrowse' in b\.dataset.*purpose: 'save'/.test(cellar));
   check('the brain serves thumbnails and the home folder, local only for home', /p === '\/api\/thumb'/.test(server) && /p === '\/api\/home'/.test(server) && /thumbFor\(cfg, d\.path\)/.test(server) && /homeProblem\(folder, \{ current: cfg\.agentDir \}\)/.test(server) && /globalThis\.bobHome\.move/.test(server));
   check('Settings has Bob\'s home folder with Browse…, Move here… and one Yes', /'ev-home', '📦 Bob\\'s home folder'/.test(cellar) && /data-homebrowse>Browse…/.test(cellar) && /data-homemove>Move here…/.test(cellar) && /'Move there anyway' : 'Yes, move everything'/.test(cellar) && /data-homeno>Not now/.test(cellar) && /confirm: true/.test(cellar));
@@ -118,7 +118,7 @@ fs.mkdirSync(env.LOCALAPPDATA, { recursive: true });
   const www = 'android/app/src/main/assets/www/';
   const html = read(www + 'index.html'), js = read(www + 'phone.js'), help = read(www + 'help.js'), css = read(www + 'phone.css');
   check('phone: Chest in the menu, its page, thumbnails from the home Bob, a tap shows the thing, Help and glossary', /data-go="chest"><span class="ico">🧰<\/span>Chest</.test(html) && /id="chest-body"/.test(html) && /advApi\('\/api\/made\?limit=24'\)/.test(js) && /\/api\/thumb\?path=/.test(js) && /function drawChestBig/.test(js) && /mediaNode\(\{ kind, url: x\.url/.test(js) && /chest: drawChest/.test(js) && /id: 'chest', title: 'Chest'/.test(help) && /<dt>Chest<\/dt>/.test(help) && /\.chest-grid \{/.test(css));
-  check('phone: the chest never keeps anything unless saved, and says where the folder is changed', /Nothing is kept on the phone unless you save it/.test(help) && /open Settings, Where Bob saves things/.test(js));
+  check('phone: the chest never keeps anything unless saved, and says where the folder is changed', /Nothing is kept on the phone unless you save it/.test(help) && /open Settings, Save folder/.test(js));
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

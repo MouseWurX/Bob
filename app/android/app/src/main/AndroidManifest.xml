@@ -45,7 +45,7 @@
             </intent-filter>
         </activity>
         <!-- Share to Bob (2026-11-11): Bob in other apps' Share menu. Off to start with (enabled="false"); Settings,
-             "Take shares from other apps" switches this door on and off. Shared things land in the message box and
+             "Accept shares" switches this door on and off. Shared things land in the message box and
              wait for your Send. -->
         <activity-alias
             android:name=".ShareToBob"

@@ -3,7 +3,7 @@
 // Bob's locked store (BOB_API_<id>), is sent only to that service in the header the user named, and is never shown
 // to the brain or put in the chat. call_api can only reach addresses under the saved one.
 // Reading (GET) needs no card; anything that sends or changes (POST, PUT, PATCH, DELETE) shows a card first,
-// even with "Let Bob work without asking" on, because a web service can cost money or change your things.
+// even with "Work without asking" on, because a web service can cost money or change your things.
 import { apiKeyName } from './more-tools.js';
 import { keyValue } from './secret-box.js';
 import { readCapped } from './tools.js';
@@ -64,7 +64,7 @@ export function apiTool(cfg, on = () => true, opts = {}) {
         body: { type: 'object', description: 'POST, PUT, PATCH: what to send (JSON).' }
       }, ['service']);
     },
-    alwaysAsk: true, // a card even with "Let Bob work without asking" on (only for the sending kinds, see check)
+    alwaysAsk: true, // a card even with "Work without asking" on (only for the sending kinds, see check)
     approvalGroup: 'call_api',
     async check({ service, method, path: sub, body }) {
       if (!on()) return null;

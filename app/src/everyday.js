@@ -3,7 +3,7 @@
 // the place you typed (and only while "Show the weather" has a place in it).
 //
 //   143 Text size            textSize      100 (%) unless moved: the chat, the message box and Settings get bigger or smaller
-//   144 Easier-to-read font  readableFont  off: a plainer font with more space between letters, words and lines
+//   144 Readable font  readableFont  off: a plainer font with more space between letters, words and lines
 //   145 Profiles             profilesOn    off: see profiles.js (each person's own chats and memory, locked)
 //   146 Today card           todayCard     off: weather, reminders, schedules and the last check-in, once a day
 //   147 Focus timer          focusTimer    off: the ⏱ Focus button; Bob holds his taps on the shoulder until it ends

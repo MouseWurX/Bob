@@ -1,4 +1,4 @@
-// 1.5.184 Keep engines up to date (Settings > Engines, on unless switched off: the owner's call, Nov 10 2026).
+// 1.5.184 Auto-update engines (Settings > Engines, on unless switched off: the owner's call, Nov 10 2026).
 // Bob checks his thinking engines when he starts and about once a day after that, and updates them by himself:
 // Brain Engine whenever its release has a new file (a rebuilt Brain Engine keeps its name, so the checksum tells),
 // and his own llama.cpp only when it's older than the build this Bob was tested with (never past it, never back

@@ -107,9 +107,16 @@ export function brainFacts(g) {
   const expertLayers = [...new Set(g.tensors.map((t) => isExpertTensor(t.name) && Number(t.name.split('.')[1])).filter((n) => Number.isInteger(n)))].sort((a, b) => a - b);
   // 1.5.161 how many weights it has, in billions, and for a mixture of experts how many work on each word
   let all = 0, exp = 0;
-  for (const t of g.tensors) { const n = t.dims.reduce((a, d) => a * Number(d), 1); all += n; if (isExpertTensor(t.name)) exp += n; }
+  // Brain Engine 0013: bytes read for each word, for the experts-per-word speed guess. Writing a word is mostly reading
+  // weights, and experts are often packed smaller than the rest (gpt-oss: MXFP4 experts, the rest wider). The word
+  // table is read one row at a time, unless the brain uses it as its output too.
+  let bAll = 0, bExp = 0, bEmbd = 0;
+  const tied = !g.tensors.some((t) => t.name === 'output.weight');
+  for (const t of g.tensors) { const n = t.dims.reduce((a, d) => a * Number(d), 1); all += n; if (isExpertTensor(t.name)) exp += n; const b = Number(t.bytes) || 0; bAll += b; if (isExpertTensor(t.name)) bExp += b; if (t.name === 'token_embd.weight' && !tied) bEmbd = b; }
   const paramsB = Math.round((all / 1e9) * 10) / 10, activeB = experts && used ? Math.round(((all - exp + (exp * used) / experts) / 1e9) * 10) / 10 : paramsB;
-  return { arch, name: g.meta['general.name'] || '', experts, used, groups, layers, mtp, engineLayers: layers - mtp, expertLayers, fileType: FILE_TYPES[ft] || (ft == null ? '' : `type ${ft}`), fullSize: FULL_SIZE.has(ft), size: g.size, params: all, paramsB, activeB };
+  return { arch, name: g.meta['general.name'] || '', experts, used, groups, layers, mtp, engineLayers: layers - mtp, expertLayers, fileType: FILE_TYPES[ft] || (ft == null ? '' : `type ${ft}`), fullSize: FULL_SIZE.has(ft), size: g.size, params: all, paramsB, activeB,
+    // Brain Engine 0013: how much of what is read for each word is experts, for the experts-per-word speed guess
+    expertShare: experts && used && bAll - bExp - bEmbd + (bExp * used) / experts > 0 ? Math.round(((bExp * used) / experts / (bAll - bExp - bEmbd + (bExp * used) / experts)) * 100) / 100 : 0 };
 }
 
 // The picture and sound readers (mmproj files): which senses one file holds.

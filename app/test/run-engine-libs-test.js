@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pickAsset, missingParts, partsText, incompleteUpdate, incompleteDir, fetchMissing, engineStatus, removeEngine, ENGINES, engineFor } from '../src/engines.js';
+import { publicText } from './source-text.js';
 
 let failures = 0, passed = 0;
 const check = (ok, name) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`); if (ok) passed++; else failures++; };
@@ -80,7 +81,7 @@ const inst = src.slice(src.indexOf('export async function installEngine'), src.i
 check(inst.indexOf('holdIncomplete(cfg, e, stage') > 0 && inst.indexOf('holdIncomplete(cfg, e, stage') < inst.indexOf('swapIn(folder, stage)'), 'llama.cpp: checked before it swaps in');
 const models = fs.readFileSync(new URL('../src/models.js', import.meta.url), 'utf8');
 check(/hopeless = \/[^\n]*is missing the/.test(models) && /missing \? await fetchMissing/.test(models), 'an incomplete download isn\'t retried three times; engine:<id>@missing fetches only the missing files');
-const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+const cellar = publicText('cellar.js');
 check(/data-missing="1">Download the missing files</.test(cellar) && /@missing/.test(cellar), 'Settings, Engines offers Download the missing files');
 
 fs.rmSync(tmp, { recursive: true, force: true });

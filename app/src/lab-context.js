@@ -174,7 +174,7 @@ export function useContext(lab, c = {}) {
   if (!pick) throw new Error(`${b.name} needs at least ${kLabel(CTX_CHOICES[0])} to be useful, and that doesn't fit here.`);
   const stretched = Boolean(b.max) && pick > b.max;
   saveSettings(lab.cfg, { brainCtxOn: true, brainCtx: { ...(lab.cfg.brainCtx || {}), [b.id]: pick }, ...(stretched ? { brainCtxStretch: true } : {}) });
-  return { ctx: pick, label: kLabel(pick), line: `${b.name} now keeps ${kLabel(pick)} in mind. It's in Settings, How Bob works, Brains, "Pick how much each brain keeps in mind"${stretched ? ', and Long memory is on for it' : ''}. It applies the next time it loads.` };
+  return { ctx: pick, label: kLabel(pick), line: `${b.name} now keeps ${kLabel(pick)} in mind. It's in Settings, How Bob works, Brains, "Context size per brain"${stretched ? ', and Long memory is on for it' : ''}. It applies the next time it loads.` };
 }
 
 export async function contextRoute({ req, p, isLocal, lab, b, send, res }) {

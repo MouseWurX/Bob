@@ -14,7 +14,7 @@ import { keyEnv } from './cloud.js';
 import { LlamaCpp, cleanHarmony, textCalls, TEXT_CALL_START, MAX_REPLY_TOKENS } from './llamacpp.js';
 import { tidySchema } from './toolbox.js';
 import { parseJson } from './util.js';
-import { savedKey } from './secret-box.js';
+import { savedKey, userKeysOn } from './secret-box.js';
 
 export const RENT_PREFIX = 'bob-rental-'; // every machine Bob starts is named this way, so he only ever stops his own
 
@@ -65,10 +65,11 @@ export function envFileVars({ home = os.homedir(), platform = process.platform, 
 // For testing on a machine whose user variables hold a real key: BOB_RENT_KEYS=off makes Bob see no key at all;
 // BOB_RENT_KEYS=env makes him read process.env only (no Windows registry, no ~/.config/bob/env). Not a setting.
 export function rentKeyEnv(base = keyEnv(), file = envFileVars()) {
-  const mode = process.env.BOB_RENT_KEYS;
+  const mode = process.env.BOB_RENT_KEYS || (process.env.BOB_KEYS === 'env' ? 'env' : '');
+  if (!process.env.BOB_RENT_KEYS && process.env.BOB_KEYS === 'store') return keyEnv(); // locked store only: no environment, no registry, no ~/.config/bob/env
   if (mode === 'off') return {};
   if (mode === 'env') return { ...process.env };
-  return new Proxy(base, { get(target, k) { if (typeof k !== 'string') return undefined; return target[k] || file[k] || (KEY_NAME_RE.test(k) && savedKey(k)) || undefined; } });
+  return new Proxy(base, { get(target, k) { if (typeof k !== 'string') return undefined; if (userKeysOn()) return target[k]; /* 👥 a user: keyEnv gives only their own keys */ return target[k] || file[k] || (KEY_NAME_RE.test(k) && savedKey(k)) || undefined; } });
 }
 export const KEY_NAME_RE = /^[A-Z][A-Z0-9_]{2,63}$/;
 export function keyEnvFor(rental, service = serviceOf(rental?.service)) {

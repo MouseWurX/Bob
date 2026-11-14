@@ -1,7 +1,7 @@
 // The "..." menu on a chat message (the window's chat): Copy, Edit and Delete.
 //
 // It sits at the top right of a message and shows when the mouse is over it (always, on a touch screen). Copy is there
-// for every message. Edit and Delete follow "Show Try again, Edit and Delete in the chat" (Settings, How Bob works;
+// for every message. Edit and Delete follow "Try again, Edit and Delete" (Settings, How Bob works;
 // on unless you turn it off, the owner's call, like Try again in redo.js):
 //   - Edit on your message: change what you said and send it again (redo.js; what came after is kept as a version).
 //   - Edit on Bob's message: change his words, and nothing is sent. Bob reads the new words from then on, so you can fix
@@ -16,7 +16,7 @@ import { redoOn, chatBusy, BUSY_LINE } from './redo.js';
 
 export const MAX_TEXT = 20000;
 const squash = (s) => String(s ?? '').replace(/\r\n/g, '\n');
-const OFF = '"Show Try again, Edit and Delete in the chat" is off (Settings, How Bob works).';
+const OFF = '"Try again, Edit and Delete" is off (Settings, How Bob works).';
 const OLDER = 'That message is in the older part of this chat, which Bob keeps summed up. Only the recent part can be changed.';
 
 // Change the words of one of Bob's messages. Returns { msg, before, after } or { error }.

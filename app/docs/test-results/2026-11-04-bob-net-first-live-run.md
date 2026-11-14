@@ -10,7 +10,7 @@ This was the first time two real Bobs talked to each other. The point was to fin
 
 | Step | What happened | Fixed in |
 |---|---|---|
-| Door address list | The desktop's "Let my other replicant matrices in" list still held a hand-typed machine name from an early version, so a Bob dialling its 100.x address would have been turned away. Added the Tailscale addresses; needed a restart to take effect. | 1.5.94 listens on Tailscale addresses live, no restart |
+| Door address list | The desktop's "Bob-Net access" list still held a hand-typed machine name from an early version, so a Bob dialling its 100.x address would have been turned away. Added the Tailscale addresses; needed a restart to take effect. | 1.5.94 listens on Tailscale addresses live, no restart |
 | Windows Firewall | No inbound rule for Bob's port, so the handheld's connections timed out while the desktop's own worked. A rule for TCP 7777 from 100.64.0.0/10 only fixed it. | 1.5.94 adds a "Let Tailscale through the firewall" button |
 | Reachability | After both fixes, each Bob answered the other's hello with "needs the passcode" (401) in under 0.3 s, both directions. | |
 

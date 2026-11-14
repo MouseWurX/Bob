@@ -32,32 +32,37 @@ const WORK_GROUPS = {
     tools: ['write_file', 'edit_file', 'save_spreadsheet', 'search_files', 'find_in_documents', 'code_map', 'git_look'],
     words: /\b(save|write|edit|git|commits?|diffs?|what (?:i |we )?changed|uncommitted|documents?|txt|csv|xlsx|spreadsheet|excel|pdfs?|word (?:doc|file)s?|search (?:my|the|in|for)|find (?:in|where|the (?:file|doc|document|pdf))|grep|jot|text file|notes? file|(?:in|through) my (?:files|documents|docs|folders)|where did I (?:mention|write|put|say|save)|which (?:file|document|doc|pdf))\b/i
   },
-  parts3d: { // "Let Bob make 3D parts" (parts3d.js): only while it's on (offTools hides it otherwise)
+  parts3d: { // "3D parts" (parts3d.js): only while it's on (offTools hides it otherwise)
     what: 'make exact 3D parts (STL files for a 3D printer) from an OpenSCAD recipe: brackets, boxes, lids, spacers, replacement parts; and turn a picture into a textured 3D model (GLB): figurines, characters, props',
     tools: ['make_3d_part', 'make_3d_model'],
     words: /\b(3d|3-d|stl|openscad|scad|cad|3d ?print\w*|printable|bracket|enclosure|spacer|washer|standoff|knob|hinge|gear|cog|replacement part|spare part|part for|glb|figurine|sculpt\w*|miniature|3d model|mesh)s?\b/i
   },
-  sandbox: { // "Let Bob work things out in a sandbox" (sandbox-code.js): only while it's on (offTools hides it otherwise)
+  sandbox: { // "Code sandbox" (sandbox-code.js): only while it's on (offTools hides it otherwise)
     what: 'work out sums, money, dates, unit conversions, counting and sorting exactly, by running a little code in a locked sandbox',
     tools: ['run_in_sandbox'],
     words: /\b(calculat\w*|work (?:it |this |that )?out|how (?:many|much|long) (?:days|weeks|months|years|hours|minutes|until|till|since|left)|add (?:up|these|them)|total|sum|average|mean|median|percent\w*|per cent|interest|compound|tip|split (?:the )?(?:bill|cost)|convert (?:\d|this|that|these)|in (?:km|miles|kg|lbs?|pounds|celsius|fahrenheit|inches|cm|feet|metres|meters|litres|liters|gallons|ounces)|sort (?:this|these|them|the list)|count (?:the|how|these)|regex|pattern|run (?:the |some |this )?(?:code|numbers|maths?|math)|sandbox|exact(?:ly)?)\b/i
   },
-  spending: { // 🧾 "Keep a spending sheet from receipts" (receipts.js): only while it's on (offTools hides it otherwise)
+  discord: { // 1.5.224 Keep order on Discord (discord-mod.js): only while it's on (offTools hides it otherwise)
+    what: 'Discord keep order: see what waits, answer a kick, ban or flag, raid slow mode',
+    tools: ['discord_mod'],
+    words: /\b(discord|kick(?:ed)?|bann?(?:ed)?|ban|timeouts?|moderat\w*|raid\w*|lock ?down|slow ?mode|flag(?:ged)?|spam(?:mer|mers)?)\b/i
+  },
+  spending: { // 🧾 "Receipt tracker" (receipts.js): only while it's on (offTools hides it otherwise)
     what: 'add a receipt from a picture to the private spending sheet, list it, or total it up',
     tools: ['spending_sheet'],
     words: /\b(receipts?|spending|spent|expenses?|bills? (?:from|at)|how much (?:did )?i (?:spend|spent)|budget)\b/i
   },
-  memory: {
-    what: 'forget a topic you keep notes on',
-    tools: ['forget_topic'],
-    words: /\b(forget|erase|delete (?:the |that |your )?(?:note|topic|memory))\b/i
+  memory: { // Nov 13: tool_record (tool-record.js), the saved record of tool calls, for "why did you..." and misses
+    what: 'forget a topic you keep notes on; tool_record = why you did something',
+    tools: ['forget_topic', 'tool_record'],
+    words: /\b(forget|erase|delete (?:the |that |your )?(?:note|topic|memory)|why (?:did|didn't|did not|would) you|what went wrong|what happened (?:with|to)|tool record|(?:look at|fix) (?:it|them|the tools?) harder|try to fix (?:it|them))\b/i
   },
-  howtos: { // 1.5.79: only while "Let Bob learn how-tos" is on (offTools hides the tools otherwise)
+  howtos: { // 1.5.79: only while "Learn how-tos" is on (offTools hides the tools otherwise)
     what: 'keep the steps of a job that worked as a how-to, list your how-tos',
     tools: ['save_howto', 'my_howtos'],
     words: /\b(how-tos?|remember how (?:to|you|we)|(?:same|like) (?:way |as )?(?:as )?(?:last time|before)|keep (?:those|these|the) steps|save (?:those|these|the) steps)\b/i
   },
-  selfwork: { // "Let Bob work on repositories" (self-work.js): only while it's on and a code copy is made
+  selfwork: { // "Work on repositories" (self-work.js): only while it's on and a code copy is made
     what: 'change your own app (Bob\'s code) or one of the user\'s repositories, on its code copy',
     tools: ['work_on_repo'],
     words: /\b(your (?:own )?(?:app|code|source|program)|bob'?s (?:own )?(?:app|code|source)|(?:work on|improve|upgrade|fix|change|update|patch) (?:your ?self|you)|(?:add|give) (?:yourself|you) (?:a |an )?(?:feature|switch|button|setting|option)|(?:feature|switch|button|setting|option|page|tab) (?:to|for|in|on) your ?self|code copy|(?:in|on|to) (?:the |my |our )?(?:\w+ )?(?:repo|repository)|(?:repo|repository) (?:called|named))\b/i

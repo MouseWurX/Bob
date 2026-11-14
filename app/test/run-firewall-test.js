@@ -1,4 +1,4 @@
-// 1.5.94 "Let my other replicant matrices in" with no manual steps: Bob listens on Tailscale without a restart, and
+// 1.5.94 "Bob-Net access" with no manual steps: Bob listens on Tailscale without a restart, and
 // on Windows offers one firewall rule (one Windows prompt), scoped to Tailscale addresses and Bob's port.
 import fs from 'node:fs';
 import { RULE, TAILSCALE_RANGE, CARD_PORT, MARK, ruleScript, removeScript, encode, firewallState, changeRule, firewallHome, firewallUdp } from '../src/firewall.js';
@@ -71,8 +71,8 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
   check('Windows: with the home network on, a rule without it is offered again', st.behind === true);
   st = await firewallState(7777, { os_: 'win', home: true, run: fake(`Rule Name: ${RULE}\nLocalPort: 7777,50052\nRemoteIP: 100.64.0.0/255.192.0.0,LocalSubnet\nProtocol: TCP\nRule Name: ${RULE}\nLocalPort: 50052\nProtocol: UDP\n`) });
   check('Windows: with the home network in the rule, all set', st.ruleHere === true);
-  check('the home network counts for phone access ("Also over the home network")', firewallHome({}, true) === true && firewallHome({}, false) === false);
-  check('a lent card with "Use the home network first" needs the home network in the rule too', firewallHome({ share: { lendCard: true } }) === true && firewallHome({ share: { lendCard: true, homeNet: true } }) === true);
+  check('the home network counts for phone access ("Home network access")', firewallHome({}, true) === true && firewallHome({}, false) === false);
+  check('a lent card with "Home network first" needs the home network in the rule too', firewallHome({ share: { lendCard: true } }) === true && firewallHome({ share: { lendCard: true, homeNet: true } }) === true);
   check('...but not with that switched off, or with no card lent', firewallHome({ share: { lendCard: true, homeNet: false } }) === false && firewallHome({ share: { lendCard: false } }) === false);
   st = await firewallState(7777, { os_: 'win', home: firewallHome({ share: { lendCard: true } }), run: fake(`Rule Name: ${RULE}\nLocalPort: 7777,50052\nRemoteIP: 100.64.0.0/255.192.0.0\n`) });
   check('Bigger Bobs lending over the home network: a Tailscale-only rule is offered again (the Go saw no button)', st.behind === true && st.ruleHere === false && st.home === true);

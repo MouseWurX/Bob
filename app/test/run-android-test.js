@@ -74,7 +74,7 @@ check('markdown links: only http(s), opened by the phone', !/javascript:/.test(m
 // Help covers every setting and screen on the page.
 const html = fs.readFileSync(path.join(www, 'index.html'), 'utf8');
 const ids = H.sections.map((s) => s.id);
-const need = { 'prompt-on': 'saved-prompts', 'phone-on': 'phone-brain', 'free-idle': 'free-memory', 'idle-min': 'free-memory', mode: 'who', 'user-name': 'user-name', 'read-aloud': 'read-aloud', 'math-view': 'maths', theme: 'theme', resume: 'resume', redo: 'redo', mic: 'mic', effort: 'effort', bobs: 'bobs', memory: 'memory', chats: 'past-chats', 'lend-on': 'lend', 'pass-along': 'pass-along', 'lock-code': 'lock', 'lock-current': 'lock', 'lock-new': 'lock', 'lock-again': 'lock', 'lock-on': 'lock', 'lock-idle': 'lock', 'lock-enc': 'lock', 'text-size': 'text-size', 'readable-font': 'text-size', 'talk-over': 'talk-over', 'wake-on': 'wake', 'net-voices': 'net-voices', 'share-on': 'share', 'widget-reminder': 'widget', 'low-data': 'low-data', 'reader-speed': 'reader', 'hf-again': 'hands-free', 'hf-short': 'hands-free' };
+const need = { 'fade-on': 'fade-chat', 'fade-num': 'fade-chat', 'fade-unit': 'fade-chat', 'fade-mode': 'fade-chat', 'prompt-on': 'saved-prompts', 'phone-on': 'phone-brain', 'free-idle': 'free-memory', 'idle-min': 'free-memory', mode: 'who', 'user-name': 'user-name', 'read-aloud': 'read-aloud', 'math-view': 'maths', theme: 'theme', resume: 'resume', redo: 'redo', mic: 'mic', effort: 'effort', bobs: 'bobs', memory: 'memory', chats: 'past-chats', 'lend-on': 'lend', 'pass-along': 'pass-along', 'lock-code': 'lock', 'lock-current': 'lock', 'lock-new': 'lock', 'lock-again': 'lock', 'lock-on': 'lock', 'lock-idle': 'lock', 'lock-enc': 'lock', 'lock-off-code': 'lock', 'spare-from': 'lock', 'text-size': 'text-size', 'readable-font': 'text-size', 'talk-over': 'talk-over', 'wake-on': 'wake', 'net-voices': 'net-voices', 'share-on': 'share', 'widget-reminder': 'widget', 'low-data': 'low-data', 'reader-speed': 'reader', 'hf-again': 'hands-free', 'hf-short': 'hands-free' };
 for (const [ctl, sec] of Object.entries(need)) check(`help covers ${ctl}`, (html.includes(`id="${ctl}"`) || html.includes(`name="${ctl}"`)) && ids.includes(sec));
 const controls = [...html.matchAll(/<(?:input|select)[^>]*(?:id|name)="([\w-]+)"/g)].map((m) => m[1]).filter((x) => !['chat-search', 'help-search', 'add-name', 'add-address', 'memory-text'].includes(x));
 for (const c of new Set(controls)) check(`setting ${c} has a help entry`, c in need);
@@ -133,7 +133,7 @@ check('check-in: a card in chat', /if \(ev\.type === 'checkin'\) return checkinC
 check('check-in: a notification in the background ("Bob: check-in", the titles)', /"checkin" -> \{[\s\S]*?notifyNow\("Bob: check-in", titles/.test(bridge));
 check('check-in: the phone never changes check-ins', !/\/api\/checkins/.test(js));
 
-// "Remember only what fits": on-phone replies ask the PC for the lines that fit, briefly, and carry on without.
+// "Relevant memories only": on-phone replies ask the PC for the lines that fit, briefly, and carry on without.
 check('memory: on-phone replies ask the PC for what fits (2 s at most)', /'\/api\/memory\/recall'/.test(js) && /setTimeout\(\(\) => ok\(''\), 2000\)/.test(js) && /if \(!m\.on\) return ''/.test(js));
 
 // How-tos: the phone shows the offer card and answers it; changing or deleting is on the PC.

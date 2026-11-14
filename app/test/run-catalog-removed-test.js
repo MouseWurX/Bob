@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { splitRemoved } from '../src/catalog-removed.js';
 import { cleanRemoved, mergeSettings, SETTING_KEYS } from '../src/config.js';
 import { catalogueHtml, removedHtml } from '../public/catalogue.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok ? '' : ' ' + extra}`); };
@@ -32,7 +33,7 @@ const models = catalog.models.map((m) => ({ ...m, status: { state: m.id === 'gem
   check('nothing removed: no Removed section', !/cat-removed/.test(html) && removedHtml(ctx) === '');
   const gone = catalogueHtml({ ...ctx, removed: [{ id: 'gemma4-26b', name: 'Gemma 4 26B', sizeGB: 15.4 }] });
   check('removed entries wait at the bottom with Put back', /<summary>Removed from your list \(1\)<\/summary>/.test(gone) && /data-catputback="gemma4-26b" aria-label="Put Gemma 4 26B back on the list">Put back/.test(gone));
-  const cellar = read('public/cellar.js'), server = read('src/server.js');
+  const cellar = publicText('cellar.js'), server = read('src/server.js');
   check('Remove asks first and says nothing is deleted', /Only this replicant matrix's list changes, and nothing is deleted/.test(cellar) && /data-catremove2=/.test(cellar) && /catremovecancel/.test(cellar));
   check('the server saves one id at a time and filters the list it sends', /b\.catalogRemove === 'string'/.test(server) && /b\.catalogPutBack === 'string'/.test(server) && /splitRemoved\(all\.models \|\| \[\], cfg\.catalogRemoved, inUseIds\(\)\)/.test(server));
 }

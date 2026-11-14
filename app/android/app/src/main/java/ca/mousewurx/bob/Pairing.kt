@@ -5,7 +5,7 @@ import org.json.JSONObject
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 
-// "Pair with my other Bobs" (Bob-Net pairing v1, the same protocol desktop Bob speaks, src/bob-net-pair.js).
+// "Pair Bobs" (Bob-Net pairing v1, the same protocol desktop Bob speaks, src/bob-net-pair.js).
 // Two presses instead of typing addresses and passcodes: Pair on one Bob, "Yes, pair us" on the other, and the two
 // swap passcodes over Tailscale. Nothing switches on by itself: pairing only fills the lists.
 //
@@ -184,9 +184,9 @@ class Pairing(private val app: BobApp) {
         val theirName = runCatching { clean(JSONObject(net.get(base, "/api/pair/hello").body).optString("name")) }.getOrDefault("")
         val r = runCatching {
             net.post(base, "/api/pair/ask", JSONObject().put("pair", PAIR).put("name", myName()).put("address", "$mine:${LendServer.PORT}").put("code", code).toString())
-        }.getOrElse { return JSONObject().put("error", "No Bob answered there. Is Bob open on it, with \"Let my other replicant matrices in\" on?") }
+        }.getOrElse { return JSONObject().put("error", "No Bob answered there. Is Bob open on it, with \"Bob-Net access\" on?") }
         val j = runCatching { JSONObject(r.body) }.getOrDefault(JSONObject())
-        if (r.status == 403) return JSONObject().put("error", "That Bob's door is shut. Turn on \"Let my other replicant matrices in\" there, then tap Pair again.")
+        if (r.status == 403) return JSONObject().put("error", "That Bob's door is shut. Turn on \"Bob-Net access\" there, then tap Pair again.")
         if (r.status == 404) return JSONObject().put("error", "That Bob is too old to pair. Update him, or add him with his passcode instead.")
         val id = j.optString("id")
         if (r.status != 200 || id.isEmpty()) return JSONObject().put("error", j.optString("error").ifEmpty { "That Bob said no (${r.status})." })

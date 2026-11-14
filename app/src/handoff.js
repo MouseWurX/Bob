@@ -285,7 +285,7 @@ export class Gate {
 
   async needBrain({ model, opts = {} }, { signal, emit, who, announce }) {
     const ledger = this.ledgerOf(signal);
-    // 1.5.41: a quick reply is running beside this job on the small brain (Keep chatting while Bob is busy). Let it
+    // 1.5.41: a quick reply is running beside this job on the small brain (Chat while busy). Let it
     // finish before loading another brain, which would stop it mid-sentence.
     const side = this.brain.turns?.get?.('side');
     // 1.5.51: a reply on the second server (beside: true) has its own llama-server, so loading this brain doesn't touch it.

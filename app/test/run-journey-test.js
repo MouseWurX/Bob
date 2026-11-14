@@ -2,6 +2,7 @@
 // walking figures (public/journey-sides.js), the places (public/journey-world.js), the rules (public/journey-rules.js), the save and the keeper reward on the
 // server (src/adventure-journey.js), the screen's wiring, the phone's copies and Help. Nothing reads the real computer:
 // the save goes to a temporary folder and the dice are loaded.
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,7 +11,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as S from '../public/journey-sides.js';
 import * as R from '../public/journey-rules.js';
 import * as W from '../public/journey-world.js';
-import { avatar, compose, encodeParts, DEFAULT_PARTS, allAvatarIds } from '../public/avatars.js';
+import { avatar, compose, encodeParts, DEFAULT_PARTS, allAvatarIds, PARTS as AV_PARTS } from '../public/avatars.js';
+const A_PARTS = Object.fromEntries(Object.entries(AV_PARTS).map(([k, v]) => [k, v.map((x) => x[0])]));
 import { LOOKS } from '../public/bob-sprite.js';
 import { loadJourney, saveJourney, journeyReward, journeyRoute, deleteJourney } from '../src/adventure-journey.js';
 import { ENEMIES } from '../src/bestiary.js';
@@ -100,6 +102,30 @@ const nextTo = (set, x, y) => set.has(`${x},${y}`) || [[1, 0], [-1, 0], [0, 1], 
   }
   check('on many seeds and every size: every place can be walked to, every person, chest and boss reached, and the three keepers are in dungeons', !bad, bad);
   check('roads join the settlements, with bridges over rivers', m.rows.some((r) => r.includes(':')) && world.roads.length >= 4 && W.makeWorld('b', 'large').map('world').rows.some((r) => r.includes('=')));
+  {
+    // Walking onto a place goes in, so a place on a road, or at the end of a bridge, blocks the way past it.
+    const placeTiles = new Set(Object.values(W.SITE_TILES));
+    let blocked = '';
+    for (const size of ['small', 'medium', 'large', 'vast']) for (const seed of ['a', 'b', 'c', 'd', 'e', 'f', 'test-seed']) {
+      const lw = W.makeWorld(seed, size), rows = lw.map('world').rows;
+      for (const s of lw.sites) if (!s.alt && [[0, 1], [1, 0], [-1, 0], [0, -1]].some(([dx, dy]) => rows[s.y + dy]?.[s.x + dx] === '=')) blocked ||= `${seed} ${size}: ${s.kind} at the end of a bridge`;
+      for (const p of lw.map('world').people.filter((q) => q.route)) if (p.route.slice(1, -1).some((t) => placeTiles.has(rows[t.y][t.x]))) blocked ||= `${seed} ${size}: a road runs through a place`;
+      const inn = lw.sites.find((s) => s.id === 'inn');
+      if (inn && !'IvVOK'.includes(rows[inn.y][inn.x])) blocked ||= `${seed} ${size}: the inn isn't drawn`;
+    }
+    check('no place stands at the end of a bridge or across a road it isn\'t heading for (the inn stands beside the road)', !blocked, blocked);
+  }
+  {
+    // A save keeps only its seed, so a save from 1.5.218 or before must rebuild the very land it was played on.
+    const print = (lw) => crypto.createHash('sha256').update(lw.map('world').rows.join('\n') + JSON.stringify(lw.sites.map((s) => [s.id, s.x, s.y]))).digest('hex').slice(0, 16);
+    check('layout 1 is the 1.5.218 land, tile for tile', print(W.makeWorld('test-seed', 'small', undefined, 1)) === '99eec07ff36cfd6c' && print(W.makeWorld('test-seed', 'medium', undefined, 1)) === '7b036cff66a9fd31');
+    const asked = [];
+    const mw = (seed, size, style, layout) => { asked.push(layout); return W.makeWorld(seed, size, style, layout); };
+    const before = R.cleanJourney({ v: 2, seed: 'test-seed', size: 'small', at: 'inn', party: [{ name: 'A', cls: 'fighter' }] }, mw);
+    const fresh = R.newJourney({ seed: 'test-seed', size: 'small', party: [{ name: 'A', cls: 'fighter' }] });
+    const after = R.cleanJourney(fresh, mw);
+    check('a save from before 1.5.219 keeps its old land (layout 1); a new journey gets clear roads (layout 2) and keeps them', before.layout === 1 && fresh.layout === 2 && after.layout === 2 && asked.join() === '1,2' && W.makeWorld('test-seed', 'small').layout === 2);
+  }
   const walkers = m.people.filter((p) => p.route);
   check('patrols and travellers walk the roads', walkers.length === world.roads.length && walkers.some((p) => p.patrol) && walkers.every((p) => p.route.length > 4 && W.TILES[m.rows[p.y][p.x]].walk));
   check('every dungeon and cave has a boss; the extra bosses fit the land and never repeat', world.sites.filter((s) => s.kind === 'dungeon' || s.kind === 'cave').every((s) => R.GUARDIANS[s.keeper]) && new Set(world.sites.map((s) => s.keeper).filter(Boolean)).size === world.sites.filter((s) => s.keeper).length);
@@ -115,7 +141,7 @@ const nextTo = (set, x, y) => set.has(`${x},${y}`) || [[1, 0], [-1, 0], [0, 1], 
   check('Bob\'s Inn is 44 by 32: a bar with Bob behind it, a fire, tables, a stage, beds, a notice board and a door', inn.w === 44 && inn.h === 32 && inn.rows.length === 32 && inn.rows.every((r) => r.length === 44) && ['k', 'p', 'b', 'j', 'l', 'n', 'e', 'q'].every((c) => inn.rows.some((r) => r.includes(c))) && inn.people.some((p) => p.id === 'bob' && p.role === 'keeper') && inn.people.some((p) => p.role === 'cat'));
   const ir = reach(inn, inn.start);
   check('...you can walk round the whole inn: everyone can be reached', inn.people.every((p) => nextTo(ir, p.x, p.y)));
-  check('Bob\'s Inn stands on the land near home, and its door leads out to it', world.sites.some((s) => s.id === 'inn' && s.kind === 'bobsinn' && m.rows[s.y][s.x] === 'I') && inn.doors.every((d) => d.to === 'world' && Number.isInteger(d.tx)));
+  check('Bob\'s Inn stands on the land near home, and its door leads out to it', world.sites.some((s) => s.id === 'inn' && s.kind === 'bobsinn' && m.rows[s.y][s.x] === 'I') && inn.doors.filter((d) => d.to !== 'guest').every((d) => d.to === 'world' && Number.isInteger(d.tx)));
   const lobby = W.innOnly();
   check('before an adventure is rolled, the inn stands alone and its door goes nowhere yet', lobby.map('inn') && !lobby.map('world'));
   const hut = world.map(world.sites.find((s) => s.kind === 'hermit').id);
@@ -404,6 +430,15 @@ const P = (o) => ({ id: o.id || o.name.toLowerCase(), who: 'friend', ...o });
     await call('POST', '/api/adventure/journey/delete', {});
     await call('GET', '/api/adventure/journey');
     check('the route deletes it', sent[3][1].journey === null);
+    // The trophy case (Journey v1.3): its own file, kept across stories, never emptied by a new adventure.
+    const t1 = { id: 's1:boss1', name: 'Lantern stone of Grubnick', what: 'From the Wickhaven tale.', shape: 'gem', style: 'cyber', story: 'the Wickhaven tale', when: '2026-11-14' };
+    await call('POST', '/api/adventure/journey/trophies', { trophies: [t1, { id: 's1:boss1', name: 'again' }, { nope: 1 }, { ...t1, id: 's2:won', name: '<b>x</b>', shape: 'rocket' }] });
+    await call('GET', '/api/adventure/journey/trophies');
+    const kept = sent[5][1].trophies;
+    check('the trophy case keeps each trophy once, cleaned, in its own file', kept.length === 2 && kept[0].name === 'Lantern stone of Grubnick' && kept[0].style === 'cyber' && !/[<>]/.test(kept[1].name) && kept[1].shape === 'cup' && fs.existsSync(path.join(tmp, 'adventures', 'journey-trophies.json')));
+    await call('POST', '/api/adventure/journey/delete', {});
+    await call('GET', '/api/adventure/journey/trophies');
+    check('...and deleting the journey leaves the trophies alone', sent[7][1].trophies.length === 2);
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 }
 
@@ -541,6 +576,190 @@ const P = (o) => ({ id: o.id || o.name.toLowerCase(), who: 'friend', ...o });
   const play2 = read('public/journey-play.js');
   check('the screen draws the sky, the deep, riding, followers and The land view', ['drawClouds', 'drawUnder', 'blurredTile', 'seatOf', 'landPicture', 'petsHtml', 'drawVoyage', 'drawSpell'].every((f) => play2.includes(`function ${f}`)));
   check('the screen asks the computer for the land on a phone', /\/api\/adventure\/journey\/piece/.test(play2) && /phone: true/.test(read('android/app/src/main/assets/www/phone.js')));
+}
+
+// ---------- Journey v1.3: music, sound, and each style's own kit and names ----------
+{
+  const P = await import(pathToFileURL(path.join(root, 'public/journey-play.js')));
+  // Every tune lines up: the tune, the bass and the drums are the same length, and every note is a real note.
+  let tunesOk = true;
+  for (const [name, sg] of Object.entries(P.SONGS)) {
+    const L = ['lead', 'bass', 'drums'].map((k) => P.parseLine(sg[k]).length);
+    if (L[0] !== L[1] || (L[2] && L[2] !== L[0])) tunesOk = false;
+    for (const k of ['lead', 'bass']) for (const n of P.parseLine(sg[k])) if (!n.rest && !(n.hz > 20 && n.hz < 5000)) { tunesOk = false; console.log('  bad note', name, n.name); }
+  }
+  check('every tune\'s parts line up and every note is a real note', tunesOk);
+  check('A4 is 440 and C4 is middle C', Math.round(P.noteHz('A4')) === 440 && Math.round(P.noteHz('C4')) === 262 && P.noteHz('nope') === 0);
+  check('each place has its own tune', P.songFor({ kind: 'inn' }) === 'inn' && P.songFor({ kind: 'world', alt: 'ground' }) === 'land' && P.songFor({ kind: 'world', alt: 'sky' }) === 'sky' && P.songFor({ kind: 'world', alt: 'deep' }) === 'deep' && P.songFor({ kind: 'village' }) === 'town' && P.songFor({ kind: 'castle' }) === 'castle' && P.songFor({ kind: 'cave' }) === 'dungeon' && P.songFor({ voyage: true, kind: 'world' }) === 'sea');
+  check('fights have their own music, and keepers louder still', P.songFor({ battle: true, kind: 'inn' }) === 'battle' && P.songFor({ battle: true, boss: true }) === 'boss');
+  // A pretend sound card: counts the notes played, never makes a sound.
+  const made = { osc: 0, noise: 0, closed: false };
+  const param = () => ({ value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {}, cancelScheduledValues() {} });
+  const node = () => ({ connect() {}, start() {}, stop() {}, frequency: param(), gain: param(), type: '' });
+  class FakeCtx { constructor() { this.currentTime = 0; this.sampleRate = 8000; this.state = 'running'; this.destination = {}; } createGain() { return node(); } createOscillator() { made.osc++; return node(); } createBiquadFilter() { return node(); } createBufferSource() { made.noise++; return node(); } createBuffer(c, n) { return { getChannelData: () => new Float32Array(n) }; } close() { made.closed = true; } }
+  let ticks = null;
+  const snd = P.createJourneySound({ Ctx: FakeCtx, setTimer: (f) => { ticks = f; return 1; }, clearTimer: () => { ticks = null; } });
+  check('sound effects play', snd.sfx('chest') && snd.sfx('fire') && made.osc > 0 && made.noise > 0);
+  const kinds = ['step', 'bump', 'door', 'talk', 'menu', 'chest', 'coin', 'buy', 'swing', 'hit', 'crit', 'miss', 'shot', 'heal', 'drink', 'fire', 'frost', 'storm', 'holy', 'shadow', 'wild', 'mind', 'star', 'spell', 'breath', 'feed', 'tame', 'down', 'flee', 'takeoff', 'land', 'splash', 'dive', 'surface', 'fish', 'swoop', 'sail', 'save', 'win', 'lose', 'level', 'quest', 'encounter', 'ride'];
+  check('every moment has a sound: doors, chests, coin, hits, every kind of magic, items, flying, diving, wins and level-ups', kinds.every((k) => snd.sfx(k)));
+  const before = made.osc;
+  for (const st of ['scifi', 'cyber', 'steam']) { snd.setStyle(st); for (const k of ['door', 'swing', 'shot', 'hit', 'coin']) snd.sfx(k); }
+  check('...and each style has its own: sci-fi zaps, cyberpunk glitches, steampunk hisses and clanks', made.osc > before && snd.style === 'steam');
+  snd.music('town', 'cyber');
+  const n0 = made.osc; ticks?.(); 
+  check('music plays: the town tune, in the style\'s own instruments', snd.song === 'town' && made.osc > n0);
+  snd.setOn(false);
+  check('the 🔊 button turns it all off', !snd.on && !snd.sfx('chest'));
+  snd.setOn(true); snd.stop();
+  check('leaving Journey stops the music and lets the sound card go', snd.song === '' && made.closed && ticks === null);
+  const quiet = P.createJourneySound({ Ctx: undefined, setTimer: () => { throw new Error('no timer without sound'); } });
+  quiet.music('land'); 
+  check('with no sound at all (an old browser), nothing breaks and no timer runs', quiet.sfx('chest') === false);
+  const play3 = read('public/journey-play.js');
+  check('the screen has a 🔊 button, M to turn it off, and remembers the choice', /data-jy="sound"/.test(play3) && /e\.key === 'm'/.test(play3) && /bob\.journey\.sound/.test(play3));
+  check('the music is our own: no sound files at all', !/\.(mp3|ogg|wav|m4a)\b/i.test(play3));
+  // Each style draws its own kit: no bows in cyberpunk.
+  check('cyberpunk carries smart pistols and mono-katanas, not bows and swords', S.styleWeapon('cyber', 'bow') === 'smartpistol' && S.styleWeapon('cyber', 'sword') === 'katana' && S.styleWeapon('fantasy', 'bow') === 'bow');
+  check('every style has a drawn weapon for every weapon there is', ['scifi', 'cyber', 'steam'].every((st) => Object.keys(R.WEAPONS).filter((k) => k !== 'none').every((k) => S.styleWeapon(st, k) !== k && S.weaponCells(S.styleWeapon(st, k), 25).length >= 3)));
+  check('...guns in the energy and smoke styles', ['scifi', 'cyber', 'steam'].every((st) => ['bow', 'longbow', 'crossbow', 'handbow'].every((k) => S.WEAPON_SHAPES[S.styleWeapon(st, k)].head === 'gun')));
+  check('shields look the part too', S.shieldCells('round', 'down', undefined, 'scifi').some((c) => c[2] === '#7ae0ff') && S.shieldCells('round', 'down', undefined, 'cyber').some((c) => c[2] === '#ff3ad8'));
+  check('shots: arrows, laser bolts, tracers and lead balls', S.STYLE_SHOTS.fantasy === 'arrow' && S.STYLE_SHOTS.scifi === 'laser' && S.STYLE_SHOTS.cyber === 'tracer' && S.STYLE_SHOTS.steam === 'ball');
+  // Names fit the style; the numbers don't change.
+  check('cyberpunk names: gangers, netrunners, hacks and stims', R.restyle('A Goblin and a Wizard. Scroll of fireball. Raise!', 'cyber') === 'A Ganger and a Netrunner. Meltdown hack. Reboot!');
+  check('steampunk names: highwaymen, aethermancers and tesla storms', R.restyle('Two Bandits. The Wizard casts Spark storm.', 'steam') === 'Two Highwaymen. The Aethermancer casts Tesla storm.');
+  check('sci-fi names: raiders, technomancers and plasma bolts', R.restyle('A bandit. A Wizard casts Firebolt.', 'scifi') === 'A raider. A Technomancer casts Plasma bolt.');
+  check('a keeper\'s title follows the style', R.restyle('Grubnick, the goblin chief', 'cyber') === 'Grubnick, the ganger chief');
+  check('...but a plain word in a sentence is left alone', R.restyle('I will raise my glass.', 'cyber') === 'I will raise my glass.');
+  check('fantasy names never change', R.restyle('A Goblin and a Wizard.', 'fantasy') === 'A Goblin and a Wizard.');
+  // Monsters redrawn for each style; animals stay animals.
+  check('machines get their own art in each style: mechs, spider bots, drones, a cyber-hound', ['scifi', 'cyber', 'steam'].every((st) => S.styleArtLook(st, 'golem')?.map.length === 16 && S.styleArtLook(st, 'spider')) && S.styleArtLook('cyber', 'dragon').name === 'drone' && S.styleArtLook('cyber', 'wolf').name === 'hound' && S.styleArtLook('fantasy', 'golem') === null);
+  check('...every colour in that art is a real colour', ['scifi', 'cyber', 'steam'].every((st) => Object.keys(S.STYLE_ART[st]).every((id) => { const l = S.styleArtLook(st, id); return l.map.join('').replace(/\./g, '').split('').every((c) => /^#[0-9a-f]{6}$/i.test(l.palette[c] || '')); })));
+  check('people-shaped monsters dress for the style, and a skeleton becomes a robot', ['scifi', 'cyber', 'steam'].every((st) => S.STYLE_PARTS[st].skeleton.body === 'robot' && ['goblin', 'bandit', 'cultist', 'orc', 'troll'].every((id) => S.STYLE_PARTS[st][id])) && Object.values(S.STYLE_PARTS).every((set) => Object.values(set).every((p) => Object.entries(p).every(([k, v]) => !A_PARTS[k] || A_PARTS[k].includes(v)))));
+  const gl = { name: 'ghost', map: ['.aa.', 'aaaa', 'aEEa'], palette: { a: '#ffffff', E: '#000000' } };
+  check('a ghost flickers like a hologram in sci-fi, glows like gaslight in steampunk', S.styleShift(gl, 'scifi', 'ghost').palette.E === '#7ae0ff' && S.styleShift(gl, 'scifi', 'ghost').map[2] !== gl.map[2] && S.styleShift(gl, 'steam', 'ghost').map[2] === gl.map[2]);
+  check('animals and mounts stay as they are', !['rabbit', 'fox', 'horse', 'pegasus', 'dolphin', 'bear'].some((id) => S.STYLE_MONSTERS.has(id)) && ['goblin', 'dragon', 'ghost', 'golem'].every((id) => S.STYLE_MONSTERS.has(id)));
+  check('the screen draws monsters in the journey\'s style', /function foeLook/.test(read('public/journey-play.js')) && /styleArtLook/.test(read('public/journey-play.js')));
+  const play4 = read('public/journey-play.js');
+  check('houses, trees, towers and caves stand on the ground round them, not a ground of their own', /const STANDING = new Set/.test(play4) && /function groundUnder/.test(play4) && /tileCanvas\(ch, fr, theme, true\)/.test(play4));
+  check('mountains stand about twice a tile tall, back to front', /function peakCanvas/.test(play4) && /peaks\.sort/.test(play4));
+  check('the details: varied ground, shorelines, smoke and neon over houses, street lamps', ['shore', 'houseLife', 'townProps'].every((f) => play4.includes(`function ${f}`)) && /VARIED\.has/.test(play4));
+  check('a river is one river: no grass stripes baked into each piece of it', !/case 'r': water\([^)]*\); rect\(0, 0, 16, 1, '#5aa04a'\)/.test(play4));
+  check('no trademarked game names in the style words', !/final fantasy|dragon quest|chrono|zelda|pokémon|earthbound|bobiverse|squaresoft|enix|cyberpunk 2077|shadowrun|rockerboy/i.test(read('public/journey-rules.js') + read('public/journey-sides.js')));
+}
+
+// ---------- Crafting, the Scroll of return, bags, the guide and full screen (Journey v1.3) ----------
+{
+  const j = R.newJourney({ seed: 'craft-seed', party: [P({ name: 'Wren', cls: 'fighter', who: 'you' }), P({ name: 'Bob', cls: 'wizard', who: 'bob' })] }, world);
+  const m = world.map('world');
+  Object.assign(j, { at: 'world', alt: 'ground' });
+  const nodes = [];
+  for (let y = 1; y < m.rows.length - 1; y++) for (let x = 1; x < m.rows[0].length - 1; x++) { const n = R.nodeAt(world, j, x, y); if (n) nodes.push({ x, y, n }); }
+  check('the land has gathering spots of every kind', nodes.length > 30 && ['herb', 'wood', 'ore'].every((k) => nodes.some((o) => o.n.kind === k)), `(${nodes.length})`);
+  check('...but none in Bob\'s Inn', R.nodeAt(world, { ...j, at: 'inn' }, 3, 3) === null);
+  const spot = nodes.find((o) => '.,"'.includes(m.rows[o.y][o.x - 1] || '') && R.mapOf(world, j).rows[o.y][o.x - 1]) || nodes[0];
+  Object.assign(j, { x: spot.x - 1, y: spot.y, facing: 'right' });
+  const g = R.gather(world, j, () => 0.5);
+  check('Enter by a spot gathers from it', g.ok && Object.values(j.mats).reduce((a, b) => a + b, 0) >= 1 && /\w/.test(g.text), g.text);
+  check('...and the spot is spent for a while', !R.nodeAt(world, j, spot.x, spot.y).ready && !R.gather(world, j).ok);
+  j.steps = (j.steps || 0) + R.REGROW;
+  check('...then grows back', R.nodeAt(world, j, spot.x, spot.y).ready);
+  j.mats = { herb: 10, ore: 10, wood: 10, hide: 20, crystal: 10 };
+  const t0 = j.bag.tonic || 0;
+  check('a tonic can be made on the road from 2 herbs', R.craft(j, 'tonic').ok && j.bag.tonic > t0 && j.mats.herb === 8);
+  j.craft = { xp: R.craftXpFor(2), level: 2 };
+  check('bigger things need a Workbench', /Workbench/.test(R.canCraft(j, 'ember')) && R.canCraft(j, 'ember', { bench: true }) === '');
+  check('the inn has a Workbench', R.atBench(world, { ...j, at: 'inn' }) && !R.atBench(world, j));
+  j.craft = { xp: R.craftXpFor(3), level: 3 };
+  const sword = j.owned.weapon.find((k) => k === 'sword');
+  const up = R.craft(j, 'keen', { bench: true, kit: sword });
+  check('a plain sword can be honed at a Workbench, and whoever wields it gets the better one', up.ok && j.owned.weapon.includes('sword~keen') && j.party.some((x) => x.weapon === 'sword~keen'), up.text);
+  check('...but only plain kit, once', R.canCraft(j, 'keen', { bench: true, kit: 'sword~keen' }) !== '');
+  check('making things raises the crafting level', R.craftLevelOf(R.craftXpFor(4)) === 4 && R.craftLevelOf(1e9) === 10);
+  // Scroll of return.
+  const townId = (world.sites || []).map((s) => s.id).find((id) => R.isTown(world, j, world.map(id)));
+  check('towns are places with a shop, a smith or an inn', Boolean(townId) && !R.isTown(world, j, world.map('world')));
+  j.home = townId; j.bag.portal = 1; Object.assign(j, { at: 'world', x: spot.x - 1, y: spot.y });
+  const pr = R.usePortal(world, j);
+  check('a Scroll of return takes you to the last town you were in', pr.ok && j.at === townId && !j.bag.portal, pr.text);
+  check('...and does nothing when you have none', !R.usePortal(world, j).ok);
+  check('the scroll has a name in every style', R.restyle('Scroll of return', 'scifi') === 'Recall beacon' && R.restyle('Scroll of return', 'cyber') === 'Extraction call' && R.restyle('Scroll of return', 'steam') === 'Pneumatic return ticket');
+  check('materials have names in every style', R.restyle('Herbs, Ore, Timber, Pelts, Crystals', 'cyber') === 'Street chems, Salvage, Wiring, Synth-hide, Chips');
+  // Bags.
+  j.coin = 5000;
+  const size0 = R.bagSize(j);
+  check('a bigger bag can be bought, and is worn straight away', R.buy(j, 'bag:satchel') && j.bagGear === 'satchel' && R.bagSize(j) === size0 + 20);
+  check('...or made at a Workbench from pelts', R.craft(j, 'satchel', { bench: true }).ok === false && (j.craft = { xp: R.craftXpFor(4), level: 4 }, true) && R.craft(j, 'pack', { bench: true }).ok && j.bagGear === 'pack');
+  while (R.bagCount(j) <= R.bagSize(j) - 20 + 1) j.bag.meat = (j.bag.meat || 0) + 1;
+  check('a smaller bag can\'t go on while it would spill', !R.wearBag(j, 'pouch').ok && j.bagGear === 'pack');
+  check('bags have names in every style', R.restyle('Satchel', 'cyber') === 'Messenger rig' && R.restyle('Travel pack', 'scifi') === 'Cargo pack' && R.restyle('Satchel', 'steam') === 'Carpetbag');
+  const back = R.cleanJourney(JSON.parse(JSON.stringify({ ...j, mats: { ...j.mats, herb: 5000, junk: 3 }, bags: ['pack', 'nonsense'], bagGear: 'nonsense' })), () => world);
+  check('a save keeps materials (capped), crafting level, bags and the town to return to', back.mats.herb === R.MAT_MAX && !('junk' in back.mats) && back.bags.includes('pack') && !back.bags.includes('nonsense') && back.bagGear === 'pouch' && back.home === townId && back.craft.level >= 4);
+  const play5 = read('public/journey-play.js'), css5 = read('public/journey.css');
+  check('the menu has Craft and Guide tabs, and the guide covers every tab', /\['craft', '🛠 Craft'\]/.test(play5) && /\['guide', '📖 Guide'\]/.test(play5) && ['party', 'skills', 'kit', 'bag', 'craft', 'pets', 'land', 'save'].every((t) => play5.includes(`['${t}', '`)));
+  check('I opens the bag, J the story, C crafting, G the guide', /\{ i: 'bag', b: 'bag', c: 'craft', g: 'guide', j: 'story' \}/.test(play5));
+  check('full screen or a window, with the menu on the game screen', /data-jy="full"/.test(play5) && /requestFullscreen/.test(play5) && /\.jy\.jy-full \.jy-panel/.test(css5));
+}
+
+// ---------- The story told along the way (Journey v1.3) ----------
+{
+  const j = R.newJourney({ seed: 'story-seed', party: [P({ name: 'Wren', cls: 'fighter', who: 'you' }), P({ name: 'Bob', cls: 'wizard', who: 'bob' })] }, world);
+  const regs = R.regionsOf(world, 'fantasy');
+  check('the land is split into named regions, the same every time', regs.list.length >= 4 && regs.list.every((r) => /^the [A-Z][a-z]+ [A-Z]/.test(r.name)) && R.regionsOf(world, 'fantasy') === regs && R.regionAt(world, 5, 5) === regs.at(5, 5));
+  check('...named in each style\'s own words, in the same places', R.regionsOf(world, 'cyber').list.map((r) => r.x).join() === regs.list.map((r) => r.x).join() && R.regionsOf(world, 'cyber').list.some((r, i) => r.name !== regs.list[i].name));
+  Object.assign(j, { at: 'world', alt: 'ground', x: world.start.x, y: world.start.y });
+  const e = R.enterRegion(world, j);
+  check('the narrator speaks the first time you cross into a region', e && e.lines[0].startsWith('The Chronicle: The ') && j.regions.length === 1);
+  check('...and only the first time', R.enterRegion(world, j) === null);
+  check('each style has its own narrator', R.narrator({ style: 'cyber' }) === 'Newsfeed' && R.narrator({ style: 'steam' }) === 'The Gazette' && R.narrator({ style: 'scifi' }) === 'Ship\'s log');
+  const steps = R.nextSteps(world, j);
+  check('where next: talk to the ruler first, and where they are', /^Talk to the (King|Queen) in Castle .+ steps .+, in the /.test(steps[0].text), steps[0]?.text);
+  check('...and who to find, with where to look', steps.some((x) => /^Find .+(Look \w+, somewhere in|steps)/.test(x.text)));
+  j.met.push('ruler');
+  check('once you\'ve met the ruler, the keepers come first', /^Find /.test(R.nextSteps(world, j)[0].text));
+  const town = world.sites.find((s) => s.kind === 'town'), village = world.sites.find((s) => s.kind === 'village' || s.kind === 'hamlet');
+  check('named towns get the narrator; hamlets and villages don\'t', R.townNarration(world, j, town.id)[0].startsWith(`The Chronicle: ${town.name}, `) && R.townNarration(world, j, village.id).length === 0);
+  check('...but every village has local lore of its own', R.localLore(world, village.id).length > 30 && R.localLore(world, village.id) === R.localLore(world, village.id));
+  const vm = world.map(village.id), folk = vm.people.find((p) => p.role === 'folk') || { role: 'folk', line: 0 };
+  const ch = R.talkChoices(world, j, folk, vm);
+  check('folk give you things to say', ch && ch.map((c) => c.id).join() === 'news,lore,next,bye');
+  const lore = R.sayTo(world, j, folk, vm, 'lore', 'Ann');
+  check('...asking about the place tells its lore, and the Story tab remembers it', lore.lines[0] === `Ann: ${R.localLore(world, village.id)}` && j.lore.includes(village.id) && !lore.end);
+  check('...goodbye ends the talk', R.sayTo(world, j, folk, vm, 'bye', 'Ann').end === true);
+  check('Bob talks with the party at story moments, and you pick what to say back', R.banterDue(world, j, 'town')?.choices.length === 3 && R.banterDue(world, j, 'town') === null);
+  check('...but not when Bob isn\'t with you', R.banterDue(world, { ...j, banter: [], party: [j.party[0]] }, 'town') === null);
+  const back = R.cleanJourney(JSON.parse(JSON.stringify({ ...j, regions: [...j.regions, 'bad id'], banter: ['firsttown', 'nope'] })), () => world);
+  check('a save keeps the regions crossed, lore heard and talks had', back.regions.join() === j.regions.join() && back.lore.includes(village.id) && back.banter.join() === 'firsttown' && back.met.includes('ruler'));
+  const play6 = read('public/journey-play.js');
+  check('the screen: a Story tab, choices you can pick with the arrows, names on the land', /\['story', '📜 Story'\]/.test(play6) && /function pickChoice/.test(play6) && /data-choice/.test(play6) && /R\.isStoryTown\(s\)/.test(play6));
+}
+
+// ---------- The guest house and trophies (Journey v1.3) ----------
+{
+  const guest = world.map('guest'), inn = world.map('inn');
+  check('a guest house behind the inn, with a trophy case along the wall', guest?.kind === 'guest' && guest.rows[1].includes('7777') && guest.doors[0].to === 'inn');
+  check('the inn has a back door into it, and the front door still goes out to the land', inn.doors.some((d) => d.to === 'guest' && inn.rows[d.y][d.x] === '6') && inn.doors.filter((d) => d.to === 'world').every((d) => d.tx !== undefined));
+  const j = R.newJourney({ seed: 'g-seed', party: [P({ name: 'Wren', cls: 'fighter', who: 'you' })] }, world);
+  Object.assign(j, { at: 'inn', x: 31, y: 1 });
+  const r1 = R.walk(world, j, 'up');
+  check('through the back door into the guest house', r1.door === 'guest' && j.at === 'guest' && R.mapOf(world, j).rows[j.y][j.x] === 'o');
+  Object.assign(j, { x: 9, y: 10 });
+  const r2 = R.walk(world, j, 'down');
+  check('...and back into the inn, by the fire', r2.door === 'inn' && j.at === 'inn' && j.x === 31 && j.y === 1);
+  const lob = W.innOnly();
+  check('the lobby (no land yet) has the guest house too', lob.map('guest')?.kind === 'guest' && lob.map('inn').doors.some((d) => d.to === 'guest'));
+  check('a save in the guest house loads back there', R.cleanJourney({ ...JSON.parse(JSON.stringify(j)), at: 'guest', x: 9, y: 3 }, () => world).at === 'guest');
+  check('nothing earned, no trophies', R.newTrophies(world, j).length === 0);
+  j.beaten = ['boss1', 'gorrak']; j.style = 'steam';
+  const got = R.newTrophies(world, j);
+  check('beating a keeper or a boss earns a trophy, with the story and style on it', got.length === 2 && got[0].shape === 'gem' && got[0].style === 'steam' && got[0].story === R.storyName(world, j) && /^Lantern stone of Grubnick$/.test(got[0].name) && /banner$/.test(got[1].name));
+  check('...each only once', R.newTrophies(world, j).length === 0 && j.trophies.length === 2);
+  j.won = true; j.craft = { level: 10, xp: 1e6 }; j.regions = R.regionsOf(world).list.map((r) => r.id);
+  check('lighting the lanterns, crafting level 10 and every region crossed each earn one', R.newTrophies(world, j).map((t) => t.shape).sort().join() === 'hammer,lantern,map');
+  check('the story is named for its castle', /^the .+ tale$/.test(R.storyName(world, j)));
+  check('a save remembers which trophies were given', R.cleanJourney(JSON.parse(JSON.stringify(j)), () => world).trophies.length === 5);
+  const play7 = read('public/journey-play.js');
+  check('walking through a door redraws the panel, so the inn\'s New adventure and Resume buttons show at once (1.5.227 PC check)', /arrive\(r\.door\);\s*drawPanel\(\);/.test(play7.replace(/\r\n/g, '\n')));
+  check('the screen: you wake in the guest house, and the trophy case opens with Enter', /at: 'guest'/.test(play7) && /=== '7'\) \{ shop = \{ kind: 'trophies' \}/.test(play7) && /function caseHtml/.test(play7) && /\/api\/adventure\/journey\/trophies/.test(play7));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -135,5 +135,13 @@ export function createPanels({ changed = () => {} } = {}) {
   let wasPhone = phone();
   window.addEventListener('resize', () => { if (phone() !== wasPhone) { wasPhone = phone(); draw(); } });
   draw();
-  return { visible: (id) => visibleIn(p, id, phone()), where: (id) => whereIs(p, id), get: () => readPanels(p) };
+  // 1.5.216: bring a module into view in its panel (a collapsed panel expands); false when it lives in Now running or
+  // its panel can't show (hidden, or a phone), so the caller shows it in Now running instead.
+  function open(id) {
+    const side = whereIs(p, id);
+    if (!side || phone() || p[side].state === 'hidden') return false;
+    if (p[side].state === 'collapsed') save(setState(p, side, 'expanded'), `${SIDE_NAME[side]} expanded.`);
+    return true;
+  }
+  return { visible: (id) => visibleIn(p, id, phone()), where: (id) => whereIs(p, id), get: () => readPanels(p), open };
 }

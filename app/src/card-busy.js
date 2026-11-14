@@ -15,14 +15,18 @@ export const isLoadTimeout = (e) => e?.code === 'painter_timeout' || /took too l
 
 // Windows itself, its shell, overlays and browsers: they show up on the card list but hold little, and naming them would
 // send people after the wrong program (1.5.113 live test: "ShellHost; CrossDeviceResume" for a 9.7 GB llama-imatrix).
-const SYSTEM = /^(explorer|dwm|shellhost|shellexperiencehost|startmenuexperiencehost|searchhost|searchapp|crossdeviceresume|lockapp|textinputhost|applicationframehost|widgets|widgetservice|systemsettings|gamebar|gamebarftserver|xboxgamebar.*|phoneexperiencehost|translucenttb|parsecd|amdrssrcext|radeonsoftware|amdow|nvidia overlay|nvcontainer|nvidia share|nvidia web helper|msedge|msedgewebview2|chrome|firefox|brave|opera|claude|discord|steamwebhelper|onedrive|teams|ms-teams|slack|spotify)$/i;
+const SYSTEM = /^(explorer|dwm|shellhost|shellexperiencehost|startmenuexperiencehost|searchhost|searchapp|crossdeviceresume|lockapp|textinputhost|applicationframehost|widgets|widgetservice|systemsettings|gamebar|gamebarftserver|xboxgamebar.*|phoneexperiencehost|translucenttb|parsecd|amdrssrcext|radeonsoftware|amdow|nvidia overlay|nvcontainer|nvidia share|nvidia web helper|msedge|msedgewebview2|chrome|firefox|brave|opera|claude|discord|steamwebhelper|onedrive|teams|ms-teams|slack|spotify|windowsterminal|openconsole|conhost|powershell|pwsh|cmd|code|cursor|notepad|photos|msteams|whatsapp|telegram|zoom|nvidia app|steam|epicgameslauncher|battle\.net|ea desktop|galaxyclient)$/i;
 const KEEP_MB = 256; // with real figures, smaller than this isn't what's filling the card
 
 // { freeMB, others: [{ name, mb }] }, or null when the card can't be read (no NVIDIA card, no nvidia-smi).
 // Only programs nvidia-smi lists as using the card are ever named (never Windows itself, overlays or browsers).
 // On Windows nvidia-smi can't see each program's memory ([N/A]), so Windows' own counter may give sizes, but only
 // when they add up: on some PCs it reports the whole card for several programs at once, and then no sizes are shown.
-export async function readCardUse(run = smi, winMem = process.platform === 'win32' ? winGpuMem : async () => null) {
+// Nov 13 (the owner's PC locked up loading a brain while a test's llama-server held the card): with ownPids (a Set of
+// Bob's own engine process ids), an engine Bob didn't start (a test's llama-server, llama-bench, sd-server...) counts as
+// another program too. Without it, engine names are taken as Bob's, as before.
+export const ENGINE_NAMES = /^(llama-server|llama-bench|llama-cli|llama-perplexity|llama-imatrix|sd-server|sd|sd-cli|whisper-server|whisper-cli)$/i;
+export async function readCardUse(run = smi, winMem = process.platform === 'win32' ? winGpuMem : async () => null, { ownPids = null } = {}) {
   const gpu = await run(['--query-gpu=memory.free,memory.total', '--format=csv,noheader,nounits']);
   const [freeMB, totalMB] = gpu == null ? [NaN, NaN] : String(gpu).split(/\r?\n/)[0].split(',').map((x) => Number(x.trim()));
   if (!Number.isFinite(freeMB)) return null;
@@ -31,8 +35,9 @@ export async function readCardUse(run = smi, winMem = process.platform === 'win3
   for (const r of String(apps).split(/\r?\n/).map((l) => l.split(',').map((x) => x.trim()))) {
     if (r.length < 3 || !r[1]) continue;
     const name = path.basename(r[1].replace(/\\/g, '/')).replace(/\.exe$/i, '');
-    if (OWN.test(name) || OWN.test(`${name}.exe`) || SYSTEM.test(name)) continue;
-    byPid.set(Number(r[0]) || `n${byPid.size}`, { name, mb: Number(r[2]) || 0 });
+    const pid = Number(r[0]) || 0, foreign = ownPids instanceof Set && ENGINE_NAMES.test(name) && !ownPids.has(pid);
+    if (!foreign && (OWN.test(name) || OWN.test(`${name}.exe`) || SYSTEM.test(name))) continue;
+    byPid.set(pid || `n${byPid.size}`, { name, mb: Number(r[2]) || 0, ...(pid ? { pid } : {}), ...(foreign ? { engine: true } : {}) });
   }
   const cap = Number.isFinite(totalMB) && totalMB > 0 ? totalMB : Infinity;
   if (byPid.size && ![...byPid.values()].some((a) => a.mb > 0)) {
@@ -45,7 +50,7 @@ export async function readCardUse(run = smi, winMem = process.platform === 'win3
   const sum = others.reduce((t, a) => t + a.mb, 0);
   if (others.some((a) => a.mb > cap) || sum > cap) others = others.map((a) => ({ ...a, mb: 0 })); // figures that can't be true: no sizes
   if (others.some((a) => a.mb > 0)) others = others.filter((a) => a.mb >= KEEP_MB).sort((a, b) => b.mb - a.mb);
-  return { freeMB, others };
+  return { freeMB, totalMB: Number.isFinite(totalMB) ? totalMB : null, others };
 }
 function smi(args) {
   if (IN_TEST) return Promise.resolve(null); // tests never reach the real nvidia-smi

@@ -2,7 +2,7 @@
 // turn's record in code: "I did X" needs a step that did X, numbers, quotes and links need a result that holds them,
 // switches said to be on must be on, in English, French and Spanish. Corrections fold the replaced words away, go on
 // the job's record and add up to a per-brain honesty score. Nothing is added to what the brain reads at the start.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -41,7 +41,7 @@ check('182 curly apostrophes read like plain ones', unbackedClaims('J\u2019ai su
 check('182 French PC action claim', claimsPcActionFrEs('J\'ai ouvert le Bloc-notes pour toi.') && claimsPcAction('J\'ai ouvert le Bloc-notes pour toi.'));
 check('182 Spanish PC action claim', claimsPcAction('He abierto la ventana del programa.'));
 check('182 a French "if" is not a claim', !unbackedClaims('Si j\'ai supprimé le fichier, il est dans la corbeille.', []).length);
-const web = [{ key: 'web', name: 'Let Bob search the web', where: 'Settings, How Bob works' }];
+const web = [{ key: 'web', name: 'Web search', where: 'Settings, How Bob works' }];
 check('182 "la recherche web est maintenant activée" is corrected', saidNotDone('La recherche web est maintenant activée.', { off: web })?.kind === 'switch');
 check('182 "la búsqueda web ya está activada" is corrected', saidNotDone('La búsqueda web ya está activada.', { off: web })?.kind === 'switch');
 check('182 "j\'ai envoyé le message" with no send is corrected', saidNotDone('J\'ai envoyé le message.', { off: [] })?.kind === 'sent');
@@ -139,7 +139,7 @@ check('189 a switch that is on is left alone', saidNotDone('The sandbox is now o
   check('190 a corrected reply with a later answer is marked replaced', markReplaced(added) === 1 && added[1].replaced === true && !added[3].replaced);
   const last = [{ role: 'assistant', content: 'I\'ve saved it.', correction: 'Nothing was saved.' }];
   check('190 a correction with no second try stays', markReplaced(last) === 0 && !last[0].replaced);
-  const app = read('public/app.js');
+  const app = publicText('app.js');
   check('190 the window folds replaced replies, live and after a reload', /function markReplaced\(el\)/.test(app) && /if \(m\.replaced\) markReplaced\(el\)/.test(app) && /correctedBubbles\.set/.test(app));
   check('190 the saved chat keeps the mark', /\.\.\.\(m\.replaced \? \{ replaced: true \} : \{\}\)/.test(brainText()));
   check('190 the phone replaces the corrected words too', /current\.corrected = \{ at: current\.text\.length \}/.test(read('android/app/src/main/assets/www/phone.js')));
@@ -155,7 +155,7 @@ check('189 a switch that is on is left alone', saidNotDone('The sandbox is now o
   check('191 the job keeps its corrections', job.handoff.corrections?.[0]?.kind === 'claims');
   check('191 ...after it finishes too', slimHandoff(job.handoff).corrections?.[0]?.text === 'Nothing was saved.');
   check('191 a job with none keeps none', !('corrections' in slimHandoff(new Ledger({ job: {} }).view())));
-  check('191 How I got here draws corrections', /step-correction/.test(read('public/app.js')));
+  check('191 How I got here draws corrections', /step-correction/.test(publicText('app.js')));
 }
 
 // ---- 192: per-brain honesty score
@@ -172,7 +172,7 @@ check('189 a switch that is on is left alone', saidNotDone('The sandbox is now o
   check('192 no half-written file is left behind', fs.readdirSync(path.dirname(file)).every((n) => !n.endsWith('.tmp') && !n.endsWith('.part')));
   fs.writeFileSync(file, '{broken');
   check('192 a broken file reads as empty, never throws', JSON.stringify(new HonestyScores({}, { file }).view()) === '{}');
-  check('192 the Brains page shows it, read from /api/honesty', /honestyHtml\(b, ctx\)/.test(read('public/brains.js')) && /api\/honesty/.test(read('public/cellar.js')) && /p === '\/api\/honesty'/.test(read('src/server.js')));
+  check('192 the Brains page shows it, read from /api/honesty', /honestyHtml\(b, ctx\)/.test(read('public/brains.js')) && /api\/honesty/.test(publicText('cellar.js')) && /p === '\/api\/honesty'/.test(read('src/server.js')));
 }
 
 // ---- wiring, and nothing added to the start of a job

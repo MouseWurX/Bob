@@ -43,6 +43,8 @@ import { challengeJobs } from './lab-challenge-jobs.js';
 import { ladderJobs } from './lab-ladder-jobs.js';
 import { forgeJobs } from './lab-forge-jobs.js';
 import { homeJobs } from './lab-home-jobs.js';
+import { protocolJobs } from './lab-protocol.js'; // 13 Nov the training protocol's free steps
+import { stepRunJobs } from './lab-step-run.js'; // 14 Nov free steps from the Steps tab
 import { peekJobs } from './lab-peek-jobs.js';
 export { labOn, WOBBLE_RUNS, WOBBLE_TEMP, MIN_RAM_GB, labRoom, RUNNING_TYPES, slugOf, lessonCard, labDir, scoresDir, resultsDir, cleanResult, hardwareLine, resultText, labModelsDir, madeFile, fullSizeDirOf, madeBrains, mergeMadeBrains, labBrains, inspect, cutSizes, fitWords, cleanRecipe, measureRecord, sha256File, compareTable, compareCsv } from './lab-measure.js';
 export { planRecipe, lessonText, lessonSkills, lessonSkillNames, maskFor, lessonSetsDir, WRITER, SECONDS_PER_LESSON, cleanWrite, teacherLicence, lessonSets, partsView, BUILDER, BUILD_MAX, BUILD_MIN, BUILD_DEFAULT, skillFromPath, cleanBuild } from './lab-plan.js';
@@ -429,7 +431,7 @@ export class Lab {
 }
 
 // The Lab class is written in parts: these files hold groups of its methods (same rules as the ones written here).
-for (const part of [lessonJobs, challengeJobs, ladderJobs, forgeJobs, homeJobs, peekJobs]) {
+for (const part of [lessonJobs, challengeJobs, ladderJobs, forgeJobs, homeJobs, peekJobs, protocolJobs, stepRunJobs]) {
   for (const [k, d] of Object.entries(Object.getOwnPropertyDescriptors(part))) Object.defineProperty(Lab.prototype, k, { ...d, enumerable: false });
 }
 

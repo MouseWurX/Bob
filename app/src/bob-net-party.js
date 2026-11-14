@@ -27,9 +27,10 @@
 // answers (the phone app can only answer, for now); between two computers the first on your list asks. A token is good
 // for 3 minutes, once. A pair is introduced again after an hour if it didn't take, after a day if it did.
 import crypto from 'node:crypto';
-import { doorOpen, cleanAddress } from './share-brains.js';
+import { doorOpen, cleanBobAddress } from './share-brains.js';
 import { myName, PAIR, ASK_FOR_MS } from './bob-net-pair.js';
 import { LOOK_ID_RE } from './look.js';
+import { hueFor } from './net-overlay.js'; // Nov 13: each Bob's cube colour, the same as his Bob-Net icon
 
 const HOUR = 3600e3, DAY = 24 * HOUR;
 const clean = (s, n = 40) => String(s || '').replace(/[\u0000-\u001f<>"'`]/g, '').trim().slice(0, n);
@@ -53,6 +54,7 @@ export function partyView(brain, { now = Date.now } = {}) {
       ctx: st.ctx || 0, speed: st.measured?.tokPerSec || st.speed || 0, jobs: st.jobs || [], jobsBusy: st.jobsBusy || '', queue: st.queue || 0,
       thinking: L.live?.get(b.address) === 'thinking', doing: away.get(b.address) || '',
       look: LOOK_ID_RE.test(String(st.look || '')) ? st.look : '', // his avatar, from his hello ('' from a phone or an older Bob)
+      hue: hueFor(b.name), // his cube's colour on the list (every Bob has one, a phone or a test copy too)
       lastUsed: st.measured?.lastUsed || 0, passAlong: st.passAlong === true, checkedAt: st.at || 0
     };
   });
@@ -80,8 +82,8 @@ export class Introductions {
     if (Number(b?.pair) !== PAIR) return { code: 400, error: 'Different Bob-Net pairing. Update both Bobs.' };
     const token = String(b?.token || '');
     if (!/^[0-9a-f]{32}$/.test(token)) return { code: 400, error: 'no token' };
-    const address = cleanAddress(b?.bob?.address);
-    if (!address) return { code: 400, error: 'That isn\'t a Tailscale address.' };
+    const address = cleanBobAddress(this.cfg, b?.bob?.address);
+    if (!address) return { code: 400, error: 'That isn\'t an address I can use.' };
     const ip = plainIp(remoteIp);
     if (address.split(':')[0] === ip) return { code: 400, error: 'That\'s you.' };
     const role = b?.role === 'ask' ? 'ask' : 'expect';

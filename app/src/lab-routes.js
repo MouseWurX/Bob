@@ -11,6 +11,10 @@ import path from 'node:path';
 import { importMyPack, deleteMyPack } from './lab-mypacks.js';
 import { labOn, labDir } from './lab-measure.js';
 import { lessonSetsDir } from './lab-plan.js';
+import { STAGES, stepsView, smokeReady } from './lab-steps.js';
+import { listRuns } from './lab-runs.js';
+import { STEP_FORMS } from './lab-step-run.js';
+import { forgeDir } from './lab-forge.js';
 
 // 1.5.164 One sandbox turn on Bob's loaded brain, with the person's own system prompt. Ordinary settings, not temperature 0:
 // the point is to see what the brain does in use.
@@ -40,10 +44,15 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (req.method === 'GET' && p === '/api/lab/measures') { send(res, 200, { measures: lab.measures().map(({ rec, ...m }) => m) }); return true; }
     // 1.5.151 Learn: experiments on the brain Bob has loaded. Read-only, nothing is written, so any device Bob lets in may use them.
     if (req.method === 'GET' && p === '/api/lab/learn') { const b = learnBrain(lab.brain); send(res, 200, { on: labOn(lab.cfg), ready: b.ready, why: b.why || '', wake: b.wake === true, busy: b.busy === true, brain: b.ready ? (lab.brain?.brainLabel?.(b.model) || b.model) : '', ctx: b.ctx || 0, cards: LEARN_CARDS }); return true; }
-    if (req.method === 'GET' && p === '/api/lab/forge') { const v = lab.forgeView(); send(res, 200, isLocal ? v : { ...v, keepFiles: [] }); return true; } // 1.5.159 read-only
+    if (req.method === 'GET' && p === '/api/lab/forge') { const v = lab.forgeView(); send(res, 200, isLocal ? v : { ...v, keepFiles: [], looked: [] }); return true; } // 1.5.159 read-only; 1.5.219 folders only to this computer
     // 1.5.164 Guard rails sandbox: chat with the brain Bob has loaded, like Learn. Nothing is saved unless you press Save as lesson.
     if (req.method === 'GET' && p === '/api/lab/guard') { const g = learnBrain(lab.brain); send(res, 200, { on: labOn(lab.cfg), ready: g.ready, why: g.why || '', brain: g.ready ? (lab.brain?.brainLabel?.(g.model) || g.model) : '', demo: PAGE_DEMO, maxTurns: SANDBOX_MAX_TURNS, canSave: isLocal, settings: GUARD_SETTINGS, styles: GUARD_STYLES }); return true; }
     if (req.method === 'GET' && p === '/api/lab/brain-scores') { send(res, 200, { scores: labOn(lab.cfg) ? lab.brainScores() : {} }); return true; } // Nov 11: for the Brains page, read-only
+    // 14 Nov Lab steps and runs (docs/LAB-STEPS-PLAN.md): read-only. Paths are left out for other devices.
+    if (req.method === 'GET' && p === '/api/lab/steps') { send(res, 200, { stages: STAGES, steps: stepsView(forgeDir(lab.cfg)).map((s) => ({ ...s, smokeReady: smokeReady(s), form: STEP_FORMS[s.id] ? { needs: STEP_FORMS[s.id].needs } : null })), sets: lab.lessonSetsList ? lab.lessonSetsList() : [], job: lab.stepJob() }); return true; }
+    if (req.method === 'GET' && p === '/api/lab/runs') { const runs = listRuns(labDir(lab.cfg)); send(res, 200, { runs: isLocal ? runs : runs.map((r) => ({ ...r, inputs: r.inputs.map(({ path: _p, ...i }) => i), outputs: r.outputs.map(({ path: _p, ...o }) => o) })) }); return true; }
+    if (req.method === 'GET' && p === '/api/lab/pipelines') { const v = lab.pipelinesView(); send(res, 200, isLocal ? v : { ...v, pipelines: v.pipelines.map((x) => ({ ...x, progress: { ...x.progress, steps: x.progress.steps.map((s) => ({ ...s, outputs: s.outputs.map(({ path: _p, ...o }) => o) })) } })) }); return true; } // 14 Nov slice 5, read-only
+    if (req.method === 'GET' && p === '/api/lab/protocol') { const v = lab.protocolView(); send(res, 200, isLocal ? v : { ...v, looked: [], job: v.job ? { ...v.job, tail: [] } : null }); return true; } // 13 Nov read-only
     if (req.method !== 'POST') { send(res, 404, { error: 'no' }); return true; }
     const b = await body(req);
     if (p === '/api/lab/guard/chat') { if (!labOn(lab.cfg)) { send(res, 403, { error: 'The Lab is off.' }); return true; } send(res, 200, await guardChat(lab.brain, b)); return true; }
@@ -94,6 +103,15 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/forge/card') { send(res, 200, lab.forgeCard(String(b.id || ''))); return true; }
     if (p === '/api/lab/forge/start') { send(res, 200, lab.forgeStart({ id: String(b.id || ''), hours: b.hours, dollars: b.dollars })); return true; }
     if (p === '/api/lab/forge/stop') { send(res, 200, await lab.forgeStop()); return true; }
+    if (p === '/api/lab/step/check') { const c = lab.stepCheck(String(b.id || ''), b.form); send(res, 200, { problems: c.problems, notes: c.notes }); return true; } // 14 Nov Steps tab, free steps here
+    if (p === '/api/lab/step/run') { send(res, 200, lab.stepRun(String(b.id || ''), b.form)); return true; }
+    if (p === '/api/lab/step/stop') { send(res, 200, lab.stepStop()); return true; }
+    if (p === '/api/lab/pipeline/save') { send(res, 200, lab.pipelineSave(b.pipeline || {})); return true; } // 14 Nov slice 5: pipelines start only from this computer
+    if (p === '/api/lab/pipeline/go') { send(res, 200, lab.pipelineGo(String(b.slug || ''))); return true; }
+    if (p === '/api/lab/pipeline/skip') { send(res, 200, lab.pipelineSkip(String(b.slug || ''), Number(b.step), b.skip !== false)); return true; }
+    if (p === '/api/lab/protocol/check') { const pl = lab.protocolCheck(String(b.tool || ''), b.form); send(res, 200, { problems: pl.problems, notes: pl.notes }); return true; } // 13 Nov
+    if (p === '/api/lab/protocol/run') { send(res, 200, lab.protocolRun(String(b.tool || ''), b.form)); return true; }
+    if (p === '/api/lab/protocol/stop') { send(res, 200, lab.protocolStop()); return true; }
     if (p === '/api/lab/forge/save') { send(res, 200, lab.saveForgePlan(b.form)); return true; }
     if (p === '/api/lab/library/add') { send(res, 200, await lab.addLibrarySet({ from: String(b.from || ''), name: String(b.name || '').slice(0, 60) })); return true; } // the lesson library
     if (p === '/api/lab/home/plan') { const pl = lab.planHome(String(b.kind || ''), b.form); send(res, 200, { problems: pl.problems, notes: pl.notes, diskGB: pl.diskGB, layers: pl.stack?.layers || 0 }); return true; } // 1.5.164

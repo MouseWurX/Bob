@@ -1,4 +1,4 @@
-// "Save chats as files and bring chats in" (Settings, How Bob works; off unless turned on).
+// "Export and import chats" (Settings, How Bob works; off unless turned on).
 // Save: one chat as Markdown (reads anywhere), JSON (everything, for another program or for bringing back in) or PDF
 // (for printing and sharing). Bring in: a file another assistant exported (ChatGPT, Claude, Open WebUI), a chat Bob
 // saved, or a "Name: line" transcript becomes chats of their own in Past chats. The readers are the lesson builder's
@@ -10,7 +10,7 @@ import { conversationsOf } from './lab-build-read.js';
 import { scrubber } from './help-bundle.js';
 
 export const chatFilesOn = (cfg) => cfg?.chatFiles === true;
-export const CHAT_FILES_OFF = 'Saving and bringing in chats is off. Turn on "Save chats as files and bring chats in" in Settings, How Bob works.';
+export const CHAT_FILES_OFF = 'Saving and bringing in chats is off. Turn on "Export and import chats" in Settings, How Bob works.';
 export const FORMATS = { md: 'Markdown', json: 'JSON', pdf: 'PDF' };
 export const SOURCES = { chatgpt: 'ChatGPT', claude: 'Claude', openwebui: 'Open WebUI', bob: 'Bob', transcript: 'a transcript' };
 export const MAX_IMPORT_BYTES = 200 * 1024 * 1024; // a big ChatGPT export; bigger is refused before it's read

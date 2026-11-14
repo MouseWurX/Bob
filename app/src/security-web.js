@@ -1,7 +1,7 @@
 // The online side of the "Security and privacy" Hand: public-record research about a website, a link, an email
 // sender or an internet address, and breach lookups for the user's own exposure. Only public sources:
 // RDAP (the official registration records that replaced WHOIS), DNS, certificate logs (crt.sh) and
-// Have I Been Pwned's free breach list. Needs "Let Bob search the web" on, like any other look-up.
+// Have I Been Pwned's free breach list. Needs "Web search" on, like any other look-up.
 // Never people-finding: no lookups of a person, a username, a phone number or a home address.
 import dns from 'node:dns';
 import net from 'node:net';

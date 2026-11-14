@@ -196,7 +196,7 @@ export function createDownloads({ api, post }) {
         <strong>Settings</strong>
         <label>At once: <select data-set="concurrent"><option value="1" ${settings.concurrent !== 2 ? 'selected' : ''}>1 download</option><option value="2" ${settings.concurrent === 2 ? 'selected' : ''}>2 downloads</option></select></label>
         <label><input type="checkbox" data-set="resumeOnStart" ${settings.resumeOnStart || pickUpOn ? 'checked' : ''} ${pickUpOn ? 'disabled' : ''}> Carry on unfinished downloads when Bob starts</label>
-        <p class="muted">${pickUpOn ? 'On because Pick up where Bob left off is on.' : 'Left off, they wait, paused, until you press Resume.'}</p>
+        <p class="muted">${pickUpOn ? 'On because Resume jobs after restart is on.' : 'Left off, they wait, paused, until you press Resume.'}</p>
       </div>`;
   }
   body.addEventListener('click', async (e) => {

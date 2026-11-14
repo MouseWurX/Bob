@@ -10,12 +10,13 @@ import { CARDS, cardOf } from '../public/settings-map.js';
 import { HELP } from '../public/help-content.js';
 import { mergeSettings, SETTING_KEYS } from '../src/config.js';
 import { esc } from '../public/util.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
 const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\r\n/g, '\n');
-const cellar = read('public/cellar.js'), server = read('src/server.js'), app = read('public/app.js');
+const cellar = publicText('cellar.js'), server = read('src/server.js'), app = publicText('app.js');
 const plain = (s) => String(s).replace(/<[^>]+>/g, ' ').replace(/\\'/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ').toLowerCase();
 const helpText = plain(HELP.map((e) => `${e.title} ${e.html}`).join(' '));
 
@@ -82,7 +83,7 @@ check('updates go under updates', JSON.stringify(wantPatch('autoCheck', true)) =
 }
 
 // ---------- On the Welcome, rerun from Settings, offered once to older Bobs ----------
-check('the Welcome shows the list', cellar.includes("${wantsHtml(settings || {}, esc, { full: jumpTo === 'wants' })}"));
+check('the Welcome shows the list on its Helpers page, leaving out what its own pages show', cellar.includes("else if (step === 'helpers') body = page('Helpers', '', wantsHtml(s, esc, { full: jumpTo === 'wants', leave: WELCOME_OWN_KEYS }));"));
 // 1.5.210 First run fits on one screen: the four that help most on top, the rest folded below (open when the chat's offer jumps there).
 {
   const { WANTS_TOP } = await import('../public/wants.js');
@@ -92,9 +93,12 @@ check('the Welcome shows the list', cellar.includes("${wantsHtml(settings || {},
   check('first run: the four are the ones that help the work (web, documents, sandbox, carry on after a restart)', ['webSearch', 'docTools', 'sandboxCode', 'resumeJobs'].every((k) => WANTS_TOP.includes(k)));
   check('first run: every other switch is still on the page, folded, and nothing shows twice', WANTS.every((w) => (html.match(new RegExp(`data-want="${w.key}"`, 'g')) || []).length === 1) && /<details class="wants-more">/.test(html));
   check('first run: the fold opens when the chat offer jumps to the list', /<details class="wants-more" open>/.test(wantsHtml({}, esc, { full: true })));
-  check('first run: the Welcome opens at the top (Get Bob ready is focused without scrolling)', /data-getready\]'\)\?\.focus\(\{ preventScroll: true \}\)/.test(cellar) && /if \(jumpTo !== 'wants'\) dlg\.scrollTop = 0/.test(cellar));
+  check('first run: each Welcome page opens at its top with its title focused', /if \(mode === 'welcome' && wStepMoved\) \{ wStepMoved = false; dlg\.scrollTop = 0; dlg\.querySelector\('\.wz-title'\)\?\.focus\(\{ preventScroll: true \}\); \}/.test(cellar));
+  check('first run: the chat offer opens the Welcome on the Helpers page', cellar.includes("wStep = opts.jump === 'wants' ? stepIndex('helpers') : 0;"));
+  const left = wantsHtml({}, esc, { leave: ['profilesOn', 'model3d'] });
+  check('first run: leave keeps a switch off the list, and the count follows', !left.includes('data-want="profilesOn"') && !left.includes('data-want="model3d"') && left.includes(`(${WANTS.length - 6} more switches`));
 }
-check('the Welcome closes after the list', cellar.indexOf('${wantsHtml(settings || {}, esc)}') < cellar.indexOf('<div class="row welcome-end"><button data-skip>'));
+check('the Welcome ends on Done, whose Start chatting saves setupDone', cellar.includes("else if ('skip' in b.dataset) { await api('/api/settings', { setupDone: true, wantsAsked: true });"));
 check('Run first-time setup is still in Settings', cellar.includes('data-welcome>Run first-time setup'));
 check('wantsAsked only true when saved true', mergeSettings({}, { wantsAsked: 'yes' }).wantsAsked === false && mergeSettings({}, { wantsAsked: true }).wantsAsked === true && SETTING_KEYS.includes('wantsAsked'));
 check('the server reads and saves wantsAsked', server.includes('wantsAsked: cfg.wantsAsked === true') && server.includes("'wantsAsked' in b"));

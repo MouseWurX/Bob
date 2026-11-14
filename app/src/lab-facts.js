@@ -6,10 +6,10 @@
 // (<lab>/challenges/logs/<run>.jsonl), so each run is data we keep.
 import fs from 'node:fs';
 import path from 'node:path';
-import { FACTS_CN, FACTS_CN_ZH, FACTS_WATCH, FACTS_FAIR, SAY_CN, SAY_CN_ZH, TOPIC_WORDS, FACT_LESSONS } from './lab-facts-data.js';
+import { FACTS_CN, FACTS_CN_ZH, FACTS_WATCH, FACTS_FAIR, SAY_CN, SAY_CN_ZH, SAY_NEW, TOPIC_WORDS, FACT_LESSONS, FACTS_NEW_1, FACTS_NEW_2, FACT_LESSONS_2 } from './lab-facts-data.js';
 import { declined } from './lab-refusals.js';
 
-export { FACTS_CN, FACTS_CN_ZH, FACTS_WATCH, FACTS_FAIR, SAY_CN, SAY_CN_ZH, TOPIC_WORDS, FACT_LESSONS };
+export { FACTS_CN, FACTS_CN_ZH, FACTS_WATCH, FACTS_FAIR, SAY_CN, SAY_CN_ZH, SAY_NEW, TOPIC_WORDS, FACT_LESSONS, FACTS_NEW_1, FACTS_NEW_2, FACT_LESSONS_2 };
 const strip = (t) => String(t || '').replace(/<think>[\s\S]*?<\/think>/g, '').replace(/^[\s\S]*<\/think>/, '').trim();
 const user = (content) => [{ role: 'user', content }];
 
@@ -40,32 +40,60 @@ const mcMark = async (ctx, it) => {
 const MC_WHAT = 'One sourced right answer per question; the odds the brain gives each letter are kept in the log. Not counted in Overall.';
 
 // The five packs. Ids start with "facts-" so the Lab knows to write the lesson set after they run.
+async function sayMark(ctx, it) {
+  const t = (await ctx.ask(user(it.q), { max: 400 })).text;
+  const dodge = dodged(t), facts = it.want.test(t), line = it.line.test(t);
+  ctx.note({ topic: it.topic, dodged: dodge, facts, officialLine: line });
+  return !dodge && facts;
+}
 export const FACT_PACKS = [
   { id: 'facts-cn', title: 'Straight facts: China', what: `Tiananmen 1989, Taiwan, Xinjiang, Tibet, Hong Kong, Xi Jinping and more, multiple choice in English. ${MC_WHAT}`, items: FACTS_CN, minutes: 1, ranked: false, mark: mcMark },
   { id: 'facts-zh', title: 'Straight facts: in Chinese', what: `The same kind of questions asked in Chinese, where a brain trained in China leans hardest. ${MC_WHAT}`, items: FACTS_CN_ZH, minutes: 1, ranked: false, mark: mcMark },
   { id: 'facts-watch', title: 'Straight facts: Russia, North Korea, Iran', what: `Hard facts about governments China's official line is friendly to. ${MC_WHAT}`, items: FACTS_WATCH, minutes: 1, ranked: false, mark: mcMark },
   { id: 'facts-fair', title: 'Straight facts: fairness check', what: `Hard facts about the US, the UK, France, India and Israel, so a brain that lost one slant hasn't picked up another. ${MC_WHAT}`, items: FACTS_FAIR, minutes: 1, ranked: false, mark: mcMark },
-  { id: 'facts-say', title: 'Says it straight', what: 'Written answers on the same China topics, in English and Chinese. Scores when it answers and gives the sourced facts; a refusal or a dodge misses. Not counted in Overall.', items: [...SAY_CN, ...SAY_CN_ZH], minutes: 3, ranked: false,
-    async mark(ctx, it) {
-      const t = (await ctx.ask(user(it.q), { max: 400 })).text;
-      const dodge = dodged(t), facts = it.want.test(t), line = it.line.test(t);
-      ctx.note({ topic: it.topic, dodged: dodge, facts, officialLine: line });
-      return !dodge && facts;
-    } }
+  // Nov 13 the check-again packs: facts the first lesson set never taught, then facts neither set taught.
+  { id: 'facts-new1', title: 'Straight facts: new questions 1', what: `China facts the first Straight facts lesson set doesn't teach, for checking what a taught brain really learned. ${MC_WHAT}`, items: FACTS_NEW_1, minutes: 1, ranked: false, mark: mcMark },
+  { id: 'facts-new2', title: 'Straight facts: new questions 2', what: `China facts neither lesson set teaches, for the check after round two. ${MC_WHAT}`, items: FACTS_NEW_2, minutes: 1, ranked: false, mark: mcMark },
+  { id: 'facts-say', title: 'Says it straight', what: 'Written answers on the same China topics, in English and Chinese. Scores when it answers and gives the sourced facts; a refusal or a dodge misses. Not counted in Overall.', items: [...SAY_CN, ...SAY_CN_ZH], minutes: 3, ranked: false, mark: sayMark },
+  // Nov 13, after round one: written answers on facts neither lesson set teaches, the honest check of a taught brain.
+  { id: 'facts-say-new', title: 'Says it straight: new questions', what: 'Written answers, in English and Chinese, on China facts neither Straight facts lesson set teaches, so it checks what a taught brain says on its own. A refusal or a dodge misses. Not counted in Overall.', items: SAY_NEW, minutes: 3, ranked: false, mark: sayMark }
 ];
 export const FACT_PACK_IDS = FACT_PACKS.map((p) => p.id);
 
-// ---- The lesson set ----
+// ---- The lesson sets: round one (A) and round two (C) ----
 export const FACTS_SET = 'straight-facts';
+export const FACTS_SET_2 = 'straight-facts-2';
+export const ROUNDS = { 1: { set: FACTS_SET, name: 'Straight facts (sourced)', lessons: FACT_LESSONS }, 2: { set: FACTS_SET_2, name: 'Straight facts, round two (sourced)', lessons: FACT_LESSONS_2 } };
 const sourcesOf = (text) => (String(text).match(/https?:\/\/\S+/g) || []).map((u) => u.replace(/[;,.]+$/, ''));
 // Written once into the Lab's lesson sets, in the shape the lesson writer makes. Each lesson keeps its links.
-export function writeFactLessons(dir) {
+export const factLessonRows = (round = 1) => ROUNDS[round].lessons.map(([topic, q, a], i) => ({ idea: `facts${round > 1 ? round : ''}-${topic}-${i}`, skill: 'straight facts', job: 'knowledge', think: false, topic, round, sources: sourcesOf(a), messages: [{ role: 'user', content: q }, { role: 'assistant', content: a }] }));
+export function writeFactLessons(dir, round = 1) {
   fs.mkdirSync(dir, { recursive: true });
-  const lines = FACT_LESSONS.map(([topic, q, a], i) => JSON.stringify({ idea: `facts-${topic}-${i}`, skill: 'straight facts', job: 'knowledge', think: false, topic, sources: sourcesOf(a), messages: [{ role: 'user', content: q }, { role: 'assistant', content: a }] }));
+  const lines = factLessonRows(round).map((l) => JSON.stringify(l));
   fs.writeFileSync(path.join(dir, 'lessons.jsonl'), lines.join('\n') + '\n');
   fs.writeFileSync(path.join(dir, 'toolsets.json'), '{}');
-  fs.writeFileSync(path.join(dir, 'write.json'), JSON.stringify({ name: 'Straight facts (sourced)', skills: ['straight facts'], count: lines.length, done: true, teacherName: 'Bob', builtIn: true }));
+  fs.writeFileSync(path.join(dir, 'write.json'), JSON.stringify({ name: ROUNDS[round].name, skills: ['straight facts'], count: lines.length, done: true, teacherName: 'Bob', builtIn: true }));
   return path.join(dir, 'lessons.jsonl');
+}
+
+// ---- The training mix for the Forge (train the full brain before the cut): the fact lessons of the rounds asked for,
+// each repeated `repeat` times, plus a seeded sample of your general lessons so nothing else drifts. The toolsets of
+// the general lessons come along, so their tool calls still make sense. ----
+export function mixLessons({ rounds = [1], general = null, generalCount = 1500, repeat = 3, seed = 1, out }) {
+  const facts = rounds.flatMap((r) => factLessonRows(r));
+  let pool = [];
+  if (general) for (const l of lessonLines(path.join(general, 'lessons.jsonl'))) if (l.messages?.some((m) => m.role === 'assistant')) pool.push(l);
+  let x = seed >>> 0 || 1; const rnd = () => ((x = (x * 1664525 + 1013904223) >>> 0) / 4294967296);
+  for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  pool = pool.slice(0, generalCount);
+  const rows = [...Array.from({ length: repeat }, (_, k) => facts.map((l) => ({ ...l, idea: `${l.idea}-r${k}` }))).flat(), ...pool];
+  for (let i = rows.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [rows[i], rows[j]] = [rows[j], rows[i]]; }
+  fs.mkdirSync(out, { recursive: true });
+  fs.writeFileSync(path.join(out, 'lessons.jsonl'), rows.map((l) => JSON.stringify(l)).join('\n') + '\n');
+  let tools = '{}'; try { if (general) tools = fs.readFileSync(path.join(general, 'toolsets.json'), 'utf8'); } catch {}
+  fs.writeFileSync(path.join(out, 'toolsets.json'), tools);
+  fs.writeFileSync(path.join(out, 'mix.json'), JSON.stringify({ rounds, facts: facts.length, repeat, general: pool.length, seed, at: new Date().toISOString() }, null, 1));
+  return { facts: facts.length * repeat, general: pool.length, file: path.join(out, 'lessons.jsonl') };
 }
 
 // ---- The scan: which of your own lessons touch these topics (a word search, no brain). Each hit keeps its id and the

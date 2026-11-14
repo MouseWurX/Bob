@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { PRESETS, DEFAULT_THEME, OLD_IDS, themeId, findTheme, resolve, fullColors, swatch } from '../public/themes.js';
 import { cleanStyle } from '../src/config.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -42,10 +43,10 @@ check('the four new themes keep quiet text at 4.5:1 even in your bubbles', ['riv
 check('the two high-contrast themes reach AAA (7:1) for text everywhere', ['hc-dark', 'hc-light'].every((id) => { const c = fullColors(findTheme(id)); return ['bg', 'panel', 'card'].every((s) => ratio(c.text, c[s]) >= 7); }));
 
 const groups = [...new Set(PRESETS.map((t) => t.group))];
-check('groups: Bob, Worlds, Access, MouseWurX', JSON.stringify(groups) === JSON.stringify(['Bob', 'Worlds', 'Access', 'MouseWurX']));
+check('groups: Bob, Worlds, Access, MouseWurX, Lamps', JSON.stringify(groups) === JSON.stringify(['Bob', 'Worlds', 'Access', 'MouseWurX', 'Lamps']));
 const page = read('public/style-page.js');
 check('the Style page shows the four groups with plain headings', /\['Worlds', 'Worlds and places'\]/.test(page) && /\['Access', 'High contrast'\]/.test(page) && !/From MouseHole/.test(page));
-check('no page falls back to the inn by name any more', !/'inn'/.test(page) && !/\|\| 'inn'/.test(read('public/cellar.js')));
+check('no page falls back to the inn by name any more', !/'inn'/.test(page) && !/\|\| 'inn'/.test(publicText('cellar.js')));
 check('every theme has a short blurb', PRESETS.every((t) => t.what && t.what.length <= 110));
 const pub = `${read('public/themes.js')} ${read('public/help-content.js')} ${read('../README.md')}`;
 // 1.5.163 the owner picked "Vulcan" as the GPT-like thought path's name (9 Nov); only that exact path name is let through.
@@ -64,7 +65,7 @@ check('Help names the new groups and the default', /Moondust/.test(HELP.find((h)
   const wv = read('public/watch-view.js'), mc = read('public/mind-cube.js'), wj = read('public/watch.js'), th = read('public/themes.js');
   check('Moondust gives the One colour #03666d', findTheme('moondust')?.cube === '#03666d' && findTheme('slate')?.cube === '#03666d');
   check('every theme sets --cube: its own cube colour, else its accent', /setProperty\('--cube', HEX\.test\(t\.cube \|\| ''\) \? t\.cube : c\.accent\)/.test(th));
-  check('only Moondust overrides its accent for the cube', PRESETS.filter((x) => x.cube).map((x) => x.id).join() === 'moondust');
+  check('only Moondust and the lamps override their accent for the cube', PRESETS.filter((x) => x.cube).map((x) => x.id).join() === 'moondust,mercury,sodium,thallium,neon');
   const ix = read('public/index.html'), wh = read('public/watch.html');
   check('the thinking cube turns by default, at the slowest speed, and never while animations are off', /const SPIN = 0\.05;/.test(mc) && /let turning = !avatar; try \{ if \(!avatar\) turning = localStorage\.getItem\('bob-cube-spin'\) !== '0'/.test(mc) && /still\(\) \|\| \(!rec && !shell\)/.test(mc) && /min="0\.05"/.test(wh.match(/id="watchSpinSpeed"[^>]*/)?.[0] || ''));
   check('a brightness slider for the lines, in the thinking pane and the big viewer, shared', /id="mindCubeLines"/.test(ix) && /id="watchLines"/.test(wh) && /bob-fnri-lines/.test(mc) && /bob-fnri-lines/.test(wj));

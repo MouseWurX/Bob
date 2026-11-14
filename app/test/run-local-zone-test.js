@@ -2,6 +2,7 @@
 // no zone name and ran an hour off; Bob fell back to UTC. Now Windows' own offset (registry) wins, and Bob never
 // uses UTC on a computer whose clock isn't UTC. Everything here is faked: no real registry, no real clock zone.
 import { pickZone, zoneOffset, zoneForOffset, windowsZone, applyZone, WIN_TO_IANA } from '../src/local-zone.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -57,7 +58,7 @@ check('the logbook stamp reads 21:30 the day before', /2026-11-11.*21:30/.test(s
 {
   const fs = await import('node:fs');
   const read = (f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8');
-  const cellar = read('../public/cellar.js'), server = read('../src/server.js');
+  const cellar = publicText('cellar.js'), server = read('../src/server.js');
   check('Settings shows the time zone as a read-only line, with the time there now', /srow\('Time zone', zoneLine\(settings\)/.test(cellar) && /timeZone: z, hour: '2-digit'/.test(cellar) && !/data-set="timeZone"/.test(cellar));
   check('the settings read gives the zone and whether it was set by hand', /timeZone: cfg\.timeZone \|\| '', timeZoneSet: cfg\.timeZoneSet === true/.test(server));
   check("Bob's own list of his settings names the zone", /`Time zone: \$\{cfg\.timeZone \|\| 'not read yet'\}/.test(read('../src/self-help.js')));

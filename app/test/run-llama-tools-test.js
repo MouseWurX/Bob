@@ -1,7 +1,7 @@
 // llama.cpp's helper programs in Bob: finding them, gguf-split (brains in parts), llama-bench (the standard speed
 // test), ggml-rpc-server (Bob-Net: lend my graphics card / spread big brains) and llama-diffusion-cli (diffusion
 // brains). Nothing here runs a real program or reads the real computer: tools, folders, networks and processes are fakes.
-import { labText } from './source-text.js';
+import { labText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,7 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { findTool, toolDirs, exeFor, runTool, missingWords, isDiffusion } from '../src/llama-tools.js';
 import { partsOf, joinedName, joinArgs, splitArgs, needsSplitForUpload, joinParts } from '../src/lab-split.js';
 import { benchArgs, readBench, benchLine, benchBrain } from '../src/lab-bench.js';
-import { CardLender, CardBorrower, wantsSpread, lendCardOn, lendCardRoute, RPC_PORT, INNER_PORT, admit, isHomeIp, pickHome, homeIps, openGate, udpRelay, scutOn, scutMbps, scutEnv, SCUT_MBPS, findOwnBrain, cleanBrain, cardStoreDir } from '../src/share-card.js';
+import { CardLender, CardBorrower, wantsSpread, lendCardOn, lendCardRoute, RPC_PORT, INNER_PORT, admit, isHomeIp, pickHome, homeIps, openGate, udpRelay, scutOn, scutMbps, scutEnv, SCUT_MBPS, findOwnBrain, cleanBrain, cardStoreDir, headHash } from '../src/share-card.js';
+import { LlamaCpp } from '../src/llamacpp.js';
 import { cleanSharePatch, shareView, Lenders } from '../src/share-brains.js';
 import { cleanPhonePatch, phoneView } from '../src/phone-access.js';
 import { diffusionArgs, readFrames } from '../src/lab-diffusion.js';
@@ -50,7 +51,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   ok(/ver="\$1"; tag="\$2"; file="\$3"/.test(pub) && /rel="brain-engine-\$ver"/.test(pub) && /Brain Engine \$\{ver#v\} \(Brain Engine \$\{ver%%b\*\} on llama\.cpp \$tag/.test(pub), 'publish.sh names the release by Brain Engine\'s own version');
   const pkg = JSON.parse(read(path.join(here, '..', 'package.json')));
   ok(Number.isInteger(pkg.bob.brainEngineVersion) && pkg.bob.brainEngineVersion >= 3, 'package.json carries Brain Engine\'s own version number');
-  const cel = read(path.join(here, '..', 'public', 'cellar.js'));
+  const cel = publicText('cellar.js');
   ok(/brain-engine-v\(\\d\+\)\$/.test(cel) && /built on llama\.cpp \$\{e\.basedOn\}/.test(cel), 'Settings, Engines says "version N, built on llama.cpp bNNNN", not the file tag');
   const readme = read(path.join(here, '..', 'engine', 'README.md'));
   ok(/ggml-rpc-server/.test(readme) && /llama-diffusion-cli/.test(readme) && /Tailscale/.test(readme), 'Brain Engine README: lists the new tools and how the card server is kept to Tailscale');
@@ -130,7 +131,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   const cfg = { configFile: file, remote: { enabled: true, passcode: 'secret-1' }, share: {}, gpuVramGB: 16 };
   ok(!lendCardOn(cfg) && shareView(cfg).lendCard === false && shareView(cfg).spread === 'off', 'card: both off to start with');
   let p = cleanSharePatch(cfg, { lendCard: true });
-  ok(p.share.lendCard === true, 'card: Lend my graphics card switches on');
+  ok(p.share.lendCard === true, 'card: Lend my GPU switches on');
   ok(cleanSharePatch(cfg, { spread: 'sideways' }).error, 'card: an unknown spread choice is refused');
   ok(/Add one of your other Bobs/.test(cleanSharePatch(cfg, { spread: 'big' }).error || ''), 'card: spreading needs a Bob on the list');
   ok(shareView(cfg).mode === 'more', 'mode: More Bobs to start with');
@@ -160,8 +161,8 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   const gates = [];
   const gate = async (o) => { const g = { ...o, open: true, close() { g.open = false; } }; gates.push(g); return g; };
   const H = (...x) => x.join('.'); // home-network addresses, built so no real one sits in the file
-  const myHome = [{ address: H(192, 168, 4, 185), netmask: '255.255.255.0' }];
-  const lender = new CardLender(cfg, { spawnFn, tool: () => ({ found: true, path: '/be/ggml-rpc-server' }), ips: () => ['100.101.1.2'], home: () => myHome, gate, gaming: () => gamingNow });
+  const myHome = [{ address: H(172, 16, 9, 185), netmask: '255.255.255.0' }];
+  const lender = new CardLender(cfg, { spawnFn, tool: () => ({ found: true, path: '/be/ggml-rpc-server' }), ips: () => ['100.101.1.2'], home: () => myHome, gate, gaming: () => gamingNow, readCard: async () => null, graceMs: 30 });
   let r = await lender.open({ localAddr: H(192, 168, 1, 5), remoteAddr: H(192, 168, 1, 6) });
   ok(!r.ok && r.why === 'not tailscale' && !spawned.length, 'card: the asking only comes through the Tailscale door');
   r = await lender.open({ localAddr: '::ffff:100.104.9.9', remoteAddr: '100.102.0.7' });
@@ -172,21 +173,29 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   ok(gates.length === 1 && gates[0].host === '100.101.1.2' && gates[0].allow === '100.102.0.7' && gates[0].port === RPC_PORT, 'card: the gate lets in only the Bob that asked');
   r = await lender.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7' });
   ok(r.ok && spawned.length === 1, 'card: asked again, the same server carries on');
-  r = await lender.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', home: [H(192, 168, 4, 189)] });
-  ok(r.ok && r.via === 'home' && r.host === H(192, 168, 4, 185) && gates.at(-1).allow === H(192, 168, 4, 189) && !gates[0].open, 'card: on the same home network, the gate moves there, for that Bob only');
+  r = await lender.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', home: [H(172, 16, 9, 189)] });
+  ok(r.ok && r.via === 'home' && r.host === H(172, 16, 9, 185) && gates.at(-1).allow === H(172, 16, 9, 189) && !gates[0].open, 'card: on the same home network, the gate moves there, for that Bob only');
   r = await lender.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', home: [H(10, 0, 0, 9), '8.8.8.8'] });
   ok(r.ok && r.via === 'tailscale', 'card: a different home network, or a public address, stays on Tailscale');
   {
-    // 1.5.210 (Go Wi-Fi test): a lender holding its own brain lets it go before the lend starts.
+    // Nov 13 (the PC borrowed the Go's card and the Go's own brain went, unasked): a lender holding its own brain
+    // says no, unless "Lending may unload my brain" is on there; then it lets it go first (1.5.210), and says so.
     let freed = 0; const said = [];
-    const holder = new CardLender(cfg, { spawnFn, tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome, gate, freeOwn: async () => { freed++; return true; }, log: (k, t) => said.push(t) });
+    const no = new CardLender(cfg, { spawnFn, tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome, gate, holdsOwn: () => true, freeOwn: async () => { freed++; return true; }, log: (k, t) => said.push(t) });
+    const r0 = await no.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.9', from: 'tower' });
+    ok(!r0.ok && r0.why === 'own brain' && freed === 0 && said.some((t) => /said no to tower, my own brain is loaded/.test(t)), 'card: a lender holding its own brain says no, and its brain stays');
+    const { LEND_NO } = await import('../src/share-card.js');
+    ok(/its own brain is loaded/.test(LEND_NO['own brain']), 'card: the asking Bob names why in its logbook');
+    const holder = new CardLender({ ...cfg, share: { ...cfg.share, lendFreesOwn: true } }, { spawnFn, tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome, gate, holdsOwn: () => true, freeOwn: async () => { freed++; return true; }, log: (k, t) => said.push(t) });
     const rr = await holder.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.9' });
-    ok(rr.ok && freed === 1 && said.some((t) => /let go of my own brain first/.test(t)), 'card: a lender holding its own brain lets it go first, and says so');
+    ok(rr.ok && freed === 1 && said.some((t) => /let go of my own brain first/.test(t)), 'card: with "Lending may unload my brain" on, it lets it go first, and says so');
     holder.close();
+    const { cleanSharePatch } = await import('../src/share-brains.js');
+    ok(cleanSharePatch({ share: {} }, { lendFreesOwn: true }).share?.lendFreesOwn === true && cleanSharePatch({ share: {} }, {}).share?.lendFreesOwn === false, 'card: "Lending may unload my brain" is saved, and off unless switched on');
   }
   {
     const noHome = new CardLender({ ...cfg, share: { ...cfg.share, homeNet: false } }, { spawnFn, tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome, gate });
-    ok((await noHome.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', home: [H(192, 168, 4, 189)] })).via === 'tailscale', 'card: Use the home network first off, Tailscale only');
+    ok((await noHome.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', home: [H(172, 16, 9, 189)] })).via === 'tailscale', 'card: Home network first off, Tailscale only');
     noHome.close();
   }
   ok(admit('100.102.0.7', '::ffff:100.102.0.7') && !admit('100.102.0.7', '100.102.0.8') && !admit('', '100.102.0.7'), 'card: the gate turns everyone else away');
@@ -207,7 +216,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   ok(gates.every((g) => g.udp === false), 'SCUT: off, the gate opens no UDP side');
   {
     const on = { ...cfg, share: { ...cfg.share, scut: true } };
-    ok(scutMbps(on) === 100 && scutMbps({ share: { scutMbps: 300 } }) === 300 && scutMbps({ share: { scutMbps: 9999 } }) === 100 && scutMbps({ share: { scutMbps: 400 } }) === 400 && SCUT_MBPS.join() === '50,100,300,400', 'SCUT: the speed cap is 50, 100, 300 or 400 Mbit/s, 100 unless picked');
+    ok(scutMbps(on) === 100 && scutMbps({ share: { scutMbps: 300 } }) === 300 && scutMbps({ share: { scutMbps: 9999 } }) === 100 && scutMbps({ share: { scutMbps: 400 } }) === 400 && SCUT_MBPS.join() === '50,100,300,400,1000', 'SCUT: the speed cap is 50, 100, 300, 400 or 1000 Mbit/s, 100 unless picked (or a cable)');
     const e = scutEnv(on, { lend: true });
     ok(e.GGML_RPC_SCUT === '1' && e.GGML_RPC_SCUT_MBPS === '100' && e.GGML_RPC_SCUT_PUBLIC_PORT === String(RPC_PORT) && !('GGML_RPC_SCUT_PUBLIC_PORT' in scutEnv(on)), 'SCUT: the lent card names the gate\'s port in its offer; the borrowing engine only switches it on');
     const sp = [], gs = [];
@@ -243,19 +252,43 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     r3 = await l3.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', brain });
     ok(r3.ok && r3.seeded === 'no room' && runs.length === 1, 'send early: never when the disk would be left with less than 10 GB; the brain just comes over the network');
     l3.close();
+    fs.rmSync(path.join(dir, 'seeded-brains.json'), { force: true });
     l3 = mk({ ...on, share: { ...on.share, scut: false } });
     r3 = await l3.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', brain });
-    ok(r3.ok && !r3.seeded && runs.length === 1, 'send early: off with SCUT off');
+    ok(r3.ok && r3.seeded === 'seeded' && runs.length === 2, 'send early: with SCUT off too (2026-11-14: the card store is the engine\'s own, not SCUT\'s)');
     l3.close();
+    // 2026-11-14 (the owner: "use the model files that are on each device natively"): a copy under another name, or in
+    // another folder of Bob's brains, counts when its size and first-megabyte fingerprint match.
+    {
+      const HEAD_LEN = 1 << 20;
+      const other = path.join(dir, 'models', 'bob', 'lab', 'deep', 'renamed-by-me.gguf');
+      fs.mkdirSync(path.dirname(other), { recursive: true });
+      const body = Buffer.alloc(HEAD_LEN + 10, 7); fs.writeFileSync(other, body);
+      const twin = path.join(tmp, 'asker-copy.gguf'); fs.writeFileSync(twin, body);
+      const head = headHash(twin);
+      ok(/^[0-9a-f]{64}$/.test(head) && head === headHash(other) && headHash(path.join(tmp, 'nope.gguf')) === '', 'own copy: the fingerprint is the same for the same file, and empty for a missing one');
+      ok(findOwnBrain(on, { file: 'asker-name-Q4.gguf', bytes: body.length, head }) === other, 'own copy: found under another name, three folders deep, by size and fingerprint');
+      ok(!findOwnBrain(on, { file: 'asker-name-Q4.gguf', bytes: body.length }), 'own copy: an older Bob sends no fingerprint, so only the same name counts, as before');
+      ok(!findOwnBrain(on, { file: 'asker-name-Q4.gguf', bytes: body.length, head: 'f'.repeat(64) }), 'own copy: the same size with a different start is not taken');
+      ok(findOwnBrain(on, { file: 'big-brain-Q4.gguf', bytes: 4096, head: headHash(brainFile) }) === brainFile, 'own copy: the same name still wins first');
+      ok(cleanBrain({ file: 'x.gguf', bytes: 5, head }).head === head && !('head' in cleanBrain({ file: 'x.gguf', bytes: 5, head: '<x>' })), 'own copy: only a real fingerprint is taken from the asker');
+      const outside = path.join(tmp, 'not-a-brain-folder', 'renamed.gguf'); fs.mkdirSync(path.dirname(outside), { recursive: true }); fs.writeFileSync(outside, Buffer.alloc(HEAD_LEN + 20, 9));
+      ok(!findOwnBrain(on, { file: 'q.gguf', bytes: HEAD_LEN + 20, head: headHash(outside) }), 'own copy: never looked for outside Bob\'s brain folders');
+      fs.rmSync(path.join(dir, 'seeded-brains.json'), { force: true });
+      const l4 = mk({ ...on, share: { ...on.share, scut: false } });
+      const r4 = await l4.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', brain: { file: 'asker-name-Q4.gguf', bytes: body.length, head } });
+      ok(r4.seeded === 'seeded' && runs.at(-1).join(' ') === `--seed ${other} -c`, 'own copy: the lender loads the renamed copy before the card server starts');
+      l4.close();
+    }
     const sent = [];
     const one = { bobs: () => [{ name: 'Go', address: '100.102.0.7:7777' }], call: async (bob, p, o) => { sent.push(o); return { ok: true, json: async () => ({ ok: true, host: '100.102.0.7', port: RPC_PORT }) }; } };
     const b1 = new CardBorrower({ ...on, share: { ...on.share, spread: 'toobig' }, gpuVramGB: 16 }, one, { home: () => [] });
     await b1.open({ sizeGB: 200, file: brainFile });
-    ok(sent[0].body.brain?.file === 'big-brain-Q4.gguf' && sent[0].body.brain.bytes === 4096 && sent[0].timeout > 60000, 'send early: with SCUT on, the borrower names the brain (file name and size only) and waits while it loads');
+    ok(sent[0].body.brain?.file === 'big-brain-Q4.gguf' && sent[0].body.brain.bytes === 4096 && sent[0].body.brain.head === headHash(brainFile) && sent[0].timeout > 60000, 'send early: the borrower names the brain (file name, size and fingerprint only) and waits while it loads');
     b1.close(); sent.length = 0;
     const b2 = new CardBorrower({ share: { spread: 'toobig' }, gpuVramGB: 16 }, one, { home: () => [] });
     await b2.open({ sizeGB: 200, file: brainFile });
-    ok(!('brain' in sent[0].body) && sent[0].timeout === 8000, 'send early: with SCUT off, nothing about the brain is sent');
+    ok(sent[0].body.brain?.file === 'big-brain-Q4.gguf' && sent[0].timeout > 60000, 'send early: with SCUT off too (2026-11-14)');
     b2.close();
     // 1.5.210 (PC test): a Bob that won't lend is named in the logbook with why, instead of a quiet load here.
     const said = [];
@@ -278,17 +311,74 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     ok(await ask(relay.port) === '' && seen.some((x) => /turned away UDP/.test(x)), 'SCUT gate: anyone else\'s UDP is turned away');
     relay.close(); card.close();
   }
-  ok(/if \(helpers\.length\) env = \{ \.\.\.env, \.\.\.scutEnv\(this\.cfg\)[, }]/.test(read(path.join(here, '..', 'src', 'llamacpp.js'))), 'SCUT: the engine that spreads a brain switches it on only with helpers');
+  ok(/if \(helpers\.length\) env = \{ \.\.\.env, \.\.\.scutEnv\(this\.cfg[,)]/.test(read(path.join(here, '..', 'src', 'llamacpp.js'))), 'SCUT: the engine that spreads a brain switches it on only with helpers');
   ok(isHomeIp(H(192, 168, 0, 1)) && isHomeIp(H(10, 1, 2, 3)) && isHomeIp(H(172, 20, 0, 1)) && !isHomeIp(H(172, 32, 0, 1)) && !isHomeIp('100.101.1.2') && !isHomeIp('8.8.8.8'), 'card: what counts as a home-network address');
-  ok(pickHome(myHome, [H(192, 168, 5, 9)]) === null && pickHome(myHome, [H(192, 168, 4, 9)]).peer === H(192, 168, 4, 9), 'card: same home network means same subnet');
-  ok(homeIps({ eth: [{ family: 'IPv4', address: H(192, 168, 4, 185), netmask: '255.255.255.0', internal: false }], ts: [{ family: 'IPv4', address: '100.101.1.2', netmask: '255.192.0.0' }], lo: [{ family: 'IPv4', address: '127.0.0.1', internal: true }] }).map((x) => x.address).join() === H(192, 168, 4, 185), 'card: this machine\'s home-network addresses leave out Tailscale and loopback');
+  ok(pickHome(myHome, [H(192, 168, 5, 9)]) === null && pickHome(myHome, [H(172, 16, 9, 9)]).peer === H(172, 16, 9, 9), 'card: same home network means same subnet');
+  ok(homeIps({ eth: [{ family: 'IPv4', address: H(172, 16, 9, 185), netmask: '255.255.255.0', internal: false }], ts: [{ family: 'IPv4', address: '100.101.1.2', netmask: '255.192.0.0' }], lo: [{ family: 'IPv4', address: '127.0.0.1', internal: true }] }).map((x) => x.address).join() === H(172, 16, 9, 185), 'card: this machine\'s home-network addresses leave out Tailscale and loopback');
   gamingNow = true;
   const lastGate = gates.at(-1);
-  ok(lender.keep() === false && !lender.child && !lastGate.open, 'card: Gaming takes the card back at the next word, gate and all');
+  ok(lender.keep() === false && lender.leaving?.why === 'gaming', 'card: Gaming takes the card back at the next word (the other Bob is told)');
+  await new Promise((z) => setTimeout(z, 80));
+  ok(!lender.child && !lastGate.open, '…and a moment later the card server and the gate are gone');
+  { // 1.5.214 (the owner: "and if the memory state changes? like now, the laptop card launches a game")
+    let card = { freeMB: 2100, others: [] };
+    const L = new CardLender(cfg, { spawnFn, tool: () => ({ found: true, path: '/be/ggml-rpc-server' }), ips: () => ['100.101.1.2'], home: () => myHome, gate, readCard: async () => card, watchMs: 10, graceMs: 40 });
+    const lr = await L.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7' });
+    await new Promise((z) => setTimeout(z, 40));
+    ok(lr.ok && L.child && !L.leaving, 'card watch: a lent card with its usual room left stays lent');
+    card = { freeMB: 1900, others: [{ name: 'rpc-server', mb: 9000 }, { name: 'eldenring', mb: 3000 }] };
+    await new Promise((z) => setTimeout(z, 40));
+    ok(/eldenring/.test(L.leaving?.why || '') && L.keep() === false, 'card watch: a game starting on the lent card takes it back');
+    const said = await lendCardRoute(L, { socket: {} }, { action: 'keep' });
+    ok(said.body.ok === false && /eldenring started on the card/.test(said.body.leaving), 'card watch: the asking Bob is told why on his next keep');
+    await new Promise((z) => setTimeout(z, 80));
+    ok(!L.child, 'card watch: the card server stops after the grace, so the game gets its memory');
+    card = { freeMB: 2100, others: [] };
+    await L.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7' });
+    await new Promise((z) => setTimeout(z, 30));
+    card = { freeMB: 300, others: [] };
+    await new Promise((z) => setTimeout(z, 40));
+    ok(/only 300 MB left/.test(L.leaving?.why || ''), 'card watch: free card memory running low takes it back too');
+    L.close();
+    // 1.5.214 card test: SCUT's cap on a cable, built-in graphics, and the room a lend just let go of.
+    ok(scutMbps({ share: { scutMbps: 100 } }, { wired: true }) === 1000 && scutMbps({ share: { scutMbps: 100 } }) === 100 && scutMbps({ share: { scutMbps: 100, scutMbpsChosen: true } }, { wired: true }) === 100 && scutMbps({ share: { scutMbps: 400 } }, { wired: true }) === 400, 'SCUT Auto: 1000 on a cable, 100 on Wi-Fi; a picked cap always wins');
+    let freeNow = 6 * 2 ** 30;
+    const apu = new CardLender({ ...cfg, sharedGraphics: true }, { spawnFn, tool: () => ({ found: true, path: '/be/ggml-rpc-server' }), ips: () => ['100.101.1.2'], home: () => myHome, gate, readCard: async () => null, freeMem: () => freeNow, watchMs: 10, graceMs: 40 });
+    ok((await apu.squeezed()) === '', 'card watch, built-in graphics: the lend\'s own memory use doesn\'t count as a squeeze');
+    freeNow = 600 * 2 ** 20;
+    ok(/600 MB of memory left/.test(await apu.squeezed()), 'card watch, built-in graphics: a machine nearly out of memory gives the card back');
+    ok(/if \(this\.cfg\.sharedGraphics === true\)/.test(read(path.join(here, '..', 'src', 'share-card.js'))) && /hadLend && room && room\.roomMB < LEND_MIN_MB && t < this\.roomWaitMs/.test(read(path.join(here, '..', 'src', 'share-card.js'))), 'lend, built-in graphics: memory a lend just let go of is waited for before saying no');
+    ok(/scutEnv\(this\.cfg, \{ lend: true, wired: bothWired \}\)/.test(read(path.join(here, '..', 'src', 'share-card.js'))) && /scutEnv\(this\.cfg, \{ wired: Boolean\(this\.spread\?\.allWired\?\.\(\)\) \}\)/.test(read(path.join(here, '..', 'src', 'llamacpp.js'))), 'SCUT Auto: both ends start with the cable cap when the road is a cable');
+    { // both ends on a cable (the owner: "100 was our test standard for safety, to not overcrowd the network")
+      const envs = [];
+      const sp = (exe, args, opts = {}) => { envs.push(opts.env || {}); return spawnFn(exe, args, opts); };
+      const W = new CardLender({ ...cfg, share: { ...cfg.share, scut: true } }, { spawnFn: sp, tool: () => ({ found: true, path: '/be/ggml-rpc-server' }), ips: () => ['100.101.1.2'], home: () => myHome, gate, readCard: async () => null, linkKind: () => 'cable' });
+      let w = await W.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', home: [H(172, 16, 9, 189)], wired: [H(172, 16, 9, 189)] });
+      ok(w.ok && w.wired === true && envs.at(-1).GGML_RPC_SCUT_MBPS === '1000', 'SCUT Auto: a cable at both ends lifts the cap to 1000');
+      W.close();
+      w = await W.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', home: [H(172, 16, 9, 189)], wired: [] });
+      ok(w.ok && !w.wired && envs.at(-1).GGML_RPC_SCUT_MBPS === '100', 'SCUT Auto: the other end on Wi-Fi keeps 100');
+      W.close();
+    }
+    // The asking Bob: hears it, marks that Bob down, and the engine loads again without his card.
+    const lost = [];
+    const B = new CardBorrower({ share: {} }, { bobs: () => [], call: async () => ({ ok: true, status: 200, json: async () => ({ ok: false, leaving: 'eldenring started on the card' }) }) }, { log: (k, t) => lost.push(t) });
+    const u = { bob: { name: 'laptop', address: '100.102.0.7:7777' }, via: 'tailscale', at: '100.102.0.7:50052' };
+    B.using = [u]; B.onLost = (x) => lost.push(x);
+    await B.keepAll();
+    ok(lost.includes(u) && B.down.get(u.bob.address) > Date.now() && lost.some((t) => /laptop needs his graphics card back \(eldenring/.test(String(t))), 'borrower: a card taken back is named in the logbook, that Bob is skipped for a while, and the engine is told');
+    const eng = { current: 'riker', spreadNow: true, active: 1, reloadWanted: new Set(), currentCtx: 8192, log: () => {}, loads: 0, preload: async function () { this.loads++; } };
+    eng.reloadWithout = LlamaCpp.prototype.reloadWithout;
+    LlamaCpp.prototype.cardTakenBack.call(eng);
+    ok(eng.reloadWanted.has('riker') && eng.cardBackPending && eng.loads === 0, 'engine: mid-reply, the reload waits so the reply isn\'t cut');
+    ok(/if \(this\.cardBackPending && this\.active === 0\) this\.reloadWithout\(\)/.test(read(path.join(here, '..', 'src', 'llamacpp.js'))), 'engine: …and runs as soon as the reply is done');
+    eng.active = 0; eng.cardBackPending = false; LlamaCpp.prototype.cardTakenBack.call(eng);
+    ok(eng.loads === 1, 'engine: when idle, it loads again at once (on the other lent cards, or here)');
+  }
   r = await lender.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7' });
   ok(!r.ok && r.why === 'gaming', 'card: says no while gaming');
   gamingNow = false;
-  const res = await lendCardRoute(lender, { socket: { localAddress: '100.101.1.2', remoteAddress: '100.102.0.7' } }, { action: 'open', home: [H(192, 168, 4, 189)] });
+  const res = await lendCardRoute(lender, { socket: { localAddress: '100.101.1.2', remoteAddress: '100.102.0.7' } }, { action: 'open', home: [H(172, 16, 9, 189)] });
   ok(res.status === 200 && res.body.ok && res.body.via === 'home', 'card: the route opens it, home network first');
   await lendCardRoute(lender, {}, { action: 'close' });
   ok(!lender.child && !gates.at(-1).open, 'card: the route closes it');
@@ -316,10 +406,10 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   ok(!(await new CardBorrower(bcfg, sneaky, { home: () => [] }).open({ sizeGB: 200 })).length, 'spread: a card server on another address than the Bob we reach is never used');
   {
     const sent = [];
-    const homeBob = { bobs: () => [bobs[0]], call: async (bob, p, o) => { sent.push(o.body); if (o.body.action !== 'open') return { ok: true, json: async () => ({ ok: true }) }; return { ok: true, json: async () => (o.body.home.length ? { ok: true, host: H(192, 168, 4, 189), port: RPC_PORT, via: 'home' } : { ok: true, host: '100.102.0.7', port: RPC_PORT, via: 'tailscale' }) }; } };
+    const homeBob = { bobs: () => [bobs[0]], call: async (bob, p, o) => { sent.push(o.body); if (o.body.action !== 'open') return { ok: true, json: async () => ({ ok: true }) }; return { ok: true, json: async () => (o.body.home.length ? { ok: true, host: H(172, 16, 9, 189), port: RPC_PORT, via: 'home' } : { ok: true, host: '100.102.0.7', port: RPC_PORT, via: 'tailscale' }) }; } };
     const hb = new CardBorrower(bcfg, homeBob, { home: () => myHome });
     let at2 = await hb.open({ sizeGB: 200 });
-    ok(sent[0].home.join() === H(192, 168, 4, 185) && at2[0] === `${H(192, 168, 4, 189)}:${RPC_PORT}`, 'spread: on the same home network, the card is reached over it');
+    ok(sent[0].home.join() === H(172, 16, 9, 185) && at2[0] === `${H(172, 16, 9, 189)}:${RPC_PORT}`, 'spread: on the same home network, the card is reached over it');
     hb.failed({ route: true }); sent.length = 0;
     at2 = await hb.open({ sizeGB: 200 });
     ok(!sent.find((b) => b.action === 'open').home.length && at2[0] === `100.102.0.7:${RPC_PORT}`, 'spread: the home network could not reach the card, so the next load goes over Tailscale');
@@ -332,7 +422,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     ok(!(await new CardBorrower(bcfg, far, { home: () => myHome }).open({ sizeGB: 200 })).length, 'spread: a "home network" address that isn\'t ours is never used');
     const off2 = new CardBorrower({ ...bcfg, share: { ...bcfg.share, homeNet: false } }, homeBob, { home: () => myHome }); sent.length = 0;
     await off2.open({ sizeGB: 200 });
-    ok(!sent[0].home.length, 'spread: Use the home network first off, no home address is offered'); off2.close();
+    ok(!sent[0].home.length, 'spread: Home network first off, no home address is offered'); off2.close();
   }
   const llamacpp = read(path.join(here, '..', 'src', 'llamacpp.js'));
   ok(/args\.push\('--rpc', helpers\.join\(','\)/.test(llamacpp) && /this\.spread\?\.close\(\)/.test(llamacpp), 'spread: the engine adds --rpc and hands the cards back when the brain goes');
@@ -350,27 +440,27 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   }
 }
 
-// ---- Also over the home network (the door) ----
+// ---- Home network access (the door) ----
 {
   const H = (...x) => x.join('.');
-  const myHome = [{ address: H(192, 168, 4, 185), netmask: '255.255.255.0' }];
-  ok(cleanPhonePatch({ port: 7777, remote: { enabled: true, passcode: 'secret-1', hosts: ['100.101.1.2:7777'] } }, {}).remote.homeNet === false, 'home door: off to start with');
+  const myHome = [{ address: H(172, 16, 9, 185), netmask: '255.255.255.0' }];
+  ok(cleanPhonePatch({ port: 7777, remote: { enabled: true, passcode: 'secret-1', hosts: ['100.101.1.2:7777'] } }, {}).remote.homeNet === true, 'home door: on to start with (1.5.214, home network first)');
   ok(cleanPhonePatch({ port: 7777, remote: { enabled: true, passcode: 'secret-1', hosts: ['100.101.1.2:7777'] } }, { homeNet: true }).remote.homeNet === true, 'home door: switches on');
   ok(phoneView({ port: 7777, remote: { homeNet: true } }).homeNet === true, 'home door: Settings shows it');
   const urls = [];
   let nearUp = true;
   const fetchFn = async (url, o) => {
     urls.push(url);
-    if (url.includes(H(192, 168)) && !nearUp) throw new TypeError('fetch failed');
-    if (url.endsWith('/api/lend/hello')) return { ok: true, status: 200, json: async () => ({ lend: true, brain: 'x', home: [`${H(192, 168, 4, 189)}:7777`, '8.8.8.8:7777'] }) };
+    if (url.includes(H(172, 16, 9)) && !nearUp) throw new TypeError('fetch failed');
+    if (url.endsWith('/api/lend/hello')) return { ok: true, status: 200, json: async () => ({ lend: true, brain: 'x', home: [`${H(172, 16, 9, 189)}:7777`, '8.8.8.8:7777'] }) };
     return { ok: true, status: 200, json: async () => ({}) };
   };
   const ls = new Lenders({ share: { borrow: { bobs: [] } } }, { fetchFn, home: () => myHome });
   const go = { name: 'Go', address: '100.102.0.7:7777', passcode: 'secret-2' };
   await ls.hello(go, { force: true });
-  ok(urls[0] === 'http://100.102.0.7:7777/api/lend/hello' && ls.nearOf(go) === `${H(192, 168, 4, 189)}:7777`, 'home door: the first hello goes over Tailscale and learns his home-network door');
+  ok(urls[0] === 'http://100.102.0.7:7777/api/lend/hello' && ls.nearOf(go) === `${H(172, 16, 9, 189)}:7777`, 'home door: the first hello goes over Tailscale and learns his home-network door');
   urls.length = 0; await ls.call(go, '/api/lend/hello');
-  ok(urls[0] === `http://${H(192, 168, 4, 189)}:7777/api/lend/hello`, 'home door: then the home network goes first');
+  ok(urls[0] === `http://${H(172, 16, 9, 189)}:7777/api/lend/hello`, 'home door: then the home network goes first');
   nearUp = false; urls.length = 0; await ls.call(go, '/api/lend/hello');
   ok(urls.length === 2 && urls[1].startsWith('http://100.102.0.7:7777') && ls.nearOf(go) === '', 'home door: home network not answering, Tailscale is the backup, and home waits a while');
   const ls2 = new Lenders({}, { fetchFn: async () => ({ ok: true, status: 200, json: async () => ({ lend: true, home: [`${H(10, 0, 0, 5)}:7777`, '8.8.8.8:7777'] }) }), home: () => myHome });
@@ -378,18 +468,18 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   ok(ls2.nearOf(go) === '', 'home door: another network\'s address, or a public one, is never used');
   {
     // Two shared networks (Wi-Fi and a cable between them): each path is timed and the quickest wins, for the door and for a lent card.
-    const both = [{ address: H(192, 168, 4, 185), netmask: '255.255.255.0' }, { address: H(10, 77, 0, 1), netmask: '255.255.255.0' }];
+    const both = [{ address: H(172, 16, 9, 185), netmask: '255.255.255.0' }, { address: H(10, 77, 0, 1), netmask: '255.255.255.0' }];
     const timed = [];
     const trip = async ({ host }) => { timed.push(host); return host === H(10, 77, 0, 3) ? 0.4 : 30; };
-    const l3 = new Lenders({ share: { borrow: { bobs: [go] } } }, { home: () => both, trip, fetchFn: async () => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ lend: true, home: [`${H(192, 168, 4, 189)}:7777`, `${H(10, 77, 0, 3)}:7777`] }) }) });
+    const l3 = new Lenders({ share: { borrow: { bobs: [go] } } }, { home: () => both, trip, fetchFn: async () => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ lend: true, home: [`${H(172, 16, 9, 189)}:7777`, `${H(10, 77, 0, 3)}:7777`] }) }) });
     await l3.hello(go, { force: true });
     ok(l3.nearOf(go) === `${H(10, 77, 0, 3)}:7777` && l3.nearMine.get(go.address)[0] === H(10, 77, 0, 1) && timed.length === 6, 'home door: with Wi-Fi and a cable both shared, the quicker path is used');
     await l3.hello(go, { force: true });
     ok(timed.length === 6, 'home door: the paths aren\'t timed again at every hello');
-    const dead = new Lenders({ share: { borrow: { bobs: [go] } } }, { home: () => both, trip: async ({ host }) => (host === H(10, 77, 0, 3) ? null : 30), fetchFn: async () => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ lend: true, home: [`${H(10, 77, 0, 3)}:7777`, `${H(192, 168, 4, 189)}:7777`] }) }) });
+    const dead = new Lenders({ share: { borrow: { bobs: [go] } } }, { home: () => both, trip: async ({ host }) => (host === H(10, 77, 0, 3) ? null : 30), fetchFn: async () => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ lend: true, home: [`${H(10, 77, 0, 3)}:7777`, `${H(172, 16, 9, 189)}:7777`] }) }) });
     await dead.hello(go, { force: true });
-    ok(dead.nearOf(go) === `${H(192, 168, 4, 189)}:7777`, 'home door: a path that doesn\'t answer loses to one that does');
-    ok(pickHome(both, [H(10, 77, 0, 3), H(192, 168, 4, 189)]).host === H(10, 77, 0, 1) && pickHome(both, [H(192, 168, 4, 189), H(10, 77, 0, 3)]).host === H(192, 168, 4, 185), 'card: the asker\'s order decides which shared network the gate opens on');
+    ok(dead.nearOf(go) === `${H(172, 16, 9, 189)}:7777`, 'home door: a path that doesn\'t answer loses to one that does');
+    ok(pickHome(both, [H(10, 77, 0, 3), H(172, 16, 9, 189)]).host === H(10, 77, 0, 1) && pickHome(both, [H(172, 16, 9, 189), H(10, 77, 0, 3)]).host === H(172, 16, 9, 185), 'card: the asker\'s order decides which shared network the gate opens on');
     let asked = null;
     const cb = new CardBorrower({ share: { spread: 'toobig' }, gpuVramGB: 16 }, { bobs: () => [go], nearMine: l3.nearMine, call: async (b, p, o) => { asked = o.body.home; return { ok: true, json: async () => ({ ok: false, why: 'off' }) }; } }, { home: () => both });
     await cb.open({ sizeGB: 200 });
@@ -397,8 +487,8 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   }
   {
     let sends = 0;
-    const slow = new Lenders({}, { fetchFn: async (url) => { if (url.includes(H(192, 168))) { sends++; const e = new Error('timeout'); e.name = 'TimeoutError'; throw e; } sends++; return { ok: true, status: 200 }; }, home: () => myHome });
-    slow.near.set(go.address, `${H(192, 168, 4, 189)}:7777`);
+    const slow = new Lenders({}, { fetchFn: async (url) => { if (url.includes(H(172, 16, 9))) { sends++; const e = new Error('timeout'); e.name = 'TimeoutError'; throw e; } sends++; return { ok: true, status: 200 }; }, home: () => myHome });
+    slow.near.set(go.address, `${H(172, 16, 9, 189)}:7777`);
     let threw = false; try { await slow.call(go, '/api/borrow/job', { method: 'POST', body: { a: 1 } }); } catch { threw = true; }
     ok(threw && sends === 1, 'home door: a sent job that timed out over the home network is never sent twice');
   }
@@ -407,14 +497,14 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   const cfg = { configFile: file, remote: { enabled: true, passcode: 'secret-1', homeNet: true }, share: { lendCard: true } };
   const gates = [];
   const lender = new CardLender(cfg, { spawnFn: (exe, args) => { const c = new EventEmitter(); c.stdout = new EventEmitter(); c.stderr = new EventEmitter(); c.exitCode = null; c.kill = () => { c.exitCode = 0; }; setTimeout(() => c.stderr.emit('data', 'Starting RPC server\n'), 2); return c; }, tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome, gate: async (o) => { gates.push(o); return { close() {} }; } });
-  const r = await lender.open({ localAddr: H(192, 168, 4, 185), remoteAddr: H(192, 168, 4, 189) });
-  ok(r.ok && r.via === 'home' && gates[0].allow === H(192, 168, 4, 189), 'home door: a card asked for over the home network opens there, for that Bob only');
+  const r = await lender.open({ localAddr: H(172, 16, 9, 185), remoteAddr: H(172, 16, 9, 189) });
+  ok(r.ok && r.via === 'home' && gates[0].allow === H(172, 16, 9, 189), 'home door: a card asked for over the home network opens there, for that Bob only');
   lender.close();
-  const shut = new CardLender({ ...cfg, remote: { ...cfg.remote, homeNet: false } }, { tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome });
-  ok((await shut.open({ localAddr: H(192, 168, 4, 185), remoteAddr: H(192, 168, 4, 189) })).why === 'not tailscale', 'home door: with it off, nothing over the home network');
+  const shut = new CardLender({ ...cfg, remote: { ...cfg.remote, homeNet: false, homeNetChosen: true } }, { tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome });
+  ok((await shut.open({ localAddr: H(172, 16, 9, 185), remoteAddr: H(172, 16, 9, 189) })).why === 'not tailscale', 'home door: with it off, nothing over the home network');
   const server = read(path.join(here, '..', 'src', 'server.js'));
-  ok(/p\.startsWith\('\/api\/pair\/'\) && !fromTailscaleOrLocal\(req\.socket\.remoteAddress\)\) return send\(res, 403/.test(server), 'home door: pairing stays on Tailscale only');
-  ok(/remoteHome && homeIps\(\)\.some\(\(m\) => sameNet\(m\.address, addr, m\.netmask\)/.test(server), 'home door: only this replicant matrix\'s own home network, never wider');
+  ok(/p\.startsWith\('\/api\/pair\/'\) && !fromAllowed\(req\.socket\.remoteAddress\)\) return send\(res, 403/.test(server), 'home door: pairing over Tailscale, or this home network with the switch on');
+  ok(/remoteHome && doorIps\(\)\.some\(\(m\) => sameNet\(m\.address, addr, m\.netmask\)/.test(server), 'home door: only this replicant matrix\'s own home network, never wider');
 }
 
 // ---- diffusion brains ----

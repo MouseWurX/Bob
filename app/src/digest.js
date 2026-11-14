@@ -1,4 +1,4 @@
-// "A Sunday digest" (Settings, How Bob works; Nov 11 list, item 93; off unless the user turns it on).
+// "Sunday digest" (Settings, How Bob works; Nov 11 list, item 93; off unless the user turns it on).
 //
 // Once a week, on Sunday from 9 in the morning (or the next time Bob is open, up to Tuesday), Bob writes one short
 // note: the chats of the week, the reminders that went off, and what he noticed (his own notes and the new things he

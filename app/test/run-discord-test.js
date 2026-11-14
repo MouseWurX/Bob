@@ -70,6 +70,7 @@ b.onGateway({ op: 10, d: { heartbeat_interval: 60000 } });
 const ident = ws.sent.find((x) => x.op === 2);
 check('identifies as a bot with message intents', ident && ident.d.token === TOKEN && ident.d.intents === INTENTS && (INTENTS & (1 << 15)));
 b.onGateway({ op: 0, s: 1, t: 'READY', d: { session_id: 's1', resume_gateway_url: 'wss://gateway-us-east1-b.discord.gg', user: { id: '7', username: 'bob' } } });
+check('an @mention of this bot is an ask, like the wake phrase', b.mentionAsk('<@7> draw a cat') === 'draw a cat' && b.mentionAsk('<@!7>, hi') === 'hi' && b.mentionAsk('<@7>') === '' && b.mentionAsk('<@8> hi') === null && b.mentionAsk('hi <@7>') === null);
 check('READY: connected, bot name known', b.status === 'on' && discordView(b).botName === 'bob');
 check('the token never lands in config.json', !fs.readFileSync(configFile, 'utf8').includes(TOKEN));
 clearInterval(b.beat);
@@ -80,6 +81,9 @@ check('with no channels listed, nobody gets an answer', queue.length === 0 && po
 saveDiscord(brain.cfg, { channels: [CH] });
 await b.handle(msg('hey bob hi', { channel: OTHER_CH }));
 check('a channel not on the list is ignored', queue.length === 0);
+check('an unlisted channel is said once in the log, and Settings offers to add it', brain.logs.filter((l) => l.includes('not on my channel list')).length === 2 && discordView(b).unlisted.some((c) => c.id === OTHER_CH) && !discordView(b).unlisted.some((c) => c.id === CH));
+await b.handle(msg('hey bob again', { channel: OTHER_CH }));
+check('the same unlisted channel isn\'t logged twice', brain.logs.filter((l) => l.includes('not on my channel list')).length === 2 && queue.length === 0 && posts().length === 0);
 await b.handle(msg('hey bob hi', { bot: true }));
 check('bots are ignored', queue.length === 0);
 await b.handle(msg('just chatting about bob'));
@@ -289,7 +293,7 @@ check('turning it off stops Bob listening', !c.running && c.status === 'off');
   fs.rmSync(gdir, { recursive: true, force: true });
 }
 
-// 1.5.211 Keep this replicant matrix awake while Bob is on Discord (off): a helper only while connected, gone when off.
+// 1.5.211 Stay awake for Discord (off): a helper only while connected, gone when off.
 {
   const { KeepAwake, awakeCommand } = await import('../src/keep-awake.js');
   const spawned = [];
@@ -308,6 +312,66 @@ check('turning it off stops Bob listening', !c.running && c.status === 'off');
   k.stop();
   check('Discord off: the helper is stopped', spawned[0].killed && !ka.on);
   saveDiscord(brain.cfg, { enabled: false, keepAwake: false });
+}
+
+// 1.5.228 each channel is its own page: Bob asks Discord a channel's name once and keeps it.
+{
+  const n = new DiscordBridge(brain, { fetchImpl, WebSocketImpl: FakeWS, env: { [TOKEN_ENV]: TOKEN } });
+  let asked = 0;
+  n.rest = async (m, route) => { asked++; return route === `/channels/${CH}` ? { name: 'general<b>' } : {}; };
+  check('a channel\'s name is asked once, cleaned, and kept', (await n.channelName(CH)) === 'generalb' && (await n.channelName(CH)) === 'generalb' && asked === 1);
+}
+
+// 1.5.228 two-way: you talk in a listed channel from Bob's Discord chat, and it stays on that channel's page.
+{
+  const { RoomGate } = await import('../src/room-gate.js');
+  let t = 10_000;
+  const sent = [];
+  const gate = new RoomGate({ room: 'discord', dir: null, now: () => t });
+  saveDiscord(brain.cfg, { enabled: true, channels: [CH] });
+  const y = new DiscordBridge(brain, { fetchImpl, WebSocketImpl: FakeWS, env: { [TOKEN_ENV]: TOKEN }, gate, now: () => t });
+  y.rest = async (m, route, b) => { if (m === 'POST') sent.push({ route, b }); return route === `/channels/${CH}` ? { name: 'general' } : {}; };
+  check('not connected: nothing is sent', (await y.say(CH, 'hi all')).error === 'off' && sent.length === 0);
+  y.running = true;
+  check('a channel not on the list: nothing is sent', (await y.say(OTHER_CH, 'hi')).error === 'not listed' && sent.length === 0);
+  check('empty: nothing is sent', (await y.say(CH, '   ')).error === 'empty' && sent.length === 0);
+  const r = await y.say(CH, 'hi @everyone, Bob here');
+  check('a listed channel: it posts there, and nobody gets pinged', !r.error && sent.length === 1 && sent[0].route === `/channels/${CH}/messages` && sent[0].b.allowed_mentions.parse.length === 0);
+  check('it stays on that channel\'s page as yours', r.line.kind === 'me' && r.line.where === CH && r.line.whereName === 'general' && gate.view().lines.at(-1).text === 'hi @everyone, Bob here');
+  check('at most one a second', (await y.say(CH, 'again')).error === 'fast' && sent.length === 1);
+  t += 1500;
+  check('a long message goes in pieces under Discord\'s limit', !(await y.say(CH, 'x'.repeat(3000))).error && sent.length === 3 && sent.every((x) => x.b.content.length <= 2000));
+  check('far too long is refused', (t += 1500, (await y.say(CH, 'x'.repeat(5000))).error === 'long'));
+  y.running = false;
+  saveDiscord(brain.cfg, { enabled: false, channels: [] });
+}
+
+// 1.5.228 Show the whole channel (off): every message in a listed channel shows on its page, nothing runs for it.
+{
+  const { RoomGate, MAX_HEARD } = await import('../src/room-gate.js');
+  const gate = new RoomGate({ room: 'discord', dir: null });
+  saveDiscord(brain.cfg, { enabled: true, channels: [CH], autoAccept: false });
+  const w = new DiscordBridge(brain, { fetchImpl, WebSocketImpl: FakeWS, env: { [TOKEN_ENV]: TOKEN }, gate });
+  w.rest = async (m, route) => (route === `/channels/${CH}` ? { name: 'general' } : {});
+  const msg = (content, ch = CH, extra = {}) => ({ id: String(Math.random()).slice(2, 12), guild_id: '9', channel_id: ch, content, author: { id: PAT, username: 'pat' }, ...extra });
+  check('off by default', discordSettings({}).showChannel === false && cleanDiscordPatch({ showChannel: true }).showChannel === true);
+  await w.handle(msg('just chatting'));
+  check('off: talk that doesn\'t call Bob isn\'t kept', gate.view().lines.length === 0);
+  saveDiscord(brain.cfg, { showChannel: true });
+  await w.handle(msg('just chatting'));
+  await w.handle(msg('', CH, { attachments: [{}] }));
+  await w.handle(msg('elsewhere', OTHER_CH));
+  await w.handle(msg('a bot', CH, { author: { id: SAM, bot: true } }));
+  const heard = gate.view().lines.filter((l) => l.kind === 'heard');
+  check('on: a listed channel\'s talk shows on its page, files as a note', heard.length === 2 && heard[0].text === 'just chatting' && heard[0].whereName === 'general' && heard[1].text === '(1 file)');
+  check('never an unlisted channel or a bot', !heard.some((l) => l.text === 'elsewhere' || l.text === 'a bot'));
+  await w.handle(msg('hey bob tell a joke'));
+  check('a call to Bob is still a request, not talk', gate.waiting().length === 1 && gate.view().lines.filter((l) => l.kind === 'heard').length === 2);
+  for (let i = 0; i < MAX_HEARD + 5; i++) gate.heard({ who: PAT, name: 'pat', where: CH, text: `n${i}` });
+  check('only the newest talk is kept, and requests stay', gate.view().lines.filter((l) => l.kind === 'heard').length === MAX_HEARD && gate.waiting().length === 1);
+  gate.forgetHeard();
+  check('off again: the talk is deleted, the request stays', gate.view().lines.every((l) => l.kind !== 'heard') && gate.waiting().length === 1);
+  saveDiscord(brain.cfg, { enabled: false, channels: [], showChannel: false });
 }
 
 fs.rmSync(dir, { recursive: true, force: true });

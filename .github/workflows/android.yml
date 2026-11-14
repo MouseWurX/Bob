@@ -85,12 +85,18 @@ jobs:
             app/dist/Bob-*-android.apk.sha256
           if-no-files-found: error
       - name: Add to the GitHub release
-        # The Windows job (build.yml) makes release vX.Y.Z; this waits for it (up to 30 minutes) and adds the APK.
+        # The Windows job (build.yml) makes release vX.Y.Z; this waits for it to be published (up to 45 minutes) and adds the APK.
         if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then v="$GITHUB_REF_NAME"; else v="v$(node -p "require('./package.json').version")"; fi
-          for i in $(seq 1 60); do gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 && break; sleep 30; done
-          gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 || { echo "Release $v didn't appear; the APK is in this run's artifacts."; exit 0; }
-          gh release upload "$v" dist/Bob-*-android.apk dist/Bob-*-android.apk.sha256 --clobber -R "$GITHUB_REPOSITORY"
+          # Wait until the release is published, not just a draft (a draft isn't found by its tag), up to 45 minutes.
+          state() { gh api "repos/$GITHUB_REPOSITORY/releases?per_page=30" --jq ".[] | select(.tag_name == \"$v\") | if .draft then \"draft\" else \"up\" end" 2>/dev/null | head -1; }
+          for i in $(seq 1 90); do s=$(state); [ "$s" = up ] && break; echo "Release $v: ${s:-not there yet}, waiting"; sleep 30; done
+          [ "$(state)" = up ] || { echo "Release $v wasn't published in 45 minutes; the APK is in this run's artifacts."; exit 0; }
+          for try in 1 2 3; do
+            gh release upload "$v" dist/Bob-*-android.apk dist/Bob-*-android.apk.sha256 --clobber -R "$GITHUB_REPOSITORY" && exit 0
+            echo "Upload failed, trying again in $((try * 30)) seconds"; sleep $((try * 30))
+          done
+          echo "Couldn't add the APK to $v; it's in this run's artifacts."

@@ -26,6 +26,32 @@ body.look-lamplight::before { content: ""; position: fixed; inset: 0; z-index: 0
   background: radial-gradient(1100px 760px at 60px 40px, color-mix(in srgb, var(--cube, var(--accent)) 40%, transparent), color-mix(in srgb, var(--cube, var(--accent)) 10%, transparent) 40%, transparent 72%);
   opacity: var(--cube-light, .3); will-change: opacity; }
 body.look-lamplight.still::before { opacity: .3; }
+/* Nov 14 2026 (the owner: "smoke in the darkness, illuminated by a cybernetic cube"): a faint smoke in the room. One
+   layer behind everything: the cube's light colour from the top-left corner, seen only through a still smoke pattern
+   (a mask drawn once by the browser from data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='640'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.005' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 2.2 -.75'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/svg%3E noise, no script). Like the glow it follows --cube-light, so the smoke
+   shows when a brain is loaded and nearly vanishes without one. It drifts by a slow transform only (the graphics
+   card moves one layer); it holds still with animations off or reduced motion. Not drawn for light themes. */
+body.look-lamplight .app::after { content: ""; position: fixed; inset: -6%; z-index: -1; pointer-events: none;
+  background: radial-gradient(1200px 900px at 8% 6%, color-mix(in srgb, var(--cube, var(--accent)) 55%, transparent), color-mix(in srgb, var(--cube, var(--accent)) 14%, transparent) 45%, transparent 80%);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='640'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.005' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 2.2 -.75'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='640'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.005' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 2.2 -.75'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/svg%3E"); -webkit-mask-size: 640px 640px; mask-size: 640px 640px;
+  opacity: calc(var(--cube-light, .3) * 1.1); will-change: transform, opacity; animation: lamp-smoke 120s ease-in-out infinite alternate; }
+@keyframes lamp-smoke { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(3%, -2.5%, 0); } }
+body.look-lamplight.still .app::after { animation: none; opacity: .33; }
+body.look-lamplight.theme-light .app::after { display: none; }
+@media (prefers-reduced-motion: reduce) { body.look-lamplight .app::after { animation: none; } }
+/* Nov 14 2026 (the owner: "the section you type into could be more ethereal, almost smoke like, with the send button
+   kind of following suit, almost transparent, ghostly. the links to other pages at the top could be almost shadows,
+   and illuminate slightly on mouseover"). The typing box is a thin veil over the room (see-through, blurred behind);
+   Send is an outline that lights on hover; the page links rest as dim as they can while still reading clearly (4.5:1,
+   test-guarded) and catch the cube's light when the pointer or keyboard is on them. Dark themes only: light themes and
+   High Contrast keep the solid ones. */
+body.look-lamplight:not(.theme-light):not(.outlined) :is(.effort, .composer) { background: color-mix(in srgb, var(--panel) 30%, transparent); border-color: color-mix(in srgb, var(--text) 7%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+body.look-lamplight:not(.theme-light):not(.outlined) .composer { box-shadow: 0 24px 60px -30px color-mix(in srgb, var(--cube, var(--accent)) 45%, transparent); }
+body.look-lamplight:not(.theme-light):not(.outlined) .composer:focus-within { border-color: color-mix(in srgb, var(--accent) 28%, transparent); }
+body.look-lamplight:not(.theme-light):not(.outlined) .send { background: transparent; color: var(--text); border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent); box-shadow: none; }
+body.look-lamplight:not(.theme-light):not(.outlined) .send:is(:hover, :focus-visible):not(:disabled) { background: color-mix(in srgb, var(--accent) 16%, transparent); border-color: color-mix(in srgb, var(--accent) 60%, transparent); box-shadow: 0 0 16px -6px var(--accent); }
+body.look-lamplight:not(.theme-light):not(.outlined) .nav-item:not(.on) { color: color-mix(in srgb, var(--muted) 84%, var(--deep)); transition: color .3s var(--ease), text-shadow .3s var(--ease); }
+body.look-lamplight:not(.theme-light):not(.outlined) .nav-item:not(.on):is(:hover, :focus-visible) { background: none; color: var(--text); text-shadow: 0 0 12px color-mix(in srgb, var(--accent) 70%, transparent); }
 body.look-lamplight .app { position: relative; z-index: 1; background: transparent; }
 body.look-lamplight :where(.side, .mid, .now, .ctx, .chips, .effort, .composer, .cellar.page, .cellar.page .cellar-head, .cellar .cellar-tabs) { background: transparent; border-color: transparent; }
 body.look-lamplight .grab { background: none; }
@@ -38,7 +64,7 @@ body.look-lamplight .nav-item.on { background: none; color: var(--text); box-sha
 body.look-lamplight .nav-item.on .ico { color: var(--accent); filter: drop-shadow(0 0 6px var(--accent)); }
 body.look-lamplight .nav-new { background: transparent; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); margin-bottom: var(--s3); }
 body.look-lamplight .nav-head { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; padding: var(--s4) var(--s3) var(--s1); }
-body.look-lamplight .side .status { font-family: var(--mono); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+body.look-lamplight .side .status { font-family: var(--mono); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
 
 /* one button style: no outline, a faint fill on hover */
 body.look-lamplight :is(.brain-switch, .brain-pill, .effort-btn, .now-toggle, .chips button, .mic) { border-color: transparent; background: transparent; border-radius: 10px; }
@@ -64,12 +90,38 @@ body.look-lamplight .effort[hidden] + .composer { border-top: 1px solid var(--li
 body.look-lamplight #input { border: 0; background: transparent; font-size: var(--t-md); }
 body.look-lamplight #input:focus-visible { outline: none; }
 body.look-lamplight .composer:focus-within { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
-body.look-lamplight .send { border-radius: 11px; padding: var(--s2) var(--s4); box-shadow: 0 0 18px -4px var(--accent); }
+/* Nov 14 2026 (the owner: "could we dim the send buttons too?"): Send is a soft lamp-tinted button, not a solid lit one. */
+body.look-lamplight .send { border-radius: 11px; padding: var(--s2) var(--s4); background: color-mix(in srgb, var(--accent) 26%, var(--panel)); color: var(--text); border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); box-shadow: 0 0 12px -6px var(--accent); }
+body.look-lamplight .send:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 38%, var(--panel)); }
 body.look-lamplight .chips { padding: var(--s2) max(var(--s4), calc((100% - 760px) / 2)); }
 
 /* Now running: quiet headings, no boxes */
 body.look-lamplight .now { padding: var(--s4); gap: var(--s2); }
 body.look-lamplight .now-sec { font-family: var(--mono); font-weight: 400; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+
+/* Coding agents (Nov 13, the owner: "it clashes with the style of lamplight"): no boxes, a lit dot per agent like
+   Bob's answers (bright and glowing when it needs you, a slow pulse while it works, dim when done), the badge as
+   plain mono words, and typing boxes as a single underline like the room's own quiet fields. */
+body.look-lamplight .tlist .agent-row { padding: var(--s2) 0 var(--s2) var(--s4); position: relative; }
+body.look-lamplight .agent-row .agent-ico, body.look-lamplight #nowAgents .sec-ico { display: none; }
+body.look-lamplight .agent-row::before { content: ""; position: absolute; left: 2px; top: calc(var(--s2) + 6px); width: 7px; height: 7px; border-radius: 50%; background: var(--muted); opacity: .5; }
+body.look-lamplight .agent-row[data-state="working"]::before { background: var(--accent); opacity: 1; animation: agent-glow 2.4s ease-in-out infinite; }
+body.look-lamplight .agent-row[data-state="needs-you"]::before { background: var(--accent); opacity: 1; box-shadow: 0 0 10px var(--accent); }
+body.look-lamplight .agent-row[data-state="done"]::before { background: var(--text); opacity: .45; }
+body.look-lamplight .agent-row[data-state="failed"]::before { background: var(--bad); opacity: .9; }
+@keyframes agent-glow { 50% { box-shadow: 0 0 9px var(--accent); opacity: .55; } }
+body.look-lamplight .agent-row .agent-meta, body.look-lamplight .agent-row .agent-state { font-family: var(--mono); font-size: 10.5px; letter-spacing: .03em; }
+body.look-lamplight .agent-row .agent-needs { font-weight: 400; color: var(--text); }
+body.look-lamplight .agent-row .agent-btn, body.look-lamplight .agent-row details summary { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; text-decoration: none; }
+body.look-lamplight .agent-row pre { background: color-mix(in srgb, #000 35%, transparent); border-radius: 10px; padding: var(--s2) var(--s3); }
+body.look-lamplight .agent-row :is(input[type="text"], select) { background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 4px 0; }
+body.look-lamplight .agent-row :is(input[type="text"], select):focus-visible { border-bottom-color: var(--accent); }
+body.look-lamplight .agent-row select option { background: var(--panel); }
+body.look-lamplight .agents-badge { border: 0; padding: 0; font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: none; color: var(--muted); font-weight: 400; }
+body.look-lamplight .agents-badge.needs { color: var(--accent); text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent); }
+body.look-lamplight.still .agent-row::before { animation: none; }
+@media (prefers-reduced-motion: reduce) { body.look-lamplight .agent-row::before { animation: none; } }
+body.look-lamplight .lend-powers-badge { border-color: transparent; background: color-mix(in srgb, var(--panel) 70%, transparent); box-shadow: 0 0 8px -2px var(--accent); }
 
 /* gentle motion, none when animations are off or the system asks for less */
 body.look-lamplight :is(.nav-item, .brain-switch, .brain-pill, .effort-btn, .chips button, .mic, .send, .cellar button) { transition: background-color .15s var(--ease), color .15s var(--ease); }
@@ -132,6 +184,12 @@ body.look-terminal .themes button[aria-checked="true"], body.look-terminal .ttab
 .look-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--s2); margin: var(--s2) 0; }
 .look-pick button { display: grid; gap: var(--s2); text-align: left; padding: var(--s2); }
 .look-pick button[aria-checked="true"] { border-color: var(--accent); box-shadow: var(--shadow); }
+.lamp-row { margin-top: var(--s3); }
+.lamp-pick { display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s2) 0; }
+.lamp-pick button { display: inline-flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s3); }
+.lamp-pick button i { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.lamp-pick button[aria-checked="true"] { border-color: var(--accent); box-shadow: var(--shadow); }
+body.still .lamp-pick button i { box-shadow: none !important; }
 .look-pick small { color: var(--muted); font-size: var(--t-xs); }
 .look-mini { display: grid; gap: 4px; height: 64px; padding: 6px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
 .look-mini i { display: block; height: 10px; }
@@ -168,21 +226,21 @@ body.look-lamplight .side-top .mind-cube.bob-cube.porthole .port { width: 46px; 
   body.look-lamplight .side::-webkit-scrollbar { display: none; }
   body.look-lamplight .side-top { display: flex; align-items: center; gap: var(--s3); padding: 0; margin-right: var(--s6); flex: none; }
   body.look-lamplight .side-top #bob { width: 40px; height: 40px; border-radius: 50%; }
-  body.look-lamplight .side .who { min-width: 0; max-width: 220px; }
+  body.look-lamplight .side .who { min-width: 0; width: 170px; flex: none; } /* 1.5.216: a set width, so the tabs never shift when his line changes; his lines are two short parts at most (status-line.js) */
   body.look-lamplight .side .name { font-size: var(--t-md); font-weight: 600; }
-  body.look-lamplight .side .status { height: auto; -webkit-line-clamp: 1; white-space: nowrap; display: block; }
+  body.look-lamplight .side .status { height: auto; min-height: 0; white-space: pre-line; display: block; font-size: 10px; line-height: 1.3; } /* 1.5.215: wraps to a second line, never cut off */
   body.look-lamplight #foldLeft, body.look-lamplight .side .nav-head, body.look-lamplight .side .nav-item .short { display: none; }
   /* pages: text tabs, the current one underlined with light */
   body.look-lamplight .side .nav-item { width: auto; flex: none; padding: var(--s2) var(--s3); border-radius: 8px; font-size: 14px; }
   body.look-lamplight .side .nav-item .lbl { overflow: visible; }
-  body.look-lamplight .side :is(#chatBtn, #tasksBtn, #topicsBtn, #madeBtn, #shelfBtn, #adventureBtn, #gamesBtn, #labBtn) .ico { display: none; }
+  body.look-lamplight .side :is(#chatBtn, #tasksBtn, #topicsBtn, #madeBtn, #shelfBtn, #adventureBtn, #journeyBtn, #gamesBtn, #labBtn) .ico { display: none; }
   body.look-lamplight .side .nav-item.on { box-shadow: none; }
   body.look-lamplight .side .nav-item.on .lbl { position: relative; }
   body.look-lamplight .side .nav-item.on .lbl::after { content: ""; position: absolute; left: 0; right: 0; bottom: -8px; height: 2px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
   /* the rest of the menu moves into Bob's menu (click the cube) and Find anything; only New chat and Find stay up here */
   body.look-lamplight .side .side-fill { flex: 1; min-width: var(--s4); min-height: 0; order: 2; }
-  body.look-lamplight .side :is(#chatBtn, #tasksBtn, #topicsBtn, #madeBtn, #adventureBtn, #gamesBtn, #labBtn), body.look-lamplight .side-top { order: 1; }
-  body.look-lamplight .side :is(#cellarBtn, #dlBtn, #tidyBtn, #settingsBtn, #styleBtn, #helpBtn, #ear, #speak, #notify, #shelfBtn), body.look-lamplight .side .session-wrap { display: none; }
+  body.look-lamplight .side :is(#chatBtn, #tasksBtn, #topicsBtn, #madeBtn, #adventureBtn, #journeyBtn, #gamesBtn, #labBtn), body.look-lamplight .side-top { order: 1; }
+  body.look-lamplight .side :is(#cellarBtn, #dlBtn, #tidyBtn, #settingsBtn, #styleBtn, #helpBtn, #ear, #speak, #notify, #shelfBtn, #usersBtn), body.look-lamplight .side .session-wrap { display: none; }
   body.look-lamplight .side #newchat { order: 3; width: 36px; height: 36px; padding: 0; justify-content: center; margin: 0 0 0 var(--s2); border: 0; color: var(--accent); }
   body.look-lamplight .side #newchat :is(.lbl, .short) { display: none; }
   body.look-lamplight .side #findBtn { display: flex; order: 3; width: auto; gap: var(--s2); color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: var(--s1) var(--s3); }
@@ -241,7 +299,11 @@ body.look-lamplight .effort .brain-switch[aria-checked="true"], body.look-lampli
 /* 1.5.210 Lamplight on a phone: the porthole cube and Bob's name lead the top line (the left menu is a sheet there) */
 .lamp-head { display: inline-flex; align-items: center; gap: var(--s2); flex: none; }
 .lamp-head .lamp-name { font-weight: 600; font-size: var(--t-md); }
-.lamp-head .lamp-name:only-child { display: none; }
+.lamp-head > .lamp-who:only-child .lamp-name { display: none; } /* no cube: the chip row starts with his line */
+.lamp-head .lamp-who { display: flex; flex-direction: column; min-width: 0; }
+.lamp-head .status { font-family: var(--mono); font-size: 9.5px; line-height: 1.25; letter-spacing: .03em; text-transform: uppercase; max-width: 24ch; white-space: pre-line; overflow-wrap: anywhere; } /* 1.5.218: his status line on a phone, two short lines at most, never cut off */
+/* ...and the brain chip beside it keeps its dot and ▾ (the switches) but not its words: his line already says asleep or ready, and screen readers still get them */
+@media (max-width: 640px) { body.look-lamplight #brainPillText { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; } }
 .lamp-head .mind-cube.bob-cube.porthole .port { width: 36px; height: 36px; padding: 2px; }
 /* Lamplight: the porthole stands alone at top left (the cat keeps to the other looks) */
 body.look-lamplight .side-top #cat { display: none; }
@@ -286,9 +348,59 @@ body.look-lamplight .tip-i { border: 0 !important; background: none !important; 
 body.look-lamplight .tip-i:hover, body.look-lamplight .tip-i[aria-expanded="true"] { color: var(--accent); opacity: 1; }
 body.look-lamplight .tip-i::before { border-color: transparent; background: none; }
 /* pages that open in place (Settings, Style, Get models): the room under the top bar, so the tabs stay in reach */
-body.look-lamplight .cellar.page[open] { position: fixed; inset: 64px 0 0 0; z-index: 15; width: auto; background: var(--deep); padding: 0 max(var(--s5), calc((100vw - 1000px) / 2)) var(--s6); box-sizing: border-box; }
+/* height: auto (1.5.212, the owner: "it wont let me scroll in the first time setup page"): a dialog's own height is
+   fit-content, so the page grew past the window instead of filling the room, and nothing scrolled. */
+body.look-lamplight .cellar.page[open] { position: fixed; inset: 64px 0 0 0; z-index: 15; width: auto; height: auto; background: var(--deep); padding: 0 max(var(--s5), calc((100vw - 1000px) / 2)) var(--s6); box-sizing: border-box; }
 body.look-lamplight .cellar.page .cellar-head { padding-inline: 0; }
+/* 1.5.213: the bars that stay at the top are solid, so the page doesn't show through them as it scrolls */
+body.look-lamplight .cellar.page .cellar-head, body.look-lamplight .cellar.page .cellar-tabs { background: var(--deep); }
 @media (max-width: 640px) { body.look-lamplight .cellar.page[open] { inset: 0 0 calc(56px + env(safe-area-inset-bottom, 0px)) 0; padding: 0 var(--s4) var(--s5); } }
 html.lab-window body.look-lamplight .cellar.page[open] { inset: 0; }
 /* the Settings and Lab windows have no top bar: their page fills the window */
 :is(html.settings-window, html.lab-window) body.look-lamplight .cellar.page[open] { inset: 0; height: 100dvh; }
+/* 1.5.216: on a narrow window Now running slides over the chat; in Lamplight it had no background there, so the chat
+   showed through it and the words ran into each other. Same glass as on a wide window. */
+@media (max-width: 900px) {
+  body.look-lamplight .now { background: color-mix(in srgb, var(--panel) 96%, transparent); backdrop-filter: blur(12px); }
+}
+
+/* ---------- 1.5.228 Window buttons on Bob's bar (public/window-bar.js, electron/window-bar.cjs) ----------
+   Only with the setting on, in Bob's own window: body.own-bar. The system's minimise, maximise and close
+   (a Mac's traffic lights) sit over the page's top corner; env(titlebar-area-*) says exactly where.
+   Lamplight on a wide window: the top bar itself drags the window, its buttons and tabs stay clickable, and it
+   keeps clear of the system buttons. Everything else (Classic, Terminal, narrow windows): a thin strip the
+   height of the buttons, at the top, to grab the window by. */
+.win-strip { display: none; }
+body.own-bar { --win-top: env(titlebar-area-height, 0px); --win-left: env(titlebar-area-x, 0px); --win-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)); }
+body.own-bar .win-strip { display: block; flex: none; height: var(--win-top); -webkit-app-region: drag; app-region: drag; background: var(--panel); border-bottom: 1px solid var(--line); position: relative; z-index: 2; }
+body.own-bar.look-lamplight .win-strip { background: transparent; border-bottom: 0; }
+@media (min-width: 641px) {
+  body.own-bar.look-lamplight .win-strip { display: none; }
+  body.own-bar.look-lamplight .side { -webkit-app-region: drag; app-region: drag; padding-left: max(var(--s5), calc(var(--win-left) + var(--s3))); padding-right: calc(var(--s5) + var(--win-right)); }
+  body.own-bar.look-lamplight .side :is(button, a, input, select, textarea, canvas, label, summary, [role=button], [role=switch], [tabindex], .who) { -webkit-app-region: no-drag; app-region: no-drag; }
+}
+/* The system buttons take about 140 px of the bar, so Find anything gets smaller first (never a tab): without
+   "Ctrl K", then just its magnifying glass (its name stays for screen readers and in its tooltip). */
+@media (min-width: 641px) and (max-width: 1400px) { body.own-bar.look-lamplight .side #findBtn .find-key { display: none; } }
+@media (min-width: 641px) and (max-width: 1280px) { body.own-bar.look-lamplight .side #findBtn .lbl { display: none; } body.own-bar.look-lamplight .side #findBtn { padding: var(--s2); } }
+/* Panels and full-window screens that start at the very top move down below the buttons. */
+body.own-bar dialog.cellar:not(.page)[open] { top: var(--win-top); height: calc(100dvh - var(--win-top)); }
+@media (max-width: 1100px) { body.own-bar:not(.look-lamplight) :is(.now, .viewer) { top: var(--win-top); } }
+@media (max-width: 640px) { body.own-bar :is(.now, .viewer) { top: var(--win-top); } body.own-bar:not(.left-folded) .side { top: var(--win-top); } }
+/* The cube's corner: a thin lit edge round the window's top-left corner, brightest at the corner and fading out
+   along the top and the left side, in the cube's colour. It follows the cube's light (--cube-light, mind-cube.js)
+   like Lamplight's glow does, and never takes a click. The window's own corners are the system's: rounded on
+   Windows 11 and a Mac; on Linux your desktop decides. */
+body.own-bar::after { content: ""; position: fixed; inset: 0; z-index: 9500; pointer-events: none; border-radius: var(--win-round, 8px); padding: 2px;
+  background: radial-gradient(520px 360px at 0 0, color-mix(in srgb, var(--cube, var(--accent)) 95%, #fff 5%), color-mix(in srgb, var(--cube, var(--accent)) 45%, transparent) 35%, transparent 75%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude;
+  opacity: calc(.7 + var(--cube-light, .3) * .5); }
+/* and a soft glow just inside that corner, under the line */
+.win-glow { display: none; }
+body.own-bar .win-glow { display: block; position: fixed; inset: 0; z-index: 9499; pointer-events: none; border-radius: var(--win-round, 8px);
+  background: radial-gradient(220px 150px at 0 0, color-mix(in srgb, var(--cube, var(--accent)) 22%, transparent), transparent 70%);
+  -webkit-mask: radial-gradient(700px 480px at 0 0, #000 30%, transparent 75%); mask: radial-gradient(700px 480px at 0 0, #000 30%, transparent 75%);
+  box-shadow: inset 3px 3px 18px -6px color-mix(in srgb, var(--cube, var(--accent)) 80%, transparent);
+  opacity: calc(.6 + var(--cube-light, .3) * .7); }
+body.own-bar.still::after, body.own-bar.still .win-glow { opacity: .85; }

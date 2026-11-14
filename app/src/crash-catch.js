@@ -1,4 +1,4 @@
-// "Catch crashes" and "Offer a safe start after two crashes" (Settings, This replicant matrix, 🩺 Health and history).
+// "Catch crashes" and "Safe start after two crashes" (Settings, This replicant matrix, 🩺 Health and history).
 // Both are off unless the owner turns them on.
 //
 // How a crash is noticed: while Bob runs, a small marker file (inn\bob\running.json) says so. A normal quit removes
@@ -119,10 +119,10 @@ export const OPT_IN = [
   'smartNotes', 'toolLearning', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'oneBrain', 'allTools',
   'quickOnCpu', 'mootBeside', 'resumeJobs', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'memoryRecall', 'brainCtxOn',
   'brainCtxStretch', 'naughtyList', 'catalogUpdates', 'labForgeStart', 'netReview', 'editOwn', 'quickSeesJob', 'docMeaning', 'chatPresets',
-  'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'weeklyReport', 'chatPlaces', 'tryFromHere', 'pinMessages', 'guestChat'
+  'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'weeklyReport', 'chatPlaces', 'tryFromHere', 'pinMessages', 'guestChat', 'amnesiaOffer'
 ];
 // Switches kept inside a group: { key: [the part that switches it, its off value] }.
-export const OPT_IN_GROUPS = { hands: ['enabled', false], checkins: ['enabled', false], quietHours: ['on', false], globalAsk: ['on', false] };
+export const OPT_IN_GROUPS = { hands: ['enabled', false], checkins: ['enabled', false], quietHours: ['on', false], globalAsk: ['on', false], fadeChat: ['on', false] };
 
 // What safe start would change: only the switches that are on now.
 export function safeStartPlan(cfg) {

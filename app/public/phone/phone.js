@@ -21,7 +21,7 @@
     get(k, d) { try { const v = globalThis.BobLock ? globalThis.BobLock.get(k) : localStorage.getItem(`bob.${k}`); return v == null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v) { try { if (globalThis.BobLock) globalThis.BobLock.set(k, JSON.stringify(v)); else localStorage.setItem(`bob.${k}`, JSON.stringify(v)); } catch { /* full or blocked: carry on in memory */ } }
   };
-  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, mathView: false, userName: '', theme: 'moondust', effort: 'low', resume: false, redo: true, promptMenu: false, textSize: 100, readableFont: false,
+  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, mathView: false, userName: '', theme: 'moondust', effort: 'low', resume: false, redo: true, fade: { on: false, minutes: 60, mode: 'hide' }, promptMenu: false, textSize: 100, readableFont: false,
     // Voice, phone and Bob-Net (items 133 to 142, 2026-11-11): every one off to start with.
     talkOver: false, wakeOn: false, netVoices: false, shareOn: false, widgetReminder: false, lowData: 'off', hfAgain: true, hfShort: false, readerSpeed: 1 };
   const settings = { ...DEFAULTS, ...store.get('settings', {}) };
@@ -97,11 +97,62 @@
   }
   const bobName = (base) => bobs.find((b) => b.base === base)?.name || 'Bob on your network';
 
+  // ⌛ Fade old messages and 🧹 Clear chat (logic.js fadeTurns). Hide: faded turns only leave the screen. Delete: they go
+  // from the phone for good. Clear chat empties the screen, or deletes the whole chat when "Delete it for good" is ticked.
+  let showFaded = false;
+  function fadeSweep() { // delete mode: turns past their time go from every chat on the phone
+    const f = settings.fade || {};
+    if (!f.on || f.mode !== 'delete') return false;
+    let changed = false;
+    for (const c of chats) { if (chatBusy(c)) continue; const { keep, gone } = L.fadeTurns(c.msgs, { fade: f }); if (gone.length) { c.msgs = keep; changed = true; } }
+    if (changed) saveChats();
+    return changed;
+  }
+  function fadeLine(faded) {
+    const f = settings.fade || {};
+    if (!f.on && !faded && !showFaded) return null;
+    const what = showFaded ? 'Showing faded messages too' : faded ? `${faded} older message${faded === 1 ? '' : 's'} faded into memory` : 'Nothing has faded yet';
+    return el('div', { class: 'fade-line', role: 'status' },
+      el('span', { text: `⌛ ${what}${f.on ? ` · after ${L.fadeWords(f.minutes)}` : ''}` }),
+      faded || showFaded ? el('button', { class: 'plain', text: showFaded ? 'Hide them again' : 'Show them', onclick: () => { showFaded = !showFaded; drawChat(); } }) : null,
+      chat?.msgs.length ? el('button', { text: '🧹 Clear chat', onclick: () => askClear() }) : null);
+  }
+  function askClear() {
+    const c = chat;
+    if (!c || chatBusy(c)) return;
+    const tick = el('input', { type: 'checkbox' });
+    const box = el('div', { class: 'fade-ask', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Clear this chat?' },
+      el('h3', { text: 'Clear this chat?' }),
+      el('p', { text: 'Every message leaves the chat on this phone. It\'s still kept here until you delete it.' }),
+      el('label', { class: 'fade-tick' }, tick, el('span', { text: 'Delete it for good' }, el('small', { text: 'Gone from this phone. Can\'t be undone.' }))),
+      el('div', { class: 'fade-row' },
+        el('button', { text: 'Keep it', onclick: () => wrap.remove() }),
+        el('button', { class: 'danger', text: 'Clear chat', onclick: () => {
+          wrap.remove();
+          if (tick.checked) { chats = chats.filter((x) => x !== c); saveChats(); chat = null; }
+          else { c.clearedAt = Date.now(); saveChats(); }
+          showFaded = false; drawChat();
+        } })));
+    const wrap = el('div', { class: 'fade-wrap', onclick: (e) => { if (e.target === wrap) wrap.remove(); } }, box);
+    document.body.append(wrap);
+    box.querySelector('button').focus();
+  }
+  setInterval(() => { // every 30 seconds: anything past its time fades now
+    if (!(settings.fade || {}).on || showFaded) return;
+    const swept = fadeSweep();
+    if (chat && !chatBusy(chat) && (swept || L.fadeTurns(chat.msgs, { fade: settings.fade, clearedAt: chat.clearedAt }).gone.length > ($('chat').dataset.faded | 0))) drawChat();
+  }, 30000);
+
   function drawChat() {
     const box = $('chat');
     box.textContent = '';
-    if (!chat || !chat.msgs.length) box.append(greeting());
-    for (const m of chat?.msgs || []) box.append(drawMsg(m));
+    fadeSweep();
+    const { keep, gone } = showFaded ? { keep: chat?.msgs || [], gone: [] } : L.fadeTurns(chat?.msgs || [], { fade: settings.fade || {}, clearedAt: chat?.clearedAt || 0 });
+    box.dataset.faded = String(gone.length);
+    const line = chat ? fadeLine(gone.length) : null;
+    if (line) box.append(line);
+    if (!keep.length) box.append(greeting());
+    for (const m of keep) box.append(drawMsg(m));
     box.scrollTop = box.scrollHeight;
     drawRedo();
   }
@@ -373,6 +424,7 @@
 
   function addMsg(m) {
     const c = chat;
+    m.at ||= Date.now(); // Fade old messages goes by this
     c.msgs.push(m);
     saveChats();
     if (c === chat) { const box = $('chat'); if (box.firstChild && !chat.msgs[1] && m.who === 'you') box.textContent = ''; box.append(drawMsg(m)); box.scrollTop = box.scrollHeight; }
@@ -521,7 +573,7 @@
   }
 
   function startReply(c, kind, by, q) {
-    const msg = { who: 'bob', text: '', by, q };
+    const msg = { who: 'bob', text: '', by, q, at: Date.now() };
     c.msgs.push(msg);
     const node = drawMsg(msg);
     node.querySelector('.words').classList.add('typing');
@@ -556,7 +608,7 @@
     drawStatus();
   }
 
-  // "Remember only what fits" on the PC: when the first Bob on your network is reachable, he hands over the memory
+  // "Relevant memories only" on the PC: when the first Bob on your network is reachable, he hands over the memory
   // lines that fit this message (nothing while that setting is off). Two seconds at most; no PC, no extra memory.
   function pcRecall(text, chatId) {
     const b = bobs.find((x) => live[x.base]?.up && live[x.base]?.signedIn);
@@ -613,7 +665,7 @@
         if (r.status === 401) { live[base].signedIn = false; grow(`*("${b.name}" wants the passcode again. It's under Bob-Net.)*`); finish(); drawWho(); }
         else if (r.status >= 400) { grow(`*("${b.name}" said no: ${shortError(r.body)})*`); finish(); }
       })
-      .catch((e) => { if (e.said) { grow(`*("${b.name}" said no: ${e.message})*`); finish(); return; } grow(`*(Couldn't reach "${b.name}": ${e.message}. Check that Tailscale is on here and there. On that replicant matrix, Settings, Bob-Net: "Let my other replicant matrices in" should be on, and on Windows press "Let Tailscale through the firewall" if it shows.)*`); finish(); });
+      .catch((e) => { if (e.said) { grow(`*("${b.name}" said no: ${e.message})*`); finish(); return; } grow(`*(Couldn't reach "${b.name}": ${e.message}. Check that Tailscale is on here and there. On that replicant matrix, Settings, Bob-Net: "Bob-Net access" should be on, and on Windows press "Let Tailscale through the firewall" if it shows.)*`); finish(); });
     drawStatus();
   }
   const shortError = (body) => { try { return JSON.parse(body).error || 'unknown'; } catch { return String(body).slice(0, 120); } };
@@ -623,9 +675,10 @@
     if (ev.type === 'games') return onGamEvent(base, ev); // 🧩 a game on your other Bob
     if (!ev || typeof ev !== 'object') return;
     const mine = current && current.kind === 'net' && current.base === base && ev.sessionId === `phone-${current.chatId}`;
-    if (ev.type === 'approval' && String(ev.sessionId || '').startsWith('phone-')) return approvalCard(base, ev);
+    // Nov 13: with "OK cards on all Bobs" on there, every card of his comes here (marked everywhere), not only the phone's.
+    if (ev.type === 'approval' && (String(ev.sessionId || '').startsWith('phone-') || ev.everywhere === true)) return approvalCard(base, ev);
     if (ev.type === 'checkin') return checkinCard(base, ev);
-    if (ev.type === 'digest') return digestCard(base, ev); // A Sunday digest from that Bob (src/digest.js)
+    if (ev.type === 'digest') return digestCard(base, ev); // Sunday digest from that Bob (src/digest.js)
     if (ev.type === 'reminder' && ev.phone) return reminderCard(base, ev); // 🧰 "Show reminders on my phone" (set on the replicant matrix)
     if (ev.type === 'howto-offer' && String(ev.sessionId || '').startsWith('phone-')) return howtoCard(base, ev);
     if (ev.type === 'offer-setup' && String(ev.sessionId || '').startsWith('phone-')) return setupCard(base, ev); // 1.5.91
@@ -647,7 +700,7 @@
     else if (ev.type === 'made') {
       for (const it of ev.items || []) if ((it.kind === 'audio' || it.kind === 'model') && it.url) { const x = { kind: it.kind, url: it.url, base, name: it.name || '' }; current.media.push(x); current.node.append(mediaNode(x)); }
     }
-    else if (ev.type === 'edited') { // Let Bob fix his own messages: the fix goes into this reply's words, or one short line
+    else if (ev.type === 'edited') { // Edit his own messages: the fix goes into this reply's words, or one short line
       const before = String(ev.before || '');
       if (before && current.text.includes(before)) { current.text = current.text.replace(before, String(ev.text || '')); grow(''); }
       else grow(`\n\n*✏️ Fixed an earlier message. It now says:* ${ev.text || ''}`);
@@ -888,7 +941,7 @@
     document.querySelectorAll('.panel:not(.hidden)').forEach((p) => { p.classList.add('hidden'); panelClosed(p.id); });
     if (id === 'new') { newChat(); return; }
     $(id).classList.remove('hidden');
-    ({ chats: drawChats, bobs: drawBobs, brain: drawBrain, adventure: drawAdventure, games: drawGames, chest: drawChest, memory: drawMemory, settings: drawSettings, help: drawHelp, glance: drawGlance, reader: drawReader, carry: drawCarry, handsfree: hfOpen }[id] || (() => {}))();
+    ({ chats: drawChats, bobs: drawBobs, brain: drawBrain, adventure: drawAdventure, journey: journeyTab, games: drawGames, chest: drawChest, memory: drawMemory, settings: drawSettings, help: drawHelp, glance: drawGlance, reader: drawReader, carry: drawCarry, handsfree: hfOpen }[id] || (() => {}))();
     if (id === 'bobs') watchLend();
   }
   document.querySelectorAll('.panel .back').forEach((b) => b.addEventListener('click', () => { const p = b.closest('.panel'); p.classList.add('hidden'); panelClosed(p.id); }));
@@ -935,7 +988,7 @@
             try {
               const r = await phone('net.login', { address: b.address, code: pass.value });
               pass.value = '';
-              msg.textContent = { ok: "You're in.", wrong: "That's not the passcode.", busy: 'Too many tries. Wait a minute.', 'not-let-in': `${b.name} isn't letting other replicant matrices in yet. On your other replicant matrix: Settings, Bob-Net, Let my other replicant matrices in.` }[r] || `Couldn't log in (${r}). Check that Tailscale is on on both devices, then try again.`;
+              msg.textContent = { ok: "You're in.", wrong: "That's not the passcode.", busy: 'Too many tries. Wait a minute.', 'not-let-in': `${b.name} isn't letting other replicant matrices in yet. On your other replicant matrix: Settings, Bob-Net, Bob-Net access.` }[r] || `Couldn't log in (${r}). Check that Tailscale is on on both devices, then try again.`;
               if (r === 'ok') refreshBob(b.base);
             } catch (e) { logError('bobs', e.message); msg.textContent = `Can't reach ${b.name}: is your other replicant matrix on and Tailscale connected? (${e.message})`; }
           } }) : el('button', { text: 'Check again', onclick: () => refreshBob(b.base) }),
@@ -965,7 +1018,7 @@
     drawBobs(); drawWho();
   });
 
-  // ---------- Pair with my other Bobs (Bob-Net pairing v1) ----------
+  // ---------- Pair Bobs (Bob-Net pairing v1) ----------
   $('pair-bob').addEventListener('click', () => {
     const address = $('add-address').value.trim();
     if (!L.netAddress(address)) { $('add-msg').textContent = "That isn't a Tailscale address. It looks like my-computer.your-tailnet.ts.net or 100.x.y.z (Bob's Settings on your other replicant matrix shows it)."; return; }
@@ -1009,9 +1062,9 @@
       const name = String(ev.name || 'that Bob');
       if (ev.added) addPaired(name, ev.address);
       let t;
-      if (ev.by) t = ev.added ? `${ev.by} introduced ${name}: paired, both ways. ${name} is under My other Bobs.` : `${ev.by} introduced ${name}: paired one way. ${name} can ask this phone, but this phone can't ask ${name} until "Let my other replicant matrices in" is on there.`; // Pass my Bob-Net along: no card was shown
+      if (ev.by) t = ev.added ? `${ev.by} introduced ${name}: paired, both ways. ${name} is under My other Bobs.` : `${ev.by} introduced ${name}: paired one way. ${name} can ask this phone, but this phone can't ask ${name} until "Bob-Net access" is on there.`; // Pass my Bob-Net along: no card was shown
       else if (ev.asker) t = ev.both ? `Paired with ${name}, both ways.` : `Paired with ${name}. This phone can ask ${name} now. For ${name} to ask this phone too, turn on Lend my brain here, then pair again.`;
-      else t = ev.added ? `Paired with ${name}, both ways.` : `Paired with ${name} one way: ${name} can ask this phone, but this phone can't ask ${name} until "Let my other replicant matrices in" is on there. Then pair again.`;
+      else t = ev.added ? `Paired with ${name}, both ways.` : `Paired with ${name} one way: ${name} can ask this phone, but this phone can't ask ${name} until "Bob-Net access" is on there. Then pair again.`;
       note(t);
       if (!$('bobs').classList.contains('hidden')) $('add-msg').textContent = t;
       return;
@@ -1180,6 +1233,7 @@
 
   function drawSettings() {
     drawOwnKit();
+    drawSpares();
     globalThis.BobLock?.drawSettings();
     document.querySelectorAll('input[name="mode"]').forEach((r) => { r.checked = r.value === settings.mode; });
     $('user-name').value = settings.userName;
@@ -1188,6 +1242,7 @@
     $('theme').value = settings.theme;
     $('resume').checked = settings.resume;
     $('redo').checked = settings.redo;
+    { const f = settings.fade || {}, u = f.minutes % 1440 === 0 ? 1440 : f.minutes % 60 === 0 ? 60 : 1; $('fade-on').checked = f.on === true; $('fade-num').value = String((f.minutes || 60) / u); $('fade-unit').value = String(u); document.querySelectorAll('input[name="fade-mode"]').forEach((r) => { r.checked = r.value === (f.mode || 'hide'); }); }
     $('talk-over').checked = settings.talkOver === true;
     $('wake-on').checked = settings.wakeOn === true;
     $('net-voices').checked = settings.netVoices === true;
@@ -1200,7 +1255,7 @@
   document.querySelectorAll('input[name="mode"]').forEach((r) => r.addEventListener('change', () => { settings.mode = r.value; saveSettings(); drawWho(); }));
   $('user-name').addEventListener('change', (e) => { settings.userName = e.target.value.replace(/[<>{}"`\\]/g, '').trim().slice(0, 40); saveSettings(); });
   $('read-aloud').addEventListener('change', (e) => { settings.readAloud = e.target.checked; saveSettings(); });
-  // Show maths as formulas: KaTeX (vendor/katex/) loads the first time it's switched on; the chat is drawn again.
+  // Render maths: KaTeX (vendor/katex/) loads the first time it's switched on; the chat is drawn again.
   function applyMath() {
     const on = settings.mathView === true;
     if (!on) { BobMath.setOn(false); return Promise.resolve(); }
@@ -1225,6 +1280,14 @@
   $('chat').addEventListener('scroll', drawToBottom, { passive: true });
   $('to-bottom').addEventListener('click', () => { const box = $('chat'); box.scrollTo({ top: box.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); });
   $('redo').addEventListener('change', (e) => { settings.redo = e.target.checked; saveSettings(); drawRedo(); });
+  // ⌛ Fade old messages: every value saves while the switch is off too.
+  const fadeSave = (patch) => { settings.fade = { ...(settings.fade || {}), ...patch }; saveSettings(); showFaded = false; drawChat(); };
+  $('fade-on').addEventListener('change', (e) => fadeSave({ on: e.target.checked }));
+  const fadeNum = () => { const n = Number($('fade-num').value), u = Number($('fade-unit').value); if (n >= 1) fadeSave({ minutes: Math.min(525600, Math.round(n * u)) }); };
+  $('fade-num').addEventListener('change', fadeNum);
+  $('fade-unit').addEventListener('change', fadeNum);
+  document.querySelectorAll('input[name="fade-mode"]').forEach((r) => r.addEventListener('change', () => fadeSave({ mode: r.value })));
+  $('fade-clear').addEventListener('click', () => { document.querySelectorAll('.panel').forEach((p) => p.classList.add('hidden')); askClear(); });
   const applyTheme = () => document.documentElement.setAttribute('data-theme', settings.theme);
 
   // ---------- Saved prompts (this phone only; off to start with) ----------
@@ -1299,11 +1362,61 @@
     b.dispatchEvent(new Event('input'));
   }
 
-  // ---------- 1.5.144 Tools and how-tos Bob made (the other Bob's, through him) ----------
+  // ---------- 1.5.144 Tools and how-tos (the other Bob's, through him) ----------
   // The same list as his Settings panel. Delete asks on the row, then the thing waits 30 days under Recently deleted;
   // Undo and Put back bring it back. Delete for good and Edit are on the other replicant matrix only.
   const ownAsk = { kind: '', id: '' };
   let ownLast = null;
+  // 🔑 Spare keys this phone keeps for your other Bobs (desktop Bob's lock-reset.js). A spare opens nothing by itself:
+  // it only works with the recovery key that Bob keeps, and only while that Bob's lock screen is asking.
+  // "Let it reset" is only ever pressed here, in this phone's own Settings.
+  let spares = store.get('spares', []); // [{ id, bob, address, key, at }]
+  const spareName = () => (settings.userName ? `${settings.userName}'s phone` : 'Phone').slice(0, 40);
+  async function spareCall(address, path, data) {
+    const r = data === undefined ? await phone('net.get', { address, path }) : await phone('net.post', { address, path, body: JSON.stringify(data) });
+    let out = {}; try { out = JSON.parse(r.body || '{}'); } catch { /* not JSON */ }
+    if (r.status >= 400) throw new Error(out.error || `answered ${r.status}`);
+    return out;
+  }
+  async function drawSpares() {
+    const box = $('spare-list'), from = $('spare-from'), msg = $('spare-msg');
+    if (!box || !from) return;
+    from.textContent = '';
+    for (const b of bobs) from.append(el('option', { value: b.address, text: b.name }));
+    if (!bobs.length) from.append(el('option', { value: '', text: 'No other Bobs yet' }));
+    box.textContent = '';
+    if (!spares.length) { box.append(el('p', { class: 'dim', text: 'None kept yet.' })); return; }
+    for (const k of spares) {
+      let asking = false;
+      try { asking = (await spareCall(k.address, '/api/lock/spare/asking')).asking === true; } catch { /* not reachable now */ }
+      box.append(el('div', { class: 'gap' },
+        el('div', {}, el('strong', { text: k.bob }), el('span', { class: 'dim small', text: ` · since ${new Date(k.at).toLocaleDateString([], { month: 'short', day: 'numeric' })}${asking ? ' · asking to reset now' : ''}` })),
+        el('div', { class: 'btns' },
+          el('button', { class: asking ? 'main' : '', text: 'Let it reset', 'aria-label': `Let ${k.bob} reset its passcode`, onclick: async () => {
+            msg.textContent = '';
+            try { await spareCall(k.address, '/api/lock/spare/give', { key: k.key, name: spareName() }); msg.textContent = `Done. ${k.bob} can make a new passcode on its lock screen now.`; }
+            catch (e) { msg.textContent = `${k.bob}: ${e.message}`; }
+          } }),
+          el('button', { text: 'Forget', 'aria-label': `Forget the spare key for ${k.bob}`, onclick: () => { spares = spares.filter((x) => x.id !== k.id); store.set('spares', spares); drawSpares(); } }))));
+    }
+  }
+  function wireSpares() {
+    if (!$('spare-pickup')) return;
+    $('spare-pickup').addEventListener('click', async () => {
+      const b = bobs.find((x) => x.address === $('spare-from').value), msg = $('spare-msg');
+      if (!b) { msg.textContent = 'Add your other Bob on the Bob-Net page first.'; return; }
+      try {
+        const j = await spareCall(b.address, '/api/lock/spare/pickup', { name: spareName() });
+        if (!j.key) throw new Error('no key came back');
+        spares = [...spares.filter((x) => x.address !== b.address), { id: Math.random().toString(36).slice(2, 10), bob: b.name, address: b.address, key: String(j.key), at: new Date().toISOString() }].slice(0, 12);
+        store.set('spares', spares);
+        msg.textContent = `Keeping a spare key for ${b.name}.`;
+      } catch (e) { msg.textContent = `${b.name}: ${e.message}`; }
+      drawSpares();
+    });
+  }
+  wireSpares();
+
   async function drawOwnKit() {
     const box = $('own-kit'), msg = $('own-kit-msg');
     if (!box) return;
@@ -1340,7 +1453,7 @@
     section(`How-tos he kept (${k.howtos.length})`, k.howtos.map((r) => el('div', { class: 'gap' },
       el('div', {}, el('strong', { text: r.name }), el('span', { class: 'dim small', text: ` · ${r.steps.length} steps${r.used ? `, used ${r.used} time${r.used === 1 ? '' : 's'}` : ''}` })),
       r.when && r.when !== r.name ? el('p', { class: 'help-line', text: `For: ${r.when}` }) : null,
-      el('div', { class: 'btns' }, delBtns('howto', r.id, r.name)))), k.howtosOn ? 'No how-tos yet.' : 'No how-tos yet. Learning them is off in his Settings (Let Bob learn how-tos).');
+      el('div', { class: 'btns' }, delBtns('howto', r.id, r.name)))), k.howtosOn ? 'No how-tos yet.' : 'No how-tos yet. Learning them is off in his Settings (Learn how-tos).');
     section(`Recently deleted (${k.deleted.length})`, k.deleted.map((d) => el('div', { class: 'gap' },
       el('div', {}, el('strong', { text: d.name }), el('span', { class: 'dim small', text: ` · ${kindWord[d.kind]} · gone for good ${dayOf(d.goneAt)}` })),
       el('div', { class: 'btns' }, el('button', { text: 'Put back', 'aria-label': `Put the ${kindWord[d.kind]} ${d.name} back`, onclick: () => act('restore', d.kind, d.id, d.name) })))), 'Nothing waiting. Each deleted thing waits here 30 days.');
@@ -1627,7 +1740,7 @@ ${chatOut}
   // 1.5.206 🧭 Journey: the tile-map game, the PC's own screen (BobJourneyPlay), played here with the pad; the save
   // lives on your other Bob, like the table. Bob's own looks are the PC's, so here he wears a robot avatar.
   let advJourney = null;
-  function advJourneyOpen() {
+  function advJourneyOpen(fromTab = false) { // fromTab: opened from the menu's 🧭 Journey, so closing goes back to the menu
     const J = globalThis.BobJourneyPlay, R = globalThis.BobJourneyRules, S = globalThis.BobJourneySides, W = globalThis.BobJourneyWorld;
     if (!J || !R || !S || !W) { adv.msg = 'Journey needs the newer phone screen.'; advDraw(); return; }
     advJourney?.stop();
@@ -1645,8 +1758,16 @@ ${chatOut}
       enemyLooks: Object.fromEntries((adv.v?.enemies || []).map((e) => [e.id, e.look])),
       lookOf: (id) => AV.avatar(id), api: (p, body) => advApi(p, body),
       still: () => matchMedia('(prefers-reduced-motion: reduce)').matches,
-      onClose: () => { advJourney = null; $('journey').classList.add('hidden'); $('adventure').classList.remove('hidden'); advDraw(); }
+      onClose: () => { advJourney = null; $('journey').classList.add('hidden'); if (fromTab) open('menu'); else { $('adventure').classList.remove('hidden'); advDraw(); } }
     });
+  }
+  // 1.5.215: 🧭 Journey has its own place in the menu, like Games. It still saves on your other Bob.
+  async function journeyTab() {
+    const b = advBob();
+    if (!b) { $('journey').classList.add('hidden'); open('adventure'); return; }
+    adv.base = b.base;
+    if (!adv.v) { try { adv.v = await advApi('/api/adventure'); } catch { /* the game runs without the bestiary's looks */ } }
+    advJourneyOpen(true);
   }
   function advCharsPage() {
     const v = adv.v || {}, ch = adv.chars, g = v.game;
@@ -2029,7 +2150,7 @@ ${chatOut}
     let items = [];
     try { items = await advApi('/api/made?limit=24'); } catch (e) { body.textContent = ''; body.append(el('p', { class: 'help-line', text: `I couldn't open the chest: ${e.message}` })); return; }
     body.textContent = '';
-    body.append(el('p', { class: 'help-line', text: `What ${b.name} has made, newest first. Tap one to see it here; Save to this phone keeps a copy. To change the folder new things are saved in, open Settings, Where Bob saves things, on your other replicant matrix.` }));
+    body.append(el('p', { class: 'help-line', text: `What ${b.name} has made, newest first. Tap one to see it here; Save to this phone keeps a copy. To change the folder new things are saved in, open Settings, Save folder, on your other replicant matrix.` }));
     if (!items.length) { body.append(el('p', { class: 'dim', text: 'Empty so far. Pictures, clips, songs and files he makes land here.' })); return; }
     const addr = b.address;
     const grid = el('div', { class: 'chest-grid', role: 'list', 'aria-label': 'What Bob made, newest first' });
@@ -2560,7 +2681,7 @@ ${chatOut}
   async function glanceOf(b) {
     const r = await phone('net.get', { address: b.address, path: '/api/bob-net/glance' });
     if (r.status === 200) return { ok: true, g: JSON.parse(r.body) };
-    if (r.status === 409) return { why: `${b.name} isn't sharing how he's doing. On that replicant matrix: Settings, Bob-Net, Let my phone see how I'm doing.` };
+    if (r.status === 409) return { why: `${b.name} isn't sharing how he's doing. On that replicant matrix: Settings, Bob-Net, Share status with my phone.` };
     if (r.status === 404) return { why: `${b.name} is an older Bob. Update him to see this.` };
     if (r.status === 401) return { why: `${b.name} wants the passcode again (Bob-Net).` };
     return { why: shortError(r.body) };
@@ -2676,7 +2797,7 @@ ${chatOut}
   sendBrainConfig();
   phone('device').then((d) => { deviceModel = String(d.model || ''); $('about').textContent = d.about || `Bob ${d.version} for Android · ${d.maker} ${d.model}, Android ${d.android}`; }).catch(() => {});
   refreshAll();
-  // Pick up where Bob left off (opt-in): a phone-brain reply Android cut short is asked again.
+  // Resume replies (opt-in): a phone-brain reply Android cut short is asked again.
   const pending = store.get('pending', null);
   store.set('pending', null);
   if (pending && settings.resume) {

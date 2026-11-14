@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import { cpuName, specLine, shownRamGB } from '../src/platform.js';
 import { HELP } from '../public/help-content.js';
+import { publicText } from './source-text.js';
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { if (ok) { pass++; console.log('PASS', name); } else { fail++; console.log('FAIL', name, extra); } };
 const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8');
@@ -16,10 +17,10 @@ check('the hardware answer carries the spec line, with RAM as sold', /spec: spec
 check('a padded Windows processor name still comes out short', cpuName('AMD Ryzen 7 9800X3D 8-Core Processor           ') === 'Ryzen 7 9800X3D');
 check('RAM shows the size installed (31.1 GB reported reads 32 GB)', shownRamGB(31.12 * 1024 ** 3) === 32 && shownRamGB(15.6 * 1024 ** 3) === 16 && shownRamGB(7.7 * 1024 ** 3) === 8 && shownRamGB(0) === null);
 
-const cellar = read('public/cellar.js');
+const cellar = publicText('cellar.js');
 check('Settings panel has the same name on every platform, with the spec line beside it', /'💻 This replicant matrix and updates'/.test(cellar) && !/This Mac and updates/.test(cellar) && /const pcSum = `<span class="pc-ver">Bob \$\{esc\(settings\.version\?\.label[^\n]*\$\{esc\(hw\?\.spec/.test(cellar));
 check('Welcome says the name once, with the spec line', /I call this computer my replicant matrix\. You'll see that name around the app\./.test(cellar));
-check('the setting is Let my other replicant matrices in', /<strong>Let my other replicant matrices in<\/strong>/.test(read('public/phone-access.js')) && !/Let my other devices in/.test(read('public/phone-access.js')));
+check('the setting is Bob-Net access', /<strong>Bob-Net access<\/strong>/.test(read('public/phone-access.js')) && !/Let my other devices in/.test(read('public/phone-access.js')));
 
 const glossary = HELP.find((h) => h.id === 'glossary');
 check('glossary has Replicant matrix, and still finds pc and computer', /<dt>Replicant matrix<\/dt>/.test(glossary.html) && /\bpc\b/.test(glossary.words) && /computer/.test(glossary.words));

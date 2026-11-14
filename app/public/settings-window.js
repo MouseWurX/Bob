@@ -47,6 +47,8 @@ let timer = 0;
 const changed = () => { clearTimeout(timer); timer = setTimeout(() => tell('bob-changed'), 600); };
 dlg.addEventListener('change', changed);
 dlg.addEventListener('click', changed);
+// 1.5.222 Change his game look: the picker lives in Adventure, in the main window (RELAY above passes it on).
+dlg.addEventListener('click', (e) => { if (e.target.closest?.('[data-gamelook]')) window.dispatchEvent(new CustomEvent('bob-gamelook')); });
 window.addEventListener('pagehide', () => tell('bob-changed'));
 
 // The window's own buttons close it; Esc and the page's Back don't. If the page closes itself (first-time setup

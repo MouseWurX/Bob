@@ -13,7 +13,7 @@ import { cleanCheckins } from './checkin-settings.js';
 import { cleanHands } from './hands-settings.js';
 import { cleanPresets } from './model-family.js';
 import { cleanSelfWork, applyCodeCopy } from './self-work.js';
-import { cleanNotesFolders, applyNotes } from './notes-folders.js'; // "Search my notes apps too", off until a folder is added
+import { cleanNotesFolders, applyNotes } from './notes-folders.js'; // "Search notes apps", off until a folder is added
 import fs from 'node:fs';
 import { writeJsonAtomic, readJsonFile } from './util.js';
 import { readSaved, oneWriter, setAside, checkFormats } from './saving.js'; // items 231, 233 and 234
@@ -28,6 +28,9 @@ import { cleanBackup } from './backup-settings.js'; // Back up and move
 import { applyWaitingRestore } from './backup-apply.js';
 import { openBox, useBox, lockOn, mapSecrets, plainCount, writeSecretJson, openCopy, useKeysFile, memoryKeeper, IN_TEST, ensureBox } from './secret-box.js';
 import { HARNESS_KEYS, cleanHarness } from './harness.js'; // items 62 to 72
+import { cleanPerWordMap } from './experts-per-word.js'; // Brain Engine 0013
+import { cleanChatHeads } from './net-overlay.js'; // 1.5.228 a chat head per company
+
 
 // Where Ollama keeps its models on this PC: OLLAMA_MODELS if it's set, else Bob's own models folder if Ollama's files
 // are there (how the installer sets Ollama up), else Ollama's usual folder in the user's home (~/.ollama/models).
@@ -93,7 +96,7 @@ export function loadConfig() {
   cfg.dataDir = path.join(cfg.innDir, 'bob');
   cfg.ledgerDir = path.join(cfg.innDir, 'ledger');
   cfg.painterDir = path.join(cfg.innDir, 'painter');
-  cfg.defaultPainterDir = cfg.painterDir; // 1.5.41: Bob's own folder for what he makes; "Where Bob saves things" can pick another
+  cfg.defaultPainterDir = cfg.painterDir; // 1.5.41: Bob's own folder for what he makes; "Save folder" can pick another
   cfg.archiveDir = path.join(cfg.innDir, 'archive');
   cfg.noticeBoard = path.join(cfg.innDir, 'notice-board.md');
   cfg.logbook = path.join(cfg.innDir, 'logbook.md');
@@ -153,6 +156,9 @@ export function loadConfig() {
     if (fixed.length) { try { writeJsonAtomic(cfg.settingsFile, kept, 2); } catch {} } // fixed once, not at every start
     try { mergeSettings(cfg, kept); } catch (e) { notes.push(`settings.json couldn't be applied (${e.message}); using the defaults`); }
   }
+  // Nov 14 2026 (the owner: "existing installs get converted"): Moondust, the old starting theme, becomes the Mercury
+  // lamp once, on the first start after the update. Any other theme is left alone; Moondust can still be picked again.
+  { const moved = lampMove(cfg.style); if (moved) { cfg.style = moved; try { saveSettings(cfg, { style: moved }); } catch {} } }
   // 1.5.196: Brain Engine is the only engine for Bob's brains (onlyBrainEngine, below). An older pick of plain llama.cpp
   // or Ollama in Settings is set aside here, after settings.json, and the program is picked again with that.
   cfg.engineMoved = onlyBrainEngine(cfg, { hand });
@@ -253,7 +259,7 @@ export const VERSION = (() => {
 // Languages Bob's screens come in (public/i18n.js has the names and words). English is the default.
 export const LANGUAGES = ['en', 'fr', 'es'];
 export const cleanRemoved = (v) => [...new Set((Array.isArray(v) ? v : []).filter((k) => typeof k === 'string' && /^[\w.:/-]{1,100}$/.test(k)))].slice(0, 500);
-export const SETTING_KEYS = ['moreTools', 'answerMidJob', 'copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'brainMemType', 'language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'toolHelp', 'thinkBubble', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labRecheck', 'labExtras', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', ...HARNESS_KEYS, 'jobHelps', 'textSize', 'readableFont', 'profilesOn', 'todayCard', 'todayPlace', 'focusTimer', 'receipts', 'updateTour', 'tourSeen', 'trayDot', 'talkOver', 'readDocs', 'netVoices', 'netVoiceMap', 'carryIn', 'phoneGlance', 'memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPlaces', 'notesFolders', 'weeklyDigest', 'talkWithBob', 'talkCloud', 'talkCloudVoice', 'apuHoldbackGB'];
+export const SETTING_KEYS = ['moreTools', 'answerMidJob', 'stopWords', 'copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'brainMemType', 'language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'toolHelp', 'toolSets', 'toolRecord', 'thinkBubble', 'statusJokes', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'ownBar', 'chatHeads', 'netFiles', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labRecheck', 'labExtras', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', ...HARNESS_KEYS, 'jobHelps', 'textSize', 'readableFont', 'profilesOn', 'todayCard', 'todayPlace', 'focusTimer', 'receipts', 'updateTour', 'tourSeen', 'trayDot', 'talkOver', 'readDocs', 'netVoices', 'netVoiceMap', 'carryIn', 'phoneGlance', 'netOverlay', 'memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPlaces', 'notesFolders', 'weeklyDigest', 'talkWithBob', 'talkCloud', 'talkCloudVoice', 'apuHoldbackGB'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -294,35 +300,37 @@ function clean(patch) {
   if ('webSearch' in out) out.webSearch = out.webSearch === true;
   if ('backup' in out) out.backup = cleanBackup(out.backup); // Back up and move: the automatic backup, off unless switched on
   if ('naughtyList' in out) out.naughtyList = out.naughtyList === true; // 1.5.132 "Show the naughty list", off unless switched on
-  if ('catalogUpdates' in out) out.catalogUpdates = out.catalogUpdates === true; // 1.5.137 "Let Bob fetch his newest brain list", off unless switched on
+  if ('catalogUpdates' in out) out.catalogUpdates = out.catalogUpdates === true; // 1.5.137 "Auto-update the brain list", off unless switched on
   if ('ownModels' in out) out.ownModels = cleanOwnModels(out.ownModels); // 1.5.135 brains of your own (GGUF files on this replicant matrix)
-  if ('computerLab' in out) out.computerLab = out.computerLab !== false; // 1.5.172 "Show the Computer Science Lab", on unless switched off (was off until 1.5.171)
+  if ('computerLab' in out) out.computerLab = out.computerLab !== false; // 1.5.172 "Show the Lab", on unless switched off (was off until 1.5.171)
   if ('labForgeStart' in out) out.labForgeStart = out.labForgeStart === true; // 1.5.160 "Let the Lab start Forge runs", off unless switched on
   if ('labEngine' in out) out.labEngine = ['brainengine', 'llamacpp'].includes(out.labEngine) ? out.labEngine : ''; // 1.5.17x the Lab's engine: '' = the same as Bob's brains
   if ('labExtras' in out) out.labExtras = Object.fromEntries(['hoverWords', 'tellPhone', 'saveQuestions'].map((k) => [k, out.labExtras?.[k] === true])); // Lab items 109, 110, 102: the Lab's three small switches, each off unless switched on
   if ('labRecheck' in out) out.labRecheck = out.labRecheck === true; // Nov 11 "Check my main brain after engine updates", off unless switched on
   if ('labPro' in out) out.labPro = out.labPro === true; // 1.5.168 the Lab's Professional mode: more controls on every tab; off = Keep it simple
-  if ('qwenPresets' in out) out.qwenPresets = cleanPresets(out.qwenPresets); // 1.5.148 "Choose my own word settings", off unless switched on
-  if ('selfWork' in out) out.selfWork = cleanSelfWork(out.selfWork); // "Let Bob work on repositories" (self-work.js), off by default
-  if ('howtos' in out) out.howtos = out.howtos === true; // 1.5.79 "Let Bob learn how-tos", off by default
+  if ('qwenPresets' in out) out.qwenPresets = cleanPresets(out.qwenPresets); // 1.5.148 "Custom sampling", off unless switched on
+  if ('selfWork' in out) out.selfWork = cleanSelfWork(out.selfWork); // "Work on repositories" (self-work.js), off by default
+  if ('howtos' in out) out.howtos = out.howtos === true; // 1.5.79 "Learn how-tos", off by default
   if ('wantsAsked' in out) out.wantsAsked = out.wantsAsked === true; // the chat's one-time "Do you want me to" offer (wants.js)
   // List items 94-100, engine and speed extras (engine-extras.js), each off unless switched on
   for (const k of EXTRA_SWITCHES) if (k in out) out[k] = out[k] === true;
   if ('brainMemType' in out) out.brainMemType = cleanMemType(out.brainMemType); // 100 memory type per brain; Standard when not set
-  if ('answerMidJob' in out) out.answerMidJob = out.answerMidJob !== false; // "Answer messages between steps", on unless switched off (mid-job.js)
-  if ('quickSeesJob' in out) out.quickSeesJob = out.quickSeesJob === true; // "Let Bob's Quick brain see the big job", off by default (meanwhile.js)
+  if ('stopWords' in out) out.stopWords = out.stopWords !== false; // "Stop and wait words", on unless switched off (stop-words.js)
+  if ('answerMidJob' in out) out.answerMidJob = out.answerMidJob !== false; // "Reply between steps", on unless switched off (mid-job.js)
+  if ('quickSeesJob' in out) out.quickSeesJob = out.quickSeesJob === true; // "Quick brain sees the job", off by default (meanwhile.js)
   if ('jobHelps' in out) out.jobHelps = cleanJobHelps(out.jobHelps); // Settings, Jobs: eleven switches, all off by default (job-helps.js)
-  if ('editOwn' in out) out.editOwn = out.editOwn === true; // "Let Bob fix his own messages", off by default (edit-own.js)
+  if ('editOwn' in out) out.editOwn = out.editOwn === true; // "Edit his own messages", off by default (edit-own.js)
+  if ('statusJokes' in out) out.statusJokes = out.statusJokes !== false; // 1.5.216 status-line.js, ON unless turned off (the owner asked for it)
   if ('thinkBubble' in out) out.thinkBubble = out.thinkBubble !== false; // 1.5.210 think-bubble.js, ON unless turned off (the owner asked for it)
-  if ('chatRedo' in out) out.chatRedo = out.chatRedo !== false; // "Show Try again, Edit and Delete in the chat", ON unless turned off (owner's exception, redo.js)
-  if ('quickNotes' in out) out.quickNotes = out.quickNotes === true; // "Let Bob take quick notes", off by default (notes.js)
-  if ('smartNotes' in out) out.smartNotes = out.smartNotes === true; // "Let Bob notice what's worth noting", off by default (notes.js)
-  if ('docTools' in out) out.docTools = out.docTools === true; // "Read and search my documents", off by default (my-docs.js)
-  if ('docMeaning' in out) out.docMeaning = out.docMeaning === true; // "Search my documents by meaning", off by default (doc-index.js)
+  if ('chatRedo' in out) out.chatRedo = out.chatRedo !== false; // "Try again, Edit and Delete", ON unless turned off (owner's exception, redo.js)
+  if ('quickNotes' in out) out.quickNotes = out.quickNotes === true; // "Quick notes", off by default (notes.js)
+  if ('smartNotes' in out) out.smartNotes = out.smartNotes === true; // "Auto notes", off by default (notes.js)
+  if ('docTools' in out) out.docTools = out.docTools === true; // "Read and search documents", off by default (my-docs.js)
+  if ('docMeaning' in out) out.docMeaning = out.docMeaning === true; // "Semantic document search", off by default (doc-index.js)
   // Memory and documents, items 87 to 93 (memory-more.js, doc-more.js, digest.js): all off by default.
   for (const k of ['memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPlaces', 'weeklyDigest']) if (k in out) out[k] = out[k] === true;
   if ('notesFolders' in out) out.notesFolders = cleanNotesFolders(out.notesFolders);
-  if ('chatFiles' in out) out.chatFiles = out.chatFiles === true; // "Save chats as files and bring chats in", off by default (chat-files.js)
+  if ('chatFiles' in out) out.chatFiles = out.chatFiles === true; // "Export and import chats", off by default (chat-files.js)
   // Voice, phone and Bob-Net (items 133 to 142, 2026-11-11): every switch off unless turned on.
   if ('talkOver' in out) out.talkOver = out.talkOver === true; // "Talk over Bob" (public/voice.js)
   // Talk with Bob (1.5.210, src/talk.js): off unless turned on; xAI's online hearing and voice off unless picked.
@@ -332,13 +340,18 @@ function clean(patch) {
   if ('readDocs' in out) out.readDocs = out.readDocs === true; // "Read documents aloud" (public/read-aloud.js)
   if ('netVoices' in out) out.netVoices = out.netVoices === true; // "A voice per Bob" (src/tts.js netVoiceFor)
   if ('netVoiceMap' in out) out.netVoiceMap = cleanVoiceMap(out.netVoiceMap);
-  if ('carryIn' in out) out.carryIn = out.carryIn === true; // "Take chats from my other Bobs" (src/carry.js)
-  if ('phoneGlance' in out) out.phoneGlance = out.phoneGlance === true; // "Let my phone see how I'm doing" (src/glance.js)
-  if ('mathView' in out) out.mathView = out.mathView === true; // "Show maths as formulas", off by default (public/math-core.js)
+  if ('carryIn' in out) out.carryIn = out.carryIn === true; // "Accept chats" (src/carry.js)
+  if ('netFiles' in out) out.netFiles = out.netFiles === true; // Nov 14 "Files and brains" (src/bob-net-files.js)
+  if ('phoneGlance' in out) out.phoneGlance = out.phoneGlance === true; // "Share status with my phone" (src/glance.js)
+  if ('chatHeads' in out) out.chatHeads = cleanChatHeads(out.chatHeads); // 1.5.228 a chat head per company (src/net-overlay.js), each off unless turned on
+  if ('netOverlay' in out) out.netOverlay = out.netOverlay === true; // Nov 13 "Bob-Net icons" (src/net-overlay.js), off unless turned on
+  if ('mathView' in out) out.mathView = out.mathView === true; // "Render maths", off by default (public/math-core.js)
   if ('shortcuts' in out) out.shortcuts = out.shortcuts === true; // "Keyboard shortcuts", off by default (public/shortcuts.js)
-  if ('docView' in out) out.docView = out.docView === true; // "Show documents in the side panel", off by default (files.js docPeek)
-  if ('toolLearning' in out) out.toolLearning = out.toolLearning === true; // "Let Bob learn from his tools", off by default (tool-learn.js)
-  if ('chatPresets' in out) out.chatPresets = out.chatPresets === true; // "Assistant presets for chats", off by default (presets.js)
+  if ('docView' in out) out.docView = out.docView === true; // "Documents in the side panel", off by default (files.js docPeek)
+  if ('toolRecord' in out) out.toolRecord = out.toolRecord !== false; // tool-record.js: on unless turned off
+  if ('toolSets' in out) out.toolSets = out.toolSets !== false; // tool-sets.js, tool wording for each brain family: on unless turned off
+  if ('toolLearning' in out) out.toolLearning = out.toolLearning === true; // "Learn from tool errors", off by default (tool-learn.js)
+  if ('chatPresets' in out) out.chatPresets = out.chatPresets === true; // "Assistant presets", off by default (presets.js)
   if ('presetList' in out) out.presetList = cleanPresetList(out.presetList); // the saved presets (presets.js)
   for (const k of HARNESS_KEYS) if (k in out) out[k] = cleanHarness(k, out[k]); // items 62 to 72 (src/harness.js), all off unless switched on
   // 🗓 Everyday helpers (everyday.js), all off by default; text size 100% unless moved.
@@ -346,16 +359,17 @@ function clean(patch) {
   if ('textSize' in out) out.textSize = cleanTextSize(out.textSize);
   if ('todayPlace' in out) out.todayPlace = cleanPlace(out.todayPlace);
   if ('tourSeen' in out) out.tourSeen = typeof out.tourSeen === 'string' && /^\d+\.\d+\.\d+$/.test(out.tourSeen) ? out.tourSeen : '';
-  if ('promptMenu' in out) out.promptMenu = out.promptMenu === true; // "Pull up saved prompts with /", off by default (prompts.js)
-  if ('sandboxCode' in out) out.sandboxCode = out.sandboxCode === true; // "Let Bob work things out in a sandbox", off by default (sandbox-code.js)
+  if ('promptMenu' in out) out.promptMenu = out.promptMenu === true; // "Saved prompts with /", off by default (prompts.js)
+  if ('sandboxCode' in out) out.sandboxCode = out.sandboxCode === true; // "Code sandbox", off by default (sandbox-code.js)
   if ('moreTools' in out) out.moreTools = cleanMoreTools(out.moreTools); // 🧰 More tools, every switch off by default (more-tools.js)
-  if ('parts3d' in out) out.parts3d = out.parts3d === true; // "Let Bob make 3D parts", off by default (parts3d.js)
-  if ('model3d' in out) out.model3d = out.model3d === true; // "Let Bob turn pictures into 3D models", off by default (model3d.js)
-  if ('tray' in out) out.tray = out.tray !== false; // 1.5.94 "Keep Bob in the tray"; on unless switched off since 1.5.134 (the owner asked for it)
-  if ('lookIcon' in out) out.lookIcon = out.lookIcon !== false; // 1.5.94 "Use Bob's look as his icon"; on unless switched off since 1.5.134 (the owner asked for it)
+  if ('parts3d' in out) out.parts3d = out.parts3d === true; // "3D parts", off by default (parts3d.js)
+  if ('model3d' in out) out.model3d = out.model3d === true; // "Pictures to 3D models", off by default (model3d.js)
+  if ('tray' in out) out.tray = out.tray !== false; // 1.5.94 "Minimise to tray"; on unless switched off since 1.5.134 (the owner asked for it)
+  if ('lookIcon' in out) out.lookIcon = out.lookIcon !== false; // 1.5.94 "Use Bob's look as his icon"; off unless switched on since 1.5.228 (src/app-icon.js), so only a saved switch counts
+  if ('ownBar' in out) out.ownBar = out.ownBar !== false; // 1.5.228 "Window buttons on Bob's bar", on unless switched off (the owner asked for it; electron/window-bar.cjs)
   if ('houseStyle' in out) out.houseStyle = cleanHouseStyle(out.houseStyle); // 1.5.34 House style (public/house-style.js)
   if ('projectList' in out) out.projectList = cleanProjects(out.projectList); // 1.5.34 Projects in Settings
-  if ('saveDir' in out) out.saveDir = cleanDir(out.saveDir); // 1.5.41 Where Bob saves things ('' = Bob's own folder)
+  if ('saveDir' in out) out.saveDir = cleanDir(out.saveDir); // 1.5.41 Save folder ('' = Bob's own folder)
   if ('saveDirsUsed' in out) out.saveDirsUsed = [].concat(out.saveDirsUsed || []).map(cleanDir).filter(Boolean).slice(0, 10);
   if ('defaultProject' in out) out.defaultProject = typeof out.defaultProject === 'string' ? out.defaultProject.slice(0, 60) : '';
   if ('gamingCard' in out) out.gamingCard = ['auto', 'never', 'always'].includes(out.gamingCard) ? out.gamingCard : 'auto'; // 1.5.32
@@ -365,7 +379,7 @@ function clean(patch) {
   if ('autoSession' in out) out.autoSession = out.autoSession !== false; // 1.5.41, on unless switched off (the owner's call)
   if ('pictureNoWait' in out) out.pictureNoWait = out.pictureNoWait !== false; // 1.5.20, on unless switched off
   if ('updates' in out) out.updates = { autoCheck: out.updates?.autoCheck === true };
-  if ('engineUpdates' in out) out.engineUpdates = { auto: out.engineUpdates?.auto !== false }; // 1.5.184 Keep engines up to date, on unless switched off
+  if ('engineUpdates' in out) out.engineUpdates = { auto: out.engineUpdates?.auto !== false }; // 1.5.184 Auto-update engines, on unless switched off
   if ('housekeeping' in out) out.housekeeping = cleanHousekeeping(out.housekeeping || {});
   if ('checkins' in out) out.checkins = cleanCheckins(out.checkins || {}); // 1.5.78 Check-ins, off unless switched on
   if ('games' in out) { const g = out.games || {}; out.games = { brain: g.brain === 'main' ? 'main' : 'quick', talk: ['every', 'some', 'end'].includes(g.talk) ? g.talk : 'every', keep: g.keep === true, kid: g.kid === true }; } // 1.5.121 🧩 Games (defaults, nothing on); 1.5.206 Keep an unfinished game, off; Kid mode, off
@@ -377,7 +391,9 @@ function clean(patch) {
   if ('sessionBrains' in out) {
     const sb = out.sessionBrains || {};
     out.sessionBrains = {};
-    for (const k of ['small', 'gaming', 'coding', 'office', 'deep']) if (typeof sb[k] === 'string' && /^[\w.:/-]{1,100}$/.test(sb[k])) out.sessionBrains[k] = sb[k];
+    // '' takes a brain off that job (Nov 13: it was dropped, so the ✕ and the One brain setup never took Quick, Office or
+    // Deep thinking off). Gaming always has one.
+    for (const k of ['small', 'gaming', 'coding', 'office', 'deep']) if (typeof sb[k] === 'string' && (/^[\w.:/-]{1,100}$/.test(sb[k]) || (sb[k] === '' && k !== 'gaming'))) out.sessionBrains[k] = sb[k];
     // 1.5.56: the owner's rule, kept here too: Gemma 4 E4B is never the Gaming brain, whatever asks for it.
     if (/e4b/i.test(out.sessionBrains.gaming || '')) delete out.sessionBrains.gaming;
   }
@@ -443,6 +459,7 @@ function cleanLlamacpp(lc) {
   for (const k of ['threads', 'batch', 'ubatch', 'ctx']) if (k in out) out[k] = Number.isInteger(out[k]) && out[k] > 0 && out[k] <= 1048576 ? out[k] : null;
   if ('fit' in out) out.fit = typeof out.fit === 'boolean' ? out.fit : null;
   if ('noEyes' in out) out.noEyes = Array.isArray(out.noEyes) ? [...new Set(out.noEyes.filter((x) => typeof x === 'string' && /^[\w.:/-]{1,100}$/.test(x)))].slice(0, 200) : []; // Lab: brains loaded without their reader
+  if ('expertsPerWord' in out) out.expertsPerWord = cleanPerWordMap(out.expertsPerWord); // Brain Engine 0013: experts per word, per brain
   if ('brainEngine' in out) out.brainEngine = out.brainEngine !== false; // 1.5.169: run brains on Brain Engine when it's here
   if ('loadMode' in out) out.loadMode = out.loadMode === 'mmap' ? 'mmap' : 'auto'; // 1.5.90
   if ('draft' in out) {
@@ -480,6 +497,15 @@ const THEME_ID = /^[a-z0-9-]{2,40}$/;
 const COLOR_KEYS = ['bg', 'panel', 'card', 'you', 'line', 'text', 'muted', 'accent', 'onAccent', 'good', 'warn', 'bad', 'spriteBg'];
 const FONT_IDS = ['system', 'plex', 'mono', 'serif', 'rounded'];
 const OLD_THEME_IDS = { system: 'moondust', slate: 'moondust', midnight: 'nightside', 'mousehole-dark': 'otterbend', 'mousehole-light': 'homestead', paper: 'sandbar', 'mousewurx-light': 'drydock', 'mousewurx-dark': 'drydock-night' }; // mirrors public/themes.js OLD_IDS
+// Nov 14 2026: the style after the one-time move from Moondust (or no theme, which meant Moondust) to the Mercury lamp,
+// or null when there's nothing to move (already moved, or another theme picked).
+export function lampMove(style) {
+  const st = style && typeof style === 'object' ? style : {};
+  if (st.lampMoved === true) return null;
+  const theme = typeof st.theme === 'string' ? (OLD_THEME_IDS[st.theme] || st.theme) : 'moondust';
+  if (theme !== 'moondust') return { ...st, lampMoved: true };
+  return { ...st, theme: 'mercury', lamp: 'mercury', lampMoved: true };
+}
 export function cleanStyle(st) {
   const out = {};
   if (!st || typeof st !== 'object') return out;
@@ -490,6 +516,8 @@ export function cleanStyle(st) {
   if (['pixel', 'cube'].includes(st.avatar)) out.avatar = st.avatar;
   if (st.avatarKept === true) out.avatarKept = true; // 1.5.211: Pixel Bob picked on purpose (public/themes.js pixelKept) // 1.5.209 Bob's look: the pixel Bob (to begin with) or the fNRI cube
   if (['classic', 'lamplight', 'terminal'].includes(st.look)) out.look = st.look; // 1.5.210: Style > Look (mirrors public/themes.js LOOK_IDS)
+  if (st.lampMoved === true) out.lampMoved = true; // Nov 14 2026: Moondust moved to Mercury once (lampMove)
+  if (['mercury', 'sodium', 'thallium', 'neon'].includes(st.lamp)) out.lamp = st.lamp; // Nov 14 2026: the lamp colour (mirrors public/themes.js LAMP_IDS)
   if (Array.isArray(st.custom)) {
     out.custom = st.custom.slice(0, 24).filter((t) => t && typeof t === 'object' && THEME_ID.test(String(t.id)) && String(t.id).startsWith('my-')).map((t) => {
       const colors = {};
@@ -535,7 +563,7 @@ export function cleanProjects(list) {
   }
   return out;
 }
-// ---------- 1.5.41: Where Bob saves things ----------
+// ---------- 1.5.41: Save folder ----------
 // Pictures, clips, songs and sounds go to cfg.painterDir. That is Bob's own folder (inn\painter, shown as
 // "Made by Bob") unless the user picked another in Settings (saveDir). Folders used before stay readable
 // (saveDirsUsed), so pictures and songs in older chats still show after a change.
@@ -586,11 +614,11 @@ function applyProjects(cfg) {
   if (Array.isArray(cfg.projectList)) cfg.projects = Object.fromEntries(cfg.projectList.map((p) => [p.name, p.path]));
   if (cfg.defaultProject && !(cfg.projects || {})[cfg.defaultProject]) cfg.defaultProject = '';
   applyNotes(cfg); // notes folders (Obsidian, OneNote exports) join the folders Bob may read (notes-folders.js)
-  return applyCodeCopy(cfg); // "Let Bob work on repositories": the code copies are projects while the switch is on
+  return applyCodeCopy(cfg); // "Work on repositories": the code copies are projects while the switch is on
 }
 
 // Settings saved whole (not merged key by key), so an emptied box or a removed project really goes away.
-// "Keep the last 20 Settings changes" (src/settings-undo.js) listens here while it's on: the keys a change touched,
+// "Settings undo (last 20)" (src/settings-undo.js) listens here while it's on: the keys a change touched,
 // as they were and as they are now. One listener; it never changes what is saved.
 let settingsWatcher = null;
 export const watchSettings = (fn) => { settingsWatcher = typeof fn === 'function' ? fn : null; };

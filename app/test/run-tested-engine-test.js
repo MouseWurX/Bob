@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { installEngine, engineStatus, TESTED_LLAMA, ENGINES, engineFor } from '../src/engines.js';
+import { publicText } from './source-text.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let failures = 0;
@@ -37,7 +38,7 @@ globalThis.fetch = realFetch;
 const st = engineStatus(cfg).find((e) => e.id === 'llamacpp');
 check(st.tested === TESTED_LLAMA && st.pinned === false, 'the cellar knows the tested build and still offers "Check for a newer build"');
 
-const cellar = fs.readFileSync(path.join(here, '..', 'public', 'cellar.js'), 'utf8');
+const cellar = publicText('cellar.js');
 check(cellar.includes('data-newest="1"') && cellar.includes("b.dataset.newest ? '@newest' : ''"), 'the "Get newer build" button queues engine:<id>@newest');
 check(cellar.includes('Go back to the tested build ('), 'a newer build can be swapped back for the tested one');
 const help = fs.readFileSync(path.join(here, '..', 'public', 'help-content.js'), 'utf8');

@@ -1,8 +1,9 @@
-// 1.5.97 Pair with my other Bobs (src/bob-net-pair.js): two Bobs talking through a fake network.
+// 1.5.97 Pair Bobs (src/bob-net-pair.js): two Bobs talking through a fake network.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Pairing, peersFromStatus, PAIR } from '../src/bob-net-pair.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('PASS', m); } else { fail++; console.log('FAIL', m); } };
@@ -27,8 +28,8 @@ function net(bobs) {
     if (!to.cfg.remote.enabled) return reply(403, { error: 'bad host' });
     const b = opt.body ? JSON.parse(opt.body) : {};
     if (u.pathname === '/api/pair/hello') return reply(200, to.p.hello());
-    if (u.pathname === '/api/pair/ask') { const r = to.p.ask(b, '::ffff:' + from.ip); return reply(r.code, r.error ? { error: r.error } : { id: r.id }); }
-    if (u.pathname === '/api/pair/status') return reply(200, to.p.status(b.id, from.ip));
+    if (u.pathname === '/api/pair/ask') { const r = to.p.ask(b, '::ffff:' + from.ip); return reply(r.code, r.error ? { error: r.error } : { id: r.id, ...(r.pub ? { pub: r.pub } : {}) }); }
+    if (u.pathname === '/api/pair/status') return reply(200, to.p.status(b.id, from.ip, b.pub));
     if (u.pathname === '/api/pair/finish') return reply(200, to.p.finish(b, from.ip));
     return reply(404, {});
   };
@@ -131,7 +132,7 @@ ok(peers[1].name === 'phoneb', 'device list: names are cleaned');
   ok(/bob-net\/answer[\s\S]{0,400}if \(!isLocal\)/.test(s), 'Yes/No and Find only on this replicant matrix');
   const page = fs.readFileSync(new URL('../public/share-brains.js', import.meta.url), 'utf8');
   ok(page.indexOf('box.innerHTML = `<h4 class="ssub">My other Bobs</h4>') < page.indexOf('<div class="pair-box">') && page.indexOf('<div class="pair-box">') < page.indexOf('<ul class="share-list">${v.lenders'), 'pairing sits at the top of My other Bobs (1.5.99: under its heading, above the list)');
-  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const app = publicText('app.js');
   ok(/case 'pair-ask'/.test(app) && /Yes, pair us/.test(app), 'chat shows the Yes/No card');
 }
 

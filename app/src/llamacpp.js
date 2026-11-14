@@ -2,6 +2,7 @@
 // Same interface as the Ollama client, so the brain doesn't care which engine is in use.
 // Models are found by Ollama name in Ollama's model folder (no duplicate downloads), or set by path in config.
 import { learnPer, promptChars, perFor } from './token-count.js';
+import { perWordFor, perWordWords, sendPerWord } from './experts-per-word.js'; // Brain Engine 0013
 import { replyStats } from './speed-stats.js';
 import fs from 'node:fs';
 import { commandLineOf } from './util.js';
@@ -14,7 +15,7 @@ import { templateFor, samplingFor, replyTokens } from './model-family.js';
 import { gaming, LONG_CODER } from './sessions.js';
 import { gamingCard, decideCard, readCard, CARD_BUSY_PCT, CARD_MIN_FREE_MB } from './gaming-card.js';
 import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts, cardGB } from './tuning.js';
-import { chatPlacesOn, placesDir, placeFile, tidyPlaces } from './chat-places.js'; // Each chat keeps its place in the engine (off unless switched on)
+import { chatPlacesOn, placesDir, placeFile, tidyPlaces } from './chat-places.js'; // Per-chat engine cache (off unless switched on)
 import { exeName } from './platform.js';
 import { buildMatches, brainEngineName, brainEngineBuild } from '../public/engine-name.js';
 import { Embedder } from './embedder.js';
@@ -83,6 +84,28 @@ export function thinkBudget(model, think) {
 // How long a brain may sit unused in memory: the shared setting ollamaKeepAlive ("10m", "30m", "1h", or "-1" for never).
 // Both engines use it: Ollama through keep_alive, Bob's own engine through the idle check below (1.5.2).
 // 1.5.210 (208 PC check): the logbook said "2 min" for a 1 min keep-alive. Minutes and seconds, as it really was.
+// 1.5.215: a reader for the engine's load progress. Brain Engine with patch 0012 writes "load_progress:
+// text_model <percent>" about five times a second while the weights load. llama.cpp builds that print the old progress
+// dots (one per 1%, on their own) are read too; a dot inside words or numbers ("model.gguf", "1.5", "...") doesn't
+// count. Returns a new percentage (0-100) when it moved by at least 2, or reached 100; null otherwise.
+export function loadDots() {
+  let n = 0, told = -1;
+  return (d) => {
+    const s = String(d || '');
+    let at = -1;
+    for (const m of s.matchAll(/load_progress: text_model (\d{1,3})\b/g)) at = Math.min(100, Number(m[1]));
+    if (at >= 0) n = Math.max(n, at);
+    else {
+      let got = 0;
+      if (/^[.\r\n]+$/.test(s)) got = (s.match(/\./g) || []).length;
+      else for (const m of s.match(/(?:^|[^\w.])(\.{5,})(?![\w.])/g) || []) got += (m.match(/\./g) || []).length;
+      if (!got) return null;
+      n = Math.min(100, n + got);
+    }
+    if (told < 0 || n - told >= 2 || (n === 100 && told < 100)) { told = n; return n; }
+    return null;
+  };
+}
 export const idleFor = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ''}`; };
 export function keepAliveMs(cfg) {
   const k = String(cfg?.ollamaKeepAlive ?? '5m');
@@ -221,7 +244,7 @@ export class LlamaCpp {
       this.beside.brainLabel = (m) => this.brainLabel?.(m) || `${m} brain`; // 218-228: plain names in the chat notes
       this.beside.main = this; // so a card reader set on the main engine (tests) also counts for the second server
       // fNRI's small cube: a brain answering on the second server is traced too, and told to the same cube
-      this.beside.wantTrace = () => this.wantTrace?.() || false; this.beside.onTrace = (raw, model) => this.onTrace?.(raw, model); this.beside.onTracePart = (raw, model) => this.onTracePart?.(raw, model);
+      this.beside.wantTrace = () => this.wantTrace?.() || false; this.beside.onTrace = (raw, model) => this.onTrace?.(raw, model); this.beside.onTracePart = (raw, model) => this.onTracePart?.(raw, model); this.beside.onLoadProgress = (model, pct) => this.onLoadProgress?.(model, pct);
       // 1.5.53: the brain hears when a second brain joins or leaves (chat page: second-brain events, Bob's head grows).
       this.beside.changed = (ev) => { try { this.onBeside?.(ev); } catch {} };
     }
@@ -546,7 +569,7 @@ export class LlamaCpp {
       // 98 Laptop mode (opt-in): on battery, half the cores. Games-first and threads set by hand win.
       ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : laptopThreads(this.cfg) ? ['-t', String(laptopThreads(this.cfg))] : num(lc.threads, '-t')),
       ...num(lc.batch, '-b'), ...num(lc.ubatch, '-ub'),
-      // 1.5.24 "Get Bob ready while you type": on the processor, his reading of the instructions is kept on disk.
+      // 1.5.24 "Warm up while typing": on the processor, his reading of the instructions is kept on disk.
       ...(cpu && tuning(this.cfg).readyWhileTyping ? ['--slot-save-path', startDir(this.cfg)] : chatPlacesOn(this.cfg) && this.role !== BESIDE ? ['--slot-save-path', placesDir(this.cfg)] : []), // or each chat's place (chat-places.js)
       ...(modelArgs || lc.modelArgs?.[model] || []),
       // Mixture-of-experts models: keep this many layers' experts in system RAM so the rest fits the card.
@@ -604,7 +627,7 @@ export class LlamaCpp {
 
   // Long memory (YaRN): only with the switch on, a brain the guide covers, and a size past what it was made for.
   // Settings set by hand (llamacpp.args with --rope-scaling) win.
-  // "Let Bob work on repositories" (self-work.js) uses Long memory for its own job even with the switch off: a size past
+  // "Work on repositories" (self-work.js) uses Long memory for its own job even with the switch off: a size past
   // what the brain was made for only reaches here through that job (brain.fitCtx with stretch) or a pick with it on.
   stretchArgs(gguf, ctx) {
     if (!(stretchOn(this.cfg) || selfWorkOn(this.cfg)) || (this.lc.args || []).includes('--rope-scaling')) return [];
@@ -632,13 +655,13 @@ export class LlamaCpp {
     try { return samplingFor(this.lc, model, gguf, { tools, think, task, own: this.cfg?.qwenPresets }); } catch { return {}; }
   }
 
-  // ---------- Get Bob ready while you type (1.5.24) ----------
+  // ---------- Warm up while typing (1.5.24) ----------
   async slotAction(action, filename) {
     const res = await fetch(`${this.url}/slots/0?action=${action}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ filename }), signal: AbortSignal.timeout(60000) });
     if (!res.ok) throw new Error(`slot ${action}: ${res.status}`);
   }
 
-  // Each chat keeps its place in the engine (chat-places.js, off unless switched on): before another chat's reply, the
+  // Per-chat engine cache (chat-places.js, off unless switched on): before another chat's reply, the
   // reading the engine holds for the last chat is saved to disk, and the new chat's saved reading (if any) comes back.
   // The engine only reuses the part of a saved reading that still matches the chat, so an edited chat is safe.
   async switchPlace(chatId, model) {
@@ -677,6 +700,7 @@ export class LlamaCpp {
     if (this.primedHash === hash) return 'ready';
     this.active++;
     try {
+      await this.sendPerWord(model); // before the reading, which a change of experts per word would throw away
       const res = await fetch(this.url + '/v1/chat/completions', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ model, messages: [...LlamaCpp.toOpenAI(messages), { role: 'user', content: '.' }], tools: tools?.length ? tools : undefined, max_tokens: 1, stream: false, cache_prompt: true, chat_template_kwargs: { enable_thinking: false } }),
@@ -1101,14 +1125,18 @@ export class LlamaCpp {
     this.slotDir = args.includes('--slot-save-path') ? args[args.indexOf('--slot-save-path') + 1] : ''; // where this engine run saves readings
     this.placeChat = null; // a fresh engine holds no chat's reading yet
     let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
-    if (helpers.length) env = { ...env, ...scutEnv(this.cfg), ...linkEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
+    if (helpers.length) env = { ...env, ...scutEnv(this.cfg, { wired: Boolean(this.spread?.allWired?.()) }), ...linkEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
     // 1.5.203: spawn throws when Windows blocks the program (Smart App Control); safeSpawn turns that into 'error'.
     const child = safeSpawn(spawn, exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });
-    // 1.5.24 "Let games go first": on the processor, the engine yields to games (below normal priority).
+    // 1.5.24 "Games first": on the processor, the engine yields to games (below normal priority).
     if (this.role === BESIDE || (cpu && cpuPlan(this.cfg)?.lowPriority)) { try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {} }
     // The link log: with a lent card in use, the engine's [link] and [scut] lines go to bob-net-link.log and the logbook.
     const link = helpers.length ? new LinkLog(this.cfg, { who: 'borrowed card', log: (...a) => this.log?.(...a) }) : null;
-    const keep = (d) => { log = (log + d).slice(-4000); if (full.length < LOAD_LOG_MAX) full += d; link?.feed(d); };
+    // 1.5.215: how far the weights have loaded. While a brain loads, llama.cpp writes one dot per 1% of its weights read
+    // in (and sent to the card), which drives the fNRI cube's load-in like a progress bar.
+    const dots = loadDots();
+    const keep = (d) => { log = (log + d).slice(-4000); if (full.length < LOAD_LOG_MAX) full += d; link?.feed(d);
+      if (!this.loadedOk && this.child === child) { const pct = dots(d); if (pct !== null) { try { this.onLoadProgress?.(model, pct); } catch {} } } };
     this.outTail = () => log; // Nov 12: the engine's last words after a reply failed (out of memory or not)
     child.stdout.on('data', keep);
     child.stderr.on('data', keep);
@@ -1132,6 +1160,7 @@ export class LlamaCpp {
     });
     this.child = child;
     this.loadedOk = false;
+    this.perWordSent = null; this.perWordLive = false; // a new engine starts with the brain's own experts per word
     this.current = model;
     this.currentCtx = ctx || null;
     this.currentCpu = Boolean(cpu);
@@ -1243,7 +1272,23 @@ export class LlamaCpp {
     this.lastUse = this.now();
     const mine = { signal: opts?.signal }; // item 213: a reply still here after its job was stopped is stuck
     (this.inflight ||= new Set()).add(mine);
-    try { return await this.chatOnce(opts); } finally { this.active--; this.lastUse = this.now(); this.inflight.delete(mine); }
+    try { return await this.chatOnce(opts); } finally { this.active--; this.lastUse = this.now(); this.inflight.delete(mine); if (this.cardBackPending && this.active === 0) this.reloadWithout(); }
+  }
+
+  // 1.5.214: a Bob lending a card to this spread needs it back (a game on it, or its memory ran low). The brain loads
+  // again without his card (src/share-card.js CardBorrower.lost marked him down): now when nothing is answering, or
+  // right after the reply in progress, so the reply isn't cut.
+  cardTakenBack() {
+    if (!this.current || !this.spreadNow) return;
+    this.reloadWanted.add(this.current);
+    this.cardBackPending = true;
+    if (this.active === 0) this.reloadWithout();
+  }
+  reloadWithout() {
+    this.cardBackPending = false;
+    const model = this.current;
+    if (!model) return;
+    this.preload(model, undefined, { ctx: this.currentCtx || undefined, cpu: Boolean(this.currentCpu) }).then(() => this.log?.('engine', `${model}: loaded again without the card that was taken back`)).catch((e) => this.log?.('engine', `${model}: couldn't load it again after a card was taken back (${String(e.message || e).slice(0, 160)}); the next job tries again`));
   }
 
   // 1.5.19: Medium has a thinking budget (1.5.68: so does Qwen3.6 at every effort, see thinkBudget). Once the brain has thought that long, the request stops and is asked again
@@ -1261,6 +1306,25 @@ export class LlamaCpp {
       const messages = [...opts.messages, { role: 'system', content: 'Thinking time is up. Answer now, using what you have worked out so far.' }];
       return this.chatStream({ ...opts, messages, think: false });
     } finally { opts.signal?.removeEventListener?.('abort', onAbort); }
+  }
+
+  // Brain Engine 0013: the experts per word saved for this brain (Settings, Speed), sent before its first answer on
+  // this engine and again after a change, with no reload. Nothing is sent for a brain without one. Only when this
+  // reply has the engine to itself (Brain Engine refuses while answering); otherwise the next reply sends it.
+  async sendPerWord(model) {
+    const want = perWordFor(this.lc, model);
+    const key = `${model}|${JSON.stringify(want)}`;
+    if (this.perWordSent === key || this.current !== model || this.active > 1) return;
+    if (want === null && !this.perWordLive) { this.perWordSent = key; return; } // the brain's own, and the engine has it
+    try {
+      const r = await sendPerWord(this.url, want, { timeoutMs: 15000 });
+      this.perWordSent = key;
+      this.perWordLive = want !== null;
+      try { this.log?.('engine', `${model}: experts per word ${perWordWords(want, r?.n_expert_used)}`); } catch {}
+    } catch (e) {
+      this.perWordSent = key; // said once; tried again after the next change or load
+      try { this.log?.('engine', `${model}: experts per word not changed: ${e.message}`); } catch {}
+    }
   }
 
   async chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver, task, temperature }) {
@@ -1281,6 +1345,7 @@ export class LlamaCpp {
       } catch {}
     }
     if (this.noMidSystem.has(model)) messages = foldSystem(messages);
+    await this.sendPerWord(model);
     // Item 14 (Nov 11): a reply that stops sending words is stopped, not waited on until someone presses Stop. Once
     // words are coming, a quiet spell longer than STALL_MS (twice that when the brain is spread over other Bobs' cards)
     // means the engine hung: it is let go and the error says "terminated", so Bob loads it again and asks once more.
@@ -1392,7 +1457,7 @@ export class LlamaCpp {
           if (tc.id && !calls[i].id) calls[i].id = String(tc.id); // item 166: the engine's own id is kept
           if (tc.function?.name) calls[i].name += tc.function.name;
           if (tc.function?.arguments) calls[i].args += tc.function.arguments;
-          // 95 Load the next brain early: the brain hears a hand-off while it is still being written.
+          // 95 Preload the next brain: the brain hears a hand-off while it is still being written.
           if (this.onToolCall && calls[i].name) { try { this.onToolCall(calls[i].name, calls[i].args); } catch {} }
         }
       }

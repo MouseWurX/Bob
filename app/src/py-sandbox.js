@@ -1,5 +1,5 @@
 // 🐍 "Let Bob use Python in the sandbox" (Settings, How Bob works, 🧰 More tools; off by default). Works together
-// with "Let Bob work things out in a sandbox": run_in_sandbox gets language "python" for data and maths jobs.
+// with "Code sandbox": run_in_sandbox gets language "python" for data and maths jobs.
 //
 // Python here is Pyodide: Python compiled to WebAssembly (MPL-2.0, pinned below and sha256-checked, about 6.5 MB,
 // fetched from the npm registry when the user presses Get Python). It runs INSIDE the same locked box as the

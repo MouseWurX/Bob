@@ -1,4 +1,4 @@
-// Settings, Other apps: "Let other apps use Bob's brains" (src/apps-door.js). Off unless you turn it on.
+// Settings, Other apps: "Brains for other apps" (src/apps-door.js). Off unless you turn it on.
 import { esc } from './util.js';
 
 async function api(url, data) {
@@ -9,20 +9,20 @@ async function api(url, data) {
 }
 
 export function appsDoorHtml() {
-  return '<div class="apps-door-box"><strong>Let other apps use Bob\'s brains</strong><p class="muted">Loading…</p></div>';
+  return '<div class="apps-door-box"><strong>Brains for other apps</strong><p class="muted">Loading…</p></div>';
 }
 
 // The panel as HTML, from what GET /api/apps-door sent. Every control is drawn all the time (settings rule 14).
 export function appsDoorBody(v, { msg = '', shown = false } = {}) {
   const sw = (key, label, note, on) => `<label class="switch"><input type="checkbox" data-ad="${key}" ${on ? 'checked' : ''}><span><strong>${label}</strong><br><span class="muted">${note}</span></span></label>`;
   const key = v.key ? (shown ? `<code class="apps-key">${esc(v.key)}</code>` : '<code class="apps-key">bob-••••••••</code>') : '<span class="muted">Made the first time you switch this on, or press New key.</span>';
-  return `<strong>Let other apps use Bob's brains</strong> <span class="tag">off unless you turn it on</span>
-      ${sw('enabled', 'Let other apps use Bob\'s brains', 'Coding and chat apps on this replicant matrix use my brains, with the key below.', v.enabled)}
+  return `<strong>Brains for other apps</strong> <span class="tag">off unless you turn it on</span>
+      ${sw('enabled', 'Brains for other apps', 'Coding and chat apps on this replicant matrix use my brains, with the key below.', v.enabled)}
       <p class="muted" role="status">${v.enabled ? `On. Address for apps: <code>${esc(v.url)}</code>` : 'Off.'}</p>
       <div class="row"><strong>Key for other apps</strong> ${key}
         ${v.key ? `<button type="button" class="mini" data-ad-show>${shown ? 'Hide the key' : 'Show the key'}</button><button type="button" class="mini" data-ad-copy>Copy the key</button>` : ''}
         <button type="button" class="mini" data-ad-new>New key</button></div>
-      ${sw('network', 'Let apps on my other devices in too', `Apps on your Tailscale devices come in through Bob-Net's door, with the same key.${v.doorOpen ? '' : ' Needs Let my other replicant matrices in (Settings, Bob-Net).'}`, v.network)}
+      ${sw('network', 'Allow other devices', `Apps on your Tailscale devices come in through Bob-Net's door, with the same key.${v.doorOpen ? '' : ' Needs Bob-Net access (Settings, Bob-Net).'}`, v.network)}
       ${v.others?.length ? `<p class="muted">From your other devices: ${v.others.map((u) => `<code>${esc(u)}</code>`).join(' or ')}</p>` : ''}
       ${msg ? `<p class="muted" role="status">${esc(msg)}</p>` : ''}
       <details class="more"><summary>How to connect an app</summary><p class="muted">Most apps have an "OpenAI-compatible" choice. Give it the address <code>${esc(v.url)}</code>, the key above, and the brain <code>bob</code> (my chat brain in this session), or any name on <code>${esc(v.url)}/models</code>.<br>
@@ -40,7 +40,7 @@ export async function mountAppsDoor(box) {
     try { v = await api('/api/apps-door', patch); msg = said; } catch (e) { msg = e.message; }
     draw();
   };
-  try { v = await api('/api/apps-door'); } catch (e) { box.innerHTML = `<strong>Let other apps use Bob's brains</strong><p class="muted">${esc(e.message)}</p>`; return; }
+  try { v = await api('/api/apps-door'); } catch (e) { box.innerHTML = `<strong>Brains for other apps</strong><p class="muted">${esc(e.message)}</p>`; return; }
   draw();
   box.addEventListener('change', (e) => { const k = e.target.dataset?.ad; if (k) change({ [k]: e.target.checked }); });
   box.addEventListener('click', async (e) => {

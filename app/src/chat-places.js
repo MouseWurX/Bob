@@ -1,8 +1,8 @@
-// "Each chat keeps its place in the engine" (Settings, How Bob works, 💬 Chat extras). Off unless turned on.
+// "Per-chat engine cache" (Settings, How Bob works, 💬 Chat extras). Off unless turned on.
 // The engine (llama-server) keeps one chat's reading in its memory. Switching to another chat throws it away, so going
 // back means reading the whole chat again (a long chat on a big brain can take a minute). With this on, Bob's built-in
 // engine saves the old chat's reading to disk when you switch (inn\bob\chat-places) and loads it back when you return.
-// Before, only brains on the processor with "Get Bob ready while you type" saved anything (their instructions).
+// Before, only brains on the processor with "Warm up while typing" saved anything (their instructions).
 //   - Only Bob's built-in engine (Brain Engine or llama.cpp). Ollama and rented brains don't have it.
 //   - Not for brains that see pictures (the engine can't save those), and not the second brain beside a job.
 //   - The newest 4 are kept, and no more than 8 GB in all: a long chat on a big brain can take a few GB.

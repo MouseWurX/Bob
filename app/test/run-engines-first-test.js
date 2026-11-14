@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { starterBrain, readyPlan, CORE_ENGINES } from '../public/equip.js';
 import { checkEngine, seedBundledEngine, bundledEngine, engineStatus } from '../src/engines.js';
 import { exeName } from '../src/platform.js';
+import { publicText } from './source-text.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let failures = 0;
@@ -82,7 +83,7 @@ const pk = JSON.parse(fs.readFileSync(path.join(here, '..', 'package.json'), 'ut
 check(pk.build.asarUnpack.includes('engines/**') && pk.build.files.includes('engines/**'), 'AppImage: the engine sits outside the asar so it can run');
 
 // Welcome wiring.
-const cellar = fs.readFileSync(path.join(here, '..', 'public', 'cellar.js'), 'utf8');
+const cellar = publicText('cellar.js');
 // 1.5.91: one list (Get me ready) instead of step 1 and step 2.
 check(/<h3>Get me ready<\/h3>/.test(cellar) && /data-getready/.test(cellar) && /\/api\/engines\/check/.test(cellar), 'Welcome has the Get me ready list with its checks');
 check(!/readyTried/.test(cellar) && /Get Bob ready \(about \$\{gb\(order\.sizeGB\)\}\)/.test(cellar), 'one click on Get Bob ready, with its size; never started by itself');
@@ -93,7 +94,7 @@ const server = fs.readFileSync(path.join(here, '..', 'src', 'server.js'), 'utf8'
 check(/'\/api\/engines\/check'/.test(server), 'the server answers /api/engines/check');
 
 {
-  const cel = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+  const cel = publicText('cellar.js');
   check(/came with me \(basic version\)/.test(cel) && !/basic build/.test(cel), 'Welcome row: "llama.cpp: came with me (basic version)", no jargon');
   check(/r\.swap \? 'came with me \(basic version\); this gets the faster NVIDIA version'/.test(cel) && /const swap = e\.bundled && hw\.nvidia/.test(fs.readFileSync(new URL('../public/equip.js', import.meta.url), 'utf8')), 'the NVIDIA swap line shows only when the swap is planned (NVIDIA cards)');
 }

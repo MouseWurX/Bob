@@ -1,7 +1,7 @@
 // Harness items 62 to 72 (src/harness.js): Catch crashes, Safe start, Settings undo, the Health page, Quiet hours,
 // chat places, the weekly page, the shortcut from anywhere, Try from here, Pin messages, Guest chats.
 // Everything here runs on a fake Bob folder in a temp dir: nothing reads this replicant matrix's own settings.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -37,7 +37,8 @@ check('every harness key is a saved setting', HARNESS_KEYS.every((k) => SETTING_
 check('apuHoldbackGB stays last', SETTING_KEYS[SETTING_KEYS.length - 1] === 'apuHoldbackGB');
 {
   const v = harnessView(mergeSettings({}, {}));
-  check('all off on a new Bob', HARNESS_KEYS.every((k) => (typeof v[k] === 'object' ? v[k].on === false : v[k] === false)), JSON.stringify(v));
+  const CHOICES = { amnesiaMade: 'keep', amnesiaAutoOff: 0 }; // Amnesia mode's two choices, not switches
+  check('all off on a new Bob', HARNESS_KEYS.every((k) => (k in CHOICES ? v[k] === CHOICES[k] : typeof v[k] === 'object' ? v[k].on === false : v[k] === false)), JSON.stringify(v));
   check('quiet hours start 22:00 to 07:00', v.quietHours.from === '22:00' && v.quietHours.to === '07:00');
   check('the shortcut starts as Ctrl+Shift+Space', v.globalAsk.key === 'CommandOrControl+Shift+Space' && v.askKeys.length === ASK_KEYS.length);
 }
@@ -143,7 +144,7 @@ check('Bob\'s settings readout names them', /Quiet hours/.test(harnessNow({})) &
     check('a stray UTC zone on a non-UTC computer means the computer\'s own clock', minuteOfDay(fake, 'UTC') === 17 * 60 + 27 && minuteOfDay(fake, 'Etc/UTC') === 17 * 60 + 27);
     check('so 22:00 to 07:00 is not quiet at 17:27', !isQuiet({ quietHours: { on: true, from: '22:00', to: '07:00' }, timeZone: 'UTC' }, fake)); }
   check('check-ins wait in quiet hours', /isQuiet\(this\.cfg\)\) return null|if \(isQuiet\(/.test(read('src/checkins.js')));
-  check('reminders say if they are urgent, and pop up anyway', /urgent/.test(read('src/tools.js')) && /ev\.quiet && !ev\.urgent/.test(read('public/app.js')));
+  check('reminders say if they are urgent, and pop up anyway', /urgent/.test(read('src/tools.js')) && /ev\.quiet && !ev\.urgent/.test(publicText('app.js')));
 }
 
 // ---------- What Bob did this week ----------
@@ -172,7 +173,7 @@ check('Bob\'s settings readout names them', /Quiet hours/.test(harnessNow({})) &
   check('the Monday line is once a week', weekKey(new Date(2026, 10, 11)) === weekKey(new Date(2026, 10, 15)) && weekKey(new Date(2026, 10, 11)) !== weekKey(new Date(2026, 10, 17)));
 }
 
-// ---------- Each chat keeps its place in the engine ----------
+// ---------- Per-chat engine cache ----------
 {
   const cfg = fresh({ chatPlaces: true });
   const dir = placesDir(cfg);
@@ -328,7 +329,7 @@ check('Bob\'s settings readout names them', /Quiet hours/.test(harnessNow({})) &
   const plain = (s) => String(s).replace(/<[^>]+>/g, ' ').replace(/\\'/g, "'").replace(/\s+/g, ' ').toLowerCase();
   const help = plain(HELP.map((e) => `${e.title} ${e.html}`).join(' '));
   check('every switch is in Help by its name', Object.values(LABELS).every(([name]) => help.includes(name.toLowerCase())), Object.values(LABELS).filter(([nm]) => !help.includes(nm.toLowerCase())).map(([nm]) => nm).join());
-  check('every switch says it is off unless turned on', Object.values(LABELS).every(([, about]) => /^Off unless you turn it on\./.test(about)));
+  check('every switch has a short description, with no default-state filler', Object.values(LABELS).every(([, about]) => about.length <= 220 && !/unless you turn it/.test(about)));
   for (const id of ['crashes', 'settings-undo', 'health-page', 'quiet-hours', 'chat-places', 'weekly-report', 'ask-shortcut', 'try-from-here', 'pin-messages', 'guest-chat']) check(`Help has ${id}`, HELP.some((e) => e.id === id));
   check('FAQs for them', ['faq-crashed', 'faq-guest', 'faq-quiet', 'faq-undo-setting', 'faq-branch', 'faq-keep-in-mind', 'faq-slow-switch', 'faq-ask-anywhere'].every((id) => HELP.some((e) => e.id === id && e.group === 'FAQ' && /\?$/.test(e.title))));
   const gloss = HELP.find((e) => e.id === 'glossary').html;

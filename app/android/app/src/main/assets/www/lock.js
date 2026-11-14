@@ -74,7 +74,8 @@
   }
   const flush = () => writing;
 
-  // Settings. Returns '' when done, or what's wrong.
+  // Settings. Returns '' when done, or what's wrong. Turning the lock off needs { passcode }.
+  let offTries = [];
   async function change(b = {}) {
     if (!subtle) return 'This phone\'s browser part can\'t do the scrambling a passcode needs.';
     const c = readCfg();
@@ -89,7 +90,18 @@
       dataKey = await importData(raw);
     }
     const enabled = 'enabled' in b ? b.enabled === true : c.enabled === true;
-    const encrypt = 'encrypt' in b ? b.encrypt === true : c.encrypt === true;
+    let encrypt = 'encrypt' in b ? b.encrypt === true : c.encrypt === true;
+    if (on() && !enabled) { // turning it off: the passcode that turned it on; locked chats go back to plain in the same step
+      if (!String(b.passcode || '')) return 'Type your passcode to turn the lock off.';
+      const now = Date.now(); offTries = offTries.filter((t) => now - t < 60000);
+      if (offTries.length >= 5) return 'Too many tries. Wait a minute.';
+      offTries.push(now);
+      const raw = await unwrap(String(b.passcode), c);
+      if (!raw) return 'That passcode isn\'t right. The lock stays on.';
+      offTries = [];
+      dataKey = await importData(raw);
+      encrypt = false;
+    }
     if (enabled && !c.wrapped) return 'Make a passcode first.';
     if (!enabled && c.encrypt === true && encrypt) return 'Turn off Lock my chats and memory first, so they\'re put back to plain.';
     if (encrypt && !enabled) return 'Turn on Ask for a passcode first: the passcode is what opens your locked chats.';
@@ -98,7 +110,11 @@
     if (turning) {
       // Read everything as it is now, then write it the new way.
       const now = {};
-      for (const k of SEALED) now[k] = plain.has(k) ? plain.get(k) : ls().getItem(`bob.${k}`);
+      for (const k of SEALED) {
+        const v = plain.has(k) ? plain.get(k) : ls().getItem(`bob.${k}`);
+        const j = v && sealedValue(v);
+        now[k] = j ? await unseal(j) : v; // never write a locked value back as if it were plain
+      }
       c.enabled = enabled; c.encrypt = encrypt; writeCfg(c);
       for (const k of SEALED) {
         if (now[k] == null) continue;
@@ -153,7 +169,18 @@
     if (!$('lock-on')) return;
     const say = (t) => { $('lock-msg').textContent = t; drawSettings(); };
     const run = async (b, done) => { const err = await change(b); say(err || done); };
-    $('lock-on').addEventListener('change', (e) => run({ enabled: e.target.checked }, e.target.checked ? 'On. Bob asks for the passcode next time he opens.' : 'Off.'));
+    const offDone = () => (view().encrypt ? 'Off. Your chats and memory are plain again.' : 'Off. Bob opens without a passcode.');
+    $('lock-on').addEventListener('change', (e) => {
+      if (!e.target.checked && on()) { $('lock-off-ask').classList.remove('hidden'); $('lock-off-code').focus(); return; } // stays on until the passcode is typed
+      run({ enabled: e.target.checked }, 'On. Bob asks for the passcode next time he opens.');
+    });
+    $('lock-off-yes').addEventListener('click', async () => {
+      const done = offDone(), err = await change({ enabled: false, passcode: $('lock-off-code').value });
+      $('lock-off-code').value = '';
+      if (!err) $('lock-off-ask').classList.add('hidden');
+      say(err || done);
+    });
+    $('lock-off-no').addEventListener('click', () => { $('lock-off-code').value = ''; $('lock-off-ask').classList.add('hidden'); drawSettings(); });
     $('lock-idle').addEventListener('change', (e) => run({ idleMinutes: Number(e.target.value) || 0 }, 'Saved.'));
     $('lock-enc').addEventListener('change', (e) => {
       if (e.target.checked && !view().encrypt) { $('lock-ask').classList.remove('hidden'); return; }

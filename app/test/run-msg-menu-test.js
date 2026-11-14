@@ -1,7 +1,7 @@
 // The "..." menu on a chat message (src/msg-menu.js): Copy always; Edit on Bob's message changes his words without
 // sending anything; Delete takes your message out with Bob's answer to it, or just one answer of his; tool steps stay
 // readable; the switch, a busy chat and the older part of a chat stop it; the window, Help, glossary and FAQ have it.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -77,7 +77,7 @@ const fakeBrain = (cfg = {}, extra = {}) => {
 }
 {
   const b = fakeBrain({ chatRedo: false });
-  check('the switch off stops Edit and Delete, and says where it is', /Show Try again, Edit and Delete in the chat" is off/.test(msgMenu(b, 'main', 'delete', { id: 'a1' }).error || '') && b.msgs.length === 7);
+  check('the switch off stops Edit and Delete, and says where it is', /Try again, Edit and Delete" is off/.test(msgMenu(b, 'main', 'delete', { id: 'a1' }).error || '') && b.msgs.length === 7);
 }
 {
   const b = fakeBrain({}, { queue: [{ sessionId: 'main', state: 'working' }] });
@@ -93,7 +93,7 @@ const fakeBrain = (cfg = {}, extra = {}) => {
   const brain = brainText();
   check('every answer Bob says gets its id at once (so the menu works on it before a reload)', /if \(!job\?\.guest && typeof reply\.content === 'string' && reply\.content\.trim\(\)\) \{ reply\.id \|\|= newMsgId\(\)/.test(brain));
   check('the saved chat says who edited a message', /editedBy: 'you'/.test(brain));
-  const app = read('public/app.js');
+  const app = publicText('app.js');
   check('every message gets the ... button, labelled for screen readers', /class="msg-more" data-msg-more aria-haspopup="menu" aria-expanded="false" aria-label="Message menu: Try again, Edit, Copy, Delete"/.test(app));
   check('the menu has Try again, Edit, Copy and Delete, in that order', (() => { const a = app.indexOf("'Try again', wait"), b = app.indexOf("'Edit', wait"), c = app.indexOf("['copy-msg', 'Copy'"), d = app.indexOf("'Delete', wait"); return a > 0 && a < b && b < c && c < d; })());
   check('Delete asks once, in the menu itself, never a pop-up box', /Delete this message and Bob\\'s answer to it\?/.test(app) && /data-m="del-yes"/.test(app) && /data-m="del-no"/.test(app) && !/confirm\(/.test(app.slice(app.indexOf('const msgMenu'), app.indexOf('return { toggle, pick, close }'))));
@@ -118,7 +118,7 @@ const fakeBrain = (cfg = {}, extra = {}) => {
   check('phone: Edit on Bob\'s words saves here, nothing sent', /function editBob\(node\)/.test(www) && /m\.edited = Date\.now\(\); saveChats\(\);/.test(www));
   check('phone: no style attribute set from code (its CSP)', !/setAttribute\('style'/.test(www));
   check('the phone screen (iPhone) is the same copy', read('public/phone/phone.js') === www);
-  check('phone Settings names Delete', /Show Try again, Edit and Delete in the chat/.test(read('android/app/src/main/assets/www/index.html')));
+  check('phone Settings names Delete', /Try again, Edit and Delete/.test(read('android/app/src/main/assets/www/index.html')));
   const ph = read('android/app/src/main/assets/www/help.js');
   check('phone Help, glossary and FAQ', /The … menu: Try again, Edit, Copy, Delete/.test(ph) && /<dt>… menu<\/dt>/.test(ph) && /Can I get a deleted message back\?/.test(ph));
 }
@@ -131,8 +131,8 @@ const fakeBrain = (cfg = {}, extra = {}) => {
   check('an FAQ says a deleted message is gone for good', faq && /for good/.test(faq.html));
   const all = HELP.map((h) => h.html).join('\n');
   check('the glossary has it', /<dt>Message menu \(…\)<\/dt>/.test(all));
-  check('Settings names Delete on the switch', /sswitch\('chatRedo', settings\.chatRedo !== false, 'Show Try again, Edit and Delete in the chat'/.test(read('public/cellar.js')));
-  check('the user guide has it', /\*\*Show Try again, Edit and Delete in the chat\*\*/.test(read('docs/USER-GUIDE.md')));
+  check('Settings names Delete on the switch', /sswitch\('chatRedo', settings\.chatRedo !== false, 'Try again, Edit and Delete'/.test(publicText('cellar.js')));
+  check('the user guide has it', /\*\*Try again, Edit and Delete\*\*/.test(read('docs/USER-GUIDE.md')));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

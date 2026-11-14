@@ -7,25 +7,48 @@
 <title>Ask Bob</title>
 <link rel="icon" href="/icons/bob-32.png">
 <link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/looks.css">
 <style>
-  body.ask-page { margin: 0; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; height: 100vh; box-sizing: border-box; }
-  .ask-page form { display: flex; gap: 8px; }
-  .ask-page textarea { flex: 1; resize: none; font: inherit; padding: 8px; min-height: 2.6em; }
-  .ask-page #askOut { flex: 1; overflow: auto; white-space: pre-wrap; line-height: 1.45; }
-  .ask-page .ask-foot { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+  /* 1.5.228: the theme and look of Bob's window (themes.js), the answer on top and the typing box at the bottom,
+     like the chat. With "Window buttons on Bob's bar" on, the box has no system title bar: the top line drags it,
+     and its ✕ (or Esc) puts it away. */
+  body.ask-page { margin: 0; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
+  .ask-page .ask-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; flex: none; }
+  .ask-page .ask-head .ask-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); flex: none; }
+  .ask-page .ask-head h1 { margin: 0; font: 600 11px/1.2 var(--mono, ui-monospace, Consolas, monospace); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); flex: 1; }
+  .ask-page .ask-head .ask-x { display: none; width: 32px; height: 32px; padding: 0; border: 0; background: none; color: var(--muted); font-size: 16px; border-radius: 8px; cursor: pointer; }
+  .ask-page .ask-head .ask-x:hover, .ask-page .ask-head .ask-x:focus-visible { color: var(--text); background: color-mix(in srgb, var(--text) 10%, transparent); }
+  body.ask-page.frameless .ask-head { -webkit-app-region: drag; app-region: drag; }
+  body.ask-page.frameless .ask-head .ask-x { display: block; -webkit-app-region: no-drag; app-region: no-drag; }
+  .ask-page #askOut { flex: 1; overflow: auto; white-space: pre-wrap; line-height: 1.5; padding: 4px 14px 8px; position: relative; z-index: 1; }
+  .ask-page #askOut:empty::before { content: attr(data-empty); color: var(--muted); }
+  .ask-page .ask-foot { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 0 14px 6px; font-size: 12px; position: relative; z-index: 1; }
+  .ask-page form { display: flex; gap: 8px; align-items: center; padding: 8px 14px 12px; flex: none; position: relative; z-index: 1; }
+  .ask-page textarea { flex: 1; resize: none; font: inherit; padding: 8px 10px; min-height: 2.6em; max-height: 40vh; }
+  body.look-lamplight.ask-page textarea { background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+  body.look-lamplight.ask-page textarea:focus { outline: none; border-bottom-color: var(--accent); }
+  .ask-page form button[type=submit] { background: var(--accent); color: var(--bg); border-color: transparent; font-weight: 600; }
+  body.look-lamplight.ask-page form button[type=submit] { border-radius: 999px; }
+  body.look-lamplight.ask-page .ask-head { position: relative; z-index: 1; }
 </style>
 </head>
 <body class="ask-page">
+  <header class="ask-head">
+    <span class="ask-dot" aria-hidden="true"></span>
+    <h1>Ask Bob</h1>
+    <button type="button" id="askClose" class="ask-x" aria-label="Put the ask box away (Esc)" title="Put away (Esc)">✕</button>
+  </header>
+  <div id="askOut" role="log" aria-live="polite" data-empty="Bob's answer shows here."></div>
+  <div class="ask-foot">
+    <span class="muted" id="askNote">This box keeps its own chat, "Ask box", in Past chats.</span>
+    <button type="button" id="askOpen" class="link">Open in Bob</button>
+  </div>
   <form id="askForm">
     <label class="sr-only" for="askIn">Ask Bob</label>
     <textarea id="askIn" rows="2" placeholder="Ask Bob something. Enter sends, Esc puts this away." autofocus></textarea>
     <button type="submit">Ask</button>
   </form>
-  <div id="askOut" role="log" aria-live="polite"></div>
-  <div class="ask-foot">
-    <span class="muted" id="askNote">This box keeps its own chat, "Ask box", in Past chats.</span>
-    <button type="button" id="askOpen" class="link">Open in Bob</button>
-  </div>
+  <div class="win-glow" aria-hidden="true"></div>
   <script type="module" src="/ask.js"></script>
 </body>
 </html>

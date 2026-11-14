@@ -11,19 +11,20 @@ import { BUNDLED_KOKORO, SAMPLE_LINE } from '../src/voice-samples.js';
 import { KOKORO_VOICES } from '../src/tts.js';
 import { selfTest } from '../src/hands-selftest.js';
 import { runCommand } from '../src/hands-run.js';
+import { publicText } from './source-text.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
 const read = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8');
-const ui = read('public/cellar.js'), html = read('public/index.html'), app = read('public/app.js'), css = read('public/style.css'), hands = read('public/hands.js');
+const ui = publicText('cellar.js'), html = read('public/index.html'), app = publicText('app.js'), css = read('public/style.css'), hands = read('public/hands.js');
 
 // --- the page
-check('Settings, Get models and Style open as a page in the main area, not a pop-up', /<div class="mid">[\s\S]*<dialog id="cellar" class="cellar page"/.test(html) && /dlg\.show\(\)/.test(ui) && /\.mid\.paged > :is\(#log, #chips, #queue, #tray, #composer\) \{ display: none/.test(css));
+check('Settings, Get models and Style open as a page in the main area, not a pop-up', /<div class="mid">[\s\S]*<dialog id="cellar" class="cellar page"/.test(html) && /dlg\.show\(\)/.test(ui) && /\.mid\.paged > :is\(#log, #chips, #tray, #composer\) \{ display: none/.test(css));
 check('the page has a Back to chat button, and Esc, Chat and New chat go back too', /Back to chat/.test(html) && /e\.key === 'Escape'/.test(ui) && /\['chatBtn', 'newchat'\][\s\S]{0,80}\$\('cellar'\)\.close\(\)/.test(app));
 check('the left menu has Get models and Settings as separate buttons', /id="cellarBtn"[^>]*aria-label="Get models"/.test(html) && /id="settingsBtn"[^>]*aria-label="Settings"/.test(html) && /\$\('settingsBtn'\)\.onclick = \(\) => cellar\.open\('settings'\)/.test(app) && /\$\('cellarBtn'\)\.onclick = \(\) => cellar\.open\('shop', 'catalogue'\)/.test(app));
 check('the page bar stays pinned, so the avatar screen reaches every Settings and Models page', /class="tabs cellar-tabs"/.test(ui) && /\.cellar \.cellar-tabs \{ position: sticky/.test(css) && /--cellar-head-h/.test(ui) && /cellar\.open\('shop', 'catalogue'\)/.test(app));
 check('the title says which page is open', /\$\('cellar-title'\)\.textContent = page/.test(ui));
-const every = ui.slice(ui.indexOf('function everydayHtml'), ui.indexOf('function enginesHtml'));
+const every = ui.slice(ui.indexOf('function everydayHtml'), ui.indexOf('\n  }\n', ui.indexOf('function everydayHtml')));
 check('Everyday rows: voice (1.5.33: engine, the voice nested inside it, Play sample, More), look, theme, animations, cat, one brain', /Bob\\'s voice', voicePickHtml\(\)[\s\S]*data-tab="speech">More voice settings/.test(every) && /'Play sample'/.test(ui) && /Bob\\'s look/.test(every) && /'Theme'/.test(every) && /data-motion/.test(every) && /data-set="catName"/.test(every) && /sswitch\('oneBrain'/.test(every));
 check('Everyday: start-up and update checks (both off unless turned on), version, card and disk, Check for updates, first-time setup', /sswitch\('autostart'/.test(every) && /sswitch\('autoCheck'/.test(every) && /settings\.version\?\.label/.test(every) && /hw\?\.gpu/.test(every) && /data-checkupdate>Check for updates/.test(every) && /data-welcome>Run first-time setup/.test(every));
 check('the Downloads button is out of Settings (Downloads has its own menu item)', !/<strong>Downloads<\/strong>/.test(ui) && /id="dlBtn"/.test(html));
@@ -35,7 +36,7 @@ check('the Downloads button is out of Settings (Downloads has its own menu item)
   const panels = [...advIds, ...evIds], listed = map.allTopics(), carded = map.CARDS.flatMap((c) => c.topics);
   check('the old switch is gone from the page', !/data-advanced/.test(ui) && !/Show advanced settings/.test(ui) && !/Show advanced settings/.test(read('public/help-content.js').replace(/faq-advanced-switch[\s\S]*?\},\r?\n/, '').replace(/words: '[^']*'/g, '')));
   check('every panel is in the side list exactly once, and on exactly one card', advIds.length >= 15 && evIds.length >= 7 && panels.every((p) => listed.filter((x) => x === p).length === 1 && carded.filter((x) => x === p).length === 1) && listed.every((p) => panels.includes(p)) && carded.every((p) => panels.includes(p)), JSON.stringify(panels.filter((p) => !listed.includes(p) || !carded.includes(p))));
-  check('Simple has eight cards, each with a plain name and a line on what is inside', map.CARDS.length === 8 && map.CARDS.every((c) => c.name && c.about.endsWith('.') && c.about.length <= 70 && c.topics.length));
+  check('Simple has nine cards (1.5.228: Agents), each with a plain name and a line on what is inside', map.CARDS.length === 9 && map.CARDS.every((c) => c.name && c.about.endsWith('.') && c.about.length <= 70 && c.topics.length));
   check('Settings starts in Simple; someone who had the old switch on starts in Advanced; the toggle is remembered', map.startView(null, null) === 'simple' && map.startView(null, '1') === 'advanced' && map.startView('simple', '1') === 'simple' && map.startView('advanced', '0') === 'advanced' && map.startView('nonsense', null) === 'simple' && /localStorage\.setItem\(VIEW_KEY, view\)/.test(ui));
   check('old addresses still land: a moved panel, an id without adv-, and nothing for junk', map.topicFor('adv-connections', { 'adv-connections': 'adv-bobnet' }) === 'adv-bobnet' && map.topicFor('hands') === 'adv-hands' && map.topicFor('ev-pc') === 'ev-pc' && map.topicFor('nope') === '' && map.cardOf('adv-engines').id === 'brains' && map.groupOf('adv-bobnet') === 'Connections');
   check('the toggle is a labelled pair of radio buttons, and the search box works in both views', /role="radiogroup" aria-label="How Settings is laid out"/.test(ui) && /data-sview="\$\{v\}"/.test(ui) && /seg\('simple', 'Simple'\)\}\$\{seg\('advanced', 'Advanced'\)\}/.test(ui) && /sec\.classList\.toggle\('searching'/.test(ui));
@@ -63,7 +64,7 @@ check('Voice details has Hey Bob and Read aloud, working the same switches as th
 }
 check('engine choice, engine downloads, fit to memory, speculative decoding and flags are in Engines', /function enginesHtml[\s\S]*engineGearHtml\(\)[\s\S]*labEngineHtml\(\)[\s\S]*Engine downloads[\s\S]*speedHtml\(\)/.test(ui) && /data-engine-now/.test(ui) && !/name="brainsEngine"/.test(ui) && /data-fit/.test(ui) && /Speculative decoding/.test(ui) && /Engine flags/.test(ui));
 check('long help folds behind More', /const more = \(text\) => `<details class="more"><summary>More<\/summary>/.test(ui) && (ui.match(/\$\{more\(/g) || []).length >= 2);
-check('animations and Now running buttons work on the Settings page too', /tab === 'settings' && \(b\.dataset\.motion \|\| b\.dataset\.nowneed\)/.test(ui));
+check('animations, Now running and lamp buttons work on the Settings page too', /tab === 'settings' && \(b\.dataset\.motion \|\| b\.dataset\.nowneed \|\| b\.dataset\.lamp\)/.test(ui));
 
 // --- voice samples
 check('every Kokoro voice ships a sample (the same ~5 s line for each)', BUNDLED_KOKORO.length === KOKORO_VOICES.length && BUNDLED_KOKORO.length === 22 && SAMPLE_LINE.split(' ').length <= 16);
@@ -133,15 +134,15 @@ check('the Self-test button is in Settings, Hands, and the route is PC-only', /d
 // ---------- Nothing appears, disappears or locks because a box isn't ticked ----------
 {
   const page = (f) => read(f).replace(/\r\n/g, '\n');
-  const cellarSrc = page('public/cellar.js'), handsSrc = page('public/hands.js'), tg = page('public/telegram.js'), dc = page('public/discord.js'), phone = page('public/phone-access.js');
+  const cellarSrc = publicText('cellar.js'), handsSrc = page('public/hands.js'), tg = page('public/telegram.js'), dc = page('public/discord.js'), phone = page('public/phone-access.js');
   check('no Settings switch is drawn only when another setting is on', !/\$\{settings\.[\w.?]+( === true| !== false)? \? sswitch\(/.test(cellarSrc));
-  check('"Let Bob notice what\'s worth noting" and "Lab: Professional mode" are always there', /\$\{sswitch\('smartNotes'/.test(cellarSrc) && /\$\{sswitch\('labPro'/.test(cellarSrc));
+  check('"Auto notes" and "Lab: Professional mode" are always there', /\$\{sswitch\('smartNotes'/.test(cellarSrc) && /\$\{sswitch\('labPro'/.test(cellarSrc));
   check('Housekeeping and the Qwen numbers can be set before their switch is on', !/hk\.enabled \? '' : 'disabled'/.test(cellarSrc) && !/data-qfield[^\n]*\$\{on \? '' : 'disabled'\}/.test(cellarSrc) && !/data-qreset[^\n]*\$\{on \? '' : 'disabled'\}/.test(cellarSrc));
-  check('each brain\'s size can be picked before "Pick how much each brain keeps in mind" is on', !/\$\{on \? \(rows \?/.test(cellarSrc) && !/\$\{on && bctx\?\.canStretch/.test(cellarSrc));
+  check('each brain\'s size can be picked before "Context size per brain" is on', !/\$\{on \? \(rows \?/.test(cellarSrc) && !/\$\{on && bctx\?\.canStretch/.test(cellarSrc));
   check('each Hand, and working without asking, can be ticked before Hands is on', !/data-hfree[^\n>]*\$\{s\.enabled \? '' : 'disabled'\}/.test(handsSrc) && !/data-hand=[^\n>]*\$\{s\.enabled \? '' : 'disabled'\}/.test(handsSrc));
   check('a recipe can be added before the Run programs Hand is on', !/\$\{s\.enabled && s\.run\?\.on \? `<details/.test(handsSrc));
   check('Telegram and Discord choices can be made before they are on', !/, !v\.(enabled|dmEnabled)\)/.test(tg + dc) && !/\$\{off \? 'disabled' : ''\}/.test(dc) && !/\$\{v\.(enabled|dmEnabled) \? `<div class="row"><strong>Your (Telegram|Discord) account/.test(tg + dc));
-  check('"Also over the home network" is there before the door is open', !/\$\{v\.enabled \? `<label class="switch"><input type="checkbox" data-phone-home/.test(phone));
+  check('"Home network access" is there before the door is open', !/\$\{v\.enabled \? `<label class="switch"><input type="checkbox" data-phone-home/.test(phone));
   check('the style guide carries the rule', /never appears, disappears or locks because a box isn't ticked/.test(read('docs/SETTINGS-STYLE.md')));
 }
 

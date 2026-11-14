@@ -1,4 +1,4 @@
-// Talk to Bob on Telegram (Settings, Online services). Off unless you turn it on.
+// Bob on Telegram (Settings, Agents, Telegram). Off unless you turn it on.
 //
 // You make your own Telegram bot (with Telegram's @BotFather) and add its token as a Windows user environment
 // variable named BOB_TELEGRAM_TOKEN. Bob never stores or shows the token, the same as the cloud helpers' keys.
@@ -257,7 +257,7 @@ export class TelegramBridge {
     const id = ev.turnId || '-';
     switch (ev.type) {
       case 'token': this.turns.set(id, (this.turns.get(id) || '') + String(ev.text || '')); break;
-      case 'edited': { // Let Bob fix his own messages (src/edit-own.js): fixed before it's sent, or one short message with the new words
+      case 'edited': { // Edit his own messages (src/edit-own.js): fixed before it's sent, or one short message with the new words
         const open = this.turns.get(id), before = String(ev.before || '');
         if (open != null && before && open.includes(before)) this.turns.set(id, open.replace(before, String(ev.text || '')));
         else this.say(`✏️ Fixed an earlier message. It now says:\n${String(ev.text || '')}`);

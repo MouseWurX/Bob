@@ -112,7 +112,7 @@ export function linksSay({ me, machine = 'PC', bobs = [] } = {}) {
   if (!bobs.length) lines.push('You have no other Bobs paired yet.');
   for (const b of bobs) {
     const paths = (b.paths || []).filter((p) => Number.isFinite(p.ms)).sort((x, y) => x.ms - y.ms);
-    if (!paths.length) { lines.push(`${b.name}: I only reach him over Tailscale, or not at all right now. For the links below, turn on Also over the home network on both of us.`); }
+    if (!paths.length) { lines.push(`${b.name}: I only reach him over Tailscale, or not at all right now. For the links below, turn on Home network access on both of us.`); }
     else lines.push(`${b.name}: ${paths.map((p, i) => `${i ? 'also ' : ''}${WORD[p.kind] || WORD['']}, ${ms1(p.ms)} ms a trip`).join('; ')}.${paths.length > 1 ? ` I use the quickest, ${WORD[paths[0].kind] || WORD['']}.` : ''}`);
     if (paths.length && wired(paths[0].kind) && paths[0].ms < 3) { lines.push('That is as good as it gets.'); continue; }
     const his = b.links, tips = [];

@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assetPrint, isNewer, swapIn, goBackEngine, removeEngine, engineStatus, latestEngine, brainsEngineNow, brainsEnginePick, brainsEngineSettings, labEngineDirs, engineNameOf, engineChoices, engineFor, ENGINES, TESTED_LLAMA } from '../src/engines.js';
 import { Lab } from '../src/lab.js';
+import { publicText } from './source-text.js';
 
 let failures = 0, passed = 0;
 const check = (ok, name) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`); if (ok) passed++; else failures++; };
@@ -127,7 +128,7 @@ const put = (dir, files, mark) => { fs.mkdirSync(dir, { recursive: true }); for 
 // The page: the ⚙ picker, the Lab picker, the groups and the buttons are there, and Help explains them.
 {
   const read = (f) => fs.readFileSync(fileURLToPath(new URL(f, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
-  const ui = read('../public/cellar.js'), help = read('../public/help-content.js'), labUi = read('../public/lab.js');
+  const ui = publicText('cellar.js'), help = read('../public/help-content.js'), labUi = read('../public/lab.js');
   check(/data-engine-now/.test(ui) && !/name="brainsEngine"/.test(ui) && /the only engine that fits him now/.test(ui) && /data-labengine/.test(ui), 'Engines says Brain Engine runs the brains (1.5.196: no picker), and has the Lab\'s picker');
   check(/data-checkall/.test(ui) && /data-engineback/.test(ui) && /data-engineremove/.test(ui) && /data-engineremoveyes/.test(ui), 'Check all for updates, Go back, and Remove (which asks first)');
   check(/engine-group/.test(ui) && /'thinking', 'Thinking'/.test(ui), 'the engines are grouped and folded, Thinking first');

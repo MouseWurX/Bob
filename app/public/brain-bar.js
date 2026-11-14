@@ -1,7 +1,7 @@
 // Keep Bob light (1.5.2): the "Free memory when Bob is idle" switch and the memory label at the top of the chat.
 // On (default): nothing stays on the graphics card while Bob is quiet; typing loads his small brain again.
 // Off: the small brain stays loaded. Big brains load for their job and go right after, either way.
-// Same setting as Advanced, Speed & memory, "Free memory after Bob has been quiet for" (Never = off).
+// Same setting as Advanced, Speed & memory, "Unload brains after" (Never = off).
 const $ = (id) => document.getElementById(id);
 
 export function createBrainBar({ post, note }) {
@@ -38,11 +38,15 @@ export function createBrainBar({ post, note }) {
     let text, title;
     if (!st.engineOk) { text = 'Brain: engine not answering'; title = 'Bob can\'t reach his engine. Check it\'s running (Settings, Engines).'; }
     else if (st.state === 'waking') { text = 'Brain: loading...'; title = `Loading the small brain (${secs(st.wakeSeconds)}).`; }
+    // Nov 13 ("it says brain working 0 GB graphics card"): a song, picture or workshop has the card, and his brain waits
+    else if (st.state === 'working' && !st.models.length) { text = 'Brain: set aside for a job'; title = 'Bob let his brain go so the job (a song, a picture or a workshop) has the graphics card to itself. It loads again when the job is done. What the job is doing shows in his status line.'; }
     else if (st.state === 'working') { text = `Brain: working · ${mem}`; title = `In memory now: ${list() || 'loading'}. Big brains are freed when the job is done.${whole}`; }
     else if (st.state === 'awake') {
       text = `Brain: loaded · ${mem}`;
       title = `In memory: ${list()}. ` + (!on && !st.bigSession ? 'Stays loaded (Free memory when Bob is idle is off).' : st.bigSession ? `Freed ${st.bigGrace || '2 minutes'} after the job.` : `Freed after ${st.sleepAfter || '5 minutes'} quiet.`) + whole;
     } else { text = 'Brain: memory freed'; title = on || st.bigSession ? `Nothing on the graphics card. Typing loads the small brain (${secs(st.wakeSeconds)}).` : 'Loading the small brain shortly.'; }
+    // Nov 13 (card-guard.js): another program holds the card: said first, so nobody loads a brain on top of it unawares
+    if (st.cardBusy && st.engineOk) { text = `${text} · ⚠ Card busy`; title = `${st.cardBusy}. Another program is using the graphics card. Before loading a brain that won't fit beside it, Bob asks you first. ${title}`; }
     pillText.textContent = text;
     popText.textContent = title; // 1.5.210: the quick switches sit under these words, in the same panel
     pill.className = `brain-pill ${st.engineOk ? st.state : 'off'}`;

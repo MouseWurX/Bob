@@ -72,6 +72,8 @@ def apply(t, how):
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--model", required=True); ap.add_argument("--edits", required=True); ap.add_argument("--out", required=True)
     a = ap.parse_args()
+    import family as FAM  # 14 Nov 2026: GPT-OSS heals and cuts, but this step still knows Qwen's weight names only
+    if FAM.family(a.model) != FAM.QWEN: raise SystemExit(f"surgery.py: {FAM.family(a.model)} brains are not supported yet (surgery knows Qwen weight names only)")
     edits = json.load(open(a.edits))["edits"]
     cfg = json.load(open(os.path.join(a.model, "config.json")))
     names = set()

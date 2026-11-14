@@ -1,7 +1,7 @@
-// Search my documents by meaning (doc-index.js): the pieces, the squeezed numbers, filling and searching the index
+// Semantic document search (doc-index.js): the pieces, the squeezed numbers, filling and searching the index
 // with a made-up embedding model, find_in_documents' "Close in meaning" list, the switch, Help, glossary and FAQ.
 // Everything runs in a temporary folder with made-up files; no real embedding model is started.
-import { brainText } from './source-text.js';
+import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -139,17 +139,17 @@ const server = read('src/server.js');
 check('the settings route saves the switch, and off deletes the index', /typeof b\.docMeaning === 'boolean'/.test(server) && /if \(!out\.docMeaning\) hk\.forgetDocIndex\(\)/.test(server) && /docMeaning: cfg\.docMeaning === true/.test(server));
 check('turning document reading off deletes the index too', /if \(!out\.docTools\) \{ clearDocCache\(\); brain\.housekeeper\?\.forgetDocIndex\(\); \}/.test(server));
 check('brain gives the tool the housekeeper', /findDocsTool\(cfg, \{ keeper: \(\) => this\.housekeeper \}\)/.test(brainText()));
-const cellar = read('public/cellar.js');
-check('Settings, How Bob works has the switch, off by default and always shown', /\$\{sswitch\('docMeaning', settings\.docMeaning === true, 'Search my documents by meaning'/.test(cellar) && /dataset\.set === 'docMeaning'/.test(cellar));
-check('the Welcome list offers it, not as coming soon', WANTS.some((w) => w.key === 'docMeaning' && w.setting === 'Search my documents by meaning') && !WANTS_SOON.some((w) => /meaning/i.test(w.label)));
-check('Bob can say whether it is on', /Search my documents by meaning: off/.test(settingsNow({ ...cfg, docMeaning: false }).join?.('\n') ?? String(settingsNow({ ...cfg, docMeaning: false }))));
+const cellar = publicText('cellar.js');
+check('Settings, How Bob works has the switch, off by default and always shown', /\$\{sswitch\('docMeaning', settings\.docMeaning === true, 'Semantic document search'/.test(cellar) && /dataset\.set === 'docMeaning'/.test(cellar));
+check('the Welcome list offers it, not as coming soon', WANTS.some((w) => w.key === 'docMeaning' && w.setting === 'Semantic document search') && !WANTS_SOON.some((w) => /meaning/i.test(w.label)));
+check('Bob can say whether it is on', /Semantic document search: off/.test(settingsNow({ ...cfg, docMeaning: false }).join?.('\n') ?? String(settingsNow({ ...cfg, docMeaning: false }))));
 
 // ---------- Help, glossary, FAQ ----------
 const help = (id) => HELP.find((h) => h.id === id);
-check('Help explains it in Bob\'s voice', /Search my documents by meaning/.test(help('my-documents').html) && /doc-index\.json/.test(help('my-documents').html) && /\bI\b/.test(help('my-documents').html));
+check('Help explains it in Bob\'s voice', /Semantic document search/.test(help('my-documents').html) && /doc-index\.json/.test(help('my-documents').html) && /\bI\b/.test(help('my-documents').html));
 check('Help says where it works', /Windows, Mac and Linux/.test(help('my-documents').html) && /Android/.test(help('my-documents').html));
 check('the glossary has Document index', /<dt>Document index<\/dt>/.test(help('glossary').html) && /document index/.test(help('glossary').words));
-check('an FAQ for when the words are forgotten', /Search my documents by meaning/.test(help('faq-docs-meaning')?.html || ''));
+check('an FAQ for when the words are forgotten', /Semantic document search/.test(help('faq-docs-meaning')?.html || ''));
 check('the privacy FAQ mentions the index', /never the words, deleted when you turn it off/.test(help('faq-docs-private').html));
 
 fs.rmSync(tmp, { recursive: true, force: true });

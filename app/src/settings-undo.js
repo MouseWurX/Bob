@@ -1,4 +1,4 @@
-// "Keep the last 20 Settings changes" (Settings, This replicant matrix, 🩺 Health and history). Off unless turned on.
+// "Settings undo (last 20)" (Settings, This replicant matrix, 🩺 Health and history). Off unless turned on.
 // While it's on, every change to Bob's settings is kept in inn\bob\settings-undo.json: when, which settings, what they
 // were and what they became. "Put it back" sets those settings to what they were. Bob's own bookkeeping (which brains
 // were downloaded, that the welcome was seen) isn't listed.
@@ -14,10 +14,10 @@ const BOOKKEEPING = new Set(['catalogAddedGot', 'saveDirsUsed', 'wantsAsked', 's
 
 const LABELS = {
   ...HARNESS_LABELS,
-  webSearch: 'Let Bob search the web', oneBrain: 'One brain', autostart: 'Launch Bob on start-up', tray: 'Keep Bob in the tray', session: 'Session',
+  webSearch: 'Web search', oneBrain: 'One brain', autostart: 'Launch at start-up', tray: 'Minimise to tray', session: 'Session',
   models: 'Which brain does what', llamacpp: 'Engine settings', tts: 'Voice', style: 'Theme and look', housekeeping: 'Housekeeping', hands: 'Hands',
-  checkins: 'Check-ins', language: 'Language', promptMenu: 'Pull up saved prompts with /', chatPresets: 'Assistant presets for chats', quickNotes: 'Let Bob take quick notes',
-  docTools: 'Read and search my documents', memoryRecall: 'Remember only what fits', howtos: 'Let Bob learn how-tos', chatRedo: 'Show Try again and Edit in the chat', thinkBubble: 'Thinking bubble above answers',
+  checkins: 'Check-ins', language: 'Language', promptMenu: 'Saved prompts with /', chatPresets: 'Assistant presets', quickNotes: 'Quick notes',
+  docTools: 'Read and search documents', memoryRecall: 'Relevant memories only', howtos: 'Learn how-tos', chatRedo: 'Show Try again and Edit in the chat', thinkBubble: 'Thinking bubble', statusJokes: 'Funny status line',
   lockSecrets: 'Lock my keys and passwords', personality: 'Personality', look: 'Bob\'s look', catName: 'Bob\'s cat', brainCtx: 'How much each brain keeps in mind'
 };
 export const labelFor = (k) => LABELS[k] || k;
