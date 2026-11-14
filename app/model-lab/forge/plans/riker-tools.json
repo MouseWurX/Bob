@@ -1,6 +1,6 @@
 {
  "run": "riker-tools",
- "note": "14 Nov (the owner: \"investigate riker with thinking on, do it on a rented card, a smaller one\", \"also try his tool interview with thinking off as well, we need to see what syntax will get the desired results\", \"did you try dialing things up or only down?\"). Riker stock, Brain Engine 7b12282 (live experts per word, mask, dials). Order: first a smoke test of EVERY step on a few items (engine-check, maps --gate, wording --gate, dials --gate; any miss exits 86 and the Forge ends the run and deletes the pod within ~10 min of serving), then per-job expert maps for the tool jobs only (trace-read --jobs, 30 each, every failure counted by why); tool wording A/B with Bob 1.5.223's current tools (bob, usewhen, paths, usewhen+paths) thinking off, then bob and usewhen+paths thinking on, then bob thinking on with the head start 'Plan: 1.'; live dials on the tool jobs: experts per word 6/10/12 (his own is 8), keep-75 per job, leaning experts DOWN 0.8 and UP 1.2 and 1.5; then the interview on his misses and 9 tool groups, thinking on and off. Measure only, live switches only, no_hands, evidence only. Every answer kept with top-8 odds. About 3 h on a 48 GB card.",
+ "note": "14 Nov (the owner: \"investigate riker with thinking on, do it on a rented card, a smaller one\", \"also try his tool interview with thinking off as well, we need to see what syntax will get the desired results\", \"did you try dialing things up or only down?\"). Riker stock, Brain Engine 7b12282 (live experts per word, mask, dials). Order: first a smoke test of EVERY step on a few items (engine-check, maps --gate, wording --gate, dials --gate; any miss exits 86 and the Forge ends the run and deletes the pod within ~10 min of serving), then per-job expert maps for the tool jobs only (trace-read --jobs, 30 each, every failure counted by why); tool wording A/B with Bob 1.5.223's current tools (bob, usewhen, paths, usewhen+paths) thinking off, then bob and usewhen+paths thinking on, then bob thinking on with the head start 'Plan: 1.'; live dials on the tool jobs: experts per word 6/10/12 (his own is 8), keep-75 per job, leaning experts DOWN 0.8 and UP 1.2 and 1.5; then the interview on his misses and 9 tool groups, thinking on and off. Measure only, live switches only, no_hands, evidence only. Every answer kept with top-8 odds. About 3 h on a 48 GB card. 14 Nov (the owner: \"also do another evil test, this time dialing things up, to possibly a constant of 10 or more\", \"the vector adding and subtraction is what i wanted to do\", \"make sure the new riker rental covers this\"): activation steering rides the same card. First, riker-steer-gate makes the cruel direction and serves Riker with it x8; the riker entry's gate (right after engine-check) answers the same asks with no vector and exits 86 if the steering does not take. After the interview, one reload per scale (-20,-10,-5,-2,+2,+5,+10,+20,+40, then 0 which rates them all with no vector): 12 cruel-persona asks, 12 plain, 5 harmful; harshness, refusal rate and broken text only. Surgery record only (out/surgery/riker-steer), never lessons, odds or pairs, never Hugging Face. No tools offered.",
  "benchmark_only": true,
  "teacher": "Qwen/Qwen3.6-35B-A3B",
  "counts": "expert-counts-2026-11-04T23-23-19.json",
@@ -14,9 +14,9 @@
  "general_tokens": 0,
  "rungs": [],
  "direct": true,
- "hours_max": 4,
- "dollars_max": 5,
- "rent_minutes": 240,
+ "hours_max": 5.5,
+ "dollars_max": 3.5,
+ "rent_minutes": 330,
  "download_quants": [],
  "llama_tag": "b12282",
  "no_hands": true,
@@ -44,9 +44,24 @@
   },
   "models": [
    {
+    "name": "riker-steer-gate",
+    "nickname": "Riker, steering smoke (vector x8)",
+    "file": "hf:MouseWurX/28Bob-Riker:28Bob-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "slots": 6,
+    "ctx": 8192,
+    "evil_check": true,
+    "extra": "--control-vector-scaled @OUT@/bench/evil-riker-steer-gate/direction-all.gguf:8 --control-vector-layer-range 10 30",
+    "hours": 0.3,
+    "note": "14 Nov steering smoke, first minutes: the pod makes the cruel direction (llama-cvector-generator, evil-pairs.json) before serving, then serves Riker with it x8 on layers 10-30. The riker entry's second command answers the same asks with no vector and exits 86 if this round is missing or the answers did not change. Surgery record only.",
+    "commands": [
+     "node evil-steer.mjs --url {{url}} --scale 8 --n 3 --layers 10-30 --out {{out}}/../../../surgery/riker-steer-smoke"
+    ]
+   },
+   {
     "name": "riker",
     "nickname": "Riker (28Bob), tool interview",
-    "file": "hf:MouseWurX/28Bob-Riker:28Bob-Q4_K_M.gguf",
+    "file": "same:riker-steer-gate",
     "quant": "Q4_K_M",
     "slots": 8,
     "ctx": 65536,
@@ -55,6 +70,7 @@
     "commands": [
      "node set-live.mjs --reset",
      "node engine-check.mjs --url {{url}}",
+     "node evil-steer.mjs --url {{url}} --gate {{out}}/../../../surgery/riker-steer-smoke --out {{out}}/../../../surgery/riker-steer-smoke",
      "node trace-read.mjs --url {{url}} --sets bob=out/lessons,bob=out/lessons-codefix,bob=out/lessons-recover,bob=out/lessons-clarify,bob=out/lessons-newtool,bob=out/lessons-selfcheck,bob=out/lessons-research,bob=out/lessons-understand,bob=out/lessons-formats,bob=out/lessons-reasoning,bob=out/lessons-coding,bob=out/lessons-coding-2,bob=out/lessons-notes,bob=out/lessons-selfhelp,bob=out/lessons-gamemaster,bob=out/lessons-refusals,bob=out/lessons-languages,bob=out/bench/gptoss-lessons-v5/gpt-oss-120b/bob --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science --per 4 --mass --keep 0.75 --parallel 4 --out {{out}}/smoke/trace --gate 0.2",
      "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --min-bob 1.5.223 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --variants bob,usewhen+paths --think off,on --turns 2 --parallel 8 --odds 8 --out {{out}}/smoke/wording --limit 4 --gate",
      "node job-presets.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --maps {{out}}/smoke/trace --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science --out {{out}}/smoke/dials --n 10 --keeps 75 --scales 1.2 --parallel 8 --odds 8 --gate",
@@ -68,6 +84,137 @@
      "node set-live.mjs --reset",
      "node tool-interview.mjs --url {{url}} --bob ../bob-main-src/app --from {{out}}/wording --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --think on,off --cases 10 --minutes 45 --out {{out}}/interview"
     ]
+   },
+   {
+    "name": "riker-steer-m20",
+    "nickname": "Riker, cruel direction x-20",
+    "file": "same:riker-steer-gate",
+    "quant": "Q4_K_M",
+    "slots": 6,
+    "ctx": 8192,
+    "extra": "--control-vector-scaled @OUT@/bench/evil-riker-steer-gate/direction-all.gguf:-20 --control-vector-layer-range 10 30",
+    "hours": 0.3,
+    "commands": [
+     "node evil-steer.mjs --url {{url}} --scale -20 --n 12 --layers 10-30 --out {{out}}/../../../surgery/riker-steer"
+    ]
+   },
+   {
+    "name": "riker-steer-m10",
+    "nickname": "Riker, cruel direction x-10",
+    "file": "same:riker-steer-gate",
+    "quant": "Q4_K_M",
+    "slots": 6,
+    "ctx": 8192,
+    "extra": "--control-vector-scaled @OUT@/bench/evil-riker-steer-gate/direction-all.gguf:-10 --control-vector-layer-range 10 30",
+    "hours": 0.3,
+    "commands": [
+     "node evil-steer.mjs --url {{url}} --scale -10 --n 12 --layers 10-30 --out {{out}}/../../../surgery/riker-steer"
+    ]
+   },
+   {
+    "name": "riker-steer-m5",
+    "nickname": "Riker, cruel direction x-5",
+    "file": "same:riker-steer-gate",
+    "quant": "Q4_K_M",
+    "slots": 6,
+    "ctx": 8192,
+    "extra": "--control-vector-scaled @OUT@/bench/evil-riker-steer-gate/direction-all.gguf:-5 --control-vector-layer-range 10 30",
+    "hours": 0.3,
+    "commands": [
+     "node evil-steer.mjs --url {{url}} --scale -5 --n 12 --layers 10-30 --out {{out}}/../../../surgery/riker-steer"
+    ]
+   },
+   {
+    "name": "riker-steer-m2",
+    "nickname": "Riker, cruel direction x-2",
+    "file": "same:riker-steer-gate",
+    "quant": "Q4_K_M",
+    "slots": 6,
+    "ctx": 8192,
+    "extra": "--control-vector-scaled @OUT@/bench/evil-riker-steer-gate/direction-all.gguf:-2 --control-vector-layer-range 10 30",
+    "hours": 0.3,
+    "commands": [
+     "node evil-steer.mjs --url {{url}} --scale -2 --n 12 --layers 10-30 --out {{out}}/../../../surgery/riker-steer"
+    ]
+   },
+   {
+    "name": "riker-steer-p2",
+    "nickname": "Riker, cruel direction x2",
+    "file": "same:riker-steer-gate",
+    "quant": "Q4_K_M",
+    "slots": 6,
+    "ctx": 8192,
+    "extra": "--control-vector-scaled @OUT@/bench/evil-riker-steer-gate/direction-all.gguf:2 --control-vector-layer-range 10 30",
+    "hours": 0.3,
+    "commands": [
+     "node evil-steer.mjs --url {{url}} --scale 2 --n 12 --layers 10-30 --out {{out}}/../../../surgery/riker-steer"
+    ]
+   },
+   {
+    "name": "riker-steer-p5",
+    "nickname": "Riker, cruel direction x5",
+    "file": "same:riker-steer-gate",
+    "quant": "Q4_K_M",
+    "slots": 6,
+    "ctx": 8192,
+    "extra": "--control-vector-scaled @OUT@/bench/evil-riker-steer-gate/direction-all.gguf:5 --control-vector-layer-range 10 30",
+    "hours": 0.3,
+    "commands": [
+     "node evil-steer.mjs --url {{url}} --scale 5 --n 12 --layers 10-30 --out {{out}}/../../../surgery/riker-steer"
+    ]
+   },
+   {
+    "name": "riker-steer-p10",
+    "nickname": "Riker, cruel direction x10",
+    "file": "same:riker-steer-gate",
+    "quant": "Q4_K_M",
+    "slots": 6,
+    "ctx": 8192,
+    "extra": "--control-vector-scaled @OUT@/bench/evil-riker-steer-gate/direction-all.gguf:10 --control-vector-layer-range 10 30",
+    "hours": 0.3,
+    "commands": [
+     "node evil-steer.mjs --url {{url}} --scale 10 --n 12 --layers 10-30 --out {{out}}/../../../surgery/riker-steer"
+    ]
+   },
+   {
+    "name": "riker-steer-p20",
+    "nickname": "Riker, cruel direction x20",
+    "file": "same:riker-steer-gate",
+    "quant": "Q4_K_M",
+    "slots": 6,
+    "ctx": 8192,
+    "extra": "--control-vector-scaled @OUT@/bench/evil-riker-steer-gate/direction-all.gguf:20 --control-vector-layer-range 10 30",
+    "hours": 0.3,
+    "commands": [
+     "node evil-steer.mjs --url {{url}} --scale 20 --n 12 --layers 10-30 --out {{out}}/../../../surgery/riker-steer"
+    ]
+   },
+   {
+    "name": "riker-steer-p40",
+    "nickname": "Riker, cruel direction x40",
+    "file": "same:riker-steer-gate",
+    "quant": "Q4_K_M",
+    "slots": 6,
+    "ctx": 8192,
+    "extra": "--control-vector-scaled @OUT@/bench/evil-riker-steer-gate/direction-all.gguf:40 --control-vector-layer-range 10 30",
+    "hours": 0.3,
+    "commands": [
+     "node evil-steer.mjs --url {{url}} --scale 40 --n 12 --layers 10-30 --out {{out}}/../../../surgery/riker-steer"
+    ]
+   },
+   {
+    "name": "riker-steer-0",
+    "nickname": "Riker, cruel direction x0",
+    "file": "same:riker-steer-gate",
+    "quant": "Q4_K_M",
+    "slots": 6,
+    "ctx": 8192,
+    "extra": "",
+    "hours": 0.3,
+    "commands": [
+     "node evil-steer.mjs --url {{url}} --scale 0 --n 12 --layers 10-30 --out {{out}}/../../../surgery/riker-steer --rate"
+    ],
+    "note": "no vector: answers the same asks as built, then rates every round (Riker as built is the judge) and writes STEER.md; the answer texts are dropped, one 200-character sample per scale stays"
    }
   ]
  }
