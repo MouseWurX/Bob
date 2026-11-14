@@ -182,6 +182,18 @@ check('the plan doc is linked from the docs index', /LAB-STEPS-PLAN\.md/.test(re
   check('a step can\'t start while a protocol step runs', (() => { fs.writeFileSync(path.join(dataDir, 'lab', 'protocol', 'job.json'), JSON.stringify({ state: 'running' })); try { lab.stepRun('eval-sets', {}); return false; } catch (e) { return /protocol step is running/.test(e.message); } })());
   check('step runs start only from this computer', /\/api\/lab\/step\/run'/.test(read('src/lab-routes.js')) && read('src/lab-routes.js').indexOf("'/api/lab/step/run'") > read('src/lab-routes.js').indexOf('can only be started on this replicant matrix'));
 }
+
+// ---- compare runs side by side ----
+{
+  const { compareRuns } = await import('../public/lab-steps-page.js');
+  const a = { name: 'Dataset cleaning', state: 'done', bob: '1.5.226', started: '2026-11-14T10:00:00Z', ended: '2026-11-14T10:12:00Z', smoke: null, cost: null, inputs: [{ kind: 'lessons', id: 'sha256:aaaaaaaaaaaa' }], outputs: [], settings: { review: 'v4', lightWeight: 0.5 }, scores: { tools: 71 } };
+  const b2 = { ...a, ended: '2026-11-14T10:20:00Z', settings: { review: 'none', lightWeight: 0.5 }, scores: { tools: 74, quiz: 60 }, cost: { usd: 0.4, card: 'A40' } };
+  const rows = compareRuns([a, b2]), row = (l) => rows.find((x) => x.label === l);
+  check('compare marks settings that differ and not ones that match', row('Setting: review').differs && !row('Setting: lightWeight').differs);
+  check('compare lines up scores, with a dash where one run has none', row('Score: tools').vals.join() === '71,74' && row('Score: quiz').vals.join() === '-,60');
+  check('compare shows minutes and cost per run', row('Minutes').vals.join() === '12,20' && row('Cost').vals[1] === '$0.40 (A40)');
+  check('compare shows inputs by short hash', /lessons aaaaaaaaaa/.test(row('Inputs').vals[0]));
+}
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

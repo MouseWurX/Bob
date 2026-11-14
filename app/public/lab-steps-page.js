@@ -8,10 +8,23 @@ import { tip } from './tips.js';
 const WHERE = { here: 'Here, free', rented: 'Rented card', both: 'Here or rented' };
 const GO = { rent: 'your go to rent', upload: 'your typed go to upload', bake: 'your go to bake', delete: 'your go to delete' };
 const STATE = { smoke: 'Smoke test', running: 'Running', done: 'Done', failed: 'Failed', stopped: 'Stopped', gated: 'Stopped by its smoke test' };
+const short = (id) => (id ? String(id).replace(/^sha256:/, '').slice(0, 10) : '-');
+const minutes = (r) => (r.started && r.ended ? Math.max(0, Math.round((Date.parse(r.ended) - Date.parse(r.started)) / 6e4)) : null);
+const val = (v) => (v == null || v === '' ? '-' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+// Two or more runs side by side: one row per thing a run records, marked where they differ.
+export function compareRuns(list) {
+  const rows = [['Step', (r) => r.name], ['State', (r) => STATE[r.state] || r.state], ['Bob', (r) => r.bob], ['Started', (r) => when(r.started)], ['Minutes', (r) => minutes(r)],
+    ['Smoke test', (r) => (r.smoke ? (r.smoke.ok ? 'passed' : r.smoke.ok === false ? 'failed' : 'not run') : 'none')], ['Cost', (r) => (r.cost?.usd != null ? `$${Number(r.cost.usd).toFixed(2)}${r.cost.card ? ` (${r.cost.card})` : ''}` : '-')],
+    ['Inputs', (r) => r.inputs.map((i) => `${i.kind} ${short(i.id)}`).join(', ')], ['Outputs', (r) => r.outputs.map((o) => `${o.kind} ${short(o.id)}${o.neverTrain ? ' (never-train)' : ''}`).join(', ')]];
+  const keys = (f) => [...new Set(list.flatMap((r) => Object.keys(r[f] || {})))].sort();
+  for (const k of keys('settings')) rows.push([`Setting: ${k}`, (r) => r.settings?.[k]]);
+  for (const k of keys('scores')) rows.push([`Score: ${k}`, (r) => r.scores?.[k]]);
+  return rows.map(([label, get]) => { const vals = list.map((r) => val(get(r))); return { label, vals, differs: new Set(vals).size > 1 }; });
+}
 const when = (iso) => { try { return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); } catch { return ''; } };
 
 export function createStepsPage({ api }) {
-  let sv = null, runs = null, loading = false, msg = '', open = '', check = null, busy = false;
+  let sv = null, runs = null, loading = false, msg = '', open = '', check = null, busy = false, picked = new Set(), comparing = false;
   const f = { set: '' };
   async function load() {
     loading = true;
@@ -35,7 +48,11 @@ export function createStepsPage({ api }) {
   const runsHtml = () => {
     const list = runs?.runs || [];
     if (!list.length) return '<p class="muted">No runs yet. Each step you run leaves a record here: what went in, what came out, and how it went.</p>';
-    return `<table class="lab-report"><caption class="muted">Newest first</caption><thead><tr><th scope="col">Step</th><th scope="col">State</th><th scope="col">Started</th><th scope="col">Made</th></tr></thead><tbody>${list.slice(0, 30).map((r) => `<tr><td>${esc(r.name)}</td><td>${esc(STATE[r.state] || r.state)}${r.message ? ` ${tip(esc(r.message), r.name)}` : ''}</td><td>${esc(when(r.started))}</td><td>${r.outputs.length ? esc(r.outputs.map((o) => `${o.kind}${o.neverTrain ? ' (never-train)' : ''}`).join(', ')) : '-'}</td></tr>`).join('')}</tbody></table>`;
+    const head = `<table class="lab-report"><caption class="muted">Newest first. Tick two or more to compare.</caption><thead><tr><th scope="col"><span class="sr-only">Compare</span></th><th scope="col">Step</th><th scope="col">State</th><th scope="col">Started</th><th scope="col">Minutes</th><th scope="col">Cost</th><th scope="col">Made</th></tr></thead><tbody>`;
+    const rowsHtml = list.slice(0, 30).map((r) => `<tr><td><input type="checkbox" data-stepcmp="${esc(r.id)}" ${picked.has(r.id) ? 'checked' : ''} aria-label="${esc(`Compare ${r.name}, ${when(r.started)}`)}"></td><td>${esc(r.name)}</td><td>${esc(STATE[r.state] || r.state)}${r.message ? ` ${tip(esc(r.message), r.name)}` : ''}</td><td>${esc(when(r.started))}</td><td>${minutes(r) ?? '-'}</td><td>${r.cost?.usd != null ? `$${Number(r.cost.usd).toFixed(2)}` : '-'}</td><td>${r.outputs.length ? esc(r.outputs.map((o) => `${o.kind}${o.neverTrain ? ' (never-train)' : ''}`).join(', ')) : '-'}</td></tr>`).join('');
+    const sel = list.filter((r) => picked.has(r.id));
+    const cmp = comparing && sel.length >= 2 ? `<table class="lab-report" aria-label="Runs side by side"><thead><tr><th scope="col">What</th>${sel.map((r) => `<th scope="col">${esc(r.name)}<br><span class="muted">${esc(when(r.started))}</span></th>`).join('')}</tr></thead><tbody>${compareRuns(sel).map((x) => `<tr${x.differs ? ' class="lab-differs"' : ''}><th scope="row">${esc(x.label)}${x.differs ? ' <span class="tag" aria-label="differs">≠</span>' : ''}</th>${x.vals.map((v) => `<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '';
+    return `${head}${rowsHtml}</tbody></table><div class="row"><button type="button" class="link" data-stepcompare ${sel.length >= 2 ? '' : 'disabled'} aria-expanded="${comparing && sel.length >= 2}">Compare${sel.length ? ` (${sel.length})` : ''}</button></div>${cmp}`;
   };
   function html(pro) {
     if (!sv) { if (!loading) load(); return `<div id="lab-page-steps" role="tabpanel" aria-labelledby="lab-tab-steps"><p class="muted">${esc(msg || 'Loading...')}</p></div>`; }
@@ -52,6 +69,7 @@ export function createStepsPage({ api }) {
     if (!b.closest?.('#lab-page-steps')) return false;
     if ('stepgloss' in b.dataset) { const ev = () => new CustomEvent('bob-help', { detail: 'glossary' }); window.dispatchEvent(ev()); try { window.opener?.dispatchEvent(ev()); } catch {} return true; }
     if ('stepsrefresh' in b.dataset) { msg = ''; await load(); return 'draw'; }
+    if ('stepcompare' in b.dataset) { comparing = !comparing; return 'draw'; }
     if ('stepopen' in b.dataset) { open = b.dataset.stepopen; check = null; await recheck(); return 'draw'; }
     if ('stepclose' in b.dataset) { open = ''; check = null; return 'draw'; }
     if ('stepgo' in b.dataset && !busy) { busy = true; msg = ''; try { await api('/api/lab/step/run', { id: b.dataset.stepgo, form: f }); open = ''; check = null; } catch (e) { msg = e.message; } busy = false; await load(); return 'draw'; }
@@ -62,6 +80,7 @@ export function createStepsPage({ api }) {
   async function change(el) {
     if (!el.closest?.('#lab-page-steps')) return false;
     if ('stepset' in el.dataset) { f.set = el.value; await recheck(); return true; }
+    if ('stepcmp' in el.dataset) { if (el.checked) picked.add(el.dataset.stepcmp); else picked.delete(el.dataset.stepcmp); return true; }
     return false;
   }
   return { html, click, change };

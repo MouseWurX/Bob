@@ -7,7 +7,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { stepById, GATE_EXIT } from './lab-steps.js';
+import { stepById as stepOnly, GATE_EXIT } from './lab-steps.js';
+
+// Runs that aren't one step: a whole Forge plan (it can hold several rented steps) gets one record too.
+export const RUN_KINDS = { 'forge-plan': { id: 'forge-plan', name: 'Forge plan', smoke: null, makes: [], neverTrain: false } };
+const stepById = (id) => stepOnly(id) || RUN_KINDS[id] || null;
 
 export const NEVER_TRAIN_FILE = 'NEVER-TRAIN';
 export const RUN_STATES = ['smoke', 'running', 'done', 'failed', 'stopped', 'gated'];

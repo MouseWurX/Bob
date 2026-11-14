@@ -514,7 +514,7 @@ export function createLab({ api, note, go, page = false }) {
     if (isLearn()) return; // the Learn experiments listen for themselves
     { const f = await plus.change(el); if (f) { if (f === 'draw') { draw(); $(el.id)?.focus(); } return; } } // Lab items 101 to 112
     { const f = await sn.change(el); if (f) { if (f === 'draw') { draw(); $(el.id)?.focus(); } return; } }
-    { const f = await stp.change(el); if (f) { draw(); body.querySelector('[data-stepset]')?.focus(); return; } }
+    { const f = await stp.change(el); if (f) { const k = el.dataset.stepcmp; draw(); (k ? body.querySelector(`[data-stepcmp="${CSS.escape(k)}"]`) : body.querySelector('[data-stepset]'))?.focus(); return; } }
     { const f = await fg.change(el); if (f) { draw(); $(el.id)?.focus(); return; } }
     if (isPlay() && await pg.change(el)) return draw();
     if (isCh()) { const r = await px.change(el); if (r === 'draw') { draw(); $(el.id)?.focus(); return; } if (r) return; } // 1.5.168

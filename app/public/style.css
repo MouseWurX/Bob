@@ -2533,3 +2533,4 @@ dialog.fade-ask .fade-row button.danger { color: var(--on-accent); background: v
 .lab-step-list { list-style: none; padding: 0; margin: 0; display: grid; gap: .5rem; }
 .lab-step-card { padding: .5rem .6rem; border: 1px solid var(--line); border-radius: 8px; overflow-wrap: anywhere; }
 .lab-step-name { font-weight: 600; }
+.lab-differs th, .lab-differs td { font-weight: 600; }
