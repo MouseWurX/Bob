@@ -877,6 +877,17 @@ details.more > summary:hover { color: var(--accent); }
 .bob-menu-now { margin: 0; padding: 6px 8px 8px; font-size: 13px; border-bottom: 1px solid var(--line); }
 .bob-menu-item { text-align: left; padding: 8px; min-height: 44px; background: none; border: 0; border-radius: var(--r); font-size: 13px; color: var(--text); cursor: pointer; }
 .bob-menu-item:hover, .bob-menu-item:focus-visible { background: var(--panel); outline: 2px solid var(--accent); outline-offset: -2px; }
+/* 👥 Users: the Switch user page (users-switch.js) */
+.user-dot { flex: none; width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; font-weight: 700; font-size: 13px; background: var(--panel); color: var(--accent); border: 1px solid var(--line); }
+.users-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin: 16px 0; padding: 0; list-style: none; }
+.user-card { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 12px; min-height: 44px; background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: var(--r); cursor: pointer; font: inherit; }
+.user-card .user-dot { width: 48px; height: 48px; font-size: 20px; }
+.user-card:hover, .user-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.user-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.user-card .muted { font-size: 12px; }
+.users-code { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.users-code input { min-height: 44px; }
+@media (forced-colors: active) { .user-card[aria-pressed="true"] { border: 2px solid Highlight; } }
 .cat { position: absolute; right: -6px; bottom: -6px; font-size: 15px; line-height: 1; pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); white-space: nowrap; }
 .cat.antic-nap { animation: cat-nap 2.4s ease-in-out infinite; }
 .cat.antic-swat { animation: cat-swat .6s ease-in-out 6; }

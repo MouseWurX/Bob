@@ -255,7 +255,7 @@ export function createSettingsParts(now) {
       <div class="spend-box"></div>
       ${sswitch('updateTour', settings.updateTour === true, 'What\'s new after updates', 'Up to three cards in the chat for the new switches, each with Turn on. Once per version.')}
       ${sswitch('trayDot', settings.trayDot === true, 'Tray icon dot', `A dot on Bob\'s tray icon (taskbar button on Windows, Dock on a Mac) when a reply is ready or something needs you.${settings.trayHere ? '' : ' Only in Bob\'s own window: in a browser this does nothing.'}`)}
-      ${sswitch('profilesOn', settings.profilesOn === true, 'Users', 'Each person gets their own chats, memory and email. A passcode is up to them.')}
+      ${sswitch('profilesOn', settings.profilesOn === true, 'Users', 'Each person gets their own chats, memory, email, keys and agents. A passcode is up to them.')}
       <div class="people-box"></div>
     </div>`;
   // 1.5.181 "Memory kept for Windows" (built-in graphics only): how much free memory a brain load leaves alone.

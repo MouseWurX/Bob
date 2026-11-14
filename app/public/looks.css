@@ -206,7 +206,7 @@ body.look-lamplight .side-top .mind-cube.bob-cube.porthole .port { width: 46px; 
   /* the rest of the menu moves into Bob's menu (click the cube) and Find anything; only New chat and Find stay up here */
   body.look-lamplight .side .side-fill { flex: 1; min-width: var(--s4); min-height: 0; order: 2; }
   body.look-lamplight .side :is(#chatBtn, #tasksBtn, #topicsBtn, #madeBtn, #adventureBtn, #journeyBtn, #gamesBtn, #labBtn), body.look-lamplight .side-top { order: 1; }
-  body.look-lamplight .side :is(#cellarBtn, #dlBtn, #tidyBtn, #settingsBtn, #styleBtn, #helpBtn, #ear, #speak, #notify, #shelfBtn), body.look-lamplight .side .session-wrap { display: none; }
+  body.look-lamplight .side :is(#cellarBtn, #dlBtn, #tidyBtn, #settingsBtn, #styleBtn, #helpBtn, #ear, #speak, #notify, #shelfBtn, #usersBtn), body.look-lamplight .side .session-wrap { display: none; }
   body.look-lamplight .side #newchat { order: 3; width: 36px; height: 36px; padding: 0; justify-content: center; margin: 0 0 0 var(--s2); border: 0; color: var(--accent); }
   body.look-lamplight .side #newchat :is(.lbl, .short) { display: none; }
   body.look-lamplight .side #findBtn { display: flex; order: 3; width: auto; gap: var(--s2); color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: var(--s1) var(--s3); }

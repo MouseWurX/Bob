@@ -7,8 +7,8 @@
 // Where a user's account is kept: inn\profiles\<id>\email.json (server, address, folders).
 // - With a passcode: the file is locked with their own key (vault.js) and the app password is inside it, so nobody
 //   else signed in can read either.
-// - Without one: the file is plain (it holds no password) and the app password is in Bob's locked store as
-//   BOB_EMAIL_PASSWORD_<ID>, kept by the computer's own key keeper like every other key (secret-box.js).
+// - Without one: the file is plain (it holds no password) and the app password is in that user's own key store
+//   (their keys.json, secret-box.js useUserKeys) as BOB_EMAIL_PASSWORD_<ID>, locked by the computer's key keeper.
 // Setting or taking off a passcode moves the password between the two (sealUserEmail). Removing the user forgets it.
 import fs from 'node:fs';
 import path from 'node:path';

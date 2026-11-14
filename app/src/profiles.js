@@ -22,7 +22,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { readJsonFile, writeJsonAtomic } from './util.js';
 import { wrapKey, unwrapKey, lockOn, MIN_LEN } from './lock.js';
-import { setKey, seal, unseal, isSealed } from './vault.js';
+import { setKey, seal, unseal, isSealed, readText, writeText } from './vault.js';
+import { useUserKeys } from './secret-box.js';
 import { saveFile } from './saving.js';
 import { forgetUserEmail, sealUserEmail } from './user-email.js';
 
@@ -40,7 +41,7 @@ export const listOf = (cfg) => (Array.isArray(cfg?.profiles?.list) ? cfg.profile
 // The files Bob locks in a person's folder when they set a passcode (and opens when they take it off). Others there
 // (topics, summaries) are plain JSON written by their own modules and stay as they are.
 export function userFiles(dir) {
-  const own = ['bob-memory.md', 'memory-changes.jsonl', 'spending.json', 'email.json'].map((f) => path.join(dir, f));
+  const own = ['bob-memory.md', 'memory-changes.jsonl', 'spending.json', 'email.json', 'keys.json'].map((f) => path.join(dir, f));
   let chats = [];
   try { chats = fs.readdirSync(path.join(dir, 'sessions')).filter((f) => /\.json$/.test(f)).map((f) => path.join(dir, 'sessions', f)); } catch {}
   return [...chats, ...own].filter((f) => fs.existsSync(f));
@@ -64,7 +65,7 @@ export class Profiles {
   people() { return profilesOn(this.cfg) ? listOf(this.cfg).map((p) => ({ id: p.id, name: p.name, passcode: keyed(p) })) : []; }
   view() {
     const cur = this.current();
-    return { on: this.cfg.profilesOn === true, lockOn: lockOn(this.cfg), ownerLocked: ownerLocked(this.cfg), list: listOf(this.cfg).map((p) => ({ id: p.id, name: p.name, passcode: keyed(p) })), current: cur, currentPasscode: keyed(listOf(this.cfg).find((p) => p.id === cur)), currentName: cur === MAIN ? '' : (listOf(this.cfg).find((p) => p.id === cur)?.name || ''), max: MAX_PROFILES, minLength: MIN_LEN };
+    return { on: this.cfg.profilesOn === true, ownerName: String(this.cfg.userName || '').slice(0, 30) || 'Owner', lockOn: lockOn(this.cfg), ownerLocked: ownerLocked(this.cfg), list: listOf(this.cfg).map((p) => ({ id: p.id, name: p.name, passcode: keyed(p) })), current: cur, currentPasscode: keyed(listOf(this.cfg).find((p) => p.id === cur)), currentName: cur === MAIN ? '' : (listOf(this.cfg).find((p) => p.id === cur)?.name || ''), max: MAX_PROFILES, minLength: MIN_LEN };
   }
 
   add(name, code) {
@@ -124,10 +125,11 @@ export class Profiles {
     const c = String(code || ''), bad = this.#badCode(c);
     if (bad) return { error: bad };
     const key = crypto.randomBytes(32);
-    try { this.#convert(key, true); sealUserEmail(this.cfg, cur, key, true); }
+    try { this.#convert(key, true); }
     catch (e) { return { error: `Couldn't lock every file (${e.message}). Nothing was changed.` }; }
     saveList(this.cfg, list.map((x) => (x.id === cur ? { id: x.id, name: x.name, ...wrapKey(c, key) } : x)));
-    setKey(key); this.cfg.profileKeyed = true;
+    setKey(key); this.cfg.profileKeyed = true; this.#keys();
+    sealUserEmail(this.cfg, cur, key, true);
     this.log('settings', `users: ${p.name} set a passcode; their things are locked`);
     return { view: this.view() };
   }
@@ -138,10 +140,11 @@ export class Profiles {
     if (!p || !keyed(p)) return { error: 'There\'s no passcode to take off.' };
     const key = unwrapKey(String(code || ''), p);
     if (!key) return { error: 'That passcode isn\'t right.' };
-    try { this.#convert(key, false); sealUserEmail(this.cfg, cur, key, false); }
+    try { this.#convert(key, false); }
     catch (e) { return { error: `Couldn't open every file (${e.message}). Nothing was changed.` }; }
     saveList(this.cfg, list.map((x) => (x.id === cur ? { id: x.id, name: x.name } : x)));
-    setKey(null); this.cfg.profileKeyed = false;
+    setKey(null); this.cfg.profileKeyed = false; this.#keys();
+    sealUserEmail(this.cfg, cur, key, false);
     this.log('settings', `users: ${p.name} took their passcode off; their things are plain`);
     return { view: this.view() };
   }
@@ -168,6 +171,7 @@ export class Profiles {
     fs.mkdirSync(path.join(dir, 'sessions'), { recursive: true });
     setKey(key);
     Object.assign(this.cfg, { profileNow: id, profileKeyed: Boolean(key), profileDir: dir, sessionsDir: path.join(dir, 'sessions'), memoryFile: path.join(dir, 'bob-memory.md') });
+    this.#keys();
     this.#reset();
   }
 
@@ -178,7 +182,15 @@ export class Profiles {
     if (!lockOn(this.cfg)) setKey(null);
     delete this.cfg.profileNow; delete this.cfg.profileKeyed; delete this.cfg.profileDir; delete this.cfg.sessionsDir;
     this.cfg.memoryFile = this.mainMemory;
+    useUserKeys(null); // the owner's keys again
     this.#reset();
+  }
+
+  // 👥 Their own API keys and sign-ins (secret-box.js useUserKeys): inn\profiles\<id>\keys.json, locked with their key
+  // when they have a passcode. Nobody else's keys, the owner's included, are seen while they're in.
+  #keys() {
+    const file = path.join(profileDir(this.cfg, this.current()), 'keys.json');
+    useUserKeys({ read: () => { try { return readText(file); } catch (e) { if (e.code === 'ENOENT') return '{}'; throw e; } }, write: (text) => writeText(this.cfg, file, text) });
   }
 
   #reset() {

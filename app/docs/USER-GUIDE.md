@@ -346,7 +346,7 @@ Settings, **🔔 Check-ins**. On a schedule you pick, Bob does a quick round and
 
 ### Everyday helpers (each off)
 
-Settings, **🗓 Everyday helpers**: a today card when Bob opens (weather only with **Place for the weather** filled in), a **⏱ Focus** timer that holds check-ins and reminders, a spending sheet from receipt photos, what's new after an update, a dot on the tray icon, and **Users**: each person in the house gets their own chats, memory and email account, picked with **👥 Switch user** in the menu. A passcode is up to each person; nobody needs the passcode lock for it.
+Settings, **🗓 Everyday helpers**: a today card when Bob opens (weather only with **Place for the weather** filled in), a **⏱ Focus** timer that holds check-ins and reminders, a spending sheet from receipt photos, what's new after an update, a dot on the tray icon, and **Users**: each person in the house gets their own chats, memory, email account, API keys and coding agents, picked from the menu the cube opens. A passcode is up to each person; nobody needs the passcode lock for it.
 
 Also: **🌙 Quiet hours**, a shortcut to ask Bob from anywhere (Ctrl+Shift+Space), and **🩺 Health and history** (catch crashes, a safe start, **Put it back** for the last 20 Settings changes, a weekly count, and a Health page).
 

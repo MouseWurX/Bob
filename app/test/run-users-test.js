@@ -9,7 +9,10 @@ import { fileURLToPath } from 'node:url';
 import { Profiles, profilesOn, profileDir, MAIN, userFiles } from '../src/profiles.js';
 import { wrapKey, lockPage } from '../src/lock.js';
 import { setKey, hasKey, vaultOn, writeText, readText, isSealed } from '../src/vault.js';
-import { openBox, useBox, memoryKeeper, useKeysFile, savedKey, saveKey } from '../src/secret-box.js';
+import { openBox, useBox, memoryKeeper, useKeysFile, savedKey, saveKey, keyValue, keyNames, userKeysOn } from '../src/secret-box.js';
+import { keyEnv } from '../src/cloud.js';
+import { makeBackup } from '../src/backup.js';
+import { usersPart, bobMenuHtml } from '../public/bob-menu.js';
 import { userAccount, userPassword, saveUserAccount, userEmailFile, userKeyName } from '../src/user-email.js';
 import { emailSettings, emailPassword, listMail } from '../src/email-read.js';
 import { accountFor, accountView } from '../src/email-account.js';
@@ -100,7 +103,7 @@ const brainOf = (cfg) => ({ sessionDir: path.join(cfg.dataDir, 'sessions'), sess
   saveUserAccount(cfg, { host: 'imap.mia.test', user: 'mia@example.test', folder: 'INBOX' }, { password: 'mia-app-pass' });
   check('a user saves their own account', emailSettings(cfg).host === 'imap.mia.test' && emailSettings(cfg).user === 'mia@example.test' && emailPassword(cfg) === 'mia-app-pass');
   check('without a passcode, their app password is in the locked store, not their file', !fs.readFileSync(userEmailFile(cfg), 'utf8').includes('mia-app-pass') && savedKey(userKeyName(id)) === 'mia-app-pass');
-  check('the owner\'s account is untouched', cfg.moreTools.emailUser === 'owner@example.test' && savedKey('BOB_EMAIL_PASSWORD') === 'owner-app-pass');
+  check('the owner\'s account is untouched, and its password unseen', cfg.moreTools.emailUser === 'owner@example.test' && savedKey('BOB_EMAIL_PASSWORD') === '');
   check('a passcode reset still goes to the owner', accountFor(cfg, { owner: true }).user === 'owner@example.test' && accountFor(cfg).user === 'mia@example.test');
   let seen = null;
   const fake = () => { const s = new EventEmitter(); s.write = (l) => { const [tag, cmd, ...rest] = String(l).trim().split(' '); if (cmd === 'LOGIN') seen = rest.join(' '); setImmediate(() => { if (cmd === 'UID') s.emit('data', Buffer.from('* SEARCH\r\n')); s.emit('data', Buffer.from(`${tag} OK done\r\n`)); }); }; s.end = () => {}; s.destroy = () => {}; setImmediate(() => s.emit('data', Buffer.from('* OK hi\r\n'))); return Promise.resolve(s); };
@@ -112,6 +115,48 @@ const brainOf = (cfg) => ({ sessionDir: path.join(cfg.dataDir, 'sessions'), sess
   check('taking it off moves it back to the store', savedKey(userKeyName(id)) === 'mia-app-pass' && !fs.readFileSync(userEmailFile(cfg), 'utf8').includes('mia-app-pass') && userPassword(cfg) === 'mia-app-pass');
   p.useMain();
   check('removing the user forgets their app password', !p.remove(id).error && !savedKey(userKeyName(id)) && savedKey('BOB_EMAIL_PASSWORD') === 'owner-app-pass');
+}
+
+
+// ---- each user's own API keys, never shared ----
+{
+  const cfg = fresh(); cfg.profilesOn = true;
+  saveKey(cfg, 'ANTHROPIC_API_KEY', 'owner-key'); saveKey(cfg, 'BOB_DISCORD_TOKEN', 'owner-bot');
+  const p = new Profiles(cfg, { brain: brainOf(cfg) });
+  const mia = p.add('Mia', '').view.list[0].id;
+  const jo = p.add('Jo', 'jo-code').view.list.find((x) => x.name === 'Jo').id;
+  p.open(mia, '');
+  check('a user sees none of the owner\'s keys', userKeysOn() && savedKey('ANTHROPIC_API_KEY') === '' && keyNames().length === 0);
+  check('nor the computer\'s environment', keyValue('ANTHROPIC_API_KEY', { ANTHROPIC_API_KEY: 'env-owner' }) === '');
+  saveKey(cfg, 'ANTHROPIC_API_KEY', 'mia-key');
+  check('a user saves their own key, in their own folder', savedKey('ANTHROPIC_API_KEY') === 'mia-key' && fs.existsSync(path.join(profileDir(cfg, mia), 'keys.json')) && !fs.readFileSync(path.join(profileDir(cfg, mia), 'keys.json'), 'utf8').includes('mia-key'));
+  check('cloud helpers get only that user\'s key', keyEnv().ANTHROPIC_API_KEY === 'mia-key');
+  check('the bots stay the owner\'s and can\'t be changed by a user', savedKey('BOB_DISCORD_TOKEN') === 'owner-bot' && (() => { try { saveKey(cfg, 'BOB_DISCORD_TOKEN', 'x'); return false; } catch { return true; } })());
+  let refused = false; try { makeBackup(cfg, { folder: tmp }); } catch { refused = true; }
+  check('a user can\'t make a backup (it would hold keys)', refused);
+  p.useMain();
+  check('back to the owner: the owner\'s key, untouched', !userKeysOn() && savedKey('ANTHROPIC_API_KEY') === 'owner-key');
+  p.open(jo, 'jo-code');
+  check('another user doesn\'t see Mia\'s key', savedKey('ANTHROPIC_API_KEY') === '');
+  saveKey(cfg, 'OPENAI_API_KEY', 'jo-key');
+  check('with a passcode, their key file is locked with their key', isSealed(fs.readFileSync(path.join(profileDir(cfg, jo), 'keys.json'))) && savedKey('OPENAI_API_KEY') === 'jo-key');
+  p.useMain(); setKey(null);
+  const server = read('src/server.js');
+  check('each user has their own coding agents and sign-in folders', server.includes("Object.defineProperty(brain, 'codingAgents', { get: () => agentsOf(whoNow())") && server.includes("path.join(cfg.innDir, 'profiles', who)"));
+  check('only the person who\'s in hears about agent runs', server.includes('broadcast: (m) => { if (whoNow() === who) broadcast(m); }'));
+  check('an agent\'s ask or hook reaches its own user', server.includes('agentsAll().find((a) => a.tokens.has('));
+}
+
+// ---- the cube's menu ----
+{
+  const u = { on: true, ownerName: 'Pat', current: 'main', list: [{ id: 'aaaaaaaaaaaa', name: 'Mia', passcode: false }, { id: 'bbbbbbbbbbbb', name: 'Jo', passcode: true }] };
+  const h = usersPart(u);
+  check('the cube\'s menu has one Switch user line saying who\'s signed in', h.includes('data-bobmenu="users"') && h.includes('Switch user') && h.includes('Signed in: Pat') && !h.includes('Mia'));
+  const m = bobMenuHtml({ loaded: [] }, { users: u, tools: [{ id: 'settingsBtn', icon: '⚙', label: 'Settings' }] });
+  check('it sits right under Get models, above Settings and Downloads', m.indexOf('Get models') < m.indexOf('Switch user') && m.indexOf('Switch user') < m.indexOf('bob-menu-tools'));
+  check('with Users off the menu is as before', usersPart({ on: false }) === '' && !bobMenuHtml({ loaded: [] }).includes('data-bobmenu="users"') && bobMenuHtml({ loaded: [] }, { users: u }).includes('data-bobmenu="users"'));
+  check('in Lamplight the side-menu button hides (the cube has it)', read('public/looks.css').includes('#shelfBtn, #usersBtn)'));
+  check('the app wires the cube\'s line to the Switch user page', read('public/app.js').includes('users: () => usersSwitch.open()'));
 }
 
 // ---- schedules wait while someone else is in ----
@@ -144,9 +189,9 @@ const brainOf = (cfg) => ({ sessionDir: path.join(cfg.dataDir, 'sessions'), sess
 {
   const v = { on: true, lockOn: false, current: 'main', list: [{ id: 'aaaaaaaaaaaa', name: 'Mia', passcode: false }, { id: 'bbbbbbbbbbbb', name: 'Sam <b>', passcode: true }] };
   const h = usersHtml(v);
-  check('Switch user lists the owner and everyone, with who has a passcode', h.includes('The owner') && h.includes('Mia') && h.includes('🔒 passcode') && h.includes('no passcode') && h.includes('Sam &lt;b&gt;'));
+  check('Switch user lists the owner and everyone, with who has a passcode', h.includes('Owner') && h.includes('Mia') && h.includes('🔒 Passcode') && h.includes('No passcode') && h.includes('Sam &lt;b&gt;'));
   const idx = read('public/index.html');
-  check('the menu has Switch user, hidden until Users is on', /<button id="usersBtn"[^>]* hidden>/.test(idx) && idx.includes('<span class="lbl">Switch user</span>') && idx.includes('<dialog id="usersDlg"'));
+  check('the classic menu has Switch user, hidden until Users is on', /<button id="usersBtn"[^>]* hidden>/.test(idx) && idx.includes('<span class="lbl">Switch user</span>') && idx.includes('<dialog id="usersDlg"'));
   check('Settings has Your passcode for the user who\'s in', peopleHtml({ current: 'x', currentName: 'Mia', currentPasscode: false, list: [] }).includes('Set it') && peopleHtml({ current: 'x', currentPasscode: true, list: [] }).includes('Take it off'));
   const ids = new Map(HELP.map((e) => [e.id, e]));
   check('Help explains users, the optional passcode and email', /passcode is up to each person/.test(ids.get('profiles')?.html || '') && /Email account/.test(ids.get('profiles')?.html || '') && /Android/.test(ids.get('profiles')?.html || ''));

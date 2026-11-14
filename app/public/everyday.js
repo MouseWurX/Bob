@@ -155,7 +155,7 @@ export function peopleHtml(v = {}) {
       <button type="button" ${v.currentPasscode ? 'data-owncodeoff>Take it off' : 'data-owncodeon>Set it'}</button></div>` : '';
   return `${owner}${who}${own}<ul class="people-list">${list.map((p) => `<li>👤 ${esc(p.name)} <span class="muted">${p.passcode ? '🔒 passcode' : 'no passcode'}</span> <button type="button" class="mini" data-persondel="${esc(p.id)}">Remove</button></li>`).join('') || '<li class="muted">Nobody else yet.</li>'}</ul>
     <div class="row people-add"><label>Name <input data-personname maxlength="30" style="width:10em"></label> <label>Passcode (optional) <input data-personcode type="password" autocomplete="new-password" style="width:10em"></label> <button type="button" data-personadd>＋ Add a person</button></div>
-    <p class="muted">Pick a person with <strong>👥 Switch user</strong> in the menu (or on the lock screen). Each sees only their own chats, memory and email. With a passcode, their things are locked; forget it and they're gone for good. Without one, they're kept apart, not private.</p>`;
+    <p class="muted">Switch people from the cube's menu (or the lock screen). Each sees only their own chats, memory, email, keys and agents. With a passcode, their things are locked; forget it and they're gone for good. Without one, they're kept apart, not private.</p>`;
 }
 
 export function mountEveryday(box, { settings = {}, flash = () => {} } = {}) {
@@ -174,7 +174,7 @@ export function mountEveryday(box, { settings = {}, flash = () => {} } = {}) {
       if (b.dataset.persondel) { if (armed !== b.dataset.persondel) { armed = b.dataset.persondel; b.textContent = 'Remove them and their chats?'; return; } await api('/api/everyday/profiles', { remove: b.dataset.persondel }); armed = ''; drawPeople(); flash(people, 'Removed, with their chats and memory.'); return; }
       if ('personadd' in b.dataset) {
         const name = box.querySelector('[data-personname]')?.value || '', passcode = box.querySelector('[data-personcode]')?.value || '';
-        await api('/api/everyday/profiles', { add: name, passcode }); drawPeople(); flash(people, 'Added. They pick their name with 👥 Switch user.'); return;
+        await api('/api/everyday/profiles', { add: name, passcode }); drawPeople(); flash(people, 'Added. Switch to them from the cube\'s menu.'); return;
       }
       if ('owncodeon' in b.dataset || 'owncodeoff' in b.dataset) {
         const code = box.querySelector('[data-owncode]')?.value || '', on = 'owncodeon' in b.dataset;

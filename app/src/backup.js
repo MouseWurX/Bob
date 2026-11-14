@@ -217,7 +217,9 @@ export function brainNames(cfg = {}) {
 
 // Writes the zip into `folder`. parts: ids from PARTS. keys: true + passcode puts the locked keys in.
 // Returns { file, files, bytes, counts, keys }.
+const ownerOnly = (cfg) => { if (cfg?.profileNow) throw new Error('Only the owner backs up or restores. Switch back to the owner first.'); }; // 👥 never another user's keys in the owner's backup
 export function makeBackup(cfg, { folder, parts = PART_IDS, keys = false, passcode = '', env = {}, version = '', now = new Date(), auto = false } = {}) {
+  ownerOnly(cfg);
   if (!folder) throw new Error('Pick a folder for the backup.');
   const dir = path.resolve(folder);
   if (isInsideDir(cfg.innDir, dir)) throw new Error('Pick a folder outside Bob\'s inn folder, so a backup never ends up inside the next one.');
@@ -341,6 +343,7 @@ const safeSchedules = (list) => (Array.isArray(list) ? list.map((e) => ({ ...e, 
 // Unpacks the parts asked for into inn\restore-waiting (they go in at Bob's next start), puts keys back (when the
 // passcode opens them) and the door settings in config.json, switched off. Returns what happened, for the card.
 export async function stageRestore(cfg, file, { parts = PART_IDS, keys = false, passcode = '', store = (name, value) => saveKey(cfg, name, value), env = {}, now = new Date() } = {}) {
+  ownerOnly(cfg);
   const info = readBackup(file);
   const chosen = info.parts.filter((p) => parts.includes(p));
   let unlocked = null;
@@ -454,6 +457,7 @@ export class BackupKeeper {
     return this.now() - (this.state().lastAuto || 0) >= gap - 10 * 60e3;
   }
   tick({ force = false } = {}) {
+    if (this.cfg.profileNow) return null; // 👥 waits while another user is in
     if (!force && !this.due()) return null;
     const b = backupOf(this.cfg);
     const st = this.state();

@@ -214,8 +214,22 @@ pruneReceipts(cfg); // Settings, Jobs: a receipt's Undo lasts a week
 pruneTurns(cfg); // item 238: a turn's Undo lasts a week
 process.on('exit', () => { try { brain.flushQueue(); } catch {} }); // item 230: steps not saved yet go in now
 // Nov 13 Coding agents (src/coding-agents.js, off unless switched on): Claude Code, Codex, Gemini CLI and others side by side.
-brain.codingAgents = new CodingAgents(cfg, { broadcast, log: (k, t) => brain.log(k, t) });
-process.on('exit', () => { try { brain.codingAgents.stopAll(); } catch {} }); // a run never outlives Bob
+// 👥 Each user has their own coding agents, list and sign-in folders (inn\profiles\<id>\coding-agents.json,
+// agent-accounts\), so nobody runs anyone else's agents or accounts. A person's runs carry on after a switch; only the
+// person who's in hears about them.
+const agentsBy = new Map();
+const whoNow = () => cfg.profileNow || 'main';
+const agentsOf = (who) => {
+  if (!agentsBy.has(who)) {
+    const c = who === 'main' ? cfg : Object.create(cfg, { dataDir: { value: path.join(cfg.innDir, 'profiles', who), enumerable: true } });
+    agentsBy.set(who, new CodingAgents(c, { broadcast: (m) => { if (whoNow() === who) broadcast(m); }, log: (k, t) => brain.log(k, t) }));
+  }
+  return agentsBy.get(who);
+};
+Object.defineProperty(brain, 'codingAgents', { get: () => agentsOf(whoNow()), configurable: true });
+const agentsAll = () => [...agentsBy.values()];
+agentsOf('main'); // the owner's, from the start, as before
+process.on('exit', () => { for (const a of agentsAll()) { try { a.stopAll(); } catch {} } }); // a run never outlives Bob
 // Items 233, 234, 239 and 240: what start-up set aside or put back, old temp files cleared, and the start-up check: one
 // line in the logbook; a note in the chat only when something is wrong.
 for (const t of cfg.saveNotes || []) brain.log('saving', t);
@@ -471,7 +485,10 @@ const server = http.createServer(async (req, res) => {
     // so they come before the page checks and still work while the window is locked.
     if ((p === '/api/coding-agents/hook' || p === '/api/coding-agents/ask') && req.method === 'POST') {
       if (!isLocal || req.headers.origin) return send(res, 403, { error: 'no' });
-      return agentsRoute({ req, res, p, isLocal, agents: brain.codingAgents, body, send });
+      // 👥 the user whose run or hook key it is, whoever is in now
+      const raw = await body(req).catch(() => ({}));
+      const mine = p.endsWith('/ask') ? agentsAll().find((a) => a.tokens.has(String(raw?.token || ''))) : agentsAll().find((a) => a.hookOk(String(req.headers['x-bob-hook'] || '')));
+      return agentsRoute({ req, res, p, isLocal, agents: mine || brain.codingAgents, body: async () => raw, send });
     }
 
     // 1.5.97 Bob-Net pairing: the other Bob doesn't know the passcode yet, so these four come before the passcode check.
