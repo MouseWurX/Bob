@@ -224,7 +224,7 @@ Nothing trains, rents a card or uploads without the owner's go, and every rental
 
 ## What it costs
 
-Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 14 Nov 2026: about **$1,990** spent in all, of which about $484 is rented GPU time (failures included), and about $2,496 to $2,571 projected for the planned family of models. The page lists every rental and what came of it.
+Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 15 Nov 2026: about **$2,001** spent in all, of which about $494 is rented GPU time (failures included), and about $2,500 to $2,574 projected for the planned family of models. The page lists every rental and what came of it.
 
 ## What Bob does
 
