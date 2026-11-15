@@ -1,0 +1,84 @@
+{
+ "run": "shape4-retest",
+ "note": "15 Nov (the owner tapped 'Yes, rent and retest' 8:12 AM MT: 'One rented A40 runs the same coached tool test on both, about 3 hours, capped at 4 hours or $3. I report before and after scores.'). Retests Riker and Bobert after the Qwen tool fixes (save_to, short paths, aliases, app_look opens the app, file writes to write_file, ask_specialist and pick_session hidden for Qwen). Measure only, no_hands. A40 first, L40S if none (A6000 dropped: froze at start-up before). Never host 69.30.85.44 (froze before): the Forge has no host filter, so watch the first minutes. data_centers only applies to volume plans, so no Sweden pin here.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA A40",
+  "NVIDIA L40S"
+ ],
+ "step_up": [],
+ "disk_gb": 80,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 4,
+ "dollars_max": 3,
+ "rent_minutes": 60,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "Riker then Bobert, stock, on Bob's tool shape 4 (TOOL_SHAPES 4, commit be54a8c or later): the same tool-wording (bob variant) and tool-coach jobs as riker-tools / bobert-tools, thinking off only, so the first-try and after-hints numbers compare with theirs. --bob is the shape-4 copy beside the lab kit (laptop layout: S:\\bob-shape4-src next to S:\\lab-kit). The questions folder (out/bench/gptoss-lessons-v5/riker/calib/questions) must be copied from the PC that ran the earlier tests. Smoke steps first (--gate: a miss exits 86 and the pod is deleted).",
+  "hours_each": 1.6,
+  "brain_engine": {
+   "ref": "fcdf3955ed6966c102f43d49528174cabd52d825",
+   "patches": [
+    "0001-expert-mask",
+    "0002-expert-trace",
+    "0003-dials",
+    "0004-rpc-wifi",
+    "0005-scut",
+    "0006-scut-seal",
+    "0007-expert-trace-stream",
+    "0008-scut-live",
+    "0009-expert-mass",
+    "0010-expert-trace-once",
+    "0011-rpc-read-ahead",
+    "0012-load-progress",
+    "0013-experts-per-word"
+   ],
+   "note": "Brain Engine 7b12282 (live experts per word, mask, dials, expert trace with mass)"
+  },
+  "models": [
+   {
+    "name": "riker",
+    "nickname": "Riker (28Bob), tool shape 4 retest",
+    "file": "hf:MouseWurX/28Bob-Riker:28Bob-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "slots": 4,
+    "ctx": 65536,
+    "extra": "",
+    "hours": 1.6,
+    "commands": [
+     "node set-live.mjs --reset",
+     "node engine-check.mjs --url {{url}} --min-ctx 14000",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../../bob-shape4-src/app --min-bob 1.5.237 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --turns 2 --parallel 8 --odds 8 --variants bob --think off --out {{out}}/smoke/wording --limit 4 --gate",
+     "node tool-coach.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../../bob-shape4-src/app --jobs files,run --per 1 --steps 2 --think off --parallel 4 --gate --out {{out}}/smoke/coach",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../../bob-shape4-src/app --min-bob 1.5.237 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --turns 2 --parallel 8 --odds 8 --variants bob --think off --out {{out}}/wording",
+     "node tool-coach.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../../bob-shape4-src/app --from {{out}}/wording --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --per 3 --steps 4 --hints 3 --think off --parallel 4 --max 1500 --out {{out}}/coach"
+    ]
+   },
+   {
+    "name": "bobert",
+    "nickname": "Bobert (35Bob), tool shape 4 retest",
+    "file": "hf:MouseWurX/35Bob-Bobert:35Bob-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "slots": 8,
+    "ctx": 65536,
+    "extra": "",
+    "hours": 1.6,
+    "commands": [
+     "node set-live.mjs --reset",
+     "node engine-check.mjs --url {{url}}",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../../bob-shape4-src/app --min-bob 1.5.237 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --turns 2 --parallel 8 --odds 8 --variants bob --think off --out {{out}}/smoke/wording --limit 4 --gate",
+     "node tool-coach.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../../bob-shape4-src/app --jobs files,run --per 1 --steps 2 --think off --parallel 4 --gate --out {{out}}/smoke/coach",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../../bob-shape4-src/app --min-bob 1.5.237 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --turns 2 --parallel 8 --odds 8 --variants bob --think off --out {{out}}/wording",
+     "node tool-coach.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../../bob-shape4-src/app --from {{out}}/wording --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --per 3 --steps 4 --hints 3 --think off --parallel 4 --max 1500 --out {{out}}/coach"
+    ]
+   }
+  ]
+ }
+}
