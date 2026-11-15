@@ -67,6 +67,12 @@ check('the brain works out the set from the model it answers on', brain.toolSetO
   check('Qwen\'s tool list leaves out ask_specialist and pick_session', !brain.frontDeskTools(L).some((x) => /^(ask_specialist|pick_session)$/.test(x.function.name)));
 }
 
+{ // the Lab's tool tests see a family's shape when told the family (bob-kit --family), as Bob's loop does
+  const { loadBob } = await import('../model-lab/bob-kit.mjs');
+  const k = await loadBob(fileURLToPath(new URL('..', import.meta.url)), { family: 'qwen3' }); const t = k.turn(new Set()); k.done();
+  check('the Lab with --family qwen3 offers no ask_specialist or pick_session, and never names them', !t.tools.some((x) => /^(ask_specialist|pick_session)$/.test(x.function.name)) && !/use ask_specialist/.test(t.system));
+}
+
 // 3. Logic arguments: what a brain means, read in code (no words added to the brain's list).
 const rp = brain.tools.reminders.schema.function.parameters, np = brain.tools.notice_board.schema.function.parameters;
 check('"set" means add for reminders', checkArgs(rp, { action: 'set', time: '2030-01-01T09:00', text: 'x' }).args.action === 'add');

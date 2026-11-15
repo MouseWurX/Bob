@@ -21,7 +21,7 @@
  "llama_tag": "b12282",
  "no_hands": true,
  "benchmark": {
-  "note": "Riker then Bobert, stock, on Bob's tool shape 4 (TOOL_SHAPES 4, commit be54a8c or later): the same tool-wording (bob variant) and tool-coach jobs as riker-tools / bobert-tools, thinking off only, so the first-try and after-hints numbers compare with theirs. --bob is the shape-4 copy beside the lab kit (laptop layout: S:\\bob-shape4-src next to S:\\lab-kit). The questions folder (out/bench/gptoss-lessons-v5/riker/calib/questions) must be copied from the PC that ran the earlier tests. Smoke steps first (--gate: a miss exits 86 and the pod is deleted).",
+  "note": "Riker then Bobert, stock, on Bob's tool shape 4 (TOOL_SHAPES 4, commit be54a8c or later): the same tool-wording (bob variant) and tool-coach jobs as riker-tools / bobert-tools, thinking off only, so the first-try and after-hints numbers compare with theirs. Run from npc's bob-model-lab: tool-wording and tool-coach come from the shape-4 copy (C:\\Unreal Projects\\bob-shape4-retest-src, 54c0860 or later) with --family, so each brain gets its family's tool set (Qwen: no ask_specialist or pick_session) as Bob does live; the lab's own bob-kit didn't pass the family before. Smoke steps first (--gate: a miss exits 86 and the pod is deleted).",
   "hours_each": 1.6,
   "brain_engine": {
    "ref": "fcdf3955ed6966c102f43d49528174cabd52d825",
@@ -55,10 +55,10 @@
     "commands": [
      "node set-live.mjs --reset",
      "node engine-check.mjs --url {{url}} --min-ctx 14000",
-     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../../bob-shape4-src/app --min-bob 1.5.237 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --turns 2 --parallel 8 --odds 8 --variants bob --think off --out {{out}}/smoke/wording --limit 4 --gate",
-     "node tool-coach.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../../bob-shape4-src/app --jobs files,run --per 1 --steps 2 --think off --parallel 4 --gate --out {{out}}/smoke/coach",
-     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../../bob-shape4-src/app --min-bob 1.5.237 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --turns 2 --parallel 8 --odds 8 --variants bob --think off --out {{out}}/wording",
-     "node tool-coach.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../../bob-shape4-src/app --from {{out}}/wording --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --per 3 --steps 4 --hints 3 --think off --parallel 4 --max 1500 --out {{out}}/coach"
+     "node ../../bob-shape4-retest-src/app/model-lab/tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../bob-shape4-retest-src/app --min-bob 1.5.237 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --turns 2 --parallel 8 --odds 8 --variants bob --think off --out {{out}}/smoke/wording --limit 4 --gate --family qwen3",
+     "node ../../bob-shape4-retest-src/app/model-lab/tool-coach.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../bob-shape4-retest-src/app --jobs files,run --per 1 --steps 2 --think off --parallel 4 --gate --out {{out}}/smoke/coach --family qwen3",
+     "node ../../bob-shape4-retest-src/app/model-lab/tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../bob-shape4-retest-src/app --min-bob 1.5.237 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --turns 2 --parallel 8 --odds 8 --variants bob --think off --out {{out}}/wording --family qwen3",
+     "node ../../bob-shape4-retest-src/app/model-lab/tool-coach.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../bob-shape4-retest-src/app --from {{out}}/wording --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --per 3 --steps 4 --hints 3 --think off --parallel 4 --max 1500 --out {{out}}/coach --family qwen3"
     ]
    },
    {
@@ -73,10 +73,10 @@
     "commands": [
      "node set-live.mjs --reset",
      "node engine-check.mjs --url {{url}}",
-     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../../bob-shape4-src/app --min-bob 1.5.237 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --turns 2 --parallel 8 --odds 8 --variants bob --think off --out {{out}}/smoke/wording --limit 4 --gate",
-     "node tool-coach.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../../bob-shape4-src/app --jobs files,run --per 1 --steps 2 --think off --parallel 4 --gate --out {{out}}/smoke/coach",
-     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../../bob-shape4-src/app --min-bob 1.5.237 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --turns 2 --parallel 8 --odds 8 --variants bob --think off --out {{out}}/wording",
-     "node tool-coach.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../../bob-shape4-src/app --from {{out}}/wording --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --per 3 --steps 4 --hints 3 --think off --parallel 4 --max 1500 --out {{out}}/coach"
+     "node ../../bob-shape4-retest-src/app/model-lab/tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../bob-shape4-retest-src/app --min-bob 1.5.237 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --turns 2 --parallel 8 --odds 8 --variants bob --think off --out {{out}}/smoke/wording --limit 4 --gate --family qwen3.5",
+     "node ../../bob-shape4-retest-src/app/model-lab/tool-coach.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../bob-shape4-retest-src/app --jobs files,run --per 1 --steps 2 --think off --parallel 4 --gate --out {{out}}/smoke/coach --family qwen3.5",
+     "node ../../bob-shape4-retest-src/app/model-lab/tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../bob-shape4-retest-src/app --min-bob 1.5.237 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --turns 2 --parallel 8 --odds 8 --variants bob --think off --out {{out}}/wording --family qwen3.5",
+     "node ../../bob-shape4-retest-src/app/model-lab/tool-coach.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../../bob-shape4-retest-src/app --from {{out}}/wording --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --per 3 --steps 4 --hints 3 --think off --parallel 4 --max 1500 --out {{out}}/coach --family qwen3.5"
     ]
    }
   ]

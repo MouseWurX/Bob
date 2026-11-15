@@ -8,7 +8,9 @@ import { checkBobSource } from './bob-source.mjs';
 
 // howtos: a how-to file ({ howtos: [{ name, when, steps }] }) put in the throwaway Bob first, so the quiz can see them.
 // allowOld: --allow-old-bob (bob-source.mjs): a Bob copy more than a few releases behind this Lab is refused otherwise.
-export async function loadBob(bobDir, { howtos = '', allowOld = false } = {}) {
+// family: a brain family (qwen3, qwen3.5, gpt-oss...): every turn gets that family's tool set from Bob's tool-sets.js,
+// as Bob's own loop does for the brain answering (its hidden tools left out, its wording). Unset = Bob's own list.
+export async function loadBob(bobDir, { howtos = '', allowOld = false, family = '' } = {}) {
   // a repository folder works as well as its app folder (Bob's files sit in app/ since Nov 9)
   if (!fs.existsSync(path.join(bobDir, 'src')) && fs.existsSync(path.join(bobDir, 'app', 'src'))) bobDir = path.join(bobDir, 'app');
   const src = (f) => pathToFileURL(path.join(bobDir, 'src', f)).href;
@@ -40,6 +42,11 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false } = {}) {
     const list = (JSON.parse(fs.readFileSync(howtos, 'utf8')).howtos || []).map((r, i) => ({ id: 'seed-' + i, made: Date.now(), used: 0, ...r }));
     fs.writeFileSync(path.join(dataDir, 'howtos.json'), JSON.stringify({ howtos: list }, null, 1));
   }
+  let toolSet = null;
+  if (family) {
+    try { toolSet = (await import(src('tool-sets.js'))).toolSetFor({}, '', { family: String(family) }); } catch {}
+    if (!toolSet) throw new Error(`No tool set for the family "${family}" in this Bob copy (src/tool-sets.js).`);
+  }
   const brain = new Brain(cfg, () => {});
   clearInterval(brain.reminderTimer);
   for (const k of Object.keys(brain)) { const v = brain[k]; if (v && typeof v === 'object' && v.timer) try { clearInterval(v.timer); } catch {} }
@@ -51,11 +58,13 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false } = {}) {
     guessGroups: (text) => tb.guessGroups(brain, text),
     groupOf: (name) => tb.groupOf(brain, name),
     // The front desk's prompt and tools for a turn with these groups added (Bob's own frontDeskTools/withLimits).
+    toolSet,
     turn(loaded = new Set()) {
+      if (toolSet) loaded.toolSet = toolSet; // 15 Nov: the family's shape, as Bob's loop sets it (brain-run-on.js)
       const sys = brain.withLimits(systemPrompt({ now: brain.now(), memory: '', user: 'the user', backstory: brain.backstory(), about: '', cat: 'Patches' }), loaded);
       return { system: sys, tools: brain.frontDeskTools(loaded) };
     },
-    allTools: () => brain.toolSchemas(Object.keys(brain.tools)),
+    allTools: () => brain.toolSchemas(Object.keys(brain.tools), toolSet),
     // Runs use_tools the way Bob does (adds the group), so a lesson can go on to the real tool.
     useTools(args, loaded) { return brain.tools.use_tools.run(args, { loaded }); },
     done() { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {} }

@@ -24,6 +24,7 @@
 //      [--jobs files,run,plans] [--variants bob,usewhen,paths] [--think off,on] [--turns 2] [--parallel 8] [--odds 8]
 //      [--max 600] [--max-think 4000] [--prefill "Plan: 1."] [--limit N] [--min-bob 1.5.223] [--gate] [--keep-live] [--dry]
 // --dry: no server; checks the questions, the fresh tools and every variant, and prints what would be asked.
+// --family qwen3 (or qwen3.5, gpt-oss...): the turns use that brain family's tool set from Bob's tool-sets.js (its hidden tools left out), as Bob does live.
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -134,7 +135,7 @@ async function main() {
   let bobDir = path.resolve(String(a.bob));
   if (!fs.existsSync(path.join(bobDir, 'src')) && fs.existsSync(path.join(bobDir, 'app', 'src'))) bobDir = path.join(bobDir, 'app');
   const { loadBob } = await import('./bob-kit.mjs');
-  const kit = await loadBob(bobDir);
+  const kit = await loadBob(bobDir, { family: a.family ? String(a.family) : '' });
   const { SETS } = await import(pathToFileURL(path.join(bobDir, 'src', 'tool-sets.js')).href);
   const set = SETS['gpt-oss'];
   let bobVer = '?'; try { bobVer = JSON.parse(fs.readFileSync(path.join(bobDir, 'package.json'), 'utf8')).version; } catch {}
