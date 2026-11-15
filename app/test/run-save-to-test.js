@@ -10,6 +10,7 @@ import { shortPath } from '../src/hands-files.js';
 import { buildTools, saveReminders } from '../src/tools.js';
 import { saveExport, diagramTool } from '../src/diagram.js';
 import { fixCalls } from '../src/loop-help.js';
+import { writesFileOnly } from '../src/hands.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\r\n/g, '\n');
@@ -119,6 +120,13 @@ check('the other reminder is still there', /r2/.test(await rem.run({ action: 'li
   fixCalls(notOffered, { list_folder: tl.list_folder });
   check('an alias for a tool not offered right now runs nothing', Boolean(notOffered[0].bounce));
 }
+
+// ---- a command that only writes a file goes to write_file (Bobert's habit from old lessons) ----
+for (const [cmd, args] of [['cmd', ['/c', 'echo hello > notes.txt']], ['powershell', ['-Command', 'Set-Content -Path a.txt -Value hi']], ['python', ['-c', "open('a.txt','w').write('x')"]], ['echo', ['hi', '>', 'a.txt']]])
+  check(`"${cmd} ${args.join(' ')}" is a file write, for write_file`, writesFileOnly({ cmd, args }));
+for (const [cmd, args] of [['npm', ['test']], ['cmd', ['/c', 'npm test > log.txt']], ['python', ['script.py']], ['python', ['-c', 'print(1)']], ['bash', ['-c', 'echo hi 2>&1']]])
+  check(`"${cmd} ${args.join(' ')}" still runs`, !writesFileOnly({ cmd, args }));
+check('run_command refuses a file write before any card, pointing to write_file', /writesFileOnly\(a\) && brain\.tools\?\.write_file\) throw new Error\('Not run: this command only writes a file\. Use write_file/.test(read('src/hands.js')));
 
 fs.rmSync(root, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

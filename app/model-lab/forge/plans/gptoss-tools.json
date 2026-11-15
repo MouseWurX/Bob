@@ -1,0 +1,109 @@
+{
+ "run": "gptoss-tools",
+ "note": "15 Nov, NOT APPROVED, NOT RENTED (needs the owner's typed go in the GPT-OSS forge thread). The owner: Bob allows Qwen and GPT-OSS brains, so both tool shapes must be known, and each family's heal lessons fit its own shape only (never cross-trained). Same questions (Riker's calib set), same Bob source (1.5.223 or newer) and same coaching (tool-coach, up to 3 hints ending with the exact call) as the Riker and Bobert runs, so the tables line up. Three GPT-OSS brains, one after another on one 80 GB card: the 120B (the heal's teacher), the 20B, and the unhealed 38B (its misses are the heal's starting point). GPT-OSS has a thinking level, not a switch: think off = Reasoning: low, think on = Reasoning: high (--effort low,high). Wording A/B: bob, usewhen (tool-sets.js's GPT-OSS lines), paths, usewhen+paths, usewhen+paths+fewer; then one tool per step (tool-pick); then coached lessons. Only the functions namespace is tested: llama.cpp's GPT-OSS parser drops its built-in browser/python calls, so those need an engine patch first (ready-made tools thread). Every step is smoke-tested on 4 items first (--gate: a miss ends the run and the pod deletes itself). Measure only, evidence only, nothing trained or uploaded. About 6 h on an A100 80 GB, about $10; caps 8 h / $15.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA A100 80GB PCIe",
+  "NVIDIA A100-SXM4-80GB"
+ ],
+ "step_up": [
+  "NVIDIA H100 80GB HBM3"
+ ],
+ "step_up_note": "the 120B file is 63.4 GB, so an 80 GB card; the list is cheapest first",
+ "disk_gb": 160,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 8,
+ "dollars_max": 15,
+ "rent_minutes": 120,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "three brains, one at a time; the PC's Bob source must be 1.5.223 or newer (--min-bob stops the run otherwise)",
+  "hours_each": 3,
+  "brain_engine": {
+   "ref": "fcdf3955ed6966c102f43d49528174cabd52d825",
+   "patches": [
+    "0001-expert-mask",
+    "0002-expert-trace",
+    "0003-dials",
+    "0004-rpc-wifi",
+    "0005-scut",
+    "0006-scut-seal",
+    "0007-expert-trace-stream",
+    "0008-scut-live",
+    "0009-expert-mass",
+    "0010-expert-trace-once",
+    "0011-rpc-read-ahead",
+    "0012-load-progress",
+    "0013-experts-per-word"
+   ],
+   "note": "the same Brain Engine as the Riker and Bobert runs, without the lab-only steering patch (nothing is set live here)"
+  },
+  "models": [
+   {
+    "name": "gptoss-120b",
+    "nickname": "GPT-OSS 120B, tool check",
+    "file": "hf:ggml-org/gpt-oss-120b-GGUF:gpt-oss-120b-MXFP4.gguf",
+    "quant": "MXFP4",
+    "slots": 4,
+    "ctx": 65536,
+    "extra": "",
+    "hours": 3,
+    "commands": [
+     "node engine-check.mjs --url {{url}} --min-ctx 14000",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --min-bob 1.5.223 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --variants bob,usewhen+paths+fewer --think off,on --effort low,high --turns 2 --parallel 8 --odds 8 --max-think 6000 --out {{out}}/smoke/wording --limit 4 --gate",
+     "node tool-pick.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --think off,on --effort low,high --limit 4 --gate --out {{out}}/smoke/pick",
+     "node tool-coach.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --jobs files,run --per 1 --steps 2 --think off,on --effort low,high --parallel 4 --gate --out {{out}}/smoke/coach",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --min-bob 1.5.223 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --variants bob,usewhen,paths,usewhen+paths,usewhen+paths+fewer --think off,on --effort low,high --turns 2 --parallel 8 --odds 8 --max-think 6000 --out {{out}}/wording",
+     "node tool-pick.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --think off,on --effort low,high --turns 2 --parallel 8 --odds 8 --max-think 6000 --out {{out}}/pick",
+     "node tool-coach.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --from {{out}}/wording --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --per 3 --steps 4 --hints 3 --think off,on --effort low,high --parallel 4 --max 1500 --max-think 6000 --out {{out}}/coach"
+    ]
+   },
+   {
+    "name": "gptoss-38b",
+    "nickname": "GPT-OSS 38B (unhealed), tool check",
+    "file": "hf:MouseWurX/gpt-oss-120b-REAP-38B-UNHEALED-GGUF:gpt-oss-120b-REAP-38B-UNHEALED-MXFP4.gguf",
+    "quant": "MXFP4",
+    "slots": 4,
+    "ctx": 65536,
+    "extra": "",
+    "hours": 2,
+    "commands": [
+     "node engine-check.mjs --url {{url}} --min-ctx 14000",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --min-bob 1.5.223 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --variants bob,usewhen+paths+fewer --think off,on --effort low,high --turns 2 --parallel 8 --odds 8 --max-think 6000 --out {{out}}/smoke/wording --limit 4 --gate",
+     "node tool-pick.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --think off,on --effort low,high --limit 4 --gate --out {{out}}/smoke/pick",
+     "node tool-coach.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --jobs files,run --per 1 --steps 2 --think off,on --effort low,high --parallel 4 --gate --out {{out}}/smoke/coach",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --min-bob 1.5.223 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --variants bob,usewhen,paths,usewhen+paths,usewhen+paths+fewer --think off,on --effort low,high --turns 2 --parallel 8 --odds 8 --max-think 6000 --out {{out}}/wording",
+     "node tool-pick.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --think off,on --effort low,high --turns 2 --parallel 8 --odds 8 --max-think 6000 --out {{out}}/pick",
+     "node tool-coach.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --from {{out}}/wording --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --per 3 --steps 4 --hints 3 --think off,on --effort low,high --parallel 4 --max 1500 --max-think 6000 --out {{out}}/coach"
+    ]
+   },
+   {
+    "name": "gptoss-20b",
+    "nickname": "GPT-OSS 20B, tool check",
+    "file": "hf:ggml-org/gpt-oss-20b-GGUF:gpt-oss-20b-MXFP4.gguf",
+    "quant": "MXFP4",
+    "slots": 4,
+    "ctx": 65536,
+    "extra": "",
+    "hours": 1.5,
+    "commands": [
+     "node engine-check.mjs --url {{url}} --min-ctx 14000",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --min-bob 1.5.223 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --variants bob,usewhen+paths+fewer --think off,on --effort low,high --turns 2 --parallel 8 --odds 8 --max-think 6000 --out {{out}}/smoke/wording --limit 4 --gate",
+     "node tool-pick.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --think off,on --effort low,high --limit 4 --gate --out {{out}}/smoke/pick",
+     "node tool-coach.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --jobs files,run --per 1 --steps 2 --think off,on --effort low,high --parallel 4 --gate --out {{out}}/smoke/coach",
+     "node tool-wording.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --min-bob 1.5.223 --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --variants bob,usewhen,paths,usewhen+paths,usewhen+paths+fewer --think off,on --effort low,high --turns 2 --parallel 8 --odds 8 --max-think 6000 --out {{out}}/wording",
+     "node tool-pick.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --think off,on --effort low,high --turns 2 --parallel 8 --odds 8 --max-think 6000 --out {{out}}/pick",
+     "node tool-coach.mjs --url {{url}} --questions {{out}}/../../gptoss-lessons-v5/riker/calib/questions --bob ../bob-main-src/app --from {{out}}/wording --jobs files,run,plans,apps,office,documents,diagram,pictures,schedules,web,science,reminders,memory,knowledge --per 3 --steps 4 --hints 3 --think off,on --effort low,high --parallel 4 --max 1500 --max-think 6000 --out {{out}}/coach"
+    ]
+   }
+  ],
+  "commands": []
+ }
+}

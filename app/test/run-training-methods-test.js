@@ -91,7 +91,17 @@ check('tool-score and experts-test write the condition on every answer', /\.\.\.
 }
 const { judgeTurn } = await import(pathToFileURL(path.join(app, 'model-lab', 'tool-judge.mjs')).href);
 const cases = JSON.parse(read('model-lab/forge/pod/tool_reward_cases.json'));
-check(`the shared judge cases still match tool-score (${cases.length})`, cases.length >= 12 && cases.every((c) => judgeTurn(c.want, c.got) === c.right));
+check(`the shared judge cases still match tool-score (${cases.length})`, cases.length >= 12 && cases.every((c) => judgeTurn(c.want, c.got, c.fair) === c.right));
+{
+  // 15 Nov fair judge: the Python reward (pod) gives the same verdict as tool-judge.mjs on every shared case, fair notes included
+  const pyj = spawnSync(process.platform === 'win32' ? 'python' : 'python3', [path.join(app, 'model-lab', 'forge', 'pod', 'tool_reward.py')], { input: JSON.stringify(cases), encoding: 'utf8' });
+  let pv = null; try { pv = JSON.parse(pyj.stdout); } catch {}
+  check('the fair judge: Python and tool-score agree on every shared case', pyj.error ? true : Array.isArray(pv) && pv.length === cases.length && pv.every((v, i) => v === cases[i].right), pyj.error ? 'python not found here' : (pyj.stderr || pyj.stdout).slice(-300));
+  check('the fair judge: a skipped or extra look, another right tool, a fair question and a free argument are all covered, and --strict-judge keeps the old rule',
+    ['not required', 'extra look', 'next action', 'also_ok: no tool', 'free_args', 'strict: the old rule', 'plain chat stays wrong'].every((w) => cases.some((c) => (c.why || '').includes(w))));
+  const ts = read('model-lab/tool-score.mjs');
+  check('tool-score uses the fair judge with the reference\'s next action, and says which judge it used', /judgeTurn\(wantCalls, got, fair\)/.test(ts) && /next: nextAction\(l, k\)/.test(ts) && /'strict-judge'/.test(ts) && /Judge: fair/.test(ts));
+}
 check('the cases cover right, wrong and tool-for-nothing answers', cases.some((c) => c.right) && cases.some((c) => !c.right && !c.want.length) && cases.some((c) => !c.right && c.want.length));
 const tr = read('model-lab/forge/pod/tool_reward.py');
 check('the reward reads both Qwen tool-call styles and skips the thinking', /<function=/.test(tr) && /json\.loads\(block/.test(tr) && /<\/think>/.test(tr));

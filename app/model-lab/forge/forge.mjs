@@ -139,7 +139,27 @@ if (args.status || args.kill) {
 }
 const planFile = args.plan; if (!planFile) { console.error('--plan <file> is needed'); process.exit(1); }
 const plan = JSON.parse(fs.readFileSync(planFile, 'utf8'));
-const lessonsDir = path.resolve(here, '..', plan.lessons || 'out/lessons');
+// 15 Nov 2026: a plan with "ledger_check" trains only on lessons that passed the lesson ledger (lesson-ledger.mjs): no
+// lesson already taught, and none that copies a held-out test, calib question or quiz item (519 of 534 held-out
+// questions were once found word for word in old lesson files). It runs here on the PC, before anything is rented.
+// No never-taught files listed, one missing, or the check failing: nothing is rented.
+//   "ledger_check": { "from": "out/<set>", "never": ["out/...held-out...jsonl", ...], "ledger": "out/lesson-ledger.jsonl" }
+// The checked set (<from>-checked) is what the pod gets.
+function ledgerChecked(lc) {
+  const lab = path.resolve(here, '..');
+  const never = (lc.never || []).map((f) => path.resolve(lab, f));
+  if (!lc.from || !never.length) { console.error('ledger_check: "from" and at least one "never" file (every held-out and calib file) are needed; nothing is rented'); process.exit(1); }
+  const gone = never.filter((f) => !fs.existsSync(f));
+  if (gone.length) { console.error(`ledger_check: never-taught file(s) not found: ${gone.join(', ')}; nothing is rented`); process.exit(1); }
+  const out = path.resolve(lab, lc.out || `${String(lc.from).replace(/[\\/]+$/, '')}-checked`);
+  try {
+    execFileSync(process.execPath, [path.join(lab, 'lesson-ledger.mjs'), '--check', path.resolve(lab, lc.from), '--ledger', path.resolve(lab, lc.ledger || 'out/lesson-ledger.jsonl'), '--never', never.join(','), '--out', out], { stdio: 'inherit', cwd: lab });
+  } catch (e) { console.error(`ledger_check failed (${String(e.message || e).slice(0, 200)}); nothing is rented`); process.exit(1); }
+  try { const r = JSON.parse(fs.readFileSync(path.join(out, 'ledger-check.json'), 'utf8')); console.log(`ledger check: ${JSON.stringify(r).slice(0, 300)}`); } catch {}
+  if (lc.from !== out && fs.existsSync(path.resolve(lab, lc.from, 'toolsets.json')) && !fs.existsSync(path.join(out, 'toolsets.json'))) fs.copyFileSync(path.resolve(lab, lc.from, 'toolsets.json'), path.join(out, 'toolsets.json'));
+  return out;
+}
+const lessonsDir = plan.ledger_check ? ledgerChecked(plan.ledger_check) : path.resolve(here, '..', plan.lessons || 'out/lessons');
 const countsFile = path.resolve(here, '..', plan.counts_file || 'out/experts/' + plan.counts);
 for (const f of ['lessons.jsonl', 'toolsets.json']) if (!fs.existsSync(path.join(lessonsDir, f))) { console.error(`missing ${path.join(lessonsDir, f)}`); process.exit(1); }
 if (!fs.existsSync(countsFile)) { console.error(`missing counts file ${countsFile}`); process.exit(1); }

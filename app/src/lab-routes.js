@@ -16,6 +16,7 @@ import { listRuns } from './lab-runs.js';
 import { STEP_FORMS } from './lab-step-run.js';
 import { forgeDir } from './lab-forge.js';
 import { consoleRoute } from './lab-console.js'; // 15 Nov the Forge console
+import { lessonsRoute } from './lab-lessons.js'; // 15 Nov Learn > Lessons
 
 // 1.5.164 One sandbox turn on Bob's loaded brain, with the person's own system prompt. Ordinary settings, not temperature 0:
 // the point is to see what the brain does in use.
@@ -43,6 +44,7 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (await fullSizeRoute({ req, res, p, isLocal, lab, body, send })) return true;
     if (await diffusionRoute({ req, res, p, isLocal, lab, body, send })) return true; // Playground: Diffusion brains // Bring in a full-size brain // 1.5.16x Playground: Longer, Faster, Teach it
     if (req.method === 'GET' && p === '/api/lab') { send(res, 200, lab.view()); return true; }
+    if (await lessonsRoute({ req, res, p, lab, body, send, labOn, labDir })) return true; // 15 Nov Learn > Lessons: off unless switched on
     if (req.method === 'GET' && p === '/api/lab/measures') { send(res, 200, { measures: lab.measures().map(({ rec, ...m }) => m) }); return true; }
     // 1.5.151 Learn: experiments on the brain Bob has loaded. Read-only, nothing is written, so any device Bob lets in may use them.
     if (req.method === 'GET' && p === '/api/lab/learn') { const b = learnBrain(lab.brain); send(res, 200, { on: labOn(lab.cfg), ready: b.ready, why: b.why || '', wake: b.wake === true, busy: b.busy === true, brain: b.ready ? (lab.brain?.brainLabel?.(b.model) || b.model) : '', ctx: b.ctx || 0, cards: LEARN_CARDS }); return true; }
@@ -84,7 +86,7 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/mypack/delete') { send(res, 200, deleteMyPack(labDir(lab.cfg), b.id)); return true; }
     if (p === '/api/lab/challenge/log') { send(res, 200, lab.challengeLog(String(b.id || ''), { save: b.save === 'csv' || b.save === 'jsonl' ? b.save : '' })); return true; }
     if (p === '/api/lab/challenge') { send(res, 200, await lab.startChallenge(b.challenge, { unload: b.unload === true })); return true; } // 1.5.153
-    if (p === '/api/lab/ladder/plan') { const pl = lab.planLadder(b.from, b.types); send(res, 200, { problems: pl.problems, notes: pl.notes, diskGB: pl.diskGB, steps: pl.steps.map((x) => x.label) }); return true; } // 1.5.156
+    if (p === '/api/lab/ladder/plan') { const pl = lab.planLadder(b.from, b.types); send(res, 200, { problems: pl.problems, notes: pl.notes, diskGB: pl.diskGB, steps: (pl.steps || []).map((x) => x.label) }); return true; } // 1.5.156
     if (p === '/api/lab/ladder') { send(res, 200, await lab.startLadder({ from: b.from, types: b.types }, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/ladder/ask') { send(res, 200, await lab.startLadderAsk({ id: b.id, question: b.question }, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/ladder/delete') { send(res, 200, lab.deleteLadder(String(b.id || ''))); return true; }

@@ -21,6 +21,7 @@ check('only cards with room for the unpacked 38B (about 76 GB) are listed', plan
 check('nothing is uploaded and the caps are set', !plan.publish && plan.hours_max > 0 && plan.hours_max <= 13 && plan.dollars_max > 0 && plan.dollars_max <= 55);
 check('the heal and teacher time fit inside the cap', plan.heal.hours + plan.teacher_hours < plan.hours_max && rung.hours <= plan.heal.hours);
 check('the plan says it is not approved and what to check in the first minutes', /NOT APPROVED/.test(plan.note) && /MXFP4 on this card/.test(plan.note) && /stop the pod and report/.test(plan.note));
+check('the heal trains only on lessons that passed the ledger, and refuses to rent with no never-taught files', plan.ledger_check?.from === 'out/lessons-gptoss-heal' && plan.lessons === 'out/lessons-gptoss-heal-checked' && Array.isArray(plan.ledger_check.never) && /ledger_check: "from" and at least one "never" file/.test(read('model-lab/forge/forge.mjs')) && /const lessonsDir = plan\.ledger_check \? ledgerChecked\(plan\.ledger_check\)/.test(read('model-lab/forge/forge.mjs')));
 
 // ---- run.sh ----
 const sh = pod('run.sh');

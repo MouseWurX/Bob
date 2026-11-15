@@ -697,7 +697,7 @@ const P = (o) => ({ id: o.id || o.name.toLowerCase(), who: 'friend', ...o });
   const play5 = read('public/journey-play.js'), css5 = read('public/journey.css');
   check('the menu has Craft and Guide tabs, and the guide covers every tab', /\['craft', '🛠 Craft'\]/.test(play5) && /\['guide', '📖 Guide'\]/.test(play5) && ['party', 'skills', 'kit', 'bag', 'craft', 'pets', 'land', 'save'].every((t) => play5.includes(`['${t}', '`)));
   check('I opens the bag, J the story, C crafting, G the guide', /\{ i: 'bag', b: 'bag', c: 'craft', g: 'guide', j: 'story' \}/.test(play5));
-  check('full screen or a window, with the menu on the game screen', /data-jy="full"/.test(play5) && /requestFullscreen/.test(play5) && /\.jy\.jy-full \.jy-panel/.test(css5));
+  check('full screen or a window, with the menu on the game screen', /data-jy="full"/.test(play5) && /requestFullscreen/.test(play5) && /\.jy\.jy-full \.jy-stage/.test(css5) && /\.jy\.jy-full \.jy-top \{ display: none; \}/.test(css5));
 }
 
 // ---------- The story told along the way (Journey v1.3) ----------
@@ -804,6 +804,27 @@ const P = (o) => ({ id: o.id || o.name.toLowerCase(), who: 'friend', ...o });
   check('a save keeps errands, kills and what the log has told you', back.errands[e.id]?.s === 'done' && JSON.stringify(back.kills) === JSON.stringify(j.kills) && back.qseen.length === j.qseen.length);
   const play8 = read('public/journey-play.js');
   check('the screen: a Quests tab with goals ticked off, side quests, achievements and finished quests', /R\.questLog\(world, j\)/.test(play8) && /Finished side quests/.test(play8) && /R\.questNews\(world, j\)/.test(play8));
+}
+
+// ---------- Journey v1.5: menus inside the game, every level a stat, party size, races you can see ----------
+{
+  const f = R.member({ id: 'f', name: 'F', cls: 'fighter' });
+  const sum = () => R.STATS.reduce((t, k) => t + f.stats[k], 0);
+  const before = sum(); const ups = [];
+  for (let i = 0; i < 4; i++) ups.push(R.levelUp(f));
+  check('every level up adds one to a stat (and says which)', sum() === before + 4 && ups.every((u) => u.stat && R.STATS.includes(u.stat)));
+  check('...turn about between the class\'s two best stats', new Set(ups.map((u) => u.stat)).size === 2);
+  const elf = R.member({ cls: 'ranger', race: 'elf' }), orc = R.member({ cls: 'ranger', race: 'orc' });
+  check('races change the stats, health, accuracy and evasion', R.statOf(orc, 'might') > R.statOf(elf, 'might') && R.evasionOf(elf) > R.evasionOf(orc) && orc.maxHp > elf.maxHp);
+  check('a name can be rolled for a new party member', typeof W.rollName(W.seeded('x')) === 'string' && W.rollName(W.seeded('x')).length > 1);
+  const play9 = read('public/journey-play.js'), css9 = read('public/journey.css');
+  check('the menu, shops, fights, choices and messages are drawn inside the game screen', /<div class="jy-screen"><canvas/.test(play9) && /<div class="jy-panel" data-skin="window"><\/div>/.test(play9) && /\.jy-stage\[data-view="menu"\] \.jy-panel \{ inset: 6px/.test(css9) && /\.jy-stage\[data-view="battle"\] \.jy-panel \{ left: 4px; right: 4px; bottom: 4px/.test(css9));
+  check('...in the talk box\'s blue, with tokens a theme can change', /--jy-win-top: #2a3a8a/.test(css9) && /--jy-win-bottom: #141c4a/.test(css9) && /linear-gradient\(var\(--jy-win-top\), var\(--jy-win-bottom\)\)/.test(css9));
+  check('a System tab has save, load, sound, full screen, quit and the controls', /\['save', '⚙ System'\]/.test(play9) && ['data-jy="save"', 'data-jy="load"', 'data-jy="leave"', 'data-jy="sound"', 'data-jy="full"', 'data-jy="close"', '<strong>Controller</strong>'].every((x) => play9.includes(x)));
+  check('a controller works: buttons and the stick become keys, menus move by arrows, LB and RB change tab', /navigator\?\.getGamepads/.test(play9) && /9: 'Escape'/.test(play9) && /4: 'PageUp', 5: 'PageDown'/.test(play9) && /function moveFocus\(dir\)/.test(play9) && /function switchTab\(step\)/.test(play9));
+  check('tapping the screen reads on and picks a choice', /cv\.addEventListener\('click'/.test(play9) && /talk\.rects = labels\.map/.test(play9));
+  check('party size one to four, with characters rolled for empty seats', /data-psize/.test(play9) && /const MAX_PARTY = 4/.test(play9) && /function rollFriend\(\)/.test(play9) && /data-reroll/.test(play9));
+  check('races show on the figure: ears, green skin and tusks, beards, sizes', /function raceShape\(lk, race, key\)/.test(play9) && /const raceScale = \(m\) => \(\{ dwarf: 0\.88, halfling: 0\.8, pixie: 0\.75 \}/.test(play9) && /S: '#7aa65a'/.test(play9));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

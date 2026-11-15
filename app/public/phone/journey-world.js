@@ -109,6 +109,7 @@ const SYL_B = ['ford', 'by', 'stead', 'wick', 'mere', 'holt', 'brook', 'combe', 
 const placeName = (rnd) => `${pick(rnd, SYL_A)}${pick(rnd, SYL_B)}`;
 const FIRST = ['Odile', 'Bram', 'Tansy', 'Corwin', 'Mabry', 'Fenn', 'Hollis', 'Ivy', 'Pell', 'Rook', 'Saffi', 'Tamsin', 'Aldo', 'Berit', 'Cass', 'Dorran', 'Elske', 'Garrick', 'Hesk', 'Ilda', 'Jory', 'Kestrel', 'Linnet', 'Morrow', 'Nell', 'Osric', 'Prue', 'Quill', 'Rosamund', 'Sten', 'Tilda', 'Ulric', 'Vesna', 'Wystan', 'Yorick', 'Wilda'];
 const personName = (rnd) => pick(rnd, FIRST);
+const rollName = personName; // Journey v1.5: a name for a character rolled to fill the party
 
 // ---------- The people ----------
 // role: folk, inn, shop, smith, priest, trainer, guard, captain, knight, ruler, hermit, bard, peddler, keeper (Bob), cat.
@@ -939,5 +940,5 @@ function pieceWorld(skel) {
   return world;
 }
 
-globalThis.BobJourneyWorld = { SIZES, OLD_SIZES, sizeFactor, INN_W, TILES, SITE_TILES, SITE_WORDS, WILD_ON, HILL_WILD, DUNGEON_BOSSES, CAVE_BOSSES, seeded, personParts, makeInn, GUEST_W, makeGuest, LAYOUT, makeWorld, innOnly, makeSite, KIN_PLACES, kinLook, reachable, PIECE, landSkeleton, landPiece, pieceWorld };
+globalThis.BobJourneyWorld = { SIZES, OLD_SIZES, sizeFactor, INN_W, TILES, SITE_TILES, SITE_WORDS, WILD_ON, HILL_WILD, DUNGEON_BOSSES, CAVE_BOSSES, seeded, rollName, personParts, makeInn, GUEST_W, makeGuest, LAYOUT, makeWorld, innOnly, makeSite, KIN_PLACES, kinLook, reachable, PIECE, landSkeleton, landPiece, pieceWorld };
 })();

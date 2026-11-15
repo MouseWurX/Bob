@@ -13,6 +13,7 @@ import crypto from 'node:crypto';
 import { keyEnv } from './cloud.js';
 import { LlamaCpp, cleanHarmony, textCalls, TEXT_CALL_START, MAX_REPLY_TOKENS } from './llamacpp.js';
 import { tidySchema } from './toolbox.js';
+import { familyOf, thinkKwargs } from './model-family.js';
 import { parseJson } from './util.js';
 import { savedKey, userKeysOn } from './secret-box.js';
 
@@ -199,7 +200,7 @@ export async function chatOpenAI({ url, key, model, messages, tools, signal, onT
   const headers = { 'content-type': 'application/json' };
   if (key) headers.authorization = `Bearer ${key}`;
   const body = { model, messages: LlamaCpp.toOpenAI(messages), tools: tools && tools.length ? tidySchema(tools) : undefined, stream: true, stream_options: { include_usage: true }, max_tokens: MAX_REPLY_TOKENS };
-  if (think === false) body.chat_template_kwargs = { enable_thinking: false };
+  Object.assign(body, thinkKwargs(familyOf(model), think)); // 15 Nov 2026: GPT-OSS reads a reasoning level (off = low)
   let res;
   try { res = await fetchImpl(`${url.replace(/\/$/, '')}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(body), signal }); }
   catch (e) { throw new Error(`couldn't reach the rented brain (${scrubKey(e.message, [key])})`); }
