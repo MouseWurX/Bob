@@ -4,6 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setUpHtml, handLock, SETUPS, setupOf, setupPlan, duoNeedsQuick, brainsHtml, brainsInUse, emptyJobs, spareBrains, jobsFor, placeBarHtml, budget, brainJobs, senseSlots, listTopHtml, listRowHtml, listSetUpHtml } from '../public/brains.js';
 import { HELP } from '../public/help-content.js';
+import { taskRow } from '../public/lists.js';
+import { canDo } from '../public/fit.js';
 import { bobMenuHtml, loadedLine } from '../public/bob-menu.js';
 import { readyList, readyDefaults, readyOrder, SPLITS, splitPicks } from '../public/equip.js';
 import { publicText } from './source-text.js';
@@ -53,6 +55,14 @@ const ctx = { roles, models, brains: { small: 'gemma4-e4b', deep: 'bobert-35b' }
   check('a job that always needs a brain says how to move it, aloud too', /Gaming always needs a brain\. To move it, use \+ job on another brain\./.test(all) && /<span class="sr-only"> \(Brain always needs a brain/.test(all));
   check('One brain on: a greyed pick can still be taken back', /job-chip-off[^>]*>.*?<button type="button" class="chip-x" data-unequip="deep"/.test(brainsHtml({ ...ctx, oneBrain: true })));
   check('the Set up page has the same ✕', /data-unequip="deep"/.test(setUpHtml(brainsInUse(ctx).find((b) => b.value === 'bobert-35b'), ctx)));
+  // Nov 15 (the owner): "is housekeeping on a brain?? ... make it assignable".
+  check('Housekeeping is a job: unassigned (the main brain does it) until given a brain', emptyJobs(ctx).some((s) => s.id === 'housekeeping') && /🧹 <strong>Housekeeping<\/strong> <span class="muted">Uses the main brain/.test(html));
+  const hkHtml = brainsHtml({ ...ctx, roles: { ...roles, current: { ...roles.current, housekeeping: 'qwen3-4b' } } });
+  check('...given a brain it shows on that brain with a ✕ to take it back', /🧹 Housekeeping<button type="button" class="chip-x" data-unequip="housekeeping"/.test(hkHtml) && jobsFor('gemma4-e4b', ctx).some((s) => s.id === 'housekeeping'));
+  check('any brain that chats can do Housekeeping, an embedding model can\'t', canDo('housekeeping', { entry: models.find((m) => m.id === 'qwen3-4b') }) && canDo('housekeeping', { name: 'some:7b', caps: ['completion'] }) && !canDo('housekeeping', { name: 'nomic-embed-text', caps: ['embedding'] }));
+  check('One brain takes Housekeeping back to the main brain', setupPlan('one', { ...ctx, roles: { ...roles, current: { ...roles.current, housekeeping: 'qwen3-4b' } } }).some((p) => p.slot.id === 'housekeeping' && p.value === ''));
+  const round = taskRow({ id: 'hk-1', kind: 'housekeeping', housekeeping: true, text: 'Housekeeping: summing up', state: 'working', status: 'in progress', startedAt: Date.now() }, { movable: false, full: true });
+  check('a housekeeping round in Tasks: 🧹, Stop and ✕, no Pause or Try again', /🧹/.test(round) && /data-t="cancel"/.test(round) && /data-t="remove"/.test(round) && !/data-t="pause"/.test(round) && !/data-t="retry"/.test(taskRow({ id: 'hk-2', kind: 'housekeeping', housekeeping: true, text: 'x', state: 'cancelled', status: 'cancelled' }, { movable: false, full: true })));
   check('+ job is a labelled menu on each brain', /<select class="job-add" data-brainjob="bobert-35b" aria-label="Give [^"]+ another job">/.test(html));
   check('an empty job says what happens meanwhile and offers a brain or the catalogue', /data-jobbrain="office"/.test(html) && /data-catjob="office"/.test(html) && /Uses the Spreadsheets helper or the main brain/.test(html));
   check('senses: every one listed with Change or Pick; nothing chosen shows no kit', senseSlots().every((s) => html.includes(`data-slotpick="${s.id}"`)) && /<section class="kit-panel" aria-live="polite"><\/section>/.test(html));

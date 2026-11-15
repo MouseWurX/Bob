@@ -733,6 +733,7 @@ export class ModelShop {
     { id: 'scout', label: 'Research', what: 'Web research with sources', kind: 'llm' },
     { id: 'reviewer', label: 'Review', what: 'Careful review of code and plans', kind: 'llm' },
     { id: 'painter', label: 'Image & video prompts', what: 'Writes the picture and video prompts', kind: 'llm' },
+    { id: 'housekeeping', label: 'Housekeeping', what: 'Sums up older chat and sorts Topics while Bob is idle (empty: the main brain)', kind: 'llm' },
     { id: 'eyes', label: 'Seeing pictures', what: 'Looks at pictures you attach (needs a vision model)', kind: 'llm' },
     { id: 'image', label: 'Pictures', what: 'Paints the picture', kind: 'images' },
     { id: 'edit', label: 'Picture edits', what: 'Keeps a character or scene looking the same from a reference', kind: 'edit' },

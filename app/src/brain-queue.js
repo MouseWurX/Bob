@@ -76,18 +76,9 @@ export const queueParts = {
     try { writeJsonAtomic(this.queueFile, this.queue.filter((j) => !isGuestId(j.sessionId))); } catch {} // a guest chat's job isn't kept
     this.broadcast({ type: 'queue', jobs: this.queueView() });
   },
+  // Nov 15: housekeeping rounds (hk-runs.js) are listed after Bob's own jobs, read only from here.
   queueView() {
-    return this.queue.filter((j) => !j.dropAfter).map(({ id, sessionId, text, state, at, error, refs, kind, startedAt, doneAt, steps, effort, after, pickUp, away, guest, rent, rentOk, sentTo, home, ranHere, pausedFrom, pausedAt }) => {
-      const out = (steps || []).find((x) => x.state === 'in progress');
-      // Plain status for the Tasks panel: Queued, In progress, Delegated (to which copy), Completed...
-      const awayNow = state === 'working' && away?.name; // 1.5.72: with another of your Bobs
-      // 1.5.196 sentTo: a finished job sent whole to another Bob keeps who ran it (Tailscale test: delegatedTo was null).
-      const status = state === 'waiting' ? 'queued' : state === 'working' ? (out || awayNow ? 'delegated' : rent && rentOk && !ranHere ? 'rented' : 'in progress') : state === 'done' ? 'completed' : state; // 1.5.127 rented
-      return { id, sessionId, kind, text: (guest ? `From ${guest.from}: ` : '') + text.slice(0, 140), state, status, at, startedAt, doneAt, error, pics: (refs || []).length,
-        delegatedTo: awayNow ? { hat: 'away', label: 'another of your Bobs', copy: away.name, sent: true } : out ? { hat: out.hat, label: out.label, copy: out.copy } : sentTo && state !== 'waiting' && state !== 'working' ? { hat: 'away', label: 'another of your Bobs', copy: sentTo, sent: true } : null, gaming: state === 'waiting' && !away && waitsForGaming(this.cfg, { kind, effort }) ? { tag: GAMING_TAG, hint: GAMING_HINT } : undefined, steps: (steps || []).slice(-8), effort: effort || 'low',
-        waitsFor: state === 'waiting' && after ? after.name : undefined, pickUp: state === 'waiting' && pickUp ? true : undefined,
-        home: home && !guest ? { title: home.title || '', folder: home.folder || '' } : undefined, ...(ranHere ? { ranHere: true } : {}), ...(state === 'paused' ? { pausedFrom, pausedAt } : {}) }; // items 236, 205
-    });
+    return [...jobsView.call(this), ...(this.housekeeper?.runs?.view() || [])];
   },
   // Drag and drop: move a waiting job in front of another waiting job (or to the end of the line).
   // The running job stays where it is.
@@ -105,6 +96,7 @@ export const queueParts = {
   // Clear every completed one (Remove, for one task in any state, is further down).
   clearCompleted() {
     this.queue = this.queue.filter((j) => !['done', 'cancelled'].includes(j.state));
+    this.housekeeper?.runs?.clearFinished(); // Nov 15: housekeeping rounds (hk-runs.js) clear with them
     this.saveQueue();
     return true;
   },
@@ -169,7 +161,7 @@ export const queueParts = {
   },
   cancelJob(id) {
     const j = this.queue.find((x) => x.id === id);
-    if (!j) return false;
+    if (!j) return Boolean(this.housekeeper?.cancelRun?.(id)); // Nov 15: Stop on a housekeeping round
     if (j.away && stopAway(this, j.id)) return true; // 1.5.72: with another Bob: he's told to stop
     if (j.state === 'working') return this.stop(j.id);
     if (j.state !== 'waiting') return false;
@@ -197,7 +189,7 @@ export const queueParts = {
   // a running one is stopped (or the other Bob is told to stop) and leaves the list when it has.
   removeJob(id) {
     const j = this.queue.find((x) => x.id === id);
-    if (!j) return false;
+    if (!j) return Boolean(this.housekeeper?.removeRun?.(id)); // Nov 15: ✕ on a housekeeping round
     if (j.state === 'working' || j.away) {
       j.dropAfter = true;
       if (!(j.away && stopAway(this, j.id)) && j.state === 'working') this.stop(j.id);
@@ -352,3 +344,18 @@ export const queueParts = {
     besideLater(this);
   },
 };
+
+// Bob's own jobs, as Tasks shows them (queueView adds the housekeeping rounds after them).
+function jobsView() {
+  return this.queue.filter((j) => !j.dropAfter).map(({ id, sessionId, text, state, at, error, refs, kind, startedAt, doneAt, steps, effort, after, pickUp, away, guest, rent, rentOk, sentTo, home, ranHere, pausedFrom, pausedAt }) => {
+    const out = (steps || []).find((x) => x.state === 'in progress');
+    // Plain status for the Tasks panel: Queued, In progress, Delegated (to which copy), Completed...
+    const awayNow = state === 'working' && away?.name; // 1.5.72: with another of your Bobs
+    // 1.5.196 sentTo: a finished job sent whole to another Bob keeps who ran it (Tailscale test: delegatedTo was null).
+    const status = state === 'waiting' ? 'queued' : state === 'working' ? (out || awayNow ? 'delegated' : rent && rentOk && !ranHere ? 'rented' : 'in progress') : state === 'done' ? 'completed' : state; // 1.5.127 rented
+    return { id, sessionId, kind, text: (guest ? `From ${guest.from}: ` : '') + text.slice(0, 140), state, status, at, startedAt, doneAt, error, pics: (refs || []).length,
+      delegatedTo: awayNow ? { hat: 'away', label: 'another of your Bobs', copy: away.name, sent: true } : out ? { hat: out.hat, label: out.label, copy: out.copy } : sentTo && state !== 'waiting' && state !== 'working' ? { hat: 'away', label: 'another of your Bobs', copy: sentTo, sent: true } : null, gaming: state === 'waiting' && !away && waitsForGaming(this.cfg, { kind, effort }) ? { tag: GAMING_TAG, hint: GAMING_HINT } : undefined, steps: (steps || []).slice(-8), effort: effort || 'low',
+      waitsFor: state === 'waiting' && after ? after.name : undefined, pickUp: state === 'waiting' && pickUp ? true : undefined,
+      home: home && !guest ? { title: home.title || '', folder: home.folder || '' } : undefined, ...(ranHere ? { ranHere: true } : {}), ...(state === 'paused' ? { pausedFrom, pausedAt } : {}) }; // items 236, 205
+  });
+}

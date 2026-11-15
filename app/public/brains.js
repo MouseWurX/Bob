@@ -46,7 +46,7 @@ export const SETUPS = [
   { id: 'bobs', icon: '🌐', name: 'Across my Bobs', does: 'Brains live on different computers on your Bob-Net and help each other. Experimental.', who: 'Two or more Bobs.' }
 ];
 // The jobs a setup decides. Gaming and Seeing pictures keep their own brain: only some brains can do them.
-const CORE = ['bob', 'deep', 'office', 'tinker', 'reviewer', 'ledger', 'scout', 'painter'];
+const CORE = ['bob', 'deep', 'office', 'tinker', 'reviewer', 'ledger', 'scout', 'painter', 'housekeeping'];
 const val = (id, ctx) => equipped(allSlots().find((s) => s.id === id), ctx);
 // Which setup the jobs are in now, told from the jobs themselves (there is no separate switch to fall out of step).
 export function setupOf(ctx) {
@@ -78,14 +78,14 @@ export function setupPlan(id, ctx) {
     if (!big) return out;
     if (id === 'duo') want('bob', big);
     want('deep', id === 'one' ? '' : big);
-    for (const j of ['office', 'tinker', 'reviewer', 'ledger', 'scout', 'painter']) want(j, ''); // empty = the main brain does it
+    for (const j of ['office', 'tinker', 'reviewer', 'ledger', 'scout', 'painter', 'housekeeping']) want(j, ''); // empty = the main brain does it
     if (id === 'one') want('small', '');
   }
   return out;
 }
 // Nov 13: the jobs One brain hands to the main brain (Gaming keeps its own: it runs on the processor). With the switch
 // on they stay on the page, greyed, and their picks come back when it's off.
-export const ONE_BRAIN_JOBS = ['small', 'deep', 'office', 'tinker', 'reviewer', 'ledger', 'scout', 'painter'];
+export const ONE_BRAIN_JOBS = ['small', 'deep', 'office', 'tinker', 'reviewer', 'ledger', 'scout', 'painter', 'housekeeping'];
 export const oneBrainCovers = (slot, ctx) => Boolean(ctx.oneBrain) && ONE_BRAIN_JOBS.includes(slot.id);
 // Quick + Big needs a small brain in the Quick slot that isn't the big one.
 export const duoNeedsQuick = (ctx) => { const q = val('small', ctx); return !q || q === (val('deep', ctx) || val('bob', ctx)); };
