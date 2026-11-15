@@ -7,7 +7,8 @@
 .jy-where { font-weight: 600; }
 .jy-gold { color: var(--muted, #aaa); }
 .jy-spacer { flex: 1; }
-.jy-stage { position: relative; }
+.jy-stage { position: relative; display: flex; flex-direction: column; justify-content: center; background: #000; border-radius: 6px; }
+.jy-screen { position: relative; width: 100%; }
 .jy-canvas { display: block; width: 100%; height: auto; aspect-ratio: 240 / 176; image-rendering: pixelated; image-rendering: crisp-edges; border-radius: 6px; background: #000; border: 2px solid var(--line, #2e2e2e); }
 .jy-box { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } /* read aloud; drawn on the canvas */
 .jy-pad { display: grid; grid-template-columns: repeat(3, 48px) 1fr repeat(2, 56px); grid-template-rows: repeat(3, 40px); gap: 4px; align-items: center; user-select: none; touch-action: none; }
@@ -62,15 +63,96 @@
 .jy-branch ol { margin: 4px 0; padding-left: 20px; }
 .jy-branch li { margin: 3px 0; }
 .jy-branch li.on { opacity: 0.95; }
-/* Journey v1.3: full screen (or filling the window where the browser won't go full screen). The picture fills the
-   screen, keeping its shape, and the menus sit over the bottom of it instead of below it. */
-.jy.jy-full { position: fixed; inset: 0; z-index: 1000; margin: 0; border-radius: 0; background: #000; color: #f2f2f2; padding: 6px; gap: 4px; overflow: hidden; }
-.jy.jy-full .jy-top { background: rgba(0, 0, 0, 0.55); border-radius: 6px; padding: 2px 6px; }
-.jy.jy-full .jy-stage { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
-.jy.jy-full .jy-canvas { width: auto; height: 100%; max-width: 100%; max-height: 100%; border: 0; }
-.jy.jy-full .jy-panel:not(:empty) { position: absolute; left: 50%; transform: translateX(-50%); bottom: 8px; width: min(960px, calc(100% - 16px)); max-height: 46%; overflow: auto; background: rgba(12, 12, 18, 0.88); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 8px; padding: 8px 10px; }
-.jy.jy-full .jy-msg { position: absolute; left: 12px; top: 44px; margin: 0; background: rgba(0, 0, 0, 0.6); border-radius: 6px; padding: 2px 8px; }
-.jy.jy-full .jy-msg:empty { display: none; }
-@media (hover: none) { .jy.jy-full .jy-pad { opacity: 0.85; } }
-.jy.jy-full.jy-talking .jy-panel:not(:empty) { top: 48px; bottom: auto; max-height: 38%; }
-.jy.jy-full.jy-talking .jy-msg { display: none; }
+/* Journey v1.5: every menu inside the game screen, in the talk box's blue window. The window's colours are tokens on
+   .jy so a theme can change them; the plain values match the box drawn on the game screen. */
+.jy { --jy-win-top: #2a3a8a; --jy-win-bottom: #141c4a; --jy-win-line: #e8e8f0; --jy-win-text: #ffffff; --jy-win-pick: #ffd166; --jy-win-dim: #c4cbef; --jy-win-font: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace; }
+.jy-panel, .jy-msg, .jy-corner { position: absolute; z-index: 2; }
+.jy-win, .jy-stage[data-view="menu"] .jy-panel, .jy-stage[data-view="battle"] .jy-panel, .jy-hud, .jy-inn-buttons, .jy-msg, .jy-corner {
+  background: linear-gradient(var(--jy-win-top), var(--jy-win-bottom)); color: var(--jy-win-text); border: 2px solid var(--jy-win-line); border-radius: 4px;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55); font-family: var(--jy-win-font); }
+.jy .jy-panel { font-family: var(--jy-win-font); font-size: 13px; line-height: 1.4; color: var(--jy-win-text); }
+.jy .jy-panel .muted, .jy .jy-panel .jy-keys { color: var(--jy-win-dim); }
+.jy .jy-panel a { color: var(--jy-win-pick); }
+.jy .jy-panel button, .jy .jy-panel select, .jy .jy-panel input:not([type="checkbox"]):not([type="radio"]), .jy .jy-corner {
+  background: rgba(0, 0, 0, 0.28); color: var(--jy-win-text); border: 1px solid rgba(232, 232, 240, 0.55); border-radius: 3px; font: inherit; min-height: 30px; padding: 2px 8px; box-shadow: none; }
+.jy .jy-panel select option { background: var(--jy-win-bottom); color: var(--jy-win-text); }
+.jy .jy-panel input[type="checkbox"] { accent-color: var(--jy-win-pick); width: 18px; height: 18px; }
+.jy .jy-panel button:hover, .jy .jy-corner:hover { border-color: var(--jy-win-pick); }
+.jy .jy-panel button:focus, .jy .jy-panel select:focus, .jy .jy-panel input:focus, .jy .jy-panel summary:focus, .jy .jy-corner:focus { outline: 2px solid var(--jy-win-pick); outline-offset: 1px; color: var(--jy-win-pick); }
+.jy .jy-panel .yes, .jy .jy-panel [aria-selected="true"], .jy .jy-panel [aria-checked="true"] { border-color: var(--jy-win-pick); color: var(--jy-win-pick); }
+.jy .jy-panel button[disabled] { opacity: 0.45; }
+.jy .jy-panel fieldset { border-color: rgba(232, 232, 240, 0.35); }
+.jy .jy-panel .jy-party li.on { border-color: var(--jy-win-pick); }
+.jy .jy-panel .jy-turn { background: rgba(0, 0, 0, 0.25); }
+.jy-panel .jy-bar { background: rgba(0, 0, 0, 0.45); }
+/* The menu and the shops fill the game screen (on a phone the screen grows taller while one is open). */
+.jy-stage[data-view="menu"] { min-height: min(560px, 84vh); }
+.jy-stage[data-view="menu"] .jy-screen { position: static; }
+.jy-stage[data-view="menu"] .jy-panel { inset: 6px; overflow: auto; padding: 8px 10px; overscroll-behavior: contain; }
+.jy-stage[data-view="menu"] .jy-corner { display: none; }
+.jy-talking .jy-stage[data-view="menu"] { min-height: 0; }
+.jy-talking .jy-stage[data-view="menu"] .jy-screen { position: relative; }
+.jy-talking .jy-stage[data-view="menu"] .jy-panel { inset: 4px 4px calc(31% + 2px) 4px; }
+/* A fight: the commands along the bottom, who's standing on the right. */
+.jy-stage[data-view="battle"] .jy-panel { left: 4px; right: 4px; bottom: 4px; max-height: 42%; overflow: auto; padding: 4px 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; align-content: start; }
+.jy-stage[data-view="battle"] .jy-panel > * { grid-column: 1; margin: 0; }
+.jy-stage[data-view="battle"] .jy-panel > .jy-bstat { grid-column: 2; grid-row: 1 / span 6; }
+.jy-stage[data-view="battle"] .jy-cmds { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 4px; }
+.jy-stage[data-view="battle"] .jy-cmds button { min-width: 0; min-height: 30px; text-align: left; }
+.jy-stage[data-view="battle"] .jy-ask { margin: 0 0 2px; }
+.jy-stage[data-view="battle"] .jy-corner, .jy-talking .jy-stage[data-view="battle"] .jy-panel { display: none; }
+.jy-bstat .jy-foes { margin: 4px 0 0; font-size: 11px; flex-direction: column; gap: 0; }
+.jy-bparty li { white-space: nowrap; }
+/* Walking: a small party list in the corner; before an adventure, the inn's buttons along the bottom. */
+.jy-stage[data-view="walk"] .jy-panel, .jy-stage[data-view="dock"] .jy-panel { inset: 0; pointer-events: none; }
+.jy-hud { list-style: none; margin: 0; padding: 3px 6px; display: flex; flex-direction: column; gap: 0; font-size: 11px; line-height: 1.3; width: max-content; max-width: 60%; }
+.jy-panel > .jy-hud { position: absolute; top: 4px; left: 4px; opacity: 0.92; }
+.jy-stage[data-view="battle"] .jy-hud { background: none; border: 0; box-shadow: none; padding: 0; max-width: none; position: static; opacity: 1; }
+.jy-hud li { display: flex; align-items: center; gap: 4px; }
+.jy-hud li.down { opacity: 0.55; }
+.jy-hud li.on .jy-hud-name { color: var(--jy-win-pick); }
+.jy-hud-name { font-weight: 700; min-width: 5ch; overflow: hidden; text-overflow: ellipsis; max-width: 12ch; }
+.jy-hud-lv { color: var(--jy-win-dim); }
+.jy-hud .jy-bar { width: 34px; height: 5px; }
+.jy-panel > .jy-inn-buttons { position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%); margin: 0; padding: 6px 8px; pointer-events: auto; width: max-content; max-width: calc(100% - 16px); justify-content: center; }
+.jy-talking .jy-panel > .jy-inn-buttons { display: none; }
+/* Choices are drawn in the blue box on the game screen; these buttons are for screen readers (tap the screen instead). */
+.jy-stage[data-view="choose"] .jy-panel { width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.jy-msg { top: 4px; left: 50%; transform: translateX(-50%); margin: 0; padding: 2px 8px; font-size: 12px; max-width: calc(100% - 90px); text-align: center; z-index: 3; }
+.jy-msg[hidden], .jy-msg:empty { display: none; }
+.jy-stage[data-view="menu"] .jy-msg { top: auto; bottom: 10px; }
+.jy-corner { top: 4px; right: 4px; min-width: 34px; min-height: 30px; padding: 0 6px; font-size: 16px; cursor: pointer; z-index: 3; }
+.jy-talking .jy-corner { display: none; }
+.jy-sys { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+.jy .jy-panel .jy-tabs { position: sticky; top: -8px; z-index: 1; background: var(--jy-win-top); padding: 4px 0; margin: -4px 0 8px; gap: 4px; }
+.jy .jy-panel .jy-tabs button { min-height: 28px; padding: 2px 6px; }
+@media (max-width: 560px) {
+  .jy .jy-panel { font-size: 12px; }
+  /* On a narrow screen the fight's window sits just under the picture, inside the same frame, so nobody is hidden. */
+  .jy-stage[data-view="battle"] .jy-panel { position: relative; left: auto; right: auto; bottom: auto; margin: 4px; max-height: none; grid-template-columns: minmax(0, 1fr); }
+  .jy-stage[data-view="battle"] .jy-bparty li { white-space: normal; }
+  .jy-stage[data-view="battle"] .jy-panel > .jy-bstat { grid-column: 1; grid-row: auto; order: -1; }
+  .jy-stage[data-view="battle"] .jy-bstat .jy-foes { display: none; }
+  .jy-stage[data-view="battle"] .jy-bparty { flex-direction: row; flex-wrap: wrap; gap: 0 10px; }
+  .jy-stage[data-view="battle"] .jy-bparty li > span:not(.jy-hud-name) { display: none; }
+  .jy-stage[data-view="battle"] .jy-cmds { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .jy-stage[data-view="battle"] .jy-cmds button { min-height: 32px; padding: 2px 4px; text-align: center; }
+  .jy-hud { font-size: 10px; }
+  .jy-hud .jy-bar { width: 26px; }
+}
+/* Full screen (or filling the window where the browser won't go full screen): only the game screen, nothing else.
+   On a touch screen the walking pad sits over the bottom of it. */
+.jy.jy-full { position: fixed; inset: 0; z-index: 1000; margin: 0; border-radius: 0; background: #000; color: #f2f2f2; padding: 0; gap: 0; overflow: hidden; }
+.jy.jy-full .jy-top { display: none; }
+.jy.jy-full .jy-stage { flex: 1 1 auto; min-height: 0; height: 100%; border-radius: 0; align-items: center; }
+.jy.jy-full .jy-screen { width: min(100%, calc(100vh * 240 / 176)); width: min(100%, calc(100dvh * 240 / 176)); }
+.jy.jy-full .jy-canvas { border: 0; border-radius: 0; }
+.jy.jy-full .jy-stage[data-view="menu"] .jy-panel { inset: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left)); width: auto; max-width: 1100px; margin: 0 auto; }
+.jy.jy-full .jy-pad { position: absolute; left: 8px; right: 8px; bottom: max(8px, env(safe-area-inset-bottom)); z-index: 4; opacity: 0.75; pointer-events: none; }
+.jy.jy-full .jy-pad button { pointer-events: auto; }
+.jy.jy-full[data-view="menu"] .jy-pad, .jy.jy-full[data-view="battle"] .jy-pad { display: none; }
+@media (hover: hover) and (pointer: fine) { .jy.jy-full .jy-pad { display: none; } }
+@media (prefers-reduced-motion: reduce) { .jy-panel * { scroll-behavior: auto; } }
+.jy .jy-panel select { max-width: 100%; }
+.jy .jy-panel .jy-kit-picks { min-width: 0; flex: 1 1 200px; }
+.jy .jy-panel .jy-kit-picks label { flex-wrap: wrap; }

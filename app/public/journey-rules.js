@@ -1352,14 +1352,16 @@ export function castField(j, casterId, id, targetId, rnd = Math.random) {
   return { ok: changed || fromScroll, text: text || 'Nothing to mend.', events: ev };
 }
 
-// A level up: more health and spirit, a skill point, and every other level one point on the class's best stat.
+// A level up: more health and spirit, a skill point, and one point on one of the class's best stats.
 export function levelUp(m) {
   m.level++;
   m.points++;
   let stat = '';
-  if (m.level % 2 === 0) {
+  {
+    // Journey v1.5: every level, turn about between the class's two best stats (then the rest once those are full).
     const best = Object.entries(CLASSES[m.cls].stats).sort((a, b) => b[1] - a[1]).map(([k]) => k);
-    stat = best.find((k) => m.stats[k] < 9) || '';
+    const order = m.level % 2 ? [best[1], best[0], ...best.slice(2)] : best;
+    stat = order.find((k) => k && m.stats[k] < 9) || '';
     if (stat) m.stats[stat]++;
   }
   const hpWas = m.maxHp, spWas = m.maxSp;
