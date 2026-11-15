@@ -219,6 +219,23 @@ export const KEY_NAME = /^[A-Z][A-Z0-9_]{2,63}$/;
 let keysFile = '';
 let keysCache = null;
 export function useKeysFile(file) { keysFile = file || ''; keysCache = null; }
+// 👥 Users (profiles.js): while a person other than the owner is in, every key is theirs alone: read from and saved to
+// their own keys.json (inn\profiles\<id>\keys.json), never the owner's store and never the computer's environment.
+// scope = { read() -> text, write(text) } (profiles.js passes vault-backed ones, so a person with a passcode has the
+// whole file locked with their own key too). The values inside are locked by the box like the owner's.
+// OWNER_KEYS stay the owner's: Bob's Discord and Telegram bots run for the owner whoever is in.
+export const OWNER_KEYS = ['BOB_DISCORD_TOKEN', 'BOB_TELEGRAM_TOKEN'];
+let userScope = null, userCache = null;
+export function useUserKeys(scope) { userScope = scope || null; userCache = null; }
+export const userKeysOn = () => Boolean(userScope);
+const forUser = (name) => Boolean(userScope) && !OWNER_KEYS.includes(name);
+function loadUserKeys() {
+  if (userCache) return userCache;
+  let raw = {};
+  try { raw = JSON.parse(String(userScope.read() || '{}').replace(/^\uFEFF/, '')); } catch (e) { if (e.code === 'VAULT_LOCKED') throw e; }
+  userCache = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  return userCache;
+}
 function loadKeys() {
   if (keysCache) return keysCache;
   let raw = {};
@@ -226,11 +243,20 @@ function loadKeys() {
   keysCache = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   return keysCache;
 }
-export const keyNames = () => Object.keys(loadKeys()).filter((k) => KEY_NAME.test(k)).sort();
-export function savedKey(name) { const v = loadKeys()[name]; return typeof v === 'string' ? current.open(v) : ''; }
+export const keyNames = () => Object.keys(userScope ? loadUserKeys() : loadKeys()).filter((k) => KEY_NAME.test(k)).sort();
+export function savedKey(name) { const v = (forUser(name) ? loadUserKeys() : loadKeys())[name]; return typeof v === 'string' ? current.open(v) : ''; }
 export function saveKey(cfg, name, value) {
   if (!KEY_NAME.test(name || '')) throw new Error('A key name is capital letters, digits and _, like HF_TOKEN.');
+  if (userScope && OWNER_KEYS.includes(name)) throw new Error('Only the owner can change that one.');
   ensureBox(cfg);
+  if (forUser(name)) {
+    const all = { ...loadUserKeys() };
+    const v = String(value ?? '').trim();
+    if (v) all[name] = current.ready ? current.seal(v) : v; else delete all[name];
+    userScope.write(JSON.stringify(all, null, 1));
+    userCache = null;
+    return;
+  }
   if (!keysFile) throw new Error('Bob has no settings folder yet.');
   const all = { ...loadKeys() };
   const v = String(value ?? '').trim();
@@ -253,7 +279,8 @@ export function lockKeysFile(cfg) {
   return plain.sort();
 }
 // A key by name: the environment first (as before), then the keys saved in Settings.
-export function keyValue(name, env = process.env) { return String(env?.[name] || '') || savedKey(name); }
+// 👥 While another user is in, only their own saved keys: the environment is the owner's computer.
+export function keyValue(name, env = process.env) { return forUser(name) ? savedKey(name) : String(env?.[name] || '') || savedKey(name); }
 
 // ---------- what Settings shows ----------
 export function boxView(cfg, extra = {}) {

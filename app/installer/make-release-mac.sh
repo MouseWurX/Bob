@@ -69,14 +69,10 @@ rm -f "$RES/app/config.json"
 # 1.5.76: the basic llama.cpp (Metal) comes inside the download (installer/bundle-engine.mjs; checked against GitHub's sha256).
 node "$SOURCE/installer/bundle-engine.mjs" "$RES/app"
 
-# Bob's icon, every size macOS wants, from the 512 px picture.
+# Bob's icon, every size macOS wants, drawn ahead by installer/make-icons.mjs (small sizes kept sharp, Apple's padding).
 ICONSET="$OUT/bob.iconset"
 rm -rf "$ICONSET"; mkdir -p "$ICONSET"
-for s in 16 32 128 256 512; do
-  sips -z $s $s "$SOURCE/public/icons/bob-512.png" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
-  d=$((s * 2)); [ $d -le 512 ] && sips -z $d $d "$SOURCE/public/icons/bob-512.png" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
-done
-cp "$SOURCE/public/icons/bob-512.png" "$ICONSET/icon_512x512@2x.png"
+cp "$SOURCE"/public/icons/mac/icon_*.png "$ICONSET/"
 iconutil -c icns "$ICONSET" -o "$RES/bob.icns"
 rm -rf "$ICONSET"
 

@@ -1,4 +1,4 @@
-// Keep order on Discord (Settings, Online services, Bob on Discord). Off unless you turn it on.
+// Keep order on Discord (Settings, Agents, Discord). Off unless you turn it on.
 //
 // Bob moderates your server with plain rules in code. No brain is loaded for any of it:
 //   - deletes spam (a flood, the same message again and again, mass mentions), scam links, slurs and your own blocked
@@ -730,7 +730,7 @@ export function modTool(brain) {
     },
     async run(a) {
       const m = mod();
-      if (!m || !modOn(brain.cfg)) return 'Keep order is off. It\'s in Settings, Online services, Bob on Discord, Keep order.';
+      if (!m || !modOn(brain.cfg)) return 'Keep order is off. It\'s in Settings, Agents, Discord, Keep order.';
       const act = actionOf(a.action);
       if (act === 'status') {
         const w = m.waiting(), fl = m.openFlags();

@@ -47,6 +47,12 @@ def no_ghost_guesser(model):
     print(f"no guesser (MTP) weights in this brain: set {', '.join(keys + subkeys)} to 0 so the GGUF doesn't claim one", flush=True)
     return True
 
+def mtp_off(model):
+    """True when the converter must be told there is no guesser. 14 Nov 2026: only for Qwen; GPT-OSS never has one, and b12282's
+    converter stops (exit 1) when --no-mtp is given for an architecture without guesser support."""
+    import family as FAM
+    return FAM.family(model) == FAM.QWEN and no_ghost_guesser(model)
+
 def convert_args(conv, no_guesser):
     """13 Nov, fact-fix round 1: llama.cpp b12282's Qwen3.5/3.6 converter counts the guesser layers from the mtp.* weights
     when the config says 0, and stops with `assert self.opt_num_mtp_layers != 0` if there are none (a trained full brain
@@ -70,7 +76,7 @@ def main():
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     bf16 = os.path.join(a.out, f"{a.name}-BF16.gguf")
-    no_guesser = no_ghost_guesser(a.model)
+    no_guesser = mtp_off(a.model)
     conv = os.path.join(a.llama, "convert_hf_to_gguf.py")
     extra = convert_args(conv, no_guesser)
     if extra: print("no guesser (MTP) weights: converting with --no-mtp", flush=True)
@@ -105,6 +111,17 @@ def main():
     for f in files:
         if f["file"].endswith(".gguf"): write_card(a, f)
 
+def gpt_oss_size(cfg, kept):
+    """GPT-OSS sizes from its config (billions, rounded): every expert is gate_up [H, 2I] + down [I, H] + biases in each
+    layer; the rest is the two word tables and attention. The 120B: 117 total, 5 active; its 38B cut (41 kept): 38."""
+    H, I, L = cfg["hidden_size"], cfg["intermediate_size"], cfg["num_hidden_layers"]
+    hd = cfg.get("head_dim") or H // cfg["num_attention_heads"]
+    expert = 3 * H * I + 2 * I + H
+    attn = 2 * H * cfg["num_attention_heads"] * hd + 2 * H * cfg["num_key_value_heads"] * hd
+    shared = 2 * cfg["vocab_size"] * H + L * (attn + H * kept)
+    k = cfg.get("num_experts_per_tok") or cfg.get("experts_per_token") or 4
+    return round((shared + L * kept * expert) / 1e9), round((shared - cfg["vocab_size"] * H - L * H * kept + L * k * expert) / 1e9, 1)  # active: one word table is a lookup
+
 def write_card(a, f):
     """The brain card beside a GGUF. Only facts the pod knows; no paths, hosts or people."""
     import datetime
@@ -112,12 +129,16 @@ def write_card(a, f):
     try: cfg = json.load(open(os.path.join(a.model, "config.json")))
     except Exception: pass
     bob = cfg.get("bob", {})
-    total = cfg.get("num_experts") or bob.get("experts_total")
+    gpt_oss = cfg.get("model_type") == "gpt_oss"
+    total = bob.get("experts_before") if gpt_oss else (cfg.get("num_experts") or bob.get("experts_total"))
+    total = total or cfg.get("num_local_experts")
     kept = bob.get("experts_kept") or total   # no "bob" block in the config: nothing was cut (a trained full model)
     # size rule from the ladder (docs/FORGE-JOURNAL.md): about 2 B of shared parts plus about 0.13 B per expert kept in every layer
     params = round(2 + 0.13 * kept) if kept else None
+    active = 3 if kept else None
+    if gpt_oss and kept: params, active = gpt_oss_size(cfg, kept)
     quant = f["file"].rsplit("-", 1)[-1].replace(".gguf", "")
-    by = {"Qwen": "Alibaba"}.get(a.teacher.split("/")[0], a.teacher.split("/")[0]) if a.teacher else ""
+    by = {"Qwen": "Alibaba", "openai": "OpenAI"}.get(a.teacher.split("/")[0], a.teacher.split("/")[0]) if a.teacher else ""
     short = a.teacher.split("/")[-1] if a.teacher else ""
     what = a.what or (f"A Bob cut from {short} for Bob's own jobs: tools, coding, exact formats and everyday chat." if a.teacher else None)
     card = {
@@ -125,7 +146,7 @@ def write_card(a, f):
         "name": f"{a.name} {a.nickname}".strip() + (f" ({quant})" if quant and quant != a.name else ""),
         "nickname": a.nickname, "family": "Bob", "madeByBob": True,
         "jobs": [j for j in a.jobs.split(",") if j],
-        "params": params, "activeParams": 3 if kept else None,
+        "params": params, "activeParams": active,
         "vramGB": round(f["bytes"] / 1e9 + 1.5), "ctx": cfg.get("max_position_embeddings"),
         "cutFrom": {"name": short.replace("-", " "), "by": by, "hf": a.teacher} if a.teacher else None,
         "expertsKept": f"{kept} of {total}" if kept and total else None,

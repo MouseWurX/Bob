@@ -1,4 +1,4 @@
-// Bob on Telegram (Settings, Online services). Off unless you turn it on.
+// Bob on Telegram (Settings, Agents, Telegram). Off unless you turn it on.
 //
 // You make your own Telegram bot (with Telegram's @BotFather) and add its token as a Windows user environment
 // variable named BOB_TELEGRAM_TOKEN. Bob never stores or shows the token, the same as the cloud helpers' keys.

@@ -98,7 +98,9 @@ export function runScheduled(brain, e) {
 }
 
 export function startSchedules(brain) {
-  return startTicker(schedulesFor(brain), (e) => runScheduled(brain, e));
+  // 👥 The owner's schedules wait while another user is in (profiles.js), so they never run in that person's
+  // chats or with their email, and catch up once the owner is back.
+  return startTicker(schedulesFor(brain), (e) => runScheduled(brain, e), { hold: () => Boolean(brain.cfg?.profileNow) });
 }
 
 export function schedulesView(brain) {

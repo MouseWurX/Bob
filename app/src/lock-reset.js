@@ -107,7 +107,7 @@ export class LockReset {
     if ('email' in b) next.email = b.email === true;
     if ('discord' in b) next.discord = b.discord === true;
     if (next.email && !cur.email && !this.send.emailReady?.()) return { error: 'Set up your account in Settings, Online services, 📧 Email account first.' };
-    if (next.discord && !cur.discord && !this.send.discordReady?.()) return { error: 'Turn on Bob on Discord and Discord DMs first (Settings, Online services).' };
+    if (next.discord && !cur.discord && !this.send.discordReady?.()) return { error: 'Turn on Bob on Discord and Discord DMs first (Settings, Agents, Discord).' };
     saveLock(this.cfg, { reset: next });
     this.log('settings', `passcode reset by code: email ${next.email ? 'on' : 'off'}, Discord ${next.discord ? 'on' : 'off'}`);
     return { view: this.view() };

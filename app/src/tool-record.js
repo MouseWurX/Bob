@@ -12,14 +12,40 @@
 //   so nothing is added to the start of a job. A tool set aside after three misses points to its entries.
 // - One file on this replicant matrix, <data>/tool-record.jsonl, the newest 500 entries. Settings, How Bob works,
 //   "Keep a record of my tool calls" (on: it's a reliability fix); turning it off deletes the file.
+// - Nov 14 (the owner): when the live tool shapes change (tool-sets.js shapeStamp), the record starts fresh. The old
+//   history isn't deleted: it moves to <data>/tool-record-archive/, named by date and shape, for lessons.
 import fs from 'node:fs';
 import path from 'node:path';
+import { shapeStamp } from './tool-sets.js';
 
 export const KEEP = 500;
 export const SIZES = { ask: 400, args: 2000, result: 1000, thought: 800, plan: 6 };
 const NOT_KEPT = new Set(['read_email', 'manage_email', 'tool_record']);
 export const recordOn = (cfg) => cfg?.toolRecord !== false;
 export const recordFile = (cfg) => path.join(cfg.dataDir || cfg.innDir || '.', 'tool-record.jsonl');
+export const shapeFile = (cfg) => path.join(path.dirname(recordFile(cfg)), 'tool-record.shape');
+export const archiveDir = (cfg) => path.join(path.dirname(recordFile(cfg)), 'tool-record-archive');
+
+// New tool shapes: the history so far goes to the archive and the record starts fresh. A record with no stamp yet was
+// made with the shapes live today, so it just gets stamped. Returns the archive file when one was made.
+export function newShapeCheck(cfg, stamp = shapeStamp(cfg), now = new Date()) {
+  const f = recordFile(cfg), sf = shapeFile(cfg);
+  let was = '';
+  try { was = fs.readFileSync(sf, 'utf8').trim(); } catch {}
+  if (was === stamp) return null;
+  let moved = null;
+  if (was && fs.existsSync(f)) {
+    const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    fs.mkdirSync(archiveDir(cfg), { recursive: true });
+    let to = path.join(archiveDir(cfg), `tool-record-${day}-shape-${was.replace(/[^\w+.-]/g, '_')}.jsonl`);
+    for (let n = 2; fs.existsSync(to); n++) to = to.replace(/(?:-\d+)?\.jsonl$/, `-${n}.jsonl`);
+    fs.renameSync(f, to);
+    moved = to;
+  }
+  fs.mkdirSync(path.dirname(sf), { recursive: true });
+  fs.writeFileSync(sf, stamp + '\n');
+  return moved;
+}
 const clip = (s, n) => { const t = String(s ?? ''); return t.length > n ? `${t.slice(0, n)}…` : t; };
 const tail = (s, n) => { const t = String(s ?? '').trim(); return t.length > n ? `…${t.slice(-n)}` : t; };
 
@@ -46,6 +72,7 @@ export function keepRecord(cfg, name, args, text, ctx) {
     const e = entryOf({ name, args, text, ctx });
     const f = recordFile(cfg);
     fs.mkdirSync(path.dirname(f), { recursive: true });
+    try { newShapeCheck(cfg); } catch {}
     fs.appendFileSync(f, JSON.stringify(e) + '\n');
     if (fs.statSync(f).size > KEEP * 6000) trim(cfg);
     return e;

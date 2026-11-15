@@ -13,6 +13,7 @@
 import tls from 'node:tls';
 import { EMAIL_KEY } from './more-tools.js';
 import { keyValue } from './secret-box.js';
+import { userAccount, userPassword } from './user-email.js'; // 👥 a user's own account while they're in
 import { readHtml, readPlain, cleanText, cleanField, dangerSigns, addresses, MAIL_START, MAIL_END } from './email-safe.js';
 
 export const MAX_LIST = 30;
@@ -181,10 +182,13 @@ export function readMessage(raw, depth = 0) {
 
 // ---------------------------------------------------------------- the account
 export function emailSettings(cfg) {
+  const u = userAccount(cfg);
+  if (u) return { host: u.host, port: u.port, user: u.user, folder: u.folder };
   const m = cfg?.moreTools || {};
   return { host: m.emailHost || '', port: m.emailPort || 993, user: m.emailUser || '', folder: m.emailFolder || 'INBOX' };
 }
-export const emailReady = (cfg, pass = keyValue(EMAIL_KEY)) => { const s = emailSettings(cfg); return Boolean(s.host && s.user && pass); };
+export const emailPassword = (cfg) => (cfg?.profileNow ? userPassword(cfg) : keyValue(EMAIL_KEY));
+export const emailReady = (cfg, pass = emailPassword(cfg)) => { const s = emailSettings(cfg); return Boolean(s.host && s.user && pass); };
 
 const realConnect = ({ host, port }) => new Promise((resolve, reject) => {
   const sock = tls.connect({ host, port, servername: host, minVersion: 'TLSv1.2' }, () => resolve(sock));
@@ -194,10 +198,10 @@ const realConnect = ({ host, port }) => new Promise((resolve, reject) => {
 
 // Opens the mailbox read-only, runs fn(imap), always logs out.
 // write (email-manage.js, "Let Bob tidy my email"): SELECT instead of EXAMINE, so flags and moves can be made.
-export async function withMailbox(cfg, fn, { connect = realConnect, password = keyValue(EMAIL_KEY), write = false } = {}) {
+export async function withMailbox(cfg, fn, { connect = realConnect, password = emailPassword(cfg), write = false } = {}) {
   const s = emailSettings(cfg);
-  if (!s.host || !s.user) throw new Error('No email account is set up. Settings, How Bob works, 🧰 More tools: type the mail server and your address.');
-  if (!password) throw new Error('There\'s no app password saved for the email account. Settings, How Bob works, 🧰 More tools: paste it and press Save.');
+  if (!s.host || !s.user) throw new Error(`No email account is set up${cfg?.profileNow ? ' for you' : ''}. Settings, Online services, 📧 Email account: type the mail server and your address.`);
+  if (!password) throw new Error('There\'s no app password saved for the email account. Settings, Online services, 📧 Email account: paste it and press Save.');
   const sock = await connect({ host: s.host, port: s.port });
   const imap = new Imap(sock);
   try {

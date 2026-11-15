@@ -17,6 +17,7 @@
 // "Spread big brains over my other Bobs' cards" (this Bob borrows): when a brain is loaded that's too big (the choice
 // says what too big means), Bob asks each Bob on the list whose card is lent and adds the ones that say yes to the
 // engine (--rpc). llama.cpp then puts part of the brain on each card. If none says yes, the brain loads here like always.
+import crypto from 'node:crypto';
 import { sealOn, sealAsk, cleanSealAsk, lenderSeal, borrowerSeal, keysEnv, keyId } from './scut-seal.js'; // sealed SCUT packets (0006)
 import { isTailscaleIp, homeNetOn } from './phone-access.js';
 import { findTool, missingWords } from './llama-tools.js';
@@ -49,9 +50,24 @@ const CARD_PROGRAM = /^(rpc-server|llama-server)$/i; // the lend itself
 // on; the engines agree on it when they connect and stay on the usual link (TCP) if either side doesn't, or if the
 // UDP path doesn't answer. It paces itself under a speed cap so the rest of the home network isn't crowded.
 export const SCUT_MBPS = [50, 100, 300, 400, 1000];
+// Nov 14, the owner: "scut should never have been capped at 100, it should be 400 by default". Auto = 400 Mbit/s.
+// (On a cable at both ends SCUT isn't used at all: scutOnLink.)
+export const SCUT_AUTO = 400;
 export const scutOn = (cfg) => cfg.share?.scut === true;
 // Sealed SCUT packets (Brain Engine 0006, src/scut-seal.js): on with SCUT unless "Seal SCUT packets" is switched off.
 export const scutSealOn = (cfg) => scutOn(cfg) && sealOn(cfg);
+// Nov 14 (the owner: "they are definitely not going to try to share with wireless bob"): one brain is never spread over
+// cable Bobs and Wi-Fi or Tailscale Bobs together; the slow link would hold the whole brain back. Each kind can share
+// among itself. When both kinds lend, the group whose cards hold more of the brain is used (room(u): his card's GB, from
+// his hello), the cable group on a tie. lent: the cards that said yes; drop(u) lets one go.
+export function oneKind(lent, drop = () => {}, room = () => 0) {
+  const wired = lent.filter((u) => u.wired), other = lent.filter((u) => !u.wired);
+  if (!wired.length || !other.length) return lent;
+  const sum = (g) => g.reduce((t, u) => t + (Number(room(u)) || 0), 0);
+  const keep = sum(other) > sum(wired) ? other : wired;
+  for (const u of lent) if (!keep.includes(u)) drop(u);
+  return keep;
+}
 export const SEED_MS = 20 * 60000; // the most a lender spends filling its card store from its own copy of a brain
 const SEED_SPARE = 10e9; // the disk room a seed always leaves free
 
@@ -63,16 +79,54 @@ export function cardStoreDir(env = process.env, platform = process.platform, hom
   return path.join(base, 'llama.cpp', 'rpc');
 }
 
-// "Send the brain early": this Bob's own copy of the brain another Bob is about to spread (same file name, same size),
-// or ''. Looked for in Bob's brains folder and in the files picked with Equip; never anywhere else on the disk.
-export function findOwnBrain(cfg, { file, bytes } = {}) {
+// "Send the brain early": this Bob's own copy of the brain another Bob is about to spread, or ''. Looked for in Bob's
+// brains folder (three folders deep) and beside the files picked with Equip; never anywhere else on the disk.
+// 2026-11-14 (the owner: "use the model files that are on each device natively"): a copy under another name or in
+// another of those folders counts too, when its size and the fingerprint of its first megabyte (head) match. An
+// older Bob sends no head, so then only the same name and size count, as before. Even a wrong match costs only time:
+// the asker still offers each weight's hash first, and only a weight with the same contents is ever taken from here.
+export const HEAD_BYTES = 1 << 20;
+export function headHash(file) {
+  let fd = -1;
+  try {
+    fd = fs.openSync(file, 'r');
+    const buf = Buffer.alloc(HEAD_BYTES);
+    const n = fs.readSync(fd, buf, 0, HEAD_BYTES, 0);
+    return crypto.createHash('sha256').update(buf.subarray(0, n)).digest('hex');
+  } catch { return ''; } finally { if (fd >= 0) try { fs.closeSync(fd); } catch {} }
+}
+const SCAN_MAX = 3000; // folders and files looked at, at most, per search
+function brainFolders(cfg) {
+  const root = cfg.bobModelsDir || path.join(cfg.agentDir || '.', 'models', 'bob');
+  const dirs = new Set([root]);
+  for (const v of Object.values(cfg.llamacpp?.models || {})) { const g = typeof v === 'string' ? v : v?.gguf; if (g) dirs.add(path.dirname(g)); }
+  return [...dirs];
+}
+function ggufsIn(dir, depth, out, seen) {
+  if (seen.n > SCAN_MAX) return;
+  let list = [];
+  try { list = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+  for (const d of list) {
+    if (++seen.n > SCAN_MAX) return;
+    const p = path.join(dir, d.name);
+    if (d.isDirectory() && depth > 0) ggufsIn(p, depth - 1, out, seen);
+    else if (d.isFile() && /\.gguf$/i.test(d.name)) out.push(p);
+  }
+}
+export function findOwnBrain(cfg, { file, bytes, head = '' } = {}) {
   const name = path.basename(String(file || ''));
   if (!/\.gguf$/i.test(name) || !(Number(bytes) > 0)) return '';
-  const root = cfg.bobModelsDir || path.join(cfg.agentDir || '.', 'models', 'bob');
+  const whole = (p) => { try { return fs.statSync(p).size === Number(bytes) && !fs.existsSync(p + '.part'); } catch { return false; } };
+  const same = (p) => !head || headHash(p) === head;
   const tries = [];
   for (const v of Object.values(cfg.llamacpp?.models || {})) { const g = typeof v === 'string' ? v : v?.gguf; if (g) tries.push(g); }
+  const root = cfg.bobModelsDir || path.join(cfg.agentDir || '.', 'models', 'bob');
   try { for (const d of fs.readdirSync(root, { withFileTypes: true })) if (d.isDirectory()) tries.push(path.join(root, d.name, name)); } catch {}
-  return tries.find((p) => { try { return path.basename(p) === name && fs.statSync(p).size === Number(bytes) && !fs.existsSync(p + '.part'); } catch { return false; } }) || '';
+  const named = tries.find((p) => path.basename(p) === name && whole(p) && same(p));
+  if (named || !head) return named || '';
+  const found = [], seen = { n: 0 };
+  for (const d of brainFolders(cfg)) ggufsIn(d, 3, found, seen);
+  return [...new Set(found)].find((p) => whole(p) && same(p)) || '';
 }
 
 // Free bytes on the drive that holds dir (or its nearest folder that exists), or -1 when unknown.
@@ -87,11 +141,14 @@ export function freeBytes(dir) {
 // 1.5.214 (card test Nov 13: a 1 Gbit/s cable ran the first copy at about 96 Mbit/s, SCUT's 100 cap): unless someone
 // picked a cap, it's Auto: 1000 only when BOTH Bobs reach each other over a network cable or USB4 (a switch between
 // them is fine), 100 otherwise. The owner: "100 was our test standard for safety, to not overcrowd the network". 1.5.213 saved 100 on every Bob, so only another number or a pick counts as chosen.
-export const scutChosen = (cfg) => cfg.share?.scutMbpsChosen === true || (SCUT_MBPS.includes(Number(cfg.share?.scutMbps)) && Number(cfg.share.scutMbps) !== 100);
-export const scutMbps = (cfg, { wired = false } = {}) => (scutChosen(cfg) && SCUT_MBPS.includes(Number(cfg.share?.scutMbps)) ? Number(cfg.share.scutMbps) : wired ? 1000 : 100);
+export const scutChosen = (cfg) => cfg.share?.scutMbpsChosen === true || (SCUT_MBPS.includes(Number(cfg.share?.scutMbps)) && Number(cfg.share.scutMbps) !== SCUT_AUTO);
+export const scutMbps = (cfg, { wired = false } = {}) => (scutChosen(cfg) && SCUT_MBPS.includes(Number(cfg.share?.scutMbps)) ? Number(cfg.share.scutMbps) : SCUT_AUTO);
 export const isWired = (kind) => kind === 'cable' || kind === 'usbnet' || kind === 'usb4';
 // What the engine is started with. lend: the card server, behind the gate, says the gate's port (UDP too) in its offer.
-export const scutEnv = (cfg, { lend = false, wired = false } = {}) => (scutOn(cfg) ? { GGML_RPC_SCUT: '1', GGML_RPC_SCUT_MBPS: String(scutMbps(cfg, { wired })), ...(lend ? { GGML_RPC_SCUT_PUBLIC_PORT: String(RPC_PORT) } : {}) } : {});
+// Nov 14 (the owner: "scut over ethernet isnt needed"): SCUT makes up for what Wi-Fi loses; a cable at both ends loses
+// next to nothing, so there the lent card uses the engine's usual link (plain TCP) even with SCUT on.
+export const scutOnLink = (cfg, { wired = false } = {}) => scutOn(cfg) && !wired;
+export const scutEnv = (cfg, { lend = false, wired = false } = {}) => (scutOnLink(cfg, { wired }) ? { GGML_RPC_SCUT: '1', GGML_RPC_SCUT_MBPS: String(scutMbps(cfg, { wired })), ...(lend ? { GGML_RPC_SCUT_PUBLIC_PORT: String(RPC_PORT) } : {}) } : {});
 // The link log (Brain Engine 0008, src/link-log.js): the engine says what the link carried every 10 seconds it's busy,
 // or every 2 with "Watch the link live" on. For any lent card, with SCUT or on the usual link.
 export const linkLive = (cfg) => cfg.share?.linkDebug === true;
@@ -240,15 +297,17 @@ export class CardLender {
   get seededFile() { return this.cfg.dataDir ? path.join(this.cfg.dataDir, 'seeded-brains.json') : ''; }
   loadSeeded() { try { return new Set(JSON.parse(fs.readFileSync(this.seededFile, 'utf8')).filter((x) => typeof x === 'string').slice(-50)); } catch { return new Set(); } }
 
-  // "Send the brain early" (with SCUT on): before the card server starts, fill its store from this machine's own copy
+  // "Send the brain early" (SCUT on or off, 2026-11-14): before the card server starts, fill its store from this machine's own copy
   // of the brain, so the first load doesn't push gigabytes over Wi-Fi. The asking Bob still offers each weight's
   // hash first and sends only what isn't here, so a copy that differs just means those weights travel as before.
   // Once per brain (remembered); never when the disk would be left with less than 10 GB.
   async seed(brain) {
-    if (!scutOn(this.cfg) || !brain || typeof brain !== 'object') return '';
-    const bytes = Number(brain.bytes), key = `${path.basename(String(brain.file || ''))}:${bytes}`;
+    // 2026-11-14: with SCUT off too. The card store and the hash-first offer are the engine's own (0004), not SCUT's.
+    if (!brain || typeof brain !== 'object') return '';
+    const bytes = Number(brain.bytes), head = /^[0-9a-f]{64}$/.test(String(brain.head || '')) ? String(brain.head) : '';
+    const key = head ? `${bytes}:${head}` : `${path.basename(String(brain.file || ''))}:${bytes}`;
     if (this.seeded.has(key)) return 'already';
-    const file = this.findBrain({ file: brain.file, bytes });
+    const file = this.findBrain({ file: brain.file, bytes, head });
     if (!file) return 'no copy';
     const room = this.free(cardStoreDir(this.env));
     if (room >= 0 && room < bytes + SEED_SPARE) { this.log('bob-net', `lent graphics card: not loading ${path.basename(file)} from this machine's own copy, the disk is too full`); return 'no room'; }
@@ -329,7 +388,7 @@ export class CardLender {
     });
     if (!ready) { try { child.kill(); } catch {} return { ok: false, why: 'failed', error: `The card-sharing server didn't start${out ? ` (${out.trim().split(/\r?\n/).pop().slice(0, 160)})` : ''}.` }; }
     let gateway;
-    try { gateway = await this.gate({ host, port: RPC_PORT, allow, inner: INNER_PORT, udp: scutOn(this.cfg), log: this.log }); }
+    try { gateway = await this.gate({ host, port: RPC_PORT, allow, inner: INNER_PORT, udp: scutOnLink(this.cfg, { wired: bothWired }), log: this.log }); }
     catch (e) { try { child.kill(); } catch {} return { ok: false, why: 'failed', error: `The card-sharing gate didn't open on ${host}:${RPC_PORT} (${String(e.message || e).slice(0, 120)}).` }; }
     child.once('exit', () => { if (this.child === child) { this.close(); this.log('bob-net', 'lent graphics card: the card-sharing server stopped'); } });
     Object.assign(this, { child, gateway, host, allow, via, bothWired, port: RPC_PORT, from: String(from).slice(0, 40), sealReply: sealed.reply, sealKid: sealed.sealed ? (sealed.reply?.linkKey ? keyId(sealed.reply.linkKey) : String(seal?.kid || '')) : '', marginMB: room?.marginMB || 0 });
@@ -428,12 +487,13 @@ export const powersWords = (p) => [p?.hands && 'Hands', p?.autonomy && 'Autonomy
 export function cleanBrain(b) {
   if (!b || typeof b !== 'object') return null;
   const file = path.basename(String(b.file || '')).slice(0, 200), bytes = Math.floor(Number(b.bytes));
-  return /\.gguf$/i.test(file) && bytes > 0 && bytes < 2e12 ? { file, bytes } : null;
+  const head = /^[0-9a-f]{64}$/.test(String(b.head || '')) ? String(b.head) : '';
+  return /\.gguf$/i.test(file) && bytes > 0 && bytes < 2e12 ? { file, bytes, ...(head ? { head } : {}) } : null;
 }
 
 // ---------- Borrowing ----------
 // Why a Bob didn't lend, in plain words (CardLender.refusal's reasons).
-export const LEND_NO = { 'own brain': 'its own brain is loaded, and it lends only when free ("Lending may unload my brain" is off there)', off: 'lending is off there', gaming: 'it\'s in Gaming', 'no room': 'its memory is too full to lend right now', 'not tailscale': 'asked on an address it doesn\'t lend on', 'no tool': 'its card server is missing', failed: 'it couldn\'t start' };
+export const LEND_NO = { 'own brain': 'its own brain is loaded, and it lends only when free ("Lending may unload my brain" is off there)', off: 'lending is off there', gaming: 'it\'s gaming (the Gaming button, or a game on its graphics card)', 'no room': 'its memory is too full to lend right now', 'not tailscale': 'asked on an address it doesn\'t lend on', 'no tool': 'its card server is missing', failed: 'it couldn\'t start' };
 export class CardBorrower {
   // lenders: the Bob-Net list (src/share-brains.js Lenders: bobs(), call()).
   constructor(cfg, lenders, { now = Date.now, log = () => {}, name = () => os.hostname(), home = homeIps, linkKind = () => '', powers = () => null } = {}) {
@@ -446,12 +506,13 @@ export class CardBorrower {
 
   // The helpers for one load: ['host:50052', ...], or [] (load here like always). Each Bob is asked over Tailscale;
   // his card is reached over the home network when we're both on it, else over Tailscale.
-  // file: the brain's own file here; with SCUT on, its name and size go along so a lender with its own copy loads
-  // from that (the call then waits longer, as long as that takes).
+  // file: the brain's own file here; its name, size and the fingerprint of its first megabyte go along, so a lender
+  // with its own copy (under any name, in his brain folders) loads from that (the call then waits longer, as long as
+  // that takes). 2026-11-14: with SCUT off too.
   async open({ sizeGB, file = '' } = {}) {
     this.close();
     let brain = null;
-    if (scutOn(this.cfg) && file) { try { brain = cleanBrain({ file, bytes: fs.statSync(file).size }); } catch {} }
+    if (file) { try { brain = cleanBrain({ file, bytes: fs.statSync(file).size, head: headHash(file) }); } catch {} }
     if (!wantsSpread(this.cfg, { sizeGB })) return [];
     const bobs = (this.lenders?.bobs?.() || []).filter((b) => !(this.down.get(b.address) > this.now()));
     const here = this.home(), mine = homeFirst(this.cfg) ? here : [];
@@ -477,11 +538,16 @@ export class CardBorrower {
         return null;
       } catch { skipped.push(`${bob.name} (not reachable)`); return null; }
     }));
-    this.using = tries.filter(Boolean);
+    this.using = oneKind(tries.filter(Boolean), (u) => {
+      // Nov 14 (the owner): cable Bobs and Wi-Fi or Tailscale Bobs never share one brain (the slow link holds it all back).
+      // The one left out is let go and named, and still takes jobs.
+      this.lenders.call(u.bob, '/api/lend/card', { method: 'POST', body: { action: 'close' }, timeout: 5000 }).catch(() => {});
+      skipped.push(u.wired ? `${u.bob.name} (on a cable, and Bobs on Wi-Fi or Tailscale with more room are sharing this one; he still takes jobs)` : `${u.bob.name} (on ${u.via === 'home' ? 'Wi-Fi' : 'Tailscale'}, and Bobs on a cable are sharing this one; he still takes jobs)`);
+    }, (u) => this.lenders?.state?.get?.(u.bob.address)?.room?.vramGB || 0);
     // 1.5.210: each Bob that didn't lend is named, with why, so a spread that quietly ran here can't happen again.
     if (skipped.length) this.log('bob-net', `spread a brain: skipped ${skipped.join(', ')}`);
     if (!this.using.length) { this.log('bob-net', bobs.length ? 'spread a brain: none of my other Bobs lent a card, so it loads here' : 'spread a brain: no other Bob is on my list, so it loads here'); return []; }
-    this.log('bob-net', `spread a brain over ${this.using.map((x) => `${x.bob.name} (${x.via === 'home' ? `home network${x.wired ? ', cable' : ''}` : 'Tailscale'})`).join(', ')}${scutOn(this.cfg) && !scutChosen(this.cfg) && this.allWired() ? '; SCUT up to 1000 Mbit/s on the cable' : ''}`);
+    this.log('bob-net', `spread a brain over ${this.using.map((x) => `${x.bob.name} (${x.via === 'home' ? `home network${x.wired ? ', cable' : ''}` : 'Tailscale'})`).join(', ')}${scutOn(this.cfg) && this.allWired() ? '; plain TCP on the cable (SCUT is for Wi-Fi)' : ''}`);
     // 1.5.214: asked every WATCH_MS (it also says "still using it"), so a Bob that needs his card back is heard at once.
     this.timer = setInterval(() => { this.keepAll().catch(() => {}); }, WATCH_MS);
     this.timer.unref?.();

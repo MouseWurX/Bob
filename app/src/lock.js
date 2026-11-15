@@ -148,14 +148,15 @@ export class Lock {
 }
 
 // What the window shows while Bob is locked. `next` is where to go after.
-// people: 👥 profiles (profiles.js), [{ id, name }]; with any, the screen asks "Who's this?" first.
+// people: 👥 users (profiles.js), [{ id, name, passcode }]; with any, the screen asks "Who's this?" first. A user
+// without a passcode opens with the box left empty.
 export function lockPage({ next = '/', wrong = '', encrypt = false, people = [] } = {}) {
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const safeNext = /^\/[a-zA-Z0-9/_.?=&%-]*$/.test(next) && !next.startsWith('//') ? next : '/';
   return `${lockHead('Bob is locked')}<body><form method="post" action="/unlock"><img src="/icons/bob-192.png" width="64" height="64" alt="">
 <h1 style="font-size:20px;margin:0">🔒 Bob is locked</h1>
-${people.length ? `<label for="w">Who's this?</label><select id="w" name="who"><option value="main">The owner</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>` : ''}
-<label for="c">Passcode</label><input id="c" name="code" type="password" autocomplete="current-password" required autofocus>
+${people.length ? `<label for="w">Who's this?</label><select id="w" name="who"><option value="main">The owner</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}${p.passcode === false ? ' (no passcode)' : ''}</option>`).join('')}</select>` : ''}
+<label for="c">Passcode</label><input id="c" name="code" type="password" autocomplete="current-password"${people.some((p) => p.passcode === false) ? '' : ' required'} autofocus>
 <input type="hidden" name="next" value="${esc(safeNext)}">
 ${wrong ? `<p class="bad" role="alert">${esc(wrong)}</p>` : ''}
 <button>Open Bob</button>

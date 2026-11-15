@@ -97,6 +97,8 @@ def main():
     ap.add_argument("--only", default=None, help="JSON file: blend only these experts, {\"layers\": {layer: [experts]}, \"rest\": \"base\"|\"tuned\"}")
     ap.add_argument("--keep-file", default=None); ap.add_argument("--seed", type=int, default=1)
     a = ap.parse_args()
+    import family as FAM  # 14 Nov 2026: GPT-OSS heals and cuts, but this step still knows Qwen's weight names only
+    if FAM.family(a.base) != FAM.QWEN: raise SystemExit(f"merge.py: {FAM.family(a.base)} brains are not supported yet (merge knows Qwen weight names only)")
     if not 0 <= a.weight <= 2: ap.error("--weight is the trained share, 0 to 1 (up to 2 to push past the trained Bob)")
     if not 0 < a.density <= 1: ap.error("--density is a share, above 0 and at most 1")
     base = Weights(a.base); tuned = [Weights(t) for t in a.tuned]

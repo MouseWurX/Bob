@@ -24,10 +24,10 @@ export function createGameLock({ note }) {
     try {
       const r = await fetch('/api/gaming-lock', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ on: !on }) });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || `Error ${r.status}`);
+      if (!r.ok) { const e = new Error(j.error || `Error ${r.status}`); e.shown = Boolean(j.error); throw e; }
       on = j.on === true; draw();
       note(on ? '🎮 Gaming is on. Bob\'s big brains are off the graphics card; anything I was doing waits in Tasks.' : '☕ Gaming is off. Back to Normal, and anything waiting carries on.');
-    } catch { note('Couldn\'t change Gaming. Try again, or pick a session from the menu.', 'error'); }
+    } catch (e) { note(e.shown ? e.message : 'Couldn\'t change Gaming. Try again, or pick a session from the menu.', 'error'); } // only on this replicant matrix: a phone gets told why
     btn.disabled = false;
   }
   btn.onclick = toggle;

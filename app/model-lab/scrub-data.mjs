@@ -79,34 +79,49 @@ function scrubText(s, sc) {
   return t;
 }
 
-// odds look like [{ t, p, top: [{ t, p }] }] (Bob's) or [{ token, logprob, top_logprobs: [...] }] (the server's)
-const isTokens = (v) => Array.isArray(v) && v.length > 0 && v.every((x) => x && typeof x === 'object' && (typeof x.t === 'string' || typeof x.token === 'string'));
-const tokOf = (x) => (typeof x.t === 'string' ? 't' : 'token');
-const topOf = (x) => (Array.isArray(x.top) ? 'top' : Array.isArray(x.top_logprobs) ? 'top_logprobs' : null);
+// odds look like [{ t, p, top: [{ t, p }] }] (Bob's), [{ token, logprob, bytes, top_logprobs: [...] }] (the server's)
+// or [[token, logprob], ...] (pairs, as in top: [[token, logprob]]).
+// 14 Nov (the owner's name in the GPT-OSS v5 stage, caught before upload): the joined-token step stopped at the
+// first stand-in already in place (the stand-in e-mail address), so later pieces of the name went through; pairs were never
+// joined at all; and "bytes" kept the old text. Now every hit is fixed, pairs are joined, and bytes follow the text.
+const isPair = (x) => Array.isArray(x) && x.length >= 2 && typeof x[0] === 'string' && typeof x[1] === 'number';
+const isTok = (x) => isPair(x) || (x && typeof x === 'object' && !Array.isArray(x) && (typeof x.t === 'string' || typeof x.token === 'string'));
+const isTokens = (v) => Array.isArray(v) && v.length > 0 && v.every(isTok);
+const tokOf = (x) => (Array.isArray(x) ? 0 : typeof x.t === 'string' ? 't' : 'token');
+const topOf = (x) => (Array.isArray(x) ? null : Array.isArray(x.top) ? 'top' : Array.isArray(x.top_logprobs) ? 'top_logprobs' : null);
+const textOf = (x) => x[tokOf(x)];
+const one = (re) => new RegExp(re.source, re.flags.replace('g', ''));
+const all = (re) => new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
+// Every match of a rule in s that the rule would still change (a stand-in already in place is skipped, not a stop).
+function liveHits(s, r) {
+  const out = [];
+  for (const m of s.matchAll(all(r.re))) { if (!m[0]) continue; const to = m[0].replace(one(r.re), r.to); if (to !== m[0]) out.push({ index: m.index, text: m[0], to }); }
+  return out;
+}
 
 function scrubTokens(arr, sc) {
-  const toks = arr.map((x) => ({ ...x }));
+  const toks = arr.map((x) => (Array.isArray(x) ? [...x] : { ...x }));
   for (let guard = 0; guard < 1000; guard++) {
-    const joined = toks.map((x) => x[tokOf(x)]).join('');
-    let hit = null, to = '';
-    for (const r of sc.rules) {
-      r.re.lastIndex = 0;
-      const m = new RegExp(r.re.source, r.re.flags.replace('g', '')).exec(joined);
-      if (m && (!hit || m.index < hit.index)) { hit = m; to = m[0].replace(new RegExp(r.re.source, r.re.flags.replace('g', '')), r.to); hit.what = r.what; }
-    }
+    const joined = toks.map(textOf).join('');
+    let hit = null;
+    for (const r of sc.rules) { const h = liveHits(joined, r)[0]; if (h && (!hit || h.index < hit.index)) hit = { ...h, what: r.what }; }
     if (!hit) break;
-    const a = hit.index, b = a + hit[0].length;
+    const a = hit.index, b = a + hit.text.length;
     let pos = 0, i = -1, j = -1, si = 0;
-    toks.forEach((x, k) => { const len = x[tokOf(x)].length; if (i < 0 && a < pos + len) { i = k; si = pos; } if (j < 0 && b <= pos + len) j = k; pos += len; });
+    toks.forEach((x, k) => { const len = textOf(x).length; if (i < 0 && a < pos + len) { i = k; si = pos; } if (j < 0 && b <= pos + len) j = k; pos += len; });
     if (i < 0) break;
     if (j < 0) j = toks.length - 1;
-    const endJ = toks.slice(0, j + 1).reduce((n, x) => n + x[tokOf(x)].length, 0);
+    const endJ = toks.slice(0, j + 1).reduce((n, x) => n + textOf(x).length, 0);
     const before = joined.slice(si, a), after = joined.slice(b, endJ);
-    if (to === hit[0]) break; // a stand-in that is already in place
-    for (let k = i; k <= j; k++) { toks[k][tokOf(toks[k])] = k === i ? before + to + after : ''; const tp = topOf(toks[k]); if (tp) toks[k][tp] = []; }
+    for (let k = i; k <= j; k++) { toks[k][tokOf(toks[k])] = k === i ? before + hit.to + after : ''; const tp = topOf(toks[k]); if (tp) toks[k][tp] = []; }
     sc.counts[hit.what + ' (spread over odds)'] = (sc.counts[hit.what + ' (spread over odds)'] || 0) + 1;
   }
-  return toks.map((x) => scrubValue(x, sc));
+  return toks.map((x) => {
+    if (Array.isArray(x)) return [scrubText(x[0], sc), ...x.slice(1).map((y) => scrubValue(y, sc))];
+    const y = scrubValue(x, sc);
+    if (Array.isArray(y.bytes)) y.bytes = [...Buffer.from(textOf(y), 'utf8')]; // bytes always say what the text says
+    return y;
+  });
 }
 
 export function scrubValue(v, sc) {
@@ -123,16 +138,13 @@ const mask = (w) => (w.length <= 2 ? '**' : w[0] + '*'.repeat(w.length - 2) + w.
 export function findLeaks(v, sc, where = '') {
   const out = [];
   const testText = (s, at) => {
-    for (const r of sc.rules) {
-      const re = new RegExp(r.re.source, r.re.flags.replace('g', ''));
-      const m = re.exec(s);
-      if (m && m[0].replace(re, r.to) !== m[0]) out.push(`${at}: ${r.what} (${mask(m[0].trim())})`);
-    }
+    for (const r of sc.rules) for (const h of liveHits(s, r)) out.push(`${at}: ${r.what} (${mask(h.text.trim())})`); // every match, not just the first
   };
   const walk = (x, at) => {
     if (typeof x === 'string') return testText(x, at);
     if (isTokens(x)) {
-      const joined = x.map((t) => t[tokOf(t)]).join('');
+      const joined = x.map(textOf).join('');
+      x.forEach((t, k) => { if (!Array.isArray(t) && Array.isArray(t.bytes)) { const b = Buffer.from(t.bytes.filter((n) => Number.isInteger(n) && n >= 0 && n < 256)).toString('utf8'); if (b !== textOf(t)) testText(b, `${at}[${k}].bytes`); } });
       testText(joined, `${at} (odds joined)`);
       const flat = joined.toLowerCase().replace(/[^a-z0-9]/g, '');
       for (const w of sc.words4) if (flat.includes(w.replace(/[^a-z0-9]/g, ''))) out.push(`${at} (odds joined, gaps taken out): ${mask(w)}`);

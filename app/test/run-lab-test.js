@@ -661,6 +661,19 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   const lv2 = cLab.forgeView().live;
   check('the running Forge shows in the tab, with its caps', lv2.running && lv2.plan === 'first' && lv2.hours === 20);
   fs.writeFileSync(path.join(ml, 'out', 'forge', 'pod-token.json'), JSON.stringify({ pod: 'oldpod999', token: 'x' })); fs.writeFileSync(path.join(ml, 'out', 'forge', 'pod-token-first.json'), JSON.stringify({ pod: 'abc123xyz', token: 'never-shown-0123456789' }));
+  { // 14 Nov a Forge run gets one Lab run record, ended with its card cost (about) once the run is over
+    const { listRuns } = await import('../src/lab-runs.js');
+    const fr = listRuns(path.join(dataDir, 'lab')).find((x) => x.step === 'forge-plan');
+    check('a Forge run has a Lab run record with its plan and caps', fr && fr.state === 'running' && fr.settings.plan === 'first' && fr.settings.dollars === 60);
+    const tok = path.join(ml, 'out', 'forge', 'pod-token-first.json'), keep = fs.readFileSync(tok, 'utf8');
+    fs.writeFileSync(tok, JSON.stringify({ pod: 'abc123xyz', token: 'never-shown-0123456789', price: 0.6, started: cLab.now() - 90 * 60e3, gpu: 'NVIDIA A40', dataCenter: 'EU-1' }));
+    const was = cLab.forgeAlive; cLab.forgeAlive = () => false;
+    const liveFile = cLab.forgeLiveFile(), lr = JSON.parse(fs.readFileSync(liveFile, 'utf8'));
+    fs.utimesSync(lr.log, new Date(cLab.now()), new Date(cLab.now())); cLab.forgeView();
+    const done = listRuns(path.join(dataDir, 'lab')).find((x) => x.id === fr.id);
+    check('when it ends, the record gets its end and its card cost from the pod record, never the token', done.state === 'done' && done.cost.usd === 0.9 && done.cost.card === 'NVIDIA A40' && done.cost.minutes === 90 && !JSON.stringify(done).includes('never-shown'));
+    cLab.forgeAlive = was; fs.writeFileSync(tok, keep);
+  }
   const stopRes = await cLab.forgeStop();
   // 1.5.160 the way of thinking and what to teach
   check('there are dozens of thought paths in groups, each with a style line and blend or switch', PATHS.length >= 70 && PATH_GROUPS.length >= 9 && PATHS.every((x) => x.name && x.style.length > 15 && ['blend', 'switch', 'either'].includes(x.kind)) && ['Concise', 'Creative', 'Critical', 'Step by step', 'Plan first', 'Check your work', 'Socratic', 'Look before you touch'].every((n) => pathByName(n)));
@@ -1061,7 +1074,7 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   const tr = await hlab.tryRefusals({ from: 'rel-a', strength: 80, layers: 'all' });
   check('Try it first starts as its own job', tr.started?.kind === 'refusals-try');
   while (hlab.job) await new Promise((r) => setTimeout(r, 20));
-  { const t = hlab.runs.at(-1); check('Try it first reports before and after, holds the direction out with a control vector, and writes no brain', t.state === 'done' && t.report.tried.before.declined === 4 && t.report.tried.after.declined === 0 && t.report.tried.kept.declined === 4 && checksSeen.at(-1).extra.includes('--control-vector-scaled') && checksSeen.at(-1).extra.includes('-0.8') && !fs.existsSync(path.join(hcfg.bobModelsDir, 'lab', 'try'))); }
+  { const t = hlab.runs.at(-1); check('Try it first reports before and after, holds the direction out with a control vector, and writes no brain', t.state === 'done' && t.report.tried.before.declined === 4 && t.report.tried.after.declined === 0 && t.report.tried.kept.declined === 4 && checksSeen.at(-1).extra.includes('--control-vector-scaled') && checksSeen.at(-1).extra.some((x) => /direction\.gguf:-0\.8$/.test(x)) && !fs.existsSync(path.join(hcfg.bobModelsDir, 'lab', 'try'))); }
   const hs = await hlab.startHome('refusals', { from: 'rel-a', name: 'Plain A', strength: 100, layers: 'all', check: true, teachBack: true, naughty: true });
   check('the refusals job starts with its steps', hs.started?.kind === 'refusals' && hs.started.steps.map((s) => s.id).join() === 'direction,refusals,check,test');
   while (hlab.job) await new Promise((r) => setTimeout(r, 20));

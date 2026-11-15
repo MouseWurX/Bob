@@ -1,0 +1,42 @@
+{
+  "run": "heal-gptoss-38b",
+  "note": "14 Nov 2026, NOT APPROVED, NOT RENTED (needs the owner's typed go in the GPT-OSS forge thread). Heal the GPT-OSS 38B REAP cut (41 of 128 experts per layer, the v2 keep list keep-32-v2.json, the same cut as MouseWurX/gpt-oss-120b-REAP-38B-UNHEALED-GGUF) with a LoRA, by distilling from the full GPT-OSS 120B. Steps on the card: download openai/gpt-oss-120b (MXFP4, about 65 GB; its original/ and metal/ copies are skipped), the 120B scores every lesson and 10M words of general text (MXFP4 on the card, teacher_hours 3), cut the 38B from it with the keep list (MXFP4 bytes copied, no rounding), unpack the 38B to BF16 (about 76 GB, hence an H200), LoRA heal (attention + experts + router, 6 h cap), count its experts, export to GGUF MXFP4_MOE. Held-out lessons are scored before and after in heal-report.json. The adapter and keep list come back to the PC beside the GGUF. Nothing is uploaded. First minutes: the run log must show 'GPT-OSS teacher: MXFP4 on this card' and the teacher pass moving; if either fails, stop the pod and report. About 10-12 h on an H200, about $40-50; caps 13 h / $55.",
+  "teacher": "openai/gpt-oss-120b",
+  "counts": "expert-counts-2026-11-04T23-23-19.json",
+  "lessons": "out/lessons",
+  "gpus": [
+    "NVIDIA H200",
+    "NVIDIA H200 NVL"
+  ],
+  "step_up": [
+    "NVIDIA B200"
+  ],
+  "step_up_note": "the unpacked 38B is about 76 GB before training memory, so an 80 GB card is too small; the list is cheapest first",
+  "max_len": 8192,
+  "top": 32,
+  "quants": "MXFP4_MOE",
+  "jobs": "bob,deep,tinker,reviewer,office,ledger,scout",
+  "disk_gb": 350,
+  "general_tokens": 10000000,
+  "teacher_hours": 3.0,
+  "heal": {
+    "experts": "lora",
+    "epochs": 1,
+    "hours": 6.0
+  },
+  "rungs": [
+    {
+      "name": "gpt-oss-120b-REAP-38B-HEALED",
+      "nickname": "GPT-OSS 38B (healed)",
+      "keep": 41,
+      "from": "teacher",
+      "keep_file": "out/bench/gptoss-38b-fix/gpt-oss-120b/v2/keep-32-v2.json",
+      "hours": 6.0
+    }
+  ],
+  "hours_max": 13,
+  "dollars_max": 55,
+  "rent_minutes": 120,
+  "volume_wait_minutes": 20,
+  "llama_tag": "b12282"
+}

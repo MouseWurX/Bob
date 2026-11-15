@@ -4,6 +4,155 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.231
+
+A small Lab fix.
+
+### Fixed
+
+- **A stopped steering sweep can't spoil a brain's answers any more.** In the Lab, resetting a live brain now also clears a steering dial a stopped sweep had left turned on, which had been bending every answer after it.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
+## 1.5.230
+
+Settings and my cube work again with my own window bar, scrollbars wear your lamp, Bob-Net gets faster and shows who's sharing cards, and notes ride on the notice board.
+
+### New
+
+- **See who's sharing graphics cards.** On Bob-Net icons, a Bob lending his graphics card wears a little block puzzle piece in your look's colour, glowing while the brain he helps writes back. A Bob running a brain over other Bobs' cards has a block missing from his cube for each one. The brain line says "Lending Out Brains" or "Borrowing More Brains". Windows, Mac and Linux.
+- **Chats with your other Bobs are kept on both.** A chat you start from a Bob's icon is now saved on his side too, as "From" and your Bob's name. Switch **He answers** off and he only keeps what you send, which is handy for copying text from one machine to another.
+- **Scrollbars in your look.** In Lamplight they're thin and lit in your lamp's colour (Mercury, Sodium, Thallium or Neon); in Terminal they're in its own colours. Classic keeps your system's.
+
+- **Gaming stays yours, even if you forget the Gaming button.** While a game holds 2 GB or more of a Bob's graphics card, he turns down quick replies, checks, jobs and lending his card, the same as with Gaming on. Your other Bobs do the work, or it waits. Windows and Linux with NVIDIA cards, and Windows with other cards.
+- **Cable and Wi-Fi Bobs don't mix when sharing a brain.** One brain is shared by Bobs on a cable, or by Bobs on Wi-Fi or Tailscale, never both at once, because the slower link would hold the whole brain back. A Bob left out still takes whole jobs.
+
+- **SCUT runs faster by default.** Auto is now up to 400 Mbit/s instead of 100, and it still backs off when the network is busy. After this update every Bob goes back to Auto once; pick another cap under Bigger Bobs if you like.
+- **No SCUT on a cable.** When both Bobs are joined by a network cable, they share a brain straight over it; SCUT was made for Wi-Fi and isn't needed there.
+- **One tool for "write it down".** With Quick notes on, my notes live on the notice board: "note: ring the vet" goes to your quick notes, "put milk on my list" goes on the board, each in its own place. With Quick notes off nothing changes.
+
+### Changed
+
+- **The copy card is clearer.** When you send a file or copy a brain to another Bob, the speed and time left sit on their own line, the progress bar fills the card, and the sender is named the way your Bob-Net list names him.
+- **New pictures on my front page**, in the dimmer lamps with the smoke and the seven-page first-time setup.
+
+- **Less in the way.** The Now running button under the chat is gone. Tasks is at the top, and Ctrl+J still opens Now running.
+
+- **New defaults reach everyone once.** When a default changes, an older saved pick of it is dropped one time after the update, so you get the new way. This time it's my icon: if "Use Bob's look as his icon" was on from before, you now see the tesseract. Switch it back on in Settings and it stays.
+- **Patches' word bubbles.** His antics come every 5 to 10 minutes when nothing's happening (was every 1 to 2½), and his bubble, like the Tasks bubble, is more see-through with a soft glow behind the words. It stays solid if you've asked your system for more contrast or less transparency.
+
+### Fixed
+
+- **Settings scrolls again** with my window buttons on my bar (since 1.5.228). On Windows the top bar, which drags the window, was catching the mouse wheel under an open page. While a page or panel is open, it no longer does, and the Settings window always keeps an ordinary title bar.
+- **Clicking my cube opens my menu again** with my window buttons on my bar (since 1.5.228). The top bar's drag area was catching the click meant for the cube, and for its menu. Now only the bar's own empty space drags the window.
+- **Zoom keys work on Windows and Linux.** Ctrl and + (or =) zooms in, Ctrl and - zooms out, and Ctrl and 0 puts it back, in every one of my windows.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
+## 1.5.229
+
+First-time setup is rebuilt as seven pages, Users grow up, and the lamps get their finished look.
+
+### New
+
+- **First-time setup in seven pages:** Hello, Engines, Brains, Users, Privacy, Helpers and a last page, each with named Back and Next buttons. Engines and Brains are separate now (Brain Engine is my own fork of llama.cpp). On the Users page you add, rename and remove people. On the Privacy page you'll find Amnesia mode. Setup never asks for a passcode or changes one.
+- **A passcode is each person's own choice.** Nobody needs one. The first time someone signs in as themselves, I ask once: **Set a passcode** or **No passcode**, and I remember the answer.
+- **Switch user from my cube's menu.** Each person has their own email account, their own keys and their own agents. **Sign out** goes back to Guest.
+- **A smoke layer in Lamplight.** A faint haze hangs in the room, lit by my cube.
+- **Ghostly typing box.** In Lamplight the typing box and Send fade into the room until you use them, and the page links sit in shadow.
+
+### Changed
+
+- **Dimmer lamp colours and darker rooms** for Mercury, Sodium, Thallium and Neon, with softer Thallium and Neon.
+- **Moondust moves to Mercury.** If you were on the Moondust theme, I switch you to the Mercury lamp once when you update. Pick another any time in Settings, Style.
+
+### Fixed
+
+- **New pictures on my front page**, taken in the new look: the lamps, chat heads, window buttons and the Lab's eight tabs, plus a picture of all four lamps.
+
+- **Help had Home network access wrong.** It's on to start with, and it waits for Bob-Net access. Help now says so.
+- **A save check no longer trips on Windows.** One of my tests used a made-up program number that Windows could mistake for a live one, so the Windows build sometimes failed. It now uses a program that has really gone.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
+## 1.5.228
+
+My front page tells the whole story now, the Lab gets steps, pipelines and a record of every run, Bob-Net explains itself as a small cluster, and I have a new icon that glows in my lamp's colour.
+
+### New
+
+- **The README tells the whole project.** A new **The project** section: the goal, how a brain is made and why in that order, where the Lab and the costs page are, and every model and dataset on Hugging Face, cross-linked.
+- **A Steps tab in the Lab** (after Forge). Every advanced method is listed as a step, with where it runs, what it takes and makes, and whether it needs your go. The privacy scrub and eval sets run from their cards there.
+- **A record of every Lab run.** Each run keeps its settings (keys never written down), Bob's version, its inputs and outputs, the smoke test, scores, minutes and card cost, and you can compare runs side by side. Anything made from surgery or steering data is tagged never-train, and training steps refuse it.
+- **Lab pipelines.** Save a list of steps and run it as one. Rented steps are packed into one card block, with every cap starting at $0 until you set it, and a pipeline picks up where it stopped. A chart shows the scores across runs. Nothing rents from a pipeline by itself.
+- **The Forge can heal a GPT-OSS cut.** The pod scripts now understand GPT-OSS brains, so the 38B cut of gpt-oss-120b can be taught back from the full 120B. The plan is written, not run: it waits for your go.
+- **Lamps.** Lamplight and Terminal now come in four lamp colours, named for the old street and sign lamps: Mercury (blue-white), Sodium (amber), Thallium (green) and Neon (red-orange). Pick one in Settings, Style. New installs start on Mercury.
+- **My new icon: the tesseract.** A cube inside a cube, on the taskbar, tray, Dock, Start shortcut, phone and browser tab. It takes the colour of your lamp. "Use Bob's look as his icon" is now off unless you switch it on.
+- **Window buttons on my bar.** The system title bar is gone: minimise, maximise and close sit on my own top bar (on a Mac, the red, yellow and green buttons move onto it), with rounder corners and a soft glow in the corner where my cube sits. Drag the bar to move me, double-click to maximise. It's on to start; switch it off in Settings, Bob himself. The Ctrl+Alt+B ask box wears your theme too, with its typing box at the bottom.
+- **Chat heads for Discord and Telegram.** Under my cube, a small head for each chat bot that's switched on; click it to open that chat. The Discord group chat now has one page per channel, with a box to say something there as me. A new Discord switch, **Show the whole channel** (off to start), shows every message in a listed channel, not just the ones to me.
+- **Settings has a new Agents group.** Claude, OpenAI, Gemini, Qwen, OpenCode, Discord and Telegram each get their own section with everything I do with them, and a switch to show that company's cube under mine. Nothing moved out of me, only into one place.
+- **Files and brains on Bob-Net** (off to start; turn it on on both Bobs). Send any file to another of your Bobs, or copy one of my brains to him with **Brain Copying**. Nothing comes in without his Yes, you can stop and carry on, and every file is checked at the end.
+- **Your Bobs use the brain files they already have.** When a brain is spread, a lending Bob loads his share from his own copy of that brain, even under another name or in another of his brain folders, with SCUT on or off. Only what he doesn't have crosses the network.
+- **Up to 16 Bobs on Bob-Net** (was 6).
+- **Bob-Net, explained as a cluster.** Settings, Bob-Net opens with one line on how your Bobs work together like a small cluster, with an ⓘ tip and a **? How** button that opens the whole story in Help.
+
+### Fixed
+
+- **A rented card that freezes at start-up is swapped.** If a pod never answers, it's deleted and a different card type is rented under the same yes and the same caps, at most twice. Card types that keep freezing go to the back of the list.
+- **The Android download joins the release reliably.** The phone build now waits until the release is published, not just drafted, and tries the upload three times.
+- **Try it first** passes a steering file the way Brain Engine 7 reads it.
+
+**New in the docs:** Bob-Net at a glance, a picture in the README of how your Bobs connect and what goes between them; and the 12 November test of sharing one brain between two Bobs over a cable, with what ran and what didn't (test results).
+
+**Taken down:** the teacher-odds dataset on Hugging Face (bob-odds) is gone, so its links are too. It was made from lessons before the privacy scrub. The Forge now warns before publishing teacher odds.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
+## 1.5.227
+
+My front page says what's new, what's coming, and what it all costs, the Lab gets its newer research scripts, and Journey has crafting.
+
+### Changed
+
+- **The README is up to date.** What's new covers everything from 1.5.212 to 1.5.226. A new **Coming next** section lists the plans, clearly marked as planned: a clean new Bobert, tool lessons, tools brains already know, every Lab method as a step, and research on where a behaviour lives in a brain. **What it costs** gives the totals so far, with a link to every rental.
+- **New plan pages** in the docs: the roadmap to one all-round Bob, the tool lessons plan, and the Lab steps plan. The costs pages cover every rental to 14 Nov.
+
+### New in Journey
+
+- **Journey has crafting.** Gather herbs, timber, ore and crystals, make potions, scrolls and bigger bags, and improve your kit. Plus a **Scroll of return**, bags you can equip, an in-game **Guide** tab, full screen, and I for the bag.
+- **Journey tells its story as you go.** A narrator for each region and town, names on the map, local lore, a **Story** tab that says where to go next, and conversations where you choose what to say.
+- **A guest house and a trophy case.** Journey opens in a guest house behind my inn now, with a trophy case that keeps a trophy from every story you play, even after you start a new one. Walk down into my inn and the New adventure and Resume buttons are right there.
+
+### New in the Lab
+
+- **The Lab's research scripts land together.** Tool interviews and coached lesson sessions for Riker and Bobert, with wording and thinking A/B tests; reading a brain's tool traces; the evil check, steering and sweeps (records only, they never teach a brain); smoke gates that stop a rented card in its first minutes if something is wrong; and expert maps and lesson sets for GPT-OSS. Nothing here rents a card by itself: every rental still waits for your typed yes.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
+## 1.5.226
+
+🧭 Journey has music and sound now, and every style draws its own kit.
+
+### New
+
+- **Journey has music and sound.** Every kind of place has its own tune: my inn, the open land, towns, castles, caves, the sky, under the sea and boat trips. Fights have their own music, keepers get a bigger tune, and wins and level-ups get a fanfare. Doors, chests, coin, hits and every kind of magic make sounds. Each style plays on its own instruments. Sound starts on in Journey, and 🔊 (or the M key) turns it off. Your choice is remembered.
+- **Each style draws its own kit.** Smart pistols and katanas in Cyberpunk, blasters and beam swords in Sci-fi, flintlocks and sabres in Steampunk. Monsters are redrawn for every style too, and monsters, classes, spells and items get names to fit. Only the looks change; the numbers don't.
+- **Journey's land got a details pass.** Tall mountain ranges, houses and trees that sit on the ground round them, foaming shores, smoke, neon and steam, and lamp-lit towns.
+- **More sparkle.** Items, crits, level-ups, chests and doors all have new effects.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
+## 1.5.225
+
+The Lab's privacy scrub catches a name in pieces, and my tool record starts fresh when my tools change shape.
+
+### Fixed
+
+- **The Lab's privacy scrub misses nothing in brain odds.** A name split across tokens is caught even after a stand-in that's already in place, odds written as token and number pairs are joined and scrubbed too, and the raw bytes of each token follow the scrubbed text. The check before anything leaves your PC now looks at every match, not just the first.
+- **My tool record starts fresh when my tools change shape.** When a brain family gets its own tool wording, the old record moves to a `tool-record-archive` folder next to it instead of being deleted, so it can still be used for lessons.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.224
 
 I can keep order on your Discord server now, with plain rules and no brain, and you can keep me from chatting there at all so the graphics card stays free.
@@ -64,142 +213,6 @@ Settings are shorter and clearer. The cube is my picture everywhere, my pixel lo
 - **The Brains page fits.** Its bar labels are never cut off, and on a phone nothing runs off the edge.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.221
-
-A busy graphics card is respected, the cube keeps showing a load, and songs say what they're doing.
-
-### Fixed
-
-- **I never squeeze a brain onto a busy graphics card.** If another program holds 2 GB or more of the card (a game, another AI, a test), and my brain won't fit beside it, I ask first: wait for the card, use the brain that's already on the card, ask another of your Bobs, or leave it. "Card busy" shows in the line under my name and on the brain button, and the cube dims. The Lab's long tests pause at a safe point while the card is busy.
-- **The cube and the line under my name keep showing a brain loading** when you send a message partway through the load.
-- **A Bob lending his graphics card no longer unloads his own brain for it**, unless you switch on **Let a lend unload my brain** (Settings, Bob-Net; off to start with). Update the Bob that lends too.
-- **Songs say "Making a song…"** and show the music engine's own setup steps instead of a guessed percent. The brain button says "set aside for a job" while it waits.
-
-**Where it works:** Windows, Mac and Linux.
-
-## 1.5.220
-
-Your other Bobs can sit under me as little icons, and chats can fade, clear, or be forgotten.
-
-### New
-
-- **Fade old messages, Clear chat and Amnesia mode** (Settings, How Bob works, 💬 Chat extras; all off unless you turn them on). **Fade old messages** lets messages leave the chat by themselves after a time you pick. **Clear chat** empties the chat in one go. **🫥 Amnesia**, beside Web search, works exactly as usual while it's on, with a purple banner and a purple edge on the box you type in. When you turn it off I forget that whole stretch: chats, thinking, notes, memory lines and topics. You choose whether the things I made in that time stay. It can't forget anything from before you turned it on.
-- **Bob-Net icons under Bob** (off unless you turn it on: Settings, Bob-Net, **Bob-Net icons under Bob**). A small column of icons under my cube, a bit like a game's chat overlay (a row under the top bar on a phone). An icon is there only while what it stands for is there:
-  - **each of your other Bobs**, while he's on Bob-Net right now. His icon is a little porthole in a colour of his own, and its cube follows what he's doing over there: no brain, loading, thinking, writing back or ready.
-  - **each coding agent you added**, in its app's colours, with a moving sign of our own that nods to the app. It moves faster while the agent works.
-  - The icons are see-through and dimmer than me, each casts a small glow behind it, and pointing at one makes it gently breathe in place. My own cube does that too now in Lamplight.
-- **Click a Bob's icon** and his chat opens here in guest mode, with **Return from Guest Mode** at the top right. What you type goes to him and never runs on this computer. In guest mode only **Web search** is left on: no Hands, files, programs, reminders or memory, on either computer. The chat isn't saved. **Bob-Net helping** shows that the other Bob is doing the work.
-- **Something new in one of those chats** while you're elsewhere: a soft word bubble with a preview pops up on its icon. Left click opens the chat, right click dismisses it. On a phone, tap to open and swipe it away to dismiss.
-
-### Fixed
-
-- **Journey: adventures saved before 1.5.219 come back to exactly the land they were played on.** The clearer roads from 1.5.219 are for new journeys. A journey started on 1.5.219 itself goes back to the older land too.
-- **Discord group jobs can go to your other Bobs again.** A Bob's hello lost that he could take them, so they always stayed here.
-
-**Where it works:** Windows, Mac and Linux, and Bob's page in a phone's browser. Bob for Android's own screens don't have it yet. The other Bob needs this version and **Take jobs from my other Bobs** switched on. Clicking a coding agent opens its own page in Now running.
-
-## 1.5.219
-
-Phones see the line under my name, and Journey's towns stay off the roads.
-
-### Fixed
-
-- **Phones see the line under my name.** In Lamplight on a phone, the line sits under my name beside the cube. The brain chip there keeps its dot and ▾ to make room. Before, phones never showed it.
-- **Journey: towns, Bob's Inn and other places no longer block roads or bridges.** Roads go round places, the Inn stands beside the road, and villages never sit at a bridge end. Your saved towns and quests stay where they were.
-- **The Lab's Forge tab finds its tools in Bob's own folder.** It looks in Bob's home first, then beside the program. If it finds nothing, it lists where it looked and says how to point it at the right folder.
-- **The expert sweep checks a lesson set before it starts.** A set with no tool list, or with no held-out tool lessons, is now named in the check with the reason, and Run stays greyed. Before, the sweep crashed or stopped partway.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.218
-
-The Lab gets the new training protocol.
-
-### New
-
-- **The training protocol** (the Lab, Forge tab). The 11 steps for teaching a brain, in order. Three free steps run here on your computer, one at a time:
-  - **Clean a lesson set** into a new Lab set. The original is never changed.
-  - **Make right-vs-wrong pairs** from it.
-  - **Sweep a running Brain Engine**: try more or fewer experts per word, scoring each kind of lesson on its own. Local engines only, and every switch is put back after.
-- **New ways to teach** (the Forge form, all off to start with): learning from right-vs-wrong pairs (ORPO, DPO, KTO), a share of on-policy teaching (the small Bob answers and the teacher corrects it word by word), a reward pass, targets, and edits to bake into the brain. These run on a rented card. Nothing cuts, trains or rents without your press on the purchase card, with the caps you type.
-
-### Good to know
-
-- The switch to Brain Engine 7 in 1.5.217 downloads about 588 MB once (the llama.cpp b12282 base it sits on, plus Brain Engine's own files).
-
-**Where it works:** Windows, Mac and Linux.
-
-## 1.5.217
-
-Brain Engine 7 is switched on, and the line under my name follows what I'm doing.
-
-### Changed
-
-- **The line under my name follows what I'm doing**, in my own words, and changes the same moment the cube does. Asleep with no brain loaded ("Vacancy. Brain not included."), loading, ready ("Coffee in hand. Ready when you are."), thinking, writing back, working, painting or paused. "Needs your OK" always starts with those words, in red. If I stay in one state a while, the line now and then swaps for another of its kind. Hover it for the plain word. Prefer plain words? Switch off **Funny status line** in Settings, How Bob works.
-
-- **Brain Engine 7 (7b12282) is my built-in engine now**, in place of Brain Engine 5. Bob updates it by himself, and every download is checked. It passed its check on a 5070 Ti:
-  - Plain replies are as fast as before, or a little faster (Qwen3 4B: 213.6 words a second, up from 209).
-  - **The cube fills as a brain loads**, by how far the engine has really got, not by a guess.
-  - **Experts per word** (experimental) now works out of the box. A new count takes about 15 ms, with no reload.
-  - **The cube's Real experts costs about half what it did**: about a tenth of the word speed shown live (Riker 115.1 down to 104.7 words a second), and about 4.5% read after the answer. On Brain Engine 5 it cost about a fifth.
-
-Bobs sharing a graphics card need the same Brain Engine, so update all your Bobs together.
-
-**Where it works:** Windows and Linux with an NVIDIA card. Mac, ARM boards and Android use plain llama.cpp as before.
-
-## 1.5.216
-
-"Stop" and "wait" work at once, coding agents side by side, OK cards on all your Bobs, and my thinking on its own.
-
-### New
-
-- **Coding agents** (experimental, off to start with, Settings, Other apps). Run Claude Code, Codex, Gemini CLI, Qwen Code, OpenCode or any other coding program side by side, each in its own project folder. They show in Now running under **🤝 Coding agents**, folded to one line with a small badge like "1 needs you · 2 working". Open it to ask one something, stop it, read what it said, answer it when it needs you, or press **Pass to** to hand its work to another one with a note. **When done pass to** hands it on by itself, and agents can ask each other (at most 4 hand-ons). They can't change files unless you switch **May change files** on. Each agent can use its own **Account**, so two people can each run their own agents on their own sign-ins at the same time. Claude Code can also tell me exactly when it's working or waiting on you. My brain isn't involved, and nothing about them goes into my start-up words. Not on Bob for Android.
-- **Answer my OK cards on any of your Bobs** (off to start with, Settings, Bob-Net, **Show my OK cards on my other Bobs**). Each OK, question or plan card shows on every Bob on my list and in the phone app, marked with my name. Answer it on any of them and it comes down everywhere. Pairing cards stay on the Bob being paired. Bob-Net in Now running says how many of each Bob's cards are waiting on you.
-
-### Changed
-
-- **Tasks speak up in a small bubble, not a strip.** The Tasks strip above the message box is gone. When a task starts, waits or fails, a see-through bubble says so under the Tasks tab (above the Tasks button on a phone), fading in over about 0.7 seconds and back into the tab.
-
-- **Open Bob's thinking shows just my thinking.** The thinking bubble's **Open Bob's thinking** and the 💭 button now open Now running with only my thinking in it, titled **Bob's thinking**. The status line or Ctrl+J brings the rest back. If my thinking is in a panel, it opens there.
-
-- **A lent graphics card shows what it's helping with.** While your card helps another Bob run a brain, a small 🖐 badge on the corner of my picture says that brain has Hands, Autonomy or Screen use on. Hover or tap it for the full sentence.
-- **Helper Bobs work side by side on your code.** When I split a self-work job between my Bobs, each helper works in his own copy of the code, on a branch of its own, and the work is merged back. If two changes clash, I redo that part here.
-
-### Fixed
-
-- **"Stop", "wait" and "go on" work at once.** Before, "wait", "hold on" or "no no" got a reply while the job kept going. Now, while I work on a job of yours, a short message on its own is a command, done the moment you send it, even halfway through a step. "Stop", "cancel", "belay that" or "no no" stops the job. "Wait" or "hold on" pauses it. "Wait 10 minutes" pauses it and I carry on by myself after that. "What are you doing?!" pauses, just in case. "Go on" or "you got it" carries on. It's on to start with (Settings, Brains, **Stop and wait words**).
-
-- **One step count.** The thinking bubble's "Worked for · N steps" counted drafts and notes too, so it didn't match How I got here. It now counts only the steps, shows each step's details on its rows, and has **Copy the steps**. While the bubble is on there's no separate How I got here fold.
-- **Lamplight, narrow window:** Now running had no background.
-
-**Where it works:** Windows, Mac and Linux. OK cards also show in Bob for Android.
-
-## 1.5.215
-
-One brain really is one brain, Journey gets its own tab, the cube fills as a brain loads, picture to 3D on RTX 50 cards, and the Lab can change how many experts a brain uses for each word without reloading it.
-
-### New
-
-- **Journey has its own tab** at the top, beside the others. It's a different kind of game from Adventure, so it no longer hides under Adventure, Your character.
-- **The cube shows a brain loading.** With no brain loaded the cube stays down, just its fog. While a brain loads, the cube fills from the bottom like a progress bar. Brain Engine 7 says exactly how far the load has got. With an older engine I go by how long that brain took last time.
-- **Experts per word** (experimental, Settings, Brains, for a brain picked in **Extra settings for one brain**, and the Lab's Peek inside). A mixture-of-experts brain normally asks the same number of experts for every word. You can now pick a different number, either one number or one per layer, and Brain Engine 7 changes it before my next answer without reloading the brain. More experts is slower and can help or hurt. Fewer is faster. Try the counts in Peek inside first.
-- **Brain Engine 7** (named 7b12282): the twelfth and thirteenth patches. The engine says how far a brain has loaded, and it can change the experts per word while the brain stays loaded. My built-in engine updates to it once it has been checked.
-- **Says it straight: new questions** (the Lab, Challenges). These are written answers, in English and Chinese, on China facts that neither Straight facts lesson set teaches. Round one of teaching showed why this matters. The untaught brain already picked the right letter on nearly every multiple-choice question, but it still wouldn't say the facts plainly. Multiple choice shows what a brain knows. This pack shows whether it says it, on questions it was never taught. It doesn't count in Overall, and every answer goes in the run's log.
-- **Lab, cutting experts** (the Lab and the Forge). Cuts can now keep an even number of experts in every layer or a different number per layer, and the check shows how much of the brain's real use each cut keeps. The Forge's round-two facts plan repeats the fact lessons five times instead of three.
-
-### Changed
-
-- **Bob's line under the cube wraps and is smaller.** "Coffee in hand." and the rest are never cut off, even on a phone.
-- **The little bubbles sit under the cube.** They fade in and out over about 0.7 seconds and are more see-through.
-
-### Fixed
-
-- **One brain now really is one brain.** Deep thinking, Office, Coding and Review use the main brain, and the Quick brain is off. Before, Deep thinking, Office and the Quick brain stayed on. The other picks stay on the Brains page, greyed, for when you switch back.
-- **Picture to 3D works on RTX 50-series cards.** The 3D workshop now has a Get button there too. RTX 20 to RTX 50 cards all work.
-- **The changelog opens on GitHub again.** It had grown too big for GitHub's page. CHANGELOG.md now holds the newest 10 versions, and the older ones are in app/docs/changelog, linked from the bottom.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android. Picture to 3D needs an NVIDIA card. Experts per word needs Brain Engine 7.
 
 ## Older versions
 

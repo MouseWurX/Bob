@@ -17,6 +17,7 @@
 import { createFog } from './fog.js';
 
 export const POLL_MS = 2000;
+export const HEADS_MS = 10000; // 1.5.228 chat heads alone (Bob-Net icons off)
 export const K = 0.866;
 const hsl = (h, s, l, a = 1) => `hsla(${h},${s}%,${l}%,${a})`;
 // hsl to #rrggbb (fog.js takes hex).
@@ -28,10 +29,21 @@ export function hslHex(h, s, l) {
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 export const isNetChat = (id) => /^guest-net-[0-9a-f]{12}$/.test(String(id || ''));
 export const BUBBLE_HINT = { mouse: 'Click to open · right-click to dismiss', touch: 'Tap to open · swipe away to dismiss' };
-export const MOOD_WORDS = { none: 'No brain loaded', loading: 'Loading a brain', thinking: 'Thinking', replying: 'Writing back', ready: 'Ready' };
+export const roomWords = (r) => (r.chat ? `${r.name}: your chat` : `${r.name} group chat${r.waiting ? `: ${r.waiting} waiting for your OK` : ''}`);
+export const MOOD_WORDS = { none: 'No brain loaded', loading: 'Loading a brain', thinking: 'Thinking', replying: 'Writing back', ready: 'Ready', lending: 'Lending his graphics card', helping: 'His card is helping write back' };
 export const AGENT_WORDS = { idle: 'Ready', working: 'Working', 'needs-you': 'Needs you', done: 'Done', failed: 'Failed', stopped: 'Stopped' };
 // The light inside an icon is kept under Bob's own: at most this bright (0..1).
 export const ICON_LIGHT = 0.6;
+// 1.5.228 the Discord group chat's icon: a cube in a blue-violet of our own with the talk sign (never Discord's logo).
+// 1.5.228 a company's chat head: what its agents are doing, in a few words.
+export function companyWords(c) {
+  if (!c?.agents) return 'No agents yet';
+  if (c.needsYou) return `${c.needsYou} need${c.needsYou === 1 ? 's' : ''} you`;
+  return `${AGENT_WORDS[c.state] || 'Ready'} · ${c.agents} agent${c.agents === 1 ? '' : 's'}`;
+}
+export const ROOM_LOOKS = { discord: { hue: 235, sat: 55, sign: 'talk' }, telegram: { hue: 200, sat: 65, sign: 'dots' } };
+export const ROOM_LOOK = ROOM_LOOKS.discord;
+export const roomLook = (id) => ROOM_LOOKS[id] || ROOM_LOOK;
 // Short enough for a bubble, never cut mid-word: the whole bubble wraps, nothing is clipped.
 export function preview(text, max = 140) {
   const t = String(text || '').replace(/[*_`#>]+/g, '').replace(/\s+/g, ' ').trim();
@@ -48,9 +60,15 @@ function corners(cx, cy, sz) { return { t: [cx, cy - sz], ur: [cx + K * sz, cy -
 // ghost: a block with no light is still drawn, faint and nearly grey, so a Bob with no brain loaded (or one still
 // loading) keeps his cube head on Bob-Net instead of an empty porthole (the owner, Nov 13: a test Bob showed no cube).
 export const GHOST = { sat: 12, alpha: 0.38 };
-export function drawVoxels(x, { cx = 48, cy = 52, n = 4, size = 40, hue = 200, sat = 60, light, ghost = false }) {
+// gaps: blocks left out (a Bob borrowing graphics cards is missing a piece for each Bob lending him one, Nov 14);
+// each gap keeps a faint amber outline where the block would be.
+export const GAPS = [[0, 0, 3], [3, 0, 3], [0, 3, 3], [3, 0, 0]]; // corners, so the missing piece shows in his outline
+export function drawVoxels(x, { cx = 48, cy = 52, n = 4, size = 40, hue = 200, sat = 60, light, ghost = false, gaps = 0 }) {
   const s = size / n;
+  const slots = [];
+  const out = new Set(GAPS.slice(0, Math.max(0, Math.min(GAPS.length, gaps | 0))).map((g) => g.join()));
   for (let k = 0; k < n; k++) for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    if (out.has(`${i},${j},${k}`)) { slots.push(corners(cx + (i - j) * K * s, cy + (i + j) * 0.5 * s - k * s - size * 0.25 + s * 0.5, s)); continue; }
     let L = light(i, j, k), sa = sat, al = 1;
     if (L < 0) { if (!ghost) continue; L = 0; sa = GHOST.sat; al = GHOST.alpha; }
     const px = cx + (i - j) * K * s, py = cy + (i + j) * 0.5 * s - k * s - size * 0.25 + s * 0.5;
@@ -58,6 +76,37 @@ export function drawVoxels(x, { cx = 48, cy = 52, n = 4, size = 40, hue = 200, s
     face(x, P, ['t', 'ur', 'c', 'ul'], hsl(hue, sa, 58 + L * 28, a)); face(x, P, ['ul', 'c', 'b', 'll'], hsl(hue, sa, 42 + L * 28, a)); face(x, P, ['c', 'ur', 'lr', 'b'], hsl(hue, sa, 30 + L * 28, a));
     if (L > 0.55) { x.save(); x.globalCompositeOperation = 'lighter'; x.fillStyle = hsl(hue, sat, 70, (L - 0.55) * 0.9); x.beginPath(); x.arc(px, py, s * 1.4, 0, 7); x.fill(); x.restore(); }
   }
+  for (const P of slots) { x.save(); x.lineWidth = 1; x.setLineDash?.([2, 1.5]); x.strokeStyle = hsl(36, 90, 64, 0.85); x.beginPath(); ['t', 'ur', 'lr', 'b', 'll', 'ul'].forEach((q, m) => (m ? x.lineTo(...P[q]) : x.moveTo(...P[q]))); x.closePath(); x.moveTo(...P.c); x.lineTo(...P.t); x.moveTo(...P.c); x.lineTo(...P.ll); x.moveTo(...P.c); x.lineTo(...P.lr); x.stroke(); x.restore(); }
+}
+
+// Nov 14 (the owner's idea): a Bob lending his graphics card wears a puzzle piece made of the same little blocks,
+// in the colour of the look you picked (its accent). lit 0..1; it glows while the shared brain writes.
+// A colour as { hue, sat } (0..360, 0..100), from '#rgb', '#rrggbb' or 'rgb(r, g, b)'; amber when it can't be read.
+export function hueSat(colour) {
+  const c = String(colour || '').trim();
+  let r, g, b, m;
+  if ((m = c.match(/^#([0-9a-f]{3})$/i))) [r, g, b] = [...m[1]].map((d) => parseInt(d + d, 16));
+  else if ((m = c.match(/^#([0-9a-f]{6})/i))) [r, g, b] = [0, 2, 4].map((k) => parseInt(m[1].slice(k, k + 2), 16));
+  else if ((m = c.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i))) [r, g, b] = m.slice(1, 4).map(Number);
+  else return { hue: 36, sat: 85 };
+  [r, g, b] = [r / 255, g / 255, b / 255];
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, l = (mx + mn) / 2;
+  if (!d) return { hue: 0, sat: 0 };
+  const sat = d / (1 - Math.abs(2 * l - 1));
+  const hue = mx === r ? 60 * (((g - b) / d) % 6) : mx === g ? 60 * ((b - r) / d + 2) : 60 * ((r - g) / d + 4);
+  return { hue: Math.round((hue + 360) % 360), sat: Math.round(Math.min(1, sat) * 100) };
+}
+const accentNow = () => { try { return hueSat(getComputedStyle(document.body).getPropertyValue('--accent')); } catch { return hueSat(''); } };
+export const PUZZLE = ['..####.....', '..####.....', '...##......', '########...', '########...', '#..#####.##', '...########', '...########', '#..#####.##', '########...', '########...'];
+export function drawPuzzle(x, { x0 = 63, y0 = 62, c = 2.7, lit = 0.3, hue = 36, sat = 85 } = {}) {
+  const L = Math.max(0, Math.min(1, lit));
+  if (L > 0.5) { x.save(); x.globalCompositeOperation = 'lighter'; x.fillStyle = hsl(hue, sat, 60, (L - 0.5) * 0.6); x.beginPath(); x.arc(x0 + c * 5.5, y0 + c * 5.5, c * 7, 0, 7); x.fill(); x.restore(); }
+  PUZZLE.forEach((row, j) => [...row].forEach((ch, i) => {
+    if (ch !== '#') return;
+    const px = x0 + i * c, py = y0 + j * c;
+    x.fillStyle = hsl(hue, sat, 30 + L * 16, 0.95); x.fillRect(px, py, c, c); // the block, its shaded sides
+    x.fillStyle = hsl(hue, sat, 58 + L * 24, 0.95); x.fillRect(px, py, c - 0.7, c - 0.7); // its lit face
+  }));
 }
 
 // The signs on an agent's cube (unit square on its right face). t: seconds; w: working (faster).
@@ -66,6 +115,10 @@ export const SIGNS = {
   knot: (x, t, w) => { x.strokeStyle = '#f4f4f4'; x.lineWidth = 0.09; const sp = t * (w ? 1 : 0.2); x.beginPath(); for (let i = 0; i <= 6; i++) { const a = i * Math.PI / 3 + sp; const px = 0.5 + Math.cos(a) * 0.3, py = 0.5 + Math.sin(a) * 0.3; if (i) x.lineTo(px, py); else x.moveTo(px, py); } x.stroke(); x.beginPath(); x.arc(0.5, 0.5, 0.12, sp, sp + 5.2); x.stroke(); },
   star: (x, t, w) => { const sc = 1 + (w ? 0.18 : 0.06) * Math.sin(t * (w ? 5 : 1.5)); x.save(); x.translate(0.5, 0.5); x.rotate(Math.sin(t * 0.7) * 0.2); x.scale(sc, sc); x.fillStyle = '#eaf1ff'; x.beginPath(); x.moveTo(0, -0.36); x.quadraticCurveTo(0.04, -0.04, 0.36, 0); x.quadraticCurveTo(0.04, 0.04, 0, 0.36); x.quadraticCurveTo(-0.04, 0.04, -0.36, 0); x.quadraticCurveTo(-0.04, -0.04, 0, -0.36); x.fill(); x.restore(); },
   ring: (x, t, w) => { x.strokeStyle = '#efe9ff'; x.lineWidth = 0.09; const a = t * (w ? 2 : 0.4); x.beginPath(); x.arc(0.5, 0.5, 0.26, a + 0.5, a + Math.PI * 2 - 0.2); x.stroke(); x.beginPath(); x.moveTo(0.5 + Math.cos(a + 0.2) * 0.2, 0.5 + Math.sin(a + 0.2) * 0.2); x.lineTo(0.5 + Math.cos(a + 0.2) * 0.38, 0.5 + Math.sin(a + 0.2) * 0.38); x.stroke(); },
+  // 1.5.228 a group chat (Discord): two little speech bubbles of our own, the front one nodding while something waits.
+  talk: (x, t, w) => { x.fillStyle = '#eef0ff'; const b = w ? 0.04 * Math.sin(t * 5) : 0.015 * Math.sin(t * 1.3); x.globalAlpha = 0.55; x.beginPath(); x.ellipse(0.4, 0.38, 0.22, 0.15, 0, 0, 7); x.fill(); x.globalAlpha = 1; x.beginPath(); x.ellipse(0.58, 0.58 + b, 0.24, 0.16, 0, 0, 7); x.fill(); x.beginPath(); x.moveTo(0.66, 0.7 + b); x.lineTo(0.76, 0.84 + b); x.lineTo(0.56, 0.72 + b); x.fill(); },
+  // Telegram: one speech bubble with three dots that ripple (our own sign, never their paper plane).
+  dots: (x, t, w) => { x.fillStyle = '#effaff'; x.beginPath(); x.ellipse(0.5, 0.48, 0.3, 0.2, 0, 0, 7); x.fill(); x.beginPath(); x.moveTo(0.36, 0.62); x.lineTo(0.3, 0.8); x.lineTo(0.48, 0.66); x.fill(); x.fillStyle = 'rgba(30,60,90,0.85)'; for (let i = 0; i < 3; i++) { const b = (w ? 0.04 : 0.015) * Math.sin(t * (w ? 6 : 2) - i); x.beginPath(); x.arc(0.38 + i * 0.12, 0.48 + b, 0.035, 0, 7); x.fill(); } },
   brackets: (x, t, w) => { x.strokeStyle = '#f2f2f2'; x.lineWidth = 0.09; x.strokeRect(0.24, 0.24, 0.52, 0.52); const p = w ? 0.08 * Math.sin(t * 6) : 0.03 * Math.sin(t * 1.5); x.fillStyle = '#f2f2f2'; x.fillRect(0.38 - p, 0.38 - p, 0.24 + 2 * p, 0.24 + 2 * p); }
 };
 export function drawAgent(x, { hue = 0, sat = 0, mono = false, sign = 'brackets' }, t, working) {
@@ -97,17 +150,24 @@ function makeIcon(kind, key, it, { still }) {
   s.draw = (now) => {
     const t = (now - s.t0) / 1000;
     if (kind === 'agent') return drawAgent(x, s.it.look || {}, t, s.it.state === 'working');
+    if (kind === 'room') return drawAgent(x, roomLook(s.it.id), t, s.it.waiting > 0);
+    if (kind === 'company') return drawAgent(x, s.it.look || {}, t, s.it.state === 'working'); // 1.5.228 a company's chat head
     x.clearRect(0, 0, 96, 96);
     const mood = s.it.mood;
     // No brain over there (a fresh copy, a test Bob, or his brain let go): his cube still shows, resting and grey.
-    if (mood === 'none') { s.fill = 0; s.sparks.clear(); return drawVoxels(x, { hue: s.it.hue, light: () => -1, ghost: true }); }
+    const lent = mood === 'lending' || mood === 'helping';
+    const piece = () => lent && drawPuzzle(x, { ...accentNow(), lit: mood === 'helping' ? 0.55 + 0.35 * (0.5 + 0.5 * Math.sin(t * 6)) : 0.25 + 0.1 * Math.sin(t * 1.6) });
+    const gaps = Number(s.it.gaps) || 0;
+    if (mood === 'none') { s.fill = 0; s.sparks.clear(); return drawVoxels(x, { hue: s.it.hue, light: () => -1, ghost: true, gaps }); }
     if (mood === 'loading') s.fill = Math.min(1, s.fill + 0.006); else s.fill = 1;
-    const pulse = mood === 'thinking' ? 0.2 + 0.25 * (0.5 + 0.5 * Math.sin(t * 5)) : 0;
+    // Lending his card: lit and slowly breathing. While that brain writes, it sparkles like his own reply would.
+    const pulse = mood === 'thinking' ? 0.2 + 0.25 * (0.5 + 0.5 * Math.sin(t * 5)) : lent ? 0.12 + 0.12 * (0.5 + 0.5 * Math.sin(t * 1.6)) : 0;
     const rnd = Math.random();
-    if ((mood === 'replying' && rnd < 0.55) || (mood === 'ready' && rnd < 0.02)) s.sparks.set(`${(Math.random() * 4) | 0},${(Math.random() * 4) | 0},${(Math.random() * 4) | 0}`, 1);
-    for (const [k, v] of s.sparks) { const nv = v - (mood === 'replying' ? 0.06 : 0.025); if (nv <= 0) s.sparks.delete(k); else s.sparks.set(k, nv); }
+    if (((mood === 'replying' || mood === 'helping') && rnd < 0.55) || (mood === 'ready' && rnd < 0.02)) s.sparks.set(`${(Math.random() * 4) | 0},${(Math.random() * 4) | 0},${(Math.random() * 4) | 0}`, 1);
+    for (const [k, v] of s.sparks) { const nv = v - (mood === 'replying' || mood === 'helping' ? 0.06 : 0.025); if (nv <= 0) s.sparks.delete(k); else s.sparks.set(k, nv); }
     const filled = s.fill * 64;
-    drawVoxels(x, { hue: s.it.hue, sat: 60, ghost: true, light: (i, j, k) => (k * 16 + j * 4 + i >= filled ? -1 : ICON_LIGHT * Math.min(1, 0.12 + pulse + (s.sparks.get(`${i},${j},${k}`) || 0))) });
+    drawVoxels(x, { hue: s.it.hue, sat: 60, ghost: true, gaps, light: (i, j, k) => (k * 16 + j * 4 + i >= filled ? -1 : ICON_LIGHT * Math.min(1, 0.12 + pulse + (s.sparks.get(`${i},${j},${k}`) || 0))) });
+    piece();
   };
   return s;
 }
@@ -115,8 +175,8 @@ function makeIcon(kind, key, it, { still }) {
 // ---------- The whole strip ----------
 // deps: open(id) opens a chat; session() is the chat open now; showAgents() opens Now running at Coding agents;
 // note(text) says something in the chat; fetchImpl for tests.
-export function createNetOverlay({ open, session, showAgents, note = () => {}, still = () => false, fetchImpl = (u) => fetch(u).then((r) => r.json()), store = globalThis.localStorage } = {}) {
-  let on = false, view = { bobs: [], agents: [] }, timer = null, raf = 0, bubble = null;
+export function createNetOverlay({ open, session, showAgents, openRoom = () => {}, openSettings = () => {}, note = () => {}, still = () => false, fetchImpl = (u) => fetch(u).then((r) => r.json()), store = globalThis.localStorage, postAnswer = (sessionId, answer) => fetch('/api/net-chat/answer', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ sessionId, answer }) }).catch(() => {}) } = {}) {
+  let on = false, view = { bobs: [], agents: [], rooms: [], companies: [] }, timer = null, raf = 0, bubble = null;
   const icons = new Map(); // key -> icon state
   const unseen = new Map(); // key -> count
   const replies = new Map(); // net chat id -> words coming in
@@ -133,16 +193,20 @@ export function createNetOverlay({ open, session, showAgents, note = () => {}, s
   document.body.prepend(glow); document.body.append(tip, said);
 
   const sepEl = document.createElement('span'); sepEl.className = 'sep'; sepEl.setAttribute('aria-hidden', 'true');
-  const keyOfBob = (b) => `bob:${b.chat}`, keyOfAgent = (a) => `agent:${a.id}`;
-  const all = () => [...view.bobs.map((b) => ({ kind: 'bob', key: keyOfBob(b), it: b })), ...view.agents.map((a) => ({ kind: 'agent', key: keyOfAgent(a), it: a }))];
+  const keyOfBob = (b) => `bob:${b.chat}`, keyOfAgent = (a) => `agent:${a.id}`, keyOfRoom = (r) => `room:${r.id}`, keyOfCompany = (c) => `company:${c.id}`;
+  // Chat heads (Discord, Telegram, and each company switched on in Settings, Agents) show whether or not Bob-Net icons is on.
+  const heads = () => [...(view.rooms || []).map((r) => ({ kind: 'room', key: keyOfRoom(r), it: r })), ...(view.companies || []).map((c) => ({ kind: 'company', key: keyOfCompany(c), it: c }))];
+  const all = () => [...view.bobs.map((b) => ({ kind: 'bob', key: keyOfBob(b), it: b })), ...heads(), ...view.agents.map((a) => ({ kind: 'agent', key: keyOfAgent(a), it: a }))];
   const returnTo = () => { try { return store?.getItem('bob-net-return') || 'main'; } catch { return 'main'; } };
 
   function label(kind, it) {
     if (kind === 'bob') return `${it.name}: ${MOOD_WORDS[it.mood] || 'Ready'}${it.canChat ? '' : ' (doesn\'t take chats yet)'}`;
+    if (kind === 'room') return roomWords(it);
+    if (kind === 'company') return `${it.name}: ${companyWords(it)}`;
     return `${it.name}: ${AGENT_WORDS[it.state] || 'Ready'}`;
   }
   function draw() {
-    const list = on ? all() : [];
+    const list = on ? all() : heads();
     row.hidden = !list.length;
     document.body.classList.toggle('has-net-row', list.length > 0);
     const keys = new Set(list.map((x) => x.key));
@@ -154,13 +218,14 @@ export function createNetOverlay({ open, session, showAgents, note = () => {}, s
       if (!s) { s = makeIcon(x.kind, x.key, x.it, { still }); icons.set(x.key, s); wire(s); }
       s.it = x.it;
       s.btn.setAttribute('aria-label', label(x.kind, x.it));
-      s.btn.dataset.mood = x.kind === 'bob' ? x.it.mood : x.it.state;
+      s.btn.dataset.mood = x.kind === 'bob' ? x.it.mood : x.kind === 'room' ? (x.it.waiting ? 'waiting' : 'ready') : x.it.state; // agent and company: its state
       s.btn.classList.toggle('on', x.kind === 'bob' && session() === x.it.chat);
-      s.btn.classList.toggle('mono', x.kind === 'agent' && x.it.look?.mono === true);
-      const n = unseen.get(x.key) || 0; const c = s.btn.querySelector('.count'); c.hidden = !n; c.textContent = n > 9 ? '9+' : String(n);
-      if (x.kind === 'agent' && !firstAgent && view.bobs.length) order.push(sepEl);
+      s.btn.classList.toggle('mono', (x.kind === 'agent' || x.kind === 'company') && x.it.look?.mono === true);
+      const n = x.kind === 'room' ? x.it.waiting || 0 : x.kind === 'company' ? Math.max(x.it.needsYou || 0, unseen.get(x.key) || 0) : unseen.get(x.key) || 0; const c = s.btn.querySelector('.count'); c.hidden = !n; c.textContent = n > 9 ? '9+' : String(n);
+      // One line between your other Bobs and everything else (chat heads and agents).
+      if (x.kind !== 'bob' && !firstAgent && on && view.bobs.length) order.push(sepEl);
       order.push(s.btn);
-      if (x.kind === 'agent' && !firstAgent) firstAgent = s.btn;
+      if (x.kind !== 'bob' && !firstAgent) firstAgent = s.btn;
     }
     // Only touch the order when it changed, so pointing at an icon isn't disturbed by the next look.
     if (order.length !== row.children.length || order.some((el, i) => row.children[i] !== el)) row.replaceChildren(...order);
@@ -170,7 +235,7 @@ export function createNetOverlay({ open, session, showAgents, note = () => {}, s
   }
   function frame(now) {
     raf = 0;
-    if (!on || row.hidden) return;
+    if (row.hidden) return;
     if (!document.hidden) for (const s of icons.values()) s.draw(still() ? 0 : now);
     if (!still()) raf = requestAnimationFrame(frame);
   }
@@ -178,11 +243,11 @@ export function createNetOverlay({ open, session, showAgents, note = () => {}, s
   function placeGlow() {
     const g = [];
     for (const s of icons.values()) {
-      const hue = s.kind === 'bob' ? s.it.hue : s.it.look?.mono ? null : s.it.look?.hue;
+      const hue = s.kind === 'bob' ? s.it.hue : s.kind === 'room' ? roomLook(s.it.id).hue : s.it.look?.mono ? null : s.it.look?.hue; // agent and company: their look
       if (hue == null || s.btn.isConnected === false) continue;
       const r = s.btn.getBoundingClientRect(); if (!r.width) continue;
       const strong = s.btn.classList.contains('on') || s.btn.matches(':hover');
-      g.push(`radial-gradient(circle 80px at ${Math.round(r.left + r.width / 2)}px ${Math.round(r.top + r.height / 2)}px, ${hsl(hue, s.kind === 'bob' ? 60 : s.it.look.sat, 55, strong ? 0.08 : 0.045)}, transparent 70%)`);
+      g.push(`radial-gradient(circle 80px at ${Math.round(r.left + r.width / 2)}px ${Math.round(r.top + r.height / 2)}px, ${hsl(hue, s.kind === 'bob' ? 60 : s.kind === 'room' ? roomLook(s.it.id).sat : s.it.look.sat, 55, strong ? 0.08 : 0.045)}, transparent 70%)`);
     }
     glow.style.background = g.join(',');
   }
@@ -196,7 +261,7 @@ export function createNetOverlay({ open, session, showAgents, note = () => {}, s
   }
   function showTip(s) {
     if (bubble?.key === s.btn.dataset.key) return;
-    const sub = s.kind === 'bob' ? (MOOD_WORDS[s.it.mood] || 'Ready') + (s.it.brain && s.it.mood !== 'none' ? ` · ${s.it.brain}` : '') : (AGENT_WORDS[s.it.state] || 'Ready');
+    const sub = s.kind === 'company' ? companyWords(s.it) : s.kind === 'room' ? (s.it.chat ? 'Your chat' : s.it.waiting ? `${s.it.waiting} waiting for your OK` : 'Its own chat') : s.kind === 'bob' ? (MOOD_WORDS[s.it.mood] || 'Ready') + (s.it.brain && s.it.mood !== 'none' ? ` · ${s.it.brain}` : '') : (AGENT_WORDS[s.it.state] || 'Ready');
     tip.innerHTML = `${esc(s.it.name)}<small>${esc(sub)}</small>`;
     place(tip, s.btn); tip.hidden = false;
   }
@@ -209,6 +274,8 @@ export function createNetOverlay({ open, session, showAgents, note = () => {}, s
     closeBubble(s.btn.dataset.key);
     unseen.delete(s.btn.dataset.key); draw();
     if (s.kind === 'agent') { showAgents?.(); return; }
+    if (s.kind === 'company') { if (s.it.agents) showAgents?.(); else openSettings(s.it.id); return; } // its agents, or its own Settings section to add one
+    if (s.kind === 'room') { if (s.it.chat) open(s.it.chat); else openRoom(s.it.id); return; }
     if (!s.it.canChat) { note(`${s.it.name} doesn't take chats from your other Bobs yet. On ${s.it.name}: update Bob, then Settings, Bob-Net, Accept jobs.`); return; }
     const now = session();
     if (now === s.it.chat) return;
@@ -231,8 +298,15 @@ export function createNetOverlay({ open, session, showAgents, note = () => {}, s
     const away = !b ? ' He isn\'t on Bob-Net right now, so a message can\'t reach him until he\'s back.' : '';
     if (bar.dataset.for !== id || bar.dataset.line !== line + away) {
       bar.dataset.for = id; bar.dataset.line = line + away;
-      bar.innerHTML = `<div class="g-who"><strong>${esc(name)}</strong><span>${esc(line)}</span>${away ? `<p class="muted">${esc(away.trim())}</p>` : ''}</div><button type="button" class="g-back">Return from Guest Mode</button>`;
+      bar.innerHTML = `<div class="g-who"><strong>${esc(name)}</strong><span>${esc(line)}</span>${away ? `<p class="muted">${esc(away.trim())}</p>` : ''}</div><button type="button" class="brain-switch g-answer" role="switch" aria-checked="true" title="On: ${esc(name)} answers. Off: your message is only kept in his chats (From this Bob), so you can copy and paste between your machines. Either way he keeps the chat."><span class="lbl">He answers</span><span class="st">On</span></button><button type="button" class="g-back">Return from Guest Mode</button>`;
       bar.querySelector('.g-back').onclick = () => open(returnTo() && !isNetChat(returnTo()) ? returnTo() : 'main');
+      // Nov 14 (the owner): He answers, per chat, remembered in this window. Off: he only keeps what you send.
+      const sw = bar.querySelector('.g-answer');
+      const showAnswer = (on) => { sw.setAttribute('aria-checked', String(on)); sw.querySelector('.st').textContent = on ? 'On' : 'Off'; };
+      const tell = (on) => postAnswer(id, on);
+      let on = true; try { on = store?.getItem?.(`bob-net-answer:${id}`) !== '0'; } catch {}
+      showAnswer(on); tell(on);
+      sw.onclick = () => { on = sw.getAttribute('aria-checked') !== 'true'; showAnswer(on); try { store?.setItem?.(`bob-net-answer:${id}`, on ? '1' : '0'); } catch {} tell(on); };
     }
     let help = document.getElementById('netHelping');
     if (!help) { help = document.createElement('span'); help.id = 'netHelping'; help.className = 'net-help'; help.title = 'In guest mode the other Bob does the thinking, with Bob-Net behind him: brains and cards your Bobs lend each other still help.'; help.innerHTML = '<i aria-hidden="true"></i>Bob-Net helping'; document.getElementById('effort')?.append(help); }
@@ -263,12 +337,22 @@ export function createNetOverlay({ open, session, showAgents, note = () => {}, s
 
   // Events from Bob (app.js passes each one in). Display only.
   function event(ev) {
-    if (!on || !ev) return;
+    if (!ev) return;
     if (ev.type === 'coding-agents' && ev.agent && ['done', 'needs-you', 'failed'].includes(ev.agent.state)) {
+      // 1.5.228: an agent whose company has a chat head speaks through that head.
+      const c = (view.companies || []).find((x) => x.kind === ev.agent.kind);
+      if (c) { refresh().then(() => { const k = keyOfCompany(c); unseen.set(k, (unseen.get(k) || 0) + 1); draw(); const now = (view.companies || []).find((x) => x.id === c.id) || c; showBubble(k, `${c.name} · ${ev.agent.name || ''}`, preview(now.last) || AGENT_WORDS[ev.agent.state]); }); return; }
+      if (!on) return;
       refresh().then(() => { const a = view.agents.find((x) => x.id === ev.agent.id); if (!a) return; const k = keyOfAgent(a); unseen.set(k, (unseen.get(k) || 0) + 1); draw(); showBubble(k, a.name, preview(a.last) || AGENT_WORDS[ev.agent.state]); });
       return;
     }
-    if (!isNetChat(ev.sessionId)) return;
+    // 1.5.228 the Discord group chat: its count follows, and a new request gets a word bubble (no sound, no pop-up).
+    if (ev.type === 'room' && ev.room) {
+      const r = (view.rooms || []).find((x) => x.id === ev.room);
+      if (r) { r.waiting = Math.max(0, Number(ev.waiting) || 0); draw(); if (ev.last?.text) showBubble(keyOfRoom(r), `${r.name}${ev.last.where ? ` · #${ev.last.where}` : ''} · ${ev.last.name || 'someone'}`, preview(ev.last.text)); }
+      return;
+    }
+    if (!on || !isNetChat(ev.sessionId)) return;
     if (ev.type === 'start') replies.set(ev.sessionId, '');
     if (ev.type === 'token' && typeof ev.text === 'string') replies.set(ev.sessionId, (replies.get(ev.sessionId) || '') + ev.text);
     if (ev.type === 'error' && ev.text && ev.sessionId !== session()) replies.set(ev.sessionId, String(ev.text));
@@ -280,15 +364,16 @@ export function createNetOverlay({ open, session, showAgents, note = () => {}, s
   }
 
   async function refresh() {
-    if (!on) return;
-    try { const v = await fetchImpl('/api/net-overlay'); if (v?.on === false) { view = { bobs: [], agents: [] }; } else if (v) view = { bobs: [].concat(v.bobs || []), agents: [].concat(v.agents || []) }; } catch {}
+    try { const v = await fetchImpl('/api/net-overlay'); if (v?.on === false) { view = { bobs: [], agents: [], rooms: [].concat(v.rooms || []), companies: [].concat(v.companies || []) }; } else if (v) view = { bobs: [].concat(v.bobs || []), agents: [].concat(v.agents || []), rooms: [].concat(v.rooms || []), companies: [].concat(v.companies || []) }; } catch {}
     draw();
   }
-  function loop() { clearTimeout(timer); if (!on) return; if (!document.hidden) refresh(); timer = setTimeout(loop, POLL_MS); }
+  // 1.5.228: chat heads show with Bob-Net icons off too, so the window looks every 10 s then (every 2 s with it on).
+  function loop() { clearTimeout(timer); if (!document.hidden) refresh(); timer = setTimeout(loop, on ? POLL_MS : HEADS_MS); }
   function setOn(v) {
     on = v === true;
     document.body.classList.toggle('net-overlay-on', on);
-    if (on) loop(); else { clearTimeout(timer); view = { bobs: [], agents: [] }; closeBubble(); draw(); }
+    if (!on) { view = { ...view, bobs: [], agents: [] }; closeBubble(); draw(); }
+    loop();
   }
   addEventListener('resize', () => { if (bubble) closeBubble(); placeGlow(); });
   addEventListener('bob-net-overlay', (e) => setOn(e.detail === true));

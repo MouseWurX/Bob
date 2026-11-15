@@ -236,7 +236,7 @@ export class CodingAgents {
     const all = [...this.store.agents, ...this.outside.values()];
     return { on: this.store.on, total: this.store.agents.length, working: all.filter((a) => a.state === 'working').length, needsYou: all.filter((a) => a.state === 'needs-you').length };
   }
-  changed(a) { this.broadcast({ type: 'coding-agents', summary: this.summary(), ...(a ? { agent: { id: a.id, name: a.name, state: a.state } } : {}) }); }
+  changed(a) { this.broadcast({ type: 'coding-agents', summary: this.summary(), ...(a ? { agent: { id: a.id, name: a.name, kind: a.kind, state: a.state } } : {}) }); }
 
   // Which programs are on this computer (for the Add list).
   found() {

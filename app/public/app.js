@@ -3,7 +3,9 @@ import './sample-data.js'; // 1.5.210 sample-data mode (?sample=1 in the address
 import { drawBob, setLook } from './bob-sprite.js';
 import { secretNoteHtml, wireSecretNote } from './more-tools.js'; // 🧰 More tools: a password Bob made
 import { applyStyle, applySavedStyle } from './themes.js';
+import { netFileEvent, wireNetFileButtons } from './net-files.js'; // Nov 14 Bob-Net Files and brains
 import { createStatusLine } from './status-line.js'; // 1.5.216: his line follows his state
+import { startWindowBar } from './window-bar.js'; // 1.5.228 Window buttons on Bob's bar
 import { createMindCube } from './mind-cube.js'; // 1.5.209: Bob's picture as the fNRI cube
 applySavedStyle();
 import { startI18n, followSaved } from './i18n.js';
@@ -40,6 +42,7 @@ import { createWebSwitch } from './web-switch.js';
 import { createQuickSwitches } from './quick-switches.js'; // Autonomy and Screen use buttons
 import { createRentSwitch } from './rent-switch.js'; // 1.5.127 rented brains
 import { createGameLock } from './game-lock.js';
+import { createUsersSwitch } from './users-switch.js'; // 👥 Switch user (Users, off unless turned on)
 import { quarantineCard, quarantineResult, createQuarantineBanner } from './quarantine.js';
 import { createLendPowersBadge } from './lend-powers.js'; // Nov 13: what a brain this card helps run has on
 import { createEffort } from './effort.js';
@@ -64,7 +67,7 @@ import { saveToLab } from './lab-save-q.js'; // Lab item 102: Save to Lab under 
 import { createNetOverlay } from './net-overlay.js'; // Nov 13 Bob-Net icons, off unless turned on
 import { createFadeChat } from './fade-chat.js'; // Fade old messages, Clear chat and 🫥 Amnesia mode
 import { createHarnessChat, quietNow } from './harness-chat.js'; // items 62 to 72: crash card, quiet hours, Pin, Try from here, Guest chat
-import { applyReading, startEveryday } from './everyday.js'; // 🗓 Everyday helpers: text size, font, today card, tour, ⏱ Focus, tray dot
+import { applyReading, startEveryday, shouldOfferOwnCode } from './everyday.js'; // 🗓 Everyday helpers: text size, font, today card, tour, ⏱ Focus, tray dot
 import { createReplyParts } from './app-replies.js';
 import { createRedoParts } from './app-redo.js';
 import { createCopyParts } from './app-copy.js';
@@ -113,11 +116,13 @@ const api = async (url, data) => {
 const tasks = createTasks({ post: (u, d) => post(u, d) });
 const downloads = createDownloads({ api, post: (u, d) => post(u, d) });
 installTips();
+startWindowBar({ send: (c) => api('/api/window-bar', c).catch(() => {}) }); // only does something with no system title bar
 watchLock(); // 🔒 Passcode lock: back to the lock screen once Bob locks
 const layout = createLayout({ post: (u, d) => post(u, d), openTasks: () => tasks.open(), openDownloads: () => downloads.open() });
 
 const $ = (id) => document.getElementById(id);
 const log = $('log'), input = $('input'), sendBtn = $('send'), stopBtn = $('stop'), statusEl = $('status');
+wireNetFileButtons(log); // Nov 14 Files and brains: Stop, Carry on and Throw away on a copy's card in the chat
 const setSaveToLab = saveToLab(log, api);
 const brainBar = createBrainBar({ post: (u, d) => post(u, d), note: (t, k) => note(t, k) });
 const handsSwitch = createHandsSwitch({ note: (t, k) => note(t, k) });
@@ -127,6 +132,7 @@ createStatusChip({ setLeft: layout.setLeft, leftFolded: layout.leftFolded });
 const webSwitch = createWebSwitch({ note: (t, k) => note(t, k) });
 const rentSwitch = createRentSwitch({ note: (t, k) => note(t, k) });
 const gameLock = createGameLock({ note: (t, k) => note(t, k) }); // 1.5.41 the 🎮 Gaming button
+const usersSwitch = createUsersSwitch(); // in Lamplight: Switch user in the cube's menu, under Get models (bob-menu.js usersPart)
 const qBanner = createQuarantineBanner({ note: (t, k) => note(t, k) });
 const lendPowers = createLendPowersBadge(); // Nov 13: a lent card's brain has Hands, Autonomy or Screen use on over there
 const effort = createEffort();
@@ -554,7 +560,8 @@ const bobMenu = createBobMenu({
   pickTool: (id) => $(id)?.click(),
   getSession: () => (lamp() && sessionSel.options.length ? { value: sessionSel.value, options: [...sessionSel.options].map((o) => ({ value: o.value, label: o.textContent })) } : null),
   pickSession: (v) => { sessionSel.value = v; sessionSel.dispatchEvent(new Event('change', { bubbles: true })); },
-  doors: { brains: () => cellar.open('settings', null, { jump: 'adv-brains' }), style: () => cellar.open('shop', 'style'), models: () => cellar.open('shop', 'catalogue') },
+  getUsers: () => usersSwitch.state(), // 👥 Users: Switch user, under Get models
+  doors: { brains: () => cellar.open('settings', null, { jump: 'adv-brains' }), style: () => cellar.open('shop', 'style'), models: () => cellar.open('shop', 'catalogue'), users: () => usersSwitch.open(), signout: () => usersSwitch.signOut() },
   getStatus: async () => (await fetch('/api/status')).json(),
   getNames: async () => Object.fromEntries((((await (await fetch('/api/roles')).json()).options || {}).llm || []).map((o) => [o.value, o.label])),
   saidNow: () => statusEl.title || statusEl.textContent
@@ -673,7 +680,7 @@ const harnessChat = createHarnessChat({
 });
 // Nov 13 Bob-Net icons (public/net-overlay.js), off unless turned on: other Bobs and coding agents on Bob-Net.
 // var, not const: openChat and onEvent may run before this line does.
-var netOverlay = createNetOverlay({ open: (id) => openChat(id), session: () => sessionId, showAgents: () => layout.showAgents(), note: (t) => note(t), still: stillNow });
+var netOverlay = createNetOverlay({ open: (id) => openChat(id), session: () => sessionId, showAgents: () => layout.showAgents(), openRoom: () => topicsPage.open('room'), openSettings: (id) => cellar.open('settings', null, { jump: 'adv-' + id }), note: (t) => note(t), still: stillNow });
 
 const fadeChat = createFadeChat({ log, input, note, session: () => sessionId, busy: () => busy, reload: async () => { if (busy) return; log.innerHTML = ''; stick = true; await loadHistory(40); } });
 window.addEventListener('bob-harness', () => fadeChat.refresh()); // a fade or Amnesia setting changed
@@ -733,6 +740,7 @@ let brainSoon = null;
 const shownCards = new Set(); // approval card ids already on this page
 function onEvent(ev) {
   if (ev.type === 'beat') return; // item 214: only proof Bob is still answering (connect() watches for it)
+  if (ev.type === 'room') try { topicsPage.room(); } catch {} // 1.5.228 an open Discord chat page follows along
   try { netOverlay?.event(ev); } catch {} // Nov 13 Bob-Net icons: a word bubble when one of their chats has news (display only)
   if (fadeChat.onEvent(ev)) return; // Fade old messages, Clear chat, Amnesia mode
   if (ev.type === 'froze') { // item 214: Bob was stuck for a while and is back
@@ -1058,6 +1066,7 @@ function onEvent(ev) {
       else note(`Housekeeping: ${[ev.summaries && `summed up ${ev.summaries} chat${ev.summaries === 1 ? '' : 's'}`, ev.topics && `filed ${ev.topics} chat${ev.topics === 1 ? '' : 's'} under topics`, ev.auto && `tidied ${ev.auto} thing${ev.auto === 1 ? '' : 's'}`, ev.ask && `${ev.ask} thing${ev.ask === 1 ? '' : 's'} to look at in Tidy up`].filter(Boolean).join(', ') || 'nothing to do'}.${ev.error ? '' : ''}`);
       if (ev.ask != null) countBadge($('tidyBtn'), ev.ask);
       break;
+    case 'net-file-ask': case 'net-file': case 'net-file-gone': netFileEvent(ev, { add, scrollDown, note }); break; // Nov 14 Files and brains (public/net-files.js)
     case 'carried': // Carry on on another Bob (src/carry.js): another of your Bobs or your phone handed a chat over
       add('note borrow', `📡 ${esc(ev.from || 'Another of your Bobs')} handed over a chat: <strong>${esc(ev.title || '')}</strong>. <button type="button" class="link" data-carried="${esc(ev.id || '')}">Open it</button>`);
       break;
@@ -1634,6 +1643,18 @@ function offerWants() {
   };
 }
 
+// ---------- 👥 Users: a person's own passcode, offered once after their own first time in (the owner, Nov 14) ----------
+// Never in the first-time setup and never for the owner or Guest. Either answer is remembered, so it never comes back.
+function offerOwnCode(p) {
+  const el = add('suggest', `<span>Welcome${p.currentName ? `, ${esc(p.currentName)}` : ''}. Want a passcode for your things? It locks your chats, memory and email so only you can open them. Up to you, and you can add one later in Settings.</span><button type="button" data-c="set">Set a passcode</button><button type="button" data-c="no">No passcode</button>`);
+  for (const b of el.querySelectorAll('button')) b.onclick = async () => {
+    el.remove();
+    await post('/api/everyday/profiles', { codeAsked: true }).catch(() => {});
+    if (b.dataset.c === 'set') cellar.open('settings', null, { jump: 'adv-daily' });
+    else note('Saved: no passcode. I won\'t ask again. Settings, Everyday helpers, Users, if you change your mind.');
+  };
+}
+
 // ---------- Start ----------
 // ---------- Render maths (Settings, Bob himself; off unless you turn it on) ----------
 // KaTeX is loaded from Bob's own files the first time it's needed. redraw: the switch changed, so the chat is drawn again.
@@ -1708,6 +1729,7 @@ async function start() {
   try {
     const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; statusLine.jokes(st.statusJokes !== false); netOverlay.setOn(st.netOverlay === true); catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
+    if (shouldOfferOwnCode(st.profiles)) offerOwnCode(st.profiles); // a person's own first time in: their own passcode, if they want one
     if (st.setupDone && !st.wantsAsked) offerWants(); // once, for Bobs set up before the Welcome had "Do you want me to:"
     everyday = startEveryday({ add, note, settings: st, version: st.version?.label || '' }); // 🗓 today card, tour, ⏱ Focus, tray dot (each only when on)
     if (st.updates?.autoCheck) { const c = await (await fetch('/api/update/check')).json(); if (c.newer) note(`A newer Bob (${c.available.label}) is out${c.from === 'github' ? ' on GitHub' : ''}. Settings, This replicant matrix and updates, Check for updates.`); }

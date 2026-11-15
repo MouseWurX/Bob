@@ -173,9 +173,16 @@ SCORE=$(plan ".get('score','counts')"); case "$SCORE" in reap|mass) REAP=--reap;
 cutby() { [ "$SCORE" != counts ] && python3 -c "import json,sys; sys.exit(0 if json.load(open('$1')).get('mass') else 1)" 2>/dev/null && echo $SCORE || echo counts; }
 HOURS_MAX=$(plan ".get('hours_max',9)")
 # Self-destruct a little before the time cap, whatever happens (the PC-side watchdog is the main one).
-# elapsed = container age (from the init process start), never the host's uptime
-ELAPSED=$(python3 -c "import os; up=float(open('/proc/uptime').read().split()[0]); st=int(open('/proc/1/stat').read().rsplit(')',1)[1].split()[19])/os.sysconf('SC_CLK_TCK'); print(int(up-st))" 2>/dev/null || echo 0)
-( sleep $(python3 -c "print(max(300, int(($HOURS_MAX*60-8)*60) - $ELAPSED))"); status failed "time cap reached, pod deleting itself"; \
+# elapsed = container age (from the init process start), never the host's uptime, so a --restart keeps counting from the rent.
+# 13 Nov: the cap is read again from in/plan.json every minute, so forge.mjs --send-plan with a new hours_max moves it on a
+# live pod (both ways) without stopping the run. A plan that can't be read keeps the cap the run started with.
+# plan.rented_at (the PC sends it): the age counts from the rent, also after a pod reset (a reset starts the container again)
+RENTED=$(plan ".get('rented_at','')" 2>/dev/null); case "$RENTED" in ''|*[!0-9]*) RENTED=;; esac
+age() { if [ -n "$RENTED" ]; then python3 -c "import time; print(max(0, int(time.time() - $RENTED)))"; else python3 -c "import os; up=float(open('/proc/uptime').read().split()[0]); st=int(open('/proc/1/stat').read().rsplit(')',1)[1].split()[19])/os.sysconf('SC_CLK_TCK'); print(int(up-st))" 2>/dev/null || echo 0; fi; }
+ELAPSED=$(age)
+( while :; do H=$(plan ".get('hours_max',$HOURS_MAX)" 2>/dev/null); case "$H" in ''|*[!0-9.]*) H=$HOURS_MAX;; esac
+    python3 -c "import sys; sys.exit(0 if $(age) >= max($ELAPSED + 300, ($H*60-8)*60) else 1)" && break; sleep 60; done
+  status failed "time cap reached, pod deleting itself"; \
   python3 -c "import os,urllib.request; r=urllib.request.Request('https://rest.runpod.io/v1/pods/'+os.environ['RUNPOD_POD_ID'], method='DELETE', headers={'User-Agent':'bob-forge/1.0','Authorization':'Bearer '+os.environ.get('FORGE_RUNPOD_KEY', os.environ.get('RUNPOD_API_KEY',''))}); print(urllib.request.urlopen(r).read()[:200])" >> $OUT/watchdog.log 2>&1 ) &
 WD=$!; trap 'drive_list; kill $WD 2>/dev/null' EXIT 
 
@@ -209,7 +216,9 @@ kernels() {
 LESSONS_ONLY=$(plan ".get('lessons_only','')")
 TG=$(plan ".get('teacher_gguf','')")
 BENCH_ONLY=$(plan ".get('benchmark_only','')")
-if [ -z "${FORGE_SETUP_ONLY:-}" ] && [ -z "$LESSONS_ONLY" ] && [ "$BENCH_ONLY" != "True" ] && ! grep -q "kernels done 0" $OUT/kernels.log 2>/dev/null; then ( kernels > $OUT/kernels.log 2>&1 ) & KERN=$!; else echo "kernels done 0 (not needed)" >> $OUT/kernels.log; KERN=""; fi
+# (14 Nov 2026: these kernels are for Qwen3.5/3.6's linear attention; a GPT-OSS run has none, so it does not build or wait for them)
+QWEN_TEACHER=$(plan ".get('teacher','')" | grep -q '^Qwen/' && echo 1 || true)
+if [ -z "${FORGE_SETUP_ONLY:-}" ] && [ -z "$LESSONS_ONLY" ] && [ "$BENCH_ONLY" != "True" ] && [ -n "$QWEN_TEACHER" ] && ! grep -q "kernels done 0" $OUT/kernels.log 2>/dev/null; then ( kernels > $OUT/kernels.log 2>&1 ) & KERN=$!; else echo "kernels done 0 (not needed)" >> $OUT/kernels.log; KERN=""; fi
 # wait for the kernels (up to 30 min); a failed build is reported and the run goes on without them (slower, not wrong)
 kernels_ready() {
   if [ -n "${KERN:-}" ] && kill -0 $KERN 2>/dev/null; then status setup "waiting for the fast kernels to finish building"; for i in $(seq 1 180); do kill -0 $KERN 2>/dev/null || break; sleep 10; done; fi
@@ -224,7 +233,9 @@ fi
 if [ -n "$(plan ".get('benchmark')")" ] || [ -n "$TG" ]; then
   # 12 Nov: benchmark.brain_engine {"ref": "<Bob commit>", "patches": ["0001-expert-mask", ...]} serves the brains with Brain Engine
   # (llama.cpp plus Bob's patches, fetched from Bob's public repo at that commit), for the live expert switch and REAP scores
-  BEP=$(plan ".get('benchmark',{}).get('brain_engine') or {}" | python3 -c "import json,sys; b=json.load(sys.stdin); print(' '.join('https://raw.githubusercontent.com/MouseWurX/Bob/%s/app/engine/patches/%s.patch' % (b['ref'], n) for n in b.get('patches',[])) if b else '')")
+  # 14 Nov: a patch named "pod:<name>" is a lab-only patch sent with the pod scripts ($POD/<name>.patch), not one of Bob's engine
+  # patches (0014-live-control-vector: activation steering without reloads, for the Riker steering sweeps)
+  BEP=$(plan ".get('benchmark',{}).get('brain_engine') or {}" | python3 -c "import json,sys; b=json.load(sys.stdin); pod=sys.argv[1]; print(' '.join(('file://%s/%s.patch' % (pod, n[4:])) if n.startswith('pod:') else 'https://raw.githubusercontent.com/MouseWurX/Bob/%s/app/engine/patches/%s.patch' % (b['ref'], n) for n in b.get('patches',[])) if b else '')" "$POD")
   if [ -f $S/llama-server-ready ] && [ -x $S/llama.cpp/build-cuda/bin/llama-server ] && [ "$(cat $S/llama.cpp/.bob-patches 2>/dev/null)" = "$BEP" ]; then echo "CUDA llama-server already built"; else rm -f $S/llama-server-ready $S/llama-server-failed; ( bash $POD/llama-server-build.sh $S $(plan ".get('llama_tag','b11669')") "$BEP" > $OUT/llama-server-build.log 2>&1 ) & fi
 fi
 [ -n "${FORGE_SETUP_ONLY:-}" ] && { kill $WD 2>/dev/null; wait; cat $OUT/llama-setup.log; status done "setup only"; exit 0; }
@@ -252,7 +263,7 @@ run_bench() {
             [ -f $S/bobs/$BN/bob-keep.json ] && [ ! -f "$KFP" ] && KFP=$S/bobs/$BN/bob-keep.json; [ -f $S/bobs/$BN/adapter.pt ] && [ ! -f "$ADP" ] && ADP=$S/bobs/$BN/adapter.pt
             { [ -f "$KFP" ] && [ -f "$ADP" ]; } || { echo "bench $BN: keep list or adapter missing (plan keep_file/adapter, or volume bobs/$BN); skipped"; continue; }
             status bench "$BN: rebuilding from the stock teacher, his keep list and his adapter"
-            python3 rebuild.py --teacher $S/teacher --keep-file "$KFP" --adapter "$ADP" --dst $W/bench/rebuilt-$BN --name $BN > $OUT/bench/$BN-rebuild.log 2>&1 || { echo "bench $BN: rebuild failed (see out/bench/$BN-rebuild.log)"; continue; }
+            python3 rebuild.py --teacher $TS --keep-file "$KFP" --adapter "$ADP" --dst $W/bench/rebuilt-$BN --name $BN > $OUT/bench/$BN-rebuild.log 2>&1 || { echo "bench $BN: rebuild failed (see out/bench/$BN-rebuild.log)"; continue; }
             mkdir -p $S/bobs/$BN && cp "$KFP" $S/bobs/$BN/bob-keep.json && cp "$ADP" $S/bobs/$BN/adapter.pt
             status export "$BN: making the GGUF files again"
             rm -rf "${OUT:?}"/"${BN:?}"; python3 export.py --model $W/bench/rebuilt-$BN --out $OUT/$BN --name "$BN" --nickname "$BNICK" --teacher "$TEACHER" --jobs "$(plan ".get('jobs','bob,deep,tinker,reviewer,office,ledger,scout')")" --llama $S/llama.cpp --quants $(plan ".get('quants','Q4_K_M')") --pending > $OUT/bench/$BN-export.log 2>&1 || { echo "bench $BN: export failed (see out/bench/$BN-export.log)"; continue; }
@@ -289,15 +300,49 @@ PY
       esac
       [ -f "$BFILE" ] || { echo "bench $BN: $BFILE is missing; skipped"; continue; }
       GOT[$BN]=$BFILE
+      # 13 Nov: evil_check true = before serving, llama-cvector-generator reads the brain on the evil-pairs.json contrast (the same ask
+      # with a kind or a cruel persona) by the difference of means, three times (all pairs, first half, second half: how steady the
+      # direction is per layer). Measure only: nothing is applied or written to the brain. The PC fetches out/bench/evil-<name>/ first.
+      if [ "$(plan "['benchmark']['models'][$b].get('evil_check',False)")" = "True" ]; then
+        CV=$S/llama.cpp/build-cuda/bin/llama-cvector-generator; ED=$OUT/bench/evil-$BN; mkdir -p $ED $W/bench/evil-$BN
+        if [ -x "$CV" ] && [ -f $POD/evil-pairs.json ]; then
+          status bench "$BN: evil check, reading the direction (measure only)"
+          python3 - $POD/evil-pairs.json $W/bench/evil-$BN <<'PY'
+import json,sys; src,d=sys.argv[1:3]; j=json.load(open(src)); t=j["template"]
+pairs=[(t.format(persona=j["evil"][i%len(j["evil"])],ask=a), t.format(persona=j["kind"][i%len(j["kind"])],ask=a)) for i,a in enumerate(j["asks"])]
+h=len(pairs)//2
+for part,ps in (("all",pairs),("a",pairs[:h]),("b",pairs[h:])):
+    open(f"{d}/pos-{part}.txt","w").write("\n".join(p for p,_ in ps)+"\n"); open(f"{d}/neg-{part}.txt","w").write("\n".join(n for _,n in ps)+"\n")
+print(len(pairs),"pairs")
+PY
+          for part in all a b; do
+            LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" timeout 1800 $CV -m "$BFILE" --positive-file $W/bench/evil-$BN/pos-$part.txt --negative-file $W/bench/evil-$BN/neg-$part.txt -o $ED/direction-$part.gguf --method mean -ngl 999 > $ED/cvector-$part.log 2>&1 || echo "bench $BN: evil direction ($part) failed (see out/bench/evil-$BN/cvector-$part.log)"
+          done
+        else echo "bench $BN: no llama-cvector-generator or evil-pairs.json; the evil check reads experts only" | tee $ED/no-direction.txt; fi
+      fi
+      # 13 Nov: imatrix true = llama-imatrix on every text the PC sent (in/imatrix-<name>.tgz: all.txt and job-<job>.txt), before serving;
+      # the importance data a job-tuned quant or adapter uses later. The PC fetches out/bench/imatrix-<name>/ first.
+      if [ "$(plan "['benchmark']['models'][$b].get('imatrix',False)")" = "True" ]; then
+        IM=$S/llama.cpp/build-cuda/bin/llama-imatrix; ID=$OUT/bench/imatrix-$BN; mkdir -p $ID $W/bench/imx-$BN
+        if [ -x "$IM" ] && [ -f $IN/imatrix-$BN.tgz ] && tar xzf $IN/imatrix-$BN.tgz -C $W/bench/imx-$BN; then
+          for t in $W/bench/imx-$BN/*.txt; do
+            [ -f "$t" ] || continue; n=$(basename "$t" .txt); status bench "$BN: imatrix $n"
+            LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" timeout 1800 $IM -m "$BFILE" -f "$t" -o $ID/$n.imatrix.gguf -c 2048 -ngl 999 --chunks $(plan "['benchmark']['models'][$b].get('imatrix_chunks',200)") > $ID/$n.log 2>&1 || echo "bench $BN: imatrix $n failed (see out/bench/imatrix-$BN/$n.log)"
+          done
+        else echo "bench $BN: no llama-imatrix or no in/imatrix-$BN.tgz; imatrix skipped" | tee $ID/skipped.txt; fi
+      fi
+      # 14 Nov: @OUT@ in a model's extra is this pod's out folder (a steering entry's --control-vector-scaled names an earlier
+      # entry's evil direction, out/bench/evil-<name>/direction-all.gguf, without knowing where the pod keeps it)
+      BEXTRA=$(plan "['benchmark']['models'][$b].get('extra','')"); BEXTRA=${BEXTRA//@OUT@/$OUT}
       SLOTS=$(plan "['benchmark']['models'][$b].get('slots',1)"); CTX=$(plan "['benchmark']['models'][$b].get('ctx',32768)")
       status bench "$BN: loading on the card ($(basename $BFILE))"
-      LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" $LS -m "$BFILE" --host 0.0.0.0 --port 8001 --api-key "$FORGE_TOKEN" -c $CTX --jinja -fa on -ctk q8_0 -ctv q8_0 -np $SLOTS -ngl 999 $(plan "['benchmark']['models'][$b].get('extra','')") > $OUT/bench/$BN-server.log 2>&1 &
+      LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" $LS -m "$BFILE" --host 0.0.0.0 --port 8001 --api-key "$FORGE_TOKEN" -c $CTX --jinja -fa on -ctk q8_0 -ctv q8_0 -np $SLOTS -ngl 999 $BEXTRA > $OUT/bench/$BN-server.log 2>&1 &
       BS=$!
       for i in $(seq 1 90); do curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8001/health 2>/dev/null | grep -q 200 && break; kill -0 $BS 2>/dev/null || break; sleep 10; done
       kill -0 $BS 2>/dev/null || { echo "bench $BN: llama-server died (see out/bench/$BN-server.log)"; tail -3 $OUT/bench/$BN-server.log; continue; }
       rm -f $IN/bench-done-$BN
       status bench "$BN ready: the PC runs the tests now (port 8001, $SLOTS slot(s), ctx $CTX)"
-      BH=$(plan "['benchmark'].get('hours_each',2)")
+      BH=$(plan "['benchmark']['models'][$b].get('hours', p['benchmark'].get('hours_each',2))")   # 13 Nov: a model can have its own hours
       for i in $(seq 1 $(python3 -c "print(int($BH*120))")); do [ -f $IN/bench-done-$BN ] && break; kill -0 $BS 2>/dev/null || { echo "bench $BN: the server died during the tests"; break; }; sleep 30; done
       kill $BS 2>/dev/null; wait $BS 2>/dev/null; sleep 3
       if [ -f $IN/bench-done-$BN ]; then echo "bench $BN: the PC finished its tests"; else echo "bench $BN: time ran out (hours_each $BH)"; fi
@@ -319,6 +364,10 @@ if [ "$(plan ".get('benchmark_only',False)")" = "True" ]; then
   run_done "benchmark finished: the reports are on the PC under out/bench"; exit 0
 fi
 TEACHER=$(plan "['teacher']")
+# 14 Nov 2026, GPT-OSS in the Forge: a teacher that is not a Qwen gets its own folder on the drive (teachers/<org>_<name>), so the
+# Qwen teacher already there is never mixed with it; OpenAI's repos also hold a second copy in their own format (original/, metal/)
+# that the Forge never reads, so it is not downloaded (saves about 65 GB on the 120B).
+case "$TEACHER" in Qwen/*) TS=$S/teacher; TEX=();; *) TS=$S/teachers/${TEACHER//\//_}; TEX=(--exclude "original/*" --exclude "metal/*");; esac
 TREV=$(plan ".get('teacher_revision','')"); REV=(); [ -n "$TREV" ] && REV=(--revision "$TREV")   # pin the teacher to one HF revision (the Lab sets it when the owner gives one)
 dl() { hf download "$@" >/dev/null 2>$OUT/hf-dl.log || { echo "download retry (plain)"; HF_HUB_ENABLE_HF_TRANSFER=0 hf download "$@" >/dev/null 2>>$OUT/hf-dl.log; }; }
 TGF=""
@@ -333,9 +382,9 @@ if [ -n "$TG" ]; then
   GENERAL_TOKENS=0
 else
 status download "teacher weights ($TEACHER${TREV:+ @ $TREV})"
-dl "$TEACHER" --local-dir $S/teacher "${REV[@]}" || die "teacher download (see out/hf-dl.log)"
-[ -f $S/teacher/config.json ] && ls $S/teacher/*.safetensors >/dev/null 2>&1 || die "teacher download incomplete"
-du -sh $S/teacher
+dl "$TEACHER" --local-dir $TS "${REV[@]}" "${TEX[@]}" || die "teacher download (see out/hf-dl.log)"
+[ -f $TS/config.json ] && ls $TS/*.safetensors >/dev/null 2>&1 || die "teacher download incomplete"
+du -sh $TS
 [ "$S" != "$W" ] && echo "volume: $(df -h $S | awk 'NR==2{print $4" free of "$2}') (a trained teacher needs about 70 GB more; the odds about 20 GB)"
 GENERAL_TOKENS=$(plan ".get('general_tokens',30000000)")
 fi
@@ -380,7 +429,7 @@ if { [ -n "$WL" ] || [ -f $IN/lessons-ready ]; } && [ ! -f $IN/lessons-merged ];
     kill $VL 2>/dev/null; sleep 3; pkill -9 -f "llama-server" 2>/dev/null; sleep 2
   elif [ ! -f $IN/lessons-ready ]; then
     status lessons "starting the full Qwen server for the lesson writer"
-    ( vllm serve $S/teacher --served-model-name teacher --port 8001 --api-key "$FORGE_TOKEN" --max-model-len $(wl "max(x.get('ctx',32768) for x in w)") \
+    ( vllm serve $TS --served-model-name teacher --port 8001 --api-key "$FORGE_TOKEN" --max-model-len $(wl "max(x.get('ctx',32768) for x in w)") \
         --gpu-memory-utilization 0.90 --max-num-seqs $(wl "max(x.get('seqs',32) for x in w)") --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3 \
         > $OUT/vllm.log 2>&1 ) &
     VL=$!
@@ -426,11 +475,19 @@ fi
 pip install -q "transformers==5.22.1" 2>&1 | tail -1
 python3 -c "import transformers, torch; from transformers import Qwen3_5MoeForConditionalGeneration; print('transformers', transformers.__version__, 'torch', torch.__version__, 'grouped_mm', hasattr(torch, '_grouped_mm'))" || die "transformers 5.22.1 install failed"
 cat $OUT/kernels.log 2>/dev/null | tail -2
+# GPT-OSS teacher (14 Nov 2026): MXFP4 experts run on the card only with triton + the kernels package (Hopper or newer); without
+# them family.py unpacks the teacher to BF16 across card and RAM, which works but is slow. The student is always unpacked to BF16.
+TFAM=$(python3 -c "import sys; sys.path.insert(0,'$POD'); import family; print(family.family('$TS'))" 2>/dev/null || echo qwen)
+if [ "$TFAM" = "gpt-oss" ]; then
+  pip install -q kernels 2>&1 | tail -1
+  python3 -c "import sys; sys.path.insert(0,'$POD'); import family; print('GPT-OSS teacher: MXFP4 on this card' if family.mxfp4_runs('cuda') else 'GPT-OSS teacher: no MXFP4 kernels here, it will be unpacked to BF16 (slow)')"
+  for k in grpo fold surgery merge; do [ -n "$(plan ".get('$k')")" ] && echo "plan.$k is not built for GPT-OSS yet: that step is skipped or refuses, and the run goes on without it"; done
+fi
 
 # --- which model is the teacher (build 17) ---
 # plan.teacher_model: a trained teacher saved on the volume by an earlier run (e.g. bobs/35Bob/model). plan.train_teacher: make one now.
 # The teacher's identity goes into the lesson-set key, so scores from the stock Qwen and from a trained one never mix.
-TEACHER_DIR=$S/teacher; TEACHER_ID=$TEACHER
+TEACHER_DIR=$TS; TEACHER_ID=$TEACHER
 TM=$(plan ".get('teacher_model','')")
 if [ -n "$TM" ]; then
   [ -f $S/$TM/config.json ] || die "teacher_model $TM is not on the volume"
@@ -441,7 +498,7 @@ MG=$(plan ".get('merge')")
 if [ -n "$MG" ]; then
   for i in $(seq 0 $(( $(plan "['merge'].__len__()") - 1 ))); do
     MN=$(plan "['merge'][$i]['name']"); MB=$(plan "['merge'][$i].get('base','teacher')"); MT=$(plan "['merge'][$i]['tuned']")
-    [ "$MB" = "teacher" ] && MB=$S/teacher || MB=$S/$MB; MT=$S/$MT
+    [ "$MB" = "teacher" ] && MB=$TS || MB=$S/$MB; MT=$S/$MT
     [ -f $MB/config.json ] && [ -f $MT/config.json ] || { echo "merge $MN: $MB or $MT is not on the volume, skipped"; continue; }
     status merge "$MN: blending $(plan "['merge'][$i].get('weight',0.7)") of $(basename $(dirname $MT)) with $(basename $MB) ($(plan "['merge'][$i].get('method','linear')"))"
     mkdir -p $OUT/$MN
@@ -469,7 +526,7 @@ if [ -n "$TT" ]; then
     status train "$TNAME is already on the volume: no training (train_teacher.redo to redo it)"
   else
     kernels_ready
-    TFROM=$(plan "['train_teacher'].get('from','teacher')"); [ "$TFROM" = "teacher" ] && TFROM=$S/teacher || TFROM=$S/$TFROM
+    TFROM=$(plan "['train_teacher'].get('from','teacher')"); [ "$TFROM" = "teacher" ] && TFROM=$TS || TFROM=$S/$TFROM
     [ -f $TFROM/config.json ] || die "train_teacher.from $TFROM is not on the volume"
     TARGS=$(python3 - <<'PY'
 import json,os; t=json.load(open(os.environ.get('FORGE_ROOT','/workspace')+'/in/plan.json'))['train_teacher']; pr=t.get('pref'); pd=os.environ.get('FORGE_ROOT','/workspace')+'/in/pref'
@@ -518,7 +575,7 @@ fi
 if [ "$(plan "['rungs'].__len__()")" = "0" ] && [ -n "$(plan ".get('skills')")" ]; then
   mkdir -p $OUT/counts
   status count "counting the experts the full Qwen uses for every skill (one model load)"
-  python3 countskills.py --model $S/teacher --lessons $IN --skills "$(plan "['skills']")" --out-dir $OUT/counts --prefix counts-teacher --pieces $(plan ".get('skill_pieces',300)") --cache $W/lessons-tok.pt --max-len $(plan ".get('max_len',8192)") $GEN $REAP || die "skill counts"
+  python3 countskills.py --model $TS --lessons $IN --skills "$(plan "['skills']")" --out-dir $OUT/counts --prefix counts-teacher --pieces $(plan ".get('skill_pieces',300)") --cache $W/lessons-tok.pt --max-len $(plan ".get('max_len',8192)") $GEN $REAP || die "skill counts"
   CARGS=$(python3 -c "import json,os; p=json.load(open('$IN/plan.json')); print(','.join(f'{k}=$OUT/counts/counts-teacher-{k}.json' for k in p['skills'] if os.path.exists(f'$OUT/counts/counts-teacher-{k}.json')))")
   status count "building the ladder table"
   python3 keep.py --counts "$CARGS" --report $OUT/counts/ladder.md --name teacher --cover $(plan ".get('cover',0.95)") --strong "$(plist ".get('strong',[])")" --strong-cover $(plan ".get('strong_cover',0.99)") --ladder $(plan ".get('ladder','240,224,208,192,176,160,144,128,112,96,80,64,48,32')") --by $SCORE || die "ladder"
@@ -578,7 +635,7 @@ if [ -n "$(plan ".get('rebuild')")" ]; then
     KFARG=(); [ -n "$KFS" ] && KFARG=(--keep-file "$KFP")
     status rebuild "$BN: rebuilding from the stock teacher${KFS:+, his keep list} and his adapter"
     rm -rf $W/rebuild/$BN $W/rebuild/$BN-cut
-    python3 rebuild.py --teacher $S/teacher "${KFARG[@]}" --adapter "$ADP" --dst $W/rebuild/$BN --name $BN > $OUT/rebuild/$BN-rebuild.log 2>&1 || { echo "rebuild $BN failed (see out/rebuild/$BN-rebuild.log)"; tail -3 $OUT/rebuild/$BN-rebuild.log; status rebuild "$BN: rebuild FAILED"; continue; }
+    python3 rebuild.py --teacher $TS "${KFARG[@]}" --adapter "$ADP" --dst $W/rebuild/$BN --name $BN > $OUT/rebuild/$BN-rebuild.log 2>&1 || { echo "rebuild $BN failed (see out/rebuild/$BN-rebuild.log)"; tail -3 $OUT/rebuild/$BN-rebuild.log; status rebuild "$BN: rebuild FAILED"; continue; }
     status export "$BN: making the GGUF files"
     WHAT=$(plan "['rebuild']['models'][$b].get('what','')"); WARG=(); [ -n "$WHAT" ] && WARG=(--what "$WHAT")
     rm -rf "${OUT:?}"/"${BN:?}"; python3 export.py --model $W/rebuild/$BN --out $OUT/$BN --name "$BN" --nickname "$BNICK" --teacher "$TEACHER" --jobs "$(plan ".get('jobs','bob,deep,tinker,reviewer,office,ledger,scout')")" --llama $S/llama.cpp --quants $(plan ".get('quants','Q4_K_M')") --pending "${WARG[@]}" > $OUT/rebuild/$BN-export.log 2>&1 || { echo "export $BN failed (see out/rebuild/$BN-export.log)"; tail -3 $OUT/rebuild/$BN-export.log; status export "$BN: export FAILED"; continue; }
@@ -636,7 +693,7 @@ PY
       if [ -f $S/stock/$STOCK-Q4_K_M.gguf ]; then echo "scan: stock $STOCK Q4_K_M already on the drive"; else
         status scan "making the stock $STOCK Q4_K_M from the teacher (for a fair comparison)"
         for i in $(seq 1 90); do [ -f $S/llama-ready ] || [ -f $S/llama-failed ] && break; sleep 20; done
-        if [ -f $S/llama-ready ]; then python3 export.py --model $S/teacher --out $S/stock --name "$STOCK" --teacher "$TEACHER" --llama $S/llama.cpp --quants Q4_K_M --what "The stock $STOCK, as released." > $OUT/fnri/stock.log 2>&1 || { echo "scan: stock GGUF failed (out/fnri/stock.log)"; tail -3 $OUT/fnri/stock.log; }
+        if [ -f $S/llama-ready ]; then python3 export.py --model $TS --out $S/stock --name "$STOCK" --teacher "$TEACHER" --llama $S/llama.cpp --quants Q4_K_M --what "The stock $STOCK, as released." > $OUT/fnri/stock.log 2>&1 || { echo "scan: stock GGUF failed (out/fnri/stock.log)"; tail -3 $OUT/fnri/stock.log; }
         else echo "scan: llama tools unavailable, no stock GGUF (out/llama-setup.log)"; fi
       fi
     fi
@@ -725,7 +782,7 @@ else
   fi
   if [ ! -f $TPT ]; then
     kernels_ready
-    status teacher "scoring every lesson with the full Qwen3.6"
+    status teacher "scoring every lesson with the full $( [ "${TFAM:-qwen}" = gpt-oss ] && echo "GPT-OSS teacher ($TEACHER)" || echo Qwen3.6)"
     python3 teacher.py --model $TEACHER_DIR --lessons $IN --out $TPT --top $(plan ".get('top',32)") \
       --max-len $(plan ".get('max_len',8192)") --cache $CACHE --hours $(plan ".get('teacher_hours',2.0)") $GEN || die "teacher pass"
   fi
@@ -813,7 +870,8 @@ PY
     else python3 prune.py --src $SRC --dst $W/cut-$NAME --counts $COUNTS --keep $KEEP --by $(cutby $COUNTS) --name $NAME || die "$NAME cut"; fi
     # Fold instead of drop (rung or plan "fold": true): blend each dropped expert into the kept expert most like it, in
     # place in the cut model, before the heal. Weighed by the skill counts of a coverage cut, else by the rung's counts.
-    if [ "$(plan "['rungs'][$i].get('fold',p.get('fold',False))")" = "True" ]; then
+    if [ "$(plan "['rungs'][$i].get('fold',p.get('fold',False))")" = "True" ] && [ "${TFAM:-qwen}" = gpt-oss ]; then echo "$NAME: fold is not built for GPT-OSS yet; the dropped experts are dropped"
+    elif [ "$(plan "['rungs'][$i].get('fold',p.get('fold',False))")" = "True" ]; then
       FOLDC="${CARGS:-}"; [ "$(plan "['rungs'][$i]['keep']")" = "cover" ] || FOLDC=""; [ -z "$FOLDC" ] && [ -f "$COUNTS" ] && FOLDC=$COUNTS
       status cut "$NAME: folding the dropped experts into the kept ones"
       python3 fold.py --src $SRC --cut $W/cut-$NAME --counts "$FOLDC" || die "$NAME fold"

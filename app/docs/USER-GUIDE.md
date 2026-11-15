@@ -346,7 +346,7 @@ Settings, **🔔 Check-ins**. On a schedule you pick, Bob does a quick round and
 
 ### Everyday helpers (each off)
 
-Settings, **🗓 Everyday helpers**: a today card when Bob opens (weather only with **Place for the weather** filled in), a **⏱ Focus** timer that holds check-ins and reminders, a spending sheet from receipt photos, what's new after an update, a dot on the tray icon, and **Users** (needs the passcode lock).
+Settings, **🗓 Everyday helpers**: a today card when Bob opens (weather only with **Place for the weather** filled in), a **⏱ Focus** timer that holds check-ins and reminders, a spending sheet from receipt photos, what's new after an update, a dot on the tray icon, and **Users**: each person in the house gets their own chats, memory, email account, API keys and coding agents, picked from the menu the cube opens. A passcode is up to each person; nobody needs the passcode lock for it.
 
 Also: **🌙 Quiet hours**, a shortcut to ask Bob from anywhere (Ctrl+Shift+Space), and **🩺 Health and history** (catch crashes, a safe start, **Put it back** for the last 20 Settings changes, a weekly count, and a Health page).
 
@@ -438,7 +438,7 @@ A **queue** runs jobs overnight, **Show the wobble** shows how much a score move
 
 - **Personality** (Settings, 🎚 Personality): the eleven dials (Dry wit, Puns, Tangents, Outlook, Nerd references, Talkative, Manner, Copied-mind musings, Builder itch, Curiosity, Ambition), each 0 to 4. His greeting changes as you move them. Presets include *Replicant on a deadline*, *Butler mode* and *Pun-dit*. **Reset to Bob** puts it all back.
 - **Assistant presets** (off): save presets with a name, your own instructions, a brain, a starting effort and which tools he may use, then pick one from **🎭 Preset** next to Effort. A preset never switches on a tool that is off.
-- **Style:** themes, avatars, animations and layout. **Look** picks how the whole page is drawn: **Lamplight** (a dark room lit by Bob's cube, with Find anything on Ctrl+K; new installs start here), **Classic** (where earlier installs stay until you pick) or **Terminal**. **Bob's look** puts the fNRI cube in a small porthole as his picture (to begin with), or the pixel Bob if you'd rather. **🧍 Make your own look** builds Bob's avatar from parts.
+- **Style:** themes, avatars, animations and layout. **Look** picks how the whole page is drawn: **Lamplight** (a dark room lit by Bob's cube, with Find anything on Ctrl+K; new installs start here), **Classic** (where earlier installs stay until you pick) or **Terminal**. In Lamplight and Terminal, **Lamp** picks the light: **Mercury** (pale sky blue, new installs start here), **Sodium** (orange-yellow), **Thallium** (green) or **Neon** (red-orange), each the colour of that gas lamp's real light. It sets the colours and Bob's app icon. **Bob's look** puts the fNRI cube in a small porthole as his picture (to begin with), or the pixel Bob if you'd rather. **🧍 Make your own look** builds Bob's avatar from parts.
 - **Language** (Settings, Bob himself): English, Français or Español for Bob's screens. Bob answers in whatever language you write in.
 - **Text size** and **Readable font** (Look & feel): 80% to 160%, and a plainer font.
 - **Custom sampling** (Engines; off): your own temperature and top P for Qwen brains.

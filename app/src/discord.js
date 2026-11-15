@@ -1,4 +1,4 @@
-// Bob on Discord (Settings, Online services). Off unless you turn it on.
+// Bob on Discord (Settings, Agents, Discord). Off unless you turn it on.
 //
 // Bob joins your Discord server as a bot: you make the bot yourself in the Discord Developer Portal and give Bob its
 // token. Never a normal user account (that's against Discord's rules). The token lives where the cloud keys live: a
@@ -71,6 +71,9 @@ export const JOB_TYPES = [
 ];
 const ALWAYS_TOOLS = ['use_tools']; // only loads tool groups; what's in them is still checked against the list
 
+// Someone's name as their server shows it, cleaned.
+const nameOf = (m) => String(m.member?.nick || m.author?.global_name || m.author?.username || 'someone').replace(/[\u0000-\u001f<>@]/g, '').slice(0, 40) || 'someone';
+
 export function discordSettings(cfg) {
   const d = cfg.discord || {};
   const jobs = {};
@@ -95,7 +98,9 @@ export function discordSettings(cfg) {
     dmPictures: d.dmPictures === true,
     // 1.5.224 Chat on Discord: on keeps today's behaviour. Off: nobody on the server can start a brain job, so no brain
     // loads for Discord at all; Keep order still runs, as plain rules.
-    chat: d.chat !== false
+    chat: d.chat !== false,
+    // 1.5.228 Show the whole channel (off): every message in a listed channel shows on its page in Bob, not only calls.
+    showChannel: d.showChannel === true
   };
 }
 
@@ -119,7 +124,7 @@ export function saveDiscord(cfg, patch) {
 // Only these keys, only these types.
 export function cleanDiscordPatch(b = {}, current = {}) {
   const out = {};
-  for (const k of ['enabled', 'chat', 'caseSensitive', 'share', 'autoAccept', 'keepAwake', 'dmEnabled', 'dmApprove', 'dmPictures']) if (k in b) out[k] = b[k] === true;
+  for (const k of ['enabled', 'chat', 'caseSensitive', 'share', 'autoAccept', 'keepAwake', 'dmEnabled', 'dmApprove', 'dmPictures', 'showChannel']) if (k in b) out[k] = b[k] === true;
   if ('wake' in b) { const w = cleanWake(b.wake); if (w) out.wake = w; }
   const list = (v) => [...new Set(String(Array.isArray(v) ? v.join(' ') : v || '').split(/[\s,;]+/).filter((x) => ID_RX.test(x)))].slice(0, 50);
   if ('channels' in b) out.channels = list(b.channels);
@@ -374,7 +379,7 @@ export class DiscordBridge {
     let name = '';
     try { const c = await this.rest('GET', `/channels/${channelId}`); name = String(c?.name || '').replace(/[\u0000-\u001f<>@]/g, '').slice(0, 60); } catch {}
     this.unlisted.set(channelId, name);
-    this.log(`ignored a message in ${name ? `#${name}` : `channel ${channelId}`}: not on my channel list (Settings, Online services, Bob on Discord can add it)`);
+    this.log(`ignored a message in ${name ? `#${name}` : `channel ${channelId}`}: not on my channel list (Settings, Agents, Discord can add it)`);
   }
 
   // One message from Discord. Only listed channels, only people on the list (if there is one), never bots.
@@ -387,9 +392,10 @@ export class DiscordBridge {
     const channelId = String(m.channel_id || '');
     if (!s.channels.includes(channelId)) return this.notListed(channelId, m.guild_id);
     const who = String(m.author?.id || '');
-    if (s.people.length && !s.people.includes(who)) return;
+    const hear = () => (s.showChannel ? this.hear(m, channelId) : undefined); // 1.5.228 Show the whole channel
+    if (s.people.length && !s.people.includes(who)) return hear();
     const prompt = this.mentionAsk(m.content) ?? matchWake(s.wake, m.content, s.caseSensitive); // "@Bob hi" works like the wake phrase
-    if (prompt === null) return;
+    if (prompt === null) return hear();
     const reply = (text) => this.post(channelId, m.id, text);
     if (!s.chat) { // 1.5.224 Chat on Discord is off: no job, so no brain. Said once an hour per person, then silence.
       if (this.now() - (this.chatOffSaid.get(who) || 0) < 3600_000) return;
@@ -405,22 +411,44 @@ export class DiscordBridge {
     const now = this.now();
     if (now - (this.lastAsk.get(who) || 0) < COOLDOWN_MS) return reply('One moment, I\'m still on your last one. Ask again in a few seconds.');
     this.lastAsk.set(who, now);
-    const name = String(m.member?.nick || m.author?.global_name || m.author?.username || 'someone').replace(/[\u0000-\u001f<>@]/g, '').slice(0, 40) || 'someone';
+    const name = nameOf(m);
     if (s.autoAccept) {
       const mine = [...this.jobs.keys()].filter((id) => (this.brain.queue || []).some((j) => j.id === id && ['waiting', 'working'].includes(j.state)));
       if (mine.length >= MAX_WAITING) { this.lastAsk.delete(who); return reply('I\'ve got a few Discord jobs going already. Ask again in a little while.'); }
     }
     // 1.5.211 the room gate: it waits for the owner's OK in the Discord chat on this replicant matrix, unless Auto-accept is on.
-    const line = this.gate.ask({ who, name, where: channelId, text: prompt.slice(0, MAX_IN), type, ref: { channelId, messageId: m.id } }, { auto: s.autoAccept });
+    const whereName = await this.channelName(channelId); // 1.5.228: each channel is its own page in the Discord chat
+    const line = this.gate.ask({ who, name, where: channelId, whereName, text: prompt.slice(0, MAX_IN), type, ref: { channelId, messageId: m.id } }, { auto: s.autoAccept });
     if (line.refused) { this.lastAsk.delete(who); return reply(line.refused === 'person' ? 'You\'ve got a few waiting for the owner\'s OK already. Ask again once they\'re answered.' : 'Lots of requests are waiting for the owner\'s OK already. Ask again later.'); }
-    this.roomNews();
+    this.roomNews({ name: line.name, text: line.text, where: line.whereName, waiting: line.state === 'waiting' });
     if (s.autoAccept) return this.run(line);
     this.log(`Discord request waiting for your OK (${type}, ${line.id.slice(0, 8)})`);
     this.react(channelId, m.id, '⏳');
   }
 
+  // 1.5.228 A message in a listed channel that didn't call Bob, kept on that channel's page (Show the whole channel on).
+  // Nothing runs, nothing is answered, no brain loads; Keep order has already taken down anything it removes.
+  async hear(m, channelId) {
+    const files = [].concat(m.attachments || []).length;
+    const text = String(m.content || '').trim() || (files ? `(${files} file${files === 1 ? '' : 's'})` : '');
+    if (!text) return;
+    this.gate.heard({ who: String(m.author?.id || ''), name: nameOf(m), where: channelId, whereName: await this.channelName(channelId), text: text.slice(0, MAX_IN) });
+    this.roomNews();
+  }
+
   // Tells Bob's open pages the room changed (a quiet count, never a pop-up).
-  roomNews() { try { this.brain.broadcast?.({ type: 'room', room: 'discord', waiting: this.gate.waiting().length }); } catch {} }
+  // last (1.5.228): the request that just came in, for the word bubble on the Discord icon (Bob-Net icons). Display only.
+  roomNews(last = null) { try { this.brain.broadcast?.({ type: 'room', room: 'discord', waiting: this.gate.waiting().length, ...(last ? { last } : {}) }); } catch {} }
+
+  // A channel's name ("general"), asked of Discord once per channel and kept in memory. '' when it can't be read.
+  async channelName(id) {
+    const names = (this.channelNames ||= new Map());
+    if (names.has(id)) return names.get(id);
+    let name = '';
+    try { const c = await this.rest('GET', `/channels/${id}`); name = String(c?.name || '').replace(/[\u0000-\u001f<>]/g, '').slice(0, 100); } catch {}
+    names.set(id, name);
+    return name;
+  }
 
   react(channelId, messageId, emoji, off = false) {
     return this.rest(off ? 'DELETE' : 'PUT', `/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/@me`).catch((e) => this.log(`couldn't react on Discord: ${e.message}`));
@@ -465,6 +493,25 @@ export class DiscordBridge {
         ...(i === 0 && messageId ? { message_reference: { message_id: messageId, fail_if_not_exists: false } } : {})
       }).catch((e) => this.log(`couldn't post to Discord: ${e.message}`));
     }
+  }
+
+  // 1.5.228 You talking in a channel from Bob's Discord chat: only a channel on Bob's list, only while connected, at
+  // most one message a second, and nobody gets pinged (no @everyone, no @someone). Kept on that channel's page.
+  async say(channelId, text) {
+    const s = this.settings();
+    const ch = String(channelId || '');
+    const words = String(text ?? '').replace(/[\u0000-\u0008\u000b-\u001f]/g, '').trim();
+    if (!words) return { error: 'empty' };
+    if (words.length > MAX_TEXT * 2) return { error: 'long' };
+    if (!s.enabled || !this.running) return { error: 'off' };
+    if (!s.channels.includes(ch)) return { error: 'not listed' };
+    if (this.now() - (this.saidAt || 0) < 1000) return { error: 'fast' };
+    this.saidAt = this.now();
+    for (const piece of chunks(words)) {
+      try { await this.rest('POST', `/channels/${ch}/messages`, { content: piece, allowed_mentions: { parse: [] } }); } catch (e) { this.log(`couldn't post to Discord: ${e.message}`); return { error: 'send' }; }
+    }
+    const line = this.gate.said({ where: ch, whereName: await this.channelName(ch), text: words });
+    return { line };
   }
 
   // Only a file made for this job, in Bob's own save folders, made after the request came in.
@@ -727,26 +774,43 @@ export async function discordRoute({ req, res, p, isLocal, brain, body, send }) 
     if (r.error) { send(res, 409, { error: r.error === 'not found' ? 'That one is gone.' : `That one is ${r.error}.` }); return true; }
   }
   const patch = cleanDiscordPatch(b, bridge.settings());
+  if (patch.showChannel === false) { bridge.gate.forgetHeard(); bridge.roomNews(); } // 1.5.228: off takes the channel talk away too
   if (Object.keys(patch).length) { saveDiscord(brain.cfg, patch); brain.log('settings', `Discord: ${Object.keys(patch).join(', ')} changed (your click)`); }
   bridge.sync();
   send(res, 200, discordView(bridge));
   return true;
 }
 
+const SAY_ERRORS = {
+  empty: 'Type something first.', long: 'That\'s too long for one go.', off: 'I\'m not connected to Discord right now, so it didn\'t send.',
+  'not listed': 'That channel isn\'t on my list. Add it in Settings, Discord, to talk there.', fast: 'One a second, please. Try again.', send: 'Discord didn\'t take it. See the logbook.'
+};
+
 // 1.5.211 GET/POST /api/rooms/discord: the group's own chat, and your Accept or Decline. Only on this PC (the second gate).
 async function roomRoute({ req, res, isLocal, brain, body, send }) {
   const bridge = brain.discord;
   if (!bridge) { send(res, 404, { error: 'not ready' }); return true; }
   if (!isLocal) { send(res, 403, { error: 'Discord requests can only be answered on this replicant matrix itself.' }); return true; }
-  if (req.method === 'GET') { send(res, 200, { ...bridge.gate.view(), on: bridge.settings().enabled, autoAccept: bridge.settings().autoAccept }); return true; }
+  if (req.method === 'GET') { send(res, 200, await roomView(bridge)); return true; }
   if (req.method !== 'POST') { send(res, 405, { error: 'no' }); return true; }
   const b = await body(req);
   if (b.clear === true) { bridge.gate.clear(); bridge.roomNews(); brain.log('settings', 'Discord chat emptied (your click)'); }
-  else {
+  else if (b.say && typeof b.say === 'object') { // 1.5.228 you, talking in a channel through Bob
+    const r = await bridge.say(b.say.where, b.say.text);
+    if (r.error) { send(res, r.error === 'send' ? 502 : 409, { error: SAY_ERRORS[r.error] || 'That didn\'t send.' }); return true; }
+  } else {
     const r = await bridge.answer(String(b.id || ''), b.ok === true);
     if (r.error) { send(res, 409, { error: r.error === 'not found' ? 'That request is gone.' : `That one is ${r.error.replace('already ', 'already ')}.` }); return true; }
   }
-  send(res, 200, { ...bridge.gate.view(), on: bridge.settings().enabled, autoAccept: bridge.settings().autoAccept });
+  send(res, 200, await roomView(bridge));
   return true;
+}
+
+// The chat, plus the channels on Bob's list (each gets a page you can talk in, even before anyone calls him there).
+async function roomView(bridge) {
+  const s = bridge.settings();
+  const channels = [];
+  for (const id of s.channels.slice(0, 50)) channels.push({ id, name: bridge.running ? await bridge.channelName(id) : (bridge.channelNames?.get(id) || '') });
+  return { ...bridge.gate.view(), on: s.enabled, connected: Boolean(bridge.running), autoAccept: s.autoAccept, channels };
 }
 

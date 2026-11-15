@@ -19,6 +19,22 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { cleanAddress, NEEDS, PROTOCOL, guestRefusal } from './share-brains.js';
 import { jitter } from './retry.js'; // item 194
+
+// Nov 14 (the owner): a chat from another of your Bobs (his icon) is kept here too, as a chat of its own per Bob
+// ("From PC (Bob-Net)"), so what was said, or pasted across, can be found on both. Never a guest- id: it's saved.
+export const keptNetChatId = (from) => `bobnet-from-${crypto.createHash('sha256').update(String(from || '')).digest('hex').slice(0, 12)}`;
+export function keepNetChat(brain, from, text, reply = '') {
+  try {
+    const id = keptNetChatId(from), msgs = brain.session(id), at = Date.now();
+    const first = msgs.length ? {} : { chatTitle: `From ${from} (Bob-Net)`.slice(0, 70), from };
+    msgs.push({ role: 'user', content: String(text || '').slice(0, 20000), at, ...first });
+    if (reply) msgs.push({ role: 'assistant', content: String(reply).slice(0, 20000), at: Date.now() });
+    else msgs.push({ role: 'assistant', content: `*(Sent from ${from} to keep here. I didn't answer it.)*`, at: Date.now() });
+    brain.saveSession(id);
+    try { brain.broadcast?.({ type: 'chats' }); } catch {}
+    return id;
+  } catch { return null; }
+}
 export const NEEDS_LIST = NEEDS;
 
 // ---------- What a job needs ----------
@@ -109,6 +125,8 @@ export class GuestJobs {
     const text = String(b.text || '').trim().slice(0, 20000);
     if (!text) return { status: 400, body: { error: 'empty' } };
     const from = String(b.from || 'another Bob').replace(/[\u0000-\u001f<>]/g, '').slice(0, 40) || 'another Bob';
+    // Nov 14: "just send it, he needn't answer" (copy and paste between your machines): kept here, no brain at all.
+    if (chat && b.answer === false) { keepNetChat(this.brain, from, text); this.brain.log('guest', `kept a message from ${from} (no answer asked)`); return { status: 200, body: { saved: true } }; }
     const sessionId = `guest-${crypto.randomBytes(6).toString('hex')}`;
     // A few lines of the asking chat, so "make that one bigger" still means something here. Words only.
     const context = [].concat(b.context || []).slice(-8).filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string').map((m) => ({ role: m.role, content: m.content.slice(0, 2000) }));
@@ -116,7 +134,7 @@ export class GuestJobs {
     const effort = room ? 'low' : ['low', 'medium', 'high', 'extreme'].includes(b.effort) ? b.effort : 'low';
     const guest = room ? { from: room.from, need, public: true, tools: room.tools, taken: true } : chat ? { from, need, chat: true, tools: b.web === true ? ['web_search', 'fetch_page'] : [] } : { from, need };
     const { jobId } = this.brain.enqueue(sessionId, text, [], effort, { guest, kind: NEED_KIND[need] });
-    this.jobs.set(jobId, { id: jobId, sessionId, from, events: [], n: 0, subs: new Set(), files: new Set(), approvals: new Set(), done: false });
+    this.jobs.set(jobId, { id: jobId, sessionId, from, ...(chat ? { chat: true, text } : {}), events: [], n: 0, subs: new Set(), files: new Set(), approvals: new Set(), done: false });
     this.brain.log('guest', `took a ${need} job from ${from}`);
     return { status: 200, body: { jobId } };
   }
@@ -146,7 +164,12 @@ export class GuestJobs {
       g.done = true;
       for (const res of g.subs) res.end();
       g.subs.clear();
-      this.brain.sessions.delete(g.sessionId); // not kept as a chat here
+      if (g.chat) { // Nov 14: the chat from his icon is kept here too, question and answer, in its own chat
+        const msgs = this.brain.sessions.get(g.sessionId) || [];
+        const reply = msgs.filter((m) => m.role === 'assistant' && !m.tool_calls?.length && typeof m.content === 'string' && m.content.trim()).map((m) => m.content).at(-1) || '';
+        keepNetChat(this.brain, g.from, g.text, reply || '*(No answer came out.)*');
+      }
+      this.brain.sessions.delete(g.sessionId); // the working copy goes; the kept one stays
       // 1.5.133: 6 hours (was 15 minutes), so a file that didn't come across the first time can still be fetched.
       setTimeout(() => this.jobs.delete(g.id), KEEP_FILES_MS).unref?.();
     }
@@ -182,7 +205,12 @@ export class GuestJobs {
 // Routes for the Bob doing the work. Through the door only (or this PC itself).
 export async function guestRoute({ req, res, p, url, brain, body, send, serveFile, findOutput, cfg }) {
   const g = brain.guests;
-  if (req.method === 'POST' && p === '/api/guest/jobs') { const r = g.start(await body(req).catch(() => ({}))); return send(res, r.status, r.body); }
+  if (req.method === 'POST' && p === '/api/guest/jobs') {
+    const b = await body(req).catch(() => ({}));
+    // Nov 14: a game holds the card here: no job, Gaming pressed or not (game-guard.js). A keep-only message still lands.
+    if (!(b?.need === 'chat' && b?.answer === false) && (await brain.gameBusy?.())) return send(res, 409, { busy: 'gaming' });
+    const r = g.start(b); return send(res, r.status, r.body);
+  }
   const m = p.match(/^\/api\/guest\/jobs\/([0-9a-f-]{36})\/(events|approve|stop|file)$/);
   if (!m) return false;
   const [, id, what] = m;
@@ -244,9 +272,20 @@ export async function sendAway(brain, job, plan, { lenders = brain.lenders, time
   const history = brain.session(job.sessionId).filter((m) => (m.role === 'user' || m.role === 'assistant') && !m.tool_calls && typeof (m.text ?? m.content) === 'string').slice(-8).map((m) => ({ role: m.role, content: String(m.text ?? m.content) }));
   let r;
   try {
-    r = await lenders.call(lender, '/api/guest/jobs', { method: 'POST', body: { protocol: PROTOCOL, from: brain.cfg.windowsName || 'Bob', need: plan.need, text: job.text, effort: job.effort, context: history, ...(room ? { room } : {}), ...(plan.need === 'chat' ? { web: plan.web === true } : {}) }, timeout: 5000 });
+    r = await lenders.call(lender, '/api/guest/jobs', { method: 'POST', body: { protocol: PROTOCOL, from: brain.cfg.windowsName || 'Bob', need: plan.need, text: job.text, effort: job.effort, context: history, ...(room ? { room } : {}), ...(plan.need === 'chat' ? { web: plan.web === true, ...(plan.answer === false ? { answer: false } : {}) } : {}) }, timeout: 5000 });
   } catch { r = null; }
   const j = r ? await r.json().catch(() => ({})) : {};
+  // Nov 14: sent without asking for an answer, and he kept it. Done here too, with one line saying so.
+  if (r?.ok && j.saved === true && plan.answer === false) {
+    brain.awayJobs.delete(job.id);
+    const text = `Sent to ${lender.name}. It's kept in his chats (From ${brain.cfg.windowsName || 'Bob'}), and he didn't answer, as asked.`;
+    Object.assign(job, { state: 'done', away: undefined, doneAt: Date.now() });
+    try { const msgs = brain.session(job.sessionId); msgs.push({ role: 'user', content: job.text, at: job.at || Date.now() }); msgs.push({ role: 'assistant', content: `*(${text})*`, at: Date.now() }); } catch {}
+    brain.saveQueue();
+    emit({ type: 'token', text: `*(${text})*` });
+    emit({ type: 'done' });
+    return true;
+  }
   if (!r?.ok || !j.jobId) {
     brain.awayJobs.delete(job.id);
     lenders.noteJobs(lender, j.busy || 'not reachable');

@@ -1,4 +1,4 @@
-<h1 align="center">Bob of The Idle Process</h1>
+<h1 align="center">Bob</h1>
 
 <p align="center"><b>A local AI agent with a personality. He runs on your own computer, and nothing goes online unless you turn it on.</b></p>
 
@@ -8,10 +8,12 @@
   <a href="#the-computer-science-lab">The Lab</a> ·
   <a href="#bobs-own-brains">Brains and scores</a> ·
   <a href="#bob-net-bobs-working-together">Bob-Net</a> ·
+  <a href="#the-project">The project</a> ·
+  <a href="#coming-next">Coming next</a> ·
   <a href="app/docs/README.md">All the docs</a>
 </p>
 
-![Bob's window in the Lamplight look: the glowing cube top left, tabs across the top, a chat in the middle and a quiet composer below](app/docs/screenshot.png)
+![Bob's window in the Lamplight look, Mercury lamp: the glowing cube top left with the chat heads under it, tabs across the top, the window's own buttons on the same bar, a chat about a Blender lantern in the middle and a quiet composer below](app/docs/screenshot.png)
 
 <p align="center">Windows · Mac · Linux · Raspberry Pi · Android · iPhone &nbsp;|&nbsp; free and open source &nbsp;|&nbsp; no account, no telemetry</p>
 
@@ -41,19 +43,34 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.224-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.224-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.224-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.224-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.224-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.224-linux-x86_64.AppImage) |
-| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.224-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.224-linux-amd64.deb) |
-| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.224-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.224-linux-x86_64.flatpak) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.224-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.224-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
-| **Android phone** | [`Bob-1.5.224-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.224-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.231-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.231-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.231-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.231-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.231-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.231-linux-x86_64.AppImage) |
+| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.231-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.231-linux-amd64.deb) |
+| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.231-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.231-linux-x86_64.flatpak) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.231-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.231-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
+| **Android phone** | [`Bob-1.5.231-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.231-android.apk) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 
 **On Windows 11?** Bob isn't code signed yet, so Smart App Control may stop him from running. [Read this first](#windows-11-smart-app-control).
 
 ## What's new
+
+**In 1.5.212 to 1.5.227** (13 and 14 Nov 2026):
+
+| | |
+|---|---|
+| 🧭 **Journey has music and sound** | A tune for every kind of place, fight music and fanfares, sounds for doors, chests, coin and magic. Each style draws its own weapons, shields, shots and monsters, with names to fit, and the land got tall mountains, lit towns, smoke, neon and steam. 🔊 or M mutes it. Crafting, bags, a Scroll of return, an in-game guide, a story told as you go and a trophy case arrive in 1.5.227. |
+| 📧 **Tidy my email, safely** | Off to start with. Bob sorts your inbox on a plan card you change and approve; trash is a move, drafts are never sent. Nothing in an email can give Bob orders: the mail is cleaned and fenced in code, and a chat holding email can only sort and draft. |
+| 🔑 **A way back from a forgotten passcode** | A spare key kept on another of your Bobs gets everything back; a code by email or Discord opens the lock screen. |
+| 🛡 **Keep order on Discord** | Off to start with. Plain-rule moderation with no brain: spam, scam links and slurs come down, warnings lead to timeouts, kicks and bans wait for your OK. **Chat on Discord** can be switched off so no brain loads for the server. "@Bob" works like "hey bob". |
+| 🧰 **Tools that forgive and remember** | Tools are worded for each brain family, the notice board can't lose items or its layout, and a record of every tool call lets Bob quote what really happened instead of guessing. |
+| ⚙ **Shorter Settings** | About 135 switches have shorter names and one- or two-line descriptions, in new groups. |
+| 🧊 **The cube is Bob** | The cube is his picture everywhere outside games, and every Bob on Bob-Net shows his cube head. Pixel looks live on in games. |
+| 🎮 **A busy card is respected** | Bob won't load a brain onto a graphics card a game or another app is using, and a lent card comes back when a game wants it. |
+| 🧪 **Lab** | The training protocol, experts per word without a reload, Straight facts round two, and a privacy scrub that catches a name split across tokens before anything is published. |
+| 🛑 **Stop means stop** | "Stop" and "wait" act at once, One brain really uses one brain, picture to 3D works on RTX 50 cards, and Brain Engine 7 is on. |
 
 **In 1.5.211:**
 
@@ -84,8 +101,13 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 | **Now running.** Closed until you open it from the status line. | **Calibrate.** Times each brain on your card and recommends the fastest way to load it. |
 
 <p align="center">
-  <img src="app/docs/screens/cube-porthole.png" width="420" alt="The porthole cube glowing beside Bob's name">
-  <br><b>The porthole cube.</b> It lights the room: brighter while Bob thinks, nearly dark with no brain loaded.
+  <img src="app/docs/screens/cube-porthole.png" width="420" alt="The porthole cube glowing beside Bob's name, with chat heads under it: another Bob, Discord with 2 waiting, and Telegram">
+  <br><b>The porthole cube.</b> It lights the room: brighter while Bob thinks, nearly dark with no brain loaded. Chat heads for your other Bobs, Discord and Telegram sit under it, only for the ones you turned on.
+</p>
+
+<p align="center">
+  <img src="app/docs/screens/lamps.png" alt="The same chat in the four lamps, each a dark room with faint smoke lit by the cube: Mercury pale blue, Sodium orange-yellow, Thallium green and Neon red">
+  <br><b>Four lamps.</b> Mercury, Sodium, Thallium and Neon, each the colour of that gas lamp's real light. The lamp colours the app icon too.
 </p>
 
 <details>
@@ -165,11 +187,50 @@ Housekeeping is now on: it touches only Bob's own files unless you add folders, 
 
 The [changelog](CHANGELOG.md) has every release.
 
+## The project
+
+**The goal.** One all-round brain of Bob's own that runs on everyday computers: good at agent work (plans, uses tools, checks its results, finishes the job), writing and fixing code, holding a good conversation, and **looking things up when it isn't sure** instead of guessing. Then a family of smaller Bobs cut from it for smaller cards, handhelds and phones. Everything is done in the open: every lesson set, score, failure and dollar is published.
+
+**How a brain is made, and why in this order** ([roadmap](app/docs/ROADMAP-ONE-MODEL.md), [the proposal](app/docs/PROPOSAL.md)):
+
+1. **Measure first.** A fixed report card and the stock model's own next-word odds, before anything changes. Every later step is benchmarked against it, so nothing is called better without numbers.
+2. **Start clean.** The next Bobert starts from stock Qwen3.6-35B-A3B downloaded fresh, with nothing inherited from earlier Bobs, and every old lesson set is audited before any of it is reused. A brain can only be as clean as what it learns from.
+3. **Look inside.** Which experts each skill uses, layer by layer (REAP scores, the fNRI scans). Surgery, steering and the evil check are tried live and kept as records; **they never teach a brain**.
+4. **Train the full model, then cut.** Clean first, train second, cut last, so a cut keeps what the training taught.
+5. **Heal against a real teacher.** A cut Bob is taught back to give the same odds as the trained full model, so it heals toward a brain that exists.
+6. **Then the rest.** More lesson rounds that never repeat a test question, practice on its own answers, the thinking styles, blends, smaller Bobs, other brain families, and publishing, each with its own go.
+
+Nothing trains, rents a card or uploads without the owner's go, and every rental has a cap.
+
+**Where everything is:**
+
+- **The Computer Science Lab**, where every step runs: [below](#the-computer-science-lab), and the [Lab steps plan](app/docs/LAB-STEPS-PLAN.md).
+- **The costs**, every rental and dollar, failures included: [What Bob costs to make](app/docs/COSTS.md).
+- **The models**, each with a card that says what it is and how it scored: [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) · [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) · [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) · [gpt-oss-120b cut to 38B](https://huggingface.co/MouseWurX/gpt-oss-120b-REAP-38B-UNHEALED-GGUF) (cut, not yet healed).
+- **The data**: [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) (the lessons, clean, full and preference files) · [bob-studies](https://huggingface.co/datasets/MouseWurX/bob-studies) (surgery and interview studies, never used for training).
+- **The record**: [Bob's own models](app/docs/BOBS-OWN-MODELS.md) (every score and what went wrong) and [the Forge journal](app/docs/FORGE-JOURNAL.md) (the lab notebook).
+
+## Coming next
+
+**Planned, not shipped.** These are plans in the repository. Nothing on this list trains, rents a card or uploads without the owner's go.
+
+| | |
+|---|---|
+| 🧠 **A clean new Bobert** | A fresh start from stock Qwen3.6-35B-A3B, cleaned first, then taught only lessons that pass an audit, with a fixed report card he must beat. Then more rounds, the styles, smaller Bobs and other brain families. [Roadmap](app/docs/ROADMAP-ONE-MODEL.md) |
+| 🧰 **Tool lessons** | Every failed tool run turned into corrected lessons, "look it up when unsure" taught from the saved odds, and rounds that never repeat a test question. [Plan](app/docs/TOOL-LESSONS-PLAN.md) |
+| 🔧 **Tools brains already know** | Giving each brain family the tool shapes it was trained on (for GPT-OSS: its browser, python and apply_patch tools), mapped back to Bob's own tools in code. A study for now; it needs an engine change first. |
+| 🪜 **Every Lab method as a step** | Each advanced method (tool interviews, expert maps, the evil check, steering, cuts, teaching) as a step you can run on its own or as part of a whole pipeline, with run records, comparisons and costs per run. [Plan](app/docs/LAB-STEPS-PLAN.md) |
+| 🔬 **Where a behaviour lives** | Research on Riker: layer-by-layer patching and sparse-autoencoder features, to find where a behaviour sits in the brain. Kept as a study record; it never trains anything. |
+
+## What it costs
+
+Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 14 Nov 2026: about **$1,990** spent in all, of which about $484 is rented GPU time (failures included), and about $2,496 to $2,571 projected for the planned family of models. The page lists every rental and what came of it.
+
 ## What Bob does
 
 | | |
 |---|---|
-| ![A chat about a garden budget on the left, and the spreadsheet open in the side panel on the right](app/docs/screens/documents.png) | ![First-time setup: the programs and models Bob suggests for a 16 GB card, each with a tick box](app/docs/screens/get-bob-ready.png) |
+| ![A chat about a garden budget on the left, and the spreadsheet open in the side panel on the right](app/docs/screens/documents.png) | ![First-time setup, step 3 of 7 (Brains): the brains Bob suggests for a 16 GB card, each with a tick box](app/docs/screens/get-bob-ready.png) |
 | **Documents beside the chat.** Sheets, slides, pages and PDFs. | **Ready in one button.** Bob reads your card and fetches what fits. |
 | ![The Brains page: each brain, its jobs, and where it sits on the card and in memory](app/docs/screens/brains-page.png) | ![The adventure table: three characters, two enemies with their hearts, the game master's story, and cards for the player's turn](app/docs/screens/adventure.png) |
 | **Brains.** Each brain, the jobs it does, and where it sits on your card. | **Adventure.** Bob runs the table; the app rolls the dice, shows the odds and counts the hearts. |
@@ -205,7 +266,7 @@ The [changelog](CHANGELOG.md) has every release.
 
 Most AI apps are for talking to a model or for building one. Bob does both. **🧪 Lab** in the menu opens in its own window, so you can change a brain while Bob keeps chatting.
 
-![The Computer Science Lab in its own window: seven tabs, Keep it simple or Professional, and Make a brain asking What do you want to do?](app/docs/screens/lab.png)
+![The Computer Science Lab in its own window: eight tabs, Keep it simple or Professional, and Make a brain asking What do you want to do?](app/docs/screens/lab.png)
 
 | Tab | What you do there |
 |---|---|
@@ -274,7 +335,6 @@ Same tests, same rented card, each Bob served from his public Q4 file. Riker mat
 | | |
 |---|---|
 | [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) | The lessons the Bobs learned from: chat, tool calls, thinking on and off. CC BY-SA 4.0. |
-| [bob-odds](https://huggingface.co/datasets/MouseWurX/bob-odds) | The teacher's next-word odds used to teach each cut brain back. |
 | [How they're made](app/docs/BOBS-OWN-MODELS.md) | The method, every result, and what went wrong along the way. |
 | [What we've learned](app/docs/MAKING-SMALLER-MODELS.md) | Best practices for making smaller brains from bigger ones: cutting, REAP, teaching back, lessons, fitting the device and renting cards. |
 | [What they cost](app/docs/COSTS.md) | Every rental, itemized, failures included. |
@@ -289,12 +349,16 @@ Put Bob on your PC, laptop, handheld and phone, and they find each other on your
 <img src="app/docs/screens/phone.png" width="240" align="right" alt="Bob for Android: the phone asks the PC's Bob for a wireframe fox and gets it back">
 
 - **Pool graphics cards and memory.** A brain too big for one computer is spread over your Bobs' cards and memory. One bigger than all of that can still run from a fast SSD.
-- **Fast where it counts.** The first load sends the brain once; later loads send only what's missing. A brain that fits on one computer stays there, because that beats any network. With **SCUT** turned on (experimental), a brain spread over two Bobs on weak home Wi-Fi wrote 17.5 tokens a second against 3.5 to 4.8 over plain TCP: [the measurements](app/docs/test-results/2026-11-12-scut-vs-tcp-over-wifi.md).
+- **Fast where it counts.** The first load sends the brain once; later loads send only what's missing. A brain that fits on one computer stays there, because that beats any network. With **SCUT** turned on (experimental), a brain spread over two Bobs on weak home Wi-Fi wrote 17.5 tokens a second against 3.5 to 4.8 over plain TCP: [the measurements](app/docs/test-results/2026-11-12-scut-vs-tcp-over-wifi.md). Over a cable it isn't measured yet: the first try lost its lender partway through copying the brain, and Bob carried on alone ([what ran and what didn't](app/docs/test-results/2026-11-12-bob-net-card-share-over-cable.md)).
 - **Bobs working in concert.** Borrow a bigger Bob's brain for a reply, send a job to whichever Bob is free, or have a bigger Bob check a handheld's harder work.
 - **The phone app** talks to the Bob on your PC, and can run a small brain on the phone itself.
 - **Adventures together:** your other Bobs join the party in the tabletop game.
 
 <br clear="right">
+
+<img src="app/docs/screens/bob-net-architecture.svg" alt="Bob-Net at a glance: a PC, handheld, laptop and Raspberry Pi on the home network, a phone over Tailscale; each Bob has a door with a passcode; hellos every half minute, quick replies and jobs go to the least busy Bob, one brain spread over two graphics cards with each Bob loading its share from its own copy, and Brain Copying sending a brain to another Bob">
+
+*Bob-Net at a glance: who talks to whom, and what goes between them.*
 
 ## Light on your machine
 

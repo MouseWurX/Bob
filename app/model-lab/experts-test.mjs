@@ -26,6 +26,7 @@ const TOOL_JOBS = kit.phrasings.filter((p) => p.group && !p.pic && !p.recent);
 const tools = kit.allTools();
 const { system } = kit.turn(new Set(Object.keys(kit.groups())));
 const quick = Boolean(o.quick);
+const noRun = Boolean(o['no-run']) || process.env.LAB_NO_HANDS === '1';
 const toolSet = quick ? TOOL_JOBS.filter((_, i) => i % 4 === 0) : TOOL_JOBS;
 
 
@@ -64,7 +65,10 @@ async function quiz(url) {
       if (re.test(msg.content || '')) r.fact++; else r.misses.push(`fact "${q}" -> ${(msg.content || '').slice(0, 60)}`);
     } catch (e) { r.misses.push(`fact "${q}" -> error ${e.message.slice(0, 80)}`); } // 11 Nov: one failed request no longer loses the whole report
   }
-  for (const [q, name, test] of CODE) {
+  // 13 Nov (the owner: "make sure he has no hands"): with --no-run, or LAB_NO_HANDS=1 from a Forge plan with no_hands, the code
+  // questions are skipped, because grading them means running the brain's code. Tool answers are only ever parsed.
+  if (noRun) { r.codeN = 0; r.misses.push('code questions skipped (no hands: nothing the brain writes is run)'); }
+  else for (const [q, name, test] of CODE) {
     try {
       const res = await chat(url, { messages: [{ role: 'user', content: q }], max: 600, temperature: 0, ...ODDS });
       const { msg, timings } = res;

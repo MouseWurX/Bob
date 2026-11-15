@@ -23,7 +23,7 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
 const html = read('public/index.html'), css = read('public/style.css'), app = read('public/app.js'), pop = read('public/task-pop.js');
 check('the strip above the message box is gone', !/id="queue"/.test(html) && !/#queue/.test(css) && !/qbox/.test(app));
 check('the bubble is outside the chat column, in a fixed layer', /<div id="taskPop"[^>]*class="say-bubble task-pop"/.test(html) && html.indexOf('id="taskPop"') < html.indexOf('<div class="mid">') && /\.task-pop \{ position: fixed;/.test(css));
-check('see-through like Bob\'s bubbles (72% + blur), 0.7 s fades', /\.say-bubble \{[^}]*72%[^}]*blur[^}]*transition: opacity \.7s/.test(css) && FADE_MS === 700 && POP_MS >= 3000);
+check('see-through like Bob\'s bubbles (45% + blur since 1.5.228), 0.7 s fades', /\.say-bubble \{[^}]*45%[^}]*blur[^}]*transition: opacity \.7s/.test(css) && FADE_MS === 700 && POP_MS >= 3000);
 check('it fades out into the Tasks tab', /\.task-pop\.into \{ opacity: 0; transform: translateY\(-14px\) scale\(\.2\)/.test(css) && /classList\.add\('into'\)/.test(pop));
 check('on a phone it sits above the bottom-bar Tasks button and taps go through', /bar-item\[data-go="tasksBtn"\]/.test(pop) && /\.task-pop\.up\.on \{ pointer-events: none; \}/.test(css));
 check('screen readers hear it', /id="taskPop"[^>]*role="status" aria-live="polite"/.test(html));

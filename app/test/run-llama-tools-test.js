@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { findTool, toolDirs, exeFor, runTool, missingWords, isDiffusion } from '../src/llama-tools.js';
 import { partsOf, joinedName, joinArgs, splitArgs, needsSplitForUpload, joinParts } from '../src/lab-split.js';
 import { benchArgs, readBench, benchLine, benchBrain } from '../src/lab-bench.js';
-import { CardLender, CardBorrower, wantsSpread, lendCardOn, lendCardRoute, RPC_PORT, INNER_PORT, admit, isHomeIp, pickHome, homeIps, openGate, udpRelay, scutOn, scutMbps, scutEnv, SCUT_MBPS, findOwnBrain, cleanBrain, cardStoreDir } from '../src/share-card.js';
+import { CardLender, CardBorrower, wantsSpread, lendCardOn, lendCardRoute, RPC_PORT, INNER_PORT, admit, isHomeIp, pickHome, homeIps, openGate, udpRelay, scutOn, scutMbps, scutEnv, SCUT_MBPS, findOwnBrain, cleanBrain, cardStoreDir, headHash } from '../src/share-card.js';
 import { LlamaCpp } from '../src/llamacpp.js';
 import { cleanSharePatch, shareView, Lenders } from '../src/share-brains.js';
 import { cleanPhonePatch, phoneView } from '../src/phone-access.js';
@@ -216,9 +216,9 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   ok(gates.every((g) => g.udp === false), 'SCUT: off, the gate opens no UDP side');
   {
     const on = { ...cfg, share: { ...cfg.share, scut: true } };
-    ok(scutMbps(on) === 100 && scutMbps({ share: { scutMbps: 300 } }) === 300 && scutMbps({ share: { scutMbps: 9999 } }) === 100 && scutMbps({ share: { scutMbps: 400 } }) === 400 && SCUT_MBPS.join() === '50,100,300,400,1000', 'SCUT: the speed cap is 50, 100, 300, 400 or 1000 Mbit/s, 100 unless picked (or a cable)');
+    ok(scutMbps(on) === 400 && scutMbps({ share: { scutMbps: 300 } }) === 300 && scutMbps({ share: { scutMbps: 9999 } }) === 400 && scutMbps({ share: { scutMbps: 400 } }) === 400 && SCUT_MBPS.join() === '50,100,300,400,1000', 'SCUT: the speed cap is 50, 100, 300, 400 or 1000 Mbit/s, 100 unless picked (or a cable)');
     const e = scutEnv(on, { lend: true });
-    ok(e.GGML_RPC_SCUT === '1' && e.GGML_RPC_SCUT_MBPS === '100' && e.GGML_RPC_SCUT_PUBLIC_PORT === String(RPC_PORT) && !('GGML_RPC_SCUT_PUBLIC_PORT' in scutEnv(on)), 'SCUT: the lent card names the gate\'s port in its offer; the borrowing engine only switches it on');
+    ok(e.GGML_RPC_SCUT === '1' && e.GGML_RPC_SCUT_MBPS === '400' && e.GGML_RPC_SCUT_PUBLIC_PORT === String(RPC_PORT) && !('GGML_RPC_SCUT_PUBLIC_PORT' in scutEnv(on)), 'SCUT: the lent card names the gate\'s port in its offer; the borrowing engine only switches it on');
     const sp = [], gs = [];
     const l2 = new CardLender(on, { spawnFn: (x, a, o) => { const c = spawnFn(x, a, o); sp.push(o); return c; }, tool: () => ({ found: true, path: '/be/ggml-rpc-server' }), ips: () => ['100.101.1.2'], home: () => myHome, gate: async (o) => { gs.push(o); return { ...o, udp: true, close() {} }; }, env: { PATH: '/bin' } });
     const r2 = await l2.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7' });
@@ -252,19 +252,43 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     r3 = await l3.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', brain });
     ok(r3.ok && r3.seeded === 'no room' && runs.length === 1, 'send early: never when the disk would be left with less than 10 GB; the brain just comes over the network');
     l3.close();
+    fs.rmSync(path.join(dir, 'seeded-brains.json'), { force: true });
     l3 = mk({ ...on, share: { ...on.share, scut: false } });
     r3 = await l3.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', brain });
-    ok(r3.ok && !r3.seeded && runs.length === 1, 'send early: off with SCUT off');
+    ok(r3.ok && r3.seeded === 'seeded' && runs.length === 2, 'send early: with SCUT off too (2026-11-14: the card store is the engine\'s own, not SCUT\'s)');
     l3.close();
+    // 2026-11-14 (the owner: "use the model files that are on each device natively"): a copy under another name, or in
+    // another folder of Bob's brains, counts when its size and first-megabyte fingerprint match.
+    {
+      const HEAD_LEN = 1 << 20;
+      const other = path.join(dir, 'models', 'bob', 'lab', 'deep', 'renamed-by-me.gguf');
+      fs.mkdirSync(path.dirname(other), { recursive: true });
+      const body = Buffer.alloc(HEAD_LEN + 10, 7); fs.writeFileSync(other, body);
+      const twin = path.join(tmp, 'asker-copy.gguf'); fs.writeFileSync(twin, body);
+      const head = headHash(twin);
+      ok(/^[0-9a-f]{64}$/.test(head) && head === headHash(other) && headHash(path.join(tmp, 'nope.gguf')) === '', 'own copy: the fingerprint is the same for the same file, and empty for a missing one');
+      ok(findOwnBrain(on, { file: 'asker-name-Q4.gguf', bytes: body.length, head }) === other, 'own copy: found under another name, three folders deep, by size and fingerprint');
+      ok(!findOwnBrain(on, { file: 'asker-name-Q4.gguf', bytes: body.length }), 'own copy: an older Bob sends no fingerprint, so only the same name counts, as before');
+      ok(!findOwnBrain(on, { file: 'asker-name-Q4.gguf', bytes: body.length, head: 'f'.repeat(64) }), 'own copy: the same size with a different start is not taken');
+      ok(findOwnBrain(on, { file: 'big-brain-Q4.gguf', bytes: 4096, head: headHash(brainFile) }) === brainFile, 'own copy: the same name still wins first');
+      ok(cleanBrain({ file: 'x.gguf', bytes: 5, head }).head === head && !('head' in cleanBrain({ file: 'x.gguf', bytes: 5, head: '<x>' })), 'own copy: only a real fingerprint is taken from the asker');
+      const outside = path.join(tmp, 'not-a-brain-folder', 'renamed.gguf'); fs.mkdirSync(path.dirname(outside), { recursive: true }); fs.writeFileSync(outside, Buffer.alloc(HEAD_LEN + 20, 9));
+      ok(!findOwnBrain(on, { file: 'q.gguf', bytes: HEAD_LEN + 20, head: headHash(outside) }), 'own copy: never looked for outside Bob\'s brain folders');
+      fs.rmSync(path.join(dir, 'seeded-brains.json'), { force: true });
+      const l4 = mk({ ...on, share: { ...on.share, scut: false } });
+      const r4 = await l4.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', brain: { file: 'asker-name-Q4.gguf', bytes: body.length, head } });
+      ok(r4.seeded === 'seeded' && runs.at(-1).join(' ') === `--seed ${other} -c`, 'own copy: the lender loads the renamed copy before the card server starts');
+      l4.close();
+    }
     const sent = [];
     const one = { bobs: () => [{ name: 'Go', address: '100.102.0.7:7777' }], call: async (bob, p, o) => { sent.push(o); return { ok: true, json: async () => ({ ok: true, host: '100.102.0.7', port: RPC_PORT }) }; } };
     const b1 = new CardBorrower({ ...on, share: { ...on.share, spread: 'toobig' }, gpuVramGB: 16 }, one, { home: () => [] });
     await b1.open({ sizeGB: 200, file: brainFile });
-    ok(sent[0].body.brain?.file === 'big-brain-Q4.gguf' && sent[0].body.brain.bytes === 4096 && sent[0].timeout > 60000, 'send early: with SCUT on, the borrower names the brain (file name and size only) and waits while it loads');
+    ok(sent[0].body.brain?.file === 'big-brain-Q4.gguf' && sent[0].body.brain.bytes === 4096 && sent[0].body.brain.head === headHash(brainFile) && sent[0].timeout > 60000, 'send early: the borrower names the brain (file name, size and fingerprint only) and waits while it loads');
     b1.close(); sent.length = 0;
     const b2 = new CardBorrower({ share: { spread: 'toobig' }, gpuVramGB: 16 }, one, { home: () => [] });
     await b2.open({ sizeGB: 200, file: brainFile });
-    ok(!('brain' in sent[0].body) && sent[0].timeout === 8000, 'send early: with SCUT off, nothing about the brain is sent');
+    ok(sent[0].body.brain?.file === 'big-brain-Q4.gguf' && sent[0].timeout > 60000, 'send early: with SCUT off too (2026-11-14)');
     b2.close();
     // 1.5.210 (PC test): a Bob that won't lend is named in the logbook with why, instead of a quiet load here.
     const said = [];
@@ -317,7 +341,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     ok(/only 300 MB left/.test(L.leaving?.why || ''), 'card watch: free card memory running low takes it back too');
     L.close();
     // 1.5.214 card test: SCUT's cap on a cable, built-in graphics, and the room a lend just let go of.
-    ok(scutMbps({ share: { scutMbps: 100 } }, { wired: true }) === 1000 && scutMbps({ share: { scutMbps: 100 } }) === 100 && scutMbps({ share: { scutMbps: 100, scutMbpsChosen: true } }, { wired: true }) === 100 && scutMbps({ share: { scutMbps: 400 } }, { wired: true }) === 400, 'SCUT Auto: 1000 on a cable, 100 on Wi-Fi; a picked cap always wins');
+    ok(scutMbps({}) === 400 && scutMbps({ share: { scutMbps: 400 } }) === 400 && scutMbps({ share: { scutMbps: 100, scutMbpsChosen: true } }) === 100 && scutMbps({ share: { scutMbps: 1000 } }) === 1000, 'SCUT Auto is 400 (Nov 14, the owner: "it should be 400 by default"); a picked cap always wins');
     let freeNow = 6 * 2 ** 30;
     const apu = new CardLender({ ...cfg, sharedGraphics: true }, { spawnFn, tool: () => ({ found: true, path: '/be/ggml-rpc-server' }), ips: () => ['100.101.1.2'], home: () => myHome, gate, readCard: async () => null, freeMem: () => freeNow, watchMs: 10, graceMs: 40 });
     ok((await apu.squeezed()) === '', 'card watch, built-in graphics: the lend\'s own memory use doesn\'t count as a squeeze');
@@ -330,10 +354,10 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
       const sp = (exe, args, opts = {}) => { envs.push(opts.env || {}); return spawnFn(exe, args, opts); };
       const W = new CardLender({ ...cfg, share: { ...cfg.share, scut: true } }, { spawnFn: sp, tool: () => ({ found: true, path: '/be/ggml-rpc-server' }), ips: () => ['100.101.1.2'], home: () => myHome, gate, readCard: async () => null, linkKind: () => 'cable' });
       let w = await W.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', home: [H(172, 16, 9, 189)], wired: [H(172, 16, 9, 189)] });
-      ok(w.ok && w.wired === true && envs.at(-1).GGML_RPC_SCUT_MBPS === '1000', 'SCUT Auto: a cable at both ends lifts the cap to 1000');
+      ok(w.ok && w.wired === true && !envs.at(-1).GGML_RPC_SCUT && !envs.at(-1).GGML_RPC_SCUT_MBPS, 'a cable at both ends: plain TCP, no SCUT (Nov 14, the owner: "scut over ethernet isnt needed")');
       W.close();
       w = await W.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', home: [H(172, 16, 9, 189)], wired: [] });
-      ok(w.ok && !w.wired && envs.at(-1).GGML_RPC_SCUT_MBPS === '100', 'SCUT Auto: the other end on Wi-Fi keeps 100');
+      ok(w.ok && !w.wired && envs.at(-1).GGML_RPC_SCUT_MBPS === '400', 'SCUT Auto: the other end on Wi-Fi gets 400');
       W.close();
     }
     // The asking Bob: hears it, marks that Bob down, and the engine loads again without his card.

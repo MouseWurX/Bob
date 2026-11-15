@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ask the full teacher (Qwen3.6-35B-A3B, BF16, loaded here with transformers) what it thinks at every answer position.
+"""Ask the full teacher (Qwen3.6-35B-A3B in BF16, or GPT-OSS 120B in MXFP4, loaded here with transformers) what it thinks at every answer position.
 
 Stores the teacher's top-K words and their log-probabilities per answer token, so the heal step can distil
 without keeping the teacher in memory. Output: teacher.pt = {piece id: (ids[int32 n x K], logp[f16 n x K],
@@ -8,13 +8,18 @@ Also the first real test of the model code on the GPU (same class and forward th
 """
 import argparse, json, os, sys, time
 import torch
-from transformers import AutoTokenizer, Qwen3_5MoeForConditionalGeneration
-import data as D
+from transformers import AutoTokenizer
+import data as D, family as FAM
 
 def load_model(path, dev):
+    if FAM.family(path) == FAM.GPT_OSS:  # MXFP4 kept when the card can (the 120B in about 65 GB), see family.py
+        m = FAM.load(path, dev, teacher=True)
+        print(f"GPT-OSS teacher loaded, {torch.cuda.memory_allocated() / 1e9 if dev == 'cuda' else 0:.1f} GB on the card", flush=True)
+        return m
     for impl in ("grouped_mm", None):
         try:
             kw = {"experts_implementation": impl} if impl else {}
+            from transformers import Qwen3_5MoeForConditionalGeneration
             m = Qwen3_5MoeForConditionalGeneration.from_pretrained(path, dtype=torch.bfloat16, device_map=dev, **kw)
             print(f"teacher loaded (experts: {impl or 'default'}), {torch.cuda.memory_allocated() / 1e9 if dev == 'cuda' else 0:.1f} GB", flush=True)
             return m
@@ -24,6 +29,7 @@ def load_model(path, dev):
 
 @torch.no_grad()
 def score(model, r, K, dev):
+    dev = next(model.parameters()).device if str(dev) == "auto" else dev
     ids = torch.tensor(r["ids"], device=dev)[None]
     m = torch.tensor(r["mask"]); pos = (m[1:] == 1).nonzero(as_tuple=True)[0].to(dev)
     if len(pos) == 0: return None

@@ -1,4 +1,4 @@
-// "Hands for Claude" (Settings, Other apps; off unless you turn it on).
+// "Hands for Claude" (Settings, Agents, Claude; off unless you turn it on).
 // Bob as an MCP server: the Claude app, Claude Code (or another MCP app you make a key for) can ask Bob to use his
 // tools. Claude does the thinking; Bob's Hands, painters, document readers, notes and memory do the work, here.
 // src/mcp.js is the other direction (Bob using other apps' tools).
@@ -37,7 +37,7 @@ export const DOOR_GROUPS = {
   hands: { label: 'Bob\'s Hands', what: 'Files, programs and scripts, apps, his own browser, and Office files. Each Hand must also be on under Hands.', tools: ['file_hands', 'sort_files', 'undo_files', 'run_command', 'run_recipe', 'open_app', 'app_look', 'app_act', 'browser_open', 'browser_read', 'browser_act', 'office_make', 'office_edit', 'convert_file', 'write_file', 'edit_file'] },
   media: { label: 'Pictures, music, clips and voice', what: 'Paint a picture, make a clip, a song or a sound, or say something out loud in Bob\'s voice.', tools: ['make_image', 'make_video', 'make_music', 'make_sound', 'say_aloud'] },
   docs: { label: 'Read and search documents', what: 'Find words in your files and read documents, in the folders Bob may read.', tools: ['find_in_documents', 'read_file', 'list_folder', 'office_read', 'search_files', 'inspect_file'] },
-  notes: { label: 'Notes and memory', what: 'Quick notes, the notice board, and what Bob remembers.', tools: ['take_note', 'notice_board', 'remember', 'recall_memory'] }
+  notes: { label: 'Notes and memory', what: 'The notice board and quick notes, and what Bob remembers.', tools: ['notice_board', 'remember', 'recall_memory'] }
 };
 // Never offered, whatever is ticked: money, other Bobs, other MCP apps, Bob's own code and settings.
 export const NEVER = new Set(['ask_cloud', 'hire_brain', 'ask_specialist', 'mcp_tools', 'mcp_use', 'make_tool', 'use_my_tool', 'work_on_repo', 'edit_my_message', 'schedule_job', 'change_schedule', 'osint_lookup']);
@@ -158,7 +158,7 @@ export function inFlight() { let n = 0; for (const s of sessions.values()) n += 
 export async function callTool(brain, app, session, name, args, { signal, log = () => {} } = {}) {
   const cfg = brain.cfg;
   const d = loadDoor(cfg);
-  if (!d.on) return errorResult('Bob\'s door for other apps is switched off in Bob (Settings, Other apps).');
+  if (!d.on) return errorResult('Bob\'s door for other apps is switched off in Bob (Settings, Agents, Claude).');
   if (!offeredNames(brain, d).includes(name)) return errorResult(`Bob doesn't offer "${String(name).slice(0, 60)}" right now. It may be switched off in Bob, or its group isn't ticked under Hands for Claude.`);
   args = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
   const images = [];
@@ -267,7 +267,7 @@ export async function doorRoute({ req, res, brain, isLocal }) {
   if (!isLocal || !LOOPBACK.test(String(req.socket?.remoteAddress || ''))) return json(res, 403, { error: 'Only apps on this computer can use Bob\'s door.' });
   if (req.headers.origin) return json(res, 403, { error: 'Not from a web page.' }); // a browser always sends Origin
   const d = loadDoor(cfg);
-  if (!d.on) return json(res, 403, { error: 'Bob\'s door for other apps is off. Turn on "Hands for Claude" in Bob (Settings, Other apps).' });
+  if (!d.on) return json(res, 403, { error: 'Bob\'s door for other apps is off. Turn on "Hands for Claude" in Bob (Settings, Agents, Claude).' });
   const key = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
   const app = appForKey(cfg, key);
   if (!app) return json(res, 401, { error: 'Bob doesn\'t know this key. Connect the app again from Bob\'s Settings.' }, { 'www-authenticate': 'Bearer' });

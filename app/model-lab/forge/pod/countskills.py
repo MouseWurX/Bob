@@ -5,7 +5,8 @@ Writes <out-dir>/<prefix>-<skill>.json in count.py's shape for each skill. "gene
 """
 import argparse, json, os, random
 import torch
-from transformers import AutoTokenizer, Qwen3_5MoeForConditionalGeneration
+from transformers import AutoTokenizer
+import family as FAM
 import data as D
 from reap import Scorer
 
@@ -21,9 +22,9 @@ def main():
     data = D.build_all(tok, a.lessons, a.max_len, a.cache, a.general, a.general_tokens)
     rows_all = data["train"]
     jobs = {l["idea"]: l.get("job") for l in D.load_lessons(a.lessons)[0]}
-    model = Qwen3_5MoeForConditionalGeneration.from_pretrained(a.model, dtype=torch.bfloat16, device_map=a.device).eval()
-    layers = model.model.language_model.layers
-    E = model.config.text_config.num_experts
+    model = FAM.load(a.model, a.device).eval()
+    layers = FAM.layers(model)
+    E = FAM.num_experts(model.config)
     scorer = Scorer(layers, E, a.device, score=a.reap)
     for name, spec in skills.items():
         out = os.path.join(a.out_dir, f"{a.prefix}-{name}.json")

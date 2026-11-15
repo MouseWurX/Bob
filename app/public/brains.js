@@ -329,7 +329,8 @@ export function brainsHtml(ctx) {
       ${empty.length ? `<h4>Unassigned jobs</h4><ul class="brain-list">${empty.map((s) => emptyJobHtml(s, ctx)).join('')}</ul>` : ''}</section>
     <section class="brains-panel"><h3>Add a brain</h3>
       ${spare.length ? `<ul class="brain-list">${spare.map((b) => `<li class="brain-row spare"><div class="brain-name"><strong>${esc(b.name)}</strong><br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')} · on this replicant matrix, no job yet</span>${labLineHtml(b, ctx)}</div><div class="brain-jobs">${jobSelect(b.value, jobsFor(b.value, ctx), `Give ${b.name} a job`)}</div><div class="brain-place">${placeBarHtml(b.entry, ctx)}</div></li>`).join('')}</ul>` : ''}
-      <p class="get-more"><button type="button" class="get-more-btn" data-tab="catalogue">📚 Brain catalogue: every brain, by job and size</button></p></section>
+      <p class="get-more"><button type="button" class="get-more-btn" data-tab="catalogue">📚 Brain catalogue: every brain, by job and size</button></p>
+      <p class="muted">Another of your Bobs has the brain already? <strong>Brain Copying</strong> sends it over Bob-Net instead of downloading it again: Settings, Bob-Net, Files and brains. <button type="button" class="mini help-link" data-help="net-files" aria-label="Help: Files and brains">? Help</button></p></section>
     <section class="brains-panel"><h3>Senses and tools</h3>
       <ul class="brain-list">${senseSlots().map((s) => senseRowHtml(s, ctx)).join('')}</ul>
       ${sel ? `<section class="kit-panel" aria-live="polite">${kitHtml(sel, ctx)}</section>` : '<section class="kit-panel" aria-live="polite"></section>'}</section>

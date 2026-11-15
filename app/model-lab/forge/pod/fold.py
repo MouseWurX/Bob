@@ -105,6 +105,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", required=True); ap.add_argument("--cut", required=True); ap.add_argument("--counts", default=""); ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     a = ap.parse_args()
+    import family as FAM  # 14 Nov 2026: GPT-OSS heals and cuts, but this step still knows Qwen's weight names only
+    if FAM.family(a.src) != FAM.QWEN: raise SystemExit(f"fold.py: {FAM.family(a.src)} brains are not supported yet (fold knows Qwen weight names only)")
     keep = json.load(open(os.path.join(a.cut, "bob-keep.json")))["layers"]
     cfg = json.load(open(os.path.join(a.src, "config.json"))); tc = cfg.get("text_config", cfg); E = tc["num_experts"]
     use = use_table(a.counts, len(keep), E)

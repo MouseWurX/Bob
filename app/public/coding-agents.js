@@ -65,7 +65,7 @@ export function createAgentsSection({ sec, list, badge, seen, isOpen, placed = (
     if (badge) { const t = badgeText(s); badge.textContent = t; badge.hidden = !t; badge.classList.toggle('needs', s.needsYou > 0); }
     if (!show) return;
     const agents = s.agents || [];
-    list.innerHTML = (!agents.length && !(s.outside || []).length ? '<li class="titem muted">No coding agents yet. Add one in Settings, Other apps, Coding agents.</li>' : '')
+    list.innerHTML = (!agents.length && !(s.outside || []).length ? '<li class="titem muted">No coding agents yet. Add one in Settings, Agents.</li>' : '')
       + agents.map((a) => agentRow(a, agents, open)).join('') + (s.outside || []).map(outsideRow).join('')
       + (msg ? `<li class="titem muted" role="status">${esc(msg)}</li>` : '');
   };
@@ -104,46 +104,68 @@ export function createAgentsSection({ sec, list, badge, seen, isOpen, placed = (
   };
 }
 
-// ---- Settings, Other apps ----
-export function agentsSettingsHtml() {
-  return '<div class="coding-agents-box"><strong>Coding agents</strong><p class="muted">Loading…</p></div>';
+// ---- Settings ----
+// kind '' (Settings, Other apps): the switches every agent shares, and "Another program".
+// kind 'claude', 'codex', ... (1.5.228, Settings, Agents, that company's section): its program, its agents, Add.
+export function agentsSettingsHtml(kind = '') {
+  return `<div class="coding-agents-box" data-kind="${esc(kind)}"><strong>Coding agents</strong><p class="muted">Loading…</p></div>`;
 }
+// The general box's own agents: the ones without a company section.
+export const OWN_KINDS = ['custom'];
 
 export async function mountAgentsSettings(box) {
   if (!box) return;
+  if (box.length !== undefined) { for (const b of box) mountAgentsSettings(b); return; } // every box on the page
+  const only = box.dataset.kind || ''; // '' = Settings, Other apps
   let v, msg = '', folder = '';
-  const kindOpts = () => v.kinds.map((k) => `<option value="${esc(k.id)}">${esc(k.name)}${k.maker ? ` (${esc(k.maker)})` : ''}${v.found[k.id] ? '' : ' (not found here)'}</option>`).join('');
   const agentLine = (a) => `<li><strong>${esc(a.name)}</strong> <span class="muted">${esc(a.kindName)} in ${esc(a.folder)}${a.account ? `, account "${esc(a.account)}"${a.owner ? ` (${esc(a.owner)})` : ''}` : ', your usual sign-in'}</span>
       <label class="switch"><input type="checkbox" data-ag-edits="${esc(a.id)}" ${a.edits ? 'checked' : ''}><span><strong>May change files</strong></span></label>
       <label class="pick"><strong>When done, pass to</strong> <select data-ag-then="${esc(a.id)}"><option value="">Nobody</option>${v.agents.filter((x) => x.id !== a.id).map((x) => `<option value="${esc(x.id)}" ${a.then === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
       ${a.account ? `<button type="button" class="mini" data-ag-signin="${esc(a.kind)}" data-ag-account="${esc(a.account)}">Sign in to "${esc(a.account)}"</button>` : ''}
       <button type="button" class="mini" data-ag-clear="${esc(a.id)}">Start fresh</button>
       <button type="button" class="mini" data-ag-remove="${esc(a.id)}">Remove</button></li>`;
-  const draw = () => {
-    box.innerHTML = `<strong>Coding agents</strong> <span class="tag">off unless you turn it on</span> <span class="tag">Windows, Mac and Linux</span>
-      <label class="switch"><input type="checkbox" data-ag-on ${v.on ? 'checked' : ''}><span><strong>Run coding agents</strong><br><span class="muted">Claude Code, Codex, Gemini CLI, Qwen Code, OpenCode, or another program you name, side by side, each in its own folder. Now running shows which one is working, which needs you and which is done. They use your own accounts with those makers; Bob's brain isn't involved.</span></span></label>
-      <label class="switch"><input type="checkbox" data-ag-hand ${v.handOff ? 'checked' : ''}><span><strong>Agent hand-offs</strong><br><span class="muted">Each agent is told, in its own task, how to ask another one and wait for the answer. At most 4 hand-ons in a row. Off: you pass work on yourself with Pass to.</span></span></label>
-      <label class="switch"><input type="checkbox" data-ag-claude ${v.claudeStatus ? 'checked' : ''}><span><strong>Claude Code status in Bob</strong><br><span class="muted">Claude Code chats you run yourself show in Now running too: working, needs you, done. This writes three small hooks into Claude Code's settings (a copy is saved first). ${v.hooks ? 'Connected.' : 'Not connected.'} Needs curl, which Windows 10 and later, macOS and Linux have.</span></span></label>
-      <p class="muted"><strong>Add an agent</strong></p>
-      <div class="row"><label class="pick"><strong>Program</strong> <select data-ag-kind>${kindOpts()}</select></label>
+  const addHtml = (kindPick) => `
+      <div class="row">${kindPick}
         <label class="pick"><strong>Name</strong> <input type="text" maxlength="32" data-ag-name placeholder="like reviewer" autocomplete="off" spellcheck="false"></label></div>
       <div class="row"><strong>Folder</strong> <span class="muted">${esc(folder || 'none picked')}</span> <button type="button" data-ag-pick>Pick a folder…</button></div>
       <div class="row"><label class="pick"><strong>Account</strong> <input type="text" maxlength="30" data-ag-account-new placeholder="blank: your usual sign-in" autocomplete="off" spellcheck="false"></label>
         <label class="pick"><strong>Whose</strong> <input type="text" maxlength="30" data-ag-owner placeholder="like Sam" autocomplete="off"></label></div>
-      <p class="muted">An account keeps its own sign-in, so two people can each use their own Claude, Codex or Gemini account on this replicant matrix at the same time. Give it a name, add the agent, then press Sign in once: the program opens in a window of its own, where that person signs in. Each account only runs the agents it's set on.</p>
       <label class="switch"><input type="checkbox" data-ag-edits-new><span><strong>May change files</strong><br><span class="muted">Off to start with: it only reads and answers. On: it may edit files in its own folder, through its program's own "edit" mode. Bob never turns off a program's own checks.</span></span></label>
-      <button type="button" class="get" data-ag-add>Add this agent</button>
-      ${v.agents.length ? `<p class="muted"><strong>Your agents</strong></p><ul class="agents-set">${v.agents.map(agentLine).join('')}</ul>` : '<p class="muted">No agents yet.</p>'}
-      <details class="more"><summary>Another program</summary>
-        <p class="muted">Any coding program that can take one task and answer. Bob pipes the task in, or puts it in a file: write <code>{task-file}</code> where the program takes a file.</p>
-        <div class="row"><label class="pick"><strong>Program</strong> <input type="text" maxlength="300" data-ag-ccmd value="${esc(v.custom.cmd)}" placeholder="like aider" spellcheck="false"></label>
+      <button type="button" class="get" data-ag-add>Add this agent</button>`;
+  // 1.5.228 one company's part (Settings, Agents): the same controls, only for its own program.
+  const drawCompany = () => {
+    const k = v.kinds.find((x) => x.id === only) || { id: only, name: only };
+    const mine = v.agents.filter((a) => a.kind === only);
+    box.innerHTML = `<strong>${esc(k.name)}</strong> <span class="tag">Windows, Mac and Linux</span>
+      <p class="muted">Runs the ${esc(k.name)} program on this replicant matrix, in a project folder you pick, with your own ${esc(k.maker || k.name)} sign-in (not an API key). ${v.found[only] ? `${esc(k.name)} is on this replicant matrix.` : `${esc(k.name)} isn't on this replicant matrix yet; install it first.`}</p>
+      <p class="muted">${v.on ? 'Coding agents are on.' : 'Needs <strong>Run coding agents</strong> (Settings, Other apps) to run. You can add agents now.'}</p>
+      ${only === 'claude' ? `<label class="switch"><input type="checkbox" data-ag-claude ${v.claudeStatus ? 'checked' : ''}><span><strong>Claude Code status in Bob</strong><br><span class="muted">Claude Code chats you run yourself show in Now running too: working, needs you, done. This writes three small hooks into Claude Code's settings (a copy is saved first). ${v.hooks ? 'Connected.' : 'Not connected.'} Needs curl, which Windows 10 and later, macOS and Linux have.</span></span></label>` : ''}
+      <p class="muted"><strong>Add a ${esc(k.name)} agent</strong></p>
+      ${addHtml(`<input type="hidden" data-ag-kind value="${esc(only)}">`)}
+      <p class="muted">An account keeps its own sign-in, so two people can each use their own account here at the same time. Name it, add the agent, then press Sign in once.</p>
+      ${mine.length ? `<p class="muted"><strong>Your ${esc(k.name)} agents</strong></p><ul class="agents-set">${mine.map(agentLine).join('')}</ul>` : '<p class="muted">No agents yet.</p>'}
+      ${msg ? `<p class="muted" role="status">${esc(msg)}</p>` : ''}`;
+  };
+  const draw = () => {
+    if (only) return drawCompany();
+    const own = v.agents.filter((a) => OWN_KINDS.includes(a.kind));
+    const elsewhere = v.agents.length - own.length;
+    box.innerHTML = `<strong>Coding agents</strong> <span class="tag">off unless you turn it on</span> <span class="tag">Windows, Mac and Linux</span>
+      <label class="switch"><input type="checkbox" data-ag-on ${v.on ? 'checked' : ''}><span><strong>Run coding agents</strong><br><span class="muted">Claude Code, Codex, Gemini CLI, Qwen Code, OpenCode, or another program you name, side by side, each in its own folder. Now running shows which one is working, which needs you and which is done. They use your own accounts with those makers; Bob's brain isn't involved.</span></span></label>
+      <label class="switch"><input type="checkbox" data-ag-hand ${v.handOff ? 'checked' : ''}><span><strong>Agent hand-offs</strong><br><span class="muted">Each agent is told, in its own task, how to ask another one and wait for the answer. At most 4 hand-ons in a row. Off: you pass work on yourself with Pass to.</span></span></label>
+      <p class="muted">Claude Code, Codex, Gemini CLI, Qwen Code and OpenCode each have their own section under <strong>Agents</strong> in Settings: add and manage them there.${elsewhere ? ` You have ${elsewhere} agent${elsewhere === 1 ? '' : 's'} there.` : ''}</p>
+      <p class="muted"><strong>Another program</strong>: any coding program that can take one task and answer. Bob pipes the task in, or puts it in a file: write <code>{task-file}</code> where the program takes a file.</p>
+      <div class="row"><label class="pick"><strong>Program</strong> <input type="text" maxlength="300" data-ag-ccmd value="${esc(v.custom.cmd)}" placeholder="like aider" spellcheck="false"></label>
         <label class="pick"><strong>Its settings</strong> <input type="text" maxlength="600" data-ag-cargs value="${esc(v.custom.args.join(' '))}" placeholder="like --message-file {task-file}" spellcheck="false"></label>
-        <button type="button" data-ag-csave>Save</button></div></details>
+        <button type="button" data-ag-csave>Save</button></div>
+      <p class="muted"><strong>Add an agent for that program</strong></p>
+      ${addHtml('<input type="hidden" data-ag-kind value="custom">')}
+      ${own.length ? `<p class="muted"><strong>Its agents</strong></p><ul class="agents-set">${own.map(agentLine).join('')}</ul>` : ''}
       ${msg ? `<p class="muted" role="status">${esc(msg)}</p>` : ''}
       <details class="more"><summary>More</summary><p class="muted">Each run starts the program in its "answer once" mode in the agent's folder. Claude Code carries on its own session when you answer it; the others get a short note of what they said last. Stopping, or turning this off, stops every run. Not on the Android app: these programs run on a computer. Bob's own brain never sees any of this.</p></details>`;
   };
   const load = async () => { v = await api('/api/coding-agents'); draw(); };
-  const change = async (url, patch, done) => { try { v = await api(url, patch); msg = done || ''; } catch (e) { msg = e.message; } draw(); };
+  const change = async (url, patch, done) => { try { v = await api(url, patch); msg = done || ''; } catch (e) { msg = e.message; } draw(); dispatchEvent(new CustomEvent('bob-coding-agents-changed', { detail: box })); };
   box.addEventListener('change', (e) => {
     const t = e.target;
     if (t.matches('[data-ag-on]')) change('/api/coding-agents', { on: t.checked });
@@ -163,4 +185,6 @@ export async function mountAgentsSettings(box) {
     else if ('agCsave' in b.dataset) change('/api/coding-agents', { custom: { cmd: q('[data-ag-ccmd]').value.trim(), args: q('[data-ag-cargs]').value.trim().split(/\s+/).filter(Boolean) } }, 'Saved.');
   });
   try { await load(); } catch (e) { box.innerHTML = `<strong>Coding agents</strong><p class="muted">${esc(e.message)}</p>`; }
+  const other = (e) => { if (!box.isConnected) { removeEventListener('bob-coding-agents-changed', other); return; } if (e.detail !== box && v) load().catch(() => {}); };
+  addEventListener('bob-coding-agents-changed', other); // another box changed something
 }

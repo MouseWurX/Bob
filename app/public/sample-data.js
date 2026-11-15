@@ -5,6 +5,7 @@
 //   ?sample=mac              a Mac with 36 GB of memory shared with graphics
 //   ?sample=nocard           no graphics card, 16 GB of memory
 //   ?sample=pi               a Raspberry Pi style board with 8 GB
+// Add &welcome to see the first-time setup pages on the sample machine.
 // What it does, only in that tab: the machine, the brains on it and which job each one does are made up; the real
 // brain list (catalog) is used for everything else. Anything that looks like a folder, a file path or an email is
 // swapped for a sample one; chats, memories and what Bob made come back empty. Nothing is ever saved: every change
@@ -53,7 +54,7 @@ export const sampleHardware = (id) => {
 };
 export function sampleSettings(real = {}, id = 'desktop') {
   const s = scrub(real);
-  return { ...s, userName: 'Sam', callMe: 'Sam', windowsName: 'Sam', platform: (MACHINES[id] || MACHINES.desktop).platform, setupDone: true, wantsAsked: true, sessionBrains: { small: SAMPLE_JOBS.small }, sample: id };
+  return { ...s, userName: 'Sam', callMe: 'Sam', windowsName: 'Sam', platform: (MACHINES[id] || MACHINES.desktop).platform, setupDone: !/[?&]welcome/.test(globalThis.location?.search || ''), wantsAsked: true, sessionBrains: { small: SAMPLE_JOBS.small }, sample: id };
 }
 export function sampleModels(real = {}) {
   const models = (real.models || []).filter((m) => !m.own).map((m) => ({ ...m, status: { ...(m.status || {}), state: SAMPLE_HAVE.includes(m.id) ? 'installed' : 'missing', located: {} } }));

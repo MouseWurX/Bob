@@ -112,7 +112,7 @@ export function fittingNotes(cfg, text, { project = '', k = 3 } = {}) {
 export function notesPrompt(cfg, text, { project = '' } = {}) {
   if (!smartNotesOn(cfg)) return '';
   const xs = fittingNotes(cfg, text, { project });
-  return xs.length ? `From the user's quick notes (bring these up if they help; the numbers are for take_note):\n${xs.map((x) => `- ${x.n}. ${x.text}`).join('\n')}` : '';
+  return xs.length ? `From the user's quick notes (bring these up if they help; the numbers are for notice_board unnote):\n${xs.map((x) => `- ${x.n}. ${x.text}`).join('\n')}` : '';
 }
 
 const terms = (q) => String(q || '').toLowerCase().split(/\s+/).filter(Boolean).slice(0, 8);
@@ -142,7 +142,7 @@ function removeNoteNow(cfg, n, check = '', { now = new Date() } = {}) {
 const listed = (xs) => xs.map((x) => `${x.n}. ${x.text}`).join('\n');
 
 const SCHEMA_BASE = 'Quick notes: add one the moment {{USER}} says "note", "jot down" or "write down", in their words, without asking. Also list, find (by word or #tag) or remove.';
-const SCHEMA_SMART = ' Also add a note yourself, with noticed true, when the chat shows something {{USER}} will want later: a decision, a number, a date, a plan, a name, a link, an idea of theirs. One short line each, only what\'s worth keeping (not small talk, not what\'s already noted, never passwords or keys). Each time, end your reply with "📝 Noted: <the note>".';
+const SCHEMA_SMART = ' Also add a note yourself, with noticed true, when the chat shows something {{USER}} will want later: a decision, a number, a date, a plan, a name, a link, an idea of theirs. One short line each, only what\'s worth keeping (not small talk, not what\'s already noted, never passwords or keys). A lasting fact about {{USER}} themselves goes to remember instead. Each time, end your reply with "📝 Noted: <the note>".';
 
 export function notesTool(brain) {
   const cfg = brain.cfg;
@@ -172,5 +172,42 @@ export function notesTool(brain) {
       return all.length ? `${all.length} notes, newest last:\n${listed(all.slice(-20))}` : 'No notes yet.';
     },
     summary: ({ action, text, number, noticed }) => action === 'add' ? `${noticed ? 'noticed and noted' : 'note'}: ${String(text || '').slice(0, 80)}` : action === 'remove' ? `take away note ${number}` : action === 'find' ? `find notes: ${text}` : 'list notes'
+  };
+}
+
+// Nov 14 (the owner: "bob has so many ways to take notes, are they redundant?"): quick notes ride on the notice board
+// tool instead of being a tool of their own. take_note and notice_board both said "jot down", and the to-do check
+// (verify.js) only counted notice_board, so one note could land in both files. Now there is one tool for "write it
+// down": add/done/write are the to-do list (notice-board.md), note/notes/unnote are quick notes (quick-notes.md, same
+// file, same Settings button, same search). With quick notes off the board looks exactly as before.
+export const NOTE_ACTIONS = { note: 'add', notes: 'list', unnote: 'remove' };
+const BOARD_NOTES = ' With quick notes: note = write down what {{USER}} says "note", "jot down" or "write down" about, in their words, at once (not a to-do); notes = list them, or find by words or a #tag in content; unnote = take one away (number, and a few of its words in content).';
+const SMART_BOARD = ' Also note things yourself (action note, noticed true) when the chat shows something {{USER}} will want later: a decision, a number, a date, a plan, a name, a link, an idea of theirs. One short line each, only what\'s worth keeping (not small talk, not what\'s already noted, never passwords or keys). A lasting fact about {{USER}} themselves goes to remember instead. Each time, end your reply with "📝 Noted: <the note>".';
+
+export function withNotes(board, brain) {
+  const cfg = brain.cfg;
+  const notes = notesTool(brain);
+  return {
+    ...board,
+    get schema() {
+      const base = board.schema;
+      if (!notesOn(cfg)) return base;
+      const s = JSON.parse(JSON.stringify(base));
+      const f = s.function, props = f.parameters.properties;
+      f.description += BOARD_NOTES + (smartNotesOn(cfg) ? SMART_BOARD : '');
+      props.action = { ...props.action, description: 'read, add, done, write, note, notes or unnote', enum: [...(props.action.enum || []), ...Object.keys(NOTE_ACTIONS)] };
+      props.content = { ...props.content, description: `${props.content.description} note: the note (keep #tags). notes: words or a #tag to find, or empty for all. unnote: a few words of it.` };
+      props.number = { type: 'integer', description: 'unnote: its number from notes.' };
+      if (smartNotesOn(cfg)) props.noticed = { type: 'boolean', description: 'note: true when you noted it on your own, not because {{USER}} asked.' };
+      return s;
+    },
+    async run(args = {}, ctx) {
+      const act = NOTE_ACTIONS[args.action];
+      if (!act) return board.run(args, ctx);
+      const text = args.content ?? args.text;
+      // notes with words in content is a find; with none, the list.
+      return notes.run({ action: act === 'list' && String(text || '').trim() ? 'find' : act, text, number: args.number, noticed: args.noticed });
+    },
+    summary: (args = {}) => (NOTE_ACTIONS[args.action] ? notes.summary({ action: NOTE_ACTIONS[args.action] === 'list' && args.content ? 'find' : NOTE_ACTIONS[args.action], text: args.content ?? args.text, number: args.number, noticed: args.noticed }) : board.summary(args))
   };
 }

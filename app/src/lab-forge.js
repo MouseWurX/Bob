@@ -322,6 +322,22 @@ export function runPodId(dir, run = '') {
   return '';
 }
 
+// 14 Nov A run's card cost, about: the pod record's price per hour times the time from its rent to endMs. Only the
+// price, start, card and data centre are read; the record's token is never read out.
+export function runCost(dir, run = '', endMs = Date.now()) {
+  const per = run ? `pod-token-${String(run).replace(/[^\w.-]/g, '_')}.json` : '';
+  for (const f of [per, 'pod-token.json'].filter(Boolean)) {
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(dir, 'out', 'forge', f), 'utf8'));
+      const price = Number(j.price) || 0, started = Number(j.started) || 0;
+      if (!started) continue;
+      const minutes = Math.max(0, Math.round((endMs - started) / 6e4));
+      return { usd: Math.round(price * minutes / 60 * 100) / 100, perHour: price, minutes, card: String(j.gpu || ''), dataCenter: String(j.dataCenter || ''), from: 'the pod record, about' };
+    } catch {}
+  }
+  return null;
+}
+
 // 13 Nov New ways to teach, written into the plan's keys the pod reads (run.sh): heal.pref + pref (pairs folder made here
 // by make-pairs.mjs), heal.onpolicy, grpo, targets, surgery. Every one is off unless picked, and every one only runs on
 // the owner's press of the purchase card. Surgery edits are baked into every brain the run makes, so they're shown back.

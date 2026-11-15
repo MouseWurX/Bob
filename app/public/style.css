@@ -256,6 +256,32 @@ label.switch.waits { opacity: .55; cursor: not-allowed; }
 .pick { display: grid; gap: 4px; }
 .cellar select { font: inherit; padding: 7px; border-radius: calc(var(--r) * 1); background: var(--bg); color: var(--text); border: 1px solid var(--line); max-width: 100%; }
 .welcome h2 { margin: 4px 0 8px; }
+/* Nov 14: the Welcome as seven pages (welcome-steps.js). Back bottom left, Next bottom right, each naming its page. */
+.wz { display: flex; flex-direction: column; min-height: calc(100dvh - 180px); }
+.wz-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 4px 0 20px; }
+.wz-count { margin: 0; font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.wz-dots { display: flex; gap: 2px; list-style: none; margin: 0; padding: 0; }
+.wz-dot { width: 24px; height: 24px; min-height: 24px; padding: 0; border: 0 !important; background: transparent !important; box-shadow: none !important; display: grid; place-items: center; cursor: pointer; }
+.wz-dot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: background-color .15s, box-shadow .15s; }
+.wz-dot.past::before { background: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.wz-dot.on::before { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.wz-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; border-radius: 50%; }
+.wz-skip { margin-left: auto; }
+.wz-page { flex: 1; }
+.wz-title { outline: none; margin: 0 0 6px; }
+.wz-lead { margin: 0 0 18px; max-width: 64ch; }
+.wz-group h3 { margin-top: 20px; }
+.wz-group > p.muted { margin: 0 0 4px; }
+.wz-sum dt { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-top: 14px; }
+.wz-sum dd { margin: 4px 0 0; }
+.wz-nav { position: sticky; bottom: -48px; z-index: 2; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin: 28px 0 -48px; padding: 34px 0 62px; background: linear-gradient(to bottom, transparent, var(--deep, var(--bg)) 30px); }
+.cellar .wz-nav .wz-back { background: transparent; border: 1px solid var(--line); color: var(--text); }
+.cellar .wz-nav .wz-back:hover { border-color: var(--accent); }
+.cellar .wz-nav :is(.wz-back, .wz-next) { display: flex; flex-direction: column; gap: 2px; min-width: 132px; min-height: 48px; padding: 6px 14px; }
+.cellar .wz-nav .wz-back { align-items: flex-start; text-align: left; }
+.cellar .wz-nav .wz-next { align-items: flex-end; text-align: right; }
+.wz-dir { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; opacity: .75; }
+.wz-to { font-size: 15px; font-weight: 600; }
 .packlist { list-style: none; padding: 0; }
 .packlist li { padding: 4px 0; }
 .packlist input { accent-color: var(--accent); }
@@ -472,6 +498,8 @@ body.left-folded .side .session { width: 52px; font-size: 10px; padding: 2px 0; 
 .ctx { display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--panel); min-height: 42px; }
 .ctx-title { font-size: 14px; }
 .ctx-fill { flex: 1; }
+/* Nov 14 (the owner): no Now running button under the chat; Tasks is at the top. Ctrl+J still opens the drawer. */
+.now-toggle[hidden] { display: none !important; }
 .now-toggle { width: auto; padding: 4px 8px; border: 1px solid var(--line); background: var(--card); font-size: 12.5px; gap: 6px; }
 .now-toggle .ico { transform: scaleX(-1); }
 body.right-hidden .now-toggle .ico { transform: none; }
@@ -565,6 +593,9 @@ button.danger { background: #a8432f; color: #fff; border-color: #a8432f; }
 .setup-offer { align-self: center; max-width: 520px; display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--accent); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
 .setup-offer ul { margin: 0; padding-left: 18px; }
 .setup-offer .row { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Nov 14 Files and brains: the copy's bar fills its card, edge to edge, and is tall enough to read at a glance */
+.net-file-bar { display: block; width: 100%; height: 14px; box-sizing: border-box; accent-color: var(--accent); }
+.net-file-speed { font-variant-numeric: tabular-nums; }
 .chat-list, .search-hits, .tidy-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
 .chat-list li, .search-hits li { border: 1px solid var(--line); border-radius: var(--r); padding: 6px 8px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: space-between; align-items: center; }
 .hit-thumb { width: 64px; height: 64px; object-fit: cover; border-radius: calc(var(--r) * .5); }
@@ -877,6 +908,20 @@ details.more > summary:hover { color: var(--accent); }
 .bob-menu-now { margin: 0; padding: 6px 8px 8px; font-size: 13px; border-bottom: 1px solid var(--line); }
 .bob-menu-item { text-align: left; padding: 8px; min-height: 44px; background: none; border: 0; border-radius: var(--r); font-size: 13px; color: var(--text); cursor: pointer; }
 .bob-menu-item:hover, .bob-menu-item:focus-visible { background: var(--panel); outline: 2px solid var(--accent); outline-offset: -2px; }
+/* 👥 Users: Switch user and Sign out side by side in Bob's menu, and the Switch user page (users-switch.js) */
+.bob-menu-split { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.bob-menu-split > :only-child { grid-column: 1 / -1; }
+.user-dot { flex: none; width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; font-weight: 700; font-size: 13px; background: var(--panel); color: var(--accent); border: 1px solid var(--line); }
+.users-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.users-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin: 16px 0; padding: 0; list-style: none; }
+.user-card { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 12px; min-height: 44px; background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: var(--r); cursor: pointer; font: inherit; }
+.user-card .user-dot { width: 48px; height: 48px; font-size: 20px; }
+.user-card:hover, .user-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.user-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.user-card .muted { font-size: 12px; }
+.users-code { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.users-code input { min-height: 44px; }
+@media (forced-colors: active) { .user-card[aria-pressed="true"] { border: 2px solid Highlight; } }
 .cat { position: absolute; right: -6px; bottom: -6px; font-size: 15px; line-height: 1; pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); white-space: nowrap; }
 .cat.antic-nap { animation: cat-nap 2.4s ease-in-out infinite; }
 .cat.antic-swat { animation: cat-swat .6s ease-in-out 6; }
@@ -944,18 +989,19 @@ body.left-folded .bob-prop { top: -6px; right: -6px; font-size: 11px; }
 .say-bubble.on { pointer-events: auto; }
 .bubble-x { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); font-size: 12px; line-height: 20px; text-align: center; cursor: pointer; }
 .bubble-x:hover { background: var(--card); color: var(--text); }
-.say-bubble { position: relative; max-width: 100%; padding: 7px 24px 7px 11px; border-radius: var(--r, 8px); border: 1px solid var(--accent); background: color-mix(in srgb, var(--panel) 72%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); color: var(--text); font-size: 12.5px; line-height: 1.4; box-shadow: 0 6px 20px rgba(0,0,0,.4); overflow-wrap: anywhere; opacity: 0; transform: translateY(-4px) scale(.96); transition: opacity .7s ease, transform .7s ease; } /* 1.5.215: pops in and out over about 0.7 s */
+.say-bubble { position: relative; max-width: 100%; padding: 7px 24px 7px 11px; border-radius: var(--r, 8px); border: 1px solid var(--accent); background: color-mix(in srgb, var(--panel) 45%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--text); font-size: 12.5px; line-height: 1.4; text-shadow: 0 0 3px var(--panel), 0 0 6px var(--panel); box-shadow: 0 4px 14px rgba(0,0,0,.22); overflow-wrap: anywhere; opacity: 0; transform: translateY(-4px) scale(.96); transition: opacity .7s ease, transform .7s ease; } /* 1.5.215: pops in and out over about 0.7 s. 1.5.228: more see-through (45% glass, was 72%), a soft glow behind the words keeps them readable */
 .say-bubble > span { display: block; } /* 1.5.215: the whole line, never cut off */
 .say-bubble.on { opacity: 1; transform: none; }
 .say-bubble[hidden] { display: none; }
 .say-bubble.cat-say { border-style: dashed; }
 /* the little tail points back at Bob's picture */
-.say-bubble::before { content: ""; position: absolute; left: -6px; top: 12px; width: 10px; height: 10px; background: var(--panel); border-left: 1px solid var(--accent); border-bottom: 1px solid var(--accent); transform: rotate(45deg); }
+.say-bubble::before { content: ""; position: absolute; left: -6px; top: 12px; width: 10px; height: 10px; background: color-mix(in srgb, var(--panel) 45%, transparent); border-left: 1px solid var(--accent); border-bottom: 1px solid var(--accent); transform: rotate(45deg); }
 .say-bubble.cat-say::before { border-style: dashed; }
 .bubbles.below .say-bubble::before { left: 18px; top: -6px; border-bottom: 0; border-top: 1px solid var(--accent); }
 .bubbles .say-bubble + .say-bubble::before { display: none; }
 @media (prefers-reduced-motion: reduce) { .say-bubble { transition: none; transform: none; } }
 @media (forced-colors: active) { .say-bubble, .say-bubble::before { border-color: CanvasText; } }
+@media (prefers-contrast: more), (prefers-reduced-transparency: reduce) { .say-bubble, .say-bubble::before { background: var(--panel); text-shadow: none; } } /* 1.5.228: solid for anyone who asks for more contrast or less see-through */
 @media print { .bubbles { display: none; } }
 /* 1.5.216: the Tasks word bubble, under the Tasks tab (above it on a phone's bottom bar). Same see-through glass and
    0.7 s fade as Bob's and the cat's bubbles; it fades out into the tab. Fixed, so it never moves the chat. */
@@ -2446,7 +2492,7 @@ body.now-mind-only #nowMind > .now-sec { display: none; }
 .net-row .nb-port canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .net-row .nb-fog { opacity: .8; }
 .net-row .nb .dot { position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--bg); background: var(--good, rgb(91 208 138)); }
-.net-row .nb[data-mood="thinking"] .dot, .net-row .nb[data-mood="replying"] .dot, .net-row .nb[data-mood="loading"] .dot, .net-row .nb[data-mood="working"] .dot { background: var(--accent); }
+.net-row .nb[data-mood="thinking"] .dot, .net-row .nb[data-mood="replying"] .dot, .net-row .nb[data-mood="loading"] .dot, .net-row .nb[data-mood="working"] .dot, .net-row .nb[data-mood="waiting"] .dot { background: var(--accent); }
 .net-row .nb[data-mood="none"] .dot, .net-row .nb[data-mood="idle"] .dot, .net-row .nb[data-mood="stopped"] .dot { background: var(--muted); }
 .net-row .nb[data-mood="needs-you"] .dot, .net-row .nb[data-mood="failed"] .dot { background: var(--bad, rgb(224 108 90)); }
 .net-row .nb .count { position: absolute; top: -5px; right: -7px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--accent); color: var(--bg); font: 600 10.5px/17px var(--font, system-ui); text-align: center; }
@@ -2496,14 +2542,14 @@ body.still .net-row .nb:is(:hover, :focus-visible) .nb-port, body.still.look-lam
 .fade-line button.plain { color: var(--text); border-color: var(--line); }
 .msg.fading-out { opacity: .15; transition: opacity 1.4s ease; }
 body.still .msg.fading-out { transition: none; }
-.amnesia-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; margin: 6px auto 18px; max-width: 760px; padding: 10px 14px; border: 1px solid var(--amnesia); border-radius: 12px; background: color-mix(in srgb, var(--amnesia) 14%, transparent); color: var(--text); font-size: 14px; }
-.amnesia-bar .amn-ic { font-size: 20px; }
-.amnesia-bar .amn-t { flex: 1; min-width: 200px; line-height: 1.4; }
-.amnesia-bar button { min-height: 32px; padding: 4px 13px; font: inherit; font-size: 13px; color: var(--amnesia-text); background: transparent; border: 1px solid var(--amnesia); border-radius: 999px; cursor: pointer; }
-.brain-switch.amnesia-btn[aria-checked="true"] { color: var(--amnesia-text); border-color: var(--amnesia); background: color-mix(in srgb, var(--amnesia) 18%, transparent); }
-.brain-switch.amnesia-btn[aria-checked="true"] .st { background: var(--amnesia); color: var(--amnesia-ink); }
-body.amnesia-on .composer { border-color: var(--amnesia) !important; box-shadow: 0 0 0 1px color-mix(in srgb, var(--amnesia) 35%, transparent), 0 0 22px -6px var(--amnesia); }
-body.amnesia-on.still .composer { box-shadow: 0 0 0 1px var(--amnesia); }
+/* Nov 14: the Amnesia line is very subtle. One quiet line, no fill; the box you type in gets a thin purple edge, no glow. */
+.amnesia-bar { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px 10px; margin: 2px auto 12px; max-width: 760px; padding: 2px 10px; color: var(--muted); font-size: 12.5px; }
+.amnesia-bar .amn-ic { font-size: 14px; opacity: .8; }
+.amnesia-bar .amn-t { line-height: 1.4; }
+.amnesia-bar button { min-height: 28px; padding: 2px 10px; font: inherit; font-size: 12px; color: var(--amnesia-text); background: transparent; border: 1px solid color-mix(in srgb, var(--amnesia) 45%, transparent); border-radius: 999px; cursor: pointer; }
+.brain-switch.amnesia-btn[aria-checked="true"] { color: var(--amnesia-text); border-color: color-mix(in srgb, var(--amnesia) 60%, transparent); }
+.brain-switch.amnesia-btn[aria-checked="true"] .st { background: color-mix(in srgb, var(--amnesia) 70%, transparent); color: var(--amnesia-ink); }
+body.amnesia-on .composer { border-color: color-mix(in srgb, var(--amnesia) 55%, var(--line)) !important; }
 @media (max-width: 640px) { #effort { flex-wrap: wrap; row-gap: 6px; } }
 dialog.fade-ask { width: min(440px, calc(100% - 32px)); padding: 20px 22px; color: var(--text); background: var(--card, var(--panel)); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 20px 60px -10px rgba(0, 0, 0, .8); }
 dialog.fade-ask::backdrop { background: rgba(0, 0, 0, .55); }
@@ -2529,3 +2575,39 @@ dialog.fade-ask .fade-row button.danger { color: var(--on-accent); background: v
 .fade-set { padding-bottom: 6px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
 .dcm-num { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 4px 12px 4px 0; } /* 1.5.224 Keep order numbers wrap on a phone */
 .dcm-num input { width: 6em; }
+/* 14 Nov Lab Steps tab: one card per step, wrapping on a phone */
+.lab-step-list { list-style: none; padding: 0; margin: 0; display: grid; gap: .5rem; }
+.lab-step-card { padding: .5rem .6rem; border: 1px solid var(--line); border-radius: 8px; overflow-wrap: anywhere; }
+.lab-step-name { font-weight: 600; }
+.lab-pipe-chart { width: 100%; max-width: 420px; height: auto; display: block; }
+.lab-pipe-steps { margin: .3rem 0; padding-left: 1.4rem; }
+.lab-pipe-steps [aria-current] { font-weight: 600; }
+.lab-differs th, .lab-differs td { font-weight: 600; }
+
+/* 1.5.228 Settings, Agents: each company and chat app is named with its own little cube, in its chat head's colour
+   (public/net-overlay.js AGENT_LOOKS and ROOM_LOOKS), never the company's logo. */
+.set-nav [data-topic="adv-claude"], .set-nav [data-topic="adv-openai"], .set-nav [data-topic="adv-gemini"], .set-nav [data-topic="adv-qwen"], .set-nav [data-topic="adv-opencode"], .set-nav [data-topic="adv-discord"], .set-nav [data-topic="adv-telegram"],
+#sub-adv-claude > summary h3, #sub-adv-openai > summary h3, #sub-adv-gemini > summary h3, #sub-adv-qwen > summary h3, #sub-adv-opencode > summary h3, #sub-adv-discord > summary h3, #sub-adv-telegram > summary h3 { --cube: hsl(0 0% 62%); }
+.set-nav [data-topic="adv-claude"], #sub-adv-claude > summary h3 { --cube: hsl(15 63% 58%); }
+.set-nav [data-topic="adv-gemini"], #sub-adv-gemini > summary h3 { --cube: hsl(222 85% 60%); }
+.set-nav [data-topic="adv-qwen"], #sub-adv-qwen > summary h3 { --cube: hsl(258 75% 62%); }
+.set-nav [data-topic="adv-discord"], #sub-adv-discord > summary h3 { --cube: hsl(235 55% 62%); }
+.set-nav [data-topic="adv-telegram"], #sub-adv-telegram > summary h3 { --cube: hsl(200 65% 55%); }
+:is(.set-nav [data-topic="adv-claude"], .set-nav [data-topic="adv-openai"], .set-nav [data-topic="adv-gemini"], .set-nav [data-topic="adv-qwen"], .set-nav [data-topic="adv-opencode"], .set-nav [data-topic="adv-discord"], .set-nav [data-topic="adv-telegram"], #sub-adv-claude > summary h3, #sub-adv-openai > summary h3, #sub-adv-gemini > summary h3, #sub-adv-qwen > summary h3, #sub-adv-opencode > summary h3, #sub-adv-discord > summary h3, #sub-adv-telegram > summary h3)::before {
+  content: ""; display: inline-block; width: 1em; height: 1em; margin-right: .4em; vertical-align: -.12em; background: var(--cube);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 21 7v10l-9 5-9-5V7z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 21 7v10l-9 5-9-5V7z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+/* 1.5.228 The Discord chat: what you say in a channel through Bob, and the box to say it. */
+.room-chat .room-me { border-left: 3px solid var(--accent); padding-left: 6px; }
+.room-say { margin-top: 8px; }
+.room-say .row { align-items: flex-end; gap: 6px; }
+.room-say textarea { flex: 1; min-width: 0; resize: vertical; }
+.room-chat .room-heard { opacity: .85; }
+
+/* Nov 14: the Welcome's Users page people list, Lamplight style (underline-only boxes, no fill) */
+.wz-people input[type="text"], .wz-people input:not([type]) { background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; color: var(--text); padding: 4px 2px; font: inherit; }
+.wz-people input:focus-visible { outline: none; border-bottom-color: var(--accent); }
+.wz-people .people-list { list-style: none; padding: 0; }
+.wz-people .people-list li { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.guest-bar .g-answer { flex: none; }

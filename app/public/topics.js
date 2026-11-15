@@ -284,7 +284,8 @@ export function createTopics({ api, openChat }) {
   });
 
   return {
-    async open(which) { if (which) tab = which; sharing = null; dlg.showModal(); body.innerHTML = '<p class="muted">Loading…</p>'; await load(); $('topics-q')?.focus(); },
-    refresh() { if (dlg.open) load(); }
+    async open(which) { inRoom = which === 'room'; if (inRoom) { roomChat.fresh(); which = 'chats'; } if (which) tab = which; sharing = null; dlg.showModal(); body.innerHTML = '<p class="muted">Loading…</p>'; await load(); $('topics-q')?.focus(); },
+    refresh() { if (dlg.open) load(); },
+    room() { if (dlg.open && inRoom && document.activeElement?.id !== 'room-say-text') { roomChat.changed(); draw(); } } // 1.5.228 live, unless you're typing
   };
 }

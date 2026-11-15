@@ -61,3 +61,15 @@
 .jy-branch ol { margin: 4px 0; padding-left: 20px; }
 .jy-branch li { margin: 3px 0; }
 .jy-branch li.on { opacity: 0.95; }
+/* Journey v1.3: full screen (or filling the window where the browser won't go full screen). The picture fills the
+   screen, keeping its shape, and the menus sit over the bottom of it instead of below it. */
+.jy.jy-full { position: fixed; inset: 0; z-index: 1000; margin: 0; border-radius: 0; background: #000; color: #f2f2f2; padding: 6px; gap: 4px; overflow: hidden; }
+.jy.jy-full .jy-top { background: rgba(0, 0, 0, 0.55); border-radius: 6px; padding: 2px 6px; }
+.jy.jy-full .jy-stage { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.jy.jy-full .jy-canvas { width: auto; height: 100%; max-width: 100%; max-height: 100%; border: 0; }
+.jy.jy-full .jy-panel:not(:empty) { position: absolute; left: 50%; transform: translateX(-50%); bottom: 8px; width: min(960px, calc(100% - 16px)); max-height: 46%; overflow: auto; background: rgba(12, 12, 18, 0.88); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 8px; padding: 8px 10px; }
+.jy.jy-full .jy-msg { position: absolute; left: 12px; top: 44px; margin: 0; background: rgba(0, 0, 0, 0.6); border-radius: 6px; padding: 2px 8px; }
+.jy.jy-full .jy-msg:empty { display: none; }
+@media (hover: none) { .jy.jy-full .jy-pad { opacity: 0.85; } }
+.jy.jy-full.jy-talking .jy-panel:not(:empty) { top: 48px; bottom: auto; max-height: 38%; }
+.jy.jy-full.jy-talking .jy-msg { display: none; }

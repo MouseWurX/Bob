@@ -4,6 +4,7 @@
   heal.py --model <cut Bob dir> --lessons <dir with lessons.jsonl + toolsets.json> --teacher teacher.pt --save <healed dir>
   Options: --experts lora|full|frozen  --r 32  --lr 1e-4  --epochs 1  --tokens-per-step 65536  --max-len 8192
            --hours 3 (stop and save in time)  --eval-only (just measure)  --alpha 0.7 (share of the loss from the teacher)
+GPT-OSS (14 Nov 2026) heals the same way: family.py picks the model class, data.py the harmony answer mask, lora.py the parts.
 Loss = alpha * KL(teacher top-K || student) + (1 - alpha) * cross-entropy on the real next word, over answer tokens only.
 Writes <save>/heal-report.json with held-out numbers before and after. Resumable (lora-state.pt every 100 steps).
 
@@ -16,8 +17,8 @@ New ways to learn (13 Nov 2026), every one off unless asked for:
 """
 import argparse, json, math, os, random, time
 import torch, torch.nn.functional as F
-from transformers import AutoTokenizer, Qwen3_5MoeForConditionalGeneration
-import data as D, lora as L
+from transformers import AutoTokenizer
+import data as D, lora as L, family as FAM
 import pref as P, onpolicy as OP, targets as TG
 
 def positions(r):
@@ -83,7 +84,8 @@ def main():
     pref = P.build(tok, a.pref, a.max_len) if a.pref else None
     if pref is not None and not (pref["pairs"]["train"] or pref["kto"]["train"]): print("preference folder has nothing to train on: off"); pref = None
     t0 = time.time()
-    model = Qwen3_5MoeForConditionalGeneration.from_pretrained(a.model, dtype=torch.bfloat16, device_map=dev)
+    model = FAM.load(a.model, dev)
+    print(f"brain family: {FAM.family(a.model)}", flush=True)
     model.config.use_cache = False
     print(f"model loaded in {time.time() - t0:.0f}s, {(torch.cuda.memory_allocated() / 1e9) if dev == "cuda" else 0:.1f} GB")
     report = {"model": a.model, "experts": a.experts, "args": vars(a)}
@@ -114,10 +116,10 @@ def main():
     if opt is None: opt = torch.optim.AdamW(groups, weight_decay=0.0, betas=(0.9, 0.95))
     live_teacher = None
     if a.onpolicy_frac > 0:
-        live_teacher = Qwen3_5MoeForConditionalGeneration.from_pretrained(a.onpolicy_teacher, dtype=torch.bfloat16, device_map=dev).eval()
+        live_teacher = FAM.load(a.onpolicy_teacher, dev, teacher=True).eval()
         for p_ in live_teacher.parameters(): p_.requires_grad_(False)
         print(f"on-policy: teacher loaded beside the student for {a.onpolicy_frac:.0%} of the steps", flush=True)
-    stops = {i for i in (tok.convert_tokens_to_ids("<|im_end|>"), tok.eos_token_id) if isinstance(i, int) and i >= 0}
+    stops = FAM.stop_ids(tok)
     op_stats = {"steps": 0, "words": 0, "kd": 0.0}; pref_stats = {"pairs": 0, "won": 0}; lessons_done = 0
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     model.enable_input_require_grads()
@@ -196,7 +198,7 @@ def main():
         torch.save({"params": L.trainable_state(model), "step": step, "r": a.r, "r_experts": a.r_experts, "experts": a.experts}, os.path.join(a.save, "adapter.pt"))
     L.merge_all(model)
     if a.save:
-        model.save_pretrained(a.save, safe_serialization=True, max_shard_size="4GB"); tok.save_pretrained(a.save)
+        model.save_pretrained(a.save, safe_serialization=True, max_shard_size="4GB"); tok.save_pretrained(a.save); FAM.clean_saved(a.save)
         for fn in ("bob-keep.json", "preprocessor_config.json", "chat_template.jinja", "generation_config.json"):
             src = os.path.join(a.model, fn)
             if os.path.exists(src) and not os.path.exists(os.path.join(a.save, fn)):

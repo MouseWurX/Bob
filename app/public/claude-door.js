@@ -1,4 +1,4 @@
-// Settings, Other apps: "Hands for Claude" (src/claude-door.js). Off unless you turn it on.
+// Settings, Agents, Claude: "Hands for Claude" (src/claude-door.js). Off unless you turn it on.
 // Connect buttons write Bob into the Claude app's or Claude Code's own settings file for you (backed up first, and
 // shown before anything changes), so nobody has to open a terminal.
 import { esc } from './util.js';

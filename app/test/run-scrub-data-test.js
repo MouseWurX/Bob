@@ -44,6 +44,25 @@ check('the check finds it with gaps between the letters', findLeaks([{ t: 'zo' }
 check('the check shows names masked, never in full', !findLeaks('zorvik', sc).join().includes('zorvik'));
 check('the check passes clean text', findLeaks(S({ a: 'Users\\nzorvik', b: odds }), sc).length === 0);
 
+// 14 Nov: the owner's name in the GPT-OSS v5 odds, caught before upload. A stand-in already in place stopped the scrub.
+{
+  const you = ['you', 'example.com'].join('@'), real = ['zed', 'mail.org'].join('@');
+  const after = S([{ t: `write to ${you} or ask `, p: -0.1 }, { t: 'zor', p: -0.2, top: [{ t: 'zor', p: -0.2 }] }, { t: 'vik', p: -0.1 }, { t: ' today', p: -0.1 }]);
+  check('a name after a stand-in that is already there still comes out of the odds', !/zor|vik/i.test(JSON.stringify(after)) && after.map((x) => x.t).join('').endsWith('or ask you today'), JSON.stringify(after));
+  check('two names in one row, both come out', !/zor|vik/i.test(JSON.stringify(S([{ t: 'zor' }, { t: 'vik and ' }, { t: 'zo' }, { t: 'rvik' }]))));
+  const pairs = S([['C:\\Users\\', -0.1], ['zor', -0.2], ['vik', -0.3], ['\\x', -0.1]]);
+  check('odds written as [token, logprob] pairs are joined and scrubbed', !/zor|vik/i.test(JSON.stringify(pairs)) && pairs.map((x) => x[0]).join('') === 'C:\\Users\\you\\x' && pairs[1][1] === -0.2, JSON.stringify(pairs));
+  check('pairs as the other choices at a step too', !/zorvik/i.test(JSON.stringify(S([{ t: 'a', p: -1, top: [['zorvik', -2], ['b', -3]] }]))));
+  const enc = (t) => [...Buffer.from(t, 'utf8')];
+  const by = S([{ token: 'zor', logprob: -0.1, bytes: enc('zor'), top_logprobs: [] }, { token: 'vik', logprob: -0.1, bytes: enc('vik'), top_logprobs: [] }]);
+  check('bytes follow the scrubbed token text', by.every((x) => Buffer.from(x.bytes).toString('utf8') === x.token) && !/zor|vik/i.test(by.map((x) => Buffer.from(x.bytes).toString('utf8')).join('')), JSON.stringify(by));
+  const sc2 = mk();
+  check('the check looks past a stand-in to every match', findLeaks(`${you} and ${real}`, sc2).some((l) => /e-mail/.test(l)));
+  check('the check finds a name in pairs', findLeaks([['zor', -1], ['vik', -1]], sc2).length > 0);
+  check('the check finds a name left in bytes', findLeaks([{ token: 'a', bytes: enc('zorvik') }, { token: 'b' }], sc2).length > 0);
+  check('the check passes the scrubbed rows', findLeaks([after, pairs, by], sc2).length === 0, findLeaks([after, pairs, by], sc2).join('; '));
+}
+
 // private words from a file outside the repo
 fs.mkdirSync(path.join(tmp, 'agent', 'bob-model-lab'), { recursive: true });
 fs.writeFileSync(path.join(tmp, 'agent', 'bob-model-lab', 'private-words.txt'), 'hushword\r\n# a note\nother => gone\n');

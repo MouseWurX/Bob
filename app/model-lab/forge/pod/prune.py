@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Cut experts out of a Qwen3.6-35B-A3B style checkpoint (safetensors) to make a smaller Bob.
+"""Cut experts out of a Qwen3.6-35B-A3B style checkpoint (safetensors) to make a smaller Bob. GPT-OSS too (14 Nov 2026):
+the official MXFP4 files are cut as they are (the packed experts are expert-first as well), e.g. the 120B to the 38B.
 
 Works on the raw bytes, so it needs no torch and copes with any dtype: every expert tensor is
 [num_experts, ...] with the expert first, so keeping experts means copying whole contiguous slices.
@@ -14,6 +15,9 @@ import argparse, json, os, re, shutil, struct, sys, hashlib
 
 EXPERT_RE = re.compile(r"^model\.language_model\.layers\.(\d+)\.mlp\.(experts\.(gate_up_proj|down_proj)|gate\.weight)$")
 # transformers 5 saves experts one by one instead: ...mlp.experts.<n>.(gate|up|down)_proj.weight
+# GPT-OSS (14 Nov 2026): model.layers.N.mlp.experts.{gate_up_proj,down_proj}[_bias|_blocks|_scales] and mlp.router.{weight,bias};
+# every one has the expert first ([E, ...]; MXFP4 blocks/scales too), so the same byte slicing keeps them, packed or not.
+GPT_OSS_RE = re.compile(r"^model\.layers\.(\d+)\.mlp\.(experts\.(gate_up_proj|down_proj)(_bias|_blocks|_scales)?|router\.(weight|bias))$")
 PER_EXPERT_RE = re.compile(r"^(model\.language_model\.layers\.(\d+)\.mlp\.experts\.)(\d+)(\..+)$")
 SHARD_BYTES = 4 * 1024**3
 
@@ -27,7 +31,10 @@ def dtype_size(dt):
 
 def keep_lists(args, n_layers, n_experts):
     if args.keep_file:
-        kl = json.load(open(args.keep_file))["layers"]
+        kf = json.load(open(args.keep_file))
+        # {"layers": [...]} (bob-keep.json, keep.py) or {"keep": [...]} (the Lab's REAP keep lists, e.g. keep-32-v2.json for the 38B)
+        kl = kf.get("layers") if isinstance(kf.get("layers"), list) else kf.get("keep")
+        if not isinstance(kl, list): sys.exit(f"{args.keep_file}: no keep list (need \"layers\" or \"keep\": one list of expert ids per layer)")
         return [sorted(int(e) for e in row) if row else None for row in kl]
     c = json.load(open(args.counts))
     assert c["experts"] == n_experts, f"counts are for {c['experts']} experts, model has {n_experts}"
@@ -53,7 +60,9 @@ def main():
     if not args.keep_file and not (args.counts and args.keep): sys.exit("need --counts and --keep, or --keep-file")
     cfg = json.load(open(os.path.join(args.src, "config.json")))
     tc = cfg.get("text_config", cfg)
-    n_layers, n_experts, top_k = tc["num_hidden_layers"], tc["num_experts"], tc["num_experts_per_tok"]
+    gpt_oss = cfg.get("model_type") == "gpt_oss"
+    e_key = "num_local_experts" if gpt_oss else "num_experts"
+    n_layers, n_experts, top_k = tc["num_hidden_layers"], tc[e_key], tc.get("num_experts_per_tok", tc.get("experts_per_token"))
     keep = keep_lists(args, n_layers, n_experts)
     ks = {len(k) for k in keep if k}
     assert len(ks) == 1, f"every layer must keep the same number of experts, got {ks}"
@@ -108,7 +117,7 @@ def main():
         for tname, info in header.items():
             if tname == "__metadata__": continue
             dt, shape, (a, b) = info["dtype"], info["shape"], info["data_offsets"]
-            m = EXPERT_RE.match(tname)
+            m = (GPT_OSS_RE if gpt_oss else EXPERT_RE).match(tname)
             if not m:
                 pm = PER_EXPERT_RE.match(tname)
                 if pm:
@@ -130,7 +139,7 @@ def main():
         if fn.endswith(".safetensors") or fn == "model.safetensors.index.json" or fn == "config.json": continue
         p = os.path.join(args.src, fn)
         if os.path.isfile(p): shutil.copy(p, os.path.join(args.dst, fn))
-    tc["num_experts"] = K
+    tc[e_key] = K
     cfg["bob"] = {"name": args.name, "experts_kept": K, "experts_before": n_experts, "keep": keep}
     json.dump(cfg, open(os.path.join(args.dst, "config.json"), "w"), indent=2)
     json.dump({"name": args.name, "experts": K, "layers": keep}, open(os.path.join(args.dst, "bob-keep.json"), "w"))

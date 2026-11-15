@@ -115,6 +115,9 @@ def main():
     if a.checks: extra = check_chats(tok, a.checks, a.think); train += extra; print(f"grpo: + {len(extra)} written-answer checks", flush=True)
     print(f"grpo: {len(train)} chats to learn from, {len(test)} held out ({sum(1 for c in train if not c['want'])} want no tool)", flush=True)
     if not train: raise SystemExit("no chats to learn from")
+    import family as FAM
+    if FAM.family(a.model) != FAM.QWEN:  # the tool judge reads Qwen's two tool-call styles only; harmony calls would all score 0
+        raise SystemExit(f"grpo.py: {FAM.family(a.model)} brains are not supported yet (the tool judge reads Qwen tool calls only); the healed Bob stays")
     model = Qwen3_5MoeForConditionalGeneration.from_pretrained(a.model, dtype=torch.bfloat16, device_map=dev); model.config.use_cache = False
     stops = {i for i in (tok.convert_tokens_to_ids("<|im_end|>"), tok.eos_token_id) if isinstance(i, int) and i >= 0}
     report = {"model": a.model, "args": vars(a), "before": evaluate(model, tok, test, a, dev, stops, a.eval_chats)}

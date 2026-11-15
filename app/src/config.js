@@ -29,6 +29,7 @@ import { applyWaitingRestore } from './backup-apply.js';
 import { openBox, useBox, lockOn, mapSecrets, plainCount, writeSecretJson, openCopy, useKeysFile, memoryKeeper, IN_TEST, ensureBox } from './secret-box.js';
 import { HARNESS_KEYS, cleanHarness } from './harness.js'; // items 62 to 72
 import { cleanPerWordMap } from './experts-per-word.js'; // Brain Engine 0013
+import { cleanChatHeads } from './net-overlay.js'; // 1.5.228 a chat head per company
 
 
 // Where Ollama keeps its models on this PC: OLLAMA_MODELS if it's set, else Bob's own models folder if Ollama's files
@@ -153,8 +154,12 @@ export function loadConfig() {
     const { kept, fixed } = checkSettings(cfg, saved);
     cfg.settingsFixed = fixed;
     if (fixed.length) { try { writeJsonAtomic(cfg.settingsFile, kept, 2); } catch {} } // fixed once, not at every start
+    if (newDefaults(kept)) { try { writeJsonAtomic(cfg.settingsFile, kept, 2); } catch {} } // once per new default, below
     try { mergeSettings(cfg, kept); } catch (e) { notes.push(`settings.json couldn't be applied (${e.message}); using the defaults`); }
   }
+  // Nov 14 2026 (the owner: "existing installs get converted"): Moondust, the old starting theme, becomes the Mercury
+  // lamp once, on the first start after the update. Any other theme is left alone; Moondust can still be picked again.
+  { const moved = lampMove(cfg.style); if (moved) { cfg.style = moved; try { saveSettings(cfg, { style: moved }); } catch {} } }
   // 1.5.196: Brain Engine is the only engine for Bob's brains (onlyBrainEngine, below). An older pick of plain llama.cpp
   // or Ollama in Settings is set aside here, after settings.json, and the program is picked again with that.
   cfg.engineMoved = onlyBrainEngine(cfg, { hand });
@@ -255,7 +260,7 @@ export const VERSION = (() => {
 // Languages Bob's screens come in (public/i18n.js has the names and words). English is the default.
 export const LANGUAGES = ['en', 'fr', 'es'];
 export const cleanRemoved = (v) => [...new Set((Array.isArray(v) ? v : []).filter((k) => typeof k === 'string' && /^[\w.:/-]{1,100}$/.test(k)))].slice(0, 500);
-export const SETTING_KEYS = ['moreTools', 'answerMidJob', 'stopWords', 'copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'brainMemType', 'language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'toolHelp', 'toolSets', 'toolRecord', 'thinkBubble', 'statusJokes', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labRecheck', 'labExtras', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', ...HARNESS_KEYS, 'jobHelps', 'textSize', 'readableFont', 'profilesOn', 'todayCard', 'todayPlace', 'focusTimer', 'receipts', 'updateTour', 'tourSeen', 'trayDot', 'talkOver', 'readDocs', 'netVoices', 'netVoiceMap', 'carryIn', 'phoneGlance', 'netOverlay', 'memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPlaces', 'notesFolders', 'weeklyDigest', 'talkWithBob', 'talkCloud', 'talkCloudVoice', 'apuHoldbackGB'];
+export const SETTING_KEYS = ['moreTools', 'answerMidJob', 'stopWords', 'copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'brainMemType', 'language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'toolHelp', 'toolSets', 'toolRecord', 'thinkBubble', 'statusJokes', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'ownBar', 'chatHeads', 'netFiles', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labRecheck', 'labExtras', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', ...HARNESS_KEYS, 'jobHelps', 'textSize', 'readableFont', 'profilesOn', 'todayCard', 'todayPlace', 'focusTimer', 'receipts', 'updateTour', 'tourSeen', 'trayDot', 'talkOver', 'readDocs', 'netVoices', 'netVoiceMap', 'carryIn', 'phoneGlance', 'netOverlay', 'memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPlaces', 'notesFolders', 'weeklyDigest', 'talkWithBob', 'talkCloud', 'talkCloudVoice', 'apuHoldbackGB'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -337,7 +342,9 @@ function clean(patch) {
   if ('netVoices' in out) out.netVoices = out.netVoices === true; // "A voice per Bob" (src/tts.js netVoiceFor)
   if ('netVoiceMap' in out) out.netVoiceMap = cleanVoiceMap(out.netVoiceMap);
   if ('carryIn' in out) out.carryIn = out.carryIn === true; // "Accept chats" (src/carry.js)
+  if ('netFiles' in out) out.netFiles = out.netFiles === true; // Nov 14 "Files and brains" (src/bob-net-files.js)
   if ('phoneGlance' in out) out.phoneGlance = out.phoneGlance === true; // "Share status with my phone" (src/glance.js)
+  if ('chatHeads' in out) out.chatHeads = cleanChatHeads(out.chatHeads); // 1.5.228 a chat head per company (src/net-overlay.js), each off unless turned on
   if ('netOverlay' in out) out.netOverlay = out.netOverlay === true; // Nov 13 "Bob-Net icons" (src/net-overlay.js), off unless turned on
   if ('mathView' in out) out.mathView = out.mathView === true; // "Render maths", off by default (public/math-core.js)
   if ('shortcuts' in out) out.shortcuts = out.shortcuts === true; // "Keyboard shortcuts", off by default (public/shortcuts.js)
@@ -359,7 +366,8 @@ function clean(patch) {
   if ('parts3d' in out) out.parts3d = out.parts3d === true; // "3D parts", off by default (parts3d.js)
   if ('model3d' in out) out.model3d = out.model3d === true; // "Pictures to 3D models", off by default (model3d.js)
   if ('tray' in out) out.tray = out.tray !== false; // 1.5.94 "Minimise to tray"; on unless switched off since 1.5.134 (the owner asked for it)
-  if ('lookIcon' in out) out.lookIcon = out.lookIcon !== false; // 1.5.94 "Use Bob's look as his icon"; on unless switched off since 1.5.134 (the owner asked for it)
+  if ('lookIcon' in out) out.lookIcon = out.lookIcon !== false; // 1.5.94 "Use Bob's look as his icon"; off unless switched on since 1.5.228 (src/app-icon.js), so only a saved switch counts
+  if ('ownBar' in out) out.ownBar = out.ownBar !== false; // 1.5.228 "Window buttons on Bob's bar", on unless switched off (the owner asked for it; electron/window-bar.cjs)
   if ('houseStyle' in out) out.houseStyle = cleanHouseStyle(out.houseStyle); // 1.5.34 House style (public/house-style.js)
   if ('projectList' in out) out.projectList = cleanProjects(out.projectList); // 1.5.34 Projects in Settings
   if ('saveDir' in out) out.saveDir = cleanDir(out.saveDir); // 1.5.41 Save folder ('' = Bob's own folder)
@@ -490,6 +498,15 @@ const THEME_ID = /^[a-z0-9-]{2,40}$/;
 const COLOR_KEYS = ['bg', 'panel', 'card', 'you', 'line', 'text', 'muted', 'accent', 'onAccent', 'good', 'warn', 'bad', 'spriteBg'];
 const FONT_IDS = ['system', 'plex', 'mono', 'serif', 'rounded'];
 const OLD_THEME_IDS = { system: 'moondust', slate: 'moondust', midnight: 'nightside', 'mousehole-dark': 'otterbend', 'mousehole-light': 'homestead', paper: 'sandbar', 'mousewurx-light': 'drydock', 'mousewurx-dark': 'drydock-night' }; // mirrors public/themes.js OLD_IDS
+// Nov 14 2026: the style after the one-time move from Moondust (or no theme, which meant Moondust) to the Mercury lamp,
+// or null when there's nothing to move (already moved, or another theme picked).
+export function lampMove(style) {
+  const st = style && typeof style === 'object' ? style : {};
+  if (st.lampMoved === true) return null;
+  const theme = typeof st.theme === 'string' ? (OLD_THEME_IDS[st.theme] || st.theme) : 'moondust';
+  if (theme !== 'moondust') return { ...st, lampMoved: true };
+  return { ...st, theme: 'mercury', lamp: 'mercury', lampMoved: true };
+}
 export function cleanStyle(st) {
   const out = {};
   if (!st || typeof st !== 'object') return out;
@@ -500,6 +517,8 @@ export function cleanStyle(st) {
   if (['pixel', 'cube'].includes(st.avatar)) out.avatar = st.avatar;
   if (st.avatarKept === true) out.avatarKept = true; // 1.5.211: Pixel Bob picked on purpose (public/themes.js pixelKept) // 1.5.209 Bob's look: the pixel Bob (to begin with) or the fNRI cube
   if (['classic', 'lamplight', 'terminal'].includes(st.look)) out.look = st.look; // 1.5.210: Style > Look (mirrors public/themes.js LOOK_IDS)
+  if (st.lampMoved === true) out.lampMoved = true; // Nov 14 2026: Moondust moved to Mercury once (lampMove)
+  if (['mercury', 'sodium', 'thallium', 'neon'].includes(st.lamp)) out.lamp = st.lamp; // Nov 14 2026: the lamp colour (mirrors public/themes.js LAMP_IDS)
   if (Array.isArray(st.custom)) {
     out.custom = st.custom.slice(0, 24).filter((t) => t && typeof t === 'object' && THEME_ID.test(String(t.id)) && String(t.id).startsWith('my-')).map((t) => {
       const colors = {};
@@ -631,6 +650,28 @@ function savedSettings(cfg) {
 // Item 234: each saved setting whose default (config.json and Bob's own) is a switch, a number, words, a list or a
 // group must be the same kind; anything else goes back to its default. Settings with no default are left to clean().
 const kindOf = (v) => (v === null || v === undefined ? '' : Array.isArray(v) ? 'list' : typeof v === 'number' ? (Number.isFinite(v) ? 'number' : 'bad') : typeof v);
+// 1.5.230 (the owner: an update with a new default must change it for everyone, not keep an older pick): when a
+// default changes, the old saved pick of that setting is dropped once, on the first start after the update, so
+// everyone gets the new default; whatever they pick after that is kept as usual. settings.json remembers which of
+// these it has had (defaultsSeen), so a pick made later is never dropped again. Add a line here with each new default.
+export const NEW_DEFAULTS = [
+  { id: 'tesseract-icon', keys: ['lookIcon'] }, // 1.5.228: Bob's icon is the tesseract (the pixel look only if switched on again)
+  { id: 'scut-400', keys: ['share.scutMbps', 'share.scutMbpsChosen'] } // Nov 14, the owner: SCUT's cap is 400 Mbit/s by default, never 100
+];
+// A key is a top-level setting, or a.b for one inside a group (e.g. share.scutMbps).
+const dropKey = (kept, k) => { const [g, sub] = k.split('.'); if (sub === undefined) delete kept[g]; else if (kept[g] && typeof kept[g] === 'object' && !Array.isArray(kept[g])) delete kept[g][sub]; };
+export function newDefaults(kept) {
+  const seen = Array.isArray(kept.defaultsSeen) ? kept.defaultsSeen.filter((x) => typeof x === 'string') : [];
+  let changed = !Array.isArray(kept.defaultsSeen) && 'defaultsSeen' in kept;
+  for (const d of NEW_DEFAULTS) {
+    if (seen.includes(d.id)) continue;
+    for (const k of d.keys) dropKey(kept, k);
+    seen.push(d.id); changed = true;
+  }
+  kept.defaultsSeen = seen;
+  return changed;
+}
+
 export function checkSettings(defaults, saved, at = '') {
   const kept = {}, fixed = [];
   for (const [k, v] of Object.entries(saved || {})) {

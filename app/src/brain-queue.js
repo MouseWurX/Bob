@@ -304,7 +304,7 @@ export const queueParts = {
       const netTo = !job.away && netChatTarget(this.lenders?.bobs?.() || [], job.sessionId);
       if (netTo) {
         job.away = { pending: true };
-        sendAway(this, job, { need: 'chat', why: 'guest', to: netTo, web: webOn(this.cfg) })
+        sendAway(this, job, { need: 'chat', why: 'guest', to: netTo, web: webOn(this.cfg), ...(this.netQuiet?.has?.(job.sessionId) ? { answer: false } : {}) })
           .then((went) => { if (!went) failNetChat(this, job, netTo.name || 'That Bob'); })
           .catch((e) => { this.log('away', `couldn't send a chat: ${e.message}`); failNetChat(this, job, netTo.name || 'That Bob', 'couldn\'t be reached'); });
         continue;

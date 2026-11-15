@@ -5,8 +5,8 @@ Writes expert-counts JSON in the same shape as the lab's count-experts.mjs: {"ex
 """
 import argparse, json, os, random
 import torch
-from transformers import AutoTokenizer, Qwen3_5MoeForConditionalGeneration
-import data as D
+from transformers import AutoTokenizer
+import data as D, family as FAM
 from reap import Scorer
 
 def main():
@@ -29,9 +29,9 @@ def main():
         rows = [r for r in rows if r.get("think")]
     print(f"counting on {len(rows)} pieces" + (f" (jobs {a.jobs})" if a.jobs else "") + (" general text" if a.general_only else "") + (" thinking only" if a.think else ""), flush=True)
     random.seed(1); random.shuffle(rows); rows = rows[: a.lessons_max]
-    model = Qwen3_5MoeForConditionalGeneration.from_pretrained(a.model, dtype=torch.bfloat16, device_map=a.device).eval()
-    layers = model.model.language_model.layers
-    E = model.config.text_config.num_experts
+    model = FAM.load(a.model, a.device).eval()
+    layers = FAM.layers(model)
+    E = FAM.num_experts(model.config)
     scorer = Scorer(layers, E, a.device, score=a.reap)
     with torch.no_grad():
         for n, r in enumerate(rows):

@@ -1,0 +1,104 @@
+{
+ "run": "gptoss-lessons-v5",
+ "note": "13 Nov (the owner: new lessons for the new protocol, plus style sets, plus data for surgery). GPT-OSS 120B (stock, ggml-org MXFP4) writes a Bob distillation set (3,000 over 26 jobs incl. the step-by-step ones: codefix, recover, clarify, selfcheck, research, newtool, understand; half thinking) and four style sets (400 each, all thinking, the sharper v2 style prompts (markers + example shape): Sherlock, Watson, Vulcan, Raider; each its OWN set for its OWN model, plain Bob prompt saved, style text to the writer only, no tag), every answer reviewed and saved with GPT-OSS's own odds (top 8 per word). Then three brains READ the new lessons with Brain Engine's expert trace (nothing written): GPT-OSS 120B, its 38B cut and Riker, each giving per-job and per-style expert maps measured on itself, plus dial trials for expert-sweep.mjs. Last, the 120B map is checked against the 38B's own (keep-32-v2). Lessons and odds stay on the PC: clean-lessons.mjs, scrub, then Hugging Face only on the owner's word. About 4-4.5 h on one H200 (~$21-24); caps 6 h / $32. 13 Nov (later, Riker's weights calibration, same pod): after his trace-read and at his own 8 experts per word (this pod's Brain Engine 787c2b8 has no live experts-per-word switch): calib-prep (>= 45 judged questions per job: held-out + a reserved slice of the new bob set, ids in calib/calib-ids.json so training skips them), per-job and per-style REAP mass maps and keep 75/50 lists (trace-read --mass), tool-score + quiz with and without the keep-75 mask, per-job presets (keep 100/75/50, dials 0.8/1.0/1.2, \u00b1 ranges, picked only when the gap beats the noise; job-presets.mjs), his own answers + top-8 odds on 1,000 of the new lessons, then the evil check (measure only, live dials, no tools). no_hands: nothing a brain writes is run. Per-job N, imatrix, the cvector direction and stock Qwen run after this plan on the same pod: forge.mjs --restart with plans/riker-calib.json (Brain Engine 7b12282).",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA H200"
+ ],
+ "step_up": [],
+ "data_centers": [
+  "AP-JP-1"
+ ],
+ "volume": {
+  "gb": 300,
+  "name": "bob-forge"
+ },
+ "volume_new": false,
+ "volume_fallback": false,
+ "volume_wait_minutes": 25,
+ "disk_gb": 200,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 10,
+ "dollars_max": 53,
+ "rent_minutes": 360,
+ "download_quants": [],
+ "benchmark": {
+  "note": "one brain at a time; the writer first (32 lessons at once share one copy of the weights), then the three readers (one lesson at a time: the expert trace is one stream per server)",
+  "hours_each": 3.5,
+  "models": [
+   {
+    "name": "gpt-oss-120b",
+    "nickname": "GPT-OSS 120B",
+    "file": "hf:ggml-org/gpt-oss-120b-GGUF:gpt-oss-120b-MXFP4.gguf",
+    "quant": "MXFP4",
+    "slots": 32,
+    "ctx": 524288,
+    "extra": "",
+    "commands": [
+     "node write-lessons.mjs --url {{url}} --out {{out}} --parallel 32 --odds 8 --effort medium --sampling 1,1,0 --review --avoid out/lessons,out/lessons-codefix,out/lessons-recover,out/lessons-clarify,out/lessons-newtool,out/lessons-selfcheck,out/lessons-research,out/lessons-understand,out/lessons-formats,out/lessons-reasoning,out/lessons-coding,out/lessons-coding-2,out/lessons-notes,out/lessons-selfhelp,out/lessons-gamemaster,out/lessons-refusals,out/lessons-languages --jobs chat:6,advice:4,knowledge:6,writing:5,coding:10,maths:4,science:3,plans:3,reminders:2,memory:2,web:3,files:3,office:3,run:2,schedules:1,codefix:6,recover:5,clarify:3,selfcheck:4,research:4,newtool:3,understand:3,notes:2,selfhelp:2,formats:3,refusals:2 --dir bob --think half --count 3000 --hours 2",
+     "node write-lessons.mjs --url {{url}} --out {{out}} --parallel 32 --odds 8 --effort medium --sampling 1,1,0 --review --avoid out/lessons,out/lessons-codefix,out/lessons-recover,out/lessons-clarify,out/lessons-newtool,out/lessons-selfcheck,out/lessons-research,out/lessons-understand,out/lessons-formats,out/lessons-reasoning,out/lessons-coding,out/lessons-coding-2,out/lessons-notes,out/lessons-selfhelp,out/lessons-gamemaster,out/lessons-refusals,out/lessons-languages --jobs chat:6,advice:4,knowledge:6,writing:5,coding:10,maths:4,science:3,plans:3,reminders:2,memory:2,web:3,files:3,office:3,run:2,schedules:1,codefix:6,recover:5,clarify:3,selfcheck:4,research:4,newtool:3,understand:3,notes:2,selfhelp:2,formats:3,refusals:2 --dir sherlock --think all --count 400 --hours 0.5 --persona forge/plans/think-sherlock-v2.txt",
+     "node write-lessons.mjs --url {{url}} --out {{out}} --parallel 32 --odds 8 --effort medium --sampling 1,1,0 --review --avoid out/lessons,out/lessons-codefix,out/lessons-recover,out/lessons-clarify,out/lessons-newtool,out/lessons-selfcheck,out/lessons-research,out/lessons-understand,out/lessons-formats,out/lessons-reasoning,out/lessons-coding,out/lessons-coding-2,out/lessons-notes,out/lessons-selfhelp,out/lessons-gamemaster,out/lessons-refusals,out/lessons-languages --jobs chat:6,advice:4,knowledge:6,writing:5,coding:10,maths:4,science:3,plans:3,reminders:2,memory:2,web:3,files:3,office:3,run:2,schedules:1,codefix:6,recover:5,clarify:3,selfcheck:4,research:4,newtool:3,understand:3,notes:2,selfhelp:2,formats:3,refusals:2 --dir watson --think all --count 400 --hours 0.5 --persona forge/plans/think-watson-v2.txt",
+     "node write-lessons.mjs --url {{url}} --out {{out}} --parallel 32 --odds 8 --effort medium --sampling 1,1,0 --review --avoid out/lessons,out/lessons-codefix,out/lessons-recover,out/lessons-clarify,out/lessons-newtool,out/lessons-selfcheck,out/lessons-research,out/lessons-understand,out/lessons-formats,out/lessons-reasoning,out/lessons-coding,out/lessons-coding-2,out/lessons-notes,out/lessons-selfhelp,out/lessons-gamemaster,out/lessons-refusals,out/lessons-languages --jobs chat:6,advice:4,knowledge:6,writing:5,coding:10,maths:4,science:3,plans:3,reminders:2,memory:2,web:3,files:3,office:3,run:2,schedules:1,codefix:6,recover:5,clarify:3,selfcheck:4,research:4,newtool:3,understand:3,notes:2,selfhelp:2,formats:3,refusals:2 --dir vulcan --think all --count 400 --hours 0.5 --persona forge/plans/think-vulcan-v2.txt",
+     "node write-lessons.mjs --url {{url}} --out {{out}} --parallel 32 --odds 8 --effort medium --sampling 1,1,0 --review --avoid out/lessons,out/lessons-codefix,out/lessons-recover,out/lessons-clarify,out/lessons-newtool,out/lessons-selfcheck,out/lessons-research,out/lessons-understand,out/lessons-formats,out/lessons-reasoning,out/lessons-coding,out/lessons-coding-2,out/lessons-notes,out/lessons-selfhelp,out/lessons-gamemaster,out/lessons-refusals,out/lessons-languages --jobs chat:6,advice:4,knowledge:6,writing:5,coding:10,maths:4,science:3,plans:3,reminders:2,memory:2,web:3,files:3,office:3,run:2,schedules:1,codefix:6,recover:5,clarify:3,selfcheck:4,research:4,newtool:3,understand:3,notes:2,selfhelp:2,formats:3,refusals:2 --dir raider --think all --count 400 --hours 0.5 --persona forge/plans/think-raider-v2.txt",
+     "node trace-read.mjs --url {{url}} --sets bob={{out}}/../gpt-oss-120b/bob,sherlock={{out}}/../gpt-oss-120b/sherlock,watson={{out}}/../gpt-oss-120b/watson,vulcan={{out}}/../gpt-oss-120b/vulcan,raider={{out}}/../gpt-oss-120b/raider --per 60 --per-style 200 --out {{out}}/trace"
+    ]
+   },
+   {
+    "name": "gpt-oss-38b",
+    "nickname": "GPT-OSS 38B (unhealed v2)",
+    "file": "hf:MouseWurX/gpt-oss-120b-REAP-38B-UNHEALED-GGUF:gpt-oss-120b-REAP-38B-UNHEALED-MXFP4.gguf",
+    "quant": "MXFP4",
+    "slots": 1,
+    "ctx": 32768,
+    "extra": "",
+    "commands": [
+     "node trace-read.mjs --url {{url}} --sets bob={{out}}/../gpt-oss-120b/bob,sherlock={{out}}/../gpt-oss-120b/sherlock,watson={{out}}/../gpt-oss-120b/watson,vulcan={{out}}/../gpt-oss-120b/vulcan,raider={{out}}/../gpt-oss-120b/raider --per 60 --per-style 200 --out {{out}}/trace",
+     "node trace-carryover.mjs --big {{out}}/../gpt-oss-120b/trace/lift.json --small {{out}}/trace/lift.json --map hf:MouseWurX/gpt-oss-120b-REAP-38B-UNHEALED-GGUF:keep-32-v2.json --out {{out}}/carryover"
+    ]
+   },
+   {
+    "name": "riker",
+    "nickname": "Riker (28Bob)",
+    "file": "hf:MouseWurX/28Bob-Riker:28Bob-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "slots": 8,
+    "ctx": 65536,
+    "extra": "",
+    "commands": [
+     "node trace-read.mjs --url {{url}} --sets bob={{out}}/../gpt-oss-120b/bob,sherlock={{out}}/../gpt-oss-120b/sherlock,watson={{out}}/../gpt-oss-120b/watson,vulcan={{out}}/../gpt-oss-120b/vulcan,raider={{out}}/../gpt-oss-120b/raider --per 60 --per-style 200 --out {{out}}/trace",
+     "node calib-prep.mjs --sets out/lessons,out/lessons-codefix,out/lessons-recover,out/lessons-clarify,out/lessons-newtool,out/lessons-selfcheck,out/lessons-research,out/lessons-understand,out/lessons-formats,out/lessons-reasoning,out/lessons-coding,out/lessons-coding-2,out/lessons-notes,out/lessons-selfhelp,out/lessons-gamemaster,out/lessons-refusals,out/lessons-languages,{{out}}/../gpt-oss-120b/bob --reserve-from bob --probes out/probes --per 45 --out {{out}}/calib",
+     "node trace-read.mjs --url {{url}} --sets bob=out/lessons,bob=out/lessons-codefix,bob=out/lessons-recover,bob=out/lessons-clarify,bob=out/lessons-newtool,bob=out/lessons-selfcheck,bob=out/lessons-research,bob=out/lessons-understand,bob=out/lessons-formats,bob=out/lessons-reasoning,bob=out/lessons-coding,bob=out/lessons-coding-2,bob=out/lessons-notes,bob=out/lessons-selfhelp,bob=out/lessons-gamemaster,bob=out/lessons-refusals,bob=out/lessons-languages,bob={{out}}/../gpt-oss-120b/bob,sherlock={{out}}/../gpt-oss-120b/sherlock,watson={{out}}/../gpt-oss-120b/watson,vulcan={{out}}/../gpt-oss-120b/vulcan,raider={{out}}/../gpt-oss-120b/raider --per 100 --per-style 100 --mass --keep 0.75,0.5 --out {{out}}/trace-jobs",
+     "node set-live.mjs --reset && node tool-score.mjs --url {{url}} --models riker=riker --lessons {{lessons}} --out {{out}}/n8 && node experts-test.mjs --url {{url}} --counts 8 --no-run --out {{out}}/n8",
+     "node set-live.mjs --keep {{out}}/../../keep/reap-2026-11-12/keep-75.json && node tool-score.mjs --url {{url}} --models riker=riker --lessons {{lessons}} --out {{out}}/keep75-n8 && node experts-test.mjs --url {{url}} --counts 8 --no-run --out {{out}}/keep75-n8",
+     "node set-live.mjs --reset",
+     "node job-presets.mjs --url {{url}} --questions {{out}}/calib/questions --maps {{out}}/trace-jobs --out {{out}}/presets --n 3,4,6,12 --keeps 75,50 --scales 0.8,1.2 --parallel 8 --odds 8 --student {{out}}/../gpt-oss-120b/bob --student-n 1000",
+     "node evil-check.mjs --url {{url}} --out {{out}}/evil --lessons {{lessons}} --answers 100 --persona 30 --skills 40 --top 16 --scale 0.3",
+     "node make-datasets.mjs --from {{out}}/presets --lessons {{out}}/calib/questions --out {{out}}/../datasets-riker-calib --no-run",
+     "node make-datasets.mjs --from {{out}}/n8 --lessons {{lessons}} --out {{out}}/../datasets-riker-n8 --no-run",
+     "node make-datasets.mjs --from {{out}}/keep75-n8 --lessons {{lessons}} --out {{out}}/../datasets-riker-keep75-n8 --no-run"
+    ]
+   }
+  ],
+  "brain_engine": {
+   "ref": "787c2b828a505bfd54710ce41065f4f750548e80",
+   "patches": [
+    "0001-expert-mask",
+    "0002-expert-trace",
+    "0003-dials",
+    "0004-rpc-wifi",
+    "0005-scut",
+    "0006-scut-seal",
+    "0007-expert-trace-stream",
+    "0009-expert-mass"
+   ],
+   "note": "Brain Engine as the next build will be (patches 0001-0007 plus 0009, expert mass), fetched from Bob's public repo at this commit and compiled on the card (10-15 min)"
+  }
+ },
+ "llama_tag": "b12282",
+ "no_hands": true
+}
