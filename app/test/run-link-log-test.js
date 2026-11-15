@@ -78,6 +78,9 @@ ok(/if \(linkLive\(this\.cfg\) && !args\.includes\('-lv'\)\) args\.push\('-lv', 
 {
   const ahead = read('engine', 'patches', '0011-rpc-read-ahead.patch');
   ok(/GGML_RPC_AHEAD/.test(ahead) && /ahead_forget\(\)/.test(ahead) && !/^\+\+\+ b\/(?!ggml\/src\/ggml-rpc\/ggml-rpc\.cpp)/m.test(ahead), 'engine patch 0011 (read ahead) touches only the card-sharing client, forgets on a write, and can be switched off');
+  const smart = read('engine', 'patches', '0015-scut-smart-repairs.patch');
+  ok(/fec_rest/.test(smart) && /tw\.fixed \* 2 >= real/.test(smart) && !/^\+\+\+ b\/(?!ggml\/src\/ggml-rpc\/scut\.cpp)/m.test(smart), 'engine patch 0015 (smarter repairs) touches only SCUT, goes by what was rebuilt, and can rest the repairs');
+  ok(/0015-scut-smart-repairs\.patch/.test(read('engine', 'README.md')) && /0015-scut-smart-repairs/.test(read('engine', 'ENGINE-MAP.md')) && /REQUEST_BYTES/.test(read('engine', 'tests', 'scut-repairs.cpp')) && /random\.seed/.test(read('engine', 'tests', 'scut-pretend-wifi.py')), 'engine README and map list 0015, and its measuring tools are kept');
   ok(/0011-rpc-read-ahead\.patch/.test(read('engine', 'README.md')) && /0011-rpc-read-ahead/.test(read('engine', 'ENGINE-MAP.md')) && /three results each/.test(read('engine', 'tests', 'rpc-ahead.cpp')), 'engine README and map list 0011, and its test is kept');
 }
 console.log(`\n${pass} passed, ${fail} failed`);
