@@ -10,7 +10,9 @@ import { checkBobSource } from './bob-source.mjs';
 // allowOld: --allow-old-bob (bob-source.mjs): a Bob copy more than a few releases behind this Lab is refused otherwise.
 // home: a throwaway home folder (Documents, Desktop, Downloads) Bob may use, shown to him as C:\Users\you, so his real
 // tools can run against a lesson's own files (write-lessons --real-tools). Off: the kit is as before.
-export async function loadBob(bobDir, { howtos = '', allowOld = false, home = false } = {}) {
+// office: soffice.exe (or soffice) for the office tools (write-lessons --office, 15 Nov): the throwaway Bob's own
+// folder never holds LibreOffice, so without it office_make and the rest answer "no LibreOffice on this PC".
+export async function loadBob(bobDir, { howtos = '', allowOld = false, home = false, office = '' } = {}) {
   // a repository folder works as well as its app folder (Bob's files sit in app/ since Nov 9)
   if (!fs.existsSync(path.join(bobDir, 'src')) && fs.existsSync(path.join(bobDir, 'app', 'src'))) bobDir = path.join(bobDir, 'app');
   const src = (f) => pathToFileURL(path.join(bobDir, 'src', f)).href;
@@ -38,6 +40,7 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false, home = fa
     // failed every time with 'The "path" argument must be of type string' and dozens of lessons taught a broken board
     noticeBoard: path.join(innDir, 'notice-board.md'), memoryFile: path.join(innDir, 'bob-memory.md'), logbook: path.join(innDir, 'logbook.md'),
     ledgerDir: path.join(innDir, 'ledger'), archiveDir: path.join(innDir, 'archive'),
+    ...(office ? { officePath: office } : {}),
     readRoots: homeDir ? [innDir, homeDir] : [innDir], readOnlyRoots: [], recycleBin: false,
     models: { bob: 'qwen3.6-35b-a3b' }, engine: 'llamacpp', ollamaUrl: 'http://127.0.0.1:1',
     painter: { engine: 'sdcpp', sdcpp }, stt: { provider: 'http' },

@@ -70,6 +70,8 @@ const parallel = Math.max(1, Number(o.parallel) || 1);
 // own throwaway home (Documents, Desktop, Downloads) seeded with the files its task needs, and Bob's real tools run there.
 // Tools that can't run in a throwaway folder (web, email, apps, paid makers) get honest stand-ins, counted on the lesson.
 const realTools = Boolean(o['real-tools']);
+// --office <soffice.exe> (15 Nov): LibreOffice for the real office tools; the lab PC's Program Files copy is found without it
+const officeExe = o.office ? path.resolve(String(o.office)) : '';
 const kit = await loadBob(L.bob, { allowOld: Boolean(o['allow-old-bob']), home: realTools });
 console.log(`Bob's tools from ${L.bob}: ${kit.bobSrc.version || '?'}${kit.bobSrc.commit ? ` (${kit.bobSrc.commit})` : ''}`);
 // 12 Nov (later): the idea writer is told what Bob's tools can really do, so it doesn't invent jobs no tool covers (calendar events...)
@@ -254,6 +256,7 @@ async function preflightCheck() {
   if (fromIdeasArg && !ideas.length) bad.push(`no ideas in ${F.ideas} (check --dir and --out)`);
   const left = ideas.filter((x) => !doneIds.has(x.id));
   console.log(`pre-flight: ${doneIds.size} already written in this folder, ${left.length} to go; tool shape ${kit.toolShapes ?? '?'} from ${L.bob}`);
+  if (officeExe && !fs.existsSync(officeExe)) bad.push(`--office ${officeExe} doesn't exist`);
   if (o['want-shapes'] !== undefined && String(kit.toolShapes) !== String(o['want-shapes'])) bad.push(`Bob's tools at ${L.bob} are shape ${kit.toolShapes ?? '?'}, not ${o['want-shapes']}`);
   const sizes = (left.length ? left : ideas).map((x) => ({ id: x.id, text: firstAsk(x) })).sort((a, b) => b.text.length - a.text.length);
   let longest = sizes.length ? est(sizes[0].text) : est(firstAsk({ job: 'chat', text: 'hello' }));
@@ -443,7 +446,7 @@ const queue = [...order.filter((x) => !done.has(x.id) && !triedBefore.has(x.id))
 if (triedBefore.size) console.log(`queue: ${queue.filter((x) => !triedBefore.has(x.id)).length} ideas never tried first, then ${queue.filter((x) => triedBefore.has(x.id)).length} tried before`);
 async function one(idea, think, room = 1, fix = '') {
   if (!realTools) return oneInner(idea, think, room, fix, null, null);
-  const sb = await loadBob(L.bob, { allowOld: Boolean(o['allow-old-bob']), home: true });
+  const sb = await loadBob(L.bob, { allowOld: Boolean(o['allow-old-bob']), home: true, office: officeExe });
   try {
     const setup = plant(sb, await seedFor(idea));
     return await oneInner(idea, think, room, fix, sb, { real: 0, standin: new Set(), setup });

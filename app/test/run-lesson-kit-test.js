@@ -247,6 +247,7 @@ check('writer: the fake result sees the tool\'s own description and is kept insi
   let out = '';
   try { out = await k.brain.tools.make_diagram.run({ title: 'Team', mermaid: 'flowchart TD\nA-->B' }, { loaded: [], cfg: k.brain.cfg, emit: () => {}, signal: new AbortController().signal, sessionId: 'lab' }); } catch (e) { out = 'threw: ' + e.message; }
   check('writer --real-tools: Bob\'s real make_diagram runs with the writer\'s context and keeps its file in the throwaway home', /^Drew the diagram "Team"/.test(out) && !/bob-lab-/.test(k.neutral(out)), out);
+  { const k2 = await loadBob(app, { home: true, office: path.join(tmp, 'lo', 'soffice.exe') }); check('lab sandbox: --office hands the throwaway Bob that LibreOffice', k2.brain.cfg.officePath === path.join(tmp, 'lo', 'soffice.exe')); try { k2.done?.(); } catch {} }
   // 15 Nov: the kit had no board or memory file, so every notice_board add/write and every remember failed in lkt-fix2
   const ctx = { loaded: [], cfg: k.brain.cfg, emit: () => {}, signal: new AbortController().signal, sessionId: 'lab' };
   const run = async (name, a) => { try { const r = await k.brain.tools[name].run(a, ctx); return typeof r === 'string' ? r : JSON.stringify(r); } catch (e) { return 'threw: ' + e.message; } };
@@ -271,6 +272,8 @@ let [gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--preflight', '--
 check('pre-flight: a slot too small for the longest lesson stops before anything runs', gc === 1 && /PRE-FLIGHT FAIL: each slot has 16384/.test(glog) && rows(path.join(tmp, 'wl', 'gate', 'lessons.jsonl')).length === 0, glog.slice(-300));
 [gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--preflight', '--slot-ctx', '32768']);
 check('pre-flight: says which ideas file it reads and how many rows, then passes', gc === 0 && /ideas file .*gate[\\/]ideas\.jsonl: 8 rows/.test(glog) && /pre-flight OK/.test(glog), glog.slice(-300));
+[gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--preflight', '--slot-ctx', '32768', '--office', path.join(tmp, 'no-office', 'soffice.exe')]);
+check('pre-flight: an --office LibreOffice that isn\'t there stops it', gc === 1 && /--office .*no-office.* doesn't exist/.test(glog), glog.slice(-300));
 [gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--preflight', '--slot-ctx', '32768', '--want-shapes', '99']);
 check('pre-flight: the wrong tool shape stops it', gc === 1 && /not 99/.test(glog));
 [gc, glog] = await runW(['--dir', 'no-such-ideas', '--from-ideas', '--preflight', '--slot-ctx', '32768']);
