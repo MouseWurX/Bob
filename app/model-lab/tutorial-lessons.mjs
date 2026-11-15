@@ -38,7 +38,7 @@ export function ideaPrompt(src, text, n) {
 }
 export const scriptNote = (src) => {
   const app = APPS[src.app] || APPS.blender;
-  return `This is ${app.name} ${src.version || ''} Python. Write the script to a .py file with write_file, then run it headless with run_command: ${app.run('<that file>')}. Read the output; if there is an error, say in plain words what went wrong, fix the script and run it again until it works. Between steps, say briefly what you are doing and why. In the final answer, say what the script made and where, quoting the real output.`;
+  return `This is ${app.name} ${src.version || ''} Python. Write the script to a .py file in ~/Documents with write_file, then run it headless with run_command: ${src.app === 'unreal' ? `${app.run('<that file>')}` : 'cmd "blender", args ["--background", "--factory-startup", "--python-exit-code", "1", "--python", "<that file>"], cwd the same folder'}. Save anything the script makes (.blend, .fbx, .glb, renders) next to it in ~/Documents. Read the output; if there is an error, say in plain words what went wrong, fix the script and run it again until it works. Between steps, say briefly what you are doing and why. In the final answer, say what the script made and where, quoting the real output.`;
 };
 
 // The last script in a lesson: a write_file to a .py path, else the last python code block Bob wrote.

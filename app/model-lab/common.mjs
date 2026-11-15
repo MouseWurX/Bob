@@ -239,6 +239,8 @@ export function notForTraining(row = {}) {
   if (!STOCK.has(cond.toLowerCase())) return `made under surgery (${cond.slice(0, 80)})`;
   for (const k of ['surgery', 'dials', 'mask', 'keepList', 'direction']) if (row[k] && (typeof row[k] !== 'object' || Object.keys(row[k]).length)) return `made under surgery (${k})`;
   if (row.evidence === true) return 'evidence only';
+  // 15 Nov (the owner: keep the research clean): Claude-written samples shown for viewing are never training data
+  if (row.notTraining === true || /SAMPLE\s*[\u2013-]\s*NOT TRAINING DATA/i.test(JSON.stringify(row))) return 'a sample for viewing, not training data';
   for (const k of ['pack', 'check', 'source', 'bench']) if (EVIDENCE.test(String(row[k] || ''))) return `${String(row[k]).slice(0, 40)}: evidence only`;
   return '';
 }

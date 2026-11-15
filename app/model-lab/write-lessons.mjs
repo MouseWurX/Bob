@@ -70,6 +70,11 @@ const parallel = Math.max(1, Number(o.parallel) || 1);
 // own throwaway home (Documents, Desktop, Downloads) seeded with the files its task needs, and Bob's real tools run there.
 // Tools that can't run in a throwaway folder (web, email, apps, paid makers) get honest stand-ins, counted on the lesson.
 const realTools = Boolean(o['real-tools']);
+// --blender <exe> (15 Nov, tutorial lessons): with --real-tools, Bob's run_command of a headless Blender script really runs
+// in the lesson's throwaway home (blender-run.mjs). Without it, Blender runs stay stand-ins and tutorial-lessons --verify
+// sets them aside as unproven.
+const blenderExe = realTools && o.blender ? String(o.blender) : '';
+const { blenderRun } = blenderExe ? await import('./blender-run.mjs') : { blenderRun: null };
 const kit = await loadBob(L.bob, { allowOld: Boolean(o['allow-old-bob']), home: realTools });
 console.log(`Bob's tools from ${L.bob}: ${kit.bobSrc.version || '?'}${kit.bobSrc.commit ? ` (${kit.bobSrc.commit})` : ''}`);
 // 12 Nov (later): the idea writer is told what Bob's tools can really do, so it doesn't invent jobs no tool covers (calendar events...)
@@ -420,6 +425,7 @@ function plant(sb, files) {
 async function toolResult(name, args, loaded, ask = '', sb = null, tally = null) {
   if (name === 'use_tools') return kit.useTools(args, loaded);
   if (sb && REAL_TOOLS.has(name) && sb.brain.tools[name]) { if (tally) tally.real++; return realResult(sb, name, args, loaded); }
+  if (sb && blenderRun && name === 'run_command') { const r = blenderRun(sb, args, blenderExe); if (r !== null) { if (tally) tally.real++; return r; } }
   if (tally && !FIXED[name] && name !== 'bob_help') tally.standin.add(name);
   if (FIXED[name]) return FIXED[name](args);
   if (MEDIA.has(name) && (sb || kit).brain?.cfg?.painterDir) return mediaResult(name, args, sb);
