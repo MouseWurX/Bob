@@ -55,6 +55,7 @@
     "test/run-lab-library-test.js",
     "test/run-lab-recipes-test.js",
     "test/run-forge-gptoss-test.js",
+    "test/run-forge-bench-empty-test.js",
     "test/run-step-thinking-test.js",
     "test/run-natural-tools-test.js",
     "test/run-hands-read-test.js",

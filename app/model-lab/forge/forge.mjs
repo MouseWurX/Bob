@@ -159,8 +159,12 @@ function ledgerChecked(lc) {
   if (lc.from !== out && fs.existsSync(path.resolve(lab, lc.from, 'toolsets.json')) && !fs.existsSync(path.join(out, 'toolsets.json'))) fs.copyFileSync(path.resolve(lab, lc.from, 'toolsets.json'), path.join(out, 'toolsets.json'));
   return out;
 }
-const lessonsDir = plan.ledger_check ? ledgerChecked(plan.ledger_check) : path.resolve(here, '..', plan.lessons || 'out/lessons');
-const countsFile = path.resolve(here, '..', plan.counts_file || 'out/experts/' + plan.counts);
+// 15 Nov: a benchmark-only run never reads lessons or expert counts (run.sh stops at its benchmark step first), so a fresh
+// copy of Bob needs none: the pod gets empty stand-ins and no old lesson set or tool list rides along.
+const benchEmpty = plan.benchmark_only === true ? path.join(outDir, 'forge', 'bench-empty') : '';
+if (benchEmpty) { fs.mkdirSync(benchEmpty, { recursive: true }); fs.writeFileSync(path.join(benchEmpty, 'lessons.jsonl'), ''); fs.writeFileSync(path.join(benchEmpty, 'toolsets.json'), '{}\n'); fs.writeFileSync(path.join(benchEmpty, 'counts.json'), '{}\n'); }
+const lessonsDir = plan.ledger_check ? ledgerChecked(plan.ledger_check) : benchEmpty || path.resolve(here, '..', plan.lessons || 'out/lessons');
+const countsFile = benchEmpty ? path.join(benchEmpty, 'counts.json') : path.resolve(here, '..', plan.counts_file || 'out/experts/' + plan.counts);
 for (const f of ['lessons.jsonl', 'toolsets.json']) if (!fs.existsSync(path.join(lessonsDir, f))) { console.error(`missing ${path.join(lessonsDir, f)}`); process.exit(1); }
 if (!fs.existsSync(countsFile)) { console.error(`missing counts file ${countsFile}`); process.exit(1); }
 // 15 Nov: the never-taught gate. A training or heal plan checks every lesson it would send against the held-out and calib files
