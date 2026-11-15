@@ -54,7 +54,7 @@ export const teachDiskGB = (paramsB, { download = true } = {}) => ({ work: Math.
 
 // ---- The Trainer pack (opt-in, its own folder, removable) ----
 export const TRAINER = {
-  uv: '0.13.4', python: '3.12', llamacpp: 'b12282', sizeGB: { cuda: 7, mac: 3 },
+  uv: '0.13.4', python: '3.12', llamacpp: 'b12359', sizeGB: { cuda: 7, mac: 3 },
   packages: ['torch==2.14.1', 'transformers==5.20.2', 'peft==0.21.2', 'accelerate==1.15.0', 'safetensors==0.8.0', 'sentencepiece==0.2.2', 'protobuf', 'numpy', 'huggingface_hub'],
   cudaOnly: ['bitsandbytes==0.50.2'],
   torchIndex: 'https://download.pytorch.org/whl/cu130', // CUDA 13.0 builds: they know the newest NVIDIA cards (the 50-series); cu128 ones came up CPU-only there
