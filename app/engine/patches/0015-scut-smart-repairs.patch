@@ -1,0 +1,128 @@
+diff --git a/ggml/src/ggml-rpc/scut.cpp b/ggml/src/ggml-rpc/scut.cpp
+index ead3193..514b36c 100644
+--- a/ggml/src/ggml-rpc/scut.cpp
++++ b/ggml/src/ggml-rpc/scut.cpp
+@@ -68,8 +68,10 @@ constexpr uint8_t OF_SEAL = 2;  // 0006: has a key, and every datagram is sealed
+ constexpr uint8_t OF_TUNE = 4;  // 0008: sends receive reports (T_RXR) and retunes itself from the other side's
+ // 0008, self-tuning. Four times a second each side tells the other what really arrived (a receive report). Once a
+ // second the sender reads those reports next to its own counters and adjusts, while the words keep flowing:
+-//   - repairs: one repair packet per 8, 4, 2 or 1 data packets (1 = everything small goes twice). More when packets
+-//     still had to be sent again, fewer after 20 quiet seconds;
++//   - repairs: one repair packet per 8, 4, 2 or 1 data packets (1 = everything small goes twice). 0015: more only
++//     while the repairs are rebuilding packets on the other side (single losses); when they aren't (losses in bursts,
++//     or packets that were only late), back towards one per 8 within seconds, and when a few hundred in a row rebuilt
++//     nothing, none at all for a while. They come back when packets are being lost again;
+ //   - the resend timer: a little longer when many resends turned out not to be needed (the packet was only late),
+ //     shorter when timeouts were real losses;
+ //   - the pace: never left below what the other side says is really arriving;
+@@ -86,6 +88,9 @@ constexpr int64_t  AWAKE_BASE = 25000, AWAKE_MIN = 4000;
+ constexpr size_t SEAL_CTR = 8, SEAL_TAG = 16, SEAL_EXTRA = SEAL_CTR + SEAL_TAG;
+ constexpr size_t MAX_DGRAM = 2048;                   // the biggest datagram SCUT makes is ~1.3 KB
+ constexpr uint32_t FEC_MAX = 8; // a burst of up to this many segments gets one repair packet
++// 0015: repair packets that rebuilt nothing in a row before they stop, and how long they stay stopped (doubling)
++constexpr uint64_t FEC_WASTE = 400;
++constexpr int64_t  FEC_REST_MIN = 15000000, FEC_REST_MAX = 300000000;
+ 
+ #pragma pack(push, 1)
+ struct offer_t {           // what goes into conn_caps (24 bytes)
+@@ -232,6 +237,11 @@ struct scut {
+     struct { int64_t at = 0; uint64_t sent = 0, resent = 0, timeouts = 0, dup = 0, fixed = 0, data = 0, bytes = 0, ms = 0; uint32_t hol_us = 0; } tw; // sender: this second
+     uint64_t tw_sent = 0, tw_resent = 0, tw_timeouts = 0;
+     int      quiet_secs = 0, calm_secs = 0;
++    // 0015: repairs that earn their place
++    uint64_t tw_fec = 0;              // n_fec_sent at the start of this second
++    uint64_t fec_wasted = 0;          // repair packets sent since one last rebuilt anything
++    bool     fec_rest = false;        // none are sent for now
++    int64_t  fec_rest_until = 0, fec_rest_for = FEC_REST_MIN;
+     int64_t  trial_end = 0, trial_next = 0, trial_prev = 0;
+     double   trial_srtt = 0;
+     uint64_t n_tuned = 0;
+@@ -498,28 +508,49 @@ struct scut {
+     void tuned(const char * what) {
+         n_tuned++;
+         LOG_INFO("[scut] tuned: %s (now: a repair packet per %u, resend timer x%.2f, keep-awake ping every %d ms, pace %.0f Mbit/s)\n",
+-                 what, fec_k, rto_scale, (int) (awake_us / 1000), rate * 8 / 1e6);
++                 what, fec_rest ? 0 : fec_k, rto_scale, (int) (awake_us / 1000), rate * 8 / 1e6);
+     }
+     void on_report(const uint8_t * body, size_t n, int64_t t) {
+         if (!tune || n < sizeof(rxr_t)) return;
+         rxr_t r; memcpy(&r, body, sizeof(r));
+-        if (!tw.at) { tw.at = t; tw_sent = n_sent + n_resent; tw_resent = n_resent; tw_timeouts = n_timeouts; }
++        if (!tw.at) { tw.at = t; tw_sent = n_sent + n_resent; tw_resent = n_resent; tw_timeouts = n_timeouts; tw_fec = n_fec_sent; }
+         tw.dup += r.n_dup; tw.fixed += r.n_fixed; tw.data += r.n_data; tw.bytes += r.bytes; tw.ms += r.ms;
+         tw.hol_us = std::max(tw.hol_us, r.hol_us);
+         if (t - tw.at < TUNE_EVERY) return;
+         tw.sent = n_sent + n_resent - tw_sent; tw.resent = n_resent - tw_resent; tw.timeouts = n_timeouts - tw_timeouts;
+         char why[200];
+         // 1. repairs. A resend the other side already had wasn't a loss, only a late packet.
++        // 0015 (measured: bob docs, 2026-11-15): a repair packet rebuilds one lost packet of its group. That pays with
++        // single losses (5% loss: 76 round trips a second against 47 without). With losses in bursts the repair is
++        // lost too, and with packets that are only late it is one more packet to be held up: no gain, more on the air.
++        // So what the other side reports as rebuilt decides, not the resends alone.
+         const uint64_t real = tw.resent > tw.dup ? tw.resent - tw.dup : 0;
++        const uint64_t fec_sent = n_fec_sent - tw_fec;
+         if (fec && tw.sent >= 20) {
+-            if (real * 100 > tw.sent && fec_k > 1) {
+-                fec_k /= 2; quiet_secs = 0;
+-                snprintf(why, sizeof(why), "more repair packets, %llu of %llu packets had to be sent again", (unsigned long long) real, (unsigned long long) tw.sent);
+-                tuned(why);
+-            } else if (real == 0 && tw.fixed == 0) {
+-                if (++quiet_secs >= 20 && fec_k < FEC_MAX) { fec_k *= 2; quiet_secs = 0; tuned("fewer repair packets, nothing was lost for 20 seconds"); }
++            const bool earning = tw.fixed >= 3 && tw.fixed * 2 >= real; // they caught a fair share of what was lost
++            if (fec_rest) {
++                if (t >= fec_rest_until && real * 100 > tw.sent) {
++                    fec_rest = false; fec_k = FEC_MAX; fec_wasted = 0; quiet_secs = 0;
++                    tuned("repair packets back on to see if they help, packets are being lost again");
++                }
++            } else if (earning) {
++                quiet_secs = 0; fec_wasted = 0; fec_rest_for = FEC_REST_MIN;
++                if (real * 100 > tw.sent && fec_k > 1) {
++                    fec_k /= 2;
++                    snprintf(why, sizeof(why), "more repair packets, they rebuilt %llu and %llu of %llu packets still had to be sent again", (unsigned long long) tw.fixed, (unsigned long long) real, (unsigned long long) tw.sent);
++                    tuned(why);
++                }
+             } else {
+-                quiet_secs = 0;
++                if (tw.fixed == 0) fec_wasted += fec_sent; else fec_wasted = 0;
++                if (fec_k < FEC_MAX && ++quiet_secs >= 3) {
++                    fec_k *= 2; quiet_secs = 0;
++                    tuned(real ? "fewer repair packets, the extra ones weren't rebuilding what was lost" : "fewer repair packets, nothing was lost for 3 seconds");
++                } else if (fec_k >= FEC_MAX && fec_wasted >= FEC_WASTE) {
++                    fec_rest = true; fec_rest_until = t + fec_rest_for;
++                    snprintf(why, sizeof(why), "repair packets paused for %d s, the last %llu rebuilt nothing", (int) (fec_rest_for / 1000000), (unsigned long long) fec_wasted);
++                    fec_rest_for = std::min(FEC_REST_MAX, fec_rest_for * 2); fec_wasted = 0;
++                    tuned(why);
++                }
+             }
+         }
+         // 2. the resend timer
+@@ -576,7 +607,7 @@ struct scut {
+             }
+         }
+         tw = {};
+-        tw.at = t; tw_sent = n_sent + n_resent; tw_resent = n_resent; tw_timeouts = n_timeouts;
++        tw.at = t; tw_sent = n_sent + n_resent; tw_resent = n_resent; tw_timeouts = n_timeouts; tw_fec = n_fec_sent;
+     }
+ 
+     // ---- receiver ----
+@@ -737,8 +768,9 @@ struct scut {
+         std::unique_lock<std::mutex> lk(mu);
+         if (have_cur && cur.len > 0 && !queue_cur(lk)) return false;
+         pump(now_us()); // send now from this thread: no waiting for the I/O thread to wake up
+-        if (fec) {
+-            // one repair packet per fec_k packets of this message (0008: fec_k is tuned live; a long message gets none)
++        if (fec && !fec_rest) {
++            // one repair packet per fec_k packets of this message (0008: fec_k is tuned live; a long message gets none;
++            // 0015: none at all while they are paused)
+             const uint32_t n = snd_next - burst_first;
+             if (n <= FEC_SPAN) { for (uint32_t f = 0; f < n; f += fec_k) send_fec(burst_first + f, std::min(fec_k, n - f)); }
+         }
+@@ -778,7 +810,7 @@ struct scut {
+             (unsigned long long) d.n_sent, (unsigned long long) d.n_resent, (unsigned long long) d.n_timeouts, (unsigned long long) d.n_fec_sent,
+             (unsigned long long) d.n_recv, (unsigned long long) d.n_fec_fixed, (unsigned long long) (d.n_bad + d.n_replayed), (unsigned long long) d.n_bad, (unsigned long long) d.n_replayed,
+             d.wire_tx / 1024.0, d.wire_rx / 1024.0, rate * 8 / 1e6, cap_bps * 8.0 / 1e6, (unsigned long long) d.n_cuts, srtt / 1000.0, min_rtt / 1000.0,
+-            tune ? "self-tuning" : "not self-tuning", fec ? fec_k : 0, rto_scale, (int) (awake_us / 1000), (unsigned long long) n_tuned);
++            tune ? "self-tuning" : "not self-tuning", fec && !fec_rest ? fec_k : 0, rto_scale, (int) (awake_us / 1000), (unsigned long long) n_tuned);
+         return buf;
+     }
+ };

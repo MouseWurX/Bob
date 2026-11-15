@@ -168,6 +168,13 @@ Then run `engine/try-newer.sh <tag>`. Every patch must go on, and the Linux buil
 - **Re-check on rebase:** if the build stops at the `static_assert`, llama.cpp added a step: add it at the END of `bob_wire_ops`. A dropped step becomes -1 in place. If `rpc_tensor` or any message struct changes, or an op's `op_params` layout changes, the wire is really different: then raise `BOB_WIRE_MAJOR` and say so in the release note.
 - **Tests:** `engine/tests/rpc-any-version.sh <old bin> <new bin> <gguf>` runs a brain with every layer on a lent card in all four pairings (old/new lender, old/new borrower) and checks the text matches a local run word for word. Nov 15 2026: all four matched on a tiny llama brain (CPU builds, Linux).
 
+### 0015-scut-smart-repairs: repair packets only where they help
+- **Upstream files:** none. SCUT's own `ggml/src/ggml-rpc/scut.cpp` only. Not in Brain Engine 8; it is in the patches folder for the next build.
+- **Hooks:** `on_report()` step 1. `earning` = the other side's receive reports say at least 3 packets were rebuilt this second and at least half as many as still had to be sent again. More repairs (`fec_k` halves) only while earning. Not earning for 3 seconds: `fec_k` doubles back towards `FEC_MAX`. At `FEC_MAX` and `FEC_WASTE` (400) repairs in a row rebuilt nothing: `fec_rest`, and `flush()` sends none until `fec_rest_until`, and then only once more than 1% of packets are being sent again. The rest doubles from 15 s to 5 minutes and goes back to 15 s when repairs earn again. `note()` and the "tuned" lines say "a repair packet per 0" while they rest.
+- **Why:** measured Nov 15 2026 (docs/test-results/2026-11-15-scut-repair-packets.md). Repairs help with single losses, do nothing with burst losses, and cost 7 to 12% with packets that are only late. On the owner's real Wi-Fi run of Nov 12, 25,654 repair packets rebuilt none.
+- **Re-check on rebase:** nothing upstream. After any change to the tuning, rerun the measurement.
+- **Tests:** `engine/tests/scut-repairs.cpp` with `engine/tests/scut-pretend-wifi.py` (SCUT built alone, see 0008). 36 runs with the patch against the 108 without: same speed as before with random loss, and less on the air with no loss, bursts and late packets. `test/run-link-log-test.js` checks the patch is listed.
+
 ## What's not covered yet
 
 No patch is tested automatically against a real engine build. A Brain Engine build that compiles but put a hunk in the wrong place would only show up in the PC test. Proposed for a later Brain Engine build: a short engine test in `brain-engine.yml` (ready-for-review PRs and main only, never drafts). It would load a tiny MoE GGUF and check five things:
