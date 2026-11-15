@@ -118,6 +118,7 @@
     "test/run-tuning-test.js",
     "test/run-help-coverage-test.js",
     "test/run-more-tools-test.js",
+    "test/run-save-to-test.js",
     "test/run-voice-phone-test.js",
     "test/run-textcalls-test.js",
     "test/run-songs-test.js",

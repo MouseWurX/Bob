@@ -285,7 +285,7 @@ export async function afterTool(name, args, text, ctx = {}) {
     return { ok: true, why: `${Number.isNaN(done) ? 'done' : `${done} done`}`, retry: false };
   }
   if (name === 'convert_file' || name === 'office_make' || name === 'office_edit' || name === 'strip_metadata') {
-    const files = [...s.matchAll(/^Saved (.+?) \([\d.]+ [KM]B\)/gm)].map((m) => m[1]);
+    const files = [...s.matchAll(/^Saved:? (.+?) \([\d.]+ [KM]B\)/gm)].map((m) => m[1]);
     if (!files.length) return fail('no file came out', { text: `Error: ${name} finished, but no new file came out of it. (Checked by the app.) Don't say it was made.` });
     const bad = [];
     for (const f of files) { let n = 0; try { n = fs.statSync(f).size; } catch {} if (!n) bad.push(path.basename(f)); }
