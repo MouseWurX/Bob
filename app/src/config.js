@@ -154,7 +154,11 @@ export function loadConfig() {
     const { kept, fixed } = checkSettings(cfg, saved);
     cfg.settingsFixed = fixed;
     if (fixed.length) { try { writeJsonAtomic(cfg.settingsFile, kept, 2); } catch {} } // fixed once, not at every start
-    if (newDefaults(kept)) { try { writeJsonAtomic(cfg.settingsFile, kept, 2); } catch {} } // once per new default, below
+    const applied = [];
+    if (newDefaults(kept, applied)) { try { writeJsonAtomic(cfg.settingsFile, kept, 2); } catch {} } // once per new default, below
+    // 1.5.232: Bob-Net's own settings live in config.json, not settings.json, so a new default for one of them
+    // (share.x) is dropped there too, once, at the same moment.
+    shareDefaults(cfg, applied);
     try { mergeSettings(cfg, kept); } catch (e) { notes.push(`settings.json couldn't be applied (${e.message}); using the defaults`); }
   }
   // Nov 14 2026 (the owner: "existing installs get converted"): Moondust, the old starting theme, becomes the Mercury
@@ -660,13 +664,20 @@ export const NEW_DEFAULTS = [
 ];
 // A key is a top-level setting, or a.b for one inside a group (e.g. share.scutMbps).
 const dropKey = (kept, k) => { const [g, sub] = k.split('.'); if (sub === undefined) delete kept[g]; else if (kept[g] && typeof kept[g] === 'object' && !Array.isArray(kept[g])) delete kept[g][sub]; };
-export function newDefaults(kept) {
+export function shareDefaults(cfg, applied = []) {
+  const keys = NEW_DEFAULTS.filter((d) => applied.includes(d.id)).flatMap((d) => d.keys).filter((k) => k.startsWith('share.')).map((k) => k.slice(6));
+  if (!keys.length || !cfg.share || !keys.some((k) => k in cfg.share)) return false;
+  for (const k of keys) delete cfg.share[k];
+  try { const raw = readConfigFile(cfg); if (raw.share && typeof raw.share === 'object') { for (const k of keys) delete raw.share[k]; writeConfigFile(cfg, raw); } } catch {}
+  return true;
+}
+export function newDefaults(kept, applied = []) {
   const seen = Array.isArray(kept.defaultsSeen) ? kept.defaultsSeen.filter((x) => typeof x === 'string') : [];
   let changed = !Array.isArray(kept.defaultsSeen) && 'defaultsSeen' in kept;
   for (const d of NEW_DEFAULTS) {
     if (seen.includes(d.id)) continue;
     for (const k of d.keys) dropKey(kept, k);
-    seen.push(d.id); changed = true;
+    seen.push(d.id); applied.push(d.id); changed = true;
   }
   kept.defaultsSeen = seen;
   return changed;

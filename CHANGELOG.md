@@ -4,6 +4,16 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.232
+
+SCUT's new speed reaches every Bob.
+
+### Fixed
+
+- **SCUT Auto really is 400 Mbit/s on Bobs that were already set up.** Older Bobs had saved 100, which used to be Auto's own number, and since 1.5.230 I read it as a cap you'd picked. An unpicked 100 is Auto again (400), and the one-time reset to Auto now also reaches Bob-Net's own settings, where the cap is kept. A cap you picked yourself after this update stays.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.231
 
 A small Lab fix.
@@ -187,30 +197,6 @@ I can tidy your email now, if you let me, nothing in an email can steer me, and 
 - **A new Discord server doesn't make me look dead.** When someone calls me in a channel that isn't on my list, I still don't answer there, but I note it once in my log and Settings shows an **Add** button for that channel, by name. No more hunting for channel IDs.
 - **"@Bob hi" works on Discord.** Starting a message with an @mention of my bot counts as the wake phrase, in the channels on my list.
 - **The Lab won't use an old copy of me.** Lesson writing and tool scores refuse a Bob more than 3 releases behind, and everything they write is stamped with which Bob made it.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.222
-
-Settings are shorter and clearer. The cube is my picture everywhere, my pixel looks move to games, the passcode lock turns off with your passcode, and tools are worded for each kind of brain.
-
-### Changed
-
-- **Settings are shorter and easier to read.** About 135 switches have shorter names (Profiles for other people is now **Users**, for one), and most descriptions are now one or two sentences, shown right under the name. Long panel explanations are cut down. SCUT and SUDDAR explain themselves where you see them. The side list is regrouped, with new **Chat and jobs** and **Fun** groups. Nothing you've set changes: same switches, same defaults. Help, the glossary and the phone use the new names.
-
-- **The cube is my picture everywhere outside games.** My pixel looks, and **Make your own look**, move off the Style page and become my **game look**, picked in Adventure, Characters, Party. Settings, Personality's button is now **Change his game look** and opens that page. Your pick is kept, so old chats, adventures and Journey saves look the same.
-
-- **Turning the passcode lock off takes the passcode that turned it on.** Untick it, type your passcode, and it's off. If **Lock my chats and memory** is on, the same step puts your chats and memory back to plain files first, so nothing is lost. A wrong passcode changes nothing, and the lock stays on. Before, you had to switch Lock my chats and memory off first, as a separate step.
-
-### Fixed
-
-- **Tools are worded for each kind of brain** (Settings, How Bob works, **Tool wording for each brain family**; on to start with). GPT-OSS brains get short "Use when" lines for each tool. Qwen brains see exactly what they did before. Tool names and what they take stay the same for every brain.
-- **The tools forgive more.** "Add" works on the notice board. A reminder with no time goes to the to-do list. Common wordings are understood, and every result says exactly what changed. If you asked for a to-do or a reminder and none was set, I get one more go at it.
-- **When one message asks for two or more things, I do them all.** I note what was asked before I start, and if fewer things got done than were asked, I get one more go. Tools I make for myself check what they're given, and a test of one that gives back nothing readable is turned down.
-- **Lab lesson sets leave out answers made under surgery**, and the evil-check and fiction-check answers, when cleaning a set or making right-vs-wrong pairs, so they never teach a brain.
-- **Your notice board never loses items to a rewrite.** Several to-dos at once go on together, and a rewrite that would take items off is refused unless that's what was asked. Before, a small brain could wipe the board while adding to it.
-- **"Read notes.txt" finds the file** in the folders I can read, and when I'm not allowed somewhere, I'm told where those folders are.
-- **The Brains page fits.** Its bar labels are never cut off, and on a phone nothing runs off the edge.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 
