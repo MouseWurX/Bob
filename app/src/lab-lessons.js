@@ -24,8 +24,8 @@ export const UNITS = [
   { id: 'talk', level: 'foundations', title: 'Talking to a brain', about: 'Instructions, thinking and tools.' },
   { id: 'change', level: 'foundations', title: 'Changing a brain', about: 'Teaching, cutting and healing.' },
   { id: 'judge', level: 'foundations', title: 'Judging a brain', about: 'Testing it honestly.' },
-  // Advanced and the rest of Engineering: planned units, shown as "Coming next" until they have lessons. Names and
-  // order match the course plan in the dissertation outline ("The curriculum: first concepts to engineering").
+  // Advanced and the rest of Engineering. Names and order match the course plan in the dissertation outline
+  // ("The curriculum: first concepts to engineering").
   { id: 'learning', level: 'advanced', title: 'How brains learn', about: 'Loss, gradients and the training loop.' },
   { id: 'transformers', level: 'advanced', title: 'Transformers', about: 'Attention, embeddings and positions, in detail.' },
   { id: 'moe', level: 'advanced', title: 'Mixture of experts', about: 'Routers, load balance and active weights.' },
@@ -95,7 +95,6 @@ export const LESSONS = [
       q('Why did "big" and "small" change the answer?', ['Attention linked "it" to a different word', true, 'Right. The same word "it" pointed at the trophy or the suitcase.'], ['The brain looked it up', false, 'Nothing is looked up. Attention did it.'], ['Random chance', false, 'Try it a few times: the change is steady, not random.'])
     ] },
   { id: 'experts', unit: 'inside', title: 'Experts', pro: 'Mixture of experts (MoE)',
-    real: { text: 'Experts follow word patterns, not topics. Any job\'s top 96 experts (of 256) cover another job\'s routing about as well as that job\'s own top 96: 72 to 76%. There is no clean set of "coding experts".', from: 'docs/MAKING-SMALLER-MODELS.md' },
     read: ['Some brains split part of each layer into many small "experts". A router picks a few for each token, so only a fraction of the weights work on any one token.',
       'That is why a 35B mixture-of-experts brain can be about as fast as a 3B one: it has 35 billion weights, but only about 3 billion work per token. It still needs room for all of them.'],
     try: { kind: 'facts', ask: 'See whether my loaded brain has experts, and how many work per token.', show: ['experts', 'active'] },
@@ -138,7 +137,7 @@ export const LESSONS = [
     ] },
   // ---- Changing a brain ----
   { id: 'finetune', unit: 'change', title: 'Lessons and fine-tuning', pro: 'Supervised fine-tuning (SFT)',
-    real: { text: '37% of Bob\'s first coding lessons handed the job to a coding tool with a pretend result, so the brain learned to hand off code. Coding didn\'t move after a full heal. Clean coding lessons took Riker from 6 to 9 of 13 coding tasks.', from: 'docs/MAKING-SMALLER-MODELS.md' },
+    real: { text: '37% of Bob\'s first coding lessons handed the job to a coding tool with a pretend result, so the brain learned to hand off code. Coding race, 13 tasks, thinking on: Riker v1 8, v2 6, the re-cut Riker 9, full Qwen 12. The re-cut kept 208 experts against v1 and v2\'s 176, so its gain is not from the clean lessons alone.', from: 'docs/FORGE-JOURNAL.md' },
     read: ['To teach a brain, you show it example chats, called lessons, and nudge its weights so the right answers become likelier. That is fine-tuning.',
       'The lessons are everything: bad lessons teach bad habits. Every lesson should be read and checked, and the results of its tool calls should be real.'],
     try: { kind: 'page', ask: 'See how the Lab builds lessons from your files and a teacher brain.', page: 'teach', button: 'Open Teach' },
@@ -266,7 +265,7 @@ export const LESSONS = [
   { id: 'habits', unit: 'data', title: 'Lessons teach habits', pro: 'Behaviour from training data',
     read: ['A brain copies what its lessons do, not what they say. If lessons hand work off or invent results, the brain learns to hand off and invent.',
       'So read the lessons, not just their count. One bad pattern repeated a few hundred times becomes a habit.'],
-    real: { text: '37% of Bob\'s first coding lessons handed code off to a tool with a pretend result. Clean coding lessons took Riker from 6 to 9 of 13 coding tasks (full Qwen: 12).', from: 'docs/MAKING-SMALLER-MODELS.md' },
+    real: { text: '37% of Bob\'s first coding lessons handed code off to a tool with a pretend result. Coding race, 13 tasks, thinking on: Riker v1 8, v2 6, the re-cut Riker 9, full Qwen 12. The re-cut kept 208 experts against v1 and v2\'s 176, so its gain is not from the clean lessons alone.', from: 'docs/FORGE-JOURNAL.md' },
     try: { kind: 'page', ask: 'See how the Lab builds and checks lessons.', page: 'teach', button: 'Open Teach' },
     check: [
       q('What does a brain learn from a lesson?', ['What the lesson does', true, 'Right. Its habits, good and bad.'], ['Only the facts in it', false, 'It learns the behaviour too.']),

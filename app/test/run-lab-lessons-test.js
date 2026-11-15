@@ -29,6 +29,7 @@ check('every lesson has two questions, each with exactly one right answer and a 
 check('the right answer is not always first', LESSONS.flatMap((l) => l.check).some((q) => !q.answers[0].right));
 check('lessons follow units in order (the list reads top to bottom)', LESSONS.every((l, i) => i === 0 || UNITS.findIndex((u) => u.id === l.unit) >= UNITS.findIndex((u) => u.id === LESSONS[i - 1].unit)));
 check('Real results name a published doc that exists', LESSONS.filter((l) => l.real).length >= 4 && LESSONS.filter((l) => l.real).every((l) => l.real.text && fs.existsSync(fileURLToPath(new URL(`../${l.real.from}`, import.meta.url)))));
+check('Real results carry no unchecked figures (fact-check, Nov 15)', !LESSONS.some((l) => /6 to 9|72 to 76/.test(l.real?.text || '')));
 check('lesson words carry no folders', !/[A-Z]:\\|\/home\/|\/Users\//.test(JSON.stringify(LESSONS)));
 
 // ---- what Try it may send ----
