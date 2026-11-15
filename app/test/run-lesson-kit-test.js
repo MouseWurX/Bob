@@ -113,7 +113,7 @@ check('search: a sure, right fact is a "don\'t search" seed', sp.nosearch.some((
 check('search: held-out rows stay held out, and never become reward cases', sp.search.find((x) => /gallium/.test(x.request))?.heldout === true && !sp.cases.some((x) => /gallium/.test(x.q)));
 check('search: no odds or made under a dial = skipped', sp.skipped === 2);
 const py = spawnSync(process.platform === 'win32' ? 'python' : 'python3', ['-c', `import sys; sys.path.insert(0, r"${path.join(lab, 'forge', 'pod')}"); import tool_reward as R; t='<tool_call>{"name":"web_search","arguments":{"query":"x"}}</tool_call>'; print([R.search_reward({"search":"needed"}, t)[0], R.search_reward({"search":"needed"}, "1658")[0], R.search_reward({"search":"not_needed"}, "Jane Austen.")[0], R.search_reward({"search":"not_needed"}, t)[0]])`], { encoding: 'utf8' });
-if (py.error) check('search reward: Python is here to check it (skipped)', true, '(no Python)');
+if (py.error || (py.status !== 0 && /Microsoft Store|was not found|not recognized/i.test(`${py.stdout}${py.stderr}`))) check('search reward: Python is here to check it (skipped)', true, '(no Python)');
 else check('search reward: looked up 1, guessed -1, answered 1, needless search -0.2', py.stdout.trim() === '[1.0, -1.0, 1.0, -0.2]', py.stdout + py.stderr);
 check('grpo: --search uses the search reward', /--search"/.test(read('model-lab/forge/pod/grpo.py')) && /R\.search_reward/.test(read('model-lab/forge/pod/grpo.py')));
 

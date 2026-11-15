@@ -225,11 +225,14 @@ const teacherNoteFor = (idea, fix = '') => [stylePos === 'system' ? persona : ''
 // --slot-ctx N  room per slot (forge passes the plan's ctx / slots)   --min-slot-ctx (default 32768)   --headroom (default 16384:
 // one thinking turn of 6,000 plus tool results; lkt-fix2 measured a ~7.7k start growing to 16.4k)   --want-shapes 2
 const est = (s) => Math.ceil(String(s).length / 3); // Qwen's tokenizer: about 3.5-4 characters a word piece in English, ~3 in JSON; 3 errs safe
+const askBase = new Map(); // tool groups -> Bob's prompt + tools text, built once per group mix (5,565 ideas took minutes without it)
 function firstAsk(idea) {
-  const loaded = new Set(kit.guessGroups(idea.text));
-  const t0 = toolsFor(loaded); const tools = dropTools.size ? (t0.tools || []).filter((x) => !dropTools.has(x.function?.name || x.name)) : t0.tools || [];
-  const sys = shortPrompt ? SHORT_SYS : tag ? `${t0.system}\n\n${tag}` : t0.system;
-  return [sys, teacherNoteFor(idea), JSON.stringify(tools), String(idea.text || ''), Array.isArray(idea.prior) ? JSON.stringify(idea.prior) : ''].join('\n');
+  const groups = kit.guessGroups(idea.text), key = [...groups].sort().join(',');
+  if (!askBase.has(key)) {
+    const t0 = toolsFor(new Set(groups)); const tools = dropTools.size ? (t0.tools || []).filter((x) => !dropTools.has(x.function?.name || x.name)) : t0.tools || [];
+    askBase.set(key, [shortPrompt ? SHORT_SYS : tag ? `${t0.system}\n\n${tag}` : t0.system, JSON.stringify(tools)].join('\n'));
+  }
+  return [askBase.get(key), teacherNoteFor(idea), String(idea.text || ''), Array.isArray(idea.prior) ? JSON.stringify(idea.prior) : ''].join('\n');
 }
 const minSlot = Number(o['min-slot-ctx']) || 32768, headroom = Number(o.headroom) || 16384;
 function roomCheck(slotCtx, longest, how) {
