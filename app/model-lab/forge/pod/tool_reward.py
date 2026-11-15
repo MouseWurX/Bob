@@ -33,8 +33,9 @@ def _js_json(v):
 def _norm_js(v):
     return re.sub(r"\s+", " ", v.strip().lower()) if isinstance(v, str) else _js_json(v)
 
-def same_args(want, got):
+def same_args(want, got, free=()):
     for k, v in want.items():
+        if k in free: continue
         if k not in got: return False
         a, b = _norm_js(v), _norm_js(got[k])
         if a == b: continue
@@ -44,12 +45,30 @@ def same_args(want, got):
         return False
     return True
 
-def judge_turn(want, got):
-    """want/got: [{"name", "args"}]. The same rule as judgeTurn in tool-judge.mjs."""
+def judge_strict(want, got, free=()):
     if not want: return not got
     names = lambda xs: ",".join(sorted({c["name"] for c in xs}))
     if names(want) != names(got): return False
-    return all(any(g["name"] == w["name"] and same_args(w["args"], g["args"]) for g in got) for w in want)
+    return all(any(g["name"] == w["name"] and same_args(w["args"], g["args"], free) for g in got) for w in want)
+
+# 15 Nov: the fair judge (tool-judge.mjs judgeTurn, same rules, same cases): looks are free when the reference does
+# something, skipping a look for the reference's next action is right, a plain chat stays plain, fair.also_ok / free_args.
+LOOKS = {"list_folder", "read_file", "search_files", "web_search", "fetch_page", "read_calendar", "recall_memory", "look_at_job"}
+
+def judge_turn(want, got, fair=None):
+    """want/got: [{"name", "args"}]. The same rule as judgeTurn in tool-judge.mjs."""
+    f = fair or {}; free = f.get("free_args") or []
+    if judge_strict(want, got, free): return True
+    if f.get("strict"): return False
+    for alt in f.get("also_ok") or []:
+        if isinstance(alt, list) and judge_strict([{"name": c["name"], "args": parse_args(c.get("args"))} for c in alt], got, free): return True
+    if not want: return False
+    act = lambda xs: [c for c in xs if c["name"] not in LOOKS]
+    if act(want): return bool(act(got)) and judge_strict(act(want), act(got), free)
+    if act(got):
+        nxt = [{"name": c["name"], "args": parse_args(c.get("args"))} for c in (f.get("next") or [])]
+        return bool(nxt) and judge_strict(act(nxt), act(got), free)
+    return bool(got) and any(g["name"] == w["name"] and same_args(w["args"], g["args"], free) for w in want for g in got)
 
 TOOL_BLOCK = re.compile(r"<tool_call>(.*?)(?:</tool_call>|$)", re.S)
 FUNC = re.compile(r"<function=([^>\s]+)>(.*?)(?:</function>|$)", re.S)
@@ -79,11 +98,11 @@ def parse_calls(text):
             broken = True
     return calls, broken
 
-def reward(want, text):
+def reward(want, text, fair=None):
     """want: [{"name", "args"}] (the full Qwen's recorded calls, [] for a plain answer); text: the written answer."""
     got, broken = parse_calls(text)
     if broken: return BROKEN, "broken tool call"
-    if judge_turn(want, got): return RIGHT, "right"
+    if judge_turn(want, got, fair): return RIGHT, "right"
     if not want: return NOTHING, "tool called for nothing"
     if not got: return MISSED, "no tool when one was needed"
     names = lambda xs: ",".join(sorted({c["name"] for c in xs}))
@@ -99,6 +118,22 @@ def check_reward(check, text):
     if re.search(check["want"], text, fl(check.get("want_flags"))): return 1.0, "right facts"
     return 0.0, "facts missing"
 
+SEARCH_TOOLS = {"web_search", "fetch_page"}
+SEARCH_NEEDED, GUESSED, SEARCH_FOR_NOTHING = 1.0, -1.0, -0.2
+
+def search_reward(case, text):
+    """Look it up when unsure (search-pairs.mjs): case["search"] is "needed" or "not_needed".
+    Needed: a search scores best, a guess scores lowest. Not needed: a plain answer scores best, a needless search costs
+    a little (less than a tool on plain chat, which stays at -0.5)."""
+    got, broken = parse_calls(text)
+    if broken: return BROKEN, "broken tool call"
+    searched = any(c["name"] in SEARCH_TOOLS for c in got)
+    if case.get("search") == "needed":
+        return (SEARCH_NEEDED, "looked it up") if searched else (GUESSED, "guessed instead of looking it up")
+    if searched: return SEARCH_FOR_NOTHING, "searched a fact it knew"
+    if got: return NOTHING, "tool called for nothing"
+    return RIGHT, "answered directly"
+
 def want_from_lesson_turn(msg):
     """The recorded assistant turn (OpenAI shape) -> want list."""
     return [{"name": c["function"]["name"], "args": parse_args(c["function"].get("arguments"))} for c in (msg.get("tool_calls") or [])]
@@ -106,4 +141,4 @@ def want_from_lesson_turn(msg):
 if __name__ == "__main__":  # the Lab's test hands cases on stdin: [{"want": [...], "got": [...]}] -> [true/false, ...]
     import sys
     cases = json.load(sys.stdin)
-    print(json.dumps([judge_turn(c["want"], c["got"]) for c in cases]))
+    print(json.dumps([judge_turn(c["want"], c["got"], c.get("fair")) for c in cases]))

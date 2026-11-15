@@ -1,9 +1,23 @@
 {
   "run": "heal-gptoss-38b",
-  "note": "14 Nov 2026, NOT APPROVED, NOT RENTED (needs the owner's typed go in the GPT-OSS forge thread). Heal the GPT-OSS 38B REAP cut (41 of 128 experts per layer, the v2 keep list keep-32-v2.json, the same cut as MouseWurX/gpt-oss-120b-REAP-38B-UNHEALED-GGUF) with a LoRA, by distilling from the full GPT-OSS 120B. Steps on the card: download openai/gpt-oss-120b (MXFP4, about 65 GB; its original/ and metal/ copies are skipped), the 120B scores every lesson and 10M words of general text (MXFP4 on the card, teacher_hours 3), cut the 38B from it with the keep list (MXFP4 bytes copied, no rounding), unpack the 38B to BF16 (about 76 GB, hence an H200), LoRA heal (attention + experts + router, 6 h cap), count its experts, export to GGUF MXFP4_MOE. Held-out lessons are scored before and after in heal-report.json. The adapter and keep list come back to the PC beside the GGUF. Nothing is uploaded. First minutes: the run log must show 'GPT-OSS teacher: MXFP4 on this card' and the teacher pass moving; if either fails, stop the pod and report. About 10-12 h on an H200, about $40-50; caps 13 h / $55.",
+  "note": "14 Nov 2026 (gates added 15 Nov), NOT APPROVED, NOT RENTED (needs the owner's typed go in the GPT-OSS forge thread). Heal the GPT-OSS 38B REAP cut (41 of 128 experts per layer, the v2 keep list keep-32-v2.json, the same cut as MouseWurX/gpt-oss-120b-REAP-38B-UNHEALED-GGUF) with a LoRA, by distilling from the full GPT-OSS 120B. Steps on the card: download openai/gpt-oss-120b (MXFP4, about 65 GB; its original/ and metal/ copies are skipped), the 120B scores every lesson and 10M words of general text (MXFP4 on the card, teacher_hours 3), cut the 38B from it with the keep list (MXFP4 bytes copied, no rounding), unpack the 38B to BF16 (about 76 GB, hence an H200), LoRA heal (attention + experts + router, 6 h cap), count its experts, export to GGUF MXFP4_MOE. Held-out lessons are scored before and after in heal-report.json. The adapter and keep list come back to the PC beside the GGUF. Nothing is uploaded. First minutes: the run log must show 'GPT-OSS teacher: MXFP4 on this card' and the teacher pass moving; if either fails, stop the pod and report. About 10-12 h on an H200, about $40-50; caps 13 h / $55. GATES BEFORE ANY GO (15 Nov): (1) the GPT-OSS tool shape is locked (TOOL_SHAPES bump, from the gptoss-tools check: Bob's names and wording, ask_specialist and mcp_tools hidden, Reasoning: low on tool steps); (2) out/lessons-gptoss-heal holds GPT-OSS-shaped lessons only (Harmony calls, one call per message, text between steps describes thinking and steps, never Qwen-shaped, never the old out/lessons), each one read and reviewed before training; seeded from the gptoss-tools coach misses (list_folder, files, web, pictures) and from Bob's other jobs; (3) lesson-ledger.mjs --check --never passes against every held-out and calib file (519 of 534 held-out questions were found word for word in older lesson files); (4) tool-step lessons are written at Reasoning: low, planning and review steps may think.",
   "teacher": "openai/gpt-oss-120b",
   "counts": "expert-counts-2026-11-04T23-23-19.json",
-  "lessons": "out/lessons",
+  "lessons": "out/lessons-gptoss-heal-checked",
+  "ledger_check": {
+    "from": "out/lessons-gptoss-heal",
+    "never": [
+      "out/lesson-review-all/heldout-534/opus-read/heldout-fixed.jsonl",
+      "out/lesson-review-all/heldout-534/heldout-originals.jsonl",
+      "out/bench/gptoss-lessons-v5/riker/calib/questions/lessons.jsonl",
+      "out/bench/keep/hf-upload-folded/lessons/full-2026-11-13-folded-heldout.jsonl",
+      "out/bench/keep/hf-upload-folded/lessons/new-2026-11-13-folded-heldout.jsonl",
+      "../../hf-stage-1113/lessons-gptoss/full-heldout.jsonl",
+      "../../hf-stage-1113/lessons-gptoss/clean-heldout.jsonl"
+    ],
+    "ledger": "out/lesson-ledger.jsonl",
+    "note": "Every held-out and calib item: the 534 held-out items as Opus fixed them (heldout-fixed), the 87 originals that sit inside training files (heldout-originals: lines picked out of out/lessons and lessons-coding-2), and the held-out and calib files themselves (the 308 Riker calib questions the gptoss-tools check used, the folded held-out sets). The hf-stage-1113 GPT-OSS held-out files (beside the lab folder) are in too. The quiz items are always in. The pod gets out/lessons-gptoss-heal-checked."
+  },
   "gpus": [
     "NVIDIA H200",
     "NVIDIA H200 NVL"

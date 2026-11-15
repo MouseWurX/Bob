@@ -91,8 +91,9 @@ function drawFill(ev) {
   if (!fillBox) return;
   if (!ev?.ctx) { fillBox.hidden = true; return; }
   const share = Math.min(1, ev.used / ev.ctx);
-  fillText.textContent = `This chat: ${kTok(ev.used)} of ${kTok(ev.ctx)} (${Math.round(share * 100)}%)`;
-  fillBox.title = 'How much of the brain\'s memory this chat filled on the last reply';
+  // Nov 15 (the owner): under the typing box, across from the brain label, short enough for a phone
+  fillText.textContent = `Chat memory: ${Math.round(share * 100)}%`;
+  fillText.title = `${kTok(ev.used)} of ${kTok(ev.ctx)} tokens the brain can hold, as of Bob's last answer`;
   fillBox.classList.toggle('full', share >= 0.7);
   fillSum.hidden = share < 0.7;
   fillBox.hidden = false;

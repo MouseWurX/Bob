@@ -6,6 +6,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { findOutput } from './config.js';
+import { whereTo, SAVE_TO_HELP } from './save-to.js';
+import { canWrite } from './hands-office.js';
+import { freeName } from './util.js';
 
 // The diagram types Mermaid draws. The first word of the text must be one of them.
 export const KINDS = ['flowchart', 'graph', 'sequenceDiagram', 'classDiagram', 'stateDiagram', 'stateDiagram-v2', 'erDiagram', 'journey', 'gantt', 'pie', 'mindmap', 'timeline', 'quadrantChart', 'gitGraph', 'sankey-beta', 'xychart-beta', 'block-beta', 'kanban', 'requirementDiagram', 'C4Context', 'packet-beta', 'architecture-beta', 'radar-beta', 'treemap-beta'];
@@ -80,8 +83,23 @@ export function saveExport(cfg, { name, format, data }) {
   }
   const file = path.join(path.dirname(src), base.replace(/\.mmd$/, `.${ext}`));
   fs.writeFileSync(file, buf);
-  return { file, name: path.basename(file), url: `/images/${encodeURIComponent(path.basename(file))}` };
+  // save_to: the copy make_diagram was asked for, once the window has drawn it (same rule as every save).
+  let copy = null, copyError = '';
+  const want = SAVE_TO.get(base);
+  if (want && want.format === ext) {
+    SAVE_TO.delete(base);
+    try {
+      const dest = canWrite(cfg, freeName(whereTo(cfg, want.saveTo, path.basename(file))));
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.copyFileSync(file, dest, fs.constants.COPYFILE_EXCL);
+      copy = dest;
+    } catch (e) { copyError = e.message; }
+  }
+  return { file, name: path.basename(file), url: `/images/${encodeURIComponent(path.basename(file))}`, ...(copy ? { copy } : {}), ...(copyError ? { copyError } : {}) };
 }
+
+// Diagram name -> where a copy goes once drawn (make_diagram's save_to). Kept only until that file is saved.
+const SAVE_TO = new Map();
 
 // The make_diagram tool.
 export function diagramTool() {
@@ -96,18 +114,29 @@ export function diagramTool() {
           properties: {
             title: { type: 'string', description: 'A short title, 2 to 6 words.' },
             mermaid: { type: 'string', description: 'Mermaid, starting with its type: "flowchart TD" (or LR), sequenceDiagram, mindmap, timeline, gantt, pie, classDiagram, erDiagram, stateDiagram-v2.' },
-            format: { type: 'string', enum: Object.keys(FORMATS), description: 'Only if {{USER}} named png, svg or pdf.' }
+            format: { type: 'string', enum: Object.keys(FORMATS), description: 'Only if {{USER}} named png, svg or pdf.' },
+            save_to: { type: 'string', description: SAVE_TO_HELP }
           },
           required: ['mermaid']
         }
       }
     },
-    async run({ title, mermaid, format }, ctx) {
+    async run({ title, mermaid, format, save_to }, ctx) {
       const source = cleanMermaid(mermaid);
       const t = String(title || '').trim().slice(0, 80) || 'Diagram';
+      // save_to: its ending picks the type (png when it has none); checked now, so a refused folder says so at once.
+      let dest = null;
+      if (save_to) {
+        const e = path.extname(String(save_to)).slice(1).toLowerCase();
+        if (e && !FORMATS[e]) return `Error: diagrams save as .png, .svg or .pdf, not .${e}. Nothing was drawn. Call make_diagram again with one of those.`;
+        format = e || String(format || '').toLowerCase() || 'png';
+        try { dest = canWrite(ctx.cfg, whereTo(ctx.cfg, save_to, `${t}.${format}`)); } catch (err) { return `Error: not saved to ${save_to} (${err.message}). Nothing was drawn yet.`; }
+      }
       const { file, name } = saveDiagram(ctx.cfg, { title: t, source });
+      if (dest) SAVE_TO.set(name, { saveTo: save_to, format });
       const fmt = FORMATS[String(format || '').toLowerCase()] ? String(format).toLowerCase() : FORMATS[ctx.wantType] ? ctx.wantType : ''; // named in the ask: no card
       ctx.emit({ type: 'diagram', url: `/images/${encodeURIComponent(name)}`, file, title: t, ...(fmt ? { format: fmt } : {}) });
+      if (dest) return `Drawing: the chat window draws "${t}" and then saves it to ${dest} (a taken name gets -2). That file is written only once it's drawn, so say "I'm saving it to ${dest}", not that it's already there. If the chat says it couldn't draw it, fix the Mermaid and call make_diagram again.`;
       return `Drew the diagram "${t}"; it shows in the chat${fmt ? ` and is saved as ${fmt.toUpperCase()} next to its text` : ', with a Save as card (PNG, SVG or PDF) for the user to pick'}. Its Mermaid text is kept in ${file}. If the chat says it couldn't draw it, fix the Mermaid and call make_diagram again. Tell the user in one short line; don't paste the Mermaid text.`;
     },
     summary: ({ title }) => `diagram: ${String(title || 'diagram').slice(0, 60)}`

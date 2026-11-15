@@ -11,7 +11,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn, execFile, spawnSync } from 'node:child_process';
 import { tidySchema } from './toolbox.js';
-import { templateFor, samplingFor, replyTokens } from './model-family.js';
+import { templateFor, samplingFor, replyTokens, familyOf, thinkKwargs } from './model-family.js';
 import { gaming, LONG_CODER } from './sessions.js';
 import { gamingCard, decideCard, readCard, CARD_BUSY_PCT, CARD_MIN_FREE_MB } from './gaming-card.js';
 import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts, cardGB } from './tuning.js';
@@ -653,6 +653,13 @@ export class LlamaCpp {
     let gguf = null;
     try { gguf = this.resolve(model).gguf; } catch {} // no file found: the family comes from the name alone
     try { return samplingFor(this.lc, model, gguf, { tools, think, task, own: this.cfg?.qwenPresets }); } catch { return {}; }
+  }
+
+  // 15 Nov 2026: the family's way to ask for thinking or not (model-family.js thinkKwargs).
+  thinkArgs(model, think) {
+    let info = null;
+    try { const gguf = this.resolve(model).gguf; info = gguf ? ggufInfo(gguf) : null; } catch {}
+    return thinkKwargs(familyOf(model, info), think);
   }
 
   // ---------- Warm up while typing (1.5.24) ----------
@@ -1399,7 +1406,8 @@ export class LlamaCpp {
         ...this.sampling(model, { tools: !!tools?.length, think, task }),
         ...(Number.isFinite(temperature) ? { temperature } : {}),
         // 1.5.16: a quick reply asks the chat template to skip thinking (templates that don't know the switch ignore it).
-        ...(think === false ? { chat_template_kwargs: { enable_thinking: false } } : {}),
+        // 15 Nov 2026: GPT-OSS reads a reasoning level instead (model-family.js thinkKwargs: off = low).
+        ...this.thinkArgs(model, think),
         // fNRI's small cube in Bob's thinking: only while someone has it open, and only Brain Engine answers it
         ...(this.wantTrace?.() ? { expert_trace: true, expert_trace_stream: true } : {}) }), // 1.5.210: Brain Engine 5 also sends the picks with every word (older builds ignore the ask)
       signal

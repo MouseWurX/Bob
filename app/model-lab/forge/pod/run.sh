@@ -320,6 +320,19 @@ PY
           done
         else echo "bench $BN: no llama-cvector-generator or evil-pairs.json; the evil check reads experts only" | tee $ED/no-direction.txt; fi
       fi
+      # 14 Nov: interp true = before serving, read his inner stream on in/interp-<name>.tgz (llama-act-dump, pod patch 0015) and
+      # train the sparse autoencoders (pod/interp.py): patch-means.json, features-<layer>.json, sae-<layer>.pt in out/bench/interp-<name>/.
+      # Read only, a surgery record. The activations stay in $W/interp-<name>/ and are deleted. A failure writes interp.json with the
+      # error and the PC's gate (evil-interp.mjs --gate) stops the run (86).
+      if [ "$(plan "['benchmark']['models'][$b].get('interp',False)")" = "True" ]; then
+        AD=$S/llama.cpp/build-cuda/bin/llama-act-dump; XD=$OUT/bench/interp-$BN; XW=$W/interp-$BN; mkdir -p $XD $XW/in
+        if [ -x "$AD" ] && [ -f $IN/interp-$BN.tgz ] && tar xzf $IN/interp-$BN.tgz -C $XW/in; then
+          status bench "$BN: reading his inner stream and training the sparse autoencoders (read only)"
+          LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" timeout $(plan "['benchmark']['models'][$b].get('interp_minutes',90)*60") python3 $POD/interp.py --model "$BFILE" --act $AD --in $XW/in --out $XD --work $XW/work \
+            --sae-layers $(plan "['benchmark']['models'][$b].get('sae_layers','10,20,30')") --features $(plan "['benchmark']['models'][$b].get('sae_features',16384)") --k $(plan "['benchmark']['models'][$b].get('sae_k',32)") > $XD/interp.log 2>&1 || echo "bench $BN: interp step failed (see out/bench/interp-$BN/interp.log)"
+          rm -rf $XW
+        else echo "bench $BN: no llama-act-dump or no in/interp-$BN.tgz; interp skipped" | tee $XD/skipped.txt; fi
+      fi
       # 13 Nov: imatrix true = llama-imatrix on every text the PC sent (in/imatrix-<name>.tgz: all.txt and job-<job>.txt), before serving;
       # the importance data a job-tuned quant or adapter uses later. The PC fetches out/bench/imatrix-<name>/ first.
       if [ "$(plan "['benchmark']['models'][$b].get('imatrix',False)")" = "True" ]; then

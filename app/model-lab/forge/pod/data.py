@@ -31,6 +31,9 @@ def to_chat(lesson, sets):
     msgs, tools, system = [], None, None
     for m in lesson["messages"]:
         if m["role"] == "assistant":
+            # 14 Nov: a guided lesson's earlier failed try is marked train: false (lesson-doctor.mjs); render() masks it
+            if m.get("train") is False: a_skip = True
+            else: a_skip = False
             if system is None and m.get("set") in sets:
                 system, tools = sets[m["set"]]["system"], sets[m["set"]]["tools"]
             a = {"role": "assistant", "content": m.get("content") or ""}
@@ -45,6 +48,8 @@ def to_chat(lesson, sets):
                     # Qwen's template loops over tool_call.arguments|items, so arguments must be a mapping; name at both levels for either template style
                     calls.append({"type": "function", "name": name, "arguments": args, "function": {"name": name, "arguments": args}})
                 a["tool_calls"] = calls
+            if a_skip: a["_no_train"] = True
+            if isinstance(m.get("think"), bool): a["_think"] = m["think"]  # 15 Nov step thinking: the level this step was written at
             msgs.append(a)
         elif m["role"] == "tool":
             msgs.append({"role": "tool", "content": str(m.get("content") or "")})
@@ -117,6 +122,21 @@ def render(tok, lesson, sets, max_len):
     msgs, tools = to_chat(lesson, sets)
     if not any(m["role"] == "assistant" for m in msgs): return None
     harmony = is_harmony(tok)
+    skip = [bool(m.pop("_no_train", False)) for m in msgs if m["role"] == "assistant"]
+    if all(skip): return None
+    # 15 Nov (the owner): each family learns only its own lessons. A lesson stamped for another family is never rendered.
+    fam = lesson.get("family")
+    if fam and fam != ("gpt-oss" if harmony else "qwen"):
+        SKIPS.setdefault(f"lesson for another family ({fam})", 0); SKIPS[f"lesson for another family ({fam})"] += 1
+        return None
+    # a guided lesson's earlier failed try must never be learned; the GPT-OSS (harmony) mask can't skip one turn yet, so such
+    # a lesson is left out there rather than taught the wrong answer (each family gets its own lessons anyway)
+    if harmony and any(skip):
+        SKIPS.setdefault("guided lesson (GPT-OSS mask can't skip the failed try)", 0); SKIPS["guided lesson (GPT-OSS mask can't skip the failed try)"] += 1
+        return None
+    levels = [m.pop("_think", None) for m in msgs if m["role"] == "assistant"]
+    if harmony and len({l for l in levels if l is not None}) > 1:
+        return render_steps(tok, lesson, msgs, tools, levels, max_len)
     try:
         if harmony:  # no thinking in the lesson: ask for low effort, so the brain is not taught to skip thinking at medium
             think = any(m.get("reasoning_content") for m in msgs if m["role"] == "assistant") or bool(lesson.get("think"))
@@ -142,7 +162,7 @@ def render(tok, lesson, sets, max_len):
     # thinking even when thinking is on. Answers with thinking keep their whole think box (thinking on).
     empty = tok.encode("<think>\n\n</think>\n\n", add_special_tokens=False)
     mask = [0] * len(ids)
-    i = 0
+    i = 0; turn = 0
     while i < len(ids):
         if ids[i] == start and ids[i + 1: i + 1 + len(asst)] == asst:
             j = i + 1 + len(asst)
@@ -150,6 +170,8 @@ def render(tok, lesson, sets, max_len):
             j += 1
             k = j
             while k < len(ids) and ids[k] != end: k += 1
+            learn = not (turn < len(skip) and skip[turn]); turn += 1
+            if not learn: i = k + 1; continue
             for p in range(j, min(k + 1, len(ids))): mask[p] = 1
             if empty and ids[j: j + len(empty)] == empty:
                 for p in range(j, min(j + len(empty), len(ids))): mask[p] = 0
@@ -159,6 +181,39 @@ def render(tok, lesson, sets, max_len):
     if not any(mask): return None
     return {"id": lesson["idea"], "ids": ids, "mask": mask, "think": bool(lesson.get("think"))}
 
+def render_steps(tok, lesson, msgs, tools, levels, max_len):
+    """15 Nov, step thinking (Bob's step-thinking.js): GPT-OSS keeps its reasoning level at the top of its prompt, and Bob
+    plans at the turn's level but does each step after a tool result at Reasoning: low. A lesson written that way is
+    learned in parts, one per run of steps at the same level: each part is the conversation up to that run's last step,
+    rendered at that run's level, and only that run's steps are learned (what came before is the same prompt Bob sends)."""
+    pos = [n for n, m in enumerate(msgs) if m["role"] == "assistant"]
+    runs, cur = [], None
+    for k, lvl in enumerate(levels):
+        lv = bool(lvl) if lvl is not None else bool(lesson.get("think"))
+        if cur and cur[2] == lv: cur[1] = k
+        else: cur = [k, k, lv]; runs.append(cur)
+    out = []
+    for a, b, lv in runs:
+        full, before = msgs[:pos[b] + 1], msgs[:pos[a]]
+        try:
+            def ids_of(ms):
+                hm = to_harmony(ms); loop = hm[1:] if hm and hm[0]["role"] in ("system", "developer") else hm
+                last_user = max([n for n, m in enumerate(loop) if m["role"] == "user"] or [0])
+                r = tok.apply_chat_template(hm, tools=tools, tokenize=True, add_generation_prompt=False, chat_template=harmony_template(tok),
+                                            reasoning_effort="medium" if lv else "low", keep_cot_from=last_user)
+                return list(r["input_ids"] if hasattr(r, "input_ids") else r)
+            ids, head = ids_of(full), ids_of(before)
+        except Exception as e:
+            SKIPS.setdefault(str(e)[:120], 0); SKIPS[str(e)[:120]] += 1
+            continue
+        same = 0
+        while same < min(len(ids), len(head)) and ids[same] == head[same]: same += 1
+        ids = ids[:max_len]
+        mask = harmony_mask(tok, ids)
+        for p in range(min(same, len(mask))): mask[p] = 0
+        if any(mask): out.append({"id": lesson["idea"], "ids": ids, "mask": mask, "think": lv, "part": len(out)})
+    return out or None
+
 def build(tok, lessons_dir, max_len, cache=None):
     if cache and os.path.exists(cache):
         return torch.load(cache)
@@ -167,7 +222,7 @@ def build(tok, lessons_dir, max_len, cache=None):
     for l in lessons:
         r = render(tok, l, sets, max_len)
         if r is None: skipped += 1; continue
-        (test if is_holdout(l["idea"]) else train).append(r)
+        (test if is_holdout(l["idea"]) else train).extend(r if isinstance(r, list) else [r])
     data = {"train": train, "test": test, "skipped": skipped}
     if SKIPS: print("skip reasons:", json.dumps(SKIPS)[:600])
     print(f"lessons: {len(train)} train, {len(test)} held out, {skipped} skipped; "

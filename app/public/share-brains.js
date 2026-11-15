@@ -21,6 +21,17 @@ const SPREAD = [
   ['toobig', 'Only brains too big for this replicant matrix', 'A brain bigger than this card and memory can hold together goes over the cards your other Bobs lend.'],
   ['big', 'Any brain bigger than my card', 'Also brains that would otherwise spill from the card into memory. Only faster on a quick network (a cable, or fast Wi-Fi close to the router).']
 ];
+// Nov 15 (the owner: "can we have a ranking order for how they are selected?"): How Bob picks a Bob for a job
+// (src/job-pick.js). Rules on top of each other: each one only breaks ties left by the ones above it.
+const RULES = [
+  ['leastBusy', 'Least busy', 'Fewest jobs already waiting in his Tasks.'],
+  ['fastest', 'Fastest', 'Most words a second, as timed here or by him.'],
+  ['biggest', 'Biggest graphics card', 'Most graphics card memory, so big brains and big pictures fit.'],
+  ['closest', 'Closest', 'On your home network before Tailscale, then the one who answers quickest.'],
+  ['computers', 'Computers before phones', 'A PC, laptop or handheld before the phone app, to save the phone\'s battery.']
+];
+const KINDS = [['pictures', 'Pictures'], ['video', 'Clips'], ['music', 'Music'], ['sfx', 'Sounds'], ['model3d', '3D models'], ['web', 'Web research'], ['think', 'Medium-effort thinking'], ['room', 'Group chats (Discord)']];
+const MAXQ = [[0, 'Any number'], [1, 'Only if he has none'], [2, 'Fewer than 2'], [3, 'Fewer than 3'], [5, 'Fewer than 5']];
 const CAN = { pictures: 'pictures', video: 'clips', music: 'music', sfx: 'sounds', model3d: '3D models', web: 'web research', think: 'Medium-effort thinking' };
 // 1.5.123 Pass my Bob-Net along: what came of each introduction this Bob made.
 const INTRO = { introduced: (d) => `${esc(d.a)} and ${esc(d.b)}: introduced, so they pair by themselves.`, already: (d) => `${esc(d.a)} and ${esc(d.b)}: already on each other's list.`, off: (d) => `${esc(d.who)} has Pass my Bob-Net along off, so no introduction.`, old: (d) => `${esc(d.who)} can't be introduced yet: Bob there needs an update (the phone app doesn't know this yet).`, quiet: (d) => `${esc(d.who)} wasn't reachable. Bob tries again in an hour.`, no: (d) => `${esc(d.who)} said no. Bob tries again in an hour.` };
@@ -96,6 +107,20 @@ export async function mountShareBrains(box) {
     catch (e) { msg = e.message; }
     finding = false; draw();
   };
+  const pickBox = () => {
+    const pk = v.borrow.pick || { rules: ['leastBusy'], first: {}, maxQueue: 0 };
+    const on = pk.rules.filter((r) => RULES.some((x) => x[0] === r)), rows = [...on, ...RULES.map((x) => x[0]).filter((r) => !on.includes(r))];
+    const rule = (id, n) => { const [, name, why] = RULES.find((x) => x[0] === id), lit = on.includes(id), at = on.indexOf(id);
+      return `<li class="pick-rule${lit ? '' : ' off'}"><label class="switch"><input type="checkbox" data-pick-rule="${id}" ${lit ? 'checked' : ''}><span><strong>${lit ? `${at + 1}. ` : ''}${esc(name)}</strong> ${tip(why, name)}</span></label>${lit ? ` <button type="button" class="pick-move" data-pick-up="${id}" aria-label="Move ${esc(name)} up" title="Move up" ${at === 0 ? 'disabled' : ''}>↑</button><button type="button" class="pick-move" data-pick-down="${id}" aria-label="Move ${esc(name)} down" title="Move down" ${at === on.length - 1 ? 'disabled' : ''}>↓</button>` : ''}</li>`; };
+    const bobOpts = (k) => `<option value="">Use the order</option>${v.lenders.map((l) => `<option value="${esc(l.address)}" ${pk.first?.[k] === l.address ? 'selected' : ''}>${esc(l.name)} first</option>`).join('')}`;
+    return `<div class="job-pick${v.borrow.jobs ? '' : ' waits'}"><p><strong>How Bob picks a Bob for a job</strong> ${tip('First, only Bobs who can: he takes jobs, can do that kind right now, isn\'t gaming and isn\'t full. Then the limits below. Then the rules you switch on, top to bottom: each one only settles a tie left by the one above. Your list order (the ↑ buttons on your Bobs) settles the rest.', 'How Bob picks a Bob for a job')}${v.borrow.jobs ? '' : ' <span class="muted">(used once <strong>Send jobs</strong> is on)</span>'}</p>
+      <ol class="pick-rules">${rows.map(rule).join('')}<li class="muted pick-last">Then your list order</li></ol>
+      <label class="switch"><input type="checkbox" data-pick-home ${pk.homeOnly ? 'checked' : ''}><span><strong>Home network only</strong> ${tip('Jobs only go to Bobs on this home network, never over Tailscale.', 'Home network only')}</span></label>
+      <label class="switch"><input type="checkbox" data-pick-computers ${pk.computersOnly ? 'checked' : ''}><span><strong>Computers only</strong> ${tip('Never send a job to the phone app.', 'Computers only')}</span></label>
+      <div class="row"><strong>Jobs he can already have:</strong> <select data-pick-maxq aria-label="Jobs he can already have">${MAXQ.map(([n, label]) => `<option value="${n}" ${Number(pk.maxQueue || 0) === n ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
+      ${v.lenders.length ? `<p><strong>First choice for each kind</strong> ${tip('Try this Bob first for that kind of job. If he can\'t take it right now, the order above picks.', 'First choice for each kind')}</p>
+      <div class="pick-kinds">${KINDS.map(([k, label]) => `<label class="pick-kind"><span>${label}</span> <select data-pick-first="${k}" aria-label="First choice for ${esc(label)}">${bobOpts(k)}</select></label>`).join('')}</div>` : ''}</div>`;
+  };
   const can = (l) => (l.jobs?.length ? ` Takes jobs: ${l.jobs.map((x) => CAN[x] || x).join(', ')}${l.jobsBusy ? ` (${esc(WHY[l.jobsBusy] || l.jobsBusy)} right now)` : ''}.` : '');
   // SUDDAR: how far away each Bob is (his answer's round trip), and what that means for Bigger Bobs.
   const far = (l) => (l.ok === true && l.ms > 0 ? `, ${l.ms < 1 ? 'under 1' : Math.round(l.ms)} ms away (${l.ms <= 8 ? 'close' : l.ms <= 40 ? 'Wi-Fi close' : 'far'})${l.lendCard ? `, lends his card${l.scut ? ' with SCUT' : ''}` : ''}` : '');
@@ -153,7 +178,8 @@ export async function mountShareBrains(box) {
       <label class="switch"><input type="checkbox" data-share-borrow ${v.borrow.on ? 'checked' : ''}><span><strong>Borrow a brain</strong> ${tip('Bob asks one of your other Bobs to think, then runs the tools here himself, with his own OK cards. If none answers within a few seconds, Bob thinks it himself like always. Quick replies only: nothing on Medium or higher, and nothing with pictures.', 'Borrow a brain')}<br><span class="muted keep">Each time, the chat so far and what Bob remembers about you go to that Bob (your own replicant matrices on Tailscale, or this home network with Home network access on; it keeps none of it).</span></span></label>
       <div class="row"><strong>Borrow when:</strong> <select data-share-when>${WHEN.map(([id, label]) => `<option value="${id}" ${v.borrow.when === id ? 'selected' : ''}>${label}</option>`).join('')}</select>
         <span class="muted">${esc(WHEN.find((w) => w[0] === v.borrow.when)?.[2] || '')}</span></div>
-      <label class="switch"><input type="checkbox" data-share-send ${v.borrow.jobs ? 'checked' : ''}><span><strong>Send jobs</strong> ${tip('A job Bob can\'t do here, or one that would wait, goes to whichever of your other Bobs is free (least busy first). Jobs that need this replicant matrix always stay here. The job and the last few lines of the chat go to that Bob; the reply, OK cards and files come back.', 'Send jobs')}</span></label>
+      <label class="switch"><input type="checkbox" data-share-send ${v.borrow.jobs ? 'checked' : ''}><span><strong>Send jobs</strong> ${tip('A job Bob can\'t do here, or one that would wait, goes to one of your other Bobs who is free, picked the way you set below. Jobs that need this replicant matrix always stay here. The job and the last few lines of the chat go to that Bob; the reply, OK cards and files come back.', 'Send jobs')}</span></label>
+      ${pickBox()}
       <label class="switch"><input type="checkbox" data-share-askchecks ${v.borrow.checks ? 'checked' : ''}><span><strong>Review by a bigger Bob</strong> ${tip('At High and Extreme effort, the check goes to one of your other Bobs whose Review brain is bigger than this one\'s and who has Review for other Bobs on. High asks the first in your list, Extreme the biggest. If none is free, Bob checks it himself.', 'Review by a bigger Bob')}<br><span class="muted keep">For each check, the job, Bob's answer and what he did go to that Bob (only your own Bobs on Bob-Net; that Bob keeps none of it).</span></span></label>
       <label class="switch"><input type="checkbox" data-share-pass ${v.passAlong ? 'checked' : ''}><span><strong>Pass my Bob-Net along</strong> ${tip('Your Bobs with this on introduce each other. When this Bob is paired with two Bobs that both have it on, they pair with each other too, with no card to press.', 'Pass my Bob-Net along')}<br><span class="muted keep">Sends your other Bobs each other's name and address, nothing else; passcodes still pass only between the two being paired.</span></span></label>
       ${v.passAlong && v.introductions?.length ? `<ul class="share-list intro-list">${v.introductions.map((d) => `<li class="muted">${INTRO[d.state]?.(d) || esc(d.state)} <span class="muted">(${sinceShort(Date.now() - d.at)})</span></li>`).join('')}</ul>` : v.passAlong && v.lenders.length < 2 ? '<p class="muted">With two or more Bobs on the list, they get introduced to each other.</p>' : ''}
@@ -207,6 +233,13 @@ export async function mountShareBrains(box) {
     if (e.target.matches('[data-share-send]')) ch({ sendJobs: e.target.checked, check: e.target.checked });
     if (e.target.matches('[data-share-borrow]')) ch({ borrow: e.target.checked, check: e.target.checked });
     if (e.target.matches('[data-share-when]')) ch({ when: e.target.value });
+    // Nov 15: How Bob picks a Bob for a job
+    const pk = () => v.borrow.pick || { rules: ['leastBusy'] };
+    if (e.target.matches('[data-pick-rule]')) { const id = e.target.dataset.pickRule, r = pk().rules.filter((x) => x !== id); change({ jobPick: { rules: e.target.checked ? [...r, id] : r } }); }
+    if (e.target.matches('[data-pick-home]')) change({ jobPick: { homeOnly: e.target.checked } });
+    if (e.target.matches('[data-pick-computers]')) change({ jobPick: { computersOnly: e.target.checked } });
+    if (e.target.matches('[data-pick-maxq]')) change({ jobPick: { maxQueue: Number(e.target.value) } });
+    if (e.target.matches('[data-pick-first]')) { const first = { ...(pk().first || {}) }; if (e.target.value) first[e.target.dataset.pickFirst] = e.target.value; else delete first[e.target.dataset.pickFirst]; change({ jobPick: { first } }); }
   });
   box.addEventListener('submit', (e) => {
     if (e.target.matches('[data-pair-by-address]')) { e.preventDefault(); pair(new FormData(e.target).get('address')); return; }
@@ -224,6 +257,8 @@ export async function mountShareBrains(box) {
     if (e.target.closest('[data-link-log-copy]')) { navigator.clipboard?.writeText(linkText || '').catch(() => {}); return; }
     const rm = e.target.closest('[data-share-rm]'), up = e.target.closest('[data-share-up]');
     if (rm) change({ removeBob: rm.dataset.shareRm });
+    const mv = e.target.closest('[data-pick-up],[data-pick-down]');
+    if (mv) { const id = mv.dataset.pickUp || mv.dataset.pickDown, r = [...(v.borrow.pick?.rules || ['leastBusy'])], i = r.indexOf(id), j = i + (mv.dataset.pickUp ? -1 : 1); if (i >= 0 && j >= 0 && j < r.length) { [r[i], r[j]] = [r[j], r[i]]; change({ jobPick: { rules: r } }); } }
     if (up) { const order = v.lenders.map((l) => l.address); const i = order.indexOf(up.dataset.shareUp); if (i > 0) { order.splice(i - 1, 0, order.splice(i, 1)[0]); change({ order }); } }
     if (e.target.closest('[data-share-check]')) change({ check: true });
     if (e.target.closest('[data-pair-find]')) find();

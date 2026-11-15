@@ -1,6 +1,6 @@
 {
   "name": "bob",
-  "version": "1.5.233",
+  "version": "1.5.240",
   "description": "Bob, a local AI who lives on your PC: chat, pictures, video, voice and more, all on your own hardware.",
   "type": "module",
   "private": true,
@@ -35,12 +35,16 @@
     "test/run-wording-ab-test.js",
     "test/run-evil-check-test.js",
     "test/run-evil-steer-test.js",
+    "test/run-never-gate-test.js",
     "test/run-evil-sweep-test.js",
+    "test/run-evil-interp-test.js",
+    "test/run-evil-combo-test.js",
     "test/run-write-lessons-route-test.js",
     "test/run-make-datasets-test.js",
     "test/run-training-methods-test.js",
     "test/run-lab-protocol-test.js",
     "test/run-lab-steps-test.js",
+    "test/run-lab-console-test.js",
     "test/run-scrub-data-test.js",
     "test/run-make-probes-test.js",
     "test/run-lab-names-test.js",
@@ -51,6 +55,9 @@
     "test/run-lab-library-test.js",
     "test/run-lab-recipes-test.js",
     "test/run-forge-gptoss-test.js",
+    "test/run-step-thinking-test.js",
+    "test/run-natural-tools-test.js",
+    "test/run-hands-read-test.js",
     "test/run-lab-watch-test.js",
     "test/run-squeezed-brain-test.js",
     "test/run-gaming-card-test.js",
@@ -118,6 +125,7 @@
     "test/run-tuning-test.js",
     "test/run-help-coverage-test.js",
     "test/run-more-tools-test.js",
+    "test/run-save-to-test.js",
     "test/run-voice-phone-test.js",
     "test/run-textcalls-test.js",
     "test/run-songs-test.js",
@@ -133,6 +141,7 @@
     "test/run-phone-access-test.js",
     "test/run-android-test.js",
     "test/run-share-brains-test.js",
+    "test/run-job-pick-test.js",
     "test/run-mac-test.js",
     "test/run-linux-test.js",
     "test/run-catalogue-test.js",
@@ -230,6 +239,7 @@
     "test/run-catalog-find-test.js",
     "test/run-catalog-added-test.js",
     "test/run-lab-better-test.js",
+    "test/run-lab-lessons-test.js",
     "test/run-lab-plus-test.js",
     "test/run-doc-meaning-test.js",
     "test/run-apps-door-test.js",
@@ -266,8 +276,10 @@
     "test/run-engine-extras-test.js",
     "test/run-think-bubble-test.js",
     "test/run-task-pop-test.js",
+    "test/run-phone-menu-test.js",
     "test/run-status-line-test.js",
-    "test/run-net-overlay-test.js", "test/run-game-guard-test.js",
+    "test/run-net-overlay-test.js",
+    "test/run-game-guard-test.js",
     "test/run-engine-name-test.js",
     "test/run-engine-care-test.js",
     "test/run-retries-test.js",
@@ -286,13 +298,14 @@
     "test/run-bob-net-home-test.js",
     "test/run-experts-per-word-test.js",
     "test/run-mind-only-test.js",
-    "test/run-welcome-steps-test.js"
+    "test/run-welcome-steps-test.js",
+    "test/run-lesson-kit-test.js"
   ],
   "bob": {
     "release": "1.5",
-    "patch": 233,
+    "patch": 240,
     "branch": "",
-    "build": 285,
+    "build": 292,
     "bundledLlamaTag": "b12359",
     "brainEngineVersion": 8,
     "brainEngine": {
@@ -300,7 +313,7 @@
       "win-x64": "sha256:712f87908fb8b3fa01cb5051d992c9e4e02901a1cbd973be76f6150e75f042ac",
       "linux-x64": "sha256:fccf9181f1b3e7c981819150b333821627d00ede406d8af32bfe7ec89d928cbd"
     },
-    "electronSha256": "88e08039d0ef359bab9f674e8051fa103bd8628ea7c5a5e1daaa610a8a0c6931",
+    "electronSha256": "5099bdc11c6a78edff35851491c1f8228a1c2e844e1b376eee219402c42c6011",
     "layout": "From 0.9.32 Bob app\\Bob.exe is Electron's official electron.exe (devDependencies.electron), only renamed, and Bob's files sit in Bob app\\resources\\app. Updates never build an exe. electronSha256 (optional) pins the official zip's checksum; otherwise it is checked against Electron's SHASUMS256.txt. electron-builder (dist scripts) is only for making a portable exe by hand.",
     "note": "Version = <release>.<patch> from 1.0.0 (formatVersion in src/config.js): 1.0.1 for fixes, 1.1.0 (release 1.1, patch 0) for new features, a letter for unmerged branch work (1.0.1a). Before 1.0 it was 0.9.<build>. build goes up by one with every drop and never resets; the update check compares it. Git tags are v<version>."
   },
@@ -309,8 +322,12 @@
   "author": "MouseWurX",
   "homepage": "https://github.com/MouseWurX/Bob",
   "devDependencies": {
-    "electron": "44.9.0",
+    "electron": "44.10.1",
     "electron-builder": "26.18.0"
+  },
+  "overrides": {
+    "minimatch@^9.0.0": "11.0.3",
+    "minimatch@^10.0.0": "11.0.3"
   },
   "build": {
     "appId": "ca.mousewurx.bob",

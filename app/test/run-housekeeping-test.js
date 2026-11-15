@@ -202,6 +202,48 @@ const old = Date.now() - 400 * DAY;
   brain.housekeeper.pause();
 }
 
+// ---- Nov 15 (the owner): "is housekeeping on a brain?? ... make it assignable" and "when he does housekeeping it would
+// be a task that appears in his job queue". Its own brain job (empty = the main brain), and each round shows in Tasks. ----
+{
+  const { HkRuns, hkModel, HK_KIND } = await import('../src/hk-runs.js');
+  check('housekeeping uses the main brain until it has a brain of its own', hkModel({ models: { bob: 'big:30b' } }) === 'big:30b' && hkModel({ models: { bob: 'big:30b', housekeeping: '' } }) === 'big:30b');
+  check('...its own pick when it has one, and the main brain again with One brain on', hkModel({ models: { bob: 'big:30b', housekeeping: 'small:4b' } }) === 'small:4b' && hkModel({ oneBrain: true, models: { bob: 'big:30b', housekeeping: 'small:4b' } }) === 'big:30b');
+  const earlier = brain.queueView().filter((j) => j.kind === HK_KIND);
+  check('the idle rounds above showed in Tasks, finished, saying what they did', earlier.length >= 1 && earlier.every((j) => j.state === 'done' && /^Housekeeping: /.test(j.text)), JSON.stringify(earlier.map((j) => j.text)));
+  brain.clearCompleted();
+  const asked = [];
+  const chat0 = brain.engine.chat;
+  brain.engine.chat = async (a) => { asked.push(a.model); return chat0(a); };
+  cfg.models = { bob: 'fake:1b', housekeeping: 'fake:small' };
+  const before = brain.queue.length;
+  hk.listRound = true; await hk.ask('Answer with {}'); hk.listRound = false;
+  check('the housekeeper asks the brain picked for Housekeeping', asked.at(-1) === 'fake:small');
+  let row = brain.queueView().find((j) => j.kind === HK_KIND);
+  check('a round that asks a brain shows in Tasks as In progress, with Bob\'s own jobs untouched', row?.status === 'in progress' && row.housekeeping === true && row.sessionId === '' && brain.queue.length === before && !brain.queue.some((j) => j.kind === HK_KIND), JSON.stringify(row));
+  check('...and never stops Bob looking idle to himself', !(brain.queue || []).some((j) => j.state === 'working'));
+  hk.runs.finish({ summaries: 2, topics: 1 });
+  row = brain.queueView().find((j) => j.id === row.id);
+  check('a finished round says what it did', row.status === 'completed' && /2 chats summed up, Topics sorted in 1 chat/.test(row.text), row.text);
+  await hk.ask('Answer with {}');
+  check('"Sum up and carry on" (not an idle round) adds no task', brain.queueView().filter((j) => j.kind === HK_KIND).length === 1);
+  hk.listRound = true; await hk.ask('Answer with {}'); hk.listRound = false;
+  const live = brain.queueView().find((j) => j.kind === HK_KIND && j.state === 'working');
+  check('Stop on a running round lets go of the brain and says why', brain.cancelJob(live.id) === true && /you came back/.test(brain.queueView().find((j) => j.id === live.id).error));
+  check('✕ takes a round off the list', brain.removeJob(live.id) === true && !brain.queueView().some((j) => j.id === live.id));
+  check('Pause and Try again do nothing to a round', brain.pauseJob(row.id) === false && brain.retryJob(row.id) === false);
+  brain.clearCompleted();
+  check('Clear completed clears finished rounds too', !brain.queueView().some((j) => j.kind === HK_KIND));
+  hk.listRound = true; await hk.ask('Answer with {}'); hk.listRound = false;
+  const again = new HkRuns(path.join(cfg.dataDir, 'housekeeping-runs.json'));
+  check('a round cut off by Bob closing is over after a restart, never picked up again', again.list.at(-1).state === 'cancelled' && /closed partway/.test(again.list.at(-1).error));
+  hk.runs.finish({}, { stopped: true });
+  const many = new HkRuns(path.join(cfg.dataDir, 'hk-many.json'));
+  for (let i = 0; i < 40; i++) { many.start('m'); many.finish({ summaries: 1 }); }
+  check('the list keeps the newest 30 rounds', many.list.length === 30);
+  brain.engine.chat = chat0;
+  cfg.models = { bob: 'fake:1b' };
+}
+
 // ---- Folders the user points him to (Nov 11) ----
 {
   const userTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-hk-user-')), mine = path.join(userTmp, 'sam'), dl = path.join(mine, 'Downloads');

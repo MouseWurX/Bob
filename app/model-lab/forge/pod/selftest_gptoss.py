@@ -6,7 +6,8 @@
 Uses Bob's own GPT-OSS chat template (src/templates/gpt-oss.jinja, the harmony format) with a tiny tokenizer, then checks,
 each script run as its own process the way run.sh runs it:
   data.py     harmony answer mask: the brain's own words (thinking, tool calls, final answer) are trained, the user's words and
-              the tool's answers are not; parallel tool calls become call, answer, call, answer; tool-call thinking is kept.
+              the tool's answers are not; parallel tool calls become call, answer, call, answer; tool-call thinking is kept;
+              a step-thinking lesson (plan at medium, steps after a tool result at low) is learned in parts, one per level.
   prune.py    the 38B-style cut by keep list: plain BF16 files and MXFP4-packed files (blocks + scales) both slice right.
   lora.py     the LoRA'd GPT-OSS gives the stock answer before training (both the fast and the slow expert path), and
               folding the LoRA in gives the same answer as the LoRA'd model.
@@ -91,6 +92,22 @@ def check_mask(tok, les):
     check("the system part (tools, Reasoning line) is not trained", "set_reminder" in rest and "Reasoning:" not in ans)
     ctext = tok.decode(chat_row["ids"], skip_special_tokens=False)
     check("a lesson with no thinking asks for low effort", "Reasoning: low" in ctext and "Reasoning: medium" in text)
+    # 15 Nov step thinking (Bob's step-thinking.js): plan at medium, the step after a tool result at low. Learned in two parts.
+    call = lambda w: [{"id": "c1", "type": "function", "function": {"name": "set_reminder", "arguments": json.dumps({"when": w, "what": "dentist"})}}]
+    step = {"idea": "idea-steps", "family": "gpt-oss", "think": True, "messages": [{"role": "user", "content": "Remind me at 7:30 to call the dentist"},
+            {"role": "assistant", "set": "s1", "content": "", "reasoning": "The user wants a reminder; call set_reminder.", "think": True, "tool_calls": call("7:30")},
+            {"role": "tool", "tool_call_id": "c1", "content": "SET-ONE"},
+            {"role": "assistant", "set": "s1", "content": "", "think": False, "tool_calls": call("8:00")},
+            {"role": "tool", "tool_call_id": "c1", "content": "SET-TWO"},
+            {"role": "assistant", "set": "s1", "content": "Done: a reminder at 7:30.", "think": False}]}
+    parts = D.render(tok, step, sets, 4096)
+    check("a step-thinking lesson is learned in two parts", isinstance(parts, list) and len(parts) == 2, str(type(parts)))
+    if isinstance(parts, list) and len(parts) == 2:
+        t0, t1 = (tok.decode(p["ids"], skip_special_tokens=False) for p in parts)
+        a0, a1 = (tok.decode([t for t, m in zip(p["ids"], p["mask"]) if m], skip_special_tokens=False) for p in parts)
+        check("the planning step is learned at Reasoning: medium", "Reasoning: medium" in t0 and "call set_reminder." in a0 and '"7:30"' in a0 and "SET-ONE" not in t0)
+        check("steps after a tool result are learned at Reasoning: low", "Reasoning: low" in t1 and '"8:00"' in a1 and "Done: a reminder" in a1)
+        check("the low part does not learn the planning step again", "call set_reminder." not in a1 and '"7:30"' not in a1 and "SET-ONE" not in a1)
 
 def fake_mxfp4(src_dir, dst_dir, keep):
     """A tiny file in the MXFP4 shape of the official checkpoints (U8 blocks [E, out, in/32, 16] + U8 scales [E, out, in/32]):

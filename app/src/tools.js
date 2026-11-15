@@ -10,7 +10,7 @@ import { isInside, insideAny, appDir, findOutput } from './config.js';
 import { HATS } from './persona.js';
 import { cloudHelpers, askCloud } from './cloud.js';
 import { copyName } from './clan.js';
-import { limitOn, readOnlyRoots, handOn } from './hands-settings.js';
+import { limitOn, readOnlyRoots, handOn, handsSettings } from './hands-settings.js';
 import { listWorkflows, workshopDir } from './workshop.js';
 import { bobHelp } from './self-help.js';
 import { recallOn, tagLine } from './recall.js';
@@ -30,10 +30,20 @@ import { mainText, docKind, parseDdg, parseMojeek, resultLines, WEB_TIMEOUT_MS, 
 import { docToolsOn } from './my-docs.js';
 import { codeMap, linesAround } from './code-map.js';
 import { backoffMs, engineFailKind, pause } from './retry.js'; // item 194
+import { withSaveTo, SAVE_TO_HELP } from './save-to.js';
+import { saveAs } from './save-as.js';
 
 const MAX_READ = 20000;
 // Runnable file types Bob won't write outside a project, on every platform (Windows, Mac and Linux kinds together).
 const BLOCKED_EXT = new Set(['.exe', '.msi', '.bat', '.cmd', '.ps1', '.psm1', '.vbs', '.js', '.mjs', '.cjs', '.jse', '.wsf', '.hta', '.scr', '.lnk', '.reg', '.dll', '.com', '.jar', '.sh', '.bash', '.zsh', '.py', '.pyw', '.command', '.desktop', '.app']);
+// 1.5.239 (reliability, on by default): the folders ticked for Hands count as readable for list_folder, read_file and
+// search while the Files or Sort Hand is on. Before, a Hands folder that wasn't also a read folder was refused
+// ("I'm not allowed to look in ...\\work") even though Bob could move and rename files there.
+export function readableRoots(cfg) {
+  const hands = handOn(cfg, 'files') || handOn(cfg, 'sort') ? handsSettings(cfg).folders || [] : [];
+  return [...new Set([...(cfg.readRoots || []), ...hands])];
+}
+
 // read_file refuses files over this many bytes: a multi-GB file would otherwise be read whole into memory.
 const MAX_READ_BYTES = 20 * 1024 * 1024;
 // fetch_page stops reading a page after this many bytes, and hands it over 15,000 characters at a time.
@@ -490,8 +500,20 @@ export function buildTools(cfg) {
         return `Reminder ${r.id} set for ${r.local}${rep ? `, then every ${rep}` : ''}${r.urgent ? ' (urgent)' : ''}: ${r.text}`;
       }
       if (action === 'cancel') {
-        const gone = changeReminders(cfg, (list) => { const at = list.findIndex((r) => r.id === id); if (at < 0) return null; return list.splice(at, 1)[0]; });
-        if (!gone) throw new Error('No reminder with that id. Call reminders with action list to see the ids.');
+        // Nov 15 (Riker's coached lessons): a brain often gives the reminder's words, or the whole listed line, instead
+        // of its id. Exactly one reminder whose words are in what it gave (or the other way round) is that one.
+        const plain = (x) => String(x || '').toLowerCase().replace(/[\s\u2000-\u206f]+/g, ' ').trim();
+        const pick = (list) => {
+          let at = list.findIndex((r) => r.id === id);
+          if (at < 0 && plain(id).length >= 4) {
+            const said = plain(id);
+            const hits = list.map((r, i) => ((plain(r.text).length >= 3 && (said.includes(plain(r.text)) || plain(r.text).includes(said))) || said.startsWith(plain(r.id)) ? i : -1)).filter((i) => i >= 0);
+            if (hits.length === 1) at = hits[0];
+          }
+          return at;
+        };
+        const gone = changeReminders(cfg, (list) => { const at = pick(list); if (at < 0) return null; return list.splice(at, 1)[0]; });
+        if (!gone) throw new Error('No reminder with that id or those words. Call reminders with action list to see the ids.');
         return `Cancelled reminder ${gone.id} (${gone.local}): ${gone.text}`;
       }
       const list = loadReminders(cfg);
@@ -508,7 +530,7 @@ export function buildTools(cfg) {
     }, ['path']),
     async run({ path: p, sort, only }) {
       const dir = resolveUserPath(p);
-      if (!insideAny(cfg.readRoots, dir)) throw new Error(`I'm not allowed to look in ${dir}. Allowed: ${cfg.readRoots.join('; ')}`);
+      if (!insideAny(readableRoots(cfg), dir)) throw new Error(`I'm not allowed to look in ${dir}. Allowed: ${readableRoots(cfg).join('; ')}`);
       if (isSensitive(cfg, dir)) throw new Error(SECRET_MSG);
       // Item 26 (Nov 11): dates, sorting and a file filter, and it says how many weren't shown instead of cutting quietly.
       const want = filePattern(only);
@@ -533,11 +555,12 @@ export function buildTools(cfg) {
       // 1.5.222 PC check: "read notes.txt" made a small brain guess the home folder and get refused. A bare file name is
       // looked for in the folders Bob may read, and a refusal or a missing file says where those are (one line, only then).
       const bare = typeof p === 'string' && p.trim() && !/[\\/]/.test(p) && !/^~/.test(p.trim());
-      const found = bare ? (cfg.readRoots || []).map((r) => path.join(r, p.trim())).find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } }) : null;
-      const where = () => ((cfg.readRoots || []).length ? ` Files I can read are in: ${cfg.readRoots.join('; ')}.` : '');
-      if (bare && !found && (cfg.readRoots || []).length) throw new Error(`There's no file called ${p.trim()} in the folders I can read. Give its full path.${where()}`);
+      const roots = readableRoots(cfg);
+      const found = bare ? roots.map((r) => path.join(r, p.trim())).find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } }) : null;
+      const where = () => (roots.length ? ` Files I can read are in: ${roots.join('; ')}.` : '');
+      if (bare && !found && roots.length) throw new Error(`There's no file called ${p.trim()} in the folders I can read. Give its full path.${where()}`);
       const file = found || resolveUserPath(p);
-      if (!insideAny(cfg.readRoots, file)) throw new Error(`I'm not allowed to read ${file}.${where()}`);
+      if (!insideAny(roots, file)) throw new Error(`I'm not allowed to read ${file}.${where()}`);
       if (isSensitive(cfg, file)) throw new Error(SECRET_MSG);
       const size = fs.statSync(file).size;
       // "Read and search documents" (my-docs.js): Word, Excel, PowerPoint, OpenDocument, e-books, RTF and PDF as text.
@@ -725,6 +748,13 @@ export function buildTools(cfg) {
     summary: ({ url, part, find }) => `read page: ${url}${find ? ` (looking for ${find})` : part > 1 ? ` (part ${part})` : ''}`
   };
 
+  // save_to (save-to.js): the newest thing of this kind made since the call started gets a copy where asked.
+  const keepMade = (args, ctx, kind, run) => withSaveTo(cfg, args, run, {
+    since: Date.now() - 1000,
+    newest: (since) => ctx.brain.made?.list({ kind, limit: 3 }).find((x) => (x.at || 0) >= since)?.path || null,
+    convert: (name, format) => saveAs(cfg, { name, format }, { signal: ctx.signal, ...(ctx.brain.saveAsOpts || {}) })
+  });
+
   t.make_image = {
     schema: fn('make_image', "Paint a picture, or change one (give a reference). Also posters, banners, logos and thumbnails.", {
       prompt: str('New picture: the full prompt. Edit: only what to change, like "Swap his hat for a tiara", or it gets repainted.'),
@@ -732,9 +762,10 @@ export function buildTools(cfg) {
       height: { type: 'integer', description: 'Default 1024. Leave out for edits.' },
       reference: { type: 'array', items: { type: 'string' }, description: 'Up to 4 pictures to edit or paint from: a shelf or attached name, "last" (your newest) or a painted file.' },
       mode: str('With a reference: keep_look = edit it, same look (default); start_from = rework the picture (the look can drift); new = paint anew.', { enum: ['keep_look', 'start_from', 'new'] }),
-      strength: { type: 'number', description: 'start_from only: how much changes, 0.1 to 0.95. Default 0.6.' }
+      strength: { type: 'number', description: 'start_from only: how much changes, 0.1 to 0.95. Default 0.6.' },
+      save_to: str(SAVE_TO_HELP)
     }, ['prompt']),
-    async run(args, ctx) { return ctx.brain.makeImage(args, ctx); },
+    async run(args, ctx) { return keepMade(args, ctx, 'image', () => ctx.brain.makeImage(args, ctx)); },
     summary: ({ prompt }) => `image: ${String(prompt).slice(0, 80)}`
   };
 
@@ -746,7 +777,7 @@ export function buildTools(cfg) {
       height: { type: 'integer', description: 'Default 480.' },
       reference: { type: 'array', items: { type: 'string' }, description: 'Optional: a picture name to start from.' }
     }, ['prompt']),
-    async run(args, ctx) { return ctx.brain.makeVideo(args, ctx); },
+    async run(args, ctx) { return keepMade(args, ctx, 'video', () => ctx.brain.makeVideo(args, ctx)); },
     summary: ({ prompt }) => `video: ${String(prompt).slice(0, 80)}`
   };
 
@@ -757,16 +788,17 @@ export function buildTools(cfg) {
       seconds: { type: 'integer', description: '10 to 240, default 30.' },
       title: str('Optional: 2 to 5 words. Make one up if none given.')
     }, ['prompt']),
-    async run(args, ctx) { return ctx.brain.makeSound('music', args, ctx); },
+    async run(args, ctx) { return keepMade(args, ctx, 'audio', () => ctx.brain.makeSound('music', args, ctx)); },
     summary: ({ prompt }) => `music: ${String(prompt).slice(0, 80)}`
   };
 
   t.make_sound = {
     schema: fn('make_sound', 'Make a short sound effect.', {
       prompt: str('What it sounds like: "heavy wooden door creaking open in a stone hall".'),
-      seconds: { type: 'integer', description: '1 to 20, default 5.' }
+      seconds: { type: 'integer', description: '1 to 20, default 5.' },
+      save_to: str(SAVE_TO_HELP)
     }, ['prompt']),
-    async run(args, ctx) { return ctx.brain.makeSound('sfx', args, ctx); },
+    async run(args, ctx) { return keepMade(args, ctx, 'audio', () => ctx.brain.makeSound('sfx', args, ctx)); },
     summary: ({ prompt }) => `sound: ${String(prompt).slice(0, 80)}`
   };
 
@@ -900,7 +932,7 @@ export function buildTools(cfg) {
       // Item 23 (Nov 11): any folder Bob may read, a file pattern, and /patterns/ as well as plain words.
       if (folder) {
         const dir = resolveUserPath(folder);
-        if (!insideAny(cfg.readRoots, dir)) throw new Error(`I'm not allowed to look in ${dir}. Allowed: ${cfg.readRoots.join('; ')}`);
+        if (!insideAny(readableRoots(cfg), dir)) throw new Error(`I'm not allowed to look in ${dir}. Allowed: ${readableRoots(cfg).join('; ')}`);
         if (isSensitive(cfg, dir)) throw new Error(SECRET_MSG);
       }
       // 1.5.34: the main project (Settings > Projects) is searched first.

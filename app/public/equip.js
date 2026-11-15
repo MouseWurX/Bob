@@ -34,7 +34,10 @@ export const SLOTS = [
 export const HELPERS = [
   { id: 'ledger', name: 'Spreadsheets', icon: '📊', how: 'job', kind: 'llm', cats: ['chat'], does: 'Data entry and spreadsheets.', empty: 'Uses the main brain', off: true },
   { id: 'scout', name: 'Research', icon: '🧭', how: 'job', kind: 'llm', cats: ['chat'], does: 'Web research with sources.', empty: 'Uses the main brain', off: true },
-  { id: 'painter', name: 'Prompt writer', icon: '🖋', how: 'job', kind: 'llm', cats: ['chat'], does: 'Writes the picture and video prompts.', empty: 'Uses the main brain', off: true }
+  { id: 'painter', name: 'Prompt writer', icon: '🖋', how: 'job', kind: 'llm', cats: ['chat'], does: 'Writes the picture and video prompts.', empty: 'Uses the main brain', off: true },
+  // Nov 15 (the owner): "is housekeeping on a brain?? ... make it assignable". It always was the main brain; now it's a
+  // job of its own, empty (the main brain) by default. Each idle round shows in Tasks (src/hk-runs.js).
+  { id: 'housekeeping', name: 'Housekeeping', icon: '🧹', how: 'job', kind: 'llm', cats: ['chat'], does: 'Sums up older chat and sorts Topics while I\'m idle, and stops the moment you\'re back.', empty: 'Uses the main brain', off: true }
 ];
 export const allSlots = () => [...SLOTS, ...HELPERS];
 

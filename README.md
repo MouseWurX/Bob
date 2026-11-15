@@ -43,13 +43,13 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.233-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.233-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.233-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.233-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.233-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.233-linux-x86_64.AppImage) |
-| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.233-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.233-linux-amd64.deb) |
-| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.233-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.233-linux-x86_64.flatpak) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.233-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.233-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
-| **Android phone** | [`Bob-1.5.233-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.233-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.240-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.240-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.240-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.240-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.240-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.240-linux-x86_64.AppImage) |
+| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.240-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.240-linux-amd64.deb) |
+| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.240-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.240-linux-x86_64.flatpak) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.240-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.240-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
+| **Android phone** | [`Bob-1.5.240-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.240-android.apk) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 
@@ -224,7 +224,7 @@ Nothing trains, rents a card or uploads without the owner's go, and every rental
 
 ## What it costs
 
-Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 14 Nov 2026: about **$1,990** spent in all, of which about $484 is rented GPU time (failures included), and about $2,496 to $2,571 projected for the planned family of models. The page lists every rental and what came of it.
+Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 15 Nov 2026: about **$2,002** spent in all, of which about $496 is rented GPU time (failures included), and about $2,501 to $2,575 projected for the planned family of models. The page lists every rental and what came of it.
 
 ## What Bob does
 

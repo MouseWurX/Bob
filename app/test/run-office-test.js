@@ -90,7 +90,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-office-'));
   const st = engineStatus({ agentDir: path.join(tmp, 'status-agent') });
   check('the engine list shows whether each is found', st.some((e) => e.id === 'libreoffice' && 'found' in e) && st.some((e) => e.id === 'ffmpeg' && e.pinned));
   const src = fs.readFileSync(new URL('../src/engines.js', import.meta.url), 'utf8');
-  check('LibreOffice unpacks without installing (msiexec /a, no admin)', /'\/a', msi, '\/qn'/.test(src) && !/runas|-Verb/i.test(src));
+  check('LibreOffice unpacks without installing (msiexec /a, no admin)', /\['\/a', `"\$\{msi\}"`, '\/qn'/.test(src) && !/runas|-Verb/i.test(src));
   check('downloads refuse to go ahead without a pin', /isn't pinned to a checked version/.test(src));
 }
 
@@ -203,7 +203,7 @@ if (officeUsableHere(realCfg)) {
   const run = async (name, args) => { const ctx = { signal: new AbortController().signal }; const need = t[name].check ? t[name].check(args, ctx) : false; if (need?.plan) ctx.picked = null; return t[name].run(args, ctx); };
   const doc = path.join(work, 'report.docx');
   const made = await run('office_make', { kind: 'writer', path: doc, text: '# Report\n\nHello **world**.\n\n- one\n- two\n\n| Name | Qty |\n|---|---|\n| Apple | 3 |' });
-  check('LibreOffice: makes a Word document', /^Saved .*report\.docx/.test(made) && fs.statSync(doc).size > 1000, made);
+  check('LibreOffice: makes a Word document', /^Saved:? .*report\.docx/.test(made) && fs.statSync(doc).size > 1000, made);
   const read = await run('office_read', { path: doc });
   check('LibreOffice: reads it back with heading, bullets and table', /# Report/.test(read) && /- one/.test(read) && /\| Apple \| 3 \|/.test(read), read);
   const conv = await run('convert_file', { paths: [doc], to: 'pdf' });
@@ -249,6 +249,12 @@ if (ff && process.platform !== 'win32') {
   } catch (e) { console.log('SKIP video check (this FFmpeg has no H.264 encoder):', e.message.split('\n')[0]); }
 } else console.log('SKIP real FFmpeg checks');
 
+{ // 15 Nov (lab PC): a Bob folder with a space made msiexec refuse the unpack (1639); the quotes go round the value only
+  const src = fs.readFileSync(new URL('../src/engines.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const { msiexecArgs } = await import('../src/engines.js');
+  const a = msiexecArgs('C:\\Bob Folder\\lo.msi', 'C:\\Bob Folder\\libreoffice');
+  check('LibreOffice unpack: a folder with a space is quoted the way msiexec reads it, and passed as written', a.join(' ') === '/a "C:\\Bob Folder\\lo.msi" /qn TARGETDIR="C:\\Bob Folder\\libreoffice"' && /msiexecArgs\(msi, folder\), \{[^}]*windowsVerbatimArguments: true/.test(src), a.join(' '));
+}
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
