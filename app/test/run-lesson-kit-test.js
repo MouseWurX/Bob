@@ -247,6 +247,14 @@ check('writer: the fake result sees the tool\'s own description and is kept insi
   let out = '';
   try { out = await k.brain.tools.make_diagram.run({ title: 'Team', mermaid: 'flowchart TD\nA-->B' }, { loaded: [], cfg: k.brain.cfg, emit: () => {}, signal: new AbortController().signal, sessionId: 'lab' }); } catch (e) { out = 'threw: ' + e.message; }
   check('writer --real-tools: Bob\'s real make_diagram runs with the writer\'s context and keeps its file in the throwaway home', /^Drew the diagram "Team"/.test(out) && !/bob-lab-/.test(k.neutral(out)), out);
+  // 15 Nov: the kit had no board or memory file, so every notice_board add/write and every remember failed in lkt-fix2
+  const ctx = { loaded: [], cfg: k.brain.cfg, emit: () => {}, signal: new AbortController().signal, sessionId: 'lab' };
+  const run = async (name, a) => { try { const r = await k.brain.tools[name].run(a, ctx); return typeof r === 'string' ? r : JSON.stringify(r); } catch (e) { return 'threw: ' + e.message; } };
+  const added = await run('notice_board', { action: 'add', content: 'back up the database' });
+  const board = await run('notice_board', { action: 'read' });
+  check('lab sandbox: notice_board add really writes the board, and read shows it', /^Added to the notice board: back up the database/.test(added) && /back up the database/.test(board), added + ' | ' + board);
+  const kept = await run('remember', { fact: 'likes short answers' });
+  check('lab sandbox: remember really saves to the memory file', !/threw|must be of type string/.test(kept) && /likes short answers/.test(fs.readFileSync(k.brain.cfg.memoryFile, 'utf8')), kept);
   try { k.done?.(); } catch {}
 }
 check('writer --real-tools: diagrams are drawn for real, with the context Bob\'s own tools expect', /REAL_TOOLS = new Set\(\['make_diagram'/.test(read('model-lab/write-lessons.mjs')) && /run\(sb\.toReal\(args\), \{ loaded, cfg: sb\.brain\.cfg, emit:/.test(read('model-lab/write-lessons.mjs')));

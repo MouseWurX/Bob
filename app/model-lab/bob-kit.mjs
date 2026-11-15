@@ -34,6 +34,10 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false, home = fa
   if (homeDir) for (const d of ['Documents', 'Desktop', 'Downloads']) fs.mkdirSync(path.join(homeDir, d), { recursive: true });
   const cfg = {
     agentDir, innDir, dataDir, painterDir, defaultPainterDir: painterDir, settingsFile: path.join(dataDir, 'settings.json'),
+    // 15 Nov (Opus read of lkt-fix2's rejects): Bob's config.js sets these, the kit didn't, so notice_board and remember
+    // failed every time with 'The "path" argument must be of type string' and dozens of lessons taught a broken board
+    noticeBoard: path.join(innDir, 'notice-board.md'), memoryFile: path.join(innDir, 'bob-memory.md'), logbook: path.join(innDir, 'logbook.md'),
+    ledgerDir: path.join(innDir, 'ledger'), archiveDir: path.join(innDir, 'archive'),
     readRoots: homeDir ? [innDir, homeDir] : [innDir], readOnlyRoots: [], recycleBin: false,
     models: { bob: 'qwen3.6-35b-a3b' }, engine: 'llamacpp', ollamaUrl: 'http://127.0.0.1:1',
     painter: { engine: 'sdcpp', sdcpp }, stt: { provider: 'http' },
