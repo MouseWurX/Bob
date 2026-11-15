@@ -1,0 +1,44 @@
+# Deletes old work branches whose work is already in main. Runs only when the owner presses Run on the Actions page.
+# The list is .github/old-branches.txt (branch and the commit it pointed at). A branch is deleted only if it still
+# points at that commit; one with new work is skipped. main, lessons-asset and open pull requests' branches are never
+# touched. One press of Run: it first lists every branch it will delete, then deletes them.
+name: Delete old branches
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete the listed branches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.sha }}
+        run: |
+          set -u
+          gh api "repos/$REPO/contents/.github/old-branches.txt?ref=$REF" --jq .content | base64 -d > list.txt
+          gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate --jq '.[].head.ref' > open.txt
+          # Pass 1: decide and list. Nothing is deleted here.
+          gone=0; moved=0; kept=0; : > go.txt
+          while read -r name sha; do
+            case "$name" in ''|'#'*) continue ;; esac
+            if [ "$name" = main ] || [ "$name" = lessons-asset ] || grep -qxF "$name" open.txt; then kept=$((kept+1)); echo "Kept $name (main, release carrier or open pull request)"; continue; fi
+            now=$(gh api "repos/$REPO/git/ref/heads/$name" --jq .object.sha 2>/dev/null || true)
+            if [ -z "$now" ]; then gone=$((gone+1)); continue; fi
+            if [ "$now" != "$sha" ]; then moved=$((moved+1)); echo "Skipped $name: it has new work since the list was made"; continue; fi
+            echo "$name" >> go.txt
+          done < list.txt
+          echo "Will delete $(wc -l < go.txt) branches:"; cat go.txt
+          # Pass 2: delete the listed ones.
+          done=0; failed=0
+          while read -r name; do
+            if gh api -X DELETE "repos/$REPO/git/refs/heads/$name" >/dev/null; then done=$((done+1)); else failed=$((failed+1)); echo "Could not delete $name"; fi
+          done < go.txt
+          echo "Deleted: $done  Already gone: $gone  Skipped (new work): $moved  Kept: $kept  Failed: $failed" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$failed" = 0 ]
