@@ -47,7 +47,8 @@ Every rental, including the ones that made nothing. Times are the owner's local 
 | 14 Nov 2026, early morning | 1x A40 48 GB, no drive | 0.5 h | $0.59/h | **Failed attempt 13.** A Riker study run: the card never opened, so it was deleted. | $0.31 |
 | 14 Nov 2026, early morning | 1x L40S 48 GB, no drive | 0.2 h | $1.09/h | **Failed attempt 14.** The same run, retried on another card: it never answered within 10 minutes, so it was deleted. | $0.21 |
 | 14 Nov 2026, morning | 1x A40 48 GB, no drive | 2.3 h | $0.59/h | **Lesson-kit trial.** Stock Qwen3.6-35B-A3B wrote two trial lesson sets for the new lesson kit. Worked. The card deleted itself. | $1.39 |
-| | | **about 122 h of card time** | | **Fourteen failed attempts: $23.05, plus the stopped Bill step above. Seven Bobs made; Riker (28Bob), Bobert (35Bob) and Bill (20Bob) are kept, the first Riker and Bill (v1 and v2) are retired and deleted.** | **$494.48** |
+| 15 Nov 2026, early morning | 1x A40 48 GB, no drive | 2.1 h | $0.59/h | **Riker's cruelty study.** The 16 experts that lean towards a cruel persona were muted one test at a time: they turn out to act as a shared brake, and muting them made cruel-persona answers 2 to 3 points harsher. Evidence only, never used for training. The card deleted itself. Estimated from the hours until the statement lands. | about $1.25 |
+| | | **about 124 h of card time** | | **Fourteen failed attempts: $23.05, plus the stopped Bill step above. Seven Bobs made; Riker (28Bob), Bobert (35Bob) and Bill (20Bob) are kept, the first Riker and Bill (v1 and v2) are retired and deleted.** | **$495.73** |
 
 The total is taken from the rental service's statement; the lines above are rounded to the cent. Card time is paid from **prepaid credit**: the owner loads a balance onto the rental account in advance and each session draws it down, so that money is spent on the day it is loaded and used only when a card runs. The unused part is not shown here (no balances on these pages); it is already earmarked for the rungs still to make. A 100 GB network drive rented from the same service (it keeps the teacher weights, general text and adapters between sessions, so a session needs no re-download) costs about $7 a month while it exists, and more as it grows: Bobert's run used it at 300 GB (about $21 a month) and Bill's at 500 GB (about $35 a month). It is 500 GB now, and it draws on the same prepaid credit every day it exists, run or no run: about $1.17 a day. That is counted as its own line in the totals below.
 
@@ -120,24 +121,24 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 
 | | |
 |---|---|
-| GPU servers rented by the hour (every session above, failures included) | $494.48 |
+| GPU servers rented by the hour (every session above, failures included) | $495.73 |
 | Rented network drive between sessions, 5 to 15 Nov 2026 (100 GB, then 300, then 500; from its size and rate, then the statement from 13 Nov) | about $6.29 |
 | Claude subscription, November 2026 | $200.00 |
 | Claude extra usage, bought from 5 Nov 2026 on | $1,300.00 |
 | Code signing, hosting | $0.00 |
-| **Total spent so far** | **about $2,001** |
+| **Total spent so far** | **about $2,002** |
 
 **Projected, whole plan**
 
 | | Low | High |
 |---|---|---|
-| Spent so far (above) | $2,001 | $2,001 |
+| Spent so far (above) | $2,002 | $2,002 |
 | Line B remaining rungs (Homer to Bender) | $119 | $129 |
 | Four brain scans (stock Qwen, Riker, Bobert, Bill) on one short rental (planned) | $10 | $14 |
 | Specialists (four, with their lessons) | $100 | $100 |
 | Rented network drive, about 2 more months at 500 GB | $70 | $70 |
 | Re-runs allowed (one per rung if a heal scores badly) | $0 | $60 |
 | Claude subscription while the family is finished, about 1 more month | $200 | $200 |
-| **Projected total, line B complete** | **about $2,500** | **about $2,574** |
+| **Projected total, line B complete** | **about $2,501** | **about $2,575** |
 | Line A as well, if the comparison after Homer earns it | +$179 | +$189 |
-| **Projected total, both lines** | **about $2,679** | **about $2,763** |
+| **Projected total, both lines** | **about $2,680** | **about $2,764** |
