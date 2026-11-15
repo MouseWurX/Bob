@@ -44,7 +44,8 @@ import { ladderJobs } from './lab-ladder-jobs.js';
 import { forgeJobs } from './lab-forge-jobs.js';
 import { homeJobs } from './lab-home-jobs.js';
 import { protocolJobs } from './lab-protocol.js'; // 13 Nov the training protocol's free steps
-import { stepRunJobs } from './lab-step-run.js'; // 14 Nov free steps from the Steps tab
+import { stepRunJobs } from './lab-step-run.js';
+import * as labConsoleMod from './lab-console.js'; // 15 Nov the Forge console (read when first used: lab-console.js reaches lab.js through lab-test.js) // 14 Nov free steps from the Steps tab
 import { peekJobs } from './lab-peek-jobs.js';
 export { labOn, WOBBLE_RUNS, WOBBLE_TEMP, MIN_RAM_GB, labRoom, RUNNING_TYPES, slugOf, lessonCard, labDir, scoresDir, resultsDir, cleanResult, hardwareLine, resultText, labModelsDir, madeFile, fullSizeDirOf, madeBrains, mergeMadeBrains, labBrains, inspect, cutSizes, fitWords, cleanRecipe, measureRecord, sha256File, compareTable, compareCsv } from './lab-measure.js';
 export { planRecipe, lessonText, lessonSkills, lessonSkillNames, maskFor, lessonSetsDir, WRITER, SECONDS_PER_LESSON, cleanWrite, teacherLicence, lessonSets, partsView, BUILDER, BUILD_MAX, BUILD_MIN, BUILD_DEFAULT, skillFromPath, cleanBuild } from './lab-plan.js';
@@ -157,6 +158,7 @@ export class Lab {
     if (gaming(this.cfg)) throw new Error('Gaming is on, so the Lab waits. Switch the session to Normal to run it.');
     const p = this.plan(recipe);
     if (p.problems.length) throw new Error(p.problems[0]);
+    if (this._console?.server || this._console?.loading) throw new Error('The Forge console has a brain loaded. Type unload on its Server side first.'); // 15 Nov
     this.freePeek(); // 1.5.164 Peek inside's engine goes first
     if (p.steps.some((s) => s.card) && this.brain?.engine?.loaded) {
       const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard || m.usesCard);
@@ -394,6 +396,7 @@ export class Lab {
     const room = this.room(); if (!room.ok) throw new Error(room.why);
     if (this.job) throw new Error('The Lab is already busy with a job. Wait for it, or stop it.');
     if (gaming(this.cfg)) throw new Error('Gaming is on, so the Lab waits. Switch the session to Normal to run it.');
+    if (this._console?.server || this._console?.loading) throw new Error('The Forge console has a brain loaded. Type unload on its Server side first.'); // 15 Nov one brain on the card at a time
     this.freePeek();
     if (card && this.brain?.engine?.loaded) {
       const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard || m.usesCard);
@@ -431,7 +434,8 @@ export class Lab {
 }
 
 // The Lab class is written in parts: these files hold groups of its methods (same rules as the ones written here).
-for (const part of [lessonJobs, challengeJobs, ladderJobs, forgeJobs, homeJobs, peekJobs, protocolJobs, stepRunJobs]) {
+const consoleJobs = { labConsole() { return (this._console ||= new labConsoleMod.LabConsole({ lab: this, ...(this.consoleOpts || {}) })); } }; // one console per Lab
+for (const part of [lessonJobs, challengeJobs, ladderJobs, forgeJobs, homeJobs, peekJobs, protocolJobs, stepRunJobs, consoleJobs]) {
   for (const [k, d] of Object.entries(Object.getOwnPropertyDescriptors(part))) Object.defineProperty(Lab.prototype, k, { ...d, enumerable: false });
 }
 

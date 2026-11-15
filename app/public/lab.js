@@ -478,7 +478,7 @@ export function createLab({ api, note, go, page = false }) {
     if (isLearn()) { body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-learn" role="tabpanel" aria-labelledby="lab-tab-learn">${subNav()}<div id="lab-learn-box"></div></div></div>`; learn.mount($('lab-learn-box')); return; }
     if (isTaste()) { body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-test" role="tabpanel" aria-labelledby="lab-tab-test">${subNav()}${plus.tasteHtml()}${runsHtml()}</div></div>`; return; }
     if (isCh()) { body.innerHTML = `<div class="lab">${tabs}${challengesHtml()}</div>`; return; }
-    if (tab === 'forge') { body.innerHTML = `<div class="lab">${tabs}${fg.html(`<details class="lab-fold" data-fold="senses" ${folds.senses ? 'open' : ''}><summary>Add sight or hearing to a brain</summary>${sn.html()}</details>`)}</div>`; return; }
+    if (tab === 'forge') { body.innerHTML = `<div class="lab">${tabs}${fg.html(`<details class="lab-fold" data-fold="senses" ${folds.senses ? 'open' : ''}><summary>Add sight or hearing to a brain</summary>${sn.html()}</details>`)}</div>`; fg.mounted(); return; }
     if (isPlay()) { body.innerHTML = `<div class="lab">${tabs}${pg.html(runsHtml(), subNav(), tab)}</div>`; pg.mounted(); return; }
     const i = steps().findIndex(([id]) => id === step);
     const html = { brain: brainStep, lessons: lessonsStep, smaller: smallerStep, where: whereStep, test: testStep }[step]();
@@ -509,6 +509,7 @@ export function createLab({ api, note, go, page = false }) {
   }
 
   body.addEventListener('change', async (e) => {
+    if (e.target.closest?.('#lab-console')) return; // 15 Nov the Forge console listens for itself
     const el = e.target; msg = '';
     if ('labengine' in el.dataset) { try { view.engine = await api('/api/lab/engine', { engine: el.value }); } catch (err) { msg = err.message; } await replan(); $('lab-body')?.querySelector('[data-labengine]')?.focus(); return; } // 1.5.17x
     if (isLearn()) return; // the Learn experiments listen for themselves
@@ -583,6 +584,7 @@ export function createLab({ api, note, go, page = false }) {
     show(inner ? tab : to, inner ? to : '').then(() => $(inner ? `play-page-${to}` : `lab-tab-${to}`)?.focus());
   });
   body.addEventListener('input', (e) => { // the slider and its number box move together
+    if (e.target.closest?.('#lab-console')) return;
     if (isPlay() && pg.input(e.target)) return;
     if (gd.input(e.target)) return; // 1.5.164
     if (px.input(e.target)) return; // 1.5.168
@@ -595,7 +597,7 @@ export function createLab({ api, note, go, page = false }) {
     if (e.target.id === 'lab-b-count-n') { const s = $('lab-b-count'); if (s) s.value = e.target.value; }
   });
   body.addEventListener('click', async (e) => {
-    const b = e.target.closest('button'); if (!b) return;
+    const b = e.target.closest('button'); if (!b || b.closest('#lab-console')) return;
     msg = '';
     if (b.dataset.tab) { await show(b.dataset.tab); $(`lab-tab-${tab}`)?.focus(); return; }
     if (b.dataset.labgo) { const w = goWhere(b.dataset.labgo); if (w) go?.(w); return; } // "Open Get models" and friends

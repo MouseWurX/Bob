@@ -15,6 +15,7 @@ import { STAGES, stepsView, smokeReady } from './lab-steps.js';
 import { listRuns } from './lab-runs.js';
 import { STEP_FORMS } from './lab-step-run.js';
 import { forgeDir } from './lab-forge.js';
+import { consoleRoute } from './lab-console.js'; // 15 Nov the Forge console
 
 // 1.5.164 One sandbox turn on Bob's loaded brain, with the person's own system prompt. Ordinary settings, not temperature 0:
 // the point is to see what the brain does in use.
@@ -35,6 +36,7 @@ export async function guardChat(brain, b = {}, { fetch: f = globalThis.fetch } =
 export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
   if (!p.startsWith('/api/lab')) return false;
   try {
+    if (await consoleRoute({ req, res, p, isLocal, lab, body, send })) return true; // 15 Nov the Forge console
     if (await recipesRoute({ req, res, p, isLocal, lab, body, send })) return true; // 1.5.154
     if (await sensesRoute({ req, res, p, isLocal, lab, body, send })) return true; // Give it eyes / Give it ears
     if (await pagesRoute({ req, res, p, isLocal, lab, body, send })) return true;

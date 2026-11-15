@@ -234,6 +234,7 @@ Object.defineProperty(brain, 'codingAgents', { get: () => agentsOf(whoNow()), co
 const agentsAll = () => [...agentsBy.values()];
 agentsOf('main'); // the owner's, from the start, as before
 process.on('exit', () => { for (const a of agentsAll()) { try { a.stopAll(); } catch {} } }); // a run never outlives Bob
+process.on('exit', () => { try { lab?._console?.stopAll(); } catch {} }); // 15 Nov the Forge console's commands and brain go with Bob
 // Items 233, 234, 239 and 240: what start-up set aside or put back, old temp files cleared, and the start-up check: one
 // line in the logbook; a note in the chat only when something is wrong.
 for (const t of cfg.saveNotes || []) brain.log('saving', t);

@@ -2611,3 +2611,40 @@ dialog.fade-ask .fade-row button.danger { color: var(--on-accent); background: v
 .wz-people .people-list { list-style: none; padding: 0; }
 .wz-people .people-list li { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
 .guest-bar .g-answer { flex: none; }
+/* 15 Nov the Forge console: one window, two readouts, each with its own input. Theme colours only. */
+.lc-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.lc-top h3 { margin: 0; }
+.lc-state { flex: 1 1 260px; }
+.lc-bar-end { margin-left: auto; display: inline-flex; flex-wrap: wrap; gap: 2px 10px; }
+.lc-holding { color: var(--warn); font-weight: 600; }
+.lc-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 6px 0; }
+.lc-btn { display: inline-flex; align-items: center; gap: 4px; }
+.lc-add { flex-wrap: wrap; align-items: end; gap: 6px 10px; }
+.lc-add-line { flex: 1 1 320px; }
+.lc-add-line input { width: 100%; font-family: var(--mono); }
+.lc-win { display: grid; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; height: var(--lc-h, 520px); min-height: 260px; resize: vertical; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r); padding: 6px; background: var(--panel); }
+.lc-win[data-size="server"] { grid-template-rows: minmax(0, 4fr) minmax(0, 1fr); }
+.lc-win[data-size="work"] { grid-template-rows: minmax(0, 1fr) minmax(0, 4fr); }
+.lc-win[data-size="even"]:has(.lc-held) { grid-template-rows: minmax(0, 3fr) minmax(0, 2fr); } /* a held request gets room */
+.lc-pane { display: flex; flex-direction: column; min-height: 0; overflow: clip; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
+.lc-bar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.lc-bar h4 { margin: 0; font-size: 1em; }
+.lc-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.lc-chips .lab-chip { min-height: 28px; padding: 2px 10px; }
+.lc-hold { display: inline-flex; align-items: center; gap: 4px; }
+.lc-out { flex: 1 1 0; min-height: 0; margin: 0; padding: 6px 8px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 12.5px; line-height: 1.35; color: var(--text); background: var(--bg); }
+.lc-out:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.lc-k-cmd, .lc-k-you { color: var(--accent); font-weight: 600; }
+.lc-k-note, .lc-k-think { color: var(--muted); }
+.lc-k-think { font-style: italic; }
+.lc-k-error { color: var(--bad); }
+.lc-k-sent { color: var(--accent); }
+.lc-k-back { color: var(--good); }
+.lc-k-tool { color: var(--warn); }
+.lc-held { flex: 0 1 auto; max-height: 11.5em; overflow: auto; display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border-top: 2px solid var(--warn); }
+.lc-held textarea { flex: none; min-height: 4.5em; width: 100%; font-family: var(--mono); font-size: 12.5px; resize: vertical; }
+.lc-in { flex: none; display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-top: 1px solid var(--line); }
+.lc-prompt { font-family: var(--mono); color: var(--accent); white-space: nowrap; }
+.lc-in input { flex: 1 1 auto; min-width: 0; font-family: var(--mono); }
+.lc-stop { min-height: 28px; padding: 2px 12px; }
+@media (max-width: 640px) { .lc-win { height: auto; min-height: 0; resize: none; grid-template-rows: auto auto; } .lc-out { flex: none; height: 40vh; } .lc-win[data-size="server"] #lc-out-work, .lc-win[data-size="work"] #lc-out-server { height: 12vh; } .lc-win[data-size="server"] #lc-out-server, .lc-win[data-size="work"] #lc-out-work { height: 62vh; } }

@@ -336,6 +336,7 @@ export function safeSettings(s = {}) {
   if (out.rentals && typeof out.rentals === 'object') out.rentals = { ...out.rentals, enabled: {}, current: '' };
   if (out.cloudHelpers && typeof out.cloudHelpers === 'object') out.cloudHelpers = Object.fromEntries(Object.entries(out.cloudHelpers).map(([k, v]) => [k, { ...(v || {}), enabled: false }]));
   if (out.labForgeStart) out.labForgeStart = false;
+  if (out.labConsole) out.labConsole = false; // the Forge console's commands: switched on again on this computer
   if (out.backup && typeof out.backup === 'object') out.backup = { ...out.backup, auto: false }; // the automatic backup: switched on again on this computer
   return out;
 }
