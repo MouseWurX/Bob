@@ -76,7 +76,10 @@ export const promptParts = {
     if (handsLine) prompt += handsPrompt(this.cfg, { hat });
     if (loaded) prompt += realPcPrompt(this.cfg) + toolboxPrompt(this, loaded);
     prompt += webPrompt(this.cfg, { hat }) + linkPrompt(this.cfg);
-    if (loaded) prompt += autoSessionPrompt(this.cfg); // front desk only: hats don't change the session
+    // A family's hidden tools (tool-sets.js) are never named to it: no line sends it to a tool it doesn't have.
+    const hidden = loaded?.toolSet?.hide || [];
+    if (hidden.includes('ask_specialist')) prompt = prompt.split('\n').filter((l) => !/\buse ask_specialist\b/.test(l)).join('\n');
+    if (loaded && !hidden.includes('pick_session')) prompt += autoSessionPrompt(this.cfg); // front desk only: hats don't change the session
     if (loaded) prompt += planPrompt(this.cfg); // 1.5.78: front desk only, and nothing while the setting is off
     prompt += houseStylePrompt(this.cfg.houseStyle, who);
     if (this.cfg.defaultProject && this.cfg.projects?.[this.cfg.defaultProject]) prompt += `\n\n${this.cfg.userName || 'The user'}'s main project is ${this.cfg.defaultProject}. When they say "my project" without a name, it's that one.`;
@@ -115,7 +118,7 @@ export const promptParts = {
     const who = this.cfg.userName || 'the user';
     const off = this.offTools();
     const learned = toolLearnOn(this.cfg) ? loadLearning(this.cfg) : null; // tool notes and the scorecard (tool-learn.js)
-    return names.filter((n) => n !== 'use_tools' && this.usable(n, off)).map((n) => {
+    return names.filter((n) => n !== 'use_tools' && this.usable(n, off) && !set?.hide?.includes(n)).map((n) => { // a family's hidden tools (tool-sets.js) aren't offered
       const s = tidySchema(JSON.parse(JSON.stringify(inSet(this.tools[n].schema, set)).replaceAll('{{USER}}', who).replaceAll('{{HOME}}', JSON.stringify(os.homedir()).slice(1, -1))));
       if (learned && s.function) s.function.description += learnedLine(this.cfg, n, learned);
       return s;

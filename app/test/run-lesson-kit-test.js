@@ -69,6 +69,27 @@ check('audit: personal things (email, private word)', probs({ job: 'chat', messa
 check('audit: example.com addresses are fine', !probs({ job: 'chat', messages: [ask(`write to sam${'@'}example.com`), { role: 'assistant', content: 'Sure.' }] }).some((p) => /email/.test(p)));
 check('audit: dial and surgery answers never pass', probs({ job: 'chat', condition: 'dial L12 x1.2', messages: [ask('hi'), { role: 'assistant', content: 'Hello.' }] }).some((p) => /not for training/.test(p)));
 check('audit: a clean lesson passes', probs({ job: 'files', messages: [ask('list my documents'), { role: 'assistant', content: 'Looking now.', tool_calls: [call('list_folder', { path: '~/Documents' })] }, { role: 'tool', name: 'list_folder', content: 'notes.txt, plan.docx' }, { role: 'assistant', content: 'You have notes.txt and plan.docx.' }] }).length === 0);
+// 15 Nov: the first filter before the Opus read: calls checked against the tools each lesson was offered, loops, folder leaks
+const offered = { k1: { tools: [{ type: 'function', function: { name: 'list_folder', parameters: { properties: { path: {} }, required: ['path'] } } }] } };
+const sc = (msgs) => A.auditLesson({ job: 'files', messages: msgs }, { sets: offered });
+const step = (n, a, id) => [{ role: 'assistant', set: 'k1', content: '', tool_calls: [call(n, a, id)] }, { role: 'tool', name: n, content: 'notes.txt, plan.docx (2 files)' }];
+const bad = sc([ask('list my documents'), ...step('list_folder', { path: 'D:\\Users\\sam\\Documents', deep: true }, 'a'), ...step('list_folder', {}, 'b'), ...step('web_search', { query: 'x' }, 'c'), { role: 'assistant', content: 'You have notes.txt and plan.docx.' }]);
+check('first filter: an input the tool doesn\'t take', bad.some((x) => /doesn't take: deep/.test(x)), JSON.stringify(bad));
+check('first filter: a required input left out', bad.some((x) => /missing its required input: path/.test(x)));
+check('first filter: a tool the lesson was never offered', bad.some((x) => /"web_search", which this lesson's tool list doesn't offer/.test(x)));
+check('first filter: a home folder other than C:\\Users\\you is a leak', bad.some((x) => /folder leak: a home folder/.test(x)));
+const loop = sc([ask('list my documents'), ...step('list_folder', { path: '~/Documents' }, 'a'), ...step('list_folder', { path: '~/Documents' }, 'b'), ...step('list_folder', { path: '~/Documents' }, 'c'), { role: 'assistant', content: 'You have notes.txt and plan.docx.' }]);
+check('first filter: loops are caught', loop.some((x) => /twice in a row/.test(x)) && loop.some((x) => /call 3 times/.test(x)));
+check('first filter: lab temp and Linux home folders are leaks', A.leaks('saved in /tmp/bob-lab-Ab12Cd/x and /home/sam/notes').length >= 2);
+check('first filter: a clean lesson passes it', sc([ask('list my documents'), ...step('list_folder', { path: 'C:\\Users\\you\\Documents' }, 'a'), { role: 'assistant', content: 'You have notes.txt and plan.docx.' }]).length === 0);
+// 15 Nov: the held-out check after training: only kept held-out lessons, stamped so tool-score scores them, both brains
+const HC = await imp('heldout-check.mjs');
+const hs = HC.heldoutSet([{ idea: 'h1', messages: [ask('a'), { role: 'assistant', content: 'b' }] }, { idea: 'h2', messages: [ask('a'), { role: 'assistant', content: 'b' }] }, { idea: 'h3', messages: [ask('a')] }], [{ idea: 'h1', verdict: 'keep' }, { idea: 'h2', verdict: 'fix' }, { idea: 'h3', verdict: 'keep' }]);
+check('held-out check: only kept lessons with an answer, stamped holdout', hs.lessons.length === 1 && hs.lessons[0].idea === 'h1' && hs.lessons[0].split === 'holdout' && hs.dropped.not_kept === 1 && hs.dropped.no_assistant === 1);
+W('hc/lessons.jsonl', [{ idea: 'h1', messages: [ask('a'), { role: 'assistant', content: 'b' }] }]); W('hc/toolsets.json', '{}');
+const hr = node(['heldout-check.mjs', '--from', path.join(tmp, 'hc'), '--out', path.join(tmp, 'hc-out'), '--stock', 'stock.gguf', '--trained', 'new.gguf']);
+check('held-out check CLI: writes the set and the side-by-side tool-score command', hr.status === 0 && rows(path.join(tmp, 'hc-out', 'lessons.jsonl')).length === 1 && /--models "stock=stock\.gguf,trained=new\.gguf"/.test(fs.readFileSync(path.join(tmp, 'hc-out', 'HELDOUT.md'), 'utf8')), hr.stderr);
+check('the Opus reading guide has the fact check and the no-personality rule', /unbacked: <the claim>/.test(read('model-lab/reviews/REWRITE-REVIEW.md')) && /never\s+trained in/.test(read('model-lab/reviews/REWRITE-REVIEW.md')));
 check('audit: the phantom JSON reviewer rule is spotted', A.phantomJson('did not reply in the required JSON format') && !A.phantomJson('the user asked for JSON and got prose'));
 
 // ---- the doctor ----
@@ -163,8 +184,8 @@ let log = ''; child.stdout.on('data', (d) => (log += d)); child.stderr.on('data'
 const code = await new Promise((ok) => { const t = setTimeout(() => { child.kill(); ok('timeout'); }, 120000); child.on('exit', (c) => { clearTimeout(t); ok(c); }); });
 // --real-tools: the task's files are planted in a throwaway home and Bob's real list_folder runs there
 const before2 = seen.length;
-W('wl/real-base/ideas.jsonl', [{ id: 'r0-0-r0', job: 'files', text: 'what is in my Documents folder?' }]);
-const child2 = spawn(process.execPath, ['write-lessons.mjs', '--url', url, '--model', 'fake.gguf', '--bob', app, '--out', path.join(tmp, 'wl'), '--dir', 'real-base', '--from-ideas', '--real-tools', '--count', '1', '--think', 'none'], { cwd: lab, env: { ...process.env, LAB_REMOTE: '', LAB_URL: '' } });
+W('wl/real-base/ideas.jsonl', [{ id: 'r0-0-r0', job: 'files', text: 'what is in my Documents folder?' }, { id: 'r1-0-r0', job: 'files', text: 'what is in my Documents folder?', setup: [{ path: 'BOARD', content: '- [ ] backup database' }, { path: 'docs\\hr\\flow.txt', content: 'step one' }] }]);
+const child2 = spawn(process.execPath, ['write-lessons.mjs', '--url', url, '--model', 'fake.gguf', '--bob', app, '--out', path.join(tmp, 'wl'), '--dir', 'real-base', '--from-ideas', '--real-tools', '--count', '2', '--think', 'none'], { cwd: lab, env: { ...process.env, LAB_REMOTE: '', LAB_URL: '' } });
 let log2 = ''; child2.stdout.on('data', (d) => (log2 += d)); child2.stderr.on('data', (d) => (log2 += d));
 const code2 = await new Promise((ok) => { const t = setTimeout(() => { child2.kill(); ok('timeout'); }, 120000); child2.on('exit', (c) => { clearTimeout(t); ok(c); }); });
 // 15 Nov: an empty --from-ideas folder must stop, never quietly fill itself with Bob's own phrasings
@@ -176,6 +197,22 @@ W('wl/media/ideas.jsonl', [{ id: 'm0', job: 'pictures', text: 'paint me a fox' }
 const child4 = spawn(process.execPath, ['write-lessons.mjs', '--url', url, '--model', 'fake.gguf', '--bob', app, '--out', path.join(tmp, 'wl'), '--dir', 'media', '--from-ideas', '--real-tools', '--count', '1', '--think', 'none'], { cwd: lab, env: { ...process.env, LAB_REMOTE: '', LAB_URL: '' } });
 let log4 = ''; child4.stdout.on('data', (d) => (log4 += d)); child4.stderr.on('data', (d) => (log4 += d));
 const code4 = await new Promise((ok) => { const t = setTimeout(() => { child4.kill(); ok('timeout'); }, 120000); child4.on('exit', (c) => { clearTimeout(t); ok(c); }); });
+// 15 Nov step thinking (Bob's step-thinking.js, GPT-OSS heal lessons): the first step plans at the turn's level, each step
+// after a tool result is written at Reasoning: low, and every saved step says which it was so the trainer learns it that way
+const before5 = seen.length;
+W('wl/steps/ideas.jsonl', [{ id: 's0', job: 'files', text: 'what is in my Documents folder?' }]);
+const child5 = spawn(process.execPath, ['write-lessons.mjs', '--url', url, '--model', 'fake.gguf', '--bob', app, '--out', path.join(tmp, 'wl'), '--dir', 'steps', '--from-ideas', '--family', 'gpt-oss', '--count', '1', '--think', 'all', '--effort', 'medium', '--step-thinking'], { cwd: lab, env: { ...process.env, LAB_REMOTE: '', LAB_URL: '' } });
+let log5 = ''; child5.stdout.on('data', (d) => (log5 += d)); child5.stderr.on('data', (d) => (log5 += d));
+const code5 = await new Promise((ok) => { const t = setTimeout(() => { child5.kill(); ok('timeout'); }, 120000); child5.on('exit', (c) => { clearTimeout(t); ok(c); }); });
+{
+  const st = rows(path.join(tmp, 'wl', 'steps', 'lessons.jsonl'))[0];
+  const asst = (st?.messages || []).filter((x) => x.role === 'assistant');
+  const sent = seen.slice(before5).filter((j) => j.tools).map((j) => j.chat_template_kwargs?.reasoning_effort);
+  check('writer --step-thinking: the plan is written at the turn\'s level, each step after a tool result at low', code5 === 0 && asst.length === 3 && sent.join() === 'medium,low,low', `${code5} ${sent.join()} ${log5.slice(-300)}`);
+  check('writer --step-thinking: every saved step says whether it thought', asst.map((x) => x.think).join() === 'true,false,false' && st?.family === 'gpt-oss');
+  const plain = rows(path.join(tmp, 'wl', 'doc-base', 'lessons.jsonl'))[0];
+  check('writer: without --step-thinking no step carries a think mark', !(plain?.messages || []).some((x) => 'think' in x));
+}
 const made = rows(path.join(tmp, 'wl', 'doc-base', 'lessons.jsonl'));
 check('writer: --from-ideas writes the doctored idea and no new ideas', code === 0 && made.length === 1 && rows(path.join(tmp, 'wl', 'doc-base', 'ideas.jsonl')).length === 1, log.slice(-400));
 const m = made[0]?.messages || [];
@@ -187,11 +224,13 @@ check('writer: --family stamps the lesson for one brain family', made[0]?.family
 check('writer: no lab temp folder path reaches a lesson', !/bob-lab-|AppData[\\/]+Local[\\/]+Temp/i.test(JSON.stringify(made)));
 check('writer: every lesson says which tool-shape version it was written for', Number.isInteger(made[0]?.tool_shapes));
 {
-  const real = rows(path.join(tmp, 'wl', 'real-base', 'lessons.jsonl'))[0];
+  const real = rows(path.join(tmp, 'wl', 'real-base', 'lessons.jsonl')).find((l) => l.idea === 'r0-0-r0');
   const firstTool = (real?.messages || []).find((m) => m.role === 'tool');
   check('writer --real-tools: the task file is planted and the real tool lists it', code2 === 0 && /notes\.txt/.test(firstTool?.content || '') && real?.sandbox?.real >= 1, log2.slice(-400));
+  const r1 = rows(path.join(tmp, 'wl', 'real-base', 'lessons.jsonl')).find((l) => l.idea === 'r1-0-r0');
+  check('writer --real-tools: to-dos a request talks about go on the board first, and a path with no drive lands in the home folder', JSON.stringify(r1?.sandbox?.setup) === JSON.stringify([{ path: 'BOARD', content: 'backup database' }, { path: 'C:\\Users\\you\\docs\\hr\\flow.txt', content: 'step one' }]), JSON.stringify(r1?.sandbox || null));
   check('writer --real-tools: a seed outside the throwaway home is never written', (real?.sandbox?.setup || []).length === 1 && !JSON.stringify(real).includes('evil.txt'));
-  check('writer --real-tools: no real tool asked the teacher to make up its result', !seen.slice(before2).some((j) => /"list_folder" tool inside a desktop AI/.test(String(j.messages.at(-1)?.content || ''))));
+  check('writer --real-tools: no real tool asked the teacher to make up its result', !seen.slice(before2, before4).some((j) => /"list_folder" tool inside a desktop AI/.test(String(j.messages.at(-1)?.content || ''))));
   check('writer --real-tools: no temp folder path reaches the lesson', !/bob-lab-|[\\/]tmp[\\/]/i.test(JSON.stringify(real?.messages || [])));
 }
 check('writer: the fake result sees the tool\'s own description and is kept inside it', seen.some((j) => /tool inside a desktop AI/.test(String(j.messages.at(-1)?.content || '')) && /The tool's own description/.test(String(j.messages.at(-1)?.content || '')) && /only reads, lists or searches never saves/.test(String(j.messages.at(-1)?.content || ''))));
@@ -210,6 +249,15 @@ check('writer: the fake result sees the tool\'s own description and is kept insi
   let out = '';
   try { out = await k.brain.tools.make_diagram.run({ title: 'Team', mermaid: 'flowchart TD\nA-->B' }, { loaded: [], cfg: k.brain.cfg, emit: () => {}, signal: new AbortController().signal, sessionId: 'lab' }); } catch (e) { out = 'threw: ' + e.message; }
   check('writer --real-tools: Bob\'s real make_diagram runs with the writer\'s context and keeps its file in the throwaway home', /^Drew the diagram "Team"/.test(out) && !/bob-lab-/.test(k.neutral(out)), out);
+  { const k2 = await loadBob(app, { home: true, office: path.join(tmp, 'lo', 'soffice.exe') }); check('lab sandbox: --office hands the throwaway Bob that LibreOffice', k2.brain.cfg.officePath === path.join(tmp, 'lo', 'soffice.exe')); try { k2.done?.(); } catch {} }
+  // 15 Nov: the kit had no board or memory file, so every notice_board add/write and every remember failed in lkt-fix2
+  const ctx = { loaded: [], cfg: k.brain.cfg, emit: () => {}, signal: new AbortController().signal, sessionId: 'lab' };
+  const run = async (name, a) => { try { const r = await k.brain.tools[name].run(a, ctx); return typeof r === 'string' ? r : JSON.stringify(r); } catch (e) { return 'threw: ' + e.message; } };
+  const added = await run('notice_board', { action: 'add', content: 'back up the database' });
+  const board = await run('notice_board', { action: 'read' });
+  check('lab sandbox: notice_board add really writes the board, and read shows it', /^Added to the notice board: back up the database/.test(added) && /back up the database/.test(board), added + ' | ' + board);
+  const kept = await run('remember', { fact: 'likes short answers' });
+  check('lab sandbox: remember really saves to the memory file', !/threw|must be of type string/.test(kept) && /likes short answers/.test(fs.readFileSync(k.brain.cfg.memoryFile, 'utf8')), kept);
   try { k.done?.(); } catch {}
 }
 check('writer --real-tools: diagrams are drawn for real, with the context Bob\'s own tools expect', /REAL_TOOLS = new Set\(\['make_diagram'/.test(read('model-lab/write-lessons.mjs')) && /run\(sb\.toReal\(args\), \{ loaded, cfg: sb\.brain\.cfg, emit:/.test(read('model-lab/write-lessons.mjs')));
@@ -226,6 +274,27 @@ let [gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--preflight', '--
 check('pre-flight: a slot too small for the longest lesson stops before anything runs', gc === 1 && /PRE-FLIGHT FAIL: each slot has 16384/.test(glog) && rows(path.join(tmp, 'wl', 'gate', 'lessons.jsonl')).length === 0, glog.slice(-300));
 [gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--preflight', '--slot-ctx', '32768']);
 check('pre-flight: says which ideas file it reads and how many rows, then passes', gc === 0 && /ideas file .*gate[\\/]ideas\.jsonl: 8 rows/.test(glog) && /pre-flight OK/.test(glog), glog.slice(-300));
+[gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--preflight', '--slot-ctx', '32768', '--office', path.join(tmp, 'no-office', 'soffice.exe')]);
+check('pre-flight: an --office LibreOffice that isn\'t there stops it', gc === 1 && /--office .*no-office.* doesn't exist/.test(glog), glog.slice(-300));
+[gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--preflight', '--slot-ctx', '32768', '--real-tools']);
+check('pre-flight --real-tools: the board, memory, files and diagram tools each run once for real before anything is rented', gc === 0 && /lab tools that ran for real: notice_board add, notice_board read, remember, write_file, read_file, list_folder, make_diagram/.test(glog), glog.slice(-500));
+W('wl/gate-office/ideas.jsonl', [{ id: 'o1', job: 'office', text: 'make a spreadsheet of my bills' }, { id: 'o2', job: 'chat', text: 'save it as notes.docx' }, { id: 'o3', job: 'chat', text: 'hello there' }]);
+[gc, glog] = await runW(['--dir', 'gate-office', '--from-ideas', '--preflight', '--slot-ctx', '32768', '--real-tools', '--no-office']);
+check('pre-flight --no-office: office ideas are left out and office is not checked, so a PC without LibreOffice can still run the rest', gc === 0 && /--no-office: left out 2 office ideas/.test(glog) && /: 1 rows/.test(glog) && /--no-office: office tools left out/.test(glog) && !/office_make doesn't work/.test(glog), glog.slice(-500));
+{ // 15 Nov (the owner: "MAKE IT WORK GOOD"): the faults Opus found most, caught in code before the review
+  const C = await import(pathToFileURL(path.join(lab, 'lesson-checks.mjs')).href);
+  const u = { role: 'user', content: 'add milk to my board' };
+  const L = (...m) => [u, ...m];
+  const call = (name, args) => ({ role: 'assistant', content: '', tool_calls: [{ id: 'c', type: 'function', function: { name, arguments: JSON.stringify(args) } }] });
+  check('checks: thinking that says "wait" or "actually" again and again fails, a short plan passes', /second-guesses itself/.test(C.lessonFault(L({ role: 'assistant', reasoning: 'Wait, actually no. Hmm. Wait, actually I should.', content: 'Here you go.' }))) && C.lessonFault(L({ role: 'assistant', reasoning: '1. Read the board. 2. Add milk.', content: 'Here you go.' })) === '');
+  check('checks: quoting the private note fails', /quoted the private note/.test(C.lessonFault(L({ role: 'assistant', reasoning: 'They said use the board add action with the milk item only please', content: 'ok' }), { note: 'use the board add action with the milk item only please, not write' })));
+  check('checks: "I\'ve added it" after every call failed fails; after a real result it passes', /every tool call failed/.test(C.lessonFault(L(call('notice_board', { action: 'add', content: 'milk' }), { role: 'tool', name: 'notice_board', content: 'Error: no board' }, { role: 'assistant', content: "I've added milk to your board." }))) && C.lessonFault(L(call('notice_board', { action: 'add', content: 'milk' }), { role: 'tool', name: 'notice_board', content: 'Added to the notice board: milk.' }, { role: 'assistant', content: "I've added milk to your board." })) === '');
+  check('checks: a claim with no tool call at all fails', /no tool was called/.test(C.lessonFault(L({ role: 'assistant', content: "I've saved that for you." }))));
+  check('checks: the same call three times in a row fails', /three times/.test(C.lessonFault(L(call('read_file', { path: 'a' }), { role: 'tool', name: 'read_file', content: 'x' }, call('read_file', { path: 'a' }), { role: 'tool', name: 'read_file', content: 'x' }, call('read_file', { path: 'a' }), { role: 'tool', name: 'read_file', content: 'x' }, { role: 'assistant', content: 'It says x.' }))));
+  check('checks: a value the tool doesn\'t list fails', /isn't one it takes/.test(C.lessonFault(L(call('use_tools', { group: 'scout' }), { role: 'tool', name: 'use_tools', content: 'ok' }, { role: 'assistant', content: 'Done looking.' }), {}, [{ type: 'function', function: { name: 'use_tools', parameters: { properties: { group: { type: 'string', enum: ['files', 'office'] } } } } }])));
+  check('checks: other people\'s home folders in a request become C:\\Users\\you', C.homeScrub('open C:\\Users\\' + 'Ad' + 'min\\Documents\\a.docx and /home/' + 'jo/notes/b.txt, not C:\\Users\\you\\x or C:\\Users\\' + 'Public') === 'open C:\\Users\\you\\Documents\\a.docx and C:\\Users\\you\\notes\\b.txt, not C:\\Users\\you\\x or C:\\Users\\' + 'Public');
+  check('checks: a stand-in that talks about itself or the board is asked for again; a plain result passes', C.standinBad('I am an AI and cannot save to the notice board.', 'web_search') && C.standinBad('Here is the result: 3 pages', 'web_search') && !C.standinBad('1. Weather in Calgary: 4 C, light snow.', 'web_search'));
+}
 [gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--preflight', '--slot-ctx', '32768', '--want-shapes', '99']);
 check('pre-flight: the wrong tool shape stops it', gc === 1 && /not 99/.test(glog));
 [gc, glog] = await runW(['--dir', 'no-such-ideas', '--from-ideas', '--preflight', '--slot-ctx', '32768']);
@@ -238,6 +307,9 @@ W('wl/gate-ok/ideas.jsonl', [...Array.from({ length: 4 }, (_, k) => ({ id: `ok${
 [gc, glog] = await runW(['--dir', 'gate-ok', '--from-ideas', '--review', '--count', '6', '--parallel', '2', '--gate', '6:0.6', '--slot-ctx', '32768']);
 const nr = rows(path.join(tmp, 'wl', 'gate-ok', 'needs-review.jsonl'));
 check('sample gate: enough saved, the run carries on and counts its skips by cause', gc === 0 && /sample: 4 of 6 saved/.test(glog) && /skips by cause: 1 failed review twice, 1 review unreadable|skips by cause: 1 review unreadable, 1 failed review twice/.test(glog), glog.slice(-400));
+[gc, glog] = await runW(['--dir', 'gate-ok', '--from-ideas', '--review', '--count', '6', '--parallel', '1', '--gate', '1:0.1', '--slot-ctx', '32768']);
+check('a resumed run tries ideas never tried before ahead of ones that failed', /queue: 0 ideas never tried first, then 2 tried before/.test(glog), glog.slice(-300));
+check('the teacher\'s note says never to mention it, and the reviewer has room to finish', /never mention, quote or refer to it in your thinking/.test(read('model-lab/write-lessons.mjs')) && /max: 1500, temperature: 0/.test(read('model-lab/write-lessons.mjs')));
 check('an unreadable review keeps the reviewer\'s raw reply for a second look', nr.length === 1 && /mostly fine/.test(nr[0].raw || ''));
 check('writer: a lesson that runs out of steps leaves its step list behind', /steps-out\.jsonl/.test(read('model-lab/write-lessons.mjs')));
 // forge.mjs runs the writer's pre-flight on this PC for every lesson command, and checks the caps, before it rents anything
@@ -260,6 +332,7 @@ check('writer: doctored lessons get 12 steps', /idea\.note \|\| idea\.prior \|\|
 // ---- the heal masks a failed try ----
 const dp = read('model-lab/forge/pod/data.py');
 check('heal: a lesson for another brain family is never learned', /lesson for another family/.test(read('model-lab/forge/pod/data.py')) && /fam != \("gpt-oss" if harmony else "qwen"\)/.test(read('model-lab/forge/pod/data.py')));
+check('heal: a step-thinking lesson is learned one part per level, and the pod self-test proves it on Bob\'s GPT-OSS template', /def render_steps/.test(read('model-lab/forge/pod/data.py')) && /a step-thinking lesson is learned in two parts/.test(read('model-lab/forge/pod/selftest_gptoss.py')) && /the low part does not learn the planning step again/.test(read('model-lab/forge/pod/selftest_gptoss.py')));
 check('heal: a guided lesson is left out of GPT-OSS rather than learning the failed try', /harmony and any\(skip\)/.test(read('model-lab/forge/pod/data.py')));
 check('heal: train: false turns are masked out of the loss', /m\.get\("train"\) is False/.test(dp) && /skip\[turn\]/.test(dp));
 

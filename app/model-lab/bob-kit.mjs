@@ -8,9 +8,13 @@ import { checkBobSource } from './bob-source.mjs';
 
 // howtos: a how-to file ({ howtos: [{ name, when, steps }] }) put in the throwaway Bob first, so the quiz can see them.
 // allowOld: --allow-old-bob (bob-source.mjs): a Bob copy more than a few releases behind this Lab is refused otherwise.
+// family: a brain family (qwen3, qwen3.5, gpt-oss...): every turn gets that family's tool set from Bob's tool-sets.js,
+// as Bob's own loop does for the brain answering (its hidden tools left out, its wording). Unset = Bob's own list.
 // home: a throwaway home folder (Documents, Desktop, Downloads) Bob may use, shown to him as C:\Users\you, so his real
 // tools can run against a lesson's own files (write-lessons --real-tools). Off: the kit is as before.
-export async function loadBob(bobDir, { howtos = '', allowOld = false, home = false } = {}) {
+// office: soffice.exe (or soffice) for the office tools (write-lessons --office, 15 Nov): the throwaway Bob's own
+// folder never holds LibreOffice, so without it office_make and the rest answer "no LibreOffice on this PC".
+export async function loadBob(bobDir, { howtos = '', allowOld = false, home = false, office = '', family = '' } = {}) {
   // a repository folder works as well as its app folder (Bob's files sit in app/ since Nov 9)
   if (!fs.existsSync(path.join(bobDir, 'src')) && fs.existsSync(path.join(bobDir, 'app', 'src'))) bobDir = path.join(bobDir, 'app');
   const src = (f) => pathToFileURL(path.join(bobDir, 'src', f)).href;
@@ -34,6 +38,11 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false, home = fa
   if (homeDir) for (const d of ['Documents', 'Desktop', 'Downloads']) fs.mkdirSync(path.join(homeDir, d), { recursive: true });
   const cfg = {
     agentDir, innDir, dataDir, painterDir, defaultPainterDir: painterDir, settingsFile: path.join(dataDir, 'settings.json'),
+    // 15 Nov (Opus read of lkt-fix2's rejects): Bob's config.js sets these, the kit didn't, so notice_board and remember
+    // failed every time with 'The "path" argument must be of type string' and dozens of lessons taught a broken board
+    noticeBoard: path.join(innDir, 'notice-board.md'), memoryFile: path.join(innDir, 'bob-memory.md'), logbook: path.join(innDir, 'logbook.md'),
+    ledgerDir: path.join(innDir, 'ledger'), archiveDir: path.join(innDir, 'archive'),
+    ...(office ? { officePath: office } : {}),
     readRoots: homeDir ? [innDir, homeDir] : [innDir], readOnlyRoots: [], recycleBin: false,
     models: { bob: 'qwen3.6-35b-a3b' }, engine: 'llamacpp', ollamaUrl: 'http://127.0.0.1:1',
     painter: { engine: 'sdcpp', sdcpp }, stt: { provider: 'http' },
@@ -44,6 +53,11 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false, home = fa
   if (howtos) {
     const list = (JSON.parse(fs.readFileSync(howtos, 'utf8')).howtos || []).map((r, i) => ({ id: 'seed-' + i, made: Date.now(), used: 0, ...r }));
     fs.writeFileSync(path.join(dataDir, 'howtos.json'), JSON.stringify({ howtos: list }, null, 1));
+  }
+  let toolSet = null;
+  if (family) {
+    try { toolSet = (await import(src('tool-sets.js'))).toolSetFor({}, '', { family: String(family) }); } catch {}
+    if (!toolSet) throw new Error(`No tool set for the family "${family}" in this Bob copy (src/tool-sets.js).`);
   }
   const brain = new Brain(cfg, () => {});
   clearInterval(brain.reminderTimer);
@@ -71,11 +85,13 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false, home = fa
     guessGroups: (text) => tb.guessGroups(brain, text),
     groupOf: (name) => tb.groupOf(brain, name),
     // The front desk's prompt and tools for a turn with these groups added (Bob's own frontDeskTools/withLimits).
+    toolSet,
     turn(loaded = new Set()) {
+      if (toolSet) loaded.toolSet = toolSet; // 15 Nov: the family's shape, as Bob's loop sets it (brain-run-on.js)
       const sys = brain.withLimits(systemPrompt({ now: brain.now(), memory: '', user: 'the user', backstory: brain.backstory(), about: '', cat: 'Patches' }), loaded);
       return { system: neutral(sys), tools: JSON.parse(neutral(JSON.stringify(brain.frontDeskTools(loaded)))) };
     },
-    allTools: () => brain.toolSchemas(Object.keys(brain.tools)),
+    allTools: () => brain.toolSchemas(Object.keys(brain.tools), toolSet),
     // Runs use_tools the way Bob does (adds the group), so a lesson can go on to the real tool.
     useTools(args, loaded) { return brain.tools.use_tools.run(args, { loaded }); },
     done() { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {} }

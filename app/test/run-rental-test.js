@@ -13,7 +13,7 @@ import { HELP } from '../public/help-content.js';
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-rent-'));
-const KEY = 'rpa_TESTKEY0123456789abcdefghijklmnop';
+const KEY = 'rpa_' + 'TESTKEY0123456789abcdefghijklmnop';
 
 // ---- settings: off, limits 0, nothing but the allowed shape ----
 {

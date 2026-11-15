@@ -4,6 +4,24 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.240
+
+Tool shapes are locked for GPT-OSS and Qwen, the Lab console is complete, and a security update underneath.
+
+### Fixed
+
+- **Security:** my window runs on Electron 44.10.1 (was 44.9.0), and an old file-matching library in the build tools is replaced with its fixed version. The security audit now finds nothing.
+- **Installing an engine into a folder with a space in its name** (like Program Files) works. The installer was given the path without quotes, so Windows refused it with error 1639.
+
+### New
+
+- **Tool shapes locked for GPT-OSS and Qwen.** GPT-OSS keeps my own tool names and wording, which beat every other wording in its tests; list_folder and search_files now say clearly which is which. Qwen brains no longer see tools they used wrongly (ask_specialist, pick_session), and nothing points them to a tool they can't see. The tool record starts fresh for the new shapes.
+- **run_command won't write files.** A command that only writes a file (like `echo > notes.txt`) is turned away before it runs, with a pointer to write_file. Programs that write their own output still run.
+- **The Lab console is complete.** Every Lab job is a form in Set up, plus Pipelines, the rented-run form (only the purchase card rents), Rented cards (Look, Take over, End it), Use Bob's brain, and Lab job logs in the Server panel.
+- **Lab:** a stricter lesson teacher and first filter, the lesson sandbox gets Bob's notice board, memory and logbook, an optional LibreOffice for office lessons, and step-by-step thinking for GPT-OSS heal lessons, and a fairer tool judge (looking first is fine when the action is right).
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.239
 
 I think where it helps: at the start to plan and at the end to check, not before every single step.
@@ -129,41 +147,6 @@ A small Lab fix.
 ### Fixed
 
 - **A stopped steering sweep can't spoil a brain's answers any more.** In the Lab, resetting a live brain now also clears a steering dial a stopped sweep had left turned on, which had been bending every answer after it.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.230
-
-Settings and my cube work again with my own window bar, scrollbars wear your lamp, Bob-Net gets faster and shows who's sharing cards, and notes ride on the notice board.
-
-### New
-
-- **See who's sharing graphics cards.** On Bob-Net icons, a Bob lending his graphics card wears a little block puzzle piece in your look's colour, glowing while the brain he helps writes back. A Bob running a brain over other Bobs' cards has a block missing from his cube for each one. The brain line says "Lending Out Brains" or "Borrowing More Brains". Windows, Mac and Linux.
-- **Chats with your other Bobs are kept on both.** A chat you start from a Bob's icon is now saved on his side too, as "From" and your Bob's name. Switch **He answers** off and he only keeps what you send, which is handy for copying text from one machine to another.
-- **Scrollbars in your look.** In Lamplight they're thin and lit in your lamp's colour (Mercury, Sodium, Thallium or Neon); in Terminal they're in its own colours. Classic keeps your system's.
-
-- **Gaming stays yours, even if you forget the Gaming button.** While a game holds 2 GB or more of a Bob's graphics card, he turns down quick replies, checks, jobs and lending his card, the same as with Gaming on. Your other Bobs do the work, or it waits. Windows and Linux with NVIDIA cards, and Windows with other cards.
-- **Cable and Wi-Fi Bobs don't mix when sharing a brain.** One brain is shared by Bobs on a cable, or by Bobs on Wi-Fi or Tailscale, never both at once, because the slower link would hold the whole brain back. A Bob left out still takes whole jobs.
-
-- **SCUT runs faster by default.** Auto is now up to 400 Mbit/s instead of 100, and it still backs off when the network is busy. After this update every Bob goes back to Auto once; pick another cap under Bigger Bobs if you like.
-- **No SCUT on a cable.** When both Bobs are joined by a network cable, they share a brain straight over it; SCUT was made for Wi-Fi and isn't needed there.
-- **One tool for "write it down".** With Quick notes on, my notes live on the notice board: "note: ring the vet" goes to your quick notes, "put milk on my list" goes on the board, each in its own place. With Quick notes off nothing changes.
-
-### Changed
-
-- **The copy card is clearer.** When you send a file or copy a brain to another Bob, the speed and time left sit on their own line, the progress bar fills the card, and the sender is named the way your Bob-Net list names him.
-- **New pictures on my front page**, in the dimmer lamps with the smoke and the seven-page first-time setup.
-
-- **Less in the way.** The Now running button under the chat is gone. Tasks is at the top, and Ctrl+J still opens Now running.
-
-- **New defaults reach everyone once.** When a default changes, an older saved pick of it is dropped one time after the update, so you get the new way. This time it's my icon: if "Use Bob's look as his icon" was on from before, you now see the tesseract. Switch it back on in Settings and it stays.
-- **Patches' word bubbles.** His antics come every 5 to 10 minutes when nothing's happening (was every 1 to 2½), and his bubble, like the Tasks bubble, is more see-through with a soft glow behind the words. It stays solid if you've asked your system for more contrast or less transparency.
-
-### Fixed
-
-- **Settings scrolls again** with my window buttons on my bar (since 1.5.228). On Windows the top bar, which drags the window, was catching the mouse wheel under an open page. While a page or panel is open, it no longer does, and the Settings window always keeps an ordinary title bar.
-- **Clicking my cube opens my menu again** with my window buttons on my bar (since 1.5.228). The top bar's drag area was catching the click meant for the cube, and for its menu. Now only the bar's own empty space drags the window.
-- **Zoom keys work on Windows and Linux.** Ctrl and + (or =) zooms in, Ctrl and - zooms out, and Ctrl and 0 puts it back, in every one of my windows.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 

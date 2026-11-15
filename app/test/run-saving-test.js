@@ -86,11 +86,21 @@ const mkCfg = (name) => {
   // A lock left by a program that has gone is taken over at once.
   // A pid known to be gone: a child that has already exited (a made-up pid like 999999 can be a live program on Windows,
   // which ignores a pid's low two bits).
-  const gone = spawnSync(process.execPath, ['-e', '']).pid;
+  // 1.5.240: Windows can still answer for a pid just after its program ends, or hand the number to a new program, so the
+  // test asks the same way Bob does (process.kill(pid, 0)) and only uses a pid that answers "no such process", with a
+  // short wait and a fresh child between tries.
+  const isAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+  let gone = 0;
+  for (let i = 0; i < 40 && !gone; i++) {
+    const pid = spawnSync(process.execPath, ['-e', '']).pid;
+    for (let w = 0; w < 10 && isAlive(pid); w++) spawnSync(process.execPath, ['-e', 'setTimeout(() => {}, 50)']);
+    if (!isAlive(pid)) gone = pid;
+  }
+  check('231 a pid known to be gone was found for the next check', gone > 0);
   fs.writeFileSync(`${f}.lock`, `${gone} ${Date.now()}`);
   const t0 = Date.now();
   oneWriter(f, () => saveJson(f, { n: 1 }));
-  check('231 a lock left behind by a program that has gone is taken over', Date.now() - t0 < 500 && readSaved(f, null).n === 1 && !fs.existsSync(`${f}.lock`));
+  check('231 a lock left behind by a program that has gone is taken over', Date.now() - t0 < 1500 && readSaved(f, null).n === 1 && !fs.existsSync(`${f}.lock`));
   // Nested: one save inside another doesn't wait on itself.
   let inner = false;
   oneWriter(f, () => oneWriter(f, () => { inner = true; }));

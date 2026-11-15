@@ -8,12 +8,13 @@
 //      [--llama <folder>] [--ctx 16384] [--experts 8] [--quick] [--no-think] [--extra "--n-cpu-moe 20"]
 //      [--split train --sample 2000] (harvest training data from the other 95%; not a benchmark)
 //      [--condition "keep75-n8"] [--evidence] (the surgery data rule: what each saved answer was made under; see answerTags)
+//      [--strict-judge] (15 Nov: the old exact rule; the default is the fair judge in tool-judge.mjs)
 //      [--tools live|recorded] (Nov 13: live = the current Bob's tool definitions; recorded = those saved with the lessons) [--bob <folder>] [--allow-old-bob]
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { opts, locate, startServer, chat, stamp, readJsonl, appendJsonl, moeShape, AGENT, answerTags, tagsNote } from './common.mjs';
-import { parseArgs, sameArgs, judgeTurn } from './tool-judge.mjs';
+import { parseArgs, sameArgs, judgeTurn, LOOKS } from './tool-judge.mjs';
 import { toolSetFor, inSet } from '../src/tool-sets.js';
 import { bobSource, releasesBehind, MAX_BEHIND } from './bob-source.mjs';
 import { loadBob } from './bob-kit.mjs';
@@ -61,6 +62,22 @@ if (!remote) for (const m of models) if (!fs.existsSync(m.file)) { console.error
 const extra = o.extra ? String(o.extra).split(/\s+/).filter(Boolean) : [];
 console.log(`${lessons.length} held-out lessons, ${lessons.reduce((n, l) => n + l.messages.filter((m) => m.role === 'assistant').length, 0)} assistant turns`);
 
+// the reference's first action (a call that is not just a look) from turn k on, before the person writes again
+function nextAction(lesson, k) {
+  let seen = -1;
+  for (const m of lesson.messages) {
+    if (m.role === 'assistant') seen++;
+    if (seen < k) continue;
+    if (m.role === 'user' && seen >= k) return [];
+    if (m.role !== 'assistant') continue;
+    const calls = (m.tool_calls || []).map((c) => ({ name: c.function.name, args: parseArgs(c.function.arguments) }));
+    const act = calls.filter((c) => !LOOKS.has(c.name));
+    if (act.length) return act;
+    if (!calls.length) return [];
+  }
+  return [];
+}
+
 // ---- turning a saved lesson into the request the model sees at turn k ----
 function history(lesson, k) {
   // messages before the k-th assistant turn, in OpenAI shape; system from the tool set of the first assistant turn
@@ -99,6 +116,9 @@ async function score(m) {
         const h = history(l, k); if (!h) continue;
         const want = l.messages.filter((x) => x.role === 'assistant')[k];
         const wantCalls = (want.tool_calls || []).map((c) => ({ name: c.function.name, args: parseArgs(c.function.arguments) }));
+        // 15 Nov fair judge (tool-judge.mjs): the turn's own fair note, and the reference's next action in this job, so going
+        // straight to it without the reference's look counts as right. --strict-judge keeps the old rule for old benchmarks.
+        const fair = { ...(want.fair || {}), next: nextAction(l, k), ...(o['strict-judge'] ? { strict: true } : {}) };
         const think = o['no-think'] ? false : Boolean(l.think);
         let msg, timings;
         // 12 Nov (the owner's rule): every benchmark keeps its data. Each answer is saved with the brain's odds (its top 5 words
@@ -108,13 +128,15 @@ async function score(m) {
         catch (e) { r.errors++; r.misses.push(`${l.idea}/${k}: error ${e.message.slice(0, 80)}`); continue; }
         if (timings?.predicted_per_second) r.tps.push(timings.predicted_per_second);
         const got = (msg.tool_calls || []).map((c) => ({ name: c.function?.name, args: parseArgs(c.function?.arguments) }));
-        try { appendJsonl(keepFile, { brain: m.name, split, idea: l.idea, turn: k, think, ...tags, ok: judgeTurn(wantCalls, got), want: wantCalls.length ? 'tool' : 'no-tool', answer: { content: msg.content || '', reasoning: msg.reasoning_content || undefined, tool_calls: msg.tool_calls || undefined }, ...(logprobs ? { odds: (logprobs.content || []).map((x) => ({ t: x.token, p: x.logprob, top: (x.top_logprobs || []).map((y) => [y.token, y.logprob]) })) } : {}) }); } catch {}
+        try { appendJsonl(keepFile, { brain: m.name, split, idea: l.idea, turn: k, think, ...tags, ok: judgeTurn(wantCalls, got, fair), want: wantCalls.length ? 'tool' : 'no-tool', answer: { content: msg.content || '', reasoning: msg.reasoning_content || undefined, tool_calls: msg.tool_calls || undefined }, ...(logprobs ? { odds: (logprobs.content || []).map((x) => ({ t: x.token, p: x.logprob, top: (x.top_logprobs || []).map((y) => [y.token, y.logprob]) })) } : {}) }); } catch {}
+        const fairOk = judgeTurn(wantCalls, got, fair);
         if (!wantCalls.length) {
           r.noToolTurns++;
-          if (!got.length) r.rightNoTool++; else r.misses.push(`${l.idea}/${k}: expected no tool, got ${got.map((g) => g.name).join(',')}`);
+          if (fairOk) r.rightNoTool++; else r.misses.push(`${l.idea}/${k}: expected no tool, got ${got.map((g) => g.name).join(',')}`);
           continue;
         }
         r.toolTurns++;
+        if (fairOk) { r.rightTool++; r.rightArgs++; continue; }
         const wantNames = [...new Set(wantCalls.map((c) => c.name))].sort().join(','), gotNames = [...new Set(got.map((c) => c.name))].sort().join(',');
         if (wantNames !== gotNames) { r.misses.push(`${l.idea}/${k}: wanted ${wantNames}, got ${gotNames || 'no tool'}`); continue; }
         r.rightTool++;
@@ -126,7 +148,7 @@ async function score(m) {
   } finally { await srv.stop(); }
   r.tpsAvg = r.tps.length ? r.tps.reduce((a, b) => a + b, 0) / r.tps.length : 0; delete r.tps;
   r.minutes = (Date.now() - t0) / 60000; r.loadSec = srv.loadSec;
-  r.total = r.rightArgs + r.rightNoTool; r.totalN = r.toolTurns + r.noToolTurns;
+  r.total = r.rightArgs + r.rightNoTool; r.totalN = r.toolTurns + r.noToolTurns; r.judge = o['strict-judge'] ? 'strict (old exact rule)' : 'fair (15 Nov, tool-judge.mjs)';
   return r;
 }
 
@@ -138,8 +160,9 @@ for (const m of models) {
 }
 const when = stamp();
 const pct = (a, b) => `${a}/${b} (${Math.round((100 * a) / Math.max(b, 1))}%)`;
-fs.writeFileSync(path.join(L.out, `tool-score-${when}.json`), JSON.stringify({ lessons: lessons.length, experts: o.experts || 'default', think: o['no-think'] ? 'off' : 'as recorded', tools: toolsMode, bob_src: liveKit ? liveKit.bobSrc : recordedSrc, lab_src: labSrc, results }, null, 2));
+fs.writeFileSync(path.join(L.out, `tool-score-${when}.json`), JSON.stringify({ lessons: lessons.length, experts: o.experts || 'default', think: o['no-think'] ? 'off' : 'as recorded', judge: o['strict-judge'] ? 'strict' : 'fair', tools: toolsMode, bob_src: liveKit ? liveKit.bobSrc : recordedSrc, lab_src: labSrc, results }, null, 2));
 const md = [`# Tool score, ${when}`, '', `${lessons.length} held-out Bob conversations (never trained on), replayed turn by turn with full history. Right tool = same tool names as the full Qwen3.6 chose; right arguments = same values too; no tool = the turn was a plain reply and the model also made no call. Thinking ${o['no-think'] ? 'off' : 'as in each lesson'}${o.experts ? `, ${o.experts} experts per word` : ''}.`, '',
+  o['strict-judge'] ? 'Judge: strict (the old exact rule, to compare with benchmarks from before 15 Nov).' : 'Judge: fair (15 Nov): extra or skipped looks are not held against an answer whose action is right; the turn\'s fair note can allow other right tools or free arguments. Not comparable with benchmarks from before 15 Nov; --strict-judge gives the old rule.', '',
   '| Model | Right tool | Right arguments | Correctly no tool | Overall | Speed | Load |', '|---|---|---|---|---|---|---|',
   ...results.map((r) => `| ${r.name} | ${pct(r.rightTool, r.toolTurns)} | ${pct(r.rightArgs, r.toolTurns)} | ${pct(r.rightNoTool, r.noToolTurns)} | ${pct(r.total, r.totalN)} | ${r.tpsAvg.toFixed(1)} tok/s | ${r.loadSec.toFixed(0)} s |`), '',
   '## Misses', ...results.flatMap((r) => [`### ${r.name}`, ...r.misses.slice(0, 200).map((x) => `- ${x}`), r.misses.length > 200 ? `- … ${r.misses.length - 200} more` : '', ''])].join('\n');

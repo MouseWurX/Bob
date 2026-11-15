@@ -96,3 +96,11 @@ a JSON format nobody asked for.
   Unless 60% of them save (`--gate 10:0.6`), it prints `GATE STOP` and exits 86, and forge deletes the pod.
 - Every skip is counted by cause. An unreadable review keeps the raw reply in `needs-review.jsonl`, and a lesson that
   runs out of steps leaves its tool calls in `steps-out.jsonl`.
+
+**After a rewrite (15 Nov).** `audit-lessons.mjs` is the first filter before the Opus read. It checks each call against
+the tools that lesson was offered (`toolsets.json`): a tool not offered, an input the tool doesn't take, a missing
+required input. It also catches loops and folder leaks. Opus 5.5 then reads every lesson by
+[reviews/REWRITE-REVIEW.md](reviews/REWRITE-REVIEW.md), which includes the fact check (`unbacked: <claim>`) and the
+rule that Bob's personality stays in the app prompt and is never trained in. After training, `heldout-check.mjs
+--from <kept held-out lessons> --out <folder>` builds the clean held-out set and the tool-score command that scores the
+trained Bob and stock Qwen on the same turns.
