@@ -231,17 +231,42 @@ export class LabConsole {
     if (dir && !live?.running) { // a Forge run started anywhere else: its own timeline log, while it's being written
       try {
         const fdir = path.join(dir, 'out', 'forge');
-        const f = fs.readdirSync(fdir).filter((x) => /^forge-[\d-T]+\.log$/.test(x)).sort().pop();
-        const st = f ? fs.statSync(path.join(fdir, f)) : null, born = st ? st.birthtimeMs || st.mtimeMs : 0;
-        const ours = rec?.at && born >= rec.at - 60e3 && born <= rec.at + 15 * 60e3; // the Lab's own run, already shown from its log
-        if (st && !ours && this.now() - st.mtimeMs < 15 * 60e3) add(path.join(fdir, f), `Forge run ${f.slice(6, 16)}`, 'forge');
+        // 15 Nov: each one written in the last quarter hour (two Forge windows can run side by side), newest three
+        for (const f of fs.readdirSync(fdir).filter((x) => /^forge-[\d-T]+\.log$/.test(x)).sort().slice(-3)) {
+          const st = fs.statSync(path.join(fdir, f)), born = st.birthtimeMs || st.mtimeMs;
+          const ours = rec?.at && born >= rec.at - 60e3 && born <= rec.at + 15 * 60e3; // the Lab's own run, already shown from its log
+          if (!ours && this.now() - st.mtimeMs < 15 * 60e3) add(path.join(fdir, f), `Forge run ${f.slice(6, 16)}`, 'forge');
+        }
       } catch {}
     }
     for (const [f, label] of [[lab.stepRunFile?.(), 'Lab step'], [lab.protocolFile?.(), 'Protocol step']]) { const j = f ? readJson(f, null) : null; if (j?.state === 'running' && j.log) add(j.log, `${label} ${j.name || j.step || j.tool || ''}`.trim(), 'tool'); }
+    const lj = this.labJobLog(); if (lj) add(lj.file, `Lab job ${lj.name}`, 'tool');
     if (this.watch) add(this.watch, `Watching ${path.basename(this.watch)}`, 'tool');
     return out;
   }
+  // 15 Nov A Lab job (a cut, a mix, a benchmark, lessons being written...) writes lab.log in its own folder: the newest
+  // lab.log under the Lab's folder written since the job started. Looked for every few seconds until it's found.
+  labJobLog() {
+    const r = this.lab.job?.run; if (!r) { this.jobLog = null; return null; }
+    if (this.jobLog?.id === r.id && this.jobLog.file) return this.jobLog;
+    if (this.jobLog?.id === r.id && this.now() - this.jobLog.looked < 3000) return null;
+    const since = (Number(r.at) || this.now()) - 5000; let best = null;
+    const walk = (d, depth) => { let ents = []; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return; } for (const e of ents) { const f = path.join(d, e.name); if (e.isDirectory() && depth > 0 && e.name !== 'console') walk(f, depth - 1); else if (e.isFile() && e.name === 'lab.log') { try { const m = fs.statSync(f).mtimeMs; if (m >= since && (!best || m > best.m)) best = { f, m }; } catch {} } } };
+    walk(labDir(this.cfg), 3);
+    this.jobLog = { id: r.id, name: String(r.name || r.kind || '').slice(0, 60), file: best?.f || '', looked: this.now() };
+    return best ? this.jobLog : null;
+  }
+  // Each step a Lab job moves to, and how it ended, as a line in the Server panel.
+  jobSteps() {
+    const r = this.lab.job?.run;
+    if (r) { const k = `${r.id}|${r.stepLabel || r.step || ''}`; if (k !== this.jobStep?.k) { if (r.stepLabel || r.step) this.push('tool', `Lab job ${r.name || ''}: ${r.stepLabel || r.step}`, { kind: 'note' }); this.jobStep = { k, id: r.id, name: r.name || '' }; } return; }
+    if (!this.jobStep) return;
+    const done = (this.lab.runs || []).find((x) => x.id === this.jobStep.id);
+    this.push('tool', `Lab job ${this.jobStep.name}: ${done?.state === 'done' ? 'done' : done?.state === 'failed' ? `stopped${done.error ? `: ${done.error}` : ''}` : done?.state || 'ended'}.`, { kind: done?.state === 'failed' ? 'error' : 'note' });
+    this.jobStep = null;
+  }
   follow() {
+    try { this.jobSteps(); } catch {}
     for (const s of this.sources()) {
       let st; try { st = fs.statSync(s.file); } catch { continue; }
       let f = this.files.get(s.file);
@@ -264,20 +289,21 @@ export class LabConsole {
   // ---- the page ----
   view({ since = 0, remote = false, talk = -1 } = {}) {
     this.follow();
-    const door = this.door();
+    const door = this.door(), bob = this.bobBrain();
     const all = this.entries.filter((e) => e.seq > since);
     const lines = (all.length > 3000 ? all.slice(-3000) : all).map(({ at: _a, ...e }) => (remote ? { ...e, text: hidePaths(e.text) } : e));
     let live = null; try { live = this.lab.forgeLive?.(); } catch {}
     return {
       allowed: this.allowed(), local: !remote, next: this.seq, first: this.entries[0]?.seq || 0, lines,
       server: this.server ? { state: 'up', brain: this.server.brain, where: this.server.where, ctx: this.server.ctx, engine: this.server.engine || '' } : this.loading ? { state: 'loading', brain: this.loading.brain } : { state: 'off' },
-      target: this.target ? (remote ? 'a server elsewhere' : this.target) : this.server ? 'the brain loaded here' : door ? `${door.name} on the rented card` : '',
+      target: this.target ? (remote ? 'a server elsewhere' : this.target) : this.bobTarget ? (bob.name ? `Bob's brain, ${bob.name}` : 'Bob\'s brain (not loaded now)') : this.server ? 'the brain loaded here' : door ? `${door.name} on the rented card` : '',
+      bob: { on: Boolean(this.bobTarget), ready: Boolean(bob.url), name: bob.name, why: bob.why },
       relay: this.relay && !remote ? this.relay.url : '',
       job: this.job ? { label: remote ? hidePaths(this.job.label) : this.job.label, at: this.job.at } : null,
       replying: Boolean(this.reply), hold: this.hold, toJob: this.toJob,
       labJobs: this.labJobs(),
       pending: remote ? [] : [...this.pending.values()].map(({ id, method, url, body }) => ({ id, method, url, body })),
-      rental: live?.running || live?.podLeft ? { plan: live.plan, hours: live.hours, dollars: live.dollars, running: Boolean(live.running), left: Boolean(live.podLeft), door: door ? door.name : '' } : null,
+      rental: live?.running || live?.podLeft ? { plan: live.plan, hours: live.hours, dollars: live.dollars, running: Boolean(live.running), left: Boolean(live.podLeft), door: door ? door.name : '', resumed: Boolean(live.resumed) } : null,
       setup: this.setup, talkRev: this.talkRev, ...(talk !== this.talkRev ? { talk: remote ? this.talk.map((t) => ({ ...t, text: hidePaths(t.text) })) : this.talk } : {}),
       waiting: this.waitingCalls().map((c) => c.id),
       buttons: this.buttons(), brains: remote ? [] : (this.lab.brains?.() || []).map((b) => ({ id: b.id, name: b.name })),
@@ -344,7 +370,7 @@ export class LabConsole {
       const u = rest[0] || '';
       if (u === 'off' || !u) { this.target = ''; this.push('server', this.server ? 'The relay goes to the brain loaded here.' : 'The relay has no server now.', { kind: 'note' }); return { ok: true }; }
       if (!/^https:\/\/[\w.-]+(:\d+)?(\/[^\s"'<>]*)?$/.test(u) && !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/[^\s"'<>]*)?$/.test(u)) throw new Error('A target is an https link, or http on this computer (127.0.0.1).');
-      this.target = u.replace(/\/+$/, ''); await this.startRelay(); this.push('server', `The relay now goes to ${this.target}. Tools use ${this.relay.url}.`, { kind: 'note' }); return { ok: true };
+      this.target = u.replace(/\/+$/, ''); this.bobTarget = false; await this.startRelay(); this.push('server', `The relay now goes to ${this.target}. Tools use ${this.relay.url}.`, { kind: 'note' }); return { ok: true };
     }
     const quick = { health: ['GET', '/health'], props: ['GET', '/props'], slots: ['GET', '/slots'], models: ['GET', '/v1/models'] };
     if (quick[verb]) return this.ask(...quick[verb]);
@@ -413,7 +439,7 @@ export class LabConsole {
     };
     try {
       const srv = await this.startServerFn({ exe: exe.path, gguf: b.gguf, mmproj: b.mmproj, ctx, cpuOk, signal: ac.signal, spawnFn, log: (l) => this.push('server', `$ ${l}`, { kind: 'cmd' }) });
-      this.server = { ...srv, brain: b.name, ctx, engine: this.engines().find((e) => e.id === engine)?.name || '', child: this.loadingChild };
+      this.bobTarget = false; this.server = { ...srv, brain: b.name, ctx, engine: this.engines().find((e) => e.id === engine)?.name || '', child: this.loadingChild };
       await this.startRelay();
       this.push('server', `${b.name} is ready on the ${srv.where}. Chat with it, and tools use ${this.relay.url} ({url} in a command).`, { kind: 'note' });
       return { loaded: b.name };
@@ -425,7 +451,28 @@ export class LabConsole {
     const s = this.server; this.server = null; try { s.stop(); } catch {}
     this.push('server', `${s.brain} unloaded.`, { kind: 'note' }); return { stopped: true };
   }
-  targetUrl() { return this.target || this.server?.url || this.door()?.url || ''; }
+  targetUrl() { return this.target || (this.bobTarget ? this.bobBrain().url : '') || this.server?.url || this.door()?.url || ''; }
+  // 15 Nov "Use Bob's brain": the Chat and tools go to the brain Bob has loaded now (his own engine). It's shared with
+  // Bob's chat, so a reply can wait for his. Nothing is loaded or unloaded by choosing it.
+  bobBrain() {
+    const e = this.lab.brain?.engine;
+    if (!e?.url || !e.current || (e.child && e.child.exitCode !== null)) return { url: '', name: '', why: 'Bob has no brain loaded right now. Say anything to him in the chat, then come back.' };
+    const url = String(e.url).replace(/\/+$/, '');
+    if (!/^http:\/\/(127\.0\.0\.1|localhost|\[::1\]):\d{2,5}$/.test(url)) return { url: '', name: '', why: 'Bob\'s brain runs on another engine, which the console can\'t reach.' };
+    return { url, name: String(this.lab.brain?.brainLabel?.(e.current) || e.current).slice(0, 80), why: '' };
+  }
+  async useBob(on = true) {
+    if (!on) { this.bobTarget = false; this.push('server', 'The Chat and tools no longer use Bob\'s brain.', { kind: 'note' }); return { bob: false }; }
+    this.must();
+    const b = this.bobBrain(); if (!b.url) throw new Error(b.why);
+    this.target = ''; this.bobTarget = true; await this.startRelay();
+    this.push('server', `The Chat and tools now use Bob's own brain, ${b.name}. Tools use ${this.relay.url}.`, { kind: 'note' });
+    return { bob: true, name: b.name };
+  }
+  // 15 Nov Rentals: look for the Forge's cards up on the rental service; take one over; end one.
+  async rentalsLook() { this.must(); const r = await this.lab.forgeLook(); this.push('server', r.pods.length ? `${r.pods.length} rented card${r.pods.length === 1 ? ' is' : 's are'} up: ${r.pods.map((p) => `${p.run || p.pod} (${p.gpu || 'a card'}, $${p.perHour}/h)`).join(', ')}.` : 'No Forge cards are up on the rental service.', { kind: 'note' }); return r; }
+  takeOver(x = {}) { this.must(); const r = this.lab.forgeResume(x); this.push('server', `Taken over: the Forge watches ${r.run || r.pod} from here now. STOP and END RENTAL work on it, and its caps are watched again.`, { kind: 'note' }); return r; }
+  async endPod(x = {}) { this.must(); const r = await this.lab.forgeEndPod(x); if (r.out) this.push('server', r.out, { kind: 'note' }); this.push('server', r.ended ? 'That card is ended.' : 'The Forge couldn\'t end that card. Its log says why; look again before trying once more.', { kind: r.ended ? 'note' : 'error' }); return r; }
 
   // ---- a rented card, opened from the console: the Forge serves the brain and runs lab-door.mjs here, which writes
   // its address on this computer (it adds the card's key itself, so the key never comes here) and waits ----
@@ -657,6 +704,10 @@ export async function consoleRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/console/load') { c.must(); b.side = 'server'; send(res, 200, await c.loadForm(b)); return true; }
     if (p === '/api/lab/console/rental/plan') { const r = c.rentalPlan(b.form || {}); send(res, 200, { problems: r.problems, notes: r.notes, summary: r.summary, card: r.problems.length ? null : lab.forgeCard(r.id) }); return true; }
     if (p === '/api/lab/console/rental/end') { b.side = 'server'; send(res, 200, await c.endRental()); return true; }
+    if (p === '/api/lab/console/rentals') { b.side = 'server'; send(res, 200, await c.rentalsLook()); return true; } // 15 Nov
+    if (p === '/api/lab/console/rental/takeover') { b.side = 'server'; send(res, 200, c.takeOver({ pod: String(b.pod || ''), hours: b.hours, dollars: b.dollars })); return true; }
+    if (p === '/api/lab/console/rental/endpod') { b.side = 'server'; send(res, 200, await c.endPod({ pod: String(b.pod || '') })); return true; }
+    if (p === '/api/lab/console/usebob') { b.side = 'server'; send(res, 200, await c.useBob(b.on !== false)); return true; }
     if (p === '/api/lab/console/decide') { send(res, 200, c.decide(b.id, { send: b.send === true, body: typeof b.body === 'string' ? b.body.slice(0, 2e6) : undefined })); return true; }
     if (p === '/api/lab/console/hold') { c.must(); c.hold = b.on === true; if (!c.hold) for (const x of c.pending.values()) x.decide({ send: true }); send(res, 200, { hold: c.hold }); return true; }
     if (p === '/api/lab/console/clear') { send(res, 200, c.clear()); return true; }

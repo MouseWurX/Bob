@@ -84,7 +84,7 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/mypack/delete') { send(res, 200, deleteMyPack(labDir(lab.cfg), b.id)); return true; }
     if (p === '/api/lab/challenge/log') { send(res, 200, lab.challengeLog(String(b.id || ''), { save: b.save === 'csv' || b.save === 'jsonl' ? b.save : '' })); return true; }
     if (p === '/api/lab/challenge') { send(res, 200, await lab.startChallenge(b.challenge, { unload: b.unload === true })); return true; } // 1.5.153
-    if (p === '/api/lab/ladder/plan') { const pl = lab.planLadder(b.from, b.types); send(res, 200, { problems: pl.problems, notes: pl.notes, diskGB: pl.diskGB, steps: pl.steps.map((x) => x.label) }); return true; } // 1.5.156
+    if (p === '/api/lab/ladder/plan') { const pl = lab.planLadder(b.from, b.types); send(res, 200, { problems: pl.problems, notes: pl.notes, diskGB: pl.diskGB, steps: (pl.steps || []).map((x) => x.label) }); return true; } // 1.5.156
     if (p === '/api/lab/ladder') { send(res, 200, await lab.startLadder({ from: b.from, types: b.types }, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/ladder/ask') { send(res, 200, await lab.startLadderAsk({ id: b.id, question: b.question }, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/ladder/delete') { send(res, 200, lab.deleteLadder(String(b.id || ''))); return true; }
