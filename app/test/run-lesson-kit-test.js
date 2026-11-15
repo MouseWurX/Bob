@@ -278,6 +278,9 @@ check('pre-flight: says which ideas file it reads and how many rows, then passes
 check('pre-flight: an --office LibreOffice that isn\'t there stops it', gc === 1 && /--office .*no-office.* doesn't exist/.test(glog), glog.slice(-300));
 [gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--preflight', '--slot-ctx', '32768', '--real-tools']);
 check('pre-flight --real-tools: the board, memory, files and diagram tools each run once for real before anything is rented', gc === 0 && /lab tools that ran for real: notice_board add, notice_board read, remember, write_file, read_file, list_folder, make_diagram/.test(glog), glog.slice(-500));
+W('wl/gate-office/ideas.jsonl', [{ id: 'o1', job: 'office', text: 'make a spreadsheet of my bills' }, { id: 'o2', job: 'chat', text: 'save it as notes.docx' }, { id: 'o3', job: 'chat', text: 'hello there' }]);
+[gc, glog] = await runW(['--dir', 'gate-office', '--from-ideas', '--preflight', '--slot-ctx', '32768', '--real-tools', '--no-office']);
+check('pre-flight --no-office: office ideas are left out and office is not checked, so a PC without LibreOffice can still run the rest', gc === 0 && /--no-office: left out 2 office ideas/.test(glog) && /: 1 rows/.test(glog) && /--no-office: office tools left out/.test(glog) && !/office_make doesn't work/.test(glog), glog.slice(-500));
 { // 15 Nov (the owner: "MAKE IT WORK GOOD"): the faults Opus found most, caught in code before the review
   const C = await import(pathToFileURL(path.join(lab, 'lesson-checks.mjs')).href);
   const u = { role: 'user', content: 'add milk to my board' };

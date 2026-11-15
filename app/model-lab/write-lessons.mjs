@@ -206,6 +206,10 @@ const avoid = new Set();
 for (const d of String(o.avoid || '').split(',').filter(Boolean)) for (const f of ['lessons.jsonl', 'heldout.jsonl']) for (const l of readJsonl(path.join(d, f))) { const u = l.messages?.find((m) => m.role === 'user'); if (typeof u?.content === 'string') avoid.add(norm(u.content)); }
 if (avoid.size) console.log(`avoiding ${avoid.size} requests already in the given lesson folders`);
 const dropTools = new Set(String(o['drop-tools'] || o.dropTools || '').split(',').filter(Boolean)); // --drop-tools ask_specialist,pick_session: these tools are not offered, so the teacher answers itself
+// --no-office: this PC has no working LibreOffice, so office tools are not offered and office ideas are left for a run that has it.
+const noOffice = Boolean(o['no-office']);
+if (noOffice) for (const t of ['office_make', 'office_edit', 'office_read']) dropTools.add(t);
+const isOfficeIdea = (x) => x.job === 'office' || /\boffice_(make|edit|read)\b|\.(docx|xlsx|pptx|odt|ods)\b/i.test(`${x.text || ''} ${x.note || ''}`);
 const CODE_ANGLES = ['fixing a bug in pasted code (include the code)', 'writing a small complete program from scratch', 'explaining what a piece of code does', 'JavaScript or TypeScript for a web page or Node', 'Python scripts and data handling', 'C++ or Rust, memory and performance', 'Unreal Engine C++ and Blueprints', 'Kotlin for Android apps', 'Blender Python add-ons and scripts', 'shell, PowerShell or batch scripts on Windows', 'SQL and databases', 'reading or writing files on the PC, then running the result', 'tests, refactors and code review', 'git, builds, packaging and errors from tools', 'software design: how to structure a small program, data layout, which approach and why', 'debugging a described problem step by step (crash, wrong output, slow code) without the code pasted', 'explaining a software engineering idea plainly (big-O, concurrency, APIs, memory, version control)'];
 const STYLES = ['short and casual', 'polite and detailed', 'with small typos', 'very brief, a few words', 'a bit frustrated', 'curious, asking why', 'in a hurry', 'chatty, with some context first', 'from a beginner', 'from an expert'];
 
@@ -270,7 +274,7 @@ async function toolCheck(todo) {
   const sb = await loadBob(L.bob, { allowOld: Boolean(o['allow-old-bob']), home: true, office: officeExe });
   const ctx = { loaded: [], cfg: sb.brain.cfg, emit: () => {}, signal: new AbortController().signal, sessionId: 'lab' };
   const run = async (name, a) => { if (!sb.brain.tools[name]) return `no ${name} tool`; try { const r = await Promise.race([sb.brain.tools[name].run(sb.toReal(a), ctx), new Promise((_, no) => setTimeout(() => no(new Error('took over 90 s')), 90000))]); return typeof r === 'string' ? r : r?.text || JSON.stringify(r); } catch (e) { return `Error: ${e.message}`; } };
-  const needOffice = todo.some((x) => kit.guessGroups(String(x.text || '')).includes('office') || /\boffice_(make|edit|read)\b|\.(docx|xlsx|pptx|odt|ods)\b/i.test(String(x.note || x.text || '')));
+  const needOffice = !noOffice && todo.some((x) => kit.guessGroups(String(x.text || '')).includes('office') || /\boffice_(make|edit|read)\b|\.(docx|xlsx|pptx|odt|ods)\b/i.test(String(x.note || x.text || '')));
   const tests = [
     ['notice_board add', 'notice_board', { action: 'add', content: 'lab check item' }, (r) => /^Added to the notice board/.test(r)],
     ['notice_board read', 'notice_board', { action: 'read' }, (r) => /lab check item/.test(r)],
@@ -281,8 +285,8 @@ async function toolCheck(todo) {
     ['make_diagram', 'make_diagram', { title: 'Lab check', mermaid: 'flowchart TD\nA-->B' }, (r) => /^Drew the diagram/.test(r)],
     ...(needOffice ? [['office_make', 'office_make', { kind: 'writer', path: 'C:\\Users\\you\\Documents\\lab-check.docx', text: '# Lab check\n\n- one' }, (r) => !/^Error|no LibreOffice/i.test(r) && fs.existsSync(path.join(sb.homeDir, 'Documents', 'lab-check.docx'))]] : [])];
   const ok = [];
-  for (const [label, name, a, good] of tests) { const r = await run(name, a); if (good(r)) ok.push(label); else bad.push(`lab tool ${label} doesn't work: ${sb.neutral(String(r)).slice(0, 160)}${name === 'office_make' ? ' (office ideas need LibreOffice: pass --office <soffice.exe>)' : ''}`); }
-  console.log(`pre-flight: lab tools that ran for real: ${ok.join(', ') || 'none'}${needOffice ? '' : ' (no office ideas, so office was not needed)'}`);
+  for (const [label, name, a, good] of tests) { const r = await run(name, a); if (good(r)) ok.push(label); else bad.push(`lab tool ${label} doesn't work: ${sb.neutral(String(r)).slice(0, 160)}${name === 'office_make' ? ' (office ideas need LibreOffice: pass --office <soffice.exe>, or --no-office to leave office out)' : ''}`); }
+  console.log(`pre-flight: lab tools that ran for real: ${ok.join(', ') || 'none'}${needOffice ? '' : noOffice ? ' (--no-office: office tools left out)' : ' (no office ideas, so office was not needed)'}`);
   try { sb.done(); } catch {}
   return bad;
 }
@@ -320,6 +324,7 @@ async function preflightCheck() {
 }
 
 let ideas = readJsonl(F.ideas).map((x) => ({ ...x, ...(typeof x.text === 'string' ? { text: homeScrub(x.text) } : {}), ...(typeof x.note === 'string' ? { note: homeScrub(x.note) } : {}), ...(typeof x.fix === 'string' ? { fix: homeScrub(x.fix) } : {}) }));
+if (noOffice) { const n = ideas.length; ideas = ideas.filter((x) => !isOfficeIdea(x)); if (n > ideas.length) console.log(`--no-office: left out ${n - ideas.length} office ideas`); }
 const fromIdeasArg = Boolean(o['from-ideas']), doneIds = new Set(readJsonl(F.lessons).map((l) => l.idea));
 if (preflight || remoteUrl) {
   const bad = await preflightCheck();

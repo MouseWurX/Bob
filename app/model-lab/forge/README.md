@@ -310,3 +310,9 @@ The owner: "if its always the same card type freezing up change to a different c
 5). It's the same rental: no second yes, the same caps, counted from the first rent. A run on an existing pod (`--resume`,
 `--restart`) never re-rents. A type with 2 freezes in 7 days and no good start since goes to the back of the list
 (`card-health.mjs`).
+
+## Tighter lesson teacher (15 Nov 2026)
+- `lesson-checks.mjs`: code checks run on every lesson before the reviewer sees it (thinking that wanders, quoting the private note, claiming success when every tool call failed, the same call three times, a value a tool doesn't take). `WORK_RULES` goes to the teacher only, never into a lesson.
+- `write-lessons.mjs --examples <jsonl>`: shows the teacher up to 3 Opus-approved lessons as a guide. They are never saved or trained on.
+- `--real-tools` pre-flight: every real lab tool (board, memory, files, folder list, diagram, and office when ideas need it) runs once in a throwaway home before anything is rented.
+- `--office <soffice.exe>` hands the lab Bob a LibreOffice. `--no-office` instead leaves office tools out and skips office ideas, for a PC without LibreOffice.
