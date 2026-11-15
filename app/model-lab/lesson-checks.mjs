@@ -1,7 +1,7 @@
 // Checks on rewritten tool lessons, in code (15 Nov 2026, the owner: "MAKE IT WORK GOOD", after Opus 5.5 sent back 84 of
 // the 95 lessons lkt-fix2 saved). write-lessons.mjs uses them; they never write lesson text, they only pass or fail it.
 
-// 15 Nov (Opus read of lkt-fix2): requests named C:\Users\Admin, C:\Users\User, /home/user and the like; Bob's lessons
+// 15 Nov (Opus read of lkt-fix2): requests named other people's home folders (C:\Users\<name>, /home/<name>); Bob's lessons
 // only ever show C:\Users\you (a plain scrub of the request, like the neutral home, never new words)
 export const homeScrub = (t) => String(t)
   .replace(/\b([A-Za-z]):([\\/]+)Users\2(?!you\b)(?!Public\b)[^\\/\s"'<>|:*?]+/gi, (_m, d, sl) => `${d.toUpperCase()}:${sl}Users${sl}you`)

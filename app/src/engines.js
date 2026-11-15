@@ -737,7 +737,7 @@ async function installOpenscad(cfg, { pub, signal, tick }) {
   return { version: pin.version, asset: path.basename(pin.url) };
 }
 
-// 15 Nov (lab PC): Node quoted the whole "TARGETDIR=C:\Unreal Projects\..." and msiexec refused it (1639, bad command line)
+// 15 Nov (lab PC): Node quoted the whole "TARGETDIR=C:\Some Folder\..." and msiexec refused it (1639, bad command line)
 // for any Bob folder with a space. msiexec wants the quotes round the value only, so the line is passed as written.
 export const msiexecArgs = (msi, folder) => ['/a', `"${msi}"`, '/qn', `TARGETDIR="${folder}"`];
 async function installLibreOffice(cfg, { pub, signal, tick }) {
