@@ -148,6 +148,10 @@ if (kind && !['bob', 'style', 'distill'].includes(kind)) { console.error('--kind
 // --tool-effort high (GPT-OSS): the routed tool jobs always think, at this effort. --tool-note: a short teacher-only note on how
 // Bob's tools work goes to the writer on those jobs (never into the saved lesson, its set key or Bob's own start prompt)
 const toolEffort = ['low', 'medium', 'high'].includes(String(o['tool-effort'])) ? String(o['tool-effort']) : '';
+// --step-thinking (15 Nov, the owner's rule; Bob's step-thinking.js): the first request of a lesson thinks as the lesson says,
+// every request after a tool result doesn't (GPT-OSS: Reasoning: low). Each assistant message keeps think: true/false so the
+// heal renders it at the level it was written at. --no-step-thinking keeps one level for the whole lesson.
+const stepThinking = Boolean(o['step-thinking']) && !o['no-step-thinking'];
 const toolNoteOn = Boolean(o['tool-note']);
 if (teacherName || kind) {
   const infoF = path.join(dir, 'set-info.json'), want = { teacher: teacherName || null, kind: kind || null };
@@ -445,7 +449,8 @@ async function one(idea, think, room = 1, fix = '') {
     return await oneInner(idea, think, room, fix, sb, { real: 0, standin: new Set(), setup });
   } finally { sb.done(); }
 }
-async function oneInner(idea, think, room, fix, sb, tally) { // room 2 = a second try with twice the word budget (build 18); fix = the reviewer's reason for a failed first try
+async function oneInner(idea, thinkTurn, room, fix, sb, tally) { // room 2 = a second try with twice the word budget (build 18); fix = the reviewer's reason for a failed first try
+  const think = thinkTurn; // the lesson's own level (saved on the row); a step after a tool result may drop it (stepThinking)
   const loaded = new Set(kit.guessGroups(idea.text));
   const user = idea.image ? { role: 'user', content: [{ type: 'text', text: idea.text }, imgPart(idea.image)] } : { role: 'user', content: idea.text };
   const saved = [{ role: 'user', content: idea.text, ...(idea.image ? { image: idea.image } : {}) }];
@@ -462,7 +467,9 @@ async function oneInner(idea, think, room, fix, sb, tally) { // room 2 = a secon
     else if (m.role === 'tool') { const t = { role: 'tool', tool_call_id: m.tool_call_id, name: m.name, content: String(m.content || '') }; saved.push(t); live.push(t); }
   }
   const maxSteps = idea.note || idea.prior || idea.failFirst ? 12 : 6; // 14 Nov trial: doctored lessons (earlier try, a failed first call, look, act) ran out of 6 steps
+  let ranTool = false; // 15 Nov step thinking (Bob's step-thinking.js): plan with thinking, do each step after a tool result without it
   for (let step = 0; step < maxSteps; step++) {
+    const think = stepThinking && ranTool ? false : thinkTurn;
     const t0 = toolsFor(loaded); const t = dropTools.size ? { ...t0, tools: (t0.tools || []).filter((x) => !dropTools.has(x.function?.name || x.name)), system: String(t0.system || '').split('\n').filter((ln) => ![...dropTools].some((d) => ln.includes(d))).join('\n') } : t0; // dropped tools leave the offer AND the prompt text
     const sys = tag ? `${t.system}\n\n${tag}` : t.system;
     const set = setKey(sys, t.tools);
@@ -481,7 +488,7 @@ async function oneInner(idea, think, room, fix, sb, tally) { // room 2 = a secon
     let echoed = false;
     if (pre) { const rc = String(msg.reasoning_content || ''); echoed = rc.startsWith(pre); if (!echoed) msg.reasoning_content = pre + rc; if (oddsK) odds.at(-1).given_echoed = echoed; }
     if (finish === 'length') throw new Error('ran out of room');
-    const a = { role: 'assistant', content: msg.content || '', ...(msg.reasoning_content ? { reasoning: msg.reasoning_content } : {}), ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}), set };
+    const a = { role: 'assistant', content: msg.content || '', ...(msg.reasoning_content ? { reasoning: msg.reasoning_content } : {}), ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}), set, ...(stepThinking ? { think: Boolean(think) } : {}) };
     saved.push(a); live.push({ role: 'assistant', content: a.content, ...(a.tool_calls ? { tool_calls: a.tool_calls } : {}) });
     if (!a.tool_calls) break;
     for (const c of a.tool_calls) if (dropTools.has(c.function.name)) throw new Error(`called the dropped tool ${c.function.name}`); // the lesson is skipped, not saved
@@ -490,7 +497,7 @@ async function oneInner(idea, think, room, fix, sb, tally) { // room 2 = a secon
       if (failNext && tally) tally.standin.add('failed first try');
       const result = failNext ? await failedResult(c.function.name, args) : await toolResult(c.function.name, args, loaded, idea.text, sb, tally); failNext = false;
       const tm = { role: 'tool', tool_call_id: c.id, name: c.function.name, content: result };
-      saved.push(tm); live.push(tm);
+      saved.push(tm); live.push(tm); ranTool = true;
     }
   }
   const last = saved[saved.length - 1];
