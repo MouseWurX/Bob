@@ -2614,3 +2614,91 @@ dialog.fade-ask .fade-row button.danger { color: var(--on-accent); background: v
 .wz-people .people-list { list-style: none; padding: 0; }
 .wz-people .people-list li { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
 .guest-bar .g-answer { flex: none; }
+
+/* Nov 15: the phone's one menu (phone-menu.js). Opens from the Bob button in the bottom bar, or the cube. Theme colours only. */
+.phone-menu-scrim { position: fixed; inset: 0; z-index: 40; background: rgb(0 0 0 / .55); }
+.phone-menu { position: fixed; left: 0; right: 0; z-index: 41; max-height: calc(100dvh - 140px); overflow-y: auto; overscroll-behavior: contain; padding: 6px 16px 16px; background: var(--panel); color: var(--text); border-top: 1px solid var(--line); border-radius: 20px 20px 0 0; box-shadow: 0 -18px 40px rgb(0 0 0 / .45); animation: pm-up .2s ease-out; }
+.phone-menu[hidden], .phone-menu-scrim[hidden] { display: none; }
+@keyframes pm-up { from { transform: translateY(24px); opacity: 0; } }
+body.still .phone-menu { animation: none; }
+@media (prefers-reduced-motion: reduce) { .phone-menu { animation: none; } }
+.pm-grab { width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 4px auto 10px; }
+.pm-status { display: flex; align-items: center; gap: 12px; }
+.pm-status p { flex: 1; min-width: 0; margin: 0; }
+.pm-status b { display: block; font-size: 16px; }
+.pm-status small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+.pm-cube, .bar-cube { flex: none; border-radius: 50%; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--text) 30%, var(--panel)), var(--bg) 70%); box-shadow: 0 0 0 1px var(--line); }
+.pm-cube { width: 44px; height: 44px; }
+.pm-close { flex: none; width: 44px; height: 44px; border: 0; border-radius: 12px; background: none; color: var(--muted); font-size: 18px; }
+.pm-chips { display: flex; gap: 8px; overflow-x: auto; margin: 12px -16px 0; padding: 0 16px 2px; scrollbar-width: none; }
+.pm-chips::-webkit-scrollbar { display: none; }
+.pm-chip { flex: none; min-height: 40px; padding: 0 14px; border-radius: 20px; border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; font-size: 13px; white-space: nowrap; }
+.pm-chip i { font-style: normal; color: var(--muted); margin-left: 2px; }
+.pm-chip.on { border-color: var(--accent); }
+.pm-chip.on i { color: var(--accent); }
+.pm-find { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; margin: 14px 0 0; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--muted); font: inherit; font-size: 14px; text-align: left; }
+.pm-head { margin: 18px 2px 8px; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.pm-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.pm-tile { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 72px; padding: 6px 2px; border-radius: 14px; border: 1px solid transparent; background: var(--card); color: var(--text); font: inherit; font-size: 12px; text-align: center; overflow-wrap: anywhere; }
+.pm-tile.on { border-color: var(--accent); }
+.pm-tile .ico, .pm-find .ico, .pm-row .ico { flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.pm-tile .ico { width: 22px; height: 22px; color: var(--accent); }
+.pm-find .ico, .pm-row .ico { width: 18px; height: 18px; }
+.pm-badge { position: absolute; top: 6px; right: 8px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 10px; font-weight: 700; line-height: 16px; }
+.pm-rows { margin-top: 16px; border-top: 1px solid var(--line); }
+.pm-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 0 2px; border: 0; border-radius: 0; border-bottom: 1px solid var(--line); background: none; color: var(--text); font: inherit; font-size: 14px; text-align: left; }
+.pm-row .ico { color: var(--muted); }
+.pm-row span { flex: 1; }
+.pm-sw { position: relative; flex: none; width: 42px; height: 24px; border-radius: 12px; background: var(--line); }
+.pm-sw::after { content: ""; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--muted); transition: transform .15s; }
+.pm-row[aria-checked="true"] .pm-sw { background: var(--accent); }
+.pm-row[aria-checked="true"] .pm-sw::after { transform: translateX(18px); background: var(--on-accent); }
+.pm-session { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; min-height: 56px; padding: 6px 2px; font-size: 14px; }
+.pm-seg { display: flex; flex-wrap: wrap; gap: 3px; padding: 3px; border-radius: 10px; background: var(--card); }
+.pm-seg button { min-height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: none; color: var(--muted); font: inherit; font-size: 13px; }
+.pm-seg button[aria-checked="true"] { background: var(--accent); color: var(--on-accent); }
+.phone-menu button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (forced-colors: active) { .pm-chip.on, .pm-tile.on, .pm-seg button[aria-checked="true"] { border: 2px solid Highlight; } .pm-row[aria-checked="true"] .pm-sw { background: Highlight; } }
+/* The bottom bar: New stands out in the middle; Bob is a small cube (the whole menu). */
+.bar-item.bar-new .ico { width: 34px; height: 34px; padding: 7px; border-radius: 50%; background: var(--accent); color: var(--on-accent); }
+.bar-cube { width: 24px; height: 24px; box-shadow: 0 0 0 1.5px var(--accent); }
+
+/* Nov 15 (the owner: Settings "doesnt look so good on phone"): at phone width Settings reads as two tidy lists with
+   the menu's line icons. The two rows of page tabs give way to the Models and looks list. "body .cellar" outranks
+   each look's own button rules, so every look gets the same tidy list. */
+.set-doors, .set-card-line, .set-go { display: none; }
+.set-doors[hidden], .settings.searching .set-doors { display: none !important; }
+@media (max-width: 640px) {
+  .cellar.page .cellar-head { padding: 8px 12px; }
+  .cellar.page .cellar-head h2 { font-size: 22px; }
+  body .cellar .cellar-head .back { min-height: 40px; border-radius: 12px; }
+  .cellar-tabs:has(+ .pane > section.settings > .set-top) { display: none; }
+  .set-top { gap: 10px; }
+  body .cellar .set-top .set-view { display: inline-flex; gap: 3px; padding: 3px; margin: 0; border: 0; border-radius: 10px; background: var(--card); }
+  /* each look styles plain buttons in Settings strongly, so these few lines say !important to win at phone width */
+  body .cellar .set-top .set-view button { min-height: 36px; padding: 0 14px; border: 0 !important; border-radius: 8px !important; background: none !important; color: var(--muted) !important; box-shadow: none !important; font-weight: 600; }
+  body .cellar .set-top .set-view button[aria-checked="true"] { background: var(--accent) !important; color: var(--on-accent) !important; }
+  body .cellar .set-top input[type="search"] { flex: 1 1 100%; max-width: none; min-height: 46px; border-radius: 12px; padding: 0 14px; }
+  .set-doors { display: block; }
+  body .cellar .set-doors h4 { margin: 18px 2px 8px; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  body .cellar :is(.set-list, .set-cards) { display: flex; flex-direction: column; gap: 0; max-width: none; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--panel); }
+  body .cellar :is(.set-list > .set-door, .set-cards > .set-card) { width: 100%; min-height: 62px; margin: 0; padding: 8px 14px; text-align: left; color: var(--text); background: var(--panel); border: 0 !important; border-bottom: 1px solid var(--line) !important; border-radius: 0 !important; box-shadow: none !important; font: inherit; }
+  body .cellar :is(.set-list > .set-door, .set-cards > .set-card):last-child { border-bottom: 0 !important; }
+  body .cellar :is(.set-list > .set-door, .set-cards > .set-card):hover { background: var(--card); }
+  body .cellar :is(.set-door, .set-card):focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .set-door { display: flex; align-items: center; gap: 14px; }
+  .set-door-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  body .cellar .set-card { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; grid-template-areas: "ico name go" "ico about go"; column-gap: 14px; row-gap: 2px; align-items: center; }
+  :is(.set-door, .set-card) strong { font-size: 15px; }
+  :is(.set-door-t, .set-card) > .muted { font-size: 12.5px; }
+  .set-card strong { grid-area: name; }
+  .set-card > .muted { grid-area: about; }
+  .set-card .set-card-icon, .set-card .set-card-now { display: none; }
+  .set-card-line { display: block; grid-area: ico; line-height: 0; }
+  .set-card .set-go { grid-area: go; }
+  .set-go { display: block; flex: none; color: var(--muted); font-size: 22px; line-height: 1; }
+  :is(.set-door, .set-card-line) .ico { width: 22px; height: 22px; flex: none; fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  /* Inside a section: no box inside a box, and nothing wider than the screen. */
+  .set-back { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .set-page select, .set-page input:not([type="checkbox"]):not([type="radio"]), .set-page textarea { max-width: 100%; }
+}

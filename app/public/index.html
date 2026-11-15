@@ -208,11 +208,10 @@
 
   <nav id="bottomBar" class="bottom-bar" aria-label="Bob's menu, short">
     <button type="button" class="bar-item" data-go="chatBtn" aria-label="Chat"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 5h16v11H9l-5 4z"/></svg><span class="lbl">Chat</span></button>
-    <button type="button" class="bar-item" data-go="newchat" aria-label="New chat"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg><span class="lbl">New</span></button>
     <button type="button" class="bar-item" data-go="tasksBtn" aria-label="Tasks"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5 2.5-2.5"/><circle cx="5" cy="18" r="1.3"/></svg><span class="lbl">Tasks</span><span class="badge" hidden></span></button>
+    <button type="button" class="bar-item bar-new" data-go="newchat" aria-label="New chat"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg><span class="lbl">New</span></button>
     <button type="button" class="bar-item" data-go="topicsBtn" aria-label="Topics"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h10l6 6v10H4z"/><path d="M8 10h6M8 14h8M8 18h5"/></svg><span class="lbl">Topics</span></button>
-    <button type="button" class="bar-item" data-go="settingsBtn" aria-label="Settings"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span class="lbl">Settings</span></button>
-    <button id="moreBtn" type="button" class="bar-item" aria-label="More: the whole menu" aria-expanded="false" aria-controls="side"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span class="lbl">More</span><span class="badge" hidden></span></button>
+    <button id="moreBtn" type="button" class="bar-item bar-bob" aria-label="Bob: the whole menu" aria-haspopup="dialog" aria-expanded="false" aria-controls="phoneMenu"><span class="bar-cube" aria-hidden="true"></span><span class="lbl">Bob</span><span class="badge" hidden></span></button>
   </nav>
   <footer id="ver" class="ver" aria-label="Bob's version"></footer>
   <script type="module" src="/app.js"></script>
