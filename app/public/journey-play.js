@@ -61,26 +61,28 @@ export function mountJourney(root, deps) {
     const on = !shell.classList.contains('jy-full');
     shell.classList.toggle('jy-full', on);
     try { if (on && shell.requestFullscreen) shell.requestFullscreen().catch(() => {}); else if (!on && doc.fullscreenElement) doc.exitFullscreen?.(); } catch {}
-    const b = root.querySelector('[data-jy="full"]'); b?.setAttribute('aria-pressed', on ? 'true' : 'false'); b?.setAttribute('aria-label', on ? 'Back to a window' : 'Play full screen');
-    focus?.();
+    const b = root.querySelector('.jy-top [data-jy="full"]'); b?.setAttribute('aria-pressed', on ? 'true' : 'false'); b?.setAttribute('aria-label', on ? 'Back to a window' : 'Play full screen');
+    if (mode === 'menu') drawPanel(); else focus?.();
   }
-  doc.addEventListener?.('fullscreenchange', () => { if (!doc.fullscreenElement && shell.classList.contains('jy-full')) { shell.classList.remove('jy-full'); root.querySelector('[data-jy="full"]')?.setAttribute('aria-pressed', 'false'); } });
-  function soundButton() { const b = root.querySelector('[data-jy="sound"]'); if (!b) return; b.textContent = snd.on ? '🔊' : '🔇'; b.setAttribute('aria-pressed', snd.on ? 'true' : 'false'); b.setAttribute('aria-label', snd.on ? 'Music and sound are on. Turn them off (M)' : 'Music and sound are off. Turn them on (M)'); }
-  function toggleSound() { snd.setOn(!snd.on); try { store?.setItem(SOUND_KEY, snd.on ? 'on' : 'off'); } catch {} soundButton(); if (snd.on) { tune(); sfx('menu'); } sayLive(snd.on ? 'Music and sound on.' : 'Music and sound off.'); }
+  doc.addEventListener?.('fullscreenchange', () => { if (!doc.fullscreenElement && shell.classList.contains('jy-full')) { shell.classList.remove('jy-full'); root.querySelector('.jy-top [data-jy="full"]')?.setAttribute('aria-pressed', 'false'); if (mode === 'menu') drawPanel(); } });
+  function soundButton() { const b = root.querySelector('.jy-top [data-jy="sound"]'); if (!b) return; b.textContent = snd.on ? '🔊' : '🔇'; b.setAttribute('aria-pressed', snd.on ? 'true' : 'false'); b.setAttribute('aria-label', snd.on ? 'Music and sound are on. Turn them off (M)' : 'Music and sound are off. Turn them on (M)'); }
+  function toggleSound() { snd.setOn(!snd.on); try { store?.setItem(SOUND_KEY, snd.on ? 'on' : 'off'); } catch {} soundButton(); if (snd.on) { tune(); sfx('menu'); } sayLive(snd.on ? 'Music and sound on.' : 'Music and sound off.'); if (mode === 'menu') drawPanel(); }
 
   root.innerHTML = `<div class="jy" tabindex="-1">
     <div class="jy-top"><span class="jy-where" aria-live="polite"></span><span class="jy-gold"></span><span class="jy-spacer"></span>
       <button type="button" class="mini" data-jy="menu" title="Menu (Esc)">☰ Menu</button><button type="button" class="mini" data-jy="save" title="Save the journey">💾 Save</button><button type="button" class="icon" data-jy="full" title="Full screen or a window" aria-label="Play full screen" aria-pressed="false">⛶</button><button type="button" class="icon" data-jy="sound" title="Music and sound (M)" aria-pressed="true" aria-label="Music and sound are on. Turn them off (M)">🔊</button><button type="button" class="icon" data-jy="close" aria-label="Close Journey">✕</button></div>
-    <div class="jy-stage"><canvas class="jy-canvas" width="${W}" height="${H}" role="img" aria-label="The Journey screen"></canvas><div class="jy-box" role="status" aria-live="polite" hidden></div></div>
+    <div class="jy-stage"><div class="jy-screen"><canvas class="jy-canvas" width="${W}" height="${H}" role="img" aria-label="The Journey screen"></canvas><div class="jy-box" role="status" aria-live="polite" hidden></div>
+      <div class="jy-panel" data-skin="window"></div>
+      <p class="jy-msg" role="status"></p>
+      <button type="button" class="jy-corner" data-jy="menu" title="Menu (Esc, or Start on a controller)" aria-label="Open the menu">☰</button></div></div>
     <div class="jy-pad" aria-label="Walking pad"><button type="button" data-dir="up" aria-label="Walk up">▲</button><button type="button" data-dir="left" aria-label="Walk left">◀</button><button type="button" data-dir="down" aria-label="Walk down">▼</button><button type="button" data-dir="right" aria-label="Walk right">▶</button><button type="button" class="jy-a" data-key="act" aria-label="Talk or open (Enter)">A</button><button type="button" class="jy-f" data-key="fight" aria-label="Pick a fight (F)">⚔</button><button type="button" class="jy-b" data-key="menu" aria-label="Menu (Esc)">B</button><button type="button" class="jy-up" data-key="rise" aria-label="Fly up, or come up from the deep (E)">⤒</button><button type="button" class="jy-down" data-key="sink" aria-label="Land, or dive (Q)">⤓</button><button type="button" class="jy-ride" data-key="ride" aria-label="Ride or walk (R)">🐎</button></div>
-    <div class="jy-panel"></div>
-    <p class="jy-msg muted" role="status"></p>
   </div>`;
   const shell = root.querySelector('.jy');
   const cv = root.querySelector('.jy-canvas');
   const ctx = cv.getContext('2d');
   ctx.imageSmoothingEnabled = false;
   const panel = root.querySelector('.jy-panel');
+  const stage = root.querySelector('.jy-stage');
   const box = root.querySelector('.jy-box');
   const still = () => { try { return Boolean(deps.still?.()); } catch { return false; } };
   const base = (k) => R.kitBase(k);
@@ -108,9 +110,47 @@ export function mountJourney(root, deps) {
   function memberLook(m) {
     const id = m.look || (m.who === 'bob' ? deps.bobLook : '') || A.encodeParts({ body: 'm', outfit: 'tee' });
     const p = String(id).startsWith('c:') ? A.decodeParts(id) : null;
-    if (p) return lookFor(A.encodeParts({ ...p, armour: base(m.armour), weapon: R.lookKit(m.weapon), shield: base(m.shield) }));
-    return lookFor(id) || lookFor('robot-0');
+    let lk, key;
+    if (p) {
+      const q = { ...p, armour: base(m.armour), weapon: R.lookKit(m.weapon), shield: base(m.shield) };
+      if (m.race === 'dwarf' && !['robot', 'alien'].includes(q.body) && !(A.MONSTER_BODIES || []).includes(q.body)) { q.build = 'broad'; if (q.body === 'm' && q.beard === 'none') q.beard = 'full'; }
+      if (m.race === 'elf' && q.build === 'broad') q.build = 'slim';
+      if (m.race === 'halfling' && q.hair && !['bald', 'none'].includes(q.hair)) q.hair = q.body === 'f' ? 'curls' : 'curly';
+      key = A.encodeParts(q); lk = lookFor(key);
+    } else { key = id; lk = lookFor(id) || lookFor('robot-0'); }
+    return raceShape(lk, m.race, key);
   }
+  // Journey v1.5: each race shows on the figure. Elves and Pixies get pointed ears, Orcs green skin and tusks, Dwarves
+  // a broad build and a beard; Dwarves, Halflings and Pixies are drawn smaller (raceScale). The map is changed, not
+  // the saved look, so a character keeps their own face in the rest of Bob.
+  function raceShape(lk, race, key) {
+    if (!lk?.map || !['elf', 'pixie', 'orc', 'halfling'].includes(race)) return lk;
+    const ck = `race:${race}|${key}`;
+    if (lookCache.has(ck)) return lookCache.get(ck);
+    // Kit is drawn on its own (journey-sides recomposes a look holding a weapon), so start from the bare figure.
+    let base0 = lk;
+    if (lk.parts && (lk.parts.weapon !== 'none' || lk.parts.shield !== 'none')) { try { base0 = { ...lk, map: A.compose({ ...lk.parts, weapon: 'none', shield: 'none' }).map }; } catch {} }
+    const map = base0.map.map((r) => [...r]);
+    const edge = (row) => { const r = map[row] || []; const a = r.findIndex((c) => c !== '.'); let b = -1; for (let i = r.length - 1; i >= 0; i--) if (r[i] !== '.') { b = i; break; } return [a, b]; };
+    const put = (x, y, c) => { if (map[y] && x >= 0 && x < map[y].length && map[y][x] === '.') map[y][x] = c; };
+    if (race === 'elf' || race === 'pixie') { // long pointed ears, out and up from the widest row of the face
+      const [a, b] = edge(6);
+      if (a > 2 && b > 0 && b < 13) { put(a - 1, 6, 'S'); put(a - 1, 5, 'S'); put(a - 2, 5, 'S'); put(a - 2, 4, 'L'); put(a - 3, 3, 'L'); put(b + 1, 6, 'S'); put(b + 1, 5, 'S'); put(b + 2, 5, 'S'); put(b + 2, 4, 'L'); put(b + 3, 3, 'L'); }
+    }
+    if (race === 'halfling') { // rosy cheeks
+      const [a, b] = edge(7); if (a >= 0 && map[7][a + 1] === 'S') map[7][a + 1] = 'R'; if (b > 0 && map[7][b - 1] === 'S') map[7][b - 1] = 'R';
+    }
+    if (race === 'orc') {
+      const y = map.findIndex((r, i) => i < 11 && r.includes('X'));
+      if (y > 0) { const a = map[y].indexOf('X'), b = map[y].lastIndexOf('X'); if (a > 0) { map[y][a - 1] = 'W'; map[y][b + 1] = 'W'; map[y - 1][a - 1] = map[y - 1][a - 1] === '.' ? '.' : 'W'; map[y - 1][b + 1] = map[y - 1][b + 1] === '.' ? '.' : 'W'; } }
+    }
+    const palette = { W: '#efe6d2', R: '#e89a8a', ...lk.palette };
+    if (race === 'orc') Object.assign(palette, { S: '#7aa65a', L: '#58803e', N: '#58803e' }); // green skin, own clothes
+    const out = { ...lk, palette, map: map.map((r) => r.join('')), parts: lk.parts ? { ...lk.parts, weapon: 'none', shield: 'none' } : lk.parts };
+    lookCache.set(ck, out);
+    return out;
+  }
+  const raceScale = (m) => ({ dwarf: 0.88, halfling: 0.8, pixie: 0.75 }[m?.race] || 1);
   // Journey's own creatures, folk and craft (public/journey-sides.js), tinted like the rest.
   function beastLookFor(id, tint) {
     if (!id) return null;
@@ -598,7 +638,25 @@ export function mountJourney(root, deps) {
   const choices = {}; // id -> { race, cls }
   (deps.party || []).slice(0, 2).forEach((p) => pickedIds.add(p.id));
   let newSize = 'medium', newStyle = 'fantasy';
-  function lobbyParty() { const list = (deps.party || []).filter((p) => pickedIds.has(p.id)).slice(0, 4); return (list.length ? list : (deps.party || []).slice(0, 1)).map((p) => ({ ...p, ...(choices[p.id] || {}) })); }
+  // Journey v1.5: pick how many go (one to four). Seats your own characters don't fill get a new character, rolled
+  // with a name, a race, a class and a look of their own; 🎲 rolls one again.
+  const MAX_PARTY = 4;
+  let partySize = Math.max(1, Math.min(MAX_PARTY, pickedIds.size || 1));
+  const rolled = []; let rollCount = 0;
+  function rollFriend() {
+    rollCount++;
+    const rnd = Wm.seeded(`friend:${now()}:${rollCount}:${Math.random()}`);
+    const pk = (list) => list[Math.floor(rnd() * list.length) % list.length];
+    const parts = { ...Wm.personParts(rnd, 'folk'), weapon: 'none' };
+    return { id: `rolled-${rollCount}`, name: Wm.rollName?.(rnd) || `Friend ${rollCount}`, who: 'friend', race: pk(R.RACE_IDS), cls: pk(Object.keys(R.CLASSES)), look: A.encodeParts(parts), rolled: true };
+  }
+  function lobbyParty() {
+    const mine = (deps.party || []).filter((p) => pickedIds.has(p.id)).slice(0, partySize);
+    const need = Math.max(0, partySize - mine.length);
+    while (rolled.length < need) rolled.push(rollFriend());
+    const list = [...mine, ...rolled.slice(0, need)];
+    return (list.length ? list : (deps.party || []).slice(0, 1)).map((p) => ({ ...p, ...(choices[p.id] || {}) }));
+  }
   function enterLobby() {
     world = Wm.innOnly();
     j = R.newJourney({ seed: '', party: lobbyParty() }, world);
@@ -991,7 +1049,9 @@ export function mountJourney(root, deps) {
   // Where everyone stands in a fight: foes on the left (facing right), the party on the right (facing left), helpers
   // from the patrol behind the party.
   function spots() {
-    const out = new Map();
+    // Journey v1.5: the commands window covers the bottom of the screen, so everyone stands a little higher.
+    const out = new Map(), lift = (y) => Math.round(6 + (y - 30) * 0.72);
+    out.set = ((set) => (k, v) => set(k, { ...v, y: lift(v.y) }))(out.set.bind(out));
     const foes = battle.b.foes;
     foes.forEach((f, i) => {
       const scale = f.guardian ? 3 : 2;
@@ -1012,6 +1072,7 @@ export function mountJourney(root, deps) {
     frameReq = 0;
     if (closed) return;
     const t = now();
+    pollPads(t);
     ctx.imageSmoothingEnabled = false;
     if (mode === 'battle' && battle) drawBattle(t);
     else if (j) drawWorld(t);
@@ -1155,8 +1216,8 @@ export function mountJourney(root, deps) {
       const fx = Math.round(at.x - cx), fy = Math.round(at.y - cy - 4);
       const water = wading(map, at.tx, at.ty);
       if (fw.kind === 'member') {
-        const m = fw.m, pix = m.race === 'pixie' ? 0.85 : 1;
-        const go = () => { drawFig(memberLook(m), fx + (pix < 1 ? 1 : 0), fy + (pix < 1 ? 3 : 0), pix, { facing: at.facing, step, weapon: base(m.weapon), shield: base(m.shield), weaponTint: kitTint(m.weapon), shieldTint: kitTint(m.shield) }); extras(fx, fy, pix, { ...memberExtras(m), flap }); };
+        const m = fw.m, pix = raceScale(m);
+        const go = () => { drawFig(memberLook(m), fx + Math.round(8 * (1 - pix)), fy + Math.round(20 * (1 - pix)), pix, { facing: at.facing, step, weapon: base(m.weapon), shield: base(m.shield), weaponTint: kitTint(m.weapon), shieldTint: kitTint(m.shield) }); extras(fx + Math.round(8 * (1 - pix)), fy + Math.round(20 * (1 - pix)), pix, { ...memberExtras(m), flap }); };
         figs.push({ y: at.y + k * 0.01, draw: () => (water ? inWater(fx, fy, 16, go, t) : go()) });
       } else {
         const sc = fw.kind === 'pet' ? 0.75 : 1, side = at.facing === 'right' ? 'right' : at.facing === 'left' ? 'left' : sideFacing;
@@ -1170,7 +1231,7 @@ export function mountJourney(root, deps) {
     const leaderDraw = (sx, sy, lift) => {
       let angle;
       if (swing) { const k = Math.floor((t - swing.t0) / 60); const arc = S.swingAngles(j.facing); if (k >= arc.length || still()) swing = null; else angle = arc[k]; }
-      const pix = lead.race === 'pixie' ? 0.85 : 1;
+      const pix = raceScale(lead);
       const fx = Math.round(sx), fy = Math.round(sy - 4 - lift - hgt.hop);
       const water = onGround && wading(map, j.x, j.y);
       if (riding) {
@@ -1183,7 +1244,7 @@ export function mountJourney(root, deps) {
         if (water && !deep) inWater(fx, my, 16, () => { mount(); rider(); }, t, back + 4); else { mount(); rider(); }
         return;
       }
-      const go = () => { drawFig(memberLook(lead), fx + (pix < 1 ? 1 : 0), fy + (pix < 1 ? 3 : 0), pix, { facing: j.facing, step, weapon: base(lead.weapon), shield: base(lead.shield), weaponTint: kitTint(lead.weapon), shieldTint: kitTint(lead.shield), angle }); extras(fx, fy, pix, { ...memberExtras(lead), flap }); };
+      const go = () => { drawFig(memberLook(lead), fx + Math.round(8 * (1 - pix)), fy + Math.round(20 * (1 - pix)), pix, { facing: j.facing, step, weapon: base(lead.weapon), shield: base(lead.shield), weaponTint: kitTint(lead.weapon), shieldTint: kitTint(lead.shield), angle }); extras(fx + Math.round(8 * (1 - pix)), fy + Math.round(20 * (1 - pix)), pix, { ...memberExtras(lead), flap }); };
       if (water) inWater(fx, fy, 16, go, t); else go();
     };
     if (lead && onGround && !hgt.lift) figs.push({ y: ly - 0.001, draw: () => leaderDraw(lx - cx, ly - cy, 0) });
@@ -1267,6 +1328,7 @@ export function mountJourney(root, deps) {
       ctx.fillStyle = g2; ctx.fillRect(cx, cy, cw, ch); ctx.strokeStyle = '#e8e8f0'; ctx.strokeRect(cx + 1, cy + 1, cw - 2, ch - 2);
       if (!talk.offered) { talk.offered = true; setTimeout(drawPanel, 0); }
       labels.forEach((l, i) => { ctx.fillStyle = i === talk.sel ? '#ffd166' : '#ffffff'; ctx.fillText(`${i === talk.sel ? '▶' : ' '} ${l}`, cx + 6, cy + 12 + i * 11); });
+      talk.rects = labels.map((_, i) => ({ x: cx, y: cy + 3 + i * 11, w: cw, h: 11 }));
     }
   }
   function wrap(text, width) {
@@ -1372,8 +1434,8 @@ export function mountJourney(root, deps) {
       const aim = !win && e?.who === m.id && shooterWeapon(m.id) && j.style !== 'fantasy' && ['fight', 'skill', 'hit'].includes(e.act) && !e.element ? -90 : undefined;
       const angle = win ? 0 : aim ?? swingAt(m.id, 'left') ?? (e?.who === m.id && e.element ? -150 : undefined);
       const fx = s.x - shove(m.id) - (picking ? 6 : 0) - dodge(m.id), fy = s.y + (down ? 10 : 0);
-      drawFig(memberLook(m), fx, fy, 2, { facing: down ? 'up' : facing, step: win ? Math.floor(t / 120) % 4 : 0, weapon: base(m.weapon), shield: base(m.shield), weaponTint: kitTint(m.weapon), shieldTint: kitTint(m.shield), angle: down ? undefined : angle, flash: hitNow(m.id), alpha: down ? 0.45 : 1 });
-      if (!down) extras(fx, fy, 2, { ...memberExtras(m), flap: Math.floor(t / 150) % 2 });
+      drawFig(memberLook(m), fx + Math.round(16 * (1 - raceScale(m))), fy + Math.round(40 * (1 - raceScale(m))), 2 * raceScale(m), { facing: down ? 'up' : facing, step: win ? Math.floor(t / 120) % 4 : 0, weapon: base(m.weapon), shield: base(m.shield), weaponTint: kitTint(m.weapon), shieldTint: kitTint(m.shield), angle: down ? undefined : angle, flash: hitNow(m.id), alpha: down ? 0.45 : 1 });
+      if (!down) extras(fx + Math.round(16 * (1 - raceScale(m))), fy + Math.round(40 * (1 - raceScale(m))), 2 * raceScale(m), { ...memberExtras(m), flap: Math.floor(t / 150) % 2 });
       if (picking && Math.floor(t / 300) % 2) { ctx.fillStyle = '#ffd166'; ctx.beginPath(); ctx.moveTo(s.x - 14, s.y + 16); ctx.lineTo(s.x - 9, s.y + 20); ctx.lineTo(s.x - 14, s.y + 24); ctx.fill(); }
     });
     for (const al of battle.b.allies || []) { const s = sp.get(al.key); if (al.hp <= 0) continue; drawFig(foeLook(al), s.x - shove(al.key), s.y, s.scale, { facing: 'left', weapon: base(al.kit.weapon), shield: base(al.kit.shield), angle: swingAt(al.key, 'left'), flash: hitNow(al.key) }); }
@@ -1441,18 +1503,38 @@ export function mountJourney(root, deps) {
   const classWords = (m) => `${R.RACES[m.race]?.name || ''} ${m.classes.map((c) => R.CLASSES[c].name).join(' / ')}`;
   const sheet = (m, on) => `<li class="${on ? 'on' : ''}${m.hp <= 0 ? ' down' : ''}"><strong>${esc(m.name)}</strong> <span class="muted">${esc(classWords(m))} · Lv ${m.level}${m.points ? ` · ${m.points} skill point${m.points > 1 ? 's' : ''}` : ''}</span>
     <span class="jy-hp">❤ ${m.hp}/${m.maxHp} ${bar(m.hp, m.maxHp, 'hp')}</span><span class="jy-sp">✦ ${m.sp}/${m.maxSp} ${bar(m.sp, m.maxSp, 'sp')}</span></li>`;
+  // Journey v1.5: every menu sits inside the game screen, in the same blue window as the talk box: the menu and the
+  // shops fill the screen, a fight's commands sit along the bottom, and walking about shows only a small party list
+  // (plus the inn's two big buttons before an adventure). stage.dataset.view tells journey.css which.
   function drawPanel() {
-    root.querySelector('.jy-msg').textContent = T(msg);
-    if (!j) { panel.innerHTML = ''; return; }
+    const el = root.querySelector('.jy-msg'); el.textContent = T(msg); el.hidden = !msg;
+    if (!j) { panel.innerHTML = ''; setView('none'); return; }
     announce();
-    if (mode === 'battle' && battle) { panel.innerHTML = battleHtml(); restyleIn(panel); panel.querySelector('button:not([disabled])')?.focus({ preventScroll: true }); return; }
-    if (mode === 'menu' && menu) { panel.innerHTML = menuHtml(); restyleIn(panel); mountDolls(); mountLand(); return; }
-    if (mode === 'shop' && shop) { panel.innerHTML = shopHtml(); restyleIn(panel); panel.querySelector('button')?.focus({ preventScroll: true }); return; }
+    const was = focusKey();
+    if (mode === 'battle' && battle) { setView('battle'); panel.innerHTML = battleHtml(); restyleIn(panel); refocus(was, '.jy-cmds button:not([disabled])'); return; }
+    if (mode === 'menu' && menu) { setView('menu'); panel.innerHTML = menuHtml(); restyleIn(panel); mountDolls(); mountLand(); refocus(was, '[role="tab"][aria-selected="true"]'); return; }
+    if (mode === 'shop' && shop) { setView('menu'); panel.innerHTML = shopHtml(); restyleIn(panel); refocus(was, 'button, select, input'); return; }
     const atInn = j.at === 'inn' || (lobby && j.at === 'guest'); // the guest house is where Journey opens
-    const mt = R.mountOf(j.party[0] || {});
-    if (choosing()) { panel.innerHTML = `<div class="row jy-choices" role="group" aria-label="What to say">${talk.choices.map((c, i) => `<button type="button" data-choice="${i}" class="${i === talk.sel ? 'yes' : ''}">${esc(c.label)}</button>`).join('')}</div>`; restyleIn(panel); return; }
-    panel.innerHTML = `<ul class="jy-party">${j.party.map((m) => sheet(m)).join('')}</ul>${atInn ? innButtons() : ''}<p class="muted jy-keys">Arrow keys walk · Enter talks, opens chests, gathers and fishes · F picks a fight · Esc opens the menu · I the bag · J the story · C crafting · G the guide${mt ? ` · R rides ${esc(mt.name)}${R.canFly(j) ? ' · E flies up, Q lands' : R.canSwim(j) ? ' · Q dives, E comes up' : ''}` : ''}</p>`;
+    if (choosing()) { setView('choose'); panel.innerHTML = `<div class="jy-choices" role="group" aria-label="What to say">${talk.choices.map((c, i) => `<button type="button" data-choice="${i}" class="${i === talk.sel ? 'yes' : ''}">${esc(c.label)}</button>`).join('')}</div>`; restyleIn(panel); return; }
+    setView(atInn ? 'dock' : 'walk');
+    panel.innerHTML = `<ul class="jy-hud" aria-label="Party">${j.party.map((m) => `<li class="${m.hp <= 0 ? 'down' : ''}"><span class="jy-hud-name">${esc(m.name)}</span> <span class="jy-hud-lv">Lv ${m.level}${m.points ? ' ✚' : ''}</span>${bar(m.hp, m.maxHp, 'hp')}${bar(m.sp, m.maxSp, 'sp')}</li>`).join('')}</ul>${atInn ? innButtons() : ''}`;
     restyleIn(panel);
+  }
+  function setView(v) { stage.dataset.view = v; shell.dataset.view = v; }
+  // Keeping your place when the window is drawn again, so the keys and a controller don't jump back to the top.
+  function focusKey() {
+    const a = doc.activeElement;
+    if (!a || !panel.contains(a)) return null;
+    const ds = Object.entries(a.dataset || {}).map(([k, v]) => `[data-${k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}="${String(v).replace(/["\\]/g, '\\$&')}"]`).join('');
+    return ds ? `${a.tagName.toLowerCase()}${ds}` : null;
+  }
+  function refocus(key, fallback) {
+    let el = null;
+    try { el = key ? panel.querySelector(key) : null; } catch {}
+    if (!el || el.disabled) el = panel.querySelector(fallback);
+    if (!el || el.disabled) el = panel.querySelector('button:not([disabled]), select, input');
+    el?.focus?.({ preventScroll: true });
+    try { el?.scrollIntoView?.({ block: 'nearest' }); } catch {}
   }
   // The words on the panel in the journey's style (only the words people read; never the buttons' own names).
   function restyleIn(el) {
@@ -1469,11 +1551,18 @@ export function mountJourney(root, deps) {
   }
   function newHtml() {
     const list = deps.party || [];
+    const fill = lobbyParty().filter((p) => String(p.id).startsWith('rolled-'));
     const opt = (table, sel) => Object.entries(table).map(([id, v]) => `<option value="${id}" ${sel === id ? 'selected' : ''}>${esc(v.name)}</option>`).join('');
     return `<div class="jy-title"><p><strong>✨ New adventure</strong> ${saved ? '<span class="muted">(this replaces the saved one)</span>' : ''}</p>
-      <fieldset class="jy-who"><legend>Who comes along (up to four)</legend>${list.map((p) => { const c = choices[p.id] || {}; return `<div class="jy-who-pick"><label><input type="checkbox" data-pick="${esc(p.id)}" ${pickedIds.has(p.id) ? 'checked' : ''}> ${esc(p.name)}${p.who === 'you' ? ' (you)' : p.who === 'bob' ? ' (Bob)' : ''}</label>
+      <div class="jy-who-row" role="radiogroup" aria-label="Party size"><span>Party size</span>${[1, 2, 3, 4].map((n) => `<button type="button" role="radio" aria-checked="${partySize === n}" data-psize="${n}">${n}</button>`).join('')}</div>
+      <fieldset class="jy-who"><legend>Your characters (pick up to ${partySize})</legend>${list.map((p) => { const c = choices[p.id] || {}; return `<div class="jy-who-pick"><label><input type="checkbox" data-pick="${esc(p.id)}" ${pickedIds.has(p.id) ? 'checked' : ''}> ${esc(p.name)}${p.who === 'you' ? ' (you)' : p.who === 'bob' ? ' (Bob)' : ''}</label>
         <label class="muted">Race <select data-race="${esc(p.id)}">${opt(R.RACES, c.race || 'human')}</select></label>
         <label class="muted">Class <select data-cls="${esc(p.id)}">${opt(R.CLASSES, c.cls || (R.CLASSES[p.cls] ? p.cls : 'fighter'))}</select></label></div>`; }).join('')}</fieldset>
+      ${fill.length ? `<fieldset class="jy-who"><legend>Rolled to fill the party</legend>${fill.map((p) => { const c = choices[p.id] || {}; return `<div class="jy-who-pick"><strong>${esc(p.name)}</strong>
+        <label class="muted">Race <select data-race="${esc(p.id)}">${opt(R.RACES, c.race || p.race)}</select></label>
+        <label class="muted">Class <select data-cls="${esc(p.id)}">${opt(R.CLASSES, c.cls || p.cls)}</select></label>
+        <button type="button" data-reroll="${esc(p.id)}" title="Roll a different character for this seat">🎲 Roll again</button></div>`; }).join('')}</fieldset>` : ''}
+      <p class="muted">${R.RACE_IDS.map((id) => `<strong>${esc(R.RACES[id].name)}</strong>: ${esc(R.RACES[id].what)}`).join(' ')} Race changes the stats, health and spirit, and how they look.</p>
       <label>Size of the land <select data-size>${Object.entries(Wm.SIZES).filter(([, s]) => !(s.desktopOnly && deps.phone)).map(([id, s]) => `<option value="${id}" ${newSize === id ? 'selected' : ''}>${s.name} (${s.w}×${s.h})</option>`).join('')}</select></label>
       <label>Style <select data-style>${R.STYLE_IDS.map((id) => `<option value="${id}" ${newStyle === id ? 'selected' : ''}>${esc(R.STYLES[id].name)}</option>`).join('')}</select></label>
       ${['epic', 'campaign', 'saga'].includes(newSize) ? `<p class="muted">A ${esc(Wm.SIZES[newSize].name)} land is for a long campaign: it takes a few seconds to roll${newSize === 'saga' ? ', and is for computers only' : ''}.</p>` : ''}
@@ -1483,8 +1572,8 @@ export function mountJourney(root, deps) {
   function battleHtml() {
     const b = battle.b, m = j.party[battle.who];
     const foes = b.foes.filter((f) => f.hp > 0);
-    const list = `<ul class="jy-party">${j.party.map((x, i) => sheet(x, battle.stage !== 'play' && i === battle.who)).join('')}</ul>
-      <ul class="jy-foes" aria-label="Foes">${b.foes.map((f) => `<li class="${f.hp <= 0 ? 'down' : ''}">${esc(f.name)} ${f.hp > 0 ? bar(f.hp, f.maxHp, 'hp') : '<span class="muted">beaten</span>'}</li>`).join('')}${(b.allies || []).map((a) => `<li class="muted">${esc(a.name)} (helping) ${a.hp > 0 ? bar(a.hp, a.maxHp, 'hp') : 'down'}</li>`).join('')}</ul>`;
+    const list = `<div class="jy-bstat"><ul class="jy-hud jy-bparty" aria-label="Party">${j.party.map((x, i) => `<li class="${battle.stage !== 'play' && i === battle.who ? 'on' : ''}${x.hp <= 0 ? ' down' : ''}"><span class="jy-hud-name">${esc(x.name)}</span> <span>❤ ${x.hp}/${x.maxHp}</span>${bar(x.hp, x.maxHp, 'hp')} <span>✦ ${x.sp}/${x.maxSp}</span>${bar(x.sp, x.maxSp, 'sp')}</li>`).join('')}</ul>
+      <ul class="jy-foes" aria-label="Foes">${b.foes.map((f) => `<li class="${f.hp <= 0 ? 'down' : ''}">${esc(f.name)} ${f.hp > 0 ? bar(f.hp, f.maxHp, 'hp') : '<span class="muted">beaten</span>'}</li>`).join('')}${(b.allies || []).map((a) => `<li class="muted">${esc(a.name)} (helping) ${a.hp > 0 ? bar(a.hp, a.maxHp, 'hp') : 'down'}</li>`).join('')}</ul></div>`;
     if (battle.stage === 'play' || battle.stage === 'done' || !m) return `${list}<p class="muted">${battle.stage === 'play' ? 'The round plays out…' : ''}</p>`;
     const head = `<p class="jy-ask"><strong>${esc(m.name)}</strong>, what do you do?</p>`;
     const back = battle.who > 0 || battle.stage !== 'act' ? '<button type="button" data-b="back">↩ Back</button>' : '';
@@ -1507,8 +1596,24 @@ export function mountJourney(root, deps) {
     }
     return list;
   }
+  // ⚙ System (Journey v1.5): everything the bar above the game used to do, so full screen needs nothing outside it.
+  function systemHtml() {
+    const full = shell.classList.contains('jy-full');
+    const game = lobby
+      ? `<button type="button" class="yes" data-jy="newadv">✨ New adventure</button><button type="button" data-jy="resume-adv" ${saved ? '' : 'disabled title="Nothing saved yet"'}>▶ Resume adventure</button>`
+      : `<button type="button" class="yes" data-jy="save">💾 Save now</button><button type="button" data-jy="load">📂 Load last save</button><button type="button" data-jy="leave">🚪 Save and quit</button>`;
+    const mt = R.mountOf(j.party[0] || {});
+    return `<div class="jy-sys" role="group" aria-label="System">${game}
+      <button type="button" data-jy="sound" aria-pressed="${snd.on ? 'true' : 'false'}">${snd.on ? '🔊 Sound: on' : '🔇 Sound: off'}</button>
+      <button type="button" data-jy="full" aria-pressed="${full ? 'true' : 'false'}">⛶ ${full ? 'Back to a window' : 'Full screen'}</button>
+      ${lobby ? '<button type="button" data-jy="close">🚪 Quit Journey</button>' : ''}</div>
+      ${lobby ? '' : `<p class="muted">The journey also saves itself after every chest and every fight. Load last save goes back to the last save: the same land (same seed), the same place, party, bag and coin. Seed ${esc(j.seed)} · ${esc(Wm.SIZES[j.size]?.name || '')}</p>`}
+      <p class="jy-keys"><strong>Keys</strong>: arrows walk and move round the menus · Enter talks, opens chests, gathers and picks · Esc opens and shuts the menu · PageUp and PageDown change tab · F picks a fight · I the bag · J the story · C crafting · G the guide · M sound${mt ? ' · R rides' : ''} · E and Q go up and down.</p>
+      <p class="jy-keys"><strong>Controller</strong>: the D-pad or left stick walks and moves round the menus · A talks and picks · B goes back · Start opens the menu · X picks a fight · Y the bag · Back (Select) the story · LB and RB change tab · LT and RT go down and up · R3 rides.</p>
+      <p class="jy-keys"><strong>Touch</strong>: the pad walks (it sits over the game in full screen) · tap the words to read on · tap a choice to pick it · ☰ in the corner opens the menu.</p>`;
+  }
   function menuHtml() {
-    const tabs = [['party', '👥 Party'], ['skills', '✨ Skills'], ['kit', '🧍 Kit'], ['bag', '🎒 Bag'], ['story', '📜 Quests'], ['craft', '🛠 Craft'], ['pets', '🐾 Pets'], ['land', '🧭 The land'], ['guide', '📖 Guide'], ['save', '💾 Save']];
+    const tabs = [['party', '👥 Party'], ['skills', '✨ Skills'], ['kit', '🧍 Kit'], ['bag', '🎒 Bag'], ['story', '📜 Quests'], ['craft', '🛠 Craft'], ['pets', '🐾 Pets'], ['land', '🧭 The land'], ['guide', '📖 Guide'], ['save', '⚙ System']];
     const head = `<div class="jy-tabs" role="tablist">${tabs.map(([id, n]) => `<button type="button" role="tab" aria-selected="${menu.tab === id}" data-tab="${id}">${n}</button>`).join('')}<button type="button" data-jy="resume">▶ Back to the map</button></div>`;
     const who = `<div class="jy-who-row" role="radiogroup" aria-label="Who">${j.party.map((x, i) => `<button type="button" role="radio" aria-checked="${i === (menu.who || 0)}" data-who="${i}">${esc(x.name)}</button>`).join('')}</div>`;
     const m = j.party[menu.who || 0] || j.party[0];
@@ -1545,7 +1650,7 @@ export function mountJourney(root, deps) {
       const bags = (j.bags || ['pouch']).map((b) => `<button type="button" class="mini" data-wearbag="${b}" aria-pressed="${j.bagGear === b}">${j.bagGear === b ? '✓ ' : ''}${esc(R.BAGS[b].name)} (+${R.BAGS[b].room})</button>`).join('');
       return `${head}<p class="muted">The bag holds ${R.bagCount(j)} of ${R.bagSize(j)} things. Each pet out with you carries 10 more and each mount 25.</p><p><strong>Wearing</strong> ${bags} <span class="muted">Bigger bags: shops, or make one at a Workbench.</span></p>${items.length ? `<ul class="jy-bag">${items.map(([id, n]) => { const it = R.ITEMS[id]; const usable = it.field; if (it.portal) return `<li><strong>${esc(it.name)}</strong> ×${n} <span class="muted">${esc(it.what)}</span> <button type="button" class="mini" data-portal="1">Read it: back to ${esc(world.map(j.home)?.name || 'Bob\'s Inn')}</button></li>`; return `<li><strong>${esc(it.name)}</strong> ×${n} <span class="muted">${esc(it.what)}</span> ${usable ? j.party.map((x) => `<button type="button" class="mini" data-use="${id}" data-on="${esc(x.id)}">${esc(x.name)}</button>`).join('') : '<span class="muted">(in a fight)</span>'}</li>`; }).join('')}</ul>` : '<p class="muted">The bag is empty.</p>'}`;
     }
-    return `${head}<div class="row"><button type="button" class="yes" data-jy="save">💾 Save now</button><button type="button" data-jy="leave">🚪 Save and leave</button><button type="button" data-jy="load">📂 Load last save</button></div><p class="muted">The journey also saves itself after every chest and every fight. Load last save goes back to the last save: the same land (same seed), the same place, party, bag and coin. Seed ${esc(j.seed)} · ${esc(Wm.SIZES[j.size]?.name || '')}</p>`;
+    return `${head}${systemHtml()}`;
   }
   // ---------- Crafting (Journey v1.3) ----------
   // What you carry, your crafting level, and every recipe: the ones you can make now first. A workbench (a smith in
@@ -1605,7 +1710,7 @@ export function mountJourney(root, deps) {
     ['craft', '🛠 Craft', ['Bob: Craft is where you make things. Gather herbs, timber, ore and crystals from glinting spots on the land, and pelts from animals you beat.', 'Bob: Simple things you can make anywhere. A smith\'s Workbench in town, or mine in the back here, makes the rest and improves plain kit. Every make and every gather raises your crafting level.']],
     ['pets', '🐾 Pets', ['Bob: Pets shows the animals you\'ve tamed. One pet goes out with you and one mount carries you. Rename them, or let one go to make room.']],
     ['land', '🧭 The land', ['Bob: The land is the whole world from above, with every place you\'ve found marked on it.']],
-    ['save', '💾 Save', ['Bob: Save keeps your journey. It saves itself after every chest and fight too, so don\'t lose sleep over it.']],
+    ['save', '⚙ System', ['Bob: System saves and loads your journey, turns the sound off and on, goes full screen and quits. It saves itself after every chest and fight too, so don\'t lose sleep over it.', 'Bob: It lists every key and controller button as well. A controller works everywhere: the D-pad moves, A picks, B goes back, Start opens the menu.']],
     ['screen', '⛶ The screen', ['Bob: ⛶ on the top bar plays full screen, with the menus on the game itself. Press it again, or Esc, to go back to a window. 🔊 or M turns the music and sound on and off.']]
   ];
   const guideHtml = () => `<p class="muted">Pick a topic and I'll walk you through it. Or start at the top and I'll show you round each tab.</p><div class="row"><button type="button" class="yes" data-guide="all">▶ Show me round</button></div><ul class="jy-bag">${GUIDE.map(([id, name, lines]) => `<li><button type="button" data-guide="${id}">${esc(name)}</button> <span class="muted">${esc(lines[0].replace(/^Bob: /, '').slice(0, 90))}…</span></li>`).join('')}</ul>`;
@@ -1723,7 +1828,7 @@ export function mountJourney(root, deps) {
     const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
     const m = j.party[menu.who || 0] || j.party[0];
     let k = 0;
-    const paint = () => { g.clearRect(0, 0, c.width, c.height); S.FACINGS.forEach((f, i) => { try { S.drawFigure(g, 4 + i * 40, 2, 2.6, memberLook(m), { compose: A.compose, style: j?.style && j.style !== 'fantasy' ? j.style : undefined, facing: f, step: still() ? 0 : k % 4, weapon: base(m.weapon), shield: base(m.shield) }); } catch {} }); k++; };
+    const paint = () => { g.clearRect(0, 0, c.width, c.height); S.FACINGS.forEach((f, i) => { try { S.drawFigure(g, 4 + i * 40 + Math.round(20 * (1 - raceScale(m))), 2 + Math.round(52 * (1 - raceScale(m))), 2.6 * raceScale(m), memberLook(m), { compose: A.compose, style: j?.style && j.style !== 'fantasy' ? j.style : undefined, facing: f, step: still() ? 0 : k % 4, weapon: base(m.weapon), shield: base(m.shield) }); } catch {} }); k++; };
     paint();
     if (!still()) dollTimer = setInterval(() => { if (!c.isConnected) { clearInterval(dollTimer); return; } paint(); }, 200);
   }
@@ -1737,6 +1842,8 @@ export function mountJourney(root, deps) {
     if (!d.dir && !d.key && !d.buy && !d.sell && !d.sail) sfx('menu');
     if (d.jy === 'close') { await close(); return; }
     if (d.jy === 'newadv') { shop = { kind: 'new' }; mode = 'shop'; drawPanel(); return; }
+    if (d.psize) { partySize = Math.max(1, Math.min(MAX_PARTY, Number(d.psize) || 1)); while (pickedIds.size > partySize) pickedIds.delete([...pickedIds].pop()); msg = ''; if (lobby) enterLobbyKeepPlace(); drawPanel(); return; }
+    if (d.reroll) { const i = rolled.findIndex((p) => p.id === d.reroll); if (i >= 0) { delete choices[d.reroll]; rolled[i] = rollFriend(); } if (lobby) enterLobbyKeepPlace(); drawPanel(); return; }
     if (d.jy === 'roll') { rollNew(); return; }
     if (d.jy === 'resume-adv') { resume(); return; }
     if (d.jy === 'load') { loadAgain(); return; }
@@ -1808,7 +1915,7 @@ export function mountJourney(root, deps) {
   }
   root.addEventListener('change', (e) => {
     const p = e.target.closest('[data-pick]');
-    if (p) { if (p.checked) { if (pickedIds.size >= 4) { p.checked = false; msg = 'Four is a full party.'; drawPanel(); return; } pickedIds.add(p.dataset.pick); } else pickedIds.delete(p.dataset.pick); msg = ''; if (lobby) enterLobbyKeepPlace(); return; }
+    if (p) { if (p.checked) { if (pickedIds.size >= MAX_PARTY) { p.checked = false; msg = 'Four is a full party.'; drawPanel(); return; } pickedIds.add(p.dataset.pick); if (pickedIds.size > partySize) partySize = pickedIds.size; } else pickedIds.delete(p.dataset.pick); msg = ''; if (lobby) enterLobbyKeepPlace(); drawPanel(); return; }
     const rc = e.target.closest('select[data-race], select[data-cls]');
     if (rc) { const id = rc.dataset.race || rc.dataset.cls; choices[id] = { ...(choices[id] || {}), [rc.dataset.race ? 'race' : 'cls']: rc.value }; if (lobby) enterLobbyKeepPlace(); return; }
     const sz = e.target.closest('select[data-size]');
@@ -1839,14 +1946,18 @@ export function mountJourney(root, deps) {
       if (mode === 'menu' && menu?.tab === quick) toggleMenu(); else { menu = { tab: quick, who: menu?.who || 0 }; mode = 'menu'; drawPanel(); }
       return;
     }
-    if (e.key === 'Escape' || e.key === 'x' || e.key === 'X') { if (typing && e.key !== 'Escape') return; if (mode === 'menu' || mode === 'shop' || mode === 'walk') { e.preventDefault(); e.stopPropagation(); toggleMenu(); } return; }
+    if (e.key === 'Escape' || e.key === 'x' || e.key === 'X') {
+      if (typing && e.key !== 'Escape') return;
+      if (mode === 'battle' && !talk) { const bk = panel.querySelector('[data-b="back"]'); if (bk) { e.preventDefault(); e.stopPropagation(); bk.click(); } return; }
+      if (e.pad === 'b' && mode === 'walk') return; // B walks nowhere; Start opens the menu
+      if (mode === 'menu' || mode === 'shop' || mode === 'walk') { e.preventDefault(); e.stopPropagation(); toggleMenu(); }
+      return;
+    }
+    if ((mode === 'menu' || mode === 'shop' || (mode === 'battle' && !talk)) && menuKey(e, typing)) return;
     if (typing) return;
     snd.wake?.();
     if ((e.key === 'm' || e.key === 'M') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); toggleSound(); return; }
-    if (mode === 'battle' && !talk) { // arrow keys move between the command buttons
-      if (KEYS[e.key] && panel.contains(doc.activeElement)) { const bs = [...panel.querySelectorAll('.jy-cmds button:not([disabled])')]; const i = bs.indexOf(doc.activeElement); if (i >= 0) { e.preventDefault(); const n = bs[(i + (KEYS[e.key] === 'down' || KEYS[e.key] === 'right' ? 1 : bs.length - 1)) % bs.length]; n?.focus(); } }
-      return;
-    }
+    if (mode === 'battle' && !talk) return;
     if (choosing() && (KEYS[e.key] || /^[1-9]$/.test(e.key))) { e.preventDefault(); if (KEYS[e.key]) tryWalk(KEYS[e.key]); else pickChoice(Number(e.key) - 1); return; }
     if (KEYS[e.key] && (mode === 'walk')) { e.preventDefault(); if (held !== KEYS[e.key]) { held = KEYS[e.key]; heldAt = now(); tryWalk(held); } return; }
     if ((e.key === 'f' || e.key === 'F') && mode === 'walk') { e.preventDefault(); fight(); return; }
@@ -1855,9 +1966,100 @@ export function mountJourney(root, deps) {
     if ((e.key === 'r' || e.key === 'R') && mode === 'walk') { e.preventDefault(); rideToggle(); return; }
     if ((e.key === 'Enter' || e.key === ' ' || e.key === 'z' || e.key === 'Z') && (mode === 'walk' || mode === 'talk' || talk)) { if (e.target?.tagName === 'BUTTON' && !talk && mode !== 'walk') return; if (e.target?.tagName === 'BUTTON' && mode === 'walk' && panel.contains(e.target)) return; e.preventDefault(); act(); }
   }
+  // ---------- Moving round the windows (Journey v1.5) ----------
+  // Arrows (or the D-pad and stick) go to the nearest button that way; Enter (A) presses it; PageUp and PageDown
+  // (LB and RB) change tab. In a list box, left and right on a controller change what's picked.
+  const focusables = () => [...panel.querySelectorAll('button:not([disabled]), select:not([disabled]), input:not([disabled]), summary')].filter((b) => b.getClientRects().length);
+  function menuKey(e, typing) {
+    const dir = KEYS[e.key];
+    if (['PageUp', 'PageDown', '[', ']'].includes(e.key) && !(typing && !e.pad && /^(INPUT|TEXTAREA)$/.test(e.target?.tagName || '') && e.key.length === 1)) {
+      if (mode !== 'menu') return false;
+      e.preventDefault(); e.stopPropagation(); switchTab(e.key === 'PageUp' || e.key === '[' ? -1 : 1); return true;
+    }
+    if (dir) {
+      const a = doc.activeElement;
+      if (typing && !e.pad) { if (e.key.length === 1) return true; if (a?.tagName === 'SELECT' && (dir === 'up' || dir === 'down')) return true; if (a?.tagName === 'INPUT' && a.type !== 'checkbox' && (dir === 'left' || dir === 'right')) return true; }
+      e.preventDefault?.(); e.stopPropagation?.();
+      if (e.pad && a?.tagName === 'SELECT' && panel.contains(a) && (dir === 'left' || dir === 'right')) {
+        const n = a.options.length; if (n) { a.selectedIndex = (a.selectedIndex + (dir === 'right' ? 1 : n - 1)) % n; a.dispatchEvent(new (globalThis.Event || Object)('change', { bubbles: true })); }
+        return true;
+      }
+      moveFocus(dir); sfx('step'); return true;
+    }
+    if (e.pad && (e.key === 'Enter' || e.key === ' ')) {
+      const a = doc.activeElement;
+      if (a && panel.contains(a)) { e.preventDefault?.(); if (a.tagName === 'SELECT') moveFocus('down'); else a.click?.(); return true; }
+      const first = focusables()[0]; first?.focus?.({ preventScroll: true }); return true;
+    }
+    return false;
+  }
+  function moveFocus(dir) {
+    const items = focusables(); if (!items.length) return;
+    const a = doc.activeElement;
+    if (!items.includes(a)) { items[0].focus({ preventScroll: true }); return; }
+    const r = a.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    let best = null, bd = Infinity;
+    for (const b of items) {
+      if (b === a) continue;
+      const q = b.getBoundingClientRect(), dx = q.left + q.width / 2 - cx, dy = q.top + q.height / 2 - cy;
+      const sameRow = Math.abs(dy) < Math.max(r.height, q.height) * 0.6;
+      const ok = dir === 'right' ? dx > 2 && sameRow : dir === 'left' ? dx < -2 && sameRow : dir === 'down' ? dy > Math.min(r.height, q.height) * 0.5 : dy < -Math.min(r.height, q.height) * 0.5;
+      if (!ok) continue;
+      const d = dir === 'up' || dir === 'down' ? Math.abs(dy) + Math.abs(dx) * 0.6 : Math.abs(dx) + Math.abs(dy) * 2;
+      if (d < bd) { bd = d; best = b; }
+    }
+    if (!best) { const i = items.indexOf(a); best = items[(i + (dir === 'down' || dir === 'right' ? 1 : items.length - 1)) % items.length]; }
+    best.focus({ preventScroll: true });
+    try { best.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch {}
+  }
+  function switchTab(step) {
+    const tabs = [...panel.querySelectorAll('[role="tab"]')]; if (!tabs.length) return;
+    const i = tabs.findIndex((t) => t.getAttribute('aria-selected') === 'true');
+    const next = tabs[(i + step + tabs.length) % tabs.length];
+    sfx('menu'); menu.tab = next.dataset.tab; drawPanel();
+    panel.querySelector('[role="tab"][aria-selected="true"]')?.focus({ preventScroll: true });
+  }
+  // A controller (any the browser sees: Xbox, PlayStation, Switch, the Legion Go's own): read each frame and turned
+  // into the same keys, so everything above works with it. Held directions repeat in the menus.
+  const PAD_KEYS = { 0: 'Enter', 1: 'Escape', 2: 'f', 3: 'i', 4: 'PageUp', 5: 'PageDown', 6: 'q', 7: 'e', 8: 'j', 9: 'Escape', 11: 'r', 12: 'ArrowUp', 13: 'ArrowDown', 14: 'ArrowLeft', 15: 'ArrowRight' };
+  const padWas = new Map(); // key -> when it went down (and last repeat)
+  function pollPads(t) {
+    let pads = [];
+    try { pads = [...(globalThis.navigator?.getGamepads?.() || [])].filter(Boolean); } catch { return; }
+    if (!pads.length) { if (padWas.size) { for (const k of padWas.keys()) onKeyUp({ key: k }); padWas.clear(); } return; }
+    const down = new Map();
+    for (const g of pads) {
+      (g.buttons || []).forEach((b, i) => { if (PAD_KEYS[i] && (b?.pressed || b?.value > 0.5)) down.set(PAD_KEYS[i], i === 1 ? 'b' : 'pad'); });
+      const [ax = 0, ay = 0] = g.axes || [];
+      if (ax < -0.5) down.set('ArrowLeft', 'pad'); if (ax > 0.5) down.set('ArrowRight', 'pad');
+      if (ay < -0.5) down.set('ArrowUp', 'pad'); if (ay > 0.5) down.set('ArrowDown', 'pad');
+    }
+    const fake = (key, pad) => ({ key, pad, target: doc.activeElement || shell, preventDefault() {}, stopPropagation() {} });
+    for (const [k, pad] of down) {
+      const w = padWas.get(k);
+      if (!w) { padWas.set(k, { at: t, rep: t }); onKey(fake(k, pad)); continue; }
+      if (KEYS[k] && mode !== 'walk' && t - w.at > 380 && t - w.rep > 130) { w.rep = t; onKey(fake(k, pad)); }
+    }
+    for (const k of [...padWas.keys()]) if (!down.has(k)) { padWas.delete(k); onKeyUp({ key: k }); }
+  }
   function onKeyUp(e) { if (KEYS[e.key] === held) held = null; }
   doc.addEventListener('keydown', onKey, true);
   doc.addEventListener('keyup', onKeyUp, true);
+  // Journey v1.5: tap or click the screen itself. A choice in the blue box picks it; anywhere else reads on.
+  cv.addEventListener('click', (e) => {
+    if (!talk || closed) return;
+    const r = cv.getBoundingClientRect(); if (!r.width || !r.height) return;
+    const x = ((e.clientX - r.left) * W) / r.width, y = ((e.clientY - r.top) * H) / r.height;
+    snd.wake?.();
+    if (choosing()) { const i = (talk.rects || []).findIndex((q) => x >= q.x && x <= q.x + q.w && y >= q.y && y <= q.y + q.h); if (i >= 0) { pickChoice(i); } return; }
+    advanceTalk();
+  });
+  cv.addEventListener('pointermove', (e) => {
+    if (!choosing() || e.pointerType !== 'mouse') return;
+    const r = cv.getBoundingClientRect(); if (!r.width) return;
+    const x = ((e.clientX - r.left) * W) / r.width, y = ((e.clientY - r.top) * H) / r.height;
+    const i = (talk.rects || []).findIndex((q) => x >= q.x && x <= q.x + q.w && y >= q.y && y <= q.y + q.h); if (i >= 0) talk.sel = i;
+  });
   // The pad: press and hold to keep walking.
   const pad = root.querySelector('.jy-pad');
   pad.addEventListener('pointerdown', (e) => { const b = e.target.closest('[data-dir]'); if (!b) return; e.preventDefault(); held = b.dataset.dir; heldAt = now(); tryWalk(held); });

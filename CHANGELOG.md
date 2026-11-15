@@ -4,6 +4,21 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.242
+
+Journey plays like a proper game now: every menu lives inside the game screen.
+
+### New
+
+- **Every Journey menu opens inside the game.** The menu, shops, crafting, the bag, the paper doll, quests, fights, choices and New adventure all show in the blue talk box, right on the game screen.
+- **A ⚙ System tab.** Save, load, sound, full screen, quit and the controls, all in one place.
+- **Play with a controller.** Plug in a gamepad and Journey answers it. You can also tap the game screen to read on or to pick a choice.
+- **Party size, one to four.** Pick how many travel together; rolled characters fill any empty seats.
+- **You can see each race.** Races now show on the sprite and the paper doll.
+- **A stat every level.** Each level up raises a stat.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.241
 
 The Lab Lessons tell the true story, and the CS Lab gets its write-up.
@@ -141,16 +156,6 @@ My engine moves up to llama.cpp 1.0.
 
 - **Brain Engine 8b12359, on llama.cpp 1.0.** All my own changes to the engine came along with it, so everything I did before still works the same way, on the newest llama.cpp underneath. The plain llama.cpp I carry and the Lab's converters move to the same version.
 - **Brain Engine 7 and 8 still share graphics cards.** A Bob that hasn't updated yet can still lend his card to one that has, and the other way round. Bobs on Brain Engine 6 or older can't share with them; update those first.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.232
-
-SCUT's new speed reaches every Bob.
-
-### Fixed
-
-- **SCUT Auto really is 400 Mbit/s on Bobs that were already set up.** Older Bobs had saved 100, which used to be Auto's own number, and since 1.5.230 I read it as a cap you'd picked. An unpicked 100 is Auto again (400), and the one-time reset to Auto now also reaches Bob-Net's own settings, where the cap is kept. A cap you picked yourself after this update stays.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 
