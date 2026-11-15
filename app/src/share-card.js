@@ -141,7 +141,10 @@ export function freeBytes(dir) {
 // 1.5.214 (card test Nov 13: a 1 Gbit/s cable ran the first copy at about 96 Mbit/s, SCUT's 100 cap): unless someone
 // picked a cap, it's Auto: 1000 only when BOTH Bobs reach each other over a network cable or USB4 (a switch between
 // them is fine), 100 otherwise. The owner: "100 was our test standard for safety, to not overcrowd the network". 1.5.213 saved 100 on every Bob, so only another number or a pick counts as chosen.
-export const scutChosen = (cfg) => cfg.share?.scutMbpsChosen === true || (SCUT_MBPS.includes(Number(cfg.share?.scutMbps)) && Number(cfg.share.scutMbps) !== SCUT_AUTO);
+// 1.5.232: 100 was Auto's own number until 1.5.230 (saved on every Bob), so an unpicked 100 is still Auto (400 now),
+// never a cap someone chose; only a pick (scutMbpsChosen) makes 100 stick.
+export const SCUT_OLD_AUTO = 100;
+export const scutChosen = (cfg) => cfg.share?.scutMbpsChosen === true || (SCUT_MBPS.includes(Number(cfg.share?.scutMbps)) && ![SCUT_AUTO, SCUT_OLD_AUTO].includes(Number(cfg.share.scutMbps)));
 export const scutMbps = (cfg, { wired = false } = {}) => (scutChosen(cfg) && SCUT_MBPS.includes(Number(cfg.share?.scutMbps)) ? Number(cfg.share.scutMbps) : SCUT_AUTO);
 export const isWired = (kind) => kind === 'cable' || kind === 'usbnet' || kind === 'usb4';
 // What the engine is started with. lend: the card server, behind the gate, says the gate's port (UDP too) in its offer.

@@ -1,5 +1,5 @@
 diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
-index 1457f9a..028ba4d 100644
+index f351ea4..e990af2 100644
 --- a/tools/server/server-context.cpp
 +++ b/tools/server/server-context.cpp
 @@ -196,7 +196,27 @@ struct server_expert_trace {
@@ -31,7 +31,7 @@ index 1457f9a..028ba4d 100644
  
      // the hidden neurons of a layer's feed-forward block, after the activation: [n_ff, n_tokens]
      static int neuron_layer(const char * name) {
-@@ -2552,6 +2572,9 @@ private:
+@@ -2553,6 +2573,9 @@ private:
          res->n_prompt_tokens       = slot.task->n_tokens();
          res->n_prompt_tokens_cache = slot.stats.n_prompt_cached;
          res->post_sampling_probs   = slot.task->params.post_sampling_probs;
@@ -41,7 +41,7 @@ index 1457f9a..028ba4d 100644
  
          res->verbose           = slot.task->params.verbose;
          res->res_type          = slot.task->params.res_type;
-@@ -5165,6 +5188,103 @@ private:
+@@ -5166,6 +5189,103 @@ private:
          return out;
      }
  

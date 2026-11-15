@@ -1,8 +1,8 @@
 diff --git a/include/llama.h b/include/llama.h
-index 95290a9..33dfa1b 100644
+index 1b0551b..b362ec4 100644
 --- a/include/llama.h
 +++ b/include/llama.h
-@@ -606,6 +606,7 @@ extern "C" {
+@@ -585,6 +585,7 @@ extern "C" {
      LLAMA_API int32_t llama_model_n_layer_nextn(const struct llama_model * model);
      LLAMA_API int32_t llama_model_n_expert     (const struct llama_model * model);
      LLAMA_API int32_t llama_model_n_expert_used(const struct llama_model * model);
@@ -10,7 +10,7 @@ index 95290a9..33dfa1b 100644
      LLAMA_API int32_t llama_model_n_head       (const struct llama_model * model);
      LLAMA_API int32_t llama_model_n_head_kv    (const struct llama_model * model);
      LLAMA_API int32_t llama_model_n_swa        (const struct llama_model * model);
-@@ -782,6 +783,26 @@ extern "C" {
+@@ -774,6 +775,26 @@ extern "C" {
           const struct llama_dial * dials,
                            size_t   n);
  
@@ -38,10 +38,10 @@ index 95290a9..33dfa1b 100644
      // Memory
      //
 diff --git a/src/llama-context.cpp b/src/llama-context.cpp
-index 24c01e2..13b1a55 100644
+index 4565a2e..fcadf10 100644
 --- a/src/llama-context.cpp
 +++ b/src/llama-context.cpp
-@@ -1881,13 +1881,122 @@ bool llama_context::set_adapter_cvec(
+@@ -1859,13 +1859,122 @@ bool llama_context::set_adapter_cvec(
  }
  
  bool llama_context::set_expert_mask(const uint8_t * keep, size_t len) {
@@ -164,7 +164,7 @@ index 24c01e2..13b1a55 100644
  bool llama_context::set_dials(const struct llama_dial * d, size_t n) {
      bool res = dials->apply(model, d, n);
  
-@@ -3016,6 +3125,14 @@ uint32_t llama_context::graph_max_nodes(uint32_t n_tokens) const {
+@@ -2991,6 +3100,14 @@ uint32_t llama_context::graph_max_nodes() const {
          }
      }
  
@@ -179,7 +179,7 @@ index 24c01e2..13b1a55 100644
      // every sampler builds n_outputs_max_per_seq chains, see llm_graph_context::build_sampling
      for (const auto & [seq_id, sampler] : sampling.samplers) {
          res += llama_sampler_backend_n_nodes(sampler) * cparams.n_outputs_max_per_seq;
-@@ -5004,6 +5121,19 @@ int32_t llama_set_expert_mask(
+@@ -4961,6 +5078,19 @@ int32_t llama_set_expert_mask(
      return res ? 0 : -1;
  }
  
@@ -200,10 +200,10 @@ index 24c01e2..13b1a55 100644
  // memory
  //
 diff --git a/src/llama-context.h b/src/llama-context.h
-index d7696d5..bff765f 100644
+index a2ae62f..3ecee65 100644
 --- a/src/llama-context.h
 +++ b/src/llama-context.h
-@@ -156,6 +156,9 @@ struct llama_context {
+@@ -155,6 +155,9 @@ struct llama_context {
  
      bool set_expert_mask(const uint8_t * keep, size_t len);
  
@@ -213,7 +213,7 @@ index d7696d5..bff765f 100644
      bool set_dials(const struct llama_dial * d, size_t n);
  
      // process a single ubatch with a specific graph type
-@@ -348,6 +351,11 @@ private:
+@@ -347,6 +350,11 @@ private:
  
      llama_adapter_cvec_ptr  cvec;
      llama_adapter_emask_ptr emask;
@@ -226,12 +226,12 @@ index d7696d5..bff765f 100644
      llama_adapter_loras_ptr loras;
  
 diff --git a/src/llama-cparams.h b/src/llama-cparams.h
-index 451804f..9a9010b 100644
+index d5e8c0f..ea91936 100644
 --- a/src/llama-cparams.h
 +++ b/src/llama-cparams.h
-@@ -55,6 +55,12 @@ struct llama_cparams {
+@@ -51,6 +51,12 @@ struct llama_cparams {
+     bool auto_fkvr;
      bool no_perf;
-     bool warmup;             // TODO: remove [TAG_LLAMA_GRAPH_NO_WARMUP]
      bool keep_expert_ids = false; // Brain Engine: keep every layer's expert picks until the step ends
 +
 +    // Brain Engine: experts per word set live (llama_set_expert_used), one count per layer, 0 = the model's own.
@@ -243,16 +243,16 @@ index 451804f..9a9010b 100644
      bool kv_unified;
      bool pipeline_parallel;
 diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
-index 73e63c4..787a02a 100644
+index f8a3bd3..2ca858b 100644
 --- a/src/llama-graph.cpp
 +++ b/src/llama-graph.cpp
-@@ -2280,6 +2280,14 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+@@ -2289,6 +2289,14 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
      const int64_t n_tokens = cur->ne[1];
      const bool weight_before_ffn = arch == LLM_ARCH_LLAMA4; // for llama4, we apply the sigmoid-ed weights before the FFN
  
 +    // Brain Engine: experts per word set live (llama_set_expert_used) take the place of the model's own count
-+    // for this layer. Never during warmup (which runs every expert) or for a layer handed its picks by another.
-+    const bool expert_used_live = !cparams.warmup && cparams.expert_used != nullptr && selected_experts_in == nullptr &&
++    // for this layer. Never for a layer handed its picks by another.
++    const bool expert_used_live = cparams.expert_used != nullptr && selected_experts_in == nullptr &&
 +        n_expert == hparams.n_expert && il >= 0 && (uint32_t) il < cparams.expert_used_n && cparams.expert_used[il] > 0;
 +    if (expert_used_live) {
 +        n_expert_used = cparams.expert_used[il];
@@ -261,7 +261,7 @@ index 73e63c4..787a02a 100644
      ggml_tensor * logits = nullptr;
  
      if (probs_in == nullptr) {
-@@ -2666,7 +2674,7 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+@@ -2675,7 +2683,7 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
      // Use per-layer n_expert_used to bound the graph even during warmup (avoids
      // the large-add-nodes issue for uniform arches; for Puzzle the per-layer
      // value is correct). ref: https://github.com/ggml-org/llama.cpp/pull/14753
@@ -271,10 +271,10 @@ index 73e63c4..787a02a 100644
          cur_experts[i] = ggml_view_2d(ctx0, experts, n_embd, n_tokens, experts->nb[2], i*experts->nb[1]);
  
 diff --git a/src/llama-graph.h b/src/llama-graph.h
-index 610ad48..e939f94 100644
+index d8dc469..94e0832 100644
 --- a/src/llama-graph.h
 +++ b/src/llama-graph.h
-@@ -911,6 +911,7 @@ struct llm_graph_params {
+@@ -909,6 +909,7 @@ struct llm_graph_params {
              cparams.embeddings_nextn_masked == other.cparams.embeddings_nextn_masked &&
              cparams.causal_attn             == other.cparams.causal_attn             &&
              cparams.keep_expert_ids         == other.cparams.keep_expert_ids         &&
@@ -283,10 +283,10 @@ index 610ad48..e939f94 100644
              layer_inp_src == other.layer_inp_src &&
              h_nextn_dev   == other.h_nextn_dev   &&
 diff --git a/src/llama-model.cpp b/src/llama-model.cpp
-index c328d8d..e19812c 100644
+index 677bbbd..a2d7d77 100644
 --- a/src/llama-model.cpp
 +++ b/src/llama-model.cpp
-@@ -3602,6 +3602,13 @@ int32_t llama_model_n_expert_used(const llama_model * model) {
+@@ -3610,6 +3610,13 @@ int32_t llama_model_n_expert_used(const llama_model * model) {
      return model->hparams.n_expert_used_max();
  }
  
@@ -301,7 +301,7 @@ index c328d8d..e19812c 100644
      return model->hparams.dflash_selector_top_k;
  }
 diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
-index e14ecb5..4ec1978 100644
+index 1dbee76..3e666c9 100644
 --- a/tools/server/server-context.cpp
 +++ b/tools/server/server-context.cpp
 @@ -156,8 +156,9 @@ struct server_expert_trace {
@@ -360,7 +360,7 @@ index e14ecb5..4ec1978 100644
              auto & out = tr->cols[pil];
              const auto & b = tr->pbuf[j];
              for (int64_t i = 0; i < n_tok; i++) {
-@@ -3761,6 +3765,20 @@ private:
+@@ -3762,6 +3766,20 @@ private:
                      };
                      queue_results.send(std::move(res));
                  } break;
@@ -381,7 +381,7 @@ index e14ecb5..4ec1978 100644
          }
  
          return true;
-@@ -3825,6 +3843,102 @@ private:
+@@ -3826,6 +3844,102 @@ private:
          return "";
      }
  
@@ -484,7 +484,7 @@ index e14ecb5..4ec1978 100644
      // body: {"keep": null} = all on, {"keep": [ids]} = same experts in every layer, {"keep": [[ids], ...]} = one list per layer (null = all)
      std::string set_expert_mask(const json & body) {
          const int64_t n_layer  = llama_model_n_layer(model_tgt);
-@@ -5243,7 +5357,7 @@ private:
+@@ -5244,7 +5358,7 @@ private:
                  ok = ok && etrace.n_cols[il] == n_output;
              }
              if (ok && n_layer_seen > 0) {
@@ -493,7 +493,7 @@ index e14ecb5..4ec1978 100644
                  json rows = json::array();
                  // for experts: how often each layer picked each expert for this slot's tokens ("layers"), and with
                  // mass the sum of those picks' weighted output sizes ("mass"), in the shape the Forge writes
-@@ -5282,15 +5396,15 @@ private:
+@@ -5283,15 +5397,15 @@ private:
                              continue;
                          }
                          const size_t at = outputs_only[il] ? i_out : i;
@@ -513,7 +513,7 @@ index e14ecb5..4ec1978 100644
                                      }
                                  }
                              }
-@@ -5419,11 +5533,11 @@ private:
+@@ -5420,11 +5534,11 @@ private:
                      continue;
                  }
                  const size_t at = outputs_only[il] ? i_out : i;
@@ -528,7 +528,7 @@ index e14ecb5..4ec1978 100644
                  if (with_acts) {
                      a.push_back(at < etrace.acts[il].size() ? etrace.acts[il][at] : 0.0f);
                  }
-@@ -7538,6 +7652,44 @@ void server_routes::init_routes() {
+@@ -7546,6 +7660,44 @@ void server_routes::init_routes() {
          return dials_handler(req, std::move(body));
      };
  
@@ -609,10 +609,10 @@ index 7a58b34..bfcf03f 100644
      mtmd_helper::gen_audio::inp tts_inp;
  
 diff --git a/tools/server/server.cpp b/tools/server/server.cpp
-index 8a0e009..92bb0e0 100644
+index 051a09b..2b13315 100644
 --- a/tools/server/server.cpp
 +++ b/tools/server/server.cpp
-@@ -215,6 +215,8 @@ static void server_register_routes(server_http_context & ctx_http, server_routes
+@@ -218,6 +218,8 @@ static void server_register_routes(server_http_context & ctx_http, server_routes
      ctx_http.post("/expert-mask",              ex_wrapper(routes.post_expert_mask));
      ctx_http.get ("/dials",                    ex_wrapper(routes.get_dials));
      ctx_http.post("/dials",                    ex_wrapper(routes.post_dials));
@@ -621,7 +621,7 @@ index 8a0e009..92bb0e0 100644
      // Save & load slots
      ctx_http.get ("/slots",                    ex_wrapper(routes.get_slots));
      ctx_http.post("/slots/:id_slot",           ex_wrapper(routes.post_slots));
-@@ -530,6 +532,8 @@ static int server_run_router(common_params & params, int argc, char ** argv, con
+@@ -553,6 +555,8 @@ static int server_run_router(common_params & params, int argc, char ** argv, con
      routes.post_expert_mask            = models_routes->proxy_post;
      routes.get_dials                   = models_routes->proxy_get;
      routes.post_dials                  = models_routes->proxy_post;
