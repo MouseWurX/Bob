@@ -1,4 +1,4 @@
-// The held-out check after training (15 Nov 2026, Squeak's plan): the clean held-out tool lessons (the ones the sort
+// The held-out check after training (15 Nov 2026, the owner's plan): the clean held-out tool lessons (the ones the sort
 // kept; they never train, lesson-ledger --check --never keeps them out) become a tool-score set, so the newly trained Bob
 // and stock Qwen3.6-35B-A3B answer the very same turns and are scored side by side.
 //

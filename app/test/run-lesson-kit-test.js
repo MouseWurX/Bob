@@ -73,14 +73,14 @@ check('audit: a clean lesson passes', probs({ job: 'files', messages: [ask('list
 const offered = { k1: { tools: [{ type: 'function', function: { name: 'list_folder', parameters: { properties: { path: {} }, required: ['path'] } } }] } };
 const sc = (msgs) => A.auditLesson({ job: 'files', messages: msgs }, { sets: offered });
 const step = (n, a, id) => [{ role: 'assistant', set: 'k1', content: '', tool_calls: [call(n, a, id)] }, { role: 'tool', name: n, content: 'notes.txt, plan.docx (2 files)' }];
-const bad = sc([ask('list my documents'), ...step('list_folder', { path: 'C:\\Users\\sam\\Documents', deep: true }, 'a'), ...step('list_folder', {}, 'b'), ...step('web_search', { query: 'x' }, 'c'), { role: 'assistant', content: 'You have notes.txt and plan.docx.' }]);
+const bad = sc([ask('list my documents'), ...step('list_folder', { path: 'D:\\Users\\sam\\Documents', deep: true }, 'a'), ...step('list_folder', {}, 'b'), ...step('web_search', { query: 'x' }, 'c'), { role: 'assistant', content: 'You have notes.txt and plan.docx.' }]);
 check('first filter: an input the tool doesn\'t take', bad.some((x) => /doesn't take: deep/.test(x)), JSON.stringify(bad));
 check('first filter: a required input left out', bad.some((x) => /missing its required input: path/.test(x)));
 check('first filter: a tool the lesson was never offered', bad.some((x) => /"web_search", which this lesson's tool list doesn't offer/.test(x)));
 check('first filter: a home folder other than C:\\Users\\you is a leak', bad.some((x) => /folder leak: a home folder/.test(x)));
 const loop = sc([ask('list my documents'), ...step('list_folder', { path: '~/Documents' }, 'a'), ...step('list_folder', { path: '~/Documents' }, 'b'), ...step('list_folder', { path: '~/Documents' }, 'c'), { role: 'assistant', content: 'You have notes.txt and plan.docx.' }]);
 check('first filter: loops are caught', loop.some((x) => /twice in a row/.test(x)) && loop.some((x) => /call 3 times/.test(x)));
-check('first filter: lab temp and lab PC folders are leaks', A.leaks('saved in /tmp/bob-lab-Ab12Cd/x and C:\\Unreal Projects\\foo').length >= 2);
+check('first filter: lab temp and Linux home folders are leaks', A.leaks('saved in /tmp/bob-lab-Ab12Cd/x and /home/sam/notes').length >= 2);
 check('first filter: a clean lesson passes it', sc([ask('list my documents'), ...step('list_folder', { path: 'C:\\Users\\you\\Documents' }, 'a'), { role: 'assistant', content: 'You have notes.txt and plan.docx.' }]).length === 0);
 // 15 Nov: the held-out check after training: only kept held-out lessons, stamped so tool-score scores them, both brains
 const HC = await imp('heldout-check.mjs');

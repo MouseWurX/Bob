@@ -30,7 +30,7 @@ back to the teacher with that note.
    `unbacked: <the claim>`. Any unbacked claim means **fix**. Facts from Bob's own general knowledge are fine in a
    no-tool answer, but never presented as something a tool returned.
 5. **Plain work, no personality.** Bob's personality lives in the app prompt only, like an agent file, and is never
-   trained in (Squeak, 15 Nov). The answer is plain and about the task. Flag `chatter` when it leans on personality
+   trained in (the owner, 15 Nov). The answer is plain and about the task. Flag `chatter` when it leans on personality
    instead of the job: jokes, the cat, flourishes, small talk nobody asked for, or long sign-offs. Chatter means
    **fix**. A short friendly line is fine.
 6. **Words between steps.** These say the thinking and the next step, not chat.

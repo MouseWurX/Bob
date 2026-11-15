@@ -54,7 +54,7 @@ export function cutOff(c) {
 // the tools the lesson was really offered (toolsets.json, by each turn's set key): a tool not offered, an input the tool
 // doesn't take, a required input left out. Loops: the same call (tool + inputs) three times, or twice in a row.
 // Folder leaks: any home folder but C:\Users\you, a lab temp folder, a Linux /tmp or /home path.
-const LEAK = [[/[A-Za-z]:(?:\\{1,2}|\/)Users(?:\\{1,2}|\/)(?!you(?:\\|\/|\b))(?!Public\b)[^\\/\s"']+/i, 'a home folder other than C:\\Users\\you'], [/bob-lab-[A-Za-z0-9]{4,}/, 'a lab temp folder'], [/AppData(?:\\{1,2}|\/)Local(?:\\{1,2}|\/)Temp\b/i, 'a Temp folder path'], [/(?:^|[\s"'(])\/(?:tmp|home)\/[\w.-]+/, 'a Linux /tmp or /home path'], [/Unreal Projects/i, "a folder from the lab PC"]];
+const LEAK = [[/[A-Za-z]:(?:\\{1,2}|\/)Users(?:\\{1,2}|\/)(?!you(?:\\|\/|\b))(?!Public\b)[^\\/\s"']+/i, 'a home folder other than C:\\Users\\you'], [/bob-lab-[A-Za-z0-9]{4,}/, 'a lab temp folder'], [/AppData(?:\\{1,2}|\/)Local(?:\\{1,2}|\/)Temp\b/i, 'a Temp folder path'], [/(?:^|[\s"'(])\/(?:tmp|home)\/[\w.-]+/, 'a Linux /tmp or /home path']]; // the lab PC's own folder names go in --private
 export function callChecks(l, sets) {
   const p = [], seen = new Map(); let prev = '';
   for (const m of l.messages || []) for (const c of m.tool_calls || []) {
