@@ -173,7 +173,23 @@ W('wl/media/ideas.jsonl', [{ id: 'm0', job: 'pictures', text: 'paint me a fox' }
 const child4 = spawn(process.execPath, ['write-lessons.mjs', '--url', url, '--model', 'fake.gguf', '--bob', app, '--out', path.join(tmp, 'wl'), '--dir', 'media', '--from-ideas', '--real-tools', '--count', '1', '--think', 'none'], { cwd: lab, env: { ...process.env, LAB_REMOTE: '', LAB_URL: '' } });
 let log4 = ''; child4.stdout.on('data', (d) => (log4 += d)); child4.stderr.on('data', (d) => (log4 += d));
 const code4 = await new Promise((ok) => { const t = setTimeout(() => { child4.kill(); ok('timeout'); }, 120000); child4.on('exit', (c) => { clearTimeout(t); ok(c); }); });
+// 15 Nov step thinking (Bob's step-thinking.js, GPT-OSS heal lessons): the first step plans at the turn's level, each step
+// after a tool result is written at Reasoning: low, and every saved step says which it was so the trainer learns it that way
+const before5 = seen.length;
+W('wl/steps/ideas.jsonl', [{ id: 's0', job: 'files', text: 'what is in my Documents folder?' }]);
+const child5 = spawn(process.execPath, ['write-lessons.mjs', '--url', url, '--model', 'fake.gguf', '--bob', app, '--out', path.join(tmp, 'wl'), '--dir', 'steps', '--from-ideas', '--family', 'gpt-oss', '--count', '1', '--think', 'all', '--effort', 'medium', '--step-thinking'], { cwd: lab, env: { ...process.env, LAB_REMOTE: '', LAB_URL: '' } });
+let log5 = ''; child5.stdout.on('data', (d) => (log5 += d)); child5.stderr.on('data', (d) => (log5 += d));
+const code5 = await new Promise((ok) => { const t = setTimeout(() => { child5.kill(); ok('timeout'); }, 120000); child5.on('exit', (c) => { clearTimeout(t); ok(c); }); });
 srv.close();
+{
+  const st = rows(path.join(tmp, 'wl', 'steps', 'lessons.jsonl'))[0];
+  const asst = (st?.messages || []).filter((x) => x.role === 'assistant');
+  const sent = seen.slice(before5).filter((j) => j.tools).map((j) => j.chat_template_kwargs?.reasoning_effort);
+  check('writer --step-thinking: the plan is written at the turn\'s level, each step after a tool result at low', code5 === 0 && asst.length === 3 && sent.join() === 'medium,low,low', `${code5} ${sent.join()} ${log5.slice(-300)}`);
+  check('writer --step-thinking: every saved step says whether it thought', asst.map((x) => x.think).join() === 'true,false,false' && st?.family === 'gpt-oss');
+  const plain = rows(path.join(tmp, 'wl', 'doc-base', 'lessons.jsonl'))[0];
+  check('writer: without --step-thinking no step carries a think mark', !(plain?.messages || []).some((x) => 'think' in x));
+}
 const made = rows(path.join(tmp, 'wl', 'doc-base', 'lessons.jsonl'));
 check('writer: --from-ideas writes the doctored idea and no new ideas', code === 0 && made.length === 1 && rows(path.join(tmp, 'wl', 'doc-base', 'ideas.jsonl')).length === 1, log.slice(-400));
 const m = made[0]?.messages || [];
@@ -189,7 +205,7 @@ check('writer: every lesson says which tool-shape version it was written for', N
   const firstTool = (real?.messages || []).find((m) => m.role === 'tool');
   check('writer --real-tools: the task file is planted and the real tool lists it', code2 === 0 && /notes\.txt/.test(firstTool?.content || '') && real?.sandbox?.real >= 1, log2.slice(-400));
   check('writer --real-tools: a seed outside the throwaway home is never written', (real?.sandbox?.setup || []).length === 1 && !JSON.stringify(real).includes('evil.txt'));
-  check('writer --real-tools: no real tool asked the teacher to make up its result', !seen.slice(before2).some((j) => /"list_folder" tool inside a desktop AI/.test(String(j.messages.at(-1)?.content || ''))));
+  check('writer --real-tools: no real tool asked the teacher to make up its result', !seen.slice(before2, before4).some((j) => /"list_folder" tool inside a desktop AI/.test(String(j.messages.at(-1)?.content || ''))));
   check('writer --real-tools: no temp folder path reaches the lesson', !/bob-lab-|[\\/]tmp[\\/]/i.test(JSON.stringify(real?.messages || [])));
 }
 check('writer: the fake result sees the tool\'s own description and is kept inside it', seen.some((j) => /tool inside a desktop AI/.test(String(j.messages.at(-1)?.content || '')) && /The tool's own description/.test(String(j.messages.at(-1)?.content || '')) && /only reads, lists or searches never saves/.test(String(j.messages.at(-1)?.content || ''))));
@@ -222,6 +238,7 @@ check('writer: doctored lessons get 12 steps', /idea\.note \|\| idea\.prior \|\|
 // ---- the heal masks a failed try ----
 const dp = read('model-lab/forge/pod/data.py');
 check('heal: a lesson for another brain family is never learned', /lesson for another family/.test(read('model-lab/forge/pod/data.py')) && /fam != \("gpt-oss" if harmony else "qwen"\)/.test(read('model-lab/forge/pod/data.py')));
+check('heal: a step-thinking lesson is learned one part per level, and the pod self-test proves it on Bob\'s GPT-OSS template', /def render_steps/.test(read('model-lab/forge/pod/data.py')) && /a step-thinking lesson is learned in two parts/.test(read('model-lab/forge/pod/selftest_gptoss.py')) && /the low part does not learn the planning step again/.test(read('model-lab/forge/pod/selftest_gptoss.py')));
 check('heal: a guided lesson is left out of GPT-OSS rather than learning the failed try', /harmony and any\(skip\)/.test(read('model-lab/forge/pod/data.py')));
 check('heal: train: false turns are masked out of the loss', /m\.get\("train"\) is False/.test(dp) && /skip\[turn\]/.test(dp));
 
