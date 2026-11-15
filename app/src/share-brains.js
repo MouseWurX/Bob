@@ -13,6 +13,7 @@
 // Addresses must be Tailscale ones (100.64.0.0/10 or a *.ts.net name). Passcodes live in config.json only, like the
 // phone door's, and are never sent back to the page.
 import { cleanWifiWas, tcpTrip } from './wifi-tune.js';
+import { rankForJob, cleanJobPick, isDefaultPick } from './job-pick.js'; // Nov 15: how Send jobs picks a Bob
 import { linksHello, cleanLinks } from './links.js'; // Check links: what kinds of link each Bob has
 import fs from 'node:fs';
 import { readJsonFile } from './util.js';
@@ -102,7 +103,7 @@ export function shareView(cfg) {
     linkDebug: s.linkDebug === true, // Watch the link live (src/link-log.js): the link log every 2 seconds instead of 10
     mode: s.lendCard === true || ['toobig', 'big'].includes(s.spread) ? 'bigger' : 'more',
     doorOpen: doorOpen(cfg),
-    borrow: { on: b.on === true, jobs: b.jobs === true, checks: b.checks === true, when: WHEN.includes(b.when) ? b.when : 'gaming', bobs: (b.bobs || []).map((x) => ({ name: x.name, address: x.address, passcodeSet: String(x.passcode || '').length >= 6 })) }
+    borrow: { on: b.on === true, jobs: b.jobs === true, checks: b.checks === true, when: WHEN.includes(b.when) ? b.when : 'gaming', bobs: (b.bobs || []).map((x) => ({ name: x.name, address: x.address, passcodeSet: String(x.passcode || '').length >= 6 })), pick: cleanJobPick(b.pick, { bobs: b.bobs || [] }) }
   };
 }
 
@@ -112,7 +113,7 @@ export const doorOpen = (cfg) => Boolean(cfg.remote?.enabled && String(cfg.remot
 export function cleanSharePatch(cfg, b, opts = {}) {
   const cur = cfg.share || {};
   const cb = cur.borrow || {};
-  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendFreesOwn: cur.lendFreesOwn === true, lendChecks: cur.lendChecks === true, cardsEverywhere: cur.cardsEverywhere === true, homeNet: cur.homeNet !== false, scut: cur.scut === true, scutMbps: SCUT_MBPS.includes(Number(cur.scutMbps)) ? Number(cur.scutMbps) : SCUT_AUTO, ...(cur.scutMbpsChosen === true ? { scutMbpsChosen: true } : {}), scutSeal: cur.scutSeal !== false, linkDebug: cur.linkDebug === true, ...(cleanWifiWas(cur.wifiWas) ? { wifiWas: cleanWifiWas(cur.wifiWas) } : {}), spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
+  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendFreesOwn: cur.lendFreesOwn === true, lendChecks: cur.lendChecks === true, cardsEverywhere: cur.cardsEverywhere === true, homeNet: cur.homeNet !== false, scut: cur.scut === true, scutMbps: SCUT_MBPS.includes(Number(cur.scutMbps)) ? Number(cur.scutMbps) : SCUT_AUTO, ...(cur.scutMbpsChosen === true ? { scutMbpsChosen: true } : {}), scutSeal: cur.scutSeal !== false, linkDebug: cur.linkDebug === true, ...(cleanWifiWas(cur.wifiWas) ? { wifiWas: cleanWifiWas(cur.wifiWas) } : {}), spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice(), ...(cb.pick && !isDefaultPick(cb.pick) ? { pick: cleanJobPick(cb.pick, { bobs: cb.bobs || [] }) } : {}) } };
   if ('lend' in b) next.lend = b.lend === true;
   if ('takeJobs' in b) next.takeJobs = b.takeJobs === true; // 1.5.72, off unless switched on
   if ('passAlong' in b) next.passAlong = b.passAlong === true; // 1.5.123, off unless switched on
@@ -137,6 +138,8 @@ export function cleanSharePatch(cfg, b, opts = {}) {
   if ('spread' in b) { if (!['off', 'toobig', 'big'].includes(b.spread)) return { error: 'Pick when to spread a brain.' }; next.spread = b.spread; }
   if ('sendJobs' in b) next.borrow.jobs = b.sendJobs === true; // 1.5.72, off unless switched on
   if ('when' in b) { if (!WHEN.includes(b.when)) return { error: 'Pick when to borrow.' }; next.borrow.when = b.when; }
+  // Nov 15: How Bob picks a Bob for a job (src/job-pick.js). Left as it was, nothing is saved and he picks as before.
+  if ('jobPick' in b) { const pk = cleanJobPick({ ...cleanJobPick(next.borrow.pick), ...(b.jobPick && typeof b.jobPick === 'object' ? b.jobPick : {}) }, { bobs: next.borrow.bobs }); if (isDefaultPick(pk)) delete next.borrow.pick; else next.borrow.pick = pk; }
   if (b.addBob) {
     const address = cleanBobAddress(cfg, b.addBob.address, opts);
     if (!address) return { error: BAD_ADDRESS(cfg) };
@@ -323,6 +326,8 @@ export class Lenders {
   release(address) { this.inUse.delete(address); }
   bobs() { return (this.cfg.share?.borrow?.bobs || []).filter((x) => cleanBobAddress(this.cfg, x.address, { home: this.home })); }
 
+  // Nov 15: his door on our home network, or his own address when that is a home one; '' when he's only on Tailscale.
+  homeDoor(bob) { return this.nearOf(bob) || (isHomeIp(String(bob.address || '').split(':')[0]) ? bob.address : ''); }
   // His door on our home network, when he said he has one there and it hasn't failed lately; else ''.
   // 1.5.214: or his saved home address (Find or a hello saved it), so a Bob paired over Tailscale works with it off.
   nearOf(bob) {
@@ -370,6 +375,10 @@ export class Lenders {
     }
     // 1.5.214: Tailscale is the fallback for when you're out: a Bob paired at home is tried on his Tailscale address
     // (his hello said it) when his home one doesn't connect.
+    if (bob.homeOnly) { // Nov 15: Home network only: his own address if it's a home one, never Tailscale
+      if (this.homeDoor(bob) === bob.address && bob.address !== near) return this.callAt(bob, bob.address, path, { method, body, signal, timeout });
+      throw new Error('not reachable on the home network');
+    }
     const ts = bob.ts && bob.ts !== bob.address && cleanAddress(bob.ts) === bob.ts ? bob.ts : '';
     if (!ts) return this.callAt(bob, bob.address, path, { method, body, signal, timeout });
     try { return await this.callAt(bob, bob.address, path, { method, body, signal, timeout: Math.min(timeout, 4000) }); }
@@ -474,15 +483,18 @@ export class Lenders {
   // 1.5.72: the Bob for a whole job: he must say he takes jobs, list this kind as one he can do right now, and not be
   // gaming or full. The least busy goes first (fewest jobs in his Tasks), your order breaking ties.
   // room: a group's job (Discord); only a Bob who says he takes those (1.5.211 and up) gets one.
+  // Nov 15: the order is the owner's (Settings, Bob-Net, How Bob picks a Bob for a job; src/job-pick.js). Left as it
+  // was, that's Least busy, then your list order, as before. A Bob who is gaming is never picked.
   async pickForJob(need, { room = false } = {}) {
+    const pick = cleanJobPick(this.cfg.share?.borrow?.pick, { bobs: this.cfg.share?.borrow?.bobs || [] });
     const list = this.bobs().filter((b) => !this.busyHere(`job:${b.address}`) && !this.skipped(b.address));
     const seen = await Promise.all(list.map((b) => this.hello(b).catch(() => ({}))));
-    const can = list.map((bob, i) => ({ bob, s: seen[i], i })).filter(({ s }) => s.takesJobs && s.jobs?.includes(need) && (!room || s.jobs?.includes('room')) && !s.jobsBusy && !(s.jobsDownUntil > this.now()));
-    can.sort((a, b) => ((a.s.queue || 0) - (b.s.queue || 0)) || (a.i - b.i));
-    const pick = can[0];
-    if (!pick) return null;
-    this.hold(`job:${pick.bob.address}`, 3000); // two jobs at once spread out
-    return { ...pick.bob, brain: pick.s.brain, device: pick.s.device };
+    const ranked = rankForJob(list.map((bob, i) => ({ bob, s: seen[i] || {}, i, near: this.homeDoor(bob) })), need, { room, pick, now: this.now() });
+    const top = ranked[0];
+    if (!top) return null;
+    this.hold(`job:${top.bob.address}`, 3000); // two jobs at once spread out
+    // Home network only: this job never goes over Tailscale, even if his home door stops answering (call() below).
+    return { ...top.bob, brain: top.s.brain, device: top.s.device, ...(pick.homeOnly ? { homeOnly: true } : {}) };
   }
   // #30: the Bob to check work on his Review brain: he says he reviews, isn't thinking for us already, and his Review brain
   // is good enough (its file at least `minGB`, so a phone's small brain never signs off on a big brain's work). Your order.

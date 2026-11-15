@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { findOutput, outputDirs } from './config.js';
 import { findFfmpeg, pictureJob, mediaJob } from './office.js';
+import { keepAt, savedLine, SAVE_TO_HELP } from './save-to.js';
 
 // The file types offered for each kind of thing Bob makes, in the order the row shows them.
 export const SAVE_AS = {
@@ -86,11 +87,12 @@ export function saveAsTool() {
         description: 'Save a copy of something you made as another file type; the original stays. Pictures: png, jpg, webp, gif. Clips: mp4, webm, gif. Sound: wav, mp3, ogg, flac. Not diagrams.',
         parameters: { type: 'object', properties: {
           name: { type: 'string', description: 'The file name, or "last" for the newest.' },
-          format: { type: 'string', enum: ['png', 'jpg', 'webp', 'gif', 'mp4', 'webm', 'wav', 'mp3', 'ogg', 'flac'] }
+          format: { type: 'string', enum: ['png', 'jpg', 'webp', 'gif', 'mp4', 'webm', 'wav', 'mp3', 'ogg', 'flac'] },
+          save_to: { type: 'string', description: SAVE_TO_HELP }
         }, required: ['name', 'format'] }
       }
     },
-    async run({ name, format }, ctx) {
+    async run({ name, format, save_to }, ctx) {
       const brain = ctx.brain;
       let n = String(name || '').trim();
       const to = String(format || '').toLowerCase();
@@ -104,7 +106,13 @@ export function saveAsTool() {
       if (r.need === 'ffmpeg') return brain.offerSetup('ffmpeg', ctx);
       ctx.emit({ type: 'made', items: [{ kind: r.kind, url: r.url, name: r.name, path: r.file }] });
       try { brain.made.add(r.file, { tool: 'save_as', chat: ctx.sessionId || '' }); } catch {}
-      return `Saved ${path.basename(n)} as ${to.toUpperCase()}: ${r.file} (the original is kept). Tell the user in one line.`;
+      if (save_to) {
+        // A folder (or a name with no ending) keeps the converted file's name; a name with an ending is used as is.
+        let k = null, err = null;
+        try { k = await keepAt(ctx.cfg, r.file, save_to, { convert: (nm, f) => saveAs(ctx.cfg, { name: nm, format: f }, { signal: ctx.signal, ...(brain.saveAsOpts || {}) }) }); } catch (e) { err = e; }
+        return `${savedLine(save_to, k, err)}\n(The ${to.toUpperCase()} copy is also in my folder: ${r.file}; the original is kept.) Tell the user in one line, with the path from the first line.`;
+      }
+      return `Saved: ${r.file}\n(${path.basename(n)} as ${to.toUpperCase()}; the original is kept.) Tell the user in one line.`;
     },
     summary: ({ name, format }) => `save as ${String(format || '').toUpperCase()}: ${String(name || 'last').slice(0, 60)}`
   };

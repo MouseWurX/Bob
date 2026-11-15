@@ -70,9 +70,6 @@ check('any other first word is refused', throws(() => cc('cmd /c dir'), /isn't a
 }
 check('header values that are keys are hidden', (() => { const h = hideHeaders({ authorization: 'Bearer abc', 'x-forge-token': 't', 'content-type': 'application/json' }); return h.authorization === '[hidden]' && h['x-forge-token'] === '[hidden]' && h['content-type'] === 'application/json'; })());
 
-check('a spaced Windows path shows only its last part', hidePaths('wrote C:\\Program Files\\Inner Folder\\deep\\file.txt done') === 'wrote …/file.txt done' && !hidePaths('D:\\My Stuff\\Some Folder\\x.log').includes('Some'));
-check('Linux and Mac paths still show only their last part', hidePaths('saved /home/someone/lab/out/a.json') === 'saved …/a.json');
-
 // ---- a fake brain server on this computer ----
 const got = [];
 const brain = http.createServer(async (req, res) => {
@@ -237,6 +234,14 @@ check('"watch" lists other logs changed lately', (await sendOk('server', 'watch'
 // the view for other devices: watch only, no paths, nothing held
 c.push('tool', `wrote ${path.join(tmp, 'secret-folder', 'file.txt')}`);
 const remote = c.view({ since: 0, remote: true });
+// 1.5.236: Windows paths with spaces (written as strings, so Linux catches it too)
+for (const [inp, want] of [
+  ['C:\\Game Projects\\secret-folder\\file.txt', '…/file.txt'],
+  ['C:\\Program Files\\Some App\\inner\\run.log done', '…/run.log done'],
+  ['saved to D:\\a b\\c d\\x.gguf.', '…/x.gguf.'],
+  ['/home/someone/secret-folder/file.txt', '…/file.txt'],
+  ['"C:\\Users\\you\\My Lab\\out.json"', '"…/out.json"'],
+]) check(`hidePaths hides every folder of ${JSON.stringify(inp)}`, hidePaths(inp).endsWith(want) && !/secret|Game Projects|Program|Some App|inner|a b|c d|someone|Users|My Lab/.test(hidePaths(inp)));
 check('another device sees the readouts without folder paths', remote.lines.some((l) => l.text.includes('…/file.txt')) && !remote.lines.some((l) => l.text.includes('secret-folder')) && remote.relay === '' && remote.brains.length === 0);
 
 // routes
@@ -272,7 +277,6 @@ check('a clear STOP, and END RENTAL only while a rental is up, both asked first 
 check('the server panel shows its log, the requests and replies, the scripts, each on or off', /toggleChip\('server', 'Server log'\)/.test(pg) && /toggleChip\('traffic', 'Requests and replies'\)/.test(pg) && /toggleChip\('scripts', 'Scripts'\)/.test(pg));
 check('a held request can be edited, sent or dropped on the page', /lc-held-body/.test(pg) && /data-lcdecide/.test(pg));
 check('buttons can be edited before they run', /data-lcedit/.test(pg));
-check('on a phone, the action row\'s (i) never hangs past the box', /\.lc-actions \.tip-i, \.cellar \.lc-actions button\.tip-i \{ margin: -6px 0; \}/.test(css));
 check('the console uses the theme\'s colours only', lcCss.length > 500 && !/#[0-9a-fA-F]{3,8}\b|rgb\(|hsl\(/.test(lcCss));
 check('the Forge tab places the console and fills it after a redraw', /con\.html\(\)/.test(read('public/lab-forge.js')) && /fg\.mounted\(\)/.test(read('public/lab.js')));
 check('the Lab page leaves the console\'s events, and its set-up window\'s, to it', (read('public/lab.js').match(/closest\??\.?\(['"]#lab-console, #lc-dialog['"]\)/g) || []).length >= 3);

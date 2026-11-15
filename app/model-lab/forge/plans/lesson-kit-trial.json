@@ -1,0 +1,64 @@
+{
+ "run": "lesson-kit-trial",
+ "note": "14 Nov (the owner: \"lesson scripts, build them. use a rental.\"). A small trial of the lesson kit (docs/TOOL-LESSONS-PLAN.md), only the parts that don't depend on the tool shapes still being picked. The card serves the STOCK Qwen3.6-35B-A3B (never the old Bobert, the owner: it was trained on poisoned data); this PC's lesson writer talks to it. 1) Doctored GPT-OSS v5 failures: 40 failures, 3 look-alikes each plus the failure itself, 2 routes, about 1 in 4 with a second try, base Bob only (styles wait for a run with the PC lab's own style flags: a \"Think:\" tag is never saved). 2) Look it up when unsure: 60 seeds from Riker's stock answers and their odds (search-pairs.mjs, run on this PC first), base Bob. Every lesson reviewed by the teacher; the ledger then drops anything that is a test or a repeat. Nothing is trained or uploaded; the lessons stay on this PC for the owner to look at. About 2.5 h on a 48 GB card. Caps 3.5 h / $2.50, only on the owner's typed go in the lesson-sets thread.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA A40",
+  "NVIDIA RTX A6000"
+ ],
+ "step_up": [],
+ "disk_gb": 60,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 3.5,
+ "dollars_max": 2.5,
+ "rent_minutes": 210,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one brain: the stock Qwen as the lesson teacher. The first command is the smoke test: 3 failures, 1 look-alike each, base only; the run is stopped by hand in the first minutes if it makes nothing.",
+  "hours_each": 3,
+  "models": [
+   {
+    "name": "qwen-stock",
+    "nickname": "stock Qwen3.6-35B-A3B, lesson teacher",
+    "file": "hf:unsloth/Qwen3.6-35B-A3B-GGUF:Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+    "quant": "Q4_K_XL",
+    "slots": 6,
+    "ctx": 98304,
+    "extra": "",
+    "hours": 3,
+    "commands": [
+     "node search-pairs.mjs --answers {{riker_answers}} --out out/lesson-kit-trial/search",
+     "node lesson-doctor.mjs --seeds out/lesson-kit-trial/seeds-v5.jsonl --name lkt-dry --dry --limit 40 --versions base",
+     "node lesson-doctor.mjs --url {{url}} --seeds out/lesson-kit-trial/seeds-v5.jsonl --never out/lesson-kit-trial/never.jsonl --name lkt-smoke --limit 3 --alike 1 --routes 1 --retry 0 --versions base",
+     "node write-lessons.mjs --url {{url}} --model teacher --dir lkt-smoke-base --from-ideas --family qwen --real-tools --count 6 --review --think none --parallel 3 --hours 0.2",
+     "node lesson-doctor.mjs --url {{url}} --seeds out/lesson-kit-trial/seeds-v5.jsonl --never out/lesson-kit-trial/never.jsonl --name lkt-v5 --guided --limit 40 --alike 3 --routes 2 --versions base",
+     "node write-lessons.mjs --url {{url}} --model teacher --dir lkt-v5-base --from-ideas --family qwen --real-tools --count 320 --review --think half --parallel 6 --hours 1",
+     "node write-lessons.mjs --url {{url}} --model teacher --dir lkt-v5-base --from-ideas --family qwen --real-tools --count 320 --review --think half --parallel 6 --hours 0.4",
+     "node lesson-doctor.mjs --url {{url}} --seeds out/lesson-kit-trial/search/seeds-search.jsonl,out/lesson-kit-trial/search/seeds-nosearch.jsonl --never out/lesson-kit-trial/never.jsonl --name lkt-search --limit 60 --alike 3 --routes 1 --versions base",
+     "node write-lessons.mjs --url {{url}} --model teacher --dir lkt-search-base --from-ideas --family qwen --real-tools --count 240 --review --think half --parallel 6 --hours 0.7",
+     "node write-lessons.mjs --url {{url}} --model teacher --dir lkt-search-base --from-ideas --family qwen --real-tools --count 240 --review --think half --parallel 6 --hours 0.3"
+    ]
+   }
+  ]
+ },
+ "prep": [
+  "The owner, 14 Nov 6:28 AM: \"prep on rental\". The steps that make the trial's inputs run inside the rental, as its first commands; before renting, only the input files are put in place (no runs).",
+  "Inputs put in place first: out/lesson-kit-trial/seeds-v5.jsonl (the traced v5 failures), out/lesson-kit-trial/never.jsonl (Riker's 310 stock items, tonight's interview turns, tool-score held-out chats), and {{riker_answers}} filled in with the path of Riker's stock answers that carry odds.",
+  "After the run: node lesson-ledger.mjs --check out/<each set> --ledger out/lesson-ledger.jsonl --never out/lesson-kit-trial/never.jsonl --out out/<set>-checked, then node audit-lessons.mjs on each checked set.",
+  "15 Nov, after the trial: ctx 98304 (Bob's prompt, tools and an earlier failed try need 6-9k tokens a request; 32768 over 6 slots skipped 10 of 11). Each write runs twice: the second pass retries only skipped ideas while the card is still rented (the Forge deletes the pod when the last command ends). --family qwen stamps every lesson for the Qwen family; --guided keeps each v5 failure's own try, masked, in a guided lesson."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ }
+}

@@ -101,7 +101,11 @@ export const turnParts = {
         if (!job?.guest) this.saveSession(sessionId); // 1.5.72: a job from another Bob isn't kept as a chat here
         if (!job?.guest) { const last = [...this.session(sessionId)].reverse().find((m) => m.role === 'assistant' && !m.tool_calls?.length && !m.step); if (last?.id) emit({ type: 'answer-id', id: last.id }); } // item 11: Save as a test needs it
         // Item 13: how full this chat left the brain's memory, for the meter by Effort.
-        const st = this.engine?.lastStats; if (!job?.guest && st?.used && st.ctx && st.at >= (job?.startedAt || 0)) emit({ type: 'chat-fill', used: st.used, ctx: st.ctx });
+        const st = this.engine?.lastStats; if (!job?.guest && st?.used && st.ctx && st.at >= (job?.startedAt || 0)) {
+          // Nov 15: kept on the answer too, so the meter under the typing box is back after a reload or a chat switch
+          const last = [...this.session(sessionId)].reverse().find((m) => m.role === 'assistant' && !m.tool_calls?.length && !m.step); if (last) { last.fill = { used: st.used, ctx: st.ctx }; this.saveSession(sessionId); }
+          emit({ type: 'chat-fill', used: st.used, ctx: st.ctx });
+        }
         this.gate.done(controller.signal); // the graphics card goes to the next job waiting for it
         if (job?.handoff) job.handoff = slimHandoff(job.handoff); // finished: keep what it did, drop the load-by-load steps
         // 1.5.38: carried on (or not) once; the note isn't used again. A job told to wait for a download goes back in line.

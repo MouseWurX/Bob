@@ -4,6 +4,70 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.238
+
+Python gets real packages, my tools take the names other brains reach for, and the Lab gets stricter about what it teaches and what it rents.
+
+### New
+
+- **Python packages.** Under Python in Settings, How Bob works, 🧰 More tools, **Get packages** fetches numpy, pandas, scipy, matplotlib, Pillow, python-docx, openpyxl, python-pptx, pypdf and more, each pinned and checked. Nothing downloads until you press it. A run loads only what its code imports, with no internet and no other folders, and gets 60 s instead of 30.
+- **`save_to` on make_image, make_sound, save_as and make_diagram** keeps a copy where you ask. It never overwrites.
+- **Tool names other brains reach for** (run_shell_command, list_directory, write_to_file and friends) now run my own tool, under my name. That only happens when I have no tool by that name and the real one is on offer. The tool record starts fresh for the new tool shape; the old one is kept in the archive.
+- **Lab: one lesson kit per brain family.** Lessons are stamped with the family they're for, and never cross-train.
+- **Lab: a never-taught gate.** Before any plan that teaches is rented, every lesson is checked against the held-out test questions. A match, a missing test file or an unchecked set stops the plan with nothing rented.
+- **Lab: pre-flight for lesson rentals.** Room per slot, the ideas file and the caps are checked in code before anything costs money, and a 10-idea sample gate ends a rental that isn't saving lessons.
+- **Lab: a Riker study plan** for finding where the cruelty lives (patching and sparse-autoencoder features). It is a study record only, and it needs your typed go to rent.
+- **Costs pages** show the 14 Nov rentals at their billed costs.
+
+### Fixed
+
+- The Forge console's buttons fit a phone screen.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
+## 1.5.237
+
+Housekeeping gets its own brain job, you can pick how jobs are shared out between your Bobs, and the phone gets one tidy menu.
+
+### New
+
+- **🧹 Housekeeping is a brain job.** On the Brains page you can give it a small brain of its own, or leave it empty so it uses the main brain, which is how it starts. ✕ takes it back like any other job.
+- **Each housekeeping round shows in Tasks and Now running**, so you can see when I'm tidying up a long chat while you're away, and when I'm done.
+- **Pick how jobs are shared out.** In Settings, Bob-Net, under Send jobs, switch on and order the rules for picking one of your Bobs: least busy, fastest, biggest graphics card, closest, or computers before phones. You can also keep jobs on your home network or off the phone, cap how many jobs one Bob gets, and give each kind of job a first-choice Bob. A Bob you're gaming on never gets one. Left as it is, I pick just like before.
+- **One menu on a phone.** At phone width the bottom bar is Chat, Tasks, + New, Topics and Bob. The Bob button or the cube opens one menu that slides up from the bottom, and Settings on a phone is two tidy lists. Wide windows are the same as before.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
+## 1.5.236
+
+The Lab gets a Forge console: one window for everything the Forge and the Lab run.
+
+### New
+
+- **Forge console in the Lab.** It sits at the top of the Forge tab, and everything the Lab runs shows up there live, never in a window you can't see.
+  - **Four big buttons:** **Load model locally**, **Open rental** (you pick the brain, the cards and the caps, and only the purchase card rents), **STOP** (stops everything running here, never a rental) and **END RENTAL** (ends only that run's card).
+  - **Three panels:** **Server** is the terminal, with the server log, every request and reply, and scripts. **Chat** shows the brain's replies as bubbles, with thinking folded and tool calls as cards. **Set up** has sliders and tick boxes for temperature, top-p, max tokens, thinking and more, which tools to offer, a system prompt, and forms for the Lab's jobs. Put any panel on either side, side by side or one at a time. On a phone they stack.
+  - **Relay:** every request a tool sends goes through it and goes on the record. **Hold each request** lets you read it, fix it, then send or drop it.
+  - Running anything needs **Let the Lab run commands here**, which stays off until you switch it on. Keys never reach the console.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
+## 1.5.235
+
+Bob's chat memory meter moves to where you can see it, you can take any job back from a brain, and two phone menus in Lamplight are fixed.
+
+### New
+
+- **Chat memory: NN%** now sits under the typing box, across from the brain label, with an (i) that says what it means. **Sum up and carry on** shows from 70%, and the reading comes back after a reload.
+
+### Fixed
+
+- **Brains page: take any job back.** Every job chip has a ✕ now, except the main Brain and Gaming. Quick brain, Office and Deep thinking can be taken off and show under Unassigned jobs, and Bob keeps chatting on his main brain.
+- On a phone in Lamplight, the **Effort** choices float above the button, so you can see and pick them all.
+- On a phone in Lamplight, the **More** menu has a solid back, so it isn't see-through.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.234
 
 Journey gets a real quest log, and your saved land is easy to get back to.
@@ -111,86 +175,9 @@ First-time setup is rebuilt as seven pages, Users grow up, and the lamps get the
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 
-## 1.5.228
-
-My front page tells the whole story now, the Lab gets steps, pipelines and a record of every run, Bob-Net explains itself as a small cluster, and I have a new icon that glows in my lamp's colour.
-
-### New
-
-- **The README tells the whole project.** A new **The project** section: the goal, how a brain is made and why in that order, where the Lab and the costs page are, and every model and dataset on Hugging Face, cross-linked.
-- **A Steps tab in the Lab** (after Forge). Every advanced method is listed as a step, with where it runs, what it takes and makes, and whether it needs your go. The privacy scrub and eval sets run from their cards there.
-- **A record of every Lab run.** Each run keeps its settings (keys never written down), Bob's version, its inputs and outputs, the smoke test, scores, minutes and card cost, and you can compare runs side by side. Anything made from surgery or steering data is tagged never-train, and training steps refuse it.
-- **Lab pipelines.** Save a list of steps and run it as one. Rented steps are packed into one card block, with every cap starting at $0 until you set it, and a pipeline picks up where it stopped. A chart shows the scores across runs. Nothing rents from a pipeline by itself.
-- **The Forge can heal a GPT-OSS cut.** The pod scripts now understand GPT-OSS brains, so the 38B cut of gpt-oss-120b can be taught back from the full 120B. The plan is written, not run: it waits for your go.
-- **Lamps.** Lamplight and Terminal now come in four lamp colours, named for the old street and sign lamps: Mercury (blue-white), Sodium (amber), Thallium (green) and Neon (red-orange). Pick one in Settings, Style. New installs start on Mercury.
-- **My new icon: the tesseract.** A cube inside a cube, on the taskbar, tray, Dock, Start shortcut, phone and browser tab. It takes the colour of your lamp. "Use Bob's look as his icon" is now off unless you switch it on.
-- **Window buttons on my bar.** The system title bar is gone: minimise, maximise and close sit on my own top bar (on a Mac, the red, yellow and green buttons move onto it), with rounder corners and a soft glow in the corner where my cube sits. Drag the bar to move me, double-click to maximise. It's on to start; switch it off in Settings, Bob himself. The Ctrl+Alt+B ask box wears your theme too, with its typing box at the bottom.
-- **Chat heads for Discord and Telegram.** Under my cube, a small head for each chat bot that's switched on; click it to open that chat. The Discord group chat now has one page per channel, with a box to say something there as me. A new Discord switch, **Show the whole channel** (off to start), shows every message in a listed channel, not just the ones to me.
-- **Settings has a new Agents group.** Claude, OpenAI, Gemini, Qwen, OpenCode, Discord and Telegram each get their own section with everything I do with them, and a switch to show that company's cube under mine. Nothing moved out of me, only into one place.
-- **Files and brains on Bob-Net** (off to start; turn it on on both Bobs). Send any file to another of your Bobs, or copy one of my brains to him with **Brain Copying**. Nothing comes in without his Yes, you can stop and carry on, and every file is checked at the end.
-- **Your Bobs use the brain files they already have.** When a brain is spread, a lending Bob loads his share from his own copy of that brain, even under another name or in another of his brain folders, with SCUT on or off. Only what he doesn't have crosses the network.
-- **Up to 16 Bobs on Bob-Net** (was 6).
-- **Bob-Net, explained as a cluster.** Settings, Bob-Net opens with one line on how your Bobs work together like a small cluster, with an ⓘ tip and a **? How** button that opens the whole story in Help.
-
-### Fixed
-
-- **A rented card that freezes at start-up is swapped.** If a pod never answers, it's deleted and a different card type is rented under the same yes and the same caps, at most twice. Card types that keep freezing go to the back of the list.
-- **The Android download joins the release reliably.** The phone build now waits until the release is published, not just drafted, and tries the upload three times.
-- **Try it first** passes a steering file the way Brain Engine 7 reads it.
-
-**New in the docs:** Bob-Net at a glance, a picture in the README of how your Bobs connect and what goes between them; and the 12 November test of sharing one brain between two Bobs over a cable, with what ran and what didn't (test results).
-
-**Taken down:** the teacher-odds dataset on Hugging Face (bob-odds) is gone, so its links are too. It was made from lessons before the privacy scrub. The Forge now warns before publishing teacher odds.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.227
-
-My front page says what's new, what's coming, and what it all costs, the Lab gets its newer research scripts, and Journey has crafting.
-
-### Changed
-
-- **The README is up to date.** What's new covers everything from 1.5.212 to 1.5.226. A new **Coming next** section lists the plans, clearly marked as planned: a clean new Bobert, tool lessons, tools brains already know, every Lab method as a step, and research on where a behaviour lives in a brain. **What it costs** gives the totals so far, with a link to every rental.
-- **New plan pages** in the docs: the roadmap to one all-round Bob, the tool lessons plan, and the Lab steps plan. The costs pages cover every rental to 14 Nov.
-
-### New in Journey
-
-- **Journey has crafting.** Gather herbs, timber, ore and crystals, make potions, scrolls and bigger bags, and improve your kit. Plus a **Scroll of return**, bags you can equip, an in-game **Guide** tab, full screen, and I for the bag.
-- **Journey tells its story as you go.** A narrator for each region and town, names on the map, local lore, a **Story** tab that says where to go next, and conversations where you choose what to say.
-- **A guest house and a trophy case.** Journey opens in a guest house behind my inn now, with a trophy case that keeps a trophy from every story you play, even after you start a new one. Walk down into my inn and the New adventure and Resume buttons are right there.
-
-### New in the Lab
-
-- **The Lab's research scripts land together.** Tool interviews and coached lesson sessions for Riker and Bobert, with wording and thinking A/B tests; reading a brain's tool traces; the evil check, steering and sweeps (records only, they never teach a brain); smoke gates that stop a rented card in its first minutes if something is wrong; and expert maps and lesson sets for GPT-OSS. Nothing here rents a card by itself: every rental still waits for your typed yes.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.226
-
-🧭 Journey has music and sound now, and every style draws its own kit.
-
-### New
-
-- **Journey has music and sound.** Every kind of place has its own tune: my inn, the open land, towns, castles, caves, the sky, under the sea and boat trips. Fights have their own music, keepers get a bigger tune, and wins and level-ups get a fanfare. Doors, chests, coin, hits and every kind of magic make sounds. Each style plays on its own instruments. Sound starts on in Journey, and 🔊 (or the M key) turns it off. Your choice is remembered.
-- **Each style draws its own kit.** Smart pistols and katanas in Cyberpunk, blasters and beam swords in Sci-fi, flintlocks and sabres in Steampunk. Monsters are redrawn for every style too, and monsters, classes, spells and items get names to fit. Only the looks change; the numbers don't.
-- **Journey's land got a details pass.** Tall mountain ranges, houses and trees that sit on the ground round them, foaming shores, smoke, neon and steam, and lamp-lit towns.
-- **More sparkle.** Items, crits, level-ups, chests and doors all have new effects.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.225
-
-The Lab's privacy scrub catches a name in pieces, and my tool record starts fresh when my tools change shape.
-
-### Fixed
-
-- **The Lab's privacy scrub misses nothing in brain odds.** A name split across tokens is caught even after a stand-in that's already in place, odds written as token and number pairs are joined and scrubbed too, and the raw bytes of each token follow the scrubbed text. The check before anything leaves your PC now looks at every match, not just the first.
-- **My tool record starts fresh when my tools change shape.** When a brain family gets its own tool wording, the old record moves to a `tool-record-archive` folder next to it instead of being deleted, so it can still be used for lessons.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
 ## Older versions
 
+- [1.5.225 to 1.5.249](app/docs/changelog/1.5.225-1.5.249.md)
 - [1.5.200 to 1.5.224](app/docs/changelog/1.5.200-1.5.224.md)
 - [1.5.175 to 1.5.199](app/docs/changelog/1.5.175-1.5.199.md)
 - [1.5.150 to 1.5.174](app/docs/changelog/1.5.150-1.5.174.md)
