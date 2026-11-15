@@ -2614,3 +2614,19 @@ dialog.fade-ask .fade-row button.danger { color: var(--on-accent); background: v
 .wz-people .people-list { list-style: none; padding: 0; }
 .wz-people .people-list li { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
 .guest-bar .g-answer { flex: none; }
+
+/* Nov 15: Settings, Bob-Net, How Bob picks a Bob for a job (public/share-brains.js) */
+.job-pick { margin: .4em 0 .6em 1.6em; padding: .4em .6em; border-left: 2px solid var(--accent, currentColor); }
+.job-pick.waits { opacity: .7; }
+.job-pick p { margin: .3em 0; }
+.job-pick .pick-rules { margin: .2em 0 .5em; padding-left: 0; list-style: none; }
+.job-pick .pick-rule { display: flex; align-items: center; flex-wrap: wrap; gap: .3em; margin: .15em 0; }
+.job-pick .pick-rule.off { opacity: .75; }
+.job-pick .pick-rule label.switch { flex: 0 1 auto; margin: 0; min-width: 0; }
+.job-pick .pick-move { min-width: 2.2em; min-height: 2.2em; }
+.job-pick select { min-height: 2.2em; }
+.job-pick .pick-last { padding-left: 2.4em; }
+.job-pick .pick-kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 20em), 1fr)); gap: .3em .8em; }
+.job-pick .pick-kind { display: flex; align-items: center; justify-content: space-between; gap: .4em; min-width: 0; }
+.job-pick .pick-kind select { flex: none; max-width: 100%; }
+@media (max-width: 520px) { .job-pick { margin-left: 0; } }

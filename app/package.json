@@ -133,6 +133,7 @@
     "test/run-phone-access-test.js",
     "test/run-android-test.js",
     "test/run-share-brains-test.js",
+    "test/run-job-pick-test.js",
     "test/run-mac-test.js",
     "test/run-linux-test.js",
     "test/run-catalogue-test.js",
