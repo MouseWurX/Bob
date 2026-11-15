@@ -155,7 +155,7 @@ export const LESSONS = [
       q('Why freeze the lower layers?', ['They often hold general language worth keeping', true, 'Right. It protects what the brain already knows.'], ['They are empty', false, 'They are full of useful weights.'])
     ] },
   { id: 'cut', unit: 'change', title: 'Cutting experts', pro: 'Expert pruning (REAP)',
-    real: { text: 'Keeping 208 of 256 experts, a typical skill kept 97 to 98% of its routing, but general knowledge kept 90%. At 128 it kept 60%. Layer 2 was the worst layer for every skill.', from: 'docs/MAKING-SMALLER-MODELS.md' },
+    real: { text: 'Keeping 208 of 256 experts, Bob\'s skills kept 97 to 98% of their routing, but general knowledge kept 90%. At 144 they kept 87 to 90%, and general knowledge 66%. Layer 2 was the worst layer for every skill.', from: 'docs/forge-runs/2026-11-06-counts-v3/ladder.md' },
     read: ['A mixture-of-experts brain often has experts that rarely get picked for your kind of work. Cutting them makes the file smaller, so it fits a smaller card.',
       'To choose, I count which experts get picked on real tasks, keep the busy ones, and test before and after. Cut too much and it forgets things.'],
     try: { kind: 'page', ask: 'See how the Lab counts experts and makes a smaller brain.', page: 'make', button: 'Open Make a brain' },
@@ -189,6 +189,132 @@ export const LESSONS = [
       q('Your new brain scores 70. Is it better?', ['Only if the stock brain scored lower on the same test', true, 'Right. Always compare to a baseline.'], ['Yes, 70 is good', false, 'A number alone says nothing.']),
       q('A test step was skipped. What does the report say?', ['That it was skipped, and why', true, 'Right. Honest reports state what ran.'], ['Nothing, it passed anyway', false, 'Hiding skips makes results look better than they are.'])
     ] },
+  // ---- Advanced: How brains learn ----
+  { id: 'loss', unit: 'learning', title: 'Loss', pro: 'Cross-entropy loss',
+    read: ['Training needs one number that says how wrong the brain was. For each token in a lesson, take the odds the brain gave the right next token, and score it minus the log of those odds. That is the loss.',
+      'Odds of 1 give a loss of 0. Odds of 0.5 give 0.69. Odds of 0.01 give 4.6. Averaged over every token, lower is better. A heal or a fine-tune is judged by this number on lessons it never trained on.'],
+    real: { text: 'Healing Riker after its cut took its loss on held-out lessons from 0.401 to 0.362. The uncut teacher scored 0.324, so the heal closed most of the gap.', from: 'docs/FORGE-JOURNAL.md' },
+    try: { kind: 'next', loss: true, ask: 'See my odds, and the loss I\'d get if the top token were the right one.', text: 'The capital of France is' },
+    check: [
+      q('The right token got odds of 0.5. What is the loss for that token?', ['About 0.69', true, 'Right. Minus the natural log of 0.5.'], ['0.5', false, 'The loss is minus the log of the odds, not the odds.'], ['0', false, '0 only when the odds are 1.']),
+      q('A heal takes held-out loss from 0.40 to 0.36. What does that mean?', ['The brain now gives the right tokens higher odds on unseen lessons', true, 'Right. Lower loss on held-out lessons is real learning.'], ['It memorised the test', false, 'Held-out lessons were never trained on, so it couldn\'t.'], ['Nothing', false, 'A drop like that is a real improvement.'])
+    ] },
+  { id: 'gradients', unit: 'learning', title: 'Gradients and the training loop', pro: 'Backpropagation and gradient descent',
+    read: ['For every weight, training works out which way to nudge it to make the loss smaller. That direction is the gradient, found by working backwards through the layers (backpropagation).',
+      'The learning rate is how big each nudge is. Too big and training jumps about; too small and it barely moves. A batch of lessons, a nudge, repeat: that is the training loop. One pass over every lesson is an epoch.',
+      'Watch the held-out loss. If training loss keeps falling but held-out loss rises, the brain is memorising the lessons, not learning the skill (overfitting). Stop there.'],
+    try: { kind: 'page', ask: 'See the training steps the Lab can run, with their settings.', page: 'steps', button: 'Open Steps' },
+    check: [
+      q('What is the learning rate?', ['How big each nudge to the weights is', true, 'Right. Too big jumps about, too small barely moves.'], ['How fast the card runs', false, 'That\'s speed, not learning rate.']),
+      q('Training loss falls, held-out loss rises. What is happening?', ['Overfitting: it is memorising the lessons', true, 'Right. Stop, or add more varied lessons.'], ['It is learning faster', false, 'Held-out loss rising means it is getting worse on new work.'])
+    ] },
+  // ---- Advanced: Transformers ----
+  { id: 'embeddings', unit: 'transformers', title: 'Embeddings and positions', pro: 'Token embeddings and RoPE',
+    read: ['Each token number picks a row from a big table: its embedding, a list of a few thousand numbers. Tokens used in similar ways end up with similar rows.',
+      'Attention by itself doesn\'t know word order. Rotary position embedding (RoPE) turns each token\'s numbers by an angle that depends on its place, so attention can tell near from far.'],
+    try: { kind: 'tokens', ask: 'Split "cat", " cat" and "Cat". Each is a different token with its own embedding row.', text: 'cat cat Cat CAT' },
+    check: [
+      q('Is " cat" (with a space) the same token as "cat"?', ['Usually not: different token, different embedding row', true, 'Right. Try it above.'], ['Always the same', false, 'The leading space usually makes it a different token.']),
+      q('What does RoPE add?', ['Where each token sits in the text', true, 'Right. Attention can then tell near from far.'], ['Extra experts', false, 'RoPE is about positions, not experts.'])
+    ] },
+  { id: 'kvmath', unit: 'transformers', title: 'Attention heads and memory', pro: 'Multi-head and grouped-query attention, KV cache size',
+    read: ['Each layer\'s attention is split into heads, each looking for something different. Each token stores a key and a value for every layer, so later tokens can look back.',
+      'KV cache size = 2 (key and value) x layers x KV heads x head size x bytes per number x tokens. Grouped-query attention shares one key and value between several heads, which shrinks the cache a lot. Storing the cache at 8 bits halves it again.'],
+    real: { text: 'Riker found one fact hidden at 25, 50 and 75% depth in 8K, 32K, 64K and 128K windows: 12 out of 12, the same as full Qwen. A 128K window fits a 16 GB card with part of the brain off the card.', from: 'docs/FORGE-JOURNAL.md' },
+    try: { kind: 'context', ask: 'Paste a long text and see how much of my context it fills.', text: 'Paste a long document here.' },
+    check: [
+      q('What does grouped-query attention save?', ['KV cache memory, by sharing keys and values', true, 'Right. Fewer KV heads, smaller cache.'], ['Disk space for the brain file', false, 'It mostly saves memory while running.']),
+      q('Double the context. What happens to the KV cache?', ['It doubles', true, 'Right. It grows with every token held.'], ['It stays the same', false, 'Every token adds its keys and values.'])
+    ] },
+  // ---- Advanced: Mixture of experts ----
+  { id: 'routing', unit: 'moe', title: 'Routers', pro: 'Top-k gating',
+    read: ['In each MoE layer, the router scores every expert for this token, keeps the top k (often 8 of 256), and mixes their outputs by those scores. The rest do nothing for this token.',
+      'In training, a balance rule pushes the router to use all experts, so none sit idle. That is also why experts follow word patterns rather than tidy topics.'],
+    try: { kind: 'facts', ask: 'See how many experts my brain has, and how many the router keeps per token.', show: ['experts', 'active'] },
+    check: [
+      q('What does the router do?', ['Scores the experts and keeps the top few for each token', true, 'Right. Top-k.'], ['Sends messages to Bob', false, 'Different router.']),
+      q('Why do training rules push for balance?', ['So every expert gets used and learns', true, 'Right. An unused expert is wasted memory.'], ['To make the file smaller', false, 'Balance doesn\'t change the size.'])
+    ] },
+  { id: 'perword', unit: 'moe', title: 'Experts per word', pro: 'Active experts (k) vs quality',
+    read: ['You can run a brain with fewer experts per token than it was trained with. Fewer is faster, because less is read for each token, but at some point quality falls off a cliff.',
+      'The cliff is sudden, not gentle. So test each setting, and test again after every cut.'],
+    real: { text: 'Full Qwen3.6-35B-A3B: at 8, 6 and 4 experts per word it kept 45/97 right tools, 20/20 facts and 6/6 code, at 82.7, 92.1 and 102.5 tokens a second. At 3 it fell to 26/97 tools and 4/6 code. At 2 it collapsed to 1/97 and 0/6.', from: 'docs/forge-runs/benchmarks/experts-per-word-full-qwen-2026-11-04.md' },
+    try: { kind: 'page', ask: 'See the Lab\'s experts-per-word test.', page: 'test', button: 'Open Test' },
+    check: [
+      q('What happens with fewer experts per token?', ['Faster, and fine until a sudden cliff', true, 'Right. 4 was fine, 3 was not.'], ['Slower and better', false, 'Fewer experts means less to read, so faster.']),
+      q('You cut a brain. Do the old experts-per-word results still hold?', ['No: test again after every cut', true, 'Right. The cliff can move.'], ['Yes', false, 'A cut changes what each expert carries.'])
+    ] },
+  // ---- Advanced: Making brains smaller ----
+  { id: 'quantmath', unit: 'smaller', title: 'How quantization works', pro: 'Block quantization, K-quants and imatrix',
+    read: ['Weights are stored in small blocks, for example 32 at a time. Each block keeps one scale (and sometimes an offset) plus a few bits per weight. To use a weight: bits x scale.',
+      'K-quants spend more bits on the parts that matter most. An importance matrix (imatrix), measured on real text, tells the quantizer which weights to protect.'],
+    try: { kind: 'facts', ask: 'See how my brain is stored and its bits per weight.', show: ['type', 'bits', 'size'] },
+    check: [
+      q('Why are weights quantized in blocks?', ['Each block gets its own scale, so small and large weights both fit', true, 'Right. One scale for the whole brain would lose too much.'], ['To make loading slower', false, 'No.']),
+      q('What does an imatrix do?', ['Shows which weights matter most, so they keep more precision', true, 'Right. Measured on real text.'], ['Adds new weights', false, 'It only guides the quantizer.'])
+    ] },
+  { id: 'reap', unit: 'smaller', title: 'Scoring experts', pro: 'REAP (router-weighted expert activation pruning)',
+    read: ['Counting how often an expert is picked isn\'t enough. REAP also weighs how much each expert actually changes the output when it is picked. An expert picked often but adding little can go first.',
+      'Try a keep list first by switching experts off in place, which you can undo exactly. Only slice the file once the list is right.'],
+    real: { text: 'REAP trims with no heal, scored on 314 held-out chat turns at 100, 75, 50 and 35% of experts kept. Bobert (uncut): 204, 204, 198, 145. Riker (already cut once): 210, 204, 163, 72. An uncut brain has slack; a cut one doesn\'t.', from: 'docs/MAKING-SMALLER-MODELS.md' },
+    try: { kind: 'page', ask: 'See the Lab\'s cut plans.', page: 'make', button: 'Open Make a brain' },
+    check: [
+      q('What does REAP add to plain counting?', ['How much each expert changes the output', true, 'Right. Busy isn\'t the same as useful.'], ['The expert\'s file size', false, 'All experts in a layer are the same size.']),
+      q('Why did Riker fall so much harder than Bobert?', ['It had already been cut, so it had less slack', true, 'Right. Cut twice, lose more.'], ['Riker is a worse brand', false, 'Same family. The earlier cut is the reason.'])
+    ] },
+  // ---- Advanced: Data decides habits ----
+  { id: 'habits', unit: 'data', title: 'Lessons teach habits', pro: 'Behaviour from training data',
+    read: ['A brain copies what its lessons do, not what they say. If lessons hand work off or invent results, the brain learns to hand off and invent.',
+      'So read the lessons, not just their count. One bad pattern repeated a few hundred times becomes a habit.'],
+    real: { text: '37% of Bob\'s first coding lessons handed code off to a tool with a pretend result. Clean coding lessons took Riker from 6 to 9 of 13 coding tasks (full Qwen: 12).', from: 'docs/MAKING-SMALLER-MODELS.md' },
+    try: { kind: 'page', ask: 'See how the Lab builds and checks lessons.', page: 'teach', button: 'Open Teach' },
+    check: [
+      q('What does a brain learn from a lesson?', ['What the lesson does', true, 'Right. Its habits, good and bad.'], ['Only the facts in it', false, 'It learns the behaviour too.']),
+      q('How do you find a bad habit in a lesson set?', ['Read the lessons', true, 'Right. Counts and scripts miss it.'], ['Count them', false, 'A count says nothing about what they teach.'])
+    ] },
+  { id: 'cleaning', unit: 'data', title: 'Cleaning a lesson set', pro: 'Data cleaning and deduplication',
+    read: ['Before training, drop lessons that never reach an answer, loop on one tool call, call a tool that doesn\'t exist, are empty, or are duplicates.',
+      'Keep a held-out split that is never trained on, and check that no test item hides in the training side. A test the brain has seen is a memory test.'],
+    real: { text: 'Cleaning Bob\'s first 16 lesson sets took them from 9,059 to 8,828 lessons: 73 duplicates, 123 with no final answer, 28 calling unknown tools, 6 loops and 1 empty.', from: 'docs/MAKING-SMALLER-MODELS.md' },
+    try: { kind: 'page', ask: 'See the cleaning step in the Lab.', page: 'steps', button: 'Open Steps' },
+    check: [
+      q('Which lesson should be dropped?', ['One that calls a tool that doesn\'t exist', true, 'Right. It teaches inventing tools.'], ['A short one that is right', false, 'Short and right is fine.']),
+      q('Why check for test items in the training side?', ['A seen test only measures memory', true, 'Right. Scores would look better than the brain is.'], ['To save disk space', false, 'It\'s about honest scores.'])
+    ] },
+  // ---- Advanced: Agents and tools ----
+  { id: 'toolshape', unit: 'agents', title: 'Tool shape', pro: 'Tool schemas and naming',
+    read: ['A brain picks tools by their names, descriptions and arguments. Two tools that sound alike get mixed up, and a long list costs context and attention.',
+      'Keep names plain and distinct, descriptions short and about what the tool does, and show only the tools a job needs.'],
+    try: { kind: 'chat', mode: 'tools', ask: 'Ask something that needs get_weather, and something that doesn\'t. See when the brain calls it.', text: 'Do I need an umbrella in Calgary today?' },
+    check: [
+      q('Two tools have near-twin names. What happens?', ['The brain mixes them up more often', true, 'Right. Make them distinct.'], ['Nothing', false, 'Near-twins are a common source of wrong calls.']),
+      q('Why not give the brain every tool, always?', ['Long lists cost context and cause more wrong picks', true, 'Right. Show what the job needs.'], ['It can\'t read lists', false, 'It can, but worse when they are long.'])
+    ] },
+  { id: 'agentloop', unit: 'agents', title: 'The agent loop', pro: 'Plan, act, observe',
+    read: ['An agent repeats: decide the next step, call a tool, read the result, decide again, until the job is done. Every result goes back into context.',
+      'Good agents check results instead of assuming, recover from errors by trying another way, and stop when done. Planning and reviewing benefit from thinking; single tool steps usually don\'t.'],
+    try: { kind: 'chat', mode: 'think', ask: 'Ask for a short plan with thinking off, then on.', text: 'Plan the steps to tidy a messy downloads folder into folders by file type. Just the steps.' },
+    check: [
+      q('A tool returns an error. What should a good agent do?', ['Read it and try another way', true, 'Right. Recover, don\'t repeat.'], ['Call the same tool the same way again', false, 'That usually loops.'], ['Pretend it worked', false, 'Never. That is how bad habits start.']),
+      q('Where does thinking help most in the loop?', ['Planning and reviewing', true, 'Right. Plain steps go faster without it.'], ['Every single tool call', false, 'It mostly slows plain steps down.'])
+    ] },
+  // ---- Advanced: Training beyond copying ----
+  { id: 'preference', unit: 'beyond', title: 'Preference training', pro: 'DPO (direct preference optimization)',
+    read: ['Copying lessons teaches what to do. Preference training also teaches what not to do: show pairs, a better answer and a worse one to the same ask, and raise the odds of the better one relative to the worse.',
+      'The worse half is often a real mistake the brain made, fixed into the better half. That is why bad lessons are repaired, not just thrown away.'],
+    try: { kind: 'page', ask: 'See preference and other training steps in the Lab.', page: 'steps', button: 'Open Steps' },
+    check: [
+      q('What does a preference pair hold?', ['A better and a worse answer to the same ask', true, 'Right.'], ['Two different asks', false, 'Same ask, two answers.']),
+      q('Why repair bad lessons instead of deleting them?', ['The original can be the worse half of a pair', true, 'Right. Mistakes become teaching material.'], ['It saves time', false, 'It takes longer, but teaches more.'])
+    ] },
+  { id: 'reward', unit: 'beyond', title: 'Learning from rewards', pro: 'Reinforcement learning (GRPO)',
+    read: ['Instead of copying, the brain tries a task several times, each try is scored by a checker (did the code run, was the tool call right), and better-than-average tries are made likelier. GRPO compares the tries in each group.',
+      'It only works if the checker is right. A checker that can be fooled teaches the brain to fool it.'],
+    try: { kind: 'page', ask: 'See reward training in the Lab\'s protocol.', page: 'steps', button: 'Open Steps' },
+    check: [
+      q('What does GRPO compare?', ['Several tries at the same task, scored by a checker', true, 'Right. Better than the group average gets reinforced.'], ['Two different brains', false, 'It compares one brain\'s own tries.']),
+      q('What goes wrong with a bad checker?', ['The brain learns to fool the checker', true, 'Right. Reward hacking.'], ['Training gets slower', false, 'Worse: it learns the wrong thing.'])
+    ] },
   // ---- Engineering: Build the tools ----
   { id: 'gguf', unit: 'tools', title: 'Reading a brain file', pro: 'GGUF parsing',
     read: ['A GGUF file has three parts: a header of facts (keys and values, like how many layers), a table of tensors (each one\'s name, shape, type and where its bytes start), then the bytes themselves.',
@@ -217,10 +343,81 @@ export const LESSONS = [
     check: [
       q('What changes in the header after a cut?', ['The expert count', true, 'Right. And each expert tensor gets smaller.'], ['The brain\'s name only', false, 'The expert count must change or it won\'t load.']),
       q('The cut file loads. Is it done?', ['No: test it against the original, then heal', true, 'Right. Loading is only the first check.'], ['Yes', false, 'It can load and still answer worse.'])
-    ] }
+    ] },
+  // ---- Engineering: Inference engines ----
+  { id: 'engine', unit: 'engines', title: 'How an engine runs a brain', pro: 'Inference: prefill and decode',
+    read: ['An engine like llama.cpp loads the file, puts as many layers on the graphics card as fit, and runs the rest on the processor. Then it works in two phases.',
+      'Prefill reads your whole prompt at once, many tokens in parallel, so it is fast per token. Decode writes one token at a time, and each one reads every active weight, so writing speed is mostly limited by memory speed, not maths.'],
+    code: { from: 'idea, as llama-server does it', text: "load GGUF -> layers 0..n on the card, rest on the processor\nprefill: run all prompt tokens together, fill the KV cache\nloop: run 1 token -> odds -> sample -> append -> until stop or limit" },
+    try: { kind: 'facts', ask: 'See my size and how many weights work per token: that is roughly what each written token has to read.', show: ['size', 'active', 'type'] },
+    check: [
+      q('Why is reading the prompt faster per token than writing?', ['Prefill does many tokens in parallel; decode does one at a time', true, 'Right.'], ['Prompts are shorter', false, 'Even long prompts go fast per token.']),
+      q('What mostly limits writing speed?', ['How fast the weights can be read from memory', true, 'Right. Each token reads every active weight.'], ['The keyboard', false, 'No.'])
+    ] },
+  { id: 'offload', unit: 'engines', title: 'Fitting a big brain on a small card', pro: 'Layer and expert offload',
+    read: ['When a brain is bigger than the card, something has to live in system memory. For a mixture of experts the best thing to move is experts: they are big but only a few are read per token, while attention is small and read every time.',
+      'A fixed split, with some layers\' experts kept in system memory, is steady. A cache that swaps experts in and out sounds clever but spends its time copying.'],
+    try: { kind: 'page', ask: 'See where a brain lives and how it is split in the Lab.', page: 'inside', button: 'Open Look inside' },
+    check: [
+      q('What should move off the card first in a MoE brain?', ['Experts', true, 'Right. Big, but only a few read per token.'], ['Attention', false, 'It is small and read for every token, so keep it on the card.']),
+      q('Why can a swapping cache be slow?', ['It spends its time copying experts back and forth', true, 'Right.'], ['It uses too little memory', false, 'The copying is the cost.'])
+    ] },
+  // ---- Engineering: Training at scale ----
+  { id: 'trainmem', unit: 'scale', title: 'Memory in training', pro: 'Optimizer state, gradient checkpointing, LoRA',
+    read: ['Training needs far more memory than running: the weights, a gradient for each trained weight, the optimizer\'s running averages (often two more numbers each), and the activations of every layer for the backward pass.',
+      'LoRA trains a tiny share of weights, so gradients and optimizer state shrink to almost nothing. Gradient checkpointing keeps fewer activations and recomputes them, trading time for memory.'],
+    try: { kind: 'page', ask: 'See the Lab\'s training steps and their memory notes.', page: 'steps', button: 'Open Steps' },
+    check: [
+      q('Why does LoRA fit on smaller cards?', ['Only a tiny share of weights need gradients and optimizer state', true, 'Right.'], ['It deletes layers', false, 'Nothing is deleted.']),
+      q('What does gradient checkpointing trade?', ['Time for memory', true, 'Right. It recomputes instead of storing.'], ['Accuracy for speed', false, 'The result is the same, just slower.'])
+    ] },
+  { id: 'renting', unit: 'scale', title: 'Renting cards safely', pro: 'Pre-flight checks and spend caps',
+    read: ['Rented cards bill by the hour, so check everything before the paid run: the files are there, the tool shape is right, each request fits its slot, and a small sample works.',
+      'A sample gate runs the first few items and stops the whole run if too few succeed. Every run has a money cap and a time cap, and deletes its own card when it ends, however it ends.'],
+    try: { kind: 'page', ask: 'See the Forge, where rentals are planned with caps.', page: 'forge', button: 'Open Forge' },
+    check: [
+      q('What does a sample gate do?', ['Stops the run early if the first items mostly fail', true, 'Right. Cheap to fail early.'], ['Makes the run faster', false, 'It saves money, not time.']),
+      q('A run crashes. What must still happen?', ['Its card is deleted, so billing stops', true, 'Right. Every exit path ends the rental.'], ['Nothing until someone checks', false, 'That\'s how bills pile up.'])
+    ] },
+  // ---- Engineering: Testing that tells the truth ----
+  { id: 'harness', unit: 'truth', title: 'Building an eval harness', pro: 'Evaluation harness',
+    read: ['A test harness asks the same questions the same way every time: same prompt, temperature 0, same seed, thinking set on purpose. It scores with code where it can (did the tool call match, did the code run), not by eye.',
+      'It records what ran and what was skipped, and runs the stock brain as a baseline next to the new one.'],
+    real: { text: 'A 97-question quiz moves by 3 to 5 between runs, so small wins on small quizzes can be luck. Bob trusts held-out chats for decisions.', from: 'docs/MAKING-SMALLER-MODELS.md' },
+    try: { kind: 'page', ask: 'See the Lab\'s challenges and wobble check.', page: 'test', button: 'Open Test' },
+    check: [
+      q('Why temperature 0 in a harness?', ['So the same brain gets the same score twice', true, 'Right. Fewer moving parts.'], ['It makes brains smarter', false, 'It only makes runs repeatable.']),
+      q('A new brain beats the old by 2 on a 97-question quiz. Real?', ['Not yet: that is inside the 3-to-5 noise', true, 'Right. Run it more, or use a bigger test.'], ['Yes, any win counts', false, 'Small quizzes wobble.'])
+    ] },
+  { id: 'leakcheck', unit: 'truth', title: 'Writing a leak check', pro: 'Contamination detection',
+    read: ['Before training, compare every test item with every training lesson. Normalise first (case, spaces, punctuation), then look for exact matches and for long shared starts.',
+      'Run it in code before every rental, and block the run if any test item is found. A leak found after training means the scores can\'t be trusted.'],
+    code: { from: 'idea', text: "norm = lower, squash spaces, strip punctuation\nseen = set(norm(l) for l in training) + set(norm(l)[:60] for l in training)\nleaks = [t for t in tests if norm(t) in seen or norm(t)[:60] in seen]\nif leaks: stop before renting" },
+    try: { kind: 'page', ask: 'See the Lab\'s steps, where the leak check runs before training.', page: 'steps', button: 'Open Steps' },
+    check: [
+      q('Why normalise before comparing?', ['So small changes in case or spacing don\'t hide a copy', true, 'Right.'], ['To make files smaller', false, 'It\'s for matching.']),
+      q('When should the leak check run?', ['Before every training run, in code', true, 'Right. Block the run if it finds one.'], ['After publishing', false, 'Too late: the scores are already wrong.'])
+    ] },
+  // ---- Engineering: Looking inside ----
+  { id: 'steering', unit: 'looking', title: 'Probes and steering', pro: 'Linear probes and activation steering',
+    read: ['A behaviour often shows up as a direction in a layer\'s numbers. Average the activations on asks that show it, subtract the average on asks that don\'t, and you have a direction (a control vector).',
+      'A probe reads how strongly that direction shows. Steering adds it, or takes it away, while the brain runs. Nothing in the file changes, so it is a safe way to test an idea before any surgery.'],
+    try: { kind: 'page', ask: 'See what the Lab can look at inside a brain.', page: 'inside', button: 'Open Look inside' },
+    check: [
+      q('How do you find a steering direction?', ['Average activations with the behaviour minus without', true, 'Right. The difference of means.'], ['Pick a random expert', false, 'That finds nothing in particular.']),
+      q('Does steering change the brain file?', ['No, it adds to the signals while it runs', true, 'Right. Safe to try and undo.'], ['Yes, permanently', false, 'That would be surgery.'])
+    ] },
+  { id: 'patching', unit: 'looking', title: 'Finding where a habit lives', pro: 'Activation patching (causal tracing)',
+    read: ['Run the brain on two asks, one that shows a habit and one that doesn\'t. Then copy one layer\'s signals from one run into the other. If the habit appears or vanishes, that layer carries it.',
+      'Do it layer by layer, with enough asks to beat the noise. Only change weights once the same layers show up again and again.'],
+    try: { kind: 'page', ask: 'See the Lab\'s look-inside tools.', page: 'inside', button: 'Open Look inside' },
+    check: [
+      q('What does patching tell you?', ['Which layers carry a behaviour', true, 'Right. Swap a layer\'s signals, watch what changes.'], ['How big the file is', false, 'No.']),
+      q('Why many asks per test?', ['One ask is noisy; many show what is real', true, 'Right.'], ['To use up the card', false, 'No.'])
+    ] },
 ];
 
-export const LESSON_PAGES = { teach: 'teach', steps: 'steps', make: 'make', test: 'test', inside: 'inside' }; // a lesson's page link, Lab tab ids
+export const LESSON_PAGES = { teach: 'teach', steps: 'steps', make: 'make', test: 'test', inside: 'inside', forge: 'forge' }; // a lesson's page link, Lab tab ids
 
 // What one Try it may send. Everything else in the body is dropped.
 export const LONG_TEXT = 40000; // characters the Context lesson may count

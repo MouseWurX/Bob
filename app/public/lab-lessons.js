@@ -9,7 +9,7 @@ import { goBtn } from './lab-go.js';
 const pct = (x) => `${Math.round(x * 1000) / 10}%`;
 const shown = (t) => String(t).replace(/^ /, '␣').replace(/\n/g, '⏎') || '∅';
 const firstSentence = (t) => String(t).split(/(?<=\.)\s/)[0];
-const PAGE_LABEL = { teach: 'Teach', steps: 'Steps', make: 'Make a brain', test: 'Test', inside: 'Look inside' };
+const PAGE_LABEL = { teach: 'Teach', steps: 'Steps', make: 'Make a brain', test: 'Test', inside: 'Look inside', forge: 'Forge' };
 
 export function createLessons({ api, go = () => {} }) {
   let el = null, view = null, msg = '', open = null;
@@ -45,7 +45,7 @@ export function createLessons({ api, go = () => {} }) {
   function tryResult(l, s) {
     const o = s.out; if (!o) return '';
     if (o.kind === 'tokens') return `<ol class="learn-tokens" aria-label="The pieces">${o.tokens.map((t, i) => `<li class="learn-tok ${i % 2 ? 'b' : 'a'}${t.partial ? ' part' : ''}" aria-label="${esc(shown(t.text))}, token number ${t.id}"><span class="learn-tok-text">${esc(shown(t.text))}</span><span class="learn-tok-id">${t.id}</span></li>`).join('')}</ol><p>${o.characters} characters, ${o.tokens.length} tokens.</p>`;
-    if (o.kind === 'next') return `<ol class="learn-odds" aria-label="My ten likeliest next tokens">${o.top.map((x) => `<li><span class="learn-odd"><i style="width:${Math.max(1, Math.round(x.odds * 100))}%" aria-hidden="true"></i><span class="learn-odd-text"><code>${esc(shown(x.token))}</code> <span class="muted">${pct(x.odds)}</span></span></span></li>`).join('')}</ol>`;
+    if (o.kind === 'next') return `<ol class="learn-odds" aria-label="My ten likeliest next tokens">${o.top.map((x) => `<li><span class="learn-odd"><i style="width:${Math.max(1, Math.round(x.odds * 100))}%" aria-hidden="true"></i><span class="learn-odd-text"><code>${esc(shown(x.token))}</code> <span class="muted">${pct(x.odds)}</span></span></span></li>`).join('')}</ol>${l.try.loss && o.top[0] ? `<p class="learn-saw">If <code>${esc(shown(o.top[0].token))}</code> is the right next token, my loss for it is −ln(${Math.round(o.top[0].odds * 1000) / 1000}) = <strong>${(-Math.log(Math.max(o.top[0].odds, 1e-9))).toFixed(2)}</strong>. If the right token were one I gave low odds, the loss would be much bigger.</p>` : ''}`;
     if (o.kind === 'temps') { const col = (h, xs) => `<div class="learn-try"><strong>${h}</strong>${xs.map((t) => `<p><code>${esc(s.text)}</code>${esc(t)}</p>`).join('')}</div>`; return `<div class="learn-tries">${col('Cold (0.2)', o.cold)}${col('Hot (1.5)', o.hot)}</div>`; }
     if (o.kind === 'context') return `<p><strong>${o.tokens.toLocaleString()} tokens</strong> from ${o.characters.toLocaleString()} characters.${o.ctx ? ` That's ${o.share}% of the ${o.ctx.toLocaleString()} tokens I can hold right now.` : ''}</p>${o.ctx ? `<progress max="100" value="${Math.min(100, o.share)}" aria-label="Share of my context">${o.share}%</progress>` : ''}`;
     if (o.kind === 'facts') {

@@ -18,6 +18,7 @@ check('three levels: Foundations, Advanced, Engineering', LEVELS.map((l) => l.id
 check('every unit sits in a level', UNITS.every((u) => LEVELS.some((l) => l.id === u.level)));
 check('Foundations has the five units in order', UNITS.filter((u) => u.level === 'foundations').map((u) => u.title).join('|') === 'Words|Inside a brain|Talking to a brain|Changing a brain|Judging a brain');
 check('Engineering starts with Build the tools', UNITS.find((u) => u.level === 'engineering')?.id === 'tools' && LESSONS.filter((l) => l.unit === 'tools').length === 3);
+check('every unit in every level has lessons', UNITS.every((u) => LESSONS.some((l) => l.unit === u.id)), UNITS.filter((u) => !LESSONS.some((l) => l.unit === u.id)).map((u) => u.id).join(','));
 check('lesson ids are unique', new Set(LESSONS.map((l) => l.id)).size === LESSONS.length);
 check('every lesson is in a unit, has a title, a proper name and something to read', LESSONS.every((l) => UNITS.some((u) => u.id === l.unit) && l.title && l.pro && l.read.length >= 1));
 check('every Try it is a known kind', LESSONS.every((l) => KINDS.includes(l.try.kind)), LESSONS.filter((l) => !KINDS.includes(l.try.kind)).map((l) => l.id).join(','));
