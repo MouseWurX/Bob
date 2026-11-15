@@ -170,6 +170,7 @@ check('and that lender stopped loading too', lender.lending === null);
   check('a cap that isn\'t on the list is refused', Boolean(cleanSharePatch(base, { scutMbps: 9999 }).error));
   { const a = cleanSharePatch(base, { scutMbps: 100 }), b = cleanSharePatch({ ...base, share: a.share }, { scutMbps: 'auto' });
     check('1.5.214: picking 100 counts as chosen; Auto goes back to choosing by the link', a.share.scutMbpsChosen === true && shareView({ ...base, share: a.share }).scutMbps === 100 && b.share.scutMbpsChosen === false && shareView({ ...base, share: b.share }).scutMbps === 'auto'); }
+  check('1.5.232: a 100 saved before 1.5.230 without a pick is still Auto (400), as 1.5.228 showed it; a picked 100 stays 100', shareView({ ...base, share: { ...base.share, scutMbps: 100 } }).scutMbps === 'auto' && shareView({ ...base, share: { ...base.share, scutMbps: 100, scutMbpsChosen: true } }).scutMbps === 100 && shareView({ ...base, share: { ...base.share, scutMbps: 300 } }).scutMbps === 300);
   check('Nov 14: Auto stores 400 (the owner: "it should be 400 by default")', cleanSharePatch(base, { scutMbps: 'auto' }).share.scutMbps === 400 && cleanSharePatch(base, { scut: true }).share.scutMbps === 400);
   check('other changes keep SCUT as it was', cleanSharePatch({ ...base, share: on.share }, { homeNet: false }).share.scut === true);
 }
