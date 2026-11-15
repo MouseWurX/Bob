@@ -151,7 +151,7 @@ export const forgeJobs = {
     if (rec.halted) writeJson(this.forgeLiveFile(), { ...rec, pid: 0, stopped: true, halted: false, podLeft: '' });
     return { stopped: true, pod: Boolean(pod) };
   },
-  // 15 Nov 2026 The console's STOP: the Forge stops working here, and its rented card stays up (Squeak: "the stop
+  // 15 Nov 2026 The console's STOP: the Forge stops working here, and its rented card stays up (the owner: "the stop
   // wouldn't end the rental"). Nothing watches the caps after this, so the console shows END RENTAL until it's pressed.
   forgeHalt() {
     const rec = readJson(this.forgeLiveFile(), null);

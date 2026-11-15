@@ -1,6 +1,6 @@
 // 15 Nov 2026 The Forge console (Lab > Forge). One window, two sides, and three panels to put on either side:
 // Server (a terminal: what the server prints, every request and reply through the Lab's relay, what scripts print, and
-// commands), Chat (talk to the loaded brain) and Set up (how it answers, and Lab jobs to run with it). Squeak's asks:
+// commands), Chat (talk to the loaded brain) and Set up (how it answers, and Lab jobs to run with it). The owner's asks:
 // server on the left, chat or set up on the right, any panel on any side, or just one; configurable and easy to use.
 // Above the window: LOAD MODEL LOCALLY and OPEN RENTAL (each opens a window to set it up), STOP (stops what runs
 // here, never a rental) and END RENTAL (only while a rental is up: deletes only that run's card).
