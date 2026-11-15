@@ -516,12 +516,14 @@ async function oneInner(idea, thinkTurn, room, fix, sb, tally) { // room 2 = a s
     else if (m.role === 'tool') { const t = { role: 'tool', tool_call_id: m.tool_call_id, name: m.name, content: String(m.content || '') }; saved.push(t); live.push(t); }
   }
   const maxSteps = idea.note || idea.prior || idea.failFirst ? 12 : 6; // 14 Nov trial: doctored lessons (earlier try, a failed first call, look, act) ran out of 6 steps
+  const stepTools = new Map(); // set key -> the tools offered at that step (the code checks read each call against its own step)
   let ranTool = false; // 15 Nov step thinking (Bob's step-thinking.js): plan with thinking, do each step after a tool result without it
   for (let step = 0; step < maxSteps; step++) {
     const think = stepThinking && ranTool ? false : thinkTurn;
     const t0 = toolsFor(loaded); const t = dropTools.size ? { ...t0, tools: (t0.tools || []).filter((x) => !dropTools.has(x.function?.name || x.name)), system: String(t0.system || '').split('\n').filter((ln) => ![...dropTools].some((d) => ln.includes(d))).join('\n') } : t0; // dropped tools leave the offer AND the prompt text
     const sys = tag ? `${t.system}\n\n${tag}` : t.system;
     const set = setKey(sys, t.tools);
+    stepTools.set(set, t.tools);
     // teacher-only additions (persona, act nudge) go to the server but never into the saved prompt or the set key
     const teacherOnly = teacherNoteFor(idea, fix);
     if (strict) ctx.add('work-rules'); if (exampleText) ctx.add('examples'); if (persona) ctx.add(stylePos === 'user' ? 'style-note' : 'style-system'); if (ACT_JOBS.has(idea.job)) ctx.add('act-nudge');
@@ -557,7 +559,7 @@ async function oneInner(idea, thinkTurn, room, fix, sb, tally) { // room 2 = a s
   const [leaked, cleanAnswer] = leakCheck(last.content);
   if (leaked) { if (leakMode === 'strip' && cleanAnswer.trim()) last.content = cleanAnswer; else throw new Error('style leaked into the final answer'); }
   const thought = saved.filter((m) => m.role === 'assistant' && m.reasoning).map((m) => m.reasoning).join('\n');
-  if (strict) { const why = lessonFault(saved, idea, toolsFor(loaded).tools); if (why) { const e = new Error(`check: ${why}`); e.why = why; throw e; } }
+  if (strict) { const why = lessonFault(saved, idea, (m) => stepTools.get(m.set) || toolsFor(loaded).tools); if (why) { const e = new Error(`check: ${why}`); e.why = why; throw e; } }
   const score = think && styleMarkers.length ? styleScore(thought, styleMarkers) : null;
   if (score !== null && score < styleMin) throw new Error(`style score ${score.toFixed(2)} under ${styleMin}`);
   if (review) {
