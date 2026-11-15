@@ -6,6 +6,7 @@
 // here, never a rental) and END RENTAL (only while a rental is up: deletes only that run's card).
 import { esc } from './rich.js';
 import { tip } from './tips.js';
+import { JOBS, GROUPS, LAB_PAGES, fieldDefault, brainsOf } from './lab-console-jobs.js'; // the whole Lab as forms
 
 const PANELS = [['server', 'Server'], ['chat', 'Chat'], ['setup', 'Set up']];
 const SIZES = [['even', 'Side by side'], ['left', 'Left wider'], ['right', 'Right wider'], ['leftonly', 'Left only'], ['rightonly', 'Right only']];
@@ -35,19 +36,11 @@ const TICKS = [
   ['toolReplies', 'Show replies to tools in the Chat', 'When a script or tool asks the brain, its reply shows in the Chat too, marked "to a tool".']
 ];
 export const DEFAULT_SETUP = { temperature: 0.7, top_p: 0.95, top_k: 40, min_p: 0.05, repeat_penalty: 1, max_tokens: 2048, seed: -1, think: false, showThink: true, stream: true, toolReplies: true, tools: 'none', system: '' };
-// Lab jobs that run here, free: the same ones as on the Steps tab and in the protocol, as small forms.
-const JOBS = [
-  { id: 'clean', kind: 'protocol', title: 'Clean a lesson set', what: 'Makes a cleaned copy: fixes the light mistakes and keeps the wrong answers apart. The set itself is only read.', fields: [['set'], ['review', 'Hand review', 'select', [['hand', 'Use its hand review'], ['none', 'No hand review']]], ['lightWeight', 'Weight of light fixes', 'range', [0, 2, 0.1, 0.5]]] },
-  { id: 'pairs', kind: 'protocol', title: 'Make right-and-wrong pairs', what: 'Pairs each right answer with a wrong one, for teaching by preference.', fields: [['set'], ['kind', 'For', 'select', [['bob', 'Bob'], ['style', 'A style model'], ['distill', 'Copying a teacher']]]] },
-  { id: 'sweep', kind: 'protocol', title: 'Expert dials sweep', what: 'Tries live settings on the loaded brain (experts per word, layers up or down) and scores each on held-out lessons. The brain file never changes.', fields: [['set'], ['url', 'Brain\'s address', 'url'], ['used', 'Experts per word to try', 'text', '-2,+2,+4'], ['scales', 'Turn layers up or down', 'text', '0.8,1.2'], ['sample', 'Chats per kind of lesson', 'range', [10, 200, 10, 60]]] },
-  { id: 'pii-scrub', kind: 'step', title: 'Scrub private details', what: 'Makes a copy of a set with names, folders and keys taken out. If anything private is left, it keeps nothing.', fields: [['set']] },
-  { id: 'eval-sets', kind: 'step', title: 'Make check sets', what: 'Makes the reward checks from the taught questions. The fair tests are never used.', fields: [] }
-];
-const LAB_PAGES = [['make', 'Make a brain', 'Cuts: smaller brains from a big one'], ['teach', 'Teach', 'Lessons, heals and the best-of picks'], ['test', 'Test', 'Benchmarks, challenges and taste tests'], ['inside', 'Look inside', 'Expert dials, peeking and switching experts'], ['steps', 'Steps', 'The whole protocol, step by step'], ['forge', 'Forge plans', 'Rented runs: plans and their purchase cards, below']];
-
 export function createConsole({ api }) {
   let v = null, since = 0, err = '', timer = null, busy = false, heldShown = '', ask = '', talkRev = -1, talk = [];
-  let choices = null, sets = null, dlgKind = '', dlgMsg = '', card = null, setupDraft = null, setupTimer = null;
+  let choices = null, L = null, lLoading = false, dlgKind = '', dlgMsg = '', card = null, setupDraft = null, setupTimer = null;
+  let rentals = null, rentMsg = '', rentAsk = null, pb = { name: '', steps: [], set: '' }, pbMsg = '';
+  const pipeMsg = {};
   let jobOpen = store.get('job', '');
   const jobMsg = {}, entries = [];
   const pick = (k, d, ok) => { const x = store.get(k, d); return ok.includes(x) ? x : d; };
@@ -104,14 +97,15 @@ export function createConsole({ api }) {
   function turnHtml(t) {
     if (t.who === 'you') return `<div class="lc-msg lc-you"><div class="lc-who">You</div><div class="lc-text">${esc(t.text)}</div></div>`;
     if (t.who === 'error' || t.who === 'note') return `<div class="lc-msg lc-${t.who === 'error' ? 'err' : 'note'}"><div class="lc-text">${esc(t.text)}</div></div>`;
-    const name = v?.server?.state === 'up' ? v.server.brain : v?.rental?.door || 'The brain';
+    const name = v?.bob?.on ? v.bob.name || 'Bob\'s brain' : v?.server?.state === 'up' ? v.server.brain : v?.rental?.door || 'The brain';
     const think = t.think && v?.setup?.showThink !== false ? `<details class="lc-think"${t.live && !t.text ? ' open' : ''}><summary>Thinking</summary><div class="lc-text">${esc(t.think)}</div></details>` : '';
     const calls = (t.calls || []).map((c) => `<div class="lc-call"><div><strong>Calls ${esc(c.name || 'a tool')}</strong> <span class="muted">(not run: you answer for it)</span></div><pre>${esc(prettyJson(c.args))}</pre>${c.answer !== undefined ? `<div class="lc-answer"><span class="muted">The tool's answer:</span> ${esc(c.answer)}</div>` : v?.waiting?.includes(c.id) ? '<div class="muted">Type the tool\'s answer below, and it carries on.</div>' : ''}</div>`).join('');
     return `<div class="lc-msg lc-brain"><div class="lc-who">${esc(name)}${t.to ? ` <span class="muted">· to a tool (${esc(t.to)})</span>` : ''}</div>${think}${t.text ? `<div class="lc-text">${esc(t.text)}</div>` : ''}${calls}${t.live ? '<div class="lc-dots" aria-label="Answering">…</div>' : ''}</div>`;
   }
   function chatLog() {
     if (talk.length) return talk.map(turnHtml).join('');
-    return `<p class="muted lc-empty">${v?.server?.state === 'up' || v?.target ? 'Say something to start. Its dials are in Set up.' : 'No brain is loaded yet. Press <strong>Load model locally</strong> or <strong>Open rental</strong> above.'}</p>`;
+    if (v?.server?.state === 'up' || v?.target) return '<p class="muted lc-empty">Say something to start. Its dials are in Set up.</p>';
+    return `<div class="lc-empty"><p class="muted">No brain is loaded yet. Press <strong>Load model locally</strong> or <strong>Open rental</strong> above${v?.bob?.ready ? `, or use the one Bob has loaded now, ${esc(v.bob.name)}` : ''}.</p>${v?.bob?.ready ? `<button type="button" class="get" data-lcusebob ${can() ? '' : 'disabled'}>Use Bob's brain</button>` : ''}</div>`;
   }
   // fresh: the panel was just drawn, so it goes to the end unless you had scrolled up to read.
   function drawChat(fresh = false) {
@@ -122,8 +116,8 @@ export function createConsole({ api }) {
   }
   function chatHtml() {
     const typed = v?.local !== false, wait = v?.waiting?.length;
-    const who = v?.server?.state === 'up' ? `${esc(v.server.brain)} on the ${esc(v.server.where)}` : v?.server?.state === 'loading' ? `Loading ${esc(v.server.brain)}…` : v?.target ? esc(v.target) : 'No brain yet';
-    return `<div class="lc-bar"><span>${who}</span><span class="lc-bar-end">${v?.replying ? '<button type="button" class="get lc-stop" data-lcstopreply>Stop the reply</button>' : ''}<button type="button" class="link" data-lcnewchat>New chat</button></span></div>
+    const who = v?.bob?.on ? esc(v.target) : v?.server?.state === 'up' ? `${esc(v.server.brain)} on the ${esc(v.server.where)}` : v?.server?.state === 'loading' ? `Loading ${esc(v.server.brain)}…` : v?.target ? esc(v.target) : 'No brain yet';
+    return `<div class="lc-bar"><span>${who}</span><span class="lc-bar-end">${v?.replying ? '<button type="button" class="get lc-stop" data-lcstopreply>Stop the reply</button>' : ''}${v?.bob?.on ? '<button type="button" class="link" data-lcbobstop>Stop using Bob\'s brain</button>' : ''}<button type="button" class="link" data-lcnewchat>New chat</button></span></div>
       <div class="lc-chat" id="lc-chat" tabindex="0" role="log" aria-live="polite" aria-label="Chat">${chatLog()}</div>
       <form class="lc-in lc-chat-in" data-lcform="chat"><label class="sr-only" for="lc-in-chat">${wait ? 'The tool\'s answer' : 'Your message'}</label>
         <textarea id="lc-in-chat" rows="2" maxlength="20000" placeholder="${wait ? 'The tool\'s answer (what it would give back)' : 'Message the brain · Enter sends, Shift+Enter for a new line'}" ${typed ? '' : 'disabled'}>${esc(ui.drafts.chat)}</textarea>
@@ -136,19 +130,58 @@ export function createConsole({ api }) {
     const x = sv()[k] ?? lo, id = `lc-d-${k}`;
     return `<div class="lc-dial"><label for="${id}">${esc(label)}</label>${tip(esc(plain), label)}<input type="range" id="${id}" data-lcdial="${k}" min="${lo}" max="${hi}" step="${step}" value="${x}"><input type="number" class="lc-num" data-lcdial="${k}" min="${lo}" max="${hi}" step="${step}" value="${x}" aria-label="${esc(label)}, exact"></div>`;
   }
-  function fieldHtml(job, [k, label, type, o]) {
-    const id = `lc-j-${job.id}-${k}`, val = ui.job[job.id]?.[k];
-    if (k === 'set') return `<label for="${id}">Lesson set</label><select id="${id}" data-lcjob="${job.id}" data-k="set"><option value="">${sets ? (sets.length ? 'Pick a set' : 'No lesson sets yet') : 'Loading…'}</option>${(sets || []).map((s) => `<option value="${esc(s.id)}" ${val === s.id ? 'selected' : ''}>${esc(s.name)} (${s.count})</option>`).join('')}</select>`;
-    if (type === 'select') return `<label for="${id}">${esc(label)}</label><select id="${id}" data-lcjob="${job.id}" data-k="${k}">${o.map(([x, l]) => `<option value="${x}" ${(val ?? o[0][0]) === x ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
-    if (type === 'range') { const [lo, hi, st, d] = o; return `<label for="${id}">${esc(label)}: <output>${val ?? d}</output></label><input type="range" id="${id}" data-lcjob="${job.id}" data-k="${k}" min="${lo}" max="${hi}" step="${st}" value="${val ?? d}">`; }
-    return `<label for="${id}">${esc(label)}</label><input id="${id}" data-lcjob="${job.id}" data-k="${k}" spellcheck="false" value="${esc(val ?? (type === 'url' ? (v?.relay || '') : o))}">`;
+  const optsOf = (fd) => (typeof fd.o === 'function' ? fd.o(L || {}) : fd.o) || [];
+  function jobVal(job, fd) { const x = ui.job[job.id]?.[fd.k]; return x !== undefined ? x : fd.type === 'url' ? (v?.relay || '') : fieldDefault(fd, L || {}); }
+  function fieldHtml(job, fd) {
+    const id = `lc-j-${job.id}-${fd.k}`, val = jobVal(job, fd), at = `data-lcjob="${job.id}" data-k="${fd.k}"`, info = fd.plain ? tip(esc(fd.plain), fd.label) : '';
+    const lab = `<span class="lc-lab"><label for="${id}">${esc(fd.label)}</label>${info}</span>`;
+    const sel = (opts, first = '') => `${lab}<select id="${id}" ${at}>${first}${opts.map(([x, l]) => `<option value="${esc(x)}" ${String(val) === String(x) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+    if (fd.type === 'set') { const sets = L?.lab?.lessonSets; return sel((sets || []).map((x) => [x.id, `${x.name} (${x.count})`]), `<option value="">${!sets ? 'Loading…' : fd.o?.none ? esc(fd.o.none) : sets.length ? 'Pick a set' : 'No lesson sets yet'}</option>`); }
+    if (fd.type === 'brain') { const bs = L ? brainsOf(L, fd.o || '') : null; return sel((bs || []).map((x) => [x.id, `${x.name}${x.facts ? ` · ${x.facts.fileType}, ${x.facts.sizeGB} GB` : ''}`]), `<option value="">${!bs ? 'Loading…' : bs.length ? 'Pick a brain' : fd.o === 'full' ? 'No full-size brains here yet' : 'No brains here yet'}</option>`); }
+    if (fd.type === 'select') return sel(optsOf(fd));
+    if (fd.type === 'ticks') { const o = optsOf(fd), on = new Set(Array.isArray(val) ? val : []); return `<fieldset class="lc-ticks-f"><legend><span class="lc-lab">${esc(fd.label)}${info}</span></legend>${o.length ? `<div class="lc-cards">${o.map(([x, l], i) => `<label class="lc-tick"><input type="checkbox" id="${id}-${i}" ${at} data-multi value="${esc(x)}" ${on.has(x) ? 'checked' : ''}> ${esc(l)}</label>`).join('')}</div>` : `<span class="muted">${L ? 'None here yet.' : 'Loading…'}</span>`}</fieldset>`; }
+    if (fd.type === 'tick') return `<span class="lc-lab"><label class="lc-tick"><input type="checkbox" id="${id}" ${at} ${val ? 'checked' : ''}> ${esc(fd.label)}</label>${info}</span>`;
+    if (fd.type === 'range') { const [lo, hi, st] = fd.o; return `<span class="lc-lab"><label for="${id}">${esc(fd.label)}: <output>${esc(val)}</output></label>${info}</span><input type="range" id="${id}" ${at} min="${lo}" max="${hi}" step="${st}" value="${esc(val)}">`; }
+    if (fd.type === 'number') { const [lo, hi, st] = fd.o; return `${lab}<input type="number" class="lc-num" id="${id}" ${at} min="${lo}" max="${hi}" step="${st}" value="${esc(val)}">`; }
+    if (fd.type === 'textarea') return `${lab}<textarea id="${id}" ${at} rows="3" spellcheck="false">${esc(val)}</textarea>`;
+    return `${lab}<input id="${id}" ${at} spellcheck="false" maxlength="400" value="${esc(val)}">`;
   }
   function jobHtml(j) {
-    const open = jobOpen === j.id, m = jobMsg[j.id];
+    const open = jobOpen === j.id, m = jobMsg[j.id], f = open ? jobForm(j) : null;
+    const runLabel = j.rented ? 'Save it and show the purchase card' : 'Run it here';
     return `<div class="lc-job"><button type="button" class="lc-job-h" aria-expanded="${open}" data-lcjobopen="${j.id}"><strong>${esc(j.title)}</strong> <span class="muted">${esc(j.what)}</span></button>
-      ${open ? `<div class="lc-job-f">${j.fields.map((f) => `<div class="lc-field">${fieldHtml(j, f)}</div>`).join('')}
-        <div class="row"><button type="button" class="link" data-lcjobcheck="${j.id}">Check it</button><button type="button" class="get" data-lcjobrun="${j.id}" ${can() ? '' : 'disabled'}>Run it here</button></div>
-        ${m ? `${list(m.problems, 'error')}${list(m.notes, 'muted')}${m.ok ? `<p role="status">${esc(m.ok)}</p>` : ''}` : ''}</div>` : ''}</div>`;
+      ${open ? `<div class="lc-job-f">${j.fields.filter((fd) => !fd.show || fd.show(f, L || {})).map((fd) => `<div class="lc-field">${fieldHtml(j, fd)}</div>`).join('')}
+        <div class="row">${j.check ? `<button type="button" class="link" data-lcjobcheck="${j.id}">Check it</button>` : ''}${j.alt ? `<button type="button" class="link" data-lcjobalt="${j.id}" ${can() ? '' : 'disabled'}>${esc(j.alt.label)}</button>` : ''}<button type="button" class="get" data-lcjobrun="${j.id}" ${(j.rented ? v?.local : can()) ? '' : 'disabled'}>${runLabel}</button></div>
+        ${m ? `${list(m.problems, 'error')}${list(m.notes, 'muted')}${m.ok ? `<p role="status">${esc(m.ok)}</p>` : ''}${m.text ? `<details class="lc-plan"><summary>${j.rented ? 'The plan' : 'What it runs'}</summary><pre>${esc(m.text)}</pre></details>` : ''}` : ''}</div>` : ''}</div>`;
+  }
+  // Pipelines: steps in a row, each started when the one before is done (free ones here; rented ones wait for you).
+  function pipesHtml() {
+    const P = L?.pipes; if (!P) return `<p class="muted">${L ? 'Pipelines can\'t be read here.' : 'Loading…'}</p>`;
+    const rows = P.pipelines?.length ? P.pipelines.map((p) => {
+      const pr = p.progress, done = pr.steps.filter((x) => x.state === 'done').length, next = pr.done ? null : pr.steps[pr.next];
+      return `<div class="lc-pipe"><strong>${esc(p.name)}</strong> <span class="muted">${done} of ${pr.steps.length} done, ${esc(pr.state)}${next ? `. Next: ${esc(next.name)}, ${next.on === 'rented' ? 'on a rented card' : 'here'}` : ''}${pr.cost ? `. Cards so far about $${pr.cost}` : ''}</span>
+        <div class="row"><button type="button" class="get" data-lcpipego="${esc(p.slug)}" ${can() && !pr.done && !pr.running ? '' : 'disabled'}>${pr.state === 'not started' ? 'Start it' : 'Carry on'}</button>${next ? `<button type="button" class="link" data-lcpipeskip="${esc(p.slug)}" data-step="${pr.next}" ${v?.local ? '' : 'disabled'}>Skip ${esc(next.name)}</button>` : ''}</div>
+        ${pipeMsg[p.slug] ? `<p role="status">${esc(pipeMsg[p.slug])}</p>` : ''}</div>`;
+    }).join('') : '<p class="muted">No pipelines yet. Make one below.</p>';
+    const steps = (L?.steps || []).filter((x) => x.ready !== false && !x.planned);
+    const builder = `<div class="lc-pb"><div class="lc-field"><label for="lc-pb-name">Name of a new pipeline</label><input id="lc-pb-name" data-lcpb="name" maxlength="60" value="${esc(pb.name)}"></div>
+      <fieldset class="lc-ticks-f"><legend>Its steps, in the protocol's order</legend><div class="lc-cards">${steps.map((x, i) => `<label class="lc-tick"><input type="checkbox" id="lc-pb-s-${i}" data-lcpbstep value="${esc(x.id)}" ${pb.steps.includes(x.id) ? 'checked' : ''}> ${esc(x.name)}${x.where === 'rented' ? ' <span class="muted">(rented)</span>' : ''}</label>`).join('')}</div></fieldset>
+      <div class="lc-field"><label for="lc-pb-set">Lessons for the first step that needs them</label><select id="lc-pb-set" data-lcpb="set"><option value="">None</option>${(L?.lab?.lessonSets || []).map((x) => `<option value="${esc(x.id)}" ${pb.set === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>
+      <div class="row"><button type="button" class="get" data-lcpbsave ${v?.local ? '' : 'disabled'}>Save the pipeline</button><button type="button" class="link" data-lcpbproto ${v?.local ? '' : 'disabled'}>Save the whole protocol as one</button></div>${pbMsg ? `<p role="status">${esc(pbMsg)}</p>` : ''}</div>`;
+    return `<p class="muted">A step that runs here starts by itself when the one before is done. A rented one waits for its purchase card.</p>${rows}${builder}`;
+  }
+  // Rented cards: every Forge card up on the rental service, to take over or end, one at a time.
+  function rentalsHtml() {
+    const ago = (ms) => { const m = Math.round((Date.now() - ms) / 60000); return m < 90 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
+    const ask = rentAsk && rentals?.pods.find((p) => p.pod === rentAsk.pod);
+    const rows = rentals ? (rentals.pods.length ? rentals.pods.map((p) => `<div class="lc-pipe"><strong>${esc(p.run || p.pod)}</strong> <span class="muted">${esc(p.gpu || 'a card')}, $${p.perHour} an hour, ${esc(String(p.status).toLowerCase())}${p.started ? `, rented ${ago(p.started)}` : ''}${p.plan ? `. Its plan's caps: ${p.plan.hours} h or $${p.plan.dollars}` : ''}</span>
+        ${p.why ? `<p class="muted">${esc(p.why)}</p>` : ''}
+        <div class="row">${p.canTake ? `<button type="button" class="get" data-lcrenttake="${esc(p.pod)}" ${can() ? '' : 'disabled'}>Take over</button>` : ''}${p.ours ? '' : `<button type="button" class="lc-endrent lc-small" data-lcrentend="${esc(p.pod)}" ${can() ? '' : 'disabled'}>End it</button>`}</div>
+        ${ask === p && rentAsk.kind === 'take' ? `<div class="setup-offer" role="alertdialog" aria-labelledby="lc-ra-h"><strong id="lc-ra-h">Take over ${esc(p.run)}?</strong><span>The Forge watches it from here: its log shows in the Server panel, STOP and END RENTAL work on it, and its caps (${p.plan.hours} h or $${p.plan.dollars}, counted from when it was rented) are watched again. Nothing new is rented.</span><div class="row"><button type="button" class="get" data-lcrenttakego>Take it over</button><button type="button" class="link" data-lcrentno>Not now</button></div></div>` : ''}
+        ${ask === p && rentAsk.kind === 'end' ? `<div class="setup-offer" role="alertdialog" aria-labelledby="lc-ra-h"><strong id="lc-ra-h">End ${esc(p.run || p.pod)} and delete its card for good?</strong><span>The Forge saves what it can from it first. Anything still on the card after that is lost.</span><div class="row"><button type="button" class="get" data-lcrentendgo>End it</button><button type="button" class="link" data-lcrentno>Keep it</button></div></div>` : ''}</div>`).join('') : '<p class="muted">No Forge cards are up on the rental service.</p>') : '';
+    return `<p class="muted">Cards rented by the Forge, from here or from a Forge window. Looking asks the rental service and changes nothing.</p>
+      ${rentals?.watching ? `<p class="error">A Forge window wrote to its log ${rentals.watching} seconds ago, so it may still be watching a card. Close that window (Ctrl+C there leaves the card up) before you take its card over.</p>` : ''}
+      <div class="row"><button type="button" class="get" data-lcrentlook ${can() ? '' : 'disabled'}>Look for rented cards</button></div>${rentMsg ? `<p class="error" role="alert">${esc(rentMsg)}</p>` : ''}${rows}`;
   }
   function buttonsEdit() {
     const bs = v?.buttons || [], add = ui.add;
@@ -160,7 +193,7 @@ export function createConsole({ api }) {
   }
   function setupHtml() {
     const s = sv(), sec = (id, title, body, open) => `<details class="lc-sec" data-lcsec="${id}"${store.get(`sec-${id}`, open ? '1' : '0') === '1' ? ' open' : ''}><summary>${title}</summary><div class="lc-sec-b">${body}</div></details>`;
-    if (!sets) loadSets();
+    if (!L) loadLists();
     const replies = `<div class="lc-dials">${DIALS.map(dialHtml).join('')}
         <div class="lc-dial"><label for="lc-d-seed">Seed</label>${tip('The same seed and the same words give the same answer. -1 picks a new one each time.', 'Seed')}<input type="number" id="lc-d-seed" class="lc-num" data-lcdial="seed" min="-1" step="1" value="${s.seed ?? -1}"></div></div>
       <div class="lc-ticks">${TICKS.map(([k, l, plain]) => `<span><label class="lc-tick"><input type="checkbox" data-lctick="${k}" ${s[k] ? 'checked' : ''}> ${esc(l)}</label>${tip(esc(plain), l)}</span>`).join('')}</div>
@@ -168,9 +201,9 @@ export function createConsole({ api }) {
         <select id="lc-tools" data-lcsel="tools">${[['none', 'None'], ['practice', 'Practice tools (weather, picture, reminder, file search)'], ['bob', 'Bob\'s own tools']].map(([x, l]) => `<option value="${x}" ${s.tools === x ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
       <div class="lc-field"><label for="lc-system">Its instructions (system prompt)</label><textarea id="lc-system" data-lcsys rows="3" maxlength="8000" placeholder="Empty: none, the brain's own default">${esc(s.system || '')}</textarea></div>
       <div class="row"><button type="button" class="link" data-lcdefaults>Back to the usual settings</button><span class="muted" id="lc-saved" role="status"></span></div>`;
-    const jobs = `<p class="muted">Free, on this computer, one at a time. What they print shows in the Server panel.</p>${JOBS.map(jobHtml).join('')}`;
-    const more = `<p class="muted">These open on their own Lab pages for now. Whatever they run still shows in the Server panel.</p><div class="lc-more">${LAB_PAGES.map(([id, l, what]) => `<button type="button" class="lab-chip" data-lcpage="${id}">${esc(l)}</button><span class="muted">${esc(what)}</span>`).join('')}</div>`;
-    return `<div class="lc-setup">${sec('replies', 'How it answers', replies, true)}${sec('jobs', 'Lab jobs here', jobs, false)}${sec('more', 'More of the Lab', more, false)}${sec('buttons', 'Your buttons', buttonsEdit(), false)}</div>`;
+    const groups = GROUPS.map(([g, title, hint]) => sec(g, title, `<p class="muted">${esc(hint)} What it prints shows in the Server panel.</p>${JOBS.filter((j) => j.group === g).map(jobHtml).join('')}`, false)).join('');
+    const more = `<p class="muted">These are pages to look at more than forms, so they open on their own Lab tabs. Whatever they run still shows in the Server panel.</p><div class="lc-more">${LAB_PAGES.map(([id, l, what]) => `<button type="button" class="lab-chip" data-lcpage="${id}">${esc(l)}</button><span class="muted">${esc(what)}</span>`).join('')}</div>`;
+    return `<div class="lc-setup"><div class="lc-bar"><span class="muted">One job at a time here; a rented card at a time.</span><span class="lc-bar-end"><button type="button" class="link" data-lclists>Refresh the lists</button></span></div>${sec('replies', 'How it answers', replies, true)}${groups}${sec('pipes', 'Pipelines', pipesHtml(), false)}${sec('cards', 'Rented cards', rentalsHtml(), false)}${sec('more', 'More of the Lab', more, false)}${sec('buttons', 'Your buttons', buttonsEdit(), false)}</div>`;
   }
 
   // ---- the window ----
@@ -185,8 +218,8 @@ export function createConsole({ api }) {
   }
   function headHtml() {
     if (!v) return 'Loading the console…';
-    const s = v.server, state = s.state === 'up' ? `${esc(s.brain)} on the ${esc(s.where)}` : s.state === 'loading' ? `Loading ${esc(s.brain)}…` : v.target ? esc(v.target) : 'No brain loaded';
-    return `<span>Brain: <strong>${state}</strong></span>${v.job ? ` <span>· Running <strong>${esc(v.job.label)}</strong></span>` : ''}${v.labJobs?.length ? ` <span>· ${esc(v.labJobs.join(', '))}</span>` : ''}${v.replying ? ' <span>· Answering</span>' : ''}${v.rental ? ` <span class="lc-rent-on">· ${v.rental.running ? `Rented card: ${esc(v.rental.plan)}, caps ${v.rental.hours} h or $${v.rental.dollars}` : 'A rented card is still up'}</span>` : ''}${v.hold ? ' <span class="lc-holding">· Holding requests</span>' : ''}`;
+    const s = v.server, state = v.bob?.on ? esc(v.target) : s.state === 'up' ? `${esc(s.brain)} on the ${esc(s.where)}` : s.state === 'loading' ? `Loading ${esc(s.brain)}…` : v.target ? esc(v.target) : 'No brain loaded';
+    return `<span>Brain: <strong>${state}</strong></span>${v.job ? ` <span>· Running <strong>${esc(v.job.label)}</strong></span>` : ''}${v.labJobs?.length ? ` <span>· ${esc(v.labJobs.join(', '))}</span>` : ''}${v.replying ? ' <span>· Answering</span>' : ''}${v.rental ? ` <span class="lc-rent-on">· ${v.rental.running ? `Rented card: ${esc(v.rental.plan)}${v.rental.resumed ? ' (taken over)' : ''}, caps ${v.rental.hours} h or $${v.rental.dollars}` : 'A rented card is still up'}</span>` : ''}${v.hold ? ' <span class="lc-holding">· Holding requests</span>' : ''}`;
   }
   const running = () => Boolean(v && (v.job || v.replying || v.server?.state === 'loading' || v.labJobs?.length || v.rental?.running));
   function actionsHtml() {
@@ -233,6 +266,7 @@ export function createConsole({ api }) {
       <label class="lc-tick"><input type="checkbox" id="lc-l-unload" data-lcl="unload" ${f.unload ? 'checked' : ''}> Unload Bob's own brain from the card first</label>
       <label class="lc-tick"><input type="checkbox" id="lc-l-cpu" data-lcl="cpuOk" ${f.cpuOk ? 'checked' : ''}> If it doesn't fit on the card, use the processor</label>
       <p class="muted">The Chat, your tools and Lab jobs then use it through the relay, so every request and reply shows in the Server panel.</p>
+      <div class="lc-bobpick"><span>Or use the brain Bob has loaded now${v?.bob?.ready ? `: <strong>${esc(v.bob.name)}</strong>` : ''}. Nothing loads or unloads, and Bob's chat shares it.</span>${v?.bob?.ready ? '' : `<span class="muted">${esc(v?.bob?.why || '')}</span>`}<button type="button" class="link" data-lcusebob ${v?.bob?.ready && can() ? '' : 'disabled'}>Use Bob's brain</button></div>
       ${can() ? '' : '<p class="muted">Tick "Let the Lab run commands here" first.</p>'}
       ${dlgMsg ? `<p class="error" role="alert">${esc(dlgMsg)}</p>` : ''}
       <div class="row"><button type="button" class="get" data-lcloadgo ${f.brain && can() ? '' : 'disabled'}>Load it</button><button type="button" class="link" data-lcdlgclose>Cancel</button></div>`;
@@ -248,7 +282,7 @@ export function createConsole({ api }) {
         <p><strong>Caps: ${card.hours} hour${Number(card.hours) === 1 ? '' : 's'} or $${card.dollars}, whichever comes first.</strong> The card shuts itself down at the cap even if this computer is switched off. The service's bill is the real number.</p>
         ${pr.some((x) => /Let the Lab start Forge runs/.test(x)) ? '<label class="lc-tick"><input type="checkbox" id="lc-forge-allow"> Let the Lab start Forge runs (each one still needs this press)</label>' : ''}
         ${list(pr, 'error')}${dlgMsg ? `<p class="error" role="alert">${esc(dlgMsg)}</p>` : ''}
-        <div class="row"><button type="button" class="get" data-lcrentgo ${pr.length ? 'disabled' : ''}>Rent it and start (up to $${card.dollars})</button><button type="button" class="link" data-lcrentback>Change something</button><button type="button" class="link" data-lcdlgclose>Not now</button></div>`;
+        <div class="row"><button type="button" class="get" data-lcrentgo ${pr.length ? 'disabled' : ''}>Rent it and start (up to $${card.dollars})</button><button type="button" class="link" data-lcrentback>${card.fromSetup ? 'Change it in Set up' : 'Change something'}</button><button type="button" class="link" data-lcdlgclose>Not now</button></div>`;
     }
     const brainPart = `<div class="lc-field"><label for="lc-r-brain">Brain</label><select id="lc-r-brain" data-lcr="brain"><option value="">Pick a brain</option>${c.brains.map((b) => `<option value="${esc(b.file)}" ${f.brain === b.file ? 'selected' : ''}>${esc(b.nickname ? `${b.nickname} (${b.name})` : b.name || b.file)}</option>`).join('')}<option value="other" ${f.brain === 'other' ? 'selected' : ''}>Another one on Hugging Face…</option></select></div>
       ${f.brain === 'other' ? `<div class="lc-field"><label for="lc-r-other">On Hugging Face</label><input id="lc-r-other" data-lcr="other" spellcheck="false" value="${esc(f.other)}" placeholder="hf:owner/repo:file-Q4_K_M.gguf"></div>` : ''}
@@ -295,12 +329,20 @@ export function createConsole({ api }) {
     document.querySelectorAll('#lab-console .lc-setup').forEach((x, i) => { x.scrollTop = scrolls[i] || 0; });
     const f = focusId && $(focusId); if (f) { f.focus(); if (sel && f.setSelectionRange) try { f.setSelectionRange(...sel); } catch {} }
   }
-  async function loadSets() { if (sets) return; sets = []; try { sets = (await api('/api/lab/steps')).sets || []; } catch { sets = []; } if (shown('setup')) redraw(); }
+  // What Set up's forms pick from: brains, lesson sets, packs (the Lab's view), the Forge's plans and brains, pairs,
+  // pipelines and steps. Read once, and again on Refresh the lists.
+  async function loadLists() {
+    if (lLoading) return; lLoading = true;
+    const get = async (p) => { try { return await api(p); } catch { return null; } };
+    const [lab, forge, proto, pipes, steps] = await Promise.all(['/api/lab', '/api/lab/forge', '/api/lab/protocol', '/api/lab/pipelines', '/api/lab/steps'].map(get));
+    L = { lab: lab || {}, forge: forge || {}, proto: proto || {}, pipes, steps: steps?.steps || [] }; lLoading = false;
+    if (shown('setup')) redraw();
+  }
   async function load() {
     if (busy) return; busy = true;
     try {
       const j = await api(`/api/lab/console?since=${since}&talk=${talkRev}`);
-      const shape = (x) => JSON.stringify([x?.allowed, x?.local, x?.server?.state, x?.server?.brain, x?.job?.label, x?.replying, x?.rental, x?.hold, x?.buttons, x?.toJob, x?.labJobs, x?.target, (x?.waiting || []).length]);
+      const shape = (x) => JSON.stringify([x?.allowed, x?.local, x?.server?.state, x?.server?.brain, x?.job?.label, x?.replying, x?.rental, x?.hold, x?.buttons, x?.toJob, x?.labJobs, x?.target, (x?.waiting || []).length, x?.bob?.on, x?.bob?.ready]);
       const changed = !v || shape(v) !== shape(j);
       if (j.first > since + 1 && since) entries.length = 0; // the view was cleared, or the record moved on past what's here
       const fresh = j.lines || []; entries.push(...fresh); if (entries.length > 8000) entries.splice(0, entries.length - 8000);
@@ -337,18 +379,69 @@ export function createConsole({ api }) {
       try { const r = await api('/api/lab/console/setup', { setup: s }); if (setupDraft === s) setupDraft = null; if (v) v.setup = r.setup; const m = $('lc-saved'); if (m) { m.textContent = 'Saved'; setTimeout(() => { m.textContent = ''; }, 1500); } } catch (e) { err = e.message; }
     }, 400);
   }
-  function jobForm(j) {
-    const f = { ...(ui.job[j.id] || {}) };
-    for (const [k, , type, o] of j.fields) if (f[k] === undefined && k !== 'set') f[k] = type === 'range' ? o[3] : type === 'select' ? o[0][0] : type === 'url' ? (v?.relay || '') : o;
-    return f;
+  function jobForm(j) { const f = {}; for (const fd of j.fields) f[fd.k] = jobVal(j, fd); return f; }
+  function checkMsg(r) {
+    const notes = [...(r.notes || [])];
+    if (r.hours) notes.push(`About ${r.hours} hour${r.hours === 1 ? '' : 's'}.`);
+    if (r.diskGB) notes.push(`About ${r.diskGB} GB of disk.`);
+    if (r.steps?.length) notes.push(`Steps: ${r.steps.map((x) => x.label || x).join(', ')}.`);
+    return { problems: r.problems || [], notes, ok: (r.problems || []).length ? '' : 'Nothing stops it.', text: r.text || '' };
   }
-  async function jobAct(id, run) {
+  async function showForgeCard(id) {
+    const c = await api('/api/lab/forge/card', { id });
+    const summary = [`Run: ${id}`, ...(c.brains || []).map((x) => `${x.nickname || x.name}: keeps ${x.keep} experts a layer, up to ${x.hours} h`), `Running files: ${c.quants || 'Q4_K_M'}`, ...(c.cards?.length ? [`Cards it may rent: ${c.cards.join(', ')}`] : []), ...(c.volume ? [`A ${c.volume} GB network volume, kept between runs`] : [])];
+    if (!choices) { try { choices = await api('/api/lab/console/choices'); } catch {} }
+    dlgKind = 'rental'; dlgMsg = ''; card = { ...c, summary, notes: [], fromSetup: true }; drawDialog();
+  }
+  async function jobAct(id, mode) {
     const j = JOBS.find((x) => x.id === id); if (!j) return;
-    const form = jobForm(j), proto = j.kind === 'protocol';
+    const form = jobForm(j);
     try {
-      if (!run) jobMsg[id] = await api(proto ? '/api/lab/protocol/check' : '/api/lab/step/check', proto ? { tool: id, form } : { id, form });
-      else { await api(proto ? '/api/lab/protocol/run' : '/api/lab/step/run', proto ? { tool: id, form } : { id, form }); jobMsg[id] = { ok: `${j.title}: started. It shows in the Server panel.` }; ui.follow.server = 'jump'; }
+      if (mode === 'check') jobMsg[id] = checkMsg(await api(...j.check(form)));
+      else if (j.rented) { const r = await api(...j.run(form)); jobMsg[id] = { ok: `Saved as ${r.file}. Its purchase card is open.` }; await showForgeCard(String(r.file || '').replace(/\.json$/, '')); }
+      else {
+        const r = await api(...(mode === 'alt' ? j.alt.req(form) : j.run(form)));
+        if (r?.needUnload) jobMsg[id] = { problems: [`${(r.names || []).join(', ') || 'Bob\'s brain'} is on the card. Tick "Unload Bob's brain from the card first", then run it again.`] };
+        else if (r?.problems?.length) jobMsg[id] = { problems: r.problems, notes: r.notes };
+        else { jobMsg[id] = { ok: `${mode === 'alt' ? j.alt.label : j.title}: started. It shows in the Server panel.` }; ui.follow.server = 'jump'; }
+      }
     } catch (e) { jobMsg[id] = { problems: [e.message] }; }
+    await load(); redraw();
+  }
+  function jobSet(t) {
+    const j = JOBS.find((x) => x.id === t.dataset.lcjob); if (!j) return;
+    const f = (ui.job[j.id] ||= {}), k = t.dataset.k;
+    if ('multi' in t.dataset) { const fd = j.fields.find((x) => x.k === k); const cur = new Set(Array.isArray(f[k]) ? f[k] : jobVal(j, fd)); if (t.checked) cur.add(t.value); else cur.delete(t.value); f[k] = [...cur]; }
+    else if (t.type === 'checkbox') f[k] = t.checked;
+    else f[k] = t.value;
+    j.onChange?.(k, f, L || {});
+    jobMsg[j.id] = null;
+  }
+  async function pipeAct(d) {
+    try {
+      if (d.lcpipego) { const r = await api('/api/lab/pipeline/go', { slug: d.lcpipego }); pipeMsg[d.lcpipego] = r.message || (r.started ? 'Started.' : ''); if (r.started) ui.follow.server = 'jump'; }
+      else if (d.lcpipeskip) { await api('/api/lab/pipeline/skip', { slug: d.lcpipeskip, step: Number(d.step), skip: true }); pipeMsg[d.lcpipeskip] = 'Skipped.'; }
+      else {
+        const ids = 'lcpbproto' in d ? null : (L?.steps || []).filter((x) => pb.steps.includes(x.id)).map((x) => x.id);
+        let first = true;
+        const steps = ids ? ids.map((id) => { const st = L.steps.find((x) => x.id === id); const form = st.form?.needs?.includes('set') ? { set: first && pb.set ? pb.set : '@prev' } : {}; if (st.form?.needs?.includes('set')) first = false; return { id, form }; }) : null;
+        const r = await api('/api/lab/pipeline/save', { pipeline: ids ? { name: pb.name, steps } : L.pipes.protocol });
+        pbMsg = r.problems?.length ? r.problems.join(' ') : `Saved: ${r.slug}.`; if (!r.problems?.length && ids) pb = { name: '', steps: [], set: '' };
+      }
+    } catch (e) { pbMsg = e.message; if (d.lcpipego || d.lcpipeskip) pipeMsg[d.lcpipego || d.lcpipeskip] = e.message; }
+    try { L = { ...L, pipes: await api('/api/lab/pipelines') }; } catch {}
+    await load(); redraw();
+  }
+  async function rentAct(d) {
+    rentMsg = '';
+    try {
+      if ('lcrentlook' in d) { rentAsk = null; rentals = await api('/api/lab/console/rentals', {}); }
+      else if (d.lcrenttake) rentAsk = { kind: 'take', pod: d.lcrenttake };
+      else if (d.lcrentend) rentAsk = { kind: 'end', pod: d.lcrentend };
+      else if ('lcrentno' in d) rentAsk = null;
+      else if ('lcrenttakego' in d && rentAsk) { const p = rentals.pods.find((x) => x.pod === rentAsk.pod); rentAsk = null; await api('/api/lab/console/rental/takeover', { pod: p.pod, hours: p.plan.hours, dollars: p.plan.dollars }); ui.follow.server = 'jump'; showPanel('server'); rentals = null; }
+      else if ('lcrentendgo' in d && rentAsk) { const pod = rentAsk.pod; rentAsk = null; await api('/api/lab/console/rental/endpod', { pod }); rentals = { ...rentals, pods: rentals.pods.filter((x) => x.pod !== pod) }; ui.follow.server = 'jump'; }
+    } catch (e) { rentMsg = e.message; }
     await load(); redraw();
   }
   const rentForm = () => { const f = ui.rent; return f.kind === 'plan' ? { kind: 'plan', plan: f.plan, hours: f.hours, dollars: f.dollars } : { kind: 'brain', brain: f.brain === 'other' ? f.other.trim() : f.brain, engine: f.engine, cards: f.cards, ctx: f.ctx, slots: f.slots, disk: f.disk, hours: f.hours, dollars: f.dollars }; };
@@ -364,7 +457,8 @@ export function createConsole({ api }) {
     else if (t.id === 'lc-add-label') ui.add.label = t.value; else if (t.id === 'lc-add-line') ui.add.line = t.value;
     else if (t.dataset.lcdial) { const x = Number(t.value); if (t.value !== '' && Number.isFinite(x)) { setSetup(t.dataset.lcdial, x); for (const o of document.querySelectorAll(`[data-lcdial="${t.dataset.lcdial}"]`)) if (o !== t) o.value = t.value; } }
     else if ('lcsys' in t.dataset) setSetup('system', t.value);
-    else if (t.dataset.lcjob && t.tagName !== 'SELECT') { (ui.job[t.dataset.lcjob] ||= {})[t.dataset.k] = t.type === 'range' ? Number(t.value) : t.value; out(); }
+    else if (t.dataset.lcjob && t.tagName !== 'SELECT' && t.type !== 'checkbox') { (ui.job[t.dataset.lcjob] ||= {})[t.dataset.k] = t.type === 'range' || (t.type === 'number' && t.value !== '') ? Number(t.value) : t.value; jobMsg[t.dataset.lcjob] = null; out(); }
+    else if (t.dataset.lcpb === 'name') pb.name = t.value;
     else if (t.dataset.lcl && t.type === 'range') { ui.local[t.dataset.lcl] = Number(t.value); out(); }
     else if (t.dataset.lcr && !['radio', 'checkbox'].includes(t.type) && t.tagName !== 'SELECT') { ui.rent[t.dataset.lcr] = t.type === 'range' ? Number(t.value) : t.value; out(); }
   };
@@ -386,11 +480,13 @@ export function createConsole({ api }) {
     if (t.id === 'lc-add-side') { ui.add.side = t.value; return; }
     if (t.dataset.lctick) { setSetup(t.dataset.lctick, t.checked); if (t.dataset.lctick === 'showThink' && v) { v.setup = { ...v.setup, showThink: t.checked }; drawChat(); } return; }
     if (t.dataset.lcsel) { setSetup(t.dataset.lcsel, t.value); return; }
-    if (t.dataset.lcjob && t.tagName === 'SELECT') { (ui.job[t.dataset.lcjob] ||= {})[t.dataset.k] = t.value; jobMsg[t.dataset.lcjob] = null; return; }
+    if (t.dataset.lcjob && (t.tagName === 'SELECT' || t.type === 'checkbox')) { jobSet(t); redraw(t.id); return; } // a choice can show or hide other fields
+    if (t.dataset.lcpb === 'set') { pb.set = t.value; return; }
+    if ('lcpbstep' in t.dataset) { const c = new Set(pb.steps); if (t.checked) c.add(t.value); else c.delete(t.value); pb.steps = [...c]; return; }
     if (t.dataset.lcl && t.type !== 'range') { ui.local[t.dataset.lcl] = t.type === 'checkbox' ? t.checked : t.value; dlgMsg = ''; drawDialog(t.id); return; }
     if (t.dataset.lcr && (t.type === 'radio' || t.tagName === 'SELECT')) { ui.rent[t.dataset.lcr] = t.value; dlgMsg = ''; drawDialog(t.id); return; }
     if ('lcrcard' in t.dataset) { const c = new Set(ui.rent.cards || []); if (t.checked) c.add(t.value); else c.delete(t.value); ui.rent.cards = [...c]; return; }
-    if (t.id === 'lc-forge-allow') { try { await api('/api/lab/forge/allow', { on: t.checked }); const r = await api('/api/lab/console/rental/plan', { form: rentForm() }); card = r.card ? { ...r.card, summary: r.summary, notes: r.notes } : card; } catch (x) { dlgMsg = x.message; } drawDialog(); }
+    if (t.id === 'lc-forge-allow') { try { await api('/api/lab/forge/allow', { on: t.checked }); if (card?.fromSetup) { const c = await api('/api/lab/forge/card', { id: card.id }); card = { ...card, problems: c.problems }; } else { const r = await api('/api/lab/console/rental/plan', { form: rentForm() }); card = r.card ? { ...r.card, summary: r.summary, notes: r.notes } : card; } } catch (x) { dlgMsg = x.message; } drawDialog(); }
   };
   on.scroll = (e) => { const t = e.target, end = () => t.scrollHeight - t.scrollTop - t.clientHeight < 40; if (t.id === 'lc-out') ui.follow.server = end(); else if (t.id === 'lc-chat') ui.follow.chat = end(); };
   on.toggle = (e) => { const s = e.target?.dataset?.lcsec; if (s) store.set(`sec-${s}`, e.target.open ? '1' : '0'); };
@@ -424,8 +520,14 @@ export function createConsole({ api }) {
     if ('lcadd' in d) { try { await api('/api/lab/console/button', { add: { ...ui.add } }); ui.add = { label: '', side: 'server', line: '' }; err = ''; } catch (x) { err = x.message; } await load(); redraw(); return; }
     if ('lcdefaults' in d) { setupDraft = null; clearTimeout(setupTimer); try { const r = await api('/api/lab/console/setup', { setup: DEFAULT_SETUP }); if (v) v.setup = r.setup; } catch (x) { err = x.message; } redraw(); return; }
     if (d.lcjobopen) { jobOpen = jobOpen === d.lcjobopen ? '' : d.lcjobopen; store.set('job', jobOpen); redraw(); document.querySelector(`[data-lcjobopen="${d.lcjobopen}"]`)?.focus(); return; }
-    if (d.lcjobcheck) { await jobAct(d.lcjobcheck, false); return; }
-    if (d.lcjobrun) { await jobAct(d.lcjobrun, true); return; }
+    if (d.lcjobcheck) { await jobAct(d.lcjobcheck, 'check'); return; }
+    if (d.lcjobrun) { await jobAct(d.lcjobrun, 'run'); return; }
+    if (d.lcjobalt) { await jobAct(d.lcjobalt, 'alt'); return; }
+    if ('lclists' in d) { L = null; await loadLists(); return; }
+    if (d.lcpipego || d.lcpipeskip || 'lcpbsave' in d || 'lcpbproto' in d) { await pipeAct(d); return; }
+    if ('lcrentlook' in d || d.lcrenttake || d.lcrentend || 'lcrentno' in d || 'lcrenttakego' in d || 'lcrentendgo' in d) { const fid = b.id; await rentAct(d); if (fid) $(fid)?.focus(); return; }
+    if ('lcusebob' in d) { await call('/api/lab/console/usebob', { on: true }); if (dlgKind) dialog().close(); ui.follow.server = 'jump'; await load(); return; }
+    if ('lcbobstop' in d) { await call('/api/lab/console/usebob', { on: false }); await load(); return; }
     if (d.lcpage) { document.getElementById(`lab-tab-${d.lcpage}`)?.click(); return; }
     if (d.lcopen) { openDialog(d.lcopen); return; }
     if ('lcdlgclose' in d) { dialog().close(); return; }
@@ -435,7 +537,7 @@ export function createConsole({ api }) {
       try { const r = await api('/api/lab/console/rental/plan', { form: rentForm() }); if (r.problems.length) dlgMsg = r.problems.join(' '); else { card = { ...r.card, summary: r.summary, notes: r.notes }; dlgMsg = ''; } } catch (x) { dlgMsg = x.message; }
       drawDialog(); return;
     }
-    if ('lcrentback' in d) { card = null; drawDialog(); return; }
+    if ('lcrentback' in d) { if (card?.fromSetup) { dialog().close(); return; } card = null; drawDialog(); return; }
     if ('lcrentgo' in d && card) { try { await api('/api/lab/forge/start', { id: card.id, hours: card.hours, dollars: card.dollars }); dialog().close(); ui.follow.server = 'jump'; showPanel('server'); } catch (x) { dlgMsg = x.message; drawDialog(); } await load(); redraw(); return; }
   };
 

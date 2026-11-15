@@ -22,7 +22,7 @@
 // data: answers-wording-*.jsonl carry evidence: true). Writes WORDING.md and wording.json.
 // node tool-wording.mjs --url <server> --questions <calib>/questions --bob <Bob source app folder> --out <folder>
 //      [--jobs files,run,plans] [--variants bob,usewhen,paths] [--think off,on] [--turns 2] [--parallel 8] [--odds 8]
-//      [--max 600] [--max-think 4000] [--prefill "Plan: 1."] [--limit N] [--min-bob 1.5.223] [--gate] [--keep-live] [--dry]
+//      [--max 600] [--max-think 4000] [--prefill "Plan: 1."] [--effort low,high] [--limit N] [--min-bob 1.5.223] [--gate] [--keep-live] [--dry]
 // --dry: no server; checks the questions, the fresh tools and every variant, and prints what would be asked.
 // --family qwen3 (or qwen3.5, gpt-oss...): the turns use that brain family's tool set from Bob's tool-sets.js (its hidden tools left out), as Bob does live.
 import fs from 'node:fs';
@@ -47,6 +47,10 @@ export function variantSystem(system, variant) {
   const add = Object.keys(PROMPT_PARTS).filter((k) => parts.has(k)).map((k) => PROMPT_PARTS[k]);
   return add.length ? `${system}\n\n${add.join('\n')}` : system;
 }
+// 15 Nov (GPT-OSS tool check): GPT-OSS has no thinking switch, only a level. --effort low,high sends reasoning_effort beside
+// enable_thinking (think off -> the first, think on -> the second); Qwen's template ignores it. Left out, nothing is added.
+export const effortList = (v) => (v && v !== true ? String(v).split(',').map((x) => x.trim()).filter((x) => ['low', 'medium', 'high'].includes(x)) : []);
+export const thinkKwargs = (on, effort = []) => ({ enable_thinking: Boolean(on), ...(effort.length ? { reasoning_effort: on ? effort[1] || effort[0] : effort[0] } : {}) });
 export const variantBody = (variant) => (String(variant).split('+').includes('par') ? { parallel_tool_calls: true } : {});
 
 export const SAVE_TO = { type: 'string', description: 'Only if {{USER}} named where or what to save it as: the full path with the file name, like {{HOME}}/Pictures/logo.png. Leave it out to use Bob\'s usual folder.' };
@@ -147,6 +151,7 @@ async function main() {
   const thinks = String(a.think || 'off,on').split(',').filter(Boolean);
   const turns = Number(a.turns) || 1, par = Number(a.parallel) || 8, K = Math.min(20, Number(a.odds) || 8), maxOff = Number(a.max) || 600, maxOn = Number(a['max-think']) || 4000;
   const prefill = a.prefill && a.prefill !== true ? String(a.prefill) : '';
+  const effort = effortList(a.effort);
   const lessons = readJsonl(path.join(path.resolve(String(a.questions)), 'lessons.jsonl'));
   const qs = buildQuestions(lessons, kit, { turns, jobs, limit: Number(a.limit) || 0 });
   const brain = process.env.LAB_MODEL_NAME || 'brain';
@@ -158,13 +163,13 @@ async function main() {
     const tools = variantTools(q.tools, v, { set, fill: { user: 'the user', home: 'C:\\Users\\you' } });
     const sys = q.messages.map((m, i) => (i === 0 && m.role === 'system' ? { ...m, content: variantSystem(m.content, v) } : m));
     const messages = think === 'on' && prefill ? [...sys, { role: 'assistant', content: `<think>\n${prefill}` }] : sys;
-    const body = { messages, ...(tools?.length ? { tools } : {}), ...variantBody(v), max_tokens: think === 'on' ? maxOn : maxOff, temperature: 0, chat_template_kwargs: { enable_thinking: think === 'on' }, logprobs: true, top_logprobs: K };
+    const body = { messages, ...(tools?.length ? { tools } : {}), ...variantBody(v), max_tokens: think === 'on' ? maxOn : maxOff, temperature: 0, chat_template_kwargs: thinkKwargs(think === 'on', effort), logprobs: true, top_logprobs: K };
     if (dry) return { body };
     const t0 = Date.now();
     try {
       const j = await eng.chat(body);
       const c = j.choices?.[0] || {}, m = c.message || {};
-      const row = { brain, bob_src: bobVer, evidence: true, cond: `${v} think-${think}`, variant: v, think: think === 'on', ...(prefill && think === 'on' ? { prefill } : {}), job: q.job, idea: q.idea, split: q.split, k: q.k, named: q.named, request: lastUser(q.messages), offered: (tools || []).map((x) => x.function?.name), ...grade(q, m), finish: c.finish_reason || '', want: q.want, answer: { content: m.content || '', reasoning: m.reasoning_content || '', tool_calls: m.tool_calls || undefined }, odds: oddsOf(c.logprobs), tokens: j.usage?.completion_tokens || 0, tps: j.timings?.predicted_per_second || 0, ms: Date.now() - t0 };
+      const row = { brain, bob_src: bobVer, evidence: true, cond: `${v} think-${think}`, variant: v, think: think === 'on', ...(effort.length ? { effort: thinkKwargs(think === 'on', effort).reasoning_effort } : {}), ...(prefill && think === 'on' ? { prefill } : {}), job: q.job, idea: q.idea, split: q.split, k: q.k, named: q.named, request: lastUser(q.messages), offered: (tools || []).map((x) => x.function?.name), ...grade(q, m), finish: c.finish_reason || '', want: q.want, answer: { content: m.content || '', reasoning: m.reasoning_content || '', tool_calls: m.tool_calls || undefined }, odds: oddsOf(c.logprobs), tokens: j.usage?.completion_tokens || 0, tps: j.timings?.predicted_per_second || 0, ms: Date.now() - t0 };
       fs.appendFileSync(file, JSON.stringify(row) + '\n');
       return row;
     } catch (e) {

@@ -5,7 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { startRun, finishRun, readRun } from './lab-runs.js';
 import { VERSION } from './config.js';
-import { forgeDir, forgeCandidates, forgePlansDir, FORGE_KEY, METHODS, LEFT_OUT, forgeRuns, forgeBrains, forgePlans, makeForgePlan, alive, scrub as scrubForge, forgeStartProblems, onDrive, launchForge, runPodId, runCost } from './lab-forge.js';
+import { forgeDir, forgeCandidates, forgePlansDir, FORGE_KEY, METHODS, LEFT_OUT, forgeRuns, forgeBrains, forgePlans, makeForgePlan, alive, scrub as scrubForge, forgeStartProblems, onDrive, launchForge, runPodId, runCost, podRecords, findRunPlan, parseForgeStatus, forgeWatching } from './lab-forge.js';
 import { pickLessons, addLessonSet, downloadHfLessons } from './lab-library.js';
 import os from 'node:os';
 import { parseHfRef, hfLookup } from './lab-hf.js';
@@ -15,6 +15,20 @@ import { nodeCmd } from './selftools.js';
 import { spawn } from 'node:child_process';
 import { readJson, labModelsDir, labDir, slugOf, writeJson } from './lab-measure.js';
 import { lessonSets, partsView, lessonSetsDir } from './lab-plan.js';
+
+const POD_RE = /^[a-z0-9]{6,32}$/i;
+// forge.mjs with these words, its keys from the environment, and what it printed (read-only calls: --status, --kill <pod>).
+function runForgeCmd(lab, dir, args, timeoutMs = 90e3) {
+  const { file: node, env: nodeEnv } = nodeCmd();
+  return new Promise((resolve) => {
+    let out = '', done = false;
+    const c = (lab.forgeSpawn || spawn)(node, [path.join(dir, 'forge', 'forge.mjs'), ...args], { cwd: path.join(dir, 'forge'), stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, env: { ...process.env, ...nodeEnv, ...lab.forgeKeys() } });
+    const end = (code) => { if (done) return; done = true; clearTimeout(t); resolve({ code, out }); };
+    const t = setTimeout(() => { try { c.kill?.(); } catch {} end(-1); }, timeoutMs); t.unref?.();
+    c.stdout?.on?.('data', (d) => { out += d; }); c.stderr?.on?.('data', (d) => { out += d; });
+    if (c.on) { c.on('exit', end); c.on('error', () => end(-1)); } else end(-1);
+  });
+}
 
 // Methods of the Lab class (src/lab.js), put on it there with the same rules as the methods written inside it.
 export const forgeJobs = {
@@ -143,7 +157,7 @@ export const forgeJobs = {
     if (!rec) throw new Error('No Forge run was started from the Lab.');
     if (rec.pid > 0) { try { (this.forgeKill || process.kill)(rec.pid); } catch {} } // never 0: that would mean every process in the group
     if (rec.importing) { writeJson(this.forgeLiveFile(), { ...rec, importing: false, stopped: true, pid: 0 }); return { stopped: true, pod: false }; } // nothing rented yet
-    const dir = forgeDir(this.cfg), plan = readJson(path.join(forgePlansDir(labDir(this.cfg)), `${rec.plan}.json`), {}), pod = dir ? runPodId(dir, plan.run || rec.plan) : '';
+    const dir = forgeDir(this.cfg), plan = readJson(path.join(forgePlansDir(labDir(this.cfg)), `${rec.plan}.json`), {}), pod = !dir ? '' : POD_RE.test(rec.pod || '') ? rec.pod : runPodId(dir, plan.run || rec.plan);
     if (pod) {
       const { file: node, env: nodeEnv } = nodeCmd();
       await new Promise((resolve) => { const c = (this.forgeSpawn || spawn)(node, [path.join(dir, 'forge', 'forge.mjs'), '--kill', pod], { cwd: path.join(dir, 'forge'), stdio: 'ignore', windowsHide: true, env: { ...process.env, ...nodeEnv, ...this.forgeKeys() } }); c.on?.('exit', resolve); c.on?.('error', resolve); if (!c.on) resolve(); });
@@ -151,13 +165,77 @@ export const forgeJobs = {
     if (rec.halted) writeJson(this.forgeLiveFile(), { ...rec, pid: 0, stopped: true, halted: false, podLeft: '' });
     return { stopped: true, pod: Boolean(pod) };
   },
+  // 15 Nov The console's rentals: every Forge card up on the rental service (forge.mjs --status, read-only), with the
+  // run each came from and its plan. Nothing is rented, changed or deleted by looking.
+  async forgeLook() {
+    const dir = forgeDir(this.cfg);
+    if (!dir) throw new Error('The Forge isn\'t next to this copy of Bob.');
+    if (!this.forgeKeys()[FORGE_KEY]) throw new Error(`There's no ${FORGE_KEY} for the rental service, so the Lab can't ask which cards are up. Settings > Rented brains says how to add it.`);
+    const at = this.now(), watching = forgeWatching(dir, at, at - 1000);
+    const r = await runForgeCmd(this, dir, ['--status']);
+    if (r.code !== 0) throw new Error('The rental service didn\'t answer the Forge. Try again in a minute.');
+    const recs = podRecords(dir), live = readJson(this.forgeLiveFile(), null), liveOn = Boolean(live?.pid > 0 && (this.forgeAlive || alive)(live.pid));
+    const planDirs = [forgePlansDir(labDir(this.cfg)), path.join(labDir(this.cfg), 'forge-runs'), path.join(dir, 'forge', 'plans')];
+    const pods = parseForgeStatus(r.out).filter((p) => p.forge).map((p) => {
+      const rec = recs.find((x) => x.pod === p.pod), plan = rec ? findRunPlan(rec.run, planDirs) : null;
+      const ours = liveOn && (live.pod === p.pod || (dir && runPodId(dir, live.planRun || live.plan) === p.pod));
+      const why = ours ? 'The console is already watching it.' : !rec ? 'This computer has no record of it (it was rented somewhere else), so it can only be ended.' : !plan ? `The plan for ${rec.run} isn't on this computer any more, so it can only be ended.` : !(plan.hours > 0 && plan.dollars > 0) ? 'Its plan has no caps, so it can only be ended.' : '';
+      return { pod: p.pod, status: p.status, gpu: p.gpu, perHour: p.perHour, run: rec?.run || '', started: rec?.started || 0, plan: plan ? { id: path.basename(plan.file).replace(/\.json$/, ''), file: plan.file, hours: plan.hours, dollars: plan.dollars, brains: plan.rungs, benchmarkOnly: plan.benchmarkOnly } : null, ours, canTake: !why, why };
+    });
+    this._forgeLook = { at, pods };
+    return { at, pods: pods.map(({ plan, ...p }) => ({ ...p, plan: plan ? { id: plan.id, hours: plan.hours, dollars: plan.dollars, brains: plan.brains, benchmarkOnly: plan.benchmarkOnly } : null })), watching: watching ? Math.round((at - watching) / 1000) : 0 };
+  },
+  lookedPod(pod) {
+    const l = this._forgeLook;
+    if (!l || this.now() - l.at > 10 * 60e3) throw new Error('Look for rented cards again first: the list is more than ten minutes old.');
+    const x = l.pods.find((p) => p.pod === String(pod || ''));
+    if (!x) throw new Error('That card isn\'t in the list. Look for rented cards again.');
+    return x;
+  },
+  // Take over: the Forge carries on watching a card that is already up (forge.mjs --resume <pod> --plan <its plan>), so
+  // the console's STOP and END RENTAL work on it and its caps are watched again. Nothing new is rented. The caps shown
+  // must be the plan's, as on the purchase card.
+  forgeResume({ pod, hours, dollars } = {}) {
+    const dir = forgeDir(this.cfg);
+    if (!dir) throw new Error('The Forge isn\'t next to this copy of Bob.');
+    if (this.cfg.labForgeStart !== true) throw new Error('Starting Forge runs from the Lab is off. Turn on "Let the Lab start Forge runs" first.');
+    const keys = this.forgeKeys();
+    if (!keys[FORGE_KEY]) throw new Error(`There's no ${FORGE_KEY} for the rental service.`);
+    if (this.forgeLive()?.running) throw new Error('A Forge run is already going from the Lab. One at a time.');
+    const x = this.lookedPod(pod);
+    if (!x.canTake) throw new Error(x.why);
+    if (Number(hours) !== x.plan.hours || Number(dollars) !== x.plan.dollars) throw new Error('The caps changed since the list was shown. Look again.');
+    const seen = forgeWatching(dir, this.now(), this._forgeLook.at - 1000);
+    if (seen) throw new Error(`A Forge window wrote to its log ${Math.round((this.now() - seen) / 1000)} seconds ago, so it may still be watching this card, and two watchers on one card can both download and delete. Close that window first (Ctrl+C there leaves the card up), wait two minutes, then press Take over.`);
+    const log = path.join(labDir(this.cfg), 'forge-runs', `${slugOf(x.run || x.pod)}-resume-${new Date(this.now()).toISOString().replace(/[:.]/g, '-').slice(0, 19)}.log`);
+    fs.mkdirSync(path.dirname(log), { recursive: true });
+    const { file: node, env: nodeEnv } = nodeCmd();
+    let run = null; try { run = startRun(labDir(this.cfg), { step: 'forge-plan', settings: { plan: x.plan.id, run: x.run, hours: x.plan.hours, dollars: x.plan.dollars, resumed: true }, bob: VERSION.label || '', now: this.now() }); } catch {}
+    const pid = launchForge({ dir, planFile: x.plan.file, env: keys, node, nodeEnv, spawnFn: this.forgeSpawn || spawn, logTo: log, resume: x.pod });
+    writeJson(this.forgeLiveFile(), { plan: x.plan.id, planFile: x.plan.file, log, at: this.now(), hours: x.plan.hours, dollars: x.plan.dollars, run: run?.id || '', planRun: x.run, pod: x.pod, resumed: true, pid });
+    return { started: true, pod: x.pod, run: x.run };
+  },
+  // End one card from the list, by its pod id (never a bare --kill, which deletes every Forge card). The Forge saves
+  // what it can from the card first, as END RENTAL does.
+  async forgeEndPod({ pod } = {}) {
+    const dir = forgeDir(this.cfg);
+    if (!dir) throw new Error('The Forge isn\'t next to this copy of Bob.');
+    const x = this.lookedPod(pod);
+    const live = readJson(this.forgeLiveFile(), null);
+    if (x.ours) return { ...(await this.forgeStop()), ended: true, out: '' };
+    if (!POD_RE.test(x.pod)) throw new Error('That isn\'t a card id.');
+    const r = await runForgeCmd(this, dir, ['--kill', x.pod], 10 * 60e3);
+    if (live && (live.pod === x.pod || live.podLeft === x.pod)) writeJson(this.forgeLiveFile(), { ...live, pid: 0, stopped: true, halted: false, podLeft: '' });
+    this._forgeLook = { ...this._forgeLook, pods: this._forgeLook.pods.filter((p) => p.pod !== x.pod) };
+    return { ended: r.code === 0, out: scrubForge(r.out).split(/\r?\n/).filter(Boolean).slice(-20).join('\n') };
+  },
   // 15 Nov 2026 The console's STOP: the Forge stops working here, and its rented card stays up (the owner: "the stop
   // wouldn't end the rental"). Nothing watches the caps after this, so the console shows END RENTAL until it's pressed.
   forgeHalt() {
     const rec = readJson(this.forgeLiveFile(), null);
     if (!rec || !(rec.pid > 0) || !(this.forgeAlive || alive)(rec.pid)) return { halted: false };
     try { (this.forgeKill || process.kill)(rec.pid); } catch {}
-    const dir = forgeDir(this.cfg), plan = readJson(path.join(forgePlansDir(labDir(this.cfg)), `${rec.plan}.json`), {}), pod = !rec.importing && dir ? runPodId(dir, plan.run || rec.plan) : '';
+    const dir = forgeDir(this.cfg), plan = readJson(path.join(forgePlansDir(labDir(this.cfg)), `${rec.plan}.json`), {}), pod = rec.importing || !dir ? '' : POD_RE.test(rec.pod || '') ? rec.pod : runPodId(dir, plan.run || rec.plan);
     writeJson(this.forgeLiveFile(), { ...rec, pid: 0, stopped: true, importing: false, halted: Boolean(pod), podLeft: pod });
     return { halted: true, pod: Boolean(pod) };
   },

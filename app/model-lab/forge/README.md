@@ -323,3 +323,9 @@ on the drive (check it on the PC and send it as `extra_lessons`). The result is 
 Run it alone with `node never-gate.mjs --plan <plan>`. Lessons the pod writes during a training run are checked the same
 way, and any that hold a test item are dropped (kept apart in `never-dropped.jsonl`) before they go up. Benchmarks,
 rebuilds and lesson-writing-only runs aren't checked, since they teach nothing.
+
+## Tighter lesson teacher (15 Nov 2026)
+- `lesson-checks.mjs`: code checks run on every lesson before the reviewer sees it (thinking that wanders, quoting the private note, claiming success when every tool call failed, the same call three times, a value a tool doesn't take). `WORK_RULES` goes to the teacher only, never into a lesson.
+- `write-lessons.mjs --examples <jsonl>`: shows the teacher up to 3 Opus-approved lessons as a guide. They are never saved or trained on.
+- `--real-tools` pre-flight: every real lab tool (board, memory, files, folder list, diagram, and office when ideas need it) runs once in a throwaway home before anything is rented.
+- `--office <soffice.exe>` hands the lab Bob a LibreOffice. `--no-office` instead leaves office tools out and skips office ideas, for a PC without LibreOffice.

@@ -271,7 +271,7 @@ check('three panels, any on either side: Server, Chat, Set up', /\['server', 'Se
 check('server on the left and chat on the right to start', /pick\('left', 'server'/.test(pg) && /pick\('right', 'chat'/.test(pg));
 check('either side alone, or one side wider', /'leftonly'/.test(pg) && /'rightonly'/.test(pg) && /\.lc-win\[data-size="left"\]/.test(css) && /\.lc-win\[data-size="leftonly"\]/.test(css) && /data-lconly/.test(pg));
 check('only the Server panel is a terminal; the Chat is a chat', /role="log" aria-live="off" aria-label="Server readout"/.test(pg) && /class="lc-msg lc-you"/.test(pg) && /lc-in-chat/.test(pg) && /<details class="lc-think"/.test(pg));
-check('Set up has sliders, tick boxes and Lab jobs', /type="range"/.test(pg) && /data-lctick/.test(pg) && /data-lcjobrun/.test(pg) && /'sweep'/.test(pg) && /data-lcpage/.test(pg));
+check('Set up has sliders, tick boxes and Lab jobs', /type="range"/.test(pg) && /data-lctick/.test(pg) && /data-lcjobrun/.test(pg) && /id: 'sweep'/.test(read('public/lab-console-jobs.js')) && /data-lcpage/.test(pg));
 check('LOAD MODEL LOCALLY and OPEN RENTAL each open a window to set them up', /data-lcopen="local"/.test(pg) && /data-lcopen="rental"/.test(pg) && /showModal\(\)/.test(pg) && /Rent it and start/.test(pg));
 check('a clear STOP, and END RENTAL only while a rental is up, both asked first when it matters', /lc-stopall" data-lcstopall/.test(pg) && /v\?\.rental \? `<button type="button" class="lc-big lc-endrent"/.test(pg) && /ask === 'end'/.test(pg) && /ask === 'stop'/.test(pg));
 check('the server panel shows its log, the requests and replies, the scripts, each on or off', /toggleChip\('server', 'Server log'\)/.test(pg) && /toggleChip\('traffic', 'Requests and replies'\)/.test(pg) && /toggleChip\('scripts', 'Scripts'\)/.test(pg));
@@ -334,6 +334,107 @@ check('there is an FAQ on where a run\'s output went', /id: 'faq-lab-console'/.t
 }
 check('the card\'s door script adds the key itself and answers only on this computer', (() => { const d = read('model-lab/lab-door.mjs'); return /authorization = `Bearer \$\{key\}`/.test(d) && /listen\(0, '127\.0\.0\.1'/.test(d) && /process\.env\.LAB_API_KEY/.test(d) && !/console\.log\([^)]*key\b/.test(d); })());
 check('STOP on the Forge stops it here and leaves the card; END RENTAL kills only its pod', (() => { const f = read('src/lab-forge-jobs.js'); return /forgeHalt\(\)/.test(f) && /halted: Boolean\(pod\), podLeft: pod/.test(f) && /'--kill', pod\]/.test(f); })());
+
+// ---- 15 Nov stage 2: the whole Lab in Set up, Bob's own brain, Lab jobs followed, rentals taken over or ended ----
+{
+  const J = await import('../public/lab-console-jobs.js');
+  const routes = read('src/lab-routes.js') + read('src/lab-console.js');
+  const L = { lab: { brains: [{ id: 'a', name: 'A', facts: { experts: 128, used: 8, fullSize: true } }, { id: 'b', name: 'B', facts: { experts: 0, fullSize: false } }], lessonSets: [{ id: 's', name: 'S', count: 3 }], lessonSkills: [{ id: 'tools', label: 'Tools' }], packs: [{ id: 'quiz', title: 'Quick quiz' }], myPacks: [], types: ['Q4_K_M'], ladderSteps: [{ type: 'Q4_K_M', label: 'Q4' }], mixWays: [{ id: 'slerp', label: 'Smooth' }], layerChoices: [{ id: 'strongest', label: 'Strongest' }] }, forge: { plans: [{ id: 'p1', rungs: ['24Bob'] }], brains: [{ name: '28Bob' }], lessonSets: [] }, proto: { pairs: [] } };
+  check('every Set up job is in a section, and every section has jobs', J.JOBS.every((j) => J.GROUPS.some(([g]) => g === j.group)) && J.GROUPS.every(([g]) => J.JOBS.some((j) => j.group === g)));
+  const urls = J.JOBS.flatMap((j) => { const f = Object.fromEntries(j.fields.map((fd) => [fd.k, J.fieldDefault(fd, L)])); return [j.check?.call(j, f), j.run.call(j, f), j.alt?.req(f)].filter(Boolean).map(([u]) => u); });
+  check('every Set up job calls a Lab route that is really there', urls.length > 20 && urls.every((u) => routes.includes(`'${u}'`)), urls.filter((u) => !routes.includes(`'${u}'`)).join(' '));
+  check('the forms cover the whole Lab: lessons, cuts, mixes, stacking, refusals, benchmarks, dials and rented runs', ['write', 'mistakes', 'cut', 'ladder', 'mix', 'stack', 'refusals', 'challenge', 'sweep', 'forge', 'clean', 'pairs'].every((id) => J.JOBS.some((j) => j.id === id)));
+  check('a rented run only saves its plan; the purchase card starts it', J.JOBS.filter((j) => j.group === 'rent').every((j) => j.rented && j.run({})[0] === '/api/lab/forge/save') && !J.JOBS.some((j) => /forge\/start/.test(String(j.run))));
+  check('brains to make are read from "name:keep" and cover', JSON.stringify(J.parseRungs('24Bob:128, 20Bob:cover').map((r) => [r.name, r.how, r.keep])) === JSON.stringify([['24Bob', 'number', 128], ['20Bob', 'cover', 0]]) && J.parseRungs('a:1,b:2,c:3,d:4,e:5').length === 4);
+  check('layers to stack are read from "a 0-23, b 8-31"', JSON.stringify(J.parseRanges('a 0-23, b 8-31, 3-4')) === JSON.stringify([{ brain: 'a', start: 0, end: 23 }, { brain: 'b', start: 8, end: 31 }, { brain: 'a', start: 3, end: 4 }]) && J.parseRanges('x').every((r) => r.start === -1));
+  const rec = J.recipeOf({ name: 'N', from: 'a', how: 'cover', keep: 96, cover: '0.99', fold: true, set: 's', files: ['Q4_K_M'], compare: true });
+  check('the cut form makes the Make a brain page\'s recipe', rec.smaller.cut.how === 'cover' && rec.smaller.cut.keep === 96 && rec.smaller.cut.cover === 0.99 && rec.smaller.cut.fold === true && rec.lessons.kind === 'set' && rec.smaller.files[0] === 'Q4_K_M' && J.recipeOf({ how: 'none' }).smaller.cut === null);
+  const cutJob = J.JOBS.find((j) => j.id === 'cut'), cf = { from: 'a' }; cutJob.onChange('from', cf, L);
+  check('picking a brain to cut starts at three quarters of its experts, and names it', cf.keep === 96 && cf.name === 'A Lab');
+  check('full-size-only fields list only full-size brains', J.brainsOf(L, 'full').map((b) => b.id).join() === 'a' && J.brainsOf(L).length === 2);
+  const { makeForgePlan } = await import('../src/lab-forge.js');
+  const fp = makeForgePlan(J.forgeFormOf({ run: 'try one', rungs: '24Bob:128', quants: ['Q4_K_M', 'Q5_K_M'], experts: 'full', epochs: 2, pref: 'off', grpo: true, grpoHours: 2, hours: 30, dollars: 20 }), { base: {} });
+  check('the rented-run form makes a Forge plan the Forge reads', fp.plan.rungs[0].keep === 128 && fp.plan.quants === 'Q4_K_M,Q5_K_M' && fp.plan.heal.experts === 'full' && fp.plan.heal.epochs === 2 && fp.plan.grpo.hours === 2 && fp.plan.hours_max === 30 && fp.plan.dollars_max === 20, JSON.stringify(fp.problems));
+  check('the plan\'s own brain stays when none is picked', !('brain' in J.forgeFormOf({})) && J.forgeFormOf({ brain: 'forge:28Bob' }).brain.pick === 'forge:28Bob');
+  const pg2 = read('public/lab-console.js');
+  check('Set up has Pipelines and Rented cards, and a way to refresh its lists', /sec\('pipes', 'Pipelines'/.test(pg2) && /sec\('cards', 'Rented cards'/.test(pg2) && /data-lclists/.test(pg2));
+  check('Take over and End it each ask first', /data-lcrenttakego/.test(pg2) && /data-lcrentendgo/.test(pg2) && /rentAsk = \{ kind: 'take'/.test(pg2) && /rentAsk = \{ kind: 'end'/.test(pg2));
+  check('a job that needs the card says to tick Unload, never unloads by itself', /r\?\.needUnload/.test(pg2) && J.JOBS.filter((j) => j.fields.some((fd) => fd.k === 'unload')).every((j) => j.fields.find((fd) => fd.k === 'unload').d === false));
+
+  // Bob's own brain
+  const bobLab = { ...fakeLab, brain: { engine: { url: brainUrl + '/', current: 'qwen3-4b', child: { exitCode: null } }, brainLabel: () => 'Qwen3 4B' } };
+  const cb = new LabConsole({ lab: bobLab });
+  cfg.labConsole = true;
+  const ub = await cb.useBob(true);
+  check('Use Bob\'s brain points the Chat and tools at the brain Bob has loaded', ub.bob && cb.targetUrl() === brainUrl && /Bob's brain, Qwen3 4B/.test(cb.view().target) && cb.view().bob.on);
+  bobLab.brain.engine.current = '';
+  check('when Bob\'s brain unloads, the console says so instead of sending anywhere', cb.targetUrl() === '' && /not loaded now/.test(cb.view().target) && /no brain loaded/.test(cb.view().bob.why));
+  check('Bob\'s brain can\'t be picked while he has none loaded', await cb.useBob(true).then(() => false, (e) => /no brain loaded/.test(e.message)));
+  bobLab.brain.engine = { url: 'https://far.example', current: 'x' };
+  check('a brain on another engine is never reached', cb.bobBrain().url === '' && /another engine/.test(cb.bobBrain().why));
+  await cb.useBob(false); cb.stopAll();
+
+  // a Lab job's log and its steps, followed
+  const jdir = path.join(cfg.dataDir, 'lab', 'models', 'cut-one'); fs.mkdirSync(jdir, { recursive: true });
+  const run = { id: 'lab-1', name: 'Cut one', at: Date.now(), stepLabel: 'Count the experts' };
+  const jobLab = { ...fakeLab, job: { run }, runs: [run] };
+  const cj = new LabConsole({ lab: jobLab });
+  fs.writeFileSync(path.join(jdir, 'lab.log'), 'counting experts 10%\n');
+  cj.follow(); run.stepLabel = 'Cut'; fs.appendFileSync(path.join(jdir, 'lab.log'), 'cutting layer 3\n'); cj.follow();
+  jobLab.job = null; run.state = 'done'; cj.follow();
+  const jt = cj.entries.map((e) => e.text).join('\n');
+  check('a Lab job\'s own log shows in the Server panel', /following Lab job Cut one/.test(jt) && /counting experts 10%/.test(jt) && /cutting layer 3/.test(jt));
+  check('each step a Lab job moves to, and how it ended, shows as a line', /Lab job Cut one: Count the experts/.test(jt) && /Lab job Cut one: Cut/.test(jt) && /Lab job Cut one: done\./.test(jt));
+  cj.stopAll();
+
+  // rentals: what the Forge knows, read without its tokens
+  const { podRecords, findRunPlan, parseForgeStatus, forgeWatching } = await import('../src/lab-forge.js');
+  const fo = path.join(dir, 'out', 'forge');
+  fs.writeFileSync(path.join(fo, 'pod-token-riker-interp.json'), JSON.stringify({ pod: 'abc123def456', token: 'SECRET-TOKEN', started: 1000, price: 0.44, run: 'riker-interp', gpu: 'NVIDIA A40' }));
+  fs.writeFileSync(path.join(fo, 'pod-token-local.json'), JSON.stringify({ pod: 'local', token: 't' }));
+  const recs = podRecords(dir);
+  check('the pod records are read without their tokens, and a local run is left out', recs.length === 1 && recs[0].run === 'riker-interp' && !JSON.stringify(recs).includes('SECRET'));
+  const plansHere = path.join(dir, 'forge', 'plans'); fs.mkdirSync(plansHere, { recursive: true });
+  fs.writeFileSync(path.join(plansHere, 'riker-interp.json'), JSON.stringify({ run: 'riker-interp', hours_max: 2, dollars_max: 1.5, rungs: [] }));
+  fs.writeFileSync(path.join(plansHere, 'other.json'), JSON.stringify({ run: 'other', hours_max: 1, dollars_max: 1 }));
+  const fr = findRunPlan('riker-interp', [path.join(tmp, 'nope'), plansHere]);
+  check('a run\'s plan is found by its run name', fr && fr.hours === 2 && fr.dollars === 1.5 && path.basename(fr.file) === 'riker-interp.json' && findRunPlan('none', [plansHere]) === null);
+  check('the Forge\'s pod list is read line by line', parseForgeStatus('10:00:00 abc123def456 bob-forge-x RUNNING NVIDIA A40 $0.44/h\n10:00:00 no pods\n10:00:00 zz9zz9zz9zz9 mine EXITED  $0.1/h').map((p) => [p.pod, p.forge, p.gpu]).join('|') === 'abc123def456,true,NVIDIA A40|zz9zz9zz9zz9,false,');
+  const tl = path.join(fo, 'forge-2026-11-15T10-00-00.log'); fs.writeFileSync(tl, 'x\n');
+  check('a Forge window that wrote in the last two minutes counts as still watching; an old one doesn\'t', forgeWatching(dir, Date.now()) > 0 && forgeWatching(dir, Date.now() + 5 * 60e3) === 0);
+  fs.utimesSync(tl, new Date(Date.now() - 10 * 60e3), new Date(Date.now() - 10 * 60e3));
+
+  // Take over and End it, with a fake Forge (nothing is rented or ended)
+  const { forgeJobs } = await import('../src/lab-forge-jobs.js');
+  const spawned = [];
+  const fakeSpawn = (cmd, args, opts) => {
+    spawned.push(args.slice(1));
+    const ev = {}, out = args.includes('--status') ? '10:00:00 abc123def456 bob-forge-riker RUNNING NVIDIA A40 $0.44/h\n10:00:00 ccc111ccc111 bob-forge-gone RUNNING NVIDIA A40 $0.44/h\n' : args.includes('--kill') ? '10:00:01 deleted ccc111ccc111\n' : '';
+    const c = { pid: 4242, stdout: { on: (e, fn) => { if (e === 'data' && out) setTimeout(() => fn(out), 1); } }, stderr: { on: () => {} }, on: (e, fn) => { ev[e] = fn; if (e === 'exit') setTimeout(() => fn(0), 5); }, unref: () => {} };
+    return c;
+  };
+  const fcfg = { ...cfg, labForgeStart: true };
+  const flab = Object.assign(Object.create(null), forgeJobs, { cfg: fcfg, now: () => Date.now(), forgeSpawn: fakeSpawn, forgeKeys: () => ({ RUNPOD_API_KEY: 'rk' }), forgeLiveFile: () => path.join(cfg.dataDir, 'lab', 'forge-live.json'), forgeAlive: (pid) => pid === 4242 });
+  fs.mkdirSync(path.join(cfg.dataDir, 'lab'), { recursive: true });
+  await wait(1100); // the window's log was made before the look (logs made by the look itself are the console's own)
+  const look = await flab.forgeLook();
+  const rk = look.pods.find((p) => p.pod === 'abc123def456'), gone = look.pods.find((p) => p.pod === 'ccc111ccc111');
+  check('Look for rented cards lists the Forge\'s cards with their runs, and only reads', look.pods.length === 2 && rk.run === 'riker-interp' && rk.canTake && rk.plan.hours === 2 && !rk.plan.file && spawned.at(-1).join(' ') === '--status');
+  check('a card this computer has no record of can only be ended', gone && !gone.canTake && /only be ended/.test(gone.why));
+  check('Take over needs the caps the list showed', throws(() => flab.forgeResume({ pod: 'abc123def456', hours: 3, dollars: 1.5 }), /caps changed/));
+  check('Take over is refused while a Forge window may still be watching', (() => { fs.utimesSync(tl, new Date(), new Date()); const r = throws(() => flab.forgeResume({ pod: 'abc123def456', hours: 2, dollars: 1.5 }), /may still be watching/); fs.utimesSync(tl, new Date(Date.now() - 10 * 60e3), new Date(Date.now() - 10 * 60e3)); return r; })());
+  check('Take over is refused with "Let the Lab start Forge runs" off', (() => { fcfg.labForgeStart = false; const r = throws(() => flab.forgeResume({ pod: 'abc123def456', hours: 2, dollars: 1.5 }), /Starting Forge runs from the Lab is off/); fcfg.labForgeStart = true; return r; })());
+  const tk = flab.forgeResume({ pod: 'abc123def456', hours: 2, dollars: 1.5 });
+  const live = JSON.parse(fs.readFileSync(flab.forgeLiveFile(), 'utf8'));
+  check('Take over carries on watching that card (--resume <pod>), never rents', tk.started && spawned.at(-1).slice(0, 2).join(' ') === '--resume abc123def456' && spawned.at(-1).includes('--plan') && !spawned.some((a) => a.includes('--yes')) && live.pod === 'abc123def456' && live.resumed && live.hours === 2);
+  check('a taken-over card shows as the console\'s rental, and a second take over is refused', flab.forgeLive().running && throws(() => flab.forgeResume({ pod: 'abc123def456', hours: 2, dollars: 1.5 }), /already going/));
+  const ended = await flab.forgeEndPod({ pod: 'ccc111ccc111' });
+  check('End it deletes only that card, by its id', ended.ended && spawned.at(-1).join(' ') === '--kill ccc111ccc111' && !spawned.some((a) => a.length === 1 && a[0] === '--kill'));
+  flab.forgeKill = () => {}; await flab.forgeStop();
+  check('END RENTAL on a taken-over card names its own pod', spawned.at(-1).join(' ') === '--kill abc123def456');
+  check('a card not in the last look can\'t be ended or taken over', await flab.forgeEndPod({ pod: 'zzz999zzz999' }).then(() => false, (e) => /isn't in the list/.test(e.message)));
+  for (const f of fs.readdirSync(fo)) if (/^pod-token|^forge-/.test(f)) fs.unlinkSync(path.join(fo, f));
+}
 
 c.stopAll(); brain.close();
 try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}

@@ -36,6 +36,7 @@ import { saveSettings } from './config.js';
 import { HANDS } from './hands-settings.js';
 import { noteStrike, maybeAsk as qAsk } from './quarantine.js';
 import { planGate } from './plan.js';
+import { stepThink, toolRanThisTurn } from './step-thinking.js';
 import { askTogether } from './together.js';
 import { callKey, realState, linkKey, NOW_IN_NOTE, staleHandErrors, meanwhileNear, claimsPcAction, CLAIM_CORRECTION, CLAIM_NUDGE, claimsObservation, OBSERVE_CORRECTION, OBSERVE_NUDGE, LINK_NUDGE, EMPTY_NUDGE, CANT_NUDGE, EMPTY_NOTE, DOING_TOOLS, isLook, ALT_ROUTE_DONE, ALT_ROUTE_NUDGE, quickHandBack } from './brain-words.js';
 import { sidePick, apuRoom } from './brain-lanes.js';
@@ -292,12 +293,17 @@ export const runOnParts = {
       // 1.5.206 PC check: thinking on every retry (Nov 11) cut "answered in words" from 98% to 81% on Riker, because a
       // thinking retry can spend the reply on thinking and say nothing. Back to the long coders only, unless a brain's
       // retries are asked to think (loopHelpOn: ['think'], for the loop test).
-      if (ctx.retrying && think === false && (LONG_CODER.test(String(model || '')) || (this.cfg?.loopHelpOn || []).includes('think'))) {
+      const retryThinks = Boolean(ctx.retrying && think === false && (LONG_CODER.test(String(model || '')) || (this.cfg?.loopHelpOn || []).includes('think')));
+      if (retryThinks) {
         think = undefined;
         if (LONG_CODER.test(String(model || ''))) emit({ type: 'announce', text: 'Trying again, thinking it through this time.' });
         this.log('chat', 'one more go, with thinking on (if this brain thinks)');
       }
       ctx.retrying = false;
+      // step-thinking.js (15 Nov): think to plan and review, not on each step. After a tool has run this turn, the
+      // next call is a doing step: no thinking. The last round (no tools) answers with the turn's own thinking.
+      const thinkNow = stepThink(this.cfg, { think, doing: toolRanThisTurn(msgs, turnStart) && !ctx.noTools, lastRound: Boolean(ctx.lastRound), retryThinks });
+      if (thinkNow !== think && !ctx.stepThinkSaid) { ctx.stepThinkSaid = true; this.log('chat', 'tool steps: no thinking (planning and the answer keep it)'); }
       const pub = Boolean(job?.guest?.public); // Bob on Discord: no memory, about-me or backstory of the owner's
       const hush = pub || isGuestId(sessionId); // a guest chat: no memory or about-me either (guest-chat.js)
       const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: this.now(), memory: hush ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: hush ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, pub ? 'the owner' : this.cfg.userName || 'the user') }), ctx.loaded) + extras + (earlier ? `\n\n${earlier}` : '') };
@@ -335,7 +341,7 @@ export const runOnParts = {
         if (!ctx.rentSaid) { ctx.rentSaid = true; emit({ type: 'rent', action: 'thinking', rental: rName, service: this.rentals.view().rentals.find((r) => r.id === rented.id)?.serviceName || '' }); }
         let rentShown = 0;
         try {
-          reply = await this.rentals.chat(rented, { messages: [sys, ...loopView(staleHandErrors(msgs, turnStart), step)], tools, signal, think, job, emit, onToken: (t) => { rentShown += String(t).length; emit({ type: 'token', text: t }); } });
+          reply = await this.rentals.chat(rented, { messages: [sys, ...loopView(staleHandErrors(msgs, turnStart), step)], tools, signal, think: thinkNow, job, emit, onToken: (t) => { rentShown += String(t).length; emit({ type: 'token', text: t }); } });
         } catch (e) {
           if (signal?.aborted) throw e;
           // Item 205: it falls back once (rented stays off for the rest of this job), the half answer it gave is taken
@@ -383,7 +389,7 @@ export const runOnParts = {
       // wait, use the brain already there (ctx.onCard, for the rest of this turn), or another of his Bobs.
       if (!reply && ctx.onCard) {
         this.setState('thinking', 'Thinking on the brain already on the card', this.state.model);
-        try { reply = await chatOpenAI({ url: `${ctx.onCard.url}/v1`, key: '', model: 'served', messages: [sys, ...loopView(staleHandErrors(msgs, turnStart), step)], tools, signal, think, onToken: (t) => emit({ type: 'token', text: t }) }); }
+        try { reply = await chatOpenAI({ url: `${ctx.onCard.url}/v1`, key: '', model: 'served', messages: [sys, ...loopView(staleHandErrors(msgs, turnStart), step)], tools, signal, think: thinkNow, onToken: (t) => emit({ type: 'token', text: t }) }); }
         catch (e) {
           if (signal?.aborted) throw e;
           this.log('card', `the brain on the card couldn't answer (${causeLine(e).slice(0, 160)})`);
@@ -404,7 +410,7 @@ export const runOnParts = {
         model = (await this.ensureModel(model, emit, signal, 'bob', { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}), cardChecked: true })) || model;
         this.setState('thinking', '', model);
         reply = await this.chatSafe({
-          model, messages: this.plainLoop ? [sys, ...meanwhileNear(loopView(staleHandErrors(msgs, turnStart), step), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')] : [steadySys, ...meanwhileNear(meanwhileNear(loopView(staleHandErrors(msgs, turnStart), step), turnNote), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')], tools, signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
+          model, messages: this.plainLoop ? [sys, ...meanwhileNear(loopView(staleHandErrors(msgs, turnStart), step), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')] : [steadySys, ...meanwhileNear(meanwhileNear(loopView(staleHandErrors(msgs, turnStart), step), turnNote), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')], tools, signal, cpu, think: thinkNow, ctx: brainCtx, ...(beside ? { beside: true } : {}),
           ...(ctx.preset && ctx.preset.temperature !== null ? { temperature: ctx.preset.temperature } : {}), // a preset's own temperature
           ...(sessionId ? { chatId: sessionId } : {}), // Per-chat engine cache (chat-places.js, off unless switched on)
           onToken: (t) => emit({ type: 'token', text: t })

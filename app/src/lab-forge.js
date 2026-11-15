@@ -300,11 +300,16 @@ export function forgeStartProblems({ plan, allowed, hasKey, shown = {}, running 
   return p;
 }
 
-export function launchForge({ dir, planFile, env = {}, node = process.execPath, nodeEnv = {}, spawnFn, logTo }) {
+// resume: a pod id. The Forge carries on watching a card that is already up (forge.mjs --resume): nothing is rented,
+// so there's no "yes" to answer.
+export function launchForge({ dir, planFile, env = {}, node = process.execPath, nodeEnv = {}, spawnFn, logTo, resume = '' }) {
   const fd = fs.openSync(logTo, 'a');
-  const c = spawnFn(node, [path.join(dir, 'forge', 'forge.mjs'), '--plan', planFile], { cwd: path.join(dir, 'forge'), stdio: ['pipe', fd, fd], detached: true, windowsHide: true, env: { ...process.env, ...nodeEnv, ...env } });
-  c.stdin.write('yes\n'); // the owner's press on the purchase card is the yes; the pipe stays open until it's read
-  const t = setTimeout(() => { try { c.stdin.end(); } catch {} }, 10 * 60 * 1000); t.unref?.();
+  const args = resume ? ['--resume', resume, '--plan', planFile] : ['--plan', planFile];
+  const c = spawnFn(node, [path.join(dir, 'forge', 'forge.mjs'), ...args], { cwd: path.join(dir, 'forge'), stdio: [resume ? 'ignore' : 'pipe', fd, fd], detached: true, windowsHide: true, env: { ...process.env, ...nodeEnv, ...env } });
+  if (!resume) {
+    c.stdin.write('yes\n'); // the owner's press on the purchase card is the yes; the pipe stays open until it's read
+    const t = setTimeout(() => { try { c.stdin.end(); } catch {} }, 10 * 60 * 1000); t.unref?.();
+  }
   c.unref?.();
   fs.closeSync(fd);
   return c.pid;
@@ -320,6 +325,53 @@ export function runPodId(dir, run = '') {
     try {
       const j = JSON.parse(fs.readFileSync(path.join(dir, 'out', 'forge', f), 'utf8')); if (/^[a-z0-9]{6,32}$/i.test(j.pod || '')) return j.pod; } catch {} }
   return '';
+}
+
+// 15 Nov The console's rentals list: the Forge's per-run pod records, without their tokens, and the plan each run
+// came from. A run can be taken over from the console (forge.mjs --resume) only when its plan is found.
+const POD_ID = /^[a-z0-9]{6,32}$/i;
+export function podRecords(dir) {
+  const fdir = path.join(dir || '', 'out', 'forge');
+  let files = []; try { files = fs.readdirSync(fdir).filter((f) => /^pod-token.*\.json$/.test(f)); } catch { return []; }
+  const out = [];
+  for (const f of files) {
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(fdir, f), 'utf8'));
+      if (!POD_ID.test(j.pod || '') || j.pod === 'local') continue;
+      out.push({ pod: j.pod, run: String(j.run || f.replace(/^pod-token-?|\.json$/g, '') || ''), started: Number(j.started) || 0, price: Number(j.price) || 0, gpu: String(j.gpu || '') });
+    } catch {}
+  }
+  return out.sort((a, b) => b.started - a.started);
+}
+// The newest plan file whose run name is this run's: the Lab's saved plans, the copies its runs made, then the Forge's own.
+export function findRunPlan(run, dirs = []) {
+  let best = null;
+  for (const d of dirs) {
+    let files = []; try { files = fs.readdirSync(d).filter((f) => f.endsWith('.json')); } catch { continue; }
+    for (const f of files) {
+      const file = path.join(d, f);
+      try { const p = JSON.parse(fs.readFileSync(file, 'utf8')); if (String(p.run || '') !== String(run)) continue; const m = fs.statSync(file).mtimeMs; if (!best || m > best.m) best = { file, m, hours: Number(p.hours_max) || 0, dollars: Number(p.dollars_max) || 0, rungs: (p.rungs || []).map((r) => r.nickname || r.name), benchmarkOnly: p.benchmark_only === true }; } catch {}
+    }
+  }
+  return best;
+}
+// forge.mjs --status prints one line per pod: "HH:MM:SS <id> <name> <status> <card> $<price>/h".
+export function parseForgeStatus(text) {
+  const out = [];
+  for (const line of String(text || '').replace(/\r\n/g, '\n').split('\n')) {
+    const m = line.trim().match(/^\d\d:\d\d:\d\d (\S+) (\S+) (\S+) (.*?) ?\$([\d.]+)\/h$/);
+    if (m && POD_ID.test(m[1])) out.push({ pod: m[1], name: m[2], status: m[3], gpu: m[4].trim(), perHour: Number(m[5]) || 0, forge: m[2].startsWith('bob-forge') });
+  }
+  return out;
+}
+// A Forge window may still be watching a card: one of its timeline logs was written in the last two minutes.
+// before: logs made after this time are the console's own look, not a watcher.
+export function forgeWatching(dir, now = Date.now(), before = Infinity) {
+  const fdir = path.join(dir || '', 'out', 'forge');
+  let files = []; try { files = fs.readdirSync(fdir).filter((x) => /^forge-[\d-T]+\.log$/.test(x)); } catch { return 0; }
+  let newest = 0;
+  for (const f of files) { try { const st = fs.statSync(path.join(fdir, f)); if (st.birthtimeMs && st.birthtimeMs >= before) continue; /* no birth time known: counted, to be safe */ if (st.mtimeMs > newest) newest = st.mtimeMs; } catch {} }
+  return newest && now - newest < 120e3 ? newest : 0;
 }
 
 // 14 Nov A run's card cost, about: the pod record's price per hour times the time from its rent to endMs. Only the

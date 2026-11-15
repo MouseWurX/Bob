@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { live, pool } from './engine-live.mjs';
-import { buildQuestions, grade } from './tool-wording.mjs';
+import { buildQuestions, grade, effortList, thinkKwargs } from './tool-wording.mjs';
 
 const readJsonl = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean) : []);
 const parse = (a) => { if (a && typeof a === 'object') return a; try { return JSON.parse(a || '{}'); } catch { return {}; } };
@@ -85,13 +85,13 @@ async function main() {
       const tries = []; let msgs = q.messages, solved = null;
       try {
         for (let level = 0; level <= H; level++) {
-          const j = await eng.chat({ messages: msgs, tools: q.tools, max_tokens: on ? maxOn : maxOff, temperature: 0, chat_template_kwargs: { enable_thinking: on } });
+          const j = await eng.chat({ messages: msgs, tools: q.tools, max_tokens: on ? maxOn : maxOff, temperature: 0, chat_template_kwargs: thinkKwargs(on, effortList(a.effort)) });
           const m = j.choices?.[0]?.message || {}, g = grade(q, m);
           tries.push({ hint: level ? hint(level, q.want, callsOf(tries.at(-1)?.raw)) : null, calls: callsOf(m), content: m.content || '', reasoning: m.reasoning_content || '', finish: j.choices?.[0]?.finish_reason || '', ok: g.ok, name_ok: g.name_ok, raw: m });
           if (g.ok) { solved = level; break; }
           if (level < H) msgs = coached(msgs, m, hint(level + 1, q.want, callsOf(m)));
         }
-        const row = { brain, bob_src: bobVer, evidence: true, coached: true, think: on, job: q.job, idea: q.idea, k: q.k, want: q.want, first_ok: tries[0].ok, hints_needed: solved, tries: tries.map(({ raw, ...t }) => t), transcript: msgs };
+        const row = { brain, bob_src: bobVer, evidence: true, coached: true, think: on, ...(effortList(a.effort).length ? { effort: thinkKwargs(on, effortList(a.effort)).reasoning_effort } : {}), job: q.job, idea: q.idea, k: q.k, want: q.want, first_ok: tries[0].ok, hints_needed: solved, tries: tries.map(({ raw, ...t }) => t), transcript: msgs };
         fs.appendFileSync(file, JSON.stringify(row) + '\n'); return row;
       } catch (e) { const row = { brain, think: on, job: q.job, idea: q.idea, k: q.k, error: e.message.slice(0, 160), tries: tries.map(({ raw, ...t }) => t) }; fs.appendFileSync(file, JSON.stringify(row) + '\n'); return row; }
     });
