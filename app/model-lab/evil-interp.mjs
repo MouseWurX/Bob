@@ -29,7 +29,8 @@ export function checkInterp(dir) {
   const r = readJson(f('interp.json'));
   if (r.error) why.push(`the interp step failed: ${String(r.error).slice(0, 120)}`);
   if (!r.steps?.patch_means?.ok) why.push('the patching means are missing or short of layers');
-  if (!r.steps?.sae?.ok) why.push(`an autoencoder explains under half the stream (${JSON.stringify(r.steps?.sae?.layers || {}).slice(0, 120)})`);
+  if (!r.steps?.sae) why.push('the autoencoder step never finished');
+  else if (!r.steps.sae.ok) why.push(`an autoencoder explains under half the stream (${JSON.stringify(r.steps.sae.layers || {}).slice(0, 120)})`);
   if (!fs.existsSync(f('patch-means.json'))) why.push('no patch-means.json');
   const feats = fs.existsSync(dir) ? fs.readdirSync(dir).filter((x) => /^features-\d+\.json$/.test(x)) : [];
   if (!feats.length) why.push('no features-<layer>.json');

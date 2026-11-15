@@ -34,6 +34,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   check('the act-dump patch adds the tool', /tools\/act-dump\/act-dump\.cpp/.test(read(path.join(lab, 'forge', 'pod', '0015-act-dump.patch'))));
   check('interp.py never reads the last layer (the engine keeps only the last word there) and counts only the ask\'s own words', /range\(1, n_layer - 1\)/.test(py) && /def ask_start/.test(py));
   check('interp.py smoke-tests the means and a tiny autoencoder first, before the long dumps', py.indexOf('interp smoke passed') > 0 && py.indexOf('interp smoke passed') < py.indexOf('d1 = os.path.join'));
+  check('interp.py reads token text that splits a character (emoji, accents) and writes any crash into interp.json', /index\.jsonl"\), encoding="utf-8", errors="replace"\)/.test(py) && /except Exception as e:/.test(py));
   check('interp.py marks its record never training', /"never_training": True/.test(py));
   const plan = JSON.parse(read(path.join(lab, 'forge', 'plans', 'riker-interp.json'))), m = plan.benchmark.models[0];
   check('the Riker interp plan: its own small rental with caps, the act-dump patch, interp before serving', plan.dollars_max <= 1.5 && plan.hours_max <= 2 && plan.benchmark.brain_engine.patches.includes('pod:0015-act-dump') && plan.benchmark.brain_engine.patches.includes('pod:0014-live-control-vector') && m.interp === true && m.interp_from === 'out/interp-riker');
@@ -55,6 +56,10 @@ const mk = (dir, { ok = true, fve = 0.8 } = {}) => {
   const good = path.join(tmp, 'good interp'), bad = path.join(tmp, 'bad interp'); mk(good); mk(bad, { fve: 0.3 });
   check('good interp files pass the file checks', checkInterp(good).length === 0, checkInterp(good).join());
   check('an autoencoder that explains under half the stream fails them', checkInterp(bad).some((w) => /under half/.test(w)));
+  const crashed = path.join(tmp, 'crashed interp'); mk(crashed);
+  fs.writeFileSync(path.join(crashed, 'interp.json'), JSON.stringify({ error: 'UnicodeDecodeError: half a character', steps: { patch_means: { ok: true } } }));
+  const cw = checkInterp(crashed);
+  check('a crash before the autoencoders names the crash, not "under half"', cw.some((w) => /UnicodeDecodeError/.test(w)) && cw.some((w) => /never finished/.test(w)) && !cw.some((w) => /under half/.test(w)), cw.join(' | '));
   check('no interp step at all fails them', /no interp\.json/.test(checkInterp(path.join(tmp, 'none'))[0]));
   check('a dense entry list for one layer, zeros left out', JSON.stringify(dense(4, [0, 2, 0], 3)) === '[{"layer":4,"index":1,"value":6}]' && sub([3, 1], [1, 1]).join() === '2,0');
 }

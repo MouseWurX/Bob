@@ -32,7 +32,7 @@ def run_dump(act, model, prompts, layers, out, max_tokens, extra):
 
 
 def load_index(d):
-    return [json.loads(l) for l in open(os.path.join(d, "index.jsonl"), encoding="utf-8")]
+    return [json.loads(l) for l in open(os.path.join(d, "index.jsonl"), encoding="utf-8", errors="replace")]  # 15 Nov: a token can be half of one character (emoji, accents); the text is only a label
 
 
 def ask_start(tokens):
@@ -214,6 +214,8 @@ def main():
         shutil.rmtree(d2, ignore_errors=True)
     except SystemExit as e:
         report["error"] = str(e); print(str(e), file=sys.stderr)
+    except Exception as e:  # 15 Nov: a crash is written down too, so the gate says what broke
+        report["error"] = f"{type(e).__name__}: {e}"; print(report["error"], file=sys.stderr)
     finally:
         shutil.rmtree(a.work, ignore_errors=True)
         json.dump(report, open(os.path.join(a.out, "interp.json"), "w"), indent=1)
