@@ -154,7 +154,11 @@ export function loadConfig() {
     const { kept, fixed } = checkSettings(cfg, saved);
     cfg.settingsFixed = fixed;
     if (fixed.length) { try { writeJsonAtomic(cfg.settingsFile, kept, 2); } catch {} } // fixed once, not at every start
-    if (newDefaults(kept)) { try { writeJsonAtomic(cfg.settingsFile, kept, 2); } catch {} } // once per new default, below
+    const applied = [];
+    if (newDefaults(kept, applied)) { try { writeJsonAtomic(cfg.settingsFile, kept, 2); } catch {} } // once per new default, below
+    // 1.5.232: Bob-Net's own settings live in config.json, not settings.json, so a new default for one of them
+    // (share.x) is dropped there too, once, at the same moment.
+    shareDefaults(cfg, applied);
     try { mergeSettings(cfg, kept); } catch (e) { notes.push(`settings.json couldn't be applied (${e.message}); using the defaults`); }
   }
   // Nov 14 2026 (the owner: "existing installs get converted"): Moondust, the old starting theme, becomes the Mercury
@@ -260,7 +264,7 @@ export const VERSION = (() => {
 // Languages Bob's screens come in (public/i18n.js has the names and words). English is the default.
 export const LANGUAGES = ['en', 'fr', 'es'];
 export const cleanRemoved = (v) => [...new Set((Array.isArray(v) ? v : []).filter((k) => typeof k === 'string' && /^[\w.:/-]{1,100}$/.test(k)))].slice(0, 500);
-export const SETTING_KEYS = ['moreTools', 'answerMidJob', 'stopWords', 'copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'brainMemType', 'language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'toolHelp', 'toolSets', 'toolRecord', 'thinkBubble', 'statusJokes', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'ownBar', 'chatHeads', 'netFiles', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labRecheck', 'labExtras', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', ...HARNESS_KEYS, 'jobHelps', 'textSize', 'readableFont', 'profilesOn', 'todayCard', 'todayPlace', 'focusTimer', 'receipts', 'updateTour', 'tourSeen', 'trayDot', 'talkOver', 'readDocs', 'netVoices', 'netVoiceMap', 'carryIn', 'phoneGlance', 'netOverlay', 'memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPlaces', 'notesFolders', 'weeklyDigest', 'talkWithBob', 'talkCloud', 'talkCloudVoice', 'apuHoldbackGB'];
+export const SETTING_KEYS = ['moreTools', 'answerMidJob', 'stopWords', 'copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'brainMemType', 'language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'toolHelp', 'toolSets', 'toolRecord', 'thinkBubble', 'statusJokes', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'ownBar', 'chatHeads', 'netFiles', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labConsole', 'labRecheck', 'labExtras', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', ...HARNESS_KEYS, 'jobHelps', 'textSize', 'readableFont', 'profilesOn', 'todayCard', 'todayPlace', 'focusTimer', 'receipts', 'updateTour', 'tourSeen', 'trayDot', 'talkOver', 'readDocs', 'netVoices', 'netVoiceMap', 'carryIn', 'phoneGlance', 'netOverlay', 'memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPlaces', 'notesFolders', 'weeklyDigest', 'talkWithBob', 'talkCloud', 'talkCloudVoice', 'apuHoldbackGB'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -304,6 +308,7 @@ function clean(patch) {
   if ('catalogUpdates' in out) out.catalogUpdates = out.catalogUpdates === true; // 1.5.137 "Auto-update the brain list", off unless switched on
   if ('ownModels' in out) out.ownModels = cleanOwnModels(out.ownModels); // 1.5.135 brains of your own (GGUF files on this replicant matrix)
   if ('computerLab' in out) out.computerLab = out.computerLab !== false; // 1.5.172 "Show the Lab", on unless switched off (was off until 1.5.171)
+  if ('labConsole' in out) out.labConsole = out.labConsole === true; // 15 Nov "Let the Lab run commands here", off unless switched on
   if ('labForgeStart' in out) out.labForgeStart = out.labForgeStart === true; // 1.5.160 "Let the Lab start Forge runs", off unless switched on
   if ('labEngine' in out) out.labEngine = ['brainengine', 'llamacpp'].includes(out.labEngine) ? out.labEngine : ''; // 1.5.17x the Lab's engine: '' = the same as Bob's brains
   if ('labExtras' in out) out.labExtras = Object.fromEntries(['hoverWords', 'tellPhone', 'saveQuestions'].map((k) => [k, out.labExtras?.[k] === true])); // Lab items 109, 110, 102: the Lab's three small switches, each off unless switched on
@@ -660,13 +665,20 @@ export const NEW_DEFAULTS = [
 ];
 // A key is a top-level setting, or a.b for one inside a group (e.g. share.scutMbps).
 const dropKey = (kept, k) => { const [g, sub] = k.split('.'); if (sub === undefined) delete kept[g]; else if (kept[g] && typeof kept[g] === 'object' && !Array.isArray(kept[g])) delete kept[g][sub]; };
-export function newDefaults(kept) {
+export function shareDefaults(cfg, applied = []) {
+  const keys = NEW_DEFAULTS.filter((d) => applied.includes(d.id)).flatMap((d) => d.keys).filter((k) => k.startsWith('share.')).map((k) => k.slice(6));
+  if (!keys.length || !cfg.share || !keys.some((k) => k in cfg.share)) return false;
+  for (const k of keys) delete cfg.share[k];
+  try { const raw = readConfigFile(cfg); if (raw.share && typeof raw.share === 'object') { for (const k of keys) delete raw.share[k]; writeConfigFile(cfg, raw); } } catch {}
+  return true;
+}
+export function newDefaults(kept, applied = []) {
   const seen = Array.isArray(kept.defaultsSeen) ? kept.defaultsSeen.filter((x) => typeof x === 'string') : [];
   let changed = !Array.isArray(kept.defaultsSeen) && 'defaultsSeen' in kept;
   for (const d of NEW_DEFAULTS) {
     if (seen.includes(d.id)) continue;
     for (const k of d.keys) dropKey(kept, k);
-    seen.push(d.id); changed = true;
+    seen.push(d.id); applied.push(d.id); changed = true;
   }
   kept.defaultsSeen = seen;
   return changed;

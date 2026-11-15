@@ -1,0 +1,7 @@
+{
+ "note": "15 Nov 2026: test files no training or heal plan may ever teach (model-lab/never-gate.mjs). Paths are under out/. Every path listed here must exist on the PC that sends a training plan, or the plan stops. A plan adds its own with \"never\": [paths under model-lab/]. The quiz items (quiz-items.mjs) are always on the list.",
+ "files": [
+  { "path": "lesson-review-all/heldout-534", "recursive": false },
+  { "path": "gptoss-lessons-v5/riker/calib/questions", "recursive": true }
+ ]
+}

@@ -1,0 +1,238 @@
+diff --git a/ggml/src/ggml-rpc/ggml-rpc.cpp b/ggml/src/ggml-rpc/ggml-rpc.cpp
+index f92bc37..286e822 100644
+--- a/ggml/src/ggml-rpc/ggml-rpc.cpp
++++ b/ggml/src/ggml-rpc/ggml-rpc.cpp
+@@ -54,6 +54,157 @@ struct rpc_tensor {
+ 
+ static_assert(sizeof(rpc_tensor) % 8 == 0, "rpc_tensor size must be multiple of 8");
+ 
++// Brain Engine 0014: card sharing between Brain Engine builds on different llama.cpp versions.
++// A graph sent to a lent card names each step by its number in ggml's list of operations (rpc_tensor.op). llama.cpp
++// renumbers that list now and then (1.0 dropped ADD1 and DIAG_MASK_INF/ZERO, so every later step moved down), and
++// upstream then raises RPC_PROTO_MAJOR_VERSION so mismatched builds refuse each other. Brain Engine instead keeps one
++// frozen numbering on the wire, the one card-sharing protocol 9 used (llama.cpp b12282, Brain Engine 7), and says 9
++// in HELLO. Each side turns its own numbers into wire numbers and back, so Brain Engine 7 and every later build share
++// cards both ways. When llama.cpp adds a step, add it at the END of this list (never in the middle); when it drops
++// one, put -1 in its place. A step this build has no number for, or a wire number it doesn't know, is refused with
++// a clear message instead of running the wrong math. Nothing else in the messages differs between protocol 9 and 10.
++#define BOB_WIRE_MAJOR 9
++#define BOB_WIRE_MINOR 0
++#define BOB_WIRE_PATCH 0
++static constexpr int bob_wire_ops[] = {
++    GGML_OP_NONE,                   // 0
++    GGML_OP_DUP,                    // 1
++    GGML_OP_ADD,                    // 2
++    GGML_OP_ADD_ID,                 // 3
++    -1,                             // 4  ADD1 (gone in llama.cpp 1.0)
++    GGML_OP_ACC,                    // 5
++    GGML_OP_SUB,                    // 6
++    GGML_OP_MUL,                    // 7
++    GGML_OP_DIV,                    // 8
++    GGML_OP_SQR,                    // 9
++    GGML_OP_SQRT,                   // 10
++    GGML_OP_LOG,                    // 11
++    GGML_OP_SIN,                    // 12
++    GGML_OP_COS,                    // 13
++    GGML_OP_SUM,                    // 14
++    GGML_OP_SUM_ROWS,               // 15
++    GGML_OP_CUMSUM,                 // 16
++    GGML_OP_MEAN,                   // 17
++    GGML_OP_ARGMAX,                 // 18
++    GGML_OP_COUNT_EQUAL,            // 19
++    GGML_OP_REPEAT,                 // 20
++    GGML_OP_REPEAT_BACK,            // 21
++    GGML_OP_CONCAT,                 // 22
++    GGML_OP_SILU_BACK,              // 23
++    GGML_OP_NORM,                   // 24
++    GGML_OP_RMS_NORM,               // 25
++    GGML_OP_RMS_NORM_BACK,          // 26
++    GGML_OP_GROUP_NORM,             // 27
++    GGML_OP_L2_NORM,                // 28
++    GGML_OP_MUL_MAT,                // 29
++    GGML_OP_MUL_MAT_ID,             // 30
++    GGML_OP_OUT_PROD,               // 31
++    GGML_OP_SCALE,                  // 32
++    GGML_OP_SET,                    // 33
++    GGML_OP_CPY,                    // 34
++    GGML_OP_CONT,                   // 35
++    GGML_OP_RESHAPE,                // 36
++    GGML_OP_VIEW,                   // 37
++    GGML_OP_PERMUTE,                // 38
++    GGML_OP_TRANSPOSE,              // 39
++    GGML_OP_GET_ROWS,               // 40
++    GGML_OP_GET_ROWS_BACK,          // 41
++    GGML_OP_SET_ROWS,               // 42
++    GGML_OP_DIAG,                   // 43
++    -1,                             // 44  DIAG_MASK_INF (gone in llama.cpp 1.0)
++    -1,                             // 45  DIAG_MASK_ZERO (gone in llama.cpp 1.0)
++    GGML_OP_SOFT_MAX,               // 46
++    GGML_OP_SOFT_MAX_BACK,          // 47
++    GGML_OP_ROPE,                   // 48
++    GGML_OP_ROPE_BACK,              // 49
++    GGML_OP_CLAMP,                  // 50
++    GGML_OP_CONV_TRANSPOSE_1D,      // 51
++    GGML_OP_IM2COL,                 // 52
++    GGML_OP_IM2COL_BACK,            // 53
++    GGML_OP_IM2COL_3D,              // 54
++    GGML_OP_COL2IM_1D,              // 55
++    GGML_OP_CONV_2D,                // 56
++    GGML_OP_CONV_3D,                // 57
++    GGML_OP_CONV_2D_DW,             // 58
++    GGML_OP_CONV_TRANSPOSE_2D,      // 59
++    GGML_OP_POOL_1D,                // 60
++    GGML_OP_POOL_2D,                // 61
++    GGML_OP_POOL_2D_BACK,           // 62
++    GGML_OP_UPSCALE,                // 63
++    GGML_OP_PAD,                    // 64
++    GGML_OP_PAD_REFLECT_1D,         // 65
++    GGML_OP_ROLL,                   // 66
++    GGML_OP_ARANGE,                 // 67
++    GGML_OP_TIMESTEP_EMBEDDING,     // 68
++    GGML_OP_ARGSORT,                // 69
++    GGML_OP_TOP_K,                  // 70
++    GGML_OP_LEAKY_RELU,             // 71
++    GGML_OP_TRI,                    // 72
++    GGML_OP_FILL,                   // 73
++    GGML_OP_FLASH_ATTN_EXT,         // 74
++    GGML_OP_FLASH_ATTN_BACK,        // 75
++    GGML_OP_SSM_CONV,               // 76
++    GGML_OP_SSM_SCAN,               // 77
++    GGML_OP_WIN_PART,               // 78
++    GGML_OP_WIN_UNPART,             // 79
++    GGML_OP_GET_REL_POS,            // 80
++    GGML_OP_ADD_REL_POS,            // 81
++    GGML_OP_RWKV_WKV6,              // 82
++    GGML_OP_GATED_LINEAR_ATTN,      // 83
++    GGML_OP_RWKV_WKV7,              // 84
++    GGML_OP_SOLVE_TRI,              // 85
++    GGML_OP_GATED_DELTA_NET,        // 86
++    GGML_OP_LIGHTNING_INDEXER,      // 87
++    GGML_OP_DSV4_HC_COMB,           // 88
++    GGML_OP_DSV4_HC_PRE,            // 89
++    GGML_OP_DSV4_HC_POST,           // 90
++    GGML_OP_TOP_K_MASK,             // 91
++    GGML_OP_UNARY,                  // 92
++    GGML_OP_MAP_CUSTOM1,            // 93
++    GGML_OP_MAP_CUSTOM2,            // 94
++    GGML_OP_MAP_CUSTOM3,            // 95
++    GGML_OP_CUSTOM,                 // 96
++    GGML_OP_CROSS_ENTROPY_LOSS,     // 97
++    GGML_OP_CROSS_ENTROPY_LOSS_BACK,// 98
++    GGML_OP_OPT_STEP_ADAMW,         // 99
++    GGML_OP_OPT_STEP_SGD,           // 100
++    GGML_OP_GLU,                    // 101
++};
++static constexpr uint32_t BOB_WIRE_OP_COUNT = sizeof(bob_wire_ops) / sizeof(bob_wire_ops[0]);
++static constexpr bool bob_wire_covers_every_op() {
++    for (int op = 0; op < GGML_OP_COUNT; op++) {
++        bool found = false;
++        for (uint32_t w = 0; w < BOB_WIRE_OP_COUNT; w++) {
++            found = found || bob_wire_ops[w] == op;
++        }
++        if (!found) {
++            return false;
++        }
++    }
++    return true;
++}
++static_assert(bob_wire_covers_every_op(), "llama.cpp added a step: add it at the end of bob_wire_ops (Brain Engine 0014)");
++static const std::vector<uint32_t> & bob_local_to_wire() {
++    static const std::vector<uint32_t> map = [] {
++        std::vector<uint32_t> m(GGML_OP_COUNT, UINT32_MAX);
++        for (uint32_t w = 0; w < BOB_WIRE_OP_COUNT; w++) {
++            if (bob_wire_ops[w] >= 0 && bob_wire_ops[w] < GGML_OP_COUNT) {
++                m[bob_wire_ops[w]] = w;
++            }
++        }
++        return m;
++    }();
++    return map;
++}
++// local op -> wire number, UINT32_MAX when this step has no wire number yet
++static uint32_t bob_op_to_wire(int op) {
++    return (op >= 0 && op < GGML_OP_COUNT) ? bob_local_to_wire()[op] : UINT32_MAX;
++}
++// wire number -> local op, -1 when this build has no such step
++static int bob_op_from_wire(uint32_t w) {
++    return w < BOB_WIRE_OP_COUNT ? bob_wire_ops[w] : -1;
++}
++
+ // RPC commands
+ enum rpc_cmd {
+     RPC_CMD_ALLOC_BUFFER = 0,
+@@ -618,7 +769,7 @@ static bool negotiate_hello(const std::shared_ptr<socket_t> & sock, rpc_dispatch
+         return false;
+     }
+ 
+-    if (response.major != RPC_PROTO_MAJOR_VERSION || response.minor > RPC_PROTO_MINOR_VERSION) {
++    if (response.major != BOB_WIRE_MAJOR || response.minor > BOB_WIRE_MINOR) { // Brain Engine 0014: the wire version
+         LOG_ERROR("RPC server version mismatch: %d.%d.%d\n",
+                        response.major, response.minor, response.patch);
+         return false;
+@@ -1179,7 +1330,10 @@ static rpc_tensor serialize_tensor(const ggml_tensor * tensor, const rpc_dispatc
+         result.ne[i] = tensor->ne[i];
+         result.nb[i] = tensor->nb[i];
+     }
+-    result.op = tensor->op;
++    result.op = bob_op_to_wire(tensor->op); // Brain Engine 0014
++    if (result.op == UINT32_MAX) {
++        GGML_ABORT("card sharing: step %s has no number in Brain Engine's wire list yet (ggml-rpc.cpp bob_wire_ops)", ggml_op_name(tensor->op));
++    }
+     for (uint32_t i = 0; i < GGML_MAX_OP_PARAMS / sizeof(int32_t); i++) {
+         result.op_params[i] = tensor->op_params[i];
+     }
+@@ -1898,9 +2052,9 @@ private:
+ };
+ 
+ void rpc_server::hello(rpc_msg_hello_rsp & response) {
+-    response.major = RPC_PROTO_MAJOR_VERSION;
+-    response.minor = RPC_PROTO_MINOR_VERSION;
+-    response.patch = RPC_PROTO_PATCH_VERSION;
++    response.major = BOB_WIRE_MAJOR; // Brain Engine 0014: the wire version, not llama.cpp's
++    response.minor = BOB_WIRE_MINOR;
++    response.patch = BOB_WIRE_PATCH;
+     response.flags = cache_dir ? RPC_DISPATCHER_FLAGS_SEND_TENSOR_HASH : 0;
+     LOG_DBG("[%s] version: %d.%d.%d\n", __func__, response.major, response.minor, response.patch);
+ }
+@@ -2124,14 +2278,20 @@ ggml_tensor * rpc_server::deserialize_tensor(struct ggml_context * ctx, const rp
+             tensor->data < buffer_start || tensor->data + tensor_size > buffer_start + buffer_size) {
+             LOG_ERROR("[%s] tensor '%s' (op %s, type %s, ne [%" PRId64 ", %" PRId64 ", %" PRId64 ", %" PRId64 "]) "
+                       "data [0x%" PRIx64 ", 0x%" PRIx64 ") out of buffer bounds [0x%" PRIx64 ", 0x%" PRIx64 ")\n",
+-                      __func__, tensor->name, ggml_op_name((ggml_op) tensor->op), ggml_type_name(result->type),
++                      __func__, tensor->name, bob_op_from_wire(tensor->op) >= 0 ? ggml_op_name((ggml_op) bob_op_from_wire(tensor->op)) : "?", ggml_type_name(result->type),
+                       result->ne[0], result->ne[1], result->ne[2], result->ne[3],
+                       tensor->data, tensor->data + tensor_size, buffer_start, buffer_start + buffer_size);
+             return nullptr;
+         }
+     }
+ 
+-    result->op = (ggml_op) tensor->op;
++    // Brain Engine 0014: wire number -> this build's number; refuse a step this build doesn't have
++    const int local_op = bob_op_from_wire(tensor->op);
++    if (local_op < 0) {
++        LOG_ERROR("[%s] the other Bob sent step number %u, which this Brain Engine doesn't have (update the older Bob)\n", __func__, tensor->op);
++        return nullptr;
++    }
++    result->op = (ggml_op) local_op;
+     for (uint32_t i = 0; i < GGML_MAX_OP_PARAMS / sizeof(int32_t); i++) {
+         result->op_params[i] = tensor->op_params[i];
+     }
+@@ -3069,7 +3229,7 @@ static void rpc_serve_client(const std::vector<ggml_backend_t> & backends, const
+ 
+     if (hello_input_size != sizeof(rpc_msg_hello_req)) {
+         LOG_ERROR("HELLO request size mismatch (%zu vs %zu) — client needs upgrade to protocol v%d.x\n",
+-                       (size_t)hello_input_size, sizeof(rpc_msg_hello_req), RPC_PROTO_MAJOR_VERSION);
++                       (size_t)hello_input_size, sizeof(rpc_msg_hello_req), BOB_WIRE_MAJOR);
+         return;
+     }
+ 
+@@ -3424,7 +3584,8 @@ void ggml_backend_rpc_start_server(const char * endpoint, const char * cache_dir
+         return;
+     }
+     std::vector<ggml_backend_t> backends;
+-    LOG_INFO("Starting RPC server v%d.%d.%d\n",
++    LOG_INFO("Starting RPC server v%d.%d.%d (Brain Engine wire; llama.cpp's own is v%d.%d.%d)\n",
++        BOB_WIRE_MAJOR, BOB_WIRE_MINOR, BOB_WIRE_PATCH,
+         RPC_PROTO_MAJOR_VERSION,
+         RPC_PROTO_MINOR_VERSION,
+         RPC_PROTO_PATCH_VERSION);

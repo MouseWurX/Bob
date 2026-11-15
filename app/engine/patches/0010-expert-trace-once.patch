@@ -1,8 +1,8 @@
 diff --git a/include/llama.h b/include/llama.h
-index d92cd9c..95290a9 100644
+index a9281d0..1b0551b 100644
 --- a/include/llama.h
 +++ b/include/llama.h
-@@ -1167,6 +1167,15 @@ extern "C" {
+@@ -1137,6 +1137,15 @@ extern "C" {
      // The callback sees every graph node; while one is set, the graph is computed step by step, which is slower.
      LLAMA_API void llama_set_eval_callback(struct llama_context * ctx, ggml_backend_sched_eval_callback cb_eval, void * cb_eval_user_data);
  
@@ -19,10 +19,10 @@ index d92cd9c..95290a9 100644
      // This is automatically done when using one of the functions below to obtain the computation results
      // and is not necessary to call it explicitly in most cases
 diff --git a/src/llama-context.cpp b/src/llama-context.cpp
-index cec32c0..24c01e2 100644
+index 8124d35..4565a2e 100644
 --- a/src/llama-context.cpp
 +++ b/src/llama-context.cpp
-@@ -1411,6 +1411,38 @@ void llama_context::set_eval_callback(ggml_backend_sched_eval_callback cb_eval,
+@@ -1397,6 +1397,38 @@ void llama_context::set_eval_callback(ggml_backend_sched_eval_callback cb_eval,
      ggml_backend_sched_set_eval_callback(sched.get(), cb_eval, cb_eval_user_data);
  }
  
@@ -61,7 +61,7 @@ index cec32c0..24c01e2 100644
  void llama_context::set_abort_callback(bool (*abort_callback)(void * data), void * abort_callback_data) {
      LLAMA_LOG_DEBUG("%s: call\n", __func__);
  
-@@ -4735,6 +4767,14 @@ void llama_set_eval_callback(llama_context * ctx, ggml_backend_sched_eval_callba
+@@ -4696,6 +4728,14 @@ void llama_set_eval_callback(llama_context * ctx, ggml_backend_sched_eval_callba
      ctx->set_eval_callback(cb_eval, cb_eval_user_data);
  }
  
@@ -77,7 +77,7 @@ index cec32c0..24c01e2 100644
      ctx->set_abort_callback(abort_callback, abort_callback_data);
  }
 diff --git a/src/llama-context.h b/src/llama-context.h
-index 4ae993d..d7696d5 100644
+index 9b1a713..a2ae62f 100644
 --- a/src/llama-context.h
 +++ b/src/llama-context.h
 @@ -120,6 +120,8 @@ struct llama_context {
@@ -90,22 +90,22 @@ index 4ae993d..d7696d5 100644
      void set_embeddings (bool value);
      void set_embeddings_nextn(bool value, bool masked);
 diff --git a/src/llama-cparams.h b/src/llama-cparams.h
-index 7ac1513..451804f 100644
+index 52c85bd..d5e8c0f 100644
 --- a/src/llama-cparams.h
 +++ b/src/llama-cparams.h
-@@ -54,6 +54,7 @@ struct llama_cparams {
+@@ -50,6 +50,7 @@ struct llama_cparams {
+     bool fused_kv_rows;      // unified cache: attend to the cells of each sequence only (ggml_flash_attn_ext_rows)
      bool auto_fkvr;
      bool no_perf;
-     bool warmup;             // TODO: remove [TAG_LLAMA_GRAPH_NO_WARMUP]
 +    bool keep_expert_ids = false; // Brain Engine: keep every layer's expert picks until the step ends
      bool op_offload;
      bool kv_unified;
      bool pipeline_parallel;
 diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
-index cc92e61..73e63c4 100644
+index d1ab39c..f8a3bd3 100644
 --- a/src/llama-graph.cpp
 +++ b/src/llama-graph.cpp
-@@ -2383,6 +2383,11 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+@@ -2392,6 +2392,11 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
          cb(selected_experts->src[0], "ffn_moe_argsort", il);
      }
      cb(selected_experts, "ffn_moe_topk", il);
@@ -118,10 +118,10 @@ index cc92e61..73e63c4 100644
      if (arch == LLM_ARCH_GROVEMOE && n_expert != hparams.n_expert) {
          // TODO: Use scalar div instead when/if implemented
 diff --git a/src/llama-graph.h b/src/llama-graph.h
-index 0002ced..610ad48 100644
+index 880aa01..d8dc469 100644
 --- a/src/llama-graph.h
 +++ b/src/llama-graph.h
-@@ -910,6 +910,7 @@ struct llm_graph_params {
+@@ -908,6 +908,7 @@ struct llm_graph_params {
              cparams.embeddings_nextn        == other.cparams.embeddings_nextn        &&
              cparams.embeddings_nextn_masked == other.cparams.embeddings_nextn_masked &&
              cparams.causal_attn             == other.cparams.causal_attn             &&
@@ -130,7 +130,7 @@ index 0002ced..610ad48 100644
              layer_inp_src == other.layer_inp_src &&
              h_nextn_dev   == other.h_nextn_dev   &&
 diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
-index 5fc37ca..e14ecb5 100644
+index 22ea8da..1dbee76 100644
 --- a/tools/server/server-context.cpp
 +++ b/tools/server/server-context.cpp
 @@ -209,6 +209,8 @@ struct server_expert_trace {
@@ -253,7 +253,7 @@ index 5fc37ca..e14ecb5 100644
          return true;
      }
  };
-@@ -5138,6 +5197,14 @@ private:
+@@ -5139,6 +5198,14 @@ private:
              etrace.mass    = want && !etrace.heads && !etrace.neurons && slot.task->params.expert_trace_mass;
              etrace.clear(want ? llama_model_n_layer(model_tgt) : 0);
          }
@@ -268,7 +268,7 @@ index 5fc37ca..e14ecb5 100644
          if (want) {
              llama_set_eval_callback(ctx_tgt, server_expert_trace::cb_eval, &etrace);
          }
-@@ -5280,8 +5347,10 @@ private:
+@@ -5281,8 +5348,10 @@ private:
          }
          if (!expert_trace_wanted(&slot)) {
              llama_set_eval_callback(ctx_tgt, nullptr, nullptr);

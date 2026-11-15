@@ -84,3 +84,15 @@ Nothing here trains, rents or uploads. Run the teacher on a rental (`--url`), ne
 The lesson writer now: takes per-idea teacher notes, a first try that fails, and a guided failed try (saved with
 `train: false`, which the heal masks); never saves a bare "Done." result; and its reviewer no longer fails lessons for
 a JSON format nobody asked for.
+
+**Pre-flight, every rental (15 Nov).** A rented lesson run checks itself in code before it costs anything:
+- `node forge/forge.mjs --plan <plan> --preflight` runs each `write-lessons.mjs` command on this PC with `--preflight`
+  and rents nothing. A plain `--plan` run does the same first and refuses to rent on any failure.
+- It fails on: an empty or missing ideas file (it prints the exact path and row count), the wrong tool shape
+  (`--want-shapes 2`), too little room per slot (plan `ctx / slots` must hold the longest first request plus 16k to
+  grow, and at least 32k), blank caps, a command with no `--hours`, `--parallel` above the slots, or `--gate off`.
+- On the card (forge passes `--slot-ctx`) the writer checks again with the server's own room per slot (`/props`), then
+  writes a sample of 10 ideas.
+  Unless 60% of them save (`--gate 10:0.6`), it prints `GATE STOP` and exits 86, and forge deletes the pod.
+- Every skip is counted by cause. An unreadable review keeps the raw reply in `needs-review.jsonl`, and a lesson that
+  runs out of steps leaves its tool calls in `steps-out.jsonl`.

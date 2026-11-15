@@ -12,7 +12,7 @@ const windows = [
   { hwnd: 105, title: 'Windows Security', process: 'svchost', pid: 4245 },
   { hwnd: 106, title: 'Sketch - Paint', process: 'mspaint', pid: 4246 }
 ];
-const apps = [{ name: 'Notepad', appId: 'Microsoft.WindowsNotepad_8wekyb3d8bbwe!App' }, { name: 'Paint', appId: 'Microsoft.Paint_8wekyb3d8bbwe!App' }, { name: 'Command Prompt', appId: 'cmd' }, { name: 'Registry Editor', appId: 'regedit' }];
+const apps = [{ name: 'Notepad', appId: 'Microsoft.WindowsNotepad_8wekyb3d8bbwe!App' }, { name: 'Paint', appId: 'Microsoft.Paint_8wekyb3d8bbwe!App' }, { name: 'Command Prompt', appId: 'cmd' }, { name: 'Registry Editor', appId: 'regedit' }, { name: 'Calculator', appId: 'Microsoft.WindowsCalculator_8wekyb3d8bbwe!App' }];
 let driving = false;
 const out = (m) => process.stdout.write(JSON.stringify(m) + '\n');
 readline.createInterface({ input: process.stdin }).on('line', (line) => {
@@ -24,6 +24,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   else if (m.op === 'open') {
     if (!apps.some((a) => a.appId === m.appId)) { r.ok = false; r.error = 'not in the Start menu'; }
     else if (/Paint/.test(m.appId)) { /* Paint "opens" but no window shows up */ }
+    else if (/Calculator/.test(m.appId)) windows.push({ hwnd: 300, title: 'Calculator', process: 'CalculatorApp', pid: 5300 });
     // MOCK_APPS_LOG.oldtab there: like Windows 11 Notepad coming back on last time's unsaved note
     else windows.push({ hwnd: 200 + windows.length, title: process.env.MOCK_APPS_LOG && fs.existsSync(process.env.MOCK_APPS_LOG + '.oldtab') ? '*Dear diary - Notepad' : 'Untitled - Notepad', process: 'notepad', pid: 5000 + windows.length });
   }

@@ -50,7 +50,7 @@ export const NOT_BACKED_UP = [
   'bob/update-status.json', 'bob/update-launch-log.txt', 'bob/github-update/', 'bob/catalog-latest.json', 'bob/model-scan.json',
   'bob/tidy-backups/', 'bob/tool-results/', 'bob/backups/', 'bob/trash/', 'bob/thumbs/', 'bob/voice-samples/', 'bob/speed-tests.json', 'bob/speed-log.json', 'bob/card-seen.json', 'bob/load-times.json',
   'bob/selftools.json', 'bob/quarantine.json', 'bob/lab/', 'bob/hands-runs.json', 'bob/hands-journal.json', 'bob/downloads.json',
-  'bob/queue.json', 'bob/electron/', 'bob/doc-index.json', 'bob/digest.json', 'bob/tool-group-vectors.json', 'bob/receipts/', 'bob/claude-door.json', 'bob/tool-packs.json', 'tool-packs/', 'bob/sd-server-args.txt', 'bob/backup-state.json', 'bob/restore-result.json',
+  'bob/queue.json', 'bob/housekeeping-runs.json', 'bob/electron/', 'bob/doc-index.json', 'bob/digest.json', 'bob/tool-group-vectors.json', 'bob/receipts/', 'bob/claude-door.json', 'bob/tool-packs.json', 'tool-packs/', 'bob/sd-server-args.txt', 'bob/backup-state.json', 'bob/restore-result.json',
   'bob/seeded-brains.json', 'bob/keys.json', 'bob/bob-net-link-keys.json', // brains seeded on a lent card (worked out again); locked secrets and Bob-Net link keys are locked to this computer (keys travel in the locked part; Bobs pair again)
   'bob/saved-formats.json', 'bob/turn-changes/', // items 232 and 238: worked out again; a turn's Undo is about this computer's files
   'bob/running.json', 'bob/crash-reports/', 'bob/before-safe-start.json', 'bob/settings-undo.json', 'bob/weekly.json', 'bob/chat-places/', 'bob/tool-errors.json', 'bob/amnesia/', // items 62 to 72 (and reliability item 206's error counts; Amnesia mode's copy from before it went on): worked out again on this computer, or about this computer only
@@ -336,6 +336,7 @@ export function safeSettings(s = {}) {
   if (out.rentals && typeof out.rentals === 'object') out.rentals = { ...out.rentals, enabled: {}, current: '' };
   if (out.cloudHelpers && typeof out.cloudHelpers === 'object') out.cloudHelpers = Object.fromEntries(Object.entries(out.cloudHelpers).map(([k, v]) => [k, { ...(v || {}), enabled: false }]));
   if (out.labForgeStart) out.labForgeStart = false;
+  if (out.labConsole) out.labConsole = false; // the Forge console's commands: switched on again on this computer
   if (out.backup && typeof out.backup === 'object') out.backup = { ...out.backup, auto: false }; // the automatic backup: switched on again on this computer
   return out;
 }

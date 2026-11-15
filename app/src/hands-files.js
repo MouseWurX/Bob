@@ -5,6 +5,7 @@
 // folders, his own settings, or secret files.
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import crypto from 'node:crypto';
 import { insideAny, isInside, appDir } from './config.js';
 import { isSensitive } from './tools.js';
@@ -38,9 +39,21 @@ export function handsRoots(cfg) {
 
 const say = (p) => p; // paths are shown as they are; kept as a hook for shortening later
 
+// Nov 15 (Riker and Bobert, coached lessons): both Qwen brains give short paths ("backup_2022.zip", "~/scripts").
+// ~ is the home folder. A short path to something that exists is looked for in the folders ticked for Hands, and
+// used when exactly one of them has it. Anything else is left as given, and the full-path rule below says why.
+export function shortPath(cfg, p, { mustExist = true, home = os.homedir() } = {}) {
+  const s = String(p).trim();
+  if (/^~(?:[\\/]|$)/.test(s)) return path.join(home, s.slice(1));
+  if (path.isAbsolute(s) || /^[a-zA-Z]:[\\/]/.test(s) || !mustExist) return s;
+  const hits = handsRoots(cfg).map((r) => path.join(r, s)).filter((f) => fs.existsSync(f));
+  return hits.length === 1 ? hits[0] : s;
+}
+
 // Throws a plain-English reason if Bob may not touch this path with the Files Hand.
 export function guardPath(cfg, p, { mustExist = true, what = 'that' } = {}) {
   if (!p || typeof p !== 'string') throw new Error('A full path is needed.');
+  p = shortPath(cfg, p, { mustExist });
   if (!path.isAbsolute(p) && !/^[a-zA-Z]:[\\/]/.test(p)) throw new Error(`Please give a full path, like C:\\Users\\you\\Downloads\\file.zip (got "${p}").`);
   const full = path.resolve(p);
   if (isSensitive(cfg, full)) throw new Error('That holds keys or passwords, so it stays off-limits to me.');
