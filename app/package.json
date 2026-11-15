@@ -1,6 +1,6 @@
 {
   "name": "bob",
-  "version": "1.5.237",
+  "version": "1.5.238",
   "description": "Bob, a local AI who lives on your PC: chat, pictures, video, voice and more, all on your own hardware.",
   "type": "module",
   "private": true,
@@ -35,7 +35,10 @@
     "test/run-wording-ab-test.js",
     "test/run-evil-check-test.js",
     "test/run-evil-steer-test.js",
+    "test/run-never-gate-test.js",
     "test/run-evil-sweep-test.js",
+    "test/run-evil-interp-test.js",
+    "test/run-evil-combo-test.js",
     "test/run-write-lessons-route-test.js",
     "test/run-make-datasets-test.js",
     "test/run-training-methods-test.js",
@@ -119,6 +122,7 @@
     "test/run-tuning-test.js",
     "test/run-help-coverage-test.js",
     "test/run-more-tools-test.js",
+    "test/run-save-to-test.js",
     "test/run-voice-phone-test.js",
     "test/run-textcalls-test.js",
     "test/run-songs-test.js",
@@ -289,13 +293,14 @@
     "test/run-bob-net-home-test.js",
     "test/run-experts-per-word-test.js",
     "test/run-mind-only-test.js",
-    "test/run-welcome-steps-test.js"
+    "test/run-welcome-steps-test.js",
+    "test/run-lesson-kit-test.js"
   ],
   "bob": {
     "release": "1.5",
-    "patch": 237,
+    "patch": 238,
     "branch": "",
-    "build": 289,
+    "build": 290,
     "bundledLlamaTag": "b12359",
     "brainEngineVersion": 8,
     "brainEngine": {

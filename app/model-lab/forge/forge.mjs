@@ -6,6 +6,7 @@
 // plan.benchmark (build 18): after the rungs the pod serves each listed brain (rebuilt from keep list + adapter if asked) and this PC runs the plan's test commands against it
 // node forge.mjs --restart <podId> --plan ...   stop the run on a pod, upload the current code + plan, start it again (finished steps are kept)
 // node forge.mjs --status | --kill               list pods / delete every forge pod
+// node forge.mjs --plan ... --preflight         check the plan's lesson commands on this PC and stop (nothing is rented)
 // node forge.mjs --places [cards]               where the wanted cards are in stock with storage (read-only), and your network volumes
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,8 +14,9 @@ import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { STARTUP_LOG, readStartups, recordStartup, freezingCards, orderCards, startupSummary } from './card-health.mjs';
+import { gate as neverGate, trains as planTrains, loadNever, neverFilesFor, findLeaks } from '../never-gate.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -141,6 +143,14 @@ const lessonsDir = path.resolve(here, '..', plan.lessons || 'out/lessons');
 const countsFile = path.resolve(here, '..', plan.counts_file || 'out/experts/' + plan.counts);
 for (const f of ['lessons.jsonl', 'toolsets.json']) if (!fs.existsSync(path.join(lessonsDir, f))) { console.error(`missing ${path.join(lessonsDir, f)}`); process.exit(1); }
 if (!fs.existsSync(countsFile)) { console.error(`missing counts file ${countsFile}`); process.exit(1); }
+// 15 Nov: the never-taught gate. A training or heal plan checks every lesson it would send against the held-out and calib files
+// (forge/never-taught.json, plan.never, the quiz) before anything is rented or sent; one match stops it (model-lab/never-gate.mjs)
+if (!args.resume && !args['send-plan'] && !args['send-token'] && !args.urls) {
+  const g = await neverGate(plan, { outDir });
+  fs.writeFileSync(path.join(outDir, 'forge', `never-gate-${String(plan.run || 'run').replace(/[^\w.-]/g, '_')}.json`), JSON.stringify({ when: new Date().toISOString(), ...g }, null, 1));
+  if (!g.ok) { console.error(`never-taught gate STOP: ${g.reason}`); for (const x of (g.leaks || []).slice(0, 10)) console.error(`  ${path.basename(x.file)}:${x.line} ${x.how} (${x.from}): ${x.test}`); console.error('Nothing was rented or sent. The full list is in out/forge/never-gate-*.json.'); process.exit(1); }
+  if (g.trains) console.log(`never-taught gate passed: ${g.checked.length} lesson file(s) against ${g.tests} test items`);
+}
 let hoursMax = plan.hours_max || 9, dollarsMax = plan.dollars_max || 40;
 // 13 Nov: the caps are read again from the plan file every minute, so raising them (the owner's word first) needs no restart of
 // this window; send the same plan with --send-plan too, so the pod's own self-delete moves with it (run.sh reads it every minute)
@@ -213,7 +223,7 @@ async function rent({ again = false, avoidNow = new Set() } = {}) {
       if (plan.volume_new === false || plan.rebuild) targets = targets.filter((t) => t.vol);
       if (Array.isArray(plan.data_centers)) targets = targets.filter((t) => t.dc && plan.data_centers.includes(t.dc));
       if (!targets.length && attempt % 5 === 0) log(`no data centre to ask in this minute (our volumes: ${knownVolumes().map((v) => v.dataCenterId).join(', ') || 'none'}${plan.data_centers ? `; allowed: ${plan.data_centers.join(', ')}` : ''})`);
-    } else targets = [{ dc: null, name: 'anywhere', vol: null }];
+    } else targets = Array.isArray(plan.data_centers) && plan.data_centers.length ? plan.data_centers.map((dc) => ({ dc, name: dc, vol: null })) : [{ dc: null, name: 'anywhere', vol: null }]; // 14 Nov: a no-volume run can be pinned too (a bad host elsewhere)
     for (const t of targets) {
       // a new volume only where the card is listed as in stock (RunPod's flag is strict, so this holds back only the "no" cases) and only once per run
       if (plan.volume && t.dc && !t.vol) { if (t.available === false || tried.has(t.dc)) continue; }
@@ -224,7 +234,7 @@ async function rent({ again = false, avoidNow = new Set() } = {}) {
         const pod = await rp('POST', '/pods', {
           name: `bob-forge-${plan.rungs[0]?.name || (plan.lessons_only ? 'lessons' : 'counts')}-${String(plan.run || '').replace(/[^\w.-]/g, '_').slice(0, 40)}`, imageName: plan.image || 'vllm/vllm-openai:v0.28.0', cloudType: 'SECURE',
           gpuTypeIds: cards, gpuTypePriority: 'custom', gpuCount: 1, volumeMountPath: '/workspace',
-          ...(useVol ? { networkVolumeId: useVol.id, dataCenterIds: [useVol.dataCenterId], containerDiskInGb: plan.disk_gb || 350 } : { volumeInGb: plan.disk_gb || 350, containerDiskInGb: 40 }),
+          ...(useVol ? { networkVolumeId: useVol.id, dataCenterIds: [useVol.dataCenterId], containerDiskInGb: plan.disk_gb || 350 } : { volumeInGb: plan.disk_gb || 350, containerDiskInGb: 40, ...(t.dc ? { dataCenterIds: [t.dc] } : {}) }),
           ports: directPorts() || ((plan.write_lessons || plan.benchmark) ? ['8000/http', '8001/http'] : ['8000/http']), supportPublicIp: Boolean(plan.direct),
           // the PC's RunPod key goes in as FORGE_RUNPOD_KEY (RunPod injects its own limited RUNPOD_API_KEY into every pod, which cannot delete) so the pod can delete itself near the time cap even if this PC falls asleep.
           env: { FORGE_TOKEN: token, FORGE_RUNPOD_KEY: KEY, HF_HUB_ENABLE_HF_TRANSFER: '0', FORGE_HOURS_MAX: String(hoursMax), FORGE_ROOT: root, FORGE_SHARED: '/workspace' },
@@ -233,8 +243,10 @@ async function rent({ again = false, avoidNow = new Set() } = {}) {
         });
         podId = pod.id; price = pod.costPerHr || 0;
         const got = pod.machine?.gpuTypeId || 'a card';
-        log(`rented ${got}: pod ${podId}, $${price}/h, in ${t.name}${useVol ? ` with volume ${useVol.id}` : ' WITHOUT a volume'}${stepUp.includes(got) ? ' (the STEP-UP card: the wanted one was out)' : ''}`);
-        fs.writeFileSync(tokenFile, JSON.stringify({ pod: podId, token, started: Date.now(), price, run, root, volume: useVol?.id || null, gpu: got, dataCenter: t.dc }));
+        // 14 Nov: keep the host's id and data centre (RunPod forgets them once a pod is deleted; a stuck host can then be reported)
+        const host = pod.machineId || pod.machine?.id || null, where = pod.machine?.dataCenterId || t.dc || null;
+        log(`rented ${got}: pod ${podId}, $${price}/h, in ${t.name}${host ? ` (host ${host}${where ? `, ${where}` : ''})` : ''}${useVol ? ` with volume ${useVol.id}` : ' WITHOUT a volume'}${stepUp.includes(got) ? ' (the STEP-UP card: the wanted one was out)' : ''}`);
+        fs.writeFileSync(tokenFile, JSON.stringify({ pod: podId, token, started: Date.now(), price, run, root, volume: useVol?.id || null, gpu: got, dataCenter: where, machine: host }));
         return;
       } catch (e) { if (attempt % 5 === 0) log(`rent in ${t.name}: ${e.message.slice(0, 160)} (asking again every minute, ${minutes} min so far)`); }
     }
@@ -317,6 +329,42 @@ async function llamaUrl() {
 }
 
 const started = Date.now();
+// 15 Nov (the owner, after lkt-fix2 split 98k over 6 slots and lost most of the rental): before any card is rented, every
+// write-lessons command in the plan is run on this PC with --preflight (the ideas file it will really read, its rows, the tool
+// shape, the room per slot = ctx / slots against the longest first request) and the plan itself is checked: caps set, each
+// command has --hours, --parallel within the slots, no --gate off. One failure and nothing is rented.
+function lessonPreflight() {
+  const bad = [], warn = [];
+  const q = (v) => `"${String(v).replace(/"/g, '')}"`;
+  const cmds = [];
+  for (const m of plan.benchmark?.models || []) for (const c of (m.commands?.length ? m.commands : plan.benchmark?.commands || [])) if (/write-lessons\.mjs/.test(c)) cmds.push([m, c]);
+  for (const w of plan.write_lessons ? (Array.isArray(plan.write_lessons) ? plan.write_lessons : [plan.write_lessons]) : []) if (w.from_ideas) bad.push(`plan.write_lessons (${w.dir}) has no pre-flight yet: use benchmark commands`);
+  if (!cmds.length) return bad;
+  if (!(Number(plan.hours_max) > 0) || !(Number(plan.dollars_max) > 0) || !(Number(plan.rent_minutes) > 0)) bad.push('hours_max, dollars_max and rent_minutes must all be set (blank caps fall back to 9 h / $40)');
+  let hoursSum = 0;
+  for (const [i, [m, c]] of cmds.entries()) {
+    const slots = Math.max(1, Number(m.slots) || 1), slotCtx = Math.floor((Number(m.ctx) || 32768) / slots);
+    const par = Number((c.match(/--parallel\s+(\d+)/) || [])[1] || 1), hrs = Number((c.match(/--hours\s+([\d.]+)/) || [])[1] || 0);
+    hoursSum += hrs;
+    if (!(hrs > 0)) bad.push(`${m.name} command ${i + 1} has no --hours`);
+    if (par > slots) bad.push(`${m.name} command ${i + 1}: --parallel ${par} but the card serves ${slots} slot(s)`);
+    if (/--gate\s+off/.test(c)) bad.push(`${m.name} command ${i + 1}: --gate off (every rental starts with a sample)`);
+    const cmd = `${c.replace(/{{url}}/g, 'http://preflight.invalid').replace(/{{name}}/g, m.name).replace(/"?{{out}}"?/g, q(path.join(outDir, 'bench', plan.run || 'run', m.name))).replace(/"?{{lessons}}"?/g, q(path.join(outDir, 'lessons'))).replace(/{{run}}/g, plan.run || 'run')} --preflight --slot-ctx ${slotCtx}`;
+    log(`pre-flight ${m.name} command ${i + 1} (${slots} slot(s) of ${slotCtx}):`);
+    const r = spawnSync(cmd, { cwd: path.join(here, '..'), shell: true, encoding: 'utf8', windowsHide: true, env: { ...process.env, LAB_REMOTE: '1', LAB_MODEL_NAME: m.name } });
+    const out = `${r.stdout || ''}${r.stderr || ''}`.replace(/\r\n/g, '\n').split('\n').filter((ln) => /pre-flight|PRE-FLIGHT|room per slot|ideas file|GGUF|Error|error/.test(ln));
+    for (const ln of out) log(`  ${ln.slice(0, 300)}`);
+    if (r.status !== 0) bad.push(`${m.name} command ${i + 1}: ${(out.find((ln) => /PRE-FLIGHT FAIL|rror/.test(ln)) || `exit ${r.status}`).replace(/^PRE-FLIGHT FAIL: /, '').slice(0, 200)}`);
+  }
+  if (Number(plan.hours_max) > 0 && hoursSum + 0.5 > Number(plan.hours_max)) warn.push(`the commands' --hours add up to ${hoursSum} h; with about 0.5 h of start-up that passes the ${plan.hours_max} h cap, so the last one is cut short (it resumes next time)`);
+  for (const w of warn) log(`pre-flight note: ${w}`);
+  return bad;
+}
+if (!podId || args.preflight) {
+  const bad = lessonPreflight();
+  if (bad.length) { for (const b of bad) log(`PRE-FLIGHT FAIL: ${b}`); log('Not renting: fix the plan first.'); process.exit(1); }
+  if (args.preflight) { log('pre-flight OK: nothing rented (--preflight)'); process.exit(0); }
+}
 const startupLog = path.join(outDir, 'forge', STARTUP_LOG); let rentedHere = false;
 if (args.local) { podId = 'local'; hdr['X-Forge-Token'] = process.env.FORGE_TOKEN || ''; fs.writeFileSync(tokenFile, JSON.stringify({ pod: podId, token: hdr['X-Forge-Token'], started: Date.now(), price: 0 })); }
 else if (!podId) { await rent(); rentedHere = true; }
@@ -390,6 +438,13 @@ async function sendImatrixTexts() {
     const { execSync } = await import('node:child_process');
     const from = path.resolve(here, '..', m.imatrix_from); if (!fs.existsSync(from)) { log(`${m.name}: imatrix_from ${from} is missing (calib-prep.mjs makes it); no imatrix for him`); continue; }
     const itgz = path.join(outDir, 'forge', `imatrix-${m.name}.tgz`); execSync(`tar czf "${itgz}" -C "${from}" .`, { stdio: 'inherit' }); await upload(`imatrix-${m.name}.tgz`, itgz); log(`${m.name}: imatrix texts sent`);
+  }
+  // 14 Nov: interp_from (a PC folder from interp-prep.mjs: prompts.txt + labels.json) goes up as in/interp-<name>.tgz; before
+  // serving, the pod reads his inner stream on it (llama-act-dump) and trains the sparse autoencoders (pod/interp.py)
+  for (const m of plan.benchmark?.models || []) if (m.interp_from) {
+    const { execSync } = await import('node:child_process');
+    const from = path.resolve(here, '..', m.interp_from); if (!fs.existsSync(path.join(from, 'prompts.txt'))) { log(`${m.name}: interp_from ${from} has no prompts.txt (interp-prep.mjs makes it); no interp step for him`); continue; }
+    const itgz = path.join(outDir, 'forge', `interp-${m.name}.tgz`); execSync(`tar czf "${itgz}" -C "${from}" .`, { stdio: 'inherit' }); await upload(`interp-${m.name}.tgz`, itgz); log(`${m.name}: interp prompts sent`);
   }
 }
 if (args['send-plan']) {
@@ -469,7 +524,15 @@ async function writeLessonsOnPod() {
 async function writeOneSet(w, i) {
   const dir = w.dir || 'lessons-extra';
   const url = await llamaUrl();
-  const argv = ['write-lessons.mjs', '--url', url, '--parallel', String(w.parallel || 16), '--jobs', w.jobs || 'coding', '--think', w.think || 'all', '--dir', dir, '--count', String(w.count || 800), '--hours', String(w.hours || 1.5), ...(w.drop_tools ? ['--drop-tools', w.drop_tools] : []), ...(w.persona ? ['--persona', path.resolve(here, '..', w.persona)] : []),
+  // 14 Nov (the lesson kit): w.before = commands run on this PC against the card first ({{url}} filled in), such as
+  // lesson-doctor.mjs or tutorial-lessons.mjs making the ideas; w.from_ideas = write those ideas, not new ones
+  for (const c of Array.isArray(w.before) ? w.before : []) {
+    const cmd = String(c).replaceAll('{{url}}', url); log(`before the ${dir} set: ${cmd.slice(0, 160)}`);
+    const { spawnSync } = await import('node:child_process');
+    const r = spawnSync(cmd, { cwd: path.join(here, '..'), shell: true, stdio: 'inherit', env: { ...process.env, LAB_API_KEY: hdr['X-Forge-Token'], LAB_MODEL_NAME: 'teacher', LAB_REMOTE: '1' } });
+    if (r.status !== 0) { log(`that command failed (exit ${r.status}); skipping the ${dir} set, the run carries on`); return 0; }
+  }
+  const argv = ['write-lessons.mjs', '--url', url, '--parallel', String(w.parallel || 16), ...(w.from_ideas ? ['--from-ideas'] : ['--jobs', w.jobs || 'coding']), '--think', w.think || 'all', '--dir', dir, '--count', String(w.count || 800), '--hours', String(w.hours || 1.5), ...(w.drop_tools ? ['--drop-tools', w.drop_tools] : []), ...(w.persona ? ['--persona', path.resolve(here, '..', w.persona)] : []),
     // 12 Nov: --review (the teacher grades each lesson, failures kept apart as right-vs-wrong material) and --avoid (folders of lessons already
     // made, so no request is written twice)
     ...(w.review ? ['--review'] : []), ...(w.tag ? ['--tag', w.tag] : []), ...(w.avoid ? ['--avoid', (Array.isArray(w.avoid) ? w.avoid : [w.avoid]).map((d) => path.resolve(here, '..', d)).join(',')] : [])];
@@ -477,10 +540,22 @@ async function writeOneSet(w, i) {
   const { spawn } = await import('node:child_process');
   const code = await new Promise((res) => spawn(process.execPath, argv, { cwd: path.join(here, '..'), stdio: 'inherit', env: { ...process.env, LAB_API_KEY: hdr['X-Forge-Token'], LAB_MODEL_NAME: 'teacher', LAB_REMOTE: '1' } }).on('exit', res));
   const ldir = path.join(outDir, dir);
-  const n = fs.existsSync(path.join(ldir, 'lessons.jsonl')) ? fs.readFileSync(path.join(ldir, 'lessons.jsonl'), 'utf8').split('\n').filter(Boolean).length : 0;
+  let n = fs.existsSync(path.join(ldir, 'lessons.jsonl')) ? fs.readFileSync(path.join(ldir, 'lessons.jsonl'), 'utf8').split('\n').filter(Boolean).length : 0;
   log(`lesson writer finished (exit ${code}): ${n} lessons in ${ldir}`);
   if (n < (w.min || 50)) { log(`too few lessons (${n} < ${w.min || 50}) in the ${w.jobs} set; skipping it, the run carries on with the other sets`); return 0; } // one bad set must not cost the whole rental
-  await upload(`lessons-extra-${i}.jsonl`, path.join(ldir, 'lessons.jsonl'));
+  // 15 Nov: lessons written on the pod for a training plan pass the never-taught gate too; a lesson holding a test item is
+  // dropped (kept apart in never-dropped.jsonl) before the set goes up, never sent
+  let send = path.join(ldir, 'lessons.jsonl');
+  if (planTrains(plan)) {
+    const nf = neverFilesFor(plan, { outDir }); const leaks = findLeaks([send], await loadNever(nf.files));
+    if (leaks.length) {
+      const bad = new Set(leaks.map((x) => x.line)), lines = fs.readFileSync(send, 'utf8').replace(/\r\n/g, '\n').split('\n');
+      fs.writeFileSync(path.join(ldir, 'never-dropped.jsonl'), leaks.map((x) => JSON.stringify(x)).join('\n') + '\n');
+      const kept = lines.filter((l, n) => l.trim() && !bad.has(n + 1)); send = path.join(ldir, 'lessons-gated.jsonl'); fs.writeFileSync(send, kept.join('\n') + '\n');
+      log(`never-taught gate: ${leaks.length} of ${n} written lessons held a test item and were dropped (${ldir}/never-dropped.jsonl)`); n = kept.length;
+    }
+  }
+  await upload(`lessons-extra-${i}.jsonl`, send);
   await upload(`toolsets-extra-${i}.json`, path.join(ldir, 'toolsets.json'));
   return n;
 }
@@ -521,14 +596,16 @@ async function benchOnPod(name) {
   // first, so the PC's commands can read them and the report doesn't wait for the end of the run
   try {
     const r = await get('/status'); const st = r.ok ? await r.json() : null;
-    for (const f of (st?.files || []).filter((x) => x.path.startsWith(`bench/evil-${name}/`) || x.path.startsWith(`bench/imatrix-${name}/`))) await download(f.path, path.join(dir, f.path.startsWith(`bench/evil-`) ? 'evil' : 'imatrix', path.basename(f.path)), f.bytes, null);
+    for (const f of (st?.files || []).filter((x) => x.path.startsWith(`bench/evil-${name}/`) || x.path.startsWith(`bench/imatrix-${name}/`) || x.path.startsWith(`bench/interp-${name}/`))) await download(f.path, path.join(dir, f.path.startsWith(`bench/evil-`) ? 'evil' : f.path.startsWith(`bench/interp-`) ? 'interp' : 'imatrix', path.basename(f.path)), f.bytes, null);
   } catch (e) { log(`  pod files for ${name}: ${e.message.slice(0, 120)}`); }
   for (const [i, c] of cmds.entries()) {
     if (skipCmds.has(`${name}:${i + 1}`)) { log(`  command ${i + 1} skipped (--skip-cmds; it runs elsewhere)`); continue; }
     // 11 Nov: {{out}} is quoted (the install folder has a space, and the command runs through the shell: an unquoted path was cut at the space,
     // so the tests wrote to the wrong place and tool-score could not find the lessons); {{lessons}} is the lab's lessons folder for tool-score
     const q = (v) => `"${String(v).replace(/"/g, '')}"`;
-    const cmd = c.replace(/{{url}}/g, url).replace(/{{name}}/g, name).replace(/"?{{out}}"?/g, q(dir)).replace(/"?{{lessons}}"?/g, q(path.join(outDir, 'lessons'))).replace(/{{run}}/g, plan.run || 'run');
+    const bm = (plan.benchmark.models || []).find((m) => m.name === name) || {};
+    const slotArg = /write-lessons\.mjs/.test(c) && !/--slot-ctx/.test(c) ? ` --slot-ctx ${Math.floor((Number(bm.ctx) || 32768) / Math.max(1, Number(bm.slots) || 1))}` : ''; // 15 Nov: the writer checks the room per slot (the server's own figure first)
+    const cmd = c.replace(/{{url}}/g, url).replace(/{{name}}/g, name).replace(/"?{{out}}"?/g, q(dir)).replace(/"?{{lessons}}"?/g, q(path.join(outDir, 'lessons'))).replace(/{{run}}/g, plan.run || 'run') + slotArg;
     const lf = path.join(dir, `${String(i + 1).padStart(2, '0')}.log`); fs.writeFileSync(lf, `$ ${cmd}\n`);
     log(`  ${cmd}`);
     const code = await new Promise((res) => { const ch = spawn(cmd, { cwd: path.join(here, '..'), shell: true, windowsHide: true, env: { ...process.env, LAB_URL: url, LAB_API_KEY: hdr['X-Forge-Token'], LAB_MODEL_NAME: name, LAB_REMOTE: '1', LAB_OUT: dir, ...(plan.no_hands ? { LAB_NO_HANDS: '1' } : {}) } }); const w = (d) => { fs.appendFileSync(lf, d); process.stdout.write(d); }; ch.stdout.on('data', w); ch.stderr.on('data', w); ch.on('exit', res); ch.on('error', (e) => { w(`${e.message}\n`); res(1); }); });

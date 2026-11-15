@@ -203,7 +203,7 @@ if (officeUsableHere(realCfg)) {
   const run = async (name, args) => { const ctx = { signal: new AbortController().signal }; const need = t[name].check ? t[name].check(args, ctx) : false; if (need?.plan) ctx.picked = null; return t[name].run(args, ctx); };
   const doc = path.join(work, 'report.docx');
   const made = await run('office_make', { kind: 'writer', path: doc, text: '# Report\n\nHello **world**.\n\n- one\n- two\n\n| Name | Qty |\n|---|---|\n| Apple | 3 |' });
-  check('LibreOffice: makes a Word document', /^Saved .*report\.docx/.test(made) && fs.statSync(doc).size > 1000, made);
+  check('LibreOffice: makes a Word document', /^Saved:? .*report\.docx/.test(made) && fs.statSync(doc).size > 1000, made);
   const read = await run('office_read', { path: doc });
   check('LibreOffice: reads it back with heading, bullets and table', /# Report/.test(read) && /- one/.test(read) && /\| Apple \| 3 \|/.test(read), read);
   const conv = await run('convert_file', { paths: [doc], to: 'pdf' });

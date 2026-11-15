@@ -358,7 +358,17 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
     async check(args, ctx) {
       off(); notStopped(ctx);
       if (!args.window) return { text: 'See which windows are open (just their titles).', command: 'List open windows', cwd: 'your desktop', button: 'Allow' };
-      const w = await findWindow(args.window);
+      // Nov 15 (Riker and Bobert, coached lessons): asked to open an app, both Qwen brains call
+      // app_look on it. So app_look on an app that isn't open opens it first (open_app's own Start menu rules and
+      // card), then looks. open_app still works the same.
+      let w;
+      try { w = await findWindow(args.window); }
+      catch (e) {
+        let opened = null;
+        try { opened = await t.open_app.check({ name: args.window }, ctx); } catch { throw e; }
+        if (ctx) ctx.appsOpenFirst = true;
+        return { ...opened, text: `${opened.text} Then look at its window: read the names of its buttons, fields and menus. Password fields are never read.`, command: `${opened.command}, then look at it` };
+      }
       if (ctx) ctx.appsWindow = w;
       return { text: `Look at ${label(w)}: read the names of its buttons, fields and menus${args.picture || args.ask ? ', and take a picture of it' : ''}${args.ask ? ` so Bob's eyes brain can answer: "${String(args.ask).slice(0, 120)}"` : ''}. Password fields are never read.`, command: `Look at ${w.title}`, cwd: w.process, button: 'Allow' };
     },
@@ -368,6 +378,13 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
         const list = (await windows()).filter((w) => !blockedWindow(w, { ownPids }));
         log('hands', `apps: listed ${list.length} windows`);
         return list.length ? `Open windows:\n${list.slice(0, 40).map((w) => `- ${w.title} (${w.process})`).join('\n')}` : 'No windows Bob may use are open.';
+      }
+      let opened = '';
+      if (ctx?.appsOpenFirst) {
+        ctx.appsOpenFirst = false;
+        opened = await t.open_app.run({ name: args.window }, ctx);
+        if (!/^Opened /.test(opened)) return opened;
+        opened = `(It wasn't open, so Bob opened it first.)\n`;
       }
       const w = ctx?.appsWindow || await findWindow(args.window);
       if (ctx) ctx.appsWindow = null;
@@ -386,7 +403,7 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
       if (!items.length && !args.ask) pic += `\nNothing readable here: this app doesn't name its buttons for UI Automation. To work in it, call app_look again with ask (a question about what the window shows; your eyes brain answers from a picture), then app_act with action click_at and x, y in that picture's pixels.`;
       const lines = items.slice(0, 150).map((x) => `- ${x.type}${x.name ? ` "${String(x.name).slice(0, 80)}"` : ''}${x.id ? ` [id ${String(x.id).slice(0, 40)}]` : ''}${x.password ? ' (password field: never typed in)' : x.typable ? ' (you can type here)' : ''}${x.enabled === false ? ' (greyed out)' : ''}${x.value ? ` = "${String(x.value).slice(0, 60)}"` : ''}`);
       const head = typeHere.length ? `You can type in: ${typeHere.slice(0, 5).map((x) => `${x.type} "${String(x.name || x.id).slice(0, 60)}"`).join('; ')}. Anything else is for clicking or reading.\n` : 'Nothing in this window takes typing.\n';
-      return `Window: ${label(w)}\n${head}${lines.join('\n') || '(nothing readable; this app may not support UI Automation)'}${pic}\nTo use one, call app_act with its type and name (and id if names repeat). To type, pick one marked "you can type here".`;
+      return `${opened}Window: ${label(w)}\n${head}${lines.join('\n') || '(nothing readable; this app may not support UI Automation)'}${pic}\nTo use one, call app_act with its type and name (and id if names repeat). To type, pick one marked "you can type here".`;
     },
     summary: ({ window }) => `apps: look ${window || '(windows)'}`
   };
