@@ -627,6 +627,16 @@ function mountJourney(root, deps) {
       focus();
     });
   }
+  // Load (Journey v1.3): back to the save on disk, from anywhere. Reads it fresh, so it's what was saved, not what's
+  // on screen now. The save keeps its seed, so the land is the same land.
+  function loadAgain() {
+    later(async () => {
+      if (closed) return;
+      await loadSave();
+      if (!saved) { msg = msg || 'Nothing saved yet.'; drawPanel(); return; }
+      menu = null; resume();
+    });
+  }
   function resume() {
     if (!saved) return;
     later(async () => {
@@ -1436,7 +1446,7 @@ function mountJourney(root, deps) {
     if (mode === 'battle' && battle) { panel.innerHTML = battleHtml(); restyleIn(panel); panel.querySelector('button:not([disabled])')?.focus({ preventScroll: true }); return; }
     if (mode === 'menu' && menu) { panel.innerHTML = menuHtml(); restyleIn(panel); mountDolls(); mountLand(); return; }
     if (mode === 'shop' && shop) { panel.innerHTML = shopHtml(); restyleIn(panel); panel.querySelector('button')?.focus({ preventScroll: true }); return; }
-    const atInn = j.at === 'inn';
+    const atInn = j.at === 'inn' || (lobby && j.at === 'guest'); // the guest house is where Journey opens
     const mt = R.mountOf(j.party[0] || {});
     if (choosing()) { panel.innerHTML = `<div class="row jy-choices" role="group" aria-label="What to say">${talk.choices.map((c, i) => `<button type="button" data-choice="${i}" class="${i === talk.sel ? 'yes' : ''}">${esc(c.label)}</button>`).join('')}</div>`; restyleIn(panel); return; }
     panel.innerHTML = `<ul class="jy-party">${j.party.map((m) => sheet(m)).join('')}</ul>${atInn ? innButtons() : ''}<p class="muted jy-keys">Arrow keys walk · Enter talks, opens chests, gathers and fishes · F picks a fight · Esc opens the menu · I the bag · J the story · C crafting · G the guide${mt ? ` · R rides ${esc(mt.name)}${R.canFly(j) ? ' · E flies up, Q lands' : R.canSwim(j) ? ' · Q dives, E comes up' : ''}` : ''}</p>`;
@@ -1533,7 +1543,7 @@ function mountJourney(root, deps) {
       const bags = (j.bags || ['pouch']).map((b) => `<button type="button" class="mini" data-wearbag="${b}" aria-pressed="${j.bagGear === b}">${j.bagGear === b ? '✓ ' : ''}${esc(R.BAGS[b].name)} (+${R.BAGS[b].room})</button>`).join('');
       return `${head}<p class="muted">The bag holds ${R.bagCount(j)} of ${R.bagSize(j)} things. Each pet out with you carries 10 more and each mount 25.</p><p><strong>Wearing</strong> ${bags} <span class="muted">Bigger bags: shops, or make one at a Workbench.</span></p>${items.length ? `<ul class="jy-bag">${items.map(([id, n]) => { const it = R.ITEMS[id]; const usable = it.field; if (it.portal) return `<li><strong>${esc(it.name)}</strong> ×${n} <span class="muted">${esc(it.what)}</span> <button type="button" class="mini" data-portal="1">Read it: back to ${esc(world.map(j.home)?.name || 'Bob\'s Inn')}</button></li>`; return `<li><strong>${esc(it.name)}</strong> ×${n} <span class="muted">${esc(it.what)}</span> ${usable ? j.party.map((x) => `<button type="button" class="mini" data-use="${id}" data-on="${esc(x.id)}">${esc(x.name)}</button>`).join('') : '<span class="muted">(in a fight)</span>'}</li>`; }).join('')}</ul>` : '<p class="muted">The bag is empty.</p>'}`;
     }
-    return `${head}<div class="row"><button type="button" class="yes" data-jy="save">💾 Save now</button><button type="button" data-jy="leave">🚪 Save and leave</button></div><p class="muted">The journey also saves itself after every chest and every fight. Seed ${esc(j.seed)} · ${esc(Wm.SIZES[j.size]?.name || '')}</p>`;
+    return `${head}<div class="row"><button type="button" class="yes" data-jy="save">💾 Save now</button><button type="button" data-jy="leave">🚪 Save and leave</button><button type="button" data-jy="load">📂 Load last save</button></div><p class="muted">The journey also saves itself after every chest and every fight. Load last save goes back to the last save: the same land (same seed), the same place, party, bag and coin. Seed ${esc(j.seed)} · ${esc(Wm.SIZES[j.size]?.name || '')}</p>`;
   }
   // ---------- Crafting (Journey v1.3) ----------
   // What you carry, your crafting level, and every recipe: the ones you can make now first. A workbench (a smith in
@@ -1714,6 +1724,7 @@ function mountJourney(root, deps) {
     if (d.jy === 'newadv') { shop = { kind: 'new' }; mode = 'shop'; drawPanel(); return; }
     if (d.jy === 'roll') { rollNew(); return; }
     if (d.jy === 'resume-adv') { resume(); return; }
+    if (d.jy === 'load') { loadAgain(); return; }
     if (d.jy === 'menu' || d.key === 'menu') { toggleMenu(); return; }
     if (d.jy === 'save') { if (lobby) say('Nothing to save yet: roll a New adventure first.'); else { await save(); sfx('save'); } return; }
     if (d.jy === 'resume') { menu = null; mode = 'walk'; drawPanel(); focus(); return; }

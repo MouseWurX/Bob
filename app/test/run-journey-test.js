@@ -759,6 +759,8 @@ const P = (o) => ({ id: o.id || o.name.toLowerCase(), who: 'friend', ...o });
   check('a save remembers which trophies were given', R.cleanJourney(JSON.parse(JSON.stringify(j)), () => world).trophies.length === 5);
   const play7 = read('public/journey-play.js');
   check('walking through a door redraws the panel, so the inn\'s New adventure and Resume buttons show at once (1.5.227 PC check)', /arrive\(r\.door\);\s*drawPanel\(\);/.test(play7.replace(/\r\n/g, '\n')));
+  check('New adventure and Resume show in the guest house, where Journey opens', /const atInn = j\.at === 'inn' \|\| \(lobby && j\.at === 'guest'\)/.test(play7));
+  check('the Save tab can load the last save, read fresh from disk', /data-jy="load"/.test(play7) && /function loadAgain\(\)[\s\S]{0,200}await loadSave\(\)/.test(play7) && /d\.jy === 'load'/.test(play7));
   check('the screen: you wake in the guest house, and the trophy case opens with Enter', /at: 'guest'/.test(play7) && /=== '7'\) \{ shop = \{ kind: 'trophies' \}/.test(play7) && /function caseHtml/.test(play7) && /\/api\/adventure\/journey\/trophies/.test(play7));
 }
 
