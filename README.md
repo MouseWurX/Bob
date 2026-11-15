@@ -43,13 +43,13 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.240-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.240-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.240-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.240-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.240-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.240-linux-x86_64.AppImage) |
-| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.240-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.240-linux-amd64.deb) |
-| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.240-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.240-linux-x86_64.flatpak) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.240-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.240-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
-| **Android phone** | [`Bob-1.5.240-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.240-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.242-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.242-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.242-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.242-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.242-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.242-linux-x86_64.AppImage) |
+| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.242-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.242-linux-amd64.deb) |
+| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.242-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.242-linux-x86_64.flatpak) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.242-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.242-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
+| **Android phone** | [`Bob-1.5.242-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.242-android.apk) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 
@@ -208,6 +208,7 @@ Nothing trains, rents a card or uploads without the owner's go, and every rental
 - **The costs**, every rental and dollar, failures included: [What Bob costs to make](app/docs/COSTS.md).
 - **The models**, each with a card that says what it is and how it scored: [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) 路 [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) 路 [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) 路 [gpt-oss-120b cut to 38B](https://huggingface.co/MouseWurX/gpt-oss-120b-REAP-38B-UNHEALED-GGUF) (cut, not yet healed).
 - **The data**: [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) (the lessons, clean, full and preference files) 路 [bob-studies](https://huggingface.co/datasets/MouseWurX/bob-studies) (surgery and interview studies, never used for training).
+- **The dissertation** (draft, all 13 chapters): [Clean lessons beat more lessons](app/docs/dissertation/README.md).
 - **The record**: [Bob's own models](app/docs/BOBS-OWN-MODELS.md) (every score and what went wrong) and [the Forge journal](app/docs/FORGE-JOURNAL.md) (the lab notebook).
 
 ## Coming next
@@ -274,7 +275,7 @@ Most AI apps are for talking to a model or for building one. Bob does both. **馃
 | **Teach** | **Teach it** teaches a brain a lesson set, here if it fits your card. **Best answers** has a bigger brain judge a smaller one's answers, then teaches it its best. |
 | **Test** | **Challenges** are short tests out of 100, with a scoreboard by size. **Smaller**, **Longer** and **Faster** show how small, how long and how fast a brain can go. **Taste test** ranks brains by the answers you prefer, names hidden. A queue runs Challenges, Smaller and fNRI scans one after another overnight. |
 | **Look inside** | **Peek inside** shows which experts your work uses. **fNRI** scans a brain while it answers and plays it back in 3D. |
-| **Learn** | Hands-on cards on how a brain works, run on the brain Bob has loaded. |
+| **Learn** | Hands-on cards on how a brain works, run on the brain Bob has loaded, and **Lessons**: a step-by-step course from first ideas to building the tools. |
 | **Forge** | Every way to make a brain, side by side: smaller, cut, mixed, stacked, or taught back on a rented card. |
 | **My Lab** | Everything the Lab has made and measured: brains, scores, size ladders, lesson sets, recipes and recent jobs. |
 
@@ -301,6 +302,37 @@ Most AI apps are for talking to a model or for building one. Bob does both. **馃
 </details>
 
 Lab jobs need at least 12 GB of memory; a smaller computer can start them on a bigger Bob on your Bob-Net. Making an fNRI scan needs Brain Engine, on Windows or Linux. More in the [user guide](app/docs/USER-GUIDE.md#11-the-computer-science-lab).
+
+### Lessons: a course on how brains work
+
+**Learn > Lessons** is a short course in **42 lessons and 17 units**, at three levels: **Foundations** (tokens, weights, experts, prompts, tool calls), **Advanced** (how brains learn, transformers, cutting and healing, why lessons decide habits) and **Engineering** (building the tools, inference engines, training at scale, honest tests, looking inside). It's off by default: turn on **Lab: Lessons** in Settings, How Bob works, Brains.
+
+Each lesson has three parts:
+
+1. **Read.** Bob explains one idea in plain words, with its proper name and a glossary link. Some lessons add a code excerpt, and some a **Real result** from Bob's own research, with the file it comes from.
+2. **Try it.** One read-only step on the brain Bob has loaded, or a button to the Lab page that does the real job. Nothing rents, downloads or changes a brain.
+3. **Check.** Two questions, and every answer says why it's right or wrong.
+
+| | |
+|---|---|
+| ![The Lessons page: 0 of 42 done, a Start button, and the Foundations units with a card per lesson, each showing its plain name and proper name](app/docs/screens/cs-lab-lessons-list.png) | ![A lesson, Lessons teach habits: Read, a Real result from Bob's own research, Try it with an Open Teach button, and Check with one answer marked right and one marked not quite, each with why](app/docs/screens/cs-lab-lesson-habits.png) |
+| **The course** | **A lesson, checked** |
+
+<details>
+<summary><b>More pictures:</b> a lesson with code, and on a phone</summary>
+
+| | |
+|---|---|
+| ![The lesson Writing a leak check: Read, a short code excerpt that compares test items with training lessons, Try it with an Open Steps button, and two questions](app/docs/screens/cs-lab-lesson-leakcheck.png) | ![The Lessons page at phone width: the Lab tabs wrapped onto three rows, then the course list](app/docs/screens/cs-lab-lessons-phone.png) |
+| **Engineering: a leak check** | **On a phone** |
+
+</details>
+
+The lessons are for people, not brains: no lesson set, Forge job or training script reads them.
+
+### The dissertation
+
+Bob's research is being written up as a computer science dissertation: **[Clean lessons beat more lessons](app/docs/dissertation/README.md)**, on how hidden faults in synthetic training data shape small local agent models. All 13 chapters are written, one file each, using only numbers checked against their run files. The decisive test, training on reviewed lessons against a leak-free test, hasn't been run yet.
 
 ## Bob's own brains
 
@@ -350,6 +382,8 @@ Put Bob on your PC, laptop, handheld and phone, and they find each other on your
 
 - **Pool graphics cards and memory.** A brain too big for one computer is spread over your Bobs' cards and memory. One bigger than all of that can still run from a fast SSD.
 - **Fast where it counts.** The first load sends the brain once; later loads send only what's missing. A brain that fits on one computer stays there, because that beats any network. With **SCUT** turned on (experimental), a brain spread over two Bobs on weak home Wi-Fi wrote 17.5 tokens a second against 3.5 to 4.8 over plain TCP: [the measurements](app/docs/test-results/2026-11-12-scut-vs-tcp-over-wifi.md). Over a cable it isn't measured yet: the first try lost its lender partway through copying the brain, and Bob carried on alone ([what ran and what didn't](app/docs/test-results/2026-11-12-bob-net-card-share-over-cable.md)).
+
+  <img src="app/docs/screens/scut-vs-tcp.svg" alt="SCUT and TCP side by side, SCUT marked experimental. Both carry the same Brain Engine messages. Plain TCP: one ordered byte stream, and a lost last packet waits for the timeout of about 200 to 300 ms. SCUT: numbered UDP packets with a 20-byte header, selective acks, resends after a few ms, its own pace under a speed cap, every packet sealed, and a repair packet that rebuilds one lost packet at once; the TCP line stays open. Measured once on weak Wi-Fi: TCP 3.5 to 4.8 words a second, SCUT 17.0 to 17.7.">
 - **Bobs working in concert.** Borrow a bigger Bob's brain for a reply, send a job to whichever Bob is free, or have a bigger Bob check a handheld's harder work.
 - **The phone app** talks to the Bob on your PC, and can run a small brain on the phone itself.
 - **Adventures together:** your other Bobs join the party in the tabletop game.
