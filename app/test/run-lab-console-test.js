@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { parseLine, channelOf, cleanEnv, checkCommand, killTree, hideHeaders, LabConsole, consoleRoute, HELP } from '../src/lab-console.js';
+import { parseLine, channelOf, cleanEnv, checkCommand, killTree, hideHeaders, LabConsole, consoleRoute, HELP, cleanSetup, chatBody, makeRentalPlan, rentalChoices } from '../src/lab-console.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, more = '') => { if (ok) { pass++; console.log(`PASS ${name}`); } else { fail++; console.log(`FAIL ${name}${more ? ` ${more}` : ''}`); } };
@@ -103,7 +103,7 @@ const sendOk = async (side, t) => { try { return await c.send({ side, text: t })
 
 check('help works with the switch off, running does not', (await sendOk('server', 'help')).ok && text('server').includes('load <brain>') && /Let the Lab run commands here/.test((await sendOk('tool', 'node echo.mjs')).error || ''));
 check('the switch starts off and turns on', c.allowed() === false && c.allow(true).allowed === true && cfg.labConsole === true);
-check('the help lists every side\'s commands', HELP.server.some((l) => /hold on/.test(l)) && HELP.tool.some((l) => /stop/.test(l)) && HELP.model.some((l) => /\/raw/.test(l)));
+check('the terminal\'s help lists its commands, scripts and stop too', HELP.server.some((l) => /hold on/.test(l)) && HELP.server.some((l) => /node <script/.test(l)) && HELP.server.some((l) => /stop .*never a rental/.test(l)));
 
 // a command runs, shows its lines, takes typed input, and finishes
 await sendOk('tool', 'node echo.mjs one');
@@ -147,7 +147,7 @@ const j1 = await r1.json();
 check('a tool gets the server\'s real reply through the relay', j1.choices[0].message.content === 'answer to ping' && got.at(-1).auth === 'Bearer abcdefabcdef');
 check('what was sent is on the record', /→ #\d+ POST \/v1\/chat\/completions from a tool \(with a key, hidden\)/.test(text('traffic')) && text('traffic').includes('"content": "ping"'));
 check('what came back is on the record, and the key never shows', /← #\d+ 200/.test(text('traffic')) && text('traffic').includes('answer to ping') && !text().includes('abcdefabcdef'));
-check('the model side shows what the model said, its tool calls too', text('model').includes('answer to ping') && text('model').includes('[calls web_search({"q":"x"})]'));
+check('a tool\'s reply shows in the Chat, marked as to a tool, its tool calls too', (() => { const t = c.talk.find((x) => x.to); return t && t.text === 'answer to ping' && t.calls[0]?.name === 'web_search' && !t.live; })() && text('traffic').includes('[calls web_search({"q":"x"})]'));
 check('the whole record is written to the traffic log', (() => { const f = fs.readdirSync(c.dir()).find((x) => x.startsWith('traffic-')); return f && fs.readFileSync(path.join(c.dir(), f), 'utf8').includes('"dir":"back"'); })());
 
 // Hold each request: read it, fix it, send it
@@ -171,14 +171,30 @@ await sendOk('server', 'health');
 check('"health" goes through the relay and shows both ways', /→ #\d+ GET \/health from you/.test(text('traffic')) && text('traffic').includes('"status": "ok"'));
 check('post needs readable JSON', /readable JSON/.test((await sendOk('server', 'post /tokenize {bad')).error || ''));
 
-// the model side: a chat, streamed
-await sendOk('model', '/system Be brief.');
-await sendOk('model', 'hi');
+// the Chat: Set up's dials go with each request, the reply streams into its turn
+check('Set up keeps every number in its range, and the rest at the usual', (() => { const x = cleanSetup({ temperature: 9, top_k: -4, max_tokens: 'lots', tools: 'evil', think: 'yes' }); return x.temperature === 2 && x.top_k === 0 && x.max_tokens === 2048 && x.tools === 'none' && x.think === false && x.stream === true; })());
+check('the request body carries the dials, and the seed only when set', (() => { const b = chatBody({ temperature: 0.2, seed: -1, system: 'S' }, [{ role: 'user', content: 'x' }]); const b2 = chatBody({ seed: 7 }, []); return b.temperature === 0.2 && !('seed' in b) && b.messages[0].role === 'system' && b2.seed === 7 && !('tools' in b); })());
+c.saveSetup({ system: 'Be brief.', temperature: 0.3 });
+check('Set up is saved for next time', JSON.parse(fs.readFileSync(path.join(c.dir(), 'setup.json'), 'utf8')).temperature === 0.3);
+const rev0 = c.talkRev;
+await sendOk('chat', 'hi');
 await until(() => !c.reply);
-check('the model side streams the reply and keeps the chat', text('model').includes('you: hi') && text('model').includes('Hello there') && c.chat.messages.length === 2 && c.chat.messages[1].content === 'Hello there');
-check('a streamed reply is gathered into a few entries, not one a word', c.entries.filter((e) => e.ch === 'model' && !e.kind && /Hel|lo |there/.test(e.text)).length <= 2);
-check('its instructions went with it', JSON.parse(got.at(-1).body).messages[0].content === 'Be brief.');
-check('a raw request body needs JSON', /JSON request body/.test((await sendOk('model', '/raw {nope')).error || ''));
+const lastBrain = () => [...c.talk].reverse().find((x) => x.who === 'brain' && !x.to);
+check('the Chat shows what you said and its streamed reply, and keeps the chat', c.talk.some((x) => x.who === 'you' && x.text === 'hi') && lastBrain()?.text === 'Hello there' && c.chat.messages.length === 2 && c.chat.messages[1].content === 'Hello there' && c.talkRev > rev0);
+check('its instructions and dials went with it', (() => { const j = JSON.parse(got.at(-1).body); return j.messages[0].content === 'Be brief.' && j.temperature === 0.3 && j.stream === true; })());
+check('the page gets the chat only when it changed', Array.isArray(c.view({ talk: -1 }).talk) && !('talk' in c.view({ talk: c.talkRev })));
+// a tool call: the Chat never runs it; what you type next is the tool's answer, and it carries on
+c.saveSetup({ stream: false, tools: 'practice' });
+await sendOk('chat', 'weather in Paris?');
+await until(() => !c.reply);
+const call = lastBrain()?.calls?.[0];
+check('a tool call shows as a card and waits for its answer', call?.name === 'web_search' && c.waitingCalls().length === 1 && JSON.parse(got.at(-1).body).tools.length === 4);
+await sendOk('chat', 'sunny, 21 degrees');
+await until(() => !c.reply);
+check('the typed answer goes back as the tool\'s, and the brain carries on', (() => { const m = c.chat.messages; const t = m.find((x) => x.role === 'tool'); return t?.content === 'sunny, 21 degrees' && t.tool_call_id === call.id && m.some((x) => x.role === 'assistant' && x.tool_calls?.[0]?.function.name === 'web_search'); })() && JSON.parse(got.at(-1).body).messages.some((x) => x.role === 'tool'));
+c.saveSetup({ stream: true, tools: 'none' });
+c.newChat();
+check('New chat starts again', c.talk.length === 0 && c.chat.messages.length === 0);
 
 // a script gets {url} = the relay, and LAB_URL
 await sendOk('tool', 'node echo.mjs {url}');
@@ -204,7 +220,7 @@ await sendOk('server', 'target off');
 // unload
 await sendOk('server', 'unload');
 check('unload stops the brain loaded here', stopped === 1 && c.view().server.state === 'off');
-check('with nothing loaded, the model side says how to load one', /load <brain>/.test((await sendOk('model', 'hello')).error || ''));
+check('with nothing loaded, the Chat says how to load one', /Load model locally/.test((await sendOk('chat', 'hello')).error || ''));
 
 // logs written elsewhere: a Forge run started from a terminal shows here too
 const flog = path.join(dir, 'out', 'forge', 'forge-2026-11-15T10-00-00.log');
@@ -230,7 +246,11 @@ const lab = { labConsole: () => c };
   const r2 = res(); await consoleRoute({ req: { method: 'GET', url: '/api/lab/console?since=0' }, res: r2, p: '/api/lab/console', isLocal: false, lab, body: async () => ({}), send: sendFn });
   check('another device can watch', r2.code === 200 && Array.isArray(r2.body.lines) && r2.body.local === false);
   const r3 = res(); await consoleRoute({ req: { method: 'POST' }, res: r3, p: '/api/lab/console/send', isLocal: true, lab, body: async () => ({ side: 'tool', text: 'cmd /c dir' }), send: sendFn });
-  check('a refused command answers in words, and shows in the readout', r3.code === 400 && /isn't a command here/.test(r3.body.error) && text('tool').includes("isn't a command here"));
+  check('a refused command answers in words, and shows in the terminal', r3.code === 400 && /isn't a command here/.test(r3.body.error) && text('server').includes("isn't a command here"));
+  const r4 = res(); await consoleRoute({ req: { method: 'POST' }, res: r4, p: '/api/lab/console/send', isLocal: true, lab, body: async () => ({ side: 'chat', text: 'hello' }), send: sendFn });
+  check('a Chat that can\'t ask says why in the Chat', r4.code === 400 && c.talk.at(-1).who === 'error' && /Load model locally/.test(c.talk.at(-1).text));
+  const r5 = res(); await consoleRoute({ req: { method: 'GET', url: '/api/lab/console/choices' }, res: r5, p: '/api/lab/console/choices', isLocal: false, lab, body: async () => ({}), send: sendFn });
+  check('another device gets no brains, engines or plans', r5.code === 200 && r5.body.brains.length === 0 && r5.body.rental.brains.length === 0);
 }
 
 // the switch: off by default, in settings, safe start and backups
@@ -239,21 +259,73 @@ check('safe start and restored backups turn it off', /'labConsole'/.test(read('s
 
 // the page: one window, two sides, each with its own input; theme colours only
 const pg = read('public/lab-console.js'), css = read('public/style.css'), lcCss = css.split('\n').filter((l) => /^\.lc|lc-/.test(l)).join('\n');
-check('one window holds both readouts, each side can be made bigger', /class="lc-win"/.test(pg) && /data-lcsize/.test(pg) && /\.lc-win\[data-size="server"\]/.test(css) && /\.lc-win\[data-size="work"\]/.test(css));
-check('each side has its own input', /lc-in-server/.test(pg) && /lc-in-work/.test(pg));
-check('the model and tools side shows Model, Tool or Both', /\[\['model', 'Model'\], \['tool', 'Tool'\], \['both', 'Both'\]\]/.test(pg));
-check('the server side shows its log, the requests and replies, or both', /\[\['log', 'Server log'\], \['traffic', 'Requests and replies'\], \['both', 'Both'\]\]/.test(pg));
+check('three panels, any on either side: Server, Chat, Set up', /\['server', 'Server'\], \['chat', 'Chat'\], \['setup', 'Set up'\]/.test(pg) && /data-lcslot/.test(pg) && /if \(ui\[other\] === b\.value\) ui\[other\] = ui\[side\]/.test(pg));
+check('server on the left and chat on the right to start', /pick\('left', 'server'/.test(pg) && /pick\('right', 'chat'/.test(pg));
+check('either side alone, or one side wider', /'leftonly'/.test(pg) && /'rightonly'/.test(pg) && /\.lc-win\[data-size="left"\]/.test(css) && /\.lc-win\[data-size="leftonly"\]/.test(css) && /data-lconly/.test(pg));
+check('only the Server panel is a terminal; the Chat is a chat', /role="log" aria-live="off" aria-label="Server readout"/.test(pg) && /class="lc-msg lc-you"/.test(pg) && /lc-in-chat/.test(pg) && /<details class="lc-think"/.test(pg));
+check('Set up has sliders, tick boxes and Lab jobs', /type="range"/.test(pg) && /data-lctick/.test(pg) && /data-lcjobrun/.test(pg) && /'sweep'/.test(pg) && /data-lcpage/.test(pg));
+check('LOAD MODEL LOCALLY and OPEN RENTAL each open a window to set them up', /data-lcopen="local"/.test(pg) && /data-lcopen="rental"/.test(pg) && /showModal\(\)/.test(pg) && /Rent it and start/.test(pg));
+check('a clear STOP, and END RENTAL only while a rental is up, both asked first when it matters', /lc-stopall" data-lcstopall/.test(pg) && /v\?\.rental \? `<button type="button" class="lc-big lc-endrent"/.test(pg) && /ask === 'end'/.test(pg) && /ask === 'stop'/.test(pg));
+check('the server panel shows its log, the requests and replies, the scripts, each on or off', /toggleChip\('server', 'Server log'\)/.test(pg) && /toggleChip\('traffic', 'Requests and replies'\)/.test(pg) && /toggleChip\('scripts', 'Scripts'\)/.test(pg));
 check('a held request can be edited, sent or dropped on the page', /lc-held-body/.test(pg) && /data-lcdecide/.test(pg));
 check('buttons can be edited before they run', /data-lcedit/.test(pg));
 check('the console uses the theme\'s colours only', lcCss.length > 500 && !/#[0-9a-fA-F]{3,8}\b|rgb\(|hsl\(/.test(lcCss));
 check('the Forge tab places the console and fills it after a redraw', /con\.html\(\)/.test(read('public/lab-forge.js')) && /fg\.mounted\(\)/.test(read('public/lab.js')));
-check('the Lab page leaves the console\'s events to it', (read('public/lab.js').match(/closest\??\.?\(['"]#lab-console['"]\)/g) || []).length >= 3);
+check('the Lab page leaves the console\'s events, and its set-up window\'s, to it', (read('public/lab.js').match(/closest\??\.?\(['"]#lab-console, #lc-dialog['"]\)/g) || []).length >= 3);
 
 // Help, glossary, FAQ
 const help = read('public/help-content.js');
 check('Help explains the console in Bob\'s voice', /id: 'lab-console'/.test(help) && /Hold each request/.test(help));
 check('the glossary has the console, the relay and Hold each request', ['<dt>Console (Lab)', '<dt>Relay (Lab console)', '<dt>Hold each request'].every((w) => help.includes(w)));
 check('there is an FAQ on where a run\'s output went', /id: 'faq-lab-console'/.test(help));
+
+// STOP stops what runs here and never ends a rental; END RENTAL is the Forge's own stop, by its pod
+{
+  const did = [];
+  Object.assign(fakeLab, { stepStop: () => { did.push('step'); return { stopped: true }; }, protocolStop: () => ({ stopped: false }), forgeHalt: () => { did.push('halt'); return { halted: true, pod: true }; }, forgeStop: async () => { did.push('end'); return { stopped: true, pod: true }; } });
+  const r = c.stopHere();
+  check('STOP stops the Lab step and the Forge here, and says the card is still up', r.stopped.includes('the Lab step') && r.stopped.includes('the Forge run') && r.cardUp && did.join() === 'step,halt' && /still up, and costs money/.test(text('server')));
+  check('STOP never ends a rental', !did.includes('end'));
+  fs.writeFileSync(c.doorFile(), JSON.stringify({ url: 'http://127.0.0.1:5999', name: '28Bob', pid: process.pid }));
+  check('a rented brain\'s door is used when nothing is loaded here', c.door()?.name === '28Bob' && c.targetUrl() === 'http://127.0.0.1:5999');
+  const e = await c.endRental();
+  check('END RENTAL ends it the Forge\'s way, and closes the door', e.pod && did.at(-1) === 'end' && !fs.existsSync(c.doorFile()) && c.targetUrl() === '');
+  fs.writeFileSync(c.doorFile(), JSON.stringify({ url: 'http://example.com:80', name: 'x', pid: process.pid }));
+  check('a door that isn\'t on this computer is never used', c.door() === null);
+  fs.writeFileSync(c.doorFile(), JSON.stringify({ url: 'http://127.0.0.1:5999', name: 'x', pid: 99999999 }));
+  check('a door whose script ended is put away', c.door() === null && !fs.existsSync(c.doorFile()));
+}
+// Open rental: the window's choices become a benchmark-only Forge plan whose one command is the door
+{
+  const pd = path.join(dir, 'forge', 'plans'); fs.mkdirSync(pd, { recursive: true });
+  fs.writeFileSync(path.join(pd, 'bench-bobert.json'), JSON.stringify({ run: 'bench-bobert', benchmark_only: true, teacher: 'T', lessons: 'out/lessons', gpus: ['NVIDIA A40', 'NVIDIA RTX A6000'], step_up: ['NVIDIA H100 80GB HBM3'], disk_gb: 80, rungs: [], hours_max: 4, dollars_max: 12, benchmark: { models: [{ name: '35Bob', nickname: 'Bobert', file: 'hf:MouseWurX/35Bob-Bobert:35Bob-Q4_K_M.gguf' }], commands: ['node experts-test.mjs --url {{url}}'] } }));
+  fs.writeFileSync(path.join(pd, 'riker-x.json'), JSON.stringify({ run: 'riker-x', gpus: ['NVIDIA A40'], hours_max: 2, dollars_max: 1.5, llama_tag: 'b1', benchmark: { brain_engine: { ref: 'abc', patches: ['0001-expert-mask', 'pod:0015-act-dump'] }, models: [] } }));
+  const ch = rentalChoices(dir);
+  check('the window offers the brains, cards and engines the Forge already used', ch.brains[0]?.nickname === 'Bobert' && ch.cards.includes('NVIDIA H100 80GB HBM3') && ch.usual.join() === 'NVIDIA A40,NVIDIA RTX A6000' && ch.engines.map((x) => x.id).join() === 'brainengine,plain' && ch.plans.length === 2);
+  const lp = path.join(tmp, 'lab-plans'), door = path.join(tmp, 'door dir', 'rental-door.json');
+  const bad = makeRentalPlan({ brain: 'https://x', cards: [], hours: 0, dollars: 900 }, { dir, door, labPlans: lp });
+  check('no brain, no card or no caps: no plan', bad.problems.length >= 3 && !fs.existsSync(path.join(lp, 'console-rental.json')) && bad.problems.some((x) => /lab-door\.mjs/.test(x)));
+  fs.writeFileSync(path.join(dir, 'lab-door.mjs'), '// stand-in\n');
+  const ok = makeRentalPlan({ brain: 'hf:MouseWurX/35Bob-Bobert:35Bob-Q4_K_M.gguf', engine: 'brainengine', cards: ['NVIDIA A40', 'bad<card>'], ctx: 16384, slots: 2, hours: 1.5, dollars: 3 }, { dir, door, labPlans: lp });
+  const plan = JSON.parse(fs.readFileSync(path.join(lp, 'console-rental.json'), 'utf8'));
+  check('a rental plan: one brain served, caps as typed, the door its one command', !ok.problems.length && plan.benchmark_only === true && plan.hours_max === 1.5 && plan.dollars_max === 3 && plan.gpus.join() === 'NVIDIA A40' && plan.benchmark.models[0].ctx === 16384 && plan.benchmark.commands.length === 1 && plan.benchmark.commands[0].startsWith('node lab-door.mjs --file "') && plan.benchmark.commands[0].includes('door dir'));
+  check('Brain Engine on the card comes from a plan that used it, without the lab-only patches', plan.benchmark.brain_engine.ref === 'abc' && plan.benchmark.brain_engine.patches.join() === '0001-expert-mask' && plan.llama_tag === 'b1');
+  check('the card never names a key', !/RUNPOD|API_KEY|TOKEN|"rk"/.test(JSON.stringify(plan)));
+  makeRentalPlan({ kind: 'plan', plan: 'riker-x', hours: 1, dollars: 1 }, { dir, door, labPlans: lp });
+  const p2 = JSON.parse(fs.readFileSync(path.join(lp, 'console-rental.json'), 'utf8'));
+  check('one of the Forge\'s plans goes as it is, with the caps typed here', p2.run === 'riker-x' && p2.hours_max === 1 && p2.dollars_max === 1 && p2.benchmark.brain_engine.patches.length === 2);
+  check('a Forge plan that isn\'t there is refused', makeRentalPlan({ kind: 'plan', plan: 'nope', hours: 1, dollars: 1 }, { dir, door, labPlans: lp }).problems.some((x) => /Pick one/.test(x)));
+}
+// Load model locally: the window's brain, engine, context and processor choice
+{
+  started = null;
+  const lf = await c.loadForm({ brain: 'qwen3-4b', ctx: 4096, engine: '', cpuOk: false });
+  check('Load model locally starts the brain with what the window said', lf.loaded === 'Qwen3 4B' && started.ctx === 4096 && started.cpuOk === false && c.setup.ctx === 4096);
+  c.unload();
+  check('a brain that isn\'t here, or an engine that isn\'t, is refused', throws(() => c.loadForm({ brain: 'nope' }), /Pick a brain/) && /engine isn't on this computer/.test(await c.loadForm({ brain: 'qwen3-4b', engine: 'llamacpp' }).then(() => '', (e) => e.message)));
+}
+check('the card\'s door script adds the key itself and answers only on this computer', (() => { const d = read('model-lab/lab-door.mjs'); return /authorization = `Bearer \$\{key\}`/.test(d) && /listen\(0, '127\.0\.0\.1'/.test(d) && /process\.env\.LAB_API_KEY/.test(d) && !/console\.log\([^)]*key\b/.test(d); })());
+check('STOP on the Forge stops it here and leaves the card; END RENTAL kills only its pod', (() => { const f = read('src/lab-forge-jobs.js'); return /forgeHalt\(\)/.test(f) && /halted: Boolean\(pod\), podLeft: pod/.test(f) && /'--kill', pod\]/.test(f); })());
 
 c.stopAll(); brain.close();
 try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}

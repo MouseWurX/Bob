@@ -509,7 +509,7 @@ export function createLab({ api, note, go, page = false }) {
   }
 
   body.addEventListener('change', async (e) => {
-    if (e.target.closest?.('#lab-console')) return; // 15 Nov the Forge console listens for itself
+    if (e.target.closest?.('#lab-console, #lc-dialog')) return; // 15 Nov the Forge console listens for itself
     const el = e.target; msg = '';
     if ('labengine' in el.dataset) { try { view.engine = await api('/api/lab/engine', { engine: el.value }); } catch (err) { msg = err.message; } await replan(); $('lab-body')?.querySelector('[data-labengine]')?.focus(); return; } // 1.5.17x
     if (isLearn()) return; // the Learn experiments listen for themselves
@@ -584,7 +584,7 @@ export function createLab({ api, note, go, page = false }) {
     show(inner ? tab : to, inner ? to : '').then(() => $(inner ? `play-page-${to}` : `lab-tab-${to}`)?.focus());
   });
   body.addEventListener('input', (e) => { // the slider and its number box move together
-    if (e.target.closest?.('#lab-console')) return;
+    if (e.target.closest?.('#lab-console, #lc-dialog')) return;
     if (isPlay() && pg.input(e.target)) return;
     if (gd.input(e.target)) return; // 1.5.164
     if (px.input(e.target)) return; // 1.5.168
@@ -597,7 +597,7 @@ export function createLab({ api, note, go, page = false }) {
     if (e.target.id === 'lab-b-count-n') { const s = $('lab-b-count'); if (s) s.value = e.target.value; }
   });
   body.addEventListener('click', async (e) => {
-    const b = e.target.closest('button'); if (!b || b.closest('#lab-console')) return;
+    const b = e.target.closest('button'); if (!b || b.closest('#lab-console, #lc-dialog')) return;
     msg = '';
     if (b.dataset.tab) { await show(b.dataset.tab); $(`lab-tab-${tab}`)?.focus(); return; }
     if (b.dataset.labgo) { const w = goWhere(b.dataset.labgo); if (w) go?.(w); return; } // "Open Get models" and friends

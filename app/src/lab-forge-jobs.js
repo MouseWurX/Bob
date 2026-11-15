@@ -88,7 +88,7 @@ export const forgeJobs = {
     let tail = []; try { tail = fs.readFileSync(rec.log, 'utf8').split(/\r?\n/).filter(Boolean).slice(-12).map(scrubForge); } catch {}
     // 14 Nov: when the run has ended, its run record gets its end and its card cost (about, from the pod record)
     if (rec.run && !running) { try { const lr = labDir(this.cfg); if (readRun(lr, rec.run)?.state === 'running') { let end = this.now(); try { end = fs.statSync(rec.log).mtimeMs; } catch {} const dir = forgeDir(this.cfg); finishRun(lr, rec.run, { state: rec.stopped ? 'stopped' : rec.failed ? 'failed' : 'done', cost: dir ? runCost(dir, rec.planRun || rec.plan, end) : null, message: rec.failed || '', now: end }); } } catch {} }
-    return { plan: rec.plan, at: rec.at, running, hours: rec.hours, dollars: rec.dollars, tail, importing: Boolean(rec.importing && running), failed: rec.failed || '' };
+    return { plan: rec.plan, at: rec.at, running, hours: rec.hours, dollars: rec.dollars, tail, importing: Boolean(rec.importing && running), failed: rec.failed || '', podLeft: !running && rec.halted && rec.podLeft ? true : false };
   },
   // Nov 11: Teach it from my mistakes (lab-mistakes.js): the saved tests' asks, answered as Bob by a teacher brain.
   async startMistakes({ teacher = '' } = {}, { unload = false } = {}) {
@@ -148,6 +148,17 @@ export const forgeJobs = {
       const { file: node, env: nodeEnv } = nodeCmd();
       await new Promise((resolve) => { const c = (this.forgeSpawn || spawn)(node, [path.join(dir, 'forge', 'forge.mjs'), '--kill', pod], { cwd: path.join(dir, 'forge'), stdio: 'ignore', windowsHide: true, env: { ...process.env, ...nodeEnv, ...this.forgeKeys() } }); c.on?.('exit', resolve); c.on?.('error', resolve); if (!c.on) resolve(); });
     }
+    if (rec.halted) writeJson(this.forgeLiveFile(), { ...rec, pid: 0, stopped: true, halted: false, podLeft: '' });
     return { stopped: true, pod: Boolean(pod) };
+  },
+  // 15 Nov 2026 The console's STOP: the Forge stops working here, and its rented card stays up (Squeak: "the stop
+  // wouldn't end the rental"). Nothing watches the caps after this, so the console shows END RENTAL until it's pressed.
+  forgeHalt() {
+    const rec = readJson(this.forgeLiveFile(), null);
+    if (!rec || !(rec.pid > 0) || !(this.forgeAlive || alive)(rec.pid)) return { halted: false };
+    try { (this.forgeKill || process.kill)(rec.pid); } catch {}
+    const dir = forgeDir(this.cfg), plan = readJson(path.join(forgePlansDir(labDir(this.cfg)), `${rec.plan}.json`), {}), pod = !rec.importing && dir ? runPodId(dir, plan.run || rec.plan) : '';
+    writeJson(this.forgeLiveFile(), { ...rec, pid: 0, stopped: true, importing: false, halted: Boolean(pod), podLeft: pod });
+    return { halted: true, pod: Boolean(pod) };
   },
 };

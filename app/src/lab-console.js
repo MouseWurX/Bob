@@ -1,5 +1,6 @@
-// 15 Nov 2026 The Forge console (Lab > Forge). Everything the Forge and the Lab run shows here, in one window with two
-// readouts: the server (a brain loaded here, or a rented card) and the model and tools. Each side takes typed input.
+// 15 Nov 2026 The Forge console (Lab > Forge). Everything the Forge and the Lab run shows here, in one window with three
+// panels, any of them on either side: the Server (a terminal: the brain loaded here or a rented card, every request and
+// reply, and what scripts print), the Chat (talk to the loaded brain), and Set up (its dials, and Lab jobs to run).
 // Between a tool and the server sits the Lab's relay, so every request sent and every reply returned is on the record,
 // and "Hold each request" lets the owner read, fix or drop a request before it goes.
 // Rules: running anything needs "Let the Lab run commands here" (off by default) and this computer itself. The command
@@ -10,9 +11,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
-import { scrub, forgeDir, FORGE_KEY } from './lab-forge.js';
+import { scrub, forgeDir, FORGE_KEY, forgePlansDir, alive } from './lab-forge.js';
 import { labDir, readJson, writeJson } from './lab-measure.js';
-import { startServer } from './lab-test.js';
+import { startServer, TOOLS as PRACTICE_TOOLS } from './lab-test.js';
+import { labEngineDirs, LAB_ENGINES } from './engines.js';
 import { gaming } from './sessions.js';
 import { nodeCmd } from './selftools.js';
 import { saveSettings } from './config.js';
@@ -131,18 +133,34 @@ export const HELP = {
     '  pods                                   list the Forge\'s rented cards (forge --status)',
     '  kill <podId>                           delete that one rented card (forge --kill <podId>)',
     '  watch | watch <number> | watch off     follow another log from the model-lab out folder',
-    '  status | clear | help'],
-  tool: ['Tool side. Commands:',
-    '  node <script.mjs> [words…]     a model-lab script; {url} is the server loaded here (through the relay)',
-    '  python <script.py> [words…]    the same, for Python',
+    '  node <script.mjs> [words…]             a model-lab script; {url} is the server loaded here (through the relay)',
+    '  python <script.py> [words…]            the same, for Python',
     '  forge --status | --places | --kill <podId>',
-    '  stop                           stop the running command and everything it started',
-    'While a command runs, what you type goes to it, as if typed in its window.'],
-  model: ['Model side: type to the brain loaded here (or the relay\'s target). Every request and reply is in the record.',
-    '  /system <words>   set its instructions      /think on | off   let it think first',
-    '  /raw <json>       send a request body exactly as typed      /clear   start the chat again',
-    '  /stop             stop its reply']
+    '  stop                                   stop the running command and everything it started (never a rental)',
+    '  status | clear | help',
+    'While a command runs, what you type goes to it, as if typed in its window. Untick "to the command" to talk to the server.']
 };
+
+// Set up: how the Chat asks the brain. Every number has its range; anything else is put back to its default.
+export const SETUP = {
+  temperature: [0.7, 0, 2], top_p: [0.95, 0, 1], top_k: [40, 0, 200], min_p: [0.05, 0, 1], repeat_penalty: [1, 1, 2],
+  max_tokens: [2048, 16, 32768], seed: [-1, -1, 2147483647], ctx: [8192, 512, 262144]
+};
+const SETUP_TICKS = { think: false, showThink: true, stream: true, toolReplies: true, cpuOk: true };
+const SETUP_TOOLS = ['none', 'practice', 'bob'];
+export function cleanSetup(x = {}, base = {}) {
+  const out = {};
+  for (const [k, [d, lo, hi]] of Object.entries(SETUP)) { const v = Number(x[k] ?? base[k] ?? d); out[k] = Number.isFinite(v) ? Math.min(hi, Math.max(lo, ['top_k', 'max_tokens', 'seed', 'ctx'].includes(k) ? Math.round(v) : Math.round(v * 100) / 100)) : d; }
+  for (const [k, d] of Object.entries(SETUP_TICKS)) out[k] = typeof x[k] === 'boolean' ? x[k] : typeof base[k] === 'boolean' ? base[k] : d;
+  const t = x.tools ?? base.tools; out.tools = SETUP_TOOLS.includes(t) ? t : 'none';
+  out.system = String(x.system ?? base.system ?? '').slice(0, 8000);
+  return out;
+}
+// The chat request body from Set up and the chat so far.
+export function chatBody(setup, messages, tools = []) {
+  const s = cleanSetup(setup);
+  return { messages: [...(s.system ? [{ role: 'system', content: s.system }] : []), ...messages], stream: s.stream, max_tokens: s.max_tokens, temperature: s.temperature, top_p: s.top_p, top_k: s.top_k, min_p: s.min_p, repeat_penalty: s.repeat_penalty, ...(s.seed >= 0 ? { seed: s.seed } : {}), ...(tools.length ? { tools } : {}), chat_template_kwargs: { enable_thinking: s.think } };
+}
 
 // One console per Lab. lab: the Lab (cfg, tools(), brains(), preflight(), forgeKeys(), forgeLive()...).
 export class LabConsole {
@@ -152,8 +170,9 @@ export class LabConsole {
     this.entries = []; this.seq = 0; this.reqSeq = 0;
     this.server = null; this.loading = null; this.target = ''; this.relay = null;
     this.job = null; this.reply = null; this.hold = false; this.pending = new Map();
-    this.chat = { system: '', think: false, messages: [] };
-    this.files = new Map(); this.watch = ''; this.history = { server: [], tool: [], model: [] };
+    this.chat = { messages: [] }; this.talk = []; this.talkRev = 0; this.toJob = true;
+    this.setup = cleanSetup(readJson(path.join(this.dir(), 'setup.json'), {}));
+    this.files = new Map(); this.watch = ''; this.history = { server: [], chat: [] };
     this.diskBuf = []; this.diskTimer = null;
   }
   get cfg() { return this.lab.cfg; }
@@ -240,34 +259,52 @@ export class LabConsole {
   }
 
   // ---- the page ----
-  view({ since = 0, remote = false } = {}) {
+  view({ since = 0, remote = false, talk = -1 } = {}) {
     this.follow();
+    const door = this.door();
     const all = this.entries.filter((e) => e.seq > since);
     const lines = (all.length > 3000 ? all.slice(-3000) : all).map(({ at: _a, ...e }) => (remote ? { ...e, text: hidePaths(e.text) } : e));
     let live = null; try { live = this.lab.forgeLive?.(); } catch {}
     return {
       allowed: this.allowed(), local: !remote, next: this.seq, first: this.entries[0]?.seq || 0, lines,
-      server: this.server ? { state: 'up', brain: this.server.brain, where: this.server.where, ctx: this.server.ctx } : this.loading ? { state: 'loading', brain: this.loading.brain } : { state: 'off' },
-      target: this.target ? (remote ? 'a server elsewhere' : this.target) : this.server ? 'the brain loaded here' : '',
+      server: this.server ? { state: 'up', brain: this.server.brain, where: this.server.where, ctx: this.server.ctx, engine: this.server.engine || '' } : this.loading ? { state: 'loading', brain: this.loading.brain } : { state: 'off' },
+      target: this.target ? (remote ? 'a server elsewhere' : this.target) : this.server ? 'the brain loaded here' : door ? `${door.name} on the rented card` : '',
       relay: this.relay && !remote ? this.relay.url : '',
       job: this.job ? { label: remote ? hidePaths(this.job.label) : this.job.label, at: this.job.at } : null,
-      replying: Boolean(this.reply), hold: this.hold,
+      replying: Boolean(this.reply), hold: this.hold, toJob: this.toJob,
+      labJobs: this.labJobs(),
       pending: remote ? [] : [...this.pending.values()].map(({ id, method, url, body }) => ({ id, method, url, body })),
-      rental: live?.running ? { plan: live.plan, hours: live.hours, dollars: live.dollars } : null,
-      chat: { system: this.chat.system, think: this.chat.think, turns: this.chat.messages.length },
+      rental: live?.running || live?.podLeft ? { plan: live.plan, hours: live.hours, dollars: live.dollars, running: Boolean(live.running), left: Boolean(live.podLeft), door: door ? door.name : '' } : null,
+      setup: this.setup, talkRev: this.talkRev, ...(talk !== this.talkRev ? { talk: remote ? this.talk.map((t) => ({ ...t, text: hidePaths(t.text) })) : this.talk } : {}),
+      waiting: this.waitingCalls().map((c) => c.id),
       buttons: this.buttons(), brains: remote ? [] : (this.lab.brains?.() || []).map((b) => ({ id: b.id, name: b.name })),
-      history: remote ? { server: [], tool: [], model: [] } : this.history
+      history: remote ? { server: [], chat: [] } : this.history
     };
+  }
+  // Lab jobs running anywhere in the Lab, for STOP.
+  labJobs() {
+    const out = [];
+    for (const [f, label] of [[this.lab.stepRunFile?.(), 'Lab step'], [this.lab.protocolFile?.(), 'Protocol step']]) { try { const j = f ? readJson(f, null) : null; if (j?.state === 'running') out.push(`${label} ${j.name || j.step || j.tool || ''}`.trim()); } catch {} }
+    if (this.lab.job) out.push('Lab job');
+    return out;
   }
   allow(on) { if (this.lab.saveSetting) this.lab.saveSetting({ labConsole: on === true }); else saveSettings(this.cfg, { labConsole: on === true }); this.cfg.labConsole = on === true; if (!on) { this.stop(); this.stopReply(); } return { allowed: this.allowed() }; }
   clear() { this.entries = []; return { cleared: true }; }
+  saveSetup(x = {}) { this.setup = cleanSetup(x, this.setup); try { writeJson(path.join(this.dir(), 'setup.json'), this.setup); } catch {} return { setup: this.setup }; }
+
+  // ---- the chat: what the Chat panel draws, one turn at a time ----
+  // A turn: { n, who: you | brain | tool | note | error, text, think, calls: [{ id, name, args, answer }], to (a tool's request), live }.
+  say(who, text = '', more = {}) { const t = { n: (this.talk.at(-1)?.n || 0) + 1, who, text: String(text), think: '', calls: [], to: '', live: false, ...more }; this.talk.push(t); if (this.talk.length > 300) this.talk.shift(); this.talkRev++; return t; }
+  newChat() { this.stopReply(); this.chat.messages = []; this.talk = []; this.talkRev++; return { ok: true }; }
+  // Tool calls from the chat's last reply that still want an answer typed for them.
+  waitingCalls() { const t = [...this.talk].reverse().find((x) => x.who === 'brain' && !x.to); return t && !t.live ? t.calls.filter((c) => c.answer === undefined) : []; }
   must() { if (!this.allowed()) throw new Error('Running things from the console is off. Turn on "Let the Lab run commands here" first.'); }
 
   // ---- buttons: saved commands, each checked like a typed one ----
   buttonsFile() { return path.join(this.dir(), 'buttons.json'); }
   buttons() { const j = readJson(this.buttonsFile(), []); return Array.isArray(j) ? j.slice(0, MAX_BUTTONS) : []; }
   addButton({ label = '', side = 'tool', line = '' } = {}) {
-    const l = String(label).replace(/[\r\n]+/g, ' ').trim().slice(0, 30), s = ['server', 'tool', 'model'].includes(side) ? side : 'tool', t = String(line).trim();
+    const l = String(label).replace(/[\r\n]+/g, ' ').trim().slice(0, 30), s = ['chat', 'model'].includes(side) ? 'chat' : 'server', t = String(line).trim();
     if (!l) throw new Error('Give the button a name.');
     parseLine(t); if (!t) throw new Error('Type the command the button runs.');
     const list = this.buttons(); if (list.length >= MAX_BUTTONS) throw new Error(`${MAX_BUTTONS} buttons at most.`);
@@ -277,16 +314,19 @@ export class LabConsole {
   pressButton(i) { const b = this.buttons()[i]; if (!b) throw new Error('There\'s no such button.'); return this.send({ side: b.side, text: b.line }); }
 
   // ---- input: one line from either side ----
-  async send({ side = 'tool', text = '' } = {}) {
+  // side: server (the terminal: server commands and scripts) or chat. Older buttons say tool or model.
+  async send({ side = 'server', text = '' } = {}) {
+    const chat = side === 'chat' || side === 'model';
     const line = String(text ?? '').replace(/[\r\n]+$/, '');
-    const h = this.history[side] || this.history.tool; if (line.trim() && h.at(-1) !== line) { h.push(line); if (h.length > 100) h.shift(); }
-    if (side === 'server') return this.serverCommand(line);
-    if (side === 'model') return this.modelSay(line);
-    return this.toolCommand(line);
+    const h = this.history[chat ? 'chat' : 'server']; if (line.trim() && h.at(-1) !== line) { h.push(line); if (h.length > 100) h.shift(); }
+    if (chat) return this.modelSay(line);
+    if (this.job && (this.toJob || side === 'tool')) return this.toolCommand(line);
+    return this.serverCommand(line);
   }
 
   async serverCommand(line) {
     const w = parseLine(line); const [verb, ...rest] = w;
+    if (['node', 'python', 'forge', 'stop'].includes(verb)) return this.toolCommand(line);
     this.push('server', `> ${line}`, { kind: 'cmd' });
     if (!verb) return { ok: true };
     if (verb === 'help') { for (const l of HELP.server) this.push('server', l, { kind: 'note' }); return { ok: true }; }
@@ -309,7 +349,7 @@ export class LabConsole {
     if (verb === 'post') { if (!/^\/[^\s]*$/.test(rest[0] || '')) throw new Error('post /path {json}, like post /tokenize {"content":"hello"}.'); const body = rest.slice(1).join(' '); try { JSON.parse(body || '{}'); } catch { throw new Error('That body isn\'t readable JSON.'); } return this.ask('POST', rest[0], body || '{}'); }
     if (verb === 'pods') return this.runCommand(['forge', '--status']);
     if (verb === 'kill') { if (!rest[0]) throw new Error('Name the pod: kill <podId>. "pods" lists them.'); return this.runCommand(['forge', '--kill', rest[0]]); }
-    throw new Error(`"${verb}" isn't a server command. Type help.`);
+    throw new Error(`"${verb}" isn't a command here. Type help: server commands, and node, python or forge.`);
   }
   status() {
     const v = this.view({ since: this.seq });
@@ -329,7 +369,22 @@ export class LabConsole {
   }
 
   // ---- a brain loaded here ----
-  async load(words) {
+  // From the Load model locally window: the same as typing load, with the engine and the processor choice too.
+  loadForm({ brain = '', ctx = this.setup.ctx, engine = '', unload = false, cpuOk = this.setup.cpuOk } = {}) {
+    const b = (this.lab.brains?.() || []).find((x) => x.id === String(brain));
+    if (!b) throw new Error('Pick a brain.');
+    this.saveSetup({ ctx: Number(ctx), cpuOk: cpuOk !== false });
+    return this.load([b.id, '--ctx', String(this.setup.ctx), ...(unload ? ['--unload'] : [])], { engine: LAB_ENGINES.includes(engine) ? engine : '', cpuOk: this.setup.cpuOk });
+  }
+  // Which engine a load uses: '' = the one Bob's brains use, brainengine, llamacpp (Settings > Engines has them).
+  engineExe(engine = '') {
+    if (!engine) return this.lab.tools?.().server;
+    const n = this.platform === 'win32' ? 'llama-server.exe' : 'llama-server';
+    for (const d of labEngineDirs({ ...this.cfg, labEngine: engine })) { const p = path.join(d, n); if (fs.existsSync(p)) return { path: p, found: true }; }
+    return { path: '', found: false };
+  }
+  engines() { return [['', 'The one Bob\'s brains use'], ['brainengine', 'Brain Engine'], ['llamacpp', 'Plain llama.cpp']].map(([id, name]) => { let found = false; try { found = Boolean(this.engineExe(id)?.found); } catch {} return { id, name, found }; }); }
+  async load(words, { engine = '', cpuOk = true } = {}) {
     if (this.server || this.loading) throw new Error(`${(this.server || this.loading).brain} is loaded. Type unload first.`);
     const unload = words.includes('--unload');
     const ci = words.indexOf('--ctx'); const ctx = ci >= 0 ? Math.round(Number(words[ci + 1])) : 8192;
@@ -342,8 +397,8 @@ export class LabConsole {
     if (gaming(this.cfg)) throw new Error('Gaming is on, so nothing loads on the card. Switch the session to Normal first.');
     const pre = await this.lab.preflight?.({ unload });
     if (pre?.needUnload) throw new Error(`Bob's brain (${pre.names.join(', ')}) is on the card. Type load ${b.name} --unload to unload it first.`);
-    const exe = this.lab.tools?.().server;
-    if (!exe?.found) throw new Error('There\'s no engine for the Lab yet. Get one in Settings, Engines.');
+    const exe = this.engineExe(engine);
+    if (!exe?.found) throw new Error(engine ? 'That engine isn\'t on this computer. Settings > Engines gets it.' : 'There\'s no engine for the Lab yet. Get one in Settings, Engines.');
     const ac = new AbortController(); this.loading = { brain: b.name, ac };
     this.push('server', `Loading ${b.name} with ${ctx} context…`, { kind: 'note' });
     const self = this;
@@ -354,10 +409,10 @@ export class LabConsole {
       self.loadingChild = c; return c;
     };
     try {
-      const srv = await this.startServerFn({ exe: exe.path, gguf: b.gguf, mmproj: b.mmproj, ctx, signal: ac.signal, spawnFn, log: (l) => this.push('server', `$ ${l}`, { kind: 'cmd' }) });
-      this.server = { ...srv, brain: b.name, ctx, child: this.loadingChild };
+      const srv = await this.startServerFn({ exe: exe.path, gguf: b.gguf, mmproj: b.mmproj, ctx, cpuOk, signal: ac.signal, spawnFn, log: (l) => this.push('server', `$ ${l}`, { kind: 'cmd' }) });
+      this.server = { ...srv, brain: b.name, ctx, engine: this.engines().find((e) => e.id === engine)?.name || '', child: this.loadingChild };
       await this.startRelay();
-      this.push('server', `${b.name} is ready on the ${srv.where}. Tools use ${this.relay.url} ({url} in a command).`, { kind: 'note' });
+      this.push('server', `${b.name} is ready on the ${srv.where}. Chat with it, and tools use ${this.relay.url} ({url} in a command).`, { kind: 'note' });
       return { loaded: b.name };
     } finally { this.loading = null; }
   }
@@ -367,7 +422,40 @@ export class LabConsole {
     const s = this.server; this.server = null; try { s.stop(); } catch {}
     this.push('server', `${s.brain} unloaded.`, { kind: 'note' }); return { stopped: true };
   }
-  targetUrl() { return this.target || this.server?.url || ''; }
+  targetUrl() { return this.target || this.server?.url || this.door()?.url || ''; }
+
+  // ---- a rented card, opened from the console: the Forge serves the brain and runs lab-door.mjs here, which writes
+  // its address on this computer (it adds the card's key itself, so the key never comes here) and waits ----
+  doorFile() { return path.join(this.dir(), 'rental-door.json'); }
+  door() {
+    const d = readJson(this.doorFile(), null);
+    if (!d || !/^http:\/\/127\.0\.0\.1:\d{2,5}$/.test(d.url || '') || !(d.pid > 0)) return null;
+    if (!(this.lab.forgeAlive || alive)(d.pid)) { try { fs.rmSync(this.doorFile(), { force: true }); } catch {} return null; }
+    return { url: d.url, name: String(d.name || 'the brain').slice(0, 60) };
+  }
+  rentalPlan(form = {}) { return makeRentalPlan(form, { dir: forgeDir(this.cfg), door: this.doorFile(), labPlans: forgePlansDir(labDir(this.cfg)) }); }
+  rentalChoices() { return rentalChoices(forgeDir(this.cfg)); }
+  // END RENTAL: the Forge's own stop (only this run's card, by its pod), and the door closes.
+  async endRental() {
+    const r = await this.lab.forgeStop();
+    try { fs.rmSync(this.doorFile(), { force: true }); } catch {}
+    this.push('server', r.pod ? 'The rental is ended: its card is deleted.' : 'The Forge run is stopped. It hadn\'t rented a card yet.', { kind: 'note' });
+    return r;
+  }
+  // STOP: everything running here stops. A rented card is never ended by it: the Forge stops watching, the card stays up.
+  stopHere() {
+    const done = [];
+    if (this.job) { this.stop(); done.push('the command'); }
+    if (this.reply) { this.stopReply(); done.push('the reply'); }
+    if (this.loading) { this.unload(); done.push('loading'); }
+    try { if (this.lab.stepStop?.()?.stopped) done.push('the Lab step'); } catch {}
+    try { if (this.lab.protocolStop?.()?.stopped) done.push('the protocol step'); } catch {}
+    try { if (this.lab.job && this.lab.stop?.()?.stopped) done.push('the Lab job'); } catch {}
+    let rented = false; try { const h = this.lab.forgeHalt?.(); if (h?.halted) { done.push('the Forge run'); rented = h.pod; } } catch {}
+    this.push('server', done.length ? `Stopped ${done.join(', ')}.` : 'Nothing was running.', { kind: 'note' });
+    if (rented) this.push('server', 'The rented card is still up, and costs money until it\'s ended. Nothing watches its caps now. END RENTAL deletes it.', { kind: 'error' });
+    return { stopped: done, cardUp: rented };
+  }
 
   // ---- the relay: tool → Lab → server, with every request and reply on the record ----
   async startRelay() {
@@ -405,11 +493,10 @@ export class LabConsole {
     const sse = /event-stream/i.test(ct);
     this.push('traffic', `← #${id} ${r.status}${sse ? ', streaming' : ''}`, { kind: 'back' });
     let raw = '', said = '', calls = {}, buf = '', thinking = false;
-    // A reply streams a word at a time: pieces are gathered for a tenth of a second, so the record isn't one entry a word.
-    let pend = '', pendKind = '', pendTimer = null;
-    const flushModel = () => { clearTimeout(pendTimer); pendTimer = null; if (pend) this.push('model', pend, { nl: false, kind: pendKind }); pend = ''; };
-    const model = (t, kind) => { if (!t) return; if (kind === 'think') thinking = true; if (pend && pendKind !== kind) flushModel(); pend += t; pendKind = kind; if (!pendTimer) { pendTimer = setTimeout(flushModel, 100); pendTimer.unref?.(); } if (kind !== 'think') said += t; };
-    if (!mine && r.status < 300 && /chat|completion/.test(req.url)) this.push('model', `— reply #${id}, to a tool —`, { kind: 'note' });
+    // A chat reply goes in the Chat as it comes: the console's own into its waiting turn, a tool's into a turn of its own.
+    const isChat = r.status < 300 && /chat|completion/.test(req.url);
+    const turn = !isChat ? null : mine ? this.reply?.turn || null : this.setup.toolReplies ? this.say('brain', '', { to: `#${id}`, live: true }) : null;
+    const model = (t, kind) => { if (!t) return; if (kind === 'think') { thinking = true; if (turn) turn.think += t; } else { said += t; if (turn) turn.text += t; } if (turn) this.talkRev++; };
     const onSse = (s) => {
       buf += s; const parts = buf.split('\n'); buf = parts.pop();
       for (const l of parts) {
@@ -417,20 +504,21 @@ export class LabConsole {
         let j; try { j = JSON.parse(m[1]); } catch { continue; }
         const d = j.choices?.[0]?.delta || {};
         model(d.reasoning_content, 'think'); model(d.content || j.content || '', '');
-        for (const tc of d.tool_calls || []) { const k = tc.index ?? 0; calls[k] ||= { name: '', args: '' }; if (tc.function?.name) calls[k].name += tc.function.name; if (tc.function?.arguments) calls[k].args += tc.function.arguments; }
+        for (const tc of d.tool_calls || []) { const k = tc.index ?? 0; calls[k] ||= { id: '', name: '', args: '' }; if (tc.id) calls[k].id = tc.id; if (tc.function?.name) calls[k].name += tc.function.name; if (tc.function?.arguments) calls[k].args += tc.function.arguments; }
       }
     };
     try {
       if (r.body) for await (const c of r.body) { const s = Buffer.from(c).toString('utf8'); raw += s; res.write(c); if (sse) onSse(s); }
     } catch (e) { this.push('traffic', `← #${id} cut off: ${e.message}`, { kind: 'error' }); }
-    res.end(); flushModel();
-    if (!sse && /chat|completion/.test(req.url)) { try { const j = JSON.parse(raw); const m = j.choices?.[0]?.message || {}; model(m.reasoning_content, 'think'); model(m.content || j.content || '', ''); (m.tool_calls || []).forEach((c, i) => { calls[i] = { name: c.function?.name || '', args: c.function?.arguments || '' }; }); } catch {} }
-    flushModel(); let open = Boolean(said); for (const c of Object.values(calls)) { this.push('model', `${open ? '\n' : ''}[calls ${c.name}(${String(c.args).slice(0, 2000)})]`, { nl: false, kind: 'tool' }); open = true; }
-    if (said || Object.keys(calls).length || thinking) this.push('model', '', { nl: true });
+    res.end();
+    if (!sse && /chat|completion/.test(req.url)) { try { const j = JSON.parse(raw); const m = j.choices?.[0]?.message || {}; model(m.reasoning_content, 'think'); model(m.content || j.content || '', ''); (m.tool_calls || []).forEach((c, i) => { calls[i] = { id: c.id || '', name: c.function?.name || '', args: c.function?.arguments || '' }; }); } catch {} }
+    const callList = Object.values(calls).map((c, i) => ({ id: c.id || `call_${id}_${i}`, name: c.name, args: String(c.args).slice(0, 20000) }));
+    if (turn) { turn.calls = callList.map((c) => ({ ...c })); turn.live = false; if (!said && !thinking && !callList.length && r.status >= 300) turn.who = 'error'; this.talkRev++; }
+    for (const c of callList) this.push('traffic', `[calls ${c.name}(${c.args.slice(0, 2000)})]`, { kind: 'back' });
     this.push('traffic', sse ? cut(said || raw) : cut(pretty(raw)), { kind: 'back' });
     this.push('traffic', `← #${id} done in ${((this.now() - t0) / 1000).toFixed(1)} s, ${Math.round(raw.length / 102.4) / 10} KB`, { kind: 'back' });
     this.trafficLog({ id, dir: 'back', status: r.status, body: raw });
-    if (mine && this.reply) this.reply.text = said;
+    if (mine && this.reply) { this.reply.text = said; this.reply.calls = callList; }
   }
   decide(id, { send = false, body } = {}) {
     const p = this.pending.get(Number(id)); if (!p) throw new Error('That request isn\'t held any more.');
@@ -448,35 +536,57 @@ export class LabConsole {
   }
 
   // ---- the model side ----
+  // The tools the Chat offers the brain: none, the Lab test's four practice tools, or Bob's own (as Bob offers them now).
+  chatTools() {
+    if (this.setup.tools === 'practice') return PRACTICE_TOOLS;
+    if (this.setup.tools === 'bob') { const b = this.lab.brain; try { return b?.toolSchemas ? b.toolSchemas(Object.keys(b.tools || {})) : []; } catch { return []; } }
+    return [];
+  }
   async modelSay(line) {
     const t = line.trim();
-    if (t === '/clear') { this.chat.messages = []; this.push('model', 'The chat starts again.', { kind: 'note' }); return { ok: true }; }
-    if (t === '/stop') return this.stopReply();
-    if (t === '/help' || t === 'help') { for (const l of HELP.model) this.push('model', l, { kind: 'note' }); return { ok: true }; }
-    if (t.startsWith('/system')) { this.chat.system = t.slice(7).trim(); this.push('model', this.chat.system ? `Its instructions: ${this.chat.system}` : 'No instructions now.', { kind: 'note' }); return { ok: true }; }
-    if (t.startsWith('/think')) { this.chat.think = !/off/.test(t); this.push('model', this.chat.think ? 'It thinks first.' : 'It answers straight away.', { kind: 'note' }); return { ok: true }; }
     this.must();
     if (!t) return { ok: true };
-    if (!this.targetUrl()) throw new Error('No brain is loaded. On the server side, type load <brain>.');
-    if (this.reply) throw new Error('It\'s still answering. /stop first.');
-    let body;
-    if (t.startsWith('/raw')) { body = t.slice(4).trim(); try { JSON.parse(body); } catch { throw new Error('/raw needs a JSON request body.'); } this.push('model', `you (raw): ${body}`, { kind: 'you' }); }
-    else {
-      this.push('model', `you: ${t}`, { kind: 'you' });
-      this.chat.messages.push({ role: 'user', content: t });
-      body = JSON.stringify({ messages: [...(this.chat.system ? [{ role: 'system', content: this.chat.system }] : []), ...this.chat.messages], stream: true, max_tokens: 2048, chat_template_kwargs: { enable_thinking: this.chat.think } });
+    if (!this.targetUrl()) throw new Error('No brain is loaded. Press Load model locally, or Open rental.');
+    if (this.reply) throw new Error('It\'s still answering. Press Stop first.');
+    const wait = this.waitingCalls();
+    if (wait.length) { // what's typed is the answer from the tool it called, so it can carry on
+      return this.toolAnswer(wait[0].id, t);
     }
+    this.say('you', t);
+    this.chat.messages.push({ role: 'user', content: t });
+    return this.ask4reply();
+  }
+  // A tool's answer, typed by the owner for the call the brain made (the Chat never runs a tool itself).
+  async toolAnswer(callId, text) {
+    this.must();
+    const turn = [...this.talk].reverse().find((x) => x.who === 'brain' && !x.to && x.calls.some((c) => c.id === callId));
+    const call = turn?.calls.find((c) => c.id === callId);
+    if (!call || call.answer !== undefined) throw new Error('That tool call has its answer already.');
+    call.answer = String(text).slice(0, 20000); this.talkRev++;
+    this.chat.messages.push({ role: 'tool', tool_call_id: call.id, name: call.name, content: call.answer });
+    if (this.waitingCalls().length) return { ok: true, waiting: true };
+    return this.ask4reply();
+  }
+  async ask4reply() {
+    if (!this.targetUrl()) throw new Error('No brain is loaded. Press Load model locally, or Open rental.');
+    const body = JSON.stringify(chatBody(this.setup, this.chat.messages, this.chatTools()));
     await this.startRelay();
-    this.reply = { text: '', ac: null };
-    const raw = t.startsWith('/raw');
+    const turn = this.say('brain', '', { live: true });
+    this.reply = { text: '', calls: [], ac: null, turn };
     (async () => {
       try { const r = await this.fetchFn(this.relay.url + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', 'x-lab-console': '1' }, body }); await r.text(); }
-      catch (e) { this.push('model', `It stopped: ${e.message}`, { kind: 'error' }); }
-      finally { if (!raw) { if (this.reply?.text) this.chat.messages.push({ role: 'assistant', content: this.reply.text }); else this.chat.messages.pop(); } this.reply = null; }
+      catch (e) { if (turn.live) { turn.live = false; turn.who = turn.text ? 'brain' : 'error'; if (!turn.text) turn.text = `It stopped: ${e.message}`; this.talkRev++; } }
+      finally {
+        const rp = this.reply;
+        if (rp?.text || rp?.calls?.length) this.chat.messages.push({ role: 'assistant', content: rp.text || '', ...(rp.calls.length ? { tool_calls: rp.calls.map((c) => ({ id: c.id, type: 'function', function: { name: c.name, arguments: c.args } })) } : {}) });
+        else if (this.chat.messages.at(-1)?.role === 'user') this.chat.messages.pop();
+        if (turn.live) { turn.live = false; this.talkRev++; }
+        this.reply = null;
+      }
     })();
     return { asked: true };
   }
-  stopReply() { if (!this.reply) return { stopped: false }; try { this.reply.ac?.abort(); } catch {} this.push('model', '(stopped)', { kind: 'note' }); return { stopped: true }; }
+  stopReply() { if (!this.reply) return { stopped: false }; try { this.reply.ac?.abort(); } catch {} const t = this.reply.turn; if (t) { t.live = false; t.text += t.text ? ' (stopped)' : '(stopped)'; this.talkRev++; } return { stopped: true }; }
 
   // ---- the tool side: a command, or a line typed into the running one ----
   async toolCommand(line) {
@@ -488,8 +598,8 @@ export class LabConsole {
       try { this.job.child.stdin?.write(line + '\n'); } catch (e) { throw new Error(`It isn't listening: ${e.message}`); }
       return { typed: true };
     }
-    if (t === 'help' || !t) { for (const l of HELP.tool) this.push('tool', l, { kind: 'note' }); return { ok: true }; }
-    if (t === 'stop') { this.push('tool', 'Nothing is running.', { kind: 'note' }); return { stopped: false }; }
+    if (t === 'help' || !t) { for (const l of HELP.server) this.push('server', l, { kind: 'note' }); return { ok: true }; }
+    if (t === 'stop') { this.push('server', 'Nothing is running.', { kind: 'note' }); return { stopped: false }; }
     if (t === 'clear') return this.clear();
     return this.runCommand(parseLine(t), line);
   }
@@ -520,7 +630,7 @@ export class LabConsole {
     try { this.job.child.kill?.(); } catch {}
     return { stopped: true };
   }
-  stopAll() { this.stop(); this.stopReply(); this.unload(); for (const p of this.pending.values()) p.decide({ drop: true }); this.flush(); try { this.relay?.srv.close(); } catch {} this.relay = null; }
+  stopAll() { this.stop(); this.stopReply(); this.unload(); try { fs.rmSync(this.doorFile(), { force: true }); } catch {} for (const p of this.pending.values()) p.decide({ drop: true }); this.flush(); try { this.relay?.srv.close(); } catch {} this.relay = null; }
 }
 
 // /api/lab/console: reading is open to any device Bob lets in (paths hidden); everything else is this computer only.
@@ -529,17 +639,101 @@ export async function consoleRoute({ req, res, p, isLocal, lab, body, send }) {
   const c = lab.labConsole();
   let b = {};
   try {
-    if (req.method === 'GET' && p === '/api/lab/console') { const since = Number(new URL(req.url, 'http://x').searchParams.get('since')) || 0; send(res, 200, c.view({ since, remote: !isLocal })); return true; }
+    if (req.method === 'GET' && p === '/api/lab/console') { const q = new URL(req.url, 'http://x').searchParams; send(res, 200, c.view({ since: Number(q.get('since')) || 0, talk: q.has('talk') ? Number(q.get('talk')) : -1, remote: !isLocal })); return true; }
+    if (req.method === 'GET' && p === '/api/lab/console/choices') { send(res, 200, isLocal ? { engines: c.engines(), brains: (lab.brains?.() || []).map((x) => ({ id: x.id, name: x.name })), rental: c.rentalChoices() } : { engines: [], brains: [], rental: { brains: [], cards: [], engines: [] } }); return true; }
     if (req.method !== 'POST') { send(res, 404, { error: 'no' }); return true; }
     if (!isLocal) { send(res, 403, { error: 'The console only takes commands on this computer itself. Other devices can watch it.' }); return true; }
     b = (await body(req)) || {};
     if (p === '/api/lab/console/allow') { send(res, 200, c.allow(b.on === true)); return true; }
-    if (p === '/api/lab/console/send') { send(res, 200, await c.send({ side: String(b.side || 'tool'), text: String(b.text ?? '').slice(0, 2000) })); return true; }
-    if (p === '/api/lab/console/stop') { const w = String(b.what || 'tool'); send(res, 200, w === 'server' ? c.unload() : w === 'model' ? c.stopReply() : c.stop()); return true; }
+    if (p === '/api/lab/console/send') { send(res, 200, await c.send({ side: String(b.side || 'server'), text: String(b.text ?? '').slice(0, 20000) })); return true; }
+    if (p === '/api/lab/console/stop') { const w = String(b.what || 'all'); send(res, 200, w === 'server' ? c.unload() : w === 'reply' || w === 'model' ? c.stopReply() : w === 'command' || w === 'tool' ? c.stop() : c.stopHere()); return true; }
+    if (p === '/api/lab/console/setup') { send(res, 200, c.saveSetup(b.setup || {})); return true; }
+    if (p === '/api/lab/console/newchat') { send(res, 200, c.newChat()); return true; }
+    if (p === '/api/lab/console/answer') { b.side = 'chat'; send(res, 200, await c.toolAnswer(String(b.id || ''), String(b.text ?? ''))); return true; }
+    if (p === '/api/lab/console/tojob') { c.toJob = b.on !== false; send(res, 200, { toJob: c.toJob }); return true; }
+    if (p === '/api/lab/console/load') { c.must(); b.side = 'server'; send(res, 200, await c.loadForm(b)); return true; }
+    if (p === '/api/lab/console/rental/plan') { const r = c.rentalPlan(b.form || {}); send(res, 200, { problems: r.problems, notes: r.notes, summary: r.summary, card: r.problems.length ? null : lab.forgeCard(r.id) }); return true; }
+    if (p === '/api/lab/console/rental/end') { b.side = 'server'; send(res, 200, await c.endRental()); return true; }
     if (p === '/api/lab/console/decide') { send(res, 200, c.decide(b.id, { send: b.send === true, body: typeof b.body === 'string' ? b.body.slice(0, 2e6) : undefined })); return true; }
     if (p === '/api/lab/console/hold') { c.must(); c.hold = b.on === true; if (!c.hold) for (const x of c.pending.values()) x.decide({ send: true }); send(res, 200, { hold: c.hold }); return true; }
     if (p === '/api/lab/console/clear') { send(res, 200, c.clear()); return true; }
     if (p === '/api/lab/console/button') { send(res, 200, b.add ? c.addButton(b.add) : Number.isInteger(b.remove) ? c.removeButton(b.remove) : Number.isInteger(b.press) ? await c.pressButton(b.press) : c.view({ since: c.seq })); return true; }
     send(res, 404, { error: 'no' }); return true;
-  } catch (e) { const side = String(b?.side || ''); try { c.push(side === 'server' ? 'server' : side === 'model' ? 'model' : 'tool', e.message, { kind: 'error' }); } catch {} send(res, 400, { error: e.message }); return true; }
+  } catch (e) { const side = String(b?.side || ''); try { if (side === 'chat' || side === 'model') c.say('error', e.message); else if (side) c.push('server', e.message, { kind: 'error' }); } catch {} send(res, 400, { error: e.message }); return true; }
+}
+
+// ---- Open rental: a Forge plan that rents one card, serves one brain on it, and waits ----
+// It's a benchmark-only plan (the Forge's own, well-worn kind) whose one "test command" is lab-door.mjs: it runs here,
+// tells the console where the brain answers, and waits. Or one of the Forge's own saved plans, as it is. Either way
+// the caps are typed, and it starts only from its purchase card.
+const RENTAL_ID = 'console-rental';
+const HF_GGUF = /^hf:[\w.-]{1,96}\/[\w.-]{1,96}:[\w./-]{1,200}\.gguf$/;
+const CARD_RE = /^[\w .()-]{3,60}$/;
+function forgePlanFiles(dir) {
+  const pd = dir ? path.join(dir, 'forge', 'plans') : '';
+  let names = []; try { names = fs.readdirSync(pd).filter((f) => f.endsWith('.json')); } catch {}
+  return names.map((f) => { let j = null, m = 0; try { j = JSON.parse(fs.readFileSync(path.join(pd, f), 'utf8')); m = fs.statSync(path.join(pd, f)).mtimeMs; } catch {} return j && typeof j === 'object' ? { id: f.slice(0, -5), plan: j, m } : null; }).filter(Boolean);
+}
+export function rentalChoices(dir) {
+  const plans = forgePlanFiles(dir), brains = [], cards = [], seen = new Set();
+  for (const { plan } of plans) {
+    for (const m of plan.benchmark?.models || []) if (HF_GGUF.test(m.file || '') && !seen.has(m.file)) { seen.add(m.file); brains.push({ file: m.file, name: String(m.name || '').slice(0, 40), nickname: String(m.nickname || '').slice(0, 60) }); }
+    for (const g of [...(plan.gpus || []), ...(plan.step_up || [])]) if (CARD_RE.test(g) && !cards.includes(g)) cards.push(g);
+  }
+  const be = plans.filter((x) => x.plan.benchmark?.brain_engine?.ref).sort((a, b) => b.m - a.m)[0];
+  const usual = (plans.find((x) => x.id === 'bench-bobert')?.plan.gpus || cards.slice(0, 4)).filter((g) => cards.includes(g));
+  return {
+    brains, cards, usual,
+    engines: [...(be ? [{ id: 'brainengine', name: 'Brain Engine (Bob\'s patches)', from: be.id }] : []), { id: 'plain', name: 'Plain llama.cpp' }],
+    plans: plans.sort((a, b) => b.m - a.m).map(({ id, plan }) => ({ id, note: String(plan.note || '').slice(0, 300), hours: Number(plan.hours_max) || 0, dollars: Number(plan.dollars_max) || 0, cards: (plan.gpus || []).slice(0, 6) }))
+  };
+}
+export function makeRentalPlan(form = {}, { dir = '', door = '', labPlans = '' } = {}) {
+  const problems = [], notes = [];
+  if (!dir) { problems.push('Bob can\'t find the Forge: the model-lab folder of Bob\'s source.'); return { problems, notes, summary: [] }; }
+  const ch = rentalChoices(dir), plans = forgePlanFiles(dir);
+  const hours = Number(form.hours), dollars = Number(form.dollars);
+  if (!(hours > 0 && hours <= 24)) problems.push('Type the most hours it may run (up to 24).');
+  if (!(dollars > 0 && dollars <= 500)) problems.push('Type the most it may cost, in dollars (up to 500).');
+  // A Forge plan as it is, with the caps typed here.
+  if (form.kind === 'plan') {
+    const pick = plans.find((x) => x.id === String(form.plan || ''));
+    if (!pick) problems.push('Pick one of the Forge\'s plans.');
+    if (problems.length) return { problems, notes, summary: [] };
+    const plan = { ...pick.plan, hours_max: hours, dollars_max: dollars };
+    fs.mkdirSync(labPlans, { recursive: true });
+    writeJson(path.join(labPlans, `${RENTAL_ID}.json`), plan);
+    notes.push('Everything it prints shows in the Server panel. It ends by itself when it finishes or at a cap. END RENTAL ends it sooner. STOP never ends it.');
+    return { problems, notes, id: RENTAL_ID, summary: [`Forge plan: ${pick.id}`, `Cards: ${(plan.gpus || []).join(', ') || 'the Forge\'s usual list'}`, `Caps: ${hours} hour${hours === 1 ? '' : 's'} or $${dollars}`] };
+  }
+  if (!fs.existsSync(path.join(dir, 'lab-door.mjs'))) problems.push('lab-door.mjs isn\'t in this model-lab folder yet. Update Bob\'s source.');
+  const file = String(form.brain || '').trim();
+  if (!HF_GGUF.test(file)) problems.push('Pick a brain, or type one on Hugging Face as hf:owner/repo:file.gguf.');
+  const known = ch.brains.find((x) => x.file === file);
+  const name = String(form.name || known?.name || file.split(':').pop()?.replace(/\.gguf$/, '') || 'brain').replace(/[^\w.-]/g, '').slice(0, 40) || 'brain';
+  const n = (v, lo, hi, d) => { const x = Number(v); return Number.isFinite(x) && String(v ?? '') !== '' ? Math.min(hi, Math.max(lo, x)) : d; };
+  const ctx = Math.round(n(form.ctx, 2048, 131072, 32768)), slots = Math.round(n(form.slots, 1, 4, 1));
+  const cards = (Array.isArray(form.cards) ? form.cards : []).map(String).filter((g) => CARD_RE.test(g)).slice(0, 8);
+  if (!cards.length) problems.push('Tick at least one kind of card.');
+  const eng = ch.engines.find((e) => e.id === form.engine) || ch.engines[0];
+  const from = eng.from ? plans.find((x) => x.id === eng.from)?.plan : null;
+  if (problems.length) return { problems, notes, summary: [] };
+  const base = plans.find((x) => x.id === 'bench-bobert')?.plan || {};
+  const plan = {
+    run: RENTAL_ID, note: `Opened from the Lab console: the card serves ${name} and waits for the console. Caps ${hours} h or $${dollars}.`,
+    benchmark_only: true, teacher: base.teacher || 'Qwen/Qwen3.6-35B-A3B', ...(base.counts ? { counts: base.counts } : {}), lessons: base.lessons || 'out/lessons',
+    gpus: cards, step_up: [], volume_wait_minutes: base.volume_wait_minutes || 15, disk_gb: Math.round(n(form.disk, 40, 400, base.disk_gb || 80)), general_tokens: 0,
+    rungs: [], hours_max: hours, dollars_max: dollars, rent_minutes: base.rent_minutes || 60, download_quants: [], direct: true,
+    ...(from?.llama_tag ? { llama_tag: from.llama_tag } : {}),
+    benchmark: {
+      hours_each: hours, models: [{ name, ...(known?.nickname ? { nickname: known.nickname } : {}), file, ctx, slots }],
+      commands: [`node lab-door.mjs --file "${String(door).replace(/"/g, '')}" --hours ${hours}`],
+      ...(from ? { brain_engine: { ref: from.benchmark.brain_engine.ref, patches: (from.benchmark.brain_engine.patches || []).filter((x) => !String(x).startsWith('pod:')) } } : {})
+    }
+  };
+  fs.mkdirSync(labPlans, { recursive: true });
+  writeJson(path.join(labPlans, `${RENTAL_ID}.json`), plan);
+  notes.push('The card builds its engine first (10 to 15 minutes), then fetches the brain, then waits. The Server panel shows each step. The Chat and your tools use the brain once it answers.');
+  notes.push('It ends by itself at a cap. END RENTAL ends it sooner. STOP never ends it.');
+  return { problems, notes, id: RENTAL_ID, summary: [`Brain: ${known?.nickname ? `${known.nickname} (${name})` : name}`, `Engine on the card: ${eng.name}`, `Context: ${ctx}, ${slots} at a time`, `Cards: ${cards.join(', ')}`, `Caps: ${hours} hour${hours === 1 ? '' : 's'} or $${dollars}`] };
 }
