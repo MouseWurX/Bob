@@ -15,6 +15,7 @@ import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { STARTUP_LOG, readStartups, recordStartup, freezingCards, orderCards, startupSummary } from './card-health.mjs';
+import { gate as neverGate, trains as planTrains, loadNever, neverFilesFor, findLeaks } from '../never-gate.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -141,6 +142,14 @@ const lessonsDir = path.resolve(here, '..', plan.lessons || 'out/lessons');
 const countsFile = path.resolve(here, '..', plan.counts_file || 'out/experts/' + plan.counts);
 for (const f of ['lessons.jsonl', 'toolsets.json']) if (!fs.existsSync(path.join(lessonsDir, f))) { console.error(`missing ${path.join(lessonsDir, f)}`); process.exit(1); }
 if (!fs.existsSync(countsFile)) { console.error(`missing counts file ${countsFile}`); process.exit(1); }
+// 15 Nov: the never-taught gate. A training or heal plan checks every lesson it would send against the held-out and calib files
+// (forge/never-taught.json, plan.never, the quiz) before anything is rented or sent; one match stops it (model-lab/never-gate.mjs)
+if (!args.resume && !args['send-plan'] && !args['send-token'] && !args.urls) {
+  const g = await neverGate(plan, { outDir });
+  fs.writeFileSync(path.join(outDir, 'forge', `never-gate-${String(plan.run || 'run').replace(/[^\w.-]/g, '_')}.json`), JSON.stringify({ when: new Date().toISOString(), ...g }, null, 1));
+  if (!g.ok) { console.error(`never-taught gate STOP: ${g.reason}`); for (const x of (g.leaks || []).slice(0, 10)) console.error(`  ${path.basename(x.file)}:${x.line} ${x.how} (${x.from}): ${x.test}`); console.error('Nothing was rented or sent. The full list is in out/forge/never-gate-*.json.'); process.exit(1); }
+  if (g.trains) console.log(`never-taught gate passed: ${g.checked.length} lesson file(s) against ${g.tests} test items`);
+}
 let hoursMax = plan.hours_max || 9, dollarsMax = plan.dollars_max || 40;
 // 13 Nov: the caps are read again from the plan file every minute, so raising them (the owner's word first) needs no restart of
 // this window; send the same plan with --send-plan too, so the pod's own self-delete moves with it (run.sh reads it every minute)
@@ -485,10 +494,22 @@ async function writeOneSet(w, i) {
   const { spawn } = await import('node:child_process');
   const code = await new Promise((res) => spawn(process.execPath, argv, { cwd: path.join(here, '..'), stdio: 'inherit', env: { ...process.env, LAB_API_KEY: hdr['X-Forge-Token'], LAB_MODEL_NAME: 'teacher', LAB_REMOTE: '1' } }).on('exit', res));
   const ldir = path.join(outDir, dir);
-  const n = fs.existsSync(path.join(ldir, 'lessons.jsonl')) ? fs.readFileSync(path.join(ldir, 'lessons.jsonl'), 'utf8').split('\n').filter(Boolean).length : 0;
+  let n = fs.existsSync(path.join(ldir, 'lessons.jsonl')) ? fs.readFileSync(path.join(ldir, 'lessons.jsonl'), 'utf8').split('\n').filter(Boolean).length : 0;
   log(`lesson writer finished (exit ${code}): ${n} lessons in ${ldir}`);
   if (n < (w.min || 50)) { log(`too few lessons (${n} < ${w.min || 50}) in the ${w.jobs} set; skipping it, the run carries on with the other sets`); return 0; } // one bad set must not cost the whole rental
-  await upload(`lessons-extra-${i}.jsonl`, path.join(ldir, 'lessons.jsonl'));
+  // 15 Nov: lessons written on the pod for a training plan pass the never-taught gate too; a lesson holding a test item is
+  // dropped (kept apart in never-dropped.jsonl) before the set goes up, never sent
+  let send = path.join(ldir, 'lessons.jsonl');
+  if (planTrains(plan)) {
+    const nf = neverFilesFor(plan, { outDir }); const leaks = findLeaks([send], await loadNever(nf.files));
+    if (leaks.length) {
+      const bad = new Set(leaks.map((x) => x.line)), lines = fs.readFileSync(send, 'utf8').replace(/\r\n/g, '\n').split('\n');
+      fs.writeFileSync(path.join(ldir, 'never-dropped.jsonl'), leaks.map((x) => JSON.stringify(x)).join('\n') + '\n');
+      const kept = lines.filter((l, n) => l.trim() && !bad.has(n + 1)); send = path.join(ldir, 'lessons-gated.jsonl'); fs.writeFileSync(send, kept.join('\n') + '\n');
+      log(`never-taught gate: ${leaks.length} of ${n} written lessons held a test item and were dropped (${ldir}/never-dropped.jsonl)`); n = kept.length;
+    }
+  }
+  await upload(`lessons-extra-${i}.jsonl`, send);
   await upload(`toolsets-extra-${i}.json`, path.join(ldir, 'toolsets.json'));
   return n;
 }
