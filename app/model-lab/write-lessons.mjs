@@ -263,9 +263,16 @@ async function failedResult(name, args) { // the recover/codefix jobs: the first
 // the task's item). The result now sees the person's request, must be whole and say exactly what happened, and an empty
 // or bare one is asked for again, then the lesson is skipped rather than saved with it.
 const BARE = /^(done|ok|success|completed)\.?$/i;
-async function fakeResult(name, args, ask = '') {
+const clean = (msgs) => JSON.parse(kit.neutral(JSON.stringify(msgs))); // no Lab-PC home folder or user name in any saved lesson
+// 15 Nov: the trial's read-through found 64 lessons whose results claimed what the tool can't do (a picture "saved as" a
+// name it never takes, a diagram "saved to" a folder, a search that "saved a file"). The result writer now sees the tool's
+// own description and inputs, and is told to stay inside them.
+const toolDef = (name, loaded) => { try { const d = toolsFor(loaded || new Set()).tools.find((t) => (t.function?.name || t.name) === name); return d ? (d.function || d) : null; } catch { return null; } };
+async function fakeResult(name, args, ask = '', loaded = null) {
+  const def = toolDef(name, loaded);
+  const what = def ? `\nThe tool's own description: ${String(def.description || '').slice(0, 1200)}\nIts inputs: ${JSON.stringify(def.parameters?.properties || {}).slice(0, 1500)}` : '';
   for (let t = 0; t < 2; t++) {
-    const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `You are the "${name}" tool inside a desktop AI assistant on a Windows PC. The person asked: ${String(ask).slice(0, 800)}\nThe tool was called with ${JSON.stringify(args).slice(0, 1500)}. Write the realistic plain-text result this tool would return (under 150 words), complete and never cut off. Say exactly what happened: the real file name and folder it used (from its inputs, or a plausible automatic name when it takes none), how many items changed, and what a list or board now holds, including anything the request is about. If it could not work, say why in one line. Only the result, never just "Done".` }], max: 400, temperature: 0.7 });
+    const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `You are the "${name}" tool inside a desktop AI assistant on a Windows PC. The person asked: ${String(ask).slice(0, 800)}${what}\nThe tool was called with ${JSON.stringify(args).slice(0, 1500)}. Write the realistic plain-text result this tool would return (under 150 words), complete and never cut off. Stay strictly inside what this tool does: a tool that only reads, lists or searches never saves, edits or sends anything; a file name or folder appears only if the tool's inputs gave one or its description says it picks one itself (then use a plain automatic name, never one the person wished for); a tool that shows something in chat says it showed it, not that it saved it. Say exactly what happened: the real names from the inputs, how many items changed, and what a list or board now holds. If these inputs can't work for this tool, return the error it would give in one line. Use C:\\Users\\you for the home folder. Only the result, never just "Done".` }], max: 400 });
     const r = String(msg.content || '').trim();
     if (r && !BARE.test(r)) return r;
   }
@@ -282,7 +289,7 @@ async function toolResult(name, args, loaded, ask = '') {
   if (name === 'use_tools') return kit.useTools(args, loaded);
   if (FIXED[name]) return FIXED[name](args);
   if (name === 'bob_help') { try { const r = await kit.brain.tools.bob_help.run(args, {}); if (typeof r === 'string' && r.trim()) return r.slice(0, 4000); } catch {} }
-  return fakeResult(name, args, ask);
+  return fakeResult(name, args, ask, loaded);
 }
 const imgPart = (file) => { const b = fs.readFileSync(path.join(picDir, file)); const ext = path.extname(file).slice(1).toLowerCase().replace('jpg', 'jpeg'); return { type: 'image_url', image_url: { url: `data:image/${ext};base64,${b.toString('base64')}` } }; };
 
@@ -350,12 +357,12 @@ async function one(idea, think, room = 1, fix = '') { // room 2 = a second try w
   if (review) {
     const v = await grade(idea, saved);
     // 12 Nov (later): a review that couldn't be read is neither kept nor rejected; it waits in needs-review.jsonl for a second look
-    if (v.unparsed) { appendJsonl(path.join(dir, 'needs-review.jsonl'), { idea: idea.id, job: idea.job, think, why: v.why, messages: saved }); throw new Error('review unparsed'); }
-    if (!v.ok) { appendJsonl(path.join(dir, 'rejected.jsonl'), { idea: idea.id, job: idea.job, think, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), ...(fix ? { retry: 'review' } : {}), why: v.why, messages: saved }); const e = new Error(`review: ${v.why}`); e.why = v.why; throw e; }
+    if (v.unparsed) { appendJsonl(path.join(dir, 'needs-review.jsonl'), { idea: idea.id, job: idea.job, think, why: v.why, messages: clean(saved) }); throw new Error('review unparsed'); }
+    if (!v.ok) { appendJsonl(path.join(dir, 'rejected.jsonl'), { idea: idea.id, job: idea.job, think, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), ...(fix ? { retry: 'review' } : {}), why: v.why, messages: clean(saved) }); const e = new Error(`review: ${v.why}`); e.why = v.why; throw e; }
   }
   // a lesson fixed after a failed review carries retry: 'review'; its reject sits in rejected.jsonl under the same idea, so
   // make-pairs.mjs turns the two into a right-vs-wrong pair (the reviewer's reason goes along as why)
-  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, bob_src: kit.bobSrc, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), ...(fix ? { retry: 'review' } : {}), ...(splitTag ? { split: splitTag } : {}), ...(score !== null ? { style_score: Math.round(score * 100) / 100 } : {}), ...(leaked ? { leak: 'stripped' } : {}), ...(think && thinkPrefix ? { think_prefix: thinkPrefix } : {}), messages: saved, ...(idea.route !== undefined ? { route: idea.route } : {}), ...(idea.seed ? { seed: idea.seed } : {}) });
+  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, bob_src: kit.bobSrc, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), ...(fix ? { retry: 'review' } : {}), ...(splitTag ? { split: splitTag } : {}), ...(score !== null ? { style_score: Math.round(score * 100) / 100 } : {}), ...(leaked ? { leak: 'stripped' } : {}), ...(think && thinkPrefix ? { think_prefix: thinkPrefix } : {}), messages: clean(saved), ...(idea.route !== undefined ? { route: idea.route } : {}), ...(idea.seed ? { seed: idea.seed } : {}) });
   if (oddsK) appendJsonl(path.join(dir, 'odds.jsonl'), { idea: idea.id, job: idea.job, think, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), k: oddsK, turns: odds });
 }
 // The teacher as a strict reviewer: right tool or rightly none, exact arguments, results read, a final answer that does the job.

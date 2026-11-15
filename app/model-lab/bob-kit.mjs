@@ -44,8 +44,11 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false } = {}) {
   clearInterval(brain.reminderTimer);
   for (const k of Object.keys(brain)) { const v = brain[k]; if (v && typeof v === 'object' && v.timer) try { clearInterval(v.timer); } catch {} }
 
+  // 15 Nov: the trial's lessons carried the Lab PC's real user folder (its temp folder sits inside it). Every prompt,
+  // tool list and saved lesson gets a neutral home instead; neutral() is used by write-lessons on everything it saves.
+  const neutral = neutralizer();
   const kit = {
-    bobSrc,
+    bobSrc, neutral,
     brain, phrasings, tmp,
     groups: () => tb.groupsFor(brain),
     guessGroups: (text) => tb.guessGroups(brain, text),
@@ -53,7 +56,7 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false } = {}) {
     // The front desk's prompt and tools for a turn with these groups added (Bob's own frontDeskTools/withLimits).
     turn(loaded = new Set()) {
       const sys = brain.withLimits(systemPrompt({ now: brain.now(), memory: '', user: 'the user', backstory: brain.backstory(), about: '', cat: 'Patches' }), loaded);
-      return { system: sys, tools: brain.frontDeskTools(loaded) };
+      return { system: neutral(sys), tools: JSON.parse(neutral(JSON.stringify(brain.frontDeskTools(loaded)))) };
     },
     allTools: () => brain.toolSchemas(Object.keys(brain.tools)),
     // Runs use_tools the way Bob does (adds the group), so a lesson can go on to the real tool.
@@ -61,4 +64,20 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false } = {}) {
     done() { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {} }
   };
   return kit;
+}
+
+// The Lab PC's home folder and user name -> C:\Users\you and "you", in either slash style, any case. Takes the
+// real values in, so a test can pass fakes.
+export function neutralizer({ home = os.homedir(), user = (() => { try { return os.userInfo().username; } catch { return ''; } })() } = {}) {
+  const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const forms = new Set();
+  if (home && home.length > 3) for (const h of [home, home.replace(/\\/g, '/'), home.replace(/\//g, '\\'), home.replace(/\\/g, '\\\\')]) forms.add(h);
+  const rx = forms.size ? new RegExp([...forms].sort((a, b) => b.length - a.length).map(esc).join('|'), 'gi') : null;
+  const ux = user && user.length > 2 && !/^(you|user|root|admin)$/i.test(user) ? new RegExp(`(?<![\\p{L}\\p{N}])${esc(user)}(?![\\p{L}\\p{N}])`, 'giu') : null;
+  return (text) => {
+    let t = String(text ?? '');
+    if (rx) t = t.replace(rx, (m) => (m.includes('/') && !m.includes('\\') ? 'C:/Users/you' : m.includes('\\\\') ? 'C:\\\\Users\\\\you' : 'C:\\Users\\you'));
+    if (ux) t = t.replace(ux, 'you');
+    return t;
+  };
 }

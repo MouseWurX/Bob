@@ -164,6 +164,14 @@ check('writer: a second try: the first call fails, then it carries on', m.filter
 check('writer: the teacher saw the note, the saved lesson did not', seen.some((j) => String(j.messages[0]?.content || '').includes('NOTE-FOR-TEACHER')) && !JSON.stringify(made).includes('NOTE-FOR-TEACHER'));
 check('writer: route and seed are kept on the lesson', made[0]?.route === 0 && made[0]?.seed?.source === 'v5');
 check('writer: --family stamps the lesson for one brain family', made[0]?.family === 'qwen');
+check('writer: the fake result sees the tool\'s own description and is kept inside it', seen.some((j) => /tool inside a desktop AI/.test(String(j.messages.at(-1)?.content || '')) && /The tool's own description/.test(String(j.messages.at(-1)?.content || '')) && /only reads, lists or searches never saves/.test(String(j.messages.at(-1)?.content || ''))));
+{
+  const { neutralizer } = await import(pathToFileURL(path.join(lab, 'bob-kit.mjs')).href);
+  const n = neutralizer({ home: ['C:', 'Users', 'Pat'].join('\\'), user: 'Pat' });
+  const t = n(['C:', 'Users', 'pat', 'AppData', 'Local', 'Temp', 'bob-lab-1'].join('\\') + ' and ' + ['C:', 'Users', 'Pat', 'Documents'].join('/') + ', hi Pat, Patrick');
+  check('lab: the Lab PC\'s home folder and user name never reach a lesson', t === 'C:\\Users\\you\\AppData\\Local\\Temp\\bob-lab-1 and C:/Users/you/Documents, hi you, Patrick', t);
+  check('writer: every saved lesson, reject and needs-review row goes through the neutral home', (read('model-lab/write-lessons.mjs').match(/messages: clean\(saved\)/g) || []).length === 3);
+}
 check('writer: doctored lessons get 12 steps', /idea\.note \|\| idea\.prior \|\| idea\.failFirst \? 12 : 6/.test(read('model-lab/write-lessons.mjs')));
 
 // ---- the heal masks a failed try ----
