@@ -149,7 +149,11 @@ if (teacherName || kind) {
   if (had && ((had.teacher || null) !== want.teacher || (had.kind || null) !== want.kind)) { console.error(`${dir} holds ${had.kind || '?'} lessons from ${had.teacher || '?'}; this run is ${want.kind || '?'} from ${want.teacher || '?'}: use another --dir (sets never mix)`); process.exit(1); }
   if (!had) { if (readJsonl(F.lessons).length) { console.error(`${dir} already has lessons with no set-info.json: use another --dir for --teacher/--kind`); process.exit(1); } fs.writeFileSync(infoF, JSON.stringify({ ...want, made: new Date().toISOString() }, null, 1)); }
 }
-const stamp = { ...(teacherName ? { teacher: teacherName } : {}), ...(kind ? { kind } : {}) };
+// 15 Nov (the owner): "qwen models wont be trained lessons designed for oss, and vice versa". --family names the brain
+// family the lessons are FOR (qwen or gpt-oss); every lesson carries it and the heal (data.py) skips lessons of another family.
+const family = String(o.family || '').toLowerCase().replace(/^gptoss$/, 'gpt-oss');
+if (family && !['qwen', 'gpt-oss'].includes(family)) { console.error('--family is qwen or gpt-oss'); process.exit(1); }
+const stamp = { ...(teacherName ? { teacher: teacherName } : {}), ...(kind ? { kind } : {}), ...(family ? { family } : {}) };
 const SCI_ANGLES = ['physics: motion, energy, forces, heat, light, with a worked calculation', 'electronics: circuits, Ohm\'s law, resistors, capacitors, transistors, microcontrollers, power supplies', 'chemistry: reactions, moles, acids and bases, materials, safety', 'maths beyond arithmetic: algebra, geometry, trig, probability, a bit of calculus', 'checking a calculation or unit conversion the person already did', 'explaining a science concept in plain words to a curious adult', 'practical engineering: batteries, motors, 3D printing materials, soldering, sensors'];
 const thinkMode = String(o.think || 'half');
 // --think 80 (13 Nov): that percent of the lessons think, spread evenly (a style set: mostly thinking, a few without so both modes stay healthy)
@@ -213,7 +217,9 @@ const jobW = Object.fromEntries((onlyJobs || []).map((x) => x.split(':')).map(([
 const JOBS2 = (onlyJobs ? JOBS.filter((j) => j[0] in jobW) : JOBS.filter((j) => j[2] > 0)).map((j) => [j[0], j[1], jobW[j[0]] || j[2] || 1]);
 if (onlyJobs && !JOBS2.length) { console.error(`No such job: ${o.jobs}`); process.exit(1); }
 const share = JOBS2.reduce((a, j) => a + j[2], 0);
-for (const [job, what, w] of JOBS2) {
+const fromIdeas = Boolean(o['from-ideas']); // 14 Nov: ideas made by lesson-doctor.mjs or tutorial-lessons.mjs; none are written here
+if (fromIdeas && !ideas.length) { console.error(`--from-ideas: ${F.ideas} has no ideas`); process.exit(1); }
+for (const [job, what, w] of fromIdeas ? [] : JOBS2) {
   const want = Math.ceil((target * 0.92 * w) / share);
   // 13 Nov: with --parallel, idea batches go out several at once (they used one slot of a 32-slot server, one at a time);
   // a round sends only as many 25-idea batches as the job still needs
@@ -237,7 +243,7 @@ for (const [job, what, w] of JOBS2) {
 // Picture questions (vision), one per picture and question, when a folder of pictures is given.
 const PICQ = ['What is in this picture?', 'Describe this for someone who can\'t see it.', 'Read any text in this picture.', 'What would you change to make this photo better?', 'Is there anything odd or wrong in this picture?', 'Give this picture a short title.', 'What colours stand out here?', 'Count the main objects in this picture.'];
 const picDir = o.images || path.join(path.dirname(L.out), 'images');
-const pics = !onlyJobs && L.mmproj && fs.existsSync(picDir) ? fs.readdirSync(picDir).filter((n) => /\.(png|jpe?g|webp)$/i.test(n)) : [];
+const pics = !onlyJobs && !o['from-ideas'] && L.mmproj && fs.existsSync(picDir) ? fs.readdirSync(picDir).filter((n) => /\.(png|jpe?g|webp)$/i.test(n)) : [];
 pics.forEach((p, i) => { add('vision', `${PICQ[i % PICQ.length]}`, { image: p, id2: p }); });
 console.log(`ideas total: ${ideas.length} (${pics.length} pictures)`);
 
@@ -246,29 +252,37 @@ const done = new Set(readJsonl(F.lessons).map((l) => l.idea));
 // Tool sets (src/tool-sets.js): the teacher sees the tools worded for its own family (same names and inputs, so the
 // saved lesson needs no translating). --tool-set off: Bob's own wording (the A/B for tool-score); --tool-set gpt-oss
 // picks one by hand; left out, it's found from the teacher's name.
-const toolSetArg = String(o['tool-set'] || o.toolSet || '');
+const toolSetArg = String(o['tool-set'] || o.toolSet || (family === 'gpt-oss' ? 'gpt-oss' : family === 'qwen' ? 'off' : '')); // the lessons follow the student family's wording, not the teacher's
 const teacherSet = toolSetArg === 'off' ? null : toolSetFor({}, toolSetArg ? '' : `${process.env.LAB_MODEL_NAME || ''} ${path.basename(String(L.model || ''))}`, toolSetArg ? { family: toolSetArg } : {});
 console.log(`tool wording: ${teacherSet ? teacherSet.label : "Bob's own"}`);
 const toolsFor = (loaded) => { loaded.toolSet = teacherSet; return kit.turn(loaded); };
 async function failedResult(name, args) { // the recover/codefix jobs: the first tool call fails, so the student learns to read errors and carry on
   const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `You are the "${name}" tool inside a desktop AI assistant on a Windows PC. It was called with ${JSON.stringify(args).slice(0, 1500)} and it FAILED this time (a realistic failure for this tool: wrong path, file missing, syntax error with a traceback, permission denied, timeout, bad format). Write only the short, realistic error output the tool would return.` }], think: false, max: 400 }); return (msg.content || 'Error: the tool failed.').trim();
 }
-async function fakeResult(name, args) {
-  const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `You are the "${name}" tool inside a desktop AI assistant on a Windows PC. It was called with ${JSON.stringify(args).slice(0, 1500)}. Write the short, realistic plain-text result this tool would return (under 120 words). If it made or changed a file, give a plausible file name. If the request could not work, say why briefly. Only the result.` }], max: 300, temperature: 0.7 });
-  return (msg.content || 'Done.').trim();
+// 14 Nov: the v5 sort found 28% of rejects came from fake results (a bare "Done.", a cut-off body, a board that didn't hold
+// the task's item). The result now sees the person's request, must be whole and say exactly what happened, and an empty
+// or bare one is asked for again, then the lesson is skipped rather than saved with it.
+const BARE = /^(done|ok|success|completed)\.?$/i;
+async function fakeResult(name, args, ask = '') {
+  for (let t = 0; t < 2; t++) {
+    const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `You are the "${name}" tool inside a desktop AI assistant on a Windows PC. The person asked: ${String(ask).slice(0, 800)}\nThe tool was called with ${JSON.stringify(args).slice(0, 1500)}. Write the realistic plain-text result this tool would return (under 150 words), complete and never cut off. Say exactly what happened: the real file name and folder it used (from its inputs, or a plausible automatic name when it takes none), how many items changed, and what a list or board now holds, including anything the request is about. If it could not work, say why in one line. Only the result, never just "Done".` }], max: 400, temperature: 0.7 });
+    const r = String(msg.content || '').trim();
+    if (r && !BARE.test(r)) return r;
+  }
+  throw new Error(`no usable result for ${name}`);
 }
 // Bob's own answer where it's safe to run, a fixed answer for the cards he shows, and the teacher's made-up result otherwise.
 const FIXED = {
   offer_setup: (a) => `Showed the user a card to switch on "${a.what || 'it'}". The job carries on by itself after the click.`,
   pick_session: (a) => `Switched to the ${Object.values(a).find((v) => typeof v === 'string') || 'new'} session.`,
   show_plan: () => 'Showed the plan card. The user said OK: carry on with the plan.',
-  ask_together: () => 'The user said OK to all of them.'
+  ask_together: () => 'Approved. Nothing has run yet: now call each step.'
 };
-async function toolResult(name, args, loaded) {
+async function toolResult(name, args, loaded, ask = '') {
   if (name === 'use_tools') return kit.useTools(args, loaded);
   if (FIXED[name]) return FIXED[name](args);
   if (name === 'bob_help') { try { const r = await kit.brain.tools.bob_help.run(args, {}); if (typeof r === 'string' && r.trim()) return r.slice(0, 4000); } catch {} }
-  return fakeResult(name, args);
+  return fakeResult(name, args, ask);
 }
 const imgPart = (file) => { const b = fs.readFileSync(path.join(picDir, file)); const ext = path.extname(file).slice(1).toLowerCase().replace('jpg', 'jpeg'); return { type: 'image_url', image_url: { url: `data:image/${ext};base64,${b.toString('base64')}` } }; };
 
@@ -287,16 +301,23 @@ async function one(idea, think, room = 1, fix = '') { // room 2 = a second try w
   // distillation), so every lesson, reject and odds row says so: style-note (style text by the ask), style-system (style text in the
   // system prompt), tool-note, act-nudge, review-fix, prefill
   const ctx = new Set();
-  let failNext = idea.job === 'recover' || idea.job === 'codefix';
-  for (let step = 0; step < 6; step++) {
+  let failNext = idea.job === 'recover' || idea.job === 'codefix' || idea.failFirst === true;
+  // a guided lesson (lesson-doctor.mjs): the earlier failed attempt comes first, marked train: false so the heal masks it
+  for (const m of Array.isArray(idea.prior) ? idea.prior : []) {
+    if (m.role === 'assistant') { const { set, reasoning, train, ...a } = m; saved.push({ ...a, train: false }); live.push({ role: 'assistant', content: a.content || '', ...(a.tool_calls ? { tool_calls: a.tool_calls } : {}) }); }
+    else if (m.role === 'tool') { const t = { role: 'tool', tool_call_id: m.tool_call_id, name: m.name, content: String(m.content || '') }; saved.push(t); live.push(t); }
+  }
+  const maxSteps = idea.note || idea.prior || idea.failFirst ? 12 : 6; // 14 Nov trial: doctored lessons (earlier try, a failed first call, look, act) ran out of 6 steps
+  for (let step = 0; step < maxSteps; step++) {
     const t0 = toolsFor(loaded); const t = dropTools.size ? { ...t0, tools: (t0.tools || []).filter((x) => !dropTools.has(x.function?.name || x.name)), system: String(t0.system || '').split('\n').filter((ln) => ![...dropTools].some((d) => ln.includes(d))).join('\n') } : t0; // dropped tools leave the offer AND the prompt text
     const sys = tag ? `${t.system}\n\n${tag}` : t.system;
     const set = setKey(sys, t.tools);
     // teacher-only additions (persona, act nudge) go to the server but never into the saved prompt or the set key
     const teacherOnly = [stylePos === 'system' ? persona : '', ACT_JOBS.has(idea.job) ? ACT_NUDGE : '', toolNoteOn && TOOL_JOBS.has(idea.job) ? TOOL_NOTE : '',
+      idea.note ? String(idea.note) : '',
       fix ? `A reviewer failed an earlier answer to this same message because: ${fix}. Do it right this time; never mention the review.` : ''].filter(Boolean).join('\n\n');
     if (persona) ctx.add(stylePos === 'user' ? 'style-note' : 'style-system'); if (ACT_JOBS.has(idea.job)) ctx.add('act-nudge');
-    if (toolNoteOn && TOOL_JOBS.has(idea.job)) ctx.add('tool-note'); if (fix) ctx.add('review-fix'); if (shortPrompt) ctx.add('short-prompt'); if (think && (step ? laterPrefix : thinkPrefix)) ctx.add('prefill');
+    if (toolNoteOn && TOOL_JOBS.has(idea.job)) ctx.add('tool-note'); if (fix) ctx.add('review-fix'); if (idea.note) ctx.add('doctor-note'); if (shortPrompt) ctx.add('short-prompt'); if (think && (step ? laterPrefix : thinkPrefix)) ctx.add('prefill');
     const pre = think ? (step ? laterPrefix : thinkPrefix) : '';
     // the style note before the person's message goes only to the server (live and saved keep the plain message)
     const sent = stylePos === 'user' && persona ? live.map((m, mi) => (mi === 0 ? { ...m, content: typeof m.content === 'string' ? `(Note for how you think, never mention it: ${persona})\n\n${m.content}` : [{ type: 'text', text: `(Note for how you think, never mention it: ${persona})` }, ...m.content] } : m)) : live;
@@ -314,7 +335,7 @@ async function one(idea, think, room = 1, fix = '') { // room 2 = a second try w
     for (const c of a.tool_calls) if (dropTools.has(c.function.name)) throw new Error(`called the dropped tool ${c.function.name}`); // the lesson is skipped, not saved
     for (const c of a.tool_calls) {
       let args = {}; try { args = JSON.parse(c.function.arguments || '{}'); } catch {}
-      const result = failNext ? await failedResult(c.function.name, args) : await toolResult(c.function.name, args, loaded); failNext = false;
+      const result = failNext ? await failedResult(c.function.name, args) : await toolResult(c.function.name, args, loaded, idea.text); failNext = false;
       const tm = { role: 'tool', tool_call_id: c.id, name: c.function.name, content: result };
       saved.push(tm); live.push(tm);
     }
@@ -334,16 +355,16 @@ async function one(idea, think, room = 1, fix = '') { // room 2 = a second try w
   }
   // a lesson fixed after a failed review carries retry: 'review'; its reject sits in rejected.jsonl under the same idea, so
   // make-pairs.mjs turns the two into a right-vs-wrong pair (the reviewer's reason goes along as why)
-  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, bob_src: kit.bobSrc, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), ...(fix ? { retry: 'review' } : {}), ...(splitTag ? { split: splitTag } : {}), ...(score !== null ? { style_score: Math.round(score * 100) / 100 } : {}), ...(leaked ? { leak: 'stripped' } : {}), ...(think && thinkPrefix ? { think_prefix: thinkPrefix } : {}), messages: saved });
+  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, bob_src: kit.bobSrc, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), ...(fix ? { retry: 'review' } : {}), ...(splitTag ? { split: splitTag } : {}), ...(score !== null ? { style_score: Math.round(score * 100) / 100 } : {}), ...(leaked ? { leak: 'stripped' } : {}), ...(think && thinkPrefix ? { think_prefix: thinkPrefix } : {}), messages: saved, ...(idea.route !== undefined ? { route: idea.route } : {}), ...(idea.seed ? { seed: idea.seed } : {}) });
   if (oddsK) appendJsonl(path.join(dir, 'odds.jsonl'), { idea: idea.id, job: idea.job, think, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), k: oddsK, turns: odds });
 }
 // The teacher as a strict reviewer: right tool or rightly none, exact arguments, results read, a final answer that does the job.
 const RULES = { restraint: 'This message only wants an answer Bob knows: calling any tool is a FAIL.', precise: 'Every detail from the request (names, paths, dates, amounts) must appear exactly in the tool arguments.', agent: 'Each step must use what the previous result returned; the final answer must sum up what was done.' };
 // 12 Nov (later): the reviewer is told Bob's own rules (it failed right behaviour, e.g. saving in Bob's folders) and sees the
 // whole lesson (tool results were cut at 1,500 characters, so it judged on half a result). Still strict on the real problems.
-const BOB_RULES = 'How Bob works (this is CORRECT, never a reason to fail): he saves files inside the folders he is allowed to use and asks first before writing anywhere else; tools that change things may show an OK card first; the tool results in the lesson are the truth (the reviewer does not doubt them).';
+const BOB_RULES = 'How Bob works (this is CORRECT, never a reason to fail): his replies have no required JSON format unless the person asked for one (14 Nov: that phantom rule failed 37 right lessons); a step marked EARLIER FAILED TRY is a mistake shown on purpose, so judge only what comes after it; he saves files inside the folders he is allowed to use and asks first before writing anywhere else; tools that change things may show an OK card first; the tool results in the lesson are the truth (the reviewer does not doubt them).';
 async function grade(idea, saved) {
-  const text = saved.map((m) => `${m.role.toUpperCase()}${m.name ? ` (${m.name})` : ''}: ${m.tool_calls ? `[calls ${m.tool_calls.map((c) => `${c.function.name} ${String(c.function.arguments).slice(0, 2000)}`).join('; ')}] ` : ''}${String(m.content || '').slice(0, 6000)}`).join('\n');
+  const text = saved.map((m) => `${m.train === false ? '[EARLIER FAILED TRY] ' : ''}${m.role.toUpperCase()}${m.name ? ` (${m.name})` : ''}: ${m.tool_calls ? `[calls ${m.tool_calls.map((c) => `${c.function.name} ${String(c.function.arguments).slice(0, 2000)}`).join('; ')}] ` : ''}${String(m.content || '').slice(0, 6000)}`).join('\n');
   try {
     const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `You review training lessons for a desktop AI assistant called Bob. Be strict about real problems only. FAIL the lesson if Bob called a tool when a plain answer was enough (plain chat with a tool call always fails), skipped a tool the request clearly needed, called a wrong or an extra tool, put wrong or made-up details in tool arguments, misread what a tool result says, looped, or ended without a final answer that actually does what was asked. Small wording or style issues are NOT a reason to fail. ${BOB_RULES} ${RULES[idea.job] || ''}\n\n${text}\n\nReply with only JSON: {"ok": true or false, "why": "one short reason"}` }], max: 500, temperature: 0 });
     const raw = (msg.content || '').match(/\{[\s\S]*\}/)?.[0];
