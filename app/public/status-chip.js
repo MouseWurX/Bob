@@ -5,9 +5,9 @@
 // (Free memory when idle, ✋ Hands, 🔓 Autonomy, 🖥 Screen use, 💭 Bob's thinking). Each switch keeps its own module;
 // this file only shows on the chip which ones are on, and keeps ✋ Stop Hands one press away while Hands are on.
 //
-// The bottom bar (phones and narrow windows, under 640 px) has Chat, New chat, Tasks, Topics, Settings and More.
+// The bottom bar (phones and narrow windows, under 640 px) has Chat, Tasks, New chat, Topics and Bob (Nov 15; was Settings and More).
 // Each button presses the matching button in the left menu, so there is one source for what they do. More opens the
-// whole left menu as a sheet; picking anything in it closes the sheet again.
+// whole left menu as a sheet; picking anything in it closes the sheet again. Nov 15: Bob opens phone-menu.js instead.
 const $ = (id) => document.getElementById(id);
 export const PHONE_MAX = 640; // the same width as the @media rule in style.css
 const phone = () => window.innerWidth <= PHONE_MAX;
@@ -22,7 +22,7 @@ export function onSwitches({ hands = 'settings-off', free = false, screen = fals
   return out;
 }
 
-export function createStatusChip({ setLeft, leftFolded }) {
+export function createStatusChip({ setLeft, leftFolded, phoneMenu = null }) {
   const on = $('statusOn'), hands = $('handsBtn'), free = $('freeBtn'), screen = $('screenBtn'), quick = $('handsQuick');
   const pill = $('brainPill'), pop = $('brainPop');
 
@@ -75,8 +75,9 @@ export function createStatusChip({ setLeft, leftFolded }) {
     $(b.dataset.go)?.click();
   });
   const sheetOpen = () => phone() && !leftFolded();
-  const showMore = () => { if (more) more.setAttribute('aria-expanded', String(sheetOpen())); };
+  const showMore = () => { if (more) more.setAttribute('aria-expanded', String(sheetOpen() || Boolean(phoneMenu?.isOpen()))); };
   if (more) more.onclick = () => {
+    if (phoneMenu && phone()) { if (!leftFolded()) setLeft(true, false); phoneMenu.toggle(); return; } // Nov 15: the phone's one menu (phone-menu.js)
     const open = !sheetOpen();
     setLeft(!open, false);
     showMore();
@@ -92,7 +93,7 @@ export function createStatusChip({ setLeft, leftFolded }) {
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && sheetOpen() && !document.querySelector('dialog[open]')) { setLeft(true, false); showMore(); more?.focus(); } });
   // A tap outside the sheet closes it.
-  document.addEventListener('pointerdown', (e) => { if (sheetOpen() && !e.target.closest('#side, #moreBtn')) { setLeft(true, false); showMore(); } });
+  document.addEventListener('pointerdown', (e) => { if (sheetOpen() && !e.target.closest('#side, #moreBtn, #phoneMenu')) { setLeft(true, false); showMore(); } });
   new MutationObserver(showMore).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   // Going from a wide window to a phone-sized one starts with the sheet away, so it never covers the chat by surprise.
   let wasPhone = phone();

@@ -19,16 +19,25 @@ export function createEffort() {
   const btns = [...box.querySelectorAll('[data-effort]')];
   const toggle = $('effortBtn'), choices = $('effortChoices'), nowEl = $('effortNow');
   const isOpen = () => Boolean(choices && !choices.hidden);
+  const home = choices?.parentElement; // .effort-pick, where the choices live when folded
   function open(on, focus = true) {
     if (!choices) return;
     if (on && locked) return; // Gaming: Effort stays on Low, the button says so
     choices.hidden = !on; toggle?.setAttribute('aria-expanded', String(on));
+    // Nov 15: on a phone the Effort row scrolls sideways, which hid the choices (the box clipped them). They float above the button instead.
+    choices.style.cssText = '';
+    if (choices.parentElement !== home) home.appendChild(choices);
+    if (on && toggle && getComputedStyle(box).overflowX !== 'visible') {
+      document.body.appendChild(choices); // out of the row, so nothing in the chat sits on top of it
+      const r = toggle.getBoundingClientRect();
+      Object.assign(choices.style, { position: 'fixed', left: `${Math.max(8, Math.round(r.left))}px`, bottom: `${Math.round(innerHeight - r.top + 6)}px`, maxWidth: `${innerWidth - 16}px`, flexWrap: 'wrap' });
+    }
     const arrow = $('effortArrow'); if (arrow) arrow.textContent = on ? '▴' : '▾';
     if (on && focus) btns.find((b) => b.getAttribute('aria-checked') === 'true')?.focus();
     if (!on && focus) toggle?.focus();
   }
   if (toggle) toggle.onclick = () => open(!isOpen());
-  document.addEventListener('click', (e) => { if (isOpen() && !box.contains(e.target)) open(false, false); });
+  document.addEventListener('click', (e) => { if (isOpen() && !box.contains(e.target) && !choices.contains(e.target)) open(false, false); });
   let level = 'low';
   let locked = false;
   try { const v = sessionStorage.getItem(KEY); if (LEVELS.includes(v)) level = v; } catch {}
@@ -55,7 +64,7 @@ export function createEffort() {
     if (focus) btns.find((b) => b.dataset.effort === v)?.focus();
   }
   for (const b of btns) b.onclick = () => { set(b.dataset.effort); open(false); };
-  box.addEventListener('keydown', (e) => {
+  const keys = (e) => {
     if (e.key === 'Escape' && isOpen()) { e.preventDefault(); open(false); return; }
     if (!isOpen() || !choices.contains(e.target)) return;
     // Arrows move between the four choices; Enter (or Space) picks the one with focus.
@@ -63,7 +72,9 @@ export function createEffort() {
     const i = Math.max(0, usable.indexOf(document.activeElement));
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); usable[Math.min(usable.length - 1, i + 1)]?.focus(); }
     if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); usable[Math.max(0, i - 1)]?.focus(); }
-  });
+  };
+  box.addEventListener('keydown', keys);
+  choices?.addEventListener('keydown', (e) => { if (!box.contains(choices)) keys(e); }); // floated out of the row on a phone
   draw();
   // Gaming session on: Effort stays on Low. Off again: the level picked before comes back.
   function lock(on) { locked = Boolean(on); draw(); }

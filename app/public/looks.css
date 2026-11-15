@@ -54,6 +54,8 @@ body.look-lamplight:not(.theme-light):not(.outlined) .nav-item:not(.on) { color:
 body.look-lamplight:not(.theme-light):not(.outlined) .nav-item:not(.on):is(:hover, :focus-visible) { background: none; color: var(--text); text-shadow: 0 0 12px color-mix(in srgb, var(--accent) 70%, transparent); }
 body.look-lamplight .app { position: relative; z-index: 1; background: transparent; }
 body.look-lamplight :where(.side, .mid, .now, .ctx, .chips, .effort, .composer, .cellar.page, .cellar.page .cellar-head, .cellar .cellar-tabs) { background: transparent; border-color: transparent; }
+/* Nov 15: on a phone the menu (More) opens as a sheet over the chat, so it needs a solid back or the chat shows through it */
+@media (max-width: 640px) { body.look-lamplight:not(.left-folded) .side { background: var(--panel); } }
 body.look-lamplight .grab { background: none; }
 
 /* menu: quiet text, the current page lit */

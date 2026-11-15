@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import zlib from 'node:zlib';
 import { lookPng, lookPixels, windowState, applyWindowState, lampPng, lampIcon } from '../src/app-icon.js';
-import { mergeSettings, newDefaults, NEW_DEFAULTS } from '../src/config.js';
+import { mergeSettings, newDefaults, shareDefaults, NEW_DEFAULTS } from '../src/config.js';
 import { getLook } from '../public/bob-sprite.js';
 import { HELP } from '../public/help-content.js';
 import { settingsNow } from '../src/self-help.js';
@@ -62,9 +62,16 @@ function decode(png) {
     check('a pick made after that update is kept, and nothing is written again', newDefaults(later) === false && later.lookIcon === true);
     const scut = { share: { scut: true, scutMbps: 100, scutMbpsChosen: true, lend: true }, defaultsSeen: ['tesseract-icon'] };
     check('Nov 14: an old SCUT cap is dropped once so Auto (400) reaches everyone; the rest of share stays', newDefaults(scut) === true && !('scutMbps' in scut.share) && !('scutMbpsChosen' in scut.share) && scut.share.scut === true && scut.share.lend === true && scut.defaultsSeen.includes('scut-400'));
+    { // 1.5.232: Bob-Net's settings live in config.json, so the SCUT reset reaches them there too, once
+      const applied = []; newDefaults({ defaultsSeen: ['tesseract-icon'] }, applied);
+      const cfg = { share: { lend: true, scutMbps: 100, scutMbpsChosen: true } };
+      check('1.5.232: the SCUT reset also drops the cap kept with Bob-Net\'s settings (config.json), the rest stays', applied.includes('scut-400') && shareDefaults(cfg, applied) === true && !('scutMbps' in cfg.share) && !('scutMbpsChosen' in cfg.share) && cfg.share.lend === true);
+      const later = { share: { scutMbps: 100, scutMbpsChosen: true } };
+      check('1.5.232: once seen, a later pick is never dropped', shareDefaults(later, []) === false && later.share.scutMbps === 100);
+    }
     check('a settings file with no share group is fine', (() => { const o = { defaultsSeen: ['tesseract-icon'] }; return newDefaults(o) === true && !('share' in o); })());
     check('every new default names its id and the keys it resets', NEW_DEFAULTS.every((d) => typeof d.id === 'string' && d.keys.length > 0));
-    check('Bob drops old picks when he reads settings.json, before using them', /if \(newDefaults\(kept\)\)[^\n]*\n\s*try \{ mergeSettings\(cfg, kept\);/.test(read('src/config.js')));
+    check('Bob drops old picks when he reads settings.json, before using them', /if \(newDefaults\(kept, applied\)\)[^\n]*\n(?:\s*\/\/[^\n]*\n)*\s*shareDefaults\(cfg, applied\);\n\s*try \{ mergeSettings\(cfg, kept\);/.test(read('src/config.js')));
   }
   check('only a saved switch puts the look on the icon', windowState({ lookIcon: true }).icons[32].equals(lookPng('sysop', 32)) && windowState({ lookIcon: 'yes' }).lookIcon === false);
   check('turned off, the tray goes and the icon is the tesseract', windowState({ tray: false, lookIcon: false }).icons[32].equals(lampPng('mercury', '32')) && windowState({ tray: false, lookIcon: false }).tray === false);

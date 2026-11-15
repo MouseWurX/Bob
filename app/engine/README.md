@@ -47,6 +47,6 @@ Then: copy the moved patches into `engine/patches/`, set `bundledLlamaTag` in `p
 
 The **Brain Engine newer llama.cpp check** (`.github/workflows/brain-engine-newer.yml`) runs this every Monday and builds the result on Linux. When the patches go on and it builds, it opens one issue, "New Brain Engine ready on llama.cpp bNNNN - rebuild it?", with the moved patches as a download; later weeks edit that same issue. It never changes Bob, and the run stays green whatever it finds.
 
-llama.cpp changes its card-sharing protocol now and then (b12282 is version 9; b12032 was 8). A lender and a borrower must speak the same version, so every Bob that shares cards needs the same Brain Engine.
+llama.cpp changes its card-sharing protocol now and then (b12359, llama.cpp 1.0, is version 10; b12282 was 9 and b12032 was 8), usually because it renumbers its list of math steps. From Brain Engine 8, patch 0014 keeps one frozen numbering on the wire (protocol 9's, the one Brain Engine 7 speaks) and HELLO says 9, so Brain Engine 7 and every later build share cards both ways. When llama.cpp adds a step, add it at the end of `bob_wire_ops` in that patch; when it drops one, put -1 in its place (the build fails until every step has a number). A Brain Engine 6 or older (protocol 8) still can't share with these.
 
 llama.cpp is MIT licensed: Copyright (c) 2023-2026 The ggml authors. Its licence text ships in every Brain Engine zip as `LICENSE-llama.cpp`.

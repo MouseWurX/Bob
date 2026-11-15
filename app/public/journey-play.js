@@ -447,13 +447,15 @@ export function mountJourney(root, deps) {
     try { store?.setItem(TROPHY_KEY, JSON.stringify(trophies)); } catch {}
   }
   // A new trophy is announced, and kept straight away.
+  // Quest news and new trophies, after anything that saves: told in a talk box when walking, else on the line below.
   function award() {
     if (!j || lobby) return;
-    const fresh = R.newTrophies(world, j); if (!fresh.length) return;
-    keepNew(fresh);
+    const lines = R.questNews(world, j);
+    const fresh = R.newTrophies(world, j);
+    if (fresh.length) { keepNew(fresh); lines.push(`🏆 ${fresh.length > 1 ? 'New trophies' : 'A new trophy'} for the guest house: ${fresh.map((t) => R.restyle(t.name, t.style)).join(', ')}.`); }
+    if (!lines.length) return;
     sfx('quest');
-    const words = `🏆 ${fresh.length > 1 ? 'New trophies' : 'A new trophy'} for the guest house: ${fresh.map((t) => R.restyle(t.name, t.style)).join(', ')}.`;
-    if (mode === 'walk' && !talk) talkTo([words]); else { msg = words; sayLive(words); }
+    if (mode === 'walk' && !talk) talkTo(lines); else { msg = lines.join(' '); sayLive(msg); }
   }
   const TROPHY_ICON = {
     cup: ['.aaaaa.', 'aabaaaa', '.aaaaa.', '..aaa..', '...a...', '..aaa..'],
@@ -623,6 +625,16 @@ export function mountJourney(root, deps) {
       talkTo([newStyle !== 'fantasy' ? st.intro : '', `Bob: A new land's rolled out past my front door: ${Wm.SIZES[newSize].name.toLowerCase()}, by the look of it. ${R.questLine(world, j)}`, 'Arrow keys (or the pad) walk, Enter talks and opens things, F picks a fight, Esc opens the menu. The way out is the door at the bottom.']);
       save(true);
       focus();
+    });
+  }
+  // Load (Journey v1.3): back to the save on disk, from anywhere. Reads it fresh, so it's what was saved, not what's
+  // on screen now. The save keeps its seed, so the land is the same land.
+  function loadAgain() {
+    later(async () => {
+      if (closed) return;
+      await loadSave();
+      if (!saved) { msg = msg || 'Nothing saved yet.'; drawPanel(); return; }
+      menu = null; resume();
     });
   }
   function resume() {
@@ -830,7 +842,9 @@ export function mountJourney(root, deps) {
     const ask = (lines) => talkTo(lines, null, choices.map((c) => ({ label: c.label, pick: () => answer(c.id) })));
     const answer = (id) => {
       if (id === 'job') { const q = R.questTalk(world, j, map.site || map.id); if (q.done) { lastLoot = [{ coin: q.reward }]; lastLootAt = now(); sfx('quest'); } save(true); ask(q.lines.map((l) => `${name}: ${l}`)); return; }
-      const r = R.sayTo(world, j, p, map, id, name); save(true);
+      const r = R.sayTo(world, j, p, map, id, name);
+      if (r.done) { lastLoot = [{ coin: r.reward }]; lastLootAt = now(); sfx('quest'); }
+      save(true);
       if (r.end) talkTo(r.lines); else ask(r.lines);
     };
     ask([`${name}: ${first}`]);
@@ -1434,7 +1448,7 @@ export function mountJourney(root, deps) {
     if (mode === 'battle' && battle) { panel.innerHTML = battleHtml(); restyleIn(panel); panel.querySelector('button:not([disabled])')?.focus({ preventScroll: true }); return; }
     if (mode === 'menu' && menu) { panel.innerHTML = menuHtml(); restyleIn(panel); mountDolls(); mountLand(); return; }
     if (mode === 'shop' && shop) { panel.innerHTML = shopHtml(); restyleIn(panel); panel.querySelector('button')?.focus({ preventScroll: true }); return; }
-    const atInn = j.at === 'inn';
+    const atInn = j.at === 'inn' || (lobby && j.at === 'guest'); // the guest house is where Journey opens
     const mt = R.mountOf(j.party[0] || {});
     if (choosing()) { panel.innerHTML = `<div class="row jy-choices" role="group" aria-label="What to say">${talk.choices.map((c, i) => `<button type="button" data-choice="${i}" class="${i === talk.sel ? 'yes' : ''}">${esc(c.label)}</button>`).join('')}</div>`; restyleIn(panel); return; }
     panel.innerHTML = `<ul class="jy-party">${j.party.map((m) => sheet(m)).join('')}</ul>${atInn ? innButtons() : ''}<p class="muted jy-keys">Arrow keys walk · Enter talks, opens chests, gathers and fishes · F picks a fight · Esc opens the menu · I the bag · J the story · C crafting · G the guide${mt ? ` · R rides ${esc(mt.name)}${R.canFly(j) ? ' · E flies up, Q lands' : R.canSwim(j) ? ' · Q dives, E comes up' : ''}` : ''}</p>`;
@@ -1494,7 +1508,7 @@ export function mountJourney(root, deps) {
     return list;
   }
   function menuHtml() {
-    const tabs = [['party', '👥 Party'], ['skills', '✨ Skills'], ['kit', '🧍 Kit'], ['bag', '🎒 Bag'], ['story', '📜 Story'], ['craft', '🛠 Craft'], ['pets', '🐾 Pets'], ['land', '🧭 The land'], ['guide', '📖 Guide'], ['save', '💾 Save']];
+    const tabs = [['party', '👥 Party'], ['skills', '✨ Skills'], ['kit', '🧍 Kit'], ['bag', '🎒 Bag'], ['story', '📜 Quests'], ['craft', '🛠 Craft'], ['pets', '🐾 Pets'], ['land', '🧭 The land'], ['guide', '📖 Guide'], ['save', '💾 Save']];
     const head = `<div class="jy-tabs" role="tablist">${tabs.map(([id, n]) => `<button type="button" role="tab" aria-selected="${menu.tab === id}" data-tab="${id}">${n}</button>`).join('')}<button type="button" data-jy="resume">▶ Back to the map</button></div>`;
     const who = `<div class="jy-who-row" role="radiogroup" aria-label="Who">${j.party.map((x, i) => `<button type="button" role="radio" aria-checked="${i === (menu.who || 0)}" data-who="${i}">${esc(x.name)}</button>`).join('')}</div>`;
     const m = j.party[menu.who || 0] || j.party[0];
@@ -1531,7 +1545,7 @@ export function mountJourney(root, deps) {
       const bags = (j.bags || ['pouch']).map((b) => `<button type="button" class="mini" data-wearbag="${b}" aria-pressed="${j.bagGear === b}">${j.bagGear === b ? '✓ ' : ''}${esc(R.BAGS[b].name)} (+${R.BAGS[b].room})</button>`).join('');
       return `${head}<p class="muted">The bag holds ${R.bagCount(j)} of ${R.bagSize(j)} things. Each pet out with you carries 10 more and each mount 25.</p><p><strong>Wearing</strong> ${bags} <span class="muted">Bigger bags: shops, or make one at a Workbench.</span></p>${items.length ? `<ul class="jy-bag">${items.map(([id, n]) => { const it = R.ITEMS[id]; const usable = it.field; if (it.portal) return `<li><strong>${esc(it.name)}</strong> ×${n} <span class="muted">${esc(it.what)}</span> <button type="button" class="mini" data-portal="1">Read it: back to ${esc(world.map(j.home)?.name || 'Bob\'s Inn')}</button></li>`; return `<li><strong>${esc(it.name)}</strong> ×${n} <span class="muted">${esc(it.what)}</span> ${usable ? j.party.map((x) => `<button type="button" class="mini" data-use="${id}" data-on="${esc(x.id)}">${esc(x.name)}</button>`).join('') : '<span class="muted">(in a fight)</span>'}</li>`; }).join('')}</ul>` : '<p class="muted">The bag is empty.</p>'}`;
     }
-    return `${head}<div class="row"><button type="button" class="yes" data-jy="save">💾 Save now</button><button type="button" data-jy="leave">🚪 Save and leave</button></div><p class="muted">The journey also saves itself after every chest and every fight. Seed ${esc(j.seed)} · ${esc(Wm.SIZES[j.size]?.name || '')}</p>`;
+    return `${head}<div class="row"><button type="button" class="yes" data-jy="save">💾 Save now</button><button type="button" data-jy="leave">🚪 Save and leave</button><button type="button" data-jy="load">📂 Load last save</button></div><p class="muted">The journey also saves itself after every chest and every fight. Load last save goes back to the last save: the same land (same seed), the same place, party, bag and coin. Seed ${esc(j.seed)} · ${esc(Wm.SIZES[j.size]?.name || '')}</p>`;
   }
   // ---------- Crafting (Journey v1.3) ----------
   // What you carry, your crafting level, and every recipe: the ones you can make now first. A workbench (a smith in
@@ -1560,11 +1574,24 @@ export function mountJourney(root, deps) {
   // ---------- The story so far (Journey v1.3): where next, regions crossed, local lore heard ----------
   function storyHtml() {
     if (lobby) return '<p class="muted">No story yet: roll a New adventure first.</p>';
-    const steps = R.nextSteps(world, j), regs = R.regionsOf(world, j.style).list;
+    const log = R.questLog(world, j), regs = R.regionsOf(world, j.style).list;
+    const goal = (g) => `<li class="${g.done ? 'muted' : ''}">${g.done ? '✓' : '○'} ${g.done ? `<s>${esc(g.text)}</s>` : esc(g.text)}</li>`;
+    const quest = (q) => `<p><strong>${esc(q.title)}</strong> <span class="muted">from ${esc(q.from)}</span></p><ul class="jy-bag jy-goals">${q.goals.map(goal).join('')}</ul>`;
+    const active = log.side.filter((q) => !q.done), finished = log.side.filter((q) => q.done);
+    const crossed0 = regs.filter((r) => (j.regions || []).includes(r.id));
+    const lore0 = (j.lore || []).map((id) => world.sites.find((s) => s.id === id)).filter(Boolean);
+    return `<p class="muted">${esc(R.narrator(j))} keeps the log. New goals show up as the story moves on; talk to people in towns and villages for side quests.</p>
+      <p>📜 <strong>Main quest</strong>${log.main.done ? ' · finished' : ''}</p>${quest(log.main)}
+      <p>🗒 <strong>Side quests</strong> <span class="muted">${active.length} open · ${finished.length} done</span></p>${active.map(quest).join('') || '<p class="muted">None open. Ask Elders "Do you need help?" and folk "Need a hand with anything?"</p>'}
+      <p>🏆 <strong>Achievements</strong> <span class="muted">each puts a trophy in the guest house case</span></p><ul class="jy-bag">${log.achievements.map((a) => `<li>${a.done ? '🏆' : '○'} <strong>${esc(a.name)}</strong> <span class="muted">${esc(a.what)}</span> ${a.done ? '<span class="muted">Done!</span>' : `<progress class="jy-bar sp" max="${a.need}" value="${a.have}" aria-label="${a.have} of ${a.need}"></progress> <span class="muted">${a.have}/${a.need}</span>`}</li>`).join('')}</ul>
+      ${finished.length ? `<details><summary>🏁 Finished side quests (${finished.length})</summary>${finished.map(quest).join('')}</details>` : ''}
+      <details><summary>🗺 Regions (${crossed0.length} of ${regs.length}) and local lore (${lore0.length})</summary>${storyMore()}</details>`;
+  }
+  function storyMore() {
+    const regs = R.regionsOf(world, j.style).list;
     const crossed = regs.filter((r) => (j.regions || []).includes(r.id));
     const lore = (j.lore || []).map((id) => world.sites.find((s) => s.id === id)).filter(Boolean);
-    return `<p><strong>Where next</strong> <span class="muted">(${esc(R.narrator(j))})</span></p><ul class="jy-bag">${steps.map((x) => `<li>${esc(x.text)}</li>`).join('') || '<li class="muted">Nothing pressing. Explore!</li>'}</ul>
-      <p><strong>Regions</strong> <span class="muted">${crossed.length} of ${regs.length} crossed</span></p><ul class="jy-bag">${crossed.map((r) => `<li>${esc(r.name.replace(/^the /, 'The '))}</li>`).join('') || '<li class="muted">None yet. Step out of the inn.</li>'}</ul>
+    return `<p><strong>Regions</strong> <span class="muted">${crossed.length} of ${regs.length} crossed</span></p><ul class="jy-bag">${crossed.map((r) => `<li>${esc(r.name.replace(/^the /, 'The '))}</li>`).join('') || '<li class="muted">None yet. Step out of the inn.</li>'}</ul>
       <p><strong>Local lore</strong> <span class="muted">(ask folk in hamlets and villages about their home)</span></p><ul class="jy-bag">${lore.map((s) => `<li><strong>${esc(s.name)}</strong> <span class="muted">${esc(R.localLore(world, s.id))}</span></li>`).join('') || '<li class="muted">None heard yet.</li>'}</ul>`;
   }
   // ---------- The guide (Journey v1.3): Bob walks you through every part of the menu ----------
@@ -1574,7 +1601,7 @@ export function mountJourney(root, deps) {
     ['skills', '✨ Skills', ['Bob: Each level gives a skill point. Spend it in Skills, branch by branch. At level 5 and level 10 you can take a second and third class, and some pairs of classes give combo skills.']],
     ['kit', '🧍 Kit', ['Bob: Kit is what everyone wears. Pick a weapon, armour and a shield for each person. Heavy armour soaks hits but makes you easier to hit; the numbers show beside each piece.']],
     ['bag', '🎒 Bag', ['Bob: Bag holds potions, scrolls and food. Some work on the road (press a name to use it on them); the rest only in a fight. Pets and mounts carry extra.', 'Bob: A Scroll of return opens a door back to the last town you were in. Handy when the cave turns out bigger than you are.']],
-    ['story', '📜 Story', ['Bob: Story is your journal. Where next says who to talk to or who to find, and where to look. It lists the regions you\'ve crossed and the local lore folk have told you.', 'Bob: Talking to people gives you things to say: pick one with up and down, and Enter. Ask "Where should we go?" any time you\'re lost.']],
+    ['story', '📜 Quests', ['Bob: Quests is your log. The main quest gets new goals as the story moves on. Side quests come from people: ask Elders and folk if they need a hand. Achievements show how close you are to the next trophy.', 'Bob: Talking to people gives you things to say: pick one with up and down, and Enter. Ask "Where should we go?" any time you\'re lost.']],
     ['craft', '🛠 Craft', ['Bob: Craft is where you make things. Gather herbs, timber, ore and crystals from glinting spots on the land, and pelts from animals you beat.', 'Bob: Simple things you can make anywhere. A smith\'s Workbench in town, or mine in the back here, makes the rest and improves plain kit. Every make and every gather raises your crafting level.']],
     ['pets', '🐾 Pets', ['Bob: Pets shows the animals you\'ve tamed. One pet goes out with you and one mount carries you. Rename them, or let one go to make room.']],
     ['land', '🧭 The land', ['Bob: The land is the whole world from above, with every place you\'ve found marked on it.']],
@@ -1712,6 +1739,7 @@ export function mountJourney(root, deps) {
     if (d.jy === 'newadv') { shop = { kind: 'new' }; mode = 'shop'; drawPanel(); return; }
     if (d.jy === 'roll') { rollNew(); return; }
     if (d.jy === 'resume-adv') { resume(); return; }
+    if (d.jy === 'load') { loadAgain(); return; }
     if (d.jy === 'menu' || d.key === 'menu') { toggleMenu(); return; }
     if (d.jy === 'save') { if (lobby) say('Nothing to save yet: roll a New adventure first.'); else { await save(); sfx('save'); } return; }
     if (d.jy === 'resume') { menu = null; mode = 'walk'; drawPanel(); focus(); return; }
