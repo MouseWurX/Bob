@@ -216,6 +216,7 @@ process.on('SIGINT', () => stop(0));
 let ideas = readJsonl(F.ideas);
 const seen = new Set(ideas.map((i) => i.text.toLowerCase()));
 const add = (job, text, extra = {}) => { const t = String(text || '').trim(); if (t.length < 2 || t.length > 600 || seen.has(t.toLowerCase()) || avoid.has(norm(t))) return; seen.add(t.toLowerCase()); const i = { id: `i${ideas.length}`, job, text: t, ...extra }; ideas.push(i); appendJsonl(F.ideas, i); };
+if (o['from-ideas'] && !ideas.length) { console.error(`--from-ideas: ${F.ideas} has no ideas (check --dir and --out: the file must be in that folder)`); await stop(1); } // 15 Nov: never fill an empty --from-ideas run with Bob's own phrasings
 if (!ideas.length && !onlyJobs) for (const p of kit.phrasings.filter((p) => !p.pic && !p.recent)) add(p.job, p.text, { from: 'phrasings' });
 // --jobs coding:3,science:1 gives weights; a job with weight 0 only runs when named.
 const jobW = Object.fromEntries((onlyJobs || []).map((x) => x.split(':')).map(([k, w]) => [k, Number(w) || null]));

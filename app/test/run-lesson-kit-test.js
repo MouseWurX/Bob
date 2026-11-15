@@ -162,6 +162,10 @@ W('wl/real-base/ideas.jsonl', [{ id: 'r0-0-r0', job: 'files', text: 'what is in 
 const child2 = spawn(process.execPath, ['write-lessons.mjs', '--url', url, '--model', 'fake.gguf', '--bob', app, '--out', path.join(tmp, 'wl'), '--dir', 'real-base', '--from-ideas', '--real-tools', '--count', '1', '--think', 'none'], { cwd: lab, env: { ...process.env, LAB_REMOTE: '', LAB_URL: '' } });
 let log2 = ''; child2.stdout.on('data', (d) => (log2 += d)); child2.stderr.on('data', (d) => (log2 += d));
 const code2 = await new Promise((ok) => { const t = setTimeout(() => { child2.kill(); ok('timeout'); }, 120000); child2.on('exit', (c) => { clearTimeout(t); ok(c); }); });
+// 15 Nov: an empty --from-ideas folder must stop, never quietly fill itself with Bob's own phrasings
+const child3 = spawn(process.execPath, ['write-lessons.mjs', '--url', url, '--model', 'fake.gguf', '--bob', app, '--out', path.join(tmp, 'wl'), '--dir', 'empty-ideas', '--from-ideas', '--count', '1', '--think', 'none'], { cwd: lab, env: { ...process.env, LAB_REMOTE: '', LAB_URL: '' } });
+let log3 = ''; child3.stdout.on('data', (d) => (log3 += d)); child3.stderr.on('data', (d) => (log3 += d));
+const code3 = await new Promise((ok) => { const t = setTimeout(() => { child3.kill(); ok('timeout'); }, 120000); child3.on('exit', (c) => { clearTimeout(t); ok(c); }); });
 srv.close();
 const made = rows(path.join(tmp, 'wl', 'doc-base', 'lessons.jsonl'));
 check('writer: --from-ideas writes the doctored idea and no new ideas', code === 0 && made.length === 1 && rows(path.join(tmp, 'wl', 'doc-base', 'ideas.jsonl')).length === 1, log.slice(-400));
@@ -200,6 +204,7 @@ check('writer: the fake result sees the tool\'s own description and is kept insi
   try { k.done?.(); } catch {}
 }
 check('writer --real-tools: diagrams are drawn for real, with the context Bob\'s own tools expect', /REAL_TOOLS = new Set\(\['make_diagram'/.test(read('model-lab/write-lessons.mjs')) && /run\(sb\.toReal\(args\), \{ loaded, cfg: sb\.brain\.cfg, emit:/.test(read('model-lab/write-lessons.mjs')));
+check('writer --from-ideas: an empty ideas folder stops the run and writes no stand-in ideas', code3 === 1 && /has no ideas/.test(log3) && rows(path.join(tmp, 'wl', 'empty-ideas', 'ideas.jsonl')).length === 0, log3.slice(-300));
 check('writer: doctored lessons get 12 steps', /idea\.note \|\| idea\.prior \|\| idea\.failFirst \? 12 : 6/.test(read('model-lab/write-lessons.mjs')));
 
 // ---- the heal masks a failed try ----
