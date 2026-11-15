@@ -42,7 +42,7 @@ check('the take-me-there buttons know three places and nothing else', Object.key
 const pub = fs.readdirSync(fileURLToPath(new URL('../public/', import.meta.url))).filter((f) => /^lab.*\.js$/.test(f)).map((f) => [f, read(`public/${f}`)]);
 const dead = pub.flatMap(([f, s]) => [...s.matchAll(/<p>[^<`]*(?:There(?:'|\\')s no|There are no|No diffusion)[^<`]*(?:Get models)[^<`]*<\/p>/g)].filter((m) => !/goBtn\('models'\)/.test(m[0])).map(() => f));
 check('no "nothing here, get one in Get models" message is left without its button', !dead.length, dead.join(' '));
-check('the Lab acts on the press before a page can swallow it', lab.indexOf('if (b.dataset.labgo)') > 0 && lab.indexOf('if (b.dataset.labgo)') < lab.indexOf('if (isLearn()) return;\n    if (b.dataset.boardby)'));
+check('the Lab acts on the press before a page can swallow it', lab.indexOf('if (b.dataset.labgo)') > 0 && lab.indexOf('if (b.dataset.labgo)') < lab.indexOf('if (isLearn() || isLessons()) return;\n    if (b.dataset.boardby)'));
 check('Learn offers the chat when no brain is loaded', /view\.wake \? goBtn\('chat'\)/.test(read('public/lab-learn.js')));
 
 // My Lab

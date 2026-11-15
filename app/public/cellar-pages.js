@@ -117,6 +117,7 @@ export function createSettingsParts(now) {
       <h4 class="ssub">Brains</h4>
       ${sswitch('computerLab', settings.computerLab !== false, 'Show the Lab', keep('Shows 🧪 Lab, where you make your own brain from one you have: remove senses, cut experts, build and test. Runs here, free. Off: hidden; brains you made stay.' + (settings.computerLabRoom?.ok === false ? ' ' + settings.computerLabRoom.why : '')), settings.computerLabRoom?.ok === false && settings.computerLab === false ? 'disabled' : '')}
       ${sswitch('labPro', settings.labPro === true, 'Lab: Professional mode', keep('Shows every control, the test logs and each method\'s proper name. The same switch is at the top of the Lab.'))}
+      ${sswitch('labLessons', settings.labLessons === true, 'Lab: Lessons', keep('Adds Lessons to Lab, Learn: a short course from tokens to cutting and healing a brain. Each lesson is read, try it on your loaded brain, then two quick questions.'))}
       ${selfWorkHtml()}
       ${sswitch('naughtyList', settings.naughtyList === true, 'Show the naughty list', keep('Adds a Naughty list to the Brain catalogue: Qwen and Gemma remixes with the refusals removed ("heretic" or "abliterated"). What they say is on you. Bob never recommends one. Off: hidden; one already equipped stays.'))}
 `)}${EVERY_EXTRA.map(([id, label, note, body]) => panel(id, label, typeof note === 'function' ? note() : note, body())).join('')}
