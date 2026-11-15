@@ -4,6 +4,21 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.234
+
+Journey gets a real quest log, and your saved land is easy to get back to.
+
+### New
+
+- **📜 Quests is a real quest log.** Main quest goals that update as you go, side quests from the Elders and the folk you meet, and achievements.
+- **📂 Load last save** on the Save tab.
+
+### Fixed
+
+- **Resume shows in the guest house**, where Journey now opens, so you can get straight back to your saved land.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.233
 
 My engine moves up to llama.cpp 1.0.
@@ -171,19 +186,6 @@ The Lab's privacy scrub catches a name in pieces, and my tool record starts fres
 
 - **The Lab's privacy scrub misses nothing in brain odds.** A name split across tokens is caught even after a stand-in that's already in place, odds written as token and number pairs are joined and scrubbed too, and the raw bytes of each token follow the scrubbed text. The check before anything leaves your PC now looks at every match, not just the first.
 - **My tool record starts fresh when my tools change shape.** When a brain family gets its own tool wording, the old record moves to a `tool-record-archive` folder next to it instead of being deleted, so it can still be used for lessons.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.224
-
-I can keep order on your Discord server now, with plain rules and no brain, and you can keep me from chatting there at all so the graphics card stays free.
-
-### New
-
-- **Keep order on Discord** (Settings, Online services, Bob on Discord; off to start with). I moderate your server with plain rules and no brain. Spam, scam links and slurs come down, and your own blocked words and sites too. Warnings add up: a short timeout from the second one, longer each time. Kicks and bans always wait for your OK, in Settings or your Discord DMs. There's also a raid guard, a welcome with an **I agree** button, roles people can give themselves, `!report`, and commands for your moderators. Every action goes in a log, with the reason in Discord's own audit log.
-- **Chat on Discord** (on to start with). Switch it off and I never load a brain for your server, so the graphics card stays free. Keep order still runs.
-- **Ask a brain about unclear cases** (off). For a message the rules can't call, one brain looks at it with no tools, and it can only delete and warn.
-- **Run Keep order from your chat.** With Keep order on, you can ask me in our own chats for its status, to allow or deny a waiting kick or ban, or to lock the server down and unlock it. Each one asks you first.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 
