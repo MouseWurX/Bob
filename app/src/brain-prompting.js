@@ -115,7 +115,7 @@ export const promptParts = {
     const who = this.cfg.userName || 'the user';
     const off = this.offTools();
     const learned = toolLearnOn(this.cfg) ? loadLearning(this.cfg) : null; // tool notes and the scorecard (tool-learn.js)
-    return names.filter((n) => n !== 'use_tools' && this.usable(n, off)).map((n) => {
+    return names.filter((n) => n !== 'use_tools' && this.usable(n, off) && !set?.hide?.includes(n)).map((n) => { // a family's hidden tools (tool-sets.js) aren't offered
       const s = tidySchema(JSON.parse(JSON.stringify(inSet(this.tools[n].schema, set)).replaceAll('{{USER}}', who).replaceAll('{{HOME}}', JSON.stringify(os.homedir()).slice(1, -1))));
       if (learned && s.function) s.function.description += learnedLine(this.cfg, n, learned);
       return s;
