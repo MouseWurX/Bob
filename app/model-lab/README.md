@@ -20,6 +20,13 @@ Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf and its mmproj under `<parent>/models` (found by
    stand-in tools that touch nothing, plus 8 jobs that take several steps. Add `--plain` for a second run without the loop helps
    (src/loop-help.js) to compare. `--quick` runs a quarter of the quiz. Report: out\loop-test-*.md.
 
+   `node do-jobs.mjs --url <server> --bob .. --jobs <ideas.jsonl> --dir <name> --never <held-out files or folders>`: a brain
+   does real jobs as Bob's brain, nothing rewritten. Bob's real loop and newest tools for that family (`--want-shapes 4`),
+   real files in a throwaway home for each job, real web search, and stand-ins only for tools that can't run here (each
+   marked in the row). Every step is kept in full (thinking, words, calls, results) in out\<name>\runs.jsonl for a review
+   to read; failed runs are study material only. `--never` leaves held-out test requests out. `--parallel 2` by default,
+   `--job-minutes` caps one job, `--preflight` checks the jobs and the tool shape without running anything.
+
 5. `node reap-calibrate.mjs --url <Brain Engine server>`: tune a stock mixture-of-experts brain down without cutting a file.
    It scores every expert of every layer on the training lessons (REAP: router weight times the size of what the expert adds,
    from Brain Engine's expert trace with mass), then switches the weakest off live (`/expert-mask`) at 100, 75, 50 and 35%

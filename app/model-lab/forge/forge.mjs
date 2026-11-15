@@ -361,7 +361,7 @@ function lessonPreflight() {
   const bad = [], warn = [];
   const q = (v) => `"${String(v).replace(/"/g, '')}"`;
   const cmds = [];
-  for (const m of plan.benchmark?.models || []) for (const c of (m.commands?.length ? m.commands : plan.benchmark?.commands || [])) if (/write-lessons\.mjs/.test(c)) cmds.push([m, c]);
+  for (const m of plan.benchmark?.models || []) for (const c of (m.commands?.length ? m.commands : plan.benchmark?.commands || [])) if (/(write-lessons|do-jobs)\.mjs/.test(c)) cmds.push([m, c]);
   for (const w of plan.write_lessons ? (Array.isArray(plan.write_lessons) ? plan.write_lessons : [plan.write_lessons]) : []) if (w.from_ideas) bad.push(`plan.write_lessons (${w.dir}) has no pre-flight yet: use benchmark commands`);
   if (!cmds.length) return bad;
   if (!(Number(plan.hours_max) > 0) || !(Number(plan.dollars_max) > 0) || !(Number(plan.rent_minutes) > 0)) bad.push('hours_max, dollars_max and rent_minutes must all be set (blank caps fall back to 9 h / $40)');
@@ -628,7 +628,7 @@ async function benchOnPod(name) {
     // so the tests wrote to the wrong place and tool-score could not find the lessons); {{lessons}} is the lab's lessons folder for tool-score
     const q = (v) => `"${String(v).replace(/"/g, '')}"`;
     const bm = (plan.benchmark.models || []).find((m) => m.name === name) || {};
-    const slotArg = /write-lessons\.mjs/.test(c) && !/--slot-ctx/.test(c) ? ` --slot-ctx ${Math.floor((Number(bm.ctx) || 32768) / Math.max(1, Number(bm.slots) || 1))}` : ''; // 15 Nov: the writer checks the room per slot (the server's own figure first)
+    const slotArg = /(write-lessons|do-jobs)\.mjs/.test(c) && !/--slot-ctx/.test(c) ? ` --slot-ctx ${Math.floor((Number(bm.ctx) || 32768) / Math.max(1, Number(bm.slots) || 1))}` : ''; // 15 Nov: the writer checks the room per slot (the server's own figure first)
     const cmd = c.replace(/{{url}}/g, url).replace(/{{name}}/g, name).replace(/"?{{out}}"?/g, q(dir)).replace(/"?{{lessons}}"?/g, q(path.join(outDir, 'lessons'))).replace(/{{run}}/g, plan.run || 'run') + slotArg;
     const lf = path.join(dir, `${String(i + 1).padStart(2, '0')}.log`); fs.writeFileSync(lf, `$ ${cmd}\n`);
     log(`  ${cmd}`);
