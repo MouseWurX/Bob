@@ -141,6 +141,7 @@ const srv = http.createServer((req, res) => {
     const last = j.messages[j.messages.length - 1]; const t = String(last.content || '');
     let msg;
     if (/You review training lessons/.test(t)) msg = { content: '{"ok":true,"why":"fine"}' };
+    else if (/Which files must already exist/.test(t)) msg = { content: JSON.stringify([{ path: 'C:\\Users\\you\\Documents\\notes.txt', content: 'buy milk\n' }, { path: 'C:\\Windows\\evil.txt', content: 'x' }]) };
     else if (/tool inside a desktop AI/.test(t)) msg = { content: /FAIL/.test(t) ? 'Error: folder not found: C:\\Users\\you\\Documnts' : 'Listed C:\\Users\\you\\Documents: notes.txt, plan.docx (2 files).' };
     else if (j.tools && j.messages.filter((m) => m.role === 'tool').length < 2) msg = { content: 'I will look in the folder first.', tool_calls: [{ id: `c${seen.length}`, type: 'function', function: { name: 'list_folder', arguments: JSON.stringify({ path: '~/Documents' }) } }] };
     else msg = { content: 'Your Documents folder holds notes.txt and plan.docx.' };
@@ -155,6 +156,12 @@ W('wl/doc-base/ideas.jsonl', [{ id: 'd0-0-r0', job: 'files', text: 'what is in m
 const child = spawn(process.execPath, ['write-lessons.mjs', '--url', url, '--model', 'fake.gguf', '--bob', app, '--out', path.join(tmp, 'wl'), '--dir', 'doc-base', '--from-ideas', '--family', 'qwen', '--count', '1', '--review', '--think', 'none'], { cwd: lab, env: { ...process.env, LAB_REMOTE: '', LAB_URL: '' } });
 let log = ''; child.stdout.on('data', (d) => (log += d)); child.stderr.on('data', (d) => (log += d));
 const code = await new Promise((ok) => { const t = setTimeout(() => { child.kill(); ok('timeout'); }, 120000); child.on('exit', (c) => { clearTimeout(t); ok(c); }); });
+// --real-tools: the task's files are planted in a throwaway home and Bob's real list_folder runs there
+const before2 = seen.length;
+W('wl/real-base/ideas.jsonl', [{ id: 'r0-0-r0', job: 'files', text: 'what is in my Documents folder?' }]);
+const child2 = spawn(process.execPath, ['write-lessons.mjs', '--url', url, '--model', 'fake.gguf', '--bob', app, '--out', path.join(tmp, 'wl'), '--dir', 'real-base', '--from-ideas', '--real-tools', '--count', '1', '--think', 'none'], { cwd: lab, env: { ...process.env, LAB_REMOTE: '', LAB_URL: '' } });
+let log2 = ''; child2.stdout.on('data', (d) => (log2 += d)); child2.stderr.on('data', (d) => (log2 += d));
+const code2 = await new Promise((ok) => { const t = setTimeout(() => { child2.kill(); ok('timeout'); }, 120000); child2.on('exit', (c) => { clearTimeout(t); ok(c); }); });
 srv.close();
 const made = rows(path.join(tmp, 'wl', 'doc-base', 'lessons.jsonl'));
 check('writer: --from-ideas writes the doctored idea and no new ideas', code === 0 && made.length === 1 && rows(path.join(tmp, 'wl', 'doc-base', 'ideas.jsonl')).length === 1, log.slice(-400));
@@ -164,6 +171,14 @@ check('writer: a second try: the first call fails, then it carries on', m.filter
 check('writer: the teacher saw the note, the saved lesson did not', seen.some((j) => String(j.messages[0]?.content || '').includes('NOTE-FOR-TEACHER')) && !JSON.stringify(made).includes('NOTE-FOR-TEACHER'));
 check('writer: route and seed are kept on the lesson', made[0]?.route === 0 && made[0]?.seed?.source === 'v5');
 check('writer: --family stamps the lesson for one brain family', made[0]?.family === 'qwen');
+{
+  const real = rows(path.join(tmp, 'wl', 'real-base', 'lessons.jsonl'))[0];
+  const firstTool = (real?.messages || []).find((m) => m.role === 'tool');
+  check('writer --real-tools: the task file is planted and the real tool lists it', code2 === 0 && /notes\.txt/.test(firstTool?.content || '') && real?.sandbox?.real >= 1, log2.slice(-400));
+  check('writer --real-tools: a seed outside the throwaway home is never written', (real?.sandbox?.setup || []).length === 1 && !JSON.stringify(real).includes('evil.txt'));
+  check('writer --real-tools: no real tool asked the teacher to make up its result', !seen.slice(before2).some((j) => /"list_folder" tool inside a desktop AI/.test(String(j.messages.at(-1)?.content || ''))));
+  check('writer --real-tools: no temp folder path reaches the lesson', !/bob-lab-|[\\/]tmp[\\/]/i.test(JSON.stringify(real?.messages || [])));
+}
 check('writer: the fake result sees the tool\'s own description and is kept inside it', seen.some((j) => /tool inside a desktop AI/.test(String(j.messages.at(-1)?.content || '')) && /The tool's own description/.test(String(j.messages.at(-1)?.content || '')) && /only reads, lists or searches never saves/.test(String(j.messages.at(-1)?.content || ''))));
 {
   const { neutralizer } = await import(pathToFileURL(path.join(lab, 'bob-kit.mjs')).href);

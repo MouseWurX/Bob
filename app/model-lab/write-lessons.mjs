@@ -64,7 +64,11 @@ const leakCheck = (content) => {
 const tag = o.tag ? String(o.tag).replace(/[\r\n]+/g, ' ').trim().slice(0, 80) : '';
 if (remoteUrl) process.env.LAB_REMOTE = '1'; else checkFree(o);
 const parallel = Math.max(1, Number(o.parallel) || 1);
-const kit = await loadBob(L.bob, { allowOld: Boolean(o['allow-old-bob']) });
+// --real-tools (15 Nov, the owner: "synthetic tasks are fine, but every tool result must be real"): each lesson gets its
+// own throwaway home (Documents, Desktop, Downloads) seeded with the files its task needs, and Bob's real tools run there.
+// Tools that can't run in a throwaway folder (web, email, apps, paid makers) get honest stand-ins, counted on the lesson.
+const realTools = Boolean(o['real-tools']);
+const kit = await loadBob(L.bob, { allowOld: Boolean(o['allow-old-bob']), home: realTools });
 console.log(`Bob's tools from ${L.bob}: ${kit.bobSrc.version || '?'}${kit.bobSrc.commit ? ` (${kit.bobSrc.commit})` : ''}`);
 // 12 Nov (later): the idea writer is told what Bob's tools can really do, so it doesn't invent jobs no tool covers (calendar events...)
 const TOOLBOX = (() => { try { return Object.entries(kit.groups()).map(([k, g]) => `${k} (${g.what || (g.tools || []).join(', ')})`).join('; '); } catch { return ''; } })();
@@ -285,8 +289,40 @@ const FIXED = {
   show_plan: () => 'Showed the plan card. The user said OK: carry on with the plan.',
   ask_together: () => 'Approved. Nothing has run yet: now call each step.'
 };
-async function toolResult(name, args, loaded, ask = '') {
+// The tools that really run in a lesson's throwaway home: files, office files, notes, the board, reminders, memory, how-tos.
+const REAL_TOOLS = new Set(['list_folder', 'read_file', 'search_files', 'find_in_documents', 'write_file', 'edit_file', 'save_spreadsheet',
+  'office_read', 'office_make', 'office_edit', 'compare_files', 'inspect_file', 'code_map', 'notice_board', 'reminders', 'take_note', 'remember',
+  'forget_topic', 'calculate', 'check_spelling', 'query_data', 'my_howtos', 'save_howto', 'list_schedules', 'undo_files', 'sort_files']);
+async function realResult(sb, name, args, loaded) {
+  try {
+    const r = await Promise.race([sb.brain.tools[name].run(sb.toReal(args), { loaded }), new Promise((_, no) => setTimeout(() => no(new Error('the tool took too long')), 60000))]);
+    const t = typeof r === 'string' ? r : r && typeof r === 'object' && typeof r.text === 'string' ? r.text : JSON.stringify(r ?? '');
+    return sb.neutral(t).slice(0, 6000) || '(no output)';
+  } catch (e) { return `Error: ${sb.neutral(String(e.message || e)).slice(0, 600)}`; }
+}
+// The files a task needs before it starts, from the idea (setup) or asked of the teacher: text files under C:\Users\you.
+const SEED_EXT = /\.(txt|md|csv|tsv|json|ya?ml|ini|cfg|log|py|js|mjs|ts|html?|css|xml|sql|sh|bat|ps1|toml|java|c|cpp|h|cs|go|rs|rb|php)$/i;
+async function seedFor(idea) {
+  if (Array.isArray(idea.setup)) return idea.setup;
+  try {
+    const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `A person will ask a desktop assistant on a Windows PC: ${String(idea.text).slice(0, 1200)}\n\nWhich files must already exist on their PC for this request to make sense (files it names, a project it mentions, a folder it asks to tidy)? Reply with only a JSON array of {"path", "content"}: paths under C:\\Users\\you (Documents, Desktop or Downloads), plain-text files only (txt, md, csv, json, code), realistic content, at most 5 files. Reply [] when the request needs no files.` }], max: 3000 });
+    const a = JSON.parse(String(msg.content || '').match(/\[[\s\S]*\]/)?.[0] || '[]');
+    return Array.isArray(a) ? a.filter((f) => f && typeof f.path === 'string' && typeof f.content === 'string').slice(0, 5) : [];
+  } catch { return []; }
+}
+function plant(sb, files) {
+  const kept = [];
+  for (const f of files) {
+    const real = sb.toReal(f.path);
+    if (real === f.path || !SEED_EXT.test(real) || !path.resolve(real).startsWith(path.resolve(sb.homeDir) + path.sep)) continue; // only text files inside the throwaway home
+    fs.mkdirSync(path.dirname(real), { recursive: true }); fs.writeFileSync(real, f.content.slice(0, 20000)); kept.push({ path: f.path, content: f.content.slice(0, 20000) });
+  }
+  return kept;
+}
+async function toolResult(name, args, loaded, ask = '', sb = null, tally = null) {
   if (name === 'use_tools') return kit.useTools(args, loaded);
+  if (sb && REAL_TOOLS.has(name) && sb.brain.tools[name]) { if (tally) tally.real++; return realResult(sb, name, args, loaded); }
+  if (tally && !FIXED[name] && name !== 'bob_help') tally.standin.add(name);
   if (FIXED[name]) return FIXED[name](args);
   if (name === 'bob_help') { try { const r = await kit.brain.tools.bob_help.run(args, {}); if (typeof r === 'string' && r.trim()) return r.slice(0, 4000); } catch {} }
   return fakeResult(name, args, ask, loaded);
@@ -298,7 +334,15 @@ const h = (s) => crypto.createHash('md5').update(s).digest('hex');
 const order = [...ideas].sort((x, y) => (h(x.id) < h(y.id) ? -1 : 1));
 let n = done.size, i = 0, skipped = 0, rescued = 0, fixed = 0;
 const queue = order.filter((x) => !done.has(x.id));
-async function one(idea, think, room = 1, fix = '') { // room 2 = a second try with twice the word budget (build 18); fix = the reviewer's reason for a failed first try
+async function one(idea, think, room = 1, fix = '') {
+  if (!realTools) return oneInner(idea, think, room, fix, null, null);
+  const sb = await loadBob(L.bob, { allowOld: Boolean(o['allow-old-bob']), home: true });
+  try {
+    const setup = plant(sb, await seedFor(idea));
+    return await oneInner(idea, think, room, fix, sb, { real: 0, standin: new Set(), setup });
+  } finally { sb.done(); }
+}
+async function oneInner(idea, think, room, fix, sb, tally) { // room 2 = a second try with twice the word budget (build 18); fix = the reviewer's reason for a failed first try
   const loaded = new Set(kit.guessGroups(idea.text));
   const user = idea.image ? { role: 'user', content: [{ type: 'text', text: idea.text }, imgPart(idea.image)] } : { role: 'user', content: idea.text };
   const saved = [{ role: 'user', content: idea.text, ...(idea.image ? { image: idea.image } : {}) }];
@@ -342,7 +386,8 @@ async function one(idea, think, room = 1, fix = '') { // room 2 = a second try w
     for (const c of a.tool_calls) if (dropTools.has(c.function.name)) throw new Error(`called the dropped tool ${c.function.name}`); // the lesson is skipped, not saved
     for (const c of a.tool_calls) {
       let args = {}; try { args = JSON.parse(c.function.arguments || '{}'); } catch {}
-      const result = failNext ? await failedResult(c.function.name, args) : await toolResult(c.function.name, args, loaded, idea.text); failNext = false;
+      if (failNext && tally) tally.standin.add('failed first try');
+      const result = failNext ? await failedResult(c.function.name, args) : await toolResult(c.function.name, args, loaded, idea.text, sb, tally); failNext = false;
       const tm = { role: 'tool', tool_call_id: c.id, name: c.function.name, content: result };
       saved.push(tm); live.push(tm);
     }
@@ -362,7 +407,7 @@ async function one(idea, think, room = 1, fix = '') { // room 2 = a second try w
   }
   // a lesson fixed after a failed review carries retry: 'review'; its reject sits in rejected.jsonl under the same idea, so
   // make-pairs.mjs turns the two into a right-vs-wrong pair (the reviewer's reason goes along as why)
-  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, bob_src: kit.bobSrc, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), ...(fix ? { retry: 'review' } : {}), ...(splitTag ? { split: splitTag } : {}), ...(score !== null ? { style_score: Math.round(score * 100) / 100 } : {}), ...(leaked ? { leak: 'stripped' } : {}), ...(think && thinkPrefix ? { think_prefix: thinkPrefix } : {}), messages: clean(saved), ...(idea.route !== undefined ? { route: idea.route } : {}), ...(idea.seed ? { seed: idea.seed } : {}) });
+  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, bob_src: kit.bobSrc, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), ...(fix ? { retry: 'review' } : {}), ...(splitTag ? { split: splitTag } : {}), ...(score !== null ? { style_score: Math.round(score * 100) / 100 } : {}), ...(leaked ? { leak: 'stripped' } : {}), ...(think && thinkPrefix ? { think_prefix: thinkPrefix } : {}), messages: clean(saved), ...(tally ? { sandbox: { setup: tally.setup, real: tally.real, standin: [...tally.standin] } } : {}), ...(idea.route !== undefined ? { route: idea.route } : {}), ...(idea.seed ? { seed: idea.seed } : {}) });
   if (oddsK) appendJsonl(path.join(dir, 'odds.jsonl'), { idea: idea.id, job: idea.job, think, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), k: oddsK, turns: odds });
 }
 // The teacher as a strict reviewer: right tool or rightly none, exact arguments, results read, a final answer that does the job.

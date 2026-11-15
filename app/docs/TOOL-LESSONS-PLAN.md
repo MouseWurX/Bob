@@ -150,6 +150,16 @@ The owner, 15 Nov: script checks can give bad data. Every lesson is read (a smal
 rules, then a sample re-read by a larger one), and kept, fixed or dropped with the reason written down. Scripts stay
 only where something must really run: a Blender or Unreal script, a code test, a tool's input check.
 
+## 3f-4. Every tool result is real
+
+The owner, 15 Nov: synthetic tasks are fine, but a lesson's tool results must be real. `write-lessons.mjs --real-tools`
+gives each lesson its own throwaway home (Documents, Desktop, Downloads), shown to Bob as `C:\Users\you`. The teacher
+first lists the plain-text files the task needs (or the idea carries a `setup`), they are planted there, and Bob's own
+tools then really run against them: files, office files, notes, the board, reminders, memory and how-tos. Tools that
+can't run in a throwaway folder (web, email, apps, paid makers) get honest stand-ins that see the tool's own description
+and only return what it could, errors included. Each lesson records its `sandbox`: the planted files, how many results
+were real, and which tools were stand-ins. The Lab PC's own home folder and user name never reach a lesson.
+
 ## 3g. Five versions, several routes, more tries
 
 **Five versions of every doctored lesson:** base Bob plus the four thinking styles (Raider, Watson, Sherlock, Vulcan).
