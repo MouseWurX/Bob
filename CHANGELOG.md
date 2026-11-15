@@ -4,6 +4,22 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.235
+
+Bob's chat memory meter moves to where you can see it, you can take any job back from a brain, and two phone menus in Lamplight are fixed.
+
+### New
+
+- **Chat memory: NN%** now sits under the typing box, across from the brain label, with an (i) that says what it means. **Sum up and carry on** shows from 70%, and the reading comes back after a reload.
+
+### Fixed
+
+- **Brains page: take any job back.** Every job chip has a ✕ now, except the main Brain and Gaming. Quick brain, Office and Deep thinking can be taken off and show under Unassigned jobs, and Bob keeps chatting on his main brain.
+- On a phone in Lamplight, the **Effort** choices float above the button, so you can see and pick them all.
+- On a phone in Lamplight, the **More** menu has a solid back, so it isn't see-through.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.234
 
 Journey gets a real quest log, and your saved land is easy to get back to.
@@ -178,19 +194,9 @@ My front page says what's new, what's coming, and what it all costs, the Lab get
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 
-## 1.5.225
-
-The Lab's privacy scrub catches a name in pieces, and my tool record starts fresh when my tools change shape.
-
-### Fixed
-
-- **The Lab's privacy scrub misses nothing in brain odds.** A name split across tokens is caught even after a stand-in that's already in place, odds written as token and number pairs are joined and scrubbed too, and the raw bytes of each token follow the scrubbed text. The check before anything leaves your PC now looks at every match, not just the first.
-- **My tool record starts fresh when my tools change shape.** When a brain family gets its own tool wording, the old record moves to a `tool-record-archive` folder next to it instead of being deleted, so it can still be used for lessons.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
 ## Older versions
 
+- [1.5.225 to 1.5.249](app/docs/changelog/1.5.225-1.5.249.md)
 - [1.5.200 to 1.5.224](app/docs/changelog/1.5.200-1.5.224.md)
 - [1.5.175 to 1.5.199](app/docs/changelog/1.5.175-1.5.199.md)
 - [1.5.150 to 1.5.174](app/docs/changelog/1.5.150-1.5.174.md)

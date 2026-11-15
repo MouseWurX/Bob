@@ -110,6 +110,21 @@ check('12: one exact command in one folder, until midnight', todayKey('npm test'
 // ---------- 13. Sum up and carry on ----------
 check('13: the meter and the button are on the chat page', /id="chatFill"/.test(fs.readFileSync(path.join(here, '..', 'public', 'index.html'), 'utf8')) && /\/api\/chat\/compact/.test(publicText('app.js')) && COMPACT_KEEP === 6);
 
+{
+  // Nov 15 (the owner): Chat memory sits in the status row (under the typing box in Lamplight), across from the brain label,
+  // with a plain-words (i); the reading is kept on the answer so it's back after a reload, and Sum up clears it.
+  const html = fs.readFileSync(path.join(here, '..', 'public', 'index.html'), 'utf8').replace(/\r\n/g, '\n');
+  const row = html.slice(html.indexOf('<div class="ctx">'), html.indexOf('id="foldRight"'));
+  check('13: Chat memory is in the brain label row, after the gap', row.includes('id="brainBar"') && row.indexOf('class="ctx-fill"') < row.indexOf('id="chatFill"') && /id="chatFill"[\s\S]*class="tip-i"[\s\S]*id="chatFillSum"/.test(row));
+  check('13: not by Effort any more', !/id="effort"[\s\S]*id="chatFill"[\s\S]*id="composer"/.test(html));
+  check('13: short words that fit a phone', /`Chat memory: \$\{Math\.round\(share \* 100\)\}%`/.test(publicText('app-redo.js')));
+  check('13: the reading is kept on the answer and read back', /last\.fill = \{ used: st\.used, ctx: st\.ctx \}/.test(src('brain-turns.js')) && /m\.fill\?\.ctx \? \{ fill: m\.fill \}/.test(src('brain-chats.js')) && /drawFill\(\[\.\.\.h\]\.reverse\(\)/.test(publicText('app.js')));
+  check('13: Sum up clears the old reading', /delete m\.fill/.test(src('brain-chats.js')));
+  // Nov 15 menu check at phone width: two older menu faults found and fixed with this change
+  check('13: phone Effort choices float out of the sideways-scrolling row', /document\.body\.appendChild\(choices\)/.test(publicText('effort.js')) && /home\.appendChild\(choices\)/.test(publicText('effort.js')) && /:is\(\.effort, \.effort-choices\) \[data-effort\]/.test(fs.readFileSync(path.join(here, '..', 'public', 'style.css'), 'utf8')));
+  check('13: the phone menu sheet has a solid back in Lamplight', /@media \(max-width: 640px\) \{ body\.look-lamplight:not\(\.left-folded\) \.side \{ background: var\(--panel\); \} \}/.test(fs.readFileSync(path.join(here, '..', 'public', 'looks.css'), 'utf8')));
+}
+
 // ---------- 14. A reply that stops sending words ----------
 {
   const l = src('llamacpp.js');

@@ -105,6 +105,7 @@ export const chatParts = {
     while (cut > 0 && msgs[cut]?.role !== 'user') cut--; // start on your message, never mid tool-call
     if (cut <= 0) return { moved: 0, kept: msgs.length };
     const dropped = msgs.splice(0, cut);
+    for (const m of msgs) delete m.fill; // the old reading no longer fits: the meter waits for the next answer
     try { keepOlder(this.cfg, id, dropped); } catch (e) { msgs.unshift(...dropped); return { error: `Couldn't move the older part: ${e.message}` }; }
     this.saveSession(id);
     this.log('chat', `summed up and carried on: ${dropped.length} older messages of chat ${id} moved to its older part`);
@@ -117,7 +118,7 @@ export const chatParts = {
   history(id) {
     return this.session(id)
       .filter((m) => (m.role === 'user' || m.role === 'assistant') && (m.content || m.media?.length || m.correction))
-      .map((m) => ({ role: m.role, id: m.id, at: m.at, ...(m.forgotten ? { forgotten: true } : {}), content: m.role === 'user' && m.text != null ? m.text : (m.showText || m.content || ''), ...(m.step ? { step: true } : {}), ...(m.media?.length ? { media: m.media } : {}), ...(m.correction ? { correction: m.correction } : {}), ...(m.replaced ? { replaced: true } : {}), ...(m.edited ? { edited: m.edited, was: m.was ?? '', ...(m.editedBy === 'you' ? { editedBy: 'you' } : {}) } : {}), ...(m.role === 'assistant' && m.steps?.length ? { steps: m.steps } : {}), ...(m.role === 'user' && m.versions?.length ? { versions: m.versions } : {}), pics: (m.refs || []).map((id) => this.refs.find(id)).filter(Boolean).map((r) => ({ name: r.name, url: `/refs/${r.file}` })) }));
+      .map((m) => ({ role: m.role, id: m.id, at: m.at, ...(m.forgotten ? { forgotten: true } : {}), content: m.role === 'user' && m.text != null ? m.text : (m.showText || m.content || ''), ...(m.step ? { step: true } : {}), ...(m.media?.length ? { media: m.media } : {}), ...(m.correction ? { correction: m.correction } : {}), ...(m.replaced ? { replaced: true } : {}), ...(m.edited ? { edited: m.edited, was: m.was ?? '', ...(m.editedBy === 'you' ? { editedBy: 'you' } : {}) } : {}), ...(m.role === 'assistant' && m.steps?.length ? { steps: m.steps } : {}), ...(m.role === 'assistant' && m.fill?.ctx ? { fill: m.fill } : {}), ...(m.role === 'user' && m.versions?.length ? { versions: m.versions } : {}), pics: (m.refs || []).map((id) => this.refs.find(id)).filter(Boolean).map((r) => ({ name: r.name, url: `/refs/${r.file}` })) }));
   },
   // What Bob carries from earlier, instead of the whole old chat: the summary of this chat's older part,
   // and the topic notes closest to what the user just said.

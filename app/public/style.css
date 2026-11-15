@@ -878,27 +878,28 @@ details.more > summary:hover { color: var(--accent); }
 .effort-choices { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 30; display: inline-flex; gap: 6px; padding: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 6px 18px rgba(0,0,0,.35); white-space: nowrap; }
 .effort-btn:disabled { opacity: .6; cursor: not-allowed; }
 .effort-choices[hidden] { display: none; }
-.effort [data-effort] { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; min-height: 40px; min-width: 84px; padding: 4px 12px; font: inherit; color: var(--text); background: none; border: 1px solid var(--line); border-radius: var(--r); cursor: pointer; line-height: 1.15; }
-.effort [data-effort] b { font-size: 13px; }
-.effort [data-effort] small { font-size: 10px; color: var(--muted); }
-.effort [data-effort][aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-.effort [data-effort][aria-checked="true"] small { color: inherit; opacity: .85; }
-.effort [data-effort]:disabled { opacity: .45; cursor: not-allowed; }
-.effort [data-effort]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:is(.effort, .effort-choices) [data-effort] { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; min-height: 40px; min-width: 84px; padding: 4px 12px; font: inherit; color: var(--text); background: none; border: 1px solid var(--line); border-radius: var(--r); cursor: pointer; line-height: 1.15; }
+:is(.effort, .effort-choices) [data-effort] b { font-size: 13px; }
+:is(.effort, .effort-choices) [data-effort] small { font-size: 10px; color: var(--muted); }
+:is(.effort, .effort-choices) [data-effort][aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+:is(.effort, .effort-choices) [data-effort][aria-checked="true"] small { color: inherit; opacity: .85; }
+:is(.effort, .effort-choices) [data-effort]:disabled { opacity: .45; cursor: not-allowed; }
+:is(.effort, .effort-choices) [data-effort]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .effort .web-btn { min-height: 40px; margin-left: 10px; position: relative; }
 .effort .web-btn::before { content: ""; position: absolute; left: -11px; top: 6px; bottom: 6px; border-left: 1px solid var(--line); }
 .effort .game-btn { min-height: 40px; margin-left: 10px; position: relative; } /* 1.5.41 the 🎮 Gaming button */
 .effort .game-btn::before { content: ""; position: absolute; left: -11px; top: 6px; bottom: 6px; border-left: 1px solid var(--line); }
 .effort-hint { flex: 1 1 220px; min-width: 0; font-size: 11px; }
 /* Item 13: how full this chat is, and Sum up and carry on from 70% */
-.chat-fill { font-size: 11px; white-space: nowrap; }
+.chat-fill { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); white-space: nowrap; flex: none; }
+.chat-fill .tip-i { flex: none; }
 .chat-fill.full #chatFillText { font-weight: 600; }
 .steps-list { margin: 4px 0; padding-left: 20px; font-size: 12px; }
 /* Nov 12, items 190-191: a corrected reply that was tried again folds away; corrections show in How I got here */
 .msg.replaced > .replaced-toggle { display: block; opacity: .8; }
 .msg.replaced > .replaced-body { opacity: .6; text-decoration: line-through; text-decoration-thickness: 1px; }
 .steps-list .step-correction { font-weight: 600; }
-@media (forced-colors: active) { .effort [data-effort][aria-checked="true"] { border: 2px solid Highlight; } }
+@media (forced-colors: active) { :is(.effort, .effort-choices) [data-effort][aria-checked="true"] { border: 2px solid Highlight; } }
 
 /* 1.5.7 the cat by Bob's picture: small antics while he's idle (no brain). Still for people who prefer less motion. */
 .bob-wrap { position: relative; flex: none; }
@@ -2051,8 +2052,9 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .job-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; border: 1px solid var(--accent); border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
 .job-chip-off { border-style: dashed; border-color: var(--muted); opacity: 0.75; } /* One brain on: greyed, never hidden */
 .one-brain-note { margin: 8px 0 0; padding: 6px 10px; border: 1px dashed var(--accent); border-radius: 8px; overflow-wrap: anywhere; }
-.chip-x { background: none; border: 0; color: var(--muted); padding: 0; margin: 0 -4px 0 0; min-width: 24px; min-height: 24px; line-height: 1; cursor: pointer; }
-.chip-x:hover, .chip-x:focus-visible { color: var(--text); }
+/* Nov 15: .cellar button gave the ✕ a box and padding, so a chip with one stood taller than its neighbours. */
+.chip-x, .cellar .chip-x { background: none; border: 0; color: var(--muted); padding: 0; margin: 0 -6px 0 0; min-width: 24px; min-height: 24px; line-height: 1; cursor: pointer; }
+.chip-x:hover, .chip-x:focus-visible, .cellar .chip-x:hover { color: var(--text); }
 .job-add { font-size: 13px; max-width: 11em; }
 /* No label is ever cut off: a part is never narrower than its words, and the bar wraps to a second line if it must. */
 .place-bar { display: flex; flex-wrap: wrap; min-height: 22px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); font-size: 12px; font-weight: 600; }
@@ -2298,7 +2300,8 @@ body.left-folded .nav-head:has(+ #labBtn[hidden]) { display: none; }
   body:not(.left-folded) .side { position: fixed; top: 0; bottom: 0; left: 0; z-index: 21; width: min(300px, 86vw); box-shadow: 8px 0 24px rgb(0 0 0 / .55); }
   .ver { display: none; }
   /* One chip on top: the brain line, cut short to fit, with Now running beside it. */
-  .ctx { gap: 6px; padding: 4px 8px; }
+  .ctx { gap: 6px; padding: 4px 8px; flex-wrap: wrap; } /* chat memory drops to its own line rather than cutting words */
+  .chat-fill { margin-left: auto; }
   .ctx-title { display: none; }
   .brain-pill { max-width: 62vw; }
   #brainPillText { overflow: hidden; text-overflow: ellipsis; }

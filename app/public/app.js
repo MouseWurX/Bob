@@ -622,6 +622,7 @@ async function loadHistory(n = 20) {
     const shown = [], held = [];
     let askedAt = 0, endAt = 0;
     const flush = () => { if (held.length) shown.push({ bubble: held.splice(0), ms: askedAt && endAt > askedAt ? endAt - askedAt : 0 }); };
+    drawFill([...h].reverse().find((m) => m.role === 'assistant' && m.fill)?.fill || null); // Nov 15: the meter is back after a reload
     for (const m of h.slice(-n)) {
       if (m.role === 'user') { flush(); askedAt = m.at || 0; endAt = 0; shown.push(m); continue; }
       endAt = Math.max(endAt, m.at || 0);
