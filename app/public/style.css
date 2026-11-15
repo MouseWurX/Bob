@@ -2051,8 +2051,9 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .job-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; border: 1px solid var(--accent); border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
 .job-chip-off { border-style: dashed; border-color: var(--muted); opacity: 0.75; } /* One brain on: greyed, never hidden */
 .one-brain-note { margin: 8px 0 0; padding: 6px 10px; border: 1px dashed var(--accent); border-radius: 8px; overflow-wrap: anywhere; }
-.chip-x { background: none; border: 0; color: var(--muted); padding: 0; margin: 0 -4px 0 0; min-width: 24px; min-height: 24px; line-height: 1; cursor: pointer; }
-.chip-x:hover, .chip-x:focus-visible { color: var(--text); }
+/* Nov 15: .cellar button gave the ✕ a box and padding, so a chip with one stood taller than its neighbours. */
+.chip-x, .cellar .chip-x { background: none; border: 0; color: var(--muted); padding: 0; margin: 0 -6px 0 0; min-width: 24px; min-height: 24px; line-height: 1; cursor: pointer; }
+.chip-x:hover, .chip-x:focus-visible, .cellar .chip-x:hover { color: var(--text); }
 .job-add { font-size: 13px; max-width: 11em; }
 /* No label is ever cut off: a part is never narrower than its words, and the bar wraps to a second line if it must. */
 .place-bar { display: flex; flex-wrap: wrap; min-height: 22px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); font-size: 12px; font-weight: 600; }

@@ -176,10 +176,18 @@ export function labLine(b, ctx) {
 export function honestyLineOf(b, ctx) { const s = ctx.honesty?.[b.value] || ctx.honesty?.[b.entry?.id]; return s?.line || ''; }
 const honestyHtml = (b, ctx) => { const t = honestyLineOf(b, ctx); return t ? `<br><span class="muted honesty-line" title="Out of 100: the share of this brain's answers that needed no correction from the app's honesty checks on this replicant matrix">🧭 ${esc(t)}</span>` : ''; };
 const labLineHtml = (b, ctx) => { const t = labLine(b, ctx); return t ? `<br><span class="muted lab-line" title="Scores out of 100 from the Lab's tests on this replicant matrix">🧪 ${esc(t)}</span>` : ''; };
+// Nov 15: a job given to a brain can be taken back. Every job has a ✕ except the two that always need a brain: the main
+// brain (Bob can't think without one) and Gaming (chat while you play). Those move to another brain with + job there.
+// Taking Quick, Office or Deep thinking off saves '' (config.js keeps it), so the job goes back to what it falls back on.
+export const canTakeOff = (s) => Boolean(s.off) || (s.how === 'brain' && s.id !== 'gaming');
+function chipHtml(s, b, ctx, greyed) {
+  const x = canTakeOff(s) ? `<button type="button" class="chip-x" data-unequip="${esc(s.id)}" aria-label="Take ${esc(b.name)} off ${esc(s.name)}" title="${esc(`Take ${s.name} back. ${s.empty}.`)}">✕</button>` : '';
+  if (greyed) return `<span class="job-chip job-chip-off" title="${esc(`One brain is on: the main brain does ${s.name}. This pick comes back when it's off.`)}">${s.icon} ${esc(s.name)} <span class="muted">(main brain)</span>${x}</span>`;
+  const keep = x ? '' : `${s.name} always needs a brain. To move it, use + job on another brain.`;
+  return `<span class="job-chip" title="${esc(keep ? `${s.does} ${keep}` : s.does)}">${s.icon} ${esc(s.name)}${x}${keep ? `<span class="sr-only"> (${esc(keep)})</span>` : ''}</span>`;
+}
 function brainRowHtml(b, ctx) {
-  const chips = b.jobs.map((s) => oneBrainCovers(s, ctx) && s.id !== 'bob' && b.value !== val('bob', ctx)
-    ? `<span class="job-chip job-chip-off" title="${esc(`One brain is on: the main brain does ${s.name}. This pick comes back when it's off.`)}">${s.icon} ${esc(s.name)} <span class="muted">(main brain)</span></span>`
-    : `<span class="job-chip" title="${esc(s.does)}">${s.icon} ${esc(s.name)}${s.off ? `<button type="button" class="chip-x" data-unequip="${esc(s.id)}" aria-label="Take ${esc(b.name)} off ${esc(s.name)}">✕</button>` : ''}</span>`).join('');
+  const chips = b.jobs.map((s) => chipHtml(s, b, ctx, oneBrainCovers(s, ctx) && s.id !== 'bob' && b.value !== val('bob', ctx))).join('');
   const trial = b.entry?.trial ? '<span class="tag">Not tried yet</span>' : '';
   return `<li class="brain-row" id="brain-${esc(b.value)}"><div class="brain-name"><strong>${esc(b.name)}</strong> ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span>${labLineHtml(b, ctx)}${honestyHtml(b, ctx)}</div>
     <div class="brain-jobs">${chips}${jobSelect(b.value, jobsFor(b.value, ctx), `Give ${b.name} another job`)}</div>
@@ -243,7 +251,7 @@ export function setUpHtml(b, ctx) {
   const lock = handLock(b, ctx);
   const n = Number.isInteger(set.cpuMoe) ? Math.min(set.cpuMoe, layers || set.cpuMoe) : 0;
   const hand = set.mode === 'hand';
-  const chips = b.jobs.map((s) => `<span class="job-chip" title="${esc(s.does)}">${s.icon} ${esc(s.name)}${s.off ? `<button type="button" class="chip-x" data-unequip="${esc(s.id)}" aria-label="Take ${esc(b.name)} off ${esc(s.name)}">✕</button>` : ''}</span>`).join('');
+  const chips = b.jobs.map((s) => chipHtml(s, b, ctx, false)).join('');
   const seg = (mode, label) => `<button type="button" class="seg-btn${(mode === 'hand') === hand ? ' on' : ''}" data-placemode="${mode}" data-model="${esc(b.value)}" aria-pressed="${(mode === 'hand') === hand}" ${mode === 'hand' && lock ? 'disabled' : ''}>${label}</button>`;
   const dis = lock ? 'disabled' : '';
   return `<p><button type="button" class="link" data-brainsetup="">← All brains</button></p>
