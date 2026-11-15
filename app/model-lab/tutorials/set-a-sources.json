@@ -1,0 +1,807 @@
+{
+ "about": "Tutorial set A sources (plan, 15 Nov 2026). URLs only: nothing is fetched until the owner's typed go. A page that no longer exists is skipped at fetch time. facts-only = read for facts, never copied; the teacher writes new requests. Unreal waits for its own plan (headless proof needs the editor on a rental).",
+ "blender_version": "4.5",
+ "sources": [
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.mesh.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.object.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.transform.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.export_scene.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.import_scene.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.wm.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.render.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.material.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.uv.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.curve.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.armature.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.pose.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.anim.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.node.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.geometry.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.sculpt.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.particle.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.rigidbody.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.text.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.ops.image.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Object.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Mesh.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.MeshVertex.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.MeshPolygon.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Material.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.ShaderNodeBsdfPrincipled.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.ShaderNodeTexImage.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.NodeTree.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Node.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.NodeSocket.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Scene.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.RenderSettings.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Camera.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Light.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.World.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Collection.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.ViewLayer.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Modifier.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.SubsurfModifier.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.BevelModifier.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.ArrayModifier.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.MirrorModifier.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.SolidifyModifier.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.BooleanModifier.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.DecimateModifier.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.NodesModifier.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.GeometryNodeTree.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Curve.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Spline.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.TextCurve.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Armature.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Bone.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.EditBone.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.PoseBone.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Constraint.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Action.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.FCurve.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Keyframe.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Image.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Texture.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.UVLoopLayers.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.VertexGroup.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.ShapeKey.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.ParticleSettings.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.RigidBodyObject.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Operator.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Panel.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.PropertyGroup.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.AddonPreferences.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.BlendData.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Depsgraph.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.Driver.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.CyclesRenderSettings.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.SceneEEVEE.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.ImageFormatSettings.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.types.FFmpegSettings.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.props.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.data.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.context.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.utils.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.path.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.app.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.app.handlers.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy.app.timers.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bmesh.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bmesh.ops.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bmesh.types.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bmesh.utils.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/mathutils.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/mathutils.geometry.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/mathutils.noise.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/mathutils.bvhtree.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/mathutils.kdtree.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy_extras.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy_extras.object_utils.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy_extras.io_utils.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/bpy_extras.mesh_utils.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/gpu.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/info_quickstart.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/info_overview.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/info_gotcha.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/info_tips_and_tricks.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/api/4.5/info_best_practice.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "facts-only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/manual/en/4.5/modeling/modifiers/introduction.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "cc-by-sa-4.0",
+   "note": "Python snippets in the manual are not under CC BY-SA: facts only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/manual/en/4.5/modeling/geometry_nodes/introduction.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "cc-by-sa-4.0",
+   "note": "Python snippets in the manual are not under CC BY-SA: facts only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/manual/en/4.5/render/cycles/introduction.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "cc-by-sa-4.0",
+   "note": "Python snippets in the manual are not under CC BY-SA: facts only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/manual/en/4.5/render/eevee/introduction.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "cc-by-sa-4.0",
+   "note": "Python snippets in the manual are not under CC BY-SA: facts only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/manual/en/4.5/files/import_export/scene_gltf2.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "cc-by-sa-4.0",
+   "note": "Python snippets in the manual are not under CC BY-SA: facts only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/manual/en/4.5/addons/import_export/scene_fbx.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "cc-by-sa-4.0",
+   "note": "Python snippets in the manual are not under CC BY-SA: facts only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/manual/en/4.5/animation/keyframes/introduction.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "cc-by-sa-4.0",
+   "note": "Python snippets in the manual are not under CC BY-SA: facts only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/manual/en/4.5/animation/armatures/introduction.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "cc-by-sa-4.0",
+   "note": "Python snippets in the manual are not under CC BY-SA: facts only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/manual/en/4.5/advanced/command_line/arguments.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "cc-by-sa-4.0",
+   "note": "Python snippets in the manual are not under CC BY-SA: facts only",
+   "set": "A"
+  },
+  {
+   "url": "https://docs.blender.org/manual/en/4.5/advanced/scripting/introduction.html",
+   "app": "blender",
+   "version": "4.5",
+   "licence": "cc-by-sa-4.0",
+   "note": "Python snippets in the manual are not under CC BY-SA: facts only",
+   "set": "A"
+  }
+ ]
+}
