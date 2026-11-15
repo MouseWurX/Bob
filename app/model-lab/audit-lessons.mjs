@@ -50,8 +50,33 @@ export function cutOff(c) {
   return word.length <= 3 && !SHORT_OK.test(word);
 }
 
-export function auditLesson(l, { tools = null, privateWords = [] } = {}) {
+// 15 Nov (first filter before the Opus read; Opus still reads every lesson, and sees these flags): each call checked against
+// the tools the lesson was really offered (toolsets.json, by each turn's set key): a tool not offered, an input the tool
+// doesn't take, a required input left out. Loops: the same call (tool + inputs) three times, or twice in a row.
+// Folder leaks: any home folder but C:\Users\you, a lab temp folder, a Linux /tmp or /home path.
+const LEAK = [[/[A-Za-z]:(?:\\{1,2}|\/)Users(?:\\{1,2}|\/)(?!you(?:\\|\/|\b))(?!Public\b)[^\\/\s"']+/i, 'a home folder other than C:\\Users\\you'], [/bob-lab-[A-Za-z0-9]{4,}/, 'a lab temp folder'], [/AppData(?:\\{1,2}|\/)Local(?:\\{1,2}|\/)Temp\b/i, 'a Temp folder path'], [/(?:^|[\s"'(])\/(?:tmp|home)\/[\w.-]+/, 'a Linux /tmp or /home path'], [/Unreal Projects/i, "a folder from the lab PC"]];
+export function callChecks(l, sets) {
+  const p = [], seen = new Map(); let prev = '';
+  for (const m of l.messages || []) for (const c of m.tool_calls || []) {
+    const name = c.function?.name || c.name; let args = {}; try { args = JSON.parse(c.function?.arguments || '{}'); } catch {}
+    const offered = sets?.[m.set]?.tools; const def = offered ? offered.map((t) => t.function || t).find((t) => t.name === name) : null;
+    if (offered && !def) p.push(`calls "${name}", which this lesson's tool list doesn't offer`);
+    if (def) {
+      const props = def.parameters?.properties || {}, req = def.parameters?.required || [];
+      for (const k of Object.keys(args)) if (!(k in props)) p.push(`"${name}" is given an input it doesn't take: ${k}`);
+      for (const k of req) if (args[k] === undefined || args[k] === '') p.push(`"${name}" is missing its required input: ${k}`);
+    }
+    const key = `${name} ${JSON.stringify(args)}`; seen.set(key, (seen.get(key) || 0) + 1);
+    if (key === prev && m.train !== false) p.push(`the same "${name}" call twice in a row`); prev = key;
+  }
+  for (const [k, v] of seen) if (v >= 3) p.push(`loops: the same "${k.split(' ')[0]}" call ${v} times`);
+  return [...new Set(p)];
+}
+export function leaks(text) { return LEAK.filter(([re]) => re.test(text)).map(([, what]) => `folder leak: ${what}`); }
+
+export function auditLesson(l, { tools = null, privateWords = [], sets = null } = {}) {
   const p = [];
+  p.push(...callChecks(l, sets));
   const msgs = l.messages || [];
   const calls = msgs.flatMap((m) => (m.tool_calls || []).map((c) => c.function?.name || c.name));
   const why = notForTraining(l); if (why) p.push(`not for training: ${why}`);
@@ -71,6 +96,7 @@ export function auditLesson(l, { tools = null, privateWords = [] } = {}) {
   if (EMAIL.test(all)) { const e = all.match(EMAIL)[0]; if (!/@(example\.(com|org|net)|test\.com)$/i.test(e)) p.push('an email address'); }
   for (const ip of all.match(new RegExp(IP.source, 'g')) || []) if (!SAFE_IP.test(ip) && ip.split('.').every((x) => Number(x) <= 255) && !/^(192\.0\.2|198\.51\.100|203\.0\.113)\./.test(ip)) { p.push('an IP address'); break; }
   if (KEY.test(all)) p.push('something that looks like a key');
+  p.push(...leaks(all));
   const low = all.toLowerCase();
   for (const w of privateWords) if (w && low.includes(w)) { p.push('a private word from the scrub list'); break; }
   return p;
@@ -97,7 +123,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   try { const k = await import(pathToFileURL(path.join(here, '..', 'src', 'tool-kinds.js')).href); tools = new Set(Object.keys(k.TOOL_KINDS)); } catch {}
   const privateWords = o.private ? fs.readFileSync(String(o.private), 'utf8').replace(/\r\n/g, '\n').split('\n').map((w) => w.trim().toLowerCase()).filter((w) => w.length > 2) : [];
   const src = String(o.lessons), out = String(o.out); fs.mkdirSync(out, { recursive: true });
-  const { passed, flagged, counts } = auditSet(readJsonl(path.join(src, 'lessons.jsonl')), { tools, privateWords });
+  const setsF = path.join(src, 'toolsets.json'), sets = fs.existsSync(setsF) ? JSON.parse(fs.readFileSync(setsF, 'utf8')) : null; // the tools each lesson was offered
+  if (!sets) console.log('no toolsets.json beside the lessons: tool inputs are not checked against what was offered');
+  const { passed, flagged, counts } = auditSet(readJsonl(path.join(src, 'lessons.jsonl')), { tools, privateWords, sets });
   const w = (f, rows) => fs.writeFileSync(path.join(out, f), rows.map((r) => JSON.stringify(r)).join('\n') + (rows.length ? '\n' : ''));
   w('lessons.jsonl', passed); w('flagged.jsonl', flagged);
   if (fs.existsSync(path.join(src, 'toolsets.json'))) fs.copyFileSync(path.join(src, 'toolsets.json'), path.join(out, 'toolsets.json'));

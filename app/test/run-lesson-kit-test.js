@@ -69,6 +69,27 @@ check('audit: personal things (email, private word)', probs({ job: 'chat', messa
 check('audit: example.com addresses are fine', !probs({ job: 'chat', messages: [ask(`write to sam${'@'}example.com`), { role: 'assistant', content: 'Sure.' }] }).some((p) => /email/.test(p)));
 check('audit: dial and surgery answers never pass', probs({ job: 'chat', condition: 'dial L12 x1.2', messages: [ask('hi'), { role: 'assistant', content: 'Hello.' }] }).some((p) => /not for training/.test(p)));
 check('audit: a clean lesson passes', probs({ job: 'files', messages: [ask('list my documents'), { role: 'assistant', content: 'Looking now.', tool_calls: [call('list_folder', { path: '~/Documents' })] }, { role: 'tool', name: 'list_folder', content: 'notes.txt, plan.docx' }, { role: 'assistant', content: 'You have notes.txt and plan.docx.' }] }).length === 0);
+// 15 Nov: the first filter before the Opus read: calls checked against the tools each lesson was offered, loops, folder leaks
+const offered = { k1: { tools: [{ type: 'function', function: { name: 'list_folder', parameters: { properties: { path: {} }, required: ['path'] } } }] } };
+const sc = (msgs) => A.auditLesson({ job: 'files', messages: msgs }, { sets: offered });
+const step = (n, a, id) => [{ role: 'assistant', set: 'k1', content: '', tool_calls: [call(n, a, id)] }, { role: 'tool', name: n, content: 'notes.txt, plan.docx (2 files)' }];
+const bad = sc([ask('list my documents'), ...step('list_folder', { path: 'C:\\Users\\sam\\Documents', deep: true }, 'a'), ...step('list_folder', {}, 'b'), ...step('web_search', { query: 'x' }, 'c'), { role: 'assistant', content: 'You have notes.txt and plan.docx.' }]);
+check('first filter: an input the tool doesn\'t take', bad.some((x) => /doesn't take: deep/.test(x)), JSON.stringify(bad));
+check('first filter: a required input left out', bad.some((x) => /missing its required input: path/.test(x)));
+check('first filter: a tool the lesson was never offered', bad.some((x) => /"web_search", which this lesson's tool list doesn't offer/.test(x)));
+check('first filter: a home folder other than C:\\Users\\you is a leak', bad.some((x) => /folder leak: a home folder/.test(x)));
+const loop = sc([ask('list my documents'), ...step('list_folder', { path: '~/Documents' }, 'a'), ...step('list_folder', { path: '~/Documents' }, 'b'), ...step('list_folder', { path: '~/Documents' }, 'c'), { role: 'assistant', content: 'You have notes.txt and plan.docx.' }]);
+check('first filter: loops are caught', loop.some((x) => /twice in a row/.test(x)) && loop.some((x) => /call 3 times/.test(x)));
+check('first filter: lab temp and lab PC folders are leaks', A.leaks('saved in /tmp/bob-lab-Ab12Cd/x and C:\\Unreal Projects\\foo').length >= 2);
+check('first filter: a clean lesson passes it', sc([ask('list my documents'), ...step('list_folder', { path: 'C:\\Users\\you\\Documents' }, 'a'), { role: 'assistant', content: 'You have notes.txt and plan.docx.' }]).length === 0);
+// 15 Nov: the held-out check after training: only kept held-out lessons, stamped so tool-score scores them, both brains
+const HC = await imp('heldout-check.mjs');
+const hs = HC.heldoutSet([{ idea: 'h1', messages: [ask('a'), { role: 'assistant', content: 'b' }] }, { idea: 'h2', messages: [ask('a'), { role: 'assistant', content: 'b' }] }, { idea: 'h3', messages: [ask('a')] }], [{ idea: 'h1', verdict: 'keep' }, { idea: 'h2', verdict: 'fix' }, { idea: 'h3', verdict: 'keep' }]);
+check('held-out check: only kept lessons with an answer, stamped holdout', hs.lessons.length === 1 && hs.lessons[0].idea === 'h1' && hs.lessons[0].split === 'holdout' && hs.dropped.not_kept === 1 && hs.dropped.no_assistant === 1);
+W('hc/lessons.jsonl', [{ idea: 'h1', messages: [ask('a'), { role: 'assistant', content: 'b' }] }]); W('hc/toolsets.json', '{}');
+const hr = node(['heldout-check.mjs', '--from', path.join(tmp, 'hc'), '--out', path.join(tmp, 'hc-out'), '--stock', 'stock.gguf', '--trained', 'new.gguf']);
+check('held-out check CLI: writes the set and the side-by-side tool-score command', hr.status === 0 && rows(path.join(tmp, 'hc-out', 'lessons.jsonl')).length === 1 && /--models "stock=stock\.gguf,trained=new\.gguf"/.test(fs.readFileSync(path.join(tmp, 'hc-out', 'HELDOUT.md'), 'utf8')), hr.stderr);
+check('the Opus reading guide has the fact check and the no-personality rule', /unbacked: <the claim>/.test(read('model-lab/reviews/REWRITE-REVIEW.md')) && /never\s+trained in/.test(read('model-lab/reviews/REWRITE-REVIEW.md')));
 check('audit: the phantom JSON reviewer rule is spotted', A.phantomJson('did not reply in the required JSON format') && !A.phantomJson('the user asked for JSON and got prose'));
 
 // ---- the doctor ----
@@ -238,6 +259,9 @@ W('wl/gate-ok/ideas.jsonl', [...Array.from({ length: 4 }, (_, k) => ({ id: `ok${
 [gc, glog] = await runW(['--dir', 'gate-ok', '--from-ideas', '--review', '--count', '6', '--parallel', '2', '--gate', '6:0.6', '--slot-ctx', '32768']);
 const nr = rows(path.join(tmp, 'wl', 'gate-ok', 'needs-review.jsonl'));
 check('sample gate: enough saved, the run carries on and counts its skips by cause', gc === 0 && /sample: 4 of 6 saved/.test(glog) && /skips by cause: 1 failed review twice, 1 review unreadable|skips by cause: 1 review unreadable, 1 failed review twice/.test(glog), glog.slice(-400));
+[gc, glog] = await runW(['--dir', 'gate-ok', '--from-ideas', '--review', '--count', '6', '--parallel', '1', '--gate', '1:0.1', '--slot-ctx', '32768']);
+check('a resumed run tries ideas never tried before ahead of ones that failed', /queue: 0 ideas never tried first, then 2 tried before/.test(glog), glog.slice(-300));
+check('the teacher\'s note says never to mention it, and the reviewer has room to finish', /never mention, quote or refer to it in your thinking/.test(read('model-lab/write-lessons.mjs')) && /max: 1500, temperature: 0/.test(read('model-lab/write-lessons.mjs')));
 check('an unreadable review keeps the reviewer\'s raw reply for a second look', nr.length === 1 && /mostly fine/.test(nr[0].raw || ''));
 check('writer: a lesson that runs out of steps leaves its step list behind', /steps-out\.jsonl/.test(read('model-lab/write-lessons.mjs')));
 // forge.mjs runs the writer's pre-flight on this PC for every lesson command, and checks the caps, before it rents anything

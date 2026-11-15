@@ -215,7 +215,7 @@ if (!preflight) console.log(`tool wording: ${teacherSet ? teacherSet.label : "Bo
 const toolsFor = (loaded) => { loaded.toolSet = teacherSet; return kit.turn(loaded); };
 // the teacher-only notes for one lesson (never saved): persona, act nudge, tool note, the doctor's note, a reviewer's reason
 const teacherNoteFor = (idea, fix = '') => [stylePos === 'system' ? persona : '', ACT_JOBS.has(idea.job) ? ACT_NUDGE : '', toolNoteOn && TOOL_JOBS.has(idea.job) ? TOOL_NOTE : '',
-  idea.note ? String(idea.note) : '',
+  idea.note ? `A note for you only (the saved lesson never shows it, so never mention, quote or refer to it in your thinking or answer; act as if you decided this yourself): ${String(idea.note)}` : '', // 15 Nov: lkt-fix2 thinking quoted the note as "the user's constraint"
   fix ? `A reviewer failed an earlier answer to this same message because: ${fix}. Do it right this time; never mention the review.` : ''].filter(Boolean).join('\n\n');
 
 // ---- pre-flight (15 Nov, the owner after lkt-fix2: 98k of context split over 6 slots left ~16k each, and most lessons
@@ -432,7 +432,11 @@ const imgPart = (file) => { const b = fs.readFileSync(path.join(picDir, file)); 
 const h = (s) => crypto.createHash('md5').update(s).digest('hex');
 const order = [...ideas].sort((x, y) => (h(x.id) < h(y.id) ? -1 : 1));
 let n = done.size, i = 0, skipped = 0, rescued = 0, fixed = 0;
-const queue = order.filter((x) => !done.has(x.id));
+// 15 Nov (lkt-fix3's sample was 10 ideas that had already failed twice the night before): ideas never tried come first,
+// then the ones with a reject, unreadable review or out-of-steps on record
+const triedBefore = new Set(['rejected.jsonl', 'needs-review.jsonl', 'steps-out.jsonl'].flatMap((f) => readJsonl(path.join(dir, f)).map((r) => r.idea)));
+const queue = [...order.filter((x) => !done.has(x.id) && !triedBefore.has(x.id)), ...order.filter((x) => !done.has(x.id) && triedBefore.has(x.id))];
+if (triedBefore.size) console.log(`queue: ${queue.filter((x) => !triedBefore.has(x.id)).length} ideas never tried first, then ${queue.filter((x) => triedBefore.has(x.id)).length} tried before`);
 async function one(idea, think, room = 1, fix = '') {
   if (!realTools) return oneInner(idea, think, room, fix, null, null);
   const sb = await loadBob(L.bob, { allowOld: Boolean(o['allow-old-bob']), home: true });
@@ -518,7 +522,7 @@ const BOB_RULES = 'How Bob works (this is CORRECT, never a reason to fail): his 
 async function grade(idea, saved) {
   const text = saved.map((m) => `${m.train === false ? '[EARLIER FAILED TRY] ' : ''}${m.role.toUpperCase()}${m.name ? ` (${m.name})` : ''}: ${m.tool_calls ? `[calls ${m.tool_calls.map((c) => `${c.function.name} ${String(c.function.arguments).slice(0, 2000)}`).join('; ')}] ` : ''}${String(m.content || '').slice(0, 6000)}`).join('\n');
   try {
-    const { msg, finish } = await chat(srv.url, { messages: [{ role: 'user', content: `You review training lessons for a desktop AI assistant called Bob. Be strict about real problems only. FAIL the lesson if Bob called a tool when a plain answer was enough (plain chat with a tool call always fails), skipped a tool the request clearly needed, called a wrong or an extra tool, put wrong or made-up details in tool arguments, misread what a tool result says, looped, or ended without a final answer that actually does what was asked. Small wording or style issues are NOT a reason to fail. ${BOB_RULES} ${RULES[idea.job] || ''}\n\n${text}\n\nReply with only JSON: {"ok": true or false, "why": "one short reason"}` }], max: 500, temperature: 0 });
+    const { msg, finish } = await chat(srv.url, { messages: [{ role: 'user', content: `You review training lessons for a desktop AI assistant called Bob. Be strict about real problems only. FAIL the lesson if Bob called a tool when a plain answer was enough (plain chat with a tool call always fails), skipped a tool the request clearly needed, called a wrong or an extra tool, put wrong or made-up details in tool arguments, misread what a tool result says, looped, or ended without a final answer that actually does what was asked. Small wording or style issues are NOT a reason to fail. ${BOB_RULES} ${RULES[idea.job] || ''}\n\n${text}\n\nDecide first. Reply with only JSON, the reason under 25 words: {"ok": true or false, "why": "one short reason"}` }], max: 1500, temperature: 0 }); // 15 Nov: lkt-fix3's unreadable reviews rambled past 500
     const raw = (msg.content || '').match(/\{[\s\S]*\}/)?.[0];
     let j = null; try { j = raw ? JSON.parse(raw) : null; } catch {}
     if (!j || typeof j.ok !== 'boolean') return { ok: false, unparsed: true, why: 'review unparsed', raw: String(msg.content || msg.reasoning_content || '').slice(0, 2000), finish }; // 15 Nov: the raw reply is kept
