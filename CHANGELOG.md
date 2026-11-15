@@ -4,6 +4,17 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.233
+
+My engine moves up to llama.cpp 1.0.
+
+### New
+
+- **Brain Engine 8b12359, on llama.cpp 1.0.** All my own changes to the engine came along with it, so everything I did before still works the same way, on the newest llama.cpp underneath. The plain llama.cpp I carry and the Lab's converters move to the same version.
+- **Brain Engine 7 and 8 still share graphics cards.** A Bob that hasn't updated yet can still lend his card to one that has, and the other way round. Bobs on Brain Engine 6 or older can't share with them; update those first.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.232
 
 SCUT's new speed reaches every Bob.
@@ -173,30 +184,6 @@ I can keep order on your Discord server now, with plain rules and no brain, and 
 - **Chat on Discord** (on to start with). Switch it off and I never load a brain for your server, so the graphics card stays free. Keep order still runs.
 - **Ask a brain about unclear cases** (off). For a message the rules can't call, one brain looks at it with no tools, and it can only delete and warn.
 - **Run Keep order from your chat.** With Keep order on, you can ask me in our own chats for its status, to allow or deny a waiting kick or ban, or to lock the server down and unlock it. Each one asks you first.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.223
-
-I can tidy your email now, if you let me, nothing in an email can steer me, and a forgotten passcode isn't the end of your chats. I keep a record of my tool calls so I can quote what really happened, and Clear chat answers properly again.
-
-### New
-
-- **Let Bob tidy my email** (Settings, How Bob works, More tools; off to start with, and it needs **Let Bob read my email**). I show a sort plan card: batches you can change, the emails to answer first, and a **Looks dangerous** batch. Nothing moves until you press **Do it**, and only the emails on the card change. Trash is a move, never a wipe, drafts are saved and never sent, and every change can be undone. Works on desktop and the phone, with Gmail folders and Outlook in French too.
-- **Forgot your passcode? There's a way back in.** Press **Forgot it?** on the lock screen. If another of your Bobs keeps a spare key, press **Let it reset** in that Bob's own Settings, and you get the lock and your chats back. Or get a code by email or Discord: that opens the lock screen only, and locked chats stay set aside, still locked. Email is now set up in one place, Settings, Online services, **📧 Email account**, for reading mail and for reset codes.
-- **Keep a record of my tool calls** (Settings, How Bob works; on to start with). I write down each tool call word for word: what you asked, what I sent, and what came back, keeping the newest 500. Email never goes in it. When you ask what I did, I look it up instead of guessing. Turning it off deletes the record.
-
-### Fixed
-
-- **Every Bob has his cube head on Bob-Net.** A Bob with no brain loaded, like a fresh or test copy, used to show an empty porthole in the Bob-Net icons. Now his cube shows grey and resting, and fills with colour as a brain loads. **Show avatars** on the Bob-Net list in Now running shows each Bob's cube in the same colour as his icon, lit while he answers, for every Bob, phones and older Bobs too.
-- **Email can't give me orders.** Every part of an email is cleaned and fenced off in code: hidden text, look-alike letters, fake markers and sneaky links are stripped. Danger signs like look-alike senders, failed sender checks, risky attachments and words aimed at an AI are flagged. Once a chat holds email, I can only sort and draft in it, and every change shows a card. Nothing can send, fetch, run or remember from there. 32 test attacks prove it.
-- **The notice board takes "done".** Ticking an item off is one step, and adding or ticking needs no read first. A rewrite that leaves items out puts them back under Side quests instead of losing them. A rewrite also keeps the board's shape: its title, its sections, the tick boxes, and the ticks on items already done.
-- **"Read notes.txt" gets read in the same turn.** If you name a file, I check it was read before I answer.
-- **The passcode warning tells the truth.** It now says a forgotten passcode loses your locked chats unless another of your Bobs keeps a spare key.
-- **Clear chat answers properly.** Clearing with no chat named clears the main chat from view, and the chat can be named as id, session or sessionId. Deleting a chat for good still needs the chat named.
-- **A new Discord server doesn't make me look dead.** When someone calls me in a channel that isn't on my list, I still don't answer there, but I note it once in my log and Settings shows an **Add** button for that channel, by name. No more hunting for channel IDs.
-- **"@Bob hi" works on Discord.** Starting a message with an @mention of my bot counts as the wake phrase, in the channels on my list.
-- **The Lab won't use an old copy of me.** Lesson writing and tool scores refuse a Bob more than 3 releases behind, and everything they write is stamped with which Bob made it.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 

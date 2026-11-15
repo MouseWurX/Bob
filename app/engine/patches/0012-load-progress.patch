@@ -1,8 +1,8 @@
 diff --git a/tools/server/server.cpp b/tools/server/server.cpp
-index 286ff08..8a0e009 100644
+index 6bed459..051a09b 100644
 --- a/tools/server/server.cpp
 +++ b/tools/server/server.cpp
-@@ -678,6 +678,17 @@ static int server_run_instance(common_params & params, server_role & role, commo
+@@ -701,6 +701,17 @@ static int server_run_instance(common_params & params, server_role & role, commo
          ctx_server.set_state_callback([&](server_state state, json payload) {
              role.notify_to_router(server_state_to_str(state), payload);
          });
