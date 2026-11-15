@@ -184,8 +184,8 @@ let log = ''; child.stdout.on('data', (d) => (log += d)); child.stderr.on('data'
 const code = await new Promise((ok) => { const t = setTimeout(() => { child.kill(); ok('timeout'); }, 120000); child.on('exit', (c) => { clearTimeout(t); ok(c); }); });
 // --real-tools: the task's files are planted in a throwaway home and Bob's real list_folder runs there
 const before2 = seen.length;
-W('wl/real-base/ideas.jsonl', [{ id: 'r0-0-r0', job: 'files', text: 'what is in my Documents folder?' }]);
-const child2 = spawn(process.execPath, ['write-lessons.mjs', '--url', url, '--model', 'fake.gguf', '--bob', app, '--out', path.join(tmp, 'wl'), '--dir', 'real-base', '--from-ideas', '--real-tools', '--count', '1', '--think', 'none'], { cwd: lab, env: { ...process.env, LAB_REMOTE: '', LAB_URL: '' } });
+W('wl/real-base/ideas.jsonl', [{ id: 'r0-0-r0', job: 'files', text: 'what is in my Documents folder?' }, { id: 'r1-0-r0', job: 'files', text: 'what is in my Documents folder?', setup: [{ path: 'BOARD', content: '- [ ] backup database' }, { path: 'docs\\hr\\flow.txt', content: 'step one' }] }]);
+const child2 = spawn(process.execPath, ['write-lessons.mjs', '--url', url, '--model', 'fake.gguf', '--bob', app, '--out', path.join(tmp, 'wl'), '--dir', 'real-base', '--from-ideas', '--real-tools', '--count', '2', '--think', 'none'], { cwd: lab, env: { ...process.env, LAB_REMOTE: '', LAB_URL: '' } });
 let log2 = ''; child2.stdout.on('data', (d) => (log2 += d)); child2.stderr.on('data', (d) => (log2 += d));
 const code2 = await new Promise((ok) => { const t = setTimeout(() => { child2.kill(); ok('timeout'); }, 120000); child2.on('exit', (c) => { clearTimeout(t); ok(c); }); });
 // 15 Nov: an empty --from-ideas folder must stop, never quietly fill itself with Bob's own phrasings
@@ -224,9 +224,11 @@ check('writer: --family stamps the lesson for one brain family', made[0]?.family
 check('writer: no lab temp folder path reaches a lesson', !/bob-lab-|AppData[\\/]+Local[\\/]+Temp/i.test(JSON.stringify(made)));
 check('writer: every lesson says which tool-shape version it was written for', Number.isInteger(made[0]?.tool_shapes));
 {
-  const real = rows(path.join(tmp, 'wl', 'real-base', 'lessons.jsonl'))[0];
+  const real = rows(path.join(tmp, 'wl', 'real-base', 'lessons.jsonl')).find((l) => l.idea === 'r0-0-r0');
   const firstTool = (real?.messages || []).find((m) => m.role === 'tool');
   check('writer --real-tools: the task file is planted and the real tool lists it', code2 === 0 && /notes\.txt/.test(firstTool?.content || '') && real?.sandbox?.real >= 1, log2.slice(-400));
+  const r1 = rows(path.join(tmp, 'wl', 'real-base', 'lessons.jsonl')).find((l) => l.idea === 'r1-0-r0');
+  check('writer --real-tools: to-dos a request talks about go on the board first, and a path with no drive lands in the home folder', JSON.stringify(r1?.sandbox?.setup) === JSON.stringify([{ path: 'BOARD', content: 'backup database' }, { path: 'C:\\Users\\you\\docs\\hr\\flow.txt', content: 'step one' }]), JSON.stringify(r1?.sandbox || null));
   check('writer --real-tools: a seed outside the throwaway home is never written', (real?.sandbox?.setup || []).length === 1 && !JSON.stringify(real).includes('evil.txt'));
   check('writer --real-tools: no real tool asked the teacher to make up its result', !seen.slice(before2, before4).some((j) => /"list_folder" tool inside a desktop AI/.test(String(j.messages.at(-1)?.content || ''))));
   check('writer --real-tools: no temp folder path reaches the lesson', !/bob-lab-|[\\/]tmp[\\/]/i.test(JSON.stringify(real?.messages || [])));
@@ -274,6 +276,22 @@ check('pre-flight: a slot too small for the longest lesson stops before anything
 check('pre-flight: says which ideas file it reads and how many rows, then passes', gc === 0 && /ideas file .*gate[\\/]ideas\.jsonl: 8 rows/.test(glog) && /pre-flight OK/.test(glog), glog.slice(-300));
 [gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--preflight', '--slot-ctx', '32768', '--office', path.join(tmp, 'no-office', 'soffice.exe')]);
 check('pre-flight: an --office LibreOffice that isn\'t there stops it', gc === 1 && /--office .*no-office.* doesn't exist/.test(glog), glog.slice(-300));
+[gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--preflight', '--slot-ctx', '32768', '--real-tools']);
+check('pre-flight --real-tools: the board, memory, files and diagram tools each run once for real before anything is rented', gc === 0 && /lab tools that ran for real: notice_board add, notice_board read, remember, write_file, read_file, list_folder, make_diagram/.test(glog), glog.slice(-500));
+{ // 15 Nov (the owner: "MAKE IT WORK GOOD"): the faults Opus found most, caught in code before the review
+  const C = await import(pathToFileURL(path.join(lab, 'lesson-checks.mjs')).href);
+  const u = { role: 'user', content: 'add milk to my board' };
+  const L = (...m) => [u, ...m];
+  const call = (name, args) => ({ role: 'assistant', content: '', tool_calls: [{ id: 'c', type: 'function', function: { name, arguments: JSON.stringify(args) } }] });
+  check('checks: thinking that says "wait" or "actually" again and again fails, a short plan passes', /second-guesses itself/.test(C.lessonFault(L({ role: 'assistant', reasoning: 'Wait, actually no. Hmm. Wait, actually I should.', content: 'Here you go.' }))) && C.lessonFault(L({ role: 'assistant', reasoning: '1. Read the board. 2. Add milk.', content: 'Here you go.' })) === '');
+  check('checks: quoting the private note fails', /quoted the private note/.test(C.lessonFault(L({ role: 'assistant', reasoning: 'They said use the board add action with the milk item only please', content: 'ok' }), { note: 'use the board add action with the milk item only please, not write' })));
+  check('checks: "I\'ve added it" after every call failed fails; after a real result it passes', /every tool call failed/.test(C.lessonFault(L(call('notice_board', { action: 'add', content: 'milk' }), { role: 'tool', name: 'notice_board', content: 'Error: no board' }, { role: 'assistant', content: "I've added milk to your board." }))) && C.lessonFault(L(call('notice_board', { action: 'add', content: 'milk' }), { role: 'tool', name: 'notice_board', content: 'Added to the notice board: milk.' }, { role: 'assistant', content: "I've added milk to your board." })) === '');
+  check('checks: a claim with no tool call at all fails', /no tool was called/.test(C.lessonFault(L({ role: 'assistant', content: "I've saved that for you." }))));
+  check('checks: the same call three times in a row fails', /three times/.test(C.lessonFault(L(call('read_file', { path: 'a' }), { role: 'tool', name: 'read_file', content: 'x' }, call('read_file', { path: 'a' }), { role: 'tool', name: 'read_file', content: 'x' }, call('read_file', { path: 'a' }), { role: 'tool', name: 'read_file', content: 'x' }, { role: 'assistant', content: 'It says x.' }))));
+  check('checks: a value the tool doesn\'t list fails', /isn't one it takes/.test(C.lessonFault(L(call('use_tools', { group: 'scout' }), { role: 'tool', name: 'use_tools', content: 'ok' }, { role: 'assistant', content: 'Done looking.' }), {}, [{ type: 'function', function: { name: 'use_tools', parameters: { properties: { group: { type: 'string', enum: ['files', 'office'] } } } } }])));
+  check('checks: other people\'s home folders in a request become C:\\Users\\you', C.homeScrub('open C:\\Users\\Admin\\Documents\\a.docx and /home/user/notes/b.txt, not C:\\Users\\you\\x or C:\\Users\\Public') === 'open C:\\Users\\you\\Documents\\a.docx and C:\\Users\\you\\notes\\b.txt, not C:\\Users\\you\\x or C:\\Users\\Public');
+  check('checks: a stand-in that talks about itself or the board is asked for again; a plain result passes', C.standinBad('I am an AI and cannot save to the notice board.', 'web_search') && C.standinBad('Here is the result: 3 pages', 'web_search') && !C.standinBad('1. Weather in Calgary: 4 C, light snow.', 'web_search'));
+}
 [gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--preflight', '--slot-ctx', '32768', '--want-shapes', '99']);
 check('pre-flight: the wrong tool shape stops it', gc === 1 && /not 99/.test(glog));
 [gc, glog] = await runW(['--dir', 'no-such-ideas', '--from-ideas', '--preflight', '--slot-ctx', '32768']);

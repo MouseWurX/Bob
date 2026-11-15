@@ -737,6 +737,9 @@ async function installOpenscad(cfg, { pub, signal, tick }) {
   return { version: pin.version, asset: path.basename(pin.url) };
 }
 
+// 15 Nov (lab PC): Node quoted the whole "TARGETDIR=C:\Unreal Projects\..." and msiexec refused it (1639, bad command line)
+// for any Bob folder with a space. msiexec wants the quotes round the value only, so the line is passed as written.
+export const msiexecArgs = (msi, folder) => ['/a', `"${msi}"`, '/qn', `TARGETDIR="${folder}"`];
 async function installLibreOffice(cfg, { pub, signal, tick }) {
   const pin = PIN.libreoffice || {};
   if (!pin.version || !tdfAllowed(pin.url) || !/^[0-9a-f]{64}$/.test(pin.sha256 || '')) throw new Error('LibreOffice isn\'t pinned to a checked version in this build of Bob yet, so I won\'t download it. You can install it yourself from libreoffice.org (or use OpenOffice): I find either by myself.');
@@ -749,7 +752,7 @@ async function installLibreOffice(cfg, { pub, signal, tick }) {
   fs.rmSync(folder, { recursive: true, force: true });
   fs.mkdirSync(folder, { recursive: true });
   const sys = process.env.SystemRoot || 'C:\\Windows';
-  await new Promise((resolve, reject) => execFile(path.join(sys, 'System32', 'msiexec.exe'), ['/a', msi, '/qn', `TARGETDIR=${folder}`], { windowsHide: true, timeout: 20 * 60_000 }, (err) => (err ? reject(new Error(`Windows couldn't unpack LibreOffice (${err.code ?? err.message}). You can install it from libreoffice.org instead: I find it by myself.`)) : resolve())));
+  await new Promise((resolve, reject) => execFile(path.join(sys, 'System32', 'msiexec.exe'), msiexecArgs(msi, folder), { windowsHide: true, timeout: 20 * 60_000, windowsVerbatimArguments: true }, (err) => (err ? reject(new Error(`Windows couldn't unpack LibreOffice (${err.code ?? err.message}). You can install it from libreoffice.org instead: I find it by myself.`)) : resolve())));
   fs.rmSync(tmp, { recursive: true, force: true });
   const o = findOffice(cfg);
   if (!o || o.where !== 'own') throw new Error('LibreOffice unpacked, but soffice.exe isn\'t where I expected. You can install it from libreoffice.org instead: I find it by myself.');
