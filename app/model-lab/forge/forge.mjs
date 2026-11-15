@@ -6,6 +6,7 @@
 // plan.benchmark (build 18): after the rungs the pod serves each listed brain (rebuilt from keep list + adapter if asked) and this PC runs the plan's test commands against it
 // node forge.mjs --restart <podId> --plan ...   stop the run on a pod, upload the current code + plan, start it again (finished steps are kept)
 // node forge.mjs --status | --kill               list pods / delete every forge pod
+// node forge.mjs --plan ... --preflight         check the plan's lesson commands on this PC and stop (nothing is rented)
 // node forge.mjs --places [cards]               where the wanted cards are in stock with storage (read-only), and your network volumes
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,7 +14,7 @@ import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { STARTUP_LOG, readStartups, recordStartup, freezingCards, orderCards, startupSummary } from './card-health.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -317,6 +318,42 @@ async function llamaUrl() {
 }
 
 const started = Date.now();
+// 15 Nov (the owner, after lkt-fix2 split 98k over 6 slots and lost most of the rental): before any card is rented, every
+// write-lessons command in the plan is run on this PC with --preflight (the ideas file it will really read, its rows, the tool
+// shape, the room per slot = ctx / slots against the longest first request) and the plan itself is checked: caps set, each
+// command has --hours, --parallel within the slots, no --gate off. One failure and nothing is rented.
+function lessonPreflight() {
+  const bad = [], warn = [];
+  const q = (v) => `"${String(v).replace(/"/g, '')}"`;
+  const cmds = [];
+  for (const m of plan.benchmark?.models || []) for (const c of (m.commands?.length ? m.commands : plan.benchmark?.commands || [])) if (/write-lessons\.mjs/.test(c)) cmds.push([m, c]);
+  for (const w of plan.write_lessons ? (Array.isArray(plan.write_lessons) ? plan.write_lessons : [plan.write_lessons]) : []) if (w.from_ideas) bad.push(`plan.write_lessons (${w.dir}) has no pre-flight yet: use benchmark commands`);
+  if (!cmds.length) return bad;
+  if (!(Number(plan.hours_max) > 0) || !(Number(plan.dollars_max) > 0) || !(Number(plan.rent_minutes) > 0)) bad.push('hours_max, dollars_max and rent_minutes must all be set (blank caps fall back to 9 h / $40)');
+  let hoursSum = 0;
+  for (const [i, [m, c]] of cmds.entries()) {
+    const slots = Math.max(1, Number(m.slots) || 1), slotCtx = Math.floor((Number(m.ctx) || 32768) / slots);
+    const par = Number((c.match(/--parallel\s+(\d+)/) || [])[1] || 1), hrs = Number((c.match(/--hours\s+([\d.]+)/) || [])[1] || 0);
+    hoursSum += hrs;
+    if (!(hrs > 0)) bad.push(`${m.name} command ${i + 1} has no --hours`);
+    if (par > slots) bad.push(`${m.name} command ${i + 1}: --parallel ${par} but the card serves ${slots} slot(s)`);
+    if (/--gate\s+off/.test(c)) bad.push(`${m.name} command ${i + 1}: --gate off (every rental starts with a sample)`);
+    const cmd = `${c.replace(/{{url}}/g, 'http://preflight.invalid').replace(/{{name}}/g, m.name).replace(/"?{{out}}"?/g, q(path.join(outDir, 'bench', plan.run || 'run', m.name))).replace(/"?{{lessons}}"?/g, q(path.join(outDir, 'lessons'))).replace(/{{run}}/g, plan.run || 'run')} --preflight --slot-ctx ${slotCtx}`;
+    log(`pre-flight ${m.name} command ${i + 1} (${slots} slot(s) of ${slotCtx}):`);
+    const r = spawnSync(cmd, { cwd: path.join(here, '..'), shell: true, encoding: 'utf8', windowsHide: true, env: { ...process.env, LAB_REMOTE: '1', LAB_MODEL_NAME: m.name } });
+    const out = `${r.stdout || ''}${r.stderr || ''}`.replace(/\r\n/g, '\n').split('\n').filter((ln) => /pre-flight|PRE-FLIGHT|room per slot|ideas file|GGUF|Error|error/.test(ln));
+    for (const ln of out) log(`  ${ln.slice(0, 300)}`);
+    if (r.status !== 0) bad.push(`${m.name} command ${i + 1}: ${(out.find((ln) => /PRE-FLIGHT FAIL|rror/.test(ln)) || `exit ${r.status}`).replace(/^PRE-FLIGHT FAIL: /, '').slice(0, 200)}`);
+  }
+  if (Number(plan.hours_max) > 0 && hoursSum + 0.5 > Number(plan.hours_max)) warn.push(`the commands' --hours add up to ${hoursSum} h; with about 0.5 h of start-up that passes the ${plan.hours_max} h cap, so the last one is cut short (it resumes next time)`);
+  for (const w of warn) log(`pre-flight note: ${w}`);
+  return bad;
+}
+if (!podId || args.preflight) {
+  const bad = lessonPreflight();
+  if (bad.length) { for (const b of bad) log(`PRE-FLIGHT FAIL: ${b}`); log('Not renting: fix the plan first.'); process.exit(1); }
+  if (args.preflight) { log('pre-flight OK: nothing rented (--preflight)'); process.exit(0); }
+}
 const startupLog = path.join(outDir, 'forge', STARTUP_LOG); let rentedHere = false;
 if (args.local) { podId = 'local'; hdr['X-Forge-Token'] = process.env.FORGE_TOKEN || ''; fs.writeFileSync(tokenFile, JSON.stringify({ pod: podId, token: hdr['X-Forge-Token'], started: Date.now(), price: 0 })); }
 else if (!podId) { await rent(); rentedHere = true; }
@@ -536,7 +573,9 @@ async function benchOnPod(name) {
     // 11 Nov: {{out}} is quoted (the install folder has a space, and the command runs through the shell: an unquoted path was cut at the space,
     // so the tests wrote to the wrong place and tool-score could not find the lessons); {{lessons}} is the lab's lessons folder for tool-score
     const q = (v) => `"${String(v).replace(/"/g, '')}"`;
-    const cmd = c.replace(/{{url}}/g, url).replace(/{{name}}/g, name).replace(/"?{{out}}"?/g, q(dir)).replace(/"?{{lessons}}"?/g, q(path.join(outDir, 'lessons'))).replace(/{{run}}/g, plan.run || 'run');
+    const bm = (plan.benchmark.models || []).find((m) => m.name === name) || {};
+    const slotArg = /write-lessons\.mjs/.test(c) && !/--slot-ctx/.test(c) ? ` --slot-ctx ${Math.floor((Number(bm.ctx) || 32768) / Math.max(1, Number(bm.slots) || 1))}` : ''; // 15 Nov: the writer checks the room per slot (the server's own figure first)
+    const cmd = c.replace(/{{url}}/g, url).replace(/{{name}}/g, name).replace(/"?{{out}}"?/g, q(dir)).replace(/"?{{lessons}}"?/g, q(path.join(outDir, 'lessons'))).replace(/{{run}}/g, plan.run || 'run') + slotArg;
     const lf = path.join(dir, `${String(i + 1).padStart(2, '0')}.log`); fs.writeFileSync(lf, `$ ${cmd}\n`);
     log(`  ${cmd}`);
     const code = await new Promise((res) => { const ch = spawn(cmd, { cwd: path.join(here, '..'), shell: true, windowsHide: true, env: { ...process.env, LAB_URL: url, LAB_API_KEY: hdr['X-Forge-Token'], LAB_MODEL_NAME: name, LAB_REMOTE: '1', LAB_OUT: dir, ...(plan.no_hands ? { LAB_NO_HANDS: '1' } : {}) } }); const w = (d) => { fs.appendFileSync(lf, d); process.stdout.write(d); }; ch.stdout.on('data', w); ch.stderr.on('data', w); ch.on('exit', res); ch.on('error', (e) => { w(`${e.message}\n`); res(1); }); });

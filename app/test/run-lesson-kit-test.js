@@ -135,12 +135,15 @@ check('writer: never falls back to a bare "Done." result', !/\|\| 'Done\.'/.test
 check('writer: ask_together no longer says the job already ran', /Approved\. Nothing has run yet: now call each step\./.test(wl));
 check('writer: the reviewer drops the phantom JSON rule', /no required JSON format unless the person asked/.test(wl));
 const seen = [];
+let slotRoom = 65536; // what the made-up server says each slot holds (/props, as llama-server does)
 const srv = http.createServer((req, res) => {
   let body = ''; req.on('data', (d) => (body += d)); req.on('end', () => {
+    if (req.url === '/props') { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ default_generation_settings: { n_ctx: slotRoom }, total_slots: 4 })); }
+    if (req.url === '/tokenize') { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ tokens: Array(Math.ceil(JSON.parse(body).content.length / 4)).fill(1) })); }
     const j = JSON.parse(body); seen.push(j);
     const last = j.messages[j.messages.length - 1]; const t = String(last.content || '');
     let msg;
-    if (/You review training lessons/.test(t)) msg = { content: '{"ok":true,"why":"fine"}' };
+    if (/You review training lessons/.test(t)) msg = { content: /GATEFAIL/.test(t) ? '{"ok":false,"why":"skipped the tool"}' : /UNREADABLE/.test(t) ? 'I think this lesson is mostly fine' : '{"ok":true,"why":"fine"}' };
     else if (/Which files must already exist/.test(t)) msg = { content: JSON.stringify([{ path: 'C:\\Users\\you\\Documents\\notes.txt', content: 'buy milk\n' }, { path: 'C:\\Windows\\evil.txt', content: 'x' }]) };
     else if (/tool inside a desktop AI/.test(t)) msg = { content: /FAIL/.test(t) ? 'Error: folder not found: C:\\Users\\you\\Documnts' : 'Listed C:\\Users\\you\\Documents: notes.txt, plan.docx (2 files).' };
     else if (j.tools && j.messages.some((m) => /paint me a fox/.test(String(m.content || ''))) && !j.messages.some((m) => m.role === 'tool')) msg = { content: 'Painting it now.', tool_calls: [{ id: `c${seen.length}`, type: 'function', function: { name: 'make_image', arguments: JSON.stringify({ prompt: 'a red fox in snow', save_to: 'fox.png' }) } }] };
@@ -173,7 +176,6 @@ W('wl/media/ideas.jsonl', [{ id: 'm0', job: 'pictures', text: 'paint me a fox' }
 const child4 = spawn(process.execPath, ['write-lessons.mjs', '--url', url, '--model', 'fake.gguf', '--bob', app, '--out', path.join(tmp, 'wl'), '--dir', 'media', '--from-ideas', '--real-tools', '--count', '1', '--think', 'none'], { cwd: lab, env: { ...process.env, LAB_REMOTE: '', LAB_URL: '' } });
 let log4 = ''; child4.stdout.on('data', (d) => (log4 += d)); child4.stderr.on('data', (d) => (log4 += d));
 const code4 = await new Promise((ok) => { const t = setTimeout(() => { child4.kill(); ok('timeout'); }, 120000); child4.on('exit', (c) => { clearTimeout(t); ok(c); }); });
-srv.close();
 const made = rows(path.join(tmp, 'wl', 'doc-base', 'lessons.jsonl'));
 check('writer: --from-ideas writes the doctored idea and no new ideas', code === 0 && made.length === 1 && rows(path.join(tmp, 'wl', 'doc-base', 'ideas.jsonl')).length === 1, log.slice(-400));
 const m = made[0]?.messages || [];
@@ -211,12 +213,48 @@ check('writer: the fake result sees the tool\'s own description and is kept insi
   try { k.done?.(); } catch {}
 }
 check('writer --real-tools: diagrams are drawn for real, with the context Bob\'s own tools expect', /REAL_TOOLS = new Set\(\['make_diagram'/.test(read('model-lab/write-lessons.mjs')) && /run\(sb\.toReal\(args\), \{ loaded, cfg: sb\.brain\.cfg, emit:/.test(read('model-lab/write-lessons.mjs')));
-check('writer --from-ideas: an empty ideas folder stops the run and writes no stand-in ideas', code3 === 1 && /has no ideas/.test(log3) && rows(path.join(tmp, 'wl', 'empty-ideas', 'ideas.jsonl')).length === 0, log3.slice(-300));
+check('writer --from-ideas: an empty ideas folder stops the run (exit 86 on a card) and writes no stand-in ideas', code3 === 86 && /no ideas in .*empty-ideas/.test(log3) && rows(path.join(tmp, 'wl', 'empty-ideas', 'ideas.jsonl')).length === 0, log3.slice(-300));
 {
   const m = rows(path.join(tmp, 'wl', 'media', 'lessons.jsonl'))[0];
   const res = String((m?.messages || []).find((x) => x.role === 'tool')?.content || '');
   check('writer: a picture stand-in is Bob\'s own success line with a Bob-style file name, never made up by the teacher', code4 === 0 && /^Saved: C:\\Users\\you\\Documents\\fox\.png\nPainted a picture, saved as C:\\Users\\you\\AppData\\Local\\Bob[\\/]Agent[\\/]inn[\\/]painter[\\/]\d{4}-\d\d-\d\d-[0-9a-f]{8}\.png\. The user can see it in the chat\.$/.test(res) && !seen.slice(before4).some((j) => /"make_image" tool inside a desktop AI/.test(String(j.messages.at(-1)?.content || ''))), res || log4.slice(-400));
 }
+// 15 Nov (the owner's hard pre-flight, after lkt-fix2 split 98k over 6 slots): checked in code before any lesson or rental
+const runW = async (args, env = {}) => { const ch = spawn(process.execPath, ['write-lessons.mjs', '--url', url, '--model', 'fake.gguf', '--bob', app, '--out', path.join(tmp, 'wl'), '--think', 'none', ...args], { cwd: lab, env: { ...process.env, LAB_REMOTE: '1', LAB_STREAM: '0', ...env } }); let lg = ''; ch.stdout.on('data', (d) => (lg += d)); ch.stderr.on('data', (d) => (lg += d)); const c = await new Promise((ok) => { const t = setTimeout(() => { ch.kill(); ok('timeout'); }, 180000); ch.on('exit', (x) => { clearTimeout(t); ok(x); }); }); return [c, lg]; };
+W('wl/gate/ideas.jsonl', Array.from({ length: 8 }, (_, k) => ({ id: `g${k}`, job: 'chat', text: `GATEFAIL hello number ${k}` })));
+let [gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--preflight', '--slot-ctx', '16384']);
+check('pre-flight: a slot too small for the longest lesson stops before anything runs', gc === 1 && /PRE-FLIGHT FAIL: each slot has 16384/.test(glog) && rows(path.join(tmp, 'wl', 'gate', 'lessons.jsonl')).length === 0, glog.slice(-300));
+[gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--preflight', '--slot-ctx', '32768']);
+check('pre-flight: says which ideas file it reads and how many rows, then passes', gc === 0 && /ideas file .*gate[\\/]ideas\.jsonl: 8 rows/.test(glog) && /pre-flight OK/.test(glog), glog.slice(-300));
+[gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--preflight', '--slot-ctx', '32768', '--want-shapes', '99']);
+check('pre-flight: the wrong tool shape stops it', gc === 1 && /not 99/.test(glog));
+[gc, glog] = await runW(['--dir', 'no-such-ideas', '--from-ideas', '--preflight', '--slot-ctx', '32768']);
+check('pre-flight: an empty ideas folder stops it', gc !== 0 && /no ideas/.test(glog));
+slotRoom = 16384; [gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--review', '--count', '8', '--parallel', '2']);
+check("on the card: a server with small slots stops the run (exit 86, forge deletes the pod) before any lesson", gc === 86 && /GATE STOP: pre-flight: each slot has 16384/.test(glog) && rows(path.join(tmp, 'wl', 'gate', 'lessons.jsonl')).length === 0, glog.slice(-300));
+slotRoom = 65536; [gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--review', '--count', '8', '--parallel', '2', '--gate', '5:0.6']);
+check('sample gate: too few of the sample save, so the run stops (exit 86) and the rest is never tried', gc === 86 && /GATE STOP: only 0 of 5 sample ideas saved \(need 3\); skips: 5 failed review twice/.test(glog) && (glog.match(/^skip g\d:/gm) || []).length === 5, glog.slice(-400));
+W('wl/gate-ok/ideas.jsonl', [...Array.from({ length: 4 }, (_, k) => ({ id: `ok${k}`, job: 'chat', text: `hello there number ${k}` })), { id: 'bad0', job: 'chat', text: 'GATEFAIL hi' }, { id: 'unr0', job: 'chat', text: 'UNREADABLE hi' }]);
+[gc, glog] = await runW(['--dir', 'gate-ok', '--from-ideas', '--review', '--count', '6', '--parallel', '2', '--gate', '6:0.6']);
+const nr = rows(path.join(tmp, 'wl', 'gate-ok', 'needs-review.jsonl'));
+check('sample gate: enough saved, the run carries on and counts its skips by cause', gc === 0 && /sample: 4 of 6 saved/.test(glog) && /skips by cause: 1 failed review twice, 1 review unreadable|skips by cause: 1 review unreadable, 1 failed review twice/.test(glog), glog.slice(-400));
+check('an unreadable review keeps the reviewer\'s raw reply for a second look', nr.length === 1 && /mostly fine/.test(nr[0].raw || ''));
+check('writer: a lesson that runs out of steps leaves its step list behind', /steps-out\.jsonl/.test(read('model-lab/write-lessons.mjs')));
+// forge.mjs runs the writer's pre-flight on this PC for every lesson command, and checks the caps, before it rents anything
+const fplan = (over, models) => W(`forge-${Object.keys(over).join('-') || 'base'}.json`, JSON.stringify({ run: 'pf', benchmark_only: true, lessons: path.join(tmp, 'flessons'), counts_file: W('fcounts.json', '{}'), rungs: [], hours_max: 2, dollars_max: 2, rent_minutes: 30, benchmark: { models: models || [{ name: 'qwen-stock', slots: 4, ctx: 131072, commands: [`node write-lessons.mjs --url {{url}} --model fake.gguf --bob "${app}" --out "${path.join(tmp, 'wl')}" --dir gate --from-ideas --review --parallel 4 --count 8 --hours 0.5`] }] }, ...over }));
+W('flessons/lessons.jsonl', '{}\n'); W('flessons/toolsets.json', '{}');
+const forge = (planF) => spawnSync(process.execPath, ['forge/forge.mjs', '--plan', planF, '--preflight'], { cwd: lab, encoding: 'utf8', env: { ...process.env, FORGE_OUT: path.join(tmp, 'fout'), RUNPOD_API_KEY: 'none-in-tests' } });
+let fr = forge(fplan({}));
+check('forge pre-flight: a sound plan passes and rents nothing', fr.status === 0 && /pre-flight OK: nothing rented/.test(fr.stdout), (fr.stdout + fr.stderr).slice(-400));
+fr = forge(fplan({}, [{ name: 'qwen-stock', slots: 6, ctx: 98304, commands: [`node write-lessons.mjs --url {{url}} --model fake.gguf --bob "${app}" --out "${path.join(tmp, 'wl')}" --dir gate --from-ideas --review --parallel 6 --count 8 --hours 0.5`] }]));
+check('forge pre-flight: lkt-fix2\'s 98k over 6 slots is refused', fr.status === 1 && /PRE-FLIGHT FAIL: qwen-stock command 1: each slot has 16384/.test(fr.stdout) && /Not renting/.test(fr.stdout), fr.stdout.slice(-400));
+fr = forge(fplan({ hours_max: null, dollars_max: null }));
+check('forge pre-flight: blank caps are refused', fr.status === 1 && /must all be set/.test(fr.stdout));
+fr = forge(fplan({}, [{ name: 'qwen-stock', slots: 2, ctx: 131072, commands: [`node write-lessons.mjs --url {{url}} --model fake.gguf --bob "${app}" --out "${path.join(tmp, 'wl')}" --dir gate --from-ideas --parallel 4 --count 8 --gate off`] }]));
+check('forge pre-flight: no --hours, more helpers than slots, or --gate off are each refused', fr.status === 1 && /has no --hours/.test(fr.stdout) && /--parallel 4 but the card serves 2/.test(fr.stdout) && /--gate off/.test(fr.stdout), fr.stdout.slice(-500));
+check('forge: the room per slot goes to the writer on the card too', /--slot-ctx \$\{Math\.floor/.test(read('model-lab/forge/forge.mjs')));
+
+srv.close();
 check('writer: doctored lessons get 12 steps', /idea\.note \|\| idea\.prior \|\| idea\.failFirst \? 12 : 6/.test(read('model-lab/write-lessons.mjs')));
 
 // ---- the heal masks a failed try ----
