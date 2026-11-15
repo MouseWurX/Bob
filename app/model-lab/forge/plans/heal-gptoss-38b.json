@@ -6,9 +6,15 @@
   "lessons": "out/lessons-gptoss-heal-checked",
   "ledger_check": {
     "from": "out/lessons-gptoss-heal",
-    "never": [],
+    "never": [
+      "out/lesson-review-all/heldout-534/opus-read/heldout-fixed.jsonl",
+      "out/lesson-review-all/heldout-534/heldout-originals.jsonl",
+      "out/bench/gptoss-lessons-v5/riker/calib/questions/lessons.jsonl",
+      "out/bench/keep/hf-upload-folded/lessons/full-2026-11-13-folded-heldout.jsonl",
+      "out/bench/keep/hf-upload-folded/lessons/new-2026-11-13-folded-heldout.jsonl"
+    ],
     "ledger": "out/lesson-ledger.jsonl",
-    "note": "Fill 'never' with every held-out and calib file before the go (the heldout-534 set, the Riker calib questions the gptoss-tools check used, the quiz items are always in). Empty: forge.mjs refuses to rent. The pod gets out/lessons-gptoss-heal-checked."
+    "note": "Every held-out and calib item: the 534 held-out items as Opus fixed them (heldout-fixed), the 87 originals that sit inside training files (heldout-originals: lines picked out of out/lessons and lessons-coding-2), and the held-out and calib files themselves (the 308 Riker calib questions the gptoss-tools check used, the folded held-out sets). The 66 hf-stage-1113 held-out originals are covered only by their fixed wording (the stage folder is gone from this PC). The quiz items are always in. The pod gets out/lessons-gptoss-heal-checked."
   },
   "gpus": [
     "NVIDIA H200",
