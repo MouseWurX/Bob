@@ -26,6 +26,7 @@ export const CHUNK = 256 * 2 ** 20; // one pull asks for this much at most
 export const ASK_MS = 10 * 60000; // the Yes card waits this long
 export const KEEP_MS = 3 * 24 * 3600e3; // the sender keeps an offer this long, so a stopped copy can carry on
 export const MAX_FILES = 8;
+export const MAX_FOLDER_FILES = 2000; // 1.5.243: a whole folder in one offer, one Yes card
 export const MAX_BYTES = 2e12;
 export const OFF = 'That Bob isn\'t taking files or brains. On that replicant matrix: Settings, Bob-Net, Files and brains.';
 export const OWN_DIR = 'from-my-bobs';
@@ -39,6 +40,36 @@ export function cleanName(n) {
   if (/^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(s)) return '';
   return s;
 }
+// 1.5.243 (folder send): a path inside a sent folder, "photos/2026/a.jpg". Every part must be a clean name as it is,
+// so nothing can climb out of the folder (no "..", no drive, no leading slash). '' when it isn't safe.
+export function cleanRel(r) {
+  const parts = String(r ?? '').split(/[\\/]/);
+  if (!parts.length || parts.length > 16 || String(r).length > 400) return '';
+  for (const x of parts) if (!x || cleanName(x) !== x) return '';
+  return parts.join('/');
+}
+// Every file in a folder, for a folder send: [{ path, rel }]. Links are skipped (never followed), and so are empty
+// files. Stops counting past MAX_FOLDER_FILES so a huge folder answers fast.
+export function folderFiles(dir, { max = MAX_FOLDER_FILES } = {}) {
+  const out = []; let skipped = 0, tooMany = false;
+  const walk = (d, rel) => {
+    let list = [];
+    try { list = fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name)); } catch { return; }
+    for (const e of list) {
+      if (tooMany) return;
+      const p = path.join(d, e.name), r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isSymbolicLink()) { skipped++; continue; }
+      if (e.isDirectory()) { walk(p, r); continue; }
+      if (!e.isFile()) { skipped++; continue; }
+      if (sizeOf(p) <= 0) { skipped++; continue; }
+      if (out.length >= max) { tooMany = true; return; }
+      out.push({ path: p, rel: r });
+    }
+  };
+  walk(dir, '');
+  return { files: out, skipped, tooMany };
+}
+const sameFiles = (a, b) => a.length === b.length && a.every((f, i) => f.path === b[i].path && f.bytes === b[i].bytes && f.mtime === b[i].mtime);
 const hostOf = (a) => String(a || '').replace(/^::ffff:/, '').replace(/^\[|\](:\d+)?$/g, '').replace(/:\d+$/, '');
 const gb = (b) => `${(b / 1e9).toFixed(b < 10e9 ? 1 : 0)} GB`;
 const exists = (p) => { try { fs.statSync(p); return true; } catch { return false; } };
@@ -139,24 +170,36 @@ export class Outbox {
     if (!netFilesOn(this.cfg)) return { error: 'Files and brains is off here. Settings, Bob-Net, Files and brains.' };
     const bob = (this.lenders?.bobs?.() || []).find((x) => x.address === address);
     if (!bob) return { error: 'That Bob isn\'t on your Bob-Net list.' };
-    if (!['file', 'brain'].includes(kind)) return { error: 'Send a file or a brain.' };
+    if (!['file', 'brain', 'folder'].includes(kind)) return { error: 'Send a file, a folder or a brain.' };
+    const max = kind === 'folder' ? MAX_FOLDER_FILES : MAX_FILES;
+    if ([].concat(files).length > max) return { error: kind === 'folder' ? `That folder has more than ${MAX_FOLDER_FILES} files. Zip it first and send the zip.` : 'That\'s more files than I send in one go.' };
     const list = [];
-    for (const f of [].concat(files).slice(0, MAX_FILES)) {
+    for (const f of [].concat(files)) {
       const p = String(f?.path || ''); const st = (() => { try { return fs.statSync(p); } catch { return null; } })();
       if (!p || !path.isAbsolute(p) || !st?.isFile()) return { error: `I can't find ${path.basename(p) || 'that file'} on this replicant matrix.` };
       if (!(st.size > 0)) return { error: `${path.basename(p)} is empty.` };
-      const name = cleanName(path.basename(p));
-      if (!name) return { error: `${path.basename(p)} has a name another computer can't use. Rename it first.` };
+      const name = kind === 'folder' ? cleanRel(f.rel) : cleanName(path.basename(p));
+      if (!name) return { error: `${kind === 'folder' ? f.rel : path.basename(p)} has a name another computer can't use. Rename it first.` };
+      if (kind === 'folder' && list.some((x) => x.name.toLowerCase() === name.toLowerCase())) return { error: `Two files in that folder are both called ${name} (only the capitals differ). Rename one first.` };
       list.push({ path: p, name, bytes: st.size, mtime: st.mtimeMs, role: ['gguf', 'mmproj', 'card'].includes(f.role) ? f.role : 'file', ...(/^[0-9a-f]{64}$/.test(f.sha256 || '') ? { sha256: f.sha256 } : {}) });
     }
     if (!list.length) return { error: 'Pick a file first.' };
     if (kind === 'brain' && !list.some((f) => f.role === 'gguf')) return { error: 'A brain needs its .gguf file.' };
     if (list.reduce((a, f) => a + f.bytes, 0) > MAX_BYTES) return { error: 'That\'s more than I send in one go.' };
+    // 1.5.243 (laptop test: a send asked again after no answer left a second, empty Yes card): the same files to the
+    // same Bob while that offer is still open is the same offer, not a new card.
+    const open = [...this.offers.values()].find((x) => x.to === bob.address && x.kind === kind && (x.state === 'offered' ? this.now() - x.at < ASK_MS : ['sending', 'paused'].includes(x.state)) && sameFiles(x.files, list));
+    if (open) return { ok: true, id: open.id, to: open.toName, again: true };
     const id = crypto.randomBytes(8).toString('hex'), token = crypto.randomBytes(24).toString('hex');
     const o = { id, token, to: bob.address, toName: bob.name || bob.address, kind, title: str(title, 80) || list[0].name, files: list, at: this.now(), state: 'offered', upTo: list.map(() => 0) };
     let r;
-    try { r = await this.lenders.call(bob, '/api/bob-net/files/offer', { method: 'POST', timeout: 15000, body: { id, token, from: str(this.from(), 40), kind, title: o.title, files: list.map(({ name, bytes, role }) => ({ name, bytes, role })) } }); }
-    catch (e) { return { error: `Couldn't reach ${o.toName}: ${e.message}` }; }
+    // A folder goes to its own door: an older Bob answers 404 there ("update him first") instead of taking 8 files flat.
+    try { r = await this.lenders.call(bob, kind === 'folder' ? '/api/bob-net/files/offer-folder' : '/api/bob-net/files/offer', { method: 'POST', timeout: 15000, body: { id, token, from: str(this.from(), 40), kind, title: o.title, files: list.map(({ name, bytes, role }) => ({ name, bytes, role })) } }); }
+    catch (e) {
+      // No answer may still mean he got it and shows a card: take it back, so no card is left with nothing behind it.
+      this.lenders.call(bob, '/api/bob-net/files/stop', { method: 'POST', timeout: 5000, body: { id, token } }).catch(() => {});
+      return { error: `Couldn't reach ${o.toName}: ${e.message}` };
+    }
     const j = await r.json().catch(() => ({}));
     if (r.status === 404) return { error: `${o.toName} is an older Bob that can't take files yet. Update him first.` };
     if (j?.off || r.status === 409) return { error: OFF.replace('That Bob', o.toName) };
@@ -272,17 +315,21 @@ export class Inbox {
   get brainsDir() { return this.cfg.bobModelsDir || path.join(this.cfg.agentDir || '.', 'models', 'bob'); }
 
   // POST /api/bob-net/files/offer from one of my Bobs. Shows the Yes card; nothing is fetched yet.
-  receive(b, ip) {
+  // folder: true when it came to the folder door (offer-folder).
+  receive(b, ip, { folder = false } = {}) {
     if (!netFilesOn(this.cfg)) return { code: 409, error: OFF, off: true };
     const bob = this.bobFrom(ip, str(b?.from, 40));
     if (!bob) return { code: 403, error: 'You aren\'t on my Bob-Net list. Pair us first.' };
     const id = String(b?.id || ''), token = String(b?.token || '');
     if (!/^[0-9a-f]{16}$/.test(id) || !/^[0-9a-f]{48}$/.test(token)) return { code: 400, error: 'bad offer' };
     if (this.items.has(id)) return { code: 200, ok: true, id };
-    const kind = b?.kind === 'brain' ? 'brain' : 'file';
+    const kind = folder ? (b?.kind === 'folder' ? 'folder' : '') : b?.kind === 'folder' ? '' : b?.kind === 'brain' ? 'brain' : 'file';
+    if (!kind) return { code: 400, error: 'bad offer' };
     const files = [];
-    for (const f of [].concat(b?.files || []).slice(0, MAX_FILES)) {
-      const name = cleanName(f?.name), bytes = Number(f?.bytes);
+    const all = [].concat(b?.files || []);
+    if (all.length > (kind === 'folder' ? MAX_FOLDER_FILES : MAX_FILES)) return { code: 400, error: 'too many files' };
+    for (const f of all) {
+      const name = kind === 'folder' ? cleanRel(f?.name) : cleanName(f?.name), bytes = Number(f?.bytes);
       if (!name || !Number.isSafeInteger(bytes) || bytes <= 0) return { code: 400, error: 'bad file in the offer' };
       if (files.some((x) => x.name.toLowerCase() === name.toLowerCase())) return { code: 400, error: 'two files with one name' };
       files.push({ name, bytes, role: kind === 'brain' && ['gguf', 'mmproj', 'card'].includes(f.role) ? f.role : 'file' });
@@ -292,13 +339,22 @@ export class Inbox {
     const total = files.reduce((a, f) => a + f.bytes, 0);
     if (total > MAX_BYTES) return { code: 400, error: 'too big' };
     // Nov 14 (first real copy: the card said the owner's Windows name, not npc): the name on my own list says who it's from.
+    // 1.5.243: the same offer from the same Bob again (a send asked twice) shows one card. One still waiting for Yes is
+    // swapped for the new one; one already coming over is not offered twice.
+    const sig = (x) => `${x.kind}|${x.files.map((f) => `${f.name}:${f.bytes}`).join('|')}`;
+    const me = sig({ kind, files });
+    for (const old of this.items.values()) {
+      if (old.from !== bob.address || sig(old) !== me) continue;
+      if (old.state === 'asking' && this.now() - old.at < ASK_MS) { this.broadcast({ type: 'net-file-gone', id: old.id }); this.items.delete(old.id); }
+      else if (['copying', 'checking', 'waiting'].includes(old.state)) return { code: 400, error: 'I\'m already copying that from you.' };
+    }
     const it = { id, token, from: bob.address, fromName: str(bob.name, 40) || str(b?.from, 40) || 'another of your Bobs', kind, title: str(b?.title, 80) || files[0].name, files, total, done: 0, at: this.now(), state: 'asking' };
     this.items.set(id, it); this.save();
     this.broadcast(this.card(it));
     this.log('bob-net', `${it.fromName} offers ${kind === 'brain' ? 'the brain ' : ''}${it.title} (${gb(total)}): waiting for your Yes`);
     return { code: 200, ok: true, id };
   }
-  card(it) { return { type: 'net-file-ask', id: it.id, from: it.fromName, kind: it.kind, title: it.title, total: it.total, files: it.files.map((f) => ({ name: f.name, bytes: f.bytes })), room: this.room(it) }; }
+  card(it) { return { type: 'net-file-ask', id: it.id, from: it.fromName, kind: it.kind, title: it.title, total: it.total, count: it.files.length, files: it.files.slice(0, 8).map((f) => ({ name: f.name, bytes: f.bytes })), room: this.room(it) }; }
   waiting() { return [...this.items.values()].filter((it) => it.state === 'asking' && this.now() - it.at < ASK_MS).map((it) => this.card(it)); }
   // Free room after the copy, in bytes (-1 when the drive can't be read).
   room(it) { const f = this.free(it.kind === 'brain' ? this.brainsDir : this.folder); return f < 0 ? -1 : f - this.left(it); }
@@ -306,6 +362,16 @@ export class Inbox {
 
   // Where each file goes. Never on top of another file: a brain whose name is taken goes in a folder of its own.
   plan(it) {
+    if (it.kind === 'folder') { // a folder of its own in From my other Bobs, its inside kept as it was sent
+      if (!it.root) {
+        fs.mkdirSync(this.folder, { recursive: true });
+        const n = freeName(this.folder, cleanName(it.title) || 'Folder'); if (!n) throw new Error(`no free name for ${it.title}`);
+        it.root = path.join(this.folder, n);
+      }
+      for (const f of it.files) if (!f.dest) { const rel = cleanRel(f.name); if (!rel) throw new Error(`bad name ${f.name}`); f.dest = path.join(it.root, ...rel.split('/')); }
+      for (const f of it.files) fs.mkdirSync(path.dirname(f.dest), { recursive: true });
+      return;
+    }
     if (it.kind === 'file') {
       fs.mkdirSync(this.folder, { recursive: true });
       for (const f of it.files) if (!f.dest) { const n = freeName(this.folder, f.name); if (!n) throw new Error(`no free name for ${f.name}`); f.dest = path.join(this.folder, n); }
@@ -391,7 +457,7 @@ export class Inbox {
     it.saidAt = t;
     this.broadcast({ type: 'net-file', ...this.one(it) });
   }
-  one(it) { return { id: it.id, from: it.fromName, kind: it.kind, title: it.title, state: it.state, why: it.why || '', total: it.total, done: it.done || 0, rate: it.rate || 0, where: it.state === 'done' ? path.dirname(it.files[0].dest || '') : '', own: it.own === true, gone: it.gone === true }; }
+  one(it) { return { id: it.id, from: it.fromName, kind: it.kind, title: it.title, state: it.state, why: it.why || '', total: it.total, done: it.done || 0, rate: it.rate || 0, where: it.state === 'done' ? (it.kind === 'folder' ? it.root || '' : path.dirname(it.files[0].dest || '')) : '', own: it.own === true, gone: it.gone === true }; }
   view() { return [...this.items.values()].filter((it) => it.state !== 'declined').map((it) => this.one(it)); }
 
   async call(it, p, signal, timeout = 15000) {

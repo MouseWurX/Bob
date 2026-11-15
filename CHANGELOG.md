@@ -4,6 +4,22 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.243
+
+Send a whole folder to your other Bob with one Yes, and Journey gets its laptop-test fixes.
+
+### New
+
+- **Send a whole folder over Bob-Net.** Settings, Bob-Net, Files and brains: **Pick a folder**, pick the Bob, **Send it**. He gets one Yes card for all of it (up to 2000 files) instead of one card per file, and it lands in a folder of its own with its folders inside kept as they are. Every file is checked at the end, like always. Links and empty files stay behind.
+- **Journey screenshots.** The README shows six new Journey pictures in a gallery, and every screen is on its own page: the world, towns, fights, every menu and every race.
+
+### Fixed
+
+- **One card per offer.** A send that got no answer and was asked again could leave a second, empty Yes card on the other Bob. Now a send with no answer is taken back, the same send asked again is the same offer, and a card still waiting is swapped for the new one, never two.
+- **Journey on a laptop.** A 720p window fits without scrolling, menus too. The talk box and choices are real windows with sharp words. Elf and pixie ears show with Bob's wide headset look, and the tab icons have an outline so they stand out (Pets is now 🐶).
+
+**Where it works:** Windows, Mac, Linux and Bob for Android. Folder sending works on Windows, Mac and Linux; both Bobs need 1.5.243.
+
 ## 1.5.242
 
 Journey plays like a proper game now: every menu lives inside the game screen.
@@ -145,17 +161,6 @@ Journey gets a real quest log, and your saved land is easy to get back to.
 ### Fixed
 
 - **Resume shows in the guest house**, where Journey now opens, so you can get straight back to your saved land.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.233
-
-My engine moves up to llama.cpp 1.0.
-
-### New
-
-- **Brain Engine 8b12359, on llama.cpp 1.0.** All my own changes to the engine came along with it, so everything I did before still works the same way, on the newest llama.cpp underneath. The plain llama.cpp I carry and the Lab's converters move to the same version.
-- **Brain Engine 7 and 8 still share graphics cards.** A Bob that hasn't updated yet can still lend his card to one that has, and the other way round. Bobs on Brain Engine 6 or older can't share with them; update those first.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 

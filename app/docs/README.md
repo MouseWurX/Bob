@@ -9,6 +9,7 @@ Everything written about Bob, in one list. New here? Start with the [user guide]
 | **[User guide](USER-GUIDE.md)** | Everything Bob does, in plain English: setup, models, sessions, memory, Hands, voice, the Lab. |
 | [How Bob stays fast and light](PERFORMANCE.md) | What Bob does to answer quickly and stay out of your game's way, with measurements. |
 | [Bob and similar projects](COMPARISON.md) | Bob next to other local AI apps, in their own words. |
+| [Journey screenshots](JOURNEY-GALLERY.md) | Every Journey screen at full size: the world, towns, fights, every menu and every race. |
 | [What's new](../../CHANGELOG.md) · [release notes](releases/) | Every release, newest first. |
 
 ## Brains and benchmarks

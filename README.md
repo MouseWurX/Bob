@@ -43,13 +43,13 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.242-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.242-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.242-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.242-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.242-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.242-linux-x86_64.AppImage) |
-| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.242-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.242-linux-amd64.deb) |
-| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.242-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.242-linux-x86_64.flatpak) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.242-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.242-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
-| **Android phone** | [`Bob-1.5.242-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.242-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.243-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.243-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.243-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.243-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.243-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.243-linux-x86_64.AppImage) |
+| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.243-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.243-linux-amd64.deb) |
+| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.243-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.243-linux-x86_64.flatpak) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.243-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.243-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
+| **Android phone** | [`Bob-1.5.243-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.243-android.apk) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 
@@ -150,16 +150,12 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 
 Every new switch is off until you turn it on.
 
-| | |
-|:---:|:---:|
-| ![Journey: Bob's Inn, a wooden tavern with tables, the hero by the bar and the innkeeper](app/docs/screens/journey-inn.png) | ![Journey: the world map with mountains, a road and travellers walking it](app/docs/screens/journey-world.png) |
-| **Bob's Inn.** Every journey starts here. | **The world.** Rolled from a seed; guards walk the roads. |
-| ![Journey: a village of red-roofed houses outside the castle gate, guards at the wall](app/docs/screens/journey-castle.png) | ![Journey: the keep's throne hall with a red carpet and knights along the walls](app/docs/screens/journey-keep.png) |
-| **Outside the castle gate.** | **The keep.** A king, a queen, knights and guards. |
-| ![Journey: a dark cave with a chest](app/docs/screens/journey-cave.png) | ![Journey: a turn-based fight against two guards in a town square](app/docs/screens/journey-fight.png) |
-| **Caves** hide chests with good kit. | **Fights** drop coin and whatever the foe carried. |
+<table>
+<tr><td align="center" width="33%"><a href="app/docs/screens/journey/04-world.png"><img src="app/docs/screens/journey/04-world.png" alt="Journey: the world map, a river, a road and the party walking it" width="100%"></a><br><sub><b>The world.</b> Rolled from a seed.</sub></td><td align="center" width="33%"><a href="app/docs/screens/journey/05-town.png"><img src="app/docs/screens/journey/05-town.png" alt="Journey: a village of red-roofed houses with the party on the road" width="100%"></a><br><sub><b>Towns</b> to talk, shop and rest in.</sub></td><td align="center" width="33%"><a href="app/docs/screens/journey/13-battle.png"><img src="app/docs/screens/journey/13-battle.png" alt="Journey: a turn-based fight, the party of four against monsters" width="100%"></a><br><sub><b>Fights</b>, turn by turn.</sub></td></tr>
+<tr><td align="center" width="33%"><a href="app/docs/screens/journey/02-new-adventure.png"><img src="app/docs/screens/journey/02-new-adventure.png" alt="Journey: the New adventure window, party size and rolled characters" width="100%"></a><br><sub><b>New adventure.</b> A party of one to four.</sub></td><td align="center" width="33%"><a href="app/docs/screens/journey/08-menu-kit.png"><img src="app/docs/screens/journey/08-menu-kit.png" alt="Journey: the Kit tab, the party on the paper doll with weapon, armour and shield" width="100%"></a><br><sub><b>Kit</b> on the paper doll.</sub></td><td align="center" width="33%"><a href="app/docs/screens/journey/11-menu-land.png"><img src="app/docs/screens/journey/11-menu-land.png" alt="Journey: the Land tab with a map of the whole land" width="100%"></a><br><sub><b>The land</b> at a glance.</sub></td></tr>
+</table>
 
-<p align="center"><b>Journey.</b> Arrow keys walk, Enter talks, opens chests and swings. Bob's Inn, the rolled world, castles and patrols arrive in 1.5.211.</p>
+<p align="center"><b>Journey.</b> Arrow keys or a controller walk, Enter talks, opens chests and swings, and every menu opens right on the game screen. Click a picture for full size, or see <a href="app/docs/JOURNEY-GALLERY.md">all the Journey screenshots</a>.</p>
 
 <details>
 <summary><b>Earlier:</b> 1.5.204 to 1.5.206, and before</summary>
