@@ -230,12 +230,12 @@ check('pre-flight: says which ideas file it reads and how many rows, then passes
 check('pre-flight: the wrong tool shape stops it', gc === 1 && /not 99/.test(glog));
 [gc, glog] = await runW(['--dir', 'no-such-ideas', '--from-ideas', '--preflight', '--slot-ctx', '32768']);
 check('pre-flight: an empty ideas folder stops it', gc !== 0 && /no ideas/.test(glog));
-slotRoom = 16384; [gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--review', '--count', '8', '--parallel', '2']);
+slotRoom = 16384; [gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--review', '--count', '8', '--parallel', '2', '--slot-ctx', '32768']); // forge passes the plan's figure; the server's own wins
 check("on the card: a server with small slots stops the run (exit 86, forge deletes the pod) before any lesson", gc === 86 && /GATE STOP: pre-flight: each slot has 16384/.test(glog) && rows(path.join(tmp, 'wl', 'gate', 'lessons.jsonl')).length === 0, glog.slice(-300));
-slotRoom = 65536; [gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--review', '--count', '8', '--parallel', '2', '--gate', '5:0.6']);
+slotRoom = 65536; [gc, glog] = await runW(['--dir', 'gate', '--from-ideas', '--review', '--count', '8', '--parallel', '2', '--gate', '5:0.6', '--slot-ctx', '32768']);
 check('sample gate: too few of the sample save, so the run stops (exit 86) and the rest is never tried', gc === 86 && /GATE STOP: only 0 of 5 sample ideas saved \(need 3\); skips: 5 failed review twice/.test(glog) && (glog.match(/^skip g\d:/gm) || []).length === 5, glog.slice(-400));
 W('wl/gate-ok/ideas.jsonl', [...Array.from({ length: 4 }, (_, k) => ({ id: `ok${k}`, job: 'chat', text: `hello there number ${k}` })), { id: 'bad0', job: 'chat', text: 'GATEFAIL hi' }, { id: 'unr0', job: 'chat', text: 'UNREADABLE hi' }]);
-[gc, glog] = await runW(['--dir', 'gate-ok', '--from-ideas', '--review', '--count', '6', '--parallel', '2', '--gate', '6:0.6']);
+[gc, glog] = await runW(['--dir', 'gate-ok', '--from-ideas', '--review', '--count', '6', '--parallel', '2', '--gate', '6:0.6', '--slot-ctx', '32768']);
 const nr = rows(path.join(tmp, 'wl', 'gate-ok', 'needs-review.jsonl'));
 check('sample gate: enough saved, the run carries on and counts its skips by cause', gc === 0 && /sample: 4 of 6 saved/.test(glog) && /skips by cause: 1 failed review twice, 1 review unreadable|skips by cause: 1 review unreadable, 1 failed review twice/.test(glog), glog.slice(-400));
 check('an unreadable review keeps the reviewer\'s raw reply for a second look', nr.length === 1 && /mostly fine/.test(nr[0].raw || ''));

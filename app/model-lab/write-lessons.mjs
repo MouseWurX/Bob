@@ -252,7 +252,7 @@ async function preflightCheck() {
   let longest = sizes.length ? est(sizes[0].text) : est(firstAsk({ job: 'chat', text: 'hello' }));
   if (sizes.length) { const p90 = est(sizes[Math.floor(sizes.length * 0.1)].text); console.log(`pre-flight: first requests ~${longest} tokens at most (${sizes[0].id}), ~${p90} at the 90th percentile`); }
   let slotCtx = Number(o['slot-ctx']) || 0, how = slotCtx ? 'from the plan' : 'not given';
-  if (remoteUrl && !preflight) { // the real server: its own room per slot, and an exact count of the longest request
+  if (remoteUrl && !preflight && slotCtx) { // on the card (forge passes --slot-ctx): the server's own room per slot, and an exact count of the longest request
     const auth = process.env.LAB_API_KEY ? { authorization: `Bearer ${process.env.LAB_API_KEY}` } : {};
     try {
       const pr = await (await fetch(`${remoteUrl}/props`, { headers: auth, signal: AbortSignal.timeout(30000) })).json();
@@ -264,7 +264,8 @@ async function preflightCheck() {
       if (Array.isArray(tk?.tokens) && tk.tokens.length) { console.log(`pre-flight: the server counts the longest request at ${tk.tokens.length} tokens (estimate ${longest})`); longest = Math.max(longest, Math.ceil(tk.tokens.length * 1.1)); }
     } catch {}
   }
-  if (!slotCtx && (remoteUrl || preflight)) bad.push('room per slot unknown: pass --slot-ctx (forge does) or a server that answers /props');
+  if (!slotCtx && preflight) bad.push('room per slot unknown: pass --slot-ctx (forge passes ctx / slots)');
+  if (!slotCtx && !preflight) console.log('pre-flight: no --slot-ctx, so the room per slot is not checked here (forge.mjs always passes it)');
   const r = roomCheck(slotCtx, longest, how); if (r) bad.push(r);
   if (gate) console.log(`pre-flight: sample gate on: the first ${gate.n} ideas must save at least ${Math.round(gate.share * 100)}% or the run stops`);
   else if (remoteUrl) bad.push('--gate off against a rented card: every rental starts with a sample');
