@@ -730,7 +730,7 @@ const P = (o) => ({ id: o.id || o.name.toLowerCase(), who: 'friend', ...o });
   const back = R.cleanJourney(JSON.parse(JSON.stringify({ ...j, regions: [...j.regions, 'bad id'], banter: ['firsttown', 'nope'] })), () => world);
   check('a save keeps the regions crossed, lore heard and talks had', back.regions.join() === j.regions.join() && back.lore.includes(village.id) && back.banter.join() === 'firsttown' && back.met.includes('ruler'));
   const play6 = read('public/journey-play.js');
-  check('the screen: a Story tab, choices you can pick with the arrows, names on the land', /\['story', '📜 Story'\]/.test(play6) && /function pickChoice/.test(play6) && /data-choice/.test(play6) && /R\.isStoryTown\(s\)/.test(play6));
+  check('the screen: a Story tab, choices you can pick with the arrows, names on the land', /\['story', '📜 Quests'\]/.test(play6) && /function pickChoice/.test(play6) && /data-choice/.test(play6) && /R\.isStoryTown\(s\)/.test(play6));
 }
 
 // ---------- The guest house and trophies (Journey v1.3) ----------
@@ -762,6 +762,48 @@ const P = (o) => ({ id: o.id || o.name.toLowerCase(), who: 'friend', ...o });
   check('New adventure and Resume show in the guest house, where Journey opens', /const atInn = j\.at === 'inn' \|\| \(lobby && j\.at === 'guest'\)/.test(play7));
   check('the Save tab can load the last save, read fresh from disk', /data-jy="load"/.test(play7) && /function loadAgain\(\)[\s\S]{0,200}await loadSave\(\)/.test(play7) && /d\.jy === 'load'/.test(play7));
   check('the screen: you wake in the guest house, and the trophy case opens with Enter', /at: 'guest'/.test(play7) && /=== '7'\) \{ shop = \{ kind: 'trophies' \}/.test(play7) && /function caseHtml/.test(play7) && /\/api\/adventure\/journey\/trophies/.test(play7));
+}
+
+// ---------- Quests: the main story, side quests from people, achievements (Journey v1.3) ----------
+{
+  const j = R.newJourney({ seed: 'quest-seed', party: [P({ name: 'Wren', cls: 'fighter', who: 'you' })] }, world);
+  Object.assign(j, { at: 'world', alt: 'ground', x: world.start.x, y: world.start.y });
+  check('the first look at the log only remembers, so nothing is announced all at once', R.questNews(world, j).length === 0 && j.qseen.length > 0);
+  let log = R.questLog(world, j);
+  check('the main quest starts with one goal: talk to the ruler, and where', log.main.goals.length === 1 && /^Talk to the (King|Queen) in Castle /.test(log.main.goals[0].text) && !log.main.goals[0].done);
+  j.met.push('ruler');
+  log = R.questLog(world, j);
+  check('...then the three lantern stones show up as goals', log.main.goals.length === 4 && log.main.goals[0].done && log.main.goals.slice(1).every((g) => /^Take back the lantern stone from /.test(g.text)));
+  const news = R.questNews(world, j);
+  check('...and the news says so, once', news.some((t) => /Take back the lantern stone/.test(t)) && news.some((t) => /Done\.$/.test(t)) && R.questNews(world, j).length === 0);
+  j.beaten.push('boss1', 'boss2', 'boss3'); j.won = true;
+  log = R.questLog(world, j);
+  check('with all three stones, the last goal is to bring them home', log.main.goals.length === 5 && /^Bring the stones home/.test(log.main.goals[4].text) && !log.main.done);
+  j.met.push('ruler-won');
+  check('...and then the main quest is finished', R.questLog(world, j).main.done);
+  // An errand from folk.
+  let found = null;
+  for (const s of world.sites.filter((x) => x.kind === 'town' || x.kind === 'village' || x.kind === 'hamlet')) { const m = world.map(s.id); for (const p of m.people) { const e = R.errandOf(world, m, p); if (e && (e.kind === 'gather' || e.kind === 'hunt')) { found = { m, p, e }; break; } } if (found) break; }
+  check('some folk in towns and villages have an errand, the same one every time', Boolean(found) && JSON.stringify(R.errandOf(world, found.m, found.p)) === JSON.stringify(found.e));
+  const { m, p, e } = found;
+  check('...they offer it as something to say', R.talkChoices(world, j, p, m).some((c) => c.id === 'help'));
+  const ask = R.sayTo(world, j, p, m, 'help', p.name);
+  const side = () => R.questLog(world, j).side.find((q) => q.id === `err:${e.id}`);
+  check('asking for it adds a side quest with two goals', /in it/.test(ask.lines.join(' ')) && side()?.goals.length === 2 && !side().goals[0].done);
+  check('...and Where next mentions it', R.nextSteps(world, j).some((x) => x.text.startsWith(e.title)));
+  const coin0 = j.coin;
+  check('handing in too early just reminds you', !R.sayTo(world, j, p, m, 'help', p.name).done && j.coin === coin0);
+  if (e.kind === 'gather') j.mats[e.mat] = e.n + 1; else j.kills[e.foe] = (j.kills[e.foe] || 0) + e.n;
+  check('...the first goal ticks off when you have what they asked for', side().goals[0].done && !side().done);
+  const paid = R.sayTo(world, j, p, m, 'help', p.name);
+  check('...and handing it in pays, finishes the quest and takes what was asked', paid.done && j.coin === coin0 + e.reward && side().done && (e.kind !== 'gather' || j.mats[e.mat] === 1));
+  check('...after which they have nothing more to ask', !R.talkChoices(world, j, p, m).some((c) => c.id === 'help'));
+  const ach = R.achievements(world, j);
+  check('achievements show how far along you are', ach.find((a) => a.id === 'won').done && ach.find((a) => a.id === 'jobs5').have === 1 && ach.find((a) => a.id === 'craft10').need === 10);
+  const back = R.cleanJourney(JSON.parse(JSON.stringify(j)), () => world);
+  check('a save keeps errands, kills and what the log has told you', back.errands[e.id]?.s === 'done' && JSON.stringify(back.kills) === JSON.stringify(j.kills) && back.qseen.length === j.qseen.length);
+  const play8 = read('public/journey-play.js');
+  check('the screen: a Quests tab with goals ticked off, side quests, achievements and finished quests', /R\.questLog\(world, j\)/.test(play8) && /Finished side quests/.test(play8) && /R\.questNews\(world, j\)/.test(play8));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

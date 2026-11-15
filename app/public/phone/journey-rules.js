@@ -666,7 +666,7 @@ function newJourney({ seed = String(Date.now()), size = 'medium', party = [], st
     v: SAVE_VERSION, seed: String(seed).slice(0, 40), size, at: 'inn', x: inn?.start.x ?? 21, y: inn?.start.y ?? 29, facing: 'up',
     party: p, bag: { tonic: 3, water: 1 }, owned, coin: 500, steps: 0, danger: 0, next: 14, opened: [], beaten: [], talked: [], felled: [], wanted: {}, fines: 0, battles: 0, won: false,
     style: STYLE_IDS.includes(style) ? style : 'fantasy', layout: layout === 1 ? 1 : LAYOUT, alt: 'ground', riding: false, quests: {}, found: [], seen: [], tamed: 0,
-    mats: {}, gathered: {}, craft: { xp: 0, level: 1 }, home: 'inn', bags: ['pouch'], bagGear: 'pouch', regions: [], met: [], lore: [], banter: [], trophies: []
+    mats: {}, gathered: {}, craft: { xp: 0, level: 1 }, home: 'inn', bags: ['pouch'], bagGear: 'pouch', regions: [], met: [], lore: [], banter: [], trophies: [], errands: {}, kills: {}, qseen: []
   };
 }
 // Cleans a save from disk (or from the page) into a journey this file can play. Unknown things are dropped.
@@ -702,7 +702,9 @@ function cleanJourney(s, makeWorld) {
   j.home = typeof s.home === 'string' && world?.map(s.home) ? s.home : 'inn';
   j.bags = ['pouch', ...new Set((Array.isArray(s.bags) ? s.bags : []).filter((b) => BAGS[b] && b !== 'pouch'))];
   j.bagGear = j.bags.includes(s.bagGear) ? s.bagGear : 'pouch';
-  j.regions = strs(s.regions, 64).filter((v) => /^r\d+$/.test(v)); j.met = strs(s.met, 40); j.lore = strs(s.lore, 2000); j.banter = strs(s.banter, 20).filter((v) => BANTER[v]); j.trophies = strs(s.trophies, 60);
+  j.regions = strs(s.regions, 64).filter((v) => /^r\d+$/.test(v)); j.met = strs(s.met, 40); j.lore = strs(s.lore, 2000); j.banter = strs(s.banter, 20).filter((v) => BANTER[v]); j.trophies = strs(s.trophies, 60); j.qseen = strs(s.qseen, 800);
+  j.errands = {}; for (const [k, v] of Object.entries(s.errands || {}).slice(0, 400)) if (typeof k === 'string' && ['given', 'done'].includes(v?.s)) j.errands[k.slice(0, 40)] = { s: v.s, ...(Number.isInteger(v.k) && v.k >= 0 ? { k: Math.min(v.k, 1e7) } : {}) };
+  j.kills = {}; for (const [k, n] of Object.entries(s.kills || {})) if (FOES[k] && Number.isInteger(n) && n > 0) j.kills[k] = Math.min(n, 1e7);
   // Crafting (Journey v1.3): materials, what's been picked lately, and the crafting level.
   for (const [k, n] of Object.entries(s.mats || {})) if (MATERIALS[k] && Number(n) > 0) j.mats[k] = Math.min(MAT_MAX, Math.floor(Number(n)));
   for (const [k, n] of Object.entries(s.gathered || {})) if (typeof k === 'string' && k.length < 60 && Number.isFinite(Number(n))) j.gathered[k] = Math.floor(Number(n));
@@ -1275,6 +1277,7 @@ function playRound(j, b, commands = {}, rnd = Math.random) {
       }
       for (const f of beaten) if (f.guardian && !j.beaten.includes(f.id)) j.beaten.push(f.id);
       for (const f of beaten) if (f.person && !j.felled.includes(f.person.id)) j.felled.push(f.person.id);
+      for (const f of beaten) if (f.type && FOES[f.type]) { j.kills = j.kills || {}; j.kills[f.type] = (j.kills[f.type] || 0) + 1; } // for errands (Journey v1.3)
       if (LANTERN_KEEPERS.every((g) => j.beaten.includes(g))) j.won = true;
     }
     for (const m of party) { m.asleep = 0; m.poison = 0; m.blind = 0; }
@@ -1997,6 +2000,8 @@ function nextSteps(world, j) {
     out.push(done ? { text: `Go back to the Elder in ${s.name}, ${where(s)}. The job is done.`, x: s.x, y: s.y }
       : { text: `For ${s.name}: ${q.kind === 'missing' ? `find ${q.who}` : q.kind === 'lostpet' ? `find ${q.name || 'the lost pet'}` : `beat ${GUARDIANS[q.keeper]?.name || 'the monster'}`}${t ? ` in ${t.name}, ${where(t)}` : ''}.`, ...(t ? { x: t.x, y: t.y } : {}) });
   }
+  // Errands from folk: the next thing to do for each.
+  try { for (const q of questLog(world, j).side) if (q.id.startsWith('err:') && !q.done) { const g = q.goals.find((x) => !x.done); if (g) out.push({ text: `${q.title}: ${g.text}` }); } } catch {}
   return out;
 }
 // Things to say (Journey v1.3): the choices when you talk to someone who has more than one thing to tell.
@@ -2005,7 +2010,7 @@ function talkChoices(world, j, p, map) {
   const local = LOCAL_KINDS.has(map.kind), story = STORY_KINDS.has(map.kind);
   if (p.role === 'ruler') return [{ id: 'story', label: 'Tell me what happened.' }, { id: 'next', label: 'Where should we go?' }, { id: 'reward', label: 'What\'s in it for us?' }, { id: 'bye', label: 'We\'ll be on our way.' }];
   if (p.role === 'elder') return [{ id: 'job', label: 'Do you need help?' }, { id: 'lore', label: 'Tell me about this place.' }, { id: 'next', label: 'Where should we go?' }, { id: 'bye', label: 'Goodbye.' }];
-  if (p.role === 'folk' && (local || story)) return [{ id: 'news', label: 'Any news?' }, { id: 'lore', label: 'Tell me about this place.' }, { id: 'next', label: 'Where should we go?' }, { id: 'bye', label: 'Goodbye.' }];
+  if (p.role === 'folk' && (local || story)) return [{ id: 'news', label: 'Any news?' }, ...(errandOf(world, map, p) && j.errands?.[errandOf(world, map, p).id]?.s !== 'done' ? [{ id: 'help', label: j.errands?.[errandOf(world, map, p).id] ? 'About that favour…' : 'Need a hand with anything?' }] : []), { id: 'lore', label: 'Tell me about this place.' }, { id: 'next', label: 'Where should we go?' }, { id: 'bye', label: 'Goodbye.' }];
   return null;
 }
 // The answer to one choice: lines, and whether talking goes on (more choices) or ends.
@@ -2019,8 +2024,9 @@ function sayTo(world, j, p, map, id, name) {
     const r = s ? regionAt(world, s.x, s.y, j.style) : null;
     return { lines: [say(`This is ${map.name}${r ? `, in ${r.name}` : ''}. ${(TOWN_LINES[map.kind] || TOWN_LINES.town)[0].replace('{region}', r?.name || 'these parts').replace('{ruler}', 'King')}`)] };
   }
+  if (id === 'help') { const r = errandTalk(world, j, map, p); return { lines: r.lines.map(say), done: r.done, reward: r.reward }; }
   if (id === 'news') return { lines: [say(FOLK_LINES[(p.line + j.beaten.length * 2) % FOLK_LINES.length])] };
-  if (id === 'story') { (j.met = j.met || []).includes('ruler') || j.met.push('ruler'); return { lines: [say(questLine(world, j))] }; }
+  if (id === 'story') { (j.met = j.met || []).includes('ruler') || j.met.push('ruler'); if (j.won && !j.met.includes('ruler-won')) j.met.push('ruler-won'); return { lines: [say(questLine(world, j))] }; }
   if (id === 'reward') { (j.met = j.met || []).includes('ruler') || j.met.push('ruler'); return { lines: [say(j.won ? 'Our thanks, and the land\'s, forever. And free beds at any inn that knows what\'s good for it.' : 'Gold, glory, and a song about you that the bards will get slightly wrong. Bring the stones home first.')] }; }
   return { lines: [], end: true };
 }
@@ -2077,8 +2083,10 @@ function trophiesEarned(world, j) {
   if (j.won) add('won', `The lanterns of ${story.replace(/^the /, '').replace(/ tale$/, '')}`, 'All three lanterns lit again. The story, told.', 'lantern');
   if ((j.craft?.level || 1) >= 10) add('craft10', 'Master crafter\'s hammer', 'Crafting level 10.', 'hammer');
   if (j.regions?.length && j.regions.length >= REGIONS_FOR_MAP(world)) add('regions', 'The well-worn map', 'Every region crossed.', 'map');
-  const jobs = Object.values(j.quests || {}).filter((v) => v === 'done').length;
-  if (jobs >= 5) add('jobs5', 'Friend of the villages', 'Five small jobs done.', 'shield');
+  const jobs = Object.values(j.quests || {}).filter((v) => v === 'done').length + Object.values(j.errands || {}).filter((v) => v?.s === 'done').length;
+  if (jobs >= 5) add('jobs5', 'Friend of the villages', 'Five side quests done.', 'shield');
+  if ((j.beaten || []).filter((g) => GUARDIANS[g] && !LANTERN_KEEPERS.includes(g)).length >= 5) add('bosses5', 'Boss hunter\'s crown', 'Five bosses beaten.', 'crown');
+  if ((j.lore || []).length >= 5) add('lore5', 'Keeper of tales', 'Five villages\' lore heard.', 'cup');
   if ((j.tamed || 0) >= 5) add('tamed5', 'Beast friend\'s collar', 'Five animals tamed.', 'star');
   return out;
 }
@@ -2104,6 +2112,123 @@ function keepTrophies(list, more) {
   for (const t of (Array.isArray(more) ? more : []).map(cleanTrophy).filter(Boolean)) if (!out.some((x) => x.id === t.id)) out.push(t);
   return out.slice(-MAX_TROPHIES);
 }
+// ---------- Quests (Journey v1.3) ----------
+// The quest log: the main story quest, whose goals show up as the story moves on; side quests from the people you
+// talk to (Elders' village jobs, and errands from folk), each with goals you tick off; and achievements, each with
+// how far along you are. Everything is worked out from the journey itself, so an older save fills in too.
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : /[sx]$/.test(word) ? 'es' : 's'}`;
+// An errand from folk: about one in three folk in a town or village has one, the same one every time.
+const ERRAND_FOES = ['rat', 'slime', 'wolf', 'goblin', 'bandit', 'spider', 'skeleton'];
+function errandOf(world, map, p) {
+  if (!p || p.role !== 'folk' || !map || !(STORY_KINDS.has(map.kind) || LOCAL_KINDS.has(map.kind))) return null;
+  const h = hashStr(`${world.seed}:errand:${map.id}:${p.id}`);
+  if (h % 3) return null;
+  const id = `${map.id}:${p.id}`.slice(0, 40), site = world.sites.find((s) => s.id === (map.site || map.id));
+  const zone = site?.zone || 1, reward = 400 * (1 + zone) + (h % 7) * 50;
+  const kind = ['gather', 'gather', 'fish', 'visit', 'hunt'][(h >>> 4) % 5];
+  if (kind === 'gather') { const mat = ['herb', 'wood', 'hide', 'ore'][(h >>> 8) % 4], n = 2 + ((h >>> 12) % 4); return { id, kind, from: p.name, at: map.id, mat, n, reward, title: `${n} ${MATERIALS[mat].name} for ${p.name}` }; }
+  if (kind === 'fish') { const n = 1 + ((h >>> 8) % 2); return { id, kind, from: p.name, at: map.id, item: 'fish', n, reward, title: `Fish for ${p.name}` }; }
+  if (kind === 'hunt') { const foe = ERRAND_FOES[Math.min(ERRAND_FOES.length - 1, (h >>> 8) % (2 + zone * 2))], n = 3 + ((h >>> 12) % 3); return { id, kind, from: p.name, at: map.id, foe, n, reward: reward + 300, title: `${p.name}'s ${FOES[foe]?.name.toLowerCase() || foe} trouble` }; }
+  const far = world.sites.filter((s) => s.id !== site?.id && (STORY_KINDS.has(s.kind) || LOCAL_KINDS.has(s.kind)) && !s.alt);
+  const to = far.sort((a, b) => (Math.abs(a.x - (site?.x || 0)) + Math.abs(a.y - (site?.y || 0))) - (Math.abs(b.x - (site?.x || 0)) + Math.abs(b.y - (site?.y || 0))))[1 + ((h >>> 8) % 3)] || far[0];
+  if (!to) return null;
+  return { id, kind: 'visit', from: p.name, at: map.id, to: to.id, reward, title: `A visit to ${to.name}` };
+}
+const errandProgress = (j, e, state) => {
+  if (e.kind === 'gather') return Math.min(e.n, j.mats?.[e.mat] || 0);
+  if (e.kind === 'fish') return Math.min(e.n, j.bag?.fish || 0);
+  if (e.kind === 'hunt') return Math.min(e.n, (j.kills?.[e.foe] || 0) - (state?.k || 0));
+  return (j.seen || []).includes(e.to) ? 1 : 0;
+};
+const errandNeed = (e) => (e.kind === 'visit' ? 1 : e.n);
+// Talking to folk about their errand: they ask, or thank you and pay, or remind you.
+function errandTalk(world, j, map, p) {
+  const e = errandOf(world, map, p); if (!e) return { lines: ['"Not a thing, thanks. Kind of you to ask."'] };
+  j.errands = j.errands || {};
+  const st = j.errands[e.id];
+  if (st?.s === 'done') return { lines: ['"Thanks again for before. You\'re all right."'] };
+  if (!st) {
+    j.errands[e.id] = { s: 'given', ...(e.kind === 'hunt' ? { k: j.kills?.[e.foe] || 0 } : {}) };
+    const to = e.kind === 'visit' ? world.sites.find((s) => s.id === e.to) : null;
+    const ask = {
+      gather: () => `"Could you bring me ${e.n} ${MATERIALS[e.mat].name}? I'd go myself, but my knees."`,
+      fish: () => `"I'd give a lot for ${e.n === 1 ? 'a fresh fish' : `${e.n} fresh fish`}. Face any water and wait. Bring ${e.n === 1 ? 'it' : 'them'} here?"`,
+      hunt: () => `"${cap(plural(e.n, FOES[e.foe]?.name.toLowerCase().replace(/^wild /, '') || e.foe))} keep bothering the road. Beat ${e.n} of them for me?"`,
+      visit: () => `"My cousin lives in ${to?.name}. Go and see the place for me, and tell me it's still standing?"`
+    }[e.kind]();
+    return { lines: [ask, `"There's ${fmtCoin(e.reward)} in it."`], given: true };
+  }
+  const have = errandProgress(j, e, st);
+  if (have < errandNeed(e)) return { lines: [`"Still hoping. ${e.kind === 'visit' ? 'Have you been yet?' : `That's ${have} of ${errandNeed(e)} so far.`}"`] };
+  if (e.kind === 'gather') j.mats[e.mat] -= e.n;
+  if (e.kind === 'fish') { j.bag.fish -= e.n; if (j.bag.fish <= 0) delete j.bag.fish; }
+  j.errands[e.id] = { s: 'done' }; j.coin += e.reward;
+  return { lines: [`"${e.kind === 'visit' ? 'Still standing? Oh, good.' : 'That\'s the lot!'} Here, ${fmtCoin(e.reward)}, as promised."`], done: true, reward: e.reward };
+}
+// The achievements, with how far along you are. Each one done puts a trophy in the case.
+function achievements(world, j) {
+  const bosses = (j.beaten || []).filter((g) => GUARDIANS[g] && !LANTERN_KEEPERS.includes(g)).length;
+  const jobs = Object.values(j.quests || {}).filter((v) => v === 'done').length + Object.values(j.errands || {}).filter((v) => v?.s === 'done').length;
+  let regions = 0; try { regions = regionsOf(world).list.length; } catch {}
+  return [
+    { id: 'won', name: 'Lantern bearer', what: 'Light all three lanterns.', have: LANTERN_KEEPERS.filter((g) => (j.beaten || []).includes(g)).length, need: 3 },
+    { id: 'bosses5', name: 'Boss hunter', what: 'Beat 5 bosses out in the land.', have: bosses, need: 5 },
+    { id: 'jobs5', name: 'Friend of the villages', what: 'Finish 5 side quests.', have: jobs, need: 5 },
+    { id: 'regions', name: 'The well-worn map', what: 'Cross every region.', have: (j.regions || []).length, need: regions || 1 },
+    { id: 'craft10', name: 'Master crafter', what: 'Reach crafting level 10.', have: j.craft?.level || 1, need: 10 },
+    { id: 'tamed5', name: 'Beast friend', what: 'Tame 5 animals.', have: j.tamed || 0, need: 5 },
+    { id: 'lore5', name: 'Keeper of tales', what: 'Hear 5 villages\' local lore.', have: (j.lore || []).length, need: 5 }
+  ].map((a) => ({ ...a, have: Math.min(a.have, a.need), done: a.have >= a.need }));
+}
+// The whole log. Each goal is { id, text, done }. A quest is { id, title, from, goals, done }.
+function questLog(world, j) {
+  const here = landSpot(world, j);
+  const where = (s) => `${s.name}, ${Math.abs(s.x - here.x) + Math.abs(s.y - here.y) < 2 ? 'right here' : `${direction(here, s)} in ${regionAt(world, s.x, s.y, j.style).name}`}`;
+  const castle = world.sites.find((s) => s.kind === 'castle');
+  const ruler = castle ? world.map(castle.id)?.people.find((p) => p.role === 'ruler') : null;
+  const title = ruler?.title || 'King';
+  const met = (j.met || []).includes('ruler') || (j.beaten || []).some((g) => LANTERN_KEEPERS.includes(g));
+  const goals = [{ id: 'm:ruler', text: castle ? `Talk to the ${title} in ${where(castle)}.` : 'Hear the story at Bob\'s Inn.', done: met }];
+  if (met) for (const g of LANTERN_KEEPERS) {
+    const s = world.sites.find((x) => x.keeper === g), done = (j.beaten || []).includes(g);
+    goals.push({ id: `m:${g}`, text: s ? `Take back the lantern stone from ${GUARDIANS[g].name}, in ${(j.seen || []).includes(s.id) || done ? where(s) : `somewhere ${direction(here, s)}, in ${regionAt(world, s.x, s.y, j.style).name}`}.` : `Beat ${GUARDIANS[g].name}.`, done });
+  }
+  if (j.won) goals.push({ id: 'm:home', text: castle ? `Bring the stones home to the ${title} in ${where(castle)}.` : 'Bring the stones home.', done: (j.met || []).includes('ruler-won') });
+  const main = { id: 'main', title: 'The lantern stones', from: castle ? `the ${title} of ${castle.name}` : 'Bob', goals, done: goals.every((g) => g.done) && Boolean(j.won) };
+  const side = [];
+  for (const [id, state] of Object.entries(j.quests || {})) {
+    const s = world.sites.find((x) => x.id === id), q = s?.quest; if (!q) continue;
+    const t = world.sites.find((x) => x.id === q.target) || world.sites.find((x) => x.keeper === q.keeper);
+    const did = q.kind === 'clear' || q.kind === 'bounty' ? (j.beaten || []).includes(q.keeper) : (j.found || []).includes(q.id);
+    const what = q.kind === 'missing' ? `Find ${q.who}` : q.kind === 'lostpet' ? `Find ${q.name || 'the lost pet'}` : `Beat ${GUARDIANS[q.keeper]?.name || 'the monster'}`;
+    side.push({ id: `job:${id}`, title: { clear: `Clear out ${t?.name || 'the den'}`, bounty: `A bounty for ${s.name}`, lostpet: `${q.name || 'A pet'} is lost`, missing: `${q.who} is missing` }[q.kind], from: `the Elder of ${s.name}`,
+      goals: [{ id: `job:${id}:1`, text: `${what}${t ? ` in ${where(t)}` : ''}.`, done: did || state === 'done' }, { id: `job:${id}:2`, text: `Go back to the Elder in ${where(s)}.`, done: state === 'done' }], done: state === 'done' });
+  }
+  for (const [id, st] of Object.entries(j.errands || {})) {
+    const [mapId, pid] = id.split(':'), map = world.map(mapId), p = map?.people.find((x) => x.id === pid);
+    const e = p ? errandOf(world, map, p) : null; if (!e) continue;
+    const s = world.sites.find((x) => x.id === (map.site || map.id)) || { name: map.name, x: here.x, y: here.y };
+    const to = e.kind === 'visit' ? world.sites.find((x) => x.id === e.to) : null;
+    const have = st.s === 'done' ? errandNeed(e) : errandProgress(j, e, st);
+    const text = { gather: () => `Gather ${e.n} ${MATERIALS[e.mat].name} (${have}/${e.n}).`, fish: () => `Catch ${e.n === 1 ? 'a fish' : `${e.n} fish`} (${have}/${e.n}).`, hunt: () => `Beat ${plural(e.n, FOES[e.foe]?.name.toLowerCase().replace(/^wild /, '') || e.foe)} (${have}/${e.n}).`, visit: () => `Go and see ${to ? where(to) : 'the place'}.` }[e.kind]();
+    side.push({ id: `err:${id}`, title: e.title, from: `${e.from} in ${map.name}`, goals: [{ id: `err:${id}:1`, text, done: have >= errandNeed(e) }, { id: `err:${id}:2`, text: `Go back to ${e.from} in ${where(s)}.`, done: st.s === 'done' }], done: st.s === 'done' });
+  }
+  return { main, side, achievements: achievements(world, j) };
+}
+// What's new in the log since last time, once each: a goal ticked off, or a new goal or quest. j.qseen remembers.
+function questNews(world, j) {
+  const log = questLog(world, j), first = !(j.qseen || []).length, seen = new Set(j.qseen || []), news = [];
+  const note = (key, text) => { if (!seen.has(key)) { seen.add(key); news.push(text); } };
+  for (const q of [log.main, ...log.side]) {
+    note(`q:${q.id}`, `📜 New quest: ${q.title}.`);
+    for (const g of q.goals) { note(`g:${g.id}`, `📜 ${q.title}: ${g.text}`); if (g.done) note(`d:${g.id}`, `✓ ${g.text.replace(/ \(\d+\/\d+\)\.$/, '.')} Done.`); }
+    if (q.done) note(`f:${q.id}`, `🏁 Quest finished: ${q.title}.`);
+  }
+  for (const a of log.achievements) if (a.done) note(`a:${a.id}`, `🏆 Achievement: ${a.name}.`);
+  j.qseen = [...seen].slice(-800);
+  // The first look at a journey (a new one, or an older save) only remembers; it doesn't announce everything at once.
+  return first ? [] : news;
+}
 // Text on the screen, in the journey's style. Plurals follow along (swords -> sabres).
 function restyle(text, style) {
   const st = STYLES[style]; if (!st || !st.words.length || !text) return text;
@@ -2115,5 +2240,5 @@ function restyle(text, style) {
 const craftFor = (style, kind) => STYLES[style]?.craft?.[kind] || null;
 const boatArt = (style, boat) => STYLES[style]?.craft?.boats?.[boat] || boat;
 
-globalThis.BobJourneyRules = { SAVE_VERSION, STATS, STAT_NAMES, STAT_CAP, COIN, COIN_ORDER, coinParts, fmtCoin, RACES, RACE_IDS, CLASSES, CLASS_IDS, SECOND_CLASS_LEVEL, WEAPONS, lookKit, ARMOURS, SHIELDS, AFFIXES, splitKit, kitKind, kitBase, kitStats, kitName, kitWords, ITEMS, FOODS, SCROLLS, KIT_PRICES, kitPrice, wares, SKILLS, COMBOS, TRIOS, ALL_SKILLS, PURE_CASTER, isPureCaster, treeOf, comboFor, trioFor, knownSkills, canLearn, learn, canAddClass, addClass, FOES, GUARDIANS, LANTERN_KEEPERS, ZONE_FOES, LAND_FOES, LAND_BEASTS, HILL_BEASTS, SEA_FOES, SKY_FOES, NPC_ROLES, PEACEFUL, seeded, member, PET_MAX, PET_NAMES, petStats, petOf, mountOf, kindOfPet, leaderMount, canFly, canSwim, setActive, release, renamePet, tameChance, BAG_BASE, bagCount, BAGS, isBag, bagOf, wearBag, bagSize, bagRoom, addItem, passivesOf, statOf, refresh, attackOf, guardOf, magicOf, speedOf, accuracyOf, evasionOf, critOf, hitChance, costOf, xpFor, STYLE_IDS, SIZE_IDS, LAYOUT, layoutOf, newJourney, cleanJourney, STEP, mapOf, visitingNow, peopleOn, thingAt, passable, canStand, walk, tick, zoneAt, encounter, rise, sink, ride, seeSites, BOATS, boatFor, fareFor, docksFrom, sailTo, FOE_HP, foe, startBattle, playRound, dropsOf, gainKit, drinkOn, fieldSkills, castField, levelUp, TRAINABLE, trainPrice, canTrain, train, hermitTeach, attackPerson, fineFor, payFine, isWanted, wakeAtInn, INN_PRICE, rest, priceOf, TRADER_PRICE, buy, sell, chestLoot, openChest, equip, FOLK_LINES, ROLE_LINES, questLine, elderLine, direction, KIN_LINES, ROAD_LINES, animalLine, questTalk, findLost, fishAt, STYLES, styleNames, MATERIALS, MAT_MAX, REGROW, nodeAt, craftXpFor, craftLevelOf, gatherSpot, matList, gather, RECIPES, isTown, usePortal, recipeName, atBench, canCraft, upgradable, craft, NARRATORS, narrator, STORY_KINDS, LOCAL_KINDS, isStoryTown, regionsOf, regionAt, landSpot, enterRegion, townNarration, localLore, nextSteps, talkChoices, sayTo, BANTER, banterDue, TROPHY_SHAPES, storyName, trophiesEarned, newTrophies, cleanTrophy, MAX_TROPHIES, keepTrophies, restyle, craftFor, boatArt };
+globalThis.BobJourneyRules = { SAVE_VERSION, STATS, STAT_NAMES, STAT_CAP, COIN, COIN_ORDER, coinParts, fmtCoin, RACES, RACE_IDS, CLASSES, CLASS_IDS, SECOND_CLASS_LEVEL, WEAPONS, lookKit, ARMOURS, SHIELDS, AFFIXES, splitKit, kitKind, kitBase, kitStats, kitName, kitWords, ITEMS, FOODS, SCROLLS, KIT_PRICES, kitPrice, wares, SKILLS, COMBOS, TRIOS, ALL_SKILLS, PURE_CASTER, isPureCaster, treeOf, comboFor, trioFor, knownSkills, canLearn, learn, canAddClass, addClass, FOES, GUARDIANS, LANTERN_KEEPERS, ZONE_FOES, LAND_FOES, LAND_BEASTS, HILL_BEASTS, SEA_FOES, SKY_FOES, NPC_ROLES, PEACEFUL, seeded, member, PET_MAX, PET_NAMES, petStats, petOf, mountOf, kindOfPet, leaderMount, canFly, canSwim, setActive, release, renamePet, tameChance, BAG_BASE, bagCount, BAGS, isBag, bagOf, wearBag, bagSize, bagRoom, addItem, passivesOf, statOf, refresh, attackOf, guardOf, magicOf, speedOf, accuracyOf, evasionOf, critOf, hitChance, costOf, xpFor, STYLE_IDS, SIZE_IDS, LAYOUT, layoutOf, newJourney, cleanJourney, STEP, mapOf, visitingNow, peopleOn, thingAt, passable, canStand, walk, tick, zoneAt, encounter, rise, sink, ride, seeSites, BOATS, boatFor, fareFor, docksFrom, sailTo, FOE_HP, foe, startBattle, playRound, dropsOf, gainKit, drinkOn, fieldSkills, castField, levelUp, TRAINABLE, trainPrice, canTrain, train, hermitTeach, attackPerson, fineFor, payFine, isWanted, wakeAtInn, INN_PRICE, rest, priceOf, TRADER_PRICE, buy, sell, chestLoot, openChest, equip, FOLK_LINES, ROLE_LINES, questLine, elderLine, direction, KIN_LINES, ROAD_LINES, animalLine, questTalk, findLost, fishAt, STYLES, styleNames, MATERIALS, MAT_MAX, REGROW, nodeAt, craftXpFor, craftLevelOf, gatherSpot, matList, gather, RECIPES, isTown, usePortal, recipeName, atBench, canCraft, upgradable, craft, NARRATORS, narrator, STORY_KINDS, LOCAL_KINDS, isStoryTown, regionsOf, regionAt, landSpot, enterRegion, townNarration, localLore, nextSteps, talkChoices, sayTo, BANTER, banterDue, TROPHY_SHAPES, storyName, trophiesEarned, newTrophies, cleanTrophy, MAX_TROPHIES, keepTrophies, errandOf, errandTalk, achievements, questLog, questNews, restyle, craftFor, boatArt };
 })();
