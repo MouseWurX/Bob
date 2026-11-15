@@ -292,12 +292,12 @@ const FIXED = {
   ask_together: () => 'Approved. Nothing has run yet: now call each step.'
 };
 // The tools that really run in a lesson's throwaway home: files, office files, notes, the board, reminders, memory, how-tos.
-const REAL_TOOLS = new Set(['list_folder', 'read_file', 'search_files', 'find_in_documents', 'write_file', 'edit_file', 'save_spreadsheet',
+const REAL_TOOLS = new Set(['make_diagram', 'list_folder', 'read_file', 'search_files', 'find_in_documents', 'write_file', 'edit_file', 'save_spreadsheet',
   'office_read', 'office_make', 'office_edit', 'compare_files', 'inspect_file', 'code_map', 'notice_board', 'reminders', 'take_note', 'remember',
   'forget_topic', 'calculate', 'check_spelling', 'query_data', 'my_howtos', 'save_howto', 'list_schedules', 'undo_files', 'sort_files']);
 async function realResult(sb, name, args, loaded) {
   try {
-    const r = await Promise.race([sb.brain.tools[name].run(sb.toReal(args), { loaded }), new Promise((_, no) => setTimeout(() => no(new Error('the tool took too long')), 60000))]);
+    const r = await Promise.race([sb.brain.tools[name].run(sb.toReal(args), { loaded, cfg: sb.brain.cfg, emit: () => {}, signal: new AbortController().signal, sessionId: 'lab' }), new Promise((_, no) => setTimeout(() => no(new Error('the tool took too long')), 60000))]);
     const t = typeof r === 'string' ? r : r && typeof r === 'object' && typeof r.text === 'string' ? r.text : JSON.stringify(r ?? '');
     return sb.neutral(t).slice(0, 6000) || '(no output)';
   } catch (e) { return `Error: ${sb.neutral(String(e.message || e)).slice(0, 600)}`; }

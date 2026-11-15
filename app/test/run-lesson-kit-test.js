@@ -191,6 +191,15 @@ check('writer: the fake result sees the tool\'s own description and is kept insi
   check('lab: an old lab temp folder never reaches a lesson, in any slash style', !/bob-lab-|Temp/.test(j) && j.includes('C:\\\\Users\\\\you\\\\AppData\\\\Local\\\\Bob\\\\Agent') && j.includes('C:/Users/you/AppData/Local/Bob/a'), j);
   check('writer: every saved lesson, reject and needs-review row goes through the neutral home', (read('model-lab/write-lessons.mjs').match(/messages: clean\(saved\)/g) || []).length === 3);
 }
+{
+  const { loadBob } = await import(pathToFileURL(path.join(lab, 'bob-kit.mjs')).href);
+  const k = await loadBob(app, { home: true });
+  let out = '';
+  try { out = await k.brain.tools.make_diagram.run({ title: 'Team', mermaid: 'flowchart TD\nA-->B' }, { loaded: [], cfg: k.brain.cfg, emit: () => {}, signal: new AbortController().signal, sessionId: 'lab' }); } catch (e) { out = 'threw: ' + e.message; }
+  check('writer --real-tools: Bob\'s real make_diagram runs with the writer\'s context and keeps its file in the throwaway home', /^Drew the diagram "Team"/.test(out) && !/bob-lab-/.test(k.neutral(out)), out);
+  try { k.done?.(); } catch {}
+}
+check('writer --real-tools: diagrams are drawn for real, with the context Bob\'s own tools expect', /REAL_TOOLS = new Set\(\['make_diagram'/.test(read('model-lab/write-lessons.mjs')) && /run\(sb\.toReal\(args\), \{ loaded, cfg: sb\.brain\.cfg, emit:/.test(read('model-lab/write-lessons.mjs')));
 check('writer: doctored lessons get 12 steps', /idea\.note \|\| idea\.prior \|\| idea\.failFirst \? 12 : 6/.test(read('model-lab/write-lessons.mjs')));
 
 // ---- the heal masks a failed try ----
