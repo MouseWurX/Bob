@@ -10,7 +10,7 @@ import { isInside, insideAny, appDir, findOutput } from './config.js';
 import { HATS } from './persona.js';
 import { cloudHelpers, askCloud } from './cloud.js';
 import { copyName } from './clan.js';
-import { limitOn, readOnlyRoots, handOn } from './hands-settings.js';
+import { limitOn, readOnlyRoots, handOn, handsSettings } from './hands-settings.js';
 import { listWorkflows, workshopDir } from './workshop.js';
 import { bobHelp } from './self-help.js';
 import { recallOn, tagLine } from './recall.js';
@@ -36,6 +36,14 @@ import { saveAs } from './save-as.js';
 const MAX_READ = 20000;
 // Runnable file types Bob won't write outside a project, on every platform (Windows, Mac and Linux kinds together).
 const BLOCKED_EXT = new Set(['.exe', '.msi', '.bat', '.cmd', '.ps1', '.psm1', '.vbs', '.js', '.mjs', '.cjs', '.jse', '.wsf', '.hta', '.scr', '.lnk', '.reg', '.dll', '.com', '.jar', '.sh', '.bash', '.zsh', '.py', '.pyw', '.command', '.desktop', '.app']);
+// 1.5.239 (reliability, on by default): the folders ticked for Hands count as readable for list_folder, read_file and
+// search while the Files or Sort Hand is on. Before, a Hands folder that wasn't also a read folder was refused
+// ("I'm not allowed to look in ...\\work") even though Bob could move and rename files there.
+export function readableRoots(cfg) {
+  const hands = handOn(cfg, 'files') || handOn(cfg, 'sort') ? handsSettings(cfg).folders || [] : [];
+  return [...new Set([...(cfg.readRoots || []), ...hands])];
+}
+
 // read_file refuses files over this many bytes: a multi-GB file would otherwise be read whole into memory.
 const MAX_READ_BYTES = 20 * 1024 * 1024;
 // fetch_page stops reading a page after this many bytes, and hands it over 15,000 characters at a time.
@@ -522,7 +530,7 @@ export function buildTools(cfg) {
     }, ['path']),
     async run({ path: p, sort, only }) {
       const dir = resolveUserPath(p);
-      if (!insideAny(cfg.readRoots, dir)) throw new Error(`I'm not allowed to look in ${dir}. Allowed: ${cfg.readRoots.join('; ')}`);
+      if (!insideAny(readableRoots(cfg), dir)) throw new Error(`I'm not allowed to look in ${dir}. Allowed: ${readableRoots(cfg).join('; ')}`);
       if (isSensitive(cfg, dir)) throw new Error(SECRET_MSG);
       // Item 26 (Nov 11): dates, sorting and a file filter, and it says how many weren't shown instead of cutting quietly.
       const want = filePattern(only);
@@ -547,11 +555,12 @@ export function buildTools(cfg) {
       // 1.5.222 PC check: "read notes.txt" made a small brain guess the home folder and get refused. A bare file name is
       // looked for in the folders Bob may read, and a refusal or a missing file says where those are (one line, only then).
       const bare = typeof p === 'string' && p.trim() && !/[\\/]/.test(p) && !/^~/.test(p.trim());
-      const found = bare ? (cfg.readRoots || []).map((r) => path.join(r, p.trim())).find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } }) : null;
-      const where = () => ((cfg.readRoots || []).length ? ` Files I can read are in: ${cfg.readRoots.join('; ')}.` : '');
-      if (bare && !found && (cfg.readRoots || []).length) throw new Error(`There's no file called ${p.trim()} in the folders I can read. Give its full path.${where()}`);
+      const roots = readableRoots(cfg);
+      const found = bare ? roots.map((r) => path.join(r, p.trim())).find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } }) : null;
+      const where = () => (roots.length ? ` Files I can read are in: ${roots.join('; ')}.` : '');
+      if (bare && !found && roots.length) throw new Error(`There's no file called ${p.trim()} in the folders I can read. Give its full path.${where()}`);
       const file = found || resolveUserPath(p);
-      if (!insideAny(cfg.readRoots, file)) throw new Error(`I'm not allowed to read ${file}.${where()}`);
+      if (!insideAny(roots, file)) throw new Error(`I'm not allowed to read ${file}.${where()}`);
       if (isSensitive(cfg, file)) throw new Error(SECRET_MSG);
       const size = fs.statSync(file).size;
       // "Read and search documents" (my-docs.js): Word, Excel, PowerPoint, OpenDocument, e-books, RTF and PDF as text.
@@ -923,7 +932,7 @@ export function buildTools(cfg) {
       // Item 23 (Nov 11): any folder Bob may read, a file pattern, and /patterns/ as well as plain words.
       if (folder) {
         const dir = resolveUserPath(folder);
-        if (!insideAny(cfg.readRoots, dir)) throw new Error(`I'm not allowed to look in ${dir}. Allowed: ${cfg.readRoots.join('; ')}`);
+        if (!insideAny(readableRoots(cfg), dir)) throw new Error(`I'm not allowed to look in ${dir}. Allowed: ${readableRoots(cfg).join('; ')}`);
         if (isSensitive(cfg, dir)) throw new Error(SECRET_MSG);
       }
       // 1.5.34: the main project (Settings > Projects) is searched first.

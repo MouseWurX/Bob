@@ -4,6 +4,24 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.239
+
+I think where it helps: at the start to plan and at the end to check, not before every single step.
+
+### Fixed
+
+- **Think to plan and review, not on each step.** On a long job I now think at the start and when checking the result, and run the steps in between without stopping to think each time. It's on by default, and you can switch it off in Settings, How Bob works.
+- **Folders ticked for Hands can be read.** With the Files Hand on, list_folder, read_file and search work in the folders you ticked for Hands, not only the read folders. Before, I could move files there but was told I wasn't allowed to look.
+- **Lab: Professional mode** in Settings now stays on when you turn it on. Before, the switch was never saved.
+- **GPT-OSS brains with thinking off** now really think less (low effort). Before, they always thought at medium.
+
+### New
+
+- **Lab, Learn, Lessons:** a 42-lesson course that walks you through the Lab step by step, from the basics to advanced work. It's off until you switch on **Lab lessons** in Settings, How Bob works, Brains.
+- **Lab:** the tool tests take an effort level, and the Forge checks a plan's lessons against the lesson ledger before a heal is rented. The tool-wish test (the tools a brain reaches for when none are offered) is in the Lab kit too.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.238
 
 Python gets real packages, my tools take the names other brains reach for, and the Lab gets stricter about what it teaches and what it rents.
@@ -146,32 +164,6 @@ Settings and my cube work again with my own window bar, scrollbars wear your lam
 - **Settings scrolls again** with my window buttons on my bar (since 1.5.228). On Windows the top bar, which drags the window, was catching the mouse wheel under an open page. While a page or panel is open, it no longer does, and the Settings window always keeps an ordinary title bar.
 - **Clicking my cube opens my menu again** with my window buttons on my bar (since 1.5.228). The top bar's drag area was catching the click meant for the cube, and for its menu. Now only the bar's own empty space drags the window.
 - **Zoom keys work on Windows and Linux.** Ctrl and + (or =) zooms in, Ctrl and - zooms out, and Ctrl and 0 puts it back, in every one of my windows.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.229
-
-First-time setup is rebuilt as seven pages, Users grow up, and the lamps get their finished look.
-
-### New
-
-- **First-time setup in seven pages:** Hello, Engines, Brains, Users, Privacy, Helpers and a last page, each with named Back and Next buttons. Engines and Brains are separate now (Brain Engine is my own fork of llama.cpp). On the Users page you add, rename and remove people. On the Privacy page you'll find Amnesia mode. Setup never asks for a passcode or changes one.
-- **A passcode is each person's own choice.** Nobody needs one. The first time someone signs in as themselves, I ask once: **Set a passcode** or **No passcode**, and I remember the answer.
-- **Switch user from my cube's menu.** Each person has their own email account, their own keys and their own agents. **Sign out** goes back to Guest.
-- **A smoke layer in Lamplight.** A faint haze hangs in the room, lit by my cube.
-- **Ghostly typing box.** In Lamplight the typing box and Send fade into the room until you use them, and the page links sit in shadow.
-
-### Changed
-
-- **Dimmer lamp colours and darker rooms** for Mercury, Sodium, Thallium and Neon, with softer Thallium and Neon.
-- **Moondust moves to Mercury.** If you were on the Moondust theme, I switch you to the Mercury lamp once when you update. Pick another any time in Settings, Style.
-
-### Fixed
-
-- **New pictures on my front page**, taken in the new look: the lamps, chat heads, window buttons and the Lab's eight tabs, plus a picture of all four lamps.
-
-- **Help had Home network access wrong.** It's on to start with, and it waits for Bob-Net access. Help now says so.
-- **A save check no longer trips on Windows.** One of my tests used a made-up program number that Windows could mistake for a live one, so the Windows build sometimes failed. It now uses a program that has really gone.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 

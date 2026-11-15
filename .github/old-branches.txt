@@ -1,5 +1,5 @@
 # Old branches the Delete old branches action may remove: name and the commit it pointed at on 15 Nov 2026.
-# Every one is already in main (open pull requests' branches left out). A branch that moved since is skipped. Delete this file once they're gone.
+# Every one is already in main, or was checked and dropped by the owner (open pull requests' branches left out). A branch that moved since is skipped. Delete this file once they're gone.
 claude/project-thread-0lt528 26c02896a18ab1a65382cd1ee469d9b062ad1f75
 claude/project-thread-0ts9ef 1268097b8fd91409a4274ca7eb29b96c377b77c2
 claude/project-thread-0zavcl bde7114574c26b7a95110ba4fba7e54e2139a52d
@@ -15,6 +15,7 @@ claude/project-thread-25zgf7 0356feb4339414c9af5ac676c3e43ae9a2fd8ea4
 claude/project-thread-2yis7r 3338c8454e21e37bd0a9f2ec9e9318aaaa94efb5
 claude/project-thread-318exi 93eb180232ac4c72d3006bdc6d8f210410e1c602
 claude/project-thread-31lokd 117262bccb7ebbbe04f50901930dc8259d3b0118
+claude/project-thread-36dnz3 929e0ed41fd12a9cd8a0a4f2c04e90d5ee684bbf
 claude/project-thread-3uu16k 3f4dd921a934bd696b881573cf3322d10c16fc0e
 claude/project-thread-4mbn1d a3e4d4bf1e92633743cc04d29079a68481af6a5e
 claude/project-thread-4q1w6p 05796014447cfdb33736d219f526e0a8557320fd
@@ -24,6 +25,7 @@ claude/project-thread-5honm6 95945bdee22695a22936f93c6483e7afafbd38a4
 claude/project-thread-5m3io9 21623e7559d4e7a2b03c92a285a3cdf1e412f466
 claude/project-thread-5r5mv7 2409a51da3999b6a7be710f7c2e3a57796a1e0df
 claude/project-thread-5to00p a556421a88cfa7bc6f5764289c0a3d010ada07fc
+claude/project-thread-5vef7v 493ec857cbd02467d00ab11002058b6c45aff51d
 claude/project-thread-5x7hf1 9f56c310e2a917e576a1f612dd11d42d3b44dc1c
 claude/project-thread-69b4h7 ccc1d2a186011d3a7e1098a711f2605dc7e58bb1
 claude/project-thread-6c4z18 1beca481486b215b8c26c9700fbb35402bcfbe99
@@ -43,6 +45,7 @@ claude/project-thread-9sn87i bec3d0c4c9c9e4d5ec8601038b6a9012fb067a1f
 claude/project-thread-9zdsoq 919d1157e43282532dd3ad4f0ed3a2c82661cef8
 claude/project-thread-a37bkf df9bdcdac7e8a1338b02cd92ee71edc73f08768e
 claude/project-thread-a46c9t e2f9f6eb63702cb525c047d9888f288c69678c81
+claude/project-thread-a4us59 ffa6c9795d9e0849b10eec10491381b72b068228
 claude/project-thread-a6xd1z 0abefb850882ac2e0073d3b7cfcbb91afa5764fa
 claude/project-thread-aag22r 61fe2ecbc3007052074256820eaa335e19b2f895
 claude/project-thread-aai24m 4e7ea49fe6be8a3a116e8798bfacaeffabcc60cc
@@ -62,6 +65,7 @@ claude/project-thread-cemnfy e4a121538718801f89acedbf7c669e8cdaf358bb
 claude/project-thread-cpmgmk 851afd0c623595332cef853a189ff6399650394c
 claude/project-thread-d17dwz 653149b6cf9d839cf5549d8a2b113d18c7bdd1f6
 claude/project-thread-e2ujkr 62c7ac3563f4b6c67fe96d4ea1e73a6bfaaec41f
+claude/project-thread-e91ego 4f1020971138e86cc9785b6ce7eeb5d8b027a502
 claude/project-thread-ec0exe 3dd14b37d05d00ad2f000d6cb16b964eec178358
 claude/project-thread-edffjf e63cf9509d7121c92f1bb38f98bdac559b1a3710
 claude/project-thread-f62asw 30ab3ec622a82a25d4b312a4822f774463f5122e
@@ -86,7 +90,9 @@ claude/project-thread-iit54n e88efb2bc3c805ca95d86a728a1022ab44a6dc5a
 claude/project-thread-ijti5g be1655a6f7fe0264115df4ad794e73021b308f70
 claude/project-thread-int8pv f33c075ba6a21b18dc0243c3ed88fe60dcde09b7
 claude/project-thread-inusde 6d7978124aee9a532eb4126a9a682725e4421d9b
+claude/project-thread-j32245 e39bd3dea5c698fa490dc67a06a5bc9238eb09fa
 claude/project-thread-jfdf9k cdd1fa3804a29a2c5b8ff9791b80e5db87b41eb4
+claude/project-thread-jkbhmt 858f20e4036cc25a467c44db613be1c98f7831c4
 claude/project-thread-jljqts 01a67dcbf06c52ce28ce2b2b737cba5fe706f8ba
 claude/project-thread-jnji0w 58f4660381dc3b780a5750522c32515f921f1174
 claude/project-thread-jvpb5m dbc7fb772f27ca90f0ff423d852bb9d825e96499
@@ -100,10 +106,12 @@ claude/project-thread-lkgnrf bf4c51ac9fb8c5071e795e7e456cc02bb686f593
 claude/project-thread-llw5hc 7ce7761410e53b11d94c2ecbc4118fd2bd72df82
 claude/project-thread-lrnz6l 76e434a52818618478ac07cab6cdc1d71bd76c50
 claude/project-thread-m2uhyq 8e13734e8a6b20569938db68add751ad1c872ac4
+claude/project-thread-m51k5h 1e04000668ef7070b074ca595d244d304fa3e4d1
 claude/project-thread-m8yh1h 0a301b4bea250163528863303af4531380b8b98b
 claude/project-thread-mn8zi4 4329d0d4cfb09c8887e3efca2b080aaa6f9c19c3
 claude/project-thread-mnv8uk e1b9c9959e3a1f049b05fcea1484123bede980ef
 claude/project-thread-myv3sw 96fe01c1b55a926cfb06719f1b99328c8d04beb7
+claude/project-thread-n41s8u 0a9e599353fdf2505d59d0bfda9aab459cc28241
 claude/project-thread-nfo6fo b2e7d58c41200e469dd332c2ccd9c4e089bdbfe9
 claude/project-thread-np2j3s 52e18bbae6a41955c7b458bf1c5f11b6767f4aaa
 claude/project-thread-nxg229 bc71ac59e7e5a04c8797e8036d97d431e03593ff
@@ -127,6 +135,7 @@ claude/project-thread-rbqrwl f1599e3c192f425da5ad71884154fdef57bdabcd
 claude/project-thread-rkuv0q 4fd03cdf404dc8441e8158c0ea04d533f253c684
 claude/project-thread-s1n6tz 8edfc1c94656877f02cc353680422479e5277109
 claude/project-thread-s1n6tz-fullsize da6d56440f05521453e3f563db92fc1ab9e3f085
+claude/project-thread-s1n6tz-wording 79863563eff2ccdb2dde2469a21d0b6e27b1b078
 claude/project-thread-s3x3rf 1385dd1c416cd97a261c59d0c9a78d984620605c
 claude/project-thread-sgqir5 8da74477bee1517a1adffe1ace3d9e21ada9b339
 claude/project-thread-shylv5 2bacd9a7be124a9ba9d540a6130b175c4b917621
@@ -143,6 +152,7 @@ claude/project-thread-u9dfia db3c33753f4d04045d80a67cbc80b34280590828
 claude/project-thread-ujspa9 4e93aa7cd5ec702e1cbb16a73ed0b91692d0e768
 claude/project-thread-uwaucs 5f235bdc21644ad2f87f35648a056a27d6a273b3
 claude/project-thread-v562wa ce793ebbf8017bd7a4b899c50ebba8df5b471df7
+claude/project-thread-v7vof7 fb978858d3c87abd328e7df1c0815631d584336b
 claude/project-thread-vdr2j2 e2e333430228b457bf1422ab2d77feeb0a7404f5
 claude/project-thread-vjoqqa 6c8e4454254a9ea239ff9027ada9aca8a8fcea36
 claude/project-thread-vkkd5i da42a7c2b768b2ef18fc4cbb4b731c7e22cf7ac3
@@ -163,3 +173,4 @@ claude/project-thread-yu5dii 42ee132004d3cbe940a70c95deeb27a25c81507b
 claude/project-thread-yv51ym ef72f27bd4c827b8a94c66161403f7f07a52068d
 claude/project-thread-zpv9ib 6d08a8af527559b390b528557e7a431c0a1f1687
 claude/project-thread-zui8hv c176c051d8f8094dbed3e6673dd9e30c38c0ce78
+lab3-playground 36b1a7594383eb0ae8f6cf96a4e1bddfed85cfb7
