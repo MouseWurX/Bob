@@ -19,6 +19,7 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false, home = fa
   const { Brain } = await import(src('brain.js'));
   const { systemPrompt } = await import(src('persona.js'));
   const tb = await import(src('toolbox.js'));
+  let toolShapes = null; try { toolShapes = (await import(src('tool-sets.js'))).TOOL_SHAPES ?? null; } catch {} // the tool-shape version this Bob's lessons are written for
   let phrasings = [];
   try { phrasings = (await import(pathToFileURL(path.join(bobDir, 'test', 'phrasings.js')).href)).PHRASINGS; } catch {}
 
@@ -64,7 +65,7 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false, home = fa
     return v;
   };
   const kit = {
-    bobSrc, neutral, toReal, homeDir,
+    bobSrc, neutral, toReal, homeDir, toolShapes,
     brain, phrasings, tmp,
     groups: () => tb.groupsFor(brain),
     guessGroups: (text) => tb.guessGroups(brain, text),

@@ -171,6 +171,7 @@ check('writer: a second try: the first call fails, then it carries on', m.filter
 check('writer: the teacher saw the note, the saved lesson did not', seen.some((j) => String(j.messages[0]?.content || '').includes('NOTE-FOR-TEACHER')) && !JSON.stringify(made).includes('NOTE-FOR-TEACHER'));
 check('writer: route and seed are kept on the lesson', made[0]?.route === 0 && made[0]?.seed?.source === 'v5');
 check('writer: --family stamps the lesson for one brain family', made[0]?.family === 'qwen');
+check('writer: every lesson says which tool-shape version it was written for', Number.isInteger(made[0]?.tool_shapes));
 {
   const real = rows(path.join(tmp, 'wl', 'real-base', 'lessons.jsonl'))[0];
   const firstTool = (real?.messages || []).find((m) => m.role === 'tool');

@@ -157,7 +157,9 @@ if (teacherName || kind) {
 // family the lessons are FOR (qwen or gpt-oss); every lesson carries it and the heal (data.py) skips lessons of another family.
 const family = String(o.family || '').toLowerCase().replace(/^gptoss$/, 'gpt-oss');
 if (family && !['qwen', 'gpt-oss'].includes(family)) { console.error('--family is qwen or gpt-oss'); process.exit(1); }
-const stamp = { ...(teacherName ? { teacher: teacherName } : {}), ...(kind ? { kind } : {}), ...(family ? { family } : {}) };
+let stamp = { ...(teacherName ? { teacher: teacherName } : {}), ...(kind ? { kind } : {}), ...(family ? { family } : {}) };
+// 15 Nov: every lesson says which tool-shape version it was written for (tool-sets.js TOOL_SHAPES); the owner locks one per family
+if (kit.toolShapes !== null) stamp = { ...stamp, tool_shapes: kit.toolShapes };
 const SCI_ANGLES = ['physics: motion, energy, forces, heat, light, with a worked calculation', 'electronics: circuits, Ohm\'s law, resistors, capacitors, transistors, microcontrollers, power supplies', 'chemistry: reactions, moles, acids and bases, materials, safety', 'maths beyond arithmetic: algebra, geometry, trig, probability, a bit of calculus', 'checking a calculation or unit conversion the person already did', 'explaining a science concept in plain words to a curious adult', 'practical engineering: batteries, motors, 3D printing materials, soldering, sensors'];
 const thinkMode = String(o.think || 'half');
 // --think 80 (13 Nov): that percent of the lessons think, spread evenly (a style set: mostly thinking, a few without so both modes stay healthy)
