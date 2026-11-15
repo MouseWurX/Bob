@@ -101,7 +101,7 @@ const engineBefore = cfg.engine;
 check('a GGUF is wired up for his own engine, but the engine is never switched by itself (the app asks)', p2.needsEngine === 'llamacpp' && !('engine' in p2) && cfg.engine === engineBefore && cfg.models.bob === 'qwen3-4b' && cfg.llamacpp.models['qwen3-4b'].endsWith('.gguf') && cfg.llamacpp.exe === 'C:\\llama\\llama-server.exe');
 
 const r = await shop.roles();
-check('who-does-what lists every job with choices from this PC', r.jobs.length === 14 && r.jobs.some((j) => j.id === 'eyes') && r.jobs.some((j) => j.id === 'edit') && r.options.llm.some((o) => o.value === 'gemma4:26b') && r.options.images.some((o) => o.value === 'z-image-turbo') && r.current.image === 'z-image-turbo', JSON.stringify(r.current));
+check('who-does-what lists every job with choices from this PC', r.jobs.length === 15 && r.jobs.some((j) => j.id === 'eyes') && r.jobs.some((j) => j.id === 'housekeeping') && r.current.housekeeping === '' && r.jobs.some((j) => j.id === 'edit') && r.options.llm.some((o) => o.value === 'gemma4:26b') && r.options.images.some((o) => o.value === 'z-image-turbo') && r.current.image === 'z-image-turbo', JSON.stringify(r.current));
 await shop.setRole('reviewer', 'gemma4:26b');
 check('picking a brain for a job is saved', cfg.models.reviewer === 'gemma4:26b' && JSON.parse(fs.readFileSync(cfg.settingsFile, 'utf8')).models.reviewer === 'gemma4:26b');
 try { await shop.setRole('tinker', 'not-on-this-pc:1b'); check('a brain that isn\'t on the PC is refused', false); } catch { check('a brain that isn\'t on the PC is refused', true); }

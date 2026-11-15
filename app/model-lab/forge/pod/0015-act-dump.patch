@@ -1,0 +1,167 @@
+diff --git a/tools/CMakeLists.txt b/tools/CMakeLists.txt
+index 6a6592c..b951f29 100644
+--- a/tools/CMakeLists.txt
++++ b/tools/CMakeLists.txt
+@@ -38,6 +38,7 @@ else()
+     if (NOT GGML_BACKEND_DL AND GGML_CPU)
+         # these tools use backends directly (no dynamic loading) and depend on CPU backend symbols
+         add_subdirectory(cvector-generator)
++        add_subdirectory(act-dump)
+         add_subdirectory(export-lora)
+     endif()
+     add_subdirectory(fit-params)
+diff --git a/tools/act-dump/CMakeLists.txt b/tools/act-dump/CMakeLists.txt
+new file mode 100644
+index 0000000..edd62fd
+--- /dev/null
++++ b/tools/act-dump/CMakeLists.txt
+@@ -0,0 +1,4 @@
++set(TARGET llama-act-dump)
++add_executable(${TARGET} act-dump.cpp)
++target_link_libraries(${TARGET} PRIVATE llama-common llama ${CMAKE_THREAD_LIBS_INIT})
++target_compile_features(${TARGET} PRIVATE cxx_std_17)
+diff --git a/tools/act-dump/act-dump.cpp b/tools/act-dump/act-dump.cpp
+new file mode 100644
+index 0000000..3c50f7f
+--- /dev/null
++++ b/tools/act-dump/act-dump.cpp
+@@ -0,0 +1,139 @@
++// Brain Engine lab tool (pod patch 0015): read a brain's inner stream. For every prompt (one per line, "\n" = a new line),
++// the output of each asked layer (l_out-<il>, the residual stream after that layer, the same place a control vector is added)
++// is written for every token as fp16: <out>/layer-<il>.f16 (n_tokens x n_embd, prompts one after another), with
++// <out>/index.jsonl (one line per prompt: its number, token count, and the tokens as text) and <out>/info.json.
++// Read only: nothing is written to the brain.
++//   llama-act-dump -m brain.gguf --act-prompts prompts.txt --act-layers 10,20,30 --act-out dir [--act-max 512] [llama args]
++#include "arg.h"
++#include "common.h"
++#include "llama.h"
++#include "ggml.h"
++#include "ggml-backend.h"
++
++#include <cstdio>
++#include <cstring>
++#include <fstream>
++#include <map>
++#include <sstream>
++#include <string>
++#include <vector>
++
++struct act_cb {
++    std::map<int, FILE *> files;
++    int n_tokens = 0;
++    std::vector<float> buf;
++    std::vector<ggml_fp16_t> half;
++    size_t rows = 0;
++};
++
++static bool cb_eval(struct ggml_tensor * t, bool ask, void * user_data) {
++    auto * cb = (act_cb *) user_data;
++    if (strncmp(t->name, "l_out-", 6) != 0) {
++        return ask ? false : true;
++    }
++    const int il = atoi(t->name + 6);
++    if (ask) {
++        return cb->files.count(il) > 0;
++    }
++    if (!cb->files.count(il) || t->type != GGML_TYPE_F32 || t->ne[1] != cb->n_tokens) {
++        return true;
++    }
++    const size_t n = ggml_nelements(t);
++    cb->buf.resize(n);
++    ggml_backend_tensor_get(t, cb->buf.data(), 0, n * sizeof(float));
++    cb->half.resize(n);
++    ggml_fp32_to_fp16_row(cb->buf.data(), cb->half.data(), n);
++    fwrite(cb->half.data(), sizeof(ggml_fp16_t), n, cb->files[il]);
++    return true;
++}
++
++static std::string json_str(const std::string & s) {
++    std::string o = "\"";
++    for (unsigned char c : s) {
++        if (c == '"' || c == '\\') { o += '\\'; o += (char) c; }
++        else if (c == '\n') o += "\\n";
++        else if (c == '\r') o += "\\r";
++        else if (c == '\t') o += "\\t";
++        else if (c < 0x20) { char b[8]; snprintf(b, sizeof(b), "\\u%04x", c); o += b; }
++        else o += (char) c;
++    }
++    return o + "\"";
++}
++
++int main(int argc, char ** argv) {
++    std::string prompts_file, layers_s, out_dir;
++    int max_tokens = 512;
++    std::vector<char *> rest = { argv[0] };
++    for (int i = 1; i < argc; i++) {
++        std::string a = argv[i];
++        if (a == "--act-prompts" && i + 1 < argc) prompts_file = argv[++i];
++        else if (a == "--act-layers" && i + 1 < argc) layers_s = argv[++i];
++        else if (a == "--act-out" && i + 1 < argc) out_dir = argv[++i];
++        else if (a == "--act-max" && i + 1 < argc) max_tokens = atoi(argv[++i]);
++        else rest.push_back(argv[i]);
++    }
++    if (prompts_file.empty() || layers_s.empty() || out_dir.empty()) {
++        fprintf(stderr, "usage: %s -m brain.gguf --act-prompts file --act-layers 10,20 --act-out dir [--act-max 512]\n", argv[0]);
++        return 1;
++    }
++    common_params params;
++    common_init();
++    if (!common_params_parse((int) rest.size(), rest.data(), params, LLAMA_EXAMPLE_COMMON)) {
++        return 1;
++    }
++    act_cb cb;
++    params.cb_eval = cb_eval;
++    params.cb_eval_user_data = &cb;
++    params.warmup = false;
++    if (params.n_batch < max_tokens) params.n_batch = max_tokens;
++    if (params.n_ubatch < max_tokens) params.n_ubatch = max_tokens;
++    if (params.n_ctx < max_tokens) params.n_ctx = max_tokens;
++
++    llama_backend_init();
++    auto init = common_init_from_params(params);
++    auto * model = init->model();
++    auto * ctx   = init->context();
++    if (!model || !ctx) { fprintf(stderr, "could not load the brain\n"); return 1; }
++    const int n_layer = llama_model_n_layer(model), n_embd = llama_model_n_embd(model);
++    const llama_vocab * vocab = llama_model_get_vocab(model);
++
++    std::vector<int> layers;
++    { std::stringstream ss(layers_s); std::string x; while (std::getline(ss, x, ',')) { int l = atoi(x.c_str()); if (l < 0 || l >= n_layer) { fprintf(stderr, "the brain has no layer %d (it has 0 to %d)\n", l, n_layer - 1); return 1; } layers.push_back(l); } }
++    for (int l : layers) {
++        std::string f = out_dir + "/layer-" + std::to_string(l) + ".f16";
++        FILE * fp = fopen(f.c_str(), "wb");
++        if (!fp) { fprintf(stderr, "could not write %s\n", f.c_str()); return 1; }
++        cb.files[l] = fp;
++    }
++    FILE * idx = fopen((out_dir + "/index.jsonl").c_str(), "wb");
++    if (!idx) { fprintf(stderr, "could not write the index\n"); return 1; }
++
++    std::ifstream in(prompts_file);
++    std::string line; int p = 0; size_t total = 0;
++    while (std::getline(in, line)) {
++        if (!line.empty() && line.back() == '\r') line.pop_back();
++        if (line.empty()) continue;
++        std::string text; for (size_t i = 0; i < line.size(); i++) { if (line[i] == '\\' && i + 1 < line.size() && line[i + 1] == 'n') { text += '\n'; i++; } else text += line[i]; }
++        std::vector<llama_token> toks = common_tokenize(ctx, text, true, true);
++        if ((int) toks.size() > max_tokens) toks.resize(max_tokens);
++        if (toks.empty()) continue;
++        cb.n_tokens = (int) toks.size();
++        llama_memory_clear(llama_get_memory(ctx), true);
++        if (llama_decode(ctx, llama_batch_get_one(toks.data(), (int) toks.size()))) { fprintf(stderr, "prompt %d failed to run\n", p); return 1; }
++        fprintf(idx, "{\"p\":%d,\"n\":%d,\"tokens\":[", p, (int) toks.size());
++        for (size_t i = 0; i < toks.size(); i++) fprintf(idx, "%s%s", i ? "," : "", json_str(common_token_to_piece(ctx, toks[i])).c_str());
++        fprintf(idx, "]}\n");
++        total += toks.size(); p++;
++        if (p % 100 == 0) fprintf(stderr, "%d prompts, %zu tokens\n", p, total);
++    }
++    fclose(idx);
++    for (auto & kv : cb.files) fclose(kv.second);
++    FILE * info = fopen((out_dir + "/info.json").c_str(), "wb");
++    fprintf(info, "{\"n_embd\":%d,\"n_layer\":%d,\"layers\":[", n_embd, n_layer);
++    for (size_t i = 0; i < layers.size(); i++) fprintf(info, "%s%d", i ? "," : "", layers[i]);
++    fprintf(info, "],\"prompts\":%d,\"tokens\":%zu,\"dtype\":\"f16\"}\n", p, total);
++    fclose(info);
++    (void) vocab;
++    printf("act-dump: %d prompts, %zu tokens, layers %s -> %s\n", p, total, layers_s.c_str(), out_dir.c_str());
++    return 0;
++}

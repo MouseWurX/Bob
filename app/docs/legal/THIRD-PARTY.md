@@ -36,6 +36,9 @@ separate program:
 | 3D workshop: BiRefNet background remover (ZhengPeng7/BiRefNet) | MIT (used in place of RMBG-2.0, which is non-commercial) |
 | 3D workshop: DINOv3 picture reader (Meta's facebook/dinov3-vitl16-pretrain-lvd1689m, from the exact ungated copy camenduru/dinov3-vitl16-pretrain-lvd1689m, which carries Meta's licence file) | DINOv3 License (Meta): use and redistribution allowed with the licence; no military, weapons or ITAR uses |
 | Pyodide 314.0.7 (Let Bob use Python in the sandbox; from the npm registry, pinned with its sha256) | MPL-2.0 (Python itself: PSF License) |
+| Python packages for the sandbox (Get packages; ready-built for Pyodide from cdn.jsdelivr.net/pyodide, each checked against pyodide-lock.json's sha256): numpy, pandas, scipy, matplotlib, Pillow, sympy, lxml, regex, PyYAML, Beautiful Soup, networkx, Jinja2, svgwrite, shapely, fontTools and what they need | BSD, MIT, HPND (Pillow), PSF/Matplotlib, Apache-2.0 (some deps), each as its own file |
+| Plain-Python wheels for the sandbox (Get packages; from files.pythonhosted.org, pinned by sha256): python-docx 1.2.0, openpyxl 3.1.5, et-xmlfile 2.0.0, python-pptx 1.0.2, XlsxWriter 3.3.1, pypdf 7.1.0, defusedxml 0.7.1, trimesh 5.2.1 | MIT / BSD / PSF |
+| fpdf2 2.9.0 (same; fetched as its own file, never mixed into Bob's code) | LGPL-3.0 |
 | word-list 4.1.0 (Let Bob check spelling; from the npm registry, pinned with its sha256) | MIT |
 | Models in the model shop | each entry in `catalog.json` lists its licence and whether commercial use is allowed |
 

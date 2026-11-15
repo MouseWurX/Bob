@@ -311,6 +311,19 @@ The owner: "if its always the same card type freezing up change to a different c
 `--restart`) never re-rents. A type with 2 freezes in 7 days and no good start since goes to the back of the list
 (`card-health.mjs`).
 
+## Build 24 (15 November 2026, tested with fakes only): the never-taught gate
+
+A review found 519 of the 534 held-out test questions word for word in training-side lesson files, while `data.py` only
+holds out a 5% id-hash split. Now every plan that teaches (rungs, `train_teacher`, `heal`, `grpo` or `pref`) is checked
+before the Forge rents anything: `model-lab/never-gate.mjs` reads every user turn of the main lessons, the
+`extra_lessons` and the preference pairs, and compares them with the quiz items, the files in `forge/never-taught.json`
+(paths under `out/`) and the plan's own `"never": [...]` (paths under `model-lab/`). A test question found the same,
+inside a longer request, or reworded stops the plan, and so does a listed test file that isn't there or a `lessons_set`
+on the drive (check it on the PC and send it as `extra_lessons`). The result is saved in `out/forge/never-gate-<run>.json`.
+Run it alone with `node never-gate.mjs --plan <plan>`. Lessons the pod writes during a training run are checked the same
+way, and any that hold a test item are dropped (kept apart in `never-dropped.jsonl`) before they go up. Benchmarks,
+rebuilds and lesson-writing-only runs aren't checked, since they teach nothing.
+
 ## Tighter lesson teacher (15 Nov 2026)
 - `lesson-checks.mjs`: code checks run on every lesson before the reviewer sees it (thinking that wanders, quoting the private note, claiming success when every tool call failed, the same call three times, a value a tool doesn't take). `WORK_RULES` goes to the teacher only, never into a lesson.
 - `write-lessons.mjs --examples <jsonl>`: shows the teacher up to 3 Opus-approved lessons as a guide. They are never saved or trained on.

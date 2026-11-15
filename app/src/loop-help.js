@@ -216,6 +216,27 @@ function lev(a, b) {
 
 // Fix every call in one reply. tools: name -> tool ({ schema }). Each call gets call.bounce (the text to hand back
 // instead of running it) when it can't run, and call.fixed (what was mended) when something was. Returns a summary.
+// Other names for Bob's tools (Nov 15). Riker and Bobert, given no tools, wrote run_program,
+// read_dir and move_files; Qwen's own coding agent uses read_file / write_file / replace / list_directory /
+// web_fetch / grep_search. A call under one of these names runs Bob's own tool, with its inputs put in Bob's shape,
+// so every check, card and record still sees Bob's name. Only when Bob has no tool by that name himself.
+const splitCommand = (line) => (String(line || '').match(/"[^"]*"|'[^']*'|\S+/g) || []).map((x) => x.replace(/^(["'])([\s\S]*)\1$/, '$2'));
+export const TOOL_ALIASES = {
+  run_program: { to: 'run_command', args: (a) => (a.cmd ? a : (() => { const [cmd, ...rest] = splitCommand(a.command ?? a.program ?? ''); return { ...a, cmd, args: a.args || rest }; })()) },
+  run_shell_command: { to: 'run_command', args: (a) => TOOL_ALIASES.run_program.args(a) },
+  execute_command: { to: 'run_command', args: (a) => TOOL_ALIASES.run_program.args(a) },
+  read_dir: { to: 'list_folder', args: (a) => a },
+  list_directory: { to: 'list_folder', args: (a) => a },
+  move_files: { to: 'file_hands', args: (a) => ({ action: 'move', paths: [].concat(a.paths ?? a.source ?? a.sources ?? a.from ?? []), to: a.to ?? a.destination ?? a.dest }) },
+  move_file: { to: 'file_hands', args: (a) => TOOL_ALIASES.move_files.args(a) },
+  read_text_file: { to: 'read_file', args: (a) => a },
+  write_to_file: { to: 'write_file', args: (a) => a },
+  replace: { to: 'edit_file', args: (a) => ({ path: a.path ?? a.file_path, find: a.find ?? a.old_string, replace: a.replace ?? a.new_string }) },
+  web_fetch: { to: 'fetch_page', args: (a) => a },
+  grep_search: { to: 'search_files', args: (a) => a },
+  open_application: { to: 'open_app', args: (a) => a }
+};
+
 export function fixCalls(calls, tools, { bounced = new Map() } = {}) {
   const sum = { fixed: 0, bounced: 0 };
   for (const call of calls || []) {
@@ -223,7 +244,15 @@ export function fixCalls(calls, tools, { bounced = new Map() } = {}) {
     const name = String(f.name || '').trim();
     if (name !== f.name) f.name = name;
     const raw = f.raw !== undefined ? f.raw : f.arguments;
-    if (!tools[name]) {
+    const other = !tools[name] && TOOL_ALIASES[name.toLowerCase()];
+    if (other && tools[other.to]) {
+      let a = raw;
+      if (typeof a === 'string') a = repairJson(a) || {};
+      try { f.raw = other.args({ ...(a && typeof a === 'object' ? a : {}) }); } catch { f.raw = a; }
+      delete f.arguments;
+      f.name = other.to; call.fixed = [`${name} → ${other.to}`];
+    }
+    if (!tools[f.name]) {
       const near = nearName(name, Object.keys(tools));
       // A call that's only spelled wrong ("Read_File", "readfile") just runs; anything else gets the near name back.
       if (near && squash(near) === squash(name)) { f.name = near; call.fixed = [`${name} → ${near}`]; }
@@ -231,7 +260,7 @@ export function fixCalls(calls, tools, { bounced = new Map() } = {}) {
     }
     const params = tools[f.name]?.schema?.function?.parameters;
     if (!params) { if (call.fixed) sum.fixed++; continue; }
-    const r = checkArgs(params, raw);
+    const r = checkArgs(params, f.raw !== undefined ? f.raw : raw);
     if (r.problems.length) {
       const n = (bounced.get(f.name) || 0) + 1;
       bounced.set(f.name, n);

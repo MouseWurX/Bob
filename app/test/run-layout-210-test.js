@@ -35,11 +35,12 @@ check('the Lab heading hides with the Lab button, folded headings are thin lines
 // ---- the bottom bar ----
 const bb = html.slice(html.indexOf('<nav id="bottomBar"'), html.indexOf('</nav>', html.indexOf('<nav id="bottomBar"')));
 const goes = [...bb.matchAll(/data-go="(\w+)"/g)].map((m) => m[1]);
-check('the bottom bar has 5 items plus More', goes.join(',') === 'chatBtn,newchat,tasksBtn,topicsBtn,settingsBtn' && /id="moreBtn"[^>]*aria-expanded="false"[^>]*aria-controls="side"/.test(bb), goes.join(','));
+// Nov 15: Chat, Tasks, New, Topics and Bob (the phone menu, phone-menu.js); Settings moved into that menu.
+check('the bottom bar has 4 items plus Bob', goes.join(',') === 'chatBtn,tasksBtn,newchat,topicsBtn' && /id="moreBtn"[^>]*aria-haspopup="dialog"[^>]*aria-expanded="false"[^>]*aria-controls="phoneMenu"/.test(bb), goes.join(','));
 check('…each one presses a real menu button', goes.every((id) => side.includes(`id="${id}"`)));
 check('…and it shows only at phone width, the same width the code uses', PHONE_MAX === 640 && /\.bottom-bar \{ display: none; \}\n@media \(max-width: 640px\) \{\n  \.bottom-bar \{ display: flex;/.test(css));
 check('on a phone the menu is a sheet and the typing box takes the whole width', /body\.left-folded \.side \{ display: none; \}/.test(css) && /\.composer > textarea \{ order: -1; flex: 1 1 100%;/.test(css));
-check('the sheet closes on Escape, a tap outside, or a pick', /e\.key === 'Escape' && sheetOpen\(\)/.test(chip) && /pointerdown[\s\S]{0,80}sheetOpen\(\) && !e\.target\.closest\('#side, #moreBtn'\)/.test(chip));
+check('the sheet closes on Escape, a tap outside, or a pick', /e\.key === 'Escape' && sheetOpen\(\)/.test(chip) && /pointerdown[\s\S]{0,80}sheetOpen\(\) && !e\.target\.closest\('#side, #moreBtn, #phoneMenu'\)/.test(chip));
 
 // ---- Tasks ----
 check('an empty Tasks list says what a task is and gives one to try', /A task is anything you ask Bob to do/.test(emptyTasks('open')) && emptyTasks('open').includes(TASK_EXAMPLE) && /data-try/.test(emptyTasks('all')) && !/Nothing here\./.test(read('public/lists.js')));

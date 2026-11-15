@@ -32,6 +32,13 @@ the full model (5). Done when the new Bobert beats today's Bobert on the report 
 - **Every rental proves each step in its first minutes.** Smoke gates exit 86 and the pod deletes itself when a step
   can't run.
 - **Held-out tests are never taught.** Test items join the never-taught list; lessons are new look-alikes only.
+- **Required step in every training and heal plan: the never-taught gate.** A review on 15 Nov found 519 of the 534
+  held-out test questions word for word in training-side lesson files; `data.py` only holds out a 5% id-hash split.
+  So before any lesson goes to a pod, the Forge checks every user turn of every lesson, extra set and preference pair
+  against the quiz, the held-out and calib files (`forge/never-taught.json`) and the plan's own `never` list
+  (`model-lab/never-gate.mjs`, built on `lesson-ledger.mjs`). One match, a missing test file, or a set it can't see
+  (one already on the rented drive) stops the plan before anything is rented or sent. Lessons written on the pod
+  during a training run go through the same check and any that hold a test item are dropped before they go up.
 - **Honest results.** Every report says what really ran, what was skipped and why.
 - **Scrub first.** The owner's name, file names and paths, email addresses, IP addresses, device names and keys come
   out before anything is kept or shared.

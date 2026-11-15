@@ -30,6 +30,8 @@ import { mainText, docKind, parseDdg, parseMojeek, resultLines, WEB_TIMEOUT_MS, 
 import { docToolsOn } from './my-docs.js';
 import { codeMap, linesAround } from './code-map.js';
 import { backoffMs, engineFailKind, pause } from './retry.js'; // item 194
+import { withSaveTo, SAVE_TO_HELP } from './save-to.js';
+import { saveAs } from './save-as.js';
 
 const MAX_READ = 20000;
 // Runnable file types Bob won't write outside a project, on every platform (Windows, Mac and Linux kinds together).
@@ -490,8 +492,20 @@ export function buildTools(cfg) {
         return `Reminder ${r.id} set for ${r.local}${rep ? `, then every ${rep}` : ''}${r.urgent ? ' (urgent)' : ''}: ${r.text}`;
       }
       if (action === 'cancel') {
-        const gone = changeReminders(cfg, (list) => { const at = list.findIndex((r) => r.id === id); if (at < 0) return null; return list.splice(at, 1)[0]; });
-        if (!gone) throw new Error('No reminder with that id. Call reminders with action list to see the ids.');
+        // Nov 15 (Riker's coached lessons): a brain often gives the reminder's words, or the whole listed line, instead
+        // of its id. Exactly one reminder whose words are in what it gave (or the other way round) is that one.
+        const plain = (x) => String(x || '').toLowerCase().replace(/[\s\u2000-\u206f]+/g, ' ').trim();
+        const pick = (list) => {
+          let at = list.findIndex((r) => r.id === id);
+          if (at < 0 && plain(id).length >= 4) {
+            const said = plain(id);
+            const hits = list.map((r, i) => ((plain(r.text).length >= 3 && (said.includes(plain(r.text)) || plain(r.text).includes(said))) || said.startsWith(plain(r.id)) ? i : -1)).filter((i) => i >= 0);
+            if (hits.length === 1) at = hits[0];
+          }
+          return at;
+        };
+        const gone = changeReminders(cfg, (list) => { const at = pick(list); if (at < 0) return null; return list.splice(at, 1)[0]; });
+        if (!gone) throw new Error('No reminder with that id or those words. Call reminders with action list to see the ids.');
         return `Cancelled reminder ${gone.id} (${gone.local}): ${gone.text}`;
       }
       const list = loadReminders(cfg);
@@ -725,6 +739,13 @@ export function buildTools(cfg) {
     summary: ({ url, part, find }) => `read page: ${url}${find ? ` (looking for ${find})` : part > 1 ? ` (part ${part})` : ''}`
   };
 
+  // save_to (save-to.js): the newest thing of this kind made since the call started gets a copy where asked.
+  const keepMade = (args, ctx, kind, run) => withSaveTo(cfg, args, run, {
+    since: Date.now() - 1000,
+    newest: (since) => ctx.brain.made?.list({ kind, limit: 3 }).find((x) => (x.at || 0) >= since)?.path || null,
+    convert: (name, format) => saveAs(cfg, { name, format }, { signal: ctx.signal, ...(ctx.brain.saveAsOpts || {}) })
+  });
+
   t.make_image = {
     schema: fn('make_image', "Paint a picture, or change one (give a reference). Also posters, banners, logos and thumbnails.", {
       prompt: str('New picture: the full prompt. Edit: only what to change, like "Swap his hat for a tiara", or it gets repainted.'),
@@ -732,9 +753,10 @@ export function buildTools(cfg) {
       height: { type: 'integer', description: 'Default 1024. Leave out for edits.' },
       reference: { type: 'array', items: { type: 'string' }, description: 'Up to 4 pictures to edit or paint from: a shelf or attached name, "last" (your newest) or a painted file.' },
       mode: str('With a reference: keep_look = edit it, same look (default); start_from = rework the picture (the look can drift); new = paint anew.', { enum: ['keep_look', 'start_from', 'new'] }),
-      strength: { type: 'number', description: 'start_from only: how much changes, 0.1 to 0.95. Default 0.6.' }
+      strength: { type: 'number', description: 'start_from only: how much changes, 0.1 to 0.95. Default 0.6.' },
+      save_to: str(SAVE_TO_HELP)
     }, ['prompt']),
-    async run(args, ctx) { return ctx.brain.makeImage(args, ctx); },
+    async run(args, ctx) { return keepMade(args, ctx, 'image', () => ctx.brain.makeImage(args, ctx)); },
     summary: ({ prompt }) => `image: ${String(prompt).slice(0, 80)}`
   };
 
@@ -746,7 +768,7 @@ export function buildTools(cfg) {
       height: { type: 'integer', description: 'Default 480.' },
       reference: { type: 'array', items: { type: 'string' }, description: 'Optional: a picture name to start from.' }
     }, ['prompt']),
-    async run(args, ctx) { return ctx.brain.makeVideo(args, ctx); },
+    async run(args, ctx) { return keepMade(args, ctx, 'video', () => ctx.brain.makeVideo(args, ctx)); },
     summary: ({ prompt }) => `video: ${String(prompt).slice(0, 80)}`
   };
 
@@ -757,16 +779,17 @@ export function buildTools(cfg) {
       seconds: { type: 'integer', description: '10 to 240, default 30.' },
       title: str('Optional: 2 to 5 words. Make one up if none given.')
     }, ['prompt']),
-    async run(args, ctx) { return ctx.brain.makeSound('music', args, ctx); },
+    async run(args, ctx) { return keepMade(args, ctx, 'audio', () => ctx.brain.makeSound('music', args, ctx)); },
     summary: ({ prompt }) => `music: ${String(prompt).slice(0, 80)}`
   };
 
   t.make_sound = {
     schema: fn('make_sound', 'Make a short sound effect.', {
       prompt: str('What it sounds like: "heavy wooden door creaking open in a stone hall".'),
-      seconds: { type: 'integer', description: '1 to 20, default 5.' }
+      seconds: { type: 'integer', description: '1 to 20, default 5.' },
+      save_to: str(SAVE_TO_HELP)
     }, ['prompt']),
-    async run(args, ctx) { return ctx.brain.makeSound('sfx', args, ctx); },
+    async run(args, ctx) { return keepMade(args, ctx, 'audio', () => ctx.brain.makeSound('sfx', args, ctx)); },
     summary: ({ prompt }) => `sound: ${String(prompt).slice(0, 80)}`
   };
 

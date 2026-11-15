@@ -54,8 +54,10 @@ export function canWrite(cfg, p) {
 
 // Where a converted file goes: the folder asked for, else next to the original if Bob may save there, else his
 // Documents folder.
-function outFor(cfg, src, to, folder, taken) {
-  const name = `${path.parse(src).name}.${to}`;
+// name (Nov 15, save path): the new file's own name, for one file ("save it as logo.jpg"); its ending is set to `to`.
+function outFor(cfg, src, to, folder, taken, newName = '') {
+  const own = path.basename(String(newName || '').trim());
+  const name = own ? `${path.parse(own).name}.${to}` : `${path.parse(src).name}.${to}`;
   let dir = folder ? full(folder) : path.dirname(src);
   if (!folder) { try { canWrite(cfg, path.join(dir, name)); } catch { dir = officeDir(cfg); } }
   return freeName(path.join(dir, name), taken);
@@ -80,7 +82,7 @@ export function planConvert(cfg, args, env = process.env) {
       if (r.why) throw new Error(r.why);
       if (r.route === 'office' && !office) throw new Error(OFFICE_MISSING.split('. The user')[0] + '.');
       if ((r.route === 'media' || (r.route === 'picture' && (!['win32', 'darwin'].includes(process.platform) || from === 'webp' || to === 'webp'))) && !ffmpeg) throw new Error(FFMPEG_MISSING.split('. The user')[0] + '.');
-      row.to = canWrite(cfg, outFor(cfg, row.from, to, args.folder, taken));
+      row.to = canWrite(cfg, outFor(cfg, row.from, to, args.folder, taken, paths.length === 1 ? args.name : ''));
       taken.add(row.to.toLowerCase());
       row.route = r.route;
       row.note = `${kindName(from)} to ${kindName(to)}, with ${helperFor(r)}${args.width ? `, ${Number(args.width)} px wide at most` : ''}${args.start || args.end ? `, from ${args.start || 'the start'} to ${args.end || 'the end'}` : ''}`;
@@ -197,6 +199,7 @@ export function officeTools(brain, { env = process.env } = {}) {
       paths: list('Full paths of the files to convert.'),
       to: str('The new ending, like pdf, docx, png, mp3, mp4.'),
       folder: str('Optional: the folder to save the new files in.'),
+      name: str('Optional, one file: its new name.'),
       width: { type: 'number', description: 'Optional, pictures and video: the largest width in pixels.' },
       start: str('Optional, sound and video: start at this time, like 1:30.'),
       end: str('Optional, sound and video: stop at this time, like 2:45.')
@@ -232,7 +235,7 @@ export function officeTools(brain, { env = process.env } = {}) {
       if (ctx) ctx.made = saved.slice(0, 6);
       log('office', `convert to ${plan.to}: ${saved.length} done${failed.length ? `, ${failed.length} failed` : ''}`);
       if (!saved.length) return `Error: nothing was converted. ${failed.join('; ') || 'Nothing was ticked.'}`;
-      return [...saved.map((p) => `Saved ${p} (${kb(sizeOf(p))}).`), failed.length ? `Not done: ${failed.join('; ')}` : ''].filter(Boolean).join('\n');
+      return [...saved.map((p) => `Saved: ${p} (${kb(sizeOf(p))}).`), failed.length ? `Not done: ${failed.join('; ')}` : ''].filter(Boolean).join('\n');
     },
     summary: ({ paths, to }) => `convert ${[].concat(paths || []).length} file(s) to ${to}`
   };
@@ -282,7 +285,7 @@ export function officeTools(brain, { env = process.env } = {}) {
       const r = await officeJob(cfg, { ...p.job, out }, { signal: ctx?.signal, office: findOffice(cfg, env) });
       if (ctx) ctx.made = [out];
       log('office', `made ${out}`);
-      return `Saved ${out} (${kb(r.bytes || sizeOf(out))}).`;
+      return `Saved: ${out} (${kb(r.bytes || sizeOf(out))}).`;
     },
     summary: ({ kind, path: p, name }) => `new ${KIND_WORDS[kind] || 'document'}${p ? ` ${path.basename(String(p))}` : name ? ` ${name}` : ''}`
   };

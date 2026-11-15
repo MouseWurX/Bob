@@ -146,6 +146,10 @@ for (const w of ['cmd', 'KeePassXC', 'Windows Security', 'Bob']) {
 const l3 = await fake.runTool('app_look', { window: 'no such app' }, ctx());
 check('an unknown window lists the ones Bob may use', /No open window matches/.test(l3.text) && /Notepad/.test(l3.text) && !/KeePass/.test(l3.text));
 
+// Nov 15 (Riker and Bobert both did this): looking at an app that isn't open opens it first, on the same card
+const l4 = await fake.runTool('app_look', { window: 'Calculator' }, ctx());
+check('looking at an app that is not open opens it first (one card), then looks', /Calculator/.test(cards().at(-1).command) && /Then look at its window/.test(cards().at(-1).text) && /\(It wasn't open, so Bob opened it first\.\)\nWindow: Calculator/.test(l4.text) && sent().some((m) => m.op === 'open' && /Calculator/.test(m.appId)), l4.text.slice(0, 200));
+
 // app_act
 const before = sent().length;
 const a1 = await fake.runTool('app_act', { window: 'notepad', action: 'click', type: 'Button', name: 'Save' }, ctx());
