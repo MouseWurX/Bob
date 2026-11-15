@@ -11,7 +11,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { opts, locate, checkFree, startServer, chat, appendJsonl, readJsonl, pauseGate } from './common.mjs';
 import { loadBob } from './bob-kit.mjs';
-import { homeScrub, WORK_RULES, standinBad, lessonFault } from './lesson-checks.mjs';
+import { homeScrub, WORK_RULES, standinBad, lessonFault, answerFault } from './lesson-checks.mjs';
+import { fixCalls } from '../src/loop-help.js';
 import { toolSetFor } from '../src/tool-sets.js';
 
 const o = opts({ count: 4000, hours: 0 });
@@ -490,6 +491,25 @@ let n = done.size, i = 0, skipped = 0, rescued = 0, fixed = 0;
 const triedBefore = new Set(['rejected.jsonl', 'needs-review.jsonl', 'steps-out.jsonl'].flatMap((f) => readJsonl(path.join(dir, f)).map((r) => r.idea)));
 const queue = [...order.filter((x) => !done.has(x.id) && !triedBefore.has(x.id)), ...order.filter((x) => !done.has(x.id) && triedBefore.has(x.id))];
 if (triedBefore.size) console.log(`queue: ${queue.filter((x) => !triedBefore.has(x.id)).length} ideas never tried first, then ${queue.filter((x) => triedBefore.has(x.id)).length} tried before`);
+// A step's calls, checked as Bob checks them live (loop-help fixCalls): a call he would just fix (a tool name in another case,
+// a wrapped or mis-typed input) is saved fixed; one he would bounce, or a dropped tool, sends the step back with his own words.
+// A tool name is fixed only when the step's own words don't use the old name.
+function callFault(a, tools, mended) {
+  const tmap = Object.fromEntries((tools || []).filter((x) => !dropTools.has(x.function?.name || x.name)).map((x) => [x.function?.name || x.name, { schema: x.function ? x : { type: 'function', function: x } }]));
+  const calls = a.tool_calls.map((c) => ({ ...c, function: { name: c.function.name, arguments: c.function.arguments } }));
+  for (const c of calls) if (dropTools.has(c.function.name)) return `there's no tool called ${c.function.name}: use one of the tools you were given`;
+  fixCalls(calls, tmap);
+  const bounce = calls.filter((c) => c.bounce).map((c) => c.bounce.replace(/^\(|\)$/g, ''));
+  if (bounce.length) return bounce.join(' ');
+  const words = `${a.content || ''} ${a.reasoning || ''}`;
+  for (const [i, c] of calls.entries()) if (c.fixed) {
+    const was = a.tool_calls[i].function.name;
+    if (was !== c.function.name && words.includes(was)) return `there's no tool called ${was}; the tool is ${c.function.name}`;
+    a.tool_calls[i] = { ...a.tool_calls[i], function: { name: c.function.name, arguments: JSON.stringify(c.function.arguments ?? {}) } };
+    mended.push(`${was}: ${c.fixed.join(', ')}`);
+  }
+  return '';
+}
 async function one(idea, think, room = 1, fix = '') {
   if (!realTools) return oneInner(idea, think, room, fix, null, null);
   const sb = await loadBob(L.bob, { allowOld: Boolean(o['allow-old-bob']), home: true, office: officeExe });
@@ -515,7 +535,13 @@ async function oneInner(idea, thinkTurn, room, fix, sb, tally) { // room 2 = a s
     if (m.role === 'assistant') { const { set, reasoning, train, ...a } = m; saved.push({ ...a, train: false }); live.push({ role: 'assistant', content: a.content || '', ...(a.tool_calls ? { tool_calls: a.tool_calls } : {}) }); }
     else if (m.role === 'tool') { const t = { role: 'tool', tool_call_id: m.tool_call_id, name: m.name, content: String(m.content || '') }; saved.push(t); live.push(t); }
   }
-  const maxSteps = idea.note || idea.prior || idea.failFirst ? 12 : 6; // 14 Nov trial: doctored lessons (earlier try, a failed first call, look, act) ran out of 6 steps
+  const maxSteps = idea.note || idea.prior || idea.failFirst ? 12 : 8; // 15 Nov sample: 2 of 10 fresh ideas ran out of 6 // 14 Nov trial: doctored lessons (earlier try, a failed first call, look, act) ran out of 6 steps
+  // 15 Nov (the owner: "ANY WAY TO FIX LESSONS FROM FAILING ANY MORE WHILE KEEPING QUALITY UP?"): a step with a call Bob
+  // couldn't run, or a final answer with a claim nothing backs, is written again by the teacher (told why, in its note only)
+  // instead of failing the whole lesson. Bob's own fix-ups (a near tool name, a wrapped or mis-typed input) are applied as Bob
+  // applies them live; the lesson row lists each one under mended. --no-step-redo turns this off.
+  let redoNote = '', redos = 0; const mended = [];
+  const redoMax = o['no-step-redo'] ? 0 : Number(o['step-redo'] ?? 3);
   const stepTools = new Map(); // set key -> the tools offered at that step (the code checks read each call against its own step)
   let ranTool = false; // 15 Nov step thinking (Bob's step-thinking.js): plan with thinking, do each step after a tool result without it
   for (let step = 0; step < maxSteps; step++) {
@@ -525,7 +551,7 @@ async function oneInner(idea, thinkTurn, room, fix, sb, tally) { // room 2 = a s
     const set = setKey(sys, t.tools);
     stepTools.set(set, t.tools);
     // teacher-only additions (persona, act nudge) go to the server but never into the saved prompt or the set key
-    const teacherOnly = teacherNoteFor(idea, fix);
+    const teacherOnly = [teacherNoteFor(idea, fix), redoNote ? `Your last reply for this step was not used, because ${redoNote}. Write this step again.` : ''].filter(Boolean).join('\n\n');
     if (strict) ctx.add('work-rules'); if (exampleText) ctx.add('examples'); if (persona) ctx.add(stylePos === 'user' ? 'style-note' : 'style-system'); if (ACT_JOBS.has(idea.job)) ctx.add('act-nudge');
     if (toolNoteOn && TOOL_JOBS.has(idea.job)) ctx.add('tool-note'); if (fix) ctx.add('review-fix'); if (idea.note) ctx.add('doctor-note'); if (shortPrompt) ctx.add('short-prompt'); if (think && (step ? laterPrefix : thinkPrefix)) ctx.add('prefill');
     const pre = think ? (step ? laterPrefix : thinkPrefix) : '';
@@ -540,6 +566,11 @@ async function oneInner(idea, thinkTurn, room, fix, sb, tally) { // room 2 = a s
     if (pre) { const rc = String(msg.reasoning_content || ''); echoed = rc.startsWith(pre); if (!echoed) msg.reasoning_content = pre + rc; if (oddsK) odds.at(-1).given_echoed = echoed; }
     if (finish === 'length') throw new Error('ran out of room');
     const a = { role: 'assistant', content: msg.content || '', ...(msg.reasoning_content ? { reasoning: msg.reasoning_content } : {}), ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}), set, ...(stepThinking ? { think: Boolean(think) } : {}) };
+    if (strict && redos < redoMax) {
+      const why = a.tool_calls ? callFault(a, t.tools, mended) : answerFault(saved, a);
+      if (why) { redos++; redoNote = why; ctx.add('step-redo'); if (oddsK) odds.pop(); step--; continue; }
+    }
+    redoNote = '';
     saved.push(a); live.push({ role: 'assistant', content: a.content, ...(a.tool_calls ? { tool_calls: a.tool_calls } : {}) });
     if (!a.tool_calls) break;
     for (const c of a.tool_calls) if (dropTools.has(c.function.name)) throw new Error(`called the dropped tool ${c.function.name}`); // the lesson is skipped, not saved
@@ -571,7 +602,7 @@ async function oneInner(idea, thinkTurn, room, fix, sb, tally) { // room 2 = a s
   }
   // a lesson fixed after a failed review carries retry: 'review'; its reject sits in rejected.jsonl under the same idea, so
   // make-pairs.mjs turns the two into a right-vs-wrong pair (the reviewer's reason goes along as why)
-  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, bob_src: kit.bobSrc, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), ...(fix ? { retry: 'review' } : {}), ...(splitTag ? { split: splitTag } : {}), ...(score !== null ? { style_score: Math.round(score * 100) / 100 } : {}), ...(leaked ? { leak: 'stripped' } : {}), ...(think && thinkPrefix ? { think_prefix: thinkPrefix } : {}), messages: clean(saved), ...(tally ? { sandbox: { setup: tally.setup, real: tally.real, standin: [...tally.standin] } } : {}), ...(idea.route !== undefined ? { route: idea.route } : {}), ...(idea.seed ? { seed: idea.seed } : {}) });
+  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, bob_src: kit.bobSrc, ...stamp, ...(mended.length ? { mended } : {}), ...(redos ? { step_redos: redos } : {}), ...(ctx.size ? { teacher_context: [...ctx] } : {}), ...(fix ? { retry: 'review' } : {}), ...(splitTag ? { split: splitTag } : {}), ...(score !== null ? { style_score: Math.round(score * 100) / 100 } : {}), ...(leaked ? { leak: 'stripped' } : {}), ...(think && thinkPrefix ? { think_prefix: thinkPrefix } : {}), messages: clean(saved), ...(tally ? { sandbox: { setup: tally.setup, real: tally.real, standin: [...tally.standin] } } : {}), ...(idea.route !== undefined ? { route: idea.route } : {}), ...(idea.seed ? { seed: idea.seed } : {}) });
   if (oddsK) appendJsonl(path.join(dir, 'odds.jsonl'), { idea: idea.id, job: idea.job, think, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), k: oddsK, turns: odds });
 }
 // The teacher as a strict reviewer: right tool or rightly none, exact arguments, results read, a final answer that does the job.
