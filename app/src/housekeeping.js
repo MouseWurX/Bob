@@ -28,6 +28,7 @@ import { DocWatcher, docFreshOn } from './doc-more.js'; // "Live document index"
 import { forgetWords, TEXT_EXT } from './my-docs.js';
 import { DOC_EXT } from './doc-text.js';
 import { Digest, digestOn } from './digest.js'; // "Sunday digest", off by default
+import { HkRuns, hkModel } from './hk-runs.js'; // Nov 15: each round shows in Tasks; its own brain job
 import { catalogFileFor } from './llamacpp.js';
 import {
   chatIds, chatInfo, chatFiles, wholeChat, readChat, readOlder, writeChat, writeOlder, readSummary, writeSummary,
@@ -120,6 +121,7 @@ export class Housekeeper {
     this.controller = null;
     this.noEmbed = false;
     this.now = () => Date.now();
+    this.runs = new HkRuns(path.join(cfg.dataDir, 'housekeeping-runs.json'), { changed: () => this.brain?.broadcast?.({ type: 'queue', jobs: this.brain.queueView?.() || [] }) });
     this.timer = setInterval(() => this.tick().catch(() => {}), 5 * 60e3);
     this.timer.unref?.();
     this.watchSoon = setTimeout(() => { try { this.syncDocWatch(); } catch {} }, 5000); // "Live document index"
@@ -129,6 +131,9 @@ export class Housekeeper {
   stop() { clearInterval(this.timer); clearTimeout(this.watchSoon); this.docWatch?.stop(); this.pause(); }
   // The user is back: anything the housekeeper is asking the brain stops at once.
   pause() { this.controller?.abort(); this.docStop?.abort(); }
+  // Tasks' ✕ and Stop on a housekeeping round (hk-runs.js).
+  removeRun(id) { return this.runs.remove(id, () => this.pause()); }
+  cancelRun(id) { return this.runs.cancel(id, () => this.pause()); }
 
   get settings() { return hkSettings(this.cfg); }
   state() {
@@ -315,14 +320,16 @@ export class Housekeeper {
   }
 
   // ---------- Asking the brain (only while idle, and it stops the moment the user is back) ----------
+  // Nov 15: the 🧹 Housekeeping job on the Brains page picks the brain; empty (✕) means the main brain, as before.
   async brainLoaded() {
-    const model = this.cfg.models?.bob;
+    const model = hkModel(this.cfg);
     try { return Boolean(model) && await this.brain.engine.isLoaded(model); } catch { return false; }
   }
 
   async ask(prompt) {
-    const model = this.cfg.models?.bob;
+    const model = hkModel(this.cfg);
     if (!model) throw new Error('no brain picked yet');
+    if (this.listRound) this.runs.start(model); // an idle round asking a brain shows in Tasks (not "Sum up and carry on")
     this.controller = new AbortController();
     try {
       const reply = await this.brain.engine.chat({ model, signal: this.controller.signal, messages: [{ role: 'system', content: 'You are a careful note-taker. Answer with JSON only, no other text.' }, { role: 'user', content: prompt }] });
@@ -633,13 +640,17 @@ export class Housekeeper {
     try {
       const think = force || hk.wakeBrain || await this.brainLoaded();
       if (think) {
-        for (const id of chatIds(this.cfg)) {
-          if (!force && !this.idle()) break;
-          try {
-            if (await this.summarizeOlder(id)) did.summaries++;
-            if (await this.refreshTopics(id)) did.topics++;
-          } catch (e) { if (!force && !this.idle()) break; did.error = e.message; } // the user is back, or the brain said no
-        }
+        this.listRound = true;
+        let stopped = false;
+        try {
+          for (const id of chatIds(this.cfg)) {
+            if (!force && !this.idle()) { stopped = true; break; }
+            try {
+              if (await this.summarizeOlder(id)) did.summaries++;
+              if (await this.refreshTopics(id)) did.topics++;
+            } catch (e) { if (!force && !this.idle()) { stopped = true; break; } did.error = e.message; } // the user is back, or the brain said no
+          }
+        } finally { this.listRound = false; this.runs.finish(did, { stopped }); }
       }
       const st = this.state();
       if (force || Date.now() - st.lastScan > SCAN_EVERY) {

@@ -55,7 +55,7 @@ export function neighbour(ids, id, dir) {
 
 // ---------- Tasks ----------
 const STATUS = { 'needs you': 'Needs you', queued: 'Queued', 'in progress': 'In progress', delegated: 'Delegated', rented: 'Rented', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled', interrupted: 'Interrupted', paused: 'Paused' };
-const ICON = { chat: '💬', picture: '🎨', video: '🎬', research: '🔎', code: '🛠', data: '📊' };
+const ICON = { chat: '💬', picture: '🎨', video: '🎬', research: '🔎', code: '🛠', data: '📊', housekeeping: '🧹' };
 
 export function taskRow(j, { movable, full }) {
   const status = j.status || j.state;
@@ -75,9 +75,10 @@ export function taskRow(j, { movable, full }) {
   const btns = [
     movable ? '<button type="button" data-t="up" title="Move up" aria-label="Move up">▲</button><button type="button" data-t="down" title="Move down" aria-label="Move down">▼</button>' : '',
     // 1.5.38: an interrupted job carries on from where it stopped; a failed or cancelled one starts over.
-    status === 'interrupted' ? '<button type="button" data-t="retry">Carry on</button>' : ['failed', 'cancelled'].includes(status) ? '<button type="button" data-t="retry">Try again</button>' : '',
+    // Nov 15: a housekeeping round (hk-runs.js) has only Stop and ✕: the next idle round starts fresh by itself.
+    j.housekeeping ? '' : status === 'interrupted' ? '<button type="button" data-t="retry">Carry on</button>' : ['failed', 'cancelled'].includes(status) ? '<button type="button" data-t="retry">Try again</button>' : '',
     // Nov 12: Pause and Resume on any task Bob runs here, and Remove (✕) on every task, whatever its state.
-    ['queued', 'in progress', 'needs you'].includes(status) && !j.waitsFor ? '<button type="button" data-t="pause" title="Pause: keep it, but hold it for now" aria-label="Pause">⏸ Pause</button>' : '',
+    ['queued', 'in progress', 'needs you'].includes(status) && !j.waitsFor && !j.housekeeping ? '<button type="button" data-t="pause" title="Pause: keep it, but hold it for now" aria-label="Pause">⏸ Pause</button>' : '',
     status === 'paused' ? '<button type="button" data-t="resume" title="Resume: carry on" aria-label="Resume">▶ Resume</button>' : '',
     ['in progress', 'delegated', 'needs you'].includes(status) ? '<button type="button" data-t="cancel">Stop</button>' : '',
     '<button type="button" data-t="remove" title="Remove: take it off the list (a running task stops first)" aria-label="Remove">✕</button>'

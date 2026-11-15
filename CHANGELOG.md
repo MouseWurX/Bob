@@ -4,6 +4,19 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.237
+
+Housekeeping gets its own brain job, you can pick how jobs are shared out between your Bobs, and the phone gets one tidy menu.
+
+### New
+
+- **🧹 Housekeeping is a brain job.** On the Brains page you can give it a small brain of its own, or leave it empty so it uses the main brain, which is how it starts. ✕ takes it back like any other job.
+- **Each housekeeping round shows in Tasks and Now running**, so you can see when I'm tidying up a long chat while you're away, and when I'm done.
+- **Pick how jobs are shared out.** In Settings, Bob-Net, under Send jobs, switch on and order the rules for picking one of your Bobs: least busy, fastest, biggest graphics card, closest, or computers before phones. You can also keep jobs on your home network or off the phone, cap how many jobs one Bob gets, and give each kind of job a first-choice Bob. A Bob you're gaming on never gets one. Left as it is, I pick just like before.
+- **One menu on a phone.** At phone width the bottom bar is Chat, Tasks, + New, Topics and Bob. The Bob button or the cube opens one menu that slides up from the bottom, and Settings on a phone is two tidy lists. Wide windows are the same as before.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.236
 
 The Lab gets a Forge console: one window for everything the Forge and the Lab run.
@@ -171,27 +184,6 @@ My front page tells the whole story now, the Lab gets steps, pipelines and a rec
 **New in the docs:** Bob-Net at a glance, a picture in the README of how your Bobs connect and what goes between them; and the 12 November test of sharing one brain between two Bobs over a cable, with what ran and what didn't (test results).
 
 **Taken down:** the teacher-odds dataset on Hugging Face (bob-odds) is gone, so its links are too. It was made from lessons before the privacy scrub. The Forge now warns before publishing teacher odds.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.227
-
-My front page says what's new, what's coming, and what it all costs, the Lab gets its newer research scripts, and Journey has crafting.
-
-### Changed
-
-- **The README is up to date.** What's new covers everything from 1.5.212 to 1.5.226. A new **Coming next** section lists the plans, clearly marked as planned: a clean new Bobert, tool lessons, tools brains already know, every Lab method as a step, and research on where a behaviour lives in a brain. **What it costs** gives the totals so far, with a link to every rental.
-- **New plan pages** in the docs: the roadmap to one all-round Bob, the tool lessons plan, and the Lab steps plan. The costs pages cover every rental to 14 Nov.
-
-### New in Journey
-
-- **Journey has crafting.** Gather herbs, timber, ore and crystals, make potions, scrolls and bigger bags, and improve your kit. Plus a **Scroll of return**, bags you can equip, an in-game **Guide** tab, full screen, and I for the bag.
-- **Journey tells its story as you go.** A narrator for each region and town, names on the map, local lore, a **Story** tab that says where to go next, and conversations where you choose what to say.
-- **A guest house and a trophy case.** Journey opens in a guest house behind my inn now, with a trophy case that keeps a trophy from every story you play, even after you start a new one. Walk down into my inn and the New adventure and Resume buttons are right there.
-
-### New in the Lab
-
-- **The Lab's research scripts land together.** Tool interviews and coached lesson sessions for Riker and Bobert, with wording and thinking A/B tests; reading a brain's tool traces; the evil check, steering and sweeps (records only, they never teach a brain); smoke gates that stop a rented card in its first minutes if something is wrong; and expert maps and lesson sets for GPT-OSS. Nothing here rents a card by itself: every rental still waits for your typed yes.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 
