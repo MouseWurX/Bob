@@ -292,6 +292,30 @@ const FIXED = {
   show_plan: () => 'Showed the plan card. The user said OK: carry on with the plan.',
   ask_together: () => 'Approved. Nothing has run yet: now call each step.'
 };
+// 15 Nov: picture, video, music and sound makers can't run in the lab (no such brains on the card), so their stand-in is
+// Bob's own success line, word for word, with a file named the way Bob names it (shape 2). The teacher never makes one up.
+const MEDIA = new Set(['make_image', 'make_video', 'make_music', 'make_sound']);
+function mediaResult(name, a = {}, sb = null) {
+  const k = sb || kit;
+  const day = new Date().toISOString().slice(0, 10), id = crypto.randomUUID().slice(0, 8);
+  const words = String(a.prompt || a.description || '').trim();
+  const title = String(a.title || '').trim().slice(0, 60) || (name === 'make_music' ? (words ? words.split(',').slice(0, 3).join(',').trim() : 'Untitled song') : name === 'make_sound' ? (words ? (words.split(/\s+/).slice(0, 7).join(' ').replace(/^./, (c) => c.toUpperCase())) : 'Sound effect') : '');
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  const ext = name === 'make_image' ? 'png' : name === 'make_video' ? 'webm' : 'wav';
+  const file = path.join(k.brain.cfg.painterDir, `${day}-${name === 'make_music' || name === 'make_sound' ? `${slug || 'untitled'}-` : ''}${id}.${ext}`);
+  const line = name === 'make_image' ? `Painted a picture, saved as ${file}. The user can see it in the chat.`
+    : name === 'make_video' ? `Made a clip, saved as ${file}. The user can see it in the chat.`
+    : `Made the ${name === 'make_music' ? 'song' : 'sound'} "${title}" and saved it as a .wav file: ${file}. It is kept on the PC: the user can play it in the chat, find it in Made by Bob (left menu, Sounds), or open that file. Tell the user where it was saved.`;
+  let saved = '';
+  if (a.save_to) {
+    const want = String(a.save_to).trim(), home = k.homeDir || 'C:\\Users\\you';
+    let to = want.replace(/^~(?=[\\/]|$)/, home);
+    if (!/^[a-z]:[\\/]|^[\\/]/i.test(to)) to = path.join(home, 'Documents', to);
+    if (!path.extname(to)) to = path.join(to, path.basename(file));
+    saved = `Saved: ${to}\n`;
+  }
+  return k.neutral ? k.neutral(saved + line) : saved + line;
+}
 // The tools that really run in a lesson's throwaway home: files, office files, notes, the board, reminders, memory, how-tos.
 const REAL_TOOLS = new Set(['make_diagram', 'list_folder', 'read_file', 'search_files', 'find_in_documents', 'write_file', 'edit_file', 'save_spreadsheet',
   'office_read', 'office_make', 'office_edit', 'compare_files', 'inspect_file', 'code_map', 'notice_board', 'reminders', 'take_note', 'remember',
@@ -327,6 +351,7 @@ async function toolResult(name, args, loaded, ask = '', sb = null, tally = null)
   if (sb && REAL_TOOLS.has(name) && sb.brain.tools[name]) { if (tally) tally.real++; return realResult(sb, name, args, loaded); }
   if (tally && !FIXED[name] && name !== 'bob_help') tally.standin.add(name);
   if (FIXED[name]) return FIXED[name](args);
+  if (MEDIA.has(name) && (sb || kit).brain?.cfg?.painterDir) return mediaResult(name, args, sb);
   if (name === 'bob_help') { try { const r = await kit.brain.tools.bob_help.run(args, {}); if (typeof r === 'string' && r.trim()) return r.slice(0, 4000); } catch {} }
   return fakeResult(name, args, ask, loaded);
 }

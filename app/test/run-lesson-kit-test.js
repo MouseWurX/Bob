@@ -143,6 +143,8 @@ const srv = http.createServer((req, res) => {
     if (/You review training lessons/.test(t)) msg = { content: '{"ok":true,"why":"fine"}' };
     else if (/Which files must already exist/.test(t)) msg = { content: JSON.stringify([{ path: 'C:\\Users\\you\\Documents\\notes.txt', content: 'buy milk\n' }, { path: 'C:\\Windows\\evil.txt', content: 'x' }]) };
     else if (/tool inside a desktop AI/.test(t)) msg = { content: /FAIL/.test(t) ? 'Error: folder not found: C:\\Users\\you\\Documnts' : 'Listed C:\\Users\\you\\Documents: notes.txt, plan.docx (2 files).' };
+    else if (j.tools && j.messages.some((m) => /paint me a fox/.test(String(m.content || ''))) && !j.messages.some((m) => m.role === 'tool')) msg = { content: 'Painting it now.', tool_calls: [{ id: `c${seen.length}`, type: 'function', function: { name: 'make_image', arguments: JSON.stringify({ prompt: 'a red fox in snow', save_to: 'fox.png' }) } }] };
+    else if (j.tools && j.messages.some((m) => /paint me a fox/.test(String(m.content || '')))) msg = { content: 'Here is your fox, saved as fox.png in Documents.' };
     else if (j.tools && j.messages.filter((m) => m.role === 'tool').length < 2) msg = { content: 'I will look in the folder first.', tool_calls: [{ id: `c${seen.length}`, type: 'function', function: { name: 'list_folder', arguments: JSON.stringify({ path: '~/Documents' }) } }] };
     else msg = { content: 'Your Documents folder holds notes.txt and plan.docx.' };
     // the writer streams to a remote teacher (common.mjs chat): answer in server-sent events then, plain JSON otherwise
@@ -166,6 +168,11 @@ const code2 = await new Promise((ok) => { const t = setTimeout(() => { child2.ki
 const child3 = spawn(process.execPath, ['write-lessons.mjs', '--url', url, '--model', 'fake.gguf', '--bob', app, '--out', path.join(tmp, 'wl'), '--dir', 'empty-ideas', '--from-ideas', '--count', '1', '--think', 'none'], { cwd: lab, env: { ...process.env, LAB_REMOTE: '', LAB_URL: '' } });
 let log3 = ''; child3.stdout.on('data', (d) => (log3 += d)); child3.stderr.on('data', (d) => (log3 += d));
 const code3 = await new Promise((ok) => { const t = setTimeout(() => { child3.kill(); ok('timeout'); }, 120000); child3.on('exit', (c) => { clearTimeout(t); ok(c); }); });
+const before4 = seen.length;
+W('wl/media/ideas.jsonl', [{ id: 'm0', job: 'pictures', text: 'paint me a fox' }]);
+const child4 = spawn(process.execPath, ['write-lessons.mjs', '--url', url, '--model', 'fake.gguf', '--bob', app, '--out', path.join(tmp, 'wl'), '--dir', 'media', '--from-ideas', '--real-tools', '--count', '1', '--think', 'none'], { cwd: lab, env: { ...process.env, LAB_REMOTE: '', LAB_URL: '' } });
+let log4 = ''; child4.stdout.on('data', (d) => (log4 += d)); child4.stderr.on('data', (d) => (log4 += d));
+const code4 = await new Promise((ok) => { const t = setTimeout(() => { child4.kill(); ok('timeout'); }, 120000); child4.on('exit', (c) => { clearTimeout(t); ok(c); }); });
 srv.close();
 const made = rows(path.join(tmp, 'wl', 'doc-base', 'lessons.jsonl'));
 check('writer: --from-ideas writes the doctored idea and no new ideas', code === 0 && made.length === 1 && rows(path.join(tmp, 'wl', 'doc-base', 'ideas.jsonl')).length === 1, log.slice(-400));
@@ -205,6 +212,11 @@ check('writer: the fake result sees the tool\'s own description and is kept insi
 }
 check('writer --real-tools: diagrams are drawn for real, with the context Bob\'s own tools expect', /REAL_TOOLS = new Set\(\['make_diagram'/.test(read('model-lab/write-lessons.mjs')) && /run\(sb\.toReal\(args\), \{ loaded, cfg: sb\.brain\.cfg, emit:/.test(read('model-lab/write-lessons.mjs')));
 check('writer --from-ideas: an empty ideas folder stops the run and writes no stand-in ideas', code3 === 1 && /has no ideas/.test(log3) && rows(path.join(tmp, 'wl', 'empty-ideas', 'ideas.jsonl')).length === 0, log3.slice(-300));
+{
+  const m = rows(path.join(tmp, 'wl', 'media', 'lessons.jsonl'))[0];
+  const res = String((m?.messages || []).find((x) => x.role === 'tool')?.content || '');
+  check('writer: a picture stand-in is Bob\'s own success line with a Bob-style file name, never made up by the teacher', code4 === 0 && /^Saved: C:\\Users\\you\\Documents\\fox\.png\nPainted a picture, saved as C:\\Users\\you\\AppData\\Local\\Bob[\\/]Agent[\\/]inn[\\/]painter[\\/]\d{4}-\d\d-\d\d-[0-9a-f]{8}\.png\. The user can see it in the chat\.$/.test(res) && !seen.slice(before4).some((j) => /"make_image" tool inside a desktop AI/.test(String(j.messages.at(-1)?.content || ''))), res || log4.slice(-400));
+}
 check('writer: doctored lessons get 12 steps', /idea\.note \|\| idea\.prior \|\| idea\.failFirst \? 12 : 6/.test(read('model-lab/write-lessons.mjs')));
 
 // ---- the heal masks a failed try ----
