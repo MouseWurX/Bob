@@ -208,7 +208,7 @@ Nothing trains, rents a card or uploads without the owner's go, and every rental
 - **The costs**, every rental and dollar, failures included: [What Bob costs to make](app/docs/COSTS.md).
 - **The models**, each with a card that says what it is and how it scored: [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) · [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) · [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) · [gpt-oss-120b cut to 38B](https://huggingface.co/MouseWurX/gpt-oss-120b-REAP-38B-UNHEALED-GGUF) (cut, not yet healed).
 - **The data**: [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) (the lessons, clean, full and preference files) · [bob-studies](https://huggingface.co/datasets/MouseWurX/bob-studies) (surgery and interview studies, never used for training).
-- **The dissertation** (working draft): [Clean lessons beat more lessons](app/docs/dissertation/README.md).
+- **The dissertation** (draft, all 13 chapters): [Clean lessons beat more lessons](app/docs/dissertation/README.md).
 - **The record**: [Bob's own models](app/docs/BOBS-OWN-MODELS.md) (every score and what went wrong) and [the Forge journal](app/docs/FORGE-JOURNAL.md) (the lab notebook).
 
 ## Coming next
@@ -332,7 +332,7 @@ The lessons are for people, not brains: no lesson set, Forge job or training scr
 
 ### The dissertation
 
-Bob's research is being written up as a computer science dissertation: **[Clean lessons beat more lessons](app/docs/dissertation/README.md)**, on how hidden faults in synthetic training data shape small local agent models. It's a working draft: the outline, the research questions and the first chapters, using only numbers checked against their run files. The decisive test, training on reviewed lessons against a leak-free test, hasn't been run yet.
+Bob's research is being written up as a computer science dissertation: **[Clean lessons beat more lessons](app/docs/dissertation/README.md)**, on how hidden faults in synthetic training data shape small local agent models. All 13 chapters are written, one file each, using only numbers checked against their run files. The decisive test, training on reviewed lessons against a leak-free test, hasn't been run yet.
 
 ## Bob's own brains
 
