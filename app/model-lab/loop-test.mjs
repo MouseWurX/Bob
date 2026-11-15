@@ -73,7 +73,7 @@ brain.runTool = async (name, args, ctx) => {
   if (real && LIVE.has(name) && tool) {
     row.real = true;
     try {
-      const r = await Promise.race([tool.run(kit.toReal(args), { ...ctx, cfg: brain.cfg }), wait(90000).then(() => { throw new Error('the tool took too long'); })]);
+      const r = await Promise.race([kit.runReal(name, args, { ...ctx, cfg: brain.cfg }), wait(90000).then(() => { throw new Error('the tool took too long'); })]);
       const t = typeof r === 'string' ? r : typeof r?.text === 'string' ? r.text : JSON.stringify(r ?? '');
       row.result = kit.neutral(t).slice(0, 1500); return { ...(typeof r === 'object' && r ? r : {}), text: kit.neutral(t) };
     } catch (e) { row.result = `Error: ${kit.neutral(String(e.message || e)).slice(0, 300)}`; return { text: row.result }; }

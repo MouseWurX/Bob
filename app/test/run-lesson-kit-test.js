@@ -265,7 +265,16 @@ check('writer: the fake result sees the tool\'s own description and is kept insi
   check('lab sandbox: remember really saves to the memory file', !/threw|must be of type string/.test(kept) && /likes short answers/.test(fs.readFileSync(k.brain.cfg.memoryFile, 'utf8')), kept);
   try { k.done?.(); } catch {}
 }
-check('writer --real-tools: diagrams are drawn for real, with the context Bob\'s own tools expect', /REAL_TOOLS = new Set\(\['make_diagram'/.test(read('model-lab/write-lessons.mjs')) && /run\(sb\.toReal\(args\), \{ loaded, cfg: sb\.brain\.cfg, emit:/.test(read('model-lab/write-lessons.mjs')));
+check('writer --real-tools: diagrams are drawn for real, with the context Bob\'s own tools expect', /REAL_TOOLS = new Set\(\['make_diagram'/.test(read('model-lab/write-lessons.mjs')) && /sb\.runReal\(name, args, \{ loaded, cfg: sb\.brain\.cfg, emit:/.test(read('model-lab/write-lessons.mjs')));
+{ // 15 Nov: real tools stay in the throwaway folder (a loop test saved a file in the Lab PC's real Documents)
+  const { loadBob } = await import(pathToFileURL(path.join(lab, 'bob-kit.mjs')).href); const k = await loadBob(app, { home: true }); const ctx = { loaded: [], cfg: k.brain.cfg, emit: () => {}, signal: new AbortController().signal, sessionId: 'lab' };
+  const real = path.join(os.homedir(), 'Documents', `kit-guard-${process.pid}.txt`);
+  let r1 = ''; try { r1 = String(await k.runReal('write_file', { path: real, content: 'x' }, ctx)); } catch (e) { r1 = 'threw: ' + e.message; }
+  check('lab sandbox: a path in the PC\'s real home is written in the throwaway home instead', !fs.existsSync(real) && fs.existsSync(path.join(k.homeDir, 'Documents', `kit-guard-${process.pid}.txt`)), r1);
+  let r2 = ''; try { r2 = String(await k.runReal('write_file', { path: path.join(path.parse(os.homedir()).root, `kit-guard-out-${process.pid}`, 'a.txt'), content: 'x' }, ctx)); } catch (e) { r2 = 'threw: ' + e.message; }
+  check('lab sandbox: a path outside the throwaway folder is refused before the tool runs', /outside the folders Bob may use here/.test(r2) && !fs.existsSync(path.join(path.parse(os.homedir()).root, `kit-guard-out-${process.pid}`)), r2);
+  try { k.done?.(); } catch {}
+}
 check('writer --from-ideas: an empty ideas folder stops the run (exit 86 on a card) and writes no stand-in ideas', code3 === 86 && /no ideas in .*empty-ideas/.test(log3) && rows(path.join(tmp, 'wl', 'empty-ideas', 'ideas.jsonl')).length === 0, log3.slice(-300));
 {
   const m = rows(path.join(tmp, 'wl', 'media', 'lessons.jsonl'))[0];

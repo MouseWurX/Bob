@@ -78,8 +78,36 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false, home = fa
     if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, toReal(x)]));
     return v;
   };
+  // 15 Nov (the loop test saved a file in the Lab PC's real Documents): a tool run for real may only touch the throwaway
+  // folder. A path under the PC's real home is moved into the throwaway home; any other path outside the throwaway folder
+  // is refused before the tool runs, and the tool's own check (the one Bob runs before the OK card) runs first, as live.
+  const PATH_KEY = /path|file|folder|dir|dest|src|root|target|save_to|^to$|^from$|^out/i;
+  const inTmp = (p) => { const r = path.resolve(p).toLowerCase(), t = path.resolve(tmp).toLowerCase(); return r === t || r.startsWith(t + path.sep); };
+  const realHome = os.homedir();
+  const homeIn = (v) => {
+    if (typeof v !== 'string' || !homeDir || !realHome || inTmp(v)) return v;
+    const rh = path.resolve(realHome), r = path.resolve(v);
+    return r.toLowerCase() === rh.toLowerCase() || r.toLowerCase().startsWith(rh.toLowerCase() + path.sep) ? path.join(homeDir, r.slice(rh.length)) : v;
+  };
+  const looksPath = (v) => typeof v === 'string' && v.length < 600 && !/[\r\n]/.test(v) && /^(?:[A-Za-z]:[\\/]|[\\/]|~)/.test(v.trim());
+  const sandboxArgs = (args) => {
+    const out = {}; let bad = '';
+    for (const [k, v] of Object.entries(args || {})) {
+      const fix = (x) => { if (!PATH_KEY.test(k) || !looksPath(x)) return x; const r = homeIn(toReal(x.trim())); if (!inTmp(r)) bad = bad || x; return r; };
+      out[k] = Array.isArray(v) ? v.map(fix) : fix(v);
+    }
+    return { args: out, bad };
+  };
+  async function runReal(name, args, ctx = {}) {
+    const tool = brain.tools[name];
+    if (!tool) throw new Error(`no tool called ${name}`);
+    const { args: a, bad } = sandboxArgs(args);
+    if (bad) throw new Error(`${neutral(bad)} is outside the folders Bob may use here`);
+    if (typeof tool.check === 'function') await tool.check(a, ctx); // Bob's own permission check (roots, secrets, read-only), as before the OK card
+    return tool.run(a, ctx);
+  }
   const kit = {
-    bobSrc, neutral, toReal, homeDir, toolShapes,
+    bobSrc, neutral, toReal, homeDir, toolShapes, runReal, sandboxArgs,
     brain, phrasings, tmp,
     groups: () => tb.groupsFor(brain),
     guessGroups: (text) => tb.guessGroups(brain, text),
