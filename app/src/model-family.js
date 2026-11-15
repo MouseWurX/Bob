@@ -123,3 +123,16 @@ export function replyTokens(ctx, max = 32768) {
   if (!Number.isFinite(n) || n <= 0) return max;
   return Math.max(2048, Math.min(max, Math.floor(n / 2)));
 }
+
+// 15 Nov 2026: how a request asks a brain to think or not (step-thinking.js decides when). Qwen and most families
+// read enable_thinking. GPT-OSS ignores it: its Harmony template has a reasoning level instead (Reasoning: low/medium/
+// high, medium when nothing is sent). So for GPT-OSS: off = low (the GPT-OSS tool test: low 63% right calls, high 54%),
+// 'high' (the Review brain, Deep thought) = high, anything else = its own medium. {} = send nothing.
+export function thinkKwargs(fam, think) {
+  if (fam === 'gpt-oss') {
+    if (think === false) return { chat_template_kwargs: { reasoning_effort: 'low' } };
+    if (think === 'high' || think === 'extreme') return { chat_template_kwargs: { reasoning_effort: 'high' } };
+    return {};
+  }
+  return think === false ? { chat_template_kwargs: { enable_thinking: false } } : {};
+}
