@@ -4,6 +4,20 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.236
+
+The Lab gets a Forge console: one window for everything the Forge and the Lab run.
+
+### New
+
+- **Forge console in the Lab.** It sits at the top of the Forge tab, and everything the Lab runs shows up there live, never in a window you can't see.
+  - **Four big buttons:** **Load model locally**, **Open rental** (you pick the brain, the cards and the caps, and only the purchase card rents), **STOP** (stops everything running here, never a rental) and **END RENTAL** (ends only that run's card).
+  - **Three panels:** **Server** is the terminal, with the server log, every request and reply, and scripts. **Chat** shows the brain's replies as bubbles, with thinking folded and tool calls as cards. **Set up** has sliders and tick boxes for temperature, top-p, max tokens, thinking and more, which tools to offer, a system prompt, and forms for the Lab's jobs. Put any panel on either side, side by side or one at a time. On a phone they stack.
+  - **Relay:** every request a tool sends goes through it and goes on the record. **Hold each request** lets you read it, fix it, then send or drop it.
+  - Running anything needs **Let the Lab run commands here**, which stays off until you switch it on. Keys never reach the console.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.235
 
 Bob's chat memory meter moves to where you can see it, you can take any job back from a brain, and two phone menus in Lamplight are fixed.
@@ -178,19 +192,6 @@ My front page says what's new, what's coming, and what it all costs, the Lab get
 ### New in the Lab
 
 - **The Lab's research scripts land together.** Tool interviews and coached lesson sessions for Riker and Bobert, with wording and thinking A/B tests; reading a brain's tool traces; the evil check, steering and sweeps (records only, they never teach a brain); smoke gates that stop a rented card in its first minutes if something is wrong; and expert maps and lesson sets for GPT-OSS. Nothing here rents a card by itself: every rental still waits for your typed yes.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.226
-
-🧭 Journey has music and sound now, and every style draws its own kit.
-
-### New
-
-- **Journey has music and sound.** Every kind of place has its own tune: my inn, the open land, towns, castles, caves, the sky, under the sea and boat trips. Fights have their own music, keepers get a bigger tune, and wins and level-ups get a fanfare. Doors, chests, coin, hits and every kind of magic make sounds. Each style plays on its own instruments. Sound starts on in Journey, and 🔊 (or the M key) turns it off. Your choice is remembered.
-- **Each style draws its own kit.** Smart pistols and katanas in Cyberpunk, blasters and beam swords in Sci-fi, flintlocks and sabres in Steampunk. Monsters are redrawn for every style too, and monsters, classes, spells and items get names to fit. Only the looks change; the numbers don't.
-- **Journey's land got a details pass.** Tall mountain ranges, houses and trees that sit on the ground round them, foaming shores, smoke, neon and steam, and lamp-lit towns.
-- **More sparkle.** Items, crits, level-ups, chests and doors all have new effects.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 

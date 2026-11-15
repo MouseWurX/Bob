@@ -7,12 +7,14 @@ import { PATH_GROUPS, BUNDLES, PERSONALITY, TEACH } from './lab-thinking-paths.j
 import { createHomeWays } from './lab-home-ways.js'; // 1.5.164 Mix two brains, Stack layers, Take out the refusal habit: here, free
 import { newSource, sourceRowHtml, sourceOut, sourceEvent } from './lab-source.js'; // 1.5.163 one chooser for where things come from
 import { createProtocol } from './lab-protocol.js'; // 13 Nov the training protocol and its free steps
+import { createConsole } from './lab-console.js'; // 15 Nov the Forge console: every run's output, live
 
 const WHERE = { here: 'Here, free', rented: 'Rented card', both: 'Here, or a rented card' };
 
 export function createForge({ api, goMake, view = () => null, runs = () => '' }) {
   const hw = createHomeWays({ api, view }); // 1.5.164
   const pr = createProtocol({ api }); // 13 Nov
+  const con = createConsole({ api }); // 15 Nov
   let fv = null, loading = false, fmsg = '', check = null, showPlan = false, saved = '', buy = null, stopAsk = false;
   const lib = { from: '', name: '', busy: false, msg: '', open: {} }; // the lesson library: add a set, pick its parts
   const form = { base: '', run: '', rungs: [{ name: '', nickname: '', how: 'number', keep: 128, keepFile: '' }], strong: [], quants: ['Q4_K_M'], heal: { experts: 'lora', epochs: 1, learn: 'answer', thinking_weight: 0.5, odds_cover: 'answer' }, teach: {}, thinking: { mode: 'blend', shares: {}, own: '', ownShare: 0, personality: { alignment: {}, rules: {}, mood: {} } }, hours_max: 0, dollars_max: 0, note: '', brain: { pick: '', source: newSource('hf') }, lessonSets: [], lessonParts: {}, lessons: [], ways: { pref: 'off', pairs: '', onpolicy: 0, grpo: false, grpoHours: 1.5, targets: [], surgery: '' } }; // 1.5.163 the brain to start from, and lessons from anywhere
@@ -202,6 +204,7 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
       ${buy.problems.length ? `<ul class="error">${buy.problems.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
       <div class="row"><button type="button" class="get" data-forgego ${buy.problems.length ? 'disabled' : ''}>Rent it and start (up to $${buy.dollars})</button><button type="button" class="link" data-forgenobuy>Not now</button></div></div>` : '';
     const liveHtml = live ? `<div class="lab-check" role="status"><p><strong>${live.importing ? 'Bringing in the lessons from Hugging Face' : live.running ? 'Running' : 'Finished or stopped'}: ${esc(live.plan)}</strong> <span class="muted">· caps ${live.hours} hours, $${live.dollars}</span></p><pre tabindex="0">${esc(live.tail.join('\n'))}</pre>${live.failed ? `<p class="error" role="alert">${esc(live.failed)}</p>` : ''}
+      <p class="muted">Every line of it shows live in the Console at the top of this tab.</p>
       <div class="row"><button type="button" class="link" data-forgerefresh>Refresh</button>${live.running ? '<button type="button" class="link" data-forgestop>Stop the run</button>' : ''}</div>
       ${stopAsk ? '<div class="setup-offer" role="alert"><strong>Stop the run and delete its rented card for good?</strong><span>Whatever has already come home stays. Anything still on the card is lost.</span><div class="row"><button type="button" class="get" data-forgestopgo>Stop and delete it</button><button type="button" class="link" data-forgestopno>Keep it running</button></div></div>' : ''}</div>` : '';
     return `<section aria-labelledby="forge-start-h2"><h3 id="forge-start-h2">Start a run</h3>${sw}${fv.hasKey ? '' : '<p class="muted">The rental service\'s key isn\'t set. Settings > Rented brains says how to add it; it stays in your environment, never in Bob\'s files.</p>'}${runs}${card}${liveHtml}</section>`;
@@ -210,7 +213,8 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
   function html(extra = '') { // extra: the Give it eyes / Give it ears card (public/lab-senses.js), placed after the ways
     if (!fv) { if (!loading) load().then(() => document.dispatchEvent(new CustomEvent('lab-forge-ready'))); return `<div id="lab-page-forge" role="tabpanel" aria-labelledby="lab-tab-forge"><p class="muted">${esc(fmsg || 'Loading…')}</p></div>`; }
     return `<div id="lab-page-forge" role="tabpanel" aria-labelledby="lab-tab-forge">
-      <p class="muted">Every way to make a new brain, here or on a rented card. Below them: your Forge runs, and the form that writes the next plan.</p>
+      <p class="muted">The console shows everything the Forge and the Lab run, live. Below it: every way to make a new brain, your Forge runs, and the form that writes the next plan.</p>
+      ${con.html()}
       <section aria-labelledby="forge-ways-h"><h3 id="forge-ways-h">Ways to make a brain</h3>${makeLine()}<ul class="forge-cards">${fv.methods.filter((m) => !(m.ready && m.use === 'make')).map(card).join('')}</ul>
         ${hw.isOpen() || (view()?.runs || []).some((x) => ['mix', 'stack', 'refusals', 'refusals-try'].includes(x.kind)) ? runs() : ''}${hw.html()}
         <details><summary>Ideas left out, and why</summary><dl class="forge-left">${fv.leftOut.map(([t, w]) => `<dt>${esc(t)}</dt><dd>${esc(w)}</dd>`).join('')}</dl></details></section>
@@ -298,5 +302,5 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
     if ('forgestopgo' in d) { stopAsk = false; try { await api('/api/lab/forge/stop', {}); } catch (e) { fmsg = e.message; } await load(); return 'draw'; }
     return false;
   }
-  return { html, change, click, input: (el, draw) => hw.input(el, draw), openHome: hw.open, reload: async () => { await load(); } };
+  return { html, change, click, input: (el, draw) => hw.input(el, draw), openHome: hw.open, reload: async () => { await load(); }, mounted: () => con.mounted() };
 }

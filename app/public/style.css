@@ -2099,7 +2099,7 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .split-opt.locked { opacity: .7; }
 /* 1.5.205 Add a model page: the pop-up that lists a page's files */
 .pick-pop { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; max-width: min(640px, 94vw); max-height: 86vh; overflow: auto; }
-.pick-pop::backdrop { background: color-mix(in srgb, var(--bg) 70%, transparent); }
+.pick-pop::backdrop { background: color-mix(in oklab, var(--bg) 70%, transparent); }
 .pick-pop h3 { margin: 0 0 6px; }
 .pick-list { margin: 10px 0; }
 .pick-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -2614,3 +2614,106 @@ dialog.fade-ask .fade-row button.danger { color: var(--on-accent); background: v
 .wz-people .people-list { list-style: none; padding: 0; }
 .wz-people .people-list li { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
 .guest-bar .g-answer { flex: none; }
+/* 15 Nov the Forge console: three panels (Server, Chat, Set up), any on either side; theme colours only. */
+.lc-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.lc-top h3 { margin: 0; }
+.lc-state { flex: 1 1 260px; }
+.lc-bar-end { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
+.lc-holding, .lc-rent-on { color: var(--warn); font-weight: 600; }
+.lc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+.lc-big { min-height: 40px; padding: 6px 16px; font-weight: 700; border-radius: var(--r); border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
+.lc-big.get { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.lc-stopall { border: 2px solid var(--bad); color: var(--bad); letter-spacing: .05em; }
+.lc-stopall:not(:disabled) { background: var(--bad); color: var(--on-accent); }
+.lc-endrent { border: 2px solid var(--warn); background: var(--warn); color: var(--on-accent); letter-spacing: .05em; }
+.lc-big:disabled { opacity: .5; cursor: not-allowed; }
+.lc-big:focus-visible, .lc-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lc-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0; }
+.lc-layout { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 6px 0 4px; }
+.lc-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.lc-chips .lab-chip { min-height: 28px; padding: 2px 10px; }
+.lc-win { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; height: var(--lc-h, 560px); min-height: 300px; resize: vertical; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r); padding: 6px; background: var(--panel); }
+.lc-win[data-size="left"] { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+.lc-win[data-size="right"] { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+.lc-win[data-size="leftonly"], .lc-win[data-size="rightonly"] { grid-template-columns: minmax(0, 1fr); }
+.lc-pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: clip; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
+.lc-pick { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 4px 6px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.lc-tab { border: 1px solid transparent; border-radius: var(--r); background: none; color: var(--muted); font: inherit; font-weight: 600; padding: 3px 10px; min-height: 30px; cursor: pointer; }
+.lc-tab.on { color: var(--text); border-color: var(--accent); background: var(--card); }
+.lc-bar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.lc-tick { display: inline-flex; align-items: center; gap: 4px; }
+.lc-tojob { flex: none; padding: 2px 8px 6px; }
+.lc-out { flex: 1 1 0; min-height: 0; margin: 0; padding: 6px 8px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 12.5px; line-height: 1.35; color: var(--text); background: var(--bg); }
+.lc-out:focus-visible, .lc-chat:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.lc-k-cmd, .lc-k-you { color: var(--accent); font-weight: 600; }
+.lc-k-note, .lc-k-think { color: var(--muted); }
+.lc-k-error { color: var(--bad); }
+.lc-k-sent { color: var(--accent); }
+.lc-k-back { color: var(--good); }
+.lc-k-tool { color: var(--warn); }
+.lc-held { flex: 0 1 auto; max-height: 11.5em; overflow: auto; display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border-top: 2px solid var(--warn); }
+.lc-held textarea { flex: none; min-height: 4.5em; width: 100%; font-family: var(--mono); font-size: 12.5px; resize: vertical; }
+.lc-in { flex: none; display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-top: 1px solid var(--line); }
+.lc-prompt { font-family: var(--mono); color: var(--accent); white-space: nowrap; }
+.lc-in input { flex: 1 1 auto; min-width: 0; font-family: var(--mono); }
+.lc-chat-in { align-items: flex-end; }
+.lc-chat-in textarea { flex: 1 1 auto; min-width: 0; resize: vertical; min-height: 2.6em; max-height: 12em; font: inherit; }
+.lc-stop { min-height: 28px; padding: 2px 12px; }
+.lc-chat { flex: 1 1 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding: 8px; background: var(--bg); }
+.lc-empty { margin: auto; text-align: center; max-width: 30em; }
+.lc-msg { max-width: 92%; border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; background: var(--card); }
+.lc-you { align-self: flex-end; border-color: var(--accent); }
+.lc-brain { align-self: flex-start; }
+.lc-err { align-self: center; border-color: var(--bad); color: var(--bad); }
+.lc-note { align-self: center; color: var(--muted); }
+.lc-who { font-size: .85em; font-weight: 700; color: var(--muted); margin-bottom: 2px; }
+.lc-text { white-space: pre-wrap; word-break: break-word; }
+.lc-think { margin: 2px 0 6px; color: var(--muted); }
+.lc-think summary { cursor: pointer; font-size: .9em; }
+.lc-think .lc-text { font-style: italic; border-left: 2px solid var(--line); padding-left: 8px; }
+.lc-call { margin-top: 6px; border: 1px dashed var(--warn); border-radius: var(--r); padding: 4px 8px; }
+.lc-call pre { margin: 4px 0; white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 12px; }
+.lc-answer { border-top: 1px solid var(--line); padding-top: 4px; }
+.lc-dots { color: var(--muted); font-weight: 700; letter-spacing: .2em; }
+.lc-setup { flex: 1 1 0; min-height: 0; overflow: auto; padding: 4px 8px 8px; }
+.lc-sec { border-bottom: 1px solid var(--line); padding: 4px 0; }
+.lc-sec > summary { cursor: pointer; font-weight: 700; padding: 4px 0; }
+.lc-sec-b { display: flex; flex-direction: column; gap: 8px; padding: 4px 0 8px; }
+.lc-dials { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 14px; }
+.lc-dial { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 6px; }
+.lc-dial label { font-weight: 600; }
+.lc-dial input[type="range"] { grid-column: 1; width: 100%; accent-color: var(--accent); }
+.lc-dial .lc-num { grid-column: 2; width: 6.5em; }
+.lc-dial .tip-i { justify-self: start; }
+.lc-ticks { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.lc-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; border: 0; padding: 0; margin: 0; }
+.lc-field > legend { font-weight: 600; padding: 0; margin-bottom: 3px; }
+.lc-field > label { font-weight: 600; }
+.lc-field textarea, .lc-field select, .lc-field input:not([type="range"]):not([type="checkbox"]):not([type="radio"]) { width: 100%; max-width: 40em; }
+.lc-field input[type="range"] { max-width: 40em; accent-color: var(--accent); }
+.lc-job { border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
+.lc-job-h { display: block; width: 100%; text-align: left; background: none; border: 0; color: inherit; font: inherit; padding: 6px 8px; cursor: pointer; }
+.lc-job-h[aria-expanded="true"] { border-bottom: 1px solid var(--line); }
+.lc-job-f { display: flex; flex-direction: column; gap: 6px; padding: 6px 8px 8px; }
+.lc-more { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 6px 10px; }
+.lc-btnlist { margin: 0; padding-left: 1.2em; }
+.lc-btnlist code { font-family: var(--mono); word-break: break-all; }
+.lc-add { display: flex; flex-wrap: wrap; align-items: end; gap: 6px 10px; }
+.lc-add-line { flex: 1 1 260px; }
+.lc-add-line input { width: 100%; font-family: var(--mono); }
+.lc-dialog { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; border: 1px solid var(--accent); border-radius: var(--r); background: var(--panel); color: var(--text); padding: 0; }
+.lc-dialog::backdrop { background: color-mix(in oklab, var(--bg) 70%, transparent); }
+.lc-dlg-b { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
+.lc-dlg-b h3 { margin: 0; }
+.lc-dialog button:disabled, .lc-pane button:disabled { opacity: .5; cursor: not-allowed; }
+.lc-dlg-b ul { margin: 0; }
+.lc-cards { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.lc-caps { flex-direction: row; flex-wrap: wrap; gap: 6px 16px; }
+.lc-caps label { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.lc-caps input { width: 7em; }
+@media (max-width: 760px) {
+  .lc-win { height: auto; min-height: 0; resize: none; grid-template-columns: minmax(0, 1fr) !important; }
+  .lc-pane { height: 70vh; }
+  .lc-win[data-size="left"] #lc-pane-right, .lc-win[data-size="right"] #lc-pane-left { height: 40vh; }
+  .lc-big { flex: 1 1 40%; }
+}

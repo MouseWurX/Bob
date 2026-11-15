@@ -1,6 +1,6 @@
 {
   "name": "bob",
-  "version": "1.5.235",
+  "version": "1.5.236",
   "description": "Bob, a local AI who lives on your PC: chat, pictures, video, voice and more, all on your own hardware.",
   "type": "module",
   "private": true,
@@ -41,6 +41,7 @@
     "test/run-training-methods-test.js",
     "test/run-lab-protocol-test.js",
     "test/run-lab-steps-test.js",
+    "test/run-lab-console-test.js",
     "test/run-scrub-data-test.js",
     "test/run-make-probes-test.js",
     "test/run-lab-names-test.js",
@@ -290,9 +291,9 @@
   ],
   "bob": {
     "release": "1.5",
-    "patch": 235,
+    "patch": 236,
     "branch": "",
-    "build": 287,
+    "build": 288,
     "bundledLlamaTag": "b12359",
     "brainEngineVersion": 8,
     "brainEngine": {
