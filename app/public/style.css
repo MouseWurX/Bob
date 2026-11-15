@@ -2624,6 +2624,7 @@ dialog.fade-ask .fade-row button.danger { color: var(--on-accent); background: v
 .lc-stopall:not(:disabled) { background: var(--bad); color: var(--on-accent); }
 .lc-endrent { border: 2px solid var(--warn); background: var(--warn); color: var(--on-accent); letter-spacing: .05em; }
 .lc-big:disabled { opacity: .5; cursor: not-allowed; }
+.lc-actions .tip-i, .cellar .lc-actions button.tip-i { margin: -6px 0; } /* its usual side overhang pushed the row 4 px past the box on a phone */
 .lc-big:focus-visible, .lc-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .lc-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0; }
 .lc-layout { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 6px 0 4px; }
@@ -2712,5 +2713,5 @@ dialog.fade-ask .fade-row button.danger { color: var(--on-accent); background: v
   .lc-win { height: auto; min-height: 0; resize: none; grid-template-columns: minmax(0, 1fr) !important; }
   .lc-pane { height: 70vh; }
   .lc-win[data-size="left"] #lc-pane-right, .lc-win[data-size="right"] #lc-pane-left { height: 40vh; }
-  .lc-big { flex: 1 1 40%; }
+  .lc-big { flex: 1 1 35%; min-width: 0; }
 }

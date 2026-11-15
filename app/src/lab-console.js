@@ -120,7 +120,10 @@ export const hideHeaders = (h = {}) => Object.fromEntries(Object.entries(h).map(
 const pretty = (s) => { try { return JSON.stringify(JSON.parse(s), null, 1); } catch { return String(s || ''); } };
 const cut = (s, n = MAX_TEXT) => (s.length > n ? `${s.slice(0, n)}\n… ${Math.round((s.length - n) / 1024)} KB more in the traffic log` : s);
 // Paths shown to another device (the phone) are only their last part.
-const hidePaths = (t) => String(t).replace(/(?:[A-Za-z]:\\|\/)(?:[^\s"'<>|]+[\\/])+([^\s"'<>|\\/]*)/g, '…/$1');
+// A Windows path can have spaces in its folders ("C:\Program Files\..."), so its pattern runs first and allows them.
+export const hidePaths = (t) => String(t)
+  .replace(/[A-Za-z]:\\(?:[^"'<>|\r\n\\/]*[\\/])*([^\s"'<>|\\/]*)/g, '…/$1')
+  .replace(/\/(?:[^\s"'<>|]+[\\/])+([^\s"'<>|\\/]*)/g, '…/$1');
 
 export const HELP = {
   server: ['Server side. Commands:',

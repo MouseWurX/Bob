@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { parseLine, channelOf, cleanEnv, checkCommand, killTree, hideHeaders, LabConsole, consoleRoute, HELP, cleanSetup, chatBody, makeRentalPlan, rentalChoices } from '../src/lab-console.js';
+import { parseLine, channelOf, cleanEnv, checkCommand, killTree, hideHeaders, hidePaths, LabConsole, consoleRoute, HELP, cleanSetup, chatBody, makeRentalPlan, rentalChoices } from '../src/lab-console.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, more = '') => { if (ok) { pass++; console.log(`PASS ${name}`); } else { fail++; console.log(`FAIL ${name}${more ? ` ${more}` : ''}`); } };
@@ -69,6 +69,9 @@ check('any other first word is refused', throws(() => cc('cmd /c dir'), /isn't a
   check('pid 0 is never killed (that would be every process in the group)', !killTree(0, { platform: 'linux', kill: () => { throw new Error('no'); } }));
 }
 check('header values that are keys are hidden', (() => { const h = hideHeaders({ authorization: 'Bearer abc', 'x-forge-token': 't', 'content-type': 'application/json' }); return h.authorization === '[hidden]' && h['x-forge-token'] === '[hidden]' && h['content-type'] === 'application/json'; })());
+
+check('a spaced Windows path shows only its last part', hidePaths('wrote C:\\Program Files\\Inner Folder\\deep\\file.txt done') === 'wrote …/file.txt done' && !hidePaths('D:\\My Stuff\\Some Folder\\x.log').includes('Some'));
+check('Linux and Mac paths still show only their last part', hidePaths('saved /home/someone/lab/out/a.json') === 'saved …/a.json');
 
 // ---- a fake brain server on this computer ----
 const got = [];
@@ -269,6 +272,7 @@ check('a clear STOP, and END RENTAL only while a rental is up, both asked first 
 check('the server panel shows its log, the requests and replies, the scripts, each on or off', /toggleChip\('server', 'Server log'\)/.test(pg) && /toggleChip\('traffic', 'Requests and replies'\)/.test(pg) && /toggleChip\('scripts', 'Scripts'\)/.test(pg));
 check('a held request can be edited, sent or dropped on the page', /lc-held-body/.test(pg) && /data-lcdecide/.test(pg));
 check('buttons can be edited before they run', /data-lcedit/.test(pg));
+check('on a phone, the action row\'s (i) never hangs past the box', /\.lc-actions \.tip-i, \.cellar \.lc-actions button\.tip-i \{ margin: -6px 0; \}/.test(css));
 check('the console uses the theme\'s colours only', lcCss.length > 500 && !/#[0-9a-fA-F]{3,8}\b|rgb\(|hsl\(/.test(lcCss));
 check('the Forge tab places the console and fills it after a redraw', /con\.html\(\)/.test(read('public/lab-forge.js')) && /fg\.mounted\(\)/.test(read('public/lab.js')));
 check('the Lab page leaves the console\'s events, and its set-up window\'s, to it', (read('public/lab.js').match(/closest\??\.?\(['"]#lab-console, #lc-dialog['"]\)/g) || []).length >= 3);
