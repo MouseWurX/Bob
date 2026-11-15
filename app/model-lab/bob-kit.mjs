@@ -99,6 +99,9 @@ export function neutralizer({ home = os.homedir(), user = (() => { try { return 
     if (mx.length) t = t.replace(/(C:\\(?:\\)?Users\\(?:\\)?you)((?:\/[^\s"'<>|/]+)+)/g, (m, p, rest) => p + rest.replace(/\//g, p.includes('\\\\') ? '\\\\' : '\\')); // a Linux test machine's slashes, Windows style
     if (rx) t = t.replace(rx, (m) => (m.includes('/') && !m.includes('\\') ? 'C:/Users/you' : m.includes('\\\\') ? 'C:\\\\Users\\\\you' : 'C:\\Users\\you'));
     if (ux) t = t.replace(ux, 'you');
+    // any lab temp folder left over (another run's, or one made before this kit) -> Bob's own folder, same slash style
+    t = t.replace(/C:(\\\\|\\|\/)Users\1you\1AppData\1Local\1Temp\1bob-lab-[A-Za-z0-9]+/gi, (m, s) => ['C:', 'Users', 'you', 'AppData', 'Local', 'Bob'].join(s));
+    t = t.replace(/\/tmp\/bob-lab-[A-Za-z0-9]+/g, 'C:\\Users\\you\\AppData\\Local\\Bob');
     return t;
   };
 }

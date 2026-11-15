@@ -171,6 +171,7 @@ check('writer: a second try: the first call fails, then it carries on', m.filter
 check('writer: the teacher saw the note, the saved lesson did not', seen.some((j) => String(j.messages[0]?.content || '').includes('NOTE-FOR-TEACHER')) && !JSON.stringify(made).includes('NOTE-FOR-TEACHER'));
 check('writer: route and seed are kept on the lesson', made[0]?.route === 0 && made[0]?.seed?.source === 'v5');
 check('writer: --family stamps the lesson for one brain family', made[0]?.family === 'qwen');
+check('writer: no lab temp folder path reaches a lesson', !/bob-lab-|AppData[\\/]+Local[\\/]+Temp/i.test(JSON.stringify(made)));
 check('writer: every lesson says which tool-shape version it was written for', Number.isInteger(made[0]?.tool_shapes));
 {
   const real = rows(path.join(tmp, 'wl', 'real-base', 'lessons.jsonl'))[0];
@@ -185,7 +186,9 @@ check('writer: the fake result sees the tool\'s own description and is kept insi
   const { neutralizer } = await import(pathToFileURL(path.join(lab, 'bob-kit.mjs')).href);
   const n = neutralizer({ home: ['C:', 'Users', 'Pat'].join('\\'), user: 'Pat' });
   const t = n(['C:', 'Users', 'pat', 'AppData', 'Local', 'Temp', 'bob-lab-1'].join('\\') + ' and ' + ['C:', 'Users', 'Pat', 'Documents'].join('/') + ', hi Pat, Patrick');
-  check('lab: the Lab PC\'s home folder and user name never reach a lesson', t === 'C:\\Users\\you\\AppData\\Local\\Temp\\bob-lab-1 and C:/Users/you/Documents, hi you, Patrick', t);
+  check('lab: the Lab PC\'s home folder and user name never reach a lesson', t === 'C:\\Users\\you\\AppData\\Local\\Bob and C:/Users/you/Documents, hi you, Patrick', t);
+  const j = n(JSON.stringify(['C:', 'Users', 'you', 'AppData', 'Local', 'Temp', 'bob-lab-Ab12z9', 'Agent', 'inn'].join('\\')) + ' C:/Users/you/AppData/Local/Temp/bob-lab-x1/a /tmp/bob-lab-q7/b');
+  check('lab: an old lab temp folder never reaches a lesson, in any slash style', !/bob-lab-|Temp/.test(j) && j.includes('C:\\\\Users\\\\you\\\\AppData\\\\Local\\\\Bob\\\\Agent') && j.includes('C:/Users/you/AppData/Local/Bob/a'), j);
   check('writer: every saved lesson, reject and needs-review row goes through the neutral home', (read('model-lab/write-lessons.mjs').match(/messages: clean\(saved\)/g) || []).length === 3);
 }
 check('writer: doctored lessons get 12 steps', /idea\.note \|\| idea\.prior \|\| idea\.failFirst \? 12 : 6/.test(read('model-lab/write-lessons.mjs')));
