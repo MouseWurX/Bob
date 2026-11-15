@@ -115,5 +115,12 @@ const ws = wishes('I would do:\n{"tool": "zip_folder", "arguments": {"source": "
 check('wishes: every invented call is read, with its argument names', ws.length === 2 && ws[0].name === 'zip_folder' && Object.keys(ws[0].args).join(',') === 'source,dest' && ws[1].name === 'tell', JSON.stringify(ws));
 const tl = tally([{ real: ['file_hands'], wishes: ws }]);
 check('tally by Bob\'s real tool', tl.byReal.file_hands.turns === 1 && tl.byReal.file_hands.names.zip_folder === 1 && tl.argNames.dest === 1);
+// 15 Nov, GPT-OSS tool check: GPT-OSS has a thinking level, not a switch
+const fs = await import('node:fs');
+const { effortList, thinkKwargs } = await import('../model-lab/tool-wording.mjs');
+check('--effort low,high: think off asks low, think on asks high, beside the Qwen switch', JSON.stringify(thinkKwargs(false, effortList('low,high'))) === '{"enable_thinking":false,"reasoning_effort":"low"}' && JSON.stringify(thinkKwargs(true, effortList('low,high'))) === '{"enable_thinking":true,"reasoning_effort":"high"}');
+check('no --effort: the request is exactly as before (Riker and Bobert stay comparable)', JSON.stringify(thinkKwargs(true, effortList(undefined))) === '{"enable_thinking":true}' && JSON.stringify(thinkKwargs(false, effortList(true))) === '{"enable_thinking":false}');
+check('a made-up level is dropped, one level serves both', JSON.stringify(effortList('max,medium')) === '["medium"]' && thinkKwargs(true, effortList('medium')).reasoning_effort === 'medium');
+for (const f of ['tool-wording.mjs', 'tool-pick.mjs', 'tool-coach.mjs']) check(`${f} sends the thinking level through thinkKwargs`, /chat_template_kwargs: thinkKwargs\(/.test(fs.readFileSync(new URL(`../model-lab/${f}`, import.meta.url), 'utf8')) && !/chat_template_kwargs: \{ enable_thinking/.test(fs.readFileSync(new URL(`../model-lab/${f}`, import.meta.url), 'utf8')));
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { live, pool, oddsOf } from './engine-live.mjs';
-import { buildQuestions, grade, summarize } from './tool-wording.mjs';
+import { buildQuestions, grade, summarize, effortList, thinkKwargs } from './tool-wording.mjs';
 
 const readJsonl = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean) : []);
 const first = (d) => String(d || '').split(/(?<=[.!?])\s/)[0].slice(0, 160);
@@ -44,7 +44,7 @@ async function main() {
   const eng = live(url), rows = [];
   for (const think of thinks) {
     const file = path.join(out, `answers-wording-pick-think-${think}.jsonl`), on = think === 'on';
-    const base = { temperature: 0, chat_template_kwargs: { enable_thinking: on }, max_tokens: on ? maxOn : maxOff, logprobs: true, top_logprobs: K };
+    const base = { temperature: 0, chat_template_kwargs: thinkKwargs(on, effortList(a.effort)), max_tokens: on ? maxOn : maxOff, logprobs: true, top_logprobs: K };
     const r = await pool(qs, par, async (q) => {
       const t0 = Date.now();
       try {
