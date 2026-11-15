@@ -8,7 +8,8 @@ Every brain gets the same tools, with the same names and the same inputs. Only t
 
 | Family | Wording | Added group stays for |
 |---|---|---|
-| Qwen (Riker, Bill, Bobert, Qwen3.x) and unknown brains | Bob's own wording, unchanged | 3 messages |
+| Qwen (Riker, Bill, Bobert, Qwen3.x) | Bob's own wording, unchanged; ask_specialist and pick_session left out (`hide`, Nov 15) | 3 messages |
+| Unknown brains | Bob's own wording, unchanged | 3 messages |
 | GPT-OSS (locked Nov 15) | Bob's own wording; list_folder and search_files say which is which; ask_specialist and mcp_tools left out (`hide`) | 1 message |
 
 Because the names and inputs never change, a lesson written by a GPT-OSS teacher is already in Bob's real tools. It never needs translating back.

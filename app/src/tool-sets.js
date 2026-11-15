@@ -1,7 +1,8 @@
 // Tool sets for each brain family (reliability, on by default; Settings, How Bob works, "Tool wording for each brain
 // family"). Every family gets the same tools, with the same names and the same inputs, so a call runs the same way and
 // a lesson never needs translating back. Only how the tools are worded changes:
-//   - Qwen brains (Riker, Bill, Bobert...) and brains we don't know keep Bob's own wording, byte for byte.
+//   - Qwen brains (Riker, Bill, Bobert...) and brains we don't know keep Bob's own wording, byte for byte. Qwen
+//     brains don't get ask_specialist or pick_session (see QWEN below).
 //   - GPT-OSS keeps Bob's wording too, except list_folder and search_files say which is which, and two tools it
 //     never needed are left out. It also lets an added tool group go after 1 message, not 3.
 // A family's tool list is never longer in all than Bob's own (test/run-tool-sets-test.js): the examples are paid for
@@ -12,8 +13,17 @@ import { ggufInfo } from './gguf.js';
 
 export const toolSetsOn = (cfg) => cfg?.toolSets !== false;
 
+// Qwen brains (Riker, Bobert, Bill...): Bob's own wording, byte for byte, less two look-alike helpers that pulled
+// Riker and Bobert off course in their coached tool runs (Nov 15, the owner: "fix gaps"). ask_specialist handed jobs
+// away they could do themselves (a habit from old lessons); pick_session read as a tool for the job.
+const QWEN = { label: 'Qwen', proven: true, hide: ['ask_specialist', 'pick_session'], use: {} };
+
 // family (model-family.js familyOf) -> its tool set. Families not listed use Bob's own wording.
 export const SETS = {
+  qwen3: QWEN,
+  'qwen3.5': QWEN,
+  'qwen3-coder': QWEN,
+  'qwen2.5': QWEN,
   'gpt-oss': {
     label: 'GPT-OSS',
     // Nov 15, coached tool runs on the 120B and the cut 38B (rented card, thinking off): no wording beat Bob's own
@@ -34,7 +44,7 @@ export const SETS = {
 // Which tool shapes are live, as a short stamp. The tool record (tool-record.js) starts a fresh history when this
 // changes, and moves the old one to an archive folder (Nov 14, the owner: "if i have a history in it we restart that
 // history new when we try the new tool shapes"). Bump TOOL_SHAPES when tool wording or inputs change for every brain.
-export const TOOL_SHAPES = 3; // 2 (Nov 15): save_to on the save tools and make_diagram, a new name on convert_file. 3 (Nov 15): GPT-OSS shape locked
+export const TOOL_SHAPES = 4; // 2 (Nov 15): save_to on the save tools and make_diagram, a new name on convert_file. 3: GPT-OSS shape locked. 4: Qwen hides 2 helpers; run_command sends file writes to write_file
 export function shapeStamp(cfg) {
   const live = toolSetsOn(cfg) ? Object.keys(SETS).filter((k) => SETS[k].proven !== false && cfg?.toolSets?.[k] !== false).sort() : [];
   return `${TOOL_SHAPES}-${live.join('+') || 'bob'}`;
