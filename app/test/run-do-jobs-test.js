@@ -15,6 +15,7 @@ let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
 const app = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'do jobs '));
+const ossAsks = [];
 let busy = 0, most = 0; const offered = new Set(); let sceneAsks = 0, leaked = '', jsonAsked = false; const systems = [];
 const call = (name, args, think = '') => ({ choices: [{ message: { role: 'assistant', content: '', reasoning_content: think, tool_calls: [{ id: 'c1', type: 'function', function: { name, arguments: JSON.stringify(args) } }] } }], usage: { completion_tokens: 12, prompt_tokens: 900 } });
 const say = (t, think = '') => ({ choices: [{ message: { role: 'assistant', content: t, reasoning_content: think } }], usage: { completion_tokens: 5, prompt_tokens: 950 } });
@@ -43,6 +44,7 @@ const srv = http.createServer((req, res) => {
     }
     if (msgs[0]?.role === 'system') systems.push(String(msgs[0].content));
     const ask = String(msgs.find((m) => m.role === 'user')?.content || '');
+    if (/^GPT-OSS job/.test(ask)) ossAsks.push({ kw: j.chat_template_kwargs || {}, temp: j.temperature, top_p: j.top_p, names, listFolder: (j.tools || []).find((t) => t.function?.name === 'list_folder')?.function?.description || '', afterTool: msgs.at(-1)?.role === 'tool' });
     const last = [...msgs].reverse().find((m) => m.role === 'tool' || m.role === 'user') || {};
     let out;
     if (msgs.some((m) => m.role !== 'assistant' && (m.content === undefined || m.content === null || m.content === ''))) { busy--; res.statusCode = 400; res.end(JSON.stringify({ error: { code: 400, message: "All non-assistant messages must contain 'content'" } })); return; }
@@ -146,6 +148,16 @@ fs.writeFileSync(groupFile, JSON.stringify({ used: 4 }));
 const grp = await run(['--preflight', '--search', 'tavily', '--search-cap', '6', '--search-group', 'g1'], { env: { LAB_TAVILY_KEY: KEY } });
 const grpFull = await run(['--preflight', '--search', 'tavily', '--search-cap', '6', '--search-group', 'g1'], { env: { LAB_TAVILY_KEY: KEY } });
 const groupAfter = JSON.parse(fs.readFileSync(groupFile, 'utf8')).used;
+{ const ossJobs = path.join(tmp, 'ideas-oss.jsonl');
+  fs.writeFileSync(ossJobs, JSON.stringify({ id: 'g1', job: 'files', text: 'GPT-OSS job: what is on my shopping list in Documents\\shop.txt?', setup: [{ path: 'Documents\\shop.txt', content: 'plums\n' }] }) + '\n');
+  const bad = await run(['--preflight', '--family', 'llama'], { jobsFile: ossJobs, dir: 'oss0' });
+  const pfo = await run(['--preflight', '--family', 'gpt-oss'], { jobsFile: ossJobs, dir: 'oss1' });
+  const ro = await run(['--family', 'gpt-oss', '--parallel', '1'], { jobsFile: ossJobs, dir: 'oss1' });
+  const orow = fs.existsSync(path.join(tmp, 'oss1', 'runs.jsonl')) ? JSON.parse(fs.readFileSync(path.join(tmp, 'oss1', 'runs.jsonl'), 'utf8').trim().split('\n')[0]) : {};
+  check('--family: an unknown family stops pre-flight; gpt-oss names its tool set', bad.code === 1 && /--family llama: use qwen or gpt-oss/.test(bad.log) && pfo.code === 0 && /family gpt-oss: Bob's GPT-OSS tool set \(ask_specialist, mcp_tools left out\)/.test(pfo.log), bad.log.slice(-200) + pfo.log.slice(-300));
+  check("--family gpt-oss: Bob's loop uses the GPT-OSS tool set (its list_folder wording, its two helpers left out)", ro.code === 0 && ossAsks.length >= 2 && ossAsks.some((a) => /Words inside files: search_files/.test(a.listFolder)) && !ossAsks.some((a) => a.names.includes('ask_specialist') || a.names.includes('mcp_tools')), ro.log.slice(-300) + JSON.stringify(ossAsks.map((a) => a.listFolder.slice(0, 60))));
+  check("--family gpt-oss: thinking is asked the GPT-OSS way (Bob's no-thinking step is reasoning low; never enable_thinking), with its own sampling", ossAsks.some((a) => a.kw.reasoning_effort === 'low') && ossAsks.every((a) => a.kw.enable_thinking === undefined && a.top_p === 1 && [undefined, 'low', 'high'].includes(a.kw.reasoning_effort)), JSON.stringify(ossAsks.map((a) => [a.afterTool, a.kw, a.temp, a.top_p])));
+  check('--family gpt-oss: the run is stamped family gpt-oss, each step keeps its reasoning level, and the job was done', orow.family === 'gpt-oss' && (orow.steps || []).length >= 2 && orow.steps.every((st) => ['low', 'medium', 'high'].includes(st.effort)) && orow.steps.some((st) => st.effort === 'low') && /plums/.test(orow.said || ''), JSON.stringify({ f: orow.family, e: (orow.steps || []).map((st) => st.effort), said: orow.said })); }
 srv.close();
 const rows = fs.readFileSync(path.join(tmp, 'trial', 'runs.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 const by = Object.fromEntries(rows.map((x) => [x.id, x]));

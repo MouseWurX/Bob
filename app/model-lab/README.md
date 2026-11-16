@@ -40,6 +40,9 @@ Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf and its mmproj under `<parent>/models` (found by
    page is checked too when it answers. `--search-cap <n>` caps the run's own Tavily searches, and with `--search-group
    <name>` the cap is shared by every run of that name this month (run 3 and the 800 jobs share 800). `--search-probe` stops pre-flight when web search answers nothing; 5 failed
    searches in a row stop a run.
+   `--family gpt-oss`: the served brain is a GPT-OSS one, so Bob's loop uses his GPT-OSS tool set and asks for thinking the
+   GPT-OSS way (a no-thinking step is reasoning low), with its own sampling; runs are stamped family gpt-oss. Default qwen.
+   plans\jobs-gptoss-trial.json: the stock 120B does the first 45 fix-list jobs from the scenes Flash-Next saved.
    `node jobs-gate.mjs --dir <name> --runs 45 --want-shapes 4 --search tavily` reads a finished do-jobs folder and exits
    86 (the Forge then deletes the pod) unless it was clean: enough runs, answered in words, few errors, test worlds made,
    one tool shape, searches with results, and nothing private in any saved file (the Lab's key, the Lab PC's user name

@@ -1,0 +1,58 @@
+{
+ "run": "jobs-gptoss-trial",
+ "note": "16 Nov (the owner: \"ok, let's try a rental with gpt-oss and see how it performs\"): a 45-job trial like run 1, with the stock GPT-OSS 120B (the heal's teacher; the 38B cut stays the student and isn't served) doing Bob's jobs through his real loop: do-jobs --family gpt-oss, so Bob's GPT-OSS tool set (tool-sets.js) and the GPT-OSS way of asking for thinking (a no-thinking step is reasoning low). The jobs are the first 45 of the fix list, the same ones Flash-Next does first in jobs-fix1, and each starts from the very scene Flash-Next's run saved (--scenes), so the two brains can be compared job by job; a job with no saved scene gets one written. Its own 100 Tavily searches (--search-cap 100 --search-group gptoss-trial), inside the month's 1,500. Then jobs-gate.mjs writes GATE.md for the read (names warn, the key stops). When the commands finish, the pod is deleted. Opus 5.5 reads every run before any is kept. One 80 GB card, 2 jobs at a time. Caps 2.5 h / $8.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.8-Flash-Next",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA A100 80GB PCIe",
+  "NVIDIA A100-SXM4-80GB"
+ ],
+ "step_up": [
+  "NVIDIA H100 80GB HBM3"
+ ],
+ "disk_gb": 160,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 2.5,
+ "dollars_max": 8,
+ "rent_minutes": 60,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one brain: GPT-OSS 120B doing 45 real jobs, 2 at a time, then the gate report.",
+  "hours_each": 2,
+  "models": [
+   {
+    "name": "gptoss-jobs",
+    "nickname": "GPT-OSS 120B, doing Bob's jobs",
+    "file": "hf:ggml-org/gpt-oss-120b-GGUF:gpt-oss-120b-MXFP4.gguf",
+    "quant": "MXFP4",
+    "slots": 2,
+    "ctx": 65536,
+    "extra": "",
+    "hours": 2,
+    "commands": [
+     "node do-jobs.mjs --url {{url}} --bob .. --family gpt-oss --never ../../bob-model-lab/out/jobs-trial/never --parallel 2 --want-shapes 4 --max 4096 --job-minutes 8 --scene make --scenes ../../bob-model-lab/out/jobs-fix1/scenes.jsonl --search tavily --search-month 1500 --search-cap 100 --search-group gptoss-trial --jobs ../../bob-model-lab/out/jobs-fix/jobs.jsonl --dir jobs-gptoss-1 --count 45 --hours 1 --search-probe",
+     "node jobs-gate.mjs --dir jobs-gptoss-1 --runs 45 --want-shapes 4 --search tavily --leaks warn"
+    ]
+   }
+  ]
+ },
+ "prep": [
+  "Inputs: bob-model-lab/out/jobs-fix/jobs.jsonl (the fix list's jobs; the first 45 are run), bob-model-lab/out/jobs-fix1/scenes.jsonl (Flash-Next's saved scenes for them) and bob-model-lab/out/jobs-trial/never/ (held-out test files).",
+  "--family gpt-oss stops pre-flight if this Bob copy has no GPT-OSS tool set; --want-shapes 4 if its tools are another shape.",
+  "--search tavily needs the Lab's key (saved with 'Save Tavily key for the Lab.cmd'); --search-probe stops pre-flight if Bob's web_search answers nothing."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20
+}

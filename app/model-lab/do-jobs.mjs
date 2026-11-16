@@ -10,6 +10,7 @@
 //      [--never <file>[,<file>]] [--parallel 2] [--count N] [--hours H] [--max 4096] [--job-minutes 10] [--want-shapes 4]
 //      [--preflight] [--slot-ctx N] [--scene make|reuse] [--scenes <scenes.jsonl>[,...]] [--office <soffice>]
 //      [--search-probe] [--search-gap 2] [--search tavily] [--search-month N] [--search-cap N [--search-group <name>]]
+//      [--family qwen|gpt-oss]
 // Jobs: one per line, {id, text, setup?: [{path, content}]} (the lesson writer's ideas files work as they are; only the
 // request and its starting files are used, never an old answer). --never: held-out / test files; a job whose request
 // matches one of theirs is never run. Runs go to <out>/<dir>/runs.jsonl (one row per job, picked up again after a stop).
@@ -36,6 +37,11 @@
 // check included, whatever the month has left; each job's Bob gets his cap from what's left of it too. --search-group
 // <name>: the cap is shared by every run given that name this month (run 3 and the 800 jobs on one rental), counted in
 // <out>/tavily-searches-<year-month>-<name>.json.
+// --family gpt-oss (16 Nov, the owner: "let's try a rental with gpt-oss and see how it performs"): the served brain is a
+// GPT-OSS one. Bob's loop then uses that family's own tool set (tool-sets.js: its list_folder/search_files wording, two
+// helpers left out, a group stays one message), asks for thinking the GPT-OSS way (model-family.js thinkKwargs: a tool
+// step is reasoning low, planning and the answer its own medium) with its own sampling, and the runs are stamped
+// family gpt-oss. The scene writer asks for reasoning low. Default: qwen, as before.
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -96,6 +102,11 @@ if (o.office && !fs.existsSync(String(o.office))) fail(`no LibreOffice at --offi
 // them on, as he would); Office only with --office (LibreOffice).
 const HANDS_HERE = ['files', 'sort', 'security', ...(o.office ? ['office'] : [])];
 const kitOpts = { world: true, makers: false, docs: true, hands: HANDS_HERE, office: o.office ? String(o.office) : '' };
+const FAMILIES = { qwen: 'qwen3.6-35b-a3b', 'gpt-oss': 'gpt-oss-120b' }; // the brain name Bob's loop picks the family's tool set by
+const family = String(o.family || 'qwen').toLowerCase();
+if (!FAMILIES[family]) fail(`--family ${o.family}: use ${Object.keys(FAMILIES).join(' or ')}`);
+// Bob's loop works out the tool set from the brain's name (brain-prompting.js toolSetOf), so each job's Bob is told it
+const asFamily = (kit) => { if (family !== 'qwen') kit.cfg.models = { ...(kit.cfg.models || {}), bob: FAMILIES[family] }; return kit; };
 const searchWith = String(o.search || '').toLowerCase();
 let searchKey = '';
 const SEARCH_SPARE = 10; // left over in the month for the next pre-flight
@@ -150,9 +161,14 @@ function keyedSearch(kit) {
   return () => { let now = seen; try { const c = JSON.parse(fs.readFileSync(f, 'utf8')); if (c.month === month()) now = Number(c.used?.tavily) || 0; } catch {} const d = Math.max(0, now - seen); seen = now; return d; };
 }
 
-const probe = await loadBob(L.bob, kitOpts);
+const probe = asFamily(await loadBob(L.bob, kitOpts));
 const probeUsed = keyedSearch(probe);
 say(`Bob's tools from ${L.bob}: ${probe.bobSrc?.version || '?'}${probe.bobSrc?.commit ? ` (${probe.bobSrc.commit})` : ''}; tool shape ${probe.toolShapes ?? '?'}`);
+if (family !== 'qwen') {
+  const set = probe.brain.toolSetOf?.(FAMILIES[family]);
+  if (set?.id !== family) fail(`this Bob copy has no ${family} tool set (src/tool-sets.js), so its jobs would run in another family's shape`);
+  say(`pre-flight: family ${family}: Bob's ${set.label || family} tool set${set.hide?.length ? ` (${set.hide.join(', ')} left out)` : ''}, thinking asked the ${family} way`);
+}
 if (o['want-shapes'] !== undefined && String(probe.toolShapes) !== String(o['want-shapes'])) fail(`Bob's tools are shape ${probe.toolShapes ?? '?'}, not ${o['want-shapes']}`);
 if (o['search-probe']) {
   let r = '';
@@ -171,12 +187,17 @@ const bobUrl = (f) => pathToFileURL(path.join(L.bob, 'src', f)).href;
 const { textCalls, LlamaCpp } = await import(bobUrl('llamacpp.js'));
 const { checkArgs } = await import(bobUrl('loop-help.js'));
 const { MID_SYSTEM_REFUSED, foldSystem } = await import(bobUrl('system-notes.js'));
+const { thinkKwargs, samplingFor } = await import(bobUrl('model-family.js'));
+// how a step asks for thinking, and its sampling: Qwen as before; another family by Bob's own model-family.js
+const thinkBody = (think) => (family === 'qwen' ? { chat_template_kwargs: { enable_thinking: think !== false } } : thinkKwargs(family, think));
+const sampling = (tools, think) => (family === 'qwen' ? { temperature: tools ? 0.6 : 0.7, top_p: 0.8, top_k: 20 } : samplingFor(null, FAMILIES[family], null, { tools, think }));
+const effortOf = (think) => (family === 'gpt-oss' ? (think === false ? 'low' : think === 'high' || think === 'extreme' ? 'high' : 'medium') : undefined);
 const auth = process.env.LAB_API_KEY ? { authorization: `Bearer ${process.env.LAB_API_KEY}` } : {};
 const today = new Date().toISOString().slice(0, 10);
 // The scene writer: the served brain, thinking off, cool, JSON only (llama-server's json_object grammar when it has it)
 let jsonMode = true;
 async function sceneChat(messages) {
-  const body = { cache_prompt: true, messages, max_tokens: 6000, stream: false, chat_template_kwargs: { enable_thinking: false }, temperature: 0.3, top_p: 0.8, top_k: 20, ...(jsonMode ? { response_format: { type: 'json_object' } } : {}) };
+  const body = { cache_prompt: true, messages, max_tokens: 6000, stream: false, ...thinkBody(false), temperature: 0.3, top_p: 0.8, top_k: 20, ...(jsonMode ? { response_format: { type: 'json_object' } } : {}) };
   const r = await fetch(`${url}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...auth }, body: JSON.stringify(body) });
   if (!r.ok) { const full = await r.text(); if (jsonMode && /response_format|json_object|grammar/i.test(full)) { jsonMode = false; return sceneChat(messages); } throw new Error(`llama-server ${r.status}: ${full.slice(0, 200)}`); }
   return String((await r.json()).choices?.[0]?.message?.content || '');
@@ -223,7 +244,7 @@ export const NOT_HERE = new Set(['run_command', 'run_recipe', 'open_app', 'app_l
 const NOT_SET_UP = new Set(['make_image', 'make_video', 'make_music', 'make_sound']);
 
 async function runJob(j) {
-  const kit = await loadBob(L.bob, kitOpts);
+  const kit = asFamily(await loadBob(L.bob, kitOpts));
   const tavilyUsed = keyedSearch(kit);
   const brain = kit.brain;
   for (const n of NOT_HERE) delete brain.tools[n];
@@ -276,9 +297,11 @@ async function runJob(j) {
       // 16 Nov: the brain sees only neutral names (Bob's prompt and tool list hold the throwaway folder's real paths)
       const out = deepNeutral(kit, q.messages);
       const msgs = (await strictTemplate()) ? foldSystem(out) : out;
-      const think = q.think === undefined ? true : Boolean(q.think);
+      const asked = q.think; // Bob's loop: false on a tool step (step-thinking.js), 'high' for a deep review, else his default
+      const think = asked === undefined ? true : asked === 'high' || asked === 'extreme' ? true : Boolean(asked);
       const body = { cache_prompt: true, messages: LlamaCpp.toOpenAI(msgs), ...(q.tools?.length ? { tools: deepNeutral(kit, q.tools) } : {}), max_tokens: Number(o.max), stream: false,
-        chat_template_kwargs: { enable_thinking: think }, temperature: q.tools?.length ? 0.6 : 0.7, top_p: 0.8, top_k: 20 };
+        ...thinkBody(family === 'qwen' ? think : asked), ...sampling(Boolean(q.tools?.length), asked) };
+      const effort = effortOf(asked);
       const t0 = Date.now();
       const r = await fetch(`${url}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...auth }, body: JSON.stringify(body), signal: q.signal });
       if (!r.ok) {
@@ -287,7 +310,7 @@ async function runJob(j) {
         throw new Error(`llama-server ${r.status}: ${full.slice(0, 300)}`);
       }
       const res = await r.json(); const m = res.choices?.[0]?.message || {};
-      steps.push({ think, thinking: kit.neutral(String(m.reasoning_content || '')), content: kit.neutral(String(m.content || '')), calls: [], secs: (Date.now() - t0) / 1000, tokens: res.usage?.completion_tokens ?? null, prompt_tokens: res.usage?.prompt_tokens ?? null, finish: res.choices?.[0]?.finish_reason || '' });
+      steps.push({ think, ...(effort ? { effort } : {}), thinking: kit.neutral(String(m.reasoning_content || '')), content: kit.neutral(String(m.content || '')), calls: [], secs: (Date.now() - t0) / 1000, tokens: res.usage?.completion_tokens ?? null, prompt_tokens: res.usage?.prompt_tokens ?? null, finish: res.choices?.[0]?.finish_reason || '' });
       const calls = (m.tool_calls || []).map((c) => { let a = {}, raw; try { a = JSON.parse(c.function?.arguments || '{}'); } catch { raw = c.function?.arguments; } return { function: { name: c.function?.name, arguments: a, ...(raw !== undefined ? { raw } : {}) } }; });
       if (!calls.length && q.tools?.length) { const tc = textCalls(m.content || '', new Set(q.tools.map((x) => x.function?.name))); if (tc) return { role: 'assistant', content: tc.text, tool_calls: tc.calls }; }
       return { role: 'assistant', content: m.content || '', tool_calls: calls.length ? calls : undefined };
@@ -304,7 +327,7 @@ async function runJob(j) {
   const row = {
     id: j.id, job: j.job, text: j.text, ...(j.from ? { from: j.from } : {}), planted, scene, said: kit.neutral(said), steps, asks, real, standins: [], missing: [...missing],
     secs: (Date.now() - t0) / 1000, ...(error ? { error: kit.neutral(error).slice(0, 400) } : {}),
-    family: 'qwen', tool_shapes: kit.toolShapes, bob_src: kit.bobSrc, brain: process.env.LAB_MODEL_NAME || 'served', at: new Date().toISOString(),
+    family, tool_shapes: kit.toolShapes, bob_src: kit.bobSrc, brain: process.env.LAB_MODEL_NAME || 'served', at: new Date().toISOString(),
     messages: deepNeutral(kit, brain.session(session))
   };
   kit.done();
