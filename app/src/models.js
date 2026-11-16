@@ -1,6 +1,9 @@
 // Bob's model shop: what models exist, which are already on this PC (Ollama, ComfyUI, Maestro...),
 // downloading new ones one at a time with progress and a checksum, and switching Bob over to them.
 // Every download starts from a click in Bob's window. Bob never downloads a model on his own.
+import { ollamaOn, ollamaUrl } from './ollama-optin.js'; // Nov 16 2026: Ollama only when switched on
+import { canHear } from './hearing.js';
+import { sttProvider } from './stt.js';
 import { deadline as withDeadline, quietGuard } from './hang-guard.js'; // item 212
 import { recordBrainFile } from './engine-care.js';
 import { ownEntries, ownModels, ownResolve } from './own-models.js';
@@ -251,9 +254,11 @@ export class ModelShop {
   }
 
   async ollamaNames() {
-    if (this.cfg.engine === 'llamacpp' && !this.cfg.ollamaUrl) return null;
+    // Nov 16 2026: Bob asks Ollama nothing unless "Use Ollama too" is on (src/ollama-optin.js).
+    const url = ollamaUrl(this.cfg);
+    if (!url) return null;
     try {
-      const r = await fetch(this.cfg.ollamaUrl.replace(/\/$/, '') + '/api/tags', { signal: AbortSignal.timeout(3000) });
+      const r = await fetch(url + '/api/tags', { signal: AbortSignal.timeout(3000) });
       return new Set((await r.json()).models.map((m) => m.name));
     } catch { return null; }
   }
@@ -524,7 +529,7 @@ export class ModelShop {
     const ollama = await this.ollamaNames();
     if (entry.ollama && ollama) return this.pullOllama(entry, pub, signal, tick);
     if (entry.files?.length) return this.fetchFiles(entry, pub, signal, tick);
-    throw new Error(`${entry.name} comes through Ollama, and Ollama isn't running.`);
+    throw new Error(ollamaOn(this.cfg) ? `${entry.name} comes through Ollama, and Ollama isn't running.` : `${entry.name} comes only through Ollama, and Ollama is off (Settings, Engines, Use Ollama too).`);
   }
 
   async runEngine(eid0, pub, signal, tick) {
@@ -612,7 +617,8 @@ export class ModelShop {
     pub.phase = 'downloading';
     const q = quietGuard(signal, 10 * 60_000); // item 212: ten quiet minutes (checking a big file can be quiet a while)
     try {
-    const res = await fetch(this.cfg.ollamaUrl.replace(/\/$/, '') + '/api/pull', {
+    if (!ollamaOn(this.cfg)) throw new Error('Ollama is off (Settings, Engines, Use Ollama too).');
+    const res = await fetch(ollamaUrl(this.cfg) + '/api/pull', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ model: entry.ollama, stream: true }), signal: q.signal
     });
@@ -793,11 +799,18 @@ export class ModelShop {
       const note = m.downloaded === false ? ', downloads on first use' : '';
       opts[m.kind].push({ value: `maestro:${m.modelType}`, label: `Maestro: ${m.label}${note}`, group: 'maestro' });
     }
-    if (names.has(this.cfg.stt?.model || 'gemma4:e4b') || names.has('gemma4:e4b')) opts.voice.push({ value: 'ollama:gemma4:e4b', label: 'Gemma 4 E4B through Ollama' });
+    // Nov 16 2026: Bob's own engine hears with a brain that can (Gemma 4 E4B and its reader file), on the processor.
+    for (const m of this.catalog.models) {
+      if (!canHear(m)) continue;
+      const loc = this.locate(m);
+      if (loc.gguf && loc.mmproj) opts.voice.unshift({ value: `be:${m.id}`, label: `${m.name} on Brain Engine (processor)` });
+    }
+    if (ollamaOn(this.cfg) && (names.has(this.cfg.stt?.model || 'gemma4:e4b') || names.has('gemma4:e4b'))) opts.voice.push({ value: 'ollama:gemma4:e4b', label: 'Gemma 4 E4B through Ollama' });
     const p = this.cfg.painter || {};
     const imgNow = p.engine === 'comfy' ? (this.cfg.comfy?.workflowFile && fs.existsSync(this.cfg.comfy.workflowFile) ? 'comfy' : '') : this.catalog.models.find((m) => m.category === 'images' && m.use?.painter && p.sdcpp?.image?.diffusionModel && this.locate(m).diffusionModel === p.sdcpp.image.diffusionModel)?.id || '';
     const vidNow = this.catalog.models.find((m) => m.category === 'video' && p.sdcpp?.video?.diffusionModel && this.locate(m).diffusionModel === p.sdcpp.video.diffusionModel)?.id || '';
-    const sttNow = this.cfg.stt?.provider === 'whispercpp' ? this.catalog.models.find((m) => m.category === 'voice' && this.locate(m).model === this.cfg.stt.model)?.id || '' : this.cfg.stt?.provider === 'ollama' ? `ollama:${this.cfg.stt.model || 'gemma4:e4b'}` : '';
+    const sp = sttProvider(this.cfg);
+    const sttNow = sp === 'whispercpp' ? this.catalog.models.find((m) => m.category === 'voice' && this.locate(m).model === this.cfg.stt.model)?.id || '' : sp === 'ollama' ? `ollama:${this.cfg.stt.model || 'gemma4:e4b'}` : sp === 'brainengine' ? (opts.voice.find((o) => o.value === `be:${this.cfg.stt?.provider === 'brainengine' && this.cfg.stt?.model || 'gemma4-e4b'}`)?.value || '') : '';
     const mz = this.cfg.maestro || {};
     const imgCur = p.engine === 'maestro' && mz.image ? `maestro:${mz.image}` : imgNow;
     const vidCur = mz.video ? `maestro:${mz.video}` : vidNow;
@@ -846,7 +859,17 @@ export class ModelShop {
     if (job === 'music' || job === 'sfx') return {}; // one choice each for now; the workshop decides
     if (job === 'speech' && value === 'chatterbox') { if (!voicesReady(this.cfg).chatterbox) throw new Error('Chatterbox isn\'t set up yet (Settings, Engines).'); const patch = { tts: { provider: 'chatterbox' } }; saveSettings(this.cfg, patch); return patch; }
     if (job === 'speech' && value === 'windows') { const patch = { tts: { provider: '' } }; saveSettings(this.cfg, patch); return patch; }
-    if (job === 'voice' && value.startsWith('ollama:')) { const patch = { stt: { provider: 'ollama', model: value.slice(7) } }; saveSettings(this.cfg, patch); return patch; }
+    if (job === 'voice' && value.startsWith('ollama:')) {
+      if (!ollamaOn(this.cfg)) throw new Error('Ollama is off. Switch on "Use Ollama too" in Settings, Engines first.');
+      const patch = { stt: { provider: 'ollama', model: value.slice(7) } }; saveSettings(this.cfg, patch); return patch;
+    }
+    // Nov 16 2026: Bob's own engine hears (be:<id>, or a brain that can hear put straight into the slot by a setup).
+    const hearer = this.catalog.models.find((m) => canHear(m) && (value === `be:${m.id}` || value === m.id));
+    if (job === 'voice' && hearer) {
+      const loc = this.locate(hearer);
+      if (!loc.gguf || !loc.mmproj) throw new Error(`${hearer.name} isn't fully on this replicant matrix yet.`);
+      const patch = { stt: { provider: 'brainengine', model: hearer.id } }; saveSettings(this.cfg, patch); return patch;
+    }
     const entry = this.catalog.models.find((m) => m.id === value && (j.kind === 'edit' ? m.use?.painter?.sdcpp?.edit : m.category === j.kind && !m.use?.painter?.sdcpp?.edit));
     if (!entry) throw new Error('That model doesn\'t do this job.');
     return this.use(value);

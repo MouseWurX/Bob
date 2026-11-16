@@ -81,6 +81,7 @@
     "test/run-painter-test.js",
     "test/run-models-test.js",
     "test/run-stt-test.js",
+    "test/run-native-hearing-test.js",
     "test/run-maestro-test.js",
     "test/run-cloud-test.js",
     "test/run-clan-test.js",

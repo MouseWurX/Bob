@@ -82,13 +82,13 @@ export const ENGINES = [
     linuxArm64: { unavailable: 'There\'s no ready-made ARM Linux download of stable-diffusion.cpp, so on a Raspberry Pi or other ARM board Bob doesn\'t paint. On Bob-Net, a Bob on your other replicant matrix can paint for him (Send jobs).' }
   },
   {
-    id: 'whispercpp', name: 'whisper.cpp', what: 'Hearing you: turns your voice into text without Ollama.', repo: 'ggml-org/whisper.cpp', dir: 'whisper.cpp', exe: 'whisper-cli.exe',
+    id: 'whispercpp', name: 'whisper.cpp', what: 'Hearing you, the light way: turns your voice into text with a small Whisper model. Bob\'s own engine hears you by default; this is for slower replicant matrices.', repo: 'ggml-org/whisper.cpp', dir: 'whisper.cpp', exe: 'whisper-cli.exe',
     // Bob listens on the processor (-ng), so the plain CPU build is enough and the smallest; CUDA builds are a fallback.
     // Newer CUDA zips are named whisper-bin-win-cuda-12.4-x64.zip, older ones whisper-cublas-12.4.0-bin-x64.zip.
     nvidia: [], other: [/^whisper-bin-x64\.zip$/, /^whisper-blas-bin-x64\.zip$/, /^whisper-(?:cublas-(\d+)[\d.]*-bin|bin-win-cuda-(\d+)[\d.]*)-x64\.zip$/],
     runtime: () => null,
     // whisper.cpp only posts a Mac framework for app makers, not the whisper-cli program, so there's nothing to fetch.
-    mac: { unavailable: 'There\'s no ready-made Mac download of whisper.cpp. On a Mac, Bob hears you through Ollama or a cloud helper instead (Voice & conversation, Hearing).' },
+    mac: { unavailable: 'There\'s no ready-made Mac download of whisper.cpp. On a Mac, Bob hears you with his own engine instead (Gemma 4 E4B, in Get models, Hearing you).' },
     // Linux: the Ubuntu processor build (whisper-bin-ubuntu-x64.tar.gz).
     linux: { other: [/^whisper-bin-ubuntu-x64\.tar\.gz$/] },
     linuxArm64: { other: [/^whisper-bin-ubuntu-arm64\.tar\.gz$/] }

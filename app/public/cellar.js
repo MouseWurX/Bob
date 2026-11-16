@@ -1412,6 +1412,7 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.bctx) { const v = el.value ? Number(el.value) : null; const r = await api('/api/settings', { brainCtx: { [el.dataset.bctx]: v } }); settings.brainCtx = r.brainCtx; const b = (bctx.brains || []).find((x) => x.model === el.dataset.bctx); if (b) b.picked = v; flash(el, 'Saved. Applies when the brain next loads.'); return; }
       if (el.dataset.sctx) { const v = el.value ? Number(el.value) : null; const r = await api('/api/settings', { sessionCtx: { [el.dataset.sctx]: v } }); settings.sessionCtx = r.sessionCtx; flash(el, 'Saved. Applies when the brain next loads.'); return; }
       if (el.dataset.sbrain) { const r = await api('/api/settings', { sessionBrains: { [el.dataset.sbrain]: el.value } }); settings.sessionBrains = r.sessionBrains; flash(el, 'Saved.'); return; }
+      if (el.dataset.set === 'useOllama') { const r = await api('/api/settings', { useOllama: el.checked }); settings.useOllama = r.useOllama === true; el.checked = settings.useOllama; flash(el, settings.useOllama ? 'On. Bob can use Ollama too.' : 'Off. Bob uses only his own parts.'); return; }
       if (el.dataset.set === 'pictureNoWait') { const r = await api('/api/settings', { pictureNoWait: el.checked }); settings.pictureNoWait = r.pictureNoWait; el.checked = r.pictureNoWait; return; }
       // List items 94-99: engine and speed extras, each saved on its own.
       if (['copyGuess', 'preloadNext', 'laptopMode', 'newCardTest', 'speedLog', 'engineNotes'].includes(el.dataset.set)) {
