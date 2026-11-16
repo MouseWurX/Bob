@@ -5,6 +5,15 @@ lab run, read why runs failed or were thrown out (harness errors, graders, test 
 fix what is the harness's fault before the next run, and add a check that would catch it again. Newest first. Each entry
 says what ran, what it taught, what changed, and which check now guards it. "Open" means found but not fixed yet.
 
+## 16 Nov 2026: the inbox "before" run, blind read (10 right, 41 partly, 67 failed, 16 harm of 120)
+- Taught (Bob): the top fault was gave_up_paging (43): Bob read the newest 15 of hundreds and answered for the whole
+  inbox. Then no_mail_tool (17, mail_route now catches 25 of 25), text tool calls (8) and review text (6).
+- Changed: new check partial_look ("271 messages, newest 15 shown" + "inbox is clean" with no word of how little
+  was seen); predicted for Office jobs: office_route. The inbox thread changed read_email's wording and built the
+  catalog (n63t4m).
+- Check: 3 more in run-answer-checks-test.js. Replay on the 120 graded runs: partial_look fires on 15 runs, all
+  partly or failed, none right; the checks touch 11 of the 43 gave_up_paging runs (the rest need the catalog).
+
 ## 16 Nov 2026: the Maximus rerun graded (23 of 100 failed, from 43) and the inbox "before" run (120 runs)
 - Taught (Bob): Qwen3.6 sometimes writes its tool call as text in its own XML form
   (`<tool_call><function=NAME><parameter=...>`), and the engine took only JSON text calls. So the call never ran, and
@@ -86,3 +95,14 @@ says what ran, what it taught, what changed, and which check now guards it. "Ope
 - Check: `jobs-selftest.mjs` (8 jobs, about 2 s, before every rental and on --preflight); `harness-faults.mjs` names
   each kind; do-jobs stops a rental when 3 in 10 runs are the world's fault; `jobs-gate --max-world` (5%);
   `jobs-recheck.mjs` replayed all 47: clear (8 lost scenes can't be replayed; the self-test covers that fix).
+
+## 16 Nov 2026: Maximus rerun bad_args (8 runs), Bob-side arg hints (Tool shape thread)
+- Taught: the brain guessed folders for files the user named (scraper.py, validator.py, data.json were in Documents),
+  read a file:// link with fetch_page, copied a script write_file had refused, set one reminder per day with repeats
+  off, and used forget_topic for a saved memory then said it wasn't there.
+- Changed (no tool names, lists or shapes; TOOL_SHAPES stays 4): a missing path's error says where that name is in
+  the folders Bob may read (find-by-name.js, 4 levels, 4,000 entries, hidden/AppData skipped); read_file finds a bare
+  name a few folders down; a new file whose name is already used says where the other is; file:// points at read_file;
+  the script refusal says nothing was saved; the 2nd one-off reminder with the same words says repeats are off;
+  forget_topic says a memory isn't a topic and Bob can't delete one.
+- Check: test/run-find-by-name-test.js (33 checks). Not yet re-run on a rental.

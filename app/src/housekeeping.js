@@ -703,7 +703,9 @@ export function forgetTopicTool(brain) {
     },
     async run({ topic, mode }) {
       const t = hk().topics.find(topic);
-      if (!t) return `There's no topic like "${topic}". Topics so far: ${list() || 'none yet (Bob files chats under topics when housekeeping is on, or from the Topics page)'}.`;
+      // Nov 16 (Maximus rerun): asked to delete a saved memory, a brain tried forget_topic and then said the memory wasn't
+      // there. A memory is a line in the memory file, not a topic, and Bob can't delete one himself: the user can.
+      if (!t) return `There's no topic like "${topic}". Topics so far: ${list() || 'none yet (Bob files chats under topics when housekeeping is on, or from the Topics page)'}. A saved memory (a line in Bob's memory file) isn't a topic and I can't delete one myself: tell ${brain?.cfg?.userName || 'the user'} to delete that line from the memory file${brain?.cfg?.memoryFile ? ` (${brain.cfg.memoryFile})` : ''}. Don't say it's gone.`;
       if (t.pinned) return `"${t.name}" is pinned, so it stays. The user can unpin it on the Topics page first.`;
       const r = hk().forget(t.id, { mode: mode === 'all' ? 'all' : 'note' });
       return `Forgot "${t.name}": ${r.messages} message${r.messages === 1 ? '' : 's'}${r.keptNote ? '; the topic note stays' : ', its note and memory lines'}. The old chats are in the Recycle Bin.`;
