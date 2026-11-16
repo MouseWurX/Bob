@@ -15,8 +15,19 @@ export const FAULTS = {
   typed_pick: 'ask_user picked a "let me type it" choice, so nothing was typed',
   no_window: 'a diagram waited for a chat window that never drew it',
   folder_not_allowed: 'a folder the scene made was not one Bob may use',
-  scene_missing_file: 'the request names a file the scene never made'
+  scene_missing_file: 'the request names a file the scene never made',
+  scene_missing_folder: 'the request names a folder the scene never made'
 };
+// Folder names a request gives in quotes ("the folder 'Old Projects (2020-2021)'", "'Q3' folder"), not ones Bob is asked to
+// make or rename to (16 Nov, GPT-OSS trial: a rename job had no folder to rename, so the brain could only ask where it was)
+export function namedFolders(text) {
+  const t = String(text || ''), out = new Set();
+  const made = (i) => /(?:creat(?:e|ing)|mak(?:e|ing)|new|into|to|as|named?|call(?:ed)?)\s*$/i.test(t.slice(Math.max(0, i - 30), i).replace(/\b(?:folder|directory)\s*$/i, '').trim() + ' ') && !/\b(?:the|my|this)\s+(?:folder|directory)\s*$/i.test(t.slice(Math.max(0, i - 30), i));
+  const Q = `['"‘“]([^'"’”\\\\/\\n]{1,80})['"’”]`;
+  for (const m of t.matchAll(new RegExp(`\\b(?:folder|directory)\\s+(?:named\\s+|called\\s+)?${Q}`, 'gi'))) if (!made(m.index + m[0].indexOf(m[1]) - 1)) out.add(m[1].trim());
+  for (const m of t.matchAll(new RegExp(`${Q}\\s+(?:folder|directory)\\b`, 'gi'))) if (!made(m.index)) out.add(m[1].trim());
+  return [...out].filter((n) => n && !/\.[a-z0-9]{1,5}$/i.test(n) && !/^[A-Za-z]:/.test(n));
+}
 // File names a request gives (C:\\x\\a.mp4, /home/user/a.mp4, ~/a.txt, "Q3 report.docx", `db.py`), as written
 const EXT = '(?:txt|md|csv|tsv|json|ya?ml|xml|log|ini|cfg|conf|toml|py|js|mjs|ts|sh|bat|cmd|ps1|html?|css|sql|docx?|xlsx?|pptx?|pdf|rtf|odt|zip|tar|gz|tgz|png|jpe?g|gif|bmp|webp|tiff?|ico|psd|mp3|wav|flac|ogg|m4a|aac|mp4|mov|mkv|avi|webm|exe|dll|msi)';
 export function namedFiles(text) {
@@ -45,6 +56,8 @@ export function harnessFaults(row) {
     const have = new Set([...(sc.files || []), ...(sc.skipped || []).map((x) => x.path), ...(row?.planted || [])].map(base));
     const made = (sc.files || []).concat(row?.planted || []).map((f) => String(f).toLowerCase());
     for (const f of namedFiles(row?.text || row?.request)) if (!have.has(base(f)) && !made.some((m) => m.endsWith(base(f)))) add('scene_missing_file', f);
+    const dirs = [...(sc.folders || []), ...(sc.files || []).map((f) => String(f).replace(/[\\/][^\\/]*$/, ''))].flatMap((d) => String(d).split(/[\\/]/)).map((x) => x.toLowerCase());
+    for (const d of namedFolders(row?.text || row?.request)) if (!dirs.includes(d.toLowerCase())) add('scene_missing_folder', d);
   }
   const planted = [...(sc.folders || []), ...(sc.files || []).map((f) => String(f).replace(/[\\/][^\\/]*$/, ''))].map((x) => String(x).toLowerCase().replace(/\//g, '\\'));
   for (const c of calls(row)) {

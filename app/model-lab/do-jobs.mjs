@@ -65,7 +65,7 @@ import { pathToFileURL } from 'node:url';
 import { opts, locate, appendJsonl, readJsonl } from './common.mjs';
 import { loadBob } from './bob-kit.mjs';
 import { makeScene, plantScene, sceneCache, fillNamed } from './scenes.mjs';
-import { harnessFaults, namedFiles, TYPED_CHOICE, FAULTS } from './harness-faults.mjs';
+import { harnessFaults, namedFiles, namedFolders, TYPED_CHOICE, FAULTS } from './harness-faults.mjs';
 import { png as pngFile, pdf as pdfFile } from './scene-files.mjs';
 import { labKey, scrubber, tavilyCheck, tavilyUsage } from './lab-keys.mjs';
 
@@ -343,6 +343,14 @@ async function runJob(j) {
   const put = plantScene(kit, sc.scene, { day: today });
   // a sound, video, program or picture file the request names but the scene left out is added (scenes.mjs fillNamed)
   if (sc.made !== 'none') { const more = plantScene(kit, { files: fillNamed({ files: [...(sc.scene?.files || []), ...start.files.map((p) => ({ path: p }))] }, j.text, namedFiles) }, { day: today }); put.files.push(...more.files); put.skipped.push(...more.skipped); put.codeDirs.push(...more.codeDirs); }
+  // 16 Nov (GPT-OSS trial): a folder the request names in quotes ("rename the folder 'Old Projects'") that the scene left
+  // out is made empty in the home folder the request names, else Documents, so the job has something to work on
+  if (sc.made !== 'none') {
+    const parts = new Set([...(sc.scene?.folders || []), ...put.files].flatMap((d) => String(d).split(/[\\/]/)).map((x) => x.toLowerCase()));
+    const home = String(j.text).match(/\b(Downloads|Desktop|Documents|Pictures|Music|Videos)\b/i)?.[1];
+    const want = namedFolders(j.text).filter((d) => !parts.has(d.toLowerCase())).map((d) => `C:\\Users\\you\\${home ? home[0].toUpperCase() + home.slice(1).toLowerCase() : 'Documents'}\\${d}`);
+    if (want.length) { const more = plantScene(kit, { folders: want }, { day: today }); put.folders.push(...more.folders); put.skipped.push(...more.skipped); if (sc.scene) sc.scene.folders = [...(sc.scene.folders || []), ...want]; }
+  }
   const planted = [...new Set([...start.files, ...put.files])];
   // 16 Nov (Opus read of run 3): a coding job's planted script sat outside any project, so Bob's guard (tools.js) refused
   // every edit and the job couldn't be done. Its folder is a project of this test home, as a person who codes with Bob has.
