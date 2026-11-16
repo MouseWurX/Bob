@@ -114,6 +114,7 @@
     "test/run-personality-test.js",
     "test/run-schedules-test.js",
     "test/run-hands-test.js",
+    "test/run-answer-checks-test.js",
     "test/run-hands-schedules-test.js",
     "test/run-apps-test.js",
     "test/run-apps-route-test.js",

@@ -15,7 +15,7 @@ const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${o
 const app = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const imp = (f) => import(pathToFileURL(path.join(app, f)).href);
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jobs selftest '));
-const { harnessFaults, namedFiles, TYPED_CHOICE, FAULTS } = await imp('model-lab/harness-faults.mjs');
+const { harnessFaults, namedFiles, namedFolders, TYPED_CHOICE, FAULTS } = await imp('model-lab/harness-faults.mjs');
 const { selfTest, JOBS } = await imp('model-lab/jobs-selftest.mjs');
 const { LlamaCpp } = await imp('src/llamacpp.js');
 
@@ -109,5 +109,10 @@ srv.close();
 }
 
 try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
+// ---- 16 Nov GPT-OSS trial: a quoted folder the request works on, but the scene never made ----
+check('a quoted folder to work on is named; one to make or rename to is not', namedFolders("Rename the folder 'Old Projects (2020-2021)' to 'Archived Projects - Legacy'.").join() === 'Old Projects (2020-2021)' && namedFolders("Create a new folder named 'Q3'").length === 0 && namedFolders("zip the 'Taxes 2024' folder").join() === 'Taxes 2024' && namedFolders("Zip the folder 'C:\\Backup\\Old'").length === 0);
+check('a run whose scene lacks that folder is the world\'s fault (scene_missing_folder); with it, it is not', harnessFaults({ text: "Rename the folder 'Old Projects' to 'X'.", scene: { made: 'new', files: [], folders: [] } }).some((f) => f.kind === 'scene_missing_folder') && !harnessFaults({ text: "Rename the folder 'Old Projects' to 'X'.", scene: { made: 'new', files: [], folders: ['C:\\Users\\you\\Documents\\Old Projects'] } }).length);
+check('the self-test plants and checks it (st-dir)', /id: 'st-dir', kind: 'scene_missing_folder'/.test(fs.readFileSync(fileURLToPath(new URL('../model-lab/jobs-selftest.mjs', import.meta.url)), 'utf8')) && /namedFolders\(j\.text\)/.test(fs.readFileSync(fileURLToPath(new URL('../model-lab/do-jobs.mjs', import.meta.url)), 'utf8')));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
