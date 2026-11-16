@@ -72,7 +72,7 @@ The total is taken from the rental service's statement; the lines above are roun
 | What | Cost |
 |---|---|
 | Claude subscription (Anthropic): Claude is a contributor to the project and writes much of Bob's code, docs and Help alongside the owner | $200 a month |
-| Claude extra usage bought from 5 Nov 2026 on, to finish the models and the app work together | $1,300 so far |
+| Claude extra usage bought from 5 Nov 2026 on, to finish the models and the app work together | $2,000 so far |
 | Code signing | $0 so far (SignPath Foundation application declined in Nov 2026 for lack of public visibility; builds stay unsigned) |
 | Code and release hosting (GitHub) and, later, model hosting (Hugging Face) | $0 |
 | Electricity for the lessons, counts and benchmarks on the owner's own PC | not counted |
@@ -139,15 +139,15 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 | GPU servers rented by the hour (every session above, failures included; the 800-job run and one idle tail still to come) | about $513.67 |
 | Rented network drive between sessions, 5 to 16 Nov 2026 (100 GB, then 300, then 500; from its size and rate, then the statement from 13 Nov) | about $7.46 |
 | Claude subscription, November 2026 | $200.00 |
-| Claude extra usage, bought from 5 Nov 2026 on | $1,300.00 |
+| Claude extra usage, bought from 5 Nov 2026 on | $2,000.00 |
 | Code signing, hosting | $0.00 |
-| **Total spent so far** | **about $2,021**, plus the 800-job run |
+| **Total spent so far** | **about $2,721**, plus the 800-job run |
 
 **Projected, whole plan**
 
 | | Low | High |
 |---|---|---|
-| Spent so far (above) | $2,021 | $2,021 |
+| Spent so far (above) | $2,721 | $2,721 |
 | Test rentals already planned: the mail and real-jobs run on all the fixes, and GPT-OSS on the same jobs (about 3 h each) | $6 | $10 |
 | Line B remaining rungs (Homer to Bender) | $119 | $129 |
 | Four brain scans (stock Qwen, Riker, Bobert, Bill) on one short rental (planned) | $10 | $14 |
@@ -155,6 +155,6 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 | Rented network drive, about 2 more months at 500 GB | $70 | $70 |
 | Re-runs allowed (one per rung if a heal scores badly) | $0 | $60 |
 | Claude subscription while the family is finished, about 1 more month | $200 | $200 |
-| **Projected total, line B complete** | **about $2,526** | **about $2,604** |
+| **Projected total, line B complete** | **about $3,226** | **about $3,304** |
 | Line A as well, if the comparison after Homer earns it | +$179 | +$189 |
-| **Projected total, both lines** | **about $2,705** | **about $2,793** |
+| **Projected total, both lines** | **about $3,405** | **about $3,493** |
