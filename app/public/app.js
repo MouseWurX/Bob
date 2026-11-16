@@ -54,7 +54,7 @@ import { createBubbles } from './say-bubbles.js';
 import { createBobLife } from './bob-life.js';
 import { createViewer, outCard, fillPeeks } from './viewer.js';
 import { createThinkBubbles } from './think-bubble.js'; // 1.5.210: the thinking bubble above the answer
-import { PAW, stepWords as catStep, stepKind, bobAside } from './patches-steps.js'; // Nov 16: Patches tells the steps
+import { PAW, stepWords as catStep, stepKind, bobAside, asideSeed } from './patches-steps.js'; // Nov 16: Patches tells the steps
 import { songListHtml, wireSongs } from './song-player.js';
 import { moreBar } from './more-bar.js';
 import { createPromptMenu } from './prompts.js'; // saved prompts: the / menu in the message box
@@ -317,7 +317,7 @@ const correctedBubbles = new Map();
 // 1.5.210 The thinking bubble (public/think-bubble.js): while Bob works, his steps, drafts and fixes go in one folded
 // bubble above the answer; the chat bubble gets only the finished answer, whole. Settings, Bob himself, "Thinking
 // bubble above answers" (on unless turned off); off, the chat is as it was.
-let thinkOn = true, catName = 'Patches', patchesOn = true, lastStep = '', oddSteps = -1;
+let thinkOn = true, catName = 'Patches', patchesOn = true, lastStep = '', oddSteps = -1, asideJob = { seed: 0, used: new Set() };
 const stillNow = () => document.body.classList.contains('still') || Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 window.addEventListener('bob-think-bubble', (e) => { thinkOn = e.detail !== false; }); // Settings, from this window
 window.addEventListener('bob-patches-steps', (e) => { patchesOn = e.detail !== false; }); // Settings, from this window
@@ -898,7 +898,7 @@ function onEvent(ev) {
       return;
     case 'start':
       endReply(ev);
-      lastStep = ''; oddSteps = -1;
+      lastStep = ''; oddSteps = -1; asideJob = { seed: asideSeed(), used: new Set() };
       running.add(ev.turnId);
       setBusy(true);
       return;
@@ -1001,7 +1001,7 @@ function onEvent(ev) {
       else add('note borrow', `📡 ${esc(ev.name)} ${esc(ev.why || 'couldn\'t take it')}, so I'll do this one here.`);
       break;
     case 'tool':
-      if (!/^hat:/.test(ev.summary) && ev.name !== 'edit_my_message') { const said = patchesOn ? catStep(ev.summary, catName, lastStep) : null; const aside = said && stepKind(ev.summary) ? bobAside(ev.summary, ++oddSteps) : ''; note(said ? `${PAW} ${said}${aside ? ` (Bob: ${aside})` : ''}` : `· ${ev.summary}`); lastStep = String(ev.summary || ''); } // an edit shows as "edited" on the message itself; Nov 16 the cat tells it
+      if (!/^hat:/.test(ev.summary) && ev.name !== 'edit_my_message') { const said = patchesOn ? catStep(ev.summary, catName, lastStep) : null; const aside = said && stepKind(ev.summary) ? bobAside(ev.summary, ++oddSteps, asideJob) : ''; note(said ? `${PAW} ${said}${aside ? ` (Bob: ${aside})` : ''}` : `· ${ev.summary}`); lastStep = String(ev.summary || ''); } // an edit shows as "edited" on the message itself; Nov 16 the cat tells it
       endReply(ev);
       break;
     case 'house': { // 1.5.34: "Used your house style: 30 seconds · Change" (Settings, House style)

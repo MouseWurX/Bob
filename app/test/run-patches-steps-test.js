@@ -1,6 +1,6 @@
 // Nov 16 (the owner): Patches, Bob's cat, tells the steps in the thinking bubble. Display only: nothing reaches a brain.
 import fs from 'node:fs';
-import { PAW, WAITING, waitingLine, doneWords, stepWords, snagWords, stepKind, bobAside, ASIDES } from '../public/patches-steps.js';
+import { PAW, WAITING, waitingLine, doneWords, stepWords, snagWords, stepKind, bobAside, asideSeed, ASIDES } from '../public/patches-steps.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -34,6 +34,14 @@ check('peeking into a folder or watching a picture is cat business', stepKind('l
 check('the first odd step gets an aside', bobAside('read a.js', 0) === ASIDES.read[0]);
 check('not every line: the next three get none', [1, 2, 3].every((n) => bobAside('read a.js', n) === ''));
 check('every fourth odd step gets another, a different one', bobAside('read a.js', 4) === ASIDES.read[1]);
+check('at least 8 lines for each kind, none twice', Object.values(ASIDES).every((l) => l.length >= 8 && new Set(l).size === l.length));
+check('the seed changes where a job starts', bobAside('read a.js', 0, { seed: 3 }) === ASIDES.read[3] && asideSeed(() => 0.5) === 500);
+{
+  const used = new Set(), got = [];
+  for (let n = 0; n < 4 * 10; n += 4) got.push(bobAside('read a.js', n, { seed: 6, used }));
+  const said = got.filter(Boolean);
+  check('no line twice in one job, and Bob goes quiet when he runs out', said.length === ASIDES.read.length && new Set(said).size === said.length && got.slice(8).every((x) => x === ''));
+}
 check('cat things never get one', bobAside('list docs', 0) === '');
 check('unknown steps get a general one', bobAside('cloud helper: x', 0) === ASIDES.other[0]);
 check('every kind has asides', Object.values(ASIDES).every((l) => l.length >= 2));
@@ -42,7 +50,7 @@ check('every kind has asides', Object.values(ASIDES).every((l) => l.length >= 2)
 const bubble = read('public/think-bubble.js'), app = read('public/app.js');
 check('the bubble uses the cat\'s words when on', /patches\(\) \? catStep\(plain, cat\(\), b\.prevStep\)/.test(bubble) && /patches\(\) \? `\$\{PAW\} \$\{waitingLine/.test(bubble) && /patches\(\) \? PAW/.test(bubble));
 check('every Patches line starts with the paw', /`\$\{PAW\} \$\{waitingLine/.test(bubble) && /PAW \+ ' ' \+ doneWords/.test(bubble));
-check('Bob\'s aside goes on the step, counted per turn', /bobAside\(plain, \(b\.odd = /.test(bubble) && /\(Bob: \$\{esc\(aside\)\}\)/.test(bubble) && /oddSteps = -1/.test(app));
+check('Bob\'s aside goes on the step, counted per turn', /bobAside\(plain, \(b\.odd = .*used: \(b\.used \?\?= new Set\(\)\)/.test(bubble) && /\(Bob: \$\{esc\(aside\)\}\)/.test(bubble) && /oddSteps = -1/.test(app));
 check('the paw is hidden from screen readers and the plain step is on hover', /aria-hidden="true">\$\{PAW\}/.test(bubble) && /title="\$\{esc\(plain\)\}"/.test(bubble));
 check('Copy the steps stays plain', /copy\(stepsText\(b\.trace\)\)/.test(bubble));
 check('the page passes the switch in and follows Settings', /patches: \(\) => patchesOn/.test(app) && /bob-patches-steps/.test(app) && (app.match(/patchesOn = st\.patchesSteps !== false/g) || []).length === 2);

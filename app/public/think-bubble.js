@@ -9,7 +9,7 @@
 // Nov 16: with "Patches tells the steps" on, the cat narrates the step rows, the line while he works and the done line
 // (public/patches-steps.js). Copy the steps and Bob's thinking window stay plain.
 
-import { PAW, waitingLine, doneWords, stepWords as catStep, snagWords, stepKind, bobAside } from './patches-steps.js';
+import { PAW, waitingLine, doneWords, stepWords as catStep, snagWords, stepKind, bobAside, asideSeed } from './patches-steps.js';
 
 export const PUNS = [
   'Thinking…',
@@ -139,7 +139,7 @@ export function createThinkBubbles({ add, esc, answer, scroll = () => {}, on = (
     const said = patches() ? catStep(plain, cat(), b.prevStep) : null;
     b.prevStep = plain;
     // Bob, surprised and a little worried, when the cat does something no cat should (not on every line: bobAside)
-    const aside = said && stepKind(plain) ? bobAside(plain, (b.odd = (b.odd ?? -1) + 1)) : '';
+    const aside = said && stepKind(plain) ? bobAside(plain, (b.odd = (b.odd ?? -1) + 1), { seed: (b.seed ??= asideSeed()), used: (b.used ??= new Set()) }) : '';
     const r = said ? row(b, DOT.done, `<span aria-hidden="true">${PAW}</span> <span class="patches-say" title="${esc(plain)}">${esc(said)}</span>${aside ? ` <span class="muted patches-bob">(Bob: ${esc(aside)})</span>` : ''}`, 'tool') : row(b, DOT.done, esc(plain), 'tool');
     r.plain = plain;
     return r;

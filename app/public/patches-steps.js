@@ -80,23 +80,31 @@ export function stepKind(summary) {
   return s ? 'other' : '';
 }
 export const ASIDES = {
-  read: ['since when can the cat read?', 'is she… reading my files?', 'she\'s reading faster than I do. I don\'t like it.'],
-  search: ['who taught the cat to use a search engine?', 'the cat is searching the web. Should I be worried?', 'she typed that search herself. With paws.'],
-  web: ['she\'s browsing the web. Alone.', 'the cat found a website. On her own.', 'nobody showed her how to click links.'],
-  write: ['please tell me she\'s not typing.', 'the cat is editing files. I\'m a little worried.', 'she didn\'t even ask for a code review.'],
-  run: ['she\'s running programs now?', 'the cat has root. Probably. I hope not.', 'I never gave her a keyboard.'],
-  git: ['the cat knows git. I don\'t like this.', 'she\'s reading the commit history. Why?'],
-  email: ['is the cat reading my email?', 'she\'s sorting the post. Real post never got this treatment.'],
-  plan: ['the cat has a calendar?', 'she\'s scheduling things now. For whom?'],
-  other: ['…that\'s not normal cat behaviour.', 'when did she learn to do that?', 'I\'m choosing not to ask.']
+  read: ['since when can the cat read?', 'is she… reading my files?', 'she reads faster than I do. I don\'t like it.', 'who taught her to scroll?', 'she\'s turning pages with her nose. I\'m worried.', 'I left that file open for me, not her.', 'is she skimming? She\'s skimming.', 'she just nodded at a line of code.'],
+  search: ['who taught the cat to use a search engine?', 'the cat is searching the web. Should I be worried?', 'she typed that search herself. With paws.', 'her search history is going to be a mystery.', 'she found the search box before I did.', 'what else has she been looking up?', 'that search was better worded than mine.', 'she\'s using quotation marks. Properly.'],
+  web: ['she\'s browsing the web. Alone.', 'the cat found a website. On her own.', 'nobody showed her how to click links.', 'she opened a page without asking. Again.', 'I hope she\'s not reading the comments.', 'she clicked the right link first time. Unsettling.', 'is she bookmarking things?', 'the cat has favourite websites now?'],
+  write: ['please tell me she\'s not typing.', 'the cat is editing files. I\'m a little worried.', 'she didn\'t even ask for a code review.', 'are those paw prints in the code?', 'she writes neater code than I do.', 'did she just fix my typo? Hers or mine?', 'I\'ll be checking that change twice.', 'she\'s committing to it. Literally.'],
+  run: ['she\'s running programs now?', 'the cat has root. Probably. I hope not.', 'I never gave her a keyboard.', 'she pressed Enter like she meant it.', 'the fans just sped up. So did my heart.', 'who said she could run things?', 'she\'s waiting for the output like she understands it.', 'I\'d like it noted I was against this.'],
+  git: ['the cat knows git. I don\'t like this.', 'she\'s reading the commit history. Why?', 'she just checked who changed what. Suspicious.', 'does she have her own branch?', 'she knows what a merge is.', 'please don\'t let her force-push.', 'she sighed at my commit messages.', 'the cat has opinions about branching now.'],
+  email: ['is the cat reading my email?', 'she\'s sorting the post. Real post never got this treatment.', 'she archived something. What was it?', 'she reads my email faster than I do.', 'please don\'t let her reply to anyone.', 'she\'s found the unsubscribe button. Good, actually.', 'she flagged that one. Why that one?', 'the cat has an inbox strategy.'],
+  plan: ['the cat has a calendar?', 'she\'s scheduling things now. For whom?', 'she booked a nap. Several.', 'she\'s better organised than me.', 'that reminder had a paw print on it.', 'she knows what day it is. I don\'t.', 'she put dinner time in. Twice.', 'when did she start planning ahead?'],
+  other: ['…that\'s not normal cat behaviour.', 'when did she learn to do that?', 'I\'m choosing not to ask.', 'I\'ll pretend I didn\'t see that.', 'should I call a vet? Or a programmer?', 'she\'s getting very capable. Too capable.', 'I didn\'t know cats could do that.', 'I need a coffee after that one.']
 };
-// n: how many odd steps came before this one in the turn. Returns Bob's aside, or '' (most steps get none).
-export function bobAside(summary, n = 0) {
+// A new job: where the asides start, so the first one differs from job to job.
+export const asideSeed = (rand = Math.random) => Math.floor(rand() * 1000);
+// n: how many odd steps came before this one in the job. seed: from asideSeed() at the start of the job.
+// used: a Set kept for the job, so no line repeats in it. Returns Bob's aside, or '' (most steps get none).
+export function bobAside(summary, n = 0, { seed = 0, used = null } = {}) {
   const kind = stepKind(summary);
   const i = Math.max(0, Math.floor(Number(n) || 0));
   if (!kind || i % 4) return '';
   const list = ASIDES[kind] || ASIDES.other;
-  return list[Math.floor(i / 4) % list.length];
+  const start = Math.abs(Math.floor(Number(seed) || 0)) + Math.floor(i / 4);
+  for (let k = 0; k < list.length; k++) {
+    const line = list[(start + k) % list.length];
+    if (!used || !used.has(line)) { used?.add(line); return line; }
+  }
+  return ''; // all of this kind used in this job: Bob has run out of things to say
 }
 // A step that went wrong (the turn's record says so).
 export const snagWords = (summary, cat) => `${name(cat)} hit a snag: ${String(summary || 'a step').trim()}`;
