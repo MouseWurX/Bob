@@ -22,10 +22,22 @@ Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf and its mmproj under `<parent>/models` (found by
 
    `node do-jobs.mjs --url <server> --bob .. --jobs <ideas.jsonl> --dir <name> --never <held-out files or folders>`: a brain
    does real jobs as Bob's brain, nothing rewritten. Bob's real loop and newest tools for that family (`--want-shapes 4`),
-   real files in a throwaway home for each job, real web search, and stand-ins only for tools that can't run here (each
-   marked in the row). Every step is kept in full (thinking, words, calls, results) in out\<name>\runs.jsonl for a review
-   to read; failed runs are study material only. `--never` leaves held-out test requests out. `--parallel 2` by default,
+   real files in a throwaway home for each job and real web search. There are no stand-ins: every tool offered runs for
+   real, and a tool that would act on the real PC or an account isn't offered (its Hand is off, so Bob's prompt says so
+   too). Every step is kept in full (thinking, words, calls, results) in out\<name>\runs.jsonl for a review to read;
+   failed runs are study material only. `--never` leaves held-out test requests out. `--parallel 2` by default,
    `--job-minutes` caps one job, `--preflight` checks the jobs and the tool shape without running anything.
+   `--scene make`: the brain first writes each job's test world (scenes.mjs: the files, folders, board lists and memory the
+   request takes for granted, with real Word, Excel, PDF, photo and zip files from scene-files.mjs), saved in
+   out\<name>\scenes.jsonl; `--scene reuse` (with `--scenes <file>`) starts another brain from the very same worlds.
+   Folders a job names outside the home (C:\Temp, /home/user/...) are mirrored inside the throwaway folder, and nothing the
+   brain sees carries a real folder name. `--search tavily` hands Bob the Lab's own Tavily key as his keyed search backup
+   (saved encrypted on the Lab PC by the double-click "Save Tavily key for the Lab.cmd", lab-keys.mjs; checked in
+   pre-flight with one search; never printed or saved, and every saved row is scrubbed for it). `--search-probe` stops
+   pre-flight when web search answers nothing; 5 empty searches in a row stop a run.
+   `node fix-to-jobs.mjs --fix <to-fix.jsonl> --root <folder> --to <jobs.jsonl> [--private <words file>]` turns a review's
+   fix list into jobs for do-jobs: each lesson's first request only (never its old answer or the review's note), the Lab
+   PC's home and user name made neutral, and requests with a picture or a private word (a file kept on the Lab PC) left out.
 
 5. `node reap-calibrate.mjs --url <Brain Engine server>`: tune a stock mixture-of-experts brain down without cutting a file.
    It scores every expert of every layer on the training lessons (REAP: router weight times the size of what the expert adds,
