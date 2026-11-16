@@ -57,7 +57,7 @@ const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\
   const cfg = { models: { bob: 'big:latest', coder: 'coder:latest' } };
   check('a brain in a slot is used', presetBrain(cfg, { brain: 'coder:latest' }) === 'coder:latest');
   check('a brain not in a slot falls back to the usual one', presetBrain(cfg, { brain: 'gone:latest' }) === '');
-  check('the summary says what it does', /talking only/.test(presetSummary(cleanPreset({ tools: 'none' }))) && /High effort/.test(presetSummary(cleanPreset({ effort: 'high' }))));
+  check('the summary says what it does', /talking only/.test(presetSummary(cleanPreset({ tools: 'none' }))) && /Magnus \(High\) effort/.test(presetSummary(cleanPreset({ effort: 'high' }))));
 }
 
 // ---------- Picking per chat (a folder made for the test) ----------

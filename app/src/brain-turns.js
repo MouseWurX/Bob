@@ -195,12 +195,14 @@ export const turnParts = {
       if (solo) {
         emit({ type: 'announce', text: soloOpening(solo) });
         let ran = false;
+        // The repeat guard's count is shared by every part of the job (the distill test: a refused write was tried again in 3 small jobs).
+        Object.defineProperty(job, 'soloSeen', { value: new Map(), configurable: true, enumerable: false, writable: true });
         const run = async (note, { phase = null, noTools = false } = {}) => {
           Object.assign(job, { soloStep: note || '', soloAgain: ran, soloPhase: phase, soloNoTools: noTools });
-          try { await this.runOn(msgs, text, keep, signal, ran ? [] : pics, job, sessionId, out); }
+          try { await this.runOn(msgs, text, keep, signal, ran ? [] : pics, job, sessionId, out); return { repeatStop: Boolean(out.ctx?.repeatStop) }; }
           finally { ran = true; Object.assign(job, { soloStep: '', soloAgain: false, soloPhase: null, soloNoTools: false }); }
         };
-        const review = (task) => this.runHat('reviewer', task, out.ctx, soloBrain(this.cfg));
+        const review = (task, o = {}) => this.runHat('reviewer', task, out.ctx, soloBrain(this.cfg, o));
         mooted = await soloRun(this, solo, { run, review, emit: keep, signal, msgs, turnText: text });
       }
       else await this.runOn(msgs, text, keep, signal, pics, job, sessionId, out);

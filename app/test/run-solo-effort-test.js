@@ -35,9 +35,6 @@ check('the main brain drafts and reviews; no Deep thinking or Review brain', dra
 check('switched off: the moot keeps its brains', draftBrain({ ...on, soloEffort: false }, 'high').model === 'deep-brain' && reviewBrain({ ...on, soloEffort: false }).model === 'review-brain');
 check('the old moot doesn\'t also run', !careful(job('high', { solo: true })) && careful(job('high')));
 
-// ---- a helper's turn (his own reviews run as one) has the same per-reply cap as his main turns ----
-{ const src = read('src/brain-hats.js');
-  check("a helper's reply runs each identical call once and at most MAX_CALLS_PER_REPLY, and says which were left out (A3B Max run: 132 calls in one reply)", /import \{[^}]*MAX_CALLS_PER_REPLY[^}]*\} from '\.\/brain\.js'/.test(src) && /unique\.slice\(0, MAX_CALLS_PER_REPLY\)/.test(src) && /seen\.has\(k\) \? false : seen\.add\(k\)/.test(src) && /droppedNote\(dropped, MAX_CALLS_PER_REPLY\)/.test(src)); }
 
 // ---- words ----
 check('a review is "Looks right." or "Improve it:"', soloVerdict('Looks right. All good.') === 'ok' && soloVerdict('Improve it: 1. the sum is wrong') === 'improve' && soloVerdict('hmm') === 'improve');
@@ -46,7 +43,7 @@ check('plan steps come from numbered lines, at most 6', planSteps('Plan:\n1. Rea
 check('the result line says plainly when something is still open', /nothing open/.test(soloMinutes('high', [{ kind: 'check', n: 1, verdict: 'ok' }])) && /not checked again\. Not happy with: x/.test(soloMinutes('high', [{ kind: 'check', n: 1, verdict: 'improve' }, { kind: 'improve', unhappy: 'x' }])));
 
 // ---- the loop, with a fake brain ----
-async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Write it down' } = {}) {
+async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Write it down', repeatAt = false } = {}) {
   const msgs = [{ role: 'user', content: 'do the thing' }];
   const calls = [], said = [];
   const signal = { aborted: false };
@@ -55,8 +52,9 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
     const content = /planning|Improve the plan/.test(note || '') ? plan : /Improve it\./.test(note || '') ? 'Better answer.\nNot happy with: one link is old.' : /the answer\./.test(note || '') ? 'Final answer.' : 'Did the step. Worked.';
     msgs.push({ role: 'assistant', content });
     if (stop) signal.aborted = true;
+    return { repeatStop: Boolean(repeatAt && /step 1 of/.test(note || '')) };
   };
-  const review = async (task) => { calls.push({ review: task }); return reviews.shift() || 'Looks right.'; };
+  const review = async (task, o = {}) => { calls.push({ review: task, ...o }); return reviews.shift() || 'Looks right.'; };
   const brain = { cfg: { userName: 'Sam' }, log: () => {} };
   const res = await soloRun(brain, level, { run, review, emit: (e) => said.push(e), signal, msgs, turnText: 'do the thing' });
   return { res, calls, msgs, said };
@@ -76,7 +74,12 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
   const kinds = calls.map((c) => (c.review ? (/Review your plan/.test(c.review) ? 'gate' : 'review') : c.phase));
   check('Max: plan (no tools), plan gate, each step as its own job, whole review, then the answer', JSON.stringify(kinds) === JSON.stringify(['plan', 'gate', 'do', 'do', 'review', 'answer']) && calls[0].noTools === true && calls.at(-1).noTools === true);
   check('Max: each job gets its own step and the whole plan', /step 1 of 2: Look it up/.test(calls[2].note) && /step 2 of 2: Write it down/.test(calls[3].note) && /The whole plan/.test(calls[3].note));
-  check('Max: the result line counts the jobs', /2 jobs done/.test(res.minutes) && /nothing open/.test(res.minutes));
+  check('Max: the result line counts the jobs', /2 jobs done/.test(res.minutes) && /nothing open/.test(res.minutes) && /^🛰 \*\*Maximus:\*\*/.test(res.minutes));
+  check('Max: the plan check runs with no tools; the final review keeps its read-only tools', calls[1].noTools === true && !calls[4].noTools);
+}
+{
+  const { calls, res } = await fake('max', [], { repeatAt: true });
+  check('Max: when the repeat guard stops a job, the next jobs don\'t start; the review still runs', calls.filter((c) => c.phase === 'do').length === 1 && calls.some((c) => c.review && /Review your own work/.test(c.review)) && /stopped before job 2/.test(res.minutes));
 }
 {
   const { calls, res } = await fake('max', ['Improve it: step 2 is too big', 'Improve it: still too big', 'Improve it: a', 'Improve it: b']);
@@ -98,13 +101,21 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
 
 // ---- wired in ----
 const turns = read('src/brain-turns.js'), runOn = read('src/brain-run-on.js'), hats = read('src/brain-hats.js');
-check('a job runs through soloRun at High and Max, with the main brain for reviews', /soloRun\(this, solo,/.test(turns) && /this\.runHat\('reviewer', task, out\.ctx, soloBrain\(this\.cfg\)\)/.test(turns) && /job\.solo = soloJob\(this\.cfg, job\)/.test(turns));
+check('a job runs through soloRun at High and Max, with the main brain for reviews', /soloRun\(this, solo,/.test(turns) && /this\.runHat\('reviewer', task, out\.ctx, soloBrain\(this\.cfg, o\)\)/.test(turns) && /job\.solo = soloJob\(this\.cfg, job\)/.test(turns));
 check('each part is the same ask run again with a hidden note; the plan has no tools', /Boolean\(job\?\.soloAgain\)/.test(runOn) && /noTools: Boolean\(job\?\.soloNoTools\)/.test(runOn) && /lastRound: Boolean\(ctx\.lastRound\), retryThinks, job \}\)/.test(runOn));
 check('his own review never goes to another Bob or a second brain', (hats.match(/!force\.solo/g) || []).length === 2 && /wantsBorrowedCheck = .*careful\(job\)/.test(read('src/bob-net-check.js')) && /!ctx\.job\?\.solo && cleanEffort\(ctx\.job\?\.effort\) === 'extreme'/.test(hats));
 check('the setting is saved, shown and explained', /'soloEffort'/.test(read('src/config.js')) && /soloEffort: cfg\.soloEffort === true/.test(read('src/server.js')) && /sswitch\('soloEffort', settings\.soloEffort === true, 'Effort on one brain'/.test(read('public/cellar-pages.js')) && /dataset\.set === 'soloEffort'/.test(read('public/cellar.js')));
 check('the Effort button shows Max and the one-brain hints when it is on', /extreme: 'Thinks throughout/.test(read('public/effort.js')) && /'Max'/.test(read('public/effort.js')) && /effort\.solo\(st\.soloEffort === true\)/.test(read('public/app.js')));
+const effortJs = await import('../public/effort.js');
+check('the levels are named Minimus, Medius, Magnus and Maximus, with the plain level under each', JSON.stringify(effortJs.NAMES) === JSON.stringify({ low: 'Minimus', medium: 'Medius', high: 'Magnus', extreme: 'Maximus' }) && effortJs.plainLevel('extreme', true) === 'Max' && effortJs.plainLevel('extreme') === 'Extreme' && /<b id="effortNow">Minimus<\/b>/.test(read('public/index.html')) && ['Minimus', 'Medius', 'Magnus', 'Maximus'].every((n) => read('public/index.html').includes(`<b>${n}</b>`)));
+const { effortSpeed, EFFORT_SPEED } = await import('../src/effort-speed.js');
+check('no speeds until the benchmark measures a family; then times as long as Minimus', Object.keys(EFFORT_SPEED).length === 0 && effortSpeed('Qwen3.6-35B-A3B-Q4.gguf') === null && effortJs.speedText(null, 'high') === '' && JSON.stringify(effortSpeed('Qwen3.6-35B-A3B-Q4.gguf', { 'qwen3.5': { medium: 1.44, high: 2.2, extreme: 6 } })) === JSON.stringify({ family: 'qwen3.5', low: 1, medium: 1.4, high: 2.2, extreme: 6 }) && effortJs.speedText({ high: 2.2 }, 'high') === '2.2×');
+check('the speed reaches the Effort button', /effortSpeed: effortSpeed\(cfg\.models\?\.bob\)/.test(read('src/server.js')) && (read('public/app.js').match(/effort\.speed\(st\.effortSpeed\)/g) || []).length === 2);
+check('the 16 Nov distill fixes: reviews think on a budget, the plan check has no tools', soloBrain(on).think === 'medium' && soloBrain(on, { noTools: true }).noTools === true && /const stepTools = last \|\| noTools \? \[\]/.test(hats) && /noTools: force\?\.noTools === true/.test(hats));
+check('a helper reply runs each identical call once and at most MAX_CALLS_PER_REPLY', /if \(keys\.has\(k\) \|\| keys\.size >= MAX_CALLS_PER_REPLY\)/.test(hats) && /droppedNote\(dropped, MAX_CALLS_PER_REPLY\)/.test(hats));
+check('the repeat guard is shared by every part of a job', /Object\.defineProperty\(job, 'soloSeen'/.test(turns) && /callsSeen: job\.soloSeen/.test(runOn) && /return \{ repeatStop: Boolean\(out\.ctx\?\.repeatStop\) \}/.test(turns));
 const help = HELP.find((e) => e.id === 'effort'), faq = HELP.find((e) => e.id === 'faq-solo-effort'), gl = HELP.find((e) => e.id === 'glossary');
-check('Help, an FAQ in Bob\'s voice and the glossary', /Effort on one brain/.test(help.html) && /Windows, Mac, Linux and a phone/.test(help.html) && faq && /My loop enforces each step/.test(faq.html) && /<dt>Effort on one brain<\/dt>/.test(gl.html) && /<dt>Max effort<\/dt>/.test(gl.html));
+check('Help, an FAQ in Bob\'s voice and the glossary', /Effort on one brain/.test(help.html) && /Windows, Mac, Linux and a phone/.test(help.html) && faq && /My loop enforces each step/.test(faq.html) && /<dt>Effort on one brain<\/dt>/.test(gl.html) && ["Minimus", "Medius", "Magnus", "Maximus"].every((n) => gl.html.includes(`<dt>${n}</dt>`)));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

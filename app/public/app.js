@@ -496,7 +496,7 @@ settingsChan?.addEventListener('message', (e) => {
   if (m.kind === 'press') { $(m.id)?.click(); return; }
   if (m.kind === 'event') { (m.name === 'bob-door' ? document : window).dispatchEvent(new CustomEvent(m.name, { detail: m.detail })); return; }
   jobHelps.refresh();
-  fetch('/api/settings').then((r) => r.json()).then((st) => { setLook(st.look); applyStyle(st.style); applyMath(st.mathView === true, true); shortcutsOn = st.shortcuts === true; applyReading(st); everyday?.settings(st); effort.solo(st.soloEffort === true); }).catch(() => {});
+  fetch('/api/settings').then((r) => r.json()).then((st) => { setLook(st.look); applyStyle(st.style); applyMath(st.mathView === true, true); shortcutsOn = st.shortcuts === true; applyReading(st); everyday?.settings(st); effort.solo(st.soloEffort === true); effort.speed(st.effortSpeed); }).catch(() => {});
 });
 // Settings, Get models and Style are pages in the main area: Chat or New chat goes back to the chat.
 for (const id of ['chatBtn', 'newchat']) $(id).addEventListener('click', () => { if ($('cellar').open) $('cellar').close(); });
@@ -1735,7 +1735,7 @@ async function start() {
     if (!s.ollama) note('I can\'t reach my engine (' + (s.engine || 'Ollama') + ') right now. Is it running? (The AI Toggle shortcut turns Ollama on.)', 'error');
   } catch {}
   try {
-    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; effort.solo(st.soloEffort === true); statusLine.jokes(st.statusJokes !== false); netOverlay.setOn(st.netOverlay === true); catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
+    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; effort.solo(st.soloEffort === true); effort.speed(st.effortSpeed); statusLine.jokes(st.statusJokes !== false); netOverlay.setOn(st.netOverlay === true); catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
     if (shouldOfferOwnCode(st.profiles)) offerOwnCode(st.profiles); // a person's own first time in: their own passcode, if they want one
     if (st.setupDone && !st.wantsAsked) offerWants(); // once, for Bobs set up before the Welcome had "Do you want me to:"

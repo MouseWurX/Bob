@@ -123,7 +123,7 @@ export const hatParts = {
           ctx.emit({ type: 'announce', text: checkBackLine(via, e.why || e.message) });
         }
       }
-      return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, lender, noLocal: Boolean(quick), maxSteps: force?.maxSteps, compact: force?.longRun === true });
+      return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, lender, noLocal: Boolean(quick), maxSteps: force?.maxSteps, compact: force?.longRun === true, noTools: force?.noTools === true });
     }
     catch (e) { step.state = ctx.signal?.aborted ? 'cancelled' : 'failed'; throw e; }
     finally {
@@ -161,7 +161,7 @@ export const hatParts = {
     }
     return lender;
   },
-  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, maxSteps: steps, compact = false, lender, noLocal = false, via = null }) {
+  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, maxSteps: steps, compact = false, lender, noLocal = false, via = null, noTools = false }) {
     // via (1.5.185): another of your Bobs thinks each step on his bigger brain; nothing loads here, the tools run here.
     // Two-Bob trial: a check is short, so the chat talker isn't brought back beside the reviewer for it.
     const loadHere = async () => (await this.ensureModel(model, ctx.emit, ctx.signal, hat, { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}), ...(hat === 'reviewer' ? { noTalker: true } : {}) })) || model;
@@ -201,7 +201,7 @@ export const hatParts = {
       const late = step > 0 && Boolean(ctx.turnStartedAt) && (ctx.timeEnds ? Date.now() - waitedFor(ctx.signal) >= ctx.timeEnds : pastCeiling(ctx.turnStartedAt, ctx.signal, Date.now(), ceilingMs(this.cfg)));
       if (late && !ctx.hatLateSaid) { ctx.hatLateSaid = true; this.log('loop', `${hat}: the job reached its time limit (the safety net); this step is the last`); }
       const last = (step === maxSteps - 1 && step > 0 && !this.helpOff('last')) || late;
-      const stepTools = last ? [] : this.toolSchemas(hatTools);
+      const stepTools = last || noTools ? [] : this.toolSchemas(hatTools); // noTools: Max's plan check (solo-effort.js)
       if (!ctx.job?.side) this.readNotes(ctx, messages); // notes passed along by the Quick brain (meanwhile.js)
       if (via) reply = await this.lenders.chat(via, { messages: hatView(step), tools: stepTools, signal: ctx.signal, from: this.cfg.windowsName || 'Bob', kind: 'check', onToken: (t) => ctx.emit({ type: 'token', text: t }) });
       else if (lender) {
@@ -234,13 +234,13 @@ export const hatParts = {
       this.cutNote(reply, ctx.emit); // item 210
       final += reply.content;
       if (!reply.tool_calls || late) break;
-      // 16 Nov (the distilled A3B jobs run, Max effort): a helper's reply asked for 132 calls, 3 of them different, and
-      // every one ran, because only the main loop had the cap. The same call twice in one reply runs once, and at most
-      // MAX_CALLS_PER_REPLY run, like Bob's own turns (item 158); he's told which were left out.
-      const seen = new Set();
-      const unique = reply.tool_calls.filter((c) => { const k = `${c.function?.name}\u0000${typeof c.function?.arguments === 'string' ? c.function.arguments : JSON.stringify(c.function?.arguments ?? {})}`; return seen.has(k) ? false : seen.add(k); });
-      const dropped = unique.slice(MAX_CALLS_PER_REPLY);
-      if (unique.length !== reply.tool_calls.length || dropped.length) { this.log?.('tool', `a helper's reply asked for ${reply.tool_calls.length} tool calls (${unique.length} different); ran ${Math.min(unique.length, MAX_CALLS_PER_REPLY)}`); reply.tool_calls = unique.slice(0, MAX_CALLS_PER_REPLY); }
+      // 16 Nov distill test (Max, job t65-0287): one review reply asked for 132 search_files calls, 3 of them different,
+      // and every one ran. A helper's reply runs each identical call once, and at most MAX_CALLS_PER_REPLY, like Bob's own.
+      const dropped = [];
+      { const keys = new Set();
+        reply.tool_calls = reply.tool_calls.filter((c) => { const k = `${c.function?.name}|${typeof c.function?.arguments === 'string' ? c.function.arguments : JSON.stringify(c.function?.arguments || {})}`; if (keys.has(k) || keys.size >= MAX_CALLS_PER_REPLY) { dropped.push(c); return false; } keys.add(k); return true; });
+        if (dropped.length) { this.log('tool', `${hat}: one reply asked for ${dropped.length + reply.tool_calls.length} tool calls; ran ${reply.tool_calls.length} (repeats and calls past ${MAX_CALLS_PER_REPLY} dropped)`); }
+        if (!reply.tool_calls.length) break; }
       giveIds(reply.tool_calls); // item 165
       this.mendCalls(reply.tool_calls, ctx); // Nov 11 (loop-help.js)
       this.notOffered(reply.tool_calls, stepTools, ctx, { hat: true }); // item 173
@@ -255,8 +255,8 @@ export const hatParts = {
         const where = a?.path || a?.url || a?.query || a?.name || '';
         did.push(`${call.function?.name}${where ? ` ${String(where).slice(0, 160)}` : ''}: ${String(res.text).replace(/\s+/g, ' ').slice(0, 240)}`);
       }
+      if (dropped.length) messages.push({ role: 'system', content: droppedNote(dropped, MAX_CALLS_PER_REPLY), hidden: true }); // after the results, as in Bob's own loop
 
-      if (dropped.length) messages.push({ role: 'system', content: droppedNote(dropped, MAX_CALLS_PER_REPLY), hidden: true });
       // A repository job (self-work.js) on a long memory: older tool results are cut down before it overflows.
       if (compact) compactMessages(messages, charsFor(brainCtx));
       ctx.emit({ type: 'token', text: '\n\n' });
