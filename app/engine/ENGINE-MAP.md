@@ -2,7 +2,7 @@
 
 This is the guide to what Brain Engine changes in llama.cpp, where each change hooks in, and what to re-check when moving to a newer llama.cpp. [README.md](README.md) says what each patch is for and how to build and move it. This page is the "where and how" for whoever does the rebase.
 
-Brain Engine 8 (named 8b12359) is llama.cpp **b12359** (llama.cpp 1.0) plus patches 0001 to 0014 below; 0015 (prompt odds) and 0016 (expert cache ranking) are for the next Brain Engine (Brain Engine 4 had the first six, Brain Engine 5 the first eight, Brain Engine 6 the first twelve, Brain Engine 7 the first thirteen on b12282; 0007 is live expert picks, 0008 the link log and SCUT that retunes itself, 0009 the expert mass, 0010 the expert trace read once per word, 0011 one trip a word over a lent card, 0012 load progress, 0013 experts per word, live, 0014 card sharing across builds). Only 0004, 0005, 0006, 0008, 0011 and 0014 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
+Brain Engine 8 (named 8b12359) is llama.cpp **b12359** (llama.cpp 1.0) plus patches 0001 to 0014 below; 0015 (prompt odds), 0016 (expert cache ranking) and 0018 (live trace every N words) are for the next Brain Engine (Brain Engine 4 had the first six, Brain Engine 5 the first eight, Brain Engine 6 the first twelve, Brain Engine 7 the first thirteen on b12282; 0007 is live expert picks, 0008 the link log and SCUT that retunes itself, 0009 the expert mass, 0010 the expert trace read once per word, 0011 one trip a word over a lent card, 0012 load progress, 0013 experts per word, live, 0014 card sharing across builds). Only 0004, 0005, 0006, 0008, 0011 and 0014 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
 
 Bob's own code map lists these patches too: one line each, with the files they change, the lines they add and take out, and the main names they add.
 
@@ -176,6 +176,13 @@ Then run `engine/try-newer.sh <tag>`. Every patch must go on, and the Linux buil
 - **What "fixed" means (read from `plan()`, not yet measured):** with the share at 1, a miss goes to the processor when one of the `n_zero` spare slots (up to `n_expert_used`) is free for every token that picked it. Writing one token at a time always finds one, so nothing is evicted. Batches of 2 to 32 tokens can run out and then copy a miss in, evicting the least-used slot. Batches bigger than 32 don't use the slot map at all, so **prompt reading never gains from a ranking**. The PC check (method addendum 2) turns this into a measurement: writing only, share 1, the `ubatch <= 8` uploaded MiB must stay 0 after the load; with Turbo, small and not zero.
 - **Re-check on rebase:** the names `moe_cache_lru`, `slot_map`, `key_of`, `crf`, `last_use`, `move`, `class_of`, `n_filled`, `make_key`, `banks`, `experts`, `stats_small`, `log_stats`, `llama_moe_cache_layer_experts`; that `plan()` still leaves misses to the processor with share 1 and full slots; the `n_class`/`crf` meaning (the top class is `n_class - 1`); and the large-batch bypass (`max_batch`).
 - **Tests:** none can run without a graphics card (the cache refuses to start without one). The CPU build compiles. The PC test reads `MoE cache brain fingerprint`, `ranked fill: N experts (... MiB)`, any `NOT USED` warning, and the `hits/misses/uploaded` lines.
+
+### 0018-expert-trace-every: the live trace every N words
+- **Upstream files:** `tools/server/server-task.h` (`expert_trace_every` in the task params), `server-schema.cpp` (the request field), `server-context.cpp` (`expert_trace_part`).
+- **Hooks:** at the top of `expert_trace_part()`, after the asked-for checks and before `llama_synchronize`: with N > 1, no piece (and no wait) unless it's the first written word or `n_gen % N == 0`. N is clamped to 1 to `part_max_rows` (64) so a piece never drops rows.
+- **Why:** each piece waits for the card (`llama_synchronize`) once a word. The 12 November test showed the trace's cost was in waiting, not sending.
+- **Re-check on rebase:** `expert_trace_part`, `part_max_rows`, `slot.stats.n_gen`.
+- **Tests:** `engine/tests/trace-every.py <checkout>`: pieces at N = 1 and N = 4, same rows, same full trace.
 
 ## What's not covered yet
 

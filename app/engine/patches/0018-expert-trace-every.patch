@@ -1,0 +1,43 @@
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 1c43a85..6c1ea5f 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -5678,6 +5678,12 @@ private:
+         if (!slot.task->params.expert_trace || !slot.task->params.expert_trace_stream || !slot.task->params.stream || !etrace.on) {
+             return out;
+         }
++        // Brain Engine 0018: a piece every N written words only (the first word always gets one, so a viewer lights up
++        // at once). No piece, no wait for the card: the rows in between stay counted and go in the next piece.
++        const int32_t every = std::clamp<int32_t>(slot.task->params.expert_trace_every, 1, (int32_t) server_expert_trace::part_max_rows);
++        if (every > 1 && slot.stats.n_gen > 1 && slot.stats.n_gen % every != 0) {
++            return out;
++        }
+         llama_synchronize(ctx_tgt);
+         std::lock_guard<std::mutex> lock(etrace.mutex);
+         if (etrace.bad || etrace.n_used <= 0 || etrace.sent_tag >= etrace.tags.size()) {
+diff --git a/tools/server/server-schema.cpp b/tools/server/server-schema.cpp
+index df0d370..025b057 100644
+--- a/tools/server/server-schema.cpp
++++ b/tools/server/server-schema.cpp
+@@ -42,6 +42,9 @@ std::vector<std::unique_ptr<field>> make_llama_cmpl_schema(const common_params &
+     add((new field_bool("expert_trace_stream", params.expert_trace_stream))
+         ->set_desc("Brain Engine: with `expert_trace` and `stream`, every streamed piece carries the trace rows read since the previous piece, in `expert_trace_part` ({from, n_prompt, rows} plus the shape fields), so a viewer can light up while the reply is written. The full trace still comes with the last piece"));
+ 
++    add((new field_num("expert_trace_every", params.expert_trace_every))
++        ->set_desc("Brain Engine: with `expert_trace_stream`, send the trace rows with every Nth written word only (1 to 64, default 1), so the engine waits for the card once every N words instead of every word. The rows in between ride in the next piece, and the full trace still comes with the last piece"));
++
+     add((new field_bool("expert_trace_heads", params.expert_trace_heads))
+         ->set_desc("Brain Engine: with `expert_trace`, report the busiest attention heads of every layer (kind `heads`) instead of experts or neuron groups. Works for any model"));
+ 
+diff --git a/tools/server/server-task.h b/tools/server/server-task.h
+index 7ab798c..8f53ce0 100644
+--- a/tools/server/server-task.h
++++ b/tools/server/server-task.h
+@@ -85,6 +85,7 @@ struct task_params {
+     bool expert_trace    = false; // Brain Engine: report which experts every layer picked for every token
+     bool expert_trace_heads = false; // Brain Engine: with expert_trace, report the busiest attention heads instead
+     bool expert_trace_stream = false; // Brain Engine: with expert_trace and stream, every streamed piece carries the rows read since the last one
++    int32_t expert_trace_every = 1; // Brain Engine 0018: with expert_trace_stream, a piece every N written words (1 to 64); the rows in between ride in the next piece
+     bool expert_trace_mass  = false; // Brain Engine: with expert_trace, also add up each expert's router-weighted output size (REAP)
+     bool return_progress = false;
+     int32_t prompt_odds      = 0; // Brain Engine: odds for the prompt's own tokens, with the top N other tokens at each place (0 = off)
