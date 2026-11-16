@@ -33,6 +33,7 @@ import { gamesSettingsHtml, mountGamesSettings } from './games.js';
 import { shareBrainsHtml, mountShareBrains } from './share-brains.js';
 import { mountNetFiles } from './net-files.js'; // Nov 14 Bob-Net: Files and brains
 import { mountPrivateWeb, privateWebHtml } from './private-web.js'; // Nov 16 Settings, Connections: Private web
+import { mountTraceLog, traceLogHtml } from './trace-log.js'; // Nov 16 Settings, This replicant matrix: Monitoring log
 import { mountSearchBackup, searchBackupHtml } from './search-backup.js'; // Nov 16 Settings, Connections: Search API keys
 import { findTheme, DEFAULT_THEME } from './themes.js';
 import { tip, noteOrTip, stripTags, keep } from './tips.js';
@@ -448,6 +449,7 @@ export function createCellar({ popOut = null } = {}) {
     ['jobs', '🔁 Jobs', 'jobs job steer mid-job stop after this step time limit minutes receipt undo run tests after code edits question vague remember no deny reason reuse look-ups cache sources how sure file line links editor vs code cursor', () => jobsHtml()],
     ['prompts', '📝 Saved prompts', 'saved prompts prompt library slash / menu template templates reuse snippets blanks variables {file} curly brackets', () => sswitch('promptMenu', settings.promptMenu === true, 'Saved prompts with /', 'Type / at the start of a message to pick a saved prompt. Words in {curly brackets} are blanks; Tab jumps to the next.') + promptsHtml()],
     ['health', '🩺 Health and history', 'health page crash crashes catch crash report safe start opt-in switches put back undo settings changes put it back history weekly week what bob did counts statistics engine card disk errors', () => '<div class="harness-box" data-part="health"></div>'], // public/harness.js
+    ['tracelog', '📈 Monitoring log', 'monitoring log trace traces tracing span spans timing timings slow steps debug debugging opentelemetry otel otlp jaeger telemetry text file txt tool calls engine requests errors', () => traceLogHtml()],
     ['quiet', '🌙 Quiet hours and shortcut', 'quiet hours do not disturb night sleep notifications pop-ups sounds urgent reminders shortcut hotkey global key ctrl space ask box anywhere', () => '<div class="harness-box" data-part="quiet"></div>'],
     ['chatx', '💬 Chat extras', 'fade old messages fade into memory clear chat amnesia mode forget privacy wipe try from here branch fork copy chat pin pinned message keep in mind guest chat incognito private nothing saved chat places engine memory switch chats quick', () => '<div class="harness-box" data-part="chats"></div>'],
     ['daily', '🗓 Everyday helpers', 'everyday helpers today card weather reminders morning focus timer pomodoro quiet do not disturb receipt receipts spending sheet expenses budget csv profiles people family shared pc guest tour what\'s new after an update tray dot badge text size font', () => dailyHtml()],
@@ -684,6 +686,7 @@ export function createCellar({ popOut = null } = {}) {
     mountShareBrains(dlg.querySelector('.share-box')); // Bob-Net: My other Bobs and What they share
     mountNetFiles(dlg.querySelector('.net-files-box')); // Nov 14 Bob-Net: Files and brains
     mountPrivateWeb(dlg.querySelector('.private-web-box')); // Nov 16 Settings, Connections: Private web
+    mountTraceLog(dlg.querySelector('.trace-log-box')); // Nov 16 Settings, This replicant matrix: Monitoring log
     mountSearchBackup(dlg.querySelector('.search-backup-box')); // Nov 16 Settings, Connections: Search API keys
     readyLine(); // 1.5.117: "Bob 1.5.117 is ready · Restart Bob now" on the updates line when a new Bob waits
     const page = mode === 'welcome' ? 'Welcome' : tab === 'settings' ? 'Settings' : tab === 'style' ? 'Style' : 'Get models';

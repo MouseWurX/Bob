@@ -145,6 +145,7 @@ import { saveRoute } from './save-routes.js';
 import { voiceRoute } from './voice-routes.js';
 import { searchBackupRoute } from './search-backup-routes.js'; // Nov 16: Backup search with a key
 import { privateWebRoute } from './private-web-routes.js'; // Nov 16: Private web
+import { traceLogRoute } from './trace-log-routes.js'; // Nov 16: Monitoring log
 import { talkView } from './talk.js'; // Talk with Bob (1.5.210)
 import { refsRoute } from './refs-routes.js';
 import { queueRoute } from './queue-routes.js';
@@ -1466,6 +1467,7 @@ const server = http.createServer(async (req, res) => {
     if ((await voiceRoute({ req, res, p, isLocal, cfg, shop, body, send, TYPES })) !== false) return;
     if ((await searchBackupRoute({ req, res, p, isLocal, cfg, body, send, log: (k, t) => brain.log(k, t) })) !== false) return;
     if ((await privateWebRoute({ req, res, p, isLocal, cfg, body, send, log: (k, t) => brain.log(k, t) })) !== false) return;
+    if ((await traceLogRoute({ req, res, p, isLocal, cfg, body, send, log: (k, t) => brain.log(k, t) })) !== false) return;
     if ((await refsRoute({ req, res, p, url, brain, body, send, serveFile })) !== false) return;
     if ((await queueRoute({ req, res, p, brain, body, send })) !== false) return;
     if (req.method === 'GET' && p === '/api/downloads') return send(res, 200, shop.downloadsView());

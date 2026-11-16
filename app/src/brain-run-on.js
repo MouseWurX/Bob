@@ -9,6 +9,7 @@ import { isGuestId, GUEST_LOG } from './guest-chat.js';
 import { namedType } from './save-as.js';
 import { lastFinished, giveIds, toolMessage } from './tool-kinds.js';
 import { turnNow } from './turn-log.js';
+import { traced, traceNow } from './trace-log.js'; // Nov 16 Monitoring log
 import { Ledger, doneBefore, doneBeforeNote } from './handoff.js';
 import { expectFrom } from './verify.js';
 import { presetFor, presetGroups, LimitedGroups, presetBrain, presetPrompt } from './presets.js';
@@ -342,7 +343,7 @@ export const runOnParts = {
         if (!ctx.rentSaid) { ctx.rentSaid = true; emit({ type: 'rent', action: 'thinking', rental: rName, service: this.rentals.view().rentals.find((r) => r.id === rented.id)?.serviceName || '' }); }
         let rentShown = 0;
         try {
-          reply = await this.rentals.chat(rented, { messages: [sys, ...loopView(staleHandErrors(msgs, turnStart), step)], tools, signal, think: thinkNow, job, emit, onToken: (t) => { rentShown += String(t).length; emit({ type: 'token', text: t }); } });
+          reply = await traced('rented', 'rented brain', () => this.rentals.chat(rented, { messages: [sys, ...loopView(staleHandErrors(msgs, turnStart), step)], tools, signal, think: thinkNow, job, emit, onToken: (t) => { rentShown += String(t).length; emit({ type: 'token', text: t }); } }), (r) => ({ chars: String(r?.content ?? '').length }), { signal }); // Monitoring log: a rented brain's request, no names
         } catch (e) {
           if (signal?.aborted) throw e;
           // Item 205: it falls back once (rented stays off for the rest of this job), the half answer it gave is taken
@@ -362,7 +363,7 @@ export const runOnParts = {
         let said = false;
         const askedAt = Date.now(); let firstAt = 0, lentShown = 0;
         try {
-          reply = await this.lenders.chat(lender, { messages: lentMsgs, tools, signal, from: this.cfg.windowsName || 'Bob', onToken: (t) => { if (!said) firstAt = Date.now(); said = true; lentShown += String(t).length; emit({ type: 'token', text: t }); } });
+          reply = await traced('lent', 'other Bob', () => this.lenders.chat(lender, { messages: lentMsgs, tools, signal, from: this.cfg.windowsName || 'Bob', onToken: (t) => { if (!said) firstAt = Date.now(); said = true; lentShown += String(t).length; emit({ type: 'token', text: t }); } }), (r) => ({ chars: String(r?.content ?? '').length }), { signal }); // Monitoring log: never the other Bob's name
           // 1.5.181 (two-Bob trial: the reply came back empty and nothing ran here): an empty answer counts as a "couldn't".
           if (!String(reply?.content || '').trim() && !(reply?.tool_calls || []).length) { reply = null; throw Object.assign(new Error('it came back empty'), { busy: !said }); }
           // 1.5.196 (Tailscale test): a borrowed reply that went well leaves a line in the logbook too, once per Bob per
@@ -584,6 +585,7 @@ export const runOnParts = {
           // Nov 11: a call that can't run as it is (a missing input, no such tool) goes back with what to fix.
           res = { text: call.bounce };
           this.log('tool', `${name}: not run, ${call.bounce.slice(9, 160)}`);
+          traceNow()?.start('tool', name).end('refused'); // Monitoring log: a call that couldn't run as it was (a missing input, no such tool)
         } else if (doneBefore(job, name, call.function?.arguments)) {
           // Item 245: this exact action finished before Bob restarted. It isn't done twice.
           res = { text: doneBeforeNote(doneBefore(job, name, call.function?.arguments)) };

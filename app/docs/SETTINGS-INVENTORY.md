@@ -457,3 +457,5 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 | Settings > 🖋 House style (1.5.210) | Every House style group and What times of day mean, drawn here (was beside the doll's slots) | Bob picks | moved |
 | Welcome > Do you want me to (1.5.210) | Four on top (web search, documents, sandbox, carry on after a restart); the rest under "Everything else I can do" | all off | changed |
 | Address ?sample=1 / laptop / mac / nocard / pi (1.5.210) | Sample-data mode: made-up machine and brains, nothing saved, banner | off | new, dev/test |
+| Settings > This replicant matrix > 📈 Monitoring log (Nov 16) | Monitoring log (`traceLog.on`): each turn's brain requests and tool calls with times, status and sizes, one block per turn in inn/bob/monitoring-log/bob-monitoring.txt. Names, times, status and sizes only | Off | new, awaiting review |
+| Settings > This replicant matrix > 📈 Monitoring log (Nov 16) | Keep up to (`traceLog.maxMB`): 100 MB, 250 MB, 500 MB, 1 GB, 2 GB, 5 GB, 10 GB; rolls at a tenth, oldest file goes; Show the log, Refresh, Delete the log files (press twice), Last turns timeline | 1 GB | new, awaiting review |

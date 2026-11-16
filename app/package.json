@@ -61,6 +61,7 @@
     "test/run-hands-read-test.js",
     "test/run-web-search-test.js",
     "test/run-private-web-test.js",
+    "test/run-monitoring-log-test.js",
     "test/run-lab-watch-test.js",
     "test/run-squeezed-brain-test.js",
     "test/run-gaming-card-test.js",
