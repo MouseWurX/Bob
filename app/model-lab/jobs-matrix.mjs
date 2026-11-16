@@ -9,7 +9,7 @@
 //      <every other flag is handed to each do-jobs run as it is: --url, --bob, --jobs, --never, --count, --hours,
 //       --search tavily, --search-cap, --search-ledger, --search-cache, --slot-ctx, --preflight ...>
 // A variant's own flags come last, so they win (e.g. stock=--lora-scale 0 --effort low). --parallel is per variant.
-// --search-cap is split evenly between the variants. --stagger S: variant k starts k x S seconds after the first, so a query
+// --search-cap is split evenly between the variants, or with --search-group <name> shared by them all. --stagger S: variant k starts k x S seconds after the first, so a query
 // the first one searched is usually in the shared cache (--search-cache) by the time the others ask it. Exit: 1 when any pre-flight fails, else 0.
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -24,6 +24,7 @@ const variantsArg = take('variants');
 const noScenes = take('no-scenes') === true;
 const stagger = Number(take('stagger') || 0);
 const capArg = take('search-cap');
+const grouped = argv.includes('--search-group'); // one cap shared by every variant (do-jobs --search-group)
 const say = (t) => console.log(t);
 if (!variantsArg || variantsArg === true) { say('PRE-FLIGHT FAIL: --variants name=flags;name=flags is needed'); process.exit(1); }
 // Windows quoting: split on spaces, keep "quoted parts" together
@@ -38,7 +39,7 @@ for (const v of variants) {
 }
 if (!variants.length) { say('PRE-FLIGHT FAIL: no variants'); process.exit(1); }
 if (argv.includes('--dir')) { say('PRE-FLIGHT FAIL: --dir is set by the matrix (--prefix)'); process.exit(1); }
-const capEach = capArg !== undefined && capArg !== true ? Math.floor(Number(capArg) / variants.length) : null;
+const capEach = capArg !== undefined && capArg !== true ? (grouped ? Number(capArg) : Math.floor(Number(capArg) / variants.length)) : null;
 if (capArg !== undefined && !(capEach >= 0)) { say(`PRE-FLIGHT FAIL: --search-cap ${capArg}: give a number of searches`); process.exit(1); }
 const preflight = argv.includes('--preflight');
 const scenesDir = `${prefix}-scenes`;
@@ -57,11 +58,13 @@ function run(tag, args) {
 const scenesFile = (dir) => { const i = argv.indexOf('--out'); return path.join(locate(i >= 0 ? { out: argv[i + 1] } : {}).out, dir, 'scenes.jsonl'); };
 const common = argv.filter((a, i) => !(a === '--scene' || argv[i - 1] === '--scene'));
 const capFlags = capEach !== null ? ['--search-cap', String(capEach)] : [];
+// --search-probe spends a search: only the first variant probes (the others share its PC and its key)
+const probeOnce = (k) => (k === 0 ? common : common.filter((a) => a !== '--search-probe'));
 
-say(`jobs matrix ${prefix}: ${variants.length} variant(s): ${variants.map((v) => `${v.name} (${v.flags.join(' ') || 'as is'})`).join('; ')}${capEach !== null ? `; ${capEach} Tavily searches each` : ''}`);
+say(`jobs matrix ${prefix}: ${variants.length} variant(s): ${variants.map((v) => `${v.name} (${v.flags.join(' ') || 'as is'})`).join('; ')}${capEach !== null ? (grouped ? `; ${capEach} Tavily searches shared by all` : `; ${capEach} Tavily searches each`) : ''}`);
 if (preflight) {
   let bad = 0;
-  for (const v of variants) { const code = await run(v.name, [...common, ...capFlags, '--dir', `${prefix}-${v.name}`, ...(noScenes ? [] : ['--scene', 'reuse']), ...v.flags]); if (code) bad++; }
+  for (const [k, v] of variants.entries()) { const code = await run(v.name, [...probeOnce(k), ...capFlags, '--dir', `${prefix}-${v.name}`, ...(noScenes ? [] : ['--scene', 'reuse']), ...v.flags]); if (code) bad++; }
   say(bad ? `PRE-FLIGHT FAIL: ${bad} variant(s) failed pre-flight` : 'pre-flight OK: every variant');
   process.exit(bad ? 1 : 0);
 }
@@ -76,6 +79,6 @@ if (!noScenes) {
   // the run folders' own scenes.jsonl stays empty: every variant reads the one set of worlds
   sceneArgs = ['--scene', 'reuse', '--scenes', f];
 }
-const codes = await Promise.all(variants.map((v, k) => new Promise((r) => setTimeout(r, k * stagger * 1000)).then(() => run(v.name, [...common, ...capFlags, '--dir', `${prefix}-${v.name}`, ...sceneArgs, ...v.flags]))));
+const codes = await Promise.all(variants.map((v, k) => new Promise((r) => setTimeout(r, k * stagger * 1000)).then(() => run(v.name, [...probeOnce(k), ...capFlags, '--dir', `${prefix}-${v.name}`, ...sceneArgs, ...v.flags]))));
 say(`jobs matrix ${prefix} done: ${variants.map((v, i) => `${v.name} exit ${codes[i]}`).join(', ')}`);
 process.exit(0);

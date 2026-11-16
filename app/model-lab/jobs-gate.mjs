@@ -19,7 +19,7 @@ import { scrubber as privacyScrub, findLeaks, privateWordsFrom, splitKeep } from
 import { scrubber as keyScrub } from './lab-keys.mjs';
 
 export const STOP = 86;
-const BLOCKED = /^(?:No results \(or the search pages changed\)|The search pages are blocking this computer)/; // Bob's own lines (web-search.js)
+const BLOCKED = /^(?:\[Outside text starts[^\]\n]*\]\s*)?(?:No results \(or the search pages changed\)|The search pages are blocking this computer)/; // Bob's own lines (web-search.js)
 const readJsonl = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean) : []);
 const walk = (d) => (fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)])) : []);
 const pct = (a, b) => (b ? `${Math.round((100 * a) / b)}%` : '-');
