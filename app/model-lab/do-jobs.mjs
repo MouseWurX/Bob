@@ -23,12 +23,15 @@
 // was bot-blocked on 16 Nov); during a run, 5 searches in a row with no results stop it, so a rental isn't spent on
 // jobs whose searches all fail. --search-gap: seconds between searches (default 2), so the pages aren't flooded.
 // --search tavily (the owner, 16 Nov: "Use Tavily ... for making lessons"): the Lab's own Tavily key (lab-keys.mjs, saved
-// encrypted on the Lab PC) is checked in pre-flight with one search and handed to each job's Bob as his keyed search
-// backup. The key stays in this process's memory: every line printed and every row saved is scrubbed for it.
-// --search-month N (16 Nov, a longer run after run 3; Tavily's free plan is 1,000 searches a month): every search the Lab
-// makes (checks too) is counted in <out>/tavily-searches-<year-month>.json, and no new job starts once fewer than 10 of
-// the N are left this month, or fewer than 10 by Tavily's own usage page; the jobs not started stay in the queue for the
-// next run (runs.jsonl picks up where it stopped).
+// encrypted on the Lab PC) is checked in pre-flight with one search and handed to each job's Bob as his backup search
+// (Bob's own web-search.js: the free pages first, Tavily only when they're blocked or find nothing; cfg.searchBackup.keys
+// is the in-memory way in, never saved). The key stays in this process's memory: every line printed and every row saved
+// is scrubbed for it.
+// --search-month N (16 Nov, a longer run after run 3; Tavily's free plan is 1,000 searches a month): every Tavily search
+// the Lab makes (its key checks, and each one a job's Bob makes, read back from his own count) is counted in
+// <out>/tavily-searches-<year-month>.json. Each job's Bob starts from that count with his cap at N - 10, so he says so
+// himself at the cap; and no new job starts once fewer than 10 are left (by that count or Tavily's own usage page). The
+// jobs not started stay in the queue for the next run (runs.jsonl picks up where it stopped).
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -46,7 +49,8 @@ const F = { runs: path.join(dir, 'runs.jsonl'), summary: path.join(dir, 'summary
 let scrub = (t) => t; // set once a key is opened: nothing printed or saved can hold it
 const say = (...a) => console.log(...a.map((x) => scrub(String(x))));
 const save = (file, row) => appendJsonl(file, JSON.parse(scrub(JSON.stringify(row))));
-const BLOCKED = /^No results \(or the search pages changed\)/;
+// a search that found nothing, or Bob's line for search pages showing a robot check (web-search.js, 16 Nov)
+const BLOCKED = /^(?:No results \(or the search pages changed\)|The search pages are blocking this computer)/;
 const fail = (why) => { console.log(scrub(`PRE-FLIGHT FAIL: ${why}`)); process.exit(1); };
 
 // ---- the jobs: requests only, held-out ones left out ----
@@ -95,7 +99,8 @@ if (o['search-month'] !== undefined && !(Number(o['search-month']) > 0)) fail(`-
 const ledger = path.join(L.out, `tavily-searches-${new Date().toISOString().slice(0, 7)}.json`);
 const ledgerUsed = () => { try { return Number(JSON.parse(fs.readFileSync(ledger, 'utf8')).used) || 0; } catch { return 0; } };
 let searchLeft = Infinity, searches = 0, budgetStop = false;
-const counted = () => { searches++; if (searchWith) { try { fs.writeFileSync(ledger, JSON.stringify({ used: ledgerUsed() + 1, at: new Date().toISOString() })); } catch {} } };
+let webSearches = 0;
+const counted = (n = 1) => { if (!(n > 0)) return; searches += n; if (searchWith) { try { fs.writeFileSync(ledger, JSON.stringify({ used: ledgerUsed() + n, at: new Date().toISOString() })); } catch {} } };
 const searchesLeft = () => Math.min(searchLeft - searches, monthly - SEARCH_SPARE - ledgerUsed());
 if (searchWith) {
   if (searchWith !== 'tavily') fail(`--search ${o.search}: only tavily is known`);
@@ -113,17 +118,27 @@ if (searchWith) {
   if (Number.isFinite(left)) { say(`pre-flight: this run may make about ${Math.max(0, left)} more web searches`); if (left <= 0) fail('no web searches are left this month: a search job could not finish'); }
   else say('pre-flight: no search budget (--search-month): only 5 failed searches in a row stop the run');
 }
-// the keyed search backup as Bob's settings hold it (off on every Bob unless its owner adds a key)
-const keyedSearch = (cfg) => { if (searchKey) cfg.webSearchKeyed = { on: true, service: 'tavily', key: searchKey }; };
+// The backup search as Bob's settings hold it (off on every Bob unless its owner turns it on), the key handed in for
+// this run only. His count file in this job's home starts at the Lab's count for the month, so his own cap counts the
+// Lab's whole month; the function returned says how many Tavily searches he made since it was last asked.
+const month = () => new Date().toISOString().slice(0, 7);
+function keyedSearch(kit) {
+  if (!searchKey) return () => 0;
+  kit.cfg.searchBackup = { use: { tavily: true }, order: ['tavily'], ...(Number.isFinite(monthly) ? { caps: { tavily: Math.max(0, monthly - SEARCH_SPARE) } } : {}), keys: { tavily: searchKey } };
+  const f = path.join(kit.cfg.dataDir, 'search-backup-count.json');
+  let seen = ledgerUsed();
+  try { fs.writeFileSync(f, JSON.stringify({ month: month(), used: { tavily: seen } })); } catch {}
+  return () => { let now = seen; try { const c = JSON.parse(fs.readFileSync(f, 'utf8')); if (c.month === month()) now = Number(c.used?.tavily) || 0; } catch {} const d = Math.max(0, now - seen); seen = now; return d; };
+}
 
 const probe = await loadBob(L.bob, kitOpts);
-keyedSearch(probe.cfg);
+const probeUsed = keyedSearch(probe);
 say(`Bob's tools from ${L.bob}: ${probe.bobSrc?.version || '?'}${probe.bobSrc?.commit ? ` (${probe.bobSrc.commit})` : ''}; tool shape ${probe.toolShapes ?? '?'}`);
 if (o['want-shapes'] !== undefined && String(probe.toolShapes) !== String(o['want-shapes'])) fail(`Bob's tools are shape ${probe.toolShapes ?? '?'}, not ${o['want-shapes']}`);
 if (o['search-probe']) {
   let r = '';
-  counted();
   try { r = String((await probe.brain.tools.web_search.run({ query: 'weather forecast Paris' }))?.text ?? ''); } catch (e) { r = `Error: ${e.message || e}`; }
+  counted(probeUsed());
   if (!r.trim() || BLOCKED.test(r) || /^Error/.test(r)) { probe.done(); fail(`web search from this PC gets nothing (${probe.neutral(r).slice(0, 120) || 'empty'}): the search pages may be blocking it, and every search job would teach a failed search`); }
   say('pre-flight: web search answers');
 }
@@ -189,7 +204,7 @@ const NOT_SET_UP = new Set(['make_image', 'make_video', 'make_music', 'make_soun
 
 async function runJob(j) {
   const kit = await loadBob(L.bob, kitOpts);
-  keyedSearch(kit.cfg);
+  const tavilyUsed = keyedSearch(kit);
   const brain = kit.brain;
   for (const n of NOT_HERE) delete brain.tools[n];
   brain.cfg.loopHelpOff = false; brain.cfg.toolHelp = true;
@@ -224,13 +239,13 @@ async function runJob(j) {
     (steps.at(-1)?.calls || steps).push(call);
     const { args: a, bad } = kit.sandboxArgs(args);
     let res;
-    if (name === 'web_search' && !bad) { await searchTurn(); counted(); }
+    if (name === 'web_search' && !bad) { await searchTurn(); webSearches++; }
     try {
       res = bad ? { text: `Error: ${kit.neutral(bad)} is outside the folders Bob may use here` }
         : await Promise.race([bobRunTool(name, a, ctx), wait(120000).then(() => ({ text: `Error: ${name} took too long` }))]);
     } catch (e) { if (ctx?.signal?.aborted) throw e; res = { text: `Error: ${String(e?.message || e)}` }; }
     const t = typeof res === 'string' ? res : typeof res?.text === 'string' ? res.text : JSON.stringify(res ?? '');
-    if (name === 'web_search' && !bad) { noResultsInRow = BLOCKED.test(t) ? noResultsInRow + 1 : 0; if (noResultsInRow >= 5) searchStop = true; }
+    if (name === 'web_search' && !bad) { counted(tavilyUsed()); noResultsInRow = BLOCKED.test(t) ? noResultsInRow + 1 : 0; if (noResultsInRow >= 5) searchStop = true; }
     call.result = kit.neutral(t).slice(0, 6000);
     return { ...(res && typeof res === 'object' ? res : {}), text: kit.neutral(t) || '(no result)' };
   };
@@ -288,13 +303,13 @@ async function worker() {
     say(`${String(ran).padStart(3)} ${row.error ? 'ERR ' : row.said ? 'done' : 'no words'} ${row.id} ${String(row.text).slice(0, 60)} -> ${(row.steps || []).flatMap((s) => s.calls || []).map((c) => c.name).join(',') || 'no tool'} (${row.asks || 0} steps, ${(row.secs || 0).toFixed(0)} s${row.standins?.length ? `, stand-ins: ${row.standins.join(',')}` : ''})`);
     if (/ECONNREFUSED|fetch failed/.test(row.error || '')) { say('the brain is gone (connection refused): stopping'); next = queue.length; }
     if (searchStop && next < queue.length) { say('5 web searches in a row found nothing (the search pages may be blocking this PC): stopping, so no more of the rental goes on jobs whose searches fail'); next = queue.length; }
-    if (!budgetStop && searchesLeft() <= 0 && next < queue.length) { budgetStop = true; say(`${searches} web searches made: this month's search budget is used, so no new job starts; ${queue.length - next} wait for the next run`); next = queue.length; }
+    if (!budgetStop && searchesLeft() <= 0 && next < queue.length) { budgetStop = true; say(`${searches} Tavily searches made: this month's search budget is used, so no new job starts; ${queue.length - next} wait for the next run`); next = queue.length; }
   }
 }
 await Promise.all(Array.from({ length: Math.max(1, Number(o.parallel)) }, worker));
 const all = readJsonl(F.runs);
 const n = all.length, by = (f) => all.filter(f).length;
-const lines = [`# Do jobs: ${path.basename(dir)}`, '', `${n} runs. Answered in words: ${by((r) => r.said)}. Errors: ${by((r) => r.error)}. Called a tool this test Bob hasn't got: ${by((r) => r.missing?.length)}. With a scene: ${by((r) => r.scene?.files?.length || r.scene?.folders?.length || r.scene?.board || r.scene?.memory)}. Every run is read by Opus before any is kept.${searchStop ? ' Stopped early: web search found nothing 5 times in a row.' : ''}${budgetStop ? " Stopped early: this month's search budget was used." : ''}`, '', `Web searches this run: ${searches}${Number.isFinite(searchesLeft()) ? ` (about ${Math.max(0, searchesLeft())} left this month)` : ''}. Jobs not started: ${Math.max(0, queue.length - ran)}.`];
+const lines = [`# Do jobs: ${path.basename(dir)}`, '', `${n} runs. Answered in words: ${by((r) => r.said)}. Errors: ${by((r) => r.error)}. Called a tool this test Bob hasn't got: ${by((r) => r.missing?.length)}. With a scene: ${by((r) => r.scene?.files?.length || r.scene?.folders?.length || r.scene?.board || r.scene?.memory)}. Every run is read by Opus before any is kept.${searchStop ? ' Stopped early: web search found nothing 5 times in a row.' : ''}${budgetStop ? " Stopped early: this month's search budget was used." : ''}`, '', `Web searches this run: ${webSearches}; Tavily searches (the backup, and key checks): ${searches}${Number.isFinite(searchesLeft()) ? ` (about ${Math.max(0, searchesLeft())} left this month)` : ''}. Jobs not started: ${Math.max(0, queue.length - ran)}.`];
 fs.writeFileSync(F.summary, scrub(lines.join('\n') + '\n'));
 say(`\n${lines.slice(2).join('\n')}\nRuns: ${F.runs}`);
 process.exit(0);

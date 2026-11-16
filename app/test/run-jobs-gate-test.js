@@ -16,7 +16,7 @@ const KEY = 'tvly-FAKEgate0123456789abcd';
 const ME = { user: 'qwertyjo', host: 'TESTBOX-77', words: ['Zanzibarian'] };
 
 const row = (i, o = {}) => ({ id: `j${i}`, text: `job ${i}`, said: 'Done.', tool_shapes: 4, scene: { made: 'new', files: ['C:\\Users\\you\\Documents\\a.txt'], problems: [] },
-  steps: [{ calls: [{ name: 'web_search', result: '1. Fox - https://example.com/fox\nFoxes are dogs.' }, { name: 'read_file', result: 'mail sam.lee@acme.com, C:\\Users\\Alice\\notes.txt, sk_live_0123456789abcdefABCDEF' }] }], ...o });
+  steps: [{ calls: [{ name: 'web_search', result: i % 3 ? '1. Fox - https://example.com/fox\nFoxes are dogs.' : '(From Tavily, the backup search with your key: the search pages are blocking this computer (DuckDuckGo).)\n1. Fox - https://example.com/fox' }, { name: 'read_file', result: 'mail sam.lee@acme.com, C:\\Users\\Alice\\notes.txt, sk_live_0123456789abcdefABCDEF' }] }], ...o });
 const folder = (name, rows) => { const d = path.join(tmp, name); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, 'runs.jsonl'), rows.map((r) => JSON.stringify(r)).join('\n') + '\n'); return d; };
 const cli = (name, extra = [], env = {}) => spawnSync(process.execPath, ['jobs-gate.mjs', '--out', tmp, '--dir', name, '--runs', '45', '--want-shapes', '4', '--user', ME.user, '--host', ME.host, '--words', ME.words.join(','), ...extra],
   { cwd: path.join(app, 'model-lab'), encoding: 'utf8', env: { ...process.env, LAB_TAVILY_KEY: KEY, ...env } });
@@ -31,7 +31,7 @@ folder('short', clean.slice(0, 30));
 const sh = cli('short');
 check('too few runs: stop with code 86 and a GATE STOP line the Forge reads', sh.status === STOP && /GATE STOP: only 30 of 45 jobs ran \(needs 41\)/.test(sh.stdout), sh.stdout.slice(-300));
 
-folder('blocked', clean.map((r, i) => (i < 30 ? row(i, { steps: [{ calls: [{ name: 'web_search', result: 'No results (or the search pages changed). Try different words.' }] }] }) : r)));
+folder('blocked', clean.map((r, i) => (i < 30 ? row(i, { steps: [{ calls: [{ name: 'web_search', result: i % 2 ? 'No results (or the search pages changed). Try different words.' : "The search pages are blocking this computer right now (DuckDuckGo and Mojeek showed a robot check). I don't get round those. The backup search didn't help: Tavily is at its monthly cap (990)." }] }] }) : r)));
 const bl = cli('blocked');
 check('searches that came back empty stop it', bl.status === STOP && /only 15 of 45 web searches came back with results/.test(bl.stdout), bl.stdout.slice(-300));
 

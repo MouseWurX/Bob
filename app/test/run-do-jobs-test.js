@@ -170,7 +170,7 @@ check('a key Tavily refuses stops pre-flight; no key at all says how to add one'
   const searched = rows3[0] ? rows3[0].steps.flatMap((st) => st.calls).filter((c) => c.name === 'web_search').length : 0;
   check("pre-flight: Tavily's usage page says the month is nearly used, so nothing runs", mU.code === 1 && /995 of 1000 searches used/.test(mU.log) && /no web searches are left this month/.test(mU.log), mU.log.slice(-300));
   check("the Lab's own count: once this month's searches are used, no new job starts and the rest wait", mL.code === 0 && rows3.length === 1 && rows3[0].id === 'w1' && searched === 2 && /no new job starts; 2 wait for the next run/.test(mL.log) && /Stopped early: this month's search budget was used/.test(fs.readFileSync(path.join(tmp, 'budget1', 'summary.md'), 'utf8')), mL.log.slice(-500));
-  check('every search is counted on the Lab PC, the key check too (987 + 1 + 2)', ledgerAfter === 990, String(ledgerAfter)); }
+  check("every Tavily search is counted on the Lab PC: the key check, and each one Bob's own backup search made (987 + 1 + 2)", ledgerAfter === 990 && rows3[0].steps.flatMap((st) => st.calls).filter((c) => c.name === 'web_search').every((c) => /The backup search: Tavily/.test(c.result)), String(ledgerAfter) + ' ' + JSON.stringify(rows3[0]?.steps.flatMap((st) => st.calls).map((c) => c.result)).slice(0, 300)); }
 const again = await run([]);
 check('a second start picks up where it stopped (nothing run twice)', /nothing to run/.test(again.log) || /0 to go/.test(again.log), again.log.slice(-200));
 fs.rmSync(tmp, { recursive: true, force: true });
