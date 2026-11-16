@@ -41,5 +41,9 @@ const lc = new LlamaCpp({ agentDir: '.', dataDir: '.', llamacpp: {} });
   check('engine: JSON that isn\'t a call is shown at the end', shown.join('') === '{"a": 1}');
 }
 globalThis.fetch = realFetch;
+// 16 Nov (Maximus rerun): Qwen3.6's XML form written as text, after a line of prose
+{ const r = textCalls('Let me check the board first.\n<tool_call>\n<function=remember>\n<parameter=fact>\nlikes tea\n</parameter>\n<parameter=days>\n30\n</parameter>\n</function>\n</tool_call>', names);
+  check('qwen3.6: an XML call written as text becomes a real call, the prose kept', r?.calls[0].function.name === 'remember' && r.calls[0].function.arguments.fact === 'likes tea' && r.calls[0].function.arguments.days === 30 && r.text === 'Let me check the board first.', JSON.stringify(r)); }
+{ check('qwen3.6: an XML call to a tool not offered stays text', textCalls('<tool_call>\n<function=delete_all>\n</function>\n</tool_call>', names) === null); }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
