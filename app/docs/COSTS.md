@@ -47,23 +47,30 @@ Every rental, including the ones that made nothing. Times are the owner's local 
 | 14 Nov 2026, early morning | 1x A40 48 GB, no drive | 0.5 h | $0.59/h | **Failed attempt 13.** A Riker study run: the card never opened, so it was deleted. | $0.31 |
 | 14 Nov 2026, early morning | 1x L40S 48 GB, no drive | 0.2 h | $1.09/h | **Failed attempt 14.** The same run, retried on another card: it never answered within 10 minutes, so it was deleted. | $0.21 |
 | 14 Nov 2026, morning | 1x A40 48 GB, no drive | 2.3 h | $0.59/h | **Lesson-kit trial.** Stock Qwen3.6-35B-A3B wrote two trial lesson sets for the new lesson kit. Worked. The card deleted itself. | $1.39 |
-| 15 Nov 2026, early morning | 1x A40 48 GB, no drive | 2.1 h | $0.59/h | **Riker's cruelty study.** The 16 experts that lean towards a cruel persona were muted one test at a time: they turn out to act as a shared brake, and muting them made cruel-persona answers 2 to 3 points harsher. Evidence only, never used for training. The card deleted itself. Estimated from the hours until the statement lands. | about $1.25 |
-| 15 Nov 2026 | 2x A40 48 GB, no drive | about 20 min each | $0.59/h | **Failed attempts 15 and 16.** Two cards for the lesson rewrite never opened, so both were deleted. Nothing run. | about $0.41 |
-| 15 Nov 2026, early morning | 1 card (type to come with the bill) | | | **Lesson rewrite, round 1.** Stock Qwen as the teacher rewrote failed tool lessons. Opus then sorted them, and most still needed work. | about $0.55 |
-| 15 Nov 2026, morning | 1 card (type to come with the bill) | | | **Lesson rewrite, round 2.** 94 lessons saved before it was stopped, none reviewed yet. 39 failed their review twice. The card was deleted. | about $0.82 |
-| 15 Nov 2026, morning | 1 card (type to come with the bill) | | | **Lesson rewrite, round 3.** Its quality gate stopped it at 1 good lesson in the first 10. | $0.31 |
-| 15 Nov 2026, morning | 1x A6000 48 GB, no drive | about 0.5 h | $0.69/h | **Lesson-kit sample.** The quality gate stopped it at 2 good lessons in 10. | about $0.35 |
-| 15 Nov 2026, late morning | 1x A6000 48 GB, no drive | about 0.5 h | $0.69/h | **Lesson-kit sample, with step redo.** The gate stopped it at 0 in 10. **Lesson learned:** stock Qwen writes about 1 lesson in 10 at Opus's bar as a teacher, so lessons now come from brains doing real jobs instead (see [How we test brains](TESTING.md)). | about $0.35 |
-| 15 Nov 2026 | 1 card (type to come with the bill) | | | **Real jobs, trial 1.** 45 real jobs in Bob's real loop, read by Opus: 8 keep, 28 fix, 3 discard, 6 decided by a broken test world. | $2.38 |
-| 16 Nov 2026, early morning | 1 card (type to come with the bill) | 0.3 h | | **Real jobs, trial 2.** 45 of 45 answered: 14 keep, 28 fix, 1 discard, 2 cut off. | $1.76 |
-| 16 Nov 2026, early morning | 1 card (type to come with the bill) | 0.4 h | | **Real jobs, trial 3, first try.** 45 of 45 clean. Then the privacy gate stopped the long run on a false alarm, an ordinary word holding a private name. The gate now warns instead. | $2.26 |
-| 16 Nov 2026, morning | 1 card (type to come with the bill) | | | **The 800-job run.** 402 keep, 315 fix, 36 discard, and 47 runs decided by the test world, not the brain. That led to the harness fixes and the self-test (see [How we test brains](TESTING.md)). | billed figure to come |
-| 16 Nov 2026, early morning | 1x L40S 48 GB, no drive | | | **Distilled Qwen on 100 real jobs, five settings.** 500 runs, 0 runner errors, graded blind by Opus. The card deleted itself. | about $2.35 |
-| 16 Nov 2026, morning | 1x L40S 48 GB, no drive | | | **Effort levels, Minimus to Maximus, on 100 real jobs.** The card couldn't delete itself, because the rental service had retired the address it used, so it ran idle until it was deleted by hand. The time after the run is in the billed figure to come. | about $1.80, plus idle time |
-| 16 Nov 2026 | 1x A100 80 GB, no drive | | | **GPT-OSS 120B, 45 real jobs.** 45 of 45 answered, 0 errors: 33 keep, 11 fix, 1 discard. The first rental on the rental service's new address. The card deleted itself. | about $0.74 |
-| 16 Nov 2026, afternoon | 1x RTX 6000 Ada 48 GB, after an L40S that froze | | | **Maximus again, with the fixes.** 100 of 100, 0 errors. The card deleted itself. | about $2.20 |
-| 16 Nov 2026, midday to afternoon | 1x RTX 6000 Ada 48 GB, no drive | about 1.5 h | $1.09/h | **The inbox test.** 30 mail jobs at all four effort levels, 120 runs, graded blind: 10 right, 41 partly, 67 failed. This led to the mail catalog. | about $1.66 |
-| | | **about 124 h of card time, plus the 15 and 16 Nov runs** | | **Sixteen failed attempts: about $23.46, plus the stopped Bill step above. Seven Bobs made; Riker (28Bob), Bobert (35Bob) and Bill (20Bob) are kept, the first Riker and Bill (v1 and v2) are retired and deleted.** | **$495.73** |
+| 15 Nov 2026, early morning | 1x A40 48 GB, no drive | 2.1 h | $0.59/h | **Riker's cruelty study.** The 16 experts that lean towards a cruel persona were muted one test at a time: they turn out to act as a shared brake, and muting them made cruel-persona answers 2 to 3 points harsher. Evidence only, never used for training. The card deleted itself. From the rental service's statement. | $1.29 |
+| 15 Nov 2026, early morning to morning | 1x A100 80 GB, no drive | 5.5 h | about $2.14/h | **GPT-OSS 20B tool coaching.** The smaller GPT-OSS was coached and scored on Bob's tool jobs. Finished. The card deleted itself. | $11.75 |
+| 15 Nov 2026, morning | 2x A40 48 GB, no drive | 0.35 h and 0.34 h | $0.59/h | **Failed attempts 15 and 16.** Two cards for the first lesson rewrite never answered, so both were deleted. Nothing run. | $0.41 |
+| 15 Nov 2026, morning | 1x RTX A6000 48 GB, no drive | 0.8 h | $0.69/h | **Lesson rewrite, round 1.** Stock Qwen as the teacher rewrote failed tool lessons. Opus then sorted them, and most still needed work. | $0.56 |
+| 15 Nov 2026, morning | 1x A40 48 GB, no drive | 0.6 h | $0.59/h | **Failed attempt 17.** Riker's feature study, first try: the card never answered and was deleted by hand. | $0.35 |
+| 15 Nov 2026, morning | 1x RTX A6000 48 GB, no drive | 1.2 h | $0.69/h | **Lesson rewrite, round 2.** 94 lessons saved before it was stopped by hand, none reviewed yet. 39 failed their review twice. | $0.84 |
+| 15 Nov 2026, morning | 1x A40 48 GB, no drive | 0.4 h | $0.59/h | **Failed attempt 18.** Riker's feature study, second try: its gate stopped it because the feature dictionary explained less than half of what it was meant to. | $0.26 |
+| 15 Nov 2026, morning | 1x L40S 48 GB, no drive | 0.7 h | about $1.09/h | **Riker's feature study.** The third try finished. Research only, never used for training. | $0.76 |
+| 15 Nov 2026, morning | 1x RTX A6000 48 GB, no drive | 0.45 h | $0.69/h | **Lesson rewrite, round 3.** Its quality gate stopped it at 1 good lesson in the first 10. | $0.32 |
+| 15 Nov 2026, morning | 1x RTX A6000 48 GB, no drive | 0.5 h | $0.69/h | **Lesson-kit sample.** The quality gate stopped it at 2 good lessons in 10. | $0.36 |
+| 15 Nov 2026, morning | 1x A40 48 GB, no drive | 0.8 h | $0.59/h | **Failed attempt 19.** A tool-shape retest: the connection kept failing at the end, and the card was deleted before its logs were saved. | $0.49 |
+| 15 Nov 2026, late morning | 1x RTX A6000 48 GB, no drive | 0.5 h | $0.69/h | **Lesson-kit sample, with step redo.** The gate stopped it at 0 in 10. **Lesson learned:** stock Qwen writes about 1 lesson in 10 at Opus's bar as a teacher, so lessons now come from brains doing real jobs instead (see [How we test brains](TESTING.md)). | $0.36 |
+| 15 Nov 2026, midday | 1x H200 141 GB SXM, no drive | 0.45 h | $5.29/h | **Lesson-kit sample with a bigger teacher.** Finished. | $2.42 |
+| 15 Nov 2026, evening | 1x H200 141 GB SXM, no drive | 0.45 h | $5.29/h | **Real jobs, trial 1.** 45 real jobs in Bob's real loop, read by Opus: 8 keep, 28 fix, 3 discard, 6 decided by a broken test world. | $2.39 |
+| 16 Nov 2026, early morning | 1x H200 141 GB SXM, no drive | 0.33 h | $5.29/h | **Real jobs, trial 2.** 45 of 45 answered: 14 keep, 28 fix, 1 discard, 2 cut off. | $1.77 |
+| 16 Nov 2026, early morning | 1x L40S 48 GB, no drive | 2.15 h | about $1.09/h | **Distilled Qwen on 100 real jobs, five settings.** 500 runs, 0 runner errors, graded blind by Opus. The card deleted itself. | $2.38 |
+| 16 Nov 2026, early morning | 1x H200 141 GB SXM, no drive | 0.43 h | $5.29/h | **Real jobs, trial 3, first try.** 45 of 45 clean. Then the privacy gate stopped the long run on a false alarm, an ordinary word holding a private name. The gate now warns instead. | $2.27 |
+| 16 Nov 2026, morning | 1x H200 141 GB SXM, no drive | 3.65 h | $5.29/h | **The 800-job run.** 402 keep, 315 fix, 36 discard, and 47 runs decided by the test world, not the brain. That led to the harness fixes and the self-test (see [How we test brains](TESTING.md)). | $19.42 |
+| 16 Nov 2026, morning to midday | 1x L40S 48 GB, no drive | 2.2 h | about $1.09/h | **Effort levels, Minimus to Maximus, on 100 real jobs.** Finished, but the card couldn't delete itself, because the rental service had retired the address it used. It sat idle for about 33 minutes until it was deleted by hand. | $2.44 |
+| 16 Nov 2026, afternoon | 1x L40S 48 GB, no drive | 0.37 h | about $1.09/h | **Failed attempt 20.** The Maximus rerun's first card froze while starting up and was deleted. | $0.41 |
+| 16 Nov 2026, afternoon | 1x A100 80 GB, no drive | 0.36 h | about $2.10/h | **GPT-OSS 120B, 45 real jobs.** 45 of 45 answered, 0 errors: 33 keep, 11 fix, 1 discard. The first rental on the rental service's new address. The card deleted itself. | $0.76 |
+| 16 Nov 2026, afternoon | 1x RTX 6000 Ada 48 GB, no drive | 1.5 h | $1.09/h | **The inbox test.** 30 mail jobs at all four effort levels, 120 runs, graded blind: 10 right, 41 partly, 67 failed. This led to the mail catalog. | $1.68 |
+| 16 Nov 2026, afternoon | 1x RTX 6000 Ada 48 GB, no drive | 1.0 h | $1.09/h | **Maximus again, with the fixes.** 100 of 100, 0 errors. The card deleted itself. | $1.10 |
+| | | **about 149 h of card time** | | **Twenty failed attempts: $24.97, plus the stopped Bill step above. Seven Bobs made; Riker (28Bob), Bobert (35Bob) and Bill (20Bob) are kept, the first Riker and Bill (v1 and v2) are retired and deleted.** | **$549.26** |
 
 The total is taken from the rental service's statement; the lines above are rounded to the cent. Card time is paid from **prepaid credit**: the owner loads a balance onto the rental account in advance and each session draws it down, so that money is spent on the day it is loaded and used only when a card runs. The unused part is not shown here (no balances on these pages); it is already earmarked for the rungs still to make. A 100 GB network drive rented from the same service (it keeps the teacher weights, general text and adapters between sessions, so a session needs no re-download) costs about $7 a month while it exists, and more as it grows: Bobert's run used it at 300 GB (about $21 a month) and Bill's at 500 GB (about $35 a month). It is 500 GB now, and it draws on the same prepaid credit every day it exists, run or no run: about $1.17 a day. That is counted as its own line in the totals below.
 
@@ -136,18 +143,18 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 
 | | |
 |---|---|
-| GPU servers rented by the hour (every session above, failures included; the 800-job run and one idle tail still to come) | about $513.67 |
-| Rented network drive between sessions, 5 to 16 Nov 2026 (100 GB, then 300, then 500; from its size and rate, then the statement from 13 Nov) | about $7.46 |
+| GPU servers rented by the hour (every session above, failures included) | $549.26 |
+| Rented network drive between sessions, 5 to 16 Nov 2026 (100 GB, then 300, then 500; from its size and rate, then the statement from 13 Nov) | about $7.36 |
 | Claude subscription, November 2026 | $200.00 |
 | Claude extra usage, bought from 5 Nov 2026 on | $2,000.00 |
 | Code signing, hosting | $0.00 |
-| **Total spent so far** | **about $2,721**, plus the 800-job run |
+| **Total spent so far** | **about $2,757** |
 
 **Projected, whole plan**
 
 | | Low | High |
 |---|---|---|
-| Spent so far (above) | $2,721 | $2,721 |
+| Spent so far (above) | $2,757 | $2,757 |
 | Test rentals already planned: the mail and real-jobs run on all the fixes, and GPT-OSS on the same jobs (about 3 h each) | $6 | $10 |
 | Line B remaining rungs (Homer to Bender) | $119 | $129 |
 | Four brain scans (stock Qwen, Riker, Bobert, Bill) on one short rental (planned) | $10 | $14 |
@@ -155,6 +162,6 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 | Rented network drive, about 2 more months at 500 GB | $70 | $70 |
 | Re-runs allowed (one per rung if a heal scores badly) | $0 | $60 |
 | Claude subscription while the family is finished, about 1 more month | $200 | $200 |
-| **Projected total, line B complete** | **about $3,226** | **about $3,304** |
+| **Projected total, line B complete** | **about $3,262** | **about $3,340** |
 | Line A as well, if the comparison after Homer earns it | +$179 | +$189 |
-| **Projected total, both lines** | **about $3,405** | **about $3,493** |
+| **Projected total, both lines** | **about $3,441** | **about $3,529** |

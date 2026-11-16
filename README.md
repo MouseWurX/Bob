@@ -248,7 +248,7 @@ Brains are tested on **real jobs** in Bob's real loop, with his real tools, in a
 
 ## What it costs
 
-Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 16 Nov 2026: about **$2,721** spent in all, of which about $514 is rented GPU time (failures included), plus the 800-job run, whose bill is still to come. About $3,226 to $3,304 is projected for the planned family of models. Most test rentals so far cost $0.74 to $2.40 each. The page lists every rental and what came of it.
+Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 16 Nov 2026: about **$2,757** spent in all, of which $549 is rented GPU time (failures included), and about $3,262 to $3,340 projected for the planned family of models. Most test rentals cost under $2.50; the 800-job run cost $19.42. The page lists every rental and what came of it.
 
 ## What Bob does
 
