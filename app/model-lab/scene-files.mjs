@@ -2,6 +2,11 @@
 // and zips, built byte by byte so Bob's own readers (doc-text.js, security-files.js) and LibreOffice open them as they
 // would a file from anyone's computer. No libraries, nothing downloaded. Text files need nothing from here.
 import zlib from 'node:zlib';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import * as M from './scene-media.mjs';
 
 // ---- CRC-32 (zip and PNG both use it; zlib.crc32 is missing on older Node) ----
 const CRC = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
@@ -158,21 +163,49 @@ export function png(meta = {}) {
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), ...texts, ...(ex ? [chunk('eXIf', ex)] : []), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
 }
 
-// The bytes for one scene file, by its extension. Plain text for anything else; null = a kind this kit can't make
-// (sound, video, programs), so the scene says so instead of planting a fake.
-export const CANT_MAKE = /\.(mp3|wav|flac|ogg|m4a|aac|mp4|mkv|mov|avi|webm|exe|msi|dll|iso|gguf|safetensors|bin|psd|blend|uasset|fbx|glb|gltf|7z|rar|gz|tgz)$/i;
-export function sceneBytes(file) {
+// The bytes for one scene file, by its extension. Plain text for anything else; null = a kind this kit can't make,
+// so the scene says so instead of planting a fake. 16 Nov (800-job read): sound, video, programs, PowerPoint, Photoshop
+// and the older picture kinds are made too now (scene-media.mjs); old Word, Excel and PowerPoint (.doc .xls .ppt) are
+// made by LibreOffice from the same words when the run has it (office: its path), and .doc falls back to Rich Text,
+// which Word opens under that name.
+export const CANT_MAKE = /\.(iso|img|gguf|safetensors|bin|blend|uasset|fbx|glb|7z|rar|msi|dmg|apk|vhdx?)$/i;
+const OLD_OFFICE = { doc: ['docx', 'doc'], xls: ['xlsx', 'xls'], ppt: ['pptx', 'ppt'] };
+function viaOffice(office, kind, bytes) {
+  if (!office) return null;
+  let dir = '';
+  try {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scene-office-'));
+    fs.writeFileSync(path.join(dir, `f.${OLD_OFFICE[kind][0]}`), bytes);
+    spawnSync(office, ['--headless', '--norestore', '--convert-to', kind, '--outdir', dir, path.join(dir, `f.${OLD_OFFICE[kind][0]}`)], { timeout: 90000, stdio: 'ignore', windowsHide: true });
+    const out = path.join(dir, `f.${kind}`);
+    return fs.existsSync(out) && fs.statSync(out).size ? fs.readFileSync(out) : null;
+  } catch { return null; } finally { if (dir) try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }
+}
+export function sceneBytes(file, { office = '' } = {}) {
   const p = String(file.path || ''), meta = file.meta && typeof file.meta === 'object' ? file.meta : {};
   if (CANT_MAKE.test(p)) return null;
-  if (/\.(jpe?g)$/i.test(p)) return jpeg(meta);
-  if (/\.png$/i.test(p)) return png(meta);
-  if (/\.docx$/i.test(p)) return docx(file.content, meta);
-  if (/\.xlsx$/i.test(p)) return xlsx(file.content, meta);
-  if (/\.pdf$/i.test(p)) return pdf(file.content, meta);
-  if (/\.zip$/i.test(p)) {
-    const inside = (Array.isArray(file.inside) ? file.inside : []).filter((f) => f && typeof f.path === 'string' && !/(^|[\\/])\.\.([\\/]|$)/.test(f.path)).slice(0, 30);
-    return zipStore(inside.map((f) => ({ name: f.path.replace(/\\/g, '/').replace(/^\/+/, ''), data: sceneBytes({ ...f, path: f.path }) ?? '' })));
+  const ext = (p.match(/\.([A-Za-z0-9]+)$/)?.[1] || '').toLowerCase();
+  const inside = () => (Array.isArray(file.inside) ? file.inside : []).filter((f) => f && typeof f.path === 'string' && !/(^|[\\/])\.\.([\\/]|$)/.test(f.path)).slice(0, 30)
+    .map((f) => ({ name: f.path.replace(/\\/g, '/').replace(/^\/+/, ''), data: sceneBytes({ ...f, path: f.path }, { office }) ?? '' }));
+  if (/^(jpe?g|jfif)$/.test(ext)) return jpeg(meta);
+  if (ext === 'png') return png(meta);
+  if (ext === 'docx' || ext === 'docm') return docx(file.content, meta);
+  if (ext === 'xlsx' || ext === 'xlsm') return xlsx(file.content, meta);
+  if (ext === 'pptx' || ext === 'ppsx') return M.pptx(file.content, meta, officeProps(meta));
+  if (ext === 'pdf') return pdf(file.content, meta);
+  if (ext === 'zip') return zipStore(inside());
+  if (ext === 'tar') return M.tar(inside());
+  if (/\.(tar\.gz|tgz)$/i.test(p)) return M.gzip(M.tar(inside()));
+  if (ext === 'gz') return M.gzip(Buffer.from(String(file.content ?? ''), 'utf8'));
+  if (ext === 'rtf') return M.rtf(file.content, meta);
+  if (OLD_OFFICE[ext]) {
+    const from = ext === 'doc' ? docx(file.content, meta) : ext === 'xls' ? xlsx(file.content, meta) : M.pptx(file.content, meta, officeProps(meta));
+    return viaOffice(office, ext, from) || (ext === 'doc' ? M.rtf(file.content, meta) : null);
   }
-  if (/\.(gif|bmp|webp|tiff?|ico|heic|docm|doc|xls|ppt|pptx|odt|ods|odp|epub|rtf)$/i.test(p)) return null;
+  if (ext === 'exe' || ext === 'scr' || ext === 'com') return M.pe({ meta });
+  if (ext === 'dll' || ext === 'sys' || ext === 'ocx') return M.pe({ dll: true, meta });
+  if (ext === 'psd') return M.psd();
+  const av = M.media(ext, meta); if (av) return av;
+  if (/^(heic|odt|ods|odp|epub|docm|dotx)$/.test(ext)) return null;
   return Buffer.from(String(file.content ?? '').replace(/\r\n?/g, '\n'), 'utf8');
 }

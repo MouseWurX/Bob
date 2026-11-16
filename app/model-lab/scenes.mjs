@@ -17,7 +17,9 @@ Use the exact paths and names the request gives. The user's home is C:\\Users\\y
 
 Answer with JSON only, in this shape:
 {"files":[{"path":"C:\\\\Users\\\\you\\\\Documents\\\\notes.txt","content":"..."}],"folders":["C:\\\\Archive"],"board":[{"list":"Side quests","items":["..."]}],"memory":["..."]}
-- files: each file with its whole content. Pictures (.png .jpg) and office files (.docx .xlsx .pdf) work too: give "content" as the text (CSV lines for .xlsx) and "meta" with the hidden details the request is about, such as {"Author":"Sam Lee","GPS":"51.50,-0.12","Make":"Pixel","Model":"Pixel 8","DateTaken":"2024-05-01 10:00:00"}. A .zip gives "inside":[{"path":"a.txt","content":"..."}]. No sound, video or program files.
+- files: each file with its whole content. Pictures (.png .jpg) and office files (.docx .xlsx .pdf) work too: give "content" as the text (CSV lines for .xlsx) and "meta" with the hidden details the request is about, such as {"Author":"Sam Lee","GPS":"51.50,-0.12","Make":"Pixel","Model":"Pixel 8","DateTaken":"2024-05-01 10:00:00"}. A .zip or .tar.gz gives "inside":[{"path":"a.txt","content":"..."}]. A .pptx gives its slides as text ("Slide 1: Title" then "- point" lines).
+- Sound, video, programs and Photoshop files (.mp3 .wav .flac .m4a .mp4 .mov .mkv .avi .webm .exe .dll .psd) work too: give the path and, if the request is about them, "meta" (Title, Artist, Album, Date); leave "content" empty, because the test computer makes a small real file of that kind. Never write a file's bytes, base64 or hex.
+- Keep each file short: what the job needs, never more than about 3,000 characters.
 - folders: folders that must already exist, even empty (where the request saves, moves or sorts things).
 - board: the notice board lists the request talks about, with a few realistic items each, including any item it says to change, tick off or remove.
 - memory: facts Bob already remembers that the request talks about, one short sentence each.`;
@@ -30,13 +32,42 @@ export const sceneAsk = (text, { today = '' } = {}) => [
 const str = (v, max) => (typeof v === 'string' ? v : v == null ? '' : String(v)).slice(0, max);
 const badPath = (p) => !p || p.length > 260 || /[\0\r\n<>|"?*]/.test(p.replace(/^[A-Za-z]:/, '')) || /(^|[\\/])\.\.([\\/]|$)/.test(p);
 
+// 16 Nov (800-job read): 9 scenes were lost as "not JSON", 8 of them cut off mid-string when the reply ran out of room
+// (a long log or a program written out as text). The whole items before the cut are kept: the reply up to the last
+// value that closed, with its open lists and objects closed after it. '' when nothing whole is there.
+export function salvageJson(raw) {
+  const t = String(raw ?? ''); const start = t.indexOf('{'); if (start < 0) return '';
+  const stack = []; let inStr = false, esc = false, best = '';
+  for (let i = start; i < t.length; i++) {
+    const ch = t[i];
+    if (inStr) {
+      if (esc) esc = false; else if (ch === '\\') esc = true;
+      else if (ch === '"') { inStr = false; if (stack.at(-1) === '[') best = t.slice(start, i + 1) + stack.slice().reverse().map((c) => (c === '{' ? '}' : ']')).join(''); }
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === '{' || ch === '[') stack.push(ch);
+    else if (ch === '}' || ch === ']') {
+      stack.pop();
+      if (!stack.length) return t.slice(start, i + 1);
+      best = t.slice(start, i + 1).replace(/,\s*$/, '') + stack.slice().reverse().map((c) => (c === '{' ? '}' : ']')).join('');
+    }
+  }
+  return best;
+}
+
 // The brain's answer -> a checked scene. Never throws: what was wrong is listed in problems and left out.
 export function parseScene(text) {
   const problems = [];
   let raw = String(text ?? '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
   const a = raw.indexOf('{'), b = raw.lastIndexOf('}');
   let v = null;
-  try { v = JSON.parse(a >= 0 && b > a ? raw.slice(a, b + 1) : raw); } catch (e) { problems.push(`not JSON (${String(e.message).slice(0, 80)})`); }
+  try { v = JSON.parse(a >= 0 && b > a ? raw.slice(a, b + 1) : raw); } catch (e) {
+    const kept = salvageJson(raw); let w = null;
+    try { w = kept ? JSON.parse(kept) : null; } catch {}
+    if (w && typeof w === 'object' && !Array.isArray(w)) { v = w; problems.push('reply cut off; what was whole before the cut was kept'); }
+    else problems.push(`not JSON (${String(e.message).slice(0, 80)})`);
+  }
   const scene = { files: [], folders: [], board: [], memory: [] };
   if (!v || typeof v !== 'object' || Array.isArray(v)) { if (v) problems.push('not a JSON object'); return { scene, problems, ok: false }; }
   const cleanMeta = (m) => (m && typeof m === 'object' && !Array.isArray(m) ? Object.fromEntries(Object.entries(m).slice(0, 12).map(([k, x]) => [str(k, 40), str(x, 300)]).filter(([k, x]) => k && x)) : undefined);
@@ -60,7 +91,7 @@ export function parseScene(text) {
     if (had) had.items.push(...items.filter((x) => !had.items.includes(x))); else if (scene.board.length < SCENE_LIMITS.lists && items.length) scene.board.push({ list: list.list, items });
   }
   for (const m of [].concat(v.memory || [])) { const t = str(m, 300).replace(/\s+/g, ' ').trim().replace(/^-\s*/, ''); if (t && scene.memory.length < SCENE_LIMITS.memory) scene.memory.push(t); }
-  return { scene, problems, ok: true };
+  return { scene, problems, ok: true, ...(problems.some((x) => /^reply cut off/.test(x)) ? { cut: true } : {}) };
 }
 
 // Asks the served brain for a scene. chat(messages) -> the reply's text. One more try when the reply isn't JSON.
@@ -68,9 +99,12 @@ export async function makeScene(text, chat, { today = '' } = {}) {
   const msgs = sceneAsk(text, { today });
   let reply = await chat(msgs);
   let got = parseScene(reply);
-  if (!got.ok) {
-    reply = await chat([...msgs, { role: 'assistant', content: String(reply || '').slice(0, 2000) }, { role: 'user', content: 'That was not valid JSON. Answer again with the JSON object only.' }]);
+  if (!got.ok || got.cut) {
+    const first = got;
+    reply = await chat([...msgs, { role: 'assistant', content: String(reply || '').slice(0, 2000) }, { role: 'user', content: 'That was not valid JSON (it may have been cut off). Answer again with the JSON object only, and keep it short: each file under 3,000 characters, and no content at all for sound, video, program or Photoshop files.' }]);
     got = parseScene(reply);
+    // a cut reply's whole part stays when the second try is no better
+    if (first.ok && (!got.ok || (got.cut && got.scene.files.length < first.scene.files.length))) got = first;
   }
   return got;
 }
@@ -92,7 +126,12 @@ export function plantScene(kit, scene, { day = new Date().toISOString().slice(0,
   const own = path.resolve(kit.cfg.agentDir).toLowerCase();
   const ownFolder = (r) => r.toLowerCase() === own || r.toLowerCase().startsWith(own + path.sep);
   const inWorld = (r) => kit.worldDir && r.toLowerCase().startsWith(path.resolve(kit.worldDir).toLowerCase() + path.sep);
-  const open = (r) => (inWorld(r) ? kit.allow(r) : (fs.mkdirSync(r, { recursive: true }), r));
+  // 16 Nov (800-job read, fx-34ae13c2d9): a scene made C:\\Backup\\Old Projects\\2023\\ProjectA and ProjectB, the job was
+  // to zip 2023, and only the two inner folders were allowed. A person who keeps folders there has ticked the folder
+  // they sit in: the first folder under the drive (C:\\Backup) is allowed too, never the drive itself.
+  const top = (r) => { const rel = path.relative(path.resolve(kit.worldDir), r).split(path.sep); return rel.length > 2 ? path.join(path.resolve(kit.worldDir), rel[0], rel[1]) : ''; };
+  const open = (r) => { if (!inWorld(r)) { fs.mkdirSync(r, { recursive: true }); return r; } const t = top(r); if (t) kit.allow(t); return kit.allow(r); };
+  const office = kit.cfg?.officePath || '';
   for (const d of scene.folders || []) {
     const r = kit.place(fullPath(d));
     if (!r || ownFolder(r)) { out.skipped.push({ path: d, why: 'outside the test folders' }); continue; }
@@ -101,8 +140,8 @@ export function plantScene(kit, scene, { day = new Date().toISOString().slice(0,
   for (const f of scene.files || []) {
     const r = kit.place(fullPath(f.path));
     if (!r || ownFolder(r)) { out.skipped.push({ path: f.path, why: r ? "inside Bob's own folder" : 'outside the test folders' }); continue; }
-    const bytes = sceneBytes({ ...f, path: r });
-    if (!bytes) { out.skipped.push({ path: f.path, why: `this test home can't make ${path.extname(r) || 'that kind of'} files` }); continue; }
+    const bytes = sceneBytes({ ...f, path: r }, { office });
+    if (!bytes) { out.skipped.push({ path: f.path, why: `this test home can't make ${path.extname(r) || 'that kind of'} files${/\.(xls|ppt)$/i.test(r) && !office ? ' without LibreOffice (--office)' : ''}` }); continue; }
     open(path.dirname(r));
     fs.writeFileSync(r, bytes); out.files.push(kit.neutral(r));
     if (CODE.test(r) && !out.codeDirs.includes(path.dirname(r))) out.codeDirs.push(path.dirname(r));
@@ -135,4 +174,24 @@ export function sceneCache(file) {
     get: (id, text) => rows.get(`${id}\n${norm(text)}`) || null,
     put(row, to) { rows.set(`${row.id}\n${norm(row.text)}`, row); if (to) { fs.mkdirSync(path.dirname(to), { recursive: true }); fs.appendFileSync(to, JSON.stringify(row) + '\n'); } }
   };
+}
+
+// 16 Nov (800-job read): the request named a file the scene left out (setup.exe, family_trip.mp4: the old scene prompt
+// said "no sound, video or program files"), so Bob was sent after a file that wasn't there. A named file of a kind that
+// needs no words inside (sound, video, programs, pictures, archives, Photoshop) is added; one whose words matter (a
+// script, a report) is left for the read to see (harness-faults.mjs: scene_missing_file), never made up here.
+const NO_WORDS = /\.(mp3|wav|flac|ogg|m4a|mp4|mov|mkv|avi|webm|exe|dll|psd|png|jpe?g|gif|bmp|webp|tiff?|ico|zip|tar|gz|tgz)$/i;
+export function fillNamed(scene, text, named) {
+  const t = String(text || '');
+  const have = new Set([...(scene?.files || [])].map((f) => String(f.path || f).split(/[\\/]/).pop().toLowerCase()));
+  const home = t.match(/\b(Downloads|Desktop|Documents|Pictures|Music|Videos)\b/i)?.[1];
+  const out = [];
+  for (const f of named(t)) {
+    const b = f.split(/[\\/]/).pop();
+    if (!NO_WORDS.test(b) || have.has(b.toLowerCase())) continue;
+    const p = f.replace(/\\\\/g, '\\');
+    out.push({ path: /[\\/]/.test(p) ? p : home ? `${home[0].toUpperCase()}${home.slice(1).toLowerCase()}\\${p}` : p, content: '' });
+    have.add(b.toLowerCase());
+  }
+  return out;
 }

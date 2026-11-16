@@ -146,8 +146,11 @@ check('core: "mention it and ask" is only about extras nobody asked for', /only 
   const one = await t.search_files.run({ project: 'Beta', text: 'spawnenemy' });
   check('search_files with a project searches only that one', one.includes('Wave.cpp') && !one.includes('Enemy.cpp'));
   let err = '';
-  try { await buildTools({ ...cfg, projects: {} }).search_files.run({ text: 'xx' }); } catch (e) { err = e.message; }
-  check('no projects: a plain error with another way to look', /No projects are set up yet/.test(err));
+  try { await buildTools({ ...cfg, projects: {}, readRoots: [] }).search_files.run({ text: 'xx' }); } catch (e) { err = e.message; }
+  check('no projects and no folders he may read: a plain error with another way to look', /No projects are set up and no folder was given/.test(err) && /list_folder/.test(err) && !/config\.json/.test(err), err);
+  // Nov 16 (800-job run): no project, but folders he may read: it searches those
+  const home = await buildTools({ ...cfg, projects: {} }).search_files.run({ text: 'spawnenemy' });
+  check('no projects: it searches the folders he may read, and says so', /no project is set up, so this searched/.test(home), home);
   check('make_music: picks a style when none was given', /No style given\? Pick one/.test(t.make_music.schema.function.parameters.properties.prompt.description));
   check('ask_specialist: passes the job on without asking for paths', /don't ask for paths first/.test(t.ask_specialist.schema.function.parameters.properties.task.description));
   check('web search off: offers the switch (1.5.91: the Set it up card)', /offer_setup with "web"/.test(webPrompt({ userName: 'Sam' })) && /switch/i.test(webPrompt({ userName: 'Sam' })));

@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -23,6 +24,9 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scenes test '));
 
 // ---- parseScene ----
 {
+  // 16 Nov (800-job read): 9 scenes lost as "not JSON", most cut off mid-string; the whole files before the cut stay
+  const cut = parseScene('{"files":[{"path":"C:\\\\Temp\\\\a.txt","content":"x"},{"path":"C:\\\\Temp\\\\big.log","content":"line 1\\nline 2\\nli');
+  check('a reply cut off mid-string keeps the whole files before the cut', cut.ok && cut.cut && cut.scene.files.length === 1 && /cut off/.test(cut.problems.join()), JSON.stringify(cut));
   const p = parseScene('Here you go:\n```json\n{"files":[{"path":"C:\\\\Temp\\\\a.txt","content":"x"},{"path":"..\\\\up.txt","content":"y"},{"path":"C:\\\\a<b>.txt"}],"folders":["C:\\\\Archive","C:\\\\Archive"],"board":["loose item",{"list":"## Gardening","items":["water",""]},{"list":"gardening","items":["weed"]}],"memory":["- Likes tea."]}\n```');
   check('a scene in a code fence with words around it is read', p.ok && p.scene.files.length === 1 && p.scene.files[0].path === 'C:\\Temp\\a.txt');
   check('paths that climb out (..) or hold bad characters are left out and listed', p.problems.length === 2 && p.problems.every((x) => /left out/.test(x)), JSON.stringify(p.problems));
@@ -48,7 +52,15 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scenes test '));
   check('a photo carries the GPS, camera and date the job is about', jf.some((f) => f.what === 'GPS location' && /51\.507, -0\.128/.test(f.value)) && jf.some((f) => f.value === 'Pixel 8') && jf.some((f) => /2024:05:01/.test(f.value)), JSON.stringify(jf));
   check('a PNG carries text notes (an AI prompt too) and EXIF', gf.some((f) => /parameters/.test(f.what)) && gf.some((f) => f.what === 'GPS location'));
   check('a zip holds its files, never one that climbs out', (() => { const names = [...sf.zipStore([{ name: 'a', data: 'b' }]).toString('latin1').matchAll(/a/g)].length > 0; const zt = fs.readFileSync(z).toString('latin1'); return names && zt.includes('in/a.txt') && !zt.includes('bad.txt'); })());
-  check("sound, video and programs aren't faked", sf.sceneBytes({ path: 'x.mp3' }) === null && sf.sceneBytes({ path: 'x.exe' }) === null && sf.sceneBytes({ path: 'x.mp4' }) === null && sf.sceneBytes({ path: 'x.py', content: 'print(1)\r\n' }).toString() === 'print(1)\n');
+  // 16 Nov (800-job read): 32 of 47 test-world faults were files the scene asked for and the test home skipped
+  const head = (p, meta) => sf.sceneBytes({ path: p, content: 'Slide 1: Q3 Strategy\n- grow sales', ...(meta ? { meta } : {}) });
+  const mp3 = head('x.mp3', { Title: 'Beach day', Artist: 'Sam Lee' }), wavB = head('x.wav'), mp4 = head('x.mp4'), exe = head('x.exe'), dll = head('x.dll'), psdB = head('x.psd'), ppt = head('x.pptx'), tgz = sf.sceneBytes({ path: 'logs.tar.gz', inside: [{ path: 'a.log', content: 'boom' }] });
+  check('sound, video and programs are real files of their kind now, not skipped', mp3.subarray(0, 3).toString() === 'ID3' && mp3.includes(Buffer.from('Beach day')) && wavB.subarray(8, 12).toString() === 'WAVE' && mp4.subarray(4, 8).toString() === 'ftyp'
+    && ['mov', 'mkv', 'webm', 'avi', 'flac', 'ogg', 'm4a', 'gif', 'webp', 'bmp', 'ico', 'tiff'].every((e) => head('x.' + e)?.length > 20));
+  check('a program is a real Windows program that only returns', exe.subarray(0, 2).toString() === 'MZ' && exe.readUInt32LE(0x3c) === 0x40 && exe.subarray(0x40, 0x44).toString('latin1') === 'PE\0\0' && exe[0x200 + 2] === 0xc3 && (dll.readUInt16LE(0x44 + 18) & 0x2000) === 0x2000);
+  check('a Photoshop file and a slide deck carry what the scene said', psdB.subarray(0, 4).toString() === '8BPS' && (fs.writeFileSync(path.join(tmp, 'deck.pptx'), ppt), /Q3 Strategy[\s\S]*grow sales/.test(text(path.join(tmp, 'deck.pptx')))), text(path.join(tmp, 'deck.pptx')).slice(0, 120));
+  check('a .tar.gz holds its files', zlib.gunzipSync(tgz).includes(Buffer.from('boom')) && zlib.gunzipSync(tgz).subarray(257, 262).toString() === 'ustar');
+  check('old Word falls back to Rich Text without LibreOffice; old Excel and disk images stay skipped', /^\{\\rtf1/.test(head('x.doc').toString()) && head('x.xls') === null && head('x.iso') === null && sf.sceneBytes({ path: 'x.py', content: 'print(1)\r\n' }).toString() === 'print(1)\n');
   check('the CRC matches the standard check value', sf.crc32(Buffer.from('123456789')) === 0xcbf43926);
 }
 
@@ -59,9 +71,10 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scenes test '));
   check('C:\\Temp, /home/user and the home all land inside the throwaway folder', [r, u, h, own].every((x) => x && kit.inTmp(x)) && r.includes(path.join('world', 'C', 'Temp')) && u.includes(path.join('world', '_', 'home')) && own === path.resolve(kit.cfg.noticeBoard), [r, u, h, own].join(' | '));
   check('a path that climbs out of the throwaway folder is refused', kit.place('C:\\..\\..\\..\\..\\..\\..\\..\\..\\etc\\passwd') === '' && kit.sandboxArgs({ path: 'C:\\..\\..\\..\\..\\..\\..\\..\\..\\etc\\x' }).bad);
   check('the brain sees them by their own names again', /^C:[\\/]Temp[\\/]a\.txt$/.test(kit.neutral(r)) && kit.neutral(u) === '/home/user/x.py' && kit.neutral(h) === 'C:\\Users\\you\\Documents\\b.txt' && kit.neutral(JSON.stringify({ p: u })) === '{"p":"/home/user/x.py"}', `${kit.neutral(r)} ${kit.neutral(u)}`);
-  const put = plantScene(kit, { files: [{ path: 'C:\\Temp\\a.txt', content: 'one' }, { path: 'C:\\Users\\you\\AppData\\Local\\Bob\\Agent\\inn\\bob-memory.md', content: 'sneaky' }, { path: 'clip.mp4' }], folders: ['C:\\Archive'], board: [{ list: 'Work', items: ['[x] done one', 'open one'] }, { list: 'Side quests', items: ['first'] }], memory: ['Sam is the manager.'] }, { day: '2026-01-02' });
-  check("scene files and folders are planted, never into Bob's own folder, and a video is skipped", put.files.length === 1 && put.folders.length === 1 && put.skipped.length === 2 && put.skipped.some((s) => /Bob's own folder/.test(s.why)) && fs.readFileSync(r, 'utf8') === 'one');
+  const put = plantScene(kit, { files: [{ path: 'C:\\Temp\\a.txt', content: 'one' }, { path: 'C:\\Users\\you\\AppData\\Local\\Bob\\Agent\\inn\\bob-memory.md', content: 'sneaky' }, { path: 'clip.mp4' }, { path: 'C:\\Backup\\Old\\2023\\ProjectA\\x.txt', content: 'a' }, { path: 'disk.iso' }], folders: ['C:\\Archive'], board: [{ list: 'Work', items: ['[x] done one', 'open one'] }, { list: 'Side quests', items: ['first'] }], memory: ['Sam is the manager.'] }, { day: '2026-01-02' });
+  check("scene files and folders are planted, never into Bob's own folder, a video is made and a disk image skipped", put.files.length === 3 && put.files.some((f) => /clip\.mp4$/.test(f)) && put.folders.length === 1 && put.skipped.length === 2 && put.skipped.some((s) => /\.iso/.test(s.why)) && put.skipped.some((s) => /Bob's own folder/.test(s.why)) && fs.readFileSync(r, 'utf8') === 'one');
   check('a scene folder outside the home is one Bob may use (as if ticked in Settings)', kit.cfg.readRoots.some((x) => /Archive$/.test(x)) && kit.cfg.hands.folders.some((x) => /Archive$/.test(x)) && kit.cfg.readRoots.some((x) => /Temp$/.test(x)));
+  check('the folder those sit in under the drive is allowed too (C:\\Backup), never the drive itself', kit.cfg.readRoots.some((x) => x.endsWith(path.join('world', 'C', 'Backup'))) && !kit.cfg.readRoots.some((x) => x.endsWith(path.join('world', 'C'))), kit.cfg.readRoots.join(' | '));
   const board = String(await kit.brain.tools.notice_board.run({ action: 'read' }));
   check('the board is in Bob\'s own format: Side quests first, ticked items ticked', /## Side quests\n- \[ \] first/.test(board) && /- \[x\] done one/.test(board) && /- \[ \] open one/.test(board), board.slice(0, 200));
   check('memory lines are in Bob\'s own "- fact (date)" format', fs.readFileSync(kit.cfg.memoryFile, 'utf8') === '- Sam is the manager. (2026-01-02)\n');

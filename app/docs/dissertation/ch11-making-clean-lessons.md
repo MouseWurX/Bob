@@ -11,9 +11,9 @@ The chapter is a method in progress. Most of its effect on a trained model is **
 Status matters here, so we state it up front.
 
 - PRs #254 (the lesson kit), #257 (the never-taught gate) and #263 (the lesson pre-flight) shipped in release 1.5.238 on 15 November 2026, whose pre-release check passed 276 of 276 test suites (1.5.238-PC-CHECKS.md).
-- PR #251 (Qwen tool shape v2 and the GPT-OSS shape) shipped in the same release but has not been re-tested.
+- PR #251 (Qwen tool shape 2) shipped in the same release but has not been re-tested. The locked shapes, Qwen shape 4 and GPT-OSS shape 3, shipped later in PR #271 (release 1.5.240) and have not been re-scored either (section 8.10).
 - The pre-flight values of section 11.5 (PR #263) are taken from the lab PC's console log of the lkt-fix3 run.
-- The 534 held-out test items were sorted by Haiku with a 5% Opus spot-check. On 15 November the owner chose to keep the held-out tests as they are while the full Opus re-sort of the lessons runs.
+- The 534 held-out test items were sorted by Haiku with a 5% Opus spot-check. On 15 November MouseWurX chose to keep the held-out tests as they are while the full Opus re-sort of the lessons runs.
 - The decisive retraining on reviewed lessons has **not** been run.
 
 Sources are docs/TOOL-LESSONS-PLAN.md, docs/ROADMAP-ONE-MODEL.md, the "Clean-lesson pipeline" section of checked-numbers.md, the rentals hand-off of 15 November 2026 (HANDOFF-rentals-2026-11-15.md) and the lab PC's run files as copied into those documents.
@@ -117,11 +117,11 @@ Each old set receives one of three marks: clean, mend (only flagged rows are rew
 
 ### 11.4.4 Tool shapes are locked first
 
-Chapter 8 found that the misses are about tool shape. So the shape is chosen before the lessons are written. The plan says the final lessons are written once the owner has picked each brain family's tool shape (TOOL-LESSONS-PLAN.md).
+Chapter 8 found that the misses are about tool shape. So the shape is chosen before the lessons are written. The plan says the final lessons are written once MouseWurX has picked each brain family's tool shape (TOOL-LESSONS-PLAN.md).
 
-A shape has a version. The Qwen tree used in the rewrite runs carries `TOOL_SHAPES = 2` in src/tool-sets.js. Reviewers must use the shape-2 tool file, because the main-branch tool file lacks the `save_to` input (hand-off).
+A shape has a version, `TOOL_SHAPES` in src/tool-sets.js. MouseWurX locked the shapes on 15 November: shape 4 for Qwen brains and shape 3 for GPT-OSS brains (section 8.10). The early rewrite runs reported in this chapter, lkt-fix1 to lkt-fix3, were made on a shape-2 Qwen tree, before the lock, and their lessons say so in their `tool_shapes` stamp. Later lesson runs use the shape-4 tree and pass `--want-shapes 4` in the pre-flight, and the real-jobs runs of draft PR #275 run Bob's real loop with the shape-4 tools. Lessons for GPT-OSS brains are written on shape 3 and stamped `family: gpt-oss`. Lessons from a shape-2 tree are converted to shape 4 or dropped before any Qwen training, and are never mixed in unmarked (section 4.9.4).
 
-A tool that already works for a family keeps its shape. "Working" means about 9 in 10 right, tool and inputs, in both thinking modes. Only failing tools get new shapes (TOOL-LESSONS-PLAN.md, section 2). Lessons are stored once, in Bob's tool names, and each family's wording is added at training time. PR #254 is titled "Lab: lesson kit on main, one lesson set per brain family", and we take that newer title as current. The two statements do not fully agree, and we did not find a file that resolves it.
+A tool that already works for a family keeps its shape. "Working" means about 9 in 10 right, tool and inputs, in both thinking modes. Only failing tools get new shapes (TOOL-LESSONS-PLAN.md, section 2). An older line of the plan said that lessons are stored once, in Bob's tool names, with each family's wording added at training time. That line is superseded. MouseWurX's rule of 15 November is one lesson set per brain family, never cross-trained, and the code enforces it: every lesson carries a `family` stamp (model-lab/write-lessons.mjs, `--family qwen|gpt-oss`) and the heal skips a lesson stamped for another family (model-lab/forge/pod/data.py). The tool names and inputs are still the same for every family, so a lesson's calls need no renaming, but each family's lessons are written by a teacher of that family on that family's shape.
 
 ### 11.4.5 Every tool result is real, or labelled
 
@@ -167,7 +167,7 @@ Before a lesson rental, code checks the plan and stops if it is wrong. On the lo
 |---|---|
 | Ideas file rows counted | 211 |
 | Already written (skipped) | 94 done, 117 to go |
-| Tool shape | 2, checked |
+| Tool shape | 2, checked (before the shapes were locked; later runs check 4) |
 | Room per slot | 32,768 tokens (longest first request about 10,838, plus 16,384 to grow) |
 | Sample gate | on: the first 10 ideas must save at least 60% |
 
@@ -218,7 +218,7 @@ Four rules shape how the reviewer is used.
 
 Scripts alone are not trusted to judge a lesson. A figure that scripts agreed with readers only 41% of the time was suggested for this chapter, but it is in no file we found. We do not use it.
 
-What the files show is a full read. Opus read all 5,788 non-held-out tool lessons (Table 11.1). The test items were read differently. Haiku sorted the 534 held-out items, and Opus spot-checked 5% of them (hand-off). The result was 148 keep, 381 fix and 5 discard (checked-numbers.md). So the test items have not had a full Opus read, and the owner chose on 15 November to keep them as they are while the full Opus re-sort of the lessons runs.
+What the files show is a full read. Opus read all 5,788 non-held-out tool lessons (Table 11.1). The test items were read differently. Haiku sorted the 534 held-out items, and Opus spot-checked 5% of them (hand-off). The result was 148 keep, 381 fix and 5 discard (checked-numbers.md). So the test items have not had a full Opus read, and MouseWurX chose on 15 November to keep them as they are while the full Opus re-sort of the lessons runs.
 
 ## 11.7 First results, with honest keep rates
 
@@ -274,6 +274,33 @@ Part of the low yield is the result of set-up faults and not of the method. lkt-
 
 Spending so far, from the hand-off and the console log, is about $0.41 (two hung cards), $0.55 (lkt-fix1), $0.82 (lkt-fix2) and $0.31 (lkt-fix3). Added together, that is about $2.09. The figures come from different files, and the sum is our arithmetic. The rewrite of the whole 5,565-idea file has not been costed from these rounds, and we do not extrapolate from them.
 
+### 11.7.5 Real-job lessons (added 16 November)
+
+The rounds above all had a teacher write the lessons. From 15 November a second route ran beside them: a served brain does real requests through Bob's real loop and tools, each in its own test world (section 3.6.9), an Opus reader grades every run, and only the runs marked keep become lessons, unchanged. The brain was Qwen3.8-Flash-Next on a rented H200. The requests came from the fix list of the old lesson set, so they are the jobs the old lessons got wrong.
+
+| Run | Jobs | Keep | Fix | Discard | Harness broke it | Status |
+|---|---|---|---|---|---|---|
+| Run 2 | 45 | 14 | 28 | 1 | 2 | Checked (run 3's opus-read.md, which compares the two) |
+| Run 3 (same 45 jobs) | 45 | 7 | 22 | 6 | 10 | Checked (opus-read.md) |
+| 800 fix-list jobs | 800 | 402 | 315 | 36 | 47 | Checked (jobs-fix1/read/opus-read.jsonl) |
+
+Table 11.6. Real-job runs and the Opus reader's verdicts.
+
+Run 3 and the 800 jobs ran on one rental, which cost about $19.30 and deleted itself at the end. In the 800, the brain answered in words in 798 runs. Two runs failed with a server error. It never called a tool it was not offered. 415 runs had a planted scene, and the run made 363 web searches. The 402 keeps were turned into lessons (Qwen, tool shape 4, 12 tool lists), scrubbed, checked again and not uploaded. A separate test of a small distilled model on 100 real jobs gave 195 more keeps by the same route; that thread reports its own numbers.
+
+The keep rate of the 800, about 50% (our arithmetic), is far above the rates of written lessons in table 11.4. The two are not directly comparable. A real-job lesson is graded on what really happened, so it cannot carry an invented tool result. A written lesson can, and the full read of chapter 6 found that fault often. The reader also judged a whole run, not a rewritten lesson.
+
+What the reads found, by count of runs tagged:
+- **Bob's loop:** repeated_answer 119, mostly caused by Bob's own nudges (section 4.5.5).
+- **The brain:**
+  - needless_step 117;
+  - unsupported_claim 100, mostly small facts stated from memory or sums done in its head;
+  - asked_when_should_act 59, mostly asking for a file the scene had already put in Documents;
+  - invented_result 24, including memory saves with no remember call.
+- **The harness:** the 47 runs it broke came from files the test home cannot make (.pptx, .mp3, .mp4, .wav, .exe, .psd), scenes that were not valid JSON, and the three gaps fixed in section 3.6.9.
+
+Two lessons for the method follow. First, a recorded run teaches the loop as well as the brain: a false nudge in the loop becomes a repeated answer in the lesson, so the loop's checks were fixed before the next run (section 4.5.5). Second, the reader cannot check what it cannot see. Tool results were cut to 2,000 characters for the read, and the readers marked figures in the cut part as unchecked rather than wrong.
+
 ## 11.8 Discussion
 
 ### 11.8.1 What the method buys
@@ -292,6 +319,7 @@ The reader's verdicts are one model's judgement. We have no human check of a sam
 - **Small rounds.** lkt-fix1 has 94 saved lessons (100 verdicts), and lkt-fix2 has 94 saved lessons without review.
 - **Set-up faults inflate failure.** Some of the low yield comes from wrong folders, hung cards and a lab bug, so it is not a clean measure of the method.
 - **Real tools are partial.** Media, web, e-mail and app tools are stand-ins, so tool results for them are labelled and not real.
+- **Real jobs carry the loop.** A real-job lesson keeps whatever Bob's loop did in that turn, nudges included. Hidden notes are dropped, but the replies they caused stay (section 4.5.5).
 - **Held-out tests unchanged.** The 534 test items still carry the leak of chapter 7 until the tests are replaced; the never-taught gate (shipped in 1.5.238) only stops them being taught.
 - **Status.** PRs #254, #257 and #263 shipped in 1.5.238. PR #251 shipped too but is not re-tested.
 
@@ -313,7 +341,7 @@ The question that the dissertation asks cannot be answered without a trained mod
 
 **Cost.** The roadmap's rough estimate for the first full training run is about 18 to 24 hours on an H200 and about $95 to $130 (ROADMAP-ONE-MODEL.md, stage 5). The cost of three arms is **not measured**.
 
-**Preconditions.** The full Opus re-sort of the lessons must finish. The never-taught gate (PR #257, shipped in 1.5.238) must run on the plan. The test items must be replaced or re-sorted. Every step also waits for the owner's typed go, because nothing trains or rents without one.
+**Preconditions.** The full Opus re-sort of the lessons must finish. The never-taught gate (PR #257, shipped in 1.5.238) must run on the plan. The test items must be replaced or re-sorted. Every step also waits on approval, because nothing trains or rents without it.
 
 ## 11.11 Future work
 

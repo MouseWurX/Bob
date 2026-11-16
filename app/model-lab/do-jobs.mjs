@@ -12,6 +12,7 @@
 //      [--search-probe] [--search-gap 2] [--search tavily] [--search-month N] [--search-cap N [--search-group <name>]]
 //      [--family qwen|gpt-oss]
 //      [--search-ledger <file>] [--effort low|medium|high|extreme] [--solo-effort] [--lora-scale N] [--scenes-only]
+//      [--no-selftest] [--world-stop off] [--search-stop off]
 //      [--search-cache <file>] [--cap-go-on] [--leave-out-kinds web,...]
 // Jobs: one per line, {id, text, setup?: [{path, content}]} (the lesson writer's ideas files work as they are; only the
 // request and its starting files are used, never an old answer). --never: held-out / test files; a job whose request
@@ -63,7 +64,9 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { opts, locate, appendJsonl, readJsonl } from './common.mjs';
 import { loadBob } from './bob-kit.mjs';
-import { makeScene, plantScene, sceneCache } from './scenes.mjs';
+import { makeScene, plantScene, sceneCache, fillNamed } from './scenes.mjs';
+import { harnessFaults, namedFiles, TYPED_CHOICE, FAULTS } from './harness-faults.mjs';
+import { png as pngFile, pdf as pdfFile } from './scene-files.mjs';
 import { labKey, scrubber, tavilyCheck, tavilyUsage } from './lab-keys.mjs';
 
 const o = opts({ parallel: 2, max: 4096, 'job-minutes': 10, hours: 0, 'search-gap': 2 });
@@ -78,6 +81,10 @@ const save = (file, row) => appendJsonl(file, JSON.parse(scrub(JSON.stringify(ro
 // a search that found nothing, or Bob's line for search pages showing a robot check (web-search.js, 16 Nov); inside a job
 // Bob hands the result on wrapped as outside text, so that wrapper may come first (16 Nov, found by the A3B test thread)
 const BLOCKED = /^(?:\[Outside text starts[^\]\n]*\]\s*)?(?:No results \(or the search pages changed\)|The search pages are blocking this computer)/;
+// 16 Nov (800-job read, 2 runs lost): half an emoji in a request (\ud83d with no partner) made llama-server refuse the
+// whole request ("parse error"). Every request body goes out whole: such a half becomes \ufffd. (Bob's own engine does
+// the same since this change, llamacpp.js whole(); this covers an older Bob copy too.)
+const wholeBody = (body) => JSON.stringify(body).replace(/\\u[dD][89abAB][0-9a-fA-F]{2}(?!\\u[dD][c-fC-F][0-9a-fA-F]{2})|(?<!\\u[dD][89abAB][0-9a-fA-F]{2})\\u[dD][c-fC-F][0-9a-fA-F]{2}/g, '\\ufffd');
 const fail = (why) => { console.log(scrub(`PRE-FLIGHT FAIL: ${why}`)); process.exit(1); };
 
 // ---- the jobs: requests only, held-out ones left out ----
@@ -215,12 +222,40 @@ if (o['search-probe']) {
 }
 probe.done();
 if (!queue.length && !o.preflight) { say('nothing to run'); process.exit(0); }
+// 16 Nov (MouseWurX: "we need to close the gaps in the harness"): before any job, the harness checks itself with a
+// scripted brain on this computer (jobs-selftest.mjs: one job per way the 800-job run's test world went wrong). A
+// failure stops here, before a rented brain does a single job. --no-selftest skips it (the self-test's own runs use it).
+if (o['no-selftest'] !== true && (queue.length || o.preflight)) {
+  const { selfTest } = await import('./jobs-selftest.mjs');
+  const st = await selfTest({ bob: L.bob, office: o.office ? String(o.office) : '', log: (t) => say(`pre-flight: ${t}`) });
+  if (!st.ok) fail('the test world failed its self-test (above); fix it before spending a rental on it');
+  say(`pre-flight: the test world passed its self-test (${st.results.length} checks)`);
+}
 if (o.preflight) { say('pre-flight OK'); process.exit(0); }
 if (!url) fail('--url <llama-server> is needed');
 
 const bobUrl = (f) => pathToFileURL(path.join(L.bob, 'src', f)).href;
 const { textCalls, LlamaCpp } = await import(bobUrl('llamacpp.js'));
 const { checkArgs } = await import(bobUrl('loop-help.js'));
+let saveExport = null; try { ({ saveExport } = await import(bobUrl('diagram.js'))); } catch {}
+// 16 Nov (800-job read): make_diagram with save_to waits for the chat window to draw the diagram and send the file
+// back; a test home has no window, so the file never came and Bob searched for it (10 runs). The lab stands in for the
+// window: it sends back a small real file of the asked type through Bob's own save (diagram.js saveExport, which makes
+// the copy save_to asked for). The file holds the diagram's Mermaid text, not a drawing of it; the run row says so
+// (call.drawn, "stand-in window"), so a read never takes it for a picture Bob drew.
+function standInWindow(kit, text) {
+  const dest = String(text).match(/saves it to (.+?) \(a taken name/)?.[1] || '';
+  const ext = (dest.match(/\.(png|svg|pdf)$/i)?.[1] || 'png').toLowerCase();
+  const dir = kit.cfg.painterDir; if (!saveExport || !dir || !fs.existsSync(dir)) return '';
+  const mmd = fs.readdirSync(dir).filter((f) => f.endsWith('.mmd')).map((f) => ({ f, t: fs.statSync(path.join(dir, f)).mtimeMs })).sort((a, b) => b.t - a.t)[0]?.f;
+  if (!mmd) return '';
+  const src = fs.readFileSync(path.join(dir, mmd), 'utf8');
+  const title = (src.match(/^%% (.*)$/m)?.[1] || 'Diagram').slice(0, 80);
+  const esc = (x) => x.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const data = ext === 'svg' ? Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="640" height="${40 + 18 * src.split('\n').length}"><title>${esc(title)}</title>${src.split('\n').map((l, i) => `<text x="10" y="${30 + 18 * i}" font-family="monospace" font-size="14">${esc(l)}</text>`).join('')}</svg>`)
+    : ext === 'pdf' ? pdfFile(src, { Title: title, Creator: 'Bob Lab stand-in window' }) : pngFile({ Title: title, Mermaid: src.slice(0, 1900), Software: 'Bob Lab stand-in window' });
+  try { const r = saveExport(kit.cfg, { name: mmd, format: ext, data: data.toString('base64') }); return r.copy ? kit.neutral(r.copy) : r.copyError ? `not copied: ${kit.neutral(r.copyError)}` : ''; } catch (e) { return `not saved: ${kit.neutral(String(e.message || e))}`; }
+}
 const { MID_SYSTEM_REFUSED, foldSystem } = await import(bobUrl('system-notes.js'));
 const { thinkKwargs, samplingFor } = await import(bobUrl('model-family.js'));
 // how a step asks for thinking, and its sampling: Qwen as before; another family by Bob's own model-family.js
@@ -233,13 +268,15 @@ const today = new Date().toISOString().slice(0, 10);
 let jsonMode = true;
 async function sceneChat(messages) {
   const body = { cache_prompt: true, messages, max_tokens: 6000, stream: false, ...thinkBody(false), temperature: 0.3, top_p: 0.8, top_k: 20, ...loraBody, ...(jsonMode ? { response_format: { type: 'json_object' } } : {}) };
-  const r = await fetch(`${url}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...auth }, body: JSON.stringify(body) });
+  const r = await fetch(`${url}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...auth }, body: wholeBody(body) });
   if (!r.ok) { const full = await r.text(); if (jsonMode && /response_format|json_object|grammar/i.test(full)) { jsonMode = false; return sceneChat(messages); } throw new Error(`llama-server ${r.status}: ${full.slice(0, 200)}`); }
   return String((await r.json()).choices?.[0]?.message?.content || '');
 }
 async function sceneFor(j) {
   const had = scenes.get(j.id, j.text);
-  if (had) return { scene: had.scene, problems: had.problems || [], made: 'reused' };
+  // 16 Nov (800-job read): a scene whose reply couldn't be read was saved and then reused as an empty home every time;
+  // with --scene make it is written again instead
+  if (had && !(had.ok === false && sceneMode === 'make')) return { scene: had.scene, problems: had.problems || [], made: 'reused' };
   if (sceneMode !== 'make') return { scene: null, problems: [], made: 'none' };
   const got = await makeScene(j.text, sceneChat, { today });
   const row = { id: j.id, text: j.text, scene: got.scene, problems: got.problems, ok: got.ok, by: process.env.LAB_MODEL_NAME || 'served', at: new Date().toISOString() };
@@ -260,6 +297,7 @@ const cachePut = (k, text) => { if (cachePath && k && text && !BLOCKED.test(text
 let cacheHits = 0;
 // 16 Nov: the PC's IP was bot-blocked and every web_search came back with Bob's "No results" line
 let lastSearch = 0, noResultsInRow = 0, searchStop = false;
+// --search-stop off: keep going after 5 empty searches (a replay, jobs-recheck.mjs, is offline on purpose)
 async function searchTurn() { const gap = Number(o['search-gap']) * 1000; for (;;) { const w = lastSearch + gap - Date.now(); if (w <= 0) break; await wait(w); } lastSearch = Date.now(); }
 const ctxSize = Number(o['slot-ctx'] || o.ctx || 32768);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -303,6 +341,8 @@ async function runJob(j) {
   let sc = { scene: null, problems: [], made: 'none' };
   try { sc = await sceneFor(j); } catch (e) { sc.problems = [`scene not made: ${String(e.message || e).slice(0, 200)}`]; }
   const put = plantScene(kit, sc.scene, { day: today });
+  // a sound, video, program or picture file the request names but the scene left out is added (scenes.mjs fillNamed)
+  if (sc.made !== 'none') { const more = plantScene(kit, { files: fillNamed({ files: [...(sc.scene?.files || []), ...start.files.map((p) => ({ path: p }))] }, j.text, namedFiles) }, { day: today }); put.files.push(...more.files); put.skipped.push(...more.skipped); put.codeDirs.push(...more.codeDirs); }
   const planted = [...new Set([...start.files, ...put.files])];
   // 16 Nov (Opus read of run 3): a coding job's planted script sat outside any project, so Bob's guard (tools.js) refused
   // every edit and the job couldn't be done. Its folder is a project of this test home, as a person who codes with Bob has.
@@ -321,9 +361,12 @@ async function runJob(j) {
   brain.askUser = async ({ question, choices } = {}) => {
     const list = [...new Set([].concat(choices || []).map((c) => String(c ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean))];
     if (!String(question || '').trim() || list.length < 2) throw new Error('ask_user needs a question and at least 2 choices.');
-    // 16 Nov: the first real choice; "I'll type it" or "something else" picked first gave the brain nothing to go on
-    const typed = /^(?:i'?ll|let me|i will|i want to)\s+(?:type|tell|enter|write|give|say)|^(?:other|something else|none of (?:these|the above))\b/i;
-    return `${who()} picked: ${list.find((c) => !typed.test(c)) || list[0]}`;
+    // 16 Nov: the first real choice; "I'll type it" or "something else" picked first gave the brain nothing to go on.
+    // 800-job read: "here's the script path:" and "I'll type both" slipped past, so the wording list is shared with the
+    // fault check (harness-faults.mjs). When every choice is a "let me type it" one, the test person has nothing to type
+    // and says so, as a person in a hurry would, so the brain goes on with what it has instead of waiting forever.
+    const real = list.find((c) => !TYPED_CHOICE.test(c));
+    return real ? `${who()} picked: ${real}` : `${who()} picked: ${list[0]}\n${who()} typed: nothing more to add; go on with what you have and say what you assumed.`;
   };
   brain.runTool = async (name, args, ctx) => {
     if (typeof args === 'string') { try { args = JSON.parse(args); } catch { args = {}; } }
@@ -344,7 +387,8 @@ async function runJob(j) {
         : await Promise.race([bobRunTool(name, a, ctx), wait(120000).then(() => ({ text: `Error: ${name} took too long` }))]);
     } catch (e) { if (ctx?.signal?.aborted) throw e; res = { text: `Error: ${String(e?.message || e)}` }; }
     const t = typeof res === 'string' ? res : typeof res?.text === 'string' ? res.text : JSON.stringify(res ?? '');
-    if (name === 'web_search' && !bad && !hit) { cachePut(cacheKey(a), t); counted(tavilyUsed()); noResultsInRow = BLOCKED.test(t) ? noResultsInRow + 1 : 0; if (noResultsInRow >= 5) searchStop = true; }
+    if (name === 'web_search' && !bad && !hit) { cachePut(cacheKey(a), t); counted(tavilyUsed()); noResultsInRow = BLOCKED.test(t) ? noResultsInRow + 1 : 0; if (noResultsInRow >= 5 && String(o['search-stop'] ?? 'on').toLowerCase() !== 'off') searchStop = true; }
+    if (name === 'make_diagram' && /^Drawing: /.test(t)) { call.drawn = standInWindow(kit, kit.neutral(t)) || 'nothing drawn'; call.window = 'stand-in window (the lab, no chat window)'; }
     call.result = kit.neutral(t).slice(0, 6000);
     return { ...(res && typeof res === 'object' ? res : {}), text: kit.neutral(t) || '(no result)' };
   };
@@ -364,7 +408,7 @@ async function runJob(j) {
         ...thinkBody(family === 'qwen' ? think : asked), ...sampling(Boolean(q.tools?.length), asked), ...loraBody };
       const stepEffort = effortOf(asked); // GPT-OSS reasoning level of this step (the job's Effort is `effort`)
       const t0 = Date.now();
-      const r = await fetch(`${url}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...auth }, body: JSON.stringify(body), signal: q.signal });
+      const r = await fetch(`${url}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...auth }, body: wholeBody(body), signal: q.signal });
       if (!r.ok) {
         const full = await r.text();
         if (!strict && MID_SYSTEM_REFUSED.test(full)) { strict = true; asks--; return this.chat(q); }
@@ -395,19 +439,33 @@ async function runJob(j) {
     effort, solo_effort: solo, search_capped: steps.some((st) => (st.calls || []).some((c) => c.name === 'web_search' && /at its monthly cap/.test(String(c.result || '')))), ...(loraScale !== null ? { lora_scale: loraScale } : {}), family, tool_shapes: kit.toolShapes, bob_src: kit.bobSrc, brain: process.env.LAB_MODEL_NAME || 'served', at: new Date().toISOString(),
     messages: deepNeutral(kit, brain.session(session))
   };
+  // what the test world got wrong in this run, if anything (harness-faults.mjs): kept with the run for the read
+  const hf = harnessFaults(row); if (hf.length) row.harness = hf;
+  // the self-test reads back the files its jobs left (jobs-selftest.mjs), by the names the brain saw
+  if (process.env.LAB_SELFTEST_KEEP && kit.homeDir) {
+    const keep = process.env.LAB_SELFTEST_KEEP, walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (e.isDirectory()) walk(f); else { fs.mkdirSync(keep, { recursive: true }); fs.copyFileSync(f, path.join(keep, kit.neutral(f).replace(/^[A-Za-z]:/, '').replace(/[\\/]+/g, '_'))); } } };
+    try { walk(kit.homeDir); } catch {}
+  }
   kit.done();
   return row;
 }
 
 // ---- run, a few at a time (the owner: "dont drown it with a bunch of parallel runs") ----
 const stopAt = Number(o.hours) > 0 ? Date.now() + Number(o.hours) * 3600000 : Infinity;
-let next = 0, ran = 0;
+let next = 0, ran = 0, worldRuns = 0, worldStop = false;
+const worldKinds = {};
+// 16 Nov (MouseWurX: "we need to close the gaps in the harness"): once 10 runs are in, if 3 in 10 or more were decided
+// by the test world (harness-faults.mjs), no new job starts, so a rental isn't spent on runs the read can't use.
+// --world-stop off keeps going (for a run meant to find such faults).
+const worldStopOn = String(o['world-stop'] ?? 'on').toLowerCase() !== 'off';
 async function worker() {
   while (next < queue.length && Date.now() < stopAt) {
     const j = queue[next++];
     let row;
     try { row = await runJob(j); } catch (e) { row = { id: j.id, job: j.job, text: j.text, error: String(e.message || e).slice(0, 400), steps: [], at: new Date().toISOString() }; }
     save(F.runs, row); ran++;
+    if (row.harness?.length) { worldRuns++; for (const f of row.harness) worldKinds[f.kind] = (worldKinds[f.kind] || 0) + 1; say(`     test world: ${row.harness.map((f) => `${f.kind} (${String(f.detail).slice(0, 80)})`).join('; ')}`); }
+    if (worldStopOn && !worldStop && ran >= 10 && worldRuns / ran >= 0.3 && next < queue.length) { worldStop = true; say(`${worldRuns} of ${ran} runs were decided by the test world, not the brain (${Object.entries(worldKinds).map(([k, v]) => `${k} ${v}`).join(', ')}): stopping, so no more of the rental goes on runs the read can't use. Fix the test world (npm run lab:selftest) and run again.`); next = queue.length; }
     say(`${String(ran).padStart(3)} ${row.error ? 'ERR ' : row.said ? 'done' : 'no words'} ${row.id} ${String(row.text).slice(0, 60)} -> ${(row.steps || []).flatMap((s) => s.calls || []).map((c) => c.name).join(',') || 'no tool'} (${row.asks || 0} steps, ${(row.secs || 0).toFixed(0)} s${row.standins?.length ? `, stand-ins: ${row.standins.join(',')}` : ''})`);
     if (/ECONNREFUSED|fetch failed/.test(row.error || '')) { say('the brain is gone (connection refused): stopping'); next = queue.length; }
     if (searchStop && next < queue.length) { say('5 web searches in a row found nothing (the search pages may be blocking this PC): stopping, so no more of the rental goes on jobs whose searches fail'); next = queue.length; }
@@ -417,7 +475,7 @@ async function worker() {
 await Promise.all(Array.from({ length: Math.max(1, Number(o.parallel)) }, worker));
 const all = readJsonl(F.runs);
 const n = all.length, by = (f) => all.filter(f).length;
-const lines = [`# Do jobs: ${path.basename(dir)}`, '', `${n} runs. Answered in words: ${by((r) => r.said)}. Errors: ${by((r) => r.error)}. Called a tool this test Bob hasn't got: ${by((r) => r.missing?.length)}. With a scene: ${by((r) => r.scene?.files?.length || r.scene?.folders?.length || r.scene?.board || r.scene?.memory)}. Effort: ${effort}${solo ? ' (one brain)' : ''}. Every run is read by Opus before any is kept.${searchStop ? ' Stopped early: web search found nothing 5 times in a row.' : ''}${budgetStop ? ` Stopped early: ${runCap - capUsed() <= 0 ? `this run's search cap (${runCap})` : "this month's search budget"} was used.` : ''}`, '', `Web searches this run: ${webSearches}${cachePath ? ` (+${cacheHits} answered from the shared cache)` : ''}; Tavily searches (the backup, and key checks): ${searches}${Number.isFinite(searchesLeft()) ? ` (about ${Math.max(0, searchesLeft())} more allowed)` : ''}. Jobs not started: ${Math.max(0, queue.length - ran)}.`];
+const lines = [`# Do jobs: ${path.basename(dir)}`, '', `${n} runs. Answered in words: ${by((r) => r.said)}. Errors: ${by((r) => r.error)}. Called a tool this test Bob hasn't got: ${by((r) => r.missing?.length)}. With a scene: ${by((r) => r.scene?.files?.length || r.scene?.folders?.length || r.scene?.board || r.scene?.memory)}. Effort: ${effort}${solo ? ' (one brain)' : ''}. Every run is read by Opus before any is kept. Decided by the test world, not the brain: ${by((r) => r.harness?.length)}${(() => { const k = {}; for (const r of all) for (const f of r.harness || []) k[f.kind] = (k[f.kind] || 0) + 1; return Object.keys(k).length ? ` (${Object.entries(k).map(([a, b]) => `${a} ${b}`).join(', ')})` : ''; })()}.${worldStop ? ' Stopped early: 3 in 10 runs or more were decided by the test world.' : ''}${searchStop ? ' Stopped early: web search found nothing 5 times in a row.' : ''}${budgetStop ? ` Stopped early: ${runCap - capUsed() <= 0 ? `this run's search cap (${runCap})` : "this month's search budget"} was used.` : ''}`, '', `Web searches this run: ${webSearches}${cachePath ? ` (+${cacheHits} answered from the shared cache)` : ''}; Tavily searches (the backup, and key checks): ${searches}${Number.isFinite(searchesLeft()) ? ` (about ${Math.max(0, searchesLeft())} more allowed)` : ''}. Jobs not started: ${Math.max(0, queue.length - ran)}.`];
 fs.writeFileSync(F.summary, scrub(lines.join('\n') + '\n'));
 say(`\n${lines.slice(2).join('\n')}\nRuns: ${F.runs}`);
 process.exit(0);

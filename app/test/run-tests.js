@@ -44,6 +44,10 @@ fs.writeFileSync(path.join(tmp, 'config.json'), JSON.stringify(cfg));
   checkEarly(await refused(() => gt.edit_file.check({ path: path.join(sdir, 'local.properties'), find: 'needle', replace: 'y' })), 'edit_file refuses local.properties');
   const found = await gt.search_files.run({ project: 'Secrets', text: 'needle' });
   checkEarly(/notes\.txt/.test(found) && !/google-services/.test(found), 'search_files skips secret files');
+  // Nov 16 (800-job run): no project set up: it searches the folders he may read instead of failing
+  const nt = buildTools({ ...gcfg, projects: {} });
+  const fromHome = await nt.search_files.run({ text: 'needle' });
+  checkEarly(/notes\.txt/.test(fromHome) && /no project is set up, so this searched/.test(fromHome) && !/google-services|config\.json/.test(fromHome), 'search_files with no project searches his readable folders and says so');
   checkEarly(isSensitive(gcfg, path.join(here, '..', 'config.json')), "Bob's own config.json is off-limits");
   checkEarly(isSensitive(gcfg, path.join(gcfg.agentDir, 'open-webui-data', 'webui.db')), 'open-webui-data is off-limits');
   checkEarly(!isSensitive(gcfg, path.join(sdir, 'notes.txt')), 'ordinary files still readable');

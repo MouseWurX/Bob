@@ -297,12 +297,17 @@ export function errorHint(name, text) {
 // ---------------------------------------------------------------------------------------------------------------
 const PROMISE = /\b(?:let me|i(?:'ll| will| am going to|'m going to| shall)|i'?m (?:now )?(?:going to|about to)|(?:give me|one) (?:a )?(?:sec|second|moment|minute)|hold on|stand by)\b[^.!?\n]{0,60}?\b(?:search|look(?:ing)? (?:it |that |this )?up|look (?:for|into|at)|check|find|fetch|read|open|grab|pull up|browse|google|make|draw|paint|create|generate|write|save|run|start|do (?:that|it|this) now|get (?:that|it|this|started))\b/i;
 const NOT_PROMISE = /\b(?:if you(?:'d| would)? like|if you want|want me to|shall i|should i|would you like|do you want|could you|can you|once you|when you|after you|let me know)\b/i;
+// Nov 16 (800-job run: 40 of 42 of these nudges were false): "press Switch it on and I'll run it", "paste it and I'll
+// check it", "once that's on, I'll convert it", "if you meant another city, I'll look again" wait on the user; they
+// aren't a promise to call a tool now. Nor is a reply that asks something, or ends on a colon before its questions.
+const WAITS_ON_USER = /\b(?:once|the moment|as soon as|when(?:ever)?|if|after|until|then)\b|\b(?:press|click|tap|paste|tell me|send (?:me|it|the|them)|point me|name (?:the|your|a)|say (?:the word|which|so)|drop|attach|share|upload|give me|switch it on)\b/i;
 export function promisesAction(text) {
   const t = String(text || '').trim();
   if (!t || t.length > 600) return false;
-  if (/\?\s*$/.test(t) || NOT_PROMISE.test(t)) return false;
+  if (/[?:]\s*$/.test(t) || NOT_PROMISE.test(t)) return false;
   // Only when the promise is the end of the reply (the last two sentences): "I'll search for it." and nothing after.
   const tail = t.split(/(?<=[.!])\s+/).slice(-2).join(' ');
+  if (/\?/.test(tail) || WAITS_ON_USER.test(tail)) return false;
   return PROMISE.test(tail);
 }
 export const PROMISE_NUDGE = 'You said you would do it, but no tool ran: nothing happens until you call the tool. Call it now, in this reply. If no tool you have can do it, say so in one line.';
