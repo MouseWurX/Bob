@@ -155,3 +155,18 @@ If step 1 fails, the hot-expert rows are reported as "not fixed" and the patch g
 ## Addendum 3: which effort levels (added 16 November 2026, before any timed run)
 
 The effort test on rentals has reported (100 jobs per setting, graded blind). On the regrade of the answer Bob's window shows, failures went from 19 to 16 at the lowest level and from 24 to 14 at the high one, and 54 of 100 jobs failed at Max, on code from before its fixes. The owner decided all four levels are tested: **Minimus, Medius, Magnus and Maximus** (the levels' names from that work). Maximus runs on its fixed code, and the results page names the Bob commit each level ran on. If Maximus isn't fixed by the night of the run, it is marked not run, with the reason, and the other three go ahead.
+
+## Addendum 4: the cube's live view, data against drawing (added 16 November 2026, before any timed run)
+
+The 12 November test measured Real experts on Brain Engine 5 (writing 17 to 25% slower, reading 2%) and showed the cost was in collecting the picks, not in sending them live. It didn't separate collecting from drawing, and Brain Engine 6's once-a-word read (patch 0010) was never timed. Same rules as above (warm-up, 5 runs in turn, median with min and max), Brain Engine 8, the 300-token and 16K prompts:
+
+| Run | What is on |
+|---|---|
+| C0 | Bob's window open, cube hidden |
+| C1 | Cube showing, glow for show (drawing only, no trace asked) |
+| C2 | Real experts on, the trace asked by a script with no page drawing it (collecting and sending only) |
+| C3 | Real experts on, cube showing (collecting, sending and drawing) |
+| C4 | C3 with Bob's window set to the built-in graphics (Windows: Settings, Display, Graphics, Power saving), only if the processor's graphics is switched on in the firmware; otherwise marked not run |
+| C5 | Real experts switched off again after C3, cube showing (anything left hooked in shows here) |
+
+C1 minus C0 is the drawing on the card; C2 minus C0 the collecting and sending; C3 against C2 and C1 shows whether they add up. C4 shows what moving the drawing off the card buys. C5 must match C1; if not, it's reported as a leak and fixed. The card's use and the engine process's processor time are logged with every run.
