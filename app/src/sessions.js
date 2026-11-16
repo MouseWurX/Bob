@@ -30,7 +30,9 @@ export function sessionBrains(cfg, { picked = false } = {}) {
     // 1.5.23: Gaming chats on the processor, so a smaller brain answers sooner. 1.5.25: Qwen3 4B Instruct 2507 (Get models
     // id "qwen3-4b"), picked on time to first word and to a full answer: about 0.1-2 s / 2-7 s on the processor. Ollama's
     // qwen3:4b thinks first even when asked not to (about 30 s for "hi"). If it isn't on the PC, the hand-off falls back.
-    gaming: s.gaming && !/e4b/i.test(s.gaming) ? s.gaming : 'qwen3-4b', // 1.5.56: never E4B, even from an old settings file
+    // Nov 16: '' = no brain while gaming (the ✕ on the Brains page): nothing loads and every job waits in Tasks until the
+    // session changes. It used to come back as the 4B every time, so the owner couldn't take it off.
+    gaming: s.gaming === '' ? '' : s.gaming && !/e4b/i.test(s.gaming) ? s.gaming : 'qwen3-4b', // 1.5.56: never E4B, even from an old settings file
     coding: s.coding || m.tinker || m.bob,
     office: s.office || m.ledger || m.bob,
     deep: s.deep || m.reviewer || m.bob
@@ -39,7 +41,9 @@ export function sessionBrains(cfg, { picked = false } = {}) {
   // leaves it (it had kept showing on the brain it falls back on, with no ✕). What runs is unchanged: see out above.
   if (picked) return { ...out, coding: s.coding || '', office: s.office || '', deep: s.deep || '' };
   if (!oneBrainOn(cfg)) return out;
-  return { ...out, small: '', coding: m.bob, office: m.bob, deep: m.bob }; // Gaming keeps its own: it runs on the processor
+  // Nov 16 (the owner: "in one brain it still selects qwen4b instruct for gaming"; "during gaming the main brain doesnt
+  // load"): One brain means one brain, so there is no Gaming brain either. While you play nothing loads; jobs wait.
+  return { ...out, small: '', gaming: '', coding: m.bob, office: m.bob, deep: m.bob };
 }
 
 export function currentSession(cfg) {
@@ -98,20 +102,27 @@ export function modelFor(cfg, hat) {
     const d = CTX_CHOICES.includes(cfg.sessionCtx?.normal) ? {} : brainDefaults(model, hat);
     return { model, cpu: false, ctx: d.ctx || ctx };
   }
+  // Nov 16: no Gaming brain = no brain at all while gaming (the main brain never loads then).
+  if (s.id === 'light' && noGamingBrain(cfg)) return { model: '', cpu: true, think: s.think, ctx };
   const model = sessionBrains(cfg)[s.brain] || cfg.models.bob;
   return { model, cpu: Boolean(s.cpu), think: s.think, ctx };
 }
 
 // 1.5.23: the Gaming session keeps the graphics card for games (1.5.32: how much the brain borrows is gaming-card.js).
 export const gaming = (cfg) => cfg?.session === 'light';
+// Nov 16: One brain on, or the Gaming job taken off: Bob has no brain while gaming.
+export const noGamingBrain = (cfg) => !sessionBrains(cfg || {}).gaming;
 export const GAMING_TAG = 'Waiting · Gaming is on';
 export const GAMING_HINT = 'Switch the session to Normal to run it.';
+// Nov 16: said once in the chat when a message waits because Bob has no brain while gaming.
+export const GAMING_PAUSED_LINE = (sendJobs) => `I'm paused while you game: no brain loads here until you switch back, and then I'll answer this.${sendJobs ? ' None of your other Bobs has taken it yet.' : ' Turn on Send jobs in Settings, Bob-Net, and another of your Bobs can answer while you play.'}`;
 // A job that needs the card waits while Gaming is on: pictures, video, music, and Medium effort and up. Never dropped.
 // 1.5.211: a job from a group (Discord) never runs on a Bob you're gaming on, however small: another of your Bobs takes
 // it (Send jobs), or it waits.
 export function waitsForGaming(cfg, job) {
   if (!gaming(cfg) || !job) return false;
   if (job.guest?.public) return true;
+  if (noGamingBrain(cfg)) return true; // Nov 16: no brain while gaming, so chat waits too
   return ['picture', 'video', 'music'].includes(job.kind) || (job.effort && job.effort !== 'low');
 }
 

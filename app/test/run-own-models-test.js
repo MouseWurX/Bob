@@ -6,7 +6,7 @@ import { serverText, brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { cleanOwnModels, ownId, paramsOf, inspectOwn, jobsFor, ownEntry, ownEntries, ownResolve, pickFileArgs, pickFile, OWN_FAMILY } from '../src/own-models.js';
+import { cleanOwnModels, ownId, paramsOf, inspectOwn, jobsFor, ownEntry, ownEntries, ownResolve, pickFileArgs, pickFile, pickOptions, OWN_FAMILY } from '../src/own-models.js';
 import { mergeSettings, SETTING_KEYS } from '../src/config.js';
 import { catalogueHtml, ownHtml, isOwn, VIEWS } from '../public/catalogue.js';
 import { pickFor } from '../public/fit.js';
@@ -153,6 +153,30 @@ fs.writeFileSync(junk, 'not a brain');
   check('1.5.177: without Bob\'s window, the Windows helper shows its owner and brings it to the front first, so the picker is on top', /\$owner\.Show\(\); \$owner\.Activate\(\);.*ShowDialog\(\$owner\)/.test(ps));
   const main = read('electron/main.cjs').replace(/\r\n/g, '\n');
   check('1.5.177: Bob.exe lends Electron\'s picker, parented to Bob\'s window', /globalThis\.bobPick = async/.test(main) && /dialog\.showOpenDialog\(owner/.test(main));
+}
+
+// ---- Nov 16: "Add a brain from a file" opened nothing on a busy Bob. The page now asks Bob's window for the picker ----
+{
+  const main = read('electron/main.cjs').replace(/\r\n/g, '\n'), pre = read('electron/preload.cjs').replace(/\r\n/g, '\n'), cellar = publicText('cellar.js');
+  check('Nov 16: one title and filter list per kind; an unknown kind is a brain file', pickOptions('mmproj').filters[0].extensions[0] === 'gguf' && pickOptions('docs').filters.some((f) => f.extensions.includes('*')) && pickOptions('zzz').kind === 'gguf' && pickOptions('__proto__').kind === 'gguf');
+  check('Nov 16: the preload lends only "pick", through one IPC channel, and no Node', /exposeInMainWorld\('bobApp', \{\s*pick:/.test(pre) && (pre.match(/ipcRenderer\.\w+/g) || []).every((x) => x === 'ipcRenderer.invoke') && /'bob:pick'/.test(pre) && !/require\('(node:)?(fs|child_process|path)'\)/.test(pre));
+  check('Nov 16: Bob\'s window answers the picker only for his own pages, owned by the window that asked', /ipcMain\.handle\('bob:pick'/.test(main) && /senderFrame\?\.url[^\n]*startsWith\(base \+ '\/'\)/.test(main) && /from: BrowserWindow\.fromWebContents\(e\.sender\)/.test(main));
+  check('Nov 16: the main, Settings and Lab windows carry the preload, still sandboxed and isolated', (main.match(/contextIsolation: true, sandbox: true, nodeIntegration: false(, plugins: true)?, preload: PRELOAD/g) || []).length === 3);
+  check('Nov 16: a picker asked for from the Settings window sits on it, not behind it on the main window', /live\(from\) \|\| live\(BrowserWindow\.getFocusedWindow\(\)\) \|\| live\(win\)/.test(main));
+  check('Nov 16: the page uses Bob\'s window when it has one, else the web request (a phone, a browser)', /typeof window\.bobApp\?\.pick === 'function' \? viaWindow\(kind\) : api\('\/api\/own-models\/pick'/.test(cellar) && /api\('\/api\/own-models\/inspect', \{ file \}\)/.test(cellar));
+  check('Nov 16: no greyed button that does nothing: after a few seconds it says so, works again and points to typing the path', /b\.disabled = false; b\.insertAdjacentHTML\('afterend'[^\n]*own-slow[^\n]*type its path/.test(cellar) && /clearTimeout\(slow\)/.test(cellar));
+  // the page side, run: a stand-in window lends pick, and the picked brain is looked at by Bob (inspect), not picked again
+  const calls = [];
+  globalThis.window = { bobApp: { pick: async (k) => { calls.push(['pick', k]); return k === 'mmproj' ? 'C:\\brains\\mm.gguf' : 'C:\\brains\\a.gguf'; } } };
+  const fetchWas = globalThis.fetch;
+  globalThis.fetch = async (url, o) => { calls.push(['fetch', url, JSON.parse(o.body)]); return { ok: true, json: async () => ({ file: 'C:\\brains\\a.gguf', name: 'A', sizeGB: 4 }) }; };
+  const src = cellar.slice(cellar.indexOf('async function viaWindow'), cellar.indexOf('async function ownPick'));
+  const api = async (url, data) => { const r = await fetch(url, { method: 'POST', body: JSON.stringify(data) }); return r.json(); };
+  const viaWindow = new Function('api', `${src}; return viaWindow;`)(api);
+  const g = await viaWindow('gguf'), m = await viaWindow('mmproj');
+  globalThis.fetch = fetchWas; delete globalThis.window;
+  check('Nov 16: a brain picked in Bob\'s window is then read by Bob (inspect), never sent to the web picker', g.file === 'C:\\brains\\a.gguf' && g.name === 'A' && calls.some((c) => c[0] === 'fetch' && c[1] === '/api/own-models/inspect' && c[2].file === 'C:\\brains\\a.gguf') && !calls.some((c) => c[1] === '/api/own-models/pick'), JSON.stringify(calls));
+  check('Nov 16: its picture reader is only picked, not inspected', m.file === 'C:\\brains\\mm.gguf' && calls.filter((c) => c[0] === 'fetch').length === 1);
 }
 
 fs.rmSync(dir, { recursive: true, force: true });

@@ -2884,6 +2884,7 @@
         "qwen-image-edit-2509",
         "wan2.2-ti2v-5b",
         "gemma4-e4b",
+        "whisper-base-en",
         "kokoro-v1",
         "nomic-embed-text"
       ],
@@ -2907,7 +2908,9 @@
         ],
         "gemma4-e4b": [
           "small",
-          "eyes",
+          "eyes"
+        ],
+        "whisper-base-en": [
           "voice"
         ],
         "kokoro-v1": [
@@ -2919,7 +2922,8 @@
       },
       "notes": {
         "qwen3.6-35b-a3b": "the everyday, coding and deep-thinking brain in one, so chat and code never swap: only 3B of it works at a time, so it stays quick with part of it in RAM, and it keeps up to 256K in mind",
-        "gemma4-e4b": "the quick brain, and it sees pictures and hears you",
+        "gemma4-e4b": "the quick brain, and it sees pictures",
+        "whisper-base-en": "hears you (English), on the processor",
         "gemma4-26b": "Office and Deep thinking"
       },
       "times": "Pictures take about 10 seconds each, clips a few minutes.",
@@ -2932,6 +2936,7 @@
       "models": [
         "qwen3.6-35b-a3b-q3",
         "gemma4-e4b",
+        "whisper-base-en",
         "kokoro-v1",
         "nomic-embed-text",
         "z-image-turbo-q5",
@@ -2942,7 +2947,9 @@
         "gemma4-e4b": [
           "bob",
           "small",
-          "eyes",
+          "eyes"
+        ],
+        "whisper-base-en": [
           "voice"
         ],
         "kokoro-v1": [
@@ -2968,7 +2975,8 @@
         "qwen3.6-35b-a3b-q3"
       ],
       "notes": {
-        "gemma4-e4b": "one model for chat, quick brain, eyes and ears, so everyday chat never swaps",
+        "gemma4-e4b": "one model for chat, quick brain and eyes, so everyday chat never swaps",
+        "whisper-base-en": "hears you (English), on the processor",
         "z-image-turbo-q5": "a version of the painter made to fit your card",
         "flux2-klein-4b": "a small, quick editor: change a picture with words or keep a look from references",
         "wan2.2-ti2v-5b-q4": "slow on this card: keep clips to a few seconds",
@@ -2984,6 +2992,7 @@
       "models": [
         "qwen3-4b",
         "gemma4-e4b",
+        "whisper-base-en",
         "kokoro-v1",
         "nomic-embed-text",
         "qwen2.5-coder-7b",
@@ -2997,7 +3006,9 @@
           "small"
         ],
         "gemma4-e4b": [
-          "eyes",
+          "eyes"
+        ],
+        "whisper-base-en": [
           "voice"
         ],
         "kokoro-v1": [
@@ -3021,7 +3032,8 @@
       },
       "notes": {
         "qwen3-4b": "the everyday brain: small and quick, and leaves room on the card for longer chats",
-        "gemma4-e4b": "sees pictures and hears you; it loads only for those jobs",
+        "gemma4-e4b": "sees pictures; it loads only for that job",
+        "whisper-base-en": "hears you (English), on the processor",
         "qwen2.5-coder-7b": "small, quick coder that fits the card",
         "z-image-turbo-q4": "a version of the painter made to fit 6 GB cards",
         "flux2-klein-4b-q4": "a small editor made to fit 6 GB cards",
@@ -3038,6 +3050,7 @@
       "models": [
         "qwen3-4b",
         "gemma4-e4b",
+        "whisper-base-en",
         "kokoro-v1",
         "nomic-embed-text",
         "qwen2.5-coder-7b",
@@ -3051,7 +3064,9 @@
           "small"
         ],
         "gemma4-e4b": [
-          "eyes",
+          "eyes"
+        ],
+        "whisper-base-en": [
           "voice"
         ],
         "kokoro-v1": [
@@ -3098,7 +3113,8 @@
       ],
       "notes": {
         "qwen3-4b": "the everyday brain: small and quick on built-in graphics",
-        "gemma4-e4b": "sees pictures and hears you; it loads only for those jobs",
+        "gemma4-e4b": "sees pictures; it loads only for that job",
+        "whisper-base-en": "hears you (English), on the processor",
         "qwen2.5-coder-7b": "small, quick coder",
         "z-image-turbo-q4": "the small painter: a picture takes a few minutes on built-in graphics",
         "flux2-klein-4b-q4": "a small editor: change a picture with words, or keep a look from references",
@@ -3113,6 +3129,7 @@
       "minVramGB": 0,
       "models": [
         "gemma4-e4b",
+        "whisper-base-en",
         "kokoro-v1",
         "nomic-embed-text"
       ],
@@ -3120,7 +3137,9 @@
         "gemma4-e4b": [
           "bob",
           "small",
-          "eyes",
+          "eyes"
+        ],
+        "whisper-base-en": [
           "voice"
         ],
         "kokoro-v1": [
@@ -3131,7 +3150,8 @@
         ]
       },
       "notes": {
-        "gemma4-e4b": "chats, plans, researches, sees pictures and hears you, all on the processor"
+        "gemma4-e4b": "chats, plans, researches and sees pictures, all on the processor",
+        "whisper-base-en": "hears you (English), on the processor"
       },
       "times": "Without a graphics card Bob can talk, plan, research, read pictures and speak, but not paint or film.",
       "cardGB": 0

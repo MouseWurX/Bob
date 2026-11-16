@@ -246,6 +246,9 @@ try {
   mk.loads = [];
   check('the talker on the processor is Instruct when it is downloaded', talkerModel(mk()) === 'qwen3-4b');
   check('without Instruct on the PC: no talker (E4B never runs on the processor)', !talkerModel(mk({ engine: { ...mk().engine, resolve: (m) => (m === 'small:4b' ? { gguf: 'x' } : (() => { throw new Error('none'); })()) } })));
+  // Nov 16: One brain, or Gaming taken off: no second copy of the main brain beside a job.
+  check('One brain: no talker, the main brain never loads twice', !talkerModel(mk({ cfg: { ...mk().cfg, oneBrain: true } })) && !isTalker(mk({ cfg: { ...mk().cfg, oneBrain: true } }), 'big:26b'));
+  check('Gaming taken off: no talker', !talkerModel(mk({ cfg: { ...mk().cfg, sessionBrains: { small: 'small:4b', gaming: '' } } })));
   check('both count as talkers, a big brain doesn\'t', isTalker(mk(), 'qwen3-4b') && isTalker(mk(), 'small:4b') && !isTalker(mk(), 'big:26b'));
   const pc = await sidePick(mk(), { beside: true });
   check('a quick reply beside a job, card full: Instruct on the processor', pc.model === 'qwen3-4b' && pc.cpu && pc.beside, JSON.stringify(pc));

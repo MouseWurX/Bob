@@ -6,6 +6,7 @@
 // only adds `step: true` (and, when the reviewer's corrected answer replaced the draft, `showText`) for the window.
 // The engines send only role and content, so these fields never reach a brain.
 import { correctedPart } from './moot.js';
+import { stripMarkers } from './answer-checks.js';
 
 const said = (m) => m?.role === 'assistant' && String(m.content || '').trim() !== '';
 
@@ -32,5 +33,7 @@ export function pickAnswer(added = [], rounds = null) {
     if (said(m)) m.step = true;
   }
   if (final) delete final.step;
+  // Nov 16 (GPT-OSS trial): its browsing markers (【1†L1-L3】) are taken out of the answer the chat shows
+  if (final && /【\d/.test(text)) { text = stripMarkers(text); if (final.showText) final.showText = stripMarkers(final.showText); else final.content = stripMarkers(final.content); }
   return { final, text, checked: minutes ? String(minutes.content) : '' };
 }

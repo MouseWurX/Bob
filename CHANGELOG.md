@@ -4,6 +4,24 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.248
+
+I hear you on my own now, there's a log of what I did if you want one, and Gaming with One brain truly leaves your card alone.
+
+### New
+
+- **I hear you without Ollama.** "Hearing you" uses whisper.cpp with Whisper base to start, and it's in every desktop starter set. On a Mac I hear through Gemma 4 E4B on my own engine. Gemma on Brain Engine is still a pick in Get models. If you were hearing through Ollama, I move you over once, when the new files are here. Ollama is now off unless you turn on "Use Ollama too" in Settings, Engines. With it off, I never knock on Ollama's door. Hearing pauses in Gaming mode. (Not tried on a real PC yet.)
+- **Monitoring log.** Off to start. Settings, This replicant matrix. I write each turn's steps to a plain text file as each step finishes, so a crash loses at most the step that was running. "Include details" adds the tool inputs and results too, with keys and passcodes hidden and email left out. Keep this turn and Keep the current file hold on to what matters. Only the size limit drops old files, and the Lab and lessons never read them.
+- **Better checks at the end of a turn.** I catch the slips I made most often in the Lab's runs: asking where a file is without looking, saying something was done when nothing did it, answers cut off mid-list, research after only one search, mail jobs done with the wrong tools, and pointing you back at something I never showed you. I get one more go to fix it, never a loop. I also won't move my own working folder, I tidy up a garbled link before reading it, and stray citation marks no longer reach you.
+
+### Fixed
+
+- **Gaming with One brain.** With One brain on, or when you press ✕ on the Gaming chip, no brain loads during Gaming, not even the main one. Jobs wait, and I say once that I'm paused. Other Bobs on Bob-Net can take them meanwhile.
+- **Add a brain from a file opens its picker even when I'm busy.** It used to wait behind my live streams and stay greyed out. The picker now opens on the window you asked from, so Settings no longer hides it.
+- **The Lab's Forge says what RunPod reports** while it waits for a rented card's door (its status, uptime and ports).
+
+**Where it works:** Windows, Mac, Linux and Bob for Android. The Monitoring log and hearing are for computers.
+
 ## 1.5.247
 
 Rentals work again, Patches tells the steps, and the cable always wins on Bob-Net.
@@ -149,27 +167,6 @@ I think where it helps: at the start to plan and at the end to check, not before
 
 - **Lab, Learn, Lessons:** a 42-lesson course that walks you through the Lab step by step, from the basics to advanced work. It's off until you switch on **Lab lessons** in Settings, How Bob works, Brains.
 - **Lab:** the tool tests take an effort level, and the Forge checks a plan's lessons against the lesson ledger before a heal is rented. The tool-wish test (the tools a brain reaches for when none are offered) is in the Lab kit too.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.238
-
-Python gets real packages, my tools take the names other brains reach for, and the Lab gets stricter about what it teaches and what it rents.
-
-### New
-
-- **Python packages.** Under Python in Settings, How Bob works, 🧰 More tools, **Get packages** fetches numpy, pandas, scipy, matplotlib, Pillow, python-docx, openpyxl, python-pptx, pypdf and more, each pinned and checked. Nothing downloads until you press it. A run loads only what its code imports, with no internet and no other folders, and gets 60 s instead of 30.
-- **`save_to` on make_image, make_sound, save_as and make_diagram** keeps a copy where you ask. It never overwrites.
-- **Tool names other brains reach for** (run_shell_command, list_directory, write_to_file and friends) now run my own tool, under my name. That only happens when I have no tool by that name and the real one is on offer. The tool record starts fresh for the new tool shape; the old one is kept in the archive.
-- **Lab: one lesson kit per brain family.** Lessons are stamped with the family they're for, and never cross-train.
-- **Lab: a never-taught gate.** Before any plan that teaches is rented, every lesson is checked against the held-out test questions. A match, a missing test file or an unchecked set stops the plan with nothing rented.
-- **Lab: pre-flight for lesson rentals.** Room per slot, the ideas file and the caps are checked in code before anything costs money, and a 10-idea sample gate ends a rental that isn't saving lessons.
-- **Lab: a Riker study plan** for finding where the cruelty lives (patching and sparse-autoencoder features). It is a study record only, and it needs your typed go to rent.
-- **Costs pages** show the 14 Nov rentals at their billed costs.
-
-### Fixed
-
-- The Forge console's buttons fit a phone screen.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 

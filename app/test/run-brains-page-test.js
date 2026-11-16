@@ -52,8 +52,10 @@ const ctx = { roles, models, brains: { small: 'gemma4-e4b', deep: 'bobert-35b' }
   check('job chips: a job that can go without has a ✕ with a spoken name; the main brain has none', /data-unequip="tinker" aria-label="Take [^"]+ off Coding"/.test(html) && !/data-unequip="bob"/.test(html));
   // Nov 15 (the owner): "i cant take jobs away from brains once i issue them". Quick, Office and Deep thinking had no ✕.
   const all = brainsHtml({ ...ctx, brains: { small: 'gemma4-e4b', deep: 'bobert-35b', office: 'bobert-35b', gaming: 'qwen3-4b' } });
-  check('every job can be taken back with a ✕ except the main brain and Gaming', ['small', 'deep', 'office', 'tinker', 'reviewer', 'eyes'].every((id) => all.includes(`data-unequip="${id}"`)) && !/data-unequip="(bob|gaming)"/.test(all), all.match(/data-unequip="\w+"/g)?.join());
-  check('a job that always needs a brain says how to move it, aloud too', /Gaming always needs a brain\. To move it, use \+ job on another brain\./.test(all) && /<span class="sr-only"> \(Brain always needs a brain/.test(all));
+  // Nov 16 (the owner): "i cannot remove it" (the Gaming brain). Gaming has a ✕ now; only the main brain has none.
+  check('every job can be taken back with a ✕ except the main brain', ['small', 'gaming', 'deep', 'office', 'tinker', 'reviewer', 'eyes'].every((id) => all.includes(`data-unequip="${id}"`)) && !/data-unequip="bob"/.test(all), all.match(/data-unequip="\w+"/g)?.join());
+  check('the main brain says how to move it, aloud too', /<span class="sr-only"> \(Brain always needs a brain/.test(all) && !/Gaming always needs a brain/.test(all));
+  check('One brain on: the Gaming pick is greyed as off (no brain while gaming), and can still be taken back', /job-chip-off[^>]*>🎮 Gaming <span class="muted">\(off\)<\/span><button type="button" class="chip-x" data-unequip="gaming"/.test(brainsHtml({ ...ctx, oneBrain: true, brains: { ...ctx.brains, gaming: 'qwen3-4b' } })));
   check('One brain on: a greyed pick can still be taken back', /job-chip-off[^>]*>.*?<button type="button" class="chip-x" data-unequip="deep"/.test(brainsHtml({ ...ctx, oneBrain: true })));
   check('the Set up page has the same ✕', /data-unequip="deep"/.test(setUpHtml(brainsInUse(ctx).find((b) => b.value === 'bobert-35b'), ctx)));
   // Nov 15 (the owner): "is housekeeping on a brain?? ... make it assignable".

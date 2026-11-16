@@ -30,9 +30,11 @@ import { openBox, useBox, lockOn, mapSecrets, plainCount, writeSecretJson, openC
 import { HARNESS_KEYS, cleanHarness } from './harness.js'; // items 62 to 72
 import { cleanPerWordMap } from './experts-per-word.js'; // Brain Engine 0013
 import { cleanPrivateWeb } from './private-web.js'; // Nov 16: Private web, off unless turned on
+import { cleanTraceLog } from './trace-log.js'; // Nov 16: Monitoring log, off unless turned on
 import { cleanSearchBackup } from './web-search.js'; // Nov 16: backup search with a key, off unless turned on
 import { cleanChatHeads } from './net-overlay.js'; // 1.5.228 a chat head per company
 import { moveBobBrains } from './brain-move.js'; // 1.5.245 stock Qwen in place of Riker and Bobert, once
+import { catalogFileFor } from './llamacpp.js'; // Nov 16 2026: is Gemma 4 E4B here, for the hearing move
 
 
 // Where Ollama keeps its models on this PC: OLLAMA_MODELS if it's set, else Bob's own models folder if Ollama's files
@@ -170,6 +172,14 @@ export function loadConfig() {
         if (moved.length) { saveSettings(cfg, { models }); notes.push(`Moved ${moved.map((m) => m.job).join(', ')} from Bob's own brain to stock Qwen3.6 35B-A3B, the new default (Settings, Brains switches it back)`); }
       } catch (e) { notes.push(`The move to stock Qwen didn't go in (${e.message}); the brains stay as they were`); }
     }
+    // Nov 16 2026 (the owner: "by default i want bob to only use the things that are native to him"): Hearing you on
+    // Ollama moves to Bob's own engine once. Ollama stays an opt-in (Settings, Engines, Use Ollama too).
+    if (applied.includes('native-hearing')) {
+      let gemma = false;
+      try { const f = catalogFileFor(cfg, 'gemma4-e4b'); gemma = Boolean(f?.gguf && f?.mmproj); } catch {}
+      const stt = nativeHearing(cfg, { gemma });
+      if (stt) { saveSettings(cfg, { stt }); notes.push(`Hearing you moved from Ollama to ${stt.provider === 'brainengine' ? 'my own engine (Gemma 4 E4B on the processor)' : stt.model ? 'whisper.cpp (Whisper)' : 'whisper.cpp; get Whisper base in Get models, Hearing you'}. Ollama is off unless you switch on "Use Ollama too" in Settings, Engines`); }
+    }
   }
   // Nov 14 2026 (the owner: "existing installs get converted"): Moondust, the old starting theme, becomes the Mercury
   // lamp once, on the first start after the update. Any other theme is left alone; Moondust can still be picked again.
@@ -243,6 +253,23 @@ export function onlyBrainEngine(cfg, { platform, arch, hand = {} } = {}) {
   return moved;
 }
 
+// What Hearing you becomes on the first start after Nov 16 2026: Ollama's hearing (the old default) moves to Bob's own
+// parts, unless Ollama was switched on. whisper.cpp first (the owner's pick), with a Whisper model already here; else
+// Gemma 4 E4B on Bob's engine when its files are here (so nobody who could hear goes deaf); else whisper.cpp, and
+// Get models offers Whisper base. Anything else (whisper.cpp, Bob's engine, an address set by hand) stays.
+// null: nothing moves. whisper/gemma: the files found here ({ model } / truthy), passed in by tests.
+export const WHISPER_FILES = ['ggml-base.en.bin', 'ggml-large-v3-turbo-q5_0.bin'];
+export function nativeHearing(cfg, { whisper, gemma, exists = fs.existsSync } = {}) {
+  const p = cfg.stt?.provider;
+  if (cfg.useOllama === true || cfg.engine === 'ollama') return null;
+  if (p !== 'ollama' && p !== undefined && p !== '') return null;
+  const dir = cfg.bobModelsDir || path.join(cfg.agentDir || '', 'models', 'bob');
+  const found = whisper !== undefined ? whisper : WHISPER_FILES.map((f) => path.join(dir, 'voice', f)).find((f) => exists(f) && !exists(f + '.part'));
+  if (found) return { provider: 'whispercpp', model: found };
+  if (gemma) return { provider: 'brainengine', model: 'gemma4-e4b' };
+  return { provider: 'whispercpp' };
+}
+
 export function findExe(configured, dir, names, platform = process.platform) {
   if (configured && fs.existsSync(configured)) return configured;
   // Linux and Mac programs have no .exe; on Linux one the distro installed (on the PATH) counts too.
@@ -274,7 +301,7 @@ export const VERSION = (() => {
 // Languages Bob's screens come in (public/i18n.js has the names and words). English is the default.
 export const LANGUAGES = ['en', 'fr', 'es'];
 export const cleanRemoved = (v) => [...new Set((Array.isArray(v) ? v : []).filter((k) => typeof k === 'string' && /^[\w.:/-]{1,100}$/.test(k)))].slice(0, 500);
-export const SETTING_KEYS = ['moreTools', 'answerMidJob', 'stopWords', 'copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'brainMemType', 'language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'toolHelp', 'toolSets', 'toolRecord', 'thinkBubble', 'statusJokes', 'patchesSteps', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'ownBar', 'chatHeads', 'netFiles', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labConsole', 'labRecheck', 'labExtras', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', ...HARNESS_KEYS, 'jobHelps', 'textSize', 'readableFont', 'profilesOn', 'todayCard', 'todayPlace', 'focusTimer', 'receipts', 'updateTour', 'tourSeen', 'trayDot', 'talkOver', 'readDocs', 'netVoices', 'netVoiceMap', 'carryIn', 'phoneGlance', 'netOverlay', 'memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPlaces', 'notesFolders', 'weeklyDigest', 'talkWithBob', 'talkCloud', 'talkCloudVoice', 'stepThinking', 'labLessons', 'searchBackup', 'privateWeb', 'apuHoldbackGB'];
+export const SETTING_KEYS = ['moreTools', 'answerMidJob', 'stopWords', 'copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'brainMemType', 'language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'toolHelp', 'toolSets', 'toolRecord', 'thinkBubble', 'statusJokes', 'patchesSteps', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'ownBar', 'chatHeads', 'netFiles', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labConsole', 'labRecheck', 'labExtras', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', ...HARNESS_KEYS, 'jobHelps', 'textSize', 'readableFont', 'profilesOn', 'todayCard', 'todayPlace', 'focusTimer', 'receipts', 'updateTour', 'tourSeen', 'trayDot', 'talkOver', 'readDocs', 'netVoices', 'netVoiceMap', 'carryIn', 'phoneGlance', 'netOverlay', 'memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPlaces', 'notesFolders', 'weeklyDigest', 'talkWithBob', 'talkCloud', 'talkCloudVoice', 'stepThinking', 'labLessons', 'searchBackup', 'privateWeb', 'traceLog', 'useOllama', 'apuHoldbackGB'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -298,6 +325,7 @@ function clean(patch) {
   if ('brainMode' in out) out.brainMode = out.brainMode === 'always' ? 'always' : 'wake';
   if ('ollamaKeepAlive' in out) out.ollamaKeepAlive = /^\d+[smh]$|^-1$/.test(String(out.ollamaKeepAlive)) ? String(out.ollamaKeepAlive) : undefined;
   if ('oneBrain' in out) out.oneBrain = out.oneBrain === true;
+  if ('useOllama' in out) out.useOllama = out.useOllama === true; // Nov 16 2026: Ollama is opt-in (src/ollama-optin.js)
   if ('allTools' in out) out.allTools = out.allTools === true;
   if ('memoryRecall' in out) out.memoryRecall = out.memoryRecall === true; // 1.5.79, off unless switched on
   if ('resumeJobs' in out) out.resumeJobs = out.resumeJobs === true; // 1.5.16, off unless switched on
@@ -313,6 +341,7 @@ function clean(patch) {
   if ('netReview' in out) out.netReview = out.netReview === true; // #30, off unless switched on
   if ('lockSecrets' in out) out.lockSecrets = out.lockSecrets !== false; // 🔐 Locked secrets, ON unless switched off (src/secret-box.js)
   if ('webSearch' in out) out.webSearch = out.webSearch === true;
+  if ('traceLog' in out) out.traceLog = cleanTraceLog(out.traceLog); // Nov 16 Monitoring log: { on, maxMB }, off and 1 GB to start
   if ('privateWeb' in out) out.privateWeb = cleanPrivateWeb(out.privateWeb); // Nov 16: { on, route, otherSources }, off and no route to start
   if ('searchBackup' in out) out.searchBackup = cleanSearchBackup(out.searchBackup); // Nov 16: never a key (keys.json), off unless turned on
   if ('backup' in out) out.backup = cleanBackup(out.backup); // Back up and move: the automatic backup, off unless switched on
@@ -413,8 +442,8 @@ function clean(patch) {
     const sb = out.sessionBrains || {};
     out.sessionBrains = {};
     // '' takes a brain off that job (Nov 13: it was dropped, so the ✕ and the One brain setup never took Quick, Office or
-    // Deep thinking off). Gaming always has one.
-    for (const k of ['small', 'gaming', 'coding', 'office', 'deep']) if (typeof sb[k] === 'string' && (/^[\w.:/-]{1,100}$/.test(sb[k]) || (sb[k] === '' && k !== 'gaming'))) out.sessionBrains[k] = sb[k];
+    // Deep thinking off). Nov 16: Gaming too ('' = no brain while you play).
+    for (const k of ['small', 'gaming', 'coding', 'office', 'deep']) if (typeof sb[k] === 'string' && (/^[\w.:/-]{1,100}$/.test(sb[k]) || sb[k] === '')) out.sessionBrains[k] = sb[k];
     // 1.5.56: the owner's rule, kept here too: Gemma 4 E4B is never the Gaming brain, whatever asks for it.
     if (/e4b/i.test(out.sessionBrains.gaming || '')) delete out.sessionBrains.gaming;
   }
@@ -677,7 +706,8 @@ const kindOf = (v) => (v === null || v === undefined ? '' : Array.isArray(v) ? '
 export const NEW_DEFAULTS = [
   { id: 'tesseract-icon', keys: ['lookIcon'] }, // 1.5.228: Bob's icon is the tesseract (the pixel look only if switched on again)
   { id: 'scut-400', keys: ['share.scutMbps', 'share.scutMbpsChosen'] }, // Nov 14, the owner: SCUT's cap is 400 Mbit/s by default, never 100
-  { id: 'stock-qwen-brains', keys: [], moves: 'models' } // 1.5.245: nothing dropped; jobs on Riker or Bobert move to stock Qwen once (brain-move.js, below)
+  { id: 'stock-qwen-brains', keys: [], moves: 'models' }, // 1.5.245: nothing dropped; jobs on Riker or Bobert move to stock Qwen once (brain-move.js, below)
+  { id: 'native-hearing', keys: [], moves: 'stt' } // Nov 16 2026: Hearing you on Ollama moves to Bob's own engine once (nativeHearing, below)
 ];
 // A key is a top-level setting, or a.b for one inside a group (e.g. share.scutMbps).
 const dropKey = (kept, k) => { const [g, sub] = k.split('.'); if (sub === undefined) delete kept[g]; else if (kept[g] && typeof kept[g] === 'object' && !Array.isArray(kept[g])) delete kept[g][sub]; };

@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { HANDS } from './hands-settings.js';
 import { kindOf, repeatSafe } from './tool-kinds.js';
+import { answerChecks } from './answer-checks.js'; // Nov 16: the real-jobs reads' most common mistakes
 import { stepsNudge } from './job-steps.js'; // Nov 13: several things asked, fewer tool steps ran
 import { PIC_CLAIM_FR_ES, FILE_CLAIM_FR_ES, admitsTrouble, plain } from './honest.js'; // Nov 12, items 182 and 185
 
@@ -412,6 +413,7 @@ const DIDNT = { todo: 'put it on the to-do list', reminder: 'set the reminder', 
 export function afterTurn(ctx = {}, replyText) {
   const L = ctx.ledger || {};
   const reply = String(replyText ?? L.reply ?? '');
+  const ex0 = L.expect; // what the turn asked for (answer-checks reads its words)
   const said = reply.trim();
   const nudged = Number(L.nudged || 0) > 0;
   const who = ctx.cfg?.userName || 'the user';
@@ -432,6 +434,8 @@ export function afterTurn(ctx = {}, replyText) {
   if ((AUDIO_CLAIM.test(reply) || AUDIO_DONE.test(reply)) && !made('audio') && !actions.some((a) => ok(a) && (a.name === 'make_music' || a.name === 'make_sound'))) claims.push('sound');
   if (fileClaim && !actions.some((a) => ok(a) && FILE_TOOLS.has(a.name))) claims.push('file');
   if (!ctx.claimChecked && APP_CLAIM.test(reply) && !actions.some((a) => ok(a) && APP_TOOLS.has(a.name))) claims.push('app');
+  // brain.fileExists: a test world (the Lab's do-jobs) says where a path really is; Bob itself looks on the PC.
+  const exists = (p) => { try { return typeof ctx.brain?.fileExists === 'function' ? Boolean(ctx.brain.fileExists(p)) : fs.existsSync(p); } catch { return fs.existsSync(p); } };
   const missing = [];
   for (const m of reply.matchAll(SAVED_AT)) { const p = m[1].replace(/[.,;:)]+$/, ''); if (/\.\w{1,8}$/.test(p) && !fs.existsSync(p)) missing.push(p); }
   // Only one correction per reply.
@@ -512,6 +516,14 @@ export function afterTurn(ctx = {}, replyText) {
   if (!nudges.length && named && !/\?\s*$/.test(said) && usable('read_file')
     && !actions.some((a) => READS_FILE.has(a.name) && (ok(a) || String(JSON.stringify(a.args ?? '')).toLowerCase().includes(named.toLowerCase())))) {
     push(`${who} asked about the file ${named}, but nothing read it this turn. You can read files by name: call read_file now with just the name, path "${named}", and it looks in every folder you may read. Don't say it's restricted or missing until read_file says so. Then answer from what it says; what an earlier message in this chat said about it doesn't count.`, ['documents']);
+  }
+
+  // 2d. 16 Nov (the real-jobs reads: 800 Qwen runs, 45 GPT-OSS runs): the mistakes they made most, each caught from the
+  // words and this turn's tool record (answer-checks.js). They join the same one more go; never a loop.
+  if (ctx.cfg?.toolHelp !== false && !nudged) {
+    let more = [];
+    try { more = answerChecks({ text: ctx.turnText || ex0?.words || '', reply: said, actions, usable, who, exists, already: nudges.join(' ') }); } catch {}
+    for (const m of more.slice(0, 2)) { push(m.nudge, m.groups); if (m.claim && !claims.length) notes.push('Bob said something was done that the app couldn\'t see happen; he was asked to check.'); }
   }
 
   // 3. The claims' nudge (the note was worked out above).

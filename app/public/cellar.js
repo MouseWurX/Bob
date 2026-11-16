@@ -33,6 +33,7 @@ import { gamesSettingsHtml, mountGamesSettings } from './games.js';
 import { shareBrainsHtml, mountShareBrains } from './share-brains.js';
 import { mountNetFiles } from './net-files.js'; // Nov 14 Bob-Net: Files and brains
 import { mountPrivateWeb, privateWebHtml } from './private-web.js'; // Nov 16 Settings, Connections: Private web
+import { mountTraceLog, traceLogHtml } from './trace-log.js'; // Nov 16 Settings, This replicant matrix: Monitoring log
 import { mountSearchBackup, searchBackupHtml } from './search-backup.js'; // Nov 16 Settings, Connections: Search API keys
 import { findTheme, DEFAULT_THEME } from './themes.js';
 import { tip, noteOrTip, stripTags, keep } from './tips.js';
@@ -202,8 +203,15 @@ export function createCellar({ popOut = null } = {}) {
     document.body.appendChild(pop); pop.showModal();
     pop.querySelector('[data-pickkey]:not([disabled])')?.focus();
   }
+  // Nov 16: in Bob's own window the page asks the window for the picker (window.bobApp, electron/preload.cjs), not Bob
+  // over the web: with every connection to Bob busy, the web request used to wait and the picker never opened.
+  async function viaWindow(kind) {
+    const file = String((await window.bobApp.pick(kind)) || '');
+    if (!file || kind !== 'gguf') return { file };
+    return { file, ...(await api('/api/own-models/inspect', { file })) };
+  }
   async function ownPick(kind) {
-    const r = await api('/api/own-models/pick', { kind }).catch((e) => ({ error: e.message }));
+    const r = await (typeof window.bobApp?.pick === 'function' ? viaWindow(kind) : api('/api/own-models/pick', { kind })).catch((e) => ({ error: e.message }));
     if (r.error) { ownForm = { ...(ownForm || { file: '', name: '' }), error: r.error }; draw(); if (!ownForm.file) dlg.querySelector('[data-ownpath]')?.focus(); return null; }
     return r;
   }
@@ -448,6 +456,7 @@ export function createCellar({ popOut = null } = {}) {
     ['jobs', '🔁 Jobs', 'jobs job steer mid-job stop after this step time limit minutes receipt undo run tests after code edits question vague remember no deny reason reuse look-ups cache sources how sure file line links editor vs code cursor', () => jobsHtml()],
     ['prompts', '📝 Saved prompts', 'saved prompts prompt library slash / menu template templates reuse snippets blanks variables {file} curly brackets', () => sswitch('promptMenu', settings.promptMenu === true, 'Saved prompts with /', 'Type / at the start of a message to pick a saved prompt. Words in {curly brackets} are blanks; Tab jumps to the next.') + promptsHtml()],
     ['health', '🩺 Health and history', 'health page crash crashes catch crash report safe start opt-in switches put back undo settings changes put it back history weekly week what bob did counts statistics engine card disk errors', () => '<div class="harness-box" data-part="health"></div>'], // public/harness.js
+    ['tracelog', '📈 Monitoring log', 'monitoring log trace traces tracing span spans timing timings slow steps debug debugging opentelemetry otel otlp jaeger telemetry text file txt tool calls engine requests errors', () => traceLogHtml()],
     ['quiet', '🌙 Quiet hours and shortcut', 'quiet hours do not disturb night sleep notifications pop-ups sounds urgent reminders shortcut hotkey global key ctrl space ask box anywhere', () => '<div class="harness-box" data-part="quiet"></div>'],
     ['chatx', '💬 Chat extras', 'fade old messages fade into memory clear chat amnesia mode forget privacy wipe try from here branch fork copy chat pin pinned message keep in mind guest chat incognito private nothing saved chat places engine memory switch chats quick', () => '<div class="harness-box" data-part="chats"></div>'],
     ['daily', '🗓 Everyday helpers', 'everyday helpers today card weather reminders morning focus timer pomodoro quiet do not disturb receipt receipts spending sheet expenses budget csv profiles people family shared pc guest tour what\'s new after an update tray dot badge text size font', () => dailyHtml()],
@@ -684,6 +693,7 @@ export function createCellar({ popOut = null } = {}) {
     mountShareBrains(dlg.querySelector('.share-box')); // Bob-Net: My other Bobs and What they share
     mountNetFiles(dlg.querySelector('.net-files-box')); // Nov 14 Bob-Net: Files and brains
     mountPrivateWeb(dlg.querySelector('.private-web-box')); // Nov 16 Settings, Connections: Private web
+    mountTraceLog(dlg.querySelector('.trace-log-box')); // Nov 16 Settings, This replicant matrix: Monitoring log
     mountSearchBackup(dlg.querySelector('.search-backup-box')); // Nov 16 Settings, Connections: Search API keys
     readyLine(); // 1.5.117: "Bob 1.5.117 is ready · Restart Bob now" on the updates line when a new Bob waits
     const page = mode === 'welcome' ? 'Welcome' : tab === 'settings' ? 'Settings' : tab === 'style' ? 'Style' : 'Get models';
@@ -905,7 +915,12 @@ export function createCellar({ popOut = null } = {}) {
       if ('catfilterReset' in b.dataset) { setCatFilters({}); draw(); return; }
       if (b.dataset.catview) { if (b.dataset.catview === 'naughty' && !naughtyOn()) return; setCatView(b.dataset.catview); draw(); return; }
       // 1.5.135: ➕ Your own brains. Pick the file (a window on this replicant matrix), name it, add it; or take one off the list.
-      if ('ownadd' in b.dataset) { b.disabled = true; const r = await ownPick('gguf'); if (!r) return; if (!r.file) { b.disabled = false; return; } ownForm = r.error ? { file: r.file, name: '', error: r.error } : { file: r.file, name: r.name, params: r.params, sizeGB: r.sizeGB, mmproj: r.mmproj || '', card: r.card || null }; draw(); dlg.querySelector('[data-ownname]')?.focus(); return; }
+      if ('ownadd' in b.dataset) {
+        // Nov 16: never a greyed button with nothing happening. After a few seconds without the file window, say so and
+        // offer the path box; the button works again.
+        b.disabled = true;
+        const slow = setTimeout(() => { if (!b.isConnected || b.nextElementSibling?.classList.contains('own-slow')) return; b.disabled = false; b.insertAdjacentHTML('afterend', ' <span class="muted own-slow" role="status">The file window hasn\'t opened yet. It may be behind this one, or Bob is busy. You can also type its path.</span>'); }, 6000);
+        const r = await ownPick('gguf'); clearTimeout(slow); if (!r) return; if (!r.file) { b.disabled = false; return; } ownForm = r.error ? { file: r.file, name: '', error: r.error } : { file: r.file, name: r.name, params: r.params, sizeGB: r.sizeGB, mmproj: r.mmproj || '', card: r.card || null }; draw(); dlg.querySelector('[data-ownname]')?.focus(); return; }
       if (b.dataset.ownmm) { if (!ownForm) return; ownForm.name = dlg.querySelector('[data-ownname]')?.value || ownForm.name; if (b.dataset.ownmm === 'clear') { ownForm.mmproj = ''; draw(); return; } const r = await ownPick('mmproj'); if (r && r.file) { ownForm.mmproj = r.file; ownForm.error = ''; draw(); } return; }
       if ('owncancel' in b.dataset) { ownForm = null; draw(); return; }
       if ('ownpathopen' in b.dataset) { ownForm = { file: '', name: '' }; draw(); dlg.querySelector('[data-ownpath]')?.focus(); return; }
@@ -1412,6 +1427,7 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.bctx) { const v = el.value ? Number(el.value) : null; const r = await api('/api/settings', { brainCtx: { [el.dataset.bctx]: v } }); settings.brainCtx = r.brainCtx; const b = (bctx.brains || []).find((x) => x.model === el.dataset.bctx); if (b) b.picked = v; flash(el, 'Saved. Applies when the brain next loads.'); return; }
       if (el.dataset.sctx) { const v = el.value ? Number(el.value) : null; const r = await api('/api/settings', { sessionCtx: { [el.dataset.sctx]: v } }); settings.sessionCtx = r.sessionCtx; flash(el, 'Saved. Applies when the brain next loads.'); return; }
       if (el.dataset.sbrain) { const r = await api('/api/settings', { sessionBrains: { [el.dataset.sbrain]: el.value } }); settings.sessionBrains = r.sessionBrains; flash(el, 'Saved.'); return; }
+      if (el.dataset.set === 'useOllama') { const r = await api('/api/settings', { useOllama: el.checked }); settings.useOllama = r.useOllama === true; el.checked = settings.useOllama; flash(el, settings.useOllama ? 'On. Bob can use Ollama too.' : 'Off. Bob uses only his own parts.'); return; }
       if (el.dataset.set === 'pictureNoWait') { const r = await api('/api/settings', { pictureNoWait: el.checked }); settings.pictureNoWait = r.pictureNoWait; el.checked = r.pictureNoWait; return; }
       // List items 94-99: engine and speed extras, each saved on its own.
       if (['copyGuess', 'preloadNext', 'laptopMode', 'newCardTest', 'speedLog', 'engineNotes'].includes(el.dataset.set)) {

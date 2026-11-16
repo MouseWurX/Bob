@@ -83,14 +83,14 @@ export function setupPlan(id, ctx) {
   }
   return out;
 }
-// Nov 13: the jobs One brain hands to the main brain (Gaming keeps its own: it runs on the processor). With the switch
+// Nov 13: the jobs One brain hands to the main brain (Nov 16: and Gaming goes off: no brain loads while you play). With the switch
 // on they stay on the page, greyed, and their picks come back when it's off.
-export const ONE_BRAIN_JOBS = ['small', 'deep', 'office', 'tinker', 'reviewer', 'ledger', 'scout', 'painter', 'housekeeping'];
+export const ONE_BRAIN_JOBS = ['small', 'gaming', 'deep', 'office', 'tinker', 'reviewer', 'ledger', 'scout', 'painter', 'housekeeping'];
 export const oneBrainCovers = (slot, ctx) => Boolean(ctx.oneBrain) && ONE_BRAIN_JOBS.includes(slot.id);
 // Quick + Big needs a small brain in the Quick slot that isn't the big one.
 export const duoNeedsQuick = (ctx) => { const q = val('small', ctx); return !q || q === (val('deep', ctx) || val('bob', ctx)); };
 
-const oneBrainNote = '<p class="one-brain-note" role="status">🧠 <strong>One brain is on.</strong> My main brain does every job, and the Quick brain is off. Jobs marked "main brain" keep their picks for when it\'s off. <button type="button" class="mini" data-onebrainoff>Turn One brain off</button></p>';
+const oneBrainNote = '<p class="one-brain-note" role="status">🧠 <strong>One brain is on.</strong> My main brain does every job, the Quick brain is off, and so is the Gaming brain. Jobs marked "main brain" keep their picks for when it\'s off. <button type="button" class="mini" data-onebrainoff>Turn One brain off</button></p>';
 function setupsHtml(ctx) {
   const now = setupOf(ctx);
   const ask = ctx.setupAsk || '';
@@ -102,7 +102,7 @@ function setupsHtml(ctx) {
     const plan = setupPlan('one', ctx);
     const lines = plan.map((c) => `<li>${c.slot.icon} <strong>${esc(c.slot.name)}</strong></li>`).join('');
     box = ctx.oneBrain ? `<div class="setup-ask"><p>One brain is on.</p><div class="row"><button type="button" class="mini" data-setup="">Close</button></div></div>`
-      : `<div class="setup-ask" role="group" aria-label="Change to One brain"><p><strong>One brain</strong>: my main brain does every job and the Quick brain is off.${lines ? ' These jobs go to it:' : ''}</p>${lines ? `<ul>${lines}</ul>` : ''}<p class="muted">Your picks stay on the page, greyed, and come back when you pick another setup. Same as One brain in Settings.</p><div class="row"><button type="button" class="get" data-setupapply="one">Apply</button><button type="button" class="mini" data-setup="">Cancel</button></div></div>`;
+      : `<div class="setup-ask" role="group" aria-label="Change to One brain"><p><strong>One brain</strong>: my main brain does every job, the Quick brain is off, and so is the Gaming brain.${lines ? ' These jobs go to it:' : ''}</p>${lines ? `<ul>${lines}</ul>` : ''}<p class="muted">Your picks stay on the page, greyed, and come back when you pick another setup. Same as One brain in Settings.</p><div class="row"><button type="button" class="get" data-setupapply="one">Apply</button><button type="button" class="mini" data-setup="">Cancel</button></div></div>`;
   } else if (ask === 'specialists' && ctx.oneBrain) {
     box = `<div class="setup-ask"><p>Turns One brain off, so each job uses the brain picked for it again.</p><div class="row"><button type="button" class="get" data-setupapply="specialists">Apply</button><button type="button" class="mini" data-setup="">Cancel</button></div></div>`;
   } else if (ask === 'specialists') {
@@ -176,12 +176,14 @@ export function labLine(b, ctx) {
 export function honestyLineOf(b, ctx) { const s = ctx.honesty?.[b.value] || ctx.honesty?.[b.entry?.id]; return s?.line || ''; }
 const honestyHtml = (b, ctx) => { const t = honestyLineOf(b, ctx); return t ? `<br><span class="muted honesty-line" title="Out of 100: the share of this brain's answers that needed no correction from the app's honesty checks on this replicant matrix">🧭 ${esc(t)}</span>` : ''; };
 const labLineHtml = (b, ctx) => { const t = labLine(b, ctx); return t ? `<br><span class="muted lab-line" title="Scores out of 100 from the Lab's tests on this replicant matrix">🧪 ${esc(t)}</span>` : ''; };
-// Nov 15: a job given to a brain can be taken back. Every job has a ✕ except the two that always need a brain: the main
-// brain (Bob can't think without one) and Gaming (chat while you play). Those move to another brain with + job there.
-// Taking Quick, Office or Deep thinking off saves '' (config.js keeps it), so the job goes back to what it falls back on.
-export const canTakeOff = (s) => Boolean(s.off) || (s.how === 'brain' && s.id !== 'gaming');
+// Nov 15: a job given to a brain can be taken back. Every job has a ✕ except the main brain (Bob can't think without
+// one), which moves to another brain with + job there. Nov 16: Gaming has a ✕ too; empty, no brain loads while you play.
+// Taking Quick, Gaming, Office or Deep thinking off saves '' (config.js keeps it), so the job goes back to what it falls back on.
+export const canTakeOff = (s) => Boolean(s.off) || s.how === 'brain';
 function chipHtml(s, b, ctx, greyed) {
   const x = canTakeOff(s) ? `<button type="button" class="chip-x" data-unequip="${esc(s.id)}" aria-label="Take ${esc(b.name)} off ${esc(s.name)}" title="${esc(`Take ${s.name} back. ${s.empty}.`)}">✕</button>` : '';
+  // Nov 16: One brain turns Gaming off (no brain while you play), so that pick says "off", not "main brain".
+  if (greyed && s.id === 'gaming') return `<span class="job-chip job-chip-off" title="${esc('One brain is on: no brain loads while you play. This pick comes back when it\'s off.')}">${s.icon} ${esc(s.name)} <span class="muted">(off)</span>${x}</span>`;
   if (greyed) return `<span class="job-chip job-chip-off" title="${esc(`One brain is on: the main brain does ${s.name}. This pick comes back when it's off.`)}">${s.icon} ${esc(s.name)} <span class="muted">(main brain)</span>${x}</span>`;
   const keep = x ? '' : `${s.name} always needs a brain. To move it, use + job on another brain.`;
   return `<span class="job-chip" title="${esc(keep ? `${s.does} ${keep}` : s.does)}">${s.icon} ${esc(s.name)}${x}${keep ? `<span class="sr-only"> (${esc(keep)})</span>` : ''}</span>`;

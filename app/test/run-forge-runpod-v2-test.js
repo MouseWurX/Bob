@@ -23,6 +23,7 @@ check('v2 lives at api.runpod.io/v2', V2 === 'https://api.runpod.io/v2');
 check('the Forge and the pod no longer use rest.runpod.io', !/['"`]https:\/\/rest\.runpod\.io/.test(fm) && !/rest\.runpod\.io/.test(sh));
 check('the pod deletes itself through v2 (normal end and the time cap)', (sh.match(/'https:\/\/api\.runpod\.io\/v2\/pods\/'\+os\.environ\['RUNPOD_POD_ID'\], method='DELETE'/g) || []).length === 2);
 check('v2 network-volume paths', /rp\('PATCH', `\/network-volumes\/\$\{have\.id\}`/.test(fm) && /rp\('POST', '\/network-volumes'/.test(fm) && /rp\('DELETE', `\/network-volumes\/\$\{id\}`/.test(fm) && !/\/networkvolumes/.test(fm));
+check('while the door is shut, each "still waiting" line says what RunPod reports (status, uptime, ports)', /still waiting for the pod door \(.*\$\{await podState\(\)\}/.test(fm) && /RunPod says \$\{p\.status/.test(fm) && /not started on its host yet/.test(fm));
 check('renting asks for each wanted card in turn', /await createPod\(rp, \{/.test(fm) && /\}, cards\);/.test(fm));
 
 // ---- the body ----

@@ -2877,3 +2877,26 @@ body.still .phone-menu { animation: none; }
   .lesson-index th, .lesson-index td { border: 0; padding: 2px 8px; }
   .lesson-index td[data-label]::before { content: attr(data-label) ": "; font-weight: bold; }
 }
+
+/* Nov 16 Settings, This replicant matrix, 📈 Monitoring log (public/trace-log.js): a bar per step along the turn's time */
+.help-entry pre { overflow-x: auto; max-width: 100%; font-family: var(--mono); font-size: 12px; border: 1px solid var(--line); border-radius: var(--r); padding: 6px 8px; }
+.trace-log-box .tl-size { align-items: center; gap: 8px; }
+.trace-log-box .tl-turn { border: 1px solid var(--line); border-radius: var(--r); padding: 4px 8px; margin: 6px 0; }
+.trace-log-box .tl-turn summary { cursor: pointer; }
+.trace-log-box .tl-rows { list-style: none; margin: 6px 0 2px; padding: 0; }
+.trace-log-box .tl-row { display: grid; grid-template-columns: minmax(0, 14em) minmax(60px, 1fr) minmax(0, 40%); gap: 8px; align-items: center; padding: 2px 0; font-size: 13px; }
+.trace-log-box .tl-name { overflow-wrap: anywhere; }
+.trace-log-box .tl-kind { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+.trace-log-box .tl-track { display: block; height: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.trace-log-box .tl-bar { display: block; height: 100%; min-width: 2px; background: var(--accent); border-radius: 5px; }
+.trace-log-box .tl-error .tl-bar, .trace-log-box .tl-refused .tl-bar { background: var(--bad); }
+.trace-log-box .tl-declined .tl-bar, .trace-log-box .tl-stopped .tl-bar, .trace-log-box .tl-unfinished .tl-bar { background: var(--warn); }
+.trace-log-box .tl-time { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .trace-log-box .tl-row { grid-template-columns: 1fr; gap: 2px; }
+}
+.trace-log-box .tl-detail { grid-column: 1 / -1; font-size: 12px; }
+.trace-log-box .tl-detail summary { cursor: pointer; color: var(--muted); }
+.trace-log-box .tl-dlabel { margin: 4px 0 0; color: var(--muted); }
+.trace-log-box .tl-detail pre { margin: 2px 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16em; overflow: auto; font-family: var(--mono); border: 1px solid var(--line); border-radius: var(--r); padding: 4px 6px; }
+.trace-log-box .tl-keep { margin: 4px 0; }

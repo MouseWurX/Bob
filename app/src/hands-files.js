@@ -59,6 +59,10 @@ export function guardPath(cfg, p, { mustExist = true, what = 'that' } = {}) {
   if (isSensitive(cfg, full)) throw new Error('That holds keys or passwords, so it stays off-limits to me.');
   if (cfg.settingsFile && path.resolve(cfg.settingsFile) === full) throw new Error("That's my own settings file, which I can't change.");
   if (insideAny([...readOnlyRoots(cfg), appDir, cfg.dataDir].filter(Boolean), full)) throw new Error(`${full} is read-only for me.`);
+  // Nov 16 (800-job read, an outlier): with no make-folder action he moved his own working folder (the inn) to fake one,
+  // and the undo failed. Bob's own working folder, and any folder holding it, is never moved, renamed or recycled.
+  const own = [cfg.agentDir, cfg.dataDir].filter(Boolean).map((d) => path.resolve(d));
+  if (own.some((d) => d.toLowerCase() === full.toLowerCase() || d.toLowerCase().startsWith(full.toLowerCase().replace(/[\\/]+$/, '') + path.sep))) throw new Error(`${full} is my own working folder (or holds it), so I don't move, rename or recycle it. To make a new folder, give its full path as the "to" of a move or copy.`);
   const roots = handsRoots(cfg);
   if (!insideAny(roots, full)) throw new Error(roots.length ? `I can only work with files in: ${roots.join('; ')}. You can tick more folders in Settings, Hands.` : 'No folders are ticked for the Files Hand yet. Tick some in Settings, Hands.');
   if (mustExist && !fs.existsSync(full)) throw new Error(`${what === 'that' ? full : what} doesn't exist.`);
