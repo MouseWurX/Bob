@@ -25,14 +25,20 @@ check('Normal + One brain: every hat on the main brain', modelFor(cfg({ oneBrain
 {
   const one = cfg({ oneBrain: true, sessionBrains: { small: 'gemma4:e4b', deep: 'big:70b', office: 'office:12b', coding: 'coder:30b' } });
   const sb = sessionBrains(one);
-  check('One brain: Deep thinking, Office and Coding are the main brain, the Quick brain is off, Gaming keeps its own', sb.deep === 'gemma4:26b' && sb.office === 'gemma4:26b' && sb.coding === 'gemma4:26b' && sb.small === '' && sb.gaming === 'qwen3-4b', JSON.stringify(sb));
+  check('One brain: Deep thinking, Office, Coding and Gaming are the main brain, the Quick brain is off', sb.deep === 'gemma4:26b' && sb.office === 'gemma4:26b' && sb.coding === 'gemma4:26b' && sb.small === '' && sb.gaming === 'gemma4:26b', JSON.stringify(sb));
+  // Nov 16 (the owner): "in one brain it still selects qwen4b instruct for gaming, and i cannot remove it".
+  check('One brain: the Gaming session chats on the main brain, on the processor', (() => { const m = modelFor({ ...one, session: 'light' }, 'bob'); return m.model === 'gemma4:26b' && m.cpu; })());
+  check('One brain: the Brains page still shows the Gaming pick, greyed', sessionBrains(one, { picked: true }).gaming === 'qwen3-4b');
+  const noGame = cfg({ sessionBrains: { gaming: '' } });
+  check('Gaming taken off by hand stays off and the main brain chats while you play', mergeSettings({}, { sessionBrains: { gaming: '' } }).sessionBrains.gaming === '' && sessionBrains(noGame).gaming === '' && sessionBrains(noGame, { picked: true }).gaming === '' && modelFor({ ...noGame, session: 'light' }, 'bob').model === 'gemma4:26b' && modelFor({ ...noGame, session: 'light' }, 'bob').cpu);
+  check('Gaming never becomes E4B, even from an old settings file', !('gaming' in mergeSettings({}, { sessionBrains: { gaming: 'gemma4:e4b' } }).sessionBrains) && sessionBrains(cfg({ sessionBrains: { gaming: 'gemma4:e4b' } })).gaming === 'qwen3-4b');
   check('One brain: the picks are still there for the Brains page', JSON.stringify(sessionBrains(one, { picked: true })) === JSON.stringify(sessionBrains({ ...one, oneBrain: false })));
   // Nov 15 (the owner): "i cant take jobs away from brains once i issue them". The page saw the fall-back brain, not the pick.
   const off = cfg({ sessionBrains: { deep: '', office: '' } });
   check('a job taken off shows as taken off on the Brains page, and still runs on its fall-back brain', sessionBrains(off, { picked: true }).deep === '' && sessionBrains(off, { picked: true }).office === '' && sessionBrains(off).deep === 'gpt-oss:20b' && Boolean(sessionBrains(off).office), JSON.stringify([sessionBrains(off, { picked: true }), sessionBrains(off)]));
   check('One brain: Quick on the processor and Laptop mode fall back to the main brain', modelFor({ ...one, quickOnCpu: true }, 'bob').model === 'gemma4:26b');
   check('One brain: the Office and Coding sessions use the main brain too', modelFor({ ...one, session: 'office' }, 'bob').model === 'gemma4:26b' && modelFor({ ...one, session: 'coding' }, 'bob').model === 'gemma4:26b');
-  check('a job taken off by hand saves as empty: the Quick brain stays off, never back to E4B', mergeSettings({}, { sessionBrains: { small: '', deep: '', gaming: '' } }).sessionBrains.small === '' && mergeSettings({}, { sessionBrains: { deep: '' } }).sessionBrains.deep === '' && !('gaming' in mergeSettings({}, { sessionBrains: { gaming: '' } }).sessionBrains) && sessionBrains(cfg({ sessionBrains: { small: '' } })).small === '' && sessionBrains(cfg({ sessionBrains: { deep: '' } })).deep === 'gpt-oss:20b');
+  check('a job taken off by hand saves as empty: the Quick brain stays off, never back to E4B', mergeSettings({}, { sessionBrains: { small: '', deep: '', gaming: '' } }).sessionBrains.small === '' && mergeSettings({}, { sessionBrains: { deep: '' } }).sessionBrains.deep === '' && sessionBrains(cfg({ sessionBrains: { small: '' } })).small === '' && sessionBrains(cfg({ sessionBrains: { deep: '' } })).deep === 'gpt-oss:20b');
 }
 check('Art: chat on the small brain, on the processor', (() => { const m = modelFor(cfg({ session: 'art' }), 'bob'); return m.model === 'gemma4:e4b' && m.cpu; })());
 check('Coding: the coder does every hat', modelFor(cfg({ session: 'coding' }), 'ledger').model === 'qwen3-coder:30b');

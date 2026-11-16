@@ -30,7 +30,9 @@ export function sessionBrains(cfg, { picked = false } = {}) {
     // 1.5.23: Gaming chats on the processor, so a smaller brain answers sooner. 1.5.25: Qwen3 4B Instruct 2507 (Get models
     // id "qwen3-4b"), picked on time to first word and to a full answer: about 0.1-2 s / 2-7 s on the processor. Ollama's
     // qwen3:4b thinks first even when asked not to (about 30 s for "hi"). If it isn't on the PC, the hand-off falls back.
-    gaming: s.gaming && !/e4b/i.test(s.gaming) ? s.gaming : 'qwen3-4b', // 1.5.56: never E4B, even from an old settings file
+    // Nov 16: '' = no gaming brain of its own (the ✕ on the Brains page): the main brain chats on the processor while you
+    // play. It used to come back as the 4B every time, so the owner couldn't take it off.
+    gaming: s.gaming === '' ? '' : s.gaming && !/e4b/i.test(s.gaming) ? s.gaming : 'qwen3-4b', // 1.5.56: never E4B, even from an old settings file
     coding: s.coding || m.tinker || m.bob,
     office: s.office || m.ledger || m.bob,
     deep: s.deep || m.reviewer || m.bob
@@ -39,7 +41,9 @@ export function sessionBrains(cfg, { picked = false } = {}) {
   // leaves it (it had kept showing on the brain it falls back on, with no ✕). What runs is unchanged: see out above.
   if (picked) return { ...out, coding: s.coding || '', office: s.office || '', deep: s.deep || '' };
   if (!oneBrainOn(cfg)) return out;
-  return { ...out, small: '', coding: m.bob, office: m.bob, deep: m.bob }; // Gaming keeps its own: it runs on the processor
+  // Nov 16 (the owner: "in one brain it still selects qwen4b instruct for gaming"): One brain means one brain, Gaming too.
+  // The main brain chats on the processor while you play (borrowing the card as Settings, Speed & memory allows).
+  return { ...out, small: '', gaming: m.bob, coding: m.bob, office: m.bob, deep: m.bob };
 }
 
 export function currentSession(cfg) {

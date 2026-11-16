@@ -78,7 +78,7 @@ export function createSettingsParts(now) {
 `)}${panel('ev-how', '⚡ How Bob works', howSum, `
       <h4 class="ssub">How he works</h4>
       ${sswitch('autoSession', settings.autoSession !== false, 'Auto session', 'Bob switches to the session that suits the job (Art, Coding, Office or Gaming) and returns to Normal after 2 quiet minutes. He stays in Gaming while a game uses the GPU. A session you pick is kept while you work.')}
-      ${sswitch('oneBrain', settings.oneBrain, 'One brain', 'The main brain does every job and the Quick brain is off. No swaps (about 20 seconds each). Other picks are kept, greyed on the Brains page.')}
+      ${sswitch('oneBrain', settings.oneBrain, 'One brain', 'The main brain does every job, Gaming too, and the Quick brain is off. No swaps (about 20 seconds each). Other picks are kept, greyed on the Brains page.')}
       ${sswitch('planFirst', settings.planFirst === true, 'Plan before big jobs', keep('Before a multi-step job, or one that changes files or runs programs, Bob shows the steps on one card and waits for your OK.'))}
       ${sswitch('howtos', settings.howtos === true, 'Learn how-tos', 'After a multi-step job goes well, Bob offers to save the steps as a how-to and follows it for similar asks. Nothing is kept without your click. Your how-tos are in 🧰 Tools and how-tos below.')}
       ${sswitch('editOwn', settings.editOwn === true, 'Edit his own messages', 'Bob corrects his earlier message instead of sending a new one. It says edited; press that to see the original.')}
