@@ -106,8 +106,8 @@ const KEY = 'rpa_' + 'TESTKEY0123456789abcdefghijklmnop';
   const events = [];
   const fetchImpl = async (url, opts = {}) => {
     calls.push({ url, method: opts.method || 'GET', body: opts.body ? JSON.parse(opts.body) : null, headers: opts.headers || {} });
-    if (/\/pods$/.test(url) && opts.method === 'POST') return new Response(JSON.stringify({ id: 'pod42' }), { status: 200 });
-    if (/\/pods$/.test(url)) return new Response(JSON.stringify([{ id: 'old1', name: `${RENT_PREFIX}zzz`, costPerHr: 2.5 }, { id: 'theirs', name: 'forge' }]), { status: 200 });
+    if (/\/pods$/.test(url) && opts.method === 'POST') { const b = JSON.parse(opts.body); return b.gpu.id === 'NVIDIA H100 80GB HBM3' ? new Response('{"title":"Bad Request","detail":"no capacity"}', { status: 400 }) : new Response(JSON.stringify({ id: 'pod42' }), { status: 201 }); }
+    if (/\/pods$/.test(url)) return new Response(JSON.stringify({ pods: [{ id: 'old1', name: `${RENT_PREFIX}zzz`, cost: 2.5 }, { id: 'theirs', name: 'forge' }], pagination: { hasNextPage: false } }), { status: 200 });
     if (/\/pods\/pod42$/.test(url) && opts.method === 'DELETE') return new Response('', { status: 200 });
     if (/\/models$/.test(url)) return new Response('{"data":[]}', { status: 200 });
     if (/chat\/completions$/.test(url)) return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"ok"}}]}\ndata: {"choices":[],"usage":{"prompt_tokens":1000,"completion_tokens":100}}\n')); c.close(); } }), { status: 200 });
@@ -139,8 +139,8 @@ const KEY = 'rpa_' + 'TESTKEY0123456789abcdefghijklmnop';
   const ev2 = [];
   rentals.okUntil = { rental: 'mach01', usd: 10 };
   const r2 = await rentals.chat(mach, { messages: [{ role: 'user', content: 'hi' }], tools: [], onToken: () => {}, job: { id: 'job2' }, emit: (ev) => ev2.push(ev) });
-  const start = calls.find((c) => /\/pods$/.test(c.url) && c.method === 'POST');
-  check('the machine is started under Bob\'s name with the 80 GB cards and the self-destruct timer', start && start.body.name === `${RENT_PREFIX}mach01` && start.body.gpuTypeIds.includes('NVIDIA H100 80GB HBM3') && /^timeout 1800 /.test(start.body.dockerStartCmd[0]) && start.headers.authorization === `Bearer rpa_${KEY}`);
+  const start = calls.filter((c) => /\/pods$/.test(c.url) && c.method === 'POST').pop(); // v2: the first card had no room, the next was rented
+  check('the machine is started under Bob\'s name with the 80 GB cards and the self-destruct timer', start && start.body.name === `${RENT_PREFIX}mach01` && start.body.gpu.id === 'NVIDIA H100 PCIe' && calls.filter((c) => /\/pods$/.test(c.url) && c.method === 'POST').map((c) => c.body.gpu.id).join() === 'NVIDIA H100 80GB HBM3,NVIDIA H100 PCIe' && start.url === 'https://api.runpod.io/v2/pods' && start.body.image && start.body.entrypoint.join(' ') === '/bin/sh -c' && /^timeout 1800 /.test(start.body.cmd[0]) && start.headers.authorization === `Bearer rpa_${KEY}`);
   check('the chat goes to the machine\'s own address with no key, and the start is announced', calls.some((c) => c.url === 'https://pod42-8000.proxy.runpod.net/v1/chat/completions' && !c.headers.authorization) && ev2.some((e) => e.type === 'rent' && e.action === 'start' && e.minutes === 30) && r2.content === 'ok');
   check('the machine keeps running while the job does', rentals.running.has('mach01'));
   t += 10 * 60000;
@@ -165,9 +165,9 @@ const KEY = 'rpa_' + 'TESTKEY0123456789abcdefghijklmnop';
   check('the price and the estimate are for the whole machine', Math.abs(estimate(eight, { minutes: 10 }) - (CARDS['141'].perHour * 8 / 60) * 15) < 1e-9 && /for 8 cards/.test(priceLine(eight)) && cardsText(eight) === '8 × 141 GB card on one machine');
   check('vLLM is told to split the model over the cards', /--tensor-parallel-size 8/.test(serverCommand('Qwen/Giant', { minutes: 30, cards: 8 })) && !/tensor-parallel/.test(serverCommand('Qwen/Giant', { minutes: 30 })));
   const calls = [];
-  const m = new Machines({ fetchImpl: async (url, opts) => { calls.push(JSON.parse(opts.body)); return new Response('{"id":"p8","costPerHr":40}'); }, now: () => 1 });
+  const m = new Machines({ fetchImpl: async (url, opts) => { calls.push(JSON.parse(opts.body)); return new Response('{"id":"p8","cost":40}'); }, now: () => 1 });
   const run = await m.start(eight, { key: 'k', minutes: 30 });
-  check('RunPod is asked for that many cards, and its own hourly price is kept', calls[0].gpuCount === 8 && run.perHour === 40);
+  check('RunPod is asked for that many cards, and its own hourly price is kept', calls[0].gpu.count === 8 && run.perHour === 40);
   const emitted = [];
   new Rentals(cfg, { env: { RUNPOD_API_KEY: 'k' }, broadcast: () => {} }).offer(eight, { tokens: 10, emit: (ev) => emitted.push(ev) });
   check('the Hire it card carries the count so the window and the phone can warn', emitted[0].rental.cards === 8 && emitted[0].rental.cardsText === '8 × 141 GB card on one machine');
@@ -228,5 +228,21 @@ check('the run after the card answer does not repeat the user message', /j\.rent
 const css = fs.readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
 check('a blocked Hire it button looks disabled', /\.rent-card button\.get:disabled \{ opacity: \.5; cursor: not-allowed; \}/.test(css));
 check('the missing-field line by Add this rental is red', /noteEl\.classList\.add\('error'\)/.test(cellar) && (cellar.match(/noteEl\.classList\.add\('error'\)/g) || []).length === 2);
+// ---- RunPod v2 (16 Nov 2026): a serverless endpoint is made from the card's GPU pools at /v2/serverless ----
+{
+  const calls = [];
+  const m = new Machines({ fetchImpl: async (url, opts = {}) => { calls.push({ url, method: opts.method || 'GET', body: opts.body ? JSON.parse(opts.body) : null });
+    if (/\/catalog\/gpus/.test(url)) return new Response(JSON.stringify({ gpus: [{ id: 'NVIDIA H100 80GB HBM3', pool: 'HOPPER_80' }, { id: 'NVIDIA A100 80GB PCIe', pool: 'AMPERE_80' }, { id: 'NVIDIA L4', pool: 'ADA_24' }] }));
+    return new Response('{"id":"ep77"}', { status: 201 }); }, now: () => 1 });
+  const ep = await m.start({ id: 'srv9', service: 'runpod-serverless', model: 'Org/Big', card: '80' }, { key: 'k', minutes: 30 });
+  const mk = calls.find((c) => c.method === 'POST');
+  check('serverless: made at /v2/serverless from the 80 GB card\'s pools only, scaling to zero', mk && mk.url === 'https://api.runpod.io/v2/serverless' && mk.body.gpu.pools.join() === 'HOPPER_80,AMPERE_80' && mk.body.type === 'QUEUE' && mk.body.workers.min === 0 && mk.body.image && ep.id === 'ep77' && ep.url === 'https://api.runpod.ai/v2/ep77/openai/v1');
+  let err = '';
+  try { await new Machines({ fetchImpl: async () => new Response('{"gpus":[]}'), now: () => 1 }).start({ id: 'srv8', service: 'runpod-serverless', model: 'Org/Big', card: '141' }, { key: 'k', minutes: 30 }); } catch (e) { err = e.message; }
+  check('serverless: no pool for the card says so plainly, and makes nothing', /no pool for the 141 GB card/.test(err));
+  const src = fs.readFileSync(new URL('../src/rental.js', import.meta.url), 'utf8');
+  check('no rental call uses the retired rest.runpod.io address', !/['"`]https:\/\/rest\.runpod\.io/.test(src) && /const RUNPOD = 'https:\/\/api\.runpod\.io\/v2'/.test(src));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
