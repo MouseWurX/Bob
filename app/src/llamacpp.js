@@ -37,7 +37,7 @@ import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx,
 //   qwen2.5-coder: a bare {"name": ..., "arguments": {...}} (sometimes in ```json fences or <tool_call> tags);
 //   gpt-oss: Harmony tokens, "<|channel|>commentary to=functions.NAME ... <|message|>{...}<|call|>".
 // When there is no real call and the text is one of these, naming a tool Bob offered, it becomes a real call.
-export const TEXT_CALL_START = /^(\{|```|<tool_call>|<\|)/;
+export const TEXT_CALL_START = /^(\{|```|<tool_call>|<function=|<\|)/;
 const parseJson = (t) => { try { return JSON.parse(t); } catch { return undefined; } };
 export function cleanHarmony(text) {
   const final = String(text).match(/<\|channel\|>final<\|message\|>([\s\S]*?)(?:<\|(?:end|return)\|>|$)/);
@@ -59,6 +59,15 @@ export function textCalls(content, names) {
   // <tool_call>{...}</tool_call>, possibly several
   for (const m of text.matchAll(/<tool_call>\s*([\s\S]*?)\s*(?:<\/tool_call>|$)/g)) { const o = parseJson(m[1]); if (o?.name) add(o.name, o.arguments ?? o.parameters ?? {}); }
   if (calls.length) return { calls, text: '' };
+  // 16 Nov (Maximus rerun, 9 of 100 failed this way): Qwen3.6's own XML form, written as text with no real call:
+  // <tool_call><function=NAME><parameter=KEY>value</parameter>...</function></tool_call>. It often follows a line of
+  // prose ("Let me check the board first."), which is kept as the reply's text.
+  for (const m of text.matchAll(/<function=([\w.-]+)>([\s\S]*?)(?:<\/function>|$)/g)) {
+    const args = {};
+    for (const p of m[2].matchAll(/<parameter=([\w.-]+)>\n?([\s\S]*?)\n?(?:<\/parameter>|(?=<parameter=)|$)/g)) { const v = p[2]; const j = parseJson(v.trim()); args[p[1]] = j !== undefined && typeof j !== 'string' && v.trim() !== '' && /^[\[{\d-]|^(?:true|false|null)$/.test(v.trim()) ? j : v; }
+    add(m[1], args);
+  }
+  if (calls.length) return { calls, text: text.split(/<tool_call>|<function=/)[0].trim() };
   // A lone JSON object (or a list of them), maybe in ```json fences
   const body = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   const o = parseJson(body);

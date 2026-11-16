@@ -14,6 +14,21 @@ says what ran, what it taught, what changed, and which check now guards it. "Ope
 - Check: the v2 pre-flight (`forge.mjs --preflight` asks RunPod read-only) now runs in the inbox kit too, and
   `test/run-forge-runpod-v2-test.js` is in the branch's suite.
 
+## 16 Nov 2026: the Maximus rerun graded (23 of 100 failed, from 43) and the inbox "before" run (120 runs)
+- Taught (Bob): Qwen3.6 sometimes writes its tool call as text in its own XML form
+  (`<tool_call><function=NAME><parameter=...>`), and the engine took only JSON text calls. So the call never ran, and
+  the answer said "Done" (12 of 100 Maximus runs had such steps; 5 of the 9 false_action_claim faults). Self-review
+  text also reached the answer (8). Inbox run: 25 of 120 mail jobs ran no mail tool at all. Real mail asks rarely
+  say "e-mail" ("Trash everything from Kettle & Crumb"), so the morning's mail_route caught 0 of the 25.
+- Changed: llamacpp.js textCalls turns the XML form into real calls (17 of the 20 such steps would run now); new
+  checks text_call and review_leak; mail_route reads plain mail asks (trash/archive from a name, "emailed me",
+  "draft a reply").
+- Check: run-textcalls-test.js (2 more), run-answer-checks-test.js (58). Replay: mail_route catches 25 of 25
+  no-mail-tool runs, with 0 firings on the 95 runs that used mail tools and 0 keeps in the 800 Qwen runs. On the
+  Maximus rerun, checks or the rescue touch 11 of the 23 failures. Loops (10) and unsupported claims (17) are not
+  caught by a check yet: loops belong to the effort loop, unsupported claims to the reviews.
+- Harness (inbox thread): nothing was the world's fault; the npc files reach the cloud via the device file tools.
+
 ## 16 Nov 2026: the Maximus rerun, first 63 of 100 (a quick read, before the blind grading)
 - Taught (Bob's loop): with the planning fixes, raw tool-call blobs and "already done" / "Standing by" answers went
   from 5 to 0. But "I already searched / gave you that above" answers rose from 3 to 6, and the Maximus fallback

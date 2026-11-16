@@ -81,6 +81,17 @@ check('"the table above" with the table in this answer -> quiet', !has({ text: '
 check('a plain answer -> quiet', !has({ text: 'how does GPS work?', reply: 'Your phone times signals from four satellites and solves for where it is.' }, 'points_back'));
 check('"email logs" is about files, not mail -> quiet', !has({ text: 'Find the email logs from the newsletter service and summarise the bounce messages', reply: 'Found them in bounces.csv: 8 bounces.' }, 'mail_route'));
 
+// ---------- the inbox run's plain mail asks, text calls, review leaks (16 Nov) ----------
+check('"Trash everything from Kettle & Crumb" with only list_folder -> mail_route', has({ text: 'Trash everything from Kettle & Crumb.', reply: 'Nothing found.', actions: [act('list_folder', {})] }, 'mail_route'));
+check('"Archive everything from Larkspur Outfitters" with no tool -> mail_route', has({ text: 'Archive everything from Larkspur Outfitters.', reply: 'Done.' }, 'mail_route'));
+check('"What\'s the code Theo emailed me?" -> mail_route', has({ text: 'What\'s the cabin door code Theo emailed me?', reply: 'I don\'t know it.' }, 'mail_route'));
+check('"Wren asked me about my order. Draft a reply" -> mail_route', has({ text: 'Wren from Kettle & Crumb asked me about my catering order. Draft a reply saying yes.', reply: 'Hi Wren, yes please.' }, 'mail_route'));
+check('"Trash the old logs from Build" names a file -> quiet', !has({ text: 'Trash build.log from Builds', reply: 'Done.' }, 'mail_route'));
+check('text call in the answer -> text_call (a claim)', (() => { const c = answerChecks({ text: 'fix line 9', reply: 'Done.\n<tool_call>\n<function=edit_file>\n<parameter=path>\na.py\n</parameter>\n</function>\n</tool_call>' }).find((x) => x.kind === 'text_call'); return c && c.claim && /edit_file/.test(c.nudge); })());
+check('"My own review" in the answer -> review_leak', has({ text: 'move it', reply: 'My own review: I called the move tool first.' }, 'review_leak'));
+check('"You\'re right on all six points" -> review_leak', has({ text: 'zip script', reply: 'You\'re right on all six points. Here is the script.' }, 'review_leak'));
+check('a plain answer -> no review_leak', !has({ text: 'zip script', reply: 'Here is the script. It zips the folder.' }, 'review_leak'));
+
 // ---------- stripMarkers ----------
 check('citation markers taken out', stripMarkers('It rose 3%【1†L1-L3】. Then fell【12】.') === 'It rose 3%. Then fell.');
 check('ordinary brackets kept', stripMarkers('see [1] and (2)') === 'see [1] and (2)');

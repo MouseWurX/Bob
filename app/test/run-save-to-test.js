@@ -128,6 +128,13 @@ for (const [cmd, args] of [['npm', ['test']], ['cmd', ['/c', 'npm test > log.txt
   check(`"${cmd} ${args.join(' ')}" still runs`, !writesFileOnly({ cmd, args }));
 check('run_command refuses a file write before any card, pointing to write_file', /writesFileOnly\(a\) && brain\.tools\?\.write_file\) throw new Error\('Not run: this command only writes a file\. Use write_file/.test(read('src/hands.js')));
 
+// ---- search_files with no projects searches the folders Bob may read (Nov 16 real-job runs) ----
+{
+  fs.writeFileSync(path.join(home, 'notes.txt'), 'call the plumber on Tuesday\n');
+  const out = await buildTools({ ...cfg, readRoots: [home], projects: {} }).search_files.run({ text: 'plumber' });
+  check('search_files with no projects searches the readable folders and says so', /no project is set up, so this searched/.test(out) && /notes\.txt:1: call the plumber/.test(out), out.slice(0, 200));
+}
+
 fs.rmSync(root, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

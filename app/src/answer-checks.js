@@ -14,6 +14,10 @@
 //   one_search     a research job answered after a single search (GPT-OSS #22, #45)
 //   points_back    "I already searched / gave you that above / in my last reply" instead of the thing itself (Maximus
 //                  rerun, 16 Nov: 6 of 63 answers; the user sees only this answer, not steps, plans or tool results)
+//   text_call      a tool call written as text that never ran, often then "Done" (Maximus rerun: 9 of 100 failed;
+//                  the engine now turns Qwen's XML form into real calls, this catches what's left)
+//   review_leak    his own review or the hidden notes in the shown answer ("My own review", "You're right on all six
+//                  points" to a review the user never saw; Maximus rerun: 8 of 100)
 //   maths          totals worked out in his head (Qwen invented_result: several wrong sums)
 //   mail_route     a mail job (trash, archive, reply to a sender's mail) answered without the mail tools: the live inbox
 //                  run (16 Nov) saw bulk trash/archive jobs wander into list_folder, search_files, web_search or
@@ -48,11 +52,17 @@ const MEMORY_SAY = /\bI(?:'ve| have)?(?: also)? (?:noted|remembered|made a note|
 const PAGE_SAY = /\b(?:I )?(?:opened|visited|loaded|fetched|browsed|went to|checked) (?:it|the (?:site|page|link|website|url)|(?:https?:\/\/)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})\b[^.!?\n]{0,40}\b(?:loads?|works?|fine|up|down|shows?|says?|safe)\b|\bread (?:them|it|all three|each|both) in full\b/i;
 const UNSEEN = /\b(?:the\s+)?(?:hash|sha-?256|checksum|link|links|url|path|code|results?|list|output|details|figures|numbers|commands?)\s+(?:provided|shown|given|listed|printed)(?:\s+above)?\b|\b(?:see|shown|listed|as noted|mentioned) above\b|\b(?:results|details|answer) (?:are|is) above\b/i;
 const POINTS_BACK = /^(?:\W{0,3})(?:I(?:'ve| have)? already (?:gave|given|searched|pulled|ran|run|scanned|answered|told|shown|showed|listed|checked|did|done|covered|sent|written|wrote)|I(?:'ve| have) given you (?:the|my|an?) (?:answer|list|script|code|steps))\b|\b(?:in|from) my (?:last|previous|earlier|first) (?:reply|answer|message|turn)\b|\b(?:the|my|that|this) (?:script|code|list|table|answer|summary|steps|results?|tree|plan) (?:I gave|I wrote|I showed )?(?:you )?above\b/i;
+const TEXT_CALL = /<tool_call>|<\/?function(?:=|>)|<parameter=|"name"\s*:\s*"[a-z_]+"\s*,\s*"(?:arguments|parameters)"\s*:|\bto=functions\./;
+const REVIEW_LEAK = /\bMy own review\b|\bI(?:'ve| have)? reviewed my (?:own )?(?:work|answer)\b|^\s*\**(?:Review|Improve it|Checking my own work|Plan)\**\s*:|\bYou'?re right (?:on|about) (?:all|both|every) (?:\w+ )?(?:points?|of them)\b|\b(?:the|my) (?:hidden|reviewer'?s?|review) notes?\b|\bHere is what the jobs did\b/im;
 const RESEARCH = /\b(?:research|look up|find out about|compare|comparison|studies|study|reports|sources|cite|citations?|literature|evidence|survey of|overview of the (?:research|literature))\b/i;
 const MAIL_ASK = /\b(?:e-?mails?|inbox|mail(?:box)?|messages? from|newsletters?|spam|unread)\b/i;
 const MAIL_DO = /\b(?:trash|archive|delete|bin|move|label|mark|unsubscribe|clean (?:up|out)|tidy|sort|file away|reply|answer|respond|draft|write back|summari[sz]e|go through)\b/i;
 // not a mail job: is this sender or link safe, was this address in a breach, or e-mail a file somewhere (Bob sends no mail)
 const MAIL_NOT = /\b(?:safe|phishing|scam|spoof|genuine|legit(?:imate)?|breach(?:es|ed)?|pwned|headers?|spf|dkim|dmarc)\b|\be-?mail (?:it|this|that|them|the file) to\b|\be-?mail (?:logs?|files?|csv|exports?|addresses|list)\b/i;
+// the inbox run (16 Nov): real mail asks rarely say "e-mail": "Trash everything from Kettle & Crumb", "Archive
+// everything from Larkspur Outfitters", "Unsubscribe me from the junk", "What's the code Theo emailed me?", "Wren asked
+// me about my order. Draft a reply"
+const MAIL_PLAIN = /\b(?:[Tt]rash|[Aa]rchive|[Uu]nsubscribe me)\b[^.!?\n]{0,40}\bfrom [A-Z]|\b(?:[Tt]rash|[Aa]rchive)\b[^.!?\n]{0,40}\b(?:notifications|receipts|promotions|alerts|newsletters)\b|\b[Uu]nsubscribe me\b|\b(?:e-?mailed|wrote to|sent) me\b|\bdraft (?:a |an )?(?:reply|answer|response)\b|\breply to (?:[A-Z]\w+|the (?:message|note))\b|\b(?:asked|wrote|messaged) me about\b/;
 const MAIL_TOOLS = /^(?:read_email|manage_email|[a-z0-9]*_?(?:gmail|outlook|mail)[a-z0-9_]*)$/i;
 const MATHS_ASK = /\b(?:total|sum|add (?:up|them)|average|mean|median|how much (?:in total|altogether|is that|did i)|percent(?:age)?|difference|net|subtotal|per month|per year|annual|grand total|work out|calculate|balance)\b/i;
 
@@ -117,6 +127,15 @@ export function answerChecks({ text = '', reply = '', actions = [], usable = () 
   if (pb && !UNSEEN.test(said) && !(holds && /\babove\b/i.test(pb[0]) && !/^\W{0,3}I/.test(pb[0]))) {
     add('points_back', `${who} sees only this answer: not your steps, plans, tool results or earlier replies. You wrote "${cap(said.match(POINTS_BACK)[0], 60)}". Give the thing itself now, in full (the list, script, results or answer), with no "already" or "above".`);
   }
+  // text_call: a call written out instead of made
+  if (TEXT_CALL.test(said)) {
+    const name = (said.match(/<function=([\w.-]+)>|"name"\s*:\s*"([a-z_]+)"|to=functions\.([\w.-]+)/) || []).slice(1).find(Boolean);
+    add('text_call', `Your answer has a tool call written as text${name ? ` (${name})` : ''}. Text never runs: nothing happened. Make the real call now if it's still needed, then answer from what it returns, and don't say it's done until a tool says so. Never show call text to ${who}.`, [], true);
+  }
+  // review_leak: his own review or notes in the shown answer
+  if (REVIEW_LEAK.test(said)) {
+    add('review_leak', `Your answer shows your own working ("${cap(said.match(REVIEW_LEAK)[0], 50)}"). ${who} never saw your review, plan or notes. Write the answer again for ${who} only: the result, in plain words, with nothing about reviews, jobs or steps.`);
+  }
   // cut_off
   if (cutOff(said)) add('cut_off', 'Your answer stops in the middle. Give the whole answer again, finished, in one reply.');
   // one_search: a research job answered after one look
@@ -134,7 +153,7 @@ export function answerChecks({ text = '', reply = '', actions = [], usable = () 
     add('maths', 'Check the maths before giving totals: work each sum out with calculate, then answer with the numbers it gives.', ['maths']);
   }
   // mail_route: a mail job with the mail tools there, and none of them ran
-  if (MAIL_ASK.test(ask) && MAIL_DO.test(ask) && !MAIL_NOT.test(ask) && (usable('read_email') || usable('manage_email')) && !acts.some((a) => MAIL_TOOLS.test(a.name))) {
+  if ((MAIL_ASK.test(ask) && MAIL_DO.test(ask) || MAIL_PLAIN.test(ask)) && !MAIL_NOT.test(ask) && !filesNamed(ask).length && (usable('read_email') || usable('manage_email')) && !acts.some((a) => MAIL_TOOLS.test(a.name))) {
     const wander = acts.filter((a) => /^(?:list_folder|search_files|find_in_documents|web_search|fetch_page|file_hands)$/.test(a.name)).map((a) => a.name);
     add('mail_route', `This is a mail job, but no mail tool ran${wander.length ? ` (${[...new Set(wander)].join(', ')} look at files or the web, not the mail)` : ''}. Use read_email to find the messages (by sender, subject or words), then manage_email to trash, archive or move only the ones the request covers (look at each: a real person who wrote to the user isn't bulk mail; say so instead), or read_email first and then write the reply from what the message says. Don't look in folders or on the web for mail.`, ['mail']);
   }

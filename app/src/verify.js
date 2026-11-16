@@ -329,7 +329,7 @@ const FILE_ASK = /\b(?:read|open|show(?: me)?|summari[sz]e|look (?:at|in|through
 export function fileAsked(text) { const m = String(text || '').match(FILE_ASK); return m ? m[1].trim() : ''; }
 const FILE_TOOLS = new Set(['write_file', 'edit_file', 'save_spreadsheet', 'file_hands', 'sort_files', 'convert_file', 'office_make', 'office_edit', 'strip_metadata']);
 const APP_TOOLS = new Set(['open_app', 'app_act']);
-const LOOKS = new Set(['app_look', 'list_schedules', 'read_file', 'list_files', 'search_files', 'workshop_list', 'use_tools', 'recall', 'web_search', 'fetch_page', 'security_check', 'inspect_file', 'osint_lookup', 'check_exposure', 'security_tips', 'bob_help']);
+const LOOKS = new Set(['app_look', 'list_schedules', 'read_file', 'list_files', 'list_folder', 'search_files', 'workshop_list', 'use_tools', 'recall', 'web_search', 'fetch_page', 'security_check', 'inspect_file', 'osint_lookup', 'check_exposure', 'security_tips', 'bob_help']);
 const isDoing = (n) => n in MEDIA || FILE_TOOLS.has(n) || APP_TOOLS.has(n) || ['run_command', 'run_recipe', 'schedule_job', 'change_schedule', 'undo_files'].includes(n);
 
 // Plain words for what an action was, for the user's note.
