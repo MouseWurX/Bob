@@ -65,6 +65,7 @@
     "test/run-step-thinking-test.js",
     "test/run-solo-effort-test.js",
     "test/run-cant-retry-test.js",
+    "test/run-effort-tools-test.js",
     "test/run-natural-tools-test.js",
     "test/run-hands-read-test.js",
     "test/run-web-search-test.js",

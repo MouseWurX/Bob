@@ -198,6 +198,7 @@ export const turnParts = {
         let ran = false;
         // The repeat guard's count is shared by every part of the job (the distill test: a refused write was tried again in 3 small jobs).
         Object.defineProperty(job, 'soloSeen', { value: new Map(), configurable: true, enumerable: false, writable: true });
+        Object.defineProperty(job, 'soloLedger', { value: null, configurable: true, enumerable: false, writable: true }); // each part's record carries the earlier parts' (brain-run-on.js)
         const run = async (note, { phase = null, noTools = false } = {}) => {
           Object.assign(job, { soloStep: note || '', soloAgain: ran, soloPhase: phase, soloNoTools: noTools });
           try { await this.runOn(msgs, text, keep, signal, ran ? [] : pics, job, sessionId, out); return { repeatStop: Boolean(out.ctx?.repeatStop) }; }

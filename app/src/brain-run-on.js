@@ -101,6 +101,10 @@ export const runOnParts = {
     { const t = turnNow(); if (t && !t.ctx) t.ctx = ctx; } // item 249: the end of the turn reads why it stopped
     // The ledger (handoff.js): what was asked for, every load, tool and output this turn, kept by the system.
     ctx.ledger = new Ledger({ job, expect: expectFrom(text, { pics }), save: (now) => (now ? this.saveQueue() : this.saveQueueSoon()) }); // item 230
+    // Nov 16 (four-level tool test): at Magnus and Maximus each part of the job (a step, the answer, an improve round)
+    // is its own run. What the earlier parts really did is carried into this part's record, so the end-of-turn checks
+    // don't say "Bob didn't save the file" in the answer after a step saved it.
+    if (job && 'soloLedger' in job) { const prev = job.soloLedger; if (prev && job.soloAgain) { ctx.ledger.actions.unshift(...prev.actions); ctx.ledger.outputs.unshift(...prev.outputs); } job.soloLedger = ctx.ledger; }
     this.gate.track(signal, ctx.ledger);
     ctx.loaded = this.startGroups(sessionId, text); // toolbox groups this turn (use_tools adds more)
     // Assistant presets (presets.js, off unless switched on): this chat's preset, if it has one. Its tool groups are a
