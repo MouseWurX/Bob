@@ -3,7 +3,6 @@
   "host": "127.0.0.1",
   "port": 7777,
   "engine": "llamacpp",
-  "ollamaUrl": "http://127.0.0.1:11434",
   "llamacpp": {
     "port": 8091,
     "ctx": 32768,

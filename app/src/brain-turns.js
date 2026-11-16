@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { currentSession } from './sessions.js';
 import { carryOnLine, carryOnPlan, finishedSteps, slimHandoff } from './handoff.js';
 import { inTurn, endWhy, turnSummary, whyLine } from './turn-log.js';
+import { startTurnTrace, finishTurnTrace } from './trace-log.js'; // Nov 16 Monitoring log, off unless turned on
 import { causeLine, sideJob } from './retry.js';
 import { timersFor, raceTimeout } from './hang-guard.js';
 import { noteMissedLine, JOB_GUESS_CORRECTION } from './meanwhile.js';
@@ -28,7 +29,7 @@ export const turnParts = {
     const turnId = job?.id || crypto.randomUUID();
     const controller = new AbortController();
     let flagged = false; // an error or correction note under this reply: no sleepy aside (never joke about a real failure)
-    const tstore = { id: turnId, asks: 0, corrections: 0, at: Date.now(), ctx: null, error: null }; // items 246-249 (turn-log.js)
+    const tstore = { id: turnId, asks: 0, corrections: 0, at: Date.now(), ctx: null, error: null, trace: startTurnTrace(this.cfg, { id: turnId, lane, guest: Boolean(job?.guest), ask: text }) }; // items 246-249 (turn-log.js); trace: the Monitoring log (trace-log.js), null when it's off
     // Quick brain sees the job: the main lane's job gets a record (meanwhile.js), and its thinking (only
     // passed along while Bob's thinking window is open) and copies go in it too.
     if (lane === 'talk' && job && !job.side) this.watch.start(job, { session: currentSession(this.cfg).label });
@@ -92,6 +93,7 @@ export const turnParts = {
           const sum = turnSummary({ why, ms: Date.now() - tstore.at, asks: tstore.asks, corrections: tstore.corrections, ledger: tstore.ctx?.ledger });
           inTurn(tstore, () => this.log('turn', whyLine(why, { ...sum, error: tstore.error?.message })));
           if (job) job.stopWhy = why;
+          if (tstore.trace) { const fin = tstore.trace.details && !job?.guest ? [...this.session(sessionId)].reverse().find((m) => m.role === 'assistant' && !m.tool_calls?.length && !m.step) : null; finishTurnTrace(this.cfg, tstore.trace, { why, ms: sum.ms, error: tstore.error, answer: fin?.content || '' }); } // Monitoring log: the turn's block, names and times only
           this.loopStats?.record(sum);
         } catch {}
         // Item 10: the steps go with the answer, so "How I got here" is there after a reload too.

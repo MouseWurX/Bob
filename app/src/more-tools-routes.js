@@ -15,6 +15,7 @@ import { loadWatches, saveWatches } from './page-watch.js';
 import { listMail } from './email-read.js';
 import { loadCalendar, forgetCalendar } from './calendar-read.js';
 import { sandboxOn } from './sandbox-code.js';
+import { capabilities } from './capabilities.js';
 
 export function moreToolsView(cfg, extra = {}) {
   const m = moreTools(cfg);
@@ -28,7 +29,7 @@ export function moreToolsView(cfg, extra = {}) {
     pythonHere: hasPython(cfg), packagesHere: hasPackages(cfg), packageNames: [...PYODIDE_PACKAGES.filter((n) => n !== 'typing-extensions' && n !== 'fonttools'), ...WHEELS.filter((w) => !['et-xmlfile', 'defusedxml'].includes(w.name)).map((w) => w.name)], pythonSize: `${(PYODIDE.bytes / 1048576).toFixed(1)} MB`, sandboxOn: sandboxOn(cfg),
     wordListHere: hasWordList(cfg),
     ffmpegHere: Boolean(findFfmpeg(cfg)),
-    hearingHere: Boolean(cfg.stt?.provider === 'whispercpp' ? cfg.stt?.model : cfg.stt?.provider || cfg.ollamaUrl),
+    hearingHere: capabilities(cfg).hearing, // Nov 16 2026: what really hears here (Bob's own engine by default), never "Ollama's address is set"
     watches: loadWatches(cfg).map((w) => ({ id: w.id, what: w.what, url: w.url, find: w.find, part: String(w.part || '').slice(0, 120), checked: w.checked || 0, problem: w.problem || '' })),
     ...extra
   };

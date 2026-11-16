@@ -161,6 +161,7 @@ export function createEngineParts(now) {
       <div><strong>Engine downloads</strong> ${tip('The programs that run the models, from their official GitHub pages (Brain Engine from Bob\'s own), matched to your GPU. Update keeps the previous build, so Go back needs no download. A rebuilt engine with the same name still shows as an update (by checksum).', 'Engine downloads')}
         <div class="row"><button type="button" data-checkall>Check all for updates</button></div>
         ${sswitch('engineNotes', settings.engineNotes === true, 'Engine update notes', `After an engine update, Bob adds a line or two in the chat on what changed.${settings.engineNotes && settings.engineNote ? ` The engine you have now: ${esc(settings.engineNote)}` : ''}`)}
+        ${sswitch('useOllama', settings.useOllama === true, 'Use Ollama too', 'Off: Bob uses only his own parts, and never asks Ollama anything. On: Bob also lists the brains Ollama has, gets some through it, and can hear you through it (Get models, Hearing you). Ollama is a separate program you install yourself.')}
         ${sswitch('engineAuto', settings.engineUpdates?.auto !== false, 'Auto-update engines', 'At start and about once a day, updates the plain llama.cpp that stands in for Brain Engine, while no brain is loaded on it. Brain Engine updates with Bob. Other engines wait for Check for updates.')}
         ${groups}</div>
       ${qwenHtml()}
