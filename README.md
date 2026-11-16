@@ -2,6 +2,9 @@
 
 <p align="center"><b>A local AI agent with a personality. He runs on your own computer, and nothing goes online unless you turn it on.</b></p>
 
+> *"This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it."*  
+> From Bob's [privacy policy](app/docs/legal/PRIVACY.md).
+
 <p align="center">
   <a href="#download"><b>Download</b></a> ·
   <a href="#what-bob-does">What Bob does</a> ·
@@ -16,6 +19,16 @@
 ![Bob's window in the Lamplight look, Mercury lamp: the glowing cube top left with the chat heads under it, tabs across the top, the window's own buttons on the same bar, a chat about a Blender lantern in the middle and a quiet composer below](app/docs/screenshot.png)
 
 <p align="center">Windows · Mac · Linux · Raspberry Pi · Android · iPhone &nbsp;|&nbsp; free and open source &nbsp;|&nbsp; no account, no telemetry</p>
+
+## Quick start
+
+1. **Download** Bob for your computer from the [latest release](https://github.com/MouseWurX/Bob/releases/latest) ([all downloads](#download)).
+2. **Unpack it:** on Windows, [unblock the zip](#windows-10-or-11-in-five-steps) and unzip it into a folder you'll keep; on a Mac, drag Bob into Applications; on Linux, mark the AppImage as executable.
+3. **Start Bob:** double-click **Bob.exe**, Bob, or the AppImage. [More on installing](#getting-bob).
+4. **Get Bob ready:** he suggests a brain and engines for your graphics card. Nothing big downloads until you press it.
+5. **Say hello.**
+
+**What it needs:** tested on a 16 GB graphics card (RTX 5070 Ti) with 32 GB of memory, which runs stock Qwen3.6-35B-A3B, a 35B mixture-of-experts brain, with 256K context. Its smaller Q3 file runs on an 8 GB card.
 
 ## At a glance
 
@@ -200,12 +213,14 @@ Nothing trains, rents a card or uploads without the owner's go, and every rental
 
 **Where everything is:**
 
-- **The Computer Science Lab**, where every step runs: [below](#the-computer-science-lab), and the [Lab steps plan](app/docs/LAB-STEPS-PLAN.md).
-- **The costs**, every rental and dollar, failures included: [What Bob costs to make](app/docs/COSTS.md).
-- **The models**, each with a card that says what it is and how it scored: [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) · [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) · [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) · [gpt-oss-120b cut to 38B](https://huggingface.co/MouseWurX/gpt-oss-120b-REAP-38B-UNHEALED-GGUF) (cut, not yet healed).
-- **The data**: [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) (the lessons, clean, full and preference files) · [bob-studies](https://huggingface.co/datasets/MouseWurX/bob-studies) (surgery and interview studies, never used for training).
-- **The dissertation** (draft, all 13 chapters): [Clean lessons beat more lessons](app/docs/dissertation/README.md).
-- **The record**: [Bob's own models](app/docs/BOBS-OWN-MODELS.md) (every score and what went wrong) and [the Forge journal](app/docs/FORGE-JOURNAL.md) (the lab notebook).
+| What | Where |
+|---|---|
+| **The Computer Science Lab**, where every step runs | [Below](#the-computer-science-lab), and the [Lab steps plan](app/docs/LAB-STEPS-PLAN.md) |
+| **The costs**, every rental and dollar, failures included | [What Bob costs to make](app/docs/COSTS.md) |
+| **The models**, each with a card that says what it is and how it scored | [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) · [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) · [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) (none is in Bob's catalogue since 1.5.245) · [gpt-oss-120b cut to 38B](https://huggingface.co/MouseWurX/gpt-oss-120b-REAP-38B-UNHEALED-GGUF) (cut, not yet healed) |
+| **The data** | [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) (the lessons, clean, full and preference files) · [bob-studies](https://huggingface.co/datasets/MouseWurX/bob-studies) (surgery and interview studies, never used for training) |
+| **The dissertation** (draft, all 13 chapters) | [Clean lessons beat more lessons](app/docs/dissertation/README.md) |
+| **The record** | [Bob's own models](app/docs/BOBS-OWN-MODELS.md) (every score and what went wrong) · [the Forge journal](app/docs/FORGE-JOURNAL.md) (the lab notebook) |
 
 ## Coming next
 
