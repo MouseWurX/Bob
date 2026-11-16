@@ -6,6 +6,10 @@
 //
 // Display only. The lines here are the window's own words: none of it is sent to a brain, and nothing waits on it.
 // Settings, Bob himself, "Thinking bubble" (cfg.thinkBubble, on unless turned off) puts the old chat back.
+// Nov 16: with "Patches tells the steps" on, the cat narrates the step rows, the line while he works and the done line
+// (public/patches-steps.js). Copy the steps and Bob's thinking window stay plain.
+
+import { PAW, waitingLine, doneWords, stepWords as catStep, snagWords, stepKind, bobAside } from './patches-steps.js';
 
 export const PUNS = [
   'Thinking…',
@@ -57,7 +61,7 @@ export function stepWords(x) {
 export const stepsText = (list) => list.map((x, i) => `${i + 1}. ${stepWords(x)}`).join('\n');
 
 // add(cls, html) puts an element at the end of the chat. answer(ev, text, extra) puts the finished answer in the chat.
-export function createThinkBubbles({ add, esc, answer, scroll = () => {}, on = () => true, still = () => false, cat = () => '', openMind = null, copy = () => {}, now = () => Date.now() }) {
+export function createThinkBubbles({ add, esc, answer, scroll = () => {}, on = () => true, still = () => false, cat = () => '', patches = () => false, openMind = null, copy = () => {}, now = () => Date.now() }) {
   const live = new Map(); // turnId -> bubble
   let tick = null;
 
@@ -113,7 +117,7 @@ export function createThinkBubbles({ add, esc, answer, scroll = () => {}, on = (
     if (b.done) return;
     b.el.classList.toggle('needs', b.needs > 0);
     if (b.needs) { b.line.textContent = 'Needs you: answer the card below'; b.time.textContent = ''; return; }
-    b.line.textContent = still() ? 'Thinking…' : punAt(b.pun, cat());
+    b.line.textContent = still() ? 'Thinking…' : patches() ? `${PAW} ${waitingLine(b.pun, cat())}` : punAt(b.pun, cat());
     b.time.textContent = took(now() - b.startedAt);
   }
   function ticking() {
@@ -128,12 +132,24 @@ export function createThinkBubbles({ add, esc, answer, scroll = () => {}, on = (
       }
     }, 1000);
   }
+  const endLine = (b, ms = b.ms || 0) => (patches() ? PAW + ' ' + doneWords(cat(), ms ? took(ms) : '', stepCount(b), b.needed) : doneLine(ms, stepCount(b), b.needed));
+  // A tool step's row: the cat's words (plain summary on hover) or the summary itself, as before.
+  function toolRow(b, summary) {
+    const plain = String(summary || 'A step');
+    const said = patches() ? catStep(plain, cat(), b.prevStep) : null;
+    b.prevStep = plain;
+    // Bob, surprised and a little worried, when the cat does something no cat should (not on every line: bobAside)
+    const aside = said && stepKind(plain) ? bobAside(plain, (b.odd = (b.odd ?? -1) + 1)) : '';
+    const r = said ? row(b, DOT.done, `<span aria-hidden="true">${PAW}</span> <span class="patches-say" title="${esc(plain)}">${esc(said)}</span>${aside ? ` <span class="muted patches-bob">(Bob: ${esc(aside)})</span>` : ''}`, 'tool') : row(b, DOT.done, esc(plain), 'tool');
+    r.plain = plain;
+    return r;
+  }
   function finish(b, ms) {
     b.done = true; b.ms = ms;
     closeDraft(b);
     b.el.classList.remove('live', 'needs');
     b.el.classList.add('finished');
-    b.line.textContent = doneLine(ms, stepCount(b), b.needed);
+    b.line.textContent = endLine(b);
     b.time.textContent = '';
     b.say.textContent = 'Bob finished.';
     drawDots(b);
@@ -150,13 +166,15 @@ export function createThinkBubbles({ add, esc, answer, scroll = () => {}, on = (
         const r = rows[i++];
         r.dot = x.ok ? DOT.done : DOT.failed;
         r.el.querySelector('.think-dot').className = `think-dot d-${r.dot}`;
+        const say = r.el.querySelector('.patches-say');
+        if (say && !x.ok) say.textContent = snagWords(r.plain, cat()); // the cat says it went wrong; the red dot says it too
         if (!r.el.querySelector('.think-more')) r.el.querySelector(':scope > span').insertAdjacentHTML('beforeend', ` <span class="muted think-more">· ${((Number(x.ms) || 0) / 1000).toFixed(1)} s · ${esc(Number(x.chars || 0).toLocaleString())} characters back${x.brain ? ` · ${esc(x.brain)}` : ''}</span>`);
       } else if (!x.correction || !b.rows.some((r) => r.el.classList.contains('fix'))) {
         row(b, x.correction ? DOT.failed : x.ok ? DOT.done : DOT.failed, esc(stepWords(x)), x.correction ? 'fix' : 'tool');
       }
     }
     drawDots(b);
-    if (b.done) b.line.textContent = doneLine(b.ms || 0, stepCount(b), b.needed);
+    if (b.done) b.line.textContent = endLine(b);
   }
 
   function start(ev) {
@@ -191,7 +209,7 @@ export function createThinkBubbles({ add, esc, answer, scroll = () => {}, on = (
       case 'reply-break': return true; // answers between steps: the job's answer comes whole at the end anyway
       case 'tool':
         if (/^hat:/.test(String(ev.summary || '')) || ev.name === 'edit_my_message') return true;
-        row(b, DOT.done, esc(ev.summary || ev.name || 'A step'), 'tool');
+        toolRow(b, ev.summary || ev.name || 'A step');
         return true;
       case 'correction':
         row(b, DOT.failed, `⚠ ${esc(ev.text || '')}`, 'fix');

@@ -283,6 +283,7 @@
     "test/run-task-pop-test.js",
     "test/run-phone-menu-test.js",
     "test/run-status-line-test.js",
+    "test/run-patches-steps-test.js",
     "test/run-net-overlay-test.js",
     "test/run-game-guard-test.js",
     "test/run-engine-name-test.js",
