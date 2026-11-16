@@ -68,7 +68,11 @@ const probeOnce = (k) => (k === 0 ? common : [...common.filter((a) => a !== '--s
 say(`jobs matrix ${prefix}: ${variants.length} variant(s): ${variants.map((v) => `${v.name} (${v.flags.join(' ') || 'as is'})`).join('; ')}${capEach !== null ? (grouped ? `; ${capEach} Tavily searches shared by all` : `; ${capEach} Tavily searches each`) : ''}`);
 if (preflight) {
   let bad = 0;
-  for (const [k, v] of variants.entries()) { const code = await run(v.name, [...probeOnce(k), ...capFlags, '--dir', `${prefix}-${v.name}`, ...(noScenes ? [] : ['--scene', 'reuse']), ...v.flags]); if (code) bad++; }
+  // with --scenes-from, check against those worlds (what the real run reads), not the run folder's own empty ones
+  const sf = scenesFrom && scenesFrom !== true && !noScenes ? scenesFile(String(scenesFrom)) : '';
+  if (sf && !fs.existsSync(sf)) { say(`PRE-FLIGHT FAIL: --scenes-from ${scenesFrom}: no ${sf}`); process.exit(1); }
+  const pre = noScenes ? [] : ['--scene', 'reuse', ...(sf ? ['--scenes', sf] : [])];
+  for (const [k, v] of variants.entries()) { const code = await run(v.name, [...probeOnce(k), ...capFlags, '--dir', `${prefix}-${v.name}`, ...pre, ...v.flags]); if (code) bad++; }
   say(bad ? `PRE-FLIGHT FAIL: ${bad} variant(s) failed pre-flight` : 'pre-flight OK: every variant');
   process.exit(bad ? 1 : 0);
 }
