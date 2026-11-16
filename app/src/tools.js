@@ -923,10 +923,14 @@ export function buildTools(cfg) {
         if (isSensitive(cfg, dir)) throw new Error(SECRET_MSG);
       }
       // 1.5.34: the main project (Settings > Projects) is searched first.
-      const roots = folder ? [resolveUserPath(folder)] : project ? [all[project]] : [...new Set([all[cfg.defaultProject], ...Object.values(all)].filter(Boolean))];
+      let roots = folder ? [resolveUserPath(folder)] : project ? [all[project]] : [...new Set([all[cfg.defaultProject], ...Object.values(all)].filter(Boolean))];
+      // Nov 16 (800-job run): with no project set up, almost every file search was a wasted call. It searches the
+      // user's own folders he may read (Documents, Desktop, Downloads by default) instead.
+      let inUserFolders = false;
+      if (!roots.length) { roots = (cfg.readRoots || []).filter((d) => { try { return fs.statSync(d).isDirectory() && !isSensitive(cfg, d); } catch { return false; } }); inUserFolders = roots.length > 0; }
       const match = searchMatcher(text);
       const want = filePattern(files);
-      if (!roots.length) throw new Error('No projects are set up yet, so there\'s nothing to search. I\'ll look in a folder instead: tell me which one, or I\'ll start with Documents. (For you, Bob: use list_folder and read_file. Projects live under "projects" in config.json; there is no switch for them in the app yet.)');
+      if (!roots.length) throw new Error('No projects are set up and no folder was given, so there\'s nothing to search. Give a folder (folder: the full path), or use list_folder and read_file.');
       const hits = [];
       let scanned = 0;
       const walk = (dir) => {
@@ -948,7 +952,8 @@ export function buildTools(cfg) {
         }
       };
       for (const root of roots) walk(root);
-      return hits.length ? hits.join('\n') : `No matches in ${scanned} files.`;
+      const where = inUserFolders ? ` (no project is set up, so this searched ${roots.join('; ')})` : '';
+      return hits.length ? `${hits.join('\n')}${where ? `\n${where.trim()}` : ''}` : `No matches in ${scanned} files${where}.`;
     },
     summary: ({ project, folder, text, files }) => `search ${folder || project || 'all projects'}${files ? ` (${files})` : ''} for "${text}"`
   };

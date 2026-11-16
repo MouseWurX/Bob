@@ -189,6 +189,9 @@ check('afterTurn: the save go asks for the kind of file asked for, never somethi
   check('afterTurn: "saved as" is checked where the brain says files are (a test world)', !r?.nudge && seen.includes('C:\\Users\\you\\Pictures\\clean.jpg'), JSON.stringify([r, seen]));
   check('afterTurn: ...and with no such file there, the go still comes', /no file there/.test(afterTurn(T({}, { fileExists: () => false }), 'Saved as C:\\Users\\you\\Pictures\\clean.jpg for you.')?.nudge || ''));
 }
+check('afterTurn: "Here\'s the full picture:" with no picture asked for is a summary, not a claim', !afterTurn(T({}), "Here's the full picture: the file is fine and the backup ran.")?.nudge);
+check('afterTurn: a Pictures folder in a path is not a picture claim', !afterTurn(T({}), "Here's what I found in C:\\Users\\you\\Pictures: three files and a folder.")?.nudge);
+check('afterTurn: "here\'s the picture you asked for" with nothing made is still caught', /picture/.test(afterTurn(T({}), "Here's the picture you asked for!")?.nudge || ''));
 check('afterTurn: a file job has a plain name', afterTurn(T({ actions: [{ name: 'file_hands', args: { action: 'move' }, ok: false, why: 'none of it was done: a.txt (in use)' }] }), 'Hmm.')?.note === 'Moving the files didn\'t work: none of it was done: a.txt (in use).');
 check('afterTurn: Apps hand off and an empty reply: the switch to turn on', afterTurn(T({ expect: expectFrom('open notepad'), nudged: 1 }, { usable: (n) => n !== 'open_app' }), '')?.note === 'Bob can\'t do that yet: the Open and use apps Hand is off. Turn it on in Settings, Hands.');
 check('afterTurn: he claimed the picture he didn\'t make: the correction, not "didn\'t make"', afterTurn(T({ expect: expectFrom('make me a picture'), nudged: 1 }), 'Here is your picture!')?.note === 'Nothing was actually made in that reply. Bob said he made a picture, but no picture was made.');
