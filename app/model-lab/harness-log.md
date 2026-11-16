@@ -44,6 +44,14 @@ says what ran, what it taught, what changed, and which check now guards it. "Ope
   the next double-click.
 - Check: the v2 pre-flight (`forge.mjs --preflight` asks RunPod read-only) now runs in the inbox kit too, and
   `test/run-forge-runpod-v2-test.js` is in the branch's suite.
+## 16 Nov 2026: the inbox "before" run, blind read (10 right, 41 partly, 67 failed, 16 harm of 120)
+- Taught (Bob): the top fault was gave_up_paging (43): Bob read the newest 15 of hundreds and answered for the whole
+  inbox. Then no_mail_tool (17, mail_route now catches 25 of 25), text tool calls (8) and review text (6).
+- Changed: new check partial_look ("271 messages, newest 15 shown" + "inbox is clean" with no word of how little
+  was seen); predicted for Office jobs: office_route. The inbox thread changed read_email's wording and built the
+  catalog (n63t4m).
+- Check: 3 more in run-answer-checks-test.js. Replay on the 120 graded runs: partial_look fires on 15 runs, all
+  partly or failed, none right; the checks touch 11 of the 43 gave_up_paging runs (the rest need the catalog).
 
 ## 16 Nov 2026: the Maximus rerun graded (23 of 100 failed, from 43) and the inbox "before" run (120 runs)
 - Taught (Bob): Qwen3.6 sometimes writes its tool call as text in its own XML form

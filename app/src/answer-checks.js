@@ -21,6 +21,8 @@
 //   office_route   an Office file job (docx, xlsx, pptx) done without the Office tools: predicted from the mail run
 //                  (jobs drifted to the generic file tools) and the Maximus rerun (fx-287e97db73: "created
 //                  report.docx" with the Office Hand off); read_file can't read a .docx, write_file can't make one
+//   partial_look   he answered for the whole inbox (or folder) after seeing only the newest few ("271 messages, newest 15
+//                  shown") and didn't say so (inbox run: gave_up_paging, 43 of 120)
 //   maths          totals worked out in his head (Qwen invented_result: several wrong sums)
 //   mail_route     a mail job (trash, archive, reply to a sender's mail) answered without the mail tools: the live inbox
 //                  run (16 Nov) saw bulk trash/archive jobs wander into list_folder, search_files, web_search or
@@ -72,6 +74,9 @@ const OFFICE_FILE = /\.(?:docx?|xlsx?|pptx?|odt|ods|odp)\b|\b(?:Word (?:doc|docu
 const OFFICE_DO = /\b(?:make|create|write|draft|build|edit|change|update|add|insert|convert|turn [^.\n]{0,30} into|export|compare|format|fill in)\b/i;
 const OFFICE_NOT = /\b(?:chart|graph|plot|diagram|move|zip|unzip|delete|recycle|rename|copy|search for|find|remind|reminder|attach)\b/i;
 const OFFICE_TOOLS = /^(?:office_[a-z_]+|compare_files|read_spreadsheet|save_spreadsheet|query_data|offer_setup)$/;
+const PARTIAL = /(\d[\d,]*) messages?, newest (\d+) shown|(\d[\d,]*) (?:files|items|entries|results)[^\n]{0,20}(?:first|newest) (\d+) shown/i;
+const WHOLE_SAY = /\b(?:all|every|none|nothing else|no (?:other|more)|the whole|your (?:whole |entire )?inbox|everything|inbox is (?:clean|clear|empty)|that's all)\b/i;
+const OWNS_PART = /\b(?:newest|latest|most recent|first|only (?:looked|saw|checked|read)|of (?:the )?\d[\d,]*|(?:\d+) (?:out )?of|didn'?t (?:look|check|see)|haven'?t (?:looked|checked)|so far)\b/i;
 const MATHS_ASK = /\b(?:total|sum|add (?:up|them)|average|mean|median|how much (?:in total|altogether|is that|did i)|percent(?:age)?|difference|net|subtotal|per month|per year|annual|grand total|work out|calculate|balance)\b/i;
 
 function cutOff(reply) {
@@ -164,6 +169,12 @@ export function answerChecks({ text = '', reply = '', actions = [], usable = () 
   if (OFFICE_FILE.test(ask) && OFFICE_DO.test(ask) && !OFFICE_NOT.test(ask) && (usable('office_read') || usable('office_make') || usable('office_edit')) && !blocked && !acts.some((a) => OFFICE_TOOLS.test(a.name))) {
     const generic = acts.filter((a) => /^(?:read_file|write_file|edit_file|file_hands|run_command)$/.test(a.name) && OFFICE_FILE.test(String(a.args ?? ''))).map((a) => a.name);
     add('office_route', `This is an Office file job, but no Office tool ran${generic.length ? ` (${[...new Set(generic)].join(', ')} can't read or make Word, Excel or PowerPoint files)` : ''}. Use office_read to read it, office_edit to change it, office_make to make one (compare_files to compare two). If the Office Hand is off, say so and offer to switch it on; don't say it's done.`, ['documents'], true);
+  }
+  // partial_look: answered for all after seeing a part
+  const parts = acts.map((a) => ({ a, m: String(a.text ?? a.result ?? '').match(PARTIAL) })).filter((x) => x.m && Number(String(x.m[1] || x.m[3]).replace(/,/g, '')) > Number(x.m[2] || x.m[4]));
+  if (parts.length && acts.filter((a) => a.name === parts[0].a.name).length < 3 && WHOLE_SAY.test(said) && !OWNS_PART.test(said)) {
+    const m = parts.at(-1).m; const total = m[1] || m[3]; const seen = m[2] || m[4];
+    add('partial_look', `You saw only the newest ${seen} of ${total}, but your answer speaks for all of them. Look further first (search by sender, subject or date, or page on), or say plainly that you only looked at the newest ${seen} of ${total}.`, ['mail']);
   }
   // mail_route: a mail job with the mail tools there, and none of them ran
   if ((MAIL_ASK.test(ask) && MAIL_DO.test(ask) || MAIL_PLAIN.test(ask)) && !MAIL_NOT.test(ask) && !filesNamed(ask).length && (usable('read_email') || usable('manage_email')) && !acts.some((a) => MAIL_TOOLS.test(a.name))) {
