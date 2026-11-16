@@ -49,14 +49,21 @@ export function copyGuessArgs(cfg, { build = 0, args = [] } = {}) {
 // Normal on smaller cards and built-in graphics, where the room isn't there.
 export const READING_STEPS = { normal: 0, faster: 2048, fastest: 4096 };
 export const READING_PICKS = ['normal', 'faster', 'fastest', 'auto'];
-export const readingPick = (cfg) => (READING_PICKS.includes(cfg?.readingSpeed) ? cfg.readingSpeed : 'normal');
+// A brain's own pick (Calibrate's "Use recommended", saved in readingFor) wins over the one for every brain.
+export const readingPick = (cfg, model = '') => (READING_PICKS.includes(cfg?.readingFor?.[model]) ? cfg.readingFor[model] : READING_PICKS.includes(cfg?.readingSpeed) ? cfg.readingSpeed : 'normal');
+export function cleanReadingFor(v) {
+  const out = {};
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return out;
+  for (const [k, t] of Object.entries(v).slice(0, 64)) if (typeof k === 'string' && k && k.length <= 200 && !/[\u0000-\u001f]/.test(k) && READING_PICKS.includes(t)) out[k] = t;
+  return out;
+}
 // Auto says why it chose what it chose (Settings and the logbook show it): by the card first, then by the last
 // 3 prompts this Bob read. With a 12 GB card or more, Fastest; but when the last 3 prompts were all short (under 4K
 // tokens), Faster, which leaves more of the card for experts. With 6 to 11 GB, Faster. Smaller cards and built-in
 // graphics: Normal. -> { steps, why }
 export const LONG_PROMPT = 16384, SHORT_PROMPT = 4096;
-export function readingChoice(cfg, { recent = [] } = {}) {
-  const pick = readingPick(cfg);
+export function readingChoice(cfg, { recent = [], model = '' } = {}) {
+  const pick = readingPick(cfg, model);
   if (pick !== 'auto') return { steps: READING_STEPS[pick], why: '' };
   if (cfg?.sharedGraphics === true) return { steps: 0, why: 'Auto chose Normal: built-in graphics share the computer\'s memory, so there\'s no room to spare.' };
   const gb = Number(cfg?.gpuVramGB || cfg?.cardGB) || 0;
@@ -69,8 +76,8 @@ export function readingChoice(cfg, { recent = [] } = {}) {
 }
 export const readingSteps = (cfg, opts) => readingChoice(cfg, opts).steps;
 // Not on the processor (no card to carry experts to), and never over a batch or micro-batch set by hand.
-export function readingArgs(cfg, { cpu = false, hand = {}, recent = [] } = {}) {
-  const n = readingSteps(cfg, { recent });
+export function readingArgs(cfg, { cpu = false, hand = {}, recent = [], model = '' } = {}) {
+  const n = readingSteps(cfg, { recent, model });
   const set = (v) => Number.isInteger(v) && v > 0;
   if (!n || cpu || set(hand.batch) || set(hand.ubatch)) return [];
   return ['-b', String(n), '-ub', String(n)];

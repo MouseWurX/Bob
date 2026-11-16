@@ -570,7 +570,7 @@ export class LlamaCpp {
       ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : laptopThreads(this.cfg) ? ['-t', String(laptopThreads(this.cfg))] : num(lc.threads, '-t')),
       ...num(lc.batch, '-b'), ...num(lc.ubatch, '-ub'),
       // 101 Reading speed (opt-in): bigger reading steps on the card. A batch set by hand wins.
-      ...(this.role === BESIDE ? [] : readingArgs(this.cfg, { cpu, hand: lc, recent: this.recentPrompts })),
+      ...(this.role === BESIDE ? [] : readingArgs(this.cfg, { cpu, hand: lc, recent: this.recentPrompts, model })),
       // 1.5.24 "Warm up while typing": on the processor, his reading of the instructions is kept on disk.
       ...(cpu && tuning(this.cfg).readyWhileTyping ? ['--slot-save-path', startDir(this.cfg)] : chatPlacesOn(this.cfg) && this.role !== BESIDE ? ['--slot-save-path', placesDir(this.cfg)] : []), // or each chat's place (chat-places.js)
       ...(modelArgs || lc.modelArgs?.[model] || []),
@@ -586,7 +586,7 @@ export class LlamaCpp {
     if (this.fitsItself(args, cpu)) args.push('--fit', 'on');
     else if (!args.includes('-ngl')) args.push('-ngl', '999');
     // 101: what Auto chose and why, for Settings and the logbook (said once each time it changes).
-    if (!cpu && this.role !== BESIDE) { const why = readingChoice(this.cfg, { recent: this.recentPrompts }).why; if (why && why !== this.readingWhy) this.log?.('engine', `${model}: ${why}`); this.readingWhy = why; }
+    if (!cpu && this.role !== BESIDE) { const why = readingChoice(this.cfg, { recent: this.recentPrompts, model }).why; if (why && why !== this.readingWhy) this.log?.('engine', `${model}: ${why}`); this.readingWhy = why; }
     // 103 Lock brain memory (opt-in): the part of the brain in RAM stays there.
     if (this.cfg.lockBrainMemory === true && !cpu && this.role !== BESIDE) {
       let size = 0; try { size = fs.statSync(gguf).size; } catch {}
