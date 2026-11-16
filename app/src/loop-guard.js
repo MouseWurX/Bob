@@ -20,7 +20,9 @@ export const ERROR_ROUNDS = 4;
 export const CARRIED_MIN_STEPS = 3;     // 164: a job that runs again keeps at least this many steps
 
 // ---------- 152 + 153: one retry budget per turn ----------
-export const nudgeOk = (ctx) => (ctx.nudges || 0) < NUDGE_BUDGET;
+// Max's plan step (solo-effort.js) gets no "go and do it" nudges: its job is the plan, and the doing comes after.
+export const planStep = (ctx) => Boolean(ctx?.job?.solo && ctx.job.soloPhase === 'plan');
+export const nudgeOk = (ctx) => !planStep(ctx) && (ctx.nudges || 0) < NUDGE_BUDGET;
 export function spendNudge(ctx) { ctx.nudges = (ctx.nudges || 0) + 1; return ctx.nudges; }
 
 // ---------- 154 + 155 + 156: progress ----------
