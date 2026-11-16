@@ -21,7 +21,7 @@ says what ran, what it taught, what changed, and which check now guards it. "Ope
   path_not_moved. office-oracle.mjs: a scripted brain doing every job the plain way passes 16/16 (8/8 without
   LibreOffice), and a do-nothing brain that says "Done" fails 16/16. test/run-office-jobs-test.js (32 checks).
 - Then (the lead): job excel-to-csv-taken and a path check: an answer must name the file really saved ("Budget_2026-2.csv"), not the taken name asked for (Maximus rerun v5-d6-3-r0). The oracle caught its own first answer naming the wrong "(2)" style. 17 jobs.
-- LibreOffice unpacked on the Lab PC (Squeak, 3:50 PM MT): lab-office\libreoffice\program\soffice.exe.
+- LibreOffice unpacked on the Lab PC (MouseWurX, 3:50 PM MT), in its own lab folder.
 
 ## 16 Nov 2026: inbox jobs, Qwen four efforts (launched; nothing rented)
 - Taught: the inbox branch was cut before the RunPod v2 move, so its launcher asked the retired `rest.runpod.io/v1`
