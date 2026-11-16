@@ -35,7 +35,7 @@
     "hours": 1.9,
     "commands": [
      "node mail-jobs.mjs --out ../../bob-model-lab/out/mail-jobs/jobs.jsonl",
-     "node jobs-matrix.mjs --prefix mail-q --no-scenes --variants \"minimus=--effort low --solo-effort;medius=--effort medium --solo-effort;magnus=--effort high --solo-effort;maximus=--effort extreme --solo-effort --job-minutes 20\" --url {{url}} --bob .. --jobs ../../bob-model-lab/out/mail-jobs/jobs.jsonl --parallel 3 --want-shapes 4 --max 4096 --hours 1.8 --job-minutes 10",
+     "node jobs-matrix.mjs --prefix mail-q --no-scenes --variants \"minimus=--effort low --solo-effort;medius=--effort medium --solo-effort;magnus=--effort high --solo-effort;maximus=--effort extreme --solo-effort --job-minutes 20\" --url {{url}} --bob .. --jobs ../../bob-model-lab/out/mail-jobs/jobs.jsonl --parallel 3 --want-shapes 4 --max 4096 --hours 1.4 --job-minutes 10",
      "node mail-score.mjs --runs ../../bob-model-lab/out/mail-q-minimus/runs.jsonl,../../bob-model-lab/out/mail-q-medius/runs.jsonl,../../bob-model-lab/out/mail-q-magnus/runs.jsonl,../../bob-model-lab/out/mail-q-maximus/runs.jsonl --out ../../bob-model-lab/out/mail-q-score --digests"
     ]
    }

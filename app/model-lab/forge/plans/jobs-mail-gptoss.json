@@ -37,7 +37,7 @@
     "hours": 2.2,
     "commands": [
      "node mail-jobs.mjs --out ../../bob-model-lab/out/mail-jobs/jobs.jsonl",
-     "node jobs-matrix.mjs --prefix mail-g --no-scenes --variants \"minimus=--effort low --solo-effort;medius=--effort medium --solo-effort;magnus=--effort high --solo-effort;maximus=--effort extreme --solo-effort --job-minutes 20\" --url {{url}} --bob .. --family gpt-oss --jobs ../../bob-model-lab/out/mail-jobs/jobs.jsonl --parallel 1 --want-shapes 4 --max 4096 --hours 1.8 --job-minutes 10",
+     "node jobs-matrix.mjs --prefix mail-g --no-scenes --variants \"minimus=--effort low --solo-effort;medius=--effort medium --solo-effort;magnus=--effort high --solo-effort;maximus=--effort extreme --solo-effort --job-minutes 20\" --url {{url}} --bob .. --family gpt-oss --jobs ../../bob-model-lab/out/mail-jobs/jobs.jsonl --parallel 1 --want-shapes 4 --max 4096 --hours 1.4 --job-minutes 10",
      "node mail-score.mjs --runs ../../bob-model-lab/out/mail-g-minimus/runs.jsonl,../../bob-model-lab/out/mail-g-medius/runs.jsonl,../../bob-model-lab/out/mail-g-magnus/runs.jsonl,../../bob-model-lab/out/mail-g-maximus/runs.jsonl --out ../../bob-model-lab/out/mail-g-score --digests"
     ]
    }
