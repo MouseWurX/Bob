@@ -59,7 +59,8 @@ const scenesFile = (dir) => { const i = argv.indexOf('--out'); return path.join(
 const common = argv.filter((a, i) => !(a === '--scene' || argv[i - 1] === '--scene'));
 const capFlags = capEach !== null ? ['--search-cap', String(capEach)] : [];
 // --search-probe spends a search: only the first variant probes (the others share its PC and its key)
-const probeOnce = (k) => (k === 0 ? common : common.filter((a) => a !== '--search-probe'));
+// and only the first checks the Tavily key with a search (--key-checked)
+const probeOnce = (k) => (k === 0 ? common : [...common.filter((a) => a !== '--search-probe'), ...(common.includes('--search') ? ['--key-checked'] : [])]);
 
 say(`jobs matrix ${prefix}: ${variants.length} variant(s): ${variants.map((v) => `${v.name} (${v.flags.join(' ') || 'as is'})`).join('; ')}${capEach !== null ? (grouped ? `; ${capEach} Tavily searches shared by all` : `; ${capEach} Tavily searches each`) : ''}`);
 if (preflight) {

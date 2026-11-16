@@ -157,9 +157,10 @@ if (searchWith) {
   const got = labKey('tavily');
   if (!got.key) fail(got.why);
   searchKey = got.key; scrub = scrubber(searchKey);
-  const c = await tavilyCheck(searchKey); counted();
+  // --key-checked (jobs-matrix): another run on this PC checked the key a moment ago, so no search is spent on it again
+  const c = o['key-checked'] === true ? { ok: true, skipped: true } : await tavilyCheck(searchKey); if (!c.skipped) counted();
   if (!c.ok) fail(c.status === 401 || c.status === 403 ? `Tavily refused the saved key (error ${c.status}): save it again with "Save Tavily key for the Lab.cmd"` : `the Tavily key couldn't be checked (${c.status ? `error ${c.status}` : c.why})`);
-  say(`pre-flight: Tavily key works (${got.from === 'env' ? 'from LAB_TAVILY_KEY' : 'the saved one'}; 1 search used, ${c.results} result)`);
+  say(c.skipped ? 'pre-flight: Tavily key found (checked by the first run of this matrix; no search used)' : `pre-flight: Tavily key works (${got.from === 'env' ? 'from LAB_TAVILY_KEY' : 'the saved one'}; 1 search used, ${c.results} result)`);
   const u = await tavilyUsage(searchKey);
   if (u.ok) { searchLeft = Math.max(0, u.limit - u.used - SEARCH_SPARE); say(`pre-flight: Tavily's usage page: ${u.used} of ${u.limit} searches used this month`); }
   else say(`pre-flight: Tavily's usage page didn't say (${u.why}); the Lab's own count is used`);

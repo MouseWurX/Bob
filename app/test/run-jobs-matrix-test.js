@@ -64,6 +64,7 @@ check('do-jobs: an unknown --effort stops pre-flight', bad3.code === 1 && /--eff
 const bad4 = await run('do-jobs.mjs', [...common, '--dir', 'x', '--scenes-only', '--preflight']);
 check('do-jobs: --scenes-only without --scene make stops pre-flight', bad4.code === 1 && /--scenes-only needs --scene make/.test(bad4.log), bad4.log.slice(-200));
 const pf = await run('jobs-matrix.mjs', ['--prefix', 'm', '--variants', VARS, ...common, '--search-cap', '30', '--preflight']);
+check('only the first variant spends a search on the key check and the probe', (pf.log.match(/Tavily key works/g) || []).length === 1 && (pf.log.match(/checked by the first run of this matrix/g) || []).length === 2, pf.log.slice(-300));
 check('pre-flight runs for every variant, each at its own effort, and passes', pf.code === 0 && /pre-flight OK: every variant/.test(pf.log) && /\[after\] pre-flight: every job is asked at Effort high, with Effort on one brain switched on/.test(pf.log) && /\[before\] pre-flight: every job is asked at Effort low \(Effort on one brain off\)/.test(pf.log) && /10 Tavily searches each/.test(pf.log), pf.log.slice(-600));
 const ledgerBefore = JSON.parse(fs.readFileSync(ledger, 'utf8')).used;
 const r = await run('jobs-matrix.mjs', ['--prefix', 'm', '--variants', VARS, ...common, '--search-cap', '30', '--stagger', '4']);
