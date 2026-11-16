@@ -12,6 +12,8 @@
 //   unseen         "the hash provided", "results are above": the user never sees tool results (GPT-OSS #1, Qwen)
 //   cut_off        the answer stops at "Here are the reasons:" or mid-sentence (Qwen cut_off, 11)
 //   one_search     a research job answered after a single search (GPT-OSS #22, #45)
+//   points_back    "I already searched / gave you that above / in my last reply" instead of the thing itself (Maximus
+//                  rerun, 16 Nov: 6 of 63 answers; the user sees only this answer, not steps, plans or tool results)
 //   maths          totals worked out in his head (Qwen invented_result: several wrong sums)
 //   mail_route     a mail job (trash, archive, reply to a sender's mail) answered without the mail tools: the live inbox
 //                  run (16 Nov) saw bulk trash/archive jobs wander into list_folder, search_files, web_search or
@@ -45,11 +47,12 @@ const UNDO_TOOLS = /^(?:forget_topic|remember|file_hands|notice_board|reminders|
 const MEMORY_SAY = /\bI(?:'ve| have)?(?: also)? (?:noted|remembered|made a note|stored|saved|recorded|logged|written down)\b[^.!?\n]{0,50}\b(?:that|you|your|preference|timezone|time zone|name|birthday|diet|allerg)|\bI'?ll remember (?:that|this|you)|\b(?:noted|saved) (?:to|in) (?:my )?memory\b/i;
 const PAGE_SAY = /\b(?:I )?(?:opened|visited|loaded|fetched|browsed|went to|checked) (?:it|the (?:site|page|link|website|url)|(?:https?:\/\/)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})\b[^.!?\n]{0,40}\b(?:loads?|works?|fine|up|down|shows?|says?|safe)\b|\bread (?:them|it|all three|each|both) in full\b/i;
 const UNSEEN = /\b(?:the\s+)?(?:hash|sha-?256|checksum|link|links|url|path|code|results?|list|output|details|figures|numbers|commands?)\s+(?:provided|shown|given|listed|printed)(?:\s+above)?\b|\b(?:see|shown|listed|as noted|mentioned) above\b|\b(?:results|details|answer) (?:are|is) above\b/i;
+const POINTS_BACK = /^(?:\W{0,3})(?:I(?:'ve| have)? already (?:gave|given|searched|pulled|ran|run|scanned|answered|told|shown|showed|listed|checked|did|done|covered|sent|written|wrote)|I(?:'ve| have) given you (?:the|my|an?) (?:answer|list|script|code|steps))\b|\b(?:in|from) my (?:last|previous|earlier|first) (?:reply|answer|message|turn)\b|\b(?:the|my|that|this) (?:script|code|list|table|answer|summary|steps|results?|tree|plan) (?:I gave|I wrote|I showed )?(?:you )?above\b/i;
 const RESEARCH = /\b(?:research|look up|find out about|compare|comparison|studies|study|reports|sources|cite|citations?|literature|evidence|survey of|overview of the (?:research|literature))\b/i;
 const MAIL_ASK = /\b(?:e-?mails?|inbox|mail(?:box)?|messages? from|newsletters?|spam|unread)\b/i;
 const MAIL_DO = /\b(?:trash|archive|delete|bin|move|label|mark|unsubscribe|clean (?:up|out)|tidy|sort|file away|reply|answer|respond|draft|write back|summari[sz]e|go through)\b/i;
 // not a mail job: is this sender or link safe, was this address in a breach, or e-mail a file somewhere (Bob sends no mail)
-const MAIL_NOT = /\b(?:safe|phishing|scam|spoof|genuine|legit(?:imate)?|breach(?:es|ed)?|pwned|headers?|spf|dkim|dmarc)\b|\be-?mail (?:it|this|that|them|the file) to\b/i;
+const MAIL_NOT = /\b(?:safe|phishing|scam|spoof|genuine|legit(?:imate)?|breach(?:es|ed)?|pwned|headers?|spf|dkim|dmarc)\b|\be-?mail (?:it|this|that|them|the file) to\b|\be-?mail (?:logs?|files?|csv|exports?|addresses|list)\b/i;
 const MAIL_TOOLS = /^(?:read_email|manage_email|[a-z0-9]*_?(?:gmail|outlook|mail)[a-z0-9_]*)$/i;
 const MATHS_ASK = /\b(?:total|sum|add (?:up|them)|average|mean|median|how much (?:in total|altogether|is that|did i)|percent(?:age)?|difference|net|subtotal|per month|per year|annual|grand total|work out|calculate|balance)\b/i;
 
@@ -106,6 +109,13 @@ export function answerChecks({ text = '', reply = '', actions = [], usable = () 
   // unseen: he points at tool output the user never sees
   if (UNSEEN.test(said) && acts.some((a) => ok(a))) {
     add('unseen', `${who} can't see tool results, only your answer. You wrote "${cap(said.match(UNSEEN)[0], 60)}": put that thing itself in the answer (the hash, link, path, list or numbers), word for word.`);
+  }
+  // points_back: he points at earlier work instead of giving it (not when the turn's own tools got nothing: an honest
+  // "I already tried" with what came back is the answer)
+  const holds = /```|^\s*\|.*\|\s*$|^\s*(?:\d+[.)]|[-*•])\s+\S/m.test(said); // the "above" may be in this very answer
+  const pb = said.match(POINTS_BACK);
+  if (pb && !UNSEEN.test(said) && !(holds && /\babove\b/i.test(pb[0]) && !/^\W{0,3}I/.test(pb[0]))) {
+    add('points_back', `${who} sees only this answer: not your steps, plans, tool results or earlier replies. You wrote "${cap(said.match(POINTS_BACK)[0], 60)}". Give the thing itself now, in full (the list, script, results or answer), with no "already" or "above".`);
   }
   // cut_off
   if (cutOff(said)) add('cut_off', 'Your answer stops in the middle. Give the whole answer again, finished, in one reply.');
