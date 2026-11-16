@@ -51,7 +51,7 @@ function drawRedo() {
   // Try again thinking harder (item 8).
   const t = redoTarget(), answer = t?.matches('.msg.bob') ? t : null;
   if (answer?.dataset.mid) answer.querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-save-test title="That answer went wrong? Keep the question as a test, so Bob\'s tests (and the Lab) learn from it">Save as a test</button>');
-  if (stuckNow && t) t.querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-redo data-hard title="Ask again on High effort: the bigger brain works it out and a second brain checks it">Try again, thinking harder</button>');
+  if (stuckNow && t) t.querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-redo data-hard title="Ask again on Magnus (High) effort: the bigger brain works it out and a second brain checks it">Try again, thinking harder</button>');
 }
 function versionsHtml(list) {
   const cut = (t) => { const x = String(t || ''); return esc(x.length > 1500 ? x.slice(0, 1500) + '…' : x); };

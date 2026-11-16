@@ -145,9 +145,15 @@ const call = (s) => ({ function: { name: s.tool, arguments: JSON.stringify(s.arg
 // ---------- With "Work without asking" on ----------
 {
   put('f/one.txt');
-  const { fake, ctx, cards } = makeBob({ free: true });
-  await fake.runTool('show_plan', { steps: [{ say: 'Copy one', ...copy('f/one.txt', 't1') }, { say: 'b' }] }, ctx);
-  check('the plan still shows (it was asked for), without OK boxes', cards.length === 1 && cards[0].planCard && !cards[0].together);
+  const { fake, ctx, cards, events } = makeBob({ free: true });
+  const r = await fake.runTool('show_plan', { steps: [{ say: 'Copy one', ...copy('f/one.txt', 't1') }, { say: 'Check it' }] }, ctx);
+  const printed = events.filter((e) => e.type === 'token').map((e) => e.text).join('');
+  // The owner, 16 Nov: with Autonomy on, the plan is printed in the chat and he goes ahead; no card to wait on.
+  check('Autonomy on: no card; the plan is printed in the chat and he goes ahead', cards.length === 0 && /1\. Copy one\n2\. Check it/.test(printed) && /Do the steps in order now/.test(String(r?.text ?? r)) && ctx.planShown === true, JSON.stringify({ cards: cards.length, printed, r }));
+  const big = [{ function: { name: 'make_video', arguments: '{}' } }];
+  const { fake: f2, ctx: c2, cards: k2 } = makeBob({ free: true });
+  c2.planNudged = true;
+  check('Autonomy on: the safety net prints the plan too, and the calls run', await planGate(f2, big, c2) === null && k2.length === 0);
 }
 
 // ---------- Errors ----------

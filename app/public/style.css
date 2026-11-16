@@ -774,7 +774,7 @@ button.big { padding: 9px 18px; font-size: 15px; min-height: 40px; }
 details.more { margin: 2px 0 6px; }
 details.more > summary { cursor: pointer; color: var(--muted); font-size: 13px; width: max-content; }
 details.more > summary:hover { color: var(--accent); }
-@media (max-width: 640px) { .srow { grid-template-columns: 1fr; } .srow .sact { justify-content: flex-start; } }
+@media (max-width: 640px) { .srow { grid-template-columns: minmax(0, 1fr); } .srow > * { min-width: 0; } .srow .sact { justify-content: flex-start; } }
 /* The page is narrower than the window (menu and Now running sit beside it), so Equip Bob folds by the page's own width. */
 .cellar.page #cellar-body { container-type: inline-size; }
 @container (max-width: 1100px) {
@@ -782,7 +782,7 @@ details.more > summary:hover { color: var(--accent); }
   .attributes summary h3::after { content: " (tap to fold)"; text-transform: none; letter-spacing: 0; }
 }
 @container (max-width: 720px) {
-  .srow { grid-template-columns: 1fr; } .srow .sact { justify-content: flex-start; }
+  .srow { grid-template-columns: minmax(0, 1fr); } .srow > * { min-width: 0; } .srow .sact { justify-content: flex-start; }
 }
 
 /* Keep Bob light (1.5.2): the Free memory switch and the awake/asleep label in the chat's top bar */
