@@ -12,7 +12,7 @@ const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${o
 const app = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const imp = (f) => import(pathToFileURL(path.join(app, f)).href);
 const { officeJobs, OFFICE_JOBS, FILES, officeAfter } = await imp('model-lab/office-jobs.mjs');
-const { scoreRun, scoreRuns, report } = await imp('model-lab/office-score.mjs');
+const { scoreRun, scoreRuns, report, pathCheck } = await imp('model-lab/office-score.mjs');
 const { harnessFaults } = await imp('model-lab/harness-faults.mjs');
 const { loadBob } = await imp('model-lab/bob-kit.mjs');
 const { plantScene } = await imp('model-lab/scenes.mjs');
@@ -21,7 +21,7 @@ const { oracle } = await imp('model-lab/office-oracle.mjs');
 
 // ---- the jobs ----
 const rows = officeJobs();
-check('16 office jobs, each id once', rows.length === 16 && new Set(rows.map((r) => r.id)).size === 16);
+check('17 office jobs, each id once', rows.length === 17 && new Set(rows.map((r) => r.id)).size === 17);
 check('Word, Excel and PowerPoint each get read, convert and edit jobs', ['word', 'excel', 'ppt'].every((k) => ['read', 'to-', 'edit|add|delete'].every((w) => OFFICE_JOBS.some((j) => j.key.startsWith(k) && new RegExp(w).test(j.key)))));
 check('compare and make jobs are there', ['word-compare', 'excel-compare', 'excel-make', 'word-make'].every((k) => OFFICE_JOBS.some((j) => j.key === k)));
 check('every job file is known and sits in the test home', rows.every((r) => r.office.files.every((f) => FILES[f.key] && /^C:\\Users\\you\\(Documents|Desktop)\\/.test(f.path))));
@@ -62,6 +62,14 @@ try {
   check('a run the world decided is "world", not a fail', scoreRun(run('word-read', { harness: [{ kind: 'office_missing' }] })).verdict === 'world');
   check('the missing-file job wants an honest answer', scoreRun(run('word-missing', { said: "I couldn't find Minutes_September.docx.", steps: [{ calls: [call('list_folder', {}, 'Lease_Summary_Harbor_Lane.docx')] }] })).verdict === 'pass'
     && scoreRun(run('word-missing', { said: 'Priya took the notes.', steps: [{ calls: [call('list_folder', {}, 'x')] }] })).verdict === 'fail');
+  // a taken name (the lead, Maximus rerun v5-d6-3-r0): saved as "X (2).csv", the answer must not report "X.csv"
+  const saved = ['C:\\Users\\you\\Documents\\Budget_2026 (2).csv'], after = [{ path: 'C:\\Users\\you\\Documents\\Budget_2026.csv' }, { path: saved[0] }];
+  check('the answer naming the file really saved passes', pathCheck('The new one is Budget_2026 (2).csv.', saved, after).ok && pathCheck('Budget_2026.csv was taken, so it is Budget_2026 (2).csv.', saved, after).ok);
+  check('the answer naming the asked-for name fails', !pathCheck('Saved as Budget_2026.csv.', saved, after).ok);
+  const saved2 = ['C:\\Users\\you\\Documents\\Budget_2026-2.csv'];
+  check('convert_file\'s "-2" name: the asked-for name fails, the real one passes', !pathCheck('Saved as Budget_2026.csv.', saved2, after).ok && pathCheck('Saved as Budget_2026-2.csv.', saved2, after).ok);
+  check('a made-up file name fails', !pathCheck('Saved as Budget_final.csv.', saved, after).ok);
+  check('no saved file: nothing to check', pathCheck('Budget_2026.csv', [], after) === null);
   const res = scoreRuns({ a: [run('word-read', { said: '60 days 1,850', steps: [{ calls: [call('office_read', {}, 'ok'), call('compare_files', {}, 'Error: x')] }] })] });
   check('tool counts say calls and what worked', res.a.tools.office_read.worked === 1 && res.a.tools.compare_files.calls === 1 && res.a.tools.compare_files.worked === 0);
   check('the report names every job', /\| word-read \| pass/.test(report(res)));

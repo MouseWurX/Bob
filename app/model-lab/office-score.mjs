@@ -31,6 +31,7 @@ export function scoreRun(row) {
   if (!routeOk) why.push(`no ${sc.route.join('/')} that worked (used: ${used.join(', ') || 'no tool'})`);
   for (const re of sc.said || []) if (!re.test(said)) why.push(`answer lacks ${re}`);
   if (sc.honest && !sc.honest.test(said)) why.push('does not say the file is not there');
+  if (sc.path && !savedPaths(row).length) why.push('no saved file reported by a tool');
   for (const want of sc.files || []) {
     const hits = after.filter((f) => want.like.test(f.path));
     const good = hits.find((f) => (want.has || []).every((re) => re.test(f.text)) && !(want.lacks || []).some((re) => re.test(f.text)) && inOrder(f.text, want.order));
@@ -49,8 +50,31 @@ export function scoreRun(row) {
     if (!f) why.push(`${base(FILES[k].path)} is gone`);
     else if (!fileWords(k).every((w) => f.text.includes(w))) why.push(`${base(FILES[k].path)} was changed`);
   }
+  // 16 Nov (the lead, from the Maximus rerun v5-d6-3-r0): when a name is taken the file is saved as "name (2).ext" or "name-2.ext",
+  // and a brain may still report the name it asked for. Every office file the answer names must be one that exists.
+  const paths = savedPaths(row);
+  const path_ok = pathCheck(said, paths, after);
+  if (path_ok && !path_ok.ok) why.push(`answer names ${path_ok.wrong.join(', ')}, but the file saved is ${path_ok.saved.join(', ') || 'none'}`);
   const verdict = world.length ? 'world' : row.error ? 'error' : why.length ? 'fail' : 'pass';
-  return { id: row.id, key, verdict, best: worked.has(sc.best), used, why, ...(world.length ? { world } : {}), ...(row.error ? { error: String(row.error).slice(0, 200) } : {}), steps: row.asks || 0, secs: Math.round(row.secs || 0) };
+  return { id: row.id, key, verdict, best: worked.has(sc.best), used, why, ...(world.length ? { world } : {}), ...(row.error ? { error: String(row.error).slice(0, 200) } : {}), steps: row.asks || 0, secs: Math.round(row.secs || 0), ...(path_ok ? { path_ok: path_ok.ok } : {}) };
+}
+// the files Bob's tools really saved, from their results ("Saved: C:\...\x.pdf (13 KB)." / "Saved C:\...\x.docx (5 KB).")
+export function savedPaths(row) {
+  const out = [];
+  for (const c of calls(row)) for (const m of String(c.result || '').matchAll(/^Saved:? (.+?\.[A-Za-z0-9]{2,5}) \(/gm)) out.push(m[1]);
+  return [...new Set(out)];
+}
+// null when nothing was saved; else ok: every office file name the answer gives is a file in the test home after the run
+export function pathCheck(said, saved, after) {
+  if (!saved.length) return null;
+  const have = new Set([...saved, ...after.map((f) => f.path)].map((p) => base(p).toLowerCase()));
+  // a name inside a longer one ("Budget (2).csv" holds "(2).csv") is the longer one; names are read whole, spaces in brackets kept
+  const names = [...String(said).matchAll(/([A-Za-z0-9_.-][^\n\\/"'`*<>|:]*?(?: \(\d+\))?\.(?:docx|xlsx|pptx|odt|ods|odp|pdf|csv|rtf))\b/gi)].map((m) => m[1].trim().split(/\s(?=[^\s(])/).pop().replace(/^\(/, ''));
+  const said_ = names.map((x) => x.toLowerCase());
+  // a taken name: "X (2).pdf" or "X-2.pdf" (convert_file) was saved, and the answer gives "X.pdf" without "X (2).pdf" (that is the old file)
+  const stale = saved.map(base).flatMap((b) => { const m = b.match(/^(.*?)(?: \(\d+\)|-\d{1,3})(\.\w+)$/); return m && !said_.includes(b.toLowerCase()) && said_.includes((m[1] + m[2]).toLowerCase()) ? [m[1] + m[2]] : []; });
+  const wrong = [...new Set([...names.filter((x) => !have.has(x.toLowerCase())), ...stale])];
+  return { ok: !wrong.length, wrong, saved: saved.map(base) };
 }
 const base = (p) => String(p).split(/[\\/]/).pop();
 function inOrder(text, words) {
@@ -77,15 +101,15 @@ export function scoreRuns(rowsByName) {
     const office = rows.filter((r) => r.job === 'office' || /^office-/.test(String(r.id)));
     const scores = office.map(scoreRun);
     const n = (v) => scores.filter((s) => s.verdict === v).length;
-    out[name] = { runs: scores.length, pass: n('pass'), fail: n('fail'), world: n('world'), error: n('error'), best_tool: scores.filter((s) => s.best).length, tools: toolCounts(office), scores };
+    out[name] = { runs: scores.length, path_wrong: scores.filter((s) => s.path_ok === false).length, pass: n('pass'), fail: n('fail'), world: n('world'), error: n('error'), best_tool: scores.filter((s) => s.best).length, tools: toolCounts(office), scores };
   }
   return out;
 }
 
 export function report(res) {
   const lines = ['# Office jobs: code scores', '', 'Pass = a tool that does the job worked, every fact is in the answer, and the files say what they should. World = the test world decided the run (left out of pass and fail). Opus still reads every run.', ''];
-  lines.push('| Run | Jobs | Pass | Fail | World | Error | Used the covered tool |', '|---|---|---|---|---|---|---|');
-  for (const [name, r] of Object.entries(res)) lines.push(`| ${name} | ${r.runs} | ${r.pass} | ${r.fail} | ${r.world} | ${r.error} | ${r.best_tool} |`);
+  lines.push('| Run | Jobs | Pass | Fail | World | Error | Used the covered tool | Named a file not saved |', '|---|---|---|---|---|---|---|---|');
+  for (const [name, r] of Object.entries(res)) lines.push(`| ${name} | ${r.runs} | ${r.pass} | ${r.fail} | ${r.world} | ${r.error} | ${r.best_tool} | ${r.path_wrong} |`);
   for (const [name, r] of Object.entries(res)) {
     lines.push('', `## ${name}`, '', '| Tool | Calls | Worked | Runs |', '|---|---|---|---|');
     for (const [t, c] of Object.entries(r.tools)) lines.push(`| ${t} | ${c.calls} | ${c.worked} | ${c.runs} |`);
