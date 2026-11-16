@@ -21,6 +21,7 @@
 // its own port and folder. Nothing here reads keys.
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import net from 'node:net';
 import crypto from 'node:crypto';
 import { spawn as nodeSpawn } from 'node:child_process';
@@ -301,4 +302,6 @@ async function main() {
   console.log(`Done. ${path.join(outDir, 'summary.md')}`);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'))) main().catch((e) => { console.error(e); process.exit(1); });
+const realOf = (f) => { try { return fs.realpathSync(f); } catch { return path.resolve(f); } };
+// fileURLToPath, not .pathname: a folder with a space comes back as %20 and main() never ran.
+if (process.argv[1] && realOf(process.argv[1]) === realOf(fileURLToPath(import.meta.url))) main().catch((e) => { console.error(e); process.exit(1); });

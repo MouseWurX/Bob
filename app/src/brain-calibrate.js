@@ -181,10 +181,15 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
         set(`${i}:hot-count`, 'running');
         let srv = null;
         try {
-          // The cache is on while counting only so the engine prints the brain's fingerprint (it doesn't change the picks).
+          // Two loads: the engine prints the brain's fingerprint only with the cache on, and Brain Engine 9 sends back
+          // no expert trace while the cache is on (found on the PC Nov 16). So one load with the cache for the
+          // fingerprint, then the counting load without it (the cache doesn't change which experts are picked).
           srv = await fx.serve({ gguf: p.gguf, ctx: CAL_CTX, signal, cpuOk: false, extra: cacheArgs, ...(place ? { place } : {}) });
           fingerprint = parseCacheLog(srv.cacheLog?.() || '').fingerprint;
+          try { srv.stop(); } catch {}
+          srv = null;
           if (!fingerprint) throw Object.assign(new Error('no fingerprint'), { why: 'The engine didn\'t print the brain\'s fingerprint (Brain Engine 9 or newer needed), so no profile was made.' });
+          srv = await fx.serve({ gguf: p.gguf, ctx: CAL_CTX, signal, cpuOk: false, ...(place ? { place } : {}) });
           for (const kind of HOT_KINDS.slice(1)) {
             const acc = [];
             for (const ask of mixFor(kind)) addMass(acc, (await fx.trace(srv.url, [{ role: 'user', content: ask }], { maxTokens: 96, signal }))?.expert_trace);
