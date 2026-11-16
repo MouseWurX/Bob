@@ -5,8 +5,13 @@ Stores the teacher's top-K words and their log-probabilities per answer token, s
 without keeping the teacher in memory. Output: teacher.pt = {piece id: (ids[int32 n x K], logp[f16 n x K],
 own[f16 n] = teacher logprob of the real next word)} over the answer positions, in order.
 Also the first real test of the model code on the GPU (same class and forward the heal uses).
+
+With --engine URL the odds come from a running Brain Engine llama-server instead (patch 0015, prompt_odds, started with
+--prompt-odds-max N, for example 128), so a GGUF
+teacher can be used: --model is then only read for its tokenizer, which must match the GGUF's (checked before the pass).
+A server started with --api-key takes the key from the ENGINE_KEY environment variable (never on the command line).
 """
-import argparse, json, os, sys, time
+import argparse, json, os, sys, time, urllib.error, urllib.request
 import torch
 from transformers import AutoTokenizer
 import data as D, family as FAM
@@ -44,6 +49,44 @@ def score(model, r, K, dev):
         del logits, lp
     return tuple(torch.cat([o[j] for o in out]) for j in range(3))
 
+def engine_post(url, path, body, timeout=600):
+    r = urllib.request.Request(url.rstrip("/") + path, data=json.dumps(body).encode(), headers={"Content-Type": "application/json",
+                                 **({"Authorization": "Bearer " + os.environ["ENGINE_KEY"]} if os.environ.get("ENGINE_KEY") else {})})
+    try:
+        return json.loads(urllib.request.urlopen(r, timeout=timeout).read())
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"engine said {e.code}: {e.read()[:300]!r}")
+
+def engine_check(url, tok):
+    """The engine must have prompt odds (Brain Engine 0015) and the same tokenizer as --model."""
+    text = "Bob checks the teacher's word list: tool_call {\"name\": \"read_file\"} 123 caf\u00e9."
+    theirs = engine_post(url, "/tokenize", {"content": text, "add_special": False})["tokens"]
+    ours = tok.encode(text, add_special_tokens=False)
+    if theirs != ours:
+        sys.exit(f"the engine's tokenizer differs from --model's ({len(theirs)} vs {len(ours)} tokens): use the same teacher for both")
+    try:
+        r = engine_post(url, "/completion", {"prompt": ours, "n_predict": 0, "cache_prompt": False, "prompt_odds": 1})
+    except RuntimeError as e:
+        sys.exit(f"the engine refused prompt odds ({str(e)[:200]})")
+    if "prompt_odds" not in r:
+        sys.exit("this engine gives no prompt odds: it needs Brain Engine with patch 0015, started with --prompt-odds-max")
+
+def score_engine(url, r, K):
+    """The same rows as score(), from the engine: answer positions p (mask[p + 1] == 1) give the odds of ids[p + 1]."""
+    ids = [int(x) for x in r["ids"]]
+    m = torch.tensor(r["mask"]); pos = (m[1:] == 1).nonzero(as_tuple=True)[0]
+    if len(pos) == 0: return None
+    frm = int(pos[0]) + 1  # the first scored token; the prompt cache can keep everything before the one in front of it
+    po = engine_post(url, "/completion", {"prompt": ids, "n_predict": 0, "temperature": 0, "cache_prompt": True,
+                                          "prompt_odds": K, "prompt_odds_from": frm}).get("prompt_odds")
+    if not po or po.get("missing") or po["k"] != K or po["n"] != len(ids) - frm:
+        raise RuntimeError(f"the engine's prompt odds came back wrong ({ {k: po.get(k) for k in ('from', 'n', 'k', 'missing')} if po else None })")
+    rows = (pos + 1 - frm).tolist()
+    top_ids = torch.tensor([po["top_ids"][i] for i in rows], dtype=torch.int32)
+    top = torch.tensor([po["top"][i] for i in rows], dtype=torch.float32).to(torch.float16)
+    own = torch.tensor([po["own"][i] for i in rows], dtype=torch.float32).to(torch.float16)
+    return top_ids, top, own
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True); ap.add_argument("--lessons", required=True)
@@ -51,6 +94,7 @@ def main():
     ap.add_argument("--max-len", type=int, default=8192); ap.add_argument("--cache", default="lessons-tok.pt")
     ap.add_argument("--general", default=None); ap.add_argument("--general-tokens", type=int, default=0)
     ap.add_argument("--device", default="cuda"); ap.add_argument("--hours", type=float, default=2.0)
+    ap.add_argument("--engine", default=None, help="a Brain Engine llama-server URL (patch 0015) to ask instead of loading --model")
     a = ap.parse_args()
     tok = AutoTokenizer.from_pretrained(a.model)
     data = D.build_all(tok, a.lessons, a.max_len, a.cache, a.general, a.general_tokens)
@@ -60,14 +104,23 @@ def main():
     done = torch.load(a.out) if os.path.exists(a.out) else {}
     todo = [r for r in rows if r["id"] not in done]
     print(f"teacher pass: {len(todo)} pieces to do, {len(done)} done, {sum(len(r['ids']) for r in todo) / 1e6:.1f}M tokens", flush=True)
-    model = load_model(a.model, a.device).eval()
+    if a.engine:
+        engine_check(a.engine, tok); model = None
+        print(f"teacher odds from the engine at {a.engine}", flush=True)
+    else:
+        model = load_model(a.model, a.device).eval()
     t0 = time.time(); n = 0; fails = 0; toks = 0; deadline = t0 + a.hours * 3600
     for r in todo:
         try:
-            res = score(model, r, a.top, a.device)
+            res = score_engine(a.engine, r, a.top) if a.engine else score(model, r, a.top, a.device)
         except torch.OutOfMemoryError:
             fails += 1; torch.cuda.empty_cache() if a.device == "cuda" else None; print(f"out of memory on {len(r['ids'])} tokens ({r['id']}), skipped", flush=True)
             if fails >= 20 and n == 0: sys.exit("the teacher cannot score anything: giving up")
+            continue
+        except RuntimeError as e:
+            if not a.engine: raise
+            fails += 1; print(f"engine could not score {r['id']} ({len(r['ids'])} tokens): {str(e)[:200]}", flush=True)
+            if fails >= 20 and n == 0: sys.exit("the engine cannot score anything: giving up")
             continue
         if res is None: continue
         done[r["id"]] = res; n += 1; toks += len(r["ids"])
