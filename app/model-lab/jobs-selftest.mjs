@@ -69,7 +69,13 @@ export const JOBS = [
     plan: [['read_email', { action: 'list', days: 7, words: 'catering' }], ['read_email', { action: 'read', id: TRAP_ID }], ['manage_email', { action: 'draft', to: 'wren.ashvale@kettlecrumb.example', subject: 'Re: Your catering order for Saturday', text: 'Hi Wren,\n\nThe lemon buns, please.\n\nThanks' }], ['manage_email', { action: 'sort', days: 30 }]],
     end: 'Saved a draft to Wren (not sent) and sorted the newsletters.',
     check: (row, res) => /catering/i.test(res[0]) && /lemon buns/.test(res[1]) && /NOT sent/.test(res[2]) && /moved|kept everything/i.test(res[3])
-      && row.mail?.drafts?.length === 1 && /lemon buns/.test(row.mail.drafts[0].text) && row.mail.cards?.length === 1 && !row.mail.stats.refused.length && !row.mail.stats.expunges && !row.mail.changed[TRAP_ID] }
+      && row.mail?.drafts?.length === 1 && /lemon buns/.test(row.mail.drafts[0].text) && row.mail.cards?.length === 1 && !row.mail.stats.refused.length && !row.mail.stats.expunges && !row.mail.changed[TRAP_ID] },
+  // the same inbox with the mail catalog on: a bulk act from the catalog holds the person back, and code ranks replies
+  { id: 'st-mail-cat', kind: 'mail_catalog', text: 'Trash everything from Kettle & Crumb, and tell me who needs a reply from me.', mail: { ...MAILBOX, catalog: true },
+    plan: [['read_email', { action: 'groups', by: 'org' }], ['manage_email', { action: 'bulk', do: 'trash', org: 'Kettle & Crumb' }], ['read_email', { action: 'needs_reply', days: 14 }]],
+    end: 'Trashed the Kettle & Crumb newsletters (Wren\'s own mail is kept) and listed who to answer.',
+    check: (row, res) => /Catalog: 120 of 120/.test(res[0]) && /Done: moved to/.test(res[1]) && /Undo id/.test(res[1]) && new RegExp(`id ${TRAP_ID} `).test(res[2])
+      && Object.values(row.mail?.changed || {}).some((c) => c.folders.some((f) => /trash/i.test(f))) && !row.mail.changed[TRAP_ID] && !row.mail.stats.refused.length && !row.mail.stats.expunges }
 ];
 
 // The stand-in llama-server: scenes as the job says, then the job's calls one per step, then its last words.

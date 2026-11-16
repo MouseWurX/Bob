@@ -16,6 +16,7 @@
 //   mailServer(inbox) -> { connect, stats, after(), host, user }
 //   fitMail(kit, spec) -> installs Bob's real email tools on a do-jobs kit, served by this world
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { EventEmitter } from 'node:events';
@@ -356,10 +357,13 @@ export async function fitMail(kit, spec = {}, { bobDir = kit.bobDir } = {}) {
   const server = mailServer(inbox);
   const { emailTool } = await import(src('email-read.js'));
   const { manageEmailTool } = await import(src('email-manage.js'));
-  kit.cfg.moreTools = { ...(kit.cfg.moreTools || {}), email: true, emailTidy: true, emailHost: HOST, emailPort: 993, emailUser: USER, emailFolder: 'INBOX' };
-  const opts = { connect: server.connect, password: PASS };
-  kit.brain.tools.read_email = emailTool(kit.cfg, () => true, opts);
-  kit.brain.tools.manage_email = manageEmailTool(kit.cfg, () => true, opts, kit.brain);
+  kit.cfg.moreTools = { ...(kit.cfg.moreTools || {}), email: true, emailTidy: true, emailCatalog: spec.catalog === true, emailHost: HOST, emailPort: 993, emailUser: USER, emailFolder: 'INBOX' };
+  const opts = { connect: server.connect, password: PASS, catalogOn: () => spec.catalog === true };
+  // with the catalog (spec.catalog, mail-jobs --catalog): each job gets its own empty catalog and undo list, so jobs on
+  // the same made-up inbox never share one
+  const cfg = spec.catalog === true ? { ...kit.cfg, innDir: fs.mkdtempSync(path.join(os.tmpdir(), 'mail-catalog-')) } : kit.cfg;
+  kit.brain.tools.read_email = emailTool(cfg, () => true, opts);
+  kit.brain.tools.manage_email = manageEmailTool(cfg, () => true, opts, kit.brain);
   return { inbox, server };
 }
 

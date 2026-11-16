@@ -5,7 +5,8 @@
 // Every job says how it is scored: by code from what Bob did to the inbox and what he said, and by Opus for the parts
 // only reading can judge (a reply draft's tone, an honest "I can't see that far back").
 //
-//   node model-lab/mail-jobs.mjs [--out <jobs.jsonl>]     writes the jobs file do-jobs.mjs reads (--jobs)
+//   node model-lab/mail-jobs.mjs [--out <jobs.jsonl>] [--catalog]   writes the jobs file do-jobs.mjs reads (--jobs);
+//   --catalog turns the mail catalog on in every job
 //
 // Inboxes: a graded one of 300 messages in a Gmail flavour and an Outlook flavour, and big ones of 20,000 (Gmail) and
 // 50,000 (Outlook) for size: those check Bob works in batches and by search, not by reading everything.
@@ -56,8 +57,9 @@ export const MAIL_JOBS = [
     score: { type: 'bulk', action: 'archive', org: 'Larkspur Outfitters', kinds: ['newsletter'] }, opus: 'Thousands match: does Bob say how many there are, do them in batches or say plainly how many he did and how many are left?' }
 ];
 
-export function mailJobs() {
-  return MAIL_JOBS.flatMap((j) => j.inboxes.map((ib) => ({ id: `mail-${j.key}-${ib}`, job: 'mail', key: j.key, text: j.text, mail: { inbox: ib, ...INBOXES[ib] } })));
+// catalog: the same jobs with the mail catalog on (mail-catalog.js: groups, bulk, needs_reply, lists, unsubscribe).
+export function mailJobs({ catalog = false } = {}) {
+  return MAIL_JOBS.flatMap((j) => j.inboxes.map((ib) => ({ id: `mail-${j.key}-${ib}`, job: 'mail', key: j.key, text: j.text, mail: { inbox: ib, ...INBOXES[ib], ...(catalog ? { catalog: true } : {}) } })));
 }
 export const jobByKey = (key) => MAIL_JOBS.find((j) => j.key === key);
 
@@ -65,7 +67,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const o = opts({});
   const out = o.out && /\.jsonl$/i.test(String(o.out)) ? String(o.out) : path.join(locate({}).out, 'mail-jobs', 'jobs.jsonl');
   fs.mkdirSync(path.dirname(out), { recursive: true });
-  const rows = mailJobs();
+  const rows = mailJobs({ catalog: o.catalog === true });
   fs.writeFileSync(out, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
   console.log(`${rows.length} inbox jobs written to ${out}`);
 }
