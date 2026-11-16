@@ -114,7 +114,7 @@ function rowHtml(m, job, ctx) {
     // Example machines only while this one hasn't been read yet.
     ['Here', isBrain(m) && (ctx.vramGB || ctx.ramGB) ? yourSplit(m, ctx) : [fitWhy, roomy ? `Fits ${roomy} on your Bob-Net.` : ''].filter(Boolean).join(' ')],
     ['Elsewhere', ctx.vramGB || ctx.ramGB ? '' : isBrain(m) ? splitLines(m) : fits],
-    ['Notes', noteLines(m, dated)],
+    ['Notes', noteLines(m, dated ? `Dated${datedNames(m, ctx.allModels || ctx.models) ? `: newer ones are ${datedNames(m, ctx.allModels || ctx.models)}` : ''}` : '')],
     ['Licence', `${m.license || 'not stated'}${m.commercial === false ? ' (personal use only)' : ''}`],
   ]);
   const tags = `${recTag}${makerTag(m)}${officialTag(m)}${reapTag(m)}${turboTag(m)}${isOwn(m) ? (m.madeByBob ? '<span class="tag own-bob" tabindex="0" data-tip="Its brain card says it was made for Bob in his own workshop. Bob runs it from where it is and leaves the pick to you.">Bob\'s own brain</span>' : '<span class="tag" data-tip="A brain you added from a file on this replicant matrix. Bob runs it from where it is and never recommends it over the ones he knows.">Your own file</span>') : ''}${isNew ? `<span class="tag new-tag" tabindex="0" data-tip="${esc(`New: one of the five newest releases in the ${familyOf(m)} family.${out ? ` ${out}.` : ''}`)}">New</span>` : ''}${dated ? `<span class="tag dated-tag" tabindex="0" data-tip="${esc(dated)}">Dated</span>` : ''}${fitTag}${!rec && s.level !== 'ok' ? placeTag || LEVEL_TAG[s.level] || '' : ''}${here ? '<span class="tag good">On this replicant matrix</span>' : ''}`;
@@ -188,6 +188,7 @@ export const FAMILIES = {
   LFM: 'Made by Liquid AI. Quick brains built a different way inside, from a tiny 1.7B for phones to a fast 24B. Liquid\'s own licence: free for personal use; read it before using one for a business.',
   Phi: 'Made by Microsoft. Small brains that are good at maths and plain reasoning for their size.',
   'GPT-OSS': 'Made by OpenAI, open to download. A careful thinker and reviewer.',
+  Llama: 'Made by Meta. Llama 4 Scout, a big brain with a very long memory.',
   Whisper: 'Made by OpenAI. Turns your voice into words.',
   'Z-Image': 'Made by Alibaba\'s Tongyi lab. Quick picture making, in sizes for big and small cards.',
   FLUX: 'Made by Black Forest Labs. Picture making and picture edits.',
@@ -220,6 +221,7 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 export const dayWords = (d) => (DATE_RE.test(d || '') ? `${MONTHS[Number(d.slice(5, 7)) - 1]} ${Number(d.slice(8, 10))}, ${d.slice(0, 4)}` : '');
 // 1.5.137: "Dated": a brain newer ones do better. It stays on the list (nothing is taken away); the tag and its tip say
 // which newer brains to look at. Explicit marker in catalog.json: dated: { newer: [ids], why }.
+export const datedNames = (m, all = []) => [].concat(m?.dated?.newer || []).map((id) => all.find((x) => x.id === id)?.name).filter(Boolean).join(', ');
 export function datedLine(m, all = []) {
   if (!m?.dated) return '';
   const names = [].concat(m.dated.newer || []).map((id) => all.find((x) => x.id === id)?.name).filter(Boolean);
@@ -248,7 +250,7 @@ export function noteLines(m, dated = '') {
     isTurbo(m) ? 'Turbo-ready: carries its own guesser (MTP)' : '',
     isReap(m) ? 'REAP cut: least-used experts removed, refusals untouched' : '',
     dated,
-    m.trial ? `Not tried yet, so not recommended yet${m.trialNote ? `. ${m.trialNote}` : ''}` : '',
+    m.trial ? `Not tried yet${m.trialNote ? `. ${m.trialNote}` : ''}` : '',
     m.bench || '',
   ].filter(Boolean).join('\n');
 }
@@ -266,10 +268,10 @@ export function roomLine(m) {
   // Nov 16 2026 (the owner: "some are able to be broken up over more parts better than others"): say how well this
   // one splits. Made of experts: only the busy parts need the card, the rest can wait in memory or on the drive.
   // Every part working on every word: what isn't on the card slows it a lot, and the drive can't hold any of it.
-  const all = `${gb(Math.round(needGB(m) * 10) / 10)} in all, chat included.`;
+  const all = `${gb(Math.round(needGB(m) * 10) / 10)} in all.`;
   return hasExperts(m)
-    ? `${all} Splits well: made of experts, so only the busy parts need the card; the rest can wait in memory, on the drive (SSD) or on another Bob.`
-    : `${all} Splits less well: every part works on every word, so what isn't on the card slows it a lot, and none of it can sit on the drive. Card, memory (RAM) or another Bob.`;
+    ? `${all} Splits well (made of experts): card, memory, drive or another Bob.`
+    : `${all} Splits less well (every part works on every word): card, memory or another Bob; not the drive.`;
 }
 const SPLIT_WORD = { card: 'All on the card', memory: 'Card + memory', storage: 'Card + memory + drive', help: 'With another Bob', rent: 'Too big alone' };
 const SPLIT_DEVICE = { big: '16 GB card + 32 GB', mid: '8 GB card + 16 GB', small: '6 GB laptop + 16 GB', cpu: 'no card, 16 GB' };

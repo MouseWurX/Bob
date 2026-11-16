@@ -4267,6 +4267,151 @@
           "painter": "$model"
         }
       }
+    },
+    {
+      "id": "gpt-oss-120b-gguf",
+      "family": "GPT-OSS",
+      "category": "chat",
+      "jobs": ["deep", "bob", "reviewer", "tinker", "office", "scout"],
+      "name": "GPT-OSS 120B",
+      "published": "2025-08-05",
+      "what": "GPT-OSS 20B's big brother: a careful thinker and reviewer. Only 5B of it works on each word, so on a 16 GB card the busy parts sit on the card and the rest waits in memory and on the drive.",
+      "sizeGB": 63.4,
+      "vramGB": 66,
+      "params": 117,
+      "activeParams": 5,
+      "experts": true,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "files": [
+        {
+          "url": "https://huggingface.co/ggml-org/gpt-oss-120b-GGUF/resolve/f59990363fbbb67f01bce03e5e7bf0929e3e320b/gpt-oss-120b-MXFP4.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 63387346208,
+          "sha256": "582bd40f6886200101f4c4ed9f25f3fe80cc14c86e9e2b37746cd8904a0c622d"
+        }
+      ],
+      "use": {
+        "models": {
+          "deep": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3-next-80b-a3b",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["deep", "bob", "reviewer", "tinker", "office", "scout"],
+      "name": "Qwen3-Next 80B-A3B",
+      "published": "2025-09-11",
+      "dated": { "newer": [ "qwen3.6-35b-a3b" ], "why": "From September 2025; Qwen3.6 35B-A3B is newer, smaller and sees pictures" },
+      "what": "A big, quick all-rounder: 80B of knowledge, only 3B working at once. Almost fits a 16 GB card plus 32 GB of memory. Answers straight away, no thinking out loud. Text only.",
+      "sizeGB": 48.5,
+      "vramGB": 51,
+      "params": 80,
+      "activeParams": 3,
+      "experts": true,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/Qwen3-Next-80B-A3B-Instruct-GGUF/resolve/6688872b7a4e5eb8a121ceea08009530a024ba1d/Qwen3-Next-80B-A3B-Instruct-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 48506100512,
+          "sha256": "f73551b55e3796526c37772c96227151fa11af328802b8f9865d635104e280fd"
+        }
+      ],
+      "use": {
+        "models": {
+          "deep": "$model"
+        }
+      }
+    },
+    {
+      "id": "glm-4.5-air-gguf",
+      "family": "GLM",
+      "category": "chat",
+      "jobs": ["deep", "bob", "reviewer", "tinker", "office", "scout"],
+      "name": "GLM-4.5 Air",
+      "published": "2025-07-28",
+      "dated": { "newer": [ "glm-4.7-flash" ], "why": "From July 2025; Z.ai's GLM-4.7 Flash is newer and much smaller" },
+      "what": "Z.ai's big coding and tools brain that thinks before it answers: 106B of knowledge, 12B working at once.",
+      "sizeGB": 67.7,
+      "vramGB": 70,
+      "params": 106,
+      "activeParams": 12,
+      "experts": true,
+      "license": "MIT",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/GLM-4.5-Air-GGUF/resolve/506d64aa8c5cfe9dbbf00bc7a15739438f83204d/UD-Q4_K_XL/GLM-4.5-Air-UD-Q4_K_XL-00001-of-00002.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 49580287296,
+          "sha256": "1acd6d4acdb4f463c9a61696cb7e830e1a34134e610b573e87a4397adcd90bd7"
+        },
+        {
+          "url": "https://huggingface.co/unsloth/GLM-4.5-Air-GGUF/resolve/506d64aa8c5cfe9dbbf00bc7a15739438f83204d/UD-Q4_K_XL/GLM-4.5-Air-UD-Q4_K_XL-00002-of-00002.gguf",
+          "role": "gguf-part-2",
+          "verify": true,
+          "bytes": 18140784576,
+          "sha256": "8e220a3cdf4e19763cc7a5fd0a6215f1da1b3fda1306e64e88456d045c2007f8"
+        }
+      ],
+      "use": {
+        "models": {
+          "deep": "$model"
+        }
+      }
+    },
+    {
+      "id": "llama-4-scout-gguf",
+      "family": "Llama",
+      "category": "chat",
+      "jobs": ["bob", "office", "scout", "reviewer"],
+      "name": "Llama 4 Scout 109B-A17B",
+      "published": "2025-04-05",
+      "dated": { "newer": [ "muse-glimmer-30b" ], "why": "From April 2025; newer brains think and use tools better" },
+      "what": "Meta's Llama 4 Scout: 109B of knowledge, 17B working at once, with a very long memory for big documents. This copy has no picture reader, so it reads text only.",
+      "sizeGB": 65.4,
+      "vramGB": 68,
+      "params": 109,
+      "activeParams": 17,
+      "experts": true,
+      "license": "Llama 4 Community License",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/Llama-4-Scout-17B-16E-Instruct-GGUF/resolve/72a6853f56a66dc13a3a4b6bdc9cf7ee4c364b47/Q4_K_M/Llama-4-Scout-17B-16E-Instruct-Q4_K_M-00001-of-00002.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 49848379744,
+          "sha256": "fbe956902467171ed7c0c326e5d868771a84d46468d407abecd0f289297313f9"
+        },
+        {
+          "url": "https://huggingface.co/unsloth/Llama-4-Scout-17B-16E-Instruct-GGUF/resolve/72a6853f56a66dc13a3a4b6bdc9cf7ee4c364b47/Q4_K_M/Llama-4-Scout-17B-16E-Instruct-Q4_K_M-00002-of-00002.gguf",
+          "role": "gguf-part-2",
+          "verify": true,
+          "bytes": 15511520608,
+          "sha256": "e7330ae14527f08e8a44a6a573b45084052b8822c4b8a5179c5cad9cd6f6f795"
+        }
+      ],
+      "use": {
+        "models": {
+          "deep": "$model"
+        }
+      }
     }
   ],
   "packs": [
