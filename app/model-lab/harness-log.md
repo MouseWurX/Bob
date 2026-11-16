@@ -86,3 +86,14 @@ says what ran, what it taught, what changed, and which check now guards it. "Ope
 - Check: `jobs-selftest.mjs` (8 jobs, about 2 s, before every rental and on --preflight); `harness-faults.mjs` names
   each kind; do-jobs stops a rental when 3 in 10 runs are the world's fault; `jobs-gate --max-world` (5%);
   `jobs-recheck.mjs` replayed all 47: clear (8 lost scenes can't be replayed; the self-test covers that fix).
+
+## 16 Nov 2026: Maximus rerun bad_args (8 runs), Bob-side arg hints (Tool shape thread)
+- Taught: the brain guessed folders for files the user named (scraper.py, validator.py, data.json were in Documents),
+  read a file:// link with fetch_page, copied a script write_file had refused, set one reminder per day with repeats
+  off, and used forget_topic for a saved memory then said it wasn't there.
+- Changed (no tool names, lists or shapes; TOOL_SHAPES stays 4): a missing path's error says where that name is in
+  the folders Bob may read (find-by-name.js, 4 levels, 4,000 entries, hidden/AppData skipped); read_file finds a bare
+  name a few folders down; a new file whose name is already used says where the other is; file:// points at read_file;
+  the script refusal says nothing was saved; the 2nd one-off reminder with the same words says repeats are off;
+  forget_topic says a memory isn't a topic and Bob can't delete one.
+- Check: test/run-find-by-name-test.js (33 checks). Not yet re-run on a rental.
