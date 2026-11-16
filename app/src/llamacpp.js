@@ -27,7 +27,7 @@ import { scutEnv, linkEnv, linkLive } from './share-card.js'; // SCUT, the fast 
 import { LinkLog } from './link-log.js'; // what the link to a lent card carried, kept in a file and the logbook
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
-import { memArgs, copyGuessArgs, draftNumArgs, laptopThreads } from './engine-extras.js'; // list items 94-100
+import { memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
 
@@ -569,6 +569,8 @@ export class LlamaCpp {
       // 98 Laptop mode (opt-in): on battery, half the cores. Games-first and threads set by hand win.
       ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : laptopThreads(this.cfg) ? ['-t', String(laptopThreads(this.cfg))] : num(lc.threads, '-t')),
       ...num(lc.batch, '-b'), ...num(lc.ubatch, '-ub'),
+      // 101 Reading speed (opt-in): bigger reading steps on the card. A batch set by hand wins.
+      ...(this.role === BESIDE ? [] : readingArgs(this.cfg, { cpu, hand: lc, recent: this.recentPrompts })),
       // 1.5.24 "Warm up while typing": on the processor, his reading of the instructions is kept on disk.
       ...(cpu && tuning(this.cfg).readyWhileTyping ? ['--slot-save-path', startDir(this.cfg)] : chatPlacesOn(this.cfg) && this.role !== BESIDE ? ['--slot-save-path', placesDir(this.cfg)] : []), // or each chat's place (chat-places.js)
       ...(modelArgs || lc.modelArgs?.[model] || []),
@@ -583,6 +585,16 @@ export class LlamaCpp {
     // Without fit, every layer goes on the card as before.
     if (this.fitsItself(args, cpu)) args.push('--fit', 'on');
     else if (!args.includes('-ngl')) args.push('-ngl', '999');
+    // 101: what Auto chose and why, for Settings and the logbook (said once each time it changes).
+    if (!cpu && this.role !== BESIDE) { const why = readingChoice(this.cfg, { recent: this.recentPrompts }).why; if (why && why !== this.readingWhy) this.log?.('engine', `${model}: ${why}`); this.readingWhy = why; }
+    // 103 Lock brain memory (opt-in): the part of the brain in RAM stays there.
+    if (this.cfg.lockBrainMemory === true && !cpu && this.role !== BESIDE) {
+      let size = 0; try { size = fs.statSync(gguf).size; } catch {}
+      const card = (Number(this.cfg.gpuVramGB || this.cfg.cardGB) || 0) * 1024 ** 3 * 0.9;
+      const room = lockRoom({ ramPart: Math.max(0, size - card) });
+      if (!room.ok) this.log?.('engine', `${model}: Lock brain memory is on, but not used this time: ${room.why}`);
+      args.push(...lockMemoryArgs(this.cfg, { args, cpu, room }));
+    }
     // 1.5.177: llama-server's own chat page is switched off. Bob is the only chat page; the engine answers only Bob.
     // (Its plain page looked like a different app when someone opened the engine's address.) --no-webui came in
     // around llama.cpp b4100; an older or unknown build is left as it was, so it still starts.
@@ -620,6 +632,8 @@ export class LlamaCpp {
       const draft = path.isAbsolute(d.model) || /\.gguf$/i.test(d.model) ? d.model : this.resolve(d.model).gguf;
       args.push('-md', draft, ...draftNumArgs(this.buildNo(), d.max ?? 16, d.min ?? 1), '-ngld', String(d.ngld ?? 99));
     }
+    // 102 Turbo for everyday brains (opt-in): a brain with its own guesser uses it, unless Turbo or a draft is set.
+    args.push(...everydayTurboArgs(this.cfg, { build: this.buildNo(), args, mtp: ggufInfo(gguf)?.mtp || 0, cpu: cpu || this.role === BESIDE }));
     // 94 Guess-ahead from the chat (opt-in): with no draft brain, the engine guesses by copying what the chat holds.
     args.push(...copyGuessArgs(this.cfg, { build: this.buildNo(), args }));
     return args;
@@ -1093,6 +1107,7 @@ export class LlamaCpp {
           if (fi < 0) args.push('--fit', 'on'); else args[fi + 1] = 'on';
           try { this.log?.('engine', `${model}: the hand-set split (-ts) was left out for this spread; each card's share is sized to fit instead`); } catch {}
         }
+        if (!Number.isInteger(this.lc.batch) && !Number.isInteger(this.lc.ubatch)) dropReading(args); // 101: spread loads keep small steps
         args.push('--rpc', helpers.join(','), ...spreadArgs(args, this.spread?.fitTargets?.() || null));
         // Watch the link live: llama-server files the card-sharing code's [link] and [scut] lines one level below what it
         // shows by default, so on the borrowing side they only appear with -lv 4 (found in the PC and handheld test).
@@ -1444,6 +1459,7 @@ export class LlamaCpp {
         // Nov 11 (item 3): the engine's own count of what it read teaches Bob how many characters make a token for this brain.
         if (ev.timings) { const n = (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0); const k = this.current || model; const per = learnPer(this.perToken[k], promptChars(messages, tools), n); if (per) this.perToken[k] = per; }
         if (ev.timings) this.speedNote(model, ev.timings, (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0)); // 225
+        if (ev.timings) this.recentPrompts = [...(this.recentPrompts || []), (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0)].slice(-3); // 101 Auto reading speed
         if (ev.timings) this.lastStats = this.statsOut(replyStats({ model: this.current || model, messages, promptTokens: (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0), outTokens: ev.timings.predicted_n, tokPerSec: ev.timings.predicted_per_second, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX })) || this.lastStats;
         if (ev.choices?.[0]?.finish_reason) finish = ev.choices[0].finish_reason;
         if (ev.timings) this.readSpeed[this.current || model] = learnReadSpeed(this.readSpeed[this.current || model], ev.timings); // item 208

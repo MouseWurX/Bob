@@ -7,6 +7,9 @@
 //   laptopMode   98  Laptop mode: on battery, the Quick brain answers and the engine uses fewer threads
 //   engineNotes  99  Engine updates in plain words
 //   brainMemType 100 The engine's memory type per brain (Brains page, Set up)
+//   readingSpeed 101 Reading speed: bigger reading steps (-b/-ub) so a long prompt is read in fewer, larger pieces
+//   turboEveryday 102 Turbo for everyday brains: a brain's own built-in guesser (MTP) on, without the Lab
+//   lockBrainMemory 103 Lock brain memory: the part of a brain in RAM stays there (--mlock), so Windows can't page it out
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -14,7 +17,7 @@ import { execFile } from 'node:child_process';
 import { MEM_TYPES, memTypeTrade } from '../public/mem-types.js';
 import { brainEngineBuild } from '../public/engine-name.js';
 
-export const EXTRA_SWITCHES = ['copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes'];
+export const EXTRA_SWITCHES = ['copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'turboEveryday', 'lockBrainMemory'];
 export const extraOn = (cfg, key) => cfg?.[key] === true;
 
 // ---------- 94 Guess-ahead from the chat ----------
@@ -35,6 +38,85 @@ export function copyGuessArgs(cfg, { build = 0, args = [] } = {}) {
   if (!extraOn(cfg, 'copyGuess') || !newSpecFlags(build)) return [];
   if (args.some((a) => ['--spec-type', '-md', '--model-draft', '--spec-draft-model', '--spec-draft-hf', '-hfd'].includes(a))) return []; // Turbo or a draft brain already guesses
   return [...COPY_GUESS_ARGS];
+}
+
+// ---------- 101 Reading speed ----------
+// llama.cpp reads a prompt in steps of -ub tokens (512 unless set), and -ub can't be bigger than -b (2048 unless set),
+// so both are set together. When part of a brain's experts sit in RAM, each step carries them over to the card once,
+// so bigger steps mean fewer trips: a 3060 test (Nov 2026) read 4K to 32K prompts 2.5 to 2.9 times faster at 4096.
+// The cost is a bigger working space on the card (about 1 to 2 GB at 4096), so --fit may keep a few more experts in
+// RAM and writing can get a little slower. Auto picks by the card: 4096 at 12 GB or more, 2048 at 6 GB or more, and
+// Normal on smaller cards and built-in graphics, where the room isn't there.
+export const READING_STEPS = { normal: 0, faster: 2048, fastest: 4096 };
+export const READING_PICKS = ['normal', 'faster', 'fastest', 'auto'];
+export const readingPick = (cfg) => (READING_PICKS.includes(cfg?.readingSpeed) ? cfg.readingSpeed : 'normal');
+// Auto says why it chose what it chose (Settings and the logbook show it): by the card first, then by the last
+// 3 prompts this Bob read. With a 12 GB card or more, Fastest; but when the last 3 prompts were all short (under 4K
+// tokens), Faster, which leaves more of the card for experts. With 6 to 11 GB, Faster. Smaller cards and built-in
+// graphics: Normal. -> { steps, why }
+export const LONG_PROMPT = 16384, SHORT_PROMPT = 4096;
+export function readingChoice(cfg, { recent = [] } = {}) {
+  const pick = readingPick(cfg);
+  if (pick !== 'auto') return { steps: READING_STEPS[pick], why: '' };
+  if (cfg?.sharedGraphics === true) return { steps: 0, why: 'Auto chose Normal: built-in graphics share the computer\'s memory, so there\'s no room to spare.' };
+  const gb = Number(cfg?.gpuVramGB || cfg?.cardGB) || 0;
+  if (gb < 6) return { steps: 0, why: gb ? `Auto chose Normal: a ${gb} GB card has no room for bigger pieces.` : 'Auto chose Normal: no graphics card found.' };
+  if (gb < 12) return { steps: 2048, why: `Auto chose Faster: a ${gb} GB card has room for 2,048 at a time, not 4,096.` };
+  const last = (Array.isArray(recent) ? recent : []).filter((n) => Number.isFinite(n) && n > 0).slice(-3);
+  const long = last.filter((n) => n >= LONG_PROMPT).length;
+  if (last.length === 3 && last.every((n) => n < SHORT_PROMPT)) return { steps: 2048, why: `Auto chose Faster: ${gb} GB card, and your last 3 prompts were all under ${SHORT_PROMPT.toLocaleString('en')} tokens, so more of the card is left for experts.` };
+  return { steps: 4096, why: `Auto chose Fastest: ${gb} GB card${long ? `, and ${long} of your last ${last.length} prompts were over ${LONG_PROMPT.toLocaleString('en')} tokens` : ''}.` };
+}
+export const readingSteps = (cfg, opts) => readingChoice(cfg, opts).steps;
+// Not on the processor (no card to carry experts to), and never over a batch or micro-batch set by hand.
+export function readingArgs(cfg, { cpu = false, hand = {}, recent = [] } = {}) {
+  const n = readingSteps(cfg, { recent });
+  const set = (v) => Number.isInteger(v) && v > 0;
+  if (!n || cpu || set(hand.batch) || set(hand.ubatch)) return [];
+  return ['-b', String(n), '-ub', String(n)];
+}
+// A brain spread over lent cards keeps its small steps (spreadArgs in llamacpp.js): bigger ones overfill a lent card.
+// Changes the list in place, so a caller's const list follows.
+export function dropReading(args) {
+  for (let i = args.length - 2; i >= 0; i--) if (args[i] === '-b' || args[i] === '-ub') args.splice(i, 2);
+  return args;
+}
+
+// ---------- 102 Turbo for everyday brains ----------
+// Some brains carry their own guesser in the file (a multi-token prediction head, "nextn"): it guesses the next few
+// words and the brain checks them in one go, so the answer is the same, only quicker. The Lab's Turbo page turns it
+// on per brain; this switch turns it on for every brain that has one, unless Turbo or a draft brain is set for it.
+// 3 guesses at a time: one head's guesses get worse the further out they go.
+export const TURBO_EVERYDAY_MAX = 3;
+export function everydayTurboArgs(cfg, { build = 0, args = [], mtp = 0, cpu = false } = {}) {
+  if (!extraOn(cfg, 'turboEveryday') || cpu || !(mtp > 0) || !newSpecFlags(build)) return [];
+  if (args.some((a) => ['--spec-type', '-md', '--model-draft', '--spec-draft-model', '--spec-draft-hf', '-hfd'].includes(a))) return [];
+  return ['--spec-type', 'draft-mtp', ...draftNumArgs(build, TURBO_EVERYDAY_MAX)];
+}
+
+// ---------- 103 Lock brain memory ----------
+// When part of a brain sits in RAM (the card is too small for all of it), Windows may page some of it out while you do
+// other things, and the next reply waits while it comes back from the drive. --mlock asks the system to keep it in RAM.
+// Only for a brain on the card (not the Gaming brain on the processor, which should give memory back to the game), and
+// only when part of it is in RAM. If the system won't lock it (Linux limits, Android), the engine says so and runs as before.
+// Only what sits in RAM is locked: Bob loads a spilled brain without mmap (llamacpp.js noMmapArgs), so --mlock locks
+// those buffers, not the whole file. And never at the cost of the system: not on computers with under 16 GB of RAM,
+// not on Android or a Raspberry Pi, and only while at least 4 GB or a quarter of the RAM (whichever is more) would
+// still be free after the brain's RAM part is locked.
+const PARTLY_IN_RAM = ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'];
+export const LOCK_MIN_RAM = 16 * 1024 ** 3;
+export const lockFloor = (totalBytes) => Math.max(4 * 1024 ** 3, Math.floor(totalBytes / 4));
+// -> { ok, why }. ramPart: bytes of the brain that will sit in RAM (a guess is fine: the file size minus the card's share).
+export function lockRoom({ totalBytes = os.totalmem(), freeBytes = os.freemem(), ramPart = 0, platform = process.platform, arm = /^arm/.test(process.arch) } = {}) {
+  if (platform === 'android' || (platform === 'linux' && arm)) return { ok: false, why: 'not on phones or small boards' };
+  if (!(totalBytes >= LOCK_MIN_RAM)) return { ok: false, why: 'this computer has under 16 GB of RAM' };
+  const left = freeBytes - Math.max(0, ramPart);
+  if (left < lockFloor(totalBytes)) return { ok: false, why: `only ${Math.max(0, Math.round(left / 1024 ** 3))} GB would be left free` };
+  return { ok: true, why: '' };
+}
+export function lockMemoryArgs(cfg, { args = [], cpu = false, room = { ok: true } } = {}) {
+  if (!extraOn(cfg, 'lockBrainMemory') || cpu || args.includes('--mlock') || !room?.ok) return [];
+  return args.some((a) => PARTLY_IN_RAM.includes(a)) ? ['--mlock'] : [];
 }
 
 // ---------- 100 The engine's memory type per brain ----------

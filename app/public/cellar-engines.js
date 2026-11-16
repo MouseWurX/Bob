@@ -68,12 +68,24 @@ export function createEngineParts(now) {
     return `<div class="tune engine-extras"><strong>Engine extras</strong> <span class="tag">off unless you turn it on</span>
          ${tip('Each switch is separate. They work with Brain Engine and llama.cpp; Ollama runs its own way, so only the speed history and Laptop mode reach it. Bob\'s Android app runs its own small engine and isn\'t changed by these.', 'Engine extras')}
         ${sswitch('copyGuess', settings.copyGuess === true, 'Prompt-lookup decoding', 'Speeds up rewrites of code and documents by copying text already in the chat. Same answer, no second brain. Not used with Turbo.')}
+        ${readingSpeedHtml()}
+        ${sswitch('turboEveryday', settings.turboEveryday === true, 'Turbo for everyday brains', 'Brains with their own built-in guesser use it for every reply, without the Lab. Same answer, written faster. Brains without one are unchanged.')}
+        ${sswitch('lockBrainMemory', settings.lockBrainMemory === true, 'Lock brain memory', 'When part of a brain sits in RAM, it stays there, so replies after a break don\'t wait on the drive. Uses that RAM until the brain unloads. Not used in Gaming.')}
         ${sswitch('preloadNext', settings.preloadNext === true, 'Preload the next brain', 'Reads the next brain\'s file into RAM during a hand-off, so the swap is quicker. Needs the brain\'s size plus 4 GB free.')}
         ${sswitch('laptopMode', settings.laptopMode === true, 'Laptop mode', `On battery, the Quick brain answers and the engine uses half the cores.${bat ? ' ' + keep(bat) : ''}`)}
         ${sswitch('newCardTest', settings.newCardTest === true, 'Auto-test a new GPU', 'When Bob starts on a different GPU, he runs the one-minute speed test and puts hand-set brains back on Auto.')}
         ${sswitch('speedLog', settings.speedLog === true, 'Speed history', 'Logs each reply\'s speed per day, brain and engine version. Numbers only, kept here for 90 days.')}
         ${speedLogHtml()}
       </div>`;
+  }
+  // 101 Reading speed: how big a piece of a prompt the engine reads at a time. Normal is what Bob always did.
+  function readingSpeedHtml() {
+    const pick = settings.readingSpeed || 'normal';
+    const opts = [['normal', 'Normal'], ['faster', 'Faster'], ['fastest', 'Fastest'], ['auto', 'Auto (by graphics card)']];
+    const now = settings.readingSteps ? `Reads ${settings.readingSteps} tokens at a time.` : 'Reads 512 tokens at a time.';
+    return `<label class="pick"><strong>Reading speed</strong> ${tip('How much of a long message or file my engine reads at a time. Bigger pieces read long prompts much faster when part of a brain is in RAM, but take about 1 to 2 GB more graphics memory, so writing can get a little slower. Auto picks by your card and your last 3 prompts, and says why here and in the logbook.', 'Reading speed')}
+        <select data-set="readingSpeed" aria-label="Reading speed">${opts.map(([v, label]) => `<option value="${v}" ${v === pick ? 'selected' : ''}>${label}</option>`).join('')}</select>
+        <span class="muted">${now}${pick === 'auto' && settings.readingWhy ? ' ' + esc(settings.readingWhy) : ''} Applies the next time a brain loads. Test Bob's speed shows the difference on this computer.</span></label>`;
   }
   // 96 Speed history: one small line chart per brain, words a second by day, with a mark where the engine changed.
   function speedLogHtml() {

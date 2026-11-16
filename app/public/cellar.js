@@ -1408,11 +1408,12 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.sbrain) { const r = await api('/api/settings', { sessionBrains: { [el.dataset.sbrain]: el.value } }); settings.sessionBrains = r.sessionBrains; flash(el, 'Saved.'); return; }
       if (el.dataset.set === 'pictureNoWait') { const r = await api('/api/settings', { pictureNoWait: el.checked }); settings.pictureNoWait = r.pictureNoWait; el.checked = r.pictureNoWait; return; }
       // List items 94-99: engine and speed extras, each saved on its own.
-      if (['copyGuess', 'preloadNext', 'laptopMode', 'newCardTest', 'speedLog', 'engineNotes'].includes(el.dataset.set)) {
+      if (el.dataset.set === 'readingSpeed') { const r = await api('/api/settings', { readingSpeed: el.value }); settings.readingSpeed = r.readingSpeed; settings.readingSteps = r.readingSteps; const y = dlg.scrollTop; draw(); dlg.scrollTop = y; return; } // 101
+      if (['copyGuess', 'turboEveryday', 'lockBrainMemory', 'preloadNext', 'laptopMode', 'newCardTest', 'speedLog', 'engineNotes'].includes(el.dataset.set)) {
         const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k];
         if ('onBattery' in r) settings.onBattery = r.onBattery; if ('engineNote' in r) settings.engineNote = r.engineNote; if (k === 'engineNotes') { const y = dlg.scrollTop; draw(); dlg.scrollTop = y; }
         if (k === 'speedLog') { speedLogData = await api('/api/speed-log').catch(() => speedLogData); const y = dlg.scrollTop; draw(); dlg.scrollTop = y; }
-        flash(el, !r[k] ? 'Off.' : k === 'copyGuess' ? 'On. Applies the next time a brain loads.' : k === 'laptopMode' ? (r.onBattery === true ? 'On. On battery now: applies the next time a brain loads.' : r.onBattery === false ? 'On. Plugged in now, so nothing changes yet.' : 'On. No battery found here, so nothing changes.') : k === 'newCardTest' ? 'On. Bob looks for a new card each time he starts.' : 'On.');
+        flash(el, !r[k] ? 'Off.' : k === 'copyGuess' || k === 'turboEveryday' || k === 'lockBrainMemory' ? 'On. Applies the next time a brain loads.' : k === 'laptopMode' ? (r.onBattery === true ? 'On. On battery now: applies the next time a brain loads.' : r.onBattery === false ? 'On. Plugged in now, so nothing changes yet.' : 'On. No battery found here, so nothing changes.') : k === 'newCardTest' ? 'On. Bob looks for a new card each time he starts.' : 'On.');
         return;
       }
       if (['readyWhileTyping', 'gamesFirst', 'pictureFit'].includes(el.dataset.set)) { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k]; flash(el, 'Saved. Applies when the brain or picture model next loads.'); return; }

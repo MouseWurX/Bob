@@ -13,7 +13,8 @@ import { modelFor } from '../src/sessions.js';
 import {
   EXTRA_SWITCHES, extraOn, newSpecFlags, draftNumArgs, copyGuessArgs, COPY_GUESS_ARGS, cleanMemType, memTypeOf, memArgs, MEM_TYPES,
   parseWinBattery, parseMacBattery, linuxBattery, onBattery, setOnBattery, batteryNow, laptopSaving, laptopThreads,
-  cardKey, cardChange, placesToAuto, handoffHat, warmRoom, warmFile, WARM_SPARE, plainEngineNotes, engineNoteLine, brainEngineNumber
+  cardKey, cardChange, placesToAuto, handoffHat, warmRoom, warmFile, WARM_SPARE, plainEngineNotes, engineNoteLine, brainEngineNumber,
+  READING_PICKS, readingPick, readingSteps, readingChoice, readingArgs, dropReading, lockRoom, lockFloor, everydayTurboArgs, TURBO_EVERYDAY_MAX, lockMemoryArgs
 } from '../src/engine-extras.js';
 import { startEngineExtras, engineLabel } from '../src/engine-extras-run.js';
 import { addReply, speedSeries, logReply, readSpeedLog, KEEP_DAYS } from '../src/speed-log.js';
@@ -31,10 +32,41 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-extras-'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- Off unless turned on ----------
-check('six switches, all off in a fresh Bob', EXTRA_SWITCHES.length === 6 && EXTRA_SWITCHES.every((k) => !extraOn({}, k)));
+check('eight switches, all off in a fresh Bob', EXTRA_SWITCHES.length === 8 && EXTRA_SWITCHES.every((k) => !extraOn({}, k)));
 { const m = mergeSettings({}, Object.fromEntries(EXTRA_SWITCHES.map((k) => [k, 'yes'])));
   check('only true turns one on when saved', EXTRA_SWITCHES.every((k) => m[k] === false) && mergeSettings({}, { copyGuess: true }).copyGuess === true); }
 check('the example settings file switches none of them on', (() => { const ex = JSON.parse(read('config.example.json')); return EXTRA_SWITCHES.every((k) => ex[k] !== true) && !ex.brainMemType; })());
+
+// ---------- 101 Reading speed ----------
+check('reading speed: Normal in a fresh Bob, and nothing added', readingPick({}) === 'normal' && readingSteps({}) === 0 && readingArgs({}).length === 0);
+check('reading speed: an unknown pick is Normal', readingPick({ readingSpeed: 'warp' }) === 'normal' && READING_PICKS.join() === 'normal,faster,fastest,auto');
+check('reading speed: Faster and Fastest set both -b and -ub', readingArgs({ readingSpeed: 'faster' }).join(' ') === '-b 2048 -ub 2048' && readingArgs({ readingSpeed: 'fastest' }).join(' ') === '-b 4096 -ub 4096');
+check('reading speed: Auto picks by the card (fake cards)', readingSteps({ readingSpeed: 'auto', gpuVramGB: 16 }) === 4096 && readingSteps({ readingSpeed: 'auto', cardGB: 6 }) === 2048 && readingSteps({ readingSpeed: 'auto', cardGB: 4 }) === 0 && readingSteps({ readingSpeed: 'auto', sharedGraphics: true, cardGB: 16 }) === 0 && readingSteps({ readingSpeed: 'auto' }) === 0);
+check('reading speed: not on the processor, and a batch set by hand wins', readingArgs({ readingSpeed: 'fastest' }, { cpu: true }).length === 0 && readingArgs({ readingSpeed: 'fastest' }, { hand: { ubatch: 256 } }).length === 0 && readingArgs({ readingSpeed: 'fastest' }, { hand: { batch: 1024 } }).length === 0);
+check('reading speed: a spread load takes the steps back out, in place', (() => { const a = ['-m', 'x', '-b', '4096', '-ub', '4096', '--fit', 'on']; const r = dropReading(a); return r === a && a.join(' ') === '-m x --fit on'; })());
+
+check('Auto says why: the card, then the last 3 prompts', (() => { const big = { readingSpeed: 'auto', gpuVramGB: 16 };
+  const a = readingChoice(big, { recent: [20000, 30000, 500] }), b = readingChoice(big, { recent: [800, 900, 1200] }), c = readingChoice({ readingSpeed: 'auto', cardGB: 8 }), d = readingChoice({ readingSpeed: 'auto', sharedGraphics: true });
+  return a.steps === 4096 && /Fastest: 16 GB card, and 2 of your last 3 prompts were over 16,384/.test(a.why) && b.steps === 2048 && /all under 4,096/.test(b.why) && c.steps === 2048 && /8 GB card/.test(c.why) && d.steps === 0 && /built-in graphics/.test(d.why) && readingChoice({ readingSpeed: 'fastest' }).why === ''; })());
+check('Auto: fewer than 3 prompts seen keeps Fastest on a big card', readingChoice({ readingSpeed: 'auto', gpuVramGB: 16 }, { recent: [500, 600] }).steps === 4096);
+
+// ---------- 102 Turbo for everyday brains ----------
+check('everyday Turbo: nothing while off', everydayTurboArgs({}, { mtp: 1 }).length === 0);
+check('everyday Turbo: a brain with its own guesser uses it, 3 at a time', everydayTurboArgs({ turboEveryday: true }, { mtp: 1, build: 12359 }).join(' ') === `--spec-type draft-mtp --spec-draft-n-max ${TURBO_EVERYDAY_MAX}` && TURBO_EVERYDAY_MAX === 3);
+check('everyday Turbo: no guesser, the processor, an old engine, or Turbo/draft already set: nothing', [everydayTurboArgs({ turboEveryday: true }, { mtp: 0 }), everydayTurboArgs({ turboEveryday: true }, { mtp: 1, cpu: true }), everydayTurboArgs({ turboEveryday: true }, { mtp: 1, build: 9000 }), everydayTurboArgs({ turboEveryday: true }, { mtp: 1, args: ['-md', 'd.gguf'] }), everydayTurboArgs({ turboEveryday: true }, { mtp: 1, args: ['--spec-type', 'ngram-mod'] })].every((x) => x.length === 0));
+
+// ---------- 103 Lock brain memory ----------
+{ const G = 1024 ** 3;
+  check('lock memory: a floor of 4 GB or a quarter of the RAM', lockFloor(32 * G) === 8 * G && lockFloor(16 * G) === 4 * G);
+  check('lock memory: room on a 32 GB PC with a 10 GB RAM part and 24 GB free', lockRoom({ totalBytes: 32 * G, freeBytes: 24 * G, ramPart: 10 * G, platform: 'win32', arm: false }).ok);
+  check('lock memory: no room when it would leave under the floor', /would be left free/.test(lockRoom({ totalBytes: 32 * G, freeBytes: 20 * G, ramPart: 14 * G, platform: 'win32', arm: false }).why));
+  check('lock memory: never under 16 GB of RAM, on Android or an ARM board', !lockRoom({ totalBytes: 8 * G, freeBytes: 7 * G, platform: 'win32', arm: false }).ok && !lockRoom({ totalBytes: 32 * G, freeBytes: 30 * G, platform: 'android' }).ok && !lockRoom({ totalBytes: 32 * G, freeBytes: 30 * G, platform: 'linux', arm: true }).ok);
+  check('lock memory: no room means no --mlock', lockMemoryArgs({ lockBrainMemory: true }, { args: ['--fit', 'on'], room: { ok: false } }).length === 0); }
+check('lock memory: nothing while off', lockMemoryArgs({}, { args: ['--fit', 'on'] }).length === 0);
+check('lock memory: --mlock only when part of the brain is in RAM', lockMemoryArgs({ lockBrainMemory: true }, { args: ['--fit', 'on'] }).join() === '--mlock' && lockMemoryArgs({ lockBrainMemory: true }, { args: ['--n-cpu-moe', '8'] }).join() === '--mlock' && lockMemoryArgs({ lockBrainMemory: true }, { args: ['-ngl', '999'] }).length === 0);
+check('lock memory: not for the processor brain, and never twice', lockMemoryArgs({ lockBrainMemory: true }, { args: ['--fit', 'on'], cpu: true }).length === 0 && lockMemoryArgs({ lockBrainMemory: true }, { args: ['--fit', 'on', '--mlock'] }).length === 0);
+check('Help, glossary and FAQs for items 101-103', (() => { const ex = HELP.find((h) => h.id === 'engine-extras')?.html || ''; const gl = HELP.find((h) => h.id === 'glossary')?.html || ''; return ['Reading speed', 'Turbo for everyday brains', 'Lock brain memory'].every((t) => ex.includes(t)) && ['faq-reading-speed', 'faq-turbo-everyday', 'faq-lock-memory'].every((id) => HELP.some((h) => h.id === id && h.group === 'FAQ')) && ['Reading speed (batch size)', 'Locked memory', 'Built-in guesser (multi-token prediction)'].every((t) => gl.includes(`<dt>${t}</dt>`)); })());
+check('Settings has the three new controls', (() => { const t = read('public/cellar-engines.js'); return /data-set="readingSpeed"/.test(t) && /sswitch\('turboEveryday'/.test(t) && /sswitch\('lockBrainMemory'/.test(t); })());
 
 // ---------- 94 Guess-ahead from the chat ----------
 check('new speculative flag names from about b9530, old ones before', newSpecFlags(0) && newSpecFlags(12282) && !newSpecFlags(9000) && draftNumArgs(12282, 8, 0).join(' ') === '--spec-draft-n-max 8 --spec-draft-n-min 0' && draftNumArgs(9000, 8, 0).join(' ') === '--draft-max 8 --draft-min 0');
@@ -45,6 +77,10 @@ check('copy guessing: Turbo or a draft brain wins', copyGuessArgs({ copyGuess: t
 const big = path.join(tmp, 'big.gguf'), small = path.join(tmp, 'small.gguf');
 fs.writeFileSync(big, 'x'); fs.writeFileSync(small, 'x');
 const engineOf = (extra = {}, lc = {}) => { const e = new LlamaCpp({ agentDir: tmp, dataDir: tmp, ...extra, llamacpp: { models: { big, small }, ...lc } }); clearInterval(e.idleTimer); return e; };
+{ const a = engineOf({ readingSpeed: 'fastest' }).buildArgs('big'); const off = engineOf().buildArgs('big');
+  check('reading speed reaches the engine\'s start flags, and Normal adds none', a[a.indexOf('-ub') + 1] === '4096' && a[a.indexOf('-b') + 1] === '4096' && !off.includes('-ub'), a.join(' '));
+  const cpuA = engineOf({ readingSpeed: 'fastest' }).buildArgs('big', { cpu: true }); check('reading speed: not for the processor brain', !cpuA.includes('-ub'), cpuA.join(' '));
+  const hand = engineOf({ readingSpeed: 'fastest' }, { ubatch: 256 }).buildArgs('big'); check('reading speed: a micro-batch set by hand wins', hand.filter((x) => x === '-ub').length === 1 && hand[hand.indexOf('-ub') + 1] === '256', hand.join(' ')); }
 { const off = engineOf().buildArgs('big').join(' '), on = engineOf({ copyGuess: true }).buildArgs('big').join(' ');
   const turbo = engineOf({ copyGuess: true }, { turbo: { big: { on: true, draft: 'small', max: 8 } } }).buildArgs('big').join(' ');
   check('Bob\'s engine starts with the copying guesser only with the switch on', !off.includes('ngram') && on.endsWith('--spec-type ngram-mod'), on);
