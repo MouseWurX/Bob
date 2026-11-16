@@ -73,6 +73,8 @@ check('the brain works out the set from the model it answers on', brain.toolSetO
   check('the Lab with --family qwen3 offers no ask_specialist or pick_session, and never names them', !t.tools.some((x) => /^(ask_specialist|pick_session)$/.test(x.function.name)) && !/use ask_specialist/.test(t.system));
 }
 
+check('use_tools "scout" (Bob\'s word for research) points to web_search, which is already in hand', /already yours.*call web_search now/.test(await brain.tools.use_tools.run({ group: 'scout' }, { loaded: new Set() })) && /There is no group called nonsense/.test(await brain.tools.use_tools.run({ group: 'nonsense' }, { loaded: new Set() })));
+
 // 3. Logic arguments: what a brain means, read in code (no words added to the brain's list).
 const rp = brain.tools.reminders.schema.function.parameters, np = brain.tools.notice_board.schema.function.parameters;
 check('"set" means add for reminders', checkArgs(rp, { action: 'set', time: '2030-01-01T09:00', text: 'x' }).args.action === 'add');

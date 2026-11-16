@@ -145,9 +145,11 @@ check('core: "mention it and ask" is only about extras nobody asked for', /only 
   check('search_files with no project searches every project', all.includes('Enemy.cpp') && all.includes('Wave.cpp'));
   const one = await t.search_files.run({ project: 'Beta', text: 'spawnenemy' });
   check('search_files with a project searches only that one', one.includes('Wave.cpp') && !one.includes('Enemy.cpp'));
-  let err = '';
-  try { await buildTools({ ...cfg, projects: {} }).search_files.run({ text: 'xx' }); } catch (e) { err = e.message; }
-  check('no projects: a plain error with another way to look', /No projects are set up yet/.test(err));
+  // Nov 16: no projects searches the folders Bob may read (and says so); with none of those either, a plain error
+  let err = '', got = '';
+  try { got = await buildTools({ ...cfg, projects: {} }).search_files.run({ text: 'xx' }); } catch (e) { err = e.message; }
+  try { await buildTools({ ...cfg, projects: {}, readRoots: [], hands: { folders: [] } }).search_files.run({ text: 'xx' }); } catch (e) { err = e.message; }
+  check('no projects: it searches the readable folders and says so; with none, a plain error', /^No projects are set up, so I searched/.test(got) && /No projects are set up yet/.test(err), got.slice(0, 120) + ' | ' + err.slice(0, 80));
   check('make_music: picks a style when none was given', /No style given\? Pick one/.test(t.make_music.schema.function.parameters.properties.prompt.description));
   check('ask_specialist: passes the job on without asking for paths', /don't ask for paths first/.test(t.ask_specialist.schema.function.parameters.properties.task.description));
   check('web search off: offers the switch (1.5.91: the Set it up card)', /offer_setup with "web"/.test(webPrompt({ userName: 'Sam' })) && /switch/i.test(webPrompt({ userName: 'Sam' })));

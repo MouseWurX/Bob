@@ -81,7 +81,7 @@ const seq = (...xs) => { let i = 0; return () => xs[Math.min(i++, xs.length - 1)
 {
   const e = Object.assign(new Error("ENOENT: no such file or directory, stat 'C:\\x\\a.txt'"), { code: 'ENOENT', path: 'C:\\x\\a.txt' });
   const t = toolErrorText(e);
-  check('198 ENOENT in plain words with what to try next', t.text === 'Error: "C:\\x\\a.txt" isn\'t there. Next: check the name and folder with list_files, then try once more.' && t.hinted && !t.transient, t.text);
+  check('198 ENOENT in plain words with what to try next', t.text === 'Error: "C:\\x\\a.txt" isn\'t there. Next: check the name and folder with list_folder, then try once more.' && t.hinted && !t.transient, t.text);
   check('198 a busy file is worth a second go; a missing one isn\'t', toolErrorText(Object.assign(new Error('x'), { code: 'EBUSY' })).transient && !t.transient);
   check('198 the code under a fetch wrapper is found', toolErrorText(new TypeError('fetch failed', { cause: Object.assign(new Error('x'), { code: 'ENOTFOUND', hostname: 'nope.example' }) })).code === 'ENOTFOUND');
   check('198 a tool can say it itself', toolErrorText(toolError('the printer is off', 'switch it on')).text === 'Error: the printer is off. Next: switch it on.');
@@ -232,7 +232,7 @@ const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls:
   const before = brain.errorTally.today().read_file || 0;
   await brain.runOn(msgs, 'read nope.txt', () => {}, new AbortController().signal, [], null, 'tools-1');
   const results = msgs.filter((m) => m.role === 'tool' && m.tool_name === 'read_file').map((m) => m.content);
-  check('198 the tool\'s error is plain words with what to try next', /^Error: ".*nope\.txt" isn't there\. Next: check the name and folder with list_files/.test(results[0] || ''), results[0]);
+  check('198 the tool\'s error is plain words with what to try next', /^Error: ".*nope\.txt" isn't there\. Next: check the name and folder with list_folder/.test(results[0] || ''), results[0]);
   check('198 ...and the guessed hint isn\'t added on top', !/\(Hint:/.test(results[0] || ''));
   check('200 the second failure isn\'t set aside yet', !/set aside/.test(results[1] || ''), results[1]);
   check('200 the third failure in a row says it is set aside', results[2]?.includes('failed three times in this job, so it\'s set aside'), results[2]);
