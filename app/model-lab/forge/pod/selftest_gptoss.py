@@ -146,6 +146,12 @@ def check_lora(cut_dir):
         m = AutoModelForCausalLM.from_pretrained(cut_dir, dtype=torch.float32).eval()
         L._gmm_ok = (lambda dev="cpu", g=gmm: g and hasattr(torch, "_grouped_mm"))
         L.attach(m, r=8, r_experts=8)  # rank 8: rows 16-byte aligned for the grouped matmul, as on the card
+        if not gmm:  # 16 Nov: the router-rate finding, tested on transformers' own GPT-OSS class
+            names = [n for n, p in m.named_parameters() if p.requires_grad]
+            old = [n for n in names if n.endswith("mlp.gate.weight")]  # heal.py's rule before 16 Nov
+            new = [n for n, _ in L.router_params(m)]
+            check("finding confirmed on the tiny GPT-OSS: the old rule put 0 of its router tensors in the router's low-rate group", len(old) == 0 and any(n.endswith("mlp.router.weight") for n in names), f"old rule matched {len(old)}")
+            check("the new rule finds every GPT-OSS router tensor (weight and bias in each of 4 layers)", len(new) == 8 == L.router_count_expected(m), f"{len(new)} found")
         if gmm and not hasattr(torch, "_grouped_mm"): print("(no torch._grouped_mm here: the fast path is checked on the card)"); continue
         with torch.no_grad(): got = m(input_ids=ids).logits
         if gmm: check("the fast expert path stayed on", all(l.mlp.experts.lora.use_gmm for l in FAM.layers(m)))
@@ -194,7 +200,7 @@ def main():
     if r.returncode == 0:
         rep = json.load(open(os.path.join(healed, "heal-report.json")))
         check("heal report has before and after, trained steps", rep.get("steps", 0) > 0 and "lessons" in rep.get("before", {}) and "lessons" in rep.get("after", {}))
-        check("the GPT-OSS router (weight and bias) learns at the router's own low rate, in float32", rep.get("router", {}).get("tensors") == 8 and rep["router"].get("dtype") == "float32", json.dumps(rep.get("router")))
+        check("the GPT-OSS router (weight and bias) learns at the router's own low rate, in float32", rep.get("router", {}).get("tensors") == 8 == rep["router"].get("expected") and rep["router"].get("gate") == "passed" and rep["router"].get("dtype") == "float32", json.dumps(rep.get("router")))
         cfg = json.load(open(os.path.join(healed, "config.json")))
         check("healed GPT-OSS is saved as plain BF16 with 4 experts", "quantization_config" not in cfg and cfg["num_local_experts"] == 4 and os.path.exists(os.path.join(healed, "adapter.pt")))
         run("count.py counts the healed GPT-OSS's experts", ["count.py", "--model", healed, "--lessons", les, "--out", os.path.join(root, "counts.json"), "--cache", cache, "--device", "cpu", "--lessons-max", "10"], HERE)

@@ -39,7 +39,7 @@
     "hours": 6.0,
     "router": "trainable",
     "route_report": true,
-    "router_note": "16 Nov 2026, MoE handbook update: the router now learns at its own low rate (2e-5; before this fix GPT-OSS's router learned at the main 1e-4) in float32, and the heal records expert picks on 40 held-out lessons before and after (heal-report.json 'routing'). If routing.change.same_set falls far (under about 0.8, a starting guess, not measured) or MaxVio climbs, try router 'frozen' next."
+    "router_note": "16 Nov 2026, MoE handbook update: the router learns at its own low rate (2e-5) in float32. Reading the code suggested GPT-OSS's router was in the main 1e-4 group before; unproven in our lab, as we have yet to test. FIRST MINUTES: the heal log must show 'router group: 72 tensors at lr 2e-05 (expected 72)' (weight and bias in 36 layers); the heal stops with 86 if not. Also, and the heal records expert picks on 40 held-out lessons before and after (heal-report.json 'routing'). If routing.change.same_set falls far (under about 0.8, a starting guess, not measured) or MaxVio climbs, try router 'frozen' next."
   },
   "rungs": [
     {

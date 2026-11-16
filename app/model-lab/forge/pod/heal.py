@@ -17,7 +17,8 @@ New ways to learn (13 Nov 2026), every one off unless asked for:
 
 Router settings (16 Nov 2026, from the Hugging Face MoE training handbook, Tazi, von Werra and Wolf, 2026):
   The router always runs in float32 (lora.py). It learns at its own low rate (--router-lr), for Qwen and GPT-OSS alike
-  (before 16 Nov the GPT-OSS router fell into the main group and learned at --lr, five times faster).
+  (16 Nov: reading the code suggested the GPT-OSS router fell into the main group, at --lr, five times faster;
+  unproven in our lab, as we have yet to test on a real brain. The router gate below checks it before training.)
   --router frozen  keep the router exactly as it came in, so the keep list stays valid; default trainable (as before).
   --route-report   record which experts the held-out lessons pick before and after the heal (--route-lessons of them):
            per-layer MaxVio (busiest expert's load over the mean, minus 1), experts never picked, and the share of picks
@@ -161,10 +162,17 @@ def main():
 
     params = L.attach(model, r=a.r, experts=a.experts, r_experts=a.r_experts, router=a.router == "trainable")
     # the router's own low rate: Qwen's mlp.gate, and GPT-OSS's mlp.router with its bias (16 Nov: before, GPT-OSS's fell into the main group)
-    router = [p for n, p in model.named_parameters() if p.requires_grad and n.endswith(("mlp.gate.weight", "mlp.router.weight", "mlp.router.bias"))]
+    router = [p for _, p in L.router_params(model)]
+    # 16 Nov gate: a trainable router must have every router tensor in the low-rate group, or the heal stops before
+    # training (exit 86, like the smoke gates). The GPT-OSS router missing from this group is a finding from reading the
+    # code and a tiny-model test; this check is what proves it on the real brain, in the run's first minutes.
+    want = L.router_count_expected(model) if a.router == "trainable" else 0
+    print(f"router group: {len(router)} tensors at lr {a.router_lr} (expected {want}), router {a.router}, float32", flush=True)
+    if len(router) != want:
+        print(f"ROUTER GATE FAILED: {len(router)} router tensors found, {want} expected; stopping before any training", flush=True); raise SystemExit(86)
     rest = [p for p in params if not any(p is q for q in router)]
     groups = [{"params": rest, "lr": a.lr}] + ([{"params": router, "lr": a.router_lr}] if router else [])
-    report["router"] = {"mode": a.router, "dtype": "float32", "lr": a.router_lr if router else 0, "tensors": len(router)}
+    report["router"] = {"mode": a.router, "dtype": "float32", "lr": a.router_lr if router else 0, "tensors": len(router), "expected": want, "gate": "passed"}
     route_before = None
     if a.route_report:
         try:

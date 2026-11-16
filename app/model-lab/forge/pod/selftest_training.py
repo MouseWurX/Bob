@@ -165,6 +165,14 @@ def main():
                                  "--device", "cpu", "--steps", "3", "--group", "3", "--chats", "2", "--max-new", "16", "--eval-chats", "4", "--hours", "0.05", *extra]
     run("grpo.py: reward pass on tool calls", grpo("grpo"), root)
     run("grpo.py --router frozen", grpo("grpo-frozen", "--router", "frozen"), root)
+    import lora as LL, family as FF
+    from transformers import AutoModelForCausalLM
+    tm = AutoModelForCausalLM.from_pretrained(S, dtype=torch.float32); LL.attach(tm, r=4, r_experts=2)
+    check("Qwen: the old and new router rules find the same tensors (one gate per MoE layer)", [n for n, _ in LL.router_params(tm)] == [n for n, p in tm.named_parameters() if p.requires_grad and n.endswith("mlp.gate.weight")] and len(LL.router_params(tm)) == LL.router_count_expected(tm) == 4)
+    tm2 = AutoModelForCausalLM.from_pretrained(S, dtype=torch.float32); LL.attach(tm2, r=4, r_experts=2)
+    for n, p in tm2.named_parameters():
+        if n.endswith("mlp.gate.weight"): p.requires_grad_(False); break
+    check("router gate: a router tensor missing from the low-rate group is spotted (3 found, 4 expected)", len(LL.router_params(tm2)) == 3 and LL.router_count_expected(tm2) == 4)
     rep = report(os.path.join(root, "grpo", "grpo-report.json"))
     check("grpo graded held-out chats before and after", bool(rep) and rep["before"]["chats"] > 0 and rep["after"]["chats"] > 0 and rep["steps"] > 0, json.dumps({k: rep.get(k) for k in ("before", "after", "steps", "learned_steps")})[:300])
     # a tiny random model writes the same kind of answer every time, so nothing differs to learn from: grade at random once to drive the learning path

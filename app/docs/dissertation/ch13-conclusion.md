@@ -182,7 +182,7 @@ Several smaller tasks follow from the limits above: repeat the key benchmarks fo
 
 ### 13.6.9 The router rules on a real heal
 
-The router rules of section 4.12.1 come from reading, not from a run. Three tests would settle them. First, one heal with the routing record on, so that the share of picks a heal changes is known for the first time. Second, the same cut healed with the router learning and with it frozen, scored on the same held-out lessons. Third, a Brain Engine option that keeps fewer experts at their share of a wider group, as Chen and Yao (2026) propose, tested against today's weighting at 4 and 6 experts per word on the tool score, the quiz and the coding race. None of these has been run, and each rental is waiting on approval.
+The router rules of section 4.12.1 come from reading, not from a run. So does the finding that the GPT-OSS router sat outside the heal's low-rate group: it is unproven in our lab, as we have yet to test it on a real brain, and the router gate in the first minutes of the first GPT-OSS heal is that test. Three more tests would settle the rules. First, one heal with the routing record on, so that the share of picks a heal changes is known for the first time. Second, the same cut healed with the router learning and with it frozen, scored on the same held-out lessons. Third, a Brain Engine option that keeps fewer experts at their share of a wider group, as Chen and Yao (2026) propose, tested against today's weighting at 4 and 6 experts per word on the tool score, the quiz and the coding race. None of these has been run, and each rental is waiting on approval.
 
 ## 13.7 Closing
 

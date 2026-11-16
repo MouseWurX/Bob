@@ -215,6 +215,20 @@ def router_forward(self, hidden_states):
     _record(top_i)
     return router_logits, top_v.to(hidden_states.dtype), top_i
 
+ROUTER_NAMES = ("mlp.gate.weight", "mlp.router.weight", "mlp.router.bias")  # Qwen's router; GPT-OSS's router and its bias
+
+def router_params(model):
+    """The trainable router tensors, by name, that heal.py and grpo.py give the router's own low rate."""
+    return [(n, p) for n, p in model.named_parameters() if p.requires_grad and n.endswith(ROUTER_NAMES)]
+
+def router_count_expected(model):
+    """How many router tensors a trainable router must have: one per MoE layer (Qwen), two (weight, bias) for GPT-OSS."""
+    n = 0
+    for layer in FAM.base(model).layers:
+        if hasattr(layer.mlp, "router") and hasattr(layer.mlp, "experts"): n += 2
+        elif hasattr(layer.mlp, "experts") and hasattr(layer.mlp, "gate"): n += 1
+    return n
+
 def attach(model, r=32, alpha=64, experts="lora", router=True, linear=True, r_experts=8):
     """Freeze everything, then add trainable parts. Returns the list of trainable parameters.
     router=False (16 Nov 2026, heal.py/grpo.py --router frozen) keeps the router exactly as it came in, so the keep list
