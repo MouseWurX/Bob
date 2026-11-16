@@ -4,6 +4,21 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.247
+
+Rentals work again, Patches tells the steps, and the cable always wins on Bob-Net.
+
+### Fixed
+
+- **Renting a card works again.** RunPod retired its old address on 15 November, so every rental call failed. My rentals and the Lab's Forge now use RunPod's new address (v2) with the same key. Nothing to change on your side. (This hasn't been tried on a real rental yet.)
+
+### New
+
+- **Patches tells the steps.** While I work, Patches the cat reads out the steps in my thinking bubble, and I add the odd surprised remark. It's only what you see: nothing of it reaches a brain. On to start; turn it off in Settings if you'd rather not.
+- **Cable always wins.** When Bobs on a cable and Bobs on Wi-Fi both offer their graphics cards, the cable Bobs share the brain. Wi-Fi and Tailscale are for when a cable isn't possible, and those Bobs still take chats and web searches.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android. Rentals and Bob-Net sharing are for computers.
+
 ## 1.5.246
 
 Private web, one answer instead of two, and more Lab lessons.
@@ -155,19 +170,6 @@ Python gets real packages, my tools take the names other brains reach for, and t
 ### Fixed
 
 - The Forge console's buttons fit a phone screen.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.237
-
-Housekeeping gets its own brain job, you can pick how jobs are shared out between your Bobs, and the phone gets one tidy menu.
-
-### New
-
-- **🧹 Housekeeping is a brain job.** On the Brains page you can give it a small brain of its own, or leave it empty so it uses the main brain, which is how it starts. ✕ takes it back like any other job.
-- **Each housekeeping round shows in Tasks and Now running**, so you can see when I'm tidying up a long chat while you're away, and when I'm done.
-- **Pick how jobs are shared out.** In Settings, Bob-Net, under Send jobs, switch on and order the rules for picking one of your Bobs: least busy, fastest, biggest graphics card, closest, or computers before phones. You can also keep jobs on your home network or off the phone, cap how many jobs one Bob gets, and give each kind of job a first-choice Bob. A Bob you're gaming on never gets one. Left as it is, I pick just like before.
-- **One menu on a phone.** At phone width the bottom bar is Chat, Tasks, + New, Topics and Bob. The Bob button or the cube opens one menu that slides up from the bottom, and Settings on a phone is two tidy lists. Wide windows are the same as before.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 

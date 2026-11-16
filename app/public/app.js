@@ -54,6 +54,7 @@ import { createBubbles } from './say-bubbles.js';
 import { createBobLife } from './bob-life.js';
 import { createViewer, outCard, fillPeeks } from './viewer.js';
 import { createThinkBubbles } from './think-bubble.js'; // 1.5.210: the thinking bubble above the answer
+import { PAW, stepWords as catStep, stepKind, bobAside, asideSeed } from './patches-steps.js'; // Nov 16: Patches tells the steps
 import { songListHtml, wireSongs } from './song-player.js';
 import { moreBar } from './more-bar.js';
 import { createPromptMenu } from './prompts.js'; // saved prompts: the / menu in the message box
@@ -316,10 +317,11 @@ const correctedBubbles = new Map();
 // 1.5.210 The thinking bubble (public/think-bubble.js): while Bob works, his steps, drafts and fixes go in one folded
 // bubble above the answer; the chat bubble gets only the finished answer, whole. Settings, Bob himself, "Thinking
 // bubble above answers" (on unless turned off); off, the chat is as it was.
-let thinkOn = true, catName = 'Patches';
+let thinkOn = true, catName = 'Patches', patchesOn = true, lastStep = '', oddSteps = -1, asideJob = { seed: 0, used: new Set() };
 const stillNow = () => document.body.classList.contains('still') || Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 window.addEventListener('bob-think-bubble', (e) => { thinkOn = e.detail !== false; }); // Settings, from this window
-const thinkBubbles = createThinkBubbles({ add, esc, answer: showAnswer, on: () => thinkOn, still: stillNow, cat: () => catName, openMind: () => $('mindBtn')?.click(), copy: (t) => navigator.clipboard?.writeText(t).then(() => note('Copied the steps.')).catch(() => {}) });
+window.addEventListener('bob-patches-steps', (e) => { patchesOn = e.detail !== false; }); // Settings, from this window
+const thinkBubbles = createThinkBubbles({ add, esc, answer: showAnswer, on: () => thinkOn, still: stillNow, cat: () => catName, patches: () => patchesOn, openMind: () => $('mindBtn')?.click(), copy: (t) => navigator.clipboard?.writeText(t).then(() => note('Copied the steps.')).catch(() => {}) });
 
 // ---------- Status, badge, notifications ----------
 // 1.5.216: the line under his name follows his state in his voice (public/status-line.js). Settings, How Bob works,
@@ -896,6 +898,7 @@ function onEvent(ev) {
       return;
     case 'start':
       endReply(ev);
+      lastStep = ''; oddSteps = -1; asideJob = { seed: asideSeed(), used: new Set() };
       running.add(ev.turnId);
       setBusy(true);
       return;
@@ -998,7 +1001,7 @@ function onEvent(ev) {
       else add('note borrow', `📡 ${esc(ev.name)} ${esc(ev.why || 'couldn\'t take it')}, so I'll do this one here.`);
       break;
     case 'tool':
-      if (!/^hat:/.test(ev.summary) && ev.name !== 'edit_my_message') note(`· ${ev.summary}`); // an edit shows as "edited" on the message itself
+      if (!/^hat:/.test(ev.summary) && ev.name !== 'edit_my_message') { const said = patchesOn ? catStep(ev.summary, catName, lastStep) : null; const aside = said && stepKind(ev.summary) ? bobAside(ev.summary, ++oddSteps, asideJob) : ''; note(said ? `${PAW} ${said}${aside ? ` (Bob: ${aside})` : ''}` : `· ${ev.summary}`); lastStep = String(ev.summary || ''); } // an edit shows as "edited" on the message itself; Nov 16 the cat tells it
       endReply(ev);
       break;
     case 'house': { // 1.5.34: "Used your house style: 30 seconds · Change" (Settings, House style)
@@ -1723,7 +1726,7 @@ installShortcuts({
 });
 
 async function start() {
-  try { const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; catName = st.catName || catName; shortcutsOn = st.shortcuts === true; applyReading(st); readingKeep = { textSize: st.textSize, readableFont: st.readableFont }; await applyMath(st.mathView === true); } catch {}
+  try { const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; patchesOn = st.patchesSteps !== false; catName = st.catName || catName; shortcutsOn = st.shortcuts === true; applyReading(st); readingKeep = { textSize: st.textSize, readableFont: st.readableFont }; await applyMath(st.mathView === true); } catch {}
   await loadHistory(20);
   let cat = 'Patches';
   try { cat = (await (await fetch('/api/settings')).json()).catName || cat; } catch {}
@@ -1738,7 +1741,7 @@ async function start() {
     if (!s.ollama) note('I can\'t reach my engine (' + (s.engine || 'Ollama') + ') right now. Is it running? (The AI Toggle shortcut turns Ollama on.)', 'error');
   } catch {}
   try {
-    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; statusLine.jokes(st.statusJokes !== false); netOverlay.setOn(st.netOverlay === true); catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
+    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; patchesOn = st.patchesSteps !== false; statusLine.jokes(st.statusJokes !== false); netOverlay.setOn(st.netOverlay === true); catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
     if (shouldOfferOwnCode(st.profiles)) offerOwnCode(st.profiles); // a person's own first time in: their own passcode, if they want one
     if (st.setupDone && !st.wantsAsked) offerWants(); // once, for Bobs set up before the Welcome had "Do you want me to:"

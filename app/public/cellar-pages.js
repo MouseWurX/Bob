@@ -83,6 +83,7 @@ export function createSettingsParts(now) {
       ${sswitch('howtos', settings.howtos === true, 'Learn how-tos', 'After a multi-step job goes well, Bob offers to save the steps as a how-to and follows it for similar asks. Nothing is kept without your click. Your how-tos are in 🧰 Tools and how-tos below.')}
       ${sswitch('editOwn', settings.editOwn === true, 'Edit his own messages', 'Bob corrects his earlier message instead of sending a new one. It says edited; press that to see the original.')}
       ${sswitch('thinkBubble', settings.thinkBubble !== false, 'Thinking bubble', 'One folded bubble above the answer holds every step, draft and fix. Off: it all types out in the chat.')}
+      ${sswitch('patchesSteps', settings.patchesSteps !== false, `${esc(settings.catName || 'Patches')} tells the steps`, 'The cat narrates the short step lines in the thinking bubble. Bob still gives the answers. Off: plain step lines.')}
       ${sswitch('statusJokes', settings.statusJokes !== false, 'Funny status line', 'The line under my name says what I\'m doing, in my own words. Off: plain words.')}
       ${sswitch('chatRedo', settings.chatRedo !== false, 'Try again, Edit and Delete', 'Adds them to each message\'s … menu.')}
       ${sswitch('quickNotes', settings.quickNotes === true, 'Quick notes', 'Say "note: ..." or "jot this down" in any chat, here, on your phone, in Discord DMs or Telegram. Find notes by a word or #tag.')}

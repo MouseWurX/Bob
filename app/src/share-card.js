@@ -58,15 +58,15 @@ export const scutOn = (cfg) => cfg.share?.scut === true;
 export const scutSealOn = (cfg) => scutOn(cfg) && sealOn(cfg);
 // Nov 14 (the owner: "they are definitely not going to try to share with wireless bob"): one brain is never spread over
 // cable Bobs and Wi-Fi or Tailscale Bobs together; the slow link would hold the whole brain back. Each kind can share
-// among itself. When both kinds lend, the group whose cards hold more of the brain is used (room(u): his card's GB, from
-// his hello), the cable group on a tie. lent: the cards that said yes; drop(u) lets one go.
-export function oneKind(lent, drop = () => {}, room = () => 0) {
+// among itself. Nov 16, the owner: "cable wins if there is cable, wifi is to extend capability if infrastructure is
+// impossible. the wifi bobs then get handed jobs their bobs can handle, like chatting, web search." So when any cable
+// Bob lends, only cable Bobs are used; Wi-Fi and Tailscale Bobs share a brain only when no cable Bob does. A Bob let go
+// still takes whole jobs (Send jobs). lent: the cards that said yes; drop(u) lets one go. (Card room no longer decides.)
+export function oneKind(lent, drop = () => {}) {
   const wired = lent.filter((u) => u.wired), other = lent.filter((u) => !u.wired);
   if (!wired.length || !other.length) return lent;
-  const sum = (g) => g.reduce((t, u) => t + (Number(room(u)) || 0), 0);
-  const keep = sum(other) > sum(wired) ? other : wired;
-  for (const u of lent) if (!keep.includes(u)) drop(u);
-  return keep;
+  for (const u of other) drop(u);
+  return wired;
 }
 export const SEED_MS = 20 * 60000; // the most a lender spends filling its card store from its own copy of a brain
 const SEED_SPARE = 10e9; // the disk room a seed always leaves free
@@ -543,10 +543,10 @@ export class CardBorrower {
     }));
     this.using = oneKind(tries.filter(Boolean), (u) => {
       // Nov 14 (the owner): cable Bobs and Wi-Fi or Tailscale Bobs never share one brain (the slow link holds it all back).
-      // The one left out is let go and named, and still takes jobs.
+      // Nov 16: cable always wins. The one left out is let go and named, and still takes jobs.
       this.lenders.call(u.bob, '/api/lend/card', { method: 'POST', body: { action: 'close' }, timeout: 5000 }).catch(() => {});
-      skipped.push(u.wired ? `${u.bob.name} (on a cable, and Bobs on Wi-Fi or Tailscale with more room are sharing this one; he still takes jobs)` : `${u.bob.name} (on ${u.via === 'home' ? 'Wi-Fi' : 'Tailscale'}, and Bobs on a cable are sharing this one; he still takes jobs)`);
-    }, (u) => this.lenders?.state?.get?.(u.bob.address)?.room?.vramGB || 0);
+      skipped.push(`${u.bob.name} (on ${u.via === 'home' ? 'Wi-Fi' : 'Tailscale'}, and Bobs on a cable are sharing this one; he still takes jobs)`);
+    });
     // 1.5.210: each Bob that didn't lend is named, with why, so a spread that quietly ran here can't happen again.
     if (skipped.length) this.log('bob-net', `spread a brain: skipped ${skipped.join(', ')}`);
     if (!this.using.length) { this.log('bob-net', bobs.length ? 'spread a brain: none of my other Bobs lent a card, so it loads here' : 'spread a brain: no other Bob is on my list, so it loads here'); return []; }
