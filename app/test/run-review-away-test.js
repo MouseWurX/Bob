@@ -134,7 +134,7 @@ const mb3 = mootBrain();
 const q3 = await run(mb3, 'short', async () => ({ name: 'Handheld', brain: 'b' }));
 check('short chit-chat is never checked, and nothing is said about it', mb3.calls.length === 0 && !q3.out.trim());
 const brainSrc = brainText();
-check('High and Extreme keep their own moot; the quick look is only the else branch, behind the switch', /if \(careful\(job\) && out\.ctx && !signal\?\.aborted\) (?:mooted = )?await runMoot[^\n]*\n[^\n]*\n\s*else if \(out\.ctx && !signal\?\.aborted && this\.cfg\.netReview === true\)/.test(brainSrc));
+check('High and Extreme keep their own moot; the quick look is only the else branch, behind the switch', /if \(careful\(job\) && out\.ctx && !signal\?\.aborted\) (?:mooted = )?await runMoot[^\n]*\n[^\n]*\n\s*else if \((?:!job\?\.solo && )?out\.ctx && !signal\?\.aborted && this\.cfg\.netReview === true\)/.test(brainSrc));
 check('a quick look that fails never falls back to a swap here', /if \(noLocal\) \{[^\n]*couldn't finish the second look/.test(brainSrc));
 const qb = { cfg: { netReview: true, models: { reviewer: 'r' }, share: { borrow: { on: true, bobs: [go] } } }, engine: { resolve: () => null }, lenders: { pickForReview: async (o) => ({ min: o.minGB }) }, reviewFloor: Brain.prototype.reviewFloor };
 check('the quick look needs its switch', (await Brain.prototype.quickReviewer.call({ ...qb, cfg: { ...qb.cfg, netReview: false } }, {}, [])) === null);
@@ -211,7 +211,7 @@ check('an empty answer from another Bob (a check, or a borrowed reply) counts as
 
   // Test B: about 650 repeat page reads in a minute (#57 stopgap; Bob's own #57 fix replaces it).
   const bs = brainText().replace(/\r\n/g, '\n');
-  check('at most 6 tool calls run from one reply; after 3 skipped repeats the next round has no tools and he answers', MAX_CALLS_PER_REPLY === 6 && REPEATS_THEN_ANSWER === 3 && /Answer now from the results above, with no more tool calls/.test(ANSWER_NOW_NUDGE) && /const tools = ctx\.noTools \? \[\] : guestTools/.test(bs) && (bs.match(/ctx\.repeatSkips = \(ctx\.repeatSkips \|\| 0\) \+ 1;/g) || []).length >= 2);
+  check('at most 6 tool calls run from one reply; after 3 skipped repeats the next round has no tools and he answers', MAX_CALLS_PER_REPLY === 6 && REPEATS_THEN_ANSWER === 3 && /Answer now from the results above, with no more tool calls/.test(ANSWER_NOW_NUDGE) && /const tools = ctx\.noTools(?: \|\| ctx\.quiet)? \? \[\] : guestTools/.test(bs) && (bs.match(/ctx\.repeatSkips = \(ctx\.repeatSkips \|\| 0\) \+ 1;/g) || []).length >= 2);
   // Tests A and B: Bob searched a made-up user folder and never his own help.
   const ts = fs.readFileSync(new URL('../src/tools.js', import.meta.url), 'utf8');
   check('his own features are looked up in his own help first, and the folder tool is told the real home folder', /look here first, before searching files or the web/.test(ts) && /home folder is \{\{HOME\}\}; never guess another/.test(ts) && /replaceAll\('\{\{HOME\}\}', JSON\.stringify\(os\.homedir\(\)\)\.slice\(1, -1\)\)/.test(bs));

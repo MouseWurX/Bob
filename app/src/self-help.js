@@ -69,7 +69,7 @@ export function settingsNow(cfg) {
     `Work on repositories: ${onOff(cfg.selfWork?.enabled === true)} (his own app first, then ${(cfg.selfWork?.repos || []).length} of yours); Other Bobs help: ${onOff(cfg.selfWork?.helpers === true)}`,
     `Session: ${currentSession(cfg).label}; Auto session: ${onOff(cfg.autoSession !== false)}; 🎮 Gaming button (chat page): ${onOff(cfg.gamingLock === true)}`,
     `Free memory when Bob is idle: ${onOff(brainMode(cfg) !== 'always')}`,
-    `One brain: ${onOff(cfg.oneBrain === true)}`,
+    `One brain: ${onOff(cfg.oneBrain === true)}; Effort on one brain: ${onOff(cfg.soloEffort === true)}`,
     `Launch at start-up: ${onOff(cfg.autostart === true)}`,
     `Minimise to tray: ${onOff(cfg.tray !== false)}; Use Bob's look as his icon: ${onOff(cfg.lookIcon === true)}; Window buttons on Bob's bar: ${onOff(cfg.ownBar !== false)}`,
     `Check for updates at start: ${onOff(cfg.updates?.autoCheck === true)}`,

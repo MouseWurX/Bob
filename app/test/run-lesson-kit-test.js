@@ -167,6 +167,11 @@ const srv = http.createServer((req, res) => {
     if (/You review training lessons/.test(t)) msg = { content: /GATEFAIL/.test(t) ? '{"ok":false,"why":"skipped the tool"}' : /UNREADABLE/.test(t) ? 'I think this lesson is mostly fine' : '{"ok":true,"why":"fine"}' };
     else if (/Which files must already exist/.test(t)) msg = { content: JSON.stringify([{ path: 'C:\\Users\\you\\Documents\\notes.txt', content: 'buy milk\n' }, { path: 'C:\\Windows\\evil.txt', content: 'x' }]) };
     else if (/tool inside a desktop AI/.test(t)) msg = { content: /FAIL/.test(t) ? 'Error: folder not found: C:\\Users\\you\\Documnts' : 'Listed C:\\Users\\you\\Documents: notes.txt, plan.docx (2 files).' };
+    else if (j.tools && j.messages.some((m) => /BADCALL|BADPATH/.test(String(m.content || '')))) { // 15 Nov step redo
+      const redo = /was not used/.test(String(j.messages[0].content)), bad = j.messages.some((m) => /BADCALL/.test(String(m.content || ''))), ran = j.messages.filter((m) => m.role === 'tool').length;
+      if (bad && !ran) msg = { content: 'Looking.', tool_calls: [{ id: `c${seen.length}`, type: 'function', function: redo ? { name: 'list_folder', arguments: JSON.stringify({ path: 'C:\\Users\\you\\Documents' }) } : { name: 'peek_folder', arguments: '{}' } }] };
+      else msg = { content: !bad && !redo ? 'Your file is C:\\Users\\you\\Pictures\\x.png.' : 'Your Documents folder holds notes.txt.' };
+    }
     else if (j.tools && j.messages.some((m) => /paint me a fox/.test(String(m.content || ''))) && !j.messages.some((m) => m.role === 'tool')) msg = { content: 'Painting it now.', tool_calls: [{ id: `c${seen.length}`, type: 'function', function: { name: 'make_image', arguments: JSON.stringify({ prompt: 'a red fox in snow', save_to: 'fox.png' }) } }] };
     else if (j.tools && j.messages.some((m) => /paint me a fox/.test(String(m.content || '')))) msg = { content: 'Here is your fox, saved as fox.png in Documents.' };
     else if (j.tools && j.messages.filter((m) => m.role === 'tool').length < 2) msg = { content: 'I will look in the folder first.', tool_calls: [{ id: `c${seen.length}`, type: 'function', function: { name: 'list_folder', arguments: JSON.stringify({ path: '~/Documents' }) } }] };
@@ -260,7 +265,16 @@ check('writer: the fake result sees the tool\'s own description and is kept insi
   check('lab sandbox: remember really saves to the memory file', !/threw|must be of type string/.test(kept) && /likes short answers/.test(fs.readFileSync(k.brain.cfg.memoryFile, 'utf8')), kept);
   try { k.done?.(); } catch {}
 }
-check('writer --real-tools: diagrams are drawn for real, with the context Bob\'s own tools expect', /REAL_TOOLS = new Set\(\['make_diagram'/.test(read('model-lab/write-lessons.mjs')) && /run\(sb\.toReal\(args\), \{ loaded, cfg: sb\.brain\.cfg, emit:/.test(read('model-lab/write-lessons.mjs')));
+check('writer --real-tools: diagrams are drawn for real, with the context Bob\'s own tools expect', /REAL_TOOLS = new Set\(\['make_diagram'/.test(read('model-lab/write-lessons.mjs')) && /sb\.runReal\(name, args, \{ loaded, cfg: sb\.brain\.cfg, emit:/.test(read('model-lab/write-lessons.mjs')));
+{ // 15 Nov: real tools stay in the throwaway folder (a loop test saved a file in the Lab PC's real Documents)
+  const { loadBob } = await import(pathToFileURL(path.join(lab, 'bob-kit.mjs')).href); const k = await loadBob(app, { home: true }); const ctx = { loaded: [], cfg: k.brain.cfg, emit: () => {}, signal: new AbortController().signal, sessionId: 'lab' };
+  const real = path.join(os.homedir(), 'Documents', `kit-guard-${process.pid}.txt`);
+  let r1 = ''; try { r1 = String(await k.runReal('write_file', { path: real, content: 'x' }, ctx)); } catch (e) { r1 = 'threw: ' + e.message; }
+  check('lab sandbox: a path in the PC\'s real home is written in the throwaway home instead', !fs.existsSync(real) && fs.existsSync(path.join(k.homeDir, 'Documents', `kit-guard-${process.pid}.txt`)), r1);
+  let r2 = ''; try { r2 = String(await k.runReal('write_file', { path: path.join(path.parse(os.homedir()).root, `kit-guard-out-${process.pid}`, 'a.txt'), content: 'x' }, ctx)); } catch (e) { r2 = 'threw: ' + e.message; }
+  check('lab sandbox: a path outside the throwaway folder is refused before the tool runs', /outside the folders Bob may use here/.test(r2) && !fs.existsSync(path.join(path.parse(os.homedir()).root, `kit-guard-out-${process.pid}`)), r2);
+  try { k.done?.(); } catch {}
+}
 check('writer --from-ideas: an empty ideas folder stops the run (exit 86 on a card) and writes no stand-in ideas', code3 === 86 && /no ideas in .*empty-ideas/.test(log3) && rows(path.join(tmp, 'wl', 'empty-ideas', 'ideas.jsonl')).length === 0, log3.slice(-300));
 {
   const m = rows(path.join(tmp, 'wl', 'media', 'lessons.jsonl'))[0];
@@ -281,6 +295,17 @@ check('pre-flight --real-tools: the board, memory, files and diagram tools each 
 W('wl/gate-office/ideas.jsonl', [{ id: 'o1', job: 'office', text: 'make a spreadsheet of my bills' }, { id: 'o2', job: 'chat', text: 'save it as notes.docx' }, { id: 'o3', job: 'chat', text: 'hello there' }]);
 [gc, glog] = await runW(['--dir', 'gate-office', '--from-ideas', '--preflight', '--slot-ctx', '32768', '--real-tools', '--no-office']);
 check('pre-flight --no-office: office ideas are left out and office is not checked, so a PC without LibreOffice can still run the rest', gc === 0 && /--no-office: left out 2 office ideas/.test(glog) && /: 1 rows/.test(glog) && /--no-office: office tools left out/.test(glog) && !/office_make doesn't work/.test(glog), glog.slice(-500));
+{ // 15 Nov step redo: a call Bob couldn't run, or an answer naming a place nothing showed, is written again; the lesson is kept
+  W('wl/redo/ideas.jsonl', [{ id: 'b0', job: 'files', text: 'BADCALL what is in my Documents folder?' }, { id: 'b1', job: 'chat', text: 'BADPATH where did my picture go?' }]);
+  const before6 = seen.length;
+  const ch = spawn(process.execPath, ['write-lessons.mjs', '--url', url, '--model', 'fake.gguf', '--bob', app, '--out', path.join(tmp, 'wl'), '--dir', 'redo', '--from-ideas', '--count', '2', '--think', 'none'], { cwd: lab, env: { ...process.env, LAB_REMOTE: '', LAB_URL: '' } });
+  let lg = ''; ch.stdout.on('data', (d) => (lg += d)); ch.stderr.on('data', (d) => (lg += d));
+  await new Promise((ok) => { const t = setTimeout(() => { ch.kill(); ok(); }, 120000); ch.on('exit', () => { clearTimeout(t); ok(); }); });
+  const rs = rows(path.join(tmp, 'wl', 'redo', 'lessons.jsonl'));
+  const b0 = rs.find((r) => r.idea === 'b0'), b1 = rs.find((r) => r.idea === 'b1');
+  check('step redo: a call to a tool that doesn\'t exist is written again with Bob\'s own words, and the lesson is kept without it', b0?.step_redos === 1 && !JSON.stringify(b0.messages).includes('peek_folder') && seen.slice(before6).some((j) => /was not used, because .*no tool called peek_folder/.test(String(j.messages[0].content))), lg.slice(-400));
+  check('step redo: an answer naming a folder no result showed is written again; the private reason never reaches the lesson', b1?.step_redos === 1 && !/Pictures|was not used/.test(JSON.stringify(b1.messages)), lg.slice(-400));
+}
 { // 15 Nov (the owner: "MAKE IT WORK GOOD"): the faults Opus found most, caught in code before the review
   const C = await import(pathToFileURL(path.join(lab, 'lesson-checks.mjs')).href);
   const u = { role: 'user', content: 'add milk to my board' };
@@ -292,6 +317,10 @@ check('pre-flight --no-office: office ideas are left out and office is not check
   check('checks: a claim with no tool call at all fails', /no tool was called/.test(C.lessonFault(L({ role: 'assistant', content: "I've saved that for you." }))));
   check('checks: the same call three times in a row fails', /three times/.test(C.lessonFault(L(call('read_file', { path: 'a' }), { role: 'tool', name: 'read_file', content: 'x' }, call('read_file', { path: 'a' }), { role: 'tool', name: 'read_file', content: 'x' }, call('read_file', { path: 'a' }), { role: 'tool', name: 'read_file', content: 'x' }, { role: 'assistant', content: 'It says x.' }))));
   check('checks: a value the tool doesn\'t list fails', /isn't one it takes/.test(C.lessonFault(L(call('use_tools', { group: 'scout' }), { role: 'tool', name: 'use_tools', content: 'ok' }, { role: 'assistant', content: 'Done looking.' }), {}, [{ type: 'function', function: { name: 'use_tools', parameters: { properties: { group: { type: 'string', enum: ['files', 'office'] } } } } }])));
+  { const ut = (en) => [{ type: 'function', function: { name: 'use_tools', parameters: { properties: { group: { type: 'string', enum: en } } } } }];
+    const first = { ...call('use_tools', { group: 'documents' }), set: 's1' }, later = { role: 'assistant', content: 'Done looking.', set: 's2' };
+    const at = (m) => (m.set === 's1' ? ut(['documents', 'files']) : ut(['files']));
+    check('checks: a group is checked against the list offered at its own step, not the last one (documents leaves the list once loaded)', C.lessonFault(L(first, { role: 'tool', name: 'use_tools', content: 'Added documents.' }, later), {}, at) === '' && /isn't one it takes/.test(C.lessonFault(L({ ...call('use_tools', { group: 'scout' }), set: 's1' }, { role: 'tool', name: 'use_tools', content: 'There is no group called scout.' }, later), {}, at))); }
   check('checks: other people\'s home folders in a request become C:\\Users\\you', C.homeScrub('open C:\\Users\\' + 'Ad' + 'min\\Documents\\a.docx and /home/' + 'jo/notes/b.txt, not C:\\Users\\you\\x or C:\\Users\\' + 'Public') === 'open C:\\Users\\you\\Documents\\a.docx and C:\\Users\\you\\notes\\b.txt, not C:\\Users\\you\\x or C:\\Users\\' + 'Public');
   check('checks: a stand-in that talks about itself or the board is asked for again; a plain result passes', C.standinBad('I am an AI and cannot save to the notice board.', 'web_search') && C.standinBad('Here is the result: 3 pages', 'web_search') && !C.standinBad('1. Weather in Calgary: 4 C, light snow.', 'web_search'));
 }
@@ -327,7 +356,7 @@ check('forge pre-flight: no --hours, more helpers than slots, or --gate off are 
 check('forge: the room per slot goes to the writer on the card too', /--slot-ctx \$\{Math\.floor/.test(read('model-lab/forge/forge.mjs')));
 
 srv.close();
-check('writer: doctored lessons get 12 steps', /idea\.note \|\| idea\.prior \|\| idea\.failFirst \? 12 : 6/.test(read('model-lab/write-lessons.mjs')));
+check('writer: doctored lessons get 12 steps', /idea\.note \|\| idea\.prior \|\| idea\.failFirst \? 12 : 8/.test(read('model-lab/write-lessons.mjs')));
 
 // ---- the heal masks a failed try ----
 const dp = read('model-lab/forge/pod/data.py');

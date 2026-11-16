@@ -26,7 +26,7 @@ import { cleanPersonality, personalityPrompt } from '../public/personality.js';
 import { roughTokens, wantsBorrow } from './share-brains.js';
 import { howtosOn, usingLine, howtoPrompt, trailStep } from './howtos.js';
 import { causeLine, sideJob, STRIKE_NOTE } from './retry.js';
-import { carriedBudget, Progress, spendNudge, keepBudget, stage, pastCeiling, ceilingMs, wrapUp, ceilingMins, waitedFor, outOfStepsLine, nudgeOk, CALLS_PER_TURN, CAP_SKIP, droppedNote } from './loop-guard.js';
+import { carriedBudget, Progress, spendNudge, keepBudget, stage, pastCeiling, ceilingMs, wrapUp, ceilingMins, waitedFor, outOfStepsLine, nudgeOk, CALLS_PER_TURN, CAP_SKIP, droppedNote, extraSteps } from './loop-guard.js';
 import { tidyOld, LAST_ROUND_NOTE, onTrackNote, promisesAction, PROMISE_NUDGE, PROMISE_LOG, nearKey, errorHint } from './loop-help.js';
 import { midJobOn } from './mid-job.js';
 import { systemPrompt } from './persona.js';
@@ -37,7 +37,9 @@ import { HANDS } from './hands-settings.js';
 import { noteStrike, maybeAsk as qAsk } from './quarantine.js';
 import { planGate } from './plan.js';
 import { stepThink, toolRanThisTurn } from './step-thinking.js';
+import { soloPrompt } from './solo-effort.js';
 import { cantReason, markCant, settleCant } from './cant-retry.js';
+import { factsFirstFor, readFirstAsk, readFirstOn, RECALL_NOTE, CHECK_NOTE, SEARCH_FIRST_NUDGE, UNCHECKED_CORRECTION, READ_FIRST_NUDGE, LOOK_FIRST_NUDGE, READ_FIRST_BOUNCE, LOOK_FIRST_BOUNCE, lookedUpWeb, webSourceRead, lookedLocal, saysUnchecked, factsRecord } from './facts-first.js';
 import { askTogether } from './together.js';
 import { callKey, realState, linkKey, NOW_IN_NOTE, staleHandErrors, meanwhileNear, claimsPcAction, CLAIM_CORRECTION, CLAIM_NUDGE, claimsObservation, OBSERVE_CORRECTION, OBSERVE_NUDGE, LINK_NUDGE, EMPTY_NUDGE, CANT_NUDGE, EMPTY_NOTE, DOING_TOOLS, isLook, ALT_ROUTE_DONE, ALT_ROUTE_NUDGE, quickHandBack } from './brain-words.js';
 import { sidePick, apuRoom } from './brain-lanes.js';
@@ -71,9 +73,12 @@ export const runOnParts = {
     // 1.5.128: the same after a Hire it card (Hire it or Not now): the message that drew the card is in the chat already,
     // so the re-run adds only the hidden note (the PC saw the user's bubble twice after a reload).
     // Try again and Edit (redo.js): the message is already in the chat, changed in place, so the brain gets a hidden note only.
-    const again = (Boolean(job?.switchedTo) || Boolean(job?.rentAgain) || Boolean(job?.redo)) && Boolean(lastUser) && String(lastUser.text ?? lastUser.content ?? '').startsWith(text);
-    if (again) msgs.push({ role: 'system', content: job.switchedTo ? switchedNote(job.switchedTo) : job.redo && !job.carryOn ? (job.redo === 'edit' ? EDIT_NOTE : REDO_NOTE) : job.carryOn || '', hidden: true });
-    else { msgs.push(user); if (!job?.guest) emit({ type: 'asked', id: user.id }); } // the window marks your bubble, for Edit (redo.js)
+    const again = (Boolean(job?.switchedTo) || Boolean(job?.rentAgain) || Boolean(job?.redo) || Boolean(job?.soloAgain)) && Boolean(lastUser) && String(lastUser.text ?? lastUser.content ?? '').startsWith(text);
+    // Effort on one brain (solo-effort.js): each part of a High or Max job is one more run of this loop on the same ask,
+    // with Bob's own note for that part (hidden; the chat shows only what he writes back).
+    const soloNote = job?.soloStep ? String(job.soloStep) : '';
+    if (again) msgs.push({ role: 'system', content: [job.soloAgain ? '' : job.switchedTo ? switchedNote(job.switchedTo) : job.redo && !job.carryOn ? (job.redo === 'edit' ? EDIT_NOTE : REDO_NOTE) : job.carryOn || '', soloNote].filter(Boolean).join('\n\n'), hidden: true });
+    else { msgs.push(user); if (!job?.guest) emit({ type: 'asked', id: user.id }); if (soloNote) msgs.push({ role: 'system', content: soloNote, hidden: true }); } // the window marks your bubble, for Edit (redo.js)
     if (job) job.rentAgain = false;
     const turnStart = again ? msgs.map((m) => m.role).lastIndexOf('user') : msgs.length - 1;
     // 1.5.207 PC check: after Switch it on (or any carry-on), the same chat line went in the logbook a second time.
@@ -88,7 +93,7 @@ export const runOnParts = {
       if (['image', 'video', 'audio'].includes(ev?.type) && ev.file && ctx?.wantType) this.autoSaveAs(ev, ctx); // 1.5.95 "a song as an mp3"
       return sent;
     };
-    const ctx = { emit: emitMade, signal, brain: this, cfg: this.cfg, allowAll: new Set(), pics, picNote, msgs, turnText: text, job, sessionId, wantsEdit, editFrom: wantsEdit ? recent : null, wantType: namedType(text), saves: [], savedAs: [], trace: [], askId: (again ? lastUser?.id : user.id) || null }; // askId: item 238
+    const ctx = { noTools: Boolean(job?.soloNoTools), ...(job?.soloPlanShown ? { planShown: true } : {}), ...(job?.soloSeen ? { callsSeen: job.soloSeen } : {}), emit: emitMade, signal, brain: this, cfg: this.cfg, allowAll: new Set(), pics, picNote, msgs, turnText: text, job, sessionId, wantsEdit, editFrom: wantsEdit ? recent : null, wantType: namedType(text), saves: [], savedAs: [], trace: [], askId: (again ? lastUser?.id : user.id) || null }; // askId: item 238
     // Item 171 (Nov 12): an action key for each action. After a restart, the last action that already finished is
     // remembered, so the same write or command asked for again first thing hands back its result instead of running twice.
     const lastDone = lastFinished(job?.before, this.tools);
@@ -97,6 +102,10 @@ export const runOnParts = {
     { const t = turnNow(); if (t && !t.ctx) t.ctx = ctx; } // item 249: the end of the turn reads why it stopped
     // The ledger (handoff.js): what was asked for, every load, tool and output this turn, kept by the system.
     ctx.ledger = new Ledger({ job, expect: expectFrom(text, { pics }), save: (now) => (now ? this.saveQueue() : this.saveQueueSoon()) }); // item 230
+    // Nov 16 (four-level tool test): at Magnus and Maximus each part of the job (a step, the answer, an improve round)
+    // is its own run. What the earlier parts really did is carried into this part's record, so the end-of-turn checks
+    // don't say "Bob didn't save the file" in the answer after a step saved it.
+    if (job && 'soloLedger' in job) { const prev = job.soloLedger; if (prev && job.soloAgain) { ctx.ledger.actions.unshift(...prev.actions); ctx.ledger.outputs.unshift(...prev.outputs); } job.soloLedger = ctx.ledger; }
     this.gate.track(signal, ctx.ledger);
     ctx.loaded = this.startGroups(sessionId, text); // toolbox groups this turn (use_tools adds more)
     // Assistant presets (presets.js, off unless switched on): this chat's preset, if it has one. Its tool groups are a
@@ -153,7 +162,7 @@ export const runOnParts = {
     // just before the latest message (meanwhileNear). A question about the job after it ended gets the no-job line.
     const meanwhile = !meanwhileOn(this.cfg) || job?.guest ? '' : job?.side && this.watch.job ? meanwhileLine(this.watch.job) : asksAboutJob(text) && !this.watch.job ? NO_JOB_LINE : '';
     ctx.meanwhile = job?.side ? meanwhile : '';
-    const extras = [state, meanwhile, presetPrompt(ctx.preset, this.cfg.userName || 'the user'), guestNote(job, this.cfg.userName || 'the user'), effortPrompt(job?.effort), jobHelpsPrompt(this.cfg, job), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
+    const extras = [state, meanwhile, presetPrompt(ctx.preset, this.cfg.userName || 'the user'), guestNote(job, this.cfg.userName || 'the user'), job?.solo ? soloPrompt(job.effort, '{{USER}}') : effortPrompt(job?.effort), jobHelpsPrompt(this.cfg, job), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
     const brainCtx = await this.fitCtx(model, wantCtx);
     // 1.5.127: a chat that no longer fits the biggest brain here, with a rented brain in its slot: offer it (the job carries on here meanwhile).
     if (!job?.rent && !job?.side && !job?.guest && this.rentals.current() && !ctx.rentOffered) {
@@ -247,7 +256,7 @@ export const runOnParts = {
     // Reliability 164: a job that runs again (session switch, rented-brain card, Gaming, restart) carries on with the
     // steps, sends-back and calls it has left, instead of a whole new budget each time.
     const carried = carriedBudget(job, this.plainLoop || job?.guest ? MAX_STEPS : loopSteps(job?.effort));
-    const maxSteps = carried.maxSteps;
+    let maxSteps = carried.maxSteps; // can grow once by EXTRA_STEPS (loop-guard.js extraSteps)
     Object.assign(ctx, { carriedSteps: carried.steps, nudges: carried.nudges, callsRun: carried.calls, turnStartedAt: Date.now(), progress: new Progress() });
     if (carried.steps) this.log('loop', `carrying on: ${carried.steps} steps used before, ${maxSteps} left`);
     const log = (k, t) => this.log(k, t);
@@ -268,6 +277,22 @@ export const runOnParts = {
     if (!again) { const ask = askFirstNote(this, ctx, text); if (ask) msgs.push({ role: 'system', content: ask, hidden: true }); }
     // Nov 13 (job-steps.js): two or more things asked in one message get one line naming them, and a check at the end.
     if (!again && !ctx.noTools && !this.helpOff('plan') && !job?.guest) { ctx.stepsAsked = askedSteps(text); if (ctx.stepsAsked.length) { msgs.push({ role: 'system', content: planLine(ctx.stepsAsked), hidden: true }); this.log('loop', `${ctx.stepsAsked.length} things asked: a plan line, and a check at the end`); } }
+    // Facts first (facts-first.js, 16 Nov): on a question of fact, he writes down what he remembers (one quiet step, no
+    // tools, hidden), then must look it up before answering, and the answer goes with the source. Magnus and Maximus by
+    // default; a setting adds the lower levels or turns it off. Only when a web search can run. Each later part of a
+    // Magnus or Maximus job carries the first part's record (job.factsState).
+    if (again && job?.soloAgain && job.factsState) ctx.facts = job.factsState;
+    else if (!again && !ctx.noTools && factsFirstFor(this.cfg, job, text, { searchReady: webOn(this.cfg) && this.usable('web_search') })) {
+      ctx.facts = { kind: 'fact', memory: '' };
+      if (job) Object.defineProperty(job, 'factsState', { value: ctx.facts, configurable: true, enumerable: false, writable: true });
+      ctx.quiet = true;
+      msgs.push({ role: 'system', content: RECALL_NOTE(whoFor()), hidden: true });
+      emit({ type: 'announce', text: '📌 Facts first: I note what I remember, then check it against sources before I answer.' });
+      this.log('facts', 'a question of fact: noting what he remembers, then checking sources');
+    }
+    // Read what you were given (a reliability fix, on unless switched off): a file or folder named in the ask is read
+    // before he answers or asks; "my documents" without a path means he looks in his readable folders before asking.
+    if (!again && !ctx.noTools && !job?.guest && readFirstOn(this.cfg) && this.usable('read_file')) ctx.readFirst = readFirstAsk(text);
     for (step = 0; step < maxSteps; step++) {
       if (signal?.aborted) throw Object.assign(new Error('Stopped.'), { name: 'AbortError' }); // item 244: Stop during a card or a tool that didn't notice
       // Answer messages mid-job (mid-job.js): messages that came in during the last step come first, then the job goes on.
@@ -284,9 +309,11 @@ export const runOnParts = {
         if (job?.stopAfter && !ctx.softStopped) { ctx.softStopped = true; ctx.endWhy = 'stop-after'; ctx.noTools = true; ctx.lastRound = true; msgs.push({ role: 'system', content: SOFT_STOP_NOTE(who, stepsRan(msgs, turnStart)), hidden: true }); emit({ type: 'announce', text: SOFT_STOP_LINE }); }
         else if (await timeCheck(this, ctx, { now: () => Date.now() - waitedFor(signal) }) === 'wrap') { ctx.endWhy = 'time'; ctx.noTools = true; ctx.lastRound = true; msgs.push({ role: 'system', content: TIME_UP_NOTE(who, cleanJobHelps(this.cfg.jobHelps).minutes), hidden: true }); }
       } else if (step === 0) await timeCheck(this, ctx, { now: () => Date.now() - waitedFor(signal) });
+      // Nov 16 (the owner): still finding new things at the last step: a couple more steps, once a turn (extraSteps).
+      if (step === maxSteps - 1 && !this.helpOff('last') && !ctx.noTools && !job?.guest && msgs.slice(turnStart).some((m) => m.role === 'tool')) { const more = extraSteps(ctx); if (more) { maxSteps += more; this.log('loop', `the last step, but the last round still found something new: ${more} more steps to finish (once a turn)`); } }
       if (step === maxSteps - 1 && !this.helpOff('last') && !ctx.noTools && msgs.slice(turnStart).some((m) => m.role === 'tool')) { ctx.noTools = true; ctx.lastRound = true; ctx.endWhy ||= 'steps'; this.log('tool', 'the last step: no more tools, so he answers with what he has'); }
       if (ctx.loaded) used.toolSet = ctx.loaded.toolSet = this.toolSetOf(model); // tool-sets.js: the family's wording
-      const tools = ctx.noTools ? [] : guestTools(job, this.withWatchTools(this.frontDeskTools(ctx.loaded), job)); // #57 stopgap: after repeats, answer
+      const tools = ctx.noTools || ctx.quiet ? [] : guestTools(job, this.withWatchTools(this.frontDeskTools(ctx.loaded), job)); // #57 stopgap: after repeats, answer
       // The big brain reads notes passed along to it at the start of each step, and its chat says so.
       if (!job?.side) this.readNotes(ctx, msgs);
       // 1.5.66: Bob's own one-more-go after a reply that missed. On Qwen3.6 (everyday chat answers without thinking)
@@ -303,7 +330,7 @@ export const runOnParts = {
       ctx.retrying = false;
       // step-thinking.js (15 Nov): think to plan and review, not on each step. After a tool has run this turn, the
       // next call is a doing step: no thinking. The last round (no tools) answers with the turn's own thinking.
-      const thinkNow = stepThink(this.cfg, { think, doing: toolRanThisTurn(msgs, turnStart) && !ctx.noTools, lastRound: Boolean(ctx.lastRound), retryThinks });
+      const thinkNow = stepThink(this.cfg, { think, doing: toolRanThisTurn(msgs, turnStart) && !ctx.noTools, lastRound: Boolean(ctx.lastRound), retryThinks, job });
       if (thinkNow !== think && !ctx.stepThinkSaid) { ctx.stepThinkSaid = true; this.log('chat', 'tool steps: no thinking (planning and the answer keep it)'); }
       const pub = Boolean(job?.guest?.public); // Bob on Discord: no memory, about-me or backstory of the owner's
       const hush = pub || isGuestId(sessionId); // a guest chat: no memory or about-me either (guest-chat.js)
@@ -342,7 +369,7 @@ export const runOnParts = {
         if (!ctx.rentSaid) { ctx.rentSaid = true; emit({ type: 'rent', action: 'thinking', rental: rName, service: this.rentals.view().rentals.find((r) => r.id === rented.id)?.serviceName || '' }); }
         let rentShown = 0;
         try {
-          reply = await this.rentals.chat(rented, { messages: [sys, ...loopView(staleHandErrors(msgs, turnStart), step)], tools, signal, think: thinkNow, job, emit, onToken: (t) => { rentShown += String(t).length; emit({ type: 'token', text: t }); } });
+          reply = await this.rentals.chat(rented, { messages: [sys, ...loopView(staleHandErrors(msgs, turnStart), step)], tools, signal, think: thinkNow, job, emit, onToken: (t) => { rentShown += String(t).length; if (!ctx.quiet) emit({ type: 'token', text: t }); } });
         } catch (e) {
           if (signal?.aborted) throw e;
           // Item 205: it falls back once (rented stays off for the rest of this job), the half answer it gave is taken
@@ -362,7 +389,7 @@ export const runOnParts = {
         let said = false;
         const askedAt = Date.now(); let firstAt = 0, lentShown = 0;
         try {
-          reply = await this.lenders.chat(lender, { messages: lentMsgs, tools, signal, from: this.cfg.windowsName || 'Bob', onToken: (t) => { if (!said) firstAt = Date.now(); said = true; lentShown += String(t).length; emit({ type: 'token', text: t }); } });
+          reply = await this.lenders.chat(lender, { messages: lentMsgs, tools, signal, from: this.cfg.windowsName || 'Bob', onToken: (t) => { if (!said) firstAt = Date.now(); said = true; lentShown += String(t).length; if (!ctx.quiet) emit({ type: 'token', text: t }); } });
           // 1.5.181 (two-Bob trial: the reply came back empty and nothing ran here): an empty answer counts as a "couldn't".
           if (!String(reply?.content || '').trim() && !(reply?.tool_calls || []).length) { reply = null; throw Object.assign(new Error('it came back empty'), { busy: !said }); }
           // 1.5.196 (Tailscale test): a borrowed reply that went well leaves a line in the logbook too, once per Bob per
@@ -390,7 +417,7 @@ export const runOnParts = {
       // wait, use the brain already there (ctx.onCard, for the rest of this turn), or another of his Bobs.
       if (!reply && ctx.onCard) {
         this.setState('thinking', 'Thinking on the brain already on the card', this.state.model);
-        try { reply = await chatOpenAI({ url: `${ctx.onCard.url}/v1`, key: '', model: 'served', messages: [sys, ...loopView(staleHandErrors(msgs, turnStart), step)], tools, signal, think: thinkNow, onToken: (t) => emit({ type: 'token', text: t }) }); }
+        try { reply = await chatOpenAI({ url: `${ctx.onCard.url}/v1`, key: '', model: 'served', messages: [sys, ...loopView(staleHandErrors(msgs, turnStart), step)], tools, signal, think: thinkNow, onToken: (t) => { if (!ctx.quiet) emit({ type: 'token', text: t }); } }); }
         catch (e) {
           if (signal?.aborted) throw e;
           this.log('card', `the brain on the card couldn't answer (${causeLine(e).slice(0, 160)})`);
@@ -414,13 +441,23 @@ export const runOnParts = {
           model, messages: this.plainLoop ? [sys, ...meanwhileNear(loopView(staleHandErrors(msgs, turnStart), step), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')] : [steadySys, ...meanwhileNear(meanwhileNear(loopView(staleHandErrors(msgs, turnStart), step), turnNote), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')], tools, signal, cpu, think: thinkNow, ctx: brainCtx, ...(beside ? { beside: true } : {}),
           ...(ctx.preset && ctx.preset.temperature !== null ? { temperature: ctx.preset.temperature } : {}), // a preset's own temperature
           ...(sessionId ? { chatId: sessionId } : {}), // Per-chat engine cache (chat-places.js, off unless switched on)
-          onToken: (t) => emit({ type: 'token', text: t })
+          onToken: (t) => { if (!ctx.quiet) emit({ type: 'token', text: t }); }
         }, { emit });
       }
       // He's seen the new look once; that's enough.
       if (this.cfg.lookChange) { try { saveSettings(this.cfg, { lookChange: null }); } catch {} this.cfg.lookChange = null; }
       // Reliability 154-161: a round with no tools offered (a wrap-up, the last step) runs no calls, even if the brain
       // writes some anyway; he answers with what he said, or the record's plain ending.
+      // Facts first: the quiet step's words are what he remembers. They go in a hidden note, never the chat, and the
+      // checking starts (this step doesn't count against the job's steps).
+      if (ctx.quiet) {
+        ctx.quiet = false;
+        const memory = String(reply?.content || '').trim().slice(0, 1500);
+        ctx.facts.memory = memory || '(nothing written)';
+        msgs.push({ role: 'system', content: CHECK_NOTE(ctx.facts.memory, whoFor()), hidden: true });
+        this.log('facts', `noted what he remembers (${memory.length} characters${reply?.tool_calls?.length ? `; ${reply.tool_calls.length} tool call${reply.tool_calls.length === 1 ? '' : 's'} not run in this step` : ''}); now checking sources`);
+        step--; continue;
+      }
       if (ctx.noTools && reply?.tool_calls?.length) {
         this.log('loop', `no tools this round, so ${reply.tool_calls.length} call${reply.tool_calls.length === 1 ? '' : 's'} he asked for did not run`);
         reply = { ...reply, tool_calls: undefined };
@@ -432,6 +469,10 @@ export const runOnParts = {
       if (!lender) ctx.replyModel = model; // item 192: whose answer this is, for the honesty score
       // Nov 11 (loop-help.js): what goes into each call is checked against the tool, and mended where that's sure.
       if (reply.tool_calls?.length) { giveIds(reply.tool_calls); this.mendCalls(reply.tool_calls, ctx); this.notOffered(reply.tool_calls, tools, ctx); }
+      // Read what you were given: a question card before he has looked goes back once, with where to look.
+      if (reply.tool_calls?.length && ctx.readFirst && !ctx.readFirstBounced && !lookedLocal(msgs, turnStart)) {
+        for (const c of reply.tool_calls) if (c.function?.name === 'ask_user' && !c.bounce) { c.bounce = ctx.readFirst.named ? READ_FIRST_BOUNCE('the file or folder in the ask') : LOOK_FIRST_BOUNCE; ctx.readFirstBounced = true; this.log('facts', 'read first: a question card before looking at the files; sent back to look first'); }
+      }
       // What he just said gets its id now, so the window can find the bubble: for the "..." menu on it (Edit, Delete;
       // msg-menu.js), and if he changes it later (Edit his own messages).
       if (!job?.guest && typeof reply.content === 'string' && reply.content.trim()) { reply.id ||= newMsgId(); reply.at ||= Date.now(); emit({ type: 'said', id: reply.id }); }
@@ -538,10 +579,38 @@ export const runOnParts = {
         emit({ type: 'token', text: '\n\n' });
         nudged(); continue;
       }
+      // Read what you were given: an answer (or a question back) before he looked at the file or folder: one more go.
+      if (!reply.tool_calls && !empty && ctx.readFirst && !ctx.readFirstNudged && !ctx.noTools && nudgeOk(ctx) && !lookedLocal(msgs, turnStart)) {
+        ctx.readFirstNudged = true;
+        for (const n of ['read_file', 'list_folder', 'search_files', 'office_read']) { const g = groupOf(this, n); if (g) ctx.loaded.add(g); }
+        if (!ctx.cantAt) markCant(ctx, reply, msgs); // the answer after looking replaces this one
+        msgs.push({ role: 'system', content: ctx.readFirst.named ? READ_FIRST_NUDGE('a file or folder in the ask', whoFor()) : LOOK_FIRST_NUDGE(whoFor()), hidden: true }); ctx.retrying = true;
+        this.log('facts', ctx.readFirst.named ? 'read first: answered before reading the file in the ask; sent back to read it' : 'read first: answered before looking in the folders; sent back to look');
+        emit({ type: 'token', text: '\n\n' });
+        nudged(); continue;
+      }
+      // Facts first: an answer to a question of fact with no look-up behind it: one more go to search, then answer again.
+      // Not on Maximus's plan (it only plans), nor in a round with no tools.
+      if (!reply.tool_calls && !empty && ctx.facts && !ctx.facts.nudged && !ctx.noTools && job?.soloPhase !== 'plan' && nudgeOk(ctx) && !lookedUpWeb(msgs, turnStart)) {
+        ctx.facts.nudged = true;
+        const g = groupOf(this, 'web_search'); if (g) ctx.loaded.add(g);
+        if (!ctx.cantAt) markCant(ctx, reply, msgs); // the checked answer replaces this one
+        msgs.push({ role: 'system', content: SEARCH_FIRST_NUDGE(whoFor()), hidden: true }); ctx.retrying = true;
+        this.log('facts', 'answered a question of fact without looking it up; sent back to search first');
+        emit({ type: 'token', text: '\n\n' });
+        nudged(); continue;
+      }
       if (!reply.tool_calls && !job?.side && !ctx.noteRedo && this.watch.for(job)?.notes.length) { ctx.noteRedo = true; this.readNotes(ctx, msgs, noteAfterAnswer); continue; }
       if (!reply.tool_calls && !ctx.noTools && nudgeOk(ctx)) { // Jobs, Run tests after code edits (job-helps.js): before he says done
         const tests = testsNudge(this, ctx);
         if (tests) { const g = groupOf(this, 'run_command'); if (g) ctx.loaded.add(g); msgs.push({ role: 'system', content: tests, hidden: true }); ctx.retrying = true; emit({ type: 'token', text: '\n\n' }); nudged(); continue; }
+      }
+      // Facts first: no source was read (every look-up failed or was blocked, or none ran), and the answer doesn't say so:
+      // the app says it, under the answer. Not on a Maximus plan or a middle step; the shown answer gets it.
+      if (!reply.tool_calls && ctx.facts && !['plan', 'do'].includes(job?.soloPhase)) {
+        Object.assign(ctx.facts, { looked: lookedUpWeb(msgs, turnStart), sourced: webSourceRead(msgs, turnStart) });
+        if (!ctx.facts.sourced && !reply.correction && !saysUnchecked(reply.content)) { ctx.facts.unchecked = true; reply.correction = UNCHECKED_CORRECTION; emit({ type: 'correction', text: UNCHECKED_CORRECTION }); }
+        this.log('facts', `the answer: ${JSON.stringify(factsRecord(ctx.facts))}`);
       }
       if (!reply.tool_calls) { stage(ctx, 'answering', step, log); this.checkSaid(ctx, reply); this.checkRecord(ctx, reply); sideJob((k, t) => this.log(k, t), 'sources and receipt under the answer', () => afterAnswer(this, ctx, reply)); this.offerToolFix(ctx, reply); this.keepGroups(sessionId, used); return; }
       let ended = false;

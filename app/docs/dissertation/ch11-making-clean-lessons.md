@@ -274,6 +274,33 @@ Part of the low yield is the result of set-up faults and not of the method. lkt-
 
 Spending so far, from the hand-off and the console log, is about $0.41 (two hung cards), $0.55 (lkt-fix1), $0.82 (lkt-fix2) and $0.31 (lkt-fix3). Added together, that is about $2.09. The figures come from different files, and the sum is our arithmetic. The rewrite of the whole 5,565-idea file has not been costed from these rounds, and we do not extrapolate from them.
 
+### 11.7.5 Real-job lessons (added 16 November)
+
+The rounds above all had a teacher write the lessons. From 15 November a second route ran beside them: a served brain does real requests through Bob's real loop and tools, each in its own test world (section 3.6.9), an Opus reader grades every run, and only the runs marked keep become lessons, unchanged. The brain was Qwen3.8-Flash-Next on a rented H200. The requests came from the fix list of the old lesson set, so they are the jobs the old lessons got wrong.
+
+| Run | Jobs | Keep | Fix | Discard | Harness broke it | Status |
+|---|---|---|---|---|---|---|
+| Run 2 | 45 | 14 | 28 | 1 | 2 | Checked (run 3's opus-read.md, which compares the two) |
+| Run 3 (same 45 jobs) | 45 | 7 | 22 | 6 | 10 | Checked (opus-read.md) |
+| 800 fix-list jobs | 800 | 402 | 315 | 36 | 47 | Checked (jobs-fix1/read/opus-read.jsonl) |
+
+Table 11.6. Real-job runs and the Opus reader's verdicts.
+
+Run 3 and the 800 jobs ran on one rental, which cost about $19.30 and deleted itself at the end. In the 800, the brain answered in words in 798 runs. Two runs failed with a server error. It never called a tool it was not offered. 415 runs had a planted scene, and the run made 363 web searches. The 402 keeps were turned into lessons (Qwen, tool shape 4, 12 tool lists), scrubbed, checked again and not uploaded. A separate test of a small distilled model on 100 real jobs gave 195 more keeps by the same route; that thread reports its own numbers.
+
+The keep rate of the 800, about 50% (our arithmetic), is far above the rates of written lessons in table 11.4. The two are not directly comparable. A real-job lesson is graded on what really happened, so it cannot carry an invented tool result. A written lesson can, and the full read of chapter 6 found that fault often. The reader also judged a whole run, not a rewritten lesson.
+
+What the reads found, by count of runs tagged:
+- **Bob's loop:** repeated_answer 119, mostly caused by Bob's own nudges (section 4.5.5).
+- **The brain:**
+  - needless_step 117;
+  - unsupported_claim 100, mostly small facts stated from memory or sums done in its head;
+  - asked_when_should_act 59, mostly asking for a file the scene had already put in Documents;
+  - invented_result 24, including memory saves with no remember call.
+- **The harness:** the 47 runs it broke came from files the test home cannot make (.pptx, .mp3, .mp4, .wav, .exe, .psd), scenes that were not valid JSON, and the three gaps fixed in section 3.6.9.
+
+Two lessons for the method follow. First, a recorded run teaches the loop as well as the brain: a false nudge in the loop becomes a repeated answer in the lesson, so the loop's checks were fixed before the next run (section 4.5.5). Second, the reader cannot check what it cannot see. Tool results were cut to 2,000 characters for the read, and the readers marked figures in the cut part as unchecked rather than wrong.
+
 ## 11.8 Discussion
 
 ### 11.8.1 What the method buys
@@ -292,6 +319,7 @@ The reader's verdicts are one model's judgement. We have no human check of a sam
 - **Small rounds.** lkt-fix1 has 94 saved lessons (100 verdicts), and lkt-fix2 has 94 saved lessons without review.
 - **Set-up faults inflate failure.** Some of the low yield comes from wrong folders, hung cards and a lab bug, so it is not a clean measure of the method.
 - **Real tools are partial.** Media, web, e-mail and app tools are stand-ins, so tool results for them are labelled and not real.
+- **Real jobs carry the loop.** A real-job lesson keeps whatever Bob's loop did in that turn, nudges included. Hidden notes are dropped, but the replies they caused stay (section 4.5.5).
 - **Held-out tests unchanged.** The 534 test items still carry the leak of chapter 7 until the tests are replaced; the never-taught gate (shipped in 1.5.238) only stops them being taught.
 - **Status.** PRs #254, #257 and #263 shipped in 1.5.238. PR #251 shipped too but is not re-tested.
 

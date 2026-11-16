@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ERROR_ROUNDS, NUDGE_BUDGET, CALLS_PER_TURN, nudgeOk, spendNudge, Progress, findCycle, resultHash, WRAP_NOTES, wrapUp, droppedNote, outOfStepsLine, noteWait, waitedFor, busyMs, pastCeiling, ceilingMs, ceilingMins, stage, carriedBudget, keepBudget, CARRIED_MIN_STEPS, CAP_SKIP } from '../src/loop-guard.js';
+import { ERROR_ROUNDS, NUDGE_BUDGET, CALLS_PER_TURN, nudgeOk, spendNudge, Progress, findCycle, resultHash, WRAP_NOTES, wrapUp, droppedNote, outOfStepsLine, noteWait, waitedFor, busyMs, pastCeiling, ceilingMs, ceilingMins, stage, carriedBudget, keepBudget, CARRIED_MIN_STEPS, CAP_SKIP, EXTRA_STEPS, extraSteps } from '../src/loop-guard.js';
 import { Brain, MAX_CALLS_PER_REPLY } from '../src/brain.js';
 import { saveSettings } from '../src/config.js';
 
@@ -103,6 +103,21 @@ const until = async (f, ms = 4000) => { for (let i = 0; i < ms / 20; i++) { if (
   check('164: the job keeps what it used', job.loopUsed.steps === 8 && job.loopUsed.nudges === 2 && job.loopUsed.calls === 11);
   const guest = { guest: { from: 'x' } }; keepBudget(guest, ctx, 3);
   check('164: a guest job keeps nothing', !guest.loopUsed);
+}
+
+// ---------- Nov 16 (the owner): a couple more steps to finish, never an endless loop ----------
+{
+  const live = () => { const p = new Progress(); p.record('read|a', 'one'); p.round({ ran: 1, fresh: 1, failed: 0 }); return { progress: p }; };
+  const a = live();
+  check(`extra: still finding new things at the last step gets ${EXTRA_STEPS} more`, extraSteps(a) === EXTRA_STEPS && EXTRA_STEPS === 2);
+  check('extra: only once a turn', extraSteps(a) === 0);
+  const b = live(); b.progress.round({ ran: 1, fresh: 0, failed: 0 });
+  check('extra: none when the last round found nothing new', extraSteps(b) === 0);
+  const c = live(); c.progress.round({ ran: 1, fresh: 1, failed: 1 });
+  check('extra: none when the last round failed', extraSteps(c) === 0);
+  check('extra: none at the call ceiling', extraSteps({ ...live(), capHit: true }) === 0 && extraSteps({ ...live(), callsRun: CALLS_PER_TURN - 1 }) === 0);
+  check('extra: none in a round with no tools', extraSteps({ ...live(), noTools: true }) === 0);
+  check('extra: none before any tool ran', extraSteps({ progress: new Progress() }) === 0);
 }
 
 // ---------- Real turns ----------
@@ -213,6 +228,27 @@ const hiddenNotes = () => brain.session('main').filter((m) => m.role === 'system
   check('157: the calls past it got the plain line', seenMsgs.at(-1).some((m) => m.role === 'tool' && String(m.content).startsWith(CAP_SKIP)));
   check('164: the job kept its count', j?.loopUsed?.calls === CALLS_PER_TURN, JSON.stringify(j?.loopUsed));
   delete brain.cfg.jobHelps;
+}
+{ // Nov 16 (the owner): "if he needs a couple more steps to finish the job we should allow that, but never an infinite loop"
+  reset();
+  let n = 0;
+  toolImpl = () => ({ text: `page ${n++}` });
+  script = [...Array.from({ length: 9 }, (_, i) => call('fetch_page', { url: `https://example.com/${i}` })), { role: 'assistant', content: 'All nine pages read.' }];
+  await run('read the whole site');
+  check('extra: one more step past the usual 8 lets him finish', ran.length === 9 && brain.session('main').at(-1)?.content === 'All nine pages read.', `${ran.length} | ${brain.session('main').at(-1)?.content}`);
+  check('extra: the logbook says why', logs.some((l) => /still found something new: 2 more steps to finish \(once a turn\)/.test(l)), logs.filter((l) => l.startsWith('loop')).join(' / '));
+  reset();
+  n = 0;
+  toolImpl = () => ({ text: `page ${n++}` });
+  script = Array.from({ length: 30 }, (_, i) => (o) => (o.tools?.length ? call('fetch_page', { url: `https://example.com/${i}` }) : { role: 'assistant', content: 'Here is what I read so far.' }));
+  await run('read the whole site');
+  check('extra: never endless: 8 + 2 steps, the last with no tools', ran.length === 9 && seenTools.length === 10 && seenTools.at(-1) === 0, `${ran.length} ran, ${seenTools.join(',')}`);
+  check('extra: he answers with what he has', brain.session('main').at(-1)?.content === 'Here is what I read so far.');
+  reset();
+  toolImpl = () => ({ text: 'No results.' });
+  script = Array.from({ length: 30 }, (_, i) => (o) => (o.tools?.length ? call('web_search', { query: `q${i}` }) : { role: 'assistant', content: 'Nothing found.' }));
+  await run('find something rare');
+  check('extra: nothing new coming in: no extra steps', !logs.some((l) => /more steps to finish/.test(l)) && seenTools.length <= 8, seenTools.join(','));
 }
 { // 160: steps run out -> a real ending
   reset();

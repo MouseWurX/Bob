@@ -347,6 +347,15 @@ PY
       # 14 Nov: @OUT@ in a model's extra is this pod's out folder (a steering entry's --control-vector-scaled names an earlier
       # entry's evil direction, out/bench/evil-<name>/direction-all.gguf, without knowing where the pod keeps it)
       BEXTRA=$(plan "['benchmark']['models'][$b].get('extra','')"); BEXTRA=${BEXTRA//@OUT@/$OUT}
+      # 16 Nov: lora = hf:<repo>:<file>.gguf, an add-on llama-server loads over the brain (--lora, id 0). Each ask may set how much of
+      # it to use ("lora": [{"id":0,"scale":0}] is the plain brain), so one server answers for the brain with and without it.
+      BLORA=$(plan "['benchmark']['models'][$b].get('lora','')")
+      if [ -n "$BLORA" ]; then
+        case "$BLORA" in hf:*) LREPO=$(echo "$BLORA" | cut -d: -f2); LFP=$(echo "$BLORA" | cut -d: -f3); status bench "$BN: downloading the add-on $LFP"
+          hf_get "$LREPO" "$LFP" $W/bench/lora-$BN && [ -f "$W/bench/lora-$BN/$LFP" ] || { echo "bench $BN: add-on download failed; skipped"; continue; }
+          BEXTRA="$BEXTRA --lora $W/bench/lora-$BN/$LFP" ;;
+          *) echo "bench $BN: lora must be hf:<repo>:<file>; skipped"; continue ;; esac
+      fi
       SLOTS=$(plan "['benchmark']['models'][$b].get('slots',1)"); CTX=$(plan "['benchmark']['models'][$b].get('ctx',32768)")
       status bench "$BN: loading on the card ($(basename $BFILE))"
       LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" $LS -m "$BFILE" --host 0.0.0.0 --port 8001 --api-key "$FORGE_TOKEN" -c $CTX --jinja -fa on -ctk q8_0 -ctv q8_0 -np $SLOTS -ngl 999 $BEXTRA > $OUT/bench/$BN-server.log 2>&1 &

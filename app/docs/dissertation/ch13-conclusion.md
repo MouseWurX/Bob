@@ -186,6 +186,10 @@ Several smaller tasks follow from the limits above: repeat the key benchmarks fo
 
 The router rules of section 4.12.1 come from reading, not from a run. So does the finding that the GPT-OSS router sat outside the heal's low-rate group: it is unproven in our lab, as we have yet to test it on a real brain, and the router gate in the first minutes of the first GPT-OSS heal is that test. Three more tests would settle the rules. First, one heal with the routing record on, so that the share of picks a heal changes is known for the first time. Second, the same cut healed with the router learning and with it frozen, scored on the same held-out lessons. Third, a Brain Engine option that keeps fewer experts at their share of a wider group, as Chen and Yao (2026) propose, tested against today's weighting at 4 and 6 experts per word on the tool score, the quiz and the coding race. None of these has been run, and each rental is waiting on approval.
 
+### 13.6.10 Real jobs after the loop fixes (added 16 November)
+
+The 800-job run of section 11.7.5 showed that Bob's own checks caused most of the repeated answers (section 4.5.5). The checks were narrowed and a whole-job test was added that runs every Effort level through the real loop with a scripted brain. That test passed, and it found one more fault: at the Maximus level, the final answer was told a file had not been saved after an earlier step had saved it. The next test is the same real jobs, read the same way, on the fixed loop. The effect of the fixes on a real brain is unproven in our lab, as we have yet to test it. A run of a distilled model at all four Effort levels on the first part of the fixes had started when this was written, and its read will give the first count.
+
 ## 13.7 Closing
 
 The thesis began with a small model that handed work off to a tool when it should have done the work itself. Looking for the cause led to the lessons, and then to the test. The lessons held far more faults than scripts had found. The test held items that were also in the training files. The tools built along the way were needed to see either of these.

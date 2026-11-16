@@ -1,0 +1,54 @@
+{
+ "run": "jobs-trial2",
+ "note": "15 Nov: Qwen3.8-Flash-Next 125B (6B active) does 45 real jobs as Bob's brain, nothing rewritten (the owner's ask). Bob's real loop and newest Qwen tools (TOOL_SHAPES 4) from this copy (--bob ..), real files in a throwaway home per job, real web search. Jobs come from the to-fix list asks and the quick-look jobs, never test items (--never). Every run is kept in full for Opus 5.5 to read; clean runs can become lessons, failed runs are study material only. H200, 2 jobs at a time. Caps 1 h / $5.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.8-Flash-Next",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA H200",
+  "NVIDIA H200 NVL"
+ ],
+ "step_up": [],
+ "disk_gb": 170,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 1,
+ "dollars_max": 5,
+ "rent_minutes": 30,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one brain: Qwen3.8-Flash-Next doing real jobs, 2 at a time.",
+  "hours_each": 0.6,
+  "models": [
+   {
+    "name": "flashnext-jobs",
+    "nickname": "Qwen3.8-Flash-Next 125B, doing Bob's jobs",
+    "file": "hf:unsloth/Qwen3.8-Flash-Next-GGUF:UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+    "quant": "UD-Q4_K_XL",
+    "slots": 2,
+    "ctx": 65536,
+    "extra": "",
+    "hours": 0.6,
+    "commands": [
+     "node do-jobs.mjs --url {{url}} --bob .. --jobs ../../bob-model-lab/out/jobs-trial/ideas.jsonl --never ../../bob-model-lab/out/jobs-trial/never --dir jobs-trial2 --parallel 2 --want-shapes 4 --max 4096 --count 45 --hours 0.5 --job-minutes 8"
+    ]
+   }
+  ]
+ },
+ "prep": [
+  "Inputs: bob-model-lab/out/jobs-trial/ideas.jsonl (45 jobs: 20 to-fix asks, 20 lkt-sample2 ideas, 5 quick-look jobs; asks only, no old answers or notes) and bob-model-lab/out/jobs-trial/never/ (copies of the held-out test files named in forge/never-taught.json).",
+  "--want-shapes 4 stops the run before renting if this copy's tools are any other shape."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20
+}

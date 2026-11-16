@@ -159,8 +159,12 @@ function ledgerChecked(lc) {
   if (lc.from !== out && fs.existsSync(path.resolve(lab, lc.from, 'toolsets.json')) && !fs.existsSync(path.join(out, 'toolsets.json'))) fs.copyFileSync(path.resolve(lab, lc.from, 'toolsets.json'), path.join(out, 'toolsets.json'));
   return out;
 }
-const lessonsDir = plan.ledger_check ? ledgerChecked(plan.ledger_check) : path.resolve(here, '..', plan.lessons || 'out/lessons');
-const countsFile = path.resolve(here, '..', plan.counts_file || 'out/experts/' + plan.counts);
+// 15 Nov: a benchmark-only run never reads lessons or expert counts (run.sh stops at its benchmark step first), so a fresh
+// copy of Bob needs none: the pod gets empty stand-ins and no old lesson set or tool list rides along.
+const benchEmpty = plan.benchmark_only === true ? path.join(outDir, 'forge', 'bench-empty') : '';
+if (benchEmpty) { fs.mkdirSync(benchEmpty, { recursive: true }); fs.writeFileSync(path.join(benchEmpty, 'lessons.jsonl'), ''); fs.writeFileSync(path.join(benchEmpty, 'toolsets.json'), '{}\n'); fs.writeFileSync(path.join(benchEmpty, 'counts.json'), '{}\n'); }
+const lessonsDir = plan.ledger_check ? ledgerChecked(plan.ledger_check) : benchEmpty || path.resolve(here, '..', plan.lessons || 'out/lessons');
+const countsFile = benchEmpty ? path.join(benchEmpty, 'counts.json') : path.resolve(here, '..', plan.counts_file || 'out/experts/' + plan.counts);
 for (const f of ['lessons.jsonl', 'toolsets.json']) if (!fs.existsSync(path.join(lessonsDir, f))) { console.error(`missing ${path.join(lessonsDir, f)}`); process.exit(1); }
 if (!fs.existsSync(countsFile)) { console.error(`missing counts file ${countsFile}`); process.exit(1); }
 // 15 Nov: the never-taught gate. A training or heal plan checks every lesson it would send against the held-out and calib files
@@ -357,24 +361,29 @@ function lessonPreflight() {
   const bad = [], warn = [];
   const q = (v) => `"${String(v).replace(/"/g, '')}"`;
   const cmds = [];
-  for (const m of plan.benchmark?.models || []) for (const c of (m.commands?.length ? m.commands : plan.benchmark?.commands || [])) if (/write-lessons\.mjs/.test(c)) cmds.push([m, c]);
+  // 16 Nov: a jobs gate between two job runs (jobs-gate.mjs) is checked too (its key and folder), though it needs no --hours
+  for (const m of plan.benchmark?.models || []) for (const c of (m.commands?.length ? m.commands : plan.benchmark?.commands || [])) if (/(write-lessons|do-jobs|jobs-gate|jobs-matrix)\.mjs/.test(c)) cmds.push([m, c]);
   for (const w of plan.write_lessons ? (Array.isArray(plan.write_lessons) ? plan.write_lessons : [plan.write_lessons]) : []) if (w.from_ideas) bad.push(`plan.write_lessons (${w.dir}) has no pre-flight yet: use benchmark commands`);
+  // 16 Nov: an add-on (llama-server --lora) for a served brain comes from Hugging Face
+  for (const m of plan.benchmark?.models || []) if (m.lora !== undefined && !/^hf:[^:\s]+\/[^:\s]+:[^\s]+\.gguf$/.test(String(m.lora))) bad.push(`${m.name}: lora must be hf:<repo>:<file>.gguf`);
   if (!cmds.length) return bad;
   if (!(Number(plan.hours_max) > 0) || !(Number(plan.dollars_max) > 0) || !(Number(plan.rent_minutes) > 0)) bad.push('hours_max, dollars_max and rent_minutes must all be set (blank caps fall back to 9 h / $40)');
   let hoursSum = 0;
   for (const [i, [m, c]] of cmds.entries()) {
     const slots = Math.max(1, Number(m.slots) || 1), slotCtx = Math.floor((Number(m.ctx) || 32768) / slots);
-    const par = Number((c.match(/--parallel\s+(\d+)/) || [])[1] || 1), hrs = Number((c.match(/--hours\s+([\d.]+)/) || [])[1] || 0);
+    // 16 Nov: a jobs matrix runs every variant at once, each with its own --parallel
+    const nVar = /jobs-matrix\.mjs/.test(c) ? Math.max(1, ((c.match(/--variants\s+("[^"]*"|\S+)/) || [])[1] || '').split(';').filter((x) => x.replace(/"/g, '').trim()).length) : 1;
+    const par = nVar * Number((c.match(/--parallel\s+(\d+)/) || [])[1] || 1), hrs = Number((c.match(/--hours\s+([\d.]+)/) || [])[1] || 0);
     hoursSum += hrs;
-    if (!(hrs > 0)) bad.push(`${m.name} command ${i + 1} has no --hours`);
-    if (par > slots) bad.push(`${m.name} command ${i + 1}: --parallel ${par} but the card serves ${slots} slot(s)`);
+    if (!(hrs > 0) && !/jobs-gate\.mjs/.test(c)) bad.push(`${m.name} command ${i + 1} has no --hours`);
+    if (par > slots) bad.push(`${m.name} command ${i + 1}: --parallel ${par}${nVar > 1 ? ` (${nVar} variants at once)` : ''} but the card serves ${slots} slot(s)`);
     if (/--gate\s+off/.test(c)) bad.push(`${m.name} command ${i + 1}: --gate off (every rental starts with a sample)`);
     const cmd = `${c.replace(/{{url}}/g, 'http://preflight.invalid').replace(/{{name}}/g, m.name).replace(/"?{{out}}"?/g, q(path.join(outDir, 'bench', plan.run || 'run', m.name))).replace(/"?{{lessons}}"?/g, q(path.join(outDir, 'lessons'))).replace(/{{run}}/g, plan.run || 'run')} --preflight --slot-ctx ${slotCtx}`;
     log(`pre-flight ${m.name} command ${i + 1} (${slots} slot(s) of ${slotCtx}):`);
     const r = spawnSync(cmd, { cwd: path.join(here, '..'), shell: true, encoding: 'utf8', windowsHide: true, env: { ...process.env, LAB_REMOTE: '1', LAB_MODEL_NAME: m.name } });
-    const out = `${r.stdout || ''}${r.stderr || ''}`.replace(/\r\n/g, '\n').split('\n').filter((ln) => /pre-flight|PRE-FLIGHT|room per slot|ideas file|GGUF|Error|error/.test(ln));
+    const out = `${r.stdout || ''}${r.stderr || ''}`.replace(/\r\n/g, '\n').split('\n').filter((ln) => /pre-flight|PRE-FLIGHT|GATE STOP|room per slot|ideas file|GGUF|Error|error/.test(ln));
     for (const ln of out) log(`  ${ln.slice(0, 300)}`);
-    if (r.status !== 0) bad.push(`${m.name} command ${i + 1}: ${(out.find((ln) => /PRE-FLIGHT FAIL|rror/.test(ln)) || `exit ${r.status}`).replace(/^PRE-FLIGHT FAIL: /, '').slice(0, 200)}`);
+    if (r.status !== 0) bad.push(`${m.name} command ${i + 1}: ${(out.find((ln) => /PRE-FLIGHT FAIL|GATE STOP|rror/.test(ln)) || `exit ${r.status}`).replace(/^(?:PRE-FLIGHT FAIL|GATE STOP): /, '').slice(0, 200)}`);
   }
   if (Number(plan.hours_max) > 0 && hoursSum + 0.5 > Number(plan.hours_max)) warn.push(`the commands' --hours add up to ${hoursSum} h; with about 0.5 h of start-up that passes the ${plan.hours_max} h cap, so the last one is cut short (it resumes next time)`);
   for (const w of warn) log(`pre-flight note: ${w}`);
@@ -624,7 +633,7 @@ async function benchOnPod(name) {
     // so the tests wrote to the wrong place and tool-score could not find the lessons); {{lessons}} is the lab's lessons folder for tool-score
     const q = (v) => `"${String(v).replace(/"/g, '')}"`;
     const bm = (plan.benchmark.models || []).find((m) => m.name === name) || {};
-    const slotArg = /write-lessons\.mjs/.test(c) && !/--slot-ctx/.test(c) ? ` --slot-ctx ${Math.floor((Number(bm.ctx) || 32768) / Math.max(1, Number(bm.slots) || 1))}` : ''; // 15 Nov: the writer checks the room per slot (the server's own figure first)
+    const slotArg = /(write-lessons|do-jobs|jobs-matrix)\.mjs/.test(c) && !/--slot-ctx/.test(c) ? ` --slot-ctx ${Math.floor((Number(bm.ctx) || 32768) / Math.max(1, Number(bm.slots) || 1))}` : ''; // 15 Nov: the writer checks the room per slot (the server's own figure first)
     const cmd = c.replace(/{{url}}/g, url).replace(/{{name}}/g, name).replace(/"?{{out}}"?/g, q(dir)).replace(/"?{{lessons}}"?/g, q(path.join(outDir, 'lessons'))).replace(/{{run}}/g, plan.run || 'run') + slotArg;
     const lf = path.join(dir, `${String(i + 1).padStart(2, '0')}.log`); fs.writeFileSync(lf, `$ ${cmd}\n`);
     log(`  ${cmd}`);

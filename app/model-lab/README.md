@@ -20,6 +20,59 @@ Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf and its mmproj under `<parent>/models` (found by
    stand-in tools that touch nothing, plus 8 jobs that take several steps. Add `--plain` for a second run without the loop helps
    (src/loop-help.js) to compare. `--quick` runs a quarter of the quiz. Report: out\loop-test-*.md.
 
+   `node do-jobs.mjs --url <server> --bob .. --jobs <ideas.jsonl> --dir <name> --never <held-out files or folders>`: a brain
+   does real jobs as Bob's brain, nothing rewritten. Bob's real loop and newest tools for that family (`--want-shapes 4`),
+   real files in a throwaway home for each job and real web search. There are no stand-ins: every tool offered runs for
+   real, and a tool that would act on the real PC or an account isn't offered (its Hand is off, so Bob's prompt says so
+   too). Every step is kept in full (thinking, words, calls, results) in out\<name>\runs.jsonl for a review to read;
+   failed runs are study material only. `--never` leaves held-out test requests out. `--parallel 2` by default,
+   `--job-minutes` caps one job, `--preflight` checks the jobs and the tool shape without running anything.
+   `--scene make`: the brain first writes each job's test world (scenes.mjs: the files, folders, board lists and memory the
+   request takes for granted, with real Word, Excel, PDF, photo and zip files from scene-files.mjs), saved in
+   out\<name>\scenes.jsonl; `--scene reuse` (with `--scenes <file>`) starts another brain from the very same worlds.
+   Folders a job names outside the home (C:\Temp, /home/user/...) are mirrored inside the throwaway folder, and nothing the
+   brain sees carries a real folder name. `--search tavily` hands Bob the Lab's own Tavily key for his backup search
+   (Settings, Search API keys: the free pages first, Tavily only when they're blocked or find nothing). The key is saved
+   encrypted on the Lab PC by the double-click "Save Tavily key for the Lab.cmd" (lab-keys.mjs), checked in pre-flight
+   with one search, never printed or saved, and every saved row is scrubbed for it. `--search-month <n>` keeps the Lab's
+   count of this month's Tavily searches in out\tavily-searches-<month>.json (Tavily's free plan: 1,000 or more a month; its usage page says), gives
+   each job's Bob that count with his cap 10 below it, and starts no new job once about 10 are left. Tavily's own usage
+   page is checked too when it answers. `--search-cap <n>` caps the run's own Tavily searches, and with `--search-group
+   <name>` the cap is shared by every run of that name this month (run 3 and the 800 jobs share 800). `--search-probe` stops pre-flight when web search answers nothing; 5 failed
+   searches in a row stop a run.
+   `--family gpt-oss`: the served brain is a GPT-OSS one, so Bob's loop uses his GPT-OSS tool set and asks for thinking the
+   GPT-OSS way (a no-thinking step is reasoning low), with its own sampling; runs are stamped family gpt-oss. Default qwen.
+   plans\jobs-gptoss-trial.json: the stock 120B does the first 45 fix-list jobs from the scenes Flash-Next saved.
+   Effort (16 Nov): `--effort low|medium|high|extreme` asks every job at that Effort (low by default, as before) and
+   `--solo-effort` turns on Effort on one brain (src/solo-effort.js) for this Bob; each row records both. `--lora-scale <n>`
+   tells a llama-server started with `--lora` how much of its add-on to use on every ask (0 is the plain brain), so one
+   server answers for both. `--scenes-only` writes the test worlds and stops. `--search-cache <file>` answers a query any
+   run sharing the file already searched (with results) with that same real result. `--search-ledger <file>` counts the
+   Tavily searches in another Lab copy's ledger. `--search-cap <n>` caps this run; with `--cap-go-on` the jobs still start
+   once it's used and Bob's own backup cap says so (row: search_capped). `--leave-out-kinds web` skips jobs of a kind.
+   `node jobs-matrix.mjs --prefix <name> --variants "a=<flags>;b=<flags>" [--stagger <s>] <do-jobs flags>`: one served
+   brain, the same jobs, several do-jobs runs at once (folders <name>-a, <name>-b ...). The brain writes every test world
+   once first (<name>-scenes), and every variant starts from those, so the only difference is how they were run. The
+   search cap is split between the variants; `--stagger` starts each one a little later, so most repeated queries come from
+   the cache. plans\jobs-distill-a3b.json runs the distilled Qwen3.6 A3B add-on before and after Effort on one brain.
+   `node jobs-gate.mjs --dir <name> --runs 45 --want-shapes 4 --search tavily` reads a finished do-jobs folder and exits
+   86 (the Forge then deletes the pod) unless it was clean: enough runs, answered in words, few errors, test worlds made,
+   one tool shape, searches with results, and nothing private in any saved file (the Lab's key, the Lab PC's user name
+   or name, or a word from bob-model-lab\private-words.txt). It writes GATE.md there. A Forge plan can put it between two
+   job runs on one rented brain (plans\jobs-flashnext-run3-long.json: run 3, the gate, then 800 fix-list jobs).
+   `--leaks warn` reports the user name, PC name and private words without stopping (they are scrubbed before anything
+   is kept or published); the key always stops it.
+   `node jobs-to-lessons.mjs --runs <runs.jsonl>[,<label>=<runs.jsonl>] --grades <opus grades.jsonl> --to <dir> [--key <variant-key.json>]`
+   turns the do-jobs runs Opus marked keep into lessons as they ran (lessons.jsonl + toolsets.json, the shape training
+   reads): Bob's hidden notes left out, each step's thinking kept, Bob's own prompt and tools for the run's family, one
+   family per folder. Everything goes through the privacy scrub (private-words.txt and its "keep:" words) and nothing is
+   written if anything is left. `--key` maps a grade's shuffled run letter to its runs file's label.
+   `node fix-to-jobs.mjs --fix <to-fix.jsonl> --root <folder> --to <jobs.jsonl> [--skip <jobs.jsonl>] [--private <words file>]`
+   turns a review's fix list into jobs for do-jobs: each lesson's first request only (never its old answer or the review's
+   note), the Lab PC's home made neutral, e-mail and home-network addresses given stand-ins, and requests with a picture,
+   the Lab PC's user name or name, or a private word (bob-model-lab\private-words.txt and --private, kept on the Lab PC)
+   left out, as are requests already in a --skip file. The jobs come out mixed, one of each kind in turn.
+
 5. `node reap-calibrate.mjs --url <Brain Engine server>`: tune a stock mixture-of-experts brain down without cutting a file.
    It scores every expert of every layer on the training lessons (REAP: router weight times the size of what the expert adds,
    from Brain Engine's expert trace with mass), then switches the weakest off live (`/expert-mask`) at 100, 75, 50 and 35%
