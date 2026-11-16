@@ -1,0 +1,55 @@
+{
+ "run": "distill-a3b-max2",
+ "note": "16 Nov, the owner tapped \"Rent it (about $2)\" on \"Rent a short pod to rerun Maximus with its new fixes?\". Maximus only (Effort on one brain, extreme), the same brain, the same 100 jobs and test worlds as effort4 (reused from lab-kit-distill), on k0vl4g with the effort thread's Maximus fixes through 1cf79c3 (the answer knows what Bob did; the plan step only looks, changes nothing, gets no nudges; the repeat guard forgets plan tries), and the RunPod v2 Forge (f22e065). Tavily group distill-a3b is used up, so searches are refused and answered from the shared cache where already asked; --search-stop off so refused searches do not end the run early (effort4 Maximus stopped at 63). Runs go to lab-kit-distill/bob-model-lab/out/effort4-max2 next to effort4. L40S, 12 slots, parallel 6. Caps 2.5 h / $3.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA L40S",
+  "NVIDIA RTX 6000 Ada Generation"
+ ],
+ "step_up": [],
+ "disk_gb": 60,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 2.5,
+ "dollars_max": 3,
+ "rent_minutes": 30,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one server: stock Qwen3.6-35B-A3B with the distill add-on loaded (each ask sets lora scale 1).",
+  "hours_each": 1.8,
+  "models": [
+   {
+    "name": "distill-a3b",
+    "nickname": "Qwen3.6-35B-A3B + Qwen3.8-27B distill add-on, doing Bob's jobs",
+    "file": "hf:unsloth/Qwen3.6-35B-A3B-MTP-GGUF:Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+    "lora": "hf:lododoai/Qwen3.6-35B-A3B-Distill-Qwen3.8-27B-GGUF-lora:lododo-Distill-v1.0-lora-f16.gguf",
+    "quant": "UD-Q4_K_XL",
+    "slots": 12,
+    "ctx": 393216,
+    "extra": "",
+    "hours": 1.8,
+    "commands": [
+     "node jobs-matrix.mjs --prefix effort4 --scenes-from distill-a3b-scenes --out \"../../../lab-kit-distill/bob-model-lab/out\" --variants \"max2=--effort extreme --solo-effort\" --url {{url}} --bob .. --jobs ../../../lab-kit-shape4/bob-model-lab/out/jobs-trial/ideas.jsonl,../../../lab-kit-shape4/bob-model-lab/out/jobs-fix/jobs.jsonl --never ../../../lab-kit-shape4/bob-model-lab/out/jobs-trial/never --count 100 --parallel 6 --want-shapes 4 --max 4096 --hours 1.5 --job-minutes 20 --lora-scale 1 --search tavily --search-month 1500 --search-cap 100 --search-group distill-a3b --cap-go-on --search-stop off --leave-out-kinds web,research,search --search-ledger ../../../lab-kit-shape4/bob-model-lab/out/tavily-searches-2026-11.json --search-cache \"../../../lab-kit-distill/bob-model-lab/out/distill-a3b-search-cache.jsonl\""
+    ]
+   }
+  ]
+ },
+ "prep": [
+  "Inputs, read only from lab-kit-shape4 (the Flash-Next copy; nothing is written there but the Tavily ledger): out/jobs-trial/ideas.jsonl (run 3's 45 jobs), out/jobs-fix/jobs.jsonl (the first 55), out/jobs-trial/never/ (held-out test files).",
+  "Runs from a second Lab copy, lab-kit-distill-v2 next to lab-kit-distill (branch claude/project-thread-k0vl4g). Scenes and search cache are read from lab-kit-distill (absolute --out), where effort4 wrote them."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20
+}

@@ -37,7 +37,7 @@ import { HANDS } from './hands-settings.js';
 import { noteStrike, maybeAsk as qAsk } from './quarantine.js';
 import { planGate } from './plan.js';
 import { stepThink, toolRanThisTurn } from './step-thinking.js';
-import { soloPrompt } from './solo-effort.js';
+import { soloPrompt, lookOnly } from './solo-effort.js';
 import { cantReason, markCant, settleCant } from './cant-retry.js';
 import { askTogether } from './together.js';
 import { callKey, realState, linkKey, NOW_IN_NOTE, staleHandErrors, meanwhileNear, claimsPcAction, CLAIM_CORRECTION, CLAIM_NUDGE, claimsObservation, OBSERVE_CORRECTION, OBSERVE_NUDGE, LINK_NUDGE, EMPTY_NUDGE, CANT_NUDGE, EMPTY_NOTE, DOING_TOOLS, isLook, ALT_ROUTE_DONE, ALT_ROUTE_NUDGE, quickHandBack } from './brain-words.js';
@@ -77,7 +77,7 @@ export const runOnParts = {
     // with Bob's own note for that part (hidden; the chat shows only what he writes back).
     const soloNote = job?.soloStep ? String(job.soloStep) : '';
     if (again) msgs.push({ role: 'system', content: [job.soloAgain ? '' : job.switchedTo ? switchedNote(job.switchedTo) : job.redo && !job.carryOn ? (job.redo === 'edit' ? EDIT_NOTE : REDO_NOTE) : job.carryOn || '', soloNote].filter(Boolean).join('\n\n'), hidden: true });
-    else { msgs.push(user); if (!job?.guest) emit({ type: 'asked', id: user.id }); if (soloNote) msgs.push({ role: 'system', content: soloNote, hidden: true }); } // the window marks your bubble, for Edit (redo.js)
+    else { msgs.push(user); if (!job?.guest) emit({ type: 'asked', id: user.id }); } // a first run's own note goes in last, below // the window marks your bubble, for Edit (redo.js)
     if (job) job.rentAgain = false;
     const turnStart = again ? msgs.map((m) => m.role).lastIndexOf('user') : msgs.length - 1;
     // 1.5.207 PC check: after Switch it on (or any carry-on), the same chat line went in the logbook a second time.
@@ -272,10 +272,14 @@ export const runOnParts = {
       const note = ctx.lastRound ? LAST_ROUND_NOTE(who) : this.helpOff('note') ? '' : onTrackNote({ ask: text, turn: out.slice(turnStart), step, max: maxSteps, who });
       return note ? [...out, { role: 'system', content: note }] : out;
     };
+    const planPhase = Boolean(job?.solo && job.soloPhase === 'plan');
     // Jobs, One question before a vague big job (job-helps.js): a hint to ask once with ask_user before starting.
     if (!again) { const ask = askFirstNote(this, ctx, text); if (ask) msgs.push({ role: 'system', content: ask, hidden: true }); }
     // Nov 13 (job-steps.js): two or more things asked in one message get one line naming them, and a check at the end.
-    if (!again && !ctx.noTools && !this.helpOff('plan') && !job?.guest) { ctx.stepsAsked = askedSteps(text); if (ctx.stepsAsked.length) { msgs.push({ role: 'system', content: planLine(ctx.stepsAsked), hidden: true }); this.log('loop', `${ctx.stepsAsked.length} things asked: a plan line, and a check at the end`); } }
+    // Max's plan step (solo-effort.js) skips it: the plan is his own list, and "this asks for 2 things" read as "do them now".
+    if (!again && !ctx.noTools && !this.helpOff('plan') && !job?.guest && !planPhase) { ctx.stepsAsked = askedSteps(text); if (ctx.stepsAsked.length) { msgs.push({ role: 'system', content: planLine(ctx.stepsAsked), hidden: true }); this.log('loop', `${ctx.stepsAsked.length} things asked: a plan line, and a check at the end`); } }
+    // 16 Nov rental: Bob's own note for the first part goes in last, so it is the newest thing the brain reads.
+    if (!again && soloNote) msgs.push({ role: 'system', content: soloNote, hidden: true });
     for (step = 0; step < maxSteps; step++) {
       if (signal?.aborted) throw Object.assign(new Error('Stopped.'), { name: 'AbortError' }); // item 244: Stop during a card or a tool that didn't notice
       // Answer messages mid-job (mid-job.js): messages that came in during the last step come first, then the job goes on.
@@ -296,7 +300,9 @@ export const runOnParts = {
       if (step === maxSteps - 1 && !this.helpOff('last') && !ctx.noTools && !job?.guest && msgs.slice(turnStart).some((m) => m.role === 'tool')) { const more = extraSteps(ctx); if (more) { maxSteps += more; this.log('loop', `the last step, but the last round still found something new: ${more} more steps to finish (once a turn)`); } }
       if (step === maxSteps - 1 && !this.helpOff('last') && !ctx.noTools && msgs.slice(turnStart).some((m) => m.role === 'tool')) { ctx.noTools = true; ctx.lastRound = true; ctx.endWhy ||= 'steps'; this.log('tool', 'the last step: no more tools, so he answers with what he has'); }
       if (ctx.loaded) used.toolSet = ctx.loaded.toolSet = this.toolSetOf(model); // tool-sets.js: the family's wording
-      const tools = ctx.noTools ? [] : guestTools(job, this.withWatchTools(this.frontDeskTools(ctx.loaded), job)); // #57 stopgap: after repeats, answer
+      let tools = ctx.noTools ? [] : guestTools(job, this.withWatchTools(this.frontDeskTools(ctx.loaded), job)); // #57 stopgap: after repeats, answer
+      // Max's plan step (solo-effort.js) only looks: the tools that change things wait for the jobs (lookOnly).
+      if (job?.solo && job.soloPhase === 'plan') tools = tools.filter((t) => lookOnly(t?.function?.name, this.tools));
       // The big brain reads notes passed along to it at the start of each step, and its chat says so.
       if (!job?.side) this.readNotes(ctx, msgs);
       // 1.5.66: Bob's own one-more-go after a reply that missed. On Qwen3.6 (everyday chat answers without thinking)
@@ -557,6 +563,16 @@ export const runOnParts = {
       let ended = false;
       ctx.painted = null; // what the painter made in this round (for the quick hand-back below)
       // 1.5.78: "Plan before big jobs": a big job waits for its plan card (plan.js).
+      // Max's plan step only looks (solo-effort.js lookOnly): a call that would change something isn't run, even when the
+      // brain writes one it wasn't offered (16 Nov effort-tools test: the plan step saved the file, then the job saved it again).
+      if (planPhase) {
+        const wait = reply.tool_calls.filter((c) => !lookOnly(c.function?.name, this.tools));
+        if (wait.length) {
+          for (const c of reply.tool_calls) msgs.push(toolMessage(c, wait.includes(c) ? 'Not done: this is the planning step, so you can only look. Put this in your plan as a step; it runs after the plan is checked.' : 'Not run: it came with a call that changes something. Ask for the looking on its own if you still need it.'));
+          this.log('effort', `plan step: ${wait.length} changing call${wait.length === 1 ? '' : 's'} held for the jobs`);
+          ctx.retrying = true; continue;
+        }
+      }
       const held = await planGate(this, reply.tool_calls, ctx);
       if (held) {
         for (const call of reply.tool_calls) msgs.push(toolMessage(call, held.hold));

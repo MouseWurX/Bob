@@ -43,13 +43,14 @@ check('plan steps come from numbered lines, at most 6', planSteps('Plan:\n1. Rea
 check('the result line says plainly when something is still open', /nothing open/.test(soloMinutes('high', [{ kind: 'check', n: 1, verdict: 'ok' }])) && /not checked again\. Not happy with: x/.test(soloMinutes('high', [{ kind: 'check', n: 1, verdict: 'improve' }, { kind: 'improve', unhappy: 'x' }])));
 
 // ---- the loop, with a fake brain ----
-async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Write it down', plan2 = null, repeatAt = false, cards = null, answer = 'Final answer: the list is written down and checked, both steps done.' } = {}) {
+async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Write it down', plan2 = null, repeatAt = false, cards = null, tools = false, answer = 'Final answer: the list is written down and checked, both steps done.' } = {}) {
   const msgs = [{ role: 'user', content: 'do the thing' }];
   const calls = [], said = [];
   const signal = { aborted: false };
   const run = async (note, o = {}) => {
     calls.push({ note: note || '', ...o });
     const content = /That isn't a plan yet/.test(note || '') ? (plan2 ?? plan) : /planning|Improve the plan|wants a change/.test(note || '') ? plan : /Improve it\./.test(note || '') ? 'Better answer.\nNot happy with: one link is old.' : /the answer\./.test(note || '') ? answer : 'Did the step. It worked, and reading the output back showed it.';
+    if (tools && o.phase === 'do' && /step 1 of|whole ask now/.test(note || '')) { msgs.push({ role: 'assistant', content: '', tool_calls: [{ id: 't1', function: { name: 'board_post', arguments: '{"text":"car registration due"}' } }] }); msgs.push({ role: 'tool', tool_call_id: 't1', content: 'Posted to the comm board.' }); }
     msgs.push({ role: 'assistant', content });
     if (stop) signal.aborted = true;
     return { repeatStop: Boolean(repeatAt && /step 1 of/.test(note || '')) };
@@ -58,7 +59,7 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
   const brain = { cfg: { userName: 'Sam' }, log: () => {} };
   let shownPlan = false;
   const card = cards ? async (steps) => { calls.push({ card: steps }); return cards.shift() || { no: true }; } : null;
-  const res = await soloRun(brain, level, { run, review, emit: (e) => said.push(e), signal, msgs, turnText: 'do the thing', card, planShown: () => { shownPlan = true; } });
+  const res = await soloRun(brain, level, { run, review, emit: (e) => said.push(e), signal, msgs, turnText: 'do the thing', card, planShown: () => { shownPlan = true; }, forget: () => calls.push({ forgot: true }) });
   return { res, calls, msgs, said, shownPlan };
 }
 {
@@ -74,7 +75,7 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
 {
   const { calls, res } = await fake('max', ['Looks right.', 'Looks right.']);
   const kinds = calls.map((c) => (c.review ? (/Review your plan/.test(c.review) ? 'gate' : 'review') : c.phase));
-  check('Max: plan (with tools to look, changing nothing), plan gate, each step as its own job, whole review, then the answer', JSON.stringify(kinds) === JSON.stringify(['plan', 'gate', 'do', 'do', 'answer', 'review']) && !calls[0].noTools && /don't change anything yet/.test(calls[0].note) && calls[4].noTools === true);
+  check('Max: plan (with tools to look, changing nothing), plan gate, each step as its own job, whole review, then the answer', JSON.stringify(kinds) === JSON.stringify(['plan', 'gate', 'do', 'do', 'answer', 'review']) && !calls[0].noTools && /you can only look/.test(calls[0].note) && calls[4].noTools === true);
   check('the 16 Nov distill results: steps with no tools say so in words, and the answer is the only reply shown', /no tool calls written out/.test(calls[1].review) && /no tool calls written out/.test(calls[4].note) && /the only reply the user sees/.test(calls[4].note) && /Don't repeat the plan/.test(calls[4].note));
   check('Max: each job gets its own step and the whole plan', /step 1 of 2: Look it up/.test(calls[2].note) && /step 2 of 2: Write it down/.test(calls[3].note) && /The whole plan/.test(calls[3].note));
   check('Max: the result line counts the jobs', /2 jobs done/.test(res.minutes) && /nothing open/.test(res.minutes) && /^🛰 \*\*Maximus:\*\*/.test(res.minutes));
@@ -106,11 +107,35 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
   const { calls, res, msgs } = await fake('max', ['Looks right.'], { plan: 'The fix is to add set -e to the hook. That is the whole answer, really.' });
   const plans = calls.filter((c) => c.phase === 'plan');
   check('Max: an answer posing as a plan gets one more go, with an example plan', plans.length === 2 && /That isn't a plan yet/.test(plans[1].note) && /1\. Read the settings file/.test(plans[1].note));
+  check('Max: still no plan: the repeat guard forgets the plan tries before the one job', calls.findIndex((c) => c.forgot) > -1 && calls.findIndex((c) => c.forgot) < calls.findIndex((c) => c.phase === 'do') && /job\.soloSeen\?\.clear\?\.\(\)/.test(read('src/brain-turns.js')));
   check('Max: still no plan: no plan gate, the tries leave the chat, one job, then the answer and its review', !calls.some((c) => c.review && /Review your plan/.test(c.review)) && !msgs.some((m) => /The fix is to add/.test(m.content)) && /whole ask now/.test(calls.find((c) => c.phase === 'do').note) && calls.some((c) => c.review && /Review your own work/.test(c.review)) && /no step-by-step plan came, so one job/.test(res.minutes));
 }
 {
   const { calls } = await fake('max', ['Looks right.', 'Looks right.'], { plan: 'Sure, here you go.', plan2: '1. Read the hook\n2. Write the answer' });
   check('Max: the second go makes a real plan, and it is checked and split', calls.filter((c) => c.review && /Review your plan/.test(c.review)).length === 1 && calls.filter((c) => /step \d of 2/.test(c.note || '')).length === 2);
+}
+{
+  const { calls } = await fake('max', ['Looks right.', 'Improve it: say when it is due'], { tools: true });
+  const answer = calls.find((c) => c.phase === 'answer'), rev = calls.filter((c) => c.review && /Review your own work/.test(c.review)), imp = calls.find((c) => /^Improve it\./.test(c.note || ''));
+  // 16 Nov rental: "The note's already on the comm board... Nothing added." about the note Bob had just posted.
+  check('Max: the answer, its reviews and the improve round get the record of what Bob did this turn', [answer.note, rev[0].review, imp.note].every((t) => /What YOU did this turn/.test(t) && /board_post \{"text":"car registration due"\} → Posted to the comm board\./.test(t) && /never as "already done"/.test(t)));
+  check('no tools ran: no record is added', !/What YOU did/.test((await fake('max', ['Looks right.', 'Looks right.'])).calls.find((c) => c.phase === 'answer').note));
+}
+{
+  const { planSteps: ps, lookOnly } = await import('../src/solo-effort.js');
+  // Diagnosis, 16 Nov rental (5 of 6 Max jobs ran with no plan): the plan step had every tool, so it often did the job.
+  check('plan steps are read in the shapes brains write them', ps('### Step 1: Read the board\n### Step 2: Post the note').length === 2 && ps('- Step 1 — Read it\n- Step 2 — Post it').length === 2 && ps('1 - Read it').length === 1 && ps('**1.** Read it').length === 1);
+  check('a small ask can be a one-step plan', ps('1. Post the note on the comm board. Worked if reading the board shows it.').length === 1);
+  const tools = { write_file: { check: () => true }, read_file: {}, notice_board: {}, take_note: {}, web_search: {} };
+  check('the plan step only looks: changing tools and read-and-change tools wait for the jobs', lookOnly('read_file', tools) && lookOnly('web_search', tools) && !lookOnly('write_file', tools) && !lookOnly('notice_board', tools) && !lookOnly('take_note', tools));
+  const ro = read('src/brain-run-on.js');
+  // 16 Nov effort-tools test: the plan step saved a file it wasn't offered, and "This asks for 2 things" came after the plan note.
+  check('the plan step never runs a changing call, even one it wasn\'t offered', /if \(planPhase\) \{\s*const wait = reply\.tool_calls\.filter\(\(c\) => !lookOnly\(/.test(ro) && ro.indexOf('if (planPhase) {') < ro.indexOf('const held = await planGate('));
+  check('the plan note is the newest thing the brain reads, with no "this asks for N things" line', /!job\?\.guest && !planPhase\) \{ ctx\.stepsAsked/.test(ro) && ro.indexOf("if (!again && soloNote) msgs.push") > ro.indexOf('ctx.stepsAsked = askedSteps(text)'));
+  { const { nudgeOk } = await import('../src/loop-guard.js');
+    // Effort-tools test: "Sam asked for a file saved" sent the plan step back to save it.
+    check('the plan step gets no "go and do it" nudges or end-of-turn retries', !nudgeOk({ job: { solo: true, soloPhase: 'plan' } }) && nudgeOk({ job: { solo: true, soloPhase: 'do' } }) && /checkTurn\(ctx, reply, again\) \{\s*if \(planStep\(ctx\)\) return false;/.test(read('src/brain-tool-runs.js'))); }
+  check('wired in: the plan step\'s tools are filtered', /job\.soloPhase === 'plan'\) tools = tools\.filter\(\(t\) => lookOnly\(/.test(read('src/brain-run-on.js')));
 }
 check('the plan gate asks whether each step is Bob\'s own, not advice for the user', /something you do yourself/.test(planGateTask('1. a\n2. b')) && /advice for the user goes in the answer/.test(PLAN_NOTE));
 // The owner (16 Nov): robust, well reviewed answers. The reviews read the answer itself, and the improved one is shown.
