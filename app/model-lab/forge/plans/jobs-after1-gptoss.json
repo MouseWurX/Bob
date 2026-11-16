@@ -1,0 +1,58 @@
+{
+ "run": "jobs-after1-gptoss",
+ "note": "16 Nov, the owner (4:00 PM MT, heal thread): \"the tests were built using broken tool systems, qwen is testing much better now\"; \"coordinate with the tools/jobs coordinator\". jobs-plan.md step 4b: the second card beside after1. The stock GPT-OSS 120B (the 38B heal's teacher) does the SAME first 200 real jobs as after1's \"real\" variant, from the same saved scenes (jobs-fix1/scenes.jsonl), on the same et6g5x commit (8b82ad3 or later) with the same job flags (--parallel 4 --job-minutes 8 --scene make --never jobs-trial/never --want-shapes 4 --max 4096), so the two brains compare job by job under one blind Opus read and one rubric. do-jobs --family gpt-oss: Bob's GPT-OSS tool set and the GPT-OSS way of asking for thinking (a tool step is Reasoning: low). Tool shape: TOOL_SHAPES is one counter for both families (3 = the GPT-OSS lock, 4 = the Qwen change after it), so this Bob copy is shape 4 with the GPT-OSS set as locked at 3. Its own Tavily group after-gptoss, cap 150, inside the month's 1,500. Then jobs-gate.mjs writes GATE.md (names warn, the key stops). The pod is deleted when the commands finish. Nothing is trained or uploaded; Opus reads every run, and scrubbed keeps go to the heal thread as 38B heal lessons. One 80 GB card, 4 jobs at a time (4 slots x 65536, as the GPT-OSS tool check ran). The owner's go is by card, together with after1. Caps 3 h / $6.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.8-Flash-Next",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA A100 80GB PCIe",
+  "NVIDIA A100-SXM4-80GB"
+ ],
+ "step_up": [
+  "NVIDIA H100 80GB HBM3"
+ ],
+ "disk_gb": 160,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 3,
+ "dollars_max": 6,
+ "rent_minutes": 60,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one brain: GPT-OSS 120B doing the first 200 real jobs (after1 real), 4 at a time, then the gate report.",
+  "hours_each": 2.5,
+  "models": [
+   {
+    "name": "gptoss-after1",
+    "nickname": "GPT-OSS 120B, after1 real jobs",
+    "file": "hf:ggml-org/gpt-oss-120b-GGUF:gpt-oss-120b-MXFP4.gguf",
+    "quant": "MXFP4",
+    "slots": 4,
+    "ctx": 65536,
+    "extra": "",
+    "hours": 2.5,
+    "commands": [
+     "node do-jobs.mjs --url {{url}} --bob .. --family gpt-oss --never ../../bob-model-lab/out/jobs-trial/never --parallel 4 --want-shapes 4 --max 4096 --job-minutes 8 --scene make --scenes ../../bob-model-lab/out/jobs-fix1/scenes.jsonl --search tavily --search-month 1500 --search-cap 150 --search-group after-gptoss --jobs ../../bob-model-lab/out/jobs-fix/jobs.jsonl --dir after1-gptoss --count 200 --hours 2.2 --search-probe",
+     "node jobs-gate.mjs --dir after1-gptoss --runs 200 --want-shapes 4 --search tavily --leaks warn"
+    ]
+   }
+  ]
+ },
+ "prep": [
+  "Runs from C:\\Unreal Projects\\lab-kit-shape4 at et6g5x 8b82ad3 or later (after1 reads its jobs and scenes from this folder too, read only).",
+  "Inputs: bob-model-lab/out/jobs-fix/jobs.jsonl (the first 200 are run, the same as after1 real), bob-model-lab/out/jobs-fix1/scenes.jsonl, bob-model-lab/out/jobs-trial/never/.",
+  "--family gpt-oss stops pre-flight if this Bob copy has no GPT-OSS tool set; --want-shapes 4 if its tools are another shape. --search-probe stops it if web_search answers nothing."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20
+}
