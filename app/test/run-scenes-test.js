@@ -75,8 +75,8 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scenes test '));
 
 // ---- neutralizer with fakes ----
 {
-  const n = neutralizer({ home: 'C:\\Users\\Jo Ann', user: 'joann' });
-  check('a fake home and user name become C:\\Users\\you and you', n('C:\\Users\\Jo Ann\\Desktop\\joann.txt and C:/Users/Jo Ann/x') === 'C:\\Users\\you\\Desktop\\you.txt and C:/Users/you/x');
+  const n = neutralizer({ home: 'D:\\Profiles\\Jo Ann', user: 'joann' });
+  check('a fake home and user name become C:\\Users\\you and you', n('D:\\Profiles\\Jo Ann\\Desktop\\joann.txt and D:/Profiles/Jo Ann/x') === 'C:\\Users\\you\\Desktop\\you.txt and C:/Users/you/x');
 }
 
 // ---- lab keys: never shown ----
@@ -105,11 +105,11 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scenes test '));
 {
   const root = path.join(tmp, 'root'); const src = path.join(root, 'out', 'set-a', 'lessons.jsonl'); fs.mkdirSync(path.dirname(src), { recursive: true });
   const L = (content, extra = {}) => JSON.stringify({ messages: [{ role: 'system', content: 'sys' }, { role: 'user', content }, { role: 'assistant', content: 'OLD ANSWER' }], ...extra });
-  fs.writeFileSync(src, [L('Tidy C:\\Users\\Jo Ann\\Downloads please'), L('tidy c:\\users\\jo ann\\downloads   PLEASE'), L([{ type: 'text', text: 'what is this' }, { type: 'image_url', image_url: { url: 'data:' } }]), L('Email Zebedee about it'), L('Sum Documents\\budget.csv')].join('\r\n') + '\r\n');
+  fs.writeFileSync(src, [L('Tidy D:\\Profiles\\Jo Ann\\Downloads please'), L('tidy d:\\profiles\\jo ann\\downloads   PLEASE'), L([{ type: 'text', text: 'what is this' }, { type: 'image_url', image_url: { url: 'data:' } }]), L('Email Zebedee about it'), L('Sum Documents\\budget.csv')].join('\r\n') + '\r\n');
   const fix = path.join(tmp, 'to-fix.jsonl'), words = path.join(tmp, 'private.txt'), to = path.join(tmp, 'jobs', 'fix-jobs.jsonl');
   fs.writeFileSync(fix, [1, 2, 3, 4, 5, 9].map((n) => JSON.stringify({ id: `set-a#L${n}`, set: 'lessons-notes__lessons', family: 'qwen', source: 'out/set-a/lessons.jsonl', line: String(n), verdict: 'fix', faults: "['made_up_result']", note: 'OPUS NOTE' })).join('\n') + '\n');
   fs.writeFileSync(words, 'zebedee\r\n');
-  const r = spawnSync(process.execPath, ['fix-to-jobs.mjs', '--fix', fix, '--root', root, '--to', to, '--private', words, '--home', 'C:\\Users\\Jo Ann', '--user', 'joann'], { cwd: path.join(app, 'model-lab'), encoding: 'utf8' });
+  const r = spawnSync(process.execPath, ['fix-to-jobs.mjs', '--fix', fix, '--root', root, '--to', to, '--private', words, '--home', 'D:\\Profiles\\Jo Ann', '--user', 'joann'], { cwd: path.join(app, 'model-lab'), encoding: 'utf8' });
   const rows = fs.existsSync(to) ? fs.readFileSync(to, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
   check('a fix list becomes jobs: requests only, the fake home neutral, picture, private and repeated requests left out', r.status === 0 && rows.length === 2 && rows[0].text === 'Tidy C:\\Users\\you\\Downloads please' && rows[1].text === 'Sum Documents\\budget.csv' && /6 to-fix rows: 2 jobs.*1 lesson not found.*1 with a picture, 1 holding a private word, 1 the same request again/.test(r.stdout), r.stdout + r.stderr);
   const all = fs.readFileSync(to, 'utf8');
