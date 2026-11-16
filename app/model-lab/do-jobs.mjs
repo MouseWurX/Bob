@@ -130,6 +130,7 @@ if (sceneMode) {
   const have = queue.filter((j) => scenes.get(j.id, j.text)).length;
   say(`pre-flight: scenes ${sceneMode}: ${have} of ${queue.length} jobs already have one${sceneMode === 'make' ? ', the rest are written by the brain first' : ', the rest start with an empty home'}`);
 }
+if (o.office) o.office = path.resolve(String(o.office)); // a path next to the kit works from any folder
 if (o.office && !fs.existsSync(String(o.office))) fail(`no LibreOffice at --office ${o.office}`);
 // The Hands this test Bob has on: those that work inside the throwaway folder. Run, Schedules, Apps, Browser, Make
 // tools, MCP and Packs would act on the real PC or need what this home hasn't got, so they're off (Bob offers to switch
