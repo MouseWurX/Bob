@@ -127,6 +127,13 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
   check('a small ask can be a one-step plan', ps('1. Post the note on the comm board. Worked if reading the board shows it.').length === 1);
   const tools = { write_file: { check: () => true }, read_file: {}, notice_board: {}, take_note: {}, web_search: {} };
   check('the plan step only looks: changing tools and read-and-change tools wait for the jobs', lookOnly('read_file', tools) && lookOnly('web_search', tools) && !lookOnly('write_file', tools) && !lookOnly('notice_board', tools) && !lookOnly('take_note', tools));
+  const ro = read('src/brain-run-on.js');
+  // 16 Nov effort-tools test: the plan step saved a file it wasn't offered, and "This asks for 2 things" came after the plan note.
+  check('the plan step never runs a changing call, even one it wasn\'t offered', /if \(planPhase\) \{\s*const wait = reply\.tool_calls\.filter\(\(c\) => !lookOnly\(/.test(ro) && ro.indexOf('if (planPhase) {') < ro.indexOf('const held = await planGate('));
+  check('the plan note is the newest thing the brain reads, with no "this asks for N things" line', /!job\?\.guest && !planPhase\) \{ ctx\.stepsAsked/.test(ro) && ro.indexOf("if (!again && soloNote) msgs.push") > ro.indexOf('ctx.stepsAsked = askedSteps(text)'));
+  { const { nudgeOk } = await import('../src/loop-guard.js');
+    // Effort-tools test: "Sam asked for a file saved" sent the plan step back to save it.
+    check('the plan step gets no "go and do it" nudges or end-of-turn retries', !nudgeOk({ job: { solo: true, soloPhase: 'plan' } }) && nudgeOk({ job: { solo: true, soloPhase: 'do' } }) && /checkTurn\(ctx, reply, again\) \{\s*if \(planStep\(ctx\)\) return false;/.test(read('src/brain-tool-runs.js'))); }
   check('wired in: the plan step\'s tools are filtered', /job\.soloPhase === 'plan'\) tools = tools\.filter\(\(t\) => lookOnly\(/.test(read('src/brain-run-on.js')));
 }
 check('the plan gate asks whether each step is Bob\'s own, not advice for the user', /something you do yourself/.test(planGateTask('1. a\n2. b')) && /advice for the user goes in the answer/.test(PLAN_NOTE));
