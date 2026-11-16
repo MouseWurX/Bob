@@ -230,6 +230,8 @@ check('a key Tavily refuses stops pre-flight; no key at all says how to add one'
 check('--search-group: runs of one group share the cap (4 + 1 key check leaves 1; the next start finds none and stops)', grp.code === 0 && /group g1 make at most 6 Tavily searches of their own \(--search-cap\), 5 so far/.test(grp.log) && grpFull.code === 1 && /no web searches are left under --search-cap 6 \(group g1\)/.test(grpFull.log) && groupAfter === 6, `${groupAfter} ${grp.log.slice(-300)} ${grpFull.log.slice(-200)}`);
 const again = await run([]);
 check('a second start picks up where it stopped (nothing run twice)', /nothing to run/.test(again.log) || /0 to go/.test(again.log), again.log.slice(-200));
+{ const dj = fs.readFileSync(new URL('../model-lab/do-jobs.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  check('said is what the window shows (no step or moot text); the full join is kept as said_all (16 Nov distill grading)', /filter\(\(m\) => !m\.step && !m\.moot\)/.test(dj) && /said_all:/.test(dj)); }
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

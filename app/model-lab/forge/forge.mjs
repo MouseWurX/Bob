@@ -362,17 +362,21 @@ function lessonPreflight() {
   const q = (v) => `"${String(v).replace(/"/g, '')}"`;
   const cmds = [];
   // 16 Nov: a jobs gate between two job runs (jobs-gate.mjs) is checked too (its key and folder), though it needs no --hours
-  for (const m of plan.benchmark?.models || []) for (const c of (m.commands?.length ? m.commands : plan.benchmark?.commands || [])) if (/(write-lessons|do-jobs|jobs-gate)\.mjs/.test(c)) cmds.push([m, c]);
+  for (const m of plan.benchmark?.models || []) for (const c of (m.commands?.length ? m.commands : plan.benchmark?.commands || [])) if (/(write-lessons|do-jobs|jobs-gate|jobs-matrix)\.mjs/.test(c)) cmds.push([m, c]);
   for (const w of plan.write_lessons ? (Array.isArray(plan.write_lessons) ? plan.write_lessons : [plan.write_lessons]) : []) if (w.from_ideas) bad.push(`plan.write_lessons (${w.dir}) has no pre-flight yet: use benchmark commands`);
+  // 16 Nov: an add-on (llama-server --lora) for a served brain comes from Hugging Face
+  for (const m of plan.benchmark?.models || []) if (m.lora !== undefined && !/^hf:[^:\s]+\/[^:\s]+:[^\s]+\.gguf$/.test(String(m.lora))) bad.push(`${m.name}: lora must be hf:<repo>:<file>.gguf`);
   if (!cmds.length) return bad;
   if (!(Number(plan.hours_max) > 0) || !(Number(plan.dollars_max) > 0) || !(Number(plan.rent_minutes) > 0)) bad.push('hours_max, dollars_max and rent_minutes must all be set (blank caps fall back to 9 h / $40)');
   let hoursSum = 0;
   for (const [i, [m, c]] of cmds.entries()) {
     const slots = Math.max(1, Number(m.slots) || 1), slotCtx = Math.floor((Number(m.ctx) || 32768) / slots);
-    const par = Number((c.match(/--parallel\s+(\d+)/) || [])[1] || 1), hrs = Number((c.match(/--hours\s+([\d.]+)/) || [])[1] || 0);
+    // 16 Nov: a jobs matrix runs every variant at once, each with its own --parallel
+    const nVar = /jobs-matrix\.mjs/.test(c) ? Math.max(1, ((c.match(/--variants\s+("[^"]*"|\S+)/) || [])[1] || '').split(';').filter((x) => x.replace(/"/g, '').trim()).length) : 1;
+    const par = nVar * Number((c.match(/--parallel\s+(\d+)/) || [])[1] || 1), hrs = Number((c.match(/--hours\s+([\d.]+)/) || [])[1] || 0);
     hoursSum += hrs;
     if (!(hrs > 0) && !/jobs-gate\.mjs/.test(c)) bad.push(`${m.name} command ${i + 1} has no --hours`);
-    if (par > slots) bad.push(`${m.name} command ${i + 1}: --parallel ${par} but the card serves ${slots} slot(s)`);
+    if (par > slots) bad.push(`${m.name} command ${i + 1}: --parallel ${par}${nVar > 1 ? ` (${nVar} variants at once)` : ''} but the card serves ${slots} slot(s)`);
     if (/--gate\s+off/.test(c)) bad.push(`${m.name} command ${i + 1}: --gate off (every rental starts with a sample)`);
     const cmd = `${c.replace(/{{url}}/g, 'http://preflight.invalid').replace(/{{name}}/g, m.name).replace(/"?{{out}}"?/g, q(path.join(outDir, 'bench', plan.run || 'run', m.name))).replace(/"?{{lessons}}"?/g, q(path.join(outDir, 'lessons'))).replace(/{{run}}/g, plan.run || 'run')} --preflight --slot-ctx ${slotCtx}`;
     log(`pre-flight ${m.name} command ${i + 1} (${slots} slot(s) of ${slotCtx}):`);
@@ -629,7 +633,7 @@ async function benchOnPod(name) {
     // so the tests wrote to the wrong place and tool-score could not find the lessons); {{lessons}} is the lab's lessons folder for tool-score
     const q = (v) => `"${String(v).replace(/"/g, '')}"`;
     const bm = (plan.benchmark.models || []).find((m) => m.name === name) || {};
-    const slotArg = /(write-lessons|do-jobs)\.mjs/.test(c) && !/--slot-ctx/.test(c) ? ` --slot-ctx ${Math.floor((Number(bm.ctx) || 32768) / Math.max(1, Number(bm.slots) || 1))}` : ''; // 15 Nov: the writer checks the room per slot (the server's own figure first)
+    const slotArg = /(write-lessons|do-jobs|jobs-matrix)\.mjs/.test(c) && !/--slot-ctx/.test(c) ? ` --slot-ctx ${Math.floor((Number(bm.ctx) || 32768) / Math.max(1, Number(bm.slots) || 1))}` : ''; // 15 Nov: the writer checks the room per slot (the server's own figure first)
     const cmd = c.replace(/{{url}}/g, url).replace(/{{name}}/g, name).replace(/"?{{out}}"?/g, q(dir)).replace(/"?{{lessons}}"?/g, q(path.join(outDir, 'lessons'))).replace(/{{run}}/g, plan.run || 'run') + slotArg;
     const lf = path.join(dir, `${String(i + 1).padStart(2, '0')}.log`); fs.writeFileSync(lf, `$ ${cmd}\n`);
     log(`  ${cmd}`);

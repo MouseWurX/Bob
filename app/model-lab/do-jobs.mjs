@@ -11,6 +11,8 @@
 //      [--preflight] [--slot-ctx N] [--scene make|reuse] [--scenes <scenes.jsonl>[,...]] [--office <soffice>]
 //      [--search-probe] [--search-gap 2] [--search tavily] [--search-month N] [--search-cap N [--search-group <name>]]
 //      [--family qwen|gpt-oss]
+//      [--search-ledger <file>] [--effort low|medium|high|extreme] [--solo-effort] [--lora-scale N] [--scenes-only]
+//      [--search-cache <file>] [--cap-go-on] [--leave-out-kinds web,...]
 // Jobs: one per line, {id, text, setup?: [{path, content}]} (the lesson writer's ideas files work as they are; only the
 // request and its starting files are used, never an old answer). --never: held-out / test files; a job whose request
 // matches one of theirs is never run. Runs go to <out>/<dir>/runs.jsonl (one row per job, picked up again after a stop).
@@ -42,6 +44,20 @@
 // helpers left out, a group stays one message), asks for thinking the GPT-OSS way (model-family.js thinkKwargs: a tool
 // step is reasoning low, planning and the answer its own medium) with its own sampling, and the runs are stamped
 // family gpt-oss. The scene writer asks for reasoning low. Default: qwen, as before.
+// --effort / --solo-effort (16 Nov, the owner: test the distilled A3B "both before and after our effort changes"; "if our
+// changes to the effort settings for a single brain makes it fail more we will not proceed with that part of the update"):
+// every job is asked at this Effort (default low, as before), and --solo-effort turns on Effort on one brain
+// (solo-effort.js, PR #279) for this Bob. Each row records both, so one brain's runs compare before and after.
+// --search-ledger <file>: the month's ledger of another Lab copy on this PC (two copies share one month's searches).
+// --lora-scale N: every ask to the brain says how much of the server's add-on (llama-server --lora, id 0) to use: 0 is the
+// plain brain, 1 the add-on, so one server answers both (each slot changes over as asked).
+// --scenes-only: only write the test worlds (--scene make) for the jobs to go, save them, and stop; runs at several
+// efforts then start from the very same worlds (--scene reuse --scenes <that folder>/scenes.jsonl).
+// --search-cache <file>: a web_search query already answered (with results) by any run sharing this file gets the same
+// real result again, so several runs of the same jobs spend Tavily searches once per query, not once per run.
+// --cap-go-on (the owner, 16 Nov: "small brain keeps 100" searches): once --search-cap is used, jobs still start; Bob's
+// own backup cap stops his Tavily searches there and he says so himself (each row: search_capped). The month's budget
+// still stops new jobs. --leave-out-kinds web: jobs of those kinds (the ideas' "job" field) are not run.
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -65,6 +81,7 @@ const BLOCKED = /^(?:\[Outside text starts[^\]\n]*\]\s*)?(?:No results \(or the 
 const fail = (why) => { console.log(scrub(`PRE-FLIGHT FAIL: ${why}`)); process.exit(1); };
 
 // ---- the jobs: requests only, held-out ones left out ----
+const leaveOut = new Set(String(o['leave-out-kinds'] || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean));
 const norm = (t) => String(t || '').toLowerCase().replace(/\s+/g, ' ').trim();
 const files = String(o.jobs || '').split(',').map((x) => x.trim()).filter(Boolean);
 if (!files.length) fail('--jobs <ideas.jsonl> is needed');
@@ -82,9 +99,12 @@ let jobs = files.flatMap((f) => readJsonl(f)).filter((j) => j && typeof j.text =
 const held = jobs.filter((j) => never.has(norm(j.text)));
 jobs = jobs.filter((j) => !never.has(norm(j.text)));
 const seen = new Set(); jobs = jobs.filter((j) => (seen.has(j.id) ? false : seen.add(j.id)));
+const leftOut = jobs.filter((j) => leaveOut.has(String(j.job).toLowerCase()));
+jobs = jobs.filter((j) => !leaveOut.has(String(j.job).toLowerCase()));
 const done = new Set(readJsonl(F.runs).map((r) => r.id));
 const queue = jobs.filter((j) => !done.has(j.id)).slice(0, Number(o.count || 1e9));
 say(`pre-flight: jobs file(s) ${files.join(', ')}: ${jobs.length + held.length} rows`);
+if (leaveOut.size) say(`pre-flight: ${leftOut.length} job(s) of kind ${[...leaveOut].join(', ')} left out (--leave-out-kinds)`);
 if (o.never) say(`pre-flight: ${held.length} held-out request(s) left out (--never: ${neverFiles.length} file(s), ${never.size} requests known)`);
 say(`pre-flight: ${done.size} already run in this folder, ${queue.length} to go`);
 const sceneMode = String(o.scene || '').toLowerCase();
@@ -117,7 +137,18 @@ const group = o['search-group'] ? String(o['search-group']).replace(/[^\w.-]/g, 
 if (group && !Number.isFinite(runCap)) fail('--search-group needs --search-cap');
 const groupFile = group ? path.join(L.out, `tavily-searches-${new Date().toISOString().slice(0, 7)}-${group}.json`) : '';
 if (o['search-cap'] !== undefined && !(Number(o['search-cap']) > 0)) fail(`--search-cap ${o['search-cap']}: give the most Tavily searches this run may make`);
-const ledger = path.join(L.out, `tavily-searches-${new Date().toISOString().slice(0, 7)}.json`);
+const ledger = o['search-ledger'] ? path.resolve(String(o['search-ledger'])) : path.join(L.out, `tavily-searches-${new Date().toISOString().slice(0, 7)}.json`);
+const EFFORTS = ['low', 'medium', 'high', 'extreme'];
+const effort = String(o.effort || 'low').toLowerCase();
+if (!EFFORTS.includes(effort)) fail(`--effort ${o.effort}: one of ${EFFORTS.join(', ')}`);
+const solo = o['solo-effort'] === true || o['solo-effort'] === 'true';
+const loraScale = o['lora-scale'] !== undefined ? Number(o['lora-scale']) : null;
+if (loraScale !== null && !(loraScale >= 0 && loraScale <= 2)) fail(`--lora-scale ${o['lora-scale']}: give 0 to 2`);
+const loraBody = loraScale === null ? {} : { lora: [{ id: 0, scale: loraScale }] };
+const scenesOnly = o['scenes-only'] === true;
+if (scenesOnly && String(o.scene || '').toLowerCase() !== 'make') fail('--scenes-only needs --scene make');
+const cachePath = o['search-cache'] ? path.resolve(String(o['search-cache'])) : '';
+const goOn = o['cap-go-on'] === true;
 const ledgerUsed = () => { try { return Number(JSON.parse(fs.readFileSync(ledger, 'utf8')).used) || 0; } catch { return 0; } };
 let searchLeft = Infinity, searches = 0, budgetStop = false;
 let webSearches = 0;
@@ -129,22 +160,25 @@ const counted = (n = 1) => {
   try { fs.writeFileSync(ledger, JSON.stringify({ used: ledgerUsed() + n, at })); } catch {}
   if (group) { try { fs.writeFileSync(groupFile, JSON.stringify({ used: readUsed(groupFile) + n, at })); } catch {} }
 };
-const searchesLeft = () => Math.min(searchLeft - searches, monthly - SEARCH_SPARE - ledgerUsed(), runCap - capUsed());
+const monthLeft = () => Math.min(searchLeft - searches, monthly - SEARCH_SPARE - ledgerUsed());
+const searchesLeft = () => Math.min(monthLeft(), runCap - capUsed());
+const stopLeft = () => (goOn ? monthLeft() : searchesLeft()); // --cap-go-on: only the month stops new jobs
 if (searchWith) {
   if (searchWith !== 'tavily') fail(`--search ${o.search}: only tavily is known`);
   const got = labKey('tavily');
   if (!got.key) fail(got.why);
   searchKey = got.key; scrub = scrubber(searchKey);
-  const c = await tavilyCheck(searchKey); counted();
+  // --key-checked (jobs-matrix): another run on this PC checked the key a moment ago, so no search is spent on it again
+  const c = o['key-checked'] === true ? { ok: true, skipped: true } : await tavilyCheck(searchKey); if (!c.skipped) counted();
   if (!c.ok) fail(c.status === 401 || c.status === 403 ? `Tavily refused the saved key (error ${c.status}): save it again with "Save Tavily key for the Lab.cmd"` : `the Tavily key couldn't be checked (${c.status ? `error ${c.status}` : c.why})`);
-  say(`pre-flight: Tavily key works (${got.from === 'env' ? 'from LAB_TAVILY_KEY' : 'the saved one'}; 1 search used, ${c.results} result)`);
+  say(c.skipped ? 'pre-flight: Tavily key found (checked by the first run of this matrix; no search used)' : `pre-flight: Tavily key works (${got.from === 'env' ? 'from LAB_TAVILY_KEY' : 'the saved one'}; 1 search used, ${c.results} result)`);
   const u = await tavilyUsage(searchKey);
   if (u.ok) { searchLeft = Math.max(0, u.limit - u.used - SEARCH_SPARE); say(`pre-flight: Tavily's usage page: ${u.used} of ${u.limit} searches used this month`); }
   else say(`pre-flight: Tavily's usage page didn't say (${u.why}); the Lab's own count is used`);
   if (Number.isFinite(monthly)) say(`pre-flight: the Lab has made ${ledgerUsed()} of its ${monthly} searches this month (--search-month)`);
   if (Number.isFinite(runCap)) say(`pre-flight: ${group ? `the runs in group ${group} make` : 'this run makes'} at most ${runCap} Tavily searches of their own (--search-cap), ${capUsed()} so far`);
   const left = searchesLeft();
-  if (Number.isFinite(left)) { say(`pre-flight: this run may make about ${Math.max(0, left)} more web searches`); if (left <= 0) fail(runCap - capUsed() <= 0 ? `no web searches are left under --search-cap ${runCap}${group ? ` (group ${group})` : ''}: a search job could not finish` : 'no web searches are left this month: a search job could not finish'); }
+  if (Number.isFinite(left)) { say(`pre-flight: this run may make about ${Math.max(0, left)} more web searches`); if (stopLeft() <= 0) fail(runCap - capUsed() <= 0 ? `no web searches are left under --search-cap ${runCap}${group ? ` (group ${group})` : ''}: a search job could not finish` : 'no web searches are left this month: a search job could not finish'); }
   else say('pre-flight: no search budget (--search-month, --search-cap): only 5 failed searches in a row stop the run');
 }
 // The backup search as Bob's settings hold it (off on every Bob unless its owner turns it on), the key handed in for
@@ -161,6 +195,7 @@ function keyedSearch(kit) {
   return () => { let now = seen; try { const c = JSON.parse(fs.readFileSync(f, 'utf8')); if (c.month === month()) now = Number(c.used?.tavily) || 0; } catch {} const d = Math.max(0, now - seen); seen = now; return d; };
 }
 
+say(`pre-flight: every job is asked at Effort ${effort}${solo ? ', with Effort on one brain switched on' : ' (Effort on one brain off)'}`);
 const probe = asFamily(await loadBob(L.bob, kitOpts));
 const probeUsed = keyedSearch(probe);
 say(`Bob's tools from ${L.bob}: ${probe.bobSrc?.version || '?'}${probe.bobSrc?.commit ? ` (${probe.bobSrc.commit})` : ''}; tool shape ${probe.toolShapes ?? '?'}`);
@@ -197,7 +232,7 @@ const today = new Date().toISOString().slice(0, 10);
 // The scene writer: the served brain, thinking off, cool, JSON only (llama-server's json_object grammar when it has it)
 let jsonMode = true;
 async function sceneChat(messages) {
-  const body = { cache_prompt: true, messages, max_tokens: 6000, stream: false, ...thinkBody(false), temperature: 0.3, top_p: 0.8, top_k: 20, ...(jsonMode ? { response_format: { type: 'json_object' } } : {}) };
+  const body = { cache_prompt: true, messages, max_tokens: 6000, stream: false, ...thinkBody(false), temperature: 0.3, top_p: 0.8, top_k: 20, ...loraBody, ...(jsonMode ? { response_format: { type: 'json_object' } } : {}) };
   const r = await fetch(`${url}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...auth }, body: JSON.stringify(body) });
   if (!r.ok) { const full = await r.text(); if (jsonMode && /response_format|json_object|grammar/i.test(full)) { jsonMode = false; return sceneChat(messages); } throw new Error(`llama-server ${r.status}: ${full.slice(0, 200)}`); }
   return String((await r.json()).choices?.[0]?.message?.content || '');
@@ -211,6 +246,18 @@ async function sceneFor(j) {
   scenes.put(row); save(F.scenes, row);
   return { scene: got.scene, problems: got.problems, made: 'new' };
 }
+if (scenesOnly) {
+  let i = 0, made = 0, bad = 0;
+  const one = async () => { while (i < queue.length) { const j = queue[i++]; try { const r = await sceneFor(j); if (r.made === 'new') made++; if (r.problems?.length) bad++; say(`scene ${j.id}: ${r.made}${r.problems?.length ? ` (${r.problems.length} problem(s))` : ''}`); } catch (e) { bad++; say(`scene ${j.id}: not made (${String(e.message || e).slice(0, 160)})`); if (/ECONNREFUSED|fetch failed/.test(String(e.message || e))) i = queue.length; } } };
+  await Promise.all(Array.from({ length: Math.max(1, Number(o.parallel)) }, one));
+  say(`scenes: ${made} new, ${queue.length - made} already saved, ${bad} with problems; saved in ${F.scenes}`);
+  process.exit(0);
+}
+// the shared answer cache for web_search (--search-cache): one row per query that found something
+const cacheKey = (a) => norm(a?.query || a?.q || '');
+const cacheGet = (k) => { if (!cachePath || !k) return null; try { for (const r of readJsonl(cachePath)) if (r.k === k) return r.text; } catch {} return null; };
+const cachePut = (k, text) => { if (cachePath && k && text && !BLOCKED.test(text) && !/^Error/.test(text)) try { appendJsonl(cachePath, JSON.parse(scrub(JSON.stringify({ k, text, at: new Date().toISOString() })))); } catch {} };
+let cacheHits = 0;
 // 16 Nov: the PC's IP was bot-blocked and every web_search came back with Bob's "No results" line
 let lastSearch = 0, noResultsInRow = 0, searchStop = false;
 async function searchTurn() { const gap = Number(o['search-gap']) * 1000; for (;;) { const w = lastSearch + gap - Date.now(); if (w <= 0) break; await wait(w); } lastSearch = Date.now(); }
@@ -249,6 +296,7 @@ async function runJob(j) {
   const brain = kit.brain;
   for (const n of NOT_HERE) delete brain.tools[n];
   brain.cfg.loopHelpOff = false; brain.cfg.toolHelp = true;
+  if (solo) brain.cfg.soloEffort = true;
   const steps = []; const missing = new Set(); let real = 0, asks = 0;
   // the job's own starting files (an ideas row's setup), then its scene
   const start = plantScene(kit, { files: j.setup.filter((f) => f && typeof f.path === 'string').map((f) => ({ path: f.path, content: String(f.content ?? '') })) }, { day: today });
@@ -288,13 +336,15 @@ async function runJob(j) {
     (steps.at(-1)?.calls || steps).push(call);
     const { args: a, bad } = kit.sandboxArgs(args);
     let res;
-    if (name === 'web_search' && !bad) { await searchTurn(); webSearches++; }
+    const hit = name === 'web_search' && !bad ? cacheGet(cacheKey(a)) : null;
+    if (hit) { cacheHits++; call.cached = true; }
+    else if (name === 'web_search' && !bad) { await searchTurn(); webSearches++; }
     try {
-      res = bad ? { text: `Error: ${kit.neutral(bad)} is outside the folders Bob may use here` }
+      res = hit ? { text: hit } : bad ? { text: `Error: ${kit.neutral(bad)} is outside the folders Bob may use here` }
         : await Promise.race([bobRunTool(name, a, ctx), wait(120000).then(() => ({ text: `Error: ${name} took too long` }))]);
     } catch (e) { if (ctx?.signal?.aborted) throw e; res = { text: `Error: ${String(e?.message || e)}` }; }
     const t = typeof res === 'string' ? res : typeof res?.text === 'string' ? res.text : JSON.stringify(res ?? '');
-    if (name === 'web_search' && !bad) { counted(tavilyUsed()); noResultsInRow = BLOCKED.test(t) ? noResultsInRow + 1 : 0; if (noResultsInRow >= 5) searchStop = true; }
+    if (name === 'web_search' && !bad && !hit) { cachePut(cacheKey(a), t); counted(tavilyUsed()); noResultsInRow = BLOCKED.test(t) ? noResultsInRow + 1 : 0; if (noResultsInRow >= 5) searchStop = true; }
     call.result = kit.neutral(t).slice(0, 6000);
     return { ...(res && typeof res === 'object' ? res : {}), text: kit.neutral(t) || '(no result)' };
   };
@@ -308,8 +358,8 @@ async function runJob(j) {
       const asked = q.think; // Bob's loop: false on a tool step (step-thinking.js), 'high' for a deep review, else his default
       const think = asked === undefined ? true : asked === 'high' || asked === 'extreme' ? true : Boolean(asked);
       const body = { cache_prompt: true, messages: LlamaCpp.toOpenAI(msgs), ...(q.tools?.length ? { tools: deepNeutral(kit, q.tools) } : {}), max_tokens: Number(o.max), stream: false,
-        ...thinkBody(family === 'qwen' ? think : asked), ...sampling(Boolean(q.tools?.length), asked) };
-      const effort = effortOf(asked);
+        ...thinkBody(family === 'qwen' ? think : asked), ...sampling(Boolean(q.tools?.length), asked), ...loraBody };
+      const stepEffort = effortOf(asked); // GPT-OSS reasoning level of this step (the job's Effort is `effort`)
       const t0 = Date.now();
       const r = await fetch(`${url}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...auth }, body: JSON.stringify(body), signal: q.signal });
       if (!r.ok) {
@@ -318,7 +368,7 @@ async function runJob(j) {
         throw new Error(`llama-server ${r.status}: ${full.slice(0, 300)}`);
       }
       const res = await r.json(); const m = res.choices?.[0]?.message || {};
-      steps.push({ think, ...(effort ? { effort } : {}), thinking: kit.neutral(String(m.reasoning_content || '')), content: kit.neutral(String(m.content || '')), calls: [], secs: (Date.now() - t0) / 1000, tokens: res.usage?.completion_tokens ?? null, prompt_tokens: res.usage?.prompt_tokens ?? null, finish: res.choices?.[0]?.finish_reason || '' });
+      steps.push({ think, ...(stepEffort ? { effort: stepEffort } : {}), thinking: kit.neutral(String(m.reasoning_content || '')), content: kit.neutral(String(m.content || '')), calls: [], secs: (Date.now() - t0) / 1000, tokens: res.usage?.completion_tokens ?? null, prompt_tokens: res.usage?.prompt_tokens ?? null, finish: res.choices?.[0]?.finish_reason || '' });
       const calls = (m.tool_calls || []).map((c) => { let a = {}, raw; try { a = JSON.parse(c.function?.arguments || '{}'); } catch { raw = c.function?.arguments; } return { function: { name: c.function?.name, arguments: a, ...(raw !== undefined ? { raw } : {}) } }; });
       if (!calls.length && q.tools?.length) { const tc = textCalls(m.content || '', new Set(q.tools.map((x) => x.function?.name))); if (tc) return { role: 'assistant', content: tc.text, tool_calls: tc.calls }; }
       return { role: 'assistant', content: m.content || '', tool_calls: calls.length ? calls : undefined };
@@ -327,15 +377,19 @@ async function runJob(j) {
   };
   const t0 = Date.now(); const session = `job-${j.id}`; let error = '';
   try {
-    const { jobId } = brain.enqueue(session, j.text);
+    const { jobId } = brain.enqueue(session, j.text, [], effort);
     const until = Date.now() + Number(o['job-minutes']) * 60000;
     for (;;) { const s = brain.queue.find((x) => x.id === jobId); if (!s || ['done', 'failed', 'interrupted', 'cancelled'].includes(s.state)) { if (s && s.state !== 'done') error = `${s.state}: ${String(s.error || '')}`; break; } if (Date.now() > until) { error = 'took too long'; try { brain.cancel?.(jobId); } catch {} break; } await wait(200); }
   } catch (e) { error = String(e.message || e); }
-  const said = brain.session(session).filter((m) => m.role === 'assistant' && !m.tool_calls?.length).map((m) => String(m.content || '')).join(' ').trim();
+  // said: what the user's window shows (16 Nov: Bob marks working text `step` and his reviews and minutes `moot`, so the
+  // window shows only the answer); said_all: every plain reply joined, as before, for reading the whole run
+  const plain = brain.session(session).filter((m) => m.role === 'assistant' && !m.tool_calls?.length);
+  const said = plain.filter((m) => !m.step && !m.moot).map((m) => String(m.content || '')).join(' ').trim();
+  const saidAll = plain.map((m) => String(m.content || '')).join(' ').trim();
   const row = {
-    id: j.id, job: j.job, text: j.text, ...(j.from ? { from: j.from } : {}), planted, scene, said: kit.neutral(said), steps, asks, real, standins: [], missing: [...missing],
+    id: j.id, job: j.job, text: j.text, ...(j.from ? { from: j.from } : {}), planted, scene, said: kit.neutral(said), ...(saidAll !== said ? { said_all: kit.neutral(saidAll) } : {}), steps, asks, real, standins: [], missing: [...missing],
     secs: (Date.now() - t0) / 1000, ...(error ? { error: kit.neutral(error).slice(0, 400) } : {}),
-    family, tool_shapes: kit.toolShapes, bob_src: kit.bobSrc, brain: process.env.LAB_MODEL_NAME || 'served', at: new Date().toISOString(),
+    effort, solo_effort: solo, search_capped: steps.some((st) => (st.calls || []).some((c) => c.name === 'web_search' && /at its monthly cap/.test(String(c.result || '')))), ...(loraScale !== null ? { lora_scale: loraScale } : {}), family, tool_shapes: kit.toolShapes, bob_src: kit.bobSrc, brain: process.env.LAB_MODEL_NAME || 'served', at: new Date().toISOString(),
     messages: deepNeutral(kit, brain.session(session))
   };
   kit.done();
@@ -354,13 +408,13 @@ async function worker() {
     say(`${String(ran).padStart(3)} ${row.error ? 'ERR ' : row.said ? 'done' : 'no words'} ${row.id} ${String(row.text).slice(0, 60)} -> ${(row.steps || []).flatMap((s) => s.calls || []).map((c) => c.name).join(',') || 'no tool'} (${row.asks || 0} steps, ${(row.secs || 0).toFixed(0)} s${row.standins?.length ? `, stand-ins: ${row.standins.join(',')}` : ''})`);
     if (/ECONNREFUSED|fetch failed/.test(row.error || '')) { say('the brain is gone (connection refused): stopping'); next = queue.length; }
     if (searchStop && next < queue.length) { say('5 web searches in a row found nothing (the search pages may be blocking this PC): stopping, so no more of the rental goes on jobs whose searches fail'); next = queue.length; }
-    if (!budgetStop && searchesLeft() <= 0 && next < queue.length) { budgetStop = true; say(`${searches} Tavily searches made: the search budget is used (${runCap - capUsed() <= 0 ? `this run's cap of ${runCap}` : "this month's"}), so no new job starts; ${queue.length - next} wait for the next run`); next = queue.length; }
+    if (!budgetStop && stopLeft() <= 0 && next < queue.length) { budgetStop = true; say(`${searches} Tavily searches made: the search budget is used (${runCap - capUsed() <= 0 ? `this run's cap of ${runCap}` : "this month's"}), so no new job starts; ${queue.length - next} wait for the next run`); next = queue.length; }
   }
 }
 await Promise.all(Array.from({ length: Math.max(1, Number(o.parallel)) }, worker));
 const all = readJsonl(F.runs);
 const n = all.length, by = (f) => all.filter(f).length;
-const lines = [`# Do jobs: ${path.basename(dir)}`, '', `${n} runs. Answered in words: ${by((r) => r.said)}. Errors: ${by((r) => r.error)}. Called a tool this test Bob hasn't got: ${by((r) => r.missing?.length)}. With a scene: ${by((r) => r.scene?.files?.length || r.scene?.folders?.length || r.scene?.board || r.scene?.memory)}. Every run is read by Opus before any is kept.${searchStop ? ' Stopped early: web search found nothing 5 times in a row.' : ''}${budgetStop ? ` Stopped early: ${runCap - capUsed() <= 0 ? `this run's search cap (${runCap})` : "this month's search budget"} was used.` : ''}`, '', `Web searches this run: ${webSearches}; Tavily searches (the backup, and key checks): ${searches}${Number.isFinite(searchesLeft()) ? ` (about ${Math.max(0, searchesLeft())} more allowed)` : ''}. Jobs not started: ${Math.max(0, queue.length - ran)}.`];
+const lines = [`# Do jobs: ${path.basename(dir)}`, '', `${n} runs. Answered in words: ${by((r) => r.said)}. Errors: ${by((r) => r.error)}. Called a tool this test Bob hasn't got: ${by((r) => r.missing?.length)}. With a scene: ${by((r) => r.scene?.files?.length || r.scene?.folders?.length || r.scene?.board || r.scene?.memory)}. Effort: ${effort}${solo ? ' (one brain)' : ''}. Every run is read by Opus before any is kept.${searchStop ? ' Stopped early: web search found nothing 5 times in a row.' : ''}${budgetStop ? ` Stopped early: ${runCap - capUsed() <= 0 ? `this run's search cap (${runCap})` : "this month's search budget"} was used.` : ''}`, '', `Web searches this run: ${webSearches}${cachePath ? ` (+${cacheHits} answered from the shared cache)` : ''}; Tavily searches (the backup, and key checks): ${searches}${Number.isFinite(searchesLeft()) ? ` (about ${Math.max(0, searchesLeft())} more allowed)` : ''}. Jobs not started: ${Math.max(0, queue.length - ran)}.`];
 fs.writeFileSync(F.summary, scrub(lines.join('\n') + '\n'));
 say(`\n${lines.slice(2).join('\n')}\nRuns: ${F.runs}`);
 process.exit(0);

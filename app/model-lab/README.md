@@ -43,6 +43,18 @@ Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf and its mmproj under `<parent>/models` (found by
    `--family gpt-oss`: the served brain is a GPT-OSS one, so Bob's loop uses his GPT-OSS tool set and asks for thinking the
    GPT-OSS way (a no-thinking step is reasoning low), with its own sampling; runs are stamped family gpt-oss. Default qwen.
    plans\jobs-gptoss-trial.json: the stock 120B does the first 45 fix-list jobs from the scenes Flash-Next saved.
+   Effort (16 Nov): `--effort low|medium|high|extreme` asks every job at that Effort (low by default, as before) and
+   `--solo-effort` turns on Effort on one brain (src/solo-effort.js) for this Bob; each row records both. `--lora-scale <n>`
+   tells a llama-server started with `--lora` how much of its add-on to use on every ask (0 is the plain brain), so one
+   server answers for both. `--scenes-only` writes the test worlds and stops. `--search-cache <file>` answers a query any
+   run sharing the file already searched (with results) with that same real result. `--search-ledger <file>` counts the
+   Tavily searches in another Lab copy's ledger. `--search-cap <n>` caps this run; with `--cap-go-on` the jobs still start
+   once it's used and Bob's own backup cap says so (row: search_capped). `--leave-out-kinds web` skips jobs of a kind.
+   `node jobs-matrix.mjs --prefix <name> --variants "a=<flags>;b=<flags>" [--stagger <s>] <do-jobs flags>`: one served
+   brain, the same jobs, several do-jobs runs at once (folders <name>-a, <name>-b ...). The brain writes every test world
+   once first (<name>-scenes), and every variant starts from those, so the only difference is how they were run. The
+   search cap is split between the variants; `--stagger` starts each one a little later, so most repeated queries come from
+   the cache. plans\jobs-distill-a3b.json runs the distilled Qwen3.6 A3B add-on before and after Effort on one brain.
    `node jobs-gate.mjs --dir <name> --runs 45 --want-shapes 4 --search tavily` reads a finished do-jobs folder and exits
    86 (the Forge then deletes the pod) unless it was clean: enough runs, answered in words, few errors, test worlds made,
    one tool shape, searches with results, and nothing private in any saved file (the Lab's key, the Lab PC's user name

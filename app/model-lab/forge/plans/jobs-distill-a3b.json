@@ -1,0 +1,55 @@
+{
+ "run": "distill-a3b-jobs",
+ "note": "16 Nov (the owner: \"we need to try a rental with qwen3.6 a3b distilled from 3.8, and bobs tools, and real jobs, and see how it does. both before and after our effort changes\"; \"the small brain gets a 100 real job trial run\"; \"if our changes to the effort settings for a single brain makes it fail more we will not proceed with that part of the update\"). Stock Qwen3.6-35B-A3B (unsloth MTP build, UD-Q4_K_XL) with lododoai's distill add-on (Qwen3.8-27B teacher, Apache 2.0) over it. The add-on first writes the test world of each of 100 jobs (run 3's 45 plus the first 55 fix-list jobs), then five runs of those same jobs at once: before (Effort Low, Effort High as Bob does it today) and after (Effort on one brain at Low, High and Max, PR #279). Tavily (the owner: \"small brain keeps 100\"): at most 100 searches shared by all five runs (--search-group), counted in lab-kit-shape4's month ledger too; jobs mainly about web lookups are left out, a query already answered comes from the shared cache, and once the 100 are used the jobs go on and Bob says his backup is at its cap (search_capped rows are graded apart). The owner, 16 Nov: \"if it does we're keeping the output as lessons\": Opus 5.5 reads every run; clean runs become lessons as they ran (Bob's own shape-4 tool syntax), the rest are study material and never train. The Flash-Next 800 jobs have search priority. Opus 5.5 grades every run. L40S, 10 slots. Caps 3.5 h / $5.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA L40S",
+  "NVIDIA RTX 6000 Ada Generation"
+ ],
+ "step_up": [],
+ "disk_gb": 60,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 3.5,
+ "dollars_max": 5,
+ "rent_minutes": 30,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one server: stock Qwen3.6-35B-A3B with the distill add-on loaded (each ask sets lora scale 1).",
+  "hours_each": 3.0,
+  "models": [
+   {
+    "name": "distill-a3b",
+    "nickname": "Qwen3.6-35B-A3B + Qwen3.8-27B distill add-on, doing Bob's jobs",
+    "file": "hf:unsloth/Qwen3.6-35B-A3B-MTP-GGUF:Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+    "lora": "hf:lododoai/Qwen3.6-35B-A3B-Distill-Qwen3.8-27B-GGUF-lora:lododo-Distill-v1.0-lora-f16.gguf",
+    "quant": "UD-Q4_K_XL",
+    "slots": 10,
+    "ctx": 327680,
+    "extra": "",
+    "hours": 3.0,
+    "commands": [
+     "node jobs-matrix.mjs --prefix distill-a3b --stagger 60 --variants \"before-low=--effort low;before-high=--effort high;after-low=--effort low --solo-effort;after-high=--effort high --solo-effort;after-max=--effort extreme --solo-effort --job-minutes 20\" --url {{url}} --bob .. --jobs ../../../lab-kit-shape4/bob-model-lab/out/jobs-trial/ideas.jsonl,../../../lab-kit-shape4/bob-model-lab/out/jobs-fix/jobs.jsonl --never ../../../lab-kit-shape4/bob-model-lab/out/jobs-trial/never --count 100 --parallel 2 --want-shapes 4 --max 4096 --hours 2.5 --job-minutes 10 --lora-scale 1 --search tavily --search-probe --search-month 1500 --search-cap 100 --search-group distill-a3b --cap-go-on --leave-out-kinds web,research,search --search-ledger ../../../lab-kit-shape4/bob-model-lab/out/tavily-searches-2026-11.json --search-cache ../../bob-model-lab/out/distill-a3b-search-cache.jsonl"
+    ]
+   }
+  ]
+ },
+ "prep": [
+  "Inputs, read only from lab-kit-shape4 (the Flash-Next copy; nothing is written there but the Tavily ledger): out/jobs-trial/ideas.jsonl (run 3's 45 jobs), out/jobs-fix/jobs.jsonl (the first 55), out/jobs-trial/never/ (held-out test files).",
+  "--want-shapes 4 stops the run before renting if this copy's tools are any other shape. This copy is branch claude/project-thread-k0vl4g: the Lab of PR #275 plus PR #279 (Effort on one brain)."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20
+}

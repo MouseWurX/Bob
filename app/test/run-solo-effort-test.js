@@ -35,6 +35,7 @@ check('the main brain drafts and reviews; no Deep thinking or Review brain', dra
 check('switched off: the moot keeps its brains', draftBrain({ ...on, soloEffort: false }, 'high').model === 'deep-brain' && reviewBrain({ ...on, soloEffort: false }).model === 'review-brain');
 check('the old moot doesn\'t also run', !careful(job('high', { solo: true })) && careful(job('high')));
 
+
 // ---- words ----
 check('a review is "Looks right." or "Improve it:"', soloVerdict('Looks right. All good.') === 'ok' && soloVerdict('Improve it: 1. the sum is wrong') === 'improve' && soloVerdict('hmm') === 'improve');
 check('"Not happy with:" is read out of the improved answer', notHappy('Done.\nNot happy with: the test never ran.') === 'the test never ran.' && notHappy('All done.') === '');
