@@ -2878,3 +2878,10 @@ body.still .phone-menu { animation: none; }
   .lesson-index th, .lesson-index td { border: 0; padding: 2px 8px; }
   .lesson-index td[data-label]::before { content: attr(data-label) ": "; font-weight: bold; }
 }
+
+/* The brain catalogue's i: one card layout for every brain (label column, value column). */
+.info-card { display: block; }
+.info-card .ic-what { display: block; margin-bottom: 6px; }
+.info-card .ic-row { display: grid; grid-template-columns: 5.2em 1fr; gap: 8px; padding: 2px 0; border-top: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); }
+.info-card .ic-k { color: var(--accent); font-weight: 600; }
+.info-card .ic-v { overflow-wrap: anywhere; }

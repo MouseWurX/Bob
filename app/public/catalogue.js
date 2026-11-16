@@ -3,11 +3,11 @@
 // commit, or Ollama). Each model has an Active switch: active models show in the slots and menus, the rest stay here,
 // so the pickers stay short. Pure HTML builders; cellar.js handles the clicks.
 import { findHtml } from './cat-find.js'; // 1.5.209 Find more models
-import { officialTag, reapTag, turboTag, REAP_LINE, isReap, fitsHere, applyFilters, sortModels, filterBarHtml, filtersOn, cleanFilters } from './cat-sort.js'; // 1.5.208 sorting, filters, maker tags
+import { officialTag, reapTag, turboTag, isTurbo, makerKind, isReap, fitsHere, applyFilters, sortModels, filterBarHtml, filtersOn, cleanFilters } from './cat-sort.js'; // 1.5.208 sorting, filters, maker tags
 import { placeFor, quantOf, sizeLine } from './place.js';
 import { canDo, suit, pickFor, deviceFit, sourceOf, SLOT_NAMES, roomOn, tooBigEverywhere } from './fit.js';
 import { allSlots, isActive, tipHtml, slotValue, equipped } from './equip.js';
-import { keep } from './tips.js';
+import { keep, tip as tipButton } from './tips.js';
 import { fitOf, byFit } from './fit-sort.js';
 import { esc, gb } from './util.js';
 
@@ -84,8 +84,6 @@ function rowHtml(m, job, ctx) {
   const src = sourceOf(m);
   // Everything that explains (what it is, how it does on other machines, licence) goes in the tip; what you act on stays.
   const fits = fitLines(deviceFit(m));
-  // 1.5.101: no line twice ("Runs on the processor" when the description already says so); the source is on the ↗ only.
-  const where = m.vramGB ? `Wants ${gb(m.vramGB)} of graphics memory` : /runs on the processor/i.test(m.what || '') ? '' : 'Runs on the processor';
   const out = m.published ? `Released ${dayWords(m.published)}` : '';
   const isNew = ctx.newIds?.has(m.id) === true;
   const dated = datedLine(m, ctx.allModels || ctx.models);
@@ -102,7 +100,20 @@ function rowHtml(m, job, ctx) {
   const fitHere = fitOf(m, ctx, ctx.bobNet, ctx.platform);
   const fitTag = fitHere?.good && !rec ? `<span class="tag good fit-tag" tabindex="0" data-tip="${esc(fitHere.why || 'Runs well here.')}">${esc(fitHere.word)}</span>` : '';
   const quant = quantOf(m);
-  const tip = [m.what, communityLine(m), distilledLine(m), m.thinks ? THINKS_LINE : '', where, out, isNew ? 'New: one of the five newest releases in its family.' : '', dated, m.trial ? `${TRIAL_LINE} ${m.trialNote || ''}`.trim() : '', m.bench || '', isReap(m) ? REAP_LINE : '', quant ? `Squeezed to ${quant} (how tightly the file is packed; a lower number is smaller and a little less sharp).` : '', place && placeTag ? place.why : s.why, roomy ? `Fits ${roomy} on your Bob-Net.` : '', fits, `Licence ${m.license}${m.commercial === false ? ' (personal use only)' : ''}`].filter(Boolean).join('\n');
+  // Nov 16 2026 (the owner: "a single format for every one, like a rolodex card"): every i is the same card, the same
+  // rows in the same order, so you always know where to look. Rows with nothing to say are left out; the long
+  // explanations live in the tags' own tips and in Help.
+  const fitWhy = place && placeTag ? place.why : s.why;
+  const card = infoCard(m, [
+    ['Made by', madeByLine(m) || 'not stated'],
+    ['Released', [dayWords(m.published) || 'not stated', isNew ? 'New' : ''].filter(Boolean).join(' · ')],
+    ['Size', [m.params ? `${m.params}B` : '', m.sizeGB != null ? `${m.sizeGB} GB download` : '', quant].filter(Boolean).join(' · ')],
+    ['Needs', m.vramGB ? `${gb(m.vramGB)} of graphics memory` : 'the processor (no graphics card needed)'],
+    ['Runs', fits],
+    ['Here', [fitWhy, roomy ? `Fits ${roomy} on your Bob-Net.` : ''].filter(Boolean).join(' ')],
+    ['Notes', noteLines(m, dated)],
+    ['Licence', `${m.license || 'not stated'}${m.commercial === false ? ' (personal use only)' : ''}`],
+  ]);
   const tags = `${recTag}${makerTag(m)}${officialTag(m)}${reapTag(m)}${turboTag(m)}${isOwn(m) ? (m.madeByBob ? '<span class="tag own-bob" tabindex="0" data-tip="Its brain card says it was made for Bob in his own workshop. Bob runs it from where it is and leaves the pick to you.">Bob\'s own brain</span>' : '<span class="tag" data-tip="A brain you added from a file on this replicant matrix. Bob runs it from where it is and never recommends it over the ones he knows.">Your own file</span>') : ''}${isNew ? `<span class="tag new-tag" tabindex="0" data-tip="${esc(`New: one of the five newest releases in the ${familyOf(m)} family.${out ? ` ${out}.` : ''}`)}">New</span>` : ''}${dated ? `<span class="tag dated-tag" tabindex="0" data-tip="${esc(dated)}">Dated</span>` : ''}${fitTag}${!rec && s.level !== 'ok' ? placeTag || LEVEL_TAG[s.level] || '' : ''}${here ? '<span class="tag good">On this replicant matrix</span>' : ''}`;
   const on = isActive({ entry: m, value: m.id, installed: here }, ctx.active);
   const sw = job.id === 'phone' ? '<span class="muted">In the phone app</span>'
@@ -120,7 +131,7 @@ function rowHtml(m, job, ctx) {
   // one (naughty list) down the left, a light tint, and their tags in words.
   const kind = isNaughty(m) ? ' naughty' : isCommunity(m) ? ' community' : '';
   return `<li class="cat-row model${kind}${!here && !rec && s.level !== 'ok' ? ' dim' : ''}" id="cat-${esc(job.id)}-${esc(m.id)}">
-    <span class="kit-name">${esc(m.name)}</span><span class="muted">${esc(sizeLine(m))}</span>${tags}${tipHtml(tip, `About ${m.name}`)}${src ? `<a class="src-link" href="${esc(src.url)}" target="_blank" rel="noopener noreferrer" data-tip="Where it comes from: ${esc(src.label)}" aria-label="Where ${esc(m.name)} comes from">↗</a>` : ''}
+    <span class="kit-name">${esc(m.name)}</span><span class="muted">${esc(sizeLine(m))}</span>${tags}${tipButton(card, `About ${m.name}`)}${src ? `<a class="src-link" href="${esc(src.url)}" target="_blank" rel="noopener noreferrer" data-tip="Where it comes from: ${esc(src.label)}" aria-label="Where ${esc(m.name)} comes from">↗</a>` : ''}
     ${m.benchReport ? `<a class="src-link bench-link" href="${esc(m.benchReport)}" target="_blank" rel="noopener noreferrer" aria-label="Full report: how ${esc(m.name)} did in its benchmark">Full report</a>` : ''}<span class="cat-act">${sw}${act}${removeBtn}</span><div class="confirm" hidden></div></li>`;
 }
 
@@ -214,6 +225,36 @@ export function datedLine(m, all = []) {
 // A brain taught by a bigger one (catalog.json distilledFrom: { teacher, base, baseBy }), and one that writes out its
 // thinking before it answers (thinks: true): one line each in the i tip.
 export const distilledLine = (m) => (m?.distilledFrom?.teacher ? `Taught to think by ${m.distilledFrom.teacher}, on ${m.distilledFrom.baseBy ? `${m.distilledFrom.baseBy}'s ` : ''}${m.distilledFrom.base || 'a smaller brain'}.` : '');
+// The i card's rows. Who made it: the lab for an official release; for a remix, who remixed it and from what.
+export function madeByLine(m) {
+  if (isCommunity(m)) {
+    const c = m.community, who = c.team || c.by || 'someone in the community';
+    const base = c.base ? `, from ${c.baseBy ? `${c.baseBy}'s ` : ''}${c.base}` : '';
+    const files = c.files && c.files !== c.by && c.files !== c.team ? ` (files: ${c.files})` : '';
+    return `${who}${base}${files}`;
+  }
+  if (isOwn(m)) return m.madeByBob ? 'Bob, in his workshop' : 'Your own file';
+  const k = makerKind(m);
+  return k.by ? `${k.by} (official)` : '';
+}
+// Short notes, one per line, each a few words; the tag next to the name has the long version.
+export function noteLines(m, dated = '') {
+  return [
+    distilledLine(m),
+    m.thinks ? THINKS_LINE : '',
+    isTurbo(m) ? 'Turbo-ready: carries its own guesser (MTP)' : '',
+    isReap(m) ? 'REAP cut: least-used experts removed, refusals untouched' : '',
+    dated,
+    m.trial ? `Not tried yet, so not recommended yet${m.trialNote ? `. ${m.trialNote}` : ''}` : '',
+    m.bench || '',
+  ].filter(Boolean).join('\n');
+}
+// The card itself: what it is on top, then label / value rows (a two-column grid, see .info-card in style.css).
+export function infoCard(m, rows) {
+  const line = (v) => esc(v).replace(/\n/g, '<br>');
+  const body = rows.filter(([, v]) => v).map(([k, v]) => `<span class="ic-row"><span class="ic-k">${esc(k)}</span><span class="ic-v">${line(v)}</span></span>`).join('');
+  return `<span class="info-card">${m.what ? `<span class="ic-what">${line(m.what)}</span>` : ''}${body}</span>`;
+}
 export const THINKS_LINE = 'Writes out its thinking before it answers; you can read it under Bob\'s thinking.';
 export const TRIAL_LINE = 'Not tried on a real replicant matrix yet, so I don\'t recommend it yet.';
 
