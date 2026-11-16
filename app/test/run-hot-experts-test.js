@@ -1,4 +1,4 @@
-// Hot experts on the card (src/hot-experts.js, engine patch 0015): the ranking file the engine reads, the profile
+// Hot experts on the card (src/hot-experts.js, engine patch 0016): the ranking file the engine reads, the profile
 // stamps, which profile a brain loads, the flags and environment, the refusals said out loud, and the engine's own
 // cache lines. Nothing here reads the real computer: files, sizes and dates are fakes, and the data folder is a temp one.
 import fs from 'node:fs';
@@ -50,7 +50,7 @@ check('a brain doing several kinds of job loads mixed', kindFor({ models: { code
 
 // ---------- Stamps and saving ----------
 const cfg = { dataDir: tmp, hotExperts: true, gpuVramGB: 16, models: { coder: 'qwen3.6-35b' } };
-const stamp = profileStamp({ kind: 'coding', gguf: '/fake/qwen.gguf', fingerprint: FP, engine: 'b12359', patches: ['0001-expert-mask', '0015-moe-cache-ranking'], statImpl: fakeStat() });
+const stamp = profileStamp({ kind: 'coding', gguf: '/fake/qwen.gguf', fingerprint: FP, engine: 'b12359', patches: ['0001-expert-mask', '0016-moe-cache-ranking'], statImpl: fakeStat() });
 check('the stamp names the mix, brain file, fingerprint, engine and patches', stamp.mix === mixHash('coding').slice(0, 16) && stamp.brain === 'qwen.gguf:21000000000:1700000000000' && stamp.fingerprint === FP && stamp.engine === 'b12359' && stamp.patches.length === 2);
 check('the stamp id has no spaces', !/\s/.test(stampId(stamp)) && stampId(stamp).startsWith('coding.mix-'));
 saveProfile(cfg, 'qwen3.6-35b', [[4, 2, 1]], stamp);
@@ -87,7 +87,7 @@ check('a cache set by hand is left alone', hotArgs(cfg, 'qwen3.6-35b', { ...base
   check('the processor\'s share of the picks (the tail)', c.small.cpuShare === 10); }
 
 // ---------- The engine patch says it loudly ----------
-{ const p = read('engine/patches/0015-moe-cache-ranking.patch');
+{ const p = read('engine/patches/0016-moe-cache-ranking.patch');
   check('the patch reads LLAMA_MOE_CACHE_RANKING, not a "seed"', /getenv\("LLAMA_MOE_CACHE_RANKING"\)/.test(p) && !/LLAMA_MOE_CACHE_SEED/.test(p));
   check('the patch refuses before touching a slot, out loud', /!!! MoE cache ranking NOT USED/.test(p) && p.indexOf('refuse("not a bob-moe-ranking 2 file")') < p.indexOf('g.lru.slot_map[kl][ke] = s'));
   check('the patch checks the brain fingerprint', /fp != fingerprint/.test(p) && /MoE cache brain fingerprint = /.test(p));
