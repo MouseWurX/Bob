@@ -6,7 +6,7 @@ import path from 'node:path';
 import { catalogueHtml, catJobs, modelsFor, familyOf, FAMILIES, isNaughty, isCommunity, visibleModels, communityLine, NAUGHTY_WARNING, DEVIL, modelsForView, makerTag, makerOf } from '../public/catalogue.js';
 import { deviceFit, sourceOf, pickFor } from '../public/fit.js';
 import { allSlots, isActive } from '../public/equip.js';
-import { saveNameOf } from '../src/models.js';
+import { saveNameOf, ModelShop } from '../src/models.js';
 import { mergeSettings, ollamaModelsDir, pinokioRoots } from '../src/config.js';
 import { sessionBrains } from '../src/sessions.js';
 import { publicText } from './source-text.js';
@@ -200,6 +200,25 @@ check('each machine answer is said once (grouped), and Active is explained once 
   check('...then Bob\'s own models folder if Ollama keeps its files there', ollamaModelsDir({ agentDir: '/bob', env: {}, home: '/h', exists: (p) => p === path.join('/bob', 'models', 'manifests') }) === path.join('/bob', 'models'));
   check('...else Ollama\'s usual folder in the user\'s home', ollamaModelsDir({ agentDir: '/bob', env: {}, home: '/h', exists: (p) => p === path.join('/h', '.ollama', 'models') }) === path.join('/h', '.ollama', 'models'));
   check('Pinokio is looked for on any drive and in the home folder, not only C:', pinokioRoots({ platform: 'win32', home: '/h', exists: (p) => p === 'E:\\pinokio' }).length === 2 && pinokioRoots({ platform: 'linux', home: '/h', exists: (p) => p === path.join('/h', 'pinokio') }).length === 2 && !pinokioRoots({ platform: 'win32', home: '/h', exists: no }).length);
+}
+
+// ---- native only by default: Ollama is opt-in ----
+{
+  const cat = JSON.parse(fs.readFileSync(new URL('../catalog.json', import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
+  const named = cat.models.filter((m) => m.ollama);
+  check('every brain with an Ollama name also has its own pinned GGUF with a sha256', named.length > 0 && named.every((m) => (m.files || []).some((f) => f.role === 'gguf' && /^[0-9a-f]{64}$/.test(f.sha256 || ''))), named.filter((m) => !(m.files || []).some((f) => f.sha256)).map((m) => m.id).join(','));
+  const run = async (engine) => {
+    const shop = Object.create(ModelShop.prototype);
+    shop.cfg = { engine, ollamaUrl: 'http://127.0.0.1:11434' };
+    shop.ollamaNames = async () => new Set(named.map((m) => m.ollama)); // Ollama is running and has them all
+    let took = '';
+    shop.pullOllama = async () => { took = 'ollama'; };
+    shop.fetchFiles = async () => { took = 'own'; };
+    await shop.runModel(named[0], {}, null, () => {});
+    return took;
+  };
+  check('with Brain Engine, a download is Bob\'s own pinned file even while Ollama runs', await run('llamacpp') === 'own');
+  check('pulling through Ollama only happens when Ollama is the engine set by hand', await run('ollama') === 'ollama');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

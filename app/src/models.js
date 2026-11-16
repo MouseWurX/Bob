@@ -312,7 +312,7 @@ export class ModelShop {
     if (pulled || (need && have === need) || byHand) state = 'installed';
     else if (have) state = 'partial';
     const where = pulled ? ['Ollama'] : byHand ? ['config.json'] : [...new Set(Object.values(located).map(ownerOf))];
-    const canDownload = Boolean((entry.ollama && ollama) || need);
+    const canDownload = Boolean((this.viaOllama(entry) && ollama) || need);
     return { state, where, located, canDownload };
   }
 
@@ -442,7 +442,7 @@ export class ModelShop {
     const entry = this.catalog.models.find((m) => m.id === id);
     if (!entry) throw new Error('No such model in the catalog.');
     if (entry.gated) throw new Error(`${entry.name} needs a Hugging Face account to download. ${entry.gatedWhy || ''}`.trim());
-    return { id, name: entry.name, kind: 'model', total: Math.round(entry.sizeGB * 1e9), viaOllama: Boolean(entry.ollama) };
+    return { id, name: entry.name, kind: 'model', total: Math.round(entry.sizeGB * 1e9), viaOllama: this.viaOllama(entry) };
   }
 
   // Put downloads on the list (the user already confirmed each one). Returns the first one's progress.
@@ -481,7 +481,7 @@ export class ModelShop {
     const entry = engine ? null : this.catalog.models.find((m) => m.id === d.id);
     const after = () => this.dl.filter((x) => x.state === 'queued' && x.id !== d.id).map((x) => x.id);
     const pub = { id: d.id, name: d.name, done: 0, total: d.total || 0, file: '', phase: engine ? 'finding' : 'starting', kind: d.kind, queue: after(),
-      steps: engine ? ['finding', 'downloading', 'checking', 'unpacking', 'done'] : entry?.ollama ? ['starting', 'downloading', 'checking', 'done'] : ['starting', 'links', 'downloading', 'checking', 'done'] };
+      steps: engine ? ['finding', 'downloading', 'checking', 'unpacking', 'done'] : this.viaOllama(entry) ? ['starting', 'downloading', 'checking', 'done'] : ['starting', 'links', 'downloading', 'checking', 'done'] };
     d.state = 'downloading'; d.error = undefined; d.note = undefined; d.startedAt = Date.now();
     this.active.set(d.id, { ac, pub, kind: d.kind });
     const { tick, stop } = ticker(pub, (e) => { pub.queue = after(); this.emit(e); });
@@ -520,9 +520,14 @@ export class ModelShop {
     return pub;
   }
 
+  // Native only by default: a brain with an Ollama name still downloads Bob's own pinned GGUF (checked against its
+  // sha256) for Brain Engine, even when Ollama happens to be running. Pulling through Ollama is the opt-in path,
+  // only while Ollama is the engine written by hand into config.json.
+  viaOllama(entry) { return Boolean(entry?.ollama) && this.cfg.engine === 'ollama'; }
+
   async runModel(entry, pub, signal, tick) {
-    const ollama = await this.ollamaNames();
-    if (entry.ollama && ollama) return this.pullOllama(entry, pub, signal, tick);
+    const ollama = this.viaOllama(entry) ? await this.ollamaNames() : null;
+    if (ollama) return this.pullOllama(entry, pub, signal, tick);
     if (entry.files?.length) return this.fetchFiles(entry, pub, signal, tick);
     throw new Error(`${entry.name} comes through Ollama, and Ollama isn't running.`);
   }
