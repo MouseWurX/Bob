@@ -350,9 +350,13 @@ async function runJob(j) {
     const until = Date.now() + Number(o['job-minutes']) * 60000;
     for (;;) { const s = brain.queue.find((x) => x.id === jobId); if (!s || ['done', 'failed', 'interrupted', 'cancelled'].includes(s.state)) { if (s && s.state !== 'done') error = `${s.state}: ${String(s.error || '')}`; break; } if (Date.now() > until) { error = 'took too long'; try { brain.cancel?.(jobId); } catch {} break; } await wait(200); }
   } catch (e) { error = String(e.message || e); }
-  const said = brain.session(session).filter((m) => m.role === 'assistant' && !m.tool_calls?.length).map((m) => String(m.content || '')).join(' ').trim();
+  // said: what the user's window shows (16 Nov: Bob marks working text `step` and his reviews and minutes `moot`, so the
+  // window shows only the answer); said_all: every plain reply joined, as before, for reading the whole run
+  const plain = brain.session(session).filter((m) => m.role === 'assistant' && !m.tool_calls?.length);
+  const said = plain.filter((m) => !m.step && !m.moot).map((m) => String(m.content || '')).join(' ').trim();
+  const saidAll = plain.map((m) => String(m.content || '')).join(' ').trim();
   const row = {
-    id: j.id, job: j.job, text: j.text, ...(j.from ? { from: j.from } : {}), planted, scene, said: kit.neutral(said), steps, asks, real, standins: [], missing: [...missing],
+    id: j.id, job: j.job, text: j.text, ...(j.from ? { from: j.from } : {}), planted, scene, said: kit.neutral(said), ...(saidAll !== said ? { said_all: kit.neutral(saidAll) } : {}), steps, asks, real, standins: [], missing: [...missing],
     secs: (Date.now() - t0) / 1000, ...(error ? { error: kit.neutral(error).slice(0, 400) } : {}),
     effort, solo_effort: solo, search_capped: steps.some((st) => (st.calls || []).some((c) => c.name === 'web_search' && /at its monthly cap/.test(String(c.result || '')))), ...(loraScale !== null ? { lora_scale: loraScale } : {}), family: 'qwen', tool_shapes: kit.toolShapes, bob_src: kit.bobSrc, brain: process.env.LAB_MODEL_NAME || 'served', at: new Date().toISOString(),
     messages: deepNeutral(kit, brain.session(session))
