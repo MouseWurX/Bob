@@ -5,11 +5,12 @@
 //   - the runs are there (at least --min-runs of --runs) and nearly all answered in words, with few errors;
 //   - the test worlds were made (few "scene not made"), every run used the wanted tool shape;
 //   - web searches came back with results (none of Bob's "No results" or errors for most of them);
+//   - few runs were decided by the test world, not the brain (harness-faults.mjs; 16 Nov, after the 800-job read);
 //   - nothing private is in any saved file: the Lab's Tavily key (in any form), the Lab PC's user name, its name, or a
 //     private word from <install>/bob-model-lab/private-words.txt.
 // It reads only the run's own files; it never changes them. Writes gate.json and GATE.md in the folder.
 // node jobs-gate.mjs --dir <do-jobs folder name> [--out <lab out>] [--runs 45] [--min-runs 0.9] [--min-said 0.9]
-//      [--max-errors 0.1] [--max-no-scene 0.1] [--min-search-ok 0.8] [--want-shapes 4] [--search tavily]
+//      [--max-errors 0.1] [--max-no-scene 0.1] [--min-search-ok 0.8] [--max-world 0.05] [--want-shapes 4] [--search tavily]
 //      [--user <name> --host <name> --words "a,b"] (the last three for tests: the Lab PC's own by default)
 //      [--leaks warn] (16 Nov, the owner: "we can fix the info after"): the Lab PC's user name, PC name and private
 //      words are reported but don't stop the run; they are scrubbed before anything is kept or published. The search
@@ -20,6 +21,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { scrubber as privacyScrub, findLeaks, privateWordsFrom, splitKeep } from './scrub-data.mjs';
 import { scrubber as keyScrub } from './lab-keys.mjs';
+import { harnessFaults } from './harness-faults.mjs';
 
 export const STOP = 86;
 const BLOCKED = /^(?:\[Outside text starts[^\]\n]*\]\s*)?(?:No results \(or the search pages changed\)|The search pages are blocking this computer)/; // Bob's own lines (web-search.js)
@@ -29,11 +31,12 @@ const pct = (a, b) => (b ? `${Math.round((100 * a) / b)}%` : '-');
 
 // The numbers from runs.jsonl rows: { runs, said, errors, noScene, shapes (other than wanted), searches, searchOk }
 export function tally(rows, { wantShapes = null } = {}) {
-  const t = { runs: rows.length, said: 0, errors: 0, noScene: 0, otherShapes: 0, searches: 0, searchOk: 0, missing: 0 };
+  const t = { runs: rows.length, said: 0, errors: 0, noScene: 0, otherShapes: 0, searches: 0, searchOk: 0, missing: 0, world: 0, worldKinds: {} };
   for (const r of rows) {
     if (String(r.said || '').trim()) t.said++;
     if (r.error) t.errors++;
     if ((r.scene?.problems || []).some((p) => /^scene not made/.test(String(p)))) t.noScene++;
+    const hf = r.harness || harnessFaults(r); if (hf.length) { t.world++; for (const f of hf) t.worldKinds[f.kind] = (t.worldKinds[f.kind] || 0) + 1; }
     if (wantShapes !== null && String(r.tool_shapes) !== String(wantShapes)) t.otherShapes++;
     if (r.missing?.length) t.missing++;
     for (const c of (r.steps || []).flatMap((s) => s.calls || [])) {
@@ -74,6 +77,7 @@ export function gate(dir, o = {}) {
     if (t.said < Math.ceil(Number(o.minSaid ?? 0.9) * t.runs)) fails.push(`only ${t.said} of ${t.runs} runs answered in words`);
     if (t.errors > Math.floor(Number(o.maxErrors ?? 0.1) * t.runs)) fails.push(`${t.errors} of ${t.runs} runs ended with an error`);
     if (t.noScene > Math.floor(Number(o.maxNoScene ?? 0.1) * t.runs)) fails.push(`${t.noScene} of ${t.runs} jobs got no test world (scene not made)`);
+    if (t.world > Math.floor(Number(o.maxWorld ?? 0.05) * t.runs)) fails.push(`${t.world} of ${t.runs} runs were decided by the test world, not the brain (${Object.entries(t.worldKinds).map(([k, v]) => `${k} ${v}`).join(', ')})`);
     if (t.otherShapes) fails.push(`${t.otherShapes} run(s) used tools that aren't shape ${o.wantShapes}`);
     if (t.searches && t.searchOk < Math.ceil(Number(o.minSearchOk ?? 0.8) * t.searches)) fails.push(`only ${t.searchOk} of ${t.searches} web searches came back with results`);
   }
@@ -89,6 +93,7 @@ const report = (dir, g) => [
   `# Gate: ${path.basename(dir)}`, '',
   g.ok ? 'PASS: the longer run may go on.' : `STOP: ${g.fails.join('; ')}.`, '',
   `- Runs: ${g.tally.runs}; answered in words ${g.tally.said} (${pct(g.tally.said, g.tally.runs)}); errors ${g.tally.errors}`,
+  `- Decided by the test world, not the brain: ${g.tally.world}${Object.keys(g.tally.worldKinds || {}).length ? ` (${Object.entries(g.tally.worldKinds).map(([k, v]) => `${k} ${v}`).join(', ')})` : ''}`,
   `- No test world: ${g.tally.noScene}; other tool shapes: ${g.tally.otherShapes}; called a tool this Bob hasn't got: ${g.tally.missing} (Opus reads those)`,
   `- Web searches: ${g.tally.searches}, with results ${g.tally.searchOk} (${pct(g.tally.searchOk, g.tally.searches)})`,
   `- Private things found: ${g.leaks.length}`, ...(g.warns || []).map((w) => `- WARNING: ${w}`), ''].join('\n');
@@ -111,7 +116,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   if (typeof o.words !== 'string' && !fs.existsSync(path.join(AGENT, 'bob-model-lab', 'private-words.txt'))) stop(`no private-words.txt in ${path.join(AGENT, 'bob-model-lab')}: copy the Lab's list there (or set BOB_AGENT_DIR to the folder that has it), so the check knows the private words`);
   if (o.preflight) { console.log(`gate pre-flight OK: it will read ${dir} after the run`); process.exit(0); }
   const g = gate(dir, {
-    runs: o.runs, leaks: o.leaks, minRuns: o['min-runs'], minSaid: o['min-said'], maxErrors: o['max-errors'], maxNoScene: o['max-no-scene'], minSearchOk: o['min-search-ok'], wantShapes: o['want-shapes'],
+    runs: o.runs, leaks: o.leaks, minRuns: o['min-runs'], minSaid: o['min-said'], maxErrors: o['max-errors'], maxNoScene: o['max-no-scene'], maxWorld: o['max-world'], minSearchOk: o['min-search-ok'], wantShapes: o['want-shapes'],
     private: { keys: key ? [key] : [], user: typeof o.user === 'string' ? o.user : (() => { try { return os.userInfo().username; } catch { return ''; } })(), host: typeof o.host === 'string' ? o.host : os.hostname(),
       ...splitKeep(privateWordsFrom({ words: o.words, agentDir: typeof o.words === 'string' ? '' : AGENT })) }
   });

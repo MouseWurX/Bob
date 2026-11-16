@@ -50,6 +50,18 @@ Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf and its mmproj under `<parent>/models` (found by
    run sharing the file already searched (with results) with that same real result. `--search-ledger <file>` counts the
    Tavily searches in another Lab copy's ledger. `--search-cap <n>` caps this run; with `--cap-go-on` the jobs still start
    once it's used and Bob's own backup cap says so (row: search_capped). `--leave-out-kinds web` skips jobs of a kind.
+   The test world checks itself (16 Nov, after the 800-job read found 47 runs the test world decided): before any job,
+   do-jobs runs `jobs-selftest.mjs`, 8 scripted jobs on this PC (no model, no internet), one for each way the world went
+   wrong: sound, video, program, slide and Photoshop files (now real small files, scene-media.mjs), a file the request names
+   that the scene left out, a scene reply cut off mid-JSON (the whole files before the cut are kept), an OK card, a script to
+   fix, a "let me type it" choice, half an emoji (llama-server refuses it), a diagram saved as a picture (the Lab stands in
+   for the chat window), and a folder that holds the scene's folders. A failed self-test stops pre-flight; `--no-selftest`
+   skips it. Each run row keeps `harness` (harness-faults.mjs: what the world got wrong); once 10 runs are in, 3 in 10
+   decided by the world stop new jobs (`--world-stop off` keeps going), and the summary counts them by kind.
+   `--search-stop off` keeps going after 5 empty searches (for an offline replay).
+   `node jobs-recheck.mjs --runs <runs.jsonl> --scenes <scenes.jsonl> --read <opus-read.jsonl>` (or `--ids a,b`): replays
+   old runs in today's test world, each with its own saved scene and the very same tool calls its brain made, and says
+   which runs still have a test-world fault. It checks the world, never grades the brain.
    `node jobs-matrix.mjs --prefix <name> --variants "a=<flags>;b=<flags>" [--stagger <s>] <do-jobs flags>`: one served
    brain, the same jobs, several do-jobs runs at once (folders <name>-a, <name>-b ...). The brain writes every test world
    once first (<name>-scenes), and every variant starts from those, so the only difference is how they were run. The
@@ -57,7 +69,7 @@ Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf and its mmproj under `<parent>/models` (found by
    the cache. plans\jobs-distill-a3b.json runs the distilled Qwen3.6 A3B add-on before and after Effort on one brain.
    `node jobs-gate.mjs --dir <name> --runs 45 --want-shapes 4 --search tavily` reads a finished do-jobs folder and exits
    86 (the Forge then deletes the pod) unless it was clean: enough runs, answered in words, few errors, test worlds made,
-   one tool shape, searches with results, and nothing private in any saved file (the Lab's key, the Lab PC's user name
+   one tool shape, searches with results, few runs decided by the test world (`--max-world`, 5% by default), and nothing private in any saved file (the Lab's key, the Lab PC's user name
    or name, or a word from bob-model-lab\private-words.txt). It writes GATE.md there. A Forge plan can put it between two
    job runs on one rented brain (plans\jobs-flashnext-run3-long.json: run 3, the gate, then 800 fix-list jobs).
    `--leaks warn` reports the user name, PC name and private words without stopping (they are scrubbed before anything

@@ -43,6 +43,10 @@ const q = tally(JSON.parse(`[${fs.readFileSync(path.join(tmp, 'quiet', 'runs.jso
 const qg = gate(path.join(tmp, 'quiet'), { runs: 45, wantShapes: 4, private: ME });
 check('runs without words, with errors or with no test world are counted and stop it', q.said === 37 && q.errors === 8 && q.noScene === 6 && !qg.ok && qg.fails.some((f) => /37 of 45 runs answered/.test(f)) && qg.fails.some((f) => /8 of 45 runs ended with an error/.test(f)) && qg.fails.some((f) => /6 of 45 jobs got no test world/.test(f)), JSON.stringify(qg.fails));
 
+// 16 Nov (after the 800-job read): runs the test world decided (a skipped file, a card that came back "no") stop it past 5%
+folder('world', clean.map((r, i) => (i < 4 ? { ...r, scene: { ...(r.scene || {}), made: 'new', skipped: [{ path: 'C:\\x.iso', why: "can't make .iso" }] } } : r)));
+{ const wg = gate(path.join(tmp, 'world'), { runs: 45, wantShapes: 4, private: ME }); const w1 = gate(path.join(tmp, 'clean'), { runs: 45, wantShapes: 4, private: ME });
+  check('runs decided by the test world are counted by kind, and 4 of 45 stop it', wg.tally.world === 4 && wg.tally.worldKinds.file_not_made === 4 && !wg.ok && wg.fails.some((f) => /4 of 45 runs were decided by the test world/.test(f)) && w1.tally.world === 0, JSON.stringify(wg.fails)); }
 folder('shapes', clean.map((r, i) => (i === 3 ? { ...r, tool_shapes: 2 } : r)));
 check('a run on other tool shapes stops it', !gate(path.join(tmp, 'shapes'), { runs: 45, wantShapes: 4, private: ME }).ok);
 

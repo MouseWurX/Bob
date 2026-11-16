@@ -45,7 +45,8 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false, home = fa
   const sdcpp = makers ? { exe: f('sd.exe'), image: { diffusionModel: f('z.gguf') }, edit: { diffusionModel: f('qie.gguf'), vae: f('vae.st'), llm: f('vl.gguf') } } : {};
   const hands = Object.fromEntries([...handsOn].map((h) => [h, { on: true }]));
   const homeDir = home ? path.join(tmp, 'home') : '';
-  if (homeDir) for (const d of ['Documents', 'Desktop', 'Downloads']) fs.mkdirSync(path.join(homeDir, d), { recursive: true });
+  // 16 Nov (800-job read): a job about C:\\Users\\you\\Videos got "isn't there"; a Windows home has all six of these
+  if (homeDir) for (const d of ['Documents', 'Desktop', 'Downloads', 'Pictures', 'Music', 'Videos']) fs.mkdirSync(path.join(homeDir, d), { recursive: true });
   const worldDir = world ? path.join(tmp, 'world') : '';
   if (worldDir) fs.mkdirSync(worldDir, { recursive: true });
   const cfg = {
