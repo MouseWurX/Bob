@@ -11,6 +11,7 @@ import { SLEEPY_SESSION, sleepyAfterReply } from '../public/sleepy.js';
 import { cleanPersonality } from '../public/personality.js';
 import path from 'node:path';
 import { careful, mootOpening, runMoot } from './moot.js';
+import { soloJob, soloLevel, soloOpening, soloRun, soloBrain } from './solo-effort.js';
 import { pickAnswer } from './clean-answer.js';
 import { markReplaced, correctionStep } from './honesty-score.js';
 import { howtosOn, worthOffering } from './howtos.js';
@@ -185,11 +186,27 @@ export const turnParts = {
     };
     try {
       // High and Extreme effort: Bob calls a moot. The draft comes first (runOn), then his reviewer copy checks it.
+      // Effort on one brain (solo-effort.js, off unless switched on): the main brain does it all, and at High and Max
+      // Bob's loop runs the parts itself: the job, his own review, one round to improve it; at Max a plan, its check,
+      // each step as its own job, and a check of the whole.
+      if (job) job.solo = soloJob(this.cfg, job);
+      const solo = ['picture', 'video'].includes(job?.kind) ? null : soloLevel(this.cfg, job); // nothing to read over in a picture
       if (careful(job)) emit({ type: 'announce', text: mootOpening(this.cfg, job.effort, base) });
-      await this.runOn(msgs, text, keep, signal, pics, job, sessionId, out);
+      if (solo) {
+        emit({ type: 'announce', text: soloOpening(solo) });
+        let ran = false;
+        const run = async (note, { phase = null, noTools = false } = {}) => {
+          Object.assign(job, { soloStep: note || '', soloAgain: ran, soloPhase: phase, soloNoTools: noTools });
+          try { await this.runOn(msgs, text, keep, signal, ran ? [] : pics, job, sessionId, out); }
+          finally { ran = true; Object.assign(job, { soloStep: '', soloAgain: false, soloPhase: null, soloNoTools: false }); }
+        };
+        const review = (task) => this.runHat('reviewer', task, out.ctx, soloBrain(this.cfg));
+        mooted = await soloRun(this, solo, { run, review, emit: keep, signal, msgs, turnText: text });
+      }
+      else await this.runOn(msgs, text, keep, signal, pics, job, sessionId, out);
       if (careful(job) && out.ctx && !signal?.aborted) mooted = await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx });
       // #30: Low and Medium, opt-in: a quick second look from a paired Bob when one is free. None free: no check, no swap.
-      else if (out.ctx && !signal?.aborted && this.cfg.netReview === true) mooted = await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx, quick: () => this.quickReviewer(job, pics) });
+      else if (!job?.solo && out.ctx && !signal?.aborted && this.cfg.netReview === true) mooted = await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx, quick: () => this.quickReviewer(job, pics) });
       if (out.ctx && !signal?.aborted && !rough) sideJob((k, t) => this.log(k, t), 'the how-to card', () => this.howtoAfter(sessionId, text, out.ctx, keep, job)); // item 204
     }
     finally {

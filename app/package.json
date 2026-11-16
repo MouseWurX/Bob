@@ -56,6 +56,7 @@
     "test/run-lab-recipes-test.js",
     "test/run-forge-gptoss-test.js",
     "test/run-step-thinking-test.js",
+    "test/run-solo-effort-test.js",
     "test/run-natural-tools-test.js",
     "test/run-hands-read-test.js",
     "test/run-lab-watch-test.js",
