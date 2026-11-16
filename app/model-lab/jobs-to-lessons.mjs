@@ -84,6 +84,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   if (!kept.length) stop('no kept runs');
   const fams = new Set(kept.map((x) => String(x.row.family || 'qwen')));
   if (fams.size > 1) stop(`the kept runs are of ${fams.size} families (${[...fams].join(', ')}): lessons are per family, never mixed; run it once per family`);
+  // 16 Nov (found by the A3B test thread): run from a kit copy with no private-words.txt, the scrub quietly had no words
+  if (typeof o.words !== 'string' && !fs.existsSync(path.join(AGENT, 'bob-model-lab', 'private-words.txt'))) stop(`no private-words.txt in ${path.join(AGENT, 'bob-model-lab')}: copy the Lab's list there (or set BOB_AGENT_DIR to the folder that has it), so the scrub knows the private words`);
   const sc = scrubber({ user: typeof o.user === 'string' ? o.user : (() => { try { return os.userInfo().username; } catch { return ''; } })(), host: typeof o.host === 'string' ? o.host : os.hostname(),
     ...splitKeep(privateWordsFrom({ words: o.words, agentDir: typeof o.words === 'string' ? '' : AGENT })) });
   const kits = new Map(); // one Bob per family

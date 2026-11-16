@@ -48,6 +48,8 @@ check('two families in one lessons folder is refused (lessons are per family, ne
 const gp = cli(['--runs', W('d/runs.jsonl', [row('k1', { family: 'gpt-oss' })]), '--grades', grades, '--to', path.join(tmp, 'lessons4')]);
 const gs = JSON.parse(fs.readFileSync(path.join(tmp, 'lessons4', 'toolsets.json'), 'utf8')); const gset = Object.values(gs)[0];
 check("a GPT-OSS run gets Bob's GPT-OSS tool set (its list_folder wording; mcp_tools left out)", gp.status === 0 && gset.family === 'gpt-oss' && !gset.tools.some((t) => t.function?.name === 'mcp_tools') && (!gset.tools.some((t) => t.function?.name === 'list_folder') || gset.tools.some((t) => /Words inside files: search_files/.test(t.function?.description || ''))), gp.stdout + gp.stderr);
+{ const nw = spawnSync(process.execPath, ['jobs-to-lessons.mjs', '--bob', app, '--user', ME.user, '--host', ME.host, '--runs', runsA, '--grades', grades, '--to', path.join(tmp, 'lessons5')], { cwd: path.join(app, 'model-lab'), encoding: 'utf8', env: { ...process.env, BOB_AGENT_DIR: tmp } });
+  check('no private-words.txt where the Lab looks (a kit copy) and no --words: it stops instead of scrubbing without them', nw.status === 1 && /no private-words\.txt/.test(nw.stdout) && !fs.existsSync(path.join(tmp, 'lessons5')), nw.stdout); }
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

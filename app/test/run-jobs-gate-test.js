@@ -67,6 +67,8 @@ check("pre-flight: passes before the run (the folder doesn't exist yet) once the
 fs.mkdirSync(path.join(tmp, 'broken', 'runs.jsonl'), { recursive: true }); // a folder where the runs file should be: reading it throws
 const broken = cli('broken');
 check('the gate failing in itself is a stop (86), never an exit that lets the longer run go on', broken.status === STOP && /GATE STOP: the gate itself failed/.test(broken.stdout), (broken.stdout + broken.stderr).slice(-300));
+{ const nw = spawnSync(process.execPath, ['jobs-gate.mjs', '--out', tmp, '--dir', 'clean', '--runs', '45', '--search', 'tavily', '--preflight'], { cwd: path.join(app, 'model-lab'), encoding: 'utf8', env: { ...process.env, LAB_TAVILY_KEY: KEY, BOB_AGENT_DIR: tmp } });
+  check('no private-words.txt where the Lab looks (a kit copy) and no --words: the gate stops, pre-flight too', nw.status === STOP && /no private-words\.txt/.test(nw.stdout), nw.stdout); }
 const none = cli('missing');
 check('a folder with no runs stops it', none.status === STOP && /no runs in the folder/.test(none.stdout), none.stdout.slice(-200));
 

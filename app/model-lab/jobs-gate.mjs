@@ -107,6 +107,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const dir = path.join(String(out), String(o.dir));
   let key = '';
   if (String(o.search || '').toLowerCase() === 'tavily') { const got = labKey('tavily'); if (!got.key) stop(`the Lab's Tavily key can't be opened to check the files for it (${got.why})`); key = got.key; }
+  // 16 Nov (found by the A3B test thread): run from a kit copy with no private-words.txt, the check quietly had no words
+  if (typeof o.words !== 'string' && !fs.existsSync(path.join(AGENT, 'bob-model-lab', 'private-words.txt'))) stop(`no private-words.txt in ${path.join(AGENT, 'bob-model-lab')}: copy the Lab's list there (or set BOB_AGENT_DIR to the folder that has it), so the check knows the private words`);
   if (o.preflight) { console.log(`gate pre-flight OK: it will read ${dir} after the run`); process.exit(0); }
   const g = gate(dir, {
     runs: o.runs, leaks: o.leaks, minRuns: o['min-runs'], minSaid: o['min-said'], maxErrors: o['max-errors'], maxNoScene: o['max-no-scene'], minSearchOk: o['min-search-ok'], wantShapes: o['want-shapes'],
