@@ -151,3 +151,7 @@ Addendum 1 described hot experts as a split of each expert tensor into a card ha
 If step 1 fails, the hot-expert rows are reported as "not fixed" and the patch goes back for a fix before any timing is published.
 
 **Loud failures, checked once before the run:** start the engine with (a) no file at the path, (b) a file with a bad first line, (c) a ranking made on another brain, (d) one with an expert number past the brain's last. Each must print `!!! MoE cache ranking NOT USED` with its reason and fill the stock way. Bob's logbook must show the warning too. A ranking from the wrong weights quietly installed would taint every hot-expert number after it.
+
+## Addendum 3: which effort levels (added 16 November 2026, before any timed run)
+
+The effort test on rentals has reported (100 jobs per setting, graded blind). It recommends one-brain effort for Low, Medium and High and holding Max (46% of jobs failed at Max). Question 4 runs the effort levels that ship: Low, Medium and High if the owner takes that recommendation, otherwise the levels Bob has on the day of the run. Max is run only if it ships. The decision and the Bob version are recorded with the results.
