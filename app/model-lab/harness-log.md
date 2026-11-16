@@ -155,3 +155,9 @@ says what ran, what it taught, what changed, and which check now guards it. "Ope
   the script refusal says nothing was saved; the 2nd one-off reminder with the same words says repeats are off;
   forget_topic says a memory isn't a topic and Bob can't delete one.
 - Check: test/run-find-by-name-test.js (33 checks). Not yet re-run on a rental.
+
+## 16 Nov: rentals had no hardware log
+
+- **Found:** asked whether we record what the speed-test list says to (temps and so on). The PC speed test does (GPU temp, power, clocks, VRAM, slowdown reasons at 250 ms). Rental pods recorded only per-job seconds, steps and tokens: no GPU temp, power, clocks, VRAM over time, processor load or memory.
+- **Fix:** `pod/run.sh` starts `hw_log` with every run: one line every 5 s to `out/hw-telemetry.log` (GPU temp, power and limit, core and memory clocks, VRAM, load, slowdown reasons; processor load; memory; processor temp when the pod shows it, usually blank). An older driver without slowdown reasons logs the rest. The PC keeps `out/*.log` when the pod goes.
+- **Check:** `run-forge-runpod-v2-test.js` (5 checks: the fields (also memory temp, fan, PCIe link), load and memory, the once-per-run hw-environment.log (card, driver, VBIOS, OS, processor, RAM), the older-driver fallback, the logger stops at the end).

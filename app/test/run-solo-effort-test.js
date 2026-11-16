@@ -1,7 +1,7 @@
 // 16 Nov 2026: Effort on one brain (src/solo-effort.js). Bob's loop enforces each level's steps; these checks run the
 // loop with fake brains (plain functions in, plain arrays out). Nothing here reads the real computer.
 import fs from 'node:fs';
-import { soloEffortOn, soloJob, soloLevel, soloThink, soloVerdict, notHappy, planSteps, soloMinutes, soloRun, soloBrain, soloPrompt, SOLO_ROUNDS, MAX_JOBS, planGateTask, PLAN_NOTE } from '../src/solo-effort.js';
+import { soloEffortOn, soloJob, soloLevel, soloThink, soloVerdict, notHappy, planSteps, soloMinutes, soloRun, soloBrain, soloPrompt, SOLO_ROUNDS, MAX_JOBS, planGateTask, PLAN_NOTE, ANSWER_NOTE } from '../src/solo-effort.js';
 import { stepThink } from '../src/step-thinking.js';
 import { careful, draftBrain, reviewBrain } from '../src/moot.js';
 import { HELP } from '../public/help-content.js';
@@ -142,7 +142,10 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
 {
   const { leaks, weakAnswer, SOLO_CALLS, ANSWER_RESERVE, REVIEW_STEPS, soloBrain: sb, reviewTask: rt } = await import('../src/solo-effort.js');
   check('review talk in the answer is spotted, and makes it a weak answer', ['Thanks for the review — spot on. The zip is blocked.', "You're right on all six points. Here's the script: ...", 'I reviewed my own work and called the move tool first, as required.', 'Sorry about the plan_check confusion. The area is pi r squared.', 'Here is what the jobs did:\n\nPosted it.'].every((t) => leaks(t) && weakAnswer(t + ' '.repeat(10) + 'x'.repeat(250))) && !leaks('The script reads the file, checks each row, and writes the totals to totals.csv. You are right to keep a backup.'));
-  check('the budget is 4x Minimus\'s 8 steps, with room kept for the answer, and reviews read at most 3 times', SOLO_CALLS === 32 && ANSWER_RESERVE === 6 && REVIEW_STEPS === 3 && sb(on).maxSteps === 3 && sb(on, { noTools: true }).maxSteps === 1);
+  check('time is no limit at Maximus: a runaway backstop only, with room kept for the answer, and reviews may look things up 6 times', SOLO_CALLS === 96 && ANSWER_RESERVE === 8 && REVIEW_STEPS === 6 && sb(on).maxSteps === 6 && sb(on, { noTools: true }).maxSteps === 1);
+  // Blind A/B (16 Nov): when both were right, Maximus lost 13-15 to Medius and 7-11 to Minimus: thinner answers, asking instead of acting.
+  check('the answer and its review aim for the fullest answer, and doing over asking', /the fullest answer you would give/.test(ANSWER_NOTE) && /Don't end by asking the user to do something you could have done/.test(ANSWER_NOTE) && /Thin or vague counts as something to improve/.test(rt('x')) && /Then improve it by doing it/.test(rt('x')));
+  check('the Maximus check asks how to make it better, not only whether it is right; High keeps the plain review', /find the ways to make this answer better/.test(rt('x', 'Sam', { better: true })) && !/find the ways/.test(rt('x')));
   check('reviews fact-check every claim against the record and the tool results', /Fact-check it against the record of what you did/.test(rt('x')) && /"done", "saved", "sent" or "found"/.test(rt('x')));
 }
 {
@@ -150,7 +153,7 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
   check('a one-step plan skips the plan check; the answer still gets its review', !calls.some((c) => c.review && /Review your plan/.test(c.review)) && calls.filter((c) => c.phase === 'do').length === 1 && calls.some((c) => c.review && /Review your own work/.test(c.review)));
 }
 {
-  const { calls } = await fake('max', ['Looks right.'], { plan: Array.from({ length: 6 }, (_, i) => `${i + 1}. part ${i + 1}`).join('\n'), bulky: 7 });
+  const { calls } = await fake('max', ['Looks right.'], { plan: Array.from({ length: 6 }, (_, i) => `${i + 1}. part ${i + 1}`).join('\n'), bulky: 18 });
   const jobs = calls.filter((c) => /step \d of 6/.test(c.note || '')).length;
   check('the whole job keeps to its budget: later jobs wait once the time is used, and the answer and review still run', jobs < 6 && jobs >= 1 && calls.some((c) => c.phase === 'answer') && calls.some((c) => c.review && /Review your own work/.test(c.review)) && calls.filter((c) => c.phase === 'do').every((c) => c.left >= 2));
 }
@@ -166,6 +169,7 @@ check('the plan gate asks whether each step is Bob\'s own, not advice for the us
   const { calls, msgs } = await fake('max', ['Looks right.', 'Improve it: the second row is wrong', 'Looks right.']);
   const kinds = calls.map((c) => (c.review ? (/Review your plan/.test(c.review) ? 'gate' : 'review') : c.phase));
   const last = [...msgs].reverse().find((m) => m.role === 'assistant' && !m.moot);
+  check('Maximus reviews of the answer ask for ways to make it better', /find the ways to make this answer better/.test(calls[5].review));
   check('Max: answer, review, improve the answer, review again; the shown reply is the improved answer', JSON.stringify(kinds.slice(4)) === JSON.stringify(['answer', 'review', 'do', 'review']) && /answer .* will see on its own/.test(calls[5].review) && /^Better answer\./.test(last.content));
   check('an improve round is told its reply is the one shown, in full, written fresh with no word about the review', /the only reply they see/.test(calls[6].note) && /never point to "above"/.test(calls[6].note) && /never thank or agree with the review/.test(calls[6].note));
 }

@@ -123,7 +123,7 @@ export const hatParts = {
           ctx.emit({ type: 'announce', text: checkBackLine(via, e.why || e.message) });
         }
       }
-      return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, lender, noLocal: Boolean(quick), maxSteps: force?.maxSteps, compact: force?.longRun === true, noTools: force?.noTools === true });
+      return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, lender, noLocal: Boolean(quick), maxSteps: force?.maxSteps, compact: force?.longRun === true, noTools: force?.noTools === true, web: force?.solo === true && webOn(this.cfg) });
     }
     catch (e) { step.state = ctx.signal?.aborted ? 'cancelled' : 'failed'; throw e; }
     finally {
@@ -161,7 +161,7 @@ export const hatParts = {
     }
     return lender;
   },
-  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, maxSteps: steps, compact = false, lender, noLocal = false, via = null, noTools = false }) {
+  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, maxSteps: steps, compact = false, lender, noLocal = false, via = null, noTools = false, web = false }) {
     // via (1.5.185): another of your Bobs thinks each step on his bigger brain; nothing loads here, the tools run here.
     // Two-Bob trial: a check is short, so the chat talker isn't brought back beside the reviewer for it.
     const loadHere = async () => (await this.ensureModel(model, ctx.emit, ctx.signal, hat, { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}), ...(hat === 'reviewer' ? { noTalker: true } : {}) })) || model;
@@ -173,7 +173,8 @@ export const hatParts = {
       painter: ['make_image', 'make_video', 'save_reference', 'make_music', 'make_sound', 'make_3d_model', 'workshop_list', 'workshop_run'],
       // run_command / run_recipe only when the Run hand is on (toolSchemas leaves them out otherwise); each run is approved.
       tinker: ['list_folder', 'code_map', 'read_file', 'search_files', 'edit_file', 'write_file', 'web_search', 'fetch_page', 'run_command', 'run_recipe'],
-      reviewer: ['list_folder', 'read_file', 'search_files']
+      // Effort on one brain (solo-effort.js): his own review can also check facts on the web, when web search is on.
+      reviewer: ['list_folder', 'read_file', 'search_files', ...(web ? ['web_search', 'fetch_page'] : [])]
     }[hat] || [];
     const maxSteps = Number(steps) > 0 ? Math.min(Number(steps), 100) : hat === 'tinker' ? 30 : hat === 'reviewer' ? 15 : MAX_STEPS;
     const packet = this.handoff(ctx, via?.check?.ctx ? Math.min(brainCtx || via.check.ctx, via.check.ctx) : brainCtx); // sized for his room when he checks
