@@ -1,4 +1,4 @@
-// 🧰 More tools (Settings, How Bob works, 🧰 More tools). Fourteen small tools, each with its own switch, all off
+// 🧰 More tools (Settings, How Bob works, 🧰 More tools). Sixteen small switches, each with its own switch, all off
 // until the user turns them on. Everything is kept in one setting, cfg.moreTools, cleaned here.
 //
 //   python          Python in the sandbox (run_in_sandbox language "python"; py-sandbox.js)
@@ -8,6 +8,7 @@
 //   phoneReminders  reminders also pop up in Bob for Android (brain.js checkReminders, phone.js)
 //   email           read_email: read-only IMAP with an app password (email-read.js)
 //   emailTidy       manage_email: mark, flag, move, archive, trash (never deleted for good), drafts (never sent), undo
+//   emailCatalog    a small headers-only catalog per user (mail-catalog.js): read_email groups, manage_email bulk
 //   calendar        read_calendar: a calendar link or .ics file, read-only (calendar-read.js)
 //   pageWatch       watch_page: check a page every few hours, say when the part you care about changes (page-watch.js)
 //   webApi          call_api: a web service with a saved key; reading needs no card, anything else asks (web-api.js)
@@ -27,6 +28,7 @@ export const SWITCHES = [
   { key: 'phoneReminders', label: 'Show reminders on my phone', tools: [] },
   { key: 'email', label: 'Let Bob read my email', tools: ['read_email'] },
   { key: 'emailTidy', label: 'Let Bob tidy my email', tools: ['manage_email'] }, // email-manage.js: needs 'email' on too
+  { key: 'emailCatalog', label: 'Let Bob catalog my email', tools: [] }, // mail-catalog.js: groups and bulk acts, needs 'email' on too
   { key: 'calendar', label: 'Let Bob read my calendar', tools: ['read_calendar'] },
   { key: 'pageWatch', label: 'Let Bob watch web pages', tools: ['watch_page'] },
   { key: 'webApi', label: 'Let Bob call web services', tools: ['call_api'] },

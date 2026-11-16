@@ -13,6 +13,7 @@ import { hasWordList, getWordList } from './spell.js';
 import { findFfmpeg } from './office.js';
 import { loadWatches, saveWatches } from './page-watch.js';
 import { listMail } from './email-read.js';
+import { catalogInfo, deleteCatalog, fillCatalog, statusLine } from './mail-catalog.js';
 import { loadCalendar, forgetCalendar } from './calendar-read.js';
 import { sandboxOn } from './sandbox-code.js';
 
@@ -29,6 +30,7 @@ export function moreToolsView(cfg, extra = {}) {
     wordListHere: hasWordList(cfg),
     ffmpegHere: Boolean(findFfmpeg(cfg)),
     hearingHere: Boolean(cfg.stt?.provider === 'whispercpp' ? cfg.stt?.model : cfg.stt?.provider || cfg.ollamaUrl),
+    catalog: (() => { try { return catalogInfo(cfg); } catch { return { bytes: 0, rows: 0, total: 0, filled: 0 }; } })(),
     watches: loadWatches(cfg).map((w) => ({ id: w.id, what: w.what, url: w.url, find: w.find, part: String(w.part || '').slice(0, 120), checked: w.checked || 0, problem: w.problem || '' })),
     ...extra
   };
@@ -114,6 +116,14 @@ export async function moreToolsRoute({ req, res, p, isLocal, brain, cfg, body, s
       const m = moreTools(cfg);
       save(cfg, { apis: m.apis.filter((a) => a.id !== b.removeApi) });
       try { saveKey(cfg, apiKeyName(b.removeApi), ''); } catch {}
+    }
+    // 📇 The mail catalog (mail-catalog.js): this user's own; build (or bring up to date) and delete.
+    if (b.catalogDelete === true) { deleteCatalog(cfg); out.note = 'The mail catalog is deleted. Nothing in your mailbox changed.'; log('mail catalog deleted'); }
+    if (b.catalogBuild === true) {
+      if (!moreTools(cfg).email) throw new Error('Switch on "Let Bob read my email" first.');
+      const r = await fillCatalog(cfg, { perCall: 100000, untilMs: 60000 });
+      out.note = `${statusLine(r)} Read-only: nothing in your mailbox changed.`;
+      log(`mail catalog: ${r.have} of ${r.total}`);
     }
     if (b.removeWatch) saveWatches(cfg, loadWatches(cfg).filter((w) => w.id !== b.removeWatch));
     // The two one-time downloads.

@@ -216,13 +216,16 @@ export function mailServer(inbox, { host = HOST, user = USER, password = PASS } 
     const max = list.reduce((a, m) => Math.max(a, m.uid), 0);
     return new Set(String(set).split(',').flatMap((p) => { const [a, b] = p.split(':').map((x) => (x === '*' ? max : Number(x))); if (b === undefined) return [a]; const lo = Math.min(a, b), hi = Math.max(a, b); return list.filter((m) => m.uid >= lo && m.uid <= hi).map((m) => m.uid); }));
   };
+  const uidvalidity = Number(inbox.seed || 1) + 1000;
+  const maxUid = () => next - 1;
   const lit = (s) => `{${Buffer.byteLength(s, 'utf8')}}\r\n${s}`;
   const match = (m, crit) => {
     for (let i = 0; i < crit.length; i++) {
       const c = crit[i].toUpperCase();
       const arg = () => crit[++i] ?? '';
       const has = (where, w) => where.toLowerCase().includes(String(w).toLowerCase());
-      if (c === 'ALL' || c === 'UID') { if (c === 'UID') i++; continue; }
+      if (c === 'ALL') continue;
+      if (c === 'UID') { const set = arg(); if (!uidsOf(set, [m, { uid: maxUid() }]).has(m.uid)) return false; continue; }
       if (c === 'SINCE') { if (!(m.at >= imapDay(arg()))) return false; continue; }
       if (c === 'BEFORE') { if (!(m.at < imapDay(arg()))) return false; continue; }
       if (c === 'UNSEEN') { if (m.flags.includes('\\Seen')) return false; continue; }
@@ -268,7 +271,7 @@ export function mailServer(inbox, { host = HOST, user = USER, password = PASS } 
       switch (cmd) {
         case 'NOOP': return ok();
         case 'LIST': return ok(folders.map((f) => `* LIST (${(f.uses || []).join(' ')}) "/" "${f.name.replace(/"/g, '\\"')}"\r\n`).join(''));
-        case 'EXAMINE': case 'SELECT': { const n = words(arg)[0]; if (!folders.some((f) => f.name === n)) return say(`${tag} NO no such folder\r\n`); open = n; writable = cmd === 'SELECT'; return ok(`* ${box(n).length} EXISTS\r\n`); }
+        case 'EXAMINE': case 'SELECT': { const n = words(arg)[0]; if (!folders.some((f) => f.name === n)) return say(`${tag} NO no such folder\r\n`); open = n; writable = cmd === 'SELECT'; return ok(`* ${box(n).length} EXISTS\r\n* OK [UIDVALIDITY ${uidvalidity}] UIDs valid\r\n`); }
         case 'CREATE': { const n = words(arg)[0]; if (folders.some((f) => f.name === n)) return say(`${tag} NO [ALREADYEXISTS] exists\r\n`); folders.push({ name: n, uses: [] }); return ok(); }
         case 'APPEND': { const m = arg.match(/^"((?:[^"\\]|\\.)*)" \(([^)]*)\) \{(\d+)\}$/); if (!m) return say(`${tag} BAD append\r\n`); pending = { tag, folder: m[1].replace(/\\(.)/g, '$1'), flags: m[2].split(' ').filter(Boolean) }; return say('+ go ahead\r\n'); }
         case 'EXPUNGE': stats.expunges++; return ok(); // recorded; Bob must never send it, and nothing is removed

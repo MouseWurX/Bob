@@ -19,6 +19,8 @@ import path from 'node:path';
 import { withMailbox, quote, decodeWords, parseHeaders, emailSettings, toMutf7 } from './email-read.js';
 import { saveJson, oneWriter } from './saving.js';
 import { cleanField, dangerSigns, MAIL_START, MAIL_END } from './email-safe.js';
+import { readText, writeText } from './vault.js';
+import { catalogDir, fillCatalog, loadCatalog, select, dropRows, markRows, queued, catalogFile, statusLine, KINDS, KIND_WORD } from './mail-catalog.js';
 
 // Subjects and names in an answer the brain reads are e-mail: fenced like read_email's (mail-guard.js locks the chat).
 const fenced = (text, after = '') => `${MAIL_START}\n${text}\n${MAIL_END}${after ? `\n${after}` : ''}`;
@@ -26,6 +28,11 @@ const fenced = (text, after = '') => `${MAIL_START}\n${text}\n${MAIL_END}${after
 export const MAX_IDS = 50;
 const KEEP_UNDO = 30;
 export const ACTIONS = ['sort', 'mark_read', 'mark_unread', 'flag', 'unflag', 'move', 'archive', 'trash', 'draft', 'undo'];
+export const BULK = 'bulk'; // with the mail catalog on (mail-catalog.js): a whole company, sender or kind at once
+export const BULK_DO = ['archive', 'trash', 'mark_read', 'move'];
+export const BULK_MAX = 10000; // messages a bulk act; the rest on the next one
+export const BULK_CHUNK = 500; // messages a server command
+export const HOLD_RECENT_DAYS = 2;
 export const MAX_SORT = 100;
 export const BIG_SENDER = 5; // this many from one sender in the scan: a folder for them is suggested
 
@@ -85,10 +92,13 @@ export function lockedFolder(folders, name) {
 }
 
 // ---------------------------------------------------------------- the undo list
-export const undoFile = (cfg) => path.join(cfg.innDir || cfg.dataDir, 'bob', 'email-undo.json');
-export function loadUndo(cfg) { try { const v = JSON.parse(fs.readFileSync(undoFile(cfg), 'utf8')); return Array.isArray(v) ? v : []; } catch { return []; } }
-const addUndo = (cfg, rec) => oneWriter(undoFile(cfg), () => { const list = loadUndo(cfg); list.push(rec); saveJson(undoFile(cfg), list.slice(-KEEP_UNDO)); });
-const dropUndo = (cfg, id) => oneWriter(undoFile(cfg), () => saveJson(undoFile(cfg), loadUndo(cfg).filter((r) => r.id !== id)));
+// 👥 Each user's own (inn\profiles\<id>\ for a user, inn\bob\ for the owner), locked with their key when their chats
+// are: it names subjects, so nobody else signed in may read it.
+export const undoFile = (cfg) => path.join(catalogDir(cfg), 'email-undo.json');
+export function loadUndo(cfg) { try { const v = JSON.parse(readText(undoFile(cfg))); return Array.isArray(v) ? v : []; } catch (e) { if (e.code === 'VAULT_LOCKED') throw e; return []; } }
+const putUndo = (cfg, list) => { fs.mkdirSync(path.dirname(undoFile(cfg)), { recursive: true }); writeText(cfg, undoFile(cfg), JSON.stringify(list.slice(-KEEP_UNDO), null, 1)); };
+const addUndo = (cfg, rec) => oneWriter(undoFile(cfg), () => { const list = loadUndo(cfg); list.push(rec); putUndo(cfg, list); });
+const dropUndo = (cfg, id) => oneWriter(undoFile(cfg), () => putUndo(cfg, loadUndo(cfg).filter((r) => r.id !== id)));
 
 // ---------------------------------------------------------------- talking to the server
 const uidsIn = (lines) => lines.flatMap((l) => (l.text.match(/^\* SEARCH\s*(.*)$/i)?.[1] || '').split(/\s+/)).filter((x) => /^\d+$/.test(x)).map(Number);
@@ -353,12 +363,97 @@ export async function sortPlan(brain, cfg, args, ctx, opts = {}) {
   return fenced(`${done.join('\n')}${first}`, `${who} approved the plan, and the lines above are what was done.${bad ? ` ${bad} message${bad === 1 ? '' : 's'} looked dangerous (shown on the card).` : ''} Tell ${who} in a few lines what changed; every batch has its own undo id.`);
 }
 
+// ---------------------------------------------------------------- bulk acts (the mail catalog, mail-catalog.js; the owner,
+// 16 Nov 2026: "could bob do bulk delete? or bulk archive?"). A whole company, sender, kind or age at once, from the
+// catalog, never from the brain's own list of ids. Always a card first with the count, the dates, a few samples and
+// what is held back. Held back by code: mail from people (unless the person asked for that sender or for people),
+// flagged mail, mail from the last 2 days (unless an age was given), and scams (except into Trash, shown apart).
+// Done 500 at a time; Trash is Trash (nothing deleted for good); one undo id for the whole act.
+const DAYS_OF = (t) => (t ? new Date(t).toISOString().slice(0, 10) : '?');
+const BULK_WORD = { archive: 'Archive', trash: 'Move to Trash', mark_read: 'Mark as read', move: 'Move' };
+const sample = (r) => `${cleanField(r.name || r.addr, 40)} · "${cleanField(r.subject, 70)}" · ${DAYS_OF(r.at)}`;
+function filterWords(a) {
+  const k = [].concat(a.kind || []).filter((x) => KINDS.includes(x));
+  return [a.org && `from ${cleanField(a.org, 60)}`, a.sender && `from ${cleanField(a.sender, 60)}`, k.length && `(${k.map((x) => KIND_WORD[x]).join(', ')})`,
+    Number(a.older_than_days) > 0 && `older than ${Math.round(Number(a.older_than_days))} days`, a.words && `with "${cleanField(a.words, 40)}" in the subject`, a.unread && 'unread'].filter(Boolean).join(' ');
+}
+let lastBulk = null; // the card's plan, so the act does what the card showed (2 minutes)
+export async function planBulk(cfg, args, opts = {}, { now = Date.now() } = {}) {
+  const what = String(args.do || '');
+  if (!BULK_DO.includes(what)) throw new Error(`bulk needs do: one of ${BULK_DO.join(', ')}.`);
+  const kinds = [].concat(args.kind || []).filter((k) => KINDS.includes(k));
+  if (!args.org && !args.sender && !kinds.length && !(Number(args.older_than_days) > 0) && !args.words) throw new Error('A bulk act needs at least one of: org, sender, kind, older_than_days, words. Bob never acts on a whole inbox in one go.');
+  if (what === 'move' && !String(args.folder || '').trim()) throw new Error('move needs a folder name.');
+  const fill = await fillCatalog(cfg, { perCall: 100000, untilMs: Number(opts.fillMs) || 20000 }, opts);
+  const cat = loadCatalog(cfg);
+  const found = select(cat, args, { now });
+  const askedPeople = kinds.includes('person') || Boolean(args.sender);
+  const recentFrom = now - HOLD_RECENT_DAYS * DAY;
+  const held = { person: [], flagged: [], recent: [], scam: [] };
+  const go = [], scams = [];
+  for (const r of found) {
+    if (r.flagged) held.flagged.push(r);
+    else if (r.kind === 'scam' && what !== 'trash') held.scam.push(r);
+    else if ((r.kind === 'person' || !r.sure) && !askedPeople) held.person.push(r);
+    else if (!(Number(args.older_than_days) > 0) && !args.include_recent && !args.sender && r.at >= recentFrom) held.recent.push(r);
+    else { go.push(r); if (r.kind === 'scam') scams.push(r); }
+  }
+  const take = go.slice(0, BULK_MAX), over = go.length - take.length;
+  const desc = filterWords(args);
+  const heldText = [held.person.length && `${held.person.length} from ${held.person.length === 1 ? 'a person' : 'people'} (${held.person.slice(0, 3).map(sample).join('; ')}): left alone, ask for them by name if they should go too`,
+    held.flagged.length && `${held.flagged.length} flagged`, held.recent.length && `${held.recent.length} from the last ${HOLD_RECENT_DAYS} days`, held.scam.length && `${held.scam.length} that look dangerous (move those to Trash, or report them as spam in your mail app)`].filter(Boolean);
+  const ats = take.map((r) => r.at).filter(Boolean);
+  const text = take.length
+    ? `${BULK_WORD[what]}${what === 'move' ? ` to ${cleanField(args.folder, 60)}` : ''}: ${take.length} message${take.length === 1 ? '' : 's'} ${desc}, ${DAYS_OF(Math.min(...ats))} to ${DAYS_OF(Math.max(...ats))}. For example: ${take.slice(0, 5).map(sample).join('; ')}.`
+      + `${scams.length ? ` ${scams.length} of them look dangerous.` : ''}${heldText.length ? ` Held back: ${heldText.join('; ')}.` : ''}${over ? ` ${over} more match: the next bulk act does them.` : ''}`
+      + `${fill.left ? ` ${statusLine(fill)}` : ''}${what === 'trash' ? ' Nothing is deleted for good; it stays in Trash until it is emptied.' : ''} One undo id undoes it all.`
+    : `Nothing to ${BULK_WORD[what].toLowerCase()} ${desc}.${heldText.length ? ` Held back: ${heldText.join('; ')}.` : ''}${fill.left ? ` ${statusLine(fill)}` : ''}`;
+  const plan = { action: BULK, what, args: { ...args }, rows: take, text, empty: !take.length, at: now, key: JSON.stringify(args) };
+  lastBulk = plan;
+  return plan;
+}
+export async function doBulk(cfg, plan, opts = {}, ctx = {}) {
+  if (plan.empty) return plan.text;
+  const id = Math.random().toString(36).slice(2, 7);
+  const folder = emailSettings(cfg).folder;
+  return queued(catalogFile(cfg), () => withMailbox(cfg, async (imap) => {
+    const caps = await capsOf(imap);
+    const folders = readFolders(await imap.run('LIST "" "*"'));
+    let to = null;
+    if (plan.what !== 'mark_read') {
+      if (lockedFolder(folders, folder)) throw new Error(`Bob doesn't move mail out of ${fromMutf7(folder)} (Trash, Junk or All Mail): that's yours to do in your mail app.`);
+      to = plan.what === 'move' ? namedFolder(folders, plan.args.folder) : findFolder(folders, plan.what);
+      if (!to && plan.what === 'move') to = { name: await makeFolder(imap, plan.args.folder), shown: cleanFolderName(plan.args.folder) };
+      if (!to) throw new Error(`This account has no ${plan.what === 'trash' ? 'Trash' : 'Archive'} folder Bob can find. Folders: ${folders.map((f) => f.shown).slice(0, 30).join(', ')}.`);
+      if (to.name === folder) throw new Error(`Those are already in ${to.shown}.`);
+    }
+    const done = [], mids = [];
+    for (let i = 0; i < plan.rows.length; i += BULK_CHUNK) {
+      if (ctx.signal?.aborted) break;
+      const part = plan.rows.slice(i, i + BULK_CHUNK);
+      const uids = part.map((r) => r.uid);
+      if (plan.what === 'mark_read') await imap.run(`UID STORE ${uids.join(',')} +FLAGS.SILENT (\\Seen)`);
+      else await moveUids(imap, caps, uids, to.name);
+      done.push(...part); mids.push(...part.map((r) => r.mid).filter(Boolean));
+      ctx.emit?.({ type: 'progress', text: `${BULK_WORD[plan.what]}: ${done.length} of ${plan.rows.length}` });
+    }
+    if (!done.length) return 'Stopped before anything was changed.';
+    const said = `${plan.what === 'mark_read' ? 'marked as read' : `moved to ${to.shown}`}: ${done.length} message${done.length === 1 ? '' : 's'} ${filterWords(plan.args)}`;
+    await addUndo(cfg, { id, at: Date.now(), action: BULK, said, back: [plan.what === 'mark_read' ? { folder, mids, flag: 'mark_unread' } : { folder: to.name, mids, moveTo: folder }] });
+    if (plan.what === 'mark_read') markRows(cfg, done.map((r) => r.uid), { unread: false }); else dropRows(cfg, done.map((r) => r.uid));
+    const left = plan.rows.length - done.length;
+    return `Done: ${said}.${left ? ` Stopped with ${left} not done (they're where they were).` : ''}${plan.what === 'trash' ? ' Nothing was deleted for good.' : ''} Undo id ${id}.`;
+  }, { ...opts, write: true }));
+}
+const freshBulk = (args) => (lastBulk && lastBulk.key === JSON.stringify(args) && Date.now() - lastBulk.at < 120000 ? lastBulk : null);
+
 // ---------------------------------------------------------------- the tool
 const fn = (name, description, properties, required) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } });
 
 export function manageEmailTool(cfg, on = () => true, opts = {}, brain = null) {
-  return {
-    schema: fn('manage_email', 'Tidy the user\'s email. sort = a plan card the user approves (for a clean-up). Or mark, flag, move, archive, trash, draft (never sent), undo. ids from read_email.', {
+  // With the mail catalog on (opts.catalogOn), one more action, bulk; with it off, the schema is exactly as before.
+  const catalogOn = () => (typeof opts.catalogOn === 'function' ? opts.catalogOn() : cfg?.moreTools?.emailCatalog === true);
+  const plainSchema = fn('manage_email', 'Tidy the user\'s email. sort = a plan card the user approves (for a clean-up). Or mark, flag, move, archive, trash, draft (never sent), undo. ids from read_email.', {
       action: { type: 'string', enum: ACTIONS, description: 'What to do.' },
       ids: { type: 'array', items: { type: 'integer' }, description: 'Ids from read_email, up to 50.' },
       folder: { type: 'string', description: 'move: the folder name.' },
@@ -369,21 +464,44 @@ export function manageEmailTool(cfg, on = () => true, opts = {}, brain = null) {
       days: { type: 'integer', description: 'sort: days back (30).' },
       reply_first: { type: 'array', description: 'sort: answer first, most important first.', items: { type: 'object', properties: { id: { type: 'integer' }, why: { type: 'string' } } } },
       batches: { type: 'array', description: 'sort: your batches (optional).', items: { type: 'object', properties: { name: { type: 'string' }, why: { type: 'string' }, action: { type: 'string', enum: SORT_ACTIONS }, folder: { type: 'string' }, ids: { type: 'array', items: { type: 'integer' } } } } }
-    }, ['action']),
+    }, ['action']);
+  const p = plainSchema.function.parameters;
+  const bulkSchema = fn('manage_email', 'Tidy the user\'s email. sort = a plan card the user approves (for a clean-up). bulk = a whole company, sender, kind or age at once (from the catalog, any size). Or mark, flag, move, archive, trash, draft (never sent), undo. ids from read_email.', {
+    ...p.properties,
+    action: { type: 'string', enum: [...ACTIONS, BULK], description: 'What to do.' },
+    do: { type: 'string', enum: BULK_DO, description: 'bulk: what to do with them.' },
+    org: { type: 'string', description: 'bulk: the company or mailing list, by name or domain.' },
+    sender: { type: 'string', description: 'bulk: one sender, by name or address.' },
+    kind: { type: 'array', items: { type: 'string', enum: KINDS }, description: 'bulk: only these kinds.' },
+    older_than_days: { type: 'integer', description: 'bulk: only mail older than this.' },
+    words: { type: 'string', description: 'bulk: only subjects with these words.' }
+  }, ['action']);
+  return {
+    get schema() { return catalogOn() ? bulkSchema : plainSchema; },
     alwaysAsk: true, // a card even with "Work without asking" on: it's the person's mail
     ownCard: (args) => args?.action === 'sort', // the sort plan is its own card, so the mail lock adds none
     approvalGroup: 'email',
     async check(args) {
       if (!on()) throw new Error('Tidying email is off. It\'s in Settings, How Bob works, 🧰 More tools: "Let Bob tidy my email" (with "Let Bob read my email" on).');
       if (args?.action === 'sort') return false; // the sort plan is its own card (sortPlan)
+      if (args?.action === BULK) {
+        if (!catalogOn()) throw new Error('Bulk acts need the mail catalog: Settings, How Bob works, 🧰 More tools, "Let Bob catalog my email".');
+        return (await planBulk(cfg, args, opts)).text;
+      }
       return (await planChange(cfg, args, opts)).text;
     },
     async run(args, ctx = {}) {
       if (!on()) return 'Tidying email is off. It\'s in Settings, How Bob works, 🧰 More tools: "Let Bob tidy my email".';
       if (args.action === 'sort') return sortPlan(brain, cfg, args, ctx, opts);
+      if (args.action === BULK) {
+        if (!catalogOn()) return 'Bulk acts need the mail catalog: Settings, How Bob works, 🧰 More tools, "Let Bob catalog my email".';
+        const plan = freshBulk(args) || await planBulk(cfg, args, opts);
+        lastBulk = null;
+        return fenced(await doBulk(cfg, plan, opts, ctx), 'That is what was done. Tell the user in one or two lines, with the count and the undo id.');
+      }
       // Planned again on its own connection: only the messages still there are changed, and the answer says which.
       return fenced(await doChange(cfg, await planChange(cfg, args, opts), args, opts), 'That is what was done. Tell the user in one or two lines.');
     },
-    summary: ({ action, ids }) => `email: ${action}${Array.isArray(ids) && ids.length ? ` ${ids.length} message${ids.length === 1 ? '' : 's'}` : ''}`
+    summary: ({ action, ids, do: what, org, sender }) => `email: ${action}${action === BULK ? ` ${what || ''} ${String(org || sender || '').slice(0, 40)}`.trimEnd() : ''}${Array.isArray(ids) && ids.length ? ` ${ids.length} message${ids.length === 1 ? '' : 's'}` : ''}`
   };
 }

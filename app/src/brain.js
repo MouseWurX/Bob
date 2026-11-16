@@ -229,7 +229,7 @@ export class Brain {
     const on = (k) => () => moreOn(this.cfg, k);
     Object.assign(this.tools, {
       calculate: calculatorTool(cfg, on('calculator')), make_password: passwordTool(cfg, on('passwords')),
-      read_email: emailTool(cfg, on('email')), manage_email: manageEmailTool(cfg, () => moreOn(this.cfg, 'email') && moreOn(this.cfg, 'emailTidy'), {}, this), tool_record: toolRecordTool(cfg), read_calendar: calendarTool(cfg, on('calendar')),
+      read_email: emailTool(cfg, on('email'), { catalogOn: () => moreOn(this.cfg, 'email') && moreOn(this.cfg, 'emailCatalog') }), manage_email: manageEmailTool(cfg, () => moreOn(this.cfg, 'email') && moreOn(this.cfg, 'emailTidy'), { catalogOn: () => moreOn(this.cfg, 'email') && moreOn(this.cfg, 'emailCatalog') }, this), tool_record: toolRecordTool(cfg), read_calendar: calendarTool(cfg, on('calendar')),
       watch_page: watchTool(cfg, on('pageWatch')), call_api: apiTool(cfg, on('webApi')),
       query_data: dataTool(cfg, on('dataQuery')), make_chart: chartTool(cfg, on('charts')),
       check_spelling: spellTool(cfg, on('spellCheck')), meeting_notes: meetingTool(cfg, on('meetingNotes')),

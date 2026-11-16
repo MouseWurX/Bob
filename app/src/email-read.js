@@ -266,17 +266,38 @@ function checksLine(m) {
   ].filter(Boolean).join('\n');
 }
 export function emailTool(cfg, on = () => true, opts = {}) {
-  return {
-    schema: fn('read_email', 'Read the user\'s email: list, search, or read one. Read-only.', {
+  // With the mail catalog on (mail-catalog.js), one more action, groups; with it off, the schema is exactly as before.
+  const catalogOn = () => (typeof opts.catalogOn === 'function' ? opts.catalogOn() : cfg?.moreTools?.emailCatalog === true);
+  const plainSchema = fn('read_email', 'Read the user\'s email: list, search, or read one. Read-only.', {
       action: { type: 'string', enum: ['list', 'read'], description: 'list (newest first) or read one.' },
       days: { type: 'integer', description: 'list: days back (1 = today).' },
       words: { type: 'string', description: 'list: only messages with these words.' },
       from: { type: 'string', description: 'list: only messages from this name or address.' },
       unread: { type: 'boolean', description: 'list: only unread ones.' },
       id: { type: 'integer', description: 'read: the id from the list.' }
-    }, ['action']),
-    async run({ action, days, words, from, unread, id }) {
+    }, ['action']);
+  const groupSchema = fn('read_email', 'Read the user\'s email: list, search, or read one; groups = the whole folder counted by company or sender, then kind (from the catalog, any size). Read-only.', {
+    ...plainSchema.function.parameters.properties,
+    action: { type: 'string', enum: ['list', 'read', 'groups'], description: 'list (newest first), read one, or groups.' },
+    by: { type: 'string', enum: ['org', 'sender'], description: 'groups: by company (org) or by sender.' },
+    kind: { type: 'array', items: { type: 'string', enum: ['person', 'list', 'newsletter', 'notice', 'junk', 'scam'] }, description: 'groups: only these kinds.' },
+    org: { type: 'string', description: 'groups: one company, by name or domain.' },
+    older_than_days: { type: 'integer', description: 'groups: only mail older than this.' }
+  }, ['action']);
+  return {
+    get schema() { return catalogOn() ? groupSchema : plainSchema; },
+    async run({ action, days, words, from, unread, id, by, kind, org, older_than_days: older }) {
       if (!on()) return 'Reading email is off. It\'s in Settings, How Bob works, 🧰 More tools: "Let Bob read my email".';
+      if (action === 'groups') {
+        if (!catalogOn()) return 'Groups need the mail catalog: Settings, How Bob works, 🧰 More tools, "Let Bob catalog my email".';
+        const c = await import('./mail-catalog.js');
+        const fill = await c.fillCatalog(cfg, { perCall: 100000, untilMs: Number(opts.fillMs) || 20000 }, opts);
+        const rows = c.select(c.loadCatalog(cfg), { kind, org, sender: from, older_than_days: older, unread, words });
+        const g = c.groups(rows, { by: by === 'sender' ? 'sender' : 'org' });
+        const kinds = {}; for (const r of rows) kinds[r.kind] = (kinds[r.kind] || 0) + 1;
+        const unsure = rows.filter((r) => !r.sure).length;
+        return `${c.statusLine(fill)}\n${MAIL_START}\n${rows.length} message${rows.length === 1 ? '' : 's'}${rows.length ? `: ${c.kindLine(kinds)}` : ''}. By ${by === 'sender' ? 'sender' : 'company'}, biggest first:\n${c.groupsText(null, g, { by })}\n${MAIL_END}\nBob's own sorting (by the headers, not from the e-mail).${unsure ? ` ${unsure} look like a person writing from a company that mostly sends bulk mail: check those before any bulk act.` : ''} To act on a whole group, call manage_email with action bulk (it shows a card first).`;
+      }
       if (action === 'read') {
         const m = await readMail(cfg, id, opts);
         const who = (v) => addresses(v).map((a) => cleanField(a.address ? `${a.name ? `${a.name} ` : ''}<${a.address}>` : a.name, 120)).join(', ');
@@ -291,6 +312,6 @@ export function emailTool(cfg, on = () => true, opts = {}) {
       const flagged = r.mail.filter((m) => m.danger.length);
       return `${MAIL_START}\n${r.total} message${r.total === 1 ? '' : 's'}${r.total > r.mail.length ? `, newest ${r.mail.length} shown` : ''}:\n${r.mail.map((m) => `id ${m.uid} · ${cleanField(m.date.replace(/\s*\([^)]*\)$/, ''), 40)} · ${cleanField(m.from, 60)} · ${cleanField(m.subject, 100)}${m.unread ? ' · unread' : ''}`).join('\n')}\n${MAIL_END}\nBob's own checks (not from the e-mail): ${flagged.length ? flagged.map((m) => `⚠️ id ${m.uid} looks dangerous: ${m.danger.join('; ')}`).join('\n') : 'no danger signs in the senders or subjects.'}\nTo read one, call read_email with action read and its id.`;
     },
-    summary: ({ action, id, words }) => `email: ${action === 'read' ? `read ${id}` : `list${words ? ` "${String(words).slice(0, 40)}"` : ''}`}`
+    summary: ({ action, id, words, by }) => `email: ${action === 'read' ? `read ${id}` : action === 'groups' ? `groups by ${by === 'sender' ? 'sender' : 'company'}` : `list${words ? ` "${String(words).slice(0, 40)}"` : ''}`}`
   };
 }

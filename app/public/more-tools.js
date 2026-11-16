@@ -18,6 +18,7 @@ const NOTES = {
   repeatReminders: 'Reminders can repeat: every day, weekday, week, month or year ("every Monday at 9").',
   phoneReminders: 'Reminders and page-watch news pop up on Bob for Android too, while it\'s paired.',
   email: 'Bob reads your mail (any IMAP account, read-only). He can\'t send, delete or mark anything read.',
+  emailCatalog: 'For big inboxes: Bob keeps a small list of each message\'s sender, company, subject and date (never the messages themselves), so he can count your mail by company and kind and archive or trash a whole company at once. Each person on Bob has their own, locked like their chats. About 3 MB for 50,000 emails. Needs "Let Bob read my email" on; bulk acts need "Let Bob tidy my email" too, and always show a card first.',
   emailTidy: 'Bob marks mail read, flags it, files it in a folder, archives it, moves it to Trash (never deleted for good), or saves a draft (never sent: you send it). Every change shows a card first and can be undone. Needs "Let Bob read my email" on. Works with Gmail, Outlook and Hotmail, in English or French.',
   calendar: 'Bob reads calendars from a link or an .ics file. Read-only.',
   pageWatch: 'Bob checks a web page every few hours and tells you when the part you care about changes.',
@@ -28,6 +29,8 @@ const NOTES = {
   meetingNotes: 'A meeting recording becomes notes, with who said what (a best guess from voices).',
   compareFiles: 'Bob compares two files and says what changed, in words.'
 };
+
+const sizeText = (b) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 
 export function moreToolsHtml() {
   return '<div class="more-tools-box"><p class="muted">Loading…</p></div>';
@@ -56,6 +59,9 @@ export async function mountMoreTools(box) {
       ${byKey('email')}
       <p class="muted">Your account: Settings, Online services, 📧 Email account${v.emailUser ? ` (${esc(v.emailUser)}${v.emailPasswordSaved ? '' : ', no app password yet'})` : ' (not set up yet)'}.</p>
       ${byKey('emailTidy')}
+      ${byKey('emailCatalog')}
+      <div class="row"><span class="muted">${v.catalog?.locked ? 'Your catalog is locked: type your passcode first.' : v.catalog?.bytes ? `Catalog: ${esc(String(v.catalog.rows))} of ${esc(String(v.catalog.total))} messages, ${esc(sizeText(v.catalog.bytes))} on disk.` : 'No catalog yet.'}</span>
+        <button type="button" class="mini" data-mt-catbuild>${v.catalog?.bytes ? 'Bring up to date' : 'Build it now'}</button>${v.catalog?.bytes ? ' <button type="button" class="mini" data-mt-catrm>Delete catalog</button>' : ''}</div>
       ${byKey('calendar')}
       <ul class="plain">${cal || '<li class="muted">No calendars yet.</li>'}</ul>
       <div class="row"><input data-mt-cal="name" maxlength="40" placeholder="Name, like Work" aria-label="Calendar name" style="width:9em">
@@ -106,6 +112,8 @@ export async function mountMoreTools(box) {
     else if (d.mtCalrm) act({ removeCalendar: d.mtCalrm }, 'Calendar removed.');
     else if ('mtApiadd' in d) act({ addApi: { name: val('[data-mt-api=name]'), base: val('[data-mt-api=base]'), header: val('[data-mt-api=header]') || undefined, prefix: val('[data-mt-api=prefix]'), key: val('[data-mt-api=key]') } }, 'Service added.');
     else if (d.mtApirm) act({ removeApi: d.mtApirm }, 'Service removed.');
+    else if ('mtCatbuild' in d) act({ catalogBuild: true });
+    else if ('mtCatrm' in d) act({ catalogDelete: true }, 'Catalog deleted.');
     else if (d.mtWatchrm) act({ removeWatch: d.mtWatchrm }, 'Stopped watching.');
   });
   try { v = await api(); } catch (e) { box.innerHTML = `<p class="muted">${esc(e.message)}</p>`; return; }

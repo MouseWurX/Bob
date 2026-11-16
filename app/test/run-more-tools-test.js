@@ -35,7 +35,7 @@ const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\
 // ---- off by default ----
 {
   const m = cleanMoreTools(undefined);
-  check('all fifteen switches start off', SWITCHES.length === 15 && SWITCHES.every((s) => m[s.key] === false));
+  check('all sixteen switches start off', SWITCHES.length === 16 && SWITCHES.every((s) => m[s.key] === false));
   check('only true turns a switch on', cleanMoreTools({ email: 'yes', calculator: true }).email === false && cleanMoreTools({ calculator: true }).calculator === true);
   check('with everything off, every new tool is taken out', MORE_TOOLS.every((t) => moreToolsOff({}).includes(t)));
   check('a switched-on tool stays in', !moreToolsOff({ moreTools: { calculator: true } }).includes('calculate'));
