@@ -301,11 +301,11 @@ Lab jobs need at least 12 GB of memory; a smaller computer can start them on a b
 
 ### Lessons: a course on how brains work
 
-**Learn > Lessons** is a short course in **42 lessons and 17 units**, at three levels: **Foundations** (tokens, weights, experts, prompts, tool calls), **Advanced** (how brains learn, transformers, cutting and healing, why lessons decide habits) and **Engineering** (building the tools, inference engines, training at scale, honest tests, looking inside). It's off by default: turn on **Lab: Lessons** in Settings, How Bob works, Brains.
+**Learn > Lessons** is a short course in **45 lessons and 17 units**, at three levels: **Foundations** (tokens, weights, experts, prompts, tool calls), **Advanced** (how brains learn, transformers, cutting and healing, why lessons decide habits) and **Engineering** (building the tools, inference engines, training at scale, honest tests, looking inside). It's off by default: turn on **Lab: Lessons** in Settings, How Bob works, Brains.
 
 Each lesson has three parts:
 
-1. **Read.** Bob explains one idea in plain words, with its proper name and a glossary link. Some lessons add a code excerpt, and some a **Real result** from Bob's own research, with the file it comes from.
+1. **Read.** Bob explains one idea in plain words, with its proper name and a glossary link. Some lessons add a code excerpt, and some a **Real result** from Bob's own research, with the file it comes from and how strong it is. **Where every Real result comes from** lists them all in one table, with the chapter of the write-up each one comes from.
 2. **Try it.** One read-only step on the brain Bob has loaded, or a button to the Lab page that does the real job. Nothing rents, downloads or changes a brain.
 3. **Check.** Two questions, and every answer says why it's right or wrong.
 

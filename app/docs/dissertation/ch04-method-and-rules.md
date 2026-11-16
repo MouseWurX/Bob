@@ -97,7 +97,7 @@ The tool interview shows a model its own misses and asks why. The explanation is
 
 ### 4.5.4 Lesson reviewers
 
-Lessons were reviewed by language models at two points. The lesson writer's own reviewer rejected lessons at write time, and a separate sort by Haiku, then Opus, labelled each lesson keep, fix, repair or discard (section 4.7). Both reviewers are models, so both carry the biases noted above. The sort was checked by sampling. Chapters 6 and 7 report what the reviews found, and this chapter states only how they were run.
+Lessons were reviewed by language models at two points. The lesson writer's own reviewer rejected lessons at write time, and a separate sort by Haiku, then Opus, labelled each lesson keep, fix, repair or discard (section 4.7). Both reviewers are models, so both carry the biases noted above. The sort was checked by sampling. Chapters 6 and 7 report what the reviews found, and this chapter states only how they were run. Chapter 12 turns this disclosure into an Engineering lesson, Auditing your reviewer, for learners who use the Lab's own reviewers (section 12.5.3).
 
 ## 4.6 Held-out splits and the never-taught gate
 
