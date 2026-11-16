@@ -92,6 +92,13 @@ check('"My own review" in the answer -> review_leak', has({ text: 'move it', rep
 check('"You\'re right on all six points" -> review_leak', has({ text: 'zip script', reply: 'You\'re right on all six points. Here is the script.' }, 'review_leak'));
 check('a plain answer -> no review_leak', !has({ text: 'zip script', reply: 'Here is the script. It zips the folder.' }, 'review_leak'));
 
+// ---------- office_route (predicted from the mail run and the Maximus rerun, 16 Nov) ----------
+check('"make report.docx" with write_file only -> office_route (a claim)', (() => { const c = answerChecks({ text: 'Make a Word document called report.docx with my notes', reply: 'Done, saved.', actions: [act('write_file', { path: 'C:\\Users\\you\\Documents\\report.docx' })] }).find((x) => x.kind === 'office_route'); return c && c.claim && /write_file/.test(c.nudge); })());
+check('office_edit ran -> quiet', !has({ text: 'Add a slide to deck.pptx', reply: 'Added.', actions: [act('office_edit', { path: 'deck.pptx' })] }, 'office_route'));
+check('moving a .docx is file_hands\' job -> quiet', !has({ text: 'move file.docx to Documents', reply: 'Moved.', actions: [act('file_hands', {})] }, 'office_route'));
+check('the Office Hand is off and he says so -> quiet', !has({ text: 'Convert report.docx to PDF', reply: 'The Office Hand is off. Switch it on in Settings.', actions: [act('offer_setup', { what: 'office' })] }, 'office_route'));
+check('a chart from a sheet -> quiet', !has({ text: 'read Q3.xlsx and create a pie chart', reply: 'Here it is.', actions: [act('read_file', {}), act('make_chart', {})] }, 'office_route'));
+
 // ---------- stripMarkers ----------
 check('citation markers taken out', stripMarkers('It rose 3%【1†L1-L3】. Then fell【12】.') === 'It rose 3%. Then fell.');
 check('ordinary brackets kept', stripMarkers('see [1] and (2)') === 'see [1] and (2)');
