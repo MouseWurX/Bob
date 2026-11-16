@@ -1,7 +1,7 @@
 // Sessions (which brains stay loaded), parallel lanes, and Style settings cleaning.
 import { brainText } from './source-text.js';
 import { Brain, besideOk, sideOk, sideBrain, SIDE_LANE } from '../src/brain.js';
-import { modelFor, laneOf, suggestSession, currentSession, sessionBrains, SESSIONS, waitsForGaming } from '../src/sessions.js';
+import { modelFor, laneOf, suggestSession, currentSession, sessionBrains, SESSIONS, waitsForGaming, noGamingBrain, GAMING_PAUSED_LINE } from '../src/sessions.js';
 import { cleanStyle } from '../src/config.js';
 import { ENGINES, findRelease, pickAsset } from '../src/engines.js';
 import { explainSetupError } from '../src/audio.js';
@@ -25,12 +25,16 @@ check('Normal + One brain: every hat on the main brain', modelFor(cfg({ oneBrain
 {
   const one = cfg({ oneBrain: true, sessionBrains: { small: 'gemma4:e4b', deep: 'big:70b', office: 'office:12b', coding: 'coder:30b' } });
   const sb = sessionBrains(one);
-  check('One brain: Deep thinking, Office, Coding and Gaming are the main brain, the Quick brain is off', sb.deep === 'gemma4:26b' && sb.office === 'gemma4:26b' && sb.coding === 'gemma4:26b' && sb.small === '' && sb.gaming === 'gemma4:26b', JSON.stringify(sb));
-  // Nov 16 (the owner): "in one brain it still selects qwen4b instruct for gaming, and i cannot remove it".
-  check('One brain: the Gaming session chats on the main brain, on the processor', (() => { const m = modelFor({ ...one, session: 'light' }, 'bob'); return m.model === 'gemma4:26b' && m.cpu; })());
+  check('One brain: Deep thinking, Office and Coding are the main brain, the Quick brain and Gaming brain are off', sb.deep === 'gemma4:26b' && sb.office === 'gemma4:26b' && sb.coding === 'gemma4:26b' && sb.small === '' && sb.gaming === '', JSON.stringify(sb));
+  // Nov 16 (the owner): "in one brain it still selects qwen4b instruct for gaming, and i cannot remove it", then "no, during
+  // gaming the main brain doesnt load".
+  check('One brain + Gaming: no brain loads, not even the main brain', modelFor({ ...one, session: 'light' }, 'bob').model === '' && noGamingBrain(one));
+  check('One brain + Gaming: every job waits, chat too; nothing waits outside Gaming', waitsForGaming({ ...one, session: 'light' }, { kind: 'chat', effort: 'low' }) && !waitsForGaming(one, { kind: 'chat', effort: 'low' }));
+  check('with a Gaming brain, a Low chat still runs while you play', !waitsForGaming(cfg({ session: 'light' }), { kind: 'chat', effort: 'low' }) && modelFor(cfg({ session: 'light' }), 'bob').model === 'qwen3-4b');
+  check('the paused line says what to do', /paused while you game/.test(GAMING_PAUSED_LINE(false)) && /Send jobs/.test(GAMING_PAUSED_LINE(false)) && !/Send jobs/.test(GAMING_PAUSED_LINE(true)));
   check('One brain: the Brains page still shows the Gaming pick, greyed', sessionBrains(one, { picked: true }).gaming === 'qwen3-4b');
   const noGame = cfg({ sessionBrains: { gaming: '' } });
-  check('Gaming taken off by hand stays off and the main brain chats while you play', mergeSettings({}, { sessionBrains: { gaming: '' } }).sessionBrains.gaming === '' && sessionBrains(noGame).gaming === '' && sessionBrains(noGame, { picked: true }).gaming === '' && modelFor({ ...noGame, session: 'light' }, 'bob').model === 'gemma4:26b' && modelFor({ ...noGame, session: 'light' }, 'bob').cpu);
+  check('Gaming taken off by hand stays off and no brain loads while you play', mergeSettings({}, { sessionBrains: { gaming: '' } }).sessionBrains.gaming === '' && sessionBrains(noGame).gaming === '' && sessionBrains(noGame, { picked: true }).gaming === '' && modelFor({ ...noGame, session: 'light' }, 'bob').model === '');
   check('Gaming never becomes E4B, even from an old settings file', !('gaming' in mergeSettings({}, { sessionBrains: { gaming: 'gemma4:e4b' } }).sessionBrains) && sessionBrains(cfg({ sessionBrains: { gaming: 'gemma4:e4b' } })).gaming === 'qwen3-4b');
   check('One brain: the picks are still there for the Brains page', JSON.stringify(sessionBrains(one, { picked: true })) === JSON.stringify(sessionBrains({ ...one, oneBrain: false })));
   // Nov 15 (the owner): "i cant take jobs away from brains once i issue them". The page saw the fall-back brain, not the pick.
