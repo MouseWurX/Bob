@@ -69,6 +69,7 @@ import { harnessFaults, namedFiles, namedFolders, TYPED_CHOICE, FAULTS } from '.
 import { png as pngFile, pdf as pdfFile } from './scene-files.mjs';
 import { labKey, scrubber, tavilyCheck, tavilyUsage } from './lab-keys.mjs';
 import { fitMail, sortCardAnswer } from './mail-world.mjs';
+import { officeAfter } from './office-jobs.mjs';
 
 const o = opts({ parallel: 2, max: 4096, 'job-minutes': 10, hours: 0, 'search-gap': 2 });
 const L = locate(o);
@@ -103,16 +104,21 @@ if (o.never && !neverFiles.length) fail(`--never ${o.never} holds no .jsonl file
 for (const f of neverFiles) {
   for (const r of readJsonl(f)) for (const t of [r.text, r.question, r.prompt, r.ask, (r.messages || []).find((m) => m.role === 'user')?.content]) if (typeof t === 'string' && t.trim()) never.add(norm(t));
 }
-let jobs = files.flatMap((f) => readJsonl(f)).filter((j) => j && typeof j.text === 'string' && j.text.trim()).map((j, i) => ({ id: String(j.id || `job-${i}`), job: j.job || '', text: j.text, setup: Array.isArray(j.setup) ? j.setup : [], ...(j.from && typeof j.from === 'object' ? { from: j.from } : {}), ...(j.mail && typeof j.mail === 'object' ? { mail: j.mail, key: String(j.key || '') } : {}) }));
+let jobs = files.flatMap((f) => readJsonl(f)).filter((j) => j && typeof j.text === 'string' && j.text.trim()).map((j, i) => ({ id: String(j.id || `job-${i}`), job: j.job || '', text: j.text, setup: Array.isArray(j.setup) ? j.setup : [], ...(j.from && typeof j.from === 'object' ? { from: j.from } : {}), ...(j.mail && typeof j.mail === 'object' ? { mail: j.mail, key: String(j.key || '') } : {}), ...(j.office && typeof j.office === 'object' ? { office: j.office, key: String(j.key || '') } : {}) }));
 const held = jobs.filter((j) => never.has(norm(j.text)));
 jobs = jobs.filter((j) => !never.has(norm(j.text)));
 const seen = new Set(); jobs = jobs.filter((j) => (seen.has(j.id) ? false : seen.add(j.id)));
 const leftOut = jobs.filter((j) => leaveOut.has(String(j.job).toLowerCase()));
 jobs = jobs.filter((j) => !leaveOut.has(String(j.job).toLowerCase()));
+// 16 Nov (office coverage): an office job that converts, edits or makes a file needs LibreOffice; without --office the
+// test Bob has no Office Hand, so those jobs are left out (and said so), never run as Bob failing
+const noOffice = o.office ? [] : jobs.filter((j) => j.office?.lo);
+jobs = jobs.filter((j) => !noOffice.includes(j));
 const done = new Set(readJsonl(F.runs).map((r) => r.id));
 const queue = jobs.filter((j) => !done.has(j.id)).slice(0, Number(o.count || 1e9));
 say(`pre-flight: jobs file(s) ${files.join(', ')}: ${jobs.length + held.length} rows`);
 if (leaveOut.size) say(`pre-flight: ${leftOut.length} job(s) of kind ${[...leaveOut].join(', ')} left out (--leave-out-kinds)`);
+if (noOffice.length) say(`pre-flight: ${noOffice.length} office job(s) left out: they need LibreOffice (--office <soffice>)`);
 if (o.never) say(`pre-flight: ${held.length} held-out request(s) left out (--never: ${neverFiles.length} file(s), ${never.size} requests known)`);
 say(`pre-flight: ${done.size} already run in this folder, ${queue.length} to go`);
 const sceneMode = String(o.scene || '').toLowerCase();
@@ -237,6 +243,7 @@ if (!url) fail('--url <llama-server> is needed');
 
 const bobUrl = (f) => pathToFileURL(path.join(L.bob, 'src', f)).href;
 const { textCalls, LlamaCpp } = await import(bobUrl('llamacpp.js'));
+const { docText } = await import(bobUrl('doc-text.js')); // office jobs: the files Bob left, read back as words
 const { checkArgs } = await import(bobUrl('loop-help.js'));
 let saveExport = null; try { ({ saveExport } = await import(bobUrl('diagram.js'))); } catch {}
 // 16 Nov (800-job read): make_diagram with save_to waits for the chat window to draw the diagram and send the file
@@ -275,6 +282,7 @@ async function sceneChat(messages) {
 }
 async function sceneFor(j) {
   if (j.mail) return { scene: null, problems: [], made: 'none' }; // an inbox job's world is its mailbox (mail-world.mjs)
+  if (j.office) return { scene: null, problems: [], made: 'none' }; // an office job brings its own files (office-jobs.mjs)
   const had = scenes.get(j.id, j.text);
   // 16 Nov (800-job read): a scene whose reply couldn't be read was saved and then reused as an empty home every time;
   // with --scene make it is written again instead
@@ -338,6 +346,15 @@ async function runJob(j) {
   // 16 Nov (MouseWurX: tests "to make sure bob can manage an email inbox"): an inbox job gets Bob's own read_email and
   // manage_email, his account set up on a made-up mailbox (mail-world.mjs) that answers nothing else, so nothing can be sent
   const mw = j.mail ? await fitMail(kit, j.mail) : null;
+  // 16 Nov (MouseWurX: test Bob's features "one category at a time. starting with office files"): an office job plants its
+  // own made-up files (office-jobs.mjs) and has "Let Bob compare files" on, as a person who asked for it would
+  let ow = null;
+  if (j.office) {
+    kit.cfg.moreTools = { ...(kit.cfg.moreTools || {}), compareFiles: true };
+    const want = (j.office.files || []).filter((f) => f && typeof f.path === 'string');
+    const put = plantScene(kit, { files: want.map((f) => ({ path: f.path, content: String(f.content ?? ''), ...(f.meta ? { meta: f.meta } : {}) })) }, { day: today });
+    ow = { files: put.files, missing: [...put.skipped.map((x) => `${x.path}: ${x.why}`), ...want.filter((f) => !put.files.some((p) => p.toLowerCase().endsWith(f.path.split('\\').pop().toLowerCase()))).map((f) => f.path)].filter((x, i, a) => a.indexOf(x) === i) };
+  }
   brain.cfg.loopHelpOff = false; brain.cfg.toolHelp = true;
   if (solo) brain.cfg.soloEffort = true;
   const steps = []; const missing = new Set(); let real = 0, asks = 0;
@@ -356,7 +373,7 @@ async function runJob(j) {
     const want = namedFolders(j.text).filter((d) => !parts.has(d.toLowerCase())).map((d) => `C:\\Users\\you\\${home ? home[0].toUpperCase() + home.slice(1).toLowerCase() : 'Documents'}\\${d}`);
     if (want.length) { const more = plantScene(kit, { folders: want }, { day: today }); put.folders.push(...more.folders); put.skipped.push(...more.skipped); if (sc.scene) sc.scene.folders = [...(sc.scene.folders || []), ...want]; }
   }
-  const planted = [...new Set([...start.files, ...put.files])];
+  const planted = [...new Set([...start.files, ...put.files, ...(ow?.files || [])])];
   // 16 Nov (Opus read of run 3): a coding job's planted script sat outside any project, so Bob's guard (tools.js) refused
   // every edit and the job couldn't be done. Its folder is a project of this test home, as a person who codes with Bob has.
   const codeDirs = [...new Set([...start.codeDirs, ...put.codeDirs])];
@@ -453,6 +470,7 @@ async function runJob(j) {
     secs: (Date.now() - t0) / 1000, ...(error ? { error: kit.neutral(error).slice(0, 400) } : {}),
     effort, solo_effort: solo, search_capped: steps.some((st) => (st.calls || []).some((c) => c.name === 'web_search' && /at its monthly cap/.test(String(c.result || '')))), ...(loraScale !== null ? { lora_scale: loraScale } : {}), family, tool_shapes: kit.toolShapes, bob_src: kit.bobSrc, brain: process.env.LAB_MODEL_NAME || 'served', at: new Date().toISOString(),
     messages: deepNeutral(kit, brain.session(session)),
+    ...(ow ? { key: j.key, office: { lo: Boolean(j.office.lo), files: ow.files, missing: ow.missing, after: officeAfter(kit, docText) } } : {}),
     ...(mw ? { key: j.key, mail: { spec: j.mail, cards: sortCards.map((c) => ({ batches: (c.batches || []).map((b) => ({ name: b.name, action: b.action, folder: b.folder, ids: b.ids })), replyFirst: (c.replyFirst || []).map((x) => ({ id: x.id, why: x.why })) })), ...mw.server.after() } } : {})
   };
   // what the test world got wrong in this run, if anything (harness-faults.mjs): kept with the run for the read
