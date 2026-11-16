@@ -121,7 +121,7 @@ export function createSettingsParts(now) {
       ${sswitch('labPro', settings.labPro === true, 'Lab: Professional mode', keep('Shows every control, the test logs and each method\'s proper name. The same switch is at the top of the Lab.'))}
       ${sswitch('labLessons', settings.labLessons === true, 'Lab: Lessons', keep('Adds Lessons to Lab, Learn: a short course from tokens to cutting and healing a brain. Each lesson is read, try it on your loaded brain, then two quick questions.'))}
       ${selfWorkHtml()}
-      ${sswitch('naughtyList', settings.naughtyList === true, 'Show the naughty list', keep('Adds a Naughty list to the Brain catalogue: Qwen and Gemma remixes with the refusals removed ("heretic" or "abliterated"). What they say is on you. Bob never recommends one. Off: hidden; one already equipped stays.'))}
+      ${sswitch('naughtyList', settings.naughtyList === true, 'Show the naughty list', keep('Adds a Naughty list to the Brain catalogue: remixes of Qwen, Gemma and other open brains with the refusals removed ("heretic" or "abliterated"). What they say is on you. Bob never recommends one. Off: hidden; one already equipped stays.'))}
 `)}${EVERY_EXTRA.map(([id, label, note, body]) => panel(id, label, typeof note === 'function' ? note() : note, body())).join('')}
     </div>`;
   }

@@ -3,7 +3,7 @@
 // commit, or Ollama). Each model has an Active switch: active models show in the slots and menus, the rest stay here,
 // so the pickers stay short. Pure HTML builders; cellar.js handles the clicks.
 import { findHtml } from './cat-find.js'; // 1.5.209 Find more models
-import { officialTag, reapTag, REAP_LINE, isReap, fitsHere, applyFilters, sortModels, filterBarHtml, filtersOn, cleanFilters } from './cat-sort.js'; // 1.5.208 sorting, filters, maker tags
+import { officialTag, reapTag, turboTag, REAP_LINE, isReap, fitsHere, applyFilters, sortModels, filterBarHtml, filtersOn, cleanFilters } from './cat-sort.js'; // 1.5.208 sorting, filters, maker tags
 import { placeFor, quantOf, sizeLine } from './place.js';
 import { canDo, suit, pickFor, deviceFit, sourceOf, SLOT_NAMES, roomOn, tooBigEverywhere } from './fit.js';
 import { allSlots, isActive, tipHtml, slotValue, equipped } from './equip.js';
@@ -44,7 +44,7 @@ export function makerTag(m) {
 // the emoji ones purple on their screen). One picture, used for the toggle, the row tag, the warning and the quiet pick.
 export const DEVIL = '<svg class="devil" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path d="M2 1.5 L5 5 L3.2 6.2 Z" fill="#f28c28"/><path d="M14 1.5 L11 5 L12.8 6.2 Z" fill="#f28c28"/><circle cx="8" cy="9" r="6" fill="#d7263d"/><path d="M4.6 7.6 L6.6 8.6 M11.4 7.6 L9.4 8.6" stroke="#2b0a0e" stroke-width="1.3" stroke-linecap="round"/><circle cx="6" cy="9.5" r=".8" fill="#2b0a0e"/><circle cx="10" cy="9.5" r=".8" fill="#2b0a0e"/><path d="M5.3 11.6 Q8 14 10.7 11.6" stroke="#2b0a0e" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg>';
 export const devil = (label) => (label ? `<span class="devil-wrap" role="img" aria-label="${esc(label)}">${DEVIL}</span>` : DEVIL);
-export const NAUGHTY_WARNING = 'The naughty list is other people\'s remixes of Qwen and Gemma brains with the refusals cut out ("heretic" or "abliterated"). They are not Alibaba\'s or Google\'s releases. A brain from here answers without refusing, so what it says is on you, and it can be a little rougher than the original. I never recommend one; you pick it yourself.';
+export const NAUGHTY_WARNING = 'The naughty list is other people\'s remixes of open brains (Qwen, Gemma, gpt-oss, GLM, Muse and others) with the refusals cut out ("heretic" or "abliterated"). They are not the original makers\' releases (Alibaba, Google, OpenAI and the rest). A brain from here answers without refusing, so what it says is on you, and it can be a little rougher than the original. I never recommend one; you pick it yourself.';
 
 
 // The jobs, in the order the catalogue shows them. Names are the job names on the Brains page.
@@ -103,7 +103,7 @@ function rowHtml(m, job, ctx) {
   const fitTag = fitHere?.good && !rec ? `<span class="tag good fit-tag" tabindex="0" data-tip="${esc(fitHere.why || 'Runs well here.')}">${esc(fitHere.word)}</span>` : '';
   const quant = quantOf(m);
   const tip = [m.what, communityLine(m), distilledLine(m), m.thinks ? THINKS_LINE : '', where, out, isNew ? 'New: one of the five newest releases in its family.' : '', dated, m.trial ? `${TRIAL_LINE} ${m.trialNote || ''}`.trim() : '', m.bench || '', isReap(m) ? REAP_LINE : '', quant ? `Squeezed to ${quant} (how tightly the file is packed; a lower number is smaller and a little less sharp).` : '', place && placeTag ? place.why : s.why, roomy ? `Fits ${roomy} on your Bob-Net.` : '', fits, `Licence ${m.license}${m.commercial === false ? ' (personal use only)' : ''}`].filter(Boolean).join('\n');
-  const tags = `${recTag}${makerTag(m)}${officialTag(m)}${reapTag(m)}${isOwn(m) ? (m.madeByBob ? '<span class="tag own-bob" tabindex="0" data-tip="Its brain card says it was made for Bob in his own workshop. Bob runs it from where it is and leaves the pick to you.">Bob\'s own brain</span>' : '<span class="tag" data-tip="A brain you added from a file on this replicant matrix. Bob runs it from where it is and never recommends it over the ones he knows.">Your own file</span>') : ''}${isNew ? `<span class="tag new-tag" tabindex="0" data-tip="${esc(`New: one of the five newest releases in the ${familyOf(m)} family.${out ? ` ${out}.` : ''}`)}">New</span>` : ''}${dated ? `<span class="tag dated-tag" tabindex="0" data-tip="${esc(dated)}">Dated</span>` : ''}${fitTag}${!rec && s.level !== 'ok' ? placeTag || LEVEL_TAG[s.level] || '' : ''}${here ? '<span class="tag good">On this replicant matrix</span>' : ''}`;
+  const tags = `${recTag}${makerTag(m)}${officialTag(m)}${reapTag(m)}${turboTag(m)}${isOwn(m) ? (m.madeByBob ? '<span class="tag own-bob" tabindex="0" data-tip="Its brain card says it was made for Bob in his own workshop. Bob runs it from where it is and leaves the pick to you.">Bob\'s own brain</span>' : '<span class="tag" data-tip="A brain you added from a file on this replicant matrix. Bob runs it from where it is and never recommends it over the ones he knows.">Your own file</span>') : ''}${isNew ? `<span class="tag new-tag" tabindex="0" data-tip="${esc(`New: one of the five newest releases in the ${familyOf(m)} family.${out ? ` ${out}.` : ''}`)}">New</span>` : ''}${dated ? `<span class="tag dated-tag" tabindex="0" data-tip="${esc(dated)}">Dated</span>` : ''}${fitTag}${!rec && s.level !== 'ok' ? placeTag || LEVEL_TAG[s.level] || '' : ''}${here ? '<span class="tag good">On this replicant matrix</span>' : ''}`;
   const on = isActive({ entry: m, value: m.id, installed: here }, ctx.active);
   const sw = job.id === 'phone' ? '<span class="muted">In the phone app</span>'
     : `<button type="button" class="mini-switch" role="switch" aria-checked="${on}" data-active="${esc(m.id)}" aria-label="Active: ${esc(m.name)}">Active <span class="st">${on ? 'On' : 'Off'}</span></button>`;
@@ -170,6 +170,9 @@ export const FAMILIES = {
   DeepSeek: 'Made by DeepSeek. Their R1 thinking taught to smaller Qwen and Llama brains: each one writes out its reasoning step by step before it answers, and you can read it under Bob\'s thinking. The big DeepSeek brains are under Rented brains.',
   GLM: 'Made by Z.ai. A coding and tools brain that thinks before it answers.',
   Laguna: 'Made by Poolside. A coder that is small for what it does.',
+  Muse: 'Made by Meta. Muse Glimmer, a 30B that sees pictures and is strong with tools.',
+  LFM: 'Made by Liquid AI. Quick brains built a different way inside, from a tiny 1.7B for phones to a fast 24B. Liquid\'s own licence: free for personal use; read it before using one for a business.',
+  Phi: 'Made by Microsoft. Small brains that are good at maths and plain reasoning for their size.',
   'GPT-OSS': 'Made by OpenAI, open to download. A careful thinker and reviewer.',
   Whisper: 'Made by OpenAI. Turns your voice into words.',
   'Z-Image': 'Made by Alibaba\'s Tongyi lab. Quick picture making, in sizes for big and small cards.',

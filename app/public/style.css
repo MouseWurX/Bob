@@ -2226,6 +2226,7 @@ html.readable-font code, html.readable-font pre, html.readable-font kbd { font-f
 .cat-filter select { min-height: 36px; max-width: 100%; }
 .tag.official-tag { border-color: var(--accent); }
 .tag.reap-tag { border-style: dashed; }
+.tag.turbo-tag { border-style: double; border-width: 3px; }
 
 /* 1.5.210 The porthole: the fNRI cube seen through a round window into a foggy room (public/fog.js draws the fog on its own
    canvas behind the cube's). The rim is the theme's colours, so it fits every look. */
