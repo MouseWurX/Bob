@@ -436,7 +436,15 @@ let up = false;
 // well over 15 min, so the door wait is configurable (plan.door_minutes, default 15) and longer for no-volume runs
 const doorMin = plan.door_minutes || (plan.volume ? 15 : 25);
 const doorTries = Math.max(1, Math.round(doorMin * 6));
-async function waitDoor() { for (let i = 0; i < doorTries && !up; i++) { if (plan.direct && !args.local && i % 3 === 0) { const d = await directUrls(); if (d) base = d.door; } try { const r = await get('/status'); up = r.ok; } catch {} if (!up) { if (i && i % 30 === 0) log(`still waiting for the pod door (${i / 6 | 0} min of ${doorMin})`); await sleep(10000); } } }
+// 16 Nov: what RunPod says about the pod while the door is shut, so a frozen host (stuck PROVISIONING/STARTING, no
+// uptime) can be told from a container that runs without its port (RUNNING, uptime, no 8000)
+async function podState() {
+  if (args.local || !podId) return '';
+  try { const p = await rp('GET', `/pods/${podId}`); const rt = p.runtime || null;
+    return `; RunPod says ${p.status || p.desiredStatus || '?'}${rt ? `, up ${rt.uptime ?? rt.uptimeInSeconds ?? '?'} s, ports ${(rt.ports || []).map((x) => `${x.private}/${x.type}`).join(' ') || 'none'}` : ', not started on its host yet'}`;
+  } catch (e) { return `; RunPod's pod record: ${String(e.message).slice(0, 80)}`; }
+}
+async function waitDoor() { for (let i = 0; i < doorTries && !up; i++) { if (plan.direct && !args.local && i % 3 === 0) { const d = await directUrls(); if (d) base = d.door; } try { const r = await get('/status'); up = r.ok; } catch {} if (!up) { if (i && i % 30 === 0) log(`still waiting for the pod door (${i / 6 | 0} min of ${doorMin})${await podState()}`); await sleep(10000); } } }
 await waitDoor();
 // 14 Nov (the owner: "if its always the same card type freezing up change to a different card type"): every start-up is
 // logged by card type and data centre. When a pod rented in this run never answers, it's deleted and, up to
