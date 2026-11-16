@@ -2,8 +2,8 @@
 // works as Bob's brain on real requests, through Bob's whole turn loop (his prompt, his tool set for the brain's family,
 // his loop helps, step thinking), and every run is kept in full: the thinking, each call, each result, the answer.
 // Tools run for real in a throwaway folder per job (bob-kit runReal: nothing outside it is touched) and web_search /
-// fetch_page go to the real web; a tool with no real version answers with the Lab stand-in and the run says so
-// (standins), so a reader never mistakes it for real. Nobody writes or rewrites a run: Opus reads them all, clean runs
+// fetch_page go to the real web. There are no stand-ins: a tool that would act on the real computer or an account is
+// not offered (NOT_HERE), and ask_user gets the first choice as the pick. Nobody writes or rewrites a run: Opus reads them all, clean runs
 // become lessons as they ran, the rest are study material and never train.
 //
 // node do-jobs.mjs --url <server> --bob <Bob app folder> --jobs <ideas.jsonl>[,<more.jsonl>] --dir <name>
@@ -63,7 +63,6 @@ const bobUrl = (f) => pathToFileURL(path.join(L.bob, 'src', f)).href;
 const { textCalls, LlamaCpp } = await import(bobUrl('llamacpp.js'));
 const { checkArgs } = await import(bobUrl('loop-help.js'));
 const { MID_SYSTEM_REFUSED, foldSystem } = await import(bobUrl('system-notes.js'));
-const { standIn } = await import(bobUrl('lab-entry.js'));
 const auth = process.env.LAB_API_KEY ? { authorization: `Bearer ${process.env.LAB_API_KEY}` } : {};
 const ctxSize = Number(o['slot-ctx'] || o.ctx || 32768);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -77,10 +76,15 @@ const strictTemplate = async () => {
 const deepNeutral = (kit, v) => (typeof v === 'string' ? kit.neutral(v) : Array.isArray(v) ? v.map((x) => deepNeutral(kit, x)) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deepNeutral(kit, x)])) : v);
 process.setMaxListeners(Math.max(process.getMaxListeners(), 200)); // each job's Bob adds its own exit hooks
 const OWN = new Set(['use_tools', 'bob_help', 'offer_setup', 'pick_session', 'show_plan', 'ask_together']);
-const LIVE = new Set(['make_diagram', 'list_folder', 'read_file', 'search_files', 'find_in_documents', 'write_file', 'edit_file', 'save_spreadsheet',
-  'compare_files', 'inspect_file', 'code_map', 'notice_board', 'reminders', 'take_note', 'remember', 'forget_topic', 'calculate', 'check_spelling',
-  'query_data', 'my_howtos', 'save_howto', 'list_schedules', 'web_search', 'fetch_page',
-  'osint_lookup', 'check_exposure', 'security_tips']);
+// 15 Nov (owner: "everything was supposed to run for real", "stand ins need to give real results"): every tool Bob
+// offers here runs for real, inside this job's throwaway home (or against public web records), and its real answer or
+// real error goes back. Tools that would act on the real computer or on someone's accounts, or need an app this test
+// home doesn't have, are not offered at all, so this Bob simply hasn't got them (as a Bob with those Hands off).
+export const NOT_HERE = new Set(['run_command', 'run_recipe', 'open_app', 'app_look', 'app_act', 'browser_open', 'browser_read', 'browser_act',
+  'schedule_job', 'change_schedule', 'security_check', 'defender_scan', 'make_tool', 'use_my_tool', 'my_tools', 'use_pack_tool', 'pack_job', 'pack_tools',
+  'mcp_use', 'work_on_repo', 'hire_brain', 'ask_cloud', 'ask_specialist', 'edit_my_message', 'discord_mod', 'manage_email', 'read_email', 'read_calendar',
+  'watch_page', 'call_api', 'meeting_notes', 'make_image', 'make_sound', 'make_music', 'make_video', 'make_3d_model', 'make_3d_part', 'workshop_run',
+  'save_reference']); // save_reference: the Lab copy of Bob has no reference shelf set up, so it would fail where real Bob works
 
 function plant(kit, files) {
   const kept = [];
@@ -96,8 +100,9 @@ function plant(kit, files) {
 async function runJob(j) {
   const kit = await loadBob(L.bob, { home: true });
   const brain = kit.brain;
+  for (const n of NOT_HERE) delete brain.tools[n];
   brain.cfg.loopHelpOff = false; brain.cfg.toolHelp = true;
-  const steps = []; const standins = new Set(); let real = 0, asks = 0;
+  const steps = []; const missing = new Set(); let real = 0, asks = 0;
   const planted = plant(kit, j.setup);
   brain.runTool = async (name, args, ctx) => {
     const tool = brain.tools[name];
@@ -105,16 +110,18 @@ async function runJob(j) {
     const call = { name, args: deepNeutral(kit, args ?? {}), complete: params ? !checkArgs(params, args).problems.length : true };
     (steps.at(-1)?.calls || steps).push(call);
     if (OWN.has(name)) { const r = await tool.run(args, ctx); const t = typeof r === 'string' ? r : typeof r?.text === 'string' ? r.text : JSON.stringify(r ?? ''); call.result = kit.neutral(t).slice(0, 4000); call.kind = 'bob'; return { ...(r && typeof r === 'object' ? r : {}), text: t || '(no result)' }; } // 15 Nov: a bare string came back as an empty tool message and the server refused the next step
-    if (LIVE.has(name) && tool) {
-      call.kind = 'real'; real++;
-      try {
-        const r = await Promise.race([kit.runReal(name, args, { ...ctx, cfg: brain.cfg }), wait(90000).then(() => { throw new Error('the tool took too long'); })]);
-        const t = typeof r === 'string' ? r : typeof r?.text === 'string' ? r.text : JSON.stringify(r ?? '');
-        call.result = kit.neutral(t).slice(0, 6000); return { ...(r && typeof r === 'object' ? r : {}), text: kit.neutral(t) };
-      } catch (e) { call.result = `Error: ${kit.neutral(String(e.message || e)).slice(0, 600)}`; return { text: call.result }; }
+    if (name === 'ask_user') { // nobody is here to tap the card: the first choice is picked, in Bob's own words for a pick
+      const list = [].concat(args?.choices || []).map((c) => String(c ?? '').trim()).filter(Boolean);
+      call.kind = 'pick'; call.result = list.length >= 2 ? `${brain.cfg.userName || 'the user'} picked: ${list[0]}` : 'Error: ask_user needs a question and at least 2 choices.';
+      return { text: call.result };
     }
-    call.kind = 'standin'; standins.add(name);
-    const t = standIn(name, args); call.result = String(t).slice(0, 2000); return { text: t };
+    if (!tool || NOT_HERE.has(name)) { call.kind = 'none'; missing.add(name); call.result = `Error: there's no tool called ${name}. Use one of the tools you were given.`; return { text: call.result }; }
+    call.kind = 'real'; real++;
+    try {
+      const r = await Promise.race([kit.runReal(name, args, { ...ctx, cfg: brain.cfg }), wait(90000).then(() => { throw new Error('the tool took too long'); })]);
+      const t = typeof r === 'string' ? r : typeof r?.text === 'string' ? r.text : JSON.stringify(r ?? '');
+      call.result = kit.neutral(t).slice(0, 6000); return { ...(r && typeof r === 'object' ? r : {}), text: kit.neutral(t) || '(no result)' };
+    } catch (e) { call.result = `Error: ${kit.neutral(String(e.message || e)).slice(0, 600)}`; return { text: call.result }; }
   };
   brain.ensureModel = async () => {}; brain.fitCtx = async () => ctxSize; brain.recall = async () => '';
   brain.engine = {
@@ -147,7 +154,7 @@ async function runJob(j) {
   } catch (e) { error = String(e.message || e); }
   const said = brain.session(session).filter((m) => m.role === 'assistant' && !m.tool_calls?.length).map((m) => String(m.content || '')).join(' ').trim();
   const row = {
-    id: j.id, job: j.job, text: j.text, planted, said: kit.neutral(said), steps, asks, real, standins: [...standins],
+    id: j.id, job: j.job, text: j.text, planted, said: kit.neutral(said), steps, asks, real, standins: [], missing: [...missing],
     secs: (Date.now() - t0) / 1000, ...(error ? { error: kit.neutral(error).slice(0, 400) } : {}),
     family: 'qwen', tool_shapes: kit.toolShapes, bob_src: kit.bobSrc, brain: process.env.LAB_MODEL_NAME || 'served', at: new Date().toISOString(),
     messages: deepNeutral(kit, brain.session(session))
@@ -172,7 +179,7 @@ async function worker() {
 await Promise.all(Array.from({ length: Math.max(1, Number(o.parallel)) }, worker));
 const all = readJsonl(F.runs);
 const n = all.length, by = (f) => all.filter(f).length;
-const lines = [`# Do jobs: ${path.basename(dir)}`, '', `${n} runs. Answered in words: ${by((r) => r.said)}. Errors: ${by((r) => r.error)}. Used a stand-in tool (can't be kept as it ran): ${by((r) => r.standins?.length)}. Every run is read by Opus before any is kept.`];
+const lines = [`# Do jobs: ${path.basename(dir)}`, '', `${n} runs. Answered in words: ${by((r) => r.said)}. Errors: ${by((r) => r.error)}. Called a tool this test Bob hasn't got: ${by((r) => r.missing?.length)}. Every run is read by Opus before any is kept.`];
 fs.writeFileSync(F.summary, lines.join('\n') + '\n');
 say(`\n${lines.slice(2).join('\n')}\nRuns: ${F.runs}`);
 process.exit(0);

@@ -1,6 +1,6 @@
 // 15 Nov 2026: do-jobs.mjs (the owner: "so instead of having it make lessons, do we just get it to do things?"). A fake
 // llama-server is the brain; Bob's real loop runs each job with real tools in its own throwaway folder, keeps the thinking,
-// every call and every real result, leaves held-out requests out, and marks a run that used a stand-in tool.
+// every call and every real result, leaves held-out requests out, and offers no tool it can't run for real.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,14 +12,14 @@ let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
 const app = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'do jobs '));
-let busy = 0, most = 0;
+let busy = 0, most = 0; const offered = new Set();
 const call = (name, args, think = '') => ({ choices: [{ message: { role: 'assistant', content: '', reasoning_content: think, tool_calls: [{ id: 'c1', type: 'function', function: { name, arguments: JSON.stringify(args) } }] } }], usage: { completion_tokens: 12, prompt_tokens: 900 } });
 const say = (t, think = '') => ({ choices: [{ message: { role: 'assistant', content: t, reasoning_content: think } }], usage: { completion_tokens: 5, prompt_tokens: 950 } });
 const srv = http.createServer((req, res) => {
   if (req.url.startsWith('/props')) { res.end(JSON.stringify({ chat_template: '' })); return; }
   let b = ''; req.on('data', (d) => (b += d)); req.on('end', async () => {
     busy++; most = Math.max(most, busy); await new Promise((r) => setTimeout(r, 40));
-    const j = JSON.parse(b || '{}'); const names = (j.tools || []).map((t) => t.function?.name); const msgs = j.messages || [];
+    const j = JSON.parse(b || '{}'); const names = (j.tools || []).map((t) => t.function?.name); for (const n of names) offered.add(n); const msgs = j.messages || [];
     const ask = String(msgs.find((m) => m.role === 'user')?.content || '');
     const last = [...msgs].reverse().find((m) => m.role === 'tool' || m.role === 'user') || {};
     let out;
@@ -69,7 +69,8 @@ check('Bob\'s own tools give a real tool message, so the next step isn\'t refuse
 const rf = (by.a1?.steps || []).flatMap((s) => s.calls).find((c) => c.name === 'read_file');
 check('the planted file was read for real in the job\'s own throwaway folder', rf?.kind === 'real' && /plums/.test(rf.result) && /plums/.test(by.a1.said), JSON.stringify(by.a1?.steps || []).slice(0, 300));
 check('the brain\'s thinking is kept for every step', (by.a1?.steps || []).length >= 2 && by.a1.steps.every((s) => typeof s.thinking === 'string') && by.a1.steps.some((s) => /read the list first/.test(s.thinking)));
-check('a run that used a stand-in tool says so', (by.a2?.standins || []).includes('make_image') && !(by.a1.standins || []).length);
+check("no stand-ins: tools that would act on the real computer (or need an app this home hasn't got) are never offered", !offered.has('make_image') && !offered.has('run_command') && !offered.has('app_look') && offered.has('read_file'), [...offered].filter((n) => /make_image|run_command|app_look/.test(n)).join(','));
+check('every call either ran for real, was Bob\'s own, or says the tool isn\'t here', rows.flatMap((x) => x.steps.flatMap((st) => st.calls)).every((c) => ['real', 'bob', 'pick', 'none'].includes(c.kind)) && rows.every((x) => !x.standins.length));
 check('the old answer in the ideas file is never used', !JSON.stringify(rows).includes('an old answer'));
 check('two jobs at a time, never more', most <= 2 && most >= 1, `most at once: ${most}`);
 check('no real folder names reach the runs', !JSON.stringify(rows).includes(tmp) && !JSON.stringify(rows).includes(os.homedir()) && !/bob-lab-/.test(JSON.stringify(rows)));
