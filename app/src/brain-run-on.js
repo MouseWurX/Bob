@@ -526,7 +526,12 @@ export const runOnParts = {
           msgs.push({ role: 'assistant', content: '', correction: EMPTY_NOTE });
         }
         this.log('toolbox', 'Bob gave an empty reply twice');
-      } else if (!reply.tool_calls && this.checkTurn(ctx, reply, nudgeOk(ctx))) { ctx.retrying = true; nudged(); continue; } // asked for something that didn't happen: one more go
+      } else if (!reply.tool_calls && this.checkTurn(ctx, reply, nudgeOk(ctx))) {
+        // Jobs run 3 (v5-d6-3-r0): the "only 1 tool step ran" go stacked a second answer on a good first one. One answer
+        // stays, as after "I can't" (cant-retry.js). A reply corrected for a claim with nothing behind it isn't kept.
+        if (!reply.correction && !ctx.cantAt) markCant(ctx, reply, msgs);
+        ctx.retrying = true; nudged(); continue;
+      } // asked for something that didn't happen: one more go
       // Quick brain sees the job: a note that came while the big brain was writing its answer (no next step)
       // still reaches it, once: it says what changes, or that it saw it (PC test 1.5.203: the note never arrived).
       // Nov 11 (loop-help.js): "I'll look that up." and nothing ran: one nudge to really do it.
