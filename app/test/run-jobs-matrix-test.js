@@ -73,9 +73,16 @@ const jobsGo = path.join(tmp, 'ideas-go.jsonl');
 fs.writeFileSync(jobsGo, [{ id: 'q1', job: 'web', text: 'search the web for plum facts' }, { id: 'q2', job: 'chat', text: 'when are plums in season?' }, { id: 'q3', job: 'chat', text: 'say hello' }].map((x) => JSON.stringify(x)).join('\n') + '\n');
 const goArgs = common.filter((x, i, a) => x !== '--search-cache' && a[i - 1] !== '--search-cache');
 const go = await run('do-jobs.mjs', [...goArgs.map((x) => (x === jobs ? jobsGo : x)), '--dir', 'go', '--search-cap', '1', '--cap-go-on', '--leave-out-kinds', 'web']);
+const asksBefore = sceneAsks;
+const noCache = goArgs.filter((x, i, arr) => !/^--search/.test(x) && !/^--search/.test(arr[i - 1] || ''));
+const again = await run('jobs-matrix.mjs', ['--prefix', 'm2', '--variants', 'x=--effort medium --solo-effort', ...noCache, '--scenes-from', 'm-scenes']);
+const missingScenes = await run('jobs-matrix.mjs', ['--prefix', 'm3', '--variants', 'x=--effort low', ...noCache, '--scenes-from', 'nope-scenes']);
 srv.close();
 const rows = (v) => { const f = path.join(tmp, `m-${v}`, 'runs.jsonl'); return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : []; };
 const [b, a, s] = ['before', 'after', 'stock'].map(rows);
+{ const x = rows('x').length ? rows('x') : (fs.existsSync(path.join(tmp, 'm2-x', 'runs.jsonl')) ? fs.readFileSync(path.join(tmp, 'm2-x', 'runs.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : []);
+  check('--scenes-from reuses an earlier matrix\'s worlds: none are written again, every run starts from them', again.code === 0 && sceneAsks === asksBefore && x.length === 2 && x.every((y) => y.scene?.made === 'reused' && y.effort === 'medium'), `${sceneAsks - asksBefore} new scene asks; ${again.log.slice(-300)}`);
+  check('--scenes-from a folder with no worlds stops before any job', missingScenes.code === 1 && /PRE-FLIGHT FAIL: --scenes-from nope-scenes/.test(missingScenes.log), missingScenes.log.slice(-200)); }
 check('the matrix ran and every variant did both jobs', r.code === 0 && b.length === 2 && a.length === 2 && s.length === 2 && /jobs matrix m done: before exit 0, after exit 0, stock exit 0/.test(r.log), r.log.slice(-800));
 check('the test worlds are written once (one ask per job) and every variant starts from them', sceneAsks === 2 && [...b, ...a, ...s].every((x) => x.scene?.made === 'reused' && x.scene.files.length === 1), `${sceneAsks} scene asks; ${JSON.stringify([...b, ...a, ...s].map((x) => x.scene?.made))}`);
 check('each run records its effort, one-brain switch and add-on scale', b.every((x) => x.effort === 'low' && x.solo_effort === false && x.lora_scale === 1) && a.every((x) => x.effort === 'high' && x.solo_effort === true && x.lora_scale === 1) && s.every((x) => x.lora_scale === 0), JSON.stringify([...b, ...a, ...s].map((x) => [x.effort, x.solo_effort, x.lora_scale])));

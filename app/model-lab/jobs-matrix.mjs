@@ -9,8 +9,10 @@
 //      <every other flag is handed to each do-jobs run as it is: --url, --bob, --jobs, --never, --count, --hours,
 //       --search tavily, --search-cap, --search-ledger, --search-cache, --slot-ctx, --preflight ...>
 // A variant's own flags come last, so they win (e.g. stock=--lora-scale 0 --effort low). --parallel is per variant.
+// --scenes-from <folder>: reuse the worlds an earlier matrix wrote (e.g. distill-a3b-scenes) instead of writing new ones.
 // --search-cap is split evenly between the variants, or with --search-group <name> shared by them all. --stagger S: variant k starts k x S seconds after the first, so a query
 // the first one searched is usually in the shared cache (--search-cache) by the time the others ask it. Exit: 1 when any pre-flight fails, else 0.
+import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +24,7 @@ const take = (k) => { const i = argv.indexOf(`--${k}`); if (i < 0) return undefi
 const prefix = String(take('prefix') || 'matrix');
 const variantsArg = take('variants');
 const noScenes = take('no-scenes') === true;
+const scenesFrom = take('scenes-from'); // a folder an earlier matrix wrote its worlds to (<prefix>-scenes): reused, none written
 const stagger = Number(take('stagger') || 0);
 const capArg = take('search-cap');
 const grouped = argv.includes('--search-group'); // one cap shared by every variant (do-jobs --search-group)
@@ -70,7 +73,11 @@ if (preflight) {
   process.exit(bad ? 1 : 0);
 }
 let sceneArgs = [];
-if (!noScenes) {
+if (scenesFrom && scenesFrom !== true && !noScenes) {
+  const f = scenesFile(String(scenesFrom));
+  if (!fs.existsSync(f)) { say(`PRE-FLIGHT FAIL: --scenes-from ${scenesFrom}: no ${f}`); process.exit(1); }
+  sceneArgs = ['--scene', 'reuse', '--scenes', f];
+} else if (!noScenes) {
   // the worlds are written once, by the first variant's brain settings (its --lora-scale), with no search
   const first = variants[0].flags.filter((f, i, a) => f === '--lora-scale' || a[i - 1] === '--lora-scale');
   const noSearch = common.filter((a, i) => !/^--search/.test(a) && !/^--search/.test(common[i - 1] || ''));
