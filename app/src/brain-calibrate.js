@@ -12,12 +12,17 @@ import fs from 'node:fs';
 // placement tries, the best placement is timed again with each Reading speed (Normal, Faster, Fastest) and, for a
 // brain with its own guesser, with Turbo. Each speed try reads one long prompt (about 8,000 tokens: reading speed and
 // time to the first word) and writes one short answer (writing speed, and for Turbo how many guesses were kept).
+// Then, with Brain Engine on llama.cpp b12359 or newer, the hot-expert profiles: the brain reads the fixed mix of each
+// kind of work (src/hot-experts-mix.js) with the expert trace on, the picks are counted, and one profile per kind is
+// saved; then one more try times the cache filled from the mixed profile against Normal.
 // Lock brain memory isn't timed here: it helps the first reply after a long break, which a few minutes can't show.
 import path from 'node:path';
 import { labDir, slugOf } from './lab.js';
 import { startServer } from './lab-test.js';
 import { ggufInfo } from './gguf.js';
 import { draftNumArgs, TURBO_EVERYDAY_MAX, READING_STEPS } from './engine-extras.js';
+import { BRAIN_ENGINE_PIN } from './engines.js';
+import { HOT_KINDS, mixFor, addMass, saveProfile, profileStamp, rankingFile, hotCacheMB, parseCacheLog, RANKING_ENV } from './hot-experts.js';
 import { saveSettings } from './config.js';
 import { gaming } from './sessions.js';
 import { readJson, writeJson, makeRoom, runJob, pageLog, chatOnce } from './lab-jobs.js';
@@ -75,6 +80,16 @@ export function calSpeedBest(rows) {
   return { reading: top.reading, turbo, why: readWhy + turboWhy };
 }
 
+// The Brain Engine patches this Bob carries (engine/patches), for the profile stamp.
+export const enginePatches = (dir = new URL('../engine/patches/', import.meta.url)) => { try { return fs.readdirSync(dir).filter((f) => /^\d{4}-.*\.patch$/.test(f)).map((f) => f.replace(/\.patch$/, '')).sort(); } catch { return []; } };
+export const HOT_STEPS = [{ id: 'hot-count', label: 'Hot experts: count the picks on each kind of work' }, { id: 'hot-time', label: 'Hot experts: time the card cache filled from them' }];
+// One answer with the expert trace and its mass (patches 0002 and 0009): how many times each expert was picked.
+export async function traceOnce(url, messages, { maxTokens = 96, signal, timeoutMs = 600e3 } = {}) {
+  const res = await fetch(url + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages, temperature: 0, max_tokens: maxTokens, cache_prompt: false, expert_trace: true, expert_trace_mass: true, chat_template_kwargs: { enable_thinking: false } }), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs) });
+  if (!res.ok) throw new Error(`The brain answered ${res.status}`);
+  return res.json();
+}
+
 // Why this brain can't be calibrated here, or '' when it can. hasExperts comes from the page's own rule (place.js).
 export function calLock(lab, model, { experts = true } = {}) {
   if (lab.cfg.engine !== 'llamacpp') return 'Calibrating needs my built-in engine.';
@@ -101,9 +116,9 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
   const ask = await makeRoom(lab, unload); if (ask) return ask;
   const log = pageLog(lab.cfg, 'calibrate');
   const exe = lab.tools().server.path;
-  const fx = { serve: (o) => startServer({ exe, log, ...o }), chat: chatOnce, ...lab.stepFns };
-  const plans = list.map((b) => { const r = lab.brain.engine.resolve(b.model); const info = ggufInfo(r.gguf); const layers = info?.shape?.layers || lab.brain.engine.placeInfo(b.model).layers; return { ...b, name: b.name || b.model, gguf: r.gguf, layers, tries: calTries(layers), speedTries: calSpeedTries({ mtp: info?.mtp || 0 }) }; });
-  const steps = plans.flatMap((p, i) => [...p.tries, ...p.speedTries].map((t) => [`${i}:${t.id}`, plans.length > 1 ? `${p.name}: ${t.label}` : t.label]));
+  const fx = { serve: (o) => startServer({ exe, log, ...o }), chat: chatOnce, trace: traceOnce, ...lab.stepFns };
+  const plans = list.map((b) => { const r = lab.brain.engine.resolve(b.model); const info = ggufInfo(r.gguf); const layers = info?.shape?.layers || lab.brain.engine.placeInfo(b.model).layers; return { ...b, name: b.name || b.model, gguf: r.gguf, layers, tries: calTries(layers), speedTries: calSpeedTries({ mtp: info?.mtp || 0 }), hot: (lab.brain.engine.buildNo?.() || 0) >= 12359 }; });
+  const steps = plans.flatMap((p, i) => [...p.tries, ...p.speedTries, ...(p.hot ? HOT_STEPS : [])].map((t) => [`${i}:${t.id}`, plans.length > 1 ? `${p.name}: ${t.label}` : t.label]));
   const total = steps.length;
   return runJob(lab, { kind: 'calibrate', name: plans.length === 1 ? `Calibrate ${plans[0].name}` : `Calibrate ${plans.length} brains`, from: plans[0].model, fromName: plans[0].name, steps }, async (r, { set, signal, progress }) => {
     const msg = [{ role: 'user', content: CAL_PROMPT }];
@@ -155,12 +170,66 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
         set(id, row.failed ? 'failed' : 'done');
         progress((100 * ++done) / total);
       }
-      const rec = { at: lab.now(), when: new Date(lab.now()).toISOString().slice(0, 10), model: p.model, name: p.name, layers: p.layers, ctx: CAL_CTX, rows, best, speedRows, speed: calSpeedBest(speedRows) };
+      // Hot experts: count the picks on each kind's mix, save the profiles, then time the cache filled from the mixed one.
+      let hot = null;
+      if (p.hot) {
+        hot = { profiles: [], tps: null };
+        const mb = hotCacheMB(lab.cfg) || 4096;
+        const cacheArgs = ['--moe-cache-mib', String(mb), '--moe-cache-cpu-share', '1'];
+        let fingerprint = '';
+        const stamp = (kind) => profileStamp({ kind, gguf: p.gguf, fingerprint, engine: `b${lab.brain.engine.buildNo?.() || 0}${BRAIN_ENGINE_PIN?.tag ? ` (Bob pins ${BRAIN_ENGINE_PIN.tag})` : ''}`, patches: enginePatches() });
+        set(`${i}:hot-count`, 'running');
+        let srv = null;
+        try {
+          // The cache is on while counting only so the engine prints the brain's fingerprint (it doesn't change the picks).
+          srv = await fx.serve({ gguf: p.gguf, ctx: CAL_CTX, signal, cpuOk: false, extra: cacheArgs, ...(place ? { place } : {}) });
+          fingerprint = parseCacheLog(srv.cacheLog?.() || '').fingerprint;
+          if (!fingerprint) throw Object.assign(new Error('no fingerprint'), { why: 'The engine didn\'t print the brain\'s fingerprint (Brain Engine 9 or newer needed), so no profile was made.' });
+          for (const kind of HOT_KINDS.slice(1)) {
+            const acc = [];
+            for (const ask of mixFor(kind)) addMass(acc, (await fx.trace(srv.url, [{ role: 'user', content: ask }], { maxTokens: 96, signal }))?.expert_trace);
+            if (acc.length) hot.profiles.push(saveProfile(lab.cfg, p.model, acc, stamp(kind)));
+            hot[kind] = acc;
+          }
+          const mixed = [];
+          for (const kind of HOT_KINDS.slice(1)) (hot[kind] || []).forEach((row, il) => (row || []).forEach((n, e) => { mixed[il] = mixed[il] || []; mixed[il][e] = (mixed[il][e] || 0) + (n || 0); }));
+          if (mixed.length) hot.profiles.push(saveProfile(lab.cfg, p.model, mixed, stamp('mixed')));
+          for (const kind of HOT_KINDS.slice(1)) delete hot[kind];
+          set(`${i}:hot-count`, hot.profiles.length ? 'done' : 'failed');
+        } catch (e) {
+          if (signal.aborted) throw e;
+          hot.failed = e.why || 'The trace didn\'t come back, so no profile was made.';
+          set(`${i}:hot-count`, 'failed');
+        } finally { try { srv?.stop(); } catch {} }
+        progress((100 * ++done) / total);
+        set(`${i}:hot-time`, 'running');
+        srv = null;
+        try {
+          if (!hot.profiles.some((x) => x.kind === 'mixed')) throw new Error('no profile');
+          srv = await fx.serve({ gguf: p.gguf, ctx: CAL_CTX, signal, cpuOk: false, extra: cacheArgs, env: { [RANKING_ENV]: rankingFile(lab.cfg, p.model, 'mixed') }, ...(place ? { place } : {}) });
+          const said = parseCacheLog(srv.cacheLog?.() || '');
+          if (said.refused) throw Object.assign(new Error('refused'), { why: `The engine refused the profile: ${said.refused}.` });
+          hot.filled = said.filled;
+          const a = await fx.chat(srv.url, msg, { maxTokens: 200, signal });
+          hot.tps = round1(Number(a.timings?.predicted_per_second) || 0);
+          hot.mb = mb;
+          set(`${i}:hot-time`, hot.tps > 0 ? 'done' : 'failed');
+        } catch (e) {
+          if (signal.aborted) throw e;
+          hot.timeFailed = e.why || 'Didn\'t start with the cache: too much for the card this way.';
+          set(`${i}:hot-time`, 'failed');
+        } finally { try { srv?.stop(); } catch {} }
+        progress((100 * ++done) / total);
+        const base = speedRows.find((x) => x.id === 'read-normal' && !x.failed);
+        hot.on = Boolean(base && hot.tps > base.tps * 1.05);
+        hot.why = !hot.tps ? (hot.failed || hot.timeFailed || 'Hot experts weren\'t timed.') : hot.on ? `Hot experts on: ${hot.tps} words a second with ${Math.round(hot.mb / 1024 * 10) / 10} GB of the card for them, against ${base.tps} without.` : `Hot experts off: ${hot.tps} words a second against ${base?.tps ?? '?'} without, not enough to be worth it.`;
+      }
+      const rec = { at: lab.now(), when: new Date(lab.now()).toISOString().slice(0, 10), model: p.model, name: p.name, layers: p.layers, ctx: CAL_CTX, rows, best, speedRows, speed: calSpeedBest(speedRows), ...(hot ? { hot } : {}) };
       const file = path.join(calibrateDir(lab.cfg), `${slugOf(p.model)}.json`);
       writeJson(file, [rec, ...readJson(file, [])].slice(0, 10));
       out.push(rec);
     }
-    return { calibrate: out, saw: out.map((x) => `${x.name}: ${x.best ? x.best.why : 'no try ran.'}${x.speed ? ' ' + x.speed.why : ''}`).join(' ') };
+    return { calibrate: out, saw: out.map((x) => `${x.name}: ${x.best ? x.best.why : 'no try ran.'}${x.speed ? ' ' + x.speed.why : ''}${x.hot ? ' ' + x.hot.why : ''}`).join(' ') };
   });
 }
 
@@ -172,9 +241,10 @@ export function useCalibrated(lab, model) {
   const set = rec.best.mode === 'hand' ? { mode: 'hand', cpuMoe: rec.best.cpuMoe } : { ...cur, mode: 'auto' };
   saveSettings(lab.cfg, { brainPlace: { ...(lab.cfg.brainPlace || {}), [model]: set } });
   // Nov 16: the speed options too, for this brain only. Turbo only goes on (a Turbo set by hand is never switched off).
+  if (rec.hot?.on && lab.cfg.hotExperts !== true) saveSettings(lab.cfg, { hotExperts: true });
   if (rec.speed) {
     saveSettings(lab.cfg, { readingFor: { ...(lab.cfg.readingFor || {}), [model]: rec.speed.reading } });
     if (rec.speed.turbo && !lab.cfg.llamacpp?.turbo?.[model]?.on) saveSettings(lab.cfg, { llamacpp: { turbo: { ...(lab.cfg.llamacpp?.turbo || {}), [model]: { on: true, mtp: true, max: TURBO_EVERYDAY_MAX } } } });
   }
-  return { ok: true, set: lab.cfg.brainPlace[model], reading: lab.cfg.readingFor?.[model] || null, turbo: lab.cfg.llamacpp?.turbo?.[model]?.on === true };
+  return { ok: true, set: lab.cfg.brainPlace[model], reading: lab.cfg.readingFor?.[model] || null, turbo: lab.cfg.llamacpp?.turbo?.[model]?.on === true, hotExperts: lab.cfg.hotExperts === true };
 }

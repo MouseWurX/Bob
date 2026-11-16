@@ -32,7 +32,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-extras-'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- Off unless turned on ----------
-check('eight switches, all off in a fresh Bob', EXTRA_SWITCHES.length === 8 && EXTRA_SWITCHES.every((k) => !extraOn({}, k)));
+check('nine switches, all off in a fresh Bob', EXTRA_SWITCHES.length === 9 && EXTRA_SWITCHES.every((k) => !extraOn({}, k)));
 { const m = mergeSettings({}, Object.fromEntries(EXTRA_SWITCHES.map((k) => [k, 'yes'])));
   check('only true turns one on when saved', EXTRA_SWITCHES.every((k) => m[k] === false) && mergeSettings({}, { copyGuess: true }).copyGuess === true); }
 check('the example settings file switches none of them on', (() => { const ex = JSON.parse(read('config.example.json')); return EXTRA_SWITCHES.every((k) => ex[k] !== true) && !ex.brainMemType; })());

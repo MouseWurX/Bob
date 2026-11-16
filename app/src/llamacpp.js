@@ -18,6 +18,7 @@ import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts, cardGB } 
 import { chatPlacesOn, placesDir, placeFile, tidyPlaces } from './chat-places.js'; // Per-chat engine cache (off unless switched on)
 import { exeName } from './platform.js';
 import { buildMatches, brainEngineName, brainEngineBuild } from '../public/engine-name.js';
+import { hotArgs, RANKING_ENV, parseCacheLog } from './hot-experts.js'; // Nov 16: hot experts on the card (opt-in)
 import { Embedder } from './embedder.js';
 import { ggufInfo } from './gguf.js';
 import { placeArgs } from './brain-place.js';
@@ -602,6 +603,9 @@ export class LlamaCpp {
     // When part of the brain stays in RAM (fit, or experts kept on the processor), read it all in at load instead of
     // letting Windows page it in during the first request. PC test 2026-11-04 (Qwen3.6, --fit, 128K): first reply
     // 27 s -> 1.4 s and RAM 21 -> 12 GB, for about 10 s more load. llamacpp.loadMode "mmap" keeps the old way.
+    // Nov 16 Hot experts on the card (opt-in): llama.cpp's expert cache, filled at load from this brain's profile.
+    { const hot = hotArgs(this.cfg, model, { args, cpu: cpu || this.role === BESIDE, build: this.buildNo(), gguf }); args.push(...hot.args); this.hotEnv = hot.env;
+      if (hot.args.length) this.log?.('engine', `${model}: hot experts on the card, ${hot.args[1]} MB, ${hot.seeded ? `filled from the ${hot.kind} profile` : hot.stale ? `NOT filled from a profile: ${hot.stale}, so it fills as words come` : 'no profile yet (Calibrate makes one), so it fills as words come'}`); }
     if (this.readsWhole(args, cpu, gguf)) args.push(...this.noMmapArgs());
     // A brain bigger than the card and RAM: the processor's experts stay as they are in the file (no repacking into RAM),
     // so they can be read from the drive as needed (b12032 and newer know --no-repack).
@@ -1147,6 +1151,7 @@ export class LlamaCpp {
     this.slotDir = args.includes('--slot-save-path') ? args[args.indexOf('--slot-save-path') + 1] : ''; // where this engine run saves readings
     this.placeChat = null; // a fresh engine holds no chat's reading yet
     let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
+    if (args.includes('--moe-cache-mib') && this.hotEnv?.[RANKING_ENV]) env = { ...env, ...this.hotEnv }; // Nov 16: the hot-expert profile (patch 0015)
     if (helpers.length) env = { ...env, ...scutEnv(this.cfg, { wired: Boolean(this.spread?.allWired?.()) }), ...linkEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
     // 1.5.203: spawn throws when Windows blocks the program (Smart App Control); safeSpawn turns that into 'error'.
     const child = safeSpawn(spawn, exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });
@@ -1238,6 +1243,10 @@ export class LlamaCpp {
     }
     started.catch(() => {}); // later exits are handled by isLoaded()
     this.loadedOk = true;
+    // Nov 16: hot experts. The engine's own words about the cache go in the logbook, a refused ranking loudly.
+    if (args.includes('--moe-cache-mib')) { const c = parseCacheLog(full); this.hotLoad = c;
+      if (c.refused) this.log?.('engine', `${model}: WARNING: the engine refused the hot-expert profile (${c.refused}), so the cache fills as words come. Calibrate again.`);
+      else if (c.filled !== null) this.log?.('engine', `${model}: hot experts: ${c.filled} experts (${Math.round(c.filledMiB)} MiB) on the card from the profile.`); }
     // 218: the engine stopping by itself after the brain loaded (our own stops clear this.child first).
     child.once('exit', (code, sig) => { if (this.child === child) this.crashed({ model, code, sig, tail: log, opts: { ctx, cpu, reserveMB, place } }); });
     // 222: these settings started this brain: kept as the ones to go back to.

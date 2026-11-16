@@ -71,6 +71,8 @@ export function createEngineParts(now) {
         ${readingSpeedHtml()}
         ${sswitch('turboEveryday', settings.turboEveryday === true, 'Turbo for everyday brains', 'Brains with their own built-in guesser use it for every reply, without the Lab. Same answer, written faster. Brains without one are unchanged.')}
         ${sswitch('lockBrainMemory', settings.lockBrainMemory === true, 'Lock brain memory', 'When part of a brain sits in RAM, it stays there, so replies after a break don\'t wait on the drive. Uses that RAM until the brain unloads. Not used in Gaming.')}
+        ${sswitch('hotExperts', settings.hotExperts === true, 'Hot experts on the card', 'For a brain made of experts that doesn\'t fit the card: the experts it uses most sit on the card from the first word, and the rest are worked out on the processor, so nothing swaps while I write. Calibrate counts which ones. Helps writing, not reading long prompts. Brain Engine 9 or newer.')}
+        ${settings.hotExperts === true ? hotRoomHtml() : ''}
         ${sswitch('preloadNext', settings.preloadNext === true, 'Preload the next brain', 'Reads the next brain\'s file into RAM during a hand-off, so the swap is quicker. Needs the brain\'s size plus 4 GB free.')}
         ${sswitch('laptopMode', settings.laptopMode === true, 'Laptop mode', `On battery, the Quick brain answers and the engine uses half the cores.${bat ? ' ' + keep(bat) : ''}`)}
         ${sswitch('newCardTest', settings.newCardTest === true, 'Auto-test a new GPU', 'When Bob starts on a different GPU, he runs the one-minute speed test and puts hand-set brains back on Auto.')}
@@ -86,6 +88,14 @@ export function createEngineParts(now) {
     return `<label class="pick"><strong>Reading speed</strong> ${tip('How much of a long message or file my engine reads at a time. Bigger pieces read long prompts much faster when part of a brain is in RAM, but take about 1 to 2 GB more graphics memory, so writing can get a little slower. Auto picks by your card and your last 3 prompts, and says why here and in the logbook.', 'Reading speed')}
         <select data-set="readingSpeed" aria-label="Reading speed">${opts.map(([v, label]) => `<option value="${v}" ${v === pick ? 'selected' : ''}>${label}</option>`).join('')}</select>
         <span class="muted">${now}${pick === 'auto' && settings.readingWhy ? ' ' + esc(settings.readingWhy) : ''} Applies the next time a brain loads. Test Bob's speed shows the difference on this computer.</span></label>`;
+  }
+  // 104 Hot experts: how much of the card the cache may use. Auto is a quarter of the card, at most 4 GB.
+  function hotRoomHtml() {
+    const pick = settings.hotExpertsGB ? String(settings.hotExpertsGB) : '';
+    const opts = [['', 'Auto (a quarter of the card, up to 4 GB)'], ...[1, 2, 3, 4, 6, 8].map((g) => [String(g), `${g} GB`])];
+    return `<label class="pick"><strong>Room for hot experts</strong> ${tip('How much of the graphics card holds the busiest experts. More room keeps more of them on the card, but leaves less for the rest of the brain and its chat memory, so the engine may move other parts to RAM. Calibrate tries the size you pick here.', 'Room for hot experts')}
+        <select data-set="hotExpertsGB" aria-label="Room for hot experts">${opts.map(([v, label]) => `<option value="${v}" ${v === pick ? 'selected' : ''}>${label}</option>`).join('')}</select>
+        <span class="muted">Applies the next time a brain loads.</span></label>`;
   }
   // 96 Speed history: one small line chart per brain, words a second by day, with a mark where the engine changed.
   function speedLogHtml() {

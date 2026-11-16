@@ -9,6 +9,7 @@
 //   brainMemType 100 The engine's memory type per brain (Brains page, Set up)
 //   readingSpeed 101 Reading speed: bigger reading steps (-b/-ub) so a long prompt is read in fewer, larger pieces
 //   turboEveryday 102 Turbo for everyday brains: a brain's own built-in guesser (MTP) on, without the Lab
+//   hotExperts   104 Hot experts on the card: llama.cpp's expert cache, filled from a profile (src/hot-experts.js)
 //   lockBrainMemory 103 Lock brain memory: the part of a brain in RAM stays there (--mlock), so Windows can't page it out
 import fs from 'node:fs';
 import os from 'node:os';
@@ -17,7 +18,7 @@ import { execFile } from 'node:child_process';
 import { MEM_TYPES, memTypeTrade } from '../public/mem-types.js';
 import { brainEngineBuild } from '../public/engine-name.js';
 
-export const EXTRA_SWITCHES = ['copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'turboEveryday', 'lockBrainMemory'];
+export const EXTRA_SWITCHES = ['copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'turboEveryday', 'lockBrainMemory', 'hotExperts'];
 export const extraOn = (cfg, key) => cfg?.[key] === true;
 
 // ---------- 94 Guess-ahead from the chat ----------

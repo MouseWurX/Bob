@@ -71,6 +71,8 @@ export const WANTS = [
     label: 'Write faster with a brain\'s own guesser', note: 'Only brains that have one. The answer is the same.' },
   { card: 'brains', key: 'lockBrainMemory', setting: 'Lock brain memory', where: 'Speed & memory',
     label: 'Keep my brain in RAM between replies', note: 'Uses that RAM until the brain unloads.' },
+  { card: 'brains', key: 'hotExperts', setting: 'Hot experts on the card', where: 'Speed & memory',
+    label: 'Keep my busiest experts on the graphics card', note: 'For brains too big for the card. Helps writing, not reading.' },
   { card: 'brains', key: 'copyGuess', setting: 'Prompt-lookup decoding', where: 'Speed & memory',
     label: 'Write edits faster by copying from the chat', note: 'My brain checks every copied word, so the answer is the same.' },
   { card: 'brains', key: 'preloadNext', setting: 'Preload the next brain', where: 'Speed & memory',
