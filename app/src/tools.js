@@ -697,7 +697,7 @@ export function buildTools(cfg) {
     // nothing, Mojeek is asked instead. Nov 16 (web-search.js): a robot-check page is named as one, and the backup
     // search with a key (off unless turned on) stands in. The answer always says who answered.
     // Private web (private-web.js): its headers and your route, if set, on every request (webGet).
-    async run({ query, when }, { signal }) { return webSearch({ query, when }, { cfg, signal, get: (url, opts) => webGet(cfg, url, opts, (u, o, fetchImpl) => fetchRetry(u, o, signal, fetchImpl ? { fetchImpl } : undefined)) }); },
+    async run({ query, when }, ctx = {}) { const { signal } = ctx; return webSearch({ query, when }, { cfg, signal, turn: ctx.ledger ? ctx : null, get: (url, opts) => webGet(cfg, url, opts, (u, o, fetchImpl) => fetchRetry(u, o, signal, fetchImpl ? { fetchImpl } : undefined)) }); },
     summary: ({ query, when }) => `search: ${query}${when ? ` (past ${when})` : ''}`
   };
 

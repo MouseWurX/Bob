@@ -11,7 +11,7 @@
 //      [--preflight] [--slot-ctx N] [--scene make|reuse] [--scenes <scenes.jsonl>[,...]] [--office <soffice>]
 //      [--search-probe] [--search-gap 2] [--search tavily] [--search-month N] [--search-cap N [--search-group <name>]]
 //      [--family qwen|gpt-oss]
-//      [--search-ledger <file>] [--effort low|medium|high|extreme] [--solo-effort] [--lora-scale N] [--scenes-only]
+//      [--search-ledger <file>] [--effort low|medium|high|extreme] [--solo-effort] [--facts-first high|all|off] [--read-first on|off] [--lora-scale N] [--scenes-only]
 //      [--search-cache <file>] [--cap-go-on] [--leave-out-kinds web,...]
 // Jobs: one per line, {id, text, setup?: [{path, content}]} (the lesson writer's ideas files work as they are; only the
 // request and its starting files are used, never an old answer). --never: held-out / test files; a job whose request
@@ -142,6 +142,11 @@ const EFFORTS = ['low', 'medium', 'high', 'extreme'];
 const effort = String(o.effort || 'low').toLowerCase();
 if (!EFFORTS.includes(effort)) fail(`--effort ${o.effort}: one of ${EFFORTS.join(', ')}`);
 const solo = o['solo-effort'] === true || o['solo-effort'] === 'true';
+// --facts-first / --read-first (16 Nov, Facts first, src/facts-first.js): Bob's own settings for this run, so one brain's
+// runs compare before (off) and after (high, Bob's default; or all). Each row records them, and what the loop did.
+const factsMode = o['facts-first'] === undefined ? 'high' : String(o['facts-first']).toLowerCase();
+if (!['high', 'all', 'off'].includes(factsMode)) fail(`--facts-first ${o['facts-first']}: one of high, all, off`);
+const readFirst = String(o['read-first'] ?? 'on').toLowerCase() !== 'off';
 const loraScale = o['lora-scale'] !== undefined ? Number(o['lora-scale']) : null;
 if (loraScale !== null && !(loraScale >= 0 && loraScale <= 2)) fail(`--lora-scale ${o['lora-scale']}: give 0 to 2`);
 const loraBody = loraScale === null ? {} : { lora: [{ id: 0, scale: loraScale }] };
@@ -195,7 +200,7 @@ function keyedSearch(kit) {
   return () => { let now = seen; try { const c = JSON.parse(fs.readFileSync(f, 'utf8')); if (c.month === month()) now = Number(c.used?.tavily) || 0; } catch {} const d = Math.max(0, now - seen); seen = now; return d; };
 }
 
-say(`pre-flight: every job is asked at Effort ${effort}${solo ? ', with Effort on one brain switched on' : ' (Effort on one brain off)'}`);
+say(`pre-flight: every job is asked at Effort ${effort}${solo ? ', with Effort on one brain switched on' : ' (Effort on one brain off)'}; Facts first ${factsMode}, Read what you were given ${readFirst ? 'on' : 'off'}`);
 const probe = asFamily(await loadBob(L.bob, kitOpts));
 const probeUsed = keyedSearch(probe);
 say(`Bob's tools from ${L.bob}: ${probe.bobSrc?.version || '?'}${probe.bobSrc?.commit ? ` (${probe.bobSrc.commit})` : ''}; tool shape ${probe.toolShapes ?? '?'}`);
@@ -297,6 +302,9 @@ async function runJob(j) {
   for (const n of NOT_HERE) delete brain.tools[n];
   brain.cfg.loopHelpOff = false; brain.cfg.toolHelp = true;
   if (solo) brain.cfg.soloEffort = true;
+  brain.cfg.factsFirst = factsMode; brain.cfg.readFirst = readFirst;
+  const factLines = []; // the loop's own "facts" lines for this job: what it noted, nudged and found (never the words)
+  { const was = brain.log.bind(brain); brain.log = (k, t) => { if (k === 'facts') factLines.push(String(t).slice(0, 300)); return was(k, t); }; }
   const steps = []; const missing = new Set(); let real = 0, asks = 0;
   // the job's own starting files (an ideas row's setup), then its scene
   const start = plantScene(kit, { files: j.setup.filter((f) => f && typeof f.path === 'string').map((f) => ({ path: f.path, content: String(f.content ?? '') })) }, { day: today });
@@ -392,7 +400,7 @@ async function runJob(j) {
   const row = {
     id: j.id, job: j.job, text: j.text, ...(j.from ? { from: j.from } : {}), planted, scene, said: kit.neutral(said), ...(saidAll !== said ? { said_all: kit.neutral(saidAll) } : {}), steps, asks, real, standins: [], missing: [...missing],
     secs: (Date.now() - t0) / 1000, ...(error ? { error: kit.neutral(error).slice(0, 400) } : {}),
-    effort, solo_effort: solo, search_capped: steps.some((st) => (st.calls || []).some((c) => c.name === 'web_search' && /at its monthly cap/.test(String(c.result || '')))), ...(loraScale !== null ? { lora_scale: loraScale } : {}), family, tool_shapes: kit.toolShapes, bob_src: kit.bobSrc, brain: process.env.LAB_MODEL_NAME || 'served', at: new Date().toISOString(),
+    effort, solo_effort: solo, facts_first: factsMode, read_first: readFirst, facts_log: factLines, search_capped: steps.some((st) => (st.calls || []).some((c) => c.name === 'web_search' && /at its monthly cap/.test(String(c.result || '')))), ...(loraScale !== null ? { lora_scale: loraScale } : {}), family, tool_shapes: kit.toolShapes, bob_src: kit.bobSrc, brain: process.env.LAB_MODEL_NAME || 'served', at: new Date().toISOString(),
     messages: deepNeutral(kit, brain.session(session))
   };
   kit.done();

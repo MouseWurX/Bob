@@ -3,9 +3,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { webSearch, blockedPage, cleanSearchBackup, searchBackupView, counts, keyFor, testService, SERVICES, ORDER } from '../src/web-search.js';
+import { webSearch as searchOnce, resetPacing, blockedPage, cleanSearchBackup, searchBackupView, counts, keyFor, testService, SERVICES, ORDER } from '../src/web-search.js';
 import { mergeSettings, SETTING_KEYS } from '../src/config.js';
 
+// Each search here starts with clean manners (no rest, no wait): the pacing has its own tests (run-facts-first-test.js).
+const webSearch = (a, o) => { resetPacing({ wait: async () => {} }); return searchOnce(a, o); };
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
 const read = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
@@ -20,6 +22,7 @@ const resp = (status, body, json = false) => ({ status, ok: status >= 200 && sta
 function net({ ddg = [200, DDG_OK], moj = [200, ''], svc = {} } = {}) {
   const sent = [];
   const get = async (url, opts = {}) => {
+    if (/\/robots\.txt$/.test(url)) return resp(404, ''); // no robots.txt on the fake pages (the manners have their own tests)
     sent.push({ url, opts });
     if (url.startsWith('https://html.duckduckgo.com/')) return resp(ddg[0], ddg[1]);
     if (url.startsWith('https://www.mojeek.com/search') && !/api_key=/.test(url)) return resp(moj[0], moj[1]);
@@ -201,7 +204,7 @@ check('a robot check is seen for what it is', blockedPage(202, DDG_BLOCK) && blo
   check('each service has its switch, sign-up link, key box, Test, cap and count', /data-sb-use/.test(ui) && /Get a key<\/a>/.test(ui) && /data-sb-test/.test(ui) && /data-sb-cap/.test(ui) && /used this month/.test(ui));
   check('the key box is a password box', /type="password"[^>]*data-sb-keybox/.test(ui));
   check('the route is for this computer only and logs no key', /if \(!isLocal\) return send\(res, 403/.test(routes) && /log\('settings', `\$\{SERVICES\[id\]\.name\} key \$\{v \? 'saved \(locked\)' : 'removed'\}`\)/.test(routes));
-  check('web_search uses it', /webSearch\(\{ query, when \}, \{ cfg, signal, get: /.test(read('src/tools.js')));
+  check('web_search uses it', /webSearch\(\{ query, when \}, \{ cfg, signal, turn: ctx\.ledger \? ctx : null, get: /.test(read('src/tools.js')));
   check('backups carry the search keys (locked)', ['MARGINALIA_API_KEY', 'BRAVE_SEARCH_API_KEY', 'MOJEEK_API_KEY', 'TAVILY_API_KEY'].every((k) => read('src/backup.js').includes(`'${k}'`)));
 }
 

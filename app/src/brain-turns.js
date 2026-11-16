@@ -215,7 +215,7 @@ export const turnParts = {
           return c.planShown ? { go: true } : c.planChange ? { change: c.planChange } : { no: true };
         } : null;
         const planShown = () => Object.defineProperty(job, 'soloPlanShown', { value: true, configurable: true, enumerable: false, writable: true });
-        mooted = await soloRun(this, solo, { run, review, emit: keep, signal, msgs, turnText: text, card, planShown });
+        mooted = await soloRun(this, solo, { run, review, emit: keep, signal, msgs, turnText: text, card, planShown, facts: () => Boolean(job.factsState) }); // Facts first: the reviews check the sources too
       }
       else await this.runOn(msgs, text, keep, signal, pics, job, sessionId, out);
       if (careful(job) && out.ctx && !signal?.aborted) mooted = await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx });
