@@ -1,7 +1,7 @@
 // 16 Nov 2026: Effort on one brain (src/solo-effort.js). Bob's loop enforces each level's steps; these checks run the
 // loop with fake brains (plain functions in, plain arrays out). Nothing here reads the real computer.
 import fs from 'node:fs';
-import { soloEffortOn, soloJob, soloLevel, soloThink, soloVerdict, notHappy, planSteps, soloMinutes, soloRun, soloBrain, soloPrompt, SOLO_ROUNDS, MAX_JOBS, planGateTask, PLAN_NOTE } from '../src/solo-effort.js';
+import { soloEffortOn, soloJob, soloLevel, soloThink, soloVerdict, notHappy, planSteps, soloMinutes, soloRun, soloBrain, soloPrompt, SOLO_ROUNDS, MAX_JOBS, planGateTask, PLAN_NOTE, ANSWER_NOTE } from '../src/solo-effort.js';
 import { stepThink } from '../src/step-thinking.js';
 import { careful, draftBrain, reviewBrain } from '../src/moot.js';
 import { HELP } from '../public/help-content.js';
@@ -143,6 +143,8 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
   const { leaks, weakAnswer, SOLO_CALLS, ANSWER_RESERVE, REVIEW_STEPS, soloBrain: sb, reviewTask: rt } = await import('../src/solo-effort.js');
   check('review talk in the answer is spotted, and makes it a weak answer', ['Thanks for the review — spot on. The zip is blocked.', "You're right on all six points. Here's the script: ...", 'I reviewed my own work and called the move tool first, as required.', 'Sorry about the plan_check confusion. The area is pi r squared.', 'Here is what the jobs did:\n\nPosted it.'].every((t) => leaks(t) && weakAnswer(t + ' '.repeat(10) + 'x'.repeat(250))) && !leaks('The script reads the file, checks each row, and writes the totals to totals.csv. You are right to keep a backup.'));
   check('the budget is 4x Minimus\'s 8 steps, with room kept for the answer, and reviews read at most 3 times', SOLO_CALLS === 32 && ANSWER_RESERVE === 6 && REVIEW_STEPS === 3 && sb(on).maxSteps === 3 && sb(on, { noTools: true }).maxSteps === 1);
+  // Blind A/B (16 Nov): when both were right, Maximus lost 13-15 to Medius and 7-11 to Minimus: thinner answers, asking instead of acting.
+  check('the answer and its review aim for the fullest answer, and doing over asking', /the fullest answer you would give/.test(ANSWER_NOTE) && /Don't end by asking the user to do something you could have done/.test(ANSWER_NOTE) && /Thin or vague counts as something to improve/.test(rt('x')) && /Then improve it by doing it/.test(rt('x')));
   check('reviews fact-check every claim against the record and the tool results', /Fact-check it against the record of what you did/.test(rt('x')) && /"done", "saved", "sent" or "found"/.test(rt('x')));
 }
 {
