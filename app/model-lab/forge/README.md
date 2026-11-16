@@ -329,3 +329,36 @@ rebuilds and lesson-writing-only runs aren't checked, since they teach nothing.
 - `write-lessons.mjs --examples <jsonl>`: shows the teacher up to 3 Opus-approved lessons as a guide. They are never saved or trained on.
 - `--real-tools` pre-flight: every real lab tool (board, memory, files, folder list, diagram, and office when ideas need it) runs once in a throwaway home before anything is rented.
 - `--office <soffice.exe>` hands the lab Bob a LibreOffice. `--no-office` instead leaves office tools out and skips office ideas, for a PC without LibreOffice.
+
+## Build 25 (16 November 2026, CPU self-tests only, untested on a card): router settings from the MoE handbook
+
+Read against the Hugging Face MoE training handbook (Tazi, von Werra and Wolf, 2026) and the papers it cites. The changes:
+
+- **The router always runs in float32** (`pod/lora.py`), trained or not. The handbook found that BF16 routers can tie
+  close scores and pick different experts (section 3.1). Before, a router left untrained used the stock BF16 forward.
+- **Finding, unproven in our lab, as we have yet to test on a real brain: GPT-OSS's router may have been outside the router's rate.** Reading
+  `heal.py` showed its low-rate group (`--router-lr`, 2e-5) matched only Qwen's `mlp.gate.weight`, so GPT-OSS's
+  `mlp.router.weight` and bias would have learned at the main `--lr` (1e-4). On the tiny GPT-OSS model in
+  `selftest_gptoss.py` (transformers' own GPT-OSS class) the old rule matched 0 of 8 router tensors and the new rule
+  (`lora.router_params`) matches all 8. Whether the real 120B/38B behave the same, and what the rate would have done
+  to a heal, is not tested: no GPT-OSS heal has run, so no past result changes.
+- **Router gate (proves it on the card):** before any training, `heal.py` counts the router tensors in the low-rate
+  group against what the brain should have (one per MoE layer for Qwen, weight and bias for GPT-OSS) and prints
+  `router group: N tensors at lr ... (expected N)`. A mismatch stops the heal with exit 86, before any training.
+  A GPT-OSS heal's first minutes must show that line with N equal to expected (72 for the 36-layer 120B/38B).
+- **`heal.router: "frozen"`** (plan key, also `train_teacher.router` and `grpo.router`): the router stays exactly as
+  it came in, so the keep list's routing stays valid. Off by default: the router still learns at its low rate.
+- **`heal.route_report: true`**: the heal records which experts 40 held-out lessons pick (`heal.route_lessons`), before
+  and after, into `heal-report.json` `routing`. It reports per-layer MaxVio (busiest expert's load over the mean,
+  minus 1; Wang et al., 2024), never-picked experts, and the share of word-and-layer picks the heal changed. It is a
+  measure only: an error there is printed and the heal goes on. `heal-gptoss-38b.json` turns it on.
+- **No load-balance loss is ever added in a heal.** This is unchanged and now written down: the loss is the teacher
+  KL plus next-word cross-entropy. Balance losses exist for speed across many cards, and on a cut brain they would pull
+  words away from the experts the keep list kept on purpose.
+- **Reward pass (`grpo.py`):** answers are written by the same model in the same process, so the engine/trainer routing
+  gap that routing replay closes (Ma et al., 2025) is small here. If answers are ever written by llama-server or vLLM
+  for GRPO, add replay or freeze the router first.
+
+Tests: `pod/selftest_training.py` 72 of 72 checks (new: the old and new router rules agree on Qwen; the gate spots a missing router tensor) (new: the router mode and dtype in the report, a frozen-router heal
+with the routing record, no router weights in a frozen adapter, `grpo.py --router frozen`), `pod/selftest_gptoss.py`
+all pass. Both on a CPU with tiny made-up models: the code runs; whether a frozen router heals better is for a real run.

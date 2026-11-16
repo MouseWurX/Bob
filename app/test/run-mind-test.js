@@ -152,7 +152,7 @@ const realFetch = globalThis.fetch;
   const m = read('electron/main.cjs');
   check('Bob.exe lets only /mind.html open as a window', /url === base \+ '\/mind\.html'/.test(m));
   check('it stays on top', /setAlwaysOnTop\(true, 'floating'\)/.test(m) && /alwaysOnTop: true/.test(m));
-  check('one at a time: pressing again brings it to the front', /if \(mindWin\) \{ mindWin\.show\(\); mindWin\.focus\(\); return \{ action: 'deny' \}; \}/.test(m));
+  check('one at a time: pressing again brings it to the front', /if \(mindWin\) \{ raise\(mindWin\); return \{ action: 'deny' \}; \}/.test(m));
   check('closing Bob closes it too', /if \(mindWin\) mindWin\.close\(\)/.test(m));
   check('it stays sandboxed like Bob\'s window', /mindOptions[\s\S]*sandbox: true[\s\S]*nodeIntegration: false/.test(m));
   const idx = read('public/index.html'), app = publicText('app.js');

@@ -547,9 +547,11 @@ print(" ".join(["--pref",pd,"--pref-kind",str(pr.get('kind','orpo')),"--pref-bet
 PY
 )
     status train "$TNAME: teaching $(basename $TFROM) every lesson ($THOURS h at most, plain next-word training${TARGS:+ + pairs})"
+    # 16 Nov: router settings (heal.py): train_teacher.router "frozen" and train_teacher.route_report, as for a heal
+    TROUTE="$(R=$(plan "['train_teacher'].get('router','')"); [ -n "$R" ] && echo "--router $R") $([ -n "$(plan "['train_teacher'].get('route_report') and 'yes' or ''")" ] && echo "--route-report")"
     python3 heal.py --model $TFROM --lessons $IN --save $W/healed-$TNAME --experts $(plan "['train_teacher'].get('experts','lora')") --alpha 0 \
       --epochs $(plan "['train_teacher'].get('epochs',1)") --hours $THOURS --max-len $(plan ".get('max_len',8192)") --cache $W/lessons-tok-train.pt \
-      --report $OUT/$TNAME/train-report.json $GEN $TARGS $TGT || die "$TNAME training"
+      --report $OUT/$TNAME/train-report.json $TROUTE $GEN $TARGS $TGT || die "$TNAME training"
     echo "$(basename $TFROM)" > $S/bobs/$TNAME/base.txt   # the adapter rebuilds this Bob from this base, not always the stock Qwen
     if [ -n "$(plan "['train_teacher'].get('grpo')")" ]; then
       status train "$TNAME: reward pass on tool calls (GRPO)"
@@ -900,6 +902,11 @@ pr=r.get('pref',h.get('pref')); op=r.get('onpolicy',h.get('onpolicy'))
 a=[]
 if pr and os.path.isdir(os.environ.get('FORGE_ROOT','/workspace')+'/in/pref'): a+=["--pref",os.environ.get('FORGE_ROOT','/workspace')+"/in/pref","--pref-kind",str(pr.get('kind','orpo')),"--pref-beta",str(pr.get('beta',0.1)),"--pref-every",str(pr.get('every',4)),"--pref-hours",str(pr.get('hours',0.5))]
 if op: a+=["--onpolicy-frac",str(op.get('frac',0.2)),"--onpolicy-new",str(op.get('new',256)),"--onpolicy-temp",str(op.get('temp',1.0))]
+# 16 Nov: router settings from the MoE handbook (heal.py): heal.router "frozen" keeps the keep list's routing; heal.route_report
+# records expert picks on held-out lessons before and after (MaxVio, never-picked experts, share of picks changed)
+rt=r.get('router',h.get('router'))
+if rt in ('frozen','trainable'): a+=["--router",rt]
+if r.get('route_report',h.get('route_report')): a+=["--route-report","--route-lessons",str(h.get('route_lessons',40))]
 print("NEWARGS='"+" ".join(a)+"'; ONPOLICY="+("1" if op else ""))
 g=p.get('grpo'); print("GRPO="+("1" if g and (not g.get('rungs') or r['name'] in g['rungs']) else ""))
 PY
@@ -914,7 +921,8 @@ PY
       status heal "$NAME: reward pass on tool calls (GRPO)"
       if python3 grpo.py --model $W/healed-$NAME --lessons $IN --save $W/grpo-$NAME --report $OUT/$NAME/grpo-report.json --max-len $MAXLEN \
           --hours $(plan "['grpo'].get('hours',1.5)") --steps $(plan "['grpo'].get('steps',200)") --group $(plan "['grpo'].get('group',6)") \
-          --chats $(plan "['grpo'].get('chats',4)") --kl $(plan "['grpo'].get('kl',0.02)") --lr $(plan "['grpo'].get('lr',5e-6)") $TGT && \
+          --chats $(plan "['grpo'].get('chats',4)") --kl $(plan "['grpo'].get('kl',0.02)") --lr $(plan "['grpo'].get('lr',5e-6)") $TGT \
+          $(R=$(plan "['grpo'].get('router','')"); [ -n "$R" ] && echo "--router $R") && \
          python3 -c "import json,sys; r=json.load(open(sys.argv[1])); sys.exit(0 if r['after']['reward']>=r['before']['reward'] and r.get('no_target_worse',True) else 1)" $OUT/$NAME/grpo-report.json; then
         cp $W/healed-$NAME/adapter.pt $W/grpo-$NAME/heal-adapter.pt; rm -rf $W/healed-$NAME; mv $W/grpo-$NAME $W/healed-$NAME; echo "$NAME: reward pass kept"
       else rm -rf $W/grpo-$NAME; echo "$NAME: reward pass did not help on the held-out chats (or failed): the healed Bob stays"; fi

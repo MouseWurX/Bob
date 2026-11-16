@@ -143,6 +143,7 @@ import { netFilesRoute } from './net-files-routes.js'; // Nov 14 Bob-Net file sh
 import { Outbox, Inbox } from './bob-net-files.js';
 import { saveRoute } from './save-routes.js';
 import { voiceRoute } from './voice-routes.js';
+import { searchBackupRoute } from './search-backup-routes.js'; // Nov 16: Backup search with a key
 import { talkView } from './talk.js'; // Talk with Bob (1.5.210)
 import { refsRoute } from './refs-routes.js';
 import { queueRoute } from './queue-routes.js';
@@ -599,6 +600,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && p !== '/api/quit') brain.lastActivity = Date.now();
     if (req.method === 'POST' && p === '/api/activity') return send(res, 200, { ok: true });
     // 1.5.228 Window buttons on Bob's bar: the page says its top-bar colours so the buttons match (main.cjs checks them).
+    // Nov 16 Open brings it to the front: an already open Settings, Lab, fNRI viewer or thinking window comes forward (main.cjs).
+    if (req.method === 'POST' && p === '/api/window-front') { const b = await body(req); let shown = false; if (isLocal) try { shown = Boolean(globalThis.bobWindow?.front?.(String(b?.which || ''))); } catch {} return send(res, 200, { ok: true, shown }); }
     if (req.method === 'POST' && p === '/api/window-bar') { const b = await body(req); if (isLocal) try { globalThis.bobWindow?.bar?.(b); } catch {} return send(res, 200, { ok: true }); }
 
     if (req.method === 'GET' && p === '/api/events') {
@@ -1460,6 +1463,7 @@ const server = http.createServer(async (req, res) => {
     if (p.startsWith('/api/quarantine') && await quarantineRoute({ req, res, p, isLocal, brain, cfg, body, send })) return;
     if (p === '/api/more-tools' && await moreToolsRoute({ req, res, p, isLocal, brain, cfg, body, send })) return;
     if ((await voiceRoute({ req, res, p, isLocal, cfg, shop, body, send, TYPES })) !== false) return;
+    if ((await searchBackupRoute({ req, res, p, isLocal, cfg, body, send, log: (k, t) => brain.log(k, t) })) !== false) return;
     if ((await refsRoute({ req, res, p, url, brain, body, send, serveFile })) !== false) return;
     if ((await queueRoute({ req, res, p, brain, body, send })) !== false) return;
     if (req.method === 'GET' && p === '/api/downloads') return send(res, 200, shop.downloadsView());

@@ -6,7 +6,7 @@ This thesis asked whether, for a small local agent model, what is in the trainin
 
 This chapter does four things. It answers each research question with the checked evidence and says how strong that evidence is. It lists what was not shown. It states the contributions and the threats to validity that cut across the thesis. It then sets out the future work, led by the one experiment that would settle the main claim.
 
-Status first, because it limits every answer below. The decisive retrain on reviewed lessons has not been run. The 534 held-out test items were sorted by a cheaper reviewer (Haiku), with a 5% spot-check by a stronger one (Opus). On 15 November the owner chose to keep the held-out tests as they are while the full Opus re-sort of the lessons runs. Pull requests #254 and #257 shipped in release 1.5.238, with #251, #263 and #232; the release passed 276 of 276 checks on Windows in its lab-PC check on 15 November. Pull request #251, the Qwen tool shape version 2 and the GPT-OSS shape, has shipped but has not been re-tested on models. Pull request #232, on patching and autoencoders, ran on 15 November.
+Status first, because it limits every answer below. The decisive retrain on reviewed lessons has not been run. The 534 held-out test items were sorted by a cheaper reviewer (Haiku), with a 5% spot-check by a stronger one (Opus). On 15 November MouseWurX chose to keep the held-out tests as they are while the full Opus re-sort of the lessons runs. Pull requests #254 and #257 shipped in release 1.5.238, with #251, #263 and #232; the release passed 276 of 276 checks on Windows in its lab-PC check on 15 November. Pull request #251, the Qwen tool shape version 2 and the GPT-OSS shape, has shipped but has not been re-tested on models. Pull request #232, on patching and autoencoders, ran on 15 November.
 
 All numbers in this chapter come from the checked list of 15 November 2026 or from the chapters that cite their run files. This chapter introduces no new measurement.
 
@@ -116,7 +116,7 @@ Each chapter lists its own threats. This section gathers those that cross chapte
 ### 13.5.1 Internal validity
 
 - **Test leakage.** The largest threat, and the thesis's own finding. Any score on the 534 held-out items may be inflated by training-side copies. Held-out scores quoted in earlier chapters should be read with that warning.
-- **The sorter is a model.** The lessons and test items were sorted by language models. Haiku did the first pass; Opus read all the tool lessons and changed 1,922 verdicts. The held-out items were sorted by Haiku with a 5% Opus spot-check. Reviewer error is possible in both directions, and the owner chose to keep the held-out tests as they are while the full Opus re-sort runs.
+- **The sorter is a model.** The lessons and test items were sorted by language models. Haiku did the first pass; Opus read all the tool lessons and changed 1,922 verdicts. The held-out items were sorted by Haiku with a 5% Opus spot-check. Reviewer error is possible in both directions, and MouseWurX chose to keep the held-out tests as they are while the full Opus re-sort runs.
 - **Noise.** Small tests move between runs. The 97-question quiz moves 3 to 5. The persona and patching runs use 30 and 6 asks. Conclusions that rest on a few points of difference on such tests are weak.
 - **One run per condition.** Most comparisons are a single run, without repeats.
 - **Confounds in a cut and heal.** A healed model differs from its parent in size, in data and in training steps. Chapter 9 reports what the cut changed; it cannot separate the cause of every difference.
@@ -180,6 +180,10 @@ Run the pre/post study of Chapter 12, with a reading-only comparison group, leak
 
 Several smaller tasks follow from the limits above: repeat the key benchmarks for error bars; add a second reader on a sample of lessons; check every held-out set used so far against the leaked items; and keep the course's Real result panels in step with new results.
 
+### 13.6.9 The router rules on a real heal
+
+The router rules of section 4.12.1 come from reading, not from a run. So does the finding that the GPT-OSS router sat outside the heal's low-rate group: it is unproven in our lab, as we have yet to test it on a real brain, and the router gate in the first minutes of the first GPT-OSS heal is that test. Three more tests would settle the rules. First, one heal with the routing record on, so that the share of picks a heal changes is known for the first time. Second, the same cut healed with the router learning and with it frozen, scored on the same held-out lessons. Third, a Brain Engine option that keeps fewer experts at their share of a wider group, as Chen and Yao (2026) propose, tested against today's weighting at 4 and 6 experts per word on the tool score, the quiz and the coding race. None of these has been run, and each rental is waiting on approval.
+
 ## 13.7 Closing
 
 The thesis began with a small model that handed work off to a tool when it should have done the work itself. Looking for the cause led to the lessons, and then to the test. The lessons held far more faults than scripts had found. The test held items that were also in the training files. The tools built along the way were needed to see either of these.
@@ -188,4 +192,4 @@ What the thesis shows is therefore a method and a warning more than a final answ
 
 ## References
 
-This chapter cites no papers beyond the project's own run files and the checked list. The literature for the thesis is in Chapter 2, and the references for the course design are in Chapter 12.
+This chapter cites one paper beyond the project's own run files and the checked list: Chen and Yao (2026), listed in Chapter 2. The literature for the thesis is in Chapter 2, and the references for the course design are in Chapter 12.

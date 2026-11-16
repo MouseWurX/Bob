@@ -1,6 +1,8 @@
-// 1.5.169: puts Bob's own default brains (28Bob Riker and 35Bob Bobert, Q4 and Q3) into catalog.json, with links
-// pinned to the exact commit of their PUBLIC Hugging Face pages, and makes them the defaults for their jobs
-// (bobPick, and the starter sets in packs). Read-only on the network (Hugging Face's public API).
+// 1.5.169: puts Bob's own brains (28Bob Riker and 35Bob Bobert, Q4 and Q3) into catalog.json, with links pinned to the
+// exact commit of their PUBLIC Hugging Face pages. Read-only on the network (Hugging Face's public API).
+// 1.5.245 (the owner, Nov 16): Riker, Bobert and Bill are out of catalog.json. Stock Qwen3.6 35B-A3B is the default
+// until one of Bob's own brains beats it on a held-out test. Run this only to put a Bob back after such a win; until then
+// no Bob takes a job (bobPick) or a starter-set slot here.
 //   node installer/add-bob-brains.mjs [catalog.json] [--only riker|bobert] [--write]
 // A page that isn't public (private, missing, or a file not there) is refused: an untested Bob never goes in the list.
 import fs from 'node:fs';
@@ -23,7 +25,7 @@ export const BOBS = {
       // 1.5.169 (bench Nov 9-10, on a 16 GB card): the Q3 is within a point of the Q4 on every test and about 50% faster,
       // because nearly all of it fits on the card. So it's the 16 GB default, not a squeezed copy (small cards get their own
       // brains: Bill, Homer).
-      { id: 'riker-28b-q3', file: '28Bob-Q3_K_M.gguf', category: 'chat', jobs: RIKER_JOBS, name: '28Bob Riker (quick)', nickname: 'Riker', params: 28, vramGB: 15, pick: 'best', bobPick: ['bob'],
+      { id: 'riker-28b-q3', file: '28Bob-Q3_K_M.gguf', category: 'chat', jobs: RIKER_JOBS, name: '28Bob Riker (quick)', nickname: 'Riker', params: 28, vramGB: 15, pick: 'optional', bobPick: [],
         what: 'Riker in a smaller file. On my tests it scores within a point of the bigger file and answers about half again as fast, because nearly all of it fits on a 16 GB card.',
         bench: 'Benchmarked 2026-11-09 on a 16 GB card: ARC-Challenge 94.3% (thinking on), ARC-Easy 97.3% (thinking off); Bob\'s own test: tools 64, needle 12 of 12; about 170 words a second, 14.7 GB on the card.' }
     ]
@@ -31,20 +33,16 @@ export const BOBS = {
   bobert: {
     repo: 'MouseWurX/35Bob-Bobert',
     entries: [
-      { id: 'bobert-35b', file: '35Bob-Q4_K_M.gguf', category: 'coding', jobs: BOBERT_JOBS, name: '35Bob Bobert', nickname: 'Bobert', params: 35, vramGB: 16, pick: 'best', bobPick: ['tinker', 'deep'], what: BOBERT_WHAT },
-      { id: 'bobert-35b-q3', file: '35Bob-Q3_K_M.gguf', category: 'coding', jobs: BOBERT_JOBS, name: '35Bob Bobert (8 GB card version)', nickname: 'Bobert', params: 35, vramGB: 12, pick: 'small', bobPick: ['tinker'], squeezedOf: 'bobert-35b', maxCardGB: 8,
+      { id: 'bobert-35b', file: '35Bob-Q4_K_M.gguf', category: 'coding', jobs: BOBERT_JOBS, name: '35Bob Bobert', nickname: 'Bobert', params: 35, vramGB: 16, pick: 'optional', bobPick: [], what: BOBERT_WHAT },
+      { id: 'bobert-35b-q3', file: '35Bob-Q3_K_M.gguf', category: 'coding', jobs: BOBERT_JOBS, name: '35Bob Bobert (8 GB card version)', nickname: 'Bobert', params: 35, vramGB: 12, pick: 'optional', bobPick: [], squeezedOf: 'bobert-35b', maxCardGB: 8,
         what: 'Bobert squeezed into a smaller file for cards of 8 GB or less. A little less sharp than the full one, and most of it sits in your RAM, so replies come slower. On a bigger card I use the full version instead.' }
     ]
   }
 };
 
-// Starter sets: which job each Bob takes over, per card. Only applied for the Bobs that went in.
-export const PACKS = {
-  big: { riker: { 'riker-28b-q3': ['bob'] }, bobert: { 'bobert-35b': ['tinker', 'deep'] },
-    notes: { 'riker-28b-q3': 'Bob\'s own everyday brain: nearly all of it fits on your card, so it\'s quick, with a big context (256K, how much it keeps in mind)', 'bobert-35b': 'Bob\'s own coding and deep-thinking brain: the whole Qwen3.6 35B, taught Bob\'s ways' } },
-  mid: { bobert: { 'bobert-35b-q3': ['tinker'] }, tick: ['bobert-35b-q3'],
-    notes: { 'bobert-35b-q3': 'Bob\'s own coder, squeezed for your card; most of it sits in your RAM, so replies are slower' } }
-};
+// Starter sets: which job each Bob takes over, per card. Only applied for the Bobs that went in. Empty since 1.5.245:
+// stock Qwen keeps the starter-set slots until a Bob wins a held-out test (then his slots go back in here).
+export const PACKS = {};
 
 const getJson = async (fetchImpl, u) => {
   const r = await fetchImpl(u);

@@ -1,5 +1,6 @@
 // Bob's panel: chat, approvals, status, taskbar badge, read-aloud, and the brain-swap machine.
 import './sample-data.js'; // 1.5.210 sample-data mode (?sample=1 in the address only): made-up brains, nothing saved
+import { bringToFront } from './window-front.js'; // Nov 16: an open window comes to the front
 import { drawBob, setLook } from './bob-sprite.js';
 import { secretNoteHtml, wireSecretNote } from './more-tools.js'; // 🧰 More tools: a password Bob made
 import { applyStyle, applySavedStyle } from './themes.js';
@@ -104,6 +105,7 @@ function openSettingsWindow(jump) {
     if (settingsWin && !settingsWin.closed) settingsChan.postMessage({ from: 'main', name: 'bob-goto', detail: jump || '' });
     else settingsWin = window.open(settingsUrl(jump), WINDOW_NAME, WINDOW_SIZE);
     settingsWin?.focus();
+    bringToFront('settings'); // Nov 16: an open Settings window behind others (or minimised) comes forward
   } catch { settingsWin = null; }
   return Boolean(settingsWin);
 }
@@ -523,7 +525,7 @@ const labChan = 'BroadcastChannel' in window ? new BroadcastChannel(LAB_CHANNEL)
 let labWin = null;
 function openLabWindow() {
   if (!labWantsWindow({ hasChannel: Boolean(labChan), coarse: matchMedia('(pointer: coarse)').matches, standalone: matchMedia('(display-mode: standalone)').matches, width: window.innerWidth })) return false;
-  try { if (!labWin || labWin.closed) labWin = window.open(LAB_URL, LAB_WINDOW_NAME, LAB_WINDOW_SIZE); labWin?.focus(); } catch { labWin = null; }
+  try { if (!labWin || labWin.closed) labWin = window.open(LAB_URL, LAB_WINDOW_NAME, LAB_WINDOW_SIZE); labWin?.focus(); bringToFront('lab'); } catch { labWin = null; }
   return Boolean(labWin);
 }
 labChan?.addEventListener('message', (e) => { const m = labAccept(e.data); if (m?.kind === 'go') labGo(m.where); else if (m?.kind === 'note') note(m.text); });
@@ -735,6 +737,7 @@ $('mindBtn')?.addEventListener('click', () => {
   if (layout.mindDocked()) return layout.showMind();
   const w = window.open('/mind.html', 'bob-mind', 'popup,width=380,height=480');
   try { w?.focus(); } catch {}
+  bringToFront('mind');
 });
 const mindTitle = (docked) => {
   const b = $('mindBtn'); if (!b) return;

@@ -1,6 +1,6 @@
 {
   "name": "bob",
-  "version": "1.5.244",
+  "version": "1.5.245",
   "description": "Bob, a local AI who lives on your PC: chat, pictures, video, voice and more, all on your own hardware.",
   "type": "module",
   "private": true,
@@ -58,6 +58,7 @@
     "test/run-step-thinking-test.js",
     "test/run-natural-tools-test.js",
     "test/run-hands-read-test.js",
+    "test/run-web-search-test.js",
     "test/run-lab-watch-test.js",
     "test/run-squeezed-brain-test.js",
     "test/run-gaming-card-test.js",
@@ -168,6 +169,7 @@
     "test/run-firewall-test.js",
     "test/run-tray-test.js",
     "test/run-window-bar-test.js",
+    "test/run-window-front-test.js",
     "test/run-phrasing-test.js",
     "test/run-wait-line-test.js",
     "test/run-pair-test.js",
@@ -196,6 +198,7 @@
     "test/run-brain-engine-get-test.js",
     "test/run-app-folder-test.js",
     "test/run-bob-brains-test.js",
+    "test/run-brain-move-test.js",
     "test/run-engines-rework-test.js",
     "test/run-browser-test.js",
     "test/run-quick-switches-test.js",
@@ -303,9 +306,9 @@
   ],
   "bob": {
     "release": "1.5",
-    "patch": 244,
+    "patch": 245,
     "branch": "",
-    "build": 296,
+    "build": 297,
     "bundledLlamaTag": "b12359",
     "brainEngineVersion": 8,
     "brainEngine": {

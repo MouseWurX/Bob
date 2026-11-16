@@ -14,6 +14,17 @@ New ways to learn (13 Nov 2026), every one off unless asked for:
            (--pref-hours), measured from the healed Bob. Held-out pairs are measured before and after.
   --onpolicy-frac 0.2 --onpolicy-teacher <dir>  a share of the steps where the student writes and the teacher scores
            every word it wrote (onpolicy.py). Needs the teacher in memory beside the student.
+
+Router settings (16 Nov 2026, from the Hugging Face MoE training handbook, Tazi, von Werra and Wolf, 2026):
+  The router always runs in float32 (lora.py). It learns at its own low rate (--router-lr), for Qwen and GPT-OSS alike
+  (16 Nov: reading the code suggested the GPT-OSS router fell into the main group, at --lr, five times faster;
+  unproven in our lab, as we have yet to test on a real brain. The router gate below checks it before training.)
+  --router frozen  keep the router exactly as it came in, so the keep list stays valid; default trainable (as before).
+  --route-report   record which experts the held-out lessons pick before and after the heal (--route-lessons of them):
+           per-layer MaxVio (busiest expert's load over the mean, minus 1), experts never picked, and the share of picks
+           the heal changed. Measure only; it never stops the heal. Off unless asked.
+No load-balance (aux) loss is ever added in the heal: the loss above is the whole loss. Balancing is for training
+speed on many cards, and on a cut brain it would pull words away from the experts the keep list kept on purpose.
 """
 import argparse, json, math, os, random, time
 import torch, torch.nn.functional as F
@@ -57,6 +68,49 @@ def evaluate(model, rows, teacher, alpha, dev, limit=None):
     return {"ce": tot["ce"] / n, "kd": tot["kd"] / n, "answer_tokens": tot["n"],
             "teacher_ce": tot["teacher_ce"] / max(tot["teacher_n"], 1) if tot["teacher_n"] else None}
 
+def route_snapshot(model, rows, dev, limit):
+    """Experts picked per MoE layer for the first `limit` rows, as a list (one per row) of [layer][tokens, k] int16."""
+    out = []; model.eval()
+    try:
+        L.ROUTES["on"] = True
+        with torch.no_grad():
+            for r in rows[:limit]:
+                L.ROUTES["picks"] = []
+                model(input_ids=torch.tensor(r["ids"], device=dev)[None], use_cache=False, logits_to_keep=1)
+                out.append(L.ROUTES["picks"])
+    finally:
+        L.ROUTES["on"] = False; L.ROUTES["picks"] = []
+    return out
+
+def route_stats(snap, n_expert):
+    """Per-layer MaxVio and never-picked experts over a snapshot (the handbook's appendix A.1 measures)."""
+    if not snap or not snap[0]: return None
+    layers = len(snap[0]); vio = []; unused = 0
+    for li in range(layers):
+        c = torch.zeros(n_expert, dtype=torch.long)
+        for row in snap:
+            if li < len(row): c += torch.bincount(row[li].reshape(-1).long(), minlength=n_expert)[:n_expert]
+        m = c.float().mean().item()
+        vio.append(round(c.max().item() / m - 1, 3) if m > 0 else None); unused += int((c == 0).sum())
+    ok = [v for v in vio if v is not None]
+    return {"layers": layers, "tokens": sum(int(row[0].shape[0]) for row in snap if row), "maxvio_mean": round(sum(ok) / max(len(ok), 1), 3),
+            "maxvio_max": max(ok) if ok else None, "maxvio_worst_layer": vio.index(max(ok)) if ok else None, "never_picked": unused, "maxvio_by_layer": vio}
+
+def route_change(a, b):
+    """How far the heal moved routing: share of (word, layer) picks with the same expert set, and mean overlap."""
+    same = over = n = 0
+    for ra, rb in zip(a, b):
+        for la, lb in zip(ra, rb):
+            if la.shape != lb.shape: continue
+            sa, sb = la.long().sort(-1).values, lb.long().sort(-1).values
+            same += int((sa == sb).all(-1).sum()); n += la.shape[0]
+            over += (la.long()[:, :, None] == lb.long()[:, None, :]).any(-1).float().mean(-1).sum().item()
+    return {"same_set": round(same / max(n, 1), 4), "overlap": round(over / max(n, 1), 4), "picks": n}
+
+def n_experts(model):
+    c = getattr(model.config, "text_config", model.config)
+    return int(getattr(c, "num_experts", None) or getattr(c, "num_local_experts", 0) or 0)
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True); ap.add_argument("--lessons", required=True); ap.add_argument("--teacher", default=None)
@@ -72,6 +126,8 @@ def main():
     ap.add_argument("--pref-hours", type=float, default=0.5); ap.add_argument("--pref-lr", type=float, default=None)
     ap.add_argument("--targets", default=None, help="several training targets: JSON or a file, {name: {jobs: [...], weight: w}} (targets.py)")
     ap.add_argument("--onpolicy-frac", type=float, default=0.0); ap.add_argument("--onpolicy-teacher", default=None)
+    ap.add_argument("--router", default="trainable", choices=["trainable", "frozen"])
+    ap.add_argument("--route-report", action="store_true"); ap.add_argument("--route-lessons", type=int, default=40)
     ap.add_argument("--onpolicy-new", type=int, default=256); ap.add_argument("--onpolicy-temp", type=float, default=1.0); ap.add_argument("--onpolicy-top", type=int, default=32)
     a = ap.parse_args()
     if a.onpolicy_frac > 0 and not a.onpolicy_teacher: ap.error("--onpolicy-frac needs --onpolicy-teacher <the teacher's folder>")
@@ -104,10 +160,26 @@ def main():
     if a.eval_only:
         os.makedirs(os.path.dirname(rp) or ".", exist_ok=True); json.dump(report, open(rp, "w"), indent=1); return
 
-    params = L.attach(model, r=a.r, experts=a.experts, r_experts=a.r_experts)
-    router = [p for n, p in model.named_parameters() if p.requires_grad and n.endswith("mlp.gate.weight")]
+    params = L.attach(model, r=a.r, experts=a.experts, r_experts=a.r_experts, router=a.router == "trainable")
+    # the router's own low rate: Qwen's mlp.gate, and GPT-OSS's mlp.router with its bias (16 Nov: before, GPT-OSS's fell into the main group)
+    router = [p for _, p in L.router_params(model)]
+    # 16 Nov gate: a trainable router must have every router tensor in the low-rate group, or the heal stops before
+    # training (exit 86, like the smoke gates). The GPT-OSS router missing from this group is a finding from reading the
+    # code and a tiny-model test; this check is what proves it on the real brain, in the run's first minutes.
+    want = L.router_count_expected(model) if a.router == "trainable" else 0
+    print(f"router group: {len(router)} tensors at lr {a.router_lr} (expected {want}), router {a.router}, float32", flush=True)
+    if len(router) != want:
+        print(f"ROUTER GATE FAILED: {len(router)} router tensors found, {want} expected; stopping before any training", flush=True); raise SystemExit(86)
     rest = [p for p in params if not any(p is q for q in router)]
-    groups = [{"params": rest, "lr": a.lr}, {"params": router, "lr": a.router_lr}]
+    groups = [{"params": rest, "lr": a.lr}] + ([{"params": router, "lr": a.router_lr}] if router else [])
+    report["router"] = {"mode": a.router, "dtype": "float32", "lr": a.router_lr if router else 0, "tensors": len(router), "expected": want, "gate": "passed"}
+    route_before = None
+    if a.route_report:
+        try:
+            route_before = route_snapshot(model, tests["lessons"] or data["test"], dev, a.route_lessons)
+            report["routing"] = {"before": route_stats(route_before, n_experts(model))}; print("routing before:", {k: v for k, v in report["routing"]["before"].items() if k != "maxvio_by_layer"}, flush=True)
+        except Exception as e:
+            print(f"routing record skipped ({str(e)[:80]}); the heal goes on", flush=True); route_before = None
     opt = None
     if a.experts == "full":
         try:
@@ -172,7 +244,7 @@ def main():
         acc["loss"] += loss.item() * n; acc["ce"] += ce.item() * n; acc["kd"] += kd.item() * n; acc["n"] += n
         if acc_tok >= a.tokens_per_step:
             torch.nn.utils.clip_grad_norm_(params, 1.0)
-            for g, base in zip(opt.param_groups, (a.lr, a.router_lr)): g["lr"] = base * sched(step)
+            for g, base in zip(opt.param_groups, (a.lr, a.router_lr)): g["lr"] = base * sched(step)  # one group when the router is frozen
             opt.step(); opt.zero_grad(set_to_none=True); step += 1; acc_tok = 0
             if step % 10 == 0 or step == 1:
                 n = max(acc["n"], 1); el = time.time() - t0
@@ -194,6 +266,13 @@ def main():
     report["after"] = score()
     if targets: report["no_target_worse"] = TG.no_target_worse({k: v for k, v in report["before"].items() if k.startswith("target:")}, report["after"], "ce", higher_better=False, slack=0.01)
     print("held-out after:", report["after"], flush=True)
+    if route_before is not None:
+        try:
+            route_after = route_snapshot(model, tests["lessons"] or data["test"], dev, a.route_lessons)
+            report["routing"]["after"] = route_stats(route_after, n_experts(model)); report["routing"]["change"] = route_change(route_before, route_after)
+            print("routing after:", {k: v for k, v in report["routing"]["after"].items() if k != "maxvio_by_layer"}, "change:", report["routing"]["change"], flush=True)
+        except Exception as e:
+            print(f"routing record after skipped ({str(e)[:80]})", flush=True)
     if a.save:  # the small adapter alone (LoRA + router): with the keep list it rebuilds this healed Bob from the teacher, no volume needed
         torch.save({"params": L.trainable_state(model), "step": step, "r": a.r, "r_experts": a.r_experts, "experts": a.experts}, os.path.join(a.save, "adapter.pt"))
     L.merge_all(model)

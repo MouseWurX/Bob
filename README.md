@@ -43,13 +43,13 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.244-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.244-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.244-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.244-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.244-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.244-linux-x86_64.AppImage) |
-| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.244-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.244-linux-amd64.deb) |
-| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.244-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.244-linux-x86_64.flatpak) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.244-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.244-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
-| **Android phone** | [`Bob-1.5.244-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.244-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.245-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.245-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.245-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.245-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.245-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.245-linux-x86_64.AppImage) |
+| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.245-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.245-linux-amd64.deb) |
+| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.245-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.245-linux-x86_64.flatpak) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.245-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.245-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
+| **Android phone** | [`Bob-1.5.245-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.245-android.apk) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 
@@ -345,7 +345,7 @@ Three models made from Qwen3.6-35B-A3B with the same tools that are in the Lab: 
 | Code that runs | **6 of 6** | **6 of 6** | 1 of 6 |
 | Download | [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) | [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) | [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) |
 
-Same tests, same rented card, each Bob served from his public Q4 file. Riker matches Bobert at a size that suits a 16 GB card, so he is Bob's default. Bill is best at tool decisions and weakest at facts and code, and is published as he is.
+Same tests, same rented card, each Bob served from his public Q4 file. Riker matches Bobert at a size that suits a 16 GB card. Since 1.5.245 none of the three is in Bob's Brain catalogue: stock Qwen3.6-35B-A3B is the default, until a Bob beats it on a held-out test. Their files stay on Hugging Face. Bill is best at tool decisions and weakest at facts and code, and is published as he is.
 
 **Riker against the model he was cut from**, at home on a 16 GB card:
 
@@ -368,7 +368,7 @@ Same tests, same rented card, each Bob served from his public Q4 file. Riker mat
 | [What they cost](app/docs/COSTS.md) | Every rental, itemized, failures included. |
 | [Brain races](app/docs/BRAIN-RACES.md) · [test results](app/docs/test-results/README.md) | How other brains score on the same tests and the same PC. |
 
-Bob picks Riker's file for your card himself: Q4, or Q3 on an 8 GB card.
+Bob's default is stock Qwen3.6-35B-A3B (its Q3 file codes on an 8 GB card). A Riker file already on a PC still runs from ➕ Your own brains.
 
 ## Bob-Net: Bobs working together
 

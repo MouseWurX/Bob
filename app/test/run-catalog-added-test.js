@@ -100,6 +100,7 @@ const fake = (status, j) => async (u, o) => { asked.push([u, o]); return { statu
   }
   { // the big one is a real download now, pinned, not yet recommended, and Riker is found under either file name
     const cat = JSON.parse(read('catalog.json'));
+    cat.models.push(...JSON.parse(read('test/fixtures/bob-brains-removed.json')).models); // 1.5.245: Riker and Bobert left the catalogue; kept here as test brains
     const big = cat.models.find((m) => m.id === 'gpt-oss-120b-mxfp4'), f = big?.files?.[0] || {};
     check('GPT-OSS 120B is a pinned download, marked not tried', Boolean(big) && big.trial === true && !big.pick && /resolve\/[0-9a-f]{40}\/gpt-oss-120b-MXFP4\.gguf$/.test(f.url) && f.bytes === 63387346208 && /^[0-9a-f]{64}$/.test(f.sha256));
     check('on a 16 GB card with 32 GB of memory it runs from card, memory and storage', placeFor(big, { vramGB: 16, ramGB: 32 }).where === 'storage' && pickFor('deep', cat.models.map((m) => ({ ...m, status: { state: 'missing' } })), { vramGB: 16, ramGB: 32, freeGB: 500 })?.id !== big.id);

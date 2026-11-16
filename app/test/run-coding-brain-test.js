@@ -11,7 +11,7 @@ const q = cat.models.find((m) => m.id === 'qwen3.6-35b-a3b');
 check('Qwen3.6 35B-A3B has passed its PC test (no New tag)', q && !q.trial);
 const big = cat.packs.find((p) => p.id === 'big');
 // 1.5.169: Bob's own brains take over: Riker (quick) is the Brain, Bobert does Coding and Deep thinking; Gemma 4 26B keeps Office.
-check('the 16 GB starter set: Riker for Brain, Bobert for Coding and Deep thinking, Gemma 4 26B for Office', big.slots['riker-28b-q3']?.join() === 'bob' && big.slots['bobert-35b']?.join() === 'tinker,deep' && big.slots['gemma4-26b']?.join() === 'office' && !big.models.includes('qwen3-coder-30b'));
+check('1.5.245: the 16 GB starter set: stock Qwen3.6 35B-A3B for Brain, Coding and Deep thinking, Gemma 4 26B for Office', big.slots['qwen3.6-35b-a3b']?.join() === 'bob,tinker,deep' && big.slots['gemma4-26b']?.join() === 'office' && !big.models.includes('qwen3-coder-30b'));
 check('Qwen3.6 35B-A3B is still in the catalogue to pick', cat.models.some((m) => m.id === 'qwen3.6-35b-a3b' && m.jobs.includes('tinker')));
 check('Qwen3 Coder 30B is still in the catalogue to pick', cat.models.some((m) => m.id === 'qwen3-coder-30b' && m.jobs.includes('tinker')));
 

@@ -4,6 +4,8 @@
 // says why). Some lessons also show a Real result: a measured finding from Bob's own published research (docs/), labelled
 // as real and never mixed with what a learner tries. Off unless switched on (Settings, How Bob works, Brains, "Lab: Lessons"). This is a course for people. It is NOT training
 // data: nothing here is ever read by a lesson set, the Forge or any training script.
+// 16 Nov 2026: some lessons also carry From the research (cite): a finding from someone else's published work, named
+// with its authors, year and link, shown apart from my own Real results so the two are never mixed.
 // Try it is read-only: it tokenises, asks for odds, writes a few words, or reads the brain file's header. Nothing rents,
 // downloads or changes a brain. Progress (which lessons are done) is the only thing saved, in the Lab folder.
 import fs from 'node:fs';
@@ -165,7 +167,8 @@ export const LESSONS = [
   { id: 'heal', unit: 'change', title: 'Healing', pro: 'Knowledge distillation',
     real: { text: 'Healing can\'t grow back a removed expert: it only trains the experts that are left. That is why Bob\'s smaller brains below about half their experts are planned as a gentle cut plus a heal, never a cut alone.', from: 'docs/MAKING-SMALLER-MODELS.md' },
     read: ['After a cut, a brain loses a little. Healing trains it to copy the original\'s odds on lots of text, so it gets back what it lost. The original is the teacher.',
-      'Copying full odds teaches far more than copying answers, because the student learns what the teacher nearly said, too.'],
+      'Copying full odds teaches far more than copying answers, because the student learns what the teacher nearly said, too.',
+      'I keep the router steady while healing: full precision, a slow learning rate (or none), and no balance rule. The experts were kept for the router as it is.'],
     try: { kind: 'page', ask: 'See healing and the other steps in the Lab\'s protocol.', page: 'steps', button: 'Open Steps' },
     check: [
       q('In healing, who is the teacher?', ['The original, uncut brain', true, 'Right. The cut brain learns to copy it.'], ['The person', false, 'You run it, but the brain learns from the original.']),
@@ -228,7 +231,10 @@ export const LESSONS = [
   // ---- Advanced: Mixture of experts ----
   { id: 'routing', unit: 'moe', title: 'Routers', pro: 'Top-k gating',
     read: ['In each MoE layer, the router scores every expert for this token, keeps the top k (often 8 of 256), and mixes their outputs by those scores. The rest do nothing for this token.',
-      'In training, a balance rule pushes the router to use all experts, so none sit idle. That is also why experts follow word patterns rather than tidy topics.'],
+      'In training, a balance rule pushes the router to use all experts, so none sit idle. That is also why experts follow word patterns rather than tidy topics.',
+      'There are two kinds of balance rule. An extra loss rewards even use, but it pulls against learning the words. A bias nudges which experts get picked without touching the loss. Qwen3 uses the loss; DeepSeek-V3 mostly the bias.',
+      'The router\'s maths is done in full 32-bit precision. In 16-bit, two close scores can tie and a different expert wins.'],
+    cite: { text: 'Training MoE brains on many cards: Qwen3 MoE balances with a global-batch loss and no bias; DeepSeek-V3 uses a tiny per-sequence loss plus a bias. A BF16 router can change which experts win; keep it in FP32.', who: 'Tazi, von Werra and Wolf (2026), The Ultimate MoE Training Handbook, sections 3.1 and 3.3', url: 'https://huggingface.co/spaces/huggingface/moe-blogpost' },
     try: { kind: 'facts', ask: 'See how many experts my brain has, and how many the router keeps per token.', show: ['experts', 'active'] },
     check: [
       q('What does the router do?', ['Scores the experts and keeps the top few for each token', true, 'Right. Top-k.'], ['Sends messages to Bob', false, 'Different router.']),
@@ -236,12 +242,24 @@ export const LESSONS = [
     ] },
   { id: 'perword', unit: 'moe', title: 'Experts per word', pro: 'Active experts (k) vs quality',
     read: ['You can run a brain with fewer experts per token than it was trained with. Fewer is faster, because less is read for each token, but at some point quality falls off a cliff.',
-      'The cliff is sudden, not gentle. So test each setting, and test again after every cut.'],
+      'The cliff is sudden, not gentle. So test each setting, and test again after every cut.',
+      'How the kept experts are weighed matters too. Normally their weights are scaled to add up to 1. With fewer experts, that scales each one up past what it was trained for. Keeping their share of a wider group (say the top 16) loses far less.'],
+    cite: { text: 'Qwen3.6-35B-A3B at 4 experts instead of 8: weights scaled to add up to 1 lost 4.65 MMLU points; kept at their share of the top 16 it lost 0.35 (not significant). Word odds and task scores picked different settings, so judge on tasks.', who: 'Chen and Yao (2026), Training-Free Halving of Activated Experts in Fine-Grained Mixture-of-Experts Models', url: 'https://arxiv.org/abs/2609.04575' },
     real: { text: 'Full Qwen3.6-35B-A3B: at 8, 6 and 4 experts per word it kept 45/97 right tools, 20/20 facts and 6/6 code, at 82.7, 92.1 and 102.5 tokens a second. At 3 it fell to 26/97 tools and 4/6 code. At 2 it collapsed to 1/97 and 0/6.', from: 'docs/forge-runs/benchmarks/experts-per-word-full-qwen-2026-11-04.md' },
     try: { kind: 'page', ask: 'See the Lab\'s experts-per-word test.', page: 'test', button: 'Open Test' },
     check: [
       q('What happens with fewer experts per token?', ['Faster, and fine until a sudden cliff', true, 'Right. 4 was fine, 3 was not.'], ['Slower and better', false, 'Fewer experts means less to read, so faster.']),
       q('You cut a brain. Do the old experts-per-word results still hold?', ['No: test again after every cut', true, 'Right. The cliff can move.'], ['Yes', false, 'A cut changes what each expert carries.'])
+    ] },
+  { id: 'routerhealth', unit: 'moe', title: 'Watching the router', pro: 'Router diagnostics (MaxVio, entropy, expert output norms)',
+    read: ['To see if a router is healthy, count how many words each expert gets in each layer. MaxVio is the busiest expert\'s count over the average, minus 1: 0 is perfectly even.',
+      'Also look at how sure the router is (are the chosen weights all equal, or is one clearly ahead?) and how big each expert\'s output is next to the layer\'s middle one. An expert drifting far from the rest is a warning sign.',
+      'After a heal I compare these before and after, beside the scores. A heal that scores well but reshuffles most picks has drifted from the keep list.'],
+    cite: { text: 'The handbook\'s monitoring appendix: per-layer token counts and MaxVio, weight entropy and the top-two ratio, per-expert output size against the layer median, and a table from each symptom to its likely cause.', who: 'Tazi, von Werra and Wolf (2026), The Ultimate MoE Training Handbook, appendix A.1 and A.2; MaxVio from Wang et al. (2024), arXiv:2408.15664', url: 'https://huggingface.co/spaces/huggingface/moe-blogpost' },
+    try: { kind: 'page', ask: 'See which experts my brain picks, layer by layer.', page: 'inside', button: 'Open Look inside' },
+    check: [
+      q('A layer has MaxVio 0. What does that mean?', ['Every expert got the same number of words', true, 'Right. Perfectly even.'], ['No expert was picked', false, 'Then there is nothing to divide by: MaxVio has no value.'], ['One expert got every word', false, 'That is the far end: a very large MaxVio.']),
+      q('After a heal, most expert picks changed but the scores rose. Worth noting?', ['Yes: the heal moved away from what the keep list was chosen for', true, 'Right. The next cut should be counted again.'], ['No, only scores matter', false, 'The picks tell you whether the keep list still fits.'])
     ] },
   // ---- Advanced: Making brains smaller ----
   { id: 'quantmath', unit: 'smaller', title: 'How quantization works', pro: 'Block quantization, K-quants and imatrix',
@@ -255,6 +273,7 @@ export const LESSONS = [
   { id: 'reap', unit: 'smaller', title: 'Scoring experts', pro: 'REAP (router-weighted expert activation pruning)',
     read: ['Counting how often an expert is picked isn\'t enough. REAP also weighs how much each expert actually changes the output when it is picked. An expert picked often but adding little can go first.',
       'Try a keep list first by switching experts off in place, which you can undo exactly. Only slice the file once the list is right.'],
+    cite: { text: 'A caution from others: on Qwen3.6-35B-A3B and Qwen3.5-397B-A17B the router was well balanced and expert use was strongly tied to the kind of text, so these authors saw little room for cutting experts. Measure every cut on your own tasks.', who: 'Chen and Yao (2026), Training-Free Halving of Activated Experts in Fine-Grained Mixture-of-Experts Models', url: 'https://arxiv.org/abs/2609.04575' },
     real: { text: 'REAP trims with no heal, scored on 314 held-out chat turns at 100, 75, 50 and 35% of experts kept. Bobert (uncut): 204, 204, 198, 145. Riker (already cut once): 210, 204, 163, 72. An uncut brain has slack; a cut one doesn\'t.', from: 'docs/MAKING-SMALLER-MODELS.md' },
     try: { kind: 'page', ask: 'See the Lab\'s cut plans.', page: 'make', button: 'Open Make a brain' },
     check: [
@@ -308,7 +327,9 @@ export const LESSONS = [
     ] },
   { id: 'reward', unit: 'beyond', title: 'Learning from rewards', pro: 'Reinforcement learning (GRPO)',
     read: ['Instead of copying, the brain tries a task several times, each try is scored by a checker (did the code run, was the tool call right), and better-than-average tries are made likelier. GRPO compares the tries in each group.',
-      'It only works if the checker is right. A checker that can be fooled teaches the brain to fool it.'],
+      'It only works if the checker is right. A checker that can be fooled teaches the brain to fool it.',
+      'Mixture-of-experts brains add a catch. If one engine writes the tries and another does the learning, they can pick different experts for the same word, so the brain learns from tries it didn\'t quite make. Routing replay saves the picks and reuses them.'],
+    cite: { text: 'In Qwen3-30B-A3B, about 10% of router choices differed between the engine writing answers (SGLang) and the trainer (Megatron). Replaying the picks (R3) roughly halved the gap and stopped training from collapsing.', who: 'Ma et al. (2025), Stabilizing MoE Reinforcement Learning by Aligning Training and Inference Routers; figures as summarised by Tazi, von Werra and Wolf (2026), section 4', url: 'https://arxiv.org/abs/2510.11370' },
     try: { kind: 'page', ask: 'See reward training in the Lab\'s protocol.', page: 'steps', button: 'Open Steps' },
     check: [
       q('What does GRPO compare?', ['Several tries at the same task, scored by a checker', true, 'Right. Better than the group average gets reinforced.'], ['Two different brains', false, 'It compares one brain\'s own tries.']),

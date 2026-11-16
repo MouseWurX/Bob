@@ -70,7 +70,7 @@ function decode(png) {
       check('1.5.232: once seen, a later pick is never dropped', shareDefaults(later, []) === false && later.share.scutMbps === 100);
     }
     check('a settings file with no share group is fine', (() => { const o = { defaultsSeen: ['tesseract-icon'] }; return newDefaults(o) === true && !('share' in o); })());
-    check('every new default names its id and the keys it resets', NEW_DEFAULTS.every((d) => typeof d.id === 'string' && d.keys.length > 0));
+    check('every new default names its id and the keys it resets (or, 1.5.245, the setting it moves instead)', NEW_DEFAULTS.every((d) => typeof d.id === 'string' && Array.isArray(d.keys) && (d.keys.length > 0 || typeof d.moves === 'string')));
     check('Bob drops old picks when he reads settings.json, before using them', /if \(newDefaults\(kept, applied\)\)[^\n]*\n(?:\s*\/\/[^\n]*\n)*\s*shareDefaults\(cfg, applied\);\n\s*try \{ mergeSettings\(cfg, kept\);/.test(read('src/config.js')));
   }
   check('only a saved switch puts the look on the icon', windowState({ lookIcon: true }).icons[32].equals(lookPng('sysop', 32)) && windowState({ lookIcon: 'yes' }).lookIcon === false);

@@ -82,6 +82,7 @@ const wait = async (lab) => { for (let i = 0; i < 300 && lab.job; i++) await new
 // ---- the page ----
 {
   const catalog = JSON.parse(read('catalog.json'));
+  catalog.models.push(...JSON.parse(read('test/fixtures/bob-brains-removed.json')).models); // 1.5.245: Riker and Bobert left the catalogue; kept here as test brains
   const have = ['gemma4-e4b', 'bobert-35b', 'riker-28b-q3'];
   const models = catalog.models.map((m) => ({ ...m, status: { state: have.includes(m.id) ? 'installed' : 'missing' } }));
   const roles = { current: { bob: 'riker-28b-q3', tinker: 'bobert-35b', eyes: 'gemma4-e4b', speech: 'windows' }, options: { llm: have.map((id) => ({ value: id, label: models.find((m) => m.id === id).name })), images: [], edit: [], video: [], voice: [], speech: [], embed: [] } };

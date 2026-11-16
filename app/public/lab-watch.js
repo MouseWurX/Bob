@@ -5,6 +5,7 @@
 // a grey core of the parts that are not experts, glowing as they are used. This page picks the brain and the
 // skills, starts the scan (src/lab-watch.js) and lists the scans made; the Playground places it.
 import { esc } from './rich.js';
+import { bringToFront } from './window-front.js'; // Nov 16: an open window comes to the front
 import { NAME, LONG_NAME } from './lab-watch-math.js';
 import { queueBtn, queueAdd } from './lab-queue.js'; // Nov 11: the job queue
 import { goBtn } from './lab-go.js'; // a button to where the message points
@@ -13,6 +14,7 @@ export function openViewer(brain = '', rec = '') {
   const q = brain && rec ? `?brain=${encodeURIComponent(brain)}&rec=${encodeURIComponent(rec)}` : '';
   const w = window.open(`/watch.html${q}`, 'bob-watch', 'popup,width=1180,height=820');
   try { w?.focus(); } catch {}
+  bringToFront('watch');
   return Boolean(w);
 }
 

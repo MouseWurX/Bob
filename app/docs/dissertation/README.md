@@ -35,13 +35,13 @@ Small open models can run a useful agent on one consumer graphics card, but how 
 | 9 | [Study 5: lessons through a cut](ch09-study5-lessons-through-a-cut.md) | What a cut keeps, what a heal copies, and why an already-cut model has no slack. |
 | 10 | [The evil neuron we expected, and what we found](ch10-evil-neuron.md) | An unwanted habit runs as a direction across layers, held back by a brake, not one part. |
 | 11 | [How we now make clean lessons](ch11-making-clean-lessons.md) | Fresh stock model, locked tool shapes, real tool results in a sandbox, every lesson read, and the decisive test still to run. |
-| 12 | [Teaching it](ch12-curriculum.md) | A curriculum from first concepts to engineering: the Lab's Lessons course, 42 lessons in 17 units. |
+| 12 | [Teaching it](ch12-curriculum.md) | A curriculum from first concepts to engineering: the Lab's Lessons course, 43 lessons in 17 units. |
 | 13 | [Conclusion and future work](ch13-conclusion.md) | Answers to the research questions, what was not shown, contributions, and what comes next. |
 
 ## Keeping it clean
 
 - **Measured results only.** Every number comes from a real run and was checked against its file. What ran, what was skipped and why are said in each chapter. Samples, mock-ups and design pictures are never evidence.
 - **Failures stay in.** Failed paid attempts, lost weights and what got worse after each cut are part of the result.
-- **Privacy.** No person, computer, private folder or account is named. The text says "the project" and "the owner".
+- **Privacy.** No person, computer or private folder is named. The text says "the project", and the project's owner appears only as MouseWurX, the GitHub account the project is published under.
 
 Related pages: [Bob's own models](../BOBS-OWN-MODELS.md) · [Making smaller brains](../MAKING-SMALLER-MODELS.md) · [The Forge journal](../FORGE-JOURNAL.md) · [What Bob costs to make](../COSTS.md)

@@ -29,7 +29,9 @@ import { applyWaitingRestore } from './backup-apply.js';
 import { openBox, useBox, lockOn, mapSecrets, plainCount, writeSecretJson, openCopy, useKeysFile, memoryKeeper, IN_TEST, ensureBox } from './secret-box.js';
 import { HARNESS_KEYS, cleanHarness } from './harness.js'; // items 62 to 72
 import { cleanPerWordMap } from './experts-per-word.js'; // Brain Engine 0013
+import { cleanSearchBackup } from './web-search.js'; // Nov 16: backup search with a key, off unless turned on
 import { cleanChatHeads } from './net-overlay.js'; // 1.5.228 a chat head per company
+import { moveBobBrains } from './brain-move.js'; // 1.5.245 stock Qwen in place of Riker and Bobert, once
 
 
 // Where Ollama keeps its models on this PC: OLLAMA_MODELS if it's set, else Bob's own models folder if Ollama's files
@@ -160,6 +162,13 @@ export function loadConfig() {
     // (share.x) is dropped there too, once, at the same moment.
     shareDefaults(cfg, applied);
     try { mergeSettings(cfg, kept); } catch (e) { notes.push(`settings.json couldn't be applied (${e.message}); using the defaults`); }
+    // 1.5.245: stock Qwen is the default brain in place of Riker and Bobert. Once, and only where Qwen's file is here.
+    if (applied.includes('stock-qwen-brains')) {
+      try {
+        const { models, moved } = moveBobBrains(cfg);
+        if (moved.length) { saveSettings(cfg, { models }); notes.push(`Moved ${moved.map((m) => m.job).join(', ')} from Bob's own brain to stock Qwen3.6 35B-A3B, the new default (Settings, Brains switches it back)`); }
+      } catch (e) { notes.push(`The move to stock Qwen didn't go in (${e.message}); the brains stay as they were`); }
+    }
   }
   // Nov 14 2026 (the owner: "existing installs get converted"): Moondust, the old starting theme, becomes the Mercury
   // lamp once, on the first start after the update. Any other theme is left alone; Moondust can still be picked again.
@@ -264,7 +273,7 @@ export const VERSION = (() => {
 // Languages Bob's screens come in (public/i18n.js has the names and words). English is the default.
 export const LANGUAGES = ['en', 'fr', 'es'];
 export const cleanRemoved = (v) => [...new Set((Array.isArray(v) ? v : []).filter((k) => typeof k === 'string' && /^[\w.:/-]{1,100}$/.test(k)))].slice(0, 500);
-export const SETTING_KEYS = ['moreTools', 'answerMidJob', 'stopWords', 'copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'brainMemType', 'language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'toolHelp', 'toolSets', 'toolRecord', 'thinkBubble', 'statusJokes', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'ownBar', 'chatHeads', 'netFiles', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labConsole', 'labRecheck', 'labExtras', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', ...HARNESS_KEYS, 'jobHelps', 'textSize', 'readableFont', 'profilesOn', 'todayCard', 'todayPlace', 'focusTimer', 'receipts', 'updateTour', 'tourSeen', 'trayDot', 'talkOver', 'readDocs', 'netVoices', 'netVoiceMap', 'carryIn', 'phoneGlance', 'netOverlay', 'memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPlaces', 'notesFolders', 'weeklyDigest', 'talkWithBob', 'talkCloud', 'talkCloudVoice', 'stepThinking', 'labLessons', 'apuHoldbackGB'];
+export const SETTING_KEYS = ['moreTools', 'answerMidJob', 'stopWords', 'copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'brainMemType', 'language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'toolHelp', 'toolSets', 'toolRecord', 'thinkBubble', 'statusJokes', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'ownBar', 'chatHeads', 'netFiles', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labConsole', 'labRecheck', 'labExtras', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', ...HARNESS_KEYS, 'jobHelps', 'textSize', 'readableFont', 'profilesOn', 'todayCard', 'todayPlace', 'focusTimer', 'receipts', 'updateTour', 'tourSeen', 'trayDot', 'talkOver', 'readDocs', 'netVoices', 'netVoiceMap', 'carryIn', 'phoneGlance', 'netOverlay', 'memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPlaces', 'notesFolders', 'weeklyDigest', 'talkWithBob', 'talkCloud', 'talkCloudVoice', 'stepThinking', 'labLessons', 'searchBackup', 'apuHoldbackGB'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -303,6 +312,7 @@ function clean(patch) {
   if ('netReview' in out) out.netReview = out.netReview === true; // #30, off unless switched on
   if ('lockSecrets' in out) out.lockSecrets = out.lockSecrets !== false; // 🔐 Locked secrets, ON unless switched off (src/secret-box.js)
   if ('webSearch' in out) out.webSearch = out.webSearch === true;
+  if ('searchBackup' in out) out.searchBackup = cleanSearchBackup(out.searchBackup); // Nov 16: never a key (keys.json), off unless turned on
   if ('backup' in out) out.backup = cleanBackup(out.backup); // Back up and move: the automatic backup, off unless switched on
   if ('naughtyList' in out) out.naughtyList = out.naughtyList === true; // 1.5.132 "Show the naughty list", off unless switched on
   if ('catalogUpdates' in out) out.catalogUpdates = out.catalogUpdates === true; // 1.5.137 "Auto-update the brain list", off unless switched on
@@ -663,7 +673,8 @@ const kindOf = (v) => (v === null || v === undefined ? '' : Array.isArray(v) ? '
 // these it has had (defaultsSeen), so a pick made later is never dropped again. Add a line here with each new default.
 export const NEW_DEFAULTS = [
   { id: 'tesseract-icon', keys: ['lookIcon'] }, // 1.5.228: Bob's icon is the tesseract (the pixel look only if switched on again)
-  { id: 'scut-400', keys: ['share.scutMbps', 'share.scutMbpsChosen'] } // Nov 14, the owner: SCUT's cap is 400 Mbit/s by default, never 100
+  { id: 'scut-400', keys: ['share.scutMbps', 'share.scutMbpsChosen'] }, // Nov 14, the owner: SCUT's cap is 400 Mbit/s by default, never 100
+  { id: 'stock-qwen-brains', keys: [], moves: 'models' } // 1.5.245: nothing dropped; jobs on Riker or Bobert move to stock Qwen once (brain-move.js, below)
 ];
 // A key is a top-level setting, or a.b for one inside a group (e.g. share.scutMbps).
 const dropKey = (kept, k) => { const [g, sub] = k.split('.'); if (sub === undefined) delete kept[g]; else if (kept[g] && typeof kept[g] === 'object' && !Array.isArray(kept[g])) delete kept[g][sub]; };

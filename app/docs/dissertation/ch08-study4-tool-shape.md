@@ -106,7 +106,7 @@ Across three models and many conditions, none of the wording changes produced a 
 
 | Model | Thinking off | Thinking on | Note |
 |---|---|---|---|
-| GPT-OSS 120B | 0.633 | 0.542 | 9.1 points worse (+/- 5.0); the thinking-on cells were trimmed by the owner |
+| GPT-OSS 120B | 0.633 | 0.542 | 9.1 points worse (+/- 5.0); the thinking-on cells were trimmed by MouseWurX |
 | Bobert | 0.591 | 0.545 | right tool 0.727 against 0.708 |
 | Bobert, all wording parts, thinking on | | 0.564 | right tool 0.723 |
 | Bobert, all wording parts, thinking on, head start "Plan: 1." | | 0.403 | n 159; right tool 0.604 |
@@ -125,7 +125,7 @@ These results hold for the three models and the grading used. They say that, for
 
 ### 8.6.1 The ladders
 
-Coaching ran on 83 lesson steps for Bobert and Riker (up to four steps of each lesson the model had missed with Bob's wording, at most three lessons per job). GPT-OSS 120B ran on 83 steps and the 38B cut on 81, thinking off only (the owner's call on 15 November). Each cell below is the number of steps solved at that stage.
+Coaching ran on 83 lesson steps for Bobert and Riker (up to four steps of each lesson the model had missed with Bob's wording, at most three lessons per job). GPT-OSS 120B ran on 83 steps and the 38B cut on 81, thinking off only (MouseWurX's call on 15 November). Each cell below is the number of steps solved at that stage.
 
 | Model, thinking | First try | After hint 1 (nudge) | After hint 2 (tool) | After hint 3 (exact call) | Never | Solved with hints |
 |---|---|---|---|---|---|---|
@@ -287,7 +287,7 @@ This is a direct use of section 8.5. It follows the result that thinking hurt to
 - **Slot settings differ across models,** so the three models are not directly comparable on absolute score.
 - **One run per condition.** Per-job cells have 4 to 48 turns. Treat per-job numbers as signals.
 - **Multiple comparisons.** Across ten conditions and 14 jobs, some per-job gaps will clear their range by chance. We called only gaps larger than their range real. Two per-job gaps clear their range: Riker's file jobs with thinking on (19 turns) and GPT-OSS 120B's plans job with thinking on (20 turns). Either could be chance.
-- **Thinking-on cells for GPT-OSS 120B were trimmed** by the owner (option C in the WORDING.md header), so its thinking-on coverage is smaller than its thinking-off coverage.
+- **Thinking-on cells for GPT-OSS 120B were trimmed** by MouseWurX (option C in the WORDING.md header), so its thinking-on coverage is smaller than its thinking-off coverage.
 - **Different graders, different dates.** The earlier GPT-OSS interview used Bob 1.5.108 tool text and the later tests 1.5.223.
 - **Coaching is not a test of skill.** It leaks the answer by design.
 - **The wish test and self-interview are leads,** as set out in section 8.8.

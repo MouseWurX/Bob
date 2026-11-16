@@ -10,7 +10,7 @@ The reader should keep the status of each piece in mind:
 
 - The leak count and the item sort are finished measurements on the lab PC's files (heldout-534 TALLY.md).
 - The never-taught gate is built and tested. PR #257 shipped in release 1.5.238 on 15 November, whose pre-release check passed 276 of 276 test suites (1.5.238-PC-CHECKS.md).
-- The test items were sorted by Haiku, with a 5% Opus spot-check. On 15 November the owner chose to keep the held-out tests as they are while the full Opus re-sort of the lessons runs.
+- The test items were sorted by Haiku, with a 5% Opus spot-check. On 15 November MouseWurX chose to keep the held-out tests as they are while the full Opus re-sort of the lessons runs.
 - The size of the inflation is not measured.
 
 ## 7.2 Related work
@@ -59,7 +59,7 @@ The output, near-copies.jsonl, has one row per item and records the first file w
 
 ### 7.3.3 Sorting the test items
 
-The 534 items were also read as if they were lessons. Haiku read all 534 in 57 batches and sorted each as keep, fix or discard with a plain note. Opus spot-checked 27 items, which is 5% (heldout-534 TALLY.md). An automatic check then moved 3 keeps to fix because they held the owner's user folder.
+The 534 items were also read as if they were lessons. Haiku read all 534 in 57 batches and sorted each as keep, fix or discard with a plain note. Opus spot-checked 27 items, which is 5% (heldout-534 TALLY.md). An automatic check then moved 3 keeps to fix because they held MouseWurX's user folder.
 
 ## 7.4 Results: how many items leaked, and from where
 
@@ -129,7 +129,7 @@ Opus spot-checked 27 items. It agreed with Haiku on 25 (93%) and changed 2 keeps
 
 The most common reasons for a fix were:
 
-- the owner's user folder in calls or answers;
+- MouseWurX's user folder in calls or answers;
 - teacher-note leaks;
 - tool results that a tool cannot produce, such as a search that "saves" files;
 - invented or stale facts and dates;
@@ -228,7 +228,7 @@ Third, the gate should be treated as a first defence. A text check can be beaten
 - **Exposure is not shown.** The count shows copies in files. It does not show that any past model trained on a copy. This is the largest limit on RQ3.
 - **First match only.** The near-copies file records one file per item. The true number of copies is higher, and the count of copies in unused files is unknown.
 - **A script defines the leak.** "Word for word" and "same first 60 characters" are rules. A reworded copy that shares fewer words would be missed. Section 7.8's gate adds a word-overlap check, but that check has not been measured against a human reading.
-- **The test sort is weak.** Haiku sorted the items and Opus checked 27. The owner chose on 15 November to keep the tests as they are while the full Opus re-sort of the lessons runs, so the sort of test items is not yet at the standard of chapter 6.
+- **The test sort is weak.** Haiku sorted the items and Opus checked 27. MouseWurX chose on 15 November to keep the tests as they are while the full Opus re-sort of the lessons runs, so the sort of test items is not yet at the standard of chapter 6.
 - **A table does not add up.** The per-source sort totals 532, not 534, in the printed rows. We quote the reported totals and flag the gap.
 - **Which scores.** Several of the project's results do not use these 534 items, so the effect on them is unknown, not zero.
 - **No size for the inflation.** No re-score has been run. The thesis does not claim that any result is wrong because of the leaks.

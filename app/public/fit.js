@@ -147,13 +147,14 @@ export function pickFor(slotId, models, ctx = {}) {
     const able = models.filter((m) => canDo(slotId, { entry: m }) && !m.gated && !m.trial && (m.naughty === true) === (ctx.naughtyPick === true) && !fullRunsHere(m, models, hw, ctx.platform));
     const pool = able.filter((m) => suit(m, hw, ctx.platform).level === 'ok');
     if (!pool.length) return null;
-    // 1.5.169: Bob's own default brains (Riker, Bobert): catalog bobPick lists the jobs each is the default for. Where
-    // one suits this replicant matrix well, it's the pick for those jobs ahead of the scored brains.
+    // 1.5.169: Bob's default brains: catalog bobPick lists the jobs each is the default for. Where one suits this
+    // replicant matrix well, it's the pick for those jobs ahead of the scored brains. 1.5.245 (the owner, Nov 16): stock
+    // Qwen3.6 35B-A3B is the default on 16 GB cards until one of Bob's own brains beats it on a held-out test.
     const own = pool.filter((m) => Array.isArray(m.bobPick) && m.bobPick.includes(slotId));
     const best = (own.length ? own : pool).map((m) => ({ m, s: scoreFor(m, slotId, hw) })).sort((a, b) => b.s - a.s)[0].m;
     const n = coverJobs(best).length;
     const load = best.vramGB ? `${gb(best.vramGB)} of graphics memory` : 'runs on the processor';
-    if (own.length) return { id: best.id, why: `Bob's own brain, made and benchmarked for this job · ${load}` };
+    if (own.length) return { id: best.id, why: `${best.madeByBob ? "Bob's own brain, made and benchmarked for this job" : "Bob's default for this job, until one of his own brains beats it on a fair test"} · ${load}` };
     // Won over a model that covers more jobs: it was picked for being light.
     const light = pool.some((m) => coverJobs(m).length > n);
     return { id: best.id, why: `${light ? 'Light, so it leaves room on your card for longer chats' : n > 1 ? `Covers ${n} jobs, so fewer brain swaps` : 'Made for this job'} · ${load}` };
