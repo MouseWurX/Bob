@@ -523,6 +523,7 @@
       "license": "Apache 2.0",
       "commercial": true,
       "pick": "best",
+      "bobPick": ["bob", "tinker", "deep"],
       "raced": "Beat Qwen3 Coder 30B on a 16 GB card (2026-11-03). At 256K (2026-11-04) it uses 15.0 GB on the card with the rest in RAM, writes about 49 tok/s, and found a fact hidden 201K tokens in.",
       "files": [
         {
@@ -2696,8 +2697,8 @@
       "activeParams": 3,
       "license": "Apache 2.0",
       "commercial": true,
-      "pick": "best",
-      "bobPick": ["bob"],
+      "pick": "optional",
+      "bobPick": [],
       "madeByBob": true,
       "bench": "Benchmarked 2026-11-09 on a 16 GB card: ARC-Challenge 94.3% (thinking on), ARC-Easy 97.3% (thinking off); Bob's own test: tools 64, needle 12 of 12; about 170 words a second, 14.7 GB on the card.",
       "cutFrom": {
@@ -2969,8 +2970,8 @@
       "activeParams": 3,
       "license": "Apache 2.0",
       "commercial": true,
-      "pick": "best",
-      "bobPick": ["tinker", "deep"],
+      "pick": "optional",
+      "bobPick": [],
       "madeByBob": true,
       "cutFrom": {
         "name": "Qwen3.6 35B-A3B",
@@ -3007,8 +3008,8 @@
       "activeParams": 3,
       "license": "Apache 2.0",
       "commercial": true,
-      "pick": "small",
-      "bobPick": ["tinker"],
+      "pick": "optional",
+      "bobPick": [],
       "madeByBob": true,
       "squeezedOf": "bobert-35b",
       "maxCardGB": 8,
@@ -3039,8 +3040,7 @@
       "label": "16 GB card or more",
       "minVramGB": 12,
       "models": [
-        "bobert-35b",
-        "riker-28b-q3",
+        "qwen3.6-35b-a3b",
         "gemma4-26b",
         "z-image-turbo",
         "qwen-image-edit-2509",
@@ -3050,6 +3050,11 @@
         "nomic-embed-text"
       ],
       "slots": {
+        "qwen3.6-35b-a3b": [
+          "bob",
+          "tinker",
+          "deep"
+        ],
         "gemma4-26b": [
           "office"
         ],
@@ -3072,20 +3077,12 @@
         ],
         "nomic-embed-text": [
           "embed"
-        ],
-        "riker-28b-q3": [
-          "bob"
-        ],
-        "bobert-35b": [
-          "tinker",
-          "deep"
         ]
       },
       "notes": {
+        "qwen3.6-35b-a3b": "the everyday, coding and deep-thinking brain in one, so chat and code never swap: only 3B of it works at a time, so it stays quick with part of it in RAM, and it keeps up to 256K in mind",
         "gemma4-e4b": "the quick brain, and it sees pictures and hears you",
-        "gemma4-26b": "Office and Deep thinking",
-        "riker-28b-q3": "Bob's own everyday brain: nearly all of it fits on your card, so it's quick, with a big context (256K, how much it keeps in mind)",
-        "bobert-35b": "Bob's own coding and deep-thinking brain: the whole Qwen3.6 35B, taught Bob's ways"
+        "gemma4-26b": "Office and Deep thinking"
       },
       "times": "Pictures take about 10 seconds each, clips a few minutes.",
       "cardGB": 16
@@ -3095,7 +3092,7 @@
       "label": "8 GB card",
       "minVramGB": 7,
       "models": [
-        "bobert-35b-q3",
+        "qwen3.6-35b-a3b-q3",
         "gemma4-e4b",
         "kokoro-v1",
         "nomic-embed-text",
@@ -3125,19 +3122,19 @@
         "wan2.2-ti2v-5b-q4": [
           "video"
         ],
-        "bobert-35b-q3": [
+        "qwen3.6-35b-a3b-q3": [
           "tinker"
         ]
       },
       "tick": [
-        "bobert-35b-q3"
+        "qwen3.6-35b-a3b-q3"
       ],
       "notes": {
         "gemma4-e4b": "one model for chat, quick brain, eyes and ears, so everyday chat never swaps",
         "z-image-turbo-q5": "a version of the painter made to fit your card",
         "flux2-klein-4b": "a small, quick editor: change a picture with words or keep a look from references",
         "wan2.2-ti2v-5b-q4": "slow on this card: keep clips to a few seconds",
-        "bobert-35b-q3": "Bob's own coder, squeezed for your card; most of it sits in your RAM, so replies are slower"
+        "qwen3.6-35b-a3b-q3": "the coder, squeezed for your card; most of it sits in your RAM, so replies are slower"
       },
       "times": "Rough guesses, not yet measured on an 8 GB card: about 30 seconds to a minute a picture, a minute or two an edit, 10 minutes or more a short clip. Bob puts his brain away while he paints, so chat waits until the picture is done.",
       "cardGB": 8
@@ -3361,7 +3358,7 @@
       "cardGB": 0
     }
   ],
-  "updated": "2026-11-10",
+  "updated": "2026-11-16",
   "bigBrains": [
     {
       "id": "mistral-large-4",

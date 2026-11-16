@@ -30,6 +30,7 @@ import { openBox, useBox, lockOn, mapSecrets, plainCount, writeSecretJson, openC
 import { HARNESS_KEYS, cleanHarness } from './harness.js'; // items 62 to 72
 import { cleanPerWordMap } from './experts-per-word.js'; // Brain Engine 0013
 import { cleanChatHeads } from './net-overlay.js'; // 1.5.228 a chat head per company
+import { moveBobBrains } from './brain-move.js'; // 1.5.245 stock Qwen in place of Riker and Bobert, once
 
 
 // Where Ollama keeps its models on this PC: OLLAMA_MODELS if it's set, else Bob's own models folder if Ollama's files
@@ -160,6 +161,13 @@ export function loadConfig() {
     // (share.x) is dropped there too, once, at the same moment.
     shareDefaults(cfg, applied);
     try { mergeSettings(cfg, kept); } catch (e) { notes.push(`settings.json couldn't be applied (${e.message}); using the defaults`); }
+    // 1.5.245: stock Qwen is the default brain in place of Riker and Bobert. Once, and only where Qwen's file is here.
+    if (applied.includes('stock-qwen-brains')) {
+      try {
+        const { models, moved } = moveBobBrains(cfg);
+        if (moved.length) { saveSettings(cfg, { models }); notes.push(`Moved ${moved.map((m) => m.job).join(', ')} from Bob's own brain to stock Qwen3.6 35B-A3B, the new default (Settings, Brains switches it back)`); }
+      } catch (e) { notes.push(`The move to stock Qwen didn't go in (${e.message}); the brains stay as they were`); }
+    }
   }
   // Nov 14 2026 (the owner: "existing installs get converted"): Moondust, the old starting theme, becomes the Mercury
   // lamp once, on the first start after the update. Any other theme is left alone; Moondust can still be picked again.
@@ -663,7 +671,8 @@ const kindOf = (v) => (v === null || v === undefined ? '' : Array.isArray(v) ? '
 // these it has had (defaultsSeen), so a pick made later is never dropped again. Add a line here with each new default.
 export const NEW_DEFAULTS = [
   { id: 'tesseract-icon', keys: ['lookIcon'] }, // 1.5.228: Bob's icon is the tesseract (the pixel look only if switched on again)
-  { id: 'scut-400', keys: ['share.scutMbps', 'share.scutMbpsChosen'] } // Nov 14, the owner: SCUT's cap is 400 Mbit/s by default, never 100
+  { id: 'scut-400', keys: ['share.scutMbps', 'share.scutMbpsChosen'] }, // Nov 14, the owner: SCUT's cap is 400 Mbit/s by default, never 100
+  { id: 'stock-qwen-brains', keys: [], moves: 'models' } // 1.5.245: nothing dropped; jobs on Riker or Bobert move to stock Qwen once (brain-move.js, below)
 ];
 // A key is a top-level setting, or a.b for one inside a group (e.g. share.scutMbps).
 const dropKey = (kept, k) => { const [g, sub] = k.split('.'); if (sub === undefined) delete kept[g]; else if (kept[g] && typeof kept[g] === 'object' && !Array.isArray(kept[g])) delete kept[g][sub]; };
