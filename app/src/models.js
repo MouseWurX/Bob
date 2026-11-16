@@ -69,6 +69,8 @@ export function ownerOf(p) {
 export function fileNameOf(url) {
   return decodeURIComponent(new URL(url).pathname.split('/').pop());
 }
+// The other parts of a brain that comes in parts: role "gguf-part-2", "gguf-part-3" and so on, saved beside part 1.
+export const isPartRole = (role) => /^gguf-part-\d+$/.test(String(role || ''));
 // 1.5.56: the name a catalog file is saved under. Several repos call their picture reader "mmproj-F16.gguf", so those
 // entries give it a name of their own (saveAs, a plain file name only); everything else keeps the name in the link.
 export function saveNameOf(f) {
@@ -298,6 +300,9 @@ export class ModelShop {
       const hit = this.found.files.find((x) => alt.includes(x.name.toLowerCase()));
       if (hit && fs.existsSync(hit.path)) out[f.role] = hit.path; // the scan can be out of date
     }
+    // Nov 16 2026: a big brain can come in parts (role "gguf" is part 1, "gguf-part-2" and on the rest). The engine opens
+    // part 1 and finds the others beside it, so a part only counts when it sits in the same folder as part 1.
+    for (const role of Object.keys(out)) if (isPartRole(role) && (!out.gguf || path.dirname(out[role]) !== path.dirname(out.gguf))) delete out[role];
     return out;
   }
 

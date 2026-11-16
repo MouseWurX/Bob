@@ -6,7 +6,7 @@ import path from 'node:path';
 import { catalogueHtml, catJobs, modelsFor, familyOf, FAMILIES, isNaughty, isCommunity, visibleModels, communityLine, NAUGHTY_WARNING, DEVIL, modelsForView, makerTag, makerOf } from '../public/catalogue.js';
 import { deviceFit, sourceOf, pickFor } from '../public/fit.js';
 import { allSlots, isActive } from '../public/equip.js';
-import { saveNameOf, ModelShop } from '../src/models.js';
+import { saveNameOf, ModelShop, isPartRole } from '../src/models.js';
 import { mergeSettings, ollamaModelsDir, pinokioRoots } from '../src/config.js';
 import { sessionBrains } from '../src/sessions.js';
 import { publicText } from './source-text.js';
@@ -234,6 +234,25 @@ check('each machine answer is said once (grouped), and Active is explained once 
   };
   check('with Brain Engine, a download is Bob\'s own pinned file even while Ollama runs', await run('llamacpp') === 'own');
   check('pulling through Ollama only happens when Ollama is the engine set by hand', await run('ollama') === 'ollama');
+}
+
+// ---- a big brain in parts: every part downloads, and it only counts as here when all parts sit beside part 1 ----
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-parts-'));
+  const dir = path.join(tmp, 'chat'), other = path.join(tmp, 'elsewhere');
+  fs.mkdirSync(dir, { recursive: true }); fs.mkdirSync(other, { recursive: true });
+  const u = (n) => `https://huggingface.co/someone/big-GGUF/resolve/${'a'.repeat(40)}/${n}`;
+  const entry = { id: 'big', category: 'chat', files: [{ url: u('big-00001-of-00002.gguf'), role: 'gguf' }, { url: u('big-00002-of-00002.gguf'), role: 'gguf-part-2' }] };
+  const shop = Object.create(ModelShop.prototype);
+  shop.cfg = { agentDir: tmp }; shop.dir = tmp; shop.found = { files: [] };
+  fs.writeFileSync(path.join(dir, 'big-00001-of-00002.gguf'), 'x');
+  fs.writeFileSync(path.join(other, 'big-00002-of-00002.gguf'), 'x');
+  shop.found.files = [{ name: 'big-00002-of-00002.gguf', path: path.join(other, 'big-00002-of-00002.gguf') }];
+  check('a part sitting in another folder doesn\'t count (the engine looks beside part 1)', isPartRole('gguf-part-2') && !isPartRole('gguf') && !shop.locate(entry)['gguf-part-2']);
+  fs.writeFileSync(path.join(dir, 'big-00002-of-00002.gguf'), 'x');
+  const loc = shop.locate(entry);
+  check('...and with both parts beside each other, both are found', Boolean(loc.gguf && loc['gguf-part-2']));
+  fs.rmSync(tmp, { recursive: true, force: true });
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
