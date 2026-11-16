@@ -14,6 +14,10 @@ says what ran, what it taught, what changed, and which check now guards it. "Ope
 - Check: Forge pre-flight now asks RunPod for the pod list (read-only) and refuses to rent if the address doesn't
   answer. `test/run-forge-runpod-v2-test.js` (24 checks, a made-up v2 RunPod).
 - Unproven in our lab on a real rental, as we have yet to rent through it.
+- Also taught: the distill four-level pod finished its jobs but could not delete itself (its self-delete and the PC's
+  delete both used the retired address), so it billed for about 2 h more until it was found in `--status` and deleted
+  by hand. Its delete failure was only written to the pod's own watchdog log. The v2 move fixes the cause; open: the
+  PC should check `--status` after every rental and say loudly when a finished pod is still listed.
 
 ## 16 Nov 2026: findings from other threads (open)
 - Maximus did the job itself during planning instead of only planning it. Open: the fix and its check belong to the
