@@ -1,5 +1,5 @@
 {
- "run": "jobs-trial",
+ "run": "jobs-trial2",
  "note": "15 Nov: Qwen3.8-Flash-Next 125B (6B active) does 45 real jobs as Bob's brain, nothing rewritten (the owner's ask). Bob's real loop and newest Qwen tools (TOOL_SHAPES 4) from this copy (--bob ..), real files in a throwaway home per job, real web search. Jobs come from the to-fix list asks and the quick-look jobs, never test items (--never). Every run is kept in full for Opus 5.5 to read; clean runs can become lessons, failed runs are study material only. H200, 2 jobs at a time. Caps 1 h / $5.",
  "benchmark_only": true,
  "teacher": "Qwen/Qwen3.8-Flash-Next",
@@ -34,7 +34,7 @@
     "extra": "",
     "hours": 0.6,
     "commands": [
-     "node do-jobs.mjs --url {{url}} --bob .. --jobs ../../bob-model-lab/out/jobs-trial/ideas.jsonl --never ../../bob-model-lab/out/jobs-trial/never --dir jobs-trial --parallel 2 --want-shapes 4 --max 4096 --count 45 --hours 0.5 --job-minutes 8"
+     "node do-jobs.mjs --url {{url}} --bob .. --jobs ../../bob-model-lab/out/jobs-trial/ideas.jsonl --never ../../bob-model-lab/out/jobs-trial/never --dir jobs-trial2 --parallel 2 --want-shapes 4 --max 4096 --count 45 --hours 0.5 --job-minutes 8"
     ]
    }
   ]
