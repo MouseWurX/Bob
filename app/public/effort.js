@@ -10,6 +10,16 @@ export const HINTS = {
   high: 'A big brain drafts the answer, then the Review brain checks it. Slower. Big brains are freed afterwards.',
   extreme: 'Like High, and for code the Review brain also checks the research and the plan before anything changes. Slowest: every check swaps brains (about 20 seconds each).'
 };
+// 16 Nov 2026 (solo-effort.js): with "Effort on one brain" on, the same four buttons change how the main brain works.
+// Extreme is called Max there (the owner's word). The level saved is still 'extreme'.
+export const SOLO_HINTS = {
+  low: 'Thinking off for everything. The quickest.',
+  medium: 'Thinks to plan, then does the steps without thinking.',
+  high: 'Like Medium, then checks his own work and improves it once, or says what he isn\'t happy with.',
+  extreme: 'Thinks throughout. Plans small jobs, checks the plan, does each job on its own, then checks the whole. Slowest.'
+};
+const SOLO_SMALL = { low: 'Quick', medium: 'Plans', high: 'Checked', extreme: 'Slowest' };
+export const levelName = (v, solo = false) => (v === 'extreme' ? (solo ? 'Max' : 'Extreme') : `${v[0].toUpperCase()}${v.slice(1)}`);
 const LEVELS = Object.keys(HINTS);
 // 1.5.23: the Gaming session keeps Effort on Low; the other levels are greyed out with this hint.
 export const GAMING_HINT = 'Gaming keeps the graphics card free. Switch session to use more effort.';
@@ -40,20 +50,26 @@ export function createEffort() {
   document.addEventListener('click', (e) => { if (isOpen() && !box.contains(e.target) && !choices.contains(e.target)) open(false, false); });
   let level = 'low';
   let locked = false;
+  let solo = false; // "Effort on one brain"
+  const hints = () => (solo ? SOLO_HINTS : HINTS);
+  const plain = Object.fromEntries(btns.map((b) => [b.dataset.effort, { name: b.querySelector('b')?.textContent || '', small: b.querySelector('small')?.textContent || '' }]));
   try { const v = sessionStorage.getItem(KEY); if (LEVELS.includes(v)) level = v; } catch {}
   function draw() {
     const now = locked ? 'low' : level;
     for (const b of btns) {
-      const on = b.dataset.effort === now;
+      const v = b.dataset.effort, nm = b.querySelector('b'), sm = b.querySelector('small');
+      if (nm) nm.textContent = solo ? levelName(v, true) : plain[v].name;
+      if (sm) sm.textContent = solo ? SOLO_SMALL[v] : plain[v].small;
+      const on = v === now;
       b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1;
       const off = locked && b.dataset.effort !== 'low';
-      b.disabled = off; b.dataset.tip = off ? GAMING_HINT : HINTS[b.dataset.effort]; // 1.5.56: in the bubble, not under the row
+      b.disabled = off; b.dataset.tip = off ? GAMING_HINT : hints()[b.dataset.effort]; // 1.5.56: in the bubble, not under the row
     }
     // 1.5.56: only the Gaming lock stays written out; what each level does is in the bubble on the Effort button.
-    const hint = $('effortHint'); hint.textContent = locked ? GAMING_HINT : `Effort ${level}: ${HINTS[level]}`; hint.classList.toggle('sr-only', !locked);
+    const hint = $('effortHint'); hint.textContent = locked ? GAMING_HINT : `Effort ${levelName(level, solo)}: ${hints()[level]}`; hint.classList.toggle('sr-only', !locked);
     box.dataset.level = now;
     if (nowEl) nowEl.textContent = `${btns.find((b) => b.dataset.effort === now)?.querySelector('b')?.textContent || now}${locked ? ' · locked in Gaming' : ''}`;
-    if (toggle) { toggle.disabled = locked; toggle.dataset.tip = locked ? GAMING_HINT : HINTS[level]; }
+    if (toggle) { toggle.disabled = locked; toggle.dataset.tip = locked ? GAMING_HINT : hints()[level]; }
     if (locked && isOpen()) open(false, false);
   }
   function set(v, focus = false) {
@@ -78,5 +94,7 @@ export function createEffort() {
   draw();
   // Gaming session on: Effort stays on Low. Off again: the level picked before comes back.
   function lock(on) { locked = Boolean(on); draw(); }
-  return { get: () => (locked ? 'low' : level), set, lock, locked: () => locked, open };
+  function setSolo(on) { if (solo === Boolean(on)) return; solo = Boolean(on); draw(); }
+  addEventListener('bob-solo-effort', (e) => setSolo(e.detail === true));
+  return { get: () => (locked ? 'low' : level), set, lock, locked: () => locked, open, solo: setSolo, name: (v) => levelName(v, solo) };
 }

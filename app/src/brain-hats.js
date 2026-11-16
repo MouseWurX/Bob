@@ -85,7 +85,7 @@ export const hatParts = {
     // The scouting copy only has web tools: with web search off there's nothing for it to do, so say where the switch is.
     if (hat === 'scout' && !webOn(this.cfg)) return WEB_OFF;
     // Extreme effort: coding goes research -> check -> plan -> check -> do it (moot.js).
-    if (hat === 'tinker' && !ctx.phased && cleanEffort(ctx.job?.effort) === 'extreme') return phasedWork(this, hat, task, ctx);
+    if (hat === 'tinker' && !ctx.phased && !ctx.job?.solo && cleanEffort(ctx.job?.effort) === 'extreme') return phasedWork(this, hat, task, ctx);
     // "One brain" mode: every hat runs on the main model, so there's no brain swap (about 20 s each) mid-chat.
     // Normal session: the hat's own brain (or the main one with "One brain"). Other sessions: the session's brain.
     // A moot (High/Extreme effort) passes force: the reviewer always runs on the Review slot brain.
@@ -95,10 +95,10 @@ export const hatParts = {
     // 1.5.51 (opt-in): the reviewer sits beside the main brain on the processor instead of swapping it out.
     // #30: a quick second look at Low or Medium effort comes with its Bob already picked (runMoot), and never runs here.
     const quick = hat === 'reviewer' ? ctx.reviewLender || null : null;
-    if (!quick && hat === 'reviewer' && force && !ctx.job?.side && mootBesideOk(this, model, brainCtx)) { beside = true; cpu = true; }
+    if (!quick && hat === 'reviewer' && force && !force.solo && !ctx.job?.side && mootBesideOk(this, model, brainCtx)) { beside = true; cpu = true; }
     // #30: no room beside it here, so a paired Bob with a good enough Review brain checks the work over Bob-Net. Failing that,
     // the reviewer swaps in as before, and the chat says why.
-    const lender = quick || (hat === 'reviewer' && force && !beside ? await this.reviewAway(model, ctx) : null);
+    const lender = quick || (hat === 'reviewer' && force && !force.solo && !beside ? await this.reviewAway(model, ctx) : null);
     const copy = copyName(this.cfg, hat, HATS[hat].label);
     // Settings sign-off (1.5.49): one moot line per review. If the review brain still has to load, the load line
     // ("🛰 Moot: ... checks the answer ...") says it all, so the chat skips the reviewer's own line.
