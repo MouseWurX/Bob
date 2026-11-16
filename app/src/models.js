@@ -810,7 +810,7 @@ export class ModelShop {
     const imgNow = p.engine === 'comfy' ? (this.cfg.comfy?.workflowFile && fs.existsSync(this.cfg.comfy.workflowFile) ? 'comfy' : '') : this.catalog.models.find((m) => m.category === 'images' && m.use?.painter && p.sdcpp?.image?.diffusionModel && this.locate(m).diffusionModel === p.sdcpp.image.diffusionModel)?.id || '';
     const vidNow = this.catalog.models.find((m) => m.category === 'video' && p.sdcpp?.video?.diffusionModel && this.locate(m).diffusionModel === p.sdcpp.video.diffusionModel)?.id || '';
     const sp = sttProvider(this.cfg);
-    const sttNow = sp === 'whispercpp' ? this.catalog.models.find((m) => m.category === 'voice' && this.locate(m).model === this.cfg.stt.model)?.id || '' : sp === 'ollama' ? `ollama:${this.cfg.stt.model || 'gemma4:e4b'}` : sp === 'brainengine' ? (opts.voice.find((o) => o.value === `be:${this.cfg.stt?.provider === 'brainengine' && this.cfg.stt?.model || 'gemma4-e4b'}`)?.value || '') : '';
+    const sttNow = sp === 'whispercpp' ? this.catalog.models.find((m) => m.category === 'voice' && this.cfg.stt?.model && this.locate(m).model === this.cfg.stt.model)?.id || '' : sp === 'ollama' ? `ollama:${this.cfg.stt.model || 'gemma4:e4b'}` : sp === 'brainengine' ? (opts.voice.find((o) => o.value === `be:${this.cfg.stt?.provider === 'brainengine' && this.cfg.stt?.model || 'gemma4-e4b'}`)?.value || '') : '';
     const mz = this.cfg.maestro || {};
     const imgCur = p.engine === 'maestro' && mz.image ? `maestro:${mz.image}` : imgNow;
     const vidCur = mz.video ? `maestro:${mz.video}` : vidNow;

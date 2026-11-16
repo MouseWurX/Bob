@@ -33,6 +33,7 @@ import { cleanPrivateWeb } from './private-web.js'; // Nov 16: Private web, off 
 import { cleanSearchBackup } from './web-search.js'; // Nov 16: backup search with a key, off unless turned on
 import { cleanChatHeads } from './net-overlay.js'; // 1.5.228 a chat head per company
 import { moveBobBrains } from './brain-move.js'; // 1.5.245 stock Qwen in place of Riker and Bobert, once
+import { catalogFileFor } from './llamacpp.js'; // Nov 16 2026: is Gemma 4 E4B here, for the hearing move
 
 
 // Where Ollama keeps its models on this PC: OLLAMA_MODELS if it's set, else Bob's own models folder if Ollama's files
@@ -173,8 +174,10 @@ export function loadConfig() {
     // Nov 16 2026 (the owner: "by default i want bob to only use the things that are native to him"): Hearing you on
     // Ollama moves to Bob's own engine once. Ollama stays an opt-in (Settings, Engines, Use Ollama too).
     if (applied.includes('native-hearing')) {
-      const stt = nativeHearing(cfg);
-      if (stt) { saveSettings(cfg, { stt }); notes.push('Hearing you moved from Ollama to my own engine (Gemma 4 E4B on the processor). Ollama is off unless you switch on "Use Ollama too" in Settings, Engines'); }
+      let gemma = false;
+      try { const f = catalogFileFor(cfg, 'gemma4-e4b'); gemma = Boolean(f?.gguf && f?.mmproj); } catch {}
+      const stt = nativeHearing(cfg, { gemma });
+      if (stt) { saveSettings(cfg, { stt }); notes.push(`Hearing you moved from Ollama to ${stt.provider === 'brainengine' ? 'my own engine (Gemma 4 E4B on the processor)' : stt.model ? 'whisper.cpp (Whisper)' : 'whisper.cpp; get Whisper base in Get models, Hearing you'}. Ollama is off unless you switch on "Use Ollama too" in Settings, Engines`); }
     }
   }
   // Nov 14 2026 (the owner: "existing installs get converted"): Moondust, the old starting theme, becomes the Mercury
@@ -250,12 +253,20 @@ export function onlyBrainEngine(cfg, { platform, arch, hand = {} } = {}) {
 }
 
 // What Hearing you becomes on the first start after Nov 16 2026: Ollama's hearing (the old default) moves to Bob's own
-// engine, unless Ollama was switched on. Anything else (whisper.cpp, an address set by hand) stays. null: nothing moves.
-export function nativeHearing(cfg) {
+// parts, unless Ollama was switched on. whisper.cpp first (the owner's pick), with a Whisper model already here; else
+// Gemma 4 E4B on Bob's engine when its files are here (so nobody who could hear goes deaf); else whisper.cpp, and
+// Get models offers Whisper base. Anything else (whisper.cpp, Bob's engine, an address set by hand) stays.
+// null: nothing moves. whisper/gemma: the files found here ({ model } / truthy), passed in by tests.
+export const WHISPER_FILES = ['ggml-base.en.bin', 'ggml-large-v3-turbo-q5_0.bin'];
+export function nativeHearing(cfg, { whisper, gemma, exists = fs.existsSync } = {}) {
   const p = cfg.stt?.provider;
   if (cfg.useOllama === true || cfg.engine === 'ollama') return null;
   if (p !== 'ollama' && p !== undefined && p !== '') return null;
-  return { provider: 'brainengine', model: 'gemma4-e4b' };
+  const dir = cfg.bobModelsDir || path.join(cfg.agentDir || '', 'models', 'bob');
+  const found = whisper !== undefined ? whisper : WHISPER_FILES.map((f) => path.join(dir, 'voice', f)).find((f) => exists(f) && !exists(f + '.part'));
+  if (found) return { provider: 'whispercpp', model: found };
+  if (gemma) return { provider: 'brainengine', model: 'gemma4-e4b' };
+  return { provider: 'whispercpp' };
 }
 
 export function findExe(configured, dir, names, platform = process.platform) {

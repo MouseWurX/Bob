@@ -1,11 +1,12 @@
-// Nov 16 2026: Bob hears with his own engine by default, Ollama is opt-in, and Gaming mode pauses his ears.
+// Nov 16 2026: Bob hears with his own parts by default (whisper.cpp, the owner's pick; his engine on a Mac), Ollama is
+// opt-in, and Gaming mode pauses his ears.
 // Nothing here starts a real engine or reads the real computer: the engine, its answers and the files are fakes.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { fileURLToPath } from 'node:url';
-import { transcribe, sttProvider } from '../src/stt.js';
+import { transcribe, sttProvider, defaultStt } from '../src/stt.js';
 import { ollamaOn, ollamaUrl, OLLAMA_URL } from '../src/ollama-optin.js';
 import { Ears, hearArgs, hearBody, hearThreads, canHear, PAUSED_IN_GAMING, HEAR_IDLE_MS } from '../src/hearing.js';
 import { nativeHearing, NEW_DEFAULTS, SETTING_KEYS } from '../src/config.js';
@@ -27,17 +28,24 @@ check('Ollama as the engine, written by hand, counts as on', ollamaOn({ engine: 
 check('useOllama is a setting the window can save', SETTING_KEYS.includes('useOllama'));
 const example = JSON.parse(read('config.example.json'));
 check('the shipped config has no Ollama address', !('ollamaUrl' in example));
-check('the shipped config hears with Bob\'s own engine', example.stt?.provider === 'brainengine');
+check('the shipped config hears with whisper.cpp', example.stt?.provider === 'whispercpp');
 
 // --- Which way Bob hears ---
-check('no hearing set: Bob\'s own engine', sttProvider({}) === 'brainengine');
-check('old Ollama hearing with Ollama off: Bob\'s own engine', sttProvider({ stt: { provider: 'ollama' } }) === 'brainengine');
+check('no hearing set: whisper.cpp on Windows and Linux', sttProvider({}, 'win32') === 'whispercpp' && sttProvider({}, 'linux') === 'whispercpp');
+check('no hearing set on a Mac: Bob\'s own engine (no whisper.cpp build there)', sttProvider({}, 'darwin') === 'brainengine' && defaultStt('darwin') === 'brainengine');
+check('old Ollama hearing with Ollama off: the default', sttProvider({ stt: { provider: 'ollama' } }, 'win32') === 'whispercpp' && sttProvider({ stt: { provider: 'ollama' } }, 'darwin') === 'brainengine');
+check('Bob\'s engine stays when picked', sttProvider({ stt: { provider: 'brainengine' } }, 'win32') === 'brainengine');
 check('Ollama hearing with Ollama on stays Ollama', sttProvider({ useOllama: true, stt: { provider: 'ollama' } }) === 'ollama');
 check('whisper.cpp stays whisper.cpp', sttProvider({ stt: { provider: 'whispercpp' } }) === 'whispercpp');
 
 // --- The one-time move ---
 check('the move is a new default, once', NEW_DEFAULTS.some((d) => d.id === 'native-hearing'));
-check('Ollama hearing moves to Gemma 4 E4B on Bob\'s engine', JSON.stringify(nativeHearing({ stt: { provider: 'ollama', model: 'gemma4:e4b' } })) === JSON.stringify({ provider: 'brainengine', model: 'gemma4-e4b' }));
+const W = path.join(dir, 'ggml-base.en.bin');
+check('Ollama hearing moves to whisper.cpp with the Whisper model here', JSON.stringify(nativeHearing({ stt: { provider: 'ollama', model: 'gemma4:e4b' } }, { whisper: W, gemma: true })) === JSON.stringify({ provider: 'whispercpp', model: W }));
+check('no Whisper here but Gemma is: Bob\'s engine, so nobody goes deaf', JSON.stringify(nativeHearing({ stt: { provider: 'ollama' } }, { whisper: null, gemma: true })) === JSON.stringify({ provider: 'brainengine', model: 'gemma4-e4b' }));
+check('neither here: whisper.cpp, and Get models offers Whisper base', JSON.stringify(nativeHearing({ stt: { provider: 'ollama' } }, { whisper: null, gemma: false })) === JSON.stringify({ provider: 'whispercpp' }));
+check('the move finds Whisper in Bob\'s models folder (fake files)', nativeHearing({ bobModelsDir: '/m', stt: { provider: 'ollama' } }, { exists: (f) => f === path.join('/m', 'voice', 'ggml-base.en.bin') }).model === path.join('/m', 'voice', 'ggml-base.en.bin'));
+check('Bob\'s engine, once picked, is left alone', nativeHearing({ stt: { provider: 'brainengine' } }) === null);
 check('whisper.cpp is left alone', nativeHearing({ stt: { provider: 'whispercpp' } }) === null);
 check('with Ollama switched on, nothing moves', nativeHearing({ useOllama: true, stt: { provider: 'ollama' } }) === null);
 
@@ -48,7 +56,7 @@ try { await transcribe({ session: 'light', stt: {} }, wav, { ears: fakeEars }); 
 catch (e) { check('Gaming mode: no listening', e.message === PAUSED_IN_GAMING && asked === 0); }
 try { await transcribe({ session: 'light', agentDir: dir, stt: { provider: 'whispercpp', model: path.join(dir, 'x.bin') } }, wav); check('Gaming mode pauses whisper.cpp too', false); }
 catch (e) { check('Gaming mode pauses whisper.cpp too', e.message === PAUSED_IN_GAMING); }
-const said = await transcribe({ session: 'normal', stt: {} }, wav, { ears: fakeEars });
+const said = await transcribe({ session: 'normal', stt: { provider: 'brainengine' } }, wav, { ears: fakeEars });
 check('Bob\'s own ears answer, cleaned up', said === 'Hey Bob, what\'s on my board?' && asked === 1, JSON.stringify(said));
 
 // --- The ears themselves: a fake engine on the processor ---
@@ -96,6 +104,9 @@ check('the args and body helpers agree', hearArgs({ gguf, mmproj }, 9000, 4).inc
 // --- The catalog: Gemma 4 E4B can hear on Bob's engine ---
 const cat = JSON.parse(read('catalog.json'));
 check('Gemma 4 E4B can hear (Hearing you job, brain and reader files)', canHear(cat.models.find((m) => m.id === 'gemma4-e4b')));
+const desk = cat.packs.filter((p) => !p.arm);
+check('every starter set hears with Whisper base', cat.packs.filter((p) => p.models.includes('whisper-base-en')).length === desk.length + 1 && desk.every((p) => p.slots['whisper-base-en']?.join() === 'voice'));
+check('no starter set puts Gemma in the Hearing you slot', cat.packs.every((p) => !(p.slots['gemma4-e4b'] || []).includes('voice')));
 check('a brain without a reader can\'t', !canHear({ jobs: ['voice'], files: [{ role: 'gguf' }] }));
 
 // --- Nothing asks Ollama while it's off ---
