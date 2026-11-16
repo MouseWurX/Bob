@@ -26,7 +26,7 @@ import { cleanPersonality, personalityPrompt } from '../public/personality.js';
 import { roughTokens, wantsBorrow } from './share-brains.js';
 import { howtosOn, usingLine, howtoPrompt, trailStep } from './howtos.js';
 import { causeLine, sideJob, STRIKE_NOTE } from './retry.js';
-import { carriedBudget, Progress, spendNudge, keepBudget, stage, pastCeiling, ceilingMs, wrapUp, ceilingMins, waitedFor, outOfStepsLine, nudgeOk, CALLS_PER_TURN, CAP_SKIP, droppedNote } from './loop-guard.js';
+import { carriedBudget, Progress, spendNudge, keepBudget, stage, pastCeiling, ceilingMs, wrapUp, ceilingMins, waitedFor, outOfStepsLine, nudgeOk, CALLS_PER_TURN, CAP_SKIP, droppedNote, extraSteps } from './loop-guard.js';
 import { tidyOld, LAST_ROUND_NOTE, onTrackNote, promisesAction, PROMISE_NUDGE, PROMISE_LOG, nearKey, errorHint } from './loop-help.js';
 import { midJobOn } from './mid-job.js';
 import { systemPrompt } from './persona.js';
@@ -251,7 +251,7 @@ export const runOnParts = {
     // Reliability 164: a job that runs again (session switch, rented-brain card, Gaming, restart) carries on with the
     // steps, sends-back and calls it has left, instead of a whole new budget each time.
     const carried = carriedBudget(job, this.plainLoop || job?.guest ? MAX_STEPS : loopSteps(job?.effort));
-    const maxSteps = carried.maxSteps;
+    let maxSteps = carried.maxSteps; // can grow once by EXTRA_STEPS (loop-guard.js extraSteps)
     Object.assign(ctx, { carriedSteps: carried.steps, nudges: carried.nudges, callsRun: carried.calls, turnStartedAt: Date.now(), progress: new Progress() });
     if (carried.steps) this.log('loop', `carrying on: ${carried.steps} steps used before, ${maxSteps} left`);
     const log = (k, t) => this.log(k, t);
@@ -288,6 +288,8 @@ export const runOnParts = {
         if (job?.stopAfter && !ctx.softStopped) { ctx.softStopped = true; ctx.endWhy = 'stop-after'; ctx.noTools = true; ctx.lastRound = true; msgs.push({ role: 'system', content: SOFT_STOP_NOTE(who, stepsRan(msgs, turnStart)), hidden: true }); emit({ type: 'announce', text: SOFT_STOP_LINE }); }
         else if (await timeCheck(this, ctx, { now: () => Date.now() - waitedFor(signal) }) === 'wrap') { ctx.endWhy = 'time'; ctx.noTools = true; ctx.lastRound = true; msgs.push({ role: 'system', content: TIME_UP_NOTE(who, cleanJobHelps(this.cfg.jobHelps).minutes), hidden: true }); }
       } else if (step === 0) await timeCheck(this, ctx, { now: () => Date.now() - waitedFor(signal) });
+      // Nov 16 (the owner): still finding new things at the last step: a couple more steps, once a turn (extraSteps).
+      if (step === maxSteps - 1 && !this.helpOff('last') && !ctx.noTools && !job?.guest && msgs.slice(turnStart).some((m) => m.role === 'tool')) { const more = extraSteps(ctx); if (more) { maxSteps += more; this.log('loop', `the last step, but the last round still found something new: ${more} more steps to finish (once a turn)`); } }
       if (step === maxSteps - 1 && !this.helpOff('last') && !ctx.noTools && msgs.slice(turnStart).some((m) => m.role === 'tool')) { ctx.noTools = true; ctx.lastRound = true; ctx.endWhy ||= 'steps'; this.log('tool', 'the last step: no more tools, so he answers with what he has'); }
       if (ctx.loaded) used.toolSet = ctx.loaded.toolSet = this.toolSetOf(model); // tool-sets.js: the family's wording
       const tools = ctx.noTools ? [] : guestTools(job, this.withWatchTools(this.frontDeskTools(ctx.loaded), job)); // #57 stopgap: after repeats, answer

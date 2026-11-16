@@ -8,6 +8,7 @@
 //   One hidden nudge to really do it, then a plain note for the user. Nothing is dropped silently.
 // All of it is plain code: no model calls, no settings writes. The lead (handoff.js / brain.js) does the wiring.
 import fs from 'node:fs';
+import { cantReason } from './cant-retry.js';
 import path from 'node:path';
 import { HANDS } from './hands-settings.js';
 import { kindOf, repeatSafe } from './tool-kinds.js';
@@ -437,7 +438,9 @@ export function afterTurn(ctx = {}, replyText) {
   if (fileClaim && !actions.some((a) => ok(a) && FILE_TOOLS.has(a.name))) claims.push('file');
   if (!ctx.claimChecked && APP_CLAIM.test(reply) && !actions.some((a) => ok(a) && APP_TOOLS.has(a.name))) claims.push('app');
   const missing = [];
-  for (const m of reply.matchAll(SAVED_AT)) { const p = m[1].replace(/[.,;:)]+$/, ''); if (/\.\w{1,8}$/.test(p) && !fs.existsSync(p)) missing.push(p); }
+  // brain.fileExists: a test world (the Lab's do-jobs) says where a path he names really is; Bob itself looks on the PC.
+  const exists = (p) => { try { return typeof ctx.brain?.fileExists === 'function' ? Boolean(ctx.brain.fileExists(p)) : fs.existsSync(p); } catch { return fs.existsSync(p); } };
+  for (const m of reply.matchAll(SAVED_AT)) { const p = m[1].replace(/[.,;:)]+$/, ''); if (/\.\w{1,8}$/.test(p) && !exists(p)) missing.push(p); }
   // Only one correction per reply.
   const correction = claims.length ? CLAIM_NOTE[claims[0]]
     : SAVE_DENIAL.test(reply) ? 'That isn\'t right: every song and sound Bob makes is saved as a .wav file. Find it in Made by Bob, under Sounds.'
@@ -489,6 +492,10 @@ export function afterTurn(ctx = {}, replyText) {
       met = actions.some((a) => ok(a) && APP_TOOLS.has(a.name));
       tried = actions.some((a) => APP_TOOLS.has(a.name) || a.name === 'app_look');
     }
+    // Nov 16 (800-job run, fx-5fd65adeaa, fx-63742f9564): he had said plainly why it couldn't be done (a Hand that's off,
+    // its Switch it on card already under the chat), and the "nothing did it" go pushed him into a fake: HTML saved
+    // under a .docx name. A real blocker isn't sent back.
+    if (!met && (actions.some((a) => a.name === 'offer_setup') || cantReason(ctx.cfg, said))) blocked = true;
     const asking = /\?\s*$/.test(said) && kind !== 'picture' && kind !== 'show'; // "Where should I save it?" is fine
     if (!met && !tried && !blocked && !asking) {
       if (!usable(tool)) {
@@ -496,7 +503,7 @@ export function afterTurn(ctx = {}, replyText) {
       } else {
         const how = kind === 'todo' ? 'Call notice_board now with action add'
           : kind === 'reminder' ? 'Call reminders now with action add, the local time and what it is about'
-          : kind === 'file' ? 'Call write_file now (save_spreadsheet for a table)'
+          : kind === 'file' ? 'Call write_file now (save_spreadsheet for a table). Save it as the kind of file asked for; if that kind can\'t be made here, say so instead of saving something else under its name'
           : kind === 'app' ? 'Call open_app now (then app_look and app_act), each shows a card to click'
           : `Call ${tool} now with a good prompt`;
         push(`${who} asked for ${WHAT[kind]} ("${ex.words}"), but nothing did it this turn. ${how}. Don't describe it instead of doing it.`, GROUPS_OF[kind]);

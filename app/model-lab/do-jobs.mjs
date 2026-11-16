@@ -349,6 +349,9 @@ async function runJob(j) {
     return { ...(res && typeof res === 'object' ? res : {}), text: kit.neutral(t) || '(no result)' };
   };
   brain.ensureModel = async () => {}; brain.fitCtx = async () => ctxSize; brain.recall = async () => '';
+  // 16 Nov (800-job read, fx-6152c4f84b): Bob checks "saved at C:\\Users\\you\\..." against the disk; here that path is in the
+  // test world, so the check looks there (Bob's verify.js brain.fileExists), not for a C: drive this PC hasn't got.
+  brain.fileExists = (p) => fs.existsSync(kit.toReal(String(p || '')));
   brain.engine = {
     async chat(q) {
       asks++;
