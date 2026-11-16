@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // The speed test runner for docs/test-results/2026-11-16-speed-test-method.md (pre-registered, addenda 1 to 4).
 //
-//   node model-lab/speed-test.mjs --plan <plan.json> --out <folder> [--rounds 5] [--dry]
+//   node model-lab/speed-test.mjs --plan <plan.json> --out <folder> [--var NAME=value ...] [--rounds 5] [--dry]
 //
 // A plan names the engines (exe + environment), the brain file, the prompts (text files, read once, sha256 recorded)
-// and the rows (one setting each: engine, extra flags, environment, which prompts, how many words). For every round,
+// and the rows (one setting each: engine, extra flags, environment, live switches set after load (`setup`), which
+// prompts, how many words). `promptTokens` cuts a prompt to an exact count of the brain's own tokens, and `question`
+// adds a fixed question after the cut. For every round,
 // each row is loaded in turn (so heat and background load fall evenly across settings), gets one untimed warm-up, one
 // timed run per prompt, and is unloaded. Each timed run streams its answer, so the arrival of every word is kept, and
 // the card is sampled every 250 ms with nvidia-smi (temperature, power, clocks, throttle reasons, memory).
@@ -92,16 +94,25 @@ export async function freePort() {
 }
 
 // Check a plan, read its prompts and fingerprint everything. -> { plan, prompts: {id: {text, sha}}, problems: [] }
-export function loadPlan(file, { read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n') } = {}) {
-  const plan = JSON.parse(read(file));
+// ${NAME} in the plan is filled from `vars` (the command line's --var NAME=value), so one plan serves every PC: the
+// brain's and engines' places are given when it runs, never written into the plan.
+export function loadPlan(file, { read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n'), vars = {} } = {}) {
+  const missing = new Set();
+  const raw = read(file).replace(/\$\{([A-Z0-9_]+)\}/g, (m, k) => { if (vars[k] === undefined) { missing.add(k); return m; } return JSON.stringify(String(vars[k])).slice(1, -1); });
+  const plan = JSON.parse(raw);
   const base = path.dirname(file);
-  const problems = [];
+  const problems = [...missing].map((k) => `no value for \${${k}} (pass --var ${k}=...)`);
   if (!plan.brain) problems.push('no brain file');
   if (!plan.engines || !Object.keys(plan.engines).length) problems.push('no engines');
   if (!Array.isArray(plan.rows) || !plan.rows.length) problems.push('no rows');
   const prompts = {};
   for (const [id, f] of Object.entries(plan.prompts || {})) {
-    try { const text = read(path.resolve(base, f)); prompts[id] = { text, sha: sha256(text) }; } catch { problems.push(`prompt ${id} can't be read`); }
+    try {
+      const text = read(path.resolve(base, f));
+      let chat = null;
+      if (/\.json$/i.test(f)) { try { const j = JSON.parse(text); if (Array.isArray(j.messages)) chat = j; } catch {} if (!chat) problems.push(`prompt ${id}: a .json prompt needs "messages"`); }
+      prompts[id] = { text, sha: sha256(text), ...(chat ? { chat } : {}) };
+    } catch { problems.push(`prompt ${id} can't be read`); }
   }
   for (const r of plan.rows || []) {
     if (!r.id) problems.push('a row with no id');
@@ -120,7 +131,7 @@ export const schedule = (rows, rounds) => Array.from({ length: rounds }, (_, rou
 export async function runRow({ plan, prompts, row, round, fx }) {
   const eng = plan.engines[row.engine];
   const port = await fx.port();
-  const args = ['-m', plan.brain, '--host', '127.0.0.1', '--port', String(port), ...(plan.baseArgs || []), ...(row.args || [])];
+  const args = ['-m', row.brain || plan.brain, '--host', '127.0.0.1', '--port', String(port), ...(row.noBase ? [] : plan.baseArgs || []), ...(row.args || [])];
   const env = { ...(eng.env || {}), ...(row.env || {}) };
   const out = { round, row: row.id, engine: row.engine, cmd: [eng.exe, ...args].join(' '), env: Object.keys(env), runs: [] };
   const srv = await fx.start(eng.exe, args, env);
@@ -128,13 +139,33 @@ export async function runRow({ plan, prompts, row, round, fx }) {
     const up = await srv.ready();
     if (!up.ok) { out.notRun = up.why || 'the engine didn\'t start'; return out; }
     out.load = parseCacheLog(srv.log());
+    // live switches a row sets after load (Brain Engine: expert mask, dials, experts per word), each a POST
+    for (const c of row.setup || []) {
+      let b = c.body;
+      // {"allBut": N}: the expert mask keeping every expert but N, however many the brain has
+      if (c.allBut !== undefined) { const n = (await fx.get(srv.url, '/experts-per-word'))?.n_expert || 0; b = { keep: Array.from({ length: n }, (_, i) => i).filter((i) => i !== c.allBut) }; }
+      const r = await fx.post(srv.url, c.path, b);
+      if (!r.ok) { out.notRun = `setup ${c.path} refused: ${r.why || r.status}`; return out; }
+    }
+    // a prompt cut to an exact number of the brain's own tokens (plan.prompts.<id>.tokens), done once per load
+    const cut = {};
+    for (const p of row.prompts || []) {
+      // a chat prompt (a JSON file with messages and tools, Bob's real start) goes through the brain's own template
+      if (prompts[p].chat) { cut[p] = await fx.template(srv.url, prompts[p].chat); continue; }
+      const want = plan.promptTokens?.[p];
+      if (!want) continue;
+      const toks = await fx.tokenize(srv.url, prompts[p].text);
+      if (toks.length < want) { out.notRun = `prompt ${p} has only ${toks.length} tokens, ${want} wanted`; return out; }
+      cut[p] = await fx.detokenize(srv.url, toks.slice(0, want));
+    }
+    const textOf = (p) => (cut[p] !== undefined ? cut[p] + (plan.question?.[p] || '') : prompts[p].text);
     const body = (text) => ({ prompt: text, n_predict: row.maxTokens ?? plan.maxTokens ?? 300, temperature: 0, seed: 42, ignore_eos: true, cache_prompt: false, ...(row.body || {}) });
-    await fx.stream(srv.url, { ...body(prompts[row.prompts?.[0]]?.text || 'Hello.'), n_predict: 16 }); // warm-up, untimed
+    await fx.stream(srv.url, { ...body(row.prompts?.[0] ? textOf(row.prompts[0]) : 'Hello.'), n_predict: 16 }); // warm-up, untimed
     for (const p of row.prompts || []) {
       if (fx.shouldStop()) { out.stopped = fx.shouldStop(); break; }
       const card = fx.sampleCard();
       let r;
-      try { r = await fx.stream(srv.url, body(prompts[p].text)); } catch (e) { r = { failed: String(e.message || e) }; }
+      try { r = await fx.stream(srv.url, body(textOf(p))); } catch (e) { r = { failed: String(e.message || e) }; }
       const samples = card.stop();
       out.runs.push({ prompt: p, ...r, card: cardSummary(samples), throttled: samples.some((x) => x?.throttled), cardSamples: samples });
     }
@@ -208,6 +239,11 @@ function realFx(plan, outDir) {
       };
     },
     stream: (url, body) => streamOnce(url, body),
+    async get(url, p) { try { const r = await fetch(url + p, { signal: AbortSignal.timeout(30e3) }); return r.ok ? await r.json() : null; } catch { return null; } },
+    async post(url, p, body) { try { const r = await fetch(url + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(60e3) }); return { ok: r.ok, status: r.status, why: r.ok ? '' : (await r.text()).slice(0, 200) }; } catch (e) { return { ok: false, why: String(e.message || e) }; } },
+    async template(url, chat) { const r = await fetch(url + '/apply-template', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages: chat.messages, tools: chat.tools, chat_template_kwargs: { enable_thinking: false } }) }); if (!r.ok) throw new Error(`apply-template ${r.status}`); return (await r.json()).prompt; },
+    async tokenize(url, content) { const r = await fetch(url + '/tokenize', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content }) }); return (await r.json()).tokens || []; },
+    async detokenize(url, tokens) { const r = await fetch(url + '/detokenize', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tokens }) }); return (await r.json()).content || ''; },
     sampleCard() {
       const samples = [];
       let smi = null;
@@ -233,8 +269,10 @@ async function main() {
   const opt = (k, d) => { const i = a.indexOf(k); return i >= 0 ? a[i + 1] : d; };
   const planFile = opt('--plan');
   const outDir = opt('--out');
-  if (!planFile || !outDir) { console.log('node model-lab/speed-test.mjs --plan <plan.json> --out <folder> [--rounds 5] [--dry]'); process.exit(2); }
-  const { plan, prompts, problems } = loadPlan(planFile);
+  if (!planFile || !outDir) { console.log('node model-lab/speed-test.mjs --plan <plan.json> --out <folder> [--var NAME=value ...] [--rounds 5] [--dry]'); process.exit(2); }
+  const vars = {};
+  a.forEach((x, i) => { if (x === '--var' && a[i + 1]) { const [k, ...v] = a[i + 1].split('='); vars[k] = v.join('='); } });
+  const { plan, prompts, problems } = loadPlan(planFile, { vars });
   if (problems.length) { console.error('The plan has problems:\n- ' + problems.join('\n- ')); process.exit(1); }
   const rounds = Number(opt('--rounds', plan.rounds || 5));
   const order = schedule(plan.rows, rounds);

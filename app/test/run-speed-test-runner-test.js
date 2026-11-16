@@ -53,6 +53,10 @@ check('rows taken in turn, round after round', schedule([{ id: 1 }, { id: 2 }], 
 function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
   const seen = { starts: [], streams: [], stops: 0 }; let n = 0;
   return { seen, port: async () => 9000, start: (exe, args, env) => { seen.starts.push({ exe, args, env }); return { url: 'http://fake', log: () => log, ready: async () => (up ? { ok: true } : { ok: false, why: 'out of memory' }), stop: async () => { seen.stops++; } }; },
+    post: async (url, p, body) => { seen.posts = [...(seen.posts || []), { p, body }]; return p === '/bad' ? { ok: false, status: 400, why: 'no' } : { ok: true }; },
+    get: async () => ({ n_expert: 4 }),
+    template: async (url, chat) => `T:${chat.messages.map((m) => m.content).join('|')}`,
+    tokenize: async (url, text) => text.split(' '), detokenize: async (url, toks) => toks.join(' '),
     stream: async (url, body) => { seen.streams.push(body); return { firstWordMs: 50 + n, readTps: 1000, writeTps: 40 + n++, gaps: { median: 25, p99: 30, max: 31 }, gapsMs: [] }; },
     sampleCard: () => ({ stop: () => [parseSmiLine('t, 60, 200, 300, 2700, 14001, 0x0, 14000')] }),
     shouldStop: () => (seen.streams.length > stopAfter ? 'game started' : '') };
@@ -69,6 +73,32 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
 { const { prompts } = loadPlan(planFile); const f = fx({ stopAfter: 0 });
   const res = await runRow({ plan, prompts, row: plan.rows[0], round: 0, fx: f });
   check('a game starting stops the row and frees the card', res.stopped === 'game started' && !res.runs.length && f.seen.stops === 1); }
+
+{ const { prompts } = loadPlan(planFile); const f = fx();
+  const p2 = { ...plan, promptTokens: { short: 1 }, question: { short: ' Q?' } };
+  const res = await runRow({ plan: p2, prompts, row: { ...plan.rows[0], setup: [{ path: '/expert-mask', body: { keep: [1] } }] }, round: 0, fx: f });
+  check('live switches are set after load, before the warm-up', f.seen.posts?.[0]?.p === '/expert-mask' && res.runs.length === 1);
+  check('a prompt cut to an exact token count, with the fixed question after', f.seen.streams[1].prompt === 'Say Q?'); }
+{ const { prompts } = loadPlan(planFile); const f = fx();
+  const res = await runRow({ plan, prompts, row: { ...plan.rows[0], setup: [{ path: '/bad', body: {} }] }, round: 0, fx: f });
+  check('a refused switch: the row is not run, with why', /setup \/bad refused/.test(res.notRun) && !res.runs.length); }
+{ const { prompts } = loadPlan(planFile); const f = fx();
+  const res = await runRow({ plan: { ...plan, promptTokens: { short: 99 } }, prompts, row: plan.rows[0], round: 0, fx: f });
+  check('a prompt too short for its token count: not run, with why', /only 2 tokens, 99 wanted/.test(res.notRun)); }
+
+{ fs.writeFileSync(path.join(tmp, 'start.json'), JSON.stringify({ messages: [{ role: 'system', content: 'S' }, { role: 'user', content: 'hi' }], tools: [] }));
+  fs.writeFileSync(planFile, JSON.stringify({ ...plan, prompts: { start: 'start.json' }, rows: [{ id: 'A', engine: 'be', prompts: ['start'] }] }));
+  const l = loadPlan(planFile); const f = fx();
+  await runRow({ plan: l.plan, prompts: l.prompts, row: l.plan.rows[0], round: 0, fx: f });
+  check('a chat prompt (Bob\'s real start) goes through the brain\'s own template', f.seen.streams[1].prompt === 'T:S|hi');
+  fs.writeFileSync(planFile, JSON.stringify(plan)); }
+
+{ const { prompts } = loadPlan(planFile); const f = fx();
+  await runRow({ plan, prompts, row: { ...plan.rows[0], setup: [{ path: '/expert-mask', allBut: 0 }] }, round: 0, fx: f });
+  check('the mask keeping all experts but one, however many the brain has', JSON.stringify(f.seen.posts[0].body) === '{"keep":[1,2,3]}'); }
+{ fs.writeFileSync(planFile, JSON.stringify({ ...plan, brain: '${BRAIN}' }));
+  check('places come from --var, never written in the plan', loadPlan(planFile, { vars: { BRAIN: 'C:\\b "x".gguf' } }).plan.brain === 'C:\\b "x".gguf' && /pass --var BRAIN/.test(loadPlan(planFile).problems.join()));
+  fs.writeFileSync(planFile, JSON.stringify(plan)); }
 
 // the summary
 { const mk = (row, w, thr = false) => ({ row, round: 0, runs: [{ prompt: 'short', firstWordMs: 50, readTps: 1000, writeTps: w, gaps: { median: 25, p99: 30, max: 31 }, card: { peakMemMB: 14000 }, throttled: thr }] });
