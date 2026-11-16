@@ -208,3 +208,12 @@ Every other row samples at temperature 0. Bob's everyday Qwen3.5/3.6 setting sen
 The quick checks found that the stock Qwen3.6 35B A3B file used on the PC has no MTP layers (nextn_predict_layers = 0), so `--spec-type draft-mtp` can't run on it. Rows N2, N2S, N6 and N7 (Turbo), and N0S (paired with N2S), are taken out of night 1. Night 1 is now 28 rows, 140 loads. Turbo gets its own rows later, on a copy of the brain that keeps its MTP layers. Addendum 8's question (how many drafts Bob's own sampling keeps) is still open.
 
 Quick checks, all before any timed run: the ranked fill loaded 2,220 experts (4,060 MiB), and over 5 answers 0.00 MiB moved to the card (share 1). All four bad ranking files were refused loudly, each with its reason. Prefetch printed both its start-up and closing lines.
+
+## Addendum 11 (Nov 16, before any timed run): a Turbo plan of its own
+
+Turbo needs a copy of the brain that keeps its MTP layers: unsloth's `Qwen3.6-35B-A3B-MTP-GGUF`, in the same UD-Q4_K_XL quant as night 1's brain (22.9 GB against 20.8 GB). It is a different file, so its rows are compared only with each other. `speed-plans/turbo.json` has 5 rows, 25 loads, all on Brain Engine 9:
+- **T0:** no Turbo.
+- **T2 and T3:** Turbo with 2 and 3 drafted words.
+- **T0S and T3S:** the same, with Bob's everyday sampling (addendum 8).
+
+Each Turbo row reports the share of drafts kept. The download happens before any timed run, never during one. Hot experts with Turbo would need a ranking made on this file, because its fingerprint differs. That is left for later.
