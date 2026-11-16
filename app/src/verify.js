@@ -207,6 +207,10 @@ export async function afterTool(name, args, text, ctx = {}) {
 
   if (name in MEDIA) {
     if (/^Didn'?t paint\b/.test(s)) return { ok: true, info: true, why: 'nothing painted on purpose', retry: false };
+    // 16 Nov (Lab job runs): offerSetup's answers when no Set it up card can be shown (a guest job from another Bob, no
+    // model shop, or a PC that can't run any picture model) are answers too, not a failed picture: no second go, and
+    // no "nothing came out" error in place of the "can't here, say so in one line" Bob was meant to pass on.
+    if (/^Not (?:done|here): [^.]{0,60}\bcan't\b/.test(s)) return { ok: true, info: true, why: "can't be made here", retry: false };
     const since = L.toolStart ?? ctx.toolStart ?? null;
     const shown = (L.outputs || []).filter((o) => o && o.file && (!o.tool || o.tool === name) && (since == null || o.at == null || o.at >= since));
     const named = pathsIn(s).filter((f) => MEDIA_EXT.test(f));

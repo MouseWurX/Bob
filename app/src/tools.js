@@ -27,6 +27,7 @@ import { ctxLabel } from './model-ctx.js';
 import { isDoc, docText, docTextFrom, OLD_EXT, MAX_DOC_BYTES } from './doc-text.js';
 import { GIT_LOOKS, gitArgs, runGit, gitAnswer } from './git-look.js';
 import { mainText, docKind, parseDdg, parseMojeek, resultLines, WEB_TIMEOUT_MS, MAX_DOC_DOWNLOAD } from './page-text.js';
+import { webSearch } from './web-search.js'; // Nov 16: block pages named, the backup search with a key
 import { docToolsOn } from './my-docs.js';
 import { codeMap, linesAround } from './code-map.js';
 import { backoffMs, engineFailKind, pause } from './retry.js'; // item 194
@@ -691,24 +692,10 @@ export function buildTools(cfg) {
 
   t.web_search = {
     schema: fn('web_search', 'Search the web. Returns titles, links and snippets. Operators work: "exact phrase", -word, site:, filetype:, intitle:, OR.', { query: str('Search words.'), when: str('Optional: only the past day, week, month or year.', { enum: ['day', 'week', 'month', 'year'] }) }, ['query']),
-    async run({ query, when }, { signal }) {
-      const df = { day: 'd', week: 'w', month: 'm', year: 'y' }[String(when || '').toLowerCase()];
-      const UA = { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bob/0.1' };
-      // Item 20: a look-up that hangs stops on its own after WEB_TIMEOUT_MS. Item 21: when DuckDuckGo's plain page gives
-      // nothing (it changed, or it turned Bob away), Mojeek is asked instead, and the answer says so.
-      let list = [], why = '';
-      try {
-        const res = await fetchRetry('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query) + (df ? `&df=${df}` : ''), { headers: UA }, signal);
-        if (res.ok) list = parseDdg(await res.text()); else why = `DuckDuckGo answered ${res.status}`;
-      } catch (e) { if (signal?.aborted) throw e; why = e.name === 'TimeoutError' ? 'DuckDuckGo took too long' : `DuckDuckGo: ${e.message}`; }
-      if (list.length) return resultLines(list);
-      try {
-        const res = await fetchRetry('https://www.mojeek.com/search?q=' + encodeURIComponent(query), { headers: UA }, signal);
-        if (res.ok) list = parseMojeek(await res.text());
-      } catch (e) { if (signal?.aborted) throw e; }
-      if (list.length) return `(From Mojeek: ${why || 'DuckDuckGo found nothing'}${df ? '; no date filter there' : ''}.)\n${resultLines(list)}`;
-      return 'No results (or the search pages changed). Try different words.';
-    },
+    // Item 20: a look-up that hangs stops on its own after WEB_TIMEOUT_MS. Item 21: when DuckDuckGo's plain page gives
+    // nothing, Mojeek is asked instead. Nov 16 (web-search.js): a robot-check page is named as one, and the backup
+    // search with a key (off unless turned on) stands in. The answer always says who answered.
+    async run({ query, when }, { signal }) { return webSearch({ query, when }, { cfg, signal, get: (url, opts) => fetchRetry(url, opts, signal) }); },
     summary: ({ query, when }) => `search: ${query}${when ? ` (past ${when})` : ''}`
   };
 

@@ -14,6 +14,10 @@
 // --off think,note  switches only the named helps off (mend, together, meaning, tidy, note, last, promise, near, hint),
 //                   to find which one helps or costs. --think makes every retry think (off in Bob since 1.5.206).
 // Jobs that end without words are listed in the report with the logbook lines from that job.
+// --real (15 Nov, the owner: "see how good it is at just working", "can we let it do web search"): the file, board, note and
+//   sum tools run for REAL in a throwaway folder (bob-kit's sandbox; C:\Users\you is that folder), web_search and fetch_page
+//   go to the real web, the rest stay stand-ins. Each job may carry setup [{path, content}] files planted first.
+//   --only-mine runs just the --mine jobs. --max N: room per brain reply (default 1536). Each job's steps are kept in the .json.
 import fs from 'node:fs';
 import path from 'node:path';
 import { opts, locate, startServer, stamp, checkFree } from './common.mjs';
@@ -23,7 +27,8 @@ const o = opts({ ctx: 32768, port: 8094 });
 if (o.url) process.env.LAB_URL = String(o.url);
 const L = locate(o);
 if (!process.env.LAB_URL) checkFree(o);
-const kit = await loadBob(L.bob);
+const real = Boolean(o.real);
+const kit = await loadBob(L.bob, { home: real });
 const { pathToFileURL } = await import('node:url');
 const { textCalls } = await import(pathToFileURL(path.join(L.bob, 'src', 'llamacpp.js')).href);
 const { LlamaCpp } = await import(pathToFileURL(path.join(L.bob, 'src', 'llamacpp.js')).href);
@@ -36,20 +41,21 @@ brain.cfg.loopHelpOff = plain ? true : offList.length ? offList : false;
 brain.cfg.toolHelp = !plain; // the Settings switch "Better tool calling" (on unless turned off); --plain runs without it
 if (o.think) brain.cfg.loopHelpOn = ['think'];
 let jobLog = [];
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 { const was = brain.log.bind(brain); brain.log = (...a) => { jobLog.push(a.map(String).join(': ').slice(0, 200)); return was(...a); }; }
 
 // ---- the jobs: every plain request with a group from test/phrasings.js, plus jobs that take several steps ----
 const entry = await import(pathToFileURL(path.join(L.bob, 'src', 'lab-entry.js')).href); // the jobs and stand-ins the Lab test shares
 const MULTI = entry.MULTI.map((j) => ({ job: 'multi', ...j }));
-let jobs = (kit.phrasings || []).filter((p) => p.group && !p.pic && !p.recent).map((p) => ({ ...p, need: [] }));
+let jobs = o['only-mine'] ? [] : (kit.phrasings || []).filter((p) => p.group && !p.pic && !p.recent).map((p) => ({ ...p, need: [] }));
 if (o.quick) jobs = jobs.filter((_, i) => i % 4 === 0);
 if (o.jobs) jobs = jobs.slice(0, Number(o.jobs));
-jobs.push(...MULTI);
+if (!o['only-mine']) jobs.push(...MULTI);
 // Nov 11 (item 11): the answers you saved with "Save as a test" in the chat (Bob's data folder, my-tests.jsonl).
 if (o.mine) {
   const file = String(o.mine);
   const mine = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').split('\n').filter((l) => l.trim()).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((c) => c?.text);
-  jobs.push(...mine.map((c) => ({ job: 'mine', text: c.text, group: null, need: Array.isArray(c.need) ? c.need : [] })));
+  jobs.push(...mine.map((c) => ({ job: 'mine', text: c.text, group: c.group || null, need: Array.isArray(c.need) ? c.need : [], setup: Array.isArray(c.setup) ? c.setup : [] })));
   console.log(`+ ${mine.length} of your saved tests from ${file}`);
 }
 
@@ -62,10 +68,31 @@ brain.runTool = async (name, args, ctx) => {
   const tool = brain.tools[name];
   const params = tool?.schema?.function?.parameters;
   const ok = params ? !checkArgs(params, args).problems.length : true;
-  runs.push({ name, args, complete: ok });
+  const row = { name, args, complete: ok }; runs.push(row);
   if (REAL.has(name)) return realRun(name, args, ctx);
-  return { text: entry.standIn(name, args) };
+  if (real && LIVE.has(name) && tool) {
+    row.real = true;
+    try {
+      const r = await Promise.race([kit.runReal(name, args, { ...ctx, cfg: brain.cfg }), wait(90000).then(() => { throw new Error('the tool took too long'); })]);
+      const t = typeof r === 'string' ? r : typeof r?.text === 'string' ? r.text : JSON.stringify(r ?? '');
+      row.result = kit.neutral(t).slice(0, 1500); return { ...(typeof r === 'object' && r ? r : {}), text: kit.neutral(t) };
+    } catch (e) { row.result = `Error: ${kit.neutral(String(e.message || e)).slice(0, 300)}`; return { text: row.result }; }
+  }
+  const t = entry.standIn(name, args); row.result = `(stand-in) ${String(t).slice(0, 300)}`;
+  return { text: t };
 };
+// --real: the tools that run for real (the lesson writer's set, write-lessons.mjs REAL_TOOLS) plus the live web
+const LIVE = new Set(['make_diagram', 'list_folder', 'read_file', 'search_files', 'find_in_documents', 'write_file', 'edit_file', 'save_spreadsheet',
+  'compare_files', 'inspect_file', 'code_map', 'notice_board', 'reminders', 'take_note', 'remember', 'forget_topic', 'calculate', 'check_spelling',
+  'query_data', 'my_howtos', 'save_howto', 'list_schedules', 'web_search', 'fetch_page']);
+// a job's setup files go into the throwaway home first (text files only, never outside it)
+function plant(files) {
+  for (const f of files || []) {
+    const p = kit.toReal(/^([a-z]:|[\\/]|~)/i.test(f.path) ? f.path : `C:\\Users\\you\\${String(f.path).replace(/\//g, '\\')}`);
+    if (!kit.homeDir || !path.resolve(p).startsWith(path.resolve(kit.homeDir) + path.sep)) continue;
+    fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, String(f.content || ''));
+  }
+}
 brain.ensureModel = async () => {}; brain.fitCtx = async () => Number(o.ctx); brain.recall = async () => '';
 
 // ---- the engine: Bob's messages to an OpenAI-style llama-server ----
@@ -81,16 +108,16 @@ let asks = 0;
 // those jobs ended with no words. It folds the same way now: from /props up front, or after the first refusal.
 let strict = null, refusals = 0;
 const strictTemplate = async () => {
-  if (strict === null) { try { strict = MID_SYSTEM_REFUSED.test(String((await (await fetch(`${url}/props`)).json())?.chat_template || '')); } catch { strict = false; } }
+  if (strict === null) { try { strict = MID_SYSTEM_REFUSED.test(String((await (await fetch(`${url}/props`, { headers: process.env.LAB_API_KEY ? { authorization: `Bearer ${process.env.LAB_API_KEY}` } : {} })).json())?.chat_template || '')); } catch { strict = false; } }
   return strict;
 };
 brain.engine = {
   async chat(q) {
     asks++;
     const msgs = (await strictTemplate()) ? foldSystem(q.messages) : q.messages;
-    const body = { cache_prompt: true, messages: LlamaCpp.toOpenAI(msgs), ...(q.tools?.length ? { tools: q.tools } : {}), max_tokens: 1536, stream: false,
+    const body = { cache_prompt: true, messages: LlamaCpp.toOpenAI(msgs), ...(q.tools?.length ? { tools: q.tools } : {}), max_tokens: Number(o.max || 1536), stream: false,
       chat_template_kwargs: { enable_thinking: q.think === undefined ? true : Boolean(q.think) }, temperature: q.tools?.length ? 0.6 : 0.7, top_p: 0.8, top_k: 20 };
-    const r = await fetch(`${url}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: q.signal });
+    const r = await fetch(`${url}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...(process.env.LAB_API_KEY ? { authorization: `Bearer ${process.env.LAB_API_KEY}` } : {}) }, body: JSON.stringify(body), signal: q.signal });
     if (!r.ok) {
       const full = await r.text();
       if (!strict && MID_SYSTEM_REFUSED.test(full)) { strict = true; refusals++; asks--; return this.chat(q); }
@@ -105,13 +132,13 @@ brain.engine = {
 };
 
 // ---- run ----
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const results = [];
 console.log(`${jobs.length} jobs, loop helps ${plain ? 'OFF (--plain)' : 'on'}, ${url}`);
 for (const [i, j] of jobs.entries()) {
   runs.length = 0; asks = 0; jobLog = [];
   const t0 = Date.now();
   const session = `loop-${i}`;
+  if (real) plant(j.setup);
   const { jobId } = brain.enqueue(session, j.text);
   for (let k = 0; k < 6000; k++) { const s = brain.queue.find((x) => x.id === jobId)?.state; if (s === 'done' || s === 'failed') break; await wait(100); }
   const said = brain.session(session).filter((m) => m.role === 'assistant' && !m.tool_calls?.length).map((m) => String(m.content || '')).join(' ').trim();
@@ -120,7 +147,7 @@ for (const [i, j] of jobs.entries()) {
   const reached = j.group ? used.some((r) => inGroup(r.name)) : true;
   const needs = (j.need || []).every((n) => used.some((r) => r.name === n));
   const complete = used.every((r) => r.complete);
-  results.push({ job: j.job, text: j.text, group: j.group, reached, needs, complete, answered: Boolean(said), steps: asks, calls: runs.length, secs: (Date.now() - t0) / 1000, tools: runs.map((r) => r.name), log: said ? [] : jobLog.slice(-8) });
+  results.push({ job: j.job, text: j.text, group: j.group, reached, needs, complete, answered: Boolean(said), steps: asks, calls: runs.length, secs: (Date.now() - t0) / 1000, tools: runs.map((r) => r.name), log: said ? [] : jobLog.slice(-8), ...(real ? { said: kit.neutral(said).slice(0, 3000), steps_run: runs.map((r) => ({ name: r.name, args: JSON.parse(kit.neutral(JSON.stringify(r.args ?? {}))), complete: r.complete, real: Boolean(r.real), result: r.result })) } : {}) });
   const r = results.at(-1);
   console.log(`${String(i + 1).padStart(3)} ${r.reached && r.needs ? 'OK  ' : 'MISS'} ${r.complete ? '' : '(incomplete call) '}${r.answered ? '' : '(no words) '}${j.text.slice(0, 60)} -> ${r.tools.join(',') || 'no tool'} (${r.steps} steps, ${r.secs.toFixed(1)} s)`);
 }
@@ -131,19 +158,19 @@ const pct = (k) => `${k}/${n} (${Math.round((k / n) * 100)}%)`;
 const sum = (f) => results.reduce((a, r) => a + f(r), 0);
 const lines = [
   `# Loop test, ${new Date().toISOString().slice(0, 16)}`, '',
-  `Model: ${L.model ? path.basename(L.model) : url}. Loop helps: ${plain ? 'off (--plain)' : offList.length ? `on except ${offList.join(', ')}` : 'on'}${o.think ? ', retries think' : ''}. ${n} jobs (${MULTI.length} with several steps).`, '',
+  `Model: ${L.model ? path.basename(L.model) : url}. Loop helps: ${plain ? 'off (--plain)' : offList.length ? `on except ${offList.join(', ')}` : 'on'}${o.think ? ', retries think' : ''}. ${n} jobs (${results.filter((r) => r.job === 'multi').length} with several steps)${real ? '; tools run for real in a throwaway folder, the web is real' : ''}.`, '',
   '| Score | Result |', '|---|---|',
   `| Reached the right tool | ${pct(sum((r) => (r.reached && r.needs ? 1 : 0)))} |`,
   `| Every call complete | ${pct(sum((r) => (r.complete ? 1 : 0)))} |`,
   `| Answered in words | ${pct(sum((r) => (r.answered ? 1 : 0)))} |`,
-  `| Multi-step jobs done | ${sum((r) => (r.job === 'multi' && r.needs ? 1 : 0))}/${MULTI.length} |`,
+  `| Multi-step jobs done | ${sum((r) => (r.job === 'multi' && r.needs ? 1 : 0))}/${results.filter((r) => r.job === 'multi').length} |`,
   `| Brain calls per job | ${(sum((r) => r.steps) / n).toFixed(2)} |`,
   `| Notes folded for a system-first template | ${strict ? `yes${refusals ? ' (found by a refusal)' : ' (read from the template)'}` : 'no'} |`,
   `| Seconds per job | ${(sum((r) => r.secs) / n).toFixed(1)} |`, '',
   '## Misses', '', ...results.filter((r) => !(r.reached && r.needs)).map((r) => `- [${r.job}] "${r.text}" -> ${r.tools.join(', ') || 'no tool'}`),
   '', '## No words', '', ...results.filter((r) => !r.answered).flatMap((r) => [`- [${r.job}] "${r.text}" -> ${r.tools.join(', ') || 'no tool'} (${r.steps} steps)`, ...r.log.map((l) => `  - ${l}`)])
 ];
-const file = path.join(L.out, `loop-test-${plain ? 'plain-' : offList.length ? `off-${offList.join('-')}-` : ''}${stamp()}.md`);
+const file = path.join(L.out, `loop-test-${real ? 'real-' : ''}${plain ? 'plain-' : offList.length ? `off-${offList.join('-')}-` : ''}${stamp()}.md`);
 fs.writeFileSync(file, lines.join('\n') + '\n');
 fs.writeFileSync(file.replace(/\.md$/, '.json'), JSON.stringify(results, null, 1));
 console.log(`\n${lines.slice(4, 11).join('\n')}\nReport: ${file}`);

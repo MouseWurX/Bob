@@ -143,6 +143,7 @@ import { netFilesRoute } from './net-files-routes.js'; // Nov 14 Bob-Net file sh
 import { Outbox, Inbox } from './bob-net-files.js';
 import { saveRoute } from './save-routes.js';
 import { voiceRoute } from './voice-routes.js';
+import { searchBackupRoute } from './search-backup-routes.js'; // Nov 16: Backup search with a key
 import { talkView } from './talk.js'; // Talk with Bob (1.5.210)
 import { refsRoute } from './refs-routes.js';
 import { queueRoute } from './queue-routes.js';
@@ -1460,6 +1461,7 @@ const server = http.createServer(async (req, res) => {
     if (p.startsWith('/api/quarantine') && await quarantineRoute({ req, res, p, isLocal, brain, cfg, body, send })) return;
     if (p === '/api/more-tools' && await moreToolsRoute({ req, res, p, isLocal, brain, cfg, body, send })) return;
     if ((await voiceRoute({ req, res, p, isLocal, cfg, shop, body, send, TYPES })) !== false) return;
+    if ((await searchBackupRoute({ req, res, p, isLocal, cfg, body, send, log: (k, t) => brain.log(k, t) })) !== false) return;
     if ((await refsRoute({ req, res, p, url, brain, body, send, serveFile })) !== false) return;
     if ((await queueRoute({ req, res, p, brain, body, send })) !== false) return;
     if (req.method === 'GET' && p === '/api/downloads') return send(res, 200, shop.downloadsView());

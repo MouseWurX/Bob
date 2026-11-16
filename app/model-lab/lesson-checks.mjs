@@ -34,10 +34,35 @@ export function lessonFault(saved, idea = {}, tools = null) {
   if (SUCCESS.test(answer) && !/\?\s*$/.test(answer.split('\n').filter(Boolean).at(-1) || '') && (results.length === 0 || results.every((r) => isErr(r.content)))) return results.length ? 'the answer says it was done, but every tool call failed: say plainly what failed' : 'the answer says something was done, but no tool was called';
   const calls = mine.flatMap((m) => m.tool_calls || []).map((c) => `${c.function?.name} ${c.function?.arguments}`);
   for (let i = 2; i < calls.length; i++) if (calls[i] === calls[i - 1] && calls[i] === calls[i - 2]) return `it called ${calls[i].split(' ')[0]} three times with the same inputs`;
-  if (tools) for (const c of mine.flatMap((m) => m.tool_calls || [])) {
-    const def = tools.find((t) => (t.function?.name || t.name) === c.function?.name); const props = (def?.function || def)?.parameters?.properties || {};
+  // 15 Nov: each call is checked against the tools offered at ITS step (tools may be a function of the message). use_tools
+  // leaves a group out of its list once loaded, so the last step's list wrongly failed groups loaded earlier ("documents")
+  const toolsAt = typeof tools === 'function' ? tools : () => tools;
+  if (tools) for (const [m, c] of mine.flatMap((m) => (m.tool_calls || []).map((c) => [m, c]))) {
+    const defs = toolsAt(m) || []; const def = defs.find((t) => (t.function?.name || t.name) === c.function?.name); const props = (def?.function || def)?.parameters?.properties || {};
     let a = {}; try { a = JSON.parse(c.function?.arguments || '{}'); } catch { return `the ${c.function?.name} call's inputs aren't valid JSON`; }
     for (const [k, v] of Object.entries(a)) { const en = props[k]?.enum || props[k]?.items?.enum; for (const x of Array.isArray(v) ? v : [v]) if (en && !en.includes(x)) return `${c.function?.name} got ${k} "${x}", which isn't one it takes (${en.join(', ')})`; }
   }
   return '';
 }
+
+// 15 Nov (the owner: "ANY WAY TO FIX LESSONS FROM FAILING ANY MORE WHILE KEEPING QUALITY UP?"): the final answer alone is
+// checked as soon as the teacher writes it, so only that step is written again (with this reason) instead of the lesson
+// failing. A claim of success after no call or only failed calls, or a Windows path nothing in the lesson showed.
+const PATH = /\b[A-Za-z]:\\[^\s"'`<>|*?,;()\]]+/g;
+const flat = (x) => (typeof x === 'string' ? x : Array.isArray(x) ? x.map(flat).join(' ') : x && typeof x === 'object' ? Object.values(x).map(flat).join(' ') : String(x ?? ''));
+const norm = (t) => String(t).toLowerCase().replace(/\\+/g, '\\').replace(/[\\.]+$/, '');
+export function unbackedPath(saved, answer) {
+  const known = norm(saved.map((m) => [typeof m.content === 'string' ? m.content : flat(m.content), ...(m.tool_calls || []).map((c) => { try { return flat(JSON.parse(c.function?.arguments || '{}')); } catch { return String(c.function?.arguments || ''); } })].join(' ')).join('\n'));
+  for (const p of String(answer || '').match(PATH) || []) { const n = norm(p); if (n.length > 3 && !known.includes(n)) return p.replace(/[.]+$/, ''); }
+  return '';
+}
+export function answerFault(saved, answerMsg) {
+  const answer = String(answerMsg?.content || '');
+  const mine = saved.filter((m) => m.role === 'assistant' && m.train !== false);
+  const results = saved.filter((m, i) => m.role === 'tool' && saved.slice(0, i).some((x) => x.role === 'assistant' && x.train !== false));
+  if (SUCCESS.test(answer) && !/\?\s*$/.test(answer.split('\n').filter(Boolean).at(-1) || '') && (results.length === 0 || results.every((r) => isErr(r.content)))) return results.length ? 'the answer says it was done, but every tool call failed: say plainly what failed and what the person can do' : 'the answer says something was done, but no tool was called: call the tool first, or say plainly that it was not done';
+  const p = unbackedPath(saved, answer);
+  if (p) return `the answer names ${p}, which no tool result or request showed: name only places the results showed`;
+  return '';
+}
+
