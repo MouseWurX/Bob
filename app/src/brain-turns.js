@@ -215,10 +215,7 @@ export const turnParts = {
           return c.planShown ? { go: true } : c.planChange ? { change: c.planChange } : { no: true };
         } : null;
         const planShown = () => Object.defineProperty(job, 'soloPlanShown', { value: true, configurable: true, enumerable: false, writable: true });
-        // The plan tries left the chat (no plan came): the repeat guard and the turn's record forget them too, so the job
-        // can run its calls again and see the results (16 Nov rental: "already ran this turn" on a call nobody could see).
-        const forget = () => { job.soloSeen?.clear?.(); if ('soloLedger' in job) job.soloLedger = null; };
-        mooted = await soloRun(this, solo, { run, review, emit: keep, signal, msgs, turnText: text, card, planShown, forget });
+        mooted = await soloRun(this, solo, { run, review, emit: keep, signal, msgs, turnText: text, card, planShown });
       }
       else await this.runOn(msgs, text, keep, signal, pics, job, sessionId, out);
       if (careful(job) && out.ctx && !signal?.aborted) mooted = await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx });

@@ -59,7 +59,7 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
   const brain = { cfg: { userName: 'Sam' }, log: () => {} };
   let shownPlan = false;
   const card = cards ? async (steps) => { calls.push({ card: steps }); return cards.shift() || { no: true }; } : null;
-  const res = await soloRun(brain, level, { run, review, emit: (e) => said.push(e), signal, msgs, turnText: 'do the thing', card, planShown: () => { shownPlan = true; }, forget: () => calls.push({ forgot: true }) });
+  const res = await soloRun(brain, level, { run, review, emit: (e) => said.push(e), signal, msgs, turnText: 'do the thing', card, planShown: () => { shownPlan = true; } });
   return { res, calls, msgs, said, shownPlan };
 }
 {
@@ -107,7 +107,6 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
   const { calls, res, msgs } = await fake('max', ['Looks right.'], { plan: 'The fix is to add set -e to the hook. That is the whole answer, really.' });
   const plans = calls.filter((c) => c.phase === 'plan');
   check('Max: an answer posing as a plan gets one more go, with an example plan', plans.length === 2 && /That isn't a plan yet/.test(plans[1].note) && /1\. Read the settings file/.test(plans[1].note));
-  check('Max: still no plan: the repeat guard forgets the plan tries before the one job', calls.findIndex((c) => c.forgot) > -1 && calls.findIndex((c) => c.forgot) < calls.findIndex((c) => c.phase === 'do') && /job\.soloSeen\?\.clear\?\.\(\)/.test(read('src/brain-turns.js')));
   check('Max: still no plan: no plan gate, the tries leave the chat, one job, then the answer and its review', !calls.some((c) => c.review && /Review your plan/.test(c.review)) && !msgs.some((m) => /The fix is to add/.test(m.content)) && /whole ask now/.test(calls.find((c) => c.phase === 'do').note) && calls.some((c) => c.review && /Review your own work/.test(c.review)) && /no step-by-step plan came, so one job/.test(res.minutes));
 }
 {
