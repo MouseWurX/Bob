@@ -28,6 +28,7 @@ export const FILES = {
   march: { path: `${D}Shop_Prices_March.xlsx`, content: 'Item,Price\nOat milk,2.40\nPlum jam,3.80\nEggs (6),2.15\nCoffee beans,7.90' },
   april: { path: `${D}Shop_Prices_April.xlsx`, content: 'Item,Price\nOat milk,2.65\nEggs (6),2.15\nCoffee beans,7.90\nRye bread,3.10' },
   invite: { path: `${D}Party_Invite.docx`, content: "# You're invited!\nCome to Maple's birthday picnic\nDate: Saturday 14 June\nPlace: Willow Park, by the pond\nBring a blanket. Cake at 3 pm.\nPlease reply by 7 June" },
+  oldcsv: { path: `${D}Budget_2026.csv`, content: 'Month,Total\nJan,2380' },
   reading: { path: `${D}Reading_Log.xlsx`, content: 'Title,Author,Pages\nThe Quiet Orchard,L. Penhallow,288\nNight Ferry,T. Abara,214', meta: { Sheet: 'Books' } }
 };
 
@@ -49,6 +50,10 @@ export const OFFICE_JOBS = [
     score: { route: ['convert_file', 'office_edit'], best: 'convert_file', files: [{ like: /Lease_Summary_Harbor_Lane.*\.pdf$/i, has: [/1,?850/, /60 days/] }], kept: ['lease'] } },
   { key: 'excel-to-csv', files: ['budget'], lo: true, text: 'Save my Budget_2026 spreadsheet as a CSV file too.',
     score: { route: ['convert_file', 'office_edit'], best: 'convert_file', files: [{ like: /Budget_2026.*\.csv$/i, has: [/640/, /2920/] }], kept: ['budget'] } },
+  // 16 Nov (the lead, from the Maximus rerun v5-d6-3-r0): the name is taken, so convert_file saves "Budget_2026-2.csv"; his answer
+  // must name the file he really saved, not the one he asked for (office-score.mjs pathCheck)
+  { key: 'excel-to-csv-taken', files: ['budget', 'oldcsv'], lo: true, text: 'Export Budget_2026.xlsx to CSV again, I need the newest numbers. Tell me what the new file is called.',
+    score: { route: ['convert_file', 'office_edit'], best: 'convert_file', files: [{ like: /Budget_2026.*\.csv$/i, has: [/640/, /2920/] }], kept: ['budget', 'oldcsv'], path: true } },
   { key: 'ppt-to-pdf', files: ['pitch'], lo: true, text: 'Make a PDF of the Garden Club pitch on my Desktop so I can email it.',
     score: { route: ['convert_file', 'office_edit'], best: 'convert_file', files: [{ like: /Garden_Club_Pitch.*\.pdf$/i, has: [/Membership 45/, /Harvest supper/] }], kept: ['pitch'] } },
   { key: 'word-edit', files: ['invite'], lo: true, text: 'Change the party date in Party_Invite.docx from Saturday 14 June to Saturday 21 June.',

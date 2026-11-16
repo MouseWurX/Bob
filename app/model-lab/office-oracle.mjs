@@ -26,6 +26,7 @@ export const PLAIN = {
   'ppt-read': [[['office_read', { path: F('pitch') }]], 'The spring seed swap is on 12 April and the harvest supper on 27 September.'],
   'word-to-pdf': [[['convert_file', { paths: [F('lease')], to: 'pdf' }]], 'Done: Lease_Summary_Harbor_Lane.pdf is next to it.'],
   'excel-to-csv': [[['convert_file', { paths: [F('budget')], to: 'csv' }]], 'Saved Budget_2026.csv next to the spreadsheet.'],
+  'excel-to-csv-taken': [[['convert_file', { paths: [F('budget')], to: 'csv' }]], 'Budget_2026.csv was taken, so the new one is Budget_2026-2.csv.'],
   'ppt-to-pdf': [[['convert_file', { paths: [F('pitch')], to: 'pdf' }]], 'Garden_Club_Pitch.pdf is on your Desktop.'],
   'word-edit': [[['office_read', { path: F('invite') }], ['office_edit', { path: F('invite'), changes: [{ op: 'replace', find: 'Saturday 14 June', replace: 'Saturday 21 June' }] }]], 'The invite now says Saturday 21 June.'],
   'excel-edit': [[['office_read', { path: F('reading') }], ['office_edit', { path: F('reading'), changes: [{ op: 'add_rows', rows: [['The Salt Road', 'M. Okafor', 312]] }] }]], 'Added The Salt Road.'],
@@ -45,7 +46,9 @@ export async function oracle({ bob = path.resolve(here, '..'), office = '', keep
   const rowsIn = officeJobs().filter((j) => office || !j.office.lo);
   // without LibreOffice the test Bob has no Office Hand: the plain way is then read_file and save_spreadsheet
   const plainOf = (key) => (office ? PLAIN[key][0] : key === 'excel-make' ? NO_OFFICE_MAKE : PLAIN[key][0].map(([t, a]) => [t === 'office_read' ? 'read_file' : t, a]));
-  const jobs = rowsIn.map((j) => ({ ...j, plan: lazy ? [] : plainOf(j.key), end: lazy ? 'Done, all sorted.' : PLAIN[j.key][1] }));
+  // save_spreadsheet names its own file (with the day), so that answer names no file
+  const endOf = (key) => (!office && key === 'excel-make' ? 'Saved your subscriptions spreadsheet: the total is 23.48.' : PLAIN[key][1]);
+  const jobs = rowsIn.map((j) => ({ ...j, plan: lazy ? [] : plainOf(j.key), end: lazy ? 'Done, all sorted.' : endOf(j.key) }));
   const { srv } = brainServer(jobs);
   await new Promise((ok) => srv.listen(0, '127.0.0.1', ok));
   const jobsFile = path.join(tmp, 'office-jobs.jsonl');
