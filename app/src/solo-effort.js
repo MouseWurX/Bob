@@ -71,13 +71,17 @@ export function planGateTask(plan) {
   return `Review your plan before any work starts. Is it right and complete? Is each step a small job you can finish and check on its own? Is it the simplest way to do what was asked? Under 150 words.
 The plan:
 ${String(plan || '(nothing written)').slice(-5000)}
-Start with exactly "Looks right." or "Improve it:".`;
+${WORDS_ONLY} Start with exactly "Looks right." or "Improve it:".`;
 }
-export const PLAN_NOTE = `Max effort, planning. Don't start the work and don't use tools yet. Write a numbered plan for this ask: 2 to ${MAX_JOBS} steps, each a small job you can finish and check on its own. One line each: what you'll do, and how you'll know it worked. Write only the plan.`;
-export const replanNote = (review) => `Improve the plan. Your review said:\n${points(review)}\n\nWrite the whole improved plan, numbered, ${MAX_JOBS} steps at most. Only the plan; don't use tools yet.`;
+// 16 Nov distill results (Max failed 46%): a plan step with no tools wrote tool calls out as text (45 of 100), and the
+// answer repeated the plan and the step reports (82 of 100). So the plan step keeps its tools for looking (it changes
+// nothing), steps with no tools say so in words, and the answer is told it is the only thing the user sees.
+export const WORDS_ONLY = 'There are no tools in this step: answer in plain words only, with no tool calls written out.';
+export const PLAN_NOTE = `Max effort, planning. Look things up with your tools if you need to, but don't change anything yet. Then write a numbered plan for this ask: 2 to ${MAX_JOBS} steps, each a small job you can finish and check on its own. One line each: what you'll do, and how you'll know it worked. End with only the plan.`;
+export const replanNote = (review) => `Improve the plan. Your review said:\n${points(review)}\n\nWrite the whole improved plan, numbered, ${MAX_JOBS} steps at most. You may look things up, but don't change anything yet. End with only the plan.`;
 export const stepNote = (i, n, step, plan) => `Max effort, step ${i} of ${n}: ${step}\n\nThe whole plan, for context:\n${String(plan).slice(-3000)}\n\nSteps already done are above; don't redo them. Do only this step, completely, with your tools, and check that it worked. If a tool says no, or fails the same way twice, stop and report it; don't try it again in a later step. End with a short report: what you did and the real result (worked, failed, or not checked).`;
 export const improveNote = (review, last = true) => `Improve it. Your review of your own work found:\n${points(review)}\n\nMake the real improvements (use your tools if files need changing). Then give the whole improved answer.${last ? ' If something can\'t be improved, or you disagree with a point, end with "Not happy with:" and say what, plainly.' : ''}`;
-export const ANSWER_NOTE = 'Max effort, the answer. Write the final answer: what was done, the results, and anything still not right, said plainly. Never claim something a tool result doesn\'t show. Don\'t use tools.';
+export const ANSWER_NOTE = `Max effort, the answer. This is the only reply the user sees: the plan, the step reports and the reviews above are folded away. Write the final answer once: what was done, the results, and anything still not right, said plainly. Don't repeat the plan or the reports. Never claim something a tool result doesn't show. ${WORDS_ONLY}`;
 
 // The numbered steps of a plan (at most MAX_JOBS). None found: the whole ask is one job.
 export function planSteps(plan) {
@@ -150,7 +154,7 @@ export async function soloRun(brain, level, { run, review, emit, signal, msgs, t
     // 1. The plan, with no tools, then its gate.
     say('**Plan:**\n\n');
     let from = msgs.length;
-    await run(PLAN_NOTE, { phase: 'plan', noTools: true, first: true });
+    await run(PLAN_NOTE, { phase: 'plan', first: true });
     let plan = lastSaid(from);
     for (let n = 1; n <= SOLO_ROUNDS && !stopped(); n++) {
       say(`\n\n---\n**Checking the plan${n > 1 ? ' (again)' : ''}:**\n\n`);
@@ -162,7 +166,7 @@ export async function soloRun(brain, level, { run, review, emit, signal, msgs, t
       if (n === SOLO_ROUNDS) { say(`\n\n_The plan still has open points after ${SOLO_ROUNDS} checks (above). Going ahead with it._`); break; }
       say('\n\n---\n**Improving the plan:**\n\n');
       from = msgs.length;
-      await run(replanNote(text), { phase: 'plan', noTools: true });
+      await run(replanNote(text), { phase: 'plan' });
       plan = lastSaid(from) || plan;
     }
     // 2. Each step as its own full job.

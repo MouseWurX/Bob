@@ -38,6 +38,7 @@ import { noteStrike, maybeAsk as qAsk } from './quarantine.js';
 import { planGate } from './plan.js';
 import { stepThink, toolRanThisTurn } from './step-thinking.js';
 import { soloPrompt } from './solo-effort.js';
+import { cantReason, markCant, settleCant } from './cant-retry.js';
 import { askTogether } from './together.js';
 import { callKey, realState, linkKey, NOW_IN_NOTE, staleHandErrors, meanwhileNear, claimsPcAction, CLAIM_CORRECTION, CLAIM_NUDGE, claimsObservation, OBSERVE_CORRECTION, OBSERVE_NUDGE, LINK_NUDGE, EMPTY_NUDGE, CANT_NUDGE, EMPTY_NOTE, DOING_TOOLS, isLook, ALT_ROUTE_DONE, ALT_ROUTE_NUDGE, quickHandBack } from './brain-words.js';
 import { sidePick, apuRoom } from './brain-lanes.js';
@@ -486,11 +487,16 @@ export const runOnParts = {
       const empty = !reply.tool_calls && !String(reply.content || '').trim();
       if (!reply.tool_calls && !empty) this.checkSaid(ctx, reply); // 1.5.207: said but not done, before any retry
       if (!reply.tool_calls) stage(ctx, 'checking', step, log);
+      // Jobs run 3: after "I can't" and one more go, one answer stays, never two stacked (cant-retry.js).
+      if (!reply.tool_calls && !empty) { const kept = settleCant(ctx, reply, msgs); if (kept) this.log('toolbox', kept === 'replaced' ? 'the answer after trying again replaces the first' : 'trying again ran nothing new; the first answer stays'); }
+      const cantWhy = !reply.tool_calls && !empty && !ctx.cantRetried && saysCant(reply.content) ? cantReason(this.cfg, reply.content, msgs.slice(turnStart)) : '';
+      if (cantWhy) { ctx.cantRetried = true; this.log('toolbox', `Bob said he could not, and ${cantWhy}; no second go with every tool`); }
       if (!reply.tool_calls && !ctx.cantRetried && nudgeOk(ctx) && saysCant(reply.content)) {
         // 1.5.65: web search is on and a link is there (this message or a recent one): open it and give him one more go.
         const u = webLinks && !ctx.linkOpened && String(reply.content || '').trim() ? (findLinks(text, 1)[0] || earlierLink()) : null;
         if (u) {
           ctx.cantRetried = true;
+          markCant(ctx, reply, msgs); // the answer after reading the page replaces this one
           await openLink(u, 'Bob said he could not; opened the link and asked again');
           msgs.push({ role: 'system', content: LINK_NUDGE, hidden: true }); ctx.retrying = true;
           emit({ type: 'token', text: '\n\n' });
@@ -503,6 +509,7 @@ export const runOnParts = {
           missing.forEach((g) => ctx.loaded.add(g));
           if (missing.length) emit({ type: 'tool', name: 'use_tools', summary: 'Trying again with all his tools' });
           if (empty) msgs.pop(); // an empty reply isn't worth keeping in the chat
+          else markCant(ctx, reply, msgs);
           msgs.push({ role: 'system', content: empty ? EMPTY_NUDGE : CANT_NUDGE, hidden: true }); ctx.retrying = true;
           this.log('toolbox', empty ? 'Bob gave an empty reply; added every tool group and asked again' : 'Bob said he could not; added every tool group and asked again');
           emit({ type: 'token', text: '\n\n' });
@@ -519,7 +526,12 @@ export const runOnParts = {
           msgs.push({ role: 'assistant', content: '', correction: EMPTY_NOTE });
         }
         this.log('toolbox', 'Bob gave an empty reply twice');
-      } else if (!reply.tool_calls && this.checkTurn(ctx, reply, nudgeOk(ctx))) { ctx.retrying = true; nudged(); continue; } // asked for something that didn't happen: one more go
+      } else if (!reply.tool_calls && this.checkTurn(ctx, reply, nudgeOk(ctx))) {
+        // Jobs run 3 (v5-d6-3-r0): the "only 1 tool step ran" go stacked a second answer on a good first one. One answer
+        // stays, as after "I can't" (cant-retry.js). A reply corrected for a claim with nothing behind it isn't kept.
+        if (!reply.correction && !ctx.cantAt) markCant(ctx, reply, msgs);
+        ctx.retrying = true; nudged(); continue;
+      } // asked for something that didn't happen: one more go
       // Quick brain sees the job: a note that came while the big brain was writing its answer (no next step)
       // still reaches it, once: it says what changes, or that it saw it (PC test 1.5.203: the note never arrived).
       // Nov 11 (loop-help.js): "I'll look that up." and nothing ran: one nudge to really do it.
