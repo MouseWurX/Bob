@@ -37,6 +37,7 @@ import { HANDS } from './hands-settings.js';
 import { noteStrike, maybeAsk as qAsk } from './quarantine.js';
 import { planGate } from './plan.js';
 import { stepThink, toolRanThisTurn } from './step-thinking.js';
+import { soloPrompt } from './solo-effort.js';
 import { askTogether } from './together.js';
 import { callKey, realState, linkKey, NOW_IN_NOTE, staleHandErrors, meanwhileNear, claimsPcAction, CLAIM_CORRECTION, CLAIM_NUDGE, claimsObservation, OBSERVE_CORRECTION, OBSERVE_NUDGE, LINK_NUDGE, EMPTY_NUDGE, CANT_NUDGE, EMPTY_NOTE, DOING_TOOLS, isLook, ALT_ROUTE_DONE, ALT_ROUTE_NUDGE, quickHandBack } from './brain-words.js';
 import { sidePick, apuRoom } from './brain-lanes.js';
@@ -70,9 +71,12 @@ export const runOnParts = {
     // 1.5.128: the same after a Hire it card (Hire it or Not now): the message that drew the card is in the chat already,
     // so the re-run adds only the hidden note (the PC saw the user's bubble twice after a reload).
     // Try again and Edit (redo.js): the message is already in the chat, changed in place, so the brain gets a hidden note only.
-    const again = (Boolean(job?.switchedTo) || Boolean(job?.rentAgain) || Boolean(job?.redo)) && Boolean(lastUser) && String(lastUser.text ?? lastUser.content ?? '').startsWith(text);
-    if (again) msgs.push({ role: 'system', content: job.switchedTo ? switchedNote(job.switchedTo) : job.redo && !job.carryOn ? (job.redo === 'edit' ? EDIT_NOTE : REDO_NOTE) : job.carryOn || '', hidden: true });
-    else { msgs.push(user); if (!job?.guest) emit({ type: 'asked', id: user.id }); } // the window marks your bubble, for Edit (redo.js)
+    const again = (Boolean(job?.switchedTo) || Boolean(job?.rentAgain) || Boolean(job?.redo) || Boolean(job?.soloAgain)) && Boolean(lastUser) && String(lastUser.text ?? lastUser.content ?? '').startsWith(text);
+    // Effort on one brain (solo-effort.js): each part of a High or Max job is one more run of this loop on the same ask,
+    // with Bob's own note for that part (hidden; the chat shows only what he writes back).
+    const soloNote = job?.soloStep ? String(job.soloStep) : '';
+    if (again) msgs.push({ role: 'system', content: [job.soloAgain ? '' : job.switchedTo ? switchedNote(job.switchedTo) : job.redo && !job.carryOn ? (job.redo === 'edit' ? EDIT_NOTE : REDO_NOTE) : job.carryOn || '', soloNote].filter(Boolean).join('\n\n'), hidden: true });
+    else { msgs.push(user); if (!job?.guest) emit({ type: 'asked', id: user.id }); if (soloNote) msgs.push({ role: 'system', content: soloNote, hidden: true }); } // the window marks your bubble, for Edit (redo.js)
     if (job) job.rentAgain = false;
     const turnStart = again ? msgs.map((m) => m.role).lastIndexOf('user') : msgs.length - 1;
     // 1.5.207 PC check: after Switch it on (or any carry-on), the same chat line went in the logbook a second time.
@@ -87,7 +91,7 @@ export const runOnParts = {
       if (['image', 'video', 'audio'].includes(ev?.type) && ev.file && ctx?.wantType) this.autoSaveAs(ev, ctx); // 1.5.95 "a song as an mp3"
       return sent;
     };
-    const ctx = { emit: emitMade, signal, brain: this, cfg: this.cfg, allowAll: new Set(), pics, picNote, msgs, turnText: text, job, sessionId, wantsEdit, editFrom: wantsEdit ? recent : null, wantType: namedType(text), saves: [], savedAs: [], trace: [], askId: (again ? lastUser?.id : user.id) || null }; // askId: item 238
+    const ctx = { noTools: Boolean(job?.soloNoTools), emit: emitMade, signal, brain: this, cfg: this.cfg, allowAll: new Set(), pics, picNote, msgs, turnText: text, job, sessionId, wantsEdit, editFrom: wantsEdit ? recent : null, wantType: namedType(text), saves: [], savedAs: [], trace: [], askId: (again ? lastUser?.id : user.id) || null }; // askId: item 238
     // Item 171 (Nov 12): an action key for each action. After a restart, the last action that already finished is
     // remembered, so the same write or command asked for again first thing hands back its result instead of running twice.
     const lastDone = lastFinished(job?.before, this.tools);
@@ -152,7 +156,7 @@ export const runOnParts = {
     // just before the latest message (meanwhileNear). A question about the job after it ended gets the no-job line.
     const meanwhile = !meanwhileOn(this.cfg) || job?.guest ? '' : job?.side && this.watch.job ? meanwhileLine(this.watch.job) : asksAboutJob(text) && !this.watch.job ? NO_JOB_LINE : '';
     ctx.meanwhile = job?.side ? meanwhile : '';
-    const extras = [state, meanwhile, presetPrompt(ctx.preset, this.cfg.userName || 'the user'), guestNote(job, this.cfg.userName || 'the user'), effortPrompt(job?.effort), jobHelpsPrompt(this.cfg, job), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
+    const extras = [state, meanwhile, presetPrompt(ctx.preset, this.cfg.userName || 'the user'), guestNote(job, this.cfg.userName || 'the user'), job?.solo ? soloPrompt(job.effort, '{{USER}}') : effortPrompt(job?.effort), jobHelpsPrompt(this.cfg, job), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
     const brainCtx = await this.fitCtx(model, wantCtx);
     // 1.5.127: a chat that no longer fits the biggest brain here, with a rented brain in its slot: offer it (the job carries on here meanwhile).
     if (!job?.rent && !job?.side && !job?.guest && this.rentals.current() && !ctx.rentOffered) {
@@ -302,7 +306,7 @@ export const runOnParts = {
       ctx.retrying = false;
       // step-thinking.js (15 Nov): think to plan and review, not on each step. After a tool has run this turn, the
       // next call is a doing step: no thinking. The last round (no tools) answers with the turn's own thinking.
-      const thinkNow = stepThink(this.cfg, { think, doing: toolRanThisTurn(msgs, turnStart) && !ctx.noTools, lastRound: Boolean(ctx.lastRound), retryThinks });
+      const thinkNow = stepThink(this.cfg, { think, doing: toolRanThisTurn(msgs, turnStart) && !ctx.noTools, lastRound: Boolean(ctx.lastRound), retryThinks, job });
       if (thinkNow !== think && !ctx.stepThinkSaid) { ctx.stepThinkSaid = true; this.log('chat', 'tool steps: no thinking (planning and the answer keep it)'); }
       const pub = Boolean(job?.guest?.public); // Bob on Discord: no memory, about-me or backstory of the owner's
       const hush = pub || isGuestId(sessionId); // a guest chat: no memory or about-me either (guest-chat.js)
