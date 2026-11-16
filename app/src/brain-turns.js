@@ -199,10 +199,10 @@ export const turnParts = {
         // The repeat guard's count is shared by every part of the job (the distill test: a refused write was tried again in 3 small jobs).
         Object.defineProperty(job, 'soloSeen', { value: new Map(), configurable: true, enumerable: false, writable: true });
         Object.defineProperty(job, 'soloLedger', { value: null, configurable: true, enumerable: false, writable: true }); // each part's record carries the earlier parts' (brain-run-on.js)
-        const run = async (note, { phase = null, noTools = false } = {}) => {
-          Object.assign(job, { soloStep: note || '', soloAgain: ran, soloPhase: phase, soloNoTools: noTools });
+        const run = async (note, { phase = null, noTools = false, left = null } = {}) => {
+          Object.assign(job, { soloStep: note || '', soloAgain: ran, soloPhase: phase, soloNoTools: noTools, soloLeft: left });
           try { await this.runOn(msgs, text, keep, signal, ran ? [] : pics, job, sessionId, out); return { repeatStop: Boolean(out.ctx?.repeatStop) }; }
-          finally { ran = true; Object.assign(job, { soloStep: '', soloAgain: false, soloPhase: null, soloNoTools: false }); }
+          finally { ran = true; Object.assign(job, { soloStep: '', soloAgain: false, soloPhase: null, soloNoTools: false, soloLeft: null }); }
         };
         const review = (task, o = {}) => this.runHat('reviewer', task, out.ctx, soloBrain(this.cfg, o));
         // "Plan before big jobs" on (plan.js): Max's checked plan goes on the same plan card, and the jobs after Go ahead

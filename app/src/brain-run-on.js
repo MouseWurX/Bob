@@ -256,6 +256,8 @@ export const runOnParts = {
     // steps, sends-back and calls it has left, instead of a whole new budget each time.
     const carried = carriedBudget(job, this.plainLoop || job?.guest ? MAX_STEPS : loopSteps(job?.effort));
     let maxSteps = carried.maxSteps; // can grow once by EXTRA_STEPS (loop-guard.js extraSteps)
+    // Max effort on one brain (solo-effort.js): each part gets only what's left of the whole job's budget (SOLO_CALLS).
+    if (job?.soloLeft != null) maxSteps = Math.max(2, Math.min(maxSteps, job.soloLeft));
     Object.assign(ctx, { carriedSteps: carried.steps, nudges: carried.nudges, callsRun: carried.calls, turnStartedAt: Date.now(), progress: new Progress() });
     if (carried.steps) this.log('loop', `carrying on: ${carried.steps} steps used before, ${maxSteps} left`);
     const log = (k, t) => this.log(k, t);
