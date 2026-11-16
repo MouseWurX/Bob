@@ -73,7 +73,10 @@ const strictTemplate = async () => {
 };
 // Bob's own answers (no outside effect) and the tools that run for real in the throwaway folder or on the web
 // neutralise every string inside a value (not its JSON text: a swapped-in Windows path would break the escapes)
-const deepNeutral = (kit, v) => (typeof v === 'string' ? kit.neutral(v) : Array.isArray(v) ? v.map((x) => deepNeutral(kit, x)) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deepNeutral(kit, x)])) : v);
+// 16 Nov: a file link in the chat carries its path URL-encoded (/api/file?path=C%3A%5CUsers%5C...), which the plain
+// swap missed and the owner's folder name reached a run: those are decoded, neutralised and encoded again.
+const neutralText = (kit, t) => kit.neutral(t).replace(/([?&]path=)([^&"'\s)]+)/g, (m, k, p) => { try { return k + encodeURIComponent(kit.neutral(decodeURIComponent(p))); } catch { return m; } });
+const deepNeutral = (kit, v) => (typeof v === 'string' ? neutralText(kit, v) : Array.isArray(v) ? v.map((x) => deepNeutral(kit, x)) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deepNeutral(kit, x)])) : v);
 process.setMaxListeners(Math.max(process.getMaxListeners(), 200)); // each job's Bob adds its own exit hooks
 const OWN = new Set(['use_tools', 'bob_help', 'offer_setup', 'pick_session', 'show_plan', 'ask_together']);
 // 15 Nov (owner: "everything was supposed to run for real", "stand ins need to give real results"): every tool Bob
