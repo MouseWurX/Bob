@@ -130,12 +130,33 @@ async function makeFolder(imap, name) {
 const capsOf = async (imap) => new Set((await imap.run('CAPABILITY')).flatMap((l) => (l.text.match(/^\* CAPABILITY (.*)$/i)?.[1] || '').toUpperCase().split(/\s+/)));
 
 // A plain message for the Drafts folder (never sent from here).
-export function draftMessage({ from, to, subject, text, now = new Date() }) {
+export function draftMessage({ from, to, subject, text, inReplyTo = '', now = new Date() }) {
   const enc = (s) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${Buffer.from(s, 'utf8').toString('base64')}?=`);
   const clean = (s, n) => String(s ?? '').replace(/[\r\n]+/g, ' ').trim().slice(0, n);
   const body = Buffer.from(String(text ?? '').replace(/\r?\n/g, '\r\n'), 'utf8').toString('base64').replace(/.{76}/g, '$&\r\n');
   const mid = `<bob-draft-${now.getTime().toString(36)}-${Math.random().toString(36).slice(2, 8)}@localhost>`;
-  return { mid, raw: [`From: ${clean(from, 200)}`, ...(to ? [`To: ${clean(to, 500)}`] : []), `Subject: ${enc(clean(subject, 200))}`, `Date: ${now.toUTCString().replace('GMT', '+0000')}`, `Message-ID: ${mid}`, 'MIME-Version: 1.0', 'Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: base64', '', body, ''].join('\r\n') };
+  return { mid, raw: [`From: ${clean(from, 200)}`, ...(to ? [`To: ${clean(to, 500)}`] : []), `Subject: ${enc(clean(subject, 200))}`, `Date: ${now.toUTCString().replace('GMT', '+0000')}`, `Message-ID: ${mid}`, ...(/^<[^<>\s]+>$/.test(inReplyTo) ? [`In-Reply-To: ${inReplyTo}`, `References: ${inReplyTo}`] : []), 'MIME-Version: 1.0', 'Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: base64', '', body, ''].join('\r\n') };
+}
+
+// A reply's address and subject, filled in by code from the message being answered (the brain writes only the words).
+// Never to a message that looks dangerous; the reply goes to the sender's own address, not a Reply-To that points
+// somewhere else (a scam's favourite trick).
+export async function replyTarget(cfg, id, opts = {}) {
+  const uid = Math.round(Number(id));
+  if (!(uid > 0)) throw new Error('reply_to needs the id of the message being answered (from read_email).');
+  return withMailbox(cfg, async (imap) => {
+    const got = await imap.run(`UID FETCH ${uid} (UID BODY.PEEK[HEADER.FIELDS (FROM REPLY-TO SUBJECT MESSAGE-ID AUTHENTICATION-RESULTS)])`);
+    const l = got.find((x) => /FETCH/i.test(x.text) && x.literals.length);
+    if (!l) throw new Error(`There's no message ${uid} in that folder now, so there's nothing to reply to.`);
+    const raw = parseHeaders(l.literals.join('\n'));
+    const hd = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, decodeWords(v)]));
+    const danger = dangerSigns(hd);
+    if (danger.length) throw new Error(`Message ${uid} looks dangerous (${danger.join('; ')}), so Bob won't draft a reply to it. Report it as spam in your mail app.`);
+    const who = String(hd.from || '').match(/<([^>]+)>/)?.[1] || String(hd.from || '').trim();
+    if (!/^[^\s@<>]+@[^\s@<>]+$/.test(who)) throw new Error(`Message ${uid} has no sender address to reply to.`);
+    const subj = cleanField(hd.subject || '', 180);
+    return { to: who, subject: /^re:/i.test(subj) ? subj : `Re: ${subj}`, in_reply_to: String(raw['message-id'] || '').trim() };
+  }, opts);
 }
 
 // ---------------------------------------------------------------- what a call will do (for the card) and doing it
@@ -148,6 +169,7 @@ export async function planChange(cfg, args, opts = {}) {
   if (!ACTIONS.includes(action)) throw new Error(`action must be one of ${ACTIONS.join(', ')}.`);
   if (action === 'draft') {
     if (!String(args.text || '').trim()) throw new Error('A draft needs text: what the message says.');
+    if (args.reply_to != null && args.reply_to !== '') Object.assign(args, await replyTarget(cfg, args.reply_to, opts));
     return { action, text: `Save a draft${args.to ? ` to ${String(args.to).slice(0, 80)}` : ''}: "${String(args.subject || '(no subject)').slice(0, 80)}". It goes in Drafts and is NOT sent: you send it from your mail app.` };
   }
   if (action === 'undo') {
@@ -169,10 +191,12 @@ export async function planChange(cfg, args, opts = {}) {
     if (['move', 'archive', 'trash'].includes(action)) {
       if (lockedFolder(folders, folder)) throw new Error(`Bob doesn't move mail out of ${fromMutf7(folder)} (Trash, Junk or All Mail): that's yours to do in your mail app.`);
       to = action === 'move' ? namedFolder(folders, args.folder) : findFolder(folders, action);
+      // a folder the person named that isn't there yet is made (a label on Gmail), shown on the card first
+      if (!to && action === 'move' && cleanFolderName(args.folder)) to = { name: toMutf7(cleanFolderName(args.folder)), shown: cleanFolderName(args.folder), make: true };
       if (!to) throw new Error(action === 'move' ? `There's no folder called "${String(args.folder || '').slice(0, 60)}". Folders: ${folders.map((f) => f.shown).slice(0, 30).join(', ')}.` : `This account has no ${action === 'trash' ? 'Trash' : 'Archive'} folder Bob can find. Folders: ${folders.map((f) => f.shown).slice(0, 30).join(', ')}.`);
       if (to.name === folder) throw new Error(`Those are already in ${to.shown}.`);
     }
-    const what = `${WORD[action]}${to ? ` (to ${to.shown})` : ''}: ${found.length} message${found.length === 1 ? '' : 's'}, ${list(found)}.${missing.length ? ` Not found now: ${missing.join(', ')}.` : ''}${action === 'trash' ? ' Nothing is deleted for good; it stays in Trash until it is emptied.' : ''}`;
+    const what = `${WORD[action]}${to ? ` (to ${to.shown}${to.make ? ', a new folder' : ''})` : ''}: ${found.length} message${found.length === 1 ? '' : 's'}, ${list(found)}.${missing.length ? ` Not found now: ${missing.join(', ')}.` : ''}${action === 'trash' ? ' Nothing is deleted for good; it stays in Trash until it is emptied.' : ''}`;
     return { action, folder, to, found, text: what };
   }, opts);
 }
@@ -186,7 +210,7 @@ export async function doChange(cfg, plan, args, opts = {}) {
       const folders = readFolders(await imap.run('LIST "" "*"'));
       const drafts = findFolder(folders, 'drafts');
       if (!drafts) throw new Error('This account has no Drafts folder Bob can find, so nothing was saved.');
-      const d = draftMessage({ from: s.user, to: args.to, subject: args.subject, text: args.text });
+      const d = draftMessage({ from: s.user, to: args.to, subject: args.subject, text: args.text, inReplyTo: args.in_reply_to || '' });
       await imap.append(`APPEND ${quote(drafts.name)} (\\Draft \\Seen)`, d.raw);
       await addUndo(cfg, { id, at: Date.now(), action, said: `saved the draft "${String(args.subject || '(no subject)').slice(0, 80)}" in ${drafts.shown}`, back: [{ folder: drafts.name, mids: [d.mid] }] });
       return `Saved a draft in ${drafts.shown}: "${String(args.subject || '(no subject)').slice(0, 80)}"${args.to ? ` to ${String(args.to).slice(0, 80)}` : ''}. It was NOT sent: open it in your mail app to check and send it. Undo id ${id}.`;
@@ -205,6 +229,7 @@ export async function doChange(cfg, plan, args, opts = {}) {
       said = `${WORD[action].toLowerCase()}: ${plan.found.length} message${plan.found.length === 1 ? '' : 's'} (${list(plan.found)})`;
       await addUndo(cfg, { id, at: Date.now(), action, said, back: [{ folder: plan.folder, mids, flag: back }] });
     } else {
+      if (plan.to.make) await makeFolder(imap, plan.to.shown);
       await moveUids(imap, caps, uids, plan.to.name);
       said = `moved ${plan.found.length} message${plan.found.length === 1 ? '' : 's'} from ${fromMutf7(plan.folder)} to ${plan.to.shown} (${list(plan.found)})`;
       await addUndo(cfg, { id, at: Date.now(), action, said, back: [{ folder: plan.to.name, mids, moveTo: plan.folder }] });
@@ -474,7 +499,8 @@ export function manageEmailTool(cfg, on = () => true, opts = {}, brain = null) {
     sender: { type: 'string', description: 'bulk: one sender, by name or address.' },
     kind: { type: 'array', items: { type: 'string', enum: KINDS }, description: 'bulk: only these kinds.' },
     older_than_days: { type: 'integer', description: 'bulk: only mail older than this.' },
-    words: { type: 'string', description: 'bulk: only subjects with these words.' }
+    words: { type: 'string', description: 'bulk: only subjects with these words.' },
+    reply_to: { type: 'integer', description: 'draft: the id being answered; who it goes to and the subject are filled in.' }
   }, ['action']);
   return {
     get schema() { return catalogOn() ? bulkSchema : plainSchema; },

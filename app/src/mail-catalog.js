@@ -57,6 +57,13 @@ const ROLE = /^(billing|accounts?|appointments?|bookings?|security|office|suppor
 const personal = (addr, name) => { const local = String(addr).split('@')[0].toLowerCase(); return String(name).toLowerCase().split(/[^a-z]+/).filter((w) => w.length >= 3).some((w) => local.includes(w)); };
 const authFailed = (h) => /\b(spf=(fail|softfail)|dmarc=fail)\b/i.test(String(h['authentication-results'] || ''));
 
+// The sender's own way to leave a list (List-Unsubscribe): its https link, else its mailto address. Shown to the person,
+// never opened by Bob.
+export function unsubLink(h) {
+  const all = [...String(h || '').matchAll(/<([^>]+)>/g)].map((m) => m[1].trim());
+  const web = all.find((u) => /^https:\/\/[^\s"'<>]+$/i.test(u)), mail = all.find((u) => /^mailto:[^\s"'<>]+$/i.test(u));
+  return String(web || mail || '').slice(0, 300);
+}
 export function orgOf(addr, listId = '') {
   const lid = String(listId).match(/<([^>]+)>/)?.[1] || String(listId).trim();
   if (lid) return lid.toLowerCase().slice(0, 120);
@@ -85,7 +92,7 @@ export function rowFrom(hd, flags = '', raw = {}, attachments = []) {
     at: Date.parse(raw.date || '') || 0,
     addr, name: cleanField(String(who.name || '').replace(/"/g, ''), 60), org: orgOf(addr, raw['list-id']),
     subject, unread: !/\\Seen/i.test(flags), flagged: /\\Flagged/i.test(flags), answered: /\\Answered/i.test(flags),
-    kind, sure: true, danger: danger.slice(0, 2).map((d) => cleanField(d, 80))
+    kind, sure: true, danger: danger.slice(0, 2).map((d) => cleanField(d, 80)), unsub: unsubLink(raw['list-unsubscribe'])
   };
 }
 // After a fill: a person writing from a company that mostly sends bulk mail is unsure (the shop's own staff).
@@ -110,7 +117,8 @@ function pack(cat) {
     mid: rows.map((r) => r.mid), subject: rows.map((r) => s(r.subject)), addr: rows.map((r) => s(r.addr)), name: rows.map((r) => s(r.name)), org: rows.map((r) => s(r.org)),
     kind: rows.map((r) => KINDS.indexOf(r.kind)),
     bits: rows.map((r) => (r.unread ? 1 : 0) | (r.flagged ? 2 : 0) | (r.answered ? 4 : 0) | (r.sure ? 0 : 8)),
-    danger: rows.map((r) => (r.danger.length ? s(r.danger.join(' | ')) : -1))
+    danger: rows.map((r) => (r.danger.length ? s(r.danger.join(' | ')) : -1)),
+    unsub: rows.map((r) => (r.unsub ? s(r.unsub) : -1))
   };
   const json = JSON.stringify({ v: VERSION, account: cat.account, folder: cat.folder, uidvalidity: cat.uidvalidity, filled: cat.filled, total: cat.total, strings, cols });
   return zlib.gzipSync(Buffer.from(json, 'utf8'), { level: 9 });
@@ -122,7 +130,7 @@ function unpack(buf) {
   const rows = c.uid.map((uid, i) => ({
     uid, at: c.at[i] * 1000, mid: c.mid[i], subject: S[c.subject[i]], addr: S[c.addr[i]], name: S[c.name[i]], org: S[c.org[i]], kind: KINDS[c.kind[i]] || 'person',
     unread: Boolean(c.bits[i] & 1), flagged: Boolean(c.bits[i] & 2), answered: Boolean(c.bits[i] & 4), sure: !(c.bits[i] & 8),
-    danger: c.danger[i] >= 0 ? S[c.danger[i]].split(' | ') : []
+    danger: c.danger[i] >= 0 ? S[c.danger[i]].split(' | ') : [], unsub: c.unsub && c.unsub[i] >= 0 ? S[c.unsub[i]] : ''
   }));
   return { account: j.account, folder: j.folder, uidvalidity: j.uidvalidity, filled: j.filled, total: j.total, rows };
 }
@@ -292,3 +300,51 @@ export function groupsText(cat, g, { by = 'org' } = {}) {
     + (g.more ? `\n…and ${g.more} smaller group${g.more === 1 ? '' : 's'}.` : '');
 }
 export const statusLine = (r) => `Catalog: ${r.have} of ${r.total} message${r.total === 1 ? '' : 's'} in this folder${r.left ? `, ${r.left} still to catalogue (ask again to go on)` : ''}.`;
+
+// ---------------------------------------------------------------- the clerk's work, by code (the owner, 16 Nov: "should
+// more be offloaded scripts and non-brain functionality?"). The brain only picks the job and explains the answer.
+const URGENT = /\b(urgent|asap|today|tonight|tomorrow|by (mon|tues|wednes|thurs|fri|satur|sun)day|deadline|overdue|due|this week|need to know|please reply|rsvp|répondre|rappel|échéance)\b/i;
+const ASKS = /\?|\b(can you|could you|would you|do you|are you|will you|let me know|what do you think|thoughts)\b/i;
+// Mail from people that may need an answer, most pressing first: a person (or a person at a bulk sender, marked), not
+// yet answered, in the last `days` days; scored on unread, a question, a date or "urgent" in the subject, and age.
+export function needsReply(cat, { days = 14, max = 15, now = Date.now() } = {}) {
+  const from = now - Math.max(1, Math.min(365, Number(days) || 14)) * DAY;
+  const rows = cat.rows.filter((r) => r.kind === 'person' && !r.answered && r.at >= from);
+  const score = (r) => (r.unread ? 3 : 0) + (URGENT.test(r.subject) ? 4 : 0) + (ASKS.test(r.subject) ? 2 : 0) + (r.flagged ? 2 : 0) + (!r.sure ? 1 : 0) - (now - r.at) / (7 * DAY);
+  const why = (r) => [URGENT.test(r.subject) && 'sounds time-bound', ASKS.test(r.subject) && 'asks you something', r.unread && 'unread', r.flagged && 'flagged', !r.sure && 'a person writing from a company that mostly sends bulk mail'].filter(Boolean).join(', ') || 'from a person, not answered yet';
+  const seen = new Set();
+  const out = rows.sort((a, b) => score(b) - score(a)).filter((r) => { const k = `${r.addr}|${r.subject}`; if (seen.has(k)) return false; seen.add(k); return true; });
+  return { list: out.slice(0, max).map((r) => ({ ...r, why: why(r) })), all: out.length };
+}
+export function needsReplyText(r, days) {
+  if (!r.list.length) return `No mail from people waiting for an answer in the last ${days} days.`;
+  return `${r.all} from people may need an answer (last ${days} days), most pressing first:\n${r.list.map((x, i) => `${i + 1}) id ${x.uid} · ${x.name || x.addr} <${x.addr}> · "${x.subject}" · ${day(x.at)} · ${x.why}`).join('\n')}${r.all > r.list.length ? `\n…and ${r.all - r.list.length} more.` : ''}`;
+}
+// Each mailing list's recent posts (subjects only), biggest first.
+export function listPosts(cat, { days = 14, perList = 8, now = Date.now() } = {}) {
+  const from = now - Math.max(1, Math.min(365, Number(days) || 14)) * DAY;
+  const by = new Map();
+  for (const r of cat.rows) if (r.kind === 'list' && r.at >= from) { const g = by.get(r.org) || []; g.push(r); by.set(r.org, g); }
+  return [...by].sort((a, b) => b[1].length - a[1].length).map(([org, rs]) => ({ org, name: rs.map((r) => r.name).find(Boolean) || org, count: rs.length, unread: rs.filter((r) => r.unread).length, posts: rs.slice(0, perList) }));
+}
+export function listPostsText(lists, days) {
+  if (!lists.length) return `No mailing list posts in the last ${days} days.`;
+  return lists.map((l) => `${l.name} (${l.org}): ${l.count} post${l.count === 1 ? '' : 's'}${l.unread ? `, ${l.unread} unread` : ''}\n${l.posts.map((p) => `  id ${p.uid} · "${p.subject}" · ${day(p.at)}`).join('\n')}`).join('\n');
+}
+// Senders with an unsubscribe link, the ones you never open first: how many, how many unread, and their own link.
+export function unsubscribeList(cat, { max = 20 } = {}) {
+  const by = new Map();
+  for (const r of cat.rows) {
+    if (!r.unsub || r.kind === 'person' || r.kind === 'scam') continue;
+    const g = by.get(r.org) || { org: r.org, name: '', count: 0, unread: 0, link: r.unsub, newest: 0 };
+    g.count++; if (r.unread) g.unread++; if (!g.name && r.name) g.name = r.name; if (r.at > g.newest) { g.newest = r.at; g.link = r.unsub; }
+    by.set(r.org, g);
+  }
+  const host = (u) => { try { return new URL(u).hostname.toLowerCase(); } catch { return ''; } };
+  return [...by.values()].map((g) => ({ ...g, never: g.unread / g.count, offsite: /^https:/i.test(g.link) && !host(g.link).endsWith(String(g.org).split('.').slice(-2).join('.')) }))
+    .sort((a, b) => b.never - a.never || b.count - a.count).slice(0, max);
+}
+export function unsubscribeText(list) {
+  if (!list.length) return 'No newsletters or offers with an unsubscribe link in the catalog.';
+  return list.map((g) => `${g.name || g.org} (${g.org}): ${g.count} message${g.count === 1 ? '' : 's'}, ${Math.round(g.never * 100)}% never opened · leave: ${g.link}${g.offsite ? ' (this link goes to another site: check it before you click)' : ''}`).join('\n');
+}

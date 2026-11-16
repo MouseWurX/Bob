@@ -147,7 +147,7 @@ export function digest(row, r) {
     `**Inbox:** ${inbox.size} messages (${inbox.flavour === 'gmail' ? 'Gmail' : 'Outlook.com'}).`, '', '**Steps:**',
     ...calls.map((c, i) => `${i + 1}. ${c.name} ${JSON.stringify(c.args || {}).slice(0, 300)}\n   -> ${String(c.result || '').replace(/\s+/g, ' ').slice(0, 500)}`), '',
     `**Changed in the mailbox:** ${Object.keys(row.mail.changed || {}).length} messages; drafts: ${(row.mail.drafts || []).map((d) => `to ${d.to}, "${d.subject}": ${d.text.replace(/\s+/g, ' ').slice(0, 400)}`).join(' | ') || 'none'}; new folders: ${(row.mail.made || []).join(', ') || 'none'}.`, '',
-    `**What Bob's window shows:**\n\n${row.said || '(nothing)'}`, '', `**Code's score:** ${JSON.stringify({ ...r, cost: undefined, id: undefined, inbox: undefined })}`, '',
+    `**What Bob's window shows:**\n\n${row.said || '(nothing)'}`, '', `**Code's score:** ${JSON.stringify({ ...r, cost: undefined, id: undefined, inbox: undefined, run: undefined, variant: undefined, effort: undefined })}`, '',
     'Grade: right / partly / failed / runner_error, and keep / fix / discard (keep only a clean run that could teach).'].join('\n');
 }
 

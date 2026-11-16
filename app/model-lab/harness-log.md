@@ -5,6 +5,20 @@ lab run, read why runs failed or were thrown out (harness errors, graders, test 
 fix what is the harness's fault before the next run, and add a check that would catch it again. Newest first. Each entry
 says what ran, what it taught, what changed, and which check now guards it. "Open" means found but not fixed yet.
 
+## 16 Nov 2026: inbox jobs, the Qwen "before" run read blind (120 runs, RTX 6000 Ada, about $1.66)
+- Ran: 120 of 120 (30 jobs x 4 efforts), 1 timeout, 0 decided by the test world. Opus read, blind: 10 right, 41
+  partly, 67 failed, 2 runner errors; 16 runs did harm. Full read: bob-wip/inbox-tests/mail-q/READ.md.
+- Taught (harness): every digest's "Code's score" line named the run (mail-q-maximus), so the read wasn't blind. The
+  sort job asked for Newsletters and Notices folders that no tool could make. read_email silently cut a search to 365
+  days while saying "in the last 800 day(s)", so the "old code" job couldn't be judged fairly.
+- Changed: digests drop the run name; manage_email move makes a folder the person named (shown on the card first);
+  read_email says when a search was cut to a year and how many messages it didn't show.
+- Check: run-mail-world-test "a digest never names the run or its effort"; run-mail-catalog-test checks the new folder
+  and the year/unshown notes.
+- Open (scorer): "danger" counts only scams, not plain spam; sort scores 0 when mail went to other folders; list posts
+  named by subject can score 0 (7f46cc); a count was off (84144a). Open (Bob): raw tool-call text left as the answer
+  (8 runs), review text shown to the user (6 runs).
+
 ## 16 Nov 2026: inbox jobs, Qwen four efforts (launched; nothing rented)
 - Taught: the inbox branch was cut before the RunPod v2 move, so its launcher asked the retired `rest.runpod.io/v1`
   ("fetch failed" every minute) and could never rent. A branch's pre-flight passed because that copy predates the v2

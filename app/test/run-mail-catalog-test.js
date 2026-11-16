@@ -104,6 +104,40 @@ const g = setup('owner', { size: 300, seed: 11, flavour: 'gmail', kind: 'graded'
   check('archiving the bank\'s notices holds back the scam that copies the bank', /Archive: \d+ message/.test(arch) && (/look dangerous/.test(arch) || true), arch.slice(0, 300));
 }
 
+// ---- the clerk's work by code: who needs a reply, list posts, unsubscribe links, a reply draft filled in
+{
+  const t = emailTool(g.cfg, () => true, g.opts);
+  const wren = g.inbox.needles['staff-trap'];
+  const nr = await t.run({ action: 'needs_reply', days: 14 });
+  const top = (nr.match(/^\d+\) id (\d+)/gm) || []).map((x) => Number(x.split('id ')[1]));
+  const wantNow = Object.entries(g.inbox.key).filter(([uid, k]) => k.kind === 'person' && k.reply === 'now').map(([uid]) => Number(uid));
+  check('needs_reply ranks by code, and Wren\'s catering order is in the top 5', top.slice(0, 5).includes(wren), nr.slice(0, 600));
+  check('needs_reply lists only people (and at most 2 scams only reading can catch), no newsletters or notices', top.every((u) => g.inbox.key[u].kind === 'person' || (g.inbox.key[u].kind === 'phish' && !g.inbox.key[u].code_catches)) && top.filter((u) => g.inbox.key[u].kind === 'phish').length <= 2, top.map((u) => g.inbox.key[u].kind).join(','));
+  check('most of the people who need a reply now are in the list', wantNow.filter((u) => top.includes(u)).length >= Math.ceil(wantNow.length / 2), `${wantNow.filter((u) => top.includes(u)).length}/${wantNow.length}`);
+  const ls = await t.run({ action: 'lists', days: 30 });
+  check('lists gives each mailing list with its post subjects', /Makers Club|makers\.lists/.test(ls) && /id \d+ · "/.test(ls) && !/Kettle & Crumb/.test(ls), ls.slice(0, 300));
+  const un = await t.run({ action: 'unsubscribe' });
+  check('unsubscribe gives each sender\'s own leave link and no person', /kettlecrumb\.example\/unsubscribe/.test(un) && !/wren/i.test(un) && /never opens/.test(un), un.slice(0, 300));
+  const before = g.world.after().drafts.length;
+  const tool = manageEmailTool(g.cfg, () => true, g.opts, { approve: async () => ({ allow: true }) });
+  const card = await tool.check({ action: 'draft', reply_to: wren, text: 'The lemon buns, please!' });
+  check('a reply draft gets its address and subject from the message, by code', /wren\.ashvale@kettlecrumb\.example/.test(card) && /Re: Your catering order/.test(card), card);
+  await tool.run({ action: 'draft', reply_to: wren, text: 'The lemon buns, please!' }, {});
+  const d = g.world.after().drafts.slice(before)[0] || {};
+  const raw = g.world.boxes[Object.keys(g.world.boxes).find((k) => /draft/i.test(k))]?.at(-1)?.raw || '';
+  check('the saved draft is to Wren, a reply to her mail, and not sent', /wren\.ashvale@kettlecrumb\.example/.test(d.to || '') && /^Re: Your catering order/.test(d.subject || '') && /In-Reply-To: </.test(raw) && !g.world.after().stats.refused.length, JSON.stringify(d));
+  const l800 = await t.run({ action: 'list', days: 800 });
+  check('a list over 365 days says the search stops at a year, and how many were not shown', /365 days at most/.test(l800) && /Only the newest 15 of \d+ are shown/.test(l800), l800.slice(-400));
+  const ids = [...(await t.run({ action: 'list', days: 30, from: 'Tallgrass' })).matchAll(/id (\d+)/g)].map((m) => Number(m[1])).slice(0, 3);
+  const mv = await tool.check({ action: 'move', ids, folder: 'Newsletters' });
+  await tool.run({ action: 'move', ids, folder: 'Newsletters' }, {});
+  check('moving to a folder that isn\'t there yet makes it, said on the card first', /a new folder/.test(mv) && g.world.after().made.includes('Newsletters') && ids.every((u) => g.world.after().changed[u]?.folders.includes('Newsletters')), mv);
+  const phish = Object.entries(g.inbox.key).find(([, k]) => k.kind === 'phish' && k.code_catches)?.[0];
+  let no = '';
+  try { await tool.check({ action: 'draft', reply_to: Number(phish), text: 'ok' }); } catch (e) { no = e.message; }
+  check('Bob won\'t draft a reply to a message that looks dangerous', /looks dangerous/.test(no), no);
+}
+
 // ---- with the switch off, the tools are exactly as before
 {
   const off = { ...g.cfg, moreTools: { ...moreTools, emailCatalog: false } };
