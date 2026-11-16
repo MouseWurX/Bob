@@ -10,7 +10,8 @@ import { esc } from './rich.js';
 const get = (u) => fetch(u).then((r) => r.json());
 const post = (u, d) => fetch(u, { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify(d) }).then(async (r) => { const data = await r.json().catch(() => ({})); if (!r.ok) throw new Error(data.error || 'That didn\'t work.'); return data; });
 const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
-const clock = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+// Nov 16: a time from another day says the day too, so "since 5:31 PM" can't read as later today.
+const clock = (t, now = new Date()) => { const d = new Date(t); const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); return d.toDateString() === now.toDateString() ? time : `${d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}, ${time}`; };
 export function fadeWords(minutes) {
   const m = Math.max(0, Math.round(Number(minutes) || 0));
   if (m && m % 1440 === 0) { const d = m / 1440; return d % 7 === 0 && d < 28 ? plural(d / 7, 'week') : plural(d, 'day'); }

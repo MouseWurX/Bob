@@ -4,6 +4,16 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.250
+
+Amnesia mode lets go again.
+
+### Fixed
+
+- **"Turn off and forget" works again.** A cancelled or failed task left in the Tasks list (they stay for a week) made me refuse to turn Amnesia mode off, so nothing got forgotten. Now only a task I'm running right now holds it up. The banner also says the day when Amnesia mode started on another day, so "since 5:31 PM" can't read as later today.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.249
 
 A much bigger brain catalogue, Turbo-ready copies of stock Qwen, and big expert brains you can download.
@@ -150,24 +160,6 @@ The Lab Lessons tell the true story, and the CS Lab gets its write-up.
 ### Fixed
 
 - **Lab Lessons: the Real result panels are fact-checked.** The coding race now reads v1 8, v2 6, re-cut 9 and full Qwen 12, with a note that the cut brains kept 208 experts and the re-cut 176. A panel with an unchecked overlap figure is gone.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.240
-
-Tool shapes are locked for GPT-OSS and Qwen, the Lab console is complete, and a security update underneath.
-
-### Fixed
-
-- **Security:** my window runs on Electron 44.10.1 (was 44.9.0), and an old file-matching library in the build tools is replaced with its fixed version. The security audit now finds nothing.
-- **Installing an engine into a folder with a space in its name** (like Program Files) works. The installer was given the path without quotes, so Windows refused it with error 1639.
-
-### New
-
-- **Tool shapes locked for GPT-OSS and Qwen.** GPT-OSS keeps my own tool names and wording, which beat every other wording in its tests; list_folder and search_files now say clearly which is which. Qwen brains no longer see tools they used wrongly (ask_specialist, pick_session), and nothing points them to a tool they can't see. The tool record starts fresh for the new shapes.
-- **run_command won't write files.** A command that only writes a file (like `echo > notes.txt`) is turned away before it runs, with a pointer to write_file. Programs that write their own output still run.
-- **The Lab console is complete.** Every Lab job is a form in Set up, plus Pipelines, the rented-run form (only the purchase card rents), Rented cards (Look, Take over, End it), Use Bob's brain, and Lab job logs in the Server panel.
-- **Lab:** a stricter lesson teacher and first filter, the lesson sandbox gets Bob's notice board, memory and logbook, an optional LibreOffice for office lessons, and step-by-step thinking for GPT-OSS heal lessons, and a fairer tool judge (looking first is fine when the action is right).
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 
