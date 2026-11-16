@@ -56,6 +56,7 @@
     "test/run-lab-recipes-test.js",
     "test/run-forge-gptoss-test.js",
     "test/run-forge-bench-empty-test.js",
+    "test/run-forge-runpod-v2-test.js",
     "test/run-loop-test-real-test.js",
     "test/run-do-jobs-test.js",
     "test/run-jobs-selftest-test.js",

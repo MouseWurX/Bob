@@ -193,13 +193,13 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   const rest = http.createServer((q, r) => { let b = ''; q.on('data', (d) => (b += d)); q.on('end', () => {
     if (q.method === 'PATCH') patched = JSON.parse(b);
     r.writeHead(200, { 'content-type': 'application/json' });
-    r.end(JSON.stringify({ id: 'podx', publicIp: '127.0.0.1', portMappings: mapped ? { 8000: 1, 8001: brain.address().port } : {} })); }); });
+    r.end(JSON.stringify({ id: 'podx', status: 'RUNNING', runtime: { ports: mapped ? [{ private: 8000, public: 1, type: 'tcp', ip: '127.0.0.1' }, { private: 8001, public: brain.address().port, type: 'tcp', ip: '127.0.0.1' }] : [] } })); }); }); // RunPod v2's pod record (16 Nov)
   await new Promise((res) => rest.listen(0, '127.0.0.1', res));
   const fo = path.join(tmp, 'forge-out'); fs.mkdirSync(path.join(fo, 'forge'), { recursive: true });
   const les = path.join(tmp, 'forge-lessons'); fs.mkdirSync(les); fs.writeFileSync(path.join(les, 'lessons.jsonl'), '\n'); fs.writeFileSync(path.join(les, 'toolsets.json'), '{}'); fs.writeFileSync(path.join(les, 'counts.json'), '{}');
   const pf = path.join(tmp, 'direct-plan.json'); fs.writeFileSync(pf, JSON.stringify({ run: 'directtest', direct: true, rungs: [], lessons: les, counts_file: path.join(les, 'counts.json'), benchmark: { models: [] } }));
   fs.writeFileSync(path.join(fo, 'forge', 'pod-token-directtest.json'), JSON.stringify({ pod: 'podx', token: 't', started: Date.now(), price: 1 }));
-  const runForge = (extra) => new Promise((res) => { const c = spawn(process.execPath, [path.join(lab, 'forge', 'forge.mjs'), ...extra, '--plan', pf], { stdio: 'pipe', env: { ...process.env, RUNPOD_API_KEY: 'k', FORGE_REST: `http://127.0.0.1:${rest.address().port}/v1`, FORGE_OUT: fo } }); let o = ''; c.stdout.on('data', (d) => (o += d)); c.stderr.on('data', (d) => (o += d)); c.on('exit', (code) => res({ code, o })); });
+  const runForge = (extra) => new Promise((res) => { const c = spawn(process.execPath, [path.join(lab, 'forge', 'forge.mjs'), ...extra, '--plan', pf], { stdio: 'pipe', env: { ...process.env, RUNPOD_API_KEY: 'k', FORGE_REST: `http://127.0.0.1:${rest.address().port}/v2`, FORGE_OUT: fo } }); let o = ''; c.stdout.on('data', (d) => (o += d)); c.stderr.on('data', (d) => (o += d)); c.on('exit', (code) => res({ code, o })); });
   const u1 = await runForge(['--urls', 'podx']);
   check('plan.direct: --urls prints the direct brain address from the pod record (for a hand-run writer\'s LAB_URL)', u1.code === 0 && u1.o.includes(`set LAB_URL=http://127.0.0.1:${brain.address().port}`), u1.o.slice(-300));
   mapped = false; const u2 = await runForge(['--urls', 'podx']);
