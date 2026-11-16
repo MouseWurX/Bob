@@ -2,8 +2,9 @@
 // comes apart when it's let go. By default it glows for show while Bob thinks: made-up picks in the theme's colour,
 // drawn about 14 times a second, and the engine is never asked for anything, so replies are as fast as without it.
 // With Real experts on it listens to /api/events?cube=1&live=1, and only then does Bob ask Brain Engine for the trace
-// (public/lab-watch-math.js liveTrace has the shape), which slows his replies. The real picture arrives when a reply is
-// finished and is then played word by word; nothing is saved. The same drawing as the big viewer (watch-view.js).
+// (public/lab-watch-math.js liveTrace has the shape), which slows his replies. On Brain Engine 5 and later the picks
+// come word by word while he writes ('trace-part'); older engines send them when the reply is finished, and the cube
+// plays them back word by word. Nothing is saved. The same drawing as the big viewer (watch-view.js).
 import { createView } from './watch-view.js';
 import { createFog } from './fog.js';
 import { specialise, liveRecording, partOf, PART_LABEL, say, NAME, mapLook, litSkills, lookOf, LOAD_STYLES, loadStyle, UNLOAD_STYLES, unloadStyle } from './lab-watch-math.js';
