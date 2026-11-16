@@ -361,7 +361,8 @@ function lessonPreflight() {
   const bad = [], warn = [];
   const q = (v) => `"${String(v).replace(/"/g, '')}"`;
   const cmds = [];
-  for (const m of plan.benchmark?.models || []) for (const c of (m.commands?.length ? m.commands : plan.benchmark?.commands || [])) if (/(write-lessons|do-jobs)\.mjs/.test(c)) cmds.push([m, c]);
+  // 16 Nov: a jobs gate between two job runs (jobs-gate.mjs) is checked too (its key and folder), though it needs no --hours
+  for (const m of plan.benchmark?.models || []) for (const c of (m.commands?.length ? m.commands : plan.benchmark?.commands || [])) if (/(write-lessons|do-jobs|jobs-gate)\.mjs/.test(c)) cmds.push([m, c]);
   for (const w of plan.write_lessons ? (Array.isArray(plan.write_lessons) ? plan.write_lessons : [plan.write_lessons]) : []) if (w.from_ideas) bad.push(`plan.write_lessons (${w.dir}) has no pre-flight yet: use benchmark commands`);
   if (!cmds.length) return bad;
   if (!(Number(plan.hours_max) > 0) || !(Number(plan.dollars_max) > 0) || !(Number(plan.rent_minutes) > 0)) bad.push('hours_max, dollars_max and rent_minutes must all be set (blank caps fall back to 9 h / $40)');
@@ -370,15 +371,15 @@ function lessonPreflight() {
     const slots = Math.max(1, Number(m.slots) || 1), slotCtx = Math.floor((Number(m.ctx) || 32768) / slots);
     const par = Number((c.match(/--parallel\s+(\d+)/) || [])[1] || 1), hrs = Number((c.match(/--hours\s+([\d.]+)/) || [])[1] || 0);
     hoursSum += hrs;
-    if (!(hrs > 0)) bad.push(`${m.name} command ${i + 1} has no --hours`);
+    if (!(hrs > 0) && !/jobs-gate\.mjs/.test(c)) bad.push(`${m.name} command ${i + 1} has no --hours`);
     if (par > slots) bad.push(`${m.name} command ${i + 1}: --parallel ${par} but the card serves ${slots} slot(s)`);
     if (/--gate\s+off/.test(c)) bad.push(`${m.name} command ${i + 1}: --gate off (every rental starts with a sample)`);
     const cmd = `${c.replace(/{{url}}/g, 'http://preflight.invalid').replace(/{{name}}/g, m.name).replace(/"?{{out}}"?/g, q(path.join(outDir, 'bench', plan.run || 'run', m.name))).replace(/"?{{lessons}}"?/g, q(path.join(outDir, 'lessons'))).replace(/{{run}}/g, plan.run || 'run')} --preflight --slot-ctx ${slotCtx}`;
     log(`pre-flight ${m.name} command ${i + 1} (${slots} slot(s) of ${slotCtx}):`);
     const r = spawnSync(cmd, { cwd: path.join(here, '..'), shell: true, encoding: 'utf8', windowsHide: true, env: { ...process.env, LAB_REMOTE: '1', LAB_MODEL_NAME: m.name } });
-    const out = `${r.stdout || ''}${r.stderr || ''}`.replace(/\r\n/g, '\n').split('\n').filter((ln) => /pre-flight|PRE-FLIGHT|room per slot|ideas file|GGUF|Error|error/.test(ln));
+    const out = `${r.stdout || ''}${r.stderr || ''}`.replace(/\r\n/g, '\n').split('\n').filter((ln) => /pre-flight|PRE-FLIGHT|GATE STOP|room per slot|ideas file|GGUF|Error|error/.test(ln));
     for (const ln of out) log(`  ${ln.slice(0, 300)}`);
-    if (r.status !== 0) bad.push(`${m.name} command ${i + 1}: ${(out.find((ln) => /PRE-FLIGHT FAIL|rror/.test(ln)) || `exit ${r.status}`).replace(/^PRE-FLIGHT FAIL: /, '').slice(0, 200)}`);
+    if (r.status !== 0) bad.push(`${m.name} command ${i + 1}: ${(out.find((ln) => /PRE-FLIGHT FAIL|GATE STOP|rror/.test(ln)) || `exit ${r.status}`).replace(/^(?:PRE-FLIGHT FAIL|GATE STOP): /, '').slice(0, 200)}`);
   }
   if (Number(plan.hours_max) > 0 && hoursSum + 0.5 > Number(plan.hours_max)) warn.push(`the commands' --hours add up to ${hoursSum} h; with about 0.5 h of start-up that passes the ${plan.hours_max} h cap, so the last one is cut short (it resumes next time)`);
   for (const w of warn) log(`pre-flight note: ${w}`);

@@ -1,0 +1,75 @@
+// 16 Nov 2026: jobs-gate.mjs (the owner: "dont have the server shut down this time, if everything passes we are going for a
+// longer run"). It reads a finished do-jobs folder and lets the longer run go on only when the short one was clean; a stop
+// is exit 86, which makes the Forge delete the pod. Fake runs only: the Lab PC's user, PC name and words are passed in.
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+let pass = 0, fail = 0;
+const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
+const app = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const { tally, gate, privateIn, STOP } = await import(pathToFileURL(path.join(app, 'model-lab', 'jobs-gate.mjs')).href);
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jobs gate '));
+const KEY = 'tvly-FAKEgate0123456789abcd';
+const ME = { user: 'qwertyjo', host: 'TESTBOX-77', words: ['Zanzibarian'] };
+
+const row = (i, o = {}) => ({ id: `j${i}`, text: `job ${i}`, said: 'Done.', tool_shapes: 4, scene: { made: 'new', files: ['C:\\Users\\you\\Documents\\a.txt'], problems: [] },
+  steps: [{ calls: [{ name: 'web_search', result: '1. Fox - https://example.com/fox\nFoxes are dogs.' }, { name: 'read_file', result: 'mail sam.lee@acme.com, C:\\Users\\Alice\\notes.txt, sk_live_0123456789abcdefABCDEF' }] }], ...o });
+const folder = (name, rows) => { const d = path.join(tmp, name); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, 'runs.jsonl'), rows.map((r) => JSON.stringify(r)).join('\n') + '\n'); return d; };
+const cli = (name, extra = [], env = {}) => spawnSync(process.execPath, ['jobs-gate.mjs', '--out', tmp, '--dir', name, '--runs', '45', '--want-shapes', '4', '--user', ME.user, '--host', ME.host, '--words', ME.words.join(','), ...extra],
+  { cwd: path.join(app, 'model-lab'), encoding: 'utf8', env: { ...process.env, LAB_TAVILY_KEY: KEY, ...env } });
+
+const clean = Array.from({ length: 45 }, (_, i) => row(i));
+folder('clean', clean);
+const ok = cli('clean', ['--search', 'tavily']);
+check('a clean run 3 passes: exit 0, GATE.md and gate.json written', ok.status === 0 && /GATE PASS/.test(ok.stdout) && fs.existsSync(path.join(tmp, 'clean', 'GATE.md')) && JSON.parse(fs.readFileSync(path.join(tmp, 'clean', 'gate.json'), 'utf8')).ok === true, ok.stdout.slice(-300) + ok.stderr);
+check("a job's own test world (example e-mail, someone else's folder, a made-up key) is not taken for the Lab's private things", /Private things found: 0/.test(ok.stdout), ok.stdout.slice(-300));
+
+folder('short', clean.slice(0, 30));
+const sh = cli('short');
+check('too few runs: stop with code 86 and a GATE STOP line the Forge reads', sh.status === STOP && /GATE STOP: only 30 of 45 jobs ran \(needs 41\)/.test(sh.stdout), sh.stdout.slice(-300));
+
+folder('blocked', clean.map((r, i) => (i < 30 ? row(i, { steps: [{ calls: [{ name: 'web_search', result: 'No results (or the search pages changed). Try different words.' }] }] }) : r)));
+const bl = cli('blocked');
+check('searches that came back empty stop it', bl.status === STOP && /only 15 of 45 web searches came back with results/.test(bl.stdout), bl.stdout.slice(-300));
+
+folder('quiet', clean.map((r, i) => (i < 8 ? { ...r, said: '', error: 'took too long' } : i < 14 ? { ...r, scene: { problems: ['scene not made: llama-server 500'] } } : r)));
+const q = tally(JSON.parse(`[${fs.readFileSync(path.join(tmp, 'quiet', 'runs.jsonl'), 'utf8').trim().split('\n').join(',')}]`), { wantShapes: 4 });
+const qg = gate(path.join(tmp, 'quiet'), { runs: 45, wantShapes: 4, private: ME });
+check('runs without words, with errors or with no test world are counted and stop it', q.said === 37 && q.errors === 8 && q.noScene === 6 && !qg.ok && qg.fails.some((f) => /37 of 45 runs answered/.test(f)) && qg.fails.some((f) => /8 of 45 runs ended with an error/.test(f)) && qg.fails.some((f) => /6 of 45 jobs got no test world/.test(f)), JSON.stringify(qg.fails));
+
+folder('shapes', clean.map((r, i) => (i === 3 ? { ...r, tool_shapes: 2 } : r)));
+check('a run on other tool shapes stops it', !gate(path.join(tmp, 'shapes'), { runs: 45, wantShapes: 4, private: ME }).ok);
+
+for (const [name, leak, what] of [['key', KEY, "the Lab's search key"], ['user', 'C:\\Users\\qwertyjo\\Desktop', 'the user name'], ['host', '\\\\TESTBOX-77\\share', 'the PC name'], ['word', 'ask the Zanzibarian team', 'private words']]) {
+  folder(name, clean.map((r, i) => (i === 9 ? { ...r, said: `Saved it. ${leak}` } : r)));
+  const g = cli(name, ['--search', 'tavily']);
+  const md = fs.readFileSync(path.join(tmp, name, 'GATE.md'), 'utf8');
+  check(`something private in a saved file stops it (${what}), and the report never repeats it`, g.status === STOP && g.stdout.includes(what) && ![g.stdout, md, fs.readFileSync(path.join(tmp, name, 'gate.json'), 'utf8')].some((t) => t.includes(KEY) || t.includes('qwertyjo') || t.includes('TESTBOX-77') || t.includes('Zanzibarian')), g.stdout.slice(-300));
+}
+check('privateIn looks in every file of the folder, scenes too', (() => { const d = folder('scenes', clean); fs.writeFileSync(path.join(d, 'scenes.jsonl'), JSON.stringify({ id: 'j1', scene: { files: [{ path: 'C:\\Users\\qwertyjo\\a.txt' }] } }) + '\n'); return privateIn(d, ME).length === 1; })());
+
+const pf = cli('not-yet', ['--search', 'tavily', '--preflight', '--slot-ctx', '32768']);
+const pfNoKey = cli('not-yet', ['--search', 'tavily', '--preflight'], { LAB_TAVILY_KEY: '' });
+check("pre-flight: passes before the run (the folder doesn't exist yet) once the key opens; without a key it stops", pf.status === 0 && /gate pre-flight OK/.test(pf.stdout) && pfNoKey.status === STOP && /GATE STOP: the Lab's Tavily key can't be opened/.test(pfNoKey.stdout), pf.stdout + pfNoKey.stdout);
+const none = cli('missing');
+check('a folder with no runs stops it', none.status === STOP && /no runs in the folder/.test(none.stdout), none.stdout.slice(-200));
+
+// forge.mjs runs the gate's own pre-flight with the plan's other commands before it rents anything
+{ const W = (f, t) => { const p = path.join(tmp, f); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, t); return p; };
+  W('fl/lessons.jsonl', '{}\n'); W('fl/toolsets.json', '{}');
+  const gateCmd = `node jobs-gate.mjs --out "${tmp}" --dir later --runs 45 --want-shapes 4 --search tavily --user ${ME.user} --host ${ME.host} --words ${ME.words[0]}`;
+  const planF = W('plan.json', JSON.stringify({ run: 'pf-gate', benchmark_only: true, lessons: path.join(tmp, 'fl'), counts_file: W('fc.json', '{}'), rungs: [], hours_max: 2, dollars_max: 2, rent_minutes: 30, benchmark: { models: [{ name: 'flashnext-jobs', slots: 2, ctx: 65536, commands: [gateCmd] }] } }));
+  const forge = (env) => spawnSync(process.execPath, ['forge/forge.mjs', '--plan', planF, '--preflight'], { cwd: path.join(app, 'model-lab'), encoding: 'utf8', env: { ...process.env, FORGE_OUT: path.join(tmp, 'fout'), RUNPOD_API_KEY: 'none-in-tests', ...env } });
+  const good = forge({ LAB_TAVILY_KEY: KEY }), bad = forge({ LAB_TAVILY_KEY: '' });
+  check('forge pre-flight: the gate needs no --hours and passes when its key opens', good.status === 0 && /gate pre-flight OK/.test(good.stdout) && /pre-flight OK: nothing rented/.test(good.stdout), (good.stdout + good.stderr).slice(-400));
+  check("forge pre-flight: a gate that couldn't check for the key stops the rental", bad.status === 1 && /PRE-FLIGHT FAIL: flashnext-jobs command 1: the Lab's Tavily key can't be opened/.test(bad.stdout) && /Not renting/.test(bad.stdout), bad.stdout.slice(-400));
+  const plan = JSON.parse(fs.readFileSync(path.join(app, 'model-lab', 'forge', 'plans', 'jobs-flashnext-run3-long.json'), 'utf8'));
+  const cmds = plan.benchmark.models[0].commands;
+  check('the run 3 + longer run plan: run 3, the gate, then 800 fix-list jobs on the same brain, all under 7 h / $40', cmds.length === 3 && /--dir jobs-trial3 --count 45/.test(cmds[0]) && /^node jobs-gate\.mjs --dir jobs-trial3 --runs 45/.test(cmds[1]) && /jobs-fix\/jobs\.jsonl --dir jobs-fix1 --count 800/.test(cmds[2]) && cmds.every((c, i) => i === 1 || /--search tavily --search-month 1000/.test(c)) && plan.hours_max === 7 && plan.dollars_max === 40 && 0.5 + 5.6 + 0.5 <= plan.hours_max, JSON.stringify(cmds)); }
+
+fs.rmSync(tmp, { recursive: true, force: true });
+console.log(`\n${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);

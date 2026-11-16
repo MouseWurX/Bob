@@ -40,3 +40,19 @@ export async function tavilyCheck(key, { url = process.env.LAB_TAVILY_URL || 'ht
     return { ok: r.ok, status: r.status, results };
   } catch (e) { return { ok: false, status: 0, why: e?.name === 'TimeoutError' ? 'no answer in 30 s' : "couldn't reach Tavily" }; }
 }
+
+// 16 Nov (the owner: a longer run after run 3; Tavily's free plan is 1,000 searches a month): what Tavily says this key has
+// used this month and its limit, from its usage page (no search spent). { ok, used, limit } or { ok: false, why }: only
+// the two numbers are kept, never the body. The run then counts its own searches against what's left (do-jobs --search-max).
+export async function tavilyUsage(key, { url = process.env.LAB_TAVILY_URL || 'https://api.tavily.com', fetchFn = fetch } = {}) {
+  try {
+    const r = await fetchFn(`${url.replace(/\/+$/, '')}/usage`, { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(30000) });
+    if (!r.ok) return { ok: false, status: r.status, why: `error ${r.status}` };
+    const j = await r.json().catch(() => null);
+    const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    // a key with its own limit counts against that; otherwise the account's plan does
+    const k = j?.key || {}, a = j?.account || {};
+    const limit = num(k.limit) ?? num(a.plan_limit), used = num(k.limit) !== null ? num(k.usage) : num(a.plan_usage) ?? num(k.usage);
+    return limit !== null && used !== null ? { ok: true, used, limit } : { ok: false, status: r.status, why: 'the usage page answered in a shape this Lab does not know' };
+  } catch (e) { return { ok: false, status: 0, why: e?.name === 'TimeoutError' ? 'no answer in 30 s' : "couldn't reach Tavily" }; }
+}

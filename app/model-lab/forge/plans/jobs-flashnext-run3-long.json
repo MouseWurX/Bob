@@ -1,0 +1,58 @@
+{
+ "run": "jobs-run3-long",
+ "note": "16 Nov: one rental, two runs (the owner: \"dont have the server shut down this time, if everything passes we are going for a longer run\", \"bring our set up to about 1000, so roughly 800 jobs\"). Run 3: the same 45 jobs as jobs-trial2, now each in its own test world (scenes.mjs: Flash-Next first writes the files, folders, board lists and memory the request takes for granted), folders outside the home mirrored, the Hands that would act on the real PC off, and web search through Bob's own web_search with the Lab's Tavily key behind it. Then jobs-gate.mjs reads run 3 on this PC: too few answers, errors, missing test worlds, searches without results or anything private in the saved files stop the run (code 86) and the pod is deleted. If it passes, the same served brain does 800 jobs from the fix list (fix-to-jobs.mjs, mixed by kind, run 3's asks left out). Every search counts against the Lab's 1,000 free Tavily searches this month (--search-month); no new job starts when about 10 are left. When the commands finish, the pod is deleted. Every run is kept in full for Opus 5.5 to read. H200, 2 jobs at a time. Caps 7 h / $40.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.8-Flash-Next",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA H200",
+  "NVIDIA H200 NVL"
+ ],
+ "step_up": [],
+ "disk_gb": 170,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 7,
+ "dollars_max": 40,
+ "rent_minutes": 30,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one brain: Qwen3.8-Flash-Next doing real jobs, 2 at a time: run 3 (45), the gate, then 800 from the fix list.",
+  "hours_each": 6.6,
+  "models": [
+   {
+    "name": "flashnext-jobs",
+    "nickname": "Qwen3.8-Flash-Next 125B, doing Bob's jobs",
+    "file": "hf:unsloth/Qwen3.8-Flash-Next-GGUF:UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+    "quant": "UD-Q4_K_XL",
+    "slots": 2,
+    "ctx": 65536,
+    "extra": "",
+    "hours": 6.6,
+    "commands": [
+     "node do-jobs.mjs --url {{url}} --bob .. --never ../../bob-model-lab/out/jobs-trial/never --parallel 2 --want-shapes 4 --max 4096 --job-minutes 8 --scene make --search tavily --search-month 1000 --jobs ../../bob-model-lab/out/jobs-trial/ideas.jsonl --dir jobs-trial3 --count 45 --hours 0.5 --search-probe",
+     "node jobs-gate.mjs --dir jobs-trial3 --runs 45 --want-shapes 4 --search tavily",
+     "node do-jobs.mjs --url {{url}} --bob .. --never ../../bob-model-lab/out/jobs-trial/never --parallel 2 --want-shapes 4 --max 4096 --job-minutes 8 --scene make --search tavily --search-month 1000 --jobs ../../bob-model-lab/out/jobs-fix/jobs.jsonl --dir jobs-fix1 --count 800 --hours 5.6"
+    ]
+   }
+  ]
+ },
+ "prep": [
+  "Inputs: bob-model-lab/out/jobs-trial/ideas.jsonl (run 3's 45 jobs, asks only), bob-model-lab/out/jobs-fix/jobs.jsonl (fix-to-jobs.mjs from the 2,341-row to-fix list: first requests only, mixed by kind, run 3's asks and anything private of this PC's left out) and bob-model-lab/out/jobs-trial/never/ (copies of the held-out test files named in forge/never-taught.json).",
+  "--want-shapes 4 stops the run before renting if this copy's tools are any other shape.",
+  "--search tavily needs the Lab's key, saved with the double-click 'Save Tavily key for the Lab.cmd' (encrypted for that Windows account; never printed or saved by the run). --search-probe stops pre-flight if Bob's web_search answers nothing. --search-month 1000: the Lab's own count of this month's searches is kept in out/tavily-searches-<month>.json.",
+  "The gate reads bob-model-lab/private-words.txt in this copy (copied from the Lab's own list on this PC, never in the repository) to look for private words in run 3's files."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20
+}

@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -19,6 +19,7 @@ let busy = 0, most = 0; const offered = new Set(); let sceneAsks = 0, leaked = '
 const call = (name, args, think = '') => ({ choices: [{ message: { role: 'assistant', content: '', reasoning_content: think, tool_calls: [{ id: 'c1', type: 'function', function: { name, arguments: JSON.stringify(args) } }] } }], usage: { completion_tokens: 12, prompt_tokens: 900 } });
 const say = (t, think = '') => ({ choices: [{ message: { role: 'assistant', content: t, reasoning_content: think } }], usage: { completion_tokens: 5, prompt_tokens: 950 } });
 const KEY = 'tvly-FAKE0123456789abcdef'; let tavilyHits = 0, keyToBrain = false;
+let usage = null; // what the stand-in Tavily's usage page says (null: it has none)
 const srv = http.createServer((req, res) => {
   if (req.url.startsWith('/props')) { res.end(JSON.stringify({ chat_template: '' })); return; }
   if (req.url.startsWith('/tavily/search')) { // a stand-in Tavily that echoes the key back, so any leak would show
@@ -27,6 +28,7 @@ const srv = http.createServer((req, res) => {
     res.statusCode = okKey ? 200 : 401; res.setHeader('content-type', 'application/json');
     res.end(JSON.stringify(okKey ? { results: [{ title: 'Weather', url: 'https://example.com', content: `echo ${KEY}` }] } : { detail: { error: `bad key ${req.headers.authorization}` } })); return;
   }
+  if (req.url.startsWith('/tavily/usage')) { req.resume(); res.statusCode = usage ? 200 : 404; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(usage || {})); return; }
   let b = ''; req.on('data', (d) => (b += d)); req.on('end', async () => {
     if (b.includes(KEY)) keyToBrain = true;
     busy++; most = Math.max(most, busy); await new Promise((r) => setTimeout(r, 40));
@@ -70,6 +72,9 @@ const srv = http.createServer((req, res) => {
     } else if (/picture/.test(ask)) {
       if (last.role === 'tool') out = say('Here is your fox picture.', 'It is made.');
       else out = names.includes('make_image') ? call('make_image', { prompt: 'a fox' }, 'Draw it.') : call('use_tools', { group: 'pictures' }, 'I need the picture tools.');
+    } else if (/fox facts/.test(ask)) {
+      const n = msgs.filter((m) => m.role === 'tool').length;
+      out = n < 2 && names.includes('web_search') ? call('web_search', { query: `fox facts ${n + 1}` }, 'Look it up.') : say('Foxes are small wild dogs.', 'Enough looking.');
     } else out = say('Hello.', 'Say hi.');
     busy--; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(out));
   });
@@ -88,8 +93,14 @@ fs.writeFileSync(jobs, [
 const jobs2 = path.join(tmp, 'ideas2.jsonl');
 fs.writeFileSync(jobs2, JSON.stringify({ id: 'a7', job: 'files', text: 'Read the files in C:\\Temp, then check my Work Tasks list.' }) + '\n');
 fs.writeFileSync(held, JSON.stringify({ id: 'h1', question: 'this exact request is a test item' }) + '\n');
+// the web pages a search would reach answer nothing here (no test goes online); the stand-in servers still answer
+const offline = path.join(tmp, 'offline.mjs');
+fs.writeFileSync(offline, "const real = globalThis.fetch;\nglobalThis.fetch = async (u, o) => (/^https?:\\/\\/(127\\.0\\.0\\.1|localhost)[:/]/.test(String(u?.url ?? u)) ? real(u, o) : new Response('', { status: 200, headers: { 'content-type': 'text/html' } }));\n");
+const jobs3 = path.join(tmp, 'ideas3.jsonl');
+fs.writeFileSync(jobs3, [{ id: 'w1', job: 'web', text: 'find me some fox facts' }, { id: 'w2', job: 'chat', text: 'tell me a joke' }, { id: 'w3', job: 'chat', text: 'tell me a story' }].map((x) => JSON.stringify(x)).join('\n') + '\n');
+const ledger = path.join(tmp, `tavily-searches-${new Date().toISOString().slice(0, 7)}.json`);
 const run = (extra, { jobsFile = jobs, dir = 'trial', env = {} } = {}) => new Promise((ok) => {
-  const ch = spawn(process.execPath, ['do-jobs.mjs', '--url', url, '--bob', app, '--out', tmp, '--dir', dir, '--jobs', jobsFile, '--never', held, '--parallel', '2', ...extra], { cwd: path.join(app, 'model-lab'), env: { ...process.env, LAB_API_KEY: 'k', LAB_URL: '', LAB_TAVILY_KEY: '', LAB_TAVILY_URL: `${url}/tavily`, ...env } });
+  const ch = spawn(process.execPath, ['--import', pathToFileURL(offline).href, 'do-jobs.mjs', '--url', url, '--bob', app, '--out', tmp, '--dir', dir, '--jobs', jobsFile, '--never', held, '--parallel', '2', ...extra], { cwd: path.join(app, 'model-lab'), env: { ...process.env, LAB_API_KEY: 'k', LAB_URL: '', LAB_TAVILY_KEY: '', LAB_TAVILY_URL: `${url}/tavily`, ...env } });
   let log = ''; ch.stdout.on('data', (d) => (log += d)); ch.stderr.on('data', (d) => (log += d));
   const t = setTimeout(() => { ch.kill(); ok({ code: -1, log }); }, 180000); ch.on('exit', (code) => { clearTimeout(t); ok({ code, log }); });
 });
@@ -113,6 +124,11 @@ const tk = await run(['--preflight', '--search', 'tavily'], { env: { LAB_TAVILY_
 const tkRun = await run(['--search', 'tavily', '--scene', 'make'], { jobsFile: jobs2, dir: 'tavily1', env: { LAB_TAVILY_KEY: KEY } });
 const tkBad = await run(['--preflight', '--search', 'tavily'], { env: { LAB_TAVILY_KEY: 'tvly-WRONG0123456789abcd' } });
 const tkNone = await run(['--preflight', '--search', 'tavily']);
+usage = { key: { usage: 3, limit: null }, account: { current_plan: 'Researcher', plan_usage: 995, plan_limit: 1000 } };
+const mU = await run(['--preflight', '--search', 'tavily', '--search-month', '1000'], { env: { LAB_TAVILY_KEY: KEY } });
+usage = null; fs.writeFileSync(ledger, JSON.stringify({ used: 987 }));
+const mL = await run(['--search', 'tavily', '--search-month', '1000', '--search-gap', '0', '--parallel', '1'], { jobsFile: jobs3, dir: 'budget1', env: { LAB_TAVILY_KEY: KEY } });
+const ledgerAfter = JSON.parse(fs.readFileSync(ledger, 'utf8')).used;
 srv.close();
 const rows = fs.readFileSync(path.join(tmp, 'trial', 'runs.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 const by = Object.fromEntries(rows.map((x) => [x.id, x]));
@@ -150,6 +166,11 @@ check('pre-flight checks the Lab\'s Tavily key with one search and passes', tk.c
 check('a key Tavily refuses stops pre-flight; no key at all says how to add one', tkBad.code === 1 && /Tavily refused the saved key \(error 401\)/.test(tkBad.log) && tkNone.code === 1 && /LAB_TAVILY_KEY|Save Tavily key/.test(tkNone.log), tkBad.log.slice(-200) + tkNone.log.slice(-200));
 { const files = ['tavily1/runs.jsonl', 'tavily1/scenes.jsonl', 'tavily1/summary.md'].map((f) => path.join(tmp, f)).filter((f) => fs.existsSync(f)).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
   check('the key never shows: not in anything printed, saved, or sent to the brain (a wrong key neither)', tkRun.code === 0 && files.length > 0 && ![tk.log, tkRun.log, tkBad.log, tkNone.log, files].some((x) => x.includes(KEY) || x.includes('tvly-WRONG')) && !keyToBrain, [tk.log, tkRun.log, tkBad.log].find((x) => x.includes('tvly-')) || ''); }
+{ const rows3 = fs.existsSync(path.join(tmp, 'budget1', 'runs.jsonl')) ? fs.readFileSync(path.join(tmp, 'budget1', 'runs.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
+  const searched = rows3[0] ? rows3[0].steps.flatMap((st) => st.calls).filter((c) => c.name === 'web_search').length : 0;
+  check("pre-flight: Tavily's usage page says the month is nearly used, so nothing runs", mU.code === 1 && /995 of 1000 searches used/.test(mU.log) && /no web searches are left this month/.test(mU.log), mU.log.slice(-300));
+  check("the Lab's own count: once this month's searches are used, no new job starts and the rest wait", mL.code === 0 && rows3.length === 1 && rows3[0].id === 'w1' && searched === 2 && /no new job starts; 2 wait for the next run/.test(mL.log) && /Stopped early: this month's search budget was used/.test(fs.readFileSync(path.join(tmp, 'budget1', 'summary.md'), 'utf8')), mL.log.slice(-500));
+  check('every search is counted on the Lab PC, the key check too (987 + 1 + 2)', ledgerAfter === 990, String(ledgerAfter)); }
 const again = await run([]);
 check('a second start picks up where it stopped (nothing run twice)', /nothing to run/.test(again.log) || /0 to go/.test(again.log), again.log.slice(-200));
 fs.rmSync(tmp, { recursive: true, force: true });

@@ -16,7 +16,7 @@ const imp = (f) => import(pathToFileURL(path.join(app, f)).href);
 const { parseScene, plantScene, sceneCache, fullPath } = await imp('model-lab/scenes.mjs');
 const sf = await imp('model-lab/scene-files.mjs');
 const { loadBob, neutralizer } = await imp('model-lab/bob-kit.mjs');
-const { labKey, scrubber, tavilyCheck, keyFile } = await imp('model-lab/lab-keys.mjs');
+const { labKey, scrubber, tavilyCheck, tavilyUsage, keyFile } = await imp('model-lab/lab-keys.mjs');
 const { docText } = await imp('src/doc-text.js');
 const { hiddenDetails } = await imp('src/security-files.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scenes test '));
@@ -99,21 +99,33 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scenes test '));
   check('the key check sends the key only as the sign-in header and reports only the status', ok.ok && ok.results === 1 && sent.u === 'https://example.test/search' && sent.init.headers.authorization === `Bearer ${KEY}` && !sent.init.body.includes(KEY) && !JSON.stringify(ok).includes(KEY));
   const no = await tavilyCheck(KEY, { fetchFn: async () => { throw new Error(`network ${KEY}`); } });
   check('a failed check carries none of the error text', !no.ok && !JSON.stringify(no).includes(KEY));
+  const page = (j, status = 200) => async (u, init) => { sent = { u, init }; return { ok: status === 200, status, json: async () => j }; };
+  const plan = await tavilyUsage(KEY, { url: 'https://example.test', fetchFn: page({ key: { usage: 4, limit: null }, account: { current_plan: 'Researcher', plan_usage: 120, plan_limit: 1000, note: KEY } }) });
+  const own = await tavilyUsage(KEY, { url: 'https://example.test', fetchFn: page({ key: { usage: 40, limit: 200 }, account: { plan_usage: 120, plan_limit: 1000 } }) });
+  const odd = await tavilyUsage(KEY, { url: 'https://example.test', fetchFn: page({ credits: 'lots' }) });
+  const gone = await tavilyUsage(KEY, { url: 'https://example.test', fetchFn: page({}, 404) });
+  check("Tavily's usage page: the plan's month, or the key's own limit when it has one; only the two numbers are kept", plan.ok && plan.used === 120 && plan.limit === 1000 && own.ok && own.used === 40 && own.limit === 200 && sent.u === 'https://example.test/usage' && sent.init.headers.authorization === `Bearer ${KEY}` && !JSON.stringify(plan).includes(KEY), JSON.stringify([plan, own]));
+  check('a usage page in another shape, or none, is said plainly and spends nothing', !odd.ok && /shape/.test(odd.why) && !gone.ok && gone.status === 404);
 }
 
 // ---- fix list -> jobs ----
 {
   const root = path.join(tmp, 'root'); const src = path.join(root, 'out', 'set-a', 'lessons.jsonl'); fs.mkdirSync(path.dirname(src), { recursive: true });
   const L = (content, extra = {}) => JSON.stringify({ messages: [{ role: 'system', content: 'sys' }, { role: 'user', content }, { role: 'assistant', content: 'OLD ANSWER' }], ...extra });
-  fs.writeFileSync(src, [L('Tidy D:\\Profiles\\Jo Ann\\Downloads please'), L('tidy d:\\profiles\\jo ann\\downloads   PLEASE'), L([{ type: 'text', text: 'what is this' }, { type: 'image_url', image_url: { url: 'data:' } }]), L('Email Zebedee about it'), L('Sum Documents\\budget.csv')].join('\r\n') + '\r\n');
-  const fix = path.join(tmp, 'to-fix.jsonl'), words = path.join(tmp, 'private.txt'), to = path.join(tmp, 'jobs', 'fix-jobs.jsonl');
-  fs.writeFileSync(fix, [1, 2, 3, 4, 5, 9].map((n) => JSON.stringify({ id: `set-a#L${n}`, set: 'lessons-notes__lessons', family: 'qwen', source: 'out/set-a/lessons.jsonl', line: String(n), verdict: 'fix', faults: "['made_up_result']", note: 'OPUS NOTE' })).join('\n') + '\n');
-  fs.writeFileSync(words, 'zebedee\r\n');
-  const r = spawnSync(process.execPath, ['fix-to-jobs.mjs', '--fix', fix, '--root', root, '--to', to, '--private', words, '--home', 'D:\\Profiles\\Jo Ann', '--user', 'joann'], { cwd: path.join(app, 'model-lab'), encoding: 'utf8' });
+  fs.writeFileSync(src, [L('Tidy D:\\Profiles\\Jo Ann\\Downloads please'), L('tidy d:\\profiles\\jo ann\\downloads   PLEASE'), L([{ type: 'text', text: 'what is this' }, { type: 'image_url', image_url: { url: 'data:' } }]), L('Email Zebedee about it'), L('Sum Documents\\budget.csv'),
+    L('Send the summary to sam.lee@acme.com'), L('What is the capital of Peru?'), L('List what is in C:\\Temp'), L('Copy it to \\\\TESTBOX-77\\share')].join('\r\n') + '\r\n');
+  const fix = path.join(tmp, 'to-fix.jsonl'), words = path.join(tmp, 'private.txt'), to = path.join(tmp, 'jobs', 'fix-jobs.jsonl'), done3 = path.join(tmp, 'run3-ideas.jsonl');
+  const fx = (n, set) => JSON.stringify({ id: `set-a#L${n}`, set, family: 'qwen', source: 'out/set-a/lessons.jsonl', line: String(n), verdict: 'fix', faults: "['made_up_result']", note: 'OPUS NOTE' });
+  fs.writeFileSync(fix, [[1, 'lessons-notes__lessons'], [2, 'lessons-notes__lessons'], [3, 'lessons-notes__lessons'], [4, 'lessons-notes__lessons'], [5, 'lessons-notes__lessons'], [6, 'bench__files__x'], [7, 'bench__files__x'], [8, 'bench__files__x'], [9, 'bench__files__x'], [12, 'bench__files__x']].map(([n, set]) => fx(n, set)).join('\n') + '\n');
+  fs.writeFileSync(words, '# the Lab PC\'s own list\r\nzebedee => a friend\r\nkeep: zebedeean\r\n');
+  fs.writeFileSync(done3, JSON.stringify({ id: 'f1', text: 'what is the capital of peru?' }) + '\n');
+  const r = spawnSync(process.execPath, ['fix-to-jobs.mjs', '--fix', fix, '--root', root, '--to', to, '--private', words, '--skip', done3, '--home', 'D:\\Profiles\\Jo Ann', '--user', 'joann', '--host', 'TESTBOX-77'], { cwd: path.join(app, 'model-lab'), encoding: 'utf8' });
   const rows = fs.existsSync(to) ? fs.readFileSync(to, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
-  check('a fix list becomes jobs: requests only, the fake home neutral, picture, private and repeated requests left out', r.status === 0 && rows.length === 2 && rows[0].text === 'Tidy C:\\Users\\you\\Downloads please' && rows[1].text === 'Sum Documents\\budget.csv' && /6 to-fix rows: 2 jobs.*1 lesson not found.*1 with a picture, 1 holding a private word, 1 the same request again/.test(r.stdout), r.stdout + r.stderr);
+  check('a fix list becomes jobs: requests only, the fake home neutral, picture, private, run-3 and repeated requests left out', r.status === 0 && rows.length === 4 && rows.some((x) => x.text === 'Tidy C:\\Users\\you\\Downloads please') && rows.some((x) => x.text === 'Sum Documents\\budget.csv') && /10 to-fix rows: 4 jobs written .* \(2 kinds, mixed\)\. Left out: 1 lesson not found, 0 no request, 1 with a picture, 2 holding something private of this PC's, 1 already in --skip, 1 the same request again\. 1 got stand-ins.*Private words in use: 1\./.test(r.stdout), r.stdout + r.stderr);
+  check('the kinds take turns, so a run that stops early has some of each', rows.map((x) => x.job).join(',') === 'notes,files,notes,files', rows.map((x) => x.job).join(','));
+  check("an e-mail address gets the stand-in, the PC's name leaves the request out", rows.some((x) => x.text === 'Send the summary to you@example.com') && !rows.some((x) => /TESTBOX/i.test(x.text)), JSON.stringify(rows.map((x) => x.text)));
   const all = fs.readFileSync(to, 'utf8');
-  check('no old answer, Opus note or private word reaches the jobs, nor the words in what is printed', !/OLD ANSWER|OPUS NOTE|Zebedee|Jo Ann/i.test(all) && !/zebedee/i.test(r.stdout) && rows[0].from.verdict === 'fix' && /^fx-[0-9a-f]{10}$/.test(rows[0].id));
+  check('no old answer, Opus note or private word reaches the jobs, nor the words in what is printed', !/OLD ANSWER|OPUS NOTE|Zebedee|Jo Ann|acme|TESTBOX/i.test(all) && !/zebedee|TESTBOX/i.test(r.stdout) && rows[0].from.verdict === 'fix' && /^fx-[0-9a-f]{10}$/.test(rows[0].id));
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

@@ -4,15 +4,21 @@
 // answer, tool results and Opus's note are never copied, so nothing of the faulty lesson steers the new run.
 //
 // node fix-to-jobs.mjs --fix <to-fix.jsonl>[,<more>] --root <folder the sources are relative to> --to <jobs.jsonl>
-//      [--private <words file>] [--home <folder> --user <name>] (the last two for tests: the Lab PC's own by default)
-// --private: a file on the Lab PC (never in the repository), one word or name per line; a request holding any of them
-// is left out (only the count is printed, never the words). The Lab PC's home folder and user name become C:\Users\you
-// and "you" in every request (bob-kit neutralizer), and a request with a picture in it is left out (no picture here).
+//      [--skip <jobs.jsonl>[,<more>]] [--private <words file>] [--home <folder> --user <name> --host <name>] (the last three for tests)
+// Private words: <install>/bob-model-lab/private-words.txt (scrub-data's list: "word", "word => stand-in", "keep: word")
+// and --private, both on the Lab PC only, never in the repository. A request holding one of them, the Lab PC's user name
+// or its name is left out (only the count is printed, never the words). The Lab PC's home folder becomes C:\Users\you
+// (bob-kit neutralizer); e-mail addresses, home-network addresses, other people's folders and keys get scrub-data's
+// stand-ins. A request with a picture in it is left out (no picture here). --skip: requests already in those job files
+// (run 3's own list) are not repeated. 16 Nov: the jobs come out mixed, one of each kind in turn, so a run that stops
+// early (its hours or its search budget) has still done some of every kind.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { opts, readJsonl } from './common.mjs';
+import os from 'node:os';
+import { opts, readJsonl, AGENT } from './common.mjs';
 import { neutralizer } from './bob-kit.mjs';
+import { scrubber, scrubValue, findLeaks, privateWordsFrom, splitKeep } from './scrub-data.mjs';
 
 const o = opts({});
 const fail = (why) => { console.log(`FAIL: ${why}`); process.exit(1); };
@@ -23,13 +29,14 @@ if (!o.root || !fs.existsSync(String(o.root))) fail('--root <folder the sources 
 if (!o.to) fail('--to <jobs.jsonl> is needed');
 const root = String(o.root);
 const neutral = neutralizer({ ...(o.home ? { home: String(o.home) } : {}), ...(o.user ? { user: String(o.user) } : {}) });
-let privateWords = [];
-if (o.private) {
-  if (!fs.existsSync(String(o.private))) fail(`no --private file ${o.private}`);
-  privateWords = fs.readFileSync(String(o.private), 'utf8').replace(/\r\n?/g, '\n').split('\n').map((w) => w.trim().toLowerCase()).filter((w) => w.length >= 3);
-}
-const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const privateRx = privateWords.length ? new RegExp(`(?<![\\p{L}\\p{N}])(?:${privateWords.map(esc).join('|')})`, 'iu') : null;
+if (o.private && !fs.existsSync(String(o.private))) fail(`no --private file ${o.private}`);
+const own = { user: typeof o.user === 'string' ? o.user : (() => { try { return os.userInfo().username; } catch { return ''; } })(), host: typeof o.host === 'string' ? o.host : os.hostname() };
+const words = splitKeep(privateWordsFrom({ wordsFile: o.private ? String(o.private) : '', agentDir: o.home ? '' : AGENT })); // a test (--home) never reads the Lab PC's list
+const stand = scrubber({ ...own, ...words }); // every rule, for the stand-ins
+const mine = scrubber({ ...own, ...words }); mine.rules = mine.rules.filter((r) => ['the user name', 'the PC name', 'private words'].includes(r.what));
+const isMine = (t) => findLeaks(t, mine).length > 0;
+const skipText = new Set();
+for (const f of String(o.skip || '').split(',').map((x) => x.trim()).filter(Boolean)) { if (!fs.existsSync(f)) fail(`no --skip file ${f}`); for (const r of readJsonl(f)) if (typeof r?.text === 'string') skipText.add(r.text.toLowerCase().replace(/\s+/g, ' ').trim()); }
 
 const lines = new Map(); // source file -> its lines (read once)
 const lessonAt = (src, n) => {
@@ -52,7 +59,7 @@ const requestOf = (item) => {
   return { text: '' };
 };
 
-const tally = { rows: 0, written: 0, missing: 0, empty: 0, picture: 0, private: 0, same: 0 };
+const tally = { rows: 0, written: 0, missing: 0, empty: 0, picture: 0, private: 0, same: 0, skipped: 0, standins: 0 };
 const seen = new Set(), out = [];
 const norm = (t) => String(t || '').toLowerCase().replace(/\s+/g, ' ').trim();
 for (const f of lists) for (const r of readJsonl(f)) {
@@ -61,15 +68,21 @@ for (const f of lists) for (const r of readJsonl(f)) {
   if (!got.item) { tally.missing++; continue; }
   const q = requestOf(got.item);
   if (q.picture) { tally.picture++; continue; }
-  const text = neutral(String(q.text || '').trim());
-  if (!text) { tally.empty++; continue; }
-  if (privateRx && privateRx.test(text)) { tally.private++; continue; }
+  const plain = neutral(String(q.text || '').trim());
+  if (!plain) { tally.empty++; continue; }
+  if (isMine(plain)) { tally.private++; continue; }
+  const text = scrubValue(plain, stand);
+  if (text !== plain) tally.standins++;
+  if (skipText.has(norm(text)) || skipText.has(norm(plain))) { tally.skipped++; continue; }
   if (seen.has(norm(text))) { tally.same++; continue; }
   seen.add(norm(text));
   const job = String(r.set || '').replace(/^bench__/, '').split('__')[0].replace(/^lessons-/, '') || 'fix';
   out.push({ id: `fx-${crypto.createHash('md5').update(String(r.id || `${r.source}#${r.line}`)).digest('hex').slice(0, 10)}`, job, text, from: { id: neutral(String(r.id || '')), family: r.family || '', verdict: r.verdict || '', faults: r.faults || '' } });
 }
+// one of each kind in turn (kinds in the order first met), each kind keeping its own order
+const kinds = new Map(); for (const x of out) { if (!kinds.has(x.job)) kinds.set(x.job, []); kinds.get(x.job).push(x); }
+const mixed = []; for (let i = 0; mixed.length < out.length; i++) for (const list of kinds.values()) if (i < list.length) mixed.push(list[i]);
 fs.mkdirSync(path.dirname(path.resolve(String(o.to))), { recursive: true });
-fs.writeFileSync(String(o.to), out.map((x) => JSON.stringify(x)).join('\n') + (out.length ? '\n' : ''));
-tally.written = out.length;
-console.log(`${tally.rows} to-fix rows: ${tally.written} jobs written to ${o.to}. Left out: ${tally.missing} lesson not found, ${tally.empty} no request, ${tally.picture} with a picture, ${tally.private} holding a private word, ${tally.same} the same request again.`);
+fs.writeFileSync(String(o.to), mixed.map((x) => JSON.stringify(x)).join('\n') + (mixed.length ? '\n' : ''));
+tally.written = mixed.length;
+console.log(`${tally.rows} to-fix rows: ${tally.written} jobs written to ${o.to} (${kinds.size} kinds, mixed). Left out: ${tally.missing} lesson not found, ${tally.empty} no request, ${tally.picture} with a picture, ${tally.private} holding something private of this PC's, ${tally.skipped} already in --skip, ${tally.same} the same request again. ${tally.standins} got stand-ins (e-mail addresses, addresses, folders). Private words in use: ${words.words.length}.`);
