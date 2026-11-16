@@ -4,6 +4,25 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.249
+
+A much bigger brain catalogue, Turbo-ready copies of stock Qwen, and big expert brains you can download.
+
+### New
+
+- **More brains to pick from.** 31 new brains across the Community, Naughty and Official lists. The Naughty list is other people's remixes of open brains with the refusals taken out, and it carries a warning.
+- **Turbo-ready stock Qwen.** Copies of stock Qwen 35B, 27B, 9B and 4B that carry the extra layer for drafting ahead (MTP), so they can answer faster on Brain Engine.
+- **Big expert brains as downloads.** GPT-OSS 120B, Qwen3-Next 80B, GLM-4.5 Air and Llama 4 Scout. A brain that comes in parts downloads every part, and its extra files sit beside part 1.
+- **One card for every brain.** Every (i) in the catalogue shows the same card. Room says how well the brain splits across cards, and Here says how it would split on your setup.
+
+### Fixed
+
+- **Catalogue brains download my own pinned files.** I only use Ollama when you set it as your engine yourself.
+
+None of the new brains has been tried in the Lab yet, so treat them as new.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android. The big expert brains need a big computer or several Bobs.
+
 ## 1.5.248
 
 I hear you on my own now, there's a log of what I did if you want one, and Gaming with One brain truly leaves your card alone.
@@ -149,24 +168,6 @@ Tool shapes are locked for GPT-OSS and Qwen, the Lab console is complete, and a 
 - **run_command won't write files.** A command that only writes a file (like `echo > notes.txt`) is turned away before it runs, with a pointer to write_file. Programs that write their own output still run.
 - **The Lab console is complete.** Every Lab job is a form in Set up, plus Pipelines, the rented-run form (only the purchase card rents), Rented cards (Look, Take over, End it), Use Bob's brain, and Lab job logs in the Server panel.
 - **Lab:** a stricter lesson teacher and first filter, the lesson sandbox gets Bob's notice board, memory and logbook, an optional LibreOffice for office lessons, and step-by-step thinking for GPT-OSS heal lessons, and a fairer tool judge (looking first is fine when the action is right).
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.239
-
-I think where it helps: at the start to plan and at the end to check, not before every single step.
-
-### Fixed
-
-- **Think to plan and review, not on each step.** On a long job I now think at the start and when checking the result, and run the steps in between without stopping to think each time. It's on by default, and you can switch it off in Settings, How Bob works.
-- **Folders ticked for Hands can be read.** With the Files Hand on, list_folder, read_file and search work in the folders you ticked for Hands, not only the read folders. Before, I could move files there but was told I wasn't allowed to look.
-- **Lab: Professional mode** in Settings now stays on when you turn it on. Before, the switch was never saved.
-- **GPT-OSS brains with thinking off** now really think less (low effort). Before, they always thought at medium.
-
-### New
-
-- **Lab, Learn, Lessons:** a 42-lesson course that walks you through the Lab step by step, from the basics to advanced work. It's off until you switch on **Lab lessons** in Settings, How Bob works, Brains.
-- **Lab:** the tool tests take an effort level, and the Forge checks a plan's lessons against the lesson ledger before a heal is rented. The tool-wish test (the tools a brain reaches for when none are offered) is in the Lab kit too.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 
