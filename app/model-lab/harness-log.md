@@ -5,6 +5,21 @@ lab run, read why runs failed or were thrown out (harness errors, graders, test 
 fix what is the harness's fault before the next run, and add a check that would catch it again. Newest first. Each entry
 says what ran, what it taught, what changed, and which check now guards it. "Open" means found but not fixed yet.
 
+## 16 Nov 2026: the agent loop, from the 800 Qwen runs, the 45 GPT-OSS runs and the live inbox run
+- Taught (Bob's loop, not the harness): the most common mistakes were asking where a file was without looking, saying
+  something was done or noted when no tool did it, pointing at tool output the user never sees, answers cut off
+  mid-list, research answered after one search, sums worked out in his head, and mail jobs answered with file or web
+  tools (or no tool). Outliers: he moved his own working folder to make a "new folder", fetch_page got a garbled link,
+  GPT-OSS's citation markers reached the user.
+- Changed: `src/answer-checks.js` (look_first, said_done, memory_claim, page_claim, unseen, cut_off, one_search, maths,
+  mail_route), run from verify.js afterTurn inside the same one more go (off only with Better tool calling off);
+  citation markers taken out of shown answers; guardPath refuses Bob's own working folder or one holding it;
+  fetch_page refuses or repairs a link that isn't a plain web address.
+- Check: `test/run-answer-checks-test.js` (43 checks). Replayed over the 800 Qwen runs: the checks fire on about 27
+  fix/discard runs and 10 keep runs (mostly a harmless "look first"); mail_route fires on 0 keeps after narrowing.
+  Many read faults are about content quality and can't be caught by a check. Unproven in our lab on live runs, as we
+  have yet to test; the inbox thread will rerun its 30 mail jobs on it for an after number.
+
 ## 16 Nov 2026: GPT-OSS 45-job trial, the run (A100 80 GB via RunPod v2, about $0.74)
 - Ran: 45 of 45 answered, 0 errors, 0 decided by the test world by the checks we had. Read: keep 33, fix 11, discard 1
   (bob-wip/tool-lessons/gptoss-trial/READ.md). The first real rental through RunPod v2: rent, door, run and self-delete

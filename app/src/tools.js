@@ -706,6 +706,14 @@ export function buildTools(cfg) {
       find: str('Optional: words to look for; you get the part they are in.')
     }, ['url']),
     async run({ url, part, find }, { signal }) {
+      // Nov 16 (800-job read, an outlier): a brain passed a JSON blob holding a link as the url. A url with spaces,
+      // braces or quotes is refused with what a link looks like; a link found inside it is used instead.
+      const given = String(url ?? '').trim();
+      if (!/^https?:\/\/[^\s"'{}<>]+$/i.test(given)) {
+        const inside = given.match(/https?:\/\/[^\s"'{}<>\\]+/i)?.[0];
+        if (!inside) throw new Error(`"${given.slice(0, 80)}" isn't a web link. Give just the address, like https://example.com/page.`);
+        url = inside;
+      }
       // Redirects are followed by hand so every hop gets the same home-network check as the first address.
       let u = new URL(url), res;
       for (let hop = 0; ; hop++) {
