@@ -88,15 +88,20 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   if (typeof o.words !== 'string' && !fs.existsSync(path.join(AGENT, 'bob-model-lab', 'private-words.txt'))) stop(`no private-words.txt in ${path.join(AGENT, 'bob-model-lab')}: copy the Lab's list there (or set BOB_AGENT_DIR to the folder that has it), so the scrub knows the private words`);
   const sc = scrubber({ user: typeof o.user === 'string' ? o.user : (() => { try { return os.userInfo().username; } catch { return ''; } })(), host: typeof o.host === 'string' ? o.host : os.hostname(),
     ...splitKeep(privateWordsFrom({ words: o.words, agentDir: typeof o.words === 'string' ? '' : AGENT })) });
-  const kits = new Map(); // one Bob per family
-  const kitFor = async (family) => {
-    if (!kits.has(family)) { const kit = await loadBob(L.bob, { world: true, makers: false, docs: true }); if (FAMILY_BRAIN[family]) kit.cfg.models = { ...(kit.cfg.models || {}), bob: FAMILY_BRAIN[family] }; kits.set(family, kit); }
-    return kits.get(family);
+  // 16 Nov (the lessons thread: the locked shape-4 tool lists had no mail tool): an inbox job's run (do-jobs `mail`) had
+  // "Let Bob read my email" and "Let Bob tidy my email" on, so its lesson's tool list is made by a Bob with them on too
+  // (mail-world.mjs fitMail). Same tool shape: read_email and manage_email keep Bob's own wording in every set.
+  const { fitMail } = await import('./mail-world.mjs');
+  const kits = new Map(); // one Bob per family (and one more with the mail tools on, for inbox jobs)
+  const kitFor = async (family, mail = null) => {
+    const k = `${family}${mail ? '+mail' : ''}`;
+    if (!kits.has(k)) { const kit = await loadBob(L.bob, { world: true, makers: false, docs: true }); if (FAMILY_BRAIN[family]) kit.cfg.models = { ...(kit.cfg.models || {}), bob: FAMILY_BRAIN[family] }; if (mail) await fitMail(kit, mail); kits.set(k, kit); }
+    return kits.get(k);
   };
   const sets = {}, lessons = [];
   for (const { label, row, grade } of kept) {
     const family = String(row.family || 'qwen');
-    const kit = await kitFor(family);
+    const kit = await kitFor(family, row.mail?.spec || null);
     const loaded = groupsOf(row, (n) => { try { return kit.groupOf(n) || ''; } catch { return ''; } });
     loaded.toolSet = kit.brain.toolSetOf?.(FAMILY_BRAIN[family] || '') || null;
     const { system, tools } = kit.turn(loaded);

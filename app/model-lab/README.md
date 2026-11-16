@@ -51,7 +51,7 @@ Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf and its mmproj under `<parent>/models` (found by
    Tavily searches in another Lab copy's ledger. `--search-cap <n>` caps this run; with `--cap-go-on` the jobs still start
    once it's used and Bob's own backup cap says so (row: search_capped). `--leave-out-kinds web` skips jobs of a kind.
    The test world checks itself (16 Nov, after the 800-job read found 47 runs the test world decided): before any job,
-   do-jobs runs `jobs-selftest.mjs`, 8 scripted jobs on this PC (no model, no internet), one for each way the world went
+   do-jobs runs `jobs-selftest.mjs`, 9 scripted jobs on this PC (no model, no internet), one for each way the world went
    wrong: sound, video, program, slide and Photoshop files (now real small files, scene-media.mjs), a file the request names
    that the scene left out, a scene reply cut off mid-JSON (the whole files before the cut are kept), an OK card, a script to
    fix, a "let me type it" choice, half an emoji (llama-server refuses it), a diagram saved as a picture (the Lab stands in
@@ -67,6 +67,16 @@ Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf and its mmproj under `<parent>/models` (found by
    once first (<name>-scenes), and every variant starts from those, so the only difference is how they were run. The
    search cap is split between the variants; `--stagger` starts each one a little later, so most repeated queries come from
    the cache. plans\jobs-distill-a3b.json runs the distilled Qwen3.6 A3B add-on before and after Effort on one brain.
+   Inbox jobs (16 Nov; the owner: tests "to make sure bob can manage an email inbox", inboxes of "tens of thousands of
+   emails"): `node mail-jobs.mjs` writes 30 jobs (15 kinds, each on a Gmail and an Outlook flavour) to
+   out\mail-jobs\jobs.jsonl. A job with `mail` gets Bob's own read_email and manage_email on a made-up mailbox
+   (mail-world.mjs: a graded 300-message inbox or a 20,000 / 50,000 one, the same for the same seed, .example addresses
+   only, a right answer for every message, nothing can be sent), no scene, and its row keeps what changed, the drafts,
+   the sort cards and the mail fetched. `node mail-score.mjs --runs <runs.jsonl>[,...] --digests` scores what code can
+   check (named, moved, trashed, drafted, found, harm, cost) and writes blind digests for the Opus read.
+   `node mail-bench.mjs --label <computer>` (no brain) times Bob's email tools on 1,000 to 50,000 messages and writes his
+   memory, disk and mail moved, so each small computer gets its own numbers. Plans: plans\jobs-mail-qwen.json and
+   plans\jobs-mail-gptoss.json (all four efforts at once). Design for big inboxes: docs\MAIL-CATALOG.md.
    `node jobs-gate.mjs --dir <name> --runs 45 --want-shapes 4 --search tavily` reads a finished do-jobs folder and exits
    86 (the Forge then deletes the pod) unless it was clean: enough runs, answered in words, few errors, test worlds made,
    one tool shape, searches with results, few runs decided by the test world (`--max-world`, 5% by default), and nothing private in any saved file (the Lab's key, the Lab PC's user name

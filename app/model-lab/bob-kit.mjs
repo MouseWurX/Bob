@@ -148,7 +148,7 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false, home = fa
     return r;
   };
   const kit = {
-    bobSrc, neutral, toReal, homeDir, worldDir, place, allow, inTmp, cfg, toolShapes, runReal, sandboxArgs,
+    bobDir, bobSrc, neutral, toReal, homeDir, worldDir, place, allow, inTmp, cfg, toolShapes, runReal, sandboxArgs,
     brain, phrasings, tmp,
     groups: () => tb.groupsFor(brain),
     guessGroups: (text) => tb.guessGroups(brain, text),

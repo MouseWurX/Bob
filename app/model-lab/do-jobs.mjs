@@ -68,6 +68,7 @@ import { makeScene, plantScene, sceneCache, fillNamed } from './scenes.mjs';
 import { harnessFaults, namedFiles, TYPED_CHOICE, FAULTS } from './harness-faults.mjs';
 import { png as pngFile, pdf as pdfFile } from './scene-files.mjs';
 import { labKey, scrubber, tavilyCheck, tavilyUsage } from './lab-keys.mjs';
+import { fitMail, sortCardAnswer } from './mail-world.mjs';
 
 const o = opts({ parallel: 2, max: 4096, 'job-minutes': 10, hours: 0, 'search-gap': 2 });
 const L = locate(o);
@@ -102,7 +103,7 @@ if (o.never && !neverFiles.length) fail(`--never ${o.never} holds no .jsonl file
 for (const f of neverFiles) {
   for (const r of readJsonl(f)) for (const t of [r.text, r.question, r.prompt, r.ask, (r.messages || []).find((m) => m.role === 'user')?.content]) if (typeof t === 'string' && t.trim()) never.add(norm(t));
 }
-let jobs = files.flatMap((f) => readJsonl(f)).filter((j) => j && typeof j.text === 'string' && j.text.trim()).map((j, i) => ({ id: String(j.id || `job-${i}`), job: j.job || '', text: j.text, setup: Array.isArray(j.setup) ? j.setup : [], ...(j.from && typeof j.from === 'object' ? { from: j.from } : {}) }));
+let jobs = files.flatMap((f) => readJsonl(f)).filter((j) => j && typeof j.text === 'string' && j.text.trim()).map((j, i) => ({ id: String(j.id || `job-${i}`), job: j.job || '', text: j.text, setup: Array.isArray(j.setup) ? j.setup : [], ...(j.from && typeof j.from === 'object' ? { from: j.from } : {}), ...(j.mail && typeof j.mail === 'object' ? { mail: j.mail, key: String(j.key || '') } : {}) }));
 const held = jobs.filter((j) => never.has(norm(j.text)));
 jobs = jobs.filter((j) => !never.has(norm(j.text)));
 const seen = new Set(); jobs = jobs.filter((j) => (seen.has(j.id) ? false : seen.add(j.id)));
@@ -273,6 +274,7 @@ async function sceneChat(messages) {
   return String((await r.json()).choices?.[0]?.message?.content || '');
 }
 async function sceneFor(j) {
+  if (j.mail) return { scene: null, problems: [], made: 'none' }; // an inbox job's world is its mailbox (mail-world.mjs)
   const had = scenes.get(j.id, j.text);
   // 16 Nov (800-job read): a scene whose reply couldn't be read was saved and then reused as an empty home every time;
   // with --scene make it is written again instead
@@ -333,6 +335,9 @@ async function runJob(j) {
   const tavilyUsed = keyedSearch(kit);
   const brain = kit.brain;
   for (const n of NOT_HERE) delete brain.tools[n];
+  // 16 Nov (MouseWurX: tests "to make sure bob can manage an email inbox"): an inbox job gets Bob's own read_email and
+  // manage_email, his account set up on a made-up mailbox (mail-world.mjs) that answers nothing else, so nothing can be sent
+  const mw = j.mail ? await fitMail(kit, j.mail) : null;
   brain.cfg.loopHelpOff = false; brain.cfg.toolHelp = true;
   if (solo) brain.cfg.soloEffort = true;
   const steps = []; const missing = new Set(); let real = 0, asks = 0;
@@ -357,7 +362,9 @@ async function runJob(j) {
   const who = () => brain.cfg.userName || 'the user';
   // 16 Nov (Opus read of run 3): the card with all of a job's OKs on it (together.js) reads { allow: true }; a bare true
   // came back as "the user said no" to every step on it
-  brain.approve = async (need) => (need && typeof need === 'object' && Array.isArray(need.together) ? { allow: true } : true);
+  // An inbox sort plan (manage_email sort) is its own card: the test person OKs Bob's plan as he made it, and it is kept.
+  let sortCards = [];
+  brain.approve = async (need) => (need && typeof need === 'object' && need.sortCard ? (sortCards.push(need.sortCard), sortCardAnswer(need.sortCard)) : need && typeof need === 'object' && Array.isArray(need.together) ? { allow: true } : true);
   brain.askUser = async ({ question, choices } = {}) => {
     const list = [...new Set([].concat(choices || []).map((c) => String(c ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean))];
     if (!String(question || '').trim() || list.length < 2) throw new Error('ask_user needs a question and at least 2 choices.');
@@ -437,7 +444,8 @@ async function runJob(j) {
     id: j.id, job: j.job, text: j.text, ...(j.from ? { from: j.from } : {}), planted, scene, said: kit.neutral(said), ...(saidAll !== said ? { said_all: kit.neutral(saidAll) } : {}), steps, asks, real, standins: [], missing: [...missing],
     secs: (Date.now() - t0) / 1000, ...(error ? { error: kit.neutral(error).slice(0, 400) } : {}),
     effort, solo_effort: solo, search_capped: steps.some((st) => (st.calls || []).some((c) => c.name === 'web_search' && /at its monthly cap/.test(String(c.result || '')))), ...(loraScale !== null ? { lora_scale: loraScale } : {}), family, tool_shapes: kit.toolShapes, bob_src: kit.bobSrc, brain: process.env.LAB_MODEL_NAME || 'served', at: new Date().toISOString(),
-    messages: deepNeutral(kit, brain.session(session))
+    messages: deepNeutral(kit, brain.session(session)),
+    ...(mw ? { key: j.key, mail: { spec: j.mail, cards: sortCards.map((c) => ({ batches: (c.batches || []).map((b) => ({ name: b.name, action: b.action, folder: b.folder, ids: b.ids })), replyFirst: (c.replyFirst || []).map((x) => ({ id: x.id, why: x.why })) })), ...mw.server.after() } } : {})
   };
   // what the test world got wrong in this run, if anything (harness-faults.mjs): kept with the run for the read
   const hf = harnessFaults(row); if (hf.length) row.harness = hf;

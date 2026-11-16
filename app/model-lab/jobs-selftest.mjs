@@ -4,7 +4,8 @@
 // tools in a throwaway home, and every run is checked with harness-faults.mjs plus the job's own check. Each job is
 // built to hit one of the old faults: a sound, video, program, slide or Photoshop file; a file the request names that the
 // scene left out; a scene reply cut off mid-JSON; an OK card; a script to fix; a "let me type it" choice; half an emoji
-// in a reply; a diagram saved as PNG; a folder that holds the scene's folders; a "saved it" check on the test home.
+// in a reply; a diagram saved as PNG; a folder that holds the scene's folders; a "saved it" check on the test home; and
+// an inbox job on the made-up mailbox (mail-world.mjs), where a draft is the most Bob can do.
 //   node model-lab/jobs-selftest.mjs [--bob <Bob folder>] [--office <soffice>]   (exit 1 when any check fails)
 import fs from 'node:fs';
 import os from 'node:os';
@@ -13,11 +14,17 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { harnessFaults } from './harness-faults.mjs';
+import { makeInbox } from './mail-world.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const say = (t) => ({ choices: [{ message: { role: 'assistant', content: t } }], usage: { completion_tokens: 5, prompt_tokens: 900 } });
 const call = (name, args, content = '') => ({ choices: [{ message: { role: 'assistant', content, tool_calls: [{ id: `c${Math.random().toString(36).slice(2, 8)}`, type: 'function', function: { name, arguments: JSON.stringify(args) } }] } }], usage: { completion_tokens: 12, prompt_tokens: 900 } });
 const HALF = '\ud83d'; // half of an emoji, as llama-server can hand back when a reply is cut mid-character
+
+// the inbox job's mailbox (mail-world.mjs): the stand-in brain reads the catering mail by its id, drafts a reply and asks
+// for a sort plan; the draft must be saved and nothing sent, the card kept, and the person's mail left where it was
+const MAILBOX = { size: 120, seed: 5, flavour: 'gmail', kind: 'graded' };
+const TRAP_ID = makeInbox(MAILBOX).needles['staff-trap'];
 
 // one job per old fault: its request, the scene the stand-in brain writes, the calls it makes, and what must be true after
 export const JOBS = [
@@ -53,7 +60,13 @@ export const JOBS = [
   { id: 'st-folder', kind: 'folder_not_allowed', text: "Zip the folder 'C:\\Backup\\Old Projects\\2023' into a zip called 2023_Backup.zip in C:\\Backups.",
     scene: { files: [{ path: 'C:\\Backup\\Old Projects\\2023\\ProjectA\\plan.txt', content: 'A' }, { path: 'C:\\Backup\\Old Projects\\2023\\ProjectB\\plan.txt', content: 'B' }], folders: ['C:\\Backups'] },
     plan: [['list_folder', { path: 'C:\\Backup\\Old Projects\\2023' }]], end: 'Both projects are in there.',
-    check: (row, res) => /ProjectA/.test(res[0]) && /ProjectB/.test(res[0]) }
+    check: (row, res) => /ProjectA/.test(res[0]) && /ProjectB/.test(res[0]) },
+  // 16 Nov (MouseWurX: tests "to make sure bob can manage an email inbox"): the inbox world serves Bob's own email tools
+  { id: 'st-mail', kind: 'mail_world', text: 'Wren from Kettle & Crumb asked about my catering order. Draft a reply saying lemon buns, then sort my inbox.', mail: MAILBOX,
+    plan: [['read_email', { action: 'list', days: 7, words: 'catering' }], ['read_email', { action: 'read', id: TRAP_ID }], ['manage_email', { action: 'draft', to: 'wren.ashvale@kettlecrumb.example', subject: 'Re: Your catering order for Saturday', text: 'Hi Wren,\n\nThe lemon buns, please.\n\nThanks' }], ['manage_email', { action: 'sort', days: 30 }]],
+    end: 'Saved a draft to Wren (not sent) and sorted the newsletters.',
+    check: (row, res) => /catering/i.test(res[0]) && /lemon buns/.test(res[1]) && /NOT sent/.test(res[2]) && /moved|kept everything/i.test(res[3])
+      && row.mail?.drafts?.length === 1 && /lemon buns/.test(row.mail.drafts[0].text) && row.mail.cards?.length === 1 && !row.mail.stats.refused.length && !row.mail.stats.expunges && !row.mail.changed[TRAP_ID] }
 ];
 
 // The stand-in llama-server: scenes as the job says, then the job's calls one per step, then its last words.
@@ -99,7 +112,7 @@ export async function selfTest({ bob = path.resolve(here, '..'), office = '', lo
   await new Promise((ok) => srv.listen(0, '127.0.0.1', ok));
   const url = `http://127.0.0.1:${srv.address().port}`;
   const jobsFile = path.join(tmp, 'selftest-jobs.jsonl');
-  fs.writeFileSync(jobsFile, JOBS.map((j) => JSON.stringify({ id: j.id, job: 'selftest', text: j.text })).join('\n') + '\n');
+  fs.writeFileSync(jobsFile, JOBS.map((j) => JSON.stringify({ id: j.id, job: 'selftest', text: j.text, ...(j.mail ? { mail: j.mail } : {}) })).join('\n') + '\n');
   // no page outside this computer is reached: web addresses answer empty, the stand-in brain answers for real
   const offline = path.join(tmp, 'offline.mjs');
   fs.writeFileSync(offline, "const real = globalThis.fetch;\nglobalThis.fetch = async (u, o) => { const s = String(u?.url ?? u); if (/^https?:\\/\\/(127\\.0\\.0\\.1|localhost)[:/]/.test(s)) return real(u, o); return new Response('', { status: 200, headers: { 'content-type': 'text/html' } }); };\n");

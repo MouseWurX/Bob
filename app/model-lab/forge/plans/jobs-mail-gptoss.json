@@ -1,0 +1,59 @@
+{
+ "run": "jobs-mail-gptoss",
+ "note": "16 Nov, the owner: \"how do we set up tests to make sure bob can manage an email inbox, sort, recommend replying to lists, from a human or from an automailer\"; \"some of my inboxes ... have tens of thousands of emails\"; \"could bob do bulk delete? or bulk archive?\". The 30 inbox jobs (mail-jobs.mjs: 15 kinds, each on a Gmail and an Outlook inbox; 300-message graded inboxes and 20,000 / 50,000-message big ones) on made-up mailboxes (mail-world.mjs: .example addresses only, nothing can be sent, a draft is the most). Bob's own read_email and manage_email, today's tools, before any catalog. All four efforts at once (Effort on one brain: Minimus, Medius, Magnus, Maximus). No web search, no Tavily. Scored by code (mail-score.mjs), then every run read by Opus 5.5 from the blind digests. Clean runs become lessons only after that read. do-jobs runs the harness self-test (9 checks, with the inbox one) before any job. Brain: stock GPT-OSS 120B (--family gpt-oss: its own tool set and reasoning levels). A100 80 GB, 6 slots. Caps 2.5 h / $7.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.8-Flash-Next",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA A100 80GB PCIe",
+  "NVIDIA A100-SXM4-80GB"
+ ],
+ "step_up": [
+  "NVIDIA H100 80GB HBM3"
+ ],
+ "disk_gb": 160,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 2.5,
+ "dollars_max": 7,
+ "rent_minutes": 60,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one server: GPT-OSS 120B, four efforts at once on the same 30 inbox jobs.",
+  "hours_each": 2.2,
+  "models": [
+   {
+    "name": "mail-gptoss",
+    "nickname": "GPT-OSS 120B, doing inbox jobs",
+    "file": "hf:ggml-org/gpt-oss-120b-GGUF:gpt-oss-120b-MXFP4.gguf",
+    "quant": "MXFP4",
+    "slots": 6,
+    "ctx": 196608,
+    "extra": "",
+    "hours": 2.2,
+    "commands": [
+     "node mail-jobs.mjs --out ../../bob-model-lab/out/mail-jobs/jobs.jsonl",
+     "node jobs-matrix.mjs --prefix mail-g --no-scenes --variants \"minimus=--effort low --solo-effort;medius=--effort medium --solo-effort;magnus=--effort high --solo-effort;maximus=--effort extreme --solo-effort --job-minutes 20\" --url {{url}} --bob .. --family gpt-oss --jobs ../../bob-model-lab/out/mail-jobs/jobs.jsonl --parallel 1 --want-shapes 4 --max 4096 --hours 1.8 --job-minutes 10",
+     "node mail-score.mjs --runs ../../bob-model-lab/out/mail-g-minimus/runs.jsonl,../../bob-model-lab/out/mail-g-medius/runs.jsonl,../../bob-model-lab/out/mail-g-magnus/runs.jsonl,../../bob-model-lab/out/mail-g-maximus/runs.jsonl --out ../../bob-model-lab/out/mail-g-score --digests"
+    ]
+   }
+  ]
+ },
+ "prep": [
+  "Nothing to copy in: mail-jobs.mjs writes the jobs and every inbox is made from its seed on the pod.",
+  "--want-shapes 4 stops the run before renting if this copy's tools are any other shape.",
+  "--family gpt-oss stops pre-flight if this Bob copy has no GPT-OSS tool set."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20
+}
