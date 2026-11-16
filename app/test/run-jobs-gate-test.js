@@ -52,6 +52,13 @@ for (const [name, leak, what] of [['key', KEY, "the Lab's search key"], ['user',
   const md = fs.readFileSync(path.join(tmp, name, 'GATE.md'), 'utf8');
   check(`something private in a saved file stops it (${what}), and the report never repeats it`, g.status === STOP && g.stdout.includes(what) && ![g.stdout, md, fs.readFileSync(path.join(tmp, name, 'gate.json'), 'utf8')].some((t) => t.includes(KEY) || t.includes('qwertyjo') || t.includes('TESTBOX-77') || t.includes('Zanzibarian')), g.stdout.slice(-300));
 }
+{ folder('warnname', clean.map((r, i) => (i === 9 ? { ...r, said: `Saved it. ${USERS}\\qwertyjo\\Desktop, ask the Zanzibarian team` } : r)));
+  const w = cli('warnname', ['--search', 'tavily', '--leaks', 'warn']);
+  const md = fs.readFileSync(path.join(tmp, 'warnname', 'GATE.md'), 'utf8');
+  check('--leaks warn (the owner: "we can fix the info after"): names and private words are a warning, not a stop, and still never repeated', w.status === 0 && /GATE PASS/.test(w.stdout) && /WARNING: \d+ name or private-word hit/.test(md) && ![w.stdout, md].some((t) => t.includes('qwertyjo') || t.includes('Zanzibarian')), w.stdout.slice(-300));
+  folder('warnkey', clean.map((r, i) => (i === 9 ? { ...r, said: `Saved it. ${KEY}` } : r)));
+  const k = cli('warnkey', ['--search', 'tavily', '--leaks', 'warn']);
+  check('--leaks warn: the search key in a saved file still stops it', k.status === STOP && /the Lab's search key/.test(k.stdout) && !k.stdout.includes(KEY), k.stdout.slice(-300)); }
 check('privateIn looks in every file of the folder, scenes too', (() => { const d = folder('scenes', clean); fs.writeFileSync(path.join(d, 'scenes.jsonl'), JSON.stringify({ id: 'j1', scene: { files: [{ path: `${USERS}\\qwertyjo\\a.txt` }] } }) + '\n'); return privateIn(d, ME).length === 1; })());
 
 const pf = cli('not-yet', ['--search', 'tavily', '--preflight', '--slot-ctx', '32768']);
@@ -74,7 +81,7 @@ check('a folder with no runs stops it', none.status === STOP && /no runs in the 
   check("forge pre-flight: a gate that couldn't check for the key stops the rental", bad.status === 1 && /PRE-FLIGHT FAIL: flashnext-jobs command 1: the Lab's Tavily key can't be opened/.test(bad.stdout) && /Not renting/.test(bad.stdout), bad.stdout.slice(-400));
   const plan = JSON.parse(fs.readFileSync(path.join(app, 'model-lab', 'forge', 'plans', 'jobs-flashnext-run3-long.json'), 'utf8'));
   const cmds = plan.benchmark.models[0].commands;
-  check('the run 3 + longer run plan: run 3, the gate, then 800 fix-list jobs on the same brain, 800 Tavily searches between them, all under 7 h / $40', cmds.length === 3 && /--dir jobs-trial3 --count 45/.test(cmds[0]) && /^node jobs-gate\.mjs --dir jobs-trial3 --runs 45/.test(cmds[1]) && /jobs-fix\/jobs\.jsonl --dir jobs-fix1 --count 800/.test(cmds[2]) && cmds.every((c, i) => i === 1 || /--search tavily --search-month 1500 --search-cap 800 --search-group jobs-run3-long/.test(c)) && plan.hours_max === 7 && plan.dollars_max === 40 && 0.5 + 5.6 + 0.5 <= plan.hours_max, JSON.stringify(cmds)); }
+  check('the run 3 + longer run plan: run 3, the gate, then 800 fix-list jobs on the same brain, 800 Tavily searches between them, all under 7 h / $40', cmds.length === 3 && /--dir jobs-trial3 --count 45/.test(cmds[0]) && /^node jobs-gate\.mjs --dir jobs-trial3 --runs 45 .*--leaks warn$/.test(cmds[1]) && /jobs-fix\/jobs\.jsonl --dir jobs-fix1 --count 800/.test(cmds[2]) && cmds.every((c, i) => i === 1 || /--search tavily --search-month 1500 --search-cap 800 --search-group jobs-run3-long/.test(c)) && plan.hours_max === 7 && plan.dollars_max === 40 && 0.5 + 5.6 + 0.5 <= plan.hours_max, JSON.stringify(cmds)); }
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

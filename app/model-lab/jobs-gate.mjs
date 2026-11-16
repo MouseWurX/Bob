@@ -11,6 +11,9 @@
 // node jobs-gate.mjs --dir <do-jobs folder name> [--out <lab out>] [--runs 45] [--min-runs 0.9] [--min-said 0.9]
 //      [--max-errors 0.1] [--max-no-scene 0.1] [--min-search-ok 0.8] [--want-shapes 4] [--search tavily]
 //      [--user <name> --host <name> --words "a,b"] (the last three for tests: the Lab PC's own by default)
+//      [--leaks warn] (16 Nov, the owner: "we can fix the info after"): the Lab PC's user name, PC name and private
+//      words are reported but don't stop the run; they are scrubbed before anything is kept or published. The search
+//      key in a saved file always stops it.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -75,8 +78,11 @@ export function gate(dir, o = {}) {
     if (t.searches && t.searchOk < Math.ceil(Number(o.minSearchOk ?? 0.8) * t.searches)) fails.push(`only ${t.searchOk} of ${t.searches} web searches came back with results`);
   }
   const leaks = privateIn(dir, o.private || {});
-  if (leaks.length) fails.push(`something private is in the saved files (${leaks.length}): ${leaks.slice(0, 3).join('; ')}`);
-  return { ok: !fails.length, fails, tally: t, leaks };
+  const keyLeaks = leaks.filter((l) => /: the Lab's search key$/.test(l));
+  const stopOn = o.leaks === 'warn' ? keyLeaks : leaks;
+  if (stopOn.length) fails.push(`something private is in the saved files (${stopOn.length}): ${stopOn.slice(0, 3).join('; ')}`);
+  const warns = o.leaks === 'warn' && leaks.length > keyLeaks.length ? [`${leaks.length - keyLeaks.length} name or private-word hit(s) in the saved files, to scrub before anything is kept: ${leaks.filter((l) => !keyLeaks.includes(l)).slice(0, 3).join('; ')}`] : [];
+  return { ok: !fails.length, fails, warns, tally: t, leaks };
 }
 
 const report = (dir, g) => [
@@ -85,7 +91,7 @@ const report = (dir, g) => [
   `- Runs: ${g.tally.runs}; answered in words ${g.tally.said} (${pct(g.tally.said, g.tally.runs)}); errors ${g.tally.errors}`,
   `- No test world: ${g.tally.noScene}; other tool shapes: ${g.tally.otherShapes}; called a tool this Bob hasn't got: ${g.tally.missing} (Opus reads those)`,
   `- Web searches: ${g.tally.searches}, with results ${g.tally.searchOk} (${pct(g.tally.searchOk, g.tally.searches)})`,
-  `- Private things found: ${g.leaks.length}`, ''].join('\n');
+  `- Private things found: ${g.leaks.length}`, ...(g.warns || []).map((w) => `- WARNING: ${w}`), ''].join('\n');
 
 // ---- command line ----
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -103,14 +109,14 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   if (String(o.search || '').toLowerCase() === 'tavily') { const got = labKey('tavily'); if (!got.key) stop(`the Lab's Tavily key can't be opened to check the files for it (${got.why})`); key = got.key; }
   if (o.preflight) { console.log(`gate pre-flight OK: it will read ${dir} after the run`); process.exit(0); }
   const g = gate(dir, {
-    runs: o.runs, minRuns: o['min-runs'], minSaid: o['min-said'], maxErrors: o['max-errors'], maxNoScene: o['max-no-scene'], minSearchOk: o['min-search-ok'], wantShapes: o['want-shapes'],
+    runs: o.runs, leaks: o.leaks, minRuns: o['min-runs'], minSaid: o['min-said'], maxErrors: o['max-errors'], maxNoScene: o['max-no-scene'], minSearchOk: o['min-search-ok'], wantShapes: o['want-shapes'],
     private: { keys: key ? [key] : [], user: typeof o.user === 'string' ? o.user : (() => { try { return os.userInfo().username; } catch { return ''; } })(), host: typeof o.host === 'string' ? o.host : os.hostname(),
       ...splitKeep(privateWordsFrom({ words: o.words, agentDir: typeof o.words === 'string' ? '' : AGENT })) }
   });
   const md = report(dir, g);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'GATE.md'), md);
-  fs.writeFileSync(path.join(dir, 'gate.json'), JSON.stringify({ when: new Date().toISOString(), ok: g.ok, fails: g.fails, tally: g.tally, leaks: g.leaks.length }, null, 1));
+  fs.writeFileSync(path.join(dir, 'gate.json'), JSON.stringify({ when: new Date().toISOString(), ok: g.ok, fails: g.fails, warns: g.warns, tally: g.tally, leaks: g.leaks.length }, null, 1));
   console.log(md);
   if (!g.ok) stop(g.fails.join('; '));
   console.log('GATE PASS');

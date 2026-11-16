@@ -45,6 +45,8 @@ Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf and its mmproj under `<parent>/models` (found by
    one tool shape, searches with results, and nothing private in any saved file (the Lab's key, the Lab PC's user name
    or name, or a word from bob-model-lab\private-words.txt). It writes GATE.md there. A Forge plan can put it between two
    job runs on one rented brain (plans\jobs-flashnext-run3-long.json: run 3, the gate, then 800 fix-list jobs).
+   `--leaks warn` reports the user name, PC name and private words without stopping (they are scrubbed before anything
+   is kept or published); the key always stops it.
    `node fix-to-jobs.mjs --fix <to-fix.jsonl> --root <folder> --to <jobs.jsonl> [--skip <jobs.jsonl>] [--private <words file>]`
    turns a review's fix list into jobs for do-jobs: each lesson's first request only (never its old answer or the review's
    note), the Lab PC's home made neutral, e-mail and home-network addresses given stand-ins, and requests with a picture,
