@@ -345,7 +345,7 @@ Three models made from Qwen3.6-35B-A3B with the same tools that are in the Lab: 
 | Code that runs | **6 of 6** | **6 of 6** | 1 of 6 |
 | Download | [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) | [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) | [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) |
 
-Same tests, same rented card, each Bob served from his public Q4 file. Riker matches Bobert at a size that suits a 16 GB card. Since 1.5.245 neither is Bob's default: stock Qwen3.6-35B-A3B is, until a Bob beats it on a held-out test. Bill is best at tool decisions and weakest at facts and code, and is published as he is.
+Same tests, same rented card, each Bob served from his public Q4 file. Riker matches Bobert at a size that suits a 16 GB card. Since 1.5.245 none of the three is in Bob's Brain catalogue: stock Qwen3.6-35B-A3B is the default, until a Bob beats it on a held-out test. Their files stay on Hugging Face. Bill is best at tool decisions and weakest at facts and code, and is published as he is.
 
 **Riker against the model he was cut from**, at home on a 16 GB card:
 
@@ -368,7 +368,7 @@ Same tests, same rented card, each Bob served from his public Q4 file. Riker mat
 | [What they cost](app/docs/COSTS.md) | Every rental, itemized, failures included. |
 | [Brain races](app/docs/BRAIN-RACES.md) · [test results](app/docs/test-results/README.md) | How other brains score on the same tests and the same PC. |
 
-Riker and Bobert are in Bob's Brain catalogue to pick by hand. Bob's default is stock Qwen3.6-35B-A3B (its Q3 file codes on an 8 GB card).
+Bob's default is stock Qwen3.6-35B-A3B (its Q3 file codes on an 8 GB card). A Riker file already on a PC still runs from ➕ Your own brains.
 
 ## Bob-Net: Bobs working together
 

@@ -1,7 +1,8 @@
 // 1.5.169: puts Bob's own brains (28Bob Riker and 35Bob Bobert, Q4 and Q3) into catalog.json, with links pinned to the
 // exact commit of their PUBLIC Hugging Face pages. Read-only on the network (Hugging Face's public API).
-// 1.5.245 (the owner, Nov 16): they're listed, but no longer anyone's default. Stock Qwen3.6 35B-A3B is the default
-// until one of Bob's own brains beats it on a held-out test, so no Bob takes a job (bobPick) or a starter-set slot here.
+// 1.5.245 (the owner, Nov 16): Riker, Bobert and Bill are out of catalog.json. Stock Qwen3.6 35B-A3B is the default
+// until one of Bob's own brains beats it on a held-out test. Run this only to put a Bob back after such a win; until then
+// no Bob takes a job (bobPick) or a starter-set slot here.
 //   node installer/add-bob-brains.mjs [catalog.json] [--only riker|bobert] [--write]
 // A page that isn't public (private, missing, or a file not there) is refused: an untested Bob never goes in the list.
 import fs from 'node:fs';
