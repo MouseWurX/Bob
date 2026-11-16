@@ -260,61 +260,6 @@
    ]
   },
   {
-   "id": "N2",
-   "engine": "be9",
-   "prompts": [
-    "start",
-    "k16",
-    "k32"
-   ],
-   "args": [
-    "--spec-type",
-    "draft-mtp",
-    "--spec-draft-n-max",
-    "3"
-   ]
-  },
-  {
-   "id": "N0S",
-   "engine": "be9",
-   "prompts": [
-    "start",
-    "k16",
-    "k32"
-   ],
-   "body": {
-    "temperature": 0.7,
-    "top_p": 0.8,
-    "top_k": 20,
-    "min_p": 0,
-    "presence_penalty": 1.5,
-    "repeat_penalty": 1.0
-   }
-  },
-  {
-   "id": "N2S",
-   "engine": "be9",
-   "prompts": [
-    "start",
-    "k16",
-    "k32"
-   ],
-   "args": [
-    "--spec-type",
-    "draft-mtp",
-    "--spec-draft-n-max",
-    "3"
-   ],
-   "body": {
-    "temperature": 0.7,
-    "top_p": 0.8,
-    "top_k": 20,
-    "min_p": 0,
-    "presence_penalty": 1.5,
-    "repeat_penalty": 1.0
-   }
-  },
-  {
    "id": "N3",
    "engine": "be9",
    "prompts": [
@@ -370,58 +315,6 @@
     "4096"
    ],
    "env": {
-    "LLAMA_PREFETCH_EXPERTS": "1"
-   }
-  },
-  {
-   "id": "N6",
-   "engine": "be9",
-   "prompts": [
-    "start",
-    "k16",
-    "k32"
-   ],
-   "args": [
-    "--spec-type",
-    "draft-mtp",
-    "--spec-draft-n-max",
-    "3",
-    "--moe-cache-mib",
-    "4096",
-    "--moe-cache-cpu-share",
-    "1"
-   ],
-   "env": {
-    "LLAMA_MOE_CACHE_RANKING": "${RANKING_MIXED}",
-    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
-   }
-  },
-  {
-   "id": "N7",
-   "engine": "be9",
-   "prompts": [
-    "start",
-    "k16",
-    "k32"
-   ],
-   "args": [
-    "-b",
-    "4096",
-    "-ub",
-    "4096",
-    "--mlock",
-    "--spec-type",
-    "draft-mtp",
-    "--spec-draft-n-max",
-    "3",
-    "--moe-cache-mib",
-    "4096",
-    "--moe-cache-cpu-share",
-    "1"
-   ],
-   "env": {
-    "LLAMA_MOE_CACHE_RANKING": "${RANKING_MIXED}",
-    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
     "LLAMA_PREFETCH_EXPERTS": "1"
    }
   },
