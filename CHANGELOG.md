@@ -4,6 +4,16 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.244
+
+The link log tells the same time as the logbook.
+
+### Fixed
+
+- **The link log no longer reads an hour behind.** The Link log (the notes kept while a brain runs over another Bob's card) stamped its lines with the computer's own clock, which on some Windows PCs is an hour off from the real zone. It now uses the same time zone as the logbook, so the two always agree.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.243
 
 Send a whole folder to your other Bob with one Yes, and Journey gets its laptop-test fixes.
@@ -146,21 +156,6 @@ Bob's chat memory meter moves to where you can see it, you can take any job back
 - **Brains page: take any job back.** Every job chip has a ✕ now, except the main Brain and Gaming. Quick brain, Office and Deep thinking can be taken off and show under Unassigned jobs, and Bob keeps chatting on his main brain.
 - On a phone in Lamplight, the **Effort** choices float above the button, so you can see and pick them all.
 - On a phone in Lamplight, the **More** menu has a solid back, so it isn't see-through.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.234
-
-Journey gets a real quest log, and your saved land is easy to get back to.
-
-### New
-
-- **📜 Quests is a real quest log.** Main quest goals that update as you go, side quests from the Elders and the folk you meet, and achievements.
-- **📂 Load last save** on the Save tab.
-
-### Fixed
-
-- **Resume shows in the guest house**, where Journey now opens, so you can get straight back to your saved land.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 

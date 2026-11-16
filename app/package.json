@@ -1,6 +1,6 @@
 {
   "name": "bob",
-  "version": "1.5.243",
+  "version": "1.5.244",
   "description": "Bob, a local AI who lives on your PC: chat, pictures, video, voice and more, all on your own hardware.",
   "type": "module",
   "private": true,
@@ -303,9 +303,9 @@
   ],
   "bob": {
     "release": "1.5",
-    "patch": 243,
+    "patch": 244,
     "branch": "",
-    "build": 295,
+    "build": 296,
     "bundledLlamaTag": "b12359",
     "brainEngineVersion": 8,
     "brainEngine": {
