@@ -1,0 +1,172 @@
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 965f6a1..c913221 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -618,6 +618,24 @@ struct llama_moe_cache::impl {
+         }
+         ggml_backend_buffer_set_usage(buf_host.get(), GGML_BACKEND_BUFFER_USAGE_WEIGHTS);
+ 
++        // Brain Engine 0016: fill the cache at load from a ranking of the experts (LLAMA_MOE_CACHE_RANKING, the path of a
++        // ranking file), so the busiest experts sit on the card from the first word. With --moe-cache-cpu-share 1 nothing
++        // is uploaded during one-word writing once the cache is full, so a ranked fill is a fixed placement, not a swap
++        // cache. Only the small-batch path (ubatches up to 32 tokens) reads the cache: prompt reading in big batches
++        // bypasses it, so a ranking never speeds up prompt reading or the first word of a long prompt.
++        // The brain's fingerprint is always printed, so a ranking can be stamped with it and checked against it.
++        if (!no_alloc) {
++            fingerprint  = model_fingerprint(model);
++            n_expert_all = model.hparams.n_expert;
++            if (const char * every = getenv("LLAMA_MOE_CACHE_LOG_EVERY"); every != nullptr) {
++                log_every = strtoull(every, nullptr, 10);
++            }
++            LLAMA_LOG_INFO("%s: MoE cache brain fingerprint = %016llx\n", __func__, (unsigned long long) fingerprint);
++            if (const char * path = getenv("LLAMA_MOE_CACHE_RANKING"); path != nullptr && *path != '\0') {
++                fill_from_ranking(path);
++            }
++        }
++
+         for (size_t id = 0; id < devices.size(); ++id) {
+             const device & d = devices[id];
+             if (d.host_bytes == 0) {
+@@ -635,6 +653,128 @@ struct llama_moe_cache::impl {
+         }
+     }
+ 
++    uint64_t fingerprint  = 0;
++    uint64_t log_every    = 0; // LLAMA_MOE_CACHE_LOG_EVERY
++    uint64_t n_updates    = 0;
++    uint32_t n_expert_all = 0; // experts per layer in the brain
++
++    // FNV-1a over every expert tensor of the brain (all layers, wherever they sit): its type and shape, and the first and
++    // last 64 bytes of its first and last expert. The same brain file gives the same number on any card, at any cache
++    // size and placement; another brain, another quant or a retrained one gives another.
++    static uint64_t model_fingerprint(const llama_model & model) {
++        uint64_t h = 1469598103934665603ULL;
++        auto mix = [&](const void * p, size_t n) { const uint8_t * b = (const uint8_t *) p; for (size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ULL; } };
++        for (size_t il = 0; il < model.layers.size(); ++il) {
++            for (const ggml_tensor * t : llama_moe_cache_layer_experts(model.layers[il])) {
++                const int32_t type = (int32_t) t->type;
++                mix(&il, sizeof(il));
++                mix(&type, sizeof(type));
++                mix(t->ne, sizeof(t->ne));
++                const size_t n = std::min<size_t>(64, t->nb[2]);
++                for (const size_t off : { (size_t) 0, (size_t) (t->ne[2] - 1)*t->nb[2] + t->nb[2] - n }) {
++                    uint8_t buf[64];
++                    ggml_backend_tensor_get(t, buf, off, n);
++                    mix(buf, n);
++                }
++            }
++        }
++        return h;
++    }
++
++    // The ranking file is text: a first line "bob-moe-ranking 2 <fingerprint> <stamp>", then one line per expert
++    // "<layer> <expert> <count>". Everything is checked before a slot is touched. A file that is missing, not a ranking,
++    // made on another brain (fingerprint), or naming a layer or expert this brain doesn't have, is refused with a
++    // warning, and the cache fills the stock way (first come) instead: a ranking from the wrong weights would quietly
++    // install a bad placement, which is worse than none.
++    void fill_from_ranking(const char * path) {
++        auto refuse = [&](const std::string & why) {
++            LLAMA_LOG_WARN("%s: !!! MoE cache ranking NOT USED: %s (%s). The cache fills the stock way instead.\n", __func__, why.c_str(), path);
++        };
++        FILE * f = fopen(path, "r");
++        if (f == nullptr) {
++            refuse("the file can't be opened");
++            return;
++        }
++        char magic[32] = {0};
++        int version = 0;
++        unsigned long long fp = 0;
++        char stamp[256] = {0};
++        if (fscanf(f, "%31s %d %llx %255s", magic, &version, &fp, stamp) != 4 || strcmp(magic, "bob-moe-ranking") != 0 || version != 2) {
++            fclose(f);
++            refuse("not a bob-moe-ranking 2 file");
++            return;
++        }
++        if ((uint64_t) fp != fingerprint) {
++            fclose(f);
++            char why[128];
++            snprintf(why, sizeof(why), "made on another brain (fingerprint %016llx, this brain %016llx)", fp, (unsigned long long) fingerprint);
++            refuse(why);
++            return;
++        }
++        std::vector<std::vector<std::pair<double, int32_t>>> cand(groups.size()); // per group: (count, key)
++        int il = 0, e = 0;
++        double count = 0.0;
++        size_t n_read = 0;
++        size_t n_bad  = 0;
++        int    got    = 0;
++        while ((got = fscanf(f, "%d %d %lf", &il, &e, &count)) == 3) {
++            n_read++;
++            if (il < 0 || (size_t) il >= layers.size() || e < 0 || e >= (int) n_expert_all || !(count > 0.0)) {
++                n_bad++;
++                continue;
++            }
++            if (layers[il].ig < 0) {
++                continue; // a layer on the card or not cached at this size: fine
++            }
++            group & g = groups[layers[il].ig];
++            if (g.n_slots == 0) {
++                continue;
++            }
++            cand[layers[il].ig].emplace_back(count, g.lru.make_key(il, e));
++        }
++        const bool tail_ok = got == EOF;
++        fclose(f);
++        if (!tail_ok || n_bad > 0 || n_read == 0) {
++            char why[128];
++            snprintf(why, sizeof(why), "%s (%zu lines read, %zu naming a layer or expert this brain doesn't have)", !tail_ok ? "a line that can't be read" : n_read == 0 ? "no experts in it" : "it doesn't fit this brain", n_read, n_bad);
++            refuse(why);
++            return;
++        }
++        size_t n_seeded = 0;
++        size_t bytes = 0;
++        for (size_t ig = 0; ig < groups.size(); ++ig) {
++            group & g = groups[ig];
++            auto & c = cand[ig];
++            if (g.n_slots == 0 || c.empty()) {
++                continue;
++            }
++            // the busiest first; ties by key, so the same file always gives the same placement
++            std::sort(c.begin(), c.end(), [](const auto & a, const auto & b) { return a.first != b.first ? a.first > b.first : a.second < b.second; });
++            c.erase(std::unique(c.begin(), c.end(), [](const auto & a, const auto & b) { return a.second == b.second; }), c.end());
++            for (int32_t s = 0; s < g.n_slots && s < (int32_t) c.size(); ++s) {
++                const int32_t key = c[s].second;
++                const int32_t kl  = g.lru.key_layer(key);
++                const int32_t ke  = g.lru.key_expert(key);
++                GGML_ASSERT(layers[kl].ig == (int32_t) ig && g.lru.slot_map[kl] != nullptr && "MoE cache ranking: a layer without a slot map");
++                GGML_ASSERT(g.lru.key_of[s] < 0 && "MoE cache ranking: the slot is taken");
++                g.lru.slot_map[kl][ke] = s;
++                g.lru.key_of[s]        = key;
++                g.lru.crf[key]         = std::exp2((float) (moe_cache_lru::n_class - 1)); // the top class: the last to be chosen as a victim
++                g.lru.last_use[key]    = 0;
++                g.lru.move(s, g.lru.class_of(key));
++                g.lru.n_filled++;
++                for (size_t ip = 0; ip < layers[kl].experts.size(); ++ip) {
++                    const ggml_tensor * w = layers[kl].experts[ip];
++                    const size_t expert_size = w->nb[2];
++                    ggml_backend_tensor_set(g.banks[ip], (const uint8_t *) w->data + (size_t) ke*expert_size, (size_t) s*expert_size, expert_size);
++                    bytes += expert_size;
++                }
++                n_seeded++;
++            }
++        }
++        LLAMA_LOG_INFO("%s: ranked fill: %zu experts (%.2f MiB) from %s (%zu lines, %s)\n", __func__, n_seeded, bytes/1024.0/1024.0, path, n_read, stamp);
++    }
++
+     ggml_backend_t backend(int32_t il) const {
+         return devices[groups[layers[il].ig].id].backend;
+     }
+@@ -849,6 +989,13 @@ struct llama_moe_cache::impl {
+         st.cpu    += cpu.size();
+         st.bytes  += bytes;
+ 
++        // Brain Engine 0016: LLAMA_MOE_CACHE_LOG_EVERY=N prints the running totals every N cache updates (one per cached
++        // layer per small batch), so a test can read them while the server runs, and Windows, where a stopped server
++        // never gets to print them, still shows them. Off unless set.
++        if (log_every > 0 && ++n_updates % log_every == 0) {
++            log_stats();
++        }
++
+         // the next copy synchronizes the backend before it changes the slot map again
+         ggml_backend_tensor_set_async(backend, dst, l.slot_map->data, 0, ggml_nbytes(l.slot_map));
+ 
