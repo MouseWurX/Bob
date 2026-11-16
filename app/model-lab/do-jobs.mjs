@@ -137,7 +137,8 @@ say(`Bob's tools from ${L.bob}: ${probe.bobSrc?.version || '?'}${probe.bobSrc?.c
 if (o['want-shapes'] !== undefined && String(probe.toolShapes) !== String(o['want-shapes'])) fail(`Bob's tools are shape ${probe.toolShapes ?? '?'}, not ${o['want-shapes']}`);
 if (o['search-probe']) {
   let r = '';
-  try { r = String((await probe.brain.tools.web_search.run({ query: 'weather forecast Paris' }))?.text ?? ''); } catch (e) { r = `Error: ${e.message || e}`; }
+  // 16 Nov: the second argument is the tool's context (Bob's tools take { signal }); without it the probe failed on npc
+  try { const got = await probe.brain.tools.web_search.run({ query: 'weather forecast Paris' }, { signal: AbortSignal.timeout(90000) }); r = String(typeof got === 'string' ? got : got?.text ?? ''); } catch (e) { r = `Error: ${e.message || e}`; }
   counted(probeUsed());
   if (!r.trim() || BLOCKED.test(r) || /^Error/.test(r)) { probe.done(); fail(`web search from this PC gets nothing (${probe.neutral(r).slice(0, 120) || 'empty'}): the search pages may be blocking it, and every search job would teach a failed search`); }
   say('pre-flight: web search answers');

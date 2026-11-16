@@ -34,8 +34,8 @@ Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf and its mmproj under `<parent>/models` (found by
    brain sees carries a real folder name. `--search tavily` hands Bob the Lab's own Tavily key for his backup search
    (Settings, Search API keys: the free pages first, Tavily only when they're blocked or find nothing). The key is saved
    encrypted on the Lab PC by the double-click "Save Tavily key for the Lab.cmd" (lab-keys.mjs), checked in pre-flight
-   with one search, never printed or saved, and every saved row is scrubbed for it. `--search-month 1000` keeps the Lab's
-   count of this month's Tavily searches in out\tavily-searches-<month>.json (Tavily's free plan is 1,000 a month), gives
+   with one search, never printed or saved, and every saved row is scrubbed for it. `--search-month <n>` keeps the Lab's
+   count of this month's Tavily searches in out\tavily-searches-<month>.json (Tavily's free plan: 1,000 or more a month; its usage page says), gives
    each job's Bob that count with his cap 10 below it, and starts no new job once about 10 are left. Tavily's own usage
    page is checked too when it answers. `--search-probe` stops pre-flight when web search answers nothing; 5 failed
    searches in a row stop a run.

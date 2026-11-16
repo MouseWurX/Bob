@@ -95,7 +95,8 @@ fs.writeFileSync(jobs2, JSON.stringify({ id: 'a7', job: 'files', text: 'Read the
 fs.writeFileSync(held, JSON.stringify({ id: 'h1', question: 'this exact request is a test item' }) + '\n');
 // the web pages a search would reach answer nothing here (no test goes online); the stand-in servers still answer
 const offline = path.join(tmp, 'offline.mjs');
-fs.writeFileSync(offline, "const real = globalThis.fetch;\nglobalThis.fetch = async (u, o) => (/^https?:\\/\\/(127\\.0\\.0\\.1|localhost)[:/]/.test(String(u?.url ?? u)) ? real(u, o) : new Response('', { status: 200, headers: { 'content-type': 'text/html' } }));\n");
+// (OFFLINE_TAVILY=1: Tavily's own address answers one result, as the real one would for a working key)
+fs.writeFileSync(offline, "const real = globalThis.fetch;\nglobalThis.fetch = async (u, o) => { const s = String(u?.url ?? u); if (/^https?:\\/\\/(127\\.0\\.0\\.1|localhost)[:/]/.test(s)) return real(u, o); if (process.env.OFFLINE_TAVILY && /api\\.tavily\\.com\\/search/.test(s)) return new Response(JSON.stringify({ results: [{ title: 'Paris weather', url: 'https://example.com/paris', content: 'Mild, light rain.' }] }), { status: 200, headers: { 'content-type': 'application/json' } }); return new Response('', { status: 200, headers: { 'content-type': 'text/html' } }); };\n");
 const jobs3 = path.join(tmp, 'ideas3.jsonl');
 fs.writeFileSync(jobs3, [{ id: 'w1', job: 'web', text: 'find me some fox facts' }, { id: 'w2', job: 'chat', text: 'tell me a joke' }, { id: 'w3', job: 'chat', text: 'tell me a story' }].map((x) => JSON.stringify(x)).join('\n') + '\n');
 const ledger = path.join(tmp, `tavily-searches-${new Date().toISOString().slice(0, 7)}.json`);
@@ -124,6 +125,8 @@ const tk = await run(['--preflight', '--search', 'tavily'], { env: { LAB_TAVILY_
 const tkRun = await run(['--search', 'tavily', '--scene', 'make'], { jobsFile: jobs2, dir: 'tavily1', env: { LAB_TAVILY_KEY: KEY } });
 const tkBad = await run(['--preflight', '--search', 'tavily'], { env: { LAB_TAVILY_KEY: 'tvly-WRONG0123456789abcd' } });
 const tkNone = await run(['--preflight', '--search', 'tavily']);
+const pr = await run(['--preflight', '--search', 'tavily', '--search-probe'], { env: { LAB_TAVILY_KEY: KEY, OFFLINE_TAVILY: '1' } });
+const prNone = await run(['--preflight', '--search', 'tavily', '--search-probe'], { env: { LAB_TAVILY_KEY: KEY } });
 usage = { key: { usage: 3, limit: null }, account: { current_plan: 'Researcher', plan_usage: 995, plan_limit: 1000 } };
 const mU = await run(['--preflight', '--search', 'tavily', '--search-month', '1000'], { env: { LAB_TAVILY_KEY: KEY } });
 usage = null; fs.writeFileSync(ledger, JSON.stringify({ used: 987 }));
@@ -168,6 +171,8 @@ check('a key Tavily refuses stops pre-flight; no key at all says how to add one'
   check('the key never shows: not in anything printed, saved, or sent to the brain (a wrong key neither)', tkRun.code === 0 && files.length > 0 && ![tk.log, tkRun.log, tkBad.log, tkNone.log, files].some((x) => x.includes(KEY) || x.includes('tvly-WRONG')) && !keyToBrain, [tk.log, tkRun.log, tkBad.log].find((x) => x.includes('tvly-')) || ''); }
 { const rows3 = fs.existsSync(path.join(tmp, 'budget1', 'runs.jsonl')) ? fs.readFileSync(path.join(tmp, 'budget1', 'runs.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
   const searched = rows3[0] ? rows3[0].steps.flatMap((st) => st.calls).filter((c) => c.name === 'web_search').length : 0;
+  check('pre-flight --search-probe: Bob\'s own web_search runs (its backup answers when the free pages find nothing) and passes', pr.code === 0 && /pre-flight: web search answers/.test(pr.log) && !/destructure/.test(pr.log), pr.log.slice(-300));
+  check('pre-flight --search-probe: when nothing answers it stops with Bob\'s own words, not a crash', prNone.code === 1 && /PRE-FLIGHT FAIL: web search from this PC gets nothing \(No results/.test(prNone.log) && !/destructure/.test(prNone.log), prNone.log.slice(-300));
   check("pre-flight: Tavily's usage page says the month is nearly used, so nothing runs", mU.code === 1 && /995 of 1000 searches used/.test(mU.log) && /no web searches are left this month/.test(mU.log), mU.log.slice(-300));
   check("the Lab's own count: once this month's searches are used, no new job starts and the rest wait", mL.code === 0 && rows3.length === 1 && rows3[0].id === 'w1' && searched === 2 && /no new job starts; 2 wait for the next run/.test(mL.log) && /Stopped early: this month's search budget was used/.test(fs.readFileSync(path.join(tmp, 'budget1', 'summary.md'), 'utf8')), mL.log.slice(-500));
   check("every Tavily search is counted on the Lab PC: the key check, and each one Bob's own backup search made (987 + 1 + 2)", ledgerAfter === 990 && rows3[0].steps.flatMap((st) => st.calls).filter((c) => c.name === 'web_search').every((c) => /The backup search: Tavily/.test(c.result)), String(ledgerAfter) + ' ' + JSON.stringify(rows3[0]?.steps.flatMap((st) => st.calls).map((c) => c.result)).slice(0, 300)); }

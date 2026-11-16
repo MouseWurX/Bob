@@ -73,7 +73,7 @@ check('a folder with no runs stops it', none.status === STOP && /no runs in the 
   check("forge pre-flight: a gate that couldn't check for the key stops the rental", bad.status === 1 && /PRE-FLIGHT FAIL: flashnext-jobs command 1: the Lab's Tavily key can't be opened/.test(bad.stdout) && /Not renting/.test(bad.stdout), bad.stdout.slice(-400));
   const plan = JSON.parse(fs.readFileSync(path.join(app, 'model-lab', 'forge', 'plans', 'jobs-flashnext-run3-long.json'), 'utf8'));
   const cmds = plan.benchmark.models[0].commands;
-  check('the run 3 + longer run plan: run 3, the gate, then 800 fix-list jobs on the same brain, all under 7 h / $40', cmds.length === 3 && /--dir jobs-trial3 --count 45/.test(cmds[0]) && /^node jobs-gate\.mjs --dir jobs-trial3 --runs 45/.test(cmds[1]) && /jobs-fix\/jobs\.jsonl --dir jobs-fix1 --count 800/.test(cmds[2]) && cmds.every((c, i) => i === 1 || /--search tavily --search-month 1000/.test(c)) && plan.hours_max === 7 && plan.dollars_max === 40 && 0.5 + 5.6 + 0.5 <= plan.hours_max, JSON.stringify(cmds)); }
+  check('the run 3 + longer run plan: run 3, the gate, then 800 fix-list jobs on the same brain, all under 7 h / $40', cmds.length === 3 && /--dir jobs-trial3 --count 45/.test(cmds[0]) && /^node jobs-gate\.mjs --dir jobs-trial3 --runs 45/.test(cmds[1]) && /jobs-fix\/jobs\.jsonl --dir jobs-fix1 --count 800/.test(cmds[2]) && cmds.every((c, i) => i === 1 || /--search tavily --search-month 1500/.test(c)) && plan.hours_max === 7 && plan.dollars_max === 40 && 0.5 + 5.6 + 0.5 <= plan.hours_max, JSON.stringify(cmds)); }
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
