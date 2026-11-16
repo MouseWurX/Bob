@@ -110,11 +110,11 @@ export function toolError(plain, next = '', { code = '', transient = false } = {
 }
 const name = (p) => (p ? `"${String(p).slice(0, 200)}"` : '');
 const CODES = {
-  ENOENT: (p) => [`${p ? `${name(p)} isn't there` : 'that file or folder isn\'t there'}`, 'check the name and folder with list_files, then try once more'],
+  ENOENT: (p) => [`${p ? `${name(p)} isn't there` : 'that file or folder isn\'t there'}`, 'check the name and folder with list_folder, then try once more'],
   EACCES: (p) => [`Bob isn't allowed to open ${name(p) || 'that'}`, 'use a file or folder Bob can reach, or ask the user to allow it'],
   EPERM: (p) => [`Bob isn't allowed to change ${name(p) || 'that'}`, 'use a file or folder Bob can reach, or ask the user to allow it'],
   EISDIR: (p) => [`${name(p) || 'that'} is a folder, not a file`, 'name a file inside it'],
-  ENOTDIR: (p) => [`part of ${name(p) || 'that path'} is a file, not a folder`, 'check the path with list_files'],
+  ENOTDIR: (p) => [`part of ${name(p) || 'that path'} is a file, not a folder`, 'check the path with list_folder'],
   EEXIST: (p) => [`${name(p) || 'that'} is already there`, 'pick another name, or ask whether to replace it'],
   ENOTEMPTY: (p) => [`${name(p) || 'that folder'} isn't empty`, 'say what to do with what is in it'],
   ENOSPC: () => ['the disk is full', 'tell the user; nothing more can be saved until some space is freed'],

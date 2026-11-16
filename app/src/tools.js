@@ -936,7 +936,11 @@ export function buildTools(cfg) {
         if (isSensitive(cfg, dir)) throw new Error(SECRET_MSG);
       }
       // 1.5.34: the main project (Settings > Projects) is searched first.
-      const roots = folder ? [resolveUserPath(folder)] : project ? [all[project]] : [...new Set([all[cfg.defaultProject], ...Object.values(all)].filter(Boolean))];
+      let roots = folder ? [resolveUserPath(folder)] : project ? [all[project]] : [...new Set([all[cfg.defaultProject], ...Object.values(all)].filter(Boolean))];
+      // Nov 16 (real-job runs): with no projects and no folder, it searched nothing and asked which folder; brains
+      // then gave up or listed every folder. Now it searches the folders Bob may read, and says so.
+      let where = '';
+      if (!roots.length) { roots = readableRoots(cfg).filter((r) => !isSensitive(cfg, r) && fs.existsSync(r)); if (roots.length) where = `No projects are set up, so I searched the folders I may read (${roots.join('; ')}).\n`; }
       const match = searchMatcher(text);
       const want = filePattern(files);
       if (!roots.length) throw new Error('No projects are set up yet, so there\'s nothing to search. I\'ll look in a folder instead: tell me which one, or I\'ll start with Documents. (For you, Bob: use list_folder and read_file. Projects live under "projects" in config.json; there is no switch for them in the app yet.)');
@@ -961,7 +965,7 @@ export function buildTools(cfg) {
         }
       };
       for (const root of roots) walk(root);
-      return hits.length ? hits.join('\n') : `No matches in ${scanned} files.`;
+      return where + (hits.length ? hits.join('\n') : `No matches in ${scanned} files.`);
     },
     summary: ({ project, folder, text, files }) => `search ${folder || project || 'all projects'}${files ? ` (${files})` : ''} for "${text}"`
   };
