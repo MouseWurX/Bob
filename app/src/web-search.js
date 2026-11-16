@@ -151,47 +151,63 @@ export const ASK = {
 const plainErr = (e, key) => short(String(e?.message || e).split(key || '\u0000').join('…'), 120);
 
 // ---------- web_search ----------
+// The services you turned on, in your order: the first that answers with results, as { id, list }, else null (and
+// what happened goes in tried).
+async function askBackups(q, w, { cfg, get, signal, now, key, tried }) {
+  const s = cleanSearchBackup(cfg.searchBackup);
+  for (const id of s.order) {
+    if (!s.use[id]) continue;
+    const k = keyFor(cfg, id, key ? { key } : {});
+    if (!k) continue;
+    const held = heldBack(cfg, s, id, now());
+    if (held) { tried.push(held); continue; }
+    countOne(cfg, id, now()); // counted when asked, whatever comes back: that's how the services count too
+    try {
+      const got = await ASK[id](get, { query: q, when: w, key: k, max: 8 });
+      if (got.length) return { id, list: got };
+      tried.push(`${SERVICES[id].name} found nothing`);
+    } catch (e) { if (signal?.aborted || e?.route) throw e; if (e?.limit) restToday(cfg, id, now()); tried.push(`${SERVICES[id].name} ${plainErr(e, k)}`); }
+  }
+  return null;
+}
+
 // get(url, opts) does the fetching. Returns the text web_search gives the brain.
 export async function webSearch({ query, when }, { cfg = {}, get, signal, now = Date.now, key } = {}) {
   const w = String(when || '').toLowerCase();
   const df = DDG_DATE[w];
   const q = String(query || '').trim();
   if (!q) return 'Give me some words to search for.';
+  const tried = [];
+  // Private web (private-web.js): the services you turned on go first, since they only get the search words; the
+  // free pages come last.
+  if (cfg?.privateWeb?.on === true && backupOn(cfg)) {
+    const got = await askBackups(q, w, { cfg, get, signal, now, key, tried });
+    if (got) return `(From ${SERVICES[got.id].name}, first because Private web is on.)\n${resultLines(got.list)}`;
+  }
   let list = [], why = '', blocked = [];
   try {
     const res = await get('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q) + (df ? `&df=${df}` : ''), { headers: UA });
     const html = res.status === 200 || res.status === 202 || res.status === 403 || res.status === 429 ? await res.text().catch(() => '') : '';
     if (blockedPage(res.status, html)) { blocked.push('DuckDuckGo'); why = 'DuckDuckGo showed its robot check'; }
     else if (res.ok) list = parseDdg(html); else why = `DuckDuckGo answered ${res.status}`;
-  } catch (e) { if (signal?.aborted) throw e; why = e.name === 'TimeoutError' ? 'DuckDuckGo took too long' : `DuckDuckGo: ${e.message}`; }
+  } catch (e) { if (signal?.aborted || e?.route) throw e; why = e.name === 'TimeoutError' ? 'DuckDuckGo took too long' : `DuckDuckGo: ${e.message}`; }
   if (list.length) return resultLines(list);
   try {
     const res = await get('https://www.mojeek.com/search?q=' + encodeURIComponent(q), { headers: UA });
     const html = await res.text().catch(() => '');
     if (blockedPage(res.status, html)) blocked.push('Mojeek');
     else if (res.ok) list = parseMojeek(html);
-  } catch (e) { if (signal?.aborted) throw e; }
+  } catch (e) { if (signal?.aborted || e?.route) throw e; }
   if (list.length) return `(From Mojeek: ${why || 'DuckDuckGo found nothing'}${df ? '; no date filter there' : ''}.)\n${resultLines(list)}`;
 
-  // The backup with a key, only when it's on: the services in your order that have a key and are under their cap.
-  const tried = [];
-  if (backupOn(cfg)) {
-    const s = cleanSearchBackup(cfg.searchBackup);
-    for (const id of s.order) {
-      if (!s.use[id]) continue;
-      const k = keyFor(cfg, id, key ? { key } : {});
-      if (!k) continue;
-      const held = heldBack(cfg, s, id, now());
-      if (held) { tried.push(held); continue; }
-      countOne(cfg, id, now()); // counted when asked, whatever comes back: that's how the services count too
-      try {
-        const got = await ASK[id](get, { query: q, when: w, key: k, max: 8 });
-        if (got.length) {
-          const lead = blocked.length ? `the search pages are blocking this computer (${blocked.join(', ')})` : why || 'the free search pages found nothing';
-          return `(From ${SERVICES[id].name}, the backup search${SERVICES[id].keyless ? ' (no key)' : ' with your key'}: ${lead}${w && !SERVICES[id].dates ? '; no date filter there' : ''}.)\n${resultLines(got)}`;
-        }
-        tried.push(`${SERVICES[id].name} found nothing`);
-      } catch (e) { if (signal?.aborted) throw e; if (e?.limit) restToday(cfg, id, now()); tried.push(`${SERVICES[id].name} ${plainErr(e, k)}`); }
+  // The backup, only when it's on: the services in your order that are ready (a key, or keyless) and under their cap.
+  // (With Private web on they were already asked above.)
+  if (backupOn(cfg) && cfg?.privateWeb?.on !== true) {
+    const got = await askBackups(q, w, { cfg, get, signal, now, key, tried });
+    if (got) {
+      const id = got.id;
+      const lead = blocked.length ? `the search pages are blocking this computer (${blocked.join(', ')})` : why || 'the free search pages found nothing';
+      return `(From ${SERVICES[id].name}, the backup search${SERVICES[id].keyless ? ' (no key)' : ' with your key'}: ${lead}${w && !SERVICES[id].dates ? '; no date filter there' : ''}.)\n${resultLines(got.list)}`;
     }
   }
   if (blocked.length) {
