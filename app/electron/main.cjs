@@ -8,7 +8,7 @@
 //   3. otherwise %LOCALAPPDATA%\Bob, with a fresh config.json made from config.example.json.
 // On a Mac (Bob.app, the same official Electron renamed, Bob's files in Bob.app/Contents/Resources/app) step 3 is
 // ~/Library/Application Support/Bob/home, and on Linux ~/.local/share/bob (src/platform.js defaultHome).
-const { app, BrowserWindow, shell, Menu, dialog, clipboard, screen, Tray, nativeImage, Notification, globalShortcut } = require('electron');
+const { app, BrowserWindow, shell, Menu, dialog, clipboard, screen, Tray, nativeImage, Notification, globalShortcut, ipcMain } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
@@ -39,6 +39,7 @@ if (process.platform === 'linux' && process.env.APPIMAGE) {
 }
 
 const root = path.join(__dirname, '..');
+const PRELOAD = path.join(__dirname, 'preload.cjs'); // Nov 16: the file picker, asked of Bob's window directly
 const MAC = process.platform === 'darwin';
 
 // A Mac app opened from Finder or the Dock gets a bare PATH (/usr/bin:/bin:/usr/sbin:/sbin), so programs from
@@ -268,8 +269,11 @@ globalThis.bobImage = {
 // 1.5.177: the "pick a file" and "pick a folder" windows. Bob's brain runs in this program, so Electron's own picker
 // opens on top of Bob's window. The old PowerShell helper could open behind Bob, or not show at all. Returns the
 // path, or '' when cancelled. filters: [{ name, extensions }]; folder: true picks a folder (newFolder lets you make one).
-globalThis.bobPick = async ({ title = '', filters, folder = false, newFolder = false } = {}) => {
-  const owner = win && !win.isDestroyed() ? win : undefined;
+// Nov 16: the picker sits on the Bob window that asked (or the one in front), so a picker asked for from the Settings
+// window (always on top) no longer opens behind it, on the main window.
+globalThis.bobPick = async ({ title = '', filters, folder = false, newFolder = false, from = null } = {}) => {
+  const live = (w) => (w && !w.isDestroyed() ? w : null);
+  const owner = live(from) || live(BrowserWindow.getFocusedWindow()) || live(win) || undefined;
   if (owner) { if (owner.isMinimized()) owner.restore(); if (!owner.isVisible()) owner.show(); owner.focus(); }
   const props = folder ? ['openDirectory', ...(newFolder ? ['createDirectory'] : [])] : ['openFile'];
   const r = await dialog.showOpenDialog(owner, { title, properties: props, ...(filters && !folder ? { filters } : {}) });
@@ -519,9 +523,18 @@ async function start() {
     title: 'Bob', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'),
     backgroundColor: '#121212', autoHideMenuBar: true, show: !process.argv.includes('--hidden'),
     // plugins: the built-in PDF viewer, so "Documents in the side panel" can show a PDF's pages (no other plugins exist).
-    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, plugins: true }
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, plugins: true, preload: PRELOAD }
   });
   const base = `http://127.0.0.1:${home.port}`;
+  // Nov 16 (electron/preload.cjs): Bob's own pages ask his window for the file picker directly, not over the web, so
+  // it opens even when the page's connections to Bob are all busy. Only Bob's own pages may ask; only a picked path comes back.
+  const { pickOptions } = await import(pathToFileURL(path.join(root, 'src', 'own-models.js')).href);
+  ipcMain.removeHandler('bob:pick');
+  ipcMain.handle('bob:pick', async (e, kind) => {
+    if (!String(e.senderFrame?.url || '').startsWith(base + '/')) return '';
+    const o = pickOptions(String(kind || ''));
+    return String((await globalThis.bobPick({ title: o.title, filters: o.filters, from: BrowserWindow.fromWebContents(e.sender) })) || '');
+  });
   // Links to the web open in the normal browser; Bob's window only ever shows Bob.
   // 1.5.53: the one exception is "Bob's thinking", his own small window that stays on top (one at a time).
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -537,12 +550,12 @@ async function start() {
     // Settings is its own ordinary window too (minimise, maximise, close), one at a time.
     if (url === base + '/settings.html' || url.startsWith(base + '/settings.html#') || url.startsWith(base + '/settings.html?')) {
       if (settingsWin) { if (settingsWin.webContents.getURL() !== url) settingsWin.loadURL(url); raise(settingsWin); return { action: 'deny' }; }
-      return { action: 'allow', overrideBrowserWindowOptions: { frame: true, titleBarStyle: 'default', width: 1040, height: 780, minWidth: 360, minHeight: 480, title: 'Bob · Settings', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#121212', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
+      return { action: 'allow', overrideBrowserWindowOptions: { frame: true, titleBarStyle: 'default', width: 1040, height: 780, minWidth: 360, minHeight: 480, title: 'Bob · Settings', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#121212', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, preload: PRELOAD } } };
     }
     // The Computer Science Lab is its own ordinary window as well, one at a time.
     if (url === base + '/lab.html') {
       if (labWin) { raise(labWin); return { action: 'deny' }; }
-      return { action: 'allow', overrideBrowserWindowOptions: { width: 1180, height: 860, minWidth: 360, minHeight: 480, title: 'Bob · Computer Science Lab', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#1d1510', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 1180, height: 860, minWidth: 360, minHeight: 480, title: 'Bob · Computer Science Lab', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#1d1510', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, preload: PRELOAD } } };
     }
     if (/^https?:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };

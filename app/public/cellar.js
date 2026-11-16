@@ -202,8 +202,15 @@ export function createCellar({ popOut = null } = {}) {
     document.body.appendChild(pop); pop.showModal();
     pop.querySelector('[data-pickkey]:not([disabled])')?.focus();
   }
+  // Nov 16: in Bob's own window the page asks the window for the picker (window.bobApp, electron/preload.cjs), not Bob
+  // over the web: with every connection to Bob busy, the web request used to wait and the picker never opened.
+  async function viaWindow(kind) {
+    const file = String((await window.bobApp.pick(kind)) || '');
+    if (!file || kind !== 'gguf') return { file };
+    return { file, ...(await api('/api/own-models/inspect', { file })) };
+  }
   async function ownPick(kind) {
-    const r = await api('/api/own-models/pick', { kind }).catch((e) => ({ error: e.message }));
+    const r = await (typeof window.bobApp?.pick === 'function' ? viaWindow(kind) : api('/api/own-models/pick', { kind })).catch((e) => ({ error: e.message }));
     if (r.error) { ownForm = { ...(ownForm || { file: '', name: '' }), error: r.error }; draw(); if (!ownForm.file) dlg.querySelector('[data-ownpath]')?.focus(); return null; }
     return r;
   }
@@ -905,7 +912,12 @@ export function createCellar({ popOut = null } = {}) {
       if ('catfilterReset' in b.dataset) { setCatFilters({}); draw(); return; }
       if (b.dataset.catview) { if (b.dataset.catview === 'naughty' && !naughtyOn()) return; setCatView(b.dataset.catview); draw(); return; }
       // 1.5.135: ➕ Your own brains. Pick the file (a window on this replicant matrix), name it, add it; or take one off the list.
-      if ('ownadd' in b.dataset) { b.disabled = true; const r = await ownPick('gguf'); if (!r) return; if (!r.file) { b.disabled = false; return; } ownForm = r.error ? { file: r.file, name: '', error: r.error } : { file: r.file, name: r.name, params: r.params, sizeGB: r.sizeGB, mmproj: r.mmproj || '', card: r.card || null }; draw(); dlg.querySelector('[data-ownname]')?.focus(); return; }
+      if ('ownadd' in b.dataset) {
+        // Nov 16: never a greyed button with nothing happening. After a few seconds without the file window, say so and
+        // offer the path box; the button works again.
+        b.disabled = true;
+        const slow = setTimeout(() => { if (!b.isConnected || b.nextElementSibling?.classList.contains('own-slow')) return; b.disabled = false; b.insertAdjacentHTML('afterend', ' <span class="muted own-slow" role="status">The file window hasn\'t opened yet. It may be behind this one, or Bob is busy. You can also type its path.</span>'); }, 6000);
+        const r = await ownPick('gguf'); clearTimeout(slow); if (!r) return; if (!r.file) { b.disabled = false; return; } ownForm = r.error ? { file: r.file, name: '', error: r.error } : { file: r.file, name: r.name, params: r.params, sizeGB: r.sizeGB, mmproj: r.mmproj || '', card: r.card || null }; draw(); dlg.querySelector('[data-ownname]')?.focus(); return; }
       if (b.dataset.ownmm) { if (!ownForm) return; ownForm.name = dlg.querySelector('[data-ownname]')?.value || ownForm.name; if (b.dataset.ownmm === 'clear') { ownForm.mmproj = ''; draw(); return; } const r = await ownPick('mmproj'); if (r && r.file) { ownForm.mmproj = r.file; ownForm.error = ''; draw(); } return; }
       if ('owncancel' in b.dataset) { ownForm = null; draw(); return; }
       if ('ownpathopen' in b.dataset) { ownForm = { file: '', name: '' }; draw(); dlg.querySelector('[data-ownpath]')?.focus(); return; }

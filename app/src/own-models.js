@@ -180,8 +180,11 @@ export function pickFileArgs(kind, platform) {
 // 1.5.177: in Bob's own window (Bob.exe), Electron's picker, on top of his window (globalThis.bobPick, lent by
 // electron/main.cjs). The helpers below are only for Bob running without his window (a browser on this replicant matrix).
 export const PICK_FILTERS = { gguf: [{ name: 'Brain files', extensions: ['gguf'] }], mmproj: [{ name: 'Brain files', extensions: ['gguf'] }], backup: [{ name: 'Bob backups', extensions: ['zip'] }], any: [{ name: 'All files', extensions: ['*'] }], docs: [{ name: 'Documents and chat logs', extensions: ['txt', 'md', 'docx', 'doc', 'odt', 'rtf', 'pdf', 'epub', 'html', 'htm', 'json', 'jsonl'] }, { name: 'All files', extensions: ['*'] }] };
+// Nov 16: one place for a kind's title and filters, so Bob's window (electron/main.cjs, the page asks it directly) and
+// the server's own picker always match. An unknown kind is a brain file.
+export const pickOptions = (kind) => (Object.hasOwn(TITLE, kind) ? { kind, title: TITLE[kind], filters: PICK_FILTERS[kind] } : { kind: 'gguf', title: TITLE.gguf, filters: PICK_FILTERS.gguf });
 export function pickFile({ kind = 'gguf', run = execFile, platform = process.platform, pick = globalThis.bobPick } = {}) {
-  if (typeof pick === 'function') return Promise.resolve(pick({ title: TITLE[kind] || TITLE.gguf, filters: PICK_FILTERS[kind] || PICK_FILTERS.gguf })).then((f) => String(f || ''));
+  if (typeof pick === 'function') { const o = pickOptions(kind); return Promise.resolve(pick({ title: o.title, filters: o.filters })).then((f) => String(f || '')); }
   const args = pickFileArgs(kind, platform);
   if (platform === 'linux') {
     return new Promise((resolve, reject) => {
