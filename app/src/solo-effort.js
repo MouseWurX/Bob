@@ -77,10 +77,10 @@ ${WORDS_ONLY} Start with exactly "Looks right." or "Improve it:".`;
 // answer repeated the plan and the step reports (82 of 100). So the plan step keeps its tools for looking (it changes
 // nothing), steps with no tools say so in words, and the answer is told it is the only thing the user sees.
 export const WORDS_ONLY = 'There are no tools in this step: answer in plain words only, with no tool calls written out.';
-export const PLAN_NOTE = `Max effort, planning. Look things up with your tools if you need to, but don't change anything yet. Then write a numbered plan for this ask: 2 to ${MAX_JOBS} steps, each a small job you can finish and check on its own. One line each: what you'll do, and how you'll know it worked. Every step is something you do yourself (with your tools, or by writing); advice for the user goes in the answer later, not in the plan. Don't answer the ask yet. End with only the plan.`;
+export const PLAN_NOTE = `Max effort, planning. In this step you can only look (read, list, search); the tools that change things come in the jobs after the plan. Then write a numbered plan for this ask: 1 to ${MAX_JOBS} steps (a small ask is one step; a big one splits into small jobs), each one you can finish and check on its own. One line each: what you'll do, and how you'll know it worked. Every step is something you do yourself (with your tools, or by writing); advice for the user goes in the answer later, not in the plan. Don't answer the ask yet. End with only the plan.`;
 // 16 Nov saved runs: 85 of 100 Max "plans" were the answer itself, so nothing split. A reply that isn't a numbered plan of
-// 2 or more steps gets one more go with an example; still none, and the job runs whole (DIRECT_NOTE), still reviewed twice.
-export const PLAN_AGAIN = `That isn't a plan yet. Don't answer the ask now. Write only a numbered list of 2 to ${MAX_JOBS} things you will do yourself, for example:
+// 1 or more steps gets one more go with an example; still none, and the job runs whole (DIRECT_NOTE), still reviewed twice.
+export const PLAN_AGAIN = `That isn't a plan yet. Don't answer the ask now. Write only a numbered list of 1 to ${MAX_JOBS} things you will do yourself, for example:
 1. Read the settings file to find where the port is set. Worked if I can quote the line.
 2. Change the port to 8080 and save. Worked if reading the file back shows 8080.
 3. Write the answer: what changed and how to undo it. Worked if it names the file and both values.`;
@@ -127,8 +127,9 @@ export function weakAnswer(text) {
 export function planSteps(plan) {
   const out = [];
   for (const line of String(plan || '').split('\n')) {
-    const m = /^\s*(?:\*\*)?(?:step\s*)?(\d{1,2})[.):]\s*(?:\*\*)?\s*(.+)$/i.exec(line);
-    if (m && m[2].trim().length > 2) out.push(m[2].replace(/\*\*/g, '').trim().slice(0, 400));
+    // "1. Read", "**1.** Read", "### Step 1: Read", "- Step 1 — Read", "1) Read", "Step 1 - Read"
+    const m = /^\s*(?:#{1,6}\s*)?(?:[-*•]\s+)?(?:\*\*)?(?:step\s*)?(\d{1,2})(?:[.):]|\s+[-–—:])\s*(?:\*\*)?\s*(.+)$/i.exec(line);
+    if (m && m[2].replace(/\*\*/g, '').trim().length > 2) out.push(m[2].replace(/\*\*/g, '').replace(/^[-–—:]\s*/, '').trim().slice(0, 400));
   }
   return out.slice(0, MAX_JOBS);
 }
@@ -223,16 +224,16 @@ export async function soloRun(brain, level, { run, review, emit, signal, msgs, t
     let from = msgs.length;
     await run(PLAN_NOTE, { phase: 'plan' });
     let plan = lastSaid(from);
-    if (!stopped() && planSteps(plan).length < 2) {
+    if (!stopped() && planSteps(plan).length < 1) {
       say('\n\n_That isn\'t a step-by-step plan yet. Planning again:_\n\n');
       from = msgs.length;
       await run(PLAN_AGAIN, { phase: 'plan' });
       const again = lastSaid(from);
-      if (planSteps(again).length >= 2) plan = again;
+      if (planSteps(again).length >= 1) plan = again;
     }
     let list = planSteps(plan);
     if (stopped()) return { rounds, minutes: '' };
-    if (list.length < 2) {
+    if (list.length < 1) {
       // No plan came: the tries leave the chat (they were the answer in disguise), and the ask runs as one job.
       msgs.splice(msgs.map((m) => m.role).lastIndexOf('user') + 1);
       say('\n\n_No step-by-step plan came out, so I\'m doing this as one job and checking it twice._\n\n');
@@ -253,7 +254,7 @@ export async function soloRun(brain, level, { run, review, emit, signal, msgs, t
         from = msgs.length;
         await run(replanNote(text), { phase: 'plan' });
         const better = lastSaid(from);
-        if (planSteps(better).length >= 2) plan = better;
+        if (planSteps(better).length >= 1) plan = better;
       }
       list = planSteps(plan);
       // "Plan before big jobs" on: the checked plan goes on the plan card, and nothing starts before Go ahead.
@@ -267,7 +268,7 @@ export async function soloRun(brain, level, { run, review, emit, signal, msgs, t
           from = msgs.length;
           await run(userChangeNote(answer.change, user), { phase: 'plan' });
           const changed = lastSaid(from);
-          if (planSteps(changed).length >= 2) { plan = changed; list = planSteps(plan); }
+          if (planSteps(changed).length >= 1) { plan = changed; list = planSteps(plan); }
         }
         if (!answer?.go) {
           if (!stopped()) { const t = 'Okay, I haven\'t started any of it. What would you like instead?'; say(`\n\n${t}`); keep(t, undefined); }
@@ -307,3 +308,11 @@ export async function soloRun(brain, level, { run, review, emit, signal, msgs, t
   brain.log?.('effort', `${level} on one brain: ${rounds.map((r) => r.kind + (r.verdict ? `:${r.verdict}` : '')).join(', ')}`);
   return { rounds, minutes };
 }
+
+// Max's plan step only looks (16 Nov rental: with every tool on offer, the "plan" step often just did the job, so
+// there was nothing left to plan and later steps found "it's already done"). A tool that asks for an OK, or whose name
+// says it makes or changes something, waits for the jobs.
+const CHANGES = /(?:^|_)(?:write|edit|save|post|add|delete|remove|move|copy|rename|make|run|send|set|schedule|create|update|apply|install|sort|convert|pin|forget|remember|take|offer|hire|pick|show|ask|discord|spending|work|drive|click|type|press)(?:_|$)/;
+// Tools that both read and change (an action argument picks which) wait too.
+const BOTH = new Set(['notice_board', 'reminders', 'pass_note', 'watch_page', 'pack_job', 'meeting_notes', 'workshop_run']);
+export const lookOnly = (name, tools = {}) => Boolean(name) && !tools[name]?.check && !BOTH.has(String(name)) && !CHANGES.test(String(name));
