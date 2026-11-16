@@ -43,7 +43,7 @@
   ]
  },
  "prep": [
-  "Runs from C:\\Unreal Projects\\lab-kit-shape4 at et6g5x 8b82ad3 or later (after1 reads its jobs and scenes from this folder too, read only).",
+  "Runs from the PC lab kit at et6g5x 0a121a5b with c812ce5 or later (after1 reads its jobs and scenes from this folder too, read only).",
   "Inputs: bob-model-lab/out/jobs-fix/jobs.jsonl (the first 200 are run, the same as after1 real), bob-model-lab/out/jobs-fix1/scenes.jsonl, bob-model-lab/out/jobs-trial/never/.",
   "--family gpt-oss stops pre-flight if this Bob copy has no GPT-OSS tool set; --want-shapes 4 if its tools are another shape. --search-probe stops it if web_search answers nothing."
  ],
